@@ -13,5 +13,6 @@
 ### SEE ALSO
 
 * [grafanactl config](grafanactl_config.md)	 - View or manipulate configuration settings
+* [grafanactl providers](grafanactl_providers.md)	 - List registered providers
 * [grafanactl resources](grafanactl_resources.md)	 - Manipulate Grafana resources
 

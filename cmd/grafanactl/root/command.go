@@ -9,13 +9,24 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/grafana/grafanactl/cmd/grafanactl/config"
+	cmdproviders "github.com/grafana/grafanactl/cmd/grafanactl/providers"
 	"github.com/grafana/grafanactl/cmd/grafanactl/resources"
 	"github.com/grafana/grafanactl/internal/logs"
+	"github.com/grafana/grafanactl/internal/providers"
 	"github.com/spf13/cobra"
 	"k8s.io/klog/v2"
 )
 
+// Command builds the root cobra command for the given version using the
+// compile-time registered provider list.
 func Command(version string) *cobra.Command {
+	return newCommand(version, providers.All())
+}
+
+// newCommand builds the root cobra command with an explicit provider list.
+// Callers that need to inject providers (e.g. tests) should use this directly.
+// Nil entries in pp are silently skipped.
+func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	noColors := false
 	verbosity := 0
 
@@ -59,6 +70,14 @@ func Command(version string) *cobra.Command {
 
 	rootCmd.AddCommand(config.Command())
 	rootCmd.AddCommand(resources.Command())
+
+	rootCmd.AddCommand(cmdproviders.Command(pp))
+	for _, p := range pp {
+		if p == nil {
+			continue
+		}
+		rootCmd.AddCommand(p.Commands()...)
+	}
 
 	rootCmd.PersistentFlags().BoolVar(&noColors, "no-color", noColors, "Disable color output")
 	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "Verbose mode. Multiple -v options increase the verbosity (maximum: 3).")
