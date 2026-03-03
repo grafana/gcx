@@ -185,6 +185,85 @@ from and in what format. This enables:
 
 ---
 
+---
+
+### 11. Provider Plugin System (High Confidence: 93%)
+
+Providers are first-class extension points that contribute Cobra commands and
+configuration to grafanactl. The pattern separates the plugin contract from
+command registration:
+
+```
+Provider interface
+  +-- Name()       string               -- unique identifier
+  +-- ShortDesc()  string               -- one-line description
+  +-- Commands()   []*cobra.Command     -- contributed commands
+  +-- Validate()   func(map[string]string) error
+  +-- ConfigKeys() []ConfigKey          -- config metadata (name + secret flag)
+```
+
+**Registry:** `providers.All()` returns all compile-time registered providers
+as a `[]Provider` slice. The root command iterates this slice to mount each
+provider's commands and to pass the list to `RedactSecrets`.
+
+**Secret redaction:** `providers.RedactSecrets(providerConfigs, registered)`
+applies a secure-by-default model:
+- Known provider + `Secret=false` key → left as-is
+- Everything else (undeclared keys, unknown providers, `Secret=true`) → redacted
+
+**Config storage:** Provider configs live in
+`Context.Grafana.Providers map[string]map[string]string`, indexed by provider
+name. Reflection-based editor picks them up via the `yaml:"providers"` tag.
+
+**Evidence:**
+- `internal/providers/provider.go`: `Provider` interface and `ConfigKey` type
+- `internal/providers/registry.go`: `All()` function
+- `internal/providers/redact.go`: `RedactSecrets` implementation
+- `cmd/grafanactl/providers/command.go`: `providers list` command
+- `internal/config/types.go`: `Providers` field on `GrafanaConfig`
+
+---
+
+### 12. Direct HTTP Client for Datasource APIs (High Confidence: 91%)
+
+Query clients for Prometheus and Loki bypass the k8s dynamic client entirely.
+They use `rest.HTTPClientFor` to create a plain `*http.Client` from the same
+`rest.Config` used by the dynamic client, then call Grafana's datasource-specific
+sub-resource endpoints directly:
+
+```
+NamespacedRESTConfig
+       |
+   rest.HTTPClientFor(&cfg.Config)
+       |
+   *http.Client
+       |
+   POST /apis/query.grafana.app/v0alpha1/namespaces/{ns}/query
+   GET  /apis/prometheus.datasource.grafana.app/v0alpha1/namespaces/{ns}/datasources/{uid}/resource/api/v1/...
+   GET  /apis/loki.datasource.grafana.app/v0alpha1/namespaces/{ns}/datasources/{uid}/resource/...
+```
+
+**Why not the dynamic client?** These endpoints do not follow the standard
+K8s resource CRUD model (no GVK, no `List`/`Get`/`Create`/`Update`). They are
+query/stream endpoints that return Grafana-native response formats, not
+`unstructured.Unstructured` objects.
+
+**Auth reuse:** `rest.HTTPClientFor` respects `BearerToken` and
+`Username+Password` on the `rest.Config`, so the same auth config flows to
+all three client paths without duplication.
+
+**Output rendering:** Query results can be rendered as tables, JSON/YAML, or
+terminal charts (`internal/graph`). The `query` command registers custom codecs
+(`queryTableCodec`, `queryGraphCodec`) into the `io.Options` codec registry.
+
+**Evidence:**
+- `internal/query/prometheus/client.go`: `NewClient` calls `rest.HTTPClientFor`
+- `internal/query/loki/client.go`: same pattern
+- `cmd/grafanactl/query/command.go`: codec registration and datasource-type dispatch
+- `internal/graph/chart.go`: `RenderChart` auto-selects line vs bar chart
+
+---
+
 ## Contradiction Resolutions
 
 ### 1. DiscoverStackID Called Twice

@@ -6,18 +6,20 @@ Domain: Data flows — push, pull, delete, and serve pipelines in grafanactl.
 
 ## 1. Overview
 
-grafanactl has four primary data flow pipelines:
+grafanactl has five primary data flow pipelines:
 
 ```
 PUSH:   Local disk → FSReader → filter → process → Pusher → Grafana API
 PULL:   Grafana API → Puller → process → FSWriter → Local disk
 DELETE: Local disk → FSReader → filter → Deleter → Grafana API
 SERVE:  Local disk → watch → FSReader → HTTP proxy → live reload → Browser
+QUERY:  Flags → query client → Grafana datasource API → parse → render
 ```
 
-All four share the same `Resource`/`Resources` abstraction as the central in-memory
+The first four share the same `Resource`/`Resources` abstraction as the central in-memory
 representation. The `Processor` interface (`remote/remote.go:11`) provides a composable
-transformation stage in push and pull.
+transformation stage in push and pull. The QUERY pipeline is independent — it operates
+on time series data and does not use the resource model.
 
 ---
 
@@ -220,7 +222,162 @@ to have already resolved which resources should be deleted.
 
 ---
 
-## 5. Folder Hierarchy — Why Order Matters
+## 5. QUERY Pipeline
+
+Entry point: `cmd/grafanactl/query/command.go` (`RunE` closure in `Command()`).
+
+```
+User invocation:
+  grafanactl query -d <uid> -e 'rate(http_requests_total[5m])' --start now-1h --end now --step 1m
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ 1. Parse flags                                                        │
+  │    --expr / -e      PromQL or LogQL expression (required)            │
+  │    --type / -t      datasource type: "prometheus" (default) or "loki"│
+  │    --datasource/-d  datasource UID (optional if default configured)  │
+  │    --start / --end  time bounds (RFC3339, Unix epoch, or relative    │
+  │                     e.g. "now-1h", "now")                            │
+  │    --step           query step / interval (e.g. "15s", "1m")         │
+  │    -o               output format: table (default), graph, json, yaml│
+  └───────────────────────┬──────────────────────────────────────────────┘
+                          │
+  ┌───────────────────────▼──────────────────────────────────────────────┐
+  │ 2. Resolve datasource UID                                             │
+  │    if -d flag provided → use directly                                │
+  │    else load full config:                                             │
+  │      if type == "loki"       → ctx.DefaultLokiDatasource             │
+  │      else (prometheus)       → ctx.DefaultPrometheusDatasource       │
+  │    error if still empty                                               │
+  └───────────────────────┬──────────────────────────────────────────────┘
+                          │
+  ┌───────────────────────▼──────────────────────────────────────────────┐
+  │ 3. Parse time range                                                   │
+  │    ParseTime(opts.Start, now) → time.Time (zero if empty)            │
+  │    ParseTime(opts.End, now)   → time.Time (zero if empty)            │
+  │    ParseDuration(opts.Step)   → time.Duration (zero if empty)        │
+  │                                                                       │
+  │    IsRange() = Start != zero && End != zero                          │
+  │    Instant query: no --start/--end flags → uses "now-1m" to "now"   │
+  │    Range query: explicit time bounds + optional step                 │
+  └───────────────────────┬──────────────────────────────────────────────┘
+                          │
+  ┌───────────────────────▼──────────────────────────────────────────────┐
+  │ 4. Build query client and execute                                     │
+  │                                                                       │
+  │    PROMETHEUS path:                                                   │
+  │      prometheus.NewClient(cfg) — wraps rest.HTTPClientFor(&cfg)      │
+  │      client.Query(ctx, datasourceUID, QueryRequest{...})             │
+  │                                                                       │
+  │        POST /apis/query.grafana.app/v0alpha1/namespaces/{ns}/query   │
+  │        Body: {                                                        │
+  │          "queries": [{                                                │
+  │            "refId": "A",                                             │
+  │            "datasource": {"type":"prometheus","uid":<uid>},          │
+  │            "expr": <PromQL>,                                          │
+  │            "intervalMs": <step_ms>,                                  │
+  │            "instant": true    ← only for instant queries             │
+  │          }],                                                          │
+  │          "from": <start_ms>,  "to": <end_ms>                         │
+  │        }                                                              │
+  │                                                                       │
+  │    LOKI path:                                                         │
+  │      loki.NewClient(cfg) — same HTTP client construction             │
+  │      client.Query(ctx, datasourceUID, QueryRequest{...})             │
+  │                                                                       │
+  │        POST /apis/query.grafana.app/v0alpha1/namespaces/{ns}/query   │
+  │        Body: same structure with "type":"loki", "maxLines":1000      │
+  └───────────────────────┬──────────────────────────────────────────────┘
+                          │
+  ┌───────────────────────▼──────────────────────────────────────────────┐
+  │ 5. Parse Grafana datasource response                                  │
+  │                                                                       │
+  │    Both clients receive the same Grafana Data Frame format:          │
+  │      GrafanaQueryResponse.Results["A"].Frames[]                      │
+  │      Each frame: {schema: {fields: [{type,labels,...}]},             │
+  │                   data:   {values: [[timestamps...],[values...]]}}   │
+  │                                                                       │
+  │    PROMETHEUS conversion (convertGrafanaResponse):                   │
+  │      Locate time field (type=="time") and value field (type=="number")│
+  │      Single value per series   → ResultType="vector", Sample.Value   │
+  │      Multiple values per series → ResultType="matrix", Sample.Values │
+  │      Timestamps converted: milliseconds → seconds (÷1000)           │
+  │                                                                       │
+  │    LOKI conversion (convertGrafanaResponse):                         │
+  │      Locate time field and string/number value field                 │
+  │      Labels extracted from field.Labels                              │
+  │      Result: []StreamEntry{Stream: labels, Values: [][timestamp,val]}│
+  │      Timestamps in nanoseconds (×1e6 from ms float)                 │
+  └───────────────────────┬──────────────────────────────────────────────┘
+                          │
+  ┌───────────────────────▼──────────────────────────────────────────────┐
+  │ 6. Render output                                                      │
+  │                                                                       │
+  │    -o table (default):                                                │
+  │      prometheus: FormatTable → tabwriter with label columns +        │
+  │        TIMESTAMP | VALUE; vector = one row per series,               │
+  │        matrix = one row per data point                               │
+  │      loki: FormatQueryTable → tabwriter with TIMESTAMP | LABELS |   │
+  │        VALUE columns                                                 │
+  │                                                                       │
+  │    -o graph:                                                          │
+  │      queryGraphCodec.Encode → graph.FromPrometheusResponse() or      │
+  │        graph.FromLokiResponse() → *graph.ChartData                   │
+  │      graph.RenderChart(w, chartData, opts):                          │
+  │        IsInstantQuery() (single point per series at same time)       │
+  │          → RenderBarChart (horizontal bars via ntcharts barchart)    │
+  │        else                                                          │
+  │          → RenderLineChart (time series via ntcharts                 │
+  │             timeserieslinechart, with legend for multi-series)       │
+  │      Terminal size auto-detected; falls back to text if TextOnly     │
+  │                                                                       │
+  │    -o json / -o yaml:                                                 │
+  │      codec.Encode(w, resp) — serialize QueryResponse directly        │
+  └──────────────────────────────────────────────────────────────────────┘
+```
+
+Key files:
+- `cmd/grafanactl/query/command.go` — CLI wiring, datasource resolution, dispatch
+- `cmd/grafanactl/query/graph.go` — `queryGraphCodec` (bridges query response → chart)
+- `cmd/grafanactl/query/time.go` — `ParseTime`, `ParseDuration` for flag parsing
+- `internal/query/prometheus/client.go` — HTTP client, request construction, response conversion
+- `internal/query/prometheus/formatter.go` — table rendering (vector/matrix/scalar)
+- `internal/query/loki/client.go` — HTTP client, request construction, response conversion
+- `internal/query/loki/formatter.go` — log table rendering
+- `internal/graph/chart.go` — `RenderChart`, `RenderBarChart`, `RenderLineChart`
+- `internal/graph/convert.go` — `FromPrometheusResponse`, `FromLokiResponse`
+- `internal/graph/types.go` — `ChartData`, `Series`, `Point`
+
+### Instant vs Range Query
+
+Both Prometheus and Loki clients auto-detect the query mode from `QueryRequest.IsRange()`:
+
+```
+IsRange() == false (no --start/--end):
+  → "instant" mode: from="now-1m", to="now", query["instant"]=true
+  → Prometheus: ResultType="vector" (one value per series)
+  → Graph output: RenderBarChart (horizontal bars)
+
+IsRange() == true (--start and --end provided):
+  → "range" mode: from/to as Unix milliseconds
+  → Prometheus: ResultType="matrix" ([]values per series)
+  → Graph output: RenderLineChart (time series line chart)
+```
+
+### API Endpoint
+
+Both Prometheus and Loki queries go through the same unified endpoint:
+
+```
+POST /apis/query.grafana.app/v0alpha1/namespaces/{namespace}/query
+```
+
+The datasource type is identified by the `datasource.type` field in the query body
+(`"prometheus"` or `"loki"`), not by the URL path. Grafana routes the request to the
+appropriate datasource plugin internally.
+
+---
+
+## 6. Folder Hierarchy — Why Order Matters
 
 Grafana folders can be nested. A child folder's `metadata.annotations` carries a
 `folder` annotation pointing to its parent's UID. Creating a child before its parent
@@ -269,7 +426,7 @@ Circular dependency detection: if a node's level remains `-1` after traversal
 
 ---
 
-## 6. Local I/O Details
+## 7. Local I/O Details
 
 ### FSReader (`internal/resources/local/reader.go`)
 
@@ -323,7 +480,7 @@ FSReader which detects format per-file, FSWriter uses a single encoder for all o
 
 ---
 
-## 7. Format Handling (`internal/format/codec.go`)
+## 8. Format Handling (`internal/format/codec.go`)
 
 Both `JSONCodec` and `YAMLCodec` implement `Codec` (Encoder + Decoder):
 
@@ -361,7 +518,7 @@ a pull-then-push workflow will write back in the same format as the original fil
 
 ---
 
-## 8. SERVE Pipeline
+## 9. SERVE Pipeline
 
 Entry point: `internal/server/server.go:55` (`Server.Start`).
 
@@ -490,7 +647,7 @@ Browser's livereload client receives → navigates to /grafanactl/.../{name}
 
 ---
 
-## 9. OperationSummary — Thread-Safe Result Tracking
+## 10. OperationSummary — Thread-Safe Result Tracking
 
 `internal/resources/remote/summary.go` provides thread-safe counters for batch operations.
 
@@ -512,7 +669,7 @@ even on partial failure so callers can report both successes and failures.
 
 ---
 
-## 10. Concurrency Model Summary
+## 11. Concurrency Model Summary
 
 | Location | Mechanism | Limit |
 |----------|-----------|-------|
@@ -546,7 +703,7 @@ Default `MaxConcurrent` = 10 (set in `push.go:30`, `pull.go`, etc.).
 
 ---
 
-## 11. Key Invariants for Agents Modifying These Flows
+## 12. Key Invariants for Agents Modifying These Flows
 
 1. **Folder ordering is mandatory.** Any modification to push must preserve the
    two-phase approach: folders first (level-by-level), then non-folders. Violating

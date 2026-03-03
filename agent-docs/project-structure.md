@@ -10,6 +10,9 @@ grafanactl/
 │       ├── root/             # Root Cobra command, global flags, logging setup
 │       ├── config/           # 'config' subcommand implementations
 │       ├── resources/        # 'resources' subcommand implementations
+│       ├── datasources/      # 'datasources' subcommand implementations
+│       ├── query/            # 'query' subcommand implementation
+│       ├── providers/        # 'providers' subcommand implementation
 │       ├── fail/             # Error → DetailedError conversion, exit codes
 │       └── io/               # Output formatting, user-facing messages
 │
@@ -18,8 +21,13 @@ grafanactl/
 │   │   └── testdata/         # YAML fixtures for config unit tests
 │   ├── format/               # JSON/YAML codec, format auto-detection
 │   ├── grafana/              # Thin wrapper over grafana-openapi-client-go
+│   ├── graph/                # Terminal chart rendering (ntcharts + lipgloss)
 │   ├── httputils/            # REST client helpers, request/response utilities
 │   ├── logs/                 # slog + k8s klog integration, verbosity
+│   ├── providers/            # Provider plugin system (Prometheus, Loki providers)
+│   ├── query/                # Datasource query clients
+│   │   ├── prometheus/       # Prometheus HTTP client (instant + range queries)
+│   │   └── loki/             # Loki HTTP client (log + metric queries)
 │   ├── secrets/              # Redaction of sensitive config fields
 │   ├── testutils/            # Shared test helpers (not exposed externally)
 │   ├── resources/            # Core resource abstraction layer
@@ -250,6 +258,8 @@ in code review.
 | Concurrency | `golang.org/x/sync` | `errgroup` for bounded parallel operations |
 | YAML / JSON | `goccy/go-yaml`, `go-openapi/strfmt` | YAML codec, OpenAPI format types |
 | File watching | `fsnotify/fsnotify` | Live reload file watcher |
+| Terminal UI | `NimbleMarkets/ntcharts`, `charmbracelet/lipgloss` | Terminal chart rendering (bar charts, line graphs) |
+| Terminal detection | `golang.org/x/term` | Terminal size detection for graph output |
 | Testing | `stretchr/testify` | Assertions in unit tests |
 | Semver | `Masterminds/semver/v3` | Version parsing/comparison |
 

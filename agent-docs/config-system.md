@@ -7,8 +7,7 @@ inspired by kubectl's kubeconfig. A single YAML file stores named contexts,
 each pointing to a different Grafana instance. One context is "current" at any
 time, and all commands operate against it unless overridden.
 
-All code lives under `/Users/igor/conductor/workspaces/grafanactl-experiments/belgrade/internal/config/`
-and `cmd/grafanactl/config/command.go`.
+All code lives under `internal/config/` and `cmd/grafanactl/config/command.go`.
 
 ---
 
@@ -20,20 +19,25 @@ Config
 ├── CurrentContext  "production"
 └── Contexts        map[string]*Context
     ├── "production"
-    │   └── Grafana  *GrafanaConfig
-    │       ├── Server    "https://grafana.example.com"
-    │       ├── User      ""
-    │       ├── Password  ""            // datapolicy:"secret"
-    │       ├── APIToken  "glsa_..."    // datapolicy:"secret"  (takes precedence over User/Password)
-    │       ├── OrgID     0             // on-prem: org namespace
-    │       ├── StackID   12345         // cloud: stack namespace
-    │       └── TLS       *TLS
-    │           ├── Insecure    false
-    │           ├── ServerName  ""
-    │           ├── CertData    []byte   // datapolicy:"secret" on KeyData
-    │           ├── KeyData     []byte
-    │           ├── CAData      []byte
-    │           └── NextProtos  []string
+    │   ├── Grafana  *GrafanaConfig
+    │   │   ├── Server    "https://grafana.example.com"
+    │   │   ├── User      ""
+    │   │   ├── Password  ""            // datapolicy:"secret"
+    │   │   ├── APIToken  "glsa_..."    // datapolicy:"secret"  (takes precedence over User/Password)
+    │   │   ├── OrgID     0             // on-prem: org namespace
+    │   │   ├── StackID   12345         // cloud: stack namespace
+    │   │   └── TLS       *TLS
+    │   │       ├── Insecure    false
+    │   │       ├── ServerName  ""
+    │   │       ├── CertData    []byte   // datapolicy:"secret" on KeyData
+    │   │       ├── KeyData     []byte
+    │   │       ├── CAData      []byte
+    │   │       └── NextProtos  []string
+    │   ├── DefaultPrometheusDatasource  ""   // UID of default Prometheus datasource for queries
+    │   ├── DefaultLokiDatasource        ""   // UID of default Loki datasource for queries
+    │   └── Providers  map[string]map[string]string
+    │       ├── "slo"       {"url": "...", "token": "..."}   // secret keys REDACTED in config view
+    │       └── "oncall"    {"url": "..."}
     └── "staging"
         └── Grafana  *GrafanaConfig
             └── ...
@@ -361,6 +365,9 @@ automatically via reflection — no additional registration needed.
 ## Secret Handling and Redaction
 
 The `config view` command redacts secrets by default unless `--raw` is passed.
+Two separate redaction mechanisms are applied:
+
+### 1. Struct-tag redaction (`secrets.Redact`)
 
 Fields marked `datapolicy:"secret"` in the config structs:
 - `GrafanaConfig.Password`  (string)
@@ -374,10 +381,32 @@ Fields marked `datapolicy:"secret"` in the config structs:
 - Handles: structs, maps (recurse into values), slices (recurse into elements)
 - Empty/nil secret fields are left as-is (not replaced with the redacted string)
 
-Usage in `viewCmd` (`command.go:199`):
+### 2. Provider config redaction (`providers.RedactSecrets`)
+
+Provider configs are `map[string]map[string]string` — no struct tags are
+available. Instead, each registered `Provider` declares its `ConfigKey` list
+with a `Secret bool` field.
+
+`providers.RedactSecrets(providerConfigs, registered)` in `internal/providers/redact.go`:
+- Builds a per-provider set of non-secret key names from `Provider.ConfigKeys()`
+- For each provider config entry, redacts any key that is:
+  - declared as `Secret: true`
+  - not declared at all (unknown key → secure by default)
+  - belonging to an unregistered provider (all keys redacted)
+- Empty values are left as-is
+
+Security model: **secure by default** — undeclared and unknown keys are always
+redacted.
+
+### Combined usage in `viewCmd` (`command.go`)
+
 ```go
 if !opts.Raw {
     if err := secrets.Redact(&cfg); err != nil { ... }
+    // Also redact provider configs for the current context
+    if ctx := cfg.GetCurrentContext(); ctx != nil {
+        providers.RedactSecrets(ctx.Providers, registered)
+    }
 }
 ```
 
@@ -470,4 +499,6 @@ two calls).
 | `internal/config/stack_id.go` | `DiscoverStackID` — Grafana Cloud namespace discovery |
 | `internal/config/errors.go` | `ValidationError`, `UnmarshalError`, `ContextNotFound` |
 | `internal/secrets/redactor.go` | `Redact` — reflection-based secret redaction |
+| `internal/providers/provider.go` | `Provider` interface + `ConfigKey` type |
+| `internal/providers/redact.go` | `RedactSecrets` — provider config redaction |
 | `cmd/grafanactl/config/command.go` | CLI commands + `Options.LoadConfig`/`LoadRESTConfig` |

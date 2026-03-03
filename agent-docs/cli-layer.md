@@ -19,17 +19,44 @@ grafanactl (root)
 │   └── view
 │       └── --output / -o   [yaml|json, default: yaml]
 │
-└── resources                [cmd/grafanactl/resources/command.go]
-    ├── --config             [persistent: inherited from config.Options]
-    ├── --context            [persistent: inherited from config.Options]
-    ├── delete [SELECTOR]...
-    ├── edit   SELECTOR
-    ├── get    [SELECTOR]...
-    ├── list
-    ├── pull   [SELECTOR]...
-    ├── push   [SELECTOR]...
-    ├── serve  [DIR]...
-    └── validate [SELECTOR]...
+├── resources                [cmd/grafanactl/resources/command.go]
+│   ├── --config             [persistent: inherited from config.Options]
+│   ├── --context            [persistent: inherited from config.Options]
+│   ├── delete [SELECTOR]...
+│   ├── edit   SELECTOR
+│   ├── get    [SELECTOR]...
+│   ├── list
+│   ├── pull   [SELECTOR]...
+│   ├── push   [SELECTOR]...
+│   ├── serve  [DIR]...
+│   └── validate [SELECTOR]...
+│
+├── datasources              [cmd/grafanactl/datasources/command.go]
+│   ├── --config             [persistent: inherited from config.Options]
+│   ├── --context            [persistent: inherited from config.Options]
+│   ├── list
+│   ├── get    NAME
+│   ├── prometheus           Prometheus-specific operations
+│   │   ├── labels           [--datasource/-d UID] [--label/-l NAME]
+│   │   ├── metadata         [--datasource/-d UID] [--metric/-m NAME]
+│   │   └── targets          [--datasource/-d UID] [--state active|dropped|any]
+│   └── loki                 Loki-specific operations
+│       ├── labels           [--datasource/-d UID] [--label/-l NAME]
+│       └── series           --match SELECTOR... [--datasource/-d UID]
+│
+├── query                    [cmd/grafanactl/query/command.go]
+│   ├── --config             [persistent: inherited from config.Options]
+│   ├── --context            [persistent: inherited from config.Options]
+│   ├── --expr / -e          Query expression (PromQL or LogQL)  [required]
+│   ├── --type / -t          Datasource type: prometheus|loki  [default: prometheus]
+│   ├── --datasource / -d    Datasource UID (or use config default)
+│   ├── --start              Start time (RFC3339, Unix, or relative e.g. now-1h)
+│   ├── --end                End time (RFC3339, Unix, or relative e.g. now)
+│   ├── --step               Query step (e.g. 15s, 1m)
+│   └── --output / -o        table|json|yaml|graph  [default: table]
+│
+└── providers                [cmd/grafanactl/providers/command.go]
+    └── (list; no subcommands — prints NAME/DESCRIPTION table of registered providers)
 ```
 
 Key: SELECTOR = `kind[/name[,name...]]` or long form `kind.group/name`
@@ -58,6 +85,17 @@ cmd/grafanactl/
 │   ├── fetch.go             SHARED: remote fetch helper used by get/edit/delete
 │   ├── onerror.go           SHARED: OnErrorMode type + --on-error flag binding
 │   └── editor.go            SHARED: interactive editor (EDITOR env var)
+├── datasources/
+│   ├── command.go           datasources group (wires configOpts to subcommands)
+│   ├── list.go              datasources list
+│   ├── get.go               datasources get
+│   ├── prometheus.go        prometheus subgroup + labels/metadata/targets commands
+│   └── loki.go              loki subgroup + labels/series commands
+├── query/
+│   ├── command.go           query command (--expr, --type, --datasource, --start, --end, --step)
+│   └── graph.go             queryGraphCodec — terminal chart via internal/graph
+├── providers/
+│   └── command.go           providers command — lists registered providers
 ├── fail/
 │   ├── detailed.go          DetailedError type — rich error formatting
 │   └── convert.go           ErrorToDetailedError — error-type dispatch table
@@ -295,7 +333,9 @@ codec, err := opts.IO.Codec()   // resolves the selected format to a format.Code
 codec.Encode(cmd.OutOrStdout(), data)
 ```
 
-Built-in codecs: `json` and `yaml` (always available). Commands register additional ones (e.g. `text`, `wide`) by calling `RegisterCustomCodec` before `BindFlags`.
+Built-in codecs: `json` and `yaml` (always available). Commands register additional ones (e.g. `text`, `wide`, `graph`) by calling `RegisterCustomCodec` before `BindFlags`.
+
+The `graph` codec is a special-purpose output format only available on the `query` command. It renders Prometheus or Loki query results as a terminal line chart using `ntcharts` and `lipgloss` (via `internal/graph`). Terminal width is detected at render time via `golang.org/x/term`.
 
 ### Custom Table Codecs
 

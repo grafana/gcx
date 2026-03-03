@@ -2,11 +2,13 @@
 
 ## Overview
 
-grafanactl has two distinct client paths to Grafana. The primary path uses the
+grafanactl has three distinct client paths to Grafana. The primary path uses the
 Kubernetes dynamic client stack (k8s.io/client-go) to talk to Grafana's
 Kubernetes-compatible `/apis` endpoint for resource CRUD. A secondary path uses
 the Grafana OpenAPI generated client (`grafana-openapi-client-go`) for
-non-resource operations like health checks and stack discovery.
+non-resource operations like health checks and datasource listing. A third path
+uses `rest.HTTPClientFor` directly to execute datasource-specific queries
+(PromQL, LogQL) against Grafana's `/apis` query endpoints.
 
 ---
 
@@ -45,6 +47,28 @@ grafana.ClientFromContext()     [internal/grafana/client.go]
         |  - applies auth (basic or API key)
         v
 *goapi.GrafanaHTTPAPI           (generated OpenAPI client, /api base path)
+```
+
+The third path for datasource queries also starts from `NamespacedRESTConfig`
+but uses the k8s `rest` package's HTTP client factory directly:
+
+```
+config.NamespacedRESTConfig
+        |
+        v
+rest.HTTPClientFor(&cfg.Config)     [k8s.io/client-go/rest]
+        |  - builds *http.Client with TLS, auth, and transport from rest.Config
+        |  - does NOT set up k8s API machinery (no GVK, no dynamic.Interface)
+        v
+*http.Client
+        |
+        +---> prometheus.Client     [internal/query/prometheus/client.go]
+        |         |  POST /apis/query.grafana.app/v0alpha1/namespaces/{ns}/query
+        |         |  GET  /apis/prometheus.datasource.grafana.app/v0alpha1/...
+        |
+        +---> loki.Client           [internal/query/loki/client.go]
+                  |  POST /apis/query.grafana.app/v0alpha1/namespaces/{ns}/query
+                  |  GET  /apis/loki.datasource.grafana.app/v0alpha1/...
 ```
 
 ---
@@ -276,10 +300,78 @@ func ClientFromContext(ctx *config.Context) (*goapi.GrafanaHTTPAPI, error) {
 **Current usages:**
 - `grafana.GetVersion()` — calls `GET /api/health` to check Grafana version
 - Version compatibility checks before operations
+- Datasources list and get — queries the `/api/datasources` endpoint
 
 **Does NOT use:**
 - `internal/httputils` (the OpenAPI client manages its own transport)
 - `NamespacedRESTConfig` (completely separate connection setup)
+
+---
+
+## Datasource Query Clients (Third Path)
+
+**Packages:** `internal/query/prometheus`, `internal/query/loki`
+
+These clients execute PromQL and LogQL queries against Grafana's datasource-
+specific API endpoints. They bypass all k8s API machinery and use
+`rest.HTTPClientFor` to create a plain `*http.Client` from the `rest.Config`,
+then make direct HTTP requests.
+
+**Key distinction:** Unlike `NamespacedClient` and `VersionedClient`, these
+clients do not use `dynamic.Interface`, GVK resolution, or `Unstructured`
+objects. They speak JSON directly to Grafana's query and datasource-proxy APIs.
+
+### Construction
+
+```go
+// Both clients follow the same constructor pattern:
+httpClient, err := rest.HTTPClientFor(&cfg.Config)   // TLS + auth from rest.Config
+client := &prometheus.Client{restConfig: cfg, httpClient: httpClient}
+```
+
+The `rest.HTTPClientFor` call re-uses the same `NamespacedRESTConfig` (host,
+auth, TLS) already built by `NewNamespacedRESTConfig`, so no separate auth
+wiring is needed.
+
+### API Endpoints
+
+**Prometheus (`internal/query/prometheus/client.go`):**
+
+| Method | HTTP | Path |
+|---|---|---|
+| `Query` | POST | `/apis/query.grafana.app/v0alpha1/namespaces/{ns}/query` |
+| `Labels` | GET | `/apis/prometheus.datasource.grafana.app/v0alpha1/namespaces/{ns}/datasources/{uid}/resource/api/v1/labels` |
+| `LabelValues` | GET | `/apis/prometheus.datasource.grafana.app/v0alpha1/namespaces/{ns}/datasources/{uid}/resource/api/v1/label/{name}/values` |
+| `Metadata` | GET | `/apis/prometheus.datasource.grafana.app/v0alpha1/namespaces/{ns}/datasources/{uid}/resource/api/v1/metadata` |
+| `Targets` | GET | `/apis/prometheus.datasource.grafana.app/v0alpha1/namespaces/{ns}/datasources/{uid}/resource/api/v1/targets` |
+
+**Loki (`internal/query/loki/client.go`):**
+
+| Method | HTTP | Path |
+|---|---|---|
+| `Query` | POST | `/apis/query.grafana.app/v0alpha1/namespaces/{ns}/query` |
+| `Labels` | GET | `/apis/loki.datasource.grafana.app/v0alpha1/namespaces/{ns}/datasources/{uid}/resource/labels` |
+| `LabelValues` | GET | `/apis/loki.datasource.grafana.app/v0alpha1/namespaces/{ns}/datasources/{uid}/resource/label/{name}/values` |
+| `Series` | GET | `/apis/loki.datasource.grafana.app/v0alpha1/namespaces/{ns}/datasources/{uid}/resource/series` |
+
+### Query Request Format
+
+Both `Query` methods use Grafana's unified query API (not the native Prometheus
+or Loki HTTP API). The request body wraps the query expression in a Grafana
+data-frame envelope:
+
+```json
+{
+  "queries": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "<uid>"}, "expr": "<promql>"}],
+  "from": "<epoch_ms or 'now-1m'>",
+  "to":   "<epoch_ms or 'now'>"
+}
+```
+
+**Does NOT use:**
+- `dynamic.Interface`, `Unstructured`, or GVK resolution
+- `ParseStatusError` / `APIError` (errors are plain Go errors with HTTP status)
+- `internal/httputils` (manages its own `*http.Client`)
 
 ---
 
@@ -335,19 +427,25 @@ Defined but not yet applied to the dynamic client (TODO in `rest.go:21`).
 ```
 GrafanaConfig.APIToken != ""
     │
-    ├─ dynamic path  →  rest.Config.BearerToken
-    │                   k8s transport sets "Authorization: Bearer <token>"
+    ├─ dynamic path       →  rest.Config.BearerToken
+    │                        k8s transport sets "Authorization: Bearer <token>"
     │
-    └─ OpenAPI path  →  TransportConfig.APIKey
-                        generated client sets "Authorization: Bearer <token>"
+    ├─ OpenAPI path        →  TransportConfig.APIKey
+    │                        generated client sets "Authorization: Bearer <token>"
+    │
+    └─ query clients path →  rest.Config.BearerToken (via rest.HTTPClientFor)
+                             same http.Client used by prometheus.Client / loki.Client
 
 GrafanaConfig.User != ""
     │
-    ├─ dynamic path  →  rest.Config.Username + Password
-    │                   k8s transport sets "Authorization: Basic <b64(user:pass)>"
+    ├─ dynamic path       →  rest.Config.Username + Password
+    │                        k8s transport sets "Authorization: Basic <b64(user:pass)>"
     │
-    └─ OpenAPI path  →  TransportConfig.BasicAuth
-                        generated client sets "Authorization: Basic <b64(user:pass)>"
+    ├─ OpenAPI path        →  TransportConfig.BasicAuth
+    │                        generated client sets "Authorization: Basic <b64(user:pass)>"
+    │
+    └─ query clients path →  rest.Config.Username + Password (via rest.HTTPClientFor)
+                             same mechanism as dynamic path
 ```
 
 Priority: API token always wins over basic auth (enforced by `switch` statement
@@ -423,3 +521,5 @@ To add a new operation to the dynamic client path (e.g., `Patch`):
 | `internal/resources/remote/remote.go` | `Processor` interface definition |
 | `internal/resources/remote/puller.go` | `PullClient` interface, `Puller` using `VersionedClient` |
 | `internal/resources/remote/pusher.go` | `PushClient` interface, `Pusher` using `NamespacedClient` |
+| `internal/query/prometheus/client.go` | Prometheus query client using `rest.HTTPClientFor` |
+| `internal/query/loki/client.go` | Loki query client using `rest.HTTPClientFor` |

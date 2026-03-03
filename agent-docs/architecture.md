@@ -53,6 +53,28 @@
          |            | - Remote ops   |
          |            | - Processing   |
          |            +----------------+
+         |
+         |            +----------------+  +----------------+
+         |            | Provider Layer |  | Query Layer    |
+         |            | (internal/     |  | (internal/     |
+         |            |  providers/)   |  |  query/)       |
+         |            | - Provider     |  | - Prometheus   |
+         |            |   interface    |  |   client       |
+         |            | - Registry     |  | - Loki client  |
+         |            | - Secret       |  | - Direct HTTP  |
+         |            |   redaction    |  |   (no k8s      |
+         |            +----------------+  |    machinery)  |
+         |                               +----------------+
+         |
+         |            +----------------+  +----------------+
+         |            | Graph Layer    |  | Test Utilities |
+         |            | (internal/     |  | (internal/     |
+         |            |  graph/)       |  |  testutils/)   |
+         |            | - Terminal     |  | - Command test |
+         |            |   charts       |  |   helpers      |
+         |            | - Line/bar     |  | - FS helpers   |
+         |            |   rendering    |  +----------------+
+         |            +----------------+
          |                    |
          v                    v
 +-------------------------------------------------------------+
@@ -60,6 +82,7 @@
 |  - k8s.io/client-go dynamic client (primary: /apis)         |
 |  - grafana-openapi-client-go (secondary: /api)              |
 |  - internal/httputils (serve command reverse proxy)          |
+|  - net/http direct client (query layer: datasource APIs)     |
 +-------------------------------------------------------------+
          |
          v
@@ -222,6 +245,10 @@ Config
               +-- Server, User, Password, APIToken
               +-- OrgID (on-prem) / StackID (cloud)
               +-- TLS (cert, key, CA, insecure flag)
+              +-- DefaultPrometheusDatasource (UID for query command default)
+              +-- DefaultLokiDatasource       (UID for query command default)
+              +-- Providers: map[string]map[string]string
+                    (per-provider config, indexed by provider name)
 ```
 
 This is a simplified kubeconfig: where kubectl separates clusters, users, and
@@ -272,9 +299,9 @@ registration code.
 
 ## 5. Client Architecture
 
-### Two Client Paths
+### Three Client Paths
 
-The codebase has two distinct communication paths to Grafana:
+The codebase has three distinct communication paths to Grafana:
 
 **Primary (dynamic client):** `k8s.io/client-go` -> `/apis` endpoint
 - Used for all resource CRUD operations
@@ -287,6 +314,12 @@ The codebase has two distinct communication paths to Grafana:
 - Used for health checks, version detection
 - Completely separate connection setup from the dynamic client
 - Not used for resource operations
+
+**Tertiary (direct HTTP client):** `net/http` via `rest.HTTPClientFor` -> `/apis/{datasource}.grafana.app/...`
+- Used by `internal/query/prometheus` and `internal/query/loki`
+- Bypasses k8s API machinery entirely (no GVK, no dynamic.Interface)
+- Uses the same auth config as the dynamic client (`rest.Config` -> `rest.HTTPClientFor`)
+- Hits datasource-specific sub-resource endpoints (`/apis/prometheus.datasource.grafana.app/...`)
 
 ### Auth Flow
 
@@ -314,7 +347,13 @@ grafanactl
   +-- config             (--config, --context as persistent flags)
   |     +-- check, current-context, list-contexts, set, unset, use-context, view
   +-- resources          (--config, --context as persistent flags)
-        +-- get, list, pull, push, delete, edit, validate, serve
+  |     +-- get, list, pull, push, delete, edit, validate, serve
+  +-- datasources        (--config, --context as persistent flags)
+  |     +-- get, list, prometheus, loki
+  +-- query              (--config, --context as persistent flags)
+  |     (single command: execute PromQL or LogQL via unified query API)
+  +-- providers
+        (single command: list registered providers)
 ```
 
 ### The Options Pattern
@@ -579,6 +618,44 @@ Files most important for understanding the codebase. Organized by architectural 
 |------|---------|
 | `cmd/grafanactl/fail/detailed.go` | DetailedError type (rich error rendering) |
 | `cmd/grafanactl/fail/convert.go` | ErrorToDetailedError (error type dispatch) |
+
+### Provider System
+
+| File | Purpose |
+|------|---------|
+| `internal/providers/provider.go` | `Provider` interface, `ConfigKey` metadata type |
+| `internal/providers/registry.go` | `All()` — compile-time provider registry |
+| `internal/providers/redact.go` | `RedactSecrets()` — secure-by-default secret redaction |
+| `cmd/grafanactl/providers/command.go` | `providers` command (list registered providers) |
+
+### Datasource Query Clients
+
+| File | Purpose |
+|------|---------|
+| `internal/query/prometheus/client.go` | Prometheus query client (Query, Labels, LabelValues, Metadata, Targets) |
+| `internal/query/prometheus/types.go` | Request/response types for Prometheus |
+| `internal/query/prometheus/formatter.go` | Table/text formatting for Prometheus responses |
+| `internal/query/loki/client.go` | Loki query client (Query, Labels, LabelValues, Series) |
+| `internal/query/loki/types.go` | Request/response types for Loki |
+| `internal/query/loki/formatter.go` | Table/text formatting for Loki responses |
+| `cmd/grafanactl/datasources/command.go` | `datasources` command group (get, list, prometheus, loki subcommands) |
+| `cmd/grafanactl/query/command.go` | `query` command (unified PromQL/LogQL execution with graph output) |
+
+### Terminal Chart Rendering
+
+| File | Purpose |
+|------|---------|
+| `internal/graph/chart.go` | `RenderChart`, `RenderLineChart`, `RenderBarChart` — auto-selects chart type |
+| `internal/graph/types.go` | `ChartData`, `Series`, `Point` types |
+| `internal/graph/colors.go` | Color palette for multi-series charts |
+| `internal/graph/convert.go` | Conversion helpers from query responses to `ChartData` |
+
+### Test Utilities
+
+| File | Purpose |
+|------|---------|
+| `internal/testutils/command.go` | Cobra command test helpers |
+| `internal/testutils/fs.go` | Filesystem test helpers |
 
 ### Build and Tooling
 

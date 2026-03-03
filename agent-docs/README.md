@@ -1,6 +1,6 @@
 # Agent Documentation Index
 
-> Generated: 2026-03-02 | Strategy: Standard | Confidence: 92%
+> Generated: 2026-03-03 | Strategy: Standard | Confidence: 92%
 >
 > This directory contains high-level architecture documentation for autonomous coding agents.
 > Start here, then navigate to specific docs as needed.
@@ -26,6 +26,8 @@ The architecture follows a clean layered monolith with strict separation: CLI wi
 
 A composable processor pipeline transforms resources during push and pull operations, keeping I/O and transformation concerns decoupled. Context-based multi-environment configuration follows the kubectl kubeconfig pattern, enabling management of multiple Grafana instances from a single config file with named contexts.
 
+Two extension subsystems complement the core resource management path: the **provider plugin system** (`internal/providers/`) which registers Prometheus/Loki datasource configs with secret redaction, and the **datasource query layer** (`internal/query/`) which provides direct HTTP clients for PromQL/LogQL queries with terminal graph rendering (`internal/graph/`).
+
 ## Key Patterns Quick Reference
 
 - **Kubernetes Resource Model Adoption (97% confidence)**: Direct use of `k8s.io/apimachinery` and `k8s.io/client-go` because Grafana 12+ exposes a `/apis` endpoint with K8s semantics. All resources are unstructured objects with discovery at runtime.
@@ -37,6 +39,10 @@ A composable processor pipeline transforms resources during push and pull operat
 - **Selector-to-Filter Resolution (95% confidence)**: User input flows through two-stage resolution: CLI argument → Selector (partial, unvalidated) → Discovery Registry → Filter (fully resolved, complete GVK). Keeps CLI layer ignorant of API details.
 
 - **Dual-Client Architecture (93% confidence)**: Dynamic client path uses `/apis` (K8s-compatible) with `k8s.io/client-go` for resource CRUD; OpenAPI client uses `/api` (Grafana REST) for health checks and version discovery.
+
+- **Provider Plugin System**: Interface + registry pattern for datasource providers (Prometheus, Loki). Each provider exposes typed config, a config key for lookup, and integrates with the secret redactor for safe display in `config view`.
+
+- **Direct HTTP Client for Datasource APIs**: Query clients (`internal/query/prometheus`, `internal/query/loki`) bypass the k8s dynamic client and call datasource HTTP APIs directly, enabling PromQL/LogQL execution with results rendered as terminal charts via `internal/graph/`.
 
 ## How to Use These Docs
 
@@ -119,4 +125,4 @@ Directory layout rationale, build system (Makefile), CI/CD (GitHub Actions via .
 
 ---
 
-*Last updated: 2026-03-02 | Validation: All files present and verified*
+*Last updated: 2026-03-03 | Validation: All files present and verified*
