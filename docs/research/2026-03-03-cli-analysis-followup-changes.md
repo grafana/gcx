@@ -143,4 +143,57 @@ Cross-referencing revealed several areas where grafanactl is already well-positi
 
 ---
 
-*Cross-reference analysis based on: cli-analysis.md (2026-03-02), agent-docs/ (2026-03-02), CLAUDE.md project conventions*
+---
+
+## Cross-Reference: Extensibility + Ascode Research Findings
+
+This section cross-references findings from two parallel research streams against this document's recommendations:
+- [Non-App-Platform Extensibility](2026-03-02-grafanactl-non-app-platform-extensibility.md) (Provider interface, config extension, product CLIs)
+- [Ascode Subcommand](2026-03-03-ascode-subcommand.md) (`dev` command group, foundation-sdk integration)
+
+### Synergies
+
+| This Document | Extensibility Finding | Combined Impact |
+|---|---|---|
+| **R1.3 Agent mode detection** in `PersistentPreRun` | Provider commands inherit root command's `PersistentPreRun` | Agent mode auto-applies to ALL providers (SLO, synth, k6, dev) with zero per-provider work |
+| **R2.2 `help environment`** page | `ConfigKeys()` method on Provider interface declares env vars | Auto-generate the environment help page from `providers.All()` + core env vars -- always up-to-date |
+| **R1.1 Exit code taxonomy** (code 3 for auth) | Provider `Validate()` returns error before command runs | Exit code 3 (auth failure) unifies: Grafana token invalid, SM token missing, k6 token expired -- all use the same code |
+| **R1.2 Auto-approve** (`--yes` flag) | Provider push commands need confirmation for destructive ops | Shared confirm helper pattern: each provider's push calls `confirm()` which respects `--yes` and agent mode |
+| **R3.5 In-band error reporting** | Provider commands produce JSON output | Provider errors already structured via `DetailedError` -- wrapping in JSON response body works identically for k8s and REST providers |
+
+### Conflicts Resolved
+
+| Conflict | Resolution |
+|---|---|
+| **Output format default**: R1.3 agent mode switches default to JSON, but `dev import` outputs Go code | Agent mode sets default output format for *list/get* commands only. Commands with non-data output (import, init, generate) are exempt -- they ignore `-o` flag |
+| **Confirm helper ownership**: Both provider push commands and core `resources delete` need confirmation | Shared `internal/confirm` package (or helper in `cmd/grafanactl/resources/`) used by both core commands and providers. Not per-provider. |
+
+### Additional Agent-Docs Gaps (from Extensibility + Ascode Research)
+
+These gaps were identified by cross-referencing the extensibility and ascode research against `agent-docs/`:
+
+| Gap | Source | Affected Doc | Fix |
+|---|---|---|---|
+| **Provider architecture undocumented** | Extensibility research: Provider interface, registry, config extension | `architecture.md` | Add "Extension Layer" between Business Logic and Client Layer showing Provider interface |
+| **Provider command pattern undocumented** | Extensibility research: provider commands differ from `resources` commands | `cli-layer.md` | Add "Provider Command Groups" section explaining how providers contribute commands |
+| **Translation adapter pattern undocumented** | Extensibility research: flat JSON <-> k8s envelope translation | `patterns.md` | Add new pattern entry for the adapter pattern (Prepare/Unprepare, toResource/fromResource) |
+| **Provider config extension undocumented** | Extensibility research: `Context.Providers` map, `ConfigKeys()` | `config-system.md` | Add provider config section to data model |
+| **Dev tooling as provider undocumented** | Ascode research: `dev` command group implemented as Provider | `cli-layer.md` | Note that non-API providers (dev tooling) also use Provider interface |
+
+### Impact on Implementation Order
+
+The extensibility epic (Provider interface, Wave 0-1) should land **before** Phase 3 (Agent Mode) of this document's recommendations. Rationale:
+- Agent mode in `PersistentPreRun` automatically propagates to all provider commands
+- `ConfigKeys()` enables auto-generated environment help (R2.2)
+- Provider `Validate()` provides the natural hook for exit code 3 (auth failure)
+
+Revised dependency:
+```
+Wave 0 (Provider infra) ──► Phase 1 (docs) + Phase 2 (pipe detection)
+                         ──► Phase 3 (agent mode) ──► Phase 4 (auto-approve)
+                         ──► Wave 1 (SLO provider)
+```
+
+---
+
+*Cross-reference analysis based on: cli-analysis.md (2026-03-02), extensibility research (2026-03-02), ascode research (2026-03-03), agent-docs/ (2026-03-02), CLAUDE.md project conventions*
