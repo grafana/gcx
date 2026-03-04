@@ -24,6 +24,7 @@ type deleteOpts struct {
 	MaxConcurrent int
 	DryRun        bool
 	Path          []string
+	Yes           bool
 }
 
 func (opts *deleteOpts) setup(flags *pflag.FlagSet) {
@@ -32,6 +33,7 @@ func (opts *deleteOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&opts.Force, "force", opts.Force, "Delete all resources of the specified resource types")
 	flags.BoolVar(&opts.DryRun, "dry-run", opts.DryRun, "If set, the delete operation will be simulated")
 	flags.StringSliceVarP(&opts.Path, "path", "p", nil, "Path on disk containing the resources to delete")
+	flags.BoolVarP(&opts.Yes, "yes", "y", false, "Auto-approve destructive operations (automatically enables --force)")
 }
 
 func (opts *deleteOpts) Validate(args []string) error {
@@ -72,12 +74,29 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 	# Delete every dashboard defined in the given directory
 	grafanactl resources delete -p ./unwanted-resources/ dashboard
+
+	# Delete all dashboards with auto-approval
+	grafanactl resources delete dashboards --yes
+
+	# Delete all dashboards using environment variable
+	GRAFANACTL_AUTO_APPROVE=1 grafanactl resources delete dashboards
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
 			if err := opts.Validate(args); err != nil {
 				return err
+			}
+
+			// Apply auto-approval if enabled
+			cliOpts, err := config.LoadCLIOptions()
+			if err != nil {
+				return err
+			}
+
+			if (opts.Yes || cliOpts.AutoApprove) && !opts.Force {
+				cmdio.Info(cmd.OutOrStdout(), "Auto-approval enabled: automatically setting --force")
+				opts.Force = true
 			}
 
 			cfg, err := configOpts.LoadRESTConfig(ctx)

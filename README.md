@@ -176,6 +176,7 @@ git add ./resources && git commit -m "snapshot Grafana resources"
 | Variable | Description |
 |----------|-------------|
 | `GRAFANACTL_CONFIG` | Custom config file path (default: `~/.config/grafanactl/config.yaml`) |
+| `GRAFANACTL_AUTO_APPROVE` | Auto-approve destructive operations (automatically enables `--force` on delete) |
 
 **Global CLI flags (available on all commands):**
 
@@ -191,6 +192,27 @@ git add ./resources && git commit -m "snapshot Grafana resources"
 ```bash
 export GRAFANA_SERVER="https://prod.grafana.net"
 export GRAFANA_TOKEN="${GRAFANA_SERVICE_ACCOUNT_TOKEN}"  # From CI secrets
+
+grafanactl resources push -p ./dashboards
+```
+
+**Auto-approval for CI/CD:**
+
+For non-interactive delete operations in CI/CD pipelines, use the `--yes` flag or `GRAFANACTL_AUTO_APPROVE` environment variable to automatically enable the `--force` flag:
+
+```bash
+# Using --yes flag
+grafanactl resources delete dashboards --yes
+
+# Using environment variable (recommended for CI/CD)
+export GRAFANACTL_AUTO_APPROVE=1
+grafanactl resources delete dashboards
+```
+
+**Note:** Auto-approval only affects delete operations. For push/pull operations with externally-managed resources (e.g., Terraform, GitSync), you must still explicitly pass `--include-managed`.
+
+## Resource Selectors
+
 
 grafanactl resources push -p ./dashboards
 ```

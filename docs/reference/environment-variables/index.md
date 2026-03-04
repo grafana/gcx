@@ -1,5 +1,10 @@
 # Environment variables reference
 
+## `GRAFANACTL_AUTO_APPROVE`
+
+AutoApprove automatically enables the --force flag on delete operations,
+enabling non-interactive operation in CI/CD pipelines.
+
 ## `GRAFANA_ORG_ID`
 
 OrgID specifies the organization targeted by this config.

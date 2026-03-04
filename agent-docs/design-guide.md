@@ -138,19 +138,34 @@ Do NOT prompt for:
 - Pull (local write) — easily reversible via git
 - Config changes — low-risk, undoable
 
-### 3.2 The `--yes` / `-y` Pattern `[PLANNED]`
+### 3.2 The `--yes` / `-y` Pattern `[IMPLEMENTED]`
 
-All confirmation-requiring commands should accept `--yes`/`-y` to skip the
-prompt. Also respect `GRAFANACTL_AUTO_APPROVE=true` env var. Pattern:
+The `--yes`/`-y` flag and `GRAFANACTL_AUTO_APPROVE` environment variable enable
+non-interactive operation for destructive commands. Currently implemented for:
+
+- **delete command**: Auto-enables `--force` flag (required to delete all resources of a type)
+
+**Note:** Auto-approval does NOT enable `--include-managed` to protect resources
+managed by external tools (Terraform, GitSync, etc.). Users must explicitly pass
+`--include-managed` if needed.
+
+Pattern (as implemented in `cmd/grafanactl/resources/delete.go`):
 
 ```go
-func confirmOrSkip(cmd *cobra.Command, yesFlag bool, msg string) (bool, error) {
-    if yesFlag || os.Getenv("GRAFANACTL_AUTO_APPROVE") == "true" {
-        return true, nil
-    }
-    // ... interactive prompt on cmd.InOrStdin() ...
+// Load CLI options from environment
+cliOpts, err := config.LoadCLIOptions()
+if err != nil {
+    return err
+}
+
+// Apply auto-approval logic
+if (opts.Yes || cliOpts.AutoApprove) && !opts.Force {
+    cmdio.Info(cmd.OutOrStdout(), "Auto-approval enabled: automatically setting --force")
+    opts.Force = true
 }
 ```
+
+**Flag precedence:** Explicit flag value > --yes flag > env var > default
 
 ### 3.3 Agent Mode Auto-Approve `[PLANNED]`
 
@@ -510,11 +525,20 @@ Provider names and keys are case-normalized. Env vars override YAML config.
 See [config-system.md](config-system.md) for the loading chain and
 [provider-guide.md](provider-guide.md) for the `ConfigKeys()` pattern.
 
+### Implemented Variables `[CURRENT]`
+
+| Variable | Effect | Documentation |
+|----------|--------|---------------|
+| `GRAFANACTL_AUTO_APPROVE` | Auto-enable `--force` on delete operations | See `docs/reference/environment-variables/` |
+
+Accepts: `1`, `true`, `0`, `false` (parsed by `caarlos0/env/v11`)
+
+**Implementation:** `internal/config/cli_options.go` - `CLIOptions` struct loaded via `LoadCLIOptions()`
+
 ### Planned Variables `[PLANNED]`
 
 | Variable | Effect |
 |----------|--------|
-| `GRAFANACTL_AUTO_APPROVE` | Skip confirmation prompts (R1.2) |
 | `GRAFANACTL_AGENT_MODE` | Force agent mode (R1.3) |
 
 ### Detected Variables `[PLANNED]`
@@ -533,7 +557,7 @@ Maps sections to the cli-analysis recommendations (R1.1–R3.5):
 | R# | Description | Section | Status |
 |----|-------------|---------|--------|
 | R1.1 | Exit code taxonomy | 2 | `[ADOPT]` |
-| R1.2 | Auto-approve | 3.2, 3.3 | `[PLANNED]` |
+| R1.2 | Auto-approve | 3.2, 3.3 | `[IMPLEMENTED]` (3.2) / `[PLANNED]` (3.3) |
 | R1.3 | Agent mode | 6 | `[PLANNED]` |
 | R2.1 | Help formatting page | 8.3 | `[PLANNED]` |
 | R2.2 | Help environment page | 10, 8.3 | `[CURRENT]` / `[PLANNED]` |

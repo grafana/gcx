@@ -491,6 +491,39 @@ two calls).
 
 ---
 
+## Global CLI Options
+
+Separate from the context-based configuration, `internal/config/cli_options.go`
+provides a global CLI options mechanism for flags and environment variables that
+affect command behavior but are not tied to any specific Grafana context.
+
+```go
+// internal/config/cli_options.go
+type CLIOptions struct {
+    AutoApprove bool `env:"GRAFANACTL_AUTO_APPROVE"`
+}
+
+func LoadCLIOptions() (CLIOptions, error)
+```
+
+`LoadCLIOptions()` uses `caarlos0/env/v11` (the same library used for
+context-scoped env vars) to parse global environment variables into a
+`CLIOptions` struct. Unlike context overrides, these options are loaded
+independently — they do not read from the config file or affect any context.
+
+**Current usage:** The `delete` command calls `LoadCLIOptions()` in its `RunE`
+and, when `AutoApprove` is true (or `--yes`/`-y` is passed), automatically
+enables the `--force` flag for non-interactive operation in CI/CD pipelines.
+
+| Env Var | CLI Flag | Effect |
+|---------|----------|--------|
+| `GRAFANACTL_AUTO_APPROVE` | `--yes` / `-y` | Auto-enables `--force` on delete |
+
+See [design-guide.md](design-guide.md) Section 10 for the full environment
+variable reference.
+
+---
+
 ## Key Files Reference
 
 | File | Purpose |
@@ -500,6 +533,7 @@ two calls).
 | `internal/config/editor.go` | `SetValue`, `UnsetValue` — reflection-based path traversal |
 | `internal/config/rest.go` | `NewNamespacedRESTConfig` — config → k8s REST client |
 | `internal/config/stack_id.go` | `DiscoverStackID` — Grafana Cloud namespace discovery |
+| `internal/config/cli_options.go` | `CLIOptions`, `LoadCLIOptions` — global CLI env var options |
 | `internal/config/errors.go` | `ValidationError`, `UnmarshalError`, `ContextNotFound` |
 | `internal/secrets/redactor.go` | `Redact` — reflection-based secret redaction |
 | `internal/providers/provider.go` | `Provider` interface + `ConfigKey` type |

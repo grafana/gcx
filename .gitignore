@@ -4,6 +4,7 @@
 /vendor
 /localdata
 /resources
+/alert-resources
 .idea
 .qodo
 .claude/settings.local.json

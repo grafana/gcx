@@ -33,6 +33,7 @@ func main() {
 
 	envVarMap := make(map[string]string)
 	discoverEnvVars(reflect.TypeFor[config.Config](), typesCommentsMap, envVarMap)
+	discoverEnvVars(reflect.TypeFor[config.CLIOptions](), typesCommentsMap, envVarMap)
 
 	err = os.WriteFile(filepath.Join(outputDir, "index.md"), toMarkdown(envVarMap), 0600)
 	if err != nil {
