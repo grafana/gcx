@@ -18,6 +18,7 @@
 | [data-flows.md](data-flows.md) | Push/Pull/Serve pipelines | Modifying resource sync operations |
 | [project-structure.md](project-structure.md) | Build system, CI/CD, dependencies | Build issues, adding dependencies, release process |
 | [provider-guide.md](provider-guide.md) | Step-by-step guide for implementing a new provider | Adding a new Grafana product provider |
+| [design-guide.md](design-guide.md) | UX requirements for commands and providers | Before implementing new features, reviewing CLI UX decisions |
 
 ## Architecture at a Glance
 

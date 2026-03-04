@@ -1,0 +1,549 @@
+# Design Guide: Command and Provider UX
+
+> Prescriptive UX requirements for anyone building new commands or providers.
+> Read this before implementing features. Reference alongside [cli-layer.md](cli-layer.md)
+> for command structure and [patterns.md](patterns.md) for architectural patterns.
+
+## Status Markers
+
+Each subsection is tagged with an implementation status:
+
+- **`[CURRENT]`** — Implemented and enforced. Follow exactly.
+- **`[ADOPT]`** — Not consistently applied yet. **New code MUST follow this.** If
+  modifying existing code in this area, adopt the pattern while you're there.
+- **`[PLANNED]`** — Future infrastructure. Documented for context; do not implement
+  piecemeal unless the tracking issue explicitly asks for it.
+
+New commands and providers **must comply with all `[CURRENT]` and `[ADOPT]` items**.
+
+---
+
+## 1. Output Contract
+
+### 1.1 Built-in Codecs `[CURRENT]`
+
+Every command gets `json` and `yaml` output for free via `io.Options`. These
+produce the full resource object as returned by the API — no envelope wrapping,
+no field filtering. This output is stable.
+
+```go
+ioOpts := &io.Options{}
+ioOpts.BindFlags(cmd.Flags())
+```
+
+### 1.2 Custom Codecs `[CURRENT]`
+
+Commands register additional formats (e.g. `text`, `wide`, `graph`) via
+`io.Options.RegisterCustomCodec()`. The `text` codec is a Kubernetes-style
+table printer (`k8s.io/cli-runtime/pkg/printers.NewTablePrinter`).
+
+```go
+ioOpts.RegisterCustomCodec("text", myTableCodec)
+ioOpts.DefaultFormat("text")   // makes "text" the default instead of "json"
+```
+
+### 1.3 Default Format by Command Type `[ADOPT]`
+
+| Command type | Default format | Rationale |
+|-------------|---------------|-----------|
+| `list`, `get` | `text` (with table codec) | Human-scannable |
+| `config view` | `yaml` | Config is YAML-native |
+| `push`, `pull`, `delete` | Status messages only | Operations, not data |
+| Agent mode (Section 7) | `json` | Machine-parseable |
+
+When building a new command: call `ioOpts.DefaultFormat("text")` for data
+display commands and register a table codec. Don't leave `json` as the default
+for interactive commands.
+
+### 1.4 Status Messages `[CURRENT]`
+
+Use the `cmdio` functions for operation feedback — they use Unicode symbols
+and respect `color.NoColor`:
+
+```go
+cmdio.Success(cmd.OutOrStdout(), "Pushed %d resources", count)  // ✔
+cmdio.Warning(cmd.OutOrStdout(), "Skipped %d resources", count) // ⚠
+cmdio.Error(cmd.OutOrStdout(), "Failed %d resources", count)    // ✘
+cmdio.Info(cmd.OutOrStdout(), "Using context %q", ctx)          // 🛈
+```
+
+Status messages go to stdout. Errors (via `DetailedError`) go to stderr.
+
+Reference: `cmd/grafanactl/io/messages.go`
+
+### 1.5 Field Discovery `[PLANNED]`
+
+Future `--json [fields]` flag for selective output. Resources are
+`unstructured.Unstructured` (dynamic schema), so field discovery requires
+introspecting API responses. Tracked by R3.1.
+
+---
+
+## 2. Exit Code Taxonomy
+
+### 2.1 Target Codes `[ADOPT]`
+
+| Code | Meaning | When |
+|------|---------|------|
+| 0 | Success | Command completed without errors |
+| 1 | General error | Unexpected error, business logic failure |
+| 2 | Usage error | Bad flags, invalid selectors, missing args |
+| 3 | Auth failure | 401/403, missing or invalid credentials |
+| 4 | Partial failure | Some resources succeeded, others failed |
+
+**Current state:** `main.go:handleError` defaults to exit code 1.
+`DetailedError.ExitCode` can override it, but no converter sets a differentiated
+code today.
+
+### 2.2 Setting Exit Codes in Converters `[ADOPT]`
+
+When writing or modifying error converters in `cmd/grafanactl/fail/convert.go`,
+set the `ExitCode` field on `DetailedError`:
+
+```go
+// In convertAPIErrors, for auth failures:
+exitCode := 3
+return &DetailedError{
+    Summary:  fmt.Sprintf("%s - code %d", reason, code),
+    ExitCode: &exitCode,
+    Suggestions: []string{...},
+}, true
+```
+
+For partial failures, the command itself should set exit code 4 when
+`OperationSummary.FailedCount() > 0`.
+
+### 2.3 Cobra Usage Errors `[CURRENT]`
+
+Cobra itself handles usage errors (bad flags, missing required args). With
+`SilenceUsage: true` set on the root command, these errors flow through
+`handleError` and get exit code 1. Future work: detect Cobra usage errors
+and override to code 2.
+
+Reference: `cmd/grafanactl/main.go`, `cmd/grafanactl/fail/detailed.go`,
+`cmd/grafanactl/fail/convert.go`
+
+---
+
+## 3. Confirmation and Safety
+
+### 3.1 When to Prompt `[ADOPT]`
+
+Prompt the user before:
+- Deleting remote resources (single or bulk)
+- Bulk overwrite operations (`push --overwrite` on an existing resource set)
+
+Do NOT prompt for:
+- Push (create-or-update) — it's idempotent
+- Pull (local write) — easily reversible via git
+- Config changes — low-risk, undoable
+
+### 3.2 The `--yes` / `-y` Pattern `[PLANNED]`
+
+All confirmation-requiring commands should accept `--yes`/`-y` to skip the
+prompt. Also respect `GRAFANACTL_AUTO_APPROVE=true` env var. Pattern:
+
+```go
+func confirmOrSkip(cmd *cobra.Command, yesFlag bool, msg string) (bool, error) {
+    if yesFlag || os.Getenv("GRAFANACTL_AUTO_APPROVE") == "true" {
+        return true, nil
+    }
+    // ... interactive prompt on cmd.InOrStdin() ...
+}
+```
+
+### 3.3 Agent Mode Auto-Approve `[PLANNED]`
+
+When agent mode is active (Section 7), prompts are auto-approved. Agents
+cannot interact with TTY prompts.
+
+### 3.4 Dry-Run `[CURRENT]`
+
+`--dry-run` is available on `push` and `delete`. It passes
+`DryRun: []string{"All"}` to Kubernetes API options. Always document dry-run
+support in new commands that modify remote state.
+
+### 3.5 Push Idempotency `[CURRENT]`
+
+Push is **idempotent** (create-or-update). The flow: Get → if exists: Update
+with `resourceVersion`, if 404: Create. Safe to run repeatedly with the same
+input. Document this explicitly in push-like commands:
+
+```
+# Push is idempotent: creates new resources and updates existing ones
+grafanactl resources push ./dashboards/
+```
+
+Reference: `data-flows.md` Section 2 (PUSH Pipeline)
+
+---
+
+## 4. Error Design
+
+### 4.1 DetailedError Structure `[CURRENT]`
+
+All errors rendered to users pass through `DetailedError`:
+
+```go
+type DetailedError struct {
+    Summary     string      // Required — one-liner describing what went wrong
+    Details     string      // Optional — additional context
+    Parent      error       // Optional — underlying error
+    Suggestions []string    // Optional — actionable fixes
+    DocsLink    string      // Optional — link to documentation
+    ExitCode    *int        // Optional — override exit code (default: 1)
+}
+```
+
+Rendering format (stderr, colored):
+```
+Error: File not found
+│
+│ could not read './dashboards/foo.yaml'
+│
+├─ Suggestions:
+│
+│ • Check for typos in the command's arguments
+│
+└─
+```
+
+Reference: `cmd/grafanactl/fail/detailed.go`
+
+### 4.2 Writing Good Suggestions `[ADOPT]`
+
+Every `DetailedError` **should** include at least one actionable suggestion.
+Suggestions must be commands the user can run — not vague advice:
+
+```go
+// Good:
+Suggestions: []string{
+    "Review your configuration: grafanactl config view",
+    "Set your token: grafanactl config set contexts.<ctx>.grafana.token <value>",
+}
+
+// Bad:
+Suggestions: []string{
+    "Check your configuration",
+    "Make sure things are set up correctly",
+}
+```
+
+### 4.3 Error Converter Extension `[CURRENT]`
+
+Add new error types by implementing a converter function and appending to
+`errorConverters` in `cmd/grafanactl/fail/convert.go`:
+
+```go
+func convertMyErrors(err error) (*DetailedError, bool) {
+    var myErr *mypackage.SpecificError
+    if !errors.As(err, &myErr) {
+        return nil, false
+    }
+    return &DetailedError{
+        Summary:     "Descriptive summary",
+        Parent:      err,
+        Suggestions: []string{"grafanactl ..."},
+    }, true
+}
+```
+
+Converters are tried in order — first match wins. Place more specific
+converters before more general ones.
+
+### 4.4 In-Band Error Reporting `[PLANNED]`
+
+When agent mode is active, errors should be included in the JSON response
+body alongside any partial results:
+
+```json
+{
+  "items": [...],
+  "errors": [
+    {"summary": "...", "exitCode": 4, "suggestions": ["..."]}
+  ]
+}
+```
+
+Depends on agent mode infrastructure (Section 7). Tracked by R3.5.
+
+---
+
+## 5. Pipe-Awareness
+
+### 5.1 TTY Detection `[PLANNED]`
+
+Add to root `PersistentPreRun`: detect whether stdout is a terminal using
+`term.IsTerminal(os.Stdout.Fd())`. When piped (not a TTY):
+- Auto-disable color (`color.NoColor = true`)
+- Suppress table column truncation
+- Suppress spinners and progress indicators
+
+### 5.2 `--no-color` Flag `[CURRENT]`
+
+Already implemented in `cmd/grafanactl/root/command.go`. Sets
+`color.NoColor = true` globally.
+
+### 5.3 `NO_COLOR` Environment Variable `[ADOPT]`
+
+The [no-color.org](https://no-color.org/) convention. The `fatih/color`
+library already checks `NO_COLOR` automatically, so this works today. Document
+it in help text and env var references so users know it's available.
+
+### 5.4 Auto-Format Switching `[PLANNED]`
+
+Future consideration: when piped and no explicit `-o` flag, commands with
+`text` default could auto-switch to a more parseable format (e.g. JSON or
+tab-separated). Needs design discussion.
+
+Reference: `cmd/grafanactl/root/command.go` (`PersistentPreRun`)
+
+---
+
+## 6. Agent Mode
+
+> All items in this section are `[PLANNED]`. Tracked by R1.3.
+
+### 6.1 Detection
+
+Check environment variables in root `PersistentPreRun`:
+
+| Variable | Set by |
+|----------|--------|
+| `GRAFANACTL_AGENT_MODE=true` | Explicit opt-in |
+| `CLAUDE_CODE=1` | Claude Code |
+| `CURSOR_AGENT=1` | Cursor |
+
+If any is set, activate agent mode.
+
+### 6.2 Behavior Changes
+
+When agent mode is active:
+1. **Default output format** becomes `json` for list/get commands
+2. **Color** is disabled
+3. **Spinners/progress indicators** are suppressed
+4. **Confirmation prompts** are auto-approved
+5. **Error output** includes machine-readable hints (Section 4.4)
+
+### 6.3 Opt-Out
+
+Explicit flags override agent mode:
+- `-o text` or `-o yaml` overrides the JSON default
+- `--no-agent-mode` disables detection entirely
+
+### 6.4 Exempt Commands
+
+Commands that produce non-data output are exempt from format switching:
+- `config set`, `config use-context` — confirmations only
+- `serve` — starts a long-running server
+- `push`, `pull` — output is status messages, not data
+
+---
+
+## 7. Provider Command Checklist
+
+Extends the interface checklist in [provider-guide.md](provider-guide.md) with
+UX requirements. All items are `[ADOPT]` unless marked otherwise.
+
+### Interface Compliance `[CURRENT]`
+
+- [ ] Struct implements all five `Provider` interface methods
+- [ ] `Name()` is lowercase, unique, and stable (it's the config map key)
+- [ ] All config keys are declared in `ConfigKeys()`
+- [ ] Secret keys (passwords, tokens, API keys) have `Secret: true`
+- [ ] `Validate()` returns error pointing to `grafanactl config set ...`
+- [ ] Provider added to `internal/providers/registry.go:All()`
+
+### UX Compliance `[ADOPT]`
+
+- [ ] All data-display commands support `-o json/yaml` (inherited from `io.Options`)
+- [ ] List/get commands register a `text` table codec as default format
+- [ ] Error messages include actionable suggestions with exact CLI commands
+- [ ] No `os.Exit()` calls in command code — return errors, let `handleError` exit
+- [ ] Status messages use `cmdio.Success/Warning/Error/Info`
+- [ ] `--config` and `--context` inherited via `configOpts` persistent flags
+- [ ] Destructive operations document `--dry-run` support
+- [ ] Help text follows Section 8 standards (Short/Long/Examples)
+- [ ] Push-like operations are idempotent (create-or-update)
+
+### Build Verification `[CURRENT]`
+
+- [ ] `make build` succeeds
+- [ ] `make tests` passes with no regressions
+- [ ] `make lint` passes
+- [ ] `grafanactl providers` lists the new provider
+- [ ] `grafanactl config view` redacts secrets correctly
+
+---
+
+## 8. Help Text Standards
+
+### 8.1 Command Descriptions `[ADOPT]`
+
+| Field | Convention | Example |
+|-------|-----------|---------|
+| `Use` | `verb [RESOURCE_SELECTOR]...` | `list`, `get [SELECTOR]...` |
+| `Short` | One sentence, period-terminated, no leading article | `List SLO definitions.` |
+| `Long` | Expands on Short with usage context. 2-4 sentences. | `List all SLO definitions...` |
+
+**Short** should start with a verb (imperative mood):
+
+```go
+// Good
+Short: "List SLO definitions."
+Short: "Push local resources to Grafana."
+
+// Bad
+Short: "A command that lists SLO definitions"
+Short: "Lists SLOs"  // missing period
+```
+
+### 8.2 Examples Format `[CURRENT]`
+
+Examples are prefixed with a comment explaining intent. Show 3-5 examples per
+command, progressing from simple to complex:
+
+```go
+Example: `  # List all SLOs
+  grafanactl slo list
+
+  # List SLOs with JSON output
+  grafanactl slo list -o json
+
+  # List SLOs from a specific context
+  grafanactl slo list --context=prod`,
+```
+
+### 8.3 Help Topics `[PLANNED]`
+
+Dedicated help pages for cross-cutting concerns:
+
+| Topic | Content |
+|-------|---------|
+| `grafanactl help environment` | All env vars (Section 10) |
+| `grafanactl help formatting` | Output format guide, jq patterns |
+| `grafanactl help exit-codes` | Exit code reference (Section 2) |
+
+Implemented as Cobra help topic commands. Tracked by R2.1, R2.2.
+
+---
+
+## 9. Resource and API Naming
+
+### 9.1 Resource Kind Names `[CURRENT]`
+
+Follow Kubernetes conventions: PascalCase singular.
+
+```
+Dashboard, Folder, AlertRule, ContactPoint
+```
+
+Plural form is used in selectors: `dashboards/my-dash`, `folders/`.
+
+### 9.2 File Naming `[CURRENT]`
+
+Pull operations write files as `{Kind}/{Name}.{ext}`, grouped by
+`GroupResourcesByKind`. Extension matches the source format (`.yaml`, `.json`).
+
+### 9.3 Config Key Naming `[CURRENT]`
+
+| Location | Convention | Example |
+|----------|-----------|---------|
+| YAML | kebab-case | `org-id`, `stack-id`, `api-token` |
+| Env vars | SCREAMING_SNAKE | `GRAFANA_ORG_ID`, `GRAFANA_STACK_ID` |
+| Provider env | `GRAFANA_PROVIDER_{NAME}_{KEY}` | `GRAFANA_PROVIDER_SLO_TOKEN` |
+
+Env var keys are normalized: underscores → dashes for provider key matching.
+
+### 9.4 Flag Naming `[ADOPT]`
+
+- **Format:** kebab-case (`--max-concurrent`, `--dry-run`, `--on-error`)
+- **Boolean sense:** Positive by default. Prefer `--skip-validation` over
+  `--no-validate`. The exception is `--no-color` which follows the `NO_COLOR`
+  convention.
+- **Short flags:** Reserve for the most common flags only (`-o`, `-p`, `-v`,
+  `-e`, `-d`, `-t`). Don't assign short flags to provider-specific options.
+
+### 9.5 URL Path Patterns `[CURRENT]`
+
+Follow Kubernetes API conventions:
+
+```
+/apis/{group}/{version}/namespaces/{namespace}/{plural}/{name}
+```
+
+Provider commands using non-K8s APIs should document their URL patterns in
+code comments.
+
+---
+
+## 10. Environment Variable Reference
+
+> Canonical reference for all env vars. Other docs should link here.
+
+### Core Variables `[CURRENT]`
+
+| Variable | Scope | Effect |
+|----------|-------|--------|
+| `GRAFANA_SERVER` | context | Grafana server URL |
+| `GRAFANA_TOKEN` | context | API token (precedence over user/pass) |
+| `GRAFANA_USER` | context | Basic auth username |
+| `GRAFANA_PASSWORD` | context | Basic auth password |
+| `GRAFANA_ORG_ID` | context | On-prem org ID (namespace) |
+| `GRAFANA_STACK_ID` | context | Cloud stack ID (namespace) |
+| `GRAFANACTL_CONFIG` | global | Config file path override |
+| `NO_COLOR` | global | Disable color output ([no-color.org](https://no-color.org/)) |
+
+### Provider Variables `[CURRENT]`
+
+Pattern: `GRAFANA_PROVIDER_{NAME}_{KEY}=value`
+
+| Variable | Provider | Key |
+|----------|----------|-----|
+| `GRAFANA_PROVIDER_SLO_TOKEN` | slo | token |
+| `GRAFANA_PROVIDER_SLO_ORG_ID` | slo | org-id |
+| `GRAFANA_PROVIDER_SM_TOKEN` | sm | token |
+| `GRAFANA_PROVIDER_SM_URL` | sm | url |
+
+Provider names and keys are case-normalized. Env vars override YAML config.
+
+See [config-system.md](config-system.md) for the loading chain and
+[provider-guide.md](provider-guide.md) for the `ConfigKeys()` pattern.
+
+### Planned Variables `[PLANNED]`
+
+| Variable | Effect |
+|----------|--------|
+| `GRAFANACTL_AUTO_APPROVE` | Skip confirmation prompts (R1.2) |
+| `GRAFANACTL_AGENT_MODE` | Force agent mode (R1.3) |
+
+### Detected Variables `[PLANNED]`
+
+| Variable | Source | Effect |
+|----------|--------|--------|
+| `CLAUDE_CODE` | Claude Code | Auto-activate agent mode |
+| `CURSOR_AGENT` | Cursor | Auto-activate agent mode |
+
+---
+
+## Appendix: Recommendation Traceability
+
+Maps sections to the cli-analysis recommendations (R1.1–R3.5):
+
+| R# | Description | Section | Status |
+|----|-------------|---------|--------|
+| R1.1 | Exit code taxonomy | 2 | `[ADOPT]` |
+| R1.2 | Auto-approve | 3.2, 3.3 | `[PLANNED]` |
+| R1.3 | Agent mode | 6 | `[PLANNED]` |
+| R2.1 | Help formatting page | 8.3 | `[PLANNED]` |
+| R2.2 | Help environment page | 10, 8.3 | `[CURRENT]` / `[PLANNED]` |
+| R2.3 | Automation guide | — | Out of scope (separate doc) |
+| R3.1 | JSON field discovery | 1.5 | `[PLANNED]` |
+| R3.2 | API escape hatch | — | Out of scope (feature) |
+| R3.3 | Pipe detection | 5 | `[PLANNED]` |
+| R3.4 | Push idempotency | 3.5 | `[CURRENT]` |
+| R3.5 | In-band error reporting | 4.4 | `[PLANNED]` |
+
+---
+
+*Source: [cli-analysis-followup-changes.md](../docs/research/2026-03-03-cli-analysis-followup-changes.md) cross-referenced against codebase as of 2026-03-04.*

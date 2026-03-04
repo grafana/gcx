@@ -159,6 +159,9 @@ Loading steps (in `Load`, lines 66–98):
 
 ## Environment Variable Overrides
 
+> See also [design-guide.md](design-guide.md) Section 10 for the complete
+> environment variable reference (core + provider + planned variables).
+
 Environment variables are applied as an `Override` function during load. They
 patch the **current context's** `GrafanaConfig` struct in-place.
 

@@ -311,6 +311,9 @@ func (e editor) OpenInTempFile(ctx context.Context, buffer io.Reader, format str
 
 ## Output Formatting (`cmd/grafanactl/io/`)
 
+> See also [design-guide.md](design-guide.md) Sections 1–2 for output contract,
+> exit code taxonomy, and default format conventions.
+
 ### `io.Options` — Format Selection
 
 Embedded in command opts structs to add `--output / -o` flag support:
@@ -367,6 +370,9 @@ They prefix with colored Unicode symbols (✔ ⚠ ✘ 🛈). `--no-color` disabl
 ---
 
 ## Error Handling (`cmd/grafanactl/fail/`)
+
+> See also [design-guide.md](design-guide.md) Section 4 for error design guidelines,
+> writing good suggestions, and exit code assignments.
 
 ### `DetailedError` — Structured Error Type
 
