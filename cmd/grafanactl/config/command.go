@@ -80,7 +80,9 @@ func (opts *Options) loadConfigTolerant(ctx context.Context, extraOverrides ...c
 				}
 
 				providerName := strings.ToLower(nameParts[0])
-				configKey := strings.ToLower(nameParts[1])
+				// Normalize underscores to dashes to match kebab-case YAML keys
+				// (e.g. GRAFANA_PROVIDER_SLO_ORG_ID → provider=slo, key=org-id)
+				configKey := strings.ReplaceAll(strings.ToLower(nameParts[1]), "_", "-")
 
 				if curCtx.Providers == nil {
 					curCtx.Providers = make(map[string]map[string]string)

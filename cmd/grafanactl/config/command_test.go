@@ -380,6 +380,27 @@ func Test_ViewCommand_withProviderEnvVar(t *testing.T) {
 	testCase.Run(t)
 }
 
+func Test_ViewCommand_withProviderEnvVar_underscoreToDash(t *testing.T) {
+	configFile := testutils.CreateTempFile(t, "contexts:")
+
+	testCase := testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"view", "--config", configFile, "--minify", "--raw"},
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandSuccess(),
+			testutils.CommandOutputContains(`    providers:
+      slo:
+        org-id: "42"`),
+		},
+		Env: map[string]string{
+			"GRAFANA_SERVER":              "https://grafana.example.com/",
+			"GRAFANA_PROVIDER_SLO_ORG_ID": "42",
+		},
+	}
+
+	testCase.Run(t)
+}
+
 func Test_ViewCommand_withProviderEnvVar_redacted(t *testing.T) {
 	configFile := testutils.CreateTempFile(t, "contexts:")
 

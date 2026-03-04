@@ -17,6 +17,7 @@
 | [config-system.md](config-system.md) | Configuration, contexts, env vars | Adding config fields, auth changes |
 | [data-flows.md](data-flows.md) | Push/Pull/Serve pipelines | Modifying resource sync operations |
 | [project-structure.md](project-structure.md) | Build system, CI/CD, dependencies | Build issues, adding dependencies, release process |
+| [provider-guide.md](provider-guide.md) | Step-by-step guide for implementing a new provider | Adding a new Grafana product provider |
 
 ## Architecture at a Glance
 
