@@ -1,14 +1,14 @@
 # CLI Analysis Follow-Up: Required Changes for grafanactl
 
 **Date:** 2026-03-03
-**Source:** Cross-reference of `cli-analysis.md` (gh vs pup comparative analysis) against `agent-docs/` architecture documentation
+**Source:** Cross-reference of [`2026-03-03-cli-analysis-.md`](2026-03-03-cli-analysis-.md) (gh vs pup comparative analysis) against `agent-docs/` architecture documentation
 **Purpose:** Identify specific follow-up changes needed in grafanactl to improve agentic experience
 
 ---
 
 ## Executive Summary
 
-The cli-analysis.md identified 10 patterns to adopt and 13 prioritized recommendations (R1.1-R3.5). Cross-referencing these against our agent-docs reveals:
+The [cli analysis](2026-03-03-cli-analysis-.md) identified 10 patterns to adopt and 13 prioritized recommendations (R1.1-R3.5). Cross-referencing these against our agent-docs reveals:
 
 - **3 recommendations are partially addressed** by existing code (output formatting, config env vars, error handling)
 - **10 recommendations require new work** (exit codes, agent mode, auto-approve, help pages, JSON field discovery, API escape hatch, pipe detection, idempotency docs, in-band errors)
@@ -126,7 +126,7 @@ Cross-referencing revealed several areas where grafanactl is already well-positi
 
 ---
 
-## Patterns from cli-analysis.md Mapped to Our Architecture
+## Patterns from CLI Analysis Mapped to Our Architecture
 
 | Pattern | Where It Fits in Our Architecture | Effort |
 |---|---|---|
@@ -196,4 +196,4 @@ Wave 0 (Provider infra) ──► Phase 1 (docs) + Phase 2 (pipe detection)
 
 ---
 
-*Cross-reference analysis based on: cli-analysis.md (2026-03-02), extensibility research (2026-03-02), ascode research (2026-03-03), agent-docs/ (2026-03-02), CLAUDE.md project conventions*
+*Cross-reference analysis based on: [cli-analysis](2026-03-03-cli-analysis-.md) (2026-03-03), extensibility research (2026-03-02), ascode research (2026-03-03), agent-docs/ (2026-03-02), CLAUDE.md project conventions*
