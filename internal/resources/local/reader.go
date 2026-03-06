@@ -281,7 +281,7 @@ func (reader *FSReader) readRaw(
 	return nil
 }
 
-func (reader *FSReader) decoderForFormat(input string) (format.Codec, error) { //nolint:ireturn
+func (reader *FSReader) decoderForFormat(input string) (format.Codec, error) {
 	switch input {
 	case "json":
 		return reader.Decoders[format.JSON], nil
