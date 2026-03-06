@@ -58,6 +58,12 @@ grafanactl (root)
 ├── providers                [cmd/grafanactl/providers/command.go]
 │   └── (list; no subcommands — prints NAME/DESCRIPTION table of registered providers)
 │
+├── linter                   [cmd/grafanactl/linter/command.go]
+│   ├── lint                 Lint resources against configured rules
+│   ├── new                  Scaffold a new linter rule
+│   ├── rules                List available linter rules
+│   └── test                 Run rule test suite
+│
 └── dev                      [cmd/grafanactl/dev/command.go]
     ├── import               Import existing Grafana resources as code
     └── scaffold             Scaffold a new grafanactl-based project
@@ -184,6 +190,12 @@ cmd/grafanactl/
 │   └── graph.go             queryGraphCodec — terminal chart via internal/graph
 ├── providers/
 │   └── command.go           providers command — lists registered providers
+├── linter/
+│   ├── command.go           linter group (lint, new, rules, test subcommands)
+│   ├── lint.go              linter lint — lint resources against configured rules
+│   ├── new.go               linter new — scaffold a new linter rule
+│   ├── rules.go             linter rules — list available linter rules
+│   └── test.go              linter test — run rule test suite
 ├── dev/
 │   ├── command.go           dev group (import, scaffold subcommands)
 │   ├── import.go            dev import — import Grafana resources as code

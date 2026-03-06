@@ -63,8 +63,14 @@
          |            | - Registry     |  | - Loki client  |  | - Provider registration  |
          |            | - Secret       |  | - Direct HTTP  |  +----------------+
          |            |   redaction    |  |   (no k8s      |
-         |            +----------------+  |    machinery)  |
-         |                               +----------------+
+         |            +----------------+  |    machinery)  |  +------------------+
+         |                               +----------------+  | Linter Layer     |
+         |                                                    | (internal/       |
+         |                                                    |  linter/)        |
+         |                                                    | - Linter engine  |
+         |                                                    | - Rule interface |
+         |                                                    | - Rego bundle    |
+         |                                                    +------------------+
          |
          |            +----------------+  +----------------+
          |            | Graph Layer    |  | Test Utilities |
@@ -639,6 +645,20 @@ Files most important for understanding the codebase. Organized by architectural 
 | `internal/providers/slo/provider.go` | `SLOProvider` implementing the `providers.Provider` interface |
 | `internal/providers/slo/definitions/` | SLO definitions management (status, metrics via PromQL) |
 | `internal/providers/slo/reports/` | SLO reports management |
+
+### Linter System
+
+| File | Purpose |
+|------|---------|
+| `internal/linter/linter.go` | Linter engine — rule execution, report aggregation |
+| `internal/linter/rules.go` | Rule interface and rule management |
+| `internal/linter/report.go` | Report and Violation types for linting results |
+| `internal/linter/reporter.go` | Reporter — formats and outputs linting results |
+| `internal/linter/tests.go` | Test runner for `.rego` test files |
+| `internal/linter/bundle/` | Embedded Rego bundle with built-in linting rules |
+| `internal/linter/builtins/` | Built-in rule validators (PromQL, LogQL) |
+| `cmd/grafanactl/linter/command.go` | `linter` command group (lint, new, rules, test subcommands) |
+| `scripts/linter-rules-reference/` | Code generator for linter rule reference documentation |
 
 ### Dev Command
 
