@@ -14,16 +14,26 @@ This skill teaches agents to configure grafanactl for a Grafana instance,
 covering the three configuration paths (Grafana Cloud, on-premise, and
 environment variables) and resolving common setup errors.
 
-## Prerequisites
+## Step 0: Install grafanactl
 
-Install grafanactl. Verify the binary is on PATH:
+First, check whether grafanactl is already installed:
 
 ```bash
 grafanactl version
 ```
 
-If the command is not found, install grafanactl from the project releases page
-and add it to your PATH before continuing.
+If the command is not found, build it from source. Requires
+[git](https://git-scm.com/) and [Go](https://go.dev/) v1.24+:
+
+```bash
+go install github.com/grafana/grafanactl-experiments/cmd/grafanactl@latest
+```
+
+After installing, verify the binary is on PATH:
+
+```bash
+grafanactl version
+```
 
 ## Configuration Model
 

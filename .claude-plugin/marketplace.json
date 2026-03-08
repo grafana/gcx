@@ -1,0 +1,15 @@
+{
+  "name": "grafanactl-marketplace",
+  "description": "Claude Code plugins for grafanactl",
+  "owner": {
+    "name": "Grafana Labs"
+  },
+  "plugins": [
+    {
+      "name": "grafanactl",
+      "source": "./claude-plugin",
+      "description": "Debug, explore, and instrument with Grafana using grafanactl CLI",
+      "version": "0.1.0"
+    }
+  ]
+}

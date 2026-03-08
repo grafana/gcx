@@ -439,6 +439,14 @@ The server provides:
 > [!NOTE]
 > The `kubernetesDashboards` feature toggle must be enabled in Grafana for `resources serve`.
 
+## Claude Code Plugin
+
+A Claude Code plugin is included under [`claude-plugin/`](claude-plugin/README.md).
+It gives Claude deep knowledge of grafanactl — skills for debugging, datasource
+exploration, dashboard management, and alert investigation, plus a specialist
+`grafana-debugger` agent. See [`claude-plugin/README.md`](claude-plugin/README.md)
+for installation instructions.
+
 ## Documentation
 
 See [the full documentation](https://grafana.github.io/grafanactl/) for comprehensive guides on:
