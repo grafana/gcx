@@ -8,6 +8,11 @@
 /alert-resources
 .idea
 .qodo
+# Override global gitignore for checked-in .claude content
+!.claude/
+.claude/*
+!.claude/skills/
+!.claude/CLAUDE.md
 .claude/settings.local.json
 
 # Integration testing artifacts
