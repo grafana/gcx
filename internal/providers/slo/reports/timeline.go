@@ -30,10 +30,11 @@ type ReportTimelinePayload struct {
 // ---------------------------------------------------------------------------
 
 type reportTimelineOpts struct {
-	IO    cmdio.Options
-	Start string
-	End   string
-	Step  string
+	IO     cmdio.Options
+	From   string
+	To     string
+	Window string
+	Step   string
 }
 
 func (o *reportTimelineOpts) setup(flags *pflag.FlagSet) {
@@ -42,9 +43,16 @@ func (o *reportTimelineOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("graph")
 	o.IO.BindFlags(flags)
 
-	flags.StringVar(&o.Start, "start", "now-7d", "Start of the time range (e.g. now-7d, now-24h, RFC3339, Unix timestamp)")
-	flags.StringVar(&o.End, "end", "now", "End of the time range (e.g. now, RFC3339, Unix timestamp)")
+	flags.StringVar(&o.From, "from", "now-7d", "Start of the time range (e.g. now-7d, now-24h, RFC3339, Unix timestamp)")
+	flags.StringVar(&o.To, "to", "now", "End of the time range (e.g. now, RFC3339, Unix timestamp)")
+	flags.StringVar(&o.Window, "window", "", "Time window shorthand (e.g. 1h, 7d). Equivalent to --from now-<window> --to now.")
 	flags.StringVar(&o.Step, "step", "", "Query step (e.g. 5m, 1h). Defaults to auto-computed value.")
+
+	// Deprecated aliases for backward compatibility.
+	flags.StringVar(&o.From, "start", "now-7d", "Deprecated: use --from instead")
+	flags.StringVar(&o.To, "end", "now", "Deprecated: use --to instead")
+	_ = flags.MarkDeprecated("start", "use --from instead")
+	_ = flags.MarkDeprecated("end", "use --to instead")
 }
 
 func newTimelineCommand(loader RESTConfigLoader) *cobra.Command {
@@ -65,7 +73,10 @@ grafana_slo_sli_window metrics.`,
   grafanactl slo reports timeline abc123def
 
   # Custom time range with explicit step.
-  grafanactl slo reports timeline --start now-24h --end now --step 5m
+  grafanactl slo reports timeline --from now-24h --to now --step 5m
+
+  # Use window shorthand for the past 24 hours.
+  grafanactl slo reports timeline --window 24h
 
   # Output timeline data as a table.
   grafanactl slo reports timeline -o table`,
@@ -73,6 +84,17 @@ grafana_slo_sli_window metrics.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
+			}
+
+			// Validate flag combinations.
+			if err := definitions.ValidateTimelineFlags(cmd); err != nil {
+				return err
+			}
+
+			// Apply --window shorthand.
+			if cmd.Flags().Changed("window") {
+				opts.From = "now-" + opts.Window
+				opts.To = "now"
 			}
 
 			ctx := cmd.Context()
@@ -141,13 +163,13 @@ grafana_slo_sli_window metrics.`,
 
 			// Parse time range.
 			now := time.Now()
-			start, err := parseReportTimelineTime(opts.Start, now)
+			start, err := parseReportTimelineTime(opts.From, now)
 			if err != nil {
-				return fmt.Errorf("invalid --start: %w", err)
+				return fmt.Errorf("invalid --from: %w", err)
 			}
-			end, err := parseReportTimelineTime(opts.End, now)
+			end, err := parseReportTimelineTime(opts.To, now)
 			if err != nil {
-				return fmt.Errorf("invalid --end: %w", err)
+				return fmt.Errorf("invalid --to: %w", err)
 			}
 
 			// Compute step.

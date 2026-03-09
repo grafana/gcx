@@ -33,10 +33,11 @@ type SLITrendPayload struct {
 // ---------------------------------------------------------------------------
 
 type timelineOpts struct {
-	IO    cmdio.Options
-	Start string
-	End   string
-	Step  string
+	IO     cmdio.Options
+	From   string
+	To     string
+	Window string
+	Step   string
 }
 
 func (o *timelineOpts) setup(flags *pflag.FlagSet) {
@@ -45,9 +46,28 @@ func (o *timelineOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("graph")
 	o.IO.BindFlags(flags)
 
-	flags.StringVar(&o.Start, "start", "now-7d", "Start of the time range (e.g. now-7d, now-24h, RFC3339, Unix timestamp)")
-	flags.StringVar(&o.End, "end", "now", "End of the time range (e.g. now, RFC3339, Unix timestamp)")
+	flags.StringVar(&o.From, "from", "now-7d", "Start of the time range (e.g. now-7d, now-24h, RFC3339, Unix timestamp)")
+	flags.StringVar(&o.To, "to", "now", "End of the time range (e.g. now, RFC3339, Unix timestamp)")
+	flags.StringVar(&o.Window, "window", "", "Time window shorthand (e.g. 1h, 7d). Equivalent to --from now-<window> --to now.")
 	flags.StringVar(&o.Step, "step", "", "Query step (e.g. 5m, 1h). Defaults to auto-computed value.")
+
+	// Deprecated aliases for backward compatibility.
+	flags.StringVar(&o.From, "start", "now-7d", "Deprecated: use --from instead")
+	flags.StringVar(&o.To, "end", "now", "Deprecated: use --to instead")
+	_ = flags.MarkDeprecated("start", "use --from instead")
+	_ = flags.MarkDeprecated("end", "use --to instead")
+}
+
+// ValidateTimelineFlags checks that --window and --from/--to are not used together.
+// This is exported so that the reports package can reuse the same validation logic.
+func ValidateTimelineFlags(cmd *cobra.Command) error {
+	windowSet := cmd.Flags().Changed("window")
+	fromToSet := cmd.Flags().Changed("from") || cmd.Flags().Changed("to") ||
+		cmd.Flags().Changed("start") || cmd.Flags().Changed("end")
+	if windowSet && fromToSet {
+		return errors.New("--window and --from/--to are mutually exclusive")
+	}
+	return nil
 }
 
 func newTimelineCommand(loader RESTConfigLoader) *cobra.Command {
@@ -67,7 +87,10 @@ grafana_slo_sli_window metrics.`,
   grafanactl slo definitions timeline abc123def
 
   # Custom time range with explicit step.
-  grafanactl slo definitions timeline --start now-24h --end now --step 5m
+  grafanactl slo definitions timeline --from now-24h --to now --step 5m
+
+  # Use window shorthand for the past 24 hours.
+  grafanactl slo definitions timeline --window 24h
 
   # Output timeline data as a table.
   grafanactl slo definitions timeline -o table`,
@@ -75,6 +98,17 @@ grafana_slo_sli_window metrics.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
+			}
+
+			// Validate flag combinations.
+			if err := ValidateTimelineFlags(cmd); err != nil {
+				return err
+			}
+
+			// Apply --window shorthand.
+			if cmd.Flags().Changed("window") {
+				opts.From = "now-" + opts.Window
+				opts.To = "now"
 			}
 
 			ctx := cmd.Context()
@@ -111,13 +145,13 @@ grafana_slo_sli_window metrics.`,
 
 			// Parse time range.
 			now := time.Now()
-			start, err := parseTimelineTime(opts.Start, now)
+			start, err := parseTimelineTime(opts.From, now)
 			if err != nil {
-				return fmt.Errorf("invalid --start: %w", err)
+				return fmt.Errorf("invalid --from: %w", err)
 			}
-			end, err := parseTimelineTime(opts.End, now)
+			end, err := parseTimelineTime(opts.To, now)
 			if err != nil {
-				return fmt.Errorf("invalid --end: %w", err)
+				return fmt.Errorf("invalid --to: %w", err)
 			}
 
 			// Compute step.

@@ -24,7 +24,10 @@ grafanactl slo definitions timeline [UUID] [flags]
   grafanactl slo definitions timeline abc123def
 
   # Custom time range with explicit step.
-  grafanactl slo definitions timeline --start now-24h --end now --step 5m
+  grafanactl slo definitions timeline --from now-24h --to now --step 5m
+
+  # Use window shorthand for the past 24 hours.
+  grafanactl slo definitions timeline --window 24h
 
   # Output timeline data as a table.
   grafanactl slo definitions timeline -o table
@@ -33,11 +36,12 @@ grafanactl slo definitions timeline [UUID] [flags]
 ### Options
 
 ```
-      --end string      End of the time range (e.g. now, RFC3339, Unix timestamp) (default "now")
+      --from string     Start of the time range (e.g. now-7d, now-24h, RFC3339, Unix timestamp) (default "now-7d")
   -h, --help            help for timeline
   -o, --output string   Output format. One of: graph, json, table, yaml (default "graph")
-      --start string    Start of the time range (e.g. now-7d, now-24h, RFC3339, Unix timestamp) (default "now-7d")
       --step string     Query step (e.g. 5m, 1h). Defaults to auto-computed value.
+      --to string       End of the time range (e.g. now, RFC3339, Unix timestamp) (default "now")
+      --window string   Time window shorthand (e.g. 1h, 7d). Equivalent to --from now-<window> --to now.
 ```
 
 ### Options inherited from parent commands

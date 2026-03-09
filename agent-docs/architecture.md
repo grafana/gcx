@@ -653,6 +653,14 @@ Files most important for understanding the codebase. Organized by architectural 
 | `internal/providers/slo/definitions/` | SLO definitions management (status, metrics via PromQL) |
 | `internal/providers/slo/reports/` | SLO reports management |
 
+### Synthetic Monitoring Provider
+
+| File | Purpose |
+|------|---------|
+| `internal/providers/synth/provider.go` | `SynthProvider` implementing the `providers.Provider` interface |
+| `internal/providers/synth/checks/` | Check management (list, get, push, pull, delete, status, timeline) |
+| `internal/providers/synth/probes/` | Probe listing and management |
+
 ### Linter System
 
 | File | Purpose |

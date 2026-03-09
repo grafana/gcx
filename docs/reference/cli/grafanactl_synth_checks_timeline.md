@@ -23,6 +23,9 @@ grafanactl synth checks timeline ID [flags]
   # Custom time window.
   grafanactl synth checks timeline 42 --window 24h
 
+  # Explicit time range.
+  grafanactl synth checks timeline 42 --from now-24h --to now
+
   # Output timeline data as a table.
   grafanactl synth checks timeline 42 -o table
 
@@ -34,8 +37,10 @@ grafanactl synth checks timeline ID [flags]
 
 ```
       --datasource-uid string   UID of the Prometheus datasource to query
+      --from string             Start of the time range (e.g. now-6h, now-24h, RFC3339, Unix timestamp)
   -h, --help                    help for timeline
   -o, --output string           Output format. One of: graph, json, table, yaml (default "graph")
+      --to string               End of the time range (e.g. now, RFC3339, Unix timestamp)
       --window string           Time window to display (e.g. 1h, 6h, 24h, 7d) (default "6h")
 ```
 

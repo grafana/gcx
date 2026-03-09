@@ -128,4 +128,4 @@ Directory layout rationale, build system (Makefile), CI/CD (GitHub Actions via .
 
 ---
 
-*Last updated: 2026-03-09 | Validation: All files present and verified*
+*Last updated: 2026-03-09 (post-PR29) | Validation: All files present and verified*

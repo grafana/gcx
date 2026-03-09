@@ -139,6 +139,18 @@ grafanactl slo                  [internal/providers/slo/provider.go]
     ├── pull
     ├── delete <uuid...>
     └── status [uuid]
+
+grafanactl synth                [internal/providers/synth/provider.go]
+├── checks                      CRUD + status/timeline for Synthetic Monitoring checks
+│   ├── list
+│   ├── get    <id>
+│   ├── push   [path...]
+│   ├── pull
+│   ├── delete <id...>
+│   ├── status [id]
+│   └── timeline [id]
+└── probes                      List Synthetic Monitoring probes
+    └── list
 ```
 
 ### Config loading pattern

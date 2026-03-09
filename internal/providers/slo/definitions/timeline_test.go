@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/grafana/grafanactl/internal/providers/slo/definitions"
+	"github.com/spf13/cobra"
 )
 
 // ---------------------------------------------------------------------------
@@ -367,5 +368,125 @@ func TestTimelineTableCodecDecode_NotSupported(t *testing.T) {
 	err := codec.Decode(nil, nil)
 	if err == nil {
 		t.Error("expected error from Decode, got nil")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestValidateTimelineFlags — unit-tests the flag mutual exclusivity check
+// ---------------------------------------------------------------------------
+
+func TestValidateTimelineFlags(t *testing.T) {
+	tests := []struct {
+		name    string
+		flags   map[string]string // flag name → value
+		wantErr bool
+	}{
+		{
+			name:    "no flags set is valid",
+			flags:   map[string]string{},
+			wantErr: false,
+		},
+		{
+			name:    "only --from and --to is valid",
+			flags:   map[string]string{"from": "now-24h", "to": "now"},
+			wantErr: false,
+		},
+		{
+			name:    "only --window is valid",
+			flags:   map[string]string{"window": "24h"},
+			wantErr: false,
+		},
+		{
+			name:    "--window with --from is mutually exclusive",
+			flags:   map[string]string{"window": "24h", "from": "now-1h"},
+			wantErr: true,
+		},
+		{
+			name:    "--window with --to is mutually exclusive",
+			flags:   map[string]string{"window": "24h", "to": "now"},
+			wantErr: true,
+		},
+		{
+			name:    "--window with deprecated --start is mutually exclusive",
+			flags:   map[string]string{"window": "24h", "start": "now-1h"},
+			wantErr: true,
+		},
+		{
+			name:    "--window with deprecated --end is mutually exclusive",
+			flags:   map[string]string{"window": "24h", "end": "now"},
+			wantErr: true,
+		},
+		{
+			name:    "only deprecated --start/--end is valid",
+			flags:   map[string]string{"start": "now-24h", "end": "now"},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := &cobra.Command{Use: "test"}
+			var from, to, window, start, end string
+			cmd.Flags().StringVar(&from, "from", "now-7d", "")
+			cmd.Flags().StringVar(&to, "to", "now", "")
+			cmd.Flags().StringVar(&window, "window", "", "")
+			cmd.Flags().StringVar(&start, "start", "now-7d", "")
+			cmd.Flags().StringVar(&end, "end", "now", "")
+
+			// Simulate flag setting.
+			for k, v := range tt.flags {
+				if err := cmd.Flags().Set(k, v); err != nil {
+					t.Fatalf("failed to set flag --%s: %v", k, err)
+				}
+			}
+
+			err := definitions.ValidateTimelineFlags(cmd)
+			if tt.wantErr && err == nil {
+				t.Error("expected error, got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestParseTimelineTime — tests the time parsing used by timeline commands
+// ---------------------------------------------------------------------------
+
+func TestParseTimelineTime(t *testing.T) {
+	now := time.Date(2026, 3, 9, 12, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name    string
+		input   string
+		want    time.Time
+		wantErr bool
+	}{
+		{name: "now", input: "now", want: now},
+		{name: "now-7d", input: "now-7d", want: now.Add(-7 * 24 * time.Hour)},
+		{name: "now-24h", input: "now-24h", want: now.Add(-24 * time.Hour)},
+		{name: "empty defaults to now", input: "", want: now},
+		{name: "RFC3339", input: "2026-03-01T00:00:00Z", want: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)},
+		{name: "invalid", input: "garbage", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := definitions.ParseTimelineTime(tt.input, now)
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !got.Equal(tt.want) {
+				t.Errorf("ParseTimelineTime(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
 	}
 }

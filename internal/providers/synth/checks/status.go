@@ -237,6 +237,8 @@ for each check. Requires a Prometheus datasource containing SM metrics.`,
 type timelineOpts struct {
 	IO            cmdio.Options
 	DatasourceUID string
+	From          string
+	To            string
 	Window        string
 }
 
@@ -247,6 +249,8 @@ func (o *timelineOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 
 	flags.StringVar(&o.DatasourceUID, "datasource-uid", "", "UID of the Prometheus datasource to query")
+	flags.StringVar(&o.From, "from", "", "Start of the time range (e.g. now-6h, now-24h, RFC3339, Unix timestamp)")
+	flags.StringVar(&o.To, "to", "", "End of the time range (e.g. now, RFC3339, Unix timestamp)")
 	flags.StringVar(&o.Window, "window", "6h", "Time window to display (e.g. 1h, 6h, 24h, 7d)")
 }
 
@@ -266,6 +270,9 @@ Requires a Prometheus datasource containing SM metrics.`,
   # Custom time window.
   grafanactl synth checks timeline 42 --window 24h
 
+  # Explicit time range.
+  grafanactl synth checks timeline 42 --from now-24h --to now
+
   # Output timeline data as a table.
   grafanactl synth checks timeline 42 -o table
 
@@ -275,6 +282,13 @@ Requires a Prometheus datasource containing SM metrics.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
+			}
+
+			// Validate flag combinations.
+			windowSet := cmd.Flags().Changed("window")
+			fromToSet := cmd.Flags().Changed("from") || cmd.Flags().Changed("to")
+			if windowSet && fromToSet {
+				return errors.New("--window and --from/--to are mutually exclusive")
 			}
 
 			ctx := cmd.Context()
@@ -298,15 +312,14 @@ Requires a Prometheus datasource containing SM metrics.`,
 				return err
 			}
 
-			// Parse window.
-			window, err := ParseWindow(opts.Window)
-			if err != nil {
-				return fmt.Errorf("invalid --window: %w", err)
-			}
-
+			// Compute time range from --from/--to or --window.
 			now := time.Now()
-			start := now.Add(-window)
-			end := now
+			var start, end time.Time
+
+			start, end, err = parseCheckTimeRange(fromToSet, opts.From, opts.To, opts.Window, now)
+			if err != nil {
+				return err
+			}
 			step := autoStep(start, end)
 
 			// Resolve datasource UID.
@@ -761,6 +774,81 @@ func smMetricsDatasourceName(ctx context.Context, grafanaCtx *config.Context) (s
 // ---------------------------------------------------------------------------
 // Window parsing
 // ---------------------------------------------------------------------------
+
+// parseCheckTimeRange resolves the start/end time range from either
+// --from/--to flags or --window shorthand.
+func parseCheckTimeRange(fromToSet bool, from, to, window string, now time.Time) (time.Time, time.Time, error) {
+	if fromToSet {
+		start, err := ParseCheckTimelineTime(from, now)
+		if err != nil {
+			return time.Time{}, time.Time{}, fmt.Errorf("invalid --from: %w", err)
+		}
+		end, err := ParseCheckTimelineTime(to, now)
+		if err != nil {
+			return time.Time{}, time.Time{}, fmt.Errorf("invalid --to: %w", err)
+		}
+		if !start.Before(end) {
+			return time.Time{}, time.Time{}, errors.New("--from must be before --to")
+		}
+		return start, end, nil
+	}
+	w, err := ParseWindow(window)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid --window: %w", err)
+	}
+	return now.Add(-w), now, nil
+}
+
+// ParseCheckTimelineTime parses a time string for the check timeline command.
+// Supports "now", "now-Xd", "now-Xh", RFC3339, and Unix timestamps.
+func ParseCheckTimelineTime(s string, now time.Time) (time.Time, error) {
+	if s == "" {
+		return now, nil
+	}
+
+	s = strings.TrimSpace(s)
+
+	// Relative time: now, now-1h, now-7d, etc.
+	if strings.HasPrefix(s, "now") {
+		if s == "now" {
+			return now, nil
+		}
+		// Parse as a window-style offset: "now-6h" → now.Add(-6h).
+		rest := s[3:]
+		if len(rest) == 0 {
+			return now, nil
+		}
+		sign := 1
+		switch rest[0] {
+		case '-':
+			sign = -1
+			rest = rest[1:]
+		case '+':
+			rest = rest[1:]
+		default:
+			return time.Time{}, fmt.Errorf("invalid relative time format: %q", s)
+		}
+		d, err := ParseWindow(rest)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("invalid relative time format: %q", s)
+		}
+		return now.Add(d * time.Duration(sign)), nil
+	}
+
+	// RFC3339
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t, nil
+	}
+
+	// Unix timestamp (integer or float)
+	if ts, err := strconv.ParseFloat(s, 64); err == nil {
+		sec := int64(ts)
+		nsec := int64((ts - float64(sec)) * 1e9)
+		return time.Unix(sec, nsec), nil
+	}
+
+	return time.Time{}, fmt.Errorf("unable to parse time: %q", s)
+}
 
 // ParseWindow parses a duration string like "6h", "24h", "7d", "30m".
 func ParseWindow(s string) (time.Duration, error) {

@@ -419,6 +419,46 @@ func TestTimelineTableCodec_Encode(t *testing.T) {
 // ParseWindow
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// parseCheckTimelineTime
+// ---------------------------------------------------------------------------
+
+func TestParseCheckTimelineTime(t *testing.T) {
+	now := time.Date(2026, 3, 9, 12, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name    string
+		input   string
+		want    time.Time
+		wantErr bool
+	}{
+		{name: "now", input: "now", want: now},
+		{name: "now-6h", input: "now-6h", want: now.Add(-6 * time.Hour)},
+		{name: "now-7d", input: "now-7d", want: now.Add(-7 * 24 * time.Hour)},
+		{name: "empty defaults to now", input: "", want: now},
+		{name: "RFC3339", input: "2026-03-01T00:00:00Z", want: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)},
+		{name: "invalid", input: "garbage", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := checks.ParseCheckTimelineTime(tt.input, now)
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !got.Equal(tt.want) {
+				t.Errorf("ParseCheckTimelineTime(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseWindow(t *testing.T) {
 	tests := []struct {
 		name    string
