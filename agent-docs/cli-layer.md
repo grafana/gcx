@@ -5,6 +5,8 @@
 ```
 grafanactl (root)
 ├── --no-color               [persistent flag]
+├── --no-truncate            [persistent flag: disable table column truncation]
+├── --agent                  [persistent flag: enable agent mode]
 ├── --verbose / -v           [persistent flag, count]
 │
 ├── api                      [cmd/grafanactl/api/command.go]
@@ -225,9 +227,11 @@ cmd/grafanactl/
 │   └── templates/           Embedded Go templates for generate/import/scaffold
 ├── fail/
 │   ├── detailed.go          DetailedError type — rich error formatting
-│   └── convert.go           ErrorToDetailedError — error-type dispatch table
+│   ├── convert.go           ErrorToDetailedError — error-type dispatch table
+│   └── json.go              DetailedError.WriteJSON — in-band JSON error for agent mode
 └── io/
-    ├── format.go            Options type — --output flag + codec registry
+    ├── format.go            Options type — --output/-o + --json flags + codec registry
+    ├── field_select.go      FieldSelectCodec — JSON field filtering + DiscoverFields
     └── messages.go          Success/Warning/Error/Info colored printers
 ```
 
@@ -443,11 +447,15 @@ func (e editor) OpenInTempFile(ctx context.Context, buffer io.Reader, format str
 
 ### `io.Options` — Format Selection
 
-Embedded in command opts structs to add `--output / -o` flag support:
+Embedded in command opts structs to add `--output / -o` and `--json` flag support:
 
 ```go
 type Options struct {
     OutputFormat  string
+    JSONFields    []string   // set when --json field1,field2 is used
+    JSONDiscovery bool       // set when --json ? is used
+    IsPiped       bool       // true when stdout is not a TTY (from terminal.IsPiped())
+    NoTruncate    bool       // true when --no-truncate or stdout is piped
     customCodecs  map[string]format.Codec
     defaultFormat string
 }
@@ -456,16 +464,63 @@ type Options struct {
 opts.IO.DefaultFormat("text")                          // set default
 opts.IO.RegisterCustomCodec("text", &tableCodec{})     // add command-specific codec
 opts.IO.RegisterCustomCodec("wide", &tableCodec{wide: true})
-opts.IO.BindFlags(flags)                               // registers --output/-o flag
+opts.IO.BindFlags(flags)                               // registers --output/-o and --json flags
 
 // In RunE:
 codec, err := opts.IO.Codec()   // resolves the selected format to a format.Codec
 codec.Encode(cmd.OutOrStdout(), data)
 ```
 
+**`IsPiped` and `NoTruncate`** are populated during `BindFlags` from the
+`internal/terminal` package-level state, which is set by root `PersistentPreRun`
+before any command runs. Table codecs should read `opts.IO.NoTruncate` to
+decide whether to truncate long column values. See `design-guide.md` Section 5.1.
+
+**`--json` flag** is registered by `BindFlags` on the command's `FlagSet`.
+`Validate()` calls `applyJSONFlag()` which:
+1. Enforces mutual exclusion with `-o/--output`
+2. Sets `JSONDiscovery=true` when the value is `?`
+3. Parses comma-separated field names into `JSONFields`
+4. Forces `OutputFormat="json"` when field names are given
+
+When `JSONFields` is set, callers should use `NewFieldSelectCodec(opts.IO.JSONFields)`
+instead of `opts.IO.Codec()`. When `JSONDiscovery` is set, callers should
+print available fields via `DiscoverFields()` and exit early (exit 0).
+
 Built-in codecs: `json` and `yaml` (always available). Commands register additional ones (e.g. `text`, `wide`, `graph`) by calling `RegisterCustomCodec` before `BindFlags`.
 
 The `graph` codec is a special-purpose output format only available on the `query` command. It renders Prometheus or Loki query results as a terminal line chart using `ntcharts` and `lipgloss` (via `internal/graph`). Terminal width is detected at render time via `golang.org/x/term`.
+
+### `FieldSelectCodec` — JSON Field Filtering
+
+`cmd/grafanactl/io/field_select.go` provides `FieldSelectCodec`, which wraps
+the built-in JSON codec and emits only the requested fields from each object:
+
+```go
+// Construct with the parsed field list from io.Options.JSONFields:
+codec := io.NewFieldSelectCodec(opts.IO.JSONFields)
+if err := codec.Encode(cmd.OutOrStdout(), resources); err != nil {
+    return err
+}
+```
+
+**Supported input types:** `unstructured.Unstructured`, `*unstructured.Unstructured`,
+`unstructured.UnstructuredList`, `*unstructured.UnstructuredList`, `map[string]any`,
+and arbitrary types (marshaled to JSON, then fields extracted).
+
+**Output shapes:**
+
+| Input | Output |
+|-------|--------|
+| Single object | `{"field": value, ...}` |
+| List/collection | `{"items": [{"field": value}, ...]}` |
+
+**Dot-path resolution:** `metadata.name` walks `obj["metadata"]["name"]`.
+Missing paths produce `null` — never omitted, never an error (FR-008).
+
+**Field discovery** is handled by `DiscoverFields(obj map[string]any) []string`:
+returns top-level keys plus `spec.*` sub-keys, sorted alphabetically. Call this
+on a sample object fetched from the API.
 
 ### Custom Table Codecs
 
@@ -669,3 +724,5 @@ cmd.AddCommand(myCmd(configOpts))
 | Custom table codecs implement `format.Codec` and are registered before `BindFlags` | `get.go`, `list.go`, `validate.go` |
 | Data fetching is format-agnostic — fetch all fields, let codecs filter display | All commands with custom codecs |
 | `OnErrorMode` is always validated in `opts.Validate()`, not inline | All multi-resource commands |
+| `terminal.Detect()` is called once in `PersistentPreRun`; use `terminal.IsPiped()` / `terminal.NoTruncate()` everywhere else | `root/command.go`, all table codecs |
+| `--json` is mutually exclusive with `-o/--output`; enforced in `io.Options.Validate()` | `io/format.go` |

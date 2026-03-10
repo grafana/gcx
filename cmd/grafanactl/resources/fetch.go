@@ -16,6 +16,9 @@ type FetchRequest struct {
 	ExcludeManaged     bool
 	ExpectSingleTarget bool
 	Processors         []remote.Processor
+	// Limit caps the number of items per resource type. Zero means no limit.
+	// Set to 1 for field discovery (--json ?) to avoid full list operations.
+	Limit int64
 }
 
 type FetchResponse struct {
@@ -65,6 +68,7 @@ func FetchResources(ctx context.Context, opts FetchRequest, args []string) (*Fet
 		Processors:     opts.Processors,
 		ExcludeManaged: opts.ExcludeManaged,
 		StopOnError:    opts.StopOnError || sels.IsSingleTarget(),
+		Limit:          opts.Limit,
 	}
 
 	summary, err := pull.Pull(ctx, req)

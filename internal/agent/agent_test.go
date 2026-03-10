@@ -103,6 +103,10 @@ func TestIsAgentMode(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			// Clear all agent env vars so host env (e.g. CLAUDECODE=1 in
+			// Claude Code) does not leak into test cases.
+			clearAgentEnv(t)
+
 			for k, v := range tc.envVars {
 				t.Setenv(k, v)
 			}
@@ -115,6 +119,22 @@ func TestIsAgentMode(t *testing.T) {
 
 			assert.Equal(t, tc.wantMode, agent.IsAgentMode())
 		})
+	}
+}
+
+// clearAgentEnv unsets all agent-mode env vars for the duration of a test.
+func clearAgentEnv(t *testing.T) {
+	t.Helper()
+
+	for _, env := range []string{
+		"GRAFANACTL_AGENT_MODE",
+		"CLAUDECODE",
+		"CLAUDE_CODE",
+		"CURSOR_AGENT",
+		"GITHUB_COPILOT",
+		"AMAZON_Q",
+	} {
+		t.Setenv(env, "")
 	}
 }
 
@@ -148,6 +168,8 @@ func TestDetectedFromEnv(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			clearAgentEnv(t)
+
 			for k, v := range tc.envVars {
 				t.Setenv(k, v)
 			}

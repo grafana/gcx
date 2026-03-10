@@ -38,6 +38,7 @@ grafanactl resources validate [RESOURCE_SELECTOR]... [flags]
 
 ```
   -h, --help                 help for validate
+      --json string          Comma-separated list of fields to include in JSON output, or '?' to discover available fields
       --max-concurrent int   Maximum number of concurrent operations (default 10)
       --on-error string      How to handle errors during resource operations:
                                ignore — continue processing all resources and exit 0
@@ -50,10 +51,11 @@ grafanactl resources validate [RESOURCE_SELECTOR]... [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent            Enable agent mode (JSON output, no color). Auto-detected from CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GRAFANACTL_AGENT_MODE env vars.
+      --agent            Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GRAFANACTL_AGENT_MODE env vars.
       --config string    Path to the configuration file to use
       --context string   Name of the context to use
       --no-color         Disable color output
+      --no-truncate      Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count    Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
 ```
 

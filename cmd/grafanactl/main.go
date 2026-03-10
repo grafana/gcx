@@ -69,12 +69,23 @@ func handleError(err error) {
 	exitCode := 1
 	detailedErr := fail.ErrorToDetailedError(err)
 
-	if detailedErr != nil {
-		fmt.Fprintln(os.Stderr, detailedErr.Error())
+	if detailedErr == nil {
+		os.Exit(exitCode)
+	}
 
-		if detailedErr.ExitCode != nil {
-			exitCode = *detailedErr.ExitCode
+	if detailedErr.ExitCode != nil {
+		exitCode = *detailedErr.ExitCode
+	}
+
+	if agent.IsAgentMode() || root.IsJSONFlagActive() {
+		// Machine consumers get JSON on stdout only — the human-formatted
+		// stderr error is noise for agents and scripts.
+		if writeErr := detailedErr.WriteJSON(os.Stdout, exitCode); writeErr != nil {
+			fmt.Fprintln(os.Stderr, detailedErr.Error())
 		}
+	} else {
+		// Human consumers get the formatted error on stderr.
+		fmt.Fprintln(os.Stderr, detailedErr.Error())
 	}
 
 	os.Exit(exitCode)

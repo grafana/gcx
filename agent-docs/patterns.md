@@ -326,13 +326,13 @@ Cross-reference: Pattern 12 (Direct HTTP Client for Datasource APIs).
 
 ---
 
-### 15. Agent Mode Detection (High Confidence: 94%)
+### 15. Agent Mode Detection and Pipe-Aware Output (High Confidence: 96%)
 
 grafanactl detects at startup whether it is running inside an AI agent
 environment (Claude Code, Cursor, GitHub Copilot, Amazon Q) and adjusts
-its behavior accordingly — primarily disabling color output. Detection
-happens at `init()` time by reading well-known environment variables;
-the `--agent` CLI flag overrides env detection when explicitly set.
+its behavior accordingly. Detection happens at `init()` time by reading
+well-known environment variables; the `--agent` CLI flag overrides env
+detection when explicitly set.
 
 **Detection priority:**
 
@@ -344,15 +344,31 @@ the `--agent` CLI flag overrides env detection when explicitly set.
 
 **Behavioral effects when agent mode is active:**
 - Color output disabled globally (`color.NoColor = true`)
-- Exit codes and output format are unchanged (use `-o json` explicitly for machine-readable output)
+- Default output format overridden to `json` (machine-parseable by default)
+- Pipe-aware behaviors forced: `IsPiped=true`, `NoTruncate=true` regardless of TTY state
+- In-band error JSON written to stdout on failure (see `cmd/grafanactl/fail/json.go`)
+
+**Pipe detection** is also independent of agent mode. Root `PersistentPreRun` calls
+`terminal.Detect()` which checks `term.IsTerminal(os.Stdout.Fd())`. When piped:
+- Color disabled automatically
+- Table column truncation suppressed automatically
+
+The `--no-truncate` persistent flag provides explicit control for non-TTY use cases
+(e.g., wide terminal output without truncation). Agent mode sets all pipe-aware
+behaviors regardless of actual TTY state.
 
 **Key files:**
 - `internal/agent/agent.go` — `IsAgentMode()`, `SetFlag()`, `DetectedFromEnv()`
-- `cmd/grafanactl/root/command.go` — checks `agent.IsAgentMode()` in `PersistentPreRun`, wires `--agent` flag
+- `internal/terminal/terminal.go` — `Detect()`, `IsPiped()`, `NoTruncate()`, setters
+- `cmd/grafanactl/root/command.go` — orchestrates detection order in `PersistentPreRun`
+- `cmd/grafanactl/io/format.go` — `io.Options` fields `IsPiped`, `NoTruncate`, `JSONFields`
+- `cmd/grafanactl/fail/json.go` — `DetailedError.WriteJSON` for in-band error reporting
 
 **Evidence:**
 - `internal/agent/` package with `init()`-time env-var detection
-- Root command `PersistentPreRun` calls `color.NoColor = true` when `IsAgentMode()` returns true
+- `internal/terminal/` package with TTY detection and package-level state
+- Root command `PersistentPreRun` coordinates detection in a defined order
+- `io.Options.BindFlags` reads `terminal.IsPiped()` / `terminal.NoTruncate()` at flag-bind time
 
 ---
 

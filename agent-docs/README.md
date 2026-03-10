@@ -127,5 +127,3 @@ Directory layout rationale, build system (Makefile), CI/CD (GitHub Actions via .
 4. Check environment variable override behavior in [config-system.md](config-system.md)
 
 ---
-
-*Last updated: 2026-03-09 (post-PR29) | Validation: All files present and verified | Updated for dev generate command*

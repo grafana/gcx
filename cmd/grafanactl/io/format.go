@@ -1,6 +1,7 @@
 package io
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -10,14 +11,28 @@ import (
 
 	"github.com/grafana/grafanactl/internal/agent"
 	"github.com/grafana/grafanactl/internal/format"
+	"github.com/grafana/grafanactl/internal/terminal"
 	"github.com/spf13/pflag"
 )
 
+const jsonDiscoverySentinel = "?"
+
 type Options struct {
-	OutputFormat string
+	OutputFormat  string
+	JSONFields    []string
+	JSONDiscovery bool
+
+	// IsPiped reports whether stdout is not connected to a terminal.
+	// Populated from terminal.IsPiped() during BindFlags.
+	IsPiped bool
+
+	// NoTruncate reports whether table column truncation should be suppressed.
+	// Populated from terminal.NoTruncate() during BindFlags.
+	NoTruncate bool
 
 	customCodecs  map[string]format.Codec
 	defaultFormat string
+	flags         *pflag.FlagSet
 }
 
 func (opts *Options) RegisterCustomCodec(name string, codec format.Codec) {
@@ -44,7 +59,16 @@ func (opts *Options) BindFlags(flags *pflag.FlagSet) {
 		defaultFormat = "json"
 	}
 
+	// Populate pipe/truncation state from package-level terminal detection.
+	// These are set by root PersistentPreRun via terminal.Detect() and
+	// terminal.SetNoTruncate(). Codecs may also read terminal state directly.
+	opts.IsPiped = terminal.IsPiped()
+	opts.NoTruncate = terminal.NoTruncate()
+
 	flags.StringVarP(&opts.OutputFormat, "output", "o", defaultFormat, "Output format. One of: "+strings.Join(opts.allowedCodecs(), ", "))
+	flags.String("json", "", "Comma-separated list of fields to include in JSON output, or '?' to discover available fields")
+
+	opts.flags = flags
 }
 
 func (opts *Options) Validate() error {
@@ -52,6 +76,44 @@ func (opts *Options) Validate() error {
 	if codec == nil {
 		return fmt.Errorf("unknown output format '%s'. Valid formats are: %s", opts.OutputFormat, strings.Join(opts.allowedCodecs(), ", "))
 	}
+
+	return opts.applyJSONFlag()
+}
+
+// applyJSONFlag processes the --json flag value and enforces mutual exclusion
+// with -o/--output. It sets JSONFields, JSONDiscovery, or returns an error.
+func (opts *Options) applyJSONFlag() error {
+	if opts.flags == nil {
+		return nil
+	}
+
+	jsonFlag := opts.flags.Lookup("json")
+	if jsonFlag == nil || !jsonFlag.Changed {
+		return nil
+	}
+
+	// Enforce mutual exclusion with -o/--output.
+	outputFlag := opts.flags.Lookup("output")
+	if outputFlag != nil && outputFlag.Changed {
+		return errors.New("--json and -o/--output are mutually exclusive: use one or the other, not both")
+	}
+
+	jsonValue := jsonFlag.Value.String()
+	if jsonValue == jsonDiscoverySentinel {
+		opts.JSONDiscovery = true
+		return nil
+	}
+
+	fields := strings.Split(jsonValue, ",")
+	nonEmpty := fields[:0]
+	for _, f := range fields {
+		f = strings.TrimSpace(f)
+		if f != "" {
+			nonEmpty = append(nonEmpty, f)
+		}
+	}
+	opts.JSONFields = nonEmpty
+	opts.OutputFormat = "json"
 
 	return nil
 }

@@ -80,6 +80,11 @@ type PullRequest struct {
 
 	// Whether the operation should stop upon encountering an error.
 	StopOnError bool
+
+	// Limit caps the number of items returned per resource type. Zero means no limit.
+	// Use Limit=1 for introspection operations (e.g. --json ? field discovery) to
+	// avoid triggering a full list operation.
+	Limit int64
 }
 
 // Pull pulls resources from Grafana.
@@ -111,7 +116,7 @@ func (p *Puller) Pull(ctx context.Context, req PullRequest) (*OperationSummary, 
 		errg.Go(func() error {
 			switch filt.Type {
 			case resources.FilterTypeAll:
-				res, err := p.client.List(ctx, filt.Descriptor, metav1.ListOptions{})
+				res, err := p.client.List(ctx, filt.Descriptor, metav1.ListOptions{Limit: req.Limit})
 				if err != nil {
 					if req.StopOnError {
 						return err

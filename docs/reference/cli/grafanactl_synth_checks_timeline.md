@@ -39,6 +39,7 @@ grafanactl synth checks timeline ID [flags]
       --datasource-uid string   UID of the Prometheus datasource to query
       --from string             Start of the time range (e.g. now-6h, now-24h, RFC3339, Unix timestamp)
   -h, --help                    help for timeline
+      --json string             Comma-separated list of fields to include in JSON output, or '?' to discover available fields
   -o, --output string           Output format. One of: graph, json, table, yaml (default "graph")
       --to string               End of the time range (e.g. now, RFC3339, Unix timestamp)
       --window string           Time window to display (e.g. 1h, 6h, 24h, 7d) (default "6h")
@@ -47,10 +48,11 @@ grafanactl synth checks timeline ID [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent            Enable agent mode (JSON output, no color). Auto-detected from CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GRAFANACTL_AGENT_MODE env vars.
+      --agent            Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GRAFANACTL_AGENT_MODE env vars.
       --config string    Path to the configuration file to use
       --context string   Name of the context to use
       --no-color         Disable color output
+      --no-truncate      Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count    Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
 ```
 

@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"os"
 	"path"
+	"sync/atomic"
 
 	"github.com/fatih/color"
 	"github.com/go-logr/logr"
@@ -22,9 +23,24 @@ import (
 	_ "github.com/grafana/grafanactl/internal/providers/alert" // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/grafanactl/internal/providers/slo"   // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/grafanactl/internal/providers/synth" // Provider registrations — blank imports trigger init() self-registration.
+	"github.com/grafana/grafanactl/internal/terminal"
 	"github.com/spf13/cobra"
 	"k8s.io/klog/v2"
 )
+
+// jsonFlagActive is set to true in PersistentPreRun when the resolved command
+// has a --json flag that was explicitly changed by the user. This ensures
+// handleError() in main.go emits JSON errors only for commands that actually
+// support --json, avoiding false positives from naive os.Args pre-scanning.
+//
+//nolint:gochecknoglobals
+var jsonFlagActive atomic.Bool
+
+// IsJSONFlagActive reports whether the --json flag was actively set by the user
+// on the command that was actually executed. Safe for concurrent use.
+func IsJSONFlagActive() bool {
+	return jsonFlagActive.Load()
+}
 
 // Command builds the root cobra command for the given version using the
 // compile-time registered provider list.
@@ -37,6 +53,7 @@ func Command(version string) *cobra.Command {
 // Nil entries in pp are silently skipped.
 func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	noColors := false
+	noTruncate := false
 	agentFlag := false
 	verbosity := 0
 
@@ -46,7 +63,31 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 		SilenceErrors: true, // We want to print errors ourselves
 		Version:       version,
 		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
-			if noColors || agent.IsAgentMode() {
+			// Track whether --json was explicitly set on the resolved command.
+			// Only mark active when the command actually declares a --json flag,
+			// preventing false positives for subcommands that don't support it.
+			if f := cmd.Flags().Lookup("json"); f != nil && f.Changed {
+				jsonFlagActive.Store(true)
+			}
+
+			// Detect TTY state first so all downstream decisions can use it.
+			terminal.Detect()
+
+			// Agent mode implies all pipe-aware behaviors regardless of actual TTY state.
+			if agent.IsAgentMode() {
+				terminal.SetPiped(true)
+				terminal.SetNoTruncate(true)
+				color.NoColor = true
+			}
+
+			// Explicit --no-truncate flag overrides auto-detection.
+			if noTruncate {
+				terminal.SetNoTruncate(true)
+			}
+
+			// Explicit --no-color flag or piped stdout disable color.
+			// fatih/color already handles NO_COLOR env var internally.
+			if noColors || terminal.IsPiped() {
 				color.NoColor = true // globally disables colorized output
 			}
 
@@ -95,7 +136,8 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	}
 
 	rootCmd.PersistentFlags().BoolVar(&noColors, "no-color", noColors, "Disable color output")
-	rootCmd.PersistentFlags().BoolVar(&agentFlag, "agent", false, "Enable agent mode (JSON output, no color). Auto-detected from CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GRAFANACTL_AGENT_MODE env vars.")
+	rootCmd.PersistentFlags().BoolVar(&noTruncate, "no-truncate", false, "Disable table column truncation (auto-enabled when stdout is piped)")
+	rootCmd.PersistentFlags().BoolVar(&agentFlag, "agent", false, "Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GRAFANACTL_AGENT_MODE env vars.")
 	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "Verbose mode. Multiple -v options increase the verbosity (maximum: 3).")
 
 	return rootCmd

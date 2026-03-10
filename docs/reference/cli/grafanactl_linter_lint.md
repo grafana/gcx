@@ -69,6 +69,7 @@ grafanactl linter lint PATH... [flags]
       --enable-category stringArray    Enable all rules in a category
       --enable-resource stringArray    Enable all rules for a resource type
   -h, --help                           help for lint
+      --json string                    Comma-separated list of fields to include in JSON output, or '?' to discover available fields
       --max-concurrent int             Maximum number of concurrent operations (default 10)
   -o, --output string                  Output format. One of: compact, json, pretty, yaml (default "pretty")
   -r, --rules stringArray              Path to custom rules
@@ -77,8 +78,9 @@ grafanactl linter lint PATH... [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent           Enable agent mode (JSON output, no color). Auto-detected from CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GRAFANACTL_AGENT_MODE env vars.
+      --agent           Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GRAFANACTL_AGENT_MODE env vars.
       --no-color        Disable color output
+      --no-truncate     Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count   Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
 ```
 

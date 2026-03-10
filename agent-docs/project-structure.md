@@ -43,6 +43,7 @@ grafanactl/
 │   │   ├── prometheus/       # Prometheus HTTP client (instant + range queries)
 │   │   └── loki/             # Loki HTTP client (log + metric queries)
 │   ├── secrets/              # Redaction of sensitive config fields
+│   ├── terminal/             # TTY detection: IsPiped(), NoTruncate(), Detect()
 │   ├── testutils/            # Shared test helpers (not exposed externally)
 │   ├── resources/            # Core resource abstraction layer
 │   │   ├── discovery/        # API discovery: registry, index, preferred versions

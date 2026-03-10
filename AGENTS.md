@@ -66,6 +66,19 @@ make all         # lint + tests + build + docs
 make docs        # Generate + build all documentation
 ```
 
+> **Before pushing to a PR branch, always run `make all`.** The `make docs` step
+> regenerates `docs/reference/cli/` from Cobra flag definitions. Skipping it causes
+> CI to fail with docs drift (new flags like `--json` or `--no-truncate` will be
+> missing from the reference pages).
+
+> **Run `/update-agent-docs` when a PR changes architecture.** Specifically: adding
+> or removing packages under `internal/` or `cmd/`, introducing new architectural
+> patterns, changing core abstractions (Resource, Selector, Filter, Discovery),
+> or adding a new provider. Routine bug fixes, test changes, and small features
+> do not need it. The skill audits `agent-docs/` for staleness and applies targeted
+> updates — keeping these docs accurate prevents agents from making bad assumptions
+> in future sessions.
+
 ## Package Map
 
 ```
@@ -97,6 +110,7 @@ internal/
 │   ├── prometheus/  Prometheus HTTP query client
 │   └── loki/        Loki HTTP query client
 ├── agent/       Agent mode detection (IsAgentMode, env-var + flag detection)
+├── terminal/    TTY/pipe detection (IsPiped, NoTruncate, Detect) for output suppression
 ├── linter/      Linting engine (Rego rules, report aggregation, PromQL/LogQL validators)
 ├── graph/       Terminal chart rendering (ntcharts + lipgloss)
 ├── testutils/   Shared test utilities

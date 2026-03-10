@@ -76,6 +76,79 @@ func TestBindFlags_AgentModeOverridesDefaultFormat(t *testing.T) {
 	}
 }
 
+func TestJSONFlag_Parsing(t *testing.T) {
+	tests := []struct {
+		name              string
+		jsonFlagValue     string // empty = flag not set
+		outputFlagValue   string // empty = flag not set
+		wantJSONFields    []string
+		wantJSONDiscovery bool
+		wantOutputFormat  string
+		wantErr           bool
+	}{
+		{
+			name:             "--json with multiple fields sets JSONFields",
+			jsonFlagValue:    "name,namespace,kind",
+			wantJSONFields:   []string{"name", "namespace", "kind"},
+			wantOutputFormat: "json",
+		},
+		{
+			name:             "--json with single field sets JSONFields",
+			jsonFlagValue:    "name",
+			wantJSONFields:   []string{"name"},
+			wantOutputFormat: "json",
+		},
+		{
+			name:              "--json ? sets JSONDiscovery",
+			jsonFlagValue:     "?",
+			wantJSONDiscovery: true,
+			wantOutputFormat:  "json",
+		},
+		{
+			name:             "--json not passed leaves JSONFields nil and JSONDiscovery false",
+			wantOutputFormat: "json",
+		},
+		{
+			name:            "--json and -o together returns mutual exclusion error",
+			jsonFlagValue:   "name",
+			outputFlagValue: "yaml",
+			wantErr:         true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := &cmdio.Options{}
+			opts.RegisterCustomCodec("text", &dummyCodec{})
+			opts.RegisterCustomCodec("yaml", &dummyCodec{})
+
+			flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+			opts.BindFlags(flags)
+
+			if tc.jsonFlagValue != "" {
+				require.NoError(t, flags.Set("json", tc.jsonFlagValue))
+			}
+			if tc.outputFlagValue != "" {
+				require.NoError(t, flags.Set("output", tc.outputFlagValue))
+			}
+
+			err := opts.Validate()
+
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantJSONFields, opts.JSONFields)
+			assert.Equal(t, tc.wantJSONDiscovery, opts.JSONDiscovery)
+			if tc.wantOutputFormat != "" {
+				assert.Equal(t, tc.wantOutputFormat, opts.OutputFormat)
+			}
+		})
+	}
+}
+
 // dummyCodec satisfies format.Codec for testing.
 type dummyCodec struct{}
 

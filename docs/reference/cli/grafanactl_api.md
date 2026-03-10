@@ -43,6 +43,7 @@ grafanactl api PATH [flags]
   -d, --data string          Request body (use @file for file, @- for stdin). Implies POST.
   -H, --header stringArray   Custom headers (repeatable)
   -h, --help                 help for api
+      --json string          Comma-separated list of fields to include in JSON output, or '?' to discover available fields
   -X, --method string        HTTP method (default: GET, or POST if -d is set)
   -o, --output string        Output format for JSON responses. One of: json, yaml (default "json")
 ```
@@ -50,8 +51,9 @@ grafanactl api PATH [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent           Enable agent mode (JSON output, no color). Auto-detected from CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GRAFANACTL_AGENT_MODE env vars.
+      --agent           Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GRAFANACTL_AGENT_MODE env vars.
       --no-color        Disable color output
+      --no-truncate     Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count   Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
 ```
 

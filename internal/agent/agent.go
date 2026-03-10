@@ -14,6 +14,7 @@ import (
 // Environment variables that signal agent mode.
 var agentEnvVars = []string{ //nolint:gochecknoglobals
 	"GRAFANACTL_AGENT_MODE",
+	"CLAUDECODE",
 	"CLAUDE_CODE",
 	"CURSOR_AGENT",
 	"GITHUB_COPILOT",

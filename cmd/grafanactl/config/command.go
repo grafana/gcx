@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -244,6 +245,21 @@ func viewCmd(configOpts *Options) *cobra.Command {
 				}
 			}
 
+			if opts.IO.JSONDiscovery {
+				cfgMap, err := structToMap(cfg)
+				if err != nil {
+					return err
+				}
+				for _, field := range io.DiscoverFields(cfgMap) {
+					fmt.Fprintln(cmd.OutOrStdout(), field)
+				}
+				return nil
+			}
+
+			if len(opts.IO.JSONFields) > 0 {
+				codec := io.NewFieldSelectCodec(opts.IO.JSONFields)
+				return codec.Encode(cmd.OutOrStdout(), cfg)
+			}
 			return opts.IO.Encode(cmd.OutOrStdout(), cfg)
 		},
 	}
@@ -509,4 +525,18 @@ PROPERTY_NAME is a dot-delimited reference to the value to unset. It can either 
 	}
 
 	return cmd
+}
+
+// structToMap marshals an arbitrary struct to map[string]any via JSON round-trip.
+// Used by viewCmd for --json ? field discovery.
+func structToMap(v any) (map[string]any, error) {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }

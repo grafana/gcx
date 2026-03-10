@@ -86,7 +86,6 @@ For each doc in scope, spawn a `runner` sub-agent (haiku model) with:
 - Instructions: **fix violations only**, do not rewrite unaffected sections
 
 After all runners complete:
-- Update the `Last updated` line in `agent-docs/README.md`
 - Print a summary of what was changed
 
 ## Important Notes

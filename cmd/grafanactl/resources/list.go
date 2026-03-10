@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/grafanactl/internal/format"
 	"github.com/grafana/grafanactl/internal/resources"
 	"github.com/grafana/grafanactl/internal/resources/discovery"
+	"github.com/grafana/grafanactl/internal/terminal"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -45,10 +46,6 @@ func listCmd(configOpts *cmdconfig.Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 
-			if opts.IO.OutputFormat != "text" && opts.IO.OutputFormat != "wide" {
-				return fmt.Errorf("unsupported output format: %s", opts.IO.OutputFormat)
-			}
-
 			cfg, err := configOpts.LoadRESTConfig(ctx)
 			if err != nil {
 				return err
@@ -63,6 +60,32 @@ func listCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			// e.g. APIResourceList, or unstructured.UnstructuredList.
 			// That way we can use the same code for rendering as for `resources get`.
 			res := reg.SupportedResources().Sorted()
+
+			// --json ? discovery: enumerate fields of a Descriptor element and exit.
+			if opts.IO.JSONDiscovery {
+				if len(res) == 0 {
+					return errors.New("no resources available for field discovery")
+				}
+				for _, field := range cmdio.DiscoverFields(descriptorToMap(res[0])) {
+					fmt.Fprintln(cmd.OutOrStdout(), field)
+				}
+				return nil
+			}
+
+			// --json field1,field2: use FieldSelectCodec for output.
+			if len(opts.IO.JSONFields) > 0 {
+				codec := cmdio.NewFieldSelectCodec(opts.IO.JSONFields)
+				items := make([]map[string]any, 0, len(res))
+				for _, d := range res {
+					items = append(items, descriptorToMap(d))
+				}
+				return codec.Encode(cmd.OutOrStdout(), map[string]any{"items": items})
+			}
+
+			if opts.IO.OutputFormat != "text" && opts.IO.OutputFormat != "wide" {
+				return fmt.Errorf("unsupported output format: %s", opts.IO.OutputFormat)
+			}
+
 			return opts.IO.Encode(cmd.OutOrStdout(), res)
 		},
 	}
@@ -70,6 +93,18 @@ func listCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	opts.setup(cmd.Flags())
 
 	return cmd
+}
+
+// descriptorToMap converts a Descriptor to a map[string]any for field
+// selection and discovery. Keys use camelCase to match common JSON conventions.
+func descriptorToMap(d resources.Descriptor) map[string]any {
+	return map[string]any{
+		"group":    d.GroupVersion.Group,
+		"version":  d.GroupVersion.Version,
+		"kind":     d.Kind,
+		"singular": d.Singular,
+		"plural":   d.Plural,
+	}
 }
 
 type tabCodec struct {
@@ -90,6 +125,7 @@ func (c *tabCodec) Encode(output io.Writer, input any) error {
 		return fmt.Errorf("expected resources.Descriptors, got %T", input)
 	}
 
+	noTruncate := terminal.NoTruncate()
 	out := tabwriter.NewWriter(output, 0, 4, 2, ' ', tabwriter.TabIndent|tabwriter.DiscardEmptyColumns)
 	if c.wide {
 		fmt.Fprintf(out, "GROUP\tVERSION\tPLURAL\tSINGULAR\tKIND\n")
@@ -100,13 +136,38 @@ func (c *tabCodec) Encode(output io.Writer, input any) error {
 	for _, r := range descs {
 		gv := r.GroupVersion
 		if c.wide {
-			fmt.Fprintf(out, "%s\t%s\t%s\t%s\t%s\n", gv.Group, gv.Version, r.Plural, r.Singular, r.Kind)
+			fmt.Fprintf(out, "%s\t%s\t%s\t%s\t%s\n",
+				sanitizeListCell(gv.Group, noTruncate),
+				sanitizeListCell(gv.Version, noTruncate),
+				sanitizeListCell(r.Plural, noTruncate),
+				sanitizeListCell(r.Singular, noTruncate),
+				sanitizeListCell(r.Kind, noTruncate))
 		} else {
-			fmt.Fprintf(out, "%s\t%s\t%s\n", gv.Group, gv.Version, r.Plural)
+			fmt.Fprintf(out, "%s\t%s\t%s\n",
+				sanitizeListCell(gv.Group, noTruncate),
+				sanitizeListCell(gv.Version, noTruncate),
+				sanitizeListCell(r.Plural, noTruncate))
 		}
 	}
 
 	return out.Flush()
+}
+
+// sanitizeListCell returns the cell value unchanged normally. When noTruncate
+// is true, newlines are replaced with spaces to prevent truncation in output.
+func sanitizeListCell(v string, noTruncate bool) string {
+	if !noTruncate {
+		return v
+	}
+	result := make([]rune, 0, len(v))
+	for _, r := range v {
+		if r == '\n' || r == '\r' || r == '\f' {
+			result = append(result, ' ')
+		} else {
+			result = append(result, r)
+		}
+	}
+	return string(result)
 }
 
 func (c *tabCodec) Decode(io.Reader, any) error {
