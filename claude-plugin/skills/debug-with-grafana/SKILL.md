@@ -255,11 +255,40 @@ grafanactl resources get dashboards -o json | jq '.items[] | select(.metadata.na
 grafanactl resources get dashboards/<dashboard-uid> -o json
 ```
 
+#### Capture a visual snapshot of a relevant dashboard
+
+If a relevant dashboard UID is known, capture a PNG snapshot to visually
+inspect panel layout and current state. This is especially useful when
+diagnosing layout regressions, missing data, or anomalous panel values.
+
+```bash
+# First, discover which template variables the dashboard uses so you can
+# pin them to the values relevant to the incident being debugged
+grafanactl resources get dashboards/<dashboard-uid> -ojson | \
+  jq '.spec.templating.list[] | {name, type, current: .current.value}'
+
+# Capture a full dashboard snapshot with variables matching the incident context
+# (requires grafana-image-renderer plugin on the Grafana instance)
+grafanactl dashboards snapshot <dashboard-uid> --output-dir ./debug-snapshots \
+  --var cluster=<cluster> --var job=<service-name> --window 1h
+
+# Capture the incident time window explicitly
+grafanactl dashboards snapshot <dashboard-uid> --from now-1h --to now \
+  --var cluster=<cluster> --var job=<service-name> --output-dir ./debug-snapshots
+
+# Capture a specific panel (find panel IDs: .spec.panels[].id in the dashboard JSON)
+grafanactl dashboards snapshot <dashboard-uid> --panel <panel-id> \
+  --output-dir ./debug-snapshots
+
+# If stuck with flags: grafanactl dashboards snapshot --help
+```
+
 Cross-reference with metrics and logs:
 - Are there alert rules in a firing or pending state for this service?
 - Do existing dashboards show additional signals (queue depth, DB connections,
   memory pressure)?
 - Do dashboard panel queries reveal which metrics are being monitored?
+- Does the dashboard snapshot show unexpected panel states or missing data?
 
 ### Step 7: Summarize Findings
 

@@ -91,6 +91,7 @@ cmd/grafanactl/
 ├── root/        CLI root (logging, global flags)
 ├── config/      Config management commands (set, use-context, view...)
 ├── resources/   Resource commands (get, list, push, pull, serve...)
+├── dashboards/  Dashboard commands (snapshot via Image Renderer)
 ├── datasources/ Datasource commands (list, get, prometheus, loki)
 ├── query/       Query execution command (PromQL/LogQL with graph output)
 ├── providers/   Provider list command
@@ -114,6 +115,7 @@ internal/
 │   ├── slo/        SLO provider (definitions, reports)
 │   ├── synth/      Synthetic Monitoring provider (checks, probes)
 │   └── alert/      Alert provider (rules, groups — read-only)
+├── dashboards/  Dashboard Image Renderer client (PNG snapshots)
 ├── query/       Datasource query clients
 │   ├── prometheus/  Prometheus HTTP query client
 │   └── loki/        Loki HTTP query client

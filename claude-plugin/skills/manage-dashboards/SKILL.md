@@ -4,10 +4,12 @@ description: >
   Use this skill when the user wants to pull dashboards from Grafana to local
   files, push local dashboard files to Grafana, create a new dashboard from
   scratch, validate dashboard files against the Grafana API schema, promote
-  dashboards across environments (dev, staging, production), or manage Grafana
-  folders and their associated dashboards. Also use this skill when the user
-  asks about editing, deleting, or diffing dashboards, or about the live
-  development server for iterative dashboard authoring.
+  dashboards across environments (dev, staging, production), manage Grafana
+  folders and their associated dashboards, or capture visual snapshots
+  (screenshots/PNG images) of dashboards or individual panels. Also use this
+  skill when the user asks about editing, deleting, or diffing dashboards,
+  about the live development server for iterative dashboard authoring, or
+  wants to render/export a dashboard image.
 ---
 
 # Manage Dashboards
@@ -408,6 +410,97 @@ grafanactl resources push --context "$TARGET_CTX" -p "$WORK_DIR" --dry-run
 
 # Apply
 grafanactl resources push --context "$TARGET_CTX" -p "$WORK_DIR"
+```
+
+---
+
+## Workflow 6: Capture Dashboard Snapshots
+
+Render a Grafana dashboard or individual panel to a PNG image using the Grafana
+Image Renderer. Requires the `grafana-image-renderer` plugin on the Grafana
+instance.
+
+> **If stuck**, run `grafanactl dashboards snapshot --help` for the full flag
+> reference, or `grafanactl dashboards --help` to see available subcommands.
+
+### Step 1: Find the dashboard UID
+
+```bash
+# List all dashboards to find UIDs
+grafanactl resources get dashboards
+
+# Get a specific dashboard by name substring (use -ojson for programmatic access)
+grafanactl resources get dashboards -ojson | jq '.items[] | {uid: .metadata.name, title: .spec.title}'
+```
+
+### Step 2: Discover template variables (if the dashboard uses them)
+
+Most dashboards have template variables (cluster, datasource, job, etc.) that
+control what data is displayed. To render a meaningful snapshot, you should set
+these to the values relevant to the user's context.
+
+```bash
+# Inspect the dashboard's template variables
+grafanactl resources get dashboards/<uid> -ojson | jq '.spec.templating.list[] | {name, type, current: .current.value}'
+```
+
+This shows each variable's name and its current default value. Use `--var` to
+override any of these during rendering.
+
+### Step 3: Render the snapshot
+
+```bash
+# Basic: full dashboard, current directory
+grafanactl dashboards snapshot <uid>
+
+# With output directory
+grafanactl dashboards snapshot <uid> --output-dir ./snapshots
+
+# With template variable overrides (match the dashboard's variable names)
+grafanactl dashboards snapshot <uid> --var cluster=prod --var datasource=grafanacloud-prom
+
+# With time range
+grafanactl dashboards snapshot <uid> --window 6h --var cluster=prod
+grafanactl dashboards snapshot <uid> --from now-1h --to now --tz UTC
+
+# Single panel (find panel IDs from the dashboard JSON: .spec.panels[].id)
+grafanactl dashboards snapshot <uid> --panel 42
+
+# Custom dimensions and theme
+grafanactl dashboards snapshot <uid> --width 1280 --height 720 --theme light
+
+# Multiple dashboards concurrently
+grafanactl dashboards snapshot uid-a uid-b uid-c --output-dir ./snapshots
+```
+
+### Output
+
+**Agent mode** (auto-detected): JSON array to stdout with file paths and metadata:
+
+```json
+[{"uid": "<uid>", "panel_id": null, "file_path": "/abs/path/<uid>.png", "width": 1920, "height": -1, "theme": "dark", "rendered_at": "<RFC3339>"}]
+```
+
+**Human mode**: table with columns UID, Panel, File, Size.
+
+Files are named `{uid}.png` (full dashboard) or `{uid}-panel-{panelId}.png` (single panel).
+
+### Troubleshooting
+
+```bash
+# If rendering fails with 500 or "plugin not found":
+# → The grafana-image-renderer plugin is likely not installed on the Grafana instance
+
+# If the snapshot shows default/wrong variable values:
+# → Inspect variables and pass the right ones with --var
+grafanactl resources get dashboards/<uid> -ojson | jq '.spec.templating.list[] | {name, current: .current.value}'
+
+# If the snapshot is cut off or too small:
+# → Default height is -1 (full page). Override with --height if needed.
+# → For panels, default is 800x600. Override with --width/--height.
+
+# Full flag reference:
+grafanactl dashboards snapshot --help
 ```
 
 ---

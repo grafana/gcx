@@ -710,6 +710,15 @@ Files most important for understanding the codebase. Organized by architectural 
 | `cmd/grafanactl/datasources/command.go` | `datasources` command group (get, list, prometheus, loki subcommands) |
 | `cmd/grafanactl/query/command.go` | `query` command (unified PromQL/LogQL execution with graph output) |
 
+### Dashboard Image Renderer
+
+| File | Purpose |
+|------|---------|
+| `internal/dashboards/renderer.go` | HTTP client for Grafana Image Renderer API (`/render/d/`, `/render/d-solo/`) |
+| `internal/dashboards/types.go` | `SnapshotResult` struct for JSON/table output |
+| `cmd/grafanactl/dashboards/command.go` | `dashboards` command group |
+| `cmd/grafanactl/dashboards/snapshot.go` | `dashboards snapshot` — renders PNG images with kiosk mode, template variable overrides |
+
 ### Terminal Chart Rendering
 
 | File | Purpose |

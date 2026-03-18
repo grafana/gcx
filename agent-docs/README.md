@@ -1,6 +1,6 @@
 # Agent Documentation Index
 
-> Generated: 2026-03-03 | Last updated: 2026-03-11 | Strategy: Standard | Confidence: 93%
+> Generated: 2026-03-03 | Last updated: 2026-03-18 | Strategy: Standard | Confidence: 93%
 >
 > This directory contains high-level architecture documentation for autonomous coding agents.
 > Start here, then navigate to specific docs as needed.

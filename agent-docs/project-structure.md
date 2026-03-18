@@ -10,6 +10,7 @@ grafanactl/
 │       ├── root/             # Root Cobra command, global flags, logging setup
 │       ├── config/           # 'config' subcommand implementations
 │       ├── resources/        # 'resources' subcommand implementations
+│       ├── dashboards/       # 'dashboards' subcommand (snapshot via Image Renderer)
 │       ├── datasources/      # 'datasources' subcommand implementations
 │       ├── dev/              # 'dev' subcommand (import, scaffold)
 │       ├── query/            # 'query' subcommand implementation
@@ -39,6 +40,7 @@ grafanactl/
 │   │       ├── checks/       # Checks status, timeline, CRUD
 │   │       ├── probes/       # Probe listing
 │   │       └── smcfg/        # SM config loader interfaces
+│   ├── dashboards/           # Dashboard Image Renderer client (PNG snapshots)
 │   ├── query/                # Datasource query clients
 │   │   ├── prometheus/       # Prometheus HTTP client (instant + range queries)
 │   │   └── loki/             # Loki HTTP client (log + metric queries)

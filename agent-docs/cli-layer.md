@@ -41,6 +41,22 @@ grafanactl (root)
 │   ├── serve  [DIR]...
 │   └── validate [SELECTOR]...
 │
+├── dashboards               [cmd/grafanactl/dashboards/command.go]
+│   ├── --config             [persistent: inherited from config.Options]
+│   ├── --context            [persistent: inherited from config.Options]
+│   └── snapshot UID...      Render dashboard/panel PNG snapshots via Image Renderer
+│       ├── --panel          Panel ID (single panel render via /render/d-solo/)
+│       ├── --width          Image width (default: 1920 dashboard, 800 panel)
+│       ├── --height         Image height (default: -1/full-page dashboard, 600 panel)
+│       ├── --theme          light|dark (default: dark)
+│       ├── --from/--to      Time range (RFC3339, Unix, or relative)
+│       ├── --window         Time window shorthand (mutually exclusive with --from/--to)
+│       ├── --tz             Timezone
+│       ├── --org-id         Grafana org ID (default: 1)
+│       ├── --output-dir     Output directory (default: .)
+│       ├── --concurrency    Max parallel renders (default: 10)
+│       └── --var            Dashboard template variable overrides (key=value)
+│
 ├── datasources              [cmd/grafanactl/datasources/command.go]
 │   ├── --config             [persistent: inherited from config.Options]
 │   ├── --context            [persistent: inherited from config.Options]
@@ -202,6 +218,11 @@ cmd/grafanactl/
 │   ├── fetch.go             SHARED: remote fetch helper used by get/edit/delete
 │   ├── onerror.go           SHARED: OnErrorMode type + --on-error flag binding
 │   └── editor.go            SHARED: interactive editor (EDITOR env var)
+├── dashboards/
+│   ├── command.go           dashboards group (wires configOpts to subcommands)
+│   ├── snapshot.go          dashboards snapshot — render PNG via Image Renderer API
+│   ├── snapshot_test.go     table-driven Validate() tests
+│   └── export_test.go       test package aliases for unexported types
 ├── datasources/
 │   ├── command.go           datasources group (wires configOpts to subcommands)
 │   ├── list.go              datasources list

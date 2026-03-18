@@ -17,6 +17,7 @@
 * [grafanactl alert](grafanactl_alert.md)	 - Manage Grafana alerting resources.
 * [grafanactl api](grafanactl_api.md)	 - Make raw API requests to Grafana
 * [grafanactl config](grafanactl_config.md)	 - View or manipulate configuration settings
+* [grafanactl dashboards](grafanactl_dashboards.md)	 - Manage Grafana dashboards
 * [grafanactl datasources](grafanactl_datasources.md)	 - Manage Grafana datasources
 * [grafanactl dev](grafanactl_dev.md)	 - Manage Grafana resources as code
 * [grafanactl linter](grafanactl_linter.md)	 - Lint Grafana resources
