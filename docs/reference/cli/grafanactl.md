@@ -21,6 +21,7 @@
 * [grafanactl datasources](grafanactl_datasources.md)	 - Manage Grafana datasources
 * [grafanactl dev](grafanactl_dev.md)	 - Manage Grafana resources as code
 * [grafanactl incidents](grafanactl_incidents.md)	 - Manage Grafana IRM Incident resources.
+* [grafanactl k6](grafanactl_k6.md)	 - Manage K6 Cloud resources (projects, tests, env vars).
 * [grafanactl providers](grafanactl_providers.md)	 - List registered providers
 * [grafanactl resources](grafanactl_resources.md)	 - Manipulate Grafana resources
 * [grafanactl slo](grafanactl_slo.md)	 - Manage Grafana SLO resources.

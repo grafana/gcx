@@ -303,6 +303,20 @@ that only surfaced during smoke testing:
 - Cursor-based pagination: the `contextPayload` field carries the cursor value
   between pages, not a separate cursor parameter.
 
+### Token Exchange Auth (K6)
+
+- K6 uses a **separate API domain** (`api.k6.io`), not the Grafana stack URL.
+- Auth requires a two-step token exchange: AP token → k6 v3 token via
+  `PUT /v3/account/grafana-app/start` with `X-Grafana-Key`, `X-Stack-Id`,
+  `X-Grafana-Service-Token` headers.
+- The stack ID can be parsed from the grafanactl namespace (`stack-{id}`),
+  avoiding the need for a separate GCOM call.
+- The org ID (needed for env vars) comes from the auth response, not config.
+- The `perfsprint` linter enforces `errors.New` over `fmt.Errorf` for strings
+  without format verbs — easy to miss when porting `fmt.Errorf("...")` patterns.
+- The `usestdlibvars` linter enforces `http.StatusCreated` etc. instead of
+  raw `201`/`204`/`404` literals — gcx uses raw numbers everywhere.
+
 ### Response Shape Differences
 
 - Some gcx clients unwrap response envelopes (e.g., `response.Data`) while
@@ -320,7 +334,7 @@ that only surfaced during smoke testing:
 | alert | rules, groups | ✅ existing | — | Read-only, expanding in Phase 2 |
 | oncall | 12 sub-resources | ⬜ planned | — | Largest port, Phase 1.1 |
 | incidents | incidents | ✅ done (2026-03-20) | Claude | IRM plugin API, gRPC-style POST endpoints |
-| k6 | projects, runs, envs | ⬜ planned | — | Multi-tenant auth, Phase 1.3 |
+| k6 | projects, tests, runs, envs | ✅ done (2026-03-20) | Claude | Token exchange auth, separate API domain |
 | fleet | pipelines, collectors, etc. | ⬜ planned | — | Phase 1.4 |
 | kg | datasets, rules, etc. | ⬜ planned | — | Phase 1.5 |
 | ml | jobs, holidays | ⬜ planned | — | Phase 1.6 |
