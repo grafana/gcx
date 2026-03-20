@@ -207,9 +207,50 @@ Minimum test coverage per resource:
 ```bash
 make all                                    # lint + tests + build + docs
 grafanactl providers                        # new provider listed
-grafanactl resources get {alias}            # returns data from real instance
-grafanactl resources get {alias}/{id} -o json   # single resource
 ```
+
+### Step 8: Smoke Test (MANDATORY — run after EACH phase)
+
+Run every command side-by-side with gcx against a real instance. Don't skip
+this — wrong endpoint names, wrapped request bodies, and response shape
+mismatches are invisible in unit tests.
+
+```bash
+# For each command the provider exposes, compare gcx vs grafanactl:
+
+# 1. List — check IDs match
+gcx --context=dev {resource} list --limit 10
+GRAFANACTL_AGENT_MODE=false grafanactl --context=dev {resource} list --limit 10
+# Extract IDs from both, diff — must be identical
+
+# 2. Get — check field values match
+gcx --context=dev {resource} get {id} -o json
+grafanactl --context=dev {resource} get {id} -o json
+# Compare key fields (title, status, etc.) — must match exactly
+# durationSeconds and similar computed fields may differ by seconds
+
+# 3. Adapter path — verify resources pipeline works too
+grafanactl --context=dev resources get {alias}
+grafanactl --context=dev resources get {alias}/{id} -o json
+
+# 4. Ancillary commands — verify each against gcx
+# (severities, activity, roles, etc.)
+
+# 5. Schema + example
+grafanactl --context=dev resources schemas -o json | grep {group}
+grafanactl --context=dev resources examples {alias}
+
+# 6. Output formats — verify table, wide, json, yaml all render
+GRAFANACTL_AGENT_MODE=false grafanactl --context=dev {resource} list -o table
+GRAFANACTL_AGENT_MODE=false grafanactl --context=dev {resource} list -o wide
+grafanactl --context=dev {resource} list -o json
+grafanactl --context=dev {resource} list -o yaml
+```
+
+**Do NOT skip smoke tests.** The incidents port had two wrong endpoint names
+that only surfaced during smoke testing:
+- `SeverityService.GetSeverities` → actually `SeveritiesService.GetOrgSeverities`
+- `ActivityService.QueryActivityItems` → actually `ActivityService.QueryActivity`
 
 ---
 
@@ -245,6 +286,23 @@ grafanactl resources get {alias}/{id} -o json   # single resource
   names to IDs during Create/Update by calling the probe client. This logic
   lives in the adapter's `CreateFn`/`UpdateFn` closures.
 
+### gRPC-style POST APIs (Incidents/IRM)
+
+- The IRM API uses gRPC-style POST endpoints (`IncidentsService.QueryIncidents`,
+  `IncidentsService.GetIncident`, etc.) — all operations are POST with JSON bodies,
+  not REST-style GET/POST/PUT/DELETE. The `doRequest` helper always uses POST.
+- gcx's `GetIncident` fetches all incidents (limit 100) and filters client-side.
+  The actual API has a `GetIncident` endpoint — use it directly for O(1) lookups.
+- The IRM API only supports status updates via `UpdateStatus` — there is no
+  general-purpose PUT/PATCH for incident fields. The adapter's Update method
+  extracts the status field and calls UpdateStatus.
+- `FlexTime` is needed because the IRM API returns empty strings `""` for
+  optional time fields instead of null. The `omitzero` tag (Go 1.24+) replaces
+  `omitempty` for struct-typed fields to satisfy the modernize linter.
+- Delete is not supported — the IRM API has no delete endpoint.
+- Cursor-based pagination: the `contextPayload` field carries the cursor value
+  between pages, not a separate cursor parameter.
+
 ### Response Shape Differences
 
 - Some gcx clients unwrap response envelopes (e.g., `response.Data`) while
@@ -261,7 +319,7 @@ grafanactl resources get {alias}/{id} -o json   # single resource
 | slo | definitions, reports | ✅ existing | — | Reference impl |
 | alert | rules, groups | ✅ existing | — | Read-only, expanding in Phase 2 |
 | oncall | 12 sub-resources | ⬜ planned | — | Largest port, Phase 1.1 |
-| incidents | incidents | ⬜ planned | — | IRM plugin API, Phase 1.2 |
+| incidents | incidents | ✅ done (2026-03-20) | Claude | IRM plugin API, gRPC-style POST endpoints |
 | k6 | projects, runs, envs | ⬜ planned | — | Multi-tenant auth, Phase 1.3 |
 | fleet | pipelines, collectors, etc. | ⬜ planned | — | Phase 1.4 |
 | kg | datasets, rules, etc. | ⬜ planned | — | Phase 1.5 |
@@ -272,6 +330,27 @@ grafanactl resources get {alias}/{id} -o json   # single resource
 | faro | apps | ⬜ planned | — | Phase 1.9 |
 | grafana | annotations, lib panels, etc. | ⬜ planned | — | Phase 3 (non-K8s REST) |
 | iam | permissions, RBAC, SSO, OAuth | ⬜ planned | — | Phase 3-4 |
+
+---
+
+## Tips for Complex Providers
+
+> **Speculative** — written before these providers were ported. Validate
+> and update during the actual port.
+
+**OnCall** (12 sub-resources):
+- Start with `integrations` — simplest, validates the pattern
+- OnCall API URL discovered via GCOM, not configured directly
+- Iterator-based pagination — port the pattern, don't simplify
+
+**K6** (multi-tenant auth):
+- Two auth modes: org-level and stack-level
+- Separate API domain (not Grafana stack URL)
+- Check gcx's `k6/client_envvar_test.go` for auth resolution logic
+
+**Fleet/Alloy** (4 sub-resource types):
+- All share same base URL and auth
+- Single provider, four subpackages
 
 ---
 

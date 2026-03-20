@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
 	"github.com/grafana/grafanactl/internal/format"
 	"github.com/grafana/grafanactl/internal/resources"
+	"github.com/grafana/grafanactl/internal/resources/adapter"
 	"github.com/grafana/grafanactl/internal/resources/discovery"
 	"github.com/grafana/grafanactl/internal/terminal"
 	"github.com/spf13/cobra"
@@ -39,18 +41,20 @@ func listCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	opts := &listOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "schemas",
-		Args:  cobra.NoArgs,
+		Use:   "schemas [RESOURCE_SELECTOR]",
+		Args:  cobra.MaximumNArgs(1),
 		Short: "List available Grafana API resource types",
-		Long:  "List available Grafana API resource types and their schemas.",
+		Long:  "List available Grafana API resource types and their schemas. Optionally filter by a resource selector.",
 		Example: `
 	grafanactl resources schemas
 	grafanactl resources schemas -o wide
 	grafanactl resources schemas -o json
 	grafanactl resources schemas -o yaml
 	grafanactl resources schemas -o json --no-schema
+	grafanactl resources schemas incidents
+	grafanactl resources schemas incidents.v1alpha1.incident.ext.grafana.app -o json
 `,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
 			cfg, err := configOpts.LoadRESTConfig(ctx)
@@ -67,6 +71,32 @@ func listCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			// e.g. APIResourceList, or unstructured.UnstructuredList.
 			// That way we can use the same code for rendering as for `resources get`.
 			res := reg.SupportedResources().Sorted()
+
+			// If a resource selector argument was provided, filter to matching descriptors.
+			if len(args) > 0 {
+				sels, parseErr := resources.ParseSelectors(args)
+				if parseErr != nil {
+					return fmt.Errorf("invalid resource selector: %w", parseErr)
+				}
+				filters, filterErr := reg.MakeFilters(discovery.MakeFiltersOptions{
+					Selectors:            sels,
+					PreferredVersionOnly: true,
+				})
+				if filterErr != nil {
+					return fmt.Errorf("unknown resource %q: %w", args[0], filterErr)
+				}
+				matched := make(map[string]bool, len(filters))
+				for _, f := range filters {
+					matched[f.Descriptor.GroupVersionKind().String()] = true
+				}
+				var filtered resources.Descriptors
+				for _, d := range res {
+					if matched[d.GroupVersionKind().String()] {
+						filtered = append(filtered, d)
+					}
+				}
+				res = filtered
+			}
 
 			// --json ? discovery: enumerate fields of a Descriptor element and exit.
 			if opts.IO.JSONDiscovery {
@@ -153,12 +183,12 @@ func descriptorsToNested(descs resources.Descriptors, schemas map[string]map[str
 		}
 
 		if schemas != nil {
-			s, ok := schemas[gvk]
-			if !ok {
+			schema, hasSchema := resolveSchema(schemas, gvk, d)
+			if !hasSchema {
 				// No schema → unlistable sub-resource; skip entirely.
 				continue
 			}
-			entry["schema"] = s
+			entry["schema"] = schema
 		}
 
 		if groups[group] == nil {
@@ -245,4 +275,23 @@ func sanitizeListCell(v string, noTruncate bool) string {
 
 func (c *tabCodec) Decode(io.Reader, any) error {
 	return errors.New("tab codec does not support decoding")
+}
+
+// resolveSchema looks up a schema for a resource, first from server-fetched
+// schemas (K8s-discovered), then from provider-registered schemas. Returns
+// the schema and true if found, or nil and false if no schema exists.
+func resolveSchema(serverSchemas map[string]map[string]any, gvk string, d resources.Descriptor) (any, bool) {
+	if s, ok := serverSchemas[gvk]; ok {
+		return s, true
+	}
+	// Fall back to provider-registered schema.
+	provSchema := adapter.SchemaForGVK(d.GroupVersionKind())
+	if provSchema == nil {
+		return nil, false
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(provSchema, &parsed); err != nil {
+		return nil, false
+	}
+	return parsed, true
 }

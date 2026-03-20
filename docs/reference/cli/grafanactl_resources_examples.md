@@ -1,36 +1,27 @@
-## grafanactl resources schemas
+## grafanactl resources examples
 
-List available Grafana API resource types
-
-### Synopsis
-
-List available Grafana API resource types and their schemas. Optionally filter by a resource selector.
+Print an example manifest for a resource type
 
 ```
-grafanactl resources schemas [RESOURCE_SELECTOR] [flags]
+grafanactl resources examples RESOURCE [flags]
 ```
 
 ### Examples
 
 ```
 
-	grafanactl resources schemas
-	grafanactl resources schemas -o wide
-	grafanactl resources schemas -o json
-	grafanactl resources schemas -o yaml
-	grafanactl resources schemas -o json --no-schema
-	grafanactl resources schemas incidents
-	grafanactl resources schemas incidents.v1alpha1.incident.ext.grafana.app -o json
+	grafanactl resources examples incidents
+	grafanactl resources examples incidents -o json
+	grafanactl resources examples slo -o yaml
 
 ```
 
 ### Options
 
 ```
-  -h, --help            help for schemas
+  -h, --help            help for examples
       --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-      --no-schema       Skip fetching OpenAPI spec schemas (faster, omits schema info and unlistable resource types)
-  -o, --output string   Output format. One of: json, table, text, wide, yaml (default "text")
+  -o, --output string   Output format. One of: json, yaml (default "yaml")
 ```
 
 ### Options inherited from parent commands

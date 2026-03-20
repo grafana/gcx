@@ -2,6 +2,7 @@ package adapter
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/grafana/grafanactl/internal/resources"
@@ -26,6 +27,8 @@ type Registration struct {
 	Descriptor resources.Descriptor
 	Aliases    []string
 	GVK        schema.GroupVersionKind
+	Schema     json.RawMessage // Optional JSON Schema for this resource type
+	Example    json.RawMessage // Optional example manifest (YAML-compatible JSON)
 }
 
 // registrations holds all adapter registrations collected from providers.
@@ -56,4 +59,24 @@ func RegisterAll(ctx context.Context, reg RegistryAccess) {
 		)
 		reg.RegisterAdapter(r.Factory, r.Descriptor, r.Aliases)
 	}
+}
+
+// SchemaForGVK returns the registered schema for the given GVK, or nil.
+func SchemaForGVK(gvk schema.GroupVersionKind) json.RawMessage {
+	for _, r := range registrations {
+		if r.GVK == gvk && r.Schema != nil {
+			return r.Schema
+		}
+	}
+	return nil
+}
+
+// ExampleForGVK returns the registered example for the given GVK, or nil.
+func ExampleForGVK(gvk schema.GroupVersionKind) json.RawMessage {
+	for _, r := range registrations {
+		if r.GVK == gvk && r.Example != nil {
+			return r.Example
+		}
+	}
+	return nil
 }
