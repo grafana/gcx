@@ -303,6 +303,20 @@ that only surfaced during smoke testing:
 - Cursor-based pagination: the `contextPayload` field carries the cursor value
   between pages, not a separate cursor parameter.
 
+### Plugin Proxy APIs (Knowledge Graph / Asserts)
+
+- KG/Asserts uses the Grafana plugin resource proxy path:
+  `/api/plugins/grafana-asserts-app/resources/asserts/api-server/...`
+- Auth: standard Grafana SA token via rest.Config — no separate token needed.
+  gcx passes `X-Scope-OrgID: 0` but this is not required through the plugin proxy.
+- The API is operational, not CRUD: many query endpoints (POST), config uploads
+  (PUT with `application/x-yaml`), and read endpoints (GET).
+- Rules are the closest to a standard resource (list/get/create/delete) and map
+  well to the ResourceAdapter pipeline. Other sub-resources (datasets, entities,
+  assertions) are best served as provider commands.
+- The command tree is large (~20 subcommands) — use inline closures for each
+  command rather than trying to share RunE builders.
+
 ### Response Shape Differences
 
 - Some gcx clients unwrap response envelopes (e.g., `response.Data`) while
@@ -322,7 +336,7 @@ that only surfaced during smoke testing:
 | incidents | incidents | ✅ done (2026-03-20) | Claude | IRM plugin API, gRPC-style POST endpoints |
 | k6 | projects, runs, envs | ⬜ planned | — | Multi-tenant auth, Phase 1.3 |
 | fleet | pipelines, collectors, etc. | ⬜ planned | — | Phase 1.4 |
-| kg | datasets, rules, etc. | ⬜ planned | — | Phase 1.5 |
+| kg | datasets, rules, entities, assertions, search | ✅ done (2026-03-20) | Claude | Plugin proxy API, 20+ subcommands, rules as ResourceAdapter |
 | ml | jobs, holidays | ⬜ planned | — | Phase 1.6 |
 | scim | users, groups | ⬜ planned | — | Phase 1.7 |
 | gcom | access policies, stacks, etc. | ⬜ planned | — | Phase 1.8 |
