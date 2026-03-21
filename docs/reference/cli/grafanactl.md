@@ -22,6 +22,7 @@
 * [grafanactl dev](grafanactl_dev.md)	 - Manage Grafana resources as code
 * [grafanactl incidents](grafanactl_incidents.md)	 - Manage Grafana IRM Incident resources.
 * [grafanactl kg](grafanactl_kg.md)	 - Manage Grafana Knowledge Graph (Asserts) resources.
+* [grafanactl oncall](grafanactl_oncall.md)	 - Manage Grafana OnCall resources.
 * [grafanactl providers](grafanactl_providers.md)	 - List registered providers
 * [grafanactl resources](grafanactl_resources.md)	 - Manipulate Grafana resources
 * [grafanactl slo](grafanactl_slo.md)	 - Manage Grafana SLO resources.

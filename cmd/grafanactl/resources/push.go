@@ -6,6 +6,7 @@ import (
 
 	cmdconfig "github.com/grafana/grafanactl/cmd/grafanactl/config"
 	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
+	"github.com/grafana/grafanactl/internal/config"
 	"github.com/grafana/grafanactl/internal/format"
 	"github.com/grafana/grafanactl/internal/resources"
 	"github.com/grafana/grafanactl/internal/resources/discovery"
@@ -104,7 +105,7 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 	grafanactl resources push -p ./resources/`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
+			ctx := config.ContextWithName(cmd.Context(), configOpts.Context)
 
 			if err := opts.Validate(); err != nil {
 				return err

@@ -183,7 +183,10 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			ctx := cmd.Context()
+			// Inject the --context flag value into the Go context so that provider
+			// adapter factories (OnCall, Incidents, etc.) can honour it when loading
+			// their own credentials.
+			ctx := config.ContextWithName(cmd.Context(), configOpts.Context)
 
 			// FR-007: --json ? requires a resource selector to know which resource type to introspect.
 			if opts.IO.JSONDiscovery && len(args) == 0 {

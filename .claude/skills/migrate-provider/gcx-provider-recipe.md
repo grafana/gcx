@@ -260,10 +260,11 @@ that only surfaced during smoke testing:
 
 ### Auth
 
-- **OnCall** uses a separate API URL and token, resolved via GCOM stack info.
-  The adapter factory needs to call GCOM to discover the OnCall API URL before
-  constructing the client.
-  <!-- TODO: update after OnCall port -->
+- **OnCall** uses a separate API URL discovered from the IRM plugin settings
+  (`/api/plugins/grafana-irm-app/settings` → `jsonData.onCallApiUrl`). The same
+  Grafana SA token is used, plus an `X-Grafana-Url` header with the stack URL.
+  The config loader checks `GRAFANA_ONCALL_URL` env → provider config → auto-discovery.
+  Three-tier fallback avoids mandatory config for most users.
 
 ### ID Mapping
 
@@ -303,6 +304,19 @@ that only surfaced during smoke testing:
 - Cursor-based pagination: the `contextPayload` field carries the cursor value
   between pages, not a separate cursor parameter.
 
+### Multi-Resource Providers (OnCall pattern)
+
+- For providers with many sub-resource types (OnCall has 12), use a generic
+  `subResourceAdapter` with a `switch` dispatch on `kind` rather than 12 separate
+  adapter files. This keeps the code in one package instead of 12 subpackages.
+- Register all sub-resources under the same API group (`oncall.ext.grafana.app`)
+  with different kinds (Integration, Schedule, AlertGroup, etc.).
+- Use `oncall-*` prefixed aliases to avoid conflicts with core resource types
+  (e.g., `oncall-teams` not `teams` to avoid clashing with K8s-native resources).
+- The `X-Grafana-Url` header must use canonical Go form (`X-Grafana-Url` not
+  `X-Grafana-URL`) or the `canonicalheader` linter will flag it. httptest servers
+  receive the canonical form regardless of how you set it.
+
 ### Plugin Proxy APIs (Knowledge Graph / Asserts)
 
 - KG/Asserts uses the Grafana plugin resource proxy path:
@@ -316,7 +330,6 @@ that only surfaced during smoke testing:
   assertions) are best served as provider commands.
 - The command tree is large (~20 subcommands) — use inline closures for each
   command rather than trying to share RunE builders.
-
 ### Response Shape Differences
 
 - Some gcx clients unwrap response envelopes (e.g., `response.Data`) while
@@ -332,7 +345,7 @@ that only surfaced during smoke testing:
 | synth | checks, probes | ✅ existing | — | Reference impl, refactored to TypedAdapter in Phase 0 |
 | slo | definitions, reports | ✅ existing | — | Reference impl |
 | alert | rules, groups | ✅ existing | — | Read-only, expanding in Phase 2 |
-| oncall | 12 sub-resources | ⬜ planned | — | Largest port, Phase 1.1 |
+| oncall | 12 sub-resources | ✅ done (2026-03-20) | Claude | All 12 sub-resources, iterator pagination, auto-discovery of OnCall URL |
 | incidents | incidents | ✅ done (2026-03-20) | Claude | IRM plugin API, gRPC-style POST endpoints |
 | k6 | projects, runs, envs | ⬜ planned | — | Multi-tenant auth, Phase 1.3 |
 | fleet | pipelines, collectors, etc. | ⬜ planned | — | Phase 1.4 |
