@@ -3,6 +3,29 @@
 Patterns for implementing CRUD redirect commands and ancillary subcommands.
 Reference: `internal/providers/incidents/commands.go` for working examples.
 
+## Output Format Compliance
+
+> Reference: `docs/reference/design-guide.md` Section 1.3 (`[ADOPT]`)
+
+All provider commands must comply with the default format rules:
+
+| Command type | Default format | Required codecs | K8s wrapping for json/yaml |
+|-------------|---------------|-----------------|---------------------------|
+| `list` | `text` | `table` + `wide` | Yes — wrap via `ToResource` |
+| `get` | `text` | `table` (single-row) | Yes — wrap via `ToResource` |
+| `create -f` | Status message | — | Return created resource if `-o` specified |
+| `close` / operational | Status message | — | No |
+
+**Key rules:**
+- `list` and `get` **must** call `ioOpts.DefaultFormat("text")` — do NOT leave `json` as default
+- `list` and `get` **must** register both `table` and `wide` codecs via `RegisterCustomCodec`
+- `table` columns: key identifying fields (ID/UID, name/title, status)
+- `wide` columns: everything in `table` + additional detail (timestamps, labels, counts)
+- json/yaml output wraps through `ToResource` to produce K8s-style envelope (`apiVersion`, `kind`, `metadata`, `spec`)
+- Operational/query commands (activity, severities, etc.) are **exceptions** — they may use different defaults if the data is not a standard resource
+
+---
+
 ## CRUD Redirect Pattern
 
 Thin wrappers calling the client directly — NOT full re-implementations.

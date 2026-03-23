@@ -17,6 +17,31 @@ product that doesn't have a gcx client.
 
 ---
 
+## Prerequisites
+
+Verify these before starting any port:
+
+```bash
+# 1. gcx binary is available
+gcx --version
+
+# 2. Grafana context is configured and working
+grafanactl config view
+grafanactl --context=<ctx> resources schemas | head -5
+
+# 3. gcx uses the same context (or configure separately)
+gcx --context=<ctx> health
+
+# 4. Provider directory structure exists
+# Use /add-dir or create manually:
+mkdir -p internal/providers/{name}/{resource}
+```
+
+If any of these fail, fix them before proceeding. Smoke tests (Step 8) require
+live API access to both gcx and grafanactl against the same Grafana instance.
+
+---
+
 ## Pre-flight Checklist
 
 Before starting a port, answer these questions:
@@ -209,43 +234,75 @@ make all                                    # lint + tests + build + docs
 grafanactl providers                        # new provider listed
 ```
 
-### Step 8: Smoke Test (MANDATORY — run after EACH phase)
+### Step 8: Smoke Test (MANDATORY — STOP GATE)
+
+> **STOP AND REPORT.** Do not declare this step complete until you have run
+> the structured comparisons below and pasted the results into the
+> conversation. The user must see evidence that every command produces
+> equivalent output before the port is considered done.
 
 Run every command side-by-side with gcx against a real instance. Don't skip
 this — wrong endpoint names, wrapped request bodies, and response shape
 mismatches are invisible in unit tests.
 
+#### 8a. Structured Comparison (jq diff template)
+
 ```bash
-# For each command the provider exposes, compare gcx vs grafanactl:
+CTX=dev  # adjust to your context
 
-# 1. List — check IDs match
-gcx --context=dev {resource} list --limit 10
-GRAFANACTL_AGENT_MODE=false grafanactl --context=dev {resource} list --limit 10
-# Extract IDs from both, diff — must be identical
+# --- List: compare resource IDs ---
+GCX_IDS=$(gcx --context=$CTX {resource} list -o json | jq -r '.[].id // .[].uid' | sort)
+GCTL_IDS=$(grafanactl --context=$CTX {resource} list -o json | jq -r '.items[].metadata.name' | sort)
+echo "=== List ID diff ==="
+diff <(echo "$GCX_IDS") <(echo "$GCTL_IDS") && echo "MATCH" || echo "MISMATCH"
 
-# 2. Get — check field values match
-gcx --context=dev {resource} get {id} -o json
-grafanactl --context=dev {resource} get {id} -o json
-# Compare key fields (title, status, etc.) — must match exactly
-# durationSeconds and similar computed fields may differ by seconds
+# --- Get: compare key fields ---
+ID="<pick-an-id-from-list>"
+gcx --context=$CTX {resource} get $ID -o json | jq '{title, status, labels}' > /tmp/gcx_get.json
+grafanactl --context=$CTX {resource} get $ID -o json \
+  | jq '{title: .spec.title, status: .spec.status, labels: .metadata.labels}' > /tmp/gctl_get.json
+echo "=== Get field diff ==="
+diff /tmp/gcx_get.json /tmp/gctl_get.json && echo "MATCH" || echo "MISMATCH"
 
-# 3. Adapter path — verify resources pipeline works too
-grafanactl --context=dev resources get {alias}
-grafanactl --context=dev resources get {alias}/{id} -o json
+# --- Adapter path ---
+echo "=== Adapter path ==="
+grafanactl --context=$CTX resources get {alias} > /dev/null 2>&1 && echo "resources get: OK" || echo "resources get: FAIL"
+grafanactl --context=$CTX resources get {alias}/$ID -o json > /dev/null 2>&1 && echo "resources get/id: OK" || echo "resources get/id: FAIL"
 
-# 4. Ancillary commands — verify each against gcx
-# (severities, activity, roles, etc.)
+# --- Ancillary commands (repeat per ancillary) ---
+echo "=== Ancillary: {subcommand} ==="
+gcx --context=$CTX {resource} {subcommand} -o json | jq length
+grafanactl --context=$CTX {resource} {subcommand} -o json | jq length
 
-# 5. Schema + example
-grafanactl --context=dev resources schemas -o json | grep {group}
-grafanactl --context=dev resources examples {alias}
+# --- Schema + example ---
+echo "=== Schema ==="
+grafanactl --context=$CTX resources schemas -o json | jq '.[] | select(.group | test("{group}"))' | head -5
+echo "=== Example ==="
+grafanactl --context=$CTX resources examples {alias} | head -10
 
-# 6. Output formats — verify table, wide, json, yaml all render
-GRAFANACTL_AGENT_MODE=false grafanactl --context=dev {resource} list -o table
-GRAFANACTL_AGENT_MODE=false grafanactl --context=dev {resource} list -o wide
-grafanactl --context=dev {resource} list -o json
-grafanactl --context=dev {resource} list -o yaml
+# --- Output format check ---
+echo "=== Output formats ==="
+for fmt in table wide json yaml; do
+  GRAFANACTL_AGENT_MODE=false grafanactl --context=$CTX {resource} list -o $fmt > /dev/null 2>&1 \
+    && echo "$fmt: OK" || echo "$fmt: FAIL"
+done
 ```
+
+#### 8b. Paste Results
+
+Copy the output from 8a into the conversation. For each comparison:
+
+| Check | Expected | Action if fails |
+|-------|----------|-----------------|
+| List ID diff | `MATCH` | Fix ListFn or adapter NameFn |
+| Get field diff | `MATCH` (computed fields like `durationSeconds` may differ by seconds) | Fix types or ToResource mapping |
+| Adapter path | `OK` | Fix resource_adapter registration |
+| Ancillary counts | Equal | Fix endpoint name or response parsing |
+| Schema/example | Non-empty | Fix register.go |
+| Output formats | All `OK` | Fix codec registration |
+
+> **STOP.** Do not proceed to Step 9 until all checks pass or discrepancies
+> are explicitly justified (e.g., "durationSeconds differs by 2s — acceptable").
 
 **Do NOT skip smoke tests.** The incidents port had two wrong endpoint names
 that only surfaced during smoke testing:
