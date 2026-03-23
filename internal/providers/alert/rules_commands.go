@@ -14,13 +14,13 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// RESTConfigLoader can load a NamespacedRESTConfig from the active context.
-type RESTConfigLoader interface {
-	LoadRESTConfig(ctx context.Context) (config.NamespacedRESTConfig, error)
+// GrafanaConfigLoader can load a NamespacedRESTConfig from the active context.
+type GrafanaConfigLoader interface {
+	LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error)
 }
 
 // rulesCommands returns the rules command group.
-func rulesCommands(loader RESTConfigLoader) *cobra.Command {
+func rulesCommands(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rules",
 		Short: "Manage alert rules.",
@@ -49,7 +49,7 @@ func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.State, "state", "", "Filter by rule state (firing, pending, inactive)")
 }
 
-func newRulesListCommand(loader RESTConfigLoader) *cobra.Command {
+func newRulesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &rulesListOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -67,7 +67,7 @@ func newRulesListCommand(loader RESTConfigLoader) *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			restCfg, err := loader.LoadRESTConfig(ctx)
+			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
@@ -191,7 +191,7 @@ func (o *rulesGetOpts) setup(flags *pflag.FlagSet) {
 }
 
 //nolint:dupl // Similar structure to groups get command is intentional
-func newRulesGetCommand(loader RESTConfigLoader) *cobra.Command {
+func newRulesGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &rulesGetOpts{}
 	cmd := &cobra.Command{
 		Use:   "get UID",
@@ -205,7 +205,7 @@ func newRulesGetCommand(loader RESTConfigLoader) *cobra.Command {
 			ctx := cmd.Context()
 			uid := args[0]
 
-			restCfg, err := loader.LoadRESTConfig(ctx)
+			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}

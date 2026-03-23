@@ -35,7 +35,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	flags.IntVar(&o.Limit, "limit", 100, "Maximum number of incidents to return")
 }
 
-func newListCommand(loader RESTConfigLoader) *cobra.Command {
+func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &listOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -47,7 +47,7 @@ func newListCommand(loader RESTConfigLoader) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			restCfg, err := loader.LoadRESTConfig(ctx)
+			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
@@ -158,7 +158,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newGetCommand(loader RESTConfigLoader) *cobra.Command {
+func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
 		Use:   "get <id>",
@@ -172,7 +172,7 @@ func newGetCommand(loader RESTConfigLoader) *cobra.Command {
 			ctx := cmd.Context()
 			id := args[0]
 
-			restCfg, err := loader.LoadRESTConfig(ctx)
+			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
@@ -215,7 +215,7 @@ func (o *createOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the incident manifest (use - for stdin)")
 }
 
-func newCreateCommand(loader RESTConfigLoader) *cobra.Command {
+func newCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &createOpts{}
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -230,7 +230,7 @@ func newCreateCommand(loader RESTConfigLoader) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			restCfg, err := loader.LoadRESTConfig(ctx)
+			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
@@ -293,10 +293,10 @@ func newCreateCommand(loader RESTConfigLoader) *cobra.Command {
 // ---------------------------------------------------------------------------
 
 type closeOpts struct {
-	loader RESTConfigLoader
+	loader GrafanaConfigLoader
 }
 
-func newCloseCommand(loader RESTConfigLoader) *cobra.Command {
+func newCloseCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &closeOpts{loader: loader}
 	cmd := &cobra.Command{
 		Use:   "close <id>",
@@ -306,7 +306,7 @@ func newCloseCommand(loader RESTConfigLoader) *cobra.Command {
 			ctx := cmd.Context()
 			id := args[0]
 
-			restCfg, err := opts.loader.LoadRESTConfig(ctx)
+			restCfg, err := opts.loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
@@ -333,10 +333,10 @@ func newCloseCommand(loader RESTConfigLoader) *cobra.Command {
 // ---------------------------------------------------------------------------
 
 type openOpts struct {
-	loader RESTConfigLoader
+	loader GrafanaConfigLoader
 }
 
-func newOpenCommand(loader RESTConfigLoader) *cobra.Command {
+func newOpenCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &openOpts{loader: loader}
 	cmd := &cobra.Command{
 		Use:   "open <id>",
@@ -346,7 +346,7 @@ func newOpenCommand(loader RESTConfigLoader) *cobra.Command {
 			ctx := cmd.Context()
 			id := args[0]
 
-			restCfg, err := opts.loader.LoadRESTConfig(ctx)
+			restCfg, err := opts.loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
@@ -369,7 +369,7 @@ func newOpenCommand(loader RESTConfigLoader) *cobra.Command {
 // activity commands
 // ---------------------------------------------------------------------------
 
-func newActivityCommand(loader RESTConfigLoader) *cobra.Command {
+func newActivityCommand(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "activity",
 		Short: "Manage incident activity timeline.",
@@ -393,7 +393,7 @@ func (o *activityListOpts) setup(flags *pflag.FlagSet) {
 	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of activity items to return")
 }
 
-func newActivityListCommand(loader RESTConfigLoader) *cobra.Command {
+func newActivityListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &activityListOpts{}
 	cmd := &cobra.Command{
 		Use:   "list <incident-id>",
@@ -407,7 +407,7 @@ func newActivityListCommand(loader RESTConfigLoader) *cobra.Command {
 			ctx := cmd.Context()
 			incidentID := args[0]
 
-			restCfg, err := loader.LoadRESTConfig(ctx)
+			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
@@ -491,7 +491,7 @@ func (o *activityAddOpts) Validate() error {
 	return nil
 }
 
-func newActivityAddCommand(loader RESTConfigLoader) *cobra.Command {
+func newActivityAddCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &activityAddOpts{}
 	cmd := &cobra.Command{
 		Use:   "add <incident-id>",
@@ -505,7 +505,7 @@ func newActivityAddCommand(loader RESTConfigLoader) *cobra.Command {
 			ctx := cmd.Context()
 			incidentID := args[0]
 
-			restCfg, err := loader.LoadRESTConfig(ctx)
+			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
@@ -531,7 +531,7 @@ func newActivityAddCommand(loader RESTConfigLoader) *cobra.Command {
 // severities commands
 // ---------------------------------------------------------------------------
 
-func newSeveritiesCommand(loader RESTConfigLoader) *cobra.Command {
+func newSeveritiesCommand(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "severities",
 		Short:   "Manage incident severity levels.",
@@ -551,7 +551,7 @@ func (o *severitiesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newSeveritiesListCommand(loader RESTConfigLoader) *cobra.Command {
+func newSeveritiesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &severitiesListOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -563,7 +563,7 @@ func newSeveritiesListCommand(loader RESTConfigLoader) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			restCfg, err := loader.LoadRESTConfig(ctx)
+			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}

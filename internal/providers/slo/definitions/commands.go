@@ -20,13 +20,13 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// RESTConfigLoader can load a NamespacedRESTConfig from the active context.
-type RESTConfigLoader interface {
-	LoadRESTConfig(ctx context.Context) (config.NamespacedRESTConfig, error)
+// GrafanaConfigLoader can load a NamespacedRESTConfig from the active context.
+type GrafanaConfigLoader interface {
+	LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error)
 }
 
 // Commands returns the definitions command group with CRUD subcommands.
-func Commands(loader RESTConfigLoader) *cobra.Command {
+func Commands(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "definitions",
 		Short:   "Manage SLO definitions.",
@@ -59,7 +59,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newListCommand(loader RESTConfigLoader) *cobra.Command {
+func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &listOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -71,7 +71,7 @@ func newListCommand(loader RESTConfigLoader) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			restCfg, err := loader.LoadRESTConfig(ctx)
+			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
@@ -174,7 +174,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newGetCommand(loader RESTConfigLoader) *cobra.Command {
+func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
 		Use:   "get UUID",
@@ -188,7 +188,7 @@ func newGetCommand(loader RESTConfigLoader) *cobra.Command {
 			ctx := cmd.Context()
 			uuid := args[0]
 
-			restCfg, err := loader.LoadRESTConfig(ctx)
+			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
@@ -228,7 +228,7 @@ func (o *pullOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.OutputDir, "output-dir", "d", ".", "Directory to write SLO definition files to")
 }
 
-func newPullCommand(loader RESTConfigLoader) *cobra.Command {
+func newPullCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &pullOpts{}
 	cmd := &cobra.Command{
 		Use:   "pull",
@@ -236,7 +236,7 @@ func newPullCommand(loader RESTConfigLoader) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			restCfg, err := loader.LoadRESTConfig(ctx)
+			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
@@ -298,7 +298,7 @@ func (o *pushOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Preview changes without making them")
 }
 
-func newPushCommand(loader RESTConfigLoader) *cobra.Command {
+func newPushCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &pushOpts{}
 	cmd := &cobra.Command{
 		Use:   "push FILE...",
@@ -307,7 +307,7 @@ func newPushCommand(loader RESTConfigLoader) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			restCfg, err := loader.LoadRESTConfig(ctx)
+			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
@@ -408,7 +408,7 @@ func (o *deleteOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVarP(&o.Force, "force", "f", false, "Skip confirmation prompt")
 }
 
-func newDeleteCommand(loader RESTConfigLoader) *cobra.Command {
+func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &deleteOpts{}
 	cmd := &cobra.Command{
 		Use:   "delete UUID...",
@@ -432,7 +432,7 @@ func newDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 				}
 			}
 
-			restCfg, err := loader.LoadRESTConfig(ctx)
+			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}

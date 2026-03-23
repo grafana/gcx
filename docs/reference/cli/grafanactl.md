@@ -20,6 +20,7 @@
 * [grafanactl dashboards](grafanactl_dashboards.md)	 - Manage Grafana dashboards
 * [grafanactl datasources](grafanactl_datasources.md)	 - Manage Grafana datasources
 * [grafanactl dev](grafanactl_dev.md)	 - Manage Grafana resources as code
+* [grafanactl fleet](grafanactl_fleet.md)	 - Manage Grafana Fleet Management resources.
 * [grafanactl incidents](grafanactl_incidents.md)	 - Manage Grafana IRM Incident resources.
 * [grafanactl kg](grafanactl_kg.md)	 - Manage Grafana Knowledge Graph (Asserts) resources.
 * [grafanactl oncall](grafanactl_oncall.md)	 - Manage Grafana OnCall resources.

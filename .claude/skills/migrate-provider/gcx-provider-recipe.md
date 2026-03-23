@@ -336,6 +336,18 @@ that only surfaced during smoke testing:
   others return the raw response. Check the gcx client carefully — the types
   you port must match what the API actually returns, not what gcx exposes.
 
+### Separate API URLs (Fleet, OnCall)
+
+- Fleet Management uses a separate API URL, not the Grafana instance URL.
+  Use `ConfigKeys` with `url`, `instance-id`, `token` for provider config.
+  The configLoader pattern from synth (`LoadFleetConfig` vs synth's `LoadSMConfig`)
+  works well — extract credentials from `providers["fleet"]` config map + env vars.
+- Fleet uses basic auth (`instance-id:token`) when instance-id is set,
+  otherwise Bearer token. The `NewClient(url, instanceID, token, useBasicAuth)` pattern
+  handles both modes via the `useBasicAuth` flag.
+- Discovery and instrumentation commands need additional context (prom cluster/instance IDs)
+  that currently require GCOM stack info — not ported yet, deferred to GCOM provider.
+
 ---
 
 ## Provider Status Tracker
@@ -348,7 +360,7 @@ that only surfaced during smoke testing:
 | oncall | 12 sub-resources | ✅ done (2026-03-20) | Claude | All 12 sub-resources, iterator pagination, auto-discovery of OnCall URL |
 | incidents | incidents | ✅ done (2026-03-20) | Claude | IRM plugin API, gRPC-style POST endpoints |
 | k6 | projects, runs, envs | ⬜ planned | — | Multi-tenant auth, Phase 1.3 |
-| fleet | pipelines, collectors, etc. | ⬜ planned | — | Phase 1.4 |
+| fleet | pipelines, collectors, tenant | ✅ done (2026-03-20) | Claude | gRPC/Connect API, separate URL + basic auth, 3 resource types |
 | kg | datasets, rules, entities, assertions, search | ✅ done (2026-03-20) | Claude | Plugin proxy API, 20+ subcommands, rules as ResourceAdapter |
 | ml | jobs, holidays | ⬜ planned | — | Phase 1.6 |
 | scim | users, groups | ⬜ planned | — | Phase 1.7 |

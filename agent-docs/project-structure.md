@@ -20,6 +20,7 @@ grafanactl/
 │
 ├── internal/                 # All non-public packages (Go enforced)
 │   ├── agent/                # Agent-mode detection (env vars + --agent flag)
+│   ├── cloud/                # Grafana Cloud stack discovery via GCOM API
 │   ├── config/               # Config loading, context management, auth types
 │   │   └── testdata/         # YAML fixtures for config unit tests
 │   ├── format/               # JSON/YAML codec, format auto-detection
@@ -33,6 +34,8 @@ grafanactl/
 │   ├── providers/            # Provider plugin system
 │   │   ├── configloader.go   # Shared ConfigLoader for all providers
 │   │   ├── alert/            # Alert provider (rules and groups)
+│   │   ├── fleet/            # Fleet Management provider (pipelines, collectors)
+│   │   ├── incidents/        # IRM Incidents provider
 │   │   ├── slo/              # SLO provider implementation
 │   │   │   ├── definitions/  # SLO definitions and status queries
 │   │   │   └── reports/      # SLO reports

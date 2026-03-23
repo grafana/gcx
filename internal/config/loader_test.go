@@ -8,6 +8,7 @@ import (
 	"github.com/adrg/xdg"
 	"github.com/grafana/grafanactl/internal/config"
 	"github.com/grafana/grafanactl/internal/testutils"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -210,4 +211,54 @@ func TestWrite(t *testing.T) {
 	req.NoError(err)
 
 	req.FileExists(configFile)
+}
+
+func TestDiscoverSources(t *testing.T) {
+	systemDir := t.TempDir()
+	userDir := t.TempDir()
+	localDir := t.TempDir()
+
+	// Write config files.
+	systemFile := filepath.Join(systemDir, "grafanactl", "config.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(systemFile), 0o755))
+	require.NoError(t, os.WriteFile(systemFile, []byte("contexts:\n  sys: {}\ncurrent-context: sys\n"), 0o600))
+
+	userFile := filepath.Join(userDir, "grafanactl", "config.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(userFile), 0o755))
+	require.NoError(t, os.WriteFile(userFile, []byte("contexts:\n  usr: {}\ncurrent-context: usr\n"), 0o600))
+
+	localFile := filepath.Join(localDir, ".grafanactl.yaml")
+	require.NoError(t, os.WriteFile(localFile, []byte("contexts:\n  lcl: {}\n"), 0o600))
+
+	sources, err := config.DiscoverSources(
+		config.WithSystemDir(systemDir),
+		config.WithUserDir(userDir),
+		config.WithWorkDir(localDir),
+	)
+	require.NoError(t, err)
+
+	require.Len(t, sources, 3)
+	assert.Equal(t, "system", sources[0].Type)
+	assert.Equal(t, "user", sources[1].Type)
+	assert.Equal(t, "local", sources[2].Type)
+	assert.Equal(t, systemFile, sources[0].Path)
+	assert.Equal(t, userFile, sources[1].Path)
+	assert.Equal(t, localFile, sources[2].Path)
+}
+
+func TestDiscoverSources_SkipsMissing(t *testing.T) {
+	userDir := t.TempDir()
+	userFile := filepath.Join(userDir, "grafanactl", "config.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(userFile), 0o755))
+	require.NoError(t, os.WriteFile(userFile, []byte("contexts:\n  usr: {}\ncurrent-context: usr\n"), 0o600))
+
+	sources, err := config.DiscoverSources(
+		config.WithSystemDir(t.TempDir()), // empty, no config
+		config.WithUserDir(userDir),
+		config.WithWorkDir(t.TempDir()), // empty, no .grafanactl.yaml
+	)
+	require.NoError(t, err)
+
+	require.Len(t, sources, 1)
+	assert.Equal(t, "user", sources[0].Type)
 }

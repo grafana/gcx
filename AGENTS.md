@@ -103,6 +103,7 @@ cmd/grafanactl/
 
 internal/
 ├── config/      Config types, loader, editor, rest.Config builder, stack-id discovery, context name helpers
+├── cloud/       GCOM HTTP client for Grafana Cloud stack discovery
 ├── resources/
 │   ├── *.go     Core types: Resource, Selector, Filter, Descriptor, Resources collection
 │   ├── adapter/    ResourceAdapter interface, Factory, ResourceClientRouter, self-registration

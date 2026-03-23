@@ -13,7 +13,7 @@ import (
 )
 
 // groupsCommands returns the groups command group.
-func groupsCommands(loader RESTConfigLoader) *cobra.Command {
+func groupsCommands(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "groups",
 		Short: "Manage alert rule groups.",
@@ -36,7 +36,7 @@ func (o *groupsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newGroupsListCommand(loader RESTConfigLoader) *cobra.Command {
+func newGroupsListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &groupsListOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -47,7 +47,7 @@ func newGroupsListCommand(loader RESTConfigLoader) *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			restCfg, err := loader.LoadRESTConfig(ctx)
+			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
@@ -111,7 +111,7 @@ func (o *groupsGetOpts) setup(flags *pflag.FlagSet) {
 }
 
 //nolint:dupl // Similar structure to rules get command is intentional
-func newGroupsGetCommand(loader RESTConfigLoader) *cobra.Command {
+func newGroupsGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &groupsGetOpts{}
 	cmd := &cobra.Command{
 		Use:   "get NAME",
@@ -125,7 +125,7 @@ func newGroupsGetCommand(loader RESTConfigLoader) *cobra.Command {
 			ctx := cmd.Context()
 			name := args[0]
 
-			restCfg, err := loader.LoadRESTConfig(ctx)
+			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
@@ -191,7 +191,7 @@ func (o *groupsStatusOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newGroupsStatusCommand(loader RESTConfigLoader) *cobra.Command {
+func newGroupsStatusCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &groupsStatusOpts{}
 	cmd := &cobra.Command{
 		Use:   "status [NAME]",
@@ -203,7 +203,7 @@ func newGroupsStatusCommand(loader RESTConfigLoader) *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			restCfg, err := loader.LoadRESTConfig(ctx)
+			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}

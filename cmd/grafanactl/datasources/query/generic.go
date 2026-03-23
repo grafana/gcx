@@ -56,7 +56,7 @@ that do not have a dedicated subcommand.`,
 			}
 			dsType := normalizeKind(rawType)
 
-			cfg, err := configOpts.LoadRESTConfig(ctx)
+			cfg, err := configOpts.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}

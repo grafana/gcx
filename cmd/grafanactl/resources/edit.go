@@ -6,7 +6,6 @@ import (
 
 	cmdconfig "github.com/grafana/grafanactl/cmd/grafanactl/config"
 	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
-	"github.com/grafana/grafanactl/internal/config"
 	"github.com/grafana/grafanactl/internal/format"
 	"github.com/grafana/grafanactl/internal/resources"
 	"github.com/grafana/grafanactl/internal/resources/local"
@@ -59,10 +58,10 @@ The edition will be cancelled if no changes are written to the file or if the fi
 	EDITOR=nvim grafanactl resources dashboard/foo
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := config.ContextWithName(cmd.Context(), configOpts.Context)
+			ctx := cmd.Context()
 			edit := editorFromEnv()
 
-			cfg, err := configOpts.LoadRESTConfig(ctx)
+			cfg, err := configOpts.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}

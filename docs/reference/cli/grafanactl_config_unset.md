@@ -21,12 +21,16 @@ grafanactl config unset PROPERTY_NAME [flags]
 
 	# Unset the "insecure-skip-tls-verify" flag in the "dev-instance" context
 	grafanactl config unset contexts.dev-instance.grafana.insecure-skip-tls-verify
+
+	# Unset a value in the local config layer
+	grafanactl config unset --file local contexts.prod.cloud.token
 ```
 
 ### Options
 
 ```
-  -h, --help   help for unset
+      --file string   Config layer to write to (system, user, local)
+  -h, --help          help for unset
 ```
 
 ### Options inherited from parent commands

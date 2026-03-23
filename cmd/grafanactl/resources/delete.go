@@ -88,7 +88,7 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	grafanactl resources delete rules/my-rule-uuid
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := config.ContextWithName(cmd.Context(), configOpts.Context)
+			ctx := cmd.Context()
 
 			if err := opts.Validate(args); err != nil {
 				return err
@@ -105,7 +105,7 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				opts.Force = true
 			}
 
-			cfg, err := configOpts.LoadRESTConfig(ctx)
+			cfg, err := configOpts.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}

@@ -181,7 +181,7 @@ independently. See `internal/providers/configloader.go` for the reference implem
 loader := &providers.ConfigLoader{}
 loader.BindFlags(sloCmd.PersistentFlags())  // --config, --context flags
 
-func (l *ConfigLoader) LoadRESTConfig(ctx context.Context) (config.NamespacedRESTConfig, error) {
+func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error) {
     // Applies env vars (GRAFANA_TOKEN, GRAFANA_PROVIDER_*), context flag,
     // and validates. See internal/providers/configloader.go for the full implementation.
 }
@@ -354,7 +354,7 @@ cobra.Execute()
             │       Checks flag constraints (paths non-empty, concurrency > 0, etc.)
             │       Returns error immediately if invalid — no I/O performed yet.
             │
-            ├─ 2. configOpts.LoadRESTConfig(ctx)
+            ├─ 2. configOpts.LoadGrafanaConfig(ctx)
             │       Loads config file (--config flag or XDG standard location).
             │       Applies env var overrides (GRAFANA_SERVER, GRAFANA_TOKEN, ...).
             │       Applies --context override if set.
@@ -645,10 +645,10 @@ config.Options
 ├── BindFlags(flags)         — registers --config, --context flags
 ├── loadConfigTolerant(ctx)  — loads without full validation (config subcommands)
 ├── LoadConfig(ctx)          — loads + validates context + credentials
-└── LoadRESTConfig(ctx)      — LoadConfig + constructs NamespacedRESTConfig
+└── LoadGrafanaConfig(ctx)   — LoadConfig + constructs NamespacedRESTConfig
 ```
 
-`resources.Command()` creates one `configOpts` instance, binds it to persistent flags on the group, then passes it by pointer into every subcommand constructor. Subcommands call `configOpts.LoadRESTConfig(ctx)` at execution time (not construction time), ensuring the flag values are already parsed.
+`resources.Command()` creates one `configOpts` instance, binds it to persistent flags on the group, then passes it by pointer into every subcommand constructor. Subcommands call `configOpts.LoadGrafanaConfig(ctx)` at execution time (not construction time), ensuring the flag values are already parsed.
 
 ---
 
@@ -707,7 +707,7 @@ func myCmd(configOpts *cmdconfig.Options) *cobra.Command {
                 return err
             }
 
-            cfg, err := configOpts.LoadRESTConfig(ctx)
+            cfg, err := configOpts.LoadGrafanaConfig(ctx)
             if err != nil {
                 return err
             }
@@ -747,7 +747,7 @@ cmd.AddCommand(myCmd(configOpts))
 | Rule | Location |
 |---|---|
 | `opts.Validate()` is the FIRST call in `RunE` | All resource commands |
-| `configOpts.LoadRESTConfig` is called in `RunE`, not at construction | All resource commands |
+| `configOpts.LoadGrafanaConfig` is called in `RunE`, not at construction | All resource commands |
 | `--config` and `--context` are persistent on the group, not per-subcommand | `resources/command.go`, `config/command.go` |
 | All errors bubble up through `RunE` return value; never `os.Exit` in commands | All commands |
 | Status messages go to `cmd.OutOrStdout()`, not `os.Stdout` directly | All commands |

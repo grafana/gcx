@@ -183,17 +183,14 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			// Inject the --context flag value into the Go context so that provider
-			// adapter factories (OnCall, Incidents, etc.) can honour it when loading
-			// their own credentials.
-			ctx := config.ContextWithName(cmd.Context(), configOpts.Context)
+			ctx := cmd.Context()
 
 			// FR-007: --json ? requires a resource selector to know which resource type to introspect.
 			if opts.IO.JSONDiscovery && len(args) == 0 {
 				return errors.New("--json ? requires a resource selector argument (e.g. grafanactl resources get dashboards --json ?)")
 			}
 
-			cfg, err := configOpts.LoadRESTConfig(ctx)
+			cfg, err := configOpts.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}

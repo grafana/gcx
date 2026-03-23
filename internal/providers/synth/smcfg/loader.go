@@ -12,9 +12,9 @@ type Loader interface {
 	LoadSMConfig(ctx context.Context) (baseURL, token, namespace string, err error)
 }
 
-// RESTConfigLoader can load a Grafana REST config for Prometheus queries.
-type RESTConfigLoader interface {
-	LoadRESTConfig(ctx context.Context) (config.NamespacedRESTConfig, error)
+// GrafanaConfigLoader can load a Grafana REST config for Prometheus queries.
+type GrafanaConfigLoader interface {
+	LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error)
 }
 
 // ConfigLoader can load the full config for datasource discovery.
@@ -31,7 +31,7 @@ type DatasourceUIDSaver interface {
 // Used by status/timeline commands that need SM API + Prometheus + datasource discovery.
 type StatusLoader interface {
 	Loader
-	RESTConfigLoader
+	GrafanaConfigLoader
 	ConfigLoader
 	DatasourceUIDSaver
 }

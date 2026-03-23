@@ -58,7 +58,7 @@ EXPR is the label selector (e.g., '{service_name="frontend"}').`,
 				return err
 			}
 
-			cfg, err := configOpts.LoadRESTConfig(ctx)
+			cfg, err := configOpts.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}

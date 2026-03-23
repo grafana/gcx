@@ -171,7 +171,7 @@ for each check. Requires a Prometheus datasource containing SM metrics.`,
 
 			initG.Go(func() error {
 				var err error
-				restCfg, err = loader.LoadRESTConfig(initCtx)
+				restCfg, err = loader.LoadGrafanaConfig(initCtx)
 				return err
 			})
 
@@ -330,7 +330,7 @@ Requires a Prometheus datasource containing SM metrics.`,
 			}
 
 			// Load REST config and create Prometheus client.
-			restCfg, err := loader.LoadRESTConfig(ctx)
+			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}

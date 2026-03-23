@@ -61,14 +61,14 @@ func TestFSWriter_Write_groupedByKind(t *testing.T) {
 	writer := local.FSWriter{
 		Path:    outputDir,
 		Encoder: format.NewJSONCodec(),
-		Namer:   local.GroupResourcesByKind("json"),
+		Namer:   local.GroupResourcesByKind("json", nil),
 	}
 
 	err := writer.Write(t.Context(), testResources())
 	req.NoError(err)
 
-	req.FileExists(filepath.Join(outputDir, "Folder.v0alpha1.folder.grafana.app", "folder-uid.json"))
-	req.FileExists(filepath.Join(outputDir, "ServiceAccount.v0alpha1.iam.grafana.app", "sa-uid.json"))
+	req.FileExists(filepath.Join(outputDir, "folders.v0alpha1.folder.grafana.app", "folder-uid.json"))
+	req.FileExists(filepath.Join(outputDir, "serviceaccounts.v0alpha1.iam.grafana.app", "sa-uid.json"))
 }
 
 func TestFSWriter_Write_doesNothingWithNoResources(t *testing.T) {

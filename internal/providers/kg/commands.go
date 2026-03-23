@@ -213,7 +213,7 @@ func newSetupCommand(loader RESTConfigLoader) *cobra.Command {
 		Use:   "setup",
 		Short: "Initialize the Knowledge Graph plugin.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -235,7 +235,7 @@ func newEnableCommand(loader RESTConfigLoader) *cobra.Command {
 		Use:   "enable",
 		Short: "Enable the Knowledge Graph feature.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -261,7 +261,7 @@ func newStatusCommand(loader RESTConfigLoader) *cobra.Command {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -314,7 +314,7 @@ func newDatasetsCommand(loader RESTConfigLoader) *cobra.Command {
 			if err := listOpts.IO.Validate(); err != nil {
 				return err
 			}
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -345,7 +345,7 @@ func newDatasetsCommand(loader RESTConfigLoader) *cobra.Command {
 			if err := yaml.Unmarshal(data, &config); err != nil { //nolint:musttag
 				return fmt.Errorf("invalid YAML: %w", err)
 			}
-			restCfg, err := loader.LoadRESTConfig(cmd.Context())
+			restCfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -419,7 +419,7 @@ func newVendorsCommand(loader RESTConfigLoader) *cobra.Command {
 			if err := listOpts.IO.Validate(); err != nil {
 				return err
 			}
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -467,7 +467,7 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err := rulesListOpts.IO.Validate(); err != nil {
 				return err
 			}
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -496,7 +496,7 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err := getOpts.IO.Validate(); err != nil {
 				return err
 			}
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -522,7 +522,7 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to read file: %w", err)
 			}
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -544,7 +544,7 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 		Use:   "delete",
 		Short: "Delete all Knowledge Graph rules (upload empty).",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -628,7 +628,7 @@ func newModelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to read file: %w", err)
 			}
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -665,7 +665,7 @@ func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to read file: %w", err)
 			}
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -702,7 +702,7 @@ func newRelabelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to read file: %w", err)
 			}
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -741,7 +741,7 @@ func newServiceDashboardCommand(loader RESTConfigLoader) *cobra.Command {
 			if err := yaml.Unmarshal(data, &config); err != nil {
 				return fmt.Errorf("invalid YAML: %w", err)
 			}
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -781,7 +781,7 @@ func newKPIDisplayCommand(loader RESTConfigLoader) *cobra.Command {
 			if err := yaml.Unmarshal(data, &config); err != nil {
 				return fmt.Errorf("invalid YAML: %w", err)
 			}
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -822,7 +822,7 @@ func newFrontendRulesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err := yaml.Unmarshal(data, &rules); err != nil {
 				return fmt.Errorf("invalid YAML: %w", err)
 			}
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -861,7 +861,7 @@ func newEnvCommand(loader RESTConfigLoader) *cobra.Command {
 			if err := getOpts.IO.Validate(); err != nil {
 				return err
 			}
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -891,7 +891,7 @@ func newEnvCommand(loader RESTConfigLoader) *cobra.Command {
 			if err := yaml.Unmarshal(data, &envCfg); err != nil {
 				return fmt.Errorf("invalid YAML: %w", err)
 			}
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -946,7 +946,7 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err := getOpts.IO.Validate(); err != nil {
 				return err
 			}
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -996,7 +996,7 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err := listOpts.IO.Validate(); err != nil {
 				return err
 			}
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -1089,7 +1089,7 @@ func newEntityTypesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err := listOpts.IO.Validate(); err != nil {
 				return err
 			}
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -1167,7 +1167,7 @@ func newScopesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err := ioOpts.IO.Validate(); err != nil {
 				return err
 			}
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -1212,7 +1212,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	// calls apiFn, and outputs the result as JSON.
 	assertionsRunE := func(apiFn func(*Client, context.Context, AssertionsRequest) (any, error)) func(*cobra.Command, []string) error {
 		return func(cmd *cobra.Command, args []string) error {
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -1282,7 +1282,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 			if err := activeOpts.IO.Validate(); err != nil {
 				return err
 			}
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -1320,7 +1320,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 		Use:   "entity-metric [Type/Name]",
 		Short: "Get metric data for a specific assertion on an entity.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -1409,7 +1409,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 					EndTime:     endMs,
 				}
 			}
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -1538,7 +1538,7 @@ func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 		Use:   "assertions",
 		Short: "Search for assertions matching a query.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -1602,7 +1602,7 @@ func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 		Use:   "sample",
 		Short: "Return a sample of entities by type.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -1643,7 +1643,7 @@ func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 			if err := searchEntitiesOpts.IO.Validate(); err != nil {
 				return err
 			}
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -1701,7 +1701,7 @@ func newGraphConfigCommand(loader RESTConfigLoader) *cobra.Command {
 			if err := ioOpts.IO.Validate(); err != nil {
 				return err
 			}
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -1743,7 +1743,7 @@ func newInspectCommand(loader RESTConfigLoader) *cobra.Command {
 			if err := ioOpts.IO.Validate(); err != nil {
 				return err
 			}
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -1831,7 +1831,7 @@ func newHealthCommand(loader RESTConfigLoader) *cobra.Command {
 			if err := ioOpts.IO.Validate(); err != nil {
 				return err
 			}
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -1903,7 +1903,7 @@ func newOpenCommand(loader RESTConfigLoader) *cobra.Command {
 		Short: "Open the Knowledge Graph app in the browser.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := loader.LoadRESTConfig(cmd.Context())
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}

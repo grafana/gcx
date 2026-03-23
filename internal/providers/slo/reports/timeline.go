@@ -55,7 +55,7 @@ func (o *reportTimelineOpts) setup(flags *pflag.FlagSet) {
 	_ = flags.MarkDeprecated("end", "use --to instead")
 }
 
-func newTimelineCommand(loader RESTConfigLoader) *cobra.Command {
+func newTimelineCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &reportTimelineOpts{}
 	cmd := &cobra.Command{
 		Use:   "timeline [UUID]",
@@ -99,7 +99,7 @@ grafana_slo_sli_window metrics.`,
 
 			ctx := cmd.Context()
 
-			restCfg, err := loader.LoadRESTConfig(ctx)
+			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
