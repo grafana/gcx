@@ -36,6 +36,8 @@ grafanactl/
 │   │   ├── alert/            # Alert provider (rules and groups)
 │   │   ├── fleet/            # Fleet Management provider (pipelines, collectors)
 │   │   ├── incidents/        # IRM Incidents provider
+│   │   ├── kg/               # Knowledge Graph (Asserts) provider
+│   │   ├── oncall/           # OnCall provider (schedules, integrations, escalation chains)
 │   │   ├── slo/              # SLO provider implementation
 │   │   │   ├── definitions/  # SLO definitions and status queries
 │   │   │   └── reports/      # SLO reports
