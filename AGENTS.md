@@ -4,7 +4,7 @@
 
 ## Quick Start
 
-**grafanactl** is a kubectl-style CLI for managing Grafana 12+ resources via its Kubernetes-compatible API. Built in Go (~14k LOC), it uses `k8s.io/client-go` and Cobra.
+**grafanactl** is a unified CLI for managing Grafana resources. It operates in two tiers: (1) a **K8s resource tier** that uses Grafana 12+'s Kubernetes-compatible API via `k8s.io/client-go` for dashboards, folders, and other K8s-native resources, and (2) a **Cloud provider tier** with pluggable providers for Grafana Cloud products (SLO, Synthetic Monitoring, OnCall, Fleet Management, etc.) that use product-specific REST APIs. Built in Go, it uses Cobra for CLI structure.
 
 ## Documentation Map
 
@@ -39,16 +39,20 @@
 ## Architecture at a Glance
 
 ```
-CLI Layer (cmd/grafanactl/)          ← Cobra commands, zero business logic
+CLI Layer (cmd/grafanactl/)              ← Cobra commands, zero business logic
     ↓
-Business Logic (internal/resources/) ← Resource model, selectors, filters, processors
-    ↓
-Client Layer (internal/resources/dynamic/) ← k8s dynamic client wrapper
-    ↓
-Grafana REST API (/apis endpoint)    ← K8s-compatible API (Grafana 12+)
+Business Logic (internal/resources/)     ← Resource model, selectors, filters, processors
+    ↓                          ↓
+K8s Dynamic Client         Provider Adapters (internal/providers/*)
+(internal/resources/       ← Pluggable Cloud product providers
+ dynamic/)                   (SLO, SM, OnCall, Fleet, KG, Incidents, Alert...)
+    ↓                          ↓
+Grafana K8s API            Product REST APIs
+(/apis endpoint)           (Cloud-specific endpoints)
 ```
 
-**Core flow**: User input → Selector (partial) → Discovery → Filter (resolved) → Dynamic Client → Grafana API
+**K8s tier flow**: User input → Selector → Discovery → Filter → Dynamic Client → Grafana API
+**Provider tier flow**: User input → Provider CLI → Provider Client → Product REST API
 
 ## Key Conventions
 
@@ -118,9 +122,13 @@ internal/
 │   ├── process/    Processors: ManagerFields, ServerFields, Namespace
 │   └── remote/     Pusher, Puller, Deleter, FolderHierarchy, Summary
 ├── providers/   Provider plugin system (interface, registry, self-registration)
+│   ├── alert/      Alert provider (rules, groups — read-only)
+│   ├── fleet/      Fleet Management provider (pipeline and collector resources)
+│   ├── incidents/  IRM Incidents provider
+│   ├── kg/         Knowledge Graph (Asserts) provider
+│   ├── oncall/     OnCall provider (schedules, integrations, escalation chains)
 │   ├── slo/        SLO provider (definitions, reports)
-│   ├── synth/      Synthetic Monitoring provider (checks, probes)
-│   └── alert/      Alert provider (rules, groups — read-only)
+│   └── synth/      Synthetic Monitoring provider (checks, probes)
 ├── dashboards/  Dashboard Image Renderer client (PNG snapshots)
 ├── query/       Datasource query clients
 │   ├── prometheus/  Prometheus HTTP query client

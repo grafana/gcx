@@ -34,8 +34,10 @@ grafanactl/
 │   ├── providers/            # Provider plugin system
 │   │   ├── configloader.go   # Shared ConfigLoader for all providers
 │   │   ├── alert/            # Alert provider (rules and groups)
-│   │   ├── fleet/            # Fleet Management provider (pipelines, collectors)
+│   │   ├── fleet/            # Fleet Management provider (pipeline and collector resources)
 │   │   ├── incidents/        # IRM Incidents provider
+│   │   ├── kg/               # Knowledge Graph (Asserts) provider
+│   │   ├── oncall/           # OnCall provider (schedules, integrations, escalation chains)
 │   │   ├── slo/              # SLO provider implementation
 │   │   │   ├── definitions/  # SLO definitions and status queries
 │   │   │   └── reports/      # SLO reports

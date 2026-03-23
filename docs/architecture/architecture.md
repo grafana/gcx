@@ -6,10 +6,11 @@
 
 ## Executive Summary
 
-- **grafanactl is a kubectl-style CLI for managing Grafana resources** via Grafana 12+'s Kubernetes-compatible API. It uses `k8s.io/client-go` and `k8s.io/apimachinery` directly -- not as a stylistic choice, but because the server exposes a `/apis` endpoint with standard Kubernetes semantics.
-- **The architecture is a clean layered monolith** with strict separation: CLI wiring (`cmd/`) holds no business logic; all domain logic lives in `internal/` organized by feature (config, resources, server).
+- **grafanactl is a unified CLI for managing Grafana resources** operating in two tiers: (1) a K8s resource tier using Grafana 12+'s Kubernetes-compatible API via `k8s.io/client-go` for dashboards, folders, and other K8s-native resources; (2) a Cloud provider tier with pluggable providers for Grafana Cloud products (SLO, Synthetic Monitoring, OnCall, Fleet Management, Knowledge Graph, IRM Incidents, Alerting) that use product-specific REST APIs.
+- **The architecture is a clean layered monolith** with strict separation: CLI wiring (`cmd/`) holds no business logic; all domain logic lives in `internal/` organized by feature (config, resources, server, providers).
 - **Context-based multi-environment configuration** follows the kubectl kubeconfig pattern, enabling management of multiple Grafana instances (dev, staging, prod, cloud) from a single config file.
 - **A composable processor pipeline** transforms resources during push and pull, keeping I/O and transformation concerns decoupled.
+- **Pluggable provider system** enables extending the CLI with new Grafana Cloud products via a self-registering `Provider` interface, each contributing CLI commands, resource adapters, and product-specific configuration.
 - **Test coverage is moderate** (~40-50%) with no automated integration tests, despite a docker-compose environment being available. This is the most significant quality gap.
 
 ---
@@ -58,10 +59,10 @@
          |            +----------------+  +----------------+  +-------------------------+
          |            | Provider Layer |  | Query Layer    |  | Provider Implementations |
          |            | (internal/     |  | (internal/     |  | (internal/providers/*/)   |
-         |            |  providers/)   |  |  query/)       |  | - SLO (definitions,      |
-         |            | - Provider     |  | - Prometheus   |  |   reports)               |
-         |            |   interface    |  |   client       |  | - Alert (rules, groups)  |
-         |            | - Registry     |  | - Loki client  |  | - Provider registration  |
+         |            |  providers/)   |  |  query/)       |  | - Pluggable Cloud        |
+         |            | - Provider     |  | - Prometheus   |  |   product providers      |
+         |            |   interface    |  |   client       |  | - Self-registering via   |
+         |            | - Registry     |  | - Loki client  |  |   init()                 |
          |            | - Secret       |  | - Direct HTTP  |  +----------------+
          |            |   redaction    |  |   (no k8s      |
          |            +----------------+  |    machinery)  |  +------------------+
@@ -330,10 +331,10 @@ The codebase has four distinct communication paths to Grafana:
 - Hits datasource-specific sub-resource endpoints (`/apis/prometheus.datasource.grafana.app/...`)
 
 **Quaternary (provider adapter client):** `adapter.ResourceAdapter` implementations -> provider REST APIs
-- Used for provider-backed resource types: SLO (`slo.ext.grafana.app`), Synthetic Monitoring (`syntheticmonitoring.ext.grafana.app`), Alert (`alerting.ext.grafana.app`)
-- Each adapter wraps a provider-specific REST client (SLO API, SM API, Prometheus-compatible Alert API)
+- Used for provider-backed resource types (SLO, Synthetic Monitoring, OnCall, Fleet, KG, IRM Incidents, Alert)
+- Each adapter wraps a provider-specific REST client targeting the product's API
 - Routed via `ResourceClientRouter`: calls to Pusher/Puller/Deleter are transparently dispatched to the adapter for registered GVKs, falling back to the primary dynamic client for all others
-- Read-only adapters (Alert rules/groups, SM Probes) return `errors.ErrUnsupported` for Create/Update/Delete
+- Read-only adapters return `errors.ErrUnsupported` for Create/Update/Delete
 
 ### Auth Flow
 
@@ -695,13 +696,33 @@ Files most important for understanding the codebase. Organized by architectural 
 | File | Purpose |
 |------|---------|
 | `internal/providers/fleet/provider.go` | `FleetProvider` implementing the `providers.Provider` interface |
-| `internal/providers/fleet/pipelines/` | Fleet management pipelines and collectors |
+| `internal/providers/fleet/client.go` | Fleet Management REST client |
 
 ### IRM Incidents Provider
 
 | File | Purpose |
 |------|---------|
 | `internal/providers/incidents/provider.go` | `IncidentsProvider` implementing the `providers.Provider` interface |
+| `internal/providers/incidents/commands.go` | IRM Incidents CLI commands |
+| `internal/providers/incidents/resource_adapter.go` | Resource adapter for incidents |
+
+### OnCall Provider
+
+| File | Purpose |
+|------|---------|
+| `internal/providers/oncall/provider.go` | `OnCallProvider` implementing the `providers.Provider` interface |
+| `internal/providers/oncall/client.go` | OnCall REST client |
+| `internal/providers/oncall/commands.go` | OnCall CLI commands (schedules, integrations, escalation chains) |
+| `internal/providers/oncall/resource_adapter.go` | Resource adapter for OnCall resources |
+
+### Knowledge Graph (Asserts) Provider
+
+| File | Purpose |
+|------|---------|
+| `internal/providers/kg/provider.go` | `KGProvider` implementing the `providers.Provider` interface |
+| `internal/providers/kg/client.go` | Knowledge Graph REST client |
+| `internal/providers/kg/commands.go` | KG CLI commands |
+| `internal/providers/kg/resource_adapter.go` | Resource adapter for KG resources |
 
 ### Linter System
 
