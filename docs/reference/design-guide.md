@@ -505,6 +505,24 @@ UX requirements. All items are `[ADOPT]` unless marked otherwise.
 - [ ] Push-like operations are idempotent (create-or-update)
 - [ ] Data fetching is format-agnostic — do not gate fetches on `--output` value (Pattern 13)
 - [ ] PromQL queries use `promql-builder` (`github.com/grafana/promql-builder/go/promql`), not string formatting (Pattern 14)
+- [ ] List/get commands for CRUD resources wrap json/yaml output in K8s envelope manifests (see below)
+
+### K8s Manifest Wrapping `[ADOPT]`
+
+Provider list/get commands that output **CRUD resources** (resources the user can
+create, update, and delete via the CLI) must wrap json/yaml output in K8s
+envelope manifests (`apiVersion`/`kind`/`metadata`/`spec`) for round-trip
+compatibility with push/pull. Table/wide codecs continue to receive raw domain
+types for direct field access.
+
+Commands that are **exempt** from K8s wrapping:
+
+| Category | Examples | Rationale |
+|----------|----------|-----------|
+| Query/search results | `assertions query`, `search entities` | Time-series and aggregation results, not storable resources |
+| Operational views | `status`, `health`, `inspect` | Composite or derived data, not individual resources |
+| Read-only reference data | `vendors list`, `scopes list`, `entity-types list` | Discoverable metadata, not user-managed resources |
+| Singleton config | `env get`, `graph-config` | Single config objects, not collections of resources |
 
 ### Build Verification `[CURRENT]`
 

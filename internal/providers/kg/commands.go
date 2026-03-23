@@ -18,6 +18,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 // ---------------------------------------------------------------------------
@@ -479,10 +480,24 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			// Table codec operates on raw []Rule for direct field access.
+			// Other formats (yaml/json) convert to K8s envelope Resources
+			// for consistency with get and round-trip support.
 			if rulesListOpts.IO.OutputFormat == "table" {
 				return rulesListOpts.IO.Encode(cmd.OutOrStdout(), rules)
 			}
-			return rulesListOpts.IO.Encode(cmd.OutOrStdout(), rules)
+
+			var objs []unstructured.Unstructured
+			for _, rule := range rules {
+				res, err := RuleToResource(rule, cfg.Namespace)
+				if err != nil {
+					return fmt.Errorf("failed to convert rule %s to resource: %w", rule.Name, err)
+				}
+				objs = append(objs, res.ToUnstructured())
+			}
+
+			return rulesListOpts.IO.Encode(cmd.OutOrStdout(), objs)
 		},
 	}
 	rulesListOpts.setup(listCmd.Flags())
@@ -508,7 +523,14 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return getOpts.IO.Encode(cmd.OutOrStdout(), rule)
+
+			// Convert to K8s envelope Resource for all formats.
+			res, err := RuleToResource(*rule, cfg.Namespace)
+			if err != nil {
+				return fmt.Errorf("failed to convert rule %s to resource: %w", rule.Name, err)
+			}
+
+			return getOpts.IO.Encode(cmd.OutOrStdout(), res.ToUnstructured())
 		},
 	}
 	getOpts.setup(getCmd.Flags())
