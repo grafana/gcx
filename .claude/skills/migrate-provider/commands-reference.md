@@ -11,13 +11,13 @@ All provider commands must comply with the default format rules:
 
 | Command type | Default format | Required codecs | K8s wrapping for json/yaml |
 |-------------|---------------|-----------------|---------------------------|
-| `list` | `text` | `table` + `wide` | Yes — wrap via `ToResource` |
-| `get` | `text` | `table` (single-row) | Yes — wrap via `ToResource` |
+| `list` | `table` | `table` + `wide` | Yes — wrap via `ToResource` |
+| `get` | `table` | `table` (single-row) | Yes — wrap via `ToResource` |
 | `create -f` | Status message | — | Return created resource if `-o` specified |
 | `close` / operational | Status message | — | No |
 
 **Key rules:**
-- `list` and `get` **must** call `ioOpts.DefaultFormat("text")` — do NOT leave `json` as default
+- `list` and `get` **must** call `ioOpts.DefaultFormat("table")` — do NOT leave `json` as default
 - `list` and `get` **must** register both `table` and `wide` codecs via `RegisterCustomCodec`
 - `table` columns: key identifying fields (ID/UID, name/title, status)
 - `wide` columns: everything in `table` + additional detail (timestamps, labels, counts)

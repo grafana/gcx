@@ -252,7 +252,7 @@ CTX=dev  # adjust to your context
 
 # --- List: compare resource IDs ---
 GCX_IDS=$(gcx --context=$CTX {resource} list -o json | jq -r '.[].id // .[].uid' | sort)
-GCTL_IDS=$(grafanactl --context=$CTX {resource} list -o json | jq -r '.items[].metadata.name' | sort)
+GCTL_IDS=$(grafanactl --context=$CTX {resource} list -o json | jq -r '.[].metadata.name' | sort)
 echo "=== List ID diff ==="
 diff <(echo "$GCX_IDS") <(echo "$GCTL_IDS") && echo "MATCH" || echo "MISMATCH"
 
@@ -276,7 +276,7 @@ grafanactl --context=$CTX {resource} {subcommand} -o json | jq length
 
 # --- Schema + example ---
 echo "=== Schema ==="
-grafanactl --context=$CTX resources schemas -o json | jq '.[] | select(.group | test("{group}"))' | head -5
+grafanactl --context=$CTX resources schemas -o json | jq 'to_entries[] | select(.key | test("{group}")) | .value' | head -5
 echo "=== Example ==="
 grafanactl --context=$CTX resources examples {alias} | head -10
 

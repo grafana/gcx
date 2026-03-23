@@ -104,8 +104,8 @@ guess from naming patterns.
 
 | Command type | Default format | Required codecs | K8s wrapping |
 |-------------|---------------|-----------------|--------------|
-| `list` | `text` | `table` + `wide` | json/yaml output must use `ToResource` for K8s envelope |
-| `get` | `text` | `table` (single-row) | json/yaml via `ToResource` K8s envelope |
+| `list` | `table` | `table` + `wide` | json/yaml output must use `ToResource` for K8s envelope |
+| `get` | `table` | `table` (single-row) | json/yaml via `ToResource` K8s envelope |
 | `create` | Status message | — | Return created resource in json/yaml if `-o` specified |
 | Operational / query | Varies | Per-command | Exception: may skip K8s wrapping if data is not a resource |
 
@@ -133,7 +133,7 @@ produce a structured diff. Use jq pipelines to normalize and compare:
 ```bash
 # List — compare IDs
 GCX_IDS=$(gcx --context=<ctx> {resource} list -o json | jq -r '.[].id // .[].uid' | sort)
-GCTL_IDS=$(grafanactl --context=<ctx> {resource} list -o json | jq -r '.items[].metadata.name' | sort)
+GCTL_IDS=$(grafanactl --context=<ctx> {resource} list -o json | jq -r '.[].metadata.name' | sort)
 diff <(echo "$GCX_IDS") <(echo "$GCTL_IDS")
 
 # Get — compare key fields
@@ -239,7 +239,7 @@ Phase 3: Schema + example
 
 Phase 4: Provider commands (format-compliant per design-guide.md §1.3)
 [ ] CRUD: list (table + wide codecs), get, create -f, close
-[ ] list default format is "text" (not "json")
+[ ] list default format is "table" (not "json")
 [ ] wide codec registered with additional detail columns
 [ ] json/yaml output wraps through ToResource (K8s envelope)
 [ ] Ancillary commands wired
