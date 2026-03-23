@@ -233,7 +233,7 @@ func (h *fleetHelper) newPipelineListCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			client, _, err := h.loadClient(ctx)
+			client, namespace, err := h.loadClient(ctx)
 			if err != nil {
 				return err
 			}
@@ -243,7 +243,23 @@ func (h *fleetHelper) newPipelineListCommand() *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), pipelines)
+			// Table codec operates on raw []Pipeline for direct field access.
+			// Other formats (yaml/json) convert to K8s envelope Resources
+			// for consistency with get/pull and round-trip support.
+			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
+				return opts.IO.Encode(cmd.OutOrStdout(), pipelines)
+			}
+
+			var objs []unstructured.Unstructured
+			for _, p := range pipelines {
+				res, err := PipelineToResource(p, namespace)
+				if err != nil {
+					return fmt.Errorf("failed to convert pipeline %s to resource: %w", p.ID, err)
+				}
+				objs = append(objs, res.ToUnstructured())
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), objs)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -495,7 +511,7 @@ func (h *fleetHelper) newCollectorListCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			client, _, err := h.loadClient(ctx)
+			client, namespace, err := h.loadClient(ctx)
 			if err != nil {
 				return err
 			}
@@ -505,7 +521,23 @@ func (h *fleetHelper) newCollectorListCommand() *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), collectors)
+			// Table codec operates on raw []Collector for direct field access.
+			// Other formats (yaml/json) convert to K8s envelope Resources
+			// for consistency with get/pull and round-trip support.
+			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
+				return opts.IO.Encode(cmd.OutOrStdout(), collectors)
+			}
+
+			var objs []unstructured.Unstructured
+			for _, col := range collectors {
+				res, err := CollectorToResource(col, namespace)
+				if err != nil {
+					return fmt.Errorf("failed to convert collector %s to resource: %w", col.ID, err)
+				}
+				objs = append(objs, res.ToUnstructured())
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), objs)
 		},
 	}
 	opts.setup(cmd.Flags())

@@ -437,6 +437,52 @@ without requiring an extra parameter on the `Factory` type.
 
 ---
 
+### 17. K8s Envelope Wrapping for Provider List/Get (High Confidence: 94%)
+
+Provider list/get commands that output CRUD resources (resources the user can
+create, update, and delete via the CLI) wrap JSON/YAML output in K8s envelope
+manifests (`apiVersion`/`kind`/`metadata`/`spec`) for round-trip compatibility
+with push/pull. Table/wide codecs continue to receive raw domain types for
+direct field access, since they need to pick specific fields for column rendering.
+
+This is a companion to Pattern 13 (Format-Agnostic Data Fetching): data is
+fetched unconditionally, but the _presentation_ layer converts to K8s envelopes
+for structured formats while keeping raw types for tabular formats.
+
+**Implementation rule:**
+
+```go
+// Table/wide → raw domain types for direct field access.
+if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
+    return opts.IO.Encode(cmd.OutOrStdout(), items)
+}
+
+// JSON/YAML → K8s envelope via ToResource().
+var objs []unstructured.Unstructured
+for _, item := range items {
+    res, err := ItemToResource(item, namespace)
+    if err != nil { return err }
+    objs = append(objs, res.ToUnstructured())
+}
+return opts.IO.Encode(cmd.OutOrStdout(), objs)
+```
+
+**Exempt command categories** (output raw API types without wrapping):
+
+| Category | Examples | Rationale |
+|----------|----------|-----------|
+| Query/search results | `assertions query`, `search entities` | Time-series and aggregation results, not storable resources |
+| Operational views | `status`, `health`, `inspect` | Composite or derived data, not individual resources |
+| Read-only reference data | `vendors list`, `scopes list`, `entity-types list` | Discoverable metadata, not user-managed resources |
+| Singleton config | `env get`, `graph-config` | Single config objects, not collections of resources |
+
+**Evidence:**
+- `internal/providers/slo/definitions/commands.go`: `newListCommand` — SLO list wraps via `ToResource`
+- `internal/providers/fleet/provider.go`: `newPipelineListCommand`, `newCollectorListCommand`
+- `internal/providers/kg/commands.go`: `newRulesCommand` — rules list/get wrap via `RuleToResource`
+
+---
+
 ## Contradiction Resolutions
 
 ### 1. DiscoverStackID Called Twice
