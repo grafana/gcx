@@ -107,7 +107,7 @@ type CloudConfigLoader interface {
 // NewAdapterFactory returns a lazy adapter.Factory for k6 projects.
 func NewAdapterFactory(loader CloudConfigLoader) adapter.Factory {
 	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
-		client, ns, err := authenticatedClient(ctx, loader, "")
+		client, ns, err := authenticatedClient(ctx, loader)
 		if err != nil {
 			return nil, err
 		}
@@ -118,17 +118,19 @@ func NewAdapterFactory(loader CloudConfigLoader) adapter.Factory {
 	}
 }
 
-// authenticatedClient loads cloud config, performs k6 token exchange, and returns an authenticated client.
-// apiDomainOverride can be empty to use default.
-func authenticatedClient(ctx context.Context, loader CloudConfigLoader, apiDomainOverride string) (*Client, string, error) {
+// authenticatedClient loads cloud config, resolves the k6 API domain from provider config,
+// performs k6 token exchange, and returns an authenticated client.
+func authenticatedClient(ctx context.Context, loader CloudConfigLoader) (*Client, string, error) {
 	cfg, err := loader.LoadCloudConfig(ctx)
 	if err != nil {
 		return nil, "", fmt.Errorf("k6: load cloud config: %w", err)
 	}
 
-	domain := apiDomainOverride
-	if domain == "" {
-		domain = DefaultAPIDomain
+	domain := DefaultAPIDomain
+	if k6Cfg := cfg.ProviderConfig("k6"); k6Cfg != nil {
+		if d := k6Cfg["api-domain"]; d != "" {
+			domain = d
+		}
 	}
 
 	client := NewClient(domain)

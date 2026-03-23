@@ -5,10 +5,9 @@ Manage K6 Cloud resources (projects, tests, env vars).
 ### Options
 
 ```
-      --api-domain string   K6 Cloud API domain (default: https://api.k6.io)
-      --config string       Path to the configuration file to use
-      --context string      Name of the context to use
-  -h, --help                help for k6
+      --config string    Path to the configuration file to use
+      --context string   Name of the context to use
+  -h, --help             help for k6
 ```
 
 ### Options inherited from parent commands

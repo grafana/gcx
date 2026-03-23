@@ -16,20 +16,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// getAPIDomain extracts the --api-domain flag from the command hierarchy.
-func getAPIDomain(cmd *cobra.Command) string {
-	if f := cmd.Flags().Lookup("api-domain"); f != nil && f.Changed {
-		return f.Value.String()
-	}
-	// Walk up to find the persistent flag on the parent.
-	for p := cmd.Parent(); p != nil; p = p.Parent() {
-		if f := p.Flags().Lookup("api-domain"); f != nil && f.Changed {
-			return f.Value.String()
-		}
-	}
-	return ""
-}
-
 // ---------------------------------------------------------------------------
 // projects commands
 // ---------------------------------------------------------------------------
@@ -71,7 +57,7 @@ func newProjectsListCommand(loader CloudConfigLoader) *cobra.Command {
 				return err
 			}
 			ctx := cmd.Context()
-			client, ns, err := authenticatedClient(ctx, loader, getAPIDomain(cmd))
+			client, ns, err := authenticatedClient(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -176,7 +162,7 @@ func newProjectsGetCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("invalid project ID: %w", err)
 			}
-			client, ns, err := authenticatedClient(ctx, loader, getAPIDomain(cmd))
+			client, ns, err := authenticatedClient(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -221,7 +207,7 @@ func newProjectsCreateCommand(loader CloudConfigLoader) *cobra.Command {
 				return errors.New("--filename/-f is required")
 			}
 			ctx := cmd.Context()
-			client, ns, err := authenticatedClient(ctx, loader, getAPIDomain(cmd))
+			client, ns, err := authenticatedClient(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -288,7 +274,7 @@ func newProjectsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("invalid project ID: %w", err)
 			}
-			client, _, err := authenticatedClient(ctx, loader, getAPIDomain(cmd))
+			client, _, err := authenticatedClient(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -344,7 +330,7 @@ func newProjectsDeleteCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("invalid project ID: %w", err)
 			}
-			client, _, err := authenticatedClient(ctx, loader, getAPIDomain(cmd))
+			client, _, err := authenticatedClient(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -399,7 +385,7 @@ func newTestsListCommand(loader CloudConfigLoader) *cobra.Command {
 				return err
 			}
 			ctx := cmd.Context()
-			client, _, err := authenticatedClient(ctx, loader, getAPIDomain(cmd))
+			client, _, err := authenticatedClient(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -492,7 +478,7 @@ func newTestsGetCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("invalid load test ID: %w", err)
 			}
-			client, _, err := authenticatedClient(ctx, loader, getAPIDomain(cmd))
+			client, _, err := authenticatedClient(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -519,7 +505,7 @@ func newTestsDeleteCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("invalid load test ID: %w", err)
 			}
-			client, _, err := authenticatedClient(ctx, loader, getAPIDomain(cmd))
+			client, _, err := authenticatedClient(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -572,7 +558,7 @@ func newRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("invalid load test ID: %w", err)
 			}
-			client, _, err := authenticatedClient(ctx, loader, getAPIDomain(cmd))
+			client, _, err := authenticatedClient(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -678,7 +664,7 @@ func newEnvVarsListCommand(loader CloudConfigLoader) *cobra.Command {
 				return err
 			}
 			ctx := cmd.Context()
-			client, _, err := authenticatedClient(ctx, loader, getAPIDomain(cmd))
+			client, _, err := authenticatedClient(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -735,7 +721,7 @@ func newEnvVarsCreateCommand(loader CloudConfigLoader) *cobra.Command {
 				return errors.New("--filename/-f is required")
 			}
 			ctx := cmd.Context()
-			client, _, err := authenticatedClient(ctx, loader, getAPIDomain(cmd))
+			client, _, err := authenticatedClient(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -786,7 +772,7 @@ func newEnvVarsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("invalid env var ID: %w", err)
 			}
-			client, _, err := authenticatedClient(ctx, loader, getAPIDomain(cmd))
+			client, _, err := authenticatedClient(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -832,7 +818,7 @@ func newEnvVarsDeleteCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("invalid env var ID: %w", err)
 			}
-			client, _, err := authenticatedClient(ctx, loader, getAPIDomain(cmd))
+			client, _, err := authenticatedClient(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -856,7 +842,7 @@ func newTokenCommand(loader CloudConfigLoader) *cobra.Command {
 		Short: "Print the authenticated k6 API token.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
-			client, _, err := authenticatedClient(ctx, loader, getAPIDomain(cmd))
+			client, _, err := authenticatedClient(ctx, loader)
 			if err != nil {
 				return err
 			}

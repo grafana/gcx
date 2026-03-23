@@ -34,8 +34,6 @@ func (p *K6Provider) Commands() []*cobra.Command {
 
 	loader.BindFlags(k6Cmd.PersistentFlags())
 
-	k6Cmd.PersistentFlags().String("api-domain", "", "K6 Cloud API domain (default: "+DefaultAPIDomain+")")
-
 	k6Cmd.AddCommand(
 		newProjectsCommand(loader),
 		newTestsCommand(loader),
