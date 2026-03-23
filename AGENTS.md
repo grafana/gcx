@@ -123,7 +123,7 @@ internal/
 │   └── remote/     Pusher, Puller, Deleter, FolderHierarchy, Summary
 ├── providers/   Provider plugin system (interface, registry, self-registration)
 │   ├── alert/      Alert provider (rules, groups — read-only)
-│   ├── fleet/      Fleet Management provider (pipelines, collectors)
+│   ├── fleet/      Fleet Management provider (pipeline and collector resources)
 │   ├── incidents/  IRM Incidents provider
 │   ├── kg/         Knowledge Graph (Asserts) provider
 │   ├── oncall/     OnCall provider (schedules, integrations, escalation chains)
