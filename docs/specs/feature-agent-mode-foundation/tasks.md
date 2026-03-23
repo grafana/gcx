@@ -116,12 +116,12 @@ Connect `internal/agent` to the CLI command lifecycle: pre-parse `os.Args` in
 **Type**: task
 
 Write tests covering the full wiring of agent mode and exit codes across packages.
-Update `agent-docs/design-guide.md` to reflect implemented changes.
+Update `docs/reference/design-guide.md` to reflect implemented changes.
 
 **Deliverables:**
 - `cmd/grafanactl/fail/convert_test.go` — tests for `convertContextCanceled` (plain + wrapped), auth exit code 3, converter ordering (cancel wrapping 401 → 5 not 3)
 - `cmd/grafanactl/io/format_test.go` — test that agent mode forces `json` default even when `DefaultFormat("text")` was called
-- `agent-docs/design-guide.md` — update Section 2.1 (add codes 5+6), Section 6.1 (all 5 env vars + disable behavior + `--agent` flag)
+- `docs/reference/design-guide.md` — update Section 2.1 (add codes 5+6), Section 6.1 (all 5 env vars + disable behavior + `--agent` flag)
 
 **Acceptance criteria:**
 - GIVEN `go test ./cmd/grafanactl/fail/...`, THEN all exit code converter tests pass

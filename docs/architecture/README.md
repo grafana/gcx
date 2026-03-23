@@ -1,8 +1,8 @@
-# Agent Documentation Index
+# Architecture Documentation Index
 
-> Generated: 2026-03-03 | Last updated: 2026-03-18 | Strategy: Standard | Confidence: 93%
+> Generated: 2026-03-03 | Last updated: 2026-03-22 | Strategy: Standard | Confidence: 93%
 >
-> This directory contains high-level architecture documentation for autonomous coding agents.
+> High-level architecture documentation for grafanactl.
 > Start here, then navigate to specific docs as needed.
 
 ## Quick Navigation
@@ -17,9 +17,8 @@
 | [config-system.md](config-system.md) | Configuration, contexts, env vars | Adding config fields, auth changes |
 | [data-flows.md](data-flows.md) | Push/Pull/Serve pipelines | Modifying resource sync operations |
 | [project-structure.md](project-structure.md) | Build system, CI/CD, dependencies | Build issues, adding dependencies, release process |
-| [provider-discovery-guide.md](provider-discovery-guide.md) | Pre-implementation research and design process for new providers | Before designing a new provider (research phase) |
-| [provider-guide.md](provider-guide.md) | Step-by-step guide for implementing a new provider | Adding a new Grafana product provider |
-| [design-guide.md](design-guide.md) | UX requirements for commands and providers | Before implementing new features, reviewing CLI UX decisions |
+
+See also `docs/reference/` for prescriptive guides: [provider-guide.md](../reference/provider-guide.md), [provider-discovery-guide.md](../reference/provider-discovery-guide.md), [design-guide.md](../reference/design-guide.md).
 
 ## Architecture at a Glance
 

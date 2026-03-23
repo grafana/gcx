@@ -1,8 +1,8 @@
 # Design Guide: Command and Provider UX
 
 > Prescriptive UX requirements for anyone building new commands or providers.
-> Read this before implementing features. Reference alongside [cli-layer.md](cli-layer.md)
-> for command structure and [patterns.md](patterns.md) for architectural patterns.
+> Read this before implementing features. Reference alongside [cli-layer.md](../architecture/cli-layer.md)
+> for command structure and [patterns.md](../architecture/patterns.md) for architectural patterns.
 
 ## Status Markers
 

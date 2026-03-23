@@ -189,7 +189,7 @@ func (l *ConfigLoader) LoadRESTConfig(ctx context.Context) (config.NamespacedRES
 
 ### Adding a new provider
 
-Follow the `/add-provider` skill or `agent-docs/provider-guide.md` for the
+Follow the `/add-provider` skill or `docs/reference/provider-guide.md` for the
 step-by-step implementation guide.
 
 ---
