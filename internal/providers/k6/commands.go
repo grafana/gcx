@@ -34,7 +34,7 @@ func getAPIDomain(cmd *cobra.Command) string {
 // projects commands
 // ---------------------------------------------------------------------------
 
-func newProjectsCommand(loader RESTConfigLoader) *cobra.Command {
+func newProjectsCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "projects",
 		Short:   "Manage K6 Cloud projects.",
@@ -61,7 +61,7 @@ func (o *projectsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newProjectsListCommand(loader RESTConfigLoader) *cobra.Command {
+func newProjectsListCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &projectsListOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -161,7 +161,7 @@ func (c *ProjectTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
 
-func newProjectsGetCommand(loader RESTConfigLoader) *cobra.Command {
+func newProjectsGetCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &struct{ IO cmdio.Options }{}
 	cmd := &cobra.Command{
 		Use:   "get <id>",
@@ -208,7 +208,7 @@ func (o *projectsCreateOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the project manifest (use - for stdin)")
 }
 
-func newProjectsCreateCommand(loader RESTConfigLoader) *cobra.Command {
+func newProjectsCreateCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &projectsCreateOpts{}
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -273,7 +273,7 @@ func newProjectsCreateCommand(loader RESTConfigLoader) *cobra.Command {
 	return cmd
 }
 
-func newProjectsUpdateCommand(loader RESTConfigLoader) *cobra.Command {
+func newProjectsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 	var file string
 	cmd := &cobra.Command{
 		Use:   "update <id>",
@@ -333,7 +333,7 @@ func newProjectsUpdateCommand(loader RESTConfigLoader) *cobra.Command {
 	return cmd
 }
 
-func newProjectsDeleteCommand(loader RESTConfigLoader) *cobra.Command {
+func newProjectsDeleteCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <id>",
 		Short: "Delete a K6 project.",
@@ -362,7 +362,7 @@ func newProjectsDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 // tests commands
 // ---------------------------------------------------------------------------
 
-func newTestsCommand(loader RESTConfigLoader) *cobra.Command {
+func newTestsCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "tests",
 		Short:   "Manage K6 Cloud load tests.",
@@ -389,7 +389,7 @@ func (o *testsListOpts) setup(flags *pflag.FlagSet) {
 	flags.IntVar(&o.ProjectID, "project-id", 0, "Filter by project ID")
 }
 
-func newTestsListCommand(loader RESTConfigLoader) *cobra.Command {
+func newTestsListCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &testsListOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -477,7 +477,7 @@ func (c *LoadTestTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
 
-func newTestsGetCommand(loader RESTConfigLoader) *cobra.Command {
+func newTestsGetCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &struct{ IO cmdio.Options }{}
 	cmd := &cobra.Command{
 		Use:   "get <id>",
@@ -508,7 +508,7 @@ func newTestsGetCommand(loader RESTConfigLoader) *cobra.Command {
 	return cmd
 }
 
-func newTestsDeleteCommand(loader RESTConfigLoader) *cobra.Command {
+func newTestsDeleteCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <id>",
 		Short: "Delete a K6 load test.",
@@ -537,7 +537,7 @@ func newTestsDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 // runs commands
 // ---------------------------------------------------------------------------
 
-func newRunsCommand(loader RESTConfigLoader) *cobra.Command {
+func newRunsCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "runs",
 		Short:   "Manage K6 test runs.",
@@ -557,7 +557,7 @@ func (o *runsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newRunsListCommand(loader RESTConfigLoader) *cobra.Command {
+func newRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &runsListOpts{}
 	cmd := &cobra.Command{
 		Use:   "list <load-test-id>",
@@ -643,7 +643,7 @@ func resultStatusString(status int) string {
 // envvars commands
 // ---------------------------------------------------------------------------
 
-func newEnvVarsCommand(loader RESTConfigLoader) *cobra.Command {
+func newEnvVarsCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "envvars",
 		Short:   "Manage K6 Cloud environment variables.",
@@ -668,7 +668,7 @@ func (o *envVarsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newEnvVarsListCommand(loader RESTConfigLoader) *cobra.Command {
+func newEnvVarsListCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &envVarsListOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -725,7 +725,7 @@ func (c *EnvVarTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
 
-func newEnvVarsCreateCommand(loader RESTConfigLoader) *cobra.Command {
+func newEnvVarsCreateCommand(loader CloudConfigLoader) *cobra.Command {
 	var file string
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -771,7 +771,7 @@ func newEnvVarsCreateCommand(loader RESTConfigLoader) *cobra.Command {
 	return cmd
 }
 
-func newEnvVarsUpdateCommand(loader RESTConfigLoader) *cobra.Command {
+func newEnvVarsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 	var file string
 	cmd := &cobra.Command{
 		Use:   "update <id>",
@@ -821,7 +821,7 @@ func newEnvVarsUpdateCommand(loader RESTConfigLoader) *cobra.Command {
 	return cmd
 }
 
-func newEnvVarsDeleteCommand(loader RESTConfigLoader) *cobra.Command {
+func newEnvVarsDeleteCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <id>",
 		Short: "Delete a K6 environment variable.",
@@ -850,7 +850,7 @@ func newEnvVarsDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 // token command
 // ---------------------------------------------------------------------------
 
-func newTokenCommand(loader RESTConfigLoader) *cobra.Command {
+func newTokenCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "token",
 		Short: "Print the authenticated k6 API token.",

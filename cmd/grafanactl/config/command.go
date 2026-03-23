@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -110,7 +111,7 @@ func (opts *Options) loadConfigTolerant(ctx context.Context, extraOverrides ...c
 		})
 	}
 
-	return config.Load(ctx, opts.configSource(), overrides...)
+	return config.LoadLayered(ctx, opts.ConfigFile, overrides...)
 }
 
 // LoadConfig loads the configuration file (default, or explicitly set via flags) and validates it.
@@ -127,14 +128,22 @@ func (opts *Options) LoadConfig(ctx context.Context) (config.Config, error) {
 	return opts.loadConfigTolerant(ctx, validator)
 }
 
-// LoadRESTConfig loads the configuration file and constructs a REST config from it.
-func (opts *Options) LoadRESTConfig(ctx context.Context) (config.NamespacedRESTConfig, error) {
+// LoadGrafanaConfig loads the configuration file and constructs a REST config from it.
+func (opts *Options) LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error) {
 	cfg, err := opts.LoadConfig(ctx)
 	if err != nil {
 		return config.NamespacedRESTConfig{}, err
 	}
 
 	return cfg.GetCurrentContext().ToRESTConfig(ctx), nil
+}
+
+// loadConfigTolerantLayered loads the configuration using the layered discovery
+// mechanism (system → user → local), without validation.
+// This function should only be used by config-related commands, to allow the
+// user to iterate on the configuration until it becomes valid.
+func (opts *Options) loadConfigTolerantLayered(ctx context.Context) (config.Config, error) {
+	return config.LoadLayered(ctx, opts.ConfigFile)
 }
 
 func (opts *Options) configSource() config.Source {
@@ -170,6 +179,8 @@ The configuration file to load is chosen as follows:
 
 	cmd.AddCommand(checkCmd(configOpts))
 	cmd.AddCommand(currentContextCmd(configOpts))
+	cmd.AddCommand(editCmd(configOpts))
+	cmd.AddCommand(pathCmd(configOpts))
 	cmd.AddCommand(setCmd(configOpts))
 	cmd.AddCommand(unsetCmd(configOpts))
 	cmd.AddCommand(useContextCmd(configOpts))
@@ -463,7 +474,44 @@ func useContextCmd(configOpts *Options) *cobra.Command {
 	return cmd
 }
 
+// resolveWriteTarget determines which config file to write to based on --config flag,
+// --file flag, and the number of discovered sources.
+func resolveWriteTarget(configOpts *Options, fileType string, ctx context.Context) (config.Source, error) {
+	// --config flag always wins.
+	if configOpts.ConfigFile != "" {
+		return config.ExplicitConfigFile(configOpts.ConfigFile), nil
+	}
+
+	// --file flag targets a specific layer.
+	if fileType != "" {
+		layered, err := config.LoadLayered(ctx, "")
+		if err != nil {
+			return nil, err
+		}
+		for _, s := range layered.Sources {
+			if s.Type == fileType {
+				return config.ExplicitConfigFile(s.Path), nil
+			}
+		}
+		return nil, fmt.Errorf("no %s config file found", fileType)
+	}
+
+	// No flags — check if ambiguous.
+	layered, err := config.LoadLayered(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	if len(layered.Sources) > 1 {
+		return nil, errors.New("multiple config files loaded; specify which to edit with --file (system, user, local)")
+	}
+
+	// Single source or no sources — use existing behavior.
+	return configOpts.configSource(), nil
+}
+
 func setCmd(configOpts *Options) *cobra.Command {
+	var fileType string
+
 	cmd := &cobra.Command{
 		Use:   "set PROPERTY_NAME PROPERTY_VALUE",
 		Args:  cobra.ExactArgs(2),
@@ -478,9 +526,17 @@ PROPERTY_VALUE is the new value to set.`,
 	grafanactl config set contexts.dev-instance.grafana.server https://grafana-dev.example
 
 	# Disable the validation of the server's SSL certificate in the "dev-instance" context
-	grafanactl config set contexts.dev-instance.grafana.insecure-skip-tls-verify true`,
+	grafanactl config set contexts.dev-instance.grafana.insecure-skip-tls-verify true
+
+	# Set a value in the local config layer
+	grafanactl config set --file local contexts.prod.cloud.token my-token`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := configOpts.loadConfigTolerant(cmd.Context())
+			targetSource, err := resolveWriteTarget(configOpts, fileType, cmd.Context())
+			if err != nil {
+				return err
+			}
+
+			cfg, err := config.Load(cmd.Context(), targetSource)
 			if err != nil {
 				return err
 			}
@@ -489,14 +545,18 @@ PROPERTY_VALUE is the new value to set.`,
 				return err
 			}
 
-			return config.Write(cmd.Context(), configOpts.configSource(), cfg)
+			return config.Write(cmd.Context(), targetSource, cfg)
 		},
 	}
+
+	cmd.Flags().StringVar(&fileType, "file", "", "Config layer to write to (system, user, local)")
 
 	return cmd
 }
 
 func unsetCmd(configOpts *Options) *cobra.Command {
+	var fileType string
+
 	cmd := &cobra.Command{
 		Use:   "unset PROPERTY_NAME",
 		Args:  cobra.ExactArgs(1),
@@ -509,9 +569,17 @@ PROPERTY_NAME is a dot-delimited reference to the value to unset. It can either 
 	grafanactl config unset contexts.foo
 
 	# Unset the "insecure-skip-tls-verify" flag in the "dev-instance" context
-	grafanactl config unset contexts.dev-instance.grafana.insecure-skip-tls-verify`,
+	grafanactl config unset contexts.dev-instance.grafana.insecure-skip-tls-verify
+
+	# Unset a value in the local config layer
+	grafanactl config unset --file local contexts.prod.cloud.token`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := configOpts.loadConfigTolerant(cmd.Context())
+			targetSource, err := resolveWriteTarget(configOpts, fileType, cmd.Context())
+			if err != nil {
+				return err
+			}
+
+			cfg, err := config.Load(cmd.Context(), targetSource)
 			if err != nil {
 				return err
 			}
@@ -520,9 +588,11 @@ PROPERTY_NAME is a dot-delimited reference to the value to unset. It can either 
 				return err
 			}
 
-			return config.Write(cmd.Context(), configOpts.configSource(), cfg)
+			return config.Write(cmd.Context(), targetSource, cfg)
 		},
 	}
+
+	cmd.Flags().StringVar(&fileType, "file", "", "Config layer to write to (system, user, local)")
 
 	return cmd
 }

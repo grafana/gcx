@@ -3,11 +3,9 @@ package k6
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strconv"
 
-	internalconfig "github.com/grafana/grafanactl/internal/config"
 	"github.com/grafana/grafanactl/internal/providers"
 	"github.com/grafana/grafanactl/internal/resources"
 	"github.com/grafana/grafanactl/internal/resources/adapter"
@@ -101,13 +99,13 @@ func projectExample() json.RawMessage {
 	return b
 }
 
-// RESTConfigLoader can load a NamespacedRESTConfig from the active context.
-type RESTConfigLoader interface {
-	LoadRESTConfig(ctx context.Context) (internalconfig.NamespacedRESTConfig, error)
+// CloudConfigLoader can load Grafana Cloud config (token + stack info via GCOM).
+type CloudConfigLoader interface {
+	LoadCloudConfig(ctx context.Context) (providers.CloudRESTConfig, error)
 }
 
 // NewAdapterFactory returns a lazy adapter.Factory for k6 projects.
-func NewAdapterFactory(loader RESTConfigLoader) adapter.Factory {
+func NewAdapterFactory(loader CloudConfigLoader) adapter.Factory {
 	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
 		client, ns, err := authenticatedClient(ctx, loader, "")
 		if err != nil {
@@ -120,22 +118,12 @@ func NewAdapterFactory(loader RESTConfigLoader) adapter.Factory {
 	}
 }
 
-// authenticatedClient loads config, extracts credentials, and returns an authenticated k6 client.
+// authenticatedClient loads cloud config, performs k6 token exchange, and returns an authenticated client.
 // apiDomainOverride can be empty to use default.
-func authenticatedClient(ctx context.Context, loader RESTConfigLoader, apiDomainOverride string) (*Client, string, error) {
-	cfg, err := loader.LoadRESTConfig(ctx)
+func authenticatedClient(ctx context.Context, loader CloudConfigLoader, apiDomainOverride string) (*Client, string, error) {
+	cfg, err := loader.LoadCloudConfig(ctx)
 	if err != nil {
-		return nil, "", fmt.Errorf("k6: load config: %w", err)
-	}
-
-	token := cfg.BearerToken
-	if token == "" {
-		return nil, "", errors.New("k6: bearer token required for k6 authentication (set grafana.token in config)")
-	}
-
-	stackID, err := parseStackID(cfg.Namespace)
-	if err != nil {
-		return nil, "", fmt.Errorf("k6: %w (set grafana.stack-id in config)", err)
+		return nil, "", fmt.Errorf("k6: load cloud config: %w", err)
 	}
 
 	domain := apiDomainOverride
@@ -144,29 +132,11 @@ func authenticatedClient(ctx context.Context, loader RESTConfigLoader, apiDomain
 	}
 
 	client := NewClient(domain)
-	if err := client.Authenticate(ctx, token, stackID); err != nil {
+	if err := client.Authenticate(ctx, cfg.Token, cfg.Stack.ID); err != nil {
 		return nil, "", fmt.Errorf("k6 auth failed (PUT %s): %w -- ensure your token has k6 scopes", authPath, err)
 	}
 
 	return client, cfg.Namespace, nil
-}
-
-// parseStackID extracts the numeric stack ID from a namespace like "stack-123".
-func parseStackID(namespace string) (int, error) {
-	const prefix = "stack-"
-	if !hasPrefix(namespace, prefix) {
-		return 0, fmt.Errorf("cannot parse stack ID from namespace %q (expected format: stack-<id>)", namespace)
-	}
-
-	id, err := strconv.Atoi(namespace[len(prefix):])
-	if err != nil {
-		return 0, fmt.Errorf("cannot parse stack ID from namespace %q: %w", namespace, err)
-	}
-	return id, nil
-}
-
-func hasPrefix(s, prefix string) bool {
-	return len(s) > len(prefix) && s[:len(prefix)] == prefix
 }
 
 // ResourceAdapter bridges the k6 Client to the grafanactl resources pipeline.
@@ -297,6 +267,3 @@ func (a *ResourceAdapter) Delete(ctx context.Context, name string, _ metav1.Dele
 	}
 	return a.client.DeleteProject(ctx, id)
 }
-
-// ErrK6AuthRequired is returned when k6 auth fails.
-var ErrK6AuthRequired = errors.New("k6 authentication required")

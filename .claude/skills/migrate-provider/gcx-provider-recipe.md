@@ -260,10 +260,11 @@ that only surfaced during smoke testing:
 
 ### Auth
 
-- **OnCall** uses a separate API URL and token, resolved via GCOM stack info.
-  The adapter factory needs to call GCOM to discover the OnCall API URL before
-  constructing the client.
-  <!-- TODO: update after OnCall port -->
+- **OnCall** uses a separate API URL discovered from the IRM plugin settings
+  (`/api/plugins/grafana-irm-app/settings` → `jsonData.onCallApiUrl`). The same
+  Grafana SA token is used, plus an `X-Grafana-Url` header with the stack URL.
+  The config loader checks `GRAFANA_ONCALL_URL` env → provider config → auto-discovery.
+  Three-tier fallback avoids mandatory config for most users.
 
 ### ID Mapping
 
@@ -317,11 +318,49 @@ that only surfaced during smoke testing:
 - The `usestdlibvars` linter enforces `http.StatusCreated` etc. instead of
   raw `201`/`204`/`404` literals — gcx uses raw numbers everywhere.
 
+### Multi-Resource Providers (OnCall pattern)
+
+- For providers with many sub-resource types (OnCall has 12), use a generic
+  `subResourceAdapter` with a `switch` dispatch on `kind` rather than 12 separate
+  adapter files. This keeps the code in one package instead of 12 subpackages.
+- Register all sub-resources under the same API group (`oncall.ext.grafana.app`)
+  with different kinds (Integration, Schedule, AlertGroup, etc.).
+- Use `oncall-*` prefixed aliases to avoid conflicts with core resource types
+  (e.g., `oncall-teams` not `teams` to avoid clashing with K8s-native resources).
+- The `X-Grafana-Url` header must use canonical Go form (`X-Grafana-Url` not
+  `X-Grafana-URL`) or the `canonicalheader` linter will flag it. httptest servers
+  receive the canonical form regardless of how you set it.
+
+### Plugin Proxy APIs (Knowledge Graph / Asserts)
+
+- KG/Asserts uses the Grafana plugin resource proxy path:
+  `/api/plugins/grafana-asserts-app/resources/asserts/api-server/...`
+- Auth: standard Grafana SA token via rest.Config — no separate token needed.
+  gcx passes `X-Scope-OrgID: 0` but this is not required through the plugin proxy.
+- The API is operational, not CRUD: many query endpoints (POST), config uploads
+  (PUT with `application/x-yaml`), and read endpoints (GET).
+- Rules are the closest to a standard resource (list/get/create/delete) and map
+  well to the ResourceAdapter pipeline. Other sub-resources (datasets, entities,
+  assertions) are best served as provider commands.
+- The command tree is large (~20 subcommands) — use inline closures for each
+  command rather than trying to share RunE builders.
 ### Response Shape Differences
 
 - Some gcx clients unwrap response envelopes (e.g., `response.Data`) while
   others return the raw response. Check the gcx client carefully — the types
   you port must match what the API actually returns, not what gcx exposes.
+
+### Separate API URLs (Fleet, OnCall)
+
+- Fleet Management uses a separate API URL, not the Grafana instance URL.
+  Use `ConfigKeys` with `url`, `instance-id`, `token` for provider config.
+  The configLoader pattern from synth (`LoadFleetConfig` vs synth's `LoadSMConfig`)
+  works well — extract credentials from `providers["fleet"]` config map + env vars.
+- Fleet uses basic auth (`instance-id:token`) when instance-id is set,
+  otherwise Bearer token. The `NewClient(url, instanceID, token, useBasicAuth)` pattern
+  handles both modes via the `useBasicAuth` flag.
+- Discovery and instrumentation commands need additional context (prom cluster/instance IDs)
+  that currently require GCOM stack info — not ported yet, deferred to GCOM provider.
 
 ---
 
@@ -332,11 +371,11 @@ that only surfaced during smoke testing:
 | synth | checks, probes | ✅ existing | — | Reference impl, refactored to TypedAdapter in Phase 0 |
 | slo | definitions, reports | ✅ existing | — | Reference impl |
 | alert | rules, groups | ✅ existing | — | Read-only, expanding in Phase 2 |
-| oncall | 12 sub-resources | ⬜ planned | — | Largest port, Phase 1.1 |
+| oncall | 12 sub-resources | ✅ done (2026-03-20) | Claude | All 12 sub-resources, iterator pagination, auto-discovery of OnCall URL |
 | incidents | incidents | ✅ done (2026-03-20) | Claude | IRM plugin API, gRPC-style POST endpoints |
 | k6 | projects, tests, runs, envs | ✅ done (2026-03-20) | Claude | Token exchange auth, separate API domain |
-| fleet | pipelines, collectors, etc. | ⬜ planned | — | Phase 1.4 |
-| kg | datasets, rules, etc. | ⬜ planned | — | Phase 1.5 |
+| fleet | pipelines, collectors, tenant | ✅ done (2026-03-20) | Claude | gRPC/Connect API, separate URL + basic auth, 3 resource types |
+| kg | datasets, rules, entities, assertions, search | ✅ done (2026-03-20) | Claude | Plugin proxy API, 20+ subcommands, rules as ResourceAdapter |
 | ml | jobs, holidays | ⬜ planned | — | Phase 1.6 |
 | scim | users, groups | ⬜ planned | — | Phase 1.7 |
 | gcom | access policies, stacks, etc. | ⬜ planned | — | Phase 1.8 |

@@ -23,12 +23,16 @@ grafanactl config set PROPERTY_NAME PROPERTY_VALUE [flags]
 
 	# Disable the validation of the server's SSL certificate in the "dev-instance" context
 	grafanactl config set contexts.dev-instance.grafana.insecure-skip-tls-verify true
+
+	# Set a value in the local config layer
+	grafanactl config set --file local contexts.prod.cloud.token my-token
 ```
 
 ### Options
 
 ```
-  -h, --help   help for set
+      --file string   Config layer to write to (system, user, local)
+  -h, --help          help for set
 ```
 
 ### Options inherited from parent commands

@@ -72,7 +72,7 @@ func lokiLabelsCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			cfg, err := configOpts.LoadRESTConfig(ctx)
+			cfg, err := configOpts.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
@@ -196,7 +196,7 @@ func seriesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			cfg, err := configOpts.LoadRESTConfig(ctx)
+			cfg, err := configOpts.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}

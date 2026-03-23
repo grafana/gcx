@@ -102,7 +102,7 @@ func Command() *cobra.Command {
 				path = "/" + path
 			}
 
-			cfg, err := configOpts.LoadRESTConfig(cmd.Context())
+			cfg, err := configOpts.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
 			}

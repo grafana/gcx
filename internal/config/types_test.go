@@ -260,3 +260,103 @@ func TestMinify_withNoCurrentContext(t *testing.T) {
 	req.Error(err)
 	req.ErrorContains(err, "current-context must be defined")
 }
+
+func TestContext_ResolveStackSlug(t *testing.T) {
+	testCases := []struct {
+		name     string
+		ctx      config.Context
+		expected string
+	}{
+		{
+			name: "explicit cloud.stack takes precedence over grafana.server derivation",
+			ctx: config.Context{
+				Cloud:   &config.CloudConfig{Stack: "explicit"},
+				Grafana: &config.GrafanaConfig{Server: "https://derived.grafana.net"},
+			},
+			expected: "explicit",
+		},
+		{
+			name: "derive slug from grafana.net subdomain when no cloud.stack",
+			ctx: config.Context{
+				Grafana: &config.GrafanaConfig{Server: "https://mystack.grafana.net"},
+			},
+			expected: "mystack",
+		},
+		{
+			name: "non-grafana.net server returns empty string",
+			ctx: config.Context{
+				Grafana: &config.GrafanaConfig{Server: "https://grafana.mycompany.com"},
+			},
+			expected: "",
+		},
+		{
+			name:     "no grafana config returns empty string",
+			ctx:      config.Context{},
+			expected: "",
+		},
+		{
+			name: "empty cloud.stack falls back to grafana.server derivation",
+			ctx: config.Context{
+				Cloud:   &config.CloudConfig{Stack: ""},
+				Grafana: &config.GrafanaConfig{Server: "https://mystack.grafana.net"},
+			},
+			expected: "mystack",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := require.New(t)
+			req.Equal(tc.expected, tc.ctx.ResolveStackSlug())
+		})
+	}
+}
+
+func TestContext_ResolveGCOMURL(t *testing.T) {
+	testCases := []struct {
+		name     string
+		ctx      config.Context
+		expected string
+	}{
+		{
+			name:     "no cloud config returns default grafana.com URL",
+			ctx:      config.Context{},
+			expected: "https://grafana.com",
+		},
+		{
+			name: "empty cloud.api-url returns default grafana.com URL",
+			ctx: config.Context{
+				Cloud: &config.CloudConfig{},
+			},
+			expected: "https://grafana.com",
+		},
+		{
+			name: "custom cloud.api-url is prefixed with https://",
+			ctx: config.Context{
+				Cloud: &config.CloudConfig{APIUrl: "grafana-dev.com"},
+			},
+			expected: "https://grafana-dev.com",
+		},
+		{
+			name: "cloud.api-url with existing https:// scheme is not double-prefixed",
+			ctx: config.Context{
+				Cloud: &config.CloudConfig{APIUrl: "https://grafana-dev.com"},
+			},
+			expected: "https://grafana-dev.com",
+		},
+		{
+			name: "cloud.api-url with http:// scheme is preserved",
+			ctx: config.Context{
+				Cloud: &config.CloudConfig{APIUrl: "http://localhost:3000"},
+			},
+			expected: "http://localhost:3000",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := require.New(t)
+			req.Equal(tc.expected, tc.ctx.ResolveGCOMURL())
+		})
+	}
+}

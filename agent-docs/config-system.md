@@ -198,6 +198,9 @@ mapping:
 | `GRAFANA_TOKEN`   | `GrafanaConfig.APIToken`  | string  |
 | `GRAFANA_ORG_ID`  | `GrafanaConfig.OrgID`     | int64   |
 | `GRAFANA_STACK_ID`| `GrafanaConfig.StackID`   | int64   |
+| `GRAFANA_CLOUD_TOKEN` | `CloudConfig.Token`    | string  |
+| `GRAFANA_CLOUD_STACK` | `CloudConfig.Stack`    | string  |
+| `GRAFANA_CLOUD_API_URL` | `CloudConfig.APIUrl` | string  |
 
 Key behavior: env vars override the **current context** only. They do not
 affect other contexts in the file. The file itself is never mutated by env vars.
@@ -292,6 +295,38 @@ Namespace resolution order in `NewNamespacedRESTConfig` (`rest.go:57-68`):
 
 This means: if you configure `org-id` but the server is actually Grafana Cloud,
 the discovered stack-id takes precedence silently. See `rest.go:59-61`.
+
+---
+
+## Cloud Configuration
+
+For Grafana Cloud instances, the `Context` has an optional `Cloud` sub-struct
+that holds Grafana Cloud-specific configuration:
+
+```
+Context.Cloud *CloudConfig
+  ├── Token      (GRAFANA_CLOUD_TOKEN)      — API token for GCOM (secure)
+  ├── Stack      (GRAFANA_CLOUD_STACK)      — Stack slug (e.g., "mystack")
+  └── APIUrl     (GRAFANA_CLOUD_API_URL)    — GCOM base URL (default: "https://grafana.com")
+```
+
+The `Cloud` struct is optional. It is used by provider implementations (e.g.,
+`internal/cloud/client.go`) to discover stack metadata via the Grafana Cloud
+OpenAPI (GCOM). Token is marked `datapolicy:"secret"` and is redacted in
+`config view` output unless `--raw` is passed.
+
+Example:
+```yaml
+contexts:
+  cloud-prod:
+    grafana:
+      server: "https://mystack.grafana.net"
+      token: "glsa_xxxx"
+    cloud:
+      token: "glc_xxxx"              # separate GCOM token
+      stack: "mystack"               # optional: slug derived from server if not set
+      api-url: "https://grafana.com" # optional: defaults to https://grafana.com
+```
 
 ---
 
@@ -465,8 +500,8 @@ produce source-highlighted error output pointing to the exact YAML location.
 
 ```
 grafanactl resources get dashboards
-  └── resources/command.go → opts.LoadRESTConfig(ctx)
-        └── cmd/config/command.go:LoadRESTConfig
+  └── resources/command.go → opts.LoadGrafanaConfig(ctx)
+        └── cmd/config/command.go:LoadGrafanaConfig
               └── LoadConfig(ctx)
                     └── loadConfigTolerant(ctx, validator)
                           ├── config.Load(ctx, source, overrides...)
@@ -540,4 +575,4 @@ variable reference.
 | `internal/secrets/redactor.go` | `Redact` — reflection-based secret redaction |
 | `internal/providers/provider.go` | `Provider` interface + `ConfigKey` type |
 | `internal/providers/redact.go` | `RedactSecrets` — provider config redaction |
-| `cmd/grafanactl/config/command.go` | CLI commands + `Options.LoadConfig`/`LoadRESTConfig` |
+| `cmd/grafanactl/config/command.go` | CLI commands + `Options.LoadConfig`/`LoadGrafanaConfig` |

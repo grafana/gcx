@@ -111,16 +111,16 @@ func incidentExample() json.RawMessage {
 	return b
 }
 
-// RESTConfigLoader can load a NamespacedRESTConfig from the active context.
-type RESTConfigLoader interface {
-	LoadRESTConfig(ctx context.Context) (internalconfig.NamespacedRESTConfig, error)
+// GrafanaConfigLoader can load a NamespacedRESTConfig from the active context.
+type GrafanaConfigLoader interface {
+	LoadGrafanaConfig(ctx context.Context) (internalconfig.NamespacedRESTConfig, error)
 }
 
 // NewAdapterFactory returns a lazy adapter.Factory for incidents.
-// The factory captures the RESTConfigLoader and constructs the client on first invocation.
-func NewAdapterFactory(loader RESTConfigLoader) adapter.Factory {
+// The factory captures the GrafanaConfigLoader and constructs the client on first invocation.
+func NewAdapterFactory(loader GrafanaConfigLoader) adapter.Factory {
 	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
-		cfg, err := loader.LoadRESTConfig(ctx)
+		cfg, err := loader.LoadGrafanaConfig(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load REST config for incidents adapter: %w", err)
 		}

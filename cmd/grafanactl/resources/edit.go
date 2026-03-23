@@ -61,7 +61,7 @@ The edition will be cancelled if no changes are written to the file or if the fi
 			ctx := cmd.Context()
 			edit := editorFromEnv()
 
-			cfg, err := configOpts.LoadRESTConfig(ctx)
+			cfg, err := configOpts.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}

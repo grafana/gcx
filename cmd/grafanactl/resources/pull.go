@@ -6,7 +6,6 @@ import (
 
 	cmdconfig "github.com/grafana/grafanactl/cmd/grafanactl/config"
 	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
-	"github.com/grafana/grafanactl/internal/config"
 	"github.com/grafana/grafanactl/internal/resources/local"
 	"github.com/grafana/grafanactl/internal/resources/process"
 	"github.com/grafana/grafanactl/internal/resources/remote"
@@ -104,10 +103,7 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	grafanactl resources pull checks -p ./checks/
 	grafanactl resources pull rules -p ./rules/`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Inject the --context flag value into the Go context so that provider
-			// adapter factories (SLO, Synth, etc.) can honour it when loading their
-			// own credentials, even though they don't share configOpts directly.
-			ctx := config.ContextWithName(cmd.Context(), configOpts.Context)
+			ctx := cmd.Context()
 
 			if err := opts.Validate(); err != nil {
 				return err
@@ -118,7 +114,7 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			cfg, err := configOpts.LoadRESTConfig(ctx)
+			cfg, err := configOpts.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
@@ -139,7 +135,7 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			writer := local.FSWriter{
 				Path:        opts.Path,
-				Namer:       local.GroupResourcesByKind(opts.IO.OutputFormat),
+				Namer:       local.GroupResourcesByKind(opts.IO.OutputFormat, local.PluralsFromFilters(res.Filters)),
 				Encoder:     codec,
 				StopOnError: opts.OnError.StopOnError(),
 			}

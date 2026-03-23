@@ -61,7 +61,7 @@ func (o *statusOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newStatusCommand(loader RESTConfigLoader) *cobra.Command {
+func newStatusCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &statusOpts{}
 	cmd := &cobra.Command{
 		Use:   "status [UUID]",
@@ -93,7 +93,7 @@ grafana_slo_* metrics.`,
 
 			ctx := cmd.Context()
 
-			restCfg, err := loader.LoadRESTConfig(ctx)
+			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}

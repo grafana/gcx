@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/grafana/grafanactl/internal/format"
@@ -18,18 +19,41 @@ import (
 type FileNamer func(resource *resources.Resource) (string, error)
 
 // GroupResourcesByKind organizes resources by their full GVK, writing resources
-// in a folder named after their kind, version, and group to disambiguate
-// resources that share the same kind name across different API groups.
-// File names are generated as follows: `{Kind}.{Version}.{Group}/{Name}.{extension}`.
-func GroupResourcesByKind(extension string) FileNamer {
+// in a folder named after their plural resource name, version, and group.
+// This matches the resource selector syntax used by `resources get`.
+//
+// Directory format: `{plural}.{version}.{group}/{name}.{extension}`
+// Example: `dashboards.v1alpha1.dashboard.grafana.app/my-dash.yaml`
+//
+// The plurals map provides GVK → plural name mappings from the discovery registry.
+// If a GVK is not found in the map, falls back to lowercase kind + "s".
+func GroupResourcesByKind(extension string, plurals map[string]string) FileNamer {
 	return func(resource *resources.Resource) (string, error) {
 		if resource.Name() == "" {
 			return "", errors.New("resource has no name")
 		}
 
-		dir := resource.Kind() + "." + resource.Version() + "." + resource.Group()
+		gvk := resource.GroupVersionKind()
+		plural := plurals[gvk.String()]
+		if plural == "" {
+			// Fallback: lowercase kind + "s" (matches K8s convention for most resources).
+			plural = strings.ToLower(gvk.Kind) + "s"
+		}
+
+		dir := plural + "." + gvk.Version + "." + gvk.Group
 		return filepath.Join(dir, resource.Name()+"."+extension), nil
 	}
+}
+
+// PluralsFromFilters builds a GVK→plural mapping from resource filters.
+// Used by GroupResourcesByKind to produce directory names that match selector syntax.
+func PluralsFromFilters(filters resources.Filters) map[string]string {
+	m := make(map[string]string, len(filters))
+	for _, f := range filters {
+		gvk := f.Descriptor.GroupVersionKind()
+		m[gvk.String()] = f.Descriptor.Plural
+	}
+	return m
 }
 
 type FSWriter struct {

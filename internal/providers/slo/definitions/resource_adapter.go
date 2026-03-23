@@ -49,7 +49,7 @@ func NewLazyFactory() adapter.Factory {
 		var loader providers.ConfigLoader
 		loader.SetContextName(internalconfig.ContextNameFromCtx(ctx))
 
-		cfg, err := loader.LoadRESTConfig(ctx)
+		cfg, err := loader.LoadGrafanaConfig(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load REST config for SLO adapter: %w", err)
 		}

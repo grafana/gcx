@@ -66,10 +66,10 @@ func init() { //nolint:gochecknoinits // Self-registration pattern (like databas
 }
 
 // NewRulesAdapterFactory returns a lazy adapter.Factory for alert rules.
-// The factory captures the RESTConfigLoader and constructs the client on first invocation.
-func NewRulesAdapterFactory(loader RESTConfigLoader) adapter.Factory {
+// The factory captures the GrafanaConfigLoader and constructs the client on first invocation.
+func NewRulesAdapterFactory(loader GrafanaConfigLoader) adapter.Factory {
 	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
-		cfg, err := loader.LoadRESTConfig(ctx)
+		cfg, err := loader.LoadGrafanaConfig(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load REST config for alert rules adapter: %w", err)
 		}
@@ -87,10 +87,10 @@ func NewRulesAdapterFactory(loader RESTConfigLoader) adapter.Factory {
 }
 
 // NewGroupsAdapterFactory returns a lazy adapter.Factory for alert rule groups.
-// The factory captures the RESTConfigLoader and constructs the client on first invocation.
-func NewGroupsAdapterFactory(loader RESTConfigLoader) adapter.Factory {
+// The factory captures the GrafanaConfigLoader and constructs the client on first invocation.
+func NewGroupsAdapterFactory(loader GrafanaConfigLoader) adapter.Factory {
 	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
-		cfg, err := loader.LoadRESTConfig(ctx)
+		cfg, err := loader.LoadGrafanaConfig(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load REST config for alert groups adapter: %w", err)
 		}

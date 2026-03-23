@@ -284,7 +284,7 @@ Config ready
 Two loading modes:
 - **Tolerant** (`loadConfigTolerant`): used by `config view`, `config set` -- no
   validation beyond YAML parsing, allows working with partial configs
-- **Strict** (`LoadConfig`/`LoadRESTConfig`): used by `resources` commands --
+- **Strict** (`LoadConfig`/`LoadGrafanaConfig`): used by `resources` commands --
   validates server URL, namespace, and credentials
 
 ### Namespace Semantics
@@ -384,7 +384,7 @@ Every command follows a consistent structure:
 
 `config.Options` (holding `--config` and `--context`) is created once per command
 group and injected into every subcommand constructor by pointer. Subcommands call
-`configOpts.LoadRESTConfig(ctx)` at execution time (in `RunE`), not at construction
+`configOpts.LoadGrafanaConfig(ctx)` at execution time (in `RunE`), not at construction
 time, ensuring flags are already parsed.
 
 ### Shared Helpers
@@ -553,7 +553,7 @@ Files most important for understanding the codebase. Organized by architectural 
 | `cmd/grafanactl/main.go` | Binary entry point, error handling, version formatting |
 | `cmd/grafanactl/root/command.go` | Root Cobra command, logging setup, PersistentPreRun |
 | `cmd/grafanactl/resources/command.go` | Resources command group, configOpts injection |
-| `cmd/grafanactl/config/command.go` | Config commands + Options.LoadConfig/LoadRESTConfig |
+| `cmd/grafanactl/config/command.go` | Config commands + Options.LoadConfig/LoadGrafanaConfig |
 
 ### Core Resource Abstractions
 
@@ -618,6 +618,12 @@ Files most important for understanding the codebase. Organized by architectural 
 | `internal/config/errors.go` | ValidationError, UnmarshalError, ContextNotFound |
 | `internal/secrets/redactor.go` | Reflection-based secret redaction |
 
+### Cloud Integration
+
+| File | Purpose |
+|------|---------|
+| `internal/cloud/gcom.go` | GCOMClient for Grafana Cloud stack discovery via GCOM API |
+
 ### Agent Mode
 
 | File | Purpose |
@@ -659,7 +665,14 @@ Files most important for understanding the codebase. Organized by architectural 
 | `internal/providers/redact.go` | `RedactSecrets()` — secure-by-default secret redaction |
 | `cmd/grafanactl/providers/command.go` | `providers` command (list registered providers) |
 | `internal/providers/configloader.go` | Shared `ConfigLoader` — binds `--config`/`--context` flags and loads REST config for all providers |
-| `internal/providers/alert/` | Alert provider — rules and groups management via the Prometheus-compatible alerting API |
+
+### Alert Provider
+
+| File | Purpose |
+|------|---------|
+| `internal/providers/alert/provider.go` | `AlertProvider` implementing the `providers.Provider` interface |
+| `internal/providers/alert/rules/` | Alert rules management (read-only via the Prometheus-compatible alerting API) |
+| `internal/providers/alert/groups/` | Alert groups management |
 
 ### SLO Provider
 
@@ -676,6 +689,19 @@ Files most important for understanding the codebase. Organized by architectural 
 | `internal/providers/synth/provider.go` | `SynthProvider` implementing the `providers.Provider` interface |
 | `internal/providers/synth/checks/` | Check management (list, get, push, pull, delete, status, timeline) |
 | `internal/providers/synth/probes/` | Probe listing and management |
+
+### Fleet Management Provider
+
+| File | Purpose |
+|------|---------|
+| `internal/providers/fleet/provider.go` | `FleetProvider` implementing the `providers.Provider` interface |
+| `internal/providers/fleet/pipelines/` | Fleet management pipelines and collectors |
+
+### IRM Incidents Provider
+
+| File | Purpose |
+|------|---------|
+| `internal/providers/incidents/provider.go` | `IncidentsProvider` implementing the `providers.Provider` interface |
 
 ### Linter System
 
@@ -772,7 +798,7 @@ These invariants are enforced by convention. Violating them will cause subtle bu
 
 6. **opts.Validate() must be the first call in RunE.** No I/O before validation.
 
-7. **configOpts.LoadRESTConfig is called in RunE, not at construction time.**
+7. **configOpts.LoadGrafanaConfig is called in RunE, not at construction time.**
    Flags are not yet parsed when the command is constructed.
 
 ---

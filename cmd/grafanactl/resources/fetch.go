@@ -23,6 +23,7 @@ type FetchRequest struct {
 
 type FetchResponse struct {
 	Resources      resources.Resources
+	Filters        resources.Filters
 	IsSingleTarget bool
 	PullSummary    *remote.OperationSummary
 }
@@ -59,6 +60,7 @@ func FetchResources(ctx context.Context, opts FetchRequest, args []string) (*Fet
 	}
 
 	res := FetchResponse{
+		Filters:        filters,
 		IsSingleTarget: sels.IsSingleTarget(),
 	}
 

@@ -5,6 +5,20 @@
 AutoApprove automatically enables the --force flag on delete operations,
 enabling non-interactive operation in CI/CD pipelines.
 
+## `GRAFANA_CLOUD_API_URL`
+
+APIUrl is the base URL of the Grafana Cloud API (GCOM).
+Optional: defaults to "https://grafana.com".
+
+## `GRAFANA_CLOUD_STACK`
+
+Stack is the Grafana Cloud stack slug (e.g. "mystack").
+Optional: if not set, the slug may be derived from Grafana.Server.
+
+## `GRAFANA_CLOUD_TOKEN`
+
+Token is a Grafana Cloud API token used to authenticate against GCOM.
+
 ## `GRAFANA_ORG_ID`
 
 OrgID specifies the organization targeted by this config.

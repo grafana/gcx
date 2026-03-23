@@ -190,7 +190,7 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return errors.New("--json ? requires a resource selector argument (e.g. grafanactl resources get dashboards --json ?)")
 			}
 
-			cfg, err := configOpts.LoadRESTConfig(ctx)
+			cfg, err := configOpts.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}

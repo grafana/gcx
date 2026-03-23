@@ -5,6 +5,8 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 )
 
 const (
@@ -16,6 +18,10 @@ const (
 type Config struct {
 	// Source contains the path to the config file parsed to populate this struct.
 	Source string `json:"-" yaml:"-"`
+
+	// Sources lists all config files that were discovered and merged to produce
+	// this config. Populated by LoadLayered.
+	Sources []ConfigSource `json:"-" yaml:"-"`
 
 	// Contexts is a map of context configurations, indexed by name.
 	Contexts map[string]*Context `json:"contexts" yaml:"contexts"`
@@ -48,11 +54,27 @@ func (config *Config) SetContext(name string, makeCurrent bool, context Context)
 	}
 }
 
+// CloudConfig holds Grafana Cloud platform credentials and configuration.
+type CloudConfig struct {
+	// Token is a Grafana Cloud API token used to authenticate against GCOM.
+	Token string `datapolicy:"secret" env:"GRAFANA_CLOUD_TOKEN" json:"token,omitempty" yaml:"token,omitempty"`
+
+	// Stack is the Grafana Cloud stack slug (e.g. "mystack").
+	// Optional: if not set, the slug may be derived from Grafana.Server.
+	Stack string `env:"GRAFANA_CLOUD_STACK" json:"stack,omitempty" yaml:"stack,omitempty"`
+
+	// APIUrl is the base URL of the Grafana Cloud API (GCOM).
+	// Optional: defaults to "https://grafana.com".
+	APIUrl string `env:"GRAFANA_CLOUD_API_URL" json:"api-url,omitempty" yaml:"api-url,omitempty"`
+}
+
 // Context holds the information required to connect to a remote Grafana instance.
 type Context struct {
 	Name string `json:"-" yaml:"-"`
 
 	Grafana *GrafanaConfig `json:"grafana,omitempty" yaml:"grafana,omitempty"`
+
+	Cloud *CloudConfig `json:"cloud,omitempty" yaml:"cloud,omitempty"`
 
 	// DefaultPrometheusDatasource is the UID of the default Prometheus datasource to use for queries.
 	DefaultPrometheusDatasource string `json:"default-prometheus-datasource,omitempty" yaml:"default-prometheus-datasource,omitempty"`
@@ -88,6 +110,49 @@ func (context *Context) Validate() error {
 // ToRESTConfig returns a REST config for the context.
 func (context *Context) ToRESTConfig(ctx context.Context) NamespacedRESTConfig {
 	return NewNamespacedRESTConfig(ctx, *context)
+}
+
+// ResolveStackSlug returns the Grafana Cloud stack slug for this context.
+// It checks Cloud.Stack first; if not set, attempts to derive the slug from
+// Grafana.Server by extracting the subdomain from *.grafana.net or *.grafana-dev.net URLs.
+// Returns "" if neither source yields a slug.
+func (context *Context) ResolveStackSlug() string {
+	if context.Cloud != nil && context.Cloud.Stack != "" {
+		return context.Cloud.Stack
+	}
+
+	if context.Grafana == nil || context.Grafana.Server == "" {
+		return ""
+	}
+
+	parsed, err := url.Parse(context.Grafana.Server)
+	if err != nil {
+		return ""
+	}
+
+	host := parsed.Hostname()
+	for _, suffix := range []string{".grafana.net", ".grafana-dev.net"} {
+		if slug, ok := strings.CutSuffix(host, suffix); ok {
+			return slug
+		}
+	}
+
+	return ""
+}
+
+// ResolveGCOMURL returns the Grafana Cloud API (GCOM) base URL for this context.
+// If Cloud.APIUrl is set, it is returned prefixed with "https://".
+// Otherwise, "https://grafana.com" is returned.
+func (context *Context) ResolveGCOMURL() string {
+	if context.Cloud != nil && context.Cloud.APIUrl != "" {
+		apiURL := context.Cloud.APIUrl
+		if !strings.HasPrefix(apiURL, "https://") && !strings.HasPrefix(apiURL, "http://") {
+			apiURL = "https://" + apiURL
+		}
+		return apiURL
+	}
+
+	return "https://grafana.com"
 }
 
 type GrafanaConfig struct {

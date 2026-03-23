@@ -177,9 +177,9 @@ func (l *configLoader) LoadSMConfig(ctx context.Context) (string, string, string
 	return smURL, smToken, namespace, nil
 }
 
-// LoadRESTConfig loads the REST config from the config file, applying
+// LoadGrafanaConfig loads the REST config from the config file, applying
 // env var overrides and context flags. Mirrors the SLO provider's implementation.
-func (l *configLoader) LoadRESTConfig(ctx context.Context) (config.NamespacedRESTConfig, error) {
+func (l *configLoader) LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error) {
 	validator := func(cfg *config.Config) error {
 		if !cfg.HasContext(cfg.CurrentContext) {
 			return config.ContextNotFound(cfg.CurrentContext)

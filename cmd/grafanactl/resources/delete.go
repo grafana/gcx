@@ -105,7 +105,7 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				opts.Force = true
 			}
 
-			cfg, err := configOpts.LoadRESTConfig(ctx)
+			cfg, err := configOpts.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}

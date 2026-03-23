@@ -68,6 +68,16 @@ contexts:
           - string
           - ...
           
+    cloud: 
+      # CloudConfig holds Grafana Cloud platform credentials and configuration.
+      # Token is a Grafana Cloud API token used to authenticate against GCOM.
+      token: string
+      # Stack is the Grafana Cloud stack slug (e.g. "mystack").
+      # Optional: if not set, the slug may be derived from Grafana.Server.
+      stack: string
+      # APIUrl is the base URL of the Grafana Cloud API (GCOM).
+      # Optional: defaults to "https://grafana.com".
+      api-url: string
     # DefaultPrometheusDatasource is the UID of the default Prometheus datasource to use for queries.
     default-prometheus-datasource: string
     # DefaultLokiDatasource is the UID of the default Loki datasource to use for queries.

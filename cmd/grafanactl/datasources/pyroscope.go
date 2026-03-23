@@ -66,7 +66,7 @@ func profileTypesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			cfg, err := configOpts.LoadRESTConfig(ctx)
+			cfg, err := configOpts.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
@@ -169,7 +169,7 @@ func pyroscopeLabelsCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			cfg, err := configOpts.LoadRESTConfig(ctx)
+			cfg, err := configOpts.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}

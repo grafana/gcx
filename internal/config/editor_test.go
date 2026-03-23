@@ -155,6 +155,45 @@ func Test_SetValue(t *testing.T) {
 			},
 		},
 		{
+			name:  "cloud token in new context",
+			input: config.Config{},
+			path:  "contexts.dev.cloud.token",
+			value: "my-token",
+			expectedOutput: config.Config{
+				Contexts: map[string]*config.Context{
+					"dev": {
+						Cloud: &config.CloudConfig{Token: "my-token"},
+					},
+				},
+			},
+		},
+		{
+			name:  "cloud stack in new context",
+			input: config.Config{},
+			path:  "contexts.dev.cloud.stack",
+			value: "mystack",
+			expectedOutput: config.Config{
+				Contexts: map[string]*config.Context{
+					"dev": {
+						Cloud: &config.CloudConfig{Stack: "mystack"},
+					},
+				},
+			},
+		},
+		{
+			name:  "cloud api-url in new context",
+			input: config.Config{},
+			path:  "contexts.dev.cloud.api-url",
+			value: "grafana-dev.com",
+			expectedOutput: config.Config{
+				Contexts: map[string]*config.Context{
+					"dev": {
+						Cloud: &config.CloudConfig{APIUrl: "grafana-dev.com"},
+					},
+				},
+			},
+		},
+		{
 			name: "provider key creates new provider alongside existing",
 			input: config.Config{
 				Contexts: map[string]*config.Context{
