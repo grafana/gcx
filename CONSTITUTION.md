@@ -4,9 +4,12 @@
 
 ## Project Identity
 
-**What it is:** kubectl-style CLI for managing Grafana 12+ resources via its Kubernetes-compatible API.
+**What it is:** Unified CLI for managing Grafana resources across two tiers — a K8s resource tier
+for dashboards, folders, and other resources via Grafana 12+'s Kubernetes-compatible API, and a
+Cloud provider tier with pluggable providers for Grafana Cloud products (SLO, Synthetic Monitoring,
+OnCall, Fleet Management, etc.) using product-specific REST APIs.
 
-**Primary values:** correctness, API stability, clean layered architecture, minimal dependencies
+**Primary values:** correctness, API stability, clean layered architecture, extensible provider model
 
 ## Architecture Invariants
 
@@ -22,6 +25,9 @@
   (`Process(*Resource) error`). Processors compose into ordered slices at defined pipeline points.
 - **Format-agnostic data fetching:** Commands fetch all data regardless of `--output` format;
   codecs control display, not data acquisition.
+- **Self-registering providers:** Cloud product providers use `init()` to register with the
+  global provider registry. Each provider contributes CLI commands, resource adapters, and
+  per-provider configuration via the `Provider` interface.
 
 ## Dependency Rules
 
