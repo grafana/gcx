@@ -139,7 +139,7 @@ $ devbox run go run ./cmd/grafanactl --config testdata/integration-test-config.y
 #### List available resources
 
 ```console
-$ devbox run go run ./cmd/grafanactl --config testdata/integration-test-config.yaml resources list
+$ devbox run go run ./cmd/grafanactl --config testdata/integration-test-config.yaml resources schemas
 ```
 
 #### Create a test dashboard
@@ -175,7 +175,7 @@ $ devbox run go run ./cmd/grafanactl --config testdata/integration-test-config.y
 The `serve` command allows you to develop dashboards locally with live reload:
 
 ```console
-$ devbox run go run ./cmd/grafanactl --config testdata/integration-test-config.yaml resources serve test-dashboard.yaml
+$ devbox run go run ./cmd/grafanactl --config testdata/integration-test-config.yaml dev serve test-dashboard.yaml
 ```
 
 Then open your browser to the URL shown in the output (typically `http://localhost:8080`).

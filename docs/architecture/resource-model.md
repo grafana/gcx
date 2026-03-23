@@ -379,7 +379,7 @@ client is a REST adapter or the k8s dynamic client.
 ### Discovery Integration
 
 Provider descriptors are injected into the `RegistryIndex` via `RegisterStatic(desc, aliases)`
-so that provider types appear in `resources list` output and resolve correctly from
+so that provider types appear in `resources schemas` output and resolve correctly from
 selector strings like `"slos"` or `"rules"`.
 
 ---

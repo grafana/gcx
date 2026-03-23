@@ -56,7 +56,7 @@ grafanactl/
 │   │   ├── local/            # FSReader / FSWriter (disk I/O)
 │   │   ├── process/          # Processor pipeline (manager fields, server fields)
 │   │   └── remote/           # Puller, Pusher, Deleter (Grafana API ops)
-│   └── server/               # Local dev server for 'resources serve'
+│   └── server/               # Local dev server for 'dev serve'
 │       ├── embed/            # Static assets (embedded via go:embed)
 │       ├── grafana/          # Grafana proxy and mock handlers
 │       ├── handlers/         # Chi HTTP handler implementations
@@ -395,7 +395,7 @@ config pointing at `localhost:3000` with `admin/admin` credentials and `org-id: 
 **Usage pattern for manual integration testing:**
 ```bash
 make test-env-up
-grafanactl --config testdata/integration-test-config.yaml resources list
+grafanactl --config testdata/integration-test-config.yaml resources schemas
 make test-env-down
 ```
 

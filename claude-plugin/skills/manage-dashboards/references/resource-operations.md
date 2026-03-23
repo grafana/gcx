@@ -17,7 +17,7 @@ They control which resources the command operates on.
 ### Kind Selector
 
 Targets all resources of a given kind. The kind name is the plural resource name as
-reported by `grafanactl resources list`.
+reported by `grafanactl resources schemas`.
 
 ```bash
 grafanactl resources get dashboards
@@ -277,7 +277,7 @@ grafanactl resources validate -p ./dashboards -p ./folders
 
 ---
 
-## `grafanactl resources serve`
+## `grafanactl dev serve`
 
 Start a live development server that watches local resource files and hot-reloads them
 into Grafana as they change. The browser refreshes automatically when a resource is
@@ -323,19 +323,19 @@ Developer          grafanactl serve       Grafana API        Browser
 
 ```bash
 # Serve resources from the default directory (./resources)
-grafanactl resources serve .
+grafanactl dev serve .
 
 # Serve a specific directory
-grafanactl resources serve ./dashboards
+grafanactl dev serve ./dashboards
 
 # Serve with a custom port, watch additional path
-grafanactl resources serve ./dashboards --port 9090 -w ./shared-panels
+grafanactl dev serve ./dashboards --port 9090 -w ./shared-panels
 
 # Serve a script-generated resource (re-runs script on each file change)
-grafanactl resources serve . --script ./generate-dashboard.sh --script-format json
+grafanactl dev serve . --script ./generate-dashboard.sh --script-format json
 
 # Serve without watching (push once and exit)
-grafanactl resources serve ./dashboards --no-watch
+grafanactl dev serve ./dashboards --no-watch
 ```
 
 ---

@@ -13,11 +13,15 @@ func Command() *cobra.Command {
 		Use:   "resources",
 		Short: "Manipulate Grafana resources",
 		Long:  "Manipulate Grafana resources.",
-		// Thread --context flag into Go context so provider adapter factories
-		// (fleet, synth, etc.) can honour it when loading credentials.
-		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
-			if root := cmd.Root(); root.PersistentPreRun != nil {
-				root.PersistentPreRun(cmd, nil)
+		// Inject --context into the Go context for all subcommands so provider
+		// adapter factories (SLO, Synth, etc.) can honour it when loading
+		// their own credentials.
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			// Cobra v1.x does not chain PersistentPreRun hooks, so we must
+			// explicitly call the root hook to preserve terminal detection,
+			// agent mode enforcement, logging setup, and flag handling.
+			if root := cmd.Root(); root != nil && root.PersistentPreRun != nil {
+				root.PersistentPreRun(cmd, args)
 			}
 			ctx := config.ContextWithName(cmd.Context(), configOpts.Context)
 			cmd.SetContext(ctx)
@@ -30,7 +34,7 @@ func Command() *cobra.Command {
 	cmd.AddCommand(editCmd(configOpts))
 	cmd.AddCommand(examplesCmd(configOpts))
 	cmd.AddCommand(getCmd(configOpts))
-	cmd.AddCommand(listCmd(configOpts))
+	cmd.AddCommand(schemasCmd(configOpts))
 	cmd.AddCommand(pullCmd(configOpts))
 	cmd.AddCommand(pushCmd(configOpts))
 	cmd.AddCommand(validateCmd(configOpts))

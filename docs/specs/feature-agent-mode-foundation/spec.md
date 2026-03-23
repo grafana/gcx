@@ -52,7 +52,7 @@ exit code taxonomy.
 | KD-1 | Pre-parse `os.Args` for `--agent` in `main.go` before `cobra.Execute()` | `io.Options.BindFlags()` runs during command construction (before `PersistentPreRun`). The agent mode state must be available at `BindFlags()` time to override the default format. Cobra's flag parsing has not run yet, so we manually scan `os.Args`. |
 | KD-2 | Env var detection runs at package `init()` time in `internal/agent` | Same timing constraint as KD-1. `init()` executes before `main()`, making `agent.IsAgentMode()` available when `BindFlags()` is called. The `--agent` flag is merged in during `main()` pre-parse. |
 | KD-3 | `--agent` is a persistent root flag (not a hidden env-only toggle) | Explicit opt-in is important for debugging and for agents that cannot set env vars. Persistent flag ensures it works on any subcommand. |
-| KD-4 | Exit code 5 = Cancelled (SIGINT); codes 2 and 4 kept for design-guide-defined usage/partial-failure | `agent-docs/design-guide.md` Section 2.1 already reserves codes 2 (usage error) and 4 (partial failure). Rather than conflict, this phase extends the taxonomy with codes 5 and 6. |
+| KD-4 | Exit code 5 = Cancelled (SIGINT); codes 2 and 4 kept for design-guide-defined usage/partial-failure | `docs/reference/design-guide.md` Section 2.1 already reserves codes 2 (usage error) and 4 (partial failure). Rather than conflict, this phase extends the taxonomy with codes 5 and 6. |
 | KD-5 | Exit code taxonomy spans 0-6 | Codes 0-4 follow the design-guide; codes 5 and 6 are new additions in this phase for agent-relevant failure categories. |
 | KD-6 | `-o text` overrides JSON default in agent mode | Explicit user/agent flags always take precedence over inferred defaults. This prevents agent mode from being a jail. |
 
@@ -110,7 +110,7 @@ exit code taxonomy.
 - **FR-017**: Exit code constants MUST be defined in a central location
   (`cmd/grafanactl/fail/exitcodes.go`), covering the full range 0-6 with
   named constants.
-- **FR-018**: After implementation, `agent-docs/design-guide.md` Section 2.1
+- **FR-018**: After implementation, `docs/reference/design-guide.md` Section 2.1
   MUST be updated to include exit codes 5 and 6, and Section 6.1 MUST list
   all five agent detection env vars (`CLAUDE_CODE`, `CURSOR_AGENT`,
   `GITHUB_COPILOT`, `AMAZON_Q`, `GRAFANACTL_AGENT_MODE`).

@@ -402,7 +402,7 @@ falling back to the k8s dynamic client for non-provider resource types.
 - `adapter.Factory`: lazy constructor `func(ctx context.Context) (ResourceAdapter, error)` — invoked only on first use, then cached
 - `adapter.Register()` / `adapter.AllRegistrations()`: global self-registration called from provider `init()` functions
 - `ResourceClientRouter`: routes CRUD operations by GVK; lazily initializes adapter instances; falls back to dynamic client for unregistered GVKs
-- `RegistryIndex.RegisterStatic()`: injects provider descriptors into the discovery lookup indexes so provider types appear in `resources list` and resolve from `resources get slos`
+- `RegistryIndex.RegisterStatic()`: injects provider descriptors into the discovery lookup indexes so provider types appear in `resources schemas` and resolve from `resources get slos`
 
 **Evidence:**
 - `internal/resources/adapter/adapter.go`: `ResourceAdapter` interface definition
