@@ -16,9 +16,18 @@ import (
 // CloudRESTConfig holds the resolved Grafana Cloud configuration needed to
 // authenticate against cloud platform APIs.
 type CloudRESTConfig struct {
-	Token     string
-	Stack     cloud.StackInfo
-	Namespace string
+	Token           string
+	Stack           cloud.StackInfo
+	Namespace       string
+	ProviderConfigs map[string]map[string]string
+}
+
+// ProviderConfig returns the configuration map for a specific provider, or nil if not set.
+func (c CloudRESTConfig) ProviderConfig(name string) map[string]string {
+	if c.ProviderConfigs == nil {
+		return nil
+	}
+	return c.ProviderConfigs[name]
 }
 
 // ConfigLoader is a minimal config loading helper shared across providers.
@@ -227,8 +236,9 @@ func (l *ConfigLoader) LoadCloudConfig(ctx context.Context) (CloudRESTConfig, er
 	}
 
 	return CloudRESTConfig{
-		Token:     token,
-		Stack:     stack,
-		Namespace: namespace,
+		Token:           token,
+		Stack:           stack,
+		Namespace:       namespace,
+		ProviderConfigs: curCtx.Providers,
 	}, nil
 }

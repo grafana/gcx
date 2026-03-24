@@ -22,6 +22,7 @@ import (
 	_ "github.com/grafana/grafanactl/internal/providers/alert"     // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/grafanactl/internal/providers/fleet"     // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/grafanactl/internal/providers/incidents" // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/grafanactl/internal/providers/k6"        // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/grafanactl/internal/providers/kg"        // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/grafanactl/internal/providers/oncall"    // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/grafanactl/internal/providers/slo"       // Provider registrations — blank imports trigger init() self-registration.
