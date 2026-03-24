@@ -14,7 +14,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// alert-groups command
+// alert-groups command: list, get, acknowledge, resolve, delete, silence, etc.
 // ---------------------------------------------------------------------------
 
 type alertGroupActionOpts struct {
@@ -30,10 +30,15 @@ func newAlertGroupsCommand(loader OnCallConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "alert-groups",
 		Short:   "Manage alert groups.",
-		Aliases: []string{"ag"},
+		Aliases: []string{"alert-group", "ag"},
 	}
 
 	cmd.AddCommand(
+		newListSubcommand(loader, "alert-groups", "AlertGroup",
+			func(c *Client, cmd *cobra.Command) ([]AlertGroup, error) { return c.ListAlertGroups(cmd.Context()) }),
+		newGetSubcommand(loader, "Get an alert group by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
+			return c.GetAlertGroup(cmd.Context(), id)
+		}),
 		newAlertGroupActionCommand(loader, "acknowledge", "Acknowledge an alert group.", func(c *Client, cmd *cobra.Command, id string) error {
 			return c.AcknowledgeAlertGroup(cmd.Context(), id)
 		}),
@@ -173,7 +178,7 @@ func newAlertGroupDeleteCommand(loader OnCallConfigLoader) *cobra.Command {
 }
 
 // ---------------------------------------------------------------------------
-// final-shifts command
+// final-shifts command (mounted under schedules)
 // ---------------------------------------------------------------------------
 
 type finalShiftsOpts struct {
@@ -226,7 +231,7 @@ func newScheduleFinalShiftsCommand(loader OnCallConfigLoader) *cobra.Command {
 }
 
 // ---------------------------------------------------------------------------
-// users command
+// users command: list, get, current
 // ---------------------------------------------------------------------------
 
 type usersCurrentOpts struct {
@@ -240,11 +245,17 @@ func (o *usersCurrentOpts) setup(flags *pflag.FlagSet) {
 
 func newUsersCommand(loader OnCallConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "users",
-		Short: "Manage OnCall users.",
+		Use:     "users",
+		Short:   "Manage OnCall users.",
+		Aliases: []string{"user"},
 	}
 
 	cmd.AddCommand(
+		newListSubcommand(loader, "users", "User",
+			func(c *Client, cmd *cobra.Command) ([]User, error) { return c.ListUsers(cmd.Context()) }),
+		newGetSubcommand(loader, "Get a user by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
+			return c.GetUser(cmd.Context(), id)
+		}),
 		newUsersCurrentCommand(loader),
 	)
 

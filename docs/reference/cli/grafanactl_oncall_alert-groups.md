@@ -24,6 +24,8 @@ Manage alert groups.
 * [grafanactl oncall](grafanactl_oncall.md)	 - Manage Grafana OnCall resources.
 * [grafanactl oncall alert-groups acknowledge](grafanactl_oncall_alert-groups_acknowledge.md)	 - Acknowledge an alert group.
 * [grafanactl oncall alert-groups delete](grafanactl_oncall_alert-groups_delete.md)	 - Delete an alert group.
+* [grafanactl oncall alert-groups get](grafanactl_oncall_alert-groups_get.md)	 - Get an alert group by ID.
+* [grafanactl oncall alert-groups list](grafanactl_oncall_alert-groups_list.md)	 - List resources.
 * [grafanactl oncall alert-groups resolve](grafanactl_oncall_alert-groups_resolve.md)	 - Resolve an alert group.
 * [grafanactl oncall alert-groups silence](grafanactl_oncall_alert-groups_silence.md)	 - Silence an alert group for a specified duration.
 * [grafanactl oncall alert-groups unacknowledge](grafanactl_oncall_alert-groups_unacknowledge.md)	 - Unacknowledge an alert group.

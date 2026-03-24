@@ -1,11 +1,11 @@
-## grafanactl oncall users
+## grafanactl oncall integrations
 
-Manage OnCall users.
+Manage OnCall integrations.
 
 ### Options
 
 ```
-  -h, --help   help for users
+  -h, --help   help for integrations
 ```
 
 ### Options inherited from parent commands
@@ -22,7 +22,6 @@ Manage OnCall users.
 ### SEE ALSO
 
 * [grafanactl oncall](grafanactl_oncall.md)	 - Manage Grafana OnCall resources.
-* [grafanactl oncall users current](grafanactl_oncall_users_current.md)	 - Get the current user.
-* [grafanactl oncall users get](grafanactl_oncall_users_get.md)	 - Get a user by ID.
-* [grafanactl oncall users list](grafanactl_oncall_users_list.md)	 - List resources.
+* [grafanactl oncall integrations get](grafanactl_oncall_integrations_get.md)	 - Get an integration by ID.
+* [grafanactl oncall integrations list](grafanactl_oncall_integrations_list.md)	 - List resources.
 
