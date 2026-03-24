@@ -1,11 +1,11 @@
-## grafanactl oncall users
+## grafanactl oncall schedules
 
-Manage OnCall users.
+Manage OnCall schedules.
 
 ### Options
 
 ```
-  -h, --help   help for users
+  -h, --help   help for schedules
 ```
 
 ### Options inherited from parent commands
@@ -22,7 +22,7 @@ Manage OnCall users.
 ### SEE ALSO
 
 * [grafanactl oncall](grafanactl_oncall.md)	 - Manage Grafana OnCall resources.
-* [grafanactl oncall users current](grafanactl_oncall_users_current.md)	 - Get the current user.
-* [grafanactl oncall users get](grafanactl_oncall_users_get.md)	 - Get a user by ID.
-* [grafanactl oncall users list](grafanactl_oncall_users_list.md)	 - List OnCall users.
+* [grafanactl oncall schedules final-shifts](grafanactl_oncall_schedules_final-shifts.md)	 - List final shifts for a schedule.
+* [grafanactl oncall schedules get](grafanactl_oncall_schedules_get.md)	 - Get a schedule by ID.
+* [grafanactl oncall schedules list](grafanactl_oncall_schedules_list.md)	 - List OnCall schedules.
 

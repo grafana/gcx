@@ -483,6 +483,57 @@ return opts.IO.Encode(cmd.OutOrStdout(), objs)
 
 ---
 
+### 18. Table-Driven TypedCRUD Registration for Providers (High Confidence: 95%)
+
+Providers with many resource types (e.g., OnCall with 17 types) use a generic
+`registerXResource[T]` function with functional options to register each type
+in a single, self-contained call. This replaces the earlier switch-dispatch
+pattern where a single adapter struct dispatched all types through runtime
+kind-string matching.
+
+**Pattern structure:**
+
+```go
+// 1. resourceMeta holds static registration metadata.
+type resourceMeta struct {
+    Descriptor resources.Descriptor
+    Aliases    []string
+    Schema, Example json.RawMessage
+}
+
+// 2. crudOption[T] configures optional CRUD operations.
+type crudOption[T any] func(client *Client, crud *adapter.TypedCRUD[T])
+
+// 3. withCreate/withUpdate/withDelete set the corresponding Fn fields.
+func withCreate[T any](fn func(ctx context.Context, c *Client, item *T) (*T, error)) crudOption[T]
+
+// 4. registerOnCallResource[T] wires everything and calls adapter.Register.
+func registerOnCallResource[T any](
+    loader OnCallConfigLoader,
+    meta   resourceMeta,
+    nameFn func(T) string,
+    listFn func(ctx context.Context, client *Client) ([]T, error),
+    getFn  func(ctx context.Context, client *Client, name string) (*T, error), // nil for list-only
+    opts   ...crudOption[T],
+)
+```
+
+**When to use:** When a provider has 4+ resource types sharing the same
+API group/version and client initialization pattern. The generic helper
+eliminates per-type boilerplate while keeping each registration self-documenting.
+
+**Key properties:**
+- No `any` type erasure — all 17 types use concrete generics
+- No switch/case dispatch — CRUD behavior determined at registration time
+- Functional options express the CRUD matrix declaratively (only 10/17 types support create, etc.)
+- Special-case type conversions (e.g., Shift→ShiftRequest) are closures in the option, not if/else branches
+
+**Evidence:**
+- `internal/providers/oncall/resource_adapter.go`: `registerOnCallResource[T]`, 17 registrations
+- ADR: `docs/adrs/oncall-typed-crud/001-table-driven-typedcrud.md`
+
+---
+
 ## Contradiction Resolutions
 
 ### 1. DiscoverStackID Called Twice

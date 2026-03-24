@@ -15,17 +15,18 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// list command
+// Resource group command builder
 // ---------------------------------------------------------------------------
 
+// listOpts configures a list subcommand.
 type listOpts struct {
-	IO   cmdio.Options
-	Kind string
+	IO       cmdio.Options
+	Resource string // resource name for codec selection (e.g. "integrations")
 }
 
-func (o *listOpts) setup(flags *pflag.FlagSet, kind string) {
-	o.Kind = kind
-	switch kind {
+func (o *listOpts) setup(flags *pflag.FlagSet, resource string) {
+	o.Resource = resource
+	switch resource {
 	case "integrations":
 		o.IO.RegisterCustomCodec("table", &IntegrationTableCodec{})
 		o.IO.RegisterCustomCodec("wide", &IntegrationTableCodec{Wide: true})
@@ -49,57 +50,22 @@ func (o *listOpts) setup(flags *pflag.FlagSet, kind string) {
 	o.IO.BindFlags(flags)
 }
 
-func newListCommand(loader OnCallConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "list <resource-type>",
-		Short: "List OnCall resources.",
-	}
-
-	cmd.AddCommand(
-		newTypedListSubcommand(loader, "integrations", "List OnCall integrations.", "Integration",
-			func(c *Client, cmd *cobra.Command) ([]Integration, error) { return c.ListIntegrations(cmd.Context()) }),
-		newTypedListSubcommand(loader, "escalation-chains", "List escalation chains.", "EscalationChain",
-			func(c *Client, cmd *cobra.Command) ([]EscalationChain, error) {
-				return c.ListEscalationChains(cmd.Context())
-			}),
-		newTypedListSubcommand(loader, "schedules", "List OnCall schedules.", "Schedule",
-			func(c *Client, cmd *cobra.Command) ([]Schedule, error) { return c.ListSchedules(cmd.Context()) }),
-		newTypedListSubcommand(loader, "shifts", "List OnCall shifts.", "Shift",
-			func(c *Client, cmd *cobra.Command) ([]Shift, error) { return c.ListShifts(cmd.Context()) }),
-		newTypedListSubcommand(loader, "routes", "List OnCall routes.", "Route",
-			func(c *Client, cmd *cobra.Command) ([]IntegrationRoute, error) {
-				return c.ListRoutes(cmd.Context(), "")
-			}),
-		newTypedListSubcommand(loader, "webhooks", "List outgoing webhooks.", "OutgoingWebhook",
-			func(c *Client, cmd *cobra.Command) ([]OutgoingWebhook, error) {
-				return c.ListOutgoingWebhooks(cmd.Context())
-			}),
-		newTypedListSubcommand(loader, "alert-groups", "List alert groups.", "AlertGroup",
-			func(c *Client, cmd *cobra.Command) ([]AlertGroup, error) { return c.ListAlertGroups(cmd.Context()) }),
-		newTypedListSubcommand(loader, "users", "List OnCall users.", "User",
-			func(c *Client, cmd *cobra.Command) ([]User, error) { return c.ListUsers(cmd.Context()) }),
-		newTypedListSubcommand(loader, "teams", "List OnCall teams.", "Team",
-			func(c *Client, cmd *cobra.Command) ([]Team, error) { return c.ListTeams(cmd.Context()) }),
-		newTypedListSubcommand(loader, "escalation-policies", "List escalation policies.", "EscalationPolicy",
-			func(c *Client, cmd *cobra.Command) ([]EscalationPolicy, error) {
-				return c.ListEscalationPolicies(cmd.Context(), "")
-			}),
-		newTypedListSubcommand(loader, "user-groups", "List user groups.", "UserGroup",
-			func(c *Client, cmd *cobra.Command) ([]UserGroup, error) { return c.ListUserGroups(cmd.Context()) }),
-		newTypedListSubcommand(loader, "slack-channels", "List Slack channels.", "SlackChannel",
-			func(c *Client, cmd *cobra.Command) ([]SlackChannel, error) { return c.ListSlackChannels(cmd.Context()) }),
-	)
-
-	return cmd
+// getOpts configures a get subcommand.
+type getOpts struct {
+	IO cmdio.Options
 }
 
-// newTypedListSubcommand creates a list subcommand that always converts typed items
-// to unstructured K8s envelope objects. All output formats (table, wide, json, yaml)
-// receive the same data shape, complying with Pattern 13 (format-agnostic data fetching).
-func newTypedListSubcommand[T any](loader OnCallConfigLoader, name, short, kind string, listFn func(*Client, *cobra.Command) ([]T, error)) *cobra.Command {
+func (o *getOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("yaml")
+	o.IO.BindFlags(flags)
+}
+
+// newListSubcommand creates a "list" subcommand for a resource group.
+// The resource parameter selects the table codec (e.g. "integrations", "alert-groups").
+func newListSubcommand[T any](loader OnCallConfigLoader, resource, kind, short string, listFn func(*Client, *cobra.Command) ([]T, error)) *cobra.Command {
 	opts := &listOpts{}
 	cmd := &cobra.Command{
-		Use:   name,
+		Use:   "list",
 		Short: short,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -124,7 +90,36 @@ func newTypedListSubcommand[T any](loader OnCallConfigLoader, name, short, kind 
 			return opts.IO.Encode(cmd.OutOrStdout(), objs)
 		},
 	}
-	opts.setup(cmd.Flags(), name)
+	opts.setup(cmd.Flags(), resource)
+	return cmd
+}
+
+// newGetSubcommand creates a "get <id>" subcommand for a resource group.
+func newGetSubcommand(loader OnCallConfigLoader, short string, getFn func(*Client, *cobra.Command, string) (any, error)) *cobra.Command {
+	opts := &getOpts{}
+	cmd := &cobra.Command{
+		Use:   "get <id>",
+		Short: short,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			client, _, err := loader.LoadOnCallClient(cmd.Context())
+			if err != nil {
+				return err
+			}
+
+			item, err := getFn(client, cmd, args[0])
+			if err != nil {
+				return err
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), item)
+		},
+	}
+	opts.setup(cmd.Flags())
 	return cmd
 }
 
@@ -165,85 +160,253 @@ func itemsToUnstructured[T any](items []T, kind, idField, namespace string) ([]u
 }
 
 // ---------------------------------------------------------------------------
-// get command
+// Per-resource group commands: oncall <resource> list|get|...
 // ---------------------------------------------------------------------------
 
-type getOpts struct {
-	IO cmdio.Options
-}
-
-func (o *getOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("yaml")
-	o.IO.BindFlags(flags)
-}
-
-func newGetCommand(loader OnCallConfigLoader) *cobra.Command {
+func newIntegrationsCmd(loader OnCallConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "get <resource-type> <id>",
-		Short: "Get a single OnCall resource by ID.",
+		Use:     "integrations",
+		Short:   "Manage OnCall integrations.",
+		Aliases: []string{"integration"},
 	}
-
 	cmd.AddCommand(
-		newGetSubcommand(loader, "integration", "Get an integration by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
+		newListSubcommand(loader, "integrations", "Integration", "List OnCall integrations.",
+			func(c *Client, cmd *cobra.Command) ([]Integration, error) { return c.ListIntegrations(cmd.Context()) }),
+		newGetSubcommand(loader, "Get an integration by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
 			return c.GetIntegration(cmd.Context(), id)
 		}),
-		newGetSubcommand(loader, "escalation-chain", "Get an escalation chain by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
-			return c.GetEscalationChain(cmd.Context(), id)
-		}),
-		newGetSubcommand(loader, "schedule", "Get a schedule by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
-			return c.GetSchedule(cmd.Context(), id)
-		}),
-		newGetSubcommand(loader, "shift", "Get a shift by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
-			return c.GetShift(cmd.Context(), id)
-		}),
-		newGetSubcommand(loader, "route", "Get a route by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
-			return c.GetRoute(cmd.Context(), id)
-		}),
-		newGetSubcommand(loader, "webhook", "Get an outgoing webhook by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
-			return c.GetOutgoingWebhook(cmd.Context(), id)
-		}),
-		newGetSubcommand(loader, "alert-group", "Get an alert group by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
-			return c.GetAlertGroup(cmd.Context(), id)
-		}),
-		newGetSubcommand(loader, "user", "Get a user by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
-			return c.GetUser(cmd.Context(), id)
-		}),
-		newGetSubcommand(loader, "team", "Get a team by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
-			return c.GetTeam(cmd.Context(), id)
-		}),
-		newGetSubcommand(loader, "escalation-policy", "Get an escalation policy by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
-			return c.GetEscalationPolicy(cmd.Context(), id)
-		}),
 	)
-
 	return cmd
 }
 
-func newGetSubcommand(loader OnCallConfigLoader, name, short string, getFn func(*Client, *cobra.Command, string) (any, error)) *cobra.Command {
-	opts := &getOpts{}
+func newEscalationChainsCmd(loader OnCallConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   name + " <id>",
-		Short: short,
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-
-			client, _, err := loader.LoadOnCallClient(cmd.Context())
-			if err != nil {
-				return err
-			}
-
-			item, err := getFn(client, cmd, args[0])
-			if err != nil {
-				return err
-			}
-
-			return opts.IO.Encode(cmd.OutOrStdout(), item)
-		},
+		Use:     "escalation-chains",
+		Short:   "Manage escalation chains.",
+		Aliases: []string{"escalation-chain", "ec"},
 	}
-	opts.setup(cmd.Flags())
+	cmd.AddCommand(
+		newListSubcommand(loader, "escalation-chains", "EscalationChain", "List escalation chains.",
+			func(c *Client, cmd *cobra.Command) ([]EscalationChain, error) {
+				return c.ListEscalationChains(cmd.Context())
+			}),
+		newGetSubcommand(loader, "Get an escalation chain by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
+			return c.GetEscalationChain(cmd.Context(), id)
+		}),
+	)
+	return cmd
+}
+
+func newEscalationPoliciesCmd(loader OnCallConfigLoader) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "escalation-policies",
+		Short:   "Manage escalation policies.",
+		Aliases: []string{"escalation-policy", "ep"},
+	}
+	cmd.AddCommand(
+		newListSubcommand(loader, "escalation-policies", "EscalationPolicy", "List escalation policies.",
+			func(c *Client, cmd *cobra.Command) ([]EscalationPolicy, error) {
+				return c.ListEscalationPolicies(cmd.Context(), "")
+			}),
+		newGetSubcommand(loader, "Get an escalation policy by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
+			return c.GetEscalationPolicy(cmd.Context(), id)
+		}),
+	)
+	return cmd
+}
+
+func newSchedulesCmd(loader OnCallConfigLoader) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "schedules",
+		Short:   "Manage OnCall schedules.",
+		Aliases: []string{"schedule"},
+	}
+	cmd.AddCommand(
+		newListSubcommand(loader, "schedules", "Schedule", "List OnCall schedules.",
+			func(c *Client, cmd *cobra.Command) ([]Schedule, error) { return c.ListSchedules(cmd.Context()) }),
+		newGetSubcommand(loader, "Get a schedule by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
+			return c.GetSchedule(cmd.Context(), id)
+		}),
+		newScheduleFinalShiftsCommand(loader),
+	)
+	return cmd
+}
+
+func newShiftsCmd(loader OnCallConfigLoader) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "shifts",
+		Short:   "Manage OnCall shifts.",
+		Aliases: []string{"shift"},
+	}
+	cmd.AddCommand(
+		newListSubcommand(loader, "shifts", "Shift", "List OnCall shifts.",
+			func(c *Client, cmd *cobra.Command) ([]Shift, error) { return c.ListShifts(cmd.Context()) }),
+		newGetSubcommand(loader, "Get a shift by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
+			return c.GetShift(cmd.Context(), id)
+		}),
+	)
+	return cmd
+}
+
+func newRoutesCmd(loader OnCallConfigLoader) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "routes",
+		Short:   "Manage OnCall routes.",
+		Aliases: []string{"route"},
+	}
+	cmd.AddCommand(
+		newListSubcommand(loader, "routes", "Route", "List OnCall routes.",
+			func(c *Client, cmd *cobra.Command) ([]IntegrationRoute, error) {
+				return c.ListRoutes(cmd.Context(), "")
+			}),
+		newGetSubcommand(loader, "Get a route by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
+			return c.GetRoute(cmd.Context(), id)
+		}),
+	)
+	return cmd
+}
+
+func newWebhooksCmd(loader OnCallConfigLoader) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "webhooks",
+		Short:   "Manage outgoing webhooks.",
+		Aliases: []string{"webhook"},
+	}
+	cmd.AddCommand(
+		newListSubcommand(loader, "webhooks", "OutgoingWebhook", "List outgoing webhooks.",
+			func(c *Client, cmd *cobra.Command) ([]OutgoingWebhook, error) {
+				return c.ListOutgoingWebhooks(cmd.Context())
+			}),
+		newGetSubcommand(loader, "Get an outgoing webhook by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
+			return c.GetOutgoingWebhook(cmd.Context(), id)
+		}),
+	)
+	return cmd
+}
+
+func newTeamsCmd(loader OnCallConfigLoader) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "teams",
+		Short:   "Manage OnCall teams.",
+		Aliases: []string{"team"},
+	}
+	cmd.AddCommand(
+		newListSubcommand(loader, "teams", "Team", "List OnCall teams.",
+			func(c *Client, cmd *cobra.Command) ([]Team, error) { return c.ListTeams(cmd.Context()) }),
+		newGetSubcommand(loader, "Get a team by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
+			return c.GetTeam(cmd.Context(), id)
+		}),
+	)
+	return cmd
+}
+
+func newUserGroupsCmd(loader OnCallConfigLoader) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "user-groups",
+		Short:   "List user groups.",
+		Aliases: []string{"user-group"},
+	}
+	cmd.AddCommand(
+		newListSubcommand(loader, "user-groups", "UserGroup", "List user groups.",
+			func(c *Client, cmd *cobra.Command) ([]UserGroup, error) { return c.ListUserGroups(cmd.Context()) }),
+	)
+	return cmd
+}
+
+func newSlackChannelsCmd(loader OnCallConfigLoader) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "slack-channels",
+		Short:   "List Slack channels.",
+		Aliases: []string{"slack-channel"},
+	}
+	cmd.AddCommand(
+		newListSubcommand(loader, "slack-channels", "SlackChannel", "List Slack channels.",
+			func(c *Client, cmd *cobra.Command) ([]SlackChannel, error) { return c.ListSlackChannels(cmd.Context()) }),
+	)
+	return cmd
+}
+
+func newAlertsCmd(loader OnCallConfigLoader) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "alerts",
+		Short:   "View individual alerts.",
+		Aliases: []string{"alert"},
+	}
+	cmd.AddCommand(
+		newListSubcommand(loader, "alerts", "Alert", "List alerts.",
+			func(c *Client, cmd *cobra.Command) ([]Alert, error) { return c.ListAlerts(cmd.Context(), "") }),
+		newGetSubcommand(loader, "Get an alert by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
+			return c.GetAlert(cmd.Context(), id)
+		}),
+	)
+	return cmd
+}
+
+func newOrganizationsCmd(loader OnCallConfigLoader) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "organizations",
+		Short:   "List organizations.",
+		Aliases: []string{"organization", "org"},
+	}
+	cmd.AddCommand(
+		newListSubcommand(loader, "organizations", "Organization", "List organizations.",
+			func(c *Client, cmd *cobra.Command) ([]Organization, error) { return c.ListOrganizations(cmd.Context()) }),
+		newGetSubcommand(loader, "Get an organization by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
+			return c.GetOrganization(cmd.Context(), id)
+		}),
+	)
+	return cmd
+}
+
+func newResolutionNotesCmd(loader OnCallConfigLoader) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "resolution-notes",
+		Short:   "Manage resolution notes.",
+		Aliases: []string{"resolution-note", "rn"},
+	}
+	cmd.AddCommand(
+		newListSubcommand(loader, "resolution-notes", "ResolutionNote", "List resolution notes.",
+			func(c *Client, cmd *cobra.Command) ([]ResolutionNote, error) {
+				return c.ListResolutionNotes(cmd.Context(), "")
+			}),
+		newGetSubcommand(loader, "Get a resolution note by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
+			return c.GetResolutionNote(cmd.Context(), id)
+		}),
+	)
+	return cmd
+}
+
+func newShiftSwapsCmd(loader OnCallConfigLoader) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "shift-swaps",
+		Short:   "Manage shift swaps.",
+		Aliases: []string{"shift-swap", "ss"},
+	}
+	cmd.AddCommand(
+		newListSubcommand(loader, "shift-swaps", "ShiftSwap", "List shift swaps.",
+			func(c *Client, cmd *cobra.Command) ([]ShiftSwap, error) { return c.ListShiftSwaps(cmd.Context()) }),
+		newGetSubcommand(loader, "Get a shift swap by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
+			return c.GetShiftSwap(cmd.Context(), id)
+		}),
+	)
+	return cmd
+}
+
+func newPersonalNotificationRulesCmd(loader OnCallConfigLoader) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "personal-notification-rules",
+		Short:   "Manage personal notification rules.",
+		Aliases: []string{"personal-notification-rule", "pnr"},
+	}
+	cmd.AddCommand(
+		newListSubcommand(loader, "personal-notification-rules", "PersonalNotificationRule", "List personal notification rules.",
+			func(c *Client, cmd *cobra.Command) ([]PersonalNotificationRule, error) {
+				return c.ListPersonalNotificationRules(cmd.Context())
+			}),
+		newGetSubcommand(loader, "Get a personal notification rule by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
+			return c.GetPersonalNotificationRule(cmd.Context(), id)
+		}),
+	)
 	return cmd
 }
 

@@ -1,11 +1,11 @@
-## grafanactl oncall users
+## grafanactl oncall shift-swaps
 
-Manage OnCall users.
+Manage shift swaps.
 
 ### Options
 
 ```
-  -h, --help   help for users
+  -h, --help   help for shift-swaps
 ```
 
 ### Options inherited from parent commands
@@ -22,7 +22,6 @@ Manage OnCall users.
 ### SEE ALSO
 
 * [grafanactl oncall](grafanactl_oncall.md)	 - Manage Grafana OnCall resources.
-* [grafanactl oncall users current](grafanactl_oncall_users_current.md)	 - Get the current user.
-* [grafanactl oncall users get](grafanactl_oncall_users_get.md)	 - Get a user by ID.
-* [grafanactl oncall users list](grafanactl_oncall_users_list.md)	 - List OnCall users.
+* [grafanactl oncall shift-swaps get](grafanactl_oncall_shift-swaps_get.md)	 - Get a shift swap by ID.
+* [grafanactl oncall shift-swaps list](grafanactl_oncall_shift-swaps_list.md)	 - List shift swaps.
 

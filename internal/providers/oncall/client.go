@@ -400,9 +400,20 @@ func (c *Client) DeleteOutgoingWebhook(ctx context.Context, id string) error {
 
 // --- Alert Groups ---
 
-// ListAlertGroups returns all alert groups.
-func (c *Client) ListAlertGroups(ctx context.Context) ([]AlertGroup, error) {
-	return collectAll(iterResources[AlertGroup](c, ctx, AlertGroupsPath, "alert group"))
+// AlertGroupFilter holds optional filters for listing alert groups.
+type AlertGroupFilter struct {
+	// StartedAt filters by time range (format: "2006-01-02T15:04:05_2006-01-02T15:04:05").
+	// The API treats this as created_at range.
+	StartedAt string
+}
+
+// ListAlertGroups returns all alert groups, optionally filtered.
+func (c *Client) ListAlertGroups(ctx context.Context, filters ...AlertGroupFilter) ([]AlertGroup, error) {
+	params := url.Values{}
+	if len(filters) > 0 && filters[0].StartedAt != "" {
+		params.Set("started_at", filters[0].StartedAt)
+	}
+	return collectAll(iterResources[AlertGroup](c, ctx, pathWithParams(AlertGroupsPath, params), "alert group"))
 }
 
 // GetAlertGroup retrieves an alert group by ID.

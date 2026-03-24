@@ -13,8 +13,84 @@ import (
 	"github.com/spf13/pflag"
 )
 
+// alertGroupListOpts extends listOpts with alert-group-specific filters.
+type alertGroupListOpts struct {
+	listOpts
+
+	MaxAge string
+}
+
+func (o *alertGroupListOpts) setup(flags *pflag.FlagSet) {
+	o.listOpts.setup(flags, "alert-groups")
+	flags.StringVar(&o.MaxAge, "max-age", "", "Exclude groups older than this duration (e.g. 1h, 24h, 7d)")
+}
+
+func newAlertGroupListCommand(loader OnCallConfigLoader) *cobra.Command {
+	opts := &alertGroupListOpts{}
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List alert groups.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			client, namespace, err := loader.LoadOnCallClient(cmd.Context())
+			if err != nil {
+				return err
+			}
+
+			var filter AlertGroupFilter
+			if opts.MaxAge != "" {
+				startedAt, err := maxAgeToStartedAt(opts.MaxAge)
+				if err != nil {
+					return err
+				}
+				filter.StartedAt = startedAt
+			}
+
+			items, err := client.ListAlertGroups(cmd.Context(), filter)
+			if err != nil {
+				return err
+			}
+
+			objs, err := itemsToUnstructured(items, "AlertGroup", "id", namespace)
+			if err != nil {
+				return err
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), objs)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+// parseDuration parses a duration string that supports d (days) in addition to Go's time.ParseDuration.
+func parseDuration(s string) (time.Duration, error) {
+	if len(s) > 1 && s[len(s)-1] == 'd' {
+		var days int
+		if _, err := fmt.Sscanf(s, "%dd", &days); err == nil {
+			return time.Duration(days) * 24 * time.Hour, nil
+		}
+	}
+	return time.ParseDuration(s)
+}
+
+// maxAgeToStartedAt converts a max-age duration to the OnCall API's started_at parameter.
+// Format: "2006-01-02T15:04:05_2006-01-02T15:04:05" (start_end).
+func maxAgeToStartedAt(maxAge string) (string, error) {
+	dur, err := parseDuration(maxAge)
+	if err != nil {
+		return "", fmt.Errorf("invalid --max-age value %q: %w", maxAge, err)
+	}
+	now := time.Now().UTC()
+	start := now.Add(-dur)
+	return start.Format("2006-01-02T15:04:05") + "_" + now.Format("2006-01-02T15:04:05"), nil
+}
+
 // ---------------------------------------------------------------------------
-// alert-groups command
+// alert-groups command: list, get, acknowledge, resolve, delete, silence, etc.
 // ---------------------------------------------------------------------------
 
 type alertGroupActionOpts struct {
@@ -30,10 +106,14 @@ func newAlertGroupsCommand(loader OnCallConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "alert-groups",
 		Short:   "Manage alert groups.",
-		Aliases: []string{"ag"},
+		Aliases: []string{"alert-group", "ag"},
 	}
 
 	cmd.AddCommand(
+		newAlertGroupListCommand(loader),
+		newGetSubcommand(loader, "Get an alert group by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
+			return c.GetAlertGroup(cmd.Context(), id)
+		}),
 		newAlertGroupActionCommand(loader, "acknowledge", "Acknowledge an alert group.", func(c *Client, cmd *cobra.Command, id string) error {
 			return c.AcknowledgeAlertGroup(cmd.Context(), id)
 		}),
@@ -173,7 +253,7 @@ func newAlertGroupDeleteCommand(loader OnCallConfigLoader) *cobra.Command {
 }
 
 // ---------------------------------------------------------------------------
-// final-shifts command
+// final-shifts command (mounted under schedules)
 // ---------------------------------------------------------------------------
 
 type finalShiftsOpts struct {
@@ -226,7 +306,7 @@ func newScheduleFinalShiftsCommand(loader OnCallConfigLoader) *cobra.Command {
 }
 
 // ---------------------------------------------------------------------------
-// users command
+// users command: list, get, current
 // ---------------------------------------------------------------------------
 
 type usersCurrentOpts struct {
@@ -240,11 +320,17 @@ func (o *usersCurrentOpts) setup(flags *pflag.FlagSet) {
 
 func newUsersCommand(loader OnCallConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "users",
-		Short: "Manage OnCall users.",
+		Use:     "users",
+		Short:   "Manage OnCall users.",
+		Aliases: []string{"user"},
 	}
 
 	cmd.AddCommand(
+		newListSubcommand(loader, "users", "User", "List OnCall users.",
+			func(c *Client, cmd *cobra.Command) ([]User, error) { return c.ListUsers(cmd.Context()) }),
+		newGetSubcommand(loader, "Get a user by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
+			return c.GetUser(cmd.Context(), id)
+		}),
 		newUsersCurrentCommand(loader),
 	)
 

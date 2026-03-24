@@ -1,11 +1,19 @@
-## grafanactl oncall users
+## grafanactl oncall schedules final-shifts
 
-Manage OnCall users.
+List final shifts for a schedule.
+
+```
+grafanactl oncall schedules final-shifts <schedule-id> [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for users
+      --end string      End date (YYYY-MM-DD) (default "2026-03-31")
+  -h, --help            help for final-shifts
+      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+  -o, --output string   Output format. One of: json, table, yaml (default "table")
+      --start string    Start date (YYYY-MM-DD) (default "2026-03-24")
 ```
 
 ### Options inherited from parent commands
@@ -21,8 +29,5 @@ Manage OnCall users.
 
 ### SEE ALSO
 
-* [grafanactl oncall](grafanactl_oncall.md)	 - Manage Grafana OnCall resources.
-* [grafanactl oncall users current](grafanactl_oncall_users_current.md)	 - Get the current user.
-* [grafanactl oncall users get](grafanactl_oncall_users_get.md)	 - Get a user by ID.
-* [grafanactl oncall users list](grafanactl_oncall_users_list.md)	 - List OnCall users.
+* [grafanactl oncall schedules](grafanactl_oncall_schedules.md)	 - Manage OnCall schedules.
 

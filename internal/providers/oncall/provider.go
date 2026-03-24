@@ -34,6 +34,8 @@ func (p *OnCallProvider) ShortDesc() string {
 }
 
 // Commands returns the Cobra commands contributed by this provider.
+// Structure follows the canonical pattern: oncall <resource> <command>
+// (e.g., oncall integrations list, oncall alert-groups get <id>).
 func (p *OnCallProvider) Commands() []*cobra.Command {
 	loader := &configLoader{}
 
@@ -46,11 +48,25 @@ func (p *OnCallProvider) Commands() []*cobra.Command {
 	loader.bindFlags(oncallCmd.PersistentFlags())
 
 	oncallCmd.AddCommand(
-		newListCommand(loader),
-		newGetCommand(loader),
+		// Resource groups: oncall <resource> list|get|...
+		newIntegrationsCmd(loader),
+		newEscalationChainsCmd(loader),
+		newEscalationPoliciesCmd(loader),
+		newSchedulesCmd(loader),
+		newShiftsCmd(loader),
+		newRoutesCmd(loader),
+		newWebhooksCmd(loader),
 		newAlertGroupsCommand(loader),
-		newScheduleFinalShiftsCommand(loader),
 		newUsersCommand(loader),
+		newTeamsCmd(loader),
+		newUserGroupsCmd(loader),
+		newSlackChannelsCmd(loader),
+		newAlertsCmd(loader),
+		newOrganizationsCmd(loader),
+		newResolutionNotesCmd(loader),
+		newShiftSwapsCmd(loader),
+		newPersonalNotificationRulesCmd(loader),
+		// Standalone action commands
 		newEscalateCommand(loader),
 	)
 

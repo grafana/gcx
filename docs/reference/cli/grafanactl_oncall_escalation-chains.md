@@ -1,11 +1,11 @@
-## grafanactl oncall users
+## grafanactl oncall escalation-chains
 
-Manage OnCall users.
+Manage escalation chains.
 
 ### Options
 
 ```
-  -h, --help   help for users
+  -h, --help   help for escalation-chains
 ```
 
 ### Options inherited from parent commands
@@ -22,7 +22,6 @@ Manage OnCall users.
 ### SEE ALSO
 
 * [grafanactl oncall](grafanactl_oncall.md)	 - Manage Grafana OnCall resources.
-* [grafanactl oncall users current](grafanactl_oncall_users_current.md)	 - Get the current user.
-* [grafanactl oncall users get](grafanactl_oncall_users_get.md)	 - Get a user by ID.
-* [grafanactl oncall users list](grafanactl_oncall_users_list.md)	 - List OnCall users.
+* [grafanactl oncall escalation-chains get](grafanactl_oncall_escalation-chains_get.md)	 - Get an escalation chain by ID.
+* [grafanactl oncall escalation-chains list](grafanactl_oncall_escalation-chains_list.md)	 - List escalation chains.
 

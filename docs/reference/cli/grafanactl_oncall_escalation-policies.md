@@ -1,11 +1,11 @@
-## grafanactl oncall users
+## grafanactl oncall escalation-policies
 
-Manage OnCall users.
+Manage escalation policies.
 
 ### Options
 
 ```
-  -h, --help   help for users
+  -h, --help   help for escalation-policies
 ```
 
 ### Options inherited from parent commands
@@ -22,7 +22,6 @@ Manage OnCall users.
 ### SEE ALSO
 
 * [grafanactl oncall](grafanactl_oncall.md)	 - Manage Grafana OnCall resources.
-* [grafanactl oncall users current](grafanactl_oncall_users_current.md)	 - Get the current user.
-* [grafanactl oncall users get](grafanactl_oncall_users_get.md)	 - Get a user by ID.
-* [grafanactl oncall users list](grafanactl_oncall_users_list.md)	 - List OnCall users.
+* [grafanactl oncall escalation-policies get](grafanactl_oncall_escalation-policies_get.md)	 - Get an escalation policy by ID.
+* [grafanactl oncall escalation-policies list](grafanactl_oncall_escalation-policies_list.md)	 - List escalation policies.
 

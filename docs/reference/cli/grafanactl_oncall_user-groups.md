@@ -1,11 +1,11 @@
-## grafanactl oncall users
+## grafanactl oncall user-groups
 
-Manage OnCall users.
+List user groups.
 
 ### Options
 
 ```
-  -h, --help   help for users
+  -h, --help   help for user-groups
 ```
 
 ### Options inherited from parent commands
@@ -22,7 +22,5 @@ Manage OnCall users.
 ### SEE ALSO
 
 * [grafanactl oncall](grafanactl_oncall.md)	 - Manage Grafana OnCall resources.
-* [grafanactl oncall users current](grafanactl_oncall_users_current.md)	 - Get the current user.
-* [grafanactl oncall users get](grafanactl_oncall_users_get.md)	 - Get a user by ID.
-* [grafanactl oncall users list](grafanactl_oncall_users_list.md)	 - List OnCall users.
+* [grafanactl oncall user-groups list](grafanactl_oncall_user-groups_list.md)	 - List user groups.
 
