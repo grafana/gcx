@@ -15,6 +15,19 @@ the mechanical translation.
 **When to use `/add-provider` instead:** Building a provider from scratch for a
 product that doesn't have a gcx client.
 
+## Skill Structure
+
+This recipe covers the **mechanical implementation steps only** (Steps 1-8).
+Workflow orchestration, stage gates, and verification are governed by
+`SKILL.md` — read it before starting any migration.
+
+- **Orchestration** is defined in SKILL.md's three-stage pipeline (Audit → Build → Verify).
+- **Stage gates** in SKILL.md control when you may proceed between stages.
+- **Verification** is a separate Verify stage in SKILL.md — not a recipe step.
+
+If you are an agent reading this recipe: your orchestration comes from SKILL.md.
+This recipe provides the mechanical steps only.
+
 ---
 
 ## Prerequisites

@@ -43,6 +43,7 @@ Datasource HTTP APIs                      -- PromQL, LogQL, profile, trace queri
 | ADR | Title | Status |
 |-----|-------|--------|
 | [001](docs/adrs/legacy/001-query-under-datasources.md) | Move query under datasources with per-kind subcommands | accepted |
+| [002](docs/adrs/migrate-provider-rewrite/001-three-stage-blackbox-verification.md) | Three-stage skill structure with dual blackbox isolation | proposed |
 
 See [docs/research/](docs/research/) for design rationale and [docs/adrs/](docs/adrs/) for all ADRs.
 
