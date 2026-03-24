@@ -15,6 +15,15 @@ with workflow discipline and orchestration.
 **Canonical reference:** `internal/providers/incidents/` — the first full port
 (adapter + schema + commands + ancillary). Start there for patterns.
 
+## When to Use
+
+- Porting a gcx resource client to grafanactl
+- A bead task references gcx provider migration
+- User says "migrate provider", "port from gcx", "port oncall", "port k6"
+
+**When NOT to use**: Building a provider from scratch for a product without
+a gcx client — use `/add-provider` instead.
+
 ## Prerequisites
 
 Before invoking this skill, ensure:
@@ -27,235 +36,258 @@ Before invoking this skill, ensure:
 3. **Provider directory exists** — run `/add-dir internal/providers/{name}`
    (or create manually) before starting the port. The directory structure
    must follow the package map in CLAUDE.md.
-4. **Live API access** — smoke tests (Phase 5) require a real Grafana
+4. **Live API access** — smoke tests (Stage 3: Verify) require a real Grafana
    instance. Verify connectivity: `grafanactl --context=<ctx> resources schemas`.
 
-## Workflow
+## Pipeline Overview
 
 ```
-Phase 1:   Pre-flight           → answer 6 questions, locate gcx source
-Phase 1.5: Feature parity audit → gcx→grafanactl command mapping table
-Phase 2:   Core adapter         → types, client, adapter, resource_adapter, provider
-Phase 3:   Schema + example     → register in adapter.Registration
-Phase 4:   Provider commands    → CRUD redirects + ancillary subcommands (format-compliant)
-Phase 5:   Smoke test + recipe  → STOP gate: structured diff, then update recipe
+Stage 1: Audit  → read gcx, produce three artifacts, get user approval
+Stage 2: Build  → implement provider following recipe, guarded by make all
+Stage 3: Verify → run verification plan, produce comparison report, get user approval
 ```
 
-Phases are **sequential**. See Orchestration section for within-phase parallelism.
+| Stage | Agent Strategy | Receives | Produces | Gate |
+|-------|---------------|----------|----------|------|
+| Audit | Lead (main context) | gcx source | Parity table, arch mapping, verification plan | User approves all 3 artifacts |
+| Build | Agent team (Core + Commands) | Build envelope | Provider code | `make all` passes |
+| Verify | Subagent (fire-and-forget) | Verify envelope | Comparison report + recipe update | User approves report |
 
-### Phase 1: Pre-flight
+Stages are **strictly sequential**. Each stage is separated by a gate that
+**must pass** before the next stage begins. Gates are not optional.
 
-1. Read recipe front to back
-2. Run pre-flight checklist (recipe section) — answer all 6 questions
-3. Locate gcx source: `pkg/grafana/{resource}/`, `cmd/`
-4. Check K8s discovery: `grafanactl resources schemas | grep -i {resource}`
-   — if already discovered, no provider needed
-
-### Phase 1.5: Feature Parity Audit
-
-**Before writing any code**, produce a command mapping table covering every
-gcx subcommand for this resource. This prevents partial ports and forces
-explicit decisions about what to defer.
-
-**Output format** (paste into the bead or PR description):
-
-```
-| gcx command                        | grafanactl equivalent          | Status      | Notes                     |
-|------------------------------------|--------------------------------|-------------|---------------------------|
-| gcx {resource} list                | {resource} list                | Implemented | table+wide+json+yaml      |
-| gcx {resource} get <id>            | {resource} get <id>            | Implemented | yaml default, K8s envelope |
-| gcx {resource} create -f <file>    | {resource} create -f <file>    | Implemented |                           |
-| gcx {resource} delete <id>         | N/A                            | N/A         | API has no delete endpoint |
-| gcx {resource} {sub} list          | {resource} {sub} list          | Deferred    | Low usage, Phase 2        |
-```
-
-**Rules:**
-- Every gcx subcommand gets a row — no silent omissions
-- Valid statuses: `Implemented`, `Deferred`, `N/A`
-- `Deferred` must include justification and target phase
-- `N/A` must explain why (e.g., "API has no endpoint", "superseded by K8s API")
-- The table must be reviewed before proceeding to Phase 2
-
-### Phase 2: Core Adapter
-
-Follow recipe steps 1-6. See `conventions.md` for Go-specific gotchas
-(omitzero, exported codecs, API group naming, linter traps).
-
-**After Phase 2:** smoke test core adapter path (`resources get {alias}`).
-
-### Phase 3: Schema + Example
-
-Register `Schema` and `Example` (both `json.RawMessage`) in
-`adapter.Registration` during `init()`. Build as static maps — no external
-deps needed. See `conventions.md` for errchkjson requirements.
-
-**Verify:** `resources schemas {alias} -o json`, `resources examples {alias}`.
-
-### Phase 4: Provider Commands
-
-Implement CRUD redirects (list, get, create, close) and ancillary
-subcommands (activity, severities, open, etc.) in `commands.go`. See
-`commands-reference.md` for the patterns and code examples.
-
-**CRITICAL:** Always verify API endpoint names against gcx source — don't
-guess from naming patterns.
-
-**Output format compliance** (ref: `docs/reference/design-guide.md` Section 1.3):
-
-| Command type | Default format | Required codecs | K8s wrapping |
-|-------------|---------------|-----------------|--------------|
-| `list` | `table` | `table` + `wide` | json/yaml output must use `ToResource` for K8s envelope |
-| `get` | `table` | `table` (single-row) | json/yaml via `ToResource` K8s envelope |
-| `create` | Status message | — | Return created resource in json/yaml if `-o` specified |
-| Operational / query | Varies | Per-command | Exception: may skip K8s wrapping if data is not a resource |
-
-- `list` and `get` **must** register both `table` and `wide` custom codecs
-- `table` codec: key identifying columns (ID/UID, name/title, status)
-- `wide` codec: all `table` columns + additional detail (timestamps, labels, counts)
-- json/yaml output must wrap through `ToResource` to produce K8s-style envelope
-  (`apiVersion`, `kind`, `metadata`, `spec`) — this is what `resources get` uses
-- Operational commands (close, open, activity) use status messages, not data output
-- Export table codec types (e.g., `IncidentTableCodec`) for `_test` package access
-
-**After Phase 4:** smoke test ALL commands side-by-side with gcx.
-
-### Phase 5: Smoke Test + Update Recipe
-
-> **STOP AND REPORT.** Do not declare this phase complete until you have
-> pasted the structured comparison results below into the conversation.
-> The user must see evidence that every command produces equivalent output.
-
-**Step 1: Structured comparison for every command.**
-
-For each command the provider exposes, run both gcx and grafanactl and
-produce a structured diff. Use jq pipelines to normalize and compare:
-
-```bash
-# List — compare IDs
-GCX_IDS=$(gcx --context=<ctx> {resource} list -o json | jq -r '.[].id // .[].uid' | sort)
-GCTL_IDS=$(grafanactl --context=<ctx> {resource} list -o json | jq -r '.[].metadata.name' | sort)
-diff <(echo "$GCX_IDS") <(echo "$GCTL_IDS")
-
-# Get — compare key fields
-gcx --context=<ctx> {resource} get <id> -o json | jq '{title, status, labels}' > /tmp/gcx_get.json
-grafanactl --context=<ctx> {resource} get <id> -o json | jq '{title: .spec.title, status: .spec.status, labels: .metadata.labels}' > /tmp/gctl_get.json
-diff /tmp/gcx_get.json /tmp/gctl_get.json
-
-# Output formats — verify all four render without errors
-for fmt in table wide json yaml; do
-  GRAFANACTL_AGENT_MODE=false grafanactl --context=<ctx> {resource} list -o $fmt > /dev/null 2>&1 && echo "$fmt: OK" || echo "$fmt: FAIL"
-done
-```
-
-**Step 2: Paste results.** Copy the diff output and format-check results
-into the conversation. If any diff is non-empty, explain the discrepancy
-(acceptable: computed fields like `durationSeconds`; unacceptable: missing
-resources, wrong IDs, missing fields).
-
-> **STOP.** Do not proceed to Step 3 until the comparison results are
-> pasted and any discrepancies are justified.
-
-**Step 3: Update recipe.** Update `gcx-provider-recipe.md`:
-- Provider Status Tracker: mark as done with date
-- Gotchas & Lessons Learned: add any new discoveries
-
-**Step 4: Final build.** `GRAFANACTL_AGENT_MODE=false make all`.
+> **Small-provider footnote:** For trivially small providers (1-2 subcommands),
+> the lead MAY collapse Build-Core and Build-Commands into a single subagent
+> instead of an agent team. Document this choice in the migration PR description.
 
 ---
 
-## Orchestration
+## Stage 1: Audit
 
-**Key rule:** Don't split work that touches the same files across agents.
+The Audit stage runs in the lead orchestrator's main context (not delegated).
+The lead reads the gcx source, maps every subcommand to its grafanactl
+equivalent, translates gcx patterns to grafanactl patterns, and writes a
+verification plan before any provider code is written. All three artifacts
+must be reviewed and approved by the user before Stage 2 begins.
 
-| Phase | Agent Strategy | Rationale |
-|-------|---------------|-----------|
-| 1 (Pre-flight) | Main context | Interactive |
-| 1.5 (Parity audit) | Main context | Requires gcx source reading + judgment |
-| 2 (Core adapter) | Single agent or main | Many interdependent files |
-| 3 (Schema) | Can delegate to agent | Isolated: `register.go` + `resource_adapter.go` |
-| 4 (Commands) | Single agent for ALL | CRUD + ancillary share `commands.go`, `provider.go`, `client.go` |
-| 5 (Smoke test) | Main context only | STOP gate — needs judgment + real API + user review |
+The Audit stage produces two sealed envelopes:
+- **Build envelope** — contains the parity table, architectural mapping, and
+  a reference to `gcx-provider-recipe.md`. Passed to Build teammates.
+- **Verify envelope** — contains the verification plan (test list, smoke
+  commands, pass criteria). Passed to the Verify subagent. The Build stage
+  must never see this envelope.
 
-**After agent phases:** Always run `GRAFANACTL_AGENT_MODE=false make lint` —
-agents frequently trip `errchkjson`, `testpackage`, `nestif`, `gci`.
+### Audit: Artifacts
+
+Produce all three artifacts using the templates in `templates/audit-artifacts.md`.
+Fill in concrete values — no placeholders allowed. Do not begin Stage 2 until
+all three are complete and the user has approved them.
+
+1. **Parity Table** — one row per gcx subcommand. **Every** gcx subcommand
+   for the target provider must appear — no silent omissions.
+2. **Architectural Mapping** — concrete translations for all five pattern pairs
+   (flat client → TypedCRUD[T], CLI flags → Options, output → codec, types →
+   omitzero, registration → init()).
+3. **Verification Plan** — specific test names, concrete smoke commands, build
+   gate checkpoints. No placeholders.
+
+### Audit: Checklist
+
+- [ ] gcx source read in full — every subcommand identified
+- [ ] Parity table complete — every gcx subcommand has a row with status and notes
+- [ ] Architectural mapping complete — all five gcx→grafanactl pattern pairs translated
+- [ ] Verification plan complete — specific test names, concrete smoke commands (no placeholders), build gate checkpoints
+- [ ] All three artifacts presented to the user
+- [ ] User has explicitly approved all three artifacts
+- [ ] Build envelope sealed: parity table + architectural mapping + recipe reference
+- [ ] Verify envelope sealed: verification plan only (NO parity table, NO arch mapping)
+
+### Audit Gate
+
+> **STOP.** Do not begin Stage 2 (Build) until all three conditions are met:
+>
+> 1. The **parity table** is complete (every gcx subcommand has a row with
+>    status and notes — no silent omissions).
+> 2. The **architectural mapping** is complete (all five gcx→grafanactl
+>    pattern pairs are translated explicitly).
+> 3. The **verification plan** is complete (specific test names, concrete
+>    smoke commands, and build gate checkpoints — no placeholders).
+>
+> **User approval of all three artifacts is required before proceeding.**
+> Present all three to the user and wait for explicit approval.
+
+---
+
+## Stage 2: Build
+
+The Build stage receives only the Build envelope (parity table, architectural
+mapping, recipe reference). It must not reference or contain verification plan
+content. The Build stage follows `gcx-provider-recipe.md` internal phases
+(types, client, adapter, resource_adapter, provider, commands) with a
+`make lint` checkpoint between each phase.
+
+The Build stage uses an agent team with two teammates:
+- **Build-Core** — owns types, client, adapter, resource_adapter files.
+  Must complete before Build-Commands begins.
+- **Build-Commands** — owns provider registration and CLI command files.
+  Starts only after Build-Core signals completion via the shared TaskList.
+
+Each teammate receives only the Build envelope in its spawn prompt. Neither
+teammate receives any verification plan content.
+
+### Build Envelope
+
+**Receives:**
+- Parity table (the completed, user-approved artifact from Audit)
+- Architectural mapping (the completed, user-approved artifact from Audit)
+- Recipe reference: "Follow `gcx-provider-recipe.md` Steps 2-8 for mechanical
+  implementation steps. The recipe is authoritative for file structure, client
+  pattern, adapter wiring, and registration."
+
+**Produces:**
+- All provider implementation files within the teammate's ownership boundary
+- Confirmation message to the lead via TeamSendMessage when work is complete
+
+**Enforcement:** The lead orchestrator's spawn prompt for each Build teammate
+contains ONLY the three items listed under Receives. The spawn prompt must
+NOT include: the verification plan, smoke test commands, expected comparison
+outputs, or any other Verify envelope content.
+
+### Build: Orchestration
+
+```bash
+# 1. Create the team
+TeamCreate("build-{provider}")
+
+# 2. Spawn Build-Core (Agent tool with team_name)
+#    Use spawn prompt from templates/spawn-prompts.md → Build-Core
+
+# 3. Wait for Build-Core to signal completion via TaskList.
+#    DO NOT spawn Build-Commands until Build-Core task is marked complete.
+
+# 4. Spawn Build-Commands (Agent tool with team_name)
+#    Use spawn prompt from templates/spawn-prompts.md → Build-Commands
+
+# 5. Wait for both teammates to complete.
+
+# 6. Run BUILD GATE: GRAFANACTL_AGENT_MODE=false make all
+
+# 7. Tear down: TeamDelete("build-{provider}")
+```
+
+### File Ownership Table
+
+| Recipe Phase | File(s) | Teammate |
+|---|---|---|
+| Step 2: Types | `internal/providers/{name}/types.go` | Build-Core |
+| Step 3: Client | `internal/providers/{name}/client.go`, `client_test.go` | Build-Core |
+| Step 4: Adapter | `internal/providers/{name}/adapter.go` | Build-Core |
+| Step 5: Resource Adapter | `internal/providers/{name}/resource_adapter.go` | Build-Core |
+| Step 6: Provider registration | `internal/providers/{name}/provider.go` | Build-Commands |
+| Step 7: CLI Commands | `cmd/grafanactl/providers/{name}/commands.go`, `*_test.go` | Build-Commands |
+| Blank import | `cmd/grafanactl/root/command.go` (import line only) | Build-Commands |
+
+Teammates MUST NOT modify files outside their ownership boundary.
+
+### Build: Checklist
+
+**Build-Core:**
+- [ ] `types.go`: all gcx types translated; struct fields use `omitzero` (not `omitempty`)
+- [ ] `types.go`: `make lint` passes
+- [ ] `client.go`: HTTP client following recipe Step 3 (no embedded `*grafana.Client`)
+- [ ] `client_test.go`: httptest tests for List, Get, Create, and any other CRUD ops
+- [ ] `client.go`: `make lint` passes
+- [ ] `adapter.go`: `TypedCRUD[T]` wired with all five functions + `NameFn`
+- [ ] `adapter.go`: `make lint` passes
+- [ ] `resource_adapter.go`: `ResourceAdapter` interface implemented; adapter registered
+- [ ] `resource_adapter.go`: `make lint` passes
+- [ ] TaskList: Build-Core task marked **complete**; lead notified
+
+**Build-Commands:**
+- [ ] TaskList: confirmed Build-Core task is **complete** before starting
+- [ ] `provider.go`: `providers.Register()` and all resource `adapter.Register()` calls in `init()`
+- [ ] `provider.go`: `make lint` passes
+- [ ] `commands.go`: all **Implemented** commands from parity table have subcommands
+- [ ] `commands.go`: each command uses Options struct with `setup()` and `Validate()`
+- [ ] `commands.go`: output routed through codec registry (`-o table/wide/json/yaml`)
+- [ ] Command tests: at least one test per command via httptest
+- [ ] `commands.go`: `make lint` passes
+- [ ] Blank import line added to `cmd/grafanactl/root/command.go`
+
+### Build Gate
+
+> **STOP.** Do not begin Stage 3 (Verify) until:
+>
+> `GRAFANACTL_AGENT_MODE=false make all` exits 0 with no lint errors and
+> all tests passing.
+>
+> Run this command after both Build teammates complete. If it fails, fix
+> the root cause before proceeding — do not proceed with a failing build.
+
+---
+
+## Stage 3: Verify
+
+The Verify stage runs as a subagent that receives only the Verify envelope
+(verification plan). The subagent must not reference Build-stage implementation
+details (internal function names, error handling approach, test structure
+chosen by the builder). It executes every item in the verification plan and
+produces a structured comparison report.
+
+### Verify Envelope
+
+**Receives:**
+- Verification plan (the completed, user-approved artifact from Audit)
+
+**Produces:**
+- Structured comparison report (template in `templates/comparison-report.md`)
+- Updates to `gcx-provider-recipe.md` (new gotchas, pattern corrections,
+  status tracker entry for the ported provider)
+
+> **FR-011 — Recipe update is MANDATORY.** The Verify stage MUST update
+> `gcx-provider-recipe.md` before completing:
+> 1. **Status tracker entry** — add a row for the ported provider.
+> 2. **Gotchas section** — record any problems discovered during smoke tests.
+>
+> Do not pass the Verify gate without making both updates, even if no new
+> gotchas were found (record "No new gotchas" explicitly).
+
+**Enforcement:** The lead orchestrator's spawn prompt for the Verify subagent
+contains ONLY the verification plan. The spawn prompt must NOT include: the
+parity table, architectural mapping, recipe reference, internal function names
+chosen during Build, or any other Build envelope content.
+
+**Spawn prompt template:** `templates/spawn-prompts.md` → Verify Spawn Prompt
+
+### Verify Gate
+
+> **STOP.** Do not declare the migration complete until:
+>
+> 1. The **comparison report** has been produced and presented to the user.
+> 2. Every discrepancy in the report is either:
+>    - **Justified** with a written rationale explaining why the difference
+>      is acceptable, or
+>    - **Fixed** and the fix verified.
+>
+> **User review of the comparison report is required.** The user must
+> explicitly approve the report or request fixes before this gate passes.
 
 ---
 
 ## Red Flags — STOP and Check
 
-| Thought | Problem |
-|---------|---------|
-| "I'll just copy the gcx client as-is" | grafanactl uses different HTTP patterns — adapt, don't copy |
-| "I'll skip the pre-flight, it's obvious" | K8s discovery may already cover this resource |
-| "I know which commands to port" | Produce the parity audit table first — silent omissions cause incomplete ports |
-| "The output format doesn't matter yet" | design-guide.md §1.3 compliance is mandatory, not polish — do it in Phase 4 |
-| "I'll update the recipe later" | You won't. Update it NOW while friction is fresh |
-| "This resource is too different for the pattern" | It's not — OnCall's 12 sub-resources fit. Ask for help if stuck |
-| "I don't need tests, I verified manually" | httptest + round-trip tests are mandatory. `make all` enforces this |
-| "I'll guess the endpoint name from the pattern" | Check gcx source. `SeverityService` != `SeveritiesService` |
-| "I'll skip smoke tests, unit tests cover it" | Unit tests don't catch wrong endpoint names or wrapped request bodies |
-| "omitempty works for this custom time type" | Use `omitzero` for struct-typed fields — Go 1.24+ requirement |
+When you notice any of these during execution, stop and take the corrective
+action before continuing. The "rationalization" column shows the excuse agents
+typically generate — if you catch yourself thinking this, it's a red flag.
 
----
-
-## Checklist
-
-```
-Prerequisites
-[ ] gcx binary available (gcx --version)
-[ ] Grafana context configured (grafanactl config view)
-[ ] Provider directory created (/add-dir or manual)
-[ ] Live API access verified (grafanactl resources schemas)
-
-Phase 1: Pre-flight
-[ ] Pre-flight questions answered (recipe section)
-[ ] K8s discovery checked (skip if already there)
-[ ] Recipe read front-to-back
-[ ] gcx source files located (client, types, commands)
-
-Phase 1.5: Feature parity audit
-[ ] All gcx subcommands enumerated
-[ ] Mapping table produced (Implemented / Deferred / N/A for each)
-[ ] Deferred items have justification + target phase
-[ ] Table reviewed before proceeding
-
-Phase 2: Core adapter
-[ ] types.go ported (json tags preserved, omitzero for struct fields)
-[ ] client.go ported (rest.Config + http.Client pattern)
-[ ] adapter.go wired (ToResource / FromResource)
-[ ] resource_adapter.go wired (ResourceAdapter + Factory + init)
-[ ] provider.go created (Provider interface)
-[ ] Blank import in cmd/grafanactl/root/command.go
-[ ] Tests written (client httptest + adapter round-trip)
-[ ] GRAFANACTL_AGENT_MODE=false make all passes
-[ ] SMOKE: resources get {alias} returns data
-[ ] SMOKE: resources get {alias}/{id} matches gcx
-
-Phase 3: Schema + example
-[ ] Schema registered (static map, json.RawMessage)
-[ ] Example registered (static map, json.RawMessage)
-[ ] resources schemas {alias} -o json shows schema
-[ ] resources examples {alias} prints YAML + JSON
-
-Phase 4: Provider commands (format-compliant per design-guide.md §1.3)
-[ ] CRUD: list (table + wide codecs), get, create -f, close
-[ ] list default format is "table" (not "json")
-[ ] wide codec registered with additional detail columns
-[ ] json/yaml output wraps through ToResource (K8s envelope)
-[ ] Ancillary commands wired
-[ ] Endpoint names verified against gcx source
-[ ] Table codecs exported for _test package
-[ ] SMOKE: list IDs match gcx, get fields match, ancillary works
-[ ] SMOKE: table/wide/json/yaml all render
-
-Phase 5: Smoke test + finalize (STOP gate)
-[ ] Structured jq diff run for list (IDs match)
-[ ] Structured jq diff run for get (key fields match)
-[ ] All four output formats verified (table/wide/json/yaml)
-[ ] Comparison results pasted into conversation
-[ ] Discrepancies justified (or fixed)
-[ ] Recipe status tracker updated
-[ ] Recipe gotchas updated with new discoveries
-[ ] GRAFANACTL_AGENT_MODE=false make all (including doc regen)
-[ ] All changes committed
-```
+| Red Flag | Rationalization | STOP. Do this instead |
+|---|---|---|
+| **Copying gcx client verbatim** — embedding `*grafana.Client`, using `c.Get()`/`c.Post()` directly | "The gcx client already works, adapting it would just introduce bugs" | Translate to a typed HTTP client (plain `http.Client` + named endpoint methods). Read recipe Step 3 for the grafanactl client pattern. |
+| **Skipping the parity audit** — jumping to implementation | "I can see the important commands from the gcx source, a full table would be redundant" | The parity table is required. Every gcx subcommand must have a row. Unaudited subcommands become missing features. Return to Stage 1 and complete the table. |
+| **Guessing endpoint names or paths** — using `/api/v1/resources` when actual path is `/api/v1/orgs/{id}/resources` | "The endpoint pattern is obvious from the resource name" | Read the gcx source for exact paths. Run `gcx --context=$CTX {resource} list --help` to confirm. Never guess paths. |
+| **Skipping smoke tests** — marking Verify "complete" without running commands | "The unit tests pass, so the implementation is correct" | Smoke tests are required. If no live instance is available, block and tell the user. Do not pass the Verify gate without running every item in the verification plan. |
+| **Peeking at the verification plan during Build** — reading it "to make sure the implementation will pass" | "I need to check the verification plan to make sure my implementation will pass the smoke tests" | Your context is the Build envelope only. Unit tests must be derived from requirements (parity table + arch mapping), not from knowledge of what smoke tests will run. |
+| **Peeking at implementation during Verify** — reading adapter code "to understand what I'm testing" | "Let me look at the adapter code to understand what I'm testing so I can write better checks" | You test behavior, not structure. Derive all expected behavior from the verification plan. If the plan is insufficient, that's a plan quality issue — report it, don't compensate by reading Build artifacts. |
+| **Merging envelopes** — passing both the parity table AND the verification plan to a Build teammate | "Giving the builder more context will help them write better code" | Each teammate receives only its designated envelope. The isolation is the mechanism that prevents overfitting. |
+| **Build-Commands starting before Build-Core signals** — importing adapter interfaces that do not exist yet | "I can start on the command structure while Build-Core finishes the types" | Check the TaskList. Wait for the Build-Core task to be marked **complete** before writing any command that imports the adapter. |
+| **Unit tests derived from smoke commands** — writing test cases based on the verification plan | "I'll use the smoke test commands as a guide for what to test in unit tests" | Unit tests must be derived from the parity table and architectural mapping only. Do not read the verification plan during Build. |
