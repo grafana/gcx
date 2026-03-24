@@ -23,5 +23,5 @@ Manage OnCall teams.
 
 * [grafanactl oncall](grafanactl_oncall.md)	 - Manage Grafana OnCall resources.
 * [grafanactl oncall teams get](grafanactl_oncall_teams_get.md)	 - Get a team by ID.
-* [grafanactl oncall teams list](grafanactl_oncall_teams_list.md)	 - List resources.
+* [grafanactl oncall teams list](grafanactl_oncall_teams_list.md)	 - List OnCall teams.
 

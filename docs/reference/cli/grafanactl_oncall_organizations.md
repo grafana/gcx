@@ -23,5 +23,5 @@ List organizations.
 
 * [grafanactl oncall](grafanactl_oncall.md)	 - Manage Grafana OnCall resources.
 * [grafanactl oncall organizations get](grafanactl_oncall_organizations_get.md)	 - Get an organization by ID.
-* [grafanactl oncall organizations list](grafanactl_oncall_organizations_list.md)	 - List resources.
+* [grafanactl oncall organizations list](grafanactl_oncall_organizations_list.md)	 - List organizations.
 

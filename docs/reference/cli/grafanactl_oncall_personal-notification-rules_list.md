@@ -1,6 +1,6 @@
 ## grafanactl oncall personal-notification-rules list
 
-List resources.
+List personal notification rules.
 
 ```
 grafanactl oncall personal-notification-rules list [flags]

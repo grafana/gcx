@@ -1,6 +1,6 @@
 ## grafanactl oncall alert-groups list
 
-List resources.
+List alert groups.
 
 ```
 grafanactl oncall alert-groups list [flags]
@@ -9,9 +9,10 @@ grafanactl oncall alert-groups list [flags]
 ### Options
 
 ```
-  -h, --help            help for list
-      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
+  -h, --help             help for list
+      --json string      Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --max-age string   Exclude groups older than this duration (e.g. 1h, 24h, 7d)
+  -o, --output string    Output format. One of: json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands

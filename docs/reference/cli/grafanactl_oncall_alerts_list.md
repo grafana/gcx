@@ -1,6 +1,6 @@
 ## grafanactl oncall alerts list
 
-List resources.
+List alerts.
 
 ```
 grafanactl oncall alerts list [flags]

@@ -23,5 +23,5 @@ Manage escalation policies.
 
 * [grafanactl oncall](grafanactl_oncall.md)	 - Manage Grafana OnCall resources.
 * [grafanactl oncall escalation-policies get](grafanactl_oncall_escalation-policies_get.md)	 - Get an escalation policy by ID.
-* [grafanactl oncall escalation-policies list](grafanactl_oncall_escalation-policies_list.md)	 - List resources.
+* [grafanactl oncall escalation-policies list](grafanactl_oncall_escalation-policies_list.md)	 - List escalation policies.
 

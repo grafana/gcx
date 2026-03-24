@@ -23,5 +23,5 @@ Manage resolution notes.
 
 * [grafanactl oncall](grafanactl_oncall.md)	 - Manage Grafana OnCall resources.
 * [grafanactl oncall resolution-notes get](grafanactl_oncall_resolution-notes_get.md)	 - Get a resolution note by ID.
-* [grafanactl oncall resolution-notes list](grafanactl_oncall_resolution-notes_list.md)	 - List resources.
+* [grafanactl oncall resolution-notes list](grafanactl_oncall_resolution-notes_list.md)	 - List resolution notes.
 

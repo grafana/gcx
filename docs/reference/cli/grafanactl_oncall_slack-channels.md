@@ -22,5 +22,5 @@ List Slack channels.
 ### SEE ALSO
 
 * [grafanactl oncall](grafanactl_oncall.md)	 - Manage Grafana OnCall resources.
-* [grafanactl oncall slack-channels list](grafanactl_oncall_slack-channels_list.md)	 - List resources.
+* [grafanactl oncall slack-channels list](grafanactl_oncall_slack-channels_list.md)	 - List Slack channels.
 

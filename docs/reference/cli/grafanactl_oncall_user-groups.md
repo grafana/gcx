@@ -22,5 +22,5 @@ List user groups.
 ### SEE ALSO
 
 * [grafanactl oncall](grafanactl_oncall.md)	 - Manage Grafana OnCall resources.
-* [grafanactl oncall user-groups list](grafanactl_oncall_user-groups_list.md)	 - List resources.
+* [grafanactl oncall user-groups list](grafanactl_oncall_user-groups_list.md)	 - List user groups.
 

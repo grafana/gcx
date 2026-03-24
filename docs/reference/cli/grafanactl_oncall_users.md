@@ -24,5 +24,5 @@ Manage OnCall users.
 * [grafanactl oncall](grafanactl_oncall.md)	 - Manage Grafana OnCall resources.
 * [grafanactl oncall users current](grafanactl_oncall_users_current.md)	 - Get the current user.
 * [grafanactl oncall users get](grafanactl_oncall_users_get.md)	 - Get a user by ID.
-* [grafanactl oncall users list](grafanactl_oncall_users_list.md)	 - List resources.
+* [grafanactl oncall users list](grafanactl_oncall_users_list.md)	 - List OnCall users.
 

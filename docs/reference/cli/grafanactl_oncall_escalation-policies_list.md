@@ -1,6 +1,6 @@
 ## grafanactl oncall escalation-policies list
 
-List resources.
+List escalation policies.
 
 ```
 grafanactl oncall escalation-policies list [flags]

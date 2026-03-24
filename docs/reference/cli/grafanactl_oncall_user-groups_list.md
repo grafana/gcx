@@ -1,6 +1,6 @@
 ## grafanactl oncall user-groups list
 
-List resources.
+List user groups.
 
 ```
 grafanactl oncall user-groups list [flags]

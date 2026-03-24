@@ -23,5 +23,5 @@ Manage OnCall routes.
 
 * [grafanactl oncall](grafanactl_oncall.md)	 - Manage Grafana OnCall resources.
 * [grafanactl oncall routes get](grafanactl_oncall_routes_get.md)	 - Get a route by ID.
-* [grafanactl oncall routes list](grafanactl_oncall_routes_list.md)	 - List resources.
+* [grafanactl oncall routes list](grafanactl_oncall_routes_list.md)	 - List OnCall routes.
 

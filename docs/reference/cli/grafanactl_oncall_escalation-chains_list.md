@@ -1,6 +1,6 @@
 ## grafanactl oncall escalation-chains list
 
-List resources.
+List escalation chains.
 
 ```
 grafanactl oncall escalation-chains list [flags]

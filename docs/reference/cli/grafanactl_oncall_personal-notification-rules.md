@@ -23,5 +23,5 @@ Manage personal notification rules.
 
 * [grafanactl oncall](grafanactl_oncall.md)	 - Manage Grafana OnCall resources.
 * [grafanactl oncall personal-notification-rules get](grafanactl_oncall_personal-notification-rules_get.md)	 - Get a personal notification rule by ID.
-* [grafanactl oncall personal-notification-rules list](grafanactl_oncall_personal-notification-rules_list.md)	 - List resources.
+* [grafanactl oncall personal-notification-rules list](grafanactl_oncall_personal-notification-rules_list.md)	 - List personal notification rules.
 

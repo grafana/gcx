@@ -62,11 +62,11 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 
 // newListSubcommand creates a "list" subcommand for a resource group.
 // The resource parameter selects the table codec (e.g. "integrations", "alert-groups").
-func newListSubcommand[T any](loader OnCallConfigLoader, resource, kind string, listFn func(*Client, *cobra.Command) ([]T, error)) *cobra.Command {
+func newListSubcommand[T any](loader OnCallConfigLoader, resource, kind, short string, listFn func(*Client, *cobra.Command) ([]T, error)) *cobra.Command {
 	opts := &listOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List resources.",
+		Short: short,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -170,7 +170,7 @@ func newIntegrationsCmd(loader OnCallConfigLoader) *cobra.Command {
 		Aliases: []string{"integration"},
 	}
 	cmd.AddCommand(
-		newListSubcommand(loader, "integrations", "Integration",
+		newListSubcommand(loader, "integrations", "Integration", "List OnCall integrations.",
 			func(c *Client, cmd *cobra.Command) ([]Integration, error) { return c.ListIntegrations(cmd.Context()) }),
 		newGetSubcommand(loader, "Get an integration by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
 			return c.GetIntegration(cmd.Context(), id)
@@ -186,7 +186,7 @@ func newEscalationChainsCmd(loader OnCallConfigLoader) *cobra.Command {
 		Aliases: []string{"escalation-chain", "ec"},
 	}
 	cmd.AddCommand(
-		newListSubcommand(loader, "escalation-chains", "EscalationChain",
+		newListSubcommand(loader, "escalation-chains", "EscalationChain", "List escalation chains.",
 			func(c *Client, cmd *cobra.Command) ([]EscalationChain, error) {
 				return c.ListEscalationChains(cmd.Context())
 			}),
@@ -204,7 +204,7 @@ func newEscalationPoliciesCmd(loader OnCallConfigLoader) *cobra.Command {
 		Aliases: []string{"escalation-policy", "ep"},
 	}
 	cmd.AddCommand(
-		newListSubcommand(loader, "escalation-policies", "EscalationPolicy",
+		newListSubcommand(loader, "escalation-policies", "EscalationPolicy", "List escalation policies.",
 			func(c *Client, cmd *cobra.Command) ([]EscalationPolicy, error) {
 				return c.ListEscalationPolicies(cmd.Context(), "")
 			}),
@@ -222,7 +222,7 @@ func newSchedulesCmd(loader OnCallConfigLoader) *cobra.Command {
 		Aliases: []string{"schedule"},
 	}
 	cmd.AddCommand(
-		newListSubcommand(loader, "schedules", "Schedule",
+		newListSubcommand(loader, "schedules", "Schedule", "List OnCall schedules.",
 			func(c *Client, cmd *cobra.Command) ([]Schedule, error) { return c.ListSchedules(cmd.Context()) }),
 		newGetSubcommand(loader, "Get a schedule by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
 			return c.GetSchedule(cmd.Context(), id)
@@ -239,7 +239,7 @@ func newShiftsCmd(loader OnCallConfigLoader) *cobra.Command {
 		Aliases: []string{"shift"},
 	}
 	cmd.AddCommand(
-		newListSubcommand(loader, "shifts", "Shift",
+		newListSubcommand(loader, "shifts", "Shift", "List OnCall shifts.",
 			func(c *Client, cmd *cobra.Command) ([]Shift, error) { return c.ListShifts(cmd.Context()) }),
 		newGetSubcommand(loader, "Get a shift by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
 			return c.GetShift(cmd.Context(), id)
@@ -255,7 +255,7 @@ func newRoutesCmd(loader OnCallConfigLoader) *cobra.Command {
 		Aliases: []string{"route"},
 	}
 	cmd.AddCommand(
-		newListSubcommand(loader, "routes", "Route",
+		newListSubcommand(loader, "routes", "Route", "List OnCall routes.",
 			func(c *Client, cmd *cobra.Command) ([]IntegrationRoute, error) {
 				return c.ListRoutes(cmd.Context(), "")
 			}),
@@ -273,7 +273,7 @@ func newWebhooksCmd(loader OnCallConfigLoader) *cobra.Command {
 		Aliases: []string{"webhook"},
 	}
 	cmd.AddCommand(
-		newListSubcommand(loader, "webhooks", "OutgoingWebhook",
+		newListSubcommand(loader, "webhooks", "OutgoingWebhook", "List outgoing webhooks.",
 			func(c *Client, cmd *cobra.Command) ([]OutgoingWebhook, error) {
 				return c.ListOutgoingWebhooks(cmd.Context())
 			}),
@@ -291,7 +291,7 @@ func newTeamsCmd(loader OnCallConfigLoader) *cobra.Command {
 		Aliases: []string{"team"},
 	}
 	cmd.AddCommand(
-		newListSubcommand(loader, "teams", "Team",
+		newListSubcommand(loader, "teams", "Team", "List OnCall teams.",
 			func(c *Client, cmd *cobra.Command) ([]Team, error) { return c.ListTeams(cmd.Context()) }),
 		newGetSubcommand(loader, "Get a team by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
 			return c.GetTeam(cmd.Context(), id)
@@ -307,7 +307,7 @@ func newUserGroupsCmd(loader OnCallConfigLoader) *cobra.Command {
 		Aliases: []string{"user-group"},
 	}
 	cmd.AddCommand(
-		newListSubcommand(loader, "user-groups", "UserGroup",
+		newListSubcommand(loader, "user-groups", "UserGroup", "List user groups.",
 			func(c *Client, cmd *cobra.Command) ([]UserGroup, error) { return c.ListUserGroups(cmd.Context()) }),
 	)
 	return cmd
@@ -320,7 +320,7 @@ func newSlackChannelsCmd(loader OnCallConfigLoader) *cobra.Command {
 		Aliases: []string{"slack-channel"},
 	}
 	cmd.AddCommand(
-		newListSubcommand(loader, "slack-channels", "SlackChannel",
+		newListSubcommand(loader, "slack-channels", "SlackChannel", "List Slack channels.",
 			func(c *Client, cmd *cobra.Command) ([]SlackChannel, error) { return c.ListSlackChannels(cmd.Context()) }),
 	)
 	return cmd
@@ -333,7 +333,7 @@ func newAlertsCmd(loader OnCallConfigLoader) *cobra.Command {
 		Aliases: []string{"alert"},
 	}
 	cmd.AddCommand(
-		newListSubcommand(loader, "alerts", "Alert",
+		newListSubcommand(loader, "alerts", "Alert", "List alerts.",
 			func(c *Client, cmd *cobra.Command) ([]Alert, error) { return c.ListAlerts(cmd.Context(), "") }),
 		newGetSubcommand(loader, "Get an alert by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
 			return c.GetAlert(cmd.Context(), id)
@@ -349,7 +349,7 @@ func newOrganizationsCmd(loader OnCallConfigLoader) *cobra.Command {
 		Aliases: []string{"organization", "org"},
 	}
 	cmd.AddCommand(
-		newListSubcommand(loader, "organizations", "Organization",
+		newListSubcommand(loader, "organizations", "Organization", "List organizations.",
 			func(c *Client, cmd *cobra.Command) ([]Organization, error) { return c.ListOrganizations(cmd.Context()) }),
 		newGetSubcommand(loader, "Get an organization by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
 			return c.GetOrganization(cmd.Context(), id)
@@ -365,7 +365,7 @@ func newResolutionNotesCmd(loader OnCallConfigLoader) *cobra.Command {
 		Aliases: []string{"resolution-note", "rn"},
 	}
 	cmd.AddCommand(
-		newListSubcommand(loader, "resolution-notes", "ResolutionNote",
+		newListSubcommand(loader, "resolution-notes", "ResolutionNote", "List resolution notes.",
 			func(c *Client, cmd *cobra.Command) ([]ResolutionNote, error) {
 				return c.ListResolutionNotes(cmd.Context(), "")
 			}),
@@ -383,7 +383,7 @@ func newShiftSwapsCmd(loader OnCallConfigLoader) *cobra.Command {
 		Aliases: []string{"shift-swap", "ss"},
 	}
 	cmd.AddCommand(
-		newListSubcommand(loader, "shift-swaps", "ShiftSwap",
+		newListSubcommand(loader, "shift-swaps", "ShiftSwap", "List shift swaps.",
 			func(c *Client, cmd *cobra.Command) ([]ShiftSwap, error) { return c.ListShiftSwaps(cmd.Context()) }),
 		newGetSubcommand(loader, "Get a shift swap by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
 			return c.GetShiftSwap(cmd.Context(), id)
@@ -399,7 +399,7 @@ func newPersonalNotificationRulesCmd(loader OnCallConfigLoader) *cobra.Command {
 		Aliases: []string{"personal-notification-rule", "pnr"},
 	}
 	cmd.AddCommand(
-		newListSubcommand(loader, "personal-notification-rules", "PersonalNotificationRule",
+		newListSubcommand(loader, "personal-notification-rules", "PersonalNotificationRule", "List personal notification rules.",
 			func(c *Client, cmd *cobra.Command) ([]PersonalNotificationRule, error) {
 				return c.ListPersonalNotificationRules(cmd.Context())
 			}),

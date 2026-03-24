@@ -1,6 +1,6 @@
 ## grafanactl oncall teams list
 
-List resources.
+List OnCall teams.
 
 ```
 grafanactl oncall teams list [flags]

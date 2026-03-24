@@ -1,6 +1,6 @@
 ## grafanactl oncall routes list
 
-List resources.
+List OnCall routes.
 
 ```
 grafanactl oncall routes list [flags]

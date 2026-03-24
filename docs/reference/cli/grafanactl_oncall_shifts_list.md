@@ -1,6 +1,6 @@
 ## grafanactl oncall shifts list
 
-List resources.
+List OnCall shifts.
 
 ```
 grafanactl oncall shifts list [flags]

@@ -1,6 +1,6 @@
 ## grafanactl oncall slack-channels list
 
-List resources.
+List Slack channels.
 
 ```
 grafanactl oncall slack-channels list [flags]

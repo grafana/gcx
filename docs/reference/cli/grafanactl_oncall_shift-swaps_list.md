@@ -1,6 +1,6 @@
 ## grafanactl oncall shift-swaps list
 
-List resources.
+List shift swaps.
 
 ```
 grafanactl oncall shift-swaps list [flags]

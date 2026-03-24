@@ -16,6 +16,7 @@ import (
 // alertGroupListOpts extends listOpts with alert-group-specific filters.
 type alertGroupListOpts struct {
 	listOpts
+
 	MaxAge string
 }
 
@@ -325,7 +326,7 @@ func newUsersCommand(loader OnCallConfigLoader) *cobra.Command {
 	}
 
 	cmd.AddCommand(
-		newListSubcommand(loader, "users", "User",
+		newListSubcommand(loader, "users", "User", "List OnCall users.",
 			func(c *Client, cmd *cobra.Command) ([]User, error) { return c.ListUsers(cmd.Context()) }),
 		newGetSubcommand(loader, "Get a user by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
 			return c.GetUser(cmd.Context(), id)

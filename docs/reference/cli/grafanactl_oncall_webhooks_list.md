@@ -1,6 +1,6 @@
 ## grafanactl oncall webhooks list
 
-List resources.
+List outgoing webhooks.
 
 ```
 grafanactl oncall webhooks list [flags]

@@ -23,5 +23,5 @@ Manage OnCall integrations.
 
 * [grafanactl oncall](grafanactl_oncall.md)	 - Manage Grafana OnCall resources.
 * [grafanactl oncall integrations get](grafanactl_oncall_integrations_get.md)	 - Get an integration by ID.
-* [grafanactl oncall integrations list](grafanactl_oncall_integrations_list.md)	 - List resources.
+* [grafanactl oncall integrations list](grafanactl_oncall_integrations_list.md)	 - List OnCall integrations.
 

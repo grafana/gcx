@@ -1,6 +1,6 @@
 ## grafanactl oncall integrations list
 
-List resources.
+List OnCall integrations.
 
 ```
 grafanactl oncall integrations list [flags]

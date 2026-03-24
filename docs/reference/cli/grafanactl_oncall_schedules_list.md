@@ -1,6 +1,6 @@
 ## grafanactl oncall schedules list
 
-List resources.
+List OnCall schedules.
 
 ```
 grafanactl oncall schedules list [flags]

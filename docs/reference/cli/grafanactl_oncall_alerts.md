@@ -23,5 +23,5 @@ View individual alerts.
 
 * [grafanactl oncall](grafanactl_oncall.md)	 - Manage Grafana OnCall resources.
 * [grafanactl oncall alerts get](grafanactl_oncall_alerts_get.md)	 - Get an alert by ID.
-* [grafanactl oncall alerts list](grafanactl_oncall_alerts_list.md)	 - List resources.
+* [grafanactl oncall alerts list](grafanactl_oncall_alerts_list.md)	 - List alerts.
 

@@ -23,5 +23,5 @@ Manage escalation chains.
 
 * [grafanactl oncall](grafanactl_oncall.md)	 - Manage Grafana OnCall resources.
 * [grafanactl oncall escalation-chains get](grafanactl_oncall_escalation-chains_get.md)	 - Get an escalation chain by ID.
-* [grafanactl oncall escalation-chains list](grafanactl_oncall_escalation-chains_list.md)	 - List resources.
+* [grafanactl oncall escalation-chains list](grafanactl_oncall_escalation-chains_list.md)	 - List escalation chains.
 

@@ -23,5 +23,5 @@ Manage shift swaps.
 
 * [grafanactl oncall](grafanactl_oncall.md)	 - Manage Grafana OnCall resources.
 * [grafanactl oncall shift-swaps get](grafanactl_oncall_shift-swaps_get.md)	 - Get a shift swap by ID.
-* [grafanactl oncall shift-swaps list](grafanactl_oncall_shift-swaps_list.md)	 - List resources.
+* [grafanactl oncall shift-swaps list](grafanactl_oncall_shift-swaps_list.md)	 - List shift swaps.
 

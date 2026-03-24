@@ -24,5 +24,5 @@ Manage OnCall schedules.
 * [grafanactl oncall](grafanactl_oncall.md)	 - Manage Grafana OnCall resources.
 * [grafanactl oncall schedules final-shifts](grafanactl_oncall_schedules_final-shifts.md)	 - List final shifts for a schedule.
 * [grafanactl oncall schedules get](grafanactl_oncall_schedules_get.md)	 - Get a schedule by ID.
-* [grafanactl oncall schedules list](grafanactl_oncall_schedules_list.md)	 - List resources.
+* [grafanactl oncall schedules list](grafanactl_oncall_schedules_list.md)	 - List OnCall schedules.
 

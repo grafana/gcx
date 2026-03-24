@@ -1,6 +1,6 @@
 ## grafanactl oncall users list
 
-List resources.
+List OnCall users.
 
 ```
 grafanactl oncall users list [flags]

@@ -23,5 +23,5 @@ Manage outgoing webhooks.
 
 * [grafanactl oncall](grafanactl_oncall.md)	 - Manage Grafana OnCall resources.
 * [grafanactl oncall webhooks get](grafanactl_oncall_webhooks_get.md)	 - Get an outgoing webhook by ID.
-* [grafanactl oncall webhooks list](grafanactl_oncall_webhooks_list.md)	 - List resources.
+* [grafanactl oncall webhooks list](grafanactl_oncall_webhooks_list.md)	 - List outgoing webhooks.
 

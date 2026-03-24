@@ -1,6 +1,6 @@
 ## grafanactl oncall organizations list
 
-List resources.
+List organizations.
 
 ```
 grafanactl oncall organizations list [flags]

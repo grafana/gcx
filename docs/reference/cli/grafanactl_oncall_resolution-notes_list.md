@@ -1,6 +1,6 @@
 ## grafanactl oncall resolution-notes list
 
-List resources.
+List resolution notes.
 
 ```
 grafanactl oncall resolution-notes list [flags]
