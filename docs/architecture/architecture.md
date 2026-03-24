@@ -698,6 +698,15 @@ Files most important for understanding the codebase. Organized by architectural 
 | `internal/providers/fleet/provider.go` | `FleetProvider` implementing the `providers.Provider` interface |
 | `internal/providers/fleet/client.go` | Fleet Management REST client |
 
+### K6 Cloud Provider
+
+| File | Purpose |
+|------|---------|
+| `internal/providers/k6/provider.go` | `K6Provider` implementing the `providers.Provider` interface |
+| `internal/providers/k6/client.go` | K6 Cloud REST client (token exchange auth, projects, tests, runs, envvars) |
+| `internal/providers/k6/commands.go` | K6 CLI commands (projects, tests, runs, envvars, token) |
+| `internal/providers/k6/resource_adapter.go` | Resource adapter for k6 projects |
+
 ### IRM Incidents Provider
 
 | File | Purpose |
