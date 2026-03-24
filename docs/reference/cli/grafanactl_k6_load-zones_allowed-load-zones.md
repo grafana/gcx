@@ -1,17 +1,11 @@
-## grafanactl k6 projects get
+## grafanactl k6 load-zones allowed-load-zones
 
-Get a single K6 project by ID or name.
-
-```
-grafanactl k6 projects get <id-or-name> [flags]
-```
+Manage load zones allowed for a project.
 
 ### Options
 
 ```
-  -h, --help            help for get
-      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -o, --output string   Output format. One of: json, yaml (default "yaml")
+  -h, --help   help for allowed-load-zones
 ```
 
 ### Options inherited from parent commands
@@ -27,5 +21,7 @@ grafanactl k6 projects get <id-or-name> [flags]
 
 ### SEE ALSO
 
-* [grafanactl k6 projects](grafanactl_k6_projects.md)	 - Manage K6 Cloud projects.
+* [grafanactl k6 load-zones](grafanactl_k6_load-zones.md)	 - Manage K6 private load zones.
+* [grafanactl k6 load-zones allowed-load-zones list](grafanactl_k6_load-zones_allowed-load-zones_list.md)	 - List load zones allowed for a project.
+* [grafanactl k6 load-zones allowed-load-zones update](grafanactl_k6_load-zones_allowed-load-zones_update.md)	 - Update load zones allowed for a project.
 

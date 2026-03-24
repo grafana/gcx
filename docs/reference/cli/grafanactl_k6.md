@@ -1,6 +1,6 @@
 ## grafanactl k6
 
-Manage K6 Cloud resources (projects, tests, env vars).
+Manage K6 Cloud resources (projects, tests, env vars, schedules, load zones).
 
 ### Options
 
@@ -22,9 +22,12 @@ Manage K6 Cloud resources (projects, tests, env vars).
 ### SEE ALSO
 
 * [grafanactl](grafanactl.md)	 - 
+* [grafanactl k6 auth](grafanactl_k6_auth.md)	 - K6 authentication commands.
 * [grafanactl k6 envvars](grafanactl_k6_envvars.md)	 - Manage K6 Cloud environment variables.
+* [grafanactl k6 load-zones](grafanactl_k6_load-zones.md)	 - Manage K6 private load zones.
 * [grafanactl k6 projects](grafanactl_k6_projects.md)	 - Manage K6 Cloud projects.
 * [grafanactl k6 runs](grafanactl_k6_runs.md)	 - Manage K6 test runs.
+* [grafanactl k6 schedules](grafanactl_k6_schedules.md)	 - Manage K6 Cloud schedules.
+* [grafanactl k6 testrun](grafanactl_k6_testrun.md)	 - Manage k6 TestRun CRD manifests.
 * [grafanactl k6 tests](grafanactl_k6_tests.md)	 - Manage K6 Cloud load tests.
-* [grafanactl k6 token](grafanactl_k6_token.md)	 - Print the authenticated k6 API token.
 

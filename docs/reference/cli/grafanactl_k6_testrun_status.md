@@ -1,17 +1,17 @@
-## grafanactl k6 projects get
+## grafanactl k6 testrun status
 
-Get a single K6 project by ID or name.
+Show the most recent test run status for a k6 load test.
 
 ```
-grafanactl k6 projects get <id-or-name> [flags]
+grafanactl k6 testrun status [test-name] [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
-      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -o, --output string   Output format. One of: json, yaml (default "yaml")
+  -h, --help             help for status
+      --id int           Load test ID (skip name lookup)
+      --project-id int   k6 Cloud project ID (required when using name lookup)
 ```
 
 ### Options inherited from parent commands
@@ -27,5 +27,5 @@ grafanactl k6 projects get <id-or-name> [flags]
 
 ### SEE ALSO
 
-* [grafanactl k6 projects](grafanactl_k6_projects.md)	 - Manage K6 Cloud projects.
+* [grafanactl k6 testrun](grafanactl_k6_testrun.md)	 - Manage k6 TestRun CRD manifests.
 

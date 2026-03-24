@@ -21,7 +21,7 @@ Manage K6 Cloud environment variables.
 
 ### SEE ALSO
 
-* [grafanactl k6](grafanactl_k6.md)	 - Manage K6 Cloud resources (projects, tests, env vars).
+* [grafanactl k6](grafanactl_k6.md)	 - Manage K6 Cloud resources (projects, tests, env vars, schedules, load zones).
 * [grafanactl k6 envvars create](grafanactl_k6_envvars_create.md)	 - Create a K6 environment variable from a file.
 * [grafanactl k6 envvars delete](grafanactl_k6_envvars_delete.md)	 - Delete a K6 environment variable.
 * [grafanactl k6 envvars list](grafanactl_k6_envvars_list.md)	 - List K6 environment variables.

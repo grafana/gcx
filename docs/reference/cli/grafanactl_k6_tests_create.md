@@ -1,18 +1,21 @@
-## grafanactl k6 tests get
+## grafanactl k6 tests create
 
-Get a single K6 load test by ID or name.
+Create a new K6 load test.
 
 ```
-grafanactl k6 tests get <id-or-name> [flags]
+grafanactl k6 tests create [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help             help for get
-      --json string      Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -o, --output string    Output format. One of: json, yaml (default "yaml")
-      --project-id int   Project ID (required when looking up by name)
+  -f, --filename string   File containing the test definition (JSON/YAML)
+  -h, --help              help for create
+      --json string       Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --name string       Test name (required when --filename not used)
+  -o, --output string     Output format. One of: json, yaml (default "yaml")
+      --project-id int    Project ID (required when --filename not used)
+      --script string     Path to k6 script file (required when --filename not used)
 ```
 
 ### Options inherited from parent commands

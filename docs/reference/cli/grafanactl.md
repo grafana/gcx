@@ -22,7 +22,7 @@
 * [grafanactl dev](grafanactl_dev.md)	 - Manage Grafana resources as code
 * [grafanactl fleet](grafanactl_fleet.md)	 - Manage Grafana Fleet Management resources.
 * [grafanactl incidents](grafanactl_incidents.md)	 - Manage Grafana IRM Incident resources.
-* [grafanactl k6](grafanactl_k6.md)	 - Manage K6 Cloud resources (projects, tests, env vars).
+* [grafanactl k6](grafanactl_k6.md)	 - Manage K6 Cloud resources (projects, tests, env vars, schedules, load zones).
 * [grafanactl kg](grafanactl_kg.md)	 - Manage Grafana Knowledge Graph (Asserts) resources.
 * [grafanactl oncall](grafanactl_oncall.md)	 - Manage Grafana OnCall resources.
 * [grafanactl providers](grafanactl_providers.md)	 - List registered providers

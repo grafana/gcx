@@ -1,11 +1,11 @@
-## grafanactl k6 projects
+## grafanactl k6 schedules
 
-Manage K6 Cloud projects.
+Manage K6 Cloud schedules.
 
 ### Options
 
 ```
-  -h, --help   help for projects
+  -h, --help   help for schedules
 ```
 
 ### Options inherited from parent commands
@@ -22,9 +22,9 @@ Manage K6 Cloud projects.
 ### SEE ALSO
 
 * [grafanactl k6](grafanactl_k6.md)	 - Manage K6 Cloud resources (projects, tests, env vars, schedules, load zones).
-* [grafanactl k6 projects create](grafanactl_k6_projects_create.md)	 - Create a new K6 project from a file.
-* [grafanactl k6 projects delete](grafanactl_k6_projects_delete.md)	 - Delete a K6 project.
-* [grafanactl k6 projects get](grafanactl_k6_projects_get.md)	 - Get a single K6 project by ID or name.
-* [grafanactl k6 projects list](grafanactl_k6_projects_list.md)	 - List K6 Cloud projects.
-* [grafanactl k6 projects update](grafanactl_k6_projects_update.md)	 - Update a K6 project.
+* [grafanactl k6 schedules create](grafanactl_k6_schedules_create.md)	 - Create a K6 schedule from a file.
+* [grafanactl k6 schedules delete](grafanactl_k6_schedules_delete.md)	 - Delete the schedule for a K6 load test.
+* [grafanactl k6 schedules get](grafanactl_k6_schedules_get.md)	 - Get a single K6 schedule by ID.
+* [grafanactl k6 schedules list](grafanactl_k6_schedules_list.md)	 - List all K6 schedules.
+* [grafanactl k6 schedules update](grafanactl_k6_schedules_update.md)	 - Update a K6 schedule from a file.
 

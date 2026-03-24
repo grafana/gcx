@@ -20,7 +20,7 @@ func (p *K6Provider) Name() string { return "k6" }
 
 // ShortDesc returns a one-line description of the provider.
 func (p *K6Provider) ShortDesc() string {
-	return "Manage K6 Cloud resources (projects, tests, env vars)."
+	return "Manage K6 Cloud resources (projects, tests, env vars, schedules, load zones)."
 }
 
 // Commands returns the Cobra commands contributed by this provider.
@@ -39,7 +39,10 @@ func (p *K6Provider) Commands() []*cobra.Command {
 		newTestsCommand(loader),
 		newEnvVarsCommand(loader),
 		newRunsCommand(loader),
-		newTokenCommand(loader),
+		newSchedulesCommand(loader),
+		newLoadZonesCommand(loader),
+		newTestrunCommand(loader),
+		newAuthCommand(loader),
 	)
 
 	return []*cobra.Command{k6Cmd}

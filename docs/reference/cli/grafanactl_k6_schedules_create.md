@@ -1,17 +1,17 @@
-## grafanactl k6 projects get
+## grafanactl k6 schedules create
 
-Get a single K6 project by ID or name.
+Create a K6 schedule from a file.
 
 ```
-grafanactl k6 projects get <id-or-name> [flags]
+grafanactl k6 schedules create [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
-      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -o, --output string   Output format. One of: json, yaml (default "yaml")
+  -f, --filename string    File containing the schedule request (JSON/YAML)
+  -h, --help               help for create
+      --load-test-id int   Load test ID (required)
 ```
 
 ### Options inherited from parent commands
@@ -27,5 +27,5 @@ grafanactl k6 projects get <id-or-name> [flags]
 
 ### SEE ALSO
 
-* [grafanactl k6 projects](grafanactl_k6_projects.md)	 - Manage K6 Cloud projects.
+* [grafanactl k6 schedules](grafanactl_k6_schedules.md)	 - Manage K6 Cloud schedules.
 

@@ -346,6 +346,330 @@ func TestClient_DeleteEnvVar(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestClient_GetProjectByName(t *testing.T) {
+	projectListHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		writeJSON(t, w, map[string]any{
+			"value": []map[string]any{
+				{"id": 1, "name": "My Project"},
+				{"id": 2, "name": "Other"},
+			},
+		})
+	})
+
+	client := newAuthenticatedClient(t, projectListHandler)
+
+	// Found by name.
+	p, err := client.GetProjectByName(t.Context(), "My Project")
+	require.NoError(t, err)
+	require.NotNil(t, p)
+	assert.Equal(t, 1, p.ID)
+
+	// Not found returns error.
+	_, err = client.GetProjectByName(t.Context(), "Missing")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+}
+
+func TestClient_ListLoadTestsByProject(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		writeJSON(t, w, map[string]any{
+			"value": []map[string]any{
+				{"id": 5, "name": "Test A", "project_id": 1},
+				{"id": 6, "name": "Test B", "project_id": 2},
+				{"id": 7, "name": "Test C", "project_id": 1},
+			},
+		})
+	})
+
+	client := newAuthenticatedClient(t, handler)
+	tests, err := client.ListLoadTestsByProject(t.Context(), 1)
+	require.NoError(t, err)
+	assert.Len(t, tests, 2)
+	assert.Equal(t, "Test A", tests[0].Name)
+	assert.Equal(t, "Test C", tests[1].Name)
+}
+
+func TestClient_CreateLoadTest(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/cloud/v6/projects/1/load_tests", r.URL.Path)
+		assert.Contains(t, r.Header.Get("Content-Type"), "multipart/form-data")
+		w.WriteHeader(http.StatusCreated)
+		writeJSON(t, w, map[string]any{"id": 10, "name": "New Test", "project_id": 1})
+	})
+
+	client := newAuthenticatedClient(t, handler)
+	lt, err := client.CreateLoadTest(t.Context(), "New Test", 1, "export default function() {}")
+	require.NoError(t, err)
+	assert.Equal(t, 10, lt.ID)
+	assert.Equal(t, "New Test", lt.Name)
+}
+
+func TestClient_UpdateLoadTest(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPatch {
+			assert.Equal(t, "/cloud/v6/load_tests/5", r.URL.Path)
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+	})
+
+	client := newAuthenticatedClient(t, handler)
+	err := client.UpdateLoadTest(t.Context(), 5, "Updated Name", "")
+	require.NoError(t, err)
+}
+
+func TestClient_UpdateLoadTestScript(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPut, r.Method)
+		assert.Equal(t, "/cloud/v6/load_tests/5/script", r.URL.Path)
+		assert.Equal(t, "application/octet-stream", r.Header.Get("Content-Type"))
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	client := newAuthenticatedClient(t, handler)
+	err := client.UpdateLoadTestScript(t.Context(), 5, "export default function() { console.log('hi'); }")
+	require.NoError(t, err)
+}
+
+func TestClient_GetLoadTestScript(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/cloud/v6/load_tests/5/script", r.URL.Path)
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte("export default function() {}"))
+	})
+
+	client := newAuthenticatedClient(t, handler)
+	script, err := client.GetLoadTestScript(t.Context(), 5)
+	require.NoError(t, err)
+	assert.Equal(t, "export default function() {}", script)
+}
+
+func TestClient_GetLoadTestByName(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		writeJSON(t, w, map[string]any{
+			"value": []map[string]any{
+				{"id": 5, "name": "alpha", "project_id": 1},
+				{"id": 6, "name": "beta", "project_id": 1},
+			},
+		})
+	})
+
+	client := newAuthenticatedClient(t, handler)
+
+	lt, err := client.GetLoadTestByName(t.Context(), 1, "beta")
+	require.NoError(t, err)
+	require.NotNil(t, lt)
+	assert.Equal(t, 6, lt.ID)
+
+	_, err = client.GetLoadTestByName(t.Context(), 1, "gamma")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+}
+
+func TestClient_ListSchedules(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/cloud/v6/schedules", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		writeJSON(t, w, map[string]any{
+			"value": []map[string]any{
+				{"id": 10, "load_test_id": 5, "starts": "2026-06-01T10:00:00Z"},
+			},
+		})
+	})
+
+	client := newAuthenticatedClient(t, handler)
+	schedules, err := client.ListSchedules(t.Context())
+	require.NoError(t, err)
+	assert.Len(t, schedules, 1)
+	assert.Equal(t, 10, schedules[0].ID)
+	assert.Equal(t, 5, schedules[0].LoadTestID)
+}
+
+func TestClient_GetSchedule(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/cloud/v6/schedules/10", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		writeJSON(t, w, map[string]any{
+			"id": 10, "load_test_id": 5, "starts": "2026-06-01T10:00:00Z",
+		})
+	})
+
+	client := newAuthenticatedClient(t, handler)
+	s, err := client.GetSchedule(t.Context(), 10)
+	require.NoError(t, err)
+	assert.Equal(t, 10, s.ID)
+}
+
+func TestClient_CreateSchedule(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/cloud/v6/load_tests/5/schedule", r.URL.Path)
+		w.WriteHeader(http.StatusCreated)
+		writeJSON(t, w, map[string]any{
+			"id": 10, "load_test_id": 5, "starts": "2026-06-01T10:00:00Z",
+		})
+	})
+
+	client := newAuthenticatedClient(t, handler)
+	s, err := client.CreateSchedule(t.Context(), 5, k6.ScheduleRequest{
+		Starts: "2026-06-01T10:00:00Z",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 10, s.ID)
+}
+
+func TestClient_UpdateScheduleByID(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPut, r.Method)
+		assert.Equal(t, "/cloud/v6/schedules/10", r.URL.Path)
+		writeJSON(t, w, map[string]any{
+			"id": 10, "load_test_id": 5, "starts": "2026-07-01T12:00:00Z",
+		})
+	})
+
+	client := newAuthenticatedClient(t, handler)
+	s, err := client.UpdateScheduleByID(t.Context(), 10, k6.ScheduleRequest{
+		Starts: "2026-07-01T12:00:00Z",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "2026-07-01T12:00:00Z", s.Starts)
+}
+
+func TestClient_DeleteScheduleByLoadTest(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodDelete, r.Method)
+		assert.Equal(t, "/cloud/v6/load_tests/5/schedule", r.URL.Path)
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	client := newAuthenticatedClient(t, handler)
+	err := client.DeleteScheduleByLoadTest(t.Context(), 5)
+	require.NoError(t, err)
+}
+
+func TestClient_ListLoadZones(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/cloud/v6/load_zones", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		writeJSON(t, w, map[string]any{
+			"value": []map[string]any{
+				{"id": 1, "name": "my-plz", "k6_load_zone_id": "k6-plz-123"},
+			},
+		})
+	})
+
+	client := newAuthenticatedClient(t, handler)
+	zones, err := client.ListLoadZones(t.Context())
+	require.NoError(t, err)
+	assert.Len(t, zones, 1)
+	assert.Equal(t, "my-plz", zones[0].Name)
+}
+
+func TestClient_CreateLoadZone(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/cloud-resources/v1/load-zones", r.URL.Path)
+		w.WriteHeader(http.StatusCreated)
+		writeJSON(t, w, map[string]any{
+			"name": "my-plz", "k6_load_zone_id": "k6-plz-123",
+		})
+	})
+
+	client := newAuthenticatedClient(t, handler)
+	resp, err := client.CreateLoadZone(t.Context(), k6.PLZCreateRequest{
+		K6LoadZoneID: "k6-plz-123",
+		ProviderID:   "aws",
+		PodTiers:     k6.PLZPodTiers{CPU: "1", Memory: "2Gi"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "my-plz", resp.Name)
+}
+
+func TestClient_DeleteLoadZone(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodDelete, r.Method)
+		assert.Equal(t, "/cloud-resources/v1/load-zones/my-plz", r.URL.Path)
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	client := newAuthenticatedClient(t, handler)
+	err := client.DeleteLoadZone(t.Context(), "my-plz")
+	require.NoError(t, err)
+}
+
+func TestClient_ListAllowedProjects(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/cloud/v6/load_zones/1/allowed_projects", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		writeJSON(t, w, map[string]any{
+			"value": []map[string]any{{"id": 10, "name": "proj-a"}},
+		})
+	})
+
+	client := newAuthenticatedClient(t, handler)
+	projects, err := client.ListAllowedProjects(t.Context(), 1)
+	require.NoError(t, err)
+	assert.Len(t, projects, 1)
+	assert.Equal(t, 10, projects[0].ID)
+}
+
+func TestClient_UpdateAllowedProjects(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPut, r.Method)
+		assert.Equal(t, "/cloud/v6/load_zones/1/allowed_projects", r.URL.Path)
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		assert.NotNil(t, body["project_ids"])
+		w.WriteHeader(http.StatusOK)
+	})
+
+	client := newAuthenticatedClient(t, handler)
+	err := client.UpdateAllowedProjects(t.Context(), 1, []int{10, 20})
+	require.NoError(t, err)
+}
+
+func TestClient_ListAllowedLoadZones(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/cloud/v6/projects/1/allowed_load_zones", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		writeJSON(t, w, map[string]any{
+			"value": []map[string]any{{"id": 100, "name": "zone-a"}},
+		})
+	})
+
+	client := newAuthenticatedClient(t, handler)
+	zones, err := client.ListAllowedLoadZones(t.Context(), 1)
+	require.NoError(t, err)
+	assert.Len(t, zones, 1)
+	assert.Equal(t, 100, zones[0].ID)
+}
+
+func TestClient_UpdateAllowedLoadZones(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPut, r.Method)
+		assert.Equal(t, "/cloud/v6/projects/1/allowed_load_zones", r.URL.Path)
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		assert.NotNil(t, body["load_zone_ids"])
+		w.WriteHeader(http.StatusOK)
+	})
+
+	client := newAuthenticatedClient(t, handler)
+	err := client.UpdateAllowedLoadZones(t.Context(), 1, []int{100, 200})
+	require.NoError(t, err)
+}
+
 func writeJSON(t *testing.T, w http.ResponseWriter, v any) {
 	t.Helper()
 	w.Header().Set("Content-Type", "application/json")

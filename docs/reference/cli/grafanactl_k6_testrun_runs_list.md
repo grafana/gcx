@@ -1,17 +1,19 @@
-## grafanactl k6 projects get
+## grafanactl k6 testrun runs list
 
-Get a single K6 project by ID or name.
+List all test runs for a k6 load test.
 
 ```
-grafanactl k6 projects get <id-or-name> [flags]
+grafanactl k6 testrun runs list [test-name] [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
-      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -o, --output string   Output format. One of: json, yaml (default "yaml")
+  -h, --help             help for list
+      --id int           Load test ID (skip name lookup)
+      --json string      Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+  -o, --output string    Output format. One of: json, table, yaml (default "table")
+      --project-id int   k6 Cloud project ID (required when using name lookup)
 ```
 
 ### Options inherited from parent commands
@@ -27,5 +29,5 @@ grafanactl k6 projects get <id-or-name> [flags]
 
 ### SEE ALSO
 
-* [grafanactl k6 projects](grafanactl_k6_projects.md)	 - Manage K6 Cloud projects.
+* [grafanactl k6 testrun runs](grafanactl_k6_testrun_runs.md)	 - Query k6 Cloud test run history.
 

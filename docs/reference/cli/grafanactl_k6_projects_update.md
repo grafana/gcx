@@ -3,7 +3,7 @@
 Update a K6 project.
 
 ```
-grafanactl k6 projects update <id> [flags]
+grafanactl k6 projects update <id-or-name> [flags]
 ```
 
 ### Options

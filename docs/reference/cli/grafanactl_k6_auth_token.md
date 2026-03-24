@@ -1,17 +1,15 @@
-## grafanactl k6 projects get
+## grafanactl k6 auth token
 
-Get a single K6 project by ID or name.
+Print the authenticated k6 API token.
 
 ```
-grafanactl k6 projects get <id-or-name> [flags]
+grafanactl k6 auth token [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
-      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -o, --output string   Output format. One of: json, yaml (default "yaml")
+  -h, --help   help for token
 ```
 
 ### Options inherited from parent commands
@@ -27,5 +25,5 @@ grafanactl k6 projects get <id-or-name> [flags]
 
 ### SEE ALSO
 
-* [grafanactl k6 projects](grafanactl_k6_projects.md)	 - Manage K6 Cloud projects.
+* [grafanactl k6 auth](grafanactl_k6_auth.md)	 - K6 authentication commands.
 

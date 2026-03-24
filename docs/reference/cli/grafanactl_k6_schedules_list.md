@@ -1,17 +1,17 @@
-## grafanactl k6 projects get
+## grafanactl k6 schedules list
 
-Get a single K6 project by ID or name.
+List all K6 schedules.
 
 ```
-grafanactl k6 projects get <id-or-name> [flags]
+grafanactl k6 schedules list [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
+  -h, --help            help for list
       --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -o, --output string   Output format. One of: json, yaml (default "yaml")
+  -o, --output string   Output format. One of: json, table, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -27,5 +27,5 @@ grafanactl k6 projects get <id-or-name> [flags]
 
 ### SEE ALSO
 
-* [grafanactl k6 projects](grafanactl_k6_projects.md)	 - Manage K6 Cloud projects.
+* [grafanactl k6 schedules](grafanactl_k6_schedules.md)	 - Manage K6 Cloud schedules.
 

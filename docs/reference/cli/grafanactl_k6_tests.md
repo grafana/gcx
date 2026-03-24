@@ -21,8 +21,11 @@ Manage K6 Cloud load tests.
 
 ### SEE ALSO
 
-* [grafanactl k6](grafanactl_k6.md)	 - Manage K6 Cloud resources (projects, tests, env vars).
+* [grafanactl k6](grafanactl_k6.md)	 - Manage K6 Cloud resources (projects, tests, env vars, schedules, load zones).
+* [grafanactl k6 tests create](grafanactl_k6_tests_create.md)	 - Create a new K6 load test.
 * [grafanactl k6 tests delete](grafanactl_k6_tests_delete.md)	 - Delete a K6 load test.
-* [grafanactl k6 tests get](grafanactl_k6_tests_get.md)	 - Get a single K6 load test by ID.
+* [grafanactl k6 tests get](grafanactl_k6_tests_get.md)	 - Get a single K6 load test by ID or name.
 * [grafanactl k6 tests list](grafanactl_k6_tests_list.md)	 - List K6 Cloud load tests.
+* [grafanactl k6 tests update](grafanactl_k6_tests_update.md)	 - Update a K6 load test from a file.
+* [grafanactl k6 tests update-script](grafanactl_k6_tests_update-script.md)	 - Update the script of a K6 load test from a file.
 

@@ -3,7 +3,7 @@
 Delete a K6 project.
 
 ```
-grafanactl k6 projects delete <id> [flags]
+grafanactl k6 projects delete <id-or-name> [flags]
 ```
 
 ### Options

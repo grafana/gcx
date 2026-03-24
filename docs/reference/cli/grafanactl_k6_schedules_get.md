@@ -1,9 +1,9 @@
-## grafanactl k6 projects get
+## grafanactl k6 schedules get
 
-Get a single K6 project by ID or name.
+Get a single K6 schedule by ID.
 
 ```
-grafanactl k6 projects get <id-or-name> [flags]
+grafanactl k6 schedules get <id> [flags]
 ```
 
 ### Options
@@ -27,5 +27,5 @@ grafanactl k6 projects get <id-or-name> [flags]
 
 ### SEE ALSO
 
-* [grafanactl k6 projects](grafanactl_k6_projects.md)	 - Manage K6 Cloud projects.
+* [grafanactl k6 schedules](grafanactl_k6_schedules.md)	 - Manage K6 Cloud schedules.
 

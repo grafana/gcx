@@ -1,17 +1,20 @@
-## grafanactl k6 projects get
+## grafanactl k6 load-zones create
 
-Get a single K6 project by ID or name.
+Register a Private Load Zone.
 
 ```
-grafanactl k6 projects get <id-or-name> [flags]
+grafanactl k6 load-zones create [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
-      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -o, --output string   Output format. One of: json, yaml (default "yaml")
+      --cpu string           CPU limit for load zone pods (default "2")
+  -h, --help                 help for create
+      --image string         k6 runner image (default "grafana/k6:latest")
+      --memory string        Memory limit for load zone pods (default "1Gi")
+      --name string          Load zone name (must be unique in your org)
+      --provider-id string   Provider ID for the load zone
 ```
 
 ### Options inherited from parent commands
@@ -27,5 +30,5 @@ grafanactl k6 projects get <id-or-name> [flags]
 
 ### SEE ALSO
 
-* [grafanactl k6 projects](grafanactl_k6_projects.md)	 - Manage K6 Cloud projects.
+* [grafanactl k6 load-zones](grafanactl_k6_load-zones.md)	 - Manage K6 private load zones.
 
