@@ -34,18 +34,26 @@ func allResources() []resourceDef {
 		{
 			kind: "LoadTest", singular: "loadtest", plural: "loadtests",
 			aliases: []string{"k6loadtests", "k6loadtest", "k6lt"},
+			schema:  loadTestSchema(),
+			example: loadTestExample(),
 		},
 		{
 			kind: "Schedule", singular: "schedule", plural: "schedules",
 			aliases: []string{"k6schedules", "k6schedule", "k6sched"},
+			schema:  scheduleSchema(),
+			example: scheduleExample(),
 		},
 		{
 			kind: "EnvVar", singular: "envvar", plural: "envvars",
 			aliases: []string{"k6envvars", "k6envvar", "k6env"},
+			schema:  envVarSchema(),
+			example: envVarExample(),
 		},
 		{
 			kind: "LoadZone", singular: "loadzone", plural: "loadzones",
 			aliases: []string{"k6loadzones", "k6loadzone", "k6lz"},
+			schema:  loadZoneSchema(),
+			example: loadZoneExample(),
 		},
 	}
 }
@@ -368,15 +376,31 @@ func newLoadZoneCRUD(c *Client, ns string, desc resources.Descriptor, aliases []
 // Schema and Example helpers
 // ---------------------------------------------------------------------------
 
-// projectSchema returns a JSON Schema for the Project resource type.
-func projectSchema() json.RawMessage {
-	s := map[string]any{
+// mustMarshalJSON marshals v to JSON or panics. Used for static schema/example data.
+func mustMarshalJSON(label string, v any) json.RawMessage {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(fmt.Sprintf("k6: failed to marshal %s: %v", label, err))
+	}
+	return b
+}
+
+// resourceSchema builds a JSON Schema for a k6 resource with the given kind and spec properties.
+func resourceSchema(kind string, specProps map[string]any, specRequired []string) json.RawMessage {
+	spec := map[string]any{
+		"type":       "object",
+		"properties": specProps,
+	}
+	if len(specRequired) > 0 {
+		spec["required"] = specRequired
+	}
+	return mustMarshalJSON(kind+" schema", map[string]any{
 		"$schema": "https://json-schema.org/draft/2020-12/schema",
-		"$id":     "https://grafana.com/schemas/k6/Project",
+		"$id":     "https://grafana.com/schemas/k6/" + kind,
 		"type":    "object",
 		"properties": map[string]any{
 			"apiVersion": map[string]any{"type": "string", "const": APIVersion},
-			"kind":       map[string]any{"type": "string", "const": Kind},
+			"kind":       map[string]any{"type": "string", "const": kind},
 			"metadata": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -384,41 +408,105 @@ func projectSchema() json.RawMessage {
 					"namespace": map[string]any{"type": "string"},
 				},
 			},
-			"spec": map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"name":               map[string]any{"type": "string"},
-					"is_default":         map[string]any{"type": "boolean"},
-					"grafana_folder_uid": map[string]any{"type": "string"},
-				},
-				"required": []string{"name"},
-			},
+			"spec": spec,
 		},
 		"required": []string{"apiVersion", "kind", "metadata", "spec"},
-	}
-	b, err := json.Marshal(s)
-	if err != nil {
-		panic(fmt.Sprintf("k6: failed to marshal schema: %v", err))
-	}
-	return b
+	})
 }
 
-// projectExample returns an example Project manifest as JSON.
-func projectExample() json.RawMessage {
-	example := map[string]any{
+// resourceExample builds an example manifest for a k6 resource.
+func resourceExample(kind string, name string, spec map[string]any) json.RawMessage {
+	return mustMarshalJSON(kind+" example", map[string]any{
 		"apiVersion": APIVersion,
-		"kind":       Kind,
-		"metadata": map[string]any{
-			"name": "12345",
+		"kind":       kind,
+		"metadata":   map[string]any{"name": name},
+		"spec":       spec,
+	})
+}
+
+func projectSchema() json.RawMessage {
+	return resourceSchema(Kind, map[string]any{
+		"name":               map[string]any{"type": "string"},
+		"is_default":         map[string]any{"type": "boolean"},
+		"grafana_folder_uid": map[string]any{"type": "string"},
+	}, []string{"name"})
+}
+
+func projectExample() json.RawMessage {
+	return resourceExample(Kind, "12345", map[string]any{
+		"name":       "my-project",
+		"is_default": false,
+	})
+}
+
+func loadTestSchema() json.RawMessage {
+	return resourceSchema("LoadTest", map[string]any{
+		"name":       map[string]any{"type": "string"},
+		"project_id": map[string]any{"type": "integer"},
+		"script":     map[string]any{"type": "string"},
+	}, []string{"name", "project_id"})
+}
+
+func loadTestExample() json.RawMessage {
+	return resourceExample("LoadTest", "12345", map[string]any{
+		"name":       "my-load-test",
+		"project_id": 1,
+		"script":     "export default function() {}",
+	})
+}
+
+func scheduleSchema() json.RawMessage {
+	return resourceSchema("Schedule", map[string]any{
+		"load_test_id": map[string]any{"type": "integer"},
+		"starts":       map[string]any{"type": "string"},
+		"recurrence_rule": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"frequency": map[string]any{"type": "string"},
+				"interval":  map[string]any{"type": "integer"},
+			},
 		},
-		"spec": map[string]any{
-			"name":       "my-project",
-			"is_default": false,
+		"deactivated": map[string]any{"type": "boolean"},
+	}, []string{"load_test_id"})
+}
+
+func scheduleExample() json.RawMessage {
+	return resourceExample("Schedule", "12345", map[string]any{
+		"load_test_id": 1,
+		"starts":       "2026-01-01T00:00:00Z",
+		"recurrence_rule": map[string]any{
+			"frequency": "DAILY",
+			"interval":  1,
 		},
-	}
-	b, err := json.Marshal(example)
-	if err != nil {
-		panic(fmt.Sprintf("k6: failed to marshal example: %v", err))
-	}
-	return b
+	})
+}
+
+func envVarSchema() json.RawMessage {
+	return resourceSchema("EnvVar", map[string]any{
+		"name":        map[string]any{"type": "string"},
+		"value":       map[string]any{"type": "string"},
+		"description": map[string]any{"type": "string"},
+	}, []string{"name", "value"})
+}
+
+func envVarExample() json.RawMessage {
+	return resourceExample("EnvVar", "12345", map[string]any{
+		"name":        "MY_VAR",
+		"value":       "my-value",
+		"description": "Example environment variable",
+	})
+}
+
+func loadZoneSchema() json.RawMessage {
+	return resourceSchema("LoadZone", map[string]any{
+		"name":            map[string]any{"type": "string"},
+		"k6_load_zone_id": map[string]any{"type": "string"},
+	}, []string{"name"})
+}
+
+func loadZoneExample() json.RawMessage {
+	return resourceExample("LoadZone", "my-zone", map[string]any{
+		"name":            "my-zone",
+		"k6_load_zone_id": "my-zone-id",
+	})
 }

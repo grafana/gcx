@@ -21,6 +21,6 @@ K6 authentication commands.
 
 ### SEE ALSO
 
-* [grafanactl k6](grafanactl_k6.md)	 - Manage K6 Cloud resources (projects, tests, env vars, schedules, load zones).
+* [grafanactl k6](grafanactl_k6.md)	 - Manage K6 Cloud resources (projects, load tests, env vars, schedules, load zones).
 * [grafanactl k6 auth token](grafanactl_k6_auth_token.md)	 - Print the authenticated k6 API token.
 

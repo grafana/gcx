@@ -1,21 +1,16 @@
-## grafanactl k6 tests create
+## grafanactl k6 load-tests update
 
-Create a new K6 load test.
+Update a K6 load test from a file.
 
 ```
-grafanactl k6 tests create [flags]
+grafanactl k6 load-tests update <id> [flags]
 ```
 
 ### Options
 
 ```
   -f, --filename string   File containing the test definition (JSON/YAML)
-  -h, --help              help for create
-      --json string       Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-      --name string       Test name (required when --filename not used)
-  -o, --output string     Output format. One of: json, yaml (default "yaml")
-      --project-id int    Project ID (required when --filename not used)
-      --script string     Path to k6 script file (required when --filename not used)
+  -h, --help              help for update
 ```
 
 ### Options inherited from parent commands
@@ -31,5 +26,5 @@ grafanactl k6 tests create [flags]
 
 ### SEE ALSO
 
-* [grafanactl k6 tests](grafanactl_k6_tests.md)	 - Manage K6 Cloud load tests.
+* [grafanactl k6 load-tests](grafanactl_k6_load-tests.md)	 - Manage K6 Cloud load tests.
 

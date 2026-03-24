@@ -1,11 +1,15 @@
-## grafanactl k6 testrun
+## grafanactl k6 load-tests delete
 
-Manage k6 TestRun CRD manifests.
+Delete a K6 load test.
+
+```
+grafanactl k6 load-tests delete <id> [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for testrun
+  -h, --help   help for delete
 ```
 
 ### Options inherited from parent commands
@@ -21,8 +25,5 @@ Manage k6 TestRun CRD manifests.
 
 ### SEE ALSO
 
-* [grafanactl k6](grafanactl_k6.md)	 - Manage K6 Cloud resources (projects, tests, env vars, schedules, load zones).
-* [grafanactl k6 testrun emit](grafanactl_k6_testrun_emit.md)	 - Fetch a k6 Cloud test and emit Kubernetes TestRun CRD manifests.
-* [grafanactl k6 testrun runs](grafanactl_k6_testrun_runs.md)	 - Query k6 Cloud test run history.
-* [grafanactl k6 testrun status](grafanactl_k6_testrun_status.md)	 - Show the most recent test run status for a k6 load test.
+* [grafanactl k6 load-tests](grafanactl_k6_load-tests.md)	 - Manage K6 Cloud load tests.
 

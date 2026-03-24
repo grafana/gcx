@@ -1,11 +1,11 @@
-## grafanactl k6 envvars
+## grafanactl k6 env-vars
 
 Manage K6 Cloud environment variables.
 
 ### Options
 
 ```
-  -h, --help   help for envvars
+  -h, --help   help for env-vars
 ```
 
 ### Options inherited from parent commands
@@ -21,9 +21,9 @@ Manage K6 Cloud environment variables.
 
 ### SEE ALSO
 
-* [grafanactl k6](grafanactl_k6.md)	 - Manage K6 Cloud resources (projects, tests, env vars, schedules, load zones).
-* [grafanactl k6 envvars create](grafanactl_k6_envvars_create.md)	 - Create a K6 environment variable from a file.
-* [grafanactl k6 envvars delete](grafanactl_k6_envvars_delete.md)	 - Delete a K6 environment variable.
-* [grafanactl k6 envvars list](grafanactl_k6_envvars_list.md)	 - List K6 environment variables.
-* [grafanactl k6 envvars update](grafanactl_k6_envvars_update.md)	 - Update a K6 environment variable.
+* [grafanactl k6](grafanactl_k6.md)	 - Manage K6 Cloud resources (projects, load tests, env vars, schedules, load zones).
+* [grafanactl k6 env-vars create](grafanactl_k6_env-vars_create.md)	 - Create a K6 environment variable from a file.
+* [grafanactl k6 env-vars delete](grafanactl_k6_env-vars_delete.md)	 - Delete a K6 environment variable.
+* [grafanactl k6 env-vars list](grafanactl_k6_env-vars_list.md)	 - List K6 environment variables.
+* [grafanactl k6 env-vars update](grafanactl_k6_env-vars_update.md)	 - Update a K6 environment variable.
 

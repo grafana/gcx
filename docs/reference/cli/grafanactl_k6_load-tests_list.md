@@ -1,15 +1,18 @@
-## grafanactl k6 envvars delete
+## grafanactl k6 load-tests list
 
-Delete a K6 environment variable.
+List K6 Cloud load tests.
 
 ```
-grafanactl k6 envvars delete <id> [flags]
+grafanactl k6 load-tests list [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help   help for delete
+  -h, --help             help for list
+      --json string      Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+  -o, --output string    Output format. One of: json, table, wide, yaml (default "table")
+      --project-id int   Filter by project ID
 ```
 
 ### Options inherited from parent commands
@@ -25,5 +28,5 @@ grafanactl k6 envvars delete <id> [flags]
 
 ### SEE ALSO
 
-* [grafanactl k6 envvars](grafanactl_k6_envvars.md)	 - Manage K6 Cloud environment variables.
+* [grafanactl k6 load-tests](grafanactl_k6_load-tests.md)	 - Manage K6 Cloud load tests.
 

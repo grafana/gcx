@@ -1,16 +1,11 @@
-## grafanactl k6 envvars create
+## grafanactl k6 test-run runs
 
-Create a K6 environment variable from a file.
-
-```
-grafanactl k6 envvars create [flags]
-```
+Query k6 Cloud test run history.
 
 ### Options
 
 ```
-  -f, --filename string   File containing the env var JSON (use - for stdin)
-  -h, --help              help for create
+  -h, --help   help for runs
 ```
 
 ### Options inherited from parent commands
@@ -26,5 +21,6 @@ grafanactl k6 envvars create [flags]
 
 ### SEE ALSO
 
-* [grafanactl k6 envvars](grafanactl_k6_envvars.md)	 - Manage K6 Cloud environment variables.
+* [grafanactl k6 test-run](grafanactl_k6_test-run.md)	 - Manage k6 TestRun CRD manifests.
+* [grafanactl k6 test-run runs list](grafanactl_k6_test-run_runs_list.md)	 - List all test runs for a k6 load test.
 

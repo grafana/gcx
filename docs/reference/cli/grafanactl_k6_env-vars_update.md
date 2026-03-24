@@ -1,17 +1,16 @@
-## grafanactl k6 testrun status
+## grafanactl k6 env-vars update
 
-Show the most recent test run status for a k6 load test.
+Update a K6 environment variable.
 
 ```
-grafanactl k6 testrun status [test-name] [flags]
+grafanactl k6 env-vars update <id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help             help for status
-      --id int           Load test ID (skip name lookup)
-      --project-id int   k6 Cloud project ID (required when using name lookup)
+  -f, --filename string   File containing the env var JSON (use - for stdin)
+  -h, --help              help for update
 ```
 
 ### Options inherited from parent commands
@@ -27,5 +26,5 @@ grafanactl k6 testrun status [test-name] [flags]
 
 ### SEE ALSO
 
-* [grafanactl k6 testrun](grafanactl_k6_testrun.md)	 - Manage k6 TestRun CRD manifests.
+* [grafanactl k6 env-vars](grafanactl_k6_env-vars.md)	 - Manage K6 Cloud environment variables.
 

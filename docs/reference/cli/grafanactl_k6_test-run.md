@@ -1,18 +1,11 @@
-## grafanactl k6 tests list
+## grafanactl k6 test-run
 
-List K6 Cloud load tests.
-
-```
-grafanactl k6 tests list [flags]
-```
+Manage k6 TestRun CRD manifests.
 
 ### Options
 
 ```
-  -h, --help             help for list
-      --json string      Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -o, --output string    Output format. One of: json, table, wide, yaml (default "table")
-      --project-id int   Filter by project ID
+  -h, --help   help for test-run
 ```
 
 ### Options inherited from parent commands
@@ -28,5 +21,8 @@ grafanactl k6 tests list [flags]
 
 ### SEE ALSO
 
-* [grafanactl k6 tests](grafanactl_k6_tests.md)	 - Manage K6 Cloud load tests.
+* [grafanactl k6](grafanactl_k6.md)	 - Manage K6 Cloud resources (projects, load tests, env vars, schedules, load zones).
+* [grafanactl k6 test-run emit](grafanactl_k6_test-run_emit.md)	 - Fetch a k6 Cloud test and emit Kubernetes TestRun CRD manifests.
+* [grafanactl k6 test-run runs](grafanactl_k6_test-run_runs.md)	 - Query k6 Cloud test run history.
+* [grafanactl k6 test-run status](grafanactl_k6_test-run_status.md)	 - Show the most recent test run status for a k6 load test.
 

@@ -482,9 +482,9 @@ func newProjectsDeleteCommand(loader CloudConfigLoader) *cobra.Command {
 
 func newTestsCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "tests",
+		Use:     "load-tests",
 		Short:   "Manage K6 Cloud load tests.",
-		Aliases: []string{"test"},
+		Aliases: []string{"tests", "test"},
 	}
 	cmd.AddCommand(
 		newTestsListCommand(loader),
@@ -930,9 +930,9 @@ func resultStatusString(status int) string {
 
 func newEnvVarsCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "envvars",
+		Use:     "env-vars",
 		Short:   "Manage K6 Cloud environment variables.",
-		Aliases: []string{"envvar", "env"},
+		Aliases: []string{"envvars", "envvar", "env"},
 	}
 	cmd.AddCommand(
 		newEnvVarsListCommand(loader),
@@ -1824,8 +1824,9 @@ func newAllowedLoadZonesUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 
 func newTestrunCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "testrun",
-		Short: "Manage k6 TestRun CRD manifests.",
+		Use:     "test-run",
+		Short:   "Manage k6 TestRun CRD manifests.",
+		Aliases: []string{"testrun"},
 	}
 	cmd.AddCommand(
 		newTestrunEmitCommand(loader),

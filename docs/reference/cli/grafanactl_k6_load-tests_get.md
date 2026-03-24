@@ -1,16 +1,18 @@
-## grafanactl k6 envvars update
+## grafanactl k6 load-tests get
 
-Update a K6 environment variable.
+Get a single K6 load test by ID or name.
 
 ```
-grafanactl k6 envvars update <id> [flags]
+grafanactl k6 load-tests get <id-or-name> [flags]
 ```
 
 ### Options
 
 ```
-  -f, --filename string   File containing the env var JSON (use - for stdin)
-  -h, --help              help for update
+  -h, --help             help for get
+      --json string      Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+  -o, --output string    Output format. One of: json, yaml (default "yaml")
+      --project-id int   Project ID (required when looking up by name)
 ```
 
 ### Options inherited from parent commands
@@ -26,5 +28,5 @@ grafanactl k6 envvars update <id> [flags]
 
 ### SEE ALSO
 
-* [grafanactl k6 envvars](grafanactl_k6_envvars.md)	 - Manage K6 Cloud environment variables.
+* [grafanactl k6 load-tests](grafanactl_k6_load-tests.md)	 - Manage K6 Cloud load tests.
 

@@ -21,7 +21,7 @@ Manage K6 Cloud schedules.
 
 ### SEE ALSO
 
-* [grafanactl k6](grafanactl_k6.md)	 - Manage K6 Cloud resources (projects, tests, env vars, schedules, load zones).
+* [grafanactl k6](grafanactl_k6.md)	 - Manage K6 Cloud resources (projects, load tests, env vars, schedules, load zones).
 * [grafanactl k6 schedules create](grafanactl_k6_schedules_create.md)	 - Create a K6 schedule from a file.
 * [grafanactl k6 schedules delete](grafanactl_k6_schedules_delete.md)	 - Delete the schedule for a K6 load test.
 * [grafanactl k6 schedules get](grafanactl_k6_schedules_get.md)	 - Get a single K6 schedule by ID.

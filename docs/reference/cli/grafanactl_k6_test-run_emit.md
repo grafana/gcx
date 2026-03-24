@@ -1,9 +1,9 @@
-## grafanactl k6 testrun emit
+## grafanactl k6 test-run emit
 
 Fetch a k6 Cloud test and emit Kubernetes TestRun CRD manifests.
 
 ```
-grafanactl k6 testrun emit [test-name] [flags]
+grafanactl k6 test-run emit [test-name] [flags]
 ```
 
 ### Options
@@ -32,5 +32,5 @@ grafanactl k6 testrun emit [test-name] [flags]
 
 ### SEE ALSO
 
-* [grafanactl k6 testrun](grafanactl_k6_testrun.md)	 - Manage k6 TestRun CRD manifests.
+* [grafanactl k6 test-run](grafanactl_k6_test-run.md)	 - Manage k6 TestRun CRD manifests.
 

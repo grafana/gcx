@@ -21,7 +21,7 @@ Manage K6 private load zones.
 
 ### SEE ALSO
 
-* [grafanactl k6](grafanactl_k6.md)	 - Manage K6 Cloud resources (projects, tests, env vars, schedules, load zones).
+* [grafanactl k6](grafanactl_k6.md)	 - Manage K6 Cloud resources (projects, load tests, env vars, schedules, load zones).
 * [grafanactl k6 load-zones allowed-load-zones](grafanactl_k6_load-zones_allowed-load-zones.md)	 - Manage load zones allowed for a project.
 * [grafanactl k6 load-zones allowed-projects](grafanactl_k6_load-zones_allowed-projects.md)	 - Manage projects allowed to use a load zone.
 * [grafanactl k6 load-zones create](grafanactl_k6_load-zones_create.md)	 - Register a Private Load Zone.

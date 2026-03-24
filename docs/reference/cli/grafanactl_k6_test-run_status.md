@@ -1,18 +1,16 @@
-## grafanactl k6 testrun runs list
+## grafanactl k6 test-run status
 
-List all test runs for a k6 load test.
+Show the most recent test run status for a k6 load test.
 
 ```
-grafanactl k6 testrun runs list [test-name] [flags]
+grafanactl k6 test-run status [test-name] [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help             help for list
+  -h, --help             help for status
       --id int           Load test ID (skip name lookup)
-      --json string      Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -o, --output string    Output format. One of: json, table, yaml (default "table")
       --project-id int   k6 Cloud project ID (required when using name lookup)
 ```
 
@@ -29,5 +27,5 @@ grafanactl k6 testrun runs list [test-name] [flags]
 
 ### SEE ALSO
 
-* [grafanactl k6 testrun runs](grafanactl_k6_testrun_runs.md)	 - Query k6 Cloud test run history.
+* [grafanactl k6 test-run](grafanactl_k6_test-run.md)	 - Manage k6 TestRun CRD manifests.
 

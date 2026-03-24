@@ -1,15 +1,16 @@
-## grafanactl k6 tests delete
+## grafanactl k6 env-vars create
 
-Delete a K6 load test.
+Create a K6 environment variable from a file.
 
 ```
-grafanactl k6 tests delete <id> [flags]
+grafanactl k6 env-vars create [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help   help for delete
+  -f, --filename string   File containing the env var JSON (use - for stdin)
+  -h, --help              help for create
 ```
 
 ### Options inherited from parent commands
@@ -25,5 +26,5 @@ grafanactl k6 tests delete <id> [flags]
 
 ### SEE ALSO
 
-* [grafanactl k6 tests](grafanactl_k6_tests.md)	 - Manage K6 Cloud load tests.
+* [grafanactl k6 env-vars](grafanactl_k6_env-vars.md)	 - Manage K6 Cloud environment variables.
 

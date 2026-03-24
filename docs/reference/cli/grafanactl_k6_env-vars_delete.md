@@ -1,11 +1,15 @@
-## grafanactl k6 testrun runs
+## grafanactl k6 env-vars delete
 
-Query k6 Cloud test run history.
+Delete a K6 environment variable.
+
+```
+grafanactl k6 env-vars delete <id> [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for runs
+  -h, --help   help for delete
 ```
 
 ### Options inherited from parent commands
@@ -21,6 +25,5 @@ Query k6 Cloud test run history.
 
 ### SEE ALSO
 
-* [grafanactl k6 testrun](grafanactl_k6_testrun.md)	 - Manage k6 TestRun CRD manifests.
-* [grafanactl k6 testrun runs list](grafanactl_k6_testrun_runs_list.md)	 - List all test runs for a k6 load test.
+* [grafanactl k6 env-vars](grafanactl_k6_env-vars.md)	 - Manage K6 Cloud environment variables.
 

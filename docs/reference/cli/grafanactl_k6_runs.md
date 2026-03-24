@@ -21,6 +21,6 @@ Manage K6 test runs.
 
 ### SEE ALSO
 
-* [grafanactl k6](grafanactl_k6.md)	 - Manage K6 Cloud resources (projects, tests, env vars, schedules, load zones).
+* [grafanactl k6](grafanactl_k6.md)	 - Manage K6 Cloud resources (projects, load tests, env vars, schedules, load zones).
 * [grafanactl k6 runs list](grafanactl_k6_runs_list.md)	 - List test runs for a load test.
 

@@ -1,17 +1,16 @@
-## grafanactl k6 envvars list
+## grafanactl k6 load-tests update-script
 
-List K6 environment variables.
+Update the script of a K6 load test from a file.
 
 ```
-grafanactl k6 envvars list [flags]
+grafanactl k6 load-tests update-script <id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for list
-      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -o, --output string   Output format. One of: json, table, yaml (default "table")
+  -f, --filename string   k6 script file to upload
+  -h, --help              help for update-script
 ```
 
 ### Options inherited from parent commands
@@ -27,5 +26,5 @@ grafanactl k6 envvars list [flags]
 
 ### SEE ALSO
 
-* [grafanactl k6 envvars](grafanactl_k6_envvars.md)	 - Manage K6 Cloud environment variables.
+* [grafanactl k6 load-tests](grafanactl_k6_load-tests.md)	 - Manage K6 Cloud load tests.
 
