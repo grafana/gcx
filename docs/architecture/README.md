@@ -28,7 +28,7 @@ The architecture follows a clean layered monolith with strict separation: CLI wi
 
 A composable processor pipeline transforms resources during push and pull operations, keeping I/O and transformation concerns decoupled. Context-based multi-environment configuration follows the kubectl kubeconfig pattern, enabling management of multiple Grafana instances from a single config file with named contexts.
 
-Two extension subsystems complement the core resource management path: the **provider plugin system** (`internal/providers/`) which registers Prometheus/Loki datasource configs with secret redaction, and the **datasource query layer** (`internal/query/`) which provides direct HTTP clients for PromQL/LogQL queries with terminal graph rendering (`internal/graph/`).
+Two extension subsystems complement the core resource management path: the **provider plugin system** (`internal/providers/`) which hosts pluggable providers for Grafana Cloud products (SLO, Synthetic Monitoring, OnCall, Fleet Management, K6 Cloud, Knowledge Graph, IRM Incidents, Alerting), and the **datasource query layer** (`internal/query/`) which provides direct HTTP clients for PromQL/LogQL queries with terminal graph rendering (`internal/graph/`).
 
 ## Key Patterns Quick Reference
 
@@ -42,7 +42,7 @@ Two extension subsystems complement the core resource management path: the **pro
 
 - **Dual-Client Architecture (93% confidence)**: Dynamic client path uses `/apis` (K8s-compatible) with `k8s.io/client-go` for resource CRUD; OpenAPI client uses `/api` (Grafana REST) for health checks and version discovery.
 
-- **Provider Plugin System**: Interface + registry pattern for datasource providers (Prometheus, Loki). Each provider exposes typed config, a config key for lookup, and integrates with the secret redactor for safe display in `config view`.
+- **Provider Plugin System**: Interface + registry pattern for Cloud product providers (SLO, Synthetic Monitoring, OnCall, Fleet Management, K6 Cloud, Knowledge Graph, IRM Incidents, Alerting). Each provider self-registers and contributes CLI commands and resource adapters via the provider registry.
 
 - **Direct HTTP Client for Datasource APIs**: Query clients (`internal/query/prometheus`, `internal/query/loki`) bypass the k8s dynamic client and call datasource HTTP APIs directly, enabling PromQL/LogQL execution with results rendered as terminal charts via `internal/graph/`.
 

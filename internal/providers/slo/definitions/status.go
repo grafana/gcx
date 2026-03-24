@@ -11,9 +11,9 @@ import (
 	"sync"
 	"text/tabwriter"
 
-	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
 	"github.com/grafana/grafanactl/internal/format"
 	"github.com/grafana/grafanactl/internal/graph"
+	cmdio "github.com/grafana/grafanactl/internal/output"
 	"github.com/grafana/grafanactl/internal/query/prometheus"
 	"github.com/grafana/promql-builder/go/promql"
 	"github.com/spf13/cobra"

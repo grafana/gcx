@@ -6,7 +6,7 @@
 
 ## Executive Summary
 
-- **grafanactl is a unified CLI for managing Grafana resources** operating in two tiers: (1) a K8s resource tier using Grafana 12+'s Kubernetes-compatible API via `k8s.io/client-go` for dashboards, folders, and other K8s-native resources; (2) a Cloud provider tier with pluggable providers for Grafana Cloud products (SLO, Synthetic Monitoring, OnCall, Fleet Management, Knowledge Graph, IRM Incidents, Alerting) that use product-specific REST APIs.
+- **grafanactl is a unified CLI for managing Grafana resources** operating in two tiers: (1) a K8s resource tier using Grafana 12+'s Kubernetes-compatible API via `k8s.io/client-go` for dashboards, folders, and other K8s-native resources; (2) a Cloud provider tier with pluggable providers for Grafana Cloud products (SLO, Synthetic Monitoring, OnCall, Fleet Management, K6 Cloud, Knowledge Graph, IRM Incidents, Alerting) that use product-specific REST APIs.
 - **The architecture is a clean layered monolith** with strict separation: CLI wiring (`cmd/`) holds no business logic; all domain logic lives in `internal/` organized by feature (config, resources, server, providers).
 - **Context-based multi-environment configuration** follows the kubectl kubeconfig pattern, enabling management of multiple Grafana instances (dev, staging, prod, cloud) from a single config file.
 - **A composable processor pipeline** transforms resources during push and pull, keeping I/O and transformation concerns decoupled.

@@ -48,7 +48,10 @@ func TestGCOMClient_GetStack_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := cloud.NewGCOMClient(srv.URL, "test-token")
+	client, err := cloud.NewGCOMClient(srv.URL, "test-token")
+	if err != nil {
+		t.Fatalf("unexpected error creating client: %v", err)
+	}
 	got, err := client.GetStack(context.Background(), "mystack")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -108,8 +111,11 @@ func TestGCOMClient_GetStack_NonSuccess(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			client := cloud.NewGCOMClient(srv.URL, "test-token")
-			_, err := client.GetStack(context.Background(), "mystack")
+			client, err := cloud.NewGCOMClient(srv.URL, "test-token")
+			if err != nil {
+				t.Fatalf("unexpected error creating client: %v", err)
+			}
+			_, err = client.GetStack(context.Background(), "mystack")
 			if err == nil {
 				t.Fatal("expected error, got nil")
 			}
@@ -134,9 +140,12 @@ func TestGCOMClient_GetStack_SlugEscaping(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := cloud.NewGCOMClient(srv.URL, "token")
+	client, err := cloud.NewGCOMClient(srv.URL, "token")
+	if err != nil {
+		t.Fatalf("unexpected error creating client: %v", err)
+	}
 	// Slug with special chars — space and slash must be percent-encoded.
-	_, err := client.GetStack(context.Background(), "my stack/test")
+	_, err = client.GetStack(context.Background(), "my stack/test")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -156,8 +165,11 @@ func TestGCOMClient_GetStack_TrailingSlash(t *testing.T) {
 	defer srv.Close()
 
 	// Base URL with trailing slash(es)
-	client := cloud.NewGCOMClient(srv.URL+"///", "token")
-	_, err := client.GetStack(context.Background(), "mystack")
+	client, err := cloud.NewGCOMClient(srv.URL+"///", "token")
+	if err != nil {
+		t.Fatalf("unexpected error creating client: %v", err)
+	}
+	_, err = client.GetStack(context.Background(), "mystack")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -181,8 +193,11 @@ func TestGCOMClient_GetStack_NoRedirectToDifferentDomain(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := cloud.NewGCOMClient(srv.URL, "token")
-	_, err := client.GetStack(context.Background(), "mystack")
+	client, err := cloud.NewGCOMClient(srv.URL, "token")
+	if err != nil {
+		t.Fatalf("unexpected error creating client: %v", err)
+	}
+	_, err = client.GetStack(context.Background(), "mystack")
 	if err == nil {
 		t.Fatal("expected error when redirected to different domain, got nil")
 	}

@@ -13,8 +13,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
 	"github.com/grafana/grafanactl/internal/format"
+	cmdio "github.com/grafana/grafanactl/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"

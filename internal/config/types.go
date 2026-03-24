@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strings"
 )
@@ -133,6 +134,11 @@ func (context *Context) ResolveStackSlug() string {
 	host := parsed.Hostname()
 	for _, suffix := range []string{".grafana.net", ".grafana-dev.net"} {
 		if slug, ok := strings.CutSuffix(host, suffix); ok {
+			// For regional subdomains like "mystack.us.grafana.net",
+			// CutSuffix returns "mystack.us". Take only the first component.
+			if i := strings.Index(slug, "."); i >= 0 {
+				slug = slug[:i]
+			}
 			return slug
 		}
 	}
@@ -148,6 +154,9 @@ func (context *Context) ResolveGCOMURL() string {
 		apiURL := context.Cloud.APIUrl
 		if !strings.HasPrefix(apiURL, "https://") && !strings.HasPrefix(apiURL, "http://") {
 			apiURL = "https://" + apiURL
+		}
+		if strings.HasPrefix(apiURL, "http://") {
+			slog.Warn("GCOM API URL uses http:// — cloud tokens may be sent unencrypted", "url", apiURL)
 		}
 		return apiURL
 	}

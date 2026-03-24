@@ -222,7 +222,10 @@ func (l *ConfigLoader) LoadCloudConfig(ctx context.Context) (CloudRESTConfig, er
 
 	// Resolve GCOM URL and fetch stack info.
 	gcomURL := curCtx.ResolveGCOMURL()
-	client := cloud.NewGCOMClient(gcomURL, token)
+	client, err := cloud.NewGCOMClient(gcomURL, token)
+	if err != nil {
+		return CloudRESTConfig{}, fmt.Errorf("failed to create GCOM client: %w", err)
+	}
 
 	stack, err := client.GetStack(ctx, slug)
 	if err != nil {

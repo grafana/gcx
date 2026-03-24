@@ -157,23 +157,19 @@ func TestClient_GetProject(t *testing.T) {
 		{
 			name: "returns project by ID",
 			id:   1,
-			handler: func(w http.ResponseWriter, _ *http.Request) {
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "/cloud/v6/projects/1", r.URL.Path)
 				w.Header().Set("Content-Type", "application/json")
-				writeJSON(t, w, map[string]any{
-					"value": []map[string]any{
-						{"id": 1, "name": "My Project"},
-						{"id": 2, "name": "Other"},
-					},
-				})
+				writeJSON(t, w, map[string]any{"id": 1, "name": "My Project"})
 			},
 			wantName: "My Project",
 		},
 		{
 			name: "not found",
 			id:   999,
-			handler: func(w http.ResponseWriter, _ *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": 1, "name": "X"}}})
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "/cloud/v6/projects/999", r.URL.Path)
+				w.WriteHeader(http.StatusNotFound)
 			},
 			wantErr: true,
 		},
@@ -372,12 +368,14 @@ func TestClient_GetProjectByName(t *testing.T) {
 }
 
 func TestClient_ListLoadTestsByProject(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify server-side filtering is requested
+		assert.Equal(t, "1", r.URL.Query().Get("project_id"))
 		w.Header().Set("Content-Type", "application/json")
+		// Mock returns only project 1's tests (server-side filtered)
 		writeJSON(t, w, map[string]any{
 			"value": []map[string]any{
 				{"id": 5, "name": "Test A", "project_id": 1},
-				{"id": 6, "name": "Test B", "project_id": 2},
 				{"id": 7, "name": "Test C", "project_id": 1},
 			},
 		})

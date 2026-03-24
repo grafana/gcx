@@ -1,4 +1,4 @@
-package io_test
+package output_test
 
 // integration_test.go verifies pipe detection and truncation suppression
 // end-to-end through the terminal package and Options binding.
@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
+	cmdio "github.com/grafana/grafanactl/internal/output"
 	"github.com/grafana/grafanactl/internal/terminal"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"

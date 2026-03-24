@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	cmdconfig "github.com/grafana/grafanactl/cmd/grafanactl/config"
-	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
+	cmdio "github.com/grafana/grafanactl/internal/output"
 	"github.com/grafana/grafanactl/internal/resources/local"
 	"github.com/grafana/grafanactl/internal/resources/process"
 	"github.com/grafana/grafanactl/internal/resources/remote"

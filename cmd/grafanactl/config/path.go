@@ -5,8 +5,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
 	"github.com/grafana/grafanactl/internal/agent"
+	cmdio "github.com/grafana/grafanactl/internal/output"
 	"github.com/spf13/cobra"
 )
 

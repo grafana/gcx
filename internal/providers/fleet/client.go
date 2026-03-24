@@ -24,13 +24,17 @@ type Client struct {
 // NewClient creates a new Fleet Management client.
 // When useBasicAuth is true, requests use Basic auth with instanceID:apiToken.
 // Otherwise, requests use Bearer token auth.
-func NewClient(baseURL, instanceID, apiToken string, useBasicAuth bool) *Client {
+// If httpClient is nil, a default client with a 30-second timeout is used.
+func NewClient(baseURL, instanceID, apiToken string, useBasicAuth bool, httpClient *http.Client) *Client {
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 30 * time.Second}
+	}
 	return &Client{
 		baseURL:      strings.TrimRight(baseURL, "/"),
 		instanceID:   instanceID,
 		apiToken:     apiToken,
 		useBasicAuth: useBasicAuth,
-		httpClient:   &http.Client{Timeout: 30 * time.Second},
+		httpClient:   httpClient,
 	}
 }
 

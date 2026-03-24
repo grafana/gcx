@@ -1,12 +1,12 @@
-package io_test
+package output_test
 
 import (
 	goio "io"
 	"testing"
 
-	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
 	"github.com/grafana/grafanactl/internal/agent"
 	"github.com/grafana/grafanactl/internal/format"
+	cmdio "github.com/grafana/grafanactl/internal/output"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

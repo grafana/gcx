@@ -5,9 +5,9 @@ import (
 	"errors"
 	"io"
 
-	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
 	"github.com/grafana/grafanactl/internal/format"
 	"github.com/grafana/grafanactl/internal/linter"
+	cmdio "github.com/grafana/grafanactl/internal/output"
 	"github.com/grafana/grafanactl/internal/resources/local"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"

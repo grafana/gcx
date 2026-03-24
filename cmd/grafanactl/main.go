@@ -66,13 +66,12 @@ func handleError(err error) {
 		os.Exit(fail.ExitCancelled)
 	}
 
-	exitCode := 1
 	detailedErr := fail.ErrorToDetailedError(err)
-
 	if detailedErr == nil {
-		os.Exit(exitCode)
+		os.Exit(1)
 	}
 
+	exitCode := 1
 	if detailedErr.ExitCode != nil {
 		exitCode = *detailedErr.ExitCode
 	}

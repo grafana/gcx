@@ -20,7 +20,7 @@
 | Document | Domain | Read When |
 |----------|--------|-----------|
 | [architecture.md](docs/architecture/architecture.md) | System-wide architecture overview | First-time orientation, understanding overall design |
-| [patterns.md](docs/architecture/patterns.md) | Recurring patterns catalog (15 patterns) | Before implementing new features |
+| [patterns.md](docs/architecture/patterns.md) | Recurring patterns catalog (18 patterns) | Before implementing new features |
 | [resource-model.md](docs/architecture/resource-model.md) | Resource, Selector, Filter, Discovery abstractions | Modifying resource handling |
 | [cli-layer.md](docs/architecture/cli-layer.md) | Command tree, Options pattern, lifecycle | Adding/modifying CLI commands |
 | [client-api-layer.md](docs/architecture/client-api-layer.md) | Dynamic client, auth, error translation | API communication changes |
@@ -107,8 +107,7 @@ cmd/grafanactl/
 ├── api/         Raw API passthrough command (direct Grafana API calls)
 ├── linter/      Linting commands (run, new, rules, test — mounted under dev lint)
 ├── dev/         Developer commands (import, scaffold, generate, lint, serve)
-├── fail/        Structured error → user-friendly message conversion
-└── io/          Output codec registry (json, yaml, text, wide)
+└── fail/        Structured error → user-friendly message conversion
 
 internal/
 ├── config/      Config types, loader, editor, rest.Config builder, stack-id discovery, context name helpers
@@ -141,6 +140,7 @@ internal/
 ├── testutils/   Shared test utilities
 ├── server/      Live dev server (Chi router, reverse proxy, websocket reload)
 ├── grafana/     OpenAPI client (health checks, version detection)
+├── output/      Output codec registry (json, yaml, text, wide — field selection, formatting)
 ├── format/      JSON/YAML codecs with format auto-detection
 ├── httputils/   HTTP helpers (used by serve command's proxy)
 ├── secrets/     Redactor for config view

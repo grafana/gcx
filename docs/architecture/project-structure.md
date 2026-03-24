@@ -15,8 +15,7 @@ grafanactl/
 │       │   └── query/        # Per-kind query constructors and shared infrastructure (codecs, time parsing)
 │       ├── dev/              # 'dev' subcommand (import, scaffold, generate, lint, serve)
 │       ├── providers/        # 'providers' subcommand implementation
-│       ├── fail/             # Error → DetailedError conversion, exit codes
-│       └── io/               # Output formatting, user-facing messages
+│       └── fail/             # Error → DetailedError conversion, exit codes
 │
 ├── internal/                 # All non-public packages (Go enforced)
 │   ├── agent/                # Agent-mode detection (env vars + --agent flag)
@@ -24,6 +23,7 @@ grafanactl/
 │   ├── config/               # Config loading, context management, auth types
 │   │   └── testdata/         # YAML fixtures for config unit tests
 │   ├── format/               # JSON/YAML codec, format auto-detection
+│   ├── output/               # Output codec registry (json, yaml, text, wide), field selection, user-facing messages
 │   ├── grafana/              # Thin wrapper over grafana-openapi-client-go
 │   ├── graph/                # Terminal chart rendering (ntcharts + lipgloss)
 │   ├── httputils/            # REST client helpers, request/response utilities

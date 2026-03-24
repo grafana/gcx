@@ -8,8 +8,8 @@ import (
 	"text/tabwriter"
 
 	cmdconfig "github.com/grafana/grafanactl/cmd/grafanactl/config"
-	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
 	"github.com/grafana/grafanactl/internal/format"
+	cmdio "github.com/grafana/grafanactl/internal/output"
 	"github.com/grafana/grafanactl/internal/resources"
 	"github.com/grafana/grafanactl/internal/resources/adapter"
 	"github.com/grafana/grafanactl/internal/resources/discovery"

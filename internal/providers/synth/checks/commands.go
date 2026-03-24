@@ -11,8 +11,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
 	"github.com/grafana/grafanactl/internal/format"
+	cmdio "github.com/grafana/grafanactl/internal/output"
 	"github.com/grafana/grafanactl/internal/providers/synth/smcfg"
 	"github.com/grafana/grafanactl/internal/resources"
 	"github.com/spf13/cobra"

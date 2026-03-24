@@ -15,11 +15,11 @@ import (
 	"time"
 
 	"github.com/grafana/grafana-app-sdk/logging"
-	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
 	"github.com/grafana/grafanactl/internal/config"
 	"github.com/grafana/grafanactl/internal/format"
 	"github.com/grafana/grafanactl/internal/grafana"
 	"github.com/grafana/grafanactl/internal/graph"
+	cmdio "github.com/grafana/grafanactl/internal/output"
 	"github.com/grafana/grafanactl/internal/providers/synth/probes"
 	"github.com/grafana/grafanactl/internal/providers/synth/smcfg"
 	"github.com/grafana/grafanactl/internal/query/prometheus"

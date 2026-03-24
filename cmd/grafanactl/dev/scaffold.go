@@ -11,7 +11,7 @@ import (
 	"text/template"
 
 	"github.com/charmbracelet/huh"
-	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
+	cmdio "github.com/grafana/grafanactl/internal/output"
 	"github.com/huandu/xstrings"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"

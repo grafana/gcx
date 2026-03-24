@@ -11,10 +11,10 @@ import (
 
 	"github.com/caarlos0/env/v11"
 	"github.com/grafana/grafanactl/cmd/grafanactl/fail"
-	"github.com/grafana/grafanactl/cmd/grafanactl/io"
 	"github.com/grafana/grafanactl/internal/config"
 	"github.com/grafana/grafanactl/internal/format"
 	"github.com/grafana/grafanactl/internal/grafana"
+	cmdio "github.com/grafana/grafanactl/internal/output"
 	"github.com/grafana/grafanactl/internal/providers"
 	"github.com/grafana/grafanactl/internal/resources/discovery"
 	"github.com/grafana/grafanactl/internal/secrets"
@@ -191,7 +191,7 @@ The configuration file to load is chosen as follows:
 }
 
 type viewOpts struct {
-	IO io.Options
+	IO cmdio.Options
 
 	Minify bool
 	Raw    bool
@@ -261,14 +261,14 @@ func viewCmd(configOpts *Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				for _, field := range io.DiscoverFields(cfgMap) {
+				for _, field := range cmdio.DiscoverFields(cfgMap) {
 					fmt.Fprintln(cmd.OutOrStdout(), field)
 				}
 				return nil
 			}
 
 			if len(opts.IO.JSONFields) > 0 {
-				codec := io.NewFieldSelectCodec(opts.IO.JSONFields)
+				codec := cmdio.NewFieldSelectCodec(opts.IO.JSONFields)
 				return codec.Encode(cmd.OutOrStdout(), cfg)
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), cfg)
@@ -354,15 +354,15 @@ func checkCmd(configOpts *Options) *cobra.Command {
 
 			stdout := cmd.OutOrStdout()
 
-			io.Success(stdout, "Configuration file: %s", io.Green(cfg.Source))
+			cmdio.Success(stdout, "Configuration file: %s", cmdio.Green(cfg.Source))
 
 			switch {
 			case cfg.CurrentContext == "":
-				io.Error(stdout, "Current context: %s", io.Red("<undefined>"))
+				cmdio.Error(stdout, "Current context: %s", cmdio.Red("<undefined>"))
 			case !cfg.HasContext(cfg.CurrentContext):
-				io.Error(stdout, "Current context: %s", io.Red(config.ContextNotFound(cfg.CurrentContext).Error()))
+				cmdio.Error(stdout, "Current context: %s", cmdio.Red(config.ContextNotFound(cfg.CurrentContext).Error()))
 			default:
-				io.Success(stdout, "Current context: %s", io.Green(cfg.CurrentContext))
+				cmdio.Success(stdout, "Current context: %s", cmdio.Green(cfg.CurrentContext))
 			}
 
 			cmd.Println()
@@ -385,7 +385,7 @@ func checkContext(cmd *cobra.Command, gCtx *config.Context) error {
 	stdout := cmd.OutOrStdout()
 	title := "Context: "
 	titleLen := len(title) + len(gCtx.Name)
-	title += io.Bold(gCtx.Name)
+	title += cmdio.Bold(gCtx.Name)
 
 	summarizeError := func(err error) string {
 		detailedErr := fail.ErrorToDetailedError(err)
@@ -396,7 +396,7 @@ func checkContext(cmd *cobra.Command, gCtx *config.Context) error {
 	printSuggestions := func(err error) {
 		detailedErr := fail.ErrorToDetailedError(err)
 		if len(detailedErr.Suggestions) != 0 {
-			io.Info(stdout, "Suggestions:\n")
+			cmdio.Info(stdout, "Suggestions:\n")
 			for _, suggestion := range detailedErr.Suggestions {
 				fmt.Fprintf(stdout, "  • %s\n", suggestion)
 			}
@@ -404,32 +404,32 @@ func checkContext(cmd *cobra.Command, gCtx *config.Context) error {
 		}
 	}
 
-	cmd.Println(io.Yellow(title))
-	cmd.Println(io.Yellow(strings.Repeat("=", titleLen)))
+	cmd.Println(cmdio.Yellow(title))
+	cmd.Println(cmdio.Yellow(strings.Repeat("=", titleLen)))
 
 	if err := gCtx.Validate(); err != nil {
-		io.Error(stdout, "Configuration: %s", io.Red(summarizeError(err)))
-		io.Warning(stdout, "Connectivity: %s", io.Yellow("skipped"))
-		io.Warning(stdout, "Grafana version: %s", io.Yellow("skipped")+"\n")
+		cmdio.Error(stdout, "Configuration: %s", cmdio.Red(summarizeError(err)))
+		cmdio.Warning(stdout, "Connectivity: %s", cmdio.Yellow("skipped"))
+		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("skipped")+"\n")
 
 		printSuggestions(err)
 		return nil
 	}
 
-	io.Success(stdout, "Configuration: %s", io.Green("valid"))
+	cmdio.Success(stdout, "Configuration: %s", cmdio.Green("valid"))
 
 	if _, err := discovery.NewDefaultRegistry(cmd.Context(), config.NewNamespacedRESTConfig(cmd.Context(), *gCtx)); err != nil {
-		io.Error(stdout, "Connectivity: %s", io.Red(summarizeError(err)))
-		io.Warning(stdout, "Grafana version: %s", io.Yellow("skipped")+"\n")
+		cmdio.Error(stdout, "Connectivity: %s", cmdio.Red(summarizeError(err)))
+		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("skipped")+"\n")
 		printSuggestions(err)
 		return nil
 	}
 
-	io.Success(stdout, "Connectivity: %s", io.Green("online"))
+	cmdio.Success(stdout, "Connectivity: %s", cmdio.Green("online"))
 
 	version, err := grafana.GetVersion(gCtx)
 	if err != nil {
-		io.Error(stdout, "Grafana version: %s", io.Red(summarizeError(err))+"\n")
+		cmdio.Error(stdout, "Grafana version: %s", cmdio.Red(summarizeError(err))+"\n")
 		return nil
 	}
 
@@ -437,7 +437,7 @@ func checkContext(cmd *cobra.Command, gCtx *config.Context) error {
 		return &grafana.VersionIncompatibleError{Version: version}
 	}
 
-	io.Success(stdout, "Grafana version: %s", io.Green(version.String())+"\n")
+	cmdio.Success(stdout, "Grafana version: %s", cmdio.Green(version.String())+"\n")
 
 	return nil
 }
@@ -466,7 +466,7 @@ func useContextCmd(configOpts *Options) *cobra.Command {
 				return err
 			}
 
-			io.Success(cmd.OutOrStdout(), "Context set to \"%s\"", cfg.CurrentContext)
+			cmdio.Success(cmd.OutOrStdout(), "Context set to \"%s\"", cfg.CurrentContext)
 			return nil
 		},
 	}

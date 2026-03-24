@@ -12,8 +12,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
 	"github.com/grafana/grafanactl/internal/format"
+	cmdio "github.com/grafana/grafanactl/internal/output"
 	"github.com/grafana/grafanactl/internal/providers"
 	"github.com/grafana/grafanactl/internal/resources"
 	"github.com/grafana/grafanactl/internal/resources/adapter"
@@ -185,18 +185,7 @@ func (h *fleetHelper) loadClient(ctx context.Context) (*Client, string, error) {
 		return nil, "", errors.New("fleet management instance ID is not available for this stack")
 	}
 	instanceID := strconv.Itoa(cloudCfg.Stack.AgentManagementInstanceID)
-	return NewClient(url, instanceID, cloudCfg.Token, true), cloudCfg.Namespace, nil
-}
-
-func (h *fleetHelper) withClient(fn func(ctx context.Context, client *Client) error) func(*cobra.Command, []string) error {
-	return func(cmd *cobra.Command, _ []string) error {
-		ctx := cmd.Context()
-		client, _, err := h.loadClient(ctx)
-		if err != nil {
-			return err
-		}
-		return fn(ctx, client)
-	}
+	return NewClient(url, instanceID, cloudCfg.Token, true, nil), cloudCfg.Namespace, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -433,33 +422,25 @@ func (h *fleetHelper) newPipelineUpdateCommand() *cobra.Command {
 }
 
 func (h *fleetHelper) newPipelineDeleteCommand() *cobra.Command {
-	cmd := &cobra.Command{
+	return &cobra.Command{
 		Use:   "delete <name>",
 		Short: "Delete a pipeline.",
 		Args:  cobra.ExactArgs(1),
-		RunE: h.withClient(func(ctx context.Context, client *Client) error {
-			// args[0] is not available in withClient, so we use the parent closure.
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			client, _, err := h.loadClient(ctx)
+			if err != nil {
+				return err
+			}
+
+			if err := client.DeletePipeline(ctx, args[0]); err != nil {
+				return err
+			}
+
+			cmdio.Success(cmd.OutOrStdout(), "Deleted pipeline %s", args[0])
 			return nil
-		}),
+		},
 	}
-
-	// Override RunE to access args directly.
-	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		ctx := cmd.Context()
-		client, _, err := h.loadClient(ctx)
-		if err != nil {
-			return err
-		}
-
-		if err := client.DeletePipeline(ctx, args[0]); err != nil {
-			return err
-		}
-
-		cmdio.Success(cmd.OutOrStdout(), "Deleted pipeline %s", args[0])
-		return nil
-	}
-
-	return cmd
 }
 
 type pipelineWriteOpts struct {
@@ -1140,7 +1121,7 @@ func NewPipelineAdapterFactory(loader CloudConfigLoader) adapter.Factory {
 			return nil, errors.New("fleet management instance ID is not available for this stack")
 		}
 		instanceID := strconv.Itoa(cloudCfg.Stack.AgentManagementInstanceID)
-		client := NewClient(url, instanceID, cloudCfg.Token, true)
+		client := NewClient(url, instanceID, cloudCfg.Token, true, nil)
 
 		crud := &adapter.TypedCRUD[Pipeline]{
 			NameFn: func(p Pipeline) string {
@@ -1211,7 +1192,7 @@ func NewCollectorAdapterFactory(loader CloudConfigLoader) adapter.Factory {
 			return nil, errors.New("fleet management instance ID is not available for this stack")
 		}
 		instanceID := strconv.Itoa(cloudCfg.Stack.AgentManagementInstanceID)
-		client := NewClient(url, instanceID, cloudCfg.Token, true)
+		client := NewClient(url, instanceID, cloudCfg.Token, true, nil)
 
 		crud := &adapter.TypedCRUD[Collector]{
 			NameFn: func(col Collector) string {

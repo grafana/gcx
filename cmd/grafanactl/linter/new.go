@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"strings"
 
-	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
+	cmdio "github.com/grafana/grafanactl/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )

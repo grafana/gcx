@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/grafana/grafanactl/internal/config"
 	"k8s.io/client-go/rest"
@@ -41,17 +41,26 @@ type Client struct {
 	httpClient *http.Client
 }
 
-// NewClient creates a new OnCall client.
+// NewClient creates a new OnCall client from the given REST config and OnCall API URL.
 // oncallURL is the OnCall API base URL (e.g., https://oncall-prod-us-central-0.grafana.net/oncall).
-// stackURL is the Grafana stack URL for the X-Grafana-URL header.
-// token is the Grafana service account token.
-func NewClient(oncallURL, stackURL, token string) *Client {
+// cfg is the namespaced REST config providing auth, TLS, and the stack URL.
+func NewClient(oncallURL string, cfg config.NamespacedRESTConfig) (*Client, error) {
+	httpClient, err := rest.HTTPClientFor(&cfg.Config)
+	if err != nil {
+		return nil, fmt.Errorf("oncall: failed to create HTTP client: %w", err)
+	}
+
+	token := cfg.BearerToken
+	if strings.HasPrefix(token, "Bearer ") {
+		slog.Warn("OnCall token already contains 'Bearer ' prefix — this may be a misconfiguration; the token is used as-is without an additional prefix")
+	}
+
 	return &Client{
 		oncallURL:  strings.TrimRight(oncallURL, "/"),
-		stackURL:   stackURL,
+		stackURL:   cfg.Host,
 		token:      token,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-	}
+		httpClient: httpClient,
+	}, nil
 }
 
 // doRequest builds and executes an HTTP request against the OnCall API.
@@ -108,9 +117,10 @@ func iterResources[T any](c *Client, ctx context.Context, path, resourceType str
 			}
 
 			if resp.StatusCode != http.StatusOK {
-				var z T
-				yield(z, handleErrorResponse(resp))
+				err := handleErrorResponse(resp)
 				resp.Body.Close()
+				var z T
+				yield(z, err)
 				return
 			}
 
@@ -132,8 +142,23 @@ func iterResources[T any](c *Client, ctx context.Context, path, resourceType str
 			if result.Next == nil || *result.Next == "" {
 				break
 			}
-			// The API returns an absolute URL; strip the base URL prefix.
-			next = strings.TrimPrefix(*result.Next, c.oncallURL)
+			// The API returns an absolute URL; validate and extract the path+query.
+			nextURL, parseErr := url.Parse(*result.Next)
+			if parseErr != nil {
+				var z T
+				yield(z, fmt.Errorf("oncall: invalid pagination URL %q: %w", *result.Next, parseErr))
+				return
+			}
+			baseURL, _ := url.Parse(c.oncallURL)
+			if nextURL.Host != "" && nextURL.Host != baseURL.Host {
+				var z T
+				yield(z, fmt.Errorf("oncall: pagination URL host %q does not match base URL host %q", nextURL.Host, baseURL.Host))
+				return
+			}
+			next = nextURL.Path
+			if nextURL.RawQuery != "" {
+				next += "?" + nextURL.RawQuery
+			}
 		}
 	}
 }

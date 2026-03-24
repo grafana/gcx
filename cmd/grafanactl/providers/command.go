@@ -7,8 +7,8 @@ import (
 	goio "io"
 	"text/tabwriter"
 
-	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
 	"github.com/grafana/grafanactl/internal/format"
+	cmdio "github.com/grafana/grafanactl/internal/output"
 	coreproviders "github.com/grafana/grafanactl/internal/providers"
 	"github.com/spf13/cobra"
 )

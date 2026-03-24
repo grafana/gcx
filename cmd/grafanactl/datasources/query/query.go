@@ -11,9 +11,9 @@ import (
 	"time"
 
 	cmdconfig "github.com/grafana/grafanactl/cmd/grafanactl/config"
-	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
 	internalconfig "github.com/grafana/grafanactl/internal/config"
 	"github.com/grafana/grafanactl/internal/grafana"
+	cmdio "github.com/grafana/grafanactl/internal/output"
 	"github.com/spf13/pflag"
 )
 

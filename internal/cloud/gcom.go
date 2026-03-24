@@ -60,15 +60,18 @@ type GCOMClient struct {
 //
 // The client uses a 30-second timeout and will not follow HTTP redirects to a
 // different domain than baseURL.
-func NewGCOMClient(baseURL, token string) *GCOMClient {
+func NewGCOMClient(baseURL, token string) (*GCOMClient, error) {
 	baseURL = strings.TrimRight(baseURL, "/")
 
-	parsedBase, _ := url.Parse(baseURL)
+	parsedBase, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("gcom client: invalid base URL %q: %w", baseURL, err)
+	}
 
 	httpClient := &http.Client{
 		Timeout: 30 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if parsedBase != nil && req.URL.Host != parsedBase.Host {
+			if req.URL.Host != parsedBase.Host {
 				return fmt.Errorf("gcom client: refusing cross-domain redirect to %s (configured base: %s)",
 					req.URL.Host, parsedBase.Host)
 			}
@@ -80,7 +83,7 @@ func NewGCOMClient(baseURL, token string) *GCOMClient {
 		baseURL: baseURL,
 		token:   token,
 		http:    httpClient,
-	}
+	}, nil
 }
 
 // GetStack calls GET /api/instances/{slug} on the GCOM API and returns the

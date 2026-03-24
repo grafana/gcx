@@ -7,11 +7,25 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/grafana/grafanactl/internal/config"
 	"github.com/grafana/grafanactl/internal/providers/oncall"
+	"k8s.io/client-go/rest"
 )
 
-func newTestClient(srv *httptest.Server) *oncall.Client {
-	return oncall.NewClient(srv.URL, "https://mystack.grafana.net", "test-token")
+func newTestClient(t *testing.T, srv *httptest.Server) *oncall.Client {
+	t.Helper()
+	cfg := config.NamespacedRESTConfig{
+		Config: rest.Config{
+			Host:        "https://mystack.grafana.net",
+			BearerToken: "test-token",
+		},
+		Namespace: "default",
+	}
+	client, err := oncall.NewClient(srv.URL, cfg)
+	if err != nil {
+		t.Fatalf("failed to create test client: %v", err)
+	}
+	return client
 }
 
 func TestListIntegrations(t *testing.T) {
@@ -39,7 +53,7 @@ func TestListIntegrations(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newTestClient(srv)
+	client := newTestClient(t, srv)
 	items, err := client.ListIntegrations(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -73,7 +87,7 @@ func TestGetIntegration(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newTestClient(srv)
+	client := newTestClient(t, srv)
 	item, err := client.GetIntegration(context.Background(), "int1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -113,7 +127,7 @@ func TestListIntegrations_Pagination(t *testing.T) {
 	defer srv.Close()
 	srvURL = srv.URL
 
-	client := newTestClient(srv)
+	client := newTestClient(t, srv)
 	items, err := client.ListIntegrations(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -141,7 +155,7 @@ func TestListSchedules(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newTestClient(srv)
+	client := newTestClient(t, srv)
 	items, err := client.ListSchedules(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -169,7 +183,7 @@ func TestListAlertGroups(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newTestClient(srv)
+	client := newTestClient(t, srv)
 	items, err := client.ListAlertGroups(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -192,7 +206,7 @@ func TestGetIntegration_NotFound(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newTestClient(srv)
+	client := newTestClient(t, srv)
 	_, err := client.GetIntegration(context.Background(), "nonexistent")
 	if err == nil {
 		t.Fatal("expected error for not found integration")
@@ -233,7 +247,7 @@ func TestAcknowledgeAlertGroup(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newTestClient(srv)
+	client := newTestClient(t, srv)
 	err := client.AcknowledgeAlertGroup(context.Background(), "ag1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -254,7 +268,7 @@ func TestResolveAlertGroup(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newTestClient(srv)
+	client := newTestClient(t, srv)
 	err := client.ResolveAlertGroup(context.Background(), "ag1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -289,7 +303,7 @@ func TestCreateIntegration(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newTestClient(srv)
+	client := newTestClient(t, srv)
 	created, err := client.CreateIntegration(context.Background(), oncall.Integration{
 		Name: "New Integration",
 		Type: "webhook",
@@ -315,7 +329,7 @@ func TestDeleteIntegration(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newTestClient(srv)
+	client := newTestClient(t, srv)
 	err := client.DeleteIntegration(context.Background(), "int1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -341,7 +355,7 @@ func TestUnacknowledgeAlertGroup(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newTestClient(srv)
+	client := newTestClient(t, srv)
 	err := client.UnacknowledgeAlertGroup(context.Background(), "ag1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -367,7 +381,7 @@ func TestUnresolveAlertGroup(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newTestClient(srv)
+	client := newTestClient(t, srv)
 	err := client.UnresolveAlertGroup(context.Background(), "ag1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -393,7 +407,7 @@ func TestUnsilenceAlertGroup(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newTestClient(srv)
+	client := newTestClient(t, srv)
 	err := client.UnsilenceAlertGroup(context.Background(), "ag1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -419,7 +433,7 @@ func TestDeleteAlertGroup(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newTestClient(srv)
+	client := newTestClient(t, srv)
 	err := client.DeleteAlertGroup(context.Background(), "ag1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -450,7 +464,7 @@ func TestGetCurrentUser(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newTestClient(srv)
+	client := newTestClient(t, srv)
 	user, err := client.GetCurrentUser(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -483,7 +497,7 @@ func TestListAlerts(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newTestClient(srv)
+	client := newTestClient(t, srv)
 	alerts, err := client.ListAlerts(context.Background(), "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -520,7 +534,7 @@ func TestListResolutionNotes(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newTestClient(srv)
+	client := newTestClient(t, srv)
 	notes, err := client.ListResolutionNotes(context.Background(), "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -558,7 +572,7 @@ func TestListShiftSwaps(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newTestClient(srv)
+	client := newTestClient(t, srv)
 	swaps, err := client.ListShiftSwaps(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -594,7 +608,7 @@ func TestListOrganizations(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newTestClient(srv)
+	client := newTestClient(t, srv)
 	orgs, err := client.ListOrganizations(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -663,7 +677,7 @@ func TestCreateResources(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			id, err := tc.callFn(newTestClient(srv))
+			id, err := tc.callFn(newTestClient(t, srv))
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -686,7 +700,7 @@ func TestDeleteShift(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newTestClient(srv)
+	client := newTestClient(t, srv)
 	err := client.DeleteShift(context.Background(), "shift1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -733,7 +747,7 @@ func TestListFinalShifts(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newTestClient(srv)
+	client := newTestClient(t, srv)
 	shifts, err := client.ListFinalShifts(context.Background(), "sched1", "2024-01-01", "2024-01-31")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -775,7 +789,7 @@ func TestTakeShiftSwap(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newTestClient(srv)
+	client := newTestClient(t, srv)
 	result, err := client.TakeShiftSwap(context.Background(), "ss1", oncall.TakeShiftSwapInput{
 		Benefactor: "user2",
 	})
@@ -811,7 +825,7 @@ func TestCreateDirectEscalation(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newTestClient(srv)
+	client := newTestClient(t, srv)
 	result, err := client.CreateDirectEscalation(context.Background(), oncall.DirectEscalationInput{
 		Title:        "Page on-call engineer",
 		Message:      "Critical issue needs attention",

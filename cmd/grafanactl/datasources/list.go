@@ -8,9 +8,9 @@ import (
 	"text/tabwriter"
 
 	cmdconfig "github.com/grafana/grafanactl/cmd/grafanactl/config"
-	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
 	"github.com/grafana/grafanactl/internal/format"
 	"github.com/grafana/grafanactl/internal/grafana"
+	cmdio "github.com/grafana/grafanactl/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )

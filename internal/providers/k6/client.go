@@ -194,16 +194,24 @@ func (c *Client) ListProjects(ctx context.Context) ([]Project, error) {
 
 // GetProject retrieves a single project by ID.
 func (c *Client) GetProject(ctx context.Context, id int) (*Project, error) {
-	projects, err := c.ListProjects(ctx)
+	resp, err := c.doJSON(ctx, http.MethodGet, fmt.Sprintf(projectsPath+"/%d", id), nil)
+	if err != nil {
+		return nil, fmt.Errorf("k6: get project: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("k6: project %d not found", id)
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("k6: get project %d: status %d: %s", id, resp.StatusCode, readErrorBody(resp))
+	}
+
+	project, err := decodeJSON[Project](resp)
 	if err != nil {
 		return nil, err
 	}
-	for _, p := range projects {
-		if p.ID == id {
-			return &p, nil
-		}
-	}
-	return nil, fmt.Errorf("k6: project %d not found", id)
+	return &project, nil
 }
 
 // CreateProject creates a new project.
@@ -282,37 +290,55 @@ func (c *Client) ListAllLoadTests(ctx context.Context) ([]LoadTest, error) {
 }
 
 // ListLoadTestsByProject retrieves load tests filtered by project ID.
+// Uses the server-side project_id query parameter to avoid fetching all tests.
 func (c *Client) ListLoadTestsByProject(ctx context.Context, projectID int) ([]LoadTest, error) {
-	all, err := c.ListLoadTests(ctx)
-	if err != nil {
-		return nil, err
-	}
-	var filtered []LoadTest
-	for _, t := range all {
-		if t.ProjectID == projectID {
-			filtered = append(filtered, t)
-		}
-	}
-	return filtered, nil
+	path := fmt.Sprintf(loadTestsPath+"?project_id=%d", projectID)
+	return c.listLoadTests(ctx, path)
 }
 
-// ListLoadTests retrieves all load tests across all projects.
+// ListLoadTests retrieves all load tests across all projects, handling pagination.
 func (c *Client) ListLoadTests(ctx context.Context) ([]LoadTest, error) {
-	resp, err := c.doJSON(ctx, http.MethodGet, loadTestsPath, nil)
-	if err != nil {
-		return nil, fmt.Errorf("k6: list load tests: %w", err)
-	}
-	defer resp.Body.Close()
+	return c.listLoadTests(ctx, loadTestsPath)
+}
 
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("k6: list load tests: status %d: %s", resp.StatusCode, readErrorBody(resp))
-	}
+// listLoadTests fetches load tests from the given path, paginating through all pages.
+// The K6 v6 API uses OData-style pagination with $skip/$top parameters and @count.
+func (c *Client) listLoadTests(ctx context.Context, path string) ([]LoadTest, error) {
+	const pageSize = 100
+	var all []LoadTest
 
-	result, err := decodeJSON[loadTestsResponse](resp)
-	if err != nil {
-		return nil, err
+	for offset := 0; ; offset += pageSize {
+		sep := "?"
+		if strings.Contains(path, "?") {
+			sep = "&"
+		}
+		pagePath := fmt.Sprintf("%s%s$skip=%d&$top=%d", path, sep, offset, pageSize)
+
+		resp, err := c.doJSON(ctx, http.MethodGet, pagePath, nil)
+		if err != nil {
+			return nil, fmt.Errorf("k6: list load tests: %w", err)
+		}
+
+		if resp.StatusCode >= 400 {
+			body := readErrorBody(resp)
+			resp.Body.Close()
+			return nil, fmt.Errorf("k6: list load tests: status %d: %s", resp.StatusCode, body)
+		}
+
+		result, err := decodeJSON[loadTestsResponse](resp)
+		resp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+
+		all = append(all, result.Value...)
+
+		// Stop if we got fewer results than page size or have fetched all (per @count).
+		if len(result.Value) < pageSize || (result.Count > 0 && len(all) >= result.Count) {
+			break
+		}
 	}
-	return result.Value, nil
+	return all, nil
 }
 
 // GetLoadTest retrieves a single load test by ID.

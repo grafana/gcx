@@ -1,11 +1,11 @@
-package io_test
+package output_test
 
 import (
 	"bytes"
 	"encoding/json"
 	"testing"
 
-	cmdio "github.com/grafana/grafanactl/cmd/grafanactl/io"
+	cmdio "github.com/grafana/grafanactl/internal/output"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"

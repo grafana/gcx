@@ -1,4 +1,4 @@
-package io
+package output
 
 import (
 	"encoding/json"
