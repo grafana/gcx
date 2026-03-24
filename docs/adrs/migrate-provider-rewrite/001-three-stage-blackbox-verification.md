@@ -150,7 +150,7 @@ with its sealed envelope from Audit.
 a mostly-empty Design stage is worse than no Design stage. It trains agents
 that gates are optional.
 
-**C: Spec Pipeline Delegation** — Spec infrastructure (`/plan-spec` +
+**B: Spec Pipeline Delegation** — Spec infrastructure (`/plan-spec` +
 `/build-spec`) adds overhead for mechanical ports. Generating spec.md +
 plan.md + tasks.md for a recipe-following task is ceremony without value.
 The spec pipeline is designed for design-heavy features, not translation work.
@@ -188,7 +188,6 @@ The spec pipeline is designed for design-heavy features, not translation work.
 
 ### Follow-up
 
-- Update `gcx-provider-recipe.md` to reference the new skill structure
+- ~~Update `gcx-provider-recipe.md` to reference the new skill structure~~ Done in this PR.
 - First validation: next provider port from epic grafanactl-experiments-0zr
-- If Build stage proves too large, consider splitting into Build-Core
-  (adapter) and Build-Commands (CLI) with a gate between them
+- Build-Core / Build-Commands split adopted in the initial design (see Stage 2 in SKILL.md); monitor whether the TaskList coordination pattern holds up for providers with 3+ resource types.
