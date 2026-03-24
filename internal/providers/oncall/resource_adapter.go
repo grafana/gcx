@@ -3,509 +3,430 @@ package oncall
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/grafana/grafanactl/internal/resources"
 	"github.com/grafana/grafanactl/internal/resources/adapter"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// resourceDef defines a single OnCall sub-resource type for adapter registration.
-type resourceDef struct {
-	kind     string
-	singular string
-	plural   string
-	aliases  []string
-	idField  string
-	schema   json.RawMessage
-	example  json.RawMessage
+// --- T1: Registration infrastructure ---
+
+// resourceMeta holds metadata for registering an OnCall resource type.
+type resourceMeta struct {
+	Descriptor resources.Descriptor
+	Aliases    []string
+	Schema     json.RawMessage
+	Example    json.RawMessage
 }
 
-// allResources returns the definitions for all OnCall sub-resources.
-func allResources() []resourceDef {
-	return []resourceDef{
-		{
-			kind: "Integration", singular: "integration", plural: "integrations",
-			aliases: []string{"oncall-integrations", "oncall-integration"}, idField: "id",
-			schema:  integrationSchema(),
-			example: integrationExample(),
-		},
-		{
-			kind: "EscalationChain", singular: "escalationchain", plural: "escalationchains",
-			aliases: []string{"oncall-escalationchains", "oncall-escalationchain", "oncall-ec"}, idField: "id",
-		},
-		{
-			kind: "EscalationPolicy", singular: "escalationpolicy", plural: "escalationpolicies",
-			aliases: []string{"oncall-escalationpolicies", "oncall-escalationpolicy", "oncall-ep"}, idField: "id",
-		},
-		{
-			kind: "Schedule", singular: "schedule", plural: "schedules",
-			aliases: []string{"oncall-schedules", "oncall-schedule"}, idField: "id",
-		},
-		{
-			kind: "Shift", singular: "shift", plural: "shifts",
-			aliases: []string{"oncall-shifts", "oncall-shift"}, idField: "id",
-		},
-		{
-			kind: "Route", singular: "route", plural: "routes",
-			aliases: []string{"oncall-routes", "oncall-route"}, idField: "id",
-		},
-		{
-			kind: "OutgoingWebhook", singular: "outgoingwebhook", plural: "outgoingwebhooks",
-			aliases: []string{"oncall-webhooks", "oncall-webhook"}, idField: "id",
-		},
-		{
-			kind: "AlertGroup", singular: "alertgroup", plural: "alertgroups",
-			aliases: []string{"oncall-alertgroups", "oncall-alertgroup", "oncall-ag"}, idField: "id",
-		},
-		{
-			kind: "User", singular: "oncalluser", plural: "oncallusers",
-			aliases: []string{"oncall-users", "oncall-user"}, idField: "id",
-		},
-		{
-			kind: "Team", singular: "oncallteam", plural: "oncallteams",
-			aliases: []string{"oncall-teams", "oncall-team"}, idField: "id",
-		},
-		{
-			kind: "UserGroup", singular: "usergroup", plural: "usergroups",
-			aliases: []string{"oncall-usergroups", "oncall-usergroup"}, idField: "id",
-		},
-		{
-			kind: "SlackChannel", singular: "slackchannel", plural: "slackchannels",
-			aliases: []string{"oncall-slackchannels", "oncall-slackchannel"}, idField: "id",
-		},
-		{
-			kind: "Alert", singular: "alert", plural: "alerts",
-			aliases: []string{"oncall-alerts", "oncall-alert"}, idField: "id",
-		},
-		{
-			kind: "Organization", singular: "organization", plural: "organizations",
-			aliases: []string{"oncall-orgs", "oncall-org"}, idField: "id",
-		},
-		{
-			kind: "ResolutionNote", singular: "resolutionnote", plural: "resolutionnotes",
-			aliases: []string{"oncall-resolution-notes", "oncall-rn"}, idField: "id",
-		},
-		{
-			kind: "ShiftSwap", singular: "shiftswap", plural: "shiftswaps",
-			aliases: []string{"oncall-shift-swaps", "oncall-ss"}, idField: "id",
-		},
-		{
-			kind: "PersonalNotificationRule", singular: "personalnotificationrule", plural: "personalnotificationrules",
-			aliases: []string{"oncall-notification-rules", "oncall-pnr"}, idField: "id",
-		},
+// crudOption configures optional CRUD operations on a TypedCRUD instance.
+// It receives the client so that closures can bind to the live client.
+type crudOption[T any] func(client *Client, crud *adapter.TypedCRUD[T])
+
+// withCreate returns a crudOption that wires a create function.
+func withCreate[T any](fn func(ctx context.Context, c *Client, item *T) (*T, error)) crudOption[T] {
+	return func(client *Client, crud *adapter.TypedCRUD[T]) {
+		crud.CreateFn = func(ctx context.Context, item *T) (*T, error) {
+			return fn(ctx, client, item)
+		}
 	}
 }
 
-// RegisterAdapters registers all OnCall sub-resource adapters in the global registry.
-func RegisterAdapters(loader OnCallConfigLoader) {
-	for _, rd := range allResources() {
-		desc := resources.Descriptor{
+// withUpdate returns a crudOption that wires an update function.
+func withUpdate[T any](fn func(ctx context.Context, c *Client, name string, item *T) (*T, error)) crudOption[T] {
+	return func(client *Client, crud *adapter.TypedCRUD[T]) {
+		crud.UpdateFn = func(ctx context.Context, name string, item *T) (*T, error) {
+			return fn(ctx, client, name, item)
+		}
+	}
+}
+
+// withDelete returns a crudOption that wires a delete function.
+func withDelete[T any](fn func(ctx context.Context, c *Client, name string) error) crudOption[T] {
+	return func(client *Client, crud *adapter.TypedCRUD[T]) {
+		crud.DeleteFn = func(ctx context.Context, name string) error {
+			return fn(ctx, client, name)
+		}
+	}
+}
+
+// registerOnCallResource registers a single OnCall resource type using TypedCRUD[T].
+func registerOnCallResource[T any](
+	loader OnCallConfigLoader,
+	meta resourceMeta,
+	nameFn func(T) string,
+	listFn func(ctx context.Context, client *Client) ([]T, error),
+	getFn func(ctx context.Context, client *Client, name string) (*T, error), // nil for list-only resources
+	opts ...crudOption[T],
+) {
+	desc := meta.Descriptor
+	adapter.Register(adapter.Registration{
+		Factory: func(ctx context.Context) (adapter.ResourceAdapter, error) {
+			client, namespace, err := loader.LoadOnCallClient(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load OnCall config for %s adapter: %w", desc.Kind, err)
+			}
+
+			crud := &adapter.TypedCRUD[T]{
+				NameFn:      nameFn,
+				ListFn:      func(ctx context.Context) ([]T, error) { return listFn(ctx, client) },
+				StripFields: []string{"id"},
+				Namespace:   namespace,
+				Descriptor:  desc,
+				Aliases:     meta.Aliases,
+			}
+
+			if getFn != nil {
+				crud.GetFn = func(ctx context.Context, name string) (*T, error) { return getFn(ctx, client, name) }
+			} else {
+				crud.GetFn = func(_ context.Context, _ string) (*T, error) { return nil, errors.ErrUnsupported }
+			}
+
+			for _, opt := range opts {
+				opt(client, crud)
+			}
+
+			return crud.AsAdapter(), nil
+		},
+		Descriptor: desc,
+		Aliases:    meta.Aliases,
+		GVK:        desc.GroupVersionKind(),
+		Schema:     meta.Schema,
+		Example:    meta.Example,
+	})
+}
+
+// onCallMeta creates a resourceMeta with the standard OnCall API group/version.
+func onCallMeta(kind, singular, plural string, aliases []string) resourceMeta {
+	return resourceMeta{
+		Descriptor: resources.Descriptor{
 			GroupVersion: schema.GroupVersion{
 				Group:   APIGroup,
 				Version: Version,
 			},
-			Kind:     rd.kind,
-			Singular: rd.singular,
-			Plural:   rd.plural,
-		}
-		adapter.Register(adapter.Registration{
-			Factory:    newSubResourceFactory(loader, rd),
-			Descriptor: desc,
-			Aliases:    rd.aliases,
-			GVK:        desc.GroupVersionKind(),
-			Schema:     rd.schema,
-			Example:    rd.example,
-		})
-	}
-}
-
-// newSubResourceFactory returns a lazy adapter.Factory for a specific sub-resource.
-func newSubResourceFactory(loader OnCallConfigLoader, rd resourceDef) adapter.Factory {
-	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
-		client, namespace, err := loader.LoadOnCallClient(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load OnCall config for %s adapter: %w", rd.kind, err)
-		}
-
-		return &subResourceAdapter{
-			client:    client,
-			namespace: namespace,
-			def:       rd,
-		}, nil
-	}
-}
-
-// subResourceAdapter bridges a specific OnCall sub-resource to the resources pipeline.
-type subResourceAdapter struct {
-	client    *Client
-	namespace string
-	def       resourceDef
-}
-
-var _ adapter.ResourceAdapter = &subResourceAdapter{}
-
-func (a *subResourceAdapter) Descriptor() resources.Descriptor {
-	return resources.Descriptor{
-		GroupVersion: schema.GroupVersion{
-			Group:   APIGroup,
-			Version: Version,
+			Kind:     kind,
+			Singular: singular,
+			Plural:   plural,
 		},
-		Kind:     a.def.kind,
-		Singular: a.def.singular,
-		Plural:   a.def.plural,
+		Aliases: aliases,
 	}
 }
 
-func (a *subResourceAdapter) Aliases() []string {
-	return a.def.aliases
-}
+// --- T2: All 17 resource registrations ---
 
-func (a *subResourceAdapter) List(ctx context.Context, _ metav1.ListOptions) (*unstructured.UnstructuredList, error) {
-	items, err := a.listRaw(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	result := &unstructured.UnstructuredList{}
-	for _, item := range items {
-		res, err := a.itemToResource(item)
-		if err != nil {
-			return nil, err
-		}
-		result.Items = append(result.Items, res.ToUnstructured())
-	}
-
-	return result, nil
-}
-
-func (a *subResourceAdapter) Get(ctx context.Context, name string, _ metav1.GetOptions) (*unstructured.Unstructured, error) {
-	item, err := a.getRaw(ctx, name)
-	if err != nil {
-		return nil, err
-	}
-
-	res, err := a.itemToResource(item)
-	if err != nil {
-		return nil, err
-	}
-
-	obj := res.ToUnstructured()
-	return &obj, nil
-}
-
-func (a *subResourceAdapter) Create(ctx context.Context, obj *unstructured.Unstructured, _ metav1.CreateOptions) (*unstructured.Unstructured, error) {
-	res, err := resources.FromUnstructured(obj)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert unstructured to resource: %w", err)
-	}
-
-	created, err := a.createRaw(ctx, res)
-	if err != nil {
-		return nil, err
-	}
-
-	createdRes, err := a.itemToResource(created)
-	if err != nil {
-		return nil, err
-	}
-
-	createdObj := createdRes.ToUnstructured()
-	return &createdObj, nil
-}
-
-func (a *subResourceAdapter) Update(ctx context.Context, obj *unstructured.Unstructured, _ metav1.UpdateOptions) (*unstructured.Unstructured, error) {
-	res, err := resources.FromUnstructured(obj)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert unstructured to resource: %w", err)
-	}
-
-	updated, err := a.updateRaw(ctx, obj.GetName(), res)
-	if err != nil {
-		return nil, err
-	}
-
-	updatedRes, err := a.itemToResource(updated)
-	if err != nil {
-		return nil, err
-	}
-
-	updatedObj := updatedRes.ToUnstructured()
-	return &updatedObj, nil
-}
-
-func (a *subResourceAdapter) Delete(ctx context.Context, name string, _ metav1.DeleteOptions) error {
-	return a.deleteRaw(ctx, name)
-}
-
-// listRaw dispatches to the appropriate client method based on resource kind.
-func (a *subResourceAdapter) listRaw(ctx context.Context) ([]any, error) {
-	switch a.def.kind {
-	case "Integration":
-		return toAnySlice(a.client.ListIntegrations(ctx))
-	case "EscalationChain":
-		return toAnySlice(a.client.ListEscalationChains(ctx))
-	case "EscalationPolicy":
-		return toAnySlice(a.client.ListEscalationPolicies(ctx, ""))
-	case "Schedule":
-		return toAnySlice(a.client.ListSchedules(ctx))
-	case "Shift":
-		return toAnySlice(a.client.ListShifts(ctx))
-	case "Route":
-		return toAnySlice(a.client.ListRoutes(ctx, ""))
-	case "OutgoingWebhook":
-		return toAnySlice(a.client.ListOutgoingWebhooks(ctx))
-	case "AlertGroup":
-		return toAnySlice(a.client.ListAlertGroups(ctx))
-	case "User":
-		return toAnySlice(a.client.ListUsers(ctx))
-	case "Team":
-		return toAnySlice(a.client.ListTeams(ctx))
-	case "UserGroup":
-		return toAnySlice(a.client.ListUserGroups(ctx))
-	case "SlackChannel":
-		return toAnySlice(a.client.ListSlackChannels(ctx))
-	case "Alert":
-		return toAnySlice(a.client.ListAlerts(ctx, ""))
-	case "Organization":
-		return toAnySlice(a.client.ListOrganizations(ctx))
-	case "ResolutionNote":
-		return toAnySlice(a.client.ListResolutionNotes(ctx, ""))
-	case "ShiftSwap":
-		return toAnySlice(a.client.ListShiftSwaps(ctx))
-	case "PersonalNotificationRule":
-		return toAnySlice(a.client.ListPersonalNotificationRules(ctx))
-	default:
-		return nil, fmt.Errorf("oncall: list not supported for %s", a.def.kind)
-	}
-}
-
-// getRaw dispatches to the appropriate client Get method.
-func (a *subResourceAdapter) getRaw(ctx context.Context, name string) (any, error) {
-	switch a.def.kind {
-	case "Integration":
-		return a.client.GetIntegration(ctx, name)
-	case "EscalationChain":
-		return a.client.GetEscalationChain(ctx, name)
-	case "EscalationPolicy":
-		return a.client.GetEscalationPolicy(ctx, name)
-	case "Schedule":
-		return a.client.GetSchedule(ctx, name)
-	case "Shift":
-		return a.client.GetShift(ctx, name)
-	case "Route":
-		return a.client.GetRoute(ctx, name)
-	case "OutgoingWebhook":
-		return a.client.GetOutgoingWebhook(ctx, name)
-	case "AlertGroup":
-		return a.client.GetAlertGroup(ctx, name)
-	case "User":
-		return a.client.GetUser(ctx, name)
-	case "Team":
-		return a.client.GetTeam(ctx, name)
-	case "Alert":
-		return a.client.GetAlert(ctx, name)
-	case "Organization":
-		return a.client.GetOrganization(ctx, name)
-	case "ResolutionNote":
-		return a.client.GetResolutionNote(ctx, name)
-	case "ShiftSwap":
-		return a.client.GetShiftSwap(ctx, name)
-	case "PersonalNotificationRule":
-		return a.client.GetPersonalNotificationRule(ctx, name)
-	default:
-		return nil, fmt.Errorf("oncall: get not supported for %s", a.def.kind)
-	}
-}
-
-// createRaw dispatches to the appropriate client Create method.
-func (a *subResourceAdapter) createRaw(ctx context.Context, res *resources.Resource) (any, error) {
-	switch a.def.kind {
-	case "Integration":
-		item, err := fromResource[Integration](res)
-		if err != nil {
-			return nil, err
-		}
-		return a.client.CreateIntegration(ctx, *item)
-	case "EscalationChain":
-		item, err := fromResource[EscalationChain](res)
-		if err != nil {
-			return nil, err
-		}
-		return a.client.CreateEscalationChain(ctx, *item)
-	case "Schedule":
-		item, err := fromResource[Schedule](res)
-		if err != nil {
-			return nil, err
-		}
-		return a.client.CreateSchedule(ctx, *item)
-	case "OutgoingWebhook":
-		item, err := fromResource[OutgoingWebhook](res)
-		if err != nil {
-			return nil, err
-		}
-		return a.client.CreateOutgoingWebhook(ctx, *item)
-	case "EscalationPolicy":
-		item, err := fromResource[EscalationPolicy](res)
-		if err != nil {
-			return nil, err
-		}
-		return a.client.CreateEscalationPolicy(ctx, *item)
-	case "Route":
-		item, err := fromResource[IntegrationRoute](res)
-		if err != nil {
-			return nil, err
-		}
-		return a.client.CreateRoute(ctx, *item)
-	case "Shift":
-		item, err := fromResource[Shift](res)
-		if err != nil {
-			return nil, err
-		}
-		// Convert Shift to ShiftRequest for API call
-		data, err := json.Marshal(item)
-		if err != nil {
-			return nil, fmt.Errorf("oncall: marshal shift: %w", err)
-		}
-		var sr ShiftRequest
-		if err := json.Unmarshal(data, &sr); err != nil {
-			return nil, fmt.Errorf("oncall: unmarshal shift to request: %w", err)
-		}
-		return a.client.CreateShift(ctx, sr)
-	default:
-		return nil, fmt.Errorf("oncall: create not supported for %s", a.def.kind)
-	}
-}
-
-// updateRaw dispatches to the appropriate client Update method.
-func (a *subResourceAdapter) updateRaw(ctx context.Context, name string, res *resources.Resource) (any, error) {
-	switch a.def.kind {
-	case "Integration":
-		item, err := fromResource[Integration](res)
-		if err != nil {
-			return nil, err
-		}
-		return a.client.UpdateIntegration(ctx, name, *item)
-	case "EscalationChain":
-		item, err := fromResource[EscalationChain](res)
-		if err != nil {
-			return nil, err
-		}
-		return a.client.UpdateEscalationChain(ctx, name, *item)
-	case "Schedule":
-		item, err := fromResource[Schedule](res)
-		if err != nil {
-			return nil, err
-		}
-		return a.client.UpdateSchedule(ctx, name, *item)
-	case "OutgoingWebhook":
-		item, err := fromResource[OutgoingWebhook](res)
-		if err != nil {
-			return nil, err
-		}
-		return a.client.UpdateOutgoingWebhook(ctx, name, *item)
-	case "EscalationPolicy":
-		item, err := fromResource[EscalationPolicy](res)
-		if err != nil {
-			return nil, err
-		}
-		return a.client.UpdateEscalationPolicy(ctx, name, *item)
-	case "Route":
-		item, err := fromResource[IntegrationRoute](res)
-		if err != nil {
-			return nil, err
-		}
-		return a.client.UpdateRoute(ctx, name, *item)
-	case "Shift":
-		item, err := fromResource[Shift](res)
-		if err != nil {
-			return nil, err
-		}
-		// Convert Shift to ShiftRequest for API call
-		data, err := json.Marshal(item)
-		if err != nil {
-			return nil, fmt.Errorf("oncall: marshal shift: %w", err)
-		}
-		var sr ShiftRequest
-		if err := json.Unmarshal(data, &sr); err != nil {
-			return nil, fmt.Errorf("oncall: unmarshal shift to request: %w", err)
-		}
-		return a.client.UpdateShift(ctx, name, sr)
-	default:
-		return nil, fmt.Errorf("oncall: update not supported for %s", a.def.kind)
-	}
-}
-
-// deleteRaw dispatches to the appropriate client Delete method.
-func (a *subResourceAdapter) deleteRaw(ctx context.Context, name string) error {
-	switch a.def.kind {
-	case "Integration":
-		return a.client.DeleteIntegration(ctx, name)
-	case "EscalationChain":
-		return a.client.DeleteEscalationChain(ctx, name)
-	case "Schedule":
-		return a.client.DeleteSchedule(ctx, name)
-	case "OutgoingWebhook":
-		return a.client.DeleteOutgoingWebhook(ctx, name)
-	case "EscalationPolicy":
-		return a.client.DeleteEscalationPolicy(ctx, name)
-	case "Route":
-		return a.client.DeleteRoute(ctx, name)
-	case "Shift":
-		return a.client.DeleteShift(ctx, name)
-	case "AlertGroup":
-		return a.client.DeleteAlertGroup(ctx, name)
-	default:
-		return fmt.Errorf("oncall: delete not supported for %s", a.def.kind)
-	}
-}
-
-// itemToResource converts a raw OnCall item (any concrete type) to a Resource.
-func (a *subResourceAdapter) itemToResource(item any) (*resources.Resource, error) {
-	// Marshal the item to get its ID, then create the resource envelope.
-	data, err := json.Marshal(item)
-	if err != nil {
-		return nil, fmt.Errorf("oncall: marshal %s: %w", a.def.kind, err)
-	}
-
-	var m map[string]any
-	if err := json.Unmarshal(data, &m); err != nil {
-		return nil, fmt.Errorf("oncall: unmarshal %s to map: %w", a.def.kind, err)
-	}
-
-	id := ""
-	if v, ok := m[a.def.idField]; ok {
-		id = fmt.Sprint(v)
-	}
-
-	// Strip the ID field from the spec.
-	delete(m, a.def.idField)
-
-	envelope := map[string]any{
-		"apiVersion": APIVersion,
-		"kind":       a.def.kind,
-		"metadata": map[string]any{
-			"name":      id,
-			"namespace": a.namespace,
+// RegisterAdapters registers all OnCall sub-resource adapters in the global registry.
+//
+//nolint:dupl,maintidx // Table-driven registration: each block configures a different type with identical structure.
+func RegisterAdapters(loader OnCallConfigLoader) {
+	// 1. Integration — full CRUD
+	meta := onCallMeta("Integration", "integration", "integrations",
+		[]string{"oncall-integrations", "oncall-integration"})
+	meta.Schema = integrationSchema()
+	meta.Example = integrationExample()
+	registerOnCallResource(loader, meta,
+		func(i Integration) string { return i.ID },
+		func(ctx context.Context, c *Client) ([]Integration, error) { return c.ListIntegrations(ctx) },
+		func(ctx context.Context, c *Client, name string) (*Integration, error) {
+			return c.GetIntegration(ctx, name)
 		},
-		"spec": m,
-	}
+		withCreate(func(ctx context.Context, c *Client, item *Integration) (*Integration, error) {
+			return c.CreateIntegration(ctx, *item)
+		}),
+		withUpdate(func(ctx context.Context, c *Client, name string, item *Integration) (*Integration, error) {
+			return c.UpdateIntegration(ctx, name, *item)
+		}),
+		withDelete[Integration](func(ctx context.Context, c *Client, name string) error {
+			return c.DeleteIntegration(ctx, name)
+		}),
+	)
 
-	return resources.MustFromObject(envelope, resources.SourceInfo{}), nil
+	// 2. EscalationChain — full CRUD
+	registerOnCallResource(loader,
+		onCallMeta("EscalationChain", "escalationchain", "escalationchains",
+			[]string{"oncall-escalationchains", "oncall-escalationchain", "oncall-ec"}),
+		func(ec EscalationChain) string { return ec.ID },
+		func(ctx context.Context, c *Client) ([]EscalationChain, error) { return c.ListEscalationChains(ctx) },
+		func(ctx context.Context, c *Client, name string) (*EscalationChain, error) {
+			return c.GetEscalationChain(ctx, name)
+		},
+		withCreate(func(ctx context.Context, c *Client, item *EscalationChain) (*EscalationChain, error) {
+			return c.CreateEscalationChain(ctx, *item)
+		}),
+		withUpdate(func(ctx context.Context, c *Client, name string, item *EscalationChain) (*EscalationChain, error) {
+			return c.UpdateEscalationChain(ctx, name, *item)
+		}),
+		withDelete[EscalationChain](func(ctx context.Context, c *Client, name string) error {
+			return c.DeleteEscalationChain(ctx, name)
+		}),
+	)
+
+	// 3. EscalationPolicy — full CRUD (list with empty filter)
+	registerOnCallResource(loader,
+		onCallMeta("EscalationPolicy", "escalationpolicy", "escalationpolicies",
+			[]string{"oncall-escalationpolicies", "oncall-escalationpolicy", "oncall-ep"}),
+		func(ep EscalationPolicy) string { return ep.ID },
+		func(ctx context.Context, c *Client) ([]EscalationPolicy, error) {
+			return c.ListEscalationPolicies(ctx, "")
+		},
+		func(ctx context.Context, c *Client, name string) (*EscalationPolicy, error) {
+			return c.GetEscalationPolicy(ctx, name)
+		},
+		withCreate(func(ctx context.Context, c *Client, item *EscalationPolicy) (*EscalationPolicy, error) {
+			return c.CreateEscalationPolicy(ctx, *item)
+		}),
+		withUpdate(func(ctx context.Context, c *Client, name string, item *EscalationPolicy) (*EscalationPolicy, error) {
+			return c.UpdateEscalationPolicy(ctx, name, *item)
+		}),
+		withDelete[EscalationPolicy](func(ctx context.Context, c *Client, name string) error {
+			return c.DeleteEscalationPolicy(ctx, name)
+		}),
+	)
+
+	// 4. Schedule — full CRUD
+	registerOnCallResource(loader,
+		onCallMeta("Schedule", "schedule", "schedules",
+			[]string{"oncall-schedules", "oncall-schedule"}),
+		func(s Schedule) string { return s.ID },
+		func(ctx context.Context, c *Client) ([]Schedule, error) { return c.ListSchedules(ctx) },
+		func(ctx context.Context, c *Client, name string) (*Schedule, error) { return c.GetSchedule(ctx, name) },
+		withCreate(func(ctx context.Context, c *Client, item *Schedule) (*Schedule, error) {
+			return c.CreateSchedule(ctx, *item)
+		}),
+		withUpdate(func(ctx context.Context, c *Client, name string, item *Schedule) (*Schedule, error) {
+			return c.UpdateSchedule(ctx, name, *item)
+		}),
+		withDelete[Schedule](func(ctx context.Context, c *Client, name string) error {
+			return c.DeleteSchedule(ctx, name)
+		}),
+	)
+
+	// 5. Shift — CRUD with ShiftRequest conversion for create/update
+	registerOnCallResource(loader,
+		onCallMeta("Shift", "shift", "shifts",
+			[]string{"oncall-shifts", "oncall-shift"}),
+		func(s Shift) string { return s.ID },
+		func(ctx context.Context, c *Client) ([]Shift, error) { return c.ListShifts(ctx) },
+		func(ctx context.Context, c *Client, name string) (*Shift, error) { return c.GetShift(ctx, name) },
+		withCreate(func(ctx context.Context, c *Client, item *Shift) (*Shift, error) {
+			sr, err := shiftToRequest(item)
+			if err != nil {
+				return nil, err
+			}
+			return c.CreateShift(ctx, sr)
+		}),
+		withUpdate(func(ctx context.Context, c *Client, name string, item *Shift) (*Shift, error) {
+			sr, err := shiftToRequest(item)
+			if err != nil {
+				return nil, err
+			}
+			return c.UpdateShift(ctx, name, sr)
+		}),
+		withDelete[Shift](func(ctx context.Context, c *Client, name string) error {
+			return c.DeleteShift(ctx, name)
+		}),
+	)
+
+	// 6. Route — full CRUD (list with empty filter)
+	registerOnCallResource(loader,
+		onCallMeta("Route", "route", "routes",
+			[]string{"oncall-routes", "oncall-route"}),
+		func(r IntegrationRoute) string { return r.ID },
+		func(ctx context.Context, c *Client) ([]IntegrationRoute, error) { return c.ListRoutes(ctx, "") },
+		func(ctx context.Context, c *Client, name string) (*IntegrationRoute, error) {
+			return c.GetRoute(ctx, name)
+		},
+		withCreate(func(ctx context.Context, c *Client, item *IntegrationRoute) (*IntegrationRoute, error) {
+			return c.CreateRoute(ctx, *item)
+		}),
+		withUpdate(func(ctx context.Context, c *Client, name string, item *IntegrationRoute) (*IntegrationRoute, error) {
+			return c.UpdateRoute(ctx, name, *item)
+		}),
+		withDelete[IntegrationRoute](func(ctx context.Context, c *Client, name string) error {
+			return c.DeleteRoute(ctx, name)
+		}),
+	)
+
+	// 7. OutgoingWebhook — full CRUD
+	registerOnCallResource(loader,
+		onCallMeta("OutgoingWebhook", "outgoingwebhook", "outgoingwebhooks",
+			[]string{"oncall-webhooks", "oncall-webhook"}),
+		func(w OutgoingWebhook) string { return w.ID },
+		func(ctx context.Context, c *Client) ([]OutgoingWebhook, error) { return c.ListOutgoingWebhooks(ctx) },
+		func(ctx context.Context, c *Client, name string) (*OutgoingWebhook, error) {
+			return c.GetOutgoingWebhook(ctx, name)
+		},
+		withCreate(func(ctx context.Context, c *Client, item *OutgoingWebhook) (*OutgoingWebhook, error) {
+			return c.CreateOutgoingWebhook(ctx, *item)
+		}),
+		withUpdate(func(ctx context.Context, c *Client, name string, item *OutgoingWebhook) (*OutgoingWebhook, error) {
+			return c.UpdateOutgoingWebhook(ctx, name, *item)
+		}),
+		withDelete[OutgoingWebhook](func(ctx context.Context, c *Client, name string) error {
+			return c.DeleteOutgoingWebhook(ctx, name)
+		}),
+	)
+
+	// 8. AlertGroup — read-only + delete
+	registerOnCallResource(loader,
+		onCallMeta("AlertGroup", "alertgroup", "alertgroups",
+			[]string{"oncall-alertgroups", "oncall-alertgroup", "oncall-ag"}),
+		func(ag AlertGroup) string { return ag.ID },
+		func(ctx context.Context, c *Client) ([]AlertGroup, error) { return c.ListAlertGroups(ctx) },
+		func(ctx context.Context, c *Client, name string) (*AlertGroup, error) {
+			return c.GetAlertGroup(ctx, name)
+		},
+		withDelete[AlertGroup](func(ctx context.Context, c *Client, name string) error {
+			return c.DeleteAlertGroup(ctx, name)
+		}),
+	)
+
+	// 9. User — read-only
+	registerOnCallResource(loader,
+		onCallMeta("User", "oncalluser", "oncallusers",
+			[]string{"oncall-users", "oncall-user"}),
+		func(u User) string { return u.ID },
+		func(ctx context.Context, c *Client) ([]User, error) { return c.ListUsers(ctx) },
+		func(ctx context.Context, c *Client, name string) (*User, error) { return c.GetUser(ctx, name) },
+	)
+
+	// 10. Team — read-only
+	registerOnCallResource(loader,
+		onCallMeta("Team", "oncallteam", "oncallteams",
+			[]string{"oncall-teams", "oncall-team"}),
+		func(t Team) string { return t.ID },
+		func(ctx context.Context, c *Client) ([]Team, error) { return c.ListTeams(ctx) },
+		func(ctx context.Context, c *Client, name string) (*Team, error) { return c.GetTeam(ctx, name) },
+	)
+
+	// 11. UserGroup — list-only (no Get client method)
+	registerOnCallResource(loader,
+		onCallMeta("UserGroup", "usergroup", "usergroups",
+			[]string{"oncall-usergroups", "oncall-usergroup"}),
+		func(ug UserGroup) string { return ug.ID },
+		func(ctx context.Context, c *Client) ([]UserGroup, error) { return c.ListUserGroups(ctx) },
+		nil, // no GetFn — registerOnCallResource returns ErrUnsupported
+	)
+
+	// 12. SlackChannel — list-only (no Get client method)
+	registerOnCallResource(loader,
+		onCallMeta("SlackChannel", "slackchannel", "slackchannels",
+			[]string{"oncall-slackchannels", "oncall-slackchannel"}),
+		func(sc SlackChannel) string { return sc.ID },
+		func(ctx context.Context, c *Client) ([]SlackChannel, error) { return c.ListSlackChannels(ctx) },
+		nil, // no GetFn — registerOnCallResource returns ErrUnsupported
+	)
+
+	// 13. Alert — read-only (list with empty filter)
+	registerOnCallResource(loader,
+		onCallMeta("Alert", "alert", "alerts",
+			[]string{"oncall-alerts", "oncall-alert"}),
+		func(a Alert) string { return a.ID },
+		func(ctx context.Context, c *Client) ([]Alert, error) { return c.ListAlerts(ctx, "") },
+		func(ctx context.Context, c *Client, name string) (*Alert, error) { return c.GetAlert(ctx, name) },
+	)
+
+	// 14. Organization — read-only
+	registerOnCallResource(loader,
+		onCallMeta("Organization", "organization", "organizations",
+			[]string{"oncall-orgs", "oncall-org"}),
+		func(o Organization) string { return o.ID },
+		func(ctx context.Context, c *Client) ([]Organization, error) { return c.ListOrganizations(ctx) },
+		func(ctx context.Context, c *Client, name string) (*Organization, error) {
+			return c.GetOrganization(ctx, name)
+		},
+	)
+
+	// 15. ResolutionNote — CRUD with Input type conversion (list with empty filter)
+	registerOnCallResource(loader,
+		onCallMeta("ResolutionNote", "resolutionnote", "resolutionnotes",
+			[]string{"oncall-resolution-notes", "oncall-rn"}),
+		func(rn ResolutionNote) string { return rn.ID },
+		func(ctx context.Context, c *Client) ([]ResolutionNote, error) {
+			return c.ListResolutionNotes(ctx, "")
+		},
+		func(ctx context.Context, c *Client, name string) (*ResolutionNote, error) {
+			return c.GetResolutionNote(ctx, name)
+		},
+		withCreate(func(ctx context.Context, c *Client, item *ResolutionNote) (*ResolutionNote, error) {
+			return c.CreateResolutionNote(ctx, CreateResolutionNoteInput{
+				AlertGroupID: item.AlertGroupID,
+				Text:         item.Text,
+			})
+		}),
+		withUpdate(func(ctx context.Context, c *Client, name string, item *ResolutionNote) (*ResolutionNote, error) {
+			return c.UpdateResolutionNote(ctx, name, UpdateResolutionNoteInput{
+				Text: item.Text,
+			})
+		}),
+		withDelete[ResolutionNote](func(ctx context.Context, c *Client, name string) error {
+			return c.DeleteResolutionNote(ctx, name)
+		}),
+	)
+
+	// 16. ShiftSwap — CRUD with Input type conversion
+	registerOnCallResource(loader,
+		onCallMeta("ShiftSwap", "shiftswap", "shiftswaps",
+			[]string{"oncall-shift-swaps", "oncall-ss"}),
+		func(ss ShiftSwap) string { return ss.ID },
+		func(ctx context.Context, c *Client) ([]ShiftSwap, error) { return c.ListShiftSwaps(ctx) },
+		func(ctx context.Context, c *Client, name string) (*ShiftSwap, error) {
+			return c.GetShiftSwap(ctx, name)
+		},
+		withCreate(func(ctx context.Context, c *Client, item *ShiftSwap) (*ShiftSwap, error) {
+			return c.CreateShiftSwap(ctx, CreateShiftSwapInput{
+				Schedule:    item.Schedule,
+				SwapStart:   item.SwapStart,
+				SwapEnd:     item.SwapEnd,
+				Beneficiary: item.Beneficiary,
+			})
+		}),
+		withUpdate(func(ctx context.Context, c *Client, name string, item *ShiftSwap) (*ShiftSwap, error) {
+			return c.UpdateShiftSwap(ctx, name, UpdateShiftSwapInput{
+				SwapStart: item.SwapStart,
+				SwapEnd:   item.SwapEnd,
+			})
+		}),
+		withDelete[ShiftSwap](func(ctx context.Context, c *Client, name string) error {
+			return c.DeleteShiftSwap(ctx, name)
+		}),
+	)
+
+	// 17. PersonalNotificationRule — full CRUD
+	registerOnCallResource(loader,
+		onCallMeta("PersonalNotificationRule", "personalnotificationrule", "personalnotificationrules",
+			[]string{"oncall-notification-rules", "oncall-pnr"}),
+		func(pnr PersonalNotificationRule) string { return pnr.ID },
+		func(ctx context.Context, c *Client) ([]PersonalNotificationRule, error) {
+			return c.ListPersonalNotificationRules(ctx)
+		},
+		func(ctx context.Context, c *Client, name string) (*PersonalNotificationRule, error) {
+			return c.GetPersonalNotificationRule(ctx, name)
+		},
+		withCreate(func(ctx context.Context, c *Client, item *PersonalNotificationRule) (*PersonalNotificationRule, error) {
+			return c.CreatePersonalNotificationRule(ctx, *item)
+		}),
+		withUpdate(func(ctx context.Context, c *Client, name string, item *PersonalNotificationRule) (*PersonalNotificationRule, error) {
+			return c.UpdatePersonalNotificationRule(ctx, name, *item)
+		}),
+		withDelete[PersonalNotificationRule](func(ctx context.Context, c *Client, name string) error {
+			return c.DeletePersonalNotificationRule(ctx, name)
+		}),
+	)
 }
 
-// toAnySlice converts a typed slice to []any for the generic adapter.
-func toAnySlice[T any](items []T, err error) ([]any, error) {
+// shiftToRequest converts a Shift to a ShiftRequest via JSON round-trip.
+func shiftToRequest(s *Shift) (ShiftRequest, error) {
+	data, err := json.Marshal(s)
 	if err != nil {
-		return nil, err
+		return ShiftRequest{}, fmt.Errorf("oncall: marshal shift: %w", err)
 	}
-	result := make([]any, len(items))
-	for i, item := range items {
-		result[i] = item
+	var sr ShiftRequest
+	if err := json.Unmarshal(data, &sr); err != nil {
+		return ShiftRequest{}, fmt.Errorf("oncall: unmarshal shift to request: %w", err)
 	}
-	return result, nil
+	return sr, nil
 }
 
 // --- Schema and Example helpers ---
