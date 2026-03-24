@@ -15,7 +15,7 @@ Source bead: `grafanactl-experiments-0s1`
 - Env var resolution: `GRAFANA_PROVIDER_{NAME}_{KEY}`
 - Root command wiring for provider commands
 - `grafanactl help providers` subcommand
-- `agent-docs/provider-guide.md`
+- `docs/reference/provider-guide.md`
 
 **Out of scope:**
 - Actual product providers (SLO, SM, OnCall, k6, ML) — Waves 1-3
@@ -30,7 +30,7 @@ Source bead: `grafanactl-experiments-0s1`
 4. Config loading resolves env vars `GRAFANA_PROVIDER_{NAME}_{KEY}` for provider config keys
 5. `cmd/grafanactl/root/command.go` iterates `providers.All()` and adds provider commands to root
 6. `grafanactl help providers` lists all registered providers with name and short description
-7. `agent-docs/provider-guide.md` documents how to implement and register a new provider
+7. `docs/reference/provider-guide.md` documents how to implement and register a new provider
 8. `make lint && make tests` pass with no regressions
 
 ## Architecture
@@ -133,9 +133,9 @@ Help providers:
 
 ### Task 4: Provider guide documentation
 
-- **Goal:** Write `agent-docs/provider-guide.md` documenting how to implement and register a new provider
+- **Goal:** Write `docs/reference/provider-guide.md` documenting how to implement and register a new provider
 - **Depends on:** Tasks 1, 2, 3 (needs final interface and config patterns)
-- **Files:** `agent-docs/provider-guide.md`
+- **Files:** `docs/reference/provider-guide.md`
 - **Deliverable:** Complete guide with step-by-step instructions, code examples, config examples
 - **Verification:**
   - Guide covers: interface implementation, registry registration, config keys, env vars, testing

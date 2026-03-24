@@ -34,8 +34,10 @@ grafanactl/
 │   ├── providers/            # Provider plugin system
 │   │   ├── configloader.go   # Shared ConfigLoader for all providers
 │   │   ├── alert/            # Alert provider (rules and groups)
-│   │   ├── fleet/            # Fleet Management provider (pipelines, collectors)
+│   │   ├── fleet/            # Fleet Management provider (pipeline and collector resources)
 │   │   ├── incidents/        # IRM Incidents provider
+│   │   ├── kg/               # Knowledge Graph (Asserts) provider
+│   │   ├── oncall/           # OnCall provider (schedules, integrations, escalation chains)
 │   │   ├── slo/              # SLO provider implementation
 │   │   │   ├── definitions/  # SLO definitions and status queries
 │   │   │   └── reports/      # SLO reports
@@ -56,7 +58,7 @@ grafanactl/
 │   │   ├── local/            # FSReader / FSWriter (disk I/O)
 │   │   ├── process/          # Processor pipeline (manager fields, server fields)
 │   │   └── remote/           # Puller, Pusher, Deleter (Grafana API ops)
-│   └── server/               # Local dev server for 'resources serve'
+│   └── server/               # Local dev server for 'dev serve'
 │       ├── embed/            # Static assets (embedded via go:embed)
 │       ├── grafana/          # Grafana proxy and mock handlers
 │       ├── handlers/         # Chi HTTP handler implementations
@@ -395,7 +397,7 @@ config pointing at `localhost:3000` with `admin/admin` credentials and `org-id: 
 **Usage pattern for manual integration testing:**
 ```bash
 make test-env-up
-grafanactl --config testdata/integration-test-config.yaml resources list
+grafanactl --config testdata/integration-test-config.yaml resources schemas
 make test-env-down
 ```
 

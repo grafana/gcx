@@ -127,7 +127,7 @@ over user/password when both are set.
 # Override server and token for the current context without editing the config file
 export GRAFANA_SERVER=https://grafana.example.com
 export GRAFANA_TOKEN=glsa_xxxx
-grafanactl resources list dashboards
+grafanactl resources get dashboards
 ```
 
 ---
@@ -180,7 +180,7 @@ grafanactl config current-context       # print active context name
 grafanactl config use-context production
 
 # Temporary override — affects only the current command
-grafanactl --context staging resources list dashboards
+grafanactl --context staging resources get dashboards
 ```
 
 ### Create or update a context

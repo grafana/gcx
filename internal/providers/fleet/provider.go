@@ -19,7 +19,6 @@ import (
 	"github.com/grafana/grafanactl/internal/resources/adapter"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -233,7 +232,7 @@ func (h *fleetHelper) newPipelineListCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			client, _, err := h.loadClient(ctx)
+			client, namespace, err := h.loadClient(ctx)
 			if err != nil {
 				return err
 			}
@@ -243,7 +242,23 @@ func (h *fleetHelper) newPipelineListCommand() *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), pipelines)
+			// Table codec operates on raw []Pipeline for direct field access.
+			// Other formats (yaml/json) convert to K8s envelope Resources
+			// for consistency with get/pull and round-trip support.
+			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
+				return opts.IO.Encode(cmd.OutOrStdout(), pipelines)
+			}
+
+			var objs []unstructured.Unstructured
+			for _, p := range pipelines {
+				res, err := PipelineToResource(p, namespace)
+				if err != nil {
+					return fmt.Errorf("failed to convert pipeline %s to resource: %w", p.ID, err)
+				}
+				objs = append(objs, res.ToUnstructured())
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), objs)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -495,7 +510,7 @@ func (h *fleetHelper) newCollectorListCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			client, _, err := h.loadClient(ctx)
+			client, namespace, err := h.loadClient(ctx)
 			if err != nil {
 				return err
 			}
@@ -505,7 +520,23 @@ func (h *fleetHelper) newCollectorListCommand() *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), collectors)
+			// Table codec operates on raw []Collector for direct field access.
+			// Other formats (yaml/json) convert to K8s envelope Resources
+			// for consistency with get/pull and round-trip support.
+			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
+				return opts.IO.Encode(cmd.OutOrStdout(), collectors)
+			}
+
+			var objs []unstructured.Unstructured
+			for _, col := range collectors {
+				res, err := CollectorToResource(col, namespace)
+				if err != nil {
+					return fmt.Errorf("failed to convert collector %s to resource: %w", col.ID, err)
+				}
+				objs = append(objs, res.ToUnstructured())
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), objs)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1110,10 +1141,57 @@ func NewPipelineAdapterFactory(loader CloudConfigLoader) adapter.Factory {
 		}
 		instanceID := strconv.Itoa(cloudCfg.Stack.AgentManagementInstanceID)
 		client := NewClient(url, instanceID, cloudCfg.Token, true)
-		return &PipelineResourceAdapter{
-			client:    client,
-			namespace: cloudCfg.Namespace,
-		}, nil
+
+		crud := &adapter.TypedCRUD[Pipeline]{
+			NameFn: func(p Pipeline) string {
+				name := slugifyName(p.Name)
+				if p.ID != "" {
+					name = name + "-" + p.ID
+				}
+				return name
+			},
+			ListFn: client.ListPipelines,
+			GetFn: func(ctx context.Context, name string) (*Pipeline, error) {
+				return resolvePipeline(ctx, client, name)
+			},
+			CreateFn: func(ctx context.Context, p *Pipeline) (*Pipeline, error) {
+				return client.CreatePipeline(ctx, *p)
+			},
+			UpdateFn: func(ctx context.Context, name string, p *Pipeline) (*Pipeline, error) {
+				id, ok := extractIDFromSlug(name)
+				if !ok {
+					return nil, fmt.Errorf("cannot determine pipeline ID from name %q: expected format \"<slug>-<id>\" or numeric ID", name)
+				}
+				if err := client.UpdatePipeline(ctx, id, *p); err != nil {
+					return nil, fmt.Errorf("failed to update pipeline %q: %w", id, err)
+				}
+				updated, err := client.GetPipeline(ctx, id)
+				if err != nil {
+					return nil, fmt.Errorf("failed to get updated pipeline %q: %w", id, err)
+				}
+				if updated == nil {
+					return nil, fmt.Errorf("pipeline %q not found after update", id)
+				}
+				return updated, nil
+			},
+			DeleteFn: func(ctx context.Context, name string) error {
+				id, ok := extractIDFromSlug(name)
+				if !ok {
+					return fmt.Errorf("cannot determine pipeline ID from name %q: expected format \"<slug>-<id>\" or numeric ID", name)
+				}
+				return client.DeletePipeline(ctx, id)
+			},
+			Namespace:   cloudCfg.Namespace,
+			StripFields: []string{"id"},
+			RestoreNameFn: func(name string, p *Pipeline) {
+				if id, ok := extractIDFromSlug(name); ok {
+					p.ID = id
+				}
+			},
+			Descriptor: pipelineDescriptorVar,
+			Aliases:    pipelineAliasesVar,
+		}
+		return crud.AsAdapter(), nil
 	}
 }
 
@@ -1134,272 +1212,59 @@ func NewCollectorAdapterFactory(loader CloudConfigLoader) adapter.Factory {
 		}
 		instanceID := strconv.Itoa(cloudCfg.Stack.AgentManagementInstanceID)
 		client := NewClient(url, instanceID, cloudCfg.Token, true)
-		return &CollectorResourceAdapter{
-			client:    client,
-			namespace: cloudCfg.Namespace,
-		}, nil
-	}
-}
 
-// ---------------------------------------------------------------------------
-// PipelineResourceAdapter
-// ---------------------------------------------------------------------------
-
-// PipelineResourceAdapter bridges the Fleet Client to the grafanactl resources pipeline for pipelines.
-type PipelineResourceAdapter struct {
-	client    *Client
-	namespace string
-}
-
-var _ adapter.ResourceAdapter = &PipelineResourceAdapter{}
-
-// Descriptor returns the resource descriptor this adapter serves.
-func (a *PipelineResourceAdapter) Descriptor() resources.Descriptor {
-	return pipelineDescriptorVar
-}
-
-// Aliases returns short names for selector resolution.
-func (a *PipelineResourceAdapter) Aliases() []string {
-	return pipelineAliasesVar
-}
-
-// List returns all pipeline resources as unstructured objects.
-func (a *PipelineResourceAdapter) List(ctx context.Context, _ metav1.ListOptions) (*unstructured.UnstructuredList, error) {
-	pipelines, err := a.client.ListPipelines(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list pipelines: %w", err)
-	}
-
-	result := &unstructured.UnstructuredList{}
-	for _, p := range pipelines {
-		res, err := PipelineToResource(p, a.namespace)
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert pipeline %q to resource: %w", p.ID, err)
+		crud := &adapter.TypedCRUD[Collector]{
+			NameFn: func(col Collector) string {
+				name := slugifyName(col.Name)
+				if col.ID != "" {
+					name = name + "-" + col.ID
+				}
+				return name
+			},
+			ListFn: client.ListCollectors,
+			GetFn: func(ctx context.Context, name string) (*Collector, error) {
+				return resolveCollector(ctx, client, name)
+			},
+			CreateFn: func(ctx context.Context, col *Collector) (*Collector, error) {
+				return client.CreateCollector(ctx, *col)
+			},
+			UpdateFn: func(ctx context.Context, name string, col *Collector) (*Collector, error) {
+				id, ok := extractIDFromSlug(name)
+				if !ok {
+					return nil, fmt.Errorf("cannot determine collector ID from name %q: expected format \"<slug>-<id>\" or numeric ID", name)
+				}
+				col.ID = id
+				if err := client.UpdateCollector(ctx, *col); err != nil {
+					return nil, fmt.Errorf("failed to update collector %q: %w", id, err)
+				}
+				updated, err := client.GetCollector(ctx, id)
+				if err != nil {
+					return nil, fmt.Errorf("failed to get updated collector %q: %w", id, err)
+				}
+				if updated == nil {
+					return nil, fmt.Errorf("collector %q not found after update", id)
+				}
+				return updated, nil
+			},
+			DeleteFn: func(ctx context.Context, name string) error {
+				id, ok := extractIDFromSlug(name)
+				if !ok {
+					return fmt.Errorf("cannot determine collector ID from name %q: expected format \"<slug>-<id>\" or numeric ID", name)
+				}
+				return client.DeleteCollector(ctx, id)
+			},
+			Namespace:   cloudCfg.Namespace,
+			StripFields: []string{"id"},
+			RestoreNameFn: func(name string, col *Collector) {
+				if id, ok := extractIDFromSlug(name); ok {
+					col.ID = id
+				}
+			},
+			Descriptor: collectorDescriptorVar,
+			Aliases:    collectorAliasesVar,
 		}
-		result.Items = append(result.Items, res.Object)
+		return crud.AsAdapter(), nil
 	}
-
-	return result, nil
-}
-
-// Get returns a single pipeline resource by name (slug-id format).
-func (a *PipelineResourceAdapter) Get(ctx context.Context, name string, _ metav1.GetOptions) (*unstructured.Unstructured, error) {
-	pipeline, err := resolvePipeline(ctx, a.client, name)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get pipeline %q: %w", name, err)
-	}
-
-	res, err := PipelineToResource(*pipeline, a.namespace)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert pipeline %q to resource: %w", name, err)
-	}
-
-	obj := res.ToUnstructured()
-	return &obj, nil
-}
-
-// Create creates a new pipeline resource.
-func (a *PipelineResourceAdapter) Create(ctx context.Context, obj *unstructured.Unstructured, _ metav1.CreateOptions) (*unstructured.Unstructured, error) {
-	res, err := resources.FromUnstructured(obj)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert unstructured to resource: %w", err)
-	}
-
-	pipeline, err := PipelineFromResource(res)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert resource to pipeline: %w", err)
-	}
-
-	created, err := a.client.CreatePipeline(ctx, *pipeline)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create pipeline: %w", err)
-	}
-
-	createdRes, err := PipelineToResource(*created, a.namespace)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert created pipeline to resource: %w", err)
-	}
-
-	createdObj := createdRes.ToUnstructured()
-	return &createdObj, nil
-}
-
-// Update updates an existing pipeline resource.
-func (a *PipelineResourceAdapter) Update(ctx context.Context, obj *unstructured.Unstructured, _ metav1.UpdateOptions) (*unstructured.Unstructured, error) {
-	res, err := resources.FromUnstructured(obj)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert unstructured to resource: %w", err)
-	}
-
-	pipeline, err := PipelineFromResource(res)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert resource to pipeline: %w", err)
-	}
-
-	id, ok := extractIDFromSlug(obj.GetName())
-	if !ok {
-		return nil, fmt.Errorf("cannot determine pipeline ID from name %q: expected format \"<slug>-<id>\" or numeric ID", obj.GetName())
-	}
-	if err := a.client.UpdatePipeline(ctx, id, *pipeline); err != nil {
-		return nil, fmt.Errorf("failed to update pipeline %q: %w", id, err)
-	}
-
-	// Re-fetch the updated pipeline to return fresh state.
-	updated, err := a.client.GetPipeline(ctx, id)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get updated pipeline %q: %w", id, err)
-	}
-	if updated == nil {
-		return nil, fmt.Errorf("pipeline %q not found after update", id)
-	}
-
-	updatedRes, err := PipelineToResource(*updated, a.namespace)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert updated pipeline to resource: %w", err)
-	}
-
-	updatedObj := updatedRes.ToUnstructured()
-	return &updatedObj, nil
-}
-
-// Delete removes a pipeline by slug-id or plain ID.
-func (a *PipelineResourceAdapter) Delete(ctx context.Context, name string, _ metav1.DeleteOptions) error {
-	id, ok := extractIDFromSlug(name)
-	if !ok {
-		return fmt.Errorf("cannot determine pipeline ID from name %q: expected format \"<slug>-<id>\" or numeric ID", name)
-	}
-	return a.client.DeletePipeline(ctx, id)
-}
-
-// ---------------------------------------------------------------------------
-// CollectorResourceAdapter
-// ---------------------------------------------------------------------------
-
-// CollectorResourceAdapter bridges the Fleet Client to the grafanactl resources pipeline for collectors.
-type CollectorResourceAdapter struct {
-	client    *Client
-	namespace string
-}
-
-var _ adapter.ResourceAdapter = &CollectorResourceAdapter{}
-
-// Descriptor returns the resource descriptor this adapter serves.
-func (a *CollectorResourceAdapter) Descriptor() resources.Descriptor {
-	return collectorDescriptorVar
-}
-
-// Aliases returns short names for selector resolution.
-func (a *CollectorResourceAdapter) Aliases() []string {
-	return collectorAliasesVar
-}
-
-// List returns all collector resources as unstructured objects.
-func (a *CollectorResourceAdapter) List(ctx context.Context, _ metav1.ListOptions) (*unstructured.UnstructuredList, error) {
-	collectors, err := a.client.ListCollectors(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list collectors: %w", err)
-	}
-
-	result := &unstructured.UnstructuredList{}
-	for _, col := range collectors {
-		res, err := CollectorToResource(col, a.namespace)
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert collector %q to resource: %w", col.ID, err)
-		}
-		result.Items = append(result.Items, res.Object)
-	}
-
-	return result, nil
-}
-
-// Get returns a single collector resource by name (slug-id format).
-func (a *CollectorResourceAdapter) Get(ctx context.Context, name string, _ metav1.GetOptions) (*unstructured.Unstructured, error) {
-	collector, err := resolveCollector(ctx, a.client, name)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get collector %q: %w", name, err)
-	}
-
-	res, err := CollectorToResource(*collector, a.namespace)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert collector %q to resource: %w", name, err)
-	}
-
-	obj := res.ToUnstructured()
-	return &obj, nil
-}
-
-// Create creates a new collector resource.
-func (a *CollectorResourceAdapter) Create(ctx context.Context, obj *unstructured.Unstructured, _ metav1.CreateOptions) (*unstructured.Unstructured, error) {
-	res, err := resources.FromUnstructured(obj)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert unstructured to resource: %w", err)
-	}
-
-	collector, err := CollectorFromResource(res)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert resource to collector: %w", err)
-	}
-
-	created, err := a.client.CreateCollector(ctx, *collector)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create collector: %w", err)
-	}
-
-	createdRes, err := CollectorToResource(*created, a.namespace)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert created collector to resource: %w", err)
-	}
-
-	createdObj := createdRes.ToUnstructured()
-	return &createdObj, nil
-}
-
-// Update updates an existing collector resource.
-func (a *CollectorResourceAdapter) Update(ctx context.Context, obj *unstructured.Unstructured, _ metav1.UpdateOptions) (*unstructured.Unstructured, error) {
-	res, err := resources.FromUnstructured(obj)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert unstructured to resource: %w", err)
-	}
-
-	collector, err := CollectorFromResource(res)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert resource to collector: %w", err)
-	}
-
-	id, ok := extractIDFromSlug(obj.GetName())
-	if !ok {
-		return nil, fmt.Errorf("cannot determine collector ID from name %q: expected format \"<slug>-<id>\" or numeric ID", obj.GetName())
-	}
-	collector.ID = id
-	if err := a.client.UpdateCollector(ctx, *collector); err != nil {
-		return nil, fmt.Errorf("failed to update collector %q: %w", collector.ID, err)
-	}
-
-	// Re-fetch the updated collector to return fresh state.
-	updated, err := a.client.GetCollector(ctx, collector.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get updated collector %q: %w", collector.ID, err)
-	}
-	if updated == nil {
-		return nil, fmt.Errorf("collector %q not found after update", collector.ID)
-	}
-
-	updatedRes, err := CollectorToResource(*updated, a.namespace)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert updated collector to resource: %w", err)
-	}
-
-	updatedObj := updatedRes.ToUnstructured()
-	return &updatedObj, nil
-}
-
-// Delete removes a collector by ID.
-func (a *CollectorResourceAdapter) Delete(ctx context.Context, name string, _ metav1.DeleteOptions) error {
-	id, ok := extractIDFromSlug(name)
-	if !ok {
-		return fmt.Errorf("cannot determine collector ID from name %q: expected format \"<slug>-<id>\" or numeric ID", name)
-	}
-	return a.client.DeleteCollector(ctx, id)
 }
 
 // ---------------------------------------------------------------------------

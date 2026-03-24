@@ -140,7 +140,7 @@ grafanactl dynamically discovers available resources using Grafana's API:
 
 ```bash
 # Discover what's available
-grafanactl resources list
+grafanactl resources schemas
 ```
 
 Discovery process:

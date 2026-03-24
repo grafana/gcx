@@ -10,8 +10,6 @@ import (
 	"github.com/grafana/grafanactl/internal/providers"
 	"github.com/grafana/grafanactl/internal/resources"
 	"github.com/grafana/grafanactl/internal/resources/adapter"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -130,10 +128,7 @@ func NewAdapterFactory(loader GrafanaConfigLoader) adapter.Factory {
 			return nil, fmt.Errorf("failed to create incidents client: %w", err)
 		}
 
-		return &ResourceAdapter{
-			client:    client,
-			namespace: cfg.Namespace,
-		}, nil
+		return newTypedAdapter(client, cfg.Namespace), nil
 	}
 }
 
@@ -146,121 +141,41 @@ func NewFactoryFromConfig(cfg internalconfig.NamespacedRESTConfig) adapter.Facto
 			return nil, fmt.Errorf("failed to create incidents client: %w", err)
 		}
 
-		return &ResourceAdapter{
-			client:    client,
-			namespace: cfg.Namespace,
-		}, nil
+		return newTypedAdapter(client, cfg.Namespace), nil
 	}
 }
 
-// ResourceAdapter bridges the incidents Client to the grafanactl resources pipeline.
-type ResourceAdapter struct {
-	client    *Client
-	namespace string
-}
+// newTypedAdapter builds the TypedCRUD[Incident] adapter for the given client and namespace.
+func newTypedAdapter(client *Client, namespace string) adapter.ResourceAdapter {
+	crud := &adapter.TypedCRUD[Incident]{
+		NameFn: func(inc Incident) string { return inc.IncidentID },
 
-var _ adapter.ResourceAdapter = &ResourceAdapter{}
+		ListFn: func(ctx context.Context) ([]Incident, error) {
+			return client.List(ctx, IncidentQuery{})
+		},
 
-// Descriptor returns the resource descriptor this adapter serves.
-func (a *ResourceAdapter) Descriptor() resources.Descriptor {
-	return staticDescriptor
-}
+		GetFn: func(ctx context.Context, name string) (*Incident, error) {
+			return client.Get(ctx, name)
+		},
 
-// Aliases returns short names for selector resolution.
-func (a *ResourceAdapter) Aliases() []string {
-	return staticAliases
-}
+		CreateFn: func(ctx context.Context, inc *Incident) (*Incident, error) {
+			return client.Create(ctx, inc)
+		},
 
-// List returns all incident resources as unstructured objects.
-func (a *ResourceAdapter) List(ctx context.Context, _ metav1.ListOptions) (*unstructured.UnstructuredList, error) {
-	incidents, err := a.client.List(ctx, IncidentQuery{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list incidents: %w", err)
+		UpdateFn: func(ctx context.Context, name string, inc *Incident) (*Incident, error) {
+			return client.UpdateStatus(ctx, name, inc.Status)
+		},
+
+		DeleteFn: func(_ context.Context, _ string) error {
+			return errors.New("incidents: delete is not supported by the IRM API")
+		},
+
+		StripFields:   []string{"incidentID"},
+		RestoreNameFn: func(name string, inc *Incident) { inc.IncidentID = name },
+		Namespace:     namespace,
+		Descriptor:    staticDescriptor,
+		Aliases:       staticAliases,
 	}
 
-	result := &unstructured.UnstructuredList{}
-	for _, inc := range incidents {
-		res, err := ToResource(inc, a.namespace)
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert incident %q to resource: %w", inc.IncidentID, err)
-		}
-		result.Items = append(result.Items, res.Object)
-	}
-
-	return result, nil
-}
-
-// Get returns a single incident resource by ID.
-func (a *ResourceAdapter) Get(ctx context.Context, name string, _ metav1.GetOptions) (*unstructured.Unstructured, error) {
-	inc, err := a.client.Get(ctx, name)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get incident %q: %w", name, err)
-	}
-
-	res, err := ToResource(*inc, a.namespace)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert incident %q to resource: %w", name, err)
-	}
-
-	obj := res.ToUnstructured()
-	return &obj, nil
-}
-
-// Create creates a new incident resource from an unstructured object.
-func (a *ResourceAdapter) Create(ctx context.Context, obj *unstructured.Unstructured, _ metav1.CreateOptions) (*unstructured.Unstructured, error) {
-	res, err := resources.FromUnstructured(obj)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert unstructured to resource: %w", err)
-	}
-
-	inc, err := FromResource(res)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert resource to incident: %w", err)
-	}
-
-	created, err := a.client.Create(ctx, inc)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create incident: %w", err)
-	}
-
-	createdRes, err := ToResource(*created, a.namespace)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert created incident to resource: %w", err)
-	}
-
-	createdObj := createdRes.ToUnstructured()
-	return &createdObj, nil
-}
-
-// Update updates an existing incident's status from an unstructured object.
-// The IRM API only supports status updates; other field changes are ignored.
-func (a *ResourceAdapter) Update(ctx context.Context, obj *unstructured.Unstructured, _ metav1.UpdateOptions) (*unstructured.Unstructured, error) {
-	res, err := resources.FromUnstructured(obj)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert unstructured to resource: %w", err)
-	}
-
-	inc, err := FromResource(res)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert resource to incident: %w", err)
-	}
-
-	id := obj.GetName()
-	updated, err := a.client.UpdateStatus(ctx, id, inc.Status)
-	if err != nil {
-		return nil, fmt.Errorf("failed to update incident %q: %w", id, err)
-	}
-
-	updatedRes, err := ToResource(*updated, a.namespace)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert updated incident to resource: %w", err)
-	}
-
-	updatedObj := updatedRes.ToUnstructured()
-	return &updatedObj, nil
-}
-
-// Delete is not supported for incidents. The IRM API does not expose a delete endpoint.
-func (a *ResourceAdapter) Delete(_ context.Context, _ string, _ metav1.DeleteOptions) error {
-	return errors.New("incidents: delete is not supported by the IRM API")
+	return crud.AsAdapter()
 }

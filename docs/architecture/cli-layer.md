@@ -189,7 +189,7 @@ func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.Namespaced
 
 ### Adding a new provider
 
-Follow the `/add-provider` skill or `agent-docs/provider-guide.md` for the
+Follow the `/add-provider` skill or `docs/reference/provider-guide.md` for the
 step-by-step implementation guide.
 
 ---
@@ -206,7 +206,7 @@ cmd/grafanactl/
 ├── resources/
 │   ├── command.go           resources group (wires configOpts to all subcommands)
 │   ├── get.go               resources get
-│   ├── list.go              resources schemas  [Use: "schemas"; formerly "list"]
+│   ├── schemas.go           resources schemas
 │   ├── pull.go              resources pull
 │   ├── push.go              resources push
 │   ├── delete.go            resources delete

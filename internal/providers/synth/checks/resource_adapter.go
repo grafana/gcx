@@ -3,13 +3,12 @@ package checks
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/grafana/grafanactl/internal/providers/synth/probes"
 	"github.com/grafana/grafanactl/internal/providers/synth/smcfg"
 	"github.com/grafana/grafanactl/internal/resources"
 	"github.com/grafana/grafanactl/internal/resources/adapter"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -31,6 +30,17 @@ var staticDescriptor = resources.Descriptor{
 //nolint:gochecknoglobals // Static descriptor used in init() self-registration pattern.
 var staticAliases = []string{"checks"}
 
+// checkResource is an internal wrapper around CheckSpec that carries
+// non-serialized metadata needed by TypedCRUD's NameFn and MetadataFn.
+// Unexported fields are ignored by json.Marshal, so the serialized output
+// is identical to marshaling a plain CheckSpec.
+type checkResource struct {
+	CheckSpec
+
+	name    string // pre-computed resource name (e.g., "web-check-1001")
+	checkID int64  // numeric API check ID
+}
+
 // NewAdapterFactory returns a lazy adapter.Factory for SM checks.
 // The factory captures the smcfg.Loader and constructs clients on first invocation.
 func NewAdapterFactory(loader smcfg.Loader) adapter.Factory {
@@ -43,31 +53,137 @@ func NewAdapterFactory(loader smcfg.Loader) adapter.Factory {
 		checksClient := NewClient(baseURL, token)
 		probesClient := probes.NewClient(baseURL, token)
 
-		return &ResourceAdapter{
-			client:       checksClient,
-			probesClient: probesClient,
-			namespace:    namespace,
-		}, nil
+		crud := &adapter.TypedCRUD[checkResource]{
+			NameFn: func(cr checkResource) string { return cr.name },
+
+			ListFn: func(ctx context.Context) ([]checkResource, error) {
+				checkList, err := checksClient.List(ctx)
+				if err != nil {
+					return nil, fmt.Errorf("failed to list checks: %w", err)
+				}
+
+				nameMap, err := probeNameMap(ctx, probesClient)
+				if err != nil {
+					return nil, err
+				}
+
+				result := make([]checkResource, 0, len(checkList))
+				for _, check := range checkList {
+					result = append(result, checkToResource(check, nameMap))
+				}
+
+				return result, nil
+			},
+
+			GetFn: func(ctx context.Context, name string) (*checkResource, error) {
+				id, ok := extractIDFromSlug(name)
+				if !ok {
+					return nil, fmt.Errorf("could not extract numeric check ID from name %q", name)
+				}
+
+				check, err := checksClient.Get(ctx, id)
+				if err != nil {
+					return nil, fmt.Errorf("failed to get check %d: %w", id, err)
+				}
+
+				nameMap, err := probeNameMap(ctx, probesClient)
+				if err != nil {
+					return nil, err
+				}
+
+				cr := checkToResource(*check, nameMap)
+				return &cr, nil
+			},
+
+			CreateFn: func(ctx context.Context, item *checkResource) (*checkResource, error) {
+				tenant, err := checksClient.GetTenant(ctx)
+				if err != nil {
+					return nil, fmt.Errorf("failed to get SM tenant: %w", err)
+				}
+
+				idMap, err := probeIDMap(ctx, probesClient)
+				if err != nil {
+					return nil, err
+				}
+
+				probeIDs, err := resolveProbeIDs(item.Probes, idMap)
+				if err != nil {
+					return nil, fmt.Errorf("failed to resolve probe IDs for create: %w", err)
+				}
+
+				check := SpecToCheck(&item.CheckSpec, 0, tenant.ID, probeIDs)
+
+				created, err := checksClient.Create(ctx, check)
+				if err != nil {
+					return nil, fmt.Errorf("failed to create check: %w", err)
+				}
+
+				nameMap := invertIDMap(idMap)
+				cr := checkToResource(*created, nameMap)
+				return &cr, nil
+			},
+
+			UpdateFn: func(ctx context.Context, name string, item *checkResource) (*checkResource, error) {
+				tenant, err := checksClient.GetTenant(ctx)
+				if err != nil {
+					return nil, fmt.Errorf("failed to get SM tenant: %w", err)
+				}
+
+				idMap, err := probeIDMap(ctx, probesClient)
+				if err != nil {
+					return nil, err
+				}
+
+				probeIDs, err := resolveProbeIDs(item.Probes, idMap)
+				if err != nil {
+					return nil, fmt.Errorf("failed to resolve probe IDs for update: %w", err)
+				}
+
+				check := SpecToCheck(&item.CheckSpec, item.checkID, tenant.ID, probeIDs)
+
+				updated, err := checksClient.Update(ctx, check)
+				if err != nil {
+					return nil, fmt.Errorf("failed to update check %d: %w", item.checkID, err)
+				}
+
+				nameMap := invertIDMap(idMap)
+				cr := checkToResource(*updated, nameMap)
+				return &cr, nil
+			},
+
+			DeleteFn: func(ctx context.Context, name string) error {
+				id, ok := extractIDFromSlug(name)
+				if !ok {
+					return fmt.Errorf("could not extract numeric check ID from name %q", name)
+				}
+
+				return checksClient.Delete(ctx, id)
+			},
+
+			Namespace: namespace,
+
+			RestoreNameFn: func(name string, item *checkResource) {
+				item.name = name
+				if id, ok := extractIDFromSlug(name); ok {
+					item.checkID = id
+				}
+			},
+
+			MetadataFn: func(cr checkResource) map[string]any {
+				if cr.checkID != 0 {
+					return map[string]any{
+						"uid": strconv.FormatInt(cr.checkID, 10),
+					}
+				}
+				return nil
+			},
+
+			Descriptor: staticDescriptor,
+			Aliases:    staticAliases,
+		}
+
+		return crud.AsAdapter(), nil
 	}
-}
-
-// ResourceAdapter bridges the checks.Client to the grafanactl resources pipeline.
-type ResourceAdapter struct {
-	client       *Client
-	probesClient *probes.Client
-	namespace    string
-}
-
-var _ adapter.ResourceAdapter = &ResourceAdapter{}
-
-// Descriptor returns the resource descriptor this adapter serves.
-func (a *ResourceAdapter) Descriptor() resources.Descriptor {
-	return staticDescriptor
-}
-
-// Aliases returns short names for selector resolution.
-func (a *ResourceAdapter) Aliases() []string {
-	return staticAliases
 }
 
 // StaticDescriptor returns the static descriptor for SM Check resources.
@@ -86,9 +202,44 @@ func StaticGVK() schema.GroupVersionKind {
 	return staticDescriptor.GroupVersionKind()
 }
 
-// probeNameMap fetches all probes and builds an ID→name map.
-func (a *ResourceAdapter) probeNameMap(ctx context.Context) (map[int64]string, error) {
-	probeList, err := a.probesClient.List(ctx)
+// checkToResource converts an API Check + probe name map into a checkResource.
+func checkToResource(check Check, probeNames map[int64]string) checkResource {
+	probeNameList := make([]string, 0, len(check.Probes))
+	for _, id := range check.Probes {
+		name, ok := probeNames[id]
+		if !ok {
+			name = strconv.FormatInt(id, 10)
+		}
+		probeNameList = append(probeNameList, name)
+	}
+
+	name := slugifyJob(check.Job)
+	if check.ID != 0 {
+		name = name + "-" + strconv.FormatInt(check.ID, 10)
+	}
+
+	return checkResource{
+		CheckSpec: CheckSpec{
+			Job:              check.Job,
+			Target:           check.Target,
+			Frequency:        check.Frequency,
+			Offset:           check.Offset,
+			Timeout:          check.Timeout,
+			Enabled:          check.Enabled,
+			Labels:           check.Labels,
+			Settings:         check.Settings,
+			Probes:           probeNameList,
+			BasicMetricsOnly: check.BasicMetricsOnly,
+			AlertSensitivity: check.AlertSensitivity,
+		},
+		name:    name,
+		checkID: check.ID,
+	}
+}
+
+// probeNameMap fetches all probes and builds an ID->name map.
+func probeNameMap(ctx context.Context, probesClient *probes.Client) (map[int64]string, error) {
+	probeList, err := probesClient.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("fetching probe list for name resolution: %w", err)
 	}
@@ -101,9 +252,9 @@ func (a *ResourceAdapter) probeNameMap(ctx context.Context) (map[int64]string, e
 	return nameMap, nil
 }
 
-// probeIDMap fetches all probes and builds a name→ID map.
-func (a *ResourceAdapter) probeIDMap(ctx context.Context) (map[string]int64, error) {
-	probeList, err := a.probesClient.List(ctx)
+// probeIDMap fetches all probes and builds a name->ID map.
+func probeIDMap(ctx context.Context, probesClient *probes.Client) (map[string]int64, error) {
+	probeList, err := probesClient.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("fetching probe list for ID resolution: %w", err)
 	}
@@ -114,159 +265,6 @@ func (a *ResourceAdapter) probeIDMap(ctx context.Context) (map[string]int64, err
 	}
 
 	return idMap, nil
-}
-
-// List returns all check resources as unstructured objects.
-func (a *ResourceAdapter) List(ctx context.Context, _ metav1.ListOptions) (*unstructured.UnstructuredList, error) {
-	checkList, err := a.client.List(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list checks: %w", err)
-	}
-
-	nameMap, err := a.probeNameMap(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	result := &unstructured.UnstructuredList{}
-	for _, check := range checkList {
-		res, err := ToResource(check, a.namespace, nameMap)
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert check %d to resource: %w", check.ID, err)
-		}
-
-		result.Items = append(result.Items, res.Object)
-	}
-
-	return result, nil
-}
-
-// Get returns a single check resource by name.
-// name may be a "slug-<id>" string (current format) or a legacy numeric string.
-func (a *ResourceAdapter) Get(ctx context.Context, name string, _ metav1.GetOptions) (*unstructured.Unstructured, error) {
-	id, ok := extractIDFromSlug(name)
-	if !ok {
-		return nil, fmt.Errorf("could not extract numeric check ID from name %q", name)
-	}
-
-	check, err := a.client.Get(ctx, id)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get check %d: %w", id, err)
-	}
-
-	nameMap, err := a.probeNameMap(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	res, err := ToResource(*check, a.namespace, nameMap)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert check %d to resource: %w", id, err)
-	}
-
-	obj := res.ToUnstructured()
-	return &obj, nil
-}
-
-// Create creates a new check resource from an unstructured object.
-func (a *ResourceAdapter) Create(ctx context.Context, obj *unstructured.Unstructured, _ metav1.CreateOptions) (*unstructured.Unstructured, error) {
-	res, err := resources.FromUnstructured(obj)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert unstructured to resource: %w", err)
-	}
-
-	spec, _, err := FromResource(res)
-	if err != nil {
-		return nil, fmt.Errorf("failed to extract check spec from resource: %w", err)
-	}
-
-	tenant, err := a.client.GetTenant(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get SM tenant: %w", err)
-	}
-
-	idMap, err := a.probeIDMap(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	probeIDs, err := resolveProbeIDs(spec.Probes, idMap)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve probe IDs for create: %w", err)
-	}
-	check := SpecToCheck(spec, 0, tenant.ID, probeIDs)
-
-	created, err := a.client.Create(ctx, check)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create check: %w", err)
-	}
-
-	nameMap := invertIDMap(idMap)
-	createdRes, err := ToResource(*created, a.namespace, nameMap)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert created check to resource: %w", err)
-	}
-
-	createdObj := createdRes.ToUnstructured()
-	return &createdObj, nil
-}
-
-// Update updates an existing check resource from an unstructured object.
-func (a *ResourceAdapter) Update(ctx context.Context, obj *unstructured.Unstructured, _ metav1.UpdateOptions) (*unstructured.Unstructured, error) {
-	res, err := resources.FromUnstructured(obj)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert unstructured to resource: %w", err)
-	}
-
-	spec, id, err := FromResource(res)
-	if err != nil {
-		return nil, fmt.Errorf("failed to extract check spec from resource: %w", err)
-	}
-
-	tenant, err := a.client.GetTenant(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get SM tenant: %w", err)
-	}
-
-	idMap, err := a.probeIDMap(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	probeIDs, err := resolveProbeIDs(spec.Probes, idMap)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve probe IDs for update: %w", err)
-	}
-	check := SpecToCheck(spec, id, tenant.ID, probeIDs)
-
-	updated, err := a.client.Update(ctx, check)
-	if err != nil {
-		return nil, fmt.Errorf("failed to update check %d: %w", id, err)
-	}
-
-	nameMap := invertIDMap(idMap)
-	updatedRes, err := ToResource(*updated, a.namespace, nameMap)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert updated check to resource: %w", err)
-	}
-
-	updatedObj := updatedRes.ToUnstructured()
-	return &updatedObj, nil
-}
-
-// Delete removes a check resource by name.
-// name may be a "slug-<id>" string (current format) or a legacy numeric string.
-func (a *ResourceAdapter) Delete(ctx context.Context, name string, _ metav1.DeleteOptions) error {
-	id, ok := extractIDFromSlug(name)
-	if !ok {
-		return fmt.Errorf("could not extract numeric check ID from name %q", name)
-	}
-
-	if err := a.client.Delete(ctx, id); err != nil {
-		return fmt.Errorf("failed to delete check %d: %w", id, err)
-	}
-
-	return nil
 }
 
 // resolveProbeIDs converts probe names to IDs using the provided map.
@@ -283,7 +281,7 @@ func resolveProbeIDs(names []string, idMap map[string]int64) ([]int64, error) {
 	return ids, nil
 }
 
-// invertIDMap converts a name→ID map to an ID→name map.
+// invertIDMap converts a name->ID map to an ID->name map.
 func invertIDMap(idMap map[string]int64) map[int64]string {
 	nameMap := make(map[int64]string, len(idMap))
 	for name, id := range idMap {

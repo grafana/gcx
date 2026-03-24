@@ -18,14 +18,13 @@ import (
 	"github.com/spf13/pflag"
 )
 
-type listOpts struct {
+type schemasOpts struct {
 	IO       cmdio.Options
 	NoSchema bool
 }
 
-func (opts *listOpts) setup(flags *pflag.FlagSet) {
+func (opts *schemasOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.RegisterCustomCodec("text", &tabCodec{wide: false})
-	opts.IO.RegisterCustomCodec("table", &tabCodec{wide: false})
 	opts.IO.RegisterCustomCodec("wide", &tabCodec{wide: true})
 	opts.IO.DefaultFormat("text")
 
@@ -33,12 +32,12 @@ func (opts *listOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&opts.NoSchema, "no-schema", false, "Skip fetching OpenAPI spec schemas (faster, omits schema info and unlistable resource types)")
 }
 
-func (opts *listOpts) Validate() error {
+func (opts *schemasOpts) Validate() error {
 	return opts.IO.Validate()
 }
 
-func listCmd(configOpts *cmdconfig.Options) *cobra.Command {
-	opts := &listOpts{}
+func schemasCmd(configOpts *cmdconfig.Options) *cobra.Command {
+	opts := &schemasOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "schemas [RESOURCE_SELECTOR]",
@@ -240,37 +239,20 @@ func (c *tabCodec) Encode(output io.Writer, input any) error {
 		gv := r.GroupVersion
 		if c.wide {
 			fmt.Fprintf(out, "%s\t%s\t%s\t%s\t%s\n",
-				sanitizeListCell(gv.Group, noTruncate),
-				sanitizeListCell(gv.Version, noTruncate),
-				sanitizeListCell(r.Plural, noTruncate),
-				sanitizeListCell(r.Singular, noTruncate),
-				sanitizeListCell(r.Kind, noTruncate))
+				sanitizeCell(gv.Group, noTruncate),
+				sanitizeCell(gv.Version, noTruncate),
+				sanitizeCell(r.Plural, noTruncate),
+				sanitizeCell(r.Singular, noTruncate),
+				sanitizeCell(r.Kind, noTruncate))
 		} else {
 			fmt.Fprintf(out, "%s\t%s\t%s\n",
-				sanitizeListCell(gv.Group, noTruncate),
-				sanitizeListCell(gv.Version, noTruncate),
-				sanitizeListCell(r.Plural, noTruncate))
+				sanitizeCell(gv.Group, noTruncate),
+				sanitizeCell(gv.Version, noTruncate),
+				sanitizeCell(r.Plural, noTruncate))
 		}
 	}
 
 	return out.Flush()
-}
-
-// sanitizeListCell returns the cell value unchanged normally. When noTruncate
-// is true, newlines are replaced with spaces to prevent truncation in output.
-func sanitizeListCell(v string, noTruncate bool) string {
-	if !noTruncate {
-		return v
-	}
-	result := make([]rune, 0, len(v))
-	for _, r := range v {
-		if r == '\n' || r == '\r' || r == '\f' {
-			result = append(result, ' ')
-		} else {
-			result = append(result, r)
-		}
-	}
-	return string(result)
 }
 
 func (c *tabCodec) Decode(io.Reader, any) error {

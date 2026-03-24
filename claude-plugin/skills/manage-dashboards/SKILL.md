@@ -253,7 +253,7 @@ For iterative panel authoring, use `serve` to get instant browser previews on
 every file save:
 
 ```bash
-grafanactl resources serve ./dashboards
+grafanactl dev serve ./dashboards
 ```
 
 See the `serve` command reference in
@@ -530,7 +530,7 @@ grafanactl resources edit dashboards/my-uid -o yaml
 ### List available resource kinds
 
 ```bash
-grafanactl resources list
+grafanactl resources schemas
 ```
 
 ---

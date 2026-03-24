@@ -4,7 +4,7 @@
 
 ## Quick Start
 
-**grafanactl** is a kubectl-style CLI for managing Grafana 12+ resources via its Kubernetes-compatible API. Built in Go (~14k LOC), it uses `k8s.io/client-go` and Cobra.
+**grafanactl** is a unified CLI for managing Grafana resources. It operates in two tiers: (1) a **K8s resource tier** that uses Grafana 12+'s Kubernetes-compatible API via `k8s.io/client-go` for dashboards, folders, and other K8s-native resources, and (2) a **Cloud provider tier** with pluggable providers for Grafana Cloud products (SLO, Synthetic Monitoring, OnCall, Fleet Management, etc.) that use product-specific REST APIs. Built in Go, it uses Cobra for CLI structure.
 
 ## Documentation Map
 
@@ -13,38 +13,46 @@
 | Document | What It Covers | Read When |
 |----------|---------------|-----------|
 | [CLAUDE.md](CLAUDE.md) | Build commands, test commands, project conventions, code org standards | Running builds/tests, understanding conventions |
-| [agent-docs/README.md](agent-docs/README.md) | Full index of architecture docs with navigation guide | Deep-diving into any architectural domain |
+| [docs/architecture/README.md](docs/architecture/README.md) | Full index of architecture docs with navigation guide | Deep-diving into any architectural domain |
 
-### Architecture Docs (in `agent-docs/`)
+### Architecture Docs (in `docs/architecture/`)
 
 | Document | Domain | Read When |
 |----------|--------|-----------|
-| [architecture.md](agent-docs/architecture.md) | System-wide architecture overview | First-time orientation, understanding overall design |
-| [patterns.md](agent-docs/patterns.md) | Recurring patterns catalog (15 patterns) | Before implementing new features |
-| [resource-model.md](agent-docs/resource-model.md) | Resource, Selector, Filter, Discovery abstractions | Modifying resource handling |
-| [cli-layer.md](agent-docs/cli-layer.md) | Command tree, Options pattern, lifecycle | Adding/modifying CLI commands |
-| [client-api-layer.md](agent-docs/client-api-layer.md) | Dynamic client, auth, error translation | API communication changes |
-| [config-system.md](agent-docs/config-system.md) | Contexts, env vars, TLS, namespace resolution | Config or auth changes |
-| [data-flows.md](agent-docs/data-flows.md) | Push/Pull/Serve/Delete pipelines | Modifying resource sync flows |
-| [project-structure.md](agent-docs/project-structure.md) | Build system, CI/CD, dependencies, directory layout | Build issues, adding deps |
-| [provider-discovery-guide.md](agent-docs/provider-discovery-guide.md) | Pre-implementation research and design for new providers | Before designing a new provider (discovery phase) |
-| [provider-guide.md](agent-docs/provider-guide.md) | Step-by-step guide: implement + register a new provider | Adding a new Grafana product provider |
-| [design-guide.md](agent-docs/design-guide.md) | UX requirements: output, exit codes, errors, naming | Before implementing features, reviewing CLI UX |
-| `.claude/skills/update-agent-docs/` | Agent-docs maintenance | After significant code changes |
+| [architecture.md](docs/architecture/architecture.md) | System-wide architecture overview | First-time orientation, understanding overall design |
+| [patterns.md](docs/architecture/patterns.md) | Recurring patterns catalog (15 patterns) | Before implementing new features |
+| [resource-model.md](docs/architecture/resource-model.md) | Resource, Selector, Filter, Discovery abstractions | Modifying resource handling |
+| [cli-layer.md](docs/architecture/cli-layer.md) | Command tree, Options pattern, lifecycle | Adding/modifying CLI commands |
+| [client-api-layer.md](docs/architecture/client-api-layer.md) | Dynamic client, auth, error translation | API communication changes |
+| [config-system.md](docs/architecture/config-system.md) | Contexts, env vars, TLS, namespace resolution | Config or auth changes |
+| [data-flows.md](docs/architecture/data-flows.md) | Push/Pull/Serve/Delete pipelines | Modifying resource sync flows |
+| [project-structure.md](docs/architecture/project-structure.md) | Build system, CI/CD, dependencies, directory layout | Build issues, adding deps |
+
+### Reference Guides (in `docs/reference/`)
+
+| Document | Domain | Read When |
+|----------|--------|-----------|
+| [provider-discovery-guide.md](docs/reference/provider-discovery-guide.md) | Pre-implementation research and design for new providers | Before designing a new provider (discovery phase) |
+| [provider-guide.md](docs/reference/provider-guide.md) | Step-by-step guide: implement + register a new provider | Adding a new Grafana product provider |
+| [design-guide.md](docs/reference/design-guide.md) | UX requirements: output, exit codes, errors, naming | Before implementing features, reviewing CLI UX |
 
 ## Architecture at a Glance
 
 ```
-CLI Layer (cmd/grafanactl/)          ← Cobra commands, zero business logic
+CLI Layer (cmd/grafanactl/)              ← Cobra commands, zero business logic
     ↓
-Business Logic (internal/resources/) ← Resource model, selectors, filters, processors
-    ↓
-Client Layer (internal/resources/dynamic/) ← k8s dynamic client wrapper
-    ↓
-Grafana REST API (/apis endpoint)    ← K8s-compatible API (Grafana 12+)
+Business Logic (internal/resources/)     ← Resource model, selectors, filters, processors
+    ↓                          ↓
+K8s Dynamic Client         Provider Adapters (internal/providers/*)
+(internal/resources/       ← Pluggable Cloud product providers
+ dynamic/)                   (SLO, SM, OnCall, Fleet, KG, Incidents, Alert...)
+    ↓                          ↓
+Grafana K8s API            Product REST APIs
+(/apis endpoint)           (Cloud-specific endpoints)
 ```
 
-**Core flow**: User input → Selector (partial) → Discovery → Filter (resolved) → Dynamic Client → Grafana API
+**K8s tier flow**: User input → Selector → Discovery → Filter → Dynamic Client → Grafana API
+**Provider tier flow**: User input → Provider CLI → Provider Client → Product REST API
 
 ## Key Conventions
 
@@ -53,8 +61,8 @@ Grafana REST API (/apis endpoint)    ← K8s-compatible API (Grafana 12+)
 - **errgroup concurrency**: Bounded parallelism (default 10) for all batch I/O operations
 - **Folder-before-dashboard**: Push pipeline does topological sort — folders pushed level-by-level before other resources
 - **Config = kubectl kubeconfig**: Named contexts with server/auth/namespace, env var overrides
-- **Format-agnostic data fetching**: Commands fetch all data regardless of `--output` format; codecs control display, not data acquisition (see Pattern 13 in `agent-docs/patterns.md`)
-- **PromQL via promql-builder**: Use `github.com/grafana/promql-builder/go/promql` for PromQL construction, not string formatting (see Pattern 14 in `agent-docs/patterns.md`)
+- **Format-agnostic data fetching**: Commands fetch all data regardless of `--output` format; codecs control display, not data acquisition (see Pattern 13 in `docs/architecture/patterns.md`)
+- **PromQL via promql-builder**: Use `github.com/grafana/promql-builder/go/promql` for PromQL construction, not string formatting (see Pattern 14 in `docs/architecture/patterns.md`)
 
 ## Essential Commands
 
@@ -76,13 +84,14 @@ make docs        # Generate + build all documentation
 > ```
 > Skipping this causes CI to fail with docs drift.
 
-> **Run `/update-agent-docs` when a PR changes architecture.** Specifically: adding
+> **Update `docs/architecture/` when a PR changes architecture.** Specifically: adding
 > or removing packages under `internal/` or `cmd/`, introducing new architectural
 > patterns, changing core abstractions (Resource, Selector, Filter, Discovery),
 > or adding a new provider. Routine bug fixes, test changes, and small features
-> do not need it. The skill audits `agent-docs/` for staleness and applies targeted
-> updates — keeping these docs accurate prevents agents from making bad assumptions
-> in future sessions.
+> do not need it. Follow the structural checks in
+> [docs/reference/doc-maintenance.md](docs/reference/doc-maintenance.md) to audit
+> for staleness — keeping these docs accurate prevents agents from making bad
+> assumptions in future sessions.
 
 ## Package Map
 
@@ -113,9 +122,13 @@ internal/
 │   ├── process/    Processors: ManagerFields, ServerFields, Namespace
 │   └── remote/     Pusher, Puller, Deleter, FolderHierarchy, Summary
 ├── providers/   Provider plugin system (interface, registry, self-registration)
+│   ├── alert/      Alert provider (rules, groups — read-only)
+│   ├── fleet/      Fleet Management provider (pipeline and collector resources)
+│   ├── incidents/  IRM Incidents provider
+│   ├── kg/         Knowledge Graph (Asserts) provider
+│   ├── oncall/     OnCall provider (schedules, integrations, escalation chains)
 │   ├── slo/        SLO provider (definitions, reports)
-│   ├── synth/      Synthetic Monitoring provider (checks, probes)
-│   └── alert/      Alert provider (rules, groups — read-only)
+│   └── synth/      Synthetic Monitoring provider (checks, probes)
 ├── dashboards/  Dashboard Image Renderer client (PNG snapshots)
 ├── query/       Datasource query clients
 │   ├── prometheus/  Prometheus HTTP query client
