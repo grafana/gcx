@@ -10,8 +10,6 @@ import (
 	"github.com/grafana/grafanactl/internal/providers"
 	"github.com/grafana/grafanactl/internal/resources"
 	"github.com/grafana/grafanactl/internal/resources/adapter"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -132,81 +130,29 @@ func NewAdapterFactory(loader RESTConfigLoader) adapter.Factory {
 			return nil, fmt.Errorf("kg: failed to create client: %w", err)
 		}
 
-		return &ResourceAdapter{
-			client:    client,
-			namespace: cfg.Namespace,
-		}, nil
-	}
-}
-
-// ResourceAdapter bridges the KG Rules Client to the grafanactl resources pipeline.
-type ResourceAdapter struct {
-	client    *Client
-	namespace string
-}
-
-var _ adapter.ResourceAdapter = &ResourceAdapter{}
-
-// Descriptor returns the resource descriptor this adapter serves.
-func (a *ResourceAdapter) Descriptor() resources.Descriptor {
-	return staticDescriptor
-}
-
-// Aliases returns short names for selector resolution.
-func (a *ResourceAdapter) Aliases() []string {
-	return staticAliases
-}
-
-// List returns all KG rules as unstructured objects.
-func (a *ResourceAdapter) List(ctx context.Context, _ metav1.ListOptions) (*unstructured.UnstructuredList, error) {
-	rules, err := a.client.ListRules(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("kg: list rules: %w", err)
-	}
-
-	result := &unstructured.UnstructuredList{}
-	for _, rule := range rules {
-		res, err := RuleToResource(rule, a.namespace)
-		if err != nil {
-			return nil, fmt.Errorf("kg: convert rule %q to resource: %w", rule.Name, err)
+		crud := &adapter.TypedCRUD[Rule]{
+			NameFn: func(r Rule) string { return r.Name },
+			ListFn: func(ctx context.Context) ([]Rule, error) {
+				return client.ListRules(ctx)
+			},
+			GetFn: func(ctx context.Context, name string) (*Rule, error) {
+				return client.GetRule(ctx, name)
+			},
+			CreateFn: func(_ context.Context, _ *Rule) (*Rule, error) {
+				return nil, errors.New("kg: individual rule creation is not supported; use 'kg rules create -f <file>' for bulk upload")
+			},
+			UpdateFn: func(_ context.Context, _ string, _ *Rule) (*Rule, error) {
+				return nil, errors.New("kg: individual rule update is not supported; use 'kg rules create -f <file>' for bulk replace")
+			},
+			DeleteFn: func(_ context.Context, _ string) error {
+				return errors.New("kg: individual rule deletion is not supported; use 'kg rules delete' to clear all rules")
+			},
+			Namespace:  cfg.Namespace,
+			Descriptor: staticDescriptor,
+			Aliases:    staticAliases,
 		}
-		result.Items = append(result.Items, res.Object)
+		return crud.AsAdapter(), nil
 	}
-
-	return result, nil
-}
-
-// Get returns a single KG rule by name.
-func (a *ResourceAdapter) Get(ctx context.Context, name string, _ metav1.GetOptions) (*unstructured.Unstructured, error) {
-	rule, err := a.client.GetRule(ctx, name)
-	if err != nil {
-		return nil, fmt.Errorf("kg: get rule %q: %w", name, err)
-	}
-
-	res, err := RuleToResource(*rule, a.namespace)
-	if err != nil {
-		return nil, fmt.Errorf("kg: convert rule %q to resource: %w", name, err)
-	}
-
-	obj := res.ToUnstructured()
-	return &obj, nil
-}
-
-// Create creates a KG rule by uploading YAML prom rules.
-// The KG API only supports bulk upload of rules, so individual create
-// is not directly supported — the caller should use the rules create command instead.
-func (a *ResourceAdapter) Create(_ context.Context, _ *unstructured.Unstructured, _ metav1.CreateOptions) (*unstructured.Unstructured, error) {
-	return nil, errors.New("kg: individual rule creation is not supported; use 'kg rules create -f <file>' for bulk upload")
-}
-
-// Update is not supported for KG rules — they are replaced in bulk.
-func (a *ResourceAdapter) Update(_ context.Context, _ *unstructured.Unstructured, _ metav1.UpdateOptions) (*unstructured.Unstructured, error) {
-	return nil, errors.New("kg: individual rule update is not supported; use 'kg rules create -f <file>' for bulk replace")
-}
-
-// Delete is not supported for individual KG rules — use 'kg rules delete' for bulk clear.
-func (a *ResourceAdapter) Delete(_ context.Context, _ string, _ metav1.DeleteOptions) error {
-	return errors.New("kg: individual rule deletion is not supported; use 'kg rules delete' to clear all rules")
 }
 
 // RuleToResource converts a KG Rule to a grafanactl Resource.
