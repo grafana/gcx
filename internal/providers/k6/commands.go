@@ -276,8 +276,17 @@ func (c *ProjectTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
 
+type projectsGetOpts struct {
+	IO cmdio.Options
+}
+
+func (o *projectsGetOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("yaml")
+	o.IO.BindFlags(flags)
+}
+
 func newProjectsGetCommand(loader CloudConfigLoader) *cobra.Command {
-	opts := &struct{ IO cmdio.Options }{}
+	opts := &projectsGetOpts{}
 	cmd := &cobra.Command{
 		Use:   "get <id-or-name>",
 		Short: "Get a single K6 project by ID or name.",
@@ -309,8 +318,7 @@ func newProjectsGetCommand(loader CloudConfigLoader) *cobra.Command {
 			return opts.IO.Encode(cmd.OutOrStdout(), &obj)
 		},
 	}
-	opts.IO.DefaultFormat("yaml")
-	opts.IO.BindFlags(cmd.Flags())
+	opts.setup(cmd.Flags())
 	return cmd
 }
 
@@ -390,14 +398,22 @@ func newProjectsCreateCommand(loader CloudConfigLoader) *cobra.Command {
 	return cmd
 }
 
+type projectsUpdateOpts struct {
+	File string
+}
+
+func (o *projectsUpdateOpts) setup(flags *pflag.FlagSet) {
+	flags.StringVarP(&o.File, "filename", "f", "", "File containing the project manifest (use - for stdin)")
+}
+
 func newProjectsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
-	var file string
+	opts := &projectsUpdateOpts{}
 	cmd := &cobra.Command{
 		Use:   "update <id-or-name>",
 		Short: "Update a K6 project.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if file == "" {
+			if opts.File == "" {
 				return errors.New("--filename/-f is required")
 			}
 			ctx := cmd.Context()
@@ -412,12 +428,12 @@ func newProjectsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 			}
 
 			var reader io.Reader
-			if file == "-" {
+			if opts.File == "-" {
 				reader = cmd.InOrStdin()
 			} else {
-				f, err := os.Open(file)
+				f, err := os.Open(opts.File)
 				if err != nil {
-					return fmt.Errorf("failed to open file %s: %w", file, err)
+					return fmt.Errorf("failed to open file %s: %w", opts.File, err)
 				}
 				defer f.Close()
 				reader = f
@@ -447,7 +463,7 @@ func newProjectsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&file, "filename", "f", "", "File containing the project manifest (use - for stdin)")
+	opts.setup(cmd.Flags())
 	return cmd
 }
 
@@ -736,14 +752,22 @@ func newTestsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 	return cmd
 }
 
+type testsUpdateScriptOpts struct {
+	File string
+}
+
+func (o *testsUpdateScriptOpts) setup(flags *pflag.FlagSet) {
+	flags.StringVarP(&o.File, "filename", "f", "", "k6 script file to upload")
+}
+
 func newTestsUpdateScriptCommand(loader CloudConfigLoader) *cobra.Command {
-	var file string
+	opts := &testsUpdateScriptOpts{}
 	cmd := &cobra.Command{
 		Use:   "update-script <id>",
 		Short: "Update the script of a K6 load test from a file.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if file == "" {
+			if opts.File == "" {
 				return errors.New("--filename/-f is required")
 			}
 			ctx := cmd.Context()
@@ -756,7 +780,7 @@ func newTestsUpdateScriptCommand(loader CloudConfigLoader) *cobra.Command {
 				return err
 			}
 
-			data, err := readFileOrStdin(cmd, file)
+			data, err := readFileOrStdin(cmd, opts.File)
 			if err != nil {
 				return fmt.Errorf("failed to read script file: %w", err)
 			}
@@ -769,7 +793,7 @@ func newTestsUpdateScriptCommand(loader CloudConfigLoader) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&file, "filename", "f", "", "k6 script file to upload")
+	opts.setup(cmd.Flags())
 	return cmd
 }
 
@@ -1010,13 +1034,21 @@ func (c *EnvVarTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
 
+type envVarsCreateOpts struct {
+	File string
+}
+
+func (o *envVarsCreateOpts) setup(flags *pflag.FlagSet) {
+	flags.StringVarP(&o.File, "filename", "f", "", "File containing the env var JSON (use - for stdin)")
+}
+
 func newEnvVarsCreateCommand(loader CloudConfigLoader) *cobra.Command {
-	var file string
+	opts := &envVarsCreateOpts{}
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a K6 environment variable from a file.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if file == "" {
+			if opts.File == "" {
 				return errors.New("--filename/-f is required")
 			}
 			ctx := cmd.Context()
@@ -1026,12 +1058,12 @@ func newEnvVarsCreateCommand(loader CloudConfigLoader) *cobra.Command {
 			}
 
 			var reader io.Reader
-			if file == "-" {
+			if opts.File == "-" {
 				reader = cmd.InOrStdin()
 			} else {
-				f, err := os.Open(file)
+				f, err := os.Open(opts.File)
 				if err != nil {
-					return fmt.Errorf("failed to open file %s: %w", file, err)
+					return fmt.Errorf("failed to open file %s: %w", opts.File, err)
 				}
 				defer f.Close()
 				reader = f
@@ -1052,18 +1084,26 @@ func newEnvVarsCreateCommand(loader CloudConfigLoader) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&file, "filename", "f", "", "File containing the env var JSON (use - for stdin)")
+	opts.setup(cmd.Flags())
 	return cmd
 }
 
+type envVarsUpdateOpts struct {
+	File string
+}
+
+func (o *envVarsUpdateOpts) setup(flags *pflag.FlagSet) {
+	flags.StringVarP(&o.File, "filename", "f", "", "File containing the env var JSON (use - for stdin)")
+}
+
 func newEnvVarsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
-	var file string
+	opts := &envVarsUpdateOpts{}
 	cmd := &cobra.Command{
 		Use:   "update <id>",
 		Short: "Update a K6 environment variable.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if file == "" {
+			if opts.File == "" {
 				return errors.New("--filename/-f is required")
 			}
 			ctx := cmd.Context()
@@ -1077,12 +1117,12 @@ func newEnvVarsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 			}
 
 			var reader io.Reader
-			if file == "-" {
+			if opts.File == "-" {
 				reader = cmd.InOrStdin()
 			} else {
-				f, err := os.Open(file)
+				f, err := os.Open(opts.File)
 				if err != nil {
-					return fmt.Errorf("failed to open file %s: %w", file, err)
+					return fmt.Errorf("failed to open file %s: %w", opts.File, err)
 				}
 				defer f.Close()
 				reader = f
@@ -1102,7 +1142,7 @@ func newEnvVarsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&file, "filename", "f", "", "File containing the env var JSON (use - for stdin)")
+	opts.setup(cmd.Flags())
 	return cmd
 }
 
@@ -1258,8 +1298,17 @@ func newSchedulesListCommand(loader CloudConfigLoader) *cobra.Command {
 	return cmd
 }
 
-func newSchedulesGetCommand(loader CloudConfigLoader) *cobra.Command {
-	opts := &struct{ IO cmdio.Options }{}
+type schedulesGetOpts struct {
+	IO cmdio.Options
+}
+
+func (o *schedulesGetOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("yaml")
+	o.IO.BindFlags(flags)
+}
+
+func newSchedulesGetCommand(loader CloudConfigLoader) *cobra.Command { //nolint:dupl // Structurally similar to newAllowedProjectsListCommand but different API calls.
+	opts := &schedulesGetOpts{}
 	cmd := &cobra.Command{
 		Use:   "get <id>",
 		Short: "Get a single K6 schedule by ID.",
@@ -1284,8 +1333,7 @@ func newSchedulesGetCommand(loader CloudConfigLoader) *cobra.Command {
 			return opts.IO.Encode(cmd.OutOrStdout(), schedule)
 		},
 	}
-	opts.IO.DefaultFormat("yaml")
-	opts.IO.BindFlags(cmd.Flags())
+	opts.setup(cmd.Flags())
 	return cmd
 }
 
@@ -1653,14 +1701,22 @@ func newAllowedProjectsListCommand(loader CloudConfigLoader) *cobra.Command { //
 	return cmd
 }
 
-func newAllowedProjectsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
-	var file string
+type allowedProjectsUpdateOpts struct {
+	File string
+}
+
+func (o *allowedProjectsUpdateOpts) setup(flags *pflag.FlagSet) {
+	flags.StringVarP(&o.File, "filename", "f", "", "File containing project IDs (JSON array)")
+}
+
+func newAllowedProjectsUpdateCommand(loader CloudConfigLoader) *cobra.Command { //nolint:dupl // Structurally similar to newAllowedLoadZonesUpdateCommand but different API calls.
+	opts := &allowedProjectsUpdateOpts{}
 	cmd := &cobra.Command{
 		Use:   "update <load-zone-id>",
 		Short: "Update projects allowed to use a load zone.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if file == "" {
+			if opts.File == "" {
 				return errors.New("--filename/-f is required")
 			}
 			ctx := cmd.Context()
@@ -1673,7 +1729,7 @@ func newAllowedProjectsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 				return err
 			}
 
-			data, err := readFileOrStdin(cmd, file)
+			data, err := readFileOrStdin(cmd, opts.File)
 			if err != nil {
 				return fmt.Errorf("failed to read file: %w", err)
 			}
@@ -1690,7 +1746,7 @@ func newAllowedProjectsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&file, "filename", "f", "", "File containing project IDs (JSON array)")
+	opts.setup(cmd.Flags())
 	return cmd
 }
 
@@ -1777,14 +1833,22 @@ func newAllowedLoadZonesListCommand(loader CloudConfigLoader) *cobra.Command { /
 	return cmd
 }
 
-func newAllowedLoadZonesUpdateCommand(loader CloudConfigLoader) *cobra.Command {
-	var file string
+type allowedLoadZonesUpdateOpts struct {
+	File string
+}
+
+func (o *allowedLoadZonesUpdateOpts) setup(flags *pflag.FlagSet) {
+	flags.StringVarP(&o.File, "filename", "f", "", "File containing load zone IDs (JSON array)")
+}
+
+func newAllowedLoadZonesUpdateCommand(loader CloudConfigLoader) *cobra.Command { //nolint:dupl // Structurally similar to newAllowedProjectsUpdateCommand but different API calls.
+	opts := &allowedLoadZonesUpdateOpts{}
 	cmd := &cobra.Command{
 		Use:   "update <project-id>",
 		Short: "Update load zones allowed for a project.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if file == "" {
+			if opts.File == "" {
 				return errors.New("--filename/-f is required")
 			}
 			ctx := cmd.Context()
@@ -1797,7 +1861,7 @@ func newAllowedLoadZonesUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 				return err
 			}
 
-			data, err := readFileOrStdin(cmd, file)
+			data, err := readFileOrStdin(cmd, opts.File)
 			if err != nil {
 				return fmt.Errorf("failed to read file: %w", err)
 			}
@@ -1814,7 +1878,7 @@ func newAllowedLoadZonesUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&file, "filename", "f", "", "File containing load zone IDs (JSON array)")
+	opts.setup(cmd.Flags())
 	return cmd
 }
 

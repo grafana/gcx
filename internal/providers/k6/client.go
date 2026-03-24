@@ -636,6 +636,10 @@ func (c *Client) UpdateScheduleByID(ctx context.Context, id int, req ScheduleReq
 		return nil, fmt.Errorf("k6: update schedule %d: status %d: %s", id, resp.StatusCode, readErrorBody(resp))
 	}
 
+	if resp.StatusCode == http.StatusNoContent {
+		return c.GetSchedule(ctx, id)
+	}
+
 	s, err := decodeJSON[Schedule](resp)
 	if err != nil {
 		return nil, err
