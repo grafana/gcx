@@ -273,7 +273,7 @@ func RegisterAdapters(loader OnCallConfigLoader) {
 		onCallMeta("AlertGroup", "alertgroup", "alertgroups",
 			[]string{"oncall-alertgroups", "oncall-alertgroup", "oncall-ag"}),
 		func(ag AlertGroup) string { return ag.ID },
-		func(ctx context.Context, c *Client) ([]AlertGroup, error) { return c.ListAlertGroups(ctx) },
+		func(ctx context.Context, c *Client) ([]AlertGroup, error) { return c.ListAlertGroups(ctx) }, // no filter
 		func(ctx context.Context, c *Client, name string) (*AlertGroup, error) {
 			return c.GetAlertGroup(ctx, name)
 		},
