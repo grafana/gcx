@@ -17,6 +17,9 @@ import (
 // should hand-write their schemas and pass them directly.
 func SchemaFromType[T any](desc resources.Descriptor) json.RawMessage {
 	// Generate spec schema from the Go type.
+	// DoNotReference inlines all nested types instead of using $ref.
+	// This produces larger schemas for complex types (e.g., OnCall Integration)
+	// but keeps them self-contained — no $defs resolution required by consumers.
 	r := &jsonschema.Reflector{
 		DoNotReference: true,
 	}
