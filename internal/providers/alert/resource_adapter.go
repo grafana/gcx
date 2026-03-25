@@ -2,6 +2,7 @@ package alert
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/grafana/grafanactl/internal/providers"
@@ -53,13 +54,25 @@ func init() { //nolint:gochecknoinits // Self-registration pattern (like databas
 		Descriptor: staticRulesDescriptor,
 		Aliases:    staticRulesAliases,
 		GVK:        staticRulesDescriptor.GroupVersionKind(),
+		Schema:     alertRuleSchema(),
 	})
 	adapter.Register(adapter.Registration{
 		Factory:    NewGroupsAdapterFactory(loader),
 		Descriptor: staticGroupsDescriptor,
 		Aliases:    staticGroupsAliases,
 		GVK:        staticGroupsDescriptor.GroupVersionKind(),
+		Schema:     alertRuleGroupSchema(),
 	})
+}
+
+// alertRuleSchema returns a JSON Schema for the AlertRule resource type.
+func alertRuleSchema() json.RawMessage {
+	return adapter.SchemaFromType[RuleStatus](staticRulesDescriptor)
+}
+
+// alertRuleGroupSchema returns a JSON Schema for the AlertRuleGroup resource type.
+func alertRuleGroupSchema() json.RawMessage {
+	return adapter.SchemaFromType[RuleGroup](staticGroupsDescriptor)
 }
 
 // NewRulesAdapterFactory returns a lazy adapter.Factory for alert rules.

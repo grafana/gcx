@@ -2,6 +2,7 @@ package definitions
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	internalconfig "github.com/grafana/grafanactl/internal/config"
@@ -36,7 +37,46 @@ func init() { //nolint:gochecknoinits // Self-registration pattern (like databas
 		Descriptor: desc,
 		Aliases:    StaticAliases(),
 		GVK:        desc.GroupVersionKind(),
+		Schema:     sloSchema(),
+		Example:    sloExample(),
 	})
+}
+
+// sloSchema returns a JSON Schema for the SLO resource type.
+func sloSchema() json.RawMessage {
+	return adapter.SchemaFromType[Slo](StaticDescriptor())
+}
+
+// sloExample returns an example SLO manifest as JSON.
+func sloExample() json.RawMessage {
+	example := map[string]any{
+		"apiVersion": "slo.ext.grafana.app/v1alpha1",
+		"kind":       "SLO",
+		"metadata": map[string]any{
+			"name": "my-slo",
+		},
+		"spec": map[string]any{
+			"name":        "HTTP Availability",
+			"description": "Tracks HTTP request success rate",
+			"query": map[string]any{
+				"type": "freeform",
+				"freeform": map[string]any{
+					"query": `sum(rate(http_requests_total{status!~"5.."}[5m])) / sum(rate(http_requests_total[5m]))`,
+				},
+			},
+			"objectives": []map[string]any{
+				{"value": 0.995, "window": "28d"},
+			},
+			"labels": []map[string]any{
+				{"key": "team", "value": "platform"},
+			},
+		},
+	}
+	b, err := json.Marshal(example)
+	if err != nil {
+		panic(fmt.Sprintf("slo/definitions: failed to marshal example: %v", err))
+	}
+	return b
 }
 
 // NewLazyFactory returns an adapter.Factory that loads its config lazily from the

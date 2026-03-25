@@ -2,6 +2,7 @@ package adapter_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -328,4 +329,68 @@ func TestTypedRegistration_ToRegistration(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result.Items, 1)
 	assert.Equal(t, "w-1", result.Items[0].GetName())
+}
+
+func TestTypedRegistration_SchemaExampleRoundTrip(t *testing.T) {
+	testSchema := json.RawMessage(`{"type":"object","properties":{"name":{"type":"string"}}}`)
+	testExample := json.RawMessage(`{"apiVersion":"test.grafana.app/v1","kind":"Widget","spec":{"name":"example"}}`)
+
+	tests := []struct {
+		name        string
+		schema      json.RawMessage
+		example     json.RawMessage
+		wantSchema  json.RawMessage
+		wantExample json.RawMessage
+	}{
+		{
+			name:        "both schema and example set",
+			schema:      testSchema,
+			example:     testExample,
+			wantSchema:  testSchema,
+			wantExample: testExample,
+		},
+		{
+			name:        "schema only",
+			schema:      testSchema,
+			example:     nil,
+			wantSchema:  testSchema,
+			wantExample: nil,
+		},
+		{
+			name:        "example only",
+			schema:      nil,
+			example:     testExample,
+			wantSchema:  nil,
+			wantExample: testExample,
+		},
+		{
+			name:        "neither set",
+			schema:      nil,
+			example:     nil,
+			wantSchema:  nil,
+			wantExample: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reg := adapter.TypedRegistration[TestWidget]{
+				Descriptor: widgetDesc,
+				Aliases:    []string{"wdg"},
+				GVK:        widgetDesc.GroupVersionKind(),
+				Schema:     tt.schema,
+				Example:    tt.example,
+				Factory: func(_ context.Context) (*adapter.TypedCRUD[TestWidget], error) {
+					return newWidgetCRUD(nil), nil
+				},
+			}
+
+			registration := reg.ToRegistration()
+			a, err := registration.Factory(t.Context())
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.wantSchema, a.Schema())
+			assert.Equal(t, tt.wantExample, a.Example())
+		})
+	}
 }

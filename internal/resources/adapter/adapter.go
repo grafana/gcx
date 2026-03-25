@@ -4,6 +4,7 @@ package adapter
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/grafana/grafanactl/internal/resources"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,6 +36,12 @@ type ResourceAdapter interface {
 
 	// Aliases returns short names for selector resolution (e.g., "slo", "checks").
 	Aliases() []string
+
+	// Schema returns the JSON Schema for this resource type, or nil if none is registered.
+	Schema() json.RawMessage
+
+	// Example returns an example manifest for this resource type, or nil if none is registered.
+	Example() json.RawMessage
 }
 
 // Factory is a lazy constructor for a ResourceAdapter.
