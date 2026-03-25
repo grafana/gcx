@@ -105,4 +105,8 @@ The `docs/architecture/` directory contains comprehensive architecture analysis:
 
 - [docs/README.md](docs/README.md) — Full documentation index
 - [CONSTITUTION.md](CONSTITUTION.md) — Project invariants and constraints
+  - [CLI Grammar](CONSTITUTION.md#cli-grammar) — Command structure (`$AREA $NOUN $VERB`)
+  - [Dual-Purpose Design](CONSTITUTION.md#dual-purpose-design) — Human/agent command design
+  - [Push/Pull Philosophy](CONSTITUTION.md#pushpull-philosophy) — Local manifest workflow
+  - [Provider Architecture](CONSTITUTION.md#provider-architecture) — Dual CRUD paths and adapter requirements
 - [CONTRIBUTING.md](CONTRIBUTING.md) — Development setup and workflow
