@@ -182,7 +182,7 @@ func descriptorsToNested(descs resources.Descriptors, schemas map[string]map[str
 		}
 
 		if schemas != nil {
-			schema, hasSchema := resolveSchema(schemas, gvk, d, nil)
+			schema, hasSchema := resolveSchema(schemas, gvk, d)
 			if !hasSchema {
 				// No schema → unlistable sub-resource; skip entirely.
 				continue
@@ -260,21 +260,12 @@ func (c *tabCodec) Decode(io.Reader, any) error {
 }
 
 // resolveSchema looks up a schema for a resource, first from server-fetched
-// schemas (K8s-discovered), then from an adapter instance (if provided), then
-// from provider-registered schemas via the global SchemaForGVK function.
+// schemas (K8s-discovered), then from provider-registered schemas via the
+// global SchemaForGVK function.
 // Returns the schema and true if found, or nil and false if no schema exists.
-func resolveSchema(serverSchemas map[string]map[string]any, gvk string, d resources.Descriptor, a adapter.ResourceAdapter) (any, bool) {
+func resolveSchema(serverSchemas map[string]map[string]any, gvk string, d resources.Descriptor) (any, bool) {
 	if s, ok := serverSchemas[gvk]; ok {
 		return s, true
-	}
-	// Try adapter-based lookup first (preferred when adapter instance is available).
-	if a != nil {
-		if s := a.Schema(); s != nil {
-			var parsed map[string]any
-			if err := json.Unmarshal(s, &parsed); err == nil {
-				return parsed, true
-			}
-		}
 	}
 	// Fall back to global provider-registered schema.
 	provSchema := adapter.SchemaForGVK(d.GroupVersionKind())

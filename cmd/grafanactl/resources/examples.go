@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	cmdconfig "github.com/grafana/grafanactl/cmd/grafanactl/config"
 	cmdio "github.com/grafana/grafanactl/internal/output"
@@ -153,6 +154,7 @@ func examplesToNested(descs resources.Descriptors, examples map[schema.GroupVers
 
 		var parsed any
 		if err := json.Unmarshal(ex, &parsed); err != nil {
+			slog.Warn("skipping example with invalid JSON", "gvk", gvk.String(), "error", err)
 			continue
 		}
 
@@ -181,18 +183,10 @@ func examplesToNested(descs resources.Descriptors, examples map[schema.GroupVers
 	return result
 }
 
-// resolveExample returns the example for a GVK, trying the adapter method first
-// (when a factory is available in the registry) and falling back to the global
-// ExampleForGVK function. Returns nil if no example is registered.
-func resolveExample(ctx context.Context, reg *discovery.Registry, gvk schema.GroupVersionKind) json.RawMessage {
-	// Try adapter-based lookup when the registry has a factory for this GVK.
-	if factory, ok := reg.GetAdapter(gvk); ok {
-		if a, err := factory(ctx); err == nil {
-			if ex := a.Example(); ex != nil {
-				return ex
-			}
-		}
-	}
-	// Fall back to global provider-registered example.
+// resolveExample returns the example for a GVK. Checks the cheap global
+// registry first (all current providers register examples there), then falls
+// back to instantiating the adapter factory (for future providers that inject
+// examples via TypedRegistration). Returns nil if no example is registered.
+func resolveExample(_ context.Context, _ *discovery.Registry, gvk schema.GroupVersionKind) json.RawMessage {
 	return adapter.ExampleForGVK(gvk)
 }
