@@ -1,7 +1,7 @@
 # ADR-001: Codify CLI Design Principles in CONSTITUTION.md and Design Guide
 
 **Created**: 2026-03-25
-**Status**: proposed
+**Status**: accepted
 **Bead**: grafanactl-experiments-uxu
 **Supersedes**: none
 
