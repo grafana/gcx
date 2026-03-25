@@ -698,6 +698,132 @@ full detection priority and the `--agent` flag.
 
 ---
 
+## 11. Codec Requirements by Command Type `[ADOPT]`
+
+| Command type | `text` (table) | `wide` | `json` | `yaml` | Domain-specific |
+|---|---|---|---|---|---|
+| CRUD data (list, get) | Required, default | Required | Built-in | Built-in | — |
+| CRUD mutation (push, pull, delete) | Required, default (summary) | Required (summary) | Built-in (summary) | Built-in (summary) | — |
+| Extension (status, timeline...) | Required, default | Optional | Built-in | Built-in | Optional (e.g. graph) |
+
+All data-display and mutation commands must register a `text` table codec
+and call `DefaultFormat("text")`. The `text` codec is the human default;
+`json` becomes the default only in agent mode.
+
+Codec registration happens in `setup(flags)`, not in `RunE`.
+
+---
+
+## 12. Mutation Command Output `[ADOPT]`
+
+### 12.1 Summary Table
+
+CRUD mutation commands (push, pull, delete) output a structured summary
+through the codec system. The summary replaces ad-hoc `cmdio.Success/Warning`
+status messages as the primary output.
+
+**STDOUT** — summary table grouped by resource kind:
+
+| RESOURCE KIND | TOTAL | SUCCEEDED | SKIPPED | FAILED |
+|---|---|---|---|---|
+| Dashboard | 2452 | 2440 | 2 | 10 |
+| Folder | 48 | 48 | 0 | 0 |
+
+**STDERR** — failures enumerated individually with error detail:
+
+| RESOURCE | ERROR |
+|---|---|
+| dashboards/revenue-overview | 409 conflict: resource modified server-side |
+| dashboards/checkout-funnel | 413 payload too large |
+
+**Rules:**
+- Successes are counted, never enumerated individually.
+- Failures are always enumerated individually — they require action.
+- Skipped resources are enumerated if count < 20, otherwise grouped.
+- `cmdio.Success/Warning/Error` remain for progress feedback *during*
+  execution. The summary table is the *final* output.
+
+### 12.2 JSON Summary Shape
+
+```json
+{
+  "summary": [
+    {"kind": "Dashboard", "total": 2452, "succeeded": 2440, "skipped": 2, "failed": 10}
+  ],
+  "failures": [
+    {"name": "dashboards/revenue-overview", "error": "409 conflict: resource modified server-side"}
+  ],
+  "skipped": [
+    {"name": "dashboards/archived-q3", "reason": "no changes detected"}
+  ]
+}
+```
+
+Verbose opt-in (`-v` or `-o wide`) adds a `"succeeded"` array for audit.
+
+---
+
+## 13. Pull Format Consistency `[ADOPT]`
+
+`pull` accepts a `--format` flag (values: `yaml`, `json`; default: `yaml`)
+that enforces consistent file format on disk. All pulled files use the
+specified format regardless of the server's response format.
+
+Files are written as `plural.version.group/name.{ext}` where `{ext}`
+matches the chosen format (`.yaml` or `.json`).
+
+---
+
+## 14. Provider / Resources Output Consistency `[ADOPT]`
+
+Provider CRUD commands must use their registered `ResourceAdapter` (via
+TypedCRUD) for data access, not raw REST clients. This ensures:
+
+- JSON/YAML output is identical to the `resources` pipeline by construction.
+- Table/wide codecs may access domain types `T` for richer columns (e.g.
+  SLI%, burn rate, budget remaining).
+- The `resources` pipeline uses generic resource columns (name, namespace,
+  age) for its table codec.
+
+Provider commands that bypass the adapter for CRUD operations are
+non-compliant. Extension commands (status, timeline, etc.) may use raw
+clients since they have no `resources` pipeline equivalent.
+
+---
+
+## 15. TypedCRUD Pattern `[ADOPT → EVOLVE]`
+
+TypedCRUD is the current required pattern for new providers implementing
+ResourceAdapter. It bridges typed domain objects to Kubernetes-style
+unstructured envelopes.
+
+**Current requirement:** New providers must use TypedCRUD for adapter
+registration.
+
+**Trajectory:** Domain types should be designed with eventual K8s metadata
+interface compliance in mind (metadata.name, metadata.namespace,
+apiVersion/kind). The long-term goal is typed resources that satisfy K8s
+interfaces directly, eliminating the TypedCRUD bridge.
+
+Do not introduce new serialization bridges, dispatch patterns, or
+type-erasure mechanisms. If TypedCRUD does not fit your use case, raise
+the issue for architectural discussion.
+
+---
+
+## 16. Provider ConfigLoader `[ADOPT]`
+
+All provider commands must use `providers.ConfigLoader` for flag binding
+(`--config`, `--context`) and config resolution (YAML + env var precedence).
+
+Do not:
+- Import `cmd/grafanactl/config` from provider code (import cycle)
+- Roll custom flag binding for `--config`/`--context`
+- Construct HTTP clients or load credentials outside ConfigLoader
+- Hardcode env var names — ConfigLoader handles `GRAFANA_PROVIDER_*` resolution
+
+---
+
 ## Appendix: Recommendation Traceability
 
 Maps sections to the cli-analysis recommendations (R1.1–R3.5):

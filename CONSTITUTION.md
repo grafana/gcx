@@ -29,6 +29,77 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   global provider registry. Each provider contributes CLI commands, resource adapters, and
   per-provider configuration via the `Provider` interface.
 
+## CLI Grammar
+
+- **Command structure follows `$AREA $NOUN $VERB`.** Resource and provider
+  commands use `grafanactl {area} {resource-type} {verb}` (e.g.
+  `grafanactl slo definitions list`, `grafanactl resources get`,
+  `grafanactl datasources loki query`). Tooling commands (`dev`, `config`)
+  may use `$AREA $VERB` when there is no meaningful noun — these operate on
+  the project or CLI itself, not on Grafana resources.
+- **Extension commands nest under their resource type.** Domain-specific
+  operations (`status`, `timeline`, `acknowledge`) live alongside CRUD verbs,
+  never as top-level commands. Extensions must not duplicate CRUD semantics —
+  if it can be done with list/get/push/pull/delete, it is not an extension.
+- **Positional arguments are the subject, flags are modifiers.** The thing
+  being acted on (resource selectors, UIDs, expressions, file paths) is
+  positional. How to act on it (output format, concurrency, dry-run, filters)
+  is a flag.
+
+## Dual-Purpose Design
+
+Every command serves both humans and agents. Agent mode switches defaults
+(JSON output, no color, no truncation) but does not change available
+functionality. Explicit flags always override agent mode defaults.
+
+See [design-guide.md §6](docs/reference/design-guide.md#6-agent-mode) for
+agent mode detection, behavior changes, and opt-out mechanisms.
+
+- **All output goes through the codec system.** No command writes unstructured
+  prose as its primary output. CRUD data commands output resources. CRUD
+  mutation commands output structured operation summaries. Extension commands
+  output domain-specific structured data.
+- **Default output is proportional to what is actionable.** Mutation summaries
+  enumerate exceptions (failures, skips) and summarize successes by count.
+  Full per-resource detail is opt-in.
+- **STDOUT is the result, STDERR is the diagnostic.** Summary tables and
+  resource data go to stdout. Failure details and progress feedback go to
+  stderr. Both use structured formats (tables or JSON), not unstructured prose.
+
+## Push/Pull Philosophy
+
+- **Local manifests are clean, portable, and environment-agnostic.** `pull`
+  strips server-managed fields and writes a consistent format (default: YAML).
+  `push` is idempotent (create-or-update) and treats local files as
+  authoritative. The same manifests can be pushed to any Grafana instance
+  via `--context` without modification.
+- **Three workflows, one pipeline.** Whether used as source-of-truth (edit
+  locally, push to Grafana), backup/rollback (pull periodically, push to
+  restore), or migration/fanout (pull from source instance, push to targets),
+  the push/pull pipeline is the same. The workflow differs only in triggering
+  — manual, CI, or scheduled.
+- **Folder-before-resource ordering** on push. Folders are topologically
+  sorted by parent-child relationships and pushed level-by-level before
+  any non-folder resources.
+
+## Provider Architecture
+
+- **Dual CRUD access paths are permanent.** Provider commands
+  (`slo definitions list`) are ergonomic shorthands with domain-rich table
+  output. Generic commands (`resources get slos.v1alpha1.slo.ext.grafana.app`)
+  serve the push/pull pipeline and cross-resource operations. Neither path
+  is deprecated; both are first-class.
+- **JSON/YAML output is identical between both paths.** This is enforced
+  structurally: provider CRUD commands must use their registered
+  `ResourceAdapter` (via TypedCRUD) for data access, not raw API clients.
+  Table/wide codecs may diverge — provider tables show domain-specific
+  columns, generic tables show resource-management columns.
+- **Typed resource trajectory.** Provider resource types are progressing
+  toward implementing K8s metadata interfaces directly. TypedCRUD is a
+  transitional bridge. New providers must design domain types with eventual
+  K8s interface compliance in mind and must not introduce patterns that
+  deepen the typed-to-unstructured gap.
+
 ## Dependency Rules
 
 - `cmd/` may import `internal/`; `internal/` may not import `cmd/`.
@@ -38,6 +109,10 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
 - Query clients (`internal/query/*/`) bypass the k8s dynamic client — they call datasource
   HTTP APIs directly.
 - PromQL construction uses `github.com/grafana/promql-builder/go/promql`, not string formatting.
+- Provider implementations must use `providers.ConfigLoader` for config and
+  auth resolution. Providers must not construct HTTP clients or load
+  credentials independently — this ensures consistent env var precedence,
+  secret handling, and auth behavior across all providers.
 
 ## Taste Rules
 

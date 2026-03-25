@@ -100,9 +100,6 @@ func (p *SynthProvider) Commands() []*cobra.Command {
 			if root := cmd.Root(); root.PersistentPreRun != nil {
 				root.PersistentPreRun(cmd, args)
 			}
-			if providers.IsCRUDCommand(cmd) {
-				providers.WarnDeprecated(cmd, "grafanactl resources schemas checks")
-			}
 		},
 	}
 
