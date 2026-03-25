@@ -1,7 +1,9 @@
-# ADR: Align `resources examples` with `resources schemas` UX
+# ADR-001: Align `resources examples` with `resources schemas` UX
 
-**Date**: 2026-03-25
-**Status**: Accepted (implemented)
+**Created**: 2026-03-25
+**Status**: accepted
+**Bead**: grafanactl-experiments-897e
+**Supersedes**: none
 
 ## Context
 
