@@ -294,6 +294,8 @@ only the wide table codec was expected to display.
 - `cmd/grafanactl/datasources/query/query.go`: query response passed to all codecs unchanged
 - `cmd/grafanactl/io/format.go`: built-in JSON/YAML codecs fall through when no custom codec is registered
 
+**See also:** [design-guide.md §11](../reference/design-guide.md#11-codec-requirements-by-command-type-adopt) — codec requirements by command type, [§12](../reference/design-guide.md#12-mutation-command-output-adopt) — mutation command output spec.
+
 ---
 
 ### 14. PromQL Construction with promql-builder (High Confidence: 90%)
@@ -384,7 +386,7 @@ PersistentPreRun: func(cmd *cobra.Command, args []string) {
 },
 ```
 
-This applies to provider commands (`slo`, `synth`, `alert`) which each define a `PersistentPreRun` for their deprecation warnings.
+This applies to provider commands (`slo`, `synth`, `alert`) which each define a `PersistentPreRun` for provider-specific setup (e.g. config loading, root command propagation).
 
 ---
 
@@ -419,6 +421,8 @@ the numeric ID from `metadata.uid` (with a fallback to parsing `metadata.name` a
 number for backward compatibility).
 
 **Usage:** When a provider resource type needs CRUD via `grafanactl resources`, implement `ResourceAdapter`, call `adapter.Register()` in `init()`, and call `RegistryIndex.RegisterStatic()` in `discovery.NewDefaultRegistry`.
+
+**See also:** [design-guide.md §14](../reference/design-guide.md#14-provider--resources-output-consistency-adopt) — provider CRUD commands must use ResourceAdapter, [§15](../reference/design-guide.md#15-typedcrud-pattern-adopt--evolve) — TypedCRUD pattern and trajectory, [§16](../reference/design-guide.md#16-provider-configloader-adopt) — ConfigLoader requirement for all providers.
 
 **Context threading for `--context` flag:** The selected config context name is
 threaded into adapter factories via Go's `context.Context` using helpers in
