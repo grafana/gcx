@@ -174,6 +174,9 @@ func (a *typedAdapter[T]) Get(ctx context.Context, name string, _ metav1.GetOpti
 	if err != nil {
 		return nil, err
 	}
+	if item == nil {
+		return nil, fmt.Errorf("resource %q not found", name)
+	}
 
 	u, err := a.crud.toUnstructured(*item)
 	if err != nil {

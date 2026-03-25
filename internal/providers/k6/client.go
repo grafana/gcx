@@ -38,13 +38,17 @@ type Client struct {
 }
 
 // NewClient creates a new K6 Cloud client with the given API domain.
-func NewClient(apiDomain string) *Client {
+// If httpClient is nil, a default client with a 60-second timeout is used.
+func NewClient(apiDomain string, httpClient *http.Client) *Client {
 	if apiDomain == "" {
 		apiDomain = DefaultAPIDomain
 	}
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 60 * time.Second}
+	}
 	return &Client{
 		apiDomain: strings.TrimRight(apiDomain, "/"),
-		http:      &http.Client{Timeout: 60 * time.Second},
+		http:      httpClient,
 	}
 }
 

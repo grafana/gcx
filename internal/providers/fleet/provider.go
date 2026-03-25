@@ -185,7 +185,11 @@ func (h *fleetHelper) loadClient(ctx context.Context) (*Client, string, error) {
 		return nil, "", errors.New("fleet management instance ID is not available for this stack")
 	}
 	instanceID := strconv.Itoa(cloudCfg.Stack.AgentManagementInstanceID)
-	return NewClient(url, instanceID, cloudCfg.Token, true, nil), cloudCfg.Namespace, nil
+	httpClient, err := cloudCfg.HTTPClient()
+	if err != nil {
+		return nil, "", fmt.Errorf("fleet: failed to create HTTP client: %w", err)
+	}
+	return NewClient(url, instanceID, cloudCfg.Token, true, httpClient), cloudCfg.Namespace, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -422,11 +426,16 @@ func (h *fleetHelper) newPipelineUpdateCommand() *cobra.Command {
 }
 
 func (h *fleetHelper) newPipelineDeleteCommand() *cobra.Command {
-	return &cobra.Command{
+	opts := &pipelineDeleteOpts{}
+	cmd := &cobra.Command{
 		Use:   "delete <name>",
 		Short: "Delete a pipeline.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			ctx := cmd.Context()
 			client, _, err := h.loadClient(ctx)
 			if err != nil {
@@ -441,7 +450,15 @@ func (h *fleetHelper) newPipelineDeleteCommand() *cobra.Command {
 			return nil
 		},
 	}
+	opts.setup(cmd.Flags())
+	return cmd
 }
+
+type pipelineDeleteOpts struct{}
+
+func (o *pipelineDeleteOpts) setup(_ *pflag.FlagSet) {}
+
+func (o *pipelineDeleteOpts) Validate() error { return nil }
 
 type pipelineWriteOpts struct {
 	File string
@@ -649,11 +666,16 @@ func (h *fleetHelper) newCollectorUpdateCommand() *cobra.Command {
 }
 
 func (h *fleetHelper) newCollectorDeleteCommand() *cobra.Command {
+	opts := &collectorDeleteOpts{}
 	cmd := &cobra.Command{
 		Use:   "delete <id>",
 		Short: "Delete a collector.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			ctx := cmd.Context()
 			client, _, err := h.loadClient(ctx)
 			if err != nil {
@@ -668,9 +690,15 @@ func (h *fleetHelper) newCollectorDeleteCommand() *cobra.Command {
 			return nil
 		},
 	}
-
+	opts.setup(cmd.Flags())
 	return cmd
 }
+
+type collectorDeleteOpts struct{}
+
+func (o *collectorDeleteOpts) setup(_ *pflag.FlagSet) {}
+
+func (o *collectorDeleteOpts) Validate() error { return nil }
 
 type collectorWriteOpts struct {
 	File string
@@ -1121,7 +1149,11 @@ func NewPipelineAdapterFactory(loader CloudConfigLoader) adapter.Factory {
 			return nil, errors.New("fleet management instance ID is not available for this stack")
 		}
 		instanceID := strconv.Itoa(cloudCfg.Stack.AgentManagementInstanceID)
-		client := NewClient(url, instanceID, cloudCfg.Token, true, nil)
+		httpClient, err := cloudCfg.HTTPClient()
+		if err != nil {
+			return nil, fmt.Errorf("fleet: failed to create HTTP client for pipeline adapter: %w", err)
+		}
+		client := NewClient(url, instanceID, cloudCfg.Token, true, httpClient)
 
 		crud := &adapter.TypedCRUD[Pipeline]{
 			NameFn: func(p Pipeline) string {
@@ -1192,7 +1224,11 @@ func NewCollectorAdapterFactory(loader CloudConfigLoader) adapter.Factory {
 			return nil, errors.New("fleet management instance ID is not available for this stack")
 		}
 		instanceID := strconv.Itoa(cloudCfg.Stack.AgentManagementInstanceID)
-		client := NewClient(url, instanceID, cloudCfg.Token, true, nil)
+		httpClient, err := cloudCfg.HTTPClient()
+		if err != nil {
+			return nil, fmt.Errorf("fleet: failed to create HTTP client for collector adapter: %w", err)
+		}
+		client := NewClient(url, instanceID, cloudCfg.Token, true, httpClient)
 
 		crud := &adapter.TypedCRUD[Collector]{
 			NameFn: func(col Collector) string {

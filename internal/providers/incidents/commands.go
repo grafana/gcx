@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"github.com/grafana/grafanactl/internal/format"
 	cmdio "github.com/grafana/grafanactl/internal/output"
 	"github.com/grafana/grafanactl/internal/resources"
+	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -296,6 +296,9 @@ type closeOpts struct {
 	loader GrafanaConfigLoader
 }
 
+func (o *closeOpts) setup(_ *pflag.FlagSet) {}
+func (o *closeOpts) Validate() error        { return nil }
+
 func newCloseCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &closeOpts{loader: loader}
 	cmd := &cobra.Command{
@@ -325,6 +328,7 @@ func newCloseCommand(loader GrafanaConfigLoader) *cobra.Command {
 			return nil
 		},
 	}
+	opts.setup(cmd.Flags())
 	return cmd
 }
 
@@ -335,6 +339,9 @@ func newCloseCommand(loader GrafanaConfigLoader) *cobra.Command {
 type openOpts struct {
 	loader GrafanaConfigLoader
 }
+
+func (o *openOpts) setup(_ *pflag.FlagSet) {}
+func (o *openOpts) Validate() error        { return nil }
 
 func newOpenCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &openOpts{loader: loader}
@@ -355,13 +362,14 @@ func newOpenCommand(loader GrafanaConfigLoader) *cobra.Command {
 			url := fmt.Sprintf("%s/a/grafana-incident-app/incidents/%s", host, id)
 
 			cmdio.Info(cmd.OutOrStdout(), "Opening %s", url)
-			if err := exec.CommandContext(ctx, "open", url).Start(); err != nil {
+			if err := browser.OpenURL(url); err != nil {
 				return fmt.Errorf("failed to open browser: %w", err)
 			}
 
 			return nil
 		},
 	}
+	opts.setup(cmd.Flags())
 	return cmd
 }
 

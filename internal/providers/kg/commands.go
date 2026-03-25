@@ -210,10 +210,14 @@ func resolveEntityTypes(cmd *cobra.Command, client *Client, entityType string) (
 // ---------------------------------------------------------------------------
 
 func newSetupCommand(loader RESTConfigLoader) *cobra.Command {
-	return &cobra.Command{
+	opts := &setupOpts{}
+	cmd := &cobra.Command{
 		Use:   "setup",
 		Short: "Initialize the Knowledge Graph plugin.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
@@ -229,13 +233,25 @@ func newSetupCommand(loader RESTConfigLoader) *cobra.Command {
 			return nil
 		},
 	}
+	opts.setup(cmd.Flags())
+	return cmd
 }
 
+type setupOpts struct{}
+
+func (o *setupOpts) setup(_ *pflag.FlagSet) {}
+
+func (o *setupOpts) Validate() error { return nil }
+
 func newEnableCommand(loader RESTConfigLoader) *cobra.Command {
-	return &cobra.Command{
+	opts := &enableOpts{}
+	cmd := &cobra.Command{
 		Use:   "enable",
 		Short: "Enable the Knowledge Graph feature.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
@@ -251,7 +267,15 @@ func newEnableCommand(loader RESTConfigLoader) *cobra.Command {
 			return nil
 		},
 	}
+	opts.setup(cmd.Flags())
+	return cmd
 }
+
+type enableOpts struct{}
+
+func (o *enableOpts) setup(_ *pflag.FlagSet) {}
+
+func (o *enableOpts) Validate() error { return nil }
 
 func newStatusCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &statusOpts{}

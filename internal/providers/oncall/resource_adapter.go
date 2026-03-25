@@ -72,7 +72,7 @@ func registerOnCallResource[T any](
 			crud := &adapter.TypedCRUD[T]{
 				NameFn:      nameFn,
 				ListFn:      func(ctx context.Context) ([]T, error) { return listFn(ctx, client) },
-				StripFields: []string{"id"},
+				StripFields: []string{"id", "password", "authorization_header"},
 				Namespace:   namespace,
 				Descriptor:  desc,
 				Aliases:     meta.Aliases,

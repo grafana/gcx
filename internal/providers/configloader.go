@@ -4,13 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/caarlos0/env/v11"
 	"github.com/grafana/grafanactl/internal/cloud"
 	"github.com/grafana/grafanactl/internal/config"
 	"github.com/spf13/pflag"
+	"k8s.io/client-go/rest"
 )
 
 // CloudRESTConfig holds the resolved Grafana Cloud configuration needed to
@@ -20,6 +23,20 @@ type CloudRESTConfig struct {
 	Stack           cloud.StackInfo
 	Namespace       string
 	ProviderConfigs map[string]map[string]string
+
+	// RESTConfig is the underlying REST config from the named context, if available.
+	// Providers should use rest.HTTPClientFor(RESTConfig) to create TLS-aware HTTP clients
+	// when this is non-nil.
+	RESTConfig *rest.Config
+}
+
+// HTTPClient returns a TLS-aware HTTP client derived from the REST config.
+// Returns a default client with 30s timeout when no REST config is present.
+func (c CloudRESTConfig) HTTPClient() (*http.Client, error) {
+	if c.RESTConfig == nil {
+		return &http.Client{Timeout: 30 * time.Second}, nil
+	}
+	return rest.HTTPClientFor(c.RESTConfig)
 }
 
 // ProviderConfig returns the configuration map for a specific provider, or nil if not set.
@@ -232,10 +249,13 @@ func (l *ConfigLoader) LoadCloudConfig(ctx context.Context) (CloudRESTConfig, er
 		return CloudRESTConfig{}, fmt.Errorf("failed to get stack info for %q: %w", slug, err)
 	}
 
-	// Derive namespace from grafana config if available, else default.
+	// Derive namespace and REST config from grafana config if available.
 	namespace := "default"
+	var restCfg *rest.Config
 	if curCtx.Grafana != nil && !curCtx.Grafana.IsEmpty() {
-		namespace = curCtx.ToRESTConfig(ctx).Namespace
+		nrc := curCtx.ToRESTConfig(ctx)
+		namespace = nrc.Namespace
+		restCfg = &nrc.Config
 	}
 
 	return CloudRESTConfig{
@@ -243,5 +263,6 @@ func (l *ConfigLoader) LoadCloudConfig(ctx context.Context) (CloudRESTConfig, er
 		Stack:           stack,
 		Namespace:       namespace,
 		ProviderConfigs: curCtx.Providers,
+		RESTConfig:      restCfg,
 	}, nil
 }

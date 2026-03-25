@@ -101,7 +101,12 @@ func authenticatedClient(ctx context.Context, loader CloudConfigLoader) (*Client
 		}
 	}
 
-	client := NewClient(domain)
+	httpClient, err := cfg.HTTPClient()
+	if err != nil {
+		return nil, "", fmt.Errorf("k6: failed to create HTTP client: %w", err)
+	}
+
+	client := NewClient(domain, httpClient)
 	if err := client.Authenticate(ctx, cfg.Token, cfg.Stack.ID); err != nil {
 		return nil, "", fmt.Errorf("k6 auth failed (PUT %s): %w -- ensure your token has k6 scopes", authPath, err)
 	}
