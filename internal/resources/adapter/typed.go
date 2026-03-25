@@ -56,6 +56,10 @@ type TypedCRUD[T any] struct {
 }
 
 // AsAdapter returns a ResourceAdapter backed by this TypedCRUD.
+// Note: the returned adapter's Schema() and Example() return nil.
+// Schema/example are static registration metadata injected only via
+// TypedRegistration.ToRegistration(). Use SchemaForGVK/ExampleForGVK
+// for authoritative lookup.
 func (c *TypedCRUD[T]) AsAdapter() ResourceAdapter {
 	return &typedAdapter[T]{crud: c}
 }
