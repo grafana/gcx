@@ -1,7 +1,7 @@
 ---
 type: feature-spec
 title: "Codify CLI Design Principles in CONSTITUTION.md and Design Guide"
-status: approved
+status: done
 beads_id: grafanactl-experiments-uxu
 created: 2026-03-25
 ---
