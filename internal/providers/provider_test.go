@@ -19,11 +19,11 @@ type mockProvider struct {
 	configKeys []providers.ConfigKey
 }
 
-func (m *mockProvider) Name() string                         { return m.name }
-func (m *mockProvider) ShortDesc() string                    { return m.shortDesc }
-func (m *mockProvider) Commands() []*cobra.Command           { return m.commands }
-func (m *mockProvider) Validate(cfg map[string]string) error { return m.validateFn(cfg) }
-func (m *mockProvider) ConfigKeys() []providers.ConfigKey    { return m.configKeys }
+func (m *mockProvider) Name() string                               { return m.name }
+func (m *mockProvider) ShortDesc() string                          { return m.shortDesc }
+func (m *mockProvider) Commands() []*cobra.Command                 { return m.commands }
+func (m *mockProvider) Validate(cfg map[string]string) error       { return m.validateFn(cfg) }
+func (m *mockProvider) ConfigKeys() []providers.ConfigKey          { return m.configKeys }
 func (m *mockProvider) TypedRegistrations() []adapter.Registration { return nil }
 
 func TestAll(t *testing.T) {

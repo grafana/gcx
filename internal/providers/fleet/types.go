@@ -9,6 +9,8 @@ func (p Pipeline) GetResourceName() string { return p.ID }
 func (p *Pipeline) SetResourceName(name string) { p.ID = name }
 
 // Pipeline represents a Fleet Management pipeline.
+//
+//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type Pipeline struct {
 	ID       string         `json:"id,omitempty"`
 	Name     string         `json:"name"`
@@ -25,6 +27,8 @@ func (c Collector) GetResourceName() string { return c.ID }
 func (c *Collector) SetResourceName(name string) { c.ID = name }
 
 // Collector represents a Fleet Management collector.
+//
+//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type Collector struct {
 	ID               string            `json:"id,omitempty"`
 	Name             string            `json:"name,omitempty"`

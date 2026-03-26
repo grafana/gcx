@@ -1,15 +1,16 @@
-package incidents
+package incidents_test
 
 import (
 	"testing"
 
+	"github.com/grafana/grafanactl/internal/providers/incidents"
 	"github.com/grafana/grafanactl/internal/resources/adapter"
 )
 
-var _ adapter.ResourceIdentity = &Incident{}
+var _ adapter.ResourceIdentity = &incidents.Incident{}
 
 func TestIncident_ResourceIdentity(t *testing.T) {
-	i := &Incident{IncidentID: "inc-42"}
+	i := &incidents.Incident{IncidentID: "inc-42"}
 	if got := i.GetResourceName(); got != "inc-42" {
 		t.Errorf("GetResourceName() = %q, want %q", got, "inc-42")
 	}

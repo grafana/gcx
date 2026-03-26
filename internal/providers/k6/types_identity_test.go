@@ -1,4 +1,4 @@
-package k6
+package k6 //nolint:testpackage // Tests verify compile-time ResourceIdentity conformance on value types.
 
 import (
 	"testing"

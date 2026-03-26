@@ -34,6 +34,8 @@ var staticAliases = []string{"checks"}
 // non-serialized metadata needed by TypedCRUD's MetadataFn.
 // Unexported fields are ignored by json.Marshal, so the serialized output
 // is identical to marshaling a plain CheckSpec.
+//
+//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type checkResource struct {
 	CheckSpec
 
@@ -192,7 +194,6 @@ func NewAdapterFactory(loader smcfg.Loader) adapter.Factory {
 		return crud.AsAdapter(), nil
 	}
 }
-
 
 // StaticDescriptor returns the static descriptor for SM Check resources.
 // Used for registration without constructing an adapter instance.

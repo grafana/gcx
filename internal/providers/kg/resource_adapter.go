@@ -37,7 +37,6 @@ var staticDescriptor = resources.Descriptor{
 //nolint:gochecknoglobals // Static descriptor used in init() self-registration pattern.
 var staticAliases = []string{"kg-rules", "kg-rule", "kgrule"}
 
-
 // RuleSchema returns a JSON Schema for the KG Rule resource type.
 func RuleSchema() json.RawMessage {
 	s := map[string]any{
@@ -118,6 +117,7 @@ func NewAdapterFactory(loader RESTConfigLoader) adapter.Factory {
 			return nil, fmt.Errorf("kg: failed to create client: %w", err)
 		}
 
+		//nolint:dupl // Duplicate TypedCRUD initialization intentional between factory and NewTypedCRUD.
 		crud := &adapter.TypedCRUD[Rule]{
 			ListFn: func(ctx context.Context) ([]Rule, error) {
 				return client.ListRules(ctx)
@@ -154,6 +154,7 @@ func NewTypedCRUD(ctx context.Context, loader RESTConfigLoader) (*adapter.TypedC
 		return nil, internalconfig.NamespacedRESTConfig{}, fmt.Errorf("kg: failed to create client: %w", err)
 	}
 
+	//nolint:dupl // Duplicate TypedCRUD initialization intentional between factory and NewTypedCRUD.
 	crud := &adapter.TypedCRUD[Rule]{
 		ListFn: func(ctx context.Context) ([]Rule, error) {
 			return client.ListRules(ctx)

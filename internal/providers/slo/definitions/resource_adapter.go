@@ -30,7 +30,6 @@ func StaticAliases() []string {
 	return []string{"slo"}
 }
 
-
 // SloSchema returns a JSON Schema for the SLO resource type.
 func SloSchema() json.RawMessage {
 	return adapter.SchemaFromType[Slo](StaticDescriptor())
@@ -85,6 +84,7 @@ func NewTypedCRUD(ctx context.Context) (*adapter.TypedCRUD[Slo], internalconfig.
 		return nil, internalconfig.NamespacedRESTConfig{}, fmt.Errorf("failed to create SLO definitions client: %w", err)
 	}
 
+	//nolint:dupl // Duplicate TypedCRUD initialization intentional between factory functions.
 	crud := &adapter.TypedCRUD[Slo]{
 		ListFn: client.List,
 		GetFn: func(ctx context.Context, name string) (*Slo, error) {
@@ -145,6 +145,7 @@ func NewFactoryFromConfig(cfg internalconfig.NamespacedRESTConfig) adapter.Facto
 			return nil, fmt.Errorf("failed to create SLO definitions client: %w", err)
 		}
 
+		//nolint:dupl // Duplicate TypedCRUD initialization intentional between factory functions.
 		crud := &adapter.TypedCRUD[Slo]{
 			ListFn: client.List,
 			GetFn: func(ctx context.Context, name string) (*Slo, error) {

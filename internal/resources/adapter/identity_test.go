@@ -7,12 +7,14 @@ import (
 )
 
 // stringID is a test type with a string identity field.
+//
+//nolint:recvcheck // Mixed receivers are intentional for testing TypedCRUD compatibility.
 type stringID struct {
 	UUID string
 }
 
-func (s stringID) GetResourceName() string    { return s.UUID }
-func (s *stringID) SetResourceName(n string)  { s.UUID = n }
+func (s stringID) GetResourceName() string   { return s.UUID }
+func (s *stringID) SetResourceName(n string) { s.UUID = n }
 
 // Compile-time verification that stringID satisfies ResourceIdentity.
 var _ adapter.ResourceIdentity = &stringID{}

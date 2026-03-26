@@ -31,6 +31,8 @@ func (g RuleGroup) GetResourceName() string { return g.Name }
 func (g *RuleGroup) SetResourceName(name string) { g.Name = name }
 
 // RuleGroup represents an alert rule group.
+//
+//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type RuleGroup struct {
 	Name           string         `json:"name"`
 	File           string         `json:"file"`
@@ -49,6 +51,8 @@ func (r RuleStatus) GetResourceName() string { return r.UID }
 func (r *RuleStatus) SetResourceName(name string) { r.UID = name }
 
 // RuleStatus represents an alert rule with its current status.
+//
+//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type RuleStatus struct {
 	State                 string                `json:"state"`
 	Name                  string                `json:"name"`

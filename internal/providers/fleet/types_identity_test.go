@@ -1,16 +1,17 @@
-package fleet
+package fleet_test
 
 import (
 	"testing"
 
+	"github.com/grafana/grafanactl/internal/providers/fleet"
 	"github.com/grafana/grafanactl/internal/resources/adapter"
 )
 
-var _ adapter.ResourceIdentity = &Pipeline{}
-var _ adapter.ResourceIdentity = &Collector{}
+var _ adapter.ResourceIdentity = &fleet.Pipeline{}
+var _ adapter.ResourceIdentity = &fleet.Collector{}
 
 func TestPipeline_ResourceIdentity(t *testing.T) {
-	p := &Pipeline{ID: "pipe-1"}
+	p := &fleet.Pipeline{ID: "pipe-1"}
 	if got := p.GetResourceName(); got != "pipe-1" {
 		t.Errorf("GetResourceName() = %q, want %q", got, "pipe-1")
 	}
@@ -21,7 +22,7 @@ func TestPipeline_ResourceIdentity(t *testing.T) {
 }
 
 func TestCollector_ResourceIdentity(t *testing.T) {
-	c := &Collector{ID: "col-1"}
+	c := &fleet.Collector{ID: "col-1"}
 	if got := c.GetResourceName(); got != "col-1" {
 		t.Errorf("GetResourceName() = %q, want %q", got, "col-1")
 	}

@@ -40,6 +40,8 @@ func (i Incident) GetResourceName() string { return i.IncidentID }
 func (i *Incident) SetResourceName(name string) { i.IncidentID = name }
 
 // Incident represents an incident from the IRM API.
+//
+//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type Incident struct {
 	IncidentID              string               `json:"incidentID,omitempty"`
 	Title                   string               `json:"title"`

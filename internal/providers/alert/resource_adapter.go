@@ -46,7 +46,6 @@ var staticGroupsDescriptor = resources.Descriptor{
 //nolint:gochecknoglobals // Static descriptor used in init() self-registration pattern.
 var staticGroupsAliases = []string{"groups"}
 
-
 // alertRuleSchema returns a JSON Schema for the AlertRule resource type.
 func alertRuleSchema() json.RawMessage {
 	return adapter.SchemaFromType[RuleStatus](staticRulesDescriptor)

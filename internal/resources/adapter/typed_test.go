@@ -16,6 +16,8 @@ import (
 )
 
 // TestWidget is a simple domain object used across all tests.
+//
+//nolint:recvcheck // Mixed receivers are intentional for testing TypedCRUD compatibility.
 type TestWidget struct {
 	ID     string `json:"id"`
 	Name   string `json:"name"`
@@ -39,8 +41,8 @@ func newWidgetCRUD(widgets []TestWidget) *adapter.TypedCRUD[TestWidget] {
 	return &adapter.TypedCRUD[TestWidget]{
 		Namespace:   "stack-1",
 		StripFields: []string{"id", "secret"},
-		Descriptor: widgetDesc,
-		Aliases:    []string{"wdg"},
+		Descriptor:  widgetDesc,
+		Aliases:     []string{"wdg"},
 		ListFn: func(_ context.Context) ([]TestWidget, error) {
 			return widgets, nil
 		},

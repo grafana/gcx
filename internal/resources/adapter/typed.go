@@ -17,7 +17,8 @@ import (
 type TypedObject[T ResourceNamer] struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec              T `json:"spec"`
+
+	Spec T `json:"spec"`
 }
 
 // TypedCRUD absorbs the boilerplate that every ResourceAdapter implementation
@@ -64,7 +65,7 @@ func (c *TypedCRUD[T]) resourceName(item T) string {
 // restoreName restores the identity field on a domain object using ResourceIdentity.SetResourceName
 // via type assertion on the pointer (since SetResourceName has pointer receiver).
 func (c *TypedCRUD[T]) restoreName(name string, item *T) {
-	if setter, ok := any(item).(interface{ SetResourceName(string) }); ok {
+	if setter, ok := any(item).(interface{ SetResourceName(name string) }); ok {
 		setter.SetResourceName(name)
 	}
 }

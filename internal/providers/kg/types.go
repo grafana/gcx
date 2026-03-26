@@ -325,6 +325,8 @@ func (r Rule) GetResourceName() string { return r.Name }
 func (r *Rule) SetResourceName(name string) { r.Name = name }
 
 // Rule represents a Knowledge Graph prom rule.
+//
+//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type Rule struct {
 	Name        string            `json:"name"`
 	Expr        string            `json:"expr,omitempty"`

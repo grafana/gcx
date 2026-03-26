@@ -27,8 +27,9 @@ Grafana REST API (/apis endpoint)    -- K8s-compatible API (Grafana 12+)
 ### Extension Pipelines
 
 ```
-Provider System (internal/providers/)     -- SLO, Synth, Alert providers
-    |                                        (non-K8s Grafana APIs)
+Provider System (internal/providers/)     -- 8 providers (SLO, Synth, OnCall,
+    |                                        Fleet, K6, KG, Incidents, Alert)
+    |                                        TypedRegistrations() → adapter.Register()
     v
 Grafana REST API (/api endpoint)          -- Product-specific REST endpoints
 
@@ -45,7 +46,7 @@ Datasource HTTP APIs                      -- PromQL, LogQL, profile, trace queri
 | [001](docs/adrs/legacy/001-query-under-datasources.md) | Move query under datasources with per-kind subcommands | accepted |
 | [002](docs/adrs/migrate-provider-rewrite/001-three-stage-blackbox-verification.md) | Three-stage skill structure with dual blackbox isolation | proposed |
 | [003](docs/adrs/constitution-design-principles/001-codify-cli-design-principles.md) | Codify CLI design principles in CONSTITUTION.md and design guide | proposed |
-| [004](docs/adrs/typed-resource-adapter-compliance/001-typed-resource-adapter-foundation.md) | TypedResourceAdapter[T] with ResourceIdentity and provider command migration | proposed |
+| [004](docs/adrs/typed-resource-adapter-compliance/001-typed-resource-adapter-foundation.md) | TypedResourceAdapter[T] with ResourceIdentity and provider command migration | accepted |
 
 See [docs/research/](docs/research/) for design rationale and [docs/adrs/](docs/adrs/) for all ADRs.
 
@@ -66,16 +67,21 @@ See [docs/research/](docs/research/) for design rationale and [docs/adrs/](docs/
 | `cmd/grafanactl/io/` | Output codec registry (json, yaml, text, wide) |
 | `internal/config/` | Config types, loader, editor, rest.Config builder |
 | `internal/resources/` | Core types: Resource, Selector, Filter, Descriptor |
-| `internal/resources/adapter/` | ResourceAdapter interface, Factory, ResourceClientRouter |
+| `internal/resources/adapter/` | ResourceAdapter interface, Factory, ResourceClientRouter, TypedCRUD[T], TypedObject[T], ResourceIdentity, ResourceNamer, SchemaFromType[T] |
 | `internal/resources/discovery/` | API resource discovery, registry, GVK resolution |
 | `internal/resources/dynamic/` | k8s dynamic client wrapper |
 | `internal/resources/local/` | FSReader, FSWriter (disk I/O) |
 | `internal/resources/process/` | Processors: ManagerFields, ServerFields, Namespace |
 | `internal/resources/remote/` | Pusher, Puller, Deleter, FolderHierarchy, Summary |
-| `internal/providers/` | Provider plugin system (interface, registry) |
+| `internal/providers/` | Provider plugin system (interface, registry, TypedRegistrations) |
 | `internal/providers/slo/` | SLO provider (definitions, reports) |
 | `internal/providers/synth/` | Synthetic Monitoring provider (checks, probes) |
 | `internal/providers/alert/` | Alert provider (rules, groups — read-only) |
+| `internal/providers/oncall/` | OnCall provider (17 resource types: integrations, schedules, shifts, etc.) |
+| `internal/providers/fleet/` | Fleet Management provider (pipelines, collectors) |
+| `internal/providers/k6/` | K6 Cloud provider (projects, load tests, schedules, env vars, load zones) |
+| `internal/providers/kg/` | Knowledge Graph (Asserts) provider (rules — read-only) |
+| `internal/providers/incidents/` | IRM Incidents provider |
 | `internal/dashboards/` | Dashboard Image Renderer client |
 | `internal/query/prometheus/` | Prometheus HTTP query client |
 | `internal/query/loki/` | Loki HTTP query client |

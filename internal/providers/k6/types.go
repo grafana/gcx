@@ -4,22 +4,24 @@ import "strconv"
 
 // ---------- ResourceIdentity implementations ----------
 
-func (p Project) GetResourceName() string       { return strconv.Itoa(p.ID) }
-func (p *Project) SetResourceName(name string)  { p.ID, _ = strconv.Atoi(name) }
+func (p Project) GetResourceName() string      { return strconv.Itoa(p.ID) }
+func (p *Project) SetResourceName(name string) { p.ID, _ = strconv.Atoi(name) }
 
 func (lt LoadTest) GetResourceName() string      { return strconv.Itoa(lt.ID) }
 func (lt *LoadTest) SetResourceName(name string) { lt.ID, _ = strconv.Atoi(name) }
 
-func (s Schedule) GetResourceName() string       { return strconv.Itoa(s.ID) }
-func (s *Schedule) SetResourceName(name string)  { s.ID, _ = strconv.Atoi(name) }
+func (s Schedule) GetResourceName() string      { return strconv.Itoa(s.ID) }
+func (s *Schedule) SetResourceName(name string) { s.ID, _ = strconv.Atoi(name) }
 
-func (ev EnvVar) GetResourceName() string        { return strconv.Itoa(ev.ID) }
-func (ev *EnvVar) SetResourceName(name string)   { ev.ID, _ = strconv.Atoi(name) }
+func (ev EnvVar) GetResourceName() string      { return strconv.Itoa(ev.ID) }
+func (ev *EnvVar) SetResourceName(name string) { ev.ID, _ = strconv.Atoi(name) }
 
 func (lz LoadZone) GetResourceName() string      { return lz.Name }
 func (lz *LoadZone) SetResourceName(name string) { lz.Name = name }
 
 // Project represents a K6 Cloud project (v6 API).
+//
+//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type Project struct {
 	ID               int    `json:"id,omitempty"`
 	Name             string `json:"name"`
@@ -30,6 +32,8 @@ type Project struct {
 }
 
 // LoadTest represents a K6 load test (v6 API).
+//
+//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type LoadTest struct {
 	ID        int    `json:"id,omitempty"`
 	Name      string `json:"name"`
@@ -40,6 +44,8 @@ type LoadTest struct {
 }
 
 // EnvVar represents a K6 Cloud environment variable.
+//
+//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type EnvVar struct {
 	ID          int    `json:"id,omitempty"`
 	Name        string `json:"name"`
@@ -98,6 +104,8 @@ type testRunsResponse struct {
 }
 
 // Schedule represents a K6 schedule (v6 API).
+//
+//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type Schedule struct {
 	ID             int             `json:"id,omitzero"`
 	LoadTestID     int             `json:"load_test_id,omitzero"`
@@ -127,6 +135,8 @@ type schedulesResponse struct {
 }
 
 // LoadZone represents a K6 private load zone.
+//
+//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type LoadZone struct {
 	ID           int    `json:"id,omitzero"`
 	Name         string `json:"name"`

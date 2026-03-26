@@ -65,7 +65,7 @@ func (p *K6Provider) ConfigKeys() []providers.ConfigKey {
 // TypedRegistrations returns adapter registrations for K6 resource types.
 func (p *K6Provider) TypedRegistrations() []adapter.Registration {
 	loader := &providers.ConfigLoader{}
-	var registrations []adapter.Registration
+	registrations := make([]adapter.Registration, 0, len(allResources()))
 
 	for _, rd := range allResources() {
 		desc := resources.Descriptor{

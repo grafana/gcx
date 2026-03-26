@@ -542,12 +542,3 @@ func newDeleteCommand(loader smcfg.Loader) *cobra.Command {
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
-
-// probeRefMap converts a []ProbeRef to a map of ID → name.
-func probeRefMap(refs []ProbeRef) map[int64]string {
-	m := make(map[int64]string, len(refs))
-	for _, p := range refs {
-		m[p.ID] = p.Name
-	}
-	return m
-}

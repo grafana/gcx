@@ -1,30 +1,31 @@
-package oncall
+package oncall_test
 
 import (
 	"testing"
 
+	"github.com/grafana/grafanactl/internal/providers/oncall"
 	"github.com/grafana/grafanactl/internal/resources/adapter"
 )
 
 // Compile-time assertions for all 17 OnCall types.
 var (
-	_ adapter.ResourceIdentity = &Integration{}
-	_ adapter.ResourceIdentity = &EscalationChain{}
-	_ adapter.ResourceIdentity = &EscalationPolicy{}
-	_ adapter.ResourceIdentity = &Schedule{}
-	_ adapter.ResourceIdentity = &Shift{}
-	_ adapter.ResourceIdentity = &Team{}
-	_ adapter.ResourceIdentity = &IntegrationRoute{}
-	_ adapter.ResourceIdentity = &OutgoingWebhook{}
-	_ adapter.ResourceIdentity = &AlertGroup{}
-	_ adapter.ResourceIdentity = &User{}
-	_ adapter.ResourceIdentity = &PersonalNotificationRule{}
-	_ adapter.ResourceIdentity = &UserGroup{}
-	_ adapter.ResourceIdentity = &SlackChannel{}
-	_ adapter.ResourceIdentity = &Alert{}
-	_ adapter.ResourceIdentity = &ResolutionNote{}
-	_ adapter.ResourceIdentity = &ShiftSwap{}
-	_ adapter.ResourceIdentity = &Organization{}
+	_ adapter.ResourceIdentity = &oncall.Integration{}
+	_ adapter.ResourceIdentity = &oncall.EscalationChain{}
+	_ adapter.ResourceIdentity = &oncall.EscalationPolicy{}
+	_ adapter.ResourceIdentity = &oncall.Schedule{}
+	_ adapter.ResourceIdentity = &oncall.Shift{}
+	_ adapter.ResourceIdentity = &oncall.Team{}
+	_ adapter.ResourceIdentity = &oncall.IntegrationRoute{}
+	_ adapter.ResourceIdentity = &oncall.OutgoingWebhook{}
+	_ adapter.ResourceIdentity = &oncall.AlertGroup{}
+	_ adapter.ResourceIdentity = &oncall.User{}
+	_ adapter.ResourceIdentity = &oncall.PersonalNotificationRule{}
+	_ adapter.ResourceIdentity = &oncall.UserGroup{}
+	_ adapter.ResourceIdentity = &oncall.SlackChannel{}
+	_ adapter.ResourceIdentity = &oncall.Alert{}
+	_ adapter.ResourceIdentity = &oncall.ResolutionNote{}
+	_ adapter.ResourceIdentity = &oncall.ShiftSwap{}
+	_ adapter.ResourceIdentity = &oncall.Organization{}
 )
 
 func TestOnCallTypes_ResourceIdentity(t *testing.T) {
@@ -32,23 +33,23 @@ func TestOnCallTypes_ResourceIdentity(t *testing.T) {
 		name string
 		ri   adapter.ResourceIdentity
 	}{
-		{"Integration", &Integration{ID: "XYZ"}},
-		{"EscalationChain", &EscalationChain{ID: "XYZ"}},
-		{"EscalationPolicy", &EscalationPolicy{ID: "XYZ"}},
-		{"Schedule", &Schedule{ID: "XYZ"}},
-		{"Shift", &Shift{ID: "XYZ"}},
-		{"Team", &Team{ID: "XYZ"}},
-		{"IntegrationRoute", &IntegrationRoute{ID: "XYZ"}},
-		{"OutgoingWebhook", &OutgoingWebhook{ID: "XYZ"}},
-		{"AlertGroup", &AlertGroup{ID: "XYZ"}},
-		{"User", &User{ID: "XYZ"}},
-		{"PersonalNotificationRule", &PersonalNotificationRule{ID: "XYZ"}},
-		{"UserGroup", &UserGroup{ID: "XYZ"}},
-		{"SlackChannel", &SlackChannel{ID: "XYZ"}},
-		{"Alert", &Alert{ID: "XYZ"}},
-		{"ResolutionNote", &ResolutionNote{ID: "XYZ"}},
-		{"ShiftSwap", &ShiftSwap{ID: "XYZ"}},
-		{"Organization", &Organization{ID: "XYZ"}},
+		{"Integration", &oncall.Integration{ID: "XYZ"}},
+		{"EscalationChain", &oncall.EscalationChain{ID: "XYZ"}},
+		{"EscalationPolicy", &oncall.EscalationPolicy{ID: "XYZ"}},
+		{"Schedule", &oncall.Schedule{ID: "XYZ"}},
+		{"Shift", &oncall.Shift{ID: "XYZ"}},
+		{"Team", &oncall.Team{ID: "XYZ"}},
+		{"IntegrationRoute", &oncall.IntegrationRoute{ID: "XYZ"}},
+		{"OutgoingWebhook", &oncall.OutgoingWebhook{ID: "XYZ"}},
+		{"AlertGroup", &oncall.AlertGroup{ID: "XYZ"}},
+		{"User", &oncall.User{ID: "XYZ"}},
+		{"PersonalNotificationRule", &oncall.PersonalNotificationRule{ID: "XYZ"}},
+		{"UserGroup", &oncall.UserGroup{ID: "XYZ"}},
+		{"SlackChannel", &oncall.SlackChannel{ID: "XYZ"}},
+		{"Alert", &oncall.Alert{ID: "XYZ"}},
+		{"ResolutionNote", &oncall.ResolutionNote{ID: "XYZ"}},
+		{"ShiftSwap", &oncall.ShiftSwap{ID: "XYZ"}},
+		{"Organization", &oncall.Organization{ID: "XYZ"}},
 	}
 
 	for _, tt := range tests {

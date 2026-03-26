@@ -1,15 +1,16 @@
-package probes
+package probes_test
 
 import (
 	"testing"
 
+	"github.com/grafana/grafanactl/internal/providers/synth/probes"
 	"github.com/grafana/grafanactl/internal/resources/adapter"
 )
 
-var _ adapter.ResourceIdentity = &Probe{}
+var _ adapter.ResourceIdentity = &probes.Probe{}
 
 func TestProbe_ResourceIdentity(t *testing.T) {
-	p := &Probe{ID: 42}
+	p := &probes.Probe{ID: 42}
 	if got := p.GetResourceName(); got != "42" {
 		t.Errorf("GetResourceName() = %q, want %q", got, "42")
 	}

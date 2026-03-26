@@ -30,7 +30,6 @@ var staticDescriptor = resources.Descriptor{
 //nolint:gochecknoglobals // Static descriptor used in init() self-registration pattern.
 var staticAliases = []string{"incidents", "incident", "inc"}
 
-
 // incidentSchema returns a JSON Schema for the Incident resource type.
 func incidentSchema() json.RawMessage {
 	schema := map[string]any{

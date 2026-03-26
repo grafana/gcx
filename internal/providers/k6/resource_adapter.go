@@ -58,7 +58,6 @@ func allResources() []resourceDef {
 	}
 }
 
-
 // CloudConfigLoader can load Grafana Cloud config (token + stack info via GCOM).
 type CloudConfigLoader interface {
 	LoadCloudConfig(ctx context.Context) (providers.CloudRESTConfig, error)

@@ -25,9 +25,22 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   (`Process(*Resource) error`). Processors compose into ordered slices at defined pipeline points.
 - **Format-agnostic data fetching:** Commands fetch all data regardless of `--output` format;
   codecs control display, not data acquisition.
-- **Self-registering providers:** Cloud product providers use `init()` to register with the
-  global provider registry. Each provider contributes CLI commands, resource adapters, and
-  per-provider configuration via the `Provider` interface.
+- **Unified provider registration:** Each provider has exactly one `init()` function
+  containing a single `providers.Register()` call. This atomically populates both the
+  provider registry and the adapter registry — `providers.Register()` calls
+  `adapter.Register()` for each entry returned by `Provider.TypedRegistrations()`.
+  No separate `adapter.Register()` calls may exist outside `providers.Register()`.
+- **ResourceIdentity on all domain types:** Every provider domain type used in a
+  `ResourceAdapter` must implement `ResourceIdentity` (`GetResourceName() string` and
+  `SetResourceName(string)`). `TypedCRUD` uses `GetResourceName()` for name extraction
+  and `SetResourceName()` for name restoration — no function pointers.
+- **TypedCRUD for provider commands:** Provider CRUD commands must use `TypedCRUD[T]`
+  typed methods (`List`, `Get`, `Create`, `Update`, `Delete`) for data access, not raw
+  API clients. This ensures bug fixes to CRUD logic apply to both provider commands and
+  the `resources` pipeline automatically.
+- **Schema/Example on all adapters:** Every `ResourceAdapter` implementation must provide
+  `Schema()` and `Example()` methods returning non-nil JSON. These power the `schemas`
+  command and serve as documentation for each resource type.
 
 ## CLI Grammar
 
@@ -94,11 +107,13 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   `ResourceAdapter` (via TypedCRUD) for data access, not raw API clients.
   Table/wide codecs may diverge — provider tables show domain-specific
   columns, generic tables show resource-management columns.
-- **Typed resource trajectory.** Provider resource types are progressing
-  toward implementing K8s metadata interfaces directly. TypedCRUD is a
-  transitional bridge. New providers must design domain types with eventual
-  K8s interface compliance in mind and must not introduce patterns that
-  deepen the typed-to-unstructured gap.
+- **Typed resource trajectory.** Provider domain types implement
+  `ResourceIdentity` for self-describing identity and are wrapped by
+  `TypedObject[T]` (embedded `metav1.ObjectMeta` + `TypeMeta` + `Spec T`)
+  for K8s metadata compliance. `TypedCRUD[T]` provides both typed methods
+  (returning `TypedObject[T]`) and unstructured methods (via `AsAdapter()`).
+  New providers must implement `ResourceIdentity` on domain types and use
+  `TypedCRUD` for both CLI commands and adapter registration.
 
 ## Dependency Rules
 

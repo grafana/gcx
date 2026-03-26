@@ -1262,8 +1262,8 @@ func NewCollectorAdapterFactory(loader CloudConfigLoader) adapter.Factory {
 			},
 			Namespace:   cloudCfg.Namespace,
 			StripFields: []string{"id"},
-			Descriptor: collectorDescriptorVar,
-			Aliases:    collectorAliasesVar,
+			Descriptor:  collectorDescriptorVar,
+			Aliases:     collectorAliasesVar,
 		}
 		return crud.AsAdapter(), nil
 	}

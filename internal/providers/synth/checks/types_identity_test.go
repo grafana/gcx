@@ -1,4 +1,4 @@
-package checks
+package checks //nolint:testpackage // Tests unexported checkResource type.
 
 import (
 	"testing"

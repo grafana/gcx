@@ -1,7 +1,7 @@
 ---
 type: feature-spec
 title: "Typed Resource Adapter Compliance"
-status: approved
+status: done
 research: docs/research/2026-03-25-provider-registry-convergence.md
 parent: docs/specs/feature-typed-resource-adapter-foundation/spec.md
 beads_id: grafanactl-experiments-dvwd
