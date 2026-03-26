@@ -92,7 +92,7 @@ created, _ := client.Create(ctx, inc)
 
 ## Ancillary Subcommands
 
-Map cloud CLI subcommands that don't fit CRUD to provider `Commands()`:
+Map gcx subcommands that don't fit CRUD to provider `Commands()`:
 
 ```go
 func (p *Provider) Commands() []*cobra.Command {
@@ -140,7 +140,7 @@ exec.CommandContext(ctx, "open", url).Start()
 
 ## API Endpoint Gotchas
 
-**CRITICAL:** Always check the cloud CLI source for exact endpoint paths. Don't guess.
+**CRITICAL:** Always check gcx source for exact endpoint paths. Don't guess.
 
 Known inconsistencies in IRM API:
 - `SeveritiesService.GetOrgSeverities` (not `SeverityService.GetSeverities`)
@@ -148,4 +148,4 @@ Known inconsistencies in IRM API:
 - Activity query wraps in `{"query": {...}}`, not flat `{...}`
 
 These naming inconsistencies are common in gRPC-style APIs. The ONLY
-reliable source is the cloud CLI client code.
+reliable source is the gcx client code.
