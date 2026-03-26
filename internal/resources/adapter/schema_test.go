@@ -17,6 +17,17 @@ type schemaTestWidget struct {
 	Count int    `json:"count,omitempty"`
 }
 
+// requireMap extracts a map[string]any from a parent map, failing the test if
+// the key is missing or the value is not a map.
+func requireMap(t *testing.T, m map[string]any, key string) map[string]any {
+	t.Helper()
+	v, ok := m[key]
+	require.True(t, ok, "key %q not found", key)
+	result, ok := v.(map[string]any)
+	require.True(t, ok, "key %q is %T, not map[string]any", key, v)
+	return result
+}
+
 func TestSchemaFromType(t *testing.T) {
 	desc := resources.Descriptor{
 		GroupVersion: schema.GroupVersion{Group: "test.grafana.app", Version: "v1"},
@@ -28,52 +39,52 @@ func TestSchemaFromType(t *testing.T) {
 	raw := adapter.SchemaFromType[schemaTestWidget](desc)
 	require.NotNil(t, raw)
 
-	var schema map[string]any
-	require.NoError(t, json.Unmarshal(raw, &schema))
+	var s map[string]any
+	require.NoError(t, json.Unmarshal(raw, &s))
 
 	t.Run("envelope has required top-level fields", func(t *testing.T) {
-		assert.Equal(t, "https://json-schema.org/draft/2020-12/schema", schema["$schema"])
-		assert.Equal(t, "https://grafana.com/schemas/Widget", schema["$id"])
-		assert.Equal(t, "object", schema["type"])
-		assert.Equal(t, []any{"apiVersion", "kind", "metadata", "spec"}, schema["required"])
+		assert.Equal(t, "https://json-schema.org/draft/2020-12/schema", s["$schema"])
+		assert.Equal(t, "https://grafana.com/schemas/Widget", s["$id"])
+		assert.Equal(t, "object", s["type"])
+		assert.Equal(t, []any{"apiVersion", "kind", "metadata", "spec"}, s["required"])
 	})
 
 	t.Run("apiVersion and kind are const-constrained", func(t *testing.T) {
-		props := schema["properties"].(map[string]any)
+		props := requireMap(t, s, "properties")
 
-		apiVersion := props["apiVersion"].(map[string]any)
+		apiVersion := requireMap(t, props, "apiVersion")
 		assert.Equal(t, "string", apiVersion["type"])
 		assert.Equal(t, "test.grafana.app/v1", apiVersion["const"])
 
-		kind := props["kind"].(map[string]any)
+		kind := requireMap(t, props, "kind")
 		assert.Equal(t, "string", kind["type"])
 		assert.Equal(t, "Widget", kind["const"])
 	})
 
 	t.Run("metadata has name and namespace", func(t *testing.T) {
-		props := schema["properties"].(map[string]any)
-		metadata := props["metadata"].(map[string]any)
+		props := requireMap(t, s, "properties")
+		metadata := requireMap(t, props, "metadata")
 		assert.Equal(t, "object", metadata["type"])
 
-		metaProps := metadata["properties"].(map[string]any)
+		metaProps := requireMap(t, metadata, "properties")
 		assert.Contains(t, metaProps, "name")
 		assert.Contains(t, metaProps, "namespace")
 	})
 
 	t.Run("spec reflects Go struct fields", func(t *testing.T) {
-		props := schema["properties"].(map[string]any)
-		spec := props["spec"].(map[string]any)
+		props := requireMap(t, s, "properties")
+		spec := requireMap(t, props, "spec")
 		assert.Equal(t, "object", spec["type"])
 
-		specProps := spec["properties"].(map[string]any)
+		specProps := requireMap(t, spec, "properties")
 		assert.Contains(t, specProps, "name")
 		assert.Contains(t, specProps, "color")
 		assert.Contains(t, specProps, "count")
 
-		nameField := specProps["name"].(map[string]any)
+		nameField := requireMap(t, specProps, "name")
 		assert.Equal(t, "string", nameField["type"])
 
-		countField := specProps["count"].(map[string]any)
+		countField := requireMap(t, specProps, "count")
 		assert.Equal(t, "integer", countField["type"])
 	})
 }
