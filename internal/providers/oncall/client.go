@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/grafana/grafanactl/internal/config"
+	"github.com/grafana/grafanactl/internal/providers"
 	"k8s.io/client-go/rest"
 )
 
@@ -45,10 +46,10 @@ type Client struct {
 // oncallURL is the OnCall API base URL (e.g., https://oncall-prod-us-central-0.grafana.net/oncall).
 // cfg is the namespaced REST config providing auth, TLS, and the stack URL.
 func NewClient(oncallURL string, cfg config.NamespacedRESTConfig) (*Client, error) {
-	httpClient, err := rest.HTTPClientFor(&cfg.Config)
-	if err != nil {
-		return nil, fmt.Errorf("oncall: failed to create HTTP client: %w", err)
-	}
+	// OnCall API uses its own auth (raw token in Authorization header), not the
+	// Grafana bearer token. Using rest.HTTPClientFor() would inject the Grafana
+	// bearer token via the k8s transport round-tripper, causing 404/auth errors.
+	httpClient := providers.ExternalHTTPClient()
 
 	token := cfg.BearerToken
 	if strings.HasPrefix(token, "Bearer ") {

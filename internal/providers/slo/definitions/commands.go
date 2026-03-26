@@ -34,13 +34,13 @@ func Commands(loader GrafanaConfigLoader) *cobra.Command {
 		Aliases: []string{"def", "defs"},
 	}
 	cmd.AddCommand(
-		newListCommand(loader),
-		newGetCommand(loader),
-		newPushCommand(loader),
-		newPullCommand(loader),
-		newDeleteCommand(loader),
-		newStatusCommand(loader),
-		newTimelineCommand(loader),
+		newListCommand(),
+		newGetCommand(),
+		newPushCommand(),
+		newPullCommand(),
+		newDeleteCommand(),
+		newStatusCommand(),
+		newTimelineCommand(),
 	)
 	return cmd
 }
@@ -60,7 +60,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newListCommand() *cobra.Command {
 	opts := &listOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -176,7 +176,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newGetCommand() *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
 		Use:   "get UUID",
@@ -226,7 +226,7 @@ func (o *pullOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.OutputDir, "output-dir", "d", ".", "Directory to write SLO definition files to")
 }
 
-func newPullCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newPullCommand() *cobra.Command {
 	opts := &pullOpts{}
 	cmd := &cobra.Command{
 		Use:   "pull",
@@ -292,7 +292,7 @@ func (o *pushOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Preview changes without making them")
 }
 
-func newPushCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newPushCommand() *cobra.Command {
 	opts := &pushOpts{}
 	cmd := &cobra.Command{
 		Use:   "push FILE...",
@@ -408,7 +408,7 @@ func (o *deleteOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVarP(&o.Force, "force", "f", false, "Skip confirmation prompt")
 }
 
-func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newDeleteCommand() *cobra.Command {
 	opts := &deleteOpts{}
 	cmd := &cobra.Command{
 		Use:   "delete UUID...",

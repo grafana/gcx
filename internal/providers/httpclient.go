@@ -8,8 +8,8 @@ import (
 
 // externalClient is the shared HTTP client singleton for external API calls.
 var (
-	externalClient     *http.Client  //nolint:gochecknoglobals // Singleton pattern for connection pool reuse.
-	externalClientOnce sync.Once     //nolint:gochecknoglobals // Singleton pattern for connection pool reuse.
+	externalClient     *http.Client //nolint:gochecknoglobals // Singleton pattern for connection pool reuse.
+	externalClientOnce sync.Once    //nolint:gochecknoglobals // Singleton pattern for connection pool reuse.
 )
 
 // ExternalHTTPClient returns a shared, well-tuned http.Client for providers
