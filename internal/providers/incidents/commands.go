@@ -47,7 +47,7 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			crud, restCfg, err := NewTypedCRUD(ctx, loader)
+			crud, restCfg, err := NewTypedCRUD(ctx, loader, IncidentQuery{Limit: opts.Limit})
 			if err != nil {
 				return err
 			}

@@ -200,7 +200,7 @@ Provider interface
   +-- Commands()   []*cobra.Command     -- contributed commands
   +-- Validate()   func(map[string]string) error
   +-- ConfigKeys() []ConfigKey          -- config metadata (name + secret flag)
-  +-- ResourceAdapters() []adapter.Factory -- adapter factories for provider-backed resource types
+  +-- TypedRegistrations() []adapter.Registration -- adapter registrations for provider-backed resource types
 ```
 
 **Registry:** `providers.All()` returns all compile-time registered providers

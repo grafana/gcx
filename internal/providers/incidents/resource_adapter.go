@@ -159,7 +159,8 @@ func newTypedAdapter(client *Client, namespace string) adapter.ResourceAdapter {
 }
 
 // NewTypedCRUD creates a TypedCRUD for incidents.
-func NewTypedCRUD(ctx context.Context, loader GrafanaConfigLoader) (*adapter.TypedCRUD[Incident], internalconfig.NamespacedRESTConfig, error) {
+// The query parameter controls listing behaviour (limit, ordering, etc.).
+func NewTypedCRUD(ctx context.Context, loader GrafanaConfigLoader, query IncidentQuery) (*adapter.TypedCRUD[Incident], internalconfig.NamespacedRESTConfig, error) {
 	cfg, err := loader.LoadGrafanaConfig(ctx)
 	if err != nil {
 		return nil, internalconfig.NamespacedRESTConfig{}, fmt.Errorf("failed to load REST config for incidents: %w", err)
@@ -172,7 +173,7 @@ func NewTypedCRUD(ctx context.Context, loader GrafanaConfigLoader) (*adapter.Typ
 
 	crud := &adapter.TypedCRUD[Incident]{
 		ListFn: func(ctx context.Context) ([]Incident, error) {
-			return client.List(ctx, IncidentQuery{})
+			return client.List(ctx, query)
 		},
 
 		GetFn: func(ctx context.Context, name string) (*Incident, error) {
