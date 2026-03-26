@@ -220,7 +220,7 @@ name. Reflection-based editor picks them up via the `yaml:"providers"` tag.
 - `internal/providers/provider.go`: `Provider` interface and `ConfigKey` type
 - `internal/providers/registry.go`: `All()` function
 - `internal/providers/redact.go`: `RedactSecrets` implementation
-- `internal/providers/configloader.go`: Shared `ConfigLoader` struct — all providers use this instead of duplicating config loading logic
+- `internal/providers/configloader.go`: Shared `ConfigLoader` struct — all providers use this instead of duplicating config loading logic. Provides `LoadGrafanaConfig`, `LoadCloudConfig`, `LoadProviderConfig` (provider-specific `map[string]string`), `SaveProviderConfig` (write-back), and `LoadFullConfig` (full `*config.Config`)
 - `internal/providers/alert/provider.go`: Second provider implementation (alert rules and groups)
 - `cmd/grafanactl/providers/command.go`: `providers list` command
 - `internal/config/types.go`: `Providers` field on `Context`

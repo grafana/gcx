@@ -816,11 +816,45 @@ the issue for architectural discussion.
 All provider commands must use `providers.ConfigLoader` for flag binding
 (`--config`, `--context`) and config resolution (YAML + env var precedence).
 
-Do not:
+### ConfigLoader API
+
+| Method | Purpose | Used by |
+|--------|---------|---------|
+| `LoadGrafanaConfig(ctx)` | REST config for Grafana API calls | alert, fleet, incidents, kg, oncall, slo, synth |
+| `LoadCloudConfig(ctx)` | Cloud token + GCOM stack info | k6, fleet |
+| `LoadProviderConfig(ctx, name)` | Provider-specific `map[string]string` + namespace | synth, oncall, k6 |
+| `SaveProviderConfig(ctx, name, key, val)` | Write-back a single provider config key | synth (datasource UID) |
+| `LoadFullConfig(ctx)` | Full `*config.Config` (for cross-cutting lookups) | synth (datasource discovery) |
+
+### Provider-specific config pattern
+
+Providers that need custom keys (URLs, tokens, domain overrides) use
+`LoadProviderConfig` instead of ad-hoc `os.Getenv` or `ProviderConfig` map
+access. This ensures `GRAFANA_PROVIDER_<NAME>_<KEY>` env vars, config file
+values, and `--context` switching all work uniformly:
+
+```go
+// In provider's config loader or adapter factory:
+providerCfg, namespace, err := l.LoadProviderConfig(ctx, "synth")
+if err != nil {
+    return err
+}
+smURL := providerCfg["sm-url"]  // resolved from env or config file
+```
+
+Provider-specific defaults and fallbacks (e.g., `DefaultAPIDomain` for k6,
+plugin discovery for oncall) remain in the provider package — `ConfigLoader`
+is generic.
+
+### Do not
+
 - Import `cmd/grafanactl/config` from provider code (import cycle)
 - Roll custom flag binding for `--config`/`--context`
 - Construct HTTP clients or load credentials outside ConfigLoader
 - Hardcode env var names — ConfigLoader handles `GRAFANA_PROVIDER_*` resolution
+- Use `os.Getenv` for provider-specific env vars — use `LoadProviderConfig`
+- Swallow errors from `LoadProviderConfig` — propagate them; only fall through
+  to alternative resolution when the key is absent, not when config loading fails
 
 ---
 
