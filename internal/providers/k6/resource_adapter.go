@@ -52,9 +52,11 @@ func allResources() []resourceDef {
 	}
 }
 
-// CloudConfigLoader can load Grafana Cloud config (token + stack info via GCOM).
+// CloudConfigLoader can load Grafana Cloud config (token + stack info via GCOM)
+// and provider-specific config for the k6 provider.
 type CloudConfigLoader interface {
 	LoadCloudConfig(ctx context.Context) (providers.CloudRESTConfig, error)
+	LoadProviderConfig(ctx context.Context, providerName string) (map[string]string, string, error)
 }
 
 // authenticatedClient loads cloud config, resolves the k6 API domain from provider config,
@@ -66,8 +68,8 @@ func authenticatedClient(ctx context.Context, loader CloudConfigLoader) (*Client
 	}
 
 	domain := DefaultAPIDomain
-	if k6Cfg := cfg.ProviderConfig("k6"); k6Cfg != nil {
-		if d := k6Cfg["api-domain"]; d != "" {
+	if providerCfg, _, err := loader.LoadProviderConfig(ctx, "k6"); err == nil {
+		if d := providerCfg["api-domain"]; d != "" {
 			domain = d
 		}
 	}

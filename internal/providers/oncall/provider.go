@@ -3,7 +3,6 @@ package oncall
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/grafana/grafanactl/internal/config"
 	"github.com/grafana/grafanactl/internal/providers"
@@ -111,7 +110,7 @@ func (l *configLoader) LoadOnCallClient(ctx context.Context) (*Client, string, e
 		return nil, "", err
 	}
 
-	oncallURL, err := discoverOnCallURL(ctx, restCfg)
+	oncallURL, err := l.discoverOnCallURL(ctx, restCfg)
 	if err != nil {
 		return nil, "", err
 	}
@@ -123,16 +122,14 @@ func (l *configLoader) LoadOnCallClient(ctx context.Context) (*Client, string, e
 	return client, restCfg.Namespace, nil
 }
 
-// discoverOnCallURL resolves the OnCall API URL from env or plugin settings.
-func discoverOnCallURL(ctx context.Context, restCfg config.NamespacedRESTConfig) (string, error) {
-	// Check for explicit OnCall URL from env.
-	// GRAFANA_ONCALL_URL is the primary env var.
-	// GRAFANA_PROVIDER_ONCALL_ONCALL_URL is also supported (provider env convention).
-	if u := os.Getenv("GRAFANA_ONCALL_URL"); u != "" {
-		return u, nil
-	}
-	if u := os.Getenv("GRAFANA_PROVIDER_ONCALL_ONCALL_URL"); u != "" {
-		return u, nil
+// discoverOnCallURL resolves the OnCall API URL from provider config or plugin settings.
+func (l *configLoader) discoverOnCallURL(ctx context.Context, restCfg config.NamespacedRESTConfig) (string, error) {
+	// Check provider config (includes GRAFANA_PROVIDER_ONCALL_ONCALL_URL env var).
+	providerCfg, _, err := l.LoadProviderConfig(ctx, "oncall")
+	if err == nil {
+		if u := providerCfg["oncall-url"]; u != "" {
+			return u, nil
+		}
 	}
 
 	// Discover from plugin settings.
