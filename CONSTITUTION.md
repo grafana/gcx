@@ -115,6 +115,14 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   `create`, `update`, `delete`. This avoids user confusion: adapter verbs
   (`resources get`) and provider verbs should not overlap for resources that
   behave differently across the two paths.
+- **Sub-resources nest under their parent command.** If a resource cannot
+  be listed or addressed without a parent ID (e.g. alerts require an
+  alert group, resolution notes require an alert group), it is a
+  sub-resource. Sub-resources must not be registered as standalone typed
+  adapters (no `ListFn` that ignores the parent). Instead, expose them
+  as verbs under the parent command: `$PARENT $VERB-$CHILD $PARENT_ID`
+  (e.g. `alert-groups list-alerts <id>`). Get-by-ID may still have a
+  standalone adapter if the API supports direct ID lookup without a parent.
 - **Typed resource trajectory.** Provider domain types implement
   `ResourceIdentity` for self-describing identity and are wrapped by
   `TypedObject[T]` (embedded `metav1.ObjectMeta` + `TypeMeta` + `Spec T`)
@@ -136,6 +144,15 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   auth resolution. Providers must not construct HTTP clients or load
   credentials independently — this ensures consistent env var precedence,
   secret handling, and auth behavior across all providers.
+- **`ExternalHTTPClient` for external APIs.** Provider clients calling APIs
+  outside the Grafana server (K6 Cloud, OnCall, Synth, Fleet — any domain
+  other than `cfg.Host`) must use `providers.ExternalHTTPClient()`, never
+  `rest.HTTPClientFor()`. The k8s transport round-tripper injects the Grafana
+  bearer token on every outgoing request, which conflicts with the product's
+  own auth mechanism. `ExternalHTTPClient()` returns a shared, well-tuned
+  `*http.Client` with no auth injection — providers set their own auth headers
+  per request. `rest.HTTPClientFor()` is correct only for calls to the Grafana
+  API itself (e.g. plugin discovery, datasource queries).
 
 ## Taste Rules
 

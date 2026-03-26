@@ -256,6 +256,15 @@ query/stream endpoints that return Grafana-native response formats, not
 `Username+Password` on the `rest.Config`, so the same auth config flows to
 all three client paths without duplication.
 
+**Contrast with external APIs:** Provider clients calling **external** APIs
+(K6 Cloud, OnCall, Synth, Fleet — domains outside the Grafana server) must
+**not** use `rest.HTTPClientFor`. The k8s transport round-tripper injects the
+Grafana bearer token on every outgoing request, which conflicts with the
+product's own auth mechanism (e.g. OnCall raw token, K6 X-Grafana-Key).
+These providers use `providers.ExternalHTTPClient()` — a shared, well-tuned
+`*http.Client` singleton with no auth injection — and set their own auth
+headers per request.
+
 **Output rendering:** Query results can be rendered as tables, JSON/YAML, or
 terminal charts (`internal/graph`). The `query` command registers custom codecs
 (`queryTableCodec`, `queryGraphCodec`) into the `io.Options` codec registry.

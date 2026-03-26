@@ -26,7 +26,7 @@ var staticRulesDescriptor = resources.Descriptor{
 // staticRulesAliases are the short aliases for alert rule resources.
 //
 //nolint:gochecknoglobals // Static descriptor used in init() self-registration pattern.
-var staticRulesAliases = []string{"rules"}
+var staticRulesAliases = []string{"alert-rules"}
 
 // staticGroupsDescriptor is the resource descriptor for alert rule group resources.
 //
