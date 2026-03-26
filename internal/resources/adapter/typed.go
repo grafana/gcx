@@ -56,6 +56,10 @@ type TypedCRUD[T any] struct {
 }
 
 // AsAdapter returns a ResourceAdapter backed by this TypedCRUD.
+// Note: the returned adapter's Schema() and Example() return nil.
+// Schema/example are static registration metadata injected only via
+// TypedRegistration.ToRegistration(). Use SchemaForGVK/ExampleForGVK
+// for authoritative lookup.
 func (c *TypedCRUD[T]) AsAdapter() ResourceAdapter {
 	return &typedAdapter[T]{crud: c}
 }
@@ -138,7 +142,9 @@ func (c *TypedCRUD[T]) fromUnstructured(obj *unstructured.Unstructured) (string,
 
 // typedAdapter wraps TypedCRUD[T] to implement the ResourceAdapter interface.
 type typedAdapter[T any] struct {
-	crud *TypedCRUD[T]
+	crud    *TypedCRUD[T]
+	schema  json.RawMessage
+	example json.RawMessage
 }
 
 var _ ResourceAdapter = &typedAdapter[struct{}]{}
@@ -149,6 +155,14 @@ func (a *typedAdapter[T]) Descriptor() resources.Descriptor {
 
 func (a *typedAdapter[T]) Aliases() []string {
 	return a.crud.Aliases
+}
+
+func (a *typedAdapter[T]) Schema() json.RawMessage {
+	return a.schema
+}
+
+func (a *typedAdapter[T]) Example() json.RawMessage {
+	return a.example
 }
 
 func (a *typedAdapter[T]) List(ctx context.Context, _ metav1.ListOptions) (*unstructured.UnstructuredList, error) {
@@ -258,7 +272,12 @@ func (r TypedRegistration[T]) ToRegistration() Registration {
 			if err != nil {
 				return nil, err
 			}
-			return crud.AsAdapter(), nil
+			a := &typedAdapter[T]{
+				crud:    crud,
+				schema:  r.Schema,
+				example: r.Example,
+			}
+			return a, nil
 		},
 		Descriptor: r.Descriptor,
 		Aliases:    r.Aliases,

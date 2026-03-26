@@ -260,13 +260,14 @@ func (c *tabCodec) Decode(io.Reader, any) error {
 }
 
 // resolveSchema looks up a schema for a resource, first from server-fetched
-// schemas (K8s-discovered), then from provider-registered schemas. Returns
-// the schema and true if found, or nil and false if no schema exists.
+// schemas (K8s-discovered), then from provider-registered schemas via the
+// global SchemaForGVK function.
+// Returns the schema and true if found, or nil and false if no schema exists.
 func resolveSchema(serverSchemas map[string]map[string]any, gvk string, d resources.Descriptor) (any, bool) {
 	if s, ok := serverSchemas[gvk]; ok {
 		return s, true
 	}
-	// Fall back to provider-registered schema.
+	// Fall back to global provider-registered schema.
 	provSchema := adapter.SchemaForGVK(d.GroupVersionKind())
 	if provSchema == nil {
 		return nil, false

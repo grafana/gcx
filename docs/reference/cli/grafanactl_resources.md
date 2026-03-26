@@ -28,7 +28,7 @@ Manipulate Grafana resources.
 * [grafanactl](grafanactl.md)	 - 
 * [grafanactl resources delete](grafanactl_resources_delete.md)	 - Delete resources from Grafana
 * [grafanactl resources edit](grafanactl_resources_edit.md)	 - Edit resources from Grafana
-* [grafanactl resources examples](grafanactl_resources_examples.md)	 - Print an example manifest for a resource type
+* [grafanactl resources examples](grafanactl_resources_examples.md)	 - List example manifests for resource types
 * [grafanactl resources get](grafanactl_resources_get.md)	 - Get resources from Grafana
 * [grafanactl resources pull](grafanactl_resources_pull.md)	 - Pull resources from Grafana
 * [grafanactl resources push](grafanactl_resources_push.md)	 - Push resources to Grafana

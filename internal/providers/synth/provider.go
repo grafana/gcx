@@ -2,6 +2,7 @@ package synth
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -29,13 +30,52 @@ func init() { //nolint:gochecknoinits // Self-registration pattern (like databas
 		Descriptor: checks.StaticDescriptor(),
 		Aliases:    checks.StaticAliases(),
 		GVK:        checks.StaticGVK(),
+		Schema:     checkSchema(),
+		Example:    checkExample(),
 	})
 	adapter.Register(adapter.Registration{
 		Factory:    probes.NewAdapterFactory(loader),
 		Descriptor: probes.StaticDescriptor(),
 		Aliases:    probes.StaticAliases(),
 		GVK:        probes.StaticGVK(),
+		Schema:     probeSchema(),
 	})
+}
+
+// checkSchema returns a JSON Schema for the SM Check resource type.
+func checkSchema() json.RawMessage {
+	return adapter.SchemaFromType[checks.CheckSpec](checks.StaticDescriptor())
+}
+
+// checkExample returns an example SM Check manifest as JSON.
+func checkExample() json.RawMessage {
+	example := map[string]any{
+		"apiVersion": checks.APIVersion,
+		"kind":       checks.Kind,
+		"metadata": map[string]any{
+			"name": "web-check",
+		},
+		"spec": map[string]any{
+			"job":              "web-check",
+			"target":           "https://grafana.com",
+			"frequency":        60000,
+			"timeout":          5000,
+			"enabled":          true,
+			"probes":           []string{"Atlanta", "London", "Tokyo"},
+			"settings":         map[string]any{"http": map[string]any{"method": "GET"}},
+			"alertSensitivity": "medium",
+		},
+	}
+	b, err := json.Marshal(example)
+	if err != nil {
+		panic(fmt.Sprintf("synth/checks: failed to marshal example: %v", err))
+	}
+	return b
+}
+
+// probeSchema returns a JSON Schema for the SM Probe resource type.
+func probeSchema() json.RawMessage {
+	return adapter.SchemaFromType[probes.Probe](probes.StaticDescriptor())
 }
 
 // SynthProvider manages Grafana Synthetic Monitoring resources.

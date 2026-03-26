@@ -2,6 +2,7 @@ package adapter_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/grafana/grafanactl/internal/resources"
@@ -42,6 +43,8 @@ func (m *mockAdapter) Delete(_ context.Context, _ string, _ metav1.DeleteOptions
 
 func (m *mockAdapter) Descriptor() resources.Descriptor { return m.desc }
 func (m *mockAdapter) Aliases() []string                { return m.aliases }
+func (m *mockAdapter) Schema() json.RawMessage          { return nil }
+func (m *mockAdapter) Example() json.RawMessage         { return nil }
 
 func TestResourceAdapterInterfaceCompliance(t *testing.T) {
 	desc := resources.Descriptor{

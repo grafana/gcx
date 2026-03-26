@@ -1,15 +1,23 @@
 ## grafanactl resources examples
 
-Print an example manifest for a resource type
+List example manifests for resource types
+
+### Synopsis
+
+List example manifests for provider-backed resource types. Without arguments, lists all resources that have examples. With a selector, shows examples for matching resources.
 
 ```
-grafanactl resources examples RESOURCE [flags]
+grafanactl resources examples [RESOURCE_SELECTOR] [flags]
 ```
 
 ### Examples
 
 ```
 
+	grafanactl resources examples
+	grafanactl resources examples -o wide
+	grafanactl resources examples -o json
+	grafanactl resources examples -o yaml
 	grafanactl resources examples incidents
 	grafanactl resources examples incidents -o json
 	grafanactl resources examples slo -o yaml
@@ -21,7 +29,7 @@ grafanactl resources examples RESOURCE [flags]
 ```
   -h, --help            help for examples
       --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -o, --output string   Output format. One of: json, yaml (default "yaml")
+  -o, --output string   Output format. One of: json, text, wide, yaml (default "text")
 ```
 
 ### Options inherited from parent commands

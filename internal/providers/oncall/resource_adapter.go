@@ -123,7 +123,7 @@ func RegisterAdapters(loader OnCallConfigLoader) {
 	// 1. Integration — full CRUD
 	meta := onCallMeta("Integration", "integration", "integrations",
 		[]string{"oncall-integrations", "oncall-integration"})
-	meta.Schema = integrationSchema()
+	meta.Schema = adapter.SchemaFromType[Integration](meta.Descriptor)
 	meta.Example = integrationExample()
 	registerOnCallResource(loader, meta,
 		func(i Integration) string { return i.ID },
@@ -143,9 +143,11 @@ func RegisterAdapters(loader OnCallConfigLoader) {
 	)
 
 	// 2. EscalationChain — full CRUD
-	registerOnCallResource(loader,
-		onCallMeta("EscalationChain", "escalationchain", "escalationchains",
-			[]string{"oncall-escalationchains", "oncall-escalationchain", "oncall-ec"}),
+	meta = onCallMeta("EscalationChain", "escalationchain", "escalationchains",
+		[]string{"oncall-escalationchains", "oncall-escalationchain", "oncall-ec"})
+	meta.Schema = adapter.SchemaFromType[EscalationChain](meta.Descriptor)
+	meta.Example = escalationChainExample()
+	registerOnCallResource(loader, meta,
 		func(ec EscalationChain) string { return ec.ID },
 		func(ctx context.Context, c *Client) ([]EscalationChain, error) { return c.ListEscalationChains(ctx) },
 		func(ctx context.Context, c *Client, name string) (*EscalationChain, error) {
@@ -163,9 +165,11 @@ func RegisterAdapters(loader OnCallConfigLoader) {
 	)
 
 	// 3. EscalationPolicy — full CRUD (list with empty filter)
-	registerOnCallResource(loader,
-		onCallMeta("EscalationPolicy", "escalationpolicy", "escalationpolicies",
-			[]string{"oncall-escalationpolicies", "oncall-escalationpolicy", "oncall-ep"}),
+	meta = onCallMeta("EscalationPolicy", "escalationpolicy", "escalationpolicies",
+		[]string{"oncall-escalationpolicies", "oncall-escalationpolicy", "oncall-ep"})
+	meta.Schema = adapter.SchemaFromType[EscalationPolicy](meta.Descriptor)
+	meta.Example = escalationPolicyExample()
+	registerOnCallResource(loader, meta,
 		func(ep EscalationPolicy) string { return ep.ID },
 		func(ctx context.Context, c *Client) ([]EscalationPolicy, error) {
 			return c.ListEscalationPolicies(ctx, "")
@@ -185,9 +189,11 @@ func RegisterAdapters(loader OnCallConfigLoader) {
 	)
 
 	// 4. Schedule — full CRUD
-	registerOnCallResource(loader,
-		onCallMeta("Schedule", "schedule", "schedules",
-			[]string{"oncall-schedules", "oncall-schedule"}),
+	meta = onCallMeta("Schedule", "schedule", "schedules",
+		[]string{"oncall-schedules", "oncall-schedule"})
+	meta.Schema = adapter.SchemaFromType[Schedule](meta.Descriptor)
+	meta.Example = scheduleExample()
+	registerOnCallResource(loader, meta,
 		func(s Schedule) string { return s.ID },
 		func(ctx context.Context, c *Client) ([]Schedule, error) { return c.ListSchedules(ctx) },
 		func(ctx context.Context, c *Client, name string) (*Schedule, error) { return c.GetSchedule(ctx, name) },
@@ -203,9 +209,11 @@ func RegisterAdapters(loader OnCallConfigLoader) {
 	)
 
 	// 5. Shift — CRUD with ShiftRequest conversion for create/update
-	registerOnCallResource(loader,
-		onCallMeta("Shift", "shift", "shifts",
-			[]string{"oncall-shifts", "oncall-shift"}),
+	meta = onCallMeta("Shift", "shift", "shifts",
+		[]string{"oncall-shifts", "oncall-shift"})
+	meta.Schema = adapter.SchemaFromType[Shift](meta.Descriptor)
+	meta.Example = shiftExample()
+	registerOnCallResource(loader, meta,
 		func(s Shift) string { return s.ID },
 		func(ctx context.Context, c *Client) ([]Shift, error) { return c.ListShifts(ctx) },
 		func(ctx context.Context, c *Client, name string) (*Shift, error) { return c.GetShift(ctx, name) },
@@ -229,9 +237,11 @@ func RegisterAdapters(loader OnCallConfigLoader) {
 	)
 
 	// 6. Route — full CRUD (list with empty filter)
-	registerOnCallResource(loader,
-		onCallMeta("Route", "route", "routes",
-			[]string{"oncall-routes", "oncall-route"}),
+	meta = onCallMeta("Route", "route", "routes",
+		[]string{"oncall-routes", "oncall-route"})
+	meta.Schema = adapter.SchemaFromType[IntegrationRoute](meta.Descriptor)
+	meta.Example = routeExample()
+	registerOnCallResource(loader, meta,
 		func(r IntegrationRoute) string { return r.ID },
 		func(ctx context.Context, c *Client) ([]IntegrationRoute, error) { return c.ListRoutes(ctx, "") },
 		func(ctx context.Context, c *Client, name string) (*IntegrationRoute, error) {
@@ -249,9 +259,11 @@ func RegisterAdapters(loader OnCallConfigLoader) {
 	)
 
 	// 7. OutgoingWebhook — full CRUD
-	registerOnCallResource(loader,
-		onCallMeta("OutgoingWebhook", "outgoingwebhook", "outgoingwebhooks",
-			[]string{"oncall-webhooks", "oncall-webhook"}),
+	meta = onCallMeta("OutgoingWebhook", "outgoingwebhook", "outgoingwebhooks",
+		[]string{"oncall-webhooks", "oncall-webhook"})
+	meta.Schema = adapter.SchemaFromType[OutgoingWebhook](meta.Descriptor)
+	meta.Example = outgoingWebhookExample()
+	registerOnCallResource(loader, meta,
 		func(w OutgoingWebhook) string { return w.ID },
 		func(ctx context.Context, c *Client) ([]OutgoingWebhook, error) { return c.ListOutgoingWebhooks(ctx) },
 		func(ctx context.Context, c *Client, name string) (*OutgoingWebhook, error) {
@@ -269,9 +281,10 @@ func RegisterAdapters(loader OnCallConfigLoader) {
 	)
 
 	// 8. AlertGroup — read-only + delete
-	registerOnCallResource(loader,
-		onCallMeta("AlertGroup", "alertgroup", "alertgroups",
-			[]string{"oncall-alertgroups", "oncall-alertgroup", "oncall-ag"}),
+	meta = onCallMeta("AlertGroup", "alertgroup", "alertgroups",
+		[]string{"oncall-alertgroups", "oncall-alertgroup", "oncall-ag"})
+	meta.Schema = adapter.SchemaFromType[AlertGroup](meta.Descriptor)
+	registerOnCallResource(loader, meta,
 		func(ag AlertGroup) string { return ag.ID },
 		func(ctx context.Context, c *Client) ([]AlertGroup, error) { return c.ListAlertGroups(ctx) }, // no filter
 		func(ctx context.Context, c *Client, name string) (*AlertGroup, error) {
@@ -283,54 +296,60 @@ func RegisterAdapters(loader OnCallConfigLoader) {
 	)
 
 	// 9. User — read-only
-	registerOnCallResource(loader,
-		onCallMeta("User", "oncalluser", "oncallusers",
-			[]string{"oncall-users", "oncall-user"}),
+	meta = onCallMeta("User", "oncalluser", "oncallusers",
+		[]string{"oncall-users", "oncall-user"})
+	meta.Schema = adapter.SchemaFromType[User](meta.Descriptor)
+	registerOnCallResource(loader, meta,
 		func(u User) string { return u.ID },
 		func(ctx context.Context, c *Client) ([]User, error) { return c.ListUsers(ctx) },
 		func(ctx context.Context, c *Client, name string) (*User, error) { return c.GetUser(ctx, name) },
 	)
 
 	// 10. Team — read-only
-	registerOnCallResource(loader,
-		onCallMeta("Team", "oncallteam", "oncallteams",
-			[]string{"oncall-teams", "oncall-team"}),
+	meta = onCallMeta("Team", "oncallteam", "oncallteams",
+		[]string{"oncall-teams", "oncall-team"})
+	meta.Schema = adapter.SchemaFromType[Team](meta.Descriptor)
+	registerOnCallResource(loader, meta,
 		func(t Team) string { return t.ID },
 		func(ctx context.Context, c *Client) ([]Team, error) { return c.ListTeams(ctx) },
 		func(ctx context.Context, c *Client, name string) (*Team, error) { return c.GetTeam(ctx, name) },
 	)
 
 	// 11. UserGroup — list-only (no Get client method)
-	registerOnCallResource(loader,
-		onCallMeta("UserGroup", "usergroup", "usergroups",
-			[]string{"oncall-usergroups", "oncall-usergroup"}),
+	meta = onCallMeta("UserGroup", "usergroup", "usergroups",
+		[]string{"oncall-usergroups", "oncall-usergroup"})
+	meta.Schema = adapter.SchemaFromType[UserGroup](meta.Descriptor)
+	registerOnCallResource(loader, meta,
 		func(ug UserGroup) string { return ug.ID },
 		func(ctx context.Context, c *Client) ([]UserGroup, error) { return c.ListUserGroups(ctx) },
 		nil, // no GetFn — registerOnCallResource returns ErrUnsupported
 	)
 
 	// 12. SlackChannel — list-only (no Get client method)
-	registerOnCallResource(loader,
-		onCallMeta("SlackChannel", "slackchannel", "slackchannels",
-			[]string{"oncall-slackchannels", "oncall-slackchannel"}),
+	meta = onCallMeta("SlackChannel", "slackchannel", "slackchannels",
+		[]string{"oncall-slackchannels", "oncall-slackchannel"})
+	meta.Schema = adapter.SchemaFromType[SlackChannel](meta.Descriptor)
+	registerOnCallResource(loader, meta,
 		func(sc SlackChannel) string { return sc.ID },
 		func(ctx context.Context, c *Client) ([]SlackChannel, error) { return c.ListSlackChannels(ctx) },
 		nil, // no GetFn — registerOnCallResource returns ErrUnsupported
 	)
 
 	// 13. Alert — read-only (list with empty filter)
-	registerOnCallResource(loader,
-		onCallMeta("Alert", "alert", "alerts",
-			[]string{"oncall-alerts", "oncall-alert"}),
+	meta = onCallMeta("Alert", "alert", "alerts",
+		[]string{"oncall-alerts", "oncall-alert"})
+	meta.Schema = adapter.SchemaFromType[Alert](meta.Descriptor)
+	registerOnCallResource(loader, meta,
 		func(a Alert) string { return a.ID },
 		func(ctx context.Context, c *Client) ([]Alert, error) { return c.ListAlerts(ctx, "") },
 		func(ctx context.Context, c *Client, name string) (*Alert, error) { return c.GetAlert(ctx, name) },
 	)
 
 	// 14. Organization — read-only
-	registerOnCallResource(loader,
-		onCallMeta("Organization", "organization", "organizations",
-			[]string{"oncall-orgs", "oncall-org"}),
+	meta = onCallMeta("Organization", "organization", "organizations",
+		[]string{"oncall-orgs", "oncall-org"})
+	meta.Schema = adapter.SchemaFromType[Organization](meta.Descriptor)
+	registerOnCallResource(loader, meta,
 		func(o Organization) string { return o.ID },
 		func(ctx context.Context, c *Client) ([]Organization, error) { return c.ListOrganizations(ctx) },
 		func(ctx context.Context, c *Client, name string) (*Organization, error) {
@@ -339,9 +358,11 @@ func RegisterAdapters(loader OnCallConfigLoader) {
 	)
 
 	// 15. ResolutionNote — CRUD with Input type conversion (list with empty filter)
-	registerOnCallResource(loader,
-		onCallMeta("ResolutionNote", "resolutionnote", "resolutionnotes",
-			[]string{"oncall-resolution-notes", "oncall-rn"}),
+	meta = onCallMeta("ResolutionNote", "resolutionnote", "resolutionnotes",
+		[]string{"oncall-resolution-notes", "oncall-rn"})
+	meta.Schema = adapter.SchemaFromType[ResolutionNote](meta.Descriptor)
+	meta.Example = resolutionNoteExample()
+	registerOnCallResource(loader, meta,
 		func(rn ResolutionNote) string { return rn.ID },
 		func(ctx context.Context, c *Client) ([]ResolutionNote, error) {
 			return c.ListResolutionNotes(ctx, "")
@@ -366,9 +387,11 @@ func RegisterAdapters(loader OnCallConfigLoader) {
 	)
 
 	// 16. ShiftSwap — CRUD with Input type conversion
-	registerOnCallResource(loader,
-		onCallMeta("ShiftSwap", "shiftswap", "shiftswaps",
-			[]string{"oncall-shift-swaps", "oncall-ss"}),
+	meta = onCallMeta("ShiftSwap", "shiftswap", "shiftswaps",
+		[]string{"oncall-shift-swaps", "oncall-ss"})
+	meta.Schema = adapter.SchemaFromType[ShiftSwap](meta.Descriptor)
+	meta.Example = shiftSwapExample()
+	registerOnCallResource(loader, meta,
 		func(ss ShiftSwap) string { return ss.ID },
 		func(ctx context.Context, c *Client) ([]ShiftSwap, error) { return c.ListShiftSwaps(ctx) },
 		func(ctx context.Context, c *Client, name string) (*ShiftSwap, error) {
@@ -394,9 +417,11 @@ func RegisterAdapters(loader OnCallConfigLoader) {
 	)
 
 	// 17. PersonalNotificationRule — full CRUD
-	registerOnCallResource(loader,
-		onCallMeta("PersonalNotificationRule", "personalnotificationrule", "personalnotificationrules",
-			[]string{"oncall-notification-rules", "oncall-pnr"}),
+	meta = onCallMeta("PersonalNotificationRule", "personalnotificationrule", "personalnotificationrules",
+		[]string{"oncall-notification-rules", "oncall-pnr"})
+	meta.Schema = adapter.SchemaFromType[PersonalNotificationRule](meta.Descriptor)
+	meta.Example = personalNotificationRuleExample()
+	registerOnCallResource(loader, meta,
 		func(pnr PersonalNotificationRule) string { return pnr.ID },
 		func(ctx context.Context, c *Client) ([]PersonalNotificationRule, error) {
 			return c.ListPersonalNotificationRules(ctx)
@@ -429,42 +454,7 @@ func shiftToRequest(s *Shift) (ShiftRequest, error) {
 	return sr, nil
 }
 
-// --- Schema and Example helpers ---
-
-func integrationSchema() json.RawMessage {
-	schema := map[string]any{
-		"$schema": "https://json-schema.org/draft/2020-12/schema",
-		"$id":     "https://grafana.com/schemas/oncall/Integration",
-		"type":    "object",
-		"properties": map[string]any{
-			"apiVersion": map[string]any{"type": "string", "const": APIVersion},
-			"kind":       map[string]any{"type": "string", "const": "Integration"},
-			"metadata": map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"name":      map[string]any{"type": "string"},
-					"namespace": map[string]any{"type": "string"},
-				},
-			},
-			"spec": map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"name":              map[string]any{"type": "string"},
-					"description_short": map[string]any{"type": "string"},
-					"type":              map[string]any{"type": "string"},
-					"team_id":           map[string]any{"type": "string"},
-				},
-				"required": []string{"name", "type"},
-			},
-		},
-		"required": []string{"apiVersion", "kind", "metadata", "spec"},
-	}
-	b, err := json.Marshal(schema)
-	if err != nil {
-		panic(fmt.Sprintf("oncall: failed to marshal integration schema: %v", err))
-	}
-	return b
-}
+// --- Example helpers ---
 
 func integrationExample() json.RawMessage {
 	example := map[string]any{
@@ -485,6 +475,172 @@ func integrationExample() json.RawMessage {
 	b, err := json.Marshal(example)
 	if err != nil {
 		panic(fmt.Sprintf("oncall: failed to marshal integration example: %v", err))
+	}
+	return b
+}
+
+func escalationChainExample() json.RawMessage {
+	example := map[string]any{
+		"apiVersion": APIVersion,
+		"kind":       "EscalationChain",
+		"metadata":   map[string]any{"name": "my-chain"},
+		"spec":       map[string]any{"name": "my-chain"},
+	}
+	b, err := json.Marshal(example)
+	if err != nil {
+		panic(fmt.Sprintf("oncall: failed to marshal escalation chain example: %v", err))
+	}
+	return b
+}
+
+func escalationPolicyExample() json.RawMessage {
+	example := map[string]any{
+		"apiVersion": APIVersion,
+		"kind":       "EscalationPolicy",
+		"metadata":   map[string]any{"name": "my-policy"},
+		"spec": map[string]any{
+			"escalation_chain_id": "ABCD1234",
+			"position":            0,
+			"type":                "notify_persons",
+			"persons_to_notify":   []string{"U1234"},
+		},
+	}
+	b, err := json.Marshal(example)
+	if err != nil {
+		panic(fmt.Sprintf("oncall: failed to marshal escalation policy example: %v", err))
+	}
+	return b
+}
+
+func scheduleExample() json.RawMessage {
+	example := map[string]any{
+		"apiVersion": APIVersion,
+		"kind":       "Schedule",
+		"metadata":   map[string]any{"name": "my-schedule"},
+		"spec": map[string]any{
+			"name":      "my-schedule",
+			"type":      "web",
+			"time_zone": "UTC",
+		},
+	}
+	b, err := json.Marshal(example)
+	if err != nil {
+		panic(fmt.Sprintf("oncall: failed to marshal schedule example: %v", err))
+	}
+	return b
+}
+
+func shiftExample() json.RawMessage {
+	example := map[string]any{
+		"apiVersion": APIVersion,
+		"kind":       "Shift",
+		"metadata":   map[string]any{"name": "my-shift"},
+		"spec": map[string]any{
+			"name":      "my-shift",
+			"type":      "rolling_users",
+			"start":     "2026-01-01T00:00:00",
+			"duration":  86400,
+			"frequency": "weekly",
+			"interval":  1,
+			"by_day":    []string{"MO", "TU", "WE", "TH", "FR"},
+			"users":     []string{"U1234"},
+		},
+	}
+	b, err := json.Marshal(example)
+	if err != nil {
+		panic(fmt.Sprintf("oncall: failed to marshal shift example: %v", err))
+	}
+	return b
+}
+
+func routeExample() json.RawMessage {
+	example := map[string]any{
+		"apiVersion": APIVersion,
+		"kind":       "Route",
+		"metadata":   map[string]any{"name": "my-route"},
+		"spec": map[string]any{
+			"integration_id": "INT1234",
+			"routing_regex":  "severity=critical",
+			"position":       0,
+		},
+	}
+	b, err := json.Marshal(example)
+	if err != nil {
+		panic(fmt.Sprintf("oncall: failed to marshal route example: %v", err))
+	}
+	return b
+}
+
+func outgoingWebhookExample() json.RawMessage {
+	example := map[string]any{
+		"apiVersion": APIVersion,
+		"kind":       "OutgoingWebhook",
+		"metadata":   map[string]any{"name": "my-webhook"},
+		"spec": map[string]any{
+			"name":               "my-webhook",
+			"url":                "https://example.com/webhook",
+			"trigger_type":       "escalation",
+			"is_webhook_enabled": true,
+			"http_method":        "POST",
+		},
+	}
+	b, err := json.Marshal(example)
+	if err != nil {
+		panic(fmt.Sprintf("oncall: failed to marshal outgoing webhook example: %v", err))
+	}
+	return b
+}
+
+func resolutionNoteExample() json.RawMessage {
+	example := map[string]any{
+		"apiVersion": APIVersion,
+		"kind":       "ResolutionNote",
+		"metadata":   map[string]any{"name": "my-note"},
+		"spec": map[string]any{
+			"alert_group_id": "AG1234",
+			"text":           "Root cause identified: memory leak in auth service. Fix deployed.",
+		},
+	}
+	b, err := json.Marshal(example)
+	if err != nil {
+		panic(fmt.Sprintf("oncall: failed to marshal resolution note example: %v", err))
+	}
+	return b
+}
+
+func shiftSwapExample() json.RawMessage {
+	example := map[string]any{
+		"apiVersion": APIVersion,
+		"kind":       "ShiftSwap",
+		"metadata":   map[string]any{"name": "my-swap"},
+		"spec": map[string]any{
+			"schedule":    "SCHED1234",
+			"swap_start":  "2026-04-01T00:00:00Z",
+			"swap_end":    "2026-04-02T00:00:00Z",
+			"beneficiary": "U1234",
+		},
+	}
+	b, err := json.Marshal(example)
+	if err != nil {
+		panic(fmt.Sprintf("oncall: failed to marshal shift swap example: %v", err))
+	}
+	return b
+}
+
+func personalNotificationRuleExample() json.RawMessage {
+	example := map[string]any{
+		"apiVersion": APIVersion,
+		"kind":       "PersonalNotificationRule",
+		"metadata":   map[string]any{"name": "my-rule"},
+		"spec": map[string]any{
+			"user_id":  "U1234",
+			"type":     "notify_by_slack",
+			"duration": 300,
+		},
+	}
+	b, err := json.Marshal(example)
+	if err != nil {
+		panic(fmt.Sprintf("oncall: failed to marshal personal notification rule example: %v", err))
 	}
 	return b
 }
