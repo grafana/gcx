@@ -47,19 +47,20 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
+			crud, restCfg, err := NewTypedCRUD(ctx, loader, IncidentQuery{Limit: opts.Limit})
 			if err != nil {
 				return err
 			}
 
-			client, err := NewClient(restCfg)
+			typedObjs, err := crud.List(ctx)
 			if err != nil {
 				return err
 			}
 
-			incs, err := client.List(ctx, IncidentQuery{Limit: opts.Limit})
-			if err != nil {
-				return err
+			// Extract incidents from TypedObject
+			incs := make([]Incident, len(typedObjs))
+			for i := range typedObjs {
+				incs[i] = typedObjs[i].Spec
 			}
 
 			// Table codec operates on raw []Incident for direct field access.

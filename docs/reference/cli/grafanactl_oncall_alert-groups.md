@@ -26,6 +26,7 @@ Manage alert groups.
 * [grafanactl oncall alert-groups delete](grafanactl_oncall_alert-groups_delete.md)	 - Delete an alert group.
 * [grafanactl oncall alert-groups get](grafanactl_oncall_alert-groups_get.md)	 - Get an alert group by ID.
 * [grafanactl oncall alert-groups list](grafanactl_oncall_alert-groups_list.md)	 - List alert groups.
+* [grafanactl oncall alert-groups list-alerts](grafanactl_oncall_alert-groups_list-alerts.md)	 - List individual alerts for an alert group.
 * [grafanactl oncall alert-groups resolve](grafanactl_oncall_alert-groups_resolve.md)	 - Resolve an alert group.
 * [grafanactl oncall alert-groups silence](grafanactl_oncall_alert-groups_silence.md)	 - Silence an alert group for a specified duration.
 * [grafanactl oncall alert-groups unacknowledge](grafanactl_oncall_alert-groups_unacknowledge.md)	 - Unacknowledge an alert group.

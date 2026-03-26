@@ -1,6 +1,7 @@
 package oncall
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -90,6 +91,43 @@ func maxAgeToStartedAt(maxAge string) (string, error) {
 }
 
 // ---------------------------------------------------------------------------
+// list-alerts subcommand (mounted under alert-groups)
+// ---------------------------------------------------------------------------
+
+func newAlertGroupListAlertsCommand(loader OnCallConfigLoader) *cobra.Command {
+	opts := &listOpts{}
+	cmd := &cobra.Command{
+		Use:   "list-alerts <alert-group-id>",
+		Short: "List individual alerts for an alert group.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			client, namespace, err := loader.LoadOnCallClient(cmd.Context())
+			if err != nil {
+				return err
+			}
+
+			items, err := client.ListAlerts(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+
+			objs, err := itemsToUnstructured(items, "Alert", "id", namespace)
+			if err != nil {
+				return err
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), objs)
+		},
+	}
+	opts.setup(cmd.Flags(), "alerts")
+	return cmd
+}
+
+// ---------------------------------------------------------------------------
 // alert-groups command: list, get, acknowledge, resolve, delete, silence, etc.
 // ---------------------------------------------------------------------------
 
@@ -111,9 +149,11 @@ func newAlertGroupsCommand(loader OnCallConfigLoader) *cobra.Command {
 
 	cmd.AddCommand(
 		newAlertGroupListCommand(loader),
-		newGetSubcommand(loader, "Get an alert group by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
-			return c.GetAlertGroup(cmd.Context(), id)
-		}),
+		newAlertGroupListAlertsCommand(loader),
+		newGetSubcommand(loader, "Get an alert group by ID.",
+			func(ctx context.Context, c *Client, name string) (*AlertGroup, error) {
+				return c.GetAlertGroup(ctx, name)
+			}),
 		newAlertGroupActionCommand(loader, "acknowledge", "Acknowledge an alert group.", func(c *Client, cmd *cobra.Command, id string) error {
 			return c.AcknowledgeAlertGroup(cmd.Context(), id)
 		}),
@@ -327,10 +367,10 @@ func newUsersCommand(loader OnCallConfigLoader) *cobra.Command {
 
 	cmd.AddCommand(
 		newListSubcommand(loader, "users", "User", "List OnCall users.",
-			func(c *Client, cmd *cobra.Command) ([]User, error) { return c.ListUsers(cmd.Context()) }),
-		newGetSubcommand(loader, "Get a user by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
-			return c.GetUser(cmd.Context(), id)
-		}),
+			func(ctx context.Context, c *Client) ([]User, error) { return c.ListUsers(ctx) },
+			func(ctx context.Context, c *Client, name string) (*User, error) { return c.GetUser(ctx, name) }),
+		newGetSubcommand(loader, "Get a user by ID.",
+			func(ctx context.Context, c *Client, name string) (*User, error) { return c.GetUser(ctx, name) }),
 		newUsersCurrentCommand(loader),
 	)
 

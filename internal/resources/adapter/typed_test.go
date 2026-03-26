@@ -16,12 +16,18 @@ import (
 )
 
 // TestWidget is a simple domain object used across all tests.
+//
+//nolint:recvcheck // Mixed receivers are intentional for testing TypedCRUD compatibility.
 type TestWidget struct {
 	ID     string `json:"id"`
 	Name   string `json:"name"`
 	Color  string `json:"color"`
 	Secret string `json:"secret"`
 }
+
+// ResourceIdentity implementation for TestWidget.
+func (w TestWidget) GetResourceName() string   { return w.ID }
+func (w *TestWidget) SetResourceName(n string) { w.ID = n }
 
 var widgetDesc = resources.Descriptor{ //nolint:gochecknoglobals // Test fixture.
 	GroupVersion: schema.GroupVersion{Group: "test.grafana.app", Version: "v1"},
@@ -33,14 +39,10 @@ var widgetDesc = resources.Descriptor{ //nolint:gochecknoglobals // Test fixture
 // newWidgetCRUD returns a TypedCRUD configured for TestWidget with sensible defaults.
 func newWidgetCRUD(widgets []TestWidget) *adapter.TypedCRUD[TestWidget] {
 	return &adapter.TypedCRUD[TestWidget]{
-		NameFn:      func(w TestWidget) string { return w.ID },
 		Namespace:   "stack-1",
 		StripFields: []string{"id", "secret"},
-		RestoreNameFn: func(name string, w *TestWidget) {
-			w.ID = name
-		},
-		Descriptor: widgetDesc,
-		Aliases:    []string{"wdg"},
+		Descriptor:  widgetDesc,
+		Aliases:     []string{"wdg"},
 		ListFn: func(_ context.Context) ([]TestWidget, error) {
 			return widgets, nil
 		},
@@ -144,7 +146,7 @@ func TestTypedCRUD_Create(t *testing.T) {
 	result, err := a.Create(t.Context(), input, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	// RestoreNameFn should have set ID from metadata.name.
+	// SetResourceName should have set ID from metadata.name.
 	require.NotNil(t, createdItem)
 	assert.Equal(t, "w-input", createdItem.ID)
 	assert.Equal(t, "Gamma", createdItem.Name)
@@ -178,7 +180,7 @@ func TestTypedCRUD_Update(t *testing.T) {
 
 	assert.Equal(t, "w-existing", updatedName)
 	require.NotNil(t, updatedItem)
-	assert.Equal(t, "w-existing", updatedItem.ID) // RestoreNameFn applied
+	assert.Equal(t, "w-existing", updatedItem.ID) // SetResourceName applied
 	assert.Equal(t, "Delta", updatedItem.Name)
 
 	assert.Equal(t, "w-existing", result.GetName())
@@ -236,6 +238,112 @@ func TestTypedCRUD_NilFunctions(t *testing.T) {
 			assert.ErrorIs(t, err, errors.ErrUnsupported)
 		})
 	}
+}
+
+func TestTypedCRUD_NilListFn(t *testing.T) {
+	// When ListFn is nil, both typed List and adapter List should return ErrUnsupported.
+	crud := &adapter.TypedCRUD[TestWidget]{
+		Namespace:  "stack-1",
+		Descriptor: widgetDesc,
+		GetFn: func(_ context.Context, name string) (*TestWidget, error) {
+			return &TestWidget{ID: name, Name: "Alpha"}, nil
+		},
+		// ListFn intentionally nil
+	}
+
+	t.Run("typed List returns ErrUnsupported", func(t *testing.T) {
+		_, err := crud.List(t.Context())
+		assert.ErrorIs(t, err, errors.ErrUnsupported)
+	})
+
+	t.Run("adapter List returns ErrUnsupported", func(t *testing.T) {
+		a := crud.AsAdapter()
+		_, err := a.List(t.Context(), metav1.ListOptions{})
+		assert.ErrorIs(t, err, errors.ErrUnsupported)
+	})
+
+	t.Run("Get still works when ListFn is nil", func(t *testing.T) {
+		obj, err := crud.Get(t.Context(), "w-1")
+		require.NoError(t, err)
+		assert.Equal(t, "w-1", obj.GetName())
+	})
+}
+
+func TestTypedCRUD_NilGetFn_FallbackToList(t *testing.T) {
+	// When GetFn is nil but ListFn is set, Get should fall back to
+	// listing all items and filtering by name (client-side emulation).
+	widgets := []TestWidget{
+		{ID: "w-1", Name: "Alpha", Color: "red"},
+		{ID: "w-2", Name: "Beta", Color: "blue"},
+		{ID: "w-3", Name: "Gamma", Color: "green"},
+	}
+
+	crud := &adapter.TypedCRUD[TestWidget]{
+		Namespace:  "stack-1",
+		Descriptor: widgetDesc,
+		Aliases:    []string{"wdg"},
+		ListFn: func(_ context.Context) ([]TestWidget, error) {
+			return widgets, nil
+		},
+		// GetFn intentionally nil — should fall back to list + filter
+	}
+
+	t.Run("typed Get finds existing item by name", func(t *testing.T) {
+		obj, err := crud.Get(t.Context(), "w-2")
+		require.NoError(t, err)
+		assert.Equal(t, "w-2", obj.GetName())
+		assert.Equal(t, "Beta", obj.Spec.Name)
+		assert.Equal(t, "blue", obj.Spec.Color)
+	})
+
+	t.Run("typed Get returns not-found for missing item", func(t *testing.T) {
+		_, err := crud.Get(t.Context(), "w-nonexistent")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not found")
+	})
+
+	t.Run("adapter Get finds existing item by name", func(t *testing.T) {
+		a := crud.AsAdapter()
+		item, err := a.Get(t.Context(), "w-2", metav1.GetOptions{})
+		require.NoError(t, err)
+		assert.Equal(t, "w-2", item.GetName())
+
+		spec, ok := item.Object["spec"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "Beta", spec["name"])
+	})
+
+	t.Run("adapter Get returns not-found for missing item", func(t *testing.T) {
+		a := crud.AsAdapter()
+		_, err := a.Get(t.Context(), "w-nonexistent", metav1.GetOptions{})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not found")
+	})
+
+	t.Run("List still works normally", func(t *testing.T) {
+		result, err := crud.List(t.Context())
+		require.NoError(t, err)
+		assert.Len(t, result, 3)
+	})
+}
+
+func TestTypedCRUD_NilGetFn_NilListFn(t *testing.T) {
+	// When both ListFn and GetFn are nil, Get should return ErrUnsupported
+	// (cannot fall back to list either).
+	crud := &adapter.TypedCRUD[TestWidget]{
+		Namespace:  "stack-1",
+		Descriptor: widgetDesc,
+	}
+
+	t.Run("typed Get returns ErrUnsupported", func(t *testing.T) {
+		_, err := crud.Get(t.Context(), "w-1")
+		assert.ErrorIs(t, err, errors.ErrUnsupported)
+	})
+
+	t.Run("typed List returns ErrUnsupported", func(t *testing.T) {
+		_, err := crud.List(t.Context())
+		assert.ErrorIs(t, err, errors.ErrUnsupported)
+	})
 }
 
 func TestTypedCRUD_MetadataFn(t *testing.T) {
@@ -393,4 +501,159 @@ func TestTypedRegistration_SchemaExampleRoundTrip(t *testing.T) {
 			assert.Equal(t, tt.wantExample, a.Example())
 		})
 	}
+}
+
+// --- Tests for TypedObject and typed methods ---
+
+func TestTypedCRUD_TypedList(t *testing.T) {
+	widgets := []TestWidget{
+		{ID: "w-1", Name: "Alpha", Color: "red"},
+		{ID: "w-2", Name: "Beta", Color: "blue"},
+	}
+	crud := newWidgetCRUD(widgets)
+
+	result, err := crud.List(t.Context())
+	require.NoError(t, err)
+	require.Len(t, result, 2)
+
+	for i, obj := range result {
+		w := widgets[i]
+		assert.Equal(t, "test.grafana.app/v1", obj.APIVersion)
+		assert.Equal(t, "Widget", obj.Kind)
+		assert.Equal(t, w.ID, obj.GetName())
+		assert.Equal(t, "stack-1", obj.GetNamespace())
+		assert.Equal(t, w.Name, obj.Spec.Name)
+		assert.Equal(t, w.Color, obj.Spec.Color)
+	}
+}
+
+func TestTypedCRUD_TypedGet(t *testing.T) {
+	widgets := []TestWidget{
+		{ID: "w-1", Name: "Alpha", Color: "red"},
+	}
+	crud := newWidgetCRUD(widgets)
+
+	obj, err := crud.Get(t.Context(), "w-1")
+	require.NoError(t, err)
+	assert.Equal(t, "w-1", obj.GetName())
+	assert.Equal(t, "Alpha", obj.Spec.Name)
+}
+
+func TestTypedCRUD_TypedCreate(t *testing.T) {
+	crud := newWidgetCRUD(nil)
+	crud.CreateFn = func(_ context.Context, item *TestWidget) (*TestWidget, error) {
+		result := *item
+		result.ID = "w-new"
+		return &result, nil
+	}
+
+	input := adapter.TypedObject[TestWidget]{
+		Spec: TestWidget{Name: "Gamma", Color: "green"},
+	}
+
+	result, err := crud.Create(t.Context(), &input)
+	require.NoError(t, err)
+	assert.Equal(t, "w-new", result.GetName())
+	assert.Equal(t, "green", result.Spec.Color)
+}
+
+func TestTypedCRUD_TypedCreateNil(t *testing.T) {
+	crud := newWidgetCRUD(nil)
+	// CreateFn is nil
+
+	input := adapter.TypedObject[TestWidget]{
+		Spec: TestWidget{Name: "X"},
+	}
+
+	_, err := crud.Create(t.Context(), &input)
+	assert.ErrorIs(t, err, errors.ErrUnsupported)
+}
+
+func TestTypedCRUD_TypedDelete(t *testing.T) {
+	var deleted string
+	crud := newWidgetCRUD(nil)
+	crud.DeleteFn = func(_ context.Context, name string) error {
+		deleted = name
+		return nil
+	}
+
+	err := crud.Delete(t.Context(), "w-1")
+	require.NoError(t, err)
+	assert.Equal(t, "w-1", deleted)
+}
+
+func TestTypedCRUD_ResourceIdentity(t *testing.T) {
+	// TypedCRUD should use GetResourceName() from the ResourceIdentity interface.
+	widgets := []TestWidget{
+		{ID: "w-1", Name: "Alpha", Color: "red"},
+	}
+	crud := &adapter.TypedCRUD[TestWidget]{
+		Namespace: "stack-1",
+		ListFn:    func(_ context.Context) ([]TestWidget, error) { return widgets, nil },
+		GetFn: func(_ context.Context, name string) (*TestWidget, error) {
+			return &widgets[0], nil
+		},
+		Descriptor: widgetDesc,
+	}
+
+	// Test typed List uses GetResourceName()
+	result, err := crud.List(t.Context())
+	require.NoError(t, err)
+	require.Len(t, result, 1)
+	assert.Equal(t, "w-1", result[0].GetName(), "should use GetResourceName() from ResourceIdentity")
+
+	// Test AsAdapter also works
+	a := crud.AsAdapter()
+	list, err := a.List(t.Context(), metav1.ListOptions{})
+	require.NoError(t, err)
+	require.Len(t, list.Items, 1)
+	assert.Equal(t, "w-1", list.Items[0].GetName())
+}
+
+func TestTypedCRUD_SetResourceName(t *testing.T) {
+	// TypedCRUD should use SetResourceName() from the ResourceIdentity interface.
+	crud := &adapter.TypedCRUD[TestWidget]{
+		Namespace:   "stack-1",
+		StripFields: []string{"id"},
+		Descriptor:  widgetDesc,
+		CreateFn: func(_ context.Context, item *TestWidget) (*TestWidget, error) {
+			return item, nil
+		},
+	}
+
+	a := crud.AsAdapter()
+	input := buildWidgetUnstructured("restored-id", "TestName", "red")
+
+	result, err := a.Create(t.Context(), input, metav1.CreateOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "restored-id", result.GetName(), "SetResourceName should set ID via ResourceIdentity")
+}
+
+func TestTypedObject_JSONSerialization(t *testing.T) {
+	obj := adapter.TypedObject[TestWidget]{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "test.grafana.app/v1",
+			Kind:       "Widget",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "w-1",
+			Namespace: "stack-1",
+		},
+		Spec: TestWidget{ID: "w-1", Name: "Alpha", Color: "red"},
+	}
+
+	data, err := json.Marshal(obj)
+	require.NoError(t, err)
+
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(data, &m))
+
+	assert.Equal(t, "test.grafana.app/v1", m["apiVersion"])
+	assert.Equal(t, "Widget", m["kind"])
+	assert.Contains(t, m, "metadata")
+	assert.Contains(t, m, "spec")
+
+	spec, ok := m["spec"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "Alpha", spec["name"])
 }

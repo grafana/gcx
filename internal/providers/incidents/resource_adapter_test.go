@@ -45,14 +45,14 @@ func TestResourceAdapter_Descriptor(t *testing.T) {
 	assert.Equal(t, "incidents", desc.Plural)
 }
 
-func TestResourceAdapter_Aliases(t *testing.T) {
+func TestResourceAdapter_NoAliases(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
 
 	a := newTestAdapter(t, server, "stack-123")
-	assert.Equal(t, []string{"incidents", "incident", "inc"}, a.Aliases())
+	assert.Empty(t, a.Aliases(), "adapter aliases should be empty (provider-prefixed aliases removed)")
 }
 
 func TestResourceAdapter_List(t *testing.T) {

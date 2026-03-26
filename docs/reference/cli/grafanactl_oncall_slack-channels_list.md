@@ -11,7 +11,7 @@ grafanactl oncall slack-channels list [flags]
 ```
   -h, --help            help for list
       --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -o, --output string   Output format. One of: json, yaml (default "table")
+  -o, --output string   Output format. One of: json, table, yaml (default "table")
 ```
 
 ### Options inherited from parent commands

@@ -185,15 +185,14 @@ func TestProbeResourceAdapter_Descriptor(t *testing.T) {
 	assert.Equal(t, "Probe", desc.Kind)
 }
 
-func TestProbeResourceAdapter_Aliases(t *testing.T) {
+func TestProbeResourceAdapter_NoAliases(t *testing.T) {
 	loader := &fakeProbeLoader{baseURL: "http://unused", token: "t", namespace: "default"}
 	factory := probes.NewAdapterFactory(loader)
 
 	a, err := factory(context.Background())
 	require.NoError(t, err)
 
-	aliases := a.Aliases()
-	assert.Contains(t, aliases, "probes")
+	assert.Empty(t, a.Aliases(), "adapter aliases should be empty (provider-prefixed aliases removed)")
 }
 
 func TestNewProbeAdapterFactory_LazyInit(t *testing.T) {

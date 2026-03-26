@@ -61,7 +61,7 @@ func (o *statusOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newStatusCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newStatusCommand() *cobra.Command {
 	opts := &statusOpts{}
 	cmd := &cobra.Command{
 		Use:   "status [UUID]",
@@ -93,12 +93,7 @@ grafana_slo_* metrics.`,
 
 			ctx := cmd.Context()
 
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
-			if err != nil {
-				return err
-			}
-
-			sloClient, err := NewClient(restCfg)
+			crud, cfg, err := NewTypedCRUD(ctx)
 			if err != nil {
 				return err
 			}
@@ -106,15 +101,19 @@ grafana_slo_* metrics.`,
 			// Fetch SLO definition(s).
 			var slos []Slo
 			if len(args) == 1 {
-				s, err := sloClient.Get(ctx, args[0])
+				typedObj, err := crud.Get(ctx, args[0])
 				if err != nil {
 					return err
 				}
-				slos = []Slo{*s}
+				slos = []Slo{typedObj.Spec}
 			} else {
-				slos, err = sloClient.List(ctx)
+				typedObjs, err := crud.List(ctx)
 				if err != nil {
 					return err
+				}
+				slos = make([]Slo, len(typedObjs))
+				for i := range typedObjs {
+					slos[i] = typedObjs[i].Spec
 				}
 			}
 
@@ -124,7 +123,7 @@ grafana_slo_* metrics.`,
 			}
 
 			// Create Prometheus client for metric queries.
-			promClient, err := prometheus.NewClient(restCfg)
+			promClient, err := prometheus.NewClient(cfg)
 			if err != nil {
 				return err
 			}

@@ -70,7 +70,7 @@ func ValidateTimelineFlags(cmd *cobra.Command) error {
 	return nil
 }
 
-func newTimelineCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newTimelineCommand() *cobra.Command {
 	opts := &timelineOpts{}
 	cmd := &cobra.Command{
 		Use:   "timeline [UUID]",
@@ -113,12 +113,7 @@ grafana_slo_sli_window metrics.`,
 
 			ctx := cmd.Context()
 
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
-			if err != nil {
-				return err
-			}
-
-			sloClient, err := NewClient(restCfg)
+			crud, cfg, err := NewTypedCRUD(ctx)
 			if err != nil {
 				return err
 			}
@@ -126,15 +121,19 @@ grafana_slo_sli_window metrics.`,
 			// Fetch SLO definition(s).
 			var slos []Slo
 			if len(args) == 1 {
-				s, err := sloClient.Get(ctx, args[0])
+				s, err := crud.Get(ctx, args[0])
 				if err != nil {
 					return err
 				}
-				slos = []Slo{*s}
+				slos = []Slo{s.Spec}
 			} else {
-				slos, err = sloClient.List(ctx)
+				typedObjs, err := crud.List(ctx)
 				if err != nil {
 					return err
+				}
+				slos = make([]Slo, len(typedObjs))
+				for i := range typedObjs {
+					slos[i] = typedObjs[i].Spec
 				}
 			}
 
@@ -166,7 +165,7 @@ grafana_slo_sli_window metrics.`,
 			}
 
 			// Create Prometheus client for range queries.
-			promClient, err := prometheus.NewClient(restCfg)
+			promClient, err := prometheus.NewClient(cfg)
 			if err != nil {
 				return err
 			}

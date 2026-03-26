@@ -53,8 +53,22 @@ func (p *AlertProvider) ConfigKeys() []providers.ConfigKey {
 	return nil
 }
 
-// ResourceAdapters returns adapter factories for Alert resource types.
-// Factories are registered globally via adapter.Register() in resource_adapter.go init().
-func (p *AlertProvider) ResourceAdapters() []adapter.Factory {
-	return nil
+// TypedRegistrations returns adapter registrations for Alert resource types.
+// Registrations are added globally by providers.Register() which calls this method.
+func (p *AlertProvider) TypedRegistrations() []adapter.Registration {
+	loader := &providers.ConfigLoader{}
+	return []adapter.Registration{
+		{
+			Factory:    NewRulesAdapterFactory(loader),
+			Descriptor: staticRulesDescriptor,
+			GVK:        staticRulesDescriptor.GroupVersionKind(),
+			Schema:     alertRuleSchema(),
+		},
+		{
+			Factory:    NewGroupsAdapterFactory(loader),
+			Descriptor: staticGroupsDescriptor,
+			GVK:        staticGroupsDescriptor.GroupVersionKind(),
+			Schema:     alertRuleGroupSchema(),
+		},
+	}
 }

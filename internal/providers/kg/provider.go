@@ -6,6 +6,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Note: package init() is only in provider.go (calls providers.Register).
+// Resource adapter registrations are in TypedRegistrations().
+
 var _ providers.Provider = &KGProvider{}
 
 func init() { //nolint:gochecknoinits // Self-registration pattern (like database/sql drivers).
@@ -82,8 +85,40 @@ func (p *KGProvider) ConfigKeys() []providers.ConfigKey {
 	return nil
 }
 
-// ResourceAdapters returns adapter factories for KG resource types.
-// Factories are registered globally via adapter.Register() in resource_adapter.go init().
-func (p *KGProvider) ResourceAdapters() []adapter.Factory {
-	return nil
+// TypedRegistrations returns adapter registrations for KG resource types.
+func (p *KGProvider) TypedRegistrations() []adapter.Registration {
+	loader := &providers.ConfigLoader{}
+	return []adapter.Registration{
+		{
+			Factory:    NewAdapterFactory(loader),
+			Descriptor: staticDescriptor,
+			GVK:        staticDescriptor.GroupVersionKind(),
+			Schema:     RuleSchema(),
+			Example:    RuleExample(),
+		},
+		{
+			Factory:    NewDatasetAdapterFactory(loader),
+			Descriptor: datasetDescriptor,
+			GVK:        datasetDescriptor.GroupVersionKind(),
+			Schema:     DatasetSchema(),
+		},
+		{
+			Factory:    NewVendorAdapterFactory(loader),
+			Descriptor: vendorDescriptor,
+			GVK:        vendorDescriptor.GroupVersionKind(),
+			Schema:     VendorSchema(),
+		},
+		{
+			Factory:    NewEntityTypeAdapterFactory(loader),
+			Descriptor: entityTypeDescriptor,
+			GVK:        entityTypeDescriptor.GroupVersionKind(),
+			Schema:     EntityTypeSchema(),
+		},
+		{
+			Factory:    NewScopeAdapterFactory(loader),
+			Descriptor: scopeDescriptor,
+			GVK:        scopeDescriptor.GroupVersionKind(),
+			Schema:     ScopeSchema(),
+		},
+	}
 }

@@ -3,7 +3,7 @@
 Query assertions for a time range.
 
 ```
-grafanactl kg assertions query [Type/Name] [flags]
+grafanactl kg assertions query [Type--Name] [flags]
 ```
 
 ### Options

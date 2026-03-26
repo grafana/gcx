@@ -24,7 +24,15 @@ type RulesData struct {
 	Totals map[string]int `json:"totals,omitempty"`
 }
 
+// GetResourceName returns the rule group name.
+func (g RuleGroup) GetResourceName() string { return g.Name }
+
+// SetResourceName restores the rule group name.
+func (g *RuleGroup) SetResourceName(name string) { g.Name = name }
+
 // RuleGroup represents an alert rule group.
+//
+//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type RuleGroup struct {
 	Name           string         `json:"name"`
 	File           string         `json:"file"`
@@ -36,7 +44,15 @@ type RuleGroup struct {
 	EvaluationTime float64        `json:"evaluationTime"`
 }
 
+// GetResourceName returns the rule UID.
+func (r RuleStatus) GetResourceName() string { return r.UID }
+
+// SetResourceName restores the rule UID.
+func (r *RuleStatus) SetResourceName(name string) { r.UID = name }
+
 // RuleStatus represents an alert rule with its current status.
+//
+//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type RuleStatus struct {
 	State                 string                `json:"state"`
 	Name                  string                `json:"name"`

@@ -16,7 +16,6 @@ var _ providers.Provider = &OnCallProvider{}
 
 func init() { //nolint:gochecknoinits // Self-registration pattern (like database/sql drivers).
 	providers.Register(&OnCallProvider{})
-	RegisterAdapters(&configLoader{})
 }
 
 // OnCallProvider manages Grafana OnCall resources.
@@ -62,7 +61,8 @@ func (p *OnCallProvider) Commands() []*cobra.Command {
 		newOrganizationsCmd(loader),
 		newResolutionNotesCmd(loader),
 		newShiftSwapsCmd(loader),
-		newPersonalNotificationRulesCmd(loader),
+		// personal-notification-rules removed: OnCall API rejects SA tokens
+		// for this endpoint (403 "Invalid token"). Needs user-token auth support.
 		// Standalone action commands
 		newEscalateCommand(loader),
 	)
@@ -82,10 +82,10 @@ func (p *OnCallProvider) ConfigKeys() []providers.ConfigKey {
 	return nil
 }
 
-// ResourceAdapters returns adapter factories for OnCall resource types.
-// Factories are registered globally via adapter.Register() in resource_adapter.go init().
-func (p *OnCallProvider) ResourceAdapters() []adapter.Factory {
-	return nil
+// TypedRegistrations returns adapter registrations for OnCall resource types.
+// Registrations are added globally by providers.Register() which calls this method.
+func (p *OnCallProvider) TypedRegistrations() []adapter.Registration {
+	return buildOnCallRegistrations(&configLoader{})
 }
 
 // OnCallConfigLoader can produce a configured OnCall client.

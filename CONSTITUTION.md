@@ -25,9 +25,25 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   (`Process(*Resource) error`). Processors compose into ordered slices at defined pipeline points.
 - **Format-agnostic data fetching:** Commands fetch all data regardless of `--output` format;
   codecs control display, not data acquisition.
-- **Self-registering providers:** Cloud product providers use `init()` to register with the
-  global provider registry. Each provider contributes CLI commands, resource adapters, and
-  per-provider configuration via the `Provider` interface.
+- **Unified provider registration:** Each provider has exactly one `init()` function
+  containing a single `providers.Register()` call. This atomically populates both the
+  provider registry and the adapter registry — `providers.Register()` calls
+  `adapter.Register()` for each entry returned by `Provider.TypedRegistrations()`.
+  No separate `adapter.Register()` calls may exist outside `providers.Register()`.
+- **ResourceIdentity on all domain types:** Every provider domain type used in a
+  `ResourceAdapter` must implement `ResourceIdentity` (`GetResourceName() string` and
+  `SetResourceName(string)`). `TypedCRUD` uses `GetResourceName()` for name extraction
+  and `SetResourceName()` for name restoration — no function pointers.
+- **TypedCRUD for provider commands:** Provider CRUD commands must use `TypedCRUD[T]`
+  typed methods (`List`, `Get`, `Create`, `Update`, `Delete`) for data access, not raw
+  API clients. This ensures bug fixes to CRUD logic apply to both provider commands and
+  the `resources` pipeline automatically.
+- **Schema/Example on Registration structs:** Every `adapter.Registration` struct (populated
+  via `TypedRegistrations()`) must include a non-nil `Schema` field. These power the
+  `schemas` command via the global `SchemaForGVK`/`ExampleForGVK` functions — `AsAdapter()`
+  does not propagate schema or example. The `Example` field MAY be nil for read-only
+  resources (those without Create/Update support) since examples serve as templates for
+  writable operations.
 
 ## CLI Grammar
 
@@ -94,11 +110,28 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   `ResourceAdapter` (via TypedCRUD) for data access, not raw API clients.
   Table/wide codecs may diverge — provider tables show domain-specific
   columns, generic tables show resource-management columns.
-- **Typed resource trajectory.** Provider resource types are progressing
-  toward implementing K8s metadata interfaces directly. TypedCRUD is a
-  transitional bridge. New providers must design domain types with eventual
-  K8s interface compliance in mind and must not introduce patterns that
-  deepen the typed-to-unstructured gap.
+- **Provider-only resources must not mimic adapter verbs.** If a resource
+  does not obey standard list/get/create/update/delete semantics (e.g.,
+  composite keys, scope-required lookups, query-only endpoints), do not
+  register it as an adapter. Keep it in the provider command tree only, but
+  use alternative verbs (`show`, `describe`, `search`) — never `get`, `list`,
+  `create`, `update`, `delete`. This avoids user confusion: adapter verbs
+  (`resources get`) and provider verbs should not overlap for resources that
+  behave differently across the two paths.
+- **Sub-resources nest under their parent command.** If a resource cannot
+  be listed or addressed without a parent ID (e.g. alerts require an
+  alert group), it is a sub-resource. Sub-resources must not be registered as standalone typed
+  adapters (no `ListFn` that ignores the parent). Instead, expose them
+  as verbs under the parent command: `$PARENT $VERB-$CHILD $PARENT_ID`
+  (e.g. `alert-groups list-alerts <id>`). Get-by-ID may still have a
+  standalone adapter if the API supports direct ID lookup without a parent.
+- **Typed resource trajectory.** Provider domain types implement
+  `ResourceIdentity` for self-describing identity and are wrapped by
+  `TypedObject[T]` (embedded `metav1.ObjectMeta` + `TypeMeta` + `Spec T`)
+  for K8s metadata compliance. `TypedCRUD[T]` provides both typed methods
+  (returning `TypedObject[T]`) and unstructured methods (via `AsAdapter()`).
+  New providers must implement `ResourceIdentity` on domain types and use
+  `TypedCRUD` for both CLI commands and adapter registration.
 
 ## Dependency Rules
 
@@ -113,6 +146,15 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   auth resolution. Providers must not construct HTTP clients or load
   credentials independently — this ensures consistent env var precedence,
   secret handling, and auth behavior across all providers.
+- **`ExternalHTTPClient` for external APIs.** Provider clients calling APIs
+  outside the Grafana server (K6 Cloud, OnCall, Synth, Fleet — any domain
+  other than `cfg.Host`) must use `providers.ExternalHTTPClient()`, never
+  `rest.HTTPClientFor()`. The k8s transport round-tripper injects the Grafana
+  bearer token on every outgoing request, which conflicts with the product's
+  own auth mechanism. `ExternalHTTPClient()` returns a shared, well-tuned
+  `*http.Client` with no auth injection — providers set their own auth headers
+  per request. `rest.HTTPClientFor()` is correct only for calls to the Grafana
+  API itself (e.g. plugin discovery, datasource queries).
 
 ## Taste Rules
 

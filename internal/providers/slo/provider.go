@@ -38,7 +38,7 @@ func (p *SLOProvider) Commands() []*cobra.Command {
 	// Bind config flags on the parent — all subcommands inherit these.
 	loader.BindFlags(sloCmd.PersistentFlags())
 
-	sloCmd.AddCommand(definitions.Commands(loader))
+	sloCmd.AddCommand(definitions.Commands())
 	sloCmd.AddCommand(reports.Commands(loader))
 
 	return []*cobra.Command{sloCmd}
@@ -58,7 +58,16 @@ func (p *SLOProvider) ConfigKeys() []providers.ConfigKey {
 	return nil
 }
 
-// ResourceAdapters returns adapter factories for SLO resource types.
-func (p *SLOProvider) ResourceAdapters() []adapter.Factory {
-	return []adapter.Factory{definitions.NewLazyFactory()}
+// TypedRegistrations returns adapter registrations for SLO resource types.
+func (p *SLOProvider) TypedRegistrations() []adapter.Registration {
+	desc := definitions.StaticDescriptor()
+	return []adapter.Registration{
+		{
+			Factory:    definitions.NewLazyFactory(),
+			Descriptor: desc,
+			GVK:        desc.GroupVersionKind(),
+			Schema:     definitions.SloSchema(),
+			Example:    definitions.SloExample(),
+		},
+	}
 }

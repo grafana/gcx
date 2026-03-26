@@ -9,12 +9,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// DescriptorProvider describes a type that can supply adapter factories.
-// This matches the shape of providers.Provider but avoids importing the providers package.
-type DescriptorProvider interface {
-	ResourceAdapters() []Factory
-}
-
 // RegistryAccess is the subset of discovery.Registry needed for adapter registration.
 type RegistryAccess interface {
 	RegisterAdapter(factory Factory, desc resources.Descriptor, aliases []string)
@@ -27,8 +21,8 @@ type Registration struct {
 	Descriptor resources.Descriptor
 	Aliases    []string
 	GVK        schema.GroupVersionKind
-	Schema     json.RawMessage // Optional JSON Schema for this resource type
-	Example    json.RawMessage // Optional example manifest (YAML-compatible JSON)
+	Schema     json.RawMessage // Required JSON Schema for this resource type (per CONSTITUTION.md). MAY be nil for read-only resources.
+	Example    json.RawMessage // Required example manifest (YAML-compatible JSON, per CONSTITUTION.md). MAY be nil for read-only resources.
 }
 
 // registrations holds all adapter registrations collected from providers.

@@ -11,35 +11,30 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/grafana/grafanactl/internal/config"
 	"github.com/grafana/grafanactl/internal/format"
 	cmdio "github.com/grafana/grafanactl/internal/output"
 	"github.com/grafana/grafanactl/internal/resources"
+	"github.com/grafana/grafanactl/internal/resources/adapter"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// GrafanaConfigLoader can load a NamespacedRESTConfig from the active context.
-type GrafanaConfigLoader interface {
-	LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error)
-}
-
 // Commands returns the definitions command group with CRUD subcommands.
-func Commands(loader GrafanaConfigLoader) *cobra.Command {
+func Commands() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "definitions",
 		Short:   "Manage SLO definitions.",
 		Aliases: []string{"def", "defs"},
 	}
 	cmd.AddCommand(
-		newListCommand(loader),
-		newGetCommand(loader),
-		newPushCommand(loader),
-		newPullCommand(loader),
-		newDeleteCommand(loader),
-		newStatusCommand(loader),
-		newTimelineCommand(loader),
+		newListCommand(),
+		newGetCommand(),
+		newPushCommand(),
+		newPullCommand(),
+		newDeleteCommand(),
+		newStatusCommand(),
+		newTimelineCommand(),
 	)
 	return cmd
 }
@@ -59,7 +54,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newListCommand() *cobra.Command {
 	opts := &listOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -71,19 +66,20 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
+			crud, cfg, err := NewTypedCRUD(ctx)
 			if err != nil {
 				return err
 			}
 
-			client, err := NewClient(restCfg)
+			typedObjs, err := crud.List(ctx)
 			if err != nil {
 				return err
 			}
 
-			slos, err := client.List(ctx)
-			if err != nil {
-				return err
+			// Extract Slo from TypedObject
+			slos := make([]Slo, len(typedObjs))
+			for i := range typedObjs {
+				slos[i] = typedObjs[i].Spec
 			}
 
 			// Table codec operates on raw []Slo for direct field access.
@@ -95,7 +91,7 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 			var objs []unstructured.Unstructured
 			for _, slo := range slos {
-				res, err := ToResource(slo, restCfg.Namespace)
+				res, err := ToResource(slo, cfg.Namespace)
 				if err != nil {
 					return fmt.Errorf("failed to convert SLO %s to resource: %w", slo.UUID, err)
 				}
@@ -174,7 +170,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newGetCommand() *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
 		Use:   "get UUID",
@@ -188,22 +184,18 @@ func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 			ctx := cmd.Context()
 			uuid := args[0]
 
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
+			crud, cfg, err := NewTypedCRUD(ctx)
 			if err != nil {
 				return err
 			}
 
-			client, err := NewClient(restCfg)
+			typedObj, err := crud.Get(ctx, uuid)
 			if err != nil {
 				return err
 			}
 
-			slo, err := client.Get(ctx, uuid)
-			if err != nil {
-				return err
-			}
-
-			res, err := ToResource(*slo, restCfg.Namespace)
+			slo := typedObj.Spec
+			res, err := ToResource(slo, cfg.Namespace)
 			if err != nil {
 				return fmt.Errorf("failed to convert SLO to resource: %w", err)
 			}
@@ -228,7 +220,7 @@ func (o *pullOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.OutputDir, "output-dir", "d", ".", "Directory to write SLO definition files to")
 }
 
-func newPullCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newPullCommand() *cobra.Command {
 	opts := &pullOpts{}
 	cmd := &cobra.Command{
 		Use:   "pull",
@@ -236,17 +228,12 @@ func newPullCommand(loader GrafanaConfigLoader) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
+			crud, cfg, err := NewTypedCRUD(ctx)
 			if err != nil {
 				return err
 			}
 
-			client, err := NewClient(restCfg)
-			if err != nil {
-				return err
-			}
-
-			slos, err := client.List(ctx)
+			typedObjs, err := crud.List(ctx)
 			if err != nil {
 				return err
 			}
@@ -258,8 +245,9 @@ func newPullCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 			codec := format.NewYAMLCodec()
 
-			for _, slo := range slos {
-				res, err := ToResource(slo, restCfg.Namespace)
+			for _, typedObj := range typedObjs {
+				slo := typedObj.Spec
+				res, err := ToResource(slo, cfg.Namespace)
 				if err != nil {
 					return fmt.Errorf("failed to convert SLO %s to resource: %w", slo.UUID, err)
 				}
@@ -278,7 +266,7 @@ func newPullCommand(loader GrafanaConfigLoader) *cobra.Command {
 				f.Close()
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Pulled %d SLO definitions to %s/", len(slos), outputDir)
+			cmdio.Success(cmd.OutOrStdout(), "Pulled %d SLO definitions to %s/", len(typedObjs), outputDir)
 			return nil
 		},
 	}
@@ -298,7 +286,7 @@ func (o *pushOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Preview changes without making them")
 }
 
-func newPushCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newPushCommand() *cobra.Command {
 	opts := &pushOpts{}
 	cmd := &cobra.Command{
 		Use:   "push FILE...",
@@ -307,12 +295,7 @@ func newPushCommand(loader GrafanaConfigLoader) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
-			if err != nil {
-				return err
-			}
-
-			client, err := NewClient(restCfg)
+			crud, _, err := NewTypedCRUD(ctx)
 			if err != nil {
 				return err
 			}
@@ -346,7 +329,7 @@ func newPushCommand(loader GrafanaConfigLoader) *cobra.Command {
 					continue
 				}
 
-				if err := upsertSLO(ctx, cmd, client, slo); err != nil {
+				if err := upsertSLO(ctx, cmd, crud, slo); err != nil {
 					return err
 				}
 			}
@@ -361,21 +344,29 @@ func newPushCommand(loader GrafanaConfigLoader) *cobra.Command {
 // upsertSLO creates or updates an SLO depending on whether it already exists.
 // If slo.UUID is set, it checks the server; a 404 means create, otherwise update.
 // If slo.UUID is empty, it always creates.
-func upsertSLO(ctx context.Context, cmd *cobra.Command, client *Client, slo *Slo) error {
+func upsertSLO(ctx context.Context, cmd *cobra.Command, crud *adapter.TypedCRUD[Slo], slo *Slo) error {
 	if slo.UUID == "" {
-		resp, err := client.Create(ctx, slo)
+		// Wrap in TypedObject for create
+		typedObj := &adapter.TypedObject[Slo]{
+			Spec: *slo,
+		}
+		created, err := crud.Create(ctx, typedObj)
 		if err != nil {
 			return fmt.Errorf("failed to create SLO %s: %w", slo.Name, err)
 		}
-		cmdio.Success(cmd.OutOrStdout(), "Created %s (uuid=%s)", slo.Name, resp.UUID)
+		cmdio.Success(cmd.OutOrStdout(), "Created %s (uuid=%s)", slo.Name, created.Spec.UUID)
 		return nil
 	}
 
-	_, getErr := client.Get(ctx, slo.UUID)
+	_, getErr := crud.Get(ctx, slo.UUID)
 	switch {
 	case getErr == nil:
 		// SLO exists — update.
-		if err := client.Update(ctx, slo.UUID, slo); err != nil {
+		typedObj := &adapter.TypedObject[Slo]{
+			Spec: *slo,
+		}
+		typedObj.SetName(slo.UUID)
+		if _, err := crud.Update(ctx, slo.UUID, typedObj); err != nil {
 			return fmt.Errorf("failed to update SLO %s: %w", slo.UUID, err)
 		}
 		cmdio.Success(cmd.OutOrStdout(), "Updated %s", slo.Name)
@@ -383,11 +374,14 @@ func upsertSLO(ctx context.Context, cmd *cobra.Command, client *Client, slo *Slo
 
 	case errors.Is(getErr, ErrNotFound):
 		// SLO not found — create.
-		resp, err := client.Create(ctx, slo)
+		typedObj := &adapter.TypedObject[Slo]{
+			Spec: *slo,
+		}
+		created, err := crud.Create(ctx, typedObj)
 		if err != nil {
 			return fmt.Errorf("failed to create SLO %s: %w", slo.Name, err)
 		}
-		cmdio.Success(cmd.OutOrStdout(), "Created %s (uuid=%s)", slo.Name, resp.UUID)
+		cmdio.Success(cmd.OutOrStdout(), "Created %s (uuid=%s)", slo.Name, created.Spec.UUID)
 		return nil
 
 	default:
@@ -408,7 +402,7 @@ func (o *deleteOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVarP(&o.Force, "force", "f", false, "Skip confirmation prompt")
 }
 
-func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newDeleteCommand() *cobra.Command {
 	opts := &deleteOpts{}
 	cmd := &cobra.Command{
 		Use:   "delete UUID...",
@@ -432,18 +426,13 @@ func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 				}
 			}
 
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
-			if err != nil {
-				return err
-			}
-
-			client, err := NewClient(restCfg)
+			crud, _, err := NewTypedCRUD(ctx)
 			if err != nil {
 				return err
 			}
 
 			for _, uuid := range args {
-				if err := client.Delete(ctx, uuid); err != nil {
+				if err := crud.Delete(ctx, uuid); err != nil {
 					return fmt.Errorf("failed to delete SLO %s: %w", uuid, err)
 				}
 				cmdio.Success(cmd.OutOrStdout(), "Deleted %s", uuid)

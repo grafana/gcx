@@ -8,7 +8,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
+
+	"github.com/grafana/grafanactl/internal/providers"
 )
 
 // Client is an HTTP client for the Grafana Fleet Management API.
@@ -27,7 +28,7 @@ type Client struct {
 // If httpClient is nil, a default client with a 30-second timeout is used.
 func NewClient(baseURL, instanceID, apiToken string, useBasicAuth bool, httpClient *http.Client) *Client {
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 30 * time.Second}
+		httpClient = providers.ExternalHTTPClient()
 	}
 	return &Client{
 		baseURL:      strings.TrimRight(baseURL, "/"),

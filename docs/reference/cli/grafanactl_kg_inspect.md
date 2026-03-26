@@ -3,7 +3,7 @@
 Inspect an entity: info, assertions, and summary.
 
 ```
-grafanactl kg inspect [Type/Name] [flags]
+grafanactl kg inspect [Type--Name] [flags]
 ```
 
 ### Options

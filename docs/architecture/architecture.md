@@ -661,7 +661,7 @@ Files most important for understanding the codebase. Organized by architectural 
 
 | File | Purpose |
 |------|---------|
-| `internal/providers/provider.go` | `Provider` interface (incl. ResourceAdapters()), `ConfigKey` metadata type |
+| `internal/providers/provider.go` | `Provider` interface (incl. TypedRegistrations()), `ConfigKey` metadata type |
 | `internal/providers/registry.go` | `All()` — compile-time provider registry |
 | `internal/providers/redact.go` | `RedactSecrets()` — secure-by-default secret redaction |
 | `cmd/grafanactl/providers/command.go` | `providers` command (list registered providers) |
