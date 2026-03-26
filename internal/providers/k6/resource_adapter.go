@@ -58,28 +58,6 @@ func allResources() []resourceDef {
 	}
 }
 
-func init() { //nolint:gochecknoinits // Self-registration pattern (like database/sql drivers).
-	loader := &providers.ConfigLoader{}
-	for _, rd := range allResources() {
-		desc := resources.Descriptor{
-			GroupVersion: schema.GroupVersion{
-				Group:   APIGroup,
-				Version: APIVersionStr,
-			},
-			Kind:     rd.kind,
-			Singular: rd.singular,
-			Plural:   rd.plural,
-		}
-		adapter.Register(adapter.Registration{
-			Factory:    newSubResourceFactory(loader, rd),
-			Descriptor: desc,
-			Aliases:    rd.aliases,
-			GVK:        desc.GroupVersionKind(),
-			Schema:     rd.schema,
-			Example:    rd.example,
-		})
-	}
-}
 
 // CloudConfigLoader can load Grafana Cloud config (token + stack info via GCOM).
 type CloudConfigLoader interface {
@@ -514,4 +492,223 @@ func loadZoneExample() json.RawMessage {
 		"name":            "my-zone",
 		"k6_load_zone_id": "my-zone-id",
 	})
+}
+
+// ---------------------------------------------------------------------------
+// NewTypedCRUD factories for CLI commands
+// ---------------------------------------------------------------------------
+
+// NewTypedCRUD[Project] creates a TypedCRUD for K6 projects.
+func NewTypedCRUDProject(ctx context.Context, loader CloudConfigLoader) (*adapter.TypedCRUD[Project], string, error) {
+	client, ns, err := authenticatedClient(ctx, loader)
+	if err != nil {
+		return nil, "", err
+	}
+	crud := &adapter.TypedCRUD[Project]{
+		NameFn:      func(p Project) string { return strconv.Itoa(p.ID) },
+		ListFn:      client.ListProjects,
+		GetFn: func(ctx context.Context, name string) (*Project, error) {
+			id, err := strconv.Atoi(name)
+			if err != nil {
+				return nil, fmt.Errorf("k6: invalid project ID %q: %w", name, err)
+			}
+			return client.GetProject(ctx, id)
+		},
+		CreateFn: func(ctx context.Context, p *Project) (*Project, error) {
+			return client.CreateProject(ctx, p.Name)
+		},
+		UpdateFn: func(ctx context.Context, name string, p *Project) (*Project, error) {
+			id, err := strconv.Atoi(name)
+			if err != nil {
+				return nil, fmt.Errorf("k6: invalid project ID %q: %w", name, err)
+			}
+			if err := client.UpdateProject(ctx, id, p.Name); err != nil {
+				return nil, err
+			}
+			return client.GetProject(ctx, id)
+		},
+		DeleteFn: func(ctx context.Context, name string) error {
+			id, err := strconv.Atoi(name)
+			if err != nil {
+				return fmt.Errorf("k6: invalid project ID %q: %w", name, err)
+			}
+			return client.DeleteProject(ctx, id)
+		},
+	}
+	return crud, ns, nil
+}
+
+// NewTypedCRUD[LoadTest] creates a TypedCRUD for K6 load tests.
+func NewTypedCRUDLoadTest(ctx context.Context, loader CloudConfigLoader) (*adapter.TypedCRUD[LoadTest], string, error) {
+	client, ns, err := authenticatedClient(ctx, loader)
+	if err != nil {
+		return nil, "", err
+	}
+	crud := &adapter.TypedCRUD[LoadTest]{
+		NameFn: func(lt LoadTest) string { return strconv.Itoa(lt.ID) },
+		ListFn: client.ListAllLoadTests,
+		GetFn: func(ctx context.Context, name string) (*LoadTest, error) {
+			id, err := strconv.Atoi(name)
+			if err != nil {
+				return nil, fmt.Errorf("k6: invalid load test ID %q: %w", name, err)
+			}
+			return client.GetLoadTest(ctx, id)
+		},
+		CreateFn: func(ctx context.Context, lt *LoadTest) (*LoadTest, error) {
+			return client.CreateLoadTest(ctx, lt.Name, lt.ProjectID, lt.Script)
+		},
+		UpdateFn: func(ctx context.Context, name string, lt *LoadTest) (*LoadTest, error) {
+			id, err := strconv.Atoi(name)
+			if err != nil {
+				return nil, fmt.Errorf("k6: invalid load test ID %q: %w", name, err)
+			}
+			if err := client.UpdateLoadTest(ctx, id, lt.Name, lt.Script); err != nil {
+				return nil, err
+			}
+			return client.GetLoadTest(ctx, id)
+		},
+		DeleteFn: func(ctx context.Context, name string) error {
+			id, err := strconv.Atoi(name)
+			if err != nil {
+				return fmt.Errorf("k6: invalid load test ID %q: %w", name, err)
+			}
+			return client.DeleteLoadTest(ctx, id)
+		},
+	}
+	return crud, ns, nil
+}
+
+// NewTypedCRUD[Schedule] creates a TypedCRUD for K6 schedules.
+func NewTypedCRUDSchedule(ctx context.Context, loader CloudConfigLoader) (*adapter.TypedCRUD[Schedule], string, error) {
+	client, ns, err := authenticatedClient(ctx, loader)
+	if err != nil {
+		return nil, "", err
+	}
+	crud := &adapter.TypedCRUD[Schedule]{
+		NameFn: func(s Schedule) string { return strconv.Itoa(s.ID) },
+		ListFn: client.ListSchedules,
+		GetFn: func(ctx context.Context, name string) (*Schedule, error) {
+			id, err := strconv.Atoi(name)
+			if err != nil {
+				return nil, fmt.Errorf("k6: invalid schedule ID %q: %w", name, err)
+			}
+			return client.GetSchedule(ctx, id)
+		},
+		CreateFn: func(ctx context.Context, s *Schedule) (*Schedule, error) {
+			req := ScheduleRequest{
+				Starts:         s.Starts,
+				RecurrenceRule: s.RecurrenceRule,
+			}
+			return client.CreateSchedule(ctx, s.LoadTestID, req)
+		},
+		UpdateFn: func(ctx context.Context, name string, s *Schedule) (*Schedule, error) {
+			id, err := strconv.Atoi(name)
+			if err != nil {
+				return nil, fmt.Errorf("k6: invalid schedule ID %q: %w", name, err)
+			}
+			req := ScheduleRequest{
+				Starts:         s.Starts,
+				RecurrenceRule: s.RecurrenceRule,
+			}
+			return client.UpdateScheduleByID(ctx, id, req)
+		},
+		DeleteFn: func(ctx context.Context, name string) error {
+			id, err := strconv.Atoi(name)
+			if err != nil {
+				return fmt.Errorf("k6: invalid schedule ID %q: %w", name, err)
+			}
+			s, err := client.GetSchedule(ctx, id)
+			if err != nil {
+				return err
+			}
+			return client.DeleteScheduleByLoadTest(ctx, s.LoadTestID)
+		},
+	}
+	return crud, ns, nil
+}
+
+// NewTypedCRUD[EnvVar] creates a TypedCRUD for K6 environment variables.
+func NewTypedCRUDEnvVar(ctx context.Context, loader CloudConfigLoader) (*adapter.TypedCRUD[EnvVar], string, error) {
+	client, ns, err := authenticatedClient(ctx, loader)
+	if err != nil {
+		return nil, "", err
+	}
+	crud := &adapter.TypedCRUD[EnvVar]{
+		NameFn: func(ev EnvVar) string { return strconv.Itoa(ev.ID) },
+		ListFn: client.ListEnvVars,
+		GetFn: func(ctx context.Context, name string) (*EnvVar, error) {
+			id, err := strconv.Atoi(name)
+			if err != nil {
+				return nil, fmt.Errorf("k6: invalid env var ID %q: %w", name, err)
+			}
+			envVars, err := client.ListEnvVars(ctx)
+			if err != nil {
+				return nil, err
+			}
+			for _, ev := range envVars {
+				if ev.ID == id {
+					return &ev, nil
+				}
+			}
+			return nil, fmt.Errorf("k6: env var %d not found", id)
+		},
+		CreateFn: func(ctx context.Context, ev *EnvVar) (*EnvVar, error) {
+			return client.CreateEnvVar(ctx, ev.Name, ev.Value, ev.Description)
+		},
+		UpdateFn: func(ctx context.Context, name string, ev *EnvVar) (*EnvVar, error) {
+			id, err := strconv.Atoi(name)
+			if err != nil {
+				return nil, fmt.Errorf("k6: invalid env var ID %q: %w", name, err)
+			}
+			if err := client.UpdateEnvVar(ctx, id, ev.Name, ev.Value, ev.Description); err != nil {
+				return nil, err
+			}
+			envVars, err := client.ListEnvVars(ctx)
+			if err != nil {
+				return nil, err
+			}
+			for _, e := range envVars {
+				if e.ID == id {
+					return &e, nil
+				}
+			}
+			return nil, fmt.Errorf("k6: env var %d not found after update", id)
+		},
+		DeleteFn: func(ctx context.Context, name string) error {
+			id, err := strconv.Atoi(name)
+			if err != nil {
+				return fmt.Errorf("k6: invalid env var ID %q: %w", name, err)
+			}
+			return client.DeleteEnvVar(ctx, id)
+		},
+	}
+	return crud, ns, nil
+}
+
+// NewTypedCRUD[LoadZone] creates a TypedCRUD for K6 load zones.
+func NewTypedCRUDLoadZone(ctx context.Context, loader CloudConfigLoader) (*adapter.TypedCRUD[LoadZone], string, error) {
+	client, ns, err := authenticatedClient(ctx, loader)
+	if err != nil {
+		return nil, "", err
+	}
+	crud := &adapter.TypedCRUD[LoadZone]{
+		NameFn: func(lz LoadZone) string { return lz.Name },
+		ListFn: client.ListLoadZones,
+		GetFn: func(ctx context.Context, name string) (*LoadZone, error) {
+			zones, err := client.ListLoadZones(ctx)
+			if err != nil {
+				return nil, err
+			}
+			for _, lz := range zones {
+				if lz.Name == name {
+					return &lz, nil
+				}
+			}
+			return nil, fmt.Errorf("k6: load zone %q not found", name)
+		},
+		DeleteFn: func(ctx context.Context, name string) error {
+			return client.DeleteLoadZone(ctx, name)
+		},
+	}
+	return crud, ns, nil
 }

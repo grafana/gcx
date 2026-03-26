@@ -318,6 +318,12 @@ type EdgeTypeDisplayConfig struct {
 	Style string `json:"style"`
 }
 
+// GetResourceName returns the rule name.
+func (r Rule) GetResourceName() string { return r.Name }
+
+// SetResourceName restores the rule name.
+func (r *Rule) SetResourceName(name string) { r.Name = name }
+
 // Rule represents a Knowledge Graph prom rule.
 type Rule struct {
 	Name        string            `json:"name"`

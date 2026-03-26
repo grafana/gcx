@@ -186,13 +186,19 @@ func newProjectsListCommand(loader CloudConfigLoader) *cobra.Command {
 				return err
 			}
 			ctx := cmd.Context()
-			client, ns, err := authenticatedClient(ctx, loader)
+			crud, ns, err := NewTypedCRUDProject(ctx, loader)
 			if err != nil {
 				return err
 			}
-			projects, err := client.ListProjects(ctx)
+			typedObjs, err := crud.List(ctx)
 			if err != nil {
 				return err
+			}
+
+			// Extract projects from TypedObject
+			projects := make([]Project, len(typedObjs))
+			for i := range typedObjs {
+				projects[i] = typedObjs[i].Spec
 			}
 
 			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {

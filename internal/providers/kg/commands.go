@@ -492,17 +492,20 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err := rulesListOpts.IO.Validate(); err != nil {
 				return err
 			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			ctx := cmd.Context()
+			crud, cfg, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
-			client, err := NewClient(cfg)
+			typedObjs, err := crud.List(ctx)
 			if err != nil {
 				return err
 			}
-			rules, err := client.ListRules(cmd.Context())
-			if err != nil {
-				return err
+
+			// Extract rules from TypedObject
+			rules := make([]Rule, len(typedObjs))
+			for i := range typedObjs {
+				rules[i] = typedObjs[i].Spec
 			}
 
 			// Table codec operates on raw []Rule for direct field access.
@@ -535,23 +538,20 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err := getOpts.IO.Validate(); err != nil {
 				return err
 			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			ctx := cmd.Context()
+			crud, cfg, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			rule, err := client.GetRule(cmd.Context(), args[0])
+			typedObj, err := crud.Get(ctx, args[0])
 			if err != nil {
 				return err
 			}
 
 			// Convert to K8s envelope Resource for all formats.
-			res, err := RuleToResource(*rule, cfg.Namespace)
+			res, err := RuleToResource(typedObj.Spec, cfg.Namespace)
 			if err != nil {
-				return fmt.Errorf("failed to convert rule %s to resource: %w", rule.Name, err)
+				return fmt.Errorf("failed to convert rule %s to resource: %w", typedObj.Spec.Name, err)
 			}
 
 			return getOpts.IO.Encode(cmd.OutOrStdout(), res.ToUnstructured())

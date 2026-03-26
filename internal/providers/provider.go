@@ -33,8 +33,9 @@ type Provider interface {
 	// including metadata about which keys are secrets.
 	ConfigKeys() []ConfigKey
 
-	// ResourceAdapters returns adapter factories for resource types that this
-	// provider exposes through the unified resources pipeline. Providers that
-	// do not support resource adapters return nil.
-	ResourceAdapters() []adapter.Factory
+	// TypedRegistrations returns adapter registrations for resource types that
+	// this provider exposes through the unified resources pipeline. Providers
+	// that do not support resource adapters return nil. The returned
+	// registrations are auto-registered by providers.Register().
+	TypedRegistrations() []adapter.Registration
 }

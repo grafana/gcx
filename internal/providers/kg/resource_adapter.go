@@ -7,7 +7,6 @@ import (
 	"fmt"
 
 	internalconfig "github.com/grafana/grafanactl/internal/config"
-	"github.com/grafana/grafanactl/internal/providers"
 	"github.com/grafana/grafanactl/internal/resources"
 	"github.com/grafana/grafanactl/internal/resources/adapter"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -38,20 +37,9 @@ var staticDescriptor = resources.Descriptor{
 //nolint:gochecknoglobals // Static descriptor used in init() self-registration pattern.
 var staticAliases = []string{"kg-rules", "kg-rule", "kgrule"}
 
-func init() { //nolint:gochecknoinits // Self-registration pattern (like database/sql drivers).
-	loader := &providers.ConfigLoader{}
-	adapter.Register(adapter.Registration{
-		Factory:    NewAdapterFactory(loader),
-		Descriptor: staticDescriptor,
-		Aliases:    staticAliases,
-		GVK:        staticDescriptor.GroupVersionKind(),
-		Schema:     ruleSchema(),
-		Example:    ruleExample(),
-	})
-}
 
-// ruleSchema returns a JSON Schema for the KG Rule resource type.
-func ruleSchema() json.RawMessage {
+// RuleSchema returns a JSON Schema for the KG Rule resource type.
+func RuleSchema() json.RawMessage {
 	s := map[string]any{
 		"$schema": "https://json-schema.org/draft/2020-12/schema",
 		"$id":     "https://grafana.com/schemas/KGRule",
@@ -88,8 +76,8 @@ func ruleSchema() json.RawMessage {
 	return b
 }
 
-// ruleExample returns an example KG Rule manifest as JSON.
-func ruleExample() json.RawMessage {
+// RuleExample returns an example KG Rule manifest as JSON.
+func RuleExample() json.RawMessage {
 	example := map[string]any{
 		"apiVersion": APIVersion,
 		"kind":       Kind,
@@ -153,6 +141,42 @@ func NewAdapterFactory(loader RESTConfigLoader) adapter.Factory {
 		}
 		return crud.AsAdapter(), nil
 	}
+}
+
+// NewTypedCRUD creates a TypedCRUD for KG rules.
+func NewTypedCRUD(ctx context.Context, loader RESTConfigLoader) (*adapter.TypedCRUD[Rule], internalconfig.NamespacedRESTConfig, error) {
+	cfg, err := loader.LoadGrafanaConfig(ctx)
+	if err != nil {
+		return nil, internalconfig.NamespacedRESTConfig{}, fmt.Errorf("kg: failed to load REST config: %w", err)
+	}
+
+	client, err := NewClient(cfg)
+	if err != nil {
+		return nil, internalconfig.NamespacedRESTConfig{}, fmt.Errorf("kg: failed to create client: %w", err)
+	}
+
+	crud := &adapter.TypedCRUD[Rule]{
+		NameFn: func(r Rule) string { return r.Name },
+		ListFn: func(ctx context.Context) ([]Rule, error) {
+			return client.ListRules(ctx)
+		},
+		GetFn: func(ctx context.Context, name string) (*Rule, error) {
+			return client.GetRule(ctx, name)
+		},
+		CreateFn: func(_ context.Context, _ *Rule) (*Rule, error) {
+			return nil, errors.New("kg: individual rule creation is not supported; use 'kg rules create -f <file>' for bulk upload")
+		},
+		UpdateFn: func(_ context.Context, _ string, _ *Rule) (*Rule, error) {
+			return nil, errors.New("kg: individual rule update is not supported; use 'kg rules create -f <file>' for bulk replace")
+		},
+		DeleteFn: func(_ context.Context, _ string) error {
+			return errors.New("kg: individual rule deletion is not supported; use 'kg rules delete' to clear all rules")
+		},
+		Namespace:  cfg.Namespace,
+		Descriptor: staticDescriptor,
+		Aliases:    staticAliases,
+	}
+	return crud, cfg, nil
 }
 
 // RuleToResource converts a KG Rule to a grafanactl Resource.

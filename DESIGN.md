@@ -45,6 +45,7 @@ Datasource HTTP APIs                      -- PromQL, LogQL, profile, trace queri
 | [001](docs/adrs/legacy/001-query-under-datasources.md) | Move query under datasources with per-kind subcommands | accepted |
 | [002](docs/adrs/migrate-provider-rewrite/001-three-stage-blackbox-verification.md) | Three-stage skill structure with dual blackbox isolation | proposed |
 | [003](docs/adrs/constitution-design-principles/001-codify-cli-design-principles.md) | Codify CLI design principles in CONSTITUTION.md and design guide | proposed |
+| [004](docs/adrs/typed-resource-adapter-compliance/001-typed-resource-adapter-foundation.md) | TypedResourceAdapter[T] with ResourceIdentity and provider command migration | proposed |
 
 See [docs/research/](docs/research/) for design rationale and [docs/adrs/](docs/adrs/) for all ADRs.
 

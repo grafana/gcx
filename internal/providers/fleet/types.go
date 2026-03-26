@@ -2,6 +2,12 @@ package fleet
 
 import "time"
 
+// GetResourceName returns the pipeline ID.
+func (p Pipeline) GetResourceName() string { return p.ID }
+
+// SetResourceName restores the pipeline ID.
+func (p *Pipeline) SetResourceName(name string) { p.ID = name }
+
 // Pipeline represents a Fleet Management pipeline.
 type Pipeline struct {
 	ID       string         `json:"id,omitempty"`
@@ -11,6 +17,12 @@ type Pipeline struct {
 	Matchers []string       `json:"matchers,omitempty"`
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
+
+// GetResourceName returns the collector ID.
+func (c Collector) GetResourceName() string { return c.ID }
+
+// SetResourceName restores the collector ID.
+func (c *Collector) SetResourceName(name string) { c.ID = name }
 
 // Collector represents a Fleet Management collector.
 type Collector struct {

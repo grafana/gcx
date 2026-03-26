@@ -12,11 +12,21 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
+// TypedObject wraps a domain type T with Kubernetes metadata, producing the
+// standard {apiVersion, kind, metadata, spec} envelope when serialized to JSON.
+type TypedObject[T ResourceNamer] struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata"`
+	Spec              T `json:"spec"`
+}
+
 // TypedCRUD absorbs the boilerplate that every ResourceAdapter implementation
 // repeats: marshal T to/from a Kubernetes-style unstructured envelope, strip
 // server-managed fields, and dispatch to typed functions.
-type TypedCRUD[T any] struct {
-	// NameFn extracts the metadata.name from a domain object (REQUIRED).
+type TypedCRUD[T ResourceNamer] struct {
+	// NameFn extracts the metadata.name from a domain object.
+	// Deprecated: use ResourceIdentity.GetResourceName() instead.
+	// When nil, T.GetResourceName() is used automatically.
 	NameFn func(T) string
 
 	// ListFn lists all items of this type (REQUIRED).
@@ -42,6 +52,8 @@ type TypedCRUD[T any] struct {
 
 	// RestoreNameFn restores the identity field from metadata.name back into
 	// the domain object (e.g., slo.UUID = name). Called during fromUnstructured.
+	// Deprecated: use ResourceIdentity.SetResourceName() instead.
+	// When nil, T.SetResourceName() is used automatically.
 	RestoreNameFn func(name string, item *T)
 
 	// MetadataFn returns extra metadata fields to merge into the envelope.
@@ -53,6 +65,110 @@ type TypedCRUD[T any] struct {
 
 	// Aliases are the short names for selector resolution.
 	Aliases []string
+}
+
+// resourceName extracts the name from a domain object, preferring NameFn
+// if set (backward compat) and falling back to ResourceIdentity.
+func (c *TypedCRUD[T]) resourceName(item T) string {
+	if c.NameFn != nil {
+		return c.NameFn(item)
+	}
+	return item.GetResourceName()
+}
+
+// restoreName restores the identity field on a domain object, preferring
+// RestoreNameFn if set and falling back to ResourceIdentity.SetResourceName
+// via type assertion on the pointer (since SetResourceName has pointer receiver).
+func (c *TypedCRUD[T]) restoreName(name string, item *T) {
+	if c.RestoreNameFn != nil {
+		c.RestoreNameFn(name, item)
+		return
+	}
+	if setter, ok := any(item).(interface{ SetResourceName(string) }); ok {
+		setter.SetResourceName(name)
+	}
+}
+
+// --- Typed public methods ---
+
+// List returns all items as TypedObject[T] with correct TypeMeta and ObjectMeta.
+func (c *TypedCRUD[T]) List(ctx context.Context) ([]TypedObject[T], error) {
+	items, err := c.ListFn(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]TypedObject[T], 0, len(items))
+	for _, item := range items {
+		result = append(result, c.wrapTypedObject(item))
+	}
+	return result, nil
+}
+
+// Get returns a single item by name as a TypedObject[T].
+func (c *TypedCRUD[T]) Get(ctx context.Context, name string) (*TypedObject[T], error) {
+	item, err := c.GetFn(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	if item == nil {
+		return nil, fmt.Errorf("resource %q not found", name)
+	}
+	obj := c.wrapTypedObject(*item)
+	return &obj, nil
+}
+
+// Create creates a new item via CreateFn and returns the result as TypedObject[T].
+func (c *TypedCRUD[T]) Create(ctx context.Context, obj *TypedObject[T]) (*TypedObject[T], error) {
+	if c.CreateFn == nil {
+		return nil, errors.ErrUnsupported
+	}
+
+	created, err := c.CreateFn(ctx, &obj.Spec)
+	if err != nil {
+		return nil, err
+	}
+
+	result := c.wrapTypedObject(*created)
+	return &result, nil
+}
+
+// Update updates an existing item by name and returns the result as TypedObject[T].
+func (c *TypedCRUD[T]) Update(ctx context.Context, name string, obj *TypedObject[T]) (*TypedObject[T], error) {
+	if c.UpdateFn == nil {
+		return nil, errors.ErrUnsupported
+	}
+
+	updated, err := c.UpdateFn(ctx, name, &obj.Spec)
+	if err != nil {
+		return nil, err
+	}
+
+	result := c.wrapTypedObject(*updated)
+	return &result, nil
+}
+
+// Delete removes an item by name.
+func (c *TypedCRUD[T]) Delete(ctx context.Context, name string) error {
+	if c.DeleteFn == nil {
+		return errors.ErrUnsupported
+	}
+	return c.DeleteFn(ctx, name)
+}
+
+// wrapTypedObject wraps a domain object T into a TypedObject with correct metadata.
+func (c *TypedCRUD[T]) wrapTypedObject(item T) TypedObject[T] {
+	return TypedObject[T]{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: c.Descriptor.GroupVersion.String(),
+			Kind:       c.Descriptor.Kind,
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      c.resourceName(item),
+			Namespace: c.Namespace,
+		},
+		Spec: item,
+	}
 }
 
 // AsAdapter returns a ResourceAdapter backed by this TypedCRUD.
@@ -84,7 +200,7 @@ func (c *TypedCRUD[T]) toUnstructured(item T) (unstructured.Unstructured, error)
 
 	// Build the metadata map.
 	metadata := map[string]any{
-		"name":      c.NameFn(item),
+		"name":      c.resourceName(item),
 		"namespace": c.Namespace,
 	}
 
@@ -133,21 +249,17 @@ func (c *TypedCRUD[T]) fromUnstructured(obj *unstructured.Unstructured) (string,
 	}
 
 	name := obj.GetName()
-	if c.RestoreNameFn != nil {
-		c.RestoreNameFn(name, &item)
-	}
+	c.restoreName(name, &item)
 
 	return name, &item, nil
 }
 
 // typedAdapter wraps TypedCRUD[T] to implement the ResourceAdapter interface.
-type typedAdapter[T any] struct {
+type typedAdapter[T ResourceNamer] struct {
 	crud    *TypedCRUD[T]
 	schema  json.RawMessage
 	example json.RawMessage
 }
-
-var _ ResourceAdapter = &typedAdapter[struct{}]{}
 
 func (a *typedAdapter[T]) Descriptor() resources.Descriptor {
 	return a.crud.Descriptor
@@ -255,7 +367,7 @@ func (a *typedAdapter[T]) Delete(ctx context.Context, name string, _ metav1.Dele
 }
 
 // TypedRegistration bridges TypedCRUD to the existing Registration system.
-type TypedRegistration[T any] struct {
+type TypedRegistration[T ResourceNamer] struct {
 	Descriptor resources.Descriptor
 	Aliases    []string
 	GVK        schema.GroupVersionKind

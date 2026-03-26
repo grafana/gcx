@@ -1,5 +1,24 @@
 package k6
 
+import "strconv"
+
+// ---------- ResourceIdentity implementations ----------
+
+func (p Project) GetResourceName() string       { return strconv.Itoa(p.ID) }
+func (p *Project) SetResourceName(name string)  { p.ID, _ = strconv.Atoi(name) }
+
+func (lt LoadTest) GetResourceName() string      { return strconv.Itoa(lt.ID) }
+func (lt *LoadTest) SetResourceName(name string) { lt.ID, _ = strconv.Atoi(name) }
+
+func (s Schedule) GetResourceName() string       { return strconv.Itoa(s.ID) }
+func (s *Schedule) SetResourceName(name string)  { s.ID, _ = strconv.Atoi(name) }
+
+func (ev EnvVar) GetResourceName() string        { return strconv.Itoa(ev.ID) }
+func (ev *EnvVar) SetResourceName(name string)   { ev.ID, _ = strconv.Atoi(name) }
+
+func (lz LoadZone) GetResourceName() string      { return lz.Name }
+func (lz *LoadZone) SetResourceName(name string) { lz.Name = name }
+
 // Project represents a K6 Cloud project (v6 API).
 type Project struct {
 	ID               int    `json:"id,omitempty"`

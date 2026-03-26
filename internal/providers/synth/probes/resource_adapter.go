@@ -52,40 +52,49 @@ func StaticGVK() schema.GroupVersionKind {
 	return staticDescriptor.GroupVersionKind()
 }
 
+// NewTypedCRUD creates a TypedCRUD for SM probes (read-only).
+func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[Probe], string, error) {
+	baseURL, token, namespace, err := loader.LoadSMConfig(ctx)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to load SM config for probes: %w", err)
+	}
+	client := NewClient(baseURL, token)
+
+	crud := &adapter.TypedCRUD[Probe]{
+		NameFn: func(p Probe) string { return strconv.FormatInt(p.ID, 10) },
+		ListFn: client.List,
+		GetFn: func(ctx context.Context, name string) (*Probe, error) {
+			id, err := strconv.ParseInt(name, 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("probe name must be a numeric ID, got %q: %w", name, err)
+			}
+			probeList, err := client.List(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to list probes: %w", err)
+			}
+			for i := range probeList {
+				if probeList[i].ID == id {
+					return &probeList[i], nil
+				}
+			}
+			return nil, fmt.Errorf("probe %d not found", id)
+		},
+		// CreateFn, UpdateFn, DeleteFn all nil (read-only)
+		Namespace:   namespace,
+		StripFields: []string{"id", "tenantId", "created", "modified", "onlineChange", "online", "version"},
+		Descriptor:  staticDescriptor,
+		Aliases:     staticAliases,
+	}
+	return crud, namespace, nil
+}
+
 // NewAdapterFactory returns a lazy adapter.Factory for SM probes.
 // The factory captures the smcfg.Loader and constructs the client on first invocation.
 func NewAdapterFactory(loader smcfg.Loader) adapter.Factory {
 	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
-		baseURL, token, namespace, err := loader.LoadSMConfig(ctx)
+		crud, _, err := NewTypedCRUD(ctx, loader)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load SM config for probes adapter: %w", err)
-		}
-		client := NewClient(baseURL, token)
-
-		crud := &adapter.TypedCRUD[Probe]{
-			NameFn: func(p Probe) string { return strconv.FormatInt(p.ID, 10) },
-			ListFn: client.List,
-			GetFn: func(ctx context.Context, name string) (*Probe, error) {
-				id, err := strconv.ParseInt(name, 10, 64)
-				if err != nil {
-					return nil, fmt.Errorf("probe name must be a numeric ID, got %q: %w", name, err)
-				}
-				probeList, err := client.List(ctx)
-				if err != nil {
-					return nil, fmt.Errorf("failed to list probes: %w", err)
-				}
-				for i := range probeList {
-					if probeList[i].ID == id {
-						return &probeList[i], nil
-					}
-				}
-				return nil, fmt.Errorf("probe %d not found", id)
-			},
-			// CreateFn, UpdateFn, DeleteFn all nil (read-only)
-			Namespace:   namespace,
-			StripFields: []string{"id", "tenantId", "created", "modified", "onlineChange", "online", "version"},
-			Descriptor:  staticDescriptor,
-			Aliases:     staticAliases,
+			return nil, err
 		}
 		return crud.AsAdapter(), nil
 	}

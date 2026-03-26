@@ -58,7 +58,17 @@ func (p *SLOProvider) ConfigKeys() []providers.ConfigKey {
 	return nil
 }
 
-// ResourceAdapters returns adapter factories for SLO resource types.
-func (p *SLOProvider) ResourceAdapters() []adapter.Factory {
-	return []adapter.Factory{definitions.NewLazyFactory()}
+// TypedRegistrations returns adapter registrations for SLO resource types.
+func (p *SLOProvider) TypedRegistrations() []adapter.Registration {
+	desc := definitions.StaticDescriptor()
+	return []adapter.Registration{
+		{
+			Factory:    definitions.NewLazyFactory(),
+			Descriptor: desc,
+			Aliases:    definitions.StaticAliases(),
+			GVK:        desc.GroupVersionKind(),
+			Schema:     definitions.SloSchema(),
+			Example:    definitions.SloExample(),
+		},
+	}
 }

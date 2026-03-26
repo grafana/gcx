@@ -1,5 +1,11 @@
 package definitions
 
+// GetResourceName returns the SLO UUID as the resource identity.
+func (s Slo) GetResourceName() string { return s.UUID }
+
+// SetResourceName restores the UUID from a metadata name.
+func (s *Slo) SetResourceName(name string) { s.UUID = name }
+
 // Slo represents a Grafana SLO definition.
 type Slo struct {
 	UUID                  string                 `json:"uuid,omitempty"`

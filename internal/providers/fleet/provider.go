@@ -89,24 +89,6 @@ func CollectorAliases() []string { return collectorAliasesVar }
 
 func init() { //nolint:gochecknoinits // Self-registration pattern (like database/sql drivers).
 	providers.Register(&FleetProvider{})
-
-	loader := &providers.ConfigLoader{}
-	adapter.Register(adapter.Registration{
-		Factory:    NewPipelineAdapterFactory(loader),
-		Descriptor: PipelineDescriptor(),
-		Aliases:    PipelineAliases(),
-		GVK:        PipelineDescriptor().GroupVersionKind(),
-		Schema:     pipelineSchema(),
-		Example:    pipelineExample(),
-	})
-	adapter.Register(adapter.Registration{
-		Factory:    NewCollectorAdapterFactory(loader),
-		Descriptor: CollectorDescriptor(),
-		Aliases:    CollectorAliases(),
-		GVK:        CollectorDescriptor().GroupVersionKind(),
-		Schema:     collectorSchema(),
-		Example:    collectorExample(),
-	})
 }
 
 // ---------------------------------------------------------------------------
@@ -158,10 +140,27 @@ func (p *FleetProvider) ConfigKeys() []providers.ConfigKey {
 	return nil
 }
 
-// ResourceAdapters returns adapter factories for Fleet resource types.
-// Factories are registered globally via adapter.Register() in init().
-func (p *FleetProvider) ResourceAdapters() []adapter.Factory {
-	return nil
+// TypedRegistrations returns adapter registrations for Fleet resource types.
+func (p *FleetProvider) TypedRegistrations() []adapter.Registration {
+	loader := &providers.ConfigLoader{}
+	return []adapter.Registration{
+		{
+			Factory:    NewPipelineAdapterFactory(loader),
+			Descriptor: PipelineDescriptor(),
+			Aliases:    PipelineAliases(),
+			GVK:        PipelineDescriptor().GroupVersionKind(),
+			Schema:     pipelineSchema(),
+			Example:    pipelineExample(),
+		},
+		{
+			Factory:    NewCollectorAdapterFactory(loader),
+			Descriptor: CollectorDescriptor(),
+			Aliases:    CollectorAliases(),
+			GVK:        CollectorDescriptor().GroupVersionKind(),
+			Schema:     collectorSchema(),
+			Example:    collectorExample(),
+		},
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -1134,28 +1133,28 @@ type CloudConfigLoader interface {
 }
 
 // NewPipelineAdapterFactory returns a lazy adapter.Factory for fleet pipelines.
-func NewPipelineAdapterFactory(loader CloudConfigLoader) adapter.Factory {
-	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
-		cloudCfg, err := loader.LoadCloudConfig(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load Fleet config for pipeline adapter: %w", err)
-		}
+// NewPipelineTypedCRUD creates a TypedCRUD for Fleet pipelines.
+func NewPipelineTypedCRUD(ctx context.Context, loader CloudConfigLoader) (*adapter.TypedCRUD[Pipeline], string, error) {
+	cloudCfg, err := loader.LoadCloudConfig(ctx)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to load Fleet config for pipelines: %w", err)
+	}
 
-		url := cloudCfg.Stack.AgentManagementInstanceURL
-		if url == "" {
-			return nil, errors.New("fleet management endpoint is not available for this stack")
-		}
-		if cloudCfg.Stack.AgentManagementInstanceID == 0 {
-			return nil, errors.New("fleet management instance ID is not available for this stack")
-		}
-		instanceID := strconv.Itoa(cloudCfg.Stack.AgentManagementInstanceID)
-		httpClient, err := cloudCfg.HTTPClient()
-		if err != nil {
-			return nil, fmt.Errorf("fleet: failed to create HTTP client for pipeline adapter: %w", err)
-		}
-		client := NewClient(url, instanceID, cloudCfg.Token, true, httpClient)
+	url := cloudCfg.Stack.AgentManagementInstanceURL
+	if url == "" {
+		return nil, "", errors.New("fleet management endpoint is not available for this stack")
+	}
+	if cloudCfg.Stack.AgentManagementInstanceID == 0 {
+		return nil, "", errors.New("fleet management instance ID is not available for this stack")
+	}
+	instanceID := strconv.Itoa(cloudCfg.Stack.AgentManagementInstanceID)
+	httpClient, err := cloudCfg.HTTPClient()
+	if err != nil {
+		return nil, "", fmt.Errorf("fleet: failed to create HTTP client for pipelines: %w", err)
+	}
+	client := NewClient(url, instanceID, cloudCfg.Token, true, httpClient)
 
-		crud := &adapter.TypedCRUD[Pipeline]{
+	crud := &adapter.TypedCRUD[Pipeline]{
 			NameFn: func(p Pipeline) string {
 				name := slugifyName(p.Name)
 				if p.ID != "" {
@@ -1203,6 +1202,16 @@ func NewPipelineAdapterFactory(loader CloudConfigLoader) adapter.Factory {
 			},
 			Descriptor: pipelineDescriptorVar,
 			Aliases:    pipelineAliasesVar,
+		}
+	return crud, cloudCfg.Namespace, nil
+}
+
+// NewPipelineAdapterFactory returns a lazy adapter.Factory for fleet pipelines.
+func NewPipelineAdapterFactory(loader CloudConfigLoader) adapter.Factory {
+	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
+		crud, _, err := NewPipelineTypedCRUD(ctx, loader)
+		if err != nil {
+			return nil, err
 		}
 		return crud.AsAdapter(), nil
 	}

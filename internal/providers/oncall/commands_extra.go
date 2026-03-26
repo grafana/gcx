@@ -1,6 +1,7 @@
 package oncall
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -111,9 +112,11 @@ func newAlertGroupsCommand(loader OnCallConfigLoader) *cobra.Command {
 
 	cmd.AddCommand(
 		newAlertGroupListCommand(loader),
-		newGetSubcommand(loader, "Get an alert group by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
-			return c.GetAlertGroup(cmd.Context(), id)
-		}),
+		newGetSubcommand(loader, "AlertGroup", "Get an alert group by ID.",
+			func(ag AlertGroup) string { return ag.ID },
+			func(ctx context.Context, c *Client, name string) (*AlertGroup, error) {
+				return c.GetAlertGroup(ctx, name)
+			}),
 		newAlertGroupActionCommand(loader, "acknowledge", "Acknowledge an alert group.", func(c *Client, cmd *cobra.Command, id string) error {
 			return c.AcknowledgeAlertGroup(cmd.Context(), id)
 		}),
@@ -327,10 +330,12 @@ func newUsersCommand(loader OnCallConfigLoader) *cobra.Command {
 
 	cmd.AddCommand(
 		newListSubcommand(loader, "users", "User", "List OnCall users.",
-			func(c *Client, cmd *cobra.Command) ([]User, error) { return c.ListUsers(cmd.Context()) }),
-		newGetSubcommand(loader, "Get a user by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
-			return c.GetUser(cmd.Context(), id)
-		}),
+			func(u User) string { return u.ID },
+			func(ctx context.Context, c *Client) ([]User, error) { return c.ListUsers(ctx) },
+			func(ctx context.Context, c *Client, name string) (*User, error) { return c.GetUser(ctx, name) }),
+		newGetSubcommand(loader, "User", "Get a user by ID.",
+			func(u User) string { return u.ID },
+			func(ctx context.Context, c *Client, name string) (*User, error) { return c.GetUser(ctx, name) }),
 		newUsersCurrentCommand(loader),
 	)
 

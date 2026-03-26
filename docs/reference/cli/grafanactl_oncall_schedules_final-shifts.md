@@ -9,11 +9,11 @@ grafanactl oncall schedules final-shifts <schedule-id> [flags]
 ### Options
 
 ```
-      --end string      End date (YYYY-MM-DD) (default "2026-04-01")
+      --end string      End date (YYYY-MM-DD) (default "2026-04-02")
   -h, --help            help for final-shifts
       --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
   -o, --output string   Output format. One of: json, table, yaml (default "table")
-      --start string    Start date (YYYY-MM-DD) (default "2026-03-25")
+      --start string    Start date (YYYY-MM-DD) (default "2026-03-26")
 ```
 
 ### Options inherited from parent commands

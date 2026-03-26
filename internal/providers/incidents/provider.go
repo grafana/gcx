@@ -62,8 +62,18 @@ func (p *IncidentsProvider) ConfigKeys() []providers.ConfigKey {
 	return nil
 }
 
-// ResourceAdapters returns adapter factories for Incident resource types.
-// Factories are registered globally via adapter.Register() in resource_adapter.go init().
-func (p *IncidentsProvider) ResourceAdapters() []adapter.Factory {
-	return nil
+// TypedRegistrations returns adapter registrations for Incident resource types.
+// Registrations are added globally by providers.Register() which calls this method.
+func (p *IncidentsProvider) TypedRegistrations() []adapter.Registration {
+	loader := &providers.ConfigLoader{}
+	return []adapter.Registration{
+		{
+			Factory:    NewAdapterFactory(loader),
+			Descriptor: staticDescriptor,
+			Aliases:    staticAliases,
+			GVK:        staticDescriptor.GroupVersionKind(),
+			Schema:     incidentSchema(),
+			Example:    incidentExample(),
+		},
+	}
 }

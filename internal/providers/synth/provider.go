@@ -20,26 +20,6 @@ import (
 
 func init() { //nolint:gochecknoinits // Self-registration pattern (like database/sql drivers).
 	providers.Register(&SynthProvider{})
-
-	// Register static descriptors for checks and probes so that they appear in
-	// the discovery registry and can be used as selectors without initializing
-	// the provider config.
-	loader := &configLoader{}
-	adapter.Register(adapter.Registration{
-		Factory:    checks.NewAdapterFactory(loader),
-		Descriptor: checks.StaticDescriptor(),
-		Aliases:    checks.StaticAliases(),
-		GVK:        checks.StaticGVK(),
-		Schema:     checkSchema(),
-		Example:    checkExample(),
-	})
-	adapter.Register(adapter.Registration{
-		Factory:    probes.NewAdapterFactory(loader),
-		Descriptor: probes.StaticDescriptor(),
-		Aliases:    probes.StaticAliases(),
-		GVK:        probes.StaticGVK(),
-		Schema:     probeSchema(),
-	})
 }
 
 // checkSchema returns a JSON Schema for the SM Check resource type.
@@ -132,13 +112,28 @@ func (p *SynthProvider) ConfigKeys() []providers.ConfigKey {
 	}
 }
 
-// ResourceAdapters returns adapter factories for Synth resource types.
-// Each factory uses a fresh configLoader to load SM credentials lazily on first invocation.
-func (p *SynthProvider) ResourceAdapters() []adapter.Factory {
+// TypedRegistrations returns adapter registrations for Synth resource types.
+func (p *SynthProvider) TypedRegistrations() []adapter.Registration {
+	// Register static descriptors for checks and probes so that they appear in
+	// the discovery registry and can be used as selectors without initializing
+	// the provider config.
 	loader := &configLoader{}
-	return []adapter.Factory{
-		checks.NewAdapterFactory(loader),
-		probes.NewAdapterFactory(loader),
+	return []adapter.Registration{
+		{
+			Factory:    checks.NewAdapterFactory(loader),
+			Descriptor: checks.StaticDescriptor(),
+			Aliases:    checks.StaticAliases(),
+			GVK:        checks.StaticGVK(),
+			Schema:     checkSchema(),
+			Example:    checkExample(),
+		},
+		{
+			Factory:    probes.NewAdapterFactory(loader),
+			Descriptor: probes.StaticDescriptor(),
+			Aliases:    probes.StaticAliases(),
+			GVK:        probes.StaticGVK(),
+			Schema:     probeSchema(),
+		},
 	}
 }
 

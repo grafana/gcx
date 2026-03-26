@@ -7,7 +7,6 @@ import (
 	"fmt"
 
 	internalconfig "github.com/grafana/grafanactl/internal/config"
-	"github.com/grafana/grafanactl/internal/providers"
 	"github.com/grafana/grafanactl/internal/resources"
 	"github.com/grafana/grafanactl/internal/resources/adapter"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -31,17 +30,6 @@ var staticDescriptor = resources.Descriptor{
 //nolint:gochecknoglobals // Static descriptor used in init() self-registration pattern.
 var staticAliases = []string{"incidents", "incident", "inc"}
 
-func init() { //nolint:gochecknoinits // Self-registration pattern (like database/sql drivers).
-	loader := &providers.ConfigLoader{}
-	adapter.Register(adapter.Registration{
-		Factory:    NewAdapterFactory(loader),
-		Descriptor: staticDescriptor,
-		Aliases:    staticAliases,
-		GVK:        staticDescriptor.GroupVersionKind(),
-		Schema:     incidentSchema(),
-		Example:    incidentExample(),
-	})
-}
 
 // incidentSchema returns a JSON Schema for the Incident resource type.
 func incidentSchema() json.RawMessage {
@@ -178,4 +166,49 @@ func newTypedAdapter(client *Client, namespace string) adapter.ResourceAdapter {
 	}
 
 	return crud.AsAdapter()
+}
+
+// NewTypedCRUD creates a TypedCRUD for incidents.
+func NewTypedCRUD(ctx context.Context, loader GrafanaConfigLoader) (*adapter.TypedCRUD[Incident], internalconfig.NamespacedRESTConfig, error) {
+	cfg, err := loader.LoadGrafanaConfig(ctx)
+	if err != nil {
+		return nil, internalconfig.NamespacedRESTConfig{}, fmt.Errorf("failed to load REST config for incidents: %w", err)
+	}
+
+	client, err := NewClient(cfg)
+	if err != nil {
+		return nil, internalconfig.NamespacedRESTConfig{}, fmt.Errorf("failed to create incidents client: %w", err)
+	}
+
+	crud := &adapter.TypedCRUD[Incident]{
+		NameFn: func(inc Incident) string { return inc.IncidentID },
+
+		ListFn: func(ctx context.Context) ([]Incident, error) {
+			return client.List(ctx, IncidentQuery{})
+		},
+
+		GetFn: func(ctx context.Context, name string) (*Incident, error) {
+			return client.Get(ctx, name)
+		},
+
+		CreateFn: func(ctx context.Context, inc *Incident) (*Incident, error) {
+			return client.Create(ctx, inc)
+		},
+
+		UpdateFn: func(ctx context.Context, name string, inc *Incident) (*Incident, error) {
+			return client.UpdateStatus(ctx, name, inc.Status)
+		},
+
+		DeleteFn: func(_ context.Context, _ string) error {
+			return errors.New("incidents: delete is not supported by the IRM API")
+		},
+
+		StripFields:   []string{"incidentID"},
+		RestoreNameFn: func(name string, inc *Incident) { inc.IncidentID = name },
+		Namespace:     cfg.Namespace,
+		Descriptor:    staticDescriptor,
+		Aliases:       staticAliases,
+	}
+
+	return crud, cfg, nil
 }

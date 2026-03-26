@@ -1,6 +1,44 @@
 // Package oncall provides the OnCall provider for grafanactl.
 package oncall
 
+// ---------- ResourceIdentity implementations ----------
+// All OnCall domain types use ID (string) as their resource identity.
+
+func (x Integration) GetResourceName() string            { return x.ID }
+func (x *Integration) SetResourceName(name string)       { x.ID = name }
+func (x EscalationChain) GetResourceName() string        { return x.ID }
+func (x *EscalationChain) SetResourceName(name string)   { x.ID = name }
+func (x EscalationPolicy) GetResourceName() string       { return x.ID }
+func (x *EscalationPolicy) SetResourceName(name string)  { x.ID = name }
+func (x Schedule) GetResourceName() string               { return x.ID }
+func (x *Schedule) SetResourceName(name string)           { x.ID = name }
+func (x Shift) GetResourceName() string                  { return x.ID }
+func (x *Shift) SetResourceName(name string)              { x.ID = name }
+func (x Team) GetResourceName() string                   { return x.ID }
+func (x *Team) SetResourceName(name string)               { x.ID = name }
+func (x IntegrationRoute) GetResourceName() string       { return x.ID }
+func (x *IntegrationRoute) SetResourceName(name string)  { x.ID = name }
+func (x OutgoingWebhook) GetResourceName() string        { return x.ID }
+func (x *OutgoingWebhook) SetResourceName(name string)   { x.ID = name }
+func (x AlertGroup) GetResourceName() string             { return x.ID }
+func (x *AlertGroup) SetResourceName(name string)         { x.ID = name }
+func (x User) GetResourceName() string                   { return x.ID }
+func (x *User) SetResourceName(name string)               { x.ID = name }
+func (x PersonalNotificationRule) GetResourceName() string      { return x.ID }
+func (x *PersonalNotificationRule) SetResourceName(name string) { x.ID = name }
+func (x UserGroup) GetResourceName() string              { return x.ID }
+func (x *UserGroup) SetResourceName(name string)          { x.ID = name }
+func (x SlackChannel) GetResourceName() string           { return x.ID }
+func (x *SlackChannel) SetResourceName(name string)       { x.ID = name }
+func (x Alert) GetResourceName() string                  { return x.ID }
+func (x *Alert) SetResourceName(name string)              { x.ID = name }
+func (x ResolutionNote) GetResourceName() string         { return x.ID }
+func (x *ResolutionNote) SetResourceName(name string)     { x.ID = name }
+func (x ShiftSwap) GetResourceName() string              { return x.ID }
+func (x *ShiftSwap) SetResourceName(name string)          { x.ID = name }
+func (x Organization) GetResourceName() string           { return x.ID }
+func (x *Organization) SetResourceName(name string)       { x.ID = name }
+
 // Integration represents an OnCall integration.
 type Integration struct {
 	ID                   string         `json:"id,omitempty"`

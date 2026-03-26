@@ -9,12 +9,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// DescriptorProvider describes a type that can supply adapter factories.
-// This matches the shape of providers.Provider but avoids importing the providers package.
-type DescriptorProvider interface {
-	ResourceAdapters() []Factory
-}
-
 // RegistryAccess is the subset of discovery.Registry needed for adapter registration.
 type RegistryAccess interface {
 	RegisterAdapter(factory Factory, desc resources.Descriptor, aliases []string)

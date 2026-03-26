@@ -33,6 +33,12 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
+// GetResourceName returns the incident ID.
+func (i Incident) GetResourceName() string { return i.IncidentID }
+
+// SetResourceName restores the incident ID.
+func (i *Incident) SetResourceName(name string) { i.IncidentID = name }
+
 // Incident represents an incident from the IRM API.
 type Incident struct {
 	IncidentID              string               `json:"incidentID,omitempty"`
