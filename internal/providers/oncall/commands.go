@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"text/tabwriter"
 
 	"github.com/grafana/grafanactl/internal/format"
@@ -485,28 +486,6 @@ func newShiftSwapsCmd(loader OnCallConfigLoader) *cobra.Command {
 	return cmd
 }
 
-func newPersonalNotificationRulesCmd(loader OnCallConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:     "personal-notification-rules",
-		Short:   "Manage personal notification rules.",
-		Aliases: []string{"personal-notification-rule", "pnr"},
-	}
-	cmd.AddCommand(
-		newListSubcommand(loader, "personal-notification-rules", "PersonalNotificationRule", "List personal notification rules.",
-			func(ctx context.Context, c *Client) ([]PersonalNotificationRule, error) {
-				return c.ListPersonalNotificationRules(ctx)
-			},
-			func(ctx context.Context, c *Client, name string) (*PersonalNotificationRule, error) {
-				return c.GetPersonalNotificationRule(ctx, name)
-			}),
-		newGetSubcommand(loader, "Get a personal notification rule by ID.",
-			func(ctx context.Context, c *Client, name string) (*PersonalNotificationRule, error) {
-				return c.GetPersonalNotificationRule(ctx, name)
-			}),
-	)
-	return cmd
-}
-
 // ---------------------------------------------------------------------------
 // Table codecs — all accept []unstructured.Unstructured (Pattern 13 compliant)
 // ---------------------------------------------------------------------------
@@ -965,7 +944,7 @@ func (c *ShiftTableCodec) Encode(w io.Writer, v any) error {
 			interval := specInt(obj, "interval")
 			intervalStr := "-"
 			if interval > 0 {
-				intervalStr = fmt.Sprintf("%d", interval)
+				intervalStr = strconv.Itoa(interval)
 			}
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", id, specStr(obj, "name"), specStr(obj, "type"), start, durStr, freq, intervalStr, orDash(specStr(obj, "team_id")))
 		} else {

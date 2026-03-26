@@ -594,24 +594,6 @@ func shiftSwapExample() json.RawMessage {
 	return b
 }
 
-func personalNotificationRuleExample() json.RawMessage {
-	example := map[string]any{
-		"apiVersion": APIVersion,
-		"kind":       "PersonalNotificationRule",
-		"metadata":   map[string]any{"name": "my-rule"},
-		"spec": map[string]any{
-			"user_id":  "U1234",
-			"type":     "notify_by_slack",
-			"duration": 300,
-		},
-	}
-	b, err := json.Marshal(example)
-	if err != nil {
-		panic(fmt.Sprintf("oncall: failed to marshal personal notification rule example: %v", err))
-	}
-	return b
-}
-
 // --- T3: NewTypedCRUD factories for CLI commands ---
 
 // NewTypedCRUD[T adapter.ResourceNamer] creates a TypedCRUD instance for CLI commands.

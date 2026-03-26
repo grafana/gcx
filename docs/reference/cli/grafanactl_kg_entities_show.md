@@ -1,24 +1,24 @@
-## grafanactl kg entities list
+## grafanactl kg entities show
 
-List entities by type (omit --type to list all types).
+Show entities. Without a name, lists all; with a name, shows one.
 
 ```
-grafanactl kg entities list [flags]
+grafanactl kg entities show [name] [flags]
 ```
 
 ### Options
 
 ```
-      --assertions-only    Only return entities with active assertions
+      --assertions-only    Only return entities with active assertions (list mode)
       --env string         Environment scope
-  -h, --help               help for list
+  -h, --help               help for show
       --json string        Comma-separated list of fields to include in JSON output, or '?' to discover available fields
       --namespace string   Namespace scope
   -o, --output string      Output format. One of: json, table, yaml (default "table")
-      --page int           Page number (0-based)
+      --page int           Page number, 0-based (list mode)
       --since string       Duration ago (e.g. 1h, 30m, 7d) — default 1h
       --site string        Site scope
-      --type string        Entity type (omit to list all)
+      --type string        Entity type (required for single entity, optional for list)
 ```
 
 ### Options inherited from parent commands

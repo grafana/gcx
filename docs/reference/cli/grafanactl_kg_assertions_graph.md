@@ -3,7 +3,7 @@
 Query assertions with graph topology.
 
 ```
-grafanactl kg assertions graph [Type/Name] [flags]
+grafanactl kg assertions graph [Type--Name] [flags]
 ```
 
 ### Options

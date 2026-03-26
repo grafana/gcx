@@ -29,7 +29,6 @@ Manage Grafana OnCall resources.
 * [grafanactl oncall escalation-policies](grafanactl_oncall_escalation-policies.md)	 - Manage escalation policies.
 * [grafanactl oncall integrations](grafanactl_oncall_integrations.md)	 - Manage OnCall integrations.
 * [grafanactl oncall organizations](grafanactl_oncall_organizations.md)	 - List organizations.
-* [grafanactl oncall personal-notification-rules](grafanactl_oncall_personal-notification-rules.md)	 - Manage personal notification rules.
 * [grafanactl oncall resolution-notes](grafanactl_oncall_resolution-notes.md)	 - Manage resolution notes.
 * [grafanactl oncall routes](grafanactl_oncall_routes.md)	 - Manage OnCall routes.
 * [grafanactl oncall schedules](grafanactl_oncall_schedules.md)	 - Manage OnCall schedules.

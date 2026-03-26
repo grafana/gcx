@@ -3,7 +3,7 @@
 Get assertions summary for a time range.
 
 ```
-grafanactl kg assertions summary [Type/Name] [flags]
+grafanactl kg assertions summary [Type--Name] [flags]
 ```
 
 ### Options

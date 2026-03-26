@@ -22,6 +22,5 @@ Manage Knowledge Graph entities.
 ### SEE ALSO
 
 * [grafanactl kg](grafanactl_kg.md)	 - Manage Grafana Knowledge Graph (Asserts) resources.
-* [grafanactl kg entities get](grafanactl_kg_entities_get.md)	 - Get entity information.
-* [grafanactl kg entities list](grafanactl_kg_entities_list.md)	 - List entities by type (omit --type to list all types).
+* [grafanactl kg entities show](grafanactl_kg_entities_show.md)	 - Show entities. Without a name, lists all; with a name, shows one.
 

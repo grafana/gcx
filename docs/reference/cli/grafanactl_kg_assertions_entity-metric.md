@@ -3,7 +3,7 @@
 Get metric data for a specific assertion on an entity.
 
 ```
-grafanactl kg assertions entity-metric [Type/Name] [flags]
+grafanactl kg assertions entity-metric [Type--Name] [flags]
 ```
 
 ### Options

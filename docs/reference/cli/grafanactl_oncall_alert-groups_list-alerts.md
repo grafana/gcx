@@ -1,22 +1,17 @@
-## grafanactl kg entities get
+## grafanactl oncall alert-groups list-alerts
 
-Get entity information.
+List individual alerts for an alert group.
 
 ```
-grafanactl kg entities get [flags]
+grafanactl oncall alert-groups list-alerts <alert-group-id> [flags]
 ```
 
 ### Options
 
 ```
-      --env string         Environment scope
-  -h, --help               help for get
-      --json string        Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-      --name string        Entity name
-      --namespace string   Namespace scope
-  -o, --output string      Output format. One of: json, yaml (default "json")
-      --site string        Site scope
-      --type string        Entity type
+  -h, --help            help for list-alerts
+      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+  -o, --output string   Output format. One of: json, table, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -32,5 +27,5 @@ grafanactl kg entities get [flags]
 
 ### SEE ALSO
 
-* [grafanactl kg entities](grafanactl_kg_entities.md)	 - Manage Knowledge Graph entities.
+* [grafanactl oncall alert-groups](grafanactl_oncall_alert-groups.md)	 - Manage alert groups.
 
