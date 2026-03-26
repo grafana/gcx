@@ -61,7 +61,8 @@ func (p *OnCallProvider) Commands() []*cobra.Command {
 		newOrganizationsCmd(loader),
 		newResolutionNotesCmd(loader),
 		newShiftSwapsCmd(loader),
-		newPersonalNotificationRulesCmd(loader),
+		// personal-notification-rules removed: OnCall API rejects SA tokens
+		// for this endpoint (403 "Invalid token"). Needs user-token auth support.
 		// Standalone action commands
 		newEscalateCommand(loader),
 	)

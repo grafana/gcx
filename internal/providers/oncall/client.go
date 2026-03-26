@@ -156,7 +156,10 @@ func iterResources[T any](c *Client, ctx context.Context, path, resourceType str
 				yield(z, fmt.Errorf("oncall: pagination URL host %q does not match base URL host %q", nextURL.Host, baseURL.Host))
 				return
 			}
-			next = nextURL.Path
+			// The API returns an absolute path that may include the oncallURL
+			// path prefix (e.g. "/oncall/api/v1/..."). Strip the base path so
+			// doRequest (which prepends oncallURL) doesn't double it.
+			next = strings.TrimPrefix(nextURL.Path, baseURL.Path)
 			if nextURL.RawQuery != "" {
 				next += "?" + nextURL.RawQuery
 			}

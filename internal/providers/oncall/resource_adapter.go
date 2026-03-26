@@ -324,12 +324,12 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		nil, // no GetFn — buildOnCallRegistration returns ErrUnsupported
 	))
 
-	// 13. Alert — read-only (list with empty filter)
+	// 13. Alert — get-only (list requires alert_group_id, handled by CLI command)
 	meta = onCallMeta("Alert", "alert", "alerts",
 		[]string{"oncall-alerts", "oncall-alert"})
 	meta.Schema = adapter.SchemaFromType[Alert](meta.Descriptor)
 	regs = append(regs, buildOnCallRegistration(loader, meta,
-		func(ctx context.Context, c *Client) ([]Alert, error) { return c.ListAlerts(ctx, "") },
+		nil, // ListFn nil — the OnCall API requires alert_group_id to list alerts
 		func(ctx context.Context, c *Client, name string) (*Alert, error) { return c.GetAlert(ctx, name) },
 	))
 
@@ -401,28 +401,9 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		}),
 	))
 
-	// 17. PersonalNotificationRule — full CRUD
-	meta = onCallMeta("PersonalNotificationRule", "personalnotificationrule", "personalnotificationrules",
-		[]string{"oncall-notification-rules", "oncall-pnr"})
-	meta.Schema = adapter.SchemaFromType[PersonalNotificationRule](meta.Descriptor)
-	meta.Example = personalNotificationRuleExample()
-	regs = append(regs, buildOnCallRegistration(loader, meta,
-		func(ctx context.Context, c *Client) ([]PersonalNotificationRule, error) {
-			return c.ListPersonalNotificationRules(ctx)
-		},
-		func(ctx context.Context, c *Client, name string) (*PersonalNotificationRule, error) {
-			return c.GetPersonalNotificationRule(ctx, name)
-		},
-		withCreate(func(ctx context.Context, c *Client, item *PersonalNotificationRule) (*PersonalNotificationRule, error) {
-			return c.CreatePersonalNotificationRule(ctx, *item)
-		}),
-		withUpdate(func(ctx context.Context, c *Client, name string, item *PersonalNotificationRule) (*PersonalNotificationRule, error) {
-			return c.UpdatePersonalNotificationRule(ctx, name, *item)
-		}),
-		withDelete[PersonalNotificationRule](func(ctx context.Context, c *Client, name string) error {
-			return c.DeletePersonalNotificationRule(ctx, name)
-		}),
-	))
+	// PersonalNotificationRule removed: OnCall API rejects SA tokens for this
+	// endpoint (403 "Invalid token"). Client methods retained in client.go for
+	// when user-token auth is added. See follow-up bead.
 
 	return regs
 }

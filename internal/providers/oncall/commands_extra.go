@@ -91,6 +91,43 @@ func maxAgeToStartedAt(maxAge string) (string, error) {
 }
 
 // ---------------------------------------------------------------------------
+// list-alerts subcommand (mounted under alert-groups)
+// ---------------------------------------------------------------------------
+
+func newAlertGroupListAlertsCommand(loader OnCallConfigLoader) *cobra.Command {
+	opts := &listOpts{}
+	cmd := &cobra.Command{
+		Use:   "list-alerts <alert-group-id>",
+		Short: "List individual alerts for an alert group.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			client, namespace, err := loader.LoadOnCallClient(cmd.Context())
+			if err != nil {
+				return err
+			}
+
+			items, err := client.ListAlerts(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+
+			objs, err := itemsToUnstructured(items, "Alert", "id", namespace)
+			if err != nil {
+				return err
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), objs)
+		},
+	}
+	opts.setup(cmd.Flags(), "alerts")
+	return cmd
+}
+
+// ---------------------------------------------------------------------------
 // alert-groups command: list, get, acknowledge, resolve, delete, silence, etc.
 // ---------------------------------------------------------------------------
 
@@ -112,6 +149,7 @@ func newAlertGroupsCommand(loader OnCallConfigLoader) *cobra.Command {
 
 	cmd.AddCommand(
 		newAlertGroupListCommand(loader),
+		newAlertGroupListAlertsCommand(loader),
 		newGetSubcommand(loader, "Get an alert group by ID.",
 			func(ctx context.Context, c *Client, name string) (*AlertGroup, error) {
 				return c.GetAlertGroup(ctx, name)

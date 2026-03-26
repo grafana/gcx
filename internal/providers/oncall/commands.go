@@ -34,9 +34,18 @@ func (o *listOpts) setup(flags *pflag.FlagSet, resource string) {
 		o.IO.RegisterCustomCodec("wide", &IntegrationTableCodec{Wide: true})
 	case "escalation-chains":
 		o.IO.RegisterCustomCodec("table", &EscalationChainTableCodec{})
+	case "escalation-policies":
+		o.IO.RegisterCustomCodec("table", &EscalationPolicyTableCodec{})
+		o.IO.RegisterCustomCodec("wide", &EscalationPolicyTableCodec{Wide: true})
 	case "schedules":
 		o.IO.RegisterCustomCodec("table", &ScheduleTableCodec{})
 		o.IO.RegisterCustomCodec("wide", &ScheduleTableCodec{Wide: true})
+	case "shifts":
+		o.IO.RegisterCustomCodec("table", &ShiftTableCodec{})
+		o.IO.RegisterCustomCodec("wide", &ShiftTableCodec{Wide: true})
+	case "routes":
+		o.IO.RegisterCustomCodec("table", &RouteTableCodec{})
+		o.IO.RegisterCustomCodec("wide", &RouteTableCodec{Wide: true})
 	case "webhooks":
 		o.IO.RegisterCustomCodec("table", &WebhookTableCodec{})
 		o.IO.RegisterCustomCodec("wide", &WebhookTableCodec{Wide: true})
@@ -45,8 +54,27 @@ func (o *listOpts) setup(flags *pflag.FlagSet, resource string) {
 		o.IO.RegisterCustomCodec("wide", &AlertGroupTableCodec{Wide: true})
 	case "users":
 		o.IO.RegisterCustomCodec("table", &UserTableCodec{})
+		o.IO.RegisterCustomCodec("wide", &UserTableCodec{Wide: true})
 	case "teams":
 		o.IO.RegisterCustomCodec("table", &TeamTableCodec{})
+		o.IO.RegisterCustomCodec("wide", &TeamTableCodec{Wide: true})
+	case "user-groups":
+		o.IO.RegisterCustomCodec("table", &UserGroupTableCodec{})
+	case "slack-channels":
+		o.IO.RegisterCustomCodec("table", &SlackChannelTableCodec{})
+	case "alerts":
+		o.IO.RegisterCustomCodec("table", &AlertTableCodec{})
+	case "resolution-notes":
+		o.IO.RegisterCustomCodec("table", &ResolutionNoteTableCodec{})
+		o.IO.RegisterCustomCodec("wide", &ResolutionNoteTableCodec{Wide: true})
+	case "organizations":
+		o.IO.RegisterCustomCodec("table", &OrganizationTableCodec{})
+	case "shift-swaps":
+		o.IO.RegisterCustomCodec("table", &ShiftSwapTableCodec{})
+		o.IO.RegisterCustomCodec("wide", &ShiftSwapTableCodec{Wide: true})
+	case "personal-notification-rules":
+		o.IO.RegisterCustomCodec("table", &PersonalNotificationRuleTableCodec{})
+		o.IO.RegisterCustomCodec("wide", &PersonalNotificationRuleTableCodec{Wide: true})
 	}
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
@@ -389,9 +417,6 @@ func newAlertsCmd(loader OnCallConfigLoader) *cobra.Command {
 		Aliases: []string{"alert"},
 	}
 	cmd.AddCommand(
-		newListSubcommand(loader, "alerts", "Alert", "List alerts.",
-			func(ctx context.Context, c *Client) ([]Alert, error) { return c.ListAlerts(ctx, "") },
-			func(ctx context.Context, c *Client, name string) (*Alert, error) { return c.GetAlert(ctx, name) }),
 		newGetSubcommand(loader, "Get an alert by ID.",
 			func(ctx context.Context, c *Client, name string) (*Alert, error) { return c.GetAlert(ctx, name) }),
 	)
@@ -621,6 +646,56 @@ func (c *EscalationChainTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
 
+// EscalationPolicyTableCodec renders escalation policies as a table.
+type EscalationPolicyTableCodec struct {
+	Wide bool
+}
+
+func (c *EscalationPolicyTableCodec) Format() format.Format {
+	if c.Wide {
+		return "wide"
+	}
+	return "table"
+}
+
+func (c *EscalationPolicyTableCodec) Encode(w io.Writer, v any) error {
+	items, err := toUnstructuredSlice(v)
+	if err != nil {
+		return err
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	if c.Wide {
+		fmt.Fprintln(tw, "ID\tCHAIN\tPOS\tTYPE\tDURATION\tIMPORTANT\tNOTIFY-SCHEDULE")
+	} else {
+		fmt.Fprintln(tw, "ID\tCHAIN\tPOS\tTYPE\tDURATION")
+	}
+
+	for _, obj := range items {
+		id := obj.GetName()
+		dur := specInt(obj, "duration")
+		durStr := "-"
+		if dur > 0 {
+			durStr = fmt.Sprintf("%ds", dur)
+		}
+		if c.Wide {
+			important := "false"
+			if specBool(obj, "important") {
+				important = "true"
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\t%s\t%s\n", id, specStr(obj, "escalation_chain_id"), specInt(obj, "position"), specStr(obj, "type"), durStr, important, orDash(specStr(obj, "notify_on_call_from_schedule")))
+		} else {
+			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\n", id, specStr(obj, "escalation_chain_id"), specInt(obj, "position"), specStr(obj, "type"), durStr)
+		}
+	}
+
+	return tw.Flush()
+}
+
+func (c *EscalationPolicyTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
 // ScheduleTableCodec renders schedules as a table.
 type ScheduleTableCodec struct {
 	Wide bool
@@ -769,9 +844,16 @@ func (c *AlertGroupTableCodec) Decode(_ io.Reader, _ any) error {
 }
 
 // UserTableCodec renders users as a table.
-type UserTableCodec struct{}
+type UserTableCodec struct {
+	Wide bool
+}
 
-func (c *UserTableCodec) Format() format.Format { return "table" }
+func (c *UserTableCodec) Format() format.Format {
+	if c.Wide {
+		return "wide"
+	}
+	return "table"
+}
 
 func (c *UserTableCodec) Encode(w io.Writer, v any) error {
 	items, err := toUnstructuredSlice(v)
@@ -780,12 +862,22 @@ func (c *UserTableCodec) Encode(w io.Writer, v any) error {
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tUSERNAME\tNAME\tROLE\tTIMEZONE")
+	if c.Wide {
+		fmt.Fprintln(tw, "ID\tUSERNAME\tNAME\tEMAIL\tROLE\tTIMEZONE")
+	} else {
+		fmt.Fprintln(tw, "ID\tUSERNAME\tNAME\tROLE\tTIMEZONE")
+	}
 
 	for _, obj := range items {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-			obj.GetName(), specStr(obj, "username"), orDash(specStr(obj, "name")),
-			orDash(specStr(obj, "role")), orDash(specStr(obj, "timezone")))
+		if c.Wide {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
+				obj.GetName(), specStr(obj, "username"), orDash(specStr(obj, "name")),
+				orDash(specStr(obj, "email")), orDash(specStr(obj, "role")), orDash(specStr(obj, "timezone")))
+		} else {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+				obj.GetName(), specStr(obj, "username"), orDash(specStr(obj, "name")),
+				orDash(specStr(obj, "role")), orDash(specStr(obj, "timezone")))
+		}
 	}
 
 	return tw.Flush()
@@ -796,9 +888,16 @@ func (c *UserTableCodec) Decode(_ io.Reader, _ any) error {
 }
 
 // TeamTableCodec renders teams as a table.
-type TeamTableCodec struct{}
+type TeamTableCodec struct {
+	Wide bool
+}
 
-func (c *TeamTableCodec) Format() format.Format { return "table" }
+func (c *TeamTableCodec) Format() format.Format {
+	if c.Wide {
+		return "wide"
+	}
+	return "table"
+}
 
 func (c *TeamTableCodec) Encode(w io.Writer, v any) error {
 	items, err := toUnstructuredSlice(v)
@@ -807,15 +906,376 @@ func (c *TeamTableCodec) Encode(w io.Writer, v any) error {
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tNAME\tEMAIL")
+	if c.Wide {
+		fmt.Fprintln(tw, "ID\tNAME\tEMAIL\tGRAFANA-ID")
+	} else {
+		fmt.Fprintln(tw, "ID\tNAME\tEMAIL")
+	}
 
 	for _, obj := range items {
-		fmt.Fprintf(tw, "%s\t%s\t%s\n", obj.GetName(), specStr(obj, "name"), orDash(specStr(obj, "email")))
+		if c.Wide {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\n", obj.GetName(), specStr(obj, "name"), orDash(specStr(obj, "email")), specInt(obj, "grafana_id"))
+		} else {
+			fmt.Fprintf(tw, "%s\t%s\t%s\n", obj.GetName(), specStr(obj, "name"), orDash(specStr(obj, "email")))
+		}
 	}
 
 	return tw.Flush()
 }
 
 func (c *TeamTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// ShiftTableCodec renders shifts as a table.
+type ShiftTableCodec struct {
+	Wide bool
+}
+
+func (c *ShiftTableCodec) Format() format.Format {
+	if c.Wide {
+		return "wide"
+	}
+	return "table"
+}
+
+func (c *ShiftTableCodec) Encode(w io.Writer, v any) error {
+	items, err := toUnstructuredSlice(v)
+	if err != nil {
+		return err
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	if c.Wide {
+		fmt.Fprintln(tw, "ID\tNAME\tTYPE\tSTART\tDURATION\tFREQUENCY\tINTERVAL\tTEAM")
+	} else {
+		fmt.Fprintln(tw, "ID\tNAME\tTYPE\tSTART\tDURATION")
+	}
+
+	for _, obj := range items {
+		id := obj.GetName()
+		dur := specInt(obj, "duration")
+		durStr := "-"
+		if dur > 0 {
+			durStr = fmt.Sprintf("%ds", dur)
+		}
+		start := orDash(specStr(obj, "start"))
+		if c.Wide {
+			freq := orDash(specStr(obj, "frequency"))
+			interval := specInt(obj, "interval")
+			intervalStr := "-"
+			if interval > 0 {
+				intervalStr = fmt.Sprintf("%d", interval)
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", id, specStr(obj, "name"), specStr(obj, "type"), start, durStr, freq, intervalStr, orDash(specStr(obj, "team_id")))
+		} else {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", id, specStr(obj, "name"), specStr(obj, "type"), start, durStr)
+		}
+	}
+
+	return tw.Flush()
+}
+
+func (c *ShiftTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// RouteTableCodec renders routes as a table.
+type RouteTableCodec struct {
+	Wide bool
+}
+
+func (c *RouteTableCodec) Format() format.Format {
+	if c.Wide {
+		return "wide"
+	}
+	return "table"
+}
+
+func (c *RouteTableCodec) Encode(w io.Writer, v any) error {
+	items, err := toUnstructuredSlice(v)
+	if err != nil {
+		return err
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	if c.Wide {
+		fmt.Fprintln(tw, "ID\tINTEGRATION\tCHAIN\tPOS\tROUTING-TYPE\tREGEX\tLAST")
+	} else {
+		fmt.Fprintln(tw, "ID\tINTEGRATION\tCHAIN\tPOS\tROUTING-TYPE")
+	}
+
+	for _, obj := range items {
+		id := obj.GetName()
+		if c.Wide {
+			isLast := "false"
+			if specBool(obj, "is_the_last_route") {
+				isLast = "true"
+			}
+			regex := orDash(specStr(obj, "routing_regex"))
+			if len(regex) > 40 {
+				regex = regex[:37] + "..."
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\t%s\t%s\n", id, specStr(obj, "integration_id"), orDash(specStr(obj, "escalation_chain_id")), specInt(obj, "position"), orDash(specStr(obj, "routing_type")), regex, isLast)
+		} else {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\n", id, specStr(obj, "integration_id"), orDash(specStr(obj, "escalation_chain_id")), specInt(obj, "position"), orDash(specStr(obj, "routing_type")))
+		}
+	}
+
+	return tw.Flush()
+}
+
+func (c *RouteTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// UserGroupTableCodec renders user groups as a table.
+type UserGroupTableCodec struct{}
+
+func (c *UserGroupTableCodec) Format() format.Format { return "table" }
+
+func (c *UserGroupTableCodec) Encode(w io.Writer, v any) error {
+	items, err := toUnstructuredSlice(v)
+	if err != nil {
+		return err
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "ID\tNAME\tTYPE\tHANDLE")
+
+	for _, obj := range items {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", obj.GetName(), orDash(specStr(obj, "name")), orDash(specStr(obj, "type")), orDash(specStr(obj, "handle")))
+	}
+
+	return tw.Flush()
+}
+
+func (c *UserGroupTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// SlackChannelTableCodec renders Slack channels as a table.
+type SlackChannelTableCodec struct{}
+
+func (c *SlackChannelTableCodec) Format() format.Format { return "table" }
+
+func (c *SlackChannelTableCodec) Encode(w io.Writer, v any) error {
+	items, err := toUnstructuredSlice(v)
+	if err != nil {
+		return err
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "ID\tNAME\tSLACK-ID")
+
+	for _, obj := range items {
+		fmt.Fprintf(tw, "%s\t%s\t%s\n", obj.GetName(), orDash(specStr(obj, "name")), orDash(specStr(obj, "slack_id")))
+	}
+
+	return tw.Flush()
+}
+
+func (c *SlackChannelTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// AlertTableCodec renders alerts as a table.
+type AlertTableCodec struct{}
+
+func (c *AlertTableCodec) Format() format.Format { return "table" }
+
+func (c *AlertTableCodec) Encode(w io.Writer, v any) error {
+	items, err := toUnstructuredSlice(v)
+	if err != nil {
+		return err
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "ID\tALERT-GROUP\tCREATED")
+
+	for _, obj := range items {
+		created := specStr(obj, "created_at")
+		if len(created) > 16 {
+			created = created[:16]
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\n", obj.GetName(), specStr(obj, "alert_group_id"), orDash(created))
+	}
+
+	return tw.Flush()
+}
+
+func (c *AlertTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// ResolutionNoteTableCodec renders resolution notes as a table.
+type ResolutionNoteTableCodec struct {
+	Wide bool
+}
+
+func (c *ResolutionNoteTableCodec) Format() format.Format {
+	if c.Wide {
+		return "wide"
+	}
+	return "table"
+}
+
+func (c *ResolutionNoteTableCodec) Encode(w io.Writer, v any) error {
+	items, err := toUnstructuredSlice(v)
+	if err != nil {
+		return err
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	if c.Wide {
+		fmt.Fprintln(tw, "ID\tALERT-GROUP\tSOURCE\tCREATED\tTEXT")
+	} else {
+		fmt.Fprintln(tw, "ID\tALERT-GROUP\tSOURCE\tCREATED")
+	}
+
+	for _, obj := range items {
+		created := specStr(obj, "created_at")
+		if len(created) > 16 {
+			created = created[:16]
+		}
+		if c.Wide {
+			text := specStr(obj, "text")
+			if len(text) > 60 {
+				text = text[:57] + "..."
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", obj.GetName(), specStr(obj, "alert_group_id"), orDash(specStr(obj, "source")), orDash(created), orDash(text))
+		} else {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", obj.GetName(), specStr(obj, "alert_group_id"), orDash(specStr(obj, "source")), orDash(created))
+		}
+	}
+
+	return tw.Flush()
+}
+
+func (c *ResolutionNoteTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// OrganizationTableCodec renders organizations as a table.
+type OrganizationTableCodec struct{}
+
+func (c *OrganizationTableCodec) Format() format.Format { return "table" }
+
+func (c *OrganizationTableCodec) Encode(w io.Writer, v any) error {
+	items, err := toUnstructuredSlice(v)
+	if err != nil {
+		return err
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "ID\tNAME\tSLUG")
+
+	for _, obj := range items {
+		fmt.Fprintf(tw, "%s\t%s\t%s\n", obj.GetName(), orDash(specStr(obj, "name")), orDash(specStr(obj, "slug")))
+	}
+
+	return tw.Flush()
+}
+
+func (c *OrganizationTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// ShiftSwapTableCodec renders shift swaps as a table.
+type ShiftSwapTableCodec struct {
+	Wide bool
+}
+
+func (c *ShiftSwapTableCodec) Format() format.Format {
+	if c.Wide {
+		return "wide"
+	}
+	return "table"
+}
+
+func (c *ShiftSwapTableCodec) Encode(w io.Writer, v any) error {
+	items, err := toUnstructuredSlice(v)
+	if err != nil {
+		return err
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	if c.Wide {
+		fmt.Fprintln(tw, "ID\tSCHEDULE\tSTATUS\tSTART\tEND\tBENEFICIARY\tBENEFACTOR\tCREATED")
+	} else {
+		fmt.Fprintln(tw, "ID\tSCHEDULE\tSTATUS\tSTART\tEND")
+	}
+
+	for _, obj := range items {
+		id := obj.GetName()
+		start := specStr(obj, "swap_start")
+		if len(start) > 16 {
+			start = start[:16]
+		}
+		end := specStr(obj, "swap_end")
+		if len(end) > 16 {
+			end = end[:16]
+		}
+		if c.Wide {
+			created := specStr(obj, "created_at")
+			if len(created) > 16 {
+				created = created[:16]
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", id, orDash(specStr(obj, "schedule")), orDash(specStr(obj, "status")), orDash(start), orDash(end), orDash(specStr(obj, "beneficiary")), orDash(specStr(obj, "benefactor")), orDash(created))
+		} else {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", id, orDash(specStr(obj, "schedule")), orDash(specStr(obj, "status")), orDash(start), orDash(end))
+		}
+	}
+
+	return tw.Flush()
+}
+
+func (c *ShiftSwapTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// PersonalNotificationRuleTableCodec renders personal notification rules as a table.
+type PersonalNotificationRuleTableCodec struct {
+	Wide bool
+}
+
+func (c *PersonalNotificationRuleTableCodec) Format() format.Format {
+	if c.Wide {
+		return "wide"
+	}
+	return "table"
+}
+
+func (c *PersonalNotificationRuleTableCodec) Encode(w io.Writer, v any) error {
+	items, err := toUnstructuredSlice(v)
+	if err != nil {
+		return err
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	if c.Wide {
+		fmt.Fprintln(tw, "ID\tUSER\tSTEP\tTYPE\tDURATION\tCHANNEL")
+	} else {
+		fmt.Fprintln(tw, "ID\tUSER\tSTEP\tTYPE\tDURATION")
+	}
+
+	for _, obj := range items {
+		id := obj.GetName()
+		dur := specInt(obj, "duration")
+		durStr := "-"
+		if dur > 0 {
+			durStr = fmt.Sprintf("%ds", dur)
+		}
+		if c.Wide {
+			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\t%s\n", id, orDash(specStr(obj, "user_id")), specInt(obj, "step"), orDash(specStr(obj, "type")), durStr, orDash(specStr(obj, "notification_channel_id")))
+		} else {
+			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\n", id, orDash(specStr(obj, "user_id")), specInt(obj, "step"), orDash(specStr(obj, "type")), durStr)
+		}
+	}
+
+	return tw.Flush()
+}
+
+func (c *PersonalNotificationRuleTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
