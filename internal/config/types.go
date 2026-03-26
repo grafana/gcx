@@ -182,6 +182,22 @@ type GrafanaConfig struct {
 	// Optional.
 	APIToken string `datapolicy:"secret" env:"GRAFANA_TOKEN" json:"token,omitempty" yaml:"token,omitempty"`
 
+	// ProxyEndpoint is the assistant backend URL used as a reverse proxy for
+	// OAuth-authenticated requests. Set automatically by `auth login`.
+	ProxyEndpoint string `env:"GRAFANA_PROXY_ENDPOINT" json:"proxy-endpoint,omitempty" yaml:"proxy-endpoint,omitempty"`
+
+	// CLIToken is the OAuth access token (gat_) obtained via `auth login`.
+	CLIToken string `datapolicy:"secret" json:"cli-token,omitempty" yaml:"cli-token,omitempty"`
+
+	// CLIRefreshToken is the refresh token (gar_) for renewing CLIToken.
+	CLIRefreshToken string `datapolicy:"secret" json:"cli-refresh-token,omitempty" yaml:"cli-refresh-token,omitempty"`
+
+	// CLITokenExpiresAt is the CLIToken expiration time in RFC3339 format.
+	CLITokenExpiresAt string `json:"cli-token-expires-at,omitempty" yaml:"cli-token-expires-at,omitempty"`
+
+	// CLIRefreshExpiresAt is the CLIRefreshToken expiration time in RFC3339 format.
+	CLIRefreshExpiresAt string `json:"cli-refresh-expires-at,omitempty" yaml:"cli-refresh-expires-at,omitempty"`
+
 	// OrgID specifies the organization targeted by this config.
 	// Note: required when targeting an on-prem Grafana instance.
 	// See StackID for Grafana Cloud instances.
