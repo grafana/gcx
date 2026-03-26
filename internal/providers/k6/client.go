@@ -11,7 +11,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
+
+	"github.com/grafana/grafanactl/internal/providers"
 )
 
 const (
@@ -44,7 +45,7 @@ func NewClient(apiDomain string, httpClient *http.Client) *Client {
 		apiDomain = DefaultAPIDomain
 	}
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 60 * time.Second}
+		httpClient = providers.ExternalHTTPClient()
 	}
 	return &Client{
 		apiDomain: strings.TrimRight(apiDomain, "/"),

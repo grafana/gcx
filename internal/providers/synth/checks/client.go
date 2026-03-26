@@ -9,8 +9,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
+	"github.com/grafana/grafanactl/internal/providers"
 	"github.com/grafana/grafanactl/internal/providers/synth/smcfg"
 )
 
@@ -30,7 +30,7 @@ func NewClient(baseURL, token string) *Client {
 	return &Client{
 		baseURL:    strings.TrimRight(baseURL, "/") + "/api/v1",
 		token:      token,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		httpClient: providers.ExternalHTTPClient(),
 	}
 }
 

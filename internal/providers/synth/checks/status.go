@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/grafanactl/internal/grafana"
 	"github.com/grafana/grafanactl/internal/graph"
 	cmdio "github.com/grafana/grafanactl/internal/output"
+	"github.com/grafana/grafanactl/internal/providers"
 	"github.com/grafana/grafanactl/internal/providers/synth/probes"
 	"github.com/grafana/grafanactl/internal/providers/synth/smcfg"
 	"github.com/grafana/grafanactl/internal/query/prometheus"
@@ -745,7 +746,7 @@ func smMetricsDatasourceName(ctx context.Context, grafanaCtx *config.Context) (s
 		req.SetBasicAuth(grafanaCtx.Grafana.User, grafanaCtx.Grafana.Password)
 	}
 
-	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	resp, err := providers.ExternalHTTPClient().Do(req)
 	if err != nil {
 		return "", err
 	}

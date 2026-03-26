@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/caarlos0/env/v11"
 	"github.com/grafana/grafanactl/internal/cloud"
@@ -31,10 +30,10 @@ type CloudRESTConfig struct {
 }
 
 // HTTPClient returns a TLS-aware HTTP client derived from the REST config.
-// Returns a default client with 30s timeout when no REST config is present.
+// Returns the shared ExternalHTTPClient when no REST config is present.
 func (c CloudRESTConfig) HTTPClient() (*http.Client, error) {
 	if c.RESTConfig == nil {
-		return &http.Client{Timeout: 30 * time.Second}, nil
+		return ExternalHTTPClient(), nil
 	}
 	return rest.HTTPClientFor(c.RESTConfig)
 }
