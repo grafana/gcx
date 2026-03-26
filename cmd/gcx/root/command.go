@@ -9,6 +9,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/go-logr/logr"
 	"github.com/grafana/gcx/cmd/gcx/api"
+	authcmd "github.com/grafana/gcx/cmd/gcx/auth"
 	"github.com/grafana/gcx/cmd/gcx/commands"
 	"github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/cmd/gcx/dashboards"
@@ -130,6 +131,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd.SetIn(os.Stdin)
 
 	rootCmd.AddCommand(api.Command())
+	rootCmd.AddCommand(authcmd.Command())
 	rootCmd.AddCommand(config.Command())
 	rootCmd.AddCommand(dashboards.Command())
 	rootCmd.AddCommand(dev.Command())
