@@ -24,11 +24,6 @@ type TypedObject[T ResourceNamer] struct {
 // repeats: marshal T to/from a Kubernetes-style unstructured envelope, strip
 // server-managed fields, and dispatch to typed functions.
 type TypedCRUD[T ResourceNamer] struct {
-	// NameFn extracts the metadata.name from a domain object.
-	// Deprecated: use ResourceIdentity.GetResourceName() instead.
-	// When nil, T.GetResourceName() is used automatically.
-	NameFn func(T) string
-
 	// ListFn lists all items of this type (REQUIRED).
 	ListFn func(ctx context.Context) ([]T, error)
 
@@ -50,12 +45,6 @@ type TypedCRUD[T ResourceNamer] struct {
 	// StripFields lists spec-level keys to remove (e.g., "uuid", "id", "readOnly").
 	StripFields []string
 
-	// RestoreNameFn restores the identity field from metadata.name back into
-	// the domain object (e.g., slo.UUID = name). Called during fromUnstructured.
-	// Deprecated: use ResourceIdentity.SetResourceName() instead.
-	// When nil, T.SetResourceName() is used automatically.
-	RestoreNameFn func(name string, item *T)
-
 	// MetadataFn returns extra metadata fields to merge into the envelope.
 	// It must never return "name" or "namespace" — those are always set by TypedCRUD.
 	MetadataFn func(T) map[string]any
@@ -67,23 +56,14 @@ type TypedCRUD[T ResourceNamer] struct {
 	Aliases []string
 }
 
-// resourceName extracts the name from a domain object, preferring NameFn
-// if set (backward compat) and falling back to ResourceIdentity.
+// resourceName extracts the name from a domain object using ResourceIdentity.
 func (c *TypedCRUD[T]) resourceName(item T) string {
-	if c.NameFn != nil {
-		return c.NameFn(item)
-	}
 	return item.GetResourceName()
 }
 
-// restoreName restores the identity field on a domain object, preferring
-// RestoreNameFn if set and falling back to ResourceIdentity.SetResourceName
+// restoreName restores the identity field on a domain object using ResourceIdentity.SetResourceName
 // via type assertion on the pointer (since SetResourceName has pointer receiver).
 func (c *TypedCRUD[T]) restoreName(name string, item *T) {
-	if c.RestoreNameFn != nil {
-		c.RestoreNameFn(name, item)
-		return
-	}
 	if setter, ok := any(item).(interface{ SetResourceName(string) }); ok {
 		setter.SetResourceName(name)
 	}

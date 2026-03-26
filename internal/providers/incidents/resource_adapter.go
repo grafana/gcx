@@ -136,8 +136,6 @@ func NewFactoryFromConfig(cfg internalconfig.NamespacedRESTConfig) adapter.Facto
 // newTypedAdapter builds the TypedCRUD[Incident] adapter for the given client and namespace.
 func newTypedAdapter(client *Client, namespace string) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[Incident]{
-		NameFn: func(inc Incident) string { return inc.IncidentID },
-
 		ListFn: func(ctx context.Context) ([]Incident, error) {
 			return client.List(ctx, IncidentQuery{})
 		},
@@ -158,11 +156,10 @@ func newTypedAdapter(client *Client, namespace string) adapter.ResourceAdapter {
 			return errors.New("incidents: delete is not supported by the IRM API")
 		},
 
-		StripFields:   []string{"incidentID"},
-		RestoreNameFn: func(name string, inc *Incident) { inc.IncidentID = name },
-		Namespace:     namespace,
-		Descriptor:    staticDescriptor,
-		Aliases:       staticAliases,
+		StripFields: []string{"incidentID"},
+		Namespace:   namespace,
+		Descriptor:  staticDescriptor,
+		Aliases:     staticAliases,
 	}
 
 	return crud.AsAdapter()
@@ -181,8 +178,6 @@ func NewTypedCRUD(ctx context.Context, loader GrafanaConfigLoader) (*adapter.Typ
 	}
 
 	crud := &adapter.TypedCRUD[Incident]{
-		NameFn: func(inc Incident) string { return inc.IncidentID },
-
 		ListFn: func(ctx context.Context) ([]Incident, error) {
 			return client.List(ctx, IncidentQuery{})
 		},
@@ -203,11 +198,10 @@ func NewTypedCRUD(ctx context.Context, loader GrafanaConfigLoader) (*adapter.Typ
 			return errors.New("incidents: delete is not supported by the IRM API")
 		},
 
-		StripFields:   []string{"incidentID"},
-		RestoreNameFn: func(name string, inc *Incident) { inc.IncidentID = name },
-		Namespace:     cfg.Namespace,
-		Descriptor:    staticDescriptor,
-		Aliases:       staticAliases,
+		StripFields: []string{"incidentID"},
+		Namespace:   cfg.Namespace,
+		Descriptor:  staticDescriptor,
+		Aliases:     staticAliases,
 	}
 
 	return crud, cfg, nil

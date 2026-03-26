@@ -61,7 +61,6 @@ func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[
 	client := NewClient(baseURL, token)
 
 	crud := &adapter.TypedCRUD[Probe]{
-		NameFn: func(p Probe) string { return strconv.FormatInt(p.ID, 10) },
 		ListFn: client.List,
 		GetFn: func(ctx context.Context, name string) (*Probe, error) {
 			id, err := strconv.ParseInt(name, 10, 64)

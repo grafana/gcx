@@ -31,7 +31,7 @@ var staticDescriptor = resources.Descriptor{
 var staticAliases = []string{"checks"}
 
 // checkResource is an internal wrapper around CheckSpec that carries
-// non-serialized metadata needed by TypedCRUD's NameFn and MetadataFn.
+// non-serialized metadata needed by TypedCRUD's MetadataFn.
 // Unexported fields are ignored by json.Marshal, so the serialized output
 // is identical to marshaling a plain CheckSpec.
 type checkResource struct {
@@ -59,8 +59,6 @@ func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[
 	probesClient := probes.NewClient(baseURL, token)
 
 	crud := &adapter.TypedCRUD[checkResource]{
-		NameFn: func(cr checkResource) string { return cr.name },
-
 		ListFn: func(ctx context.Context) ([]checkResource, error) {
 			checkList, err := checksClient.List(ctx)
 			if err != nil {
@@ -166,13 +164,6 @@ func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[
 		},
 
 		Namespace: namespace,
-
-		RestoreNameFn: func(name string, item *checkResource) {
-			item.name = name
-			if id, ok := extractIDFromSlug(name); ok {
-				item.checkID = id
-			}
-		},
 
 		MetadataFn: func(cr checkResource) map[string]any {
 			if cr.checkID != 0 {

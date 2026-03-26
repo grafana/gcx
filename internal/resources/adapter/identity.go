@@ -15,7 +15,7 @@ type ResourceIdentity interface {
 
 	// SetResourceName restores the identity from a string (e.g., after K8s
 	// round-trip via metadata.name). For numeric types, parse errors are
-	// silently ignored to match existing RestoreNameFn behavior.
+	// silently ignored.
 	SetResourceName(name string)
 }
 

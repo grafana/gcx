@@ -37,12 +37,8 @@ var widgetDesc = resources.Descriptor{ //nolint:gochecknoglobals // Test fixture
 // newWidgetCRUD returns a TypedCRUD configured for TestWidget with sensible defaults.
 func newWidgetCRUD(widgets []TestWidget) *adapter.TypedCRUD[TestWidget] {
 	return &adapter.TypedCRUD[TestWidget]{
-		NameFn:      func(w TestWidget) string { return w.ID },
 		Namespace:   "stack-1",
 		StripFields: []string{"id", "secret"},
-		RestoreNameFn: func(name string, w *TestWidget) {
-			w.ID = name
-		},
 		Descriptor: widgetDesc,
 		Aliases:    []string{"wdg"},
 		ListFn: func(_ context.Context) ([]TestWidget, error) {
@@ -148,7 +144,7 @@ func TestTypedCRUD_Create(t *testing.T) {
 	result, err := a.Create(t.Context(), input, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	// RestoreNameFn should have set ID from metadata.name.
+	// SetResourceName should have set ID from metadata.name.
 	require.NotNil(t, createdItem)
 	assert.Equal(t, "w-input", createdItem.ID)
 	assert.Equal(t, "Gamma", createdItem.Name)
@@ -182,7 +178,7 @@ func TestTypedCRUD_Update(t *testing.T) {
 
 	assert.Equal(t, "w-existing", updatedName)
 	require.NotNil(t, updatedItem)
-	assert.Equal(t, "w-existing", updatedItem.ID) // RestoreNameFn applied
+	assert.Equal(t, "w-existing", updatedItem.ID) // SetResourceName applied
 	assert.Equal(t, "Delta", updatedItem.Name)
 
 	assert.Equal(t, "w-existing", result.GetName())
@@ -478,13 +474,12 @@ func TestTypedCRUD_TypedDelete(t *testing.T) {
 	assert.Equal(t, "w-1", deleted)
 }
 
-func TestTypedCRUD_ResourceIdentityFallback(t *testing.T) {
-	// When NameFn is nil, should use GetResourceName() from the type.
+func TestTypedCRUD_ResourceIdentity(t *testing.T) {
+	// TypedCRUD should use GetResourceName() from the ResourceIdentity interface.
 	widgets := []TestWidget{
 		{ID: "w-1", Name: "Alpha", Color: "red"},
 	}
 	crud := &adapter.TypedCRUD[TestWidget]{
-		NameFn:    nil, // Force fallback to ResourceIdentity
 		Namespace: "stack-1",
 		ListFn:    func(_ context.Context) ([]TestWidget, error) { return widgets, nil },
 		GetFn: func(_ context.Context, name string) (*TestWidget, error) {
@@ -497,7 +492,7 @@ func TestTypedCRUD_ResourceIdentityFallback(t *testing.T) {
 	result, err := crud.List(t.Context())
 	require.NoError(t, err)
 	require.Len(t, result, 1)
-	assert.Equal(t, "w-1", result[0].GetName(), "should use GetResourceName() when NameFn is nil")
+	assert.Equal(t, "w-1", result[0].GetName(), "should use GetResourceName() from ResourceIdentity")
 
 	// Test AsAdapter also works
 	a := crud.AsAdapter()
@@ -507,14 +502,12 @@ func TestTypedCRUD_ResourceIdentityFallback(t *testing.T) {
 	assert.Equal(t, "w-1", list.Items[0].GetName())
 }
 
-func TestTypedCRUD_RestoreNameFallback(t *testing.T) {
-	// When RestoreNameFn is nil, fromUnstructured should use SetResourceName()
+func TestTypedCRUD_SetResourceName(t *testing.T) {
+	// TypedCRUD should use SetResourceName() from the ResourceIdentity interface.
 	crud := &adapter.TypedCRUD[TestWidget]{
-		NameFn:        func(w TestWidget) string { return w.ID },
-		RestoreNameFn: nil, // Force fallback to ResourceIdentity
-		Namespace:     "stack-1",
-		StripFields:   []string{"id"},
-		Descriptor:    widgetDesc,
+		Namespace:   "stack-1",
+		StripFields: []string{"id"},
+		Descriptor:  widgetDesc,
 		CreateFn: func(_ context.Context, item *TestWidget) (*TestWidget, error) {
 			return item, nil
 		},
@@ -525,7 +518,7 @@ func TestTypedCRUD_RestoreNameFallback(t *testing.T) {
 
 	result, err := a.Create(t.Context(), input, metav1.CreateOptions{})
 	require.NoError(t, err)
-	assert.Equal(t, "restored-id", result.GetName(), "SetResourceName should restore ID via ResourceIdentity")
+	assert.Equal(t, "restored-id", result.GetName(), "SetResourceName should set ID via ResourceIdentity")
 }
 
 func TestTypedObject_JSONSerialization(t *testing.T) {

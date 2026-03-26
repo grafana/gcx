@@ -86,7 +86,6 @@ func NewTypedCRUD(ctx context.Context) (*adapter.TypedCRUD[Slo], internalconfig.
 	}
 
 	crud := &adapter.TypedCRUD[Slo]{
-		NameFn: func(s Slo) string { return s.UUID },
 		ListFn: client.List,
 		GetFn: func(ctx context.Context, name string) (*Slo, error) {
 			return client.Get(ctx, name)
@@ -115,11 +114,10 @@ func NewTypedCRUD(ctx context.Context) (*adapter.TypedCRUD[Slo], internalconfig.
 		DeleteFn: func(ctx context.Context, name string) error {
 			return client.Delete(ctx, name)
 		},
-		Namespace:     cfg.Namespace,
-		StripFields:   []string{"uuid", "readOnly"},
-		RestoreNameFn: func(name string, slo *Slo) { slo.UUID = name },
-		Descriptor:    StaticDescriptor(),
-		Aliases:       StaticAliases(),
+		Namespace:   cfg.Namespace,
+		StripFields: []string{"uuid", "readOnly"},
+		Descriptor:  StaticDescriptor(),
+		Aliases:     StaticAliases(),
 	}
 	return crud, cfg, nil
 }
@@ -148,7 +146,6 @@ func NewFactoryFromConfig(cfg internalconfig.NamespacedRESTConfig) adapter.Facto
 		}
 
 		crud := &adapter.TypedCRUD[Slo]{
-			NameFn: func(s Slo) string { return s.UUID },
 			ListFn: client.List,
 			GetFn: func(ctx context.Context, name string) (*Slo, error) {
 				return client.Get(ctx, name)
@@ -177,11 +174,10 @@ func NewFactoryFromConfig(cfg internalconfig.NamespacedRESTConfig) adapter.Facto
 			DeleteFn: func(ctx context.Context, name string) error {
 				return client.Delete(ctx, name)
 			},
-			Namespace:     cfg.Namespace,
-			StripFields:   []string{"uuid", "readOnly"},
-			RestoreNameFn: func(name string, slo *Slo) { slo.UUID = name },
-			Descriptor:    StaticDescriptor(),
-			Aliases:       StaticAliases(),
+			Namespace:   cfg.Namespace,
+			StripFields: []string{"uuid", "readOnly"},
+			Descriptor:  StaticDescriptor(),
+			Aliases:     StaticAliases(),
 		}
 		return crud.AsAdapter(), nil
 	}

@@ -72,7 +72,6 @@ func NewRulesAdapterFactory(loader GrafanaConfigLoader) adapter.Factory {
 		}
 
 		crud := &adapter.TypedCRUD[RuleStatus]{
-			NameFn: func(r RuleStatus) string { return r.UID },
 			ListFn: func(ctx context.Context) ([]RuleStatus, error) {
 				resp, err := client.List(ctx, ListOptions{})
 				if err != nil {
@@ -116,7 +115,6 @@ func NewGroupsAdapterFactory(loader GrafanaConfigLoader) adapter.Factory {
 		}
 
 		crud := &adapter.TypedCRUD[RuleGroup]{
-			NameFn: func(g RuleGroup) string { return g.Name },
 			ListFn: func(ctx context.Context) ([]RuleGroup, error) {
 				groups, err := client.ListGroups(ctx)
 				if err != nil {
@@ -154,7 +152,6 @@ func NewTypedCRUDRules(ctx context.Context, loader GrafanaConfigLoader) (*adapte
 	}
 
 	crud := &adapter.TypedCRUD[RuleStatus]{
-		NameFn: func(r RuleStatus) string { return r.UID },
 		ListFn: func(ctx context.Context) ([]RuleStatus, error) {
 			resp, err := client.List(ctx, ListOptions{})
 			if err != nil {
@@ -194,7 +191,6 @@ func NewTypedCRUDGroups(ctx context.Context, loader GrafanaConfigLoader) (*adapt
 	}
 
 	crud := &adapter.TypedCRUD[RuleGroup]{
-		NameFn: func(g RuleGroup) string { return g.Name },
 		ListFn: func(ctx context.Context) ([]RuleGroup, error) {
 			groups, err := client.ListGroups(ctx)
 			if err != nil {

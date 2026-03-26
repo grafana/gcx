@@ -113,7 +113,6 @@ func newAlertGroupsCommand(loader OnCallConfigLoader) *cobra.Command {
 	cmd.AddCommand(
 		newAlertGroupListCommand(loader),
 		newGetSubcommand(loader, "AlertGroup", "Get an alert group by ID.",
-			func(ag AlertGroup) string { return ag.ID },
 			func(ctx context.Context, c *Client, name string) (*AlertGroup, error) {
 				return c.GetAlertGroup(ctx, name)
 			}),
@@ -330,11 +329,9 @@ func newUsersCommand(loader OnCallConfigLoader) *cobra.Command {
 
 	cmd.AddCommand(
 		newListSubcommand(loader, "users", "User", "List OnCall users.",
-			func(u User) string { return u.ID },
 			func(ctx context.Context, c *Client) ([]User, error) { return c.ListUsers(ctx) },
 			func(ctx context.Context, c *Client, name string) (*User, error) { return c.GetUser(ctx, name) }),
 		newGetSubcommand(loader, "User", "Get a user by ID.",
-			func(u User) string { return u.ID },
 			func(ctx context.Context, c *Client, name string) (*User, error) { return c.GetUser(ctx, name) }),
 		newUsersCurrentCommand(loader),
 	)

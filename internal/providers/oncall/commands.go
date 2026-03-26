@@ -66,7 +66,6 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 // The resource parameter selects the table codec (e.g. "integrations", "alert-groups").
 func newListSubcommand[T adapter.ResourceNamer](
 	loader OnCallConfigLoader, resource, kind, short string,
-	nameFn func(T) string,
 	listFn func(ctx context.Context, client *Client) ([]T, error),
 	getFn func(ctx context.Context, client *Client, name string) (*T, error),
 	opts ...crudOption[T],
@@ -81,7 +80,7 @@ func newListSubcommand[T adapter.ResourceNamer](
 			}
 
 			ctx := cmd.Context()
-			crud, namespace, err := NewTypedCRUD(ctx, loader, nameFn, listFn, getFn, opts...)
+			crud, namespace, err := NewTypedCRUD(ctx, loader, listFn, getFn, opts...)
 			if err != nil {
 				return err
 			}
@@ -104,7 +103,7 @@ func newListSubcommand[T adapter.ResourceNamer](
 					return fmt.Errorf("failed to unmarshal %s: %w", kind, err)
 				}
 
-				id := nameFn(typedObj.Spec)
+				id := typedObj.Spec.GetResourceName()
 				delete(m, "id") // Remove id from spec
 
 				objs[i] = unstructured.Unstructured{Object: map[string]any{
@@ -128,7 +127,6 @@ func newListSubcommand[T adapter.ResourceNamer](
 // newGetSubcommand creates a "get <id>" subcommand using TypedCRUD.
 func newGetSubcommand[T adapter.ResourceNamer](
 	loader OnCallConfigLoader, kind, short string,
-	nameFn func(T) string,
 	getFn func(ctx context.Context, client *Client, name string) (*T, error),
 ) *cobra.Command {
 	getOpts := &getOpts{}
@@ -142,7 +140,7 @@ func newGetSubcommand[T adapter.ResourceNamer](
 			}
 
 			ctx := cmd.Context()
-			crud, _, err := NewTypedCRUD(ctx, loader, nameFn, func(_ context.Context, _ *Client) ([]T, error) { return nil, nil }, getFn)
+			crud, _, err := NewTypedCRUD(ctx, loader, func(_ context.Context, _ *Client) ([]T, error) { return nil, nil }, getFn)
 			if err != nil {
 				return err
 			}
@@ -207,13 +205,11 @@ func newIntegrationsCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "integrations", "Integration", "List OnCall integrations.",
-			func(i Integration) string { return i.ID },
 			func(ctx context.Context, c *Client) ([]Integration, error) { return c.ListIntegrations(ctx) },
 			func(ctx context.Context, c *Client, name string) (*Integration, error) {
 				return c.GetIntegration(ctx, name)
 			}),
 		newGetSubcommand(loader, "Integration", "Get an integration by ID.",
-			func(i Integration) string { return i.ID },
 			func(ctx context.Context, c *Client, name string) (*Integration, error) {
 				return c.GetIntegration(ctx, name)
 			}),
@@ -229,7 +225,6 @@ func newEscalationChainsCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "escalation-chains", "EscalationChain", "List escalation chains.",
-			func(ec EscalationChain) string { return ec.ID },
 			func(ctx context.Context, c *Client) ([]EscalationChain, error) {
 				return c.ListEscalationChains(ctx)
 			},
@@ -237,7 +232,6 @@ func newEscalationChainsCmd(loader OnCallConfigLoader) *cobra.Command {
 				return c.GetEscalationChain(ctx, name)
 			}),
 		newGetSubcommand(loader, "EscalationChain", "Get an escalation chain by ID.",
-			func(ec EscalationChain) string { return ec.ID },
 			func(ctx context.Context, c *Client, name string) (*EscalationChain, error) {
 				return c.GetEscalationChain(ctx, name)
 			}),
@@ -253,7 +247,6 @@ func newEscalationPoliciesCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "escalation-policies", "EscalationPolicy", "List escalation policies.",
-			func(ep EscalationPolicy) string { return ep.ID },
 			func(ctx context.Context, c *Client) ([]EscalationPolicy, error) {
 				return c.ListEscalationPolicies(ctx, "")
 			},
@@ -261,7 +254,6 @@ func newEscalationPoliciesCmd(loader OnCallConfigLoader) *cobra.Command {
 				return c.GetEscalationPolicy(ctx, name)
 			}),
 		newGetSubcommand(loader, "EscalationPolicy", "Get an escalation policy by ID.",
-			func(ep EscalationPolicy) string { return ep.ID },
 			func(ctx context.Context, c *Client, name string) (*EscalationPolicy, error) {
 				return c.GetEscalationPolicy(ctx, name)
 			}),
@@ -277,11 +269,9 @@ func newSchedulesCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "schedules", "Schedule", "List OnCall schedules.",
-			func(s Schedule) string { return s.ID },
 			func(ctx context.Context, c *Client) ([]Schedule, error) { return c.ListSchedules(ctx) },
 			func(ctx context.Context, c *Client, name string) (*Schedule, error) { return c.GetSchedule(ctx, name) }),
 		newGetSubcommand(loader, "Schedule", "Get a schedule by ID.",
-			func(s Schedule) string { return s.ID },
 			func(ctx context.Context, c *Client, name string) (*Schedule, error) { return c.GetSchedule(ctx, name) }),
 		newScheduleFinalShiftsCommand(loader),
 	)
@@ -296,11 +286,9 @@ func newShiftsCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "shifts", "Shift", "List OnCall shifts.",
-			func(s Shift) string { return s.ID },
 			func(ctx context.Context, c *Client) ([]Shift, error) { return c.ListShifts(ctx) },
 			func(ctx context.Context, c *Client, name string) (*Shift, error) { return c.GetShift(ctx, name) }),
 		newGetSubcommand(loader, "Shift", "Get a shift by ID.",
-			func(s Shift) string { return s.ID },
 			func(ctx context.Context, c *Client, name string) (*Shift, error) { return c.GetShift(ctx, name) }),
 	)
 	return cmd
@@ -314,7 +302,6 @@ func newRoutesCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "routes", "Route", "List OnCall routes.",
-			func(r IntegrationRoute) string { return r.ID },
 			func(ctx context.Context, c *Client) ([]IntegrationRoute, error) {
 				return c.ListRoutes(ctx, "")
 			},
@@ -322,7 +309,6 @@ func newRoutesCmd(loader OnCallConfigLoader) *cobra.Command {
 				return c.GetRoute(ctx, name)
 			}),
 		newGetSubcommand(loader, "Route", "Get a route by ID.",
-			func(r IntegrationRoute) string { return r.ID },
 			func(ctx context.Context, c *Client, name string) (*IntegrationRoute, error) {
 				return c.GetRoute(ctx, name)
 			}),
@@ -338,7 +324,6 @@ func newWebhooksCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "webhooks", "OutgoingWebhook", "List outgoing webhooks.",
-			func(w OutgoingWebhook) string { return w.ID },
 			func(ctx context.Context, c *Client) ([]OutgoingWebhook, error) {
 				return c.ListOutgoingWebhooks(ctx)
 			},
@@ -346,7 +331,6 @@ func newWebhooksCmd(loader OnCallConfigLoader) *cobra.Command {
 				return c.GetOutgoingWebhook(ctx, name)
 			}),
 		newGetSubcommand(loader, "OutgoingWebhook", "Get an outgoing webhook by ID.",
-			func(w OutgoingWebhook) string { return w.ID },
 			func(ctx context.Context, c *Client, name string) (*OutgoingWebhook, error) {
 				return c.GetOutgoingWebhook(ctx, name)
 			}),
@@ -362,11 +346,9 @@ func newTeamsCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "teams", "Team", "List OnCall teams.",
-			func(t Team) string { return t.ID },
 			func(ctx context.Context, c *Client) ([]Team, error) { return c.ListTeams(ctx) },
 			func(ctx context.Context, c *Client, name string) (*Team, error) { return c.GetTeam(ctx, name) }),
 		newGetSubcommand(loader, "Team", "Get a team by ID.",
-			func(t Team) string { return t.ID },
 			func(ctx context.Context, c *Client, name string) (*Team, error) { return c.GetTeam(ctx, name) }),
 	)
 	return cmd
@@ -380,7 +362,6 @@ func newUserGroupsCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "user-groups", "UserGroup", "List user groups.",
-			func(ug UserGroup) string { return ug.ID },
 			func(ctx context.Context, c *Client) ([]UserGroup, error) { return c.ListUserGroups(ctx) },
 			nil),
 	)
@@ -395,7 +376,6 @@ func newSlackChannelsCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "slack-channels", "SlackChannel", "List Slack channels.",
-			func(sc SlackChannel) string { return sc.ID },
 			func(ctx context.Context, c *Client) ([]SlackChannel, error) { return c.ListSlackChannels(ctx) },
 			nil),
 	)
@@ -410,11 +390,9 @@ func newAlertsCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "alerts", "Alert", "List alerts.",
-			func(a Alert) string { return a.ID },
 			func(ctx context.Context, c *Client) ([]Alert, error) { return c.ListAlerts(ctx, "") },
 			func(ctx context.Context, c *Client, name string) (*Alert, error) { return c.GetAlert(ctx, name) }),
 		newGetSubcommand(loader, "Alert", "Get an alert by ID.",
-			func(a Alert) string { return a.ID },
 			func(ctx context.Context, c *Client, name string) (*Alert, error) { return c.GetAlert(ctx, name) }),
 	)
 	return cmd
@@ -428,13 +406,11 @@ func newOrganizationsCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "organizations", "Organization", "List organizations.",
-			func(o Organization) string { return o.ID },
 			func(ctx context.Context, c *Client) ([]Organization, error) { return c.ListOrganizations(ctx) },
 			func(ctx context.Context, c *Client, name string) (*Organization, error) {
 				return c.GetOrganization(ctx, name)
 			}),
 		newGetSubcommand(loader, "Organization", "Get an organization by ID.",
-			func(o Organization) string { return o.ID },
 			func(ctx context.Context, c *Client, name string) (*Organization, error) {
 				return c.GetOrganization(ctx, name)
 			}),
@@ -450,7 +426,6 @@ func newResolutionNotesCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "resolution-notes", "ResolutionNote", "List resolution notes.",
-			func(rn ResolutionNote) string { return rn.ID },
 			func(ctx context.Context, c *Client) ([]ResolutionNote, error) {
 				return c.ListResolutionNotes(ctx, "")
 			},
@@ -458,7 +433,6 @@ func newResolutionNotesCmd(loader OnCallConfigLoader) *cobra.Command {
 				return c.GetResolutionNote(ctx, name)
 			}),
 		newGetSubcommand(loader, "ResolutionNote", "Get a resolution note by ID.",
-			func(rn ResolutionNote) string { return rn.ID },
 			func(ctx context.Context, c *Client, name string) (*ResolutionNote, error) {
 				return c.GetResolutionNote(ctx, name)
 			}),
@@ -474,13 +448,11 @@ func newShiftSwapsCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "shift-swaps", "ShiftSwap", "List shift swaps.",
-			func(ss ShiftSwap) string { return ss.ID },
 			func(ctx context.Context, c *Client) ([]ShiftSwap, error) { return c.ListShiftSwaps(ctx) },
 			func(ctx context.Context, c *Client, name string) (*ShiftSwap, error) {
 				return c.GetShiftSwap(ctx, name)
 			}),
 		newGetSubcommand(loader, "ShiftSwap", "Get a shift swap by ID.",
-			func(ss ShiftSwap) string { return ss.ID },
 			func(ctx context.Context, c *Client, name string) (*ShiftSwap, error) {
 				return c.GetShiftSwap(ctx, name)
 			}),
@@ -496,7 +468,6 @@ func newPersonalNotificationRulesCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "personal-notification-rules", "PersonalNotificationRule", "List personal notification rules.",
-			func(pnr PersonalNotificationRule) string { return pnr.ID },
 			func(ctx context.Context, c *Client) ([]PersonalNotificationRule, error) {
 				return c.ListPersonalNotificationRules(ctx)
 			},
@@ -504,7 +475,6 @@ func newPersonalNotificationRulesCmd(loader OnCallConfigLoader) *cobra.Command {
 				return c.GetPersonalNotificationRule(ctx, name)
 			}),
 		newGetSubcommand(loader, "PersonalNotificationRule", "Get a personal notification rule by ID.",
-			func(pnr PersonalNotificationRule) string { return pnr.ID },
 			func(ctx context.Context, c *Client, name string) (*PersonalNotificationRule, error) {
 				return c.GetPersonalNotificationRule(ctx, name)
 			}),

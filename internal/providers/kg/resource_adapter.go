@@ -119,7 +119,6 @@ func NewAdapterFactory(loader RESTConfigLoader) adapter.Factory {
 		}
 
 		crud := &adapter.TypedCRUD[Rule]{
-			NameFn: func(r Rule) string { return r.Name },
 			ListFn: func(ctx context.Context) ([]Rule, error) {
 				return client.ListRules(ctx)
 			},
@@ -156,7 +155,6 @@ func NewTypedCRUD(ctx context.Context, loader RESTConfigLoader) (*adapter.TypedC
 	}
 
 	crud := &adapter.TypedCRUD[Rule]{
-		NameFn: func(r Rule) string { return r.Name },
 		ListFn: func(ctx context.Context) ([]Rule, error) {
 			return client.ListRules(ctx)
 		},

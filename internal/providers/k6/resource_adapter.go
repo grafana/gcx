@@ -133,7 +133,6 @@ func newSubResourceFactory(loader CloudConfigLoader, rd resourceDef) adapter.Fac
 
 func newProjectCRUD(c *Client, ns string, desc resources.Descriptor, aliases []string) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[Project]{
-		NameFn: func(p Project) string { return strconv.Itoa(p.ID) },
 		ListFn: c.ListProjects,
 		GetFn: func(ctx context.Context, name string) (*Project, error) {
 			id, err := strconv.Atoi(name)
@@ -162,18 +161,16 @@ func newProjectCRUD(c *Client, ns string, desc resources.Descriptor, aliases []s
 			}
 			return c.DeleteProject(ctx, id)
 		},
-		Namespace:     ns,
-		StripFields:   []string{"id"},
-		RestoreNameFn: func(name string, p *Project) { p.ID, _ = strconv.Atoi(name) },
-		Descriptor:    desc,
-		Aliases:       aliases,
+		Namespace:   ns,
+		StripFields: []string{"id"},
+		Descriptor:  desc,
+		Aliases:     aliases,
 	}
 	return crud.AsAdapter()
 }
 
 func newLoadTestCRUD(c *Client, ns string, desc resources.Descriptor, aliases []string) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[LoadTest]{
-		NameFn: func(lt LoadTest) string { return strconv.Itoa(lt.ID) },
 		ListFn: c.ListLoadTests,
 		GetFn: func(ctx context.Context, name string) (*LoadTest, error) {
 			id, err := strconv.Atoi(name)
@@ -202,18 +199,16 @@ func newLoadTestCRUD(c *Client, ns string, desc resources.Descriptor, aliases []
 			}
 			return c.DeleteLoadTest(ctx, id)
 		},
-		Namespace:     ns,
-		StripFields:   []string{"id"},
-		RestoreNameFn: func(name string, lt *LoadTest) { lt.ID, _ = strconv.Atoi(name) },
-		Descriptor:    desc,
-		Aliases:       aliases,
+		Namespace:   ns,
+		StripFields: []string{"id"},
+		Descriptor:  desc,
+		Aliases:     aliases,
 	}
 	return crud.AsAdapter()
 }
 
 func newScheduleCRUD(c *Client, ns string, desc resources.Descriptor, aliases []string) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[Schedule]{
-		NameFn: func(s Schedule) string { return strconv.Itoa(s.ID) },
 		ListFn: c.ListSchedules,
 		GetFn: func(ctx context.Context, name string) (*Schedule, error) {
 			id, err := strconv.Atoi(name)
@@ -252,18 +247,16 @@ func newScheduleCRUD(c *Client, ns string, desc resources.Descriptor, aliases []
 			}
 			return c.DeleteScheduleByLoadTest(ctx, s.LoadTestID)
 		},
-		Namespace:     ns,
-		StripFields:   []string{"id"},
-		RestoreNameFn: func(name string, s *Schedule) { s.ID, _ = strconv.Atoi(name) },
-		Descriptor:    desc,
-		Aliases:       aliases,
+		Namespace:   ns,
+		StripFields: []string{"id"},
+		Descriptor:  desc,
+		Aliases:     aliases,
 	}
 	return crud.AsAdapter()
 }
 
 func newEnvVarCRUD(c *Client, ns string, desc resources.Descriptor, aliases []string) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[EnvVar]{
-		NameFn: func(ev EnvVar) string { return strconv.Itoa(ev.ID) },
 		ListFn: c.ListEnvVars,
 		GetFn: func(ctx context.Context, name string) (*EnvVar, error) {
 			// EnvVars don't have a single-get endpoint; list-then-filter.
@@ -312,18 +305,16 @@ func newEnvVarCRUD(c *Client, ns string, desc resources.Descriptor, aliases []st
 			}
 			return c.DeleteEnvVar(ctx, id)
 		},
-		Namespace:     ns,
-		StripFields:   []string{"id"},
-		RestoreNameFn: func(name string, ev *EnvVar) { ev.ID, _ = strconv.Atoi(name) },
-		Descriptor:    desc,
-		Aliases:       aliases,
+		Namespace:   ns,
+		StripFields: []string{"id"},
+		Descriptor:  desc,
+		Aliases:     aliases,
 	}
 	return crud.AsAdapter()
 }
 
 func newLoadZoneCRUD(c *Client, ns string, desc resources.Descriptor, aliases []string) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[LoadZone]{
-		NameFn: func(lz LoadZone) string { return lz.Name },
 		ListFn: c.ListLoadZones,
 		GetFn: func(ctx context.Context, name string) (*LoadZone, error) {
 			// List-then-filter by name.
@@ -345,12 +336,8 @@ func newLoadZoneCRUD(c *Client, ns string, desc resources.Descriptor, aliases []
 		},
 		Namespace:   ns,
 		StripFields: []string{"id"},
-		RestoreNameFn: func(name string, lz *LoadZone) {
-			lz.Name = name
-			lz.ID, _ = strconv.Atoi(name)
-		},
-		Descriptor: desc,
-		Aliases:    aliases,
+		Descriptor:  desc,
+		Aliases:     aliases,
 	}
 	return crud.AsAdapter()
 }
@@ -505,8 +492,7 @@ func NewTypedCRUDProject(ctx context.Context, loader CloudConfigLoader) (*adapte
 		return nil, "", err
 	}
 	crud := &adapter.TypedCRUD[Project]{
-		NameFn:      func(p Project) string { return strconv.Itoa(p.ID) },
-		ListFn:      client.ListProjects,
+		ListFn: client.ListProjects,
 		GetFn: func(ctx context.Context, name string) (*Project, error) {
 			id, err := strconv.Atoi(name)
 			if err != nil {
@@ -545,7 +531,6 @@ func NewTypedCRUDLoadTest(ctx context.Context, loader CloudConfigLoader) (*adapt
 		return nil, "", err
 	}
 	crud := &adapter.TypedCRUD[LoadTest]{
-		NameFn: func(lt LoadTest) string { return strconv.Itoa(lt.ID) },
 		ListFn: client.ListAllLoadTests,
 		GetFn: func(ctx context.Context, name string) (*LoadTest, error) {
 			id, err := strconv.Atoi(name)
@@ -585,7 +570,6 @@ func NewTypedCRUDSchedule(ctx context.Context, loader CloudConfigLoader) (*adapt
 		return nil, "", err
 	}
 	crud := &adapter.TypedCRUD[Schedule]{
-		NameFn: func(s Schedule) string { return strconv.Itoa(s.ID) },
 		ListFn: client.ListSchedules,
 		GetFn: func(ctx context.Context, name string) (*Schedule, error) {
 			id, err := strconv.Atoi(name)
@@ -634,7 +618,6 @@ func NewTypedCRUDEnvVar(ctx context.Context, loader CloudConfigLoader) (*adapter
 		return nil, "", err
 	}
 	crud := &adapter.TypedCRUD[EnvVar]{
-		NameFn: func(ev EnvVar) string { return strconv.Itoa(ev.ID) },
 		ListFn: client.ListEnvVars,
 		GetFn: func(ctx context.Context, name string) (*EnvVar, error) {
 			id, err := strconv.Atoi(name)
@@ -692,7 +675,6 @@ func NewTypedCRUDLoadZone(ctx context.Context, loader CloudConfigLoader) (*adapt
 		return nil, "", err
 	}
 	crud := &adapter.TypedCRUD[LoadZone]{
-		NameFn: func(lz LoadZone) string { return lz.Name },
 		ListFn: client.ListLoadZones,
 		GetFn: func(ctx context.Context, name string) (*LoadZone, error) {
 			zones, err := client.ListLoadZones(ctx)

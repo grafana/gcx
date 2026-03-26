@@ -1155,54 +1155,42 @@ func NewPipelineTypedCRUD(ctx context.Context, loader CloudConfigLoader) (*adapt
 	client := NewClient(url, instanceID, cloudCfg.Token, true, httpClient)
 
 	crud := &adapter.TypedCRUD[Pipeline]{
-			NameFn: func(p Pipeline) string {
-				name := slugifyName(p.Name)
-				if p.ID != "" {
-					name = name + "-" + p.ID
-				}
-				return name
-			},
-			ListFn: client.ListPipelines,
-			GetFn: func(ctx context.Context, name string) (*Pipeline, error) {
-				return resolvePipeline(ctx, client, name)
-			},
-			CreateFn: func(ctx context.Context, p *Pipeline) (*Pipeline, error) {
-				return client.CreatePipeline(ctx, *p)
-			},
-			UpdateFn: func(ctx context.Context, name string, p *Pipeline) (*Pipeline, error) {
-				id, ok := extractIDFromSlug(name)
-				if !ok {
-					return nil, fmt.Errorf("cannot determine pipeline ID from name %q: expected format \"<slug>-<id>\" or numeric ID", name)
-				}
-				if err := client.UpdatePipeline(ctx, id, *p); err != nil {
-					return nil, fmt.Errorf("failed to update pipeline %q: %w", id, err)
-				}
-				updated, err := client.GetPipeline(ctx, id)
-				if err != nil {
-					return nil, fmt.Errorf("failed to get updated pipeline %q: %w", id, err)
-				}
-				if updated == nil {
-					return nil, fmt.Errorf("pipeline %q not found after update", id)
-				}
-				return updated, nil
-			},
-			DeleteFn: func(ctx context.Context, name string) error {
-				id, ok := extractIDFromSlug(name)
-				if !ok {
-					return fmt.Errorf("cannot determine pipeline ID from name %q: expected format \"<slug>-<id>\" or numeric ID", name)
-				}
-				return client.DeletePipeline(ctx, id)
-			},
-			Namespace:   cloudCfg.Namespace,
-			StripFields: []string{"id"},
-			RestoreNameFn: func(name string, p *Pipeline) {
-				if id, ok := extractIDFromSlug(name); ok {
-					p.ID = id
-				}
-			},
-			Descriptor: pipelineDescriptorVar,
-			Aliases:    pipelineAliasesVar,
-		}
+		ListFn: client.ListPipelines,
+		GetFn: func(ctx context.Context, name string) (*Pipeline, error) {
+			return resolvePipeline(ctx, client, name)
+		},
+		CreateFn: func(ctx context.Context, p *Pipeline) (*Pipeline, error) {
+			return client.CreatePipeline(ctx, *p)
+		},
+		UpdateFn: func(ctx context.Context, name string, p *Pipeline) (*Pipeline, error) {
+			id, ok := extractIDFromSlug(name)
+			if !ok {
+				return nil, fmt.Errorf("cannot determine pipeline ID from name %q: expected format \"<slug>-<id>\" or numeric ID", name)
+			}
+			if err := client.UpdatePipeline(ctx, id, *p); err != nil {
+				return nil, fmt.Errorf("failed to update pipeline %q: %w", id, err)
+			}
+			updated, err := client.GetPipeline(ctx, id)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get updated pipeline %q: %w", id, err)
+			}
+			if updated == nil {
+				return nil, fmt.Errorf("pipeline %q not found after update", id)
+			}
+			return updated, nil
+		},
+		DeleteFn: func(ctx context.Context, name string) error {
+			id, ok := extractIDFromSlug(name)
+			if !ok {
+				return fmt.Errorf("cannot determine pipeline ID from name %q: expected format \"<slug>-<id>\" or numeric ID", name)
+			}
+			return client.DeletePipeline(ctx, id)
+		},
+		Namespace:   cloudCfg.Namespace,
+		StripFields: []string{"id"},
+		Descriptor:  pipelineDescriptorVar,
+		Aliases:     pipelineAliasesVar,
+	}
 	return crud, cloudCfg.Namespace, nil
 }
 
@@ -1240,13 +1228,6 @@ func NewCollectorAdapterFactory(loader CloudConfigLoader) adapter.Factory {
 		client := NewClient(url, instanceID, cloudCfg.Token, true, httpClient)
 
 		crud := &adapter.TypedCRUD[Collector]{
-			NameFn: func(col Collector) string {
-				name := slugifyName(col.Name)
-				if col.ID != "" {
-					name = name + "-" + col.ID
-				}
-				return name
-			},
 			ListFn: client.ListCollectors,
 			GetFn: func(ctx context.Context, name string) (*Collector, error) {
 				return resolveCollector(ctx, client, name)
@@ -1281,11 +1262,6 @@ func NewCollectorAdapterFactory(loader CloudConfigLoader) adapter.Factory {
 			},
 			Namespace:   cloudCfg.Namespace,
 			StripFields: []string{"id"},
-			RestoreNameFn: func(name string, col *Collector) {
-				if id, ok := extractIDFromSlug(name); ok {
-					col.ID = id
-				}
-			},
 			Descriptor: collectorDescriptorVar,
 			Aliases:    collectorAliasesVar,
 		}

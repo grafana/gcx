@@ -57,7 +57,6 @@ func withDelete[T adapter.ResourceNamer](fn func(ctx context.Context, c *Client,
 func buildOnCallRegistration[T adapter.ResourceNamer](
 	loader OnCallConfigLoader,
 	meta resourceMeta,
-	nameFn func(T) string,
 	listFn func(ctx context.Context, client *Client) ([]T, error),
 	getFn func(ctx context.Context, client *Client, name string) (*T, error), // nil for list-only resources
 	opts ...crudOption[T],
@@ -71,7 +70,6 @@ func buildOnCallRegistration[T adapter.ResourceNamer](
 			}
 
 			crud := &adapter.TypedCRUD[T]{
-				NameFn:      nameFn,
 				ListFn:      func(ctx context.Context) ([]T, error) { return listFn(ctx, client) },
 				StripFields: []string{"id", "password", "authorization_header"},
 				Namespace:   namespace,
@@ -129,7 +127,6 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta.Schema = adapter.SchemaFromType[Integration](meta.Descriptor)
 	meta.Example = integrationExample()
 	regs = append(regs, buildOnCallRegistration(loader, meta,
-		func(i Integration) string { return i.ID },
 		func(ctx context.Context, c *Client) ([]Integration, error) { return c.ListIntegrations(ctx) },
 		func(ctx context.Context, c *Client, name string) (*Integration, error) {
 			return c.GetIntegration(ctx, name)
@@ -151,7 +148,6 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta.Schema = adapter.SchemaFromType[EscalationChain](meta.Descriptor)
 	meta.Example = escalationChainExample()
 	regs = append(regs, buildOnCallRegistration(loader, meta,
-		func(ec EscalationChain) string { return ec.ID },
 		func(ctx context.Context, c *Client) ([]EscalationChain, error) { return c.ListEscalationChains(ctx) },
 		func(ctx context.Context, c *Client, name string) (*EscalationChain, error) {
 			return c.GetEscalationChain(ctx, name)
@@ -173,7 +169,6 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta.Schema = adapter.SchemaFromType[EscalationPolicy](meta.Descriptor)
 	meta.Example = escalationPolicyExample()
 	regs = append(regs, buildOnCallRegistration(loader, meta,
-		func(ep EscalationPolicy) string { return ep.ID },
 		func(ctx context.Context, c *Client) ([]EscalationPolicy, error) {
 			return c.ListEscalationPolicies(ctx, "")
 		},
@@ -197,7 +192,6 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta.Schema = adapter.SchemaFromType[Schedule](meta.Descriptor)
 	meta.Example = scheduleExample()
 	regs = append(regs, buildOnCallRegistration(loader, meta,
-		func(s Schedule) string { return s.ID },
 		func(ctx context.Context, c *Client) ([]Schedule, error) { return c.ListSchedules(ctx) },
 		func(ctx context.Context, c *Client, name string) (*Schedule, error) { return c.GetSchedule(ctx, name) },
 		withCreate(func(ctx context.Context, c *Client, item *Schedule) (*Schedule, error) {
@@ -217,7 +211,6 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta.Schema = adapter.SchemaFromType[Shift](meta.Descriptor)
 	meta.Example = shiftExample()
 	regs = append(regs, buildOnCallRegistration(loader, meta,
-		func(s Shift) string { return s.ID },
 		func(ctx context.Context, c *Client) ([]Shift, error) { return c.ListShifts(ctx) },
 		func(ctx context.Context, c *Client, name string) (*Shift, error) { return c.GetShift(ctx, name) },
 		withCreate(func(ctx context.Context, c *Client, item *Shift) (*Shift, error) {
@@ -245,7 +238,6 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta.Schema = adapter.SchemaFromType[IntegrationRoute](meta.Descriptor)
 	meta.Example = routeExample()
 	regs = append(regs, buildOnCallRegistration(loader, meta,
-		func(r IntegrationRoute) string { return r.ID },
 		func(ctx context.Context, c *Client) ([]IntegrationRoute, error) { return c.ListRoutes(ctx, "") },
 		func(ctx context.Context, c *Client, name string) (*IntegrationRoute, error) {
 			return c.GetRoute(ctx, name)
@@ -267,7 +259,6 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta.Schema = adapter.SchemaFromType[OutgoingWebhook](meta.Descriptor)
 	meta.Example = outgoingWebhookExample()
 	regs = append(regs, buildOnCallRegistration(loader, meta,
-		func(w OutgoingWebhook) string { return w.ID },
 		func(ctx context.Context, c *Client) ([]OutgoingWebhook, error) { return c.ListOutgoingWebhooks(ctx) },
 		func(ctx context.Context, c *Client, name string) (*OutgoingWebhook, error) {
 			return c.GetOutgoingWebhook(ctx, name)
@@ -288,7 +279,6 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		[]string{"oncall-alertgroups", "oncall-alertgroup", "oncall-ag"})
 	meta.Schema = adapter.SchemaFromType[AlertGroup](meta.Descriptor)
 	regs = append(regs, buildOnCallRegistration(loader, meta,
-		func(ag AlertGroup) string { return ag.ID },
 		func(ctx context.Context, c *Client) ([]AlertGroup, error) { return c.ListAlertGroups(ctx) }, // no filter
 		func(ctx context.Context, c *Client, name string) (*AlertGroup, error) {
 			return c.GetAlertGroup(ctx, name)
@@ -303,7 +293,6 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		[]string{"oncall-users", "oncall-user"})
 	meta.Schema = adapter.SchemaFromType[User](meta.Descriptor)
 	regs = append(regs, buildOnCallRegistration(loader, meta,
-		func(u User) string { return u.ID },
 		func(ctx context.Context, c *Client) ([]User, error) { return c.ListUsers(ctx) },
 		func(ctx context.Context, c *Client, name string) (*User, error) { return c.GetUser(ctx, name) },
 	))
@@ -313,7 +302,6 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		[]string{"oncall-teams", "oncall-team"})
 	meta.Schema = adapter.SchemaFromType[Team](meta.Descriptor)
 	regs = append(regs, buildOnCallRegistration(loader, meta,
-		func(t Team) string { return t.ID },
 		func(ctx context.Context, c *Client) ([]Team, error) { return c.ListTeams(ctx) },
 		func(ctx context.Context, c *Client, name string) (*Team, error) { return c.GetTeam(ctx, name) },
 	))
@@ -323,7 +311,6 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		[]string{"oncall-usergroups", "oncall-usergroup"})
 	meta.Schema = adapter.SchemaFromType[UserGroup](meta.Descriptor)
 	regs = append(regs, buildOnCallRegistration(loader, meta,
-		func(ug UserGroup) string { return ug.ID },
 		func(ctx context.Context, c *Client) ([]UserGroup, error) { return c.ListUserGroups(ctx) },
 		nil, // no GetFn — buildOnCallRegistration returns ErrUnsupported
 	))
@@ -333,7 +320,6 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		[]string{"oncall-slackchannels", "oncall-slackchannel"})
 	meta.Schema = adapter.SchemaFromType[SlackChannel](meta.Descriptor)
 	regs = append(regs, buildOnCallRegistration(loader, meta,
-		func(sc SlackChannel) string { return sc.ID },
 		func(ctx context.Context, c *Client) ([]SlackChannel, error) { return c.ListSlackChannels(ctx) },
 		nil, // no GetFn — buildOnCallRegistration returns ErrUnsupported
 	))
@@ -343,7 +329,6 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		[]string{"oncall-alerts", "oncall-alert"})
 	meta.Schema = adapter.SchemaFromType[Alert](meta.Descriptor)
 	regs = append(regs, buildOnCallRegistration(loader, meta,
-		func(a Alert) string { return a.ID },
 		func(ctx context.Context, c *Client) ([]Alert, error) { return c.ListAlerts(ctx, "") },
 		func(ctx context.Context, c *Client, name string) (*Alert, error) { return c.GetAlert(ctx, name) },
 	))
@@ -353,7 +338,6 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		[]string{"oncall-orgs", "oncall-org"})
 	meta.Schema = adapter.SchemaFromType[Organization](meta.Descriptor)
 	regs = append(regs, buildOnCallRegistration(loader, meta,
-		func(o Organization) string { return o.ID },
 		func(ctx context.Context, c *Client) ([]Organization, error) { return c.ListOrganizations(ctx) },
 		func(ctx context.Context, c *Client, name string) (*Organization, error) {
 			return c.GetOrganization(ctx, name)
@@ -366,7 +350,6 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta.Schema = adapter.SchemaFromType[ResolutionNote](meta.Descriptor)
 	meta.Example = resolutionNoteExample()
 	regs = append(regs, buildOnCallRegistration(loader, meta,
-		func(rn ResolutionNote) string { return rn.ID },
 		func(ctx context.Context, c *Client) ([]ResolutionNote, error) {
 			return c.ListResolutionNotes(ctx, "")
 		},
@@ -395,7 +378,6 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta.Schema = adapter.SchemaFromType[ShiftSwap](meta.Descriptor)
 	meta.Example = shiftSwapExample()
 	regs = append(regs, buildOnCallRegistration(loader, meta,
-		func(ss ShiftSwap) string { return ss.ID },
 		func(ctx context.Context, c *Client) ([]ShiftSwap, error) { return c.ListShiftSwaps(ctx) },
 		func(ctx context.Context, c *Client, name string) (*ShiftSwap, error) {
 			return c.GetShiftSwap(ctx, name)
@@ -425,7 +407,6 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta.Schema = adapter.SchemaFromType[PersonalNotificationRule](meta.Descriptor)
 	meta.Example = personalNotificationRuleExample()
 	regs = append(regs, buildOnCallRegistration(loader, meta,
-		func(pnr PersonalNotificationRule) string { return pnr.ID },
 		func(ctx context.Context, c *Client) ([]PersonalNotificationRule, error) {
 			return c.ListPersonalNotificationRules(ctx)
 		},
@@ -658,7 +639,6 @@ func personalNotificationRuleExample() json.RawMessage {
 func NewTypedCRUD[T adapter.ResourceNamer](
 	ctx context.Context,
 	loader OnCallConfigLoader,
-	nameFn func(T) string,
 	listFn func(ctx context.Context, client *Client) ([]T, error),
 	getFn func(ctx context.Context, client *Client, name string) (*T, error), // nil for list-only resources
 	opts ...crudOption[T],
@@ -669,7 +649,6 @@ func NewTypedCRUD[T adapter.ResourceNamer](
 	}
 
 	crud := &adapter.TypedCRUD[T]{
-		NameFn:      nameFn,
 		ListFn:      func(ctx context.Context) ([]T, error) { return listFn(ctx, client) },
 		StripFields: []string{"id", "password", "authorization_header"},
 		Namespace:   namespace,
