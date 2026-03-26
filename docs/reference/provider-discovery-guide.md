@@ -287,7 +287,7 @@ to recur with other Grafana products.
 ## 4. Worked Example: SLO Provider
 
 The SLO provider was the first provider implemented using this process.
-Full design docs are in [docs/designs/slo-provider/](../specs/slo-provider/).
+Full design docs are in [docs/specs/slo-provider/](../specs/slo-provider/).
 
 ### How SLO answered each decision
 
@@ -310,8 +310,8 @@ Full design docs are in [docs/designs/slo-provider/](../specs/slo-provider/).
 
 ### Key links
 
-- Top-level plan: [docs/designs/slo-provider/2026-03-04-slo-provider-plan.md](../specs/slo-provider/2026-03-04-slo-provider-plan.md)
-- Stage 1 (Definitions CRUD): [docs/designs/slo-provider/1-slo-definitions-crud/](../specs/slo-provider/1-slo-definitions-crud/)
-- Stage 2 (Reports CRUD): [docs/designs/slo-provider/2-reports-crud/](../specs/slo-provider/2-reports-crud/)
-- Stage 3 (Definitions Status): [docs/designs/slo-provider/3-definitions-status/](../specs/slo-provider/3-definitions-status/)
-- Stage 4 (Reports Status): [docs/designs/slo-provider/4-reports-status/](../specs/slo-provider/4-reports-status/)
+- Top-level plan: [docs/specs/slo-provider/2026-03-04-slo-provider-plan.md](../specs/slo-provider/2026-03-04-slo-provider-plan.md)
+- Stage 1 (Definitions CRUD): [docs/specs/slo-provider/1-slo-definitions-crud/](../specs/slo-provider/1-slo-definitions-crud/)
+- Stage 2 (Reports CRUD): [docs/specs/slo-provider/2-reports-crud/](../specs/slo-provider/2-reports-crud/)
+- Stage 3 (Definitions Status): [docs/specs/slo-provider/3-definitions-status/](../specs/slo-provider/3-definitions-status/)
+- Stage 4 (Reports Status): [docs/specs/slo-provider/4-reports-status/](../specs/slo-provider/4-reports-status/)

@@ -140,7 +140,7 @@ echo "=== List ID diff ===" && diff <(echo "$LEGACY_IDS") <(echo "$GCTL_IDS") &&
 
 # --- Get: compare key fields ---
 ID="{pick a real ID from list output}"
-# Run cloud CLI: cloud-cli --context=$CTX {resource} get $ID -o json | jq '{title: .{title_field}, status: .{status_field}}'
+# Run cloud CLI: cloud-cli --context=$CTX {resource} get $ID -o json | jq '{title: .{title_field}, status: .{status_field}}' > /tmp/legacy_get.json
 grafanactl --context=$CTX {resource} get $ID -o json \
   | jq '{title: .spec.{title_field}, status: .spec.{status_field}}' > /tmp/gctl_get.json
 echo "=== Get field diff ===" && diff /tmp/legacy_get.json /tmp/gctl_get.json && echo "MATCH" || echo "MISMATCH"
