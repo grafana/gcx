@@ -107,6 +107,14 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   `ResourceAdapter` (via TypedCRUD) for data access, not raw API clients.
   Table/wide codecs may diverge — provider tables show domain-specific
   columns, generic tables show resource-management columns.
+- **Provider-only resources must not mimic adapter verbs.** If a resource
+  does not obey standard list/get/create/update/delete semantics (e.g.,
+  composite keys, scope-required lookups, query-only endpoints), do not
+  register it as an adapter. Keep it in the provider command tree only, but
+  use alternative verbs (`show`, `describe`, `search`) — never `get`, `list`,
+  `create`, `update`, `delete`. This avoids user confusion: adapter verbs
+  (`resources get`) and provider verbs should not overlap for resources that
+  behave differently across the two paths.
 - **Typed resource trajectory.** Provider domain types implement
   `ResourceIdentity` for self-describing identity and are wrapped by
   `TypedObject[T]` (embedded `metav1.ObjectMeta` + `TypeMeta` + `Spec T`)

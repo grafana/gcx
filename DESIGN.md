@@ -77,10 +77,10 @@ See [docs/research/](docs/research/) for design rationale and [docs/adrs/](docs/
 | `internal/providers/slo/` | SLO provider (definitions, reports) |
 | `internal/providers/synth/` | Synthetic Monitoring provider (checks, probes) |
 | `internal/providers/alert/` | Alert provider (rules, groups — read-only) |
-| `internal/providers/oncall/` | OnCall provider (17 resource types: integrations, schedules, shifts, etc.) |
+| `internal/providers/oncall/` | OnCall provider (16 resource types: integrations, schedules, shifts, etc.) |
 | `internal/providers/fleet/` | Fleet Management provider (pipelines, collectors) |
 | `internal/providers/k6/` | K6 Cloud provider (projects, load tests, schedules, env vars, load zones) |
-| `internal/providers/kg/` | Knowledge Graph (Asserts) provider (rules — read-only) |
+| `internal/providers/kg/` | Knowledge Graph (Asserts) provider (rules, datasets, vendors, entity-types, scopes — read-only adapters; entities — provider CLI only) |
 | `internal/providers/incidents/` | IRM Incidents provider |
 | `internal/dashboards/` | Dashboard Image Renderer client |
 | `internal/query/prometheus/` | Prometheus HTTP query client |
