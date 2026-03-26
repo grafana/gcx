@@ -240,6 +240,112 @@ func TestTypedCRUD_NilFunctions(t *testing.T) {
 	}
 }
 
+func TestTypedCRUD_NilListFn(t *testing.T) {
+	// When ListFn is nil, both typed List and adapter List should return ErrUnsupported.
+	crud := &adapter.TypedCRUD[TestWidget]{
+		Namespace:  "stack-1",
+		Descriptor: widgetDesc,
+		GetFn: func(_ context.Context, name string) (*TestWidget, error) {
+			return &TestWidget{ID: name, Name: "Alpha"}, nil
+		},
+		// ListFn intentionally nil
+	}
+
+	t.Run("typed List returns ErrUnsupported", func(t *testing.T) {
+		_, err := crud.List(t.Context())
+		assert.ErrorIs(t, err, errors.ErrUnsupported)
+	})
+
+	t.Run("adapter List returns ErrUnsupported", func(t *testing.T) {
+		a := crud.AsAdapter()
+		_, err := a.List(t.Context(), metav1.ListOptions{})
+		assert.ErrorIs(t, err, errors.ErrUnsupported)
+	})
+
+	t.Run("Get still works when ListFn is nil", func(t *testing.T) {
+		obj, err := crud.Get(t.Context(), "w-1")
+		require.NoError(t, err)
+		assert.Equal(t, "w-1", obj.GetName())
+	})
+}
+
+func TestTypedCRUD_NilGetFn_FallbackToList(t *testing.T) {
+	// When GetFn is nil but ListFn is set, Get should fall back to
+	// listing all items and filtering by name (client-side emulation).
+	widgets := []TestWidget{
+		{ID: "w-1", Name: "Alpha", Color: "red"},
+		{ID: "w-2", Name: "Beta", Color: "blue"},
+		{ID: "w-3", Name: "Gamma", Color: "green"},
+	}
+
+	crud := &adapter.TypedCRUD[TestWidget]{
+		Namespace:  "stack-1",
+		Descriptor: widgetDesc,
+		Aliases:    []string{"wdg"},
+		ListFn: func(_ context.Context) ([]TestWidget, error) {
+			return widgets, nil
+		},
+		// GetFn intentionally nil — should fall back to list + filter
+	}
+
+	t.Run("typed Get finds existing item by name", func(t *testing.T) {
+		obj, err := crud.Get(t.Context(), "w-2")
+		require.NoError(t, err)
+		assert.Equal(t, "w-2", obj.GetName())
+		assert.Equal(t, "Beta", obj.Spec.Name)
+		assert.Equal(t, "blue", obj.Spec.Color)
+	})
+
+	t.Run("typed Get returns not-found for missing item", func(t *testing.T) {
+		_, err := crud.Get(t.Context(), "w-nonexistent")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not found")
+	})
+
+	t.Run("adapter Get finds existing item by name", func(t *testing.T) {
+		a := crud.AsAdapter()
+		item, err := a.Get(t.Context(), "w-2", metav1.GetOptions{})
+		require.NoError(t, err)
+		assert.Equal(t, "w-2", item.GetName())
+
+		spec, ok := item.Object["spec"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "Beta", spec["name"])
+	})
+
+	t.Run("adapter Get returns not-found for missing item", func(t *testing.T) {
+		a := crud.AsAdapter()
+		_, err := a.Get(t.Context(), "w-nonexistent", metav1.GetOptions{})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not found")
+	})
+
+	t.Run("List still works normally", func(t *testing.T) {
+		result, err := crud.List(t.Context())
+		require.NoError(t, err)
+		assert.Len(t, result, 3)
+	})
+}
+
+func TestTypedCRUD_NilGetFn_NilListFn(t *testing.T) {
+	// When both ListFn and GetFn are nil, Get should return ErrUnsupported
+	// (cannot fall back to list either).
+	crud := &adapter.TypedCRUD[TestWidget]{
+		Namespace:  "stack-1",
+		Descriptor: widgetDesc,
+	}
+
+	t.Run("typed Get returns ErrUnsupported", func(t *testing.T) {
+		_, err := crud.Get(t.Context(), "w-1")
+		assert.ErrorIs(t, err, errors.ErrUnsupported)
+	})
+
+	t.Run("typed List returns ErrUnsupported", func(t *testing.T) {
+		_, err := crud.List(t.Context())
+		assert.ErrorIs(t, err, errors.ErrUnsupported)
+	})
+}
+
 func TestTypedCRUD_MetadataFn(t *testing.T) {
 	tests := []struct {
 		name       string

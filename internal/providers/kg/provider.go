@@ -97,5 +97,33 @@ func (p *KGProvider) TypedRegistrations() []adapter.Registration {
 			Schema:     RuleSchema(),
 			Example:    RuleExample(),
 		},
+		{
+			Factory:    NewDatasetAdapterFactory(loader),
+			Descriptor: datasetDescriptor,
+			Aliases:    datasetAliases,
+			GVK:        datasetDescriptor.GroupVersionKind(),
+			Schema:     DatasetSchema(),
+		},
+		{
+			Factory:    NewVendorAdapterFactory(loader),
+			Descriptor: vendorDescriptor,
+			Aliases:    vendorAliases,
+			GVK:        vendorDescriptor.GroupVersionKind(),
+			Schema:     VendorSchema(),
+		},
+		{
+			Factory:    NewEntityTypeAdapterFactory(loader),
+			Descriptor: entityTypeDescriptor,
+			Aliases:    entityTypeAliases,
+			GVK:        entityTypeDescriptor.GroupVersionKind(),
+			Schema:     EntityTypeSchema(),
+		},
+		{
+			Factory:    NewScopeAdapterFactory(loader),
+			Descriptor: scopeDescriptor,
+			Aliases:    scopeAliases,
+			GVK:        scopeDescriptor.GroupVersionKind(),
+			Schema:     ScopeSchema(),
+		},
 	}
 }

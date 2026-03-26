@@ -104,13 +104,14 @@ func resolveTimeEpochMs(since string) (int64, int64, error) {
 
 func parseEntityArg(args []string) (string, string, error) {
 	if len(args) == 0 {
-		return "", "", errors.New("entity argument required (e.g. Service/my-service)")
+		return "", "", errors.New("entity argument required (e.g. Service--my-service)")
 	}
-	entityType, name, ok := strings.Cut(args[0], "/")
-	if !ok || entityType == "" || name == "" {
-		return "", "", fmt.Errorf("entity argument must be Type/Name (e.g. Service/my-service), got: %q", args[0])
+	const sep = "--"
+	idx := strings.Index(args[0], sep)
+	if idx <= 0 || idx+len(sep) >= len(args[0]) {
+		return "", "", fmt.Errorf("entity argument must be Type--Name (e.g. Service--my-service), got: %q", args[0])
 	}
-	return entityType, name, nil
+	return args[0][:idx], args[0][idx+len(sep):], nil
 }
 
 func resolveEntityTypeAndName(cmd *cobra.Command, args []string) (string, string, error) {
@@ -120,7 +121,7 @@ func resolveEntityTypeAndName(cmd *cobra.Command, args []string) (string, string
 	name, _ := cmd.Flags().GetString("name")
 	entityType, _ := cmd.Flags().GetString("type")
 	if entityType == "" || name == "" {
-		return "", "", errors.New("entity type and name required: use positional arg (Type/Name) or --type/--name flags")
+		return "", "", errors.New("entity type and name required: use positional arg (Type--Name) or --type/--name flags")
 	}
 	return entityType, name, nil
 }
@@ -978,18 +979,20 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 		Short: "Manage Knowledge Graph entities.",
 	}
 
-	// get subcommand
+	// show subcommand: no args = list all, with <name> = single entity
 	var (
-		getType  string
-		getName  string
-		getScope scopeFlags
+		showType       string
+		showScope      scopeFlags
+		assertionsOnly bool
+		page           int
 	)
-	getOpts := &entitiesGetOpts{}
-	getCmd := &cobra.Command{
-		Use:   "get",
-		Short: "Get entity information.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := getOpts.IO.Validate(); err != nil {
+	ioOpts := &entitiesShowOpts{}
+	showCmd := &cobra.Command{
+		Use:   "show [name]",
+		Short: "Show entities. Without a name, lists all; with a name, shows one.",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := ioOpts.IO.Validate(); err != nil {
 				return err
 			}
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
@@ -1000,91 +1003,60 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			scope := getScope.scopeMap()
-			if scope != nil {
-				info, err := client.GetEntityInfo(cmd.Context(), getType, getName, scope, 0, 0)
-				if err != nil {
-					return err
-				}
-				return getOpts.IO.Encode(cmd.OutOrStdout(), info)
+
+			// Single entity mode: name provided
+			if len(args) == 1 {
+				return showSingleEntity(cmd, client, showType, args[0], &showScope, &ioOpts.IO)
 			}
-			entity, err := client.LookupEntity(cmd.Context(), getType, getName, nil, 0, 0)
+
+			// List mode: no name
+			entityTypes, err := resolveEntityTypes(cmd, client, showType)
 			if err != nil {
 				return err
 			}
-			if entity == nil {
-				return fmt.Errorf("entity %s/%s not found in last 1 hour (it may exist with a specific --env/--namespace/--site scope)", getType, getName)
+			results, err := searchByTypes(cmd.Context(), client, entityTypes, assertionsOnly, showScope.scopeCriteria(), 0, 0, page)
+			if err != nil {
+				return err
 			}
-			return getOpts.IO.Encode(cmd.OutOrStdout(), entity)
+			return ioOpts.IO.Encode(cmd.OutOrStdout(), results)
 		},
 	}
-	getCmd.Flags().StringVar(&getType, "type", "", "Entity type")
-	getCmd.Flags().StringVar(&getName, "name", "", "Entity name")
-	_ = getCmd.MarkFlagRequired("type")
-	_ = getCmd.MarkFlagRequired("name")
-	getCmd.Flags().StringVar(&getScope.env, "env", "", "Environment scope")
-	getCmd.Flags().StringVar(&getScope.site, "site", "", "Site scope")
-	getCmd.Flags().StringVar(&getScope.namespace, "namespace", "", "Namespace scope")
-	getOpts.setup(getCmd.Flags())
+	showCmd.Flags().StringVar(&showType, "type", "", "Entity type (required for single entity, optional for list)")
+	showCmd.Flags().BoolVar(&assertionsOnly, "assertions-only", false, "Only return entities with active assertions (list mode)")
+	showCmd.Flags().IntVar(&page, "page", 0, "Page number, 0-based (list mode)")
+	showScope.register(showCmd)
+	ioOpts.setup(showCmd.Flags())
 
-	// list subcommand
-	var (
-		listType       string
-		listAssertOnly bool
-		listScope      scopeFlags
-		listPage       int
-	)
-	listOpts := &entitiesListOpts{}
-	listCmd := &cobra.Command{
-		Use:   "list",
-		Short: "List entities by type (omit --type to list all types).",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := listOpts.IO.Validate(); err != nil {
-				return err
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			entityTypes, err := resolveEntityTypes(cmd, client, listType)
-			if err != nil {
-				return err
-			}
-			results, err := searchByTypes(cmd.Context(), client, entityTypes, listAssertOnly, listScope.scopeCriteria(), 0, 0, listPage)
-			if err != nil {
-				return err
-			}
-			return listOpts.IO.Encode(cmd.OutOrStdout(), results)
-		},
-	}
-	listCmd.Flags().StringVar(&listType, "type", "", "Entity type (omit to list all)")
-	listCmd.Flags().BoolVar(&listAssertOnly, "assertions-only", false, "Only return entities with active assertions")
-	listCmd.Flags().IntVar(&listPage, "page", 0, "Page number (0-based)")
-	listScope.register(listCmd)
-	listOpts.setup(listCmd.Flags())
-
-	cmd.AddCommand(getCmd, listCmd)
+	cmd.AddCommand(showCmd)
 	return cmd
 }
 
-type entitiesGetOpts struct {
+func showSingleEntity(cmd *cobra.Command, client *Client, entityType, name string, scope *scopeFlags, io *cmdio.Options) error {
+	if entityType == "" {
+		return errors.New("--type is required when showing a single entity")
+	}
+	if sm := scope.scopeMap(); sm != nil {
+		info, err := client.GetEntityInfo(cmd.Context(), entityType, name, sm, 0, 0)
+		if err != nil {
+			return err
+		}
+		return io.Encode(cmd.OutOrStdout(), info)
+	}
+	entity, err := client.LookupEntity(cmd.Context(), entityType, name, nil, 0, 0)
+	if err != nil {
+		return err
+	}
+	if entity == nil {
+		return fmt.Errorf("entity %s/%s not found in last 1 hour (it may exist with a specific --env/--namespace/--site scope)", entityType, name)
+	}
+	return io.Encode(cmd.OutOrStdout(), entity)
+}
+
+type entitiesShowOpts struct {
 	IO cmdio.Options
 }
 
-func (o *entitiesGetOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("json")
-	o.IO.BindFlags(flags)
-}
-
-type entitiesListOpts struct {
-	IO cmdio.Options
-}
-
-func (o *entitiesListOpts) setup(flags *pflag.FlagSet) {
+func (o *entitiesShowOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &EntityTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
@@ -1280,7 +1252,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	}
 
 	queryCmd := &cobra.Command{
-		Use:   "query [Type/Name]",
+		Use:   "query [Type--Name]",
 		Short: "Query assertions for a time range.",
 		RunE: assertionsRunE(func(c *Client, ctx context.Context, req AssertionsRequest) (any, error) {
 			return c.QueryAssertions(ctx, req)
@@ -1288,7 +1260,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	}
 
 	summaryCmd := &cobra.Command{
-		Use:   "summary [Type/Name]",
+		Use:   "summary [Type--Name]",
 		Short: "Get assertions summary for a time range.",
 		RunE: assertionsRunE(func(c *Client, ctx context.Context, req AssertionsRequest) (any, error) {
 			return c.AssertionsSummary(ctx, req)
@@ -1296,7 +1268,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	}
 
 	graphCmd := &cobra.Command{
-		Use:   "graph [Type/Name]",
+		Use:   "graph [Type--Name]",
 		Short: "Query assertions with graph topology.",
 		RunE: assertionsRunE(func(c *Client, ctx context.Context, req AssertionsRequest) (any, error) {
 			return c.AssertionsGraph(ctx, req)
@@ -1363,7 +1335,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	// entity-metric subcommand
 	var entityMetricScope scopeFlags
 	entityMetricCmd := &cobra.Command{
-		Use:   "entity-metric [Type/Name]",
+		Use:   "entity-metric [Type--Name]",
 		Short: "Get metric data for a specific assertion on an entity.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
@@ -1783,7 +1755,7 @@ func newInspectCommand(loader RESTConfigLoader) *cobra.Command {
 	var inspectScope scopeFlags
 	ioOpts := &inspectOpts{}
 	cmd := &cobra.Command{
-		Use:   "inspect [Type/Name]",
+		Use:   "inspect [Type--Name]",
 		Short: "Inspect an entity: info, assertions, and summary.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := ioOpts.IO.Validate(); err != nil {

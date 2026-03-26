@@ -25,10 +25,14 @@ type TypedObject[T ResourceNamer] struct {
 // repeats: marshal T to/from a Kubernetes-style unstructured envelope, strip
 // server-managed fields, and dispatch to typed functions.
 type TypedCRUD[T ResourceNamer] struct {
-	// ListFn lists all items of this type (REQUIRED).
+	// ListFn lists all items of this type.
+	// Nil means list is unsupported (returns errors.ErrUnsupported).
+	// Also used as a fallback for Get when GetFn is nil.
 	ListFn func(ctx context.Context) ([]T, error)
 
-	// GetFn returns a single item by name (REQUIRED).
+	// GetFn returns a single item by name.
+	// Nil means get falls back to ListFn + client-side name filtering.
+	// If both GetFn and ListFn are nil, get returns errors.ErrUnsupported.
 	GetFn func(ctx context.Context, name string) (*T, error)
 
 	// CreateFn creates a new item. Nil means create is unsupported.
@@ -73,7 +77,12 @@ func (c *TypedCRUD[T]) restoreName(name string, item *T) {
 // --- Typed public methods ---
 
 // List returns all items as TypedObject[T] with correct TypeMeta and ObjectMeta.
+// Returns errors.ErrUnsupported when ListFn is nil.
 func (c *TypedCRUD[T]) List(ctx context.Context) ([]TypedObject[T], error) {
+	if c.ListFn == nil {
+		return nil, errors.ErrUnsupported
+	}
+
 	items, err := c.ListFn(ctx)
 	if err != nil {
 		return nil, err
@@ -87,16 +96,38 @@ func (c *TypedCRUD[T]) List(ctx context.Context) ([]TypedObject[T], error) {
 }
 
 // Get returns a single item by name as a TypedObject[T].
+// When GetFn is nil but ListFn is set, Get falls back to listing all items
+// and filtering by name (client-side emulation).
+// Returns errors.ErrUnsupported when both GetFn and ListFn are nil.
 func (c *TypedCRUD[T]) Get(ctx context.Context, name string) (*TypedObject[T], error) {
-	item, err := c.GetFn(ctx, name)
+	if c.GetFn != nil {
+		item, err := c.GetFn(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		if item == nil {
+			return nil, fmt.Errorf("resource %q not found", name)
+		}
+		obj := c.wrapTypedObject(*item)
+		return &obj, nil
+	}
+
+	// Fall back to list + client-side filter when GetFn is nil.
+	if c.ListFn == nil {
+		return nil, errors.ErrUnsupported
+	}
+
+	items, err := c.ListFn(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if item == nil {
-		return nil, fmt.Errorf("resource %q not found", name)
+	for _, item := range items {
+		if c.resourceName(item) == name {
+			obj := c.wrapTypedObject(item)
+			return &obj, nil
+		}
 	}
-	obj := c.wrapTypedObject(*item)
-	return &obj, nil
+	return nil, fmt.Errorf("resource %q not found", name)
 }
 
 // Create creates a new item via CreateFn and returns the result as TypedObject[T].
@@ -259,6 +290,10 @@ func (a *typedAdapter[T]) Example() json.RawMessage {
 }
 
 func (a *typedAdapter[T]) List(ctx context.Context, _ metav1.ListOptions) (*unstructured.UnstructuredList, error) {
+	if a.crud.ListFn == nil {
+		return nil, errors.ErrUnsupported
+	}
+
 	items, err := a.crud.ListFn(ctx)
 	if err != nil {
 		return nil, err
@@ -277,15 +312,13 @@ func (a *typedAdapter[T]) List(ctx context.Context, _ metav1.ListOptions) (*unst
 }
 
 func (a *typedAdapter[T]) Get(ctx context.Context, name string, _ metav1.GetOptions) (*unstructured.Unstructured, error) {
-	item, err := a.crud.GetFn(ctx, name)
+	// Delegate to TypedCRUD.Get which handles nil GetFn fallback.
+	obj, err := a.crud.Get(ctx, name)
 	if err != nil {
 		return nil, err
 	}
-	if item == nil {
-		return nil, fmt.Errorf("resource %q not found", name)
-	}
 
-	u, err := a.crud.toUnstructured(*item)
+	u, err := a.crud.toUnstructured(obj.Spec)
 	if err != nil {
 		return nil, err
 	}
