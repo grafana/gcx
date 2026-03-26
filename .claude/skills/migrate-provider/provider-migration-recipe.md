@@ -1,4 +1,4 @@
-# gcx → grafanactl Provider Migration Recipe
+# Cloud CLI -> grafanactl Provider Migration Recipe
 
 > **Evergreen document.** Update this as providers are ported — add gotchas,
 > refine patterns, fix mistakes. Each migration agent should read this before
@@ -6,14 +6,14 @@
 
 ## Overview
 
-This recipe covers porting a gcx resource client (`pkg/grafana/{resource}/`)
+This recipe covers porting a cloud CLI resource client (`pkg/grafana/{resource}/`)
 into a grafanactl provider (`internal/providers/{name}/`). It's a streamlined
-path that skips API discovery (gcx already has working clients) and focuses on
+path that skips API discovery (the cloud CLI already has working clients) and focuses on
 the mechanical translation.
 
-**When to use this recipe:** Porting a gcx resource to grafanactl.
+**When to use this recipe:** Porting a cloud CLI resource to grafanactl.
 **When to use `/add-provider` instead:** Building a provider from scratch for a
-product that doesn't have a gcx client.
+product that doesn't have a cloud CLI client.
 
 ## Skill Structure
 
@@ -35,15 +35,15 @@ This recipe provides the mechanical steps only.
 Verify these before starting any port:
 
 ```bash
-# 1. gcx binary is available
-gcx --version
+# 1. cloud CLI binary is available
+# cloud-cli --version
 
 # 2. Grafana context is configured and working
 grafanactl config view
 grafanactl --context=<ctx> resources schemas | head -5
 
-# 3. gcx uses the same context (or configure separately)
-gcx --context=<ctx> health
+# 3. cloud CLI uses the same context (or configure separately)
+# cloud-cli --context=<ctx> health
 
 # 4. Provider directory structure exists
 # Use /add-dir or create manually:
@@ -51,7 +51,7 @@ mkdir -p internal/providers/{name}/{resource}
 ```
 
 If any of these fail, fix them before proceeding. Smoke tests (Step 8) require
-live API access to both gcx and grafanactl against the same Grafana instance.
+live API access to both the cloud CLI and grafanactl against the same Grafana instance.
 
 ---
 
@@ -64,7 +64,7 @@ Before starting a port, answer these questions:
       Run: grafanactl --context=ops resources schemas | grep -i {resource}
       If YES → no provider needed, it works via dynamic discovery.
 
-[ ] 2. What's the gcx source?
+[ ] 2. What's the cloud CLI source?
       Client: pkg/grafana/{resource}/client.go
       Types:  pkg/grafana/{resource}/types.go (or inline in client.go)
       Cmd:    cmd/resources/{resource}.go (or cmd/observability/ or cmd/oncall/)
@@ -84,7 +84,7 @@ Before starting a port, answer these questions:
       resolution logic in CreateFn/UpdateFn.
 
 [ ] 6. Pagination?
-      gcx uses manual pagination loops. Check if the API has limit/offset,
+      The cloud CLI uses manual pagination loops. Check if the API has limit/offset,
       cursor, or Link headers. The adapter's ListFn must handle this.
 ```
 
@@ -98,8 +98,8 @@ Before starting a port, answer these questions:
 internal/providers/{name}/
 ├── provider.go           # Provider interface + init() registration
 ├── {resource}/
-│   ├── types.go          # API structs (copy from gcx, adjust json tags if needed)
-│   ├── client.go         # HTTP client (adapt from gcx)
+│   ├── types.go          # API structs (copy from cloud CLI, adjust json tags if needed)
+│   ├── client.go         # HTTP client (adapt from cloud CLI)
 │   ├── adapter.go        # TypedRegistration[T] wiring
 │   └── client_test.go    # httptest-based tests
 ```
@@ -110,20 +110,20 @@ register in the existing `init()`.
 
 ### Step 2: Port types.go
 
-Copy structs from `gcx/pkg/grafana/{resource}/`. Adjustments:
+Copy structs from the cloud CLI's `pkg/grafana/{resource}/`. Adjustments:
 
-- **Keep json tags exactly as gcx has them** — these match the API response
+- **Keep json tags exactly as the cloud CLI has them** — these match the API response
   format and must round-trip losslessly through pull → edit → push.
-- **Remove gcx-specific helpers** (e.g., `func (t *Type) ResourceID() string`)
+- **Remove cloud CLI-specific helpers** (e.g., `func (t *Type) ResourceID() string`)
   — these are replaced by the adapter's `NameFn`.
 - **Keep all fields** — don't prune "unnecessary" fields. The user may need them.
 
 ### Step 3: Port client.go
 
-Translate from gcx's `grafana.Client` to grafanactl's HTTP pattern:
+Translate from the cloud CLI's `grafana.Client` to grafanactl's HTTP pattern:
 
 ```go
-// gcx pattern (before):
+// cloud CLI pattern (before):
 type Client struct {
     *grafana.Client  // embeds base client with .Get/.Post/.Put/.Delete
 }
@@ -169,11 +169,11 @@ func (c *Client) List(ctx context.Context) ([]Resource, error) {
 **Key differences:**
 - No embedded base client — each provider owns its HTTP calls
 - Explicit `context.Context` on all methods
-- Direct `http.NewRequestWithContext` instead of gcx's `.Get()` wrapper
+- Direct `http.NewRequestWithContext` instead of the cloud CLI's `.Get()` wrapper
 - Error handling: return `fmt.Errorf("{provider}: {action}: %w", err)` with
   provider name prefix for debuggability
 
-**Pagination:** If gcx uses manual pagination loops, port them. If the API
+**Pagination:** If the cloud CLI uses manual pagination loops, port them. If the API
 returns all results in one call, keep it simple.
 
 ### Step 4: Wire adapter.go with TypedRegistration[T]
@@ -254,7 +254,7 @@ grafanactl providers                        # new provider listed
 > conversation. The user must see evidence that every command produces
 > equivalent output before the port is considered done.
 
-Run every command side-by-side with gcx against a real instance. Don't skip
+Run every command side-by-side with the cloud CLI against a real instance. Don't skip
 this — wrong endpoint names, wrapped request bodies, and response shape
 mismatches are invisible in unit tests.
 
@@ -264,18 +264,19 @@ mismatches are invisible in unit tests.
 CTX=dev  # adjust to your context
 
 # --- List: compare resource IDs ---
-GCX_IDS=$(gcx --context=$CTX {resource} list -o json | jq -r '.[].id // .[].uid' | sort)
+# Run cloud CLI: cloud-cli --context=$CTX {resource} list -o json | jq -r '.[].id // .[].uid' | sort
+LEGACY_IDS=$(...)  # substitute actual cloud CLI command
 GCTL_IDS=$(grafanactl --context=$CTX {resource} list -o json | jq -r '.[].metadata.name' | sort)
 echo "=== List ID diff ==="
-diff <(echo "$GCX_IDS") <(echo "$GCTL_IDS") && echo "MATCH" || echo "MISMATCH"
+diff <(echo "$LEGACY_IDS") <(echo "$GCTL_IDS") && echo "MATCH" || echo "MISMATCH"
 
 # --- Get: compare key fields ---
 ID="<pick-an-id-from-list>"
-gcx --context=$CTX {resource} get $ID -o json | jq '{title, status, labels}' > /tmp/gcx_get.json
+# Run cloud CLI: cloud-cli --context=$CTX {resource} get $ID -o json | jq '{title, status, labels}'
 grafanactl --context=$CTX {resource} get $ID -o json \
   | jq '{title: .spec.title, status: .spec.status, labels: .metadata.labels}' > /tmp/gctl_get.json
 echo "=== Get field diff ==="
-diff /tmp/gcx_get.json /tmp/gctl_get.json && echo "MATCH" || echo "MISMATCH"
+diff /tmp/legacy_get.json /tmp/gctl_get.json && echo "MATCH" || echo "MISMATCH"
 
 # --- Adapter path ---
 echo "=== Adapter path ==="
@@ -284,7 +285,7 @@ grafanactl --context=$CTX resources get {alias}/$ID -o json > /dev/null 2>&1 && 
 
 # --- Ancillary commands (repeat per ancillary) ---
 echo "=== Ancillary: {subcommand} ==="
-gcx --context=$CTX {resource} {subcommand} -o json | jq length
+# cloud-cli --context=$CTX {resource} {subcommand} -o json | jq length
 grafanactl --context=$CTX {resource} {subcommand} -o json | jq length
 
 # --- Schema + example ---
@@ -346,7 +347,7 @@ that only surfaced during smoke testing:
 
 ### Pagination
 
-- gcx's `ListAll` pattern uses page+limit loops. Port these directly — don't
+- The cloud CLI's `ListAll` pattern uses page+limit loops. Port these directly — don't
   try to be clever with streaming or lazy evaluation.
 - Some APIs return wrapped responses (`{"items": [...], "totalCount": N}`).
   Define a `listResponse` struct per resource — don't try to share across types.
@@ -362,7 +363,7 @@ that only surfaced during smoke testing:
 - The IRM API uses gRPC-style POST endpoints (`IncidentsService.QueryIncidents`,
   `IncidentsService.GetIncident`, etc.) — all operations are POST with JSON bodies,
   not REST-style GET/POST/PUT/DELETE. The `doRequest` helper always uses POST.
-- gcx's `GetIncident` fetches all incidents (limit 100) and filters client-side.
+- The cloud CLI's `GetIncident` fetches all incidents (limit 100) and filters client-side.
   The actual API has a `GetIncident` endpoint — use it directly for O(1) lookups.
 - The IRM API only supports status updates via `UpdateStatus` — there is no
   general-purpose PUT/PATCH for incident fields. The adapter's Update method
@@ -386,18 +387,18 @@ that only surfaced during smoke testing:
 - The `perfsprint` linter enforces `errors.New` over `fmt.Errorf` for strings
   without format verbs — easy to miss when porting `fmt.Errorf("...")` patterns.
 - The `usestdlibvars` linter enforces `http.StatusCreated` etc. instead of
-  raw `201`/`204`/`404` literals — gcx uses raw numbers everywhere.
-- **gcx `k6 token` vs grafanactl `k6 auth token`**: gcx exposes token exchange
+  raw `201`/`204`/`404` literals — the cloud CLI uses raw numbers everywhere.
+- **Cloud CLI `k6 token` vs grafanactl `k6 auth token`**: the cloud CLI exposes token exchange
   as a top-level `token` subcommand; grafanactl nests it under `auth token`.
   Both print the short-lived API token to stdout.
 - **Schedules `delete` takes `<load-test-id>` not `<schedule-id>`**: This
   is consistent with the API — delete is keyed on the load test, not the
-  schedule object. This is also how gcx does it.
+  schedule object. This is also how the cloud CLI does it.
 - **`runs` appears in two places**: `k6 runs list` (top-level) and
   `k6 testrun runs list` (nested under testrun). Both delegate to the same
   underlying run listing function. The duplication is intentional — the
   `testrun` sub-tree groups CRD-related operations together.
-- **gcx `schema` / `example` subcommands**: gcx exposes per-resource `schema`
+- **Cloud CLI `schema` / `example` subcommands**: the cloud CLI exposes per-resource `schema`
   and `example` subcommands under each resource group. grafanactl covers these
   via `resources schemas` and `resources examples` at the global level.
   These are NOT missing — the coverage is different but equivalent.
@@ -420,7 +421,7 @@ that only surfaced during smoke testing:
 - KG/Asserts uses the Grafana plugin resource proxy path:
   `/api/plugins/grafana-asserts-app/resources/asserts/api-server/...`
 - Auth: standard Grafana SA token via rest.Config — no separate token needed.
-  gcx passes `X-Scope-OrgID: 0` but this is not required through the plugin proxy.
+  The cloud CLI passes `X-Scope-OrgID: 0` but this is not required through the plugin proxy.
 - The API is operational, not CRUD: many query endpoints (POST), config uploads
   (PUT with `application/x-yaml`), and read endpoints (GET).
 - Rules are the closest to a standard resource (list/get/create/delete) and map
@@ -430,9 +431,9 @@ that only surfaced during smoke testing:
   command rather than trying to share RunE builders.
 ### Response Shape Differences
 
-- Some gcx clients unwrap response envelopes (e.g., `response.Data`) while
-  others return the raw response. Check the gcx client carefully — the types
-  you port must match what the API actually returns, not what gcx exposes.
+- Some cloud CLI clients unwrap response envelopes (e.g., `response.Data`) while
+  others return the raw response. Check the cloud CLI client carefully — the types
+  you port must match what the API actually returns, not what the cloud CLI exposes.
 
 ### Separate API URLs (Fleet, OnCall)
 
@@ -483,7 +484,7 @@ that only surfaced during smoke testing:
 **K6** (multi-tenant auth):
 - Two auth modes: org-level and stack-level
 - Separate API domain (not Grafana stack URL)
-- Check gcx's `k6/client_envvar_test.go` for auth resolution logic
+- Check the cloud CLI's `k6/client_envvar_test.go` for auth resolution logic
 
 **Fleet/Alloy** (4 sub-resource types):
 - All share same base URL and auth
@@ -493,16 +494,16 @@ that only surfaced during smoke testing:
 
 ## Relationship to /add-provider Skill
 
-This recipe is for **porting existing gcx clients**. The `/add-provider` skill
+This recipe is for **porting existing cloud CLI clients**. The `/add-provider` skill
 is for **building providers from scratch**. Key differences:
 
 | Aspect | This Recipe | /add-provider Skill |
 |--------|-------------|---------------------|
-| API discovery | Skip — gcx has working client | Full discovery phase |
-| Types | Copy from gcx | Derive from OpenAPI/source |
-| Client | Adapt from gcx | Hand-write from scratch |
+| API discovery | Skip — cloud CLI has working client | Full discovery phase |
+| Types | Copy from cloud CLI | Derive from OpenAPI/source |
+| Client | Adapt from cloud CLI | Hand-write from scratch |
 | Design doc | Optional (pattern is known) | Required per stage |
-| Auth | Copy gcx's auth model | Investigate from scratch |
+| Auth | Copy the cloud CLI's auth model | Investigate from scratch |
 
 After porting, the provider should pass the same Phase 4 verification
 checklist from `/add-provider`.

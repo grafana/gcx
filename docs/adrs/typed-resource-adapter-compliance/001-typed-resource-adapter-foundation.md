@@ -30,7 +30,7 @@ Additionally:
   Eight providers use 13 `init()` functions across three different patterns (split,
   combined, sub-package) to populate both registries independently.
 
-The consolidation plan requires porting 40+ resource types from gcx. Each new
+The consolidation plan requires porting 40+ resource types from the cloud CLI. Each new
 provider would perpetuate the dual code path and dual registration if the architecture
 is not addressed.
 

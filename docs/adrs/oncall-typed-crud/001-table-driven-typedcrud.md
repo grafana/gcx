@@ -7,7 +7,7 @@
 
 ## Context
 
-The OnCall provider was ported from gcx (PR #44) using a single
+The OnCall provider was ported from the cloud CLI (PR #44) using a single
 `subResourceAdapter` struct that dispatches all 17 resource types through 5
 switch blocks (`listRaw`, `getRaw`, `createRaw`, `updateRaw`, `deleteRaw`) —
 totalling 569 LOC in `internal/providers/oncall/resource_adapter.go`.

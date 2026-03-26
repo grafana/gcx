@@ -78,7 +78,7 @@ Fill in the Audit stage with the three artifact format templates (parity table, 
 **Acceptance criteria:**
 - GIVEN the Audit stage section
   WHEN an agent reads the parity table template
-  THEN the template contains columns for gcx command, grafanactl equivalent, status (Implemented / Deferred / N/A), and notes, with the instruction that every gcx subcommand MUST have a row.
+  THEN the template contains columns for cloud CLI command, grafanactl equivalent, status (Implemented / Deferred / N/A), and notes, with the instruction that every cloud CLI subcommand MUST have a row.
   (Traces to FR-003, AC-02)
 
 - GIVEN the Audit stage section
@@ -160,7 +160,7 @@ Add the orchestration table specifying agent strategy per stage (Audit = main, B
 
 - GIVEN the SKILL.md
   WHEN an agent reads the Red Flags table
-  THEN it finds at least four entries covering: copying gcx client verbatim, skipping parity audit, guessing endpoint names, skipping smoke tests, plus entries for reading files outside spawn prompt and merging envelopes.
+  THEN it finds at least four entries covering: copying the cloud CLI client verbatim, skipping parity audit, guessing endpoint names, skipping smoke tests, plus entries for reading files outside spawn prompt and merging envelopes.
   (Traces to FR-015, AC-10)
 
 - GIVEN the Build stage instructions
@@ -182,17 +182,17 @@ Add the orchestration table specifying agent strategy per stage (Audit = main, B
 
 ## Wave 4: Recipe Cross-Reference
 
-### T4: Update gcx-provider-recipe.md with skill structure reference
+### T4: Update provider-migration-recipe.md with skill structure reference
 
 **Priority**: P1
 **Effort**: Small
 **Depends on**: T3
 **Type**: task
 
-Add a brief "Skill Structure" note near the top of `gcx-provider-recipe.md` (after the Overview section) that references the 3-stage model in SKILL.md. This note tells agents reading the recipe that orchestration and verification are governed by SKILL.md, not the recipe itself. Also add a note in the Verify stage of SKILL.md that the recipe status tracker and gotchas sections MUST be updated during verification (FR-011). Do NOT modify recipe Steps 1-8.
+Add a brief "Skill Structure" note near the top of `provider-migration-recipe.md` (after the Overview section) that references the 3-stage model in SKILL.md. This note tells agents reading the recipe that orchestration and verification are governed by SKILL.md, not the recipe itself. Also add a note in the Verify stage of SKILL.md that the recipe status tracker and gotchas sections MUST be updated during verification (FR-011). Do NOT modify recipe Steps 1-8.
 
 **Deliverables:**
-- `.claude/skills/migrate-provider/gcx-provider-recipe.md` -- "Skill Structure" cross-reference note added after Overview
+- `.claude/skills/migrate-provider/provider-migration-recipe.md` -- "Skill Structure" cross-reference note added after Overview
 - `.claude/skills/migrate-provider/SKILL.md` -- Verify stage includes recipe update instruction
 
 **Acceptance criteria:**
@@ -236,5 +236,5 @@ Read the completed SKILL.md end-to-end and verify structural completeness agains
   THEN no constraint is violated.
 
 - GIVEN the completed SKILL.md and the updated recipe
-  WHEN `gcx-provider-recipe.md` Steps 1-8 are diffed against the pre-change version
+  WHEN `provider-migration-recipe.md` Steps 1-8 are diffed against the pre-change version
   THEN the mechanical steps are identical (only the Skill Structure note and any status tracker format changes differ).

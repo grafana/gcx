@@ -70,7 +70,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body io.Rea
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	// OnCall API uses raw token auth (no "Bearer" prefix), matching gcx's WithRawTokenAuth().
+	// OnCall API uses raw token auth (no "Bearer" prefix), matching the cloud CLI's WithRawTokenAuth().
 	req.Header.Set("Authorization", c.token)
 	req.Header.Set("Content-Type", "application/json")
 	if c.stackURL != "" {

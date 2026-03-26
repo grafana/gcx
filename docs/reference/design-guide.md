@@ -670,7 +670,7 @@ Pattern: `GRAFANA_PROVIDER_{NAME}_{KEY}=value`
 
 Provider names and keys are case-normalized. Env vars override YAML config.
 
-See [config-system.md](config-system.md) for the loading chain and
+See [config-system.md](../architecture/config-system.md) for the loading chain and
 [provider-guide.md](provider-guide.md) for the `ConfigKeys()` pattern.
 
 ### Implemented Variables `[CURRENT]`
@@ -844,4 +844,4 @@ Maps sections to the cli-analysis recommendations (R1.1–R3.5):
 
 ---
 
-*Source: [cli-analysis-followup-changes.md](../docs/research/2026-03-03-cli-analysis-followup-changes.md) cross-referenced against codebase as of 2026-03-04.*
+*Source: [cli-analysis-followup-changes.md](../research/2026-03-03-cli-analysis-followup-changes.md) cross-referenced against codebase as of 2026-03-04.*

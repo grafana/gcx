@@ -1,4 +1,4 @@
-# ADR-001: gcx → grafanactl Consolidation Strategy
+# ADR-001: Provider Consolidation Strategy
 
 **Created**: 2026-03-20
 **Status**: accepted
@@ -9,32 +9,32 @@
 
 Two Grafana CLIs exist with complementary strengths:
 
-- **gcx** — broad product coverage (OnCall, K6, Fleet, Incidents, Knowledge Graph, ML, SCIM, etc.) and a polished agentic UX (agent annotations, `commands` JSON tree, agent-card, audit logging). Architecture is provider-per-command with hand-written adapters.
+- **Cloud CLI** — broad product coverage (OnCall, K6, Fleet, Incidents, Knowledge Graph, ML, SCIM, etc.) and a polished agentic UX (agent annotations, `commands` JSON tree, agent-card, audit logging). Architecture is provider-per-command with hand-written adapters.
 - **grafanactl** — solid architecture (K8s-compatible API tier, pluggable `Provider` + `ResourceAdapter` pattern, `TypedCRUD[T]` generic, push/pull/diff pipelines) but narrower product coverage (K8s-native resources only: dashboards, folders, datasources, alert rules, SLOs, synth).
 
 The team needs a **single CLI for GrafanaCon 2026** — one binary that covers all Grafana Cloud products with grafanactl's architectural discipline.
 
-The core tension: gcx has the product breadth, grafanactl has the right architecture. Merging them requires choosing a base and porting the other's capabilities.
+The core tension: the cloud CLI has the product breadth, grafanactl has the right architecture. Merging them requires choosing a base and porting the other's capabilities.
 
 ## Decision
 
-**grafanactl is the consolidation base.** gcx providers are ported into grafanactl using the existing `Provider` + `ResourceAdapter` + `TypedCRUD[T]` pattern.
+**grafanactl is the consolidation base.** Cloud CLI providers are ported into grafanactl using the existing `Provider` + `ResourceAdapter` + `TypedCRUD[T]` pattern.
 
 ### Why grafanactl as base
 
-1. **Architecture scales better.** The K8s-tier + provider-tier separation is clean. K8s-native resources get automatic CRUD with zero adapter code as Grafana migrates to app platform. gcx's per-command architecture would require rearchitecting everything.
-2. **TypedCRUD[T] eliminates porting boilerplate.** The generic handles JSON↔unstructured conversion, K8s envelope wrapping, and name/ID management. Porting a gcx resource client is ~30 LOC of wiring vs ~200 LOC of hand-written adapter code.
+1. **Architecture scales better.** The K8s-tier + provider-tier separation is clean. K8s-native resources get automatic CRUD with zero adapter code as Grafana migrates to app platform. The cloud CLI's per-command architecture would require rearchitecting everything.
+2. **TypedCRUD[T] eliminates porting boilerplate.** The generic handles JSON↔unstructured conversion, K8s envelope wrapping, and name/ID management. Porting a cloud CLI resource client is ~30 LOC of wiring vs ~200 LOC of hand-written adapter code.
 3. **Push/pull/delete pipelines are already built.** grafanactl's resource sync infrastructure (processors, local FS reader/writer, remote pusher/puller) works for all providers without modification.
-4. **grafanactl has better test infrastructure and linting.** Migrating to gcx's base would mean rebuilding these.
+4. **grafanactl has better test infrastructure and linting.** Migrating to the cloud CLI's base would mean rebuilding these.
 
 ### TypedCRUD[T] as the porting vehicle
 
-Every gcx resource client is ported as:
+Every cloud CLI resource client is ported as:
 
 ```
 internal/providers/{provider}/
 ├── provider.go          # Provider impl + init() registration
-├── types.go             # API structs (ported from gcx)
+├── types.go             # API structs (ported from the cloud CLI)
 ├── client.go            # HTTP client (adapted to grafanactl's config)
 └── resource_adapter.go  # TypedCRUD[T] wiring (~30 LOC)
 ```
@@ -94,17 +94,17 @@ Phase 1 and 2 are parallelizable. GrafanaCon critical path: Phase 0 (done) + Pha
 
 ### Positive
 - Single CLI covering all Grafana Cloud products
-- gcx's product breadth gains grafanactl's architectural discipline (K8s tier, TypedCRUD, pipelines)
+- The cloud CLI's product breadth gains grafanactl's architectural discipline (K8s tier, TypedCRUD, pipelines)
 - TypedCRUD[T] reduces porting effort — ~30 LOC per resource vs ~200 LOC hand-written
 - K8s-native resources will "just work" as Grafana migrates products to app platform (no re-porting needed)
 - grafanactl's push/pull/delete pipelines apply to all provider resources without modification
 
 ### Negative
-- gcx agentic UX features (agent annotations, `commands` tree, audit logging) must be ported into grafanactl — they don't come for free
-- gcx users must migrate to grafanactl; gcx will be deprecated
+- The cloud CLI's agentic UX features (agent annotations, `commands` tree, audit logging) must be ported into grafanactl — they don't come for free
+- Cloud CLI users must migrate to grafanactl; the cloud CLI will be deprecated
 - Complex providers (OnCall with 17 resource types, K6 with multi-tenant auth) require bespoke TypedCRUD wiring patterns
 
 ### Neutral
-- gcx resource clients are ported as-is; API types and HTTP clients are preserved
+- Cloud CLI resource clients are ported as-is; API types and HTTP clients are preserved
 - Existing grafanactl K8s-native resources are unaffected
 - Already-built features (datasources MLTP, telemetry viz, o11y-as-code) require no migration work

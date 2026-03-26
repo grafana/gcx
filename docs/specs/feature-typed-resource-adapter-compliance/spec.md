@@ -22,7 +22,7 @@ grafanactl's provider/adapter architecture has three structural problems that co
 
 Additionally, CONSTITUTION.md and DESIGN.md are stale: they describe the pre-TypedCRUD architecture ("Self-registering providers use init() to register"), do not reflect the Schema/Example convention established in PR #18, and lack documentation for the TypedObject/ResourceIdentity patterns introduced by this work.
 
-The current workaround is manual duplication: every provider CRUD command hand-wires REST client calls, every adapter configures function pointers for name mapping, and every new provider must replicate both patterns. The consolidation plan requires porting 40+ resource types from gcx -- each would perpetuate the dual code path and dual registration if the architecture is not addressed.
+The current workaround is manual duplication: every provider CRUD command hand-wires REST client calls, every adapter configures function pointers for name mapping, and every new provider must replicate both patterns. The consolidation plan requires porting 40+ resource types from the cloud CLI -- each would perpetuate the dual code path and dual registration if the architecture is not addressed.
 
 ## Scope
 
@@ -52,7 +52,7 @@ The current workaround is manual duplication: every provider CRUD command hand-w
 - **StripFields elimination** -- investigating struct tags or separate spec types to replace JSON-map-delete. Tracked as follow-up.
 - **Provider CRUD command deprecation/removal** -- commands will migrate to use TypedCRUD internally but will continue to exist as user-facing commands. Deprecation in favor of `grafanactl resources` is a separate decision.
 - **SLO Reports adapter** -- Reports is read-only analytics with no CRUD adapter. Adding one is orthogonal.
-- **Porting new resource types from gcx** -- depends on this foundation but is separate work.
+- **Porting new resource types from the cloud CLI** -- depends on this foundation but is separate work.
 - **Changes to the ResourceAdapter interface** -- the existing interface (List, Get, Create, Update, Delete, Descriptor, Aliases, Schema, Example) is preserved unchanged.
 - **Architecture docs beyond CONSTITUTION.md and DESIGN.md** -- `docs/architecture/*.md` updates are tracked by the existing quality standard ("Architecture docs must stay current with code changes") but are not explicitly spec'd here beyond the two root documents.
 

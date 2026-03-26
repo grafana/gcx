@@ -20,7 +20,7 @@ The rewritten SKILL.md replaces the current flat 5-phase structure with a 3-stag
               Unchanged files                 Rewritten file
          (conventions.md,                    (SKILL.md)
           commands-reference.md,
-          gcx-provider-recipe.md
+          provider-migration-recipe.md
           mechanical steps)
 
 ============================================================================
@@ -31,7 +31,7 @@ RUNTIME EXECUTION MODEL (what SKILL.md instructs agents to do)
   │  LEAD ORCHESTRATOR (main context)                               │
   │                                                                 │
   │  Stage 1: AUDIT (runs inline)                                   │
-  │  ├── Read gcx source                                            │
+  │  ├── Read cloud CLI source                                     │
   │  ├── Produce: parity table                                      │
   │  ├── Produce: architectural mapping                             │
   │  ├── Produce: verification plan                                 │
@@ -80,19 +80,19 @@ RUNTIME EXECUTION MODEL (what SKILL.md instructs agents to do)
 | File ownership table maps recipe phases (1-6) to teammates | Each recipe phase produces specific files; mapping phase-to-teammate makes ownership unambiguous. Implements FR-019, FR-024. |
 | Recipe update is minimal: add a "Skill Structure" section referencing the 3-stage model, update status tracker format | Mechanical steps (Steps 1-8) remain untouched per spec Out of Scope. FR-011 is satisfied by the Verify stage updating gotchas/status inline. |
 | Small-provider escape hatch documented in orchestration table footnote | Risk mitigation for providers with 1-2 subcommands where team overhead is not justified. Referenced in Risks section of spec. |
-| Audit stage may delegate research to subagents while keeping the gate inline | The lead must run the user approval gate (only the lead can call AskUserQuestion), but gcx source exploration and artifact drafting can be delegated to Explore/Plan subagents. The lead reviews subagent outputs, assembles final artifacts, and runs the gate. This keeps FR-017 satisfied (Audit in main context) while reducing lead context consumption. |
+| Audit stage may delegate research to subagents while keeping the gate inline | The lead must run the user approval gate (only the lead can call AskUserQuestion), but cloud CLI source exploration and artifact drafting can be delegated to Explore/Plan subagents. The lead reviews subagent outputs, assembles final artifacts, and runs the gate. This keeps FR-017 satisfied (Audit in main context) while reducing lead context consumption. |
 
 ## Compatibility
 
 **Unchanged:**
-- `gcx-provider-recipe.md` mechanical steps (Steps 1-8) -- referenced by the Build stage but not modified
+- `provider-migration-recipe.md` mechanical steps (Steps 1-8) -- referenced by the Build stage but not modified
 - `conventions.md` -- Go conventions document, unchanged
 - `commands-reference.md` -- command patterns document, unchanged
 - `/add-provider` skill -- separate skill, no changes
 
 **Updated:**
 - `SKILL.md` -- fully rewritten (the core deliverable)
-- `gcx-provider-recipe.md` -- minor additions only: a "Skill Structure" cross-reference note near the top, and the status tracker format remains compatible with existing entries
+- `provider-migration-recipe.md` -- minor additions only: a "Skill Structure" cross-reference note near the top, and the status tracker format remains compatible with existing entries
 
 **Newly available:**
 - Sealed envelope model with explicit receives/produces per stage

@@ -431,7 +431,7 @@ number for backward compatibility).
 
 **Usage:** When a provider resource type needs CRUD via `grafanactl resources`, implement `ResourceAdapter`, call `adapter.Register()` in `init()`, and call `RegistryIndex.RegisterStatic()` in `discovery.NewDefaultRegistry`.
 
-**See also:** [design-guide.md §14](../reference/design-guide.md#14-provider--resources-output-consistency-adopt) — provider CRUD commands must use ResourceAdapter, [§15](../reference/design-guide.md#15-typedcrud-pattern-adopt--evolve) — TypedCRUD pattern and trajectory, [§16](../reference/design-guide.md#16-provider-configloader-adopt) — ConfigLoader requirement for all providers.
+**See also:** [design-guide.md §14](../reference/design-guide.md#14-provider-resources-output-consistency-adopt) — provider CRUD commands must use ResourceAdapter, [§15](../reference/design-guide.md#15-typedcrud-pattern-adopt-evolve) — TypedCRUD pattern and trajectory, [§16](../reference/design-guide.md#16-provider-configloader-adopt) — ConfigLoader requirement for all providers.
 
 **Context threading for `--context` flag:** The selected config context name is
 threaded into adapter factories via Go's `context.Context` using helpers in

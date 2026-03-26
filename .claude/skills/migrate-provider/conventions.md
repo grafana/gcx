@@ -79,6 +79,6 @@ adapter.Register(adapter.Registration{
 `apiVersion` (const), `kind` (const), `metadata`, and `spec` with key
 user-facing fields. No external dependencies needed.
 
-**Example**: static `map[string]any` matching gcx's `Example{Resource}()`
+**Example**: static `map[string]any` matching the cloud CLI's `Example{Resource}()`
 output. Include realistic field values — this is what users see when they
 run `grafanactl resources examples {alias}`.

@@ -35,7 +35,7 @@ Do NOT create or modify provider.go or any CLI command files. Those are owned by
 
 ### Recipe Reference
 
-Follow `gcx-provider-recipe.md` Steps 2-5 (types, client, adapter, resource_adapter)
+Follow `provider-migration-recipe.md` Steps 2-5 (types, client, adapter, resource_adapter)
 for mechanical implementation steps. The recipe is authoritative for file structure,
 client pattern, adapter wiring, and registration patterns.
 
@@ -80,7 +80,7 @@ Those are owned by Build-Core.
 
 ### Recipe Reference
 
-Follow `gcx-provider-recipe.md` Steps 6-8 (provider registration, CLI commands)
+Follow `provider-migration-recipe.md` Steps 6-8 (provider registration, CLI commands)
 for mechanical implementation steps. The recipe is authoritative for command
 patterns, Options structs, and codec usage.
 
@@ -125,7 +125,7 @@ verification plan.
    and present it to the user.
 
 2. **Recipe update (REQUIRED -- FR-011)** -- after the report is complete, you
-   MUST update `gcx-provider-recipe.md` with:
+   MUST update `provider-migration-recipe.md` with:
    - **Status tracker entry** for this provider (required even if no issues found)
    - **Gotchas** (problems discovered during smoke tests; write "No new gotchas" if none)
    - Pattern corrections (if any recipe step was unclear or incorrect)

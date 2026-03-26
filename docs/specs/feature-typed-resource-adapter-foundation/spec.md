@@ -10,7 +10,7 @@ created: 2026-03-20
 
 ## Problem Statement
 
-Every provider resource adapter in grafanactl repeats ~200 lines of boilerplate code: static descriptor/alias globals, a ResourceAdapter struct, Descriptor()/Aliases() methods, and List/Get/Create/Update/Delete implementations that each perform the same JSON marshal/unmarshal, K8s envelope wrapping, name management, and namespace injection. The five existing adapters (SLO definitions, synth checks, synth probes, alert rules, alert groups) total ~1,100 LOC of near-identical scaffolding. The consolidation plan requires porting 40+ additional resource types from gcx; at 200 LOC each, this boilerplate would add ~8,000 LOC and proportional maintenance burden.
+Every provider resource adapter in grafanactl repeats ~200 lines of boilerplate code: static descriptor/alias globals, a ResourceAdapter struct, Descriptor()/Aliases() methods, and List/Get/Create/Update/Delete implementations that each perform the same JSON marshal/unmarshal, K8s envelope wrapping, name management, and namespace injection. The five existing adapters (SLO definitions, synth checks, synth probes, alert rules, alert groups) total ~1,100 LOC of near-identical scaffolding. The consolidation plan requires porting 40+ additional resource types from the cloud CLI; at 200 LOC each, this boilerplate would add ~8,000 LOC and proportional maintenance burden.
 
 Developers adding new providers must manually replicate the marshal -> strip fields -> wrap envelope -> return Unstructured pattern, which is error-prone and violates DRY. There is no current workaround other than copy-pasting an existing adapter and modifying it.
 
@@ -35,7 +35,7 @@ Developers adding new providers must manually replicate the marshal -> strip fie
 
 ### Out of Scope
 
-- Porting new resource types from gcx (Phase 1+ work; depends on this foundation)
+- Porting new resource types from the cloud CLI (Phase 1+ work; depends on this foundation)
 - Changes to the `ResourceAdapter` interface itself (existing interface is preserved)
 - Changes to the `ResourceClientRouter` or `Registration` struct (they continue to work unchanged)
 - Changes to provider REST clients (`checks.Client`, `probes.Client`, `definitions.Client`, `alert.Client`) -- these are reused as-is
