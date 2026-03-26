@@ -2,9 +2,13 @@ package config
 
 import (
 	"context"
+	"net/http"
+	"time"
 
 	authlib "github.com/grafana/authlib/types"
 	"k8s.io/client-go/rest"
+
+	"github.com/grafana/grafanactl/internal/auth"
 )
 
 // NamespacedRESTConfig is a REST config with a namespace.
@@ -44,6 +48,35 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) NamespacedRESTCon
 
 	// Authentication
 	switch {
+
+	// TODO: i dont think we need a proxyEndpoint - its "just" the assistant app running in the grafana stack?
+	case cfg.Grafana.ProxyEndpoint != "" && cfg.Grafana.CLIToken != "":
+		// OAuth proxy mode: route requests through the assistant backend proxy.
+		// RefreshTransport handles bearer auth and token renewal; no BearerToken
+		// on rcfg to avoid client-go adding a redundant auth layer.
+		rcfg.Host = cfg.Grafana.ProxyEndpoint + "/api/cli/v1/proxy"
+
+		var expiresAt time.Time
+		if cfg.Grafana.CLITokenExpiresAt != "" {
+			var err error
+			if expiresAt, err = time.Parse(time.RFC3339, cfg.Grafana.CLITokenExpiresAt); err != nil {
+				// Zero time triggers an immediate refresh on first request.
+				expiresAt = time.Time{}
+			}
+		}
+		transport := &auth.RefreshTransport{
+			ProxyEndpoint: cfg.Grafana.ProxyEndpoint,
+			Token:         cfg.Grafana.CLIToken,
+			RefreshToken:  cfg.Grafana.CLIRefreshToken,
+			ExpiresAt:     expiresAt,
+			// TODO: wire OnRefresh to persist refreshed tokens to the config
+			// file. Currently tokens are refreshed in-memory per CLI session;
+			// the next invocation may re-refresh from the original refresh token.
+		}
+		rcfg.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
+			transport.Base = rt
+			return transport
+		}
 	case cfg.Grafana.APIToken != "":
 		rcfg.BearerToken = cfg.Grafana.APIToken
 	case cfg.Grafana.User != "":
