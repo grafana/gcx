@@ -1,22 +1,23 @@
-package k6 //nolint:testpackage // Tests verify compile-time ResourceIdentity conformance on value types.
+package k6_test
 
 import (
 	"testing"
 
+	k6 "github.com/grafana/grafanactl/internal/providers/k6"
 	"github.com/grafana/grafanactl/internal/resources/adapter"
 )
 
 var (
-	_ adapter.ResourceIdentity = &Project{}
-	_ adapter.ResourceIdentity = &LoadTest{}
-	_ adapter.ResourceIdentity = &Schedule{}
-	_ adapter.ResourceIdentity = &EnvVar{}
-	_ adapter.ResourceIdentity = &LoadZone{}
+	_ adapter.ResourceIdentity = &k6.Project{}
+	_ adapter.ResourceIdentity = &k6.LoadTest{}
+	_ adapter.ResourceIdentity = &k6.Schedule{}
+	_ adapter.ResourceIdentity = &k6.EnvVar{}
+	_ adapter.ResourceIdentity = &k6.LoadZone{}
 )
 
 func TestK6Types_ResourceIdentity(t *testing.T) {
 	t.Run("Project int ID", func(t *testing.T) {
-		p := &Project{ID: 42}
+		p := &k6.Project{ID: 42}
 		if got := p.GetResourceName(); got != "42" {
 			t.Errorf("GetResourceName() = %q, want %q", got, "42")
 		}
@@ -31,14 +32,14 @@ func TestK6Types_ResourceIdentity(t *testing.T) {
 	})
 
 	t.Run("LoadTest int ID", func(t *testing.T) {
-		lt := &LoadTest{ID: 7}
+		lt := &k6.LoadTest{ID: 7}
 		if got := lt.GetResourceName(); got != "7" {
 			t.Errorf("GetResourceName() = %q, want %q", got, "7")
 		}
 	})
 
 	t.Run("LoadZone string Name", func(t *testing.T) {
-		lz := &LoadZone{Name: "us-east-1"}
+		lz := &k6.LoadZone{Name: "us-east-1"}
 		if got := lz.GetResourceName(); got != "us-east-1" {
 			t.Errorf("GetResourceName() = %q, want %q", got, "us-east-1")
 		}

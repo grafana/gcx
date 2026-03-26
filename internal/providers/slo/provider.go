@@ -38,7 +38,7 @@ func (p *SLOProvider) Commands() []*cobra.Command {
 	// Bind config flags on the parent — all subcommands inherit these.
 	loader.BindFlags(sloCmd.PersistentFlags())
 
-	sloCmd.AddCommand(definitions.Commands(loader))
+	sloCmd.AddCommand(definitions.Commands())
 	sloCmd.AddCommand(reports.Commands(loader))
 
 	return []*cobra.Command{sloCmd}
@@ -65,7 +65,6 @@ func (p *SLOProvider) TypedRegistrations() []adapter.Registration {
 		{
 			Factory:    definitions.NewLazyFactory(),
 			Descriptor: desc,
-			Aliases:    definitions.StaticAliases(),
 			GVK:        desc.GroupVersionKind(),
 			Schema:     definitions.SloSchema(),
 			Example:    definitions.SloExample(),

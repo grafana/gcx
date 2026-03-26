@@ -25,11 +25,6 @@ var staticDescriptor = resources.Descriptor{
 	Plural:   "checks",
 }
 
-// staticAliases are the short aliases for Check resources.
-//
-//nolint:gochecknoglobals // Static descriptor used in init() self-registration pattern.
-var staticAliases = []string{"checks"}
-
 // checkResource is an internal wrapper around CheckSpec that carries
 // non-serialized metadata needed by TypedCRUD's MetadataFn.
 // Unexported fields are ignored by json.Marshal, so the serialized output
@@ -177,7 +172,6 @@ func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[
 		},
 
 		Descriptor: staticDescriptor,
-		Aliases:    staticAliases,
 	}
 
 	return crud, namespace, nil
@@ -199,11 +193,6 @@ func NewAdapterFactory(loader smcfg.Loader) adapter.Factory {
 // Used for registration without constructing an adapter instance.
 func StaticDescriptor() resources.Descriptor {
 	return staticDescriptor
-}
-
-// StaticAliases returns the static aliases for SM Check resources.
-func StaticAliases() []string {
-	return staticAliases
 }
 
 // StaticGVK returns the static GroupVersionKind for SM Check resources.

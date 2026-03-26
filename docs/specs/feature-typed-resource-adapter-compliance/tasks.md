@@ -1,7 +1,7 @@
 ---
 type: feature-tasks
 title: "Typed Resource Adapter Compliance"
-status: draft
+status: done
 spec: docs/specs/feature-typed-resource-adapter-compliance/spec.md
 plan: docs/specs/feature-typed-resource-adapter-compliance/plan.md
 created: 2026-03-26

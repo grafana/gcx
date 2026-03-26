@@ -25,11 +25,6 @@ var staticDescriptor = resources.Descriptor{
 	Plural:   "incidents",
 }
 
-// staticAliases are the short aliases for incident resources.
-//
-//nolint:gochecknoglobals // Static descriptor used in init() self-registration pattern.
-var staticAliases = []string{"incidents", "incident", "inc"}
-
 // incidentSchema returns a JSON Schema for the Incident resource type.
 func incidentSchema() json.RawMessage {
 	schema := map[string]any{
@@ -158,7 +153,6 @@ func newTypedAdapter(client *Client, namespace string) adapter.ResourceAdapter {
 		StripFields: []string{"incidentID"},
 		Namespace:   namespace,
 		Descriptor:  staticDescriptor,
-		Aliases:     staticAliases,
 	}
 
 	return crud.AsAdapter()
@@ -200,7 +194,6 @@ func NewTypedCRUD(ctx context.Context, loader GrafanaConfigLoader) (*adapter.Typ
 		StripFields: []string{"incidentID"},
 		Namespace:   cfg.Namespace,
 		Descriptor:  staticDescriptor,
-		Aliases:     staticAliases,
 	}
 
 	return crud, cfg, nil

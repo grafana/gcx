@@ -310,15 +310,14 @@ func TestResourceAdapter_Descriptor(t *testing.T) {
 	assert.Equal(t, "Check", desc.Kind)
 }
 
-func TestResourceAdapter_Aliases(t *testing.T) {
+func TestResourceAdapter_NoAliases(t *testing.T) {
 	loader := &fakeLoader{baseURL: "http://unused", token: "t", namespace: "default"}
 	factory := checks.NewAdapterFactory(loader)
 
 	a, err := factory(context.Background())
 	require.NoError(t, err)
 
-	aliases := a.Aliases()
-	assert.Contains(t, aliases, "checks")
+	assert.Empty(t, a.Aliases(), "adapter aliases should be empty (provider-prefixed aliases removed)")
 }
 
 func TestNewAdapterFactory_LazyInit(t *testing.T) {

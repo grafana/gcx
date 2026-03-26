@@ -31,20 +31,10 @@ var staticDescriptor = resources.Descriptor{
 	Plural:   "probes",
 }
 
-// staticAliases are the short aliases for Probe resources.
-//
-//nolint:gochecknoglobals // Static descriptor used in init() self-registration pattern.
-var staticAliases = []string{"probes"}
-
 // StaticDescriptor returns the static descriptor for SM Probe resources.
 // Used for registration without constructing an adapter instance.
 func StaticDescriptor() resources.Descriptor {
 	return staticDescriptor
-}
-
-// StaticAliases returns the static aliases for SM Probe resources.
-func StaticAliases() []string {
-	return staticAliases
 }
 
 // StaticGVK returns the static GroupVersionKind for SM Probe resources.
@@ -82,7 +72,6 @@ func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[
 		Namespace:   namespace,
 		StripFields: []string{"id", "tenantId", "created", "modified", "onlineChange", "online", "version"},
 		Descriptor:  staticDescriptor,
-		Aliases:     staticAliases,
 	}
 	return crud, namespace, nil
 }

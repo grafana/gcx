@@ -16,7 +16,6 @@ func TestDatasetAdapter_List(t *testing.T) {
 	crud := &adapter.TypedCRUD[kg.DatasetItem]{
 		Namespace:  "stack-1",
 		Descriptor: kg.DatasetDescriptor(),
-		Aliases:    kg.DatasetAliases(),
 		ListFn: func(_ context.Context) ([]kg.DatasetItem, error) {
 			return []kg.DatasetItem{
 				{Name: "kubernetes", Detected: true, Enabled: true, Configured: true},
@@ -69,7 +68,6 @@ func TestVendorAdapter_List(t *testing.T) {
 	crud := &adapter.TypedCRUD[kg.Vendor]{
 		Namespace:  "stack-1",
 		Descriptor: kg.VendorDescriptor(),
-		Aliases:    kg.VendorAliases(),
 		ListFn: func(_ context.Context) ([]kg.Vendor, error) {
 			return []kg.Vendor{
 				{Name: "nginx", Enabled: true},
@@ -93,7 +91,6 @@ func TestEntityTypeAdapter_List(t *testing.T) {
 	crud := &adapter.TypedCRUD[kg.EntityType]{
 		Namespace:  "stack-1",
 		Descriptor: kg.EntityTypeDescriptor(),
-		Aliases:    kg.EntityTypeAliases(),
 		ListFn: func(_ context.Context) ([]kg.EntityType, error) {
 			return []kg.EntityType{
 				{Name: "Service", Count: 42},
@@ -121,7 +118,6 @@ func TestScopeAdapter_List(t *testing.T) {
 	crud := &adapter.TypedCRUD[kg.Scope]{
 		Namespace:  "stack-1",
 		Descriptor: kg.ScopeDescriptor(),
-		Aliases:    kg.ScopeAliases(),
 		ListFn: func(_ context.Context) ([]kg.Scope, error) {
 			return []kg.Scope{
 				{Name: "env", Values: []string{"prod", "staging"}},
@@ -138,6 +134,30 @@ func TestScopeAdapter_List(t *testing.T) {
 	item := result.Items[0]
 	assert.Equal(t, "Scope", item.GetKind())
 	assert.Equal(t, "env", item.GetName())
+}
+
+func TestRuleAdapter_List(t *testing.T) {
+	crud := &adapter.TypedCRUD[kg.Rule]{
+		Namespace:  "stack-1",
+		Descriptor: kg.RuleDescriptor(),
+		ListFn: func(_ context.Context) ([]kg.Rule, error) {
+			return []kg.Rule{
+				{Name: "service:http_requests:rate5m", Expr: "sum(rate(http_requests_total[5m])) by (service)", Record: "service:http_requests:rate5m"},
+				{Name: "high-error-rate", Alert: "HighErrorRate", Expr: "rate(http_errors_total[5m]) > 0.1"},
+			}, nil
+		},
+	}
+
+	a := crud.AsAdapter()
+	result, err := a.List(t.Context(), metav1.ListOptions{})
+	require.NoError(t, err)
+	require.Len(t, result.Items, 2)
+
+	item := result.Items[0]
+	assert.Equal(t, "kg.ext.grafana.app/v1alpha1", item.GetAPIVersion())
+	assert.Equal(t, "Rule", item.GetKind())
+	assert.Equal(t, "service:http_requests:rate5m", item.GetName())
+	assert.Equal(t, "stack-1", item.GetNamespace())
 }
 
 // TestKGProvider_TypedRegistrations verifies that all 5 resource types are registered.

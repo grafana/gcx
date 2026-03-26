@@ -11,7 +11,6 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/grafana/grafanactl/internal/config"
 	"github.com/grafana/grafanactl/internal/format"
 	cmdio "github.com/grafana/grafanactl/internal/output"
 	"github.com/grafana/grafanactl/internal/resources"
@@ -21,13 +20,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// GrafanaConfigLoader can load a NamespacedRESTConfig from the active context.
-type GrafanaConfigLoader interface {
-	LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error)
-}
-
 // Commands returns the definitions command group with CRUD subcommands.
-func Commands(loader GrafanaConfigLoader) *cobra.Command {
+func Commands() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "definitions",
 		Short:   "Manage SLO definitions.",

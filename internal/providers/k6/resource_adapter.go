@@ -17,7 +17,6 @@ type resourceDef struct {
 	kind     string
 	singular string
 	plural   string
-	aliases  []string
 	schema   json.RawMessage
 	example  json.RawMessage
 }
@@ -27,31 +26,26 @@ func allResources() []resourceDef {
 	return []resourceDef{
 		{
 			kind: "Project", singular: "project", plural: "projects",
-			aliases: []string{"k6projects", "k6project", "k6proj"},
 			schema:  projectSchema(),
 			example: projectExample(),
 		},
 		{
 			kind: "LoadTest", singular: "loadtest", plural: "loadtests",
-			aliases: []string{"k6loadtests", "k6loadtest", "k6lt"},
 			schema:  loadTestSchema(),
 			example: loadTestExample(),
 		},
 		{
 			kind: "Schedule", singular: "schedule", plural: "schedules",
-			aliases: []string{"k6schedules", "k6schedule", "k6sched"},
 			schema:  scheduleSchema(),
 			example: scheduleExample(),
 		},
 		{
 			kind: "EnvVar", singular: "envvar", plural: "envvars",
-			aliases: []string{"k6envvars", "k6envvar", "k6env"},
 			schema:  envVarSchema(),
 			example: envVarExample(),
 		},
 		{
 			kind: "LoadZone", singular: "loadzone", plural: "loadzones",
-			aliases: []string{"k6loadzones", "k6loadzone", "k6lz"},
 			schema:  loadZoneSchema(),
 			example: loadZoneExample(),
 		},
@@ -111,15 +105,15 @@ func newSubResourceFactory(loader CloudConfigLoader, rd resourceDef) adapter.Fac
 
 		switch rd.kind {
 		case "Project":
-			return newProjectCRUD(client, namespace, desc, rd.aliases), nil
+			return newProjectCRUD(client, namespace, desc), nil
 		case "LoadTest":
-			return newLoadTestCRUD(client, namespace, desc, rd.aliases), nil
+			return newLoadTestCRUD(client, namespace, desc), nil
 		case "Schedule":
-			return newScheduleCRUD(client, namespace, desc, rd.aliases), nil
+			return newScheduleCRUD(client, namespace, desc), nil
 		case "EnvVar":
-			return newEnvVarCRUD(client, namespace, desc, rd.aliases), nil
+			return newEnvVarCRUD(client, namespace, desc), nil
 		case "LoadZone":
-			return newLoadZoneCRUD(client, namespace, desc, rd.aliases), nil
+			return newLoadZoneCRUD(client, namespace, desc), nil
 		default:
 			return nil, fmt.Errorf("k6: unknown resource kind %q", rd.kind)
 		}
@@ -130,7 +124,7 @@ func newSubResourceFactory(loader CloudConfigLoader, rd resourceDef) adapter.Fac
 // TypedCRUD constructors
 // ---------------------------------------------------------------------------
 
-func newProjectCRUD(c *Client, ns string, desc resources.Descriptor, aliases []string) adapter.ResourceAdapter {
+func newProjectCRUD(c *Client, ns string, desc resources.Descriptor) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[Project]{
 		ListFn: c.ListProjects,
 		GetFn: func(ctx context.Context, name string) (*Project, error) {
@@ -163,12 +157,11 @@ func newProjectCRUD(c *Client, ns string, desc resources.Descriptor, aliases []s
 		Namespace:   ns,
 		StripFields: []string{"id"},
 		Descriptor:  desc,
-		Aliases:     aliases,
 	}
 	return crud.AsAdapter()
 }
 
-func newLoadTestCRUD(c *Client, ns string, desc resources.Descriptor, aliases []string) adapter.ResourceAdapter {
+func newLoadTestCRUD(c *Client, ns string, desc resources.Descriptor) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[LoadTest]{
 		ListFn: c.ListLoadTests,
 		GetFn: func(ctx context.Context, name string) (*LoadTest, error) {
@@ -201,12 +194,11 @@ func newLoadTestCRUD(c *Client, ns string, desc resources.Descriptor, aliases []
 		Namespace:   ns,
 		StripFields: []string{"id"},
 		Descriptor:  desc,
-		Aliases:     aliases,
 	}
 	return crud.AsAdapter()
 }
 
-func newScheduleCRUD(c *Client, ns string, desc resources.Descriptor, aliases []string) adapter.ResourceAdapter {
+func newScheduleCRUD(c *Client, ns string, desc resources.Descriptor) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[Schedule]{
 		ListFn: c.ListSchedules,
 		GetFn: func(ctx context.Context, name string) (*Schedule, error) {
@@ -249,12 +241,11 @@ func newScheduleCRUD(c *Client, ns string, desc resources.Descriptor, aliases []
 		Namespace:   ns,
 		StripFields: []string{"id"},
 		Descriptor:  desc,
-		Aliases:     aliases,
 	}
 	return crud.AsAdapter()
 }
 
-func newEnvVarCRUD(c *Client, ns string, desc resources.Descriptor, aliases []string) adapter.ResourceAdapter {
+func newEnvVarCRUD(c *Client, ns string, desc resources.Descriptor) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[EnvVar]{
 		ListFn: c.ListEnvVars,
 		GetFn: func(ctx context.Context, name string) (*EnvVar, error) {
@@ -307,12 +298,11 @@ func newEnvVarCRUD(c *Client, ns string, desc resources.Descriptor, aliases []st
 		Namespace:   ns,
 		StripFields: []string{"id"},
 		Descriptor:  desc,
-		Aliases:     aliases,
 	}
 	return crud.AsAdapter()
 }
 
-func newLoadZoneCRUD(c *Client, ns string, desc resources.Descriptor, aliases []string) adapter.ResourceAdapter {
+func newLoadZoneCRUD(c *Client, ns string, desc resources.Descriptor) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[LoadZone]{
 		ListFn: c.ListLoadZones,
 		GetFn: func(ctx context.Context, name string) (*LoadZone, error) {
@@ -336,7 +326,6 @@ func newLoadZoneCRUD(c *Client, ns string, desc resources.Descriptor, aliases []
 		Namespace:   ns,
 		StripFields: []string{"id"},
 		Descriptor:  desc,
-		Aliases:     aliases,
 	}
 	return crud.AsAdapter()
 }

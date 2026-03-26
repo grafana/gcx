@@ -2,11 +2,22 @@ package fleet
 
 import "time"
 
-// GetResourceName returns the pipeline ID.
-func (p Pipeline) GetResourceName() string { return p.ID }
+// GetResourceName returns the slug-id composite name for the pipeline.
+func (p Pipeline) GetResourceName() string {
+	if p.Name != "" && p.ID != "" {
+		return slugifyName(p.Name) + "-" + p.ID
+	}
+	return p.ID
+}
 
-// SetResourceName restores the pipeline ID.
-func (p *Pipeline) SetResourceName(name string) { p.ID = name }
+// SetResourceName restores the pipeline ID from a slug-id composite name.
+func (p *Pipeline) SetResourceName(name string) {
+	if id, ok := extractIDFromSlug(name); ok {
+		p.ID = id
+	} else {
+		p.ID = name
+	}
+}
 
 // Pipeline represents a Fleet Management pipeline.
 //
@@ -20,11 +31,22 @@ type Pipeline struct {
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
-// GetResourceName returns the collector ID.
-func (c Collector) GetResourceName() string { return c.ID }
+// GetResourceName returns the slug-id composite name for the collector.
+func (c Collector) GetResourceName() string {
+	if c.Name != "" && c.ID != "" {
+		return slugifyName(c.Name) + "-" + c.ID
+	}
+	return c.ID
+}
 
-// SetResourceName restores the collector ID.
-func (c *Collector) SetResourceName(name string) { c.ID = name }
+// SetResourceName restores the collector ID from a slug-id composite name.
+func (c *Collector) SetResourceName(name string) {
+	if id, ok := extractIDFromSlug(name); ok {
+		c.ID = id
+	} else {
+		c.ID = name
+	}
+}
 
 // Collector represents a Fleet Management collector.
 //

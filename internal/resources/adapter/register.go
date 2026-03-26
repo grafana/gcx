@@ -21,8 +21,8 @@ type Registration struct {
 	Descriptor resources.Descriptor
 	Aliases    []string
 	GVK        schema.GroupVersionKind
-	Schema     json.RawMessage // Optional JSON Schema for this resource type
-	Example    json.RawMessage // Optional example manifest (YAML-compatible JSON)
+	Schema     json.RawMessage // Required JSON Schema for this resource type (per CONSTITUTION.md). MAY be nil for read-only resources.
+	Example    json.RawMessage // Required example manifest (YAML-compatible JSON, per CONSTITUTION.md). MAY be nil for read-only resources.
 }
 
 // registrations holds all adapter registrations collected from providers.

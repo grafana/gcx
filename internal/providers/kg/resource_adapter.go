@@ -29,7 +29,6 @@ var (
 		Singular:     "rule",
 		Plural:       "rules",
 	}
-	staticAliases = []string{"kg-rules", "kg-rule", "kgrule"}
 
 	datasetDescriptor = resources.Descriptor{
 		GroupVersion: kgGroupVersion,
@@ -37,7 +36,6 @@ var (
 		Singular:     "dataset",
 		Plural:       "datasets",
 	}
-	datasetAliases = []string{"kg-datasets", "kg-dataset"}
 
 	vendorDescriptor = resources.Descriptor{
 		GroupVersion: kgGroupVersion,
@@ -45,7 +43,6 @@ var (
 		Singular:     "vendor",
 		Plural:       "vendors",
 	}
-	vendorAliases = []string{"kg-vendors", "kg-vendor"}
 
 	entityTypeDescriptor = resources.Descriptor{
 		GroupVersion: kgGroupVersion,
@@ -53,7 +50,6 @@ var (
 		Singular:     "entitytype",
 		Plural:       "entitytypes",
 	}
-	entityTypeAliases = []string{"kg-entity-types", "kg-entity-type"}
 
 	scopeDescriptor = resources.Descriptor{
 		GroupVersion: kgGroupVersion,
@@ -61,34 +57,24 @@ var (
 		Singular:     "scope",
 		Plural:       "scopes",
 	}
-	scopeAliases = []string{"kg-scopes", "kg-scope"}
 )
 
 // Descriptor accessors for use in tests and registration.
 
+// RuleDescriptor returns the resource descriptor for KG rules.
+func RuleDescriptor() resources.Descriptor { return staticDescriptor }
+
 // DatasetDescriptor returns the resource descriptor for KG datasets.
 func DatasetDescriptor() resources.Descriptor { return datasetDescriptor }
-
-// DatasetAliases returns the aliases for KG datasets.
-func DatasetAliases() []string { return datasetAliases }
 
 // VendorDescriptor returns the resource descriptor for KG vendors.
 func VendorDescriptor() resources.Descriptor { return vendorDescriptor }
 
-// VendorAliases returns the aliases for KG vendors.
-func VendorAliases() []string { return vendorAliases }
-
 // EntityTypeDescriptor returns the resource descriptor for KG entity types.
 func EntityTypeDescriptor() resources.Descriptor { return entityTypeDescriptor }
 
-// EntityTypeAliases returns the aliases for KG entity types.
-func EntityTypeAliases() []string { return entityTypeAliases }
-
 // ScopeDescriptor returns the resource descriptor for KG scopes.
 func ScopeDescriptor() resources.Descriptor { return scopeDescriptor }
-
-// ScopeAliases returns the aliases for KG scopes.
-func ScopeAliases() []string { return scopeAliases }
 
 // RuleSchema returns a JSON Schema for the KG Rule resource type.
 func RuleSchema() json.RawMessage {
@@ -179,7 +165,6 @@ func NewAdapterFactory(loader RESTConfigLoader) adapter.Factory {
 			},
 			Namespace:  cfg.Namespace,
 			Descriptor: staticDescriptor,
-			Aliases:    staticAliases,
 		}
 		return crud.AsAdapter(), nil
 	}
@@ -206,7 +191,6 @@ func NewTypedCRUD(ctx context.Context, loader RESTConfigLoader) (*adapter.TypedC
 		},
 		Namespace:  cfg.Namespace,
 		Descriptor: staticDescriptor,
-		Aliases:    staticAliases,
 	}
 	return crud, cfg, nil
 }
@@ -258,7 +242,7 @@ func datasetSpecSchema() map[string]any {
 
 // NewDatasetAdapterFactory returns a lazy adapter.Factory for KG datasets.
 func NewDatasetAdapterFactory(loader RESTConfigLoader) adapter.Factory {
-	return newListOnlyFactory[DatasetItem](loader, datasetDescriptor, datasetAliases,
+	return newListOnlyFactory[DatasetItem](loader, datasetDescriptor,
 		func(client *Client, ctx context.Context) ([]DatasetItem, error) {
 			resp, err := client.GetDatasets(ctx)
 			if err != nil {
@@ -288,7 +272,7 @@ func vendorSpecSchema() map[string]any {
 
 // NewVendorAdapterFactory returns a lazy adapter.Factory for KG vendors.
 func NewVendorAdapterFactory(loader RESTConfigLoader) adapter.Factory {
-	return newListOnlyFactory[Vendor](loader, vendorDescriptor, vendorAliases,
+	return newListOnlyFactory[Vendor](loader, vendorDescriptor,
 		func(client *Client, ctx context.Context) ([]Vendor, error) {
 			return client.GetVendors(ctx)
 		})
@@ -316,7 +300,7 @@ func entityTypeSpecSchema() map[string]any {
 
 // NewEntityTypeAdapterFactory returns a lazy adapter.Factory for KG entity types.
 func NewEntityTypeAdapterFactory(loader RESTConfigLoader) adapter.Factory {
-	return newListOnlyFactory[EntityType](loader, entityTypeDescriptor, entityTypeAliases,
+	return newListOnlyFactory[EntityType](loader, entityTypeDescriptor,
 		func(client *Client, ctx context.Context) ([]EntityType, error) {
 			counts, err := client.CountEntityTypes(ctx)
 			if err != nil {
@@ -350,7 +334,7 @@ func scopeSpecSchema() map[string]any {
 
 // NewScopeAdapterFactory returns a lazy adapter.Factory for KG scopes.
 func NewScopeAdapterFactory(loader RESTConfigLoader) adapter.Factory {
-	return newListOnlyFactory[Scope](loader, scopeDescriptor, scopeAliases,
+	return newListOnlyFactory[Scope](loader, scopeDescriptor,
 		func(client *Client, ctx context.Context) ([]Scope, error) {
 			scopeMap, err := client.ListEntityScopes(ctx)
 			if err != nil {
@@ -373,7 +357,6 @@ func NewScopeAdapterFactory(loader RESTConfigLoader) adapter.Factory {
 func newListOnlyFactory[T adapter.ResourceNamer](
 	loader RESTConfigLoader,
 	desc resources.Descriptor,
-	aliases []string,
 	listFn func(client *Client, ctx context.Context) ([]T, error),
 ) adapter.Factory {
 	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
@@ -391,7 +374,6 @@ func newListOnlyFactory[T adapter.ResourceNamer](
 			},
 			Namespace:  cfg.Namespace,
 			Descriptor: desc,
-			Aliases:    aliases,
 		}
 		return crud.AsAdapter(), nil
 	}

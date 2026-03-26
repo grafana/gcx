@@ -38,9 +38,12 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   typed methods (`List`, `Get`, `Create`, `Update`, `Delete`) for data access, not raw
   API clients. This ensures bug fixes to CRUD logic apply to both provider commands and
   the `resources` pipeline automatically.
-- **Schema/Example on all adapters:** Every `ResourceAdapter` implementation must provide
-  `Schema()` and `Example()` methods returning non-nil JSON. These power the `schemas`
-  command and serve as documentation for each resource type.
+- **Schema/Example on Registration structs:** Every `adapter.Registration` struct (populated
+  via `TypedRegistrations()`) must include a non-nil `Schema` field. These power the
+  `schemas` command via the global `SchemaForGVK`/`ExampleForGVK` functions — `AsAdapter()`
+  does not propagate schema or example. The `Example` field MAY be nil for read-only
+  resources (those without Create/Update support) since examples serve as templates for
+  writable operations.
 
 ## CLI Grammar
 
@@ -117,8 +120,7 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   behave differently across the two paths.
 - **Sub-resources nest under their parent command.** If a resource cannot
   be listed or addressed without a parent ID (e.g. alerts require an
-  alert group, resolution notes require an alert group), it is a
-  sub-resource. Sub-resources must not be registered as standalone typed
+  alert group), it is a sub-resource. Sub-resources must not be registered as standalone typed
   adapters (no `ListFn` that ignores the parent). Instead, expose them
   as verbs under the parent command: `$PARENT $VERB-$CHILD $PARENT_ID`
   (e.g. `alert-groups list-alerts <id>`). Get-by-ID may still have a

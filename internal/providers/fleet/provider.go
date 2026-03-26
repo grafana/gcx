@@ -55,9 +55,6 @@ var pipelineDescriptorVar = resources.Descriptor{
 }
 
 //nolint:gochecknoglobals // Static descriptor used in init() self-registration pattern.
-var pipelineAliasesVar = []string{"pipelines", "pipeline", "pipe"}
-
-//nolint:gochecknoglobals // Static descriptor used in init() self-registration pattern.
 var collectorDescriptorVar = resources.Descriptor{
 	GroupVersion: schema.GroupVersion{
 		Group:   "fleet.ext.grafana.app",
@@ -68,20 +65,11 @@ var collectorDescriptorVar = resources.Descriptor{
 	Plural:   "collectors",
 }
 
-//nolint:gochecknoglobals // Static descriptor used in init() self-registration pattern.
-var collectorAliasesVar = []string{"collectors", "collector", "col"}
-
 // PipelineDescriptor returns the static descriptor for pipeline resources.
 func PipelineDescriptor() resources.Descriptor { return pipelineDescriptorVar }
 
-// PipelineAliases returns the static aliases for pipeline resources.
-func PipelineAliases() []string { return pipelineAliasesVar }
-
 // CollectorDescriptor returns the static descriptor for collector resources.
 func CollectorDescriptor() resources.Descriptor { return collectorDescriptorVar }
-
-// CollectorAliases returns the static aliases for collector resources.
-func CollectorAliases() []string { return collectorAliasesVar }
 
 // ---------------------------------------------------------------------------
 // init — self-registration
@@ -147,7 +135,6 @@ func (p *FleetProvider) TypedRegistrations() []adapter.Registration {
 		{
 			Factory:    NewPipelineAdapterFactory(loader),
 			Descriptor: PipelineDescriptor(),
-			Aliases:    PipelineAliases(),
 			GVK:        PipelineDescriptor().GroupVersionKind(),
 			Schema:     pipelineSchema(),
 			Example:    pipelineExample(),
@@ -155,7 +142,6 @@ func (p *FleetProvider) TypedRegistrations() []adapter.Registration {
 		{
 			Factory:    NewCollectorAdapterFactory(loader),
 			Descriptor: CollectorDescriptor(),
-			Aliases:    CollectorAliases(),
 			GVK:        CollectorDescriptor().GroupVersionKind(),
 			Schema:     collectorSchema(),
 			Example:    collectorExample(),
@@ -1132,7 +1118,6 @@ type CloudConfigLoader interface {
 	LoadCloudConfig(ctx context.Context) (providers.CloudRESTConfig, error)
 }
 
-// NewPipelineAdapterFactory returns a lazy adapter.Factory for fleet pipelines.
 // NewPipelineTypedCRUD creates a TypedCRUD for Fleet pipelines.
 func NewPipelineTypedCRUD(ctx context.Context, loader CloudConfigLoader) (*adapter.TypedCRUD[Pipeline], string, error) {
 	cloudCfg, err := loader.LoadCloudConfig(ctx)
@@ -1189,7 +1174,6 @@ func NewPipelineTypedCRUD(ctx context.Context, loader CloudConfigLoader) (*adapt
 		Namespace:   cloudCfg.Namespace,
 		StripFields: []string{"id"},
 		Descriptor:  pipelineDescriptorVar,
-		Aliases:     pipelineAliasesVar,
 	}
 	return crud, cloudCfg.Namespace, nil
 }
@@ -1205,65 +1189,73 @@ func NewPipelineAdapterFactory(loader CloudConfigLoader) adapter.Factory {
 	}
 }
 
+// NewCollectorTypedCRUD creates a TypedCRUD for Fleet collectors.
+func NewCollectorTypedCRUD(ctx context.Context, loader CloudConfigLoader) (*adapter.TypedCRUD[Collector], string, error) {
+	cloudCfg, err := loader.LoadCloudConfig(ctx)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to load Fleet config for collectors: %w", err)
+	}
+
+	url := cloudCfg.Stack.AgentManagementInstanceURL
+	if url == "" {
+		return nil, "", errors.New("fleet management endpoint is not available for this stack")
+	}
+	if cloudCfg.Stack.AgentManagementInstanceID == 0 {
+		return nil, "", errors.New("fleet management instance ID is not available for this stack")
+	}
+	instanceID := strconv.Itoa(cloudCfg.Stack.AgentManagementInstanceID)
+	httpClient, err := cloudCfg.HTTPClient()
+	if err != nil {
+		return nil, "", fmt.Errorf("fleet: failed to create HTTP client for collectors: %w", err)
+	}
+	client := NewClient(url, instanceID, cloudCfg.Token, true, httpClient)
+
+	crud := &adapter.TypedCRUD[Collector]{
+		ListFn: client.ListCollectors,
+		GetFn: func(ctx context.Context, name string) (*Collector, error) {
+			return resolveCollector(ctx, client, name)
+		},
+		CreateFn: func(ctx context.Context, col *Collector) (*Collector, error) {
+			return client.CreateCollector(ctx, *col)
+		},
+		UpdateFn: func(ctx context.Context, name string, col *Collector) (*Collector, error) {
+			id, ok := extractIDFromSlug(name)
+			if !ok {
+				return nil, fmt.Errorf("cannot determine collector ID from name %q: expected format \"<slug>-<id>\" or numeric ID", name)
+			}
+			col.ID = id
+			if err := client.UpdateCollector(ctx, *col); err != nil {
+				return nil, fmt.Errorf("failed to update collector %q: %w", id, err)
+			}
+			updated, err := client.GetCollector(ctx, id)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get updated collector %q: %w", id, err)
+			}
+			if updated == nil {
+				return nil, fmt.Errorf("collector %q not found after update", id)
+			}
+			return updated, nil
+		},
+		DeleteFn: func(ctx context.Context, name string) error {
+			id, ok := extractIDFromSlug(name)
+			if !ok {
+				return fmt.Errorf("cannot determine collector ID from name %q: expected format \"<slug>-<id>\" or numeric ID", name)
+			}
+			return client.DeleteCollector(ctx, id)
+		},
+		Namespace:   cloudCfg.Namespace,
+		StripFields: []string{"id"},
+		Descriptor:  collectorDescriptorVar,
+	}
+	return crud, cloudCfg.Namespace, nil
+}
+
 // NewCollectorAdapterFactory returns a lazy adapter.Factory for fleet collectors.
 func NewCollectorAdapterFactory(loader CloudConfigLoader) adapter.Factory {
 	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
-		cloudCfg, err := loader.LoadCloudConfig(ctx)
+		crud, _, err := NewCollectorTypedCRUD(ctx, loader)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load Fleet config for collector adapter: %w", err)
-		}
-
-		url := cloudCfg.Stack.AgentManagementInstanceURL
-		if url == "" {
-			return nil, errors.New("fleet management endpoint is not available for this stack")
-		}
-		if cloudCfg.Stack.AgentManagementInstanceID == 0 {
-			return nil, errors.New("fleet management instance ID is not available for this stack")
-		}
-		instanceID := strconv.Itoa(cloudCfg.Stack.AgentManagementInstanceID)
-		httpClient, err := cloudCfg.HTTPClient()
-		if err != nil {
-			return nil, fmt.Errorf("fleet: failed to create HTTP client for collector adapter: %w", err)
-		}
-		client := NewClient(url, instanceID, cloudCfg.Token, true, httpClient)
-
-		crud := &adapter.TypedCRUD[Collector]{
-			ListFn: client.ListCollectors,
-			GetFn: func(ctx context.Context, name string) (*Collector, error) {
-				return resolveCollector(ctx, client, name)
-			},
-			CreateFn: func(ctx context.Context, col *Collector) (*Collector, error) {
-				return client.CreateCollector(ctx, *col)
-			},
-			UpdateFn: func(ctx context.Context, name string, col *Collector) (*Collector, error) {
-				id, ok := extractIDFromSlug(name)
-				if !ok {
-					return nil, fmt.Errorf("cannot determine collector ID from name %q: expected format \"<slug>-<id>\" or numeric ID", name)
-				}
-				col.ID = id
-				if err := client.UpdateCollector(ctx, *col); err != nil {
-					return nil, fmt.Errorf("failed to update collector %q: %w", id, err)
-				}
-				updated, err := client.GetCollector(ctx, id)
-				if err != nil {
-					return nil, fmt.Errorf("failed to get updated collector %q: %w", id, err)
-				}
-				if updated == nil {
-					return nil, fmt.Errorf("collector %q not found after update", id)
-				}
-				return updated, nil
-			},
-			DeleteFn: func(ctx context.Context, name string) error {
-				id, ok := extractIDFromSlug(name)
-				if !ok {
-					return fmt.Errorf("cannot determine collector ID from name %q: expected format \"<slug>-<id>\" or numeric ID", name)
-				}
-				return client.DeleteCollector(ctx, id)
-			},
-			Namespace:   cloudCfg.Namespace,
-			StripFields: []string{"id"},
-			Descriptor:  collectorDescriptorVar,
-			Aliases:     collectorAliasesVar,
+			return nil, err
 		}
 		return crud.AsAdapter(), nil
 	}

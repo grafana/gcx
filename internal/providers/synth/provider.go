@@ -122,7 +122,6 @@ func (p *SynthProvider) TypedRegistrations() []adapter.Registration {
 		{
 			Factory:    checks.NewAdapterFactory(loader),
 			Descriptor: checks.StaticDescriptor(),
-			Aliases:    checks.StaticAliases(),
 			GVK:        checks.StaticGVK(),
 			Schema:     checkSchema(),
 			Example:    checkExample(),
@@ -130,7 +129,6 @@ func (p *SynthProvider) TypedRegistrations() []adapter.Registration {
 		{
 			Factory:    probes.NewAdapterFactory(loader),
 			Descriptor: probes.StaticDescriptor(),
-			Aliases:    probes.StaticAliases(),
 			GVK:        probes.StaticGVK(),
 			Schema:     probeSchema(),
 		},

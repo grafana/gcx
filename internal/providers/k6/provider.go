@@ -80,7 +80,6 @@ func (p *K6Provider) TypedRegistrations() []adapter.Registration {
 		registrations = append(registrations, adapter.Registration{
 			Factory:    newSubResourceFactory(loader, rd),
 			Descriptor: desc,
-			Aliases:    rd.aliases,
 			GVK:        desc.GroupVersionKind(),
 			Schema:     rd.schema,
 			Example:    rd.example,

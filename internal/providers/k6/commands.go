@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/grafanactl/internal/format"
 	cmdio "github.com/grafana/grafanactl/internal/output"
 	"github.com/grafana/grafanactl/internal/resources"
+	"github.com/grafana/grafanactl/internal/terminal"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -1199,6 +1200,9 @@ func newTokenCommand(loader CloudConfigLoader) *cobra.Command {
 			client, _, err := authenticatedClient(ctx, loader)
 			if err != nil {
 				return err
+			}
+			if !terminal.IsPiped() {
+				fmt.Fprintln(cmd.ErrOrStderr(), "Warning: printing API token to terminal. Use `grafanactl k6 auth print-token | ...` in scripts.")
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), client.Token())
 			return nil

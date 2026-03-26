@@ -61,14 +61,12 @@ func (p *AlertProvider) TypedRegistrations() []adapter.Registration {
 		{
 			Factory:    NewRulesAdapterFactory(loader),
 			Descriptor: staticRulesDescriptor,
-			Aliases:    staticRulesAliases,
 			GVK:        staticRulesDescriptor.GroupVersionKind(),
 			Schema:     alertRuleSchema(),
 		},
 		{
 			Factory:    NewGroupsAdapterFactory(loader),
 			Descriptor: staticGroupsDescriptor,
-			Aliases:    staticGroupsAliases,
 			GVK:        staticGroupsDescriptor.GroupVersionKind(),
 			Schema:     alertRuleGroupSchema(),
 		},

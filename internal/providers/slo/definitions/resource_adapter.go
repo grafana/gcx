@@ -25,11 +25,6 @@ func StaticDescriptor() resources.Descriptor {
 	}
 }
 
-// StaticAliases returns the short aliases for SLO resources.
-func StaticAliases() []string {
-	return []string{"slo"}
-}
-
 // SloSchema returns a JSON Schema for the SLO resource type.
 func SloSchema() json.RawMessage {
 	return adapter.SchemaFromType[Slo](StaticDescriptor())
@@ -117,7 +112,6 @@ func NewTypedCRUD(ctx context.Context) (*adapter.TypedCRUD[Slo], internalconfig.
 		Namespace:   cfg.Namespace,
 		StripFields: []string{"uuid", "readOnly"},
 		Descriptor:  StaticDescriptor(),
-		Aliases:     StaticAliases(),
 	}
 	return crud, cfg, nil
 }
@@ -178,7 +172,6 @@ func NewFactoryFromConfig(cfg internalconfig.NamespacedRESTConfig) adapter.Facto
 			Namespace:   cfg.Namespace,
 			StripFields: []string{"uuid", "readOnly"},
 			Descriptor:  StaticDescriptor(),
-			Aliases:     StaticAliases(),
 		}
 		return crud.AsAdapter(), nil
 	}

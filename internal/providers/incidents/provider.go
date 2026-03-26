@@ -70,7 +70,6 @@ func (p *IncidentsProvider) TypedRegistrations() []adapter.Registration {
 		{
 			Factory:    NewAdapterFactory(loader),
 			Descriptor: staticDescriptor,
-			Aliases:    staticAliases,
 			GVK:        staticDescriptor.GroupVersionKind(),
 			Schema:     incidentSchema(),
 			Example:    incidentExample(),

@@ -16,7 +16,6 @@ import (
 // resourceMeta holds metadata for registering an OnCall resource type.
 type resourceMeta struct {
 	Descriptor resources.Descriptor
-	Aliases    []string
 	Schema     json.RawMessage
 	Example    json.RawMessage
 }
@@ -70,11 +69,13 @@ func buildOnCallRegistration[T adapter.ResourceNamer](
 			}
 
 			crud := &adapter.TypedCRUD[T]{
-				ListFn:      func(ctx context.Context) ([]T, error) { return listFn(ctx, client) },
 				StripFields: []string{"id", "password", "authorization_header"},
 				Namespace:   namespace,
 				Descriptor:  desc,
-				Aliases:     meta.Aliases,
+			}
+
+			if listFn != nil {
+				crud.ListFn = func(ctx context.Context) ([]T, error) { return listFn(ctx, client) }
 			}
 
 			if getFn != nil {
@@ -90,7 +91,6 @@ func buildOnCallRegistration[T adapter.ResourceNamer](
 			return crud.AsAdapter(), nil
 		},
 		Descriptor: desc,
-		Aliases:    meta.Aliases,
 		GVK:        desc.GroupVersionKind(),
 		Schema:     meta.Schema,
 		Example:    meta.Example,
@@ -98,7 +98,7 @@ func buildOnCallRegistration[T adapter.ResourceNamer](
 }
 
 // onCallMeta creates a resourceMeta with the standard OnCall API group/version.
-func onCallMeta(kind, singular, plural string, aliases []string) resourceMeta {
+func onCallMeta(kind, singular, plural string) resourceMeta {
 	return resourceMeta{
 		Descriptor: resources.Descriptor{
 			GroupVersion: schema.GroupVersion{
@@ -109,7 +109,6 @@ func onCallMeta(kind, singular, plural string, aliases []string) resourceMeta {
 			Singular: singular,
 			Plural:   plural,
 		},
-		Aliases: aliases,
 	}
 }
 
@@ -122,8 +121,7 @@ func onCallMeta(kind, singular, plural string, aliases []string) resourceMeta {
 func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration {
 	var regs []adapter.Registration
 	// 1. Integration — full CRUD
-	meta := onCallMeta("Integration", "integration", "integrations",
-		[]string{"oncall-integrations", "oncall-integration"})
+	meta := onCallMeta("Integration", "integration", "integrations")
 	meta.Schema = adapter.SchemaFromType[Integration](meta.Descriptor)
 	meta.Example = integrationExample()
 	regs = append(regs, buildOnCallRegistration(loader, meta,
@@ -143,8 +141,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	))
 
 	// 2. EscalationChain — full CRUD
-	meta = onCallMeta("EscalationChain", "escalationchain", "escalationchains",
-		[]string{"oncall-escalationchains", "oncall-escalationchain", "oncall-ec"})
+	meta = onCallMeta("EscalationChain", "escalationchain", "escalationchains")
 	meta.Schema = adapter.SchemaFromType[EscalationChain](meta.Descriptor)
 	meta.Example = escalationChainExample()
 	regs = append(regs, buildOnCallRegistration(loader, meta,
@@ -164,8 +161,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	))
 
 	// 3. EscalationPolicy — full CRUD (list with empty filter)
-	meta = onCallMeta("EscalationPolicy", "escalationpolicy", "escalationpolicies",
-		[]string{"oncall-escalationpolicies", "oncall-escalationpolicy", "oncall-ep"})
+	meta = onCallMeta("EscalationPolicy", "escalationpolicy", "escalationpolicies")
 	meta.Schema = adapter.SchemaFromType[EscalationPolicy](meta.Descriptor)
 	meta.Example = escalationPolicyExample()
 	regs = append(regs, buildOnCallRegistration(loader, meta,
@@ -187,8 +183,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	))
 
 	// 4. Schedule — full CRUD
-	meta = onCallMeta("Schedule", "schedule", "schedules",
-		[]string{"oncall-schedules", "oncall-schedule"})
+	meta = onCallMeta("Schedule", "schedule", "schedules")
 	meta.Schema = adapter.SchemaFromType[Schedule](meta.Descriptor)
 	meta.Example = scheduleExample()
 	regs = append(regs, buildOnCallRegistration(loader, meta,
@@ -206,8 +201,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	))
 
 	// 5. Shift — CRUD with ShiftRequest conversion for create/update
-	meta = onCallMeta("Shift", "shift", "shifts",
-		[]string{"oncall-shifts", "oncall-shift"})
+	meta = onCallMeta("Shift", "shift", "shifts")
 	meta.Schema = adapter.SchemaFromType[Shift](meta.Descriptor)
 	meta.Example = shiftExample()
 	regs = append(regs, buildOnCallRegistration(loader, meta,
@@ -233,8 +227,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	))
 
 	// 6. Route — full CRUD (list with empty filter)
-	meta = onCallMeta("Route", "route", "routes",
-		[]string{"oncall-routes", "oncall-route"})
+	meta = onCallMeta("Route", "route", "routes")
 	meta.Schema = adapter.SchemaFromType[IntegrationRoute](meta.Descriptor)
 	meta.Example = routeExample()
 	regs = append(regs, buildOnCallRegistration(loader, meta,
@@ -254,8 +247,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	))
 
 	// 7. OutgoingWebhook — full CRUD
-	meta = onCallMeta("OutgoingWebhook", "outgoingwebhook", "outgoingwebhooks",
-		[]string{"oncall-webhooks", "oncall-webhook"})
+	meta = onCallMeta("OutgoingWebhook", "outgoingwebhook", "outgoingwebhooks")
 	meta.Schema = adapter.SchemaFromType[OutgoingWebhook](meta.Descriptor)
 	meta.Example = outgoingWebhookExample()
 	regs = append(regs, buildOnCallRegistration(loader, meta,
@@ -275,8 +267,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	))
 
 	// 8. AlertGroup — read-only + delete
-	meta = onCallMeta("AlertGroup", "alertgroup", "alertgroups",
-		[]string{"oncall-alertgroups", "oncall-alertgroup", "oncall-ag"})
+	meta = onCallMeta("AlertGroup", "alertgroup", "alertgroups")
 	meta.Schema = adapter.SchemaFromType[AlertGroup](meta.Descriptor)
 	regs = append(regs, buildOnCallRegistration(loader, meta,
 		func(ctx context.Context, c *Client) ([]AlertGroup, error) { return c.ListAlertGroups(ctx) }, // no filter
@@ -289,8 +280,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	))
 
 	// 9. User — read-only
-	meta = onCallMeta("User", "oncalluser", "oncallusers",
-		[]string{"oncall-users", "oncall-user"})
+	meta = onCallMeta("User", "oncalluser", "oncallusers")
 	meta.Schema = adapter.SchemaFromType[User](meta.Descriptor)
 	regs = append(regs, buildOnCallRegistration(loader, meta,
 		func(ctx context.Context, c *Client) ([]User, error) { return c.ListUsers(ctx) },
@@ -298,8 +288,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	))
 
 	// 10. Team — read-only
-	meta = onCallMeta("Team", "oncallteam", "oncallteams",
-		[]string{"oncall-teams", "oncall-team"})
+	meta = onCallMeta("Team", "oncallteam", "oncallteams")
 	meta.Schema = adapter.SchemaFromType[Team](meta.Descriptor)
 	regs = append(regs, buildOnCallRegistration(loader, meta,
 		func(ctx context.Context, c *Client) ([]Team, error) { return c.ListTeams(ctx) },
@@ -307,8 +296,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	))
 
 	// 11. UserGroup — list-only (no Get client method)
-	meta = onCallMeta("UserGroup", "usergroup", "usergroups",
-		[]string{"oncall-usergroups", "oncall-usergroup"})
+	meta = onCallMeta("UserGroup", "usergroup", "usergroups")
 	meta.Schema = adapter.SchemaFromType[UserGroup](meta.Descriptor)
 	regs = append(regs, buildOnCallRegistration(loader, meta,
 		func(ctx context.Context, c *Client) ([]UserGroup, error) { return c.ListUserGroups(ctx) },
@@ -316,8 +304,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	))
 
 	// 12. SlackChannel — list-only (no Get client method)
-	meta = onCallMeta("SlackChannel", "slackchannel", "slackchannels",
-		[]string{"oncall-slackchannels", "oncall-slackchannel"})
+	meta = onCallMeta("SlackChannel", "slackchannel", "slackchannels")
 	meta.Schema = adapter.SchemaFromType[SlackChannel](meta.Descriptor)
 	regs = append(regs, buildOnCallRegistration(loader, meta,
 		func(ctx context.Context, c *Client) ([]SlackChannel, error) { return c.ListSlackChannels(ctx) },
@@ -325,8 +312,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	))
 
 	// 13. Alert — get-only (list requires alert_group_id, handled by CLI command)
-	meta = onCallMeta("Alert", "alert", "alerts",
-		[]string{"oncall-alerts", "oncall-alert"})
+	meta = onCallMeta("Alert", "alert", "alerts")
 	meta.Schema = adapter.SchemaFromType[Alert](meta.Descriptor)
 	regs = append(regs, buildOnCallRegistration(loader, meta,
 		nil, // ListFn nil — the OnCall API requires alert_group_id to list alerts
@@ -334,8 +320,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	))
 
 	// 14. Organization — read-only
-	meta = onCallMeta("Organization", "organization", "organizations",
-		[]string{"oncall-orgs", "oncall-org"})
+	meta = onCallMeta("Organization", "organization", "organizations")
 	meta.Schema = adapter.SchemaFromType[Organization](meta.Descriptor)
 	regs = append(regs, buildOnCallRegistration(loader, meta,
 		func(ctx context.Context, c *Client) ([]Organization, error) { return c.ListOrganizations(ctx) },
@@ -345,8 +330,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	))
 
 	// 15. ResolutionNote — CRUD with Input type conversion (list with empty filter)
-	meta = onCallMeta("ResolutionNote", "resolutionnote", "resolutionnotes",
-		[]string{"oncall-resolution-notes", "oncall-rn"})
+	meta = onCallMeta("ResolutionNote", "resolutionnote", "resolutionnotes")
 	meta.Schema = adapter.SchemaFromType[ResolutionNote](meta.Descriptor)
 	meta.Example = resolutionNoteExample()
 	regs = append(regs, buildOnCallRegistration(loader, meta,
@@ -373,8 +357,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	))
 
 	// 16. ShiftSwap — CRUD with Input type conversion
-	meta = onCallMeta("ShiftSwap", "shiftswap", "shiftswaps",
-		[]string{"oncall-shift-swaps", "oncall-ss"})
+	meta = onCallMeta("ShiftSwap", "shiftswap", "shiftswaps")
 	meta.Schema = adapter.SchemaFromType[ShiftSwap](meta.Descriptor)
 	meta.Example = shiftSwapExample()
 	regs = append(regs, buildOnCallRegistration(loader, meta,

@@ -92,7 +92,6 @@ func (p *KGProvider) TypedRegistrations() []adapter.Registration {
 		{
 			Factory:    NewAdapterFactory(loader),
 			Descriptor: staticDescriptor,
-			Aliases:    staticAliases,
 			GVK:        staticDescriptor.GroupVersionKind(),
 			Schema:     RuleSchema(),
 			Example:    RuleExample(),
@@ -100,28 +99,24 @@ func (p *KGProvider) TypedRegistrations() []adapter.Registration {
 		{
 			Factory:    NewDatasetAdapterFactory(loader),
 			Descriptor: datasetDescriptor,
-			Aliases:    datasetAliases,
 			GVK:        datasetDescriptor.GroupVersionKind(),
 			Schema:     DatasetSchema(),
 		},
 		{
 			Factory:    NewVendorAdapterFactory(loader),
 			Descriptor: vendorDescriptor,
-			Aliases:    vendorAliases,
 			GVK:        vendorDescriptor.GroupVersionKind(),
 			Schema:     VendorSchema(),
 		},
 		{
 			Factory:    NewEntityTypeAdapterFactory(loader),
 			Descriptor: entityTypeDescriptor,
-			Aliases:    entityTypeAliases,
 			GVK:        entityTypeDescriptor.GroupVersionKind(),
 			Schema:     EntityTypeSchema(),
 		},
 		{
 			Factory:    NewScopeAdapterFactory(loader),
 			Descriptor: scopeDescriptor,
-			Aliases:    scopeAliases,
 			GVK:        scopeDescriptor.GroupVersionKind(),
 			Schema:     ScopeSchema(),
 		},
