@@ -126,10 +126,11 @@ func (l *configLoader) LoadOnCallClient(ctx context.Context) (*Client, string, e
 func (l *configLoader) discoverOnCallURL(ctx context.Context, restCfg config.NamespacedRESTConfig) (string, error) {
 	// Check provider config (includes GRAFANA_PROVIDER_ONCALL_ONCALL_URL env var).
 	providerCfg, _, err := l.LoadProviderConfig(ctx, "oncall")
-	if err == nil {
-		if u := providerCfg["oncall-url"]; u != "" {
-			return u, nil
-		}
+	if err != nil {
+		return "", err
+	}
+	if u := providerCfg["oncall-url"]; u != "" {
+		return u, nil
 	}
 
 	// Discover from plugin settings.

@@ -331,18 +331,7 @@ func (l *ConfigLoader) LoadProviderConfig(ctx context.Context, providerName stri
 // SaveProviderConfig persists a single key-value pair to
 // contexts.[current].providers.[providerName].[key] in the config file.
 func (l *ConfigLoader) SaveProviderConfig(ctx context.Context, providerName, key, value string) error {
-	overrides := []config.Override{
-		// Minimal validation: context must exist.
-		func(cfg *config.Config) error {
-			if cfg.CurrentContext == "" {
-				cfg.CurrentContext = config.DefaultContextName
-			}
-			if !cfg.HasContext(cfg.CurrentContext) {
-				return config.ContextNotFound(cfg.CurrentContext)
-			}
-			return nil
-		},
-	}
+	overrides := []config.Override{envOverride}
 
 	// Resolve context name.
 	ctxName := l.ctxName
@@ -358,6 +347,14 @@ func (l *ConfigLoader) SaveProviderConfig(ctx context.Context, providerName, key
 			return nil
 		})
 	}
+
+	// Minimal validation: context must exist.
+	overrides = append(overrides, func(cfg *config.Config) error {
+		if !cfg.HasContext(cfg.CurrentContext) {
+			return config.ContextNotFound(cfg.CurrentContext)
+		}
+		return nil
+	})
 
 	loaded, err := config.LoadLayered(ctx, l.configFile, overrides...)
 	if err != nil {
@@ -384,18 +381,7 @@ func (l *ConfigLoader) SaveProviderConfig(ctx context.Context, providerName, key
 // LoadFullConfig loads the full config from the config file, applying env var
 // overrides and context flags. Returns a pointer to the resolved Config.
 func (l *ConfigLoader) LoadFullConfig(ctx context.Context) (*config.Config, error) {
-	overrides := []config.Override{
-		// Minimal validation: context must exist.
-		func(cfg *config.Config) error {
-			if cfg.CurrentContext == "" {
-				cfg.CurrentContext = config.DefaultContextName
-			}
-			if !cfg.HasContext(cfg.CurrentContext) {
-				return config.ContextNotFound(cfg.CurrentContext)
-			}
-			return nil
-		},
-	}
+	overrides := []config.Override{envOverride}
 
 	// Resolve context name.
 	ctxName := l.ctxName
@@ -411,6 +397,14 @@ func (l *ConfigLoader) LoadFullConfig(ctx context.Context) (*config.Config, erro
 			return nil
 		})
 	}
+
+	// Minimal validation: context must exist.
+	overrides = append(overrides, func(cfg *config.Config) error {
+		if !cfg.HasContext(cfg.CurrentContext) {
+			return config.ContextNotFound(cfg.CurrentContext)
+		}
+		return nil
+	})
 
 	loaded, err := config.LoadLayered(ctx, l.configFile, overrides...)
 	if err != nil {
