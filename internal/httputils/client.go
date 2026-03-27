@@ -9,7 +9,6 @@ import (
 )
 
 func NewTransport(gCtx *config.Context) *http.Transport {
-	//nolint:gosec
 	tlsConfig := &tls.Config{InsecureSkipVerify: false}
 	if gCtx.Grafana != nil && gCtx.Grafana.TLS != nil {
 		tlsConfig = gCtx.Grafana.TLS.ToStdTLSConfig()

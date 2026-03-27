@@ -72,7 +72,7 @@ func (e DetailedError) Error() string {
 	}
 
 	if e.Parent != nil {
-		buffer.WriteString(fmt.Sprintf("│\n├─ %s\n│\n", blue("Details:")))
+		fmt.Fprintf(&buffer, "│\n├─ %s\n│\n", blue("Details:"))
 
 		// Will pretty-print YAML-related errors and leave the other ones as-is.
 		formattedErr := yaml.FormatError(e.Parent, !color.NoColor, true)
@@ -83,7 +83,7 @@ func (e DetailedError) Error() string {
 	}
 
 	if len(e.Suggestions) != 0 {
-		buffer.WriteString(fmt.Sprintf("│\n├─ %s\n│\n", blue("Suggestions:")))
+		fmt.Fprintf(&buffer, "│\n├─ %s\n│\n", blue("Suggestions:"))
 
 		for _, suggestion := range e.Suggestions {
 			buffer.WriteString("│ • " + suggestion + "\n")
@@ -91,7 +91,7 @@ func (e DetailedError) Error() string {
 	}
 
 	if e.DocsLink != "" {
-		buffer.WriteString(fmt.Sprintf("│\n├─ %s\n│\n│ %s\n", blue("Learn more:"), e.DocsLink))
+		fmt.Fprintf(&buffer, "│\n├─ %s\n│\n│ %s\n", blue("Learn more:"), e.DocsLink)
 	}
 
 	buffer.WriteString("│\n└─\n")
