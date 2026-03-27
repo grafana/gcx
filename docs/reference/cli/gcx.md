@@ -14,6 +14,7 @@
 
 ### SEE ALSO
 
+* [gcx adaptive](gcx_adaptive.md)	 - Manage Grafana Cloud Adaptive Telemetry.
 * [gcx alert](gcx_alert.md)	 - Manage Grafana alerting resources.
 * [gcx api](gcx_api.md)	 - Make raw API requests to Grafana
 * [gcx config](gcx_config.md)	 - View or manipulate configuration settings

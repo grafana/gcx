@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/adrg/xdg"
 	"github.com/goccy/go-yaml"
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/grafana-app-sdk/logging"
 )
@@ -75,44 +77,162 @@ func WithWorkDir(dir string) DiscoverOption { return func(o *discoverOpts) { o.w
 
 // DiscoverSources finds all config files that exist across the layering hierarchy.
 // Returns sources in priority order: system (lowest) → user → local (highest).
+//
+// For user config, $HOME/.config/gcx/ is checked before the platform XDG
+// directory (which differs on macOS: ~/Library/Application Support). The first
+// found wins. Use [CheckDuplicateUserConfig] to detect when both locations
+// contain a config file.
 func DiscoverSources(opts ...DiscoverOption) ([]ConfigSource, error) {
 	o := discoverOpts{}
 	for _, opt := range opts {
 		opt(&o)
 	}
 
-	candidates := []struct {
-		dir      string
-		fallback func() string
-		subpath  string
-		typ      string
-	}{
-		{o.systemDir, xdgSystemConfigDir, filepath.Join(StandardConfigFolder, StandardConfigFileName), "system"},
-		{o.userDir, xdgUserConfigDir, filepath.Join(StandardConfigFolder, StandardConfigFileName), "user"},
-		{o.workDir, func() string { d, _ := os.Getwd(); return d }, LocalConfigFileName, "local"},
+	var sources []ConfigSource
+
+	// --- System ---
+	sysDir := o.systemDir
+	if sysDir == "" {
+		sysDir = xdgSystemConfigDir()
+	}
+	if sysDir != "" {
+		if src, ok, err := probeConfigSource(userConfigFile(sysDir), "system"); err != nil {
+			return nil, err
+		} else if ok {
+			sources = append(sources, src)
+		}
 	}
 
-	var sources []ConfigSource
-	for _, c := range candidates {
-		dir := c.dir
-		if dir == "" {
-			dir = c.fallback()
-		}
-		path := filepath.Join(dir, c.subpath)
-		info, err := os.Stat(path)
-		if os.IsNotExist(err) {
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-		sources = append(sources, ConfigSource{
-			Path:    path,
-			Type:    c.typ,
-			ModTime: info.ModTime(),
-		})
+	// --- User ---
+	// When overridden via WithUserDir (tests), check only that directory.
+	// Otherwise check $HOME/.config first, then XDG_CONFIG_HOME. First found wins.
+	if userSrc, ok, err := discoverUserSource(o.userDir); err != nil {
+		return nil, err
+	} else if ok {
+		sources = append(sources, userSrc)
 	}
+
+	// --- Local ---
+	workDir := o.workDir
+	if workDir == "" {
+		workDir, _ = os.Getwd()
+	}
+	if workDir != "" {
+		if src, ok, err := probeConfigSource(filepath.Join(workDir, LocalConfigFileName), "local"); err != nil {
+			return nil, err
+		} else if ok {
+			sources = append(sources, src)
+		}
+	}
+
 	return sources, nil
+}
+
+// discoverUserSource finds the user config source, checking either the
+// override dir or the standard search path ($HOME/.config then XDG).
+// Returns (source, true) when found, (empty, false) when no config exists.
+func discoverUserSource(overrideDir string) (ConfigSource, bool, error) {
+	dirs := userConfigDirs()
+	if overrideDir != "" {
+		dirs = []string{overrideDir}
+	}
+	for _, dir := range dirs {
+		src, ok, err := probeConfigSource(userConfigFile(dir), "user")
+		if err != nil {
+			return ConfigSource{}, false, err
+		}
+		if ok {
+			return src, true, nil
+		}
+	}
+	return ConfigSource{}, false, nil
+}
+
+// probeConfigSource checks whether a config file exists at path and returns
+// a ConfigSource if it does.
+func probeConfigSource(path, typ string) (ConfigSource, bool, error) {
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return ConfigSource{}, false, nil
+	}
+	if err != nil {
+		return ConfigSource{}, false, err
+	}
+	return ConfigSource{Path: path, Type: typ, ModTime: info.ModTime()}, true, nil
+}
+
+// userConfigFile returns the full config file path for a given config root directory.
+func userConfigFile(dir string) string {
+	return filepath.Join(dir, StandardConfigFolder, StandardConfigFileName)
+}
+
+// findExistingUserConfigFile returns the path of the first existing user config
+// file across candidate directories (dotconfig first, then platform XDG).
+// Returns empty string if none found.
+func findExistingUserConfigFile() string {
+	for _, dir := range userConfigDirs() {
+		path := userConfigFile(dir)
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	return ""
+}
+
+// DuplicateUserConfig describes a situation where config files exist in both
+// $HOME/.config/gcx/ and the platform-specific XDG config directory.
+type DuplicateUserConfig struct {
+	Active  string // the file being used ($HOME/.config/gcx/config.yaml)
+	Ignored string // the file being ignored (platform XDG path)
+}
+
+// CheckDuplicateUserConfig reports whether config files exist in both
+// $HOME/.config/gcx/ and the platform XDG directory. Returns nil when there is
+// no ambiguity (same directory, one missing, etc.).
+func CheckDuplicateUserConfig() *DuplicateUserConfig {
+	dirs := userConfigDirs()
+	if len(dirs) < 2 {
+		return nil
+	}
+	active := userConfigFile(dirs[0])
+	ignored := userConfigFile(dirs[1])
+	if _, err := os.Stat(active); err != nil {
+		return nil
+	}
+	if _, err := os.Stat(ignored); err != nil {
+		return nil
+	}
+	return &DuplicateUserConfig{Active: active, Ignored: ignored}
+}
+
+// userConfigDirs returns candidate directories for user config in priority
+// order. $HOME/.config is always checked first (cross-platform convention),
+// followed by the platform XDG_CONFIG_HOME (which differs on macOS).
+// Duplicates are removed.
+func userConfigDirs() []string {
+	dotConfig := dotConfigDir()
+	xdgConfig := xdgUserConfigDir()
+
+	switch {
+	case dotConfig == "" && xdgConfig == "":
+		return nil
+	case dotConfig == "":
+		return []string{xdgConfig}
+	case xdgConfig == "" || dotConfig == xdgConfig:
+		return []string{dotConfig}
+	default:
+		return []string{dotConfig, xdgConfig}
+	}
+}
+
+// dotConfigDir returns $HOME/.config as a cross-platform config directory.
+// Returns empty string if $HOME cannot be determined.
+func dotConfigDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".config")
 }
 
 // xdgSystemConfigDir returns the first XDG system config directory.
@@ -140,28 +260,49 @@ func ExplicitConfigFile(path string) Source {
 
 func StandardLocation() Source {
 	return func() (string, error) {
-		// Check if GCX_CONFIG environment variable is set
 		if envPath := os.Getenv(ConfigFileEnvVar); envPath != "" {
 			return envPath, nil
 		}
 
-		file, err := xdg.ConfigFile(filepath.Join(StandardConfigFolder, StandardConfigFileName))
-		if err != nil {
-			return "", err
+		// Return the first existing config ($HOME/.config wins over platform XDG).
+		if existing := findExistingUserConfigFile(); existing != "" {
+			return existing, nil
 		}
 
-		_, err = os.Stat(file)
-		// Create an empty config file, to ensure that the loader won't fail.
-		if os.IsNotExist(err) {
-			if createErr := os.WriteFile(file, []byte(defaultEmptyConfigFile), configFilePermissions); createErr != nil {
-				return "", createErr
-			}
-		} else if err != nil {
+		// No existing config — create in $HOME/.config if available,
+		// otherwise fall back to the platform XDG directory.
+		return createDefaultConfig()
+	}
+}
+
+// createDefaultConfig creates a new empty config file in the preferred location
+// ($HOME/.config, falling back to platform XDG) and returns its path.
+func createDefaultConfig() (string, error) {
+	if dir := dotConfigDir(); dir != "" {
+		file := userConfigFile(dir)
+		if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
 			return "", err
 		}
-
+		if err := os.WriteFile(file, []byte(defaultEmptyConfigFile), configFilePermissions); err != nil {
+			return "", err
+		}
 		return file, nil
 	}
+
+	// Last resort: platform XDG (xdg.ConfigFile creates parent dirs).
+	configSubpath := filepath.Join(StandardConfigFolder, StandardConfigFileName)
+	file, err := xdg.ConfigFile(configSubpath)
+	if err != nil {
+		return "", err
+	}
+	if _, err := os.Stat(file); os.IsNotExist(err) {
+		if err := os.WriteFile(file, []byte(defaultEmptyConfigFile), configFilePermissions); err != nil {
+			return "", err
+		}
+	} else if err != nil {
+		return "", err
+	}
+	return file, nil
 }
 
 func Load(ctx context.Context, source Source, overrides ...Override) (Config, error) {
@@ -229,6 +370,12 @@ func LoadLayered(ctx context.Context, explicitFile string, overrides ...Override
 	// GCX_CONFIG env var also bypasses layering (preserving existing behavior).
 	if envPath := os.Getenv(ConfigFileEnvVar); envPath != "" {
 		return loadExplicit(ctx, envPath, overrides...)
+	}
+
+	// Warn when configs exist in both $HOME/.config and the platform XDG dir.
+	if dup := CheckDuplicateUserConfig(); dup != nil && !agent.IsAgentMode() {
+		fmt.Fprintf(os.Stderr, "Warning: config found in both %s and %s; using %s\n",
+			dup.Active, dup.Ignored, dup.Active)
 	}
 
 	sources, err := DiscoverSources()

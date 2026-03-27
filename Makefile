@@ -79,11 +79,6 @@ clean: ## Cleans the project.
 	rm -rf .devbox
 	rm -rf .venv
 
-.PHONY: setup
-setup: ## Sets up the local development environment (commit template, etc).
-	git config commit.template .gitmessage
-	@echo "Git commit template configured"
-
 .PHONY: check-binaries
 check-binaries: ## Check that the required binaries are present.
 	@go version >/dev/null 2>&1 || devbox version >/dev/null 2>&1 || (echo "ERROR: go or devbox is required. See https://www.jetify.com/devbox/docs/quickstart/"; exit 1)

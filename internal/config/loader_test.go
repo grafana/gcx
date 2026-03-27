@@ -37,6 +37,8 @@ func TestLoad_standardLocation_noExistingConfig(t *testing.T) {
 
 	fakeConfigDir := t.TempDir()
 
+	// Isolate from the real $HOME/.config so StandardLocation doesn't find it.
+	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", fakeConfigDir)
 
 	// make sure the xdg library uses the new-fake env var we just set
@@ -55,6 +57,8 @@ func TestLoad_standardLocation_withExistingConfig(t *testing.T) {
 
 	fakeConfigDir := t.TempDir()
 
+	// Isolate from the real $HOME/.config so StandardLocation doesn't find it.
+	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", fakeConfigDir)
 
 	// create a barebones config file at the standard location
@@ -261,4 +265,95 @@ func TestDiscoverSources_SkipsMissing(t *testing.T) {
 
 	require.Len(t, sources, 1)
 	assert.Equal(t, "user", sources[0].Type)
+}
+
+func TestDiscoverSources_DotConfigPreferredOverXDG(t *testing.T) {
+	// When $HOME/.config has a config, it should be found even if
+	// XDG_CONFIG_HOME points elsewhere (e.g. macOS ~/Library/Application Support).
+	homeDir := t.TempDir()
+	xdgDir := t.TempDir() // simulates platform XDG dir (e.g. ~/Library/Application Support)
+
+	// Create config in $HOME/.config/gcx/.
+	dotConfigFile := filepath.Join(homeDir, ".config", "gcx", "config.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(dotConfigFile), 0o755))
+	require.NoError(t, os.WriteFile(dotConfigFile, []byte("contexts:\n  dot: {}\ncurrent-context: dot\n"), 0o600))
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("XDG_CONFIG_HOME", xdgDir) // empty, no config
+	xdg.Reload()
+
+	sources, err := config.DiscoverSources(
+		config.WithSystemDir(t.TempDir()),
+		config.WithWorkDir(t.TempDir()),
+	)
+	require.NoError(t, err)
+
+	require.Len(t, sources, 1)
+	assert.Equal(t, "user", sources[0].Type)
+	assert.Equal(t, dotConfigFile, sources[0].Path)
+}
+
+func TestDiscoverSources_FallsBackToXDGWhenDotConfigMissing(t *testing.T) {
+	xdgDir := t.TempDir()
+
+	// Put config only in the XDG dir.
+	xdgFile := filepath.Join(xdgDir, "gcx", "config.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(xdgFile), 0o755))
+	require.NoError(t, os.WriteFile(xdgFile, []byte("contexts:\n  xdg: {}\ncurrent-context: xdg\n"), 0o600))
+
+	// HOME points to a dir with no .config/gcx/ at all.
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("XDG_CONFIG_HOME", xdgDir)
+	xdg.Reload()
+
+	sources, err := config.DiscoverSources(
+		config.WithSystemDir(t.TempDir()),
+		config.WithWorkDir(t.TempDir()),
+	)
+	require.NoError(t, err)
+
+	require.Len(t, sources, 1)
+	assert.Equal(t, "user", sources[0].Type)
+	assert.Equal(t, xdgFile, sources[0].Path)
+}
+
+func TestCheckDuplicateUserConfig_BothExist(t *testing.T) {
+	homeDir := t.TempDir()
+	xdgDir := t.TempDir()
+
+	// Create config in both $HOME/.config/gcx/ and XDG dir.
+	dotConfigFile := filepath.Join(homeDir, ".config", "gcx", "config.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(dotConfigFile), 0o755))
+	require.NoError(t, os.WriteFile(dotConfigFile, []byte("contexts:\n  x: {}\n"), 0o600))
+
+	xdgFile := filepath.Join(xdgDir, "gcx", "config.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(xdgFile), 0o755))
+	require.NoError(t, os.WriteFile(xdgFile, []byte("contexts:\n  x: {}\n"), 0o600))
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("XDG_CONFIG_HOME", xdgDir)
+	xdg.Reload()
+
+	dup := config.CheckDuplicateUserConfig()
+	require.NotNil(t, dup)
+	assert.Equal(t, dotConfigFile, dup.Active)
+	assert.Equal(t, xdgFile, dup.Ignored)
+}
+
+func TestCheckDuplicateUserConfig_NoDuplicate(t *testing.T) {
+	homeDir := t.TempDir()
+	xdgDir := t.TempDir()
+
+	// Config only in $HOME/.config.
+	dotConfigFile := filepath.Join(homeDir, ".config", "gcx", "config.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(dotConfigFile), 0o755))
+	require.NoError(t, os.WriteFile(dotConfigFile, []byte("contexts:\n  x: {}\n"), 0o600))
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("XDG_CONFIG_HOME", xdgDir) // empty, no config
+	xdg.Reload()
+
+	dup := config.CheckDuplicateUserConfig()
+	assert.Nil(t, dup)
 }
