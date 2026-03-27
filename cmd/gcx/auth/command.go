@@ -9,8 +9,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// TODO: should this just be 'login'? it should also take a --context flag for login to  non-set context
-
 // Command returns the `auth` command group.
 func Command() *cobra.Command {
 	cmd := &cobra.Command{

@@ -17,6 +17,21 @@ type NamespacedRESTConfig struct {
 	rest.Config
 
 	Namespace string
+
+	// oauthTransport holds a reference to the RefreshTransport when OAuth proxy
+	// mode is active, allowing callers to wire the OnRefresh callback after
+	// construction (Option C: call-site wiring).
+	oauthTransport *auth.RefreshTransport
+}
+
+// SetOnRefresh registers a callback that is invoked after a successful OAuth
+// token refresh. This allows the call site (which has access to the config
+// source) to persist refreshed tokens back to the config file.
+// No-op if the config is not using OAuth proxy mode.
+func (n *NamespacedRESTConfig) SetOnRefresh(fn auth.TokenRefresher) {
+	if n.oauthTransport != nil {
+		n.oauthTransport.OnRefresh = fn
+	}
 }
 
 // NewNamespacedRESTConfig creates a new namespaced REST config.
@@ -47,11 +62,13 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) NamespacedRESTCon
 	}
 
 	// Authentication
+	var oauthTransport *auth.RefreshTransport
 	switch {
 
-	// TODO: i dont think we need a proxyEndpoint - its "just" the assistant app running in the grafana stack?
 	case cfg.Grafana.ProxyEndpoint != "" && cfg.Grafana.CLIToken != "":
 		// OAuth proxy mode: route requests through the assistant backend proxy.
+		// The ProxyEndpoint may differ from Server (e.g. cloud routing through
+		// the assistant backend), so it is stored as a separate config field.
 		// RefreshTransport handles bearer auth and token renewal; no BearerToken
 		// on rcfg to avoid client-go adding a redundant auth layer.
 		rcfg.Host = cfg.Grafana.ProxyEndpoint + "/api/cli/v1/proxy"
@@ -64,18 +81,15 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) NamespacedRESTCon
 				expiresAt = time.Time{}
 			}
 		}
-		transport := &auth.RefreshTransport{
+		oauthTransport = &auth.RefreshTransport{
 			ProxyEndpoint: cfg.Grafana.ProxyEndpoint,
 			Token:         cfg.Grafana.CLIToken,
 			RefreshToken:  cfg.Grafana.CLIRefreshToken,
 			ExpiresAt:     expiresAt,
-			// TODO: wire OnRefresh to persist refreshed tokens to the config
-			// file. Currently tokens are refreshed in-memory per CLI session;
-			// the next invocation may re-refresh from the original refresh token.
 		}
 		rcfg.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
-			transport.Base = rt
-			return transport
+			oauthTransport.Base = rt
+			return oauthTransport
 		}
 	case cfg.Grafana.APIToken != "":
 		rcfg.BearerToken = cfg.Grafana.APIToken
@@ -101,7 +115,8 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) NamespacedRESTCon
 	}
 
 	return NamespacedRESTConfig{
-		Config:    rcfg,
-		Namespace: namespace,
+		Config:         rcfg,
+		Namespace:      namespace,
+		oauthTransport: oauthTransport,
 	}
 }
