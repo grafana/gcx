@@ -684,7 +684,12 @@ func resolveDataSourceUID(ctx context.Context, flagUID string, loader smcfg.Stat
 	}
 
 	// Tier 4: auto-discover via SM plugin settings, then cache for next run.
-	uid, err := discoverPrometheusDatasource(ctx, curCtx)
+	restCfg, err := loader.LoadGrafanaConfig(ctx)
+	if err != nil {
+		return "", fmt.Errorf(
+			"loading REST config: %w; use --datasource-uid flag or set default-prometheus-datasource in config", err)
+	}
+	uid, err := discoverPrometheusDatasource(ctx, curCtx, restCfg)
 	if err != nil {
 		return "", err
 	}
@@ -699,13 +704,7 @@ func resolveDataSourceUID(ctx context.Context, flagUID string, loader smcfg.Stat
 
 // discoverPrometheusDatasource queries the Grafana SM plugin settings to find the
 // Prometheus datasource configured for Synthetic Monitoring metrics.
-func discoverPrometheusDatasource(ctx context.Context, curCtx *config.Context) (string, error) {
-	gClient, err := grafana.ClientFromContext(curCtx)
-	if err != nil {
-		return "", errors.New(
-			"datasource UID is required: use --datasource-uid flag or set default-prometheus-datasource in config")
-	}
-
+func discoverPrometheusDatasource(ctx context.Context, curCtx *config.Context, restCfg config.NamespacedRESTConfig) (string, error) {
 	// Query SM plugin settings for the metrics datasource name.
 	dsName, err := smMetricsDatasourceName(ctx, curCtx)
 	if err != nil {
@@ -714,15 +713,20 @@ func discoverPrometheusDatasource(ctx context.Context, curCtx *config.Context) (
 			err)
 	}
 
-	// Resolve name → UID.
-	resp, err := gClient.Datasources.GetDataSourceByName(dsName)
+	// Resolve name → UID via the REST-config transport (OAuth proxy-aware).
+	dsClient, err := grafana.NewDatasourceClient(restCfg)
+	if err != nil {
+		return "", fmt.Errorf(
+			"datasource UID is required: use --datasource-uid flag or set default-prometheus-datasource in config")
+	}
+	ds, err := dsClient.GetByName(ctx, dsName)
 	if err != nil {
 		return "", fmt.Errorf(
 			"SM metrics datasource %q not found in Grafana: %w; use --datasource-uid or set default-prometheus-datasource in config",
 			dsName, err)
 	}
 
-	return resp.Payload.UID, nil
+	return ds.UID, nil
 }
 
 // smMetricsDatasourceName queries the grafana-synthetic-monitoring-app plugin settings
