@@ -298,7 +298,7 @@ func (c *commandsTextCodec) Encode(output io.Writer, value any) error {
 func writeCommandTable(w io.Writer, info CommandInfo, indent string) {
 	fmt.Fprintf(w, "%s%s\t%s\t%s\n", indent, info.FullPath, info.Description, info.TokenCost)
 	for _, sub := range info.Subcommands {
-		writeCommandTable(w, sub, indent)
+		writeCommandTable(w, sub, indent+"  ")
 	}
 }
 

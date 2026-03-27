@@ -67,6 +67,9 @@ func (b *resourceBuilder) build() KnownResource {
 		b.ops = []string{"get"} // default: read-only
 	}
 
+	if len(b.aliases) == 0 {
+		panic("resource " + b.kind + " must have at least one alias")
+	}
 	plural := b.aliases[0] // first alias is the plural form
 
 	// Default token costs per operation.

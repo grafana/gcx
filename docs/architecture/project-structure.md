@@ -13,12 +13,13 @@ gcx/
 │       ├── dashboards/       # 'dashboards' subcommand (snapshot via Image Renderer)
 │       ├── datasources/      # 'datasources' subcommand implementations
 │       │   └── query/        # Per-kind query constructors and shared infrastructure (codecs, time parsing)
+│       ├── commands/         # 'commands' catalog (agent metadata, resource types, live validation)
 │       ├── dev/              # 'dev' subcommand (import, scaffold, generate, lint, serve)
 │       ├── providers/        # 'providers' subcommand implementation
 │       └── fail/             # Error → DetailedError conversion, exit codes
 │
 ├── internal/                 # All non-public packages (Go enforced)
-│   ├── agent/                # Agent-mode detection (env vars + --agent flag)
+│   ├── agent/                # Agent-mode detection, command annotations, known-resource registry with operation hints
 │   ├── cloud/                # Grafana Cloud stack discovery via GCOM API
 │   ├── config/               # Config loading, context management, auth types
 │   │   └── testdata/         # YAML fixtures for config unit tests
