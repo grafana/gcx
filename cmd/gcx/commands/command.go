@@ -53,7 +53,6 @@ type ResourceTypeInfo struct {
 	Group      string                           `json:"group"`
 	Version    string                           `json:"version"`
 	Aliases    []string                         `json:"aliases,omitempty"`
-	Provider   string                           `json:"provider,omitempty"`
 	Operations map[string]ResourceOperationInfo `json:"operations,omitempty"` // keyed by "get", "push", "pull", "delete"
 	Source     string                           `json:"source"`               // "well-known", "adapter"
 }
@@ -236,36 +235,40 @@ func collectResourceTypes(wellKnown []agent.KnownResource, regs []adapter.Regist
 	types := make([]ResourceTypeInfo, 0, len(wellKnown)+len(regs))
 
 	for _, wk := range wellKnown {
-		ops := make(map[string]ResourceOperationInfo, len(wk.Operations))
-		for k, v := range wk.Operations {
-			ops[k] = ResourceOperationInfo{TokenCost: v.TokenCost, LLMHint: v.LLMHint}
-		}
 		types = append(types, ResourceTypeInfo{
 			Kind:       wk.Kind,
 			Group:      wk.Group,
 			Version:    wk.Version,
 			Aliases:    wk.Aliases,
-			Operations: ops,
+			Operations: convertOperations(wk.Operations),
 			Source:     "well-known",
 		})
 	}
 
 	for _, reg := range regs {
-		ops := make(map[string]ResourceOperationInfo, len(reg.Operations))
-		for k, v := range reg.Operations {
-			ops[k] = ResourceOperationInfo{TokenCost: v.TokenCost, LLMHint: v.LLMHint}
-		}
 		types = append(types, ResourceTypeInfo{
 			Kind:       reg.GVK.Kind,
 			Group:      reg.GVK.Group,
 			Version:    reg.GVK.Version,
 			Aliases:    reg.Aliases,
-			Operations: ops,
+			Operations: convertOperations(reg.Operations),
 			Source:     "adapter",
 		})
 	}
 
 	return types
+}
+
+// convertOperations converts agent.OperationHint map to ResourceOperationInfo map.
+func convertOperations(ops map[string]agent.OperationHint) map[string]ResourceOperationInfo {
+	if len(ops) == 0 {
+		return nil
+	}
+	result := make(map[string]ResourceOperationInfo, len(ops))
+	for k, v := range ops {
+		result[k] = ResourceOperationInfo{TokenCost: v.TokenCost, LLMHint: v.LLMHint}
+	}
+	return result
 }
 
 // commandsTextCodec renders a simple table of commands.

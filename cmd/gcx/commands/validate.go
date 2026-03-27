@@ -55,32 +55,27 @@ func compareAgainstLive(catalog []ResourceTypeInfo, liveDescs resources.Descript
 		cataloged[key] = rt
 	}
 
-	// Build a set of live types.
-	type liveEntry struct {
-		desc resources.Descriptor
-		seen bool
-	}
-	live := make(map[string]*liveEntry, len(liveDescs))
+	// Build a set of live types, deduplicating by kind+group across versions.
+	live := make(map[string]resources.Descriptor, len(liveDescs))
 	for _, d := range liveDescs {
 		key := d.Kind + "/" + d.GroupVersion.Group
 		if _, exists := live[key]; !exists {
-			live[key] = &liveEntry{desc: d}
+			live[key] = d
 		}
 	}
 
 	result := &ValidationResult{Total: len(live)}
 
 	// Find uncovered: live types not in catalog.
-	for key, entry := range live {
+	for key, desc := range live {
 		if _, ok := cataloged[key]; ok {
 			result.Covered++
-			entry.seen = true
 		} else {
 			result.Uncovered = append(result.Uncovered, UncoveredType{
-				Kind:    entry.desc.Kind,
-				Group:   entry.desc.GroupVersion.Group,
-				Version: entry.desc.GroupVersion.Version,
-				Plural:  entry.desc.Plural,
+				Kind:    desc.Kind,
+				Group:   desc.GroupVersion.Group,
+				Version: desc.GroupVersion.Version,
+				Plural:  desc.Plural,
 			})
 		}
 	}
