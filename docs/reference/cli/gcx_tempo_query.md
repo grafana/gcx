@@ -1,15 +1,19 @@
-## gcx datasources loki
+## gcx tempo query
 
-Loki datasource operations
+Execute a Tempo query (not yet available)
 
 ### Synopsis
 
-Operations specific to Loki datasources such as labels and series.
+Tempo query support is not yet implemented. This subcommand is a placeholder for future use.
+
+```
+gcx tempo query [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for loki
+  -h, --help   help for query
 ```
 
 ### Options inherited from parent commands
@@ -25,8 +29,5 @@ Operations specific to Loki datasources such as labels and series.
 
 ### SEE ALSO
 
-* [gcx datasources](gcx_datasources.md)	 - Manage Grafana datasources
-* [gcx datasources loki labels](gcx_datasources_loki_labels.md)	 - List labels or label values
-* [gcx datasources loki query](gcx_datasources_loki_query.md)	 - Execute a LogQL query against a Loki datasource
-* [gcx datasources loki series](gcx_datasources_loki_series.md)	 - List log streams
+* [gcx tempo](gcx_tempo.md)	 - Tempo datasource operations
 

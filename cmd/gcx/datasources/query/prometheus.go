@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// PrometheusCmd returns the `query` subcommand for a Prometheus datasource parent.
+// PrometheusCmd returns the `query` subcommand for the Prometheus command group.
 func PrometheusCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	shared := &sharedQueryOpts{}
 
@@ -22,16 +22,16 @@ DATASOURCE_UID is optional when datasources.prometheus is configured in your con
 EXPR is the PromQL expression to evaluate.`,
 		Example: `
   # Instant query using configured default datasource
-  gcx datasources prometheus query 'up{job="grafana"}'
+  gcx prometheus query 'up{job="grafana"}'
 
   # Range query with explicit datasource UID
-  gcx datasources prometheus query abc123 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m
+  gcx prometheus query abc123 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m
 
   # Convenience window flag
-  gcx datasources prometheus query abc123 'up' --window 1h
+  gcx prometheus query abc123 'up' --window 1h
 
   # Output as JSON
-  gcx datasources prometheus query abc123 'up' -o json`,
+  gcx prometheus query abc123 'up' -o json`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {

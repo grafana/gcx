@@ -1,17 +1,17 @@
-## gcx datasources
+## gcx pyroscope
 
-Manage Grafana datasources
+Pyroscope datasource operations
 
 ### Synopsis
 
-List, inspect, and generically query Grafana datasources.
+Operations specific to Pyroscope datasources such as profile-types and labels.
 
 ### Options
 
 ```
       --config string    Path to the configuration file to use
       --context string   Name of the context to use
-  -h, --help             help for datasources
+  -h, --help             help for pyroscope
 ```
 
 ### Options inherited from parent commands
@@ -26,7 +26,7 @@ List, inspect, and generically query Grafana datasources.
 ### SEE ALSO
 
 * [gcx](gcx.md)	 - 
-* [gcx datasources generic](gcx_datasources_generic.md)	 - Generic datasource operations (auto-detects type)
-* [gcx datasources get](gcx_datasources_get.md)	 - Get details of a specific datasource
-* [gcx datasources list](gcx_datasources_list.md)	 - List all datasources
+* [gcx pyroscope labels](gcx_pyroscope_labels.md)	 - List labels or label values
+* [gcx pyroscope profile-types](gcx_pyroscope_profile-types.md)	 - List available profile types
+* [gcx pyroscope query](gcx_pyroscope_query.md)	 - Execute a profiling query against a Pyroscope datasource
 

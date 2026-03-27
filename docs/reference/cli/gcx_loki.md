@@ -1,17 +1,17 @@
-## gcx datasources
+## gcx loki
 
-Manage Grafana datasources
+Loki datasource operations
 
 ### Synopsis
 
-List, inspect, and generically query Grafana datasources.
+Operations specific to Loki datasources such as labels and series.
 
 ### Options
 
 ```
       --config string    Path to the configuration file to use
       --context string   Name of the context to use
-  -h, --help             help for datasources
+  -h, --help             help for loki
 ```
 
 ### Options inherited from parent commands
@@ -26,7 +26,7 @@ List, inspect, and generically query Grafana datasources.
 ### SEE ALSO
 
 * [gcx](gcx.md)	 - 
-* [gcx datasources generic](gcx_datasources_generic.md)	 - Generic datasource operations (auto-detects type)
-* [gcx datasources get](gcx_datasources_get.md)	 - Get details of a specific datasource
-* [gcx datasources list](gcx_datasources_list.md)	 - List all datasources
+* [gcx loki labels](gcx_loki_labels.md)	 - List labels or label values
+* [gcx loki query](gcx_loki_query.md)	 - Execute a LogQL query against a Loki datasource
+* [gcx loki series](gcx_loki_series.md)	 - List log streams
 

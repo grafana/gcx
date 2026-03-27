@@ -1,36 +1,36 @@
-## gcx datasources prometheus metadata
+## gcx prometheus labels
 
-Get metric metadata
+List labels or label values
 
 ### Synopsis
 
-Get metadata (type, help text) for metrics from a Prometheus datasource.
+List all labels or get values for a specific label from a Prometheus datasource.
 
 ```
-gcx datasources prometheus metadata [flags]
+gcx prometheus labels [flags]
 ```
 
 ### Examples
 
 ```
 
-	# Get all metric metadata (use datasource UID, not name)
-	gcx datasources prometheus metadata -d <datasource-uid>
+	# List all labels (use datasource UID, not name)
+	gcx prometheus labels -d <datasource-uid>
 
-	# Get metadata for a specific metric
-	gcx datasources prometheus metadata -d <datasource-uid> --metric http_requests_total
+	# Get values for a specific label
+	gcx prometheus labels -d <datasource-uid> --label job
 
 	# Output as JSON
-	gcx datasources prometheus metadata -d <datasource-uid> -o json
+	gcx prometheus labels -d <datasource-uid> -o json
 ```
 
 ### Options
 
 ```
   -d, --datasource string   Datasource UID (required unless default-prometheus-datasource is configured)
-  -h, --help                help for metadata
+  -h, --help                help for labels
       --json string         Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -m, --metric string       Filter by metric name
+  -l, --label string        Get values for this label (omit to list all labels)
   -o, --output string       Output format. One of: json, table, yaml (default "table")
 ```
 
@@ -47,5 +47,5 @@ gcx datasources prometheus metadata [flags]
 
 ### SEE ALSO
 
-* [gcx datasources prometheus](gcx_datasources_prometheus.md)	 - Prometheus datasource operations
+* [gcx prometheus](gcx_prometheus.md)	 - Prometheus datasource operations
 

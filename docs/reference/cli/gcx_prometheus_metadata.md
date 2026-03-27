@@ -1,36 +1,36 @@
-## gcx datasources loki labels
+## gcx prometheus metadata
 
-List labels or label values
+Get metric metadata
 
 ### Synopsis
 
-List all labels or get values for a specific label from a Loki datasource.
+Get metadata (type, help text) for metrics from a Prometheus datasource.
 
 ```
-gcx datasources loki labels [flags]
+gcx prometheus metadata [flags]
 ```
 
 ### Examples
 
 ```
 
-	# List all labels (use datasource UID, not name)
-	gcx datasources loki labels -d <datasource-uid>
+	# Get all metric metadata (use datasource UID, not name)
+	gcx prometheus metadata -d <datasource-uid>
 
-	# Get values for a specific label
-	gcx datasources loki labels -d <datasource-uid> --label job
+	# Get metadata for a specific metric
+	gcx prometheus metadata -d <datasource-uid> --metric http_requests_total
 
 	# Output as JSON
-	gcx datasources loki labels -d <datasource-uid> -o json
+	gcx prometheus metadata -d <datasource-uid> -o json
 ```
 
 ### Options
 
 ```
-  -d, --datasource string   Datasource UID (required unless default-loki-datasource is configured)
-  -h, --help                help for labels
+  -d, --datasource string   Datasource UID (required unless default-prometheus-datasource is configured)
+  -h, --help                help for metadata
       --json string         Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -l, --label string        Get values for this label (omit to list all labels)
+  -m, --metric string       Filter by metric name
   -o, --output string       Output format. One of: json, table, yaml (default "table")
 ```
 
@@ -47,5 +47,5 @@ gcx datasources loki labels [flags]
 
 ### SEE ALSO
 
-* [gcx datasources loki](gcx_datasources_loki.md)	 - Loki datasource operations
+* [gcx prometheus](gcx_prometheus.md)	 - Prometheus datasource operations
 

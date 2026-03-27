@@ -60,13 +60,13 @@ func labelsCmd(configOpts *cmdconfig.Options) *cobra.Command {
 		Long:  "List all labels or get values for a specific label from a Prometheus datasource.",
 		Example: `
 	# List all labels (use datasource UID, not name)
-	gcx datasources prometheus labels -d <datasource-uid>
+	gcx prometheus labels -d <datasource-uid>
 
 	# Get values for a specific label
-	gcx datasources prometheus labels -d <datasource-uid> --label job
+	gcx prometheus labels -d <datasource-uid> --label job
 
 	# Output as JSON
-	gcx datasources prometheus labels -d <datasource-uid> -o json`,
+	gcx prometheus labels -d <datasource-uid> -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -176,13 +176,13 @@ func metadataCmd(configOpts *cmdconfig.Options) *cobra.Command {
 		Long:  "Get metadata (type, help text) for metrics from a Prometheus datasource.",
 		Example: `
 	# Get all metric metadata (use datasource UID, not name)
-	gcx datasources prometheus metadata -d <datasource-uid>
+	gcx prometheus metadata -d <datasource-uid>
 
 	# Get metadata for a specific metric
-	gcx datasources prometheus metadata -d <datasource-uid> --metric http_requests_total
+	gcx prometheus metadata -d <datasource-uid> --metric http_requests_total
 
 	# Output as JSON
-	gcx datasources prometheus metadata -d <datasource-uid> -o json`,
+	gcx prometheus metadata -d <datasource-uid> -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -290,16 +290,16 @@ func targetsCmd(configOpts *cmdconfig.Options) *cobra.Command {
 		Long:  "List scrape targets from a Prometheus datasource.",
 		Example: `
 	# List active targets (use datasource UID, not name)
-	gcx datasources prometheus targets -d <datasource-uid>
+	gcx prometheus targets -d <datasource-uid>
 
 	# List dropped targets
-	gcx datasources prometheus targets -d <datasource-uid> --state dropped
+	gcx prometheus targets -d <datasource-uid> --state dropped
 
 	# List all targets
-	gcx datasources prometheus targets -d <datasource-uid> --state any
+	gcx prometheus targets -d <datasource-uid> --state any
 
 	# Output as JSON
-	gcx datasources prometheus targets -d <datasource-uid> -o json`,
+	gcx prometheus targets -d <datasource-uid> -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err

@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// TempoCmd returns the `query` subcommand for a Tempo datasource parent.
+// TempoCmd returns the `query` subcommand for the Tempo command group.
 func TempoCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "query",

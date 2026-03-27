@@ -1,33 +1,36 @@
-## gcx datasources prometheus query
+## gcx loki query
 
-Execute a PromQL query against a Prometheus datasource
+Execute a LogQL query against a Loki datasource
 
 ### Synopsis
 
-Execute a PromQL query against a Prometheus datasource.
+Execute a LogQL query against a Loki datasource.
 
-DATASOURCE_UID is optional when datasources.prometheus is configured in your context.
-EXPR is the PromQL expression to evaluate.
+DATASOURCE_UID is optional when datasources.loki is configured in your context.
+EXPR is the LogQL expression to evaluate.
 
 ```
-gcx datasources prometheus query [DATASOURCE_UID] EXPR [flags]
+gcx loki query [DATASOURCE_UID] EXPR [flags]
 ```
 
 ### Examples
 
 ```
 
-  # Instant query using configured default datasource
-  gcx datasources prometheus query 'up{job="grafana"}'
+  # Log query using configured default datasource
+  gcx loki query '{job="varlogs"}'
 
   # Range query with explicit datasource UID
-  gcx datasources prometheus query abc123 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m
+  gcx loki query loki-001 '{job="varlogs"}' --from now-1h --to now
 
-  # Convenience window flag
-  gcx datasources prometheus query abc123 'up' --window 1h
+  # With custom limit
+  gcx loki query loki-001 '{job="varlogs"}' --from now-1h --to now --limit 500
+
+  # No limit (return all matching log lines)
+  gcx loki query loki-001 '{job="varlogs"}' --limit 0
 
   # Output as JSON
-  gcx datasources prometheus query abc123 'up' -o json
+  gcx loki query loki-001 '{job="varlogs"}' -o json
 ```
 
 ### Options
@@ -36,6 +39,7 @@ gcx datasources prometheus query [DATASOURCE_UID] EXPR [flags]
       --from string     Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help            help for query
       --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --limit int       Maximum number of log lines to return (0 means no limit) (default 1000)
   -o, --output string   Output format. One of: graph, json, table, wide, yaml (default "table")
       --step string     Query step (e.g., '15s', '1m')
       --to string       End time (RFC3339, Unix timestamp, or relative like 'now')
@@ -55,5 +59,5 @@ gcx datasources prometheus query [DATASOURCE_UID] EXPR [flags]
 
 ### SEE ALSO
 
-* [gcx datasources prometheus](gcx_datasources_prometheus.md)	 - Prometheus datasource operations
+* [gcx loki](gcx_loki.md)	 - Loki datasource operations
 

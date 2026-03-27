@@ -1,36 +1,32 @@
-## gcx datasources pyroscope labels
+## gcx pyroscope profile-types
 
-List labels or label values
+List available profile types
 
 ### Synopsis
 
-List all labels or get values for a specific label from a Pyroscope datasource.
+List available profile types from a Pyroscope datasource.
 
 ```
-gcx datasources pyroscope labels [flags]
+gcx pyroscope profile-types [flags]
 ```
 
 ### Examples
 
 ```
 
-	# List all labels (use datasource UID, not name)
-	gcx datasources pyroscope labels -d <datasource-uid>
-
-	# Get values for a specific label
-	gcx datasources pyroscope labels -d <datasource-uid> --label service_name
+	# List profile types (use datasource UID, not name)
+	gcx pyroscope profile-types -d <datasource-uid>
 
 	# Output as JSON
-	gcx datasources pyroscope labels -d <datasource-uid> -o json
+	gcx pyroscope profile-types -d <datasource-uid> -o json
 ```
 
 ### Options
 
 ```
   -d, --datasource string   Datasource UID (required unless default-pyroscope-datasource is configured)
-  -h, --help                help for labels
+  -h, --help                help for profile-types
       --json string         Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -l, --label string        Get values for this label (omit to list all labels)
   -o, --output string       Output format. One of: json, table, yaml (default "table")
 ```
 
@@ -47,5 +43,5 @@ gcx datasources pyroscope labels [flags]
 
 ### SEE ALSO
 
-* [gcx datasources pyroscope](gcx_datasources_pyroscope.md)	 - Pyroscope datasource operations
+* [gcx pyroscope](gcx_pyroscope.md)	 - Pyroscope datasource operations
 

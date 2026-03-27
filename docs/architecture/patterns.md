@@ -273,7 +273,7 @@ terminal charts (`internal/graph`). The `query` command registers custom codecs
 - `internal/query/prometheus/client.go`: `NewClient` calls `rest.HTTPClientFor`
 - `internal/query/loki/client.go`: same pattern
 - `cmd/gcx/datasources/query/codecs.go`: `queryTableCodec`, `queryGraphCodec` registration — shared by all per-kind query subcommands
-- `cmd/gcx/datasources/query/{prometheus,loki,pyroscope,tempo,generic}.go`: per-kind constructors wired under `datasources {kind} query`
+- `cmd/gcx/datasources/query/{prometheus,loki,pyroscope,tempo,generic}.go`: per-kind constructors wired under top-level datasource-kind commands like `{kind} query`
 - `internal/graph/chart.go`: `RenderChart` auto-selects line vs bar chart
 
 ---

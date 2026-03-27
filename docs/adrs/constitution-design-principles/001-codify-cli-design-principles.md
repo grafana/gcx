@@ -36,9 +36,10 @@ is short and authoritative. Design guide is long and detailed with
 ## CLI Grammar
 
 - **Command structure follows `$AREA $NOUN $VERB`.** Resource and provider
-  commands use `gcx {area} {resource-type} {verb}` (e.g.
-  `gcx slo definitions list`, `gcx resources get`,
-  `gcx datasources loki query`). Tooling commands (`dev`, `config`)
+  commands use `gcx {area} {resource-type} {verb}` when an area group is needed (e.g.
+  `gcx slo definitions list`, `gcx resources get`) and may use
+  `gcx {resource-type} {verb}` for top-level datasource-kind commands (e.g.
+  `gcx loki query`). Tooling commands (`dev`, `config`)
   may use `$AREA $VERB` when there is no meaningful noun — these operate on
   the project or CLI itself, not on Grafana resources.
 - **Extension commands nest under their resource type.** Domain-specific

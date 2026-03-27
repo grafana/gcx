@@ -1,4 +1,4 @@
-## gcx datasources pyroscope query
+## gcx pyroscope query
 
 Execute a profiling query against a Pyroscope datasource
 
@@ -10,7 +10,7 @@ DATASOURCE_UID is optional when datasources.pyroscope is configured in your cont
 EXPR is the label selector (e.g., '{service_name="frontend"}').
 
 ```
-gcx datasources pyroscope query [DATASOURCE_UID] EXPR [flags]
+gcx pyroscope query [DATASOURCE_UID] EXPR [flags]
 ```
 
 ### Examples
@@ -18,17 +18,17 @@ gcx datasources pyroscope query [DATASOURCE_UID] EXPR [flags]
 ```
 
   # Profile query with explicit datasource UID
-  gcx datasources pyroscope query pyro-001 '{service_name="frontend"}' \
+  gcx pyroscope query pyro-001 '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
     --from now-1h --to now
 
   # Using configured default datasource
-  gcx datasources pyroscope query '{service_name="frontend"}' \
+  gcx pyroscope query '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
     --window 1h
 
   # Output as JSON
-  gcx datasources pyroscope query pyro-001 '{service_name="frontend"}' \
+  gcx pyroscope query pyro-001 '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o json
 ```
 
@@ -59,5 +59,5 @@ gcx datasources pyroscope query [DATASOURCE_UID] EXPR [flags]
 
 ### SEE ALSO
 
-* [gcx datasources pyroscope](gcx_datasources_pyroscope.md)	 - Pyroscope datasource operations
+* [gcx pyroscope](gcx_pyroscope.md)	 - Pyroscope datasource operations
 

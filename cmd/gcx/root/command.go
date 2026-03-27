@@ -128,6 +128,10 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd.AddCommand(dashboards.Command())
 	rootCmd.AddCommand(dev.Command())
 	rootCmd.AddCommand(datasources.Command())
+	rootCmd.AddCommand(datasources.PrometheusCommand())
+	rootCmd.AddCommand(datasources.LokiCommand())
+	rootCmd.AddCommand(datasources.PyroscopeCommand())
+	rootCmd.AddCommand(datasources.TempoCommand())
 	rootCmd.AddCommand(resources.Command())
 
 	rootCmd.AddCommand(cmdproviders.Command(pp))

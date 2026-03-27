@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// LokiCmd returns the `query` subcommand for a Loki datasource parent.
+// LokiCmd returns the `query` subcommand for the Loki command group.
 func LokiCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	shared := &sharedQueryOpts{}
 	var limit int
@@ -23,19 +23,19 @@ DATASOURCE_UID is optional when datasources.loki is configured in your context.
 EXPR is the LogQL expression to evaluate.`,
 		Example: `
   # Log query using configured default datasource
-  gcx datasources loki query '{job="varlogs"}'
+  gcx loki query '{job="varlogs"}'
 
   # Range query with explicit datasource UID
-  gcx datasources loki query loki-001 '{job="varlogs"}' --from now-1h --to now
+  gcx loki query loki-001 '{job="varlogs"}' --from now-1h --to now
 
   # With custom limit
-  gcx datasources loki query loki-001 '{job="varlogs"}' --from now-1h --to now --limit 500
+  gcx loki query loki-001 '{job="varlogs"}' --from now-1h --to now --limit 500
 
   # No limit (return all matching log lines)
-  gcx datasources loki query loki-001 '{job="varlogs"}' --limit 0
+  gcx loki query loki-001 '{job="varlogs"}' --limit 0
 
   # Output as JSON
-  gcx datasources loki query loki-001 '{job="varlogs"}' -o json`,
+  gcx loki query loki-001 '{job="varlogs"}' -o json`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {

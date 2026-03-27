@@ -364,8 +364,15 @@ gcx
   +-- resources          (--config, --context as persistent flags)
   |     +-- get, schemas, pull, push, delete, edit, validate
   +-- datasources        (--config, --context as persistent flags)
-  |     +-- get, list, prometheus, loki, pyroscope, tempo, generic
-  |     (each kind subgroup exposes its own `query` subcommand)
+  |     +-- get, list, generic
+  +-- prometheus         (--config, --context as persistent flags)
+  |     +-- labels, metadata, targets, query
+  +-- loki               (--config, --context as persistent flags)
+  |     +-- labels, series, query
+  +-- pyroscope          (--config, --context as persistent flags)
+  |     +-- labels, profile-types, query
+  +-- tempo              (--config, --context as persistent flags)
+  |     +-- query
   +-- providers
   |     (single command: list registered providers)
   +-- dev

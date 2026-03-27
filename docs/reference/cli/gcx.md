@@ -24,9 +24,13 @@
 * [gcx incidents](gcx_incidents.md)	 - Manage Grafana IRM Incident resources.
 * [gcx k6](gcx_k6.md)	 - Manage K6 Cloud resources (projects, load tests, env vars, schedules, load zones).
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph (Asserts) resources.
+* [gcx loki](gcx_loki.md)	 - Loki datasource operations
 * [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall resources.
+* [gcx prometheus](gcx_prometheus.md)	 - Prometheus datasource operations
 * [gcx providers](gcx_providers.md)	 - List registered providers
+* [gcx pyroscope](gcx_pyroscope.md)	 - Pyroscope datasource operations
 * [gcx resources](gcx_resources.md)	 - Manipulate Grafana resources
 * [gcx slo](gcx_slo.md)	 - Manage Grafana SLO resources.
 * [gcx synth](gcx_synth.md)	 - Manage Grafana Synthetic Monitoring resources.
+* [gcx tempo](gcx_tempo.md)	 - Tempo datasource operations
 

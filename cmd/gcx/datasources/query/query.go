@@ -1,7 +1,7 @@
 // Package query implements shared infrastructure for datasource query subcommands.
 // Each datasource kind (prometheus, loki, pyroscope, tempo, generic) exposes an
 // exported constructor that returns a `query` cobra.Command to be registered
-// under its parent kind command (e.g., `datasources prometheus query`).
+// under its parent kind command (e.g., `prometheus query`).
 package query
 
 import (

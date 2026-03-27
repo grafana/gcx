@@ -1,4 +1,4 @@
-## gcx datasources prometheus targets
+## gcx prometheus targets
 
 List scrape targets
 
@@ -7,7 +7,7 @@ List scrape targets
 List scrape targets from a Prometheus datasource.
 
 ```
-gcx datasources prometheus targets [flags]
+gcx prometheus targets [flags]
 ```
 
 ### Examples
@@ -15,16 +15,16 @@ gcx datasources prometheus targets [flags]
 ```
 
 	# List active targets (use datasource UID, not name)
-	gcx datasources prometheus targets -d <datasource-uid>
+	gcx prometheus targets -d <datasource-uid>
 
 	# List dropped targets
-	gcx datasources prometheus targets -d <datasource-uid> --state dropped
+	gcx prometheus targets -d <datasource-uid> --state dropped
 
 	# List all targets
-	gcx datasources prometheus targets -d <datasource-uid> --state any
+	gcx prometheus targets -d <datasource-uid> --state any
 
 	# Output as JSON
-	gcx datasources prometheus targets -d <datasource-uid> -o json
+	gcx prometheus targets -d <datasource-uid> -o json
 ```
 
 ### Options
@@ -50,5 +50,5 @@ gcx datasources prometheus targets [flags]
 
 ### SEE ALSO
 
-* [gcx datasources prometheus](gcx_datasources_prometheus.md)	 - Prometheus datasource operations
+* [gcx prometheus](gcx_prometheus.md)	 - Prometheus datasource operations
 

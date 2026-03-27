@@ -58,13 +58,13 @@ func lokiLabelsCmd(configOpts *cmdconfig.Options) *cobra.Command {
 		Long:  "List all labels or get values for a specific label from a Loki datasource.",
 		Example: `
 	# List all labels (use datasource UID, not name)
-	gcx datasources loki labels -d <datasource-uid>
+	gcx loki labels -d <datasource-uid>
 
 	# Get values for a specific label
-	gcx datasources loki labels -d <datasource-uid> --label job
+	gcx loki labels -d <datasource-uid> --label job
 
 	# Output as JSON
-	gcx datasources loki labels -d <datasource-uid> -o json`,
+	gcx loki labels -d <datasource-uid> -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -179,16 +179,16 @@ func seriesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 		Long:  "List log streams (series) from a Loki datasource using LogQL stream selectors. At least one --match selector is required.",
 		Example: `
 	# List series matching a selector (use datasource UID, not name)
-	gcx datasources loki series -d <datasource-uid> --match '{job="varlogs"}'
+	gcx loki series -d <datasource-uid> --match '{job="varlogs"}'
 
 	# Match with regex and multiple labels
-	gcx datasources loki series -d <datasource-uid> --match '{container_name=~"prometheus.*", component="server"}'
+	gcx loki series -d <datasource-uid> --match '{container_name=~"prometheus.*", component="server"}'
 
 	# Multiple matchers (OR logic)
-	gcx datasources loki series -d <datasource-uid> --match '{job="varlogs"}' --match '{namespace="default"}'
+	gcx loki series -d <datasource-uid> --match '{job="varlogs"}' --match '{namespace="default"}'
 
 	# Output as JSON
-	gcx datasources loki series -d <datasource-uid> --match '{job="varlogs"}' -o json`,
+	gcx loki series -d <datasource-uid> --match '{job="varlogs"}' -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err

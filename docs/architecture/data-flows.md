@@ -273,11 +273,11 @@ backing client is a REST adapter or the k8s dynamic client.
 
 ## 5. QUERY Pipeline
 
-Entry point: `cmd/gcx/datasources/query/` package — per-kind constructors wired under each kind's subgroup (`datasources prometheus query`, `datasources loki query`, etc.).
+Entry point: `cmd/gcx/datasources/query/` package — per-kind constructors wired under each top-level datasource-kind command (`prometheus query`, `loki query`, etc.).
 
 ```
 User invocation:
-  gcx datasources prometheus query <uid> 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m
+  gcx prometheus query <uid> 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m
 
   ┌──────────────────────────────────────────────────────────────────────┐
   │ 1. Parse args and flags                                               │
@@ -398,7 +398,7 @@ Key files:
 - `cmd/gcx/datasources/query/{prometheus,loki,pyroscope,tempo,generic}.go` — per-kind constructors (`PrometheusCmd`, `LokiCmd`, etc.)
 - `cmd/gcx/datasources/query/codecs.go` — `queryTableCodec`, `queryGraphCodec` (codec registry)
 - `cmd/gcx/datasources/query/time.go` — `ParseTime`, `ParseDuration` for flag parsing
-- `cmd/gcx/datasources/{prometheus,loki,pyroscope,tempo,generic}.go` — kind subgroups that wire in the query constructors
+- `cmd/gcx/datasources/{prometheus,loki,pyroscope,tempo,generic}.go` — top-level kind groups plus `datasources generic`, each wiring in the query constructors
 - `internal/config/resolver.go` — `DefaultDatasourceUID(ctx, kind)` — shared 2-tier UID resolution
 - `internal/query/prometheus/client.go` — HTTP client, request construction, response conversion
 - `internal/query/prometheus/formatter.go` — table rendering (vector/matrix/scalar)

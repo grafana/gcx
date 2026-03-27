@@ -1,17 +1,17 @@
-## gcx datasources
+## gcx prometheus
 
-Manage Grafana datasources
+Prometheus datasource operations
 
 ### Synopsis
 
-List, inspect, and generically query Grafana datasources.
+Operations specific to Prometheus datasources such as labels, metadata, and targets.
 
 ### Options
 
 ```
       --config string    Path to the configuration file to use
       --context string   Name of the context to use
-  -h, --help             help for datasources
+  -h, --help             help for prometheus
 ```
 
 ### Options inherited from parent commands
@@ -26,7 +26,8 @@ List, inspect, and generically query Grafana datasources.
 ### SEE ALSO
 
 * [gcx](gcx.md)	 - 
-* [gcx datasources generic](gcx_datasources_generic.md)	 - Generic datasource operations (auto-detects type)
-* [gcx datasources get](gcx_datasources_get.md)	 - Get details of a specific datasource
-* [gcx datasources list](gcx_datasources_list.md)	 - List all datasources
+* [gcx prometheus labels](gcx_prometheus_labels.md)	 - List labels or label values
+* [gcx prometheus metadata](gcx_prometheus_metadata.md)	 - Get metric metadata
+* [gcx prometheus query](gcx_prometheus_query.md)	 - Execute a PromQL query against a Prometheus datasource
+* [gcx prometheus targets](gcx_prometheus_targets.md)	 - List scrape targets
 

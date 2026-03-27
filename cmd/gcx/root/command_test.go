@@ -26,10 +26,10 @@ func (m *mockProvider) TypedRegistrations() []adapter.Registration { return nil 
 
 var _ providers.Provider = (*mockProvider)(nil)
 
-// findSubcommand returns the direct child of root whose Use equals name, or nil.
+// findSubcommand returns the direct child command whose name equals name, or nil.
 func findSubcommand(cmd *cobra.Command, name string) *cobra.Command {
 	for _, sub := range cmd.Commands() {
-		if sub.Use == name {
+		if sub.Name() == name {
 			return sub
 		}
 	}
@@ -76,4 +76,26 @@ func TestNewCommand_MultipleProviders(t *testing.T) {
 
 	assert.NotNil(t, findSubcommand(rootCmd, "slo"), "expected 'slo' subcommand")
 	assert.NotNil(t, findSubcommand(rootCmd, "oncall"), "expected 'oncall' subcommand")
+}
+
+func TestNewCommand_TopLevelDatasourceCommandsRegistered(t *testing.T) {
+	rootCmd := root.NewCommandForTest("v0.0.0-test", nil)
+
+	for _, name := range []string{"prometheus", "loki", "pyroscope", "tempo"} {
+		assert.NotNil(t, findSubcommand(rootCmd, name), "expected top-level datasource command %q", name)
+	}
+}
+
+func TestNewCommand_DatasourcesCommandKeepsOnlyManagementAndGenericSubcommands(t *testing.T) {
+	rootCmd := root.NewCommandForTest("v0.0.0-test", nil)
+	datasourcesCmd := findSubcommand(rootCmd, "datasources")
+	require.NotNil(t, datasourcesCmd, "expected 'datasources' subcommand")
+
+	assert.NotNil(t, findSubcommand(datasourcesCmd, "list"), "expected 'datasources list' subcommand")
+	assert.NotNil(t, findSubcommand(datasourcesCmd, "get"), "expected 'datasources get' subcommand")
+	assert.NotNil(t, findSubcommand(datasourcesCmd, "generic"), "expected 'datasources generic' subcommand")
+
+	for _, name := range []string{"prometheus", "loki", "pyroscope", "tempo"} {
+		assert.Nil(t, findSubcommand(datasourcesCmd, name), "did not expect promoted datasource command %q under 'datasources'", name)
+	}
 }
