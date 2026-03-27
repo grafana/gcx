@@ -3,6 +3,7 @@
 /.worktrees
 /build
 /bin
+/gcx
 /vendor
 /localdata
 /resources
