@@ -90,63 +90,6 @@ func TestClient_ListExemptions(t *testing.T) {
 	}
 }
 
-func TestClient_GetExemption(t *testing.T) {
-	tests := []struct {
-		name    string
-		id      string
-		handler http.HandlerFunc
-		wantID  string
-		wantErr bool
-	}{
-		{
-			name: "success with plain ID",
-			id:   "ex-1",
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, http.MethodGet, r.Method)
-				assert.Equal(t, "/adaptive-logs/exemptions/ex-1", r.URL.Path)
-				writeJSON(w, logs.Exemption{ID: "ex-1", StreamSelector: `{app="foo"}`})
-			},
-			wantID: "ex-1",
-		},
-		{
-			name: "URL-escapes ID with special chars",
-			id:   "ex/special id",
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, "/adaptive-logs/exemptions/ex%2Fspecial%20id", r.URL.RawPath)
-				writeJSON(w, logs.Exemption{ID: "ex/special id", StreamSelector: `{app="foo"}`})
-			},
-			wantID: "ex/special id",
-		},
-		{
-			name: "not found",
-			id:   "missing",
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusNotFound)
-				writeJSON(w, map[string]any{"error": "exemption not found"})
-			},
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(tt.handler)
-			defer server.Close()
-
-			client := newTestClient(t, server)
-			exemption, err := client.GetExemption(t.Context(), tt.id)
-
-			if tt.wantErr {
-				require.Error(t, err)
-				return
-			}
-
-			require.NoError(t, err)
-			assert.Equal(t, tt.wantID, exemption.ID)
-		})
-	}
-}
-
 func TestClient_CreateExemption(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -388,41 +331,45 @@ func TestClient_ListRecommendations(t *testing.T) {
 	}
 }
 
-func TestClient_ApplyRecommendations(t *testing.T) {
+func TestClient_ListSegments(t *testing.T) {
 	tests := []struct {
-		name    string
-		input   []logs.LogRecommendation
-		handler http.HandlerFunc
-		wantErr bool
+		name      string
+		handler   http.HandlerFunc
+		wantCount int
+		wantErr   bool
 	}{
 		{
-			name: "POSTs full array",
-			input: []logs.LogRecommendation{
-				{Pattern: "pattern-1", ConfiguredDropRate: 0.5},
-				{Pattern: "pattern-2", ConfiguredDropRate: 0.3},
-			},
+			name: "returns bare array",
 			handler: func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, http.MethodPost, r.Method)
-				assert.Equal(t, "/adaptive-logs/recommendations", r.URL.Path)
-				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
-
-				var received []logs.LogRecommendation
-				if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
-					t.Fatal(err)
-				}
-				assert.Len(t, received, 2)
-				assert.Equal(t, "pattern-1", received[0].Pattern)
-				assert.Equal(t, "pattern-2", received[1].Pattern)
-
-				w.WriteHeader(http.StatusAccepted)
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.Equal(t, "/adaptive-logs/segments", r.URL.Path)
+				writeJSON(w, []logs.LogSegment{
+					{ID: "seg-1", Name: "production"},
+					{ID: "seg-2", Name: "staging"},
+				})
 			},
+			wantCount: 2,
 		},
 		{
-			name:  "server error",
-			input: []logs.LogRecommendation{},
+			name: "null returns empty slice",
 			handler: func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusBadRequest)
-				writeJSON(w, map[string]any{"error": "bad request"})
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte("null"))
+			},
+			wantCount: 0,
+		},
+		{
+			name: "empty array",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				writeJSON(w, []logs.LogSegment{})
+			},
+			wantCount: 0,
+		},
+		{
+			name: "server error",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+				writeJSON(w, map[string]any{"error": "internal server error"})
 			},
 			wantErr: true,
 		},
@@ -434,7 +381,219 @@ func TestClient_ApplyRecommendations(t *testing.T) {
 			defer server.Close()
 
 			client := newTestClient(t, server)
-			err := client.ApplyRecommendations(t.Context(), tt.input)
+			segments, err := client.ListSegments(t.Context())
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Len(t, segments, tt.wantCount)
+		})
+	}
+}
+
+func TestClient_GetSegment(t *testing.T) {
+	tests := []struct {
+		name    string
+		id      string
+		handler http.HandlerFunc
+		wantID  string
+		wantErr bool
+	}{
+		{
+			name: "uses query param",
+			id:   "seg-1",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.Equal(t, "/adaptive-logs/segment", r.URL.Path)
+				assert.Equal(t, "seg-1", r.URL.Query().Get("segment"))
+				writeJSON(w, logs.LogSegment{ID: "seg-1", Name: "production"})
+			},
+			wantID: "seg-1",
+		},
+		{
+			name: "not found",
+			id:   "missing",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+				writeJSON(w, map[string]any{"error": "segment not found"})
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(tt.handler)
+			defer server.Close()
+
+			client := newTestClient(t, server)
+			segment, err := client.GetSegment(t.Context(), tt.id)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantID, segment.ID)
+		})
+	}
+}
+
+func TestClient_CreateSegment(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   *logs.LogSegment
+		handler http.HandlerFunc
+		wantID  string
+		wantErr bool
+	}{
+		{
+			name:  "returns created segment",
+			input: &logs.LogSegment{Name: "new-segment", Selector: `{env="prod"}`},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodPost, r.Method)
+				assert.Equal(t, "/adaptive-logs/segment", r.URL.Path)
+				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+
+				var received logs.LogSegment
+				if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+					t.Fatal(err)
+				}
+				assert.Equal(t, "new-segment", received.Name)
+
+				w.WriteHeader(http.StatusCreated)
+				writeJSON(w, logs.LogSegment{ID: "seg-new", Name: "new-segment"})
+			},
+			wantID: "seg-new",
+		},
+		{
+			name:  "server error",
+			input: &logs.LogSegment{},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusBadRequest)
+				writeJSON(w, map[string]any{"error": "invalid segment"})
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(tt.handler)
+			defer server.Close()
+
+			client := newTestClient(t, server)
+			created, err := client.CreateSegment(t.Context(), tt.input)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantID, created.ID)
+		})
+	}
+}
+
+func TestClient_UpdateSegment(t *testing.T) {
+	tests := []struct {
+		name    string
+		id      string
+		input   *logs.LogSegment
+		handler http.HandlerFunc
+		wantID  string
+		wantErr bool
+	}{
+		{
+			name:  "uses query param",
+			id:    "seg-1",
+			input: &logs.LogSegment{Name: "updated-segment"},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodPut, r.Method)
+				assert.Equal(t, "/adaptive-logs/segment", r.URL.Path)
+				assert.Equal(t, "seg-1", r.URL.Query().Get("segment"))
+				writeJSON(w, logs.LogSegment{ID: "seg-1", Name: "updated-segment"})
+			},
+			wantID: "seg-1",
+		},
+		{
+			name:  "not found",
+			id:    "missing",
+			input: &logs.LogSegment{},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+				writeJSON(w, map[string]any{"error": "not found"})
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(tt.handler)
+			defer server.Close()
+
+			client := newTestClient(t, server)
+			updated, err := client.UpdateSegment(t.Context(), tt.id, tt.input)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantID, updated.ID)
+		})
+	}
+}
+
+func TestClient_DeleteSegment(t *testing.T) {
+	tests := []struct {
+		name    string
+		id      string
+		handler http.HandlerFunc
+		wantErr bool
+	}{
+		{
+			name: "success 204",
+			id:   "seg-1",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodDelete, r.Method)
+				assert.Equal(t, "/adaptive-logs/segment", r.URL.Path)
+				assert.Equal(t, "seg-1", r.URL.Query().Get("segment"))
+				w.WriteHeader(http.StatusNoContent)
+			},
+		},
+		{
+			name: "success 200",
+			id:   "seg-1",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			},
+		},
+		{
+			name: "not found",
+			id:   "missing",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+				writeJSON(w, map[string]any{"error": "segment not found"})
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(tt.handler)
+			defer server.Close()
+
+			client := newTestClient(t, server)
+			err := client.DeleteSegment(t.Context(), tt.id)
 
 			if tt.wantErr {
 				require.Error(t, err)

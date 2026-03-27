@@ -1,10 +1,10 @@
 package logs
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 	"text/tabwriter"
 
 	"github.com/grafana/gcx/internal/format"
@@ -21,12 +21,24 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Manage Adaptive Logs resources.",
 	}
 	h := &logsHelper{loader: loader}
-	cmd.AddCommand(h.patternsCommand())
+	cmd.AddCommand(
+		h.patternsCommand(),
+		h.exemptionsCommand(),
+		h.segmentsCommand(),
+	)
 	return cmd
 }
 
 type logsHelper struct {
 	loader *providers.ConfigLoader
+}
+
+func (h *logsHelper) newClient(ctx context.Context) (*Client, error) {
+	signalAuth, err := auth.ResolveSignalAuth(ctx, h.loader, "logs")
+	if err != nil {
+		return nil, err
+	}
+	return NewClient(signalAuth.BaseURL, signalAuth.TenantID, signalAuth.APIToken, signalAuth.HTTPClient), nil
 }
 
 func (h *logsHelper) patternsCommand() *cobra.Command {
@@ -36,7 +48,6 @@ func (h *logsHelper) patternsCommand() *cobra.Command {
 	}
 	cmd.AddCommand(
 		h.patternsShowCommand(),
-		h.patternsApplyCommand(),
 	)
 	return cmd
 }
@@ -68,11 +79,10 @@ func (h *logsHelper) patternsShowCommand() *cobra.Command {
 
 			ctx := cmd.Context()
 
-			signalAuth, err := auth.ResolveSignalAuth(ctx, h.loader, "logs")
+			client, err := h.newClient(ctx)
 			if err != nil {
 				return err
 			}
-			client := NewClient(signalAuth.BaseURL, signalAuth.TenantID, signalAuth.APIToken, signalAuth.HTTPClient)
 
 			recs, err := client.ListRecommendations(ctx)
 			if err != nil {
@@ -144,110 +154,442 @@ func (c *patternsTableCodec) Decode(_ io.Reader, _ any) error {
 }
 
 // ---------------------------------------------------------------------------
-// patterns apply
+// exemptions
 // ---------------------------------------------------------------------------
 
-type patternsApplyOpts struct {
-	All     bool
-	Rate    float32
-	rateSet bool
-	DryRun  bool
-
-	// Set by RunE before Validate — populated from positional args.
-	hasSubstring bool
-}
-
-func (o *patternsApplyOpts) setup(cmd *cobra.Command) {
-	cmd.Flags().BoolVar(&o.All, "all", false, "Apply to all patterns")
-	cmd.Flags().Float32Var(&o.Rate, "rate", 0, "Drop rate to apply (0.0–1.0); defaults to recommended_drop_rate if not set")
-	cmd.Flags().BoolVar(&o.DryRun, "dry-run", false, "Preview changes without making them")
-}
-
-func (o *patternsApplyOpts) Validate() error {
-	if !o.hasSubstring && !o.All {
-		return errors.New("provide a pattern substring argument or use --all to match all patterns")
-	}
-	if o.hasSubstring && o.All {
-		return errors.New("--all and a substring argument are mutually exclusive")
-	}
-	return nil
-}
-
-func (h *logsHelper) patternsApplyCommand() *cobra.Command {
-	opts := &patternsApplyOpts{}
+func (h *logsHelper) exemptionsCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "apply [SUBSTRING]",
-		Short: "Apply drop rate recommendations to adaptive log patterns.",
-		Args:  cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			opts.hasSubstring = len(args) == 1
-			opts.rateSet = cmd.Flags().Changed("rate")
+		Use:   "exemptions",
+		Short: "Manage adaptive log exemptions.",
+	}
+	cmd.AddCommand(
+		h.exemptionsListCommand(),
+		h.exemptionsCreateCommand(),
+		h.exemptionsUpdateCommand(),
+		h.exemptionsDeleteCommand(),
+	)
+	return cmd
+}
 
-			if err := opts.Validate(); err != nil {
+// exemptions list
+
+type exemptionsListOpts struct {
+	IO cmdio.Options
+}
+
+func (o *exemptionsListOpts) setup(cmd *cobra.Command) {
+	o.IO.RegisterCustomCodec("table", &exemptionsTableCodec{wide: false})
+	o.IO.RegisterCustomCodec("wide", &exemptionsTableCodec{wide: true})
+	o.IO.DefaultFormat("table")
+	o.IO.BindFlags(cmd.Flags())
+}
+
+func (h *logsHelper) exemptionsListCommand() *cobra.Command {
+	opts := &exemptionsListOpts{}
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List adaptive log exemptions.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
 
 			ctx := cmd.Context()
-
-			signalAuth, err := auth.ResolveSignalAuth(ctx, h.loader, "logs")
+			client, err := h.newClient(ctx)
 			if err != nil {
 				return err
 			}
-			client := NewClient(signalAuth.BaseURL, signalAuth.TenantID, signalAuth.APIToken, signalAuth.HTTPClient)
 
-			recs, err := client.ListRecommendations(ctx)
+			exemptions, err := client.ListExemptions(ctx)
 			if err != nil {
-				return fmt.Errorf("failed to list recommendations: %w", err)
+				return err
 			}
 
-			var substring string
-			if opts.hasSubstring {
-				substring = args[0]
-			}
-
-			// Identify matched patterns.
-			matched := make([]int, 0)
-			for i, rec := range recs {
-				if opts.All || strings.Contains(strings.ToLower(rec.Pattern), strings.ToLower(substring)) {
-					matched = append(matched, i)
-				}
-			}
-
-			if len(matched) == 0 {
-				cmdio.Info(cmd.OutOrStdout(), "No patterns matched.")
-				return nil
-			}
-
-			if opts.DryRun {
-				cmdio.Info(cmd.OutOrStdout(), "Dry-run: would apply to %d pattern(s):", len(matched))
-				for _, i := range matched {
-					rec := recs[i]
-					newRate := float32(rec.RecommendedDropRate)
-					if opts.rateSet {
-						newRate = opts.Rate
-					}
-					fmt.Fprintf(cmd.OutOrStdout(), "  %s: %.4f → %.4f\n", rec.Pattern, rec.ConfiguredDropRate, newRate)
-				}
-				return nil
-			}
-
-			// Apply the rate changes.
-			for _, i := range matched {
-				if opts.rateSet {
-					recs[i].ConfiguredDropRate = opts.Rate
-				} else {
-					recs[i].ConfiguredDropRate = float32(recs[i].RecommendedDropRate)
-				}
-			}
-
-			if err := client.ApplyRecommendations(ctx, recs); err != nil {
-				return fmt.Errorf("failed to apply recommendations: %w", err)
-			}
-
-			cmdio.Success(cmd.OutOrStdout(), "Applied drop rate to %d pattern(s).", len(matched))
-			return nil
+			return opts.IO.Encode(cmd.OutOrStdout(), exemptions)
 		},
 	}
 	opts.setup(cmd)
+	return cmd
+}
+
+type exemptionsTableCodec struct{ wide bool }
+
+func (c *exemptionsTableCodec) Format() format.Format {
+	if c.wide {
+		return "wide"
+	}
+	return "table"
+}
+
+func (c *exemptionsTableCodec) Encode(w io.Writer, v any) error {
+	exemptions, ok := v.([]Exemption)
+	if !ok {
+		return errors.New("invalid data type for table codec: expected []Exemption")
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	if c.wide {
+		fmt.Fprintln(tw, "ID\tSTREAM SELECTOR\tREASON\tCREATED AT\tMANAGED BY\tEXPIRES AT\tACTIVE INTERVAL\tCREATED BY\tUPDATED AT")
+	} else {
+		fmt.Fprintln(tw, "ID\tSTREAM SELECTOR\tREASON\tCREATED AT\tMANAGED BY")
+	}
+
+	for _, e := range exemptions {
+		if c.wide {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				e.ID, e.StreamSelector, e.Reason, e.CreatedAt, e.ManagedBy,
+				e.ExpiresAt, e.ActiveInterval, e.CreatedBy, e.UpdatedAt)
+		} else {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+				e.ID, e.StreamSelector, e.Reason, e.CreatedAt, e.ManagedBy)
+		}
+	}
+
+	return tw.Flush()
+}
+
+func (c *exemptionsTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// exemptions create
+
+type exemptionsCreateOpts struct {
+	StreamSelector string
+	Reason         string
+	IO             cmdio.Options
+}
+
+func (o *exemptionsCreateOpts) setup(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&o.StreamSelector, "stream-selector", "", "Log stream selector (required)")
+	cmd.Flags().StringVar(&o.Reason, "reason", "", "Reason for the exemption")
+	_ = cmd.MarkFlagRequired("stream-selector")
+	o.IO.DefaultFormat("json")
+	o.IO.BindFlags(cmd.Flags())
+}
+
+func (h *logsHelper) exemptionsCreateCommand() *cobra.Command {
+	opts := &exemptionsCreateOpts{}
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create an adaptive log exemption.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			client, err := h.newClient(ctx)
+			if err != nil {
+				return err
+			}
+
+			created, err := client.CreateExemption(ctx, &Exemption{
+				StreamSelector: opts.StreamSelector,
+				Reason:         opts.Reason,
+			})
+			if err != nil {
+				return err
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), created)
+		},
+	}
+	opts.setup(cmd)
+	return cmd
+}
+
+// exemptions update
+
+type exemptionsUpdateOpts struct {
+	StreamSelector string
+	Reason         string
+	IO             cmdio.Options
+}
+
+func (o *exemptionsUpdateOpts) setup(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&o.StreamSelector, "stream-selector", "", "Log stream selector")
+	cmd.Flags().StringVar(&o.Reason, "reason", "", "Reason for the exemption")
+	o.IO.DefaultFormat("json")
+	o.IO.BindFlags(cmd.Flags())
+}
+
+func (h *logsHelper) exemptionsUpdateCommand() *cobra.Command {
+	opts := &exemptionsUpdateOpts{}
+	cmd := &cobra.Command{
+		Use:   "update ID",
+		Short: "Update an adaptive log exemption.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			client, err := h.newClient(ctx)
+			if err != nil {
+				return err
+			}
+
+			updated, err := client.UpdateExemption(ctx, args[0], &Exemption{
+				StreamSelector: opts.StreamSelector,
+				Reason:         opts.Reason,
+			})
+			if err != nil {
+				return err
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), updated)
+		},
+	}
+	opts.setup(cmd)
+	return cmd
+}
+
+// exemptions delete
+
+func (h *logsHelper) exemptionsDeleteCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "delete ID",
+		Short: "Delete an adaptive log exemption.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			client, err := h.newClient(ctx)
+			if err != nil {
+				return err
+			}
+
+			if err := client.DeleteExemption(ctx, args[0]); err != nil {
+				return err
+			}
+
+			cmdio.Success(cmd.OutOrStdout(), "Deleted exemption %q", args[0])
+			return nil
+		},
+	}
+	return cmd
+}
+
+// ---------------------------------------------------------------------------
+// segments
+// ---------------------------------------------------------------------------
+
+func (h *logsHelper) segmentsCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "segments",
+		Short: "Manage adaptive log segments.",
+	}
+	cmd.AddCommand(
+		h.segmentsListCommand(),
+		h.segmentsCreateCommand(),
+		h.segmentsUpdateCommand(),
+		h.segmentsDeleteCommand(),
+	)
+	return cmd
+}
+
+// segments list
+
+type segmentsListOpts struct {
+	IO cmdio.Options
+}
+
+func (o *segmentsListOpts) setup(cmd *cobra.Command) {
+	o.IO.RegisterCustomCodec("table", &segmentsTableCodec{wide: false})
+	o.IO.RegisterCustomCodec("wide", &segmentsTableCodec{wide: true})
+	o.IO.DefaultFormat("table")
+	o.IO.BindFlags(cmd.Flags())
+}
+
+func (h *logsHelper) segmentsListCommand() *cobra.Command {
+	opts := &segmentsListOpts{}
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List adaptive log segments.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			client, err := h.newClient(ctx)
+			if err != nil {
+				return err
+			}
+
+			segments, err := client.ListSegments(ctx)
+			if err != nil {
+				return err
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), segments)
+		},
+	}
+	opts.setup(cmd)
+	return cmd
+}
+
+type segmentsTableCodec struct{ wide bool }
+
+func (c *segmentsTableCodec) Format() format.Format {
+	if c.wide {
+		return "wide"
+	}
+	return "table"
+}
+
+func (c *segmentsTableCodec) Encode(w io.Writer, v any) error {
+	segments, ok := v.([]LogSegment)
+	if !ok {
+		return errors.New("invalid data type for table codec: expected []LogSegment")
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	if c.wide {
+		fmt.Fprintln(tw, "ID\tNAME\tSELECTOR\tFALLBACK\tIS EARLY\tCREATED AT\tUPDATED AT")
+	} else {
+		fmt.Fprintln(tw, "ID\tNAME\tSELECTOR\tFALLBACK")
+	}
+
+	for _, s := range segments {
+		if c.wide {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%v\t%v\t%s\t%s\n",
+				s.ID, s.Name, s.Selector, s.FallbackToDefault, s.IsEarly, s.CreatedAt, s.UpdatedAt)
+		} else {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%v\n",
+				s.ID, s.Name, s.Selector, s.FallbackToDefault)
+		}
+	}
+
+	return tw.Flush()
+}
+
+func (c *segmentsTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// segments create
+
+type segmentsCreateOpts struct {
+	Name              string
+	Selector          string
+	FallbackToDefault bool
+	IO                cmdio.Options
+}
+
+func (o *segmentsCreateOpts) setup(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&o.Name, "name", "", "Segment name (required)")
+	cmd.Flags().StringVar(&o.Selector, "selector", "", "Log stream selector")
+	cmd.Flags().BoolVar(&o.FallbackToDefault, "fallback-to-default", false, "Fall back to default segment")
+	_ = cmd.MarkFlagRequired("name")
+	o.IO.DefaultFormat("json")
+	o.IO.BindFlags(cmd.Flags())
+}
+
+func (h *logsHelper) segmentsCreateCommand() *cobra.Command {
+	opts := &segmentsCreateOpts{}
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create an adaptive log segment.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			client, err := h.newClient(ctx)
+			if err != nil {
+				return err
+			}
+
+			created, err := client.CreateSegment(ctx, &LogSegment{
+				Name:              opts.Name,
+				Selector:          opts.Selector,
+				FallbackToDefault: opts.FallbackToDefault,
+			})
+			if err != nil {
+				return err
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), created)
+		},
+	}
+	opts.setup(cmd)
+	return cmd
+}
+
+// segments update
+
+type segmentsUpdateOpts struct {
+	Name              string
+	Selector          string
+	FallbackToDefault bool
+	IO                cmdio.Options
+}
+
+func (o *segmentsUpdateOpts) setup(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&o.Name, "name", "", "Segment name")
+	cmd.Flags().StringVar(&o.Selector, "selector", "", "Log stream selector")
+	cmd.Flags().BoolVar(&o.FallbackToDefault, "fallback-to-default", false, "Fall back to default segment")
+	o.IO.DefaultFormat("json")
+	o.IO.BindFlags(cmd.Flags())
+}
+
+func (h *logsHelper) segmentsUpdateCommand() *cobra.Command {
+	opts := &segmentsUpdateOpts{}
+	cmd := &cobra.Command{
+		Use:   "update ID",
+		Short: "Update an adaptive log segment.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			client, err := h.newClient(ctx)
+			if err != nil {
+				return err
+			}
+
+			updated, err := client.UpdateSegment(ctx, args[0], &LogSegment{
+				Name:              opts.Name,
+				Selector:          opts.Selector,
+				FallbackToDefault: opts.FallbackToDefault,
+			})
+			if err != nil {
+				return err
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), updated)
+		},
+	}
+	opts.setup(cmd)
+	return cmd
+}
+
+// segments delete
+
+func (h *logsHelper) segmentsDeleteCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "delete ID",
+		Short: "Delete an adaptive log segment.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			client, err := h.newClient(ctx)
+			if err != nil {
+				return err
+			}
+
+			if err := client.DeleteSegment(ctx, args[0]); err != nil {
+				return err
+			}
+
+			cmdio.Success(cmd.OutOrStdout(), "Deleted segment %q", args[0])
+			return nil
+		},
+	}
 	return cmd
 }

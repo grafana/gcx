@@ -56,26 +56,6 @@ func (c *Client) ListExemptions(ctx context.Context) ([]Exemption, error) {
 	return wrapper.Result, nil
 }
 
-// GetExemption returns a single exemption by ID.
-func (c *Client) GetExemption(ctx context.Context, id string) (*Exemption, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, "/adaptive-logs/exemptions/"+url.PathEscape(id), nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get exemption %s: %w", id, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
-	}
-
-	var exemption Exemption
-	if err := json.NewDecoder(resp.Body).Decode(&exemption); err != nil {
-		return nil, fmt.Errorf("failed to decode exemption response: %w", err)
-	}
-
-	return &exemption, nil
-}
-
 // CreateExemption creates a new log stream exemption.
 func (c *Client) CreateExemption(ctx context.Context, e *Exemption) (*Exemption, error) {
 	body, err := json.Marshal(e)
@@ -102,6 +82,8 @@ func (c *Client) CreateExemption(ctx context.Context, e *Exemption) (*Exemption,
 }
 
 // UpdateExemption updates an existing log stream exemption by ID.
+//
+//nolint:dupl // Structural similarity with UpdateSegment is expected for typed CRUD methods.
 func (c *Client) UpdateExemption(ctx context.Context, id string, e *Exemption) (*Exemption, error) {
 	body, err := json.Marshal(e)
 	if err != nil {
@@ -168,20 +150,115 @@ func (c *Client) ListRecommendations(ctx context.Context) ([]LogRecommendation, 
 	return recs, nil
 }
 
-// ApplyRecommendations replaces the full set of adaptive log recommendations.
-func (c *Client) ApplyRecommendations(ctx context.Context, recs []LogRecommendation) error {
-	body, err := json.Marshal(recs)
+// ListSegments returns all adaptive log segments.
+// The API returns a bare JSON array (no wrapper).
+func (c *Client) ListSegments(ctx context.Context) ([]LogSegment, error) {
+	resp, err := c.doRequest(ctx, http.MethodGet, "/adaptive-logs/segments", nil)
 	if err != nil {
-		return fmt.Errorf("failed to marshal recommendations: %w", err)
-	}
-
-	resp, err := c.doRequest(ctx, http.MethodPost, "/adaptive-logs/recommendations", bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("failed to apply recommendations: %w", err)
+		return nil, fmt.Errorf("failed to list segments: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusNoContent {
+	if resp.StatusCode != http.StatusOK {
+		return nil, handleErrorResponse(resp)
+	}
+
+	var segments []LogSegment
+	if err := json.NewDecoder(resp.Body).Decode(&segments); err != nil {
+		return nil, fmt.Errorf("failed to decode segments response: %w", err)
+	}
+
+	if segments == nil {
+		return []LogSegment{}, nil
+	}
+
+	return segments, nil
+}
+
+// GetSegment returns a single segment by ID.
+// The API uses a query parameter: GET /adaptive-logs/segment?segment=<id>.
+func (c *Client) GetSegment(ctx context.Context, id string) (*LogSegment, error) {
+	resp, err := c.doRequest(ctx, http.MethodGet, "/adaptive-logs/segment?segment="+url.QueryEscape(id), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get segment %s: %w", id, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, handleErrorResponse(resp)
+	}
+
+	var segment LogSegment
+	if err := json.NewDecoder(resp.Body).Decode(&segment); err != nil {
+		return nil, fmt.Errorf("failed to decode segment response: %w", err)
+	}
+
+	return &segment, nil
+}
+
+// CreateSegment creates a new adaptive log segment.
+func (c *Client) CreateSegment(ctx context.Context, s *LogSegment) (*LogSegment, error) {
+	body, err := json.Marshal(s)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal segment: %w", err)
+	}
+
+	resp, err := c.doRequest(ctx, http.MethodPost, "/adaptive-logs/segment", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create segment: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusAccepted {
+		return nil, handleErrorResponse(resp)
+	}
+
+	var created LogSegment
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		return nil, fmt.Errorf("failed to decode create segment response: %w", err)
+	}
+
+	return &created, nil
+}
+
+// UpdateSegment updates an existing adaptive log segment by ID.
+// The API uses a query parameter: PUT /adaptive-logs/segment?segment=<id>.
+//
+//nolint:dupl // Structural similarity with UpdateExemption is expected for typed CRUD methods.
+func (c *Client) UpdateSegment(ctx context.Context, id string, s *LogSegment) (*LogSegment, error) {
+	body, err := json.Marshal(s)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal segment: %w", err)
+	}
+
+	resp, err := c.doRequest(ctx, http.MethodPut, "/adaptive-logs/segment?segment="+url.QueryEscape(id), bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to update segment %s: %w", id, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
+		return nil, handleErrorResponse(resp)
+	}
+
+	var updated LogSegment
+	if err := json.NewDecoder(resp.Body).Decode(&updated); err != nil {
+		return nil, fmt.Errorf("failed to decode update segment response: %w", err)
+	}
+
+	return &updated, nil
+}
+
+// DeleteSegment deletes an adaptive log segment by ID.
+// The API uses a query parameter: DELETE /adaptive-logs/segment?segment=<id>.
+func (c *Client) DeleteSegment(ctx context.Context, id string) error {
+	resp, err := c.doRequest(ctx, http.MethodDelete, "/adaptive-logs/segment?segment="+url.QueryEscape(id), nil)
+	if err != nil {
+		return fmt.Errorf("failed to delete segment %s: %w", id, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		return handleErrorResponse(resp)
 	}
 

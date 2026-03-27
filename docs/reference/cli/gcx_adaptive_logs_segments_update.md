@@ -1,11 +1,20 @@
-## gcx adaptive logs
+## gcx adaptive logs segments update
 
-Manage Adaptive Logs resources.
+Update an adaptive log segment.
+
+```
+gcx adaptive logs segments update ID [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for logs
+      --fallback-to-default   Fall back to default segment
+  -h, --help                  help for update
+      --json string           Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --name string           Segment name
+  -o, --output string         Output format. One of: json, yaml (default "json")
+      --selector string       Log stream selector
 ```
 
 ### Options inherited from parent commands
@@ -21,8 +30,5 @@ Manage Adaptive Logs resources.
 
 ### SEE ALSO
 
-* [gcx adaptive](gcx_adaptive.md)	 - Manage Grafana Cloud Adaptive Telemetry.
-* [gcx adaptive logs exemptions](gcx_adaptive_logs_exemptions.md)	 - Manage adaptive log exemptions.
-* [gcx adaptive logs patterns](gcx_adaptive_logs_patterns.md)	 - Manage adaptive log patterns.
 * [gcx adaptive logs segments](gcx_adaptive_logs_segments.md)	 - Manage adaptive log segments.
 
