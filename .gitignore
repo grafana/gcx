@@ -27,5 +27,5 @@ test-*.yaml
 *.db
 
 # Beads / Dolt files (added by bd init)
-.beads/
+# .beads/ has its own .gitignore for runtime vs checked-in files
 .beads-credential-key
