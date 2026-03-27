@@ -21,6 +21,6 @@ Manage Synthetic Monitoring probes.
 
 ### SEE ALSO
 
-* [gcx synth](gcx_synth.md)	 - Manage Grafana Synthetic Monitoring resources.
+* [gcx synth](gcx_synth.md)	 - Manage Grafana Synthetic Monitoring checks and probes
 * [gcx synth probes list](gcx_synth_probes_list.md)	 - List Synthetic Monitoring probes.
 

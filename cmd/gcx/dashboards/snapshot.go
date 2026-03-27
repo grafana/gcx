@@ -90,6 +90,10 @@ func snapshotCmd(configOpts *cmdconfig.Options) *cobra.Command {
 		Use:   "snapshot <uid> [uid...]",
 		Short: "Render dashboard snapshots as PNG images",
 		Long:  "Render one or more Grafana dashboards or individual panels as PNG images using the Grafana Image Renderer.",
+		Annotations: map[string]string{
+			agent.AnnotationTokenCost: "small",
+			agent.AnnotationLLMHint:   "my-dashboard-uid --width 1920",
+		},
 		Example: `
   # Snapshot a full dashboard
   gcx dashboards snapshot my-dashboard-uid

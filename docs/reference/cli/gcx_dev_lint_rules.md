@@ -4,7 +4,7 @@ List available linter rules
 
 ### Synopsis
 
-List available linter rules.
+List all built-in and custom linter rules with their name, description, resource type, and category. Use --rules to include custom rules from a directory.
 
 ```
 gcx dev lint rules [flags]

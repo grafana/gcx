@@ -27,5 +27,5 @@ gcx incidents get <id> [flags]
 
 ### SEE ALSO
 
-* [gcx incidents](gcx_incidents.md)	 - Manage Grafana IRM Incident resources.
+* [gcx incidents](gcx_incidents.md)	 - Manage Grafana Incident Response and Management (IRM) incidents
 

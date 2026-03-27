@@ -19,7 +19,7 @@ type AlertProvider struct{}
 func (p *AlertProvider) Name() string { return "alert" }
 
 // ShortDesc returns a one-line description of the provider.
-func (p *AlertProvider) ShortDesc() string { return "Manage Grafana alerting resources." }
+func (p *AlertProvider) ShortDesc() string { return "Manage Grafana alert rules and alert groups" }
 
 // Commands returns the Cobra commands contributed by this provider.
 func (p *AlertProvider) Commands() []*cobra.Command {

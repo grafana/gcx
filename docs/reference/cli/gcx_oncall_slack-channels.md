@@ -21,6 +21,6 @@ List Slack channels.
 
 ### SEE ALSO
 
-* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall resources.
+* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall integrations, escalation chains, schedules, and routing
 * [gcx oncall slack-channels list](gcx_oncall_slack-channels_list.md)	 - List Slack channels.
 

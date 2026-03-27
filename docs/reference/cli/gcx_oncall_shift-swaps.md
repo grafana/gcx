@@ -21,7 +21,7 @@ Manage shift swaps.
 
 ### SEE ALSO
 
-* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall resources.
+* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall integrations, escalation chains, schedules, and routing
 * [gcx oncall shift-swaps get](gcx_oncall_shift-swaps_get.md)	 - Get a shift swap by ID.
 * [gcx oncall shift-swaps list](gcx_oncall_shift-swaps_list.md)	 - List shift swaps.
 

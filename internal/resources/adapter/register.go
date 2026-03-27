@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -21,8 +22,9 @@ type Registration struct {
 	Descriptor resources.Descriptor
 	Aliases    []string
 	GVK        schema.GroupVersionKind
-	Schema     json.RawMessage // Required JSON Schema for this resource type (per CONSTITUTION.md). MAY be nil for read-only resources.
-	Example    json.RawMessage // Required example manifest (YAML-compatible JSON, per CONSTITUTION.md). MAY be nil for read-only resources.
+	Schema     json.RawMessage                // Required JSON Schema for this resource type (per CONSTITUTION.md). MAY be nil for read-only resources.
+	Example    json.RawMessage                // Required example manifest (YAML-compatible JSON, per CONSTITUTION.md). MAY be nil for read-only resources.
+	Operations map[string]agent.OperationHint // Agent metadata: per-operation token cost and hint, keyed by "get", "push", "pull", "delete".
 }
 
 // registrations holds all adapter registrations collected from providers.

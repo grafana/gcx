@@ -1,10 +1,10 @@
 ## gcx dev lint new
 
-Creates a new linter rule
+Scaffold a new linter rule
 
 ### Synopsis
 
-Creates a new linter rule.
+Scaffold a new Rego-based linter rule with a starter template, test fixture, and expected output file. Creates files in the current directory or the path specified by --output.
 
 ```
 gcx dev lint new RESOURCE_TYPE NAME [flags]

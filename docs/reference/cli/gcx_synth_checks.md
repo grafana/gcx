@@ -21,7 +21,7 @@ Manage Synthetic Monitoring checks.
 
 ### SEE ALSO
 
-* [gcx synth](gcx_synth.md)	 - Manage Grafana Synthetic Monitoring resources.
+* [gcx synth](gcx_synth.md)	 - Manage Grafana Synthetic Monitoring checks and probes
 * [gcx synth checks delete](gcx_synth_checks_delete.md)	 - Delete Synthetic Monitoring checks.
 * [gcx synth checks get](gcx_synth_checks_get.md)	 - Get a single Synthetic Monitoring check.
 * [gcx synth checks list](gcx_synth_checks_list.md)	 - List Synthetic Monitoring checks.

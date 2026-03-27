@@ -1,6 +1,6 @@
 ## gcx incidents
 
-Manage Grafana IRM Incident resources.
+Manage Grafana Incident Response and Management (IRM) incidents
 
 ### Options
 
@@ -21,7 +21,7 @@ Manage Grafana IRM Incident resources.
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - 
+* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx incidents activity](gcx_incidents_activity.md)	 - Manage incident activity timeline.
 * [gcx incidents close](gcx_incidents_close.md)	 - Close (resolve) an incident.
 * [gcx incidents create](gcx_incidents_create.md)	 - Create a new incident from a file.

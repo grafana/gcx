@@ -1,10 +1,10 @@
 ## gcx dev lint test
 
-Run linter rules tests
+Run linter rule tests
 
 ### Synopsis
 
-Run linter rules tests.
+Run test suites for linter rules. Each rule directory should contain test fixtures and expected output files. Reports pass/fail for each test case.
 
 ```
 gcx dev lint test PATH... [flags]

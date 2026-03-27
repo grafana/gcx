@@ -22,7 +22,7 @@ func (p *K6Provider) Name() string { return "k6" }
 
 // ShortDesc returns a one-line description of the provider.
 func (p *K6Provider) ShortDesc() string {
-	return "Manage K6 Cloud resources (projects, load tests, env vars, schedules, load zones)."
+	return "Manage Grafana K6 Cloud projects, load tests, and schedules"
 }
 
 // Commands returns the Cobra commands contributed by this provider.

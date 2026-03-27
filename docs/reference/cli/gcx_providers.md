@@ -25,5 +25,5 @@ gcx providers [flags]
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - 
+* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 

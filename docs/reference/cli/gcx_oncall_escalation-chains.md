@@ -21,7 +21,7 @@ Manage escalation chains.
 
 ### SEE ALSO
 
-* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall resources.
+* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall integrations, escalation chains, schedules, and routing
 * [gcx oncall escalation-chains get](gcx_oncall_escalation-chains_get.md)	 - Get an escalation chain by ID.
 * [gcx oncall escalation-chains list](gcx_oncall_escalation-chains_list.md)	 - List escalation chains.
 

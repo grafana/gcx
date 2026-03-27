@@ -9,6 +9,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/go-logr/logr"
 	"github.com/grafana/gcx/cmd/gcx/api"
+	"github.com/grafana/gcx/cmd/gcx/commands"
 	"github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/cmd/gcx/dashboards"
 	"github.com/grafana/gcx/cmd/gcx/datasources"
@@ -64,6 +65,8 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 
 	rootCmd := &cobra.Command{
 		Use:           path.Base(os.Args[0]),
+		Short:         "Control plane for Grafana Cloud operations",
+		Long:          "gcx is a unified CLI for managing Grafana resources, dashboards, datasources, alerting, and Cloud product APIs (SLO, OnCall, Synthetic Monitoring, Fleet, K6, and more).",
 		SilenceUsage:  true,
 		SilenceErrors: true, // We want to print errors ourselves
 		Version:       version,
@@ -138,6 +141,13 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 		}
 		rootCmd.AddCommand(p.Commands()...)
 	}
+
+	// Commands introspection — registered last so it sees the full command tree.
+	// Pass configOpts so --validate can connect to a live Grafana instance.
+	commandsConfigOpts := &config.Options{}
+	commandsCmd := commands.Command(rootCmd, commandsConfigOpts)
+	commandsConfigOpts.BindFlags(commandsCmd.Flags())
+	rootCmd.AddCommand(commandsCmd)
 
 	// Note: Provider adapter factories are registered via adapter.Register()
 	// in each provider's init() function (same pattern as providers.Register).

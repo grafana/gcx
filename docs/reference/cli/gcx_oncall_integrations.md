@@ -21,7 +21,7 @@ Manage OnCall integrations.
 
 ### SEE ALSO
 
-* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall resources.
+* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall integrations, escalation chains, schedules, and routing
 * [gcx oncall integrations get](gcx_oncall_integrations_get.md)	 - Get an integration by ID.
 * [gcx oncall integrations list](gcx_oncall_integrations_list.md)	 - List OnCall integrations.
 

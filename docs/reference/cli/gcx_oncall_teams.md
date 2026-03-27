@@ -21,7 +21,7 @@ Manage OnCall teams.
 
 ### SEE ALSO
 
-* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall resources.
+* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall integrations, escalation chains, schedules, and routing
 * [gcx oncall teams get](gcx_oncall_teams_get.md)	 - Get a team by ID.
 * [gcx oncall teams list](gcx_oncall_teams_list.md)	 - List OnCall teams.
 

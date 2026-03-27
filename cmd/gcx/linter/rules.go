@@ -35,7 +35,7 @@ func rulesCmd() *cobra.Command {
 		Use:   "rules",
 		Args:  cobra.NoArgs,
 		Short: "List available linter rules",
-		Long:  "List available linter rules.",
+		Long:  "List all built-in and custom linter rules with their name, description, resource type, and category. Use --rules to include custom rules from a directory.",
 		Example: `
 	# List built-in rules:
 

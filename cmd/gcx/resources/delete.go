@@ -55,7 +55,7 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 		Use:   "delete [RESOURCE_SELECTOR]...",
 		Args:  cobra.ArbitraryArgs,
 		Short: "Delete resources from Grafana",
-		Long:  "Delete resources from Grafana.",
+		Long:  "Delete resources from Grafana by selector or from local files. Use --dry-run to preview changes. Use --yes to skip confirmation prompts. Use --force to delete all resources of a given type.",
 		Example: `
 	# Delete a single dashboard
 	gcx resources delete dashboards/some-dashboard

@@ -25,7 +25,7 @@ Manipulate Grafana resources.
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - 
+* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx resources delete](gcx_resources_delete.md)	 - Delete resources from Grafana
 * [gcx resources edit](gcx_resources_edit.md)	 - Edit resources from Grafana
 * [gcx resources examples](gcx_resources_examples.md)	 - List example manifests for resource types
@@ -33,5 +33,5 @@ Manipulate Grafana resources.
 * [gcx resources pull](gcx_resources_pull.md)	 - Pull resources from Grafana
 * [gcx resources push](gcx_resources_push.md)	 - Push resources to Grafana
 * [gcx resources schemas](gcx_resources_schemas.md)	 - List available Grafana API resource types
-* [gcx resources validate](gcx_resources_validate.md)	 - Validate resources
+* [gcx resources validate](gcx_resources_validate.md)	 - Validate local resources against a Grafana instance
 

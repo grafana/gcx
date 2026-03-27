@@ -1,10 +1,10 @@
 ## gcx datasources
 
-Manage Grafana datasources
+Manage and query Grafana datasources
 
 ### Synopsis
 
-List and get information about Grafana datasources.
+List, inspect, and query Grafana datasources. Supports Prometheus, Loki, Pyroscope, and Tempo datasource-specific query operations alongside generic queries.
 
 ### Options
 
@@ -25,7 +25,7 @@ List and get information about Grafana datasources.
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - 
+* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx datasources generic](gcx_datasources_generic.md)	 - Generic datasource operations (auto-detects type)
 * [gcx datasources get](gcx_datasources_get.md)	 - Get details of a specific datasource
 * [gcx datasources list](gcx_datasources_list.md)	 - List all datasources

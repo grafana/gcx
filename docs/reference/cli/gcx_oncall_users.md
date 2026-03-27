@@ -21,7 +21,7 @@ Manage OnCall users.
 
 ### SEE ALSO
 
-* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall resources.
+* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall integrations, escalation chains, schedules, and routing
 * [gcx oncall users current](gcx_oncall_users_current.md)	 - Get the current user.
 * [gcx oncall users get](gcx_oncall_users_get.md)	 - Get a user by ID.
 * [gcx oncall users list](gcx_oncall_users_list.md)	 - List OnCall users.

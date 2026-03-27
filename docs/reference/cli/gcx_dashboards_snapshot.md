@@ -64,5 +64,5 @@ gcx dashboards snapshot <uid> [uid...] [flags]
 
 ### SEE ALSO
 
-* [gcx dashboards](gcx_dashboards.md)	 - Manage Grafana dashboards
+* [gcx dashboards](gcx_dashboards.md)	 - Render Grafana dashboard snapshots
 

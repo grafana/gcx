@@ -21,6 +21,6 @@ Push suppressions to the Knowledge Graph.
 
 ### SEE ALSO
 
-* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph (Asserts) resources.
+* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph entity types, rules, and datasets
 * [gcx kg suppressions create](gcx_kg_suppressions_create.md)	 - Upload suppressions from a YAML file.
 

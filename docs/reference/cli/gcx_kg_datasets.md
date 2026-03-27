@@ -21,7 +21,7 @@ Manage Knowledge Graph datasets.
 
 ### SEE ALSO
 
-* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph (Asserts) resources.
+* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph entity types, rules, and datasets
 * [gcx kg datasets activate](gcx_kg_datasets_activate.md)	 - Activate a dataset.
 * [gcx kg datasets list](gcx_kg_datasets_list.md)	 - List Knowledge Graph datasets.
 

@@ -1,10 +1,10 @@
 ## gcx datasources tempo query
 
-Execute a Tempo query (not yet available)
+Execute a Tempo query
 
 ### Synopsis
 
-Tempo query support is not yet implemented. This subcommand is a placeholder for future use.
+Execute a query against a Tempo datasource. Note: this subcommand is not yet implemented and will return an error.
 
 ```
 gcx datasources tempo query [flags]

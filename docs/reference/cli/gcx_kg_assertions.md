@@ -21,7 +21,7 @@ Query Knowledge Graph assertions.
 
 ### SEE ALSO
 
-* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph (Asserts) resources.
+* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph entity types, rules, and datasets
 * [gcx kg assertions active](gcx_kg_assertions_active.md)	 - Show entities with active assertions.
 * [gcx kg assertions entity-metric](gcx_kg_assertions_entity-metric.md)	 - Get metric data for a specific assertion on an entity.
 * [gcx kg assertions example](gcx_kg_assertions_example.md)	 - Print an example assertions request YAML.

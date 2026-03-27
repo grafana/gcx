@@ -1,10 +1,10 @@
 ## gcx dashboards
 
-Manage Grafana dashboards
+Render Grafana dashboard snapshots
 
 ### Synopsis
 
-Capture snapshots and manage Grafana dashboards.
+Render Grafana dashboards and panels as PNG images via the Image Renderer. For dashboard CRUD operations, use 'gcx resources' with a dashboards selector.
 
 ### Options
 
@@ -25,6 +25,6 @@ Capture snapshots and manage Grafana dashboards.
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - 
+* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx dashboards snapshot](gcx_dashboards_snapshot.md)	 - Render dashboard snapshots as PNG images
 

@@ -133,6 +133,10 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 		Args:  cobra.ArbitraryArgs,
 		Short: "Get resources from Grafana",
 		Long:  "Get resources from Grafana using a specific format. See examples below for more details.",
+		Annotations: map[string]string{
+			agent.AnnotationTokenCost: "large",
+			agent.AnnotationLLMHint:   "dashboards/my-uid -o json",
+		},
 		Example: `
 	# Everything:
 

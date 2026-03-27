@@ -21,7 +21,7 @@ Manage resolution notes.
 
 ### SEE ALSO
 
-* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall resources.
+* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall integrations, escalation chains, schedules, and routing
 * [gcx oncall resolution-notes get](gcx_oncall_resolution-notes_get.md)	 - Get a resolution note by ID.
 * [gcx oncall resolution-notes list](gcx_oncall_resolution-notes_list.md)	 - List resolution notes.
 

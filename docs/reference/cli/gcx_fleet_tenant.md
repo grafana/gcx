@@ -21,6 +21,6 @@ Manage Fleet Management tenant settings.
 
 ### SEE ALSO
 
-* [gcx fleet](gcx_fleet.md)	 - Manage Grafana Fleet Management resources.
+* [gcx fleet](gcx_fleet.md)	 - Manage Grafana Fleet Management pipelines and collectors
 * [gcx fleet tenant limits](gcx_fleet_tenant_limits.md)	 - Show tenant limits.
 

@@ -21,7 +21,7 @@ Manage Fleet Management pipelines.
 
 ### SEE ALSO
 
-* [gcx fleet](gcx_fleet.md)	 - Manage Grafana Fleet Management resources.
+* [gcx fleet](gcx_fleet.md)	 - Manage Grafana Fleet Management pipelines and collectors
 * [gcx fleet pipelines create](gcx_fleet_pipelines_create.md)	 - Create a pipeline from a file.
 * [gcx fleet pipelines delete](gcx_fleet_pipelines_delete.md)	 - Delete a pipeline.
 * [gcx fleet pipelines get](gcx_fleet_pipelines_get.md)	 - Get a pipeline by ID or name.

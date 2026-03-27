@@ -21,6 +21,6 @@ Configure KPI display settings.
 
 ### SEE ALSO
 
-* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph (Asserts) resources.
+* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph entity types, rules, and datasets
 * [gcx kg kpi-display create](gcx_kg_kpi-display_create.md)	 - Configure KPI display from a file (YAML).
 

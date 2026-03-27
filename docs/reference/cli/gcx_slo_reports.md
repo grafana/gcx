@@ -21,7 +21,7 @@ Manage SLO reports.
 
 ### SEE ALSO
 
-* [gcx slo](gcx_slo.md)	 - Manage Grafana SLO resources.
+* [gcx slo](gcx_slo.md)	 - Manage Grafana SLO definitions and reports
 * [gcx slo reports delete](gcx_slo_reports_delete.md)	 - Delete SLO reports.
 * [gcx slo reports get](gcx_slo_reports_get.md)	 - Get a single SLO report.
 * [gcx slo reports list](gcx_slo_reports_list.md)	 - List SLO reports.

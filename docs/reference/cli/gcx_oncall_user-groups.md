@@ -21,6 +21,6 @@ List user groups.
 
 ### SEE ALSO
 
-* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall resources.
+* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall integrations, escalation chains, schedules, and routing
 * [gcx oncall user-groups list](gcx_oncall_user-groups_list.md)	 - List user groups.
 

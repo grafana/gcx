@@ -25,6 +25,6 @@ Operations for any datasource type. The datasource type is auto-detected via the
 
 ### SEE ALSO
 
-* [gcx datasources](gcx_datasources.md)	 - Manage Grafana datasources
+* [gcx datasources](gcx_datasources.md)	 - Manage and query Grafana datasources
 * [gcx datasources generic query](gcx_datasources_generic_query.md)	 - Execute a query against any datasource (auto-detects type)
 

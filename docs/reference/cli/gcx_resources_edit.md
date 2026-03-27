@@ -22,14 +22,14 @@ gcx resources edit RESOURCE_SELECTOR [flags]
 
 ```
 
-	# Editing a dashboard
-	gcx resources dashboard/foo
+	# Edit a dashboard
+	gcx resources edit dashboard/foo
 
-	# Editing a dashboard in JSON
-	gcx resources -o json dashboard/foo
+	# Edit a dashboard in JSON
+	gcx resources edit -o json dashboard/foo
 
 	# Using an alternative editor
-	EDITOR=nvim gcx resources dashboard/foo
+	EDITOR=nvim gcx resources edit dashboard/foo
 
 ```
 

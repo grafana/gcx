@@ -21,7 +21,7 @@ Manage K6 private load zones.
 
 ### SEE ALSO
 
-* [gcx k6](gcx_k6.md)	 - Manage K6 Cloud resources (projects, load tests, env vars, schedules, load zones).
+* [gcx k6](gcx_k6.md)	 - Manage Grafana K6 Cloud projects, load tests, and schedules
 * [gcx k6 load-zones allowed-load-zones](gcx_k6_load-zones_allowed-load-zones.md)	 - Manage load zones allowed for a project.
 * [gcx k6 load-zones allowed-projects](gcx_k6_load-zones_allowed-projects.md)	 - Manage projects allowed to use a load zone.
 * [gcx k6 load-zones create](gcx_k6_load-zones_create.md)	 - Register a Private Load Zone.

@@ -25,7 +25,7 @@ Tools for managing Grafana resources as code: scaffold new projects, import exis
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - 
+* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx dev generate](gcx_dev_generate.md)	 - Generate typed Go stubs for Grafana resources
 * [gcx dev import](gcx_dev_import.md)	 - Import resources from Grafana and convert them to Go builder code
 * [gcx dev lint](gcx_dev_lint.md)	 - Lint Grafana resources

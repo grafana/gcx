@@ -1,10 +1,10 @@
 ## gcx config unset
 
-Unset an single value in a configuration file
+Unset a single value in a configuration file
 
 ### Synopsis
 
-Unset an single value in a configuration file.
+Unset a single value in a configuration file.
 
 PROPERTY_NAME is a dot-delimited reference to the value to unset. It can either represent a field or a map entry.
 

@@ -21,7 +21,7 @@ Manage alert rules.
 
 ### SEE ALSO
 
-* [gcx alert](gcx_alert.md)	 - Manage Grafana alerting resources.
+* [gcx alert](gcx_alert.md)	 - Manage Grafana alert rules and alert groups
 * [gcx alert rules get](gcx_alert_rules_get.md)	 - Get a single alert rule.
 * [gcx alert rules list](gcx_alert_rules_list.md)	 - List alert rules.
 

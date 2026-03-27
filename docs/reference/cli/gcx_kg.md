@@ -1,6 +1,6 @@
 ## gcx kg
 
-Manage Grafana Knowledge Graph (Asserts) resources.
+Manage Grafana Knowledge Graph entity types, rules, and datasets
 
 ### Options
 
@@ -21,7 +21,7 @@ Manage Grafana Knowledge Graph (Asserts) resources.
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - 
+* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx kg assertions](gcx_kg_assertions.md)	 - Query Knowledge Graph assertions.
 * [gcx kg datasets](gcx_kg_datasets.md)	 - Manage Knowledge Graph datasets.
 * [gcx kg enable](gcx_kg_enable.md)	 - Enable the Knowledge Graph feature.

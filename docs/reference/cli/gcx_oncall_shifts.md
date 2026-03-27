@@ -21,7 +21,7 @@ Manage OnCall shifts.
 
 ### SEE ALSO
 
-* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall resources.
+* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall integrations, escalation chains, schedules, and routing
 * [gcx oncall shifts get](gcx_oncall_shifts_get.md)	 - Get a shift by ID.
 * [gcx oncall shifts list](gcx_oncall_shifts_list.md)	 - List OnCall shifts.
 

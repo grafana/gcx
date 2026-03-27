@@ -21,6 +21,6 @@ Manage K6 test runs.
 
 ### SEE ALSO
 
-* [gcx k6](gcx_k6.md)	 - Manage K6 Cloud resources (projects, load tests, env vars, schedules, load zones).
+* [gcx k6](gcx_k6.md)	 - Manage Grafana K6 Cloud projects, load tests, and schedules
 * [gcx k6 runs list](gcx_k6_runs_list.md)	 - List test runs for a load test.
 

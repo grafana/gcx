@@ -21,7 +21,7 @@ Manage OnCall routes.
 
 ### SEE ALSO
 
-* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall resources.
+* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall integrations, escalation chains, schedules, and routing
 * [gcx oncall routes get](gcx_oncall_routes_get.md)	 - Get a route by ID.
 * [gcx oncall routes list](gcx_oncall_routes_list.md)	 - List OnCall routes.
 

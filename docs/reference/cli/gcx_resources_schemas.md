@@ -4,7 +4,7 @@ List available Grafana API resource types
 
 ### Synopsis
 
-List available Grafana API resource types and their schemas. Optionally filter by a resource selector.
+List available Grafana API resource types and their schemas by querying a live Grafana instance. Requires a connection to Grafana. Use --no-schema to skip OpenAPI spec fetching for faster results. Optionally filter by a resource selector.
 
 ```
 gcx resources schemas [RESOURCE_SELECTOR] [flags]

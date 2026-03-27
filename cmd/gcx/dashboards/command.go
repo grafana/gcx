@@ -11,8 +11,8 @@ func Command() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "dashboards",
-		Short: "Manage Grafana dashboards",
-		Long:  "Capture snapshots and manage Grafana dashboards.",
+		Short: "Render Grafana dashboard snapshots",
+		Long:  "Render Grafana dashboards and panels as PNG images via the Image Renderer. For dashboard CRUD operations, use 'gcx resources' with a dashboards selector.",
 	}
 
 	configOpts.BindFlags(cmd.PersistentFlags())

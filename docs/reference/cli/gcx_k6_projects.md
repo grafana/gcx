@@ -21,7 +21,7 @@ Manage K6 Cloud projects.
 
 ### SEE ALSO
 
-* [gcx k6](gcx_k6.md)	 - Manage K6 Cloud resources (projects, load tests, env vars, schedules, load zones).
+* [gcx k6](gcx_k6.md)	 - Manage Grafana K6 Cloud projects, load tests, and schedules
 * [gcx k6 projects create](gcx_k6_projects_create.md)	 - Create a new K6 project from a file.
 * [gcx k6 projects delete](gcx_k6_projects_delete.md)	 - Delete a K6 project.
 * [gcx k6 projects get](gcx_k6_projects_get.md)	 - Get a single K6 project by ID or name.

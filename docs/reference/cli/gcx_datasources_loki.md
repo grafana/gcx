@@ -25,7 +25,7 @@ Operations specific to Loki datasources such as labels and series.
 
 ### SEE ALSO
 
-* [gcx datasources](gcx_datasources.md)	 - Manage Grafana datasources
+* [gcx datasources](gcx_datasources.md)	 - Manage and query Grafana datasources
 * [gcx datasources loki labels](gcx_datasources_loki_labels.md)	 - List labels or label values
 * [gcx datasources loki query](gcx_datasources_loki_query.md)	 - Execute a LogQL query against a Loki datasource
 * [gcx datasources loki series](gcx_datasources_loki_series.md)	 - List log streams

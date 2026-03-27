@@ -4,7 +4,7 @@ Delete resources from Grafana
 
 ### Synopsis
 
-Delete resources from Grafana.
+Delete resources from Grafana by selector or from local files. Use --dry-run to preview changes. Use --yes to skip confirmation prompts. Use --force to delete all resources of a given type.
 
 ```
 gcx resources delete [RESOURCE_SELECTOR]... [flags]

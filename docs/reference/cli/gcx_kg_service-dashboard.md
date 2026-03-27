@@ -21,6 +21,6 @@ Configure service dashboard settings.
 
 ### SEE ALSO
 
-* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph (Asserts) resources.
+* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph entity types, rules, and datasets
 * [gcx kg service-dashboard create](gcx_kg_service-dashboard_create.md)	 - Configure service dashboard from a file (YAML).
 

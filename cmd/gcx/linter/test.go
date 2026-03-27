@@ -45,8 +45,8 @@ func testCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "test PATH...",
-		Short: "Run linter rules tests",
-		Long:  "Run linter rules tests.",
+		Short: "Run linter rule tests",
+		Long:  "Run test suites for linter rules. Each rule directory should contain test fixtures and expected output files. Reports pass/fail for each test case.",
 		Example: `
 	# Run all tests in a directory:
 

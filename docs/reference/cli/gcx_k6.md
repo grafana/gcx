@@ -1,6 +1,6 @@
 ## gcx k6
 
-Manage K6 Cloud resources (projects, load tests, env vars, schedules, load zones).
+Manage Grafana K6 Cloud projects, load tests, and schedules
 
 ### Options
 
@@ -21,7 +21,7 @@ Manage K6 Cloud resources (projects, load tests, env vars, schedules, load zones
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - 
+* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx k6 auth](gcx_k6_auth.md)	 - K6 authentication commands.
 * [gcx k6 env-vars](gcx_k6_env-vars.md)	 - Manage K6 Cloud environment variables.
 * [gcx k6 load-tests](gcx_k6_load-tests.md)	 - Manage K6 Cloud load tests.

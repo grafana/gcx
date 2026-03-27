@@ -21,7 +21,7 @@ Search Knowledge Graph entities or assertions.
 
 ### SEE ALSO
 
-* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph (Asserts) resources.
+* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph entity types, rules, and datasets
 * [gcx kg search assertions](gcx_kg_search_assertions.md)	 - Search for assertions matching a query.
 * [gcx kg search entities](gcx_kg_search_entities.md)	 - Search for entities by type.
 * [gcx kg search example](gcx_kg_search_example.md)	 - Print an example search request YAML.

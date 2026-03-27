@@ -1,6 +1,6 @@
 ## gcx alert
 
-Manage Grafana alerting resources.
+Manage Grafana alert rules and alert groups
 
 ### Options
 
@@ -21,7 +21,7 @@ Manage Grafana alerting resources.
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - 
+* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx alert groups](gcx_alert_groups.md)	 - Manage alert rule groups.
 * [gcx alert rules](gcx_alert_rules.md)	 - Manage alert rules.
 

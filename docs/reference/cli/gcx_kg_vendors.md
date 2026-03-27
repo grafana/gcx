@@ -21,6 +21,6 @@ Manage Knowledge Graph vendors.
 
 ### SEE ALSO
 
-* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph (Asserts) resources.
+* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph entity types, rules, and datasets
 * [gcx kg vendors list](gcx_kg_vendors_list.md)	 - List detected vendors.
 

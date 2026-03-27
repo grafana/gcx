@@ -21,7 +21,7 @@ Manage K6 Cloud schedules.
 
 ### SEE ALSO
 
-* [gcx k6](gcx_k6.md)	 - Manage K6 Cloud resources (projects, load tests, env vars, schedules, load zones).
+* [gcx k6](gcx_k6.md)	 - Manage Grafana K6 Cloud projects, load tests, and schedules
 * [gcx k6 schedules create](gcx_k6_schedules_create.md)	 - Create a K6 schedule from a file.
 * [gcx k6 schedules delete](gcx_k6_schedules_delete.md)	 - Delete the schedule for a K6 load test.
 * [gcx k6 schedules get](gcx_k6_schedules_get.md)	 - Get a single K6 schedule by ID.

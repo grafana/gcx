@@ -1,13 +1,10 @@
 ## gcx resources validate
 
-Validate resources
+Validate local resources against a Grafana instance
 
 ### Synopsis
 
-Validate resources.
-
-This command validates its inputs against a remote Grafana instance.
-
+Validate local resource files against a remote Grafana instance. Requires a live connection to Grafana for server-side validation. Reads resources from disk and reports validation errors per resource.
 
 ```
 gcx resources validate [RESOURCE_SELECTOR]... [flags]

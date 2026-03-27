@@ -54,11 +54,8 @@ func validateCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "validate [RESOURCE_SELECTOR]...",
 		Args:  cobra.ArbitraryArgs,
-		Short: "Validate resources",
-		Long: `Validate resources.
-
-This command validates its inputs against a remote Grafana instance.
-`,
+		Short: "Validate local resources against a Grafana instance",
+		Long:  `Validate local resource files against a remote Grafana instance. Requires a live connection to Grafana for server-side validation. Reads resources from disk and reports validation errors per resource.`,
 		Example: `
 	# Validate all resources in the default directory
 	gcx resources validate

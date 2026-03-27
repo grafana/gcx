@@ -25,6 +25,6 @@ Operations specific to Tempo datasources such as queries.
 
 ### SEE ALSO
 
-* [gcx datasources](gcx_datasources.md)	 - Manage Grafana datasources
-* [gcx datasources tempo query](gcx_datasources_tempo_query.md)	 - Execute a Tempo query (not yet available)
+* [gcx datasources](gcx_datasources.md)	 - Manage and query Grafana datasources
+* [gcx datasources tempo query](gcx_datasources_tempo_query.md)	 - Execute a Tempo query
 

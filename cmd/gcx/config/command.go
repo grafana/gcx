@@ -11,6 +11,7 @@ import (
 
 	"github.com/caarlos0/env/v11"
 	"github.com/grafana/gcx/cmd/gcx/fail"
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/grafana"
@@ -226,6 +227,9 @@ func viewCmd(configOpts *Options) *cobra.Command {
 		Args:    cobra.NoArgs,
 		Short:   "Display the current configuration",
 		Example: "\n\tgcx config view",
+		Annotations: map[string]string{
+			agent.AnnotationTokenCost: "medium",
+		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -515,10 +519,10 @@ func setCmd(configOpts *Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "set PROPERTY_NAME PROPERTY_VALUE",
 		Args:  cobra.ExactArgs(2),
-		Short: "Set an single value in a configuration file",
-		Long: `Set an single value in a configuration file
+		Short: "Set a single value in a configuration file",
+		Long: `Set a single value in a configuration file.
 
-PROPERTY_NAME is a dot-delimited reference to the value to unset. It can either represent a field or a map entry.
+PROPERTY_NAME is a dot-delimited reference to the value to set. It can either represent a field or a map entry.
 
 PROPERTY_VALUE is the new value to set.`,
 		Example: `
@@ -560,8 +564,8 @@ func unsetCmd(configOpts *Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "unset PROPERTY_NAME",
 		Args:  cobra.ExactArgs(1),
-		Short: "Unset an single value in a configuration file",
-		Long: `Unset an single value in a configuration file.
+		Short: "Unset a single value in a configuration file",
+		Long: `Unset a single value in a configuration file.
 
 PROPERTY_NAME is a dot-delimited reference to the value to unset. It can either represent a field or a map entry.`,
 		Example: `

@@ -1,6 +1,6 @@
 ## gcx slo
 
-Manage Grafana SLO resources.
+Manage Grafana SLO definitions and reports
 
 ### Options
 
@@ -21,7 +21,7 @@ Manage Grafana SLO resources.
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - 
+* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx slo definitions](gcx_slo_definitions.md)	 - Manage SLO definitions.
 * [gcx slo reports](gcx_slo_reports.md)	 - Manage SLO reports.
 

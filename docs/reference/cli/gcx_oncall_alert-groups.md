@@ -21,7 +21,7 @@ Manage alert groups.
 
 ### SEE ALSO
 
-* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall resources.
+* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall integrations, escalation chains, schedules, and routing
 * [gcx oncall alert-groups acknowledge](gcx_oncall_alert-groups_acknowledge.md)	 - Acknowledge an alert group.
 * [gcx oncall alert-groups delete](gcx_oncall_alert-groups_delete.md)	 - Delete an alert group.
 * [gcx oncall alert-groups get](gcx_oncall_alert-groups_get.md)	 - Get an alert group by ID.

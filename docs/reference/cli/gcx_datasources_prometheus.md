@@ -25,7 +25,7 @@ Operations specific to Prometheus datasources such as labels, metadata, and targ
 
 ### SEE ALSO
 
-* [gcx datasources](gcx_datasources.md)	 - Manage Grafana datasources
+* [gcx datasources](gcx_datasources.md)	 - Manage and query Grafana datasources
 * [gcx datasources prometheus labels](gcx_datasources_prometheus_labels.md)	 - List labels or label values
 * [gcx datasources prometheus metadata](gcx_datasources_prometheus_metadata.md)	 - Get metric metadata
 * [gcx datasources prometheus query](gcx_datasources_prometheus_query.md)	 - Execute a PromQL query against a Prometheus datasource

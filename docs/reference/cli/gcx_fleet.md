@@ -1,6 +1,6 @@
 ## gcx fleet
 
-Manage Grafana Fleet Management resources.
+Manage Grafana Fleet Management pipelines and collectors
 
 ### Options
 
@@ -21,7 +21,7 @@ Manage Grafana Fleet Management resources.
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - 
+* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx fleet collectors](gcx_fleet_collectors.md)	 - Manage Fleet Management collectors.
 * [gcx fleet pipelines](gcx_fleet_pipelines.md)	 - Manage Fleet Management pipelines.
 * [gcx fleet tenant](gcx_fleet_tenant.md)	 - Manage Fleet Management tenant settings.

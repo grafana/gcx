@@ -21,6 +21,6 @@ View individual alerts.
 
 ### SEE ALSO
 
-* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall resources.
+* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall integrations, escalation chains, schedules, and routing
 * [gcx oncall alerts get](gcx_oncall_alerts_get.md)	 - Get an alert by ID.
 

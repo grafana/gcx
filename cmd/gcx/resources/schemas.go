@@ -43,7 +43,7 @@ func schemasCmd(configOpts *cmdconfig.Options) *cobra.Command {
 		Use:   "schemas [RESOURCE_SELECTOR]",
 		Args:  cobra.MaximumNArgs(1),
 		Short: "List available Grafana API resource types",
-		Long:  "List available Grafana API resource types and their schemas. Optionally filter by a resource selector.",
+		Long:  "List available Grafana API resource types and their schemas by querying a live Grafana instance. Requires a connection to Grafana. Use --no-schema to skip OpenAPI spec fetching for faster results. Optionally filter by a resource selector.",
 		Example: `
 	gcx resources schemas
 	gcx resources schemas -o wide

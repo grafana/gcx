@@ -21,7 +21,7 @@ Manage escalation policies.
 
 ### SEE ALSO
 
-* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall resources.
+* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall integrations, escalation chains, schedules, and routing
 * [gcx oncall escalation-policies get](gcx_oncall_escalation-policies_get.md)	 - Get an escalation policy by ID.
 * [gcx oncall escalation-policies list](gcx_oncall_escalation-policies_list.md)	 - List escalation policies.
 

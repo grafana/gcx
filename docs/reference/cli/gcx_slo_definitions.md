@@ -21,7 +21,7 @@ Manage SLO definitions.
 
 ### SEE ALSO
 
-* [gcx slo](gcx_slo.md)	 - Manage Grafana SLO resources.
+* [gcx slo](gcx_slo.md)	 - Manage Grafana SLO definitions and reports
 * [gcx slo definitions delete](gcx_slo_definitions_delete.md)	 - Delete SLO definitions.
 * [gcx slo definitions get](gcx_slo_definitions_get.md)	 - Get a single SLO definition.
 * [gcx slo definitions list](gcx_slo_definitions_list.md)	 - List SLO definitions.

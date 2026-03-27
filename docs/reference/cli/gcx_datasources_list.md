@@ -46,5 +46,5 @@ gcx datasources list [flags]
 
 ### SEE ALSO
 
-* [gcx datasources](gcx_datasources.md)	 - Manage Grafana datasources
+* [gcx datasources](gcx_datasources.md)	 - Manage and query Grafana datasources
 

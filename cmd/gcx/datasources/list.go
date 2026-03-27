@@ -8,6 +8,7 @@ import (
 	"text/tabwriter"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/grafana"
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -39,6 +40,10 @@ func listCmd(configOpts *cmdconfig.Options) *cobra.Command {
 		Use:   "list",
 		Short: "List all datasources",
 		Long:  "List all datasources configured in Grafana.",
+		Annotations: map[string]string{
+			agent.AnnotationTokenCost: "medium",
+			agent.AnnotationLLMHint:   "--type prometheus -o json",
+		},
 		Example: `
 	# List all datasources
 	gcx datasources list

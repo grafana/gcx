@@ -23,7 +23,7 @@ func (p *KGProvider) Name() string { return "kg" }
 
 // ShortDesc returns a one-line description of the provider.
 func (p *KGProvider) ShortDesc() string {
-	return "Manage Grafana Knowledge Graph (Asserts) resources."
+	return "Manage Grafana Knowledge Graph entity types, rules, and datasets"
 }
 
 // Commands returns the Cobra commands contributed by this provider.

@@ -21,7 +21,7 @@ Manage incident activity timeline.
 
 ### SEE ALSO
 
-* [gcx incidents](gcx_incidents.md)	 - Manage Grafana IRM Incident resources.
+* [gcx incidents](gcx_incidents.md)	 - Manage Grafana Incident Response and Management (IRM) incidents
 * [gcx incidents activity add](gcx_incidents_activity_add.md)	 - Add a note to an incident's activity timeline.
 * [gcx incidents activity list](gcx_incidents_activity_list.md)	 - List activity items for an incident.
 

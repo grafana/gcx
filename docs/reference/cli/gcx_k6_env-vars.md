@@ -21,7 +21,7 @@ Manage K6 Cloud environment variables.
 
 ### SEE ALSO
 
-* [gcx k6](gcx_k6.md)	 - Manage K6 Cloud resources (projects, load tests, env vars, schedules, load zones).
+* [gcx k6](gcx_k6.md)	 - Manage Grafana K6 Cloud projects, load tests, and schedules
 * [gcx k6 env-vars create](gcx_k6_env-vars_create.md)	 - Create a K6 environment variable from a file.
 * [gcx k6 env-vars delete](gcx_k6_env-vars_delete.md)	 - Delete a K6 environment variable.
 * [gcx k6 env-vars list](gcx_k6_env-vars_list.md)	 - List K6 environment variables.

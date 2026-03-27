@@ -21,6 +21,6 @@ Manage Knowledge Graph entity types.
 
 ### SEE ALSO
 
-* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph (Asserts) resources.
+* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph entity types, rules, and datasets
 * [gcx kg entity-types list](gcx_kg_entity-types_list.md)	 - List entity types with counts.
 

@@ -21,7 +21,7 @@ Manage Fleet Management collectors.
 
 ### SEE ALSO
 
-* [gcx fleet](gcx_fleet.md)	 - Manage Grafana Fleet Management resources.
+* [gcx fleet](gcx_fleet.md)	 - Manage Grafana Fleet Management pipelines and collectors
 * [gcx fleet collectors create](gcx_fleet_collectors_create.md)	 - Create a collector from a file.
 * [gcx fleet collectors delete](gcx_fleet_collectors_delete.md)	 - Delete a collector.
 * [gcx fleet collectors get](gcx_fleet_collectors_get.md)	 - Get a collector by ID or name.

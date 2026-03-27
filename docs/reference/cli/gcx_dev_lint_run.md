@@ -4,7 +4,7 @@ Lint Grafana resources
 
 ### Synopsis
 
-Lint Grafana resources.
+Lint Grafana resources against Rego-based rules. Checks dashboards and other resource types for best practices, naming conventions, and configuration issues. Use --rules to load custom rules alongside built-in ones.
 
 ```
 gcx dev lint run PATH... [flags]

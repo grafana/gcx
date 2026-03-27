@@ -21,7 +21,7 @@ Manage alert rule groups.
 
 ### SEE ALSO
 
-* [gcx alert](gcx_alert.md)	 - Manage Grafana alerting resources.
+* [gcx alert](gcx_alert.md)	 - Manage Grafana alert rules and alert groups
 * [gcx alert groups get](gcx_alert_groups_get.md)	 - Get a single alert rule group.
 * [gcx alert groups list](gcx_alert_groups_list.md)	 - List alert rule groups.
 * [gcx alert groups status](gcx_alert_groups_status.md)	 - Show alert rule group status.

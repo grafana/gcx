@@ -37,14 +37,14 @@ The configuration file to load is chosen as follows:
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - 
+* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx config check](gcx_config_check.md)	 - Check the current configuration for issues
 * [gcx config current-context](gcx_config_current-context.md)	 - Display the current context name
 * [gcx config edit](gcx_config_edit.md)	 - Open a config file in $EDITOR
 * [gcx config list-contexts](gcx_config_list-contexts.md)	 - List the contexts defined in the configuration
 * [gcx config path](gcx_config_path.md)	 - Show loaded config file paths
-* [gcx config set](gcx_config_set.md)	 - Set an single value in a configuration file
-* [gcx config unset](gcx_config_unset.md)	 - Unset an single value in a configuration file
+* [gcx config set](gcx_config_set.md)	 - Set a single value in a configuration file
+* [gcx config unset](gcx_config_unset.md)	 - Unset a single value in a configuration file
 * [gcx config use-context](gcx_config_use-context.md)	 - Set the current context
 * [gcx config view](gcx_config_view.md)	 - Display the current configuration
 

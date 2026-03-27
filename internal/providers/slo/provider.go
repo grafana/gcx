@@ -19,7 +19,7 @@ type SLOProvider struct{}
 func (p *SLOProvider) Name() string { return "slo" }
 
 // ShortDesc returns a one-line description of the provider.
-func (p *SLOProvider) ShortDesc() string { return "Manage Grafana SLO resources." }
+func (p *SLOProvider) ShortDesc() string { return "Manage Grafana SLO definitions and reports" }
 
 // Commands returns the Cobra commands contributed by this provider.
 func (p *SLOProvider) Commands() []*cobra.Command {

@@ -20,7 +20,7 @@ func (p *IncidentsProvider) Name() string { return "incidents" }
 
 // ShortDesc returns a one-line description of the provider.
 func (p *IncidentsProvider) ShortDesc() string {
-	return "Manage Grafana IRM Incident resources."
+	return "Manage Grafana Incident Response and Management (IRM) incidents"
 }
 
 // Commands returns the Cobra commands contributed by this provider.

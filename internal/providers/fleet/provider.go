@@ -93,7 +93,7 @@ func (p *FleetProvider) Name() string { return "fleet" }
 
 // ShortDesc returns a one-line description of the provider.
 func (p *FleetProvider) ShortDesc() string {
-	return "Manage Grafana Fleet Management resources."
+	return "Manage Grafana Fleet Management pipelines and collectors"
 }
 
 // Commands returns the Cobra commands contributed by this provider.

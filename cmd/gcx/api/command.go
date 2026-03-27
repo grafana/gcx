@@ -69,8 +69,8 @@ func Command() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "api PATH",
-		Short: "Make raw API requests to Grafana",
-		Long:  "Make raw API requests to Grafana using the configured authentication.",
+		Short: "Make direct HTTP requests to the Grafana API",
+		Long:  "Send arbitrary HTTP requests to any Grafana API endpoint using the configured authentication. Supports GET, POST, PUT, PATCH, DELETE with custom headers and request bodies.",
 		Example: `  # List all datasources
   gcx api /api/datasources
 

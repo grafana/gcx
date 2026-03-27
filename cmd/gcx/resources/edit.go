@@ -48,14 +48,14 @@ The editor will be started in the shell set by the SHELL environment variable. I
 The edition will be cancelled if no changes are written to the file or if the file after edition is empty.
 `,
 		Example: `
-	# Editing a dashboard
-	gcx resources dashboard/foo
+	# Edit a dashboard
+	gcx resources edit dashboard/foo
 
-	# Editing a dashboard in JSON
-	gcx resources -o json dashboard/foo
+	# Edit a dashboard in JSON
+	gcx resources edit -o json dashboard/foo
 
 	# Using an alternative editor
-	EDITOR=nvim gcx resources dashboard/foo
+	EDITOR=nvim gcx resources edit dashboard/foo
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()

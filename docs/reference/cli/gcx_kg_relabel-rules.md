@@ -21,6 +21,6 @@ Push relabel rules to the Knowledge Graph.
 
 ### SEE ALSO
 
-* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph (Asserts) resources.
+* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph entity types, rules, and datasets
 * [gcx kg relabel-rules create](gcx_kg_relabel-rules_create.md)	 - Upload relabel rules from a YAML file.
 

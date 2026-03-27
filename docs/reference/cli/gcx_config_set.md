@@ -1,12 +1,12 @@
 ## gcx config set
 
-Set an single value in a configuration file
+Set a single value in a configuration file
 
 ### Synopsis
 
-Set an single value in a configuration file
+Set a single value in a configuration file.
 
-PROPERTY_NAME is a dot-delimited reference to the value to unset. It can either represent a field or a map entry.
+PROPERTY_NAME is a dot-delimited reference to the value to set. It can either represent a field or a map entry.
 
 PROPERTY_VALUE is the new value to set.
 

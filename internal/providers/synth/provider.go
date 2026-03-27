@@ -62,7 +62,7 @@ func (p *SynthProvider) Name() string { return "synth" }
 
 // ShortDesc returns a one-line description of the provider.
 func (p *SynthProvider) ShortDesc() string {
-	return "Manage Grafana Synthetic Monitoring resources."
+	return "Manage Grafana Synthetic Monitoring checks and probes"
 }
 
 // Commands returns the Cobra commands contributed by this provider.

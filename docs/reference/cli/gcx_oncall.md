@@ -1,6 +1,6 @@
 ## gcx oncall
 
-Manage Grafana OnCall resources.
+Manage Grafana OnCall integrations, escalation chains, schedules, and routing
 
 ### Options
 
@@ -21,7 +21,7 @@ Manage Grafana OnCall resources.
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - 
+* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx oncall alert-groups](gcx_oncall_alert-groups.md)	 - Manage alert groups.
 * [gcx oncall alerts](gcx_oncall_alerts.md)	 - View individual alerts.
 * [gcx oncall escalate](gcx_oncall_escalate.md)	 - Create a direct escalation.

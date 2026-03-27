@@ -21,7 +21,7 @@ List organizations.
 
 ### SEE ALSO
 
-* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall resources.
+* [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall integrations, escalation chains, schedules, and routing
 * [gcx oncall organizations get](gcx_oncall_organizations_get.md)	 - Get an organization by ID.
 * [gcx oncall organizations list](gcx_oncall_organizations_list.md)	 - List organizations.
 

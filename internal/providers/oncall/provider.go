@@ -25,7 +25,7 @@ func (p *OnCallProvider) Name() string { return "oncall" }
 
 // ShortDesc returns a one-line description of the provider.
 func (p *OnCallProvider) ShortDesc() string {
-	return "Manage Grafana OnCall resources."
+	return "Manage Grafana OnCall integrations, escalation chains, schedules, and routing"
 }
 
 // Commands returns the Cobra commands contributed by this provider.

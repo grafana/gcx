@@ -59,8 +59,8 @@ func newCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "new RESOURCE_TYPE NAME",
-		Short: "Creates a new linter rule",
-		Long:  "Creates a new linter rule.",
+		Short: "Scaffold a new linter rule",
+		Long:  "Scaffold a new Rego-based linter rule with a starter template, test fixture, and expected output file. Creates files in the current directory or the path specified by --output.",
 		Args:  cobra.ExactArgs(2),
 		Example: `
 	# Creates a new dashboard linter rule in the current directory:

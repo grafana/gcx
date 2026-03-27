@@ -1,10 +1,10 @@
 ## gcx api
 
-Make raw API requests to Grafana
+Make direct HTTP requests to the Grafana API
 
 ### Synopsis
 
-Make raw API requests to Grafana using the configured authentication.
+Send arbitrary HTTP requests to any Grafana API endpoint using the configured authentication. Supports GET, POST, PUT, PATCH, DELETE with custom headers and request bodies.
 
 ```
 gcx api PATH [flags]
@@ -59,5 +59,5 @@ gcx api PATH [flags]
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - 
+* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 

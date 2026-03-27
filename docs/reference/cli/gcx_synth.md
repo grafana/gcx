@@ -1,6 +1,6 @@
 ## gcx synth
 
-Manage Grafana Synthetic Monitoring resources.
+Manage Grafana Synthetic Monitoring checks and probes
 
 ### Options
 
@@ -21,7 +21,7 @@ Manage Grafana Synthetic Monitoring resources.
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - 
+* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx synth checks](gcx_synth_checks.md)	 - Manage Synthetic Monitoring checks.
 * [gcx synth probes](gcx_synth_probes.md)	 - Manage Synthetic Monitoring probes.
 
