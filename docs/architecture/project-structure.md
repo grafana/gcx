@@ -14,6 +14,7 @@ gcx/
 │       ├── datasources/      # 'datasources' subcommand implementations
 │       │   └── query/        # Per-kind query constructors and shared infrastructure (codecs, time parsing)
 │       ├── commands/         # 'commands' catalog (agent metadata, resource types, live validation)
+│       ├── helptree/        # 'help-tree' compact text tree for agent context injection
 │       ├── dev/              # 'dev' subcommand (import, scaffold, generate, lint, serve)
 │       ├── providers/        # 'providers' subcommand implementation
 │       └── fail/             # Error → DetailedError conversion, exit codes

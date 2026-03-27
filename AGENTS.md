@@ -122,6 +122,7 @@ cmd/gcx/
 ├── api/         Raw API passthrough command (direct Grafana API calls)
 ├── linter/      Linting commands (run, new, rules, test — mounted under dev lint)
 ├── commands/    Commands catalog (agent-consumable metadata, resource types, live validation)
+├── helptree/    Compact text tree for agent context injection (help-tree command)
 ├── dev/         Developer commands (import, scaffold, generate, lint, serve)
 └── fail/        Structured error → user-friendly message conversion
 

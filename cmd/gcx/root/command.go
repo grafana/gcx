@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/gcx/cmd/gcx/dashboards"
 	"github.com/grafana/gcx/cmd/gcx/datasources"
 	"github.com/grafana/gcx/cmd/gcx/dev"
+	"github.com/grafana/gcx/cmd/gcx/helptree"
 	cmdproviders "github.com/grafana/gcx/cmd/gcx/providers"
 	"github.com/grafana/gcx/cmd/gcx/resources"
 	"github.com/grafana/gcx/internal/agent"
@@ -148,6 +149,10 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	commandsCmd := commands.Command(rootCmd, commandsConfigOpts)
 	commandsConfigOpts.BindFlags(commandsCmd.Flags())
 	rootCmd.AddCommand(commandsCmd)
+
+	// Help-tree — compact text tree for agent context injection.
+	// Also registered last to see the full command tree.
+	rootCmd.AddCommand(helptree.Command(rootCmd))
 
 	// Note: Provider adapter factories are registered via adapter.Register()
 	// in each provider's init() function (same pattern as providers.Register).
