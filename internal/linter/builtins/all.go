@@ -12,28 +12,11 @@ import (
 )
 
 func All() []func(*rego.Rego) {
-	return []func(*rego.Rego){
-		ValidateLogQL(),
-		ValidatePromql(),
-	}
+	return nil
 }
 
 func Tester() []*tester.Builtin {
 	return []*tester.Builtin{
-		{
-			Decl: &ast.Builtin{
-				Name: validatePromqlMeta.Name,
-				Decl: validatePromqlMeta.Decl,
-			},
-			Func: ValidatePromql(),
-		},
-		{
-			Decl: &ast.Builtin{
-				Name: validateLogQLMeta.Name,
-				Decl: validateLogQLMeta.Decl,
-			},
-			Func: ValidateLogQL(),
-		},
 		{
 			Decl: &ast.Builtin{
 				Name: assertReportsMatchMeta.Name,

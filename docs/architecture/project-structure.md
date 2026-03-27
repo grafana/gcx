@@ -30,7 +30,7 @@ gcx/
 │   ├── logs/                 # slog + k8s klog integration, verbosity
 │   ├── linter/               # OPA/Rego-based resource linter engine
 │   │   ├── bundle/           # Embedded Rego bundle with built-in rules
-│   │   └── builtins/         # Built-in PromQL/LogQL validators
+│   │   └── builtins/         # Linter builtins and test helpers
 │   ├── providers/            # Provider plugin system
 │   │   ├── configloader.go   # Shared ConfigLoader for all providers
 │   │   ├── alert/            # Alert provider (rules and groups)

@@ -87,7 +87,7 @@ See [docs/research/](docs/research/) for design rationale and [docs/adrs/](docs/
 | `internal/query/loki/` | Loki HTTP query client |
 | `internal/agent/` | Agent mode detection |
 | `internal/terminal/` | TTY/pipe detection |
-| `internal/linter/` | Linting engine (Rego rules, PromQL/LogQL validators) |
+| `internal/linter/` | Linting engine (Rego rules, builtins/test helpers) |
 | `internal/graph/` | Terminal chart rendering |
 | `internal/server/` | Live dev server (Chi router, reverse proxy, websocket reload) |
 | `internal/grafana/` | OpenAPI client (health checks, version detection) |
