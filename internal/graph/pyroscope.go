@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/grafana/grafanactl/internal/query/pyroscope"
+	"github.com/grafana/gcx/internal/query/pyroscope"
 )
 
 // FromPyroscopeResponse converts a Pyroscope query response to ChartData for visualization.

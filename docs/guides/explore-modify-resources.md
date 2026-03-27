@@ -15,7 +15,7 @@ In this example, we want to identify and remove production dashboards relying on
 The command below lists dashboard UIDs along with the data source UIDs used in their panels:
 
 ```shell
-grafanactl resources get dashboards --context prod | jq '.items | map({ uid: .metadata.name, datasources: .spec.panels | map(.datasource.uid)  })'
+gcx resources get dashboards --context prod | jq '.items | map({ uid: .metadata.name, datasources: .spec.panels | map(.datasource.uid)  })'
 [
    {
       "uid": "important-production-dashboard",
@@ -41,7 +41,7 @@ grafanactl resources get dashboards --context prod | jq '.items | map({ uid: .me
 We can then identify the dashboards that are using unexpected data sources, and delete them:
 
 ```shell
-grafanactl resources delete dashboards/test-dashboard-from-stg,test-dashboard-from-dev
+gcx resources delete dashboards/test-dashboard-from-stg,test-dashboard-from-dev
 ✔ 2 resources deleted, 0 errors
 ```
 
@@ -50,7 +50,7 @@ grafanactl resources delete dashboards/test-dashboard-from-stg,test-dashboard-fr
 Resources can be edited directly from the default editor, without having to pull them first:
 
 ```shell
-grafanactl resources edit dashboard/edit-me-please
+gcx resources edit dashboard/edit-me-please
 ```
 
 This command will open the default editor as configured by the `EDITOR` environment variable (or fall back to 'vi' for Linux or 'notepad' for Windows).

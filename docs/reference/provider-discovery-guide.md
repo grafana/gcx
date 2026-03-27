@@ -92,7 +92,7 @@ be empty — the provider reads `curCtx.Grafana.Token` directly.
 ### 1.5 Map Resource Relationships
 
 Understand how the product's resources relate to each other and to existing
-grafanactl resources:
+gcx resources:
 
 - Do resources reference each other? (e.g. reports reference SLO UUIDs)
 - Is there a folder/hierarchy structure? (affects push ordering)
@@ -109,45 +109,45 @@ First, identify which Grafana instance you'll test against:
 
 ```bash
 # List available contexts
-grafanactl config get-contexts
+gcx config get-contexts
 
 # Switch to the context for testing (e.g., dev, staging)
-grafanactl config use-context <context-name>
+gcx config use-context <context-name>
 ```
 
-**Using `grafanactl api`:**
+**Using `gcx api`:**
 
-Once you've selected the right context, use `grafanactl api` to test endpoints:
+Once you've selected the right context, use `gcx api` to test endpoints:
 
 ```bash
 # List resources
-grafanactl api /api/plugins/{plugin-id}/resources/v1/{resource}
+gcx api /api/plugins/{plugin-id}/resources/v1/{resource}
 
 # Get a specific resource by ID
-grafanactl api /api/plugins/{plugin-id}/resources/v1/{resource}/{id}
+gcx api /api/plugins/{plugin-id}/resources/v1/{resource}/{id}
 
 # Create a resource (POST implied by -d)
-grafanactl api /api/plugins/{plugin-id}/resources/v1/{resource} -d @payload.json
+gcx api /api/plugins/{plugin-id}/resources/v1/{resource} -d @payload.json
 
 # Update a resource
-grafanactl api /api/plugins/{plugin-id}/resources/v1/{resource}/{id} -X PUT -d @payload.json
+gcx api /api/plugins/{plugin-id}/resources/v1/{resource}/{id} -X PUT -d @payload.json
 
 # Delete a resource
-grafanactl api /api/plugins/{plugin-id}/resources/v1/{resource}/{id} -X DELETE
+gcx api /api/plugins/{plugin-id}/resources/v1/{resource}/{id} -X DELETE
 
 # Output as YAML for easier reading
-grafanactl api /api/plugins/{plugin-id}/resources/v1/{resource} -o yaml
+gcx api /api/plugins/{plugin-id}/resources/v1/{resource} -o yaml
 ```
 
-**Why `grafanactl api` vs curl:**
+**Why `gcx api` vs curl:**
 - Uses your configured context's authentication automatically
 - Supports multiple output formats (`-o json|yaml|wide`)
-- Handles TLS configuration from your grafanactl config
+- Handles TLS configuration from your gcx config
 - Less verbose than curl (no explicit token headers needed)
 
 **Fallback to curl:**
 
-If you need to test against an instance not yet configured in grafanactl, use curl:
+If you need to test against an instance not yet configured in gcx, use curl:
 
 ```bash
 # List resources
@@ -187,7 +187,7 @@ Every provider needs answers to these questions before implementation starts.
 | API Type | Client Approach | When |
 |----------|----------------|------|
 | Plugin API (`/api/plugins/...`) | Custom `http.Client` with Bearer token | Product is a Grafana plugin |
-| K8s-compatible API (`/apis/...`) | grafanactl's existing dynamic client | Product exposes K8s-style endpoints externally |
+| K8s-compatible API (`/apis/...`) | gcx's existing dynamic client | Product exposes K8s-style endpoints externally |
 | External service API | Custom `http.Client` with product-specific auth | Product runs outside Grafana |
 
 Note: Some products have K8s CRDs internally that are NOT accessible externally.
@@ -195,7 +195,7 @@ Always verify with a real API call before choosing the K8s client path.
 
 ### 2.3 Envelope Mapping
 
-Map the product's API objects to grafanactl's K8s envelope:
+Map the product's API objects to gcx's K8s envelope:
 
 ```
 apiVersion: {group}/v1alpha1    ← convention: {product}.ext.grafana.app/v1alpha1
@@ -218,7 +218,7 @@ Decisions:
 Start with the standard CRUD set, then consider product-specific additions:
 
 ```
-grafanactl {provider}
+gcx {provider}
 ├── {resource-group}           ← if multiple resource types
 │   ├── list                   ← always
 │   ├── get <id>               ← always
@@ -280,7 +280,7 @@ to recur with other Grafana products.
 | **Async writes** | POST/PUT may return 202 Accepted, not 201 Created — the resource isn't fully provisioned yet | Document this behavior; don't assume immediate consistency |
 | **Response wrapper variance** | Different products use different list response envelopes (`{ slos: [...] }` vs `{ items: [...] }`) | Define response types per product, don't assume a universal wrapper |
 | **Lifecycle vs operational status** | An API `status` field may indicate provisioning state (creating/error), not operational health | If operational health is needed, it likely comes from Prometheus metrics, not the CRUD API |
-| **Naming convention mismatch** | API uses camelCase, Terraform uses snake_case, K8s uses camelCase | Decide once per provider and document; grafanactl convention is camelCase in spec |
+| **Naming convention mismatch** | API uses camelCase, Terraform uses snake_case, K8s uses camelCase | Decide once per provider and document; gcx convention is camelCase in spec |
 
 ---
 

@@ -2,7 +2,7 @@
 
 # GitHub CLI (gh) vs. Datadog pup: Comparative Analysis for Agentic Experience
 
-**Date:** 2026-03-02 **Prepared by:** Competitive Research Assistant **Purpose:** Inform grafanactl documentation and agentic experience improvements **Scope:** Command structure, AI/agent friendliness, developer experience, extensibility, documentation quality
+**Date:** 2026-03-02 **Prepared by:** Competitive Research Assistant **Purpose:** Inform gcx documentation and agentic experience improvements **Scope:** Command structure, AI/agent friendliness, developer experience, extensibility, documentation quality
 
 ---
 
@@ -12,21 +12,21 @@
 
 - **pup is purpose-built for agents; gh was adapted for them.** Datadog pup auto-detects AI agent execution contexts and switches behavior modes — a fundamental design choice that gh never made. gh's agent-friendliness comes from composability with Unix tooling, not from native agent awareness.  
     
-- **gh's `--json` \+ `--jq` combination is the gold standard for selective structured output.** The ability to discover available fields (`--json` with no argument), then filter with embedded jq expressions, is a pattern grafanactl should adopt. pup's default-JSON-output approach is simpler but less flexible.  
+- **gh's `--json` \+ `--jq` combination is the gold standard for selective structured output.** The ability to discover available fields (`--json` with no argument), then filter with embedded jq expressions, is a pattern gcx should adopt. pup's default-JSON-output approach is simpler but less flexible.  
     
-- **pup's agent mode solves the biggest automation friction point: confirmation prompts.** Auto-approving destructive operations in detected agent contexts eliminates the most common cause of pipeline hangs. grafanactl currently has no equivalent.  
+- **pup's agent mode solves the biggest automation friction point: confirmation prompts.** Auto-approving destructive operations in detected agent contexts eliminates the most common cause of pipeline hangs. gcx currently has no equivalent.  
     
-- **gh's exit code taxonomy is clean and documented; pup's is not publicly documented.** gh's four-code system (0=success, 1=failure, 2=cancelled, 4=auth required) gives scripts precise signal. grafanactl has no published exit code reference — a critical gap for CI/CD reliability.  
+- **gh's exit code taxonomy is clean and documented; pup's is not publicly documented.** gh's four-code system (0=success, 1=failure, 2=cancelled, 4=auth required) gives scripts precise signal. gcx has no published exit code reference — a critical gap for CI/CD reliability.  
     
-- **Documentation quality diverges sharply on "agent-specific" guidance.** gh has a dedicated formatting help page (`gh help formatting`) and environment variable reference (`gh help environment`). pup has `AGENT_MODE.md`. grafanactl has neither.
+- **Documentation quality diverges sharply on "agent-specific" guidance.** gh has a dedicated formatting help page (`gh help formatting`) and environment variable reference (`gh help environment`). pup has `AGENT_MODE.md`. gcx has neither.
 
-**Strategic implications for grafanactl:**
+**Strategic implications for gcx:**
 
 1. Add explicit agent mode detection or `--agent` flag mirroring pup's pattern  
 2. Document exit codes in the style of gh's `gh help exit-codes`  
 3. Add `--json` field discovery support (run `--json` without argument to list available fields)  
-4. Create a dedicated `grafanactl help formatting` or equivalent automation guide  
-5. Add `--yes` / `GRAFANACTL_AUTO_APPROVE` for non-interactive destructive operations
+4. Create a dedicated `gcx help formatting` or equivalent automation guide  
+5. Add `--yes` / `GCX_AUTO_APPROVE` for non-interactive destructive operations
 
 ---
 
@@ -127,7 +127,7 @@ pup on-call teams list
 | Self-discovery via `--help` | Excellent (structured, consistent) | Good (designed for agent traversal) |
 | Breadth of resources | Focused (GitHub concepts only) | Broad (42 domains, 300+ subcommands) |
 
-**Takeaway for grafanactl:** pup's standardized CRUD vocabulary (`list`, `get`, `create`, `update`, `delete`) reduces cognitive load for agents more than gh's mixed verb set. grafanactl's current `get`, `list`, `delete`, `edit`, `pull`, `push`, `serve`, `validate` mixes CRUD verbs with workflow verbs — good for humans, but harder to predict for agents.
+**Takeaway for gcx:** pup's standardized CRUD vocabulary (`list`, `get`, `create`, `update`, `delete`) reduces cognitive load for agents more than gh's mixed verb set. gcx's current `get`, `list`, `delete`, `edit`, `pull`, `push`, `serve`, `validate` mixes CRUD verbs with workflow verbs — good for humans, but harder to predict for agents.
 
 ---
 
@@ -243,7 +243,7 @@ FORCE_AGENT_MODE=1 pup monitors list  # Environment variable
 
 \[Source: Datadog pup README \- https://github.com/datadog-labs/pup/blob/main/README.md; Datadog pup Search Results \- https://github.com/datadog-labs/pup\]
 
-**Verdict:** pup's agent mode is a major architectural advantage. Auto-detection means agents don't need to configure anything special to get correct behavior. For grafanactl, a `GRAFANACTL_AGENT_MODE` or `--agent` flag that detects Claude Code / Cursor / Copilot environments would be a high-value addition.
+**Verdict:** pup's agent mode is a major architectural advantage. Auto-detection means agents don't need to configure anything special to get correct behavior. For gcx, a `GCX_AGENT_MODE` or `--agent` flag that detects Claude Code / Cursor / Copilot environments would be a high-value addition.
 
 ---
 
@@ -264,7 +264,7 @@ This taxonomy is critical for CI/CD: exit code 4 specifically allows pipelines t
 
 **Datadog pup:** Exit code documentation is not publicly available. The tool uses standard 0/non-zero conventions based on practical usage, but no formal taxonomy exists in the documentation. \[Source: Unable to verify publicly — no exit code documentation found at https://github.com/datadog-labs/pup/blob/main/docs/\]
 
-**Verdict:** gh's documented exit codes are significantly better for automation. The auth-specific exit code (4) is particularly valuable. grafanactl has no published exit code reference — this is a critical documentation gap that blocks reliable CI/CD integration.
+**Verdict:** gh's documented exit codes are significantly better for automation. The auth-specific exit code (4) is particularly valuable. gcx has no published exit code reference — this is a critical documentation gap that blocks reliable CI/CD integration.
 
 ---
 
@@ -326,7 +326,7 @@ This taxonomy is critical for CI/CD: exit code 4 specifically allows pipelines t
 
 **Datadog pup:** Not explicitly documented. Standard CRUD operations follow REST conventions (PUT/PATCH for updates are generally idempotent; POST for creates are not). No formal idempotency guarantees published.
 
-**Verdict:** Neither tool documents idempotency formally. This is a gap in both tools and represents an opportunity for grafanactl to differentiate — particularly for `push` operations where idempotent behavior (create-or-update) would be highly valuable for CI/CD pipelines.
+**Verdict:** Neither tool documents idempotency formally. This is a gap in both tools and represents an opportunity for gcx to differentiate — particularly for `push` operations where idempotent behavior (create-or-update) would be highly valuable for CI/CD pipelines.
 
 ---
 
@@ -345,7 +345,7 @@ This taxonomy is critical for CI/CD: exit code 4 specifically allows pipelines t
 
 **Datadog pup:** Pagination not explicitly documented in public documentation. Individual list commands accept filtering flags. The architecture implies server-side filtering reduces the need for client-side pagination in most observability use cases.
 
-**Verdict:** gh's pagination tooling is more sophisticated but has known edge case bugs. pup relies on server-side filtering. grafanactl should explicitly document pagination behavior for `resources list` and `resources pull` — especially for Grafana instances with hundreds of dashboards.
+**Verdict:** gh's pagination tooling is more sophisticated but has known edge case bugs. pup relies on server-side filtering. gcx should explicitly document pagination behavior for `resources list` and `resources pull` — especially for Grafana instances with hundreds of dashboards.
 
 ---
 
@@ -533,7 +533,7 @@ This taxonomy is critical for CI/CD: exit code 4 specifically allows pipelines t
 
 ### Overall Agent Readiness
 
-| Dimension | gh (GitHub CLI) | pup (Datadog) | grafanactl (current) |
+| Dimension | gh (GitHub CLI) | pup (Datadog) | gcx (current) |
 | :---- | :---- | :---- | :---- |
 | **Command consistency** | High | High | Medium (CRUD \+ workflow verbs mixed) |
 | **Structured output (JSON)** | Excellent (`--json` \+ `--jq` \+ `--template`) | Good (default JSON, `--output`) | Good (`-o json/yaml/text/wide`) |
@@ -570,7 +570,7 @@ This taxonomy is critical for CI/CD: exit code 4 specifically allows pipelines t
 
 ---
 
-## 7\. Patterns Worth Adopting (for grafanactl)
+## 7\. Patterns Worth Adopting (for gcx)
 
 ### From GitHub CLI (gh)
 
@@ -578,17 +578,17 @@ This taxonomy is critical for CI/CD: exit code 4 specifically allows pipelines t
 
 The ability to run `gh pr list --json` with no argument to list all available fields is an excellent agent-discovery pattern. Agents can self-discover what data is available without reading documentation.
 
-Recommendation for grafanactl:
+Recommendation for gcx:
 
 ```shell
 # Discover available fields
-grafanactl resources get dashboards --json
+gcx resources get dashboards --json
 
 # Select specific fields
-grafanactl resources get dashboards --json uid,title,folderId,tags
+gcx resources get dashboards --json uid,title,folderId,tags
 
 # Filter with jq
-grafanactl resources get dashboards --json uid,title --jq '.[] | select(.tags | contains(["production"]))'
+gcx resources get dashboards --json uid,title --jq '.[] | select(.tags | contains(["production"]))'
 ```
 
 \[Source: GitHub CLI Formatting Help \- https://cli.github.com/manual/gh\_help\_formatting\]
@@ -597,7 +597,7 @@ grafanactl resources get dashboards --json uid,title --jq '.[] | select(.tags | 
 
 gh's four-code taxonomy enables precise CI/CD error handling. Agents and scripts can respond differently to auth failures (exit 4\) vs. command failures (exit 1\) vs. cancellations (exit 2).
 
-Recommendation for grafanactl — adopt and document:
+Recommendation for gcx — adopt and document:
 
 ```
 Exit 0: Success
@@ -611,30 +611,30 @@ Exit 4: Unsupported Grafana version (< 12.0)
 
 **Pattern 3: Environment variable reference page (`help environment`)**
 
-gh's `gh help environment` documents every environment variable in one place. This is critical for CI/CD configuration. grafanactl should have an equivalent.
+gh's `gh help environment` documents every environment variable in one place. This is critical for CI/CD configuration. gcx should have an equivalent.
 
 Minimum viable environment variable set to document:
 
-- `GRAFANACTL_TOKEN` — authentication token  
-- `GRAFANACTL_URL` — Grafana instance URL  
-- `GRAFANACTL_ORG` — default organization ID  
-- `GRAFANACTL_CONTEXT` — default context name  
-- `GRAFANACTL_NO_UPDATE_NOTIFIER` — suppress update notifications  
-- `GRAFANACTL_AUTO_APPROVE` — skip destructive confirmation prompts  
-- `GRAFANACTL_DEBUG` — enable verbose API logging  
+- `GCX_TOKEN` — authentication token  
+- `GCX_URL` — Grafana instance URL  
+- `GCX_ORG` — default organization ID  
+- `GCX_CONTEXT` — default context name  
+- `GCX_NO_UPDATE_NOTIFIER` — suppress update notifications  
+- `GCX_AUTO_APPROVE` — skip destructive confirmation prompts  
+- `GCX_DEBUG` — enable verbose API logging  
 - `NO_COLOR` — disable ANSI color output
 
 \[Source: GitHub CLI Environment Variables \- https://cli.github.com/manual/gh\_help\_environment\]
 
 **Pattern 4: Dedicated formatting help page (`help formatting`)**
 
-gh's `gh help formatting` page with concrete examples of `--json`, `--jq`, and `--template` is the single most valuable piece of documentation for scripting users. grafanactl needs an equivalent.
+gh's `gh help formatting` page with concrete examples of `--json`, `--jq`, and `--template` is the single most valuable piece of documentation for scripting users. gcx needs an equivalent.
 
 \[Source: GitHub CLI Formatting Help \- https://cli.github.com/manual/gh\_help\_formatting\]
 
 **Pattern 5: `gh api` escape hatch**
 
-gh's `gh api [endpoint]` command provides raw authenticated API access for operations not yet wrapped in dedicated commands. This is critical for extensibility during early product phases. grafanactl could benefit from a similar `grafanactl api [path]` command that makes authenticated Grafana REST API calls with the current context's credentials.
+gh's `gh api [endpoint]` command provides raw authenticated API access for operations not yet wrapped in dedicated commands. This is critical for extensibility during early product phases. gcx could benefit from a similar `gcx api [path]` command that makes authenticated Grafana REST API calls with the current context's credentials.
 
 \[Source: GitHub CLI api command \- https://cli.github.com/manual/gh\_api\]
 
@@ -646,7 +646,7 @@ gh's `gh api [endpoint]` command provides raw authenticated API access for opera
 
 pup's detection of `CLAUDE_CODE`, `CURSOR_AGENT`, and similar environment variables to auto-switch behavior modes is the most impactful agent-friendliness feature in either tool. It makes the tool "just work" in agent contexts without any configuration.
 
-Recommendation for grafanactl — detect and respond to:
+Recommendation for gcx — detect and respond to:
 
 ```shell
 CLAUDE_CODE=1          # → agent mode: JSON output, no color, no spinners, no prompts
@@ -667,7 +667,7 @@ In agent mode:
 
 **Pattern 7: Default JSON output**
 
-pup defaults to JSON output and requires explicit opt-in for human-readable tables (`--output=table`). This is the right default for tools designed for agent/automation use. grafanactl currently defaults to `text` output and requires `-o json`.
+pup defaults to JSON output and requires explicit opt-in for human-readable tables (`--output=table`). This is the right default for tools designed for agent/automation use. gcx currently defaults to `text` output and requires `-o json`.
 
 Consider inverting: default to JSON when stdout is piped (matching gh's pipe detection behavior), default to text when stdout is a TTY.
 
@@ -693,13 +693,13 @@ Agents parse one stream (stdout) instead of needing to monitor both stdout and s
 
 pup includes contextual `hints` in agent-mode responses to guide agents toward efficient next actions. This reduces the number of back-and-forth interactions needed to complete a task.
 
-Example for grafanactl:
+Example for gcx:
 
 ```json
 {
   "resources": [],
   "count": 0,
-  "hints": ["No dashboards found in the 'production' folder. Use 'grafanactl resources list' to see available resource types."]
+  "hints": ["No dashboards found in the 'production' folder. Use 'gcx resources list' to see available resource types."]
 }
 ```
 
@@ -715,11 +715,11 @@ pup's global `DD_AUTO_APPROVE` environment variable and `--yes` flag on destruct
 
 **Antipattern 1: Mixing ANSI codes in piped output**
 
-gh avoids this correctly: when stdout is piped, colors are stripped automatically. Do not require users to set `--no-color` flags for automation. grafanactl has `--no-color` as a flag — ensure it also auto-detects piped output.
+gh avoids this correctly: when stdout is piped, colors are stripped automatically. Do not require users to set `--no-color` flags for automation. gcx has `--no-color` as a flag — ensure it also auto-detects piped output.
 
 **Antipattern 2: Undocumented exit codes**
 
-pup has this problem. Scripts that rely on pup cannot reliably distinguish auth failures from command failures from API errors because no exit code documentation exists. grafanactl should document exit codes before GA.
+pup has this problem. Scripts that rely on pup cannot reliably distinguish auth failures from command failures from API errors because no exit code documentation exists. gcx should document exit codes before GA.
 
 **Antipattern 3: Confirmation prompts with no bypass mechanism**
 
@@ -731,21 +731,21 @@ When a CLI command returns a list of resources, defaulting to formatted human te
 
 **Antipattern 5: No self-discovery mechanism for output fields**
 
-Both pup and grafanactl lack gh's `--json` field discovery mechanism. Agents must read external documentation to know what fields are available. Providing `--json` with no argument to list available fields is a low-cost, high-value improvement.
+Both pup and gcx lack gh's `--json` field discovery mechanism. Agents must read external documentation to know what fields are available. Providing `--json` with no argument to list available fields is a low-cost, high-value improvement.
 
 **Antipattern 6: Underdocumented authentication for CI/CD**
 
-pup's OAuth2 documentation assumes browser access for initial auth and provides limited guidance for fully headless CI/CD setups. The `DD_ACCESS_TOKEN` bearer token path is documented but not prominently. grafanactl should document headless authentication as a first-class scenario, not a footnote.
+pup's OAuth2 documentation assumes browser access for initial auth and provides limited guidance for fully headless CI/CD setups. The `DD_ACCESS_TOKEN` bearer token path is documented but not prominently. gcx should document headless authentication as a first-class scenario, not a footnote.
 
 ---
 
-## 9\. Recommendations for grafanactl (Priority-Ranked)
+## 9\. Recommendations for gcx (Priority-Ranked)
 
 ### Priority 1: Critical for Agent Reliability
 
 **R1.1 — Document exit codes** (Effort: Low; Impact: High)
 
-Publish a `grafanactl help exit-codes` page or equivalent documentation with a defined exit code taxonomy. Minimum viable set:
+Publish a `gcx help exit-codes` page or equivalent documentation with a defined exit code taxonomy. Minimum viable set:
 
 - 0: Success  
 - 1: General failure (API error, resource not found, validation failure)  
@@ -755,7 +755,7 @@ Publish a `grafanactl help exit-codes` page or equivalent documentation with a d
 
 \[Inspired by: https://cli.github.com/manual/gh\_help\_exit-codes\]
 
-**R1.2 — Add `GRAFANACTL_AUTO_APPROVE` environment variable** (Effort: Low; Impact: High)
+**R1.2 — Add `GCX_AUTO_APPROVE` environment variable** (Effort: Low; Impact: High)
 
 Mirror `DD_AUTO_APPROVE` from pup. All destructive operations (`delete`, `push --overwrite`) should check this env var and skip confirmation prompts. Also add `--yes` / `-y` flag to individual commands.
 
@@ -767,7 +767,7 @@ Auto-detect known agent environments and switch to agent-optimized output:
 
 - Check for `CLAUDE_CODE`, `CURSOR_AGENT`, `GITHUB_COPILOT`, `AMAZON_Q` environment variables  
 - In agent mode: default to JSON, suppress color/spinners, auto-approve destructive ops, include errors in response body  
-- Also support `--agent` flag and `GRAFANACTL_AGENT_MODE=1` for explicit activation
+- Also support `--agent` flag and `GCX_AGENT_MODE=1` for explicit activation
 
 \[Inspired by: https://github.com/datadog-labs/pup/blob/main/README.md\]
 
@@ -775,7 +775,7 @@ Auto-detect known agent environments and switch to agent-optimized output:
 
 ### Priority 2: High Value for Documentation
 
-**R2.1 — Create `grafanactl help formatting` page** (Effort: Low; Impact: High)
+**R2.1 — Create `gcx help formatting` page** (Effort: Low; Impact: High)
 
 Document all output format options with concrete examples:
 
@@ -788,7 +788,7 @@ Document all output format options with concrete examples:
 
 \[Inspired by: https://cli.github.com/manual/gh\_help\_formatting\]
 
-**R2.2 — Create `grafanactl help environment` page** (Effort: Low; Impact: High)
+**R2.2 — Create `gcx help environment` page** (Effort: Low; Impact: High)
 
 Document all environment variables in one canonical location:
 
@@ -806,7 +806,7 @@ A dedicated guide covering:
 
 - CI/CD integration patterns with GitHub Actions examples  
 - Non-interactive authentication (headless token setup)  
-- Using grafanactl in scripts (exit code handling, JSON parsing)  
+- Using gcx in scripts (exit code handling, JSON parsing)  
 - Agent integration patterns (which flags to set, what output to expect)  
 - Common automation workflows with copy-pasteable examples
 
@@ -818,20 +818,20 @@ A dedicated guide covering:
 
 **R3.1 — Add JSON field discovery** (Effort: Medium; Impact: Medium)
 
-Support running `grafanactl resources get [type] --json` with no fields argument to list available JSON fields. This enables agents to self-discover the data model without external documentation.
+Support running `gcx resources get [type] --json` with no fields argument to list available JSON fields. This enables agents to self-discover the data model without external documentation.
 
 \[Inspired by: https://cli.github.com/manual/gh\_help\_formatting\]
 
-**R3.2 — Add `grafanactl api` escape hatch** (Effort: Medium; Impact: Medium)
+**R3.2 — Add `gcx api` escape hatch** (Effort: Medium; Impact: Medium)
 
 Allow direct authenticated REST API access for operations not yet wrapped in dedicated commands:
 
 ```shell
-grafanactl api /api/dashboards/uid/abc123
-grafanactl api /api/folders --method POST --field title="New Folder"
+gcx api /api/dashboards/uid/abc123
+gcx api /api/folders --method POST --field title="New Folder"
 ```
 
-This provides a safety valve for users who need operations not yet in grafanactl's command surface, while maintaining authentication context.
+This provides a safety valve for users who need operations not yet in gcx's command surface, while maintaining authentication context.
 
 \[Inspired by: https://cli.github.com/manual/gh\_api\]
 
@@ -850,16 +850,16 @@ This mirrors gh's behavior and ensures scripts get predictable output without co
 
 **R3.4 — Document idempotency behavior for `push`** (Effort: Low; Impact: Medium)
 
-Document explicitly: does `grafanactl resources push` create-or-update (idempotent) or fail-if-exists? This is critical for CI/CD pipelines that run repeatedly. If not currently idempotent, add `--create-or-update` or `--upsert` flag.
+Document explicitly: does `gcx resources push` create-or-update (idempotent) or fail-if-exists? This is critical for CI/CD pipelines that run repeatedly. If not currently idempotent, add `--create-or-update` or `--upsert` flag.
 
 **R3.5 — In-band error reporting in agent mode** (Effort: High; Impact: High)
 
-When `--agent` mode or `GRAFANACTL_AGENT_MODE=1`, include errors in the JSON response body rather than only on stderr:
+When `--agent` mode or `GCX_AGENT_MODE=1`, include errors in the JSON response body rather than only on stderr:
 
 ```json
 {
   "resources": null,
-  "errors": [{"code": "AUTH_EXPIRED", "message": "Token expired", "hint": "Run: grafanactl config refresh"}],
+  "errors": [{"code": "AUTH_EXPIRED", "message": "Token expired", "hint": "Run: gcx config refresh"}],
   "metadata": {"context": "production", "requested_at": "2026-03-02T10:00:00Z"}
 }
 ```
@@ -896,10 +896,10 @@ When `--agent` mode or `GRAFANACTL_AGENT_MODE=1`, include errors in the JSON res
 
 **Grafana CLI:**
 
-- [grafanactl Repository \- https://github.com/grafana/grafanactl](https://github.com/grafana/grafanactl)  
-- [Grafana CLI Documentation \- https://grafana.github.io/grafanactl/](https://grafana.github.io/grafanactl/)  
-- [grafanactl resources get \- https://grafana.github.io/grafanactl/reference/cli/grafanactl\_resources\_get/](https://grafana.github.io/grafanactl/reference/cli/grafanactl_resources_get/)  
-- [grafanactl resources pull \- https://grafana.github.io/grafanactl/reference/cli/grafanactl\_resources\_pull/](https://grafana.github.io/grafanactl/reference/cli/grafanactl_resources_pull/)  
+- [gcx Repository \- https://github.com/grafana/gcx](https://github.com/grafana/gcx)  
+- [Grafana CLI Documentation \- https://grafana.github.io/gcx/](https://grafana.github.io/gcx/)  
+- [gcx resources get \- https://grafana.github.io/gcx/reference/cli/gcx\_resources\_get/](https://grafana.github.io/gcx/reference/cli/gcx_resources_get/)  
+- [gcx resources pull \- https://grafana.github.io/gcx/reference/cli/gcx\_resources\_pull/](https://grafana.github.io/gcx/reference/cli/gcx_resources_pull/)  
 - [Introduction to Grafana CLI \- https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/](https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/)  
 - [Manage resources with Grafana CLI \- https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/grafanacli-workflows/](https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/grafanacli-workflows/)
 
@@ -936,13 +936,13 @@ Or use `copymd` to copy from this response and paste into the file manually.
 
 ---
 
-**Summary of key findings for grafanactl improvement (top 5 actionable items):**
+**Summary of key findings for gcx improvement (top 5 actionable items):**
 
 1. **Document exit codes** \- gh does this in one page; it's the single highest-value documentation improvement for CI/CD users  
-2. **Add `GRAFANACTL_AUTO_APPROVE`** \- pup shows this eliminates the most common pipeline hang  
+2. **Add `GCX_AUTO_APPROVE`** \- pup shows this eliminates the most common pipeline hang  
 3. **Add agent mode detection** \- auto-detect `CLAUDE_CODE`, `CURSOR_AGENT` etc. and switch output mode; this is pup's defining feature  
-4. **Create `grafanactl help formatting`** \- concrete examples of `-o json/yaml` with pipe patterns  
-5. **Add `--json` field discovery** \- run `grafanactl resources get dashboards --json` with no argument to list available fields
+4. **Create `gcx help formatting`** \- concrete examples of `-o json/yaml` with pipe patterns  
+5. **Add `--json` field discovery** \- run `gcx resources get dashboards --json` with no argument to list available fields
 
 Sources:
 
@@ -961,7 +961,7 @@ Sources:
 - [GitHub Blog: Scripting with GitHub CLI](https://github.blog/engineering/engineering-principles/scripting-with-github-cli/)  
 - [Anthropic: Writing Effective Tools for Agents](https://www.anthropic.com/engineering/writing-tools-for-agents)  
 - [Datadog pup user review](https://dev.classmethod.jp/en/articles/datadog-pup-cli/)  
-- [Grafana CLI Documentation](https://grafana.github.io/grafanactl/)  
-- [grafanactl resources get](https://grafana.github.io/grafanactl/reference/cli/grafanactl_resources_get/)  
-- [grafanactl resources pull](https://grafana.github.io/grafanactl/reference/cli/grafanactl_resources_pull/)
+- [Grafana CLI Documentation](https://grafana.github.io/gcx/)  
+- [gcx resources get](https://grafana.github.io/gcx/reference/cli/gcx_resources_get/)  
+- [gcx resources pull](https://grafana.github.io/gcx/reference/cli/gcx_resources_pull/)
 

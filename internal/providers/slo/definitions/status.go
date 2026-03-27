@@ -11,10 +11,10 @@ import (
 	"sync"
 	"text/tabwriter"
 
-	"github.com/grafana/grafanactl/internal/format"
-	"github.com/grafana/grafanactl/internal/graph"
-	cmdio "github.com/grafana/grafanactl/internal/output"
-	"github.com/grafana/grafanactl/internal/query/prometheus"
+	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/graph"
+	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/promql-builder/go/promql"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -72,19 +72,19 @@ Displays current SLI, error budget, and health status for each SLO definition.
 Requires that the SLO destination datasource has recording rules generating
 grafana_slo_* metrics.`,
 		Example: `  # Show status of all SLO definitions.
-  grafanactl slo definitions status
+  gcx slo definitions status
 
   # Show status of a specific SLO by UUID.
-  grafanactl slo definitions status abc123def
+  gcx slo definitions status abc123def
 
   # Show extended status with 1h/1d SLI columns.
-  grafanactl slo definitions status -o wide
+  gcx slo definitions status -o wide
 
   # Output status as JSON for scripting.
-  grafanactl slo definitions status -o json
+  gcx slo definitions status -o json
 
   # Render a compliance summary bar chart.
-  grafanactl slo definitions status -o graph`,
+  gcx slo definitions status -o graph`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {

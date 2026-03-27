@@ -4,7 +4,7 @@
 
 ## Quick Start
 
-**grafanactl** is a unified CLI for managing Grafana resources. It operates in two tiers: (1) a **K8s resource tier** that uses Grafana 12+'s Kubernetes-compatible API via `k8s.io/client-go` for dashboards, folders, and other K8s-native resources, and (2) a **Cloud provider tier** with pluggable providers for Grafana Cloud products (SLO, Synthetic Monitoring, OnCall, Fleet Management, etc.) that use product-specific REST APIs. Built in Go, it uses Cobra for CLI structure.
+**gcx** is a unified CLI for managing Grafana resources. It operates in two tiers: (1) a **K8s resource tier** that uses Grafana 12+'s Kubernetes-compatible API via `k8s.io/client-go` for dashboards, folders, and other K8s-native resources, and (2) a **Cloud provider tier** with pluggable providers for Grafana Cloud products (SLO, Synthetic Monitoring, OnCall, Fleet Management, etc.) that use product-specific REST APIs. Built in Go, it uses Cobra for CLI structure.
 
 ## Documentation Map
 
@@ -39,7 +39,7 @@
 ## Architecture at a Glance
 
 ```
-CLI Layer (cmd/grafanactl/)              ← Cobra commands, zero business logic
+CLI Layer (cmd/gcx/)              ← Cobra commands, zero business logic
     ↓
 Business Logic (internal/resources/)     ← Resource model, selectors, filters, processors
     ↓                          ↓
@@ -67,7 +67,7 @@ Grafana K8s API            Product REST APIs
 ## Essential Commands
 
 ```bash
-make build       # Build to bin/grafanactl
+make build       # Build to bin/gcx
 make tests       # Run all tests with race detection
 make lint        # Run golangci-lint
 make all         # lint + tests + build + docs
@@ -78,9 +78,9 @@ make docs        # Generate + build all documentation
 > The `make docs` step regenerates `docs/reference/cli/` by running the binary, which
 > auto-detects agent mode from env vars like `CLAUDECODE` or `CLAUDE_CODE`. When those
 > are set, the binary flips default output formats (e.g. `"json"` instead of `"table"`),
-> producing wrong docs. `GRAFANACTL_AGENT_MODE=false` overrides all detection:
+> producing wrong docs. `GCX_AGENT_MODE=false` overrides all detection:
 > ```
-> GRAFANACTL_AGENT_MODE=false make all
+> GCX_AGENT_MODE=false make all
 > ```
 > Skipping this causes CI to fail with docs drift.
 
@@ -96,7 +96,7 @@ make docs        # Generate + build all documentation
 ## Package Map
 
 ```
-cmd/grafanactl/
+cmd/gcx/
 ├── root/        CLI root (logging, global flags)
 ├── config/      Config management commands (set, use-context, view...)
 ├── resources/   Resource commands (get, schemas, push, pull, delete, edit, validate)

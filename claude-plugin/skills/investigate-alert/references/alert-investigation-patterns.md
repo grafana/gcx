@@ -1,13 +1,13 @@
 # Alert Investigation Patterns
 
-Reference for investigating Grafana alerts with grafanactl. Covers the alert
+Reference for investigating Grafana alerts with gcx. Covers the alert
 JSON structure, common investigation query patterns, and graph interpretation.
 
 ---
 
 ## Alert JSON Structure
 
-`grafanactl alert rules list -o json` returns an array of alert groups. Each
+`gcx alert rules list -o json` returns an array of alert groups. Each
 group contains an array of rules:
 
 ```json
@@ -71,15 +71,15 @@ group contains an array of rules:
 
 ```bash
 # Get the query for a specific alert
-grafanactl alert rules list -o json | \
+gcx alert rules list -o json | \
   jq -r '.[] | .rules[] | select(.name == "<AlertName>") | .query'
 
 # Get the datasource UID for a specific alert
-grafanactl alert rules list -o json | \
+gcx alert rules list -o json | \
   jq -r '.[] | .rules[] | select(.name == "<AlertName>") | .datasourceUID'
 
 # Get all currently firing instances with their label sets
-grafanactl alert rules list -o json | \
+gcx alert rules list -o json | \
   jq '.[] | .rules[] | select(.name == "<AlertName>") | .alerts[] | select(.state == "firing")'
 ```
 
@@ -105,12 +105,12 @@ For P99/P95 latency alerts:
 
 ```bash
 # Current latency percentiles
-grafanactl datasources prometheus query <uid> \
+gcx datasources prometheus query <uid> \
   'histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))' \
   --from now-1h --to now --step 1m -o graph
 
 # Latency by endpoint
-grafanactl datasources prometheus query <uid> \
+gcx datasources prometheus query <uid> \
   'histogram_quantile(0.99, sum by(job, handler) (rate(http_request_duration_seconds_bucket[5m])))' \
   --from now-1h --to now --step 1m -o json
 ```
@@ -121,12 +121,12 @@ For alerts on HTTP 5xx or error rates:
 
 ```bash
 # Overall error rate
-grafanactl datasources prometheus query <uid> \
+gcx datasources prometheus query <uid> \
   'rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m])' \
   --from now-1h --to now --step 1m -o graph
 
 # Error rate by service
-grafanactl datasources prometheus query <uid> \
+gcx datasources prometheus query <uid> \
   'sum by(job) (rate(http_requests_total{status=~"5.."}[5m])) / sum by(job) (rate(http_requests_total[5m]))' \
   --from now-1h --to now --step 1m -o json
 ```
@@ -137,17 +137,17 @@ For CPU, memory, or disk alerts:
 
 ```bash
 # CPU usage by pod
-grafanactl datasources prometheus query <uid> \
+gcx datasources prometheus query <uid> \
   'sum by(pod) (rate(container_cpu_usage_seconds_total[5m]))' \
   --from now-1h --to now --step 1m -o graph
 
 # Memory usage
-grafanactl datasources prometheus query <uid> \
+gcx datasources prometheus query <uid> \
   'container_memory_working_set_bytes{container!=""}' \
   --from now-30m --to now --step 1m -o json
 
 # Disk free percentage
-grafanactl datasources prometheus query <uid> \
+gcx datasources prometheus query <uid> \
   'node_filesystem_avail_bytes / node_filesystem_size_bytes' \
   --from now-6h --to now --step 5m -o graph
 ```
@@ -158,7 +158,7 @@ For cert expiry alerts:
 
 ```bash
 # Days until certificate expiry
-grafanactl datasources prometheus query <uid> \
+gcx datasources prometheus query <uid> \
   '(certmanager_certificate_expiration_timestamp_seconds - time()) / 86400' \
   --from now-1h --to now --step 10m -o json
 ```
@@ -169,12 +169,12 @@ For availability or SLO breach alerts:
 
 ```bash
 # Uptime over last hour
-grafanactl datasources prometheus query <uid> \
+gcx datasources prometheus query <uid> \
   'avg_over_time(up[1h])' \
   --from now-6h --to now --step 5m -o graph
 
 # Current up/down status
-grafanactl datasources prometheus query <uid> \
+gcx datasources prometheus query <uid> \
   'up == 0' \
   --from now-15m --to now --step 1m -o json
 ```
@@ -187,15 +187,15 @@ After identifying an issue from metrics, correlate with logs:
 
 ```bash
 # Find error logs for a service
-grafanactl datasources loki query <loki-uid> '{job="api-server"} |= "error"' \
+gcx datasources loki query <loki-uid> '{job="api-server"} |= "error"' \
   --from now-1h --to now -o json
 
 # Find logs around the time the alert started firing (replace timestamp)
-grafanactl datasources loki query <loki-uid> '{namespace="production"} |= "error"' \
+gcx datasources loki query <loki-uid> '{namespace="production"} |= "error"' \
   --from 2024-01-15T10:00:00Z --to 2024-01-15T10:30:00Z -o json
 
 # Rate of error log lines (for trend analysis)
-grafanactl datasources loki query <loki-uid> 'rate({job="api-server"} |= "error" [5m])' \
+gcx datasources loki query <loki-uid> 'rate({job="api-server"} |= "error" [5m])' \
   --from now-2h --to now --step 1m -o graph
 ```
 
@@ -205,12 +205,12 @@ Loki metric queries (`rate()`, `count_over_time()`, etc.) produce one series per
 
 ```bash
 # BAD — one series per pod/namespace/level/... combination
-grafanactl datasources loki query <loki-uid> 'count_over_time({job="app"} [5m])'
+gcx datasources loki query <loki-uid> 'count_over_time({job="app"} [5m])'
 
 # GOOD — aggregate down to what you need
-grafanactl datasources loki query <loki-uid> 'sum(count_over_time({job="app"} [5m]))'
-grafanactl datasources loki query <loki-uid> 'sum by(level) (count_over_time({job="app"} | json [5m]))'
-grafanactl datasources loki query <loki-uid> 'topk(10, sum by(pod) (rate({job="app"} [5m])))'
+gcx datasources loki query <loki-uid> 'sum(count_over_time({job="app"} [5m]))'
+gcx datasources loki query <loki-uid> 'sum by(level) (count_over_time({job="app"} | json [5m]))'
+gcx datasources loki query <loki-uid> 'topk(10, sum by(pod) (rate({job="app"} [5m])))'
 ```
 
 Rule of thumb: if your query uses `rate()`, `count_over_time()`, or `bytes_over_time()`, wrap it with `sum()`, `sum by(label)`, or `topk()`.
@@ -229,7 +229,7 @@ Loki has two kinds of labels — confusing them causes silent failures:
 Common mistakes:
 - Filtering extracted labels in `{}` — fails silently: `{namespace="prod", pod="app-123"}` won't work if `pod` is extracted, not a stream label
 - Using `label_format` to rename extracted fields before they're parsed — add the parser stage first
-- Assuming a field visible in Grafana Explore is a stream label — check with `grafanactl datasources loki labels -d <uid>` (only shows stream labels)
+- Assuming a field visible in Grafana Explore is a stream label — check with `gcx datasources loki labels -d <uid>` (only shows stream labels)
 
 ---
 
@@ -249,7 +249,7 @@ Common mistakes:
 Use `-o json` after `-o graph` to extract exact values:
 ```bash
 # Get the peak value during the alert window
-grafanactl datasources prometheus query <uid> '<query>' --from now-2h --to now --step 1m -o json | \
+gcx datasources prometheus query <uid> '<query>' --from now-2h --to now --step 1m -o json | \
   jq '[.data[].values[] | .value] | max'
 ```
 
@@ -274,4 +274,4 @@ curl -s "<runbook_url>"
 ## See Also
 
 - [Grafana Alert Rules documentation](https://grafana.com/docs/grafana/latest/alerting/)
-- The `setup-grafanactl` skill for configuring grafanactl if not yet set up
+- The `setup-gcx` skill for configuring gcx if not yet set up

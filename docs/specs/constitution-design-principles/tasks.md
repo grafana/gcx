@@ -143,13 +143,13 @@ Remove the `WarnDeprecated` and `IsCRUDCommand` calls from `PersistentPreRun` ho
 - `internal/providers/deprecation_test.go` (deleted, if no callers remain)
 
 **Acceptance criteria:**
-- GIVEN a user running `grafanactl slo definitions list`
+- GIVEN a user running `gcx slo definitions list`
   WHEN the command executes
   THEN no deprecation warning is printed to stderr
-- GIVEN a user running `grafanactl synth checks list`
+- GIVEN a user running `gcx synth checks list`
   WHEN the command executes
   THEN no deprecation warning is printed to stderr
-- GIVEN a user running `grafanactl alert rules list`
+- GIVEN a user running `gcx alert rules list`
   WHEN the command executes
   THEN no deprecation warning is printed to stderr
 - GIVEN the `WarnDeprecated` function
@@ -159,7 +159,7 @@ Remove the `WarnDeprecated` and `IsCRUDCommand` calls from `PersistentPreRun` ho
   WHEN reviewed after T4
   THEN non-deprecation logic (root command propagation, config loading) is preserved intact (NC-004)
 - GIVEN the completed code change
-  WHEN `make all` is run with `GRAFANACTL_AGENT_MODE=false`
+  WHEN `make all` is run with `GCX_AGENT_MODE=false`
   THEN build, lint, and tests pass with no regressions
 
 ---

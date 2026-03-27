@@ -2,7 +2,7 @@
 type: feature-spec
 title: "ConfigLoader Compliance: Unified Config Loading Across All Providers"
 status: done
-beads_id: grafanactl-experiments-3ip.11
+beads_id: gcx-experiments-3ip.11
 created: 2026-03-26
 ---
 
@@ -10,7 +10,7 @@ created: 2026-03-26
 
 ## Problem Statement
 
-The grafanactl provider ecosystem has inconsistent config loading patterns. The `synth` provider duplicates ~100 lines of `providers.ConfigLoader` logic (env var parsing, context resolution, config file loading) in a local `configLoader` struct. This duplication creates maintenance risk: any change to env var precedence, context resolution, or config layering must be replicated in two places. Additionally, `ConfigLoader` lacks methods for provider-specific config extraction, forcing providers like `synth`, `oncall`, and `k6` to implement custom workarounds.
+The gcx provider ecosystem has inconsistent config loading patterns. The `synth` provider duplicates ~100 lines of `providers.ConfigLoader` logic (env var parsing, context resolution, config file loading) in a local `configLoader` struct. This duplication creates maintenance risk: any change to env var precedence, context resolution, or config layering must be replicated in two places. Additionally, `ConfigLoader` lacks methods for provider-specific config extraction, forcing providers like `synth`, `oncall`, and `k6` to implement custom workarounds.
 
 **Who is affected:** Maintainers adding or modifying providers, and users who expect consistent env var and config behavior across all providers.
 
@@ -36,7 +36,7 @@ The grafanactl provider ecosystem has inconsistent config loading patterns. The 
 
 - **Changing the Provider interface** (`Name`, `ShortDesc`, `Commands`, `Validate`, `ConfigKeys`, `TypedRegistrations`) -- unchanged
 - **Changing config file format** -- `contexts.[name].providers.[provider].[key]` unchanged
-- **Modifying non-provider config loading** (e.g., `cmd/grafanactl/config` Options) -- only `internal/providers/` is in scope
+- **Modifying non-provider config loading** (e.g., `cmd/gcx/config` Options) -- only `internal/providers/` is in scope
 - **Changing provider business logic** -- only config loading/client construction code is modified
 - **Plugin-based URL discovery** -- `oncall`'s `DiscoverOnCallURL` Grafana plugin API call remains as-is
 - **Hook/extension interfaces** -- not needed; three new methods on ConfigLoader are sufficient

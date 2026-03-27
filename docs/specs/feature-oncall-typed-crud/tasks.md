@@ -153,7 +153,7 @@ At the end of this task, the old `allResources()` loop, `newSubResourceFactory`,
 **Depends on**: T2
 **Type**: chore
 
-Remove all dead code artifacts from the oncall package: `subResourceAdapter` struct and all its methods (`Descriptor`, `Aliases`, `List`, `Get`, `Create`, `Update`, `Delete`, `listRaw`, `getRaw`, `createRaw`, `updateRaw`, `deleteRaw`, `itemToResource`), the `toAnySlice` function, the `fromResource[T]` function in `adapter.go`, the `resourceDef` struct, the `allResources()` function, and `newSubResourceFactory`. Also remove the `var _ adapter.ResourceAdapter = &subResourceAdapter{}` assertion. Clean up any unused imports. Run `make all` (with `GRAFANACTL_AGENT_MODE=false`) to verify lint, tests, build, and docs generation pass.
+Remove all dead code artifacts from the oncall package: `subResourceAdapter` struct and all its methods (`Descriptor`, `Aliases`, `List`, `Get`, `Create`, `Update`, `Delete`, `listRaw`, `getRaw`, `createRaw`, `updateRaw`, `deleteRaw`, `itemToResource`), the `toAnySlice` function, the `fromResource[T]` function in `adapter.go`, the `resourceDef` struct, the `allResources()` function, and `newSubResourceFactory`. Also remove the `var _ adapter.ResourceAdapter = &subResourceAdapter{}` assertion. Clean up any unused imports. Run `make all` (with `GCX_AGENT_MODE=false`) to verify lint, tests, build, and docs generation pass.
 
 **Deliverables:**
 - `internal/providers/oncall/resource_adapter.go` — dead code removed
@@ -173,5 +173,5 @@ Remove all dead code artifacts from the oncall package: `subResourceAdapter` str
   THEN all tests pass without modification
 
 - GIVEN the refactored codebase
-  WHEN `GRAFANACTL_AGENT_MODE=false make all` is run
+  WHEN `GCX_AGENT_MODE=false make all` is run
   THEN the build succeeds with no errors

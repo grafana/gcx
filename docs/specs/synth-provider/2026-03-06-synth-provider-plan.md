@@ -2,15 +2,15 @@
 
 ## Context
 
-grafanactl needs a Synthetic Monitoring (SM) provider as a Wave 2 provider
-(`grafanactl-experiments-a4l`). SM is a Grafana Cloud product that runs HTTP,
+gcx needs a Synthetic Monitoring (SM) provider as a Wave 2 provider
+(`gcx-experiments-a4l`). SM is a Grafana Cloud product that runs HTTP,
 ping, TCP, DNS, gRPC, and scripted checks from distributed probe nodes.
 
 Unlike the SLO provider (which reuses the Grafana SA token), SM uses a
 **separate service URL and token** — the SM API is hosted at a dedicated endpoint
 and authenticated with an SM-specific access token.
 
-Source bead: `grafanactl-experiments-a4l`
+Source bead: `gcx-experiments-a4l`
 
 ## Key Design Decisions
 
@@ -77,7 +77,7 @@ The API stores probes as integer IDs. Local YAML stores probe **names** (human-r
 - On **pull**: probe IDs in check response → resolved to names via probe list cache
 - On **push**: probe names in YAML → resolved to IDs via probe list cache before POST/PUT
 
-If a probe name cannot be resolved, return a clear error: `probe "TypoName" not found; run grafanactl synth probes list`.
+If a probe name cannot be resolved, return a clear error: `probe "TypoName" not found; run gcx synth probes list`.
 
 ### 6. Package Layout
 
@@ -107,7 +107,7 @@ infrastructure managed by Grafana. We expose read-only probe discovery.
 ## Command Surface
 
 ```
-grafanactl synth                            Manage Grafana Synthetic Monitoring resources
+gcx synth                            Manage Grafana Synthetic Monitoring resources
 ├── checks                                  Manage SM checks
 │   ├── list                                List all checks
 │   ├── get <id>                            Get a specific check by ID
@@ -131,7 +131,7 @@ Two stages:
 - [Stage 1: Checks CRUD + Probes List](1-checks-probes-crud/2026-03-06-checks-probes-crud.md) (~1,200 LOC)
 - [Stage 2: Checks Status + Timeline](2-checks-status/2026-03-06-checks-status.md) (~400 LOC, deferred)
 
-Stage 2 requires a Grafana Prometheus datasource configured in the grafanactl
+Stage 2 requires a Grafana Prometheus datasource configured in the gcx
 context for `probe_success` metric queries (same pattern as SLO status).
 
 ## Dependency Graph
@@ -163,7 +163,7 @@ internal/providers/synth/
     ├── adapter_test.go
     └── commands.go
 
-cmd/grafanactl/root/command.go   # add blank import
+cmd/gcx/root/command.go   # add blank import
 ```
 
 ## Table Output Designs

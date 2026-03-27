@@ -1,7 +1,7 @@
 package providers
 
 import (
-	"github.com/grafana/grafanactl/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 )
 
@@ -13,8 +13,8 @@ type ConfigKey struct {
 	Secret bool
 }
 
-// Provider defines the interface for a grafanactl provider.
-// Providers extend grafanactl with commands for managing Grafana Cloud
+// Provider defines the interface for a gcx provider.
+// Providers extend gcx with commands for managing Grafana Cloud
 // product resources (e.g., SLO, Synthetic Monitoring, OnCall).
 type Provider interface {
 	// Name returns the unique identifier for this provider.

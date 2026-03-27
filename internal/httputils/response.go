@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/grafana-app-sdk/logging"
-	"github.com/grafana/grafanactl/internal/logs"
 )
 
 func Error(r *http.Request, w http.ResponseWriter, msg string, err error, code int) {

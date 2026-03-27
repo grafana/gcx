@@ -8,7 +8,7 @@ description: |
   For SLO status overview use slo-check-status.
   For investigating breaching SLOs use slo-investigate.
   For creating or modifying SLO definitions use slo-manage.
-allowed-tools: [grafanactl, Bash]
+allowed-tools: [gcx, Bash]
 ---
 
 # SLO Optimizer
@@ -19,7 +19,7 @@ slo-manage when the user wants to apply a recommendation.
 
 ## Core Principles
 
-1. Use grafanactl commands exclusively — do not call Grafana APIs directly.
+1. Use gcx commands exclusively — do not call Grafana APIs directly.
 2. Trust the user's expertise — skip explanations of what SLOs or burn rates are.
 3. Use `-o json` for agent processing of structured output; default format for user display.
 4. Show graph output for timeline data so the user can see the trend visually.
@@ -29,12 +29,12 @@ slo-manage when the user wants to apply a recommendation.
 
 ## Prerequisites
 
-grafanactl configured with a context pointing to the target Grafana instance.
+gcx configured with a context pointing to the target Grafana instance.
 
 If the user does not supply a UUID, list available SLOs first:
 
 ```bash
-grafanactl slo definitions list
+gcx slo definitions list
 ```
 
 Ask the user which SLO to analyze if the target is ambiguous.
@@ -44,7 +44,7 @@ Ask the user which SLO to analyze if the target is ambiguous.
 ### Step 1: Retrieve SLO Definition
 
 ```bash
-grafanactl slo definitions get <UUID> -o json
+gcx slo definitions get <UUID> -o json
 ```
 
 Extract and note:
@@ -60,10 +60,10 @@ Extract and note:
 
 ```bash
 # Default graph output for user display
-grafanactl slo definitions timeline <UUID> --from now-28d --to now
+gcx slo definitions timeline <UUID> --from now-28d --to now
 
 # JSON output for statistical analysis
-grafanactl slo definitions timeline <UUID> --from now-28d --to now -o json
+gcx slo definitions timeline <UUID> --from now-28d --to now -o json
 ```
 
 Parse the JSON output to extract SLI values across the time series. Compute:
@@ -77,7 +77,7 @@ If timeline returns no data (NODATA), note it and skip to Step 3 for current sta
 ### Step 3: Get Current Status (Wide Format)
 
 ```bash
-grafanactl slo definitions status <UUID> -o wide
+gcx slo definitions status <UUID> -o wide
 ```
 
 Extract from the wide output:
@@ -94,16 +94,16 @@ using the datasource UID from Step 1:
 
 ```bash
 # SLI window metric (primary trend signal)
-grafanactl datasources prometheus query <datasource-uid> \
+gcx datasources prometheus query <datasource-uid> \
   'grafana_slo_sli_window{slo_uuid="<UUID>"}' \
   --from now-28d --to now --step 6h
 
 # Success and total rate for ratio SLOs
-grafanactl datasources prometheus query <datasource-uid> \
+gcx datasources prometheus query <datasource-uid> \
   'grafana_slo_success_rate_5m{slo_uuid="<UUID>"}' \
   --from now-28d --to now --step 6h
 
-grafanactl datasources prometheus query <datasource-uid> \
+gcx datasources prometheus query <datasource-uid> \
   'grafana_slo_total_rate_5m{slo_uuid="<UUID>"}' \
   --from now-28d --to now --step 6h
 ```
@@ -111,7 +111,7 @@ grafanactl datasources prometheus query <datasource-uid> \
 If the datasource UID is not in the definition, resolve it:
 
 ```bash
-grafanactl datasources list --type prometheus
+gcx datasources list --type prometheus
 ```
 
 ### Step 5: Analyze Trends
@@ -241,15 +241,15 @@ a dry-run. Confirm which recommendation(s) you want to apply.
 
 Collect errors; report them at the end of the analysis, not interleaved with findings.
 
-- **`grafanactl slo definitions get` fails (not found)**: Confirm the UUID and context.
-  Run `grafanactl slo definitions list` to show available SLOs.
+- **`gcx slo definitions get` fails (not found)**: Confirm the UUID and context.
+  Run `gcx slo definitions list` to show available SLOs.
 
 - **Timeline returns NODATA**: Recording rule metrics may not be populating. Check the
   destination datasource configuration. Proceed with raw metric queries in Step 4. If raw
   metrics also return NODATA, report the data gap and recommend verifying that the SLO
   recording rules are evaluating correctly.
 
-- **Datasource UID not in definition**: Run `grafanactl datasources list --type prometheus`
+- **Datasource UID not in definition**: Run `gcx datasources list --type prometheus`
   and present the list to the user. Do not block the analysis — use the remaining timeline
   data from Step 2.
 
@@ -261,5 +261,5 @@ Collect errors; report them at the end of the analysis, not interleaved with fin
   rate in the recommendations. Route to slo-investigate for deeper root cause analysis if
   the user wants to understand why the SLO is breaching (not just optimize it).
 
-- **grafanactl command not found or auth error**: Check `grafanactl config view` to verify
+- **gcx command not found or auth error**: Check `gcx config view` to verify
   the active context and credentials.

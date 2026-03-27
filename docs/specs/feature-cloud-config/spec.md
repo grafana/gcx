@@ -9,7 +9,7 @@ created: 2026-03-21
 
 ## Problem Statement
 
-Cloud providers in grafanactl (fleet, oncall, k6) each require separate per-provider authentication configuration (URL, instance ID, token) stored under `contexts.<name>.providers.<provider>.*`. Users must manually discover service URLs and configure each provider independently. There is no mechanism to authenticate once with a Grafana Cloud access policy token and auto-discover service endpoints.
+Cloud providers in gcx (fleet, oncall, k6) each require separate per-provider authentication configuration (URL, instance ID, token) stored under `contexts.<name>.providers.<provider>.*`. Users must manually discover service URLs and configure each provider independently. There is no mechanism to authenticate once with a Grafana Cloud access policy token and auto-discover service endpoints.
 
 The fleet provider duplicates config-loading logic: it has its own `configLoader` struct, `LoadFleetConfig` method, and `GRAFANA_FLEET_*` env vars instead of reusing the shared `providers.ConfigLoader`. This makes onboarding new cloud providers expensive and error-prone.
 
@@ -28,7 +28,7 @@ The fleet provider duplicates config-loading logic: it has its own `configLoader
 - `CloudRESTConfig` type and `LoadCloudConfig` method on `providers.ConfigLoader`
 - Rename `LoadRESTConfig` to `LoadGrafanaConfig` across the codebase
 - Refactor fleet provider to use `LoadCloudConfig` instead of per-provider config
-- Config UX via `grafanactl config set contexts.<name>.cloud.*`
+- Config UX via `gcx config set contexts.<name>.cloud.*`
 
 ### Out of Scope
 
@@ -92,7 +92,7 @@ The fleet provider duplicates config-loading logic: it has its own `configLoader
 ## Acceptance Criteria
 
 - GIVEN a config file with `contexts.mystack.cloud.token` set to a valid access policy token and `contexts.mystack.grafana.server` set to `https://mystack.grafana.net`
-  WHEN a user runs `grafanactl fleet pipelines list`
+  WHEN a user runs `gcx fleet pipelines list`
   THEN the fleet provider authenticates using the cloud token and auto-discovers the Fleet Management URL via GCOM
 
 - GIVEN no config file
@@ -143,15 +143,15 @@ The fleet provider duplicates config-loading logic: it has its own `configLoader
   WHEN `FleetProvider.ConfigKeys()` is called
   THEN it returns nil
 
-- GIVEN `grafanactl config set contexts.dev.cloud.token my-token` is run
+- GIVEN `gcx config set contexts.dev.cloud.token my-token` is run
   WHEN the config file is read back
   THEN `contexts.dev.cloud.token` is set to `"my-token"`
 
-- GIVEN `grafanactl config set contexts.dev.cloud.stack mystack` is run
+- GIVEN `gcx config set contexts.dev.cloud.stack mystack` is run
   WHEN the config file is read back
   THEN `contexts.dev.cloud.stack` is set to `"mystack"`
 
-- GIVEN `grafanactl config set contexts.dev.cloud.api-url grafana-dev.com` is run
+- GIVEN `gcx config set contexts.dev.cloud.api-url grafana-dev.com` is run
   WHEN the config file is read back
   THEN `contexts.dev.cloud.api-url` is set to `"grafana-dev.com"`
 

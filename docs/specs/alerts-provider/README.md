@@ -2,7 +2,7 @@
 
 ## Overview
 
-Add a dedicated alert provider to grafanactl, following the SLO provider pattern.
+Add a dedicated alert provider to gcx, following the SLO provider pattern.
 
 ## API
 
@@ -40,7 +40,7 @@ Used only for push/delete operations.
 ## Command Structure
 
 ```
-grafanactl alert
+gcx alert
 ├── rules
 │   ├── list [--group <name>] [--folder <uid>]
 │   ├── get <uid>
@@ -98,4 +98,4 @@ func (p *AlertProvider) ConfigKeys() []providers.ConfigKey { return nil }
 
 - SLO provider: `internal/slo/provider.go`
 - Provider interface: `internal/providers/provider.go`
-- Registration: `cmd/grafanactl/root/command.go`
+- Registration: `cmd/gcx/root/command.go`

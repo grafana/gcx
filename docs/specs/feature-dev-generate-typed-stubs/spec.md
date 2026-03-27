@@ -2,7 +2,7 @@
 type: feature-spec
 title: "dev generate: Typed Dashboard and Alert Rule Stubs"
 status: done
-beads_id: grafanactl-experiments-cyi
+beads_id: gcx-experiments-cyi
 created: 2026-03-09
 ---
 
@@ -10,7 +10,7 @@ created: 2026-03-09
 
 ## Problem Statement
 
-Developers using grafanactl's "as code" workflow must manually write Go files that use grafana-foundation-sdk builder types to define dashboards and alert rules from scratch. This is error-prone and slow because:
+Developers using gcx's "as code" workflow must manually write Go files that use grafana-foundation-sdk builder types to define dashboards and alert rules from scratch. This is error-prone and slow because:
 
 1. The foundation-sdk builder API surface is large (dozens of builder methods per type), and discovering the correct import paths and method chains requires reading SDK source code.
 2. There is no command that generates a ready-to-edit, compilable Go stub using the builder pattern. `dev scaffold` generates a full project with a single sample dashboard, but does not support generating individual resource files for dashboards or alert rules. `dev import` converts existing remote resources into builder code, but cannot create new resources from scratch.
@@ -28,7 +28,7 @@ Developers using grafanactl's "as code" workflow must manually write Go files th
 - Generation of typed Go stubs for **Dashboard** resources (v2beta1 API version)
 - Generation of typed Go stubs for **AlertRule** resources using the `alerting` foundation-sdk package
 - Generated stubs use the foundation-sdk builder pattern (`NewDashboardBuilder`, `NewRuleBuilder`, etc.)
-- Generated stubs wrap the builder result in a `resource.ManifestBuilder` for grafanactl compatibility
+- Generated stubs wrap the builder result in a `resource.ManifestBuilder` for gcx compatibility
 - Type inference from directory name (e.g., `dashboards/` maps to dashboard type)
 - Name inference from filename (e.g., `my-dashboard.go` maps to name `my-dashboard`)
 - Optional `--type` flag as fallback when the directory name does not imply a known resource type
@@ -64,7 +64,7 @@ Developers using grafanactl's "as code" workflow must manually write Go files th
 
 ## Functional Requirements
 
-**FR-001:** The system MUST register a `generate` subcommand under the `dev` command group, accessible as `grafanactl dev generate`.
+**FR-001:** The system MUST register a `generate` subcommand under the `dev` command group, accessible as `gcx dev generate`.
 
 **FR-002:** The `generate` command MUST accept one or more positional file path arguments. Each argument specifies where to write the generated stub and encodes both the resource type and name.
 
@@ -121,43 +121,43 @@ Directory matching MUST be case-insensitive and MUST use only the immediate pare
 
 ## Acceptance Criteria
 
-- GIVEN the user runs `grafanactl dev generate dashboards/my-service-overview.go`
+- GIVEN the user runs `gcx dev generate dashboards/my-service-overview.go`
   WHEN the command completes
   THEN a file `dashboards/my_service_overview.go` is created containing a function `MyServiceOverview()` that returns `*resource.ManifestBuilder` using `dashboardv2beta1.NewDashboardBuilder("my-service-overview")`
 
-- GIVEN the user runs `grafanactl dev generate dashboards/my-service-overview.go`
+- GIVEN the user runs `gcx dev generate dashboards/my-service-overview.go`
   WHEN the command completes
   THEN the generated file compiles successfully as part of a Go module that imports grafana-foundation-sdk v0.0.12
 
-- GIVEN the user runs `grafanactl dev generate alerts/high-cpu-usage.go`
+- GIVEN the user runs `gcx dev generate alerts/high-cpu-usage.go`
   WHEN the command completes
   THEN a file `alerts/high_cpu_usage.go` is created containing a function `HighCpuUsage()` that returns `*resource.ManifestBuilder` using `alerting.NewRuleBuilder("high-cpu-usage")`
 
-- GIVEN the user runs `grafanactl dev generate dashboards/my-dashboard`
+- GIVEN the user runs `gcx dev generate dashboards/my-dashboard`
   WHEN the filename has no `.go` extension
   THEN the output file is written to `dashboards/my_dashboard.go` and the resource name is inferred as `my-dashboard`
 
-- GIVEN the user runs `grafanactl dev generate internal/monitoring/cpu-alert.go --type alertrule`
+- GIVEN the user runs `gcx dev generate internal/monitoring/cpu-alert.go --type alertrule`
   WHEN the directory `monitoring` does not match any known type
   THEN the `--type` flag overrides inference and an alertrule stub is generated at `internal/monitoring/cpu_alert.go` with package name `monitoring`
 
-- GIVEN the user runs `grafanactl dev generate custom/my-thing.go`
+- GIVEN the user runs `gcx dev generate custom/my-thing.go`
   WHEN the directory `custom` does not match any known type and `--type` is not provided
   THEN the command returns an error stating that resource type cannot be inferred from directory `custom`, listing supported directory names (`dashboards`, `alerts`, `alertrules`), and suggesting `--type`
 
-- GIVEN the user runs `grafanactl dev generate` with no positional arguments
+- GIVEN the user runs `gcx dev generate` with no positional arguments
   WHEN the command validates arguments
   THEN the command returns an error indicating that at least one file path argument is required
 
-- GIVEN the user runs `grafanactl dev generate dashboards/a.go dashboards/b.go alerts/c.go`
+- GIVEN the user runs `gcx dev generate dashboards/a.go dashboards/b.go alerts/c.go`
   WHEN the command completes
   THEN three files are generated: `dashboards/a.go`, `dashboards/b.go`, and `alerts/c.go`, with a summary reporting 3 files generated
 
 - GIVEN the output directory does not exist
-  WHEN the user runs `grafanactl dev generate new/nested/dashboards/test.go`
+  WHEN the user runs `gcx dev generate new/nested/dashboards/test.go`
   THEN the directory `new/nested/dashboards` is created with mode 0744 before writing the file, and the type `dashboard` is inferred from the immediate parent directory `dashboards`
 
-- GIVEN the user runs `grafanactl dev generate dashboards/my-dashboard.go`
+- GIVEN the user runs `gcx dev generate dashboards/my-dashboard.go`
   WHEN the command completes successfully
   THEN a success message is printed to stdout containing the output file path `dashboards/my_dashboard.go`
 
@@ -169,7 +169,7 @@ Directory matching MUST be case-insensitive and MUST use only the immediate pare
   WHEN parsed by `go/parser.ParseFile`
   THEN no parse errors are returned
 
-- GIVEN the user runs `grafanactl dev generate dashboards/existing.go`
+- GIVEN the user runs `gcx dev generate dashboards/existing.go`
   WHEN the file `dashboards/existing.go` already exists
   THEN the command returns an error indicating the file already exists and suggesting the user delete it first or use a different name
 

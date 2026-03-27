@@ -2,7 +2,7 @@
 
 **Created**: 2026-03-24
 **Status**: proposed
-**Bead**: grafanactl-experiments-zn8
+**Bead**: gcx-experiments-zn8
 **Supersedes**: none
 
 ## Context
@@ -16,7 +16,7 @@ Key problems observed during incidents, kg, and fleet migrations:
 - No human gates → agents declared "done" without structured smoke diffs
 - Flat checklist → agents cherry-picked steps instead of following phases
 - No architectural mapping → agents copied cloud CLI patterns verbatim instead of
-  adapting to grafanactl's framework (Options pattern, TypedCRUD[T], Processor
+  adapting to gcx's framework (Options pattern, TypedCRUD[T], Processor
   pipeline, ResourceAdapter)
 - Verification was an afterthought → context leaked between implementation
   and verification, making smoke tests confirm what the agent believed it
@@ -56,10 +56,10 @@ decisions. This is stage-level TDD: the spec and tests are written together
 
 Produces three artifacts before any code is written:
 
-1. **Parity table** — maps every cloud CLI subcommand to a grafanactl equivalent
+1. **Parity table** — maps every cloud CLI subcommand to a gcx equivalent
    with status (Implemented / Deferred / N/A) and justification.
 
-2. **Architectural mapping** — maps cloud CLI patterns to grafanactl patterns:
+2. **Architectural mapping** — maps cloud CLI patterns to gcx patterns:
    - Cloud CLI flat client → TypedCRUD[T] adapter with ToResource/FromResource
    - Cloud CLI CLI flags → Options struct + `setup(flags)` + `Validate()`
    - Cloud CLI output formatting → codec registry (table/wide/json/yaml) with
@@ -75,7 +75,7 @@ Produces three artifacts before any code is written:
    - **Smoke test commands** to run against a live instance (list/get/create
      for each resource, structured jq diffs against the cloud CLI, format checks for
      all four output modes)
-   - **Build gates** (`GRAFANACTL_AGENT_MODE=false make all` at specified
+   - **Build gates** (`GCX_AGENT_MODE=false make all` at specified
      checkpoints)
 
 **Gate**: User reviews and approves all three artifacts.
@@ -98,7 +98,7 @@ prevents:
 - Cutting corners on internals because "the smoke test only checks X"
 - Writing unit tests that are tautological with the smoke test plan
 
-**Gate**: `GRAFANACTL_AGENT_MODE=false make all` passes.
+**Gate**: `GCX_AGENT_MODE=false make all` passes.
 
 ### Stage 3: Verify (inspector)
 
@@ -109,7 +109,7 @@ running Verify does not need to understand the implementation. It:
 2. Runs every smoke test command and captures output
 3. Produces a structured comparison report
 4. Updates `provider-migration-recipe.md` with discoveries
-5. Final `GRAFANACTL_AGENT_MODE=false make all`
+5. Final `GCX_AGENT_MODE=false make all`
 
 **Gate**: User reviews comparison report. All discrepancies must be justified
 or fixed.
@@ -189,5 +189,5 @@ The spec pipeline is designed for design-heavy features, not translation work.
 ### Follow-up
 
 - ~~Update `provider-migration-recipe.md` to reference the new skill structure~~ Done in this PR.
-- First validation: next provider port from epic grafanactl-experiments-0zr
+- First validation: next provider port from epic gcx-experiments-0zr
 - Build-Core / Build-Commands split adopted in the initial design (see Stage 2 in SKILL.md); monitor whether the TaskList coordination pattern holds up for providers with 3+ resource types.

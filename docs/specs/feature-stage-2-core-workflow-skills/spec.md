@@ -2,7 +2,7 @@
 type: feature-spec
 title: "Stage 2: Core Workflow Skills"
 status: done
-beads_id: grafanactl-experiments-cfn
+beads_id: gcx-experiments-cfn
 created: 2026-03-07
 ---
 
@@ -10,7 +10,7 @@ created: 2026-03-07
 
 ## Problem Statement
 
-The grafanactl Claude plugin (Stage 1) ships three skills (`setup-grafanactl`,
+The gcx Claude plugin (Stage 1) ships three skills (`setup-gcx`,
 `explore-datasources`, `investigate-alert`) and one stub agent
 (`grafana-debugger`). Two high-value workflow categories remain uncovered:
 
@@ -23,17 +23,17 @@ The grafanactl Claude plugin (Stage 1) ships three skills (`setup-grafanactl`,
 
 2. **Dashboard lifecycle management** — users who need to pull, push, create,
    validate, or promote dashboards across environments have no skill guiding
-   them through grafanactl's resource commands, topological sort behavior,
+   them through gcx's resource commands, topological sort behavior,
    manager metadata, or promotion patterns. The CLI supports all necessary
    operations (`get`, `push`, `pull`, `delete`, `edit`, `validate`, `serve`)
    but there is no skill that teaches agents to use them correctly.
 
 Without these skills, agents either refuse to help ("I don't know how to do
-that with grafanactl") or improvise incorrect commands (wrong flag order,
+that with gcx") or improvise incorrect commands (wrong flag order,
 missing `-d` for datasource UID, pushing dashboards before folders).
 
 **Affected users**: AI coding agents (Claude Code, Cursor, Copilot) using the
-grafanactl plugin to assist developers and SREs with Grafana workflows.
+gcx plugin to assist developers and SREs with Grafana workflows.
 
 ## Scope
 
@@ -49,13 +49,13 @@ grafanactl plugin to assist developers and SREs with Grafana workflows.
   SKILL.md with references to `resource-model.md` (copied into the plugin) and
   a new `resource-operations.md`
 - **Plugin-local copies of shared reference files**: `query-patterns.md` and
-  `resource-model.md` are copied from `.claude/skills/grafanactl/references/`
+  `resource-model.md` are copied from `.claude/skills/gcx/references/`
   into their respective skill `references/` directories so the plugin is
   self-contained when installed outside the repo
 - **Auto-trigger descriptions**: Each skill and agent MUST have a `description`
   field in its YAML frontmatter that causes correct auto-trigger behavior
 - **Example verification**: All CLI command examples MUST reflect actual
-  grafanactl CLI syntax and flag names as documented in the codebase
+  gcx CLI syntax and flag names as documented in the codebase
 
 ### Out of Scope
 
@@ -76,9 +76,9 @@ grafanactl plugin to assist developers and SREs with Grafana workflows.
 | debug-with-grafana uses 7 steps (not 5 like investigate-alert) | 7-step workflow: discover datasources, confirm data availability, query error rates, query latency, correlate logs, check related dashboards, summarize | Debugging requires broader signal coverage than alert investigation; latency and dashboard correlation are distinct diagnostic phases that warrant separate steps | Bead acceptance criteria |
 | error-recovery.md is a new reference file under debug-with-grafana | New file `references/error-recovery.md` | Query failures, auth errors, empty results, and timeout handling need a dedicated reference rather than inline noise in SKILL.md | Bead acceptance criteria |
 | resource-operations.md is a new reference file under manage-dashboards | New file `references/resource-operations.md` | Push/pull/validate/promote command patterns and flag combinations are too detailed for inline SKILL.md content | Bead acceptance criteria |
-| Shared reference files are copied into the plugin, not referenced externally | Copy `query-patterns.md` to `claude-plugin/skills/debug-with-grafana/references/query-patterns.md` and `resource-model.md` to `claude-plugin/skills/manage-dashboards/references/resource-model.md` | The plugin must be self-contained. External relative paths (e.g. `../../../.claude/skills/...`) break when the plugin is installed outside the repo (e.g. `~/.claude/plugins/grafanactl/`). Content duplication is acceptable; broken references are not. | Architecture review |
+| Shared reference files are copied into the plugin, not referenced externally | Copy `query-patterns.md` to `claude-plugin/skills/debug-with-grafana/references/query-patterns.md` and `resource-model.md` to `claude-plugin/skills/manage-dashboards/references/resource-model.md` | The plugin must be self-contained. External relative paths (e.g. `../../../.claude/skills/...`) break when the plugin is installed outside the repo (e.g. `~/.claude/plugins/gcx/`). Content duplication is acceptable; broken references are not. | Architecture review |
 | grafana-debugger agent delegates to skills rather than inlining all logic | Agent prompt references `debug-with-grafana` and `investigate-alert` skills by name | Keeps the agent prompt focused on diagnostic reasoning; skill files carry the step-by-step CLI commands | Plugin architecture pattern |
-| All examples use `grafanactl query -d <uid> -e '<expr>'` syntax | Match actual CLI flag names: `-d` for datasource, `-e` for expression, `--from`/`--to` for time range | Verified against `cmd/grafanactl/query/command.go` lines 40–41 | Codebase context |
+| All examples use `gcx query -d <uid> -e '<expr>'` syntax | Match actual CLI flag names: `-d` for datasource, `-e` for expression, `--from`/`--to` for time range | Verified against `cmd/gcx/query/command.go` lines 40–41 | Codebase context |
 | Use built-in plugin-dev skills for creation and validation | Invoke `plugin-dev:skill-development` and `plugin-dev:agent-development` during authoring; run `plugin-dev:plugin-validator` and `skill-creator:skill-reviewer` for post-implementation validation | Built-in skills encode best practices for frontmatter, progressive disclosure, description triggering, and plugin structure that manual review would miss | Available Claude Code skills |
 
 ## Functional Requirements
@@ -88,30 +88,30 @@ grafanactl plugin to assist developers and SREs with Grafana workflows.
 - **FR-001**: The skill MUST be located at `claude-plugin/skills/debug-with-grafana/SKILL.md` following the canonical skill directory structure.
 - **FR-002**: The SKILL.md MUST contain YAML frontmatter with `name: debug-with-grafana` and a `description` field that specifies when the skill auto-triggers.
 - **FR-003**: The SKILL.md MUST define a 7-step diagnostic workflow in this order: (1) discover datasources, (2) confirm data availability, (3) query error rates, (4) query latency, (5) correlate logs, (6) check related dashboards/resources, (7) summarize findings.
-- **FR-004**: Each step MUST include at least one concrete `grafanactl` command example with correct flag syntax.
+- **FR-004**: Each step MUST include at least one concrete `gcx` command example with correct flag syntax.
 - **FR-005**: The skill MUST include 3 worked example scenarios: (a) HTTP 500 error spike, (b) latency degradation, (c) service down / no data.
 - **FR-006**: Each example scenario MUST show the sequence of commands the agent would run and the expected shape of the output (field names, not fabricated data).
 - **FR-007**: The skill MUST reference `references/error-recovery.md` for handling query failures, empty results, auth errors, and timeouts.
-- **FR-008**: The skill MUST reference `references/query-patterns.md` — a copy of the file that MUST reside at `claude-plugin/skills/debug-with-grafana/references/query-patterns.md` (copied from `.claude/skills/grafanactl/references/query-patterns.md`). External paths outside `claude-plugin/` MUST NOT be used.
-- **FR-009**: The skill MUST include a prerequisites section that directs to `setup-grafanactl` if grafanactl is not configured.
+- **FR-008**: The skill MUST reference `references/query-patterns.md` — a copy of the file that MUST reside at `claude-plugin/skills/debug-with-grafana/references/query-patterns.md` (copied from `.claude/skills/gcx/references/query-patterns.md`). External paths outside `claude-plugin/` MUST NOT be used.
+- **FR-009**: The skill MUST include a prerequisites section that directs to `setup-gcx` if gcx is not configured.
 
 ### error-recovery.md Reference
 
 - **FR-010**: The file MUST be located at `claude-plugin/skills/debug-with-grafana/references/error-recovery.md`.
 - **FR-011**: The file MUST document recovery patterns for at least these failure modes: (a) authentication/authorization errors (401/403), (b) datasource not found, (c) query returns empty result set, (d) query timeout or server error (5xx), (e) malformed PromQL/LogQL syntax errors.
-- **FR-012**: Each failure mode MUST include: the error message pattern to match, the likely cause, and the corrective action (specific grafanactl commands).
+- **FR-012**: Each failure mode MUST include: the error message pattern to match, the likely cause, and the corrective action (specific gcx commands).
 
 ### manage-dashboards Skill
 
 - **FR-013**: The skill MUST be located at `claude-plugin/skills/manage-dashboards/SKILL.md` following the canonical skill directory structure.
 - **FR-014**: The SKILL.md MUST contain YAML frontmatter with `name: manage-dashboards` and a `description` field that specifies when the skill auto-triggers.
 - **FR-015**: The SKILL.md MUST document these workflows: (a) pull dashboards from Grafana to local files, (b) push dashboards from local files to Grafana, (c) create a new dashboard from scratch, (d) validate dashboard files, (e) promote dashboards across environments (dev to staging to prod).
-- **FR-016**: The push workflow MUST document the topological sort requirement: folders MUST be pushed before dashboards, and grafanactl handles this automatically when both are included in the same push.
-- **FR-017**: The push workflow MUST document manager metadata behavior: `grafana.app/managed-by: grafanactl` annotation is set automatically, and resources managed by other tools are protected by default (require `--include-managed` to override).
+- **FR-016**: The push workflow MUST document the topological sort requirement: folders MUST be pushed before dashboards, and gcx handles this automatically when both are included in the same push.
+- **FR-017**: The push workflow MUST document manager metadata behavior: `grafana.app/managed-by: gcx` annotation is set automatically, and resources managed by other tools are protected by default (require `--include-managed` to override).
 - **FR-018**: The promote workflow MUST document the multi-context pattern: pull from source context, push to target context using `--context` flag or `use-context` switch.
 - **FR-019**: The skill MUST reference `references/resource-operations.md` for detailed command flag reference.
-- **FR-020**: The skill MUST reference `references/resource-model.md` — a copy of the file that MUST reside at `claude-plugin/skills/manage-dashboards/references/resource-model.md` (copied from `.claude/skills/grafanactl/references/resource-model.md`). External paths outside `claude-plugin/` MUST NOT be used.
-- **FR-021**: The skill MUST include a prerequisites section that directs to `setup-grafanactl` if grafanactl is not configured.
+- **FR-020**: The skill MUST reference `references/resource-model.md` — a copy of the file that MUST reside at `claude-plugin/skills/manage-dashboards/references/resource-model.md` (copied from `.claude/skills/gcx/references/resource-model.md`). External paths outside `claude-plugin/` MUST NOT be used.
+- **FR-021**: The skill MUST include a prerequisites section that directs to `setup-gcx` if gcx is not configured.
 
 ### resource-operations.md Reference
 
@@ -158,7 +158,7 @@ grafanactl plugin to assist developers and SREs with Grafana workflows.
 
 - **AC-003**: GIVEN each workflow step in SKILL.md
   WHEN the step content is inspected
-  THEN at least one `grafanactl` command is present with correct flag syntax matching the CLI's actual flags (`-d`, `-e`, `--from`, `--to`, `--step`, `-o`).
+  THEN at least one `gcx` command is present with correct flag syntax matching the CLI's actual flags (`-d`, `-e`, `--from`, `--to`, `--step`, `-o`).
 
 - **AC-004**: GIVEN the SKILL.md content
   WHEN example scenarios are counted
@@ -166,7 +166,7 @@ grafanactl plugin to assist developers and SREs with Grafana workflows.
 
 - **AC-005**: GIVEN each example scenario
   WHEN the scenario content is inspected
-  THEN it contains a sequence of grafanactl commands and a description of expected output shape.
+  THEN it contains a sequence of gcx commands and a description of expected output shape.
 
 - **AC-006**: GIVEN the SKILL.md content
   WHEN references are inspected
@@ -180,7 +180,7 @@ grafanactl plugin to assist developers and SREs with Grafana workflows.
 
 - **AC-008**: GIVEN each failure mode in error-recovery.md
   WHEN the entry is inspected
-  THEN it contains: an error message pattern, a likely cause description, and a corrective action with specific grafanactl commands.
+  THEN it contains: an error message pattern, a likely cause description, and a corrective action with specific gcx commands.
 
 ### manage-dashboards Skill
 
@@ -194,7 +194,7 @@ grafanactl plugin to assist developers and SREs with Grafana workflows.
 
 - **AC-011**: GIVEN the push workflow section
   WHEN the content is inspected
-  THEN it documents that grafanactl automatically sorts folders before dashboards during push and that manager metadata (`grafana.app/managed-by: grafanactl`) is set automatically.
+  THEN it documents that gcx automatically sorts folders before dashboards during push and that manager metadata (`grafana.app/managed-by: gcx`) is set automatically.
 
 - **AC-012**: GIVEN the promote workflow section
   WHEN the content is inspected
@@ -252,7 +252,7 @@ grafanactl plugin to assist developers and SREs with Grafana workflows.
 
 ### Cross-Cutting
 
-- **AC-024**: GIVEN all grafanactl command examples across all new files
+- **AC-024**: GIVEN all gcx command examples across all new files
   WHEN each command is checked against CLI `--help` output
   THEN every flag name, subcommand path, and argument position matches the actual CLI interface.
 
@@ -281,19 +281,19 @@ grafanactl plugin to assist developers and SREs with Grafana workflows.
 - **NC-003**: The `manage-dashboards` skill MUST NOT recommend pushing dashboards without folders when both are present in the local directory. The topological sort requirement MUST always be documented.
 - **NC-004**: The `grafana-debugger` agent MUST NOT inline the full step-by-step diagnostic workflow. It MUST delegate to the `debug-with-grafana` skill for procedural steps.
 - **NC-005**: No skill or agent MUST reference datasources by display name in command examples. All query examples MUST use `-d <uid>` placeholder or a resolved UID variable.
-- **NC-006**: The `error-recovery.md` MUST NOT advise users to modify grafanactl source code or bypass authentication. Recovery actions MUST be limited to CLI commands and configuration changes.
+- **NC-006**: The `error-recovery.md` MUST NOT advise users to modify gcx source code or bypass authentication. Recovery actions MUST be limited to CLI commands and configuration changes.
 - **NC-007**: Skills MUST NOT use `--start` / `--end` and `--from` / `--to` interchangeably.
-- **NC-008**: No skill or agent file MUST reference files outside the `claude-plugin/` directory. All reference file paths in SKILL.md and agent prompts MUST be relative paths that resolve within `claude-plugin/`. The plugin MUST be self-contained so it works when installed at any location (e.g., `~/.claude/plugins/grafanactl/`). All time range flags MUST use `--from` / `--to` as verified against the actual CLI source (`cmd/grafanactl/query/command.go`).
+- **NC-008**: No skill or agent file MUST reference files outside the `claude-plugin/` directory. All reference file paths in SKILL.md and agent prompts MUST be relative paths that resolve within `claude-plugin/`. The plugin MUST be self-contained so it works when installed at any location (e.g., `~/.claude/plugins/gcx/`). All time range flags MUST use `--from` / `--to` as verified against the actual CLI source (`cmd/gcx/query/command.go`).
 
 ## Risks
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| CLI flag names change between grafanactl versions | Examples become incorrect, agents produce failing commands | Pin examples to verified flag names from current codebase; document flag source in a comment at top of each reference file |
+| CLI flag names change between gcx versions | Examples become incorrect, agents produce failing commands | Pin examples to verified flag names from current codebase; document flag source in a comment at top of each reference file |
 | Auto-trigger descriptions overlap between `debug-with-grafana` skill and `grafana-debugger` agent | Both activate simultaneously causing confusion | Agent description emphasizes symptom-based triggers (specific errors, latency numbers); skill description emphasizes workflow-based triggers (step-by-step debugging). Claude plugin runtime handles multi-match gracefully. |
 | 300-line agent prompt exceeds context budget for some LLM consumers | Agent prompt is truncated or ignored by smaller-context models | Keep prompt dense and structured; use headings for skip-scanning; place most critical rules in first 100 lines |
 | Existing `query-patterns.md` uses `--from`/`--to` while `investigate-alert` uses `--start`/`--end` | Inconsistent flag names across references confuse agents | Audit and reconcile all time-range flag references during implementation; NC-007 enforces consistency |
-| `resource-model.md` is in `.claude/skills/grafanactl/references/` not in `claude-plugin/` | Cross-directory reference may not resolve in plugin context | Use relative path or copy/adapt content into `claude-plugin/skills/manage-dashboards/references/resource-model.md` |
+| `resource-model.md` is in `.claude/skills/gcx/references/` not in `claude-plugin/` | Cross-directory reference may not resolve in plugin context | Use relative path or copy/adapt content into `claude-plugin/skills/manage-dashboards/references/resource-model.md` |
 
 ## Open Questions
 
@@ -303,7 +303,7 @@ grafanactl plugin to assist developers and SREs with Grafana workflows.
 - **[RESOLVED]** Should the grafana-debugger agent be longer than 300 lines?
   Decision: Minimum 300 lines to ensure sufficient depth. No maximum enforced, but density is preferred over padding.
 
-- **[RESOLVED]** The existing `query-patterns.md` uses `--from`/`--to` flags while `investigate-alert` SKILL.md uses `--start`/`--end`. Which is the correct flag set for `grafanactl query`?
-  Decision: Verified against `cmd/grafanactl/query/command.go` — the correct flags are `--from`/`--to`. The `investigate-alert` SKILL.md uses incorrect flag names but fixing it is out of scope for this spec. All new files MUST use `--from`/`--to`.
+- **[RESOLVED]** The existing `query-patterns.md` uses `--from`/`--to` flags while `investigate-alert` SKILL.md uses `--start`/`--end`. Which is the correct flag set for `gcx query`?
+  Decision: Verified against `cmd/gcx/query/command.go` — the correct flags are `--from`/`--to`. The `investigate-alert` SKILL.md uses incorrect flag names but fixing it is out of scope for this spec. All new files MUST use `--from`/`--to`.
 
 - **[DEFERRED]** Should there be a shared `common-references/` directory under `claude-plugin/` for files referenced by multiple skills? Deferred to Stage 3 packaging review.

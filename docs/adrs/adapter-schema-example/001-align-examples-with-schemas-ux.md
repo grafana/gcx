@@ -2,7 +2,7 @@
 
 **Created**: 2026-03-25
 **Status**: accepted
-**Bead**: grafanactl-experiments-897e
+**Bead**: gcx-experiments-897e
 **Supersedes**: none
 
 ## Context

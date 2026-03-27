@@ -1,7 +1,7 @@
 {
-  "name": "grafanactl",
+  "name": "gcx",
   "version": "0.1.0",
-  "description": "Debug, explore, and instrument with Grafana using grafanactl CLI",
+  "description": "Debug, explore, and instrument with Grafana using gcx CLI",
   "keywords": ["grafana", "observability", "monitoring", "prometheus", "loki", "dashboards"],
   "author": {
     "name": "Grafana Labs"

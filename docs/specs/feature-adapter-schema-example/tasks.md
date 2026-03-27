@@ -54,7 +54,7 @@ Add `Schema() json.RawMessage` and `Example() json.RawMessage` to the `ResourceA
   THEN it returns nil without error
 
 - GIVEN the full codebase after changes
-  WHEN `make all` is run (with GRAFANACTL_AGENT_MODE=false)
+  WHEN `make all` is run (with GCX_AGENT_MODE=false)
   THEN all tests pass, linting passes, build succeeds, and docs generate without drift
 
 ---
@@ -70,18 +70,18 @@ Add `Schema() json.RawMessage` and `Example() json.RawMessage` to the `ResourceA
 Update `resolveSchema()` in `schemas.go` to accept an optional adapter instance and call `adapter.Schema()` as a fallback path (alongside the existing `adapter.SchemaForGVK` global lookup). Update `examplesCmd` in `examples.go` to attempt adapter-based lookup when an adapter is available from the registry, falling back to the existing `adapter.ExampleForGVK` global function. The output of both commands MUST remain byte-identical to the current output — this is purely an internal wiring change that adds a new code path while preserving the existing one.
 
 **Deliverables:**
-- `cmd/grafanactl/resources/schemas.go` — `resolveSchema` updated to use adapter method when available
-- `cmd/grafanactl/resources/examples.go` — example lookup updated to use adapter method when available
+- `cmd/gcx/resources/schemas.go` — `resolveSchema` updated to use adapter method when available
+- `cmd/gcx/resources/examples.go` — example lookup updated to use adapter method when available
 
 **Acceptance criteria:**
 - GIVEN a provider resource type with a registered schema (e.g., SLO)
-  WHEN `grafanactl resources schemas slo -o json` is run
+  WHEN `gcx resources schemas slo -o json` is run
   THEN the output is byte-identical to the output before this change
 
 - GIVEN a provider resource type with a registered example (e.g., SLO)
-  WHEN `grafanactl resources examples slo -o yaml` is run
+  WHEN `gcx resources examples slo -o yaml` is run
   THEN the output is byte-identical to the output before this change
 
 - GIVEN the full codebase after changes
-  WHEN `make all` is run (with GRAFANACTL_AGENT_MODE=false)
+  WHEN `make all` is run (with GCX_AGENT_MODE=false)
   THEN all tests pass, linting passes, build succeeds, and docs generate without drift

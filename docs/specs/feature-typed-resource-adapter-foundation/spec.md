@@ -2,7 +2,7 @@
 type: feature-spec
 title: "TypedResourceAdapter[T] Foundation"
 status: approved
-beads_id: grafanactl-experiments-bq3
+beads_id: gcx-experiments-bq3
 created: 2026-03-20
 ---
 
@@ -10,7 +10,7 @@ created: 2026-03-20
 
 ## Problem Statement
 
-Every provider resource adapter in grafanactl repeats ~200 lines of boilerplate code: static descriptor/alias globals, a ResourceAdapter struct, Descriptor()/Aliases() methods, and List/Get/Create/Update/Delete implementations that each perform the same JSON marshal/unmarshal, K8s envelope wrapping, name management, and namespace injection. The five existing adapters (SLO definitions, synth checks, synth probes, alert rules, alert groups) total ~1,100 LOC of near-identical scaffolding. The consolidation plan requires porting 40+ additional resource types from the cloud CLI; at 200 LOC each, this boilerplate would add ~8,000 LOC and proportional maintenance burden.
+Every provider resource adapter in gcx repeats ~200 lines of boilerplate code: static descriptor/alias globals, a ResourceAdapter struct, Descriptor()/Aliases() methods, and List/Get/Create/Update/Delete implementations that each perform the same JSON marshal/unmarshal, K8s envelope wrapping, name management, and namespace injection. The five existing adapters (SLO definitions, synth checks, synth probes, alert rules, alert groups) total ~1,100 LOC of near-identical scaffolding. The consolidation plan requires porting 40+ additional resource types from the cloud CLI; at 200 LOC each, this boilerplate would add ~8,000 LOC and proportional maintenance burden.
 
 Developers adding new providers must manually replicate the marshal -> strip fields -> wrap envelope -> return Unstructured pattern, which is error-prone and violates DRY. There is no current workaround other than copy-pasting an existing adapter and modifying it.
 
@@ -150,19 +150,19 @@ Developers adding new providers must manually replicate the marshal -> strip fie
   THEN the metadata contains only `name` and `namespace` (no error, no extra fields)
 
 - GIVEN the refactored synth checks adapter using `TypedCRUD[CheckSpec]`
-  WHEN `grafanactl resources get checks` is executed against a Synthetic Monitoring API
+  WHEN `gcx resources get checks` is executed against a Synthetic Monitoring API
   THEN the output is byte-for-byte identical to the output produced by the pre-refactor adapter
 
 - GIVEN the refactored synth probes adapter using `TypedCRUD[Probe]`
-  WHEN `grafanactl resources get probes` is executed
+  WHEN `gcx resources get probes` is executed
   THEN the output is identical to the pre-refactor adapter output
 
 - GIVEN the refactored SLO definitions adapter using `TypedCRUD[Slo]`
-  WHEN `grafanactl resources get slos` is executed
+  WHEN `gcx resources get slos` is executed
   THEN the output is identical to the pre-refactor adapter output
 
 - GIVEN the refactored alert rules and groups adapters
-  WHEN `grafanactl resources get alertrules` and `grafanactl resources get alertrulegroups` are executed
+  WHEN `gcx resources get alertrules` and `gcx resources get alertrulegroups` are executed
   THEN the output is identical to the pre-refactor adapter output
 
 - GIVEN all refactored adapters
@@ -170,15 +170,15 @@ Developers adding new providers must manually replicate the marshal -> strip fie
   THEN it completes with exit code 0
 
 - GIVEN the refactored synth checks adapter
-  WHEN a check is created via `grafanactl resources push` with a check YAML
+  WHEN a check is created via `gcx resources push` with a check YAML
   THEN the check is created successfully with probe names resolved to IDs
 
 - GIVEN the refactored synth checks adapter
-  WHEN a check is updated via `grafanactl resources push` with a modified check YAML
+  WHEN a check is updated via `gcx resources push` with a modified check YAML
   THEN the check is updated successfully with the numeric ID recovered from metadata.name
 
 - GIVEN the refactored SLO definitions adapter
-  WHEN an SLO is created and then updated via `grafanactl resources push`
+  WHEN an SLO is created and then updated via `gcx resources push`
   THEN the SLO is created/updated successfully with UUID managed via metadata.name
 
 ## Negative Constraints
@@ -189,7 +189,7 @@ Developers adding new providers must manually replicate the marshal -> strip fie
 - NEVER modify provider REST client implementations (`checks.Client`, `probes.Client`, `definitions.Client`, `alert.Client`).
 - NEVER modify provider type definitions (`Check`, `CheckSpec`, `Slo`, `Probe`, `RuleStatus`, `RuleGroup`).
 - DO NOT introduce reflection-based field stripping -- use JSON marshal/unmarshal + map key deletion (the existing pattern).
-- DO NOT add new dependencies to the `internal/resources/adapter/` package beyond what is already imported (standard library, `k8s.io/apimachinery`, `github.com/grafana/grafanactl/internal/resources`).
+- DO NOT add new dependencies to the `internal/resources/adapter/` package beyond what is already imported (standard library, `k8s.io/apimachinery`, `github.com/grafana/gcx/internal/resources`).
 - NEVER expose `TypedCRUD[T]` internals through the `ResourceAdapter` interface -- it MUST remain an implementation detail behind the existing interface.
 - DO NOT remove `slugifyJob`, `extractIDFromSlug`, `FileNamer`, or other provider-specific helpers that are used outside the adapter (e.g., by CLI commands or tests).
 - `MetadataFn` output MUST NOT be allowed to overwrite `metadata.name` or `metadata.namespace` -- these fields are always controlled by `NameFn` and `Namespace`.

@@ -1,11 +1,11 @@
 ---
 name: migrate-provider
-description: Use when porting a Grafana Cloud product from grafana-cloud-cli (gcx) to grafanactl, when a bead task references gcx provider migration, or when user says "migrate provider", "port from gcx", "port oncall", "port k6". Not for building providers from scratch — use /add-provider for that.
+description: Use when porting a Grafana Cloud product from grafana-cloud-cli (gcx) to gcx, when a bead task references gcx provider migration, or when user says "migrate provider", "port from gcx", "port oncall", "port k6". Not for building providers from scratch — use /add-provider for that.
 ---
 
 # Migrate Provider from gcx
 
-Port an existing gcx resource client into a grafanactl provider — core adapter,
+Port an existing gcx resource client into a gcx provider — core adapter,
 schema/example registration, CRUD redirect commands, and ancillary subcommands.
 
 **Before starting:** Read `gcx-provider-recipe.md` front to back.
@@ -17,7 +17,7 @@ with workflow discipline and orchestration.
 
 ## When to Use
 
-- Porting a gcx resource client to grafanactl
+- Porting a gcx resource client to gcx
 - A bead task references gcx provider migration
 - User says "migrate provider", "port from gcx", "port oncall", "port k6"
 
@@ -30,14 +30,14 @@ Before invoking this skill, ensure:
 
 1. **gcx binary available** — `gcx --version` must succeed. If not installed,
    ask the user for the path or install instructions.
-2. **Grafana context configured** — `grafanactl config view` must show a
+2. **Grafana context configured** — `gcx config view` must show a
    working context with server URL and token. The same context name should
-   work for both `grafanactl --context=<ctx>` and `gcx --context=<ctx>`.
+   work for both `gcx --context=<ctx>` and `gcx --context=<ctx>`.
 3. **Provider directory exists** — run `/add-dir internal/providers/{name}`
    (or create manually) before starting the port. The directory structure
    must follow the package map in CLAUDE.md.
 4. **Live API access** — smoke tests (Stage 3: Verify) require a real Grafana
-   instance. Verify connectivity: `grafanactl --context=<ctx> resources schemas`.
+   instance. Verify connectivity: `gcx --context=<ctx> resources schemas`.
 
 ## Pipeline Overview
 
@@ -65,8 +65,8 @@ Stages are **strictly sequential**. Each stage is separated by a gate that
 ## Stage 1: Audit
 
 The Audit stage runs in the lead orchestrator's main context (not delegated).
-The lead reads the gcx source, maps every subcommand to its grafanactl
-equivalent, translates gcx patterns to grafanactl patterns, and writes a
+The lead reads the gcx source, maps every subcommand to its gcx
+equivalent, translates gcx patterns to gcx patterns, and writes a
 verification plan before any provider code is written. All three artifacts
 must be reviewed and approved by the user before Stage 2 begins.
 
@@ -95,7 +95,7 @@ all three are complete and the user has approved them.
 
 - [ ] gcx source read in full — every subcommand identified
 - [ ] Parity table complete — every gcx subcommand has a row with status and notes
-- [ ] Architectural mapping complete — all five gcx→grafanactl pattern pairs translated
+- [ ] Architectural mapping complete — all five gcx→gcx pattern pairs translated
 - [ ] Verification plan complete — specific test names, concrete smoke commands (no placeholders), build gate checkpoints
 - [ ] All three artifacts presented to the user
 - [ ] User has explicitly approved all three artifacts
@@ -108,7 +108,7 @@ all three are complete and the user has approved them.
 >
 > 1. The **parity table** is complete (every gcx subcommand has a row with
 >    status and notes — no silent omissions).
-> 2. The **architectural mapping** is complete (all five gcx→grafanactl
+> 2. The **architectural mapping** is complete (all five gcx→gcx
 >    pattern pairs are translated explicitly).
 > 3. The **verification plan** is complete (specific test names, concrete
 >    smoke commands, and build gate checkpoints — no placeholders).
@@ -170,7 +170,7 @@ TeamCreate("build-{provider}")
 
 # 5. Wait for both teammates to complete.
 
-# 6. Run BUILD GATE: GRAFANACTL_AGENT_MODE=false make all
+# 6. Run BUILD GATE: GCX_AGENT_MODE=false make all
 
 # 7. Tear down: TeamDelete("build-{provider}")
 ```
@@ -184,8 +184,8 @@ TeamCreate("build-{provider}")
 | Step 4: Adapter | `internal/providers/{name}/adapter.go` | Build-Core |
 | Step 5: Resource Adapter | `internal/providers/{name}/resource_adapter.go` | Build-Core |
 | Step 6: Provider registration | `internal/providers/{name}/provider.go` | Build-Commands |
-| Step 7: CLI Commands | `cmd/grafanactl/providers/{name}/commands.go`, `*_test.go` | Build-Commands |
-| Blank import | `cmd/grafanactl/root/command.go` (import line only) | Build-Commands |
+| Step 7: CLI Commands | `cmd/gcx/providers/{name}/commands.go`, `*_test.go` | Build-Commands |
+| Blank import | `cmd/gcx/root/command.go` (import line only) | Build-Commands |
 
 Teammates MUST NOT modify files outside their ownership boundary.
 
@@ -212,13 +212,13 @@ Teammates MUST NOT modify files outside their ownership boundary.
 - [ ] `commands.go`: output routed through codec registry (`-o table/wide/json/yaml`)
 - [ ] Command tests: at least one test per command via httptest
 - [ ] `commands.go`: `make lint` passes
-- [ ] Blank import line added to `cmd/grafanactl/root/command.go`
+- [ ] Blank import line added to `cmd/gcx/root/command.go`
 
 ### Build Gate
 
 > **STOP.** Do not begin Stage 3 (Verify) until:
 >
-> `GRAFANACTL_AGENT_MODE=false make all` exits 0 with no lint errors and
+> `GCX_AGENT_MODE=false make all` exits 0 with no lint errors and
 > all tests passing.
 >
 > Run this command after both Build teammates complete. If it fails, fix
@@ -282,7 +282,7 @@ typically generate — if you catch yourself thinking this, it's a red flag.
 
 | Red Flag | Rationalization | STOP. Do this instead |
 |---|---|---|
-| **Copying gcx client verbatim** — embedding `*grafana.Client`, using `c.Get()`/`c.Post()` directly | "The gcx client already works, adapting it would just introduce bugs" | Translate to a typed HTTP client (plain `http.Client` + named endpoint methods). Read recipe Step 3 for the grafanactl client pattern. |
+| **Copying gcx client verbatim** — embedding `*grafana.Client`, using `c.Get()`/`c.Post()` directly | "The gcx client already works, adapting it would just introduce bugs" | Translate to a typed HTTP client (plain `http.Client` + named endpoint methods). Read recipe Step 3 for the gcx client pattern. |
 | **Skipping the parity audit** — jumping to implementation | "I can see the important commands from the gcx source, a full table would be redundant" | The parity table is required. Every gcx subcommand must have a row. Unaudited subcommands become missing features. Return to Stage 1 and complete the table. |
 | **Guessing endpoint names or paths** — using `/api/v1/resources` when actual path is `/api/v1/orgs/{id}/resources` | "The endpoint pattern is obvious from the resource name" | Read the gcx source for exact paths. Run `gcx --context=$CTX {resource} list --help` to confirm. Never guess paths. |
 | **Skipping smoke tests** — marking Verify "complete" without running commands | "The unit tests pass, so the implementation is correct" | Smoke tests are required. If no live instance is available, block and tell the user. Do not pass the Verify gate without running every item in the verification plan. |

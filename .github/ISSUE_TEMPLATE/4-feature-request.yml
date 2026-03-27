@@ -15,7 +15,7 @@ body:
       description: Describe the challenge or limitation you're facing
       placeholder: |
         We need to manage datasources across multiple Grafana instances, but
-        grafanactl doesn't currently support datasource resources. We have to
+        gcx doesn't currently support datasource resources. We have to
         manually configure datasources through the Grafana UI or use direct API
         calls, which makes it impossible to version-control our datasource configs.
     validations:
@@ -27,12 +27,12 @@ body:
       label: Describe your ideal solution
       description: How would this work from your perspective as a user?
       placeholder: |
-        I'd like to be able to use grafanactl resources commands with datasources:
-        - `grafanactl resources list datasources` - list all datasources
-        - `grafanactl resources get datasource/<name>` - get a specific datasource
-        - `grafanactl resources pull datasources` - export to local YAML/JSON files
-        - `grafanactl resources push datasources/` - create/update from files
-        - `grafanactl resources delete datasource/<name>` - remove a datasource
+        I'd like to be able to use gcx resources commands with datasources:
+        - `gcx resources list datasources` - list all datasources
+        - `gcx resources get datasource/<name>` - get a specific datasource
+        - `gcx resources pull datasources` - export to local YAML/JSON files
+        - `gcx resources push datasources/` - create/update from files
+        - `gcx resources delete datasource/<name>` - remove a datasource
 
         This would work just like it does for dashboards and folders today.
     validations:
@@ -57,8 +57,8 @@ body:
       description: What do you do today to solve this problem?
       placeholder: |
         We currently use direct API calls with curl or custom scripts, but it's error-prone
-        and doesn't integrate with our existing grafanactl workflows. We also looked at
-        Terraform, but prefer to keep everything in grafanactl for consistency.
+        and doesn't integrate with our existing gcx workflows. We also looked at
+        Terraform, but prefer to keep everything in gcx for consistency.
 
   - type: dropdown
     id: priority
@@ -78,7 +78,7 @@ body:
       label: How would you know this is working well?
       description: What would success look like?
       placeholder: |
-        - Can list all datasources with `grafanactl resources list datasources`
+        - Can list all datasources with `gcx resources list datasources`
         - Can pull datasources to local files for version control
         - Can push datasources from files to recreate them on new instances
         - Commands work consistently with other resource types (dashboards, folders)

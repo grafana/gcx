@@ -20,7 +20,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/websocket"
-	"github.com/grafana/grafanactl/internal/resources"
+	"github.com/grafana/gcx/internal/resources"
 )
 
 // Initialize starts the Websocket Hub handling live reloads.
@@ -49,6 +49,6 @@ func Handler(upgrader *websocket.Upgrader) http.HandlerFunc {
 
 func ReloadResource(r *resources.Resource) {
 	// TODO: use a resource ref in the URL instead of manually building a complex string
-	msg := fmt.Sprintf(`{"command": "reload", "path": "/grafanactl/%s/%s/%s"}`, r.APIVersion(), r.Kind(), r.Name())
+	msg := fmt.Sprintf(`{"command": "reload", "path": "/gcx/%s/%s/%s"}`, r.APIVersion(), r.Kind(), r.Name())
 	wsHub.broadcast <- []byte(msg)
 }

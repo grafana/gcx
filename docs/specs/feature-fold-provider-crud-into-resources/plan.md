@@ -68,7 +68,7 @@ created: 2026-03-10
 
 3. **ResourceAdapter** is a new interface in `internal/resources/adapter/` that matches the existing `PushClient`/`PullClient`/`DeleteClient` signatures but also carries its own descriptor for identification. Each provider implements this interface by wrapping its existing REST client and adapter functions (`ToResource`/`FromResource`).
 
-6. **Provider interface extension**: The `Provider` interface gains a `ResourceAdapters() []adapter.Factory` method. Providers that support resource adapters return their factories; others return `nil`. The root registration loop in `cmd/grafanactl/root/command.go` (which already iterates all registered providers) calls `Registry.RegisterAdapter()` for each factory. This keeps provider self-description centralized — a provider declares both its commands tree AND its resource adapters.
+6. **Provider interface extension**: The `Provider` interface gains a `ResourceAdapters() []adapter.Factory` method. Providers that support resource adapters return their factories; others return `nil`. The root registration loop in `cmd/gcx/root/command.go` (which already iterates all registered providers) calls `Registry.RegisterAdapter()` for each factory. This keeps provider self-description centralized — a provider declares both its commands tree AND its resource adapters.
 
 4. **Lazy initialization**: The `ResourceClientRouter` holds adapter factories (closures), not adapter instances. Adapters are constructed on first use, ensuring provider config is only loaded when a provider resource type is actually selected.
 
@@ -82,7 +82,7 @@ created: 2026-03-10
 | `ResourceClientRouter` wraps dynamic client + adapters behind existing client interfaces (FR-005 through FR-009) | Pusher, Puller, and Deleter already accept interfaces (`PushClient`, `PullClient`, `DeleteClient`). The router implements all three, keeping the existing pipeline code unchanged. |
 | `RegistryIndex.RegisterStatic()` instead of modifying `Update()` (FR-003) | Static descriptors are known at compile time and do not come from the `/apis` endpoint. A separate registration path avoids mixing server-discovered and hard-coded resources in the same code path. |
 | Short aliases registered via the same `kindNames`/`singularNames`/`pluralNames` maps (FR-004) | The existing `LookupPartialGVK` already searches these maps. Adding provider entries makes provider types resolvable without any parser changes. |
-| Adapter factory pattern with lazy init (FR-016) | Synth requires `LoadSMConfig` which can fail if SM is not configured. Eager init would break `grafanactl resources get dashboards` for users without SM config. |
+| Adapter factory pattern with lazy init (FR-016) | Synth requires `LoadSMConfig` which can fail if SM is not configured. Eager init would break `gcx resources get dashboards` for users without SM config. |
 | Adapter encapsulates provider-specific auth (FR-015) | SLO and Alert use `NamespacedRESTConfig`; Synth uses `LoadSMConfig`. The adapter factory closure captures the config loading strategy, keeping the router auth-agnostic. |
 | Provider descriptors hard-coded in each provider package (FR-003) | Provider REST APIs lack K8s-style discovery. The descriptors are small and stable: group, version, kind, singular, plural, aliases. Registering them from the provider package keeps ownership clear. |
 | Extend `Provider` interface with `ResourceAdapters()` method | Single registration point: providers already declare `Commands()` and `ConfigKeys()`. Adding `ResourceAdapters()` keeps all provider contributions in one interface. The root command loop already iterates providers, so wiring is trivial. Providers without adapters return `nil`. |
@@ -91,15 +91,15 @@ created: 2026-03-10
 ## Compatibility
 
 **Unchanged:**
-- All existing `grafanactl resources` commands continue to work for native K8s-backed resource types
-- `grafanactl slo`, `grafanactl synth`, `grafanactl alert` commands continue to work (with deprecation warnings)
-- `grafanactl providers list` continues to work
+- All existing `gcx resources` commands continue to work for native K8s-backed resource types
+- `gcx slo`, `gcx synth`, `gcx alert` commands continue to work (with deprecation warnings)
+- `gcx providers list` continues to work
 - Existing tests for native resource flows pass without modification
 - Processor pipeline (`NamespaceOverrider`, `ManagerFieldsAppender`, `ServerFieldsStripper`) works unchanged on provider-backed resources because they operate on `*resources.Resource` which wraps `unstructured.Unstructured` -- the same envelope format used by provider adapters
 
 **New:**
-- Provider resource types appear in `grafanactl resources list` output
-- Provider resources are addressable via `grafanactl resources get/push/pull/delete/edit`
+- Provider resource types appear in `gcx resources list` output
+- Provider resources are addressable via `gcx resources get/push/pull/delete/edit`
 - Short aliases (`slo`, `checks`, `probes`, `rules`, `groups`) resolve in the selector parser
 
 **Deprecated:**

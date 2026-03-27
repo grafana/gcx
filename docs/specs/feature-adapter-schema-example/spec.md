@@ -2,7 +2,7 @@
 type: feature-spec
 title: "Add Schema() and Example() methods to ResourceAdapter interface"
 status: done
-beads_id: grafanactl-experiments-ph3
+beads_id: gcx-experiments-ph3
 created: 2026-03-25
 ---
 
@@ -12,7 +12,7 @@ created: 2026-03-25
 
 Schema and example data for provider-backed resource types are currently accessible only through global lookup functions (`adapter.SchemaForGVK` and `adapter.ExampleForGVK`) that scan a global `[]Registration` slice. Any code that holds a `ResourceAdapter` instance — such as provider-specific CLI commands or future auto-generated CRUD commands — cannot retrieve schema or example data from the adapter itself. Callers must know the GVK and call a separate global function, coupling them to the registration subsystem.
 
-The downstream feature "Auto-generate provider CRUD commands from adapter registrations" (grafanactl-experiments-gab) is blocked because generated commands need to access schema/example through the adapter, not through disconnected global functions.
+The downstream feature "Auto-generate provider CRUD commands from adapter registrations" (gcx-experiments-gab) is blocked because generated commands need to access schema/example through the adapter, not through disconnected global functions.
 
 The current workaround is to call `adapter.SchemaForGVK(gvk)` and `adapter.ExampleForGVK(gvk)` directly, which works for the centralized `resources schemas` and `resources examples` commands but does not scale to per-provider command generation.
 
@@ -30,7 +30,7 @@ The current workaround is to call `adapter.SchemaForGVK(gvk)` and `adapter.Examp
 
 ### Out of Scope
 
-- **Auto-generated provider CRUD commands** — That is the downstream feature (grafanactl-experiments-gab). This spec only unblocks it.
+- **Auto-generated provider CRUD commands** — That is the downstream feature (gcx-experiments-gab). This spec only unblocks it.
 - **Runtime-dynamic schema/example** — Schema and example are static per resource type. This spec does not add support for schemas that change at runtime.
 - **Removing the global `SchemaForGVK` / `ExampleForGVK` functions** — They remain for backward compatibility and convenience. Removal is a separate future cleanup.
 - **Adding schema/example to providers that currently lack them** — Existing provider registrations are unchanged.
@@ -128,7 +128,7 @@ The current workaround is to call `adapter.SchemaForGVK(gvk)` and `adapter.Examp
 |------|--------|------------|
 | Future manual `ResourceAdapter` implementations outside the codebase will need to add `Schema()` and `Example()` methods | Low — all known production adapters use `TypedCRUD[T]`; external implementors are not a supported use case | Document the interface change in the PR description. Stub implementations returning nil are trivial. |
 | In-flight `TypedCRUD[T ResourceIdentity]` refactor could conflict | Low — schema/example are stored on `typedAdapter[T]`, not `TypedCRUD[T]`, so the refactor does not touch schema wiring | Explicit separation of static metadata (typedAdapter) from CRUD behavior (TypedCRUD); round-trip test in `typed_test.go` anchors correctness |
-| Test mocks in other packages (e.g., `cmd/grafanactl/root/command_test.go`, `cmd/grafanactl/providers/command_test.go`) might implement `ResourceAdapter` manually | Low — grep confirms these files reference the type but use factory functions, not manual struct implementations | Run `make all` to catch any compilation failures |
+| Test mocks in other packages (e.g., `cmd/gcx/root/command_test.go`, `cmd/gcx/providers/command_test.go`) might implement `ResourceAdapter` manually | Low — grep confirms these files reference the type but use factory functions, not manual struct implementations | Run `make all` to catch any compilation failures |
 
 ## Open Questions
 

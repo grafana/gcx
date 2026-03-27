@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/grafana/grafanactl/internal/config"
+	"github.com/grafana/gcx/internal/config"
 )
 
 func NewTransport(gCtx *config.Context) *http.Transport {

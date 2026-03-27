@@ -2,7 +2,7 @@
 
 **Created**: 2026-03-24
 **Status**: proposed
-**Bead**: grafanactl-experiments-ghh
+**Bead**: gcx-experiments-ghh
 **Supersedes**: none
 
 ## Context

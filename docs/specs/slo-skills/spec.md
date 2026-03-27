@@ -2,7 +2,7 @@
 type: feature-spec
 title: "SLO and Synthetic Monitoring Agent Skills"
 status: done
-research: docs/research/2026-03-07-grafanactl-synth-skills-for-agents.md
+research: docs/research/2026-03-07-gcx-synth-skills-for-agents.md
 created: 2026-03-09
 ---
 
@@ -10,9 +10,9 @@ created: 2026-03-09
 
 ## Problem Statement
 
-Operators using grafanactl through Claude Code agents lack guided workflows for two key observability domains: SLO monitoring and Synthetic Monitoring. Without skills, agents must discover commands ad-hoc, miss diagnostic steps, produce inconsistent output, and fail to route between related workflows (status check vs. investigation vs. management vs. optimization).
+Operators using gcx through Claude Code agents lack guided workflows for two key observability domains: SLO monitoring and Synthetic Monitoring. Without skills, agents must discover commands ad-hoc, miss diagnostic steps, produce inconsistent output, and fail to route between related workflows (status check vs. investigation vs. management vs. optimization).
 
-The SLO provider (`grafanactl slo`) has `definitions` and `reports` subcommands with `status`, `timeline`, `list`, `get`, `push`, `pull`, and `delete` operations. The Synthetic Monitoring provider (`grafanactl synth`) has `checks` and `probes` subcommands with equivalent operations. Both providers support Prometheus metric queries via `grafanactl query`. No agent skills exist for either domain today.
+The SLO provider (`gcx slo`) has `definitions` and `reports` subcommands with `status`, `timeline`, `list`, `get`, `push`, `pull`, and `delete` operations. The Synthetic Monitoring provider (`gcx synth`) has `checks` and `probes` subcommands with equivalent operations. Both providers support Prometheus metric queries via `gcx query`. No agent skills exist for either domain today.
 
 The current workaround is for agents to read CLAUDE.md, guess which commands to run, and produce ad-hoc analysis without structured failure mode classification or cross-skill routing. For SLO management, users must manually construct YAML definitions from scratch with no guided workflow.
 
@@ -35,9 +35,9 @@ The current workaround is for agents to read CLAUDE.md, guess which commands to 
 
 ### Out of Scope
 
-- **New grafanactl CLI commands beyond flag standardization**: This spec covers agent skills (SKILL.md files) and the flag standardization code change, not other Go code changes. The investigation log identifies gaps (e.g., `slo status <uid>` shortcut, SLO-to-alert-rule mapping) but implementing those commands is separate work.
-- **SLO Reports management skill**: Reports (`grafanactl slo reports`) are a secondary resource type. The slo-check-status skill covers report status as a supporting step, but a dedicated reports management skill is deferred.
-- **Probe management skill**: `grafanactl synth probes list` is a supporting command embedded within other skills, not a standalone workflow.
+- **New gcx CLI commands beyond flag standardization**: This spec covers agent skills (SKILL.md files) and the flag standardization code change, not other Go code changes. The investigation log identifies gaps (e.g., `slo status <uid>` shortcut, SLO-to-alert-rule mapping) but implementing those commands is separate work.
+- **SLO Reports management skill**: Reports (`gcx slo reports`) are a secondary resource type. The slo-check-status skill covers report status as a supporting step, but a dedicated reports management skill is deferred.
+- **Probe management skill**: `gcx synth probes list` is a supporting command embedded within other skills, not a standalone workflow.
 - **Multi-HTTP, Browser, and Scripted check type YAML examples**: The check-types.md reference file covers HTTP, Ping, DNS, TCP, and Traceroute. Complex check types (MultiHTTP, Browser, Scripted) have undocumented `settings` map structures and are deferred.
 - **CLAUDE.md modifications**: The existing CLAUDE.md already documents provider architecture. Skills MUST NOT duplicate that content.
 - **Automated SLO objective calculation**: The slo-optimize skill provides advisory recommendations, not automated changes. It MUST NOT modify SLO definitions without explicit user approval.
@@ -49,14 +49,14 @@ The current workaround is for agents to read CLAUDE.md, guess which commands to 
 | Number of SLO skills | 4 (manage, check-status, investigate, optimize) | One skill per distinct user intent. Different triggers, workflow shapes, and output modes. Matches the 4 SLO use-cases identified by the user. | User feedback |
 | Number of SM skills | 3 (status, investigate, manage) | One skill per distinct user intent. Different triggers, workflow shapes (linear vs. decision-branching), and output modes. | Research report Section 2 |
 | Skill naming convention | `slo-manage`, `slo-check-status`, `slo-investigate`, `slo-optimize`, `synth-check-status`, `synth-investigate-check`, `synth-manage-checks` | `slo-` and `synth-` prefixes group skills by domain. Verb-noun pattern follows existing `grafana-investigate-alert`. | Existing skill naming in `.claude/skills/` |
-| Allowed tools for slo-manage | `[grafanactl, Bash, Read, Write, Edit]` | This skill creates and modifies YAML SLO definition files on disk, requiring file tools. | Analogous to synth-manage-checks |
-| Allowed tools for slo-check-status | `[grafanactl, Bash]` | Read-only status queries require no file manipulation. | Existing skill patterns |
-| Allowed tools for slo-investigate | `[grafanactl, Bash]` | Investigation is read-only: queries, status checks, alert rule inspection. | Investigation log |
-| Allowed tools for slo-optimize | `[grafanactl, Bash]` | Optimization analysis is read-only. If the user approves changes, the agent routes to slo-manage. | User feedback |
-| Allowed tools for synth-manage-checks | `[grafanactl, Bash, Read, Write, Edit]` | This skill creates and modifies YAML check definition files on disk, requiring file tools. | Research report Section 5 |
+| Allowed tools for slo-manage | `[gcx, Bash, Read, Write, Edit]` | This skill creates and modifies YAML SLO definition files on disk, requiring file tools. | Analogous to synth-manage-checks |
+| Allowed tools for slo-check-status | `[gcx, Bash]` | Read-only status queries require no file manipulation. | Existing skill patterns |
+| Allowed tools for slo-investigate | `[gcx, Bash]` | Investigation is read-only: queries, status checks, alert rule inspection. | Investigation log |
+| Allowed tools for slo-optimize | `[gcx, Bash]` | Optimization analysis is read-only. If the user approves changes, the agent routes to slo-manage. | User feedback |
+| Allowed tools for synth-manage-checks | `[gcx, Bash, Read, Write, Edit]` | This skill creates and modifies YAML check definition files on disk, requiring file tools. | Research report Section 5 |
 | Output format convention | Default (table/graph) for user display, `-o json` for agent processing | Follows established pattern from `grafana-investigate-alert` skill. Agent mode auto-selects JSON but explicit `-o` flags override. | Research report Section 6 |
-| slo-investigate workflow source | Investigation log workflow (definition -> raw metrics -> dimension breakdown -> alert rules -> runbook) | Real-world validated workflow, proven with grafanactl commands. | Investigation log |
-| Query time flags | Standardize on `--from`/`--to` + `--window` convenience shorthand | All timeline commands support `--from`/`--to` (explicit range) and `--window` (convenience: `--window 1h` = `--from now-1h --to now`). SLO timeline gains both (replacing `--start`/`--end`). SM timeline already has `--window`, gains `--from`/`--to`. `grafanactl query` already has `--from`/`--to`. | User feedback + codebase analysis |
+| slo-investigate workflow source | Investigation log workflow (definition -> raw metrics -> dimension breakdown -> alert rules -> runbook) | Real-world validated workflow, proven with gcx commands. | Investigation log |
+| Query time flags | Standardize on `--from`/`--to` + `--window` convenience shorthand | All timeline commands support `--from`/`--to` (explicit range) and `--window` (convenience: `--window 1h` = `--from now-1h --to now`). SLO timeline gains both (replacing `--start`/`--end`). SM timeline already has `--window`, gains `--from`/`--to`. `gcx query` already has `--from`/`--to`. | User feedback + codebase analysis |
 | SLO push semantics | UUID present = update (if exists on server) or create (if not); UUID absent = always create | Matches the `upsertSLO` logic in `commands.go`. Different from SM checks which use numeric vs. non-numeric metadata.name. | Codebase analysis (`commands.go`) |
 | slo-optimize scope | Advisory only — recommend changes, never auto-apply | Optimization suggestions (objective tuning, label additions, alerting sensitivity) require human judgment. Agent routes to slo-manage for execution. | User feedback |
 | Failure mode reference file | 8 documented failure modes in references/failure-modes.md | Covers target down, regional/CDN, SSL/TLS, DNS, timeout, content/assertion, private probe infra, rate limiting. | Research report Section 4 |
@@ -69,15 +69,15 @@ The current workaround is for agents to read CLAUDE.md, guess which commands to 
 
 **FR-002**: Each skill description MUST include negative routing text directing to sibling skills for adjacent use cases (e.g., "For creating or modifying SLOs, use slo-manage instead", "For investigating a breaching SLO, use slo-investigate instead").
 
-**FR-003**: Each skill MUST include a "Core Principles" section containing: (1) use grafanactl commands, do not call APIs directly; (2) trust the user's expertise; (3) use `-o json` for agent processing, default format for user display; (4) show graphs for time-series data.
+**FR-003**: Each skill MUST include a "Core Principles" section containing: (1) use gcx commands, do not call APIs directly; (2) trust the user's expertise; (3) use `-o json` for agent processing, default format for user display; (4) show graphs for time-series data.
 
 **FR-004**: Each skill MUST include an "Error Handling" section with common errors collected at the end of the skill file, not interleaved in workflow steps.
 
-**FR-005**: All skills MUST use `--from`/`--to` as the primary time range flags across all commands (`grafanactl query`, `grafanactl slo definitions timeline`, `grafanactl slo reports timeline`, `grafanactl synth checks timeline`). Skills MAY use `--window` as a convenience shorthand where appropriate (`--window 1h` is equivalent to `--from now-1h --to now`).
+**FR-005**: All skills MUST use `--from`/`--to` as the primary time range flags across all commands (`gcx query`, `gcx slo definitions timeline`, `gcx slo reports timeline`, `gcx synth checks timeline`). Skills MAY use `--window` as a convenience shorthand where appropriate (`--window 1h` is equivalent to `--from now-1h --to now`).
 
-**FR-006**: Skills MUST NOT ask the user for the Prometheus datasource UID unless auto-discovery fails. The resolution order is: flag -> config -> auto-discovery via `grafanactl datasources list --type prometheus`.
+**FR-006**: Skills MUST NOT ask the user for the Prometheus datasource UID unless auto-discovery fails. The resolution order is: flag -> config -> auto-discovery via `gcx datasources list --type prometheus`.
 
-**FR-007**: Skills MUST NOT explain what grafanactl, SLOs, or Synthetic Monitoring are. The user is assumed to be an experienced operator.
+**FR-007**: Skills MUST NOT explain what gcx, SLOs, or Synthetic Monitoring are. The user is assumed to be an experienced operator.
 
 ### Flag Standardization (Code Change)
 
@@ -107,29 +107,29 @@ The current workaround is for agents to read CLAUDE.md, guess which commands to 
 
 **FR-013**: The skill MUST include a `references/slo-templates.md` file containing per-query-type YAML templates with inline comments explaining each field, including: name, description, query (type-specific), objectives (value as 0-1, window), labels, alerting (fastBurn/slowBurn with annotations), destinationDatasource, and folder.
 
-**FR-014**: The skill MUST use `grafanactl slo definitions push <file> --dry-run` before `grafanactl slo definitions push <file>` for all create and update operations.
+**FR-014**: The skill MUST use `gcx slo definitions push <file> --dry-run` before `gcx slo definitions push <file>` for all create and update operations.
 
 **FR-015**: The skill MUST document SLO push semantics: UUID present means upsert (update if exists on server, create if not); UUID absent means always create. After creation, the server assigns a UUID.
 
-**FR-016**: The skill MUST use `grafanactl slo definitions pull -d <dir>` for pulling (writes to `<dir>/SLO/<uuid>.yaml`) and `grafanactl slo definitions delete UUID... [-f]` for deletion.
+**FR-016**: The skill MUST use `gcx slo definitions pull -d <dir>` for pulling (writes to `<dir>/SLO/<uuid>.yaml`) and `gcx slo definitions delete UUID... [-f]` for deletion.
 
 **FR-017**: The skill MUST include configuration guidance: objective value ranges (0.9 to 0.9999 typical), window options (7d, 14d, 28d, 30d), alerting best practices (fastBurn for pages, slowBurn for tickets), and label conventions.
 
-**FR-018**: The skill MUST resolve the destination datasource UID by running `grafanactl datasources list --type prometheus` if the user does not specify one.
+**FR-018**: The skill MUST resolve the destination datasource UID by running `gcx datasources list --type prometheus` if the user does not specify one.
 
 ### slo-check-status
 
-**FR-020**: The slo-check-status skill MUST use `grafanactl slo definitions list` to show all SLOs with UUID, name, target, window, and status.
+**FR-020**: The slo-check-status skill MUST use `gcx slo definitions list` to show all SLOs with UUID, name, target, window, and status.
 
-**FR-021**: The skill MUST use `grafanactl slo definitions status` (no UUID) to show SLI, error budget, and health status for all SLOs in a table.
+**FR-021**: The skill MUST use `gcx slo definitions status` (no UUID) to show SLI, error budget, and health status for all SLOs in a table.
 
-**FR-022**: The skill MUST use `grafanactl slo definitions status <UUID> -o wide` when the user asks about a specific SLO, to include BURN_RATE, SLI_1H, and SLI_1D columns.
+**FR-022**: The skill MUST use `gcx slo definitions status <UUID> -o wide` when the user asks about a specific SLO, to include BURN_RATE, SLI_1H, and SLI_1D columns.
 
-**FR-023**: The skill MUST conditionally show timeline when the user asks about trends or when any SLO shows BREACHING status, using `grafanactl slo definitions timeline [UUID] --from <start> --to <end>`.
+**FR-023**: The skill MUST conditionally show timeline when the user asks about trends or when any SLO shows BREACHING status, using `gcx slo definitions timeline [UUID] --from <start> --to <end>`.
 
 **FR-024**: The skill MUST interpret status values: OK (SLI >= objective), BREACHING (SLI < objective), NODATA (no Prometheus metrics from recording rules), and lifecycle states (Creating, Updating, Deleting, Error).
 
-**FR-025**: The skill MUST support SLO reports status via `grafanactl slo reports status [UUID]` when the user asks about SLO reports or combined SLO health.
+**FR-025**: The skill MUST support SLO reports status via `gcx slo reports status [UUID]` when the user asks about SLO reports or combined SLO health.
 
 **FR-026**: The skill MUST route to slo-investigate when a specific SLO is BREACHING and the user wants to know why, and route to slo-optimize when the user asks about improvement suggestions.
 
@@ -139,13 +139,13 @@ The current workaround is for agents to read CLAUDE.md, guess which commands to 
 
 **FR-031**: The skill MUST implement early exit: if SLO status is OK, report health metrics and stop. If NODATA, branch to NODATA diagnosis (check destination datasource configuration and recording rule health).
 
-**FR-032**: The skill MUST use `grafanactl slo definitions get <UUID> -o json` to retrieve the full SLO definition including queries, objectives, alerting config, and annotations.
+**FR-032**: The skill MUST use `gcx slo definitions get <UUID> -o json` to retrieve the full SLO definition including queries, objectives, alerting config, and annotations.
 
-**FR-033**: When investigating a breaching SLO with a ratio query, the skill MUST extract the success/total metric selectors and groupByLabels from the SLO definition and run `grafanactl query -d <datasource> -e '<query>' --from now-1h --to now --step 1m` to identify the error dimension (e.g., by cluster, by status code, by endpoint).
+**FR-033**: When investigating a breaching SLO with a ratio query, the skill MUST extract the success/total metric selectors and groupByLabels from the SLO definition and run `gcx query -d <datasource> -e '<query>' --from now-1h --to now --step 1m` to identify the error dimension (e.g., by cluster, by status code, by endpoint).
 
 **FR-034**: When investigating a breaching SLO with a freeform query, the skill MUST use the raw PromQL expression from the definition and add dimensional breakdown using `by (<label>)` clauses.
 
-**FR-035**: The skill MUST search for SLO-generated alert rules using `grafanactl alert rules list -o json` filtered by the SLO name pattern (e.g., `jq 'select(.name | test("<slo-name>"; "i"))'`).
+**FR-035**: The skill MUST search for SLO-generated alert rules using `gcx alert rules list -o json` filtered by the SLO name pattern (e.g., `jq 'select(.name | test("<slo-name>"; "i"))'`).
 
 **FR-036**: The skill MUST extract runbook and dashboard URLs from SLO annotations and alerting annotations. When a GitHub URL is found and `gh` is available, the skill MUST fetch runbook content using `gh api`.
 
@@ -159,9 +159,9 @@ The current workaround is for agents to read CLAUDE.md, guess which commands to 
 
 **FR-040**: The slo-optimize skill MUST retrieve the SLO definition and timeline data over a configurable window (default: 28 days, matching common SLO windows).
 
-**FR-041**: The skill MUST use `grafanactl slo definitions timeline <UUID> --from now-28d --to now` to fetch historical SLI trends.
+**FR-041**: The skill MUST use `gcx slo definitions timeline <UUID> --from now-28d --to now` to fetch historical SLI trends.
 
-**FR-042**: The skill MUST use `grafanactl slo definitions status <UUID> -o wide` to get current SLI, budget, burn rate, and 1h/1d SLI snapshots.
+**FR-042**: The skill MUST use `gcx slo definitions status <UUID> -o wide` to get current SLI, budget, burn rate, and 1h/1d SLI snapshots.
 
 **FR-043**: The skill MUST analyze timeline data to detect degradation patterns: (a) sustained decline (SLI trending downward over 7+ days), (b) periodic dips (recurring pattern at specific times), (c) sudden drops (step-change in SLI), (d) budget exhaustion rate (projecting when budget will reach 0).
 
@@ -177,11 +177,11 @@ The current workaround is for agents to read CLAUDE.md, guess which commands to 
 
 ### synth-check-status
 
-**FR-050**: The synth-check-status skill MUST use `grafanactl synth checks list` to show all checks with ID, JOB, TARGET, and TYPE.
+**FR-050**: The synth-check-status skill MUST use `gcx synth checks list` to show all checks with ID, JOB, TARGET, and TYPE.
 
-**FR-051**: The skill MUST use `grafanactl synth checks status [ID]` to show SUCCESS%, STATUS (OK/FAILING/NODATA), and PROBES_UP for all or a specific check.
+**FR-051**: The skill MUST use `gcx synth checks status [ID]` to show SUCCESS%, STATUS (OK/FAILING/NODATA), and PROBES_UP for all or a specific check.
 
-**FR-052**: The skill MUST conditionally show timeline when the user asks about trends or when status shows FAILING, using `grafanactl synth checks timeline <ID> --window <window>`.
+**FR-052**: The skill MUST conditionally show timeline when the user asks about trends or when status shows FAILING, using `gcx synth checks timeline <ID> --window <window>`.
 
 **FR-053**: The skill MUST interpret status values: OK (success >= 50%) means healthy; FAILING (success < 50%) means more than half of probes failing and suggests investigation; NODATA means no Prometheus data.
 
@@ -195,7 +195,7 @@ The current workaround is for agents to read CLAUDE.md, guess which commands to 
 
 **FR-062**: The skill MUST analyze timeline data to classify failure scope: all probes failing (target/service issue), subset of probes failing (regional/network issue), intermittent failures (flapping/timeout), recent onset (change-related).
 
-**FR-063**: The skill MUST use `grafanactl synth probes list` to map probe names to regions for geographic failure analysis.
+**FR-063**: The skill MUST use `gcx synth probes list` to map probe names to regions for geographic failure analysis.
 
 **FR-064**: The skill MUST include a `references/failure-modes.md` file documenting 8 failure modes with columns: Failure Mode, Signals, Likely Cause, Next Action. The 8 modes are: target down, regional/CDN, SSL/TLS, DNS resolution, timeout, content/assertion, private probe infra, rate limiting.
 
@@ -203,7 +203,7 @@ The current workaround is for agents to read CLAUDE.md, guess which commands to 
 
 **FR-066**: The skill MUST provide a structured output format template containing: check name/target, type, status, success rate, window analyzed, timeline graph, failure pattern classification, affected probes (count and list), onset time/duration, diagnosis text, and numbered next actions.
 
-**FR-067**: When a datasource is available for deeper queries, the skill MUST use `grafanactl query -d <datasource-uid> -e '<promql>' --from <start> --to <end> --step <step>` with patterns from the sm-promql-patterns.md reference.
+**FR-067**: When a datasource is available for deeper queries, the skill MUST use `gcx query -d <datasource-uid> -e '<promql>' --from <start> --to <end> --step <step>` with patterns from the sm-promql-patterns.md reference.
 
 ### synth-manage-checks
 
@@ -211,15 +211,15 @@ The current workaround is for agents to read CLAUDE.md, guess which commands to 
 
 **FR-071**: For creating checks, the skill MUST include a decision table for selecting check type based on target type and test layer: URL -> HTTP, hostname/IP -> Ping, domain -> DNS, host:port -> TCP, URL with routing -> Traceroute.
 
-**FR-072**: The skill MUST use `grafanactl synth probes list` to show available probes and recommend selecting a minimum of 3 geographically distributed probes.
+**FR-072**: The skill MUST use `gcx synth probes list` to show available probes and recommend selecting a minimum of 3 geographically distributed probes.
 
 **FR-073**: The skill MUST provide a YAML template for check creation using the Kubernetes-compatible resource model with `apiVersion: syntheticmonitoring.ext.grafana.app/v1alpha1`, `kind: Check`, and the correct `spec` structure (job, target, frequency, timeout, enabled, labels, settings, probes, basicMetricsOnly, alertSensitivity).
 
-**FR-074**: The skill MUST use `grafanactl synth checks push <file> --dry-run` before `grafanactl synth checks push <file>` for all create and update operations.
+**FR-074**: The skill MUST use `gcx synth checks push <file> --dry-run` before `gcx synth checks push <file>` for all create and update operations.
 
 **FR-075**: The skill MUST document that push with numeric `metadata.name` means update, non-numeric means create. After creation, the tool updates the local file with the server-assigned ID.
 
-**FR-076**: The skill MUST use `grafanactl synth checks pull -d <dir>` for pulling and `grafanactl synth checks delete <ID...>` for deletion (`-f` to skip confirmation).
+**FR-076**: The skill MUST use `gcx synth checks pull -d <dir>` for pulling and `gcx synth checks delete <ID...>` for deletion (`-f` to skip confirmation).
 
 **FR-077**: The skill MUST include configuration guidance: frequency ranges (critical: 10-60s, standard: 1-5min), timeout (must be < frequency), alertSensitivity levels ("high" = >5%, "medium" = >10%, "low" = >25%), basicMetricsOnly tradeoff.
 
@@ -245,20 +245,20 @@ The current workaround is for agents to read CLAUDE.md, guess which commands to 
   WHEN inspected
   THEN it MUST contain a "Core Principles" section, an error handling section, and an output format section
 
-- GIVEN any skill that references a time-range command (`grafanactl query`, `grafanactl slo definitions timeline`, `grafanactl slo reports timeline`, `grafanactl synth checks timeline`)
+- GIVEN any skill that references a time-range command (`gcx query`, `gcx slo definitions timeline`, `gcx slo reports timeline`, `gcx synth checks timeline`)
   WHEN the command is written
   THEN it MUST use `--from`/`--to` or `--window` flags (not `--start`/`--end`)
 
-- GIVEN the grafanactl codebase after the prerequisite code change
-  WHEN `grafanactl slo definitions timeline --from now-7d --to now` is run
+- GIVEN the gcx codebase after the prerequisite code change
+  WHEN `gcx slo definitions timeline --from now-7d --to now` is run
   THEN it MUST work identically to the current `--start now-7d --end now` behavior
 
-- GIVEN the grafanactl codebase after the prerequisite code change
-  WHEN `grafanactl slo definitions timeline --window 7d` is run
+- GIVEN the gcx codebase after the prerequisite code change
+  WHEN `gcx slo definitions timeline --window 7d` is run
   THEN it MUST be equivalent to `--from now-7d --to now`
 
-- GIVEN the grafanactl codebase after the prerequisite code change
-  WHEN `grafanactl synth checks timeline --from now-1h --to now` is run
+- GIVEN the gcx codebase after the prerequisite code change
+  WHEN `gcx synth checks timeline --from now-1h --to now` is run
   THEN it MUST produce the same results as the current `--window 1h` behavior
 
 ### Flag Standardization (Code Change)
@@ -303,15 +303,15 @@ The current workaround is for agents to read CLAUDE.md, guess which commands to 
 
 - GIVEN a user asking to update an existing SLO's objective
   WHEN the slo-manage skill is triggered
-  THEN the agent MUST pull the current definition with `grafanactl slo definitions get <UUID>`, modify the requested fields, dry-run push, and then push
+  THEN the agent MUST pull the current definition with `gcx slo definitions get <UUID>`, modify the requested fields, dry-run push, and then push
 
 - GIVEN a user asking "pull my SLOs"
   WHEN the slo-manage skill is triggered
-  THEN the agent MUST run `grafanactl slo definitions pull -d <dir>` and report the output directory
+  THEN the agent MUST run `gcx slo definitions pull -d <dir>` and report the output directory
 
 - GIVEN a user asking to delete an SLO
   WHEN the slo-manage skill is triggered
-  THEN the agent MUST confirm the SLO identity and run `grafanactl slo definitions delete <UUID> -f`
+  THEN the agent MUST confirm the SLO identity and run `gcx slo definitions delete <UUID> -f`
 
 - GIVEN an SLO creation workflow
   WHEN the YAML file is being built
@@ -327,17 +327,17 @@ The current workaround is for agents to read CLAUDE.md, guess which commands to 
 
 - GIVEN the slo-manage skill
   WHEN inspected for allowed-tools
-  THEN it MUST list `[grafanactl, Bash, Read, Write, Edit]`
+  THEN it MUST list `[gcx, Bash, Read, Write, Edit]`
 
 ### slo-check-status
 
 - GIVEN a user asking "how are my SLOs doing"
   WHEN the slo-check-status skill is triggered
-  THEN the agent MUST run `grafanactl slo definitions status` and present a table of SLO health
+  THEN the agent MUST run `gcx slo definitions status` and present a table of SLO health
 
 - GIVEN a user asking about a specific SLO's status
   WHEN the slo-check-status skill is triggered
-  THEN the agent MUST run `grafanactl slo definitions status <UUID> -o wide` to show SLI, budget, burn rate, SLI_1H, and SLI_1D
+  THEN the agent MUST run `gcx slo definitions status <UUID> -o wide` to show SLI, budget, burn rate, SLI_1H, and SLI_1D
 
 - GIVEN any SLO with status BREACHING in the status output
   WHEN the status step completes
@@ -345,7 +345,7 @@ The current workaround is for agents to read CLAUDE.md, guess which commands to 
 
 - GIVEN a user asking about SLO trends
   WHEN the slo-check-status skill is triggered
-  THEN the agent MUST run `grafanactl slo definitions timeline [UUID]` with graph output
+  THEN the agent MUST run `gcx slo definitions timeline [UUID]` with graph output
 
 - GIVEN an SLO with status NODATA
   WHEN the status is displayed
@@ -363,7 +363,7 @@ The current workaround is for agents to read CLAUDE.md, guess which commands to 
 
 - GIVEN an SLO with a ratio query and status BREACHING
   WHEN the investigation reaches dimensional breakdown
-  THEN the agent MUST extract the success/total metric selectors and groupByLabels from the definition and run `grafanactl query` with those selectors grouped by the relevant dimensions
+  THEN the agent MUST extract the success/total metric selectors and groupByLabels from the definition and run `gcx query` with those selectors grouped by the relevant dimensions
 
 - GIVEN an SLO with a freeform query and status BREACHING
   WHEN the investigation reaches dimensional breakdown
@@ -427,7 +427,7 @@ The current workaround is for agents to read CLAUDE.md, guess which commands to 
 
 - GIVEN a user asking "are my checks healthy"
   WHEN the synth-check-status skill is triggered
-  THEN the agent MUST run `grafanactl synth checks list` followed by `grafanactl synth checks status`
+  THEN the agent MUST run `gcx synth checks list` followed by `gcx synth checks status`
 
 - GIVEN a check with status FAILING
   WHEN the status step completes
@@ -435,7 +435,7 @@ The current workaround is for agents to read CLAUDE.md, guess which commands to 
 
 - GIVEN a user asking about trends for a specific check
   WHEN the synth-check-status skill is triggered
-  THEN the agent MUST run `grafanactl synth checks timeline <ID>` with graph output
+  THEN the agent MUST run `gcx synth checks timeline <ID>` with graph output
 
 ### synth-investigate-check
 
@@ -457,7 +457,7 @@ The current workaround is for agents to read CLAUDE.md, guess which commands to 
 
 - GIVEN timeline data showing a subset of probes failing
   WHEN the triage step analyzes the data
-  THEN the agent MUST classify this as a "regional/network" failure pattern and map probe names to regions using `grafanactl synth probes list`
+  THEN the agent MUST classify this as a "regional/network" failure pattern and map probe names to regions using `gcx synth probes list`
 
 - GIVEN the references/failure-modes.md file
   WHEN inspected
@@ -475,7 +475,7 @@ The current workaround is for agents to read CLAUDE.md, guess which commands to 
 
 - GIVEN a user asking "pull my SM checks"
   WHEN the synth-manage-checks skill is triggered
-  THEN the agent MUST run `grafanactl synth checks pull -d <dir>`
+  THEN the agent MUST run `gcx synth checks pull -d <dir>`
 
 - GIVEN a check creation workflow
   WHEN the YAML file is being built
@@ -491,13 +491,13 @@ The current workaround is for agents to read CLAUDE.md, guess which commands to 
 
 - GIVEN the synth-manage-checks skill
   WHEN inspected for allowed-tools
-  THEN it MUST list `[grafanactl, Bash, Read, Write, Edit]` (not just `[grafanactl, Bash]`)
+  THEN it MUST list `[gcx, Bash, Read, Write, Edit]` (not just `[gcx, Bash]`)
 
 ## Negative Constraints
 
-- Skills MUST NOT call Grafana APIs directly (e.g., via `curl` or HTTP libraries). All Grafana interaction MUST go through `grafanactl` commands.
+- Skills MUST NOT call Grafana APIs directly (e.g., via `curl` or HTTP libraries). All Grafana interaction MUST go through `gcx` commands.
 
-- Skills MUST NOT explain what grafanactl is, what SLOs are, or what Synthetic Monitoring is. The user is an experienced operator.
+- Skills MUST NOT explain what gcx is, what SLOs are, or what Synthetic Monitoring is. The user is an experienced operator.
 
 - Skills MUST NOT ask the user for the Prometheus datasource UID as a first step. The skill MUST attempt auto-resolution first and only ask if auto-discovery fails.
 
@@ -541,9 +541,9 @@ The current workaround is for agents to read CLAUDE.md, guess which commands to 
 
 - [RESOLVED] How many SLO skills: User feedback specifies 4 distinct intents (manage, check-status, investigate, optimize). Each has different triggers, workflow shapes, and output requirements.
 
-- [DEFERRED] Whether to add a `slo status <uid>` shortcut command: The investigation log identifies this gap. The slo-investigate skill works around it using `grafanactl slo definitions status <UUID>`. CLI improvement is separate work.
+- [DEFERRED] Whether to add a `slo status <uid>` shortcut command: The investigation log identifies this gap. The slo-investigate skill works around it using `gcx slo definitions status <UUID>`. CLI improvement is separate work.
 
-- [DEFERRED] How to handle SLO-to-alert-rule mapping without a dedicated command: The slo-investigate skill uses pattern matching on alert rule names (`grafanactl alert rules list -o json | jq select(.name | test("<slo-name>"))`). A future `grafanactl slo alerts <uid>` command would eliminate this workaround.
+- [DEFERRED] How to handle SLO-to-alert-rule mapping without a dedicated command: The slo-investigate skill uses pattern matching on alert rule names (`gcx alert rules list -o json | jq select(.name | test("<slo-name>"))`). A future `gcx slo alerts <uid>` command would eliminate this workaround.
 
 - [DEFERRED] Whether MultiHTTP, Browser, and Scripted check type examples should be added to check-types.md: Requires testing with real checks to verify undocumented settings map structures. Will iterate after initial skill delivery.
 

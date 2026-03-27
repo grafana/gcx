@@ -54,11 +54,11 @@ Add the `Datasources map[string]string` field to the `Context` struct in `intern
   THEN it returns `""` (empty string, caller handles error)
 
 - GIVEN a fresh config
-  WHEN a user runs `grafanactl config set contexts.myctx.datasources.prometheus prom-uid-123`
+  WHEN a user runs `gcx config set contexts.myctx.datasources.prometheus prom-uid-123`
   THEN the config file contains a `datasources` section under `myctx` with `prometheus: prom-uid-123` (FR-021)
 
 - GIVEN a config with `datasources.loki` set
-  WHEN a user runs `grafanactl config unset contexts.myctx.datasources.loki`
+  WHEN a user runs `gcx config unset contexts.myctx.datasources.loki`
   THEN the `loki` key is removed from the `datasources` section (FR-021)
 
 ---
@@ -72,30 +72,30 @@ Add the `Datasources map[string]string` field to the `Context` struct in `intern
 **Depends on**: T1
 **Type**: task
 
-Create the `cmd/grafanactl/datasources/query/` package with the full command hierarchy. Implement the `query` group command (FR-001, FR-014), and all five subcommands: `prometheus` (FR-003, FR-004, FR-006, FR-007, FR-008, FR-010), `loki` (FR-003, FR-004, FR-006, FR-007, FR-008, FR-010, FR-019), `pyroscope` (FR-003, FR-004, FR-006, FR-007, FR-008, FR-009, FR-010), `tempo` (FR-018), and `generic` (FR-003, FR-005, FR-012, FR-013, FR-017). Move `ParseTime`, `ParseDuration` from `cmd/grafanactl/query/time.go` and the codecs from `command.go`/`graph.go` into the new package. Each typed subcommand uses positional args (`DATASOURCE_UID EXPR`), calls the shared resolver from T1 for default UID resolution, validates datasource type via API, and delegates to the existing query client. Implement `--window` mutual exclusion with `--from`/`--to` (FR-008). Implement `--limit` on `loki` and `generic` (FR-019, FR-013). Add unit tests for flag validation, window/from/to exclusion, and arg parsing.
+Create the `cmd/gcx/datasources/query/` package with the full command hierarchy. Implement the `query` group command (FR-001, FR-014), and all five subcommands: `prometheus` (FR-003, FR-004, FR-006, FR-007, FR-008, FR-010), `loki` (FR-003, FR-004, FR-006, FR-007, FR-008, FR-010, FR-019), `pyroscope` (FR-003, FR-004, FR-006, FR-007, FR-008, FR-009, FR-010), `tempo` (FR-018), and `generic` (FR-003, FR-005, FR-012, FR-013, FR-017). Move `ParseTime`, `ParseDuration` from `cmd/gcx/query/time.go` and the codecs from `command.go`/`graph.go` into the new package. Each typed subcommand uses positional args (`DATASOURCE_UID EXPR`), calls the shared resolver from T1 for default UID resolution, validates datasource type via API, and delegates to the existing query client. Implement `--window` mutual exclusion with `--from`/`--to` (FR-008). Implement `--limit` on `loki` and `generic` (FR-019, FR-013). Add unit tests for flag validation, window/from/to exclusion, and arg parsing.
 
 **Deliverables:**
-- `cmd/grafanactl/datasources/query/command.go` — group command + shared helpers
-- `cmd/grafanactl/datasources/query/prometheus.go` — prometheus subcommand
-- `cmd/grafanactl/datasources/query/loki.go` — loki subcommand
-- `cmd/grafanactl/datasources/query/pyroscope.go` — pyroscope subcommand
-- `cmd/grafanactl/datasources/query/tempo.go` — tempo stub
-- `cmd/grafanactl/datasources/query/generic.go` — generic auto-detect
-- `cmd/grafanactl/datasources/query/codecs.go` — table/wide/graph codecs
-- `cmd/grafanactl/datasources/query/time.go` — time parsing (moved)
-- `cmd/grafanactl/datasources/query/time_test.go` — time tests (moved)
+- `cmd/gcx/datasources/query/command.go` — group command + shared helpers
+- `cmd/gcx/datasources/query/prometheus.go` — prometheus subcommand
+- `cmd/gcx/datasources/query/loki.go` — loki subcommand
+- `cmd/gcx/datasources/query/pyroscope.go` — pyroscope subcommand
+- `cmd/gcx/datasources/query/tempo.go` — tempo stub
+- `cmd/gcx/datasources/query/generic.go` — generic auto-detect
+- `cmd/gcx/datasources/query/codecs.go` — table/wide/graph codecs
+- `cmd/gcx/datasources/query/time.go` — time parsing (moved)
+- `cmd/gcx/datasources/query/time_test.go` — time tests (moved)
 
 **Acceptance criteria:**
 - GIVEN the CLI is built
-  WHEN a user runs `grafanactl datasources query --help`
+  WHEN a user runs `gcx datasources query --help`
   THEN the output lists `prometheus`, `loki`, `pyroscope`, `tempo`, and `generic` as available subcommands (FR-002)
 
 - GIVEN a valid Prometheus datasource UID `abc123`
-  WHEN a user runs `grafanactl datasources query prometheus abc123 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m`
+  WHEN a user runs `gcx datasources query prometheus abc123 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m`
   THEN the command executes a range query and prints results in table format (FR-003, FR-007)
 
 - GIVEN a valid Prometheus datasource UID `abc123`
-  WHEN a user runs `grafanactl datasources query prometheus abc123 'up' --window 1h`
+  WHEN a user runs `gcx datasources query prometheus abc123 'up' --window 1h`
   THEN the command executes a range query with `from=now-1h` and `to=now` (FR-008)
 
 - GIVEN a user provides both `--window` and `--from`
@@ -103,35 +103,35 @@ Create the `cmd/grafanactl/datasources/query/` package with the full command hie
   THEN the command returns an error stating that `--window` is mutually exclusive with `--from` and `--to` (FR-008)
 
 - GIVEN a datasource UID `prom-001` that is type `prometheus`
-  WHEN a user runs `grafanactl datasources query loki prom-001 '{job="x"}'`
+  WHEN a user runs `gcx datasources query loki prom-001 '{job="x"}'`
   THEN the command returns an error containing "datasource prom-001 is type prometheus, not loki" (FR-006)
 
 - GIVEN a Loki datasource UID `loki-001`
-  WHEN a user runs `grafanactl datasources query loki loki-001 '{job="varlogs"}' --from now-1h --to now --limit 500`
+  WHEN a user runs `gcx datasources query loki loki-001 '{job="varlogs"}' --from now-1h --to now --limit 500`
   THEN the command executes a Loki log query with a limit of 500 (FR-019)
 
-- GIVEN a user runs `grafanactl datasources query prometheus`
+- GIVEN a user runs `gcx datasources query prometheus`
   WHEN `--profile-type` is passed as a flag
   THEN the command returns an "unknown flag" error (FR-009 negative constraint)
 
-- GIVEN a user runs `grafanactl datasources query prometheus`
+- GIVEN a user runs `gcx datasources query prometheus`
   WHEN `--limit` is passed as a flag
   THEN the command returns an "unknown flag" error (FR-019 scoping)
 
 - GIVEN a Pyroscope datasource UID `pyro-001`
-  WHEN a user runs `grafanactl datasources query pyroscope pyro-001 '{service_name="frontend"}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --from now-1h --to now`
+  WHEN a user runs `gcx datasources query pyroscope pyro-001 '{service_name="frontend"}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --from now-1h --to now`
   THEN the command executes a Pyroscope query (FR-009)
 
 - GIVEN the CLI is built
-  WHEN a user runs `grafanactl datasources query tempo`
+  WHEN a user runs `gcx datasources query tempo`
   THEN the command returns an error with message "tempo queries are not yet implemented" and exits with code 1 (FR-018)
 
 - GIVEN a datasource UID `any-001` of any supported type
-  WHEN a user runs `grafanactl datasources query generic any-001 'some_expr' --from now-1h --to now`
+  WHEN a user runs `gcx datasources query generic any-001 'some_expr' --from now-1h --to now`
   THEN the command auto-detects the datasource type and executes the appropriate query (FR-005, FR-012)
 
 - GIVEN the `generic` subcommand
-  WHEN a user runs `grafanactl datasources query generic` without a UID argument
+  WHEN a user runs `gcx datasources query generic` without a UID argument
   THEN the command returns an error requiring `DATASOURCE_UID` (FR-017)
 
 ---
@@ -143,24 +143,24 @@ Create the `cmd/grafanactl/datasources/query/` package with the full command hie
 **Depends on**: T1
 **Type**: task
 
-Replace all inline default datasource UID resolution in `cmd/grafanactl/datasources/prometheus.go` (3 commands: labels, metadata, targets), `cmd/grafanactl/datasources/loki.go` (2 commands: labels, series), and `cmd/grafanactl/datasources/pyroscope.go` (2 commands: profile-types, labels) with calls to `config.DefaultDatasourceUID(ctx, kind)` from T1. The observable behavior of these commands MUST NOT change — they gain support for the new `datasources` config section transparently.
+Replace all inline default datasource UID resolution in `cmd/gcx/datasources/prometheus.go` (3 commands: labels, metadata, targets), `cmd/gcx/datasources/loki.go` (2 commands: labels, series), and `cmd/gcx/datasources/pyroscope.go` (2 commands: profile-types, labels) with calls to `config.DefaultDatasourceUID(ctx, kind)` from T1. The observable behavior of these commands MUST NOT change — they gain support for the new `datasources` config section transparently.
 
 **Deliverables:**
-- `cmd/grafanactl/datasources/prometheus.go` — updated resolution in labels, metadata, targets commands
-- `cmd/grafanactl/datasources/loki.go` — updated resolution in labels, series commands
-- `cmd/grafanactl/datasources/pyroscope.go` — updated resolution in profile-types, labels commands
+- `cmd/gcx/datasources/prometheus.go` — updated resolution in labels, metadata, targets commands
+- `cmd/gcx/datasources/loki.go` — updated resolution in labels, series commands
+- `cmd/gcx/datasources/pyroscope.go` — updated resolution in profile-types, labels commands
 
 **Acceptance criteria:**
 - GIVEN a Grafana context with `datasources.prometheus` configured
-  WHEN a user runs `grafanactl datasources prometheus labels` (existing command)
+  WHEN a user runs `gcx datasources prometheus labels` (existing command)
   THEN the command uses the UID from `datasources.prometheus` via the shared resolver (FR-024)
 
 - GIVEN a Grafana context with only `default-loki-datasource` configured (no new section)
-  WHEN a user runs `grafanactl datasources loki labels`
+  WHEN a user runs `gcx datasources loki labels`
   THEN the command uses the legacy UID (FR-024 fallback behavior unchanged)
 
 - GIVEN a Grafana context with `datasources.pyroscope` configured
-  WHEN a user runs `grafanactl datasources pyroscope profile-types`
+  WHEN a user runs `gcx datasources pyroscope profile-types`
   THEN the command uses the UID from `datasources.pyroscope` via the shared resolver (FR-024)
 
 ---
@@ -197,24 +197,24 @@ Update the datasource UID resolution in `internal/providers/synth/checks/status.
 **Depends on**: T2, T3, T4
 **Type**: task
 
-Wire the new `query` group command into `cmd/grafanactl/datasources/command.go` via `cmd.AddCommand(query.Command())`. Remove the `rootCmd.AddCommand(query.Command())` line and the `query` import from `cmd/grafanactl/root/command.go` (FR-011). Run `GRAFANACTL_AGENT_MODE=false make all` to regenerate CLI docs and verify the build passes lint, tests, and doc generation (FR-016). Verify that the generated docs under `docs/reference/cli/` reflect the new hierarchy and do not contain a top-level `query` reference.
+Wire the new `query` group command into `cmd/gcx/datasources/command.go` via `cmd.AddCommand(query.Command())`. Remove the `rootCmd.AddCommand(query.Command())` line and the `query` import from `cmd/gcx/root/command.go` (FR-011). Run `GCX_AGENT_MODE=false make all` to regenerate CLI docs and verify the build passes lint, tests, and doc generation (FR-016). Verify that the generated docs under `docs/reference/cli/` reflect the new hierarchy and do not contain a top-level `query` reference.
 
 **Deliverables:**
-- `cmd/grafanactl/datasources/command.go` — add query subcommand import + registration
-- `cmd/grafanactl/root/command.go` — remove query import + registration
+- `cmd/gcx/datasources/command.go` — add query subcommand import + registration
+- `cmd/gcx/root/command.go` — remove query import + registration
 - `docs/reference/cli/` — regenerated docs (via `make docs`)
 
 **Acceptance criteria:**
 - GIVEN the CLI is built
-  WHEN a user runs `grafanactl query`
+  WHEN a user runs `gcx query`
   THEN the command returns an "unknown command" error (FR-011)
 
 - GIVEN the CLI is built
-  WHEN a user runs `grafanactl datasources query --help`
+  WHEN a user runs `gcx datasources query --help`
   THEN the output lists `prometheus`, `loki`, `pyroscope`, `tempo`, and `generic` as subcommands (FR-001, FR-002)
 
 - GIVEN the codebase after this change
-  WHEN `GRAFANACTL_AGENT_MODE=false make all` is run
+  WHEN `GCX_AGENT_MODE=false make all` is run
   THEN lint passes, all tests pass, and the generated CLI reference docs reflect `datasources query {prometheus,loki,pyroscope,tempo,generic}` and do NOT contain a top-level `query` command (FR-016)
 
 ---
@@ -226,15 +226,15 @@ Wire the new `query` group command into `cmd/grafanactl/datasources/command.go` 
 **Depends on**: T5
 **Type**: chore
 
-Delete the now-unused `cmd/grafanactl/query/` package entirely (`command.go`, `graph.go`, `time.go`, `time_test.go`). Verify that `make all` still passes after deletion — no other package should import from this path after T5.
+Delete the now-unused `cmd/gcx/query/` package entirely (`command.go`, `graph.go`, `time.go`, `time_test.go`). Verify that `make all` still passes after deletion — no other package should import from this path after T5.
 
 **Deliverables:**
-- Delete `cmd/grafanactl/query/command.go`
-- Delete `cmd/grafanactl/query/graph.go`
-- Delete `cmd/grafanactl/query/time.go`
-- Delete `cmd/grafanactl/query/time_test.go`
+- Delete `cmd/gcx/query/command.go`
+- Delete `cmd/gcx/query/graph.go`
+- Delete `cmd/gcx/query/time.go`
+- Delete `cmd/gcx/query/time_test.go`
 
 **Acceptance criteria:**
-- GIVEN the old `cmd/grafanactl/query/` package is deleted
-  WHEN `GRAFANACTL_AGENT_MODE=false make all` is run
+- GIVEN the old `cmd/gcx/query/` package is deleted
+  WHEN `GCX_AGENT_MODE=false make all` is run
   THEN the build, lint, tests, and doc generation all pass with zero references to the deleted package

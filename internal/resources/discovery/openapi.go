@@ -14,7 +14,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/grafana/grafanactl/internal/resources"
+	"github.com/grafana/gcx/internal/resources"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/rest"
@@ -309,14 +309,14 @@ type diskCache struct {
 }
 
 func defaultCacheDir() (string, error) {
-	if dir := os.Getenv("GRAFANACTL_OPENAPI_CACHE_DIR"); dir != "" {
+	if dir := os.Getenv("GCX_OPENAPI_CACHE_DIR"); dir != "" {
 		return dir, nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".cache", "grafanactl", "openapi"), nil
+	return filepath.Join(home, ".cache", "gcx", "openapi"), nil
 }
 
 func (c *diskCache) Get(hash string) ([]byte, bool) {

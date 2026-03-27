@@ -2,16 +2,16 @@
 
 **Created**: 2026-03-25
 **Status**: proposed
-**Bead**: grafanactl-experiments-dvwd
+**Bead**: gcx-experiments-dvwd
 **Supersedes**: none
 
 ## Context
 
-Every provider in grafanactl has two parallel CRUD code paths:
+Every provider in gcx has two parallel CRUD code paths:
 
-1. **Provider CLI commands** (`grafanactl slo definitions list`) call REST clients
+1. **Provider CLI commands** (`gcx slo definitions list`) call REST clients
    directly, working with typed structs (`Slo`, `Check`, etc.).
-2. **Resources pipeline** (`grafanactl resources get slos`) goes through
+2. **Resources pipeline** (`gcx resources get slos`) goes through
    `ResourceAdapter`, which erases type information via `*unstructured.Unstructured`.
 
 The `TypedCRUD[T any]` generic (introduced in the TypedResourceAdapter Foundation
@@ -228,4 +228,4 @@ spec map level and requires JSON→map→delete. The approach is hybrid:
 - **StripFields elimination**: Investigate using struct tags or separate spec types to
   avoid the JSON→map→delete pattern entirely.
 - **Provider command deprecation**: After migration, deprecate provider-specific CRUD
-  commands in favor of `grafanactl resources` equivalents.
+  commands in favor of `gcx resources` equivalents.

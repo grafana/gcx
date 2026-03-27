@@ -14,7 +14,7 @@ body:
       label: What exists today?
       description: Describe the current CLI functionality you'd like to improve
       placeholder: |
-        The `grafanactl resources push` command currently processes all resources sequentially.
+        The `gcx resources push` command currently processes all resources sequentially.
         When pushing 50+ dashboards, it takes several minutes to complete.
         There's a --max-concurrent flag, but it doesn't seem to have much effect...
     validations:
@@ -69,7 +69,7 @@ body:
       description: Real scenarios or commands help us understand your needs better
       placeholder: |
         Example command that's slow:
-        $ grafanactl resources push ./dashboards/ --context=prod
+        $ gcx resources push ./dashboards/ --context=prod
 
         Current behavior: Takes ~5 minutes for 80 dashboards
         Desired behavior: Should complete in under 1 minute

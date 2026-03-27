@@ -11,7 +11,7 @@ created: 2026-03-09
 ## Pipeline Architecture
 
 ```
-User invokes: grafanactl dev generate dashboards/my-svc.go [alerts/cpu.go] [--type alertrule]
+User invokes: gcx dev generate dashboards/my-svc.go [alerts/cpu.go] [--type alertrule]
                                       |
                                       v
                           +----------------------+
@@ -49,7 +49,7 @@ User invokes: grafanactl dev generate dashboards/my-svc.go [alerts/cpu.go] [--ty
 
 | Decision | Rationale |
 |----------|-----------|
-| Single new file `generate.go` in `cmd/grafanactl/dev/` | Follows the 1-file-per-subcommand convention (`import.go`, `scaffold.go`). All generate logic (type inference, arg parsing, template execution) fits in one file. (FR-001, FR-015, FR-016) |
+| Single new file `generate.go` in `cmd/gcx/dev/` | Follows the 1-file-per-subcommand convention (`import.go`, `scaffold.go`). All generate logic (type inference, arg parsing, template execution) fits in one file. (FR-001, FR-015, FR-016) |
 | Type inference via `typeFromDir` map lookup | A `map[string]string` keyed by lowercased directory name provides O(1) lookup and trivial extensibility. Supports both singular and plural: `dashboards`, `dashboard`, `alerts`, `alertrules`, `alertrule`. (FR-003) |
 | `--type` flag applies to ALL positional args | Matches batch semantics: if the user passes `--type alertrule`, every arg is treated as alertrule. This avoids per-arg type syntax. (FR-005) |
 | File-exists check via `os.Stat` before writing | Open with `O_CREATE|O_EXCL` would also work, but an explicit stat-then-error gives a friendlier error message suggesting deletion. (Negative Constraint: no overwrite) |
@@ -68,6 +68,6 @@ User invokes: grafanactl dev generate dashboards/my-svc.go [alerts/cpu.go] [--ty
 - `templatesFS` — same embed.FS variable, just with expanded glob
 
 **Newly available:**
-- `grafanactl dev generate` subcommand
+- `gcx dev generate` subcommand
 - `templates/generate/dashboard.go.tmpl`
 - `templates/generate/alertrule.go.tmpl`

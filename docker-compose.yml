@@ -3,7 +3,7 @@ version: '3.9'
 services:
   mysql:
     image: mysql:9.6@sha256:db32c8ec843c042a728efb0ac7aa814d6f010eaac8923e20ae0a849d09c5baf8
-    container_name: grafanactl-mysql
+    container_name: gcx-mysql
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: rootpassword
@@ -28,7 +28,7 @@ services:
 
   grafana:
     image: grafana/grafana:12.3@sha256:ba93c9d192e58b23e064c7f501d453426ccf4a85065bf25b705ab1e98602bfb1
-    container_name: grafanactl-grafana
+    container_name: gcx-grafana
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -42,7 +42,7 @@ services:
       # Admin credentials (default: admin/admin)
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
-      # Enable Kubernetes dashboards feature (required for grafanactl)
+      # Enable Kubernetes dashboards feature (required for gcx)
       GF_FEATURE_TOGGLES_ENABLE: kubernetesDashboards
       # Disable analytics
       GF_ANALYTICS_REPORTING_ENABLED: "false"

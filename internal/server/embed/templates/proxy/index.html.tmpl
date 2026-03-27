@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
     <meta charset=utf-8>
-    <title>grafanactl - server</title>
-    <link rel="stylesheet" href="/grafanactl/assets/style.css"/>
-    <link rel="icon" type="image/png" href="/grafanactl/assets/fav32.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/grafanactl/assets/apple-touch-icon.png" />
+    <title>gcx - server</title>
+    <link rel="stylesheet" href="/gcx/assets/style.css"/>
+    <link rel="icon" type="image/png" href="/gcx/assets/fav32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/gcx/assets/apple-touch-icon.png" />
 </head>
 <body>
 
@@ -18,7 +18,7 @@
         {{ range $resources.AsList }}
         <li>
             {{ if kindHasProxy $kind }}
-                <a href="/grafanactl/{{ .Group }}/{{ .Version }}/{{ .Kind }}/{{ .Name }}">
+                <a href="/gcx/{{ .Group }}/{{ .Version }}/{{ .Kind }}/{{ .Name }}">
                     {{ .Name }}
                 </a>
             {{ else }}

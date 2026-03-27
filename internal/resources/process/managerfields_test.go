@@ -3,9 +3,9 @@ package process_test
 import (
 	"testing"
 
+	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/process"
 	"github.com/grafana/grafana/pkg/apimachinery/utils"
-	"github.com/grafana/grafanactl/internal/resources"
-	"github.com/grafana/grafanactl/internal/resources/process"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -50,7 +50,7 @@ func TestManagerFieldsAppender(t *testing.T) {
 						"namespace": "default",
 						"annotations": map[string]any{
 							utils.AnnoKeyManagerKind:     string(resources.ResourceManagerKind),
-							utils.AnnoKeyManagerIdentity: "grafanactl",
+							utils.AnnoKeyManagerIdentity: "gcx",
 							utils.AnnoKeySourcePath:      "file://some/test/path.json",
 						},
 					},
@@ -100,7 +100,7 @@ func TestManagerFieldsAppender(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "resource managed by grafanactl",
+			name: "resource managed by gcx",
 			input: resources.MustFromObject(
 				map[string]any{
 					"apiVersion": "dashboard.grafana.app/v1",
@@ -109,7 +109,7 @@ func TestManagerFieldsAppender(t *testing.T) {
 						"name":      "example",
 						"namespace": "default",
 						"annotations": map[string]any{
-							utils.AnnoKeyManagerIdentity: "grafanactl",
+							utils.AnnoKeyManagerIdentity: "gcx",
 							utils.AnnoKeyManagerKind:     string(resources.ResourceManagerKind),
 							utils.AnnoKeySourcePath:      "file://some/test/path.json",
 						},
@@ -131,7 +131,7 @@ func TestManagerFieldsAppender(t *testing.T) {
 						"namespace": "default",
 						"annotations": map[string]any{
 							utils.AnnoKeyManagerKind:     string(resources.ResourceManagerKind),
-							utils.AnnoKeyManagerIdentity: "grafanactl",
+							utils.AnnoKeyManagerIdentity: "gcx",
 							utils.AnnoKeySourcePath:      "file://other/test/path.json",
 						},
 					},

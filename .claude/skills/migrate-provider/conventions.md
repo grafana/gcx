@@ -55,9 +55,9 @@ see what it wants. Common issue: inconsistent spacing before struct tags.
 ## Build Commands
 
 ```bash
-GRAFANACTL_AGENT_MODE=false make all    # REQUIRED — agent mode changes default
+GCX_AGENT_MODE=false make all    # REQUIRED — agent mode changes default
                                          # output formats, producing wrong docs
-GRAFANACTL_AGENT_MODE=false make lint   # after agent phases
+GCX_AGENT_MODE=false make lint   # after agent phases
 ```
 
 ## Schema + Example Registration
@@ -81,4 +81,4 @@ user-facing fields. No external dependencies needed.
 
 **Example**: static `map[string]any` matching gcx's `Example{Resource}()`
 output. Include realistic field values — this is what users see when they
-run `grafanactl resources examples {alias}`.
+run `gcx resources examples {alias}`.

@@ -11,11 +11,11 @@ Every row must have a status. Do not omit commands or mark them "skipped".
 | command | status | captured output (truncated) |
 |---------|--------|-----------------------------|
 | gcx {resource} list | PASS / FAIL | {first 3 lines of output or error} |
-| grafanactl {resource} list | PASS / FAIL | {first 3 lines of output or error} |
+| gcx {resource} list | PASS / FAIL | {first 3 lines of output or error} |
 | gcx {resource} get {id} | PASS / FAIL | {first 3 lines} |
-| grafanactl {resource} get {id} | PASS / FAIL | {first 3 lines} |
-| grafanactl resources get {alias} | PASS / FAIL | {first 3 lines} |
-| grafanactl {resource} {subcommand} | PASS / FAIL | {first 3 lines} |
+| gcx {resource} get {id} | PASS / FAIL | {first 3 lines} |
+| gcx resources get {alias} | PASS / FAIL | {first 3 lines} |
+| gcx {resource} {subcommand} | PASS / FAIL | {first 3 lines} |
 
 ### List ID Comparison
 

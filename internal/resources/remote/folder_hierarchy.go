@@ -3,7 +3,7 @@ package remote
 import (
 	"fmt"
 
-	"github.com/grafana/grafanactl/internal/resources"
+	"github.com/grafana/gcx/internal/resources"
 )
 
 // Folder Hierarchy Algorithm

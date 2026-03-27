@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/grafana/grafanactl/internal/providers"
-	"github.com/grafana/grafanactl/internal/providers/synth/smcfg"
+	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 )
 
 // Client is an HTTP client for the Synthetic Monitoring probes API.

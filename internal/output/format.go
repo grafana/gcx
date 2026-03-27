@@ -9,9 +9,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/grafana/grafanactl/internal/agent"
-	"github.com/grafana/grafanactl/internal/format"
-	"github.com/grafana/grafanactl/internal/terminal"
+	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/terminal"
 	"github.com/spf13/pflag"
 )
 

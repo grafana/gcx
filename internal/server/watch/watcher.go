@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/grafana-app-sdk/logging"
-	"github.com/grafana/grafanactl/internal/logs"
 )
 
 type Watcher struct {

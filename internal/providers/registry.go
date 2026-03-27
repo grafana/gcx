@@ -1,6 +1,6 @@
 package providers
 
-import "github.com/grafana/grafanactl/internal/resources/adapter"
+import "github.com/grafana/gcx/internal/resources/adapter"
 
 // registry holds all providers registered via Register().
 var registry []Provider //nolint:gochecknoglobals // Self-registration pattern requires package-level state.

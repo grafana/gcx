@@ -1,4 +1,4 @@
-module github.com/grafana/grafanactl
+module github.com/grafana/gcx
 
 go 1.26.0
 

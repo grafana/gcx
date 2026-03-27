@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 
-	internalconfig "github.com/grafana/grafanactl/internal/config"
-	"github.com/grafana/grafanactl/internal/resources"
-	"github.com/grafana/grafanactl/internal/resources/adapter"
+	internalconfig "github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 

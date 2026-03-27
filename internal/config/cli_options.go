@@ -11,7 +11,7 @@ import (
 type CLIOptions struct {
 	// AutoApprove automatically enables the --force flag on delete operations,
 	// enabling non-interactive operation in CI/CD pipelines.
-	AutoApprove bool `env:"GRAFANACTL_AUTO_APPROVE"`
+	AutoApprove bool `env:"GCX_AUTO_APPROVE"`
 }
 
 // LoadCLIOptions loads CLI options from environment variables.

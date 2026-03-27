@@ -6,7 +6,7 @@ import (
 	"log"
 	"strings"
 
-	gbundle "github.com/grafana/grafanactl/internal/linter/bundle"
+	gbundle "github.com/grafana/gcx/internal/linter/bundle"
 	"github.com/open-policy-agent/opa/v1/ast"
 	opabundle "github.com/open-policy-agent/opa/v1/bundle"
 	"github.com/open-policy-agent/opa/v1/loader/filter"

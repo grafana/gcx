@@ -1,6 +1,6 @@
 # CLI Flag Audit
 
-Verified flag names, short aliases, and default values from Go source in `cmd/grafanactl/`.
+Verified flag names, short aliases, and default values from Go source in `cmd/gcx/`.
 
 **Source verification date**: 2026-03-07
 **Commit audited**: HEAD of branch `t1-cli-flag-audit`
@@ -9,7 +9,7 @@ Verified flag names, short aliases, and default values from Go source in `cmd/gr
 
 ## Global / Persistent Flags (all commands inherit via `config.Options.BindFlags`)
 
-Source: `cmd/grafanactl/config/command.go` lines 28–33
+Source: `cmd/gcx/config/command.go` lines 28–33
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
@@ -18,9 +18,9 @@ Source: `cmd/grafanactl/config/command.go` lines 28–33
 
 ---
 
-## `grafanactl query`
+## `gcx query`
 
-Source: `cmd/grafanactl/query/command.go` lines 38–44
+Source: `cmd/gcx/query/command.go` lines 38–44
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
@@ -37,9 +37,9 @@ Source: `cmd/grafanactl/query/command.go` lines 38–44
 
 ---
 
-## `grafanactl resources get`
+## `gcx resources get`
 
-Source: `cmd/grafanactl/resources/get.go` lines 27–36
+Source: `cmd/gcx/resources/get.go` lines 27–36
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
@@ -50,9 +50,9 @@ Source: `cmd/grafanactl/resources/get.go` lines 27–36
 
 ---
 
-## `grafanactl resources push`
+## `gcx resources push`
 
-Source: `cmd/grafanactl/resources/push.go` lines 28–35
+Source: `cmd/gcx/resources/push.go` lines 28–35
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
@@ -65,9 +65,9 @@ Source: `cmd/grafanactl/resources/push.go` lines 28–35
 
 ---
 
-## `grafanactl resources pull`
+## `gcx resources pull`
 
-Source: `cmd/grafanactl/resources/pull.go` lines 27–38
+Source: `cmd/gcx/resources/pull.go` lines 27–38
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
@@ -78,9 +78,9 @@ Source: `cmd/grafanactl/resources/pull.go` lines 27–38
 
 ---
 
-## `grafanactl resources delete`
+## `gcx resources delete`
 
-Source: `cmd/grafanactl/resources/delete.go` lines 30–37
+Source: `cmd/gcx/resources/delete.go` lines 30–37
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
@@ -93,9 +93,9 @@ Source: `cmd/grafanactl/resources/delete.go` lines 30–37
 
 ---
 
-## `grafanactl resources edit`
+## `gcx resources edit`
 
-Source: `cmd/grafanactl/resources/edit.go` lines 21–24
+Source: `cmd/gcx/resources/edit.go` lines 21–24
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
@@ -105,9 +105,9 @@ Source: `cmd/grafanactl/resources/edit.go` lines 21–24
 
 ---
 
-## `grafanactl resources validate`
+## `gcx resources validate`
 
-Source: `cmd/grafanactl/resources/validate.go` lines 28–37
+Source: `cmd/gcx/resources/validate.go` lines 28–37
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
@@ -118,9 +118,9 @@ Source: `cmd/grafanactl/resources/validate.go` lines 28–37
 
 ---
 
-## `grafanactl resources serve`
+## `gcx resources serve`
 
-Source: `cmd/grafanactl/resources/serve.go` lines 38–46
+Source: `cmd/gcx/resources/serve.go` lines 38–46
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
@@ -136,9 +136,9 @@ Source: `cmd/grafanactl/resources/serve.go` lines 38–46
 
 ---
 
-## `grafanactl resources list`
+## `gcx resources list`
 
-Source: `cmd/grafanactl/resources/list.go` lines 22–28
+Source: `cmd/gcx/resources/list.go` lines 22–28
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
@@ -146,9 +146,9 @@ Source: `cmd/grafanactl/resources/list.go` lines 22–28
 
 ---
 
-## `grafanactl datasources list`
+## `gcx datasources list`
 
-Source: `cmd/grafanactl/datasources/list.go` lines 23–29
+Source: `cmd/gcx/datasources/list.go` lines 23–29
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
@@ -157,9 +157,9 @@ Source: `cmd/grafanactl/datasources/list.go` lines 23–29
 
 ---
 
-## `grafanactl datasources get`
+## `gcx datasources get`
 
-Source: `cmd/grafanactl/datasources/get.go` lines 17–20
+Source: `cmd/gcx/datasources/get.go` lines 17–20
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
@@ -169,9 +169,9 @@ Source: `cmd/grafanactl/datasources/get.go` lines 17–20
 
 ---
 
-## `grafanactl datasources prometheus labels`
+## `gcx datasources prometheus labels`
 
-Source: `cmd/grafanactl/datasources/prometheus.go` lines 37–44
+Source: `cmd/gcx/datasources/prometheus.go` lines 37–44
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
@@ -181,9 +181,9 @@ Source: `cmd/grafanactl/datasources/prometheus.go` lines 37–44
 
 ---
 
-## `grafanactl datasources prometheus metadata`
+## `gcx datasources prometheus metadata`
 
-Source: `cmd/grafanactl/datasources/prometheus.go` lines 153–160
+Source: `cmd/gcx/datasources/prometheus.go` lines 153–160
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
@@ -193,9 +193,9 @@ Source: `cmd/grafanactl/datasources/prometheus.go` lines 153–160
 
 ---
 
-## `grafanactl datasources prometheus targets`
+## `gcx datasources prometheus targets`
 
-Source: `cmd/grafanactl/datasources/prometheus.go` lines 264–271
+Source: `cmd/gcx/datasources/prometheus.go` lines 264–271
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
@@ -205,9 +205,9 @@ Source: `cmd/grafanactl/datasources/prometheus.go` lines 264–271
 
 ---
 
-## `grafanactl datasources loki labels`
+## `gcx datasources loki labels`
 
-Source: `cmd/grafanactl/datasources/loki.go` lines 35–42
+Source: `cmd/gcx/datasources/loki.go` lines 35–42
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
@@ -217,9 +217,9 @@ Source: `cmd/grafanactl/datasources/loki.go` lines 35–42
 
 ---
 
-## `grafanactl datasources loki series`
+## `gcx datasources loki series`
 
-Source: `cmd/grafanactl/datasources/loki.go` lines 150–157
+Source: `cmd/gcx/datasources/loki.go` lines 150–157
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
@@ -229,9 +229,9 @@ Source: `cmd/grafanactl/datasources/loki.go` lines 150–157
 
 ---
 
-## `grafanactl config view`
+## `gcx config view`
 
-Source: `cmd/grafanactl/config/command.go` lines 188–199
+Source: `cmd/gcx/config/command.go` lines 188–199
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
@@ -241,9 +241,9 @@ Source: `cmd/grafanactl/config/command.go` lines 188–199
 
 ---
 
-## `grafanactl config set`
+## `gcx config set`
 
-Source: `cmd/grafanactl/config/command.go` lines 450–481
+Source: `cmd/gcx/config/command.go` lines 450–481
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
@@ -251,9 +251,9 @@ Source: `cmd/grafanactl/config/command.go` lines 450–481
 
 ---
 
-## `grafanactl config use-context`
+## `gcx config use-context`
 
-Source: `cmd/grafanactl/config/command.go` lines 418–448
+Source: `cmd/gcx/config/command.go` lines 418–448
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
@@ -263,9 +263,9 @@ Alias: `use`
 
 ---
 
-## `grafanactl config current-context`
+## `gcx config current-context`
 
-Source: `cmd/grafanactl/config/command.go` lines 256–276
+Source: `cmd/gcx/config/command.go` lines 256–276
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
@@ -275,7 +275,7 @@ Source: `cmd/grafanactl/config/command.go` lines 256–276
 
 ## `--on-error` Shared Flag Reference
 
-Source: `cmd/grafanactl/resources/onerror.go` lines 25–36
+Source: `cmd/gcx/resources/onerror.go` lines 25–36
 
 Used by: `get`, `push`, `pull`, `delete`, `validate`
 
@@ -289,7 +289,7 @@ Used by: `get`, `push`, `pull`, `delete`, `validate`
 
 ## Key Findings for Subsequent Tasks
 
-1. **`grafanactl query` time-range flags are `--from` / `--to`** — confirmed at `cmd/grafanactl/query/command.go:40-41`. The `--start` / `--end` names do NOT exist in the source.
+1. **`gcx query` time-range flags are `--from` / `--to`** — confirmed at `cmd/gcx/query/command.go:40-41`. The `--start` / `--end` names do NOT exist in the source.
 2. **`--dry-run`** exists on `push` and `delete`, not on `pull` or `validate`.
 3. **`--include-managed`** exists on `push` and `pull`.
 4. **`--omit-manager-fields`** exists only on `push`.

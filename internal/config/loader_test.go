@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/adrg/xdg"
-	"github.com/grafana/grafanactl/internal/config"
-	"github.com/grafana/grafanactl/internal/testutils"
+	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/testutils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -219,15 +219,15 @@ func TestDiscoverSources(t *testing.T) {
 	localDir := t.TempDir()
 
 	// Write config files.
-	systemFile := filepath.Join(systemDir, "grafanactl", "config.yaml")
+	systemFile := filepath.Join(systemDir, "gcx", "config.yaml")
 	require.NoError(t, os.MkdirAll(filepath.Dir(systemFile), 0o755))
 	require.NoError(t, os.WriteFile(systemFile, []byte("contexts:\n  sys: {}\ncurrent-context: sys\n"), 0o600))
 
-	userFile := filepath.Join(userDir, "grafanactl", "config.yaml")
+	userFile := filepath.Join(userDir, "gcx", "config.yaml")
 	require.NoError(t, os.MkdirAll(filepath.Dir(userFile), 0o755))
 	require.NoError(t, os.WriteFile(userFile, []byte("contexts:\n  usr: {}\ncurrent-context: usr\n"), 0o600))
 
-	localFile := filepath.Join(localDir, ".grafanactl.yaml")
+	localFile := filepath.Join(localDir, ".gcx.yaml")
 	require.NoError(t, os.WriteFile(localFile, []byte("contexts:\n  lcl: {}\n"), 0o600))
 
 	sources, err := config.DiscoverSources(
@@ -248,14 +248,14 @@ func TestDiscoverSources(t *testing.T) {
 
 func TestDiscoverSources_SkipsMissing(t *testing.T) {
 	userDir := t.TempDir()
-	userFile := filepath.Join(userDir, "grafanactl", "config.yaml")
+	userFile := filepath.Join(userDir, "gcx", "config.yaml")
 	require.NoError(t, os.MkdirAll(filepath.Dir(userFile), 0o755))
 	require.NoError(t, os.WriteFile(userFile, []byte("contexts:\n  usr: {}\ncurrent-context: usr\n"), 0o600))
 
 	sources, err := config.DiscoverSources(
 		config.WithSystemDir(t.TempDir()), // empty, no config
 		config.WithUserDir(userDir),
-		config.WithWorkDir(t.TempDir()), // empty, no .grafanactl.yaml
+		config.WithWorkDir(t.TempDir()), // empty, no .gcx.yaml
 	)
 	require.NoError(t, err)
 

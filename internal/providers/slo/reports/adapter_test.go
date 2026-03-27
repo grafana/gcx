@@ -3,7 +3,7 @@ package reports_test
 import (
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/providers/slo/reports"
+	"github.com/grafana/gcx/internal/providers/slo/reports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

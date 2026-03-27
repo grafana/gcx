@@ -78,7 +78,7 @@ Weekly Platform Report  weekly      3      99.82%         36.0%             OK
 ## Verification
 
 ```bash
-make lint && make tests && make build && bin/grafanactl slo reports status
+make lint && make tests && make build && bin/gcx slo reports status
 ```
 
 Note: Full verification requires a live Grafana instance with SLOs and reports configured.

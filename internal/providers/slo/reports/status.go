@@ -6,11 +6,11 @@ import (
 	"io"
 	"text/tabwriter"
 
-	"github.com/grafana/grafanactl/internal/format"
-	"github.com/grafana/grafanactl/internal/graph"
-	cmdio "github.com/grafana/grafanactl/internal/output"
-	"github.com/grafana/grafanactl/internal/providers/slo/definitions"
-	"github.com/grafana/grafanactl/internal/query/prometheus"
+	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/graph"
+	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers/slo/definitions"
+	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
@@ -54,19 +54,19 @@ func newStatusCommand(loader GrafanaConfigLoader) *cobra.Command {
 Fetches report definitions, resolves referenced SLO UUIDs, queries Prometheus
 metrics, and computes combined SLI and error budget per report.`,
 		Example: `  # Show status of all SLO reports.
-  grafanactl slo reports status
+  gcx slo reports status
 
   # Show status of a specific report by UUID.
-  grafanactl slo reports status abc123def
+  gcx slo reports status abc123def
 
   # Show extended status with per-SLO breakdown.
-  grafanactl slo reports status -o wide
+  gcx slo reports status -o wide
 
   # Output status as JSON for scripting.
-  grafanactl slo reports status -o json
+  gcx slo reports status -o json
 
   # Render a combined SLI bar chart.
-  grafanactl slo reports status -o graph`,
+  gcx slo reports status -o graph`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {

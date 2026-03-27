@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/grafana/grafanactl/internal/linter"
+	"github.com/grafana/gcx/internal/linter"
 )
 
 func main() {
@@ -82,7 +82,7 @@ func toMarkdown(rules []linter.Rule) []byte {
 			for _, rule := range rules {
 				ruleName := fmt.Sprintf("`%s`", rule.Name)
 				if rule.DocumentationURL() != "" {
-					prefix := "https://github.com/grafana/grafanactl/blob/main/docs/reference/linter-rules/"
+					prefix := "https://github.com/grafana/gcx/blob/main/docs/reference/linter-rules/"
 					url := strings.TrimPrefix(rule.DocumentationURL(), prefix)
 
 					if url != rule.DocumentationURL() {

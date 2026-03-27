@@ -8,8 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/providers/synth/probes"
-	"github.com/grafana/grafanactl/internal/providers/synth/smcfg"
+	"github.com/grafana/gcx/internal/providers/synth/probes"
+	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

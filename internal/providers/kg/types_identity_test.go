@@ -3,8 +3,8 @@ package kg_test
 import (
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/providers/kg"
-	"github.com/grafana/grafanactl/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/providers/kg"
+	"github.com/grafana/gcx/internal/resources/adapter"
 )
 
 // Compile-time assertions for ResourceIdentity compliance.

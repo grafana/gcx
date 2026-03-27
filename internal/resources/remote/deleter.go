@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/logs"
+	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/discovery"
+	"github.com/grafana/gcx/internal/resources/dynamic"
 	"github.com/grafana/grafana-app-sdk/logging"
-	"github.com/grafana/grafanactl/internal/config"
-	"github.com/grafana/grafanactl/internal/logs"
-	"github.com/grafana/grafanactl/internal/resources"
-	"github.com/grafana/grafanactl/internal/resources/discovery"
-	"github.com/grafana/grafanactl/internal/resources/dynamic"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )

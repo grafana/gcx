@@ -1,4 +1,4 @@
-# Grafana CLI (grafanactl)
+# Grafana CLI (gcx)
 
 **Infrastructure-as-code for Grafana, designed for automation and AI agents.**
 
@@ -20,25 +20,25 @@ Key features:
 **Homebrew (macOS/Linux):**
 
 ```bash
-brew install grafana/grafana/grafanactl
+brew install grafana/grafana/gcx
 ```
 
 **From Release (Linux/macOS/Windows):**
 
 ```bash
-# Download latest from https://github.com/grafana/grafanactl/releases
-curl -L https://github.com/grafana/grafanactl/releases/latest/download/grafanactl-$(uname -s)-$(uname -m) -o grafanactl
-chmod +x grafanactl
-sudo mv grafanactl /usr/local/bin/
+# Download latest from https://github.com/grafana/gcx/releases
+curl -L https://github.com/grafana/gcx/releases/latest/download/gcx-$(uname -s)-$(uname -m) -o gcx
+chmod +x gcx
+sudo mv gcx /usr/local/bin/
 ```
 
 **Verify installation:**
 
 ```bash
-grafanactl --version
+gcx --version
 ```
 
-Full installation guide: [grafanactl docs](https://grafana.github.io/grafanactl/)
+Full installation guide: [gcx docs](https://grafana.github.io/gcx/)
 
 ## Quick Start
 
@@ -47,9 +47,9 @@ Full installation guide: [grafanactl docs](https://grafana.github.io/grafanactl/
 **Option A — Named context (persistent):**
 
 ```bash
-grafanactl config set contexts.my-grafana.grafana.server https://your-instance.grafana.net
-grafanactl config set contexts.my-grafana.grafana.token your-service-account-token
-grafanactl config use-context my-grafana
+gcx config set contexts.my-grafana.grafana.server https://your-instance.grafana.net
+gcx config set contexts.my-grafana.grafana.token your-service-account-token
+gcx config use-context my-grafana
 ```
 
 **Option B — Environment variables (recommended for agents and CI/CD):**
@@ -64,38 +64,38 @@ export GRAFANA_TOKEN="your-service-account-token"
 **Verify connection:**
 
 ```bash
-grafanactl config check
+gcx config check
 ```
 
 ### Common Workflows
 
 ```bash
 # Discover available resource types
-grafanactl resources schemas
+gcx resources schemas
 
 # Get all dashboards
-grafanactl resources get dashboards -o json
+gcx resources get dashboards -o json
 
 # Get a specific dashboard
-grafanactl resources get dashboards/my-dashboard -o json
+gcx resources get dashboards/my-dashboard -o json
 
 # Pull dashboards to local files
-grafanactl resources pull dashboards -p ./resources -o yaml
+gcx resources pull dashboards -p ./resources -o yaml
 
 # Push local resources to Grafana
-grafanactl resources push -p ./resources
+gcx resources push -p ./resources
 
 # Dry-run push (simulate without changes)
-grafanactl resources push -p ./resources --dry-run
+gcx resources push -p ./resources --dry-run
 
 # Validate resources against remote Grafana
-grafanactl resources validate -p ./resources
+gcx resources validate -p ./resources
 
 # Delete a specific dashboard
-grafanactl resources delete dashboards/my-dashboard
+gcx resources delete dashboards/my-dashboard
 
 # Edit a dashboard interactively (opens $EDITOR)
-grafanactl resources edit dashboards/my-dashboard
+gcx resources edit dashboards/my-dashboard
 ```
 
 ### Tips for AI Agents and Automation
@@ -116,23 +116,23 @@ grafanactl resources edit dashboards/my-dashboard
 
 ```bash
 # Exit code 0 = exists, non-zero = not found
-grafanactl resources get dashboards/my-dashboard -o json > /dev/null 2>&1
+gcx resources get dashboards/my-dashboard -o json > /dev/null 2>&1
 ```
 
 **Pull → edit → push round-trip:**
 
 ```bash
 # 1. Pull a dashboard to disk (creates ./resources/Dashboard.v1.dashboard.grafana.app/my-dashboard.yaml)
-grafanactl resources pull dashboards/my-dashboard -p ./resources -o yaml
+gcx resources pull dashboards/my-dashboard -p ./resources -o yaml
 
 # 2. Edit the file (agent modifies spec fields, e.g. title, panels)
 #    File is at: ./resources/Dashboard.v1.dashboard.grafana.app/my-dashboard.yaml
 
 # 3. Validate before pushing
-grafanactl resources validate -p ./resources -o json
+gcx resources validate -p ./resources -o json
 
 # 4. Push changes back to Grafana
-grafanactl resources push -p ./resources
+gcx resources push -p ./resources
 ```
 
 Pull organizes files as `{Kind}.{Version}.{Group}/{Name}.{ext}` under the `-p` path:
@@ -149,7 +149,7 @@ Pull organizes files as `{Kind}.{Version}.{Group}/{Name}.{ext}` under the `-p` p
 
 ```bash
 # Pull everything, commit to git
-grafanactl resources pull -p ./resources -o yaml
+gcx resources pull -p ./resources -o yaml
 git add ./resources && git commit -m "snapshot Grafana resources"
 ```
 
@@ -175,8 +175,8 @@ git add ./resources && git commit -m "snapshot Grafana resources"
 
 | Variable | Description |
 |----------|-------------|
-| `GRAFANACTL_CONFIG` | Custom config file path (default: `~/.config/grafanactl/config.yaml`) |
-| `GRAFANACTL_AUTO_APPROVE` | Auto-approve destructive operations (automatically enables `--force` on delete) |
+| `GCX_CONFIG` | Custom config file path (default: `~/.config/gcx/config.yaml`) |
+| `GCX_AUTO_APPROVE` | Auto-approve destructive operations (automatically enables `--force` on delete) |
 
 **Global CLI flags (available on all commands):**
 
@@ -193,20 +193,20 @@ git add ./resources && git commit -m "snapshot Grafana resources"
 export GRAFANA_SERVER="https://prod.grafana.net"
 export GRAFANA_TOKEN="${GRAFANA_SERVICE_ACCOUNT_TOKEN}"  # From CI secrets
 
-grafanactl resources push -p ./dashboards
+gcx resources push -p ./dashboards
 ```
 
 **Auto-approval for CI/CD:**
 
-For non-interactive delete operations in CI/CD pipelines, use the `--yes` flag or `GRAFANACTL_AUTO_APPROVE` environment variable to automatically enable the `--force` flag:
+For non-interactive delete operations in CI/CD pipelines, use the `--yes` flag or `GCX_AUTO_APPROVE` environment variable to automatically enable the `--force` flag:
 
 ```bash
 # Using --yes flag
-grafanactl resources delete dashboards --yes
+gcx resources delete dashboards --yes
 
 # Using environment variable (recommended for CI/CD)
-export GRAFANACTL_AUTO_APPROVE=1
-grafanactl resources delete dashboards
+export GCX_AUTO_APPROVE=1
+gcx resources delete dashboards
 ```
 
 **Note:** Auto-approval only affects delete operations. For push/pull operations with externally-managed resources (e.g., Terraform, GitSync), you must still explicitly pass `--include-managed`.
@@ -214,7 +214,7 @@ grafanactl resources delete dashboards
 ## Resource Selectors
 
 
-grafanactl resources push -p ./dashboards
+gcx resources push -p ./dashboards
 ```
 
 ## Resource Selectors
@@ -223,20 +223,20 @@ Grafana CLI uses kubectl-style selectors to target resources:
 
 ```bash
 # All of a kind
-grafanactl resources get dashboards
-grafanactl resources get folders
+gcx resources get dashboards
+gcx resources get folders
 
 # Specific resource by name
-grafanactl resources get dashboards/my-dashboard
+gcx resources get dashboards/my-dashboard
 
 # Multiple resources
-grafanactl resources get dashboards/dash1,dash2,dash3
+gcx resources get dashboards/dash1,dash2,dash3
 
 # Multiple kinds
-grafanactl resources get dashboards/foo folders/bar
+gcx resources get dashboards/foo folders/bar
 
 # Fully-qualified (with API version)
-grafanactl resources get dashboards.v1alpha1.dashboard.grafana.app/foo
+gcx resources get dashboards.v1alpha1.dashboard.grafana.app/foo
 ```
 
 ## Resource Format
@@ -279,9 +279,9 @@ spec:
 | `metadata.namespace` | Organization or Stack ID (set automatically on push) |
 | `spec` | The resource payload — this is what you edit when modifying a dashboard or folder |
 
-**Resource relationships:** Dashboards can belong to folders via the `grafana.app/folder` annotation in `metadata.annotations`. When pushing, grafanactl automatically pushes folders before dashboards to satisfy dependencies.
+**Resource relationships:** Dashboards can belong to folders via the `grafana.app/folder` annotation in `metadata.annotations`. When pushing, gcx automatically pushes folders before dashboards to satisfy dependencies.
 
-Use `grafanactl resources schemas -o wide` to discover available `apiVersion` and `kind` values for your Grafana instance.
+Use `gcx resources schemas -o wide` to discover available `apiVersion` and `kind` values for your Grafana instance.
 
 ### Command Output Examples
 
@@ -349,7 +349,7 @@ Error: Invalid configuration
 │
 ├─ Suggestions:
 │
-│ • Review your configuration: grafanactl config view
+│ • Review your configuration: gcx config view
 │ • Check the documentation for proper configuration format
 │
 └─
@@ -360,7 +360,7 @@ Errors include a summary, optional details, actionable suggestions, and document
 **Example usage in scripts:**
 
 ```bash
-if ! grafanactl resources get dashboards -o json > dashboards.json 2>error.log; then
+if ! gcx resources get dashboards -o json > dashboards.json 2>error.log; then
   echo "Failed to fetch dashboards (exit code: $?)"
   cat error.log
   exit 1
@@ -384,30 +384,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install grafanactl
+      - name: Install gcx
         run: |
-          curl -L https://github.com/grafana/grafanactl/releases/latest/download/grafanactl-Linux-x86_64 -o grafanactl
-          chmod +x grafanactl
-          sudo mv grafanactl /usr/local/bin/
+          curl -L https://github.com/grafana/gcx/releases/latest/download/gcx-Linux-x86_64 -o gcx
+          chmod +x gcx
+          sudo mv gcx /usr/local/bin/
 
       - name: Validate dashboards
         env:
           GRAFANA_SERVER: ${{ secrets.GRAFANA_PROD_URL }}
           GRAFANA_TOKEN: ${{ secrets.GRAFANA_PROD_TOKEN }}
         run: |
-          grafanactl resources validate -p ./dashboards -o json
+          gcx resources validate -p ./dashboards -o json
 
       - name: Deploy to production
         env:
           GRAFANA_SERVER: ${{ secrets.GRAFANA_PROD_URL }}
           GRAFANA_TOKEN: ${{ secrets.GRAFANA_PROD_TOKEN }}
         run: |
-          grafanactl resources push -p ./dashboards --on-error abort
+          gcx resources push -p ./dashboards --on-error abort
 ```
 
 **Key automation patterns:**
 
-- **Idempotency:** `grafanactl resources push` is idempotent — running the same command multiple times produces the same result. Safe for repeated CI/CD runs.
+- **Idempotency:** `gcx resources push` is idempotent — running the same command multiple times produces the same result. Safe for repeated CI/CD runs.
 - **Dry-run:** Use `--dry-run` on `push` and `delete` to preview changes before applying.
 - **Error control:** Use `--on-error abort` to fail fast, `--on-error ignore` to continue past errors.
 - **Structured output:** Use `-o json` or `-o yaml` for machine-parseable output on `get`, `list`, `pull`, and `validate` commands.
@@ -420,13 +420,13 @@ Grafana CLI includes a built-in development server with live reload:
 
 ```bash
 # Serve resources from a directory
-grafanactl dev serve ./resources
+gcx dev serve ./resources
 
 # With a generation script (e.g., grafana-foundation-sdk)
-grafanactl dev serve --script 'go run ./dashboards/...' --script-format yaml
+gcx dev serve --script 'go run ./dashboards/...' --script-format yaml
 
 # Custom port
-grafanactl dev serve ./resources --port 3001
+gcx dev serve ./resources --port 3001
 ```
 
 The server provides:
@@ -442,19 +442,19 @@ The server provides:
 ## Claude Code Plugin
 
 A Claude Code plugin is included under [`claude-plugin/`](claude-plugin/README.md).
-It gives Claude deep knowledge of grafanactl — skills for debugging, datasource
+It gives Claude deep knowledge of gcx — skills for debugging, datasource
 exploration, dashboard management, and alert investigation, plus a specialist
 `grafana-debugger` agent. See [`claude-plugin/README.md`](claude-plugin/README.md)
 for installation instructions.
 
 ## Documentation
 
-See [the full documentation](https://grafana.github.io/grafanactl/) for comprehensive guides on:
+See [the full documentation](https://grafana.github.io/gcx/) for comprehensive guides on:
 
-- [Installation](https://grafana.github.io/grafanactl/getting-started/install/)
-- [Configuration](https://grafana.github.io/grafanactl/getting-started/configure/)
-- [CLI Reference](https://grafana.github.io/grafanactl/reference/cli/)
-- [Environment Variables](https://grafana.github.io/grafanactl/reference/environment-variables/)
+- [Installation](https://grafana.github.io/gcx/getting-started/install/)
+- [Configuration](https://grafana.github.io/gcx/getting-started/configure/)
+- [CLI Reference](https://grafana.github.io/gcx/reference/cli/)
+- [Environment Variables](https://grafana.github.io/gcx/reference/environment-variables/)
 
 ## Maturity
 

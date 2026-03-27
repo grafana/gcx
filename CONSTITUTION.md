@@ -1,4 +1,4 @@
-# Constitution: grafanactl
+# Constitution: gcx
 
 > These are invariants. Violating them requires explicit human approval.
 
@@ -48,9 +48,9 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
 ## CLI Grammar
 
 - **Command structure follows `$AREA $NOUN $VERB`.** Resource and provider
-  commands use `grafanactl {area} {resource-type} {verb}` (e.g.
-  `grafanactl slo definitions list`, `grafanactl resources get`,
-  `grafanactl datasources loki query`). Tooling commands (`dev`, `config`)
+  commands use `gcx {area} {resource-type} {verb}` (e.g.
+  `gcx slo definitions list`, `gcx resources get`,
+  `gcx datasources loki query`). Tooling commands (`dev`, `config`)
   may use `$AREA $VERB` when there is no meaningful noun — these operate on
   the project or CLI itself, not on Grafana resources.
 - **Extension commands nest under their resource type.** Domain-specific
@@ -168,7 +168,7 @@ agent mode detection, behavior changes, and opt-out mechanisms.
 
 - All non-trivial functions have unit tests.
 - `make all` (lint + tests + build + docs) must pass before merging.
-- `GRAFANACTL_AGENT_MODE=false make all` when running from agent environments
+- `GCX_AGENT_MODE=false make all` when running from agent environments
   (prevents agent-mode detection from altering doc generation).
 - No linter suppressions without a comment explaining why.
 - CI must pass before merging.

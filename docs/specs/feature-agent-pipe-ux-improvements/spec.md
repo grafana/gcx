@@ -9,15 +9,15 @@ created: 2026-03-09
 
 ## Problem Statement
 
-grafanactl has three UX gaps that degrade the experience for both human users piping output and AI agent consumers:
+gcx has three UX gaps that degrade the experience for both human users piping output and AI agent consumers:
 
-1. **No pipe detection.** When users pipe grafanactl output (e.g., `grafanactl list | jq .`), ANSI color codes and table column truncation pollute the output. Users must manually pass `--no-color` and there is no mechanism to suppress truncation. The `gh` CLI auto-detects piped stdout and adjusts behavior; grafanactl does not.
+1. **No pipe detection.** When users pipe gcx output (e.g., `gcx list | jq .`), ANSI color codes and table column truncation pollute the output. Users must manually pass `--no-color` and there is no mechanism to suppress truncation. The `gh` CLI auto-detects piped stdout and adjusts behavior; gcx does not.
 
 2. **No field discovery for JSON output.** Resources are `unstructured.Unstructured` with dynamic schemas. Users wanting specific fields via `--output json` have no way to discover what fields are available without making a request and inspecting the full JSON blob. The design guide marks field discovery as `[PLANNED]` (Section 1.5, R3.1).
 
 3. **Errors are invisible to agents.** In agent mode, errors are written to stderr as colored human-formatted text (`DetailedError.Error()`). AI agents reading stdout for JSON responses never see error information. The design guide marks in-band error reporting as `[PLANNED]` (Section 4.4, R3.5). This means agents cannot programmatically detect, classify, or recover from errors.
 
-**Who is affected:** Shell scripters piping grafanactl output; AI agents (Claude Code, Cursor, Copilot, Amazon Q) consuming grafanactl programmatically; CI/CD pipelines parsing grafanactl output.
+**Who is affected:** Shell scripters piping gcx output; AI agents (Claude Code, Cursor, Copilot, Amazon Q) consuming gcx programmatically; CI/CD pipelines parsing gcx output.
 
 **Current workarounds:** Pass `--no-color` manually; inspect full JSON output to guess field names; agents parse stderr text with regex (fragile and unreliable).
 
@@ -79,7 +79,7 @@ FR-005a: WHEN agent mode is active, the system MUST automatically enable all pip
 
 FR-006: The system MUST support a `--json field1,field2,...` flag on all commands that produce structured output (both resource commands and non-resource commands like `config view`, `providers list`). When provided, the output format MUST be JSON containing only the specified fields from each output object.
 
-FR-007: WHEN `--json ?` is provided, the system MUST require a resource selector argument (e.g., `grafanactl get dashboards --json ?`). The system MUST use the discovery registry to resolve the resource type's schema, extract all available field paths, print them one per line to stdout (sorted alphabetically), and exit with code 0. If no resource selector is provided, the system MUST produce a usage error.
+FR-007: WHEN `--json ?` is provided, the system MUST require a resource selector argument (e.g., `gcx get dashboards --json ?`). The system MUST use the discovery registry to resolve the resource type's schema, extract all available field paths, print them one per line to stdout (sorted alphabetically), and exit with code 0. If no resource selector is provided, the system MUST produce a usage error.
 
 FR-008: WHEN `--json` specifies a field name that does not exist in the resource object, the system MUST include that field in the output with a `null` value (not omit it, not error).
 
@@ -103,45 +103,45 @@ FR-014: The in-band error JSON MUST use the same exit code as the process exit c
 
 ### Pipe Detection
 
-- GIVEN grafanactl is invoked with stdout piped to another process (e.g., `grafanactl list dashboards | cat`)
+- GIVEN gcx is invoked with stdout piped to another process (e.g., `gcx list dashboards | cat`)
   WHEN the command executes
   THEN stdout output MUST NOT contain ANSI escape sequences
 
-- GIVEN grafanactl is invoked with stdout piped to another process
+- GIVEN gcx is invoked with stdout piped to another process
   WHEN the command produces table output (text codec)
   THEN no table column values are truncated with ellipsis
 
-- GIVEN grafanactl is invoked on a TTY with `--no-color`
+- GIVEN gcx is invoked on a TTY with `--no-color`
   WHEN the command executes
   THEN stdout output MUST NOT contain ANSI escape sequences (backward compat)
 
-- GIVEN grafanactl is invoked on a TTY without `--no-color`
+- GIVEN gcx is invoked on a TTY without `--no-color`
   WHEN the command executes
   THEN stdout output MAY contain ANSI escape sequences (existing behavior preserved)
 
-- GIVEN grafanactl is invoked on a TTY with `--no-truncate`
+- GIVEN gcx is invoked on a TTY with `--no-truncate`
   WHEN the command produces table output
   THEN no table column values are truncated with ellipsis
 
 ### JSON Field Selection
 
-- GIVEN a grafanactl command that returns resource data
+- GIVEN a gcx command that returns resource data
   WHEN `--json metadata.name,spec` is provided
   THEN stdout contains a JSON object with only the keys `metadata.name` and `spec` (and their values) for each resource
 
-- GIVEN a grafanactl command that returns resource data
+- GIVEN a gcx command that returns resource data
   WHEN `--json ?` is provided
   THEN stdout prints one field name per line (sorted alphabetically), and the process exits with code 0
 
-- GIVEN a grafanactl command that returns resource data
+- GIVEN a gcx command that returns resource data
   WHEN `--json nonexistent` is provided
   THEN stdout contains a JSON object where `nonexistent` is `null`
 
-- GIVEN a grafanactl command
+- GIVEN a gcx command
   WHEN both `--json field1` and `-o yaml` are provided
   THEN the command exits with a usage error (non-zero exit code) and an error message indicating mutual exclusivity
 
-- GIVEN a grafanactl list command returning multiple resources
+- GIVEN a gcx list command returning multiple resources
   WHEN `--json metadata.name` is provided
   THEN stdout contains `{"items": [{"metadata.name": "..."}, ...]}` with only the selected field per item
 
@@ -190,7 +190,7 @@ NC-005: The system MUST NEVER perform an additional API request solely for `--js
 
 - [RESOLVED] Should `--json` support nested dot-path field selection (e.g., `metadata.name`)? **Yes** — resources are nested maps; top-level-only selection is too coarse for `metadata` subfields.
 - [RESOLVED] Should piped mode auto-switch default format from `text` to `json`? **No** — marked out of scope per design-guide Section 5.4; requires separate design discussion.
-- [RESOLVED] Should `--json ?` require a resource selector? **Yes** — `--json ?` requires a resource selector (e.g., `grafanactl get dashboards --json ?`). For resource commands, the discovery registry resolves the resource type to its schema.
+- [RESOLVED] Should `--json ?` require a resource selector? **Yes** — `--json ?` requires a resource selector (e.g., `gcx get dashboards --json ?`). For resource commands, the discovery registry resolves the resource type to its schema.
 - [RESOLVED] Should `--json` be available on non-resource commands (e.g., `config view`, `providers list`)? **Yes** — `--json` applies to all commands that produce structured output, not just resource commands.
 - [RESOLVED] Should agent mode auto-switch to `-o json`? **Already implemented** — `io.Options.BindFlags()` already sets JSON as the default output format when `agent.IsAgentMode()` is true. Users can override with explicit `-o text` etc. No changes needed.
 - [DEFERRED] Should the in-band error envelope support a `warnings` array for non-fatal issues (e.g., deprecated API versions)? Defer to a follow-up spec on structured diagnostics.

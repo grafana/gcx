@@ -5,16 +5,16 @@ package output_test
 // resource data. No real network calls are made.
 //
 // Acceptance criteria exercised:
-//   - GIVEN a grafanactl command that returns resource data
+//   - GIVEN a gcx command that returns resource data
 //     WHEN --json metadata.name,spec is provided
 //     THEN stdout contains a JSON object with only the requested fields
-//   - GIVEN a grafanactl list command returning multiple resources
+//   - GIVEN a gcx list command returning multiple resources
 //     WHEN --json metadata.name is provided
 //     THEN stdout contains {"items": [{"metadata.name": "..."}, ...]}
-//   - GIVEN a grafanactl command that returns resource data
+//   - GIVEN a gcx command that returns resource data
 //     WHEN --json nonexistent is provided
 //     THEN stdout contains a JSON object where nonexistent is null
-//   - GIVEN a grafanactl command
+//   - GIVEN a gcx command
 //     WHEN both --json field1 and -o yaml are provided
 //     THEN the command exits with a usage error
 
@@ -23,8 +23,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	cmdio "github.com/grafana/grafanactl/internal/output"
-	"github.com/grafana/grafanactl/internal/terminal"
+	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/terminal"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -94,7 +94,7 @@ func TestJSONFieldSelection_SingleResource(t *testing.T) {
 //
 // Acceptance criterion:
 //
-//	GIVEN a grafanactl list command returning multiple resources
+//	GIVEN a gcx list command returning multiple resources
 //	WHEN --json metadata.name is provided
 //	THEN stdout contains {"items": [{"metadata.name": "..."}, ...]}
 func TestJSONFieldSelection_MultipleResources(t *testing.T) {
@@ -142,7 +142,7 @@ func TestJSONFieldSelection_MultipleResources(t *testing.T) {
 //
 // Acceptance criterion:
 //
-//	GIVEN a grafanactl command that returns resource data
+//	GIVEN a gcx command that returns resource data
 //	WHEN --json nonexistent is provided
 //	THEN stdout contains a JSON object where nonexistent is null
 func TestJSONFieldSelection_MissingFieldIsNull(t *testing.T) {
@@ -171,7 +171,7 @@ func TestJSONFieldSelection_MissingFieldIsNull(t *testing.T) {
 //
 // Acceptance criterion:
 //
-//	GIVEN a grafanactl command
+//	GIVEN a gcx command
 //	WHEN both --json field1 and -o yaml are provided
 //	THEN the command exits with a usage error
 func TestJSONFieldSelection_MutualExclusionWithOutput(t *testing.T) {

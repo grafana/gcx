@@ -1,6 +1,6 @@
 # docs/
 
-Documentation index for grafanactl.
+Documentation index for gcx.
 
 ## Directory Structure
 
@@ -52,7 +52,7 @@ under `adrs/legacy/`.
 ```
 **Created**: YYYY-MM-DD
 **Status**: proposed | accepted | deprecated | superseded
-**Bead**: grafanactl-experiments-xxx (or "none")
+**Bead**: gcx-experiments-xxx (or "none")
 **Supersedes**: path/to/old.md (or "none")
 ```
 

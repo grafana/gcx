@@ -10,8 +10,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/grafana/grafanactl/internal/providers"
-	"github.com/grafana/grafanactl/internal/providers/synth/smcfg"
+	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 )
 
 // ErrNotFound is returned when a requested check does not exist (HTTP 404).

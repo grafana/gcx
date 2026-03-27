@@ -1,14 +1,14 @@
 {
-  "name": "grafanactl-marketplace",
-  "description": "Claude Code plugins for grafanactl",
+  "name": "gcx-marketplace",
+  "description": "Claude Code plugins for gcx",
   "owner": {
     "name": "Grafana Labs"
   },
   "plugins": [
     {
-      "name": "grafanactl",
+      "name": "gcx",
       "source": "./claude-plugin",
-      "description": "Debug, explore, and instrument with Grafana using grafanactl CLI",
+      "description": "Debug, explore, and instrument with Grafana using gcx CLI",
       "version": "0.1.0"
     }
   ]

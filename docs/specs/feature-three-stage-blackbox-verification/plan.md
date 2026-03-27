@@ -53,7 +53,7 @@ RUNTIME EXECUTION MODEL (what SKILL.md instructs agents to do)
   │  │   Owns: provider.go, commands.go,                            │
   │  │         blank import, command tests                           │
   │  ├── Wait for both teammates                                    │
-  │  ├── BUILD GATE: GRAFANACTL_AGENT_MODE=false make all           │
+  │  ├── BUILD GATE: GCX_AGENT_MODE=false make all           │
   │  └── TeamDelete                                                 │
   │                                                                 │
   │  Stage 3: VERIFY (subagent)                                     │
@@ -64,7 +64,7 @@ RUNTIME EXECUTION MODEL (what SKILL.md instructs agents to do)
   │  │   Updates recipe gotchas/status       │                      │
   │  │                                        │                      │
   │  ├── VERIFY GATE: user reviews report    ◄┘                     │
-  │  └── Final: GRAFANACTL_AGENT_MODE=false make all                │
+  │  └── Final: GCX_AGENT_MODE=false make all                │
   └─────────────────────────────────────────────────────────────────┘
 ```
 

@@ -9,14 +9,14 @@ created: 2026-03-17
 
 ## Problem Statement
 
-Agents and CLI users have no way to capture visual snapshots (PNG images) of Grafana dashboards or individual panels via grafanactl. The only option today is to manually open Grafana in a browser and take screenshots, which is not automatable. Agents working with grafanactl cannot "see" what a dashboard looks like, limiting their ability to assist with dashboard debugging, layout review, and visual regression detection. The `grafanactl dashboards snapshot` command will call the Grafana Image Renderer API to download PNG images and expose file paths to agents via structured output.
+Agents and CLI users have no way to capture visual snapshots (PNG images) of Grafana dashboards or individual panels via gcx. The only option today is to manually open Grafana in a browser and take screenshots, which is not automatable. Agents working with gcx cannot "see" what a dashboard looks like, limiting their ability to assist with dashboard debugging, layout review, and visual regression detection. The `gcx dashboards snapshot` command will call the Grafana Image Renderer API to download PNG images and expose file paths to agents via structured output.
 
 ## Scope
 
 ### In Scope
 
-- New `dashboards` command group under `cmd/grafanactl/dashboards/`
-- `grafanactl dashboards snapshot` subcommand that renders full dashboards and individual panels to PNG
+- New `dashboards` command group under `cmd/gcx/dashboards/`
+- `gcx dashboards snapshot` subcommand that renders full dashboards and individual panels to PNG
 - HTTP client integration using existing `rest.HTTPClientFor` pattern (Pattern 12) for auth
 - Configurable render parameters: width, height, theme, time range, timezone, panelId
 - File output: write PNG images to a specified directory with deterministic naming
@@ -31,7 +31,7 @@ Agents and CLI users have no way to capture visual snapshots (PNG images) of Gra
 - **PDF export** — Grafana Image Renderer only supports PNG; PDF is a separate Grafana Enterprise feature
 - **Animated GIF or video capture** — not supported by the render API
 - **Dashboard diff via image comparison** — visual diffing is a separate feature that could consume snapshots later
-- **Image Renderer plugin installation or health checking** — users must ensure the renderer is installed; grafanactl will not manage Grafana plugins
+- **Image Renderer plugin installation or health checking** — users must ensure the renderer is installed; gcx will not manage Grafana plugins
 - **Inline image display in terminal** — PNG files are written to disk; terminal image protocols (iTerm2, Kitty) are not in scope
 - **Batch rendering all dashboards in a namespace** — first iteration targets explicit dashboard UIDs only
 - **Dashboard slug resolution via API** — the render endpoint accepts UID directly with an empty slug; slug resolution is unnecessary
@@ -40,9 +40,9 @@ Agents and CLI users have no way to capture visual snapshots (PNG images) of Gra
 
 | Decision | Chosen | Rationale | Source |
 |----------|--------|-----------|--------|
-| Command location | `grafanactl dashboards snapshot` under new `dashboards` group | Dashboards are a first-class Grafana concept; snapshot is a dashboard-specific operation. The `dashboards` group can host future subcommands (e.g., `dashboards lint`). | Codebase: datasources command group pattern |
+| Command location | `gcx dashboards snapshot` under new `dashboards` group | Dashboards are a first-class Grafana concept; snapshot is a dashboard-specific operation. The `dashboards` group can host future subcommands (e.g., `dashboards lint`). | Codebase: datasources command group pattern |
 | Render URL slug | Use empty slug (`/render/d/{uid}/` with trailing slash) | Grafana Image Renderer accepts empty slugs; avoids needing to resolve dashboard title to slug. | Grafana Image Renderer API |
-| HTTP client | `rest.HTTPClientFor(&cfg.Config)` from existing config | Reuses auth (API key, service account token, TLS) from the active grafanactl context. No new auth mechanism needed. | Pattern 12 in codebase |
+| HTTP client | `rest.HTTPClientFor(&cfg.Config)` from existing config | Reuses auth (API key, service account token, TLS) from the active gcx context. No new auth mechanism needed. | Pattern 12 in codebase |
 | Output format | Direct PNG file write + JSON metadata (not codec pipeline) | PNG is binary; standard JSON/YAML codecs cannot encode it. The command writes PNG to disk and outputs metadata about the written files. | Codebase constraint: codecs are text-only |
 | File naming | `{dashboard-uid}.png` or `{dashboard-uid}-panel-{panelId}.png` | Deterministic, filesystem-safe, and predictable for agents. | Agent consumption requirement |
 | Concurrency | errgroup with bounded parallelism (default 10) | Matches existing codebase pattern for batch I/O. Prevents overwhelming the renderer. | Codebase pattern |
@@ -51,7 +51,7 @@ Agents and CLI users have no way to capture visual snapshots (PNG images) of Gra
 
 ## Functional Requirements
 
-FR-001: The CLI MUST provide a `grafanactl dashboards snapshot` command that accepts one or more dashboard UIDs as positional arguments.
+FR-001: The CLI MUST provide a `gcx dashboards snapshot` command that accepts one or more dashboard UIDs as positional arguments.
 
 FR-002: The command MUST render each specified dashboard to a PNG image by calling `GET /render/d/{uid}/?orgId={orgId}&width={width}&height={height}` on the configured Grafana instance.
 
@@ -65,7 +65,7 @@ FR-005: The command MUST write PNG files to the directory specified by `--output
 
 FR-006: The command MUST name output files as `{dashboard-uid}.png` for full dashboard snapshots and `{dashboard-uid}-panel-{panelId}.png` for single panel snapshots.
 
-FR-007: The command MUST authenticate requests using the HTTP client derived from the active grafanactl context configuration via `rest.HTTPClientFor`.
+FR-007: The command MUST authenticate requests using the HTTP client derived from the active gcx context configuration via `rest.HTTPClientFor`.
 
 FR-008: The command MUST return a non-zero exit code when any render request fails (HTTP non-200, network error, or empty response body).
 
@@ -81,50 +81,50 @@ FR-013: The command MUST validate that at least one dashboard UID is provided, r
 
 FR-014: The command MUST create the output directory (including parents) if it does not exist.
 
-FR-015: The `claude-plugin/skills/manage-dashboards/SKILL.md` MUST be updated with a new "Workflow: Capture Dashboard Snapshots" section documenting the `grafanactl dashboards snapshot` command usage.
+FR-015: The `claude-plugin/skills/manage-dashboards/SKILL.md` MUST be updated with a new "Workflow: Capture Dashboard Snapshots" section documenting the `gcx dashboards snapshot` command usage.
 
 FR-016: The `claude-plugin/skills/debug-with-grafana/SKILL.md` MUST be updated to reference dashboard snapshots as a diagnostic step (e.g., "capture a visual snapshot of the dashboard to inspect layout and panel state").
 
 ## Acceptance Criteria
 
-- GIVEN a configured grafanactl context pointing to a Grafana instance with Image Renderer installed
-  WHEN the user runs `grafanactl dashboards snapshot <uid>`
+- GIVEN a configured gcx context pointing to a Grafana instance with Image Renderer installed
+  WHEN the user runs `gcx dashboards snapshot <uid>`
   THEN a file named `<uid>.png` MUST be written to the current directory containing a valid PNG image
 
-- GIVEN a configured grafanactl context
-  WHEN the user runs `grafanactl dashboards snapshot <uid> --panel 42`
+- GIVEN a configured gcx context
+  WHEN the user runs `gcx dashboards snapshot <uid> --panel 42`
   THEN a file named `<uid>-panel-42.png` MUST be written to the current directory containing a valid PNG image of panel 42
 
-- GIVEN a configured grafanactl context
-  WHEN the user runs `grafanactl dashboards snapshot <uid> --output-dir ./snapshots`
+- GIVEN a configured gcx context
+  WHEN the user runs `gcx dashboards snapshot <uid> --output-dir ./snapshots`
   THEN the `./snapshots` directory MUST be created if it does not exist and the PNG file MUST be written inside it
 
-- GIVEN a configured grafanactl context
-  WHEN the user runs `grafanactl dashboards snapshot <uid> --width 1000 --height 500 --theme light --from now-1h --to now --tz UTC`
+- GIVEN a configured gcx context
+  WHEN the user runs `gcx dashboards snapshot <uid> --width 1000 --height 500 --theme light --from now-1h --to now --tz UTC`
   THEN the render request MUST include query parameters `width=1000`, `height=500`, `theme=light`, `from=now-1h`, `to=now`, `tz=UTC`
 
 - GIVEN agent mode is active
-  WHEN the user runs `grafanactl dashboards snapshot <uid1> <uid2>`
+  WHEN the user runs `gcx dashboards snapshot <uid1> <uid2>`
   THEN stdout MUST contain a JSON array with two objects, each containing `uid`, `file_path` (absolute path), `width`, `height`, `theme`, and `rendered_at` fields
 
 - GIVEN the user provides multiple dashboard UIDs
-  WHEN the user runs `grafanactl dashboards snapshot <uid1> <uid2> <uid3>`
+  WHEN the user runs `gcx dashboards snapshot <uid1> <uid2> <uid3>`
   THEN all three dashboards MUST be rendered concurrently and three PNG files MUST be written
 
-- GIVEN a configured grafanactl context
-  WHEN the user runs `grafanactl dashboards snapshot <uid> --window 6h`
+- GIVEN a configured gcx context
+  WHEN the user runs `gcx dashboards snapshot <uid> --window 6h`
   THEN the render request MUST include query parameters `from=now-6h` and `to=now`
 
-- GIVEN a configured grafanactl context
-  WHEN the user runs `grafanactl dashboards snapshot <uid> --window 6h --from now-2h`
+- GIVEN a configured gcx context
+  WHEN the user runs `gcx dashboards snapshot <uid> --window 6h --from now-2h`
   THEN the command MUST exit with a non-zero code and print a validation error indicating that `--window` is mutually exclusive with `--from`/`--to`
 
 - GIVEN no dashboard UID is provided
-  WHEN the user runs `grafanactl dashboards snapshot`
+  WHEN the user runs `gcx dashboards snapshot`
   THEN the command MUST exit with a non-zero code and print an error message indicating that at least one dashboard UID is required
 
 - GIVEN the Grafana instance does not have Image Renderer installed
-  WHEN the user runs `grafanactl dashboards snapshot <uid>`
+  WHEN the user runs `gcx dashboards snapshot <uid>`
   THEN the command MUST exit with a non-zero code and report the HTTP error from Grafana (typically 500 or "panel plugin not found")
 
 - GIVEN a valid render request
@@ -137,7 +137,7 @@ FR-016: The `claude-plugin/skills/debug-with-grafana/SKILL.md` MUST be updated t
 
 - GIVEN the `debug-with-grafana` skill file exists
   WHEN an agent reads `claude-plugin/skills/debug-with-grafana/SKILL.md`
-  THEN it MUST reference the `grafanactl dashboards snapshot` command as a diagnostic tool
+  THEN it MUST reference the `gcx dashboards snapshot` command as a diagnostic tool
 
 ## Negative Constraints
 
@@ -156,12 +156,12 @@ FR-016: The `claude-plugin/skills/debug-with-grafana/SKILL.md` MUST be updated t
 | Renderer timeout on complex dashboards | Command hangs or returns partial image | Use context with timeout; document that complex dashboards may need larger timeouts via `--timeout` flag or context deadline |
 | Large PNG files for high-resolution renders | Disk space usage, slow agent consumption | Default to reasonable dimensions (1920x1080); document that very large dimensions produce proportionally large files |
 | Dashboard UID does not exist | HTTP 404 from render endpoint | Report the UID that failed and continue rendering remaining dashboards (fail-open per dashboard, non-zero exit at end) |
-| Grafana instance behind reverse proxy that strips render paths | Render endpoint unreachable | Document that `/render/` path must be accessible; no mitigation in grafanactl itself |
+| Grafana instance behind reverse proxy that strips render paths | Render endpoint unreachable | Document that `/render/` path must be accessible; no mitigation in gcx itself |
 
 ## Open Questions
 
 - [RESOLVED] Whether to use `/render/d/{uid}/{slug}` or `/render/d/{uid}/` — the render endpoint works with an empty slug, so no slug resolution is needed.
 - [RESOLVED] Whether to support `--output-format png` via the codec system — PNG is binary and cannot use text codecs; direct file write with JSON metadata is the correct approach.
-- [DEFERRED] Whether to add a `grafanactl dashboards list` command alongside snapshot — useful but separate scope; the `resources get dashboards` command already lists dashboards.
-- [DEFERRED] Whether to support rendering dashboards by title (fuzzy match) instead of UID — adds complexity; UIDs are stable identifiers and already used throughout grafanactl.
-- [NEEDS CLARIFICATION] Whether `--org-id` default of 1 is acceptable for all deployment models, or whether it should be read from the grafanactl context configuration.
+- [DEFERRED] Whether to add a `gcx dashboards list` command alongside snapshot — useful but separate scope; the `resources get dashboards` command already lists dashboards.
+- [DEFERRED] Whether to support rendering dashboards by title (fuzzy match) instead of UID — adds complexity; UIDs are stable identifiers and already used throughout gcx.
+- [NEEDS CLARIFICATION] Whether `--org-id` default of 1 is acceptable for all deployment models, or whether it should be read from the gcx context configuration.

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/grafanactl/internal/query/loki"
-	"github.com/grafana/grafanactl/internal/query/prometheus"
+	"github.com/grafana/gcx/internal/query/loki"
+	"github.com/grafana/gcx/internal/query/prometheus"
 )
 
 // FromPrometheusResponse converts a Prometheus query response to ChartData.

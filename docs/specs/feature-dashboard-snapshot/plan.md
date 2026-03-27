@@ -13,7 +13,7 @@ created: 2026-03-17
 ```
 User Input                    CLI Layer                         HTTP Client                     Disk I/O
 ─────────                     ─────────                         ───────────                     ────────
-                              cmd/grafanactl/dashboards/
+                              cmd/gcx/dashboards/
                               ┌──────────────────────┐
   UIDs + flags ──────────────►│  snapshotOpts        │
                               │  .setup(flags)       │
@@ -52,7 +52,7 @@ User Input                    CLI Layer                         HTTP Client     
 ## Integration With Root Command
 
 ```
-cmd/grafanactl/root/command.go
+cmd/gcx/root/command.go
   rootCmd.AddCommand(dashboards.Command())   ← NEW registration
 ```
 
@@ -83,8 +83,8 @@ The `dashboards` command group follows the exact pattern of `datasources`:
 - `debug-with-grafana` skill retains all existing steps; a snapshot reference is added to Step 6
 
 **New functionality:**
-- `grafanactl dashboards` command group (currently does not exist)
-- `grafanactl dashboards snapshot` subcommand
+- `gcx dashboards` command group (currently does not exist)
+- `gcx dashboards snapshot` subcommand
 - `internal/dashboards/` package with render client
 
 **No deprecations.**

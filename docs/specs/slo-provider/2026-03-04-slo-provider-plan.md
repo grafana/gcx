@@ -2,11 +2,11 @@
 
 ## Context
 
-grafanactl needs an SLO provider as the first reference implementation of the provider plugin system (Wave 1, `grafanactl-experiments-htx`). The SLO API is a plugin-hosted REST API at `/api/plugins/grafana-slo-app/resources/v1/slo` — it's the simplest Grafana Cloud product to integrate: same auth, clean CRUD, no extra credentials needed.
+gcx needs an SLO provider as the first reference implementation of the provider plugin system (Wave 1, `gcx-experiments-htx`). The SLO API is a plugin-hosted REST API at `/api/plugins/grafana-slo-app/resources/v1/slo` — it's the simplest Grafana Cloud product to integrate: same auth, clean CRUD, no extra credentials needed.
 
 The research phase produced three documents covering the full API surface (18 endpoints), recording rule architecture, Reports CRUD, graph package reuse, and command design. This plan synthesizes those into an implementation roadmap.
 
-Source bead: `grafanactl-experiments-htx`
+Source bead: `gcx-experiments-htx`
 
 ## Key Design Decisions
 
@@ -21,7 +21,7 @@ This matches user expectation: one token, all Grafana features.
 
 ### 2. apiVersion: `slo.ext.grafana.app/v1alpha1`
 
-Internal convention for grafanactl's K8s envelope format. Uses the `.ext.grafana.app` suffix to signal this is an extension product (not core App Platform). SLOs use `Kind: SLO`, Reports use `Kind: Report`, both under the same group.
+Internal convention for gcx's K8s envelope format. Uses the `.ext.grafana.app` suffix to signal this is an extension product (not core App Platform). SLOs use `Kind: SLO`, Reports use `Kind: Report`, both under the same group.
 
 ### 3. Plugin API only (not K8s API)
 
@@ -34,7 +34,7 @@ Not using `rest.HTTPClientFor` since this isn't a K8s API. The client constructs
 ## Command Surface
 
 ```
-grafanactl slo                                  Manage Grafana SLOs
+gcx slo                                  Manage Grafana SLOs
 ├── definitions                                 Manage SLO definitions
 │   ├── list                                    List SLO definitions
 │   ├── get <uuid>                              Get a specific SLO by UUID

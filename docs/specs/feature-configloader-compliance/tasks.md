@@ -154,14 +154,14 @@ Replace synth's local `configLoader` struct with an embedding of `providers.Conf
 **Depends on**: T2, T3
 **Type**: chore
 
-Run `GRAFANACTL_AGENT_MODE=false make all` to verify the full build: linting, all unit tests, docs generation. Verify no test file references deleted synth functions. Confirm no regressions in unmodified providers.
+Run `GCX_AGENT_MODE=false make all` to verify the full build: linting, all unit tests, docs generation. Verify no test file references deleted synth functions. Confirm no regressions in unmodified providers.
 
 **Deliverables:**
 - Clean `make all` output (no lint errors, all tests pass, docs up to date)
 
 **Acceptance criteria:**
 - GIVEN all changes from T1, T2, T3 applied
-  WHEN `GRAFANACTL_AGENT_MODE=false make all` is run
+  WHEN `GCX_AGENT_MODE=false make all` is run
   THEN it completes with exit code 0 (AC-14)
 
 - GIVEN the complete codebase after all changes

@@ -2,7 +2,7 @@
 type: feature-spec
 title: "Three-Stage Blackbox Verification for /migrate-provider Skill"
 status: done
-beads_id: grafanactl-experiments-zn8
+beads_id: gcx-experiments-zn8
 created: 2026-03-24
 ---
 
@@ -12,13 +12,13 @@ created: 2026-03-24
 
 The `/migrate-provider` skill produces incomplete, unreliable provider ports because its structure enables agents to skip verification gates and leak context between implementation and testing.
 
-**Who is affected:** Agents executing provider migrations from the cloud CLI to grafanactl, and the human reviewer who must catch defects the skill fails to prevent.
+**Who is affected:** Agents executing provider migrations from the cloud CLI to gcx, and the human reviewer who must catch defects the skill fails to prevent.
 
 **Current problems observed during incidents, kg, and fleet migrations:**
 
 1. **No human gates** -- agents declared "done" without structured smoke diffs, forcing the reviewer to re-verify from scratch.
 2. **Flat checklist** -- the 5-phase structure (Pre-flight, Parity Audit, Core Adapter, Schema, Commands, Smoke Test) has no enforced ordering. Agents cherry-picked steps, skipping the parity audit or deferring smoke tests indefinitely.
-3. **No architectural mapping** -- agents copied cloud CLI patterns verbatim (embedded base clients, flat CLI flags, raw JSON output) instead of translating to grafanactl patterns (TypedCRUD[T], Options structs, codec registry with K8s envelope wrapping).
+3. **No architectural mapping** -- agents copied cloud CLI patterns verbatim (embedded base clients, flat CLI flags, raw JSON output) instead of translating to gcx patterns (TypedCRUD[T], Options structs, codec registry with K8s envelope wrapping).
 4. **Verification as afterthought** -- smoke tests ran in the same agent context as implementation, producing confirmation bias. The agent tested what it believed it built, not what was actually required.
 
 **Current workaround:** The reviewer manually re-runs smoke test commands, cross-references cloud CLI output, and catches pattern violations during PR review. This defeats the purpose of having a skill.
@@ -63,13 +63,13 @@ The `/migrate-provider` skill produces incomplete, unreliable provider ports bec
 
 - FR-001: The skill MUST define exactly three stages: Audit, Build, and Verify, executed in strict sequential order with a human approval gate between each pair.
 - FR-002: The Audit stage MUST produce three artifacts before any provider code is written: (a) parity table, (b) architectural mapping, (c) verification plan.
-- FR-003: The parity table MUST contain one row per cloud CLI subcommand with columns: cloud CLI command, grafanactl equivalent, status (Implemented / Deferred / N/A), and notes. Every cloud CLI subcommand MUST appear -- no silent omissions.
-- FR-004: The architectural mapping MUST contain explicit translations for each of these cloud-CLI-to-grafanactl pattern pairs: (a) cloud CLI flat client to TypedCRUD[T] adapter, (b) cloud CLI CLI flags to Options struct with setup/Validate, (c) cloud CLI output formatting to codec registry with K8s envelope wrapping, (d) cloud CLI types to Go structs with omitzero for struct fields, (e) cloud CLI provider registration to adapter.Register() in init() with blank import.
-- FR-005: The verification plan MUST list: (a) automated tests to write (client httptest, adapter round-trip, TypedCRUD interface compliance), (b) smoke test commands to run against a live instance (list/get/create per resource, structured jq diffs, format checks for table/wide/json/yaml), (c) build gate checkpoints specifying when `GRAFANACTL_AGENT_MODE=false make all` MUST run.
+- FR-003: The parity table MUST contain one row per cloud CLI subcommand with columns: cloud CLI command, gcx equivalent, status (Implemented / Deferred / N/A), and notes. Every cloud CLI subcommand MUST appear -- no silent omissions.
+- FR-004: The architectural mapping MUST contain explicit translations for each of these cloud-CLI-to-gcx pattern pairs: (a) cloud CLI flat client to TypedCRUD[T] adapter, (b) cloud CLI CLI flags to Options struct with setup/Validate, (c) cloud CLI output formatting to codec registry with K8s envelope wrapping, (d) cloud CLI types to Go structs with omitzero for struct fields, (e) cloud CLI provider registration to adapter.Register() in init() with blank import.
+- FR-005: The verification plan MUST list: (a) automated tests to write (client httptest, adapter round-trip, TypedCRUD interface compliance), (b) smoke test commands to run against a live instance (list/get/create per resource, structured jq diffs, format checks for table/wide/json/yaml), (c) build gate checkpoints specifying when `GCX_AGENT_MODE=false make all` MUST run.
 - FR-006: The Build stage MUST receive only the Build envelope (parity table, architectural mapping, recipe reference). The Build stage MUST NOT receive or reference the verification plan.
 - FR-007: The Verify stage MUST receive only the Verify envelope (verification plan). The Verify stage MUST NOT receive or reference Build-stage implementation decisions (e.g., internal function names, error handling approach, test structure chosen by the builder).
 - FR-008: The Build stage MUST follow `provider-migration-recipe.md` internal phases (types, client, adapter, resource_adapter, provider, commands) with a `make lint` checkpoint between each phase.
-- FR-009: The Build stage gate MUST require `GRAFANACTL_AGENT_MODE=false make all` to pass before proceeding to Verify.
+- FR-009: The Build stage gate MUST require `GCX_AGENT_MODE=false make all` to pass before proceeding to Verify.
 - FR-010: The Verify stage MUST execute every item in the verification plan and produce a structured comparison report containing: (a) per-command pass/fail with captured output, (b) diff output for list ID comparisons and get field comparisons, (c) format check results for all four output modes.
 - FR-011: The Verify stage MUST update `provider-migration-recipe.md` with any new discoveries (gotchas, pattern corrections, status tracker entry).
 - FR-012: The Verify stage gate MUST require user review of the comparison report. All discrepancies MUST be either justified with a written rationale or fixed before the gate passes.
@@ -79,7 +79,7 @@ The `/migrate-provider` skill produces incomplete, unreliable provider ports bec
 - FR-016: Each sealed envelope MUST be described in SKILL.md as a named section with explicit "receives" and "produces" lists, so agents know exactly what context they have.
 - FR-017: The Audit stage MUST run in the lead orchestrator's main context (not delegated to a subagent or teammate), because it requires interactive user review and approval of all three artifacts before envelopes are sealed.
 - FR-018: The Build stage MUST use an agent team (TeamCreate) with exactly two teammates: Build-Core and Build-Commands. The lead orchestrator MUST spawn both teammates using the Agent tool with team_name after creating the team.
-- FR-019: The Build-Core teammate MUST own and modify only files in the provider's types, client, adapter, and resource_adapter packages (e.g., `internal/providers/{name}/types.go`, `client.go`, `adapter.go`, `resource_adapter.go`). The Build-Commands teammate MUST own and modify only files in the provider registration and CLI command packages (e.g., `internal/providers/{name}/provider.go`, `cmd/grafanactl/providers/{name}/`).
+- FR-019: The Build-Core teammate MUST own and modify only files in the provider's types, client, adapter, and resource_adapter packages (e.g., `internal/providers/{name}/types.go`, `client.go`, `adapter.go`, `resource_adapter.go`). The Build-Commands teammate MUST own and modify only files in the provider registration and CLI command packages (e.g., `internal/providers/{name}/provider.go`, `cmd/gcx/providers/{name}/`).
 - FR-020: Each Build teammate MUST receive only the Build envelope contents (parity table, architectural mapping, recipe reference) in its spawn prompt. The spawn prompt MUST NOT include any verification plan content.
 - FR-021: The Build-Core teammate MUST complete its work (types, client, adapter, resource_adapter) and signal completion via the shared TaskList before Build-Commands begins command implementation, because commands depend on the adapter interfaces.
 - FR-022: The Verify stage MUST run as a subagent (Agent tool without team_name). The lead orchestrator MUST pass only the Verify envelope contents (verification plan) in the subagent's spawn prompt. The spawn prompt MUST NOT include any Build envelope or implementation details.
@@ -98,7 +98,7 @@ The `/migrate-provider` skill produces incomplete, unreliable provider ports bec
 
 - AC-03: GIVEN the Audit stage is executing
   WHEN the agent completes the architectural mapping
-  THEN each of the five cloud-CLI-to-grafanactl pattern pairs (FR-004 a through e) has an explicit translation entry.
+  THEN each of the five cloud-CLI-to-gcx pattern pairs (FR-004 a through e) has an explicit translation entry.
 
 - AC-04: GIVEN the Audit stage is executing
   WHEN the agent produces the verification plan
@@ -113,7 +113,7 @@ The `/migrate-provider` skill produces incomplete, unreliable provider ports bec
   THEN the context contains only the Verify envelope (verification plan) and does not contain Build-stage implementation decisions.
 
 - AC-07: GIVEN the Build stage has completed
-  WHEN `GRAFANACTL_AGENT_MODE=false make all` is run
+  WHEN `GCX_AGENT_MODE=false make all` is run
   THEN it exits 0 with no lint errors and all tests passing.
 
 - AC-08: GIVEN the Verify stage is executing

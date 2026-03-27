@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/grafana/grafanactl/internal/providers"
+	"github.com/grafana/gcx/internal/providers"
 )
 
 const (

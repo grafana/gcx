@@ -4,7 +4,7 @@ title: "Typed Resource Adapter Compliance"
 status: done
 research: docs/research/2026-03-25-provider-registry-convergence.md
 parent: docs/specs/feature-typed-resource-adapter-foundation/spec.md
-beads_id: grafanactl-experiments-dvwd
+beads_id: gcx-experiments-dvwd
 created: 2026-03-26
 ---
 
@@ -12,9 +12,9 @@ created: 2026-03-26
 
 ## Problem Statement
 
-grafanactl's provider/adapter architecture has three structural problems that compound as new providers are added:
+gcx's provider/adapter architecture has three structural problems that compound as new providers are added:
 
-1. **No typed access for provider commands.** `TypedCRUD[T any]` exposes no public typed methods -- only function pointers and an unstructured bridge via `AsAdapter()`. Provider CLI commands (e.g., `grafanactl slo definitions list`) call REST clients directly, duplicating CRUD logic that already exists in the adapter layer. Bug fixes must be applied to both code paths independently.
+1. **No typed access for provider commands.** `TypedCRUD[T any]` exposes no public typed methods -- only function pointers and an unstructured bridge via `AsAdapter()`. Provider CLI commands (e.g., `gcx slo definitions list`) call REST clients directly, duplicating CRUD logic that already exists in the adapter layer. Bug fixes must be applied to both code paths independently.
 
 2. **Dual registration with 13 init() functions.** Provider identity (`providers.Register()`) and adapter registration (`adapter.Register()`) are disconnected global registries populated by separate `init()` functions across 8 providers. `Provider.ResourceAdapters()` returns nil in 6 of 8 providers -- it is dead code superseded by direct `adapter.Register()` calls. There is no atomic guarantee that a provider's CLI identity and its adapter registrations are consistent.
 
@@ -50,7 +50,7 @@ The current workaround is manual duplication: every provider CRUD command hand-w
 - **Removal of Validate() from Provider interface** -- dead at runtime but removing it is a separate cleanup tracked in the research report.
 - **Removal of ConfigKeys() from Provider interface** -- requires ProviderMeta type first.
 - **StripFields elimination** -- investigating struct tags or separate spec types to replace JSON-map-delete. Tracked as follow-up.
-- **Provider CRUD command deprecation/removal** -- commands will migrate to use TypedCRUD internally but will continue to exist as user-facing commands. Deprecation in favor of `grafanactl resources` is a separate decision.
+- **Provider CRUD command deprecation/removal** -- commands will migrate to use TypedCRUD internally but will continue to exist as user-facing commands. Deprecation in favor of `gcx resources` is a separate decision.
 - **SLO Reports adapter** -- Reports is read-only analytics with no CRUD adapter. Adding one is orthogonal.
 - **Porting new resource types from the cloud CLI** -- depends on this foundation but is separate work.
 - **Changes to the ResourceAdapter interface** -- the existing interface (List, Get, Create, Update, Delete, Descriptor, Aliases, Schema, Example) is preserved unchanged.
@@ -210,4 +210,4 @@ The current workaround is manual duplication: every provider CRUD command hand-w
 - [RESOLVED]: Should SLO Reports get a ResourceAdapter? -- No. Reports is read-only analytics, not a CRUD resource. Out of scope.
 - [DEFERRED]: Should `StripFields` be replaced by struct tags? -- Will address in follow-up work. Requires investigation of whether struct tags can express all current strip patterns.
 - [DEFERRED]: Full registry convergence with `ProviderMeta` type, `RegisterProvider()` API, and removal of Validate()/ConfigKeys() from Provider interface -- tracked in research report phases 2-6.
-- [DEFERRED]: Provider CRUD command deprecation in favor of `grafanactl resources` equivalents -- separate UX decision after migration proves the unified path works.
+- [DEFERRED]: Provider CRUD command deprecation in favor of `gcx resources` equivalents -- separate UX decision after migration proves the unified path works.

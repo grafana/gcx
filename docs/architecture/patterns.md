@@ -4,7 +4,7 @@
 
 ### 1. Kubernetes Resource Model Adoption (High Confidence: 97%)
 
-grafanactl does not merely borrow Kubernetes conventions -- it directly uses
+gcx does not merely borrow Kubernetes conventions -- it directly uses
 `k8s.io/apimachinery` and `k8s.io/client-go` because Grafana 12+ exposes a
 Kubernetes-compatible `/apis` endpoint. The choice is dictated by the server
 architecture, not by preference.
@@ -18,7 +18,7 @@ architecture, not by preference.
 **Evidence across domains:**
 - Resource Model domain: `Resource` wraps `unstructured.Unstructured` + `GrafanaMetaAccessor`
 - Client/API domain: `NamespacedClient` wraps `k8s.io/client-go/dynamic.Interface`
-- Config domain: `NamespacedRESTConfig` bridges grafanactl config to `rest.Config`
+- Config domain: `NamespacedRESTConfig` bridges gcx config to `rest.Config`
 - Data Flows domain: push/pull use k8s `metav1.CreateOptions`, `ListOptions`, etc.
 
 ---
@@ -110,7 +110,7 @@ Within the dynamic client path, there are two specializations:
 Directly modeled after kubectl's kubeconfig pattern. Key design decisions:
 
 - Named contexts in a single YAML file, one "current" at a time
-- Simplified model: grafanactl merges cluster+auth+user into a single context
+- Simplified model: gcx merges cluster+auth+user into a single context
   (kubectl separates them into three lists for reuse)
 - Environment variables override the current context only, never mutate the file
 - XDG Base Directory specification for file location
@@ -119,7 +119,7 @@ Directly modeled after kubectl's kubeconfig pattern. Key design decisions:
 
 **Loading priority chain:**
 ```
---config flag  >  $GRAFANACTL_CONFIG  >  $XDG_CONFIG_HOME  >  ~/.config  >  $XDG_CONFIG_DIRS
+--config flag  >  $GCX_CONFIG  >  $XDG_CONFIG_HOME  >  ~/.config  >  $XDG_CONFIG_DIRS
 ```
 
 ---
@@ -190,7 +190,7 @@ from and in what format. This enables:
 ### 11. Provider Plugin System (High Confidence: 93%)
 
 Providers are first-class extension points that contribute Cobra commands and
-configuration to grafanactl. The pattern separates the plugin contract from
+configuration to gcx. The pattern separates the plugin contract from
 command registration:
 
 ```
@@ -222,7 +222,7 @@ name. Reflection-based editor picks them up via the `yaml:"providers"` tag.
 - `internal/providers/redact.go`: `RedactSecrets` implementation
 - `internal/providers/configloader.go`: Shared `ConfigLoader` struct — all providers use this instead of duplicating config loading logic. Provides `LoadGrafanaConfig`, `LoadCloudConfig`, `LoadProviderConfig` (provider-specific `map[string]string`), `SaveProviderConfig` (write-back), and `LoadFullConfig` (full `*config.Config`)
 - `internal/providers/alert/provider.go`: Second provider implementation (alert rules and groups)
-- `cmd/grafanactl/providers/command.go`: `providers list` command
+- `cmd/gcx/providers/command.go`: `providers list` command
 - `internal/config/types.go`: `Providers` field on `Context`
 - `internal/resources/adapter/register.go`: Global adapter registration pattern (self-registration via `Register()` and `AllRegistrations()`)
 
@@ -272,8 +272,8 @@ terminal charts (`internal/graph`). The `query` command registers custom codecs
 **Evidence:**
 - `internal/query/prometheus/client.go`: `NewClient` calls `rest.HTTPClientFor`
 - `internal/query/loki/client.go`: same pattern
-- `cmd/grafanactl/datasources/query/codecs.go`: `queryTableCodec`, `queryGraphCodec` registration — shared by all per-kind query subcommands
-- `cmd/grafanactl/datasources/query/{prometheus,loki,pyroscope,tempo,generic}.go`: per-kind constructors wired under `datasources {kind} query`
+- `cmd/gcx/datasources/query/codecs.go`: `queryTableCodec`, `queryGraphCodec` registration — shared by all per-kind query subcommands
+- `cmd/gcx/datasources/query/{prometheus,loki,pyroscope,tempo,generic}.go`: per-kind constructors wired under `datasources {kind} query`
 - `internal/graph/chart.go`: `RenderChart` auto-selects line vs bar chart
 
 ---
@@ -300,8 +300,8 @@ only the wide table codec was expected to display.
 
 **Evidence:**
 - `internal/providers/slo/definitions/status.go`: `fetchMetrics` fetches all metrics unconditionally
-- `cmd/grafanactl/datasources/query/query.go`: query response passed to all codecs unchanged
-- `cmd/grafanactl/io/format.go`: built-in JSON/YAML codecs fall through when no custom codec is registered
+- `cmd/gcx/datasources/query/query.go`: query response passed to all codecs unchanged
+- `cmd/gcx/io/format.go`: built-in JSON/YAML codecs fall through when no custom codec is registered
 
 **See also:** [design-guide.md §11](../reference/design-guide.md#11-codec-requirements-by-command-type-adopt) — codec requirements by command type, [§12](../reference/design-guide.md#12-mutation-command-output-adopt) — mutation command output spec.
 
@@ -342,7 +342,7 @@ Cross-reference: Pattern 12 (Direct HTTP Client for Datasource APIs).
 
 ### 15. Agent Mode Detection and Pipe-Aware Output (High Confidence: 96%)
 
-grafanactl detects at startup whether it is running inside an AI agent
+gcx detects at startup whether it is running inside an AI agent
 environment (Claude Code, Cursor, GitHub Copilot, Amazon Q) and adjusts
 its behavior accordingly. Detection happens at `init()` time by reading
 well-known environment variables; the `--agent` CLI flag overrides env
@@ -352,7 +352,7 @@ detection when explicitly set.
 
 | Priority | Mechanism | Notes |
 |----------|-----------|-------|
-| 1 | `GRAFANACTL_AGENT_MODE` env var | Explicit override — falsy value disables agent mode even if other vars are set |
+| 1 | `GCX_AGENT_MODE` env var | Explicit override — falsy value disables agent mode even if other vars are set |
 | 2 | `CLAUDE_CODE`, `CURSOR_AGENT`, `GITHUB_COPILOT`, `AMAZON_Q` env vars | Any truthy value enables agent mode |
 | 3 | `--agent` CLI flag | Applied after env detection; always takes precedence when explicitly passed |
 
@@ -360,7 +360,7 @@ detection when explicitly set.
 - Color output disabled globally (`color.NoColor = true`)
 - Default output format overridden to `json` (machine-parseable by default)
 - Pipe-aware behaviors forced: `IsPiped=true`, `NoTruncate=true` regardless of TTY state
-- In-band error JSON written to stdout on failure (see `cmd/grafanactl/fail/json.go`)
+- In-band error JSON written to stdout on failure (see `cmd/gcx/fail/json.go`)
 
 **Pipe detection** is also independent of agent mode. Root `PersistentPreRun` calls
 `terminal.Detect()` which checks `term.IsTerminal(os.Stdout.Fd())`. When piped:
@@ -374,9 +374,9 @@ behaviors regardless of actual TTY state.
 **Key files:**
 - `internal/agent/agent.go` — `IsAgentMode()`, `SetFlag()`, `DetectedFromEnv()`
 - `internal/terminal/terminal.go` — `Detect()`, `IsPiped()`, `NoTruncate()`, setters
-- `cmd/grafanactl/root/command.go` — orchestrates detection order in `PersistentPreRun`
-- `cmd/grafanactl/io/format.go` — `io.Options` fields `IsPiped`, `NoTruncate`, `JSONFields`
-- `cmd/grafanactl/fail/json.go` — `DetailedError.WriteJSON` for in-band error reporting
+- `cmd/gcx/root/command.go` — orchestrates detection order in `PersistentPreRun`
+- `cmd/gcx/io/format.go` — `io.Options` fields `IsPiped`, `NoTruncate`, `JSONFields`
+- `cmd/gcx/fail/json.go` — `DetailedError.WriteJSON` for in-band error reporting
 
 **Evidence:**
 - `internal/agent/` package with `init()`-time env-var detection
@@ -429,7 +429,7 @@ while `metadata.uid` stores the numeric API ID. On round-trips, the adapter reco
 the numeric ID from `metadata.uid` (with a fallback to parsing `metadata.name` as a
 number for backward compatibility).
 
-**Usage:** When a provider resource type needs CRUD via `grafanactl resources`, implement `ResourceAdapter`, call `adapter.Register()` in `init()`, and call `RegistryIndex.RegisterStatic()` in `discovery.NewDefaultRegistry`.
+**Usage:** When a provider resource type needs CRUD via `gcx resources`, implement `ResourceAdapter`, call `adapter.Register()` in `init()`, and call `RegistryIndex.RegisterStatic()` in `discovery.NewDefaultRegistry`.
 
 **See also:** [design-guide.md §14](../reference/design-guide.md#14-provider--resources-output-consistency-adopt) — provider CRUD commands must use ResourceAdapter, [§15](../reference/design-guide.md#15-typedcrud-pattern-adopt--evolve) — TypedCRUD pattern and trajectory, [§16](../reference/design-guide.md#16-provider-configloader-adopt) — ConfigLoader requirement for all providers.
 

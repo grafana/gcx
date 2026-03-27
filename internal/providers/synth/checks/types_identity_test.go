@@ -3,7 +3,7 @@ package checks //nolint:testpackage // Tests unexported checkResource type.
 import (
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/resources/adapter"
 )
 
 var _ adapter.ResourceIdentity = &checkResource{}

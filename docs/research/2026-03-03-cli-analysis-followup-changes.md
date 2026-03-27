@@ -1,8 +1,8 @@
-# CLI Analysis Follow-Up: Required Changes for grafanactl
+# CLI Analysis Follow-Up: Required Changes for gcx
 
 **Date:** 2026-03-03
 **Source:** Cross-reference of [`2026-03-03-cli-analysis-.md`](2026-03-03-cli-analysis-.md) (gh vs pup comparative analysis) against `agent-docs/` architecture documentation
-**Purpose:** Identify specific follow-up changes needed in grafanactl to improve agentic experience
+**Purpose:** Identify specific follow-up changes needed in gcx to improve agentic experience
 
 ---
 
@@ -22,16 +22,16 @@ The [cli analysis](2026-03-03-cli-analysis-.md) identified 10 patterns to adopt 
 
 | Recommendation | Current State (from agent-docs/code) | Gap | Action Required |
 |---|---|---|---|
-| **R1.1 — Document exit codes** | `cmd/grafanactl/fail/detailed.go` has `ExitCode *int` field on `DetailedError`, but no documented taxonomy. `main.go` uses `os.Exit(1)` as default. No differentiated exit codes for auth vs. command failure vs. version mismatch. | **Large gap** — exit codes exist as a mechanism but are undocumented and unexploited | Implement exit code taxonomy (0/1/2/3/4), document in `help exit-codes`, update `main.go` error handler |
-| **R1.2 — Add `GRAFANACTL_AUTO_APPROVE`** | No confirmation prompts exist currently for destructive operations (`delete`, `push`). `delete` command has no `--yes` flag. Per agent-docs: "Deleter does NOT check IsManaged()" — no confirmation before deletion. | **Medium gap** — no prompts exist today, but they should be added before GA along with bypass mechanism | Add confirmation prompts for `delete` and `push --overwrite`, then add `--yes`/`-y` flag + `GRAFANACTL_AUTO_APPROVE` env var |
+| **R1.1 — Document exit codes** | `cmd/gcx/fail/detailed.go` has `ExitCode *int` field on `DetailedError`, but no documented taxonomy. `main.go` uses `os.Exit(1)` as default. No differentiated exit codes for auth vs. command failure vs. version mismatch. | **Large gap** — exit codes exist as a mechanism but are undocumented and unexploited | Implement exit code taxonomy (0/1/2/3/4), document in `help exit-codes`, update `main.go` error handler |
+| **R1.2 — Add `GCX_AUTO_APPROVE`** | No confirmation prompts exist currently for destructive operations (`delete`, `push`). `delete` command has no `--yes` flag. Per agent-docs: "Deleter does NOT check IsManaged()" — no confirmation before deletion. | **Medium gap** — no prompts exist today, but they should be added before GA along with bypass mechanism | Add confirmation prompts for `delete` and `push --overwrite`, then add `--yes`/`-y` flag + `GCX_AUTO_APPROVE` env var |
 | **R1.3 — Add agent mode detection** | No agent mode concept. `--no-color` flag exists (root command), `--output/-o` flag exists per command. No detection of `CLAUDE_CODE`, `CURSOR_AGENT`, etc. environment variables. | **Large gap** — no agent awareness at all | Implement agent mode package: detect env vars, auto-set JSON output, suppress color/spinners, auto-approve |
 
 ### Priority 2: High Value Documentation
 
 | Recommendation | Current State | Gap | Action Required |
 |---|---|---|---|
-| **R2.1 — `help formatting` page** | Output formatting exists: `-o json/yaml/text/wide` via `io.Options` (documented in `cli-layer.md`). `get.go` uses `k8s.io/cli-runtime/pkg/printers.NewTablePrinter`. No dedicated help topic. | **Documentation gap only** — code exists, docs don't | Create `grafanactl help formatting` with examples for each output mode, jq piping patterns |
-| **R2.2 — `help environment` page** | Env vars documented in `config-system.md` agent doc: `GRAFANA_SERVER`, `GRAFANA_TOKEN`, `GRAFANA_USER`, `GRAFANA_PASSWORD`, `GRAFANA_ORG_ID`, `GRAFANA_STACK_ID`, `GRAFANACTL_CONFIG`. Also `--no-color` in root. Not consolidated into user-facing help. | **Documentation gap** — vars exist but no user-facing reference | Create `grafanactl help environment` consolidating all env vars with descriptions |
+| **R2.1 — `help formatting` page** | Output formatting exists: `-o json/yaml/text/wide` via `io.Options` (documented in `cli-layer.md`). `get.go` uses `k8s.io/cli-runtime/pkg/printers.NewTablePrinter`. No dedicated help topic. | **Documentation gap only** — code exists, docs don't | Create `gcx help formatting` with examples for each output mode, jq piping patterns |
+| **R2.2 — `help environment` page** | Env vars documented in `config-system.md` agent doc: `GRAFANA_SERVER`, `GRAFANA_TOKEN`, `GRAFANA_USER`, `GRAFANA_PASSWORD`, `GRAFANA_ORG_ID`, `GRAFANA_STACK_ID`, `GCX_CONFIG`. Also `--no-color` in root. Not consolidated into user-facing help. | **Documentation gap** — vars exist but no user-facing reference | Create `gcx help environment` consolidating all env vars with descriptions |
 | **R2.3 — Automation Guide** | No dedicated automation/CI-CD guide. Agent-docs are for coding agents, not for CI/CD pipeline users. | **Content gap** | Create automation guide: CI/CD patterns, headless auth, scripting with JSON output, exit code handling |
 
 ### Priority 3: Enhanced Capability
@@ -39,7 +39,7 @@ The [cli analysis](2026-03-03-cli-analysis-.md) identified 10 patterns to adopt 
 | Recommendation | Current State | Gap | Action Required |
 |---|---|---|---|
 | **R3.1 — JSON field discovery** | `--json` not supported as a special flag. `-o json` outputs full resource. No mechanism to list available fields or select specific fields. Resources are `unstructured.Unstructured` (dynamic), so field schema comes from the API, not from Go types. | **Feature gap** — need new code | Add `--json [fields]` flag: no args = list available top-level fields, with args = select specific fields. Challenge: unstructured objects have dynamic schemas |
-| **R3.2 — `grafanactl api` escape hatch** | No raw API command. All API access goes through typed commands. Auth context exists and could be reused. | **Feature gap** | Implement `grafanactl api [path]` command using existing auth/config infrastructure |
+| **R3.2 — `gcx api` escape hatch** | No raw API command. All API access goes through typed commands. Auth context exists and could be reused. | **Feature gap** | Implement `gcx api [path]` command using existing auth/config infrastructure |
 | **R3.3 — Pipe-aware output switching** | `--no-color` exists as manual flag. No pipe detection. Color is disabled via `color.NoColor = true` when `--no-color` is set (root command `PersistentPreRun`). | **Feature gap** — need pipe detection | Add `os.Stdout.Fd()` + `term.IsTerminal()` check in root `PersistentPreRun`; auto-disable color when piped |
 | **R3.4 — Document push idempotency** | Push IS idempotent (upsert): `pusher.go` does Get → if exists: Update, if 404: Create. This is documented in `data-flows.md` but not in user-facing docs. | **Documentation gap only** — behavior exists, not documented for users | Add explicit "Push is idempotent (create-or-update)" to push command help and automation guide |
 | **R3.5 — In-band error reporting** | Errors go through `DetailedError` → stderr rendering. JSON output only contains resource data, never errors. In agent mode, errors would need to be wrapped in the JSON response body. | **Feature gap** — needs agent mode first | After agent mode (R1.3): wrap errors in JSON response body with `errors[]` and `hints[]` fields |
@@ -53,7 +53,7 @@ The cross-reference also exposed documentation gaps in `agent-docs/` that should
 | Gap | Current State | Fix |
 |---|---|---|
 | **Exit code behavior** | `cli-layer.md` documents error handling chain (`DetailedError` → `ErrorToDetailedError`) but never mentions what exit codes are returned | Add "Exit Codes" section to `cli-layer.md` documenting current behavior |
-| **Environment variable reference** | `config-system.md` documents env vars but only the `GRAFANA_*` set. Missing: `GRAFANACTL_CONFIG`, `NO_COLOR` | Add complete env var table to `config-system.md` |
+| **Environment variable reference** | `config-system.md` documents env vars but only the `GRAFANA_*` set. Missing: `GCX_CONFIG`, `NO_COLOR` | Add complete env var table to `config-system.md` |
 | **Idempotency behavior** | `data-flows.md` describes upsert logic in detail but doesn't use the word "idempotent" | Add explicit note: "Push is idempotent: creates new resources and updates existing ones" |
 
 ---
@@ -83,13 +83,13 @@ Based on effort/impact analysis and dependency chain:
 ### Phase 4: Confirmation + Auto-Approve (Medium effort, safety first)
 
 10. **Add confirmation prompts** for `delete` (and optionally `push` with destructive flags)
-11. **Add `--yes`/`-y` and `GRAFANACTL_AUTO_APPROVE`** (R1.2)
+11. **Add `--yes`/`-y` and `GCX_AUTO_APPROVE`** (R1.2)
 12. **Auto-approve in agent mode** — agent mode implies `--yes`
 
 ### Phase 5: Enhanced Features (Higher effort)
 
 13. **JSON field discovery** (R3.1) — `--json` with no arg lists fields
-14. **`grafanactl api` escape hatch** (R3.2) — raw authenticated API access
+14. **`gcx api` escape hatch** (R3.2) — raw authenticated API access
 15. **In-band error reporting** (R3.5) — errors in JSON response body (requires agent mode)
 16. **Automation Guide** (R2.3) — comprehensive CI/CD integration guide
 
@@ -116,7 +116,7 @@ Phases 1, 2, 5.1, and 5.2 can proceed in parallel. Phase 4 depends on Phase 3. P
 
 ## What's Already Strong (No Changes Needed)
 
-Cross-referencing revealed several areas where grafanactl is already well-positioned:
+Cross-referencing revealed several areas where gcx is already well-positioned:
 
 - **Structured output** — `-o json/yaml/text/wide` is already comparable to gh's offering
 - **Config context model** — Directly mirrors kubectl kubeconfig, well-documented in agent-docs
@@ -130,13 +130,13 @@ Cross-referencing revealed several areas where grafanactl is already well-positi
 
 | Pattern | Where It Fits in Our Architecture | Effort |
 |---|---|---|
-| `--json` field discovery | `cmd/grafanactl/io/format.go` — extend `io.Options` | Medium (dynamic schema from unstructured) |
+| `--json` field discovery | `cmd/gcx/io/format.go` — extend `io.Options` | Medium (dynamic schema from unstructured) |
 | Agent mode detection | New package `internal/agent/` or extend root command | Medium |
-| Exit code taxonomy | `cmd/grafanactl/main.go` + `cmd/grafanactl/fail/detailed.go` | Low (mechanism exists) |
+| Exit code taxonomy | `cmd/gcx/main.go` + `cmd/gcx/fail/detailed.go` | Low (mechanism exists) |
 | `help` topics | Cobra has native `AddHelpTopic()` or manual subcommands | Low |
-| Pipe detection | `cmd/grafanactl/root/command.go` PersistentPreRun | Low |
-| `grafanactl api` | New `cmd/grafanactl/api/command.go` using existing `NamespacedClient` + `httputils` | Medium |
-| Auto-approve | Extend `cmd/grafanactl/resources/onerror.go` pattern | Low-Medium |
+| Pipe detection | `cmd/gcx/root/command.go` PersistentPreRun | Low |
+| `gcx api` | New `cmd/gcx/api/command.go` using existing `NamespacedClient` + `httputils` | Medium |
+| Auto-approve | Extend `cmd/gcx/resources/onerror.go` pattern | Low-Medium |
 | In-band errors | Extend `io.Options` codec to wrap errors in response | Medium-High |
 | Default JSON in agent mode | Root PersistentPreRun sets default format | Low (after agent mode exists) |
 | Hints in responses | Extend `OperationSummary` or `DetailedError` | Medium |
@@ -148,7 +148,7 @@ Cross-referencing revealed several areas where grafanactl is already well-positi
 ## Cross-Reference: Extensibility + Ascode Research Findings
 
 This section cross-references findings from two parallel research streams against this document's recommendations:
-- [Non-App-Platform Extensibility](2026-03-02-grafanactl-non-app-platform-extensibility.md) (Provider interface, config extension, product CLIs)
+- [Non-App-Platform Extensibility](2026-03-02-gcx-non-app-platform-extensibility.md) (Provider interface, config extension, product CLIs)
 - [Ascode Subcommand](2026-03-03-ascode-subcommand.md) (`dev` command group, foundation-sdk integration)
 
 ### Synergies
@@ -166,7 +166,7 @@ This section cross-references findings from two parallel research streams agains
 | Conflict | Resolution |
 |---|---|
 | **Output format default**: R1.3 agent mode switches default to JSON, but `dev import` outputs Go code | Agent mode sets default output format for *list/get* commands only. Commands with non-data output (import, init, generate) are exempt -- they ignore `-o` flag |
-| **Confirm helper ownership**: Both provider push commands and core `resources delete` need confirmation | Shared `internal/confirm` package (or helper in `cmd/grafanactl/resources/`) used by both core commands and providers. Not per-provider. |
+| **Confirm helper ownership**: Both provider push commands and core `resources delete` need confirmation | Shared `internal/confirm` package (or helper in `cmd/gcx/resources/`) used by both core commands and providers. Not per-provider. |
 
 ### Additional Agent-Docs Gaps (from Extensibility + Ascode Research)
 

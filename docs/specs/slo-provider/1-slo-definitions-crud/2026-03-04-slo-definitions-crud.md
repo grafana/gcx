@@ -17,7 +17,7 @@ The [terraform-provider-grafana](https://github.com/grafana/terraform-provider-g
 **Decision: hand-roll the HTTP client** rather than import the generated client.
 
 Rationale:
-- grafanactl's established pattern is `rest.HTTPClientFor()` + direct HTTP calls
+- gcx's established pattern is `rest.HTTPClientFor()` + direct HTTP calls
   (see `internal/query/prometheus/client.go`). Consistency matters.
 - Generated types use `SloV00Slo`, `*string` optional fields, getter/setter methods —
   poor fit for our `encoding/json` round-trip adapter.
@@ -260,7 +260,7 @@ Create-or-update flow for `definitions push`:
 ```
 Status Code → Exit Code Mapping:
   401/403 → exit 3 (auth failure), suggest checking token
-  404     → exit 1, suggest `grafanactl slo definitions list`
+  404     → exit 1, suggest `gcx slo definitions list`
   400     → exit 2 (usage error), include API error message
   500     → exit 1 (general error)
   partial → exit 4 (some pushed/deleted, others failed)
@@ -296,5 +296,5 @@ pqr012stu345vwx678yza  New Feature SLO         99.00%   28d      Creating
 ## Verification
 
 ```bash
-make lint && make tests && make build && bin/grafanactl slo definitions --help
+make lint && make tests && make build && bin/gcx slo definitions --help
 ```

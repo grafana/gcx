@@ -17,7 +17,7 @@ Grafana CLI interacts with Grafana via its REST API. Therefore, you need to esta
 The minimum requirement is to set the URL of the Grafana instance and the organization ID to use:
 
 ```shell
-GRAFANA_SERVER='http://localhost:3000' GRAFANA_ORG_ID='1' grafanactl config check
+GRAFANA_SERVER='http://localhost:3000' GRAFANA_ORG_ID='1' gcx config check
 ```
 
 Optionally, set the following values depending on your authentication method with the given Grafana instance:
@@ -41,24 +41,24 @@ Grafana CLI supports multiple contexts, thereby allowing easy switching between 
 Configure the `default` context:
 
 ```shell
-grafanactl config set contexts.default.grafana.server http://localhost:3000
+gcx config set contexts.default.grafana.server http://localhost:3000
 
 # Set org-id when using OSS/Enterprise - skip when targeting Grafana Cloud
-grafanactl config set contexts.default.grafana.org-id 1
+gcx config set contexts.default.grafana.org-id 1
 
 # Authenticate with a service account token
-grafanactl config set contexts.default.grafana.token service-account-token
+gcx config set contexts.default.grafana.token service-account-token
 
 # Or alternatively, use basic authentication
-grafanactl config set contexts.default.grafana.user admin
-grafanactl config set contexts.default.grafana.password admin
+gcx config set contexts.default.grafana.user admin
+gcx config set contexts.default.grafana.password admin
 ```
 
 New contexts can be created in a similar way:
 
 ```shell
-grafanactl config set contexts.staging.grafana.server https://staging.grafana.example
-grafanactl config set contexts.staging.grafana.org-id 1
+gcx config set contexts.staging.grafana.server https://staging.grafana.example
+gcx config set contexts.staging.grafana.org-id 1
 ```
 
 !!! note
@@ -70,36 +70,36 @@ grafanactl config set contexts.staging.grafana.org-id 1
 Grafana CLI stores its configuration in a YAML file. Its location is determined as follows:
 
 1. If the `--config` flag is set, then that file will be loaded. No other location will be considered.
-2. If the `$XDG_CONFIG_HOME` environment variable is set, then it will be used: `$XDG_CONFIG_HOME/grafanactl/config.yaml`
-3. If the `$HOME environment` variable is set, then it will be used: `$HOME/.config/grafanactl/config.yaml`
-4. If the `$XDG_CONFIG_DIRS` environment variable is set, then it will be used: `$XDG_CONFIG_DIRS/grafanactl/config.yaml`
+2. If the `$XDG_CONFIG_HOME` environment variable is set, then it will be used: `$XDG_CONFIG_HOME/gcx/config.yaml`
+3. If the `$HOME environment` variable is set, then it will be used: `$HOME/.config/gcx/config.yaml`
+4. If the `$XDG_CONFIG_DIRS` environment variable is set, then it will be used: `$XDG_CONFIG_DIRS/gcx/config.yaml`
 
 !!! tip
 
-    The `grafanactl config check` command will display the configuration file currently in use.
+    The `gcx config check` command will display the configuration file currently in use.
 
 ## Useful commands
 
 Check the configuration:
 
 ```shell
-grafanactl config check
+gcx config check
 ```
 
 List existing contexts:
 
 ```shell
-grafanactl config list-contexts
+gcx config list-contexts
 ```
 
 Switch to a different context:
 
 ```shell
-grafanactl config use-context staging
+gcx config use-context staging
 ```
 
 See the entire configuration:
 
 ```shell
-grafanactl config view
+gcx config view
 ```

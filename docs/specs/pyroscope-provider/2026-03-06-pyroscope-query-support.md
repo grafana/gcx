@@ -1,4 +1,4 @@
-# Pyroscope Query Support for grafanactl
+# Pyroscope Query Support for gcx
 
 **Date**: 2026-03-06
 **Status**: Draft
@@ -6,18 +6,18 @@
 
 ## Overview
 
-Add Pyroscope datasource support to grafanactl, enabling profile querying via the
+Add Pyroscope datasource support to gcx, enabling profile querying via the
 existing `query` command and Pyroscope-specific operations via `datasources pyroscope`
 subcommands.
 
 ## Goals
 
 1. **Query support**: Execute profile queries against Pyroscope datasources via
-   `grafanactl query -t pyroscope`
+   `gcx query -t pyroscope`
 2. **Profile types discovery**: List available profile types via
-   `grafanactl datasources pyroscope profile-types`
+   `gcx datasources pyroscope profile-types`
 3. **Label discovery**: List labels and label values via
-   `grafanactl datasources pyroscope labels`
+   `gcx datasources pyroscope labels`
 
 ## Non-Goals
 
@@ -120,43 +120,43 @@ Add to `Context` struct for datasource resolution.
 | `internal/query/pyroscope/client.go` | HTTP client for Pyroscope queries | ~150 |
 | `internal/query/pyroscope/types.go` | Request/response type definitions | ~80 |
 | `internal/query/pyroscope/formatter.go` | Table formatting for profile data | ~60 |
-| `cmd/grafanactl/datasources/pyroscope.go` | profile-types, labels subcommands | ~200 |
+| `cmd/gcx/datasources/pyroscope.go` | profile-types, labels subcommands | ~200 |
 
 ### Modified Files
 
 | File | Changes |
 |------|---------|
-| `cmd/grafanactl/query/command.go` | Add `case "pyroscope"` dispatch (~30 lines) |
-| `cmd/grafanactl/datasources/command.go` | Register `pyroscopeCmd` (~2 lines) |
+| `cmd/gcx/query/command.go` | Add `case "pyroscope"` dispatch (~30 lines) |
+| `cmd/gcx/datasources/command.go` | Register `pyroscopeCmd` (~2 lines) |
 | `internal/config/types.go` | Add `DefaultPyroscopeDatasource` field (~2 lines) |
 
 ## Command Interface
 
-### `grafanactl query -t pyroscope`
+### `gcx query -t pyroscope`
 
 ```bash
 # Query CPU profile for a service
-grafanactl query -t pyroscope -d <pyroscope-uid> \
+gcx query -t pyroscope -d <pyroscope-uid> \
   -e '{service_name="frontend"}' \
   --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
   --start now-1h --end now
 
 # Output top functions as table (default)
-grafanactl query -t pyroscope -d <pyroscope-uid> -e '{service_name="frontend"}' --profile-type cpu
+gcx query -t pyroscope -d <pyroscope-uid> -e '{service_name="frontend"}' --profile-type cpu
 
 # Output as JSON
-grafanactl query -t pyroscope -d <pyroscope-uid> -e '{service_name="frontend"}' -o json
+gcx query -t pyroscope -d <pyroscope-uid> -e '{service_name="frontend"}' -o json
 ```
 
 New flags for pyroscope queries:
 - `--profile-type`: Profile type ID (required for pyroscope)
 - `--max-nodes`: Maximum nodes in flame graph (default 1024)
 
-### `grafanactl datasources pyroscope profile-types`
+### `gcx datasources pyroscope profile-types`
 
 ```bash
 # List available profile types
-grafanactl datasources pyroscope profile-types -d <pyroscope-uid>
+gcx datasources pyroscope profile-types -d <pyroscope-uid>
 
 # Output:
 # ID                                              NAME          SAMPLE_TYPE    UNIT
@@ -164,14 +164,14 @@ grafanactl datasources pyroscope profile-types -d <pyroscope-uid>
 # memory:alloc_objects:count:space:bytes         memory        alloc_objects  count
 ```
 
-### `grafanactl datasources pyroscope labels`
+### `gcx datasources pyroscope labels`
 
 ```bash
 # List all labels
-grafanactl datasources pyroscope labels -d <pyroscope-uid>
+gcx datasources pyroscope labels -d <pyroscope-uid>
 
 # Get values for a label
-grafanactl datasources pyroscope labels -d <pyroscope-uid> --label service_name
+gcx datasources pyroscope labels -d <pyroscope-uid> --label service_name
 ```
 
 ## Implementation Plan
@@ -184,7 +184,7 @@ grafanactl datasources pyroscope labels -d <pyroscope-uid> --label service_name
 
 ### Stage 2: Datasource Commands (~200 LOC)
 
-1. Create `cmd/grafanactl/datasources/pyroscope.go`
+1. Create `cmd/gcx/datasources/pyroscope.go`
    - `profile-types` command
    - `labels` command
 2. Register in `command.go`
@@ -192,7 +192,7 @@ grafanactl datasources pyroscope labels -d <pyroscope-uid> --label service_name
 
 ### Stage 3: Query Integration (~100 LOC)
 
-1. Add `case "pyroscope"` to `cmd/grafanactl/query/command.go`
+1. Add `case "pyroscope"` to `cmd/gcx/query/command.go`
 2. Create `internal/query/pyroscope/formatter.go` for table output
 3. Add `--profile-type` and `--max-nodes` flags
 
@@ -201,9 +201,9 @@ grafanactl datasources pyroscope labels -d <pyroscope-uid> --label service_name
 - [ ] `make build` succeeds
 - [ ] `make tests` passes
 - [ ] `make lint` passes
-- [ ] `grafanactl query -t pyroscope --help` shows pyroscope options
-- [ ] `grafanactl datasources pyroscope profile-types -d <uid>` works
-- [ ] `grafanactl datasources pyroscope labels -d <uid>` works
+- [ ] `gcx query -t pyroscope --help` shows pyroscope options
+- [ ] `gcx datasources pyroscope profile-types -d <uid>` works
+- [ ] `gcx datasources pyroscope labels -d <uid>` works
 - [ ] JSON/YAML output works for all commands
 - [ ] Table output shows meaningful profile data
 

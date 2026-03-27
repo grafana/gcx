@@ -14,7 +14,7 @@ query these metrics via the Grafana Prometheus datasource proxy.
 
 ## Commands
 
-### `grafanactl synth checks status [id]`
+### `gcx synth checks status [id]`
 
 Shows current pass/fail status per check (instant query over last 5 minutes).
 
@@ -29,12 +29,12 @@ Columns:
 - `SUCCESS`: `avg(probe_success{job="<job>", instance="<target>"}[5m])` × 100
 - `PROBES_UP` / `PROBES_TOTAL`: count probes reporting vs assigned
 
-### `grafanactl synth checks timeline <id> [--window 6h]`
+### `gcx synth checks timeline <id> [--window 6h]`
 
 Shows pass/fail over time for a single check as a terminal line chart.
 
 ```
-grafanactl synth checks timeline 6247 --window 6h
+gcx synth checks timeline 6247 --window 6h
 ```
 
 Output: time-series line chart (reusing `internal/graph` package):
@@ -70,7 +70,7 @@ probe_success{job="<job>", instance="<target>"}
 ## Prometheus Datasource Access
 
 Same pattern as SLO status commands:
-- Use grafanactl context's Grafana server + token
+- Use gcx context's Grafana server + token
 - Query via Grafana's Prometheus datasource proxy API
 - Datasource UID from config (or auto-detected if only one Prometheus datasource exists)
 
@@ -85,7 +85,7 @@ Same pattern as SLO status commands:
 
 - `checks/client.go` — needs List() to resolve IDs to job+target for queries
 - `probes/client.go` — needs List() to show probe names alongside results
-- `provider.go` / `configLoader` — needs grafanactl Grafana context for Prometheus access
+- `provider.go` / `configLoader` — needs gcx Grafana context for Prometheus access
 
 ## Verification
 
@@ -98,17 +98,17 @@ Live smoke tests (load credentials from `.env`):
 source .env
 
 # Status — all checks
-bin/grafanactl synth checks status
-bin/grafanactl synth checks status -o json
+bin/gcx synth checks status
+bin/gcx synth checks status -o json
 
 # Status — single check (pick an ID from `synth checks list`)
-FIRST_ID=$(bin/grafanactl synth checks list -o json | jq -r '.[0].metadata.name')
-bin/grafanactl synth checks status "$FIRST_ID"
+FIRST_ID=$(bin/gcx synth checks list -o json | jq -r '.[0].metadata.name')
+bin/gcx synth checks status "$FIRST_ID"
 
 # Timeline — single check, default window
-bin/grafanactl synth checks timeline "$FIRST_ID"
+bin/gcx synth checks timeline "$FIRST_ID"
 
 # Timeline — custom window
-bin/grafanactl synth checks timeline "$FIRST_ID" --window 1h
-bin/grafanactl synth checks timeline "$FIRST_ID" --window 24h
+bin/gcx synth checks timeline "$FIRST_ID" --window 1h
+bin/gcx synth checks timeline "$FIRST_ID" --window 24h
 ```

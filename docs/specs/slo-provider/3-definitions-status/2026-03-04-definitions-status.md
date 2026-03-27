@@ -161,7 +161,7 @@ checkout-availability xyz789ghi   99.90%     28d     99.85%   -50.0%   2.3x     
 ## Verification
 
 ```bash
-make lint && make tests && make build && bin/grafanactl slo definitions status
+make lint && make tests && make build && bin/gcx slo definitions status
 ```
 
 Note: Full verification requires a live Grafana instance with SLOs configured.

@@ -1,4 +1,4 @@
-// Package oncall provides the OnCall provider for grafanactl.
+// Package oncall provides the OnCall provider for gcx.
 package oncall
 
 // ---------- ResourceIdentity implementations ----------

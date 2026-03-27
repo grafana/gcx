@@ -2,7 +2,7 @@
 
 ## Overview
 
-Add an alerts provider following the SLO provider pattern, exposing alert rules via `grafanactl alerts rules` commands.
+Add an alerts provider following the SLO provider pattern, exposing alert rules via `gcx alerts rules` commands.
 
 ## API
 
@@ -63,10 +63,10 @@ func (p *AlertProvider) ConfigKeys() []providers.ConfigKey { return nil }
 
 ### 2. Register provider
 
-**File:** `cmd/grafanactl/root/command.go`
+**File:** `cmd/gcx/root/command.go`
 
 ```go
-import alertprovider "github.com/grafana/grafanactl/internal/alert"
+import alertprovider "github.com/grafana/gcx/internal/alert"
 
 func allProviders() []providers.Provider {
     return append(
@@ -93,7 +93,7 @@ import (
     "net/http"
     "net/url"
 
-    "github.com/grafana/grafanactl/internal/config"
+    "github.com/grafana/gcx/internal/config"
     "k8s.io/client-go/rest"
 )
 
@@ -234,9 +234,9 @@ package rules
 import (
     "context"
 
-    "github.com/grafana/grafanactl/internal/config"
-    "github.com/grafana/grafanactl/internal/resources"
-    "github.com/grafana/grafanactl/internal/resources/dynamic"
+    "github.com/grafana/gcx/internal/config"
+    "github.com/grafana/gcx/internal/resources"
+    "github.com/grafana/gcx/internal/resources/dynamic"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
     "k8s.io/apimachinery/pkg/runtime/schema"
@@ -434,7 +434,7 @@ High CPU Alert          abc123...     firing    ok      5m ago        no
 ## Command Structure
 
 ```
-grafanactl alert
+gcx alert
 ├── rules
 │   ├── list [--group <name>]  # Table with NAME, GROUP, FOLDER, STATE columns
 │   ├── get <uid>              # YAML/JSON output
@@ -461,7 +461,7 @@ Groups come directly from the Prometheus API - no need to derive from labels.
 package groups
 
 import (
-    "github.com/grafana/grafanactl/internal/alert"
+    "github.com/grafana/gcx/internal/alert"
 )
 
 // listCommand: Get all groups directly from API
@@ -546,29 +546,29 @@ func newStatusCommand(client *alert.Client) *cobra.Command {
 
 ## Files to Modify
 
-1. `cmd/grafanactl/root/command.go` - register provider
+1. `cmd/gcx/root/command.go` - register provider
 
 ## Verification
 
 ```bash
-make lint && make tests && make build && go build -o bin/grafanactl ./cmd/grafanactl
+make lint && make tests && make build && go build -o bin/gcx ./cmd/gcx
 
-.bin/grafanactl providers                    # Should list "alert"
+.bin/gcx providers                    # Should list "alert"
 
 # Rules commands
-.bin/grafanactl alert rules list             # List all alert rules
-.bin/grafanactl alert rules list --group <name>  # Filter by group
-.bin/grafanactl alert rules get <uid>        # Get single rule as YAML
-.bin/grafanactl alert rules pull -d ./alerts/
-.bin/grafanactl alert rules push ./alerts/*.yaml
-.bin/grafanactl alert rules delete <uid> -f
-.bin/grafanactl alert rules status           # Status of all rules
-.bin/grafanactl alert rules status <uid>     # Status of single rule
-.bin/grafanactl alert rules status -o wide   # Extended status columns
+.bin/gcx alert rules list             # List all alert rules
+.bin/gcx alert rules list --group <name>  # Filter by group
+.bin/gcx alert rules get <uid>        # Get single rule as YAML
+.bin/gcx alert rules pull -d ./alerts/
+.bin/gcx alert rules push ./alerts/*.yaml
+.bin/gcx alert rules delete <uid> -f
+.bin/gcx alert rules status           # Status of all rules
+.bin/gcx alert rules status <uid>     # Status of single rule
+.bin/gcx alert rules status -o wide   # Extended status columns
 
 # Groups commands (derived from rules)
-.bin/grafanactl alert groups list            # List all groups (unique labels)
-.bin/grafanactl alert groups get <name>      # List rules in group
-.bin/grafanactl alert groups status          # Status summary per group
-.bin/grafanactl alert groups status <name>   # Status of rules in group
+.bin/gcx alert groups list            # List all groups (unique labels)
+.bin/gcx alert groups get <name>      # List rules in group
+.bin/gcx alert groups status          # Status summary per group
+.bin/gcx alert groups status <name>   # Status of rules in group
 ```

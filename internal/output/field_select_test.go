@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	cmdio "github.com/grafana/grafanactl/internal/output"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"

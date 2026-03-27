@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/config"
-	"github.com/grafana/grafanactl/internal/providers/oncall"
+	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/providers/oncall"
 	"k8s.io/client-go/rest"
 )
 

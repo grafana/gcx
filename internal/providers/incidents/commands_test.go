@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/grafanactl/internal/providers/incidents"
+	"github.com/grafana/gcx/internal/providers/incidents"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

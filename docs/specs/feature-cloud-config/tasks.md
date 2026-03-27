@@ -51,13 +51,13 @@ Add the `CloudConfig` struct to `internal/config/types.go` with `Token`, `Stack`
 - GIVEN a context with `cloud.api-url` set to `"grafana-dev.com"`
   WHEN `ResolveGCOMURL()` is called
   THEN it returns `"https://grafana-dev.com"`
-- GIVEN `grafanactl config set contexts.dev.cloud.token my-token` is run
+- GIVEN `gcx config set contexts.dev.cloud.token my-token` is run
   WHEN the config file is read back
   THEN `contexts.dev.cloud.token` is set to `"my-token"`
-- GIVEN `grafanactl config set contexts.dev.cloud.stack mystack` is run
+- GIVEN `gcx config set contexts.dev.cloud.stack mystack` is run
   WHEN the config file is read back
   THEN `contexts.dev.cloud.stack` is set to `"mystack"`
-- GIVEN `grafanactl config set contexts.dev.cloud.api-url grafana-dev.com` is run
+- GIVEN `gcx config set contexts.dev.cloud.api-url grafana-dev.com` is run
   WHEN the config file is read back
   THEN `contexts.dev.cloud.api-url` is set to `"grafana-dev.com"`
 
@@ -69,7 +69,7 @@ Add the `CloudConfig` struct to `internal/config/types.go` with `Token`, `Stack`
 **Depends on**: none
 **Type**: chore
 
-Rename `LoadRESTConfig` to `LoadGrafanaConfig` on `providers.ConfigLoader`. Rename all 5 local `RESTConfigLoader` interface declarations to `GrafanaConfigLoader` (in `incidents/resource_adapter.go`, `alert/rules_commands.go`, `synth/smcfg/loader.go`, `slo/definitions/commands.go`, `slo/reports/commands.go`). Update all ~40 caller sites across `cmd/grafanactl/` and `internal/providers/`. This is a pure rename with zero behavioral change. Execute as a single atomic commit.
+Rename `LoadRESTConfig` to `LoadGrafanaConfig` on `providers.ConfigLoader`. Rename all 5 local `RESTConfigLoader` interface declarations to `GrafanaConfigLoader` (in `incidents/resource_adapter.go`, `alert/rules_commands.go`, `synth/smcfg/loader.go`, `slo/definitions/commands.go`, `slo/reports/commands.go`). Update all ~40 caller sites across `cmd/gcx/` and `internal/providers/`. This is a pure rename with zero behavioral change. Execute as a single atomic commit.
 
 **Deliverables:**
 - `internal/providers/configloader.go` — method renamed
@@ -88,7 +88,7 @@ Rename `LoadRESTConfig` to `LoadGrafanaConfig` on `providers.ConfigLoader`. Rena
 - `internal/providers/slo/reports/commands.go` — interface + callers renamed
 - `internal/providers/slo/reports/status.go` — callers updated
 - `internal/providers/slo/reports/timeline.go` — callers updated
-- `cmd/grafanactl/` — all callers updated (~20 files)
+- `cmd/gcx/` — all callers updated (~20 files)
 
 **Acceptance criteria:**
 - The system SHALL compile with zero errors after the rename across all packages
@@ -166,7 +166,7 @@ Remove the fleet provider's custom `configLoader` struct, `LoadFleetConfig` meth
 
 **Acceptance criteria:**
 - GIVEN a config file with `contexts.mystack.cloud.token` set to a valid access policy token and `contexts.mystack.grafana.server` set to `https://mystack.grafana.net`
-  WHEN a user runs `grafanactl fleet pipelines list`
+  WHEN a user runs `gcx fleet pipelines list`
   THEN the fleet provider authenticates using the cloud token and auto-discovers the Fleet Management URL via GCOM
 - GIVEN the fleet provider is refactored
   WHEN `FleetProvider.ConfigKeys()` is called

@@ -88,7 +88,7 @@ Define the `SnapshotResult` struct in `internal/dashboards/types.go` used for bo
 **Depends on**: T1, T2
 **Type**: task
 
-Implement `cmd/grafanactl/dashboards/command.go` (command group) and `cmd/grafanactl/dashboards/snapshot.go` (snapshot subcommand). Follow the Options pattern: `snapshotOpts` struct with `setup(flags)`, `Validate()`, and `snapshotCmd(configOpts)` constructor.
+Implement `cmd/gcx/dashboards/command.go` (command group) and `cmd/gcx/dashboards/snapshot.go` (snapshot subcommand). Follow the Options pattern: `snapshotOpts` struct with `setup(flags)`, `Validate()`, and `snapshotCmd(configOpts)` constructor.
 
 The command:
 1. Validates at least one UID is provided (cobra `Args: cobra.MinimumNArgs(1)`)
@@ -100,52 +100,52 @@ The command:
 7. Logs debug message when overwriting existing files
 8. Outputs JSON array in agent mode, table in human mode
 
-Implement `cmd/grafanactl/dashboards/snapshot_test.go` with table-driven tests for `Validate()` logic (window exclusivity, missing UID, default dimensions).
+Implement `cmd/gcx/dashboards/snapshot_test.go` with table-driven tests for `Validate()` logic (window exclusivity, missing UID, default dimensions).
 
 **Deliverables:**
-- `cmd/grafanactl/dashboards/command.go`
-- `cmd/grafanactl/dashboards/snapshot.go`
-- `cmd/grafanactl/dashboards/snapshot_test.go`
+- `cmd/gcx/dashboards/command.go`
+- `cmd/gcx/dashboards/snapshot.go`
+- `cmd/gcx/dashboards/snapshot_test.go`
 
 **Acceptance criteria:**
-- GIVEN a configured grafanactl context pointing to a Grafana instance with Image Renderer installed
-  WHEN the user runs `grafanactl dashboards snapshot <uid>`
+- GIVEN a configured gcx context pointing to a Grafana instance with Image Renderer installed
+  WHEN the user runs `gcx dashboards snapshot <uid>`
   THEN a file named `<uid>.png` MUST be written to the current directory containing a valid PNG image
 
-- GIVEN a configured grafanactl context
-  WHEN the user runs `grafanactl dashboards snapshot <uid> --panel 42`
+- GIVEN a configured gcx context
+  WHEN the user runs `gcx dashboards snapshot <uid> --panel 42`
   THEN a file named `<uid>-panel-42.png` MUST be written to the current directory containing a valid PNG image of panel 42
 
-- GIVEN a configured grafanactl context
-  WHEN the user runs `grafanactl dashboards snapshot <uid> --output-dir ./snapshots`
+- GIVEN a configured gcx context
+  WHEN the user runs `gcx dashboards snapshot <uid> --output-dir ./snapshots`
   THEN the `./snapshots` directory MUST be created if it does not exist and the PNG file MUST be written inside it
 
-- GIVEN a configured grafanactl context
-  WHEN the user runs `grafanactl dashboards snapshot <uid> --width 1000 --height 500 --theme light --from now-1h --to now --tz UTC`
+- GIVEN a configured gcx context
+  WHEN the user runs `gcx dashboards snapshot <uid> --width 1000 --height 500 --theme light --from now-1h --to now --tz UTC`
   THEN the render request MUST include query parameters `width=1000`, `height=500`, `theme=light`, `from=now-1h`, `to=now`, `tz=UTC`
 
-- GIVEN a configured grafanactl context
-  WHEN the user runs `grafanactl dashboards snapshot <uid> --window 6h`
+- GIVEN a configured gcx context
+  WHEN the user runs `gcx dashboards snapshot <uid> --window 6h`
   THEN the render request MUST include query parameters `from=now-6h` and `to=now`
 
-- GIVEN a configured grafanactl context
-  WHEN the user runs `grafanactl dashboards snapshot <uid> --window 6h --from now-2h`
+- GIVEN a configured gcx context
+  WHEN the user runs `gcx dashboards snapshot <uid> --window 6h --from now-2h`
   THEN the command MUST exit with a non-zero code and print a validation error indicating that `--window` is mutually exclusive with `--from`/`--to`
 
 - GIVEN no dashboard UID is provided
-  WHEN the user runs `grafanactl dashboards snapshot`
+  WHEN the user runs `gcx dashboards snapshot`
   THEN the command MUST exit with a non-zero code and print an error message indicating that at least one dashboard UID is required
 
 - GIVEN agent mode is active
-  WHEN the user runs `grafanactl dashboards snapshot <uid1> <uid2>`
+  WHEN the user runs `gcx dashboards snapshot <uid1> <uid2>`
   THEN stdout MUST contain a JSON array with two objects, each containing `uid`, `file_path` (absolute path), `width`, `height`, `theme`, and `rendered_at` fields
 
 - GIVEN the user provides multiple dashboard UIDs
-  WHEN the user runs `grafanactl dashboards snapshot <uid1> <uid2> <uid3>`
+  WHEN the user runs `gcx dashboards snapshot <uid1> <uid2> <uid3>`
   THEN all three dashboards MUST be rendered concurrently and three PNG files MUST be written
 
 - GIVEN the Grafana instance does not have Image Renderer installed
-  WHEN the user runs `grafanactl dashboards snapshot <uid>`
+  WHEN the user runs `gcx dashboards snapshot <uid>`
   THEN the command MUST exit with a non-zero code and report the HTTP error from Grafana
 
 - GIVEN a valid render request
@@ -162,21 +162,21 @@ Implement `cmd/grafanactl/dashboards/snapshot_test.go` with table-driven tests f
 **Depends on**: T3
 **Type**: task
 
-Register the `dashboards.Command()` in `cmd/grafanactl/root/command.go` by adding the import and `rootCmd.AddCommand(dashboards.Command())` call. Run `make all` (with `GRAFANACTL_AGENT_MODE=false`) to verify the build succeeds, docs regenerate correctly, and no existing tests break.
+Register the `dashboards.Command()` in `cmd/gcx/root/command.go` by adding the import and `rootCmd.AddCommand(dashboards.Command())` call. Run `make all` (with `GCX_AGENT_MODE=false`) to verify the build succeeds, docs regenerate correctly, and no existing tests break.
 
 **Deliverables:**
-- `cmd/grafanactl/root/command.go` (modified — add import + AddCommand)
+- `cmd/gcx/root/command.go` (modified — add import + AddCommand)
 
 **Acceptance criteria:**
-- GIVEN the grafanactl binary is built
-  WHEN the user runs `grafanactl dashboards --help`
+- GIVEN the gcx binary is built
+  WHEN the user runs `gcx dashboards --help`
   THEN the help text MUST list `snapshot` as an available subcommand
 
-- GIVEN the grafanactl binary is built
-  WHEN the user runs `grafanactl dashboards snapshot --help`
+- GIVEN the gcx binary is built
+  WHEN the user runs `gcx dashboards snapshot --help`
   THEN the help text MUST list all flags: `--width`, `--height`, `--theme`, `--from`, `--to`, `--window`, `--tz`, `--org-id`, `--panel`, `--output-dir`, `--concurrency`
 
-- GIVEN `GRAFANACTL_AGENT_MODE=false make all` is run
+- GIVEN `GCX_AGENT_MODE=false make all` is run
   THEN the build MUST succeed, linting MUST pass, tests MUST pass, and docs MUST regenerate without drift
 
 ---
@@ -187,9 +187,9 @@ Register the `dashboards.Command()` in `cmd/grafanactl/root/command.go` by addin
 **Depends on**: T3
 **Type**: chore
 
-Update `claude-plugin/skills/manage-dashboards/SKILL.md` with a new "Workflow 6: Capture Dashboard Snapshots" section documenting the `grafanactl dashboards snapshot` command with example commands for full dashboard and single panel rendering.
+Update `claude-plugin/skills/manage-dashboards/SKILL.md` with a new "Workflow 6: Capture Dashboard Snapshots" section documenting the `gcx dashboards snapshot` command with example commands for full dashboard and single panel rendering.
 
-Update `claude-plugin/skills/debug-with-grafana/SKILL.md` to add a snapshot step within "Step 6: Check Related Dashboards and Resources" that references the `grafanactl dashboards snapshot` command as a way to visually inspect dashboard state during debugging.
+Update `claude-plugin/skills/debug-with-grafana/SKILL.md` to add a snapshot step within "Step 6: Check Related Dashboards and Resources" that references the `gcx dashboards snapshot` command as a way to visually inspect dashboard state during debugging.
 
 **Deliverables:**
 - `claude-plugin/skills/manage-dashboards/SKILL.md` (modified)
@@ -202,4 +202,4 @@ Update `claude-plugin/skills/debug-with-grafana/SKILL.md` to add a snapshot step
 
 - GIVEN the `debug-with-grafana` skill file exists
   WHEN an agent reads `claude-plugin/skills/debug-with-grafana/SKILL.md`
-  THEN it MUST reference the `grafanactl dashboards snapshot` command as a diagnostic tool
+  THEN it MUST reference the `gcx dashboards snapshot` command as a diagnostic tool

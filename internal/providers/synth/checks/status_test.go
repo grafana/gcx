@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/grafanactl/internal/providers/synth/checks"
+	"github.com/grafana/gcx/internal/providers/synth/checks"
 )
 
 // ---------------------------------------------------------------------------

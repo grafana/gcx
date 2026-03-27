@@ -9,19 +9,19 @@ created: 2026-03-18
 
 ## Problem Statement
 
-`grafanactl query` is a top-level command that semantically belongs under `grafanactl datasources`. This creates two problems:
+`gcx query` is a top-level command that semantically belongs under `gcx datasources`. This creates two problems:
 
-1. **Inconsistent CLI hierarchy.** Datasource-specific operations (labels, metadata, targets) already live under `grafanactl datasources {prometheus,loki,pyroscope}`, but querying -- the most common datasource operation -- sits at the root level. Users must memorize that query is an exception to the pattern.
+1. **Inconsistent CLI hierarchy.** Datasource-specific operations (labels, metadata, targets) already live under `gcx datasources {prometheus,loki,pyroscope}`, but querying -- the most common datasource operation -- sits at the root level. Users must memorize that query is an exception to the pattern.
 
 2. **No type safety at the command level.** The current `query` command accepts any datasource UID and auto-detects the type via an API call. This means (a) users get no command-line guidance about which query language or flags apply, (b) typos in datasource UIDs produce confusing "unsupported type" errors instead of early validation, and (c) pyroscope-specific flags (`--profile-type`, `--max-nodes`) are exposed globally even though they only apply to one datasource kind.
 
-The current workaround is the status quo: users run `grafanactl query -d UID -e EXPR` and hope the flags they passed match the datasource type they targeted.
+The current workaround is the status quo: users run `gcx query -d UID -e EXPR` and hope the flags they passed match the datasource type they targeted.
 
 ## Scope
 
 ### In Scope
 
-- Move `query` from a top-level command to `grafanactl datasources query`
+- Move `query` from a top-level command to `gcx datasources query`
 - Create per-kind subcommands: `prometheus`, `loki`, `pyroscope`, `tempo` (stub), and `generic`
 - Switch datasource UID and expression from flags (`-d`, `-e`) to positional arguments
 - Add `--window` flag as a convenience alternative to `--from`/`--to`
@@ -40,7 +40,7 @@ The current workaround is the status quo: users run `grafanactl query -d UID -e 
 
 - **Tempo query client implementation.** No `internal/query/tempo/` package exists. The `tempo` subcommand is a stub only.
 - **SQL or other new datasource kind subcommands.** Future work.
-- **Backward compatibility alias for `grafanactl query`.** This is a breaking change by design; the old command path will stop working.
+- **Backward compatibility alias for `gcx query`.** This is a breaking change by design; the old command path will stop working.
 - **Changes to internal query clients** (`internal/query/{prometheus,loki,pyroscope}/`). The existing client APIs (NewClient, Query, Format) remain unchanged. The Loki client already accepts a `Limit` field in `QueryRequest`; the only change is exposing it as a CLI flag.
 - **Behavioral changes to existing `datasources prometheus/loki/pyroscope` subcommands** (labels, metadata, targets). Their behavior stays as-is; only their internal datasource UID resolution is updated to use the shared resolver.
 - **Migrating existing `default-{kind}-datasource` config keys.** The old flat keys on the Context struct remain supported as a fallback. The new `datasources` section takes precedence when both are set.
@@ -62,9 +62,9 @@ The current workaround is the status quo: users run `grafanactl query -d UID -e 
 
 ## Functional Requirements
 
-- **FR-001**: The CLI MUST register a `query` subcommand under `datasources` with the path `grafanactl datasources query`.
+- **FR-001**: The CLI MUST register a `query` subcommand under `datasources` with the path `gcx datasources query`.
 
-- **FR-002**: `grafanactl datasources query` MUST have five subcommands: `prometheus`, `loki`, `pyroscope`, `tempo`, and `generic`.
+- **FR-002**: `gcx datasources query` MUST have five subcommands: `prometheus`, `loki`, `pyroscope`, `tempo`, and `generic`.
 
 - **FR-003**: Each subcommand (`prometheus`, `loki`, `pyroscope`, `generic`) MUST accept two positional arguments: `DATASOURCE_UID` (arg 0) and `EXPR` (arg 1).
 
@@ -82,13 +82,13 @@ The current workaround is the status quo: users run `grafanactl query -d UID -e 
 
 - **FR-010**: All subcommands (except `tempo`) MUST support the output format flags (`-o table`, `-o json`, `-o yaml`, `-o wide`, `-o graph`) with the same codec behavior as the current `query` command.
 
-- **FR-011**: The top-level `grafanactl query` command MUST be removed from the root command registration.
+- **FR-011**: The top-level `gcx query` command MUST be removed from the root command registration.
 
 - **FR-012**: The `generic` subcommand MUST support all datasource types that the current `query` command supports (prometheus, loki, pyroscope), falling back to the type-specific logic based on the detected datasource type.
 
 - **FR-013**: The `generic` subcommand MUST also expose `--profile-type`, `--max-nodes`, and `--limit` flags for cases where the user queries a pyroscope or loki datasource via `generic`.
 
-- **FR-014**: Running `grafanactl datasources query` with no subcommand MUST print help text listing the available subcommands.
+- **FR-014**: Running `gcx datasources query` with no subcommand MUST print help text listing the available subcommands.
 
 - **FR-015**: The `EXPR` positional argument MUST be required for all subcommands (except `tempo`). The command MUST return an error if it is missing.
 
@@ -111,38 +111,38 @@ contexts:
       pyroscope: "<uid>"
 ```
 
-- **FR-021**: The `datasources` config section MUST be settable via `grafanactl config set contexts.<name>.datasources.<kind> <uid>` and unsettable via `grafanactl config unset contexts.<name>.datasources.<kind>`.
+- **FR-021**: The `datasources` config section MUST be settable via `gcx config set contexts.<name>.datasources.<kind> <uid>` and unsettable via `gcx config unset contexts.<name>.datasources.<kind>`.
 
 - **FR-022**: When both the new `datasources.{kind}` key and the legacy `default-{kind}-datasource` key are set for the same context, the `datasources.{kind}` key MUST take precedence. This is enforced by the shared resolver (FR-023).
 
-- **FR-023**: The `internal/config` package MUST export a `DefaultDatasourceUID(ctx Context, kind string) string` function (or equivalent method on `Context`) that resolves the default datasource UID for a given kind. Resolution order: (1) `ctx.Datasources[kind]` from the new config section, (2) legacy flat key (`DefaultPrometheusDatasource`, `DefaultLokiDatasource`, `DefaultPyroscopeDatasource`). The first non-empty value wins. All existing consumers (`cmd/grafanactl/datasources/{prometheus,loki,pyroscope}.go`, `cmd/grafanactl/query/command.go`, `internal/providers/synth/checks/status.go`) MUST be migrated to use this resolver instead of directly accessing the legacy fields.
+- **FR-023**: The `internal/config` package MUST export a `DefaultDatasourceUID(ctx Context, kind string) string` function (or equivalent method on `Context`) that resolves the default datasource UID for a given kind. Resolution order: (1) `ctx.Datasources[kind]` from the new config section, (2) legacy flat key (`DefaultPrometheusDatasource`, `DefaultLokiDatasource`, `DefaultPyroscopeDatasource`). The first non-empty value wins. All existing consumers (`cmd/gcx/datasources/{prometheus,loki,pyroscope}.go`, `cmd/gcx/query/command.go`, `internal/providers/synth/checks/status.go`) MUST be migrated to use this resolver instead of directly accessing the legacy fields.
 
 - **FR-024**: Existing `datasources prometheus`, `datasources loki`, and `datasources pyroscope` subcommands MUST use the shared resolver (FR-023) for default datasource UID resolution, gaining automatic support for the new `datasources` config section without behavioral changes.
 
 ## Acceptance Criteria
 
 - GIVEN the CLI is built
-  WHEN a user runs `grafanactl datasources query --help`
+  WHEN a user runs `gcx datasources query --help`
   THEN the output lists `prometheus`, `loki`, `pyroscope`, `tempo`, and `generic` as available subcommands
 
 - GIVEN a Grafana context with `datasources.prometheus` configured to a valid UID
-  WHEN a user runs `grafanactl datasources query prometheus 'up{job="grafana"}'`
+  WHEN a user runs `gcx datasources query prometheus 'up{job="grafana"}'`
   THEN the command executes an instant query against the configured default Prometheus datasource and prints results in table format
 
 - GIVEN a Grafana context with only the legacy `default-prometheus-datasource` key configured
-  WHEN a user runs `grafanactl datasources query prometheus 'up{job="grafana"}'`
+  WHEN a user runs `gcx datasources query prometheus 'up{job="grafana"}'`
   THEN the command executes an instant query against the legacy default Prometheus datasource (fallback behavior)
 
 - GIVEN a Grafana context with both `datasources.prometheus` and `default-prometheus-datasource` set to different UIDs
-  WHEN a user runs `grafanactl datasources query prometheus 'up'`
+  WHEN a user runs `gcx datasources query prometheus 'up'`
   THEN the command uses the UID from `datasources.prometheus` (new key takes precedence)
 
 - GIVEN a valid Prometheus datasource UID `abc123`
-  WHEN a user runs `grafanactl datasources query prometheus abc123 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m`
+  WHEN a user runs `gcx datasources query prometheus abc123 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m`
   THEN the command executes a range query and prints results in table format
 
 - GIVEN a valid Prometheus datasource UID `abc123`
-  WHEN a user runs `grafanactl datasources query prometheus abc123 'up' --window 1h`
+  WHEN a user runs `gcx datasources query prometheus abc123 'up' --window 1h`
   THEN the command executes a range query with `from=now-1h` and `to=now`
 
 - GIVEN a user provides both `--window` and `--from`
@@ -150,75 +150,75 @@ contexts:
   THEN the command MUST return an error stating that `--window` is mutually exclusive with `--from` and `--to`
 
 - GIVEN a Loki datasource UID `loki-001`
-  WHEN a user runs `grafanactl datasources query loki loki-001 '{job="varlogs"}' --from now-1h --to now`
+  WHEN a user runs `gcx datasources query loki loki-001 '{job="varlogs"}' --from now-1h --to now`
   THEN the command executes a Loki log query with the default limit of 1000 and prints results in table format
 
 - GIVEN a Loki datasource UID `loki-001`
-  WHEN a user runs `grafanactl datasources query loki loki-001 '{job="varlogs"}' --from now-1h --to now --limit 500`
+  WHEN a user runs `gcx datasources query loki loki-001 '{job="varlogs"}' --from now-1h --to now --limit 500`
   THEN the command executes a Loki log query with a limit of 500
 
 - GIVEN a Loki datasource UID `loki-001`
-  WHEN a user runs `grafanactl datasources query loki loki-001 '{job="varlogs"}' --from now-1h --to now --limit 0`
+  WHEN a user runs `gcx datasources query loki loki-001 '{job="varlogs"}' --from now-1h --to now --limit 0`
   THEN the command executes a Loki log query with no limit applied (0 means no limit)
 
 - GIVEN a datasource UID `prom-001` that is type `prometheus`
-  WHEN a user runs `grafanactl datasources query loki prom-001 '{job="x"}'`
+  WHEN a user runs `gcx datasources query loki prom-001 '{job="x"}'`
   THEN the command returns an error message containing "datasource prom-001 is type prometheus, not loki"
 
 - GIVEN a Pyroscope datasource UID `pyro-001`
-  WHEN a user runs `grafanactl datasources query pyroscope pyro-001 '{service_name="frontend"}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --from now-1h --to now`
+  WHEN a user runs `gcx datasources query pyroscope pyro-001 '{service_name="frontend"}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --from now-1h --to now`
   THEN the command executes a Pyroscope query and prints results in table format
 
-- GIVEN a user runs `grafanactl datasources query prometheus`
+- GIVEN a user runs `gcx datasources query prometheus`
   WHEN `--profile-type` is passed as a flag
   THEN the command returns an "unknown flag" error
 
-- GIVEN a user runs `grafanactl datasources query prometheus`
+- GIVEN a user runs `gcx datasources query prometheus`
   WHEN `--limit` is passed as a flag
   THEN the command returns an "unknown flag" error
 
 - GIVEN a datasource UID `any-001` of any supported type
-  WHEN a user runs `grafanactl datasources query generic any-001 'some_expr' --from now-1h --to now`
+  WHEN a user runs `gcx datasources query generic any-001 'some_expr' --from now-1h --to now`
   THEN the command auto-detects the datasource type and executes the appropriate query
 
 - GIVEN a Loki datasource UID `loki-001`
-  WHEN a user runs `grafanactl datasources query generic loki-001 '{job="x"}' --from now-1h --to now --limit 200`
+  WHEN a user runs `gcx datasources query generic loki-001 '{job="x"}' --from now-1h --to now --limit 200`
   THEN the command auto-detects Loki type and executes the query with a limit of 200
 
 - GIVEN the CLI is built
-  WHEN a user runs `grafanactl datasources query tempo`
+  WHEN a user runs `gcx datasources query tempo`
   THEN the command returns an error with the message "tempo queries are not yet implemented" and exits with code 1
 
 - GIVEN the CLI is built
-  WHEN a user runs `grafanactl datasources query tempo --help`
+  WHEN a user runs `gcx datasources query tempo --help`
   THEN the output describes the tempo subcommand as not yet available
 
 - GIVEN the CLI is built
-  WHEN a user runs `grafanactl query`
+  WHEN a user runs `gcx query`
   THEN the command returns an "unknown command" error (the top-level query command no longer exists)
 
 - GIVEN all output codecs (table, wide, json, yaml, graph)
-  WHEN a user runs `grafanactl datasources query prometheus UID 'up' -o {format}`
-  THEN the output matches the format produced by the former `grafanactl query` command for the same query and format
+  WHEN a user runs `gcx datasources query prometheus UID 'up' -o {format}`
+  THEN the output matches the format produced by the former `gcx query` command for the same query and format
 
 - GIVEN the codebase after this change
-  WHEN `make docs` is run with `GRAFANACTL_AGENT_MODE=false`
+  WHEN `make docs` is run with `GCX_AGENT_MODE=false`
   THEN the generated CLI reference docs reflect `datasources query {prometheus,loki,pyroscope,tempo,generic}` and do NOT contain a top-level `query` command
 
 - GIVEN a fresh config
-  WHEN a user runs `grafanactl config set contexts.myctx.datasources.prometheus prom-uid-123`
+  WHEN a user runs `gcx config set contexts.myctx.datasources.prometheus prom-uid-123`
   THEN the config file contains a `datasources` section under `myctx` with `prometheus: prom-uid-123`
 
 - GIVEN a config with `datasources.loki` set
-  WHEN a user runs `grafanactl config unset contexts.myctx.datasources.loki`
+  WHEN a user runs `gcx config unset contexts.myctx.datasources.loki`
   THEN the `loki` key is removed from the `datasources` section
 
 - GIVEN a Grafana context with `datasources.prometheus` configured
-  WHEN the synth provider resolves a default Prometheus datasource UID (e.g., `grafanactl synth checks status`)
+  WHEN the synth provider resolves a default Prometheus datasource UID (e.g., `gcx synth checks status`)
   THEN it uses the UID from `datasources.prometheus` via the shared resolver
 
 - GIVEN a Grafana context with `datasources.prometheus` configured
-  WHEN a user runs `grafanactl datasources prometheus labels` (existing command)
+  WHEN a user runs `gcx datasources prometheus labels` (existing command)
   THEN the command uses the UID from `datasources.prometheus` via the shared resolver
 
 ## Negative Constraints
@@ -226,7 +226,7 @@ contexts:
 - The `tempo` subcommand MUST NOT accept positional arguments, query flags, or execute any query. It MUST only return a "not implemented" error.
 - The implementation MUST NOT change the public API of any internal query client (`internal/query/{prometheus,loki,pyroscope}/`).
 - The implementation MUST NOT alter the observable behavior of existing `datasources prometheus`, `datasources loki`, or `datasources pyroscope` subcommands (labels, metadata, targets) beyond adopting the shared datasource resolver for default UID resolution.
-- The implementation MUST NOT introduce a backward-compatibility alias or hidden command for the old `grafanactl query` path.
+- The implementation MUST NOT introduce a backward-compatibility alias or hidden command for the old `gcx query` path.
 - The `--profile-type` and `--max-nodes` flags MUST NOT be registered on `prometheus`, `loki`, or `tempo` subcommands. They MUST be registered on `pyroscope` and `generic` only.
 - The `--limit` flag MUST NOT be registered on `prometheus`, `pyroscope`, or `tempo` subcommands. It MUST be registered on `loki` and `generic` only.
 - The implementation MUST NOT use string formatting for PromQL construction (per project conventions; use `promql-builder` if needed).
@@ -236,7 +236,7 @@ contexts:
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| Breaking change removes `grafanactl query` | Users with scripts or muscle memory will get errors | Document in changelog; error message for unknown `query` at root level will guide users to `datasources query` |
+| Breaking change removes `gcx query` | Users with scripts or muscle memory will get errors | Document in changelog; error message for unknown `query` at root level will guide users to `datasources query` |
 | Datasource type validation adds an extra API call | Slight latency increase per query invocation for typed subcommands | The API call is lightweight (single datasource GET); `generic` preserves the current single-call behavior |
 | Positional args are harder to discover than flags | New users may not know argument order | Help text and examples MUST clearly show `UID EXPR` order; `--help` on each subcommand MUST document positional args |
 | `generic` with pyroscope + loki flags creates flag sprawl | `generic` subcommand has more flags than typed subcommands | Acceptable trade-off for escape-hatch functionality; pyroscope and loki flags are clearly documented as kind-specific in help text |

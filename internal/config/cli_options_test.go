@@ -3,11 +3,11 @@ package config_test
 import (
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/config"
+	"github.com/grafana/gcx/internal/config"
 )
 
 func TestLoadCLIOptions_AutoApproveTrue(t *testing.T) {
-	t.Setenv("GRAFANACTL_AUTO_APPROVE", "1")
+	t.Setenv("GCX_AUTO_APPROVE", "1")
 
 	opts, err := config.LoadCLIOptions()
 	if err != nil {
@@ -20,7 +20,7 @@ func TestLoadCLIOptions_AutoApproveTrue(t *testing.T) {
 }
 
 func TestLoadCLIOptions_AutoApproveTrueString(t *testing.T) {
-	t.Setenv("GRAFANACTL_AUTO_APPROVE", "true")
+	t.Setenv("GCX_AUTO_APPROVE", "true")
 
 	opts, err := config.LoadCLIOptions()
 	if err != nil {
@@ -33,7 +33,7 @@ func TestLoadCLIOptions_AutoApproveTrueString(t *testing.T) {
 }
 
 func TestLoadCLIOptions_AutoApproveFalse(t *testing.T) {
-	t.Setenv("GRAFANACTL_AUTO_APPROVE", "0")
+	t.Setenv("GCX_AUTO_APPROVE", "0")
 
 	opts, err := config.LoadCLIOptions()
 	if err != nil {
@@ -46,7 +46,7 @@ func TestLoadCLIOptions_AutoApproveFalse(t *testing.T) {
 }
 
 func TestLoadCLIOptions_AutoApproveEmpty(t *testing.T) {
-	t.Setenv("GRAFANACTL_AUTO_APPROVE", "")
+	t.Setenv("GCX_AUTO_APPROVE", "")
 
 	opts, err := config.LoadCLIOptions()
 	if err != nil {

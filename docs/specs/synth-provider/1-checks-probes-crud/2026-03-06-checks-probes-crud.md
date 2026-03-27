@@ -43,8 +43,8 @@ CRUD commands for checks plus a read-only probes list command.
 
 ## Modified Files
 
-- `cmd/grafanactl/root/command.go`: add blank import
-  `_ "github.com/grafana/grafanactl/internal/providers/synth"`
+- `cmd/gcx/root/command.go`: add blank import
+  `_ "github.com/grafana/gcx/internal/providers/synth"`
 
 ## Go Type Definitions
 
@@ -236,7 +236,7 @@ spec:
     - Oregon
 ```
 
-After `grafanactl synth checks push my-grafana-check.yaml`:
+After `gcx synth checks push my-grafana-check.yaml`:
 - File `metadata.name` updated to `"8127"` in place
 - Output: `Check 'grafana-com-health' created (id=8127).`
 
@@ -277,7 +277,7 @@ func NewClient(baseURL, token string) *Client
 
 ```
 Status Code → Exit Behavior:
-  401/403 → exit 3: "authentication failed: check GRAFANA_SM_TOKEN or run grafanactl config set"
+  401/403 → exit 3: "authentication failed: check GRAFANA_SM_TOKEN or run gcx config set"
   404     → exit 1: "check <id> not found"
   400     → exit 2: include API error message body
   500     → exit 1: include response body
@@ -295,15 +295,15 @@ Status Code → Exit Behavior:
 7. `checks/commands.go` — list/get/push/pull
 8. `probes/commands.go` — probes list
 9. `provider.go` + `provider_test.go` — wire it all together
-10. `cmd/grafanactl/root/command.go` — blank import
+10. `cmd/gcx/root/command.go` — blank import
 
 ## Verification
 
 ```bash
 make lint && make tests && make build
-bin/grafanactl synth --help
-bin/grafanactl providers
-bin/grafanactl config view   # sm_token must appear as [REDACTED]
+bin/gcx synth --help
+bin/gcx providers
+bin/gcx config view   # sm_token must appear as [REDACTED]
 ```
 
 Live smoke tests (load credentials from `.env`):
@@ -311,28 +311,28 @@ Live smoke tests (load credentials from `.env`):
 source .env
 
 # Configure a context with SM credentials
-bin/grafanactl config set providers.synth.sm-url "$GRAFANA_SM_URL"
-bin/grafanactl config set providers.synth.sm-token "$GRAFANA_SM_TOKEN"
+bin/gcx config set providers.synth.sm-url "$GRAFANA_SM_URL"
+bin/gcx config set providers.synth.sm-token "$GRAFANA_SM_TOKEN"
 
 # Probes
-bin/grafanactl synth probes list
-bin/grafanactl synth probes list -o json
+bin/gcx synth probes list
+bin/gcx synth probes list -o json
 
 # Checks — read path
-bin/grafanactl synth checks list
-bin/grafanactl synth checks list -o json
-bin/grafanactl synth checks list -o yaml
-FIRST_ID=$(bin/grafanactl synth checks list -o json | jq -r '.[0].metadata.name')
-bin/grafanactl synth checks get "$FIRST_ID"
+bin/gcx synth checks list
+bin/gcx synth checks list -o json
+bin/gcx synth checks list -o yaml
+FIRST_ID=$(bin/gcx synth checks list -o json | jq -r '.[0].metadata.name')
+bin/gcx synth checks get "$FIRST_ID"
 
 # Pull round-trip
 mkdir -p /tmp/synth-smoke
-bin/grafanactl synth checks pull --output /tmp/synth-smoke
+bin/gcx synth checks pull --output /tmp/synth-smoke
 ls /tmp/synth-smoke/checks/       # should contain <id>.yaml files
 cat /tmp/synth-smoke/checks/"$FIRST_ID".yaml   # probe names, no tenantId/id in spec
 
 # Push round-trip (update existing check, expect idempotent)
-bin/grafanactl synth checks push /tmp/synth-smoke/checks/"$FIRST_ID".yaml
+bin/gcx synth checks push /tmp/synth-smoke/checks/"$FIRST_ID".yaml
 
 # Create + delete (new check smoke test)
 cat > /tmp/synth-smoke/new-check.yaml << 'EOF'
@@ -354,9 +354,9 @@ spec:
   probes:
     - Oregon
 EOF
-bin/grafanactl synth checks push /tmp/synth-smoke/new-check.yaml
+bin/gcx synth checks push /tmp/synth-smoke/new-check.yaml
 # metadata.name in file should now be numeric (e.g. "8200")
 cat /tmp/synth-smoke/new-check.yaml
 NEW_ID=$(grep 'name:' /tmp/synth-smoke/new-check.yaml | awk '{print $2}')
-bin/grafanactl synth checks delete "$NEW_ID"   # clean up
+bin/gcx synth checks delete "$NEW_ID"   # clean up
 ```

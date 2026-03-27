@@ -76,7 +76,7 @@ cmdio.Info(cmd.OutOrStdout(), "Using context %q", ctx)          // 🛈
 
 Status messages go to stdout. Errors (via `DetailedError`) go to stderr.
 
-Reference: `cmd/grafanactl/io/messages.go`
+Reference: `cmd/gcx/io/messages.go`
 
 ### 1.5 JSON Field Selection `[CURRENT]`
 
@@ -85,13 +85,13 @@ output is always JSON regardless of the `--output` default.
 
 ```bash
 # Select specific fields from a single resource
-grafanactl resources get dashboards/my-dash --json metadata.name,spec.title
+gcx resources get dashboards/my-dash --json metadata.name,spec.title
 
 # List operation: output is {"items": [...]}
-grafanactl resources get dashboards --json metadata.name
+gcx resources get dashboards --json metadata.name
 
 # Discover available field paths for a resource type
-grafanactl resources get dashboards/my-dash --json ?
+gcx resources get dashboards/my-dash --json ?
 ```
 
 **Flag semantics:**
@@ -114,9 +114,9 @@ additional list calls are made (NC-005).
 **Backward compatibility:** `-o json` is unchanged — it still produces the full
 resource object. `--json` is an independent mechanism (NC-002).
 
-**Implementation:** `cmd/grafanactl/io/field_select.go` (`FieldSelectCodec`,
+**Implementation:** `cmd/gcx/io/field_select.go` (`FieldSelectCodec`,
 `DiscoverFields`). Flag parsing and mutual-exclusion enforcement in
-`cmd/grafanactl/io/format.go` (`applyJSONFlag`).
+`cmd/gcx/io/format.go` (`applyJSONFlag`).
 
 ---
 
@@ -134,7 +134,7 @@ resource object. `--json` is an independent mechanism (NC-002).
 | 5 | `ExitCancelled` | Cancelled | User pressed Ctrl+C (SIGINT) or `context.Canceled` |
 | 6 | `ExitVersionIncompatible` | Version incompatible | Grafana version < 12 detected |
 
-Constants defined in `cmd/grafanactl/fail/exitcodes.go`.
+Constants defined in `cmd/gcx/fail/exitcodes.go`.
 
 **Implementation state:**
 - Exit code 3 (auth failure) is set by `convertAPIErrors` for HTTP 401/403.
@@ -146,7 +146,7 @@ Constants defined in `cmd/grafanactl/fail/exitcodes.go`.
 
 ### 2.2 Setting Exit Codes in Converters `[ADOPT]`
 
-When writing or modifying error converters in `cmd/grafanactl/fail/convert.go`,
+When writing or modifying error converters in `cmd/gcx/fail/convert.go`,
 set the `ExitCode` field on `DetailedError`:
 
 ```go
@@ -169,8 +169,8 @@ Cobra itself handles usage errors (bad flags, missing required args). With
 `handleError` and get exit code 1. Future work: detect Cobra usage errors
 and override to code 2.
 
-Reference: `cmd/grafanactl/main.go`, `cmd/grafanactl/fail/detailed.go`,
-`cmd/grafanactl/fail/convert.go`
+Reference: `cmd/gcx/main.go`, `cmd/gcx/fail/detailed.go`,
+`cmd/gcx/fail/convert.go`
 
 ---
 
@@ -189,7 +189,7 @@ Do NOT prompt for:
 
 ### 3.2 The `--yes` / `-y` Pattern `[IMPLEMENTED]`
 
-The `--yes`/`-y` flag and `GRAFANACTL_AUTO_APPROVE` environment variable enable
+The `--yes`/`-y` flag and `GCX_AUTO_APPROVE` environment variable enable
 non-interactive operation for destructive commands. Currently implemented for:
 
 - **delete command**: Auto-enables `--force` flag (required to delete all resources of a type)
@@ -198,7 +198,7 @@ non-interactive operation for destructive commands. Currently implemented for:
 managed by external tools (Terraform, GitSync, etc.). Users must explicitly pass
 `--include-managed` if needed.
 
-Pattern (as implemented in `cmd/grafanactl/resources/delete.go`):
+Pattern (as implemented in `cmd/gcx/resources/delete.go`):
 
 ```go
 // Load CLI options from environment
@@ -235,7 +235,7 @@ input. Document this explicitly in push-like commands:
 
 ```
 # Push is idempotent: creates new resources and updates existing ones
-grafanactl resources push ./dashboards/
+gcx resources push ./dashboards/
 ```
 
 Reference: `data-flows.md` Section 2 (PUSH Pipeline)
@@ -272,7 +272,7 @@ Error: File not found
 └─
 ```
 
-Reference: `cmd/grafanactl/fail/detailed.go`
+Reference: `cmd/gcx/fail/detailed.go`
 
 ### 4.2 Writing Good Suggestions `[ADOPT]`
 
@@ -282,8 +282,8 @@ Suggestions must be commands the user can run — not vague advice:
 ```go
 // Good:
 Suggestions: []string{
-    "Review your configuration: grafanactl config view",
-    "Set your token: grafanactl config set contexts.<ctx>.grafana.token <value>",
+    "Review your configuration: gcx config view",
+    "Set your token: gcx config set contexts.<ctx>.grafana.token <value>",
 }
 
 // Bad:
@@ -296,7 +296,7 @@ Suggestions: []string{
 ### 4.3 Error Converter Extension `[CURRENT]`
 
 Add new error types by implementing a converter function and appending to
-`errorConverters` in `cmd/grafanactl/fail/convert.go`:
+`errorConverters` in `cmd/gcx/fail/convert.go`:
 
 ```go
 func convertMyErrors(err error) (*DetailedError, bool) {
@@ -307,7 +307,7 @@ func convertMyErrors(err error) (*DetailedError, bool) {
     return &DetailedError{
         Summary:     "Descriptive summary",
         Parent:      err,
-        Suggestions: []string{"grafanactl ..."},
+        Suggestions: []string{"gcx ..."},
     }, true
 }
 ```
@@ -351,8 +351,8 @@ to **stdout** in addition to the existing stderr `DetailedError` output
 - When agent mode is NOT active, no error JSON is written to stdout.
 - The JSON is always valid — partial writes cannot corrupt it (NC-004).
 
-**Implementation:** `cmd/grafanactl/fail/json.go` (`DetailedError.WriteJSON`).
-Invoked from `handleError` in `cmd/grafanactl/main.go` when `agent.IsAgentMode()` is true.
+**Implementation:** `cmd/gcx/fail/json.go` (`DetailedError.WriteJSON`).
+Invoked from `handleError` in `cmd/gcx/main.go` when `agent.IsAgentMode()` is true.
 
 ---
 
@@ -392,7 +392,7 @@ automated pipelines.
 
 **Implementation:** `internal/terminal/terminal.go` (`Detect`, `IsPiped`,
 `NoTruncate`, `SetPiped`, `SetNoTruncate`). Invoked from
-`cmd/grafanactl/root/command.go` (`PersistentPreRun`).
+`cmd/gcx/root/command.go` (`PersistentPreRun`).
 
 Codecs read `terminal.IsPiped()` and `terminal.NoTruncate()` at encode time
 (via `io.Options.IsPiped` and `io.Options.NoTruncate` populated during
@@ -400,7 +400,7 @@ Codecs read `terminal.IsPiped()` and `terminal.NoTruncate()` at encode time
 
 ### 5.2 `--no-color` Flag `[CURRENT]`
 
-Implemented in `cmd/grafanactl/root/command.go`. Sets `color.NoColor = true`
+Implemented in `cmd/gcx/root/command.go`. Sets `color.NoColor = true`
 globally. Takes precedence over TTY auto-detection — passing `--no-color` on
 a TTY still disables color.
 
@@ -416,7 +416,7 @@ Future consideration: when piped and no explicit `-o` flag, commands with
 `text` default could auto-switch to a more parseable format (e.g. JSON or
 tab-separated). Needs design discussion.
 
-Reference: `cmd/grafanactl/root/command.go` (`PersistentPreRun`)
+Reference: `cmd/gcx/root/command.go` (`PersistentPreRun`)
 
 ---
 
@@ -430,7 +430,7 @@ Agent mode is detected via environment variables at `init()` time in
 
 | Variable | Set by | Effect |
 |----------|--------|--------|
-| `GRAFANACTL_AGENT_MODE` | Explicit opt-in/out | `1`/`true`/`yes` enables; `0`/`false`/`no` **disables** (overrides all others) |
+| `GCX_AGENT_MODE` | Explicit opt-in/out | `1`/`true`/`yes` enables; `0`/`false`/`no` **disables** (overrides all others) |
 | `CLAUDE_CODE` | Claude Code | Truthy value activates agent mode |
 | `CURSOR_AGENT` | Cursor | Truthy value activates agent mode |
 | `GITHUB_COPILOT` | GitHub Copilot | Truthy value activates agent mode |
@@ -439,7 +439,7 @@ Agent mode is detected via environment variables at `init()` time in
 The `--agent` persistent flag can also enable agent mode. `--agent=false`
 explicitly disables agent mode even when env vars are set.
 
-**Priority order:** `GRAFANACTL_AGENT_MODE=0` (disable) > any truthy env var
+**Priority order:** `GCX_AGENT_MODE=0` (disable) > any truthy env var
 (enable) > `--agent` flag > default (disabled).
 
 **API:** `agent.IsAgentMode() bool`, `agent.SetFlag(bool)`, `agent.DetectedFromEnv() bool`
@@ -466,7 +466,7 @@ The following are **not yet implemented** (`[PLANNED]`):
 Explicit flags override agent mode defaults:
 - `-o text` or `-o yaml` overrides the JSON default
 - `--agent=false` disables agent mode entirely (even when env vars are set)
-- `GRAFANACTL_AGENT_MODE=0` disables agent mode regardless of other env vars
+- `GCX_AGENT_MODE=0` disables agent mode regardless of other env vars
 
 ### 6.4 Exempt Commands `[PLANNED]`
 
@@ -488,7 +488,7 @@ UX requirements. All items are `[ADOPT]` unless marked otherwise.
 - [ ] `Name()` is lowercase, unique, and stable (it's the config map key)
 - [ ] All config keys are declared in `ConfigKeys()`
 - [ ] Secret keys (passwords, tokens, API keys) have `Secret: true`
-- [ ] `Validate()` returns error pointing to `grafanactl config set ...`
+- [ ] `Validate()` returns error pointing to `gcx config set ...`
 - [ ] Provider added to `internal/providers/registry.go:All()`
 
 ### UX Compliance `[ADOPT]`
@@ -529,8 +529,8 @@ Commands that are **exempt** from K8s wrapping:
 - [ ] `make build` succeeds
 - [ ] `make tests` passes with no regressions
 - [ ] `make lint` passes
-- [ ] `grafanactl providers` lists the new provider
-- [ ] `grafanactl config view` redacts secrets correctly
+- [ ] `gcx providers` lists the new provider
+- [ ] `gcx config view` redacts secrets correctly
 
 ---
 
@@ -563,13 +563,13 @@ command, progressing from simple to complex:
 
 ```go
 Example: `  # List all SLOs
-  grafanactl slo list
+  gcx slo list
 
   # List SLOs with JSON output
-  grafanactl slo list -o json
+  gcx slo list -o json
 
   # List SLOs from a specific context
-  grafanactl slo list --context=prod`,
+  gcx slo list --context=prod`,
 ```
 
 ### 8.3 Help Topics `[PLANNED]`
@@ -578,9 +578,9 @@ Dedicated help pages for cross-cutting concerns:
 
 | Topic | Content |
 |-------|---------|
-| `grafanactl help environment` | All env vars (Section 10) |
-| `grafanactl help formatting` | Output format guide, jq patterns |
-| `grafanactl help exit-codes` | Exit code reference (Section 2) |
+| `gcx help environment` | All env vars (Section 10) |
+| `gcx help formatting` | Output format guide, jq patterns |
+| `gcx help exit-codes` | Exit code reference (Section 2) |
 
 Implemented as Cobra help topic commands. Tracked by R2.1, R2.2.
 
@@ -654,7 +654,7 @@ code comments.
 | `GRAFANA_PASSWORD` | context | Basic auth password |
 | `GRAFANA_ORG_ID` | context | On-prem org ID (namespace) |
 | `GRAFANA_STACK_ID` | context | Cloud stack ID (namespace) |
-| `GRAFANACTL_CONFIG` | global | Config file path override |
+| `GCX_CONFIG` | global | Config file path override |
 | `NO_COLOR` | global | Disable color output ([no-color.org](https://no-color.org/)) |
 
 ### Provider Variables `[CURRENT]`
@@ -677,7 +677,7 @@ See [config-system.md](../architecture/config-system.md) for the loading chain a
 
 | Variable | Effect | Documentation |
 |----------|--------|---------------|
-| `GRAFANACTL_AUTO_APPROVE` | Auto-enable `--force` on delete operations | See `docs/reference/environment-variables/` |
+| `GCX_AUTO_APPROVE` | Auto-enable `--force` on delete operations | See `docs/reference/environment-variables/` |
 
 Accepts: `1`, `true`, `0`, `false` (parsed by `caarlos0/env/v11`)
 
@@ -687,7 +687,7 @@ Accepts: `1`, `true`, `0`, `false` (parsed by `caarlos0/env/v11`)
 
 | Variable | Source | Effect |
 |----------|--------|--------|
-| `GRAFANACTL_AGENT_MODE` | Explicit opt-in/out | `1`/`true`/`yes` enables agent mode; `0`/`false`/`no` disables (overrides all others) |
+| `GCX_AGENT_MODE` | Explicit opt-in/out | `1`/`true`/`yes` enables agent mode; `0`/`false`/`no` disables (overrides all others) |
 | `CLAUDE_CODE` | Claude Code | Truthy value activates agent mode |
 | `CURSOR_AGENT` | Cursor | Truthy value activates agent mode |
 | `GITHUB_COPILOT` | GitHub Copilot | Truthy value activates agent mode |
@@ -848,7 +848,7 @@ is generic.
 
 ### Do not
 
-- Import `cmd/grafanactl/config` from provider code (import cycle)
+- Import `cmd/gcx/config` from provider code (import cycle)
 - Roll custom flag binding for `--config`/`--context`
 - Construct HTTP clients or load credentials outside ConfigLoader
 - Hardcode env var names — ConfigLoader handles `GRAFANA_PROVIDER_*` resolution

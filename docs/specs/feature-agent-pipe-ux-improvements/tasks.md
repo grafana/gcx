@@ -35,11 +35,11 @@ Add TTY detection to root `PersistentPreRun` using `term.IsTerminal(os.Stdout.Fd
 **Deliverables:**
 - `internal/terminal/terminal.go` — `IsPiped() bool`, `SetPiped(bool)`, `NoTruncate() bool`, `SetNoTruncate(bool)`, detection via `term.IsTerminal()`
 - `internal/terminal/terminal_test.go` — unit tests
-- Modified `cmd/grafanactl/root/command.go` — TTY check in PersistentPreRun, `--no-truncate` flag
+- Modified `cmd/gcx/root/command.go` — TTY check in PersistentPreRun, `--no-truncate` flag
 
 **Acceptance criteria:**
-- GIVEN stdout is a pipe (non-TTY) WHEN grafanactl runs any command THEN `color.NoColor` is set to `true` and `terminal.IsPiped()` returns `true`
-- GIVEN stdout is a TTY WHEN grafanactl runs any command without `--no-color` THEN `color.NoColor` remains `false` and `terminal.IsPiped()` returns `false`
+- GIVEN stdout is a pipe (non-TTY) WHEN gcx runs any command THEN `color.NoColor` is set to `true` and `terminal.IsPiped()` returns `true`
+- GIVEN stdout is a TTY WHEN gcx runs any command without `--no-color` THEN `color.NoColor` remains `false` and `terminal.IsPiped()` returns `false`
 - GIVEN stdout is a TTY WHEN `--no-color` flag is passed THEN `color.NoColor` is `true` (flag takes precedence over TTY detection)
 - GIVEN stdout is a pipe WHEN `--no-truncate` flag is NOT passed THEN `terminal.NoTruncate()` returns `true` (auto-detected from pipe)
 - GIVEN stdout is a TTY WHEN `--no-truncate` flag is passed THEN `terminal.NoTruncate()` returns `true` (explicit override)
@@ -54,20 +54,20 @@ Add TTY detection to root `PersistentPreRun` using `term.IsTerminal(os.Stdout.Fd
 **Depends on**: T1
 **Type**: task
 
-Update `cmd/grafanactl/io.Options` to expose `IsPiped` and `NoTruncate` booleans populated from `internal/terminal` state. Modify table codecs that use `text/tabwriter` to skip column truncation when `NoTruncate` is true. The pipe-aware behavior applies to the `text` and `wide` codecs across all commands that register them.
+Update `cmd/gcx/io.Options` to expose `IsPiped` and `NoTruncate` booleans populated from `internal/terminal` state. Modify table codecs that use `text/tabwriter` to skip column truncation when `NoTruncate` is true. The pipe-aware behavior applies to the `text` and `wide` codecs across all commands that register them.
 
 Since table codecs are instantiated per-command (via `RegisterCustomCodec`), codecs can read `terminal.IsPiped()` / `terminal.NoTruncate()` directly from the package-level state.
 
 **Deliverables:**
-- Modified `cmd/grafanactl/io/format.go` — `IsPiped`, `NoTruncate` fields on Options; populated from terminal state
-- Modified `cmd/grafanactl/resources/get.go` — tableCodec reads NoTruncate
-- Modified `cmd/grafanactl/resources/list.go` — tabCodec reads NoTruncate
+- Modified `cmd/gcx/io/format.go` — `IsPiped`, `NoTruncate` fields on Options; populated from terminal state
+- Modified `cmd/gcx/resources/get.go` — tableCodec reads NoTruncate
+- Modified `cmd/gcx/resources/list.go` — tabCodec reads NoTruncate
 - Spot-check 2-3 provider table codecs to confirm pattern works
 
 **Acceptance criteria:**
-- GIVEN stdout is piped (non-TTY) WHEN `grafanactl resources get dashboards` runs with default text output THEN table columns are NOT truncated and output contains no ANSI escape sequences
-- GIVEN stdout is a TTY WHEN `grafanactl resources get dashboards` runs with default text output THEN table columns behave as they do today (truncation active where applicable)
-- GIVEN stdout is a TTY and `--no-truncate` is passed WHEN `grafanactl resources get dashboards` runs THEN table columns are NOT truncated
+- GIVEN stdout is piped (non-TTY) WHEN `gcx resources get dashboards` runs with default text output THEN table columns are NOT truncated and output contains no ANSI escape sequences
+- GIVEN stdout is a TTY WHEN `gcx resources get dashboards` runs with default text output THEN table columns behave as they do today (truncation active where applicable)
+- GIVEN stdout is a TTY and `--no-truncate` is passed WHEN `gcx resources get dashboards` runs THEN table columns are NOT truncated
 
 ---
 
@@ -77,11 +77,11 @@ Since table codecs are instantiated per-command (via `RegisterCustomCodec`), cod
 **Depends on**: T1
 **Type**: task
 
-Add `--json` flag to `cmd/grafanactl/io.Options`. The flag accepts a comma-separated list of field names or the sentinel `?`. Store parsed fields in `Options.JSONFields []string`. In `Validate()`, enforce mutual exclusion: if `--json` is set and `-o/--output` is also explicitly set, return an error. When `--json` is set (non-`?`), override the output format to JSON internally. When `--json ?` is used, set a boolean `Options.JSONDiscovery` that commands check to trigger field discovery instead of normal execution.
+Add `--json` flag to `cmd/gcx/io.Options`. The flag accepts a comma-separated list of field names or the sentinel `?`. Store parsed fields in `Options.JSONFields []string`. In `Validate()`, enforce mutual exclusion: if `--json` is set and `-o/--output` is also explicitly set, return an error. When `--json` is set (non-`?`), override the output format to JSON internally. When `--json ?` is used, set a boolean `Options.JSONDiscovery` that commands check to trigger field discovery instead of normal execution.
 
 **Deliverables:**
-- Modified `cmd/grafanactl/io/format.go` — `JSONFields`, `JSONDiscovery` fields; `--json` flag binding; mutual exclusion validation
-- Modified `cmd/grafanactl/io/format_test.go` — tests for flag parsing, mutual exclusion, sentinel detection
+- Modified `cmd/gcx/io/format.go` — `JSONFields`, `JSONDiscovery` fields; `--json` flag binding; mutual exclusion validation
+- Modified `cmd/gcx/io/format_test.go` — tests for flag parsing, mutual exclusion, sentinel detection
 
 **Acceptance criteria:**
 - GIVEN `--json name,namespace,kind` is passed WHEN `Options.Validate()` runs THEN `JSONFields` contains `["name", "namespace", "kind"]` and no error
@@ -97,15 +97,15 @@ Add `--json` flag to `cmd/grafanactl/io.Options`. The flag accepts a comma-separ
 **Depends on**: T3
 **Type**: task
 
-Implement `FieldSelectCodec` in `cmd/grafanactl/io/` that wraps `format.JSONCodec`. When `JSONFields` is set on Options, `Encode()` extracts only the requested fields from the input data. For `unstructured.Unstructured` objects, walk the object map. For other types, marshal to JSON then extract fields. Missing fields produce `null` values. For list results, wrap in `{"items": [...]}`.
+Implement `FieldSelectCodec` in `cmd/gcx/io/` that wraps `format.JSONCodec`. When `JSONFields` is set on Options, `Encode()` extracts only the requested fields from the input data. For `unstructured.Unstructured` objects, walk the object map. For other types, marshal to JSON then extract fields. Missing fields produce `null` values. For list results, wrap in `{"items": [...]}`.
 
 Implement `--json ?` field discovery: when `JSONDiscovery` is true, the command fetches one resource instance via the discovery registry, enumerates its top-level and `spec.*` field paths, prints them as a sorted list to stdout, and exits with code 0. Add this logic to `resources get` and `resources list` commands as the initial implementation.
 
 **Deliverables:**
-- `cmd/grafanactl/io/field_select.go` — `FieldSelectCodec` type
-- `cmd/grafanactl/io/field_select_test.go` — unit tests for field extraction, null handling, list wrapping
-- Modified `cmd/grafanactl/resources/get.go` — wire `--json ?` discovery; use `FieldSelectCodec` when `JSONFields` set
-- Modified `cmd/grafanactl/resources/list.go` — wire `--json ?` discovery; use `FieldSelectCodec` when `JSONFields` set
+- `cmd/gcx/io/field_select.go` — `FieldSelectCodec` type
+- `cmd/gcx/io/field_select_test.go` — unit tests for field extraction, null handling, list wrapping
+- Modified `cmd/gcx/resources/get.go` — wire `--json ?` discovery; use `FieldSelectCodec` when `JSONFields` set
+- Modified `cmd/gcx/resources/list.go` — wire `--json ?` discovery; use `FieldSelectCodec` when `JSONFields` set
 
 **Acceptance criteria:**
 - GIVEN `--json name,namespace` is passed to `resources get dashboards` WHEN the command runs THEN output is JSON containing only `name` and `namespace` fields per item
@@ -121,15 +121,15 @@ Implement `--json ?` field discovery: when `JSONDiscovery` is true, the command 
 **Depends on**: T1
 **Type**: task
 
-Modify `handleError()` in `cmd/grafanactl/main.go` to emit a JSON error object to stdout when in agent mode (`agent.IsAgentMode()`) or when `--json` was used. The JSON object has the shape `{"error": {"summary": "...", "exitCode": N, "details": "...", "suggestions": [...], "docsLink": "..."}}`. Optional fields are omitted when empty. The `exitCode` in JSON MUST match the process exit code. Stderr output remains unchanged (human-formatted error still written).
+Modify `handleError()` in `cmd/gcx/main.go` to emit a JSON error object to stdout when in agent mode (`agent.IsAgentMode()`) or when `--json` was used. The JSON object has the shape `{"error": {"summary": "...", "exitCode": N, "details": "...", "suggestions": [...], "docsLink": "..."}}`. Optional fields are omitted when empty. The `exitCode` in JSON MUST match the process exit code. Stderr output remains unchanged (human-formatted error still written).
 
 For partial failure scenarios (e.g., `resources get` with `--on-error=continue`), ensure the error envelope wraps around any previously written output. This requires commands that support partial failures to buffer output and use a result envelope.
 
 **Deliverables:**
-- Modified `cmd/grafanactl/main.go` — JSON error to stdout in `handleError()`
-- `cmd/grafanactl/fail/json.go` — `ToJSON()` method on `DetailedError` producing the error JSON structure
-- `cmd/grafanactl/fail/json_test.go` — unit tests
-- Modified `cmd/grafanactl/fail/detailed.go` — no breaking changes, add JSON serialization support
+- Modified `cmd/gcx/main.go` — JSON error to stdout in `handleError()`
+- `cmd/gcx/fail/json.go` — `ToJSON()` method on `DetailedError` producing the error JSON structure
+- `cmd/gcx/fail/json_test.go` — unit tests
+- Modified `cmd/gcx/fail/detailed.go` — no breaking changes, add JSON serialization support
 
 **Acceptance criteria:**
 - GIVEN agent mode is active WHEN a command fails with a DetailedError THEN stdout contains `{"error": {"summary": "...", "exitCode": N}}` and stderr contains the human-formatted error
@@ -148,12 +148,12 @@ For partial failure scenarios (e.g., `resources get` with `--on-error=continue`)
 **Depends on**: T2, T4, T5
 **Type**: task
 
-Write integration-style tests that verify end-to-end behavior of all three features. Use `cmd/grafanactl/root.Command()` directly with programmatic stdout/stderr capture. Test pipe detection by controlling the file descriptor (use `os.Pipe()` to simulate piped stdout). Test `--json` field selection with mock discovery data. Test in-band error reporting with intentional failures.
+Write integration-style tests that verify end-to-end behavior of all three features. Use `cmd/gcx/root.Command()` directly with programmatic stdout/stderr capture. Test pipe detection by controlling the file descriptor (use `os.Pipe()` to simulate piped stdout). Test `--json` field selection with mock discovery data. Test in-band error reporting with intentional failures.
 
 **Deliverables:**
-- `cmd/grafanactl/io/integration_test.go` — pipe detection + truncation tests
-- `cmd/grafanactl/io/json_fields_integration_test.go` — `--json` end-to-end tests
-- `cmd/grafanactl/fail/error_integration_test.go` — in-band error tests
+- `cmd/gcx/io/integration_test.go` — pipe detection + truncation tests
+- `cmd/gcx/io/json_fields_integration_test.go` — `--json` end-to-end tests
+- `cmd/gcx/fail/error_integration_test.go` — in-band error tests
 
 **Acceptance criteria:**
 - GIVEN a test that executes a command with stdout set to `os.Pipe()` WHEN the command produces table output THEN the output contains no ANSI codes and columns are not truncated

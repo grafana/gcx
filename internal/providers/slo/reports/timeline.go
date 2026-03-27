@@ -7,11 +7,11 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/grafana/grafanactl/internal/format"
-	"github.com/grafana/grafanactl/internal/graph"
-	cmdio "github.com/grafana/grafanactl/internal/output"
-	"github.com/grafana/grafanactl/internal/providers/slo/definitions"
-	"github.com/grafana/grafanactl/internal/query/prometheus"
+	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/graph"
+	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers/slo/definitions"
+	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -67,19 +67,19 @@ each constituent SLO.
 Requires that SLO destination datasources have recording rules generating
 grafana_slo_sli_window metrics.`,
 		Example: `  # Render SLI trend for all SLO reports over the past 7 days.
-  grafanactl slo reports timeline
+  gcx slo reports timeline
 
   # Render SLI trend for a specific report.
-  grafanactl slo reports timeline abc123def
+  gcx slo reports timeline abc123def
 
   # Custom time range with explicit step.
-  grafanactl slo reports timeline --from now-24h --to now --step 5m
+  gcx slo reports timeline --from now-24h --to now --step 5m
 
   # Use window shorthand for the past 24 hours.
-  grafanactl slo reports timeline --window 24h
+  gcx slo reports timeline --window 24h
 
   # Output timeline data as a table.
-  grafanactl slo reports timeline -o table`,
+  gcx slo reports timeline -o table`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {

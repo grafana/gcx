@@ -1,3 +1,3 @@
 package httputils
 
-const UserAgent = "grafanactl"
+const UserAgent = "gcx"

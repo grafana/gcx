@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/resources/remote"
+	"github.com/grafana/gcx/internal/resources/remote"
 	"github.com/stretchr/testify/require"
 )
 

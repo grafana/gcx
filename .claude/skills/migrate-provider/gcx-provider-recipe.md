@@ -1,4 +1,4 @@
-# gcx → grafanactl Provider Migration Recipe
+# gcx → gcx Provider Migration Recipe
 
 > **Evergreen document.** Update this as providers are ported — add gotchas,
 > refine patterns, fix mistakes. Each migration agent should read this before
@@ -7,11 +7,11 @@
 ## Overview
 
 This recipe covers porting a gcx resource client (`pkg/grafana/{resource}/`)
-into a grafanactl provider (`internal/providers/{name}/`). It's a streamlined
+into a gcx provider (`internal/providers/{name}/`). It's a streamlined
 path that skips API discovery (gcx already has working clients) and focuses on
 the mechanical translation.
 
-**When to use this recipe:** Porting a gcx resource to grafanactl.
+**When to use this recipe:** Porting a gcx resource to gcx.
 **When to use `/add-provider` instead:** Building a provider from scratch for a
 product that doesn't have a gcx client.
 
@@ -39,8 +39,8 @@ Verify these before starting any port:
 gcx --version
 
 # 2. Grafana context is configured and working
-grafanactl config view
-grafanactl --context=<ctx> resources schemas | head -5
+gcx config view
+gcx --context=<ctx> resources schemas | head -5
 
 # 3. gcx uses the same context (or configure separately)
 gcx --context=<ctx> health
@@ -51,7 +51,7 @@ mkdir -p internal/providers/{name}/{resource}
 ```
 
 If any of these fail, fix them before proceeding. Smoke tests (Step 8) require
-live API access to both gcx and grafanactl against the same Grafana instance.
+live API access to both gcx and gcx against the same Grafana instance.
 
 ---
 
@@ -61,7 +61,7 @@ Before starting a port, answer these questions:
 
 ```
 [ ] 1. Is this resource already on K8s API?
-      Run: grafanactl --context=ops resources schemas | grep -i {resource}
+      Run: gcx --context=ops resources schemas | grep -i {resource}
       If YES → no provider needed, it works via dynamic discovery.
 
 [ ] 2. What's the gcx source?
@@ -120,7 +120,7 @@ Copy structs from `gcx/pkg/grafana/{resource}/`. Adjustments:
 
 ### Step 3: Port client.go
 
-Translate from gcx's `grafana.Client` to grafanactl's HTTP pattern:
+Translate from gcx's `grafana.Client` to gcx's HTTP pattern:
 
 ```go
 // gcx pattern (before):
@@ -140,7 +140,7 @@ func (c *Client) ListResources(ctx context.Context) ([]Resource, error) {
 ```
 
 ```go
-// grafanactl pattern (after):
+// gcx pattern (after):
 type Client struct {
     baseURL string
     token   string
@@ -185,7 +185,7 @@ package {resource}
 
 import (
     "context"
-    "github.com/grafana/grafanactl/internal/resources/adapter"
+    "github.com/grafana/gcx/internal/resources/adapter"
 )
 
 func Register(loader ConfigLoader) {
@@ -228,9 +228,9 @@ func init() {
 }
 ```
 
-Add blank import in `cmd/grafanactl/root/command.go`:
+Add blank import in `cmd/gcx/root/command.go`:
 ```go
-_ "github.com/grafana/grafanactl/internal/providers/{name}"
+_ "github.com/grafana/gcx/internal/providers/{name}"
 ```
 
 ### Step 6: Write tests
@@ -244,7 +244,7 @@ Minimum test coverage per resource:
 
 ```bash
 make all                                    # lint + tests + build + docs
-grafanactl providers                        # new provider listed
+gcx providers                        # new provider listed
 ```
 
 ### Step 8: Smoke Test (MANDATORY — STOP GATE)
@@ -265,38 +265,38 @@ CTX=dev  # adjust to your context
 
 # --- List: compare resource IDs ---
 GCX_IDS=$(gcx --context=$CTX {resource} list -o json | jq -r '.[].id // .[].uid' | sort)
-GCTL_IDS=$(grafanactl --context=$CTX {resource} list -o json | jq -r '.[].metadata.name' | sort)
+GCTL_IDS=$(gcx --context=$CTX {resource} list -o json | jq -r '.[].metadata.name' | sort)
 echo "=== List ID diff ==="
 diff <(echo "$GCX_IDS") <(echo "$GCTL_IDS") && echo "MATCH" || echo "MISMATCH"
 
 # --- Get: compare key fields ---
 ID="<pick-an-id-from-list>"
 gcx --context=$CTX {resource} get $ID -o json | jq '{title, status, labels}' > /tmp/gcx_get.json
-grafanactl --context=$CTX {resource} get $ID -o json \
+gcx --context=$CTX {resource} get $ID -o json \
   | jq '{title: .spec.title, status: .spec.status, labels: .metadata.labels}' > /tmp/gctl_get.json
 echo "=== Get field diff ==="
 diff /tmp/gcx_get.json /tmp/gctl_get.json && echo "MATCH" || echo "MISMATCH"
 
 # --- Adapter path ---
 echo "=== Adapter path ==="
-grafanactl --context=$CTX resources get {alias} > /dev/null 2>&1 && echo "resources get: OK" || echo "resources get: FAIL"
-grafanactl --context=$CTX resources get {alias}/$ID -o json > /dev/null 2>&1 && echo "resources get/id: OK" || echo "resources get/id: FAIL"
+gcx --context=$CTX resources get {alias} > /dev/null 2>&1 && echo "resources get: OK" || echo "resources get: FAIL"
+gcx --context=$CTX resources get {alias}/$ID -o json > /dev/null 2>&1 && echo "resources get/id: OK" || echo "resources get/id: FAIL"
 
 # --- Ancillary commands (repeat per ancillary) ---
 echo "=== Ancillary: {subcommand} ==="
 gcx --context=$CTX {resource} {subcommand} -o json | jq length
-grafanactl --context=$CTX {resource} {subcommand} -o json | jq length
+gcx --context=$CTX {resource} {subcommand} -o json | jq length
 
 # --- Schema + example ---
 echo "=== Schema ==="
-grafanactl --context=$CTX resources schemas -o json | jq 'to_entries[] | select(.key | test("{group}")) | .value' | head -5
+gcx --context=$CTX resources schemas -o json | jq 'to_entries[] | select(.key | test("{group}")) | .value' | head -5
 echo "=== Example ==="
-grafanactl --context=$CTX resources examples {alias} | head -10
+gcx --context=$CTX resources examples {alias} | head -10
 
 # --- Output format check ---
 echo "=== Output formats ==="
 for fmt in table wide json yaml; do
-  GRAFANACTL_AGENT_MODE=false grafanactl --context=$CTX {resource} list -o $fmt > /dev/null 2>&1 \
+  GCX_AGENT_MODE=false gcx --context=$CTX {resource} list -o $fmt > /dev/null 2>&1 \
     && echo "$fmt: OK" || echo "$fmt: FAIL"
 done
 ```
@@ -380,15 +380,15 @@ that only surfaced during smoke testing:
 - Auth requires a two-step token exchange: AP token → k6 v3 token via
   `PUT /v3/account/grafana-app/start` with `X-Grafana-Key`, `X-Stack-Id`,
   `X-Grafana-Service-Token` headers.
-- The stack ID can be parsed from the grafanactl namespace (`stack-{id}`),
+- The stack ID can be parsed from the gcx namespace (`stack-{id}`),
   avoiding the need for a separate GCOM call.
 - The org ID (needed for env vars) comes from the auth response, not config.
 - The `perfsprint` linter enforces `errors.New` over `fmt.Errorf` for strings
   without format verbs — easy to miss when porting `fmt.Errorf("...")` patterns.
 - The `usestdlibvars` linter enforces `http.StatusCreated` etc. instead of
   raw `201`/`204`/`404` literals — gcx uses raw numbers everywhere.
-- **gcx `k6 token` vs grafanactl `k6 auth token`**: gcx exposes token exchange
-  as a top-level `token` subcommand; grafanactl nests it under `auth token`.
+- **gcx `k6 token` vs gcx `k6 auth token`**: gcx exposes token exchange
+  as a top-level `token` subcommand; gcx nests it under `auth token`.
   Both print the short-lived API token to stdout.
 - **Schedules `delete` takes `<load-test-id>` not `<schedule-id>`**: This
   is consistent with the API — delete is keyed on the load test, not the
@@ -398,7 +398,7 @@ that only surfaced during smoke testing:
   underlying run listing function. The duplication is intentional — the
   `testrun` sub-tree groups CRD-related operations together.
 - **gcx `schema` / `example` subcommands**: gcx exposes per-resource `schema`
-  and `example` subcommands under each resource group. grafanactl covers these
+  and `example` subcommands under each resource group. gcx covers these
   via `resources schemas` and `resources examples` at the global level.
   These are NOT missing — the coverage is different but equivalent.
 

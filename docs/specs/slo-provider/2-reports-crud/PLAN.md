@@ -1,6 +1,6 @@
 # Implementation Plan: Stage 2 -- Reports CRUD
 
-Bead: `grafanactl-experiments-mwf`
+Bead: `gcx-experiments-mwf`
 Branch: `radiohead/slo-provider-plan`
 Design: `docs/designs/slo-provider/2-reports-crud/2026-03-04-reports-crud.md`
 
@@ -181,7 +181,7 @@ Commands:
 Add import and wire reports subcommand:
 
 ```go
-import "github.com/grafana/grafanactl/internal/slo/reports"
+import "github.com/grafana/gcx/internal/slo/reports"
 
 // In Commands():
 sloCmd.AddCommand(reports.Commands(loader))
@@ -219,8 +219,8 @@ assert.Contains(t, reportSubNames, "delete")
 
 ```bash
 make lint && make tests && make build
-bin/grafanactl slo reports --help
-bin/grafanactl slo --help    # verify both definitions and reports appear
+bin/gcx slo reports --help
+bin/gcx slo --help    # verify both definitions and reports appear
 ```
 
 ## 4. Test Strategy

@@ -12,11 +12,11 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/grafana/grafanactl/internal/format"
-	cmdio "github.com/grafana/grafanactl/internal/output"
-	"github.com/grafana/grafanactl/internal/providers"
-	"github.com/grafana/grafanactl/internal/resources"
-	"github.com/grafana/grafanactl/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/format"
+	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -914,7 +914,7 @@ func extractIDFromSlug(name string) (string, bool) {
 // Resource conversion helpers
 // ---------------------------------------------------------------------------
 
-// PipelineToResource converts a Pipeline to a grafanactl Resource.
+// PipelineToResource converts a Pipeline to a gcx Resource.
 // metadata.name is set to "slug-id" (e.g., "windowsconfig-18155") for unique identification.
 func PipelineToResource(p Pipeline, namespace string) (*resources.Resource, error) {
 	data, err := json.Marshal(p)
@@ -949,7 +949,7 @@ func PipelineToResource(p Pipeline, namespace string) (*resources.Resource, erro
 	return resources.MustFromObject(obj, resources.SourceInfo{}), nil
 }
 
-// PipelineFromResource converts a grafanactl Resource back to a Pipeline.
+// PipelineFromResource converts a gcx Resource back to a Pipeline.
 // The ID is recovered from the slug-id in metadata.name.
 func PipelineFromResource(res *resources.Resource) (*Pipeline, error) {
 	obj := res.Object.Object
@@ -982,7 +982,7 @@ func PipelineFromResource(res *resources.Resource) (*Pipeline, error) {
 	return &p, nil
 }
 
-// CollectorToResource converts a Collector to a grafanactl Resource.
+// CollectorToResource converts a Collector to a gcx Resource.
 // metadata.name is set to "slug-id" for unique identification.
 func CollectorToResource(col Collector, namespace string) (*resources.Resource, error) {
 	data, err := json.Marshal(col)
@@ -1017,7 +1017,7 @@ func CollectorToResource(col Collector, namespace string) (*resources.Resource, 
 	return resources.MustFromObject(obj, resources.SourceInfo{}), nil
 }
 
-// CollectorFromResource converts a grafanactl Resource back to a Collector.
+// CollectorFromResource converts a gcx Resource back to a Collector.
 func CollectorFromResource(res *resources.Resource) (*Collector, error) {
 	obj := res.Object.Object
 

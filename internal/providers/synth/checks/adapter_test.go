@@ -3,7 +3,7 @@ package checks_test
 import (
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/providers/synth/checks"
+	"github.com/grafana/gcx/internal/providers/synth/checks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

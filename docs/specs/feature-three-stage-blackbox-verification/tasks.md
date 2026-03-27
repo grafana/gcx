@@ -51,7 +51,7 @@ Replace the current SKILL.md with the new 3-stage structure. Write the frontmatt
 
 - GIVEN the SKILL.md
   WHEN an agent reads the Build gate
-  THEN it states that `GRAFANACTL_AGENT_MODE=false make all` must exit 0 before proceeding to Verify.
+  THEN it states that `GCX_AGENT_MODE=false make all` must exit 0 before proceeding to Verify.
   (Traces to FR-009, AC-07)
 
 - GIVEN the SKILL.md
@@ -78,7 +78,7 @@ Fill in the Audit stage with the three artifact format templates (parity table, 
 **Acceptance criteria:**
 - GIVEN the Audit stage section
   WHEN an agent reads the parity table template
-  THEN the template contains columns for cloud CLI command, grafanactl equivalent, status (Implemented / Deferred / N/A), and notes, with the instruction that every cloud CLI subcommand MUST have a row.
+  THEN the template contains columns for cloud CLI command, gcx equivalent, status (Implemented / Deferred / N/A), and notes, with the instruction that every cloud CLI subcommand MUST have a row.
   (Traces to FR-003, AC-02)
 
 - GIVEN the Audit stage section

@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 
-	internalconfig "github.com/grafana/grafanactl/internal/config"
-	"github.com/grafana/grafanactl/internal/resources"
-	"github.com/grafana/grafanactl/internal/resources/adapter"
+	internalconfig "github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -195,7 +195,7 @@ func NewTypedCRUD(ctx context.Context, loader RESTConfigLoader) (*adapter.TypedC
 	return crud, cfg, nil
 }
 
-// RuleToResource converts a KG Rule to a grafanactl Resource.
+// RuleToResource converts a KG Rule to a gcx Resource.
 func RuleToResource(rule Rule, namespace string) (*resources.Resource, error) {
 	data, err := json.Marshal(rule)
 	if err != nil {
@@ -406,7 +406,7 @@ func mustSchema(id, kind string, specSchema map[string]any) json.RawMessage {
 	return b
 }
 
-// RuleFromResource converts a grafanactl Resource back to a KG Rule.
+// RuleFromResource converts a gcx Resource back to a KG Rule.
 func RuleFromResource(res *resources.Resource) (*Rule, error) {
 	obj := res.Object.Object
 

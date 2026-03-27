@@ -44,7 +44,7 @@ created: 2026-03-09
                                          │ Skills invoke
                                          ▼
               ┌──────────────────────────────────────────────────────────┐
-              │                     grafanactl CLI                       │
+              │                     gcx CLI                       │
               │                                                          │
               │  slo definitions    slo reports    synth checks          │
               │  ├── list           ├── status     ├── list              │
@@ -94,10 +94,10 @@ synth-manage-checks ──→ synth-check-status, synth-investigate-check
 ## Compatibility
 
 **Unchanged behavior:**
-- `grafanactl slo definitions timeline --start now-7d --end now` continues to work (deprecated aliases)
-- `grafanactl slo reports timeline --start now-7d --end now` continues to work (deprecated aliases)
-- `grafanactl synth checks timeline --window 6h` continues to work
-- `grafanactl query --from / --to` unchanged (already uses `--from`/`--to`)
+- `gcx slo definitions timeline --start now-7d --end now` continues to work (deprecated aliases)
+- `gcx slo reports timeline --start now-7d --end now` continues to work (deprecated aliases)
+- `gcx synth checks timeline --window 6h` continues to work
+- `gcx query --from / --to` unchanged (already uses `--from`/`--to`)
 - All existing tests pass without modification
 
 **New behavior:**

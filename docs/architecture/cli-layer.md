@@ -3,13 +3,13 @@
 ## Command Tree
 
 ```
-grafanactl (root)
+gcx (root)
 ├── --no-color               [persistent flag]
 ├── --no-truncate            [persistent flag: disable table column truncation]
 ├── --agent                  [persistent flag: enable agent mode]
 ├── --verbose / -v           [persistent flag, count]
 │
-├── api                      [cmd/grafanactl/api/command.go]
+├── api                      [cmd/gcx/api/command.go]
 │   ├── --config             [persistent: inherited from config.Options]
 │   ├── --context            [persistent: inherited from config.Options]
 │   ├── --method / -X        HTTP method (default: GET, or POST if -d is set)
@@ -17,7 +17,7 @@ grafanactl (root)
 │   ├── --header / -H        Custom headers (repeatable)
 │   └── --output / -o        json|yaml  [default: json]
 │
-├── config                   [cmd/grafanactl/config/command.go]
+├── config                   [cmd/gcx/config/command.go]
 │   ├── --config             [persistent: path to config file]
 │   ├── --context            [persistent: context override]
 │   ├── check
@@ -29,7 +29,7 @@ grafanactl (root)
 │   └── view
 │       └── --output / -o   [yaml|json, default: yaml]
 │
-├── resources                [cmd/grafanactl/resources/command.go]
+├── resources                [cmd/gcx/resources/command.go]
 │   ├── --config             [persistent: inherited from config.Options]
 │   ├── --context            [persistent: inherited from config.Options]
 │   ├── delete [SELECTOR]...
@@ -40,7 +40,7 @@ grafanactl (root)
 │   ├── push   [SELECTOR]...
 │   └── validate [SELECTOR]...
 │
-├── dashboards               [cmd/grafanactl/dashboards/command.go]
+├── dashboards               [cmd/gcx/dashboards/command.go]
 │   ├── --config             [persistent: inherited from config.Options]
 │   ├── --context            [persistent: inherited from config.Options]
 │   └── snapshot UID...      Render dashboard/panel PNG snapshots via Image Renderer
@@ -56,7 +56,7 @@ grafanactl (root)
 │       ├── --concurrency    Max parallel renders (default: 10)
 │       └── --var            Dashboard template variable overrides (key=value)
 │
-├── datasources              [cmd/grafanactl/datasources/command.go]
+├── datasources              [cmd/gcx/datasources/command.go]
 │   ├── --config             [persistent: inherited from config.Options]
 │   ├── --context            [persistent: inherited from config.Options]
 │   ├── list
@@ -79,13 +79,13 @@ grafanactl (root)
 │   └── generic              Generic datasource operations (auto-detects type)
 │       └── query            DATASOURCE_UID  EXPR    [--from] [--to] [--step] [--window] [--limit] [--profile-type] [--max-nodes] [-o]
 │
-├── providers                [cmd/grafanactl/providers/command.go]
+├── providers                [cmd/gcx/providers/command.go]
 │   └── (list; no subcommands — prints NAME/DESCRIPTION table of registered providers)
 │
-└── dev                      [cmd/grafanactl/dev/command.go]
+└── dev                      [cmd/gcx/dev/command.go]
     ├── generate [FILE_PATH]... Generate typed Go stubs for new resources
     ├── import               Import existing Grafana resources as code
-    ├── scaffold             Scaffold a new grafanactl-based project
+    ├── scaffold             Scaffold a new gcx-based project
     ├── serve  [DIR]...      Serve resources locally (moved from resources serve)
     └── lint                 Lint resources (moved from top-level linter command)
         ├── run              Lint resources against configured rules [Use: "run"]
@@ -100,7 +100,7 @@ Key: SELECTOR = `kind[/name[,name...]]` or long form `kind.group/name`
 
 ## Provider Command Groups
 
-Providers contribute top-level command groups to grafanactl. Unlike `resources`
+Providers contribute top-level command groups to gcx. Unlike `resources`
 subcommands (which use the dynamic K8s client), provider commands wrap
 product-specific REST APIs and translate to/from the K8s envelope format.
 
@@ -108,7 +108,7 @@ product-specific REST APIs and translate to/from the K8s envelope format.
 
 ```
 Does the product expose a K8s-compatible API via /apis endpoint?
-├── YES → Use `grafanactl resources` (no provider needed)
+├── YES → Use `gcx resources` (no provider needed)
 └── NO  → Create a provider (wraps product's REST API)
 ```
 
@@ -122,7 +122,7 @@ resource-type subcommands underneath. Each resource type gets standard CRUD
 operations plus optional product-specific commands.
 
 ```
-grafanactl {provider}           [contributed by Provider.Commands()]
+gcx {provider}           [contributed by Provider.Commands()]
 ├── --config                    [persistent: inherited via providers.ConfigLoader]
 ├── --context                   [persistent: inherited via providers.ConfigLoader]
 │
@@ -141,7 +141,7 @@ grafanactl {provider}           [contributed by Provider.Commands()]
 ### Current providers
 
 ```
-grafanactl slo                  [internal/providers/slo/provider.go]
+gcx slo                  [internal/providers/slo/provider.go]
 ├── definitions                 CRUD + status/timeline for SLO definitions
 │   ├── list
 │   ├── get    <uuid>
@@ -157,7 +157,7 @@ grafanactl slo                  [internal/providers/slo/provider.go]
     ├── delete <uuid...>
     └── status [uuid]
 
-grafanactl synth                [internal/providers/synth/provider.go]
+gcx synth                [internal/providers/synth/provider.go]
 ├── checks                      CRUD + status/timeline for Synthetic Monitoring checks
 │   ├── list
 │   ├── get    <id>
@@ -172,7 +172,7 @@ grafanactl synth                [internal/providers/synth/provider.go]
 
 ### Config loading pattern
 
-Provider commands cannot import `cmd/grafanactl/config` (import cycle). Instead,
+Provider commands cannot import `cmd/gcx/config` (import cycle). Instead,
 they use a shared, exported `providers.ConfigLoader` that binds `--config` and `--context` flags
 independently. See `internal/providers/configloader.go` for the reference implementation.
 
@@ -197,7 +197,7 @@ step-by-step implementation guide.
 ## File Layout
 
 ```
-cmd/grafanactl/
+cmd/gcx/
 ├── main.go                  Entry point — wires root.Command, calls handleError
 ├── root/
 │   └── command.go           Root cobra command: logging setup, PersistentPreRun
@@ -340,7 +340,7 @@ func Command() *cobra.Command {
 ## Command Lifecycle
 
 ```
-User invokes: grafanactl resources push dashboards/foo -p ./resources
+User invokes: gcx resources push dashboards/foo -p ./resources
 
 cobra.Execute()
     │
@@ -468,7 +468,7 @@ func (e editor) OpenInTempFile(ctx context.Context, buffer io.Reader, format str
 
 ---
 
-## Output Formatting (`cmd/grafanactl/io/`)
+## Output Formatting (`cmd/gcx/io/`)
 
 > See also [design-guide.md](../reference/design-guide.md) Sections 1–2 for output contract,
 > exit code taxonomy, and default format conventions.
@@ -523,7 +523,7 @@ The `wide` codec is available on `slo definitions list`, `slo reports list`, and
 
 ### `FieldSelectCodec` — JSON Field Filtering
 
-`cmd/grafanactl/io/field_select.go` provides `FieldSelectCodec`, which wraps
+`cmd/gcx/io/field_select.go` provides `FieldSelectCodec`, which wraps
 the built-in JSON codec and emits only the requested fields from each object:
 
 ```go
@@ -581,7 +581,7 @@ They prefix with colored Unicode symbols (✔ ⚠ ✘ 🛈). `--no-color` disabl
 
 ---
 
-## Error Handling (`cmd/grafanactl/fail/`)
+## Error Handling (`cmd/gcx/fail/`)
 
 > See also [design-guide.md](../reference/design-guide.md) Section 4 for error design guidelines,
 > writing good suggestions, and exit code assignments.
@@ -654,7 +654,7 @@ config.Options
 
 ## Convention: Adding a New `resources` Subcommand
 
-**Step 1.** Create `cmd/grafanactl/resources/mycommand.go`.
+**Step 1.** Create `cmd/gcx/resources/mycommand.go`.
 
 **Step 2.** Follow the standard structure:
 
@@ -662,8 +662,8 @@ config.Options
 package resources
 
 import (
-    cmdconfig "github.com/grafana/grafanactl/cmd/grafanactl/config"
-    cmdio     "github.com/grafana/grafanactl/cmd/grafanactl/io"
+    cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
+    cmdio     "github.com/grafana/gcx/cmd/gcx/io"
     "github.com/spf13/cobra"
     "github.com/spf13/pflag"
 )
@@ -699,7 +699,7 @@ func myCmd(configOpts *cmdconfig.Options) *cobra.Command {
         Args:    cobra.ArbitraryArgs,
         Short:   "One-liner description",
         Long:    "Longer description.",
-        Example: "\n\tgrafanactl resources mycommand dashboards/foo",
+        Example: "\n\tgcx resources mycommand dashboards/foo",
         RunE: func(cmd *cobra.Command, args []string) error {
             ctx := cmd.Context()
 

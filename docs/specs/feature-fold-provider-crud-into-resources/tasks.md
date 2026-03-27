@@ -39,7 +39,7 @@ T1 (ResourceAdapter interface + Descriptor registration)
 
 Define the `ResourceAdapter` interface in a new `internal/resources/adapter/` package. The interface MUST expose `List`, `Get`, `Create`, `Update`, and `Delete` methods matching the signatures specified in FR-001. Add a `Descriptor()` method that returns the `resources.Descriptor` the adapter serves, plus an `Aliases() []string` method for short name registration. Define an `adapter.Factory` type (a closure returning a `ResourceAdapter` and error) for lazy initialization.
 
-Extend the `Provider` interface in `internal/providers/provider.go` with a `ResourceAdapters() []adapter.Factory` method. Providers that support resource adapters return their factories; others return `nil`. Update the root registration loop in `cmd/grafanactl/root/command.go` to call `Registry.RegisterAdapter()` for each factory returned by providers.
+Extend the `Provider` interface in `internal/providers/provider.go` with a `ResourceAdapters() []adapter.Factory` method. Providers that support resource adapters return their factories; others return `nil`. Update the root registration loop in `cmd/gcx/root/command.go` to call `Registry.RegisterAdapter()` for each factory returned by providers.
 
 Extend `RegistryIndex` with a `RegisterStatic(desc resources.Descriptor, aliases []string)` method that injects a provider descriptor into the existing index maps (`kindNames`, `singularNames`, `pluralNames`, `shortGroups`, `longGroups`, `preferredVersions`, `descriptors`). This enables `LookupPartialGVK` to resolve provider types without any parser changes.
 
@@ -48,7 +48,7 @@ Add a `Registry.RegisterAdapter(factory adapter.Factory)` method on the discover
 **Deliverables:**
 - `internal/resources/adapter/adapter.go` — `ResourceAdapter` interface + `Factory` type
 - `internal/providers/provider.go` — `Provider` interface extended with `ResourceAdapters()` method
-- `cmd/grafanactl/root/command.go` — registration loop updated to register adapter factories
+- `cmd/gcx/root/command.go` — registration loop updated to register adapter factories
 - `internal/resources/discovery/registry_index.go` — `RegisterStatic` method added
 - `internal/resources/discovery/registry.go` — `RegisterAdapter`, `GetAdapter` methods added
 - `internal/resources/adapter/adapter_test.go` — interface compliance tests
@@ -106,7 +106,7 @@ Implement `ResourceAdapter` for Synthetic Monitoring checks and probes. The chec
 
 **Acceptance criteria:**
 - GIVEN a Synth checks adapter WHEN `List` is called THEN it returns `[]*Resource` objects with `apiVersion: syntheticmonitoring.ext.grafana.app/v1alpha1` and `kind: Check`
-- GIVEN a Synth checks adapter factory WHEN the SM config is not set THEN the factory is NOT invoked (lazy init) and `grafanactl resources get dashboards` succeeds without error (FR-016)
+- GIVEN a Synth checks adapter factory WHEN the SM config is not set THEN the factory is NOT invoked (lazy init) and `gcx resources get dashboards` succeeds without error (FR-016)
 - GIVEN the Synth provider package is imported WHEN the process starts THEN descriptors for `Check` and `Probe` are registered with aliases `checks` and `probes`
 
 ---
@@ -169,7 +169,7 @@ The router MUST use lazy initialization for adapters: it stores adapter factorie
 **Depends on**: T2, T3, T4, T5
 **Type**: task
 
-Modify `FetchResources`, `NewDefaultPusher`, `NewDefaultPuller`, and `NewDeleter` (or their call sites in `cmd/grafanactl/resources/`) to construct a `ResourceClientRouter` that wraps the dynamic client and all registered adapters. The router MUST be passed as the client to `Pusher`, `Puller`, and `Deleter`.
+Modify `FetchResources`, `NewDefaultPusher`, `NewDefaultPuller`, and `NewDeleter` (or their call sites in `cmd/gcx/resources/`) to construct a `ResourceClientRouter` that wraps the dynamic client and all registered adapters. The router MUST be passed as the client to `Pusher`, `Puller`, and `Deleter`.
 
 Modify the `resources list` command to merge provider descriptors into its output (FR-013). The `Registry` already returns provider descriptors via `SupportedResources()` after T1, so this requires ensuring the `list` command uses the enhanced registry.
 
@@ -178,26 +178,26 @@ Modify the `resources edit` command to use the router for get-modify-put on prov
 Ensure `resources push` with no type argument auto-detects provider types from YAML files (FR-017): this works automatically because the router's `supportedDescriptors()` returns the merged set and `pushSingleResource` checks GVK membership.
 
 **Deliverables:**
-- `cmd/grafanactl/resources/fetch.go` — updated to use `ResourceClientRouter`
-- `cmd/grafanactl/resources/push.go` — updated to use `ResourceClientRouter`
-- `cmd/grafanactl/resources/pull.go` — updated to use `ResourceClientRouter` (if `NewDefaultPuller` call site needs changes)
-- `cmd/grafanactl/resources/delete.go` — updated to use `ResourceClientRouter`
-- `cmd/grafanactl/resources/edit.go` — updated to use `ResourceClientRouter`
-- `cmd/grafanactl/resources/list.go` — verified to include provider descriptors
+- `cmd/gcx/resources/fetch.go` — updated to use `ResourceClientRouter`
+- `cmd/gcx/resources/push.go` — updated to use `ResourceClientRouter`
+- `cmd/gcx/resources/pull.go` — updated to use `ResourceClientRouter` (if `NewDefaultPuller` call site needs changes)
+- `cmd/gcx/resources/delete.go` — updated to use `ResourceClientRouter`
+- `cmd/gcx/resources/edit.go` — updated to use `ResourceClientRouter`
+- `cmd/gcx/resources/list.go` — verified to include provider descriptors
 
 **Acceptance criteria:**
-- GIVEN a Grafana instance with SLO definitions WHEN the user runs `grafanactl resources list slo` THEN the output displays SLO definitions in the same tabular format as native resources (NAME, NAMESPACE, KIND, AGE columns)
-- GIVEN a Grafana instance with SLO definitions WHEN the user runs `grafanactl resources get slo/<uuid>` THEN the output displays the SLO definition as a YAML-encoded object with `apiVersion: slo.ext.grafana.app/v1alpha1`, `kind: SLO`, `metadata`, and `spec` fields
-- GIVEN SLO definition YAML files on disk WHEN the user runs `grafanactl resources push slo -p ./slo-defs/` THEN the SLO definitions are created or updated via the SLO REST API and a summary reports the count of pushed resources
-- GIVEN a Grafana instance with SLO definitions WHEN the user runs `grafanactl resources pull slo -d ./output/` THEN SLO definitions are written to `./output/` as YAML files with the standard resource envelope
-- GIVEN a Grafana instance with an SLO definition named `abc-123` WHEN the user runs `grafanactl resources delete slo/abc-123` THEN the SLO definition is deleted via the SLO REST API
-- GIVEN a Grafana instance with Synthetic Monitoring configured WHEN the user runs `grafanactl resources list checks` THEN Synthetic Monitoring checks are listed in standard resource format
-- GIVEN a Grafana instance with alerting rules configured WHEN the user runs `grafanactl resources list rules` THEN alert rules are listed in standard resource format
-- GIVEN no provider config is set WHEN the user runs `grafanactl resources list dashboards` THEN the command succeeds without errors related to provider initialization
-- GIVEN provider types are registered in the discovery registry WHEN the user runs `grafanactl resources list` (no arguments) THEN provider-backed resource types appear alongside native resource types in the output
-- GIVEN an SLO definition YAML file with `metadata.namespace: foo` WHEN the user runs `grafanactl resources push slo -p ./` in a context with namespace `bar` THEN the `NamespaceOverrider` processor sets the namespace to `bar` and the SLO is pushed with namespace `bar`
-- GIVEN an SLO definition YAML file WHEN the user runs `grafanactl resources push slo --omit-manager-fields -p ./` THEN the SLO is pushed without manager field annotations
-- GIVEN an SLO definition exists on the server WHEN the user runs `grafanactl resources edit slo/<uuid>` THEN the resource is fetched via the adapter's Get method, opened in `$EDITOR`, and the modified version is submitted via the adapter's Update method
+- GIVEN a Grafana instance with SLO definitions WHEN the user runs `gcx resources list slo` THEN the output displays SLO definitions in the same tabular format as native resources (NAME, NAMESPACE, KIND, AGE columns)
+- GIVEN a Grafana instance with SLO definitions WHEN the user runs `gcx resources get slo/<uuid>` THEN the output displays the SLO definition as a YAML-encoded object with `apiVersion: slo.ext.grafana.app/v1alpha1`, `kind: SLO`, `metadata`, and `spec` fields
+- GIVEN SLO definition YAML files on disk WHEN the user runs `gcx resources push slo -p ./slo-defs/` THEN the SLO definitions are created or updated via the SLO REST API and a summary reports the count of pushed resources
+- GIVEN a Grafana instance with SLO definitions WHEN the user runs `gcx resources pull slo -d ./output/` THEN SLO definitions are written to `./output/` as YAML files with the standard resource envelope
+- GIVEN a Grafana instance with an SLO definition named `abc-123` WHEN the user runs `gcx resources delete slo/abc-123` THEN the SLO definition is deleted via the SLO REST API
+- GIVEN a Grafana instance with Synthetic Monitoring configured WHEN the user runs `gcx resources list checks` THEN Synthetic Monitoring checks are listed in standard resource format
+- GIVEN a Grafana instance with alerting rules configured WHEN the user runs `gcx resources list rules` THEN alert rules are listed in standard resource format
+- GIVEN no provider config is set WHEN the user runs `gcx resources list dashboards` THEN the command succeeds without errors related to provider initialization
+- GIVEN provider types are registered in the discovery registry WHEN the user runs `gcx resources list` (no arguments) THEN provider-backed resource types appear alongside native resource types in the output
+- GIVEN an SLO definition YAML file with `metadata.namespace: foo` WHEN the user runs `gcx resources push slo -p ./` in a context with namespace `bar` THEN the `NamespaceOverrider` processor sets the namespace to `bar` and the SLO is pushed with namespace `bar`
+- GIVEN an SLO definition YAML file WHEN the user runs `gcx resources push slo --omit-manager-fields -p ./` THEN the SLO is pushed without manager field annotations
+- GIVEN an SLO definition exists on the server WHEN the user runs `gcx resources edit slo/<uuid>` THEN the resource is fetched via the adapter's Get method, opened in `$EDITOR`, and the modified version is submitted via the adapter's Update method
 
 ---
 
@@ -210,7 +210,7 @@ Ensure `resources push` with no type argument auto-detects provider types from Y
 **Depends on**: T6
 **Type**: task
 
-Add `PersistentPreRun` hooks to the top-level `slo`, `synth`, and `alert` commands that print a deprecation warning to stderr. The warning MUST direct users to the equivalent `grafanactl resources` command. The warning MUST be suppressed when agent mode is active or when `--json` output is requested (risk mitigation for CI/agent workflows).
+Add `PersistentPreRun` hooks to the top-level `slo`, `synth`, and `alert` commands that print a deprecation warning to stderr. The warning MUST direct users to the equivalent `gcx resources` command. The warning MUST be suppressed when agent mode is active or when `--json` output is requested (risk mitigation for CI/agent workflows).
 
 **Deliverables:**
 - `internal/providers/slo/provider.go` — deprecation hook added
@@ -220,9 +220,9 @@ Add `PersistentPreRun` hooks to the top-level `slo`, `synth`, and `alert` comman
 - `internal/providers/deprecation_test.go` — unit tests
 
 **Acceptance criteria:**
-- GIVEN the user runs `grafanactl slo definitions list` WHEN the command executes THEN a deprecation warning is printed to stderr AND the command still produces correct output
-- GIVEN agent mode is active WHEN the user runs `grafanactl slo definitions list` THEN no deprecation warning is printed to stderr
-- GIVEN `--json` flag is active WHEN the user runs `grafanactl slo definitions list --json ?` THEN no deprecation warning is printed to stderr
+- GIVEN the user runs `gcx slo definitions list` WHEN the command executes THEN a deprecation warning is printed to stderr AND the command still produces correct output
+- GIVEN agent mode is active WHEN the user runs `gcx slo definitions list` THEN no deprecation warning is printed to stderr
+- GIVEN `--json` flag is active WHEN the user runs `gcx slo definitions list --json ?` THEN no deprecation warning is printed to stderr
 
 ---
 
@@ -233,13 +233,13 @@ Add `PersistentPreRun` hooks to the top-level `slo`, `synth`, and `alert` comman
 **Depends on**: T6, T7
 **Type**: chore
 
-Add integration-level tests that exercise the full pipeline: selector parsing -> discovery -> router -> adapter -> (mock) REST client. Update CLI reference examples in `cmd/grafanactl/resources/` command help text to include provider resource examples. Update agent skills (`.claude/skills/`) that reference provider-specific command paths.
+Add integration-level tests that exercise the full pipeline: selector parsing -> discovery -> router -> adapter -> (mock) REST client. Update CLI reference examples in `cmd/gcx/resources/` command help text to include provider resource examples. Update agent skills (`.claude/skills/`) that reference provider-specific command paths.
 
 Verify that `make all` passes (lint + tests + build + docs).
 
 **Deliverables:**
 - `internal/resources/adapter/integration_test.go` — end-to-end pipeline tests with mock adapters
-- `cmd/grafanactl/resources/*.go` — updated command examples showing provider resource usage
+- `cmd/gcx/resources/*.go` — updated command examples showing provider resource usage
 - `.claude/skills/` — updated skill files referencing unified resource paths
 - Verified `make all` passes
 

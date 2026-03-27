@@ -102,15 +102,15 @@ Refactor `internal/providers/synth/checks/resource_adapter.go` to replace the ha
 
 **Acceptance criteria:**
 - GIVEN the refactored synth checks adapter using `TypedCRUD[CheckSpec]`
-  WHEN `grafanactl resources get checks` is executed against a Synthetic Monitoring API
+  WHEN `gcx resources get checks` is executed against a Synthetic Monitoring API
   THEN the output is byte-for-byte identical to the output produced by the pre-refactor adapter
 
 - GIVEN the refactored synth checks adapter
-  WHEN a check is created via `grafanactl resources push` with a check YAML
+  WHEN a check is created via `gcx resources push` with a check YAML
   THEN the check is created successfully with probe names resolved to IDs
 
 - GIVEN the refactored synth checks adapter
-  WHEN a check is updated via `grafanactl resources push` with a modified check YAML
+  WHEN a check is updated via `gcx resources push` with a modified check YAML
   THEN the check is updated successfully with the numeric ID recovered from metadata.name
 
 - GIVEN all refactored adapters
@@ -136,7 +136,7 @@ Refactor `internal/providers/synth/probes/resource_adapter.go` to replace the ha
 
 **Acceptance criteria:**
 - GIVEN the refactored synth probes adapter using `TypedCRUD[Probe]`
-  WHEN `grafanactl resources get probes` is executed
+  WHEN `gcx resources get probes` is executed
   THEN the output is identical to the pre-refactor adapter output
 
 - GIVEN all refactored adapters
@@ -161,11 +161,11 @@ Refactor `internal/providers/slo/definitions/resource_adapter.go` to replace the
 
 **Acceptance criteria:**
 - GIVEN the refactored SLO definitions adapter using `TypedCRUD[Slo]`
-  WHEN `grafanactl resources get slos` is executed
+  WHEN `gcx resources get slos` is executed
   THEN the output is identical to the pre-refactor adapter output
 
 - GIVEN the refactored SLO definitions adapter
-  WHEN an SLO is created and then updated via `grafanactl resources push`
+  WHEN an SLO is created and then updated via `gcx resources push`
   THEN the SLO is created/updated successfully with UUID managed via metadata.name
 
 - GIVEN all refactored adapters
@@ -190,7 +190,7 @@ Refactor `internal/providers/alert/resource_adapter.go` to replace the hand-writ
 
 **Acceptance criteria:**
 - GIVEN the refactored alert rules and groups adapters
-  WHEN `grafanactl resources get alertrules` and `grafanactl resources get alertrulegroups` are executed
+  WHEN `gcx resources get alertrules` and `gcx resources get alertrulegroups` are executed
   THEN the output is identical to the pre-refactor adapter output
 
 - GIVEN all refactored adapters
@@ -208,7 +208,7 @@ Refactor `internal/providers/alert/resource_adapter.go` to replace the hand-writ
 **Depends on**: T2, T3, T4, T5
 **Type**: chore
 
-Run `GRAFANACTL_AGENT_MODE=false make all` to verify lint, tests, build, and docs all pass with all five adapters refactored. Remove any dead code (unused imports, orphaned test helpers) identified by the linter. Verify that `StaticDescriptor()`, `StaticAliases()`, `StaticGVK()` functions still exist and work for any callers outside the adapter (e.g., provider registration, CLI commands). Verify no new dependencies were added to `internal/resources/adapter/`.
+Run `GCX_AGENT_MODE=false make all` to verify lint, tests, build, and docs all pass with all five adapters refactored. Remove any dead code (unused imports, orphaned test helpers) identified by the linter. Verify that `StaticDescriptor()`, `StaticAliases()`, `StaticGVK()` functions still exist and work for any callers outside the adapter (e.g., provider registration, CLI commands). Verify no new dependencies were added to `internal/resources/adapter/`.
 
 **Deliverables:**
 - Clean `make all` output
@@ -221,4 +221,4 @@ Run `GRAFANACTL_AGENT_MODE=false make all` to verify lint, tests, build, and doc
 
 - GIVEN the `internal/resources/adapter/` package
   WHEN its import list is inspected
-  THEN it contains no new external dependencies beyond standard library, `k8s.io/apimachinery`, and `github.com/grafana/grafanactl/internal/resources`
+  THEN it contains no new external dependencies beyond standard library, `k8s.io/apimachinery`, and `github.com/grafana/gcx/internal/resources`

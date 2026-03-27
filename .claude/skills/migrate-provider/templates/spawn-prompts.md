@@ -61,9 +61,9 @@ implemented by Build-Core.
 
 **You own ONLY these files:**
 - `internal/providers/{name}/provider.go`
-- `cmd/grafanactl/providers/{name}/commands.go`
-- `cmd/grafanactl/providers/{name}/*_test.go` (command tests)
-- The blank import line in `cmd/grafanactl/root/command.go`
+- `cmd/gcx/providers/{name}/commands.go`
+- `cmd/gcx/providers/{name}/*_test.go` (command tests)
+- The blank import line in `cmd/gcx/root/command.go`
 
 Do NOT modify types.go, client.go, adapter.go, or resource_adapter.go.
 Those are owned by Build-Core.

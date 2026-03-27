@@ -10,10 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/logs"
+	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/grafana-app-sdk/logging"
-	"github.com/grafana/grafanactl/internal/format"
-	"github.com/grafana/grafanactl/internal/logs"
-	"github.com/grafana/grafanactl/internal/resources"
 )
 
 type FileNamer func(resource *resources.Resource) (string, error)

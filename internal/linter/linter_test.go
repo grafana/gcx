@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/linter"
+	"github.com/grafana/gcx/internal/linter"
 	"github.com/stretchr/testify/require"
 )
 
@@ -61,7 +61,7 @@ func TestLinter_Lint_fileInputs(t *testing.T) {
 	req.ElementsMatch([]linter.RelatedResource{
 		{
 			Description: "documentation",
-			Reference:   "https://github.com/grafana/grafanactl/blob/main/docs/reference/linter-rules/dashboard/panel-title-description.md",
+			Reference:   "https://github.com/grafana/gcx/blob/main/docs/reference/linter-rules/dashboard/panel-title-description.md",
 		},
 	}, violation.RelatedResources)
 }
@@ -94,7 +94,7 @@ func TestLinter_Lint_directoryInputs(t *testing.T) {
 	req.ElementsMatch([]linter.RelatedResource{
 		{
 			Description: "documentation",
-			Reference:   "https://github.com/grafana/grafanactl/blob/main/docs/reference/linter-rules/dashboard/panel-title-description.md",
+			Reference:   "https://github.com/grafana/gcx/blob/main/docs/reference/linter-rules/dashboard/panel-title-description.md",
 		},
 	}, violation.RelatedResources)
 }

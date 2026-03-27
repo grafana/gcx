@@ -10,12 +10,12 @@ description: >
 # Import Dashboards as Code
 
 Import existing dashboards from a Grafana instance and convert them to Go
-builder code using `grafanactl dev import`.
+builder code using `gcx dev import`.
 
 ## Prerequisites
 
-1. grafanactl installed and configured with a Grafana connection
-   (`grafanactl config check` should show a valid context)
+1. gcx installed and configured with a Grafana connection
+   (`gcx config check` should show a valid context)
 2. The target Grafana instance must be reachable
 
 ## Import Commands
@@ -23,7 +23,7 @@ builder code using `grafanactl dev import`.
 ### Import All Dashboards
 
 ```bash
-grafanactl dev import dashboards
+gcx dev import dashboards
 ```
 
 Writes Go files to `imported/` (default). Each dashboard becomes a function
@@ -32,19 +32,19 @@ returning `*resource.ManifestBuilder`.
 ### Import a Specific Dashboard
 
 ```bash
-grafanactl dev import dashboards/my-dashboard-uid
+gcx dev import dashboards/my-dashboard-uid
 ```
 
 ### Import to a Custom Directory
 
 ```bash
-grafanactl dev import dashboards --path src/grafana
+gcx dev import dashboards --path src/grafana
 ```
 
 ### Import Multiple Resource Types
 
 ```bash
-grafanactl dev import dashboards folders
+gcx dev import dashboards folders
 ```
 
 ## How It Works
@@ -53,7 +53,7 @@ grafanactl dev import dashboards folders
 Grafana Instance
     │
     ▼
-grafanactl dev import dashboards/foo
+gcx dev import dashboards/foo
     │
     ├── 1. Fetches resource via K8s API (/apis endpoint)
     ├── 2. Detects API version (v0alpha1, v1beta1, v2beta1)
@@ -86,13 +86,13 @@ func MyDashboard() *resource.ManifestBuilder {
 
 ```bash
 # 1. Import from Grafana
-grafanactl dev import dashboards --path internal/dashboards
+gcx dev import dashboards --path internal/dashboards
 
 # 2. Review and edit the generated code
 #    (fix up builder calls, add variables, etc.)
 
 # 3. Push back to Grafana
-grafanactl resources push
+gcx resources push
 ```
 
 ## Common Issues
@@ -100,6 +100,6 @@ grafanactl resources push
 | Issue | Fix |
 |-------|-----|
 | "no converter found" | Dashboard uses an unsupported API version; only v0alpha1, v1beta1, v2beta1 supported |
-| Auth error (401/403) | Run `grafanactl config check` to verify credentials |
-| Empty import | The selector matched no resources; check UID with `grafanactl resources get dashboards` |
+| Auth error (401/403) | Run `gcx config check` to verify credentials |
+| Empty import | The selector matched no resources; check UID with `gcx resources get dashboards` |
 | Imported code doesn't compile | Some complex dashboards produce converter output that needs manual fixup |

@@ -1,7 +1,7 @@
 {
-  "roots": ["grafanactl"],
+  "roots": ["gcx"],
   "metadata": {
-    "name": "grafanactl"
+    "name": "gcx"
   },
   "rego_version": 1
 }

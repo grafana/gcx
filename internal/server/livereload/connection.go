@@ -51,7 +51,7 @@ func (c *connection) reader() {
 			c.send <- []byte(`{
 				"command": "hello",
 				"protocols": ["http://livereload.com/protocols/official-7"],
-				"serverName": "grafanactl"
+				"serverName": "gcx"
 			}`)
 		}
 	}

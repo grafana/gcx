@@ -131,7 +131,7 @@ dashboard.NewQueryGroupBuilder().
 )
 ```
 
-### Wrapping for grafanactl
+### Wrapping for gcx
 
 ```go
 return dashboard.Manifest("resource-name", builder)
@@ -223,7 +223,7 @@ alerting.NewRuleBuilder(title string) *RuleBuilder
 | `.NoDataState(alerting.RuleNoDataState)` | Behavior when no data |
 | `.IsPaused(bool)` | Pause the rule |
 
-### Wrapping for grafanactl (no convenience Manifest function)
+### Wrapping for gcx (no convenience Manifest function)
 
 ```go
 ruleObj, err := rule.Build()

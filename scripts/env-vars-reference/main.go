@@ -13,7 +13,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/grafana/grafanactl/internal/config"
+	"github.com/grafana/gcx/internal/config"
 )
 
 func main() {

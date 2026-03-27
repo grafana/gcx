@@ -2,7 +2,7 @@
 
 Recovery patterns for CLI failures encountered during diagnostic workflows.
 
-**Flags verified against**: `cmd/grafanactl/datasources/query/command.go`, `cmd/grafanactl/config/command.go`, `cmd/grafanactl/datasources/`
+**Flags verified against**: `cmd/gcx/datasources/query/command.go`, `cmd/gcx/config/command.go`, `cmd/gcx/datasources/`
 **Source commit**: HEAD of branch `t1-cli-flag-audit`
 
 ---
@@ -28,32 +28,32 @@ Error: failed to list resources: 403 Forbidden — user does not have permission
 1. Inspect the current context and verify the server URL and credentials are correct:
 
    ```bash
-   grafanactl config view
+   gcx config view
    ```
 
 2. If multiple contexts exist, confirm you are using the right one:
 
    ```bash
-   grafanactl config current-context
-   grafanactl config use-context <context-name>
+   gcx config current-context
+   gcx config use-context <context-name>
    ```
 
 3. Re-check the active context after switching:
 
    ```bash
-   grafanactl config view --minify
+   gcx config view --minify
    ```
 
-4. If the token is known to be expired, update it with `grafanactl config set`:
+4. If the token is known to be expired, update it with `gcx config set`:
 
    ```bash
-   grafanactl config set contexts.<context-name>.grafana.token <new-token>
+   gcx config set contexts.<context-name>.grafana.token <new-token>
    ```
 
 5. Retry the failing command after the context is corrected. For example:
 
    ```bash
-   grafanactl datasources list -o json
+   gcx datasources list -o json
    ```
 
 ---
@@ -79,7 +79,7 @@ Error: failed to query datasource: 404 Not Found
 1. List all available datasources to find the correct UID:
 
    ```bash
-   grafanactl datasources list -o json
+   gcx datasources list -o json
    ```
 
    The output includes `uid`, `name`, and `type` for each datasource.
@@ -87,20 +87,20 @@ Error: failed to query datasource: 404 Not Found
 2. Filter to a specific datasource type (e.g., Prometheus or Loki) to narrow the list:
 
    ```bash
-   grafanactl datasources list -t prometheus -o json
-   grafanactl datasources list -t loki -o json
+   gcx datasources list -t prometheus -o json
+   gcx datasources list -t loki -o json
    ```
 
 3. Inspect the full details of a specific datasource:
 
    ```bash
-   grafanactl datasources get <uid> -o json
+   gcx datasources get <uid> -o json
    ```
 
 4. Retry the query using the correct UID from the listing output:
 
    ```bash
-   grafanactl datasources prometheus query <correct-uid> '<expr>' --from now-1h --to now --step 1m -o json
+   gcx datasources prometheus query <correct-uid> '<expr>' --from now-1h --to now --step 1m -o json
    ```
 
 ---
@@ -133,27 +133,27 @@ Or for a range query:
 1. Verify that the metric exists and is being ingested:
 
    ```bash
-   grafanactl datasources prometheus metadata -d <uid> -m <metric-name> -o json
+   gcx datasources prometheus metadata -d <uid> -m <metric-name> -o json
    ```
 
 2. Check available label names and values for a Prometheus datasource:
 
    ```bash
-   grafanactl datasources prometheus labels -d <uid> -o json
-   grafanactl datasources prometheus labels -d <uid> -l job -o json
+   gcx datasources prometheus labels -d <uid> -o json
+   gcx datasources prometheus labels -d <uid> -l job -o json
    ```
 
 3. For Loki: confirm label names and streams are present:
 
    ```bash
-   grafanactl datasources loki labels -d <uid> -o json
-   grafanactl datasources loki labels -d <uid> -l service_name -o json
+   gcx datasources loki labels -d <uid> -o json
+   gcx datasources loki labels -d <uid> -l service_name -o json
    ```
 
 4. Broaden the time range to confirm whether data exists at all:
 
    ```bash
-   grafanactl datasources prometheus query <uid> '<metric>' --from now-24h --to now --step 5m -o json
+   gcx datasources prometheus query <uid> '<metric>' --from now-24h --to now --step 5m -o json
    ```
 
 5. Simplify the query to remove label filters and verify the base metric returns data:
@@ -161,7 +161,7 @@ Or for a range query:
    ```bash
    # Before: http_requests_total{job="api",code="500"}
    # After (simplified):
-   grafanactl datasources prometheus query <uid> 'http_requests_total' --from now-1h --to now --step 1m -o json
+   gcx datasources prometheus query <uid> 'http_requests_total' --from now-1h --to now --step 1m -o json
    ```
 
 ---
@@ -189,13 +189,13 @@ Error: failed to execute query: upstream timeout
 1. Reduce the time range to limit the number of data points:
 
    ```bash
-   grafanactl datasources prometheus query <uid> '<expr>' --from now-30m --to now --step 1m -o json
+   gcx datasources prometheus query <uid> '<expr>' --from now-30m --to now --step 1m -o json
    ```
 
 2. Increase the step interval to reduce the resolution and query load:
 
    ```bash
-   grafanactl datasources prometheus query <uid> '<expr>' --from now-1h --to now --step 5m -o json
+   gcx datasources prometheus query <uid> '<expr>' --from now-1h --to now --step 5m -o json
    ```
 
 3. Add label filters to reduce cardinality:
@@ -203,25 +203,25 @@ Error: failed to execute query: upstream timeout
    ```bash
    # Before: rate(http_requests_total[5m])
    # After (scoped):
-   grafanactl datasources prometheus query <uid> 'rate(http_requests_total{job="api"}[5m])' --from now-1h --to now --step 5m -o json
+   gcx datasources prometheus query <uid> 'rate(http_requests_total{job="api"}[5m])' --from now-1h --to now --step 5m -o json
    ```
 
 4. Check Prometheus scrape targets to confirm the datasource is healthy:
 
    ```bash
-   grafanactl datasources prometheus targets -d <uid> -o json
+   gcx datasources prometheus targets -d <uid> -o json
    ```
 
 5. Verify the Grafana instance is reachable by running a lightweight command:
 
    ```bash
-   grafanactl datasources list -o json
+   gcx datasources list -o json
    ```
 
    If this also times out, the issue is connectivity or instance-level; check the context configuration:
 
    ```bash
-   grafanactl config view --minify
+   gcx config view --minify
    ```
 
 ---
@@ -252,13 +252,13 @@ Error: bad_data: invalid parameter "query": <details>
    ```bash
    # Broken: rate(http_requests_total{job="api"[5m])
    # Fixed:
-   grafanactl datasources prometheus query <uid> 'rate(http_requests_total{job="api"}[5m])' --from now-1h --to now --step 1m -o json
+   gcx datasources prometheus query <uid> 'rate(http_requests_total{job="api"}[5m])' --from now-1h --to now --step 1m -o json
    ```
 
 2. Confirm the datasource type matches the query language. List datasources and check the `type` field:
 
    ```bash
-   grafanactl datasources list -o json
+   gcx datasources list -o json
    ```
 
    Use Prometheus datasource UIDs for PromQL expressions, and Loki datasource UIDs for LogQL expressions.
@@ -269,7 +269,7 @@ Error: bad_data: invalid parameter "query": <details>
    # Wrong: {job='api'}
    # Wrong: {job=api}
    # Correct:
-   grafanactl datasources loki query <uid> '{job="api"} |= "error"' --from now-1h --to now -o json
+   gcx datasources loki query <uid> '{job="api"} |= "error"' --from now-1h --to now -o json
    ```
 
 4. For rate and increase functions, always specify the range window:
@@ -277,14 +277,14 @@ Error: bad_data: invalid parameter "query": <details>
    ```bash
    # Wrong: rate(http_requests_total{code="500"})
    # Correct:
-   grafanactl datasources prometheus query <uid> 'rate(http_requests_total{code="500"}[5m])' --from now-1h --to now --step 1m -o json
+   gcx datasources prometheus query <uid> 'rate(http_requests_total{code="500"}[5m])' --from now-1h --to now --step 1m -o json
    ```
 
 5. Use the Prometheus labels command to confirm label names and valid values before building complex queries:
 
    ```bash
-   grafanactl datasources prometheus labels -d <uid> -o json
-   grafanactl datasources prometheus labels -d <uid> -l code -o json
+   gcx datasources prometheus labels -d <uid> -o json
+   gcx datasources prometheus labels -d <uid> -l code -o json
    ```
 
 ---
@@ -293,10 +293,10 @@ Error: bad_data: invalid parameter "query": <details>
 
 | Failure | First Diagnostic Command |
 |---------|--------------------------|
-| 401/403 auth error | `grafanactl config view` |
-| Wrong context | `grafanactl config use-context <name>` |
-| Datasource UID unknown | `grafanactl datasources list -o json` |
-| Empty results | `grafanactl datasources prometheus metadata -d <uid> -m <metric>` |
+| 401/403 auth error | `gcx config view` |
+| Wrong context | `gcx config use-context <name>` |
+| Datasource UID unknown | `gcx datasources list -o json` |
+| Empty results | `gcx datasources prometheus metadata -d <uid> -m <metric>` |
 | Query timeout | Increase `--step`, reduce time range |
 | PromQL parse error | Check braces, quotes, and range windows |
 | Loki parse error | Check stream selector syntax and double-quoted labels |

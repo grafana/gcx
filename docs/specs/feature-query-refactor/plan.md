@@ -13,7 +13,7 @@ created: 2026-03-18
 ### Before
 
 ```
-cmd/grafanactl/root/command.go
+cmd/gcx/root/command.go
 ├── rootCmd.AddCommand(query.Command())        ← top-level "query"
 ├── rootCmd.AddCommand(datasources.Command())
 │   ├── list, get
@@ -22,7 +22,7 @@ cmd/grafanactl/root/command.go
 │   └── pyroscope (profile-types, labels)
 └── ...
 
-cmd/grafanactl/query/
+cmd/gcx/query/
 ├── command.go   ← monolithic: all kinds, all flags, type auto-detect
 ├── graph.go     ← graph codec
 ├── time.go      ← time parsing (ParseTime, ParseDuration)
@@ -30,16 +30,16 @@ cmd/grafanactl/query/
 ```
 
 Default datasource resolution is duplicated inline across:
-- `cmd/grafanactl/query/command.go` (ad-hoc multi-field check)
-- `cmd/grafanactl/datasources/prometheus.go` (3 commands, each inline)
-- `cmd/grafanactl/datasources/loki.go` (2 commands, each inline)
-- `cmd/grafanactl/datasources/pyroscope.go` (2 commands, each inline)
+- `cmd/gcx/query/command.go` (ad-hoc multi-field check)
+- `cmd/gcx/datasources/prometheus.go` (3 commands, each inline)
+- `cmd/gcx/datasources/loki.go` (2 commands, each inline)
+- `cmd/gcx/datasources/pyroscope.go` (2 commands, each inline)
 - `internal/providers/synth/checks/status.go` (custom 4-tier resolution)
 
 ### After
 
 ```
-cmd/grafanactl/root/command.go
+cmd/gcx/root/command.go
 ├── rootCmd.AddCommand(datasources.Command())
 │   ├── list, get
 │   ├── prometheus (labels, metadata, targets)
@@ -54,7 +54,7 @@ cmd/grafanactl/root/command.go
 └── ...
 (NO rootCmd.AddCommand(query.Command()) — removed)
 
-cmd/grafanactl/datasources/query/        ← NEW package
+cmd/gcx/datasources/query/        ← NEW package
 ├── command.go       ← query group + shared helpers
 ├── prometheus.go    ← prometheus subcommand
 ├── loki.go          ← loki subcommand
@@ -93,7 +93,7 @@ All consumers (query subcommands, datasource subcommands, synth provider) call t
 
 | Decision | Rationale |
 |----------|-----------|
-| New package `cmd/grafanactl/datasources/query/` rather than inlining in `cmd/grafanactl/datasources/` | The datasources package already has 4 files; adding 8+ query files would make it unwieldy. A sub-package keeps command groups cleanly separated. (FR-001, FR-002) |
+| New package `cmd/gcx/datasources/query/` rather than inlining in `cmd/gcx/datasources/` | The datasources package already has 4 files; adding 8+ query files would make it unwieldy. A sub-package keeps command groups cleanly separated. (FR-001, FR-002) |
 | Move time utilities into the new query package | `ParseTime` and `ParseDuration` are only used by query commands. Keeping them co-located avoids an unnecessary shared utility package. (FR-007) |
 | Move codecs (table, wide, graph) into `codecs.go` in the new package | Codecs are query-specific and type-switch on query response types. No other commands use them. (FR-010) |
 | Shared `DefaultDatasourceUID` in `internal/config/resolver.go` | Centralizes the 2-tier precedence logic (new section > legacy key). Eliminates 10+ inline resolution blocks across the codebase. (FR-023, FR-024) |
@@ -107,11 +107,11 @@ All consumers (query subcommands, datasource subcommands, synth provider) call t
 
 | Area | Status |
 |------|--------|
-| `grafanactl datasources list` / `get` | Unchanged |
-| `grafanactl datasources prometheus labels/metadata/targets` | Unchanged behavior; internal resolution migrated to shared resolver (FR-024) |
-| `grafanactl datasources loki labels/series` | Unchanged behavior; internal resolution migrated to shared resolver (FR-024) |
-| `grafanactl datasources pyroscope profile-types/labels` | Unchanged behavior; internal resolution migrated to shared resolver (FR-024) |
-| `grafanactl query` (top-level) | REMOVED — returns "unknown command" error |
+| `gcx datasources list` / `get` | Unchanged |
+| `gcx datasources prometheus labels/metadata/targets` | Unchanged behavior; internal resolution migrated to shared resolver (FR-024) |
+| `gcx datasources loki labels/series` | Unchanged behavior; internal resolution migrated to shared resolver (FR-024) |
+| `gcx datasources pyroscope profile-types/labels` | Unchanged behavior; internal resolution migrated to shared resolver (FR-024) |
+| `gcx query` (top-level) | REMOVED — returns "unknown command" error |
 | `internal/query/{prometheus,loki,pyroscope}/` client packages | No changes to public API |
 | Config: `default-{kind}-datasource` keys | Still functional as fallback; new `datasources.{kind}` takes precedence |
 | Config: `datasources` section | NEW — `map[string]string` on Context |

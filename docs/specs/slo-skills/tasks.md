@@ -99,15 +99,15 @@ Create the slo-manage skill file with 4 workflows (create, update, GitOps sync, 
 
 - GIVEN a user asking to update an existing SLO's objective
   WHEN the slo-manage skill is triggered
-  THEN the agent MUST pull the current definition with `grafanactl slo definitions get <UUID>`, modify the requested fields, dry-run push, and then push
+  THEN the agent MUST pull the current definition with `gcx slo definitions get <UUID>`, modify the requested fields, dry-run push, and then push
 
 - GIVEN a user asking "pull my SLOs"
   WHEN the slo-manage skill is triggered
-  THEN the agent MUST run `grafanactl slo definitions pull -d <dir>` and report the output directory
+  THEN the agent MUST run `gcx slo definitions pull -d <dir>` and report the output directory
 
 - GIVEN a user asking to delete an SLO
   WHEN the slo-manage skill is triggered
-  THEN the agent MUST confirm the SLO identity and run `grafanactl slo definitions delete <UUID> -f`
+  THEN the agent MUST confirm the SLO identity and run `gcx slo definitions delete <UUID> -f`
 
 - GIVEN an SLO creation workflow
   WHEN the YAML file is being built
@@ -123,7 +123,7 @@ Create the slo-manage skill file with 4 workflows (create, update, GitOps sync, 
 
 - GIVEN the slo-manage skill
   WHEN inspected for allowed-tools
-  THEN it MUST list `[grafanactl, Bash, Read, Write, Edit]`
+  THEN it MUST list `[gcx, Bash, Read, Write, Edit]`
 
 - GIVEN any completed skill file
   WHEN line count is measured
@@ -150,11 +150,11 @@ Create the slo-check-status skill with list, status, status-wide, conditional ti
 **Acceptance criteria:**
 - GIVEN a user asking "how are my SLOs doing"
   WHEN the slo-check-status skill is triggered
-  THEN the agent MUST run `grafanactl slo definitions status` and present a table of SLO health
+  THEN the agent MUST run `gcx slo definitions status` and present a table of SLO health
 
 - GIVEN a user asking about a specific SLO's status
   WHEN the slo-check-status skill is triggered
-  THEN the agent MUST run `grafanactl slo definitions status <UUID> -o wide` to show SLI, budget, burn rate, SLI_1H, and SLI_1D
+  THEN the agent MUST run `gcx slo definitions status <UUID> -o wide` to show SLI, budget, burn rate, SLI_1H, and SLI_1D
 
 - GIVEN any SLO with status BREACHING in the status output
   WHEN the status step completes
@@ -162,7 +162,7 @@ Create the slo-check-status skill with list, status, status-wide, conditional ti
 
 - GIVEN a user asking about SLO trends
   WHEN the slo-check-status skill is triggered
-  THEN the agent MUST run `grafanactl slo definitions timeline [UUID]` with graph output
+  THEN the agent MUST run `gcx slo definitions timeline [UUID]` with graph output
 
 - GIVEN an SLO with status NODATA
   WHEN the status is displayed
@@ -198,7 +198,7 @@ Create the slo-investigate skill with the decision-branching investigation workf
 
 - GIVEN an SLO with a ratio query and status BREACHING
   WHEN the investigation reaches dimensional breakdown
-  THEN the agent MUST extract the success/total metric selectors and groupByLabels from the definition and run `grafanactl query` with those selectors grouped by the relevant dimensions
+  THEN the agent MUST extract the success/total metric selectors and groupByLabels from the definition and run `gcx query` with those selectors grouped by the relevant dimensions
 
 - GIVEN an SLO with a freeform query and status BREACHING
   WHEN the investigation reaches dimensional breakdown
@@ -300,7 +300,7 @@ Create the synth-check-status skill with list, status, conditional timeline, sta
 **Acceptance criteria:**
 - GIVEN a user asking "are my checks healthy"
   WHEN the synth-check-status skill is triggered
-  THEN the agent MUST run `grafanactl synth checks list` followed by `grafanactl synth checks status`
+  THEN the agent MUST run `gcx synth checks list` followed by `gcx synth checks status`
 
 - GIVEN a check with status FAILING
   WHEN the status step completes
@@ -308,7 +308,7 @@ Create the synth-check-status skill with list, status, conditional timeline, sta
 
 - GIVEN a user asking about trends for a specific check
   WHEN the synth-check-status skill is triggered
-  THEN the agent MUST run `grafanactl synth checks timeline <ID>` with graph output
+  THEN the agent MUST run `gcx synth checks timeline <ID>` with graph output
 
 - GIVEN any completed skill file
   WHEN line count is measured
@@ -349,7 +349,7 @@ Create the synth-investigate-check skill with the decision-branching investigati
 
 - GIVEN timeline data showing a subset of probes failing
   WHEN the triage step analyzes the data
-  THEN the agent MUST classify this as a "regional/network" failure pattern and map probe names to regions using `grafanactl synth probes list`
+  THEN the agent MUST classify this as a "regional/network" failure pattern and map probe names to regions using `gcx synth probes list`
 
 - GIVEN the references/failure-modes.md file
   WHEN inspected
@@ -393,7 +393,7 @@ Create the synth-manage-checks skill with 4 workflows (create, update, GitOps sy
 
 - GIVEN a user asking "pull my SM checks"
   WHEN the synth-manage-checks skill is triggered
-  THEN the agent MUST run `grafanactl synth checks pull -d <dir>`
+  THEN the agent MUST run `gcx synth checks pull -d <dir>`
 
 - GIVEN a check creation workflow
   WHEN the YAML file is being built
@@ -409,7 +409,7 @@ Create the synth-manage-checks skill with 4 workflows (create, update, GitOps sy
 
 - GIVEN the synth-manage-checks skill
   WHEN inspected for allowed-tools
-  THEN it MUST list `[grafanactl, Bash, Read, Write, Edit]`
+  THEN it MUST list `[gcx, Bash, Read, Write, Edit]`
 
 - GIVEN any completed skill file
   WHEN line count is measured

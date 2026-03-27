@@ -29,8 +29,8 @@ T2 (command.go) -+
 Create the two Go template files that produce dashboard and alertrule stubs. The dashboard template MUST use `dashboardv2beta1.Manifest()` with a sample timeseries panel and AutoGridLayout. The alertrule template MUST use `resource.NewManifestBuilder()` with placeholder Condition/For/Labels/Annotations. Both templates MUST produce gofmt-valid Go code with correct imports and no trailing whitespace.
 
 **Deliverables:**
-- `cmd/grafanactl/dev/templates/generate/dashboard.go.tmpl`
-- `cmd/grafanactl/dev/templates/generate/alertrule.go.tmpl`
+- `cmd/gcx/dev/templates/generate/dashboard.go.tmpl`
+- `cmd/gcx/dev/templates/generate/alertrule.go.tmpl`
 
 **Acceptance criteria:**
 - GIVEN the dashboard template is rendered with `Package=dashboards`, `FuncName=MyServiceOverview`, `Name=my-service-overview`
@@ -61,7 +61,7 @@ Create the two Go template files that produce dashboard and alertrule stubs. The
 Update the `//go:embed` directive in `command.go` to include `templates/generate/*.tmpl`. Add `cmd.AddCommand(generateCmd())` to the `Command()` function. This task creates the minimal wiring so T3 can define `generateCmd()` without circular issues.
 
 **Deliverables:**
-- `cmd/grafanactl/dev/command.go` (modified)
+- `cmd/gcx/dev/command.go` (modified)
 
 **Acceptance criteria:**
 - GIVEN the updated `command.go`
@@ -83,7 +83,7 @@ Update the `//go:embed` directive in `command.go` to include `templates/generate
 **Depends on**: T1, T2
 **Type**: task
 
-Implement `generate.go` in `cmd/grafanactl/dev/` containing:
+Implement `generate.go` in `cmd/gcx/dev/` containing:
 1. `generateOpts` struct with `Type string` field and `setup(flags)` method binding `--type`/`-t` (FR-016)
 2. `generateCmd()` returning `*cobra.Command` with `Use: "generate [FILE_PATH]..."`, `Args: cobra.MinimumNArgs(1)` (FR-001, FR-002, FR-007)
 3. Type inference map: `dashboards`/`dashboard` → `dashboard`, `alerts`/`alertrules`/`alertrule` → `alertrule` (case-insensitive, immediate parent directory only) (FR-003)
@@ -97,34 +97,34 @@ Implement `generate.go` in `cmd/grafanactl/dev/` containing:
 11. Summary line after all args processed (FR-013)
 
 **Deliverables:**
-- `cmd/grafanactl/dev/generate.go`
+- `cmd/gcx/dev/generate.go`
 
 **Acceptance criteria:**
-- GIVEN the user runs `grafanactl dev generate dashboards/my-service-overview.go`
+- GIVEN the user runs `gcx dev generate dashboards/my-service-overview.go`
   WHEN the command completes
   THEN a file `dashboards/my_service_overview.go` is created containing function `MyServiceOverview()` returning `*resource.ManifestBuilder` using `dashboardv2beta1.NewDashboardBuilder("my-service-overview")` (traces to spec AC 1)
 
-- GIVEN the user runs `grafanactl dev generate alerts/high-cpu-usage.go`
+- GIVEN the user runs `gcx dev generate alerts/high-cpu-usage.go`
   WHEN the command completes
   THEN a file `alerts/high_cpu_usage.go` is created containing function `HighCpuUsage()` returning `*resource.ManifestBuilder` using `alerting.NewRuleBuilder("high-cpu-usage")` (traces to spec AC 3)
 
-- GIVEN the user runs `grafanactl dev generate dashboards/my-dashboard`
+- GIVEN the user runs `gcx dev generate dashboards/my-dashboard`
   WHEN the filename has no `.go` extension
   THEN the output file is written to `dashboards/my_dashboard.go` and the resource name is `my-dashboard` (traces to spec AC 4)
 
-- GIVEN the user runs `grafanactl dev generate internal/monitoring/cpu-alert.go --type alertrule`
+- GIVEN the user runs `gcx dev generate internal/monitoring/cpu-alert.go --type alertrule`
   WHEN the directory `monitoring` does not match any known type
   THEN the `--type` flag overrides inference and an alertrule stub is generated at `internal/monitoring/cpu_alert.go` with package name `monitoring` (traces to spec AC 5)
 
-- GIVEN the user runs `grafanactl dev generate custom/my-thing.go`
+- GIVEN the user runs `gcx dev generate custom/my-thing.go`
   WHEN the directory `custom` does not match a known type and `--type` is not provided
   THEN the command returns an error listing supported directories and suggesting `--type` (traces to spec AC 6)
 
-- GIVEN the user runs `grafanactl dev generate` with no positional arguments
+- GIVEN the user runs `gcx dev generate` with no positional arguments
   WHEN the command validates arguments
   THEN the command returns an error indicating at least one file path is required (traces to spec AC 7)
 
-- GIVEN the user runs `grafanactl dev generate dashboards/a.go dashboards/b.go alerts/c.go`
+- GIVEN the user runs `gcx dev generate dashboards/a.go dashboards/b.go alerts/c.go`
   WHEN the command completes
   THEN three files are generated with a summary reporting 3 files generated (traces to spec AC 8)
 
@@ -132,12 +132,12 @@ Implement `generate.go` in `cmd/grafanactl/dev/` containing:
   WHEN generating a file at `new/nested/dashboards/test.go`
   THEN the directory `new/nested/dashboards` is created before writing (traces to spec AC 9)
 
-- GIVEN the user runs `grafanactl dev generate dashboards/my-dashboard.go`
+- GIVEN the user runs `gcx dev generate dashboards/my-dashboard.go`
   WHEN the command completes successfully
   THEN the success message printed to stdout contains the output file path `dashboards/my_dashboard.go` (traces to spec AC 10)
 
 - GIVEN the file `dashboards/existing.go` already exists
-  WHEN the user runs `grafanactl dev generate dashboards/existing.go`
+  WHEN the user runs `gcx dev generate dashboards/existing.go`
   THEN the command returns an error indicating the file exists (traces to spec AC 13)
 
 ---
@@ -167,7 +167,7 @@ Add `generate_test.go` with table-driven tests covering:
 All tests MUST use `t.TempDir()` for isolation.
 
 **Deliverables:**
-- `cmd/grafanactl/dev/generate_test.go`
+- `cmd/gcx/dev/generate_test.go`
 
 **Acceptance criteria:**
 - GIVEN a generated dashboard Go file

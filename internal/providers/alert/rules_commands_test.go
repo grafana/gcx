@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/providers/alert"
+	"github.com/grafana/gcx/internal/providers/alert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

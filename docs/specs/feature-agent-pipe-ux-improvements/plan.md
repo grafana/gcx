@@ -36,7 +36,7 @@ The three features integrate at different layers of the existing command pipelin
                           └──────────┬───────────────────────┘
                                      │
                           ┌──────────▼───────────────────────┐
-                          │    cmd/grafanactl/io/             │
+                          │    cmd/gcx/io/             │
                           │                                   │
                           │  Options struct                   │
                           │  ├── OutputFormat string          │
@@ -72,7 +72,7 @@ The three features integrate at different layers of the existing command pipelin
 
 | Decision | Rationale |
 |----------|-----------|
-| Add `IsPiped` and `NoTruncate` fields to `cmd/grafanactl/io.Options` | The IO Options struct is the single point all commands use for output configuration. Table codecs already receive data through `Encode()` — they need access to pipe/truncation state via the codec or the writer context. Adding fields to Options and passing them to codecs keeps the pattern consistent. (FR-001, FR-003, FR-005) |
+| Add `IsPiped` and `NoTruncate` fields to `cmd/gcx/io.Options` | The IO Options struct is the single point all commands use for output configuration. Table codecs already receive data through `Encode()` — they need access to pipe/truncation state via the codec or the writer context. Adding fields to Options and passing them to codecs keeps the pattern consistent. (FR-001, FR-003, FR-005) |
 | Set `color.NoColor` in PersistentPreRun alongside existing `--no-color` logic | The `fatih/color` library already has a global `NoColor` bool. TTY detection simply adds another condition to the existing assignment. `NO_COLOR` is already handled by fatih/color internally. (FR-002, FR-004) |
 | `--json` flag parsed as a comma-separated string in `io.Options.BindFlags()` | Follows the `gh` CLI convention. The sentinel value `?` triggers field discovery. Parsing happens in the same `BindFlags()` call that handles `-o`, making mutual exclusion validation straightforward in `Validate()`. (FR-006, FR-009) |
 | Field-selection codec wraps the existing JSON codec | Rather than modifying the built-in JSON codec, a new `FieldSelectCodec` accepts the field list and delegates serialization to `format.JSONCodec`. This preserves backward compatibility and keeps the field extraction logic isolated. (FR-006, FR-008) |

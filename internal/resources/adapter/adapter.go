@@ -1,12 +1,12 @@
 // Package adapter defines the ResourceAdapter interface for bridging provider
-// REST clients to the grafanactl resources pipeline.
+// REST clients to the gcx resources pipeline.
 package adapter
 
 import (
 	"context"
 	"encoding/json"
 
-	"github.com/grafana/grafanactl/internal/resources"
+	"github.com/grafana/gcx/internal/resources"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )

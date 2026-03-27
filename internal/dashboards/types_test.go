@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/grafanactl/internal/dashboards"
+	"github.com/grafana/gcx/internal/dashboards"
 )
 
 func TestSnapshotResult_JSONMarshal(t *testing.T) {

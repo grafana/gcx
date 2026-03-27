@@ -12,8 +12,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/grafana/grafanactl/internal/config"
-	"github.com/grafana/grafanactl/internal/providers"
+	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/providers"
 	"k8s.io/client-go/rest"
 )
 

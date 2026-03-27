@@ -2,12 +2,12 @@
 
 **Created**: 2026-03-25
 **Status**: accepted
-**Bead**: grafanactl-experiments-uxu
+**Bead**: gcx-experiments-uxu
 **Supersedes**: none
 
 ## Context
 
-grafanactl's core design principles exist in code and in developers' heads but
+gcx's core design principles exist in code and in developers' heads but
 are not consistently codified. This causes drift — especially from agentic
 contributors who lack the institutional context. The goal is to capture key
 design parameters as either constitutional invariants (require human approval
@@ -36,9 +36,9 @@ is short and authoritative. Design guide is long and detailed with
 ## CLI Grammar
 
 - **Command structure follows `$AREA $NOUN $VERB`.** Resource and provider
-  commands use `grafanactl {area} {resource-type} {verb}` (e.g.
-  `grafanactl slo definitions list`, `grafanactl resources get`,
-  `grafanactl datasources loki query`). Tooling commands (`dev`, `config`)
+  commands use `gcx {area} {resource-type} {verb}` (e.g.
+  `gcx slo definitions list`, `gcx resources get`,
+  `gcx datasources loki query`). Tooling commands (`dev`, `config`)
   may use `$AREA $VERB` when there is no meaningful noun — these operate on
   the project or CLI itself, not on Grafana resources.
 - **Extension commands nest under their resource type.** Domain-specific
@@ -268,7 +268,7 @@ All provider commands must use `providers.ConfigLoader` for flag binding
 (`--config`, `--context`) and config resolution (YAML + env var precedence).
 
 Do not:
-- Import `cmd/grafanactl/config` from provider code (import cycle)
+- Import `cmd/gcx/config` from provider code (import cycle)
 - Roll custom flag binding for `--config`/`--context`
 - Construct HTTP clients or load credentials outside ConfigLoader
 - Hardcode env var names — ConfigLoader handles `GRAFANA_PROVIDER_*` resolution

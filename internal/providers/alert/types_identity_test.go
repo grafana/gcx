@@ -3,8 +3,8 @@ package alert_test
 import (
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/providers/alert"
-	"github.com/grafana/grafanactl/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/providers/alert"
+	"github.com/grafana/gcx/internal/resources/adapter"
 )
 
 var _ adapter.ResourceIdentity = &alert.RuleStatus{}

@@ -2,7 +2,7 @@
 type: feature-spec
 title: "Table-driven TypedCRUD[T] for OnCall Adapter"
 status: done
-beads_id: grafanactl-experiments-ghh
+beads_id: gcx-experiments-ghh
 created: 2026-03-24
 ---
 

@@ -7,10 +7,10 @@ import (
 	"io"
 	"strings"
 
-	"github.com/grafana/grafanactl/internal/format"
-	"github.com/grafana/grafanactl/internal/linter/builtins"
-	"github.com/grafana/grafanactl/internal/resources"
-	"github.com/grafana/grafanactl/internal/resources/local"
+	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/linter/builtins"
+	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/local"
 	"github.com/open-policy-agent/opa/v1/ast"
 	"github.com/open-policy-agent/opa/v1/bundle"
 	"github.com/open-policy-agent/opa/v1/rego"
@@ -211,7 +211,7 @@ func (linter *Linter) Rules(ctx context.Context) ([]Rule, error) {
 			continue
 		}
 
-		if parts[0] != "grafanactl" || parts[1] != "rules" {
+		if parts[0] != "gcx" || parts[1] != "rules" {
 			continue
 		}
 
@@ -261,8 +261,8 @@ func (linter *Linter) Rules(ctx context.Context) ([]Rule, error) {
 
 func (linter *Linter) prepare(ctx context.Context) (rego.PreparedEvalQuery, error) {
 	regoOpts := []func(*rego.Rego){
-		// Matches the report-generation statement in `./bundle/grafanactl/main/main.rego`
-		rego.Query("lint := data.grafanactl.main.lint"),
+		// Matches the report-generation statement in `./bundle/gcx/main/main.rego`
+		rego.Query("lint := data.gcx.main.lint"),
 		rego.ParsedBundle("internal", linter.createDataBundle()),
 	}
 

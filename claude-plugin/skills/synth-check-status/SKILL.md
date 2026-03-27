@@ -1,7 +1,7 @@
 ---
 name: synth-check-status
 description: Use when the user asks about Synthetic Monitoring check health, status, or trends. Trigger on phrases like "are my checks healthy", "check status", "synth check", "probe status", or when users mention specific check names or IDs. For investigating failing checks use synth-investigate-check. For creating or managing checks use synth-manage-checks.
-allowed-tools: [grafanactl, Bash]
+allowed-tools: [gcx, Bash]
 ---
 
 # Synthetic Monitoring Check Status
@@ -10,7 +10,7 @@ View check health, status, and timelines. Concise and direct — experienced ope
 
 ## Core Principles
 
-1. Use grafanactl commands exclusively — do not call APIs directly
+1. Use gcx commands exclusively — do not call APIs directly
 2. Trust the user's expertise — no excessive explanation
 3. Use `-o json` for agent processing, default format for user display
 4. Show graph visualizations for time-series data
@@ -22,26 +22,26 @@ View check health, status, and timelines. Concise and direct — experienced ope
 Always start with the full check inventory:
 
 ```bash
-grafanactl synth checks list
+gcx synth checks list
 ```
 
 Output columns: ID, JOB, TARGET, TYPE. Identify the check(s) the user is asking about.
 
 If the user specifies a check name or target, filter after listing:
 ```bash
-grafanactl synth checks list -o json | jq '.[] | select(.spec.job == "my-check")'
+gcx synth checks list -o json | jq '.[] | select(.spec.job == "my-check")'
 ```
 
 ### Step 2: Show Status
 
 For all checks (overview):
 ```bash
-grafanactl synth checks status
+gcx synth checks status
 ```
 
 For a specific check:
 ```bash
-grafanactl synth checks status <ID>
+gcx synth checks status <ID>
 ```
 
 Output columns: ID, JOB, SUCCESS%, STATUS, PROBES_UP.
@@ -59,20 +59,20 @@ Show timeline when:
 
 With a time window (convenience shorthand):
 ```bash
-grafanactl synth checks timeline <ID> --window <window>
+gcx synth checks timeline <ID> --window <window>
 ```
 
 With an explicit time range:
 ```bash
-grafanactl synth checks timeline <ID> --from <start> --to <end>
+gcx synth checks timeline <ID> --from <start> --to <end>
 ```
 
 Examples:
 ```bash
-grafanactl synth checks timeline 42 --window 1h
-grafanactl synth checks timeline 42 --window 6h
-grafanactl synth checks timeline 42 --from now-24h --to now
-grafanactl synth checks timeline 42 --from 2026-01-01T00:00:00Z --to 2026-01-02T00:00:00Z
+gcx synth checks timeline 42 --window 1h
+gcx synth checks timeline 42 --window 6h
+gcx synth checks timeline 42 --from now-24h --to now
+gcx synth checks timeline 42 --from 2026-01-01T00:00:00Z --to 2026-01-02T00:00:00Z
 ```
 
 Note: `--window` and `--from`/`--to` are mutually exclusive. Use one or the other.
@@ -97,7 +97,7 @@ For status overview (all checks healthy):
 ```
 Checks: <N> total, <N> OK, <N> FAILING, <N> NODATA
 
-[Table from grafanactl synth checks status]
+[Table from gcx synth checks status]
 
 All checks healthy.
 ```
@@ -106,7 +106,7 @@ For status with FAILING checks:
 ```
 Checks: <N> total, <N> OK, <N> FAILING, <N> NODATA
 
-[Table from grafanactl synth checks status]
+[Table from gcx synth checks status]
 
 FAILING checks:
 - <ID> <JOB> (<TARGET>) — <SUCCESS%> success, <PROBES_UP> probes up
@@ -138,14 +138,14 @@ Possible causes:
 - Synthetic Monitoring datasource not configured
 - Metrics not yet available (newly created check)
 
-Verify: grafanactl synth checks status <ID> -o json | jq '.spec.enabled'
+Verify: gcx synth checks status <ID> -o json | jq '.spec.enabled'
 ```
 
 ## Error Handling
 
-- **`grafanactl synth checks list` returns empty**: No checks configured in this context. Verify the grafanactl context with `grafanactl config view`.
-- **`grafanactl synth checks status <ID>` fails with "not found"**: Confirm the ID from `grafanactl synth checks list`. IDs are numeric.
-- **`grafanactl synth checks timeline <ID>` fails**: Verify the ID exists and that the check has been running long enough to have data. New checks may show no timeline data.
+- **`gcx synth checks list` returns empty**: No checks configured in this context. Verify the gcx context with `gcx config view`.
+- **`gcx synth checks status <ID>` fails with "not found"**: Confirm the ID from `gcx synth checks list`. IDs are numeric.
+- **`gcx synth checks timeline <ID>` fails**: Verify the ID exists and that the check has been running long enough to have data. New checks may show no timeline data.
 - **`--window` and `--from`/`--to` both provided**: These flags are mutually exclusive. Use one or the other.
 - **Timeline shows no data for the selected window**: Try a longer window (e.g., `--window 24h` instead of `--window 1h`). The check may have been created recently.
-- **Context not set**: Run `grafanactl config view` to verify the active context. If multiple contexts exist and none specified, ask the user which to use.
+- **Context not set**: Run `gcx config view` to verify the active context. If multiple contexts exist and none specified, ask the user which to use.

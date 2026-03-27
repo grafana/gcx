@@ -2,7 +2,7 @@
 type: feature-spec
 title: "Codify CLI Design Principles in CONSTITUTION.md and Design Guide"
 status: done
-beads_id: grafanactl-experiments-uxu
+beads_id: gcx-experiments-uxu
 created: 2026-03-25
 ---
 
@@ -10,7 +10,7 @@ created: 2026-03-25
 
 ## Problem Statement
 
-grafanactl's core design principles -- CLI grammar, dual-purpose human/agent design, push/pull philosophy, provider architecture invariants, and dependency rules -- exist in code and developers' heads but are not codified in the project's governance documents. This causes design drift, especially from agentic contributors who lack institutional context. Three providers emit misleading deprecation warnings about dual CRUD paths that are actually permanent. One provider (synth) has custom config/auth loading that bypasses `providers.ConfigLoader`, creating inconsistent env var precedence and auth behavior.
+gcx's core design principles -- CLI grammar, dual-purpose human/agent design, push/pull philosophy, provider architecture invariants, and dependency rules -- exist in code and developers' heads but are not codified in the project's governance documents. This causes design drift, especially from agentic contributors who lack institutional context. Three providers emit misleading deprecation warnings about dual CRUD paths that are actually permanent. One provider (synth) has custom config/auth loading that bypasses `providers.ConfigLoader`, creating inconsistent env var precedence and auth behavior.
 
 The current workaround is PR review by maintainers who hold the design principles in their heads, which does not scale to agentic contributors.
 
@@ -133,15 +133,15 @@ The current workaround is PR review by maintainers who hold the design principle
 
 **Deprecation warning removal (uxu.6)**
 
-- GIVEN a user running `grafanactl slo definitions list`
+- GIVEN a user running `gcx slo definitions list`
   WHEN the command executes
   THEN no deprecation warning is printed to stderr
 
-- GIVEN a user running `grafanactl synth checks list`
+- GIVEN a user running `gcx synth checks list`
   WHEN the command executes
   THEN no deprecation warning is printed to stderr
 
-- GIVEN a user running `grafanactl alert rules list`
+- GIVEN a user running `gcx alert rules list`
   WHEN the command executes
   THEN no deprecation warning is printed to stderr
 

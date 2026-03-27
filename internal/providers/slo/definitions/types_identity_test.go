@@ -3,8 +3,8 @@ package definitions_test
 import (
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/providers/slo/definitions"
-	"github.com/grafana/grafanactl/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/providers/slo/definitions"
+	"github.com/grafana/gcx/internal/resources/adapter"
 )
 
 var _ adapter.ResourceIdentity = &definitions.Slo{}

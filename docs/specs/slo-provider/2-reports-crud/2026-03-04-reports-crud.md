@@ -89,5 +89,5 @@ xyz789ghi012jkl345mno  Monthly Checkout SLOs    monthly         7
 ## Verification
 
 ```bash
-make lint && make tests && make build && bin/grafanactl slo reports --help
+make lint && make tests && make build && bin/gcx slo reports --help
 ```

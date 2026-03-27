@@ -1,8 +1,8 @@
 package process
 
 import (
+	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/grafana/pkg/apimachinery/utils"
-	"github.com/grafana/grafanactl/internal/resources"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -26,7 +26,7 @@ func (m *ServerFieldsStripper) Process(r *resources.Resource) error {
 	delete(annotations, utils.AnnoKeyUpdatedBy)
 	delete(annotations, utils.AnnoKeyUpdatedTimestamp)
 
-	// Remove manager fields & source properties if the resource is managed by grafanactl,
+	// Remove manager fields & source properties if the resource is managed by gcx,
 	// because these fields are automatically set on push.
 	p, ok := r.Raw.GetManagerProperties()
 	if ok && p.Kind == resources.ResourceManagerKind {

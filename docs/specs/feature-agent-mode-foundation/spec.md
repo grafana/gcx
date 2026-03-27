@@ -2,7 +2,7 @@
 type: feature-spec
 title: "Agent Mode Foundation"
 status: done
-beads_id: grafanactl-experiments-pt8
+beads_id: gcx-experiments-pt8
 created: 2026-03-06
 ---
 
@@ -10,15 +10,15 @@ created: 2026-03-06
 
 ## Problem Statement
 
-grafanactl is a human-oriented CLI that defaults to colorized, human-readable
+gcx is a human-oriented CLI that defaults to colorized, human-readable
 output formats (text, table, pretty). When AI coding agents (Claude Code, Cursor,
-GitHub Copilot, Amazon Q) invoke grafanactl, they need machine-parseable output
+GitHub Copilot, Amazon Q) invoke gcx, they need machine-parseable output
 (JSON), no ANSI escape codes, and predictable exit codes that convey failure
 categories without parsing stderr text. Today, agents must remember to pass
 `-o json --no-color` on every invocation and cannot distinguish auth failures
 from version mismatches from user interrupts -- everything exits 1.
 
-This feature establishes the foundation layer that makes grafanactl a
+This feature establishes the foundation layer that makes gcx a
 first-class tool for AI agents by (a) auto-detecting agent execution
 environments and adjusting defaults, and (b) implementing a differentiated
 exit code taxonomy.
@@ -63,8 +63,8 @@ exit code taxonomy.
 - **FR-001**: The system MUST detect agent mode when any of these environment
   variables is set to a truthy value (`1`, `true`, `yes`):
   `CLAUDE_CODE`, `CURSOR_AGENT`, `GITHUB_COPILOT`, `AMAZON_Q`,
-  `GRAFANACTL_AGENT_MODE`.
-  If `GRAFANACTL_AGENT_MODE` is explicitly set to a falsy value (`0`, `false`,
+  `GCX_AGENT_MODE`.
+  If `GCX_AGENT_MODE` is explicitly set to a falsy value (`0`, `false`,
   `no`), agent mode MUST be disabled regardless of other agent env vars.
 - **FR-002**: The system MUST detect agent mode when the `--agent` persistent
   flag is passed on the root command.
@@ -104,32 +104,32 @@ exit code taxonomy.
   function in `main.go` MUST detect `context.Canceled` errors (including
   wrapped errors via `errors.Is`) and map them to exit code 5. The
   implementation MUST add a `convertCanceledErrors` function to
-  `cmd/grafanactl/fail/convert.go` or detect it inline in `handleError`.
+  `cmd/gcx/fail/convert.go` or detect it inline in `handleError`.
 - **FR-016**: Exit code 6 MUST indicate version incompatibility. When Grafana
   version < 12 is detected, the resulting error MUST carry exit code 6.
 - **FR-017**: Exit code constants MUST be defined in a central location
-  (`cmd/grafanactl/fail/exitcodes.go`), covering the full range 0-6 with
+  (`cmd/gcx/fail/exitcodes.go`), covering the full range 0-6 with
   named constants.
 - **FR-018**: After implementation, `docs/reference/design-guide.md` Section 2.1
   MUST be updated to include exit codes 5 and 6, and Section 6.1 MUST list
   all five agent detection env vars (`CLAUDE_CODE`, `CURSOR_AGENT`,
-  `GITHUB_COPILOT`, `AMAZON_Q`, `GRAFANACTL_AGENT_MODE`).
+  `GITHUB_COPILOT`, `AMAZON_Q`, `GCX_AGENT_MODE`).
 
 ## Acceptance Criteria
 
 ### Agent Mode Detection
 
-- **AC-001**: Given `CLAUDE_CODE=1` is set, When `grafanactl resources list`
+- **AC-001**: Given `CLAUDE_CODE=1` is set, When `gcx resources list`
   is executed without `-o`, Then the default output format is JSON.
-- **AC-002**: Given no agent env vars are set, When `grafanactl --agent
+- **AC-002**: Given no agent env vars are set, When `gcx --agent
   resources list` is executed, Then agent mode is active and output defaults
   to JSON.
-- **AC-003**: Given `CLAUDE_CODE=1` is set, When `grafanactl resources list
+- **AC-003**: Given `CLAUDE_CODE=1` is set, When `gcx resources list
   -o text` is executed, Then the output format is text (explicit flag wins).
 - **AC-004**: Given no agent env vars are set and `--agent` is not passed,
-  When `grafanactl resources list` is executed, Then the default output
+  When `gcx resources list` is executed, Then the default output
   format is the per-command default (text for `list`), not JSON.
-- **AC-005**: Given `GRAFANACTL_AGENT_MODE=1` is set, When `IsAgentMode()`
+- **AC-005**: Given `GCX_AGENT_MODE=1` is set, When `IsAgentMode()`
   is called, Then it returns true.
 
 ### Exit Codes
@@ -147,7 +147,7 @@ exit code taxonomy.
   exits with code 6.
 - **AC-011**: Given an unrecognized error occurs, When it reaches
   `handleError`, Then the process exits with code 1.
-- **AC-012**: Given `GRAFANACTL_AGENT_MODE=0` is set alongside `CLAUDE_CODE=1`,
+- **AC-012**: Given `GCX_AGENT_MODE=0` is set alongside `CLAUDE_CODE=1`,
   When `IsAgentMode()` is called, Then it returns false.
 
 ## Negative Constraints
@@ -168,13 +168,13 @@ exit code taxonomy.
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
 | Pre-parsing `os.Args` for `--agent` is fragile if cobra changes arg handling | Low | Medium | Pre-parse uses simple linear scan; does not attempt full flag parsing. Unit tests cover edge cases (flag after `--`, combined short flags). |
-| Future env var collisions (e.g., `CLAUDE_CODE` means something else) | Low | Low | Each var is checked for truthy values only; the explicit `GRAFANACTL_AGENT_MODE` serves as the canonical escape hatch. |
+| Future env var collisions (e.g., `CLAUDE_CODE` means something else) | Low | Low | Each var is checked for truthy values only; the explicit `GCX_AGENT_MODE` serves as the canonical escape hatch. |
 | Exit code 2 conflicts with bash builtins (misuse of shell builtin) | Low | Low | Code 2 is only for cancellation in our taxonomy; agents consuming exit codes are not bash builtins. Document the taxonomy clearly. |
 
 ## Open Questions
 
 | ID | Question | Status |
 |----|----------|--------|
-| OQ-1 | Should agent mode be surfaced in `grafanactl config check` output? | Deferred to Phase 4. |
+| OQ-1 | Should agent mode be surfaced in `gcx config check` output? | Deferred to Phase 4. |
 | OQ-2 | Should the version-incompatible exit code (4) be emitted from `config check` today or only from API-calling commands? | Implement where version checks already exist; extend in later phases. |
-| OQ-3 | Should `GRAFANACTL_AGENT_MODE=0` explicitly disable agent mode even if `CLAUDE_CODE=1` is set? | RESOLVED: Yes -- explicit opt-out in FR-001. Implement as part of T1. |
+| OQ-3 | Should `GCX_AGENT_MODE=0` explicitly disable agent mode even if `CLAUDE_CODE=1` is set? | RESOLVED: Yes -- explicit opt-out in FR-001. Implement as part of T1. |

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/grafanactl/internal/config"
+	"github.com/grafana/gcx/internal/config"
 	"k8s.io/client-go/rest"
 )
 

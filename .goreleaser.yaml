@@ -6,9 +6,9 @@
 version: 2
 
 builds:
-  - id: grafanactl
-    binary: grafanactl
-    main: ./cmd/grafanactl
+  - id: gcx
+    binary: gcx
+    main: ./cmd/gcx
 
     ldflags:
       - -X main.version={{ .Version }}
@@ -24,8 +24,8 @@ builds:
       - darwin
 
 archives:
-  - id: grafanactl
-    builds: [grafanactl]
+  - id: gcx
+    builds: [gcx]
     format: tar.gz
     # this name template makes the OS and Arch compatible with the results of `uname`.
     name_template: >-

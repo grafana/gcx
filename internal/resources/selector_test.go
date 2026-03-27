@@ -3,7 +3,7 @@ package resources_test
 import (
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/resources"
+	"github.com/grafana/gcx/internal/resources"
 	"github.com/stretchr/testify/assert"
 )
 

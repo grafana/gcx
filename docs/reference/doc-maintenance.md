@@ -85,9 +85,9 @@ utility packages nested under existing layers.
 
 ### 2. Command Inventory
 
-**Check:** `ls cmd/grafanactl/*/`
+**Check:** `ls cmd/gcx/*/`
 
-Every command group directory in `cmd/grafanactl/` should appear in:
+Every command group directory in `cmd/gcx/` should appear in:
 - `docs/architecture/cli-layer.md` (command tree section)
 - `CLAUDE.md` (package map)
 

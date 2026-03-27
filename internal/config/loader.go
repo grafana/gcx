@@ -11,16 +11,16 @@ import (
 
 	"github.com/adrg/xdg"
 	"github.com/goccy/go-yaml"
+	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/grafana-app-sdk/logging"
-	"github.com/grafana/grafanactl/internal/format"
 )
 
 const (
 	configFilePermissions  = 0o600
-	StandardConfigFolder   = "grafanactl"
+	StandardConfigFolder   = "gcx"
 	StandardConfigFileName = "config.yaml"
-	ConfigFileEnvVar       = "GRAFANACTL_CONFIG"
-	LocalConfigFileName    = ".grafanactl.yaml"
+	ConfigFileEnvVar       = "GCX_CONFIG"
+	LocalConfigFileName    = ".gcx.yaml"
 
 	defaultEmptyConfigFile = `
 contexts:
@@ -140,7 +140,7 @@ func ExplicitConfigFile(path string) Source {
 
 func StandardLocation() Source {
 	return func() (string, error) {
-		// Check if GRAFANACTL_CONFIG environment variable is set
+		// Check if GCX_CONFIG environment variable is set
 		if envPath := os.Getenv(ConfigFileEnvVar); envPath != "" {
 			return envPath, nil
 		}
@@ -218,7 +218,7 @@ func Write(ctx context.Context, source Source, cfg Config) error {
 
 // LoadLayered discovers config files, loads and deep-merges them, then applies overrides.
 // If no config files are found, creates a default user config (preserving current behavior).
-// If explicitFile is set (--config flag) or GRAFANACTL_CONFIG env var is set,
+// If explicitFile is set (--config flag) or GCX_CONFIG env var is set,
 // bypasses layering entirely and loads that single file.
 func LoadLayered(ctx context.Context, explicitFile string, overrides ...Override) (Config, error) {
 	// --config flag bypasses layering.
@@ -226,7 +226,7 @@ func LoadLayered(ctx context.Context, explicitFile string, overrides ...Override
 		return loadExplicit(ctx, explicitFile, overrides...)
 	}
 
-	// GRAFANACTL_CONFIG env var also bypasses layering (preserving existing behavior).
+	// GCX_CONFIG env var also bypasses layering (preserving existing behavior).
 	if envPath := os.Getenv(ConfigFileEnvVar); envPath != "" {
 		return loadExplicit(ctx, envPath, overrides...)
 	}

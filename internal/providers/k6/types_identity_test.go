@@ -3,8 +3,8 @@ package k6_test
 import (
 	"testing"
 
-	k6 "github.com/grafana/grafanactl/internal/providers/k6"
-	"github.com/grafana/grafanactl/internal/resources/adapter"
+	k6 "github.com/grafana/gcx/internal/providers/k6"
+	"github.com/grafana/gcx/internal/resources/adapter"
 )
 
 var (

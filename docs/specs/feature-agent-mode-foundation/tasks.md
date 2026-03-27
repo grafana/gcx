@@ -34,8 +34,8 @@ The package reads environment variables at `init()` time and exposes `IsAgentMod
 and `SetFlag()` for the rest of the codebase.
 
 Detection rules (in priority order):
-1. If `GRAFANACTL_AGENT_MODE` is set to a falsy value (`0`, `false`, `no`) → **disabled** (overrides all others)
-2. If any of `GRAFANACTL_AGENT_MODE`, `CLAUDE_CODE`, `CURSOR_AGENT`, `GITHUB_COPILOT`, `AMAZON_Q` is truthy → **enabled**
+1. If `GCX_AGENT_MODE` is set to a falsy value (`0`, `false`, `no`) → **disabled** (overrides all others)
+2. If any of `GCX_AGENT_MODE`, `CLAUDE_CODE`, `CURSOR_AGENT`, `GITHUB_COPILOT`, `AMAZON_Q` is truthy → **enabled**
 3. If `SetFlag(true)` has been called → **enabled**
 4. Otherwise → **disabled**
 
@@ -46,7 +46,7 @@ Detection rules (in priority order):
 **Acceptance criteria:**
 - GIVEN no agent-related env vars are set, WHEN `IsAgentMode()` is called, THEN it returns `false`
 - GIVEN `CLAUDE_CODE=1` is set, WHEN `IsAgentMode()` is called, THEN it returns `true`
-- GIVEN `GRAFANACTL_AGENT_MODE=0` and `CLAUDE_CODE=1` are both set, WHEN `IsAgentMode()` is called, THEN it returns `false` (explicit disable wins)
+- GIVEN `GCX_AGENT_MODE=0` and `CLAUDE_CODE=1` are both set, WHEN `IsAgentMode()` is called, THEN it returns `false` (explicit disable wins)
 - GIVEN `SetFlag(true)` has been called, WHEN `IsAgentMode()` is called, THEN it returns `true`
 - GIVEN `go test ./internal/agent/...` is run, THEN all tests pass
 - GIVEN the import graph is inspected, THEN `internal/agent` has zero `cmd/` imports
@@ -64,9 +64,9 @@ Define exit code constants and wire differentiated exit codes into the error
 conversion pipeline. Add SIGINT handler and `context.Canceled` detection.
 
 **Deliverables:**
-- `cmd/grafanactl/fail/exitcodes.go` — new file with constants `ExitSuccess=0`, `ExitGeneralError=1`, `ExitUsageError=2` (reserved), `ExitAuthFailure=3`, `ExitPartialFailure=4` (reserved), `ExitCancelled=5`, `ExitVersionIncompatible=6` (reserved/planned)
-- `cmd/grafanactl/fail/convert.go` — add `convertContextCanceled` as first converter; set `ExitCode: &ExitAuthFailure` in `convertAPIErrors` 401/403 branch; add `intPtr(int) *int` helper
-- `cmd/grafanactl/main.go` — add `signal.NotifyContext` for SIGINT; pass context to `ExecuteContext`; add `context.Canceled` fast-path in `handleError`
+- `cmd/gcx/fail/exitcodes.go` — new file with constants `ExitSuccess=0`, `ExitGeneralError=1`, `ExitUsageError=2` (reserved), `ExitAuthFailure=3`, `ExitPartialFailure=4` (reserved), `ExitCancelled=5`, `ExitVersionIncompatible=6` (reserved/planned)
+- `cmd/gcx/fail/convert.go` — add `convertContextCanceled` as first converter; set `ExitCode: &ExitAuthFailure` in `convertAPIErrors` 401/403 branch; add `intPtr(int) *int` helper
+- `cmd/gcx/main.go` — add `signal.NotifyContext` for SIGINT; pass context to `ExecuteContext`; add `context.Canceled` fast-path in `handleError`
 
 **Acceptance criteria:**
 - GIVEN an API call returns HTTP 401, WHEN the error flows through `ErrorToDetailedError`, THEN `DetailedError.ExitCode` points to `3`
@@ -92,12 +92,12 @@ Connect `internal/agent` to the CLI command lifecycle: pre-parse `os.Args` in
 `PersistentPreRun`, and override output format default in `io.Options.BindFlags()`.
 
 **Deliverables:**
-- `cmd/grafanactl/main.go` — add `os.Args` pre-parse for `--agent`/`--agent=true`/`--agent=false`; call `agent.SetFlag()`
-- `cmd/grafanactl/root/command.go` — register `--agent` persistent flag; add agent mode color suppression to `PersistentPreRun`
-- `cmd/grafanactl/io/format.go` — in `BindFlags()`, add `if agent.IsAgentMode() { defaultFormat = "json" }` override after `DefaultFormat()` check
+- `cmd/gcx/main.go` — add `os.Args` pre-parse for `--agent`/`--agent=true`/`--agent=false`; call `agent.SetFlag()`
+- `cmd/gcx/root/command.go` — register `--agent` persistent flag; add agent mode color suppression to `PersistentPreRun`
+- `cmd/gcx/io/format.go` — in `BindFlags()`, add `if agent.IsAgentMode() { defaultFormat = "json" }` override after `DefaultFormat()` check
 
 **Acceptance criteria:**
-- GIVEN `CLAUDE_CODE=1` is set, WHEN `grafanactl resources list` runs without `-o`, THEN default output format is `json`
+- GIVEN `CLAUDE_CODE=1` is set, WHEN `gcx resources list` runs without `-o`, THEN default output format is `json`
 - GIVEN `--agent` is passed, WHEN the command runs, THEN `agent.IsAgentMode()` returns `true` and output defaults to `json`
 - GIVEN `CLAUDE_CODE=1` and `-o text`, WHEN the command runs, THEN output format is `text` (explicit flag wins)
 - GIVEN agent mode is active, WHEN `PersistentPreRun` executes, THEN `color.NoColor` is `true`
@@ -119,13 +119,13 @@ Write tests covering the full wiring of agent mode and exit codes across package
 Update `docs/reference/design-guide.md` to reflect implemented changes.
 
 **Deliverables:**
-- `cmd/grafanactl/fail/convert_test.go` — tests for `convertContextCanceled` (plain + wrapped), auth exit code 3, converter ordering (cancel wrapping 401 → 5 not 3)
-- `cmd/grafanactl/io/format_test.go` — test that agent mode forces `json` default even when `DefaultFormat("text")` was called
+- `cmd/gcx/fail/convert_test.go` — tests for `convertContextCanceled` (plain + wrapped), auth exit code 3, converter ordering (cancel wrapping 401 → 5 not 3)
+- `cmd/gcx/io/format_test.go` — test that agent mode forces `json` default even when `DefaultFormat("text")` was called
 - `docs/reference/design-guide.md` — update Section 2.1 (add codes 5+6), Section 6.1 (all 5 env vars + disable behavior + `--agent` flag)
 
 **Acceptance criteria:**
-- GIVEN `go test ./cmd/grafanactl/fail/...`, THEN all exit code converter tests pass
-- GIVEN `go test ./cmd/grafanactl/io/...`, THEN agent mode format override test passes
+- GIVEN `go test ./cmd/gcx/fail/...`, THEN all exit code converter tests pass
+- GIVEN `go test ./cmd/gcx/io/...`, THEN agent mode format override test passes
 - GIVEN the design-guide Section 2.1, THEN exit codes 5 (Cancelled) and 6 (Version incompatible) are listed
-- GIVEN the design-guide Section 6.1, THEN all 5 agent detection env vars are listed with the `GRAFANACTL_AGENT_MODE=0` disable behavior documented
+- GIVEN the design-guide Section 6.1, THEN all 5 agent detection env vars are listed with the `GCX_AGENT_MODE=0` disable behavior documented
 - GIVEN `make all` is run, THEN lint, tests, build, and docs all pass with no regressions

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/cloud"
+	"github.com/grafana/gcx/internal/cloud"
 )
 
 func TestGCOMClient_GetStack_Success(t *testing.T) {

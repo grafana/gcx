@@ -3,8 +3,8 @@ package fleet_test
 import (
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/providers/fleet"
-	"github.com/grafana/grafanactl/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/providers/fleet"
+	"github.com/grafana/gcx/internal/resources/adapter"
 )
 
 var _ adapter.ResourceIdentity = &fleet.Pipeline{}

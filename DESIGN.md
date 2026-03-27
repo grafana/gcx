@@ -1,4 +1,4 @@
-# Design: grafanactl
+# Design: gcx
 
 ## Vision
 
@@ -10,7 +10,7 @@ a single tool with multi-environment context support.
 ## Pipeline
 
 ```
-CLI Layer (cmd/grafanactl/)          -- Cobra commands, zero business logic
+CLI Layer (cmd/gcx/)          -- Cobra commands, zero business logic
     |
     v
 Business Logic (internal/resources/) -- Resource model, selectors, filters, processors
@@ -54,17 +54,17 @@ See [docs/research/](docs/research/) for design rationale and [docs/adrs/](docs/
 
 | Package | Responsibility |
 |---------|---------------|
-| `cmd/grafanactl/root/` | CLI root (logging, global flags) |
-| `cmd/grafanactl/config/` | Config management commands |
-| `cmd/grafanactl/resources/` | Resource CRUD commands (get, push, pull, delete, edit, validate) |
-| `cmd/grafanactl/dashboards/` | Dashboard snapshot command |
-| `cmd/grafanactl/datasources/` | Datasource commands (list, get, query subcommands) |
-| `cmd/grafanactl/providers/` | Provider list command |
-| `cmd/grafanactl/api/` | Raw API passthrough command |
-| `cmd/grafanactl/linter/` | Linting commands (run, new, rules, test) |
-| `cmd/grafanactl/dev/` | Developer commands (import, scaffold, generate, lint, serve) |
-| `cmd/grafanactl/fail/` | Structured error to user-friendly message conversion |
-| `cmd/grafanactl/io/` | Output codec registry (json, yaml, text, wide) |
+| `cmd/gcx/root/` | CLI root (logging, global flags) |
+| `cmd/gcx/config/` | Config management commands |
+| `cmd/gcx/resources/` | Resource CRUD commands (get, push, pull, delete, edit, validate) |
+| `cmd/gcx/dashboards/` | Dashboard snapshot command |
+| `cmd/gcx/datasources/` | Datasource commands (list, get, query subcommands) |
+| `cmd/gcx/providers/` | Provider list command |
+| `cmd/gcx/api/` | Raw API passthrough command |
+| `cmd/gcx/linter/` | Linting commands (run, new, rules, test) |
+| `cmd/gcx/dev/` | Developer commands (import, scaffold, generate, lint, serve) |
+| `cmd/gcx/fail/` | Structured error to user-friendly message conversion |
+| `cmd/gcx/io/` | Output codec registry (json, yaml, text, wide) |
 | `internal/config/` | Config types, loader, editor, rest.Config builder |
 | `internal/resources/` | Core types: Resource, Selector, Filter, Descriptor |
 | `internal/resources/adapter/` | ResourceAdapter interface, Factory, ResourceClientRouter, TypedCRUD[T], TypedObject[T], ResourceIdentity, ResourceNamer, SchemaFromType[T] |

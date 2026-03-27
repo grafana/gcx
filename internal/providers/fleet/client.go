@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/grafana/grafanactl/internal/providers"
+	"github.com/grafana/gcx/internal/providers"
 )
 
 // Client is an HTTP client for the Grafana Fleet Management API.

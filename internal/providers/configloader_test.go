@@ -8,8 +8,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/cloud"
-	"github.com/grafana/grafanactl/internal/providers"
+	"github.com/grafana/gcx/internal/cloud"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -29,7 +29,7 @@ func newMockGCOMServer(t *testing.T, info cloud.StackInfo) *httptest.Server {
 // writeConfigFile writes YAML content to a temp file and returns its path.
 func writeConfigFile(t *testing.T, content string) string {
 	t.Helper()
-	f, err := os.CreateTemp(t.TempDir(), "grafanactl-config-*.yaml")
+	f, err := os.CreateTemp(t.TempDir(), "gcx-config-*.yaml")
 	require.NoError(t, err)
 	_, err = f.WriteString(content)
 	require.NoError(t, err)

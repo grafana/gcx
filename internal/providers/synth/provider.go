@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/grafana/grafanactl/internal/config"
-	"github.com/grafana/grafanactl/internal/providers"
-	"github.com/grafana/grafanactl/internal/providers/synth/checks"
-	"github.com/grafana/grafanactl/internal/providers/synth/probes"
-	"github.com/grafana/grafanactl/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/synth/checks"
+	"github.com/grafana/gcx/internal/providers/synth/probes"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 )
 
@@ -131,7 +131,7 @@ func (p *SynthProvider) TypedRegistrations() []adapter.Registration {
 	}
 }
 
-// configLoader loads SM credentials from the grafanactl config + env vars.
+// configLoader loads SM credentials from the gcx config + env vars.
 // It embeds providers.ConfigLoader for shared config loading infrastructure,
 // applying GRAFANA_PROVIDER_SYNTH_* env var overrides via the standard convention.
 type configLoader struct {

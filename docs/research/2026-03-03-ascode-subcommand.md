@@ -1,8 +1,8 @@
-# Research Report: grafanactl `ascode` Subcommand
+# Research Report: gcx `ascode` Subcommand
 
 ## Executive Summary
 
-The proposed `dev` subcommand (renamed from `ascode`) is **feasible and fills a real gap**. The grafana-foundation-sdk is mature enough for integration (Go builder pattern, built-in converter function, zero external deps), and PR #1038's dashboard converter is merged and usable. The command group should be built into grafanactl as a Provider — consistent with the extensibility architecture established in the [non-app-platform extensibility research](2026-03-02-grafanactl-non-app-platform-extensibility.md). Splitting into a separate binary would cause auth/UX/agent-context fragmentation problems identical to those documented in that research.
+The proposed `dev` subcommand (renamed from `ascode`) is **feasible and fills a real gap**. The grafana-foundation-sdk is mature enough for integration (Go builder pattern, built-in converter function, zero external deps), and PR #1038's dashboard converter is merged and usable. The command group should be built into gcx as a Provider — consistent with the extensibility architecture established in the [non-app-platform extensibility research](2026-03-02-gcx-non-app-platform-extensibility.md). Splitting into a separate binary would cause auth/UX/agent-context fragmentation problems identical to those documented in that research.
 
 **Overall Confidence: 85%**
 
@@ -38,7 +38,7 @@ dashboard.NewDashboardBuilder("My Dashboard").
     )
 ```
 
-**Key finding**: `dashboard.DashboardConverter()` is a **generated function built into the SDK itself** — not just in the converter tool. This means grafanactl can import the SDK and call the converter directly as a library, no external tool needed.
+**Key finding**: `dashboard.DashboardConverter()` is a **generated function built into the SDK itself** — not just in the converter tool. This means gcx can import the SDK and call the converter directly as a library, no external tool needed.
 
 ---
 
@@ -68,7 +68,7 @@ Layer 2: CLI wrapper (scripts/dashboard-converter/)
 └──────────────────────────────────────────┘
 ```
 
-**For grafanactl**: Import the SDK, call `DashboardConverter()` directly. Replicate the ~50-line cleanup logic. Use your own template instead of their `main.go.tmpl`. No dependency on the CLI tool.
+**For gcx**: Import the SDK, call `DashboardConverter()` directly. Replicate the ~50-line cleanup logic. Use your own template instead of their `main.go.tmpl`. No dependency on the CLI tool.
 
 ---
 
@@ -100,7 +100,7 @@ Layer 2: CLI wrapper (scripts/dashboard-converter/)
 
 **Recommendation**: **`dev`** or **`ascode`**
 
-- `dev` wins on ergonomics: `grafanactl dev init`, `grafanactl dev serve`, `grafanactl dev import`
+- `dev` wins on ergonomics: `gcx dev init`, `gcx dev serve`, `gcx dev import`
 - `ascode` wins on brand alignment with Grafana's "as code" messaging
 - Either works. Avoid `sdk`, `codegen`, or `generate` — they don't cover the full command surface.
 
@@ -110,7 +110,7 @@ Layer 2: CLI wrapper (scripts/dashboard-converter/)
 
 ### Why NOT a separate binary
 
-The initial analysis considered the kubectl/kubebuilder precedent (separate binaries for runtime vs. dev tooling). However, grafanactl's context is different from kubectl's — and the [extensibility research](2026-03-02-grafanactl-non-app-platform-extensibility.md) already settled this question for product providers. The same arguments apply to dev tooling:
+The initial analysis considered the kubectl/kubebuilder precedent (separate binaries for runtime vs. dev tooling). However, gcx's context is different from kubectl's — and the [extensibility research](2026-03-02-gcx-non-app-platform-extensibility.md) already settled this question for product providers. The same arguments apply to dev tooling:
 
 1. **Auth Problem** — `dev import` needs `internal/config` to fetch dashboards from the Grafana API. A separate binary can't import `internal/` packages. Re-implementing config loading (~200 LOC) for a plugin is wasteful.
 
@@ -118,7 +118,7 @@ The initial analysis considered the kubectl/kubebuilder precedent (separate bina
 
 3. **Agent Context Fragmentation** — An agent implementing `dev generate` in a separate repo loses all context from agent-docs, CLAUDE.md, and existing patterns. In the monorepo, it's "read the provider guide, follow the template."
 
-4. **Dependency "bloat" is negligible** — The foundation SDK has **zero external dependencies** (`go.mod` contains only `go 1.21`). The converter adds `golang.org/x/tools` for goimports. This is trivial compared to grafanactl's existing 100+ line `go.mod`.
+4. **Dependency "bloat" is negligible** — The foundation SDK has **zero external dependencies** (`go.mod` contains only `go 1.21`). The converter adds `golang.org/x/tools` for goimports. This is trivial compared to gcx's existing 100+ line `go.mod`.
 
 ### Recommended architecture: Built-in Provider
 
@@ -142,7 +142,7 @@ This follows the same Provider pattern as SLO/synth/k6. The `dev` provider just 
 
 `resources serve` already supports foundation-sdk projects via `--script 'go run .'`. Two options:
 
-1. **Keep serve in `resources`** — `grafanactl dev serve` is a convenience alias that auto-detects Go projects and calls `resources serve` with the right defaults
+1. **Keep serve in `resources`** — `gcx dev serve` is a convenience alias that auto-detects Go projects and calls `resources serve` with the right defaults
 2. **Move serve under `dev`** — since the serve workflow is primarily a dev concern
 
 **Recommendation**: Option 1. Keep the serve infrastructure where it is, add a `dev serve` alias that sets `--script 'go run .' --watch . --script-format json` as defaults.
@@ -152,23 +152,23 @@ This follows the same Provider pattern as SLO/synth/k6. The `dev` provider just 
 ## 5. Proposed Command Design
 
 ```
-grafanactl dev init [--module=github.com/org/dashboards]
+gcx dev init [--module=github.com/org/dashboards]
   → Scaffold a new Go project with:
     - go.mod (with foundation-sdk dependency)
     - main.go (entry point that outputs JSON)
     - dashboards/ directory
     - Makefile (build, run, fmt)
 
-grafanactl dev generate dashboard <name> [--destination=<file>]
+gcx dev generate dashboard <name> [--destination=<file>]
   → Add a new dashboard Go file using builder template
   → Creates dashboards/<name>.go with empty builder scaffold
 
-grafanactl dev import dashboard <name> [--from-uid=<uid>] [--from-file=<json>]
+gcx dev import dashboard <name> [--from-uid=<uid>] [--from-file=<json>]
   → Fetch dashboard JSON from Grafana API (or file)
   → Run DashboardConverter() → produce Go builder code
   → Write to dashboards/<name>.go
 
-grafanactl dev serve [same flags as resources serve]
+gcx dev serve [same flags as resources serve]
   → Convenience wrapper: auto-detects Go project, runs 'go run .',
     watches for changes, serves locally
   → Delegates to resources serve --script 'go run .' internally
@@ -186,7 +186,7 @@ grafanactl dev serve [same flags as resources serve]
 | Naming bikeshed | Low | `dev` chosen — iterate later if needed |
 
 ### No existing scaffolding tool found
-There is **no existing CLI** in the Grafana ecosystem for scaffolding foundation-sdk projects. The examples in the repo are bare Go files. This is a genuine gap that grafanactl would fill.
+There is **no existing CLI** in the Grafana ecosystem for scaffolding foundation-sdk projects. The examples in the repo are bare Go files. This is a genuine gap that gcx would fill.
 
 ---
 
@@ -198,5 +198,5 @@ There is **no existing CLI** in the Grafana ecosystem for scaffolding foundation
 4. `go/dashboard/dashboard_converter_gen.go` — SDK built-in converter function (via `gh api`)
 5. `scripts/dashboard-converter/README.md` — converter docs (via `gh api`)
 6. [Kubernetes Plugin Architecture](https://kubernetes.io/docs/tasks/extend-kubectl/kubectl-plugins/) — kubectl plugin naming convention
-7. grafanactl source: `cmd/grafanactl/resources/serve.go` — existing serve implementation (local file)
-8. [Non-App-Platform Extensibility Research](2026-03-02-grafanactl-non-app-platform-extensibility.md) — Provider interface architecture decision (2026-03-02)
+7. gcx source: `cmd/gcx/resources/serve.go` — existing serve implementation (local file)
+8. [Non-App-Platform Extensibility Research](2026-03-02-gcx-non-app-platform-extensibility.md) — Provider interface architecture decision (2026-03-02)

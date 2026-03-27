@@ -1,0 +1,64 @@
+## gcx datasources generic query
+
+Execute a query against any datasource (auto-detects type)
+
+### Synopsis
+
+Execute a query against any datasource, automatically detecting the datasource type.
+
+DATASOURCE_UID is always required (no default resolution for generic).
+EXPR is the query expression appropriate for the datasource type.
+
+The datasource type is detected via the Grafana API and the appropriate query
+client is used automatically. This is the escape hatch for datasource types
+that do not have a dedicated subcommand.
+
+```
+gcx datasources generic query DATASOURCE_UID EXPR [flags]
+```
+
+### Examples
+
+```
+
+  # Auto-detect and query any supported datasource
+  gcx datasources generic query ds-001 'up{job="grafana"}' --from now-1h --to now
+
+  # Loki via generic (with limit)
+  gcx datasources generic query loki-001 '{job="varlogs"}' --from now-1h --to now --limit 200
+
+  # Pyroscope via generic
+  gcx datasources generic query pyro-001 '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --from now-1h --to now
+```
+
+### Options
+
+```
+      --from string           Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
+  -h, --help                  help for query
+      --json string           Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --limit int             Maximum number of log lines to return for loki queries (0 means no limit) (default 1000)
+      --max-nodes int         Maximum nodes in flame graph (pyroscope only) (default 1024)
+  -o, --output string         Output format. One of: graph, json, table, wide, yaml (default "table")
+      --profile-type string   Profile type ID for pyroscope queries (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds')
+      --step string           Query step (e.g., '15s', '1m')
+      --to string             End time (RFC3339, Unix timestamp, or relative like 'now')
+      --window string         Convenience shorthand: sets --from to now-{window} and --to to now (mutually exclusive with --from/--to)
+```
+
+### Options inherited from parent commands
+
+```
+      --agent            Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --config string    Path to the configuration file to use
+      --context string   Name of the context to use
+      --no-color         Disable color output
+      --no-truncate      Disable table column truncation (auto-enabled when stdout is piped)
+  -v, --verbose count    Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
+```
+
+### SEE ALSO
+
+* [gcx datasources generic](gcx_datasources_generic.md)	 - Generic datasource operations (auto-detects type)
+

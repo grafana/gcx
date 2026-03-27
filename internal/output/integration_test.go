@@ -14,8 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	cmdio "github.com/grafana/grafanactl/internal/output"
-	"github.com/grafana/grafanactl/internal/terminal"
+	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/terminal"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -95,7 +95,7 @@ func TestPipeDetection_NoANSIWhenPiped(t *testing.T) {
 //
 // Acceptance criterion:
 //
-//	GIVEN grafanactl is invoked on a TTY with --no-truncate
+//	GIVEN gcx is invoked on a TTY with --no-truncate
 //	WHEN the command produces table output
 //	THEN no table column values are truncated with ellipsis.
 func TestPipeDetection_NoTruncateReflectedInOptions(t *testing.T) {

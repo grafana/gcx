@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/caarlos0/env/v11"
-	"github.com/grafana/grafanactl/internal/cloud"
-	"github.com/grafana/grafanactl/internal/config"
+	"github.com/grafana/gcx/internal/cloud"
+	"github.com/grafana/gcx/internal/config"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/rest"
 )
@@ -47,7 +47,7 @@ func (c CloudRESTConfig) ProviderConfig(name string) map[string]string {
 }
 
 // ConfigLoader is a minimal config loading helper shared across providers.
-// It avoids importing cmd/grafanactl/config (which would create an import cycle
+// It avoids importing cmd/gcx/config (which would create an import cycle
 // via internal/providers).
 type ConfigLoader struct {
 	configFile string
@@ -130,7 +130,7 @@ func envOverride(cfg *config.Config) error {
 
 // LoadGrafanaConfig loads the REST config from the config file, applying
 // env var overrides and context flags. It mirrors the logic in
-// cmd/grafanactl/config.Options.LoadGrafanaConfig.
+// cmd/gcx/config.Options.LoadGrafanaConfig.
 func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error) {
 	overrides := []config.Override{envOverride}
 

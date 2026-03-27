@@ -9,7 +9,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/grafana/grafanactl/internal/linter/builtins"
+	"github.com/grafana/gcx/internal/linter/builtins"
 	"github.com/open-policy-agent/opa/v1/ast"
 	"github.com/open-policy-agent/opa/v1/bundle"
 	"github.com/open-policy-agent/opa/v1/cover"
@@ -150,11 +150,11 @@ func (runner *TestsRunner) Run(ctx context.Context, stdout io.Writer, inputPaths
 	return runTests(ctx, store, r, reporter)
 }
 
-func moduleLoader(grafanactlRules *bundle.Bundle) ast.ModuleLoader {
+func moduleLoader(gcxRules *bundle.Bundle) ast.ModuleLoader {
 	// We use the package declarations to know which modules we still need, and return
-	// those from the embedded grafanactlRules bundle.
+	// those from the embedded gcxRules bundle.
 	extra := map[string]struct{}{}
-	for _, mod := range grafanactlRules.Modules {
+	for _, mod := range gcxRules.Modules {
 		extra[mod.Parsed.Package.Path.String()] = struct{}{}
 	}
 
@@ -165,7 +165,7 @@ func moduleLoader(grafanactlRules *bundle.Bundle) ast.ModuleLoader {
 
 		extraMods := map[string]*ast.Module{}
 
-		for id, mod := range grafanactlRules.ParsedModules("bundle") {
+		for id, mod := range gcxRules.ParsedModules("bundle") {
 			if _, ok := extra[mod.Package.Path.String()]; ok {
 				extraMods[id] = mod
 			}

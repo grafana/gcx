@@ -3,8 +3,8 @@ package oncall_test
 import (
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/providers/oncall"
-	"github.com/grafana/grafanactl/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/providers/oncall"
+	"github.com/grafana/gcx/internal/resources/adapter"
 )
 
 // Compile-time assertions for all 17 OnCall types.

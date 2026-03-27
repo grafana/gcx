@@ -2,7 +2,7 @@
 
 ## Overview
 
-grafanactl has three distinct client paths to Grafana. The primary path uses the
+gcx has three distinct client paths to Grafana. The primary path uses the
 Kubernetes dynamic client stack (k8s.io/client-go) to talk to Grafana's
 Kubernetes-compatible `/apis` endpoint for resource CRUD. A secondary path uses
 the Grafana OpenAPI generated client (`grafana-openapi-client-go`) for
@@ -119,7 +119,7 @@ namespace string.
    }
    ```
 
-3. **TLS mapping** — grafanactl's `TLS` struct is manually mapped to k8s's
+3. **TLS mapping** — gcx's `TLS` struct is manually mapped to k8s's
    `rest.TLSClientConfig` (they are incompatible types; `crypto/tls.Config` ≠
    `rest.TLSClientConfig`).
 
@@ -415,7 +415,7 @@ Used by server-side HTTP handlers in `internal/server/handlers/`.
 ### `constants.go`
 
 ```go
-const UserAgent = "grafanactl"
+const UserAgent = "gcx"
 ```
 
 Defined but not yet applied to the dynamic client (TODO in `rest.go:21`).
