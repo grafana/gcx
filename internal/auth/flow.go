@@ -26,8 +26,6 @@ import (
 	"time"
 )
 
-// TODO: confirm/document this was copied from assistant CLI
-
 //go:embed templates/*.html
 var templateFS embed.FS
 
@@ -190,7 +188,7 @@ func (f *Flow) startCallbackServer(ctx context.Context, bindAddress string, port
 				renderErrorPage(w, "No API endpoint received")
 				return
 			}
-			if err := validateEndpointURL(endpoint); err != nil {
+			if err := ValidateEndpointURL(endpoint); err != nil {
 				errCh <- fmt.Errorf("invalid API endpoint: %w", err)
 				renderErrorPage(w, "Invalid API endpoint")
 				return
@@ -239,7 +237,9 @@ var allowedDomainSuffixes = []string{
 	".grafana-ops.net",
 }
 
-func validateEndpointURL(endpoint string) error {
+// ValidateEndpointURL checks that the given endpoint URL is a trusted Grafana domain
+// or a local address. Returns an error if the URL is untrusted.
+func ValidateEndpointURL(endpoint string) error {
 	u, err := url.Parse(endpoint)
 	if err != nil {
 		return fmt.Errorf("malformed URL: %w", err)
@@ -303,7 +303,7 @@ func exchangeCodeForToken(ctx context.Context, endpoint, code, codeVerifier stri
 	client := &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			redirectEndpoint := req.URL.Scheme + "://" + req.URL.Host
-			if err := validateEndpointURL(redirectEndpoint); err != nil {
+			if err := ValidateEndpointURL(redirectEndpoint); err != nil {
 				return fmt.Errorf("redirect to untrusted URL blocked: %w", err)
 			}
 			return nil
