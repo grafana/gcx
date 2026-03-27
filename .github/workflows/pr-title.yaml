@@ -1,0 +1,48 @@
+name: PR Title
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  lint-pr-title:
+    name: Conventional Commit check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR title
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const title = context.payload.pull_request.title;
+            const pattern = /^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?!?: .+/;
+            const valid = pattern.test(title);
+
+            if (valid) {
+              console.log(`PR title is valid: "${title}"`);
+              return;
+            }
+
+            const body = [
+              `**PR title does not follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/).**`,
+              ``,
+              `Expected format: \`<type>(<optional scope>): <description>\``,
+              ``,
+              `Allowed types: \`feat\`, \`fix\`, \`docs\`, \`style\`, \`refactor\`, \`perf\`, \`test\`, \`build\`, \`ci\`, \`chore\`, \`revert\``,
+              ``,
+              `Examples:`,
+              `- \`feat(slo): add burn-rate alerting\``,
+              `- \`fix: resolve nil pointer in push pipeline\``,
+              `- \`docs: update provider guide\``,
+            ].join('\n');
+
+            const enforce = '${{ vars.CC_ENFORCE }}' || 'warn';
+
+            if (enforce === 'require') {
+              core.setFailed(body);
+            } else {
+              core.warning(body);
+            }

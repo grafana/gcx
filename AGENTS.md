@@ -64,6 +64,7 @@ Grafana K8s API            Product REST APIs
 - **Config = kubectl kubeconfig**: Named contexts with server/auth/namespace, env var overrides
 - **Format-agnostic data fetching**: Commands fetch all data regardless of `--output` format; codecs control display, not data acquisition (see Pattern 13 in `docs/architecture/patterns.md`)
 - **PromQL via promql-builder**: Use `github.com/grafana/promql-builder/go/promql` for PromQL construction, not string formatting (see Pattern 14 in `docs/architecture/patterns.md`)
+- **Conventional Commits**: All PR titles (and thus squash-merge commits) must follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) format: `<type>(<scope>): <description>`. Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`. Scope is optional but encouraged.
 
 ## Essential Commands
 
