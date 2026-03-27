@@ -51,7 +51,7 @@ func toMarkdown(envVarMap map[string]string) []byte {
 	sort.Strings(vars)
 
 	for i, varName := range vars {
-		buffer.WriteString(fmt.Sprintf("## `%s`\n\n", varName))
+		fmt.Fprintf(&buffer, "## `%s`\n\n", varName)
 		buffer.WriteString(envVarMap[varName])
 
 		if i != len(vars)-1 {

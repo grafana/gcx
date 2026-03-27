@@ -1,4 +1,5 @@
 /.devbox
+/.venv
 /.worktrees
 /build
 /bin

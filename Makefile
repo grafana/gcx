@@ -59,11 +59,10 @@ build: check-binaries ## Builds the binary into the `./bin/gcx`.
 
 .PHONY: install
 install: build ## Installs the binary into `$GOPATH/bin`.
-ifndef GOPATH
-	@echo "GOPATH is not defined"
-	exit 1
-endif
-	@cp "bin/gcx" "${GOPATH}/bin/gcx"
+	$(eval GOPATH := $(or $(GOPATH),$(shell go env GOPATH)))
+	@test -n "$(GOPATH)" || { echo "GOPATH is not defined and 'go env GOPATH' returned empty"; exit 1; }
+	@mkdir -p "$(GOPATH)/bin"
+	@cp "bin/gcx" "$(GOPATH)/bin/gcx"
 ifeq ($(shell uname),Darwin)
 	@codesign -s - "${GOPATH}/bin/gcx"
 endif
@@ -82,7 +81,7 @@ clean: ## Cleans the project.
 
 .PHONY: check-binaries
 check-binaries: ## Check that the required binaries are present.
-	@devbox version >/dev/null 2>&1 || (echo "ERROR: devbox is required. See https://www.jetify.com/devbox/docs/quickstart/"; exit 1)
+	@go version >/dev/null 2>&1 || devbox version >/dev/null 2>&1 || (echo "ERROR: go or devbox is required. See https://www.jetify.com/devbox/docs/quickstart/"; exit 1)
 
 
 ##@ Documentation

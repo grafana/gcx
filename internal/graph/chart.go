@@ -95,7 +95,7 @@ func RenderPercentageBars(w io.Writer, title string, items []PercentageBarItem, 
 			targetStr = fmt.Sprintf("  target: %.2f%%", item.Target)
 		}
 
-		sb.WriteString(fmt.Sprintf("  %s  %s%s  %s%s\n", labelStr, filledStr, emptyStr, valueStr, targetStr))
+		fmt.Fprintf(&sb, "  %s  %s%s  %s%s\n", labelStr, filledStr, emptyStr, valueStr, targetStr)
 	}
 
 	_, err := fmt.Fprint(w, sb.String())
