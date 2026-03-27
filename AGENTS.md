@@ -35,6 +35,7 @@
 | [provider-discovery-guide.md](docs/reference/provider-discovery-guide.md) | Pre-implementation research and design for new providers | Before designing a new provider (discovery phase) |
 | [provider-guide.md](docs/reference/provider-guide.md) | Step-by-step guide: implement + register a new provider | Adding a new Grafana product provider |
 | [design-guide.md](docs/reference/design-guide.md) | UX requirements: output, exit codes, errors, naming | Before implementing features, reviewing CLI UX |
+| [migration-gap-analysis.md](docs/reference/migration-gap-analysis.md) | Gap analysis between grafana-cloud-cli and gcx, with prioritized migration roadmap | Understanding what's missing before planning new features or migrations |
 
 ## Architecture at a Glance
 
