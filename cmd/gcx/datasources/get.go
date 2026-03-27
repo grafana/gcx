@@ -45,22 +45,21 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			ctx := cmd.Context()
 			uid := args[0]
 
-			cfg, err := configOpts.LoadConfig(ctx)
+			restCfg, err := configOpts.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
 
-			gClient, err := grafana.ClientFromContext(cfg.GetCurrentContext())
+			dsClient, err := grafana.NewDatasourceClient(restCfg)
 			if err != nil {
 				return err
 			}
 
-			resp, err := gClient.Datasources.GetDataSourceByUID(uid)
+			ds, err := dsClient.GetByUID(ctx, uid)
 			if err != nil {
 				return fmt.Errorf("failed to get datasource: %w", err)
 			}
 
-			ds := resp.Payload
 			info := &datasourceDetail{
 				UID:       ds.UID,
 				Name:      ds.Name,
