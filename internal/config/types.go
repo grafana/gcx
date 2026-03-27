@@ -184,6 +184,8 @@ type GrafanaConfig struct {
 
 	// ProxyEndpoint is the assistant backend URL used as a reverse proxy for
 	// OAuth-authenticated requests. Set automatically by `auth login`.
+	// This may differ from Server when cloud routing directs CLI traffic through
+	// a separate endpoint (e.g. the assistant app backend).
 	ProxyEndpoint string `env:"GRAFANA_PROXY_ENDPOINT" json:"proxy-endpoint,omitempty" yaml:"proxy-endpoint,omitempty"`
 
 	// CLIToken is the OAuth access token (gat_) obtained via `auth login`.

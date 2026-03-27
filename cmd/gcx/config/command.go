@@ -130,13 +130,36 @@ func (opts *Options) LoadConfig(ctx context.Context) (config.Config, error) {
 }
 
 // LoadGrafanaConfig loads the configuration file and constructs a REST config from it.
+// When OAuth proxy mode is active, it wires the OnRefresh callback to persist
+// refreshed tokens back to the config file.
 func (opts *Options) LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error) {
 	cfg, err := opts.LoadConfig(ctx)
 	if err != nil {
 		return config.NamespacedRESTConfig{}, err
 	}
 
-	return cfg.GetCurrentContext().ToRESTConfig(ctx), nil
+	restCfg := cfg.GetCurrentContext().ToRESTConfig(ctx)
+
+	// Wire token persistence: on refresh, reload config, update tokens, write back.
+	source := opts.ConfigSource()
+	contextName := cfg.CurrentContext
+	restCfg.SetOnRefresh(func(token, refreshToken, expiresAt, refreshExpiresAt string) error {
+		fresh, err := opts.LoadConfigTolerant(ctx)
+		if err != nil {
+			return err
+		}
+		c := fresh.Contexts[contextName]
+		if c == nil || c.Grafana == nil {
+			return nil
+		}
+		c.Grafana.CLIToken = token
+		c.Grafana.CLIRefreshToken = refreshToken
+		c.Grafana.CLITokenExpiresAt = expiresAt
+		c.Grafana.CLIRefreshExpiresAt = refreshExpiresAt
+		return config.Write(ctx, source, fresh)
+	})
+
+	return restCfg, nil
 }
 
 // loadConfigTolerantLayered loads the configuration using the layered discovery
