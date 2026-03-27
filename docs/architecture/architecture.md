@@ -743,7 +743,7 @@ Files most important for understanding the codebase. Organized by architectural 
 | `internal/linter/reporter.go` | Reporter — formats and outputs linting results |
 | `internal/linter/tests.go` | Test runner for `.rego` test files |
 | `internal/linter/bundle/` | Embedded Rego bundle with built-in linting rules |
-| `internal/linter/builtins/` | Built-in rule validators (PromQL, LogQL) |
+| `internal/linter/builtins/` | Linter builtins and test helpers |
 | `cmd/gcx/linter/command.go` | `dev lint` subgroup (run, new, rules, test subcommands; formerly top-level `linter`) |
 | `scripts/linter-rules-reference/` | Code generator for linter rule reference documentation |
 

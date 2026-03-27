@@ -135,7 +135,7 @@ internal/
 │   └── loki/        Loki HTTP query client
 ├── agent/       Agent mode detection (IsAgentMode, env-var + flag detection)
 ├── terminal/    TTY/pipe detection (IsPiped, NoTruncate, Detect) for output suppression
-├── linter/      Linting engine (Rego rules, report aggregation, PromQL/LogQL validators)
+├── linter/      Linting engine (Rego rules, report aggregation, builtins/test helpers)
 ├── graph/       Terminal chart rendering (ntcharts + lipgloss)
 ├── testutils/   Shared test utilities
 ├── server/      Live dev server (Chi router, reverse proxy, websocket reload)
