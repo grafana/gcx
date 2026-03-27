@@ -152,12 +152,25 @@ type patternsApplyOpts struct {
 	Rate    float32
 	rateSet bool
 	DryRun  bool
+
+	// Set by RunE before Validate — populated from positional args.
+	hasSubstring bool
 }
 
 func (o *patternsApplyOpts) setup(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&o.All, "all", false, "Apply to all patterns")
 	cmd.Flags().Float32Var(&o.Rate, "rate", 0, "Drop rate to apply (0.0–1.0); defaults to recommended_drop_rate if not set")
 	cmd.Flags().BoolVar(&o.DryRun, "dry-run", false, "Preview changes without making them")
+}
+
+func (o *patternsApplyOpts) Validate() error {
+	if !o.hasSubstring && !o.All {
+		return errors.New("provide a pattern substring argument or use --all to match all patterns")
+	}
+	if o.hasSubstring && o.All {
+		return errors.New("--all and a substring argument are mutually exclusive")
+	}
+	return nil
 }
 
 func (h *logsHelper) patternsApplyCommand() *cobra.Command {
@@ -167,15 +180,12 @@ func (h *logsHelper) patternsApplyCommand() *cobra.Command {
 		Short: "Apply drop rate recommendations to adaptive log patterns.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			hasSubstring := len(args) == 1
-			if !hasSubstring && !opts.All {
-				return errors.New("provide a pattern substring argument or use --all to match all patterns")
-			}
-			if hasSubstring && opts.All {
-				return errors.New("--all and a substring argument are mutually exclusive")
-			}
-
+			opts.hasSubstring = len(args) == 1
 			opts.rateSet = cmd.Flags().Changed("rate")
+
+			if err := opts.Validate(); err != nil {
+				return err
+			}
 
 			ctx := cmd.Context()
 
@@ -191,7 +201,7 @@ func (h *logsHelper) patternsApplyCommand() *cobra.Command {
 			}
 
 			var substring string
-			if hasSubstring {
+			if opts.hasSubstring {
 				substring = args[0]
 			}
 

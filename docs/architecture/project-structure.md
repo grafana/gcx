@@ -33,6 +33,11 @@ gcx/
 │   │   └── builtins/         # Built-in PromQL/LogQL validators
 │   ├── providers/            # Provider plugin system
 │   │   ├── configloader.go   # Shared ConfigLoader for all providers
+│   │   ├── adaptive/         # Adaptive Telemetry provider (metrics rules/recs, logs patterns/exemptions, traces policies/recs)
+│   │   │   ├── auth/         # Shared Basic auth helper + GCOM caching
+│   │   │   ├── metrics/      # Metrics rules and recommendations (provider-only)
+│   │   │   ├── logs/         # Logs patterns (provider-only) and exemptions (TypedCRUD adapter)
+│   │   │   └── traces/       # Traces recommendations (provider-only) and policies (TypedCRUD adapter)
 │   │   ├── alert/            # Alert provider (rules and groups)
 │   │   ├── fleet/            # Fleet Management provider (pipeline and collector resources)
 │   │   ├── incidents/        # IRM Incidents provider

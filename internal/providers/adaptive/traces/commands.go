@@ -151,6 +151,11 @@ func (o *recommendationsApplyOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Preview what would be applied without making changes")
 }
 
+func (o *recommendationsApplyOpts) Validate() error {
+	return nil
+}
+
+//nolint:dupl // apply and dismiss are distinct commands with identical structure.
 func (h *tracesHelper) recommendationsApplyCommand() *cobra.Command {
 	opts := &recommendationsApplyOpts{}
 	cmd := &cobra.Command{
@@ -158,6 +163,10 @@ func (h *tracesHelper) recommendationsApplyCommand() *cobra.Command {
 		Short: "Apply an Adaptive Traces recommendation.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			id := args[0]
 
 			if opts.DryRun {
@@ -196,6 +205,11 @@ func (o *recommendationsDismissOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Preview what would be dismissed without making changes")
 }
 
+func (o *recommendationsDismissOpts) Validate() error {
+	return nil
+}
+
+//nolint:dupl // dismiss and apply are distinct commands with identical structure.
 func (h *tracesHelper) recommendationsDismissCommand() *cobra.Command {
 	opts := &recommendationsDismissOpts{}
 	cmd := &cobra.Command{
@@ -203,6 +217,10 @@ func (h *tracesHelper) recommendationsDismissCommand() *cobra.Command {
 		Short: "Dismiss an Adaptive Traces recommendation.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			id := args[0]
 
 			if opts.DryRun {

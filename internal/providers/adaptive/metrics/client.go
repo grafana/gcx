@@ -48,7 +48,9 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body any) (
 		return nil, fmt.Errorf("metrics: create request: %w", err)
 	}
 
-	req.Header.Set("Content-Type", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	req.SetBasicAuth(strconv.Itoa(c.tenantID), c.apiToken)
 
 	return c.httpClient.Do(req)

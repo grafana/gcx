@@ -144,6 +144,13 @@ func (h *metricsHelper) rulesSyncCommand() *cobra.Command {
 
 			client := NewClient(signalAuth.BaseURL, signalAuth.TenantID, signalAuth.APIToken, signalAuth.HTTPClient)
 
+			// Fetch current ETag BEFORE computing new rules to avoid TOCTOU race.
+			// The ETag represents the baseline state we're replacing.
+			_, etag, err := client.ListRules(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to fetch current rules for ETag: %w", err)
+			}
+
 			var rules []MetricRule
 			if opts.File != "" {
 				rules, err = readRulesFromFile(opts.File)
@@ -161,11 +168,6 @@ func (h *metricsHelper) rulesSyncCommand() *cobra.Command {
 			if opts.DryRun {
 				cmdio.Info(cmd.OutOrStdout(), "Dry run — would sync %d rule(s):", len(rules))
 				return opts.Encode(cmd.OutOrStdout(), rules)
-			}
-
-			_, etag, err := client.ListRules(ctx)
-			if err != nil {
-				return fmt.Errorf("failed to fetch current rules for ETag: %w", err)
 			}
 
 			if err := client.SyncRules(ctx, rules, etag); err != nil {
@@ -248,12 +250,20 @@ func (o *recommendationsApplyOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Print what would be synced without making changes")
 }
 
+func (o *recommendationsApplyOpts) Validate() error {
+	return nil
+}
+
 func (h *metricsHelper) recommendationsApplyCommand() *cobra.Command {
 	opts := &recommendationsApplyOpts{}
 	cmd := &cobra.Command{
 		Use:   "apply",
 		Short: "Apply recommendations as aggregation rules.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			ctx := cmd.Context()
 			signalAuth, err := auth.ResolveSignalAuth(ctx, h.loader, "metrics")
 			if err != nil {
@@ -261,6 +271,12 @@ func (h *metricsHelper) recommendationsApplyCommand() *cobra.Command {
 			}
 
 			client := NewClient(signalAuth.BaseURL, signalAuth.TenantID, signalAuth.APIToken, signalAuth.HTTPClient)
+
+			// Fetch current ETag BEFORE computing new rules to avoid TOCTOU race.
+			_, etag, err := client.ListRules(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to fetch current rules for ETag: %w", err)
+			}
 
 			recs, err := client.ListRecommendations(ctx)
 			if err != nil {
@@ -272,11 +288,6 @@ func (h *metricsHelper) recommendationsApplyCommand() *cobra.Command {
 			if opts.DryRun {
 				cmdio.Info(cmd.OutOrStdout(), "Dry run — would apply %d recommendation(s) as rules.", len(rules))
 				return nil
-			}
-
-			_, etag, err := client.ListRules(ctx)
-			if err != nil {
-				return fmt.Errorf("failed to fetch current rules for ETag: %w", err)
 			}
 
 			if err := client.SyncRules(ctx, rules, etag); err != nil {

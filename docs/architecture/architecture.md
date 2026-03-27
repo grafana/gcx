@@ -667,6 +667,16 @@ Files most important for understanding the codebase. Organized by architectural 
 | `cmd/gcx/providers/command.go` | `providers` command (list registered providers) |
 | `internal/providers/configloader.go` | Shared `ConfigLoader` — binds `--config`/`--context` flags and loads REST config for all providers |
 
+### Adaptive Telemetry Provider
+
+| File | Purpose |
+|------|---------|
+| `internal/providers/adaptive/provider.go` | `AdaptiveProvider` implementing the `providers.Provider` interface |
+| `internal/providers/adaptive/auth/` | Shared Basic auth helper and GCOM caching |
+| `internal/providers/adaptive/metrics/` | Metrics rules and recommendations (provider-only, read-only) |
+| `internal/providers/adaptive/logs/` | Logs patterns (provider-only, read-only) and exemptions (TypedCRUD adapter) |
+| `internal/providers/adaptive/traces/` | Traces recommendations (provider-only, read-only) and policies (TypedCRUD adapter) |
+
 ### Alert Provider
 
 | File | Purpose |

@@ -27,8 +27,8 @@ Grafana REST API (/apis endpoint)    -- K8s-compatible API (Grafana 12+)
 ### Extension Pipelines
 
 ```
-Provider System (internal/providers/)     -- 8 providers (SLO, Synth, OnCall,
-    |                                        Fleet, K6, KG, Incidents, Alert)
+Provider System (internal/providers/)     -- 9 providers (SLO, Synth, OnCall,
+    |                                        Fleet, K6, KG, Incidents, Alert, Adaptive)
     |                                        TypedRegistrations() → adapter.Register()
     v
 Grafana REST API (/api endpoint)          -- Product-specific REST endpoints
@@ -83,6 +83,7 @@ See [docs/research/](docs/research/) for design rationale and [docs/adrs/](docs/
 | `internal/providers/k6/` | K6 Cloud provider (projects, load tests, schedules, env vars, load zones) |
 | `internal/providers/kg/` | Knowledge Graph (Asserts) provider (rules, datasets, vendors, entity-types, scopes — read-only adapters; entities — provider CLI only) |
 | `internal/providers/incidents/` | IRM Incidents provider |
+| `internal/providers/adaptive/` | Adaptive Telemetry provider (metrics, logs, traces) — auth/, metrics/, logs/, traces/ subpackages |
 | `internal/dashboards/` | Dashboard Image Renderer client |
 | `internal/query/prometheus/` | Prometheus HTTP query client |
 | `internal/query/loki/` | Loki HTTP query client |
