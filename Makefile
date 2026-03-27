@@ -3,6 +3,9 @@ SHELL := /bin/bash
 # Within devbox
 ifneq "$(DEVBOX_CONFIG_DIR)" ""
     RUN_DEVBOX:=
+else ifneq ($(shell which go 2>/dev/null),)
+    # Required tools available natively; skip devbox
+    RUN_DEVBOX:=
 else # Normal shell
     RUN_DEVBOX:=devbox run
 endif
