@@ -44,12 +44,18 @@ Datasource HTTP APIs                      -- PromQL, LogQL, profile, trace queri
 | ADR | Title | Status |
 |-----|-------|--------|
 | [001](docs/adrs/legacy/001-query-under-datasources.md) | Move query under datasources with per-kind subcommands | accepted |
-| [002](docs/adrs/migrate-provider-rewrite/001-three-stage-blackbox-verification.md) | Three-stage skill structure with dual blackbox isolation | proposed |
-| [003](docs/adrs/constitution-design-principles/001-codify-cli-design-principles.md) | Codify CLI design principles in CONSTITUTION.md and design guide | proposed |
-| [004](docs/adrs/typed-resource-adapter-compliance/001-typed-resource-adapter-foundation.md) | TypedResourceAdapter[T] with ResourceIdentity and provider command migration | accepted |
-| [005](docs/adrs/adaptive-provider/001-cli-ux-and-resource-adapter-design.md) | Adaptive telemetry provider: CLI UX, adapter scope, verb naming | proposed |
+| [002](docs/adrs/adapter-schema-example/001-align-examples-with-schemas-ux.md) | Align `resources examples` with `resources schemas` UX | accepted |
+| [003](docs/adrs/cloud-rest-config/001-cloud-config-and-gcom.md) | CloudConfig in Context and GCOM Stack Discovery | accepted |
+| [004](docs/adrs/config-layering/001-multi-file-config-layering.md) | Multi-File Config Layering (System/User/Local) | accepted |
+| [005](docs/adrs/constitution-design-principles/001-codify-cli-design-principles.md) | Codify CLI Design Principles in CONSTITUTION.md and Design Guide | accepted |
+| [006](docs/adrs/conventional-commits/001-pr-title-enforcement.md) | Conventional Commits via PR Title Enforcement | accepted |
+| [007](docs/adrs/provider-consolidation/001-consolidation-strategy.md) | Provider Consolidation Strategy | accepted |
+| [008](docs/adrs/typed-resource-adapter-compliance/001-typed-resource-adapter-foundation.md) | TypedResourceAdapter[T] with ResourceIdentity and Provider Command Migration | proposed |
+| [009](docs/adrs/migrate-provider-rewrite/001-three-stage-blackbox-verification.md) | Three-Stage Skill Structure with Dual Blackbox Isolation | proposed |
+| [010](docs/adrs/oncall-typed-crud/001-table-driven-typedcrud.md) | Table-driven TypedCRUD[T] for OnCall Adapter | proposed |
+| [011](docs/adrs/adaptive-provider/001-cli-ux-and-resource-adapter-design.md) | Adaptive telemetry provider: CLI UX, adapter scope, verb naming | proposed |
 
-See [docs/research/](docs/research/) for design rationale and [docs/adrs/](docs/adrs/) for all ADRs.
+See [docs/adrs/](docs/adrs/) for all ADRs.
 
 ## Package Map
 
@@ -65,7 +71,6 @@ See [docs/research/](docs/research/) for design rationale and [docs/adrs/](docs/
 | `cmd/gcx/linter/` | Linting commands (run, new, rules, test) |
 | `cmd/gcx/dev/` | Developer commands (import, scaffold, generate, lint, serve) |
 | `cmd/gcx/fail/` | Structured error to user-friendly message conversion |
-| `cmd/gcx/io/` | Output codec registry (json, yaml, text, wide) |
 | `internal/config/` | Config types, loader, editor, rest.Config builder |
 | `internal/resources/` | Core types: Resource, Selector, Filter, Descriptor |
 | `internal/resources/adapter/` | ResourceAdapter interface, Factory, ResourceClientRouter, TypedCRUD[T], TypedObject[T], ResourceIdentity, ResourceNamer, SchemaFromType[T] |
@@ -93,14 +98,20 @@ See [docs/research/](docs/research/) for design rationale and [docs/adrs/](docs/
 | `internal/graph/` | Terminal chart rendering |
 | `internal/server/` | Live dev server (Chi router, reverse proxy, websocket reload) |
 | `internal/grafana/` | OpenAPI client (health checks, version detection) |
+| `internal/output/` | Output codec registry (json, yaml, text, wide — field selection, formatting) |
 | `internal/format/` | JSON/YAML codecs |
+| `internal/cloud/` | GCOM HTTP client for Grafana Cloud stack discovery |
+| `internal/httputils/` | HTTP helpers (used by serve command's proxy) |
+| `internal/secrets/` | Redactor for config view |
+| `internal/logs/` | slog/klog integration |
+| `internal/testutils/` | Shared test utilities |
 
 ## Detailed Architecture Documentation
 
 The `docs/architecture/` directory contains comprehensive architecture analysis:
 
 - [docs/architecture/architecture.md](docs/architecture/architecture.md) — Full system architecture
-- [docs/architecture/patterns.md](docs/architecture/patterns.md) — 15 recurring patterns
+- [docs/architecture/patterns.md](docs/architecture/patterns.md) — 18 recurring patterns
 - [docs/architecture/resource-model.md](docs/architecture/resource-model.md) — Resource, Selector, Filter, Discovery
 - [docs/architecture/cli-layer.md](docs/architecture/cli-layer.md) — Command tree, Options pattern
 - [docs/architecture/client-api-layer.md](docs/architecture/client-api-layer.md) — Dynamic client, auth

@@ -1,50 +1,81 @@
-# Grafana CLI (gcx)
+# gcx — Grafana CLI
 
-**Infrastructure-as-code for Grafana, designed for automation and AI agents.**
+<p>
+<a href="https://github.com/grafana/gcx/actions/workflows/ci.yaml"><img src="https://github.com/grafana/gcx/actions/workflows/ci.yaml/badge.svg?branch=main" alt="CI"></a>
+<a href="https://go.dev/"><img src="https://img.shields.io/badge/go-1.26+-00ADD8?logo=go" alt="Go"></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
+<img src="https://img.shields.io/badge/status-public%20preview-orange" alt="Public Preview">
+</p>
 
-Manage dashboards, folders, and other Grafana resources across multiple environments using a kubectl-like CLI. Works with Claude Code, GitHub Copilot, Cursor, and CI/CD pipelines.
+The official Grafana & Grafana Cloud CLI, designed for AI agents, GitOps, and CI/CD.
 
-Key features:
+```
+gcx resources get dashboards                    # list dashboards
+gcx alert rules list                            # list alert rules
+gcx datasources prometheus query 'up'           # run PromQL
+gcx oncall schedules list                       # list on-call schedules
+gcx slo definitions list                        # list SLOs
+gcx synth checks list                           # list synthetic checks
+gcx resources push -p ./resources               # push local changes
+```
 
-- **Agent-friendly:** JSON/YAML output, predictable exit codes, structured errors
-- **GitOps ready:** Pull resources to files, edit locally, push back — full version control
-- **Multi-environment:** Named contexts to switch between dev/staging/prod seamlessly
-- **Kubernetes-style:** Familiar patterns from kubectl — contexts, selectors, resource kinds
-- **Live development:** Built-in server with hot reload for dashboard-as-code workflows
+## Overview
+
+gcx is a single CLI for managing both **Grafana** (dashboards, folders, alert rules, datasources) and **Grafana Cloud** products (SLOs, Synthetic Monitoring, OnCall, K6, Fleet Management, Incidents, Knowledge Graph, and Adaptive Telemetry).
+
+- **Manage Grafana & Grafana Cloud** — one tool for dashboards, alerting, SLOs, on-call, synthetic checks, load testing, and more
+- **AI agent friendly** — JSON/YAML output, structured errors, predictable exit codes. Agent mode auto-detected for Claude Code, Copilot, Cursor, and others
+- **GitOps** — pull resources to files, version in git, push back with full round-trip fidelity
+- **Observability as code** — scaffold Go projects, import existing dashboards, lint with Rego rules, live-reload dev server
+- **Multi-environment** — named contexts to switch between dev, staging, and production
 
 > [!NOTE]
-> **Grafana CLI only supports Grafana 12 and above. Older Grafana versions are not supported.**
+> **gcx requires Grafana 12 or above.** Older Grafana versions are not supported.
 
-## Quick Install
+## Maturity
 
-**Homebrew (macOS/Linux):**
+> [!WARNING]
+> **This project is currently *in public preview*, which means that it is still under active development.**
+> Bugs and issues are handled solely by Engineering teams. On-call support or SLAs are not available.
+
+See [Release life cycle for Grafana Labs](https://grafana.com/docs/release-life-cycle/).
+
+## Install
+
+**Pre-built binary (Linux/macOS/Windows):**
 
 ```bash
-brew install grafana/grafana/gcx
-```
-
-**From Release (Linux/macOS/Windows):**
-
-```bash
-# Download latest from https://github.com/grafana/gcx/releases
 curl -L https://github.com/grafana/gcx/releases/latest/download/gcx-$(uname -s)-$(uname -m) -o gcx
-chmod +x gcx
-sudo mv gcx /usr/local/bin/
+chmod +x gcx && sudo mv gcx /usr/local/bin/
 ```
 
-**Verify installation:**
+**Go install:**
 
 ```bash
-gcx --version
+go install github.com/grafana/gcx/cmd/gcx@latest
 ```
 
-Full installation guide: [gcx docs](https://grafana.github.io/gcx/)
+**Shell completion:**
+
+```bash
+gcx completion zsh > "${fpath[1]}/_gcx"   # zsh
+gcx completion bash > /etc/bash_completion.d/gcx  # bash
+```
+
+**Verify:** `gcx --version`
+
+### AI Agent Plugin
+
+A [Claude Code plugin](claude-plugin/README.md) is included with skills for
+managing dashboards, exploring datasources, investigating alerts, debugging
+with Grafana observability data, and more. Install it alongside gcx to give
+your agent deep Grafana knowledge.
 
 ## Quick Start
 
-### Authentication
+### 1. Authenticate
 
-**Option A — Named context (persistent):**
+**Grafana (on-prem or Grafana Cloud instance):**
 
 ```bash
 gcx config set contexts.my-grafana.grafana.server https://your-instance.grafana.net
@@ -52,331 +83,171 @@ gcx config set contexts.my-grafana.grafana.token your-service-account-token
 gcx config use-context my-grafana
 ```
 
-**Option B — Environment variables (recommended for agents and CI/CD):**
+Use a [Grafana service account token](https://grafana.com/docs/grafana/latest/administration/service-accounts/) with **Editor** or **Admin** role.
+
+**Grafana Cloud products (SLO, Synth, OnCall, etc.):**
+
+Grafana Cloud products require a Cloud Access Policy token for API access. Set it in your context:
+
+```bash
+gcx config set contexts.my-grafana.cloud.token your-cloud-access-policy-token
+gcx config set contexts.my-grafana.cloud.org your-org-slug
+```
+
+**Environment variables (recommended for CI/CD and agents):**
 
 ```bash
 export GRAFANA_SERVER="https://your-instance.grafana.net"
 export GRAFANA_TOKEN="your-service-account-token"
+export GRAFANA_CLOUD_TOKEN="your-cloud-access-policy-token"
+export GRAFANA_CLOUD_ORG="your-org-slug"
 ```
 
-**Token requirements:** Use a [Grafana service account token](https://grafana.com/docs/grafana/latest/administration/service-accounts/) with **Editor** or **Admin** role. Editor is sufficient for managing dashboards and folders; Admin is needed for data sources and other administrative resources.
+**Verify:** `gcx config check`
 
-**Verify connection:**
+### 2. Explore
 
 ```bash
-gcx config check
+# Grafana resources
+gcx resources schemas                           # discover available resource types
+gcx resources get dashboards                    # list all dashboards
+gcx resources get folders                       # list all folders
+gcx alert rules list                            # list alert rules
+
+# Grafana Cloud products
+gcx slo definitions list                        # list SLOs
+gcx synth checks list                           # list synthetic monitoring checks
+gcx oncall schedules list                       # list on-call schedules
+gcx k6 load-tests list                          # list k6 load tests
+
+# Query datasources
+gcx datasources prometheus query 'rate(http_requests_total[5m])' --range=1h
+gcx datasources loki query '{app="nginx"} |= "error"' --range=1h
 ```
 
-### Common Workflows
+## Grafana Cloud Products
+
+gcx provides dedicated commands for each Grafana Cloud product:
+
+| Product | Command | Examples |
+|---------|---------|----------|
+| **SLOs** | `gcx slo` | `slo definitions list`, `slo reports list` |
+| **Synthetic Monitoring** | `gcx synth` | `synth checks list`, `synth probes list` |
+| **OnCall** | `gcx oncall` | `oncall schedules list`, `oncall integrations list` |
+| **Alerting** | `gcx alert` | `alert rules list`, `alert groups list` |
+| **K6 Cloud** | `gcx k6` | `k6 load-tests list`, `k6 runs list` |
+| **Fleet Management** | `gcx fleet` | `fleet pipelines list`, `fleet collectors list` |
+| **IRM Incidents** | `gcx incidents` | `incidents list`, `incidents create -f incident.yaml` |
+| **Knowledge Graph** | `gcx kg` | `kg status`, `kg search`, `kg entities show` |
+| **Adaptive Telemetry** | `gcx adaptive` | `adaptive metrics recommendations list`, `adaptive logs patterns list` |
+
+## Resource Management
+
+Manage both Grafana-native resources (dashboards, folders) and Grafana Cloud resources from a single CLI:
 
 ```bash
-# Discover available resource types
-gcx resources schemas
-
-# Get all dashboards
-gcx resources get dashboards -o json
-
-# Get a specific dashboard
-gcx resources get dashboards/my-dashboard -o json
-
-# Pull dashboards to local files
+# Pull dashboards and folders to local files
 gcx resources pull dashboards -p ./resources -o yaml
+gcx resources pull folders -p ./resources -o yaml
 
-# Push local resources to Grafana
+# Push local changes back to Grafana
 gcx resources push -p ./resources
 
-# Dry-run push (simulate without changes)
+# Preview changes without applying
 gcx resources push -p ./resources --dry-run
 
-# Validate resources against remote Grafana
+# Validate resources before pushing
 gcx resources validate -p ./resources
-
-# Delete a specific dashboard
-gcx resources delete dashboards/my-dashboard
 
 # Edit a dashboard interactively (opens $EDITOR)
 gcx resources edit dashboards/my-dashboard
+
+# Delete a resource
+gcx resources delete dashboards/my-dashboard
 ```
 
-### Tips for AI Agents and Automation
+## Alerting & Datasource Queries
 
-- Use `-o json` on `get`, `list`, `pull`, and `validate` for machine-parseable output
-- Use `--dry-run` on `push` and `delete` to preview changes before applying
-- Control error behavior with `--on-error`: `abort` (fail fast), `fail` (continue, exit 1), `ignore` (continue, exit 0)
-- Use `--include-managed` to modify resources created by other tools (e.g., Grafana UI)
-- Use `--force` on `delete` when deleting all resources of a kind (e.g., `delete dashboards --force`)
-- All commands except `edit` are non-interactive — safe to run in pipelines without hanging on prompts
-- Prefer targeted selectors (`dashboards/my-dash`) over broad fetches (`dashboards`) to reduce response size and token usage — pagination is handled automatically, so all results are returned in a single response
-- Use `resources schemas` first to discover available resource types — don't guess `apiVersion` or `kind` values
-- **`get` vs `pull`:** `get` writes to stdout (for reading/inspecting), `pull` writes to files on disk (for editing and pushing back). Use `get` to inspect, `pull` to start a modify workflow.
-
-### Common Patterns
-
-**Check if a resource exists:**
+Inspect alerting rules and query datasources directly:
 
 ```bash
-# Exit code 0 = exists, non-zero = not found
-gcx resources get dashboards/my-dashboard -o json > /dev/null 2>&1
+# Alert rules
+gcx alert rules list
+gcx alert groups list
+
+# PromQL queries
+gcx datasources prometheus query 'rate(http_requests_total[5m])' --range=1h
+gcx datasources prometheus labels
+gcx datasources prometheus metadata
+
+# LogQL queries
+gcx datasources loki query '{app="nginx"} |= "error"' --range=1h
+gcx datasources loki labels
+gcx datasources loki series
 ```
 
-**Pull → edit → push round-trip:**
+gcx also supports Pyroscope (profiling) and Tempo (traces) datasources.
+
+## Observability as Code
+
+gcx includes tools for managing Grafana resources as Go code using the [grafana-foundation-sdk](https://github.com/grafana/grafana-foundation-sdk):
 
 ```bash
-# 1. Pull a dashboard to disk (creates ./resources/Dashboard.v1.dashboard.grafana.app/my-dashboard.yaml)
-gcx resources pull dashboards/my-dashboard -p ./resources -o yaml
+# Scaffold a new project
+gcx dev scaffold --project my-dashboards
 
-# 2. Edit the file (agent modifies spec fields, e.g. title, panels)
-#    File is at: ./resources/Dashboard.v1.dashboard.grafana.app/my-dashboard.yaml
+# Import existing dashboards from Grafana as Go builder code
+gcx dev import dashboards
 
-# 3. Validate before pushing
-gcx resources validate -p ./resources -o json
+# Live-reload dev server (preview dashboards in browser)
+gcx dev serve ./resources
 
-# 4. Push changes back to Grafana
+# Lint resources with built-in and custom Rego rules
+gcx dev lint run -p ./resources
+gcx dev lint rules                              # list available rules
+gcx dev lint new --resource dashboard --name my-rule  # create custom rule
+
+# Build and push
+go run ./dashboards/... | gcx resources push -p -
+```
+
+## Raw API Access
+
+For anything not covered by built-in commands, use the API passthrough:
+
+```bash
+gcx api /api/health
+gcx api /api/datasources -o yaml
+gcx api /api/dashboards/db -d @dashboard.json
+gcx api /api/dashboards/uid/my-dashboard -X DELETE
+```
+
+## GitOps
+
+Pull resources to files, version in git, push back:
+
+```bash
+# Pull all resources
+gcx resources pull -p ./resources -o yaml
+
+# Commit to git
+git add ./resources && git commit -m "snapshot Grafana resources"
+
+# Push changes from git to Grafana
 gcx resources push -p ./resources
 ```
 
-Pull organizes files as `{Kind}.{Version}.{Group}/{Name}.{ext}` under the `-p` path:
+gcx push is idempotent — running it multiple times produces the same result. Folders are automatically pushed before dashboards to satisfy dependencies.
 
-```
-./resources/
-├── Dashboard.v1.dashboard.grafana.app/
-│   └── my-dashboard.yaml
-└── Folder.v1beta1.folder.grafana.app/
-    └── my-folder.yaml
-```
-
-**Export all resources for version control:**
-
-```bash
-# Pull everything, commit to git
-gcx resources pull -p ./resources -o yaml
-git add ./resources && git commit -m "snapshot Grafana resources"
-```
-
-## Environment Variables
-
-**Authentication:**
-
-| Variable | Description |
-|----------|-------------|
-| `GRAFANA_SERVER` | Target Grafana instance URL (required) |
-| `GRAFANA_TOKEN` | Service account token or API key (recommended) |
-| `GRAFANA_USER` | Username for basic auth (not recommended for automation) |
-| `GRAFANA_PASSWORD` | Password for basic auth (not recommended for automation) |
-
-**Namespace (organization/stack):**
-
-| Variable | Description |
-|----------|-------------|
-| `GRAFANA_ORG_ID` | Organization ID (on-prem Grafana) |
-| `GRAFANA_STACK_ID` | Stack ID (Grafana Cloud) |
-
-**Configuration:**
-
-| Variable | Description |
-|----------|-------------|
-| `GCX_CONFIG` | Custom config file path (default: `~/.config/gcx/config.yaml`) |
-| `GCX_AUTO_APPROVE` | Auto-approve destructive operations (automatically enables `--force` on delete) |
-
-**Global CLI flags (available on all commands):**
-
-| Flag | Description |
-|------|-------------|
-| `--context` | Active context name (overrides `current-context` in config) |
-| `--config` | Custom config file path |
-| `--no-color` | Disable color output |
-| `-v, --verbose` | Increase verbosity (up to 3 times: `-vvv`) |
-
-**Example CI/CD setup:**
-
-```bash
-export GRAFANA_SERVER="https://prod.grafana.net"
-export GRAFANA_TOKEN="${GRAFANA_SERVICE_ACCOUNT_TOKEN}"  # From CI secrets
-
-gcx resources push -p ./dashboards
-```
-
-**Auto-approval for CI/CD:**
-
-For non-interactive delete operations in CI/CD pipelines, use the `--yes` flag or `GCX_AUTO_APPROVE` environment variable to automatically enable the `--force` flag:
-
-```bash
-# Using --yes flag
-gcx resources delete dashboards --yes
-
-# Using environment variable (recommended for CI/CD)
-export GCX_AUTO_APPROVE=1
-gcx resources delete dashboards
-```
-
-**Note:** Auto-approval only affects delete operations. For push/pull operations with externally-managed resources (e.g., Terraform, GitSync), you must still explicitly pass `--include-managed`.
-
-## Resource Selectors
-
-
-gcx resources push -p ./dashboards
-```
-
-## Resource Selectors
-
-Grafana CLI uses kubectl-style selectors to target resources:
-
-```bash
-# All of a kind
-gcx resources get dashboards
-gcx resources get folders
-
-# Specific resource by name
-gcx resources get dashboards/my-dashboard
-
-# Multiple resources
-gcx resources get dashboards/dash1,dash2,dash3
-
-# Multiple kinds
-gcx resources get dashboards/foo folders/bar
-
-# Fully-qualified (with API version)
-gcx resources get dashboards.v1alpha1.dashboard.grafana.app/foo
-```
-
-## Resource Format
-
-Resources use a Kubernetes-style structure. When you `pull` resources, this is the format you get. When you `push`, this is the format expected.
-
-**Dashboard (JSON):**
-
-```json
-{
-  "apiVersion": "dashboard.grafana.app/v1",
-  "kind": "Dashboard",
-  "metadata": {
-    "name": "my-dashboard",
-    "namespace": "default"
-  },
-  "spec": {
-    "title": "My Dashboard"
-  }
-}
-```
-
-**Folder (YAML):**
+## CI/CD
 
 ```yaml
-apiVersion: folder.grafana.app/v1beta1
-kind: Folder
-metadata:
-  name: my-folder
-  namespace: default
-spec:
-  title: My Folder
-```
-
-| Field | Description |
-|-------|-------------|
-| `apiVersion` | API group and version (e.g., `dashboard.grafana.app/v1`) |
-| `kind` | Resource type: `Dashboard`, `Folder`, etc. |
-| `metadata.name` | Resource identifier (UID in Grafana) — this is the value you use in selectors (e.g., `dashboards/<name>`) |
-| `metadata.namespace` | Organization or Stack ID (set automatically on push) |
-| `spec` | The resource payload — this is what you edit when modifying a dashboard or folder |
-
-**Resource relationships:** Dashboards can belong to folders via the `grafana.app/folder` annotation in `metadata.annotations`. When pushing, gcx automatically pushes folders before dashboards to satisfy dependencies.
-
-Use `gcx resources schemas -o wide` to discover available `apiVersion` and `kind` values for your Grafana instance.
-
-### Command Output Examples
-
-**`resources schemas -o json`** — returns available resource types:
-
-```json
-[
-  { "group": "dashboard.grafana.app", "version": "v1", "plural": "dashboards", "singular": "dashboard", "kind": "Dashboard" },
-  { "group": "folder.grafana.app", "version": "v1beta1", "plural": "folders", "singular": "folder", "kind": "Folder" }
-]
-```
-
-**`resources get dashboards -o json`** — multiple resources return an `items` wrapper:
-
-```json
-{
-  "items": [
-    {
-      "apiVersion": "dashboard.grafana.app/v1",
-      "kind": "Dashboard",
-      "metadata": { "name": "my-dashboard", "namespace": "default" },
-      "spec": { "title": "My Dashboard" }
-    }
-  ]
-}
-```
-
-A single named resource (`get dashboards/my-dashboard -o json`) returns the object directly, without the `items` wrapper.
-
-**`resources validate -o json`** — returns an array of failures:
-
-```json
-{ "failures": [{ "file": "./resources/dashboard.yaml", "error": "spec.title is required" }] }
-```
-
-**`push`, `pull`, `delete`** — return a summary line (not JSON):
-
-```
-✔ 3 resources pushed, 0 errors
-```
-
-## Exit Codes
-
-Grafana CLI uses standard exit codes for scripting and CI/CD:
-
-| Code | Meaning |
-|------|---------|
-| `0` | Success (or `--on-error ignore` mode) |
-| `1` | Error — invalid arguments, resource not found, API failure |
-
-**Error handling modes** (`--on-error` flag):
-
-| Mode | Behavior | Exit Code |
-|------|----------|-----------|
-| `fail` (default) | Process all resources, exit 1 if any failed | 0 or 1 |
-| `abort` | Stop on first error | 0 or 1 |
-| `ignore` | Process all resources, always exit 0 | 0 |
-
-**Error output format** (written to stderr):
-
-```
-Error: Invalid configuration
-│
-│ Missing required field: server
-│
-├─ Suggestions:
-│
-│ • Review your configuration: gcx config view
-│ • Check the documentation for proper configuration format
-│
-└─
-```
-
-Errors include a summary, optional details, actionable suggestions, and documentation links. Parse the first line (`Error: ...`) for a machine-readable summary.
-
-**Example usage in scripts:**
-
-```bash
-if ! gcx resources get dashboards -o json > dashboards.json 2>error.log; then
-  echo "Failed to fetch dashboards (exit code: $?)"
-  cat error.log
-  exit 1
-fi
-```
-
-## For CI/CD & Automation
-
-**GitHub Actions example:**
-
-```yaml
-name: Deploy Grafana Dashboards
+# .github/workflows/deploy-resources.yaml
+name: Deploy Grafana Resources
 on:
   push:
     branches: [main]
-    paths: ['dashboards/**']
+    paths: ['resources/**']
 
 jobs:
   deploy:
@@ -387,82 +258,33 @@ jobs:
       - name: Install gcx
         run: |
           curl -L https://github.com/grafana/gcx/releases/latest/download/gcx-Linux-x86_64 -o gcx
-          chmod +x gcx
-          sudo mv gcx /usr/local/bin/
+          chmod +x gcx && sudo mv gcx /usr/local/bin/
 
-      - name: Validate dashboards
+      - name: Deploy resources
         env:
           GRAFANA_SERVER: ${{ secrets.GRAFANA_PROD_URL }}
           GRAFANA_TOKEN: ${{ secrets.GRAFANA_PROD_TOKEN }}
         run: |
-          gcx resources validate -p ./dashboards -o json
-
-      - name: Deploy to production
-        env:
-          GRAFANA_SERVER: ${{ secrets.GRAFANA_PROD_URL }}
-          GRAFANA_TOKEN: ${{ secrets.GRAFANA_PROD_TOKEN }}
-        run: |
-          gcx resources push -p ./dashboards --on-error abort
+          gcx resources validate -p ./resources
+          gcx resources push -p ./resources --on-error abort
 ```
 
-**Key automation patterns:**
-
-- **Idempotency:** `gcx resources push` is idempotent — running the same command multiple times produces the same result. Safe for repeated CI/CD runs.
-- **Dry-run:** Use `--dry-run` on `push` and `delete` to preview changes before applying.
-- **Error control:** Use `--on-error abort` to fail fast, `--on-error ignore` to continue past errors.
-- **Structured output:** Use `-o json` or `-o yaml` for machine-parseable output on `get`, `list`, `pull`, and `validate` commands.
-- **Manager metadata:** Grafana CLI tracks which tool manages each resource. Use `--include-managed` to modify resources created by other tools (e.g., Grafana UI).
-- **Concurrency:** Use `--max-concurrent` (default: 10) to control parallel API calls on `push`, `delete`, `validate`, and `serve` commands.
-
-## Live Development Server
-
-Grafana CLI includes a built-in development server with live reload:
-
-```bash
-# Serve resources from a directory
-gcx dev serve ./resources
-
-# With a generation script (e.g., grafana-foundation-sdk)
-gcx dev serve --script 'go run ./dashboards/...' --script-format yaml
-
-# Custom port
-gcx dev serve ./resources --port 3001
-```
-
-The server provides:
-
-- Reverse proxy to your Grafana instance
-- Automatic live reload on file changes via WebSocket
-- Dashboard preview in the browser
-- Script execution for code-generated dashboards
-
-> [!NOTE]
-> The `kubernetesDashboards` feature toggle must be enabled in Grafana for `dev serve`.
-
-## Claude Code Plugin
-
-A Claude Code plugin is included under [`claude-plugin/`](claude-plugin/README.md).
-It gives Claude deep knowledge of gcx — skills for debugging, datasource
-exploration, dashboard management, and alert investigation, plus a specialist
-`grafana-debugger` agent. See [`claude-plugin/README.md`](claude-plugin/README.md)
-for installation instructions.
+- All commands except `edit` are non-interactive — safe for pipelines
+- `--dry-run` on `push` and `delete` to preview changes
+- `--on-error abort|fail|ignore` to control error behavior
+- `-o json` or `-o yaml` for machine-parseable output
 
 ## Documentation
 
-See [the full documentation](https://grafana.github.io/gcx/) for comprehensive guides on:
-
-- [Installation](https://grafana.github.io/gcx/getting-started/install/)
-- [Configuration](https://grafana.github.io/gcx/getting-started/configure/)
-- [CLI Reference](https://grafana.github.io/gcx/reference/cli/)
-- [Environment Variables](https://grafana.github.io/gcx/reference/environment-variables/)
-
-## Maturity
-
-> [!WARNING]
-> **This project is currently *in public preview*, which means that it is still under active development.**
-> Bugs and issues are handled solely by Engineering teams. On-call support or SLAs are not available.
-
-Additional information can be found in [Release life cycle for Grafana Labs](https://grafana.com/docs/release-life-cycle/).
+| Topic | Description |
+|-------|-------------|
+| [Installation](https://grafana.github.io/gcx/getting-started/install/) | Install gcx on macOS, Linux, and Windows |
+| [Configuration](https://grafana.github.io/gcx/getting-started/configure/) | Contexts, authentication, environment variables |
+| [Managing Resources](docs/guides/manage-resources.md) | Get, push, pull, delete, edit, validate |
+| [Dashboards as Code](docs/guides/dashboards-as-code.md) | Dashboard-as-code workflow with live dev server |
+| [Linting Resources](docs/guides/lint-resources.md) | Lint dashboards and alert rules with Rego policies |
+| [CLI Reference](https://grafana.github.io/gcx/reference/cli/) | Full command reference (auto-generated) |
+| [Environment Variables](docs/configuration.md) | All supported env vars and global flags |
 
 ## Contributing
 
@@ -470,4 +292,4 @@ See our [contributing guide](CONTRIBUTING.md).
 
 ## License
 
-Licensed under the [Apache License, Version 2.0](LICENSE).
+Apache 2.0 — see [LICENSE](LICENSE).

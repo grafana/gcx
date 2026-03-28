@@ -37,6 +37,20 @@
 | [design-guide.md](docs/reference/design-guide.md) | UX requirements: output, exit codes, errors, naming | Before implementing features, reviewing CLI UX |
 | [migration-gap-analysis.md](docs/reference/migration-gap-analysis.md) | Gap analysis between grafana-cloud-cli and gcx, with prioritized migration roadmap | Understanding what's missing before planning new features or migrations |
 
+### Templates (in `docs/_templates/`)
+
+Spec and planning templates for structured work. Use these when creating specs in `docs/specs/`.
+
+| Template | Use For |
+|----------|---------|
+| [feature-spec.md](docs/_templates/feature-spec.md) | New feature specs (problem, requirements, acceptance criteria) |
+| [feature-plan.md](docs/_templates/feature-plan.md) | Architecture/design plan for a feature spec |
+| [feature-tasks.md](docs/_templates/feature-tasks.md) | Task breakdown with dependency waves |
+| [bugfix-spec.md](docs/_templates/bugfix-spec.md) | Bug fix specs (current vs expected behavior, repro steps) |
+| [refactor-spec.md](docs/_templates/refactor-spec.md) | Refactoring specs (behavioral contract, migration steps) |
+| [adr.md](docs/_templates/adr.md) | Architecture Decision Records |
+| [research.md](docs/_templates/research.md) | Research reports |
+
 ## Architecture at a Glance
 
 ```

@@ -301,7 +301,7 @@ only the wide table codec was expected to display.
 **Evidence:**
 - `internal/providers/slo/definitions/status.go`: `fetchMetrics` fetches all metrics unconditionally
 - `cmd/gcx/datasources/query/query.go`: query response passed to all codecs unchanged
-- `cmd/gcx/io/format.go`: built-in JSON/YAML codecs fall through when no custom codec is registered
+- `internal/output/format.go`: built-in JSON/YAML codecs fall through when no custom codec is registered
 
 **See also:** [design-guide.md §11](../reference/design-guide.md#11-codec-requirements-by-command-type-adopt) — codec requirements by command type, [§12](../reference/design-guide.md#12-mutation-command-output-adopt) — mutation command output spec.
 
@@ -375,7 +375,7 @@ behaviors regardless of actual TTY state.
 - `internal/agent/agent.go` — `IsAgentMode()`, `SetFlag()`, `DetectedFromEnv()`
 - `internal/terminal/terminal.go` — `Detect()`, `IsPiped()`, `NoTruncate()`, setters
 - `cmd/gcx/root/command.go` — orchestrates detection order in `PersistentPreRun`
-- `cmd/gcx/io/format.go` — `io.Options` fields `IsPiped`, `NoTruncate`, `JSONFields`
+- `internal/output/format.go` — `io.Options` fields `IsPiped`, `NoTruncate`, `JSONFields`
 - `cmd/gcx/fail/json.go` — `DetailedError.WriteJSON` for in-band error reporting
 
 **Evidence:**

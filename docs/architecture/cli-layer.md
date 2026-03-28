@@ -468,7 +468,7 @@ func (e editor) OpenInTempFile(ctx context.Context, buffer io.Reader, format str
 
 ---
 
-## Output Formatting (`cmd/gcx/io/`)
+## Output Formatting (`internal/output/`)
 
 > See also [design-guide.md](../reference/design-guide.md) Sections 1–2 for output contract,
 > exit code taxonomy, and default format conventions.
@@ -523,7 +523,7 @@ The `wide` codec is available on `slo definitions list`, `slo reports list`, and
 
 ### `FieldSelectCodec` — JSON Field Filtering
 
-`cmd/gcx/io/field_select.go` provides `FieldSelectCodec`, which wraps
+`internal/output/field_select.go` provides `FieldSelectCodec`, which wraps
 the built-in JSON codec and emits only the requested fields from each object:
 
 ```go
@@ -663,7 +663,7 @@ package resources
 
 import (
     cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
-    cmdio     "github.com/grafana/gcx/cmd/gcx/io"
+    cmdio     "github.com/grafana/gcx/internal/output"
     "github.com/spf13/cobra"
     "github.com/spf13/pflag"
 )

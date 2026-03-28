@@ -76,7 +76,7 @@ cmdio.Info(cmd.OutOrStdout(), "Using context %q", ctx)          // 🛈
 
 Status messages go to stdout. Errors (via `DetailedError`) go to stderr.
 
-Reference: `cmd/gcx/io/messages.go`
+Reference: `internal/output/messages.go`
 
 ### 1.5 JSON Field Selection `[CURRENT]`
 
@@ -114,9 +114,9 @@ additional list calls are made (NC-005).
 **Backward compatibility:** `-o json` is unchanged — it still produces the full
 resource object. `--json` is an independent mechanism (NC-002).
 
-**Implementation:** `cmd/gcx/io/field_select.go` (`FieldSelectCodec`,
+**Implementation:** `internal/output/field_select.go` (`FieldSelectCodec`,
 `DiscoverFields`). Flag parsing and mutual-exclusion enforcement in
-`cmd/gcx/io/format.go` (`applyJSONFlag`).
+`internal/output/format.go` (`applyJSONFlag`).
 
 ---
 
@@ -878,4 +878,4 @@ Maps sections to the cli-analysis recommendations (R1.1–R3.5):
 
 ---
 
-*Source: [cli-analysis-followup-changes.md](../research/2026-03-03-cli-analysis-followup-changes.md) cross-referenced against codebase as of 2026-03-04.*
+*Source: cross-referenced against codebase as of 2026-03-04.*
