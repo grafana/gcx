@@ -1,6 +1,7 @@
 package discovery_test
 
 import (
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -25,40 +26,21 @@ func (c *countingDiscoveryClient) ServerGroupsAndResources() ([]*metav1.APIGroup
 	return c.groups, c.resources, c.err
 }
 
-func TestNewDefaultRegistry_UsesCachedDiscovery(t *testing.T) {
-	// NewDefaultRegistry requires a real REST config pointing at a server,
-	// so we test the caching behavior through NewCachedRegistry which accepts
-	// our Client interface and a cache directory.
+func TestNewCachedRegistry(t *testing.T) {
 	groups, resources := getSingleVersionDiscovery()
 	client := &countingDiscoveryClient{
 		groups:    groups,
 		resources: resources,
 	}
 
-	cacheDir := t.TempDir()
-
-	// First call: should hit the underlying client.
-	reg1, err := discovery.NewCachedRegistry(t.Context(), client, cacheDir)
+	// NewCachedRegistry is a test helper that delegates to NewRegistry.
+	reg, err := discovery.NewCachedRegistry(t.Context(), client)
 	require.NoError(t, err)
-	require.NotNil(t, reg1)
-	assert.Equal(t, int32(1), client.calls.Load(), "first registry creation should call discovery once")
-
-	// Second call with same cache dir: should still call the underlying client
-	// because our Client interface doesn't have TTL — the caching happens at
-	// the HTTP transport level via disk.NewCachedDiscoveryClientForConfig.
-	// But NewCachedRegistry should at least accept and use the cache dir.
-	reg2, err := discovery.NewCachedRegistry(t.Context(), client, cacheDir)
-	require.NoError(t, err)
-	require.NotNil(t, reg2)
-
-	// Both registries should have discovered the same resources.
-	assert.ElementsMatch(t, reg1.PreferredResources(), reg2.PreferredResources())
+	require.NotNil(t, reg)
+	assert.Equal(t, int32(1), client.calls.Load(), "should call discovery once")
 }
 
-func TestNewDefaultRegistry_CacheDir(t *testing.T) {
-	// Verify that NewDefaultRegistryWithCacheDir computes a per-server cache directory
-	// and passes it through. We test this indirectly by checking that two different
-	// server URLs produce different cache directories.
+func TestDiscoveryCacheDir_DifferentServers(t *testing.T) {
 	dir1 := discovery.DiscoveryCacheDir("https://grafana-a.grafana.net", "")
 	dir2 := discovery.DiscoveryCacheDir("https://grafana-b.grafana.net", "")
 
@@ -67,26 +49,57 @@ func TestNewDefaultRegistry_CacheDir(t *testing.T) {
 	assert.NotEmpty(t, dir2)
 }
 
-func TestDiscoveryCacheDir_EnvOverride(t *testing.T) {
-	customDir := t.TempDir()
-	t.Setenv("GCX_DISCOVERY_CACHE_DIR", customDir)
-
-	dir := discovery.DiscoveryCacheDir("https://grafana.grafana.net", customDir)
-	assert.Equal(t, customDir, dir, "env var should override default cache dir")
-}
-
-func TestNewDefaultRegistry_CacheDirFromConfig(t *testing.T) {
-	// DiscoveryCacheDir should produce a stable path for the same server.
+func TestDiscoveryCacheDir_StableForSameServer(t *testing.T) {
 	dir1 := discovery.DiscoveryCacheDir("https://grafana.grafana.net", "")
 	dir2 := discovery.DiscoveryCacheDir("https://grafana.grafana.net", "")
 
 	assert.Equal(t, dir1, dir2, "same server should produce same cache dir")
 }
 
+func TestDiscoveryCacheDir_HashLength(t *testing.T) {
+	// Hash should be 16 bytes = 32 hex chars for sufficient collision resistance.
+	dir := discovery.DiscoveryCacheDir("https://grafana.grafana.net", "")
+	parts := strings.Split(dir, "/")
+	hash := parts[len(parts)-1]
+	assert.Len(t, hash, 32, "hash should be 32 hex chars (16 bytes)")
+}
+
+func TestDiscoveryCacheDir_EnvOverridesDefault(t *testing.T) {
+	customDir := t.TempDir()
+	t.Setenv("GCX_DISCOVERY_CACHE_DIR", customDir)
+
+	// Env var should override even when no explicit overrideDir is passed.
+	dir := discovery.DiscoveryCacheDir("https://grafana.grafana.net", "")
+	assert.Equal(t, customDir, dir, "env var should override default")
+}
+
+func TestDiscoveryCacheDir_EnvOverridesExplicitDir(t *testing.T) {
+	envDir := t.TempDir()
+	explicitDir := t.TempDir()
+	t.Setenv("GCX_DISCOVERY_CACHE_DIR", envDir)
+
+	// Env var takes precedence over explicit overrideDir.
+	dir := discovery.DiscoveryCacheDir("https://grafana.grafana.net", explicitDir)
+	assert.Equal(t, envDir, dir, "env var should override explicit dir")
+}
+
+func TestDiscoveryCacheDir_RelativeEnvIgnored(t *testing.T) {
+	t.Setenv("GCX_DISCOVERY_CACHE_DIR", "relative/path")
+
+	// Relative path in env var should be ignored.
+	dir := discovery.DiscoveryCacheDir("https://grafana.grafana.net", "")
+	assert.NotEqual(t, "relative/path", dir, "relative env var should be ignored")
+	assert.True(t, strings.HasPrefix(dir, "/"), "should fall through to absolute default path")
+}
+
+func TestDiscoveryCacheDir_ExplicitOverrideDir(t *testing.T) {
+	explicitDir := t.TempDir()
+
+	dir := discovery.DiscoveryCacheDir("https://grafana.grafana.net", explicitDir)
+	assert.Equal(t, explicitDir, dir, "explicit dir should be used when no env var set")
+}
+
 func TestNewDefaultRegistryWithCacheDir(t *testing.T) {
-	// Verify the full flow: config → cached registry works end-to-end.
-	// We can't hit a real server, so we just verify it compiles and the
-	// function signature accepts NamespacedRESTConfig + cache dir.
 	cfg := config.NamespacedRESTConfig{}
 	cfg.Host = "https://test.grafana.net"
 

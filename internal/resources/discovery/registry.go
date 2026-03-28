@@ -77,11 +77,12 @@ func NewDefaultRegistryWithCacheDir(ctx context.Context, cfg config.NamespacedRE
 }
 
 // DiscoveryCacheDir returns the directory to use for caching discovery results.
-// If overrideDir is non-empty or GCX_DISCOVERY_CACHE_DIR is set, that value is used directly.
-// Otherwise, it computes a per-server subdirectory under ~/.cache/gcx/discovery/ using a
-// hash of the server URL.
+// Precedence: GCX_DISCOVERY_CACHE_DIR env var > overrideDir > computed default.
+// The computed default is a per-server subdirectory under ~/.cache/gcx/discovery/
+// using a SHA-256 hash of the server URL. Relative paths in GCX_DISCOVERY_CACHE_DIR
+// are ignored to prevent cache writes to unexpected locations.
 func DiscoveryCacheDir(serverURL, overrideDir string) string {
-	if dir := os.Getenv("GCX_DISCOVERY_CACHE_DIR"); dir != "" {
+	if dir := os.Getenv("GCX_DISCOVERY_CACHE_DIR"); dir != "" && filepath.IsAbs(dir) {
 		return dir
 	}
 	if overrideDir != "" {
@@ -92,12 +93,13 @@ func DiscoveryCacheDir(serverURL, overrideDir string) string {
 		return filepath.Join(os.TempDir(), "gcx", "discovery")
 	}
 	h := sha256.Sum256([]byte(serverURL))
-	return filepath.Join(home, ".cache", "gcx", "discovery", hex.EncodeToString(h[:8]))
+	return filepath.Join(home, ".cache", "gcx", "discovery", hex.EncodeToString(h[:16]))
 }
 
-// NewCachedRegistry creates a new discovery registry with a given client and cache directory.
-// This is primarily useful for testing the caching behavior without needing a real server.
-func NewCachedRegistry(ctx context.Context, client Client, _ string) (*Registry, error) {
+// NewCachedRegistry creates a new discovery registry from a Client interface.
+// This is a test helper — production code uses NewDefaultRegistry which wraps the
+// client with disk caching at the HTTP transport level.
+func NewCachedRegistry(ctx context.Context, client Client) (*Registry, error) {
 	return NewRegistry(ctx, client)
 }
 
