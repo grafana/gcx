@@ -56,6 +56,26 @@ func (c *Client) ListExemptions(ctx context.Context) ([]Exemption, error) {
 	return wrapper.Result, nil
 }
 
+// GetExemption returns a single exemption by ID.
+func (c *Client) GetExemption(ctx context.Context, id string) (*Exemption, error) {
+	resp, err := c.doRequest(ctx, http.MethodGet, "/adaptive-logs/exemptions/"+url.PathEscape(id), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get exemption %s: %w", id, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, handleErrorResponse(resp)
+	}
+
+	exemption, err := decodeExemptionResponse(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode exemption response: %w", err)
+	}
+
+	return exemption, nil
+}
+
 // CreateExemption creates a new log stream exemption.
 func (c *Client) CreateExemption(ctx context.Context, e *Exemption) (*Exemption, error) {
 	body, err := json.Marshal(e)
@@ -73,17 +93,15 @@ func (c *Client) CreateExemption(ctx context.Context, e *Exemption) (*Exemption,
 		return nil, handleErrorResponse(resp)
 	}
 
-	var created Exemption
-	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+	created, err := decodeExemptionResponse(resp.Body)
+	if err != nil {
 		return nil, fmt.Errorf("failed to decode create exemption response: %w", err)
 	}
 
-	return &created, nil
+	return created, nil
 }
 
 // UpdateExemption updates an existing log stream exemption by ID.
-//
-//nolint:dupl // Structural similarity with UpdateSegment is expected for typed CRUD methods.
 func (c *Client) UpdateExemption(ctx context.Context, id string, e *Exemption) (*Exemption, error) {
 	body, err := json.Marshal(e)
 	if err != nil {
@@ -100,12 +118,12 @@ func (c *Client) UpdateExemption(ctx context.Context, id string, e *Exemption) (
 		return nil, handleErrorResponse(resp)
 	}
 
-	var updated Exemption
-	if err := json.NewDecoder(resp.Body).Decode(&updated); err != nil {
+	updated, err := decodeExemptionResponse(resp.Body)
+	if err != nil {
 		return nil, fmt.Errorf("failed to decode update exemption response: %w", err)
 	}
 
-	return &updated, nil
+	return updated, nil
 }
 
 // DeleteExemption deletes a log stream exemption by ID.
@@ -223,8 +241,6 @@ func (c *Client) CreateSegment(ctx context.Context, s *LogSegment) (*LogSegment,
 
 // UpdateSegment updates an existing adaptive log segment by ID.
 // The API uses a query parameter: PUT /adaptive-logs/segment?segment=<id>.
-//
-//nolint:dupl // Structural similarity with UpdateExemption is expected for typed CRUD methods.
 func (c *Client) UpdateSegment(ctx context.Context, id string, s *LogSegment) (*LogSegment, error) {
 	body, err := json.Marshal(s)
 	if err != nil {
@@ -265,6 +281,29 @@ func (c *Client) DeleteSegment(ctx context.Context, id string) error {
 	return nil
 }
 
+// decodeExemptionResponse handles both wrapped {"result": ...} and bare Exemption
+// JSON responses from the API. The create/update endpoints may wrap the response
+// in a {"result": ...} envelope (webtools.APIResponse).
+func decodeExemptionResponse(r io.Reader) (*Exemption, error) {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+
+	var wrapper struct {
+		Result Exemption `json:"result"`
+	}
+	if err := json.Unmarshal(data, &wrapper); err == nil && wrapper.Result.ID != "" {
+		return &wrapper.Result, nil
+	}
+
+	var direct Exemption
+	if err := json.Unmarshal(data, &direct); err != nil {
+		return nil, err
+	}
+	return &direct, nil
+}
+
 // doRequest builds and executes an HTTP request against the Adaptive Logs API.
 func (c *Client) doRequest(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, body)
@@ -285,11 +324,30 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body io.Rea
 	return resp, nil
 }
 
-// handleErrorResponse reads an error response body and returns a formatted error.
+// APIError is a typed error for non-OK HTTP responses from the Adaptive Logs API.
+// It carries the status code and extracted message so that the fail package can
+// render a meaningful summary instead of the generic "Unexpected error".
+type APIError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e *APIError) Error() string {
+	if e.Message != "" {
+		return fmt.Sprintf("API request failed (HTTP %d): %s", e.StatusCode, e.Message)
+	}
+	return fmt.Sprintf("API request failed (HTTP %d)", e.StatusCode)
+}
+
+// HTTPStatusCode implements fail.HTTPStatusError so the CLI renders a clear
+// error summary instead of "Unexpected error".
+func (e *APIError) HTTPStatusCode() int { return e.StatusCode }
+
+// handleErrorResponse reads an error response body and returns an *APIError.
 func handleErrorResponse(resp *http.Response) error {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("request failed with status %d (could not read body: %w)", resp.StatusCode, err)
+		return &APIError{StatusCode: resp.StatusCode, Message: fmt.Sprintf("could not read response body: %v", err)}
 	}
 
 	var errResp struct {
@@ -298,16 +356,16 @@ func handleErrorResponse(resp *http.Response) error {
 	}
 	if err := json.Unmarshal(body, &errResp); err == nil {
 		if errResp.Error != "" {
-			return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, errResp.Error)
+			return &APIError{StatusCode: resp.StatusCode, Message: errResp.Error}
 		}
 		if errResp.Message != "" {
-			return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, errResp.Message)
+			return &APIError{StatusCode: resp.StatusCode, Message: errResp.Message}
 		}
 	}
 
 	if len(body) > 0 {
-		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))
+		return &APIError{StatusCode: resp.StatusCode, Message: string(body)}
 	}
 
-	return fmt.Errorf("request failed with status %d", resp.StatusCode)
+	return &APIError{StatusCode: resp.StatusCode}
 }

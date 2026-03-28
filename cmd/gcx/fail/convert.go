@@ -15,6 +15,15 @@ import (
 	k8sapi "k8s.io/apimachinery/pkg/api/errors"
 )
 
+// HTTPStatusError is implemented by errors that carry an HTTP status code and
+// a human-readable message from a remote API. Provider clients can implement
+// this interface so the fail package renders a clear summary instead of the
+// generic "Unexpected error".
+type HTTPStatusError interface {
+	error
+	HTTPStatusCode() int
+}
+
 func ErrorToDetailedError(err error) *DetailedError {
 	var converted bool
 	detailedErr := &DetailedError{}
@@ -24,14 +33,15 @@ func ErrorToDetailedError(err error) *DetailedError {
 
 	// Try to convert the error for common error categories
 	errorConverters := []func(err error) (*DetailedError, bool){
-		convertContextCanceled, // Context cancellation (must be first — cancellation can wrap other errors)
-		convertConfigErrors,    // Config-related
-		convertFSErrors,        // FS-related
-		convertResourcesErrors, // Resources-related
-		convertNetworkErrors,   // Network-related errors
-		convertAPIErrors,       // API-related errors
-		convertVersionErrors,   // Version incompatibility errors
-		convertLinterErrors,    // Linter-related errors
+		convertContextCanceled,  // Context cancellation (must be first — cancellation can wrap other errors)
+		convertConfigErrors,     // Config-related
+		convertFSErrors,         // FS-related
+		convertResourcesErrors,  // Resources-related
+		convertNetworkErrors,    // Network-related errors
+		convertAPIErrors,        // API-related errors
+		convertHTTPStatusErrors, // Provider HTTP status errors
+		convertVersionErrors,    // Version incompatibility errors
+		convertLinterErrors,     // Linter-related errors
 	}
 
 	for _, converter := range errorConverters {
@@ -218,6 +228,42 @@ func convertVersionErrors(err error) (*DetailedError, bool) {
 	}
 
 	return nil, false
+}
+
+func convertHTTPStatusErrors(err error) (*DetailedError, bool) {
+	var httpErr HTTPStatusError
+	if !errors.As(err, &httpErr) {
+		return nil, false
+	}
+
+	code := httpErr.HTTPStatusCode()
+	summary := fmt.Sprintf("API error (HTTP %d)", code)
+
+	switch code {
+	case 401, 403:
+		return &DetailedError{
+			Parent:  err,
+			Summary: summary,
+			Suggestions: []string{
+				"Make sure that the configured credentials are correct",
+				"Make sure that the configured credentials have enough permissions",
+			},
+			ExitCode: new(ExitAuthFailure),
+		}, true
+	case 404:
+		return &DetailedError{
+			Parent:  err,
+			Summary: summary,
+			Suggestions: []string{
+				"Make sure the resource ID is correct",
+			},
+		}, true
+	default:
+		return &DetailedError{
+			Parent:  err,
+			Summary: summary,
+		}, true
+	}
 }
 
 func convertContextCanceled(err error) (*DetailedError, bool) {

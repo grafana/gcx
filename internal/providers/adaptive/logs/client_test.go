@@ -90,6 +90,69 @@ func TestClient_ListExemptions(t *testing.T) {
 	}
 }
 
+func TestAPIError_TypedError(t *testing.T) {
+	tests := []struct {
+		name        string
+		handler     http.HandlerFunc
+		wantCode    int
+		wantMessage string
+	}{
+		{
+			name: "extracts error field from JSON body",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusBadRequest)
+				writeJSON(w, map[string]any{"error": "invalid stream selector"})
+			},
+			wantCode:    400,
+			wantMessage: "invalid stream selector",
+		},
+		{
+			name: "extracts message field from JSON body",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusForbidden)
+				writeJSON(w, map[string]any{"message": "access denied"})
+			},
+			wantCode:    403,
+			wantMessage: "access denied",
+		},
+		{
+			name: "falls back to raw body",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = w.Write([]byte("service unavailable"))
+			},
+			wantCode:    503,
+			wantMessage: "service unavailable",
+		},
+		{
+			name: "empty body",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+			},
+			wantCode: 500,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(tt.handler)
+			defer server.Close()
+
+			client := newTestClient(t, server)
+			_, err := client.ListExemptions(t.Context())
+			require.Error(t, err)
+
+			var apiErr *logs.APIError
+			require.ErrorAs(t, err, &apiErr)
+			assert.Equal(t, tt.wantCode, apiErr.StatusCode)
+			assert.Equal(t, tt.wantCode, apiErr.HTTPStatusCode())
+			if tt.wantMessage != "" {
+				assert.Contains(t, apiErr.Message, tt.wantMessage)
+			}
+		})
+	}
+}
+
 func TestClient_CreateExemption(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -99,7 +162,7 @@ func TestClient_CreateExemption(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:  "returns created exemption",
+			name:  "returns created exemption (bare response)",
 			input: &logs.Exemption{StreamSelector: `{app="critical"}`},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodPost, r.Method)
@@ -115,6 +178,17 @@ func TestClient_CreateExemption(t *testing.T) {
 				writeJSON(w, logs.Exemption{ID: "new-id", StreamSelector: `{app="critical"}`})
 			},
 			wantID: "new-id",
+		},
+		{
+			name:  "unwraps result envelope",
+			input: &logs.Exemption{StreamSelector: `{app="wrapped"}`},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				writeJSON(w, map[string]any{
+					"result": logs.Exemption{ID: "wrapped-id", StreamSelector: `{app="wrapped"}`},
+				})
+			},
+			wantID: "wrapped-id",
 		},
 		{
 			name:  "server error",
@@ -156,7 +230,7 @@ func TestClient_UpdateExemption(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:  "returns updated exemption",
+			name:  "returns updated exemption (bare response)",
 			id:    "ex-1",
 			input: &logs.Exemption{StreamSelector: `{app="updated"}`},
 			handler: func(w http.ResponseWriter, r *http.Request) {
@@ -165,6 +239,17 @@ func TestClient_UpdateExemption(t *testing.T) {
 				writeJSON(w, logs.Exemption{ID: "ex-1", StreamSelector: `{app="updated"}`})
 			},
 			wantID: "ex-1",
+		},
+		{
+			name:  "unwraps result envelope",
+			id:    "ex-2",
+			input: &logs.Exemption{StreamSelector: `{app="wrapped"}`},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				writeJSON(w, map[string]any{
+					"result": logs.Exemption{ID: "ex-2", StreamSelector: `{app="wrapped"}`},
+				})
+			},
+			wantID: "ex-2",
 		},
 		{
 			name:  "not found",

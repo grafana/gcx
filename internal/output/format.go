@@ -1,6 +1,7 @@
 package output
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -132,12 +133,54 @@ func (opts *Options) Codec() (format.Codec, error) { //nolint:ireturn
 }
 
 func (opts *Options) Encode(dst io.Writer, value any) error {
+	if opts.JSONDiscovery {
+		return opts.encodeJSONDiscovery(dst, value)
+	}
+
+	if len(opts.JSONFields) > 0 {
+		return NewFieldSelectCodec(opts.JSONFields).Encode(dst, value)
+	}
+
 	codec, err := opts.Codec()
 	if err != nil {
 		return err
 	}
 
 	return codec.Encode(dst, value)
+}
+
+// encodeJSONDiscovery marshals value to a map and prints available field names.
+func (opts *Options) encodeJSONDiscovery(dst io.Writer, value any) error {
+	m, err := toMap(value)
+	if err != nil {
+		m = firstElementAsMap(value)
+		if m == nil {
+			return err
+		}
+	}
+
+	for _, field := range DiscoverFields(m) {
+		fmt.Fprintln(dst, field)
+	}
+	return nil
+}
+
+// firstElementAsMap marshals value as JSON, and if it's an array, returns the
+// first element as a map. Returns nil if the value is not an array or is empty.
+func firstElementAsMap(value any) map[string]any {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	var arr []json.RawMessage
+	if err := json.Unmarshal(data, &arr); err != nil || len(arr) == 0 {
+		return nil
+	}
+	var elem map[string]any
+	if err := json.Unmarshal(arr[0], &elem); err != nil {
+		return nil
+	}
+	return elem
 }
 
 // We have to return an interface here.

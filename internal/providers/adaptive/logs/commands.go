@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/adaptive/auth"
 	"github.com/spf13/cobra"
+	yamlv3 "gopkg.in/yaml.v3"
 )
 
 // Commands returns the logs command group for adaptive logs management.
@@ -63,6 +64,7 @@ type patternsShowOpts struct {
 func (o *patternsShowOpts) setup(cmd *cobra.Command) {
 	o.IO.RegisterCustomCodec("table", &patternsTableCodec{wide: false})
 	o.IO.RegisterCustomCodec("wide", &patternsTableCodec{wide: true})
+	o.IO.RegisterCustomCodec("yaml", &yamlV3Codec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(cmd.Flags())
 }
@@ -124,23 +126,26 @@ func (c *patternsTableCodec) Encode(w io.Writer, v any) error {
 		if pattern == "" {
 			pattern = rec.Label()
 		}
+		if !c.wide {
+			pattern = truncate(pattern, 80)
+		}
 		if c.wide {
-			fmt.Fprintf(tw, "%s\t%.4f\t%.4f\t%d\t%d\t%d\t%v\t%v\n",
+			fmt.Fprintf(tw, "%s\t%.2f\t%.2f\t%s\t%d\t%d\t%v\t%v\n",
 				pattern,
 				rec.ConfiguredDropRate,
 				rec.RecommendedDropRate,
-				rec.Volume,
+				humanBytes(rec.Volume),
 				rec.IngestedLines,
 				rec.QueriedLines,
 				rec.Locked,
 				rec.Superseded,
 			)
 		} else {
-			fmt.Fprintf(tw, "%s\t%.4f\t%.4f\t%d\t%v\n",
+			fmt.Fprintf(tw, "%s\t%.2f\t%.2f\t%s\t%v\n",
 				pattern,
 				rec.ConfiguredDropRate,
 				rec.RecommendedDropRate,
-				rec.Volume,
+				humanBytes(rec.Volume),
 				rec.Locked,
 			)
 		}
@@ -149,8 +154,57 @@ func (c *patternsTableCodec) Encode(w io.Writer, v any) error {
 	return tw.Flush()
 }
 
+func truncate(s string, limit int) string {
+	if len(s) <= limit {
+		return s
+	}
+	return s[:limit-3] + "..."
+}
+
+const (
+	kb float64 = 1 << 10
+	mb float64 = 1 << 20
+	gb float64 = 1 << 30
+	tb float64 = 1 << 40
+	pb float64 = 1 << 50
+)
+
+func humanBytes(b uint64) string {
+	v := float64(b)
+	switch {
+	case v >= pb:
+		return fmt.Sprintf("%.2f PB", v/pb)
+	case v >= tb:
+		return fmt.Sprintf("%.2f TB", v/tb)
+	case v >= gb:
+		return fmt.Sprintf("%.2f GB", v/gb)
+	case v >= mb:
+		return fmt.Sprintf("%.2f MB", v/mb)
+	case v >= kb:
+		return fmt.Sprintf("%.2f KB", v/kb)
+	default:
+		return fmt.Sprintf("%d B", b)
+	}
+}
+
 func (c *patternsTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
+}
+
+// yamlV3Codec uses gopkg.in/yaml.v3 which properly quotes strings containing
+// control characters (tabs, etc.) that goccy/go-yaml leaves unquoted.
+type yamlV3Codec struct{}
+
+func (c *yamlV3Codec) Format() format.Format { return format.YAML }
+
+func (c *yamlV3Codec) Encode(w io.Writer, v any) error {
+	enc := yamlv3.NewEncoder(w)
+	enc.SetIndent(2)
+	return enc.Encode(v)
+}
+
+func (c *yamlV3Codec) Decode(r io.Reader, v any) error {
+	return yamlv3.NewDecoder(r).Decode(v)
 }
 
 // ---------------------------------------------------------------------------
@@ -331,10 +385,19 @@ func (h *logsHelper) exemptionsUpdateCommand() *cobra.Command {
 				return err
 			}
 
-			updated, err := client.UpdateExemption(ctx, args[0], &Exemption{
-				StreamSelector: opts.StreamSelector,
-				Reason:         opts.Reason,
-			})
+			existing, err := client.GetExemption(ctx, args[0])
+			if err != nil {
+				return fmt.Errorf("failed to fetch existing exemption for merge: %w", err)
+			}
+
+			if cmd.Flags().Changed("stream-selector") {
+				existing.StreamSelector = opts.StreamSelector
+			}
+			if cmd.Flags().Changed("reason") {
+				existing.Reason = opts.Reason
+			}
+
+			updated, err := client.UpdateExemption(ctx, args[0], existing)
 			if err != nil {
 				return err
 			}
@@ -480,9 +543,10 @@ type segmentsCreateOpts struct {
 
 func (o *segmentsCreateOpts) setup(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&o.Name, "name", "", "Segment name (required)")
-	cmd.Flags().StringVar(&o.Selector, "selector", "", "Log stream selector")
+	cmd.Flags().StringVar(&o.Selector, "selector", "", "Log stream selector (required)")
 	cmd.Flags().BoolVar(&o.FallbackToDefault, "fallback-to-default", false, "Fall back to default segment")
 	_ = cmd.MarkFlagRequired("name")
+	_ = cmd.MarkFlagRequired("selector")
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(cmd.Flags())
 }
@@ -553,11 +617,22 @@ func (h *logsHelper) segmentsUpdateCommand() *cobra.Command {
 				return err
 			}
 
-			updated, err := client.UpdateSegment(ctx, args[0], &LogSegment{
-				Name:              opts.Name,
-				Selector:          opts.Selector,
-				FallbackToDefault: opts.FallbackToDefault,
-			})
+			existing, err := client.GetSegment(ctx, args[0])
+			if err != nil {
+				return fmt.Errorf("failed to fetch existing segment for merge: %w", err)
+			}
+
+			if cmd.Flags().Changed("name") {
+				existing.Name = opts.Name
+			}
+			if cmd.Flags().Changed("selector") {
+				existing.Selector = opts.Selector
+			}
+			if cmd.Flags().Changed("fallback-to-default") {
+				existing.FallbackToDefault = opts.FallbackToDefault
+			}
+
+			updated, err := client.UpdateSegment(ctx, args[0], existing)
 			if err != nil {
 				return err
 			}
