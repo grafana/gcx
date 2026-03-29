@@ -5,12 +5,25 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
+
+type helptreeOpts struct {
+	Depth int
+}
+
+func (o *helptreeOpts) setup(flags *pflag.FlagSet) {
+	flags.IntVar(&o.Depth, "depth", 0, "Maximum depth of the tree (0 = unlimited)")
+}
+
+func (o *helptreeOpts) Validate() error {
+	return nil
+}
 
 // Command returns the "help-tree" command that renders a compact text tree
 // of the CLI hierarchy, optimized for agent context injection.
 func Command(root *cobra.Command) *cobra.Command {
-	var depth int
+	opts := &helptreeOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "help-tree [COMMAND]",
@@ -26,7 +39,11 @@ Use --depth to limit nesting depth.`,
 			agent.AnnotationLLMHint:   "gcx help-tree resources --depth 2",
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts := RenderOptions{MaxDepth: depth}
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
+			renderOpts := RenderOptions{MaxDepth: opts.Depth}
 
 			target := root
 			if len(args) > 0 {
@@ -36,13 +53,13 @@ Use --depth to limit nesting depth.`,
 				}
 			}
 
-			output := RenderTree(target, opts)
+			output := RenderTree(target, renderOpts)
 			fmt.Fprint(cmd.OutOrStdout(), output)
 			return nil
 		},
 	}
 
-	cmd.Flags().IntVar(&depth, "depth", 0, "Maximum depth of the tree (0 = unlimited)")
+	opts.setup(cmd.Flags())
 
 	return cmd
 }
