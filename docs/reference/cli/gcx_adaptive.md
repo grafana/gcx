@@ -21,7 +21,7 @@ Manage Grafana Cloud Adaptive Telemetry.
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - 
+* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx adaptive logs](gcx_adaptive_logs.md)	 - Manage Adaptive Logs resources.
 * [gcx adaptive metrics](gcx_adaptive_metrics.md)	 - Manage Adaptive Metrics resources.
 * [gcx adaptive traces](gcx_adaptive_traces.md)	 - Manage Adaptive Traces resources.

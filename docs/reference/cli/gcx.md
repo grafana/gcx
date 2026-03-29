@@ -18,6 +18,7 @@ gcx is a unified CLI for managing Grafana resources, dashboards, datasources, al
 
 ### SEE ALSO
 
+* [gcx adaptive](gcx_adaptive.md)	 - Manage Grafana Cloud Adaptive Telemetry.
 * [gcx alert](gcx_alert.md)	 - Manage Grafana alert rules and alert groups
 * [gcx api](gcx_api.md)	 - Make direct HTTP requests to the Grafana API
 * [gcx commands](gcx_commands.md)	 - List all commands with rich metadata for agent consumption
