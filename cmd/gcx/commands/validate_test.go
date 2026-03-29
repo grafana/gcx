@@ -3,13 +3,13 @@ package commands_test
 import (
 	"testing"
 
-	"github.com/grafana/gcx/cmd/gcx/commands"
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/resources"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 func TestCompareAgainstLive_AllCovered(t *testing.T) {
-	catalog := []commands.ResourceTypeInfo{
+	catalog := []agent.CatalogEntry{
 		{Kind: "Dashboard", Group: "dashboard.grafana.app", Version: "v1beta1", Source: "well-known"},
 		{Kind: "Folder", Group: "folder.grafana.app", Version: "v1beta1", Source: "well-known"},
 	}
@@ -19,7 +19,7 @@ func TestCompareAgainstLive_AllCovered(t *testing.T) {
 		{GroupVersion: schema.GroupVersion{Group: "folder.grafana.app", Version: "v1beta1"}, Kind: "Folder", Plural: "folders"},
 	}
 
-	result := commands.ExportCompareAgainstLive(catalog, live)
+	result := agent.CompareAgainstLive(catalog, live)
 
 	if result.Total != 2 {
 		t.Errorf("total = %d, want 2", result.Total)
@@ -36,7 +36,7 @@ func TestCompareAgainstLive_AllCovered(t *testing.T) {
 }
 
 func TestCompareAgainstLive_UncoveredTypes(t *testing.T) {
-	catalog := []commands.ResourceTypeInfo{
+	catalog := []agent.CatalogEntry{
 		{Kind: "Dashboard", Group: "dashboard.grafana.app", Version: "v1beta1", Source: "well-known"},
 	}
 
@@ -46,7 +46,7 @@ func TestCompareAgainstLive_UncoveredTypes(t *testing.T) {
 		{GroupVersion: schema.GroupVersion{Group: "playlist.grafana.app", Version: "v1"}, Kind: "Playlist", Plural: "playlists"},
 	}
 
-	result := commands.ExportCompareAgainstLive(catalog, live)
+	result := agent.CompareAgainstLive(catalog, live)
 
 	if result.Total != 3 {
 		t.Errorf("total = %d, want 3", result.Total)
@@ -58,20 +58,19 @@ func TestCompareAgainstLive_UncoveredTypes(t *testing.T) {
 		t.Errorf("uncovered = %d, want 2", len(result.Uncovered))
 	}
 
-	uncoveredKinds := map[string]bool{}
-	for _, u := range result.Uncovered {
-		uncoveredKinds[u.Kind] = true
-	}
-	if !uncoveredKinds["Folder"] {
-		t.Error("expected Folder in uncovered")
-	}
-	if !uncoveredKinds["Playlist"] {
-		t.Error("expected Playlist in uncovered")
+	// Results are sorted by Kind, so we can check order.
+	if len(result.Uncovered) == 2 {
+		if result.Uncovered[0].Kind != "Folder" {
+			t.Errorf("uncovered[0].Kind = %q, want Folder", result.Uncovered[0].Kind)
+		}
+		if result.Uncovered[1].Kind != "Playlist" {
+			t.Errorf("uncovered[1].Kind = %q, want Playlist", result.Uncovered[1].Kind)
+		}
 	}
 }
 
 func TestCompareAgainstLive_StaleTypes(t *testing.T) {
-	catalog := []commands.ResourceTypeInfo{
+	catalog := []agent.CatalogEntry{
 		{Kind: "Dashboard", Group: "dashboard.grafana.app", Version: "v1beta1", Source: "well-known"},
 		{Kind: "OldThing", Group: "old.grafana.app", Version: "v1", Source: "well-known"},
 	}
@@ -80,7 +79,7 @@ func TestCompareAgainstLive_StaleTypes(t *testing.T) {
 		{GroupVersion: schema.GroupVersion{Group: "dashboard.grafana.app", Version: "v1beta1"}, Kind: "Dashboard", Plural: "dashboards"},
 	}
 
-	result := commands.ExportCompareAgainstLive(catalog, live)
+	result := agent.CompareAgainstLive(catalog, live)
 
 	if result.Covered != 1 {
 		t.Errorf("covered = %d, want 1", result.Covered)
@@ -94,7 +93,7 @@ func TestCompareAgainstLive_StaleTypes(t *testing.T) {
 }
 
 func TestCompareAgainstLive_DeduplicatesVersions(t *testing.T) {
-	catalog := []commands.ResourceTypeInfo{
+	catalog := []agent.CatalogEntry{
 		{Kind: "Dashboard", Group: "dashboard.grafana.app", Version: "v1beta1", Source: "well-known"},
 	}
 
@@ -105,7 +104,7 @@ func TestCompareAgainstLive_DeduplicatesVersions(t *testing.T) {
 		{GroupVersion: schema.GroupVersion{Group: "dashboard.grafana.app", Version: "v2alpha1"}, Kind: "Dashboard", Plural: "dashboards"},
 	}
 
-	result := commands.ExportCompareAgainstLive(catalog, live)
+	result := agent.CompareAgainstLive(catalog, live)
 
 	if result.Total != 1 {
 		t.Errorf("total = %d, want 1 (should deduplicate versions)", result.Total)
@@ -123,7 +122,7 @@ func TestCompareAgainstLive_EmptyCatalog(t *testing.T) {
 		{GroupVersion: schema.GroupVersion{Group: "dashboard.grafana.app", Version: "v1beta1"}, Kind: "Dashboard", Plural: "dashboards"},
 	}
 
-	result := commands.ExportCompareAgainstLive(nil, live)
+	result := agent.CompareAgainstLive(nil, live)
 
 	if result.Total != 1 {
 		t.Errorf("total = %d, want 1", result.Total)
@@ -134,11 +133,11 @@ func TestCompareAgainstLive_EmptyCatalog(t *testing.T) {
 }
 
 func TestCompareAgainstLive_EmptyLive(t *testing.T) {
-	catalog := []commands.ResourceTypeInfo{
+	catalog := []agent.CatalogEntry{
 		{Kind: "Dashboard", Group: "dashboard.grafana.app", Version: "v1beta1", Source: "well-known"},
 	}
 
-	result := commands.ExportCompareAgainstLive(catalog, nil)
+	result := agent.CompareAgainstLive(catalog, nil)
 
 	if result.Total != 0 {
 		t.Errorf("total = %d, want 0", result.Total)

@@ -120,23 +120,7 @@ against live resource discovery and report uncovered or stale types.`,
 
 			// --validate: compare catalog against live Grafana instance.
 			if opts.ValidateLive {
-				if cfgOpts == nil {
-					return errors.New("--validate requires a configured Grafana context")
-				}
-				ctx := cmd.Context()
-				cfg, err := cfgOpts.LoadGrafanaConfig(ctx)
-				if err != nil {
-					return fmt.Errorf("--validate requires a valid Grafana connection: %w", err)
-				}
-				result, err := validateAgainstLive(ctx, cfg, resourceTypes)
-				if err != nil {
-					return err
-				}
-				writeValidationReport(cmd.OutOrStdout(), result)
-				if len(result.Uncovered) > 0 {
-					return fmt.Errorf("%d resource types not covered by catalog", len(result.Uncovered))
-				}
-				return nil
+				return runValidation(cmd, cfgOpts, resourceTypes, &opts.IO)
 			}
 
 			if opts.Flat {
@@ -288,6 +272,9 @@ func (c *commandsTextCodec) Encode(output io.Writer, value any) error {
 		for _, cmd := range v.Commands {
 			fmt.Fprintf(tab, "%s\t%s\t%s\n", cmd.FullPath, cmd.Description, cmd.TokenCost)
 		}
+	case *agent.ValidationResult:
+		writeValidationReport(output, v)
+		return nil
 	default:
 		return fmt.Errorf("unsupported type for text codec: %T", value)
 	}
@@ -304,4 +291,27 @@ func writeCommandTable(w io.Writer, info CommandInfo, indent string) {
 
 func (c *commandsTextCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("commands text codec does not support decoding")
+}
+
+// runValidation handles the --validate path, extracted to reduce nesting.
+func runValidation(cmd *cobra.Command, cfgOpts *cmdconfig.Options, resourceTypes []ResourceTypeInfo, io *cmdio.Options) error {
+	if cfgOpts == nil {
+		return errors.New("--validate requires a configured Grafana context")
+	}
+	ctx := cmd.Context()
+	cfg, err := cfgOpts.LoadGrafanaConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("--validate requires a valid Grafana connection: %w", err)
+	}
+	result, err := validateAgainstLive(ctx, cfg, resourceTypes)
+	if err != nil {
+		return err
+	}
+	if encErr := io.Encode(cmd.OutOrStdout(), result); encErr != nil {
+		return encErr
+	}
+	if len(result.Uncovered) > 0 {
+		return fmt.Errorf("%d resource types not covered by catalog", len(result.Uncovered))
+	}
+	return nil
 }
