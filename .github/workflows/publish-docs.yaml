@@ -35,7 +35,7 @@ jobs:
           devbox-version: ${{ env.DEVBOX_VERSION }}
 
       - name: Build documentation
-        run: make docs
+        run: devbox run -- make docs
 
       - name: Upload pages artifact
         id: deployment

@@ -37,7 +37,7 @@ jobs:
           devbox-version: ${{ env.DEVBOX_VERSION }}
 
       - name: Run golangci-lint
-        run: make lint
+        run: devbox run -- make lint
 
   tests:
     name: Tests
@@ -65,7 +65,7 @@ jobs:
           devbox-version: ${{ env.DEVBOX_VERSION }}
 
       - name: Tests
-        run: make tests
+        run: devbox run -- make tests
 
   docs:
     name: Documentation
@@ -83,8 +83,8 @@ jobs:
           devbox-version: ${{ env.DEVBOX_VERSION }}
 
       - name: Check for drift in the generated documentation references
-        run: make reference-drift
+        run: devbox run -- make reference-drift
         shell: bash
 
       - name: Build documentation
-        run: make docs
+        run: devbox run -- make docs
