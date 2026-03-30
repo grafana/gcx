@@ -1,7 +1,7 @@
 name: 🚀 Enhancement
 description: Suggest an improvement to existing functionality
 title: "[Enhancement]: "
-labels: ["type/enhancement", "action/needs-triage"]
+labels: ["type::feature", "action/needs-triage"]
 body:
   - type: markdown
     attributes:

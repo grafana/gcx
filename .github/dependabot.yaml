@@ -2,7 +2,7 @@ version: 2
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
-    labels: ["type/dependencies"]
+    labels: ["type::chore"]
     schedule:
       interval: "weekly"
     groups:
@@ -12,7 +12,7 @@ updates:
 
   - package-ecosystem: "gomod"
     directory: "/"
-    labels: ["type/dependencies"]
+    labels: ["type::chore"]
     schedule:
       interval: "weekly"
     groups:
