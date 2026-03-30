@@ -1,13 +1,14 @@
 SHELL := /bin/bash
 
-# Within devbox
 ifneq "$(DEVBOX_CONFIG_DIR)" ""
-    RUN_DEVBOX:=
-else ifneq ($(shell which go 2>/dev/null),)
-    # Required tools available natively; skip devbox
-    RUN_DEVBOX:=
-else # Normal shell
-    RUN_DEVBOX:=devbox run
+  # Within devbox
+  RUN_DEVBOX:=
+else ifneq ($(shell which devbox 2>/dev/null),)
+  # Devbox available, use it.
+  RUN_DEVBOX:=devbox run
+else
+  # No devbox, fall back to regular commands.
+  RUN_DEVBOX:=
 endif
 
 ##@ General
