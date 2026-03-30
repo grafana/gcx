@@ -289,7 +289,7 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 
 ## 10. Knowledge Graph
 
-**Assessment:** Both old and new have comprehensive KG support. New gcx provider covers all major subcommands (setup, enable, status, datasets, vendors, rules, model-rules, suppressions, relabel-rules, service-dashboard, kpi-display, frontend-rules, env, entities, entity-types, scopes, assertions, search, graph-config, inspect, health, open).
+**Assessment:** Both old and new have comprehensive KG support. New gcx provider covers all major subcommands (setup, enable, status, datasets, vendors, rules, model-rules, suppressions, relabel-rules, service-dashboard, kpi-display, frontend-rules, env, entities, entity-types, scopes, insights, search, graph-config, inspect, health, open).
 
 ---
 

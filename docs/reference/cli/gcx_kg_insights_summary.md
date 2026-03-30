@@ -1,9 +1,9 @@
-## gcx kg assertions summary
+## gcx kg insights summary
 
-Get assertions summary for a time range.
+Get insights summary for a time range.
 
 ```
-gcx kg assertions summary [Type--Name] [flags]
+gcx kg insights summary [Type--Name] [flags]
 ```
 
 ### Options
@@ -32,5 +32,5 @@ gcx kg assertions summary [Type--Name] [flags]
 
 ### SEE ALSO
 
-* [gcx kg assertions](gcx_kg_assertions.md)	 - Query Knowledge Graph assertions.
+* [gcx kg insights](gcx_kg_insights.md)	 - Query Knowledge Graph insights.
 

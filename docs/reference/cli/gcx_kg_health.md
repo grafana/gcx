@@ -1,6 +1,6 @@
 ## gcx kg health
 
-Show a health summary with active assertion counts.
+Show a health summary with active insight counts.
 
 ```
 gcx kg health [flags]

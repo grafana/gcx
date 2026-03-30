@@ -1,22 +1,18 @@
-## gcx kg assertions graph
+## gcx kg insights source-metrics
 
-Query assertions with graph topology.
+Get source metrics for a specific insight.
 
 ```
-gcx kg assertions graph [Type--Name] [flags]
+gcx kg insights source-metrics [flags]
 ```
 
 ### Options
 
 ```
-      --env string         Environment scope
-  -f, --file string        Input file (YAML) — overrides all other flags
-  -h, --help               help for graph
-      --name string        Entity name
-      --namespace string   Namespace scope
-      --since string       Duration ago (e.g. 1h, 30m, 7d) — default 1h
-      --site string        Site scope
-      --type string        Entity type
+  -f, --file string         Input file (YAML)
+  -h, --help                help for source-metrics
+      --insight-id string   Insight ID
+      --since string        Duration ago (e.g. 1h, 30m, 7d)
 ```
 
 ### Options inherited from parent commands
@@ -32,5 +28,5 @@ gcx kg assertions graph [Type--Name] [flags]
 
 ### SEE ALSO
 
-* [gcx kg assertions](gcx_kg_assertions.md)	 - Query Knowledge Graph assertions.
+* [gcx kg insights](gcx_kg_insights.md)	 - Query Knowledge Graph insights.
 

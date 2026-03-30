@@ -9,9 +9,9 @@ gcx kg entities show [name] [flags]
 ### Options
 
 ```
-      --assertions-only    Only return entities with active assertions (list mode)
       --env string         Environment scope
   -h, --help               help for show
+      --insights-only      Only return entities with active insights (list mode)
       --json string        Comma-separated list of fields to include in JSON output, or '?' to discover available fields
       --namespace string   Namespace scope
   -o, --output string      Output format. One of: json, table, yaml (default "table")

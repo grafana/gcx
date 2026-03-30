@@ -1,22 +1,24 @@
-## gcx kg assertions query
+## gcx kg insights active
 
-Query assertions for a time range.
+Show entities with active insights.
 
 ```
-gcx kg assertions query [Type--Name] [flags]
+gcx kg insights active [flags]
 ```
 
 ### Options
 
 ```
       --env string         Environment scope
-  -f, --file string        Input file (YAML) — overrides all other flags
-  -h, --help               help for query
-      --name string        Entity name
+  -h, --help               help for active
+      --json string        Comma-separated list of fields to include in JSON output, or '?' to discover available fields
       --namespace string   Namespace scope
+  -o, --output string      Output format. One of: json, yaml (default "json")
+      --page int           Page number (0-based)
+      --severity string    Filter by severity (e.g. CRITICAL, WARNING)
       --since string       Duration ago (e.g. 1h, 30m, 7d) — default 1h
       --site string        Site scope
-      --type string        Entity type
+      --type string        Filter by entity type
 ```
 
 ### Options inherited from parent commands
@@ -32,5 +34,5 @@ gcx kg assertions query [Type--Name] [flags]
 
 ### SEE ALSO
 
-* [gcx kg assertions](gcx_kg_assertions.md)	 - Query Knowledge Graph assertions.
+* [gcx kg insights](gcx_kg_insights.md)	 - Query Knowledge Graph insights.
 

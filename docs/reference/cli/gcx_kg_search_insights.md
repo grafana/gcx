@@ -1,15 +1,22 @@
-## gcx kg assertions example
+## gcx kg search insights
 
-Print an example assertions request YAML.
+Search for insights matching a query.
 
 ```
-gcx kg assertions example [flags]
+gcx kg search insights [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help   help for example
+      --env string         Environment scope
+  -f, --file string        Input file (YAML)
+  -h, --help               help for insights
+      --name string        Entity name filter
+      --namespace string   Namespace scope
+      --since string       Duration ago (e.g. 1h, 30m, 7d) — default 1h
+      --site string        Site scope
+      --type string        Entity type filter
 ```
 
 ### Options inherited from parent commands
@@ -25,5 +32,5 @@ gcx kg assertions example [flags]
 
 ### SEE ALSO
 
-* [gcx kg assertions](gcx_kg_assertions.md)	 - Query Knowledge Graph assertions.
+* [gcx kg search](gcx_kg_search.md)	 - Search Knowledge Graph entities or insights.
 

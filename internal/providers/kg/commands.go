@@ -1022,7 +1022,7 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 		},
 	}
 	showCmd.Flags().StringVar(&showType, "type", "", "Entity type (required for single entity, optional for list)")
-	showCmd.Flags().BoolVar(&assertionsOnly, "assertions-only", false, "Only return entities with active assertions (list mode)")
+	showCmd.Flags().BoolVar(&assertionsOnly, "insights-only", false, "Only return entities with active insights (list mode)")
 	showCmd.Flags().IntVar(&page, "page", 0, "Page number, 0-based (list mode)")
 	showScope.register(showCmd)
 	ioOpts.setup(showCmd.Flags())
@@ -1216,14 +1216,14 @@ func (o *scopesListOpts) setup(flags *pflag.FlagSet) {
 }
 
 // ---------------------------------------------------------------------------
-// Assertions commands
+// Insights commands
 // ---------------------------------------------------------------------------
 
 //nolint:maintidx
 func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "assertions",
-		Short: "Query Knowledge Graph assertions.",
+		Use:   "insights",
+		Short: "Query Knowledge Graph insights.",
 	}
 
 	// assertionsRunE builds a RunE that constructs an assertions request from flags,
@@ -1253,7 +1253,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 
 	queryCmd := &cobra.Command{
 		Use:   "query [Type--Name]",
-		Short: "Query assertions for a time range.",
+		Short: "Query insights for a time range.",
 		RunE: assertionsRunE(func(c *Client, ctx context.Context, req AssertionsRequest) (any, error) {
 			return c.QueryAssertions(ctx, req)
 		}),
@@ -1261,7 +1261,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 
 	summaryCmd := &cobra.Command{
 		Use:   "summary [Type--Name]",
-		Short: "Get assertions summary for a time range.",
+		Short: "Get insights summary for a time range.",
 		RunE: assertionsRunE(func(c *Client, ctx context.Context, req AssertionsRequest) (any, error) {
 			return c.AssertionsSummary(ctx, req)
 		}),
@@ -1269,7 +1269,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 
 	graphCmd := &cobra.Command{
 		Use:   "graph [Type--Name]",
-		Short: "Query assertions with graph topology.",
+		Short: "Query insights with graph topology.",
 		RunE: assertionsRunE(func(c *Client, ctx context.Context, req AssertionsRequest) (any, error) {
 			return c.AssertionsGraph(ctx, req)
 		}),
@@ -1295,7 +1295,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	activeOpts := &assertionsActiveOpts{}
 	activeCmd := &cobra.Command{
 		Use:   "active",
-		Short: "Show entities with active assertions.",
+		Short: "Show entities with active insights.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := activeOpts.IO.Validate(); err != nil {
 				return err
@@ -1336,7 +1336,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	var entityMetricScope scopeFlags
 	entityMetricCmd := &cobra.Command{
 		Use:   "entity-metric [Type--Name]",
-		Short: "Get metric data for a specific assertion on an entity.",
+		Short: "Get metric data for a specific insight on an entity.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
@@ -1362,9 +1362,9 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				assertionID, _ := cmd.Flags().GetString("assertion-id")
+				assertionID, _ := cmd.Flags().GetString("insight-id")
 				if assertionID == "" {
-					return errors.New("--assertion-id is required (or use --file)")
+					return errors.New("--insight-id is required (or use --file)")
 				}
 				startMs, endMs, err := entityMetricScope.resolveTime()
 				if err != nil {
@@ -1392,14 +1392,14 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	entityMetricCmd.Flags().StringP("file", "f", "", "Input file (YAML)")
 	entityMetricCmd.Flags().String("name", "", "Entity name")
 	entityMetricCmd.Flags().String("type", "", "Entity type")
-	entityMetricCmd.Flags().String("assertion-id", "", "Assertion ID")
+	entityMetricCmd.Flags().String("insight-id", "", "Insight ID")
 	entityMetricScope.register(entityMetricCmd)
 
 	// source-metrics subcommand
 	var sourceMetricsSince string
 	sourceMetricsCmd := &cobra.Command{
 		Use:   "source-metrics",
-		Short: "Get source metrics for a specific assertion.",
+		Short: "Get source metrics for a specific insight.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var req SourceMetricsRequest
 			//nolint:nestif
@@ -1413,9 +1413,9 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 					return fmt.Errorf("invalid YAML: %w", err)
 				}
 			} else {
-				assertionID, _ := cmd.Flags().GetString("assertion-id")
+				assertionID, _ := cmd.Flags().GetString("insight-id")
 				if assertionID == "" {
-					return errors.New("--assertion-id is required (or use --file)")
+					return errors.New("--insight-id is required (or use --file)")
 				}
 				startMs, endMs, err := resolveTimeEpochMs(sourceMetricsSince)
 				if err != nil {
@@ -1443,12 +1443,12 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 		},
 	}
 	sourceMetricsCmd.Flags().StringP("file", "f", "", "Input file (YAML)")
-	sourceMetricsCmd.Flags().String("assertion-id", "", "Assertion ID")
+	sourceMetricsCmd.Flags().String("insight-id", "", "Insight ID")
 	sourceMetricsCmd.Flags().StringVar(&sourceMetricsSince, "since", "", "Duration ago (e.g. 1h, 30m, 7d)")
 
 	exampleCmd := &cobra.Command{
 		Use:   "example",
-		Short: "Print an example assertions request YAML.",
+		Short: "Print an example insights request YAML.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return printYAMLExample(cmd.OutOrStdout(), exampleAssertionsRequest())
 		},
@@ -1546,15 +1546,15 @@ func filterBySeverity(results []SearchResult, sev string) []SearchResult {
 func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "search",
-		Short: "Search Knowledge Graph entities or assertions.",
+		Short: "Search Knowledge Graph entities or insights.",
 	}
 
-	// search assertions
+	// search insights
 	var searchAssertionsFile string
 	var searchAssertionsScope scopeFlags
 	searchAssertionsCmd := &cobra.Command{
-		Use:   "assertions",
-		Short: "Search for assertions matching a query.",
+		Use:   "insights",
+		Short: "Search for insights matching a query.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
@@ -1756,7 +1756,7 @@ func newInspectCommand(loader RESTConfigLoader) *cobra.Command {
 	ioOpts := &inspectOpts{}
 	cmd := &cobra.Command{
 		Use:   "inspect [Type--Name]",
-		Short: "Inspect an entity: info, assertions, and summary.",
+		Short: "Inspect an entity: info, insights, and summary.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := ioOpts.IO.Validate(); err != nil {
 				return err
@@ -1809,9 +1809,9 @@ func newInspectCommand(loader RESTConfigLoader) *cobra.Command {
 			}
 
 			result := map[string]any{
-				"entity":     entityInfo,
-				"assertions": assertions,
-				"summary":    summary,
+				"entity":   entityInfo,
+				"insights": assertions,
+				"summary":  summary,
 			}
 			return ioOpts.IO.Encode(cmd.OutOrStdout(), result)
 		},
@@ -1844,7 +1844,7 @@ func newHealthCommand(loader RESTConfigLoader) *cobra.Command {
 	ioOpts := &healthOpts{}
 	cmd := &cobra.Command{
 		Use:   "health",
-		Short: "Show a health summary with active assertion counts.",
+		Short: "Show a health summary with active insight counts.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := ioOpts.IO.Validate(); err != nil {
 				return err
@@ -1890,9 +1890,9 @@ func newHealthCommand(loader RESTConfigLoader) *cobra.Command {
 				}
 			}
 			return ioOpts.IO.Encode(cmd.OutOrStdout(), map[string]any{
-				"severityCounts":  sevCounts,
-				"totalEntities":   totalEntities,
-				"totalAssertions": len(results),
+				"severityCounts": sevCounts,
+				"totalEntities":  totalEntities,
+				"totalInsights":  len(results),
 			})
 		},
 	}

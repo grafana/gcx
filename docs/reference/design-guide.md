@@ -519,7 +519,7 @@ Commands that are **exempt** from K8s wrapping:
 
 | Category | Examples | Rationale |
 |----------|----------|-----------|
-| Query/search results | `assertions query`, `search entities` | Time-series and aggregation results, not storable resources |
+| Query/search results | `insights query`, `search entities` | Time-series and aggregation results, not storable resources |
 | Operational views | `status`, `health`, `inspect` | Composite or derived data, not individual resources |
 | Read-only reference data | `vendors list`, `scopes list`, `entity-types list` | Discoverable metadata, not user-managed resources |
 | Singleton config | `env get`, `graph-config` | Single config objects, not collections of resources |

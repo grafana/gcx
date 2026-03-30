@@ -1,22 +1,22 @@
-## gcx kg search assertions
+## gcx kg insights query
 
-Search for assertions matching a query.
+Query insights for a time range.
 
 ```
-gcx kg search assertions [flags]
+gcx kg insights query [Type--Name] [flags]
 ```
 
 ### Options
 
 ```
       --env string         Environment scope
-  -f, --file string        Input file (YAML)
-  -h, --help               help for assertions
-      --name string        Entity name filter
+  -f, --file string        Input file (YAML) — overrides all other flags
+  -h, --help               help for query
+      --name string        Entity name
       --namespace string   Namespace scope
       --since string       Duration ago (e.g. 1h, 30m, 7d) — default 1h
       --site string        Site scope
-      --type string        Entity type filter
+      --type string        Entity type
 ```
 
 ### Options inherited from parent commands
@@ -32,5 +32,5 @@ gcx kg search assertions [flags]
 
 ### SEE ALSO
 
-* [gcx kg search](gcx_kg_search.md)	 - Search Knowledge Graph entities or assertions.
+* [gcx kg insights](gcx_kg_insights.md)	 - Query Knowledge Graph insights.
 

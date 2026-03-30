@@ -1,18 +1,15 @@
-## gcx kg assertions source-metrics
+## gcx kg insights example
 
-Get source metrics for a specific assertion.
+Print an example insights request YAML.
 
 ```
-gcx kg assertions source-metrics [flags]
+gcx kg insights example [flags]
 ```
 
 ### Options
 
 ```
-      --assertion-id string   Assertion ID
-  -f, --file string           Input file (YAML)
-  -h, --help                  help for source-metrics
-      --since string          Duration ago (e.g. 1h, 30m, 7d)
+  -h, --help   help for example
 ```
 
 ### Options inherited from parent commands
@@ -28,5 +25,5 @@ gcx kg assertions source-metrics [flags]
 
 ### SEE ALSO
 
-* [gcx kg assertions](gcx_kg_assertions.md)	 - Query Knowledge Graph assertions.
+* [gcx kg insights](gcx_kg_insights.md)	 - Query Knowledge Graph insights.
 
