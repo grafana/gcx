@@ -143,6 +143,7 @@ internal/
 │   ├── k6/         K6 Cloud provider (projects, tests, runs, envvars)
 │   ├── kg/         Knowledge Graph (Asserts) provider
 │   ├── oncall/     OnCall provider (schedules, integrations, escalation chains)
+│   ├── appo11y/    App Observability provider (overrides, settings — singleton resources)
 │   ├── slo/        SLO provider (definitions, reports)
 │   └── synth/      Synthetic Monitoring provider (checks, probes)
 ├── dashboards/  Dashboard Image Renderer client (PNG snapshots)

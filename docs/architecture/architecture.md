@@ -677,6 +677,15 @@ Files most important for understanding the codebase. Organized by architectural 
 | `internal/providers/adaptive/logs/` | Logs patterns (provider-only, read-only) and exemptions (TypedCRUD adapter) |
 | `internal/providers/adaptive/traces/` | Traces recommendations (provider-only, read-only) and policies (TypedCRUD adapter) |
 
+### App Observability Provider
+
+| File | Purpose |
+|------|---------|
+| `internal/providers/appo11y/provider.go` | `AppO11yProvider` implementing the `providers.Provider` interface |
+| `internal/providers/appo11y/client.go` | Plugin proxy HTTP client (shared by both subpackages for testing) |
+| `internal/providers/appo11y/overrides/` | Overrides (MetricsGeneratorConfig) — singleton TypedCRUD with ETag concurrency |
+| `internal/providers/appo11y/settings/` | Settings (PluginSettings) — singleton TypedCRUD without ETag |
+
 ### Alert Provider
 
 | File | Purpose |

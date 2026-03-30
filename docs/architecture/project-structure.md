@@ -39,6 +39,9 @@ gcx/
 │   │   │   ├── metrics/      # Metrics rules and recommendations (provider-only)
 │   │   │   ├── logs/         # Logs patterns (provider-only) and exemptions (TypedCRUD adapter)
 │   │   │   └── traces/       # Traces recommendations (provider-only) and policies (TypedCRUD adapter)
+│   │   ├── appo11y/          # App Observability provider (singleton config resources)
+│   │   │   ├── overrides/    # MetricsGeneratorConfig with ETag concurrency
+│   │   │   └── settings/     # PluginSettings
 │   │   ├── alert/            # Alert provider (rules and groups)
 │   │   ├── fleet/            # Fleet Management provider (pipeline and collector resources)
 │   │   ├── incidents/        # IRM Incidents provider
