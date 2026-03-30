@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -303,7 +304,7 @@ func decodeExemptionResponse(r io.Reader) (*Exemption, error) {
 		return nil, fmt.Errorf("failed to decode exemption response: %w", err)
 	}
 	if bare.ID == "" {
-		return nil, fmt.Errorf("exemption response missing id")
+		return nil, errors.New("exemption response missing id")
 	}
 	return &bare, nil
 }
