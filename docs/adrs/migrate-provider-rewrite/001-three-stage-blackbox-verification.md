@@ -1,7 +1,8 @@
 # Three-Stage Skill Structure with Dual Blackbox Isolation
 
 **Created**: 2026-03-24
-**Status**: proposed
+**Status**: superseded
+**Superseded by**: [002-five-phase-pipeline-redesign](002-five-phase-pipeline-redesign.md)
 **Bead**: gcx-experiments-zn8
 **Supersedes**: none
 

@@ -138,6 +138,71 @@ url := fmt.Sprintf("%s/a/grafana-{plugin}-app/{resource}s/%s", host, id)
 exec.CommandContext(ctx, "open", url).Start()
 ```
 
+## HTTP Client Reference Section Template
+
+Phase 2 plan.md MUST include this section, filled in per provider. Copy this
+template and replace placeholders with concrete values from the gcx source.
+
+### Endpoint Table
+
+| Method | Path | Purpose | Notes |
+|--------|------|---------|-------|
+| GET | `/api/v1/{resource}` | List all resources | Pagination: `?page={n}&limit={n}` or cursor |
+| GET | `/api/v1/{resource}/{id}` | Get single resource | Returns unwrapped object (not envelope) |
+| POST | `/api/v1/{resource}` | Create resource | Request body = resource JSON |
+| PUT | `/api/v1/{resource}/{id}` | Update resource | Full replace, not PATCH |
+| DELETE | `/api/v1/{resource}/{id}` | Delete resource | Returns 204 on success |
+
+**CRITICAL:** Copy exact paths from gcx source. Do NOT guess paths — many APIs
+have non-obvious patterns (org-scoped paths, plugin proxy paths, gRPC-style
+POST-only endpoints).
+
+### Auth Helper Signature
+
+```go
+// Standard Bearer token (same Grafana SA token):
+func (c *Client) setAuth(req *http.Request) {
+    req.Header.Set("Authorization", "Bearer "+c.token)
+}
+
+// Separate token (provider-specific):
+func (c *Client) setAuth(req *http.Request) {
+    req.Header.Set("Authorization", "Bearer "+c.providerToken)
+}
+
+// Token exchange (e.g., K6):
+func (c *Client) setAuth(req *http.Request) {
+    req.Header.Set("Authorization", "Bearer "+c.exchangedToken)
+}
+```
+
+Document which pattern applies and any extra headers (e.g., `X-Grafana-Url`,
+`X-Scope-OrgID`).
+
+### Client Construction Pattern
+
+```go
+type Client struct {
+    baseURL string       // API base URL (trimmed trailing slash)
+    token   string       // Auth token (Bearer or provider-specific)
+    http    *http.Client // Standard HTTP client with timeout
+}
+
+func NewClient(baseURL, token string) *Client {
+    return &Client{
+        baseURL: strings.TrimRight(baseURL, "/"),
+        token:   token,
+        http:    &http.Client{Timeout: 30 * time.Second},
+    }
+}
+```
+
+Document exact field names — builders MUST use these names, not invent aliases.
+If the provider needs additional fields (instanceID, orgID, stackID), add them
+to the struct and constructor.
+
+---
+
 ## API Endpoint Gotchas
 
 **CRITICAL:** Always check gcx source for exact endpoint paths. Don't guess.

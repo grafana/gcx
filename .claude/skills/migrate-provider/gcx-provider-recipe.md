@@ -18,15 +18,35 @@ product that doesn't have a gcx client.
 ## Skill Structure
 
 This recipe covers the **mechanical implementation steps only** (Steps 1-8).
-Workflow orchestration, stage gates, and verification are governed by
+Workflow orchestration, phase gates, and verification are governed by
 `SKILL.md` — read it before starting any migration.
 
-- **Orchestration** is defined in SKILL.md's three-stage pipeline (Audit → Build → Verify).
-- **Stage gates** in SKILL.md control when you may proceed between stages.
-- **Verification** is a separate Verify stage in SKILL.md — not a recipe step.
+- **Orchestration** is defined in SKILL.md's five-phase pipeline (Phase 0–4).
+- **Phase gates** in SKILL.md control when you may proceed between phases.
+- **Phase 0** (Requirements Gathering) produces the context bundle autonomously.
+- **Phase 1** (Design Discovery) produces the ADR via interactive brainstorming.
+- **Phase 2** (Spec Planning) produces spec.md + plan.md + tasks.md.
+- **Phase 3** (Build) executes this recipe's mechanical steps (Steps 1-8).
+- **Phase 4** (Verification) runs smoke tests and produces the comparison report.
 
 If you are an agent reading this recipe: your orchestration comes from SKILL.md.
 This recipe provides the mechanical steps only.
+
+## Spec Document Format
+
+Phase 2 produces three documents that replace the old custom audit artifacts
+(parity table, architectural mapping, verification plan):
+
+- **spec.md** — functional requirements with FR-NNN numbering + acceptance
+  criteria in Given/When/Then format. Replaces the parity table.
+- **plan.md** — architecture decisions + HTTP client reference section (endpoint
+  table, auth signature, client construction). Replaces the architectural mapping.
+- **tasks.md** — dependency graph with waves + per-task deliverables including
+  mandatory smoke test tasks for all four output formats. Replaces the
+  verification plan.
+
+All three documents use YAML frontmatter. See `commands-reference.md` for the
+HTTP client reference section template that plan.md must include.
 
 ---
 
@@ -50,7 +70,7 @@ gcx --context=<ctx> health
 mkdir -p internal/providers/{name}/{resource}
 ```
 
-If any of these fail, fix them before proceeding. Smoke tests (Step 8) require
+If any of these fail, fix them before proceeding. Smoke tests (Phase 4) require
 live API access to both gcx and gcx against the same Grafana instance.
 
 ---
@@ -240,19 +260,29 @@ Minimum test coverage per resource:
 1. **Client tests** — httptest server returning known JSON, verify List/Get/Create/Update/Delete parse correctly
 2. **Adapter round-trip** — create a typed object → adapter wraps it → unwrap back → compare (no data loss)
 
-### Step 7: Verify
+### Step 7: Integration / Wiring
+
+After Build-Core and Build-Commands are complete, the integration task MUST:
+
+1. **Wire `Commands()` and `TypedRegistrations()`** in the provider's `init()`
+2. **Add blank import** in `cmd/gcx/root/command.go`
+3. **Fix import cycles** introduced by subpackage references
+4. **Fix variable name collisions** from package aliasing
+5. **Run `make lint`** and fix all new issues
 
 ```bash
-make all                                    # lint + tests + build + docs
-gcx providers                        # new provider listed
+GCX_AGENT_MODE=false make all    # MUST exit 0 — this is the Phase 3 gate
+gcx providers                    # new provider listed
 ```
 
-### Step 8: Smoke Test (MANDATORY — STOP GATE)
+### Step 8: Smoke Test (Phase 4 — MANDATORY)
 
-> **STOP AND REPORT.** Do not declare this step complete until you have run
-> the structured comparisons below and pasted the results into the
-> conversation. The user must see evidence that every command produces
-> equivalent output before the port is considered done.
+> **Phase 4 verification.** This step maps to Phase 4 steps 4A–4E in SKILL.md.
+> Smoke tests are MANDATORY — they MUST NOT be marked "optional" or "if live
+> instance available". If no live instance is available, block and report.
+>
+> Every show/list command MUST be tested with ALL FOUR output formats:
+> `-o json`, `-o table`, `-o wide`, `-o yaml`.
 
 Run every command side-by-side with gcx against a real instance. Don't skip
 this — wrong endpoint names, wrapped request bodies, and response shape
@@ -314,7 +344,7 @@ Copy the output from 8a into the conversation. For each comparison:
 | Schema/example | Non-empty | Fix register.go |
 | Output formats | All `OK` | Fix codec registration |
 
-> **STOP.** Do not proceed to Step 9 until all checks pass or discrepancies
+> **STOP.** Do not pass the Phase 4 gate until all checks pass or discrepancies
 > are explicitly justified (e.g., "durationSeconds differs by 2s — acceptable").
 
 **Do NOT skip smoke tests.** The incidents port had two wrong endpoint names
@@ -504,5 +534,5 @@ is for **building providers from scratch**. Key differences:
 | Design doc | Optional (pattern is known) | Required per stage |
 | Auth | Copy gcx's auth model | Investigate from scratch |
 
-After porting, the provider should pass the same Phase 4 verification
-checklist from `/add-provider`.
+After porting, the provider must pass Phase 4 verification (SKILL.md steps
+4A–4E) including mandatory smoke tests with all four output formats.
