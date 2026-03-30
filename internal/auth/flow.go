@@ -139,6 +139,10 @@ func (f *Flow) Run(ctx context.Context) (*Result, error) {
 	fmt.Println("Opening browser to authenticate...")
 	fmt.Printf("If browser doesn't open, visit:\n  %s\n\n", authURL)
 
+	fmt.Printf("Verification code: %s\n", verificationCode(codeChallenge))
+	fmt.Println("Check that this code matches what is shown in the browser before approving.")
+	fmt.Println()
+
 	if err := openBrowser(authURL); err != nil {
 		fmt.Println("(Could not open browser automatically)")
 	}
@@ -370,6 +374,15 @@ func generateCodeVerifier() (string, error) {
 func generateCodeChallenge(verifier string) string {
 	hash := sha256.Sum256([]byte(verifier))
 	return base64.RawURLEncoding.EncodeToString(hash[:])
+}
+
+func verificationCode(codeChallenge string) string {
+	raw, err := base64.RawURLEncoding.DecodeString(codeChallenge)
+	if err != nil || len(raw) < 4 {
+		return codeChallenge[:8]
+	}
+	h := hex.EncodeToString(raw[:4])
+	return h[:4] + "-" + h[4:]
 }
 
 func openBrowser(url string) error {
