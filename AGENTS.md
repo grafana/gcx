@@ -179,6 +179,7 @@ bd close <id>         # Complete work
 
 ### Rules
 
+- Both `bd` and `dolt` commands MUST be executed from the repository root, not from worktrees
 - Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
 - Run `bd prime` for detailed command reference and session close protocol
 - Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
