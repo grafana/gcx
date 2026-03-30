@@ -9,26 +9,9 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/providers/adaptive/traces"
-	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// newTestCommand builds a minimal root + adaptive traces command tree wired to
-// a test HTTP server, bypassing auth resolution.
-func newTestCommand(t *testing.T, server *httptest.Server) *cobra.Command {
-	t.Helper()
-
-	// We build the command tree by calling traces.Commands with a nil loader,
-	// then replace the RunE functions with ones that use our test client.
-	// Instead, we test at the client + codec level since the commands delegate
-	// directly to the client methods.
-
-	// For command-level testing, we test the table codec and the readPolicyFromFile
-	// helper which don't require auth.
-	_ = server
-	return nil
-}
 
 // ---------------------------------------------------------------------------
 // policyTableCodec
@@ -165,7 +148,10 @@ func TestPoliciesCreate_Integration(t *testing.T) {
 		assert.Equal(t, "/adaptive-traces/api/v1/policies", r.URL.Path)
 
 		var p traces.Policy
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&p))
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&p)) {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
 		assert.Equal(t, "probabilistic", p.Type)
 
 		p.ID = "new-id"

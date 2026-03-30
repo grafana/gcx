@@ -612,7 +612,7 @@ func ReadPolicyFromReader(reader io.Reader) (*Policy, error) {
 		// Try YAML if JSON fails.
 		yamlCodec := format.NewYAMLCodec()
 		if yamlErr := yamlCodec.Decode(strings.NewReader(string(data)), &policy); yamlErr != nil {
-			return nil, fmt.Errorf("decoding input (tried JSON and YAML): json=%w, yaml=%v", err, yamlErr)
+			return nil, fmt.Errorf("decoding input (tried JSON and YAML): json=%w, yaml=%w", err, yamlErr)
 		}
 	}
 
