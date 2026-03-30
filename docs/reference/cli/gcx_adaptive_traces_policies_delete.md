@@ -1,11 +1,16 @@
-## gcx adaptive traces
+## gcx adaptive traces policies delete
 
-Manage Adaptive Traces resources.
+Delete one or more Adaptive Traces sampling policies.
+
+```
+gcx adaptive traces policies delete <id>... [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for traces
+      --force   Skip confirmation prompt
+  -h, --help    help for delete
 ```
 
 ### Options inherited from parent commands
@@ -21,7 +26,5 @@ Manage Adaptive Traces resources.
 
 ### SEE ALSO
 
-* [gcx adaptive](gcx_adaptive.md)	 - Manage Grafana Cloud Adaptive Telemetry.
 * [gcx adaptive traces policies](gcx_adaptive_traces_policies.md)	 - Manage Adaptive Traces sampling policies.
-* [gcx adaptive traces recommendations](gcx_adaptive_traces_recommendations.md)	 - Manage Adaptive Traces recommendations.
 

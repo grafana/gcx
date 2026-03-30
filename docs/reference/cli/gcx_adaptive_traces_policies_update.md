@@ -1,11 +1,18 @@
-## gcx adaptive traces
+## gcx adaptive traces policies update
 
-Manage Adaptive Traces resources.
+Update an Adaptive Traces sampling policy by ID.
+
+```
+gcx adaptive traces policies update <id> [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for traces
+  -f, --filename string   File containing the policy definition (use - for stdin)
+  -h, --help              help for update
+      --json string       Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+  -o, --output string     Output format. One of: json, yaml (default "yaml")
 ```
 
 ### Options inherited from parent commands
@@ -21,7 +28,5 @@ Manage Adaptive Traces resources.
 
 ### SEE ALSO
 
-* [gcx adaptive](gcx_adaptive.md)	 - Manage Grafana Cloud Adaptive Telemetry.
 * [gcx adaptive traces policies](gcx_adaptive_traces_policies.md)	 - Manage Adaptive Traces sampling policies.
-* [gcx adaptive traces recommendations](gcx_adaptive_traces_recommendations.md)	 - Manage Adaptive Traces recommendations.
 
