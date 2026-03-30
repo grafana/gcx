@@ -59,7 +59,7 @@ type Result struct {
 }
 
 // DefaultScopes are the scopes requested by grafanactl.
-var DefaultScopes = []string{"grafana-api:read", "grafana-api:write", "grafana-api:delete"}
+var DefaultScopes = []string{"grafana-api:read", "grafana-api:write", "grafana-api:delete", "assistant:a2a"}
 
 // Options configures the authentication flow.
 type Options struct {
