@@ -1,7 +1,7 @@
 # App O11y Provider: CLI UX and Resource Adapter Design
 
 **Created**: 2026-03-30
-**Status**: proposed
+**Status**: accepted
 **Bead**: gcx-4r1g (parent epic: gcx-3c3403a9)
 **Supersedes**: none
 

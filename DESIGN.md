@@ -27,8 +27,7 @@ Grafana REST API (/apis endpoint)    -- K8s-compatible API (Grafana 12+)
 ### Extension Pipelines
 
 ```
-Provider System (internal/providers/)     -- 10 providers (SLO, Synth, OnCall,
-    |                                        Fleet, K6, KG, Incidents, Alert, Adaptive, AppO11y)
+Provider System (internal/providers/)     -- Pluggable Cloud product providers
     |                                        TypedRegistrations() → adapter.Register()
     v
 Grafana REST API (/api endpoint)          -- Product-specific REST endpoints
@@ -55,7 +54,7 @@ Datasource HTTP APIs                      -- PromQL, LogQL, profile, trace queri
 | [010](docs/adrs/oncall-typed-crud/001-table-driven-typedcrud.md) | Table-driven TypedCRUD[T] for OnCall Adapter | proposed |
 | [011](docs/adrs/adaptive-provider/001-cli-ux-and-resource-adapter-design.md) | Adaptive telemetry provider: CLI UX, adapter scope, verb naming | proposed |
 | [012](docs/adrs/migrate-provider-rewrite/002-five-phase-pipeline-redesign.md) | Five-phase pipeline redesign for /migrate-provider | accepted |
-| [013](docs/adrs/appo11y-provider/001-cli-ux-and-resource-adapter-design.md) | App O11y provider: singleton TypedCRUD, ETag-as-annotation, verb naming | proposed |
+| [013](docs/adrs/appo11y-provider/001-cli-ux-and-resource-adapter-design.md) | App O11y provider: singleton TypedCRUD, ETag-as-annotation, verb naming | accepted |
 
 See [docs/adrs/](docs/adrs/) for all ADRs.
 
