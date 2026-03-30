@@ -12,7 +12,6 @@
 
 | Document | What It Covers | Read When |
 |----------|---------------|-----------|
-| [CLAUDE.md](CLAUDE.md) | Build commands, test commands, project conventions, code org standards | Running builds/tests, understanding conventions |
 | [docs/architecture/README.md](docs/architecture/README.md) | Full index of architecture docs with navigation guide | Deep-diving into any architectural domain |
 
 ### Architecture Docs (in `docs/architecture/`)
@@ -83,10 +82,21 @@ Grafana K8s API            Product REST APIs
 
 ```bash
 make build       # Build to bin/gcx
-make tests       # Run all tests with race detection
-make lint        # Run golangci-lint
+make tests       # Run all tests (cli-tests + linter-tests)
+make lint        # Run golangci-lint (config: .golangci.yaml, all linters enabled minus exclusions)
 make all         # lint + tests + build + docs
 make docs        # Generate + build all documentation
+
+# Run a single test or package
+go test -v ./internal/providers/slo/definitions/...            # one package
+go test -v -run TestClientList ./internal/providers/slo/...    # one test by name
+
+# Linter rule tests (Rego-based)
+go run ./cmd/gcx/ dev lint test ./internal/linter/bundle/gcx/
+
+# Integration test environment (docker-compose: Grafana + MySQL)
+make test-env-up    # start
+make test-env-down  # stop
 ```
 
 > **Before pushing to a PR branch, always run `make all` with agent mode explicitly disabled.**
