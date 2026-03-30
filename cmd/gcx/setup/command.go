@@ -19,7 +19,7 @@ func Command() *cobra.Command {
 	loader := &providers.ConfigLoader{}
 	loader.BindFlags(cmd.PersistentFlags())
 
-	cmd.AddCommand(instrumentation.Command())
+	cmd.AddCommand(instrumentation.Command(loader))
 	cmd.AddCommand(statusCmd())
 
 	return cmd
