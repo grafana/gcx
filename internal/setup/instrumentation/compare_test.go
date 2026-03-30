@@ -9,12 +9,12 @@ import (
 
 func TestCompare(t *testing.T) {
 	tests := []struct {
-		name           string
-		local          *instrumentation.AppSpec
-		remote         *instrumentation.AppSpec
-		wantEmpty      bool
-		wantNS         []string // remote-only namespace names
-		wantApps       []instrumentation.RemoteOnlyApp
+		name      string
+		local     *instrumentation.AppSpec
+		remote    *instrumentation.AppSpec
+		wantEmpty bool
+		wantNS    []string // remote-only namespace names
+		wantApps  []instrumentation.RemoteOnlyApp
 	}{
 		{
 			name:      "nil remote returns empty diff",

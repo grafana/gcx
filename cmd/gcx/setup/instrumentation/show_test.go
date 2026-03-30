@@ -1,4 +1,4 @@
-package instrumentation
+package instrumentation_test
 
 import (
 	"bytes"
@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	cmdinstr "github.com/grafana/gcx/cmd/gcx/setup/instrumentation"
 	"github.com/grafana/gcx/internal/fleet"
 	instrum "github.com/grafana/gcx/internal/setup/instrumentation"
 	"github.com/stretchr/testify/assert"
@@ -75,11 +76,11 @@ func TestRunShow_AppAndK8sConfig(t *testing.T) {
 	}
 	srv := ts.start(t)
 
-	opts := &showOpts{}
+	opts := &cmdinstr.ShowOpts{}
 	opts.IO.OutputFormat = "yaml"
 
 	var out bytes.Buffer
-	err := runShow(context.Background(), opts, makeShowClient(srv.URL), "prod-1", &out)
+	err := cmdinstr.RunShow(context.Background(), opts, makeShowClient(srv.URL), "prod-1", &out)
 	require.NoError(t, err)
 
 	output := out.String()
@@ -110,11 +111,11 @@ func TestRunShow_JSONOutput(t *testing.T) {
 	}
 	srv := ts.start(t)
 
-	opts := &showOpts{}
+	opts := &cmdinstr.ShowOpts{}
 	opts.IO.OutputFormat = "json"
 
 	var out bytes.Buffer
-	err := runShow(context.Background(), opts, makeShowClient(srv.URL), "prod-1", &out)
+	err := cmdinstr.RunShow(context.Background(), opts, makeShowClient(srv.URL), "prod-1", &out)
 	require.NoError(t, err)
 
 	// Verify valid JSON.
@@ -135,7 +136,7 @@ func TestRunShow_JSONOutput(t *testing.T) {
 func TestRunShow_MissingClusterArg(t *testing.T) {
 	// The cobra.ExactArgs(1) constraint is enforced before RunE is invoked.
 	// We test via the command itself to confirm the argument validation.
-	cmd := newShowCommand(nil) // loader is unused since cobra rejects the call first
+	cmd := cmdinstr.NewShowCommand(nil) // loader is unused since cobra rejects the call first
 	cmd.SetArgs([]string{})
 
 	var out bytes.Buffer
@@ -155,16 +156,16 @@ func TestRunShow_MissingClusterArg(t *testing.T) {
 // when a cluster has no instrumentation configured (NC-008).
 func TestRunShow_EmptyCluster(t *testing.T) {
 	ts := &showTestServer{
-		getAppResp: `{}`,      // no namespaces
-		getK8sResp: `{}`,      // all false
+		getAppResp: `{}`, // no namespaces
+		getK8sResp: `{}`, // all false
 	}
 	srv := ts.start(t)
 
-	opts := &showOpts{}
+	opts := &cmdinstr.ShowOpts{}
 	opts.IO.OutputFormat = "yaml"
 
 	var out bytes.Buffer
-	err := runShow(context.Background(), opts, makeShowClient(srv.URL), "unconfigured-cluster", &out)
+	err := cmdinstr.RunShow(context.Background(), opts, makeShowClient(srv.URL), "unconfigured-cluster", &out)
 	require.NoError(t, err, "show must not return an error for unconfigured cluster")
 
 	var cfg instrum.InstrumentationConfig
@@ -183,11 +184,11 @@ func TestRunShow_ManifestHasNoStackSpecificValues(t *testing.T) {
 	}
 	srv := ts.start(t)
 
-	opts := &showOpts{}
+	opts := &cmdinstr.ShowOpts{}
 	opts.IO.OutputFormat = "yaml"
 
 	var out bytes.Buffer
-	err := runShow(context.Background(), opts, makeShowClient(srv.URL), "prod-1", &out)
+	err := cmdinstr.RunShow(context.Background(), opts, makeShowClient(srv.URL), "prod-1", &out)
 	require.NoError(t, err)
 
 	content := out.String()

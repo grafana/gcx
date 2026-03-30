@@ -23,20 +23,20 @@ func newTestClient(serverURL string) *instrumentation.Client {
 
 // captureHandler returns an http.HandlerFunc that captures the request and writes
 // the provided JSON response body with the given status code.
-func captureHandler(t *testing.T, statusCode int, respBody string) (handler http.HandlerFunc, captured *capturedRequest) {
+func captureHandler(t *testing.T, statusCode int, respBody string) (http.HandlerFunc, *capturedRequest) {
 	t.Helper()
-	cap := &capturedRequest{}
+	cr := &capturedRequest{}
 	return func(w http.ResponseWriter, r *http.Request) {
-		cap.Method = r.Method
-		cap.Path = r.URL.Path
-		cap.ContentType = r.Header.Get("Content-Type")
-		cap.Accept = r.Header.Get("Accept")
+		cr.Method = r.Method
+		cr.Path = r.URL.Path
+		cr.ContentType = r.Header.Get("Content-Type")
+		cr.Accept = r.Header.Get("Accept")
 		b, _ := io.ReadAll(r.Body)
-		cap.Body = string(b)
+		cr.Body = string(b)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(statusCode)
 		_, _ = w.Write([]byte(respBody))
-	}, cap
+	}, cr
 }
 
 type capturedRequest struct {
@@ -47,15 +47,15 @@ type capturedRequest struct {
 	Body        string
 }
 
-func assertConnectRequest(t *testing.T, cap *capturedRequest, wantPath string) {
+func assertConnectRequest(t *testing.T, cr *capturedRequest, wantPath string) {
 	t.Helper()
-	assert.Equal(t, http.MethodPost, cap.Method, "must use POST")
-	assert.Equal(t, "application/json", cap.ContentType, "must set Content-Type: application/json")
-	assert.Equal(t, "application/json", cap.Accept, "must set Accept: application/json")
-	assert.True(t, strings.HasSuffix(cap.Path, wantPath), "expected path suffix %q, got %q", wantPath, cap.Path)
+	assert.Equal(t, http.MethodPost, cr.Method, "must use POST")
+	assert.Equal(t, "application/json", cr.ContentType, "must set Content-Type: application/json")
+	assert.Equal(t, "application/json", cr.Accept, "must set Accept: application/json")
+	assert.True(t, strings.HasSuffix(cr.Path, wantPath), "expected path suffix %q, got %q", wantPath, cr.Path)
 }
 
-func TestClient_GetAppInstrumentation(t *testing.T) {
+func TestClient_GetAppInstrumentation(t *testing.T) { //nolint:dupl // Intentionally similar to RunK8sDiscovery — distinct endpoints.
 	tests := []struct {
 		name        string
 		clusterName string
@@ -89,15 +89,15 @@ func TestClient_GetAppInstrumentation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler, cap := captureHandler(t, tt.respStatus, tt.respBody)
+			handler, cr := captureHandler(t, tt.respStatus, tt.respBody)
 			srv := httptest.NewServer(handler)
 			defer srv.Close()
 
 			client := newTestClient(srv.URL)
 			resp, err := client.GetAppInstrumentation(context.Background(), tt.clusterName)
 
-			assertConnectRequest(t, cap, "/instrumentation.v1.InstrumentationService/GetAppInstrumentation")
-			assert.Contains(t, cap.Body, tt.clusterName)
+			assertConnectRequest(t, cr, "/instrumentation.v1.InstrumentationService/GetAppInstrumentation")
+			assert.Contains(t, cr.Body, tt.clusterName)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -138,15 +138,15 @@ func TestClient_SetAppInstrumentation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler, cap := captureHandler(t, tt.respStatus, tt.respBody)
+			handler, cr := captureHandler(t, tt.respStatus, tt.respBody)
 			srv := httptest.NewServer(handler)
 			defer srv.Close()
 
 			client := newTestClient(srv.URL)
 			err := client.SetAppInstrumentation(context.Background(), tt.clusterName, tt.namespaces)
 
-			assertConnectRequest(t, cap, "/instrumentation.v1.InstrumentationService/SetAppInstrumentation")
-			assert.Contains(t, cap.Body, tt.clusterName)
+			assertConnectRequest(t, cr, "/instrumentation.v1.InstrumentationService/SetAppInstrumentation")
+			assert.Contains(t, cr.Body, tt.clusterName)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -184,15 +184,15 @@ func TestClient_GetK8SInstrumentation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler, cap := captureHandler(t, tt.respStatus, tt.respBody)
+			handler, cr := captureHandler(t, tt.respStatus, tt.respBody)
 			srv := httptest.NewServer(handler)
 			defer srv.Close()
 
 			client := newTestClient(srv.URL)
 			resp, err := client.GetK8SInstrumentation(context.Background(), tt.clusterName)
 
-			assertConnectRequest(t, cap, "/instrumentation.v1.InstrumentationService/GetK8SInstrumentation")
-			assert.Contains(t, cap.Body, tt.clusterName)
+			assertConnectRequest(t, cr, "/instrumentation.v1.InstrumentationService/GetK8SInstrumentation")
+			assert.Contains(t, cr.Body, tt.clusterName)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -231,15 +231,15 @@ func TestClient_SetK8SInstrumentation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler, cap := captureHandler(t, tt.respStatus, tt.respBody)
+			handler, cr := captureHandler(t, tt.respStatus, tt.respBody)
 			srv := httptest.NewServer(handler)
 			defer srv.Close()
 
 			client := newTestClient(srv.URL)
 			err := client.SetK8SInstrumentation(context.Background(), tt.clusterName, tt.k8s)
 
-			assertConnectRequest(t, cap, "/instrumentation.v1.InstrumentationService/SetK8SInstrumentation")
-			assert.Contains(t, cap.Body, tt.clusterName)
+			assertConnectRequest(t, cr, "/instrumentation.v1.InstrumentationService/SetK8SInstrumentation")
+			assert.Contains(t, cr.Body, tt.clusterName)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -275,15 +275,15 @@ func TestClient_SetupK8sDiscovery(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler, cap := captureHandler(t, tt.respStatus, tt.respBody)
+			handler, cr := captureHandler(t, tt.respStatus, tt.respBody)
 			srv := httptest.NewServer(handler)
 			defer srv.Close()
 
 			client := newTestClient(srv.URL)
 			err := client.SetupK8sDiscovery(context.Background(), tt.clusterName)
 
-			assertConnectRequest(t, cap, "/discovery.v1.DiscoveryService/SetupK8sDiscovery")
-			assert.Contains(t, cap.Body, tt.clusterName)
+			assertConnectRequest(t, cr, "/discovery.v1.DiscoveryService/SetupK8sDiscovery")
+			assert.Contains(t, cr.Body, tt.clusterName)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -294,7 +294,7 @@ func TestClient_SetupK8sDiscovery(t *testing.T) {
 	}
 }
 
-func TestClient_RunK8sDiscovery(t *testing.T) {
+func TestClient_RunK8sDiscovery(t *testing.T) { //nolint:dupl // Intentionally similar to GetAppInstrumentation — distinct endpoints.
 	tests := []struct {
 		name        string
 		clusterName string
@@ -328,15 +328,15 @@ func TestClient_RunK8sDiscovery(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler, cap := captureHandler(t, tt.respStatus, tt.respBody)
+			handler, cr := captureHandler(t, tt.respStatus, tt.respBody)
 			srv := httptest.NewServer(handler)
 			defer srv.Close()
 
 			client := newTestClient(srv.URL)
 			resp, err := client.RunK8sDiscovery(context.Background(), tt.clusterName)
 
-			assertConnectRequest(t, cap, "/discovery.v1.DiscoveryService/RunK8sDiscovery")
-			assert.Contains(t, cap.Body, tt.clusterName)
+			assertConnectRequest(t, cr, "/discovery.v1.DiscoveryService/RunK8sDiscovery")
+			assert.Contains(t, cr.Body, tt.clusterName)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -379,14 +379,14 @@ func TestClient_RunK8sMonitoring(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler, cap := captureHandler(t, tt.respStatus, tt.respBody)
+			handler, cr := captureHandler(t, tt.respStatus, tt.respBody)
 			srv := httptest.NewServer(handler)
 			defer srv.Close()
 
 			client := newTestClient(srv.URL)
 			resp, err := client.RunK8sMonitoring(context.Background())
 
-			assertConnectRequest(t, cap, "/discovery.v1.DiscoveryService/RunK8sMonitoring")
+			assertConnectRequest(t, cr, "/discovery.v1.DiscoveryService/RunK8sMonitoring")
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -404,8 +404,8 @@ func TestClient_RunK8sMonitoring(t *testing.T) {
 func TestClient_AllEndpoints_RequestBodyContainsClusterName(t *testing.T) {
 	// Extra check: each request body must include clusterName where applicable.
 	tests := []struct {
-		name          string
-		invoke        func(client *instrumentation.Client, captured *capturedRequest, srv *httptest.Server) error
+		name           string
+		invoke         func(client *instrumentation.Client, captured *capturedRequest, srv *httptest.Server) error
 		wantPathSuffix string
 	}{
 		{

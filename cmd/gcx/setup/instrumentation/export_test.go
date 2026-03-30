@@ -26,3 +26,16 @@ func NewDiscoverCommand(loader fleet.ConfigLoader) *cobra.Command {
 func NewStatusCommand(loader fleet.ConfigLoader) *cobra.Command {
 	return newStatusCommand(loader)
 }
+
+// RunShow exposes the internal runShow function for use in external test packages.
+func RunShow(ctx context.Context, opts *showOpts, client *instrum.Client, cluster string, out io.Writer) error {
+	return runShow(ctx, opts, client, cluster, out)
+}
+
+// ShowOpts is an alias for showOpts so external tests can construct opts.
+type ShowOpts = showOpts
+
+// NewShowCommand exposes newShowCommand for use in external test packages.
+func NewShowCommand(loader fleet.ConfigLoader) *cobra.Command {
+	return newShowCommand(loader)
+}
