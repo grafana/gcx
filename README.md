@@ -45,7 +45,7 @@ See [Release life cycle for Grafana Labs](https://grafana.com/docs/release-life-
 **Pre-built binary (Linux/macOS/Windows):**
 
 ```bash
-curl -L https://github.com/grafana/gcx/releases/latest/download/gcx-$(uname -s)-$(uname -m) -o gcx
+curl -fL https://github.com/grafana/gcx/releases/latest/download/gcx-$(uname -s)-$(uname -m) -o gcx
 chmod +x gcx && sudo mv gcx /usr/local/bin/
 ```
 
@@ -257,7 +257,7 @@ jobs:
 
       - name: Install gcx
         run: |
-          curl -L https://github.com/grafana/gcx/releases/latest/download/gcx-Linux-x86_64 -o gcx
+          curl -fL https://github.com/grafana/gcx/releases/latest/download/gcx-Linux-x86_64 -o gcx
           chmod +x gcx && sudo mv gcx /usr/local/bin/
 
       - name: Deploy resources
