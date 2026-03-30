@@ -5,7 +5,9 @@ Manage Grafana App Observability settings
 ### Options
 
 ```
-  -h, --help   help for appo11y
+      --config string    Path to the configuration file to use
+      --context string   Name of the context to use
+  -h, --help             help for appo11y
 ```
 
 ### Options inherited from parent commands
