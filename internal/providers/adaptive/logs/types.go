@@ -53,7 +53,7 @@ func (r *LogRecommendation) Label() string {
 //nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type Exemption struct {
 	ID             string `json:"id,omitempty"`
-	StreamSelector string `json:"stream_selector"`
+	StreamSelector string `json:"stream_selector,omitempty"`
 	Reason         string `json:"reason,omitempty"`
 	CreatedAt      string `json:"created_at,omitempty"`
 	CreatedBy      string `json:"created_by,omitempty"`
@@ -71,3 +71,26 @@ func (e *Exemption) SetResourceName(name string) { e.ID = name }
 
 // Compile-time assertion: Exemption implements adapter.ResourceIdentity.
 var _ adapter.ResourceIdentity = &Exemption{}
+
+// LogSegment represents an adaptive logs segment configuration.
+// Named LogSegment to avoid collision with the Segment type (per-dimension stats within a recommendation).
+//
+//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
+type LogSegment struct {
+	ID                string `json:"id,omitempty"`
+	Selector          string `json:"selector,omitempty"`
+	Name              string `json:"name"`
+	FallbackToDefault bool   `json:"fallback_to_default,omitempty"`
+	CreatedAt         string `json:"created_at,omitempty"`
+	UpdatedAt         string `json:"updated_at,omitempty"`
+	IsEarly           bool   `json:"is_early,omitempty"`
+}
+
+// GetResourceName implements adapter.ResourceNamer for TypedCRUD compatibility.
+func (s LogSegment) GetResourceName() string { return s.ID }
+
+// SetResourceName implements adapter.ResourceIdentity for TypedCRUD compatibility.
+func (s *LogSegment) SetResourceName(name string) { s.ID = name }
+
+// Compile-time assertion: LogSegment implements adapter.ResourceIdentity.
+var _ adapter.ResourceIdentity = &LogSegment{}

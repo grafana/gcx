@@ -1,11 +1,11 @@
-## gcx adaptive logs patterns
+## gcx adaptive logs exemptions
 
-Manage adaptive log patterns.
+Manage adaptive log exemptions.
 
 ### Options
 
 ```
-  -h, --help   help for patterns
+  -h, --help   help for exemptions
 ```
 
 ### Options inherited from parent commands
@@ -22,5 +22,8 @@ Manage adaptive log patterns.
 ### SEE ALSO
 
 * [gcx adaptive logs](gcx_adaptive_logs.md)	 - Manage Adaptive Logs resources.
-* [gcx adaptive logs patterns show](gcx_adaptive_logs_patterns_show.md)	 - Show adaptive log pattern recommendations.
+* [gcx adaptive logs exemptions create](gcx_adaptive_logs_exemptions_create.md)	 - Create an adaptive log exemption.
+* [gcx adaptive logs exemptions delete](gcx_adaptive_logs_exemptions_delete.md)	 - Delete an adaptive log exemption.
+* [gcx adaptive logs exemptions list](gcx_adaptive_logs_exemptions_list.md)	 - List adaptive log exemptions.
+* [gcx adaptive logs exemptions update](gcx_adaptive_logs_exemptions_update.md)	 - Update an adaptive log exemption.
 

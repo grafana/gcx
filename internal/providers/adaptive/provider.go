@@ -71,6 +71,13 @@ func (p *Provider) TypedRegistrations() []adapter.Registration {
 			Example:    logs.ExemptionExample(),
 		},
 		{
+			Factory:    logs.NewSegmentAdapterFactory(loader),
+			Descriptor: logs.SegmentDescriptor(),
+			GVK:        logs.SegmentDescriptor().GroupVersionKind(),
+			Schema:     logs.SegmentSchema(),
+			Example:    logs.SegmentExample(),
+		},
+		{
 			Factory:    traces.NewPolicyAdapterFactory(loader),
 			Descriptor: traces.PolicyDescriptor(),
 			GVK:        traces.PolicyDescriptor().GroupVersionKind(),

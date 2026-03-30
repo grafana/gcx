@@ -1,11 +1,15 @@
-## gcx adaptive logs
+## gcx adaptive logs exemptions delete
 
-Manage Adaptive Logs resources.
+Delete an adaptive log exemption.
+
+```
+gcx adaptive logs exemptions delete ID [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for logs
+  -h, --help   help for delete
 ```
 
 ### Options inherited from parent commands
@@ -21,8 +25,5 @@ Manage Adaptive Logs resources.
 
 ### SEE ALSO
 
-* [gcx adaptive](gcx_adaptive.md)	 - Manage Grafana Cloud Adaptive Telemetry.
 * [gcx adaptive logs exemptions](gcx_adaptive_logs_exemptions.md)	 - Manage adaptive log exemptions.
-* [gcx adaptive logs patterns](gcx_adaptive_logs_patterns.md)	 - Manage adaptive log patterns.
-* [gcx adaptive logs segments](gcx_adaptive_logs_segments.md)	 - Manage adaptive log segments.
 

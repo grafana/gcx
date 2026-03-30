@@ -78,8 +78,8 @@ func TestTypedRegistrations(t *testing.T) {
 	}
 
 	regs := p.TypedRegistrations()
-	if len(regs) != 2 {
-		t.Fatalf("TypedRegistrations() returned %d, want 2", len(regs))
+	if len(regs) != 3 {
+		t.Fatalf("TypedRegistrations() returned %d, want 3", len(regs))
 	}
 
 	// Verify Exemption registration.
@@ -93,15 +93,26 @@ func TestTypedRegistrations(t *testing.T) {
 		t.Error("registration[0] Example is nil")
 	}
 
-	// Verify Policy registration.
-	if regs[1].GVK.Kind != "Policy" {
-		t.Errorf("registration[1] Kind = %q, want %q", regs[1].GVK.Kind, "Policy")
+	// Verify Segment registration.
+	if regs[1].GVK.Kind != "Segment" {
+		t.Errorf("registration[1] Kind = %q, want %q", regs[1].GVK.Kind, "Segment")
 	}
 	if regs[1].Schema == nil {
 		t.Error("registration[1] Schema is nil")
 	}
 	if regs[1].Example == nil {
 		t.Error("registration[1] Example is nil")
+	}
+
+	// Verify Policy registration.
+	if regs[2].GVK.Kind != "Policy" {
+		t.Errorf("registration[2] Kind = %q, want %q", regs[2].GVK.Kind, "Policy")
+	}
+	if regs[2].Schema == nil {
+		t.Error("registration[2] Schema is nil")
+	}
+	if regs[2].Example == nil {
+		t.Error("registration[2] Example is nil")
 	}
 }
 

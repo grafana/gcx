@@ -1,18 +1,15 @@
-## gcx adaptive logs patterns apply
+## gcx adaptive logs segments delete
 
-Apply drop rate recommendations to adaptive log patterns.
+Delete an adaptive log segment.
 
 ```
-gcx adaptive logs patterns apply [SUBSTRING] [flags]
+gcx adaptive logs segments delete ID [flags]
 ```
 
 ### Options
 
 ```
-      --all            Apply to all patterns
-      --dry-run        Preview changes without making them
-  -h, --help           help for apply
-      --rate float32   Drop rate to apply (0.0–1.0); defaults to recommended_drop_rate if not set
+  -h, --help   help for delete
 ```
 
 ### Options inherited from parent commands
@@ -28,5 +25,5 @@ gcx adaptive logs patterns apply [SUBSTRING] [flags]
 
 ### SEE ALSO
 
-* [gcx adaptive logs patterns](gcx_adaptive_logs_patterns.md)	 - Manage adaptive log patterns.
+* [gcx adaptive logs segments](gcx_adaptive_logs_segments.md)	 - Manage adaptive log segments.
 
