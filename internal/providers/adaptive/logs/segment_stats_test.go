@@ -47,6 +47,28 @@ func TestAggregateSegmentVolumes(t *testing.T) {
 	assert.Equal(t, uint64(10), got[2].Volume)
 }
 
+func TestAggregateSegmentVolumes_matchesLogSegmentSelector(t *testing.T) {
+	t.Parallel()
+
+	sel := `{namespace="prod"}`
+	recs := []logs.LogRecommendation{
+		{
+			Segments: map[string]logs.Segment{
+				sel: {Volume: 99},
+			},
+		},
+	}
+	segments := []logs.LogSegment{
+		{ID: "uuid-1", Name: "Production", Selector: sel},
+	}
+
+	got := logs.AggregateSegmentVolumes(recs, segments)
+	require.Len(t, got, 1)
+	assert.Equal(t, sel, got[0].ID)
+	assert.Equal(t, "Production", got[0].Name)
+	assert.Equal(t, uint64(99), got[0].Volume)
+}
+
 func TestAggregateSegmentVolumes_unknownSegment(t *testing.T) {
 	t.Parallel()
 

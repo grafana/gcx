@@ -114,8 +114,8 @@ type patternsStatsOpts struct {
 }
 
 func (o *patternsStatsOpts) setup(cmd *cobra.Command) {
-	o.IO.RegisterCustomCodec("table", &segmentStatsTableCodec{wide: false})
-	o.IO.RegisterCustomCodec("wide", &segmentStatsTableCodec{wide: true})
+	o.IO.RegisterCustomCodec("table", &segmentStatsTableCodec{wide: false, opts: o})
+	o.IO.RegisterCustomCodec("wide", &segmentStatsTableCodec{wide: true, opts: o})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(cmd.Flags())
 }
@@ -165,6 +165,7 @@ func (h *logsHelper) patternsStatsCommand() *cobra.Command {
 
 type segmentStatsTableCodec struct {
 	wide bool
+	opts *patternsStatsOpts
 }
 
 func (c *segmentStatsTableCodec) Format() format.Format {
@@ -181,9 +182,18 @@ func (c *segmentStatsTableCodec) Encode(w io.Writer, v any) error {
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "SEGMENT ID\tNAME\tVOLUME")
+	fmt.Fprintln(tw, "SEGMENT\tNAME\tVOLUME")
+	noTruncate := c.opts != nil && c.opts.IO.NoTruncate
 	for _, s := range stats {
-		fmt.Fprintf(tw, "%s\t%s\t%s\n", s.ID, s.Name, humanBytes(s.Volume))
+		keyCol := s.ID
+		if !noTruncate {
+			if c.wide {
+				keyCol = truncate(keyCol, 120)
+			} else {
+				keyCol = truncate(keyCol, 80)
+			}
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\n", keyCol, s.Name, humanBytes(s.Volume))
 	}
 	return tw.Flush()
 }

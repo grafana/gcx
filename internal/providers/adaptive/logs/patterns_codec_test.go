@@ -77,7 +77,9 @@ func TestSegmentStatsTableCodec(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, codec.Encode(&buf, stats))
 
-	assert.Contains(t, buf.String(), "s1")
-	assert.Contains(t, buf.String(), "One")
-	assert.Contains(t, buf.String(), "1.00 KB")
+	out := buf.String()
+	assert.Contains(t, out, "SEGMENT")
+	assert.Contains(t, out, "s1")
+	assert.Contains(t, out, "One")
+	assert.Contains(t, out, "1.00 KB")
 }

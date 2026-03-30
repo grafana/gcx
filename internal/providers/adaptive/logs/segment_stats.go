@@ -25,8 +25,10 @@ type SegmentPatternStat struct {
 	Volume uint64 `json:"volume"`
 }
 
-// AggregateSegmentVolumes sums Segment.Volume per segment ID across recommendations and
-// attaches names from the segment catalog. IDs not present in segments get name "(unknown)".
+// AggregateSegmentVolumes sums Segment.Volume per segment key across recommendations and
+// attaches names from the segment catalog. Recommendation keys are often LogQL selectors
+// that match LogSegment.Selector rather than LogSegment.ID; we resolve names by both ID and
+// Selector. Keys with no catalog match get name "(unknown)".
 func AggregateSegmentVolumes(recs []LogRecommendation, segments []LogSegment) []SegmentPatternStat {
 	sums := make(map[string]uint64)
 	for _, rec := range recs {
@@ -35,20 +37,24 @@ func AggregateSegmentVolumes(recs []LogRecommendation, segments []LogSegment) []
 		}
 	}
 
-	knownID := make(map[string]bool)
-	nameByID := make(map[string]string)
+	known := make(map[string]bool)
+	nameByKey := make(map[string]string)
 	for _, s := range segments {
-		if s.ID == "" {
-			continue
+		name := s.Name
+		if s.ID != "" {
+			known[s.ID] = true
+			nameByKey[s.ID] = name
 		}
-		knownID[s.ID] = true
-		nameByID[s.ID] = s.Name
+		if s.Selector != "" {
+			known[s.Selector] = true
+			nameByKey[s.Selector] = name
+		}
 	}
 
 	out := make([]SegmentPatternStat, 0, len(sums))
 	for id, vol := range sums {
-		name := nameByID[id]
-		if !knownID[id] {
+		name := nameByKey[id]
+		if !known[id] {
 			name = "(unknown)"
 		}
 		out = append(out, SegmentPatternStat{
