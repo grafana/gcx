@@ -1,7 +1,7 @@
 ---
 type: feature-spec
 title: "Declarative Instrumentation Setup under gcx setup"
-status: approved
+status: done
 research: docs/research/2026-03-30-setup-framework.md
 beads_id: gcx-4r1g
 created: 2026-03-30
