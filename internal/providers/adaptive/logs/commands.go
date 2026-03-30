@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"text/tabwriter"
 
 	"github.com/grafana/gcx/internal/format"
@@ -12,6 +13,7 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/adaptive/auth"
 	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
 )
 
 // Commands returns the logs command group for adaptive logs management.
@@ -48,6 +50,7 @@ func (h *logsHelper) patternsCommand() *cobra.Command {
 	}
 	cmd.AddCommand(
 		h.patternsShowCommand(),
+		h.patternsStatsCommand(),
 	)
 	return cmd
 }
@@ -57,12 +60,16 @@ func (h *logsHelper) patternsCommand() *cobra.Command {
 // ---------------------------------------------------------------------------
 
 type patternsShowOpts struct {
-	IO cmdio.Options
+	IO        cmdio.Options
+	SegmentID string
+	TopN      int
 }
 
 func (o *patternsShowOpts) setup(cmd *cobra.Command) {
-	o.IO.RegisterCustomCodec("table", &patternsTableCodec{wide: false})
-	o.IO.RegisterCustomCodec("wide", &patternsTableCodec{wide: true})
+	cmd.Flags().StringVar(&o.SegmentID, "segment", "", "Only include patterns that have volume data for this segment ID")
+	cmd.Flags().IntVar(&o.TopN, "top", 10, "Table only: show top N patterns by volume; 0 shows all rows with no rollup")
+	o.IO.RegisterCustomCodec("table", &patternsTableCodec{wide: false, opts: o})
+	o.IO.RegisterCustomCodec("wide", &patternsTableCodec{wide: true, opts: o})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(cmd.Flags())
 }
@@ -89,6 +96,8 @@ func (h *logsHelper) patternsShowCommand() *cobra.Command {
 				return err
 			}
 
+			recs = filterPatternsBySegment(recs, opts.SegmentID)
+
 			return opts.IO.Encode(cmd.OutOrStdout(), recs)
 		},
 	}
@@ -96,8 +105,98 @@ func (h *logsHelper) patternsShowCommand() *cobra.Command {
 	return cmd
 }
 
+// ---------------------------------------------------------------------------
+// patterns stats
+// ---------------------------------------------------------------------------
+
+type patternsStatsOpts struct {
+	IO cmdio.Options
+}
+
+func (o *patternsStatsOpts) setup(cmd *cobra.Command) {
+	o.IO.RegisterCustomCodec("table", &segmentStatsTableCodec{wide: false})
+	o.IO.RegisterCustomCodec("wide", &segmentStatsTableCodec{wide: true})
+	o.IO.DefaultFormat("table")
+	o.IO.BindFlags(cmd.Flags())
+}
+
+func (h *logsHelper) patternsStatsCommand() *cobra.Command {
+	opts := &patternsStatsOpts{}
+	cmd := &cobra.Command{
+		Use:   "stats",
+		Short: "Summarize pattern volume aggregated by segment.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+
+			client, err := h.newClient(ctx)
+			if err != nil {
+				return err
+			}
+
+			var recs []LogRecommendation
+			var segments []LogSegment
+
+			g, gctx := errgroup.WithContext(ctx)
+			g.Go(func() error {
+				var err error
+				recs, err = client.ListRecommendations(gctx)
+				return err
+			})
+			g.Go(func() error {
+				var err error
+				segments, err = client.ListSegments(gctx)
+				return err
+			})
+			if err := g.Wait(); err != nil {
+				return err
+			}
+
+			stats := AggregateSegmentVolumes(recs, segments)
+			return opts.IO.Encode(cmd.OutOrStdout(), stats)
+		},
+	}
+	opts.setup(cmd)
+	return cmd
+}
+
+type segmentStatsTableCodec struct {
+	wide bool
+}
+
+func (c *segmentStatsTableCodec) Format() format.Format {
+	if c.wide {
+		return "wide"
+	}
+	return "table"
+}
+
+func (c *segmentStatsTableCodec) Encode(w io.Writer, v any) error {
+	stats, ok := v.([]SegmentPatternStat)
+	if !ok {
+		return errors.New("invalid data type for table codec: expected []SegmentPatternStat")
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "SEGMENT ID\tNAME\tVOLUME")
+	for _, s := range stats {
+		fmt.Fprintf(tw, "%s\t%s\t%s\n", s.ID, s.Name, humanBytes(s.Volume))
+	}
+	return tw.Flush()
+}
+
+func (c *segmentStatsTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
 // patternsTableCodec renders LogRecommendations as a tabular table.
-type patternsTableCodec struct{ wide bool }
+type patternsTableCodec struct {
+	wide bool
+	opts *patternsShowOpts
+}
 
 func (c *patternsTableCodec) Format() format.Format {
 	if c.wide {
@@ -112,6 +211,24 @@ func (c *patternsTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []LogRecommendation")
 	}
 
+	sorted := append([]LogRecommendation(nil), recs...)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].Volume > sorted[j].Volume
+	})
+
+	topN := 0
+	if c.opts != nil {
+		topN = c.opts.TopN
+	}
+
+	var head, tail []LogRecommendation
+	if topN <= 0 || len(sorted) <= topN {
+		head = sorted
+	} else {
+		head = sorted[:topN]
+		tail = sorted[topN:]
+	}
+
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	if c.wide {
 		fmt.Fprintln(tw, "PATTERN\tDROP RATE\tRECOMMENDED RATE\tVOLUME\tINGESTED LINES\tQUERIED LINES\tLOCKED\tSUPERSEDED")
@@ -119,37 +236,61 @@ func (c *patternsTableCodec) Encode(w io.Writer, v any) error {
 		fmt.Fprintln(tw, "PATTERN\tDROP RATE\tRECOMMENDED RATE\tVOLUME\tLOCKED")
 	}
 
-	for _, rec := range recs {
-		pattern := rec.Pattern
-		if pattern == "" {
-			pattern = rec.Label()
+	for _, rec := range head {
+		c.writePatternRow(tw, rec)
+	}
+
+	if len(tail) > 0 {
+		var vol, ing, q uint64
+		for _, rec := range tail {
+			vol += rec.Volume
+			ing += rec.IngestedLines
+			q += rec.QueriedLines
 		}
+		pattern := "Everything else"
 		if !c.wide {
 			pattern = truncate(pattern, 80)
 		}
 		if c.wide {
-			fmt.Fprintf(tw, "%s\t%.2f\t%.2f\t%s\t%d\t%d\t%v\t%v\n",
-				pattern,
-				rec.ConfiguredDropRate,
-				rec.RecommendedDropRate,
-				humanBytes(rec.Volume),
-				rec.IngestedLines,
-				rec.QueriedLines,
-				rec.Locked,
-				rec.Superseded,
-			)
+			fmt.Fprintf(tw, "%s\t-\t-\t%s\t%d\t%d\t-\t-\n",
+				pattern, humanBytes(vol), ing, q)
 		} else {
-			fmt.Fprintf(tw, "%s\t%.2f\t%.2f\t%s\t%v\n",
-				pattern,
-				rec.ConfiguredDropRate,
-				rec.RecommendedDropRate,
-				humanBytes(rec.Volume),
-				rec.Locked,
-			)
+			fmt.Fprintf(tw, "%s\t-\t-\t%s\t-\n",
+				pattern, humanBytes(vol))
 		}
 	}
 
 	return tw.Flush()
+}
+
+func (c *patternsTableCodec) writePatternRow(tw *tabwriter.Writer, rec LogRecommendation) {
+	pattern := rec.Pattern
+	if pattern == "" {
+		pattern = rec.Label()
+	}
+	if !c.wide {
+		pattern = truncate(pattern, 80)
+	}
+	if c.wide {
+		fmt.Fprintf(tw, "%s\t%.2f\t%.2f\t%s\t%d\t%d\t%v\t%v\n",
+			pattern,
+			rec.ConfiguredDropRate,
+			rec.RecommendedDropRate,
+			humanBytes(rec.Volume),
+			rec.IngestedLines,
+			rec.QueriedLines,
+			rec.Locked,
+			rec.Superseded,
+		)
+	} else {
+		fmt.Fprintf(tw, "%s\t%.2f\t%.2f\t%s\t%v\n",
+			pattern,
+			rec.ConfiguredDropRate,
+			rec.RecommendedDropRate,
+			humanBytes(rec.Volume),
+			rec.Locked,
+		)
+	}
 }
 
 func truncate(s string, limit int) string {

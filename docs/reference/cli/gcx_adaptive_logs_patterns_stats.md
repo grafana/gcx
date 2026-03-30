@@ -1,11 +1,17 @@
-## gcx adaptive logs patterns
+## gcx adaptive logs patterns stats
 
-Manage adaptive log patterns.
+Summarize pattern volume aggregated by segment.
+
+```
+gcx adaptive logs patterns stats [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for patterns
+  -h, --help            help for stats
+      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+  -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -21,7 +27,5 @@ Manage adaptive log patterns.
 
 ### SEE ALSO
 
-* [gcx adaptive logs](gcx_adaptive_logs.md)	 - Manage Adaptive Logs resources.
-* [gcx adaptive logs patterns show](gcx_adaptive_logs_patterns_show.md)	 - Show adaptive log pattern recommendations.
-* [gcx adaptive logs patterns stats](gcx_adaptive_logs_patterns_stats.md)	 - Summarize pattern volume aggregated by segment.
+* [gcx adaptive logs patterns](gcx_adaptive_logs_patterns.md)	 - Manage adaptive log patterns.
 
