@@ -66,8 +66,6 @@ backup/
 *.db-shm
 db.sqlite
 bd.db
-# Project metadata (machine-specific settings)
-metadata.json
 
 # NOTE: Do NOT add negation patterns here.
 # They would override fork protection in .git/info/exclude.
