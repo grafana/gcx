@@ -7,8 +7,6 @@
 - **[Guides](guides/index.md)** — How-to guides for common workflows
 - **[CLI Reference](reference/cli/)** — Auto-generated command reference
 
-Full docs site: [grafana.github.io/gcx](https://grafana.github.io/gcx/)
-
 ## For Contributors & Agents
 
 - **[CLAUDE.md](../CLAUDE.md)** — Agent entry point with doc map, conventions, and package index
@@ -20,8 +18,8 @@ Full docs site: [grafana.github.io/gcx](https://grafana.github.io/gcx/)
 
 ```
 docs/
-├── architecture/     # Per-domain codebase analysis (8 docs)
-├── adrs/             # Architecture Decision Records (10 ADRs)
+├── architecture/     # Per-domain codebase analysis
+├── adrs/             # Architecture Decision Records
 ├── reference/        # Evergreen tool/API docs, auto-generated CLI reference
 ├── guides/           # User-facing how-to guides
 ├── research/         # Point-in-time research reports

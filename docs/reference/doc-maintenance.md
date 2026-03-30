@@ -62,6 +62,8 @@
 4. **Don't duplicate** — cross-link between docs instead of copying content.
 5. **docs/ is the system of record** — organize by content type, not audience.
 6. **Run `make docs`** after any CLI changes — regenerates reference docs.
+7. **Don't hardcode counts** — avoid "18 patterns", "10 ADRs", etc. in docs.
+   These go stale immediately. Use descriptive labels instead ("recurring patterns").
 
 ---
 

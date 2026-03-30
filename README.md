@@ -278,13 +278,12 @@ jobs:
 
 | Topic | Description |
 |-------|-------------|
-| [Installation](https://grafana.github.io/gcx/getting-started/install/) | Install gcx on macOS, Linux, and Windows |
-| [Configuration](https://grafana.github.io/gcx/getting-started/configure/) | Contexts, authentication, environment variables |
+| [Installation](docs/installation.md) | Install gcx on macOS, Linux, and Windows |
+| [Configuration](docs/configuration.md) | Contexts, authentication, environment variables |
 | [Managing Resources](docs/guides/manage-resources.md) | Get, push, pull, delete, edit, validate |
 | [Dashboards as Code](docs/guides/dashboards-as-code.md) | Dashboard-as-code workflow with live dev server |
 | [Linting Resources](docs/guides/lint-resources.md) | Lint dashboards and alert rules with Rego policies |
-| [CLI Reference](https://grafana.github.io/gcx/reference/cli/) | Full command reference (auto-generated) |
-| [Environment Variables](docs/configuration.md) | All supported env vars and global flags |
+| [CLI Reference](docs/reference/cli/) | Full command reference (auto-generated) |
 
 ## Contributing
 

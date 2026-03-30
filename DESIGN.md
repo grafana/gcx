@@ -111,7 +111,7 @@ See [docs/adrs/](docs/adrs/) for all ADRs.
 The `docs/architecture/` directory contains comprehensive architecture analysis:
 
 - [docs/architecture/architecture.md](docs/architecture/architecture.md) — Full system architecture
-- [docs/architecture/patterns.md](docs/architecture/patterns.md) — 18 recurring patterns
+- [docs/architecture/patterns.md](docs/architecture/patterns.md) — Recurring patterns
 - [docs/architecture/resource-model.md](docs/architecture/resource-model.md) — Resource, Selector, Filter, Discovery
 - [docs/architecture/cli-layer.md](docs/architecture/cli-layer.md) — Command tree, Options pattern
 - [docs/architecture/client-api-layer.md](docs/architecture/client-api-layer.md) — Dynamic client, auth
