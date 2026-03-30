@@ -545,6 +545,45 @@ eliminates per-type boilerplate while keeping each registration self-documenting
 - `internal/providers/oncall/resource_adapter.go`: `registerOnCallResource[T]`, 17 registrations
 - ADR: `docs/adrs/oncall-typed-crud/001-table-driven-typedcrud.md`
 
+### 19. Singleton Adapter Pattern (Adopt)
+
+**Confidence:** 85%
+
+**Observation:** Some provider resources are singletons — exactly one instance
+exists per stack with no meaningful name, no list endpoint, and no create/delete
+lifecycle. Rather than falling back to provider-only commands with alternative
+verbs, these can be registered as TypedCRUD adapters with a hardcoded name
+`"default"` and nil `ListFn`/`CreateFn`/`DeleteFn`.
+
+**Rationale:** Enables the full generic resource pipeline (`resources get`,
+`resources push`, `resources schemas`, `resources examples`) without requiring
+a separate verb vocabulary. Bulk `resources pull` silently skips singletons
+(nil ListFn → `ErrUnsupported`), which is correct behavior.
+
+**Key files:**
+- `internal/providers/appo11y/overrides/resource_adapter.go`: TypedCRUD with only GetFn + UpdateFn
+- `internal/providers/appo11y/settings/resource_adapter.go`: Same pattern without ETag
+- ADR: `docs/adrs/appo11y-provider/001-cli-ux-and-resource-adapter-design.md`
+
+### 20. ETag-as-Annotation Pattern (Adopt)
+
+**Confidence:** 80%
+
+**Observation:** When an API uses HTTP ETags for optimistic concurrency, the
+ETag value can be stored as a K8s annotation on the resource envelope (e.g.
+`appo11y.ext.grafana.app/etag`). This preserves the ETag through
+get→edit→push round-trips, including file-based workflows.
+
+**Rationale:** Analogous to how `resourceVersion` works in K8s. The annotation
+survives JSON/YAML serialization, is visible in `get -o yaml` output, and
+is automatically included when the user pushes a previously-pulled file.
+Unexported fields on domain types would be lost during marshal/unmarshal.
+
+**Key files:**
+- `internal/providers/appo11y/overrides/resource_adapter.go`: MetadataFn injects annotation, UpdateFn extracts it
+- `internal/providers/appo11y/overrides/adapter.go`: ToResource preserves annotation
+- ADR: `docs/adrs/appo11y-provider/001-cli-ux-and-resource-adapter-design.md`
+
 ---
 
 ## Contradiction Resolutions

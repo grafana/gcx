@@ -162,7 +162,13 @@ type updateOpts struct {
 
 func (o *updateOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "file", "f", "", "Path to the overrides file (JSON or YAML)")
-	_ = cobra.MarkFlagRequired(flags, "file")
+}
+
+func (o *updateOpts) Validate() error {
+	if o.File == "" {
+		return errors.New("--file is required")
+	}
+	return nil
 }
 
 func newUpdateCommand() *cobra.Command {
@@ -172,6 +178,10 @@ func newUpdateCommand() *cobra.Command {
 		Short: "Update App Observability metrics generator overrides from a file.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			ctx := cmd.Context()
 
 			typedObj, err := parseOverridesFile(opts.File)

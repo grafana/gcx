@@ -6,7 +6,7 @@ package overrides
 type MetricsGeneratorConfig struct {
 	etag             string
 	CostAttribution  map[string]any    `json:"cost_attribution,omitempty"`
-	MetricsGenerator *MetricsGenerator `json:"metrics_generator"`
+	MetricsGenerator *MetricsGenerator `json:"metrics_generator,omitempty"`
 }
 
 // ETag returns the ETag value captured from the HTTP response header.
