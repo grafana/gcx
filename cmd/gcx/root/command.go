@@ -9,6 +9,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/go-logr/logr"
 	"github.com/grafana/gcx/cmd/gcx/api"
+	authcmd "github.com/grafana/gcx/cmd/gcx/auth"
 	"github.com/grafana/gcx/cmd/gcx/commands"
 	"github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/cmd/gcx/dashboards"
@@ -32,26 +33,6 @@ import (
 	_ "github.com/grafana/gcx/internal/providers/synth"     // Provider registrations — blank imports trigger init() self-registration.
 	"github.com/grafana/gcx/internal/terminal"
 	"github.com/grafana/grafana-app-sdk/logging"
-	"github.com/grafana/grafanactl/cmd/grafanactl/api"
-	authcmd "github.com/grafana/grafanactl/cmd/grafanactl/auth"
-	"github.com/grafana/grafanactl/cmd/grafanactl/config"
-	"github.com/grafana/grafanactl/cmd/grafanactl/dashboards"
-	"github.com/grafana/grafanactl/cmd/grafanactl/datasources"
-	"github.com/grafana/grafanactl/cmd/grafanactl/dev"
-	cmdproviders "github.com/grafana/grafanactl/cmd/grafanactl/providers"
-	"github.com/grafana/grafanactl/cmd/grafanactl/resources"
-	"github.com/grafana/grafanactl/internal/agent"
-	"github.com/grafana/grafanactl/internal/logs"
-	"github.com/grafana/grafanactl/internal/providers"
-	_ "github.com/grafana/grafanactl/internal/providers/alert"     // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/grafanactl/internal/providers/fleet"     // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/grafanactl/internal/providers/incidents" // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/grafanactl/internal/providers/k6"        // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/grafanactl/internal/providers/kg"        // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/grafanactl/internal/providers/oncall"    // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/grafanactl/internal/providers/slo"       // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/grafanactl/internal/providers/synth"     // Provider registrations — blank imports trigger init() self-registration.
-	"github.com/grafana/grafanactl/internal/terminal"
 	"github.com/spf13/cobra"
 	"k8s.io/klog/v2"
 )

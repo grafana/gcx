@@ -3,9 +3,9 @@ package auth
 import (
 	"fmt"
 
-	configcmd "github.com/grafana/grafanactl/cmd/grafanactl/config"
-	"github.com/grafana/grafanactl/internal/auth"
-	"github.com/grafana/grafanactl/internal/config"
+	configcmd "github.com/grafana/gcx/cmd/gcx/config"
+	"github.com/grafana/gcx/internal/auth"
+	"github.com/grafana/gcx/internal/config"
 	"github.com/spf13/cobra"
 )
 

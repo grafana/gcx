@@ -3,7 +3,7 @@ package auth_test
 import (
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/auth"
+	"github.com/grafana/gcx/internal/auth"
 )
 
 func TestValidateEndpointURL_AcceptsTrustedDomains(t *testing.T) {

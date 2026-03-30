@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/grafanactl/internal/auth"
+	"github.com/grafana/gcx/internal/auth"
 )
 
 func TestRefreshTransport_SetsAuthorizationHeader(t *testing.T) {
