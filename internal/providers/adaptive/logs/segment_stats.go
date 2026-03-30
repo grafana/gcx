@@ -4,15 +4,39 @@ import (
 	"sort"
 )
 
-// filterPatternsBySegment returns recommendations whose Segments map contains segmentID.
-func filterPatternsBySegment(recs []LogRecommendation, segmentID string) []LogRecommendation {
-	if segmentID == "" {
+// filterPatternsBySegment returns recommendations whose Segments map contains a key matching
+// segmentRef. When catalog is non-nil, segmentRef may be a catalog LogSegment.ID or a selector
+// string; matching keys from the catalog are tried so maps keyed only by selector still match
+// when the user passes --segment <uuid>.
+func filterPatternsBySegment(recs []LogRecommendation, segmentRef string, catalog []LogSegment) []LogRecommendation {
+	if segmentRef == "" {
 		return recs
+	}
+	matchKeys := []string{segmentRef}
+	for _, s := range catalog {
+		if s.ID == segmentRef && s.Selector != "" {
+			matchKeys = append(matchKeys, s.Selector)
+		}
+		if s.Selector == segmentRef && s.ID != "" {
+			matchKeys = append(matchKeys, s.ID)
+		}
+	}
+	seen := make(map[string]bool)
+	var keys []string
+	for _, k := range matchKeys {
+		if k == "" || seen[k] {
+			continue
+		}
+		seen[k] = true
+		keys = append(keys, k)
 	}
 	var out []LogRecommendation
 	for _, rec := range recs {
-		if _, ok := rec.Segments[segmentID]; ok {
-			out = append(out, rec)
+		for _, k := range keys {
+			if _, ok := rec.Segments[k]; ok {
+				out = append(out, rec)
+				break
+			}
 		}
 	}
 	return out
@@ -20,9 +44,13 @@ func filterPatternsBySegment(recs []LogRecommendation, segmentID string) []LogRe
 
 // SegmentPatternStat is per-segment aggregated volume across all pattern recommendations.
 type SegmentPatternStat struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Volume uint64 `json:"volume"`
+	// ID is the recommendation API map key (often a LogQL selector string).
+	ID string `json:"id"`
+	// SegmentID is the catalog LogSegment id when the key resolved to a known segment; use with
+	// `gcx adaptive logs patterns show --segment <SegmentID>` when the API keys by selector.
+	SegmentID string `json:"segment_id,omitempty"`
+	Name      string `json:"name"`
+	Volume    uint64 `json:"volume"`
 }
 
 // AggregateSegmentVolumes sums Segment.Volume per segment key across recommendations and
@@ -39,15 +67,20 @@ func AggregateSegmentVolumes(recs []LogRecommendation, segments []LogSegment) []
 
 	known := make(map[string]bool)
 	nameByKey := make(map[string]string)
+	catalogIDByKey := make(map[string]string)
 	for _, s := range segments {
 		name := s.Name
 		if s.ID != "" {
 			known[s.ID] = true
 			nameByKey[s.ID] = name
+			catalogIDByKey[s.ID] = s.ID
 		}
 		if s.Selector != "" {
 			known[s.Selector] = true
 			nameByKey[s.Selector] = name
+			if s.ID != "" {
+				catalogIDByKey[s.Selector] = s.ID
+			}
 		}
 	}
 
@@ -58,9 +91,10 @@ func AggregateSegmentVolumes(recs []LogRecommendation, segments []LogSegment) []
 			name = "(unknown)"
 		}
 		out = append(out, SegmentPatternStat{
-			ID:     id,
-			Name:   name,
-			Volume: vol,
+			ID:        id,
+			SegmentID: catalogIDByKey[id],
+			Name:      name,
+			Volume:    vol,
 		})
 	}
 

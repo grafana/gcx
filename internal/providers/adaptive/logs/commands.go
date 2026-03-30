@@ -66,7 +66,7 @@ type patternsShowOpts struct {
 }
 
 func (o *patternsShowOpts) setup(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&o.SegmentID, "segment", "", "Only include patterns that have volume data for this segment ID")
+	cmd.Flags().StringVar(&o.SegmentID, "segment", "", "Only include patterns for this segment (SEGMENT ID column from patterns stats, or API map key / selector)")
 	cmd.Flags().IntVar(&o.TopN, "top", 10, "Table only: show top N patterns by volume; 0 shows all rows with no rollup")
 	o.IO.RegisterCustomCodec("table", &patternsTableCodec{wide: false, opts: o})
 	o.IO.RegisterCustomCodec("wide", &patternsTableCodec{wide: true, opts: o})
@@ -96,7 +96,13 @@ func (h *logsHelper) patternsShowCommand() *cobra.Command {
 				return err
 			}
 
-			recs = filterPatternsBySegment(recs, opts.SegmentID)
+			if opts.SegmentID != "" {
+				segments, err := client.ListSegments(ctx)
+				if err != nil {
+					return err
+				}
+				recs = filterPatternsBySegment(recs, opts.SegmentID, segments)
+			}
 
 			return opts.IO.Encode(cmd.OutOrStdout(), recs)
 		},
@@ -182,9 +188,13 @@ func (c *segmentStatsTableCodec) Encode(w io.Writer, v any) error {
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "SEGMENT\tNAME\tVOLUME")
+	fmt.Fprintln(tw, "SEGMENT ID\tSEGMENT\tNAME\tVOLUME")
 	noTruncate := c.opts != nil && c.opts.IO.NoTruncate
 	for _, s := range stats {
+		idCol := s.SegmentID
+		if idCol == "" {
+			idCol = "-"
+		}
 		keyCol := s.ID
 		if !noTruncate {
 			if c.wide {
@@ -193,7 +203,7 @@ func (c *segmentStatsTableCodec) Encode(w io.Writer, v any) error {
 				keyCol = truncate(keyCol, 80)
 			}
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\n", keyCol, s.Name, humanBytes(s.Volume))
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", idCol, keyCol, s.Name, humanBytes(s.Volume))
 	}
 	return tw.Flush()
 }

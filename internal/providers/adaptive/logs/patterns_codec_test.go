@@ -60,17 +60,29 @@ func TestFilterPatternsBySegment(t *testing.T) {
 		{Pattern: "p1", Segments: map[string]Segment{"a": {}, "b": {}}},
 		{Pattern: "p2", Segments: map[string]Segment{"b": {}}},
 	}
-	assert.Len(t, filterPatternsBySegment(recs, "a"), 1)
-	assert.Len(t, filterPatternsBySegment(recs, "b"), 2)
-	assert.Len(t, filterPatternsBySegment(recs, ""), 2)
-	assert.Empty(t, filterPatternsBySegment(recs, "none"))
+	assert.Len(t, filterPatternsBySegment(recs, "a", nil), 1)
+	assert.Len(t, filterPatternsBySegment(recs, "b", nil), 2)
+	assert.Len(t, filterPatternsBySegment(recs, "", nil), 2)
+	assert.Empty(t, filterPatternsBySegment(recs, "none", nil))
+}
+
+func TestFilterPatternsBySegment_resolvesCatalogIDToSelectorKey(t *testing.T) {
+	t.Parallel()
+
+	sel := `{namespace="prod"}`
+	recs := []LogRecommendation{
+		{Pattern: "p1", Segments: map[string]Segment{sel: {Volume: 1}}},
+	}
+	catalog := []LogSegment{{ID: "uuid-42", Name: "Prod", Selector: sel}}
+	assert.Len(t, filterPatternsBySegment(recs, "uuid-42", catalog), 1)
+	assert.Empty(t, filterPatternsBySegment(recs, "uuid-99", catalog))
 }
 
 func TestSegmentStatsTableCodec(t *testing.T) {
 	t.Parallel()
 
 	stats := []SegmentPatternStat{
-		{ID: "s1", Name: "One", Volume: 1024},
+		{ID: "s1", SegmentID: "seg-1", Name: "One", Volume: 1024},
 	}
 	codec := &segmentStatsTableCodec{wide: false}
 
@@ -78,7 +90,8 @@ func TestSegmentStatsTableCodec(t *testing.T) {
 	require.NoError(t, codec.Encode(&buf, stats))
 
 	out := buf.String()
-	assert.Contains(t, out, "SEGMENT")
+	assert.Contains(t, out, "SEGMENT ID")
+	assert.Contains(t, out, "seg-1")
 	assert.Contains(t, out, "s1")
 	assert.Contains(t, out, "One")
 	assert.Contains(t, out, "1.00 KB")
