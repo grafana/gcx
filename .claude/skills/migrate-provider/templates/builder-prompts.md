@@ -33,7 +33,7 @@ the new client MUST do the same — never wrap in a struct unless the source doe
 
 - **Spec**: {spec_path}/spec.md — functional requirements and acceptance criteria
 - **Plan**: {spec_path}/plan.md — architecture decisions and HTTP client reference
-- **Recipe**: `gcx-provider-recipe.md` Steps 2-5 (types, client, adapter, resource_adapter)
+- **Recipe**: `gcx-provider-recipe.md` Steps 2-4 (types, client, adapter/resource_adapter)
 - **Conventions**: `conventions.md` — struct tags, linter traps, debug logging
 
 ## Implementation Tasks
@@ -79,7 +79,7 @@ the new client MUST do the same — never wrap in a struct unless the source doe
 
 - **Spec**: {spec_path}/spec.md — functional requirements and acceptance criteria
 - **Plan**: {spec_path}/plan.md — architecture decisions and HTTP client reference
-- **Recipe**: `gcx-provider-recipe.md` Steps 6-8 (provider registration, CLI commands)
+- **Recipe**: `gcx-provider-recipe.md` Steps 5-7 (provider registration, tests, integration/wiring)
 - **Commands Reference**: `commands-reference.md` — CRUD redirect patterns, codec usage
 
 ## Implementation Tasks

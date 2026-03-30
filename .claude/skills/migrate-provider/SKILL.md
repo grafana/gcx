@@ -258,11 +258,10 @@ The Build phase uses an agent team with two teammates:
 |---|---|---|
 | Step 2: Types | `internal/providers/{name}/types.go` | Build-Core |
 | Step 3: Client | `internal/providers/{name}/client.go`, `client_test.go` | Build-Core |
-| Step 4: Adapter | `internal/providers/{name}/adapter.go` | Build-Core |
-| Step 5: Resource Adapter | `internal/providers/{name}/resource_adapter.go` | Build-Core |
-| Step 6: Provider registration | `internal/providers/{name}/provider.go` | Build-Commands |
-| Step 7: CLI Commands | `cmd/gcx/providers/{name}/commands.go`, `*_test.go` | Build-Commands |
-| Blank import | `cmd/gcx/root/command.go` (import line only) | Build-Commands |
+| Step 4: Adapter + Resource Adapter | `internal/providers/{name}/adapter.go`, `resource_adapter.go` | Build-Core |
+| Step 5: Provider registration | `internal/providers/{name}/provider.go` | Build-Commands |
+| Step 6: Tests | Command tests (`*_test.go`) | Build-Commands |
+| Step 7: Integration / Wiring | `cmd/gcx/providers/{name}/commands.go`, `cmd/gcx/root/command.go` (blank import) | Build-Commands |
 
 Teammates MUST NOT modify files outside their ownership boundary.
 

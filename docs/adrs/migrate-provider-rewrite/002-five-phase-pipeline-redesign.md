@@ -32,7 +32,7 @@ feed back into the skill are:
   tasks.md) and should be replaced by them.
 - **D-006**: Sealed envelope isolation is theatrical — agents can read any file
   on disk. The spec format provides natural separation without artificial barriers.
-- **D-007**: The consolidated pipeline (Phase 0-5) incorporates all learnings.
+- **D-007**: The consolidated pipeline (Phase 0–4) incorporates all learnings.
 - **D-011**: Parallel wave execution works but the integration task must
   explicitly include import-cycle resolution and lint fixup.
 - **D-012**: Smoke testing caught three bug classes invisible to unit tests

@@ -248,10 +248,8 @@ func init() {
 }
 ```
 
-Add blank import in `cmd/gcx/root/command.go`:
-```go
-_ "github.com/grafana/gcx/internal/providers/{name}"
-```
+> **Note:** The blank import in `cmd/gcx/root/command.go` is added in Step 7
+> (Integration / Wiring), not here. Step 5 only covers `provider.go`.
 
 ### Step 6: Write tests
 
