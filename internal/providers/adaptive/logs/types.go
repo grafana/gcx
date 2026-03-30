@@ -1,11 +1,36 @@
 package logs
 
 import (
+	"math"
 	"sort"
 	"strings"
 
 	"github.com/grafana/gcx/internal/resources/adapter"
 )
+
+// queryIngestLabel maps the queried-to-ingested line ratio to a short label, matching
+// grafana-adaptivelogs-app getQueryIngestRange (QueryIngestRatio/ranges.ts).
+func queryIngestLabel(queried, ingested uint64) string {
+	if ingested == 0 {
+		return "N/A"
+	}
+	ratio := float64(queried) / float64(ingested)
+	if math.IsNaN(ratio) || math.IsInf(ratio, 0) {
+		return "N/A"
+	}
+	switch {
+	case ratio <= 0:
+		return "Never"
+	case ratio <= 0.01:
+		return "Rarely"
+	case ratio <= 0.4:
+		return "Sometimes"
+	case ratio < 1:
+		return "Often"
+	default:
+		return "Always"
+	}
+}
 
 // Segment represents per-dimension volume and drop-rate data within a recommendation.
 type Segment struct {

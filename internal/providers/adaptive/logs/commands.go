@@ -251,9 +251,9 @@ func (c *patternsTableCodec) Encode(w io.Writer, v any) error {
 
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	if c.wide {
-		fmt.Fprintln(tw, "PATTERN\tDROP RATE\tRECOMMENDED RATE\tVOLUME\tINGESTED LINES\tQUERIED LINES\tLOCKED\tSUPERSEDED")
+		fmt.Fprintln(tw, "PATTERN\tDROP RATE\tRECOMMENDED RATE\tVOLUME\tINGESTED LINES\tQUERIED LINES\tQUERIED\tSUPERSEDED")
 	} else {
-		fmt.Fprintln(tw, "PATTERN\tDROP RATE\tRECOMMENDED RATE\tVOLUME\tLOCKED")
+		fmt.Fprintln(tw, "PATTERN\tDROP RATE\tRECOMMENDED RATE\tVOLUME\tQUERIED")
 	}
 
 	for _, rec := range head {
@@ -267,16 +267,21 @@ func (c *patternsTableCodec) Encode(w io.Writer, v any) error {
 			ing += rec.IngestedLines
 			q += rec.QueriedLines
 		}
-		pattern := "Everything else"
+		n := len(tail)
+		patLabel := "patterns"
+		if n == 1 {
+			patLabel = "pattern"
+		}
+		pattern := fmt.Sprintf("Everything else (%d %s)", n, patLabel)
 		if !c.wide {
 			pattern = truncate(pattern, 80)
 		}
 		if c.wide {
-			fmt.Fprintf(tw, "%s\t-\t-\t%s\t%d\t%d\t-\t-\n",
-				pattern, humanBytes(vol), ing, q)
+			fmt.Fprintf(tw, "%s\t-\t-\t%s\t%d\t%d\t%s\t-\n",
+				pattern, humanBytes(vol), ing, q, queryIngestLabel(q, ing))
 		} else {
-			fmt.Fprintf(tw, "%s\t-\t-\t%s\t-\n",
-				pattern, humanBytes(vol))
+			fmt.Fprintf(tw, "%s\t-\t-\t%s\t%s\n",
+				pattern, humanBytes(vol), queryIngestLabel(q, ing))
 		}
 	}
 
@@ -292,23 +297,23 @@ func (c *patternsTableCodec) writePatternRow(tw *tabwriter.Writer, rec LogRecomm
 		pattern = truncate(pattern, 80)
 	}
 	if c.wide {
-		fmt.Fprintf(tw, "%s\t%.2f\t%.2f\t%s\t%d\t%d\t%v\t%v\n",
+		fmt.Fprintf(tw, "%s\t%.2f\t%.2f\t%s\t%d\t%d\t%s\t%v\n",
 			pattern,
 			rec.ConfiguredDropRate,
 			rec.RecommendedDropRate,
 			humanBytes(rec.Volume),
 			rec.IngestedLines,
 			rec.QueriedLines,
-			rec.Locked,
+			queryIngestLabel(rec.QueriedLines, rec.IngestedLines),
 			rec.Superseded,
 		)
 	} else {
-		fmt.Fprintf(tw, "%s\t%.2f\t%.2f\t%s\t%v\n",
+		fmt.Fprintf(tw, "%s\t%.2f\t%.2f\t%s\t%s\n",
 			pattern,
 			rec.ConfiguredDropRate,
 			rec.RecommendedDropRate,
 			humanBytes(rec.Volume),
-			rec.Locked,
+			queryIngestLabel(rec.QueriedLines, rec.IngestedLines),
 		)
 	}
 }

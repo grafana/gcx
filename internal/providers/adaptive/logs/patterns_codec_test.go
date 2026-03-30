@@ -30,7 +30,7 @@ func TestPatternsTableCodec_TopNAndRollup(t *testing.T) {
 	assert.Contains(t, out, "high")
 	assert.NotContains(t, out, "mid\t")
 	assert.NotContains(t, out, "low\t")
-	assert.Contains(t, out, "Everything else")
+	assert.Contains(t, out, "Everything else (2 patterns)")
 	assert.Contains(t, out, "110 B") // 100+10
 }
 
