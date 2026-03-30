@@ -7,18 +7,20 @@ Print a compact command tree for agent context injection
 Outputs a token-efficient text tree of the CLI hierarchy with inline args,
 flags, and agent hints. Designed for injecting into agent context windows.
 
-Use a positional argument to show only a subtree (e.g., "gcx help-tree resources").
+Use positional arguments to show only a subtree (e.g., "gcx help-tree resources get").
 Use --depth to limit nesting depth.
 
 ```
-gcx help-tree [COMMAND] [flags]
+gcx help-tree [COMMAND...] [flags]
 ```
 
 ### Options
 
 ```
-      --depth int   Maximum depth of the tree (0 = unlimited)
-  -h, --help        help for help-tree
+      --depth int       Maximum nesting depth (1 = root + direct children, 0 = unlimited)
+  -h, --help            help for help-tree
+      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+  -o, --output string   Output format. One of: json, text, yaml (default "text")
 ```
 
 ### Options inherited from parent commands

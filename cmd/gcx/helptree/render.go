@@ -125,7 +125,7 @@ func formatFlag(f *pflag.Flag) string {
 	return name + "=" + typeName
 }
 
-var enumPattern = regexp.MustCompile(`(?i)one of[:\s]+(\w+(?:\s*,\s*\w+)*)`)
+var enumPattern = regexp.MustCompile(`(?i)one of[:\s]+([\w-]+(?:\s*,\s*[\w-]+)*)`)
 
 // detectEnum extracts enum values from a flag's usage string.
 // Recognizes patterns like "One of: json, yaml, text" and returns "(json|yaml|text)".

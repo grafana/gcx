@@ -76,6 +76,7 @@ func TestDetectEnum(t *testing.T) {
 		{"Output format. One of: json, yaml, text", "(json|yaml|text)"},
 		{"One of: json, yaml", "(json|yaml)"},
 		{"Error handling. One of: ignore, fail, abort", "(ignore|fail|abort)"},
+		{"Behavior on error. One of: dry-run, live-run, rollback", "(dry-run|live-run|rollback)"},
 		{"Max results to return", ""},
 		{"Enable debug mode", ""},
 		{"", ""},
@@ -304,7 +305,7 @@ func TestCommand_Execute(t *testing.T) {
 	buf := &strings.Builder{}
 	cmd.SetOut(buf)
 	cmd.SetErr(&strings.Builder{})
-	cmd.SetArgs([]string{})
+	cmd.SetArgs([]string{"--output", "text"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute failed: %v", err)
@@ -342,7 +343,7 @@ func TestCommand_SubtreeArg(t *testing.T) {
 	buf := &strings.Builder{}
 	cmd.SetOut(buf)
 	cmd.SetErr(&strings.Builder{})
-	cmd.SetArgs([]string{"bar"})
+	cmd.SetArgs([]string{"--output", "text", "bar"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute failed: %v", err)
@@ -354,6 +355,25 @@ func TestCommand_SubtreeArg(t *testing.T) {
 	}
 	if strings.Contains(output, "foo") {
 		t.Error("subtree bar should not contain foo")
+	}
+}
+
+func TestCommand_MultiSegmentSubtree(t *testing.T) {
+	root := buildTestTree()
+	cmd := helptree.Command(root)
+
+	buf := &strings.Builder{}
+	cmd.SetOut(buf)
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"--output", "text", "bar", "baz"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.HasPrefix(output, "baz") {
+		t.Errorf("multi-segment subtree output should start with baz: %q", output[:min(50, len(output))])
 	}
 }
 
@@ -369,6 +389,28 @@ func TestCommand_SubtreeNotFound(t *testing.T) {
 	err := cmd.Execute()
 	if err == nil {
 		t.Fatal("expected error for nonexistent subtree")
+	}
+}
+
+func TestCommand_JSONOutput(t *testing.T) {
+	root := buildTestTree()
+	cmd := helptree.Command(root)
+
+	buf := &strings.Builder{}
+	cmd.SetOut(buf)
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"--output", "json"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, `"name"`) {
+		t.Errorf("JSON output should contain structured fields: %q", output[:min(100, len(output))])
+	}
+	if !strings.Contains(output, `"children"`) {
+		t.Errorf("JSON output should contain children: %q", output[:min(200, len(output))])
 	}
 }
 
