@@ -2,7 +2,7 @@
 
 ## Architectural Patterns Identified
 
-### 1. Kubernetes Resource Model Adoption (High Confidence: 97%)
+### 1. Kubernetes Resource Model Adoption
 
 gcx does not merely borrow Kubernetes conventions -- it directly uses
 `k8s.io/apimachinery` and `k8s.io/client-go` because Grafana 12+ exposes a
@@ -23,7 +23,7 @@ architecture, not by preference.
 
 ---
 
-### 2. Options Pattern for CLI Commands (High Confidence: 96%)
+### 2. Options Pattern for CLI Commands
 
 Every `resources` subcommand follows a strict four-part structure:
 1. An `opts` struct holding all command-specific state
@@ -42,7 +42,7 @@ composed into the opts struct via embedding or pointer injection, not inherited.
 
 ---
 
-### 3. Processor Pipeline (High Confidence: 94%)
+### 3. Processor Pipeline
 
 Resource transformations are modeled as a `Processor` interface with a single method:
 ```
@@ -63,7 +63,7 @@ pipeline code -- just append to the `[]Processor` slice in the command wiring.
 
 ---
 
-### 4. Selector-to-Filter Resolution Pipeline (High Confidence: 95%)
+### 4. Selector-to-Filter Resolution Pipeline
 
 User input flows through a two-stage resolution process:
 
@@ -85,7 +85,7 @@ name, plus a short-group-name shortcut (e.g., `"folder"` resolves to
 
 ---
 
-### 5. Dual-Client Architecture (High Confidence: 93%)
+### 5. Dual-Client Architecture
 
 Two distinct client paths serve different purposes:
 
@@ -105,7 +105,7 @@ Within the dynamic client path, there are two specializations:
 
 ---
 
-### 6. Context-Based Configuration (High Confidence: 96%)
+### 6. Context-Based Configuration
 
 Directly modeled after kubectl's kubeconfig pattern. Key design decisions:
 
@@ -124,7 +124,7 @@ Directly modeled after kubectl's kubeconfig pattern. Key design decisions:
 
 ---
 
-### 7. Concurrency via errgroup (High Confidence: 95%)
+### 7. Concurrency via errgroup
 
 All concurrent operations use `golang.org/x/sync/errgroup`, with two patterns:
 
@@ -140,7 +140,7 @@ are recorded in `OperationSummary` and processing continues.
 
 ---
 
-### 8. Two-Phase Push with Folder Dependency Ordering (High Confidence: 94%)
+### 8. Two-Phase Push with Folder Dependency Ordering
 
 Folders must exist before resources that reference them. The push pipeline
 implements this via:
@@ -155,7 +155,7 @@ approach or nested folder creation will break.
 
 ---
 
-### 9. Structured Error Handling (High Confidence: 91%)
+### 9. Structured Error Handling
 
 Errors flow through a multi-layer translation chain:
 
@@ -174,7 +174,7 @@ converter function to the `errorConverters` slice.
 
 ---
 
-### 10. Source Tracking for Round-Trip Fidelity (High Confidence: 92%)
+### 10. Source Tracking for Round-Trip Fidelity
 
 Every `Resource` carries a `SourceInfo{Path, Format}` recording where it was read
 from and in what format. This enables:
@@ -187,7 +187,7 @@ from and in what format. This enables:
 
 ---
 
-### 11. Provider Plugin System (High Confidence: 93%)
+### 11. Provider Plugin System
 
 Providers are first-class extension points that contribute Cobra commands and
 configuration to gcx. The pattern separates the plugin contract from
@@ -228,7 +228,7 @@ name. Reflection-based editor picks them up via the `yaml:"providers"` tag.
 
 ---
 
-### 12. Direct HTTP Client for Datasource APIs (High Confidence: 91%)
+### 12. Direct HTTP Client for Datasource APIs
 
 Query clients for Prometheus and Loki bypass the k8s dynamic client entirely.
 They use `rest.HTTPClientFor` to create a plain `*http.Client` from the same
@@ -278,7 +278,7 @@ terminal charts (`internal/graph`). The `query` command registers custom codecs
 
 ---
 
-### 13. Format-Agnostic Data Fetching (High Confidence: 95%)
+### 13. Format-Agnostic Data Fetching
 
 Commands fetch **all** available data in `RunE`, regardless of the `--output`
 format. The output format (`-o table`, `-o wide`, `-o json`, etc.) controls
@@ -307,7 +307,7 @@ only the wide table codec was expected to display.
 
 ---
 
-### 14. PromQL Construction with promql-builder (High Confidence: 90%)
+### 14. PromQL Construction with promql-builder
 
 PromQL expressions are built programmatically using `github.com/grafana/promql-builder/go/promql`
 rather than string formatting. This eliminates string injection risks and makes
@@ -340,7 +340,7 @@ Cross-reference: Pattern 12 (Direct HTTP Client for Datasource APIs).
 
 ---
 
-### 15. Agent Mode Detection and Pipe-Aware Output (High Confidence: 96%)
+### 15. Agent Mode Detection and Pipe-Aware Output
 
 gcx detects at startup whether it is running inside an AI agent
 environment (Claude Code, Cursor, GitHub Copilot, Amazon Q) and adjusts
@@ -399,7 +399,7 @@ This applies to provider commands (`slo`, `synth`, `alert`) which each define a 
 
 ---
 
-### 16. ResourceAdapter and Provider CRUD Routing (High Confidence: 92%)
+### 16. ResourceAdapter and Provider CRUD Routing
 
 Provider-backed resource types (SLO, Synthetic Monitoring, Alert) implement the
 `adapter.ResourceAdapter` interface to bridge their REST clients to the unified
@@ -450,7 +450,7 @@ without requiring an extra parameter on the `Factory` type.
 
 ---
 
-### 17. K8s Envelope Wrapping for Provider List/Get (High Confidence: 94%)
+### 17. K8s Envelope Wrapping for Provider List/Get
 
 Provider list/get commands that output CRUD resources (resources the user can
 create, update, and delete via the CLI) wrap JSON/YAML output in K8s envelope
@@ -496,7 +496,7 @@ return opts.IO.Encode(cmd.OutOrStdout(), objs)
 
 ---
 
-### 18. Table-Driven TypedCRUD Registration for Providers (High Confidence: 95%)
+### 18. Table-Driven TypedCRUD Registration for Providers
 
 Providers with many resource types (e.g., OnCall with 17 types) use a generic
 `registerXResource[T]` function with functional options to register each type
@@ -547,8 +547,6 @@ eliminates per-type boilerplate while keeping each registration self-documenting
 
 ### 19. Singleton Adapter Pattern (Adopt)
 
-**Confidence:** 85%
-
 **Observation:** Some provider resources are singletons — exactly one instance
 exists per stack with no meaningful name, no list endpoint, and no create/delete
 lifecycle. Rather than falling back to provider-only commands with alternative
@@ -566,8 +564,6 @@ a separate verb vocabulary. Bulk `resources pull` silently skips singletons
 - ADR: `docs/adrs/appo11y-provider/001-cli-ux-and-resource-adapter-design.md`
 
 ### 20. ETag-as-Annotation Pattern (Adopt)
-
-**Confidence:** 80%
 
 **Observation:** When an API uses HTTP ETags for optimistic concurrency, the
 ETag value can be stored as a K8s annotation on the resource envelope (e.g.
