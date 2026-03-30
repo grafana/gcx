@@ -31,7 +31,7 @@ jobs:
           persist-credentials: false
 
       - name: Restore go vendors
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # zizmor: ignore[cache-poisoning] this is actually fine #v4.3.0
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # zizmor: ignore[cache-poisoning] this is actually fine #v4.3.0
         with:
           path: |
             ~/go/pkg/mod
@@ -41,7 +41,7 @@ jobs:
             go-deps-${{ runner.os }}
 
       - name: Install devbox
-        uses: jetify-com/devbox-install-action@a0d2d53632934ae004f878c840055956d9f741b0 #v0.14.0
+        uses: jetify-com/devbox-install-action@8c6a66ed6273138b1915457069de78cb52fe3bd7 #v0.15.0
         with:
           enable-cache: "true"
           devbox-version: ${{ env.DEVBOX_VERSION }}
@@ -67,7 +67,7 @@ jobs:
           persist-credentials: false
 
       - name: Install devbox
-        uses: jetify-com/devbox-install-action@a0d2d53632934ae004f878c840055956d9f741b0 #v0.14.0
+        uses: jetify-com/devbox-install-action@8c6a66ed6273138b1915457069de78cb52fe3bd7 #v0.15.0
         with:
           enable-cache: "true"
           devbox-version: ${{ env.DEVBOX_VERSION }}
@@ -98,4 +98,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e #v4.0.5
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 #v5.0.0
