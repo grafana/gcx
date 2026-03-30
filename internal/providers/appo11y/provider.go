@@ -33,6 +33,8 @@ func (p *AppO11yProvider) Validate(_ map[string]string) error { return nil }
 
 // Commands returns the Cobra commands contributed by this provider.
 func (p *AppO11yProvider) Commands() []*cobra.Command {
+	loader := &providers.ConfigLoader{}
+
 	cmd := &cobra.Command{
 		Use:   "appo11y",
 		Short: p.ShortDesc(),
@@ -42,6 +44,10 @@ func (p *AppO11yProvider) Commands() []*cobra.Command {
 			}
 		},
 	}
+
+	// Bind config flags on the parent — all subcommands inherit these.
+	loader.BindFlags(cmd.PersistentFlags())
+
 	cmd.AddCommand(overrides.Commands())
 	cmd.AddCommand(settings.Commands())
 	return []*cobra.Command{cmd}
