@@ -4,9 +4,9 @@ import (
 	goio "io"
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/agent"
-	"github.com/grafana/grafanactl/internal/format"
-	cmdio "github.com/grafana/grafanactl/internal/output"
+	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/format"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

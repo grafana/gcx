@@ -1,4 +1,4 @@
-// Package terminal provides TTY detection and global pipe state for grafanactl.
+// Package terminal provides TTY detection and global pipe state for gcx.
 //
 // Detection happens in root PersistentPreRun by calling [Detect]. The result
 // is stored as package-level state accessible via [IsPiped] and [NoTruncate].

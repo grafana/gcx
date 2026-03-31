@@ -52,12 +52,47 @@ table codecs need to be exported (`IncidentTableCodec`, not
 **`gci`** — import ordering and struct field alignment. Run `gci diff` to
 see what it wants. Common issue: inconsistent spacing before struct tags.
 
+## Lint Compliance Checklist
+
+Phase 0 fills this out per provider. Every applicable rule must be listed with
+its section reference before proceeding to Phase 1.
+
+| Document | Section | Applicable? | Notes |
+|----------|---------|-------------|-------|
+| `CONSTITUTION.md` | CLI Grammar | Yes / No / Partial | {which rules apply to this provider's command tree} |
+| `CONSTITUTION.md` | Output Conventions | Yes / No / Partial | {format defaults, codec requirements} |
+| `docs/reference/design-guide.md` | 1.1 Naming | Yes / No / Partial | {noun choice, alias conventions} |
+| `docs/reference/design-guide.md` | 1.3 Output Formats | Yes / No / Partial | {table/wide/json/yaml compliance} |
+| `docs/reference/design-guide.md` | 1.4 Exit Codes | Yes / No / Partial | {error handling conventions} |
+| `docs/reference/provider-guide.md` | Provider Interface | Yes / No / Partial | {registration, ConfigKeys, TypedCRUD} |
+| `docs/reference/provider-guide.md` | Adapter Wiring | Yes / No / Partial | {GVK, aliases, schema/example} |
+| `docs/reference/provider-discovery-guide.md` | API Discovery | Yes / No / Partial | {auth model, endpoint patterns, pagination} |
+| `docs/reference/provider-discovery-guide.md` | Design Decisions | Yes / No / Partial | {adapter vs provider-only, resource modeling} |
+
+## Debug Logging
+
+Use `log/slog` for debug-level logging in provider clients. Debug logs help
+diagnose issues during smoke tests without cluttering normal output.
+
+```go
+slog.Debug("fleet: listing pipelines", "url", c.baseURL+"/pipelines")
+slog.Debug("k6: token exchange complete", "orgID", orgID, "stackID", stackID)
+slog.Debug("oncall: auto-discovered URL", "url", onCallURL, "source", source)
+```
+
+**Guidelines:**
+- Prefix with provider name: `slog.Debug("{provider}: {action}", ...)`
+- Log request URLs and key parameters at Debug level
+- Log auth resolution decisions (which fallback was used)
+- Never log tokens or secrets — log presence only: `"hasToken", token != ""`
+- Enable with `GCX_LOG_LEVEL=debug` or `--log-level=debug`
+
 ## Build Commands
 
 ```bash
-GRAFANACTL_AGENT_MODE=false make all    # REQUIRED — agent mode changes default
+GCX_AGENT_MODE=false make all    # REQUIRED — agent mode changes default
                                          # output formats, producing wrong docs
-GRAFANACTL_AGENT_MODE=false make lint   # after agent phases
+GCX_AGENT_MODE=false make lint   # after agent phases
 ```
 
 ## Schema + Example Registration
@@ -81,4 +116,4 @@ user-facing fields. No external dependencies needed.
 
 **Example**: static `map[string]any` matching gcx's `Example{Resource}()`
 output. Include realistic field values — this is what users see when they
-run `grafanactl resources examples {alias}`.
+run `gcx resources examples {alias}`.

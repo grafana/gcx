@@ -3,7 +3,7 @@ package definitions
 import (
 	"time"
 
-	"github.com/grafana/grafanactl/internal/graph"
+	"github.com/grafana/gcx/internal/graph"
 )
 
 // SLOMetricPoint represents a single SLO's metric value for instant chart data.

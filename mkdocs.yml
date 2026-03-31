@@ -1,8 +1,8 @@
 site_name: Grafana CLI
 site_author: "Grafana Labs"
 
-repo_name: "grafana/grafanactl"
-repo_url: "https://github.com/grafana/grafanactl"
+repo_name: "grafana/gcx"
+repo_url: "https://github.com/grafana/gcx"
 
 plugins:
   - search

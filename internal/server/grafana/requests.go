@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/grafana/grafanactl/internal/config"
-	"github.com/grafana/grafanactl/internal/httputils"
+	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/httputils"
 )
 
 func AuthenticateAndProxyHandler(cfg *config.Context) http.HandlerFunc {

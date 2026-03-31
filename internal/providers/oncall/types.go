@@ -1,7 +1,47 @@
-// Package oncall provides the OnCall provider for grafanactl.
+// Package oncall provides the OnCall provider for gcx.
 package oncall
 
+// ---------- ResourceIdentity implementations ----------
+// All OnCall domain types use ID (string) as their resource identity.
+
+func (x Integration) GetResourceName() string                   { return x.ID }
+func (x *Integration) SetResourceName(name string)              { x.ID = name }
+func (x EscalationChain) GetResourceName() string               { return x.ID }
+func (x *EscalationChain) SetResourceName(name string)          { x.ID = name }
+func (x EscalationPolicy) GetResourceName() string              { return x.ID }
+func (x *EscalationPolicy) SetResourceName(name string)         { x.ID = name }
+func (x Schedule) GetResourceName() string                      { return x.ID }
+func (x *Schedule) SetResourceName(name string)                 { x.ID = name }
+func (x Shift) GetResourceName() string                         { return x.ID }
+func (x *Shift) SetResourceName(name string)                    { x.ID = name }
+func (x Team) GetResourceName() string                          { return x.ID }
+func (x *Team) SetResourceName(name string)                     { x.ID = name }
+func (x IntegrationRoute) GetResourceName() string              { return x.ID }
+func (x *IntegrationRoute) SetResourceName(name string)         { x.ID = name }
+func (x OutgoingWebhook) GetResourceName() string               { return x.ID }
+func (x *OutgoingWebhook) SetResourceName(name string)          { x.ID = name }
+func (x AlertGroup) GetResourceName() string                    { return x.ID }
+func (x *AlertGroup) SetResourceName(name string)               { x.ID = name }
+func (x User) GetResourceName() string                          { return x.ID }
+func (x *User) SetResourceName(name string)                     { x.ID = name }
+func (x PersonalNotificationRule) GetResourceName() string      { return x.ID }
+func (x *PersonalNotificationRule) SetResourceName(name string) { x.ID = name }
+func (x UserGroup) GetResourceName() string                     { return x.ID }
+func (x *UserGroup) SetResourceName(name string)                { x.ID = name }
+func (x SlackChannel) GetResourceName() string                  { return x.ID }
+func (x *SlackChannel) SetResourceName(name string)             { x.ID = name }
+func (x Alert) GetResourceName() string                         { return x.ID }
+func (x *Alert) SetResourceName(name string)                    { x.ID = name }
+func (x ResolutionNote) GetResourceName() string                { return x.ID }
+func (x *ResolutionNote) SetResourceName(name string)           { x.ID = name }
+func (x ShiftSwap) GetResourceName() string                     { return x.ID }
+func (x *ShiftSwap) SetResourceName(name string)                { x.ID = name }
+func (x Organization) GetResourceName() string                  { return x.ID }
+func (x *Organization) SetResourceName(name string)             { x.ID = name }
+
 // Integration represents an OnCall integration.
+//
+//nolint:recvcheck
 type Integration struct {
 	ID                   string         `json:"id,omitempty"`
 	Name                 string         `json:"name"`
@@ -103,6 +143,8 @@ type Templates struct {
 }
 
 // EscalationChain represents an escalation chain.
+//
+//nolint:recvcheck
 type EscalationChain struct {
 	ID     string `json:"id,omitempty"`
 	Name   string `json:"name"`
@@ -110,6 +152,8 @@ type EscalationChain struct {
 }
 
 // EscalationPolicy represents an escalation policy step.
+//
+//nolint:recvcheck
 type EscalationPolicy struct {
 	ID                string   `json:"id,omitempty"`
 	EscalationChainID string   `json:"escalation_chain_id"`
@@ -130,6 +174,8 @@ type ScheduleSlack struct {
 }
 
 // Schedule represents an on-call schedule.
+//
+//nolint:recvcheck
 type Schedule struct {
 	ID                 string         `json:"id,omitempty"`
 	Name               string         `json:"name"`
@@ -145,6 +191,8 @@ type Schedule struct {
 }
 
 // Shift represents a shift in a schedule.
+//
+//nolint:recvcheck
 type Shift struct {
 	ID        string   `json:"id,omitempty"`
 	Name      string   `json:"name"`
@@ -159,6 +207,8 @@ type Shift struct {
 }
 
 // Team represents an OnCall team.
+//
+//nolint:recvcheck
 type Team struct {
 	ID        string `json:"id,omitempty"`
 	GrafanaID int    `json:"grafana_id,omitempty"`
@@ -168,6 +218,8 @@ type Team struct {
 }
 
 // IntegrationRoute represents a routing rule for an integration.
+//
+//nolint:recvcheck
 type IntegrationRoute struct {
 	ID                string         `json:"id,omitempty"`
 	IntegrationID     string         `json:"integration_id"`
@@ -182,6 +234,8 @@ type IntegrationRoute struct {
 }
 
 // OutgoingWebhook represents an OnCall outgoing webhook.
+//
+//nolint:recvcheck
 type OutgoingWebhook struct {
 	ID                  string   `json:"id,omitempty"`
 	Name                string   `json:"name"`
@@ -202,6 +256,8 @@ type OutgoingWebhook struct {
 }
 
 // AlertGroup represents an OnCall alert group.
+//
+//nolint:recvcheck
 type AlertGroup struct {
 	ID             string `json:"id,omitempty"`
 	Title          string `json:"title,omitempty"`
@@ -236,6 +292,8 @@ type SlackInfo struct {
 }
 
 // User represents an OnCall user.
+//
+//nolint:recvcheck
 type User struct {
 	ID                    string     `json:"id"`
 	GrafanaID             int        `json:"grafana_id,omitempty"`
@@ -251,6 +309,8 @@ type User struct {
 }
 
 // PersonalNotificationRule represents a personal notification rule.
+//
+//nolint:recvcheck
 type PersonalNotificationRule struct {
 	ID                    string `json:"id,omitempty"`
 	UserID                string `json:"user_id,omitempty"`
@@ -261,6 +321,8 @@ type PersonalNotificationRule struct {
 }
 
 // UserGroup represents an OnCall user group (e.g. Slack user group).
+//
+//nolint:recvcheck
 type UserGroup struct {
 	ID     string `json:"id,omitempty"`
 	Type   string `json:"type,omitempty"`
@@ -269,6 +331,8 @@ type UserGroup struct {
 }
 
 // SlackChannel represents a Slack channel.
+//
+//nolint:recvcheck
 type SlackChannel struct {
 	ID      string `json:"id,omitempty"`
 	Name    string `json:"name,omitempty"`
@@ -276,6 +340,8 @@ type SlackChannel struct {
 }
 
 // Alert represents an individual alert within an alert group.
+//
+//nolint:recvcheck
 type Alert struct {
 	ID           string `json:"id,omitempty"`
 	AlertGroupID string `json:"alert_group_id,omitempty"`
@@ -285,6 +351,8 @@ type Alert struct {
 }
 
 // ResolutionNote represents a resolution note for an alert group.
+//
+//nolint:recvcheck
 type ResolutionNote struct {
 	ID           string  `json:"id,omitempty"`
 	AlertGroupID string  `json:"alert_group_id,omitempty"`
@@ -306,6 +374,8 @@ type UpdateResolutionNoteInput struct {
 }
 
 // ShiftSwap represents a shift swap request.
+//
+//nolint:recvcheck
 type ShiftSwap struct {
 	ID          string  `json:"id,omitempty"`
 	Schedule    string  `json:"schedule,omitempty"`
@@ -353,6 +423,8 @@ type DirectEscalationResult struct {
 }
 
 // Organization represents a Grafana OnCall organization.
+//
+//nolint:recvcheck
 type Organization struct {
 	ID           string `json:"id,omitempty"`
 	Name         string `json:"name,omitempty"`

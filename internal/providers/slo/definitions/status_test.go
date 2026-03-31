@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/providers/slo/definitions"
+	"github.com/grafana/gcx/internal/providers/slo/definitions"
 )
 
 //nolint:modernize // ptr() creates pointer to value, not pointer to type like new()

@@ -27,7 +27,7 @@ Use this template when completing each implementation stage.
 ## Completion
 
 - [ ] Git commit with Title/What/Why format
-- [ ] Beads task closed: `bd close grafanactl-experiments-N`
+- [ ] Beads task closed: `bd close gcx-N`
 - [ ] `bd dolt push` — sync beads to remote
 - [ ] Next stage is now unblocked
 - [ ] Any follow-up tasks created as beads issues

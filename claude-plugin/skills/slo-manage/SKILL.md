@@ -1,16 +1,16 @@
 ---
 name: slo-manage
 description: Use when the user wants to create, update, pull, push, or delete SLO definitions. Trigger on phrases like "create an SLO", "update SLO objective", "push SLO", "pull SLOs", "delete SLO", or "GitOps sync SLOs". For checking SLO health or status, use slo-check-status instead. For investigating a breaching SLO, use slo-investigate instead.
-allowed-tools: [grafanactl, Bash, Read, Write, Edit]
+allowed-tools: [gcx, Bash, Read, Write, Edit]
 ---
 
 # SLO Management
 
-Create, update, sync, and delete SLO definitions using grafanactl.
+Create, update, sync, and delete SLO definitions using gcx.
 
 ## Core Principles
 
-1. Use grafanactl commands exclusively — do not call Grafana APIs directly
+1. Use gcx commands exclusively — do not call Grafana APIs directly
 2. Always run `--dry-run` before any push operation; proceed only if dry-run succeeds
 3. Trust the user's expertise — skip explanations of SLO concepts
 4. Use `-o json` for agent processing; default table/yaml for user display
@@ -48,7 +48,7 @@ Use the metric name suffix to pick the query type when the user provides a metri
 ### Step 2: Resolve destination datasource UID
 
 ```bash
-grafanactl datasources list --type prometheus
+gcx datasources list --type prometheus
 ```
 
 Use the UID from the output. If multiple Prometheus datasources exist, ask the user which to use.
@@ -83,22 +83,22 @@ spec:
 ### Step 4: Validate with dry-run, then push
 
 ```bash
-grafanactl slo definitions push slo.yaml --dry-run
-grafanactl slo definitions push slo.yaml
+gcx slo definitions push slo.yaml --dry-run
+gcx slo definitions push slo.yaml
 ```
 
 **Push semantics:**
 - `metadata.name` empty → always creates (server assigns UUID)
 - `metadata.name` set to UUID → upsert (updates if exists, creates if not)
 
-After creation, server assigns UUID. Run `grafanactl slo definitions list` to confirm.
+After creation, server assigns UUID. Run `gcx slo definitions list` to confirm.
 
 ## Workflow 2: Update Existing SLO
 
 ### Step 1: Get current definition
 
 ```bash
-grafanactl slo definitions get <UUID> -o yaml > slo.yaml
+gcx slo definitions get <UUID> -o yaml > slo.yaml
 ```
 
 ### Step 2: Modify the YAML file
@@ -109,8 +109,8 @@ Do not modify `metadata.name` (UUID) or `readOnly` fields.
 ### Step 3: Dry-run, then push
 
 ```bash
-grafanactl slo definitions push slo.yaml --dry-run
-grafanactl slo definitions push slo.yaml
+gcx slo definitions push slo.yaml --dry-run
+gcx slo definitions push slo.yaml
 ```
 
 ## Workflow 3: GitOps Sync (Pull/Push)
@@ -118,15 +118,15 @@ grafanactl slo definitions push slo.yaml
 ### Pull all SLOs to disk
 
 ```bash
-grafanactl slo definitions pull -d ./slos
+gcx slo definitions pull -d ./slos
 # Writes to ./slos/SLO/<uuid>.yaml
 ```
 
 ### Push directory of SLOs
 
 ```bash
-grafanactl slo definitions push ./slos/SLO/*.yaml --dry-run
-grafanactl slo definitions push ./slos/SLO/*.yaml
+gcx slo definitions push ./slos/SLO/*.yaml --dry-run
+gcx slo definitions push ./slos/SLO/*.yaml
 ```
 
 ## Workflow 4: Delete SLO
@@ -134,8 +134,8 @@ grafanactl slo definitions push ./slos/SLO/*.yaml
 ### Step 1: Confirm SLO identity
 
 ```bash
-grafanactl slo definitions list
-grafanactl slo definitions get <UUID>
+gcx slo definitions list
+gcx slo definitions get <UUID>
 ```
 
 Confirm the UUID and name with the user before deletion.
@@ -143,7 +143,7 @@ Confirm the UUID and name with the user before deletion.
 ### Step 2: Delete
 
 ```bash
-grafanactl slo definitions delete <UUID> -f
+gcx slo definitions delete <UUID> -f
 ```
 
 Use `-f` to skip confirmation prompt when running in agent mode.
@@ -190,8 +190,8 @@ Deleted: <uuid> (<name>)
 ## Error Handling
 
 - **Push fails with 400**: Check YAML structure matches template; verify `destinationDatasource.uid` is valid
-- **Push fails with 404 on update**: UUID in `metadata.name` not found; check with `grafanactl slo definitions list`
-- **Pull creates empty directory**: No SLOs in this context; check `grafanactl config view` for active context
+- **Push fails with 404 on update**: UUID in `metadata.name` not found; check with `gcx slo definitions list`
+- **Pull creates empty directory**: No SLOs in this context; check `gcx config view` for active context
 - **Datasource list returns empty**: No Prometheus datasources configured; ask user for UID manually
 - **Dry-run shows unexpected diff**: Show diff to user and ask for confirmation before proceeding
-- **Delete fails with 404**: UUID already deleted or wrong UUID; verify with `grafanactl slo definitions list`
+- **Delete fails with 404**: UUID already deleted or wrong UUID; verify with `gcx slo definitions list`

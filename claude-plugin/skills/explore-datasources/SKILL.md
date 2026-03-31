@@ -5,7 +5,7 @@ description: Discover what datasources, metrics, labels, and log streams are ava
 
 # Datasource Discovery
 
-> If grafanactl is not configured, see the setup-grafanactl skill first.
+> If gcx is not configured, see the setup-gcx skill first.
 
 ## Instructions
 
@@ -15,11 +15,11 @@ Start by identifying all datasources in the Grafana instance.
 
 ```bash
 # List all datasources
-grafanactl datasources list
+gcx datasources list
 
 # Filter by type if you know what you need
-grafanactl datasources list --type prometheus
-grafanactl datasources list --type loki
+gcx datasources list --type prometheus
+gcx datasources list --type loki
 ```
 
 **Expected output:** Table showing UID, NAME, TYPE, URL, and DEFAULT columns.
@@ -34,16 +34,16 @@ Choose the appropriate exploration path based on datasource type.
 
 ```bash
 # List all available labels
-grafanactl datasources prometheus labels -d <datasource-uid>
+gcx datasources prometheus labels -d <datasource-uid>
 
 # Get values for a specific label to understand what's being monitored
-grafanactl datasources prometheus labels -d <datasource-uid> --label job
+gcx datasources prometheus labels -d <datasource-uid> --label job
 
 # List all available metrics with descriptions
-grafanactl datasources prometheus metadata -d <datasource-uid>
+gcx datasources prometheus metadata -d <datasource-uid>
 
 # Check what systems are being scraped
-grafanactl datasources prometheus targets -d <datasource-uid>
+gcx datasources prometheus targets -d <datasource-uid>
 ```
 
 **Expected output:** Tables showing labels, metrics, or targets depending on command.
@@ -52,13 +52,13 @@ grafanactl datasources prometheus targets -d <datasource-uid>
 
 ```bash
 # List all available labels
-grafanactl datasources loki labels -d <datasource-uid>
+gcx datasources loki labels -d <datasource-uid>
 
 # Get values for a specific label
-grafanactl datasources loki labels -d <datasource-uid> --label job
+gcx datasources loki labels -d <datasource-uid> --label job
 
 # List log streams matching a selector (required)
-grafanactl datasources loki series -d <datasource-uid> -M '{job="varlogs"}'
+gcx datasources loki series -d <datasource-uid> -M '{job="varlogs"}'
 ```
 
 **Expected output:** Tables showing labels or log stream series.
@@ -71,10 +71,10 @@ Once you've identified available data, verify with a test query.
 
 ```bash
 # For Prometheus - instant query
-grafanactl datasources prometheus query <datasource-uid> 'up'
+gcx datasources prometheus query <datasource-uid> 'up'
 
 # For Prometheus - range query
-grafanactl datasources prometheus query <datasource-uid> 'rate(http_requests_total[5m])' --from now-1h --to now
+gcx datasources prometheus query <datasource-uid> 'rate(http_requests_total[5m])' --from now-1h --to now
 ```
 
 **Expected output:** Table showing metric values with labels and timestamps.
@@ -85,10 +85,10 @@ To avoid passing `-d <uid>` repeatedly, configure defaults:
 
 ```bash
 # Set default Prometheus datasource
-grafanactl config set contexts.<context-name>.default-prometheus-datasource <uid>
+gcx config set contexts.<context-name>.default-prometheus-datasource <uid>
 
 # Set default Loki datasource
-grafanactl config set contexts.<context-name>.default-loki-datasource <uid>
+gcx config set contexts.<context-name>.default-loki-datasource <uid>
 ```
 
 After setting defaults, you can omit the `-d` flag in datasource commands.
@@ -100,10 +100,10 @@ After setting defaults, you can omit the `-d` flag in datasource commands.
 **User says:** "What HTTP metrics are available?"
 
 **Actions:**
-1. List Prometheus datasources: `grafanactl datasources list --type prometheus`
+1. List Prometheus datasources: `gcx datasources list --type prometheus`
 2. Get datasource UID from output
-3. Search for HTTP metrics: `grafanactl datasources prometheus metadata -d <uid> -o json | jq '.data | to_entries[] | select(.key | contains("http"))'`
-4. Get details on specific metric: `grafanactl datasources prometheus metadata -d <uid> --metric http_requests_total`
+3. Search for HTTP metrics: `gcx datasources prometheus metadata -d <uid> -o json | jq '.data | to_entries[] | select(.key | contains("http"))'`
+4. Get details on specific metric: `gcx datasources prometheus metadata -d <uid> --metric http_requests_total`
 
 **Result:** Metric name, type (counter/gauge), and help text showing what the metric measures.
 
@@ -112,11 +112,11 @@ After setting defaults, you can omit the `-d` flag in datasource commands.
 **User says:** "What applications are sending logs to Loki?"
 
 **Actions:**
-1. List Loki datasources: `grafanactl datasources list --type loki`
+1. List Loki datasources: `gcx datasources list --type loki`
 2. Get datasource UID from output
-3. List label names: `grafanactl datasources loki labels -d <uid>`
-4. Get job values: `grafanactl datasources loki labels -d <uid> --label job`
-5. List streams for a specific job: `grafanactl datasources loki series -d <uid> -M '{job="varlogs"}'`
+3. List label names: `gcx datasources loki labels -d <uid>`
+4. Get job values: `gcx datasources loki labels -d <uid> --label job`
+5. List streams for a specific job: `gcx datasources loki series -d <uid> -M '{job="varlogs"}'`
 
 **Result:** List of job names and their associated log streams.
 
@@ -125,12 +125,12 @@ After setting defaults, you can omit the `-d` flag in datasource commands.
 **User says:** "My dashboard shows no data for service X"
 
 **Actions:**
-1. Verify datasource exists: `grafanactl datasources get <uid>`
+1. Verify datasource exists: `gcx datasources get <uid>`
 2. Check if service is being monitored:
-   - Prometheus: `grafanactl datasources prometheus targets -d <uid>`
+   - Prometheus: `gcx datasources prometheus targets -d <uid>`
    - Look for service in scrape targets
-3. Verify labels exist: `grafanactl datasources prometheus labels -d <uid> --label job`
-4. Test simple query: `grafanactl datasources prometheus query <uid> 'up{job="service-x"}'`
+3. Verify labels exist: `gcx datasources prometheus labels -d <uid> --label job`
+4. Test simple query: `gcx datasources prometheus query <uid> 'up{job="service-x"}'`
 
 **Result:** Identifies whether datasource is misconfigured, service isn't being scraped, or label selectors are wrong.
 
@@ -139,9 +139,9 @@ After setting defaults, you can omit the `-d` flag in datasource commands.
 **User says:** "Show me all log streams from the production namespace"
 
 **Actions:**
-1. Get Loki datasource UID: `grafanactl datasources list --type loki`
-2. Verify namespace label exists: `grafanactl datasources loki labels -d <uid> --label namespace`
-3. List all streams in namespace: `grafanactl datasources loki series -d <uid> -M '{namespace="production"}'`
+1. Get Loki datasource UID: `gcx datasources list --type loki`
+2. Verify namespace label exists: `gcx datasources loki labels -d <uid> --label namespace`
+3. List all streams in namespace: `gcx datasources loki series -d <uid> -M '{namespace="production"}'`
 
 **Result:** Table showing all label combinations for log streams in the production namespace.
 
@@ -154,10 +154,10 @@ After setting defaults, you can omit the `-d` flag in datasource commands.
 **Solution:**
 ```bash
 # Option 1: Pass the UID explicitly
-grafanactl datasources prometheus labels -d <datasource-uid>
+gcx datasources prometheus labels -d <datasource-uid>
 
 # Option 2: Set a default datasource
-grafanactl config set contexts.<context-name>.default-prometheus-datasource <uid>
+gcx config set contexts.<context-name>.default-prometheus-datasource <uid>
 ```
 
 ### Error: "at least one --match selector is required"
@@ -167,10 +167,10 @@ grafanactl config set contexts.<context-name>.default-prometheus-datasource <uid
 **Solution:** Loki series requires at least one LogQL selector:
 ```bash
 # Correct
-grafanactl datasources loki series -d <uid> -M '{job="varlogs"}'
+gcx datasources loki series -d <uid> -M '{job="varlogs"}'
 
 # Wrong - will fail
-grafanactl datasources loki series -d <uid>
+gcx datasources loki series -d <uid>
 ```
 
 ### Error: "parse error on line 1, column X: bare \" in non-quoted-field"
@@ -180,10 +180,10 @@ grafanactl datasources loki series -d <uid>
 **Solution:** Use single quotes around the entire selector:
 ```bash
 # Correct - single quotes outside
-grafanactl datasources loki series -d <uid> -M '{name="value", cluster="prod"}'
+gcx datasources loki series -d <uid> -M '{name="value", cluster="prod"}'
 
 # Wrong - shell interprets quotes incorrectly
-grafanactl datasources loki series -d <uid> -M {name="value"}
+gcx datasources loki series -d <uid> -M {name="value"}
 ```
 
 ### Error: "datasource.prometheus.datasource.grafana.app \"<uid>\" not found"
@@ -191,18 +191,18 @@ grafanactl datasources loki series -d <uid> -M {name="value"}
 **Cause:** The datasource UID doesn't exist or you don't have access to it.
 
 **Solution:**
-1. List datasources to verify UID: `grafanactl datasources list`
-2. Check you're using the correct context: `grafanactl config current-context`
-3. Verify datasource exists: `grafanactl datasources get <uid>`
+1. List datasources to verify UID: `gcx datasources list`
+2. Check you're using the correct context: `gcx config current-context`
+3. Verify datasource exists: `gcx datasources get <uid>`
 
 ### No output from labels/series commands
 
 **Cause:** Datasource has no data or hasn't scraped/ingested anything yet.
 
 **Solution:**
-1. For Prometheus: Check targets are active: `grafanactl datasources prometheus targets -d <uid>`
-2. For Loki: Verify labels exist: `grafanactl datasources loki labels -d <uid>`
-3. Check datasource URL is reachable: `grafanactl datasources get <uid>`
+1. For Prometheus: Check targets are active: `gcx datasources prometheus targets -d <uid>`
+2. For Loki: Verify labels exist: `gcx datasources loki labels -d <uid>`
+3. Check datasource URL is reachable: `gcx datasources get <uid>`
 
 ## Advanced Usage
 
@@ -216,10 +216,10 @@ All commands support `-o json` or `-o yaml` for programmatic use:
 
 ```bash
 # Get JSON output for piping to jq
-grafanactl datasources prometheus labels -d <uid> -o json
+gcx datasources prometheus labels -d <uid> -o json
 
 # Example: Count total metrics
-grafanactl datasources prometheus metadata -d <uid> -o json | jq '.data | length'
+gcx datasources prometheus metadata -d <uid> -o json | jq '.data | length'
 ```
 
 Default output is `table` format for human readability.

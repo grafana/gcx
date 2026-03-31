@@ -2,9 +2,9 @@
 
 ## Overview
 
-grafanactl's resource model is built on a Kubernetes-style representation borrowed directly from `k8s.io/apimachinery`. Every Grafana resource — dashboard, folder, alert rule — is represented as an `unstructured.Unstructured` object carrying `apiVersion`, `kind`, `metadata`, and `spec` fields. This design choice unlocks use of the full Kubernetes client-go ecosystem, including dynamic clients, paginators, and server-side apply semantics.
+gcx's resource model is built on a Kubernetes-style representation borrowed directly from `k8s.io/apimachinery`. Every Grafana resource — dashboard, folder, alert rule — is represented as an `unstructured.Unstructured` object carrying `apiVersion`, `kind`, `metadata`, and `spec` fields. This design choice unlocks use of the full Kubernetes client-go ecosystem, including dynamic clients, paginators, and server-side apply semantics.
 
-The central pipeline that enables user-facing commands like `grafanactl resources get dashboards/my-dash` is:
+The central pipeline that enables user-facing commands like `gcx resources get dashboards/my-dash` is:
 
 ```
 User input string
@@ -64,8 +64,8 @@ Every `Resource` carries a `SourceInfo` (line 374) recording where it came from.
 ### Manager Metadata
 
 Resources carry manager metadata in annotations (via `GrafanaMetaAccessor`):
-- `grafana.app/manager-kind` — which tool manages the resource (grafanactl uses `utils.ManagerKindKubectl` as placeholder, line 19)
-- `grafana.app/manager-identity` — identity string ("grafanactl")
+- `grafana.app/manager-kind` — which tool manages the resource (gcx uses `utils.ManagerKindKubectl` as placeholder, line 19)
+- `grafana.app/manager-identity` — identity string ("gcx")
 - `grafana.app/source-path` — original file path
 
 `IsManaged()` (line 161) returns true when the manager kind matches `ResourceManagerKind`. Resources managed by the UI (with `grafana.app/saved-from-ui` annotation) or other tools are protected from accidental overwrites unless `--include-managed` is passed.
@@ -276,10 +276,10 @@ Processors transform resources in-place before push or after pull. They are pass
 
 **File:** `internal/resources/process/managerfields.go`
 
-Applied during push (wired in `cmd/grafanactl/resources/push.go` line 148). Writes manager metadata into annotations on resources that are managed by grafanactl:
+Applied during push (wired in `cmd/gcx/resources/push.go` line 148). Writes manager metadata into annotations on resources that are managed by gcx:
 
 ```
-r.Raw.SetManagerProperties({Kind: ResourceManagerKind, Identity: "grafanactl"})
+r.Raw.SetManagerProperties({Kind: ResourceManagerKind, Identity: "gcx"})
 r.Raw.SetSourceProperties({Path: "file:///path/to/resource.yaml"})
 ```
 
@@ -290,11 +290,11 @@ Skipped entirely when `--omit-manager-fields` CLI flag is set.
 
 **File:** `internal/resources/process/serverfields.go`
 
-Applied during pull (wired in `cmd/grafanactl/resources/pull.go` line 121). Removes server-generated ephemeral fields to produce clean, round-trippable files:
+Applied during pull (wired in `cmd/gcx/resources/pull.go` line 121). Removes server-generated ephemeral fields to produce clean, round-trippable files:
 
 Annotations removed:
 - `grafana.app/createdBy`, `grafana.app/updatedBy`, `grafana.app/updatedTimestamp` — always
-- `grafana.app/manager-*`, `grafana.app/source-*` — only for grafanactl-managed resources (re-added on push)
+- `grafana.app/manager-*`, `grafana.app/source-*` — only for gcx-managed resources (re-added on push)
 
 Labels removed:
 - `grafana.app/deprecatedInternalID`
@@ -323,21 +323,21 @@ resource type are pulled simultaneously.
 ### Pipeline Wiring
 
 ```
-PUSH pipeline (cmd/grafanactl/resources/push.go):
+PUSH pipeline (cmd/gcx/resources/push.go):
   procs = [NamespaceOverrider(cfg.Namespace), ManagerFieldsAppender{}]
   PushRequest{Resources, Processors: procs, ...}
   → pusher.Push() calls Process() on each resource before Create/Update
 
-PULL pipeline (cmd/grafanactl/resources/pull.go):
+PULL pipeline (cmd/gcx/resources/pull.go):
   PullRequest{Processors: [ServerFieldsStripper{}], ...}
   → puller.Pull() calls Process() on each resource after fetching from API
 ```
 
 ---
 
-## 5b. Provider-Backed Resources: ResourceAdapter and Router
+## 5b. Provider-Backed Resources: ResourceAdapter, TypedCRUD, and Router
 
-**Files:** `internal/resources/adapter/adapter.go`, `internal/resources/adapter/router.go`
+**Files:** `internal/resources/adapter/adapter.go`, `internal/resources/adapter/typed.go`, `internal/resources/adapter/identity.go`, `internal/resources/adapter/router.go`
 
 Some resource types are backed by provider REST APIs (SLO, Synthetic Monitoring, Alert)
 rather than by the Grafana k8s-compatible `/apis` endpoint. These types plug into the
@@ -352,17 +352,77 @@ ResourceAdapter interface
   +-- Delete(ctx, name, DeleteOptions) → error
   +-- Descriptor() Descriptor
   +-- Aliases() []string
+  +-- Schema() json.RawMessage
+  +-- Example() json.RawMessage
 ```
 
 `adapter.Factory` is `func(ctx context.Context) (ResourceAdapter, error)` — a lazy
 constructor that is only called on first use and its result cached for the router's
 lifetime.
 
-### Self-Registration Pattern
+### TypedCRUD and ResourceIdentity
 
-Provider packages call `adapter.Register()` in their `init()` function with a
-`Registration{Factory, Descriptor, Aliases, GVK}`. This is the database/sql driver
-pattern — importing the provider package is sufficient to register its adapters.
+Most providers use `TypedCRUD[T]` to implement `ResourceAdapter` without hand-writing
+the marshal/unmarshal boilerplate. `TypedCRUD` wraps typed Go functions (`ListFn`,
+`GetFn`, `CreateFn`, `UpdateFn`, `DeleteFn`) and handles:
+
+- Wrapping domain objects in `TypedObject[T]` — a generic K8s-style envelope
+  (`TypeMeta` + `ObjectMeta` + `Spec T`)
+- Converting between typed domain objects and `unstructured.Unstructured`
+- Stripping server-managed fields (`StripFields`)
+- Client-side get-by-name fallback when `GetFn` is nil (lists + filters)
+
+The type constraint `ResourceNamer` (value-type subset of `ResourceIdentity`)
+requires domain types to implement `GetResourceName() string`. The full
+`ResourceIdentity` interface adds `SetResourceName(string)` for round-trip
+support (pointer receiver).
+
+```
+ResourceIdentity interface (pointer types)
+  +-- GetResourceName() string       -- extract identity for metadata.name
+  +-- SetResourceName(name string)   -- restore identity after K8s round-trip
+
+ResourceNamer interface (value types — TypedCRUD constraint)
+  +-- GetResourceName() string
+
+TypedObject[T ResourceNamer]
+  +-- TypeMeta    (apiVersion, kind)
+  +-- ObjectMeta  (name, namespace)
+  +-- Spec T      (domain object)
+
+TypedCRUD[T ResourceNamer]
+  +-- ListFn, GetFn, CreateFn, UpdateFn, DeleteFn  -- typed function pointers
+  +-- List(ctx) → []TypedObject[T]                  -- typed public API
+  +-- AsAdapter() → ResourceAdapter                 -- bridge to unstructured pipeline
+```
+
+### Unified Registration
+
+Providers implement `TypedRegistrations() []adapter.Registration` on the `Provider`
+interface. `providers.Register(p)` auto-registers both the provider and its adapter
+registrations atomically — a single call in `init()` populates both registries:
+
+```go
+// In providers/registry.go
+func Register(p Provider) {
+    registry = append(registry, p)
+    for _, reg := range p.TypedRegistrations() {
+        adapter.Register(reg)   // auto-register adapters
+    }
+}
+```
+
+`TypedRegistration[T]` bridges `TypedCRUD` to the `Registration` system:
+
+```go
+TypedRegistration[T ResourceNamer]
+  +-- Descriptor, Aliases, GVK, Schema, Example
+  +-- Factory func(ctx) (*TypedCRUD[T], error)
+  +-- ToRegistration() → Registration   // wraps Factory to return ResourceAdapter
+```
+
+This replaces the old pattern where providers called `adapter.Register()` directly
+in their `init()` functions alongside `providers.Register()`.
 
 ### ResourceClientRouter
 
@@ -386,7 +446,7 @@ selector strings like `"slos"` or `"rules"`.
 
 ## 6. Why the Kubernetes Resource Model
 
-Grafana 12+ exposes its API as a Kubernetes-style API server (using `grafana/grafana/pkg/apimachinery`). The same `apiVersion/kind/metadata/spec` structure used by Kubernetes is used by Grafana's API. This was not a grafanactl design choice — it is a direct consequence of Grafana's server architecture.
+Grafana 12+ exposes its API as a Kubernetes-style API server (using `grafana/grafana/pkg/apimachinery`). The same `apiVersion/kind/metadata/spec` structure used by Kubernetes is used by Grafana's API. This was not a gcx design choice — it is a direct consequence of Grafana's server architecture.
 
 Given that reality, using `k8s.io/client-go` and `k8s.io/apimachinery` directly provides:
 
@@ -453,9 +513,11 @@ PartialGVK                         Descriptor
 | `internal/resources/process/managerfields.go` | `ManagerFieldsAppender` |
 | `internal/resources/process/serverfields.go` | `ServerFieldsStripper` |
 | `internal/resources/process/namespace.go` | `NamespaceOverrider` |
-| `cmd/grafanactl/resources/push.go` | Push pipeline wiring (processors, registry, filters) |
-| `cmd/grafanactl/resources/pull.go` | Pull pipeline wiring (processors, registry, filters) |
+| `cmd/gcx/resources/push.go` | Push pipeline wiring (processors, registry, filters) |
+| `cmd/gcx/resources/pull.go` | Pull pipeline wiring (processors, registry, filters) |
 | `internal/resources/adapter/adapter.go` | `ResourceAdapter` interface and `Factory` type |
+| `internal/resources/adapter/identity.go` | `ResourceIdentity` and `ResourceNamer` interfaces |
+| `internal/resources/adapter/typed.go` | `TypedCRUD[T]`, `TypedObject[T]`, `TypedRegistration[T]` — generic adapter framework |
 | `internal/resources/adapter/register.go` | Global `Register()`, `AllRegistrations()` for self-registration |
 | `internal/resources/adapter/router.go` | `ResourceClientRouter` — routes CRUD to adapter or dynamic client |
 | `internal/resources/discovery/openapi.go` | `SchemaFetcher` — fetches OpenAPI v3 schemas with disk caching; used by `resources schemas` |

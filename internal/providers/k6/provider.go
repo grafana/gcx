@@ -1,9 +1,11 @@
 package k6
 
 import (
-	"github.com/grafana/grafanactl/internal/providers"
-	"github.com/grafana/grafanactl/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 var _ providers.Provider = &K6Provider{}
@@ -20,7 +22,7 @@ func (p *K6Provider) Name() string { return "k6" }
 
 // ShortDesc returns a one-line description of the provider.
 func (p *K6Provider) ShortDesc() string {
-	return "Manage K6 Cloud resources (projects, load tests, env vars, schedules, load zones)."
+	return "Manage Grafana K6 Cloud projects, load tests, and schedules"
 }
 
 // Commands returns the Cobra commands contributed by this provider.
@@ -60,8 +62,29 @@ func (p *K6Provider) ConfigKeys() []providers.ConfigKey {
 	}
 }
 
-// ResourceAdapters returns adapter factories for K6 resource types.
-// Factories are registered globally via adapter.Register() in resource_adapter.go init().
-func (p *K6Provider) ResourceAdapters() []adapter.Factory {
-	return nil
+// TypedRegistrations returns adapter registrations for K6 resource types.
+func (p *K6Provider) TypedRegistrations() []adapter.Registration {
+	loader := &providers.ConfigLoader{}
+	registrations := make([]adapter.Registration, 0, len(allResources()))
+
+	for _, rd := range allResources() {
+		desc := resources.Descriptor{
+			GroupVersion: schema.GroupVersion{
+				Group:   APIGroup,
+				Version: APIVersionStr,
+			},
+			Kind:     rd.kind,
+			Singular: rd.singular,
+			Plural:   rd.plural,
+		}
+		registrations = append(registrations, adapter.Registration{
+			Factory:    newSubResourceFactory(loader, rd),
+			Descriptor: desc,
+			GVK:        desc.GroupVersionKind(),
+			Schema:     rd.schema,
+			Example:    rd.example,
+		})
+	}
+
+	return registrations
 }

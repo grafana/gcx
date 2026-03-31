@@ -16,19 +16,19 @@ Investigate Grafana alerts by analyzing state, querying datasources, and identif
 
 ## Prerequisites
 
-User needs grafanactl installed with configured context and appropriate permissions. If grafanactl is not configured, use the setup-grafanactl skill first.
+User needs gcx installed with configured context and appropriate permissions. If gcx is not configured, use the setup-gcx skill first.
 
 ## Investigation Workflow
 
 ### Step 1: Verify Context and Locate Alert
 
-Check context if needed (`grafanactl config view`). If multiple contexts exist and none specified, ask which to use.
+Check context if needed (`gcx config view`). If multiple contexts exist and none specified, ask which to use.
 
 ### Step 2: Get Alert Details and Check for Early Exit
 
 Fetch the alert by listing all alerts and filtering by name. Replace `<AlertName>` with the actual alert name:
 ```bash
-grafanactl alert rules list -o json | jq -r '.[] | .rules[]? | select(.name == "<AlertName>")'
+gcx alert rules list -o json | jq -r '.[] | .rules[]? | select(.name == "<AlertName>")'
 ```
 
 Server-side filters (use instead of downloading all rules and filtering with jq):
@@ -52,7 +52,7 @@ You should use the datasourceUID from the alert when you can.
 
 If you need to query a different datasource (e.g., Loki for log correlation), resolve its UID first:
 ```bash
-grafanactl datasources list --type loki
+gcx datasources list --type loki
 ```
 Annotation URLs often reference datasources by name — always resolve to UID before querying.
 
@@ -60,12 +60,12 @@ Query the datasource. Use -o json to get the data for yourself. Use with a graph
 
 ```bash
 # Prometheus
-grafanactl datasources prometheus query <datasource-uid> '<query>' --from now-1h --to now --step 1m -o json
-grafanactl datasources prometheus query <datasource-uid> '<query>' --from now-1h --to now --step 1m -o graph
+gcx datasources prometheus query <datasource-uid> '<query>' --from now-1h --to now --step 1m -o json
+gcx datasources prometheus query <datasource-uid> '<query>' --from now-1h --to now --step 1m -o graph
 
 # Loki
-grafanactl datasources loki query <datasource-uid> '<query>' --from now-1h --to now -o json
-grafanactl datasources loki query <datasource-uid> '<query>' --from now-1h --to now -o graph
+gcx datasources loki query <datasource-uid> '<query>' --from now-1h --to now -o json
+gcx datasources loki query <datasource-uid> '<query>' --from now-1h --to now -o graph
 ```
 
 Analyze the results: What's the current value? Spike or gradual? When did it start?
@@ -94,7 +94,7 @@ Recommend incident creation if there's customer impact.
 
 List specific next actions - queries to run, deployments to check, metrics to examine. If there are queries for logs or metrics you can run, then ask the user if they want you to run them. If infrastructure changes are a suspected cause, suggest to the user that you could investigate any infra-as-code repos, if they point you to them.
 
-If the next suggested actions include looking at logs in any way, use grafanactl to do it.
+If the next suggested actions include looking at logs in any way, use gcx to do it.
 
 ## Output Format
 
@@ -136,7 +136,7 @@ Use minimal formatting. Avoid excessive bold text. No timelines like "within 24 
 
 ## Error Handling
 
-- If grafanactl fails, explain the error
+- If gcx fails, explain the error
 - If no alerts match, show similar names and ask for clarification
 - If datasource queries fail, note it and move on
 - Multiple alerts with same name: list them all with UIDs and states, ask which to investigate

@@ -10,10 +10,18 @@ type Status struct {
 }
 
 // Vendor represents a detected vendor in the metrics.
+//
+//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type Vendor struct {
 	Name    string `json:"name"`
 	Enabled bool   `json:"enabled"`
 }
+
+// GetResourceName returns the vendor name.
+func (v Vendor) GetResourceName() string { return v.Name }
+
+// SetResourceName sets the vendor name.
+func (v *Vendor) SetResourceName(name string) { v.Name = name }
 
 // VendorsResponse is the response from the vendors API.
 type VendorsResponse struct {
@@ -26,12 +34,20 @@ type DatasetsResponse struct {
 }
 
 // DatasetItem represents a dataset in the API response.
+//
+//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type DatasetItem struct {
 	Name       string `json:"name"`
 	Detected   bool   `json:"detected"`
 	Enabled    bool   `json:"enabled"`
 	Configured bool   `json:"configured"`
 }
+
+// GetResourceName returns the dataset name.
+func (d DatasetItem) GetResourceName() string { return d.Name }
+
+// SetResourceName sets the dataset name.
+func (d *DatasetItem) SetResourceName(name string) { d.Name = name }
 
 // DatasetConfig holds configuration for activating a dataset.
 type DatasetConfig struct {
@@ -199,6 +215,8 @@ type SearchResult struct {
 }
 
 // GraphEntity is the rich entity returned by entity get/lookup endpoints.
+//
+//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type GraphEntity struct {
 	ID                   int64                  `json:"id,omitempty"`
 	Type                 string                 `json:"type"`
@@ -318,7 +336,49 @@ type EdgeTypeDisplayConfig struct {
 	Style string `json:"style"`
 }
 
+// GetResourceName returns the composite "Type--Name" identity for the entity.
+func (e GraphEntity) GetResourceName() string { return e.Type + "--" + e.Name }
+
+// SetResourceName sets the entity name (Type is set separately).
+func (e *GraphEntity) SetResourceName(name string) { e.Name = name }
+
+// EntityType represents a discovered entity type with its instance count.
+//
+//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
+type EntityType struct {
+	Name  string `json:"name"`
+	Count int64  `json:"count"`
+}
+
+// GetResourceName returns the entity type name.
+func (e EntityType) GetResourceName() string { return e.Name }
+
+// SetResourceName sets the entity type name.
+func (e *EntityType) SetResourceName(name string) { e.Name = name }
+
+// Scope represents a scope dimension with its known values.
+//
+//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
+type Scope struct {
+	Name   string   `json:"name"`
+	Values []string `json:"values"`
+}
+
+// GetResourceName returns the scope dimension name.
+func (s Scope) GetResourceName() string { return s.Name }
+
+// SetResourceName sets the scope dimension name.
+func (s *Scope) SetResourceName(name string) { s.Name = name }
+
+// GetResourceName returns the rule name.
+func (r Rule) GetResourceName() string { return r.Name }
+
+// SetResourceName restores the rule name.
+func (r *Rule) SetResourceName(name string) { r.Name = name }
+
 // Rule represents a Knowledge Graph prom rule.
+//
+//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type Rule struct {
 	Name        string            `json:"name"`
 	Expr        string            `json:"expr,omitempty"`

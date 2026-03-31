@@ -10,7 +10,7 @@ comply with good practices and environment-specific policies.
 Resources can be linted using:
 
 ```shell
-grafanactl dev lint run ./resources
+gcx dev lint run ./resources
 ```
 
 Directories are recursively explored and all [built-in rules](../reference/linter-rules/index.md)
@@ -20,22 +20,22 @@ For a finer control, the rules used to lint resources can be configured:
 
 ```shell
 # Disable all rules for a resource type:
-grafanactl dev lint run --disable-resource dashboard ./resources
+gcx dev lint run --disable-resource dashboard ./resources
 
 # Disable all rules in a category:
-grafanactl dev lint run --disable-category idiomatic ./resources
+gcx dev lint run --disable-category idiomatic ./resources
 
 # Disable specific rules:
-grafanactl dev lint run --disable uneditable-dashboard --disable panel-title-description ./resources
+gcx dev lint run --disable uneditable-dashboard --disable panel-title-description ./resources
 
 # Enable rules for specific resource types:
-grafanactl dev lint run --disable-all --enable-resource dashboard ./resources
+gcx dev lint run --disable-all --enable-resource dashboard ./resources
 
 # Enable only some categories:
-grafanactl dev lint run --disable-all --enable-category idiomatic ./resources
+gcx dev lint run --disable-all --enable-category idiomatic ./resources
 
 # Enable only specific rules:
-grafanactl dev lint run --disable-all --enable uneditable-dashboard ./resources
+gcx dev lint run --disable-all --enable uneditable-dashboard ./resources
 ```
 
 ## Define custom linting rules
@@ -46,11 +46,11 @@ the policy language used by [Open Policy Agent (OPA)](https://www.openpolicyagen
 They can be extremely useful to make sure that resources comply with policies
 specific to your environment.
 
-New custom rules can be scaffolded with `grafanactl`:
+New custom rules can be scaffolded with `gcx`:
 
 ```shell
 # Creates a new "dashboard" linter rule in the current directory:
-grafanactl dev lint new dashboard custom-rule
+gcx dev lint new dashboard custom-rule
 ```
 
 As a result, a file with the bootstrapped rule is generated:
@@ -60,10 +60,10 @@ As a result, a file with the bootstrapped rule is generated:
 # description: Briefly describe the rule here.
 # custom:
 #  severity: warning
-package custom.grafanactl.rules.dashboard.idiomatic["custom-rule"]
+package custom.gcx.rules.dashboard.idiomatic["custom-rule"]
 
-import data.grafanactl.result
-import data.grafanactl.utils
+import data.gcx.result
+import data.gcx.utils
 
 # Dashboard v1
 report contains violation if {
@@ -84,7 +84,7 @@ report contains violation if {
 }
 ```
 
-[Built-in rules](https://github.com/grafana/grafanactl/tree/main/internal/linter/bundle/grafanactl/rules)
+[Built-in rules](https://github.com/grafana/gcx/tree/main/internal/linter/bundle/gcx/rules)
 can be a good source of inspiration when writing custom ones.
 
 The severity level of a rule can be changed by updating the `custom.severity` annotation.
@@ -95,5 +95,5 @@ categories than the `idiomatic` one:
 
 ```shell
 # Creates a new "alertrule" linter rule, categorized under "bug":
-grafanactl dev lint new alertrule custom-rule -c bug
+gcx dev lint new alertrule custom-rule -c bug
 ```

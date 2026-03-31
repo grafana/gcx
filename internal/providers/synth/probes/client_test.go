@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/providers/synth/probes"
+	"github.com/grafana/gcx/internal/providers/synth/probes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -7,8 +7,8 @@
 
 ## Context
 
-`grafanactl query` was a top-level command but semantically belongs under
-`grafanactl datasources`, consistent with how other resource-scoped operations
+`gcx query` was a top-level command but semantically belongs under
+`gcx datasources`, consistent with how other resource-scoped operations
 are organized. Additionally, known datasource kinds (Prometheus, Loki, Pyroscope,
 Tempo) each have distinct query languages and semantics that benefit from
 dedicated subcommands rather than a generic catch-all.
@@ -18,7 +18,7 @@ dedicated subcommands rather than a generic catch-all.
 Restructure the query command tree as:
 
 ```
-grafanactl datasources query
+gcx datasources query
   prometheus <UID> '<EXPR>' [--from] [--to] [--window]
   loki       <UID> '<EXPR>' [--from] [--to] [--window]
   tempo      <UID> '<EXPR>' [--from] [--to] [--window]
@@ -37,7 +37,7 @@ Design rationale:
 
 ## Consequences
 
-- The `grafanactl query` top-level command is removed
-- All query functionality moves under `grafanactl datasources query <kind>`
+- The `gcx query` top-level command is removed
+- All query functionality moves under `gcx datasources query <kind>`
 - Each kind subcommand can implement kind-specific flags and validation
 - The `generic` subcommand accepts any datasource type without validation

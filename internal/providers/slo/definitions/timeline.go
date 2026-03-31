@@ -11,10 +11,10 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/grafana/grafanactl/internal/format"
-	"github.com/grafana/grafanactl/internal/graph"
-	cmdio "github.com/grafana/grafanactl/internal/output"
-	"github.com/grafana/grafanactl/internal/query/prometheus"
+	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/graph"
+	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/promql-builder/go/promql"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -70,7 +70,7 @@ func ValidateTimelineFlags(cmd *cobra.Command) error {
 	return nil
 }
 
-func newTimelineCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newTimelineCommand() *cobra.Command {
 	opts := &timelineOpts{}
 	cmd := &cobra.Command{
 		Use:   "timeline [UUID]",
@@ -81,19 +81,19 @@ against the Prometheus datasource associated with each SLO.
 Requires that the SLO destination datasource has recording rules generating
 grafana_slo_sli_window metrics.`,
 		Example: `  # Render SLI trend for all SLOs over the past 7 days.
-  grafanactl slo definitions timeline
+  gcx slo definitions timeline
 
   # Render SLI trend for a specific SLO.
-  grafanactl slo definitions timeline abc123def
+  gcx slo definitions timeline abc123def
 
   # Custom time range with explicit step.
-  grafanactl slo definitions timeline --from now-24h --to now --step 5m
+  gcx slo definitions timeline --from now-24h --to now --step 5m
 
   # Use window shorthand for the past 24 hours.
-  grafanactl slo definitions timeline --window 24h
+  gcx slo definitions timeline --window 24h
 
   # Output timeline data as a table.
-  grafanactl slo definitions timeline -o table`,
+  gcx slo definitions timeline -o table`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -113,12 +113,7 @@ grafana_slo_sli_window metrics.`,
 
 			ctx := cmd.Context()
 
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
-			if err != nil {
-				return err
-			}
-
-			sloClient, err := NewClient(restCfg)
+			crud, cfg, err := NewTypedCRUD(ctx)
 			if err != nil {
 				return err
 			}
@@ -126,15 +121,19 @@ grafana_slo_sli_window metrics.`,
 			// Fetch SLO definition(s).
 			var slos []Slo
 			if len(args) == 1 {
-				s, err := sloClient.Get(ctx, args[0])
+				s, err := crud.Get(ctx, args[0])
 				if err != nil {
 					return err
 				}
-				slos = []Slo{*s}
+				slos = []Slo{s.Spec}
 			} else {
-				slos, err = sloClient.List(ctx)
+				typedObjs, err := crud.List(ctx)
 				if err != nil {
 					return err
+				}
+				slos = make([]Slo, len(typedObjs))
+				for i := range typedObjs {
+					slos[i] = typedObjs[i].Spec
 				}
 			}
 
@@ -166,7 +165,7 @@ grafana_slo_sli_window metrics.`,
 			}
 
 			// Create Prometheus client for range queries.
-			promClient, err := prometheus.NewClient(restCfg)
+			promClient, err := prometheus.NewClient(cfg)
 			if err != nil {
 				return err
 			}

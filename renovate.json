@@ -1,6 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Renovate configuration for grafanactl - groups dependencies by ecosystem to reduce PR noise while maintaining update visibility",
+  "description": "Renovate configuration for gcx - groups dependencies by ecosystem to reduce PR noise while maintaining update visibility",
   "extends": [
     "github>grafana/grafana-renovate-config//presets/base"
   ],

@@ -8,8 +8,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/cloud"
-	"github.com/grafana/grafanactl/internal/providers"
+	"github.com/grafana/gcx/internal/cloud"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -29,7 +29,7 @@ func newMockGCOMServer(t *testing.T, info cloud.StackInfo) *httptest.Server {
 // writeConfigFile writes YAML content to a temp file and returns its path.
 func writeConfigFile(t *testing.T, content string) string {
 	t.Helper()
-	f, err := os.CreateTemp(t.TempDir(), "grafanactl-config-*.yaml")
+	f, err := os.CreateTemp(t.TempDir(), "gcx-config-*.yaml")
 	require.NoError(t, err)
 	_, err = f.WriteString(content)
 	require.NoError(t, err)
@@ -123,6 +123,184 @@ current-context: default
 	assert.Contains(t, err.Error(), "failed to get stack info")
 	assert.NotContains(t, err.Error(), "cloud token is required")
 	assert.NotContains(t, err.Error(), "cloud stack is not configured")
+}
+
+// TestConfigLoader_LoadProviderConfig tests LoadProviderConfig with env vars and config file.
+func TestConfigLoader_LoadProviderConfig(t *testing.T) {
+	tests := []struct {
+		name         string
+		configYAML   string
+		envVars      map[string]string
+		providerName string
+		wantConfig   map[string]string
+		wantErr      bool
+	}{
+		{
+			// AC-1: env var overrides everything
+			name: "env_var_only",
+			configYAML: `
+contexts:
+  default: {}
+current-context: default
+`,
+			envVars:      map[string]string{"GRAFANA_PROVIDER_SYNTH_SM_URL": "https://env.sm"},
+			providerName: "synth",
+			wantConfig:   map[string]string{"sm-url": "https://env.sm"},
+		},
+		{
+			// AC-2: config file value returned when no env var
+			name: "config_file_only",
+			configYAML: `
+contexts:
+  default:
+    providers:
+      synth:
+        sm-url: https://file.sm
+current-context: default
+`,
+			providerName: "synth",
+			wantConfig:   map[string]string{"sm-url": "https://file.sm"},
+		},
+		{
+			// AC-3: env var takes precedence over config file
+			name: "env_var_overrides_config_file",
+			configYAML: `
+contexts:
+  default:
+    providers:
+      synth:
+        sm-url: https://file.sm
+current-context: default
+`,
+			envVars:      map[string]string{"GRAFANA_PROVIDER_SYNTH_SM_URL": "https://env.sm"},
+			providerName: "synth",
+			wantConfig:   map[string]string{"sm-url": "https://env.sm"},
+		},
+		{
+			// provider not in config → nil map returned (no error)
+			name: "provider_not_configured",
+			configYAML: `
+contexts:
+  default: {}
+current-context: default
+`,
+			providerName: "synth",
+			wantConfig:   nil,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfgFile := writeConfigFile(t, tc.configYAML)
+			for k, v := range tc.envVars {
+				t.Setenv(k, v)
+			}
+
+			loader := &providers.ConfigLoader{}
+			loader.SetConfigFile(cfgFile)
+
+			got, _, err := loader.LoadProviderConfig(context.Background(), tc.providerName)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantConfig, got)
+		})
+	}
+}
+
+// TestConfigLoader_LoadProviderConfig_Namespace verifies that namespace is returned.
+func TestConfigLoader_LoadProviderConfig_Namespace(t *testing.T) {
+	cfgFile := writeConfigFile(t, `
+contexts:
+  default: {}
+current-context: default
+`)
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgFile)
+
+	_, namespace, err := loader.LoadProviderConfig(context.Background(), "synth")
+	require.NoError(t, err)
+	assert.Equal(t, "default", namespace)
+}
+
+// TestConfigLoader_SaveProviderConfig verifies AC-6: save and reload round-trip.
+func TestConfigLoader_SaveProviderConfig(t *testing.T) {
+	cfgFile := writeConfigFile(t, `
+contexts:
+  default: {}
+current-context: default
+`)
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgFile)
+
+	err := loader.SaveProviderConfig(context.Background(), "synth", "sm-metrics-datasource-uid", "abc123")
+	require.NoError(t, err)
+
+	// Reload and verify value persists.
+	got, _, err := loader.LoadProviderConfig(context.Background(), "synth")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "abc123", got["sm-metrics-datasource-uid"])
+}
+
+// TestConfigLoader_SaveProviderConfig_ExistingProvider verifies that saving a key
+// to an already-configured provider preserves other keys.
+func TestConfigLoader_SaveProviderConfig_ExistingProvider(t *testing.T) {
+	cfgFile := writeConfigFile(t, `
+contexts:
+  default:
+    providers:
+      synth:
+        sm-url: https://file.sm
+        sm-token: tok
+current-context: default
+`)
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgFile)
+
+	err := loader.SaveProviderConfig(context.Background(), "synth", "sm-metrics-datasource-uid", "uid-xyz")
+	require.NoError(t, err)
+
+	got, _, err := loader.LoadProviderConfig(context.Background(), "synth")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "uid-xyz", got["sm-metrics-datasource-uid"])
+	assert.Equal(t, "https://file.sm", got["sm-url"])
+	assert.Equal(t, "tok", got["sm-token"])
+}
+
+// TestConfigLoader_LoadFullConfig verifies AC-7: returns non-nil *config.Config.
+func TestConfigLoader_LoadFullConfig(t *testing.T) {
+	cfgFile := writeConfigFile(t, `
+contexts:
+  default: {}
+current-context: default
+`)
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgFile)
+
+	cfg, err := loader.LoadFullConfig(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
+	assert.Equal(t, "default", cfg.CurrentContext)
+}
+
+// TestConfigLoader_LoadGrafanaConfig_BackwardCompat verifies AC-4: LoadGrafanaConfig
+// still errors when no grafana server is configured.
+func TestConfigLoader_LoadGrafanaConfig_BackwardCompat(t *testing.T) {
+	cfgFile := writeConfigFile(t, `
+contexts:
+  default: {}
+current-context: default
+`)
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgFile)
+
+	_, err := loader.LoadGrafanaConfig(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "grafana config is required")
 }
 
 // TestConfigLoader_LoadCloudConfig_FullRoundTrip tests the full happy-path:

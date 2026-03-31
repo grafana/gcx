@@ -1,10 +1,10 @@
 package slo
 
 import (
-	"github.com/grafana/grafanactl/internal/providers"
-	"github.com/grafana/grafanactl/internal/providers/slo/definitions"
-	"github.com/grafana/grafanactl/internal/providers/slo/reports"
-	"github.com/grafana/grafanactl/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/slo/definitions"
+	"github.com/grafana/gcx/internal/providers/slo/reports"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 )
 
@@ -19,7 +19,7 @@ type SLOProvider struct{}
 func (p *SLOProvider) Name() string { return "slo" }
 
 // ShortDesc returns a one-line description of the provider.
-func (p *SLOProvider) ShortDesc() string { return "Manage Grafana SLO resources." }
+func (p *SLOProvider) ShortDesc() string { return "Manage Grafana SLO definitions and reports" }
 
 // Commands returns the Cobra commands contributed by this provider.
 func (p *SLOProvider) Commands() []*cobra.Command {
@@ -38,7 +38,7 @@ func (p *SLOProvider) Commands() []*cobra.Command {
 	// Bind config flags on the parent — all subcommands inherit these.
 	loader.BindFlags(sloCmd.PersistentFlags())
 
-	sloCmd.AddCommand(definitions.Commands(loader))
+	sloCmd.AddCommand(definitions.Commands())
 	sloCmd.AddCommand(reports.Commands(loader))
 
 	return []*cobra.Command{sloCmd}
@@ -58,7 +58,16 @@ func (p *SLOProvider) ConfigKeys() []providers.ConfigKey {
 	return nil
 }
 
-// ResourceAdapters returns adapter factories for SLO resource types.
-func (p *SLOProvider) ResourceAdapters() []adapter.Factory {
-	return []adapter.Factory{definitions.NewLazyFactory()}
+// TypedRegistrations returns adapter registrations for SLO resource types.
+func (p *SLOProvider) TypedRegistrations() []adapter.Registration {
+	desc := definitions.StaticDescriptor()
+	return []adapter.Registration{
+		{
+			Factory:    definitions.NewLazyFactory(),
+			Descriptor: desc,
+			GVK:        desc.GroupVersionKind(),
+			Schema:     definitions.SloSchema(),
+			Example:    definitions.SloExample(),
+		},
+	}
 }

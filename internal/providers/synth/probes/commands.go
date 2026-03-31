@@ -6,9 +6,9 @@ import (
 	"io"
 	"text/tabwriter"
 
-	"github.com/grafana/grafanactl/internal/format"
-	cmdio "github.com/grafana/grafanactl/internal/output"
-	"github.com/grafana/grafanactl/internal/providers/synth/smcfg"
+	"github.com/grafana/gcx/internal/format"
+	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -51,16 +51,20 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			baseURL, token, namespace, err := loader.LoadSMConfig(ctx)
+			crud, namespace, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
 
-			client := NewClient(baseURL, token)
-
-			probeList, err := client.List(ctx)
+			typedObjs, err := crud.List(ctx)
 			if err != nil {
 				return err
+			}
+
+			// Extract probes from TypedObject
+			probeList := make([]Probe, len(typedObjs))
+			for i := range typedObjs {
+				probeList[i] = typedObjs[i].Spec
 			}
 
 			codec, err := opts.IO.Codec()
@@ -73,10 +77,10 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 			}
 
 			var objs []unstructured.Unstructured
-			for _, p := range probeList {
-				res, err := ToResource(p, namespace)
+			for _, typedObj := range typedObjs {
+				res, err := ToResource(typedObj.Spec, namespace)
 				if err != nil {
-					return fmt.Errorf("converting probe %d: %w", p.ID, err)
+					return fmt.Errorf("converting probe %d: %w", typedObj.Spec.ID, err)
 				}
 				objs = append(objs, res.ToUnstructured())
 			}

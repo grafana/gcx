@@ -1,10 +1,13 @@
 package kg
 
 import (
-	"github.com/grafana/grafanactl/internal/providers"
-	"github.com/grafana/grafanactl/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 )
+
+// Note: package init() is only in provider.go (calls providers.Register).
+// Resource adapter registrations are in TypedRegistrations().
 
 var _ providers.Provider = &KGProvider{}
 
@@ -20,7 +23,7 @@ func (p *KGProvider) Name() string { return "kg" }
 
 // ShortDesc returns a one-line description of the provider.
 func (p *KGProvider) ShortDesc() string {
-	return "Manage Grafana Knowledge Graph (Asserts) resources."
+	return "Manage Grafana Knowledge Graph entity types, rules, and datasets"
 }
 
 // Commands returns the Cobra commands contributed by this provider.
@@ -82,8 +85,40 @@ func (p *KGProvider) ConfigKeys() []providers.ConfigKey {
 	return nil
 }
 
-// ResourceAdapters returns adapter factories for KG resource types.
-// Factories are registered globally via adapter.Register() in resource_adapter.go init().
-func (p *KGProvider) ResourceAdapters() []adapter.Factory {
-	return nil
+// TypedRegistrations returns adapter registrations for KG resource types.
+func (p *KGProvider) TypedRegistrations() []adapter.Registration {
+	loader := &providers.ConfigLoader{}
+	return []adapter.Registration{
+		{
+			Factory:    NewAdapterFactory(loader),
+			Descriptor: staticDescriptor,
+			GVK:        staticDescriptor.GroupVersionKind(),
+			Schema:     RuleSchema(),
+			Example:    RuleExample(),
+		},
+		{
+			Factory:    NewDatasetAdapterFactory(loader),
+			Descriptor: datasetDescriptor,
+			GVK:        datasetDescriptor.GroupVersionKind(),
+			Schema:     DatasetSchema(),
+		},
+		{
+			Factory:    NewVendorAdapterFactory(loader),
+			Descriptor: vendorDescriptor,
+			GVK:        vendorDescriptor.GroupVersionKind(),
+			Schema:     VendorSchema(),
+		},
+		{
+			Factory:    NewEntityTypeAdapterFactory(loader),
+			Descriptor: entityTypeDescriptor,
+			GVK:        entityTypeDescriptor.GroupVersionKind(),
+			Schema:     EntityTypeSchema(),
+		},
+		{
+			Factory:    NewScopeAdapterFactory(loader),
+			Descriptor: scopeDescriptor,
+			GVK:        scopeDescriptor.GroupVersionKind(),
+			Schema:     ScopeSchema(),
+		},
+	}
 }

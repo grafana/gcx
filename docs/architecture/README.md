@@ -1,8 +1,8 @@
 # Architecture Documentation Index
 
-> Generated: 2026-03-03 | Last updated: 2026-03-22 | Strategy: Standard | Confidence: 93%
+> Generated: 2026-03-03 | Last updated: 2026-03-27 | Strategy: Standard | Confidence: 93%
 >
-> High-level architecture documentation for grafanactl.
+> High-level architecture documentation for gcx.
 > Start here, then navigate to specific docs as needed.
 
 ## Quick Navigation
@@ -22,7 +22,7 @@ See also `docs/reference/` for prescriptive guides: [provider-guide.md](../refer
 
 ## Architecture at a Glance
 
-**grafanactl** is a kubectl-style CLI for managing Grafana resources via Grafana 12+'s Kubernetes-compatible API. It uses `k8s.io/client-go` and `k8s.io/apimachinery` directly because the Grafana server exposes a `/apis` endpoint with standard Kubernetes semantics.
+**gcx** is a kubectl-style CLI for managing Grafana resources via Grafana 12+'s Kubernetes-compatible API. It uses `k8s.io/client-go` and `k8s.io/apimachinery` directly because the Grafana server exposes a `/apis` endpoint with standard Kubernetes semantics.
 
 The architecture follows a clean layered monolith with strict separation: CLI wiring (`cmd/`) holds no business logic; all domain logic lives in `internal/` organized by feature (config, resources, server). Resources are represented as `unstructured.Unstructured` objects (map-based, no pre-generated Go types), which enables dynamic discovery of resource types and leverages the full Kubernetes client ecosystem including pagination, dry-run semantics, and error handling patterns.
 
@@ -69,7 +69,7 @@ Recurring patterns catalog with Kubernetes resource model adoption, options patt
 Core abstractions deep-dive: Resource type wrapping unstructured objects, Selector parsing, Filter resolution, Discovery registry, and the selector→filter→resource pipeline. Essential for modifying resource handling.
 
 ### [cli-layer.md](cli-layer.md)
-Command tree structure, file layout of cmd/grafanactl/, the Options pattern used by all resource commands, error handling, and output formatting. Read when adding or modifying CLI commands.
+Command tree structure, file layout of cmd/gcx/, the Options pattern used by all resource commands, error handling, and output formatting. Read when adding or modifying CLI commands.
 
 ### [client-api-layer.md](client-api-layer.md)
 Client construction chain from GrafanaConfig through NamespacedRESTConfig to dynamic/versioned clients. Covers both the Kubernetes-compatible `/apis` path (primary) and Grafana OpenAPI `/api` path (secondary). Essential for API communication changes.

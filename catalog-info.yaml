@@ -1,11 +1,11 @@
 apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
-  name: grafanactl
-  title: grafanactl
+  name: gcx
+  title: gcx
   description: Command-line tool designed to simplify interaction with Grafana resources.
   annotations:
-    github.com/project-slug: grafana/grafanactl
+    github.com/project-slug: grafana/gcx
   tags:
     - gitops
   links:

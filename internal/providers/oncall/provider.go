@@ -3,11 +3,10 @@ package oncall
 import (
 	"context"
 	"fmt"
-	"os"
 
-	"github.com/grafana/grafanactl/internal/config"
-	"github.com/grafana/grafanactl/internal/providers"
-	"github.com/grafana/grafanactl/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -16,7 +15,6 @@ var _ providers.Provider = &OnCallProvider{}
 
 func init() { //nolint:gochecknoinits // Self-registration pattern (like database/sql drivers).
 	providers.Register(&OnCallProvider{})
-	RegisterAdapters(&configLoader{})
 }
 
 // OnCallProvider manages Grafana OnCall resources.
@@ -27,7 +25,7 @@ func (p *OnCallProvider) Name() string { return "oncall" }
 
 // ShortDesc returns a one-line description of the provider.
 func (p *OnCallProvider) ShortDesc() string {
-	return "Manage Grafana OnCall resources."
+	return "Manage Grafana OnCall integrations, escalation chains, schedules, and routing"
 }
 
 // Commands returns the Cobra commands contributed by this provider.
@@ -62,7 +60,8 @@ func (p *OnCallProvider) Commands() []*cobra.Command {
 		newOrganizationsCmd(loader),
 		newResolutionNotesCmd(loader),
 		newShiftSwapsCmd(loader),
-		newPersonalNotificationRulesCmd(loader),
+		// personal-notification-rules removed: OnCall API rejects SA tokens
+		// for this endpoint (403 "Invalid token"). Needs user-token auth support.
 		// Standalone action commands
 		newEscalateCommand(loader),
 	)
@@ -82,10 +81,10 @@ func (p *OnCallProvider) ConfigKeys() []providers.ConfigKey {
 	return nil
 }
 
-// ResourceAdapters returns adapter factories for OnCall resource types.
-// Factories are registered globally via adapter.Register() in resource_adapter.go init().
-func (p *OnCallProvider) ResourceAdapters() []adapter.Factory {
-	return nil
+// TypedRegistrations returns adapter registrations for OnCall resource types.
+// Registrations are added globally by providers.Register() which calls this method.
+func (p *OnCallProvider) TypedRegistrations() []adapter.Registration {
+	return buildOnCallRegistrations(&configLoader{})
 }
 
 // OnCallConfigLoader can produce a configured OnCall client.
@@ -111,7 +110,7 @@ func (l *configLoader) LoadOnCallClient(ctx context.Context) (*Client, string, e
 		return nil, "", err
 	}
 
-	oncallURL, err := discoverOnCallURL(ctx, restCfg)
+	oncallURL, err := l.discoverOnCallURL(ctx, restCfg)
 	if err != nil {
 		return nil, "", err
 	}
@@ -123,15 +122,14 @@ func (l *configLoader) LoadOnCallClient(ctx context.Context) (*Client, string, e
 	return client, restCfg.Namespace, nil
 }
 
-// discoverOnCallURL resolves the OnCall API URL from env or plugin settings.
-func discoverOnCallURL(ctx context.Context, restCfg config.NamespacedRESTConfig) (string, error) {
-	// Check for explicit OnCall URL from env.
-	// GRAFANA_ONCALL_URL is the primary env var.
-	// GRAFANA_PROVIDER_ONCALL_ONCALL_URL is also supported (provider env convention).
-	if u := os.Getenv("GRAFANA_ONCALL_URL"); u != "" {
-		return u, nil
+// discoverOnCallURL resolves the OnCall API URL from provider config or plugin settings.
+func (l *configLoader) discoverOnCallURL(ctx context.Context, restCfg config.NamespacedRESTConfig) (string, error) {
+	// Check provider config (includes GRAFANA_PROVIDER_ONCALL_ONCALL_URL env var).
+	providerCfg, _, err := l.LoadProviderConfig(ctx, "oncall")
+	if err != nil {
+		return "", err
 	}
-	if u := os.Getenv("GRAFANA_PROVIDER_ONCALL_ONCALL_URL"); u != "" {
+	if u := providerCfg["oncall-url"]; u != "" {
 		return u, nil
 	}
 

@@ -2,6 +2,7 @@ package checks
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,10 +12,11 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/grafana/grafanactl/internal/format"
-	cmdio "github.com/grafana/grafanactl/internal/output"
-	"github.com/grafana/grafanactl/internal/providers/synth/smcfg"
-	"github.com/grafana/grafanactl/internal/resources"
+	"github.com/grafana/gcx/internal/format"
+	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers/synth/smcfg"
+	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -66,14 +68,12 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			baseURL, token, namespace, err := loader.LoadSMConfig(ctx)
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
 
-			client := NewClient(baseURL, token)
-
-			checkList, err := client.List(ctx)
+			typedObjs, err := crud.List(ctx)
 			if err != nil {
 				return err
 			}
@@ -83,23 +83,48 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 				return err
 			}
 
+			// Extract checkResource from TypedObject
+			checkResources := make([]checkResource, len(typedObjs))
+			for i := range typedObjs {
+				checkResources[i] = typedObjs[i].Spec
+			}
+
+			// Convert checkResources to Check for table codecs
+			checkList := make([]Check, len(checkResources))
+			for i, cr := range checkResources {
+				checkList[i] = Check{
+					ID:               cr.checkID,
+					Job:              cr.Job,
+					Target:           cr.Target,
+					Frequency:        cr.Frequency,
+					Offset:           cr.Offset,
+					Timeout:          cr.Timeout,
+					Enabled:          cr.Enabled,
+					Labels:           cr.Labels,
+					Settings:         cr.Settings,
+					BasicMetricsOnly: cr.BasicMetricsOnly,
+					AlertSensitivity: cr.AlertSensitivity,
+					Probes:           []int64{}, // Probe IDs not available from checkResource
+				}
+			}
+
 			if codec.Format() == "table" || codec.Format() == "wide" {
 				return codec.Encode(cmd.OutOrStdout(), checkList)
 			}
 
-			probeRefs, err := client.ListProbes(ctx)
-			if err != nil {
-				return fmt.Errorf("listing probes for name resolution: %w", err)
-			}
-			names := probeRefMap(probeRefs)
-
+			// For yaml/json output, marshal typed objects to unstructured
 			var objs []unstructured.Unstructured
-			for _, c := range checkList {
-				res, err := ToResource(c, namespace, names)
+			for _, typedObj := range typedObjs {
+				// Marshal to JSON to ensure proper K8s envelope structure
+				objData, err := json.Marshal(typedObj)
 				if err != nil {
-					return fmt.Errorf("converting check %d: %w", c.ID, err)
+					return fmt.Errorf("marshaling typed object: %w", err)
 				}
-				objs = append(objs, res.ToUnstructured())
+				var obj unstructured.Unstructured
+				if err := json.Unmarshal(objData, &obj); err != nil {
+					return fmt.Errorf("unmarshaling to unstructured: %w", err)
+				}
+				objs = append(objs, obj)
 			}
 			return codec.Encode(cmd.OutOrStdout(), objs)
 		},
@@ -187,19 +212,18 @@ func newGetCommand(loader smcfg.Loader) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			id, err := strconv.ParseInt(args[0], 10, 64)
+			// Try to parse as a numeric ID for compatibility
+			_, err := strconv.ParseInt(args[0], 10, 64)
 			if err != nil {
-				return fmt.Errorf("invalid check ID %q: must be a number", args[0])
+				return fmt.Errorf("invalid check ID %q: must be a number or name", args[0])
 			}
 
-			baseURL, token, namespace, err := loader.LoadSMConfig(ctx)
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
 
-			client := NewClient(baseURL, token)
-
-			c, err := client.Get(ctx, id)
+			typedObj, err := crud.Get(ctx, args[0])
 			if err != nil {
 				return err
 			}
@@ -209,22 +233,35 @@ func newGetCommand(loader smcfg.Loader) *cobra.Command {
 				return err
 			}
 
+			cr := typedObj.Spec
+			c := Check{
+				ID:               cr.checkID,
+				Job:              cr.Job,
+				Target:           cr.Target,
+				Frequency:        cr.Frequency,
+				Offset:           cr.Offset,
+				Timeout:          cr.Timeout,
+				Enabled:          cr.Enabled,
+				Labels:           cr.Labels,
+				Settings:         cr.Settings,
+				BasicMetricsOnly: cr.BasicMetricsOnly,
+				AlertSensitivity: cr.AlertSensitivity,
+				Probes:           []int64{},
+			}
+
 			if codec.Format() == "table" || codec.Format() == "wide" {
-				return codec.Encode(cmd.OutOrStdout(), []Check{*c})
+				return codec.Encode(cmd.OutOrStdout(), []Check{c})
 			}
 
-			probeRefs, err := client.ListProbes(ctx)
+			// For yaml/json, use the typed object
+			objData, err := json.Marshal(typedObj)
 			if err != nil {
-				return fmt.Errorf("listing probes: %w", err)
+				return fmt.Errorf("marshaling typed object: %w", err)
 			}
-			names := probeRefMap(probeRefs)
-
-			res, err := ToResource(*c, namespace, names)
-			if err != nil {
-				return fmt.Errorf("converting check: %w", err)
+			var obj unstructured.Unstructured
+			if err := json.Unmarshal(objData, &obj); err != nil {
+				return fmt.Errorf("unmarshaling to unstructured: %w", err)
 			}
-
-			obj := res.ToUnstructured()
 			return codec.Encode(cmd.OutOrStdout(), &obj)
 		},
 	}
@@ -252,23 +289,15 @@ func newPullCommand(loader smcfg.Loader) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			baseURL, token, namespace, err := loader.LoadSMConfig(ctx)
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
 
-			client := NewClient(baseURL, token)
-
-			checkList, err := client.List(ctx)
+			typedObjs, err := crud.List(ctx)
 			if err != nil {
 				return err
 			}
-
-			probeRefs, err := client.ListProbes(ctx)
-			if err != nil {
-				return fmt.Errorf("listing probes: %w", err)
-			}
-			names := probeRefMap(probeRefs)
 
 			outputDir := filepath.Join(opts.OutputDir, "checks")
 			if err := os.MkdirAll(outputDir, 0755); err != nil {
@@ -277,27 +306,32 @@ func newPullCommand(loader smcfg.Loader) *cobra.Command {
 
 			yamlCodec := format.NewYAMLCodec()
 
-			for _, c := range checkList {
-				res, err := ToResource(c, namespace, names)
+			for _, typedObj := range typedObjs {
+				// Convert to unstructured for YAML encoding
+				objData, err := json.Marshal(typedObj)
 				if err != nil {
-					return fmt.Errorf("converting check %d: %w", c.ID, err)
+					return fmt.Errorf("marshaling typed object: %w", err)
+				}
+				var obj unstructured.Unstructured
+				if err := json.Unmarshal(objData, &obj); err != nil {
+					return fmt.Errorf("unmarshaling to unstructured: %w", err)
 				}
 
-				filePath := filepath.Join(outputDir, strconv.FormatInt(c.ID, 10)+".yaml")
+				cr := typedObj.Spec
+				filePath := filepath.Join(outputDir, strconv.FormatInt(cr.checkID, 10)+".yaml")
 				f, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 				if err != nil {
 					return fmt.Errorf("opening file %s: %w", filePath, err)
 				}
 
-				obj := res.ToUnstructured()
 				if err := yamlCodec.Encode(f, &obj); err != nil {
 					f.Close()
-					return fmt.Errorf("writing check %d: %w", c.ID, err)
+					return fmt.Errorf("writing check %d: %w", cr.checkID, err)
 				}
 				f.Close()
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Pulled %d checks to %s/", len(checkList), outputDir)
+			cmdio.Success(cmd.OutOrStdout(), "Pulled %d checks to %s/", len(typedObjs), outputDir)
 			return nil
 		},
 	}
@@ -326,27 +360,9 @@ func newPushCommand(loader smcfg.Loader) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			baseURL, token, namespace, err := loader.LoadSMConfig(ctx)
+			crud, namespace, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
-			}
-
-			client := NewClient(baseURL, token)
-
-			// Fetch tenant ID and probe list once, shared across all files.
-			tenant, err := client.GetTenant(ctx)
-			if err != nil {
-				return fmt.Errorf("fetching tenant: %w", err)
-			}
-
-			probeRefs, err := client.ListProbes(ctx)
-			if err != nil {
-				return fmt.Errorf("listing probes: %w", err)
-			}
-
-			probeIDMap := make(map[string]int64, len(probeRefs))
-			for _, p := range probeRefs {
-				probeIDMap[p.Name] = p.ID
 			}
 
 			yamlCodec := format.NewYAMLCodec()
@@ -373,18 +389,20 @@ func newPushCommand(loader smcfg.Loader) *cobra.Command {
 				}
 
 				// Set namespace from context if missing.
-				if res.Raw.GetNamespace() == "" {
+				if obj.GetNamespace() == "" {
 					obj.SetNamespace(namespace)
 				}
 
-				// Resolve probe names to IDs.
-				probeIDs := make([]int64, 0, len(spec.Probes))
-				for _, name := range spec.Probes {
-					pid, ok := probeIDMap[name]
-					if !ok {
-						return fmt.Errorf("probe %q not found (file %s)", name, filePath)
-					}
-					probeIDs = append(probeIDs, pid)
+				// Reconstruct checkResource from spec and ID
+				cr := checkResource{
+					CheckSpec: *spec,
+					name:      "",
+					checkID:   id,
+				}
+				if id != 0 {
+					cr.name = slugifyJob(spec.Job) + "-" + strconv.FormatInt(id, 10)
+				} else {
+					cr.name = slugifyJob(spec.Job)
 				}
 
 				if opts.DryRun {
@@ -396,21 +414,26 @@ func newPushCommand(loader smcfg.Loader) *cobra.Command {
 					continue
 				}
 
-				apiCheck := SpecToCheck(spec, id, tenant.ID, probeIDs)
+				// Create typed object for CRUD operations
+				typedObj := &adapter.TypedObject[checkResource]{
+					Spec: cr,
+				}
+				typedObj.SetName(cr.name)
+				typedObj.SetNamespace(namespace)
 
 				if id == 0 {
-					created, err := client.Create(ctx, apiCheck)
+					created, err := crud.Create(ctx, typedObj)
 					if err != nil {
 						return fmt.Errorf("creating check %q: %w", spec.Job, err)
 					}
-					cmdio.Success(cmd.OutOrStdout(), "Created check %q (id=%d)", spec.Job, created.ID)
+					cmdio.Success(cmd.OutOrStdout(), "Created check %q (id=%d)", spec.Job, created.Spec.checkID)
 
 					// Update the local YAML file with the server-assigned ID.
-					if err := updateNameInFile(filePath, strconv.FormatInt(created.ID, 10)); err != nil {
+					if err := updateNameInFile(filePath, strconv.FormatInt(created.Spec.checkID, 10)); err != nil {
 						cmdio.Warning(cmd.OutOrStdout(), "Check created but could not update %s: %v", filePath, err)
 					}
 				} else {
-					if _, err := client.Update(ctx, apiCheck); err != nil {
+					if _, err := crud.Update(ctx, cr.name, typedObj); err != nil {
 						return fmt.Errorf("updating check %d: %w", id, err)
 					}
 					cmdio.Success(cmd.OutOrStdout(), "Updated check %q (id=%d)", spec.Job, id)
@@ -489,23 +512,25 @@ func newDeleteCommand(loader smcfg.Loader) *cobra.Command {
 				}
 			}
 
-			baseURL, token, _, err := loader.LoadSMConfig(ctx)
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
 
-			client := NewClient(baseURL, token)
-
 			for _, arg := range args {
+				// Try as numeric ID first, otherwise use as name
 				id, err := strconv.ParseInt(arg, 10, 64)
-				if err != nil {
-					return fmt.Errorf("invalid check ID %q: must be a number", arg)
+				var name string
+				if err == nil && id > 0 {
+					name = slugifyJob("") + "-" + strconv.FormatInt(id, 10)
+				} else {
+					name = arg
 				}
 
-				if err := client.Delete(ctx, id); err != nil {
-					return fmt.Errorf("deleting check %d: %w", id, err)
+				if err := crud.Delete(ctx, name); err != nil {
+					return fmt.Errorf("deleting check %s: %w", arg, err)
 				}
-				cmdio.Success(cmd.OutOrStdout(), "Deleted check %d", id)
+				cmdio.Success(cmd.OutOrStdout(), "Deleted check %s", arg)
 			}
 			return nil
 		},
@@ -517,12 +542,3 @@ func newDeleteCommand(loader smcfg.Loader) *cobra.Command {
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
-
-// probeRefMap converts a []ProbeRef to a map of ID → name.
-func probeRefMap(refs []ProbeRef) map[int64]string {
-	m := make(map[int64]string, len(refs))
-	for _, p := range refs {
-		m[p.ID] = p.Name
-	}
-	return m
-}

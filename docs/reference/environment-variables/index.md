@@ -1,6 +1,6 @@
 # Environment variables reference
 
-## `GRAFANACTL_AUTO_APPROVE`
+## `GCX_AUTO_APPROVE`
 
 AutoApprove automatically enables the --force flag on delete operations,
 enabling non-interactive operation in CI/CD pipelines.

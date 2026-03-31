@@ -7,7 +7,7 @@
 
 ## Context
 
-grafanactl's config system was designed for Grafana instance auth: a single `grafana.server` URL + bearer token per context. Cloud providers (Fleet Management, OnCall, K6) need a different auth model:
+gcx's config system was designed for Grafana instance auth: a single `grafana.server` URL + bearer token per context. Cloud providers (Fleet Management, OnCall, K6) need a different auth model:
 
 - They authenticate with a **Grafana Cloud access policy token**, not a Grafana instance token.
 - Their service URLs are not static — they must be **discovered per stack** via the GCOM API (grafana.com).
@@ -80,7 +80,7 @@ Fleet Management becomes the first provider to use `LoadCloudConfig`, removing i
 - All cloud providers share a single auth primitive — one `cloud.token` config key, one set of env vars
 - Service URL discovery is automatic via GCOM — no manual URL lookup per stack
 - Fleet (and future providers) need zero custom config keys: just `cloud.token` + a stack slug
-- Config set UX is clean: `grafanactl config set contexts.mystack.cloud.token <token>`
+- Config set UX is clean: `gcx config set contexts.mystack.cloud.token <token>`
 - Stack slug is derivable from `grafana.server` for users who already have Grafana config — no duplicate config needed
 
 ### Negative

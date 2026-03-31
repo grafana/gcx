@@ -12,7 +12,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/grafana/grafanactl/internal/config"
+	"github.com/grafana/gcx/internal/config"
 )
 
 func main() {
@@ -139,7 +139,7 @@ func docs(typeDef reflect.Type, typesCommentsMap map[string]typeComments) string
 		keyType := typeDef.Key()
 		valueType := typeDef.Elem()
 
-		buffer.WriteString(fmt.Sprintf("${%s}:\n", keyType))
+		fmt.Fprintf(&buffer, "${%s}:\n", keyType)
 		buffer.WriteString(
 			indent(docs(valueType, typesCommentsMap), 2),
 		)

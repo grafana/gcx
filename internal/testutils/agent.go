@@ -3,7 +3,7 @@ package testutils
 import (
 	"os"
 
-	"github.com/grafana/grafanactl/internal/agent"
+	"github.com/grafana/gcx/internal/agent"
 )
 
 func init() { //nolint:gochecknoinits
@@ -12,7 +12,7 @@ func init() { //nolint:gochecknoinits
 	// Without this, agent.init() caches the host state and BindFlags
 	// defaults to JSON output, breaking tests that expect YAML/text.
 	for _, env := range []string{
-		"GRAFANACTL_AGENT_MODE",
+		"GCX_AGENT_MODE",
 		"CLAUDECODE",
 		"CLAUDE_CODE",
 		"CURSOR_AGENT",

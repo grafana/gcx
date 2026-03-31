@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/grafana/grafanactl/internal/resources"
+	"github.com/grafana/gcx/internal/resources"
 )
 
 const (
@@ -15,7 +15,7 @@ const (
 	Kind = "Incident"
 )
 
-// ToResource converts an Incident to a grafanactl Resource, wrapping the incident
+// ToResource converts an Incident to a gcx Resource, wrapping the incident
 // fields in a Kubernetes-style object envelope with apiVersion, kind, and metadata.
 // The incidentID field is mapped to metadata.name and stripped from the spec.
 func ToResource(inc Incident, namespace string) (*resources.Resource, error) {
@@ -45,7 +45,7 @@ func ToResource(inc Incident, namespace string) (*resources.Resource, error) {
 	return resources.MustFromObject(obj, resources.SourceInfo{}), nil
 }
 
-// FromResource converts a grafanactl Resource back to an Incident.
+// FromResource converts a gcx Resource back to an Incident.
 // The IncidentID is restored from metadata.name.
 func FromResource(res *resources.Resource) (*Incident, error) {
 	obj := res.Object.Object

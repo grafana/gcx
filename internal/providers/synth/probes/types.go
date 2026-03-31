@@ -1,6 +1,16 @@
 package probes
 
+import "strconv"
+
+// GetResourceName returns the probe ID as a string.
+func (p Probe) GetResourceName() string { return strconv.FormatInt(p.ID, 10) }
+
+// SetResourceName restores the probe ID from a string. Parse errors are silently ignored.
+func (p *Probe) SetResourceName(name string) { p.ID, _ = strconv.ParseInt(name, 10, 64) }
+
 // Probe represents a Synthetic Monitoring probe node.
+//
+//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type Probe struct {
 	ID           int64             `json:"id"`
 	TenantID     int64             `json:"tenantId"`

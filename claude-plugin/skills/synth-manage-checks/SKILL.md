@@ -1,20 +1,20 @@
 ---
 name: synth-manage-checks
 description: Use when the user wants to create, update, pull, push, or delete Synthetic Monitoring checks. Trigger on phrases like "create a check", "add a synthetic check", "update check", "pull my SM checks", "push checks", "delete check", or when the user provides a target URL/hostname/domain for monitoring. For check status overview use synth-check-status. For investigating failing checks use synth-investigate-check.
-allowed-tools: [grafanactl, Bash, Read, Write, Edit]
+allowed-tools: [gcx, Bash, Read, Write, Edit]
 ---
 
 # Synthetic Monitoring Check Manager
 
-Manage SM checks using grafanactl. Experienced operators — no hand-holding.
+Manage SM checks using gcx. Experienced operators — no hand-holding.
 
 ## Core Principles
 
-1. Use grafanactl commands; never call Grafana APIs directly (no curl, no HTTP calls)
-2. Trust the user's expertise — no explanations of what SM or grafanactl is
+1. Use gcx commands; never call Grafana APIs directly (no curl, no HTTP calls)
+2. Trust the user's expertise — no explanations of what SM or gcx is
 3. Use `-o json` for agent processing; default table format for user display
 4. Always dry-run before pushing: `--dry-run` first, actual push only on success
-5. Probe names are case-sensitive — always copy-paste from `grafanactl synth probes list`
+5. Probe names are case-sensitive — always copy-paste from `gcx synth probes list`
 
 ## Workflow 1: Create New Check
 
@@ -35,7 +35,7 @@ If unsure, ask the user what they want to test (availability, DNS, port connecti
 ### Step 2: List and Select Probes
 
 ```bash
-grafanactl synth probes list
+gcx synth probes list
 ```
 
 Recommend at least 3 geographically distributed probes. Copy names exactly as shown — case-sensitive. Suggest probes across different continents or regions to provide meaningful coverage (e.g., one each from North America, Europe, Asia-Pacific).
@@ -78,10 +78,10 @@ Configuration guidance:
 
 ```bash
 # Always dry-run first
-grafanactl synth checks push <file.yaml> --dry-run
+gcx synth checks push <file.yaml> --dry-run
 
 # Push only after dry-run succeeds
-grafanactl synth checks push <file.yaml>
+gcx synth checks push <file.yaml>
 ```
 
 Push semantics:
@@ -90,8 +90,8 @@ Push semantics:
 
 After creation, verify with:
 ```bash
-grafanactl synth checks list
-grafanactl synth checks status <ID>
+gcx synth checks list
+gcx synth checks status <ID>
 ```
 
 ## Workflow 2: Update Existing Check
@@ -101,10 +101,10 @@ grafanactl synth checks status <ID>
 Fetch the specific check or all checks:
 ```bash
 # Get single check as YAML (use ID from list output)
-grafanactl synth checks get <ID> -o yaml > check-<ID>.yaml
+gcx synth checks get <ID> -o yaml > check-<ID>.yaml
 
 # Or pull all checks to a directory
-grafanactl synth checks pull -d ./sm-checks/
+gcx synth checks pull -d ./sm-checks/
 ```
 
 ### Step 2: Edit and Push
@@ -113,10 +113,10 @@ Edit the pulled YAML file (the `metadata.name` will be the numeric ID). Modify o
 
 ```bash
 # Dry-run the update
-grafanactl synth checks push check-<ID>.yaml --dry-run
+gcx synth checks push check-<ID>.yaml --dry-run
 
 # Apply
-grafanactl synth checks push check-<ID>.yaml
+gcx synth checks push check-<ID>.yaml
 ```
 
 ## Workflow 3: GitOps Sync (Pull/Push)
@@ -125,11 +125,11 @@ Pull all checks to local directory, edit in source control, push to apply:
 
 ```bash
 # Pull all checks to directory
-grafanactl synth checks pull -d ./sm-checks/
+gcx synth checks pull -d ./sm-checks/
 
 # Edit files as needed, then push each changed file
-grafanactl synth checks push ./sm-checks/<file>.yaml --dry-run
-grafanactl synth checks push ./sm-checks/<file>.yaml
+gcx synth checks push ./sm-checks/<file>.yaml --dry-run
+gcx synth checks push ./sm-checks/<file>.yaml
 ```
 
 For bulk push from a directory, push files individually to control which checks are updated. Review dry-run output before each push.
@@ -138,19 +138,19 @@ For bulk push from a directory, push files individually to control which checks 
 
 ```bash
 # List checks to confirm IDs
-grafanactl synth checks list
+gcx synth checks list
 
 # Delete one or more checks (by numeric ID)
-grafanactl synth checks delete <ID>
+gcx synth checks delete <ID>
 
 # Skip confirmation prompt
-grafanactl synth checks delete <ID> -f
+gcx synth checks delete <ID> -f
 
 # Delete multiple checks
-grafanactl synth checks delete <ID1> <ID2> <ID3>
+gcx synth checks delete <ID1> <ID2> <ID3>
 ```
 
-Confirm the check identity (job name and target) before deleting — use `grafanactl synth checks get <ID>` to review.
+Confirm the check identity (job name and target) before deleting — use `gcx synth checks get <ID>` to review.
 
 ## Output Format
 
@@ -163,7 +163,7 @@ Probes: <count> selected (<list>)
 Push: SUCCESS — ID: <assigned-id>
 
 Verify status:
-  grafanactl synth checks status <ID>
+  gcx synth checks status <ID>
 ```
 
 After pull:
@@ -179,10 +179,10 @@ Deleted check <ID> (<job-name> -> <target>)
 
 ## Error Handling
 
-- **"probe not found"**: Probe names are case-sensitive. Run `grafanactl synth probes list` and copy names exactly.
+- **"probe not found"**: Probe names are case-sensitive. Run `gcx synth probes list` and copy names exactly.
 - **"timeout must be less than frequency"**: Reduce `timeout` value or increase `frequency`.
 - **"invalid frequency"**: `frequency` must be between 10,000ms and 120,000ms (10s–2min).
 - **Dry-run fails with validation error**: Fix the YAML field indicated in the error before pushing.
-- **Push fails with "check already exists"**: The check job+target combination may already exist. Use `grafanactl synth checks list` to find it and update instead of create.
-- **No probes available**: Run `grafanactl synth probes list`; if empty, verify grafanactl context and SM API access.
-- **Complex check types (MultiHTTP, Browser, Scripted)**: Settings map is not fully documented. Pull an existing check of that type as a template: `grafanactl synth checks get <ID> -o yaml`.
+- **Push fails with "check already exists"**: The check job+target combination may already exist. Use `gcx synth checks list` to find it and update instead of create.
+- **No probes available**: Run `gcx synth probes list`; if empty, verify gcx context and SM API access.
+- **Complex check types (MultiHTTP, Browser, Scripted)**: Settings map is not fully documented. Pull an existing check of that type as a template: `gcx synth checks get <ID> -o yaml`.

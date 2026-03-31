@@ -1,6 +1,6 @@
-# grafanactl Claude Code Plugin
+# gcx Claude Code Plugin
 
-A Claude Code plugin that gives AI agents deep knowledge of grafanactl — the
+A Claude Code plugin that gives AI agents deep knowledge of gcx — the
 kubectl-style CLI for managing Grafana resources. With this plugin, Claude can
 debug Grafana incidents, explore datasources, manage dashboards, and drive full
 GitOps workflows without hand-holding.
@@ -10,7 +10,7 @@ GitOps workflows without hand-holding.
 - [Claude Code](https://claude.ai/claude-code) installed
 - Grafana 12+ instance with API access
 
-grafanactl will be installed by the `setup-grafanactl` skill if not already
+gcx will be installed by the `setup-gcx` skill if not already
 present (requires Go v1.24+).
 
 ## Installation
@@ -18,8 +18,8 @@ present (requires Go v1.24+).
 Run these two commands inside Claude Code:
 
 ```
-/plugin marketplace add grafana/grafanactl-experiments
-/plugin install grafanactl@grafanactl-marketplace
+/plugin marketplace add grafana/gcx
+/plugin install gcx@gcx-marketplace
 ```
 
 The first command registers this repository as a marketplace. The second
@@ -29,16 +29,16 @@ restart needed.
 To update the plugin later:
 
 ```
-/plugin marketplace update grafanactl-marketplace
-/plugin install grafanactl@grafanactl-marketplace
+/plugin marketplace update gcx-marketplace
+/plugin install gcx@gcx-marketplace
 ```
 
 ## Quick Setup
 
-Once the plugin is installed, ask Claude to configure grafanactl:
+Once the plugin is installed, ask Claude to configure gcx:
 
 ```
-/setup-grafanactl
+/setup-gcx
 ```
 
 This skill walks through creating a named context pointing at your Grafana
@@ -51,7 +51,7 @@ need to invoke them by name.
 
 | Skill | Trigger phrases | What it does |
 |-------|----------------|--------------|
-| `setup-grafanactl` | "set up grafanactl", "configure grafanactl" | Install, authenticate, and verify grafanactl |
+| `setup-gcx` | "set up gcx", "configure gcx" | Install, authenticate, and verify gcx |
 | `explore-datasources` | "what datasources exist", "explore metrics", "find log streams" | Discover Prometheus metrics, Loki log streams, labels, and series |
 | `investigate-alert` | "why is this alert firing", "investigate alert X" | Root-cause an alert using metrics, logs, and correlated signals |
 | `debug-with-grafana` | "debug this service", "diagnose latency", "troubleshoot errors" | 7-step diagnostic workflow: datasource → query → correlate → conclude |
@@ -74,7 +74,7 @@ claude-plugin/
 ├── agents/
 │   └── grafana-debugger.md            # Debugging specialist agent
 └── skills/
-    ├── setup-grafanactl/
+    ├── setup-gcx/
     │   ├── SKILL.md
     │   └── references/configuration.md
     ├── explore-datasources/
@@ -110,7 +110,7 @@ return a root-cause analysis with the exact query commands used.
 > "Pull all dashboards from staging, validate them, and push to production."
 
 Claude will invoke `manage-dashboards`, pull from the staging context, run
-`grafanactl resources validate`, dry-run the push, and then apply to
+`gcx resources validate`, dry-run the push, and then apply to
 production — with folder ordering handled automatically.
 
 **Exploring what data exists:**

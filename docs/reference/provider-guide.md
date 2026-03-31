@@ -1,22 +1,22 @@
 # Provider Implementation Guide
 
-> How to add a new provider to grafanactl — from interface to registry registration.
+> How to add a new provider to gcx — from interface to registry registration.
 
 ## Overview
 
 Providers are compile-time extension points that contribute Cobra commands and
-typed configuration to grafanactl. A provider encapsulates everything needed
+typed configuration to gcx. A provider encapsulates everything needed
 to manage a specific Grafana product (e.g., SLO, OnCall, Synthetic Monitoring):
 its CLI commands, its config schema, and its validation logic.
 
 When to create a provider:
 - You want to add top-level commands for a Grafana Cloud product
 - The product requires product-specific authentication or configuration keys
-- You want those config keys to integrate with `grafanactl config set` and
+- You want those config keys to integrate with `gcx config set` and
   `GRAFANA_PROVIDER_*` environment variables automatically
 
-Architecture reference: [patterns.md – Provider Plugin System](patterns.md#11-provider-plugin-system-high-confidence-93) (Pattern 11),
-[config-system.md](config-system.md) (Provider config section).
+Architecture reference: [patterns.md – Provider Plugin System](../architecture/patterns.md#11-provider-plugin-system-high-confidence-93) (Pattern 11),
+[config-system.md](../architecture/config-system.md) (Provider config section).
 
 ---
 
@@ -42,7 +42,7 @@ package slo
 
 import (
     "github.com/spf13/cobra"
-    "github.com/grafana/grafanactl/internal/providers"
+    "github.com/grafana/gcx/internal/providers"
 )
 
 // SLOProvider manages Grafana SLO resources.
@@ -63,8 +63,8 @@ func (p *SLOProvider) ShortDesc() string { return "Manage Grafana SLO resources.
 
 ## Step 2: Declare Config Keys
 
-`ConfigKeys()` tells grafanactl which config keys your provider uses and which
-are secrets. This drives the secure-by-default redaction in `grafanactl config view`.
+`ConfigKeys()` tells gcx which config keys your provider uses and which
+are secrets. This drives the secure-by-default redaction in `gcx config view`.
 
 ```go
 func (p *SLOProvider) ConfigKeys() []providers.ConfigKey {
@@ -87,7 +87,7 @@ func (p *SLOProvider) ConfigKeys() []providers.ConfigKey {
 | Empty value | Never redacted |
 
 Declare every key your provider reads, otherwise it will be silently redacted
-when users run `grafanactl config view`.
+when users run `gcx config view`.
 
 ---
 
@@ -103,7 +103,7 @@ import "fmt"
 func (p *SLOProvider) Validate(cfg map[string]string) error {
     if cfg["token"] == "" {
         return fmt.Errorf("slo provider: token is required; "+
-            "set it with: grafanactl config set contexts.<ctx>.providers.slo.token <value>")
+            "set it with: gcx config set contexts.<ctx>.providers.slo.token <value>")
     }
     return nil
 }
@@ -118,14 +118,14 @@ Guidelines:
 
 ## Step 4: Implement Commands
 
-`Commands()` returns the Cobra commands to add under the grafanactl root. Each
+`Commands()` returns the Cobra commands to add under the gcx root. Each
 command receives provider config by reading the active context at call time.
 
 Follow the Options pattern used by all other commands — accept `*cmdconfig.Options`
 as a constructor argument and call `configOpts.LoadConfig(cmd.Context())` inside `RunE`:
 
 ```go
-import cmdconfig "github.com/grafana/grafanactl/cmd/grafanactl/config"
+import cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 
 // Commands returns a "slo" command group with subcommands underneath it.
 // Config flags are bound once on the parent's PersistentFlags so every
@@ -178,7 +178,7 @@ func newListCommand(configOpts *cmdconfig.Options) *cobra.Command {
 ```
 
 **Wiring note:** The root command automatically adds every provider's commands
-via `p.Commands()...` — you do not need to touch `cmd/grafanactl/root/command.go`.
+via `p.Commands()...` — you do not need to touch `cmd/gcx/root/command.go`.
 
 ---
 
@@ -280,12 +280,12 @@ func init() {
 ```
 
 The `Register()` function appends your provider to the global registry automatically. Once registered via `init()`:
-- Its commands appear under `grafanactl`
-- Its name and description appear in `grafanactl providers`
-- Its secrets are correctly redacted by `grafanactl config view`
+- Its commands appear under `gcx`
+- Its name and description appear in `gcx providers`
+- Its secrets are correctly redacted by `gcx config view`
 - Its config is loaded from YAML and env vars automatically
 
-This self-registration pattern (via `init()`) is handled by Go's import system — just ensure your provider package is imported somewhere in the application startup (e.g., in `cmd/grafanactl/root/command.go`). Reference: `internal/providers/slo/provider.go` for the full implementation.
+This self-registration pattern (via `init()`) is handled by Go's import system — just ensure your provider package is imported somewhere in the application startup (e.g., in `cmd/gcx/root/command.go`). Reference: `internal/providers/slo/provider.go` for the full implementation.
 
 ---
 
@@ -296,7 +296,7 @@ This self-registration pattern (via `init()`) is handled by Go's import system �
 Provider config lives in the `providers` map within a context:
 
 ```yaml
-# ~/.config/grafanactl/config.yaml
+# ~/.config/gcx/config.yaml
 current-context: prod
 contexts:
   prod:
@@ -314,8 +314,8 @@ contexts:
 Set individual keys with the config command (dotted-path notation):
 
 ```bash
-grafanactl config set contexts.prod.providers.slo.token glsa_abc123
-grafanactl config set contexts.prod.providers.slo.url https://slo.example.com
+gcx config set contexts.prod.providers.slo.token glsa_abc123
+gcx config set contexts.prod.providers.slo.url https://slo.example.com
 ```
 
 ### Environment Variables
@@ -416,5 +416,5 @@ When implementing a new provider (see also [design-guide.md Section 7](design-gu
 - [ ] Provider is added to `internal/providers/registry.go:All()`
 - [ ] `make build` succeeds
 - [ ] `make tests` passes
-- [ ] `grafanactl providers` lists the new provider
-- [ ] `grafanactl config view` redacts secrets correctly
+- [ ] `gcx providers` lists the new provider
+- [ ] `gcx config view` redacts secrets correctly

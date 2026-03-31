@@ -11,20 +11,20 @@ description: >
 # Generate Typed Resource Stubs
 
 Generate ready-to-edit Go files for dashboards and alert rules using
-`grafanactl dev generate`. The generated code uses the grafana-foundation-sdk
+`gcx dev generate`. The generated code uses the grafana-foundation-sdk
 builder pattern and compiles without modification.
 
 ## Quick Start
 
 ```bash
 # Dashboard stub
-grafanactl dev generate dashboards/my-service-overview.go
+gcx dev generate dashboards/my-service-overview.go
 
 # Alert rule stub
-grafanactl dev generate alerts/high-cpu-usage.go
+gcx dev generate alerts/high-cpu-usage.go
 
 # Batch generation
-grafanactl dev generate dashboards/a.go dashboards/b.go alerts/c.go
+gcx dev generate dashboards/a.go dashboards/b.go alerts/c.go
 ```
 
 ## How Type Inference Works
@@ -39,7 +39,7 @@ The resource type is inferred from the **immediate parent directory**:
 Override with `--type` when the directory doesn't match:
 
 ```bash
-grafanactl dev generate internal/monitoring/cpu-alert.go --type alertrule
+gcx dev generate internal/monitoring/cpu-alert.go --type alertrule
 ```
 
 ## Output

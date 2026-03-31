@@ -1,4 +1,4 @@
-// Package agent detects whether grafanactl is running inside an AI agent
+// Package agent detects whether gcx is running inside an AI agent
 // environment (e.g. Claude Code, Cursor, GitHub Copilot, Amazon Q).
 //
 // Detection happens automatically at init() time by reading well-known
@@ -13,7 +13,7 @@ import (
 
 // Environment variables that signal agent mode.
 var agentEnvVars = []string{ //nolint:gochecknoglobals
-	"GRAFANACTL_AGENT_MODE",
+	"GCX_AGENT_MODE",
 	"CLAUDECODE",
 	"CLAUDE_CODE",
 	"CURSOR_AGENT",
@@ -36,7 +36,7 @@ func ResetForTesting() {
 	detectFromEnv()
 }
 
-// IsAgentMode reports whether grafanactl is running in agent mode.
+// IsAgentMode reports whether gcx is running in agent mode.
 // The value is determined by environment variables (checked at init time)
 // and the --agent CLI flag (applied via [SetFlag]).
 func IsAgentMode() bool {
@@ -62,9 +62,9 @@ func detectFromEnv() {
 	detectedFromEnv = false
 	agentMode = false
 
-	// GRAFANACTL_AGENT_MODE has the highest priority: an explicit falsy
+	// GCX_AGENT_MODE has the highest priority: an explicit falsy
 	// value disables agent mode regardless of other variables.
-	if v, ok := os.LookupEnv("GRAFANACTL_AGENT_MODE"); ok {
+	if v, ok := os.LookupEnv("GCX_AGENT_MODE"); ok {
 		if isFalsy(v) {
 			return
 		}

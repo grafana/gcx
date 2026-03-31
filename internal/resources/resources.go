@@ -6,17 +6,17 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/grafana/gcx/internal/format"
 	folderv1beta1 "github.com/grafana/grafana/apps/folder/pkg/apis/folder/v1beta1"
 	"github.com/grafana/grafana/pkg/apimachinery/utils"
-	"github.com/grafana/grafanactl/internal/format"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 const (
-	// ResourceManagerKind is the manager kind used for grafanactl.
-	// TODO: change once we have a proper manager kind for grafanactl.
+	// ResourceManagerKind is the manager kind used for gcx.
+	// TODO: change once we have a proper manager kind for gcx.
 	ResourceManagerKind = utils.ManagerKindKubectl
 	// AnnotationSavedFromUI is the annotation key for resources saved from the UI.
 	// TODO: move this to grafana/grafana.
@@ -159,7 +159,7 @@ func (r *Resource) SourceFormat() format.Format {
 	return r.Source.Format
 }
 
-// IsManaged returns true if the resource is managed by grafanactl.
+// IsManaged returns true if the resource is managed by gcx.
 func (r *Resource) IsManaged() bool {
 	return r.GetManagerKind() == ResourceManagerKind
 }
@@ -169,7 +169,7 @@ func (r *Resource) GetManagerKind() utils.ManagerKind {
 	m, ok := r.Raw.GetManagerProperties()
 	if !ok {
 		// If the manager properties are not set,
-		// we assume the resource will be managed by grafanactl.
+		// we assume the resource will be managed by gcx.
 		return ResourceManagerKind
 	}
 

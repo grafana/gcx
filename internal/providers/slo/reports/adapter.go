@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/grafana/grafanactl/internal/resources"
+	"github.com/grafana/gcx/internal/resources"
 )
 
 const (
@@ -15,7 +15,7 @@ const (
 	Kind = "Report"
 )
 
-// ToResource converts a Report to a grafanactl Resource, wrapping the report fields
+// ToResource converts a Report to a gcx Resource, wrapping the report fields
 // in a Kubernetes-style object envelope with apiVersion, kind, and metadata.
 // The uuid field is mapped to metadata.name and stripped from the spec.
 func ToResource(report Report, namespace string) (*resources.Resource, error) {
@@ -47,7 +47,7 @@ func ToResource(report Report, namespace string) (*resources.Resource, error) {
 	return resources.MustFromObject(obj, resources.SourceInfo{}), nil
 }
 
-// FromResource converts a grafanactl Resource back to a Report.
+// FromResource converts a gcx Resource back to a Report.
 // The UUID is restored from metadata.name.
 func FromResource(res *resources.Resource) (*Report, error) {
 	obj := res.Object.Object

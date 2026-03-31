@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/grafana/grafanactl/internal/format"
+	"github.com/grafana/gcx/internal/format"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 

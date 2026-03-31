@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/grafana/grafanactl/internal/resources"
+	"github.com/grafana/gcx/internal/resources"
 )
 
 const (
@@ -15,7 +15,7 @@ const (
 	Kind = "SLO"
 )
 
-// ToResource converts an Slo to a grafanactl Resource, wrapping the SLO fields
+// ToResource converts an Slo to a gcx Resource, wrapping the SLO fields
 // in a Kubernetes-style object envelope with apiVersion, kind, and metadata.
 // The uuid field is mapped to metadata.name and stripped from the spec.
 // The readOnly field is also stripped from the spec.
@@ -49,7 +49,7 @@ func ToResource(slo Slo, namespace string) (*resources.Resource, error) {
 	return resources.MustFromObject(obj, resources.SourceInfo{}), nil
 }
 
-// FromResource converts a grafanactl Resource back to an Slo.
+// FromResource converts a gcx Resource back to an Slo.
 // The UUID is restored from metadata.name.
 func FromResource(res *resources.Resource) (*Slo, error) {
 	obj := res.Object.Object

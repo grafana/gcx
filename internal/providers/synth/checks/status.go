@@ -14,15 +14,16 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/grafana"
+	"github.com/grafana/gcx/internal/graph"
+	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/synth/probes"
+	"github.com/grafana/gcx/internal/providers/synth/smcfg"
+	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/grafana-app-sdk/logging"
-	"github.com/grafana/grafanactl/internal/config"
-	"github.com/grafana/grafanactl/internal/format"
-	"github.com/grafana/grafanactl/internal/grafana"
-	"github.com/grafana/grafanactl/internal/graph"
-	cmdio "github.com/grafana/grafanactl/internal/output"
-	"github.com/grafana/grafanactl/internal/providers/synth/probes"
-	"github.com/grafana/grafanactl/internal/providers/synth/smcfg"
-	"github.com/grafana/grafanactl/internal/query/prometheus"
 	"github.com/grafana/promql-builder/go/promql"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -95,16 +96,16 @@ func newStatusCommand(loader smcfg.StatusLoader) *cobra.Command {
 Displays current success rate, number of probes reporting, and health status
 for each check. Requires a Prometheus datasource containing SM metrics.`,
 		Example: `  # Show status of all checks.
-  grafanactl synth checks status
+  gcx synth checks status
 
   # Show status of a specific check by ID.
-  grafanactl synth checks status 42
+  gcx synth checks status 42
 
   # Specify the Prometheus datasource to query.
-  grafanactl synth checks status --datasource-uid my-prometheus
+  gcx synth checks status --datasource-uid my-prometheus
 
   # Output as JSON for scripting.
-  grafanactl synth checks status -o json`,
+  gcx synth checks status -o json`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -266,19 +267,19 @@ query against the Prometheus datasource.
 Each probe reporting for the check is rendered as a separate series.
 Requires a Prometheus datasource containing SM metrics.`,
 		Example: `  # Render timeline for a check over the past 6 hours (default).
-  grafanactl synth checks timeline 42
+  gcx synth checks timeline 42
 
   # Custom time window.
-  grafanactl synth checks timeline 42 --window 24h
+  gcx synth checks timeline 42 --window 24h
 
   # Explicit time range.
-  grafanactl synth checks timeline 42 --from now-24h --to now
+  gcx synth checks timeline 42 --from now-24h --to now
 
   # Output timeline data as a table.
-  grafanactl synth checks timeline 42 -o table
+  gcx synth checks timeline 42 -o table
 
   # Specify the Prometheus datasource.
-  grafanactl synth checks timeline 42 --datasource-uid my-prometheus`,
+  gcx synth checks timeline 42 --datasource-uid my-prometheus`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -745,7 +746,7 @@ func smMetricsDatasourceName(ctx context.Context, grafanaCtx *config.Context) (s
 		req.SetBasicAuth(grafanaCtx.Grafana.User, grafanaCtx.Grafana.Password)
 	}
 
-	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	resp, err := providers.ExternalHTTPClient().Do(req)
 	if err != nil {
 		return "", err
 	}

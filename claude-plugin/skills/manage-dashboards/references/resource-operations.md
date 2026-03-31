@@ -1,10 +1,10 @@
 # Resource Operations Reference
 
-<!-- Flag names and defaults verified against grafanactl source as of T1 audit (2026-03-07).
-     Source files: cmd/grafanactl/resources/get.go, push.go, pull.go, delete.go, edit.go,
+<!-- Flag names and defaults verified against gcx source as of T1 audit (2026-03-07).
+     Source files: cmd/gcx/resources/get.go, push.go, pull.go, delete.go, edit.go,
      validate.go, serve.go. Do not update examples without re-auditing the CLI. -->
 
-This file documents the full flag set and usage patterns for each `grafanactl resources`
+This file documents the full flag set and usage patterns for each `gcx resources`
 subcommand, the selector syntax, and the `serve` live development workflow.
 
 ---
@@ -17,12 +17,12 @@ They control which resources the command operates on.
 ### Kind Selector
 
 Targets all resources of a given kind. The kind name is the plural resource name as
-reported by `grafanactl resources schemas`.
+reported by `gcx resources schemas`.
 
 ```bash
-grafanactl resources get dashboards
-grafanactl resources pull dashboards
-grafanactl resources delete dashboards --force
+gcx resources get dashboards
+gcx resources pull dashboards
+gcx resources delete dashboards --force
 ```
 
 ### UID Selector
@@ -30,9 +30,9 @@ grafanactl resources delete dashboards --force
 Targets a single resource by its UID. Format: `<kind>/<uid>`.
 
 ```bash
-grafanactl resources get dashboards/my-dashboard-uid
-grafanactl resources edit dashboards/my-dashboard-uid
-grafanactl resources delete dashboards/my-dashboard-uid
+gcx resources get dashboards/my-dashboard-uid
+gcx resources edit dashboards/my-dashboard-uid
+gcx resources delete dashboards/my-dashboard-uid
 ```
 
 ### Glob Pattern
@@ -41,9 +41,9 @@ Targets resources whose UID matches a glob pattern. Use `*` for any substring wi
 UID segment.
 
 ```bash
-grafanactl resources get dashboards/my-*
-grafanactl resources pull dashboards/prod-*
-grafanactl resources delete dashboards/temp-* --dry-run
+gcx resources get dashboards/my-*
+gcx resources pull dashboards/prod-*
+gcx resources delete dashboards/temp-* --dry-run
 ```
 
 ### Multi-Selector
@@ -54,15 +54,15 @@ merged.
 
 ```bash
 # All dashboards and all folders
-grafanactl resources get dashboards folders
+gcx resources get dashboards folders
 
 # Two specific dashboards plus all folders
-grafanactl resources get dashboards/uid-a dashboards/uid-b folders
+gcx resources get dashboards/uid-a dashboards/uid-b folders
 ```
 
 ---
 
-## `grafanactl resources get`
+## `gcx resources get`
 
 Fetch and display resources from Grafana.
 
@@ -77,24 +77,24 @@ Fetch and display resources from Grafana.
 
 ```bash
 # List all dashboards as a table
-grafanactl resources get dashboards
+gcx resources get dashboards
 
 # Get a specific dashboard in YAML
-grafanactl resources get dashboards/my-uid -o yaml
+gcx resources get dashboards/my-uid -o yaml
 
 # Get all folders in JSON (useful for scripting)
-grafanactl resources get folders -o json
+gcx resources get folders -o json
 
 # Get dashboards and folders together, wide output
-grafanactl resources get dashboards folders -o wide
+gcx resources get dashboards folders -o wide
 
 # Get dashboards matching a glob, ignore per-resource errors
-grafanactl resources get dashboards/prod-* --on-error ignore
+gcx resources get dashboards/prod-* --on-error ignore
 ```
 
 ---
 
-## `grafanactl resources push`
+## `gcx resources push`
 
 Write local resource files to Grafana. Handles folder/dashboard topological ordering
 automatically: folders are pushed level-by-level before dashboards when both are present.
@@ -114,41 +114,41 @@ automatically: folders are pushed level-by-level before dashboards when both are
 
 ```bash
 # Push everything under ./resources (default path)
-grafanactl resources push
+gcx resources push
 
 # Push from a specific directory
-grafanactl resources push -p ./dashboards
+gcx resources push -p ./dashboards
 
 # Push from multiple directories
-grafanactl resources push -p ./dashboards -p ./folders
+gcx resources push -p ./dashboards -p ./folders
 
 # Dry run: show what would change without writing
-grafanactl resources push --dry-run
+gcx resources push --dry-run
 
 # Push and override resources managed by other tools
-grafanactl resources push --include-managed
+gcx resources push --include-managed
 
 # Push with abort-on-first-error and limited concurrency
-grafanactl resources push --on-error abort --max-concurrent 5
+gcx resources push --on-error abort --max-concurrent 5
 ```
 
 ### Manager Metadata Behavior
 
-When grafanactl pushes a resource it sets the annotation:
+When gcx pushes a resource it sets the annotation:
 
 ```yaml
 annotations:
-  grafana.app/managed-by: grafanactl
+  grafana.app/managed-by: gcx
 ```
 
 Resources that carry a different `grafana.app/managed-by` value (set by Terraform, the
-Grafana UI, or another tool) are **protected by default**. grafanactl will refuse to push
+Grafana UI, or another tool) are **protected by default**. gcx will refuse to push
 over them unless `--include-managed` is passed. This prevents accidental overwrites of
 resources managed by other systems.
 
 ---
 
-## `grafanactl resources pull`
+## `gcx resources pull`
 
 Download resources from Grafana and write them to local files.
 
@@ -165,24 +165,24 @@ Download resources from Grafana and write them to local files.
 
 ```bash
 # Pull all dashboards into ./resources (JSON format)
-grafanactl resources pull dashboards
+gcx resources pull dashboards
 
 # Pull to a custom directory in YAML format
-grafanactl resources pull dashboards -p ./my-dashboards -o yaml
+gcx resources pull dashboards -p ./my-dashboards -o yaml
 
 # Pull dashboards and folders together
-grafanactl resources pull dashboards folders
+gcx resources pull dashboards folders
 
 # Pull a specific dashboard
-grafanactl resources pull dashboards/my-uid
+gcx resources pull dashboards/my-uid
 
 # Pull resources regardless of who manages them
-grafanactl resources pull dashboards --include-managed
+gcx resources pull dashboards --include-managed
 ```
 
 ---
 
-## `grafanactl resources delete`
+## `gcx resources delete`
 
 Delete resources from Grafana.
 
@@ -201,18 +201,18 @@ Delete resources from Grafana.
 
 ```bash
 # Delete a specific dashboard (no --force needed for UID selectors)
-grafanactl resources delete dashboards/my-uid
+gcx resources delete dashboards/my-uid
 
 # Delete all dashboards matching a glob — dry run first
-grafanactl resources delete dashboards/temp-* --dry-run
-grafanactl resources delete dashboards/temp-* -y
+gcx resources delete dashboards/temp-* --dry-run
+gcx resources delete dashboards/temp-* -y
 
 # Delete all dashboards of a kind (requires --force as a safety gate)
-grafanactl resources delete dashboards --force --dry-run
-grafanactl resources delete dashboards --force -y
+gcx resources delete dashboards --force --dry-run
+gcx resources delete dashboards --force -y
 
 # Delete resources from local files
-grafanactl resources delete -p ./old-dashboards -y
+gcx resources delete -p ./old-dashboards -y
 ```
 
 > **Safety**: Kind-only selectors require `--force` to prevent accidental mass-deletion.
@@ -220,7 +220,7 @@ grafanactl resources delete -p ./old-dashboards -y
 
 ---
 
-## `grafanactl resources edit`
+## `gcx resources edit`
 
 Open a single resource in `$EDITOR` for in-place editing, then push the updated resource
 back to Grafana.
@@ -235,10 +235,10 @@ back to Grafana.
 
 ```bash
 # Edit a dashboard in the default format (JSON)
-grafanactl resources edit dashboards/my-uid
+gcx resources edit dashboards/my-uid
 
 # Edit using YAML in the editor
-grafanactl resources edit dashboards/my-uid -o yaml
+gcx resources edit dashboards/my-uid -o yaml
 ```
 
 Edit accepts exactly one positional selector. The resource is fetched, opened in
@@ -246,7 +246,7 @@ Edit accepts exactly one positional selector. The resource is fetched, opened in
 
 ---
 
-## `grafanactl resources validate`
+## `gcx resources validate`
 
 Validate local resource files against the Grafana API schema without writing anything.
 
@@ -263,21 +263,21 @@ Validate local resource files against the Grafana API schema without writing any
 
 ```bash
 # Validate everything under ./resources
-grafanactl resources validate
+gcx resources validate
 
 # Validate a specific directory
-grafanactl resources validate -p ./dashboards
+gcx resources validate -p ./dashboards
 
 # Validate and output results as JSON (useful in CI)
-grafanactl resources validate -o json
+gcx resources validate -o json
 
 # Validate from multiple directories
-grafanactl resources validate -p ./dashboards -p ./folders
+gcx resources validate -p ./dashboards -p ./folders
 ```
 
 ---
 
-## `grafanactl dev serve`
+## `gcx dev serve`
 
 Start a live development server that watches local resource files and hot-reloads them
 into Grafana as they change. The browser refreshes automatically when a resource is
@@ -301,16 +301,16 @@ Positional arguments are resource directories to serve.
 
 The `serve` command creates a tight edit-preview loop for dashboard development:
 
-1. **Start the server** — grafanactl watches the resource directories and listens for
+1. **Start the server** — gcx watches the resource directories and listens for
    browser connections.
 2. **Edit a resource file** — change the JSON/YAML on disk (manually or via a script).
-3. **Hot reload** — grafanactl detects the file change, pushes the updated resource to
+3. **Hot reload** — gcx detects the file change, pushes the updated resource to
    Grafana, and signals connected browsers to refresh the dashboard panel view.
 4. **Browser preview** — open `http://localhost:8080` (or the configured address/port)
    to see the live Grafana panel. The preview refreshes automatically on each save.
 
 ```
-Developer          grafanactl serve       Grafana API        Browser
+Developer          gcx serve       Grafana API        Browser
     |                     |                    |                 |
     |-- edit file ------->|                    |                 |
     |                     |-- push resource -->|                 |
@@ -323,19 +323,19 @@ Developer          grafanactl serve       Grafana API        Browser
 
 ```bash
 # Serve resources from the default directory (./resources)
-grafanactl dev serve .
+gcx dev serve .
 
 # Serve a specific directory
-grafanactl dev serve ./dashboards
+gcx dev serve ./dashboards
 
 # Serve with a custom port, watch additional path
-grafanactl dev serve ./dashboards --port 9090 -w ./shared-panels
+gcx dev serve ./dashboards --port 9090 -w ./shared-panels
 
 # Serve a script-generated resource (re-runs script on each file change)
-grafanactl dev serve . --script ./generate-dashboard.sh --script-format json
+gcx dev serve . --script ./generate-dashboard.sh --script-format json
 
 # Serve without watching (push once and exit)
-grafanactl dev serve ./dashboards --no-watch
+gcx dev serve ./dashboards --no-watch
 ```
 
 ---

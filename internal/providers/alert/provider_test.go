@@ -3,7 +3,7 @@ package alert_test
 import (
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/providers/alert"
+	"github.com/grafana/gcx/internal/providers/alert"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

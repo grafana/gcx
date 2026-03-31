@@ -6,10 +6,9 @@ import (
 	"errors"
 	"fmt"
 
-	internalconfig "github.com/grafana/grafanactl/internal/config"
-	"github.com/grafana/grafanactl/internal/providers"
-	"github.com/grafana/grafanactl/internal/resources"
-	"github.com/grafana/grafanactl/internal/resources/adapter"
+	internalconfig "github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -20,38 +19,65 @@ const (
 	Kind = "Rule"
 )
 
-// staticDescriptor is the resource descriptor for KG rule resources.
-//
-//nolint:gochecknoglobals // Static descriptor used in init() self-registration pattern.
-var staticDescriptor = resources.Descriptor{
-	GroupVersion: schema.GroupVersion{
-		Group:   "kg.ext.grafana.app",
-		Version: "v1alpha1",
-	},
-	Kind:     Kind,
-	Singular: "rule",
-	Plural:   "rules",
-}
+//nolint:gochecknoglobals // Static descriptors used in init() self-registration pattern.
+var (
+	kgGroupVersion = schema.GroupVersion{Group: "kg.ext.grafana.app", Version: "v1alpha1"}
 
-// staticAliases are the short aliases for KG rule resources.
-//
-//nolint:gochecknoglobals // Static descriptor used in init() self-registration pattern.
-var staticAliases = []string{"kg-rules", "kg-rule", "kgrule"}
+	staticDescriptor = resources.Descriptor{
+		GroupVersion: kgGroupVersion,
+		Kind:         Kind,
+		Singular:     "rule",
+		Plural:       "rules",
+	}
 
-func init() { //nolint:gochecknoinits // Self-registration pattern (like database/sql drivers).
-	loader := &providers.ConfigLoader{}
-	adapter.Register(adapter.Registration{
-		Factory:    NewAdapterFactory(loader),
-		Descriptor: staticDescriptor,
-		Aliases:    staticAliases,
-		GVK:        staticDescriptor.GroupVersionKind(),
-		Schema:     ruleSchema(),
-		Example:    ruleExample(),
-	})
-}
+	datasetDescriptor = resources.Descriptor{
+		GroupVersion: kgGroupVersion,
+		Kind:         "Dataset",
+		Singular:     "dataset",
+		Plural:       "datasets",
+	}
 
-// ruleSchema returns a JSON Schema for the KG Rule resource type.
-func ruleSchema() json.RawMessage {
+	vendorDescriptor = resources.Descriptor{
+		GroupVersion: kgGroupVersion,
+		Kind:         "Vendor",
+		Singular:     "vendor",
+		Plural:       "vendors",
+	}
+
+	entityTypeDescriptor = resources.Descriptor{
+		GroupVersion: kgGroupVersion,
+		Kind:         "EntityType",
+		Singular:     "entitytype",
+		Plural:       "entitytypes",
+	}
+
+	scopeDescriptor = resources.Descriptor{
+		GroupVersion: kgGroupVersion,
+		Kind:         "Scope",
+		Singular:     "scope",
+		Plural:       "scopes",
+	}
+)
+
+// Descriptor accessors for use in tests and registration.
+
+// RuleDescriptor returns the resource descriptor for KG rules.
+func RuleDescriptor() resources.Descriptor { return staticDescriptor }
+
+// DatasetDescriptor returns the resource descriptor for KG datasets.
+func DatasetDescriptor() resources.Descriptor { return datasetDescriptor }
+
+// VendorDescriptor returns the resource descriptor for KG vendors.
+func VendorDescriptor() resources.Descriptor { return vendorDescriptor }
+
+// EntityTypeDescriptor returns the resource descriptor for KG entity types.
+func EntityTypeDescriptor() resources.Descriptor { return entityTypeDescriptor }
+
+// ScopeDescriptor returns the resource descriptor for KG scopes.
+func ScopeDescriptor() resources.Descriptor { return scopeDescriptor }
+
+// RuleSchema returns a JSON Schema for the KG Rule resource type.
+func RuleSchema() json.RawMessage {
 	s := map[string]any{
 		"$schema": "https://json-schema.org/draft/2020-12/schema",
 		"$id":     "https://grafana.com/schemas/KGRule",
@@ -88,8 +114,8 @@ func ruleSchema() json.RawMessage {
 	return b
 }
 
-// ruleExample returns an example KG Rule manifest as JSON.
-func ruleExample() json.RawMessage {
+// RuleExample returns an example KG Rule manifest as JSON.
+func RuleExample() json.RawMessage {
 	example := map[string]any{
 		"apiVersion": APIVersion,
 		"kind":       Kind,
@@ -131,31 +157,45 @@ func NewAdapterFactory(loader RESTConfigLoader) adapter.Factory {
 		}
 
 		crud := &adapter.TypedCRUD[Rule]{
-			NameFn: func(r Rule) string { return r.Name },
 			ListFn: func(ctx context.Context) ([]Rule, error) {
 				return client.ListRules(ctx)
 			},
 			GetFn: func(ctx context.Context, name string) (*Rule, error) {
 				return client.GetRule(ctx, name)
 			},
-			CreateFn: func(_ context.Context, _ *Rule) (*Rule, error) {
-				return nil, errors.New("kg: individual rule creation is not supported; use 'kg rules create -f <file>' for bulk upload")
-			},
-			UpdateFn: func(_ context.Context, _ string, _ *Rule) (*Rule, error) {
-				return nil, errors.New("kg: individual rule update is not supported; use 'kg rules create -f <file>' for bulk replace")
-			},
-			DeleteFn: func(_ context.Context, _ string) error {
-				return errors.New("kg: individual rule deletion is not supported; use 'kg rules delete' to clear all rules")
-			},
 			Namespace:  cfg.Namespace,
 			Descriptor: staticDescriptor,
-			Aliases:    staticAliases,
 		}
 		return crud.AsAdapter(), nil
 	}
 }
 
-// RuleToResource converts a KG Rule to a grafanactl Resource.
+// NewTypedCRUD creates a TypedCRUD for KG rules.
+func NewTypedCRUD(ctx context.Context, loader RESTConfigLoader) (*adapter.TypedCRUD[Rule], internalconfig.NamespacedRESTConfig, error) {
+	cfg, err := loader.LoadGrafanaConfig(ctx)
+	if err != nil {
+		return nil, internalconfig.NamespacedRESTConfig{}, fmt.Errorf("kg: failed to load REST config: %w", err)
+	}
+
+	client, err := NewClient(cfg)
+	if err != nil {
+		return nil, internalconfig.NamespacedRESTConfig{}, fmt.Errorf("kg: failed to create client: %w", err)
+	}
+
+	crud := &adapter.TypedCRUD[Rule]{
+		ListFn: func(ctx context.Context) ([]Rule, error) {
+			return client.ListRules(ctx)
+		},
+		GetFn: func(ctx context.Context, name string) (*Rule, error) {
+			return client.GetRule(ctx, name)
+		},
+		Namespace:  cfg.Namespace,
+		Descriptor: staticDescriptor,
+	}
+	return crud, cfg, nil
+}
+
+// RuleToResource converts a KG Rule to a gcx Resource.
 func RuleToResource(rule Rule, namespace string) (*resources.Resource, error) {
 	data, err := json.Marshal(rule)
 	if err != nil {
@@ -180,7 +220,193 @@ func RuleToResource(rule Rule, namespace string) (*resources.Resource, error) {
 	return resources.MustFromObject(obj, resources.SourceInfo{}), nil
 }
 
-// RuleFromResource converts a grafanactl Resource back to a KG Rule.
+// ---------------------------------------------------------------------------
+// Dataset adapter
+// ---------------------------------------------------------------------------
+
+// DatasetSchema returns a JSON Schema for the KG Dataset resource type.
+func DatasetSchema() json.RawMessage { return mustSchema("KGDataset", "Dataset", datasetSpecSchema()) }
+
+func datasetSpecSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"name":       map[string]any{"type": "string"},
+			"detected":   map[string]any{"type": "boolean"},
+			"enabled":    map[string]any{"type": "boolean"},
+			"configured": map[string]any{"type": "boolean"},
+		},
+		"required": []string{"name"},
+	}
+}
+
+// NewDatasetAdapterFactory returns a lazy adapter.Factory for KG datasets.
+func NewDatasetAdapterFactory(loader RESTConfigLoader) adapter.Factory {
+	return newListOnlyFactory[DatasetItem](loader, datasetDescriptor,
+		func(client *Client, ctx context.Context) ([]DatasetItem, error) {
+			resp, err := client.GetDatasets(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return resp.Items, nil
+		})
+}
+
+// ---------------------------------------------------------------------------
+// Vendor adapter
+// ---------------------------------------------------------------------------
+
+// VendorSchema returns a JSON Schema for the KG Vendor resource type.
+func VendorSchema() json.RawMessage { return mustSchema("KGVendor", "Vendor", vendorSpecSchema()) }
+
+func vendorSpecSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"name":    map[string]any{"type": "string"},
+			"enabled": map[string]any{"type": "boolean"},
+		},
+		"required": []string{"name"},
+	}
+}
+
+// NewVendorAdapterFactory returns a lazy adapter.Factory for KG vendors.
+func NewVendorAdapterFactory(loader RESTConfigLoader) adapter.Factory {
+	return newListOnlyFactory[Vendor](loader, vendorDescriptor,
+		func(client *Client, ctx context.Context) ([]Vendor, error) {
+			return client.GetVendors(ctx)
+		})
+}
+
+// ---------------------------------------------------------------------------
+// EntityType adapter
+// ---------------------------------------------------------------------------
+
+// EntityTypeSchema returns a JSON Schema for the KG EntityType resource type.
+func EntityTypeSchema() json.RawMessage {
+	return mustSchema("KGEntityType", "EntityType", entityTypeSpecSchema())
+}
+
+func entityTypeSpecSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"name":  map[string]any{"type": "string"},
+			"count": map[string]any{"type": "integer"},
+		},
+		"required": []string{"name"},
+	}
+}
+
+// NewEntityTypeAdapterFactory returns a lazy adapter.Factory for KG entity types.
+func NewEntityTypeAdapterFactory(loader RESTConfigLoader) adapter.Factory {
+	return newListOnlyFactory[EntityType](loader, entityTypeDescriptor,
+		func(client *Client, ctx context.Context) ([]EntityType, error) {
+			counts, err := client.CountEntityTypes(ctx)
+			if err != nil {
+				return nil, err
+			}
+			result := make([]EntityType, 0, len(counts))
+			for name, count := range counts {
+				result = append(result, EntityType{Name: name, Count: count})
+			}
+			return result, nil
+		})
+}
+
+// ---------------------------------------------------------------------------
+// Scope adapter
+// ---------------------------------------------------------------------------
+
+// ScopeSchema returns a JSON Schema for the KG Scope resource type.
+func ScopeSchema() json.RawMessage { return mustSchema("KGScope", "Scope", scopeSpecSchema()) }
+
+func scopeSpecSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"name":   map[string]any{"type": "string"},
+			"values": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+		},
+		"required": []string{"name"},
+	}
+}
+
+// NewScopeAdapterFactory returns a lazy adapter.Factory for KG scopes.
+func NewScopeAdapterFactory(loader RESTConfigLoader) adapter.Factory {
+	return newListOnlyFactory[Scope](loader, scopeDescriptor,
+		func(client *Client, ctx context.Context) ([]Scope, error) {
+			scopeMap, err := client.ListEntityScopes(ctx)
+			if err != nil {
+				return nil, err
+			}
+			result := make([]Scope, 0, len(scopeMap))
+			for name, values := range scopeMap {
+				result = append(result, Scope{Name: name, Values: values})
+			}
+			return result, nil
+		})
+}
+
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
+
+// newListOnlyFactory creates a factory for read-only (list-only) resource types.
+// GetFn is nil, so TypedCRUD falls back to list + client-side name filtering.
+func newListOnlyFactory[T adapter.ResourceNamer](
+	loader RESTConfigLoader,
+	desc resources.Descriptor,
+	listFn func(client *Client, ctx context.Context) ([]T, error),
+) adapter.Factory {
+	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
+		cfg, err := loader.LoadGrafanaConfig(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("kg: failed to load REST config: %w", err)
+		}
+		client, err := NewClient(cfg)
+		if err != nil {
+			return nil, fmt.Errorf("kg: failed to create client: %w", err)
+		}
+		crud := &adapter.TypedCRUD[T]{
+			ListFn: func(ctx context.Context) ([]T, error) {
+				return listFn(client, ctx)
+			},
+			Namespace:  cfg.Namespace,
+			Descriptor: desc,
+		}
+		return crud.AsAdapter(), nil
+	}
+}
+
+// mustSchema builds a standard KG resource JSON Schema envelope.
+func mustSchema(id, kind string, specSchema map[string]any) json.RawMessage {
+	s := map[string]any{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"$id":     "https://grafana.com/schemas/" + id,
+		"type":    "object",
+		"properties": map[string]any{
+			"apiVersion": map[string]any{"type": "string", "const": APIVersion},
+			"kind":       map[string]any{"type": "string", "const": kind},
+			"metadata": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name":      map[string]any{"type": "string"},
+					"namespace": map[string]any{"type": "string"},
+				},
+			},
+			"spec": specSchema,
+		},
+		"required": []string{"apiVersion", "kind", "metadata", "spec"},
+	}
+	b, err := json.Marshal(s)
+	if err != nil {
+		panic(fmt.Sprintf("kg: failed to marshal schema: %v", err))
+	}
+	return b
+}
+
+// RuleFromResource converts a gcx Resource back to a KG Rule.
 func RuleFromResource(res *resources.Resource) (*Rule, error) {
 	obj := res.Object.Object
 

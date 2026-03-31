@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/config"
-	"github.com/grafana/grafanactl/internal/providers/slo/reports"
+	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/providers/slo/reports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"

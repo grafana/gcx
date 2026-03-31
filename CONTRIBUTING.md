@@ -1,6 +1,6 @@
 # Contributing Guidelines
 
-This document is a guide to help you through the process of contributing to `grafanactl`.
+This document is a guide to help you through the process of contributing to `gcx`.
 
 ## Issue Tracking
 
@@ -24,8 +24,8 @@ $ bd migrate sync beads-sync   # configure the sync branch
 
 ```console
 $ bd ready                                              # list unblocked issues ready to work
-$ bd show grafanactl-experiments-<id>                   # view issue details
-$ bd update grafanactl-experiments-<id> --status=in_progress  # claim an issue
+$ bd show gcx-<id>                   # view issue details
+$ bd update gcx-<id> --status=in_progress  # claim an issue
 $ bd list                                               # all open issues
 $ bd stats                                              # summary counts
 ```
@@ -42,7 +42,7 @@ Priority scale: `0` (critical) → `4` (backlog). Types: `task`, `bug`, `feature
 ### Closing and syncing
 
 ```console
-$ bd close grafanactl-experiments-<id>   # mark done
+$ bd close gcx-<id>   # mark done
 $ bd sync                                # push issues to remote
 ```
 
@@ -50,7 +50,7 @@ Run `bd sync` before `git push` at the end of a session. Issue history is stored
 
 ## Development environment
 
-`grafanactl` relies on [`devbox`](https://www.jetify.com/devbox/docs/) to manage all
+`gcx` relies on [`devbox`](https://www.jetify.com/devbox/docs/) to manage all
 the tools required to work on it.
 
 A shell including all these tools is accessible via:
@@ -77,7 +77,7 @@ Available packages can be found on the [NixOS package repository](https://search
 
 ## Testing against a real Grafana API
 
-While unit tests are valuable for testing individual components, integration testing against a real Grafana instance is important to ensure `grafanactl` works correctly with the actual Grafana API.
+While unit tests are valuable for testing individual components, integration testing against a real Grafana instance is important to ensure `gcx` works correctly with the actual Grafana API.
 
 ### Quick Start
 
@@ -86,7 +86,7 @@ The repository includes a `docker-compose.yml` file that sets up a complete test
 - **Grafana 12.2** (latest stable release)
 - **MySQL 8.0** (as the backend database)
 - Pre-configured with `admin:admin` credentials
-- The `kubernetesDashboards` feature toggle enabled (required for `grafanactl`)
+- The `kubernetesDashboards` feature toggle enabled (required for `gcx`)
 
 ### Starting the test environment
 
@@ -116,7 +116,7 @@ Or manually:
 $ docker-compose ps
 ```
 
-You should see both `grafanactl-grafana` and `grafanactl-mysql` in a `healthy` state.
+You should see both `gcx-grafana` and `gcx-mysql` in a `healthy` state.
 
 Verify Grafana is accessible:
 
@@ -126,20 +126,20 @@ $ curl -u admin:admin http://localhost:3000/api/health
 
 You should receive a JSON response indicating Grafana is running.
 
-### Testing with grafanactl
+### Testing with gcx
 
-The repository includes a pre-configured test config file at `testdata/integration-test-config.yaml` that you can use to test `grafanactl` against the local Grafana instance.
+The repository includes a pre-configured test config file at `testdata/integration-test-config.yaml` that you can use to test `gcx` against the local Grafana instance.
 
 #### View the test configuration
 
 ```console
-$ devbox run go run ./cmd/grafanactl --config testdata/integration-test-config.yaml config view
+$ devbox run go run ./cmd/gcx --config testdata/integration-test-config.yaml config view
 ```
 
 #### List available resources
 
 ```console
-$ devbox run go run ./cmd/grafanactl --config testdata/integration-test-config.yaml resources schemas
+$ devbox run go run ./cmd/gcx --config testdata/integration-test-config.yaml resources schemas
 ```
 
 #### Create a test dashboard
@@ -161,13 +161,13 @@ spec:
 2. Push it to Grafana:
 
 ```console
-$ devbox run go run ./cmd/grafanactl --config testdata/integration-test-config.yaml resources push test-dashboard.yaml
+$ devbox run go run ./cmd/gcx --config testdata/integration-test-config.yaml resources push test-dashboard.yaml
 ```
 
 3. Pull it back to verify:
 
 ```console
-$ devbox run go run ./cmd/grafanactl --config testdata/integration-test-config.yaml resources get dashboards/test-dashboard
+$ devbox run go run ./cmd/gcx --config testdata/integration-test-config.yaml resources get dashboards/test-dashboard
 ```
 
 #### Testing the serve command
@@ -175,7 +175,7 @@ $ devbox run go run ./cmd/grafanactl --config testdata/integration-test-config.y
 The `serve` command allows you to develop dashboards locally with live reload:
 
 ```console
-$ devbox run go run ./cmd/grafanactl --config testdata/integration-test-config.yaml dev serve test-dashboard.yaml
+$ devbox run go run ./cmd/gcx --config testdata/integration-test-config.yaml dev serve test-dashboard.yaml
 ```
 
 Then open your browser to the URL shown in the output (typically `http://localhost:8080`).
@@ -266,7 +266,7 @@ Common issues:
 - MySQL not fully initialized yet - wait a few more seconds and check again
 - Port 3000 already in use - stop any other Grafana instances or change the port in `docker-compose.yml`
 
-#### Cannot connect to Grafana from grafanactl
+#### Cannot connect to Grafana from gcx
 
 Verify Grafana is accessible:
 

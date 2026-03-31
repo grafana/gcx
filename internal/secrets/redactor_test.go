@@ -3,7 +3,7 @@ package secrets_test
 import (
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/secrets"
+	"github.com/grafana/gcx/internal/secrets"
 	"github.com/stretchr/testify/require"
 )
 

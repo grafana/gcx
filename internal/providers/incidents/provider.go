@@ -1,8 +1,8 @@
 package incidents
 
 import (
-	"github.com/grafana/grafanactl/internal/providers"
-	"github.com/grafana/grafanactl/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 )
 
@@ -20,7 +20,7 @@ func (p *IncidentsProvider) Name() string { return "incidents" }
 
 // ShortDesc returns a one-line description of the provider.
 func (p *IncidentsProvider) ShortDesc() string {
-	return "Manage Grafana IRM Incident resources."
+	return "Manage Grafana Incident Response and Management (IRM) incidents"
 }
 
 // Commands returns the Cobra commands contributed by this provider.
@@ -62,8 +62,17 @@ func (p *IncidentsProvider) ConfigKeys() []providers.ConfigKey {
 	return nil
 }
 
-// ResourceAdapters returns adapter factories for Incident resource types.
-// Factories are registered globally via adapter.Register() in resource_adapter.go init().
-func (p *IncidentsProvider) ResourceAdapters() []adapter.Factory {
-	return nil
+// TypedRegistrations returns adapter registrations for Incident resource types.
+// Registrations are added globally by providers.Register() which calls this method.
+func (p *IncidentsProvider) TypedRegistrations() []adapter.Registration {
+	loader := &providers.ConfigLoader{}
+	return []adapter.Registration{
+		{
+			Factory:    NewAdapterFactory(loader),
+			Descriptor: staticDescriptor,
+			GVK:        staticDescriptor.GroupVersionKind(),
+			Schema:     incidentSchema(),
+			Example:    incidentExample(),
+		},
+	}
 }

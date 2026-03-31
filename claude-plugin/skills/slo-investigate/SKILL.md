@@ -1,7 +1,7 @@
 ---
 name: slo-investigate
 description: Use when a specific SLO is breaching or alerting and the user needs to understand why — root cause analysis, dimensional breakdown, alert rule correlation, runbook access. Trigger on phrases like "investigate SLO", "why is my SLO breaching", "SLO error budget burning", "SLO alerting". For SLO status overview use slo-check-status. For creating or modifying SLOs use slo-manage. For optimization suggestions use slo-optimize.
-allowed-tools: [grafanactl, Bash]
+allowed-tools: [gcx, Bash]
 ---
 
 # SLO Investigator
@@ -10,7 +10,7 @@ Deep-dive investigation of breaching SLOs: dimensional breakdown, alert correlat
 
 ## Core Principles
 
-1. Use grafanactl commands — do not call Grafana APIs directly (no curl, no HTTP libraries)
+1. Use gcx commands — do not call Grafana APIs directly (no curl, no HTTP libraries)
 2. Trust the user's expertise — skip obvious context, get to the root cause
 3. Use `-o json` for agent processing, default format for user display; show graphs for time-series data
 4. Errors collected at the end — do not interleave error handling in workflow steps
@@ -21,7 +21,7 @@ Deep-dive investigation of breaching SLOs: dimensional breakdown, alert correlat
 ### Step 1: Retrieve SLO Definition
 
 ```bash
-grafanactl slo definitions get <UUID> -o json
+gcx slo definitions get <UUID> -o json
 ```
 
 Extract from the JSON response:
@@ -36,13 +36,13 @@ Extract from the JSON response:
 
 If no UUID is given, list SLOs and ask which to investigate:
 ```bash
-grafanactl slo definitions list
+gcx slo definitions list
 ```
 
 ### Step 2: Check Status with Wide Output
 
 ```bash
-grafanactl slo definitions status <UUID> -o wide
+gcx slo definitions status <UUID> -o wide
 ```
 
 This shows SLI, ERROR_BUDGET, BURN_RATE, SLI_1H, SLI_1D, and STATUS.
@@ -63,7 +63,7 @@ Recording rule metrics unavailable. Likely causes:
 - Grafana recording rules not yet evaluated (can take 1–2 minutes after creation)
 - Prometheus federation/remote write issue
 
-Check: grafanactl datasources list --type prometheus
+Check: gcx datasources list --type prometheus
 Then verify the destination datasource UID matches what the SLO expects.
 ```
 
@@ -72,12 +72,12 @@ Then verify the destination datasource UID matches what the SLO expects.
 ### Step 3: Render Timeline
 
 ```bash
-grafanactl slo definitions timeline <UUID> --from now-1h --to now
+gcx slo definitions timeline <UUID> --from now-1h --to now
 ```
 
 For wider trends:
 ```bash
-grafanactl slo definitions timeline <UUID> --from now-24h --to now
+gcx slo definitions timeline <UUID> --from now-24h --to now
 ```
 
 Show the graph output (default). Use it to identify when breaching started and how severe it is.
@@ -86,19 +86,19 @@ Show the graph output (default). Use it to identify when breaching started and h
 
 Resolve the datasource UID. If `.spec.destinationDatasource.uid` is set, use it. Otherwise auto-discover:
 ```bash
-grafanactl datasources list --type prometheus
+gcx datasources list --type prometheus
 ```
 
 **For ratio queries** — extract success/total metric selectors and groupByLabels, then query dimensional breakdown:
 
 ```bash
 # Success rate by dimension (e.g., cluster, status_code, endpoint)
-grafanactl datasources prometheus query <datasource-uid> \
+gcx datasources prometheus query <datasource-uid> \
   'sum by (<groupByLabel>) (rate(<successMetric>[5m])) / sum by (<groupByLabel>) (rate(<totalMetric>[5m]))' \
   --from now-1h --to now --step 1m
 
 # Error rate by dimension to spot the bad actor
-grafanactl datasources prometheus query <datasource-uid> \
+gcx datasources prometheus query <datasource-uid> \
   'sum by (<groupByLabel>) (rate(<totalMetric>[5m])) - sum by (<groupByLabel>) (rate(<successMetric>[5m]))' \
   --from now-1h --to now --step 1m
 ```
@@ -108,12 +108,12 @@ If `groupByLabels` is empty, try common dimensions: `cluster`, `namespace`, `ser
 **For freeform queries** — use the raw PromQL expression and add `by (<label>)` grouping:
 
 ```bash
-grafanactl datasources prometheus query <datasource-uid> \
+gcx datasources prometheus query <datasource-uid> \
   '<freeform_expression> by (cluster)' \
   --from now-1h --to now --step 1m
 
 # Also try other likely breakdown dimensions
-grafanactl datasources prometheus query <datasource-uid> \
+gcx datasources prometheus query <datasource-uid> \
   '<freeform_expression> by (namespace)' \
   --from now-1h --to now --step 1m
 ```
@@ -123,12 +123,12 @@ Use graph output to display dimensional trends visually. Use `-o json` to extrac
 ### Step 5: Search for Related Alert Rules
 
 ```bash
-grafanactl alert rules list -o json | jq '[.[] | .rules[]? | select(.name | test("<slo-name>"; "i"))]'
+gcx alert rules list -o json | jq '[.[] | .rules[]? | select(.name | test("<slo-name>"; "i"))]'
 ```
 
 Also try searching by UUID fragment if the name-based search returns no results:
 ```bash
-grafanactl alert rules list -o json | jq '[.[] | .rules[]? | select(.labels.slo_uuid == "<UUID>" or (.name | test("<slo-name>"; "i")))]'
+gcx alert rules list -o json | jq '[.[] | .rules[]? | select(.labels.slo_uuid == "<UUID>" or (.name | test("<slo-name>"; "i")))]'
 ```
 
 Extract for each matching rule: name, state (firing/pending/inactive), labels, and annotations.
@@ -183,11 +183,11 @@ Next actions:
 
 ## Error Handling
 
-- **grafanactl slo definitions get fails with 404**: SLO UUID not found. Run `grafanactl slo definitions list` and confirm the UUID.
-- **grafanactl slo definitions status returns empty**: No status available — SLO may be newly created. Check if recording rules are running (STATUS may show NODATA).
-- **grafanactl datasources {kind} query fails with datasource error**: Datasource UID may be wrong. Run `grafanactl datasources list --type prometheus` to find the correct UID.
-- **grafanactl datasources {kind} query returns no data**: The SLO metrics may write to a separate datasource (check `.spec.destinationDatasource.uid`). Try both the destination datasource and the default Prometheus datasource.
-- **alert rules list returns empty**: Alert rules may be in a different folder. Try without filters: `grafanactl alert rules list -o json | jq length` to confirm total count.
+- **gcx slo definitions get fails with 404**: SLO UUID not found. Run `gcx slo definitions list` and confirm the UUID.
+- **gcx slo definitions status returns empty**: No status available — SLO may be newly created. Check if recording rules are running (STATUS may show NODATA).
+- **gcx datasources {kind} query fails with datasource error**: Datasource UID may be wrong. Run `gcx datasources list --type prometheus` to find the correct UID.
+- **gcx datasources {kind} query returns no data**: The SLO metrics may write to a separate datasource (check `.spec.destinationDatasource.uid`). Try both the destination datasource and the default Prometheus datasource.
+- **alert rules list returns empty**: Alert rules may be in a different folder. Try without filters: `gcx alert rules list -o json | jq length` to confirm total count.
 - **gh api fails**: If `gh` is not authenticated or unavailable, report the runbook URL directly and skip content fetching.
 - **SLO has no groupByLabels (ratio query)**: Try common breakdown dimensions: `cluster`, `namespace`, `service`, `endpoint`, `status_code`. Report which ones return data.
 - **Multiple SLOs with similar names**: When searching alert rules by name pattern, report all matches and their states — don't silently drop duplicates.

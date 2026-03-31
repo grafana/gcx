@@ -3,7 +3,7 @@ package definitions_test
 import (
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/providers/slo/definitions"
+	"github.com/grafana/gcx/internal/providers/slo/definitions"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

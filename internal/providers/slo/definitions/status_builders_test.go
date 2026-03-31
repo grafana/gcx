@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/providers/slo/definitions"
+	"github.com/grafana/gcx/internal/providers/slo/definitions"
 )
 
 func TestBuildMetricQuery(t *testing.T) {

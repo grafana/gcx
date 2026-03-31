@@ -1,7 +1,7 @@
 package providers
 
 import (
-	"github.com/grafana/grafanactl/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 )
 
@@ -13,8 +13,8 @@ type ConfigKey struct {
 	Secret bool
 }
 
-// Provider defines the interface for a grafanactl provider.
-// Providers extend grafanactl with commands for managing Grafana Cloud
+// Provider defines the interface for a gcx provider.
+// Providers extend gcx with commands for managing Grafana Cloud
 // product resources (e.g., SLO, Synthetic Monitoring, OnCall).
 type Provider interface {
 	// Name returns the unique identifier for this provider.
@@ -33,8 +33,9 @@ type Provider interface {
 	// including metadata about which keys are secrets.
 	ConfigKeys() []ConfigKey
 
-	// ResourceAdapters returns adapter factories for resource types that this
-	// provider exposes through the unified resources pipeline. Providers that
-	// do not support resource adapters return nil.
-	ResourceAdapters() []adapter.Factory
+	// TypedRegistrations returns adapter registrations for resource types that
+	// this provider exposes through the unified resources pipeline. Providers
+	// that do not support resource adapters return nil. The returned
+	// registrations are auto-registered by providers.Register().
+	TypedRegistrations() []adapter.Registration
 }

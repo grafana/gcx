@@ -9,9 +9,11 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
-	"time"
+
+	"github.com/grafana/gcx/internal/providers"
 )
 
 const (
@@ -44,7 +46,7 @@ func NewClient(apiDomain string, httpClient *http.Client) *Client {
 		apiDomain = DefaultAPIDomain
 	}
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 60 * time.Second}
+		httpClient = providers.ExternalHTTPClient()
 	}
 	return &Client{
 		apiDomain: strings.TrimRight(apiDomain, "/"),
@@ -736,7 +738,7 @@ func (c *Client) CreateLoadZone(ctx context.Context, req PLZCreateRequest) (*PLZ
 
 // DeleteLoadZone deregisters a Private Load Zone by name.
 func (c *Client) DeleteLoadZone(ctx context.Context, name string) error {
-	resp, err := c.doJSON(ctx, http.MethodDelete, plzPath+"/"+name, nil)
+	resp, err := c.doJSON(ctx, http.MethodDelete, plzPath+"/"+url.PathEscape(name), nil)
 	if err != nil {
 		return fmt.Errorf("k6: delete load zone: %w", err)
 	}

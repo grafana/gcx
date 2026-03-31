@@ -1,11 +1,11 @@
-# grafanactl: Project Structure and Build System
+# gcx: Project Structure and Build System
 
 ## 1. Directory Layout
 
 ```
-grafanactl/
+gcx/
 ├── cmd/
-│   └── grafanactl/           # Binary entry point (public surface)
+│   └── gcx/           # Binary entry point (public surface)
 │       ├── main.go           # Version vars, main(), error handler
 │       ├── root/             # Root Cobra command, global flags, logging setup
 │       ├── config/           # 'config' subcommand implementations
@@ -13,12 +13,14 @@ grafanactl/
 │       ├── dashboards/       # 'dashboards' subcommand (snapshot via Image Renderer)
 │       ├── datasources/      # 'datasources' subcommand implementations
 │       │   └── query/        # Per-kind query constructors and shared infrastructure (codecs, time parsing)
+│       ├── commands/         # 'commands' catalog (agent metadata, resource types, live validation)
+│       ├── helptree/        # 'help-tree' compact text tree for agent context injection
 │       ├── dev/              # 'dev' subcommand (import, scaffold, generate, lint, serve)
 │       ├── providers/        # 'providers' subcommand implementation
 │       └── fail/             # Error → DetailedError conversion, exit codes
 │
 ├── internal/                 # All non-public packages (Go enforced)
-│   ├── agent/                # Agent-mode detection (env vars + --agent flag)
+│   ├── agent/                # Agent-mode detection, command annotations, known-resource registry with operation hints
 │   ├── cloud/                # Grafana Cloud stack discovery via GCOM API
 │   ├── config/               # Config loading, context management, auth types
 │   │   └── testdata/         # YAML fixtures for config unit tests
@@ -33,6 +35,14 @@ grafanactl/
 │   │   └── builtins/         # Built-in PromQL/LogQL validators
 │   ├── providers/            # Provider plugin system
 │   │   ├── configloader.go   # Shared ConfigLoader for all providers
+│   │   ├── adaptive/         # Adaptive Telemetry provider (metrics rules/recs, logs patterns/exemptions, traces policies/recs)
+│   │   │   ├── auth/         # Shared Basic auth helper + GCOM caching
+│   │   │   ├── metrics/      # Metrics rules and recommendations (provider-only)
+│   │   │   ├── logs/         # Logs patterns (provider-only) and exemptions (TypedCRUD adapter)
+│   │   │   └── traces/       # Traces recommendations (provider-only) and policies (TypedCRUD adapter)
+│   │   ├── appo11y/          # App Observability provider (singleton config resources)
+│   │   │   ├── overrides/    # MetricsGeneratorConfig with ETag concurrency
+│   │   │   └── settings/     # PluginSettings
 │   │   ├── alert/            # Alert provider (rules and groups)
 │   │   ├── fleet/            # Fleet Management provider (pipeline and collector resources)
 │   │   ├── incidents/        # IRM Incidents provider
@@ -82,7 +92,7 @@ grafanactl/
 │
 ├── testdata/                 # Integration test fixtures (top-level)
 │   ├── grafana.ini           # Grafana config for docker-compose Grafana service
-│   ├── integration-test-config.yaml  # grafanactl config pointing at localhost:3000
+│   ├── integration-test-config.yaml  # gcx config pointing at localhost:3000
 │   ├── default-config.yaml   # Default config fixture
 │   └── folder.yaml           # Sample resource manifest
 │
@@ -91,7 +101,7 @@ grafanactl/
 ├── build/                    # mkdocs output (gitignored)
 │
 ├── Makefile                  # Unified build/test/lint/docs orchestration
-├── go.mod / go.sum           # Go module definition (module: github.com/grafana/grafanactl)
+├── go.mod / go.sum           # Go module definition (module: github.com/grafana/gcx)
 ├── .golangci.yaml            # Linter configuration (golangci-lint v2)
 ├── .goreleaser.yaml          # Release pipeline (cross-platform builds + GitHub Release)
 ├── devbox.json               # Reproducible toolchain (Go, golangci-lint, goreleaser, Python)
@@ -102,11 +112,11 @@ grafanactl/
 
 ### Rationale for cmd/ vs internal/ split
 
-`cmd/grafanactl/` contains only the CLI wiring: flag parsing, command dispatch,
+`cmd/gcx/` contains only the CLI wiring: flag parsing, command dispatch,
 output formatting, and error translation. It holds no business logic.
 
 `internal/` enforces Go's package visibility rule — external consumers cannot
-import these packages. This is intentional: grafanactl has no public Go API.
+import these packages. This is intentional: gcx has no public Go API.
 The split within `internal/` mirrors functional layers (config, resources,
 server) rather than technical concerns, making it easy to locate code by feature.
 
@@ -132,7 +142,7 @@ identically whether run directly inside `devbox shell` or from outside it.
 | Target | What it does |
 |---|---|
 | `make all` | Runs lint + tests + build + docs (the full gate) |
-| `make build` | Compiles `./cmd/grafanactl` into `bin/grafanactl` |
+| `make build` | Compiles `./cmd/gcx` into `bin/gcx` |
 | `make install` | Copies binary to `$GOPATH/bin` |
 | `make tests` | `go test -v ./...` (all packages, with race detection implied) |
 | `make lint` | Runs `golangci-lint run -c .golangci.yaml` |
@@ -157,7 +167,7 @@ BUILD_DATE    ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 VERSION_FLAGS := -X main.version=${GIT_VERSION} -X main.commit=${GIT_REVISION} -X main.date=${BUILD_DATE}
 ```
 
-These set package-level `var` declarations in `cmd/grafanactl/main.go`:
+These set package-level `var` declarations in `cmd/gcx/main.go`:
 
 ```go
 var (
@@ -242,7 +252,7 @@ GoReleaser builds with `CGO_ENABLED=0` for all three platforms (linux, darwin,
 windows) and creates:
 - `tar.gz` archives for Linux/macOS (uname-compatible naming)
 - `zip` archive for Windows
-- `grafanactl_checksums.txt`
+- `gcx_checksums.txt`
 
 The changelog is auto-generated from `git log` via GitHub, filtering out
 `docs:`, `test:`, `tests:`, `chore:`, and merge commits.
@@ -377,28 +387,28 @@ set of linters that conflict with the project's style:
 
 ```
 docker-compose up -d
-    ├── grafanactl-mysql (mysql:9.6)
+    ├── gcx-mysql (mysql:9.6)
     │   ├── Port: 3306
     │   ├── DB: grafana / User: grafana / Password: grafana
     │   └── healthcheck: mysqladmin ping
-    └── grafanactl-grafana (grafana/grafana:12.3)
+    └── gcx-grafana (grafana/grafana:12.3)
         ├── Port: 3000 (admin/admin)
         ├── DB: mysql (depends_on: mysql healthy)
-        ├── Feature toggle: kubernetesDashboards=true  ← required for grafanactl
+        ├── Feature toggle: kubernetesDashboards=true  ← required for gcx
         ├── Config: ./testdata/grafana.ini (read-only mount)
         └── healthcheck: wget /api/health
 ```
 
 The `kubernetesDashboards` feature toggle is essential — without it, the
-Kubernetes-style API that grafanactl uses is not available in Grafana.
+Kubernetes-style API that gcx uses is not available in Grafana.
 
-`testdata/integration-test-config.yaml` provides a ready-to-use grafanactl
+`testdata/integration-test-config.yaml` provides a ready-to-use gcx
 config pointing at `localhost:3000` with `admin/admin` credentials and `org-id: 1`.
 
 **Usage pattern for manual integration testing:**
 ```bash
 make test-env-up
-grafanactl --config testdata/integration-test-config.yaml resources schemas
+gcx --config testdata/integration-test-config.yaml resources schemas
 make test-env-down
 ```
 
@@ -435,8 +445,8 @@ Python venv during `make deps`. The site is deployed to GitHub Pages on release.
 
 ### Build
 ```bash
-make build                    # → bin/grafanactl
-make install                  # → $GOPATH/bin/grafanactl
+make build                    # → bin/gcx
+make install                  # → $GOPATH/bin/gcx
 ```
 
 ### Test and Lint
@@ -457,7 +467,7 @@ make serve-docs               # live-reload doc server at localhost:8000
 ### Integration Testing (manual)
 ```bash
 make test-env-up              # start Grafana + MySQL in Docker
-grafanactl --config testdata/integration-test-config.yaml <command>
+gcx --config testdata/integration-test-config.yaml <command>
 make test-env-down            # stop services
 make test-env-clean           # stop + delete volumes
 ```

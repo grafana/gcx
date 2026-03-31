@@ -1,14 +1,17 @@
 package oncall
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"text/tabwriter"
 
-	"github.com/grafana/grafanactl/internal/format"
-	cmdio "github.com/grafana/grafanactl/internal/output"
+	"github.com/grafana/gcx/internal/format"
+	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -32,9 +35,18 @@ func (o *listOpts) setup(flags *pflag.FlagSet, resource string) {
 		o.IO.RegisterCustomCodec("wide", &IntegrationTableCodec{Wide: true})
 	case "escalation-chains":
 		o.IO.RegisterCustomCodec("table", &EscalationChainTableCodec{})
+	case "escalation-policies":
+		o.IO.RegisterCustomCodec("table", &EscalationPolicyTableCodec{})
+		o.IO.RegisterCustomCodec("wide", &EscalationPolicyTableCodec{Wide: true})
 	case "schedules":
 		o.IO.RegisterCustomCodec("table", &ScheduleTableCodec{})
 		o.IO.RegisterCustomCodec("wide", &ScheduleTableCodec{Wide: true})
+	case "shifts":
+		o.IO.RegisterCustomCodec("table", &ShiftTableCodec{})
+		o.IO.RegisterCustomCodec("wide", &ShiftTableCodec{Wide: true})
+	case "routes":
+		o.IO.RegisterCustomCodec("table", &RouteTableCodec{})
+		o.IO.RegisterCustomCodec("wide", &RouteTableCodec{Wide: true})
 	case "webhooks":
 		o.IO.RegisterCustomCodec("table", &WebhookTableCodec{})
 		o.IO.RegisterCustomCodec("wide", &WebhookTableCodec{Wide: true})
@@ -43,8 +55,27 @@ func (o *listOpts) setup(flags *pflag.FlagSet, resource string) {
 		o.IO.RegisterCustomCodec("wide", &AlertGroupTableCodec{Wide: true})
 	case "users":
 		o.IO.RegisterCustomCodec("table", &UserTableCodec{})
+		o.IO.RegisterCustomCodec("wide", &UserTableCodec{Wide: true})
 	case "teams":
 		o.IO.RegisterCustomCodec("table", &TeamTableCodec{})
+		o.IO.RegisterCustomCodec("wide", &TeamTableCodec{Wide: true})
+	case "user-groups":
+		o.IO.RegisterCustomCodec("table", &UserGroupTableCodec{})
+	case "slack-channels":
+		o.IO.RegisterCustomCodec("table", &SlackChannelTableCodec{})
+	case "alerts":
+		o.IO.RegisterCustomCodec("table", &AlertTableCodec{})
+	case "resolution-notes":
+		o.IO.RegisterCustomCodec("table", &ResolutionNoteTableCodec{})
+		o.IO.RegisterCustomCodec("wide", &ResolutionNoteTableCodec{Wide: true})
+	case "organizations":
+		o.IO.RegisterCustomCodec("table", &OrganizationTableCodec{})
+	case "shift-swaps":
+		o.IO.RegisterCustomCodec("table", &ShiftSwapTableCodec{})
+		o.IO.RegisterCustomCodec("wide", &ShiftSwapTableCodec{Wide: true})
+	case "personal-notification-rules":
+		o.IO.RegisterCustomCodec("table", &PersonalNotificationRuleTableCodec{})
+		o.IO.RegisterCustomCodec("wide", &PersonalNotificationRuleTableCodec{Wide: true})
 	}
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
@@ -60,66 +91,98 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-// newListSubcommand creates a "list" subcommand for a resource group.
+// newListSubcommand creates a "list" subcommand using TypedCRUD.
 // The resource parameter selects the table codec (e.g. "integrations", "alert-groups").
-func newListSubcommand[T any](loader OnCallConfigLoader, resource, kind, short string, listFn func(*Client, *cobra.Command) ([]T, error)) *cobra.Command {
-	opts := &listOpts{}
+func newListSubcommand[T adapter.ResourceNamer](
+	loader OnCallConfigLoader, resource, kind, short string,
+	listFn func(ctx context.Context, client *Client) ([]T, error),
+	getFn func(ctx context.Context, client *Client, name string) (*T, error),
+	opts ...crudOption[T],
+) *cobra.Command {
+	listOpts := &listOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: short,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.IO.Validate(); err != nil {
+			if err := listOpts.IO.Validate(); err != nil {
 				return err
 			}
 
-			client, namespace, err := loader.LoadOnCallClient(cmd.Context())
+			ctx := cmd.Context()
+			crud, namespace, err := NewTypedCRUD(ctx, loader, listFn, getFn, opts...)
 			if err != nil {
 				return err
 			}
 
-			items, err := listFn(client, cmd)
+			typedObjs, err := crud.List(ctx)
 			if err != nil {
 				return err
 			}
 
-			objs, err := itemsToUnstructured(items, kind, "id", namespace)
-			if err != nil {
-				return err
+			// Convert TypedObject[T] back to unstructured for output codecs
+			objs := make([]unstructured.Unstructured, len(typedObjs))
+			for i, typedObj := range typedObjs {
+				data, err := json.Marshal(typedObj.Spec)
+				if err != nil {
+					return fmt.Errorf("failed to marshal %s: %w", kind, err)
+				}
+
+				var m map[string]any
+				if err := json.Unmarshal(data, &m); err != nil {
+					return fmt.Errorf("failed to unmarshal %s: %w", kind, err)
+				}
+
+				id := typedObj.Spec.GetResourceName()
+				delete(m, "id") // Remove id from spec
+
+				objs[i] = unstructured.Unstructured{Object: map[string]any{
+					"apiVersion": APIVersion,
+					"kind":       kind,
+					"metadata": map[string]any{
+						"name":      id,
+						"namespace": namespace,
+					},
+					"spec": m,
+				}}
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), objs)
+			return listOpts.IO.Encode(cmd.OutOrStdout(), objs)
 		},
 	}
-	opts.setup(cmd.Flags(), resource)
+	listOpts.setup(cmd.Flags(), resource)
 	return cmd
 }
 
-// newGetSubcommand creates a "get <id>" subcommand for a resource group.
-func newGetSubcommand(loader OnCallConfigLoader, short string, getFn func(*Client, *cobra.Command, string) (any, error)) *cobra.Command {
-	opts := &getOpts{}
+// newGetSubcommand creates a "get <id>" subcommand using TypedCRUD.
+func newGetSubcommand[T adapter.ResourceNamer](
+	loader OnCallConfigLoader, short string,
+	getFn func(ctx context.Context, client *Client, name string) (*T, error),
+) *cobra.Command {
+	getOpts := &getOpts{}
 	cmd := &cobra.Command{
 		Use:   "get <id>",
 		Short: short,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
+			if err := getOpts.IO.Validate(); err != nil {
 				return err
 			}
 
-			client, _, err := loader.LoadOnCallClient(cmd.Context())
+			ctx := cmd.Context()
+			crud, _, err := NewTypedCRUD(ctx, loader, func(_ context.Context, _ *Client) ([]T, error) { return nil, nil }, getFn)
 			if err != nil {
 				return err
 			}
 
-			item, err := getFn(client, cmd, args[0])
+			typedObj, err := crud.Get(ctx, args[0])
 			if err != nil {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), item)
+			return getOpts.IO.Encode(cmd.OutOrStdout(), typedObj.Spec)
 		},
 	}
-	opts.setup(cmd.Flags())
+	getOpts.setup(cmd.Flags())
 	return cmd
 }
 
@@ -171,10 +234,14 @@ func newIntegrationsCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "integrations", "Integration", "List OnCall integrations.",
-			func(c *Client, cmd *cobra.Command) ([]Integration, error) { return c.ListIntegrations(cmd.Context()) }),
-		newGetSubcommand(loader, "Get an integration by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
-			return c.GetIntegration(cmd.Context(), id)
-		}),
+			func(ctx context.Context, c *Client) ([]Integration, error) { return c.ListIntegrations(ctx) },
+			func(ctx context.Context, c *Client, name string) (*Integration, error) {
+				return c.GetIntegration(ctx, name)
+			}),
+		newGetSubcommand(loader, "Get an integration by ID.",
+			func(ctx context.Context, c *Client, name string) (*Integration, error) {
+				return c.GetIntegration(ctx, name)
+			}),
 	)
 	return cmd
 }
@@ -187,12 +254,16 @@ func newEscalationChainsCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "escalation-chains", "EscalationChain", "List escalation chains.",
-			func(c *Client, cmd *cobra.Command) ([]EscalationChain, error) {
-				return c.ListEscalationChains(cmd.Context())
+			func(ctx context.Context, c *Client) ([]EscalationChain, error) {
+				return c.ListEscalationChains(ctx)
+			},
+			func(ctx context.Context, c *Client, name string) (*EscalationChain, error) {
+				return c.GetEscalationChain(ctx, name)
 			}),
-		newGetSubcommand(loader, "Get an escalation chain by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
-			return c.GetEscalationChain(cmd.Context(), id)
-		}),
+		newGetSubcommand(loader, "Get an escalation chain by ID.",
+			func(ctx context.Context, c *Client, name string) (*EscalationChain, error) {
+				return c.GetEscalationChain(ctx, name)
+			}),
 	)
 	return cmd
 }
@@ -205,12 +276,16 @@ func newEscalationPoliciesCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "escalation-policies", "EscalationPolicy", "List escalation policies.",
-			func(c *Client, cmd *cobra.Command) ([]EscalationPolicy, error) {
-				return c.ListEscalationPolicies(cmd.Context(), "")
+			func(ctx context.Context, c *Client) ([]EscalationPolicy, error) {
+				return c.ListEscalationPolicies(ctx, "")
+			},
+			func(ctx context.Context, c *Client, name string) (*EscalationPolicy, error) {
+				return c.GetEscalationPolicy(ctx, name)
 			}),
-		newGetSubcommand(loader, "Get an escalation policy by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
-			return c.GetEscalationPolicy(cmd.Context(), id)
-		}),
+		newGetSubcommand(loader, "Get an escalation policy by ID.",
+			func(ctx context.Context, c *Client, name string) (*EscalationPolicy, error) {
+				return c.GetEscalationPolicy(ctx, name)
+			}),
 	)
 	return cmd
 }
@@ -223,10 +298,10 @@ func newSchedulesCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "schedules", "Schedule", "List OnCall schedules.",
-			func(c *Client, cmd *cobra.Command) ([]Schedule, error) { return c.ListSchedules(cmd.Context()) }),
-		newGetSubcommand(loader, "Get a schedule by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
-			return c.GetSchedule(cmd.Context(), id)
-		}),
+			func(ctx context.Context, c *Client) ([]Schedule, error) { return c.ListSchedules(ctx) },
+			func(ctx context.Context, c *Client, name string) (*Schedule, error) { return c.GetSchedule(ctx, name) }),
+		newGetSubcommand(loader, "Get a schedule by ID.",
+			func(ctx context.Context, c *Client, name string) (*Schedule, error) { return c.GetSchedule(ctx, name) }),
 		newScheduleFinalShiftsCommand(loader),
 	)
 	return cmd
@@ -240,10 +315,10 @@ func newShiftsCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "shifts", "Shift", "List OnCall shifts.",
-			func(c *Client, cmd *cobra.Command) ([]Shift, error) { return c.ListShifts(cmd.Context()) }),
-		newGetSubcommand(loader, "Get a shift by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
-			return c.GetShift(cmd.Context(), id)
-		}),
+			func(ctx context.Context, c *Client) ([]Shift, error) { return c.ListShifts(ctx) },
+			func(ctx context.Context, c *Client, name string) (*Shift, error) { return c.GetShift(ctx, name) }),
+		newGetSubcommand(loader, "Get a shift by ID.",
+			func(ctx context.Context, c *Client, name string) (*Shift, error) { return c.GetShift(ctx, name) }),
 	)
 	return cmd
 }
@@ -256,12 +331,16 @@ func newRoutesCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "routes", "Route", "List OnCall routes.",
-			func(c *Client, cmd *cobra.Command) ([]IntegrationRoute, error) {
-				return c.ListRoutes(cmd.Context(), "")
+			func(ctx context.Context, c *Client) ([]IntegrationRoute, error) {
+				return c.ListRoutes(ctx, "")
+			},
+			func(ctx context.Context, c *Client, name string) (*IntegrationRoute, error) {
+				return c.GetRoute(ctx, name)
 			}),
-		newGetSubcommand(loader, "Get a route by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
-			return c.GetRoute(cmd.Context(), id)
-		}),
+		newGetSubcommand(loader, "Get a route by ID.",
+			func(ctx context.Context, c *Client, name string) (*IntegrationRoute, error) {
+				return c.GetRoute(ctx, name)
+			}),
 	)
 	return cmd
 }
@@ -274,12 +353,16 @@ func newWebhooksCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "webhooks", "OutgoingWebhook", "List outgoing webhooks.",
-			func(c *Client, cmd *cobra.Command) ([]OutgoingWebhook, error) {
-				return c.ListOutgoingWebhooks(cmd.Context())
+			func(ctx context.Context, c *Client) ([]OutgoingWebhook, error) {
+				return c.ListOutgoingWebhooks(ctx)
+			},
+			func(ctx context.Context, c *Client, name string) (*OutgoingWebhook, error) {
+				return c.GetOutgoingWebhook(ctx, name)
 			}),
-		newGetSubcommand(loader, "Get an outgoing webhook by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
-			return c.GetOutgoingWebhook(cmd.Context(), id)
-		}),
+		newGetSubcommand(loader, "Get an outgoing webhook by ID.",
+			func(ctx context.Context, c *Client, name string) (*OutgoingWebhook, error) {
+				return c.GetOutgoingWebhook(ctx, name)
+			}),
 	)
 	return cmd
 }
@@ -292,10 +375,10 @@ func newTeamsCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "teams", "Team", "List OnCall teams.",
-			func(c *Client, cmd *cobra.Command) ([]Team, error) { return c.ListTeams(cmd.Context()) }),
-		newGetSubcommand(loader, "Get a team by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
-			return c.GetTeam(cmd.Context(), id)
-		}),
+			func(ctx context.Context, c *Client) ([]Team, error) { return c.ListTeams(ctx) },
+			func(ctx context.Context, c *Client, name string) (*Team, error) { return c.GetTeam(ctx, name) }),
+		newGetSubcommand(loader, "Get a team by ID.",
+			func(ctx context.Context, c *Client, name string) (*Team, error) { return c.GetTeam(ctx, name) }),
 	)
 	return cmd
 }
@@ -308,7 +391,8 @@ func newUserGroupsCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "user-groups", "UserGroup", "List user groups.",
-			func(c *Client, cmd *cobra.Command) ([]UserGroup, error) { return c.ListUserGroups(cmd.Context()) }),
+			func(ctx context.Context, c *Client) ([]UserGroup, error) { return c.ListUserGroups(ctx) },
+			nil),
 	)
 	return cmd
 }
@@ -321,7 +405,8 @@ func newSlackChannelsCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "slack-channels", "SlackChannel", "List Slack channels.",
-			func(c *Client, cmd *cobra.Command) ([]SlackChannel, error) { return c.ListSlackChannels(cmd.Context()) }),
+			func(ctx context.Context, c *Client) ([]SlackChannel, error) { return c.ListSlackChannels(ctx) },
+			nil),
 	)
 	return cmd
 }
@@ -333,11 +418,8 @@ func newAlertsCmd(loader OnCallConfigLoader) *cobra.Command {
 		Aliases: []string{"alert"},
 	}
 	cmd.AddCommand(
-		newListSubcommand(loader, "alerts", "Alert", "List alerts.",
-			func(c *Client, cmd *cobra.Command) ([]Alert, error) { return c.ListAlerts(cmd.Context(), "") }),
-		newGetSubcommand(loader, "Get an alert by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
-			return c.GetAlert(cmd.Context(), id)
-		}),
+		newGetSubcommand(loader, "Get an alert by ID.",
+			func(ctx context.Context, c *Client, name string) (*Alert, error) { return c.GetAlert(ctx, name) }),
 	)
 	return cmd
 }
@@ -350,10 +432,14 @@ func newOrganizationsCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "organizations", "Organization", "List organizations.",
-			func(c *Client, cmd *cobra.Command) ([]Organization, error) { return c.ListOrganizations(cmd.Context()) }),
-		newGetSubcommand(loader, "Get an organization by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
-			return c.GetOrganization(cmd.Context(), id)
-		}),
+			func(ctx context.Context, c *Client) ([]Organization, error) { return c.ListOrganizations(ctx) },
+			func(ctx context.Context, c *Client, name string) (*Organization, error) {
+				return c.GetOrganization(ctx, name)
+			}),
+		newGetSubcommand(loader, "Get an organization by ID.",
+			func(ctx context.Context, c *Client, name string) (*Organization, error) {
+				return c.GetOrganization(ctx, name)
+			}),
 	)
 	return cmd
 }
@@ -366,12 +452,16 @@ func newResolutionNotesCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "resolution-notes", "ResolutionNote", "List resolution notes.",
-			func(c *Client, cmd *cobra.Command) ([]ResolutionNote, error) {
-				return c.ListResolutionNotes(cmd.Context(), "")
+			func(ctx context.Context, c *Client) ([]ResolutionNote, error) {
+				return c.ListResolutionNotes(ctx, "")
+			},
+			func(ctx context.Context, c *Client, name string) (*ResolutionNote, error) {
+				return c.GetResolutionNote(ctx, name)
 			}),
-		newGetSubcommand(loader, "Get a resolution note by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
-			return c.GetResolutionNote(cmd.Context(), id)
-		}),
+		newGetSubcommand(loader, "Get a resolution note by ID.",
+			func(ctx context.Context, c *Client, name string) (*ResolutionNote, error) {
+				return c.GetResolutionNote(ctx, name)
+			}),
 	)
 	return cmd
 }
@@ -384,28 +474,14 @@ func newShiftSwapsCmd(loader OnCallConfigLoader) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListSubcommand(loader, "shift-swaps", "ShiftSwap", "List shift swaps.",
-			func(c *Client, cmd *cobra.Command) ([]ShiftSwap, error) { return c.ListShiftSwaps(cmd.Context()) }),
-		newGetSubcommand(loader, "Get a shift swap by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
-			return c.GetShiftSwap(cmd.Context(), id)
-		}),
-	)
-	return cmd
-}
-
-func newPersonalNotificationRulesCmd(loader OnCallConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:     "personal-notification-rules",
-		Short:   "Manage personal notification rules.",
-		Aliases: []string{"personal-notification-rule", "pnr"},
-	}
-	cmd.AddCommand(
-		newListSubcommand(loader, "personal-notification-rules", "PersonalNotificationRule", "List personal notification rules.",
-			func(c *Client, cmd *cobra.Command) ([]PersonalNotificationRule, error) {
-				return c.ListPersonalNotificationRules(cmd.Context())
+			func(ctx context.Context, c *Client) ([]ShiftSwap, error) { return c.ListShiftSwaps(ctx) },
+			func(ctx context.Context, c *Client, name string) (*ShiftSwap, error) {
+				return c.GetShiftSwap(ctx, name)
 			}),
-		newGetSubcommand(loader, "Get a personal notification rule by ID.", func(c *Client, cmd *cobra.Command, id string) (any, error) {
-			return c.GetPersonalNotificationRule(cmd.Context(), id)
-		}),
+		newGetSubcommand(loader, "Get a shift swap by ID.",
+			func(ctx context.Context, c *Client, name string) (*ShiftSwap, error) {
+				return c.GetShiftSwap(ctx, name)
+			}),
 	)
 	return cmd
 }
@@ -546,6 +622,56 @@ func (c *EscalationChainTableCodec) Encode(w io.Writer, v any) error {
 }
 
 func (c *EscalationChainTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// EscalationPolicyTableCodec renders escalation policies as a table.
+type EscalationPolicyTableCodec struct {
+	Wide bool
+}
+
+func (c *EscalationPolicyTableCodec) Format() format.Format {
+	if c.Wide {
+		return "wide"
+	}
+	return "table"
+}
+
+func (c *EscalationPolicyTableCodec) Encode(w io.Writer, v any) error {
+	items, err := toUnstructuredSlice(v)
+	if err != nil {
+		return err
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	if c.Wide {
+		fmt.Fprintln(tw, "ID\tCHAIN\tPOS\tTYPE\tDURATION\tIMPORTANT\tNOTIFY-SCHEDULE")
+	} else {
+		fmt.Fprintln(tw, "ID\tCHAIN\tPOS\tTYPE\tDURATION")
+	}
+
+	for _, obj := range items {
+		id := obj.GetName()
+		dur := specInt(obj, "duration")
+		durStr := "-"
+		if dur > 0 {
+			durStr = fmt.Sprintf("%ds", dur)
+		}
+		if c.Wide {
+			important := "false"
+			if specBool(obj, "important") {
+				important = "true"
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\t%s\t%s\n", id, specStr(obj, "escalation_chain_id"), specInt(obj, "position"), specStr(obj, "type"), durStr, important, orDash(specStr(obj, "notify_on_call_from_schedule")))
+		} else {
+			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\n", id, specStr(obj, "escalation_chain_id"), specInt(obj, "position"), specStr(obj, "type"), durStr)
+		}
+	}
+
+	return tw.Flush()
+}
+
+func (c *EscalationPolicyTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
 
@@ -697,9 +823,16 @@ func (c *AlertGroupTableCodec) Decode(_ io.Reader, _ any) error {
 }
 
 // UserTableCodec renders users as a table.
-type UserTableCodec struct{}
+type UserTableCodec struct {
+	Wide bool
+}
 
-func (c *UserTableCodec) Format() format.Format { return "table" }
+func (c *UserTableCodec) Format() format.Format {
+	if c.Wide {
+		return "wide"
+	}
+	return "table"
+}
 
 func (c *UserTableCodec) Encode(w io.Writer, v any) error {
 	items, err := toUnstructuredSlice(v)
@@ -708,12 +841,22 @@ func (c *UserTableCodec) Encode(w io.Writer, v any) error {
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tUSERNAME\tNAME\tROLE\tTIMEZONE")
+	if c.Wide {
+		fmt.Fprintln(tw, "ID\tUSERNAME\tNAME\tEMAIL\tROLE\tTIMEZONE")
+	} else {
+		fmt.Fprintln(tw, "ID\tUSERNAME\tNAME\tROLE\tTIMEZONE")
+	}
 
 	for _, obj := range items {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-			obj.GetName(), specStr(obj, "username"), orDash(specStr(obj, "name")),
-			orDash(specStr(obj, "role")), orDash(specStr(obj, "timezone")))
+		if c.Wide {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
+				obj.GetName(), specStr(obj, "username"), orDash(specStr(obj, "name")),
+				orDash(specStr(obj, "email")), orDash(specStr(obj, "role")), orDash(specStr(obj, "timezone")))
+		} else {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+				obj.GetName(), specStr(obj, "username"), orDash(specStr(obj, "name")),
+				orDash(specStr(obj, "role")), orDash(specStr(obj, "timezone")))
+		}
 	}
 
 	return tw.Flush()
@@ -724,9 +867,16 @@ func (c *UserTableCodec) Decode(_ io.Reader, _ any) error {
 }
 
 // TeamTableCodec renders teams as a table.
-type TeamTableCodec struct{}
+type TeamTableCodec struct {
+	Wide bool
+}
 
-func (c *TeamTableCodec) Format() format.Format { return "table" }
+func (c *TeamTableCodec) Format() format.Format {
+	if c.Wide {
+		return "wide"
+	}
+	return "table"
+}
 
 func (c *TeamTableCodec) Encode(w io.Writer, v any) error {
 	items, err := toUnstructuredSlice(v)
@@ -735,15 +885,376 @@ func (c *TeamTableCodec) Encode(w io.Writer, v any) error {
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tNAME\tEMAIL")
+	if c.Wide {
+		fmt.Fprintln(tw, "ID\tNAME\tEMAIL\tGRAFANA-ID")
+	} else {
+		fmt.Fprintln(tw, "ID\tNAME\tEMAIL")
+	}
 
 	for _, obj := range items {
-		fmt.Fprintf(tw, "%s\t%s\t%s\n", obj.GetName(), specStr(obj, "name"), orDash(specStr(obj, "email")))
+		if c.Wide {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\n", obj.GetName(), specStr(obj, "name"), orDash(specStr(obj, "email")), specInt(obj, "grafana_id"))
+		} else {
+			fmt.Fprintf(tw, "%s\t%s\t%s\n", obj.GetName(), specStr(obj, "name"), orDash(specStr(obj, "email")))
+		}
 	}
 
 	return tw.Flush()
 }
 
 func (c *TeamTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// ShiftTableCodec renders shifts as a table.
+type ShiftTableCodec struct {
+	Wide bool
+}
+
+func (c *ShiftTableCodec) Format() format.Format {
+	if c.Wide {
+		return "wide"
+	}
+	return "table"
+}
+
+func (c *ShiftTableCodec) Encode(w io.Writer, v any) error {
+	items, err := toUnstructuredSlice(v)
+	if err != nil {
+		return err
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	if c.Wide {
+		fmt.Fprintln(tw, "ID\tNAME\tTYPE\tSTART\tDURATION\tFREQUENCY\tINTERVAL\tTEAM")
+	} else {
+		fmt.Fprintln(tw, "ID\tNAME\tTYPE\tSTART\tDURATION")
+	}
+
+	for _, obj := range items {
+		id := obj.GetName()
+		dur := specInt(obj, "duration")
+		durStr := "-"
+		if dur > 0 {
+			durStr = fmt.Sprintf("%ds", dur)
+		}
+		start := orDash(specStr(obj, "start"))
+		if c.Wide {
+			freq := orDash(specStr(obj, "frequency"))
+			interval := specInt(obj, "interval")
+			intervalStr := "-"
+			if interval > 0 {
+				intervalStr = strconv.Itoa(interval)
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", id, specStr(obj, "name"), specStr(obj, "type"), start, durStr, freq, intervalStr, orDash(specStr(obj, "team_id")))
+		} else {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", id, specStr(obj, "name"), specStr(obj, "type"), start, durStr)
+		}
+	}
+
+	return tw.Flush()
+}
+
+func (c *ShiftTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// RouteTableCodec renders routes as a table.
+type RouteTableCodec struct {
+	Wide bool
+}
+
+func (c *RouteTableCodec) Format() format.Format {
+	if c.Wide {
+		return "wide"
+	}
+	return "table"
+}
+
+func (c *RouteTableCodec) Encode(w io.Writer, v any) error {
+	items, err := toUnstructuredSlice(v)
+	if err != nil {
+		return err
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	if c.Wide {
+		fmt.Fprintln(tw, "ID\tINTEGRATION\tCHAIN\tPOS\tROUTING-TYPE\tREGEX\tLAST")
+	} else {
+		fmt.Fprintln(tw, "ID\tINTEGRATION\tCHAIN\tPOS\tROUTING-TYPE")
+	}
+
+	for _, obj := range items {
+		id := obj.GetName()
+		if c.Wide {
+			isLast := "false"
+			if specBool(obj, "is_the_last_route") {
+				isLast = "true"
+			}
+			regex := orDash(specStr(obj, "routing_regex"))
+			if len(regex) > 40 {
+				regex = regex[:37] + "..."
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\t%s\t%s\n", id, specStr(obj, "integration_id"), orDash(specStr(obj, "escalation_chain_id")), specInt(obj, "position"), orDash(specStr(obj, "routing_type")), regex, isLast)
+		} else {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\n", id, specStr(obj, "integration_id"), orDash(specStr(obj, "escalation_chain_id")), specInt(obj, "position"), orDash(specStr(obj, "routing_type")))
+		}
+	}
+
+	return tw.Flush()
+}
+
+func (c *RouteTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// UserGroupTableCodec renders user groups as a table.
+type UserGroupTableCodec struct{}
+
+func (c *UserGroupTableCodec) Format() format.Format { return "table" }
+
+func (c *UserGroupTableCodec) Encode(w io.Writer, v any) error {
+	items, err := toUnstructuredSlice(v)
+	if err != nil {
+		return err
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "ID\tNAME\tTYPE\tHANDLE")
+
+	for _, obj := range items {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", obj.GetName(), orDash(specStr(obj, "name")), orDash(specStr(obj, "type")), orDash(specStr(obj, "handle")))
+	}
+
+	return tw.Flush()
+}
+
+func (c *UserGroupTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// SlackChannelTableCodec renders Slack channels as a table.
+type SlackChannelTableCodec struct{}
+
+func (c *SlackChannelTableCodec) Format() format.Format { return "table" }
+
+func (c *SlackChannelTableCodec) Encode(w io.Writer, v any) error {
+	items, err := toUnstructuredSlice(v)
+	if err != nil {
+		return err
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "ID\tNAME\tSLACK-ID")
+
+	for _, obj := range items {
+		fmt.Fprintf(tw, "%s\t%s\t%s\n", obj.GetName(), orDash(specStr(obj, "name")), orDash(specStr(obj, "slack_id")))
+	}
+
+	return tw.Flush()
+}
+
+func (c *SlackChannelTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// AlertTableCodec renders alerts as a table.
+type AlertTableCodec struct{}
+
+func (c *AlertTableCodec) Format() format.Format { return "table" }
+
+func (c *AlertTableCodec) Encode(w io.Writer, v any) error {
+	items, err := toUnstructuredSlice(v)
+	if err != nil {
+		return err
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "ID\tALERT-GROUP\tCREATED")
+
+	for _, obj := range items {
+		created := specStr(obj, "created_at")
+		if len(created) > 16 {
+			created = created[:16]
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\n", obj.GetName(), specStr(obj, "alert_group_id"), orDash(created))
+	}
+
+	return tw.Flush()
+}
+
+func (c *AlertTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// ResolutionNoteTableCodec renders resolution notes as a table.
+type ResolutionNoteTableCodec struct {
+	Wide bool
+}
+
+func (c *ResolutionNoteTableCodec) Format() format.Format {
+	if c.Wide {
+		return "wide"
+	}
+	return "table"
+}
+
+func (c *ResolutionNoteTableCodec) Encode(w io.Writer, v any) error {
+	items, err := toUnstructuredSlice(v)
+	if err != nil {
+		return err
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	if c.Wide {
+		fmt.Fprintln(tw, "ID\tALERT-GROUP\tSOURCE\tCREATED\tTEXT")
+	} else {
+		fmt.Fprintln(tw, "ID\tALERT-GROUP\tSOURCE\tCREATED")
+	}
+
+	for _, obj := range items {
+		created := specStr(obj, "created_at")
+		if len(created) > 16 {
+			created = created[:16]
+		}
+		if c.Wide {
+			text := specStr(obj, "text")
+			if len(text) > 60 {
+				text = text[:57] + "..."
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", obj.GetName(), specStr(obj, "alert_group_id"), orDash(specStr(obj, "source")), orDash(created), orDash(text))
+		} else {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", obj.GetName(), specStr(obj, "alert_group_id"), orDash(specStr(obj, "source")), orDash(created))
+		}
+	}
+
+	return tw.Flush()
+}
+
+func (c *ResolutionNoteTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// OrganizationTableCodec renders organizations as a table.
+type OrganizationTableCodec struct{}
+
+func (c *OrganizationTableCodec) Format() format.Format { return "table" }
+
+func (c *OrganizationTableCodec) Encode(w io.Writer, v any) error {
+	items, err := toUnstructuredSlice(v)
+	if err != nil {
+		return err
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "ID\tNAME\tSLUG")
+
+	for _, obj := range items {
+		fmt.Fprintf(tw, "%s\t%s\t%s\n", obj.GetName(), orDash(specStr(obj, "name")), orDash(specStr(obj, "slug")))
+	}
+
+	return tw.Flush()
+}
+
+func (c *OrganizationTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// ShiftSwapTableCodec renders shift swaps as a table.
+type ShiftSwapTableCodec struct {
+	Wide bool
+}
+
+func (c *ShiftSwapTableCodec) Format() format.Format {
+	if c.Wide {
+		return "wide"
+	}
+	return "table"
+}
+
+func (c *ShiftSwapTableCodec) Encode(w io.Writer, v any) error {
+	items, err := toUnstructuredSlice(v)
+	if err != nil {
+		return err
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	if c.Wide {
+		fmt.Fprintln(tw, "ID\tSCHEDULE\tSTATUS\tSTART\tEND\tBENEFICIARY\tBENEFACTOR\tCREATED")
+	} else {
+		fmt.Fprintln(tw, "ID\tSCHEDULE\tSTATUS\tSTART\tEND")
+	}
+
+	for _, obj := range items {
+		id := obj.GetName()
+		start := specStr(obj, "swap_start")
+		if len(start) > 16 {
+			start = start[:16]
+		}
+		end := specStr(obj, "swap_end")
+		if len(end) > 16 {
+			end = end[:16]
+		}
+		if c.Wide {
+			created := specStr(obj, "created_at")
+			if len(created) > 16 {
+				created = created[:16]
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", id, orDash(specStr(obj, "schedule")), orDash(specStr(obj, "status")), orDash(start), orDash(end), orDash(specStr(obj, "beneficiary")), orDash(specStr(obj, "benefactor")), orDash(created))
+		} else {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", id, orDash(specStr(obj, "schedule")), orDash(specStr(obj, "status")), orDash(start), orDash(end))
+		}
+	}
+
+	return tw.Flush()
+}
+
+func (c *ShiftSwapTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// PersonalNotificationRuleTableCodec renders personal notification rules as a table.
+type PersonalNotificationRuleTableCodec struct {
+	Wide bool
+}
+
+func (c *PersonalNotificationRuleTableCodec) Format() format.Format {
+	if c.Wide {
+		return "wide"
+	}
+	return "table"
+}
+
+func (c *PersonalNotificationRuleTableCodec) Encode(w io.Writer, v any) error {
+	items, err := toUnstructuredSlice(v)
+	if err != nil {
+		return err
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	if c.Wide {
+		fmt.Fprintln(tw, "ID\tUSER\tSTEP\tTYPE\tDURATION\tCHANNEL")
+	} else {
+		fmt.Fprintln(tw, "ID\tUSER\tSTEP\tTYPE\tDURATION")
+	}
+
+	for _, obj := range items {
+		id := obj.GetName()
+		dur := specInt(obj, "duration")
+		durStr := "-"
+		if dur > 0 {
+			durStr = fmt.Sprintf("%ds", dur)
+		}
+		if c.Wide {
+			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\t%s\n", id, orDash(specStr(obj, "user_id")), specInt(obj, "step"), orDash(specStr(obj, "type")), durStr, orDash(specStr(obj, "notification_channel_id")))
+		} else {
+			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\n", id, orDash(specStr(obj, "user_id")), specInt(obj, "step"), orDash(specStr(obj, "type")), durStr)
+		}
+	}
+
+	return tw.Flush()
+}
+
+func (c *PersonalNotificationRuleTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }

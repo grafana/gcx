@@ -7,9 +7,9 @@ import (
 	"net/http/httputil"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/grafana/gcx/internal/httputils"
+	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/grafana-app-sdk/logging"
-	"github.com/grafana/grafanactl/internal/httputils"
-	"github.com/grafana/grafanactl/internal/resources"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 

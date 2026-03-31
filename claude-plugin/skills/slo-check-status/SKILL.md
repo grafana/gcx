@@ -1,7 +1,7 @@
 ---
 name: slo-check-status
 description: Use when the user asks about SLO health, wants an overview of all SLOs, or needs status of a specific SLO. Trigger on phrases like "how are my SLOs doing", "SLO status", "check my SLOs", "is my SLO healthy", "SLO budget", "SLO burn rate". For investigating breaching SLOs use slo-investigate. For optimization suggestions use slo-optimize. For creating or modifying SLO definitions use slo-manage.
-allowed-tools: [grafanactl, Bash]
+allowed-tools: [gcx, Bash]
 ---
 
 # SLO Status Checker
@@ -10,7 +10,7 @@ Check SLO health, budget consumption, and trends. Route to investigation or opti
 
 ## Core Principles
 
-1. Use `grafanactl` commands — do not call Grafana APIs directly
+1. Use `gcx` commands — do not call Grafana APIs directly
 2. Trust the user's expertise — no hand-holding or excessive explanation
 3. Use `-o json` for agent processing, default format for user display
 4. Show graphs for time-series data (timeline commands default to graph output)
@@ -22,7 +22,7 @@ Check SLO health, budget consumption, and trends. Route to investigation or opti
 **If the user asks about all SLOs (no specific UUID):**
 
 ```bash
-grafanactl slo definitions list
+gcx slo definitions list
 ```
 
 This shows UUID, name, target objective, window, and status for all SLOs.
@@ -30,7 +30,7 @@ This shows UUID, name, target objective, window, and status for all SLOs.
 Then get the health summary:
 
 ```bash
-grafanactl slo definitions status
+gcx slo definitions status
 ```
 
 This shows SLI, error budget, and health status for all SLOs in a table.
@@ -38,7 +38,7 @@ This shows SLI, error budget, and health status for all SLOs in a table.
 **If the user asks about a specific SLO (UUID or name provided):**
 
 ```bash
-grafanactl slo definitions status <UUID> -o wide
+gcx slo definitions status <UUID> -o wide
 ```
 
 The `-o wide` output includes additional columns: BURN_RATE, SLI_1H, and SLI_1D, which give a richer picture of recent performance.
@@ -65,17 +65,17 @@ Show the timeline when:
 
 **All SLOs timeline:**
 ```bash
-grafanactl slo definitions timeline --from now-7d --to now
+gcx slo definitions timeline --from now-7d --to now
 ```
 
 **Specific SLO timeline:**
 ```bash
-grafanactl slo definitions timeline <UUID> --from now-7d --to now
+gcx slo definitions timeline <UUID> --from now-7d --to now
 ```
 
 Use `--window` as a shorthand when a single duration is more natural:
 ```bash
-grafanactl slo definitions timeline <UUID> --window 7d
+gcx slo definitions timeline <UUID> --window 7d
 ```
 
 The timeline command renders a graph by default — this is the preferred output for users.
@@ -89,12 +89,12 @@ Adjust the time range based on the SLO window:
 When the user asks about SLO reports or wants combined SLO health from the reports subsystem:
 
 ```bash
-grafanactl slo reports status
+gcx slo reports status
 ```
 
 Or for a specific SLO:
 ```bash
-grafanactl slo reports status <UUID>
+gcx slo reports status <UUID>
 ```
 
 ### Step 5: Route to Investigation or Optimization
@@ -113,7 +113,7 @@ grafanactl slo reports status <UUID>
 ```
 SLOs: <total> total, <n> OK, <n> BREACHING, <n> NODATA
 
-[Table from grafanactl slo definitions status]
+[Table from gcx slo definitions status]
 
 [If any BREACHING: show timeline graph]
 [If BREACHING: suggest slo-investigate for each BREACHING SLO]
@@ -140,9 +140,9 @@ Collect all errors and report at the end of the workflow — do not interrupt th
 
 | Error | Action |
 |-------|--------|
-| `grafanactl slo definitions list` returns empty | Report "No SLOs found in this context." Check context with `grafanactl config view`. |
-| `grafanactl slo definitions status` returns NODATA for all SLOs | Note that recording rule metrics are unavailable. Suggest checking the destination datasource configured on each SLO definition. |
-| `grafanactl slo definitions status <UUID>` — UUID not found | List all SLOs to help the user identify the correct UUID. |
-| `grafanactl slo definitions timeline` fails | Note the failure and continue. Timeline is supplementary. |
-| `grafanactl slo reports status` fails | Note the failure. Reports status is optional context. |
-| Auth errors | Check context configuration: `grafanactl config view`. Ensure the server URL and credentials are set. |
+| `gcx slo definitions list` returns empty | Report "No SLOs found in this context." Check context with `gcx config view`. |
+| `gcx slo definitions status` returns NODATA for all SLOs | Note that recording rule metrics are unavailable. Suggest checking the destination datasource configured on each SLO definition. |
+| `gcx slo definitions status <UUID>` — UUID not found | List all SLOs to help the user identify the correct UUID. |
+| `gcx slo definitions timeline` fails | Note the failure and continue. Timeline is supplementary. |
+| `gcx slo reports status` fails | Note the failure. Reports status is optional context. |
+| Auth errors | Check context configuration: `gcx config view`. Ensure the server URL and credentials are set. |

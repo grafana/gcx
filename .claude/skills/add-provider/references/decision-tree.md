@@ -1,12 +1,12 @@
 # Decision Tree: Provider vs Resources Command
 
-When should you create a new provider vs using the existing `grafanactl resources` command?
+When should you create a new provider vs using the existing `gcx resources` command?
 
 ## Quick Decision
 
 ```
 Does the product expose a K8s-compatible API via Grafana's /apis endpoint?
-├── YES → Use existing `grafanactl resources` command (no provider needed)
+├── YES → Use existing `gcx resources` command (no provider needed)
 │         The resource is already discoverable and manageable.
 │
 └── NO → Does the product have its own REST API?
@@ -21,10 +21,10 @@ Does the product expose a K8s-compatible API via Grafana's /apis endpoint?
 
 ## Detailed Criteria
 
-### Use `grafanactl resources` (NO provider needed) when:
+### Use `gcx resources` (NO provider needed) when:
 
 - The product registers K8s-style CRDs accessible via `/apis/{group}/{version}/...`
-- Resources appear in `grafanactl resources schemas`
+- Resources appear in `gcx resources schemas`
 - Standard CRUD operations work via the dynamic client
 - No product-specific auth beyond the Grafana service account token
 
@@ -45,18 +45,18 @@ Grafana's native K8s API and need no provider.
 **Important: CRUD via unified resources path**. Once a provider implements
 `ResourceAdapter` and registers a static descriptor (via `adapter.Register()`
 in its `init()` function), its resource types become accessible through the
-unified `grafanactl resources` command:
+unified `gcx resources` command:
 
 ```
-grafanactl resources get slo           # replaces: grafanactl slo definitions list
-grafanactl resources get slo/<uuid>   # replaces: grafanactl slo definitions get <uuid>
-grafanactl resources push slo -p ./   # replaces: grafanactl slo definitions push
-grafanactl resources pull slo -p ./   # replaces: grafanactl slo definitions pull
-grafanactl resources delete slo/<id>  # replaces: grafanactl slo definitions delete <id>
+gcx resources get slo           # replaces: gcx slo definitions list
+gcx resources get slo/<uuid>   # replaces: gcx slo definitions get <uuid>
+gcx resources push slo -p ./   # replaces: gcx slo definitions push
+gcx resources pull slo -p ./   # replaces: gcx slo definitions pull
+gcx resources delete slo/<id>  # replaces: gcx slo definitions delete <id>
 ```
 
-The provider-specific top-level commands (`grafanactl slo`, `grafanactl synth`,
-`grafanactl alert`) remain available for backward compatibility but print a
+The provider-specific top-level commands (`gcx slo`, `gcx synth`,
+`gcx alert`) remain available for backward compatibility but print a
 deprecation warning to stderr. New providers should implement `ResourceAdapter`
 alongside the existing command tree from the start.
 

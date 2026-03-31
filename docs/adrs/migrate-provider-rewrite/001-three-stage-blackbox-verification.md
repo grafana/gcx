@@ -1,22 +1,23 @@
 # Three-Stage Skill Structure with Dual Blackbox Isolation
 
 **Created**: 2026-03-24
-**Status**: proposed
-**Bead**: grafanactl-experiments-zn8
+**Status**: superseded
+**Superseded by**: [002-five-phase-pipeline-redesign](002-five-phase-pipeline-redesign.md)
+**Bead**: gcx-experiments-zn8
 **Supersedes**: none
 
 ## Context
 
 The `/migrate-provider` skill needs a rewrite to match the orchestration
 quality of `/add-provider`. The current skill is a flat checklist bolted onto
-`gcx-provider-recipe.md` — agents skim it, skip verification gates, produce
+`provider-migration-recipe.md` — agents skim it, skip verification gates, produce
 incomplete ports, and miss output format compliance.
 
 Key problems observed during incidents, kg, and fleet migrations:
 - No human gates → agents declared "done" without structured smoke diffs
 - Flat checklist → agents cherry-picked steps instead of following phases
-- No architectural mapping → agents copied gcx patterns verbatim instead of
-  adapting to grafanactl's framework (Options pattern, TypedCRUD[T], Processor
+- No architectural mapping → agents copied cloud CLI patterns verbatim instead of
+  adapting to gcx's framework (Options pattern, TypedCRUD[T], Processor
   pipeline, ResourceAdapter)
 - Verification was an afterthought → context leaked between implementation
   and verification, making smoke tests confirm what the agent believed it
@@ -56,26 +57,26 @@ decisions. This is stage-level TDD: the spec and tests are written together
 
 Produces three artifacts before any code is written:
 
-1. **Parity table** — maps every gcx subcommand to a grafanactl equivalent
+1. **Parity table** — maps every cloud CLI subcommand to a gcx equivalent
    with status (Implemented / Deferred / N/A) and justification.
 
-2. **Architectural mapping** — maps gcx patterns to grafanactl patterns:
-   - gcx flat client → TypedCRUD[T] adapter with ToResource/FromResource
-   - gcx CLI flags → Options struct + `setup(flags)` + `Validate()`
-   - gcx output formatting → codec registry (table/wide/json/yaml) with
+2. **Architectural mapping** — maps cloud CLI patterns to gcx patterns:
+   - Cloud CLI flat client → TypedCRUD[T] adapter with ToResource/FromResource
+   - Cloud CLI CLI flags → Options struct + `setup(flags)` + `Validate()`
+   - Cloud CLI output formatting → codec registry (table/wide/json/yaml) with
      K8s envelope wrapping via ToResource
-   - gcx types → Go structs with `omitzero` for struct fields, exported
+   - Cloud CLI types → Go structs with `omitzero` for struct fields, exported
      codecs for `_test` package access
-   - gcx provider registration → `adapter.Register()` in `init()` +
+   - Cloud CLI provider registration → `adapter.Register()` in `init()` +
      blank import in `root/command.go`
 
 3. **Verification plan** — concrete list of:
    - **Automated tests** to write (client httptest, adapter round-trip,
      TypedCRUD interface compliance)
    - **Smoke test commands** to run against a live instance (list/get/create
-     for each resource, structured jq diffs against gcx, format checks for
+     for each resource, structured jq diffs against the cloud CLI, format checks for
      all four output modes)
-   - **Build gates** (`GRAFANACTL_AGENT_MODE=false make all` at specified
+   - **Build gates** (`GCX_AGENT_MODE=false make all` at specified
      checkpoints)
 
 **Gate**: User reviews and approves all three artifacts.
@@ -85,7 +86,7 @@ Produces three artifacts before any code is written:
 Receives **only** the Build envelope: parity table, architectural mapping,
 and recipe reference. Does **not** see the verification plan.
 
-Implements the provider following `gcx-provider-recipe.md`, shaped by the
+Implements the provider following `provider-migration-recipe.md`, shaped by the
 architectural mapping from Audit. Internal phases match the recipe (types →
 client → adapter → resource_adapter → provider → commands) with `make lint`
 checkpoints between phases. No design decisions happen here — all decisions
@@ -98,7 +99,7 @@ prevents:
 - Cutting corners on internals because "the smoke test only checks X"
 - Writing unit tests that are tautological with the smoke test plan
 
-**Gate**: `GRAFANACTL_AGENT_MODE=false make all` passes.
+**Gate**: `GCX_AGENT_MODE=false make all` passes.
 
 ### Stage 3: Verify (inspector)
 
@@ -108,8 +109,8 @@ running Verify does not need to understand the implementation. It:
 1. Runs every automated test listed in the plan
 2. Runs every smoke test command and captures output
 3. Produces a structured comparison report
-4. Updates `gcx-provider-recipe.md` with discoveries
-5. Final `GRAFANACTL_AGENT_MODE=false make all`
+4. Updates `provider-migration-recipe.md` with discoveries
+5. Final `GCX_AGENT_MODE=false make all`
 
 **Gate**: User reviews comparison report. All discrepancies must be justified
 or fixed.
@@ -118,7 +119,7 @@ or fixed.
 
 Migrations don't need a separate Design stage. Unlike greenfield providers
 (where `/add-provider` needs Discover → Design to research APIs and make
-auth/client/envelope decisions), migrations inherit these decisions from gcx.
+auth/client/envelope decisions), migrations inherit these decisions from the cloud CLI.
 The architectural mapping in Audit handles the translation — it's a mapping
 exercise, not a design exercise. A 4th "Design" stage would become a
 rubber-stamp gate that teaches agents to skip gates.
@@ -168,7 +169,7 @@ The spec pipeline is designed for design-heavy features, not translation work.
   applied to the entire migration workflow
 - 3 stages with real gates (vs 5 phases with implicit ordering) is easier
   for agents to follow without skipping
-- Architectural mapping forces explicit translation of gcx patterns →
+- Architectural mapping forces explicit translation of cloud CLI patterns →
   prevents copy-paste of incompatible patterns
 - Each stage is self-contained via sealed envelopes → enables session
   boundaries, agent handoffs, and resume without context reconstruction
@@ -188,6 +189,6 @@ The spec pipeline is designed for design-heavy features, not translation work.
 
 ### Follow-up
 
-- ~~Update `gcx-provider-recipe.md` to reference the new skill structure~~ Done in this PR.
-- First validation: next provider port from epic grafanactl-experiments-0zr
+- ~~Update `provider-migration-recipe.md` to reference the new skill structure~~ Done in this PR.
+- First validation: next provider port from epic gcx-experiments-0zr
 - Build-Core / Build-Commands split adopted in the initial design (see Stage 2 in SKILL.md); monitor whether the TaskList coordination pattern holds up for providers with 3+ resource types.

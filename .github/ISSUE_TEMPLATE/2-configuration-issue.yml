@@ -1,5 +1,5 @@
 name: ⚙️ Configuration Issue
-description: Problems with grafanactl configuration, contexts, or authentication
+description: Problems with gcx configuration, contexts, or authentication
 title: "[Config]: "
 labels: ["type/configuration", "action/needs-triage"]
 body:
@@ -10,15 +10,15 @@ body:
 
         ## Before You Submit
 
-        - Make sure you're using Grafana 12 or above (grafanactl doesn't support older versions)
-        - Check the [configuration documentation](https://grafana.github.io/grafanactl/)
+        - Make sure you're using Grafana 12 or above (gcx doesn't support older versions)
+        - Check the [configuration documentation](https://grafana.github.io/gcx/)
         - Remove any tokens, passwords, or sensitive data before pasting configuration
 
   - type: input
-    id: grafanactl_version
+    id: gcx_version
     attributes:
-      label: grafanactl Version
-      description: "Run `grafanactl version`"
+      label: gcx Version
+      description: "Run `gcx version`"
       placeholder: "v0.1.0"
     validations:
       required: true
@@ -43,7 +43,7 @@ body:
     id: config_view
     attributes:
       label: Current Configuration
-      description: "Run `grafanactl config view` and paste the output. **IMPORTANT: Remove any tokens, passwords, or certificate data!**"
+      description: "Run `gcx config view` and paste the output. **IMPORTANT: Remove any tokens, passwords, or certificate data!**"
       placeholder: |
         contexts:
           - name: prod
@@ -76,7 +76,7 @@ body:
     attributes:
       label: Command That Failed
       description: What command did you try to run?
-      placeholder: "grafanactl resources list dashboards --context=prod -vv"
+      placeholder: "gcx resources list dashboards --context=prod -vv"
       render: shell
     validations:
       required: true
@@ -110,7 +110,7 @@ body:
         - label: I checked the server URL is correct and accessible (can reach it in a browser)
         - label: I confirmed I'm using Grafana 12 or above
         - label: I verified the namespace (org-id or stack-id) is correct
-        - label: I checked `grafanactl config current-context` shows the expected context
+        - label: I checked `gcx config current-context` shows the expected context
         - label: I tried running the command with -v, -vv, or -vvv flag for verbose output
 
   - type: textarea
@@ -124,4 +124,4 @@ body:
         - GRAFANA_SERVER is not set
 
         This started happening after I rotated my service account token yesterday.
-        The old token still works in Postman but not in grafanactl.
+        The old token still works in Postman but not in gcx.

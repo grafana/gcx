@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/resources"
-	"github.com/grafana/grafanactl/internal/resources/discovery"
+	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -111,7 +111,7 @@ func TestSchemaFetcher_FetchSpecSchemas(t *testing.T) {
 
 	// Override cache dir to temp directory.
 	cacheDir := t.TempDir()
-	t.Setenv("GRAFANACTL_OPENAPI_CACHE_DIR", cacheDir)
+	t.Setenv("GCX_OPENAPI_CACHE_DIR", cacheDir)
 
 	cfg := &rest.Config{Host: srv.URL}
 	fetcher, err := discovery.NewSchemaFetcher(cfg)
@@ -144,7 +144,7 @@ func TestSchemaFetcher_FetchSpecSchemas(t *testing.T) {
 func TestSchemaFetcher_UnknownGVSkipped(t *testing.T) {
 	srv := newTestServer(t)
 
-	t.Setenv("GRAFANACTL_OPENAPI_CACHE_DIR", t.TempDir())
+	t.Setenv("GCX_OPENAPI_CACHE_DIR", t.TempDir())
 
 	cfg := &rest.Config{Host: srv.URL}
 	fetcher, err := discovery.NewSchemaFetcher(cfg)

@@ -14,20 +14,20 @@ description: >
 
 # Manage Dashboards
 
-This skill guides agents through the full dashboard lifecycle using grafanactl:
+This skill guides agents through the full dashboard lifecycle using gcx:
 pulling from Grafana, pushing to Grafana, creating new dashboards, validating
 files, and promoting dashboards across environments. All operations work with
 Kubernetes-style resource files on disk.
 
 ## Prerequisites
 
-grafanactl must be installed and configured with a working context pointing to
-your Grafana instance. If grafanactl is not configured, use the
-`setup-grafanactl` skill first.
+gcx must be installed and configured with a working context pointing to
+your Grafana instance. If gcx is not configured, use the
+`setup-gcx` skill first.
 
 ```bash
 # Verify configuration and connectivity
-grafanactl config check
+gcx config check
 ```
 
 ---
@@ -42,13 +42,13 @@ bootstrap a GitOps repository.
 
 ```bash
 # Pull all dashboards into ./resources (JSON, default)
-grafanactl resources pull dashboards
+gcx resources pull dashboards
 
 # Pull as YAML
-grafanactl resources pull dashboards -o yaml
+gcx resources pull dashboards -o yaml
 
 # Pull to a custom directory
-grafanactl resources pull dashboards -p ./my-dashboards
+gcx resources pull dashboards -p ./my-dashboards
 ```
 
 ### Pull folders and dashboards together
@@ -57,30 +57,30 @@ Pulling folders alongside dashboards preserves the folder hierarchy on disk.
 Always pull both when you intend to push them to another environment later.
 
 ```bash
-grafanactl resources pull dashboards folders
-grafanactl resources pull dashboards folders -p ./resources -o yaml
+gcx resources pull dashboards folders
+gcx resources pull dashboards folders -p ./resources -o yaml
 ```
 
 ### Pull a specific dashboard
 
 ```bash
 # Pull by UID
-grafanactl resources pull dashboards/my-dashboard-uid
+gcx resources pull dashboards/my-dashboard-uid
 
 # Pull multiple specific dashboards
-grafanactl resources pull dashboards/uid-a dashboards/uid-b
+gcx resources pull dashboards/uid-a dashboards/uid-b
 
 # Pull dashboards matching a glob pattern
-grafanactl resources pull dashboards/prod-*
+gcx resources pull dashboards/prod-*
 ```
 
 ### Pull dashboards managed by other tools
 
-By default, pull only fetches dashboards managed by grafanactl. To include
+By default, pull only fetches dashboards managed by gcx. To include
 dashboards created via the UI, Terraform, or other tools:
 
 ```bash
-grafanactl resources pull dashboards --include-managed
+gcx resources pull dashboards --include-managed
 ```
 
 ### Inspect pulled resources
@@ -96,57 +96,57 @@ After pulling, files appear in the target directory structured by kind:
     my-folder.json
 ```
 
-Use `grafanactl resources get` to inspect resources without writing files:
+Use `gcx resources get` to inspect resources without writing files:
 
 ```bash
-grafanactl resources get dashboards -o json
-grafanactl resources get dashboards/my-uid -o yaml
+gcx resources get dashboards -o json
+gcx resources get dashboards/my-uid -o yaml
 ```
 
 ---
 
 ## Workflow 2: Push Dashboards to Grafana
 
-Push reads local resource files and writes them to Grafana. grafanactl handles
+Push reads local resource files and writes them to Grafana. gcx handles
 folder ordering automatically and protects resources managed by other tools.
 
 ### Topological sort: folders are pushed before dashboards
 
-When pushing a directory that contains both folders and dashboards, grafanactl
+When pushing a directory that contains both folders and dashboards, gcx
 automatically pushes folders first (level by level) before pushing dashboards.
 Dashboards reference their parent folder via `spec.folderUID`; the folder must
 exist before the dashboard can be created or updated. **You do not need to
-split the push into two separate commands** — grafanactl's topological sort
+split the push into two separate commands** — gcx's topological sort
 handles ordering automatically.
 
 ```bash
 # Push everything under ./resources — folders created before dashboards
-grafanactl resources push
+gcx resources push
 
 # Push from a specific directory
-grafanactl resources push -p ./my-resources
+gcx resources push -p ./my-resources
 
 # Explicitly include both kinds (still sorted automatically)
-grafanactl resources push dashboards folders
+gcx resources push dashboards folders
 ```
 
 ### Manager metadata
 
-When grafanactl pushes a resource, it sets this annotation automatically:
+When gcx pushes a resource, it sets this annotation automatically:
 
 ```yaml
 metadata:
   annotations:
-    grafana.app/managed-by: grafanactl
+    grafana.app/managed-by: gcx
 ```
 
 Resources that carry a **different** `grafana.app/managed-by` value (set by
 the Grafana UI, Terraform, or another tool) are **protected by default**.
-grafanactl refuses to overwrite them unless you pass `--include-managed`.
+gcx refuses to overwrite them unless you pass `--include-managed`.
 
 ```bash
 # Override protection — only when you deliberately want to take ownership
-grafanactl resources push --include-managed
+gcx resources push --include-managed
 ```
 
 ### Dry run before pushing to production
@@ -155,38 +155,38 @@ Always dry-run before pushing to production environments to preview what will
 change:
 
 ```bash
-grafanactl resources push --dry-run
-grafanactl resources push -p ./my-resources --dry-run
+gcx resources push --dry-run
+gcx resources push -p ./my-resources --dry-run
 ```
 
 ### Push specific kinds or UIDs
 
 ```bash
 # Push only dashboards (folders must already exist in Grafana)
-grafanactl resources push dashboards
+gcx resources push dashboards
 
 # Push a single dashboard file
-grafanactl resources push -p ./resources/dashboards/my-dashboard.json
+gcx resources push -p ./resources/dashboards/my-dashboard.json
 ```
 
 ### Error handling during push
 
 ```bash
 # Stop on first error (useful when later resources depend on earlier ones)
-grafanactl resources push --on-error abort
+gcx resources push --on-error abort
 
 # Continue past errors, report all failures at the end (default)
-grafanactl resources push --on-error fail
+gcx resources push --on-error fail
 
 # Ignore per-resource errors entirely (CI pipelines with partial success)
-grafanactl resources push --on-error ignore
+gcx resources push --on-error ignore
 ```
 
 ---
 
 ## Workflow 3: Create a New Dashboard
 
-Creating a new dashboard with grafanactl involves authoring a resource file
+Creating a new dashboard with gcx involves authoring a resource file
 locally and then pushing it to Grafana.
 
 ### Step 1: Get an existing dashboard as a template
@@ -194,19 +194,19 @@ locally and then pushing it to Grafana.
 Pull a similar dashboard to use as a starting point:
 
 ```bash
-grafanactl resources pull dashboards/existing-uid -p ./templates -o yaml
+gcx resources pull dashboards/existing-uid -p ./templates -o yaml
 ```
 
 Or list available dashboards to find a suitable one:
 
 ```bash
-grafanactl resources get dashboards -o wide
+gcx resources get dashboards -o wide
 ```
 
 ### Step 2: Author the resource file
 
 Create a new YAML or JSON file. Set `metadata.name` to a human-readable name;
-leave `metadata.uid` empty (grafanactl assigns a UID on first push) or set it
+leave `metadata.uid` empty (gcx assigns a UID on first push) or set it
 explicitly to a value you choose.
 
 Minimal dashboard resource structure:
@@ -229,7 +229,7 @@ spec:
 
 ```bash
 # Validate the file against Grafana's API schema
-grafanactl resources validate -p ./my-new-dashboard.yaml
+gcx resources validate -p ./my-new-dashboard.yaml
 ```
 
 Resolve any validation errors before proceeding.
@@ -237,14 +237,14 @@ Resolve any validation errors before proceeding.
 ### Step 4: Push the new dashboard
 
 ```bash
-grafanactl resources push -p ./my-new-dashboard.yaml
+gcx resources push -p ./my-new-dashboard.yaml
 ```
 
-grafanactl assigns a UID and sets `grafana.app/managed-by: grafanactl`
+gcx assigns a UID and sets `grafana.app/managed-by: gcx`
 automatically. Pull the dashboard after pushing to capture the assigned UID:
 
 ```bash
-grafanactl resources pull dashboards/<assigned-uid>
+gcx resources pull dashboards/<assigned-uid>
 ```
 
 ### Step 5: Iterate with the live dev server
@@ -253,7 +253,7 @@ For iterative panel authoring, use `serve` to get instant browser previews on
 every file save:
 
 ```bash
-grafanactl dev serve ./dashboards
+gcx dev serve ./dashboards
 ```
 
 See the `serve` command reference in
@@ -271,26 +271,26 @@ production.
 ### Validate default directory
 
 ```bash
-grafanactl resources validate
+gcx resources validate
 ```
 
 ### Validate a specific path
 
 ```bash
-grafanactl resources validate -p ./dashboards
-grafanactl resources validate -p ./resources/dashboards/my-dashboard.yaml
+gcx resources validate -p ./dashboards
+gcx resources validate -p ./resources/dashboards/my-dashboard.yaml
 ```
 
 ### Validate multiple directories
 
 ```bash
-grafanactl resources validate -p ./dashboards -p ./folders
+gcx resources validate -p ./dashboards -p ./folders
 ```
 
 ### Validate and output as JSON (CI/CD)
 
 ```bash
-grafanactl resources validate -o json
+gcx resources validate -o json
 ```
 
 Expected output structure (field names, not fabricated values):
@@ -323,21 +323,21 @@ A non-zero exit code indicates at least one resource failed validation.
 
 Promoting dashboards means pulling them from a source environment (e.g.,
 staging) and pushing them to a target environment (e.g., production). This
-uses grafanactl's multi-context support.
+uses gcx's multi-context support.
 
 ### Prerequisites: one context per environment
 
-Each environment needs a named context in your grafanactl configuration. If
-you have not set up multi-context configuration, use the `setup-grafanactl`
+Each environment needs a named context in your gcx configuration. If
+you have not set up multi-context configuration, use the `setup-gcx`
 skill to create contexts for staging and production.
 
 ```bash
 # Verify your contexts
-grafanactl config view
+gcx config view
 
 # Example: switch active context
-grafanactl config use-context staging
-grafanactl config use-context production
+gcx config use-context staging
+gcx config use-context production
 ```
 
 ### Option A: use --context flag (no active-context switch)
@@ -348,46 +348,46 @@ scripts.
 
 ```bash
 # Step 1: Pull dashboards from staging
-grafanactl resources pull --context staging dashboards folders -p ./promote
+gcx resources pull --context staging dashboards folders -p ./promote
 
 # Step 2: Review what was pulled
-grafanactl resources validate -p ./promote
+gcx resources validate -p ./promote
 
 # Step 3: Dry-run push to production
-grafanactl resources push --context production -p ./promote --dry-run
+gcx resources push --context production -p ./promote --dry-run
 
 # Step 4: Push to production
-grafanactl resources push --context production -p ./promote
+gcx resources push --context production -p ./promote
 ```
 
 ### Option B: switch active context with use-context
 
 ```bash
 # Pull from staging
-grafanactl config use-context staging
-grafanactl resources pull dashboards folders -p ./promote
+gcx config use-context staging
+gcx resources pull dashboards folders -p ./promote
 
 # Push to production
-grafanactl config use-context production
-grafanactl resources push -p ./promote
+gcx config use-context production
+gcx resources push -p ./promote
 ```
 
 ### Folder ordering during promotion
 
-Because the promote directory contains both folders and dashboards, grafanactl
+Because the promote directory contains both folders and dashboards, gcx
 automatically pushes folders before dashboards in the target environment. You
 do not need to run separate commands for folders and dashboards.
 
 ### Handling manager metadata during promotion
 
-Dashboards pulled from staging carry `grafana.app/managed-by: grafanactl`.
-When you push them to production, grafanactl recognizes the annotation and
+Dashboards pulled from staging carry `grafana.app/managed-by: gcx`.
+When you push them to production, gcx recognizes the annotation and
 allows the push without `--include-managed`. If the production environment
 already has dashboards managed by another tool (UI, Terraform), add
 `--include-managed` to take ownership:
 
 ```bash
-grafanactl resources push --context production -p ./promote --include-managed
+gcx resources push --context production -p ./promote --include-managed
 ```
 
 ### Full promotion script pattern
@@ -400,16 +400,16 @@ TARGET_CTX=production
 WORK_DIR=$(mktemp -d)
 
 # Pull from source
-grafanactl resources pull --context "$SOURCE_CTX" dashboards folders -p "$WORK_DIR"
+gcx resources pull --context "$SOURCE_CTX" dashboards folders -p "$WORK_DIR"
 
 # Validate
-grafanactl resources validate -p "$WORK_DIR"
+gcx resources validate -p "$WORK_DIR"
 
 # Dry run on target
-grafanactl resources push --context "$TARGET_CTX" -p "$WORK_DIR" --dry-run
+gcx resources push --context "$TARGET_CTX" -p "$WORK_DIR" --dry-run
 
 # Apply
-grafanactl resources push --context "$TARGET_CTX" -p "$WORK_DIR"
+gcx resources push --context "$TARGET_CTX" -p "$WORK_DIR"
 ```
 
 ---
@@ -420,17 +420,17 @@ Render a Grafana dashboard or individual panel to a PNG image using the Grafana
 Image Renderer. Requires the `grafana-image-renderer` plugin on the Grafana
 instance.
 
-> **If stuck**, run `grafanactl dashboards snapshot --help` for the full flag
-> reference, or `grafanactl dashboards --help` to see available subcommands.
+> **If stuck**, run `gcx dashboards snapshot --help` for the full flag
+> reference, or `gcx dashboards --help` to see available subcommands.
 
 ### Step 1: Find the dashboard UID
 
 ```bash
 # List all dashboards to find UIDs
-grafanactl resources get dashboards
+gcx resources get dashboards
 
 # Get a specific dashboard by name substring (use -ojson for programmatic access)
-grafanactl resources get dashboards -ojson | jq '.items[] | {uid: .metadata.name, title: .spec.title}'
+gcx resources get dashboards -ojson | jq '.items[] | {uid: .metadata.name, title: .spec.title}'
 ```
 
 ### Step 2: Discover template variables (if the dashboard uses them)
@@ -441,7 +441,7 @@ these to the values relevant to the user's context.
 
 ```bash
 # Inspect the dashboard's template variables
-grafanactl resources get dashboards/<uid> -ojson | jq '.spec.templating.list[] | {name, type, current: .current.value}'
+gcx resources get dashboards/<uid> -ojson | jq '.spec.templating.list[] | {name, type, current: .current.value}'
 ```
 
 This shows each variable's name and its current default value. Use `--var` to
@@ -451,26 +451,26 @@ override any of these during rendering.
 
 ```bash
 # Basic: full dashboard, current directory
-grafanactl dashboards snapshot <uid>
+gcx dashboards snapshot <uid>
 
 # With output directory
-grafanactl dashboards snapshot <uid> --output-dir ./snapshots
+gcx dashboards snapshot <uid> --output-dir ./snapshots
 
 # With template variable overrides (match the dashboard's variable names)
-grafanactl dashboards snapshot <uid> --var cluster=prod --var datasource=grafanacloud-prom
+gcx dashboards snapshot <uid> --var cluster=prod --var datasource=grafanacloud-prom
 
 # With time range
-grafanactl dashboards snapshot <uid> --window 6h --var cluster=prod
-grafanactl dashboards snapshot <uid> --from now-1h --to now --tz UTC
+gcx dashboards snapshot <uid> --window 6h --var cluster=prod
+gcx dashboards snapshot <uid> --from now-1h --to now --tz UTC
 
 # Single panel (find panel IDs from the dashboard JSON: .spec.panels[].id)
-grafanactl dashboards snapshot <uid> --panel 42
+gcx dashboards snapshot <uid> --panel 42
 
 # Custom dimensions and theme
-grafanactl dashboards snapshot <uid> --width 1280 --height 720 --theme light
+gcx dashboards snapshot <uid> --width 1280 --height 720 --theme light
 
 # Multiple dashboards concurrently
-grafanactl dashboards snapshot uid-a uid-b uid-c --output-dir ./snapshots
+gcx dashboards snapshot uid-a uid-b uid-c --output-dir ./snapshots
 ```
 
 ### Output
@@ -493,14 +493,14 @@ Files are named `{uid}.png` (full dashboard) or `{uid}-panel-{panelId}.png` (sin
 
 # If the snapshot shows default/wrong variable values:
 # → Inspect variables and pass the right ones with --var
-grafanactl resources get dashboards/<uid> -ojson | jq '.spec.templating.list[] | {name, current: .current.value}'
+gcx resources get dashboards/<uid> -ojson | jq '.spec.templating.list[] | {name, current: .current.value}'
 
 # If the snapshot is cut off or too small:
 # → Default height is -1 (full page). Override with --height if needed.
 # → For panels, default is 800x600. Override with --width/--height.
 
 # Full flag reference:
-grafanactl dashboards snapshot --help
+gcx dashboards snapshot --help
 ```
 
 ---
@@ -511,11 +511,11 @@ grafanactl dashboards snapshot --help
 
 ```bash
 # Delete a specific dashboard
-grafanactl resources delete dashboards/my-uid
+gcx resources delete dashboards/my-uid
 
 # Dry-run before bulk delete
-grafanactl resources delete dashboards/temp-* --dry-run
-grafanactl resources delete dashboards/temp-* -y
+gcx resources delete dashboards/temp-* --dry-run
+gcx resources delete dashboards/temp-* -y
 ```
 
 ### Edit a dashboard in-place
@@ -523,14 +523,14 @@ grafanactl resources delete dashboards/temp-* -y
 Opens the resource in `$EDITOR`, then pushes the updated version:
 
 ```bash
-grafanactl resources edit dashboards/my-uid
-grafanactl resources edit dashboards/my-uid -o yaml
+gcx resources edit dashboards/my-uid
+gcx resources edit dashboards/my-uid -o yaml
 ```
 
 ### List available resource kinds
 
 ```bash
-grafanactl resources schemas
+gcx resources schemas
 ```
 
 ---
@@ -538,7 +538,7 @@ grafanactl resources schemas
 ## References
 
 - [`references/resource-operations.md`](references/resource-operations.md) —
-  Full flag reference for all `grafanactl resources` subcommands, selector
+  Full flag reference for all `gcx resources` subcommands, selector
   syntax, and `serve` workflow details.
 
 - [`references/resource-model.md`](references/resource-model.md) —

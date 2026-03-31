@@ -6,10 +6,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/config"
-	"github.com/grafana/grafanactl/internal/providers/incidents"
-	"github.com/grafana/grafanactl/internal/resources"
-	"github.com/grafana/grafanactl/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/providers/incidents"
+	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -45,14 +45,14 @@ func TestResourceAdapter_Descriptor(t *testing.T) {
 	assert.Equal(t, "incidents", desc.Plural)
 }
 
-func TestResourceAdapter_Aliases(t *testing.T) {
+func TestResourceAdapter_NoAliases(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
 
 	a := newTestAdapter(t, server, "stack-123")
-	assert.Equal(t, []string{"incidents", "incident", "inc"}, a.Aliases())
+	assert.Empty(t, a.Aliases(), "adapter aliases should be empty (provider-prefixed aliases removed)")
 }
 
 func TestResourceAdapter_List(t *testing.T) {

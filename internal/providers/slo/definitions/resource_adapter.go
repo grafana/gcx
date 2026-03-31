@@ -2,12 +2,13 @@ package definitions
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
-	internalconfig "github.com/grafana/grafanactl/internal/config"
-	"github.com/grafana/grafanactl/internal/providers"
-	"github.com/grafana/grafanactl/internal/resources"
-	"github.com/grafana/grafanactl/internal/resources/adapter"
+	internalconfig "github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -24,19 +25,95 @@ func StaticDescriptor() resources.Descriptor {
 	}
 }
 
-// StaticAliases returns the short aliases for SLO resources.
-func StaticAliases() []string {
-	return []string{"slo"}
+// SloSchema returns a JSON Schema for the SLO resource type.
+func SloSchema() json.RawMessage {
+	return adapter.SchemaFromType[Slo](StaticDescriptor())
 }
 
-func init() { //nolint:gochecknoinits // Self-registration pattern (like database/sql drivers).
-	desc := StaticDescriptor()
-	adapter.Register(adapter.Registration{
-		Factory:    NewLazyFactory(),
-		Descriptor: desc,
-		Aliases:    StaticAliases(),
-		GVK:        desc.GroupVersionKind(),
-	})
+// SloExample returns an example SLO manifest as JSON.
+func SloExample() json.RawMessage {
+	example := map[string]any{
+		"apiVersion": "slo.ext.grafana.app/v1alpha1",
+		"kind":       "SLO",
+		"metadata": map[string]any{
+			"name": "my-slo",
+		},
+		"spec": map[string]any{
+			"name":        "HTTP Availability",
+			"description": "Tracks HTTP request success rate",
+			"query": map[string]any{
+				"type": "freeform",
+				"freeform": map[string]any{
+					"query": `sum(rate(http_requests_total{status!~"5.."}[5m])) / sum(rate(http_requests_total[5m]))`,
+				},
+			},
+			"objectives": []map[string]any{
+				{"value": 0.995, "window": "28d"},
+			},
+			"labels": []map[string]any{
+				{"key": "team", "value": "platform"},
+			},
+		},
+	}
+	b, err := json.Marshal(example)
+	if err != nil {
+		panic(fmt.Sprintf("slo/definitions: failed to marshal example: %v", err))
+	}
+	return b
+}
+
+// NewTypedCRUD creates a TypedCRUD for SLO definitions.
+// It loads config via ConfigLoader (same pattern as the adapter factory).
+// Returns both the CRUD instance and the config for additional operations like Prometheus queries.
+func NewTypedCRUD(ctx context.Context) (*adapter.TypedCRUD[Slo], internalconfig.NamespacedRESTConfig, error) {
+	var loader providers.ConfigLoader
+	loader.SetContextName(internalconfig.ContextNameFromCtx(ctx))
+
+	cfg, err := loader.LoadGrafanaConfig(ctx)
+	if err != nil {
+		return nil, internalconfig.NamespacedRESTConfig{}, fmt.Errorf("failed to load REST config for SLO: %w", err)
+	}
+
+	client, err := NewClient(cfg)
+	if err != nil {
+		return nil, internalconfig.NamespacedRESTConfig{}, fmt.Errorf("failed to create SLO definitions client: %w", err)
+	}
+
+	//nolint:dupl // Duplicate TypedCRUD initialization intentional between factory functions.
+	crud := &adapter.TypedCRUD[Slo]{
+		ListFn: client.List,
+		GetFn: func(ctx context.Context, name string) (*Slo, error) {
+			return client.Get(ctx, name)
+		},
+		CreateFn: func(ctx context.Context, slo *Slo) (*Slo, error) {
+			resp, err := client.Create(ctx, slo)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create SLO: %w", err)
+			}
+			created, err := client.Get(ctx, resp.UUID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to fetch created SLO %q: %w", resp.UUID, err)
+			}
+			return created, nil
+		},
+		UpdateFn: func(ctx context.Context, name string, slo *Slo) (*Slo, error) {
+			if err := client.Update(ctx, name, slo); err != nil {
+				return nil, fmt.Errorf("failed to update SLO %q: %w", name, err)
+			}
+			updated, err := client.Get(ctx, name)
+			if err != nil {
+				return nil, fmt.Errorf("failed to fetch updated SLO %q: %w", name, err)
+			}
+			return updated, nil
+		},
+		DeleteFn: func(ctx context.Context, name string) error {
+			return client.Delete(ctx, name)
+		},
+		Namespace:   cfg.Namespace,
+		StripFields: []string{"uuid", "readOnly"},
+		Descriptor:  StaticDescriptor(),
+	}
+	return crud, cfg, nil
 }
 
 // NewLazyFactory returns an adapter.Factory that loads its config lazily from the
@@ -44,15 +121,11 @@ func init() { //nolint:gochecknoinits // Self-registration pattern (like databas
 // and by SLOProvider.ResourceAdapters().
 func NewLazyFactory() adapter.Factory {
 	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
-		var loader providers.ConfigLoader
-		loader.SetContextName(internalconfig.ContextNameFromCtx(ctx))
-
-		cfg, err := loader.LoadGrafanaConfig(ctx)
+		crud, _, err := NewTypedCRUD(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load REST config for SLO adapter: %w", err)
+			return nil, err
 		}
-
-		return NewFactoryFromConfig(cfg)(ctx)
+		return crud.AsAdapter(), nil
 	}
 }
 
@@ -66,8 +139,8 @@ func NewFactoryFromConfig(cfg internalconfig.NamespacedRESTConfig) adapter.Facto
 			return nil, fmt.Errorf("failed to create SLO definitions client: %w", err)
 		}
 
+		//nolint:dupl // Duplicate TypedCRUD initialization intentional between factory functions.
 		crud := &adapter.TypedCRUD[Slo]{
-			NameFn: func(s Slo) string { return s.UUID },
 			ListFn: client.List,
 			GetFn: func(ctx context.Context, name string) (*Slo, error) {
 				return client.Get(ctx, name)
@@ -96,11 +169,9 @@ func NewFactoryFromConfig(cfg internalconfig.NamespacedRESTConfig) adapter.Facto
 			DeleteFn: func(ctx context.Context, name string) error {
 				return client.Delete(ctx, name)
 			},
-			Namespace:     cfg.Namespace,
-			StripFields:   []string{"uuid", "readOnly"},
-			RestoreNameFn: func(name string, slo *Slo) { slo.UUID = name },
-			Descriptor:    StaticDescriptor(),
-			Aliases:       StaticAliases(),
+			Namespace:   cfg.Namespace,
+			StripFields: []string{"uuid", "readOnly"},
+			Descriptor:  StaticDescriptor(),
 		}
 		return crud.AsAdapter(), nil
 	}

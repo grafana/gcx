@@ -2,9 +2,9 @@
 
 ## Architectural Patterns Identified
 
-### 1. Kubernetes Resource Model Adoption (High Confidence: 97%)
+### 1. Kubernetes Resource Model Adoption
 
-grafanactl does not merely borrow Kubernetes conventions -- it directly uses
+gcx does not merely borrow Kubernetes conventions -- it directly uses
 `k8s.io/apimachinery` and `k8s.io/client-go` because Grafana 12+ exposes a
 Kubernetes-compatible `/apis` endpoint. The choice is dictated by the server
 architecture, not by preference.
@@ -18,12 +18,12 @@ architecture, not by preference.
 **Evidence across domains:**
 - Resource Model domain: `Resource` wraps `unstructured.Unstructured` + `GrafanaMetaAccessor`
 - Client/API domain: `NamespacedClient` wraps `k8s.io/client-go/dynamic.Interface`
-- Config domain: `NamespacedRESTConfig` bridges grafanactl config to `rest.Config`
+- Config domain: `NamespacedRESTConfig` bridges gcx config to `rest.Config`
 - Data Flows domain: push/pull use k8s `metav1.CreateOptions`, `ListOptions`, etc.
 
 ---
 
-### 2. Options Pattern for CLI Commands (High Confidence: 96%)
+### 2. Options Pattern for CLI Commands
 
 Every `resources` subcommand follows a strict four-part structure:
 1. An `opts` struct holding all command-specific state
@@ -42,7 +42,7 @@ composed into the opts struct via embedding or pointer injection, not inherited.
 
 ---
 
-### 3. Processor Pipeline (High Confidence: 94%)
+### 3. Processor Pipeline
 
 Resource transformations are modeled as a `Processor` interface with a single method:
 ```
@@ -63,7 +63,7 @@ pipeline code -- just append to the `[]Processor` slice in the command wiring.
 
 ---
 
-### 4. Selector-to-Filter Resolution Pipeline (High Confidence: 95%)
+### 4. Selector-to-Filter Resolution Pipeline
 
 User input flows through a two-stage resolution process:
 
@@ -85,7 +85,7 @@ name, plus a short-group-name shortcut (e.g., `"folder"` resolves to
 
 ---
 
-### 5. Dual-Client Architecture (High Confidence: 93%)
+### 5. Dual-Client Architecture
 
 Two distinct client paths serve different purposes:
 
@@ -105,12 +105,12 @@ Within the dynamic client path, there are two specializations:
 
 ---
 
-### 6. Context-Based Configuration (High Confidence: 96%)
+### 6. Context-Based Configuration
 
 Directly modeled after kubectl's kubeconfig pattern. Key design decisions:
 
 - Named contexts in a single YAML file, one "current" at a time
-- Simplified model: grafanactl merges cluster+auth+user into a single context
+- Simplified model: gcx merges cluster+auth+user into a single context
   (kubectl separates them into three lists for reuse)
 - Environment variables override the current context only, never mutate the file
 - XDG Base Directory specification for file location
@@ -119,12 +119,12 @@ Directly modeled after kubectl's kubeconfig pattern. Key design decisions:
 
 **Loading priority chain:**
 ```
---config flag  >  $GRAFANACTL_CONFIG  >  $XDG_CONFIG_HOME  >  ~/.config  >  $XDG_CONFIG_DIRS
+--config flag  >  $GCX_CONFIG  >  $XDG_CONFIG_HOME  >  ~/.config  >  $XDG_CONFIG_DIRS
 ```
 
 ---
 
-### 7. Concurrency via errgroup (High Confidence: 95%)
+### 7. Concurrency via errgroup
 
 All concurrent operations use `golang.org/x/sync/errgroup`, with two patterns:
 
@@ -140,7 +140,7 @@ are recorded in `OperationSummary` and processing continues.
 
 ---
 
-### 8. Two-Phase Push with Folder Dependency Ordering (High Confidence: 94%)
+### 8. Two-Phase Push with Folder Dependency Ordering
 
 Folders must exist before resources that reference them. The push pipeline
 implements this via:
@@ -155,7 +155,7 @@ approach or nested folder creation will break.
 
 ---
 
-### 9. Structured Error Handling (High Confidence: 91%)
+### 9. Structured Error Handling
 
 Errors flow through a multi-layer translation chain:
 
@@ -174,7 +174,7 @@ converter function to the `errorConverters` slice.
 
 ---
 
-### 10. Source Tracking for Round-Trip Fidelity (High Confidence: 92%)
+### 10. Source Tracking for Round-Trip Fidelity
 
 Every `Resource` carries a `SourceInfo{Path, Format}` recording where it was read
 from and in what format. This enables:
@@ -187,10 +187,10 @@ from and in what format. This enables:
 
 ---
 
-### 11. Provider Plugin System (High Confidence: 93%)
+### 11. Provider Plugin System
 
 Providers are first-class extension points that contribute Cobra commands and
-configuration to grafanactl. The pattern separates the plugin contract from
+configuration to gcx. The pattern separates the plugin contract from
 command registration:
 
 ```
@@ -200,7 +200,7 @@ Provider interface
   +-- Commands()   []*cobra.Command     -- contributed commands
   +-- Validate()   func(map[string]string) error
   +-- ConfigKeys() []ConfigKey          -- config metadata (name + secret flag)
-  +-- ResourceAdapters() []adapter.Factory -- adapter factories for provider-backed resource types
+  +-- TypedRegistrations() []adapter.Registration -- adapter registrations for provider-backed resource types
 ```
 
 **Registry:** `providers.All()` returns all compile-time registered providers
@@ -220,15 +220,15 @@ name. Reflection-based editor picks them up via the `yaml:"providers"` tag.
 - `internal/providers/provider.go`: `Provider` interface and `ConfigKey` type
 - `internal/providers/registry.go`: `All()` function
 - `internal/providers/redact.go`: `RedactSecrets` implementation
-- `internal/providers/configloader.go`: Shared `ConfigLoader` struct — all providers use this instead of duplicating config loading logic
+- `internal/providers/configloader.go`: Shared `ConfigLoader` struct — all providers use this instead of duplicating config loading logic. Provides `LoadGrafanaConfig`, `LoadCloudConfig`, `LoadProviderConfig` (provider-specific `map[string]string`), `SaveProviderConfig` (write-back), and `LoadFullConfig` (full `*config.Config`)
 - `internal/providers/alert/provider.go`: Second provider implementation (alert rules and groups)
-- `cmd/grafanactl/providers/command.go`: `providers list` command
+- `cmd/gcx/providers/command.go`: `providers list` command
 - `internal/config/types.go`: `Providers` field on `Context`
 - `internal/resources/adapter/register.go`: Global adapter registration pattern (self-registration via `Register()` and `AllRegistrations()`)
 
 ---
 
-### 12. Direct HTTP Client for Datasource APIs (High Confidence: 91%)
+### 12. Direct HTTP Client for Datasource APIs
 
 Query clients for Prometheus and Loki bypass the k8s dynamic client entirely.
 They use `rest.HTTPClientFor` to create a plain `*http.Client` from the same
@@ -256,6 +256,15 @@ query/stream endpoints that return Grafana-native response formats, not
 `Username+Password` on the `rest.Config`, so the same auth config flows to
 all three client paths without duplication.
 
+**Contrast with external APIs:** Provider clients calling **external** APIs
+(K6 Cloud, OnCall, Synth, Fleet — domains outside the Grafana server) must
+**not** use `rest.HTTPClientFor`. The k8s transport round-tripper injects the
+Grafana bearer token on every outgoing request, which conflicts with the
+product's own auth mechanism (e.g. OnCall raw token, K6 X-Grafana-Key).
+These providers use `providers.ExternalHTTPClient()` — a shared, well-tuned
+`*http.Client` singleton with no auth injection — and set their own auth
+headers per request.
+
 **Output rendering:** Query results can be rendered as tables, JSON/YAML, or
 terminal charts (`internal/graph`). The `query` command registers custom codecs
 (`queryTableCodec`, `queryGraphCodec`) into the `io.Options` codec registry.
@@ -263,13 +272,13 @@ terminal charts (`internal/graph`). The `query` command registers custom codecs
 **Evidence:**
 - `internal/query/prometheus/client.go`: `NewClient` calls `rest.HTTPClientFor`
 - `internal/query/loki/client.go`: same pattern
-- `cmd/grafanactl/datasources/query/codecs.go`: `queryTableCodec`, `queryGraphCodec` registration — shared by all per-kind query subcommands
-- `cmd/grafanactl/datasources/query/{prometheus,loki,pyroscope,tempo,generic}.go`: per-kind constructors wired under `datasources {kind} query`
+- `cmd/gcx/datasources/query/codecs.go`: `queryTableCodec`, `queryGraphCodec` registration — shared by all per-kind query subcommands
+- `cmd/gcx/datasources/query/{prometheus,loki,pyroscope,tempo,generic}.go`: per-kind constructors wired under `datasources {kind} query`
 - `internal/graph/chart.go`: `RenderChart` auto-selects line vs bar chart
 
 ---
 
-### 13. Format-Agnostic Data Fetching (High Confidence: 95%)
+### 13. Format-Agnostic Data Fetching
 
 Commands fetch **all** available data in `RunE`, regardless of the `--output`
 format. The output format (`-o table`, `-o wide`, `-o json`, etc.) controls
@@ -291,14 +300,14 @@ only the wide table codec was expected to display.
 
 **Evidence:**
 - `internal/providers/slo/definitions/status.go`: `fetchMetrics` fetches all metrics unconditionally
-- `cmd/grafanactl/datasources/query/query.go`: query response passed to all codecs unchanged
-- `cmd/grafanactl/io/format.go`: built-in JSON/YAML codecs fall through when no custom codec is registered
+- `cmd/gcx/datasources/query/query.go`: query response passed to all codecs unchanged
+- `internal/output/format.go`: built-in JSON/YAML codecs fall through when no custom codec is registered
 
 **See also:** [design-guide.md §11](../reference/design-guide.md#11-codec-requirements-by-command-type-adopt) — codec requirements by command type, [§12](../reference/design-guide.md#12-mutation-command-output-adopt) — mutation command output spec.
 
 ---
 
-### 14. PromQL Construction with promql-builder (High Confidence: 90%)
+### 14. PromQL Construction with promql-builder
 
 PromQL expressions are built programmatically using `github.com/grafana/promql-builder/go/promql`
 rather than string formatting. This eliminates string injection risks and makes
@@ -331,9 +340,9 @@ Cross-reference: Pattern 12 (Direct HTTP Client for Datasource APIs).
 
 ---
 
-### 15. Agent Mode Detection and Pipe-Aware Output (High Confidence: 96%)
+### 15. Agent Mode Detection and Pipe-Aware Output
 
-grafanactl detects at startup whether it is running inside an AI agent
+gcx detects at startup whether it is running inside an AI agent
 environment (Claude Code, Cursor, GitHub Copilot, Amazon Q) and adjusts
 its behavior accordingly. Detection happens at `init()` time by reading
 well-known environment variables; the `--agent` CLI flag overrides env
@@ -343,7 +352,7 @@ detection when explicitly set.
 
 | Priority | Mechanism | Notes |
 |----------|-----------|-------|
-| 1 | `GRAFANACTL_AGENT_MODE` env var | Explicit override — falsy value disables agent mode even if other vars are set |
+| 1 | `GCX_AGENT_MODE` env var | Explicit override — falsy value disables agent mode even if other vars are set |
 | 2 | `CLAUDE_CODE`, `CURSOR_AGENT`, `GITHUB_COPILOT`, `AMAZON_Q` env vars | Any truthy value enables agent mode |
 | 3 | `--agent` CLI flag | Applied after env detection; always takes precedence when explicitly passed |
 
@@ -351,7 +360,7 @@ detection when explicitly set.
 - Color output disabled globally (`color.NoColor = true`)
 - Default output format overridden to `json` (machine-parseable by default)
 - Pipe-aware behaviors forced: `IsPiped=true`, `NoTruncate=true` regardless of TTY state
-- In-band error JSON written to stdout on failure (see `cmd/grafanactl/fail/json.go`)
+- In-band error JSON written to stdout on failure (see `cmd/gcx/fail/json.go`)
 
 **Pipe detection** is also independent of agent mode. Root `PersistentPreRun` calls
 `terminal.Detect()` which checks `term.IsTerminal(os.Stdout.Fd())`. When piped:
@@ -365,9 +374,9 @@ behaviors regardless of actual TTY state.
 **Key files:**
 - `internal/agent/agent.go` — `IsAgentMode()`, `SetFlag()`, `DetectedFromEnv()`
 - `internal/terminal/terminal.go` — `Detect()`, `IsPiped()`, `NoTruncate()`, setters
-- `cmd/grafanactl/root/command.go` — orchestrates detection order in `PersistentPreRun`
-- `cmd/grafanactl/io/format.go` — `io.Options` fields `IsPiped`, `NoTruncate`, `JSONFields`
-- `cmd/grafanactl/fail/json.go` — `DetailedError.WriteJSON` for in-band error reporting
+- `cmd/gcx/root/command.go` — orchestrates detection order in `PersistentPreRun`
+- `internal/output/format.go` — `io.Options` fields `IsPiped`, `NoTruncate`, `JSONFields`
+- `cmd/gcx/fail/json.go` — `DetailedError.WriteJSON` for in-band error reporting
 
 **Evidence:**
 - `internal/agent/` package with `init()`-time env-var detection
@@ -390,7 +399,7 @@ This applies to provider commands (`slo`, `synth`, `alert`) which each define a 
 
 ---
 
-### 16. ResourceAdapter and Provider CRUD Routing (High Confidence: 92%)
+### 16. ResourceAdapter and Provider CRUD Routing
 
 Provider-backed resource types (SLO, Synthetic Monitoring, Alert) implement the
 `adapter.ResourceAdapter` interface to bridge their REST clients to the unified
@@ -420,7 +429,7 @@ while `metadata.uid` stores the numeric API ID. On round-trips, the adapter reco
 the numeric ID from `metadata.uid` (with a fallback to parsing `metadata.name` as a
 number for backward compatibility).
 
-**Usage:** When a provider resource type needs CRUD via `grafanactl resources`, implement `ResourceAdapter`, call `adapter.Register()` in `init()`, and call `RegistryIndex.RegisterStatic()` in `discovery.NewDefaultRegistry`.
+**Usage:** When a provider resource type needs CRUD via `gcx resources`, implement `ResourceAdapter`, call `adapter.Register()` in `init()`, and call `RegistryIndex.RegisterStatic()` in `discovery.NewDefaultRegistry`.
 
 **See also:** [design-guide.md §14](../reference/design-guide.md#14-provider--resources-output-consistency-adopt) — provider CRUD commands must use ResourceAdapter, [§15](../reference/design-guide.md#15-typedcrud-pattern-adopt--evolve) — TypedCRUD pattern and trajectory, [§16](../reference/design-guide.md#16-provider-configloader-adopt) — ConfigLoader requirement for all providers.
 
@@ -441,7 +450,7 @@ without requiring an extra parameter on the `Factory` type.
 
 ---
 
-### 17. K8s Envelope Wrapping for Provider List/Get (High Confidence: 94%)
+### 17. K8s Envelope Wrapping for Provider List/Get
 
 Provider list/get commands that output CRUD resources (resources the user can
 create, update, and delete via the CLI) wrap JSON/YAML output in K8s envelope
@@ -475,7 +484,7 @@ return opts.IO.Encode(cmd.OutOrStdout(), objs)
 
 | Category | Examples | Rationale |
 |----------|----------|-----------|
-| Query/search results | `assertions query`, `search entities` | Time-series and aggregation results, not storable resources |
+| Query/search results | `insights query`, `search entities` | Time-series and aggregation results, not storable resources |
 | Operational views | `status`, `health`, `inspect` | Composite or derived data, not individual resources |
 | Read-only reference data | `vendors list`, `scopes list`, `entity-types list` | Discoverable metadata, not user-managed resources |
 | Singleton config | `env get`, `graph-config` | Single config objects, not collections of resources |
@@ -487,7 +496,7 @@ return opts.IO.Encode(cmd.OutOrStdout(), objs)
 
 ---
 
-### 18. Table-Driven TypedCRUD Registration for Providers (High Confidence: 95%)
+### 18. Table-Driven TypedCRUD Registration for Providers
 
 Providers with many resource types (e.g., OnCall with 17 types) use a generic
 `registerXResource[T]` function with functional options to register each type
@@ -535,6 +544,41 @@ eliminates per-type boilerplate while keeping each registration self-documenting
 **Evidence:**
 - `internal/providers/oncall/resource_adapter.go`: `registerOnCallResource[T]`, 17 registrations
 - ADR: `docs/adrs/oncall-typed-crud/001-table-driven-typedcrud.md`
+
+### 19. Singleton Adapter Pattern (Adopt)
+
+**Observation:** Some provider resources are singletons — exactly one instance
+exists per stack with no meaningful name, no list endpoint, and no create/delete
+lifecycle. Rather than falling back to provider-only commands with alternative
+verbs, these can be registered as TypedCRUD adapters with a hardcoded name
+`"default"` and nil `ListFn`/`CreateFn`/`DeleteFn`.
+
+**Rationale:** Enables the full generic resource pipeline (`resources get`,
+`resources push`, `resources schemas`, `resources examples`) without requiring
+a separate verb vocabulary. Bulk `resources pull` silently skips singletons
+(nil ListFn → `ErrUnsupported`), which is correct behavior.
+
+**Key files:**
+- `internal/providers/appo11y/overrides/resource_adapter.go`: TypedCRUD with only GetFn + UpdateFn
+- `internal/providers/appo11y/settings/resource_adapter.go`: Same pattern without ETag
+- ADR: `docs/adrs/appo11y-provider/001-cli-ux-and-resource-adapter-design.md`
+
+### 20. ETag-as-Annotation Pattern (Adopt)
+
+**Observation:** When an API uses HTTP ETags for optimistic concurrency, the
+ETag value can be stored as a K8s annotation on the resource envelope (e.g.
+`appo11y.ext.grafana.app/etag`). This preserves the ETag through
+get→edit→push round-trips, including file-based workflows.
+
+**Rationale:** Analogous to how `resourceVersion` works in K8s. The annotation
+survives JSON/YAML serialization, is visible in `get -o yaml` output, and
+is automatically included when the user pushes a previously-pulled file.
+Unexported fields on domain types would be lost during marshal/unmarshal.
+
+**Key files:**
+- `internal/providers/appo11y/overrides/resource_adapter.go`: MetadataFn injects annotation, UpdateFn extracts it
+- `internal/providers/appo11y/overrides/adapter.go`: ToResource preserves annotation
+- ADR: `docs/adrs/appo11y-provider/001-cli-ux-and-resource-adapter-design.md`
 
 ---
 

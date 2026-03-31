@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
-	"github.com/grafana/grafanactl/internal/providers/synth/smcfg"
+	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 )
 
 // Client is an HTTP client for the Synthetic Monitoring probes API.
@@ -24,7 +24,7 @@ func NewClient(baseURL, token string) *Client {
 	return &Client{
 		baseURL:    strings.TrimRight(baseURL, "/") + "/api/v1",
 		token:      token,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		httpClient: providers.ExternalHTTPClient(),
 	}
 }
 

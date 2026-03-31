@@ -1,0 +1,53 @@
+name: Deploy Grafana Dashboards
+on:
+  push:
+    branches: [main]
+    paths: ['resources/**']
+
+permissions:
+  contents: read
+
+env:
+  GCX_VERSION: '0.1.9'
+
+jobs:
+  deploy:
+    name: Deploy Grafana resources
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install gcx
+        shell: bash
+        run: |
+          mkdir -p "${HOME}/.local/bin/"
+          wget https://github.com/grafana/gcx/releases/download/v{{ `${{ env.GCX_VERSION }}` }}/gcx_Linux_x86_64.tar.gz
+          tar -xzf gcx_Linux_x86_64.tar.gz
+          mv gcx "${HOME}/.local/bin/gcx"
+          chmod +x "${HOME}/.local/bin/gcx"
+          echo "bin-path=${HOME}/.local/bin" >> "${GITHUB_OUTPUT}"
+
+      - name: Setup go
+        uses: actions/setup-go@v6
+
+      - name: Generate manifests
+        shell: bash
+        run: |
+          go run .
+
+      - name: Validate manifests
+        shell: bash
+        run: |
+          gcx resources validate -p ./resources
+        env:
+          GRAFANA_SERVER: {{ `${{ secrets.GRAFANA_URL }}` }}
+          GRAFANA_TOKEN: {{ `${{ secrets.GRAFANA_TOKEN }}` }}
+
+      - name: Deploy
+        shell: bash
+        run: |
+          gcx resources push -p ./resources --on-error abort
+        env:
+          GRAFANA_SERVER: {{ `${{ secrets.GRAFANA_URL }}` }}
+          GRAFANA_TOKEN: {{ `${{ secrets.GRAFANA_TOKEN }}` }}

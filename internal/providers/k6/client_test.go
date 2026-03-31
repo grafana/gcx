@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/providers/k6"
+	"github.com/grafana/gcx/internal/providers/k6"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

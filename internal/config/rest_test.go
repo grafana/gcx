@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	authlib "github.com/grafana/authlib/types"
-	"github.com/grafana/grafanactl/internal/config"
+	"github.com/grafana/gcx/internal/config"
 )
 
 func TestNewNamespacedRESTConfig_UsesBootdataStack(t *testing.T) {

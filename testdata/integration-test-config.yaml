@@ -1,9 +1,9 @@
-# Integration test configuration for grafanactl
-# This config is used for testing grafanactl against a local Grafana instance
+# Integration test configuration for gcx
+# This config is used for testing gcx against a local Grafana instance
 # running via docker-compose.yml
 #
 # Usage:
-#   grafanactl --config testdata/integration-test-config.yaml config view
+#   gcx --config testdata/integration-test-config.yaml config view
 
 current-context: "local"
 

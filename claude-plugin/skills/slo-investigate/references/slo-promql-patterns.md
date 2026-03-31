@@ -104,21 +104,21 @@ grafana_slo_objective{slo_uuid="<uuid>"}
 sort_desc(grafana_slo_sli_window - on(slo_uuid) grafana_slo_objective)
 ```
 
-## Querying with grafanactl
+## Querying with gcx
 
 ```bash
 # Current window SLI
-grafanactl datasources prometheus query <datasource-uid> \
+gcx datasources prometheus query <datasource-uid> \
   'grafana_slo_sli_window{slo_uuid="<uuid>"}' \
   --from now-1h --to now --step 1m
 
 # Burn rate over last hour
-grafanactl datasources prometheus query <datasource-uid> \
+gcx datasources prometheus query <datasource-uid> \
   '(1 - grafana_slo_sli_1h{slo_uuid="<uuid>"}) / (1 - grafana_slo_objective{slo_uuid="<uuid>"})' \
   --from now-1h --to now --step 1m
 
 # Error budget trend (28-day window)
-grafanactl datasources prometheus query <datasource-uid> \
+gcx datasources prometheus query <datasource-uid> \
   '(grafana_slo_sli_window{slo_uuid="<uuid>"} - grafana_slo_objective{slo_uuid="<uuid>"}) / (1 - grafana_slo_objective{slo_uuid="<uuid>"})' \
   --from now-28d --to now --step 1h
 ```

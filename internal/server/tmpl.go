@@ -17,7 +17,7 @@ var embedFS embed.FS
 
 //nolint:gochecknoinits
 func init() {
-	base := template.New("grafanactl").
+	base := template.New("gcx").
 		Option("missingkey=error").
 		Funcs(template.FuncMap{
 			"kindHasProxy": func(_ string) bool {

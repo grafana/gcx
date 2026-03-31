@@ -11,15 +11,15 @@ each step informs the next.
 
 ## Prerequisites
 
-grafanactl must be installed and configured with a valid context before running
-any commands. If not configured, use the `setup-grafanactl` skill first:
+gcx must be installed and configured with a valid context before running
+any commands. If not configured, use the `setup-gcx` skill first:
 
 ```bash
 # Verify configuration
-grafanactl config view
+gcx config view
 
 # Switch context if needed
-grafanactl config use-context <context-name>
+gcx config use-context <context-name>
 ```
 
 ## Diagnostic Workflow
@@ -31,15 +31,15 @@ subsequent query commands require a datasource UID via `-d <uid>`.
 
 ```bash
 # List all datasources
-grafanactl datasources list -o json
+gcx datasources list -o json
 
 # Filter by type for scripting
-grafanactl datasources list -t prometheus -o json
-grafanactl datasources list -t loki -o json
+gcx datasources list -t prometheus -o json
+gcx datasources list -t loki -o json
 
 # Capture UIDs for use in subsequent steps
-PROM_UID=$(grafanactl datasources list -t prometheus -o json | jq -r '.datasources[0].uid')
-LOKI_UID=$(grafanactl datasources list -t loki -o json | jq -r '.datasources[0].uid')
+PROM_UID=$(gcx datasources list -t prometheus -o json | jq -r '.datasources[0].uid')
+LOKI_UID=$(gcx datasources list -t loki -o json | jq -r '.datasources[0].uid')
 ```
 
 **Expected output shape:**
@@ -63,17 +63,17 @@ and data is flowing. This avoids wasting time on empty results.
 
 ```bash
 # Check that the target service is being scraped
-grafanactl datasources prometheus targets -d <prom-uid> -o json
+gcx datasources prometheus targets -d <prom-uid> -o json
 
 # Verify the relevant job label exists
-grafanactl datasources prometheus labels -d <prom-uid> -l job -o json
+gcx datasources prometheus labels -d <prom-uid> -l job -o json
 
 # For Loki: confirm log streams exist for the service
-grafanactl datasources loki labels -d <loki-uid> -l job -o json
-grafanactl datasources loki series -d <loki-uid> -M '{job="<service-name>"}' -o json
+gcx datasources loki labels -d <loki-uid> -l job -o json
+gcx datasources loki series -d <loki-uid> -M '{job="<service-name>"}' -o json
 
 # Spot-check: confirm uptime metrics are present for the service
-grafanactl datasources prometheus query <prom-uid> 'up{job="<service-name>"}' -o json
+gcx datasources prometheus query <prom-uid> 'up{job="<service-name>"}' -o json
 ```
 
 **Expected output shape:**
@@ -100,22 +100,22 @@ whether an error spike exists and when it began.
 
 ```bash
 # HTTP 5xx error rate (range query for trend)
-grafanactl datasources prometheus query <prom-uid> \
+gcx datasources prometheus query <prom-uid> \
   'rate(http_requests_total{job="<service-name>",status=~"5.."}[5m])' \
   --from now-1h --to now --step 1m -o json
 
 # Visualize the trend
-grafanactl datasources prometheus query <prom-uid> \
+gcx datasources prometheus query <prom-uid> \
   'rate(http_requests_total{job="<service-name>",status=~"5.."}[5m])' \
   --from now-1h --to now --step 1m -o graph
 
 # Error ratio (errors / total)
-grafanactl datasources prometheus query <prom-uid> \
+gcx datasources prometheus query <prom-uid> \
   'rate(http_requests_total{job="<service-name>",status=~"5.."}[5m]) / rate(http_requests_total{job="<service-name>"}[5m])' \
   --from now-1h --to now --step 1m -o json
 
 # Break down by status code to identify 500 vs 503 vs 504
-grafanactl datasources prometheus query <prom-uid> \
+gcx datasources prometheus query <prom-uid> \
   'sum by(status) (rate(http_requests_total{job="<service-name>"}[5m]))' \
   --from now-1h --to now --step 1m -o json
 ```
@@ -146,22 +146,22 @@ or failing fast (error issue). High latency often precedes error spikes.
 
 ```bash
 # P50/P95/P99 latency from histogram
-grafanactl datasources prometheus query <prom-uid> \
+gcx datasources prometheus query <prom-uid> \
   'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="<service-name>"}[5m]))' \
   --from now-1h --to now --step 1m -o json
 
 # Visualize P95 latency trend
-grafanactl datasources prometheus query <prom-uid> \
+gcx datasources prometheus query <prom-uid> \
   'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="<service-name>"}[5m]))' \
   --from now-1h --to now --step 1m -o graph
 
 # Average latency as a simpler signal if histograms are unavailable
-grafanactl datasources prometheus query <prom-uid> \
+gcx datasources prometheus query <prom-uid> \
   'rate(http_request_duration_seconds_sum{job="<service-name>"}[5m]) / rate(http_request_duration_seconds_count{job="<service-name>"}[5m])' \
   --from now-1h --to now --step 1m -o json
 
 # Latency by endpoint (if label available)
-grafanactl datasources prometheus query <prom-uid> \
+gcx datasources prometheus query <prom-uid> \
   'histogram_quantile(0.95, sum by(le, handler) (rate(http_request_duration_seconds_bucket{job="<service-name>"}[5m])))' \
   --from now-1h --to now --step 1m -o json
 ```
@@ -193,22 +193,22 @@ metrics cannot.
 
 ```bash
 # Error logs for the service in the incident window
-grafanactl datasources loki query <loki-uid> \
+gcx datasources loki query <loki-uid> \
   '{job="<service-name>"} |= "error"' \
   --from now-1h --to now -o json
 
 # JSON-parsed logs with level filter (if structured logging)
-grafanactl datasources loki query <loki-uid> \
+gcx datasources loki query <loki-uid> \
   '{job="<service-name>"} | json | level="error"' \
   --from now-1h --to now -o json
 
 # Error rate from logs (count over time)
-grafanactl datasources loki query <loki-uid> \
+gcx datasources loki query <loki-uid> \
   'count_over_time({job="<service-name>"} |= "error" [5m])' \
   --from now-1h --to now --step 1m -o json
 
 # Grep for specific error patterns
-grafanactl datasources loki query <loki-uid> \
+gcx datasources loki query <loki-uid> \
   '{job="<service-name>"} |~ "timeout|connection refused|OOM|panic"' \
   --from now-1h --to now -o json
 ```
@@ -243,16 +243,16 @@ are firing).
 
 ```bash
 # List all alert rules to find any firing for this service
-grafanactl alert rules list -o json | jq '.[] | .rules[]? | select(.labels.job == "<service-name>")'
+gcx alert rules list -o json | jq '.[] | .rules[]? | select(.labels.job == "<service-name>")'
 
 # Pull dashboards locally to inspect their panel queries
-grafanactl resources pull dashboards -o json
+gcx resources pull dashboards -o json
 
 # List available resources to find service-specific dashboards
-grafanactl resources get dashboards -o json | jq '.items[] | select(.metadata.name | test("<service-name>"; "i"))'
+gcx resources get dashboards -o json | jq '.items[] | select(.metadata.name | test("<service-name>"; "i"))'
 
 # If a relevant dashboard UID is known, get it directly
-grafanactl resources get dashboards/<dashboard-uid> -o json
+gcx resources get dashboards/<dashboard-uid> -o json
 ```
 
 #### Capture a visual snapshot of a relevant dashboard
@@ -264,23 +264,23 @@ diagnosing layout regressions, missing data, or anomalous panel values.
 ```bash
 # First, discover which template variables the dashboard uses so you can
 # pin them to the values relevant to the incident being debugged
-grafanactl resources get dashboards/<dashboard-uid> -ojson | \
+gcx resources get dashboards/<dashboard-uid> -ojson | \
   jq '.spec.templating.list[] | {name, type, current: .current.value}'
 
 # Capture a full dashboard snapshot with variables matching the incident context
 # (requires grafana-image-renderer plugin on the Grafana instance)
-grafanactl dashboards snapshot <dashboard-uid> --output-dir ./debug-snapshots \
+gcx dashboards snapshot <dashboard-uid> --output-dir ./debug-snapshots \
   --var cluster=<cluster> --var job=<service-name> --window 1h
 
 # Capture the incident time window explicitly
-grafanactl dashboards snapshot <dashboard-uid> --from now-1h --to now \
+gcx dashboards snapshot <dashboard-uid> --from now-1h --to now \
   --var cluster=<cluster> --var job=<service-name> --output-dir ./debug-snapshots
 
 # Capture a specific panel (find panel IDs: .spec.panels[].id in the dashboard JSON)
-grafanactl dashboards snapshot <dashboard-uid> --panel <panel-id> \
+gcx dashboards snapshot <dashboard-uid> --panel <panel-id> \
   --output-dir ./debug-snapshots
 
-# If stuck with flags: grafanactl dashboards snapshot --help
+# If stuck with flags: gcx dashboards snapshot --help
 ```
 
 Cross-reference with metrics and logs:
@@ -342,34 +342,34 @@ data retrieved for your own analysis.
 
 ```bash
 # Step 1: Find datasource UIDs
-grafanactl datasources list -t prometheus -o json
-grafanactl datasources list -t loki -o json
+gcx datasources list -t prometheus -o json
+gcx datasources list -t loki -o json
 
 # Step 2: Confirm service is being scraped
-grafanactl datasources prometheus query <prom-uid> 'up{job="api"}' -o json
+gcx datasources prometheus query <prom-uid> 'up{job="api"}' -o json
 
 # Step 3: Observe error rate over last 2 hours (wider window to see the spike start)
-grafanactl datasources prometheus query <prom-uid> \
+gcx datasources prometheus query <prom-uid> \
   'rate(http_requests_total{job="api",status=~"5.."}[5m])' \
   --from now-2h --to now --step 1m -o graph
 
 # Identify which status codes are elevated
-grafanactl datasources prometheus query <prom-uid> \
+gcx datasources prometheus query <prom-uid> \
   'sum by(status) (rate(http_requests_total{job="api"}[5m]))' \
   --from now-2h --to now --step 1m -o json
 
 # Step 4: Check if latency rose at the same time
-grafanactl datasources prometheus query <prom-uid> \
+gcx datasources prometheus query <prom-uid> \
   'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="api"}[5m]))' \
   --from now-2h --to now --step 1m -o graph
 
 # Step 5: Get error logs in the spike window
-grafanactl datasources loki query <loki-uid> \
+gcx datasources loki query <loki-uid> \
   '{job="api"} |= "error"' \
   --from now-2h --to now -o json
 
 # Step 6: Check alert rules
-grafanactl alert rules list -o json | jq '.[] | .rules[]? | select(.state == "firing")'
+gcx alert rules list -o json | jq '.[] | .rules[]? | select(.state == "firing")'
 ```
 
 **Expected output shape at Step 3 (matrix):**
@@ -401,33 +401,33 @@ increasing from baseline. Match this to log timestamps in Step 5.
 
 ```bash
 # Step 1: Find datasource UIDs
-grafanactl datasources list -t prometheus -o json
+gcx datasources list -t prometheus -o json
 
 # Step 2: Confirm service health (latency without errors suggests slow dependency)
-grafanactl datasources prometheus query <prom-uid> 'up{job="api"}' -o json
+gcx datasources prometheus query <prom-uid> 'up{job="api"}' -o json
 
 # Step 3: Error rate (confirm it's not elevated yet)
-grafanactl datasources prometheus query <prom-uid> \
+gcx datasources prometheus query <prom-uid> \
   'rate(http_requests_total{job="api",status=~"5.."}[5m])' \
   --from now-1h --to now --step 1m -o json
 
 # Step 4: P95 latency is the primary signal — visualize trend
-grafanactl datasources prometheus query <prom-uid> \
+gcx datasources prometheus query <prom-uid> \
   'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="api"}[5m]))' \
   --from now-2h --to now --step 1m -o graph
 
 # Break down by endpoint to isolate which routes are slow
-grafanactl datasources prometheus query <prom-uid> \
+gcx datasources prometheus query <prom-uid> \
   'histogram_quantile(0.95, sum by(le, handler) (rate(http_request_duration_seconds_bucket{job="api"}[5m])))' \
   --from now-1h --to now --step 1m -o json
 
 # Step 5: Check for timeout log patterns suggesting upstream dependency issue
-grafanactl datasources loki query <loki-uid> \
+gcx datasources loki query <loki-uid> \
   '{job="api"} |~ "timeout|slow|waiting"' \
   --from now-2h --to now -o json
 
 # Check database or downstream service latency if metrics available
-grafanactl datasources prometheus query <prom-uid> \
+gcx datasources prometheus query <prom-uid> \
   'rate(db_query_duration_seconds_sum{job="api"}[5m]) / rate(db_query_duration_seconds_count{job="api"}[5m])' \
   --from now-2h --to now --step 1m -o json
 ```
@@ -462,40 +462,40 @@ handler-specific issue. Compare latency onset time with log timestamps.
 
 ```bash
 # Step 1: Verify datasource connectivity first (simplest possible query)
-grafanactl datasources list -o json
+gcx datasources list -o json
 
 # Step 2: Check whether the service is being scraped at all
-grafanactl datasources prometheus targets -d <prom-uid> -o json | \
+gcx datasources prometheus targets -d <prom-uid> -o json | \
   jq '.[] | select(.labels.job == "api")'
 
 # Confirm up metric — value "0" means scrape failure, absent means not scraped
-grafanactl datasources prometheus query <prom-uid> 'up{job="api"}' -o json
+gcx datasources prometheus query <prom-uid> 'up{job="api"}' -o json
 
 # Check if the job label exists at all (absence = service was never registered)
-grafanactl datasources prometheus labels -d <prom-uid> -l job -o json
+gcx datasources prometheus labels -d <prom-uid> -l job -o json
 
 # Step 3: Without error rate data, check for recent data gaps
-grafanactl datasources prometheus query <prom-uid> \
+gcx datasources prometheus query <prom-uid> \
   'absent(up{job="api"})' \
   --from now-1h --to now --step 1m -o json
 
 # Step 4: Query latency from any recent data before the outage
-grafanactl datasources prometheus query <prom-uid> \
+gcx datasources prometheus query <prom-uid> \
   'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="api"}[5m]))' \
   --from now-3h --to now --step 5m -o graph
 
 # Step 5: Check Loki for last known logs before data disappeared
-grafanactl datasources loki query <loki-uid> \
+gcx datasources loki query <loki-uid> \
   '{job="api"}' \
   --from now-3h --to now -o json
 
 # Crash or OOM signals in logs
-grafanactl datasources loki query <loki-uid> \
+gcx datasources loki query <loki-uid> \
   '{job="api"} |~ "panic|OOM|killed|crashed|SIGTERM"' \
   --from now-3h --to now -o json
 
 # Step 6: Check alert rules for any firing service-down alerts
-grafanactl alert rules list -o json | jq '.[] | .rules[]? | select(.state == "firing")'
+gcx alert rules list -o json | jq '.[] | .rules[]? | select(.state == "firing")'
 ```
 
 **Expected output shape when service is down (up=0):**

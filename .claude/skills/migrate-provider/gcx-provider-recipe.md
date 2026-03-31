@@ -1,4 +1,4 @@
-# gcx → grafanactl Provider Migration Recipe
+# gcx → gcx Provider Migration Recipe
 
 > **Evergreen document.** Update this as providers are ported — add gotchas,
 > refine patterns, fix mistakes. Each migration agent should read this before
@@ -7,26 +7,46 @@
 ## Overview
 
 This recipe covers porting a gcx resource client (`pkg/grafana/{resource}/`)
-into a grafanactl provider (`internal/providers/{name}/`). It's a streamlined
+into a gcx provider (`internal/providers/{name}/`). It's a streamlined
 path that skips API discovery (gcx already has working clients) and focuses on
 the mechanical translation.
 
-**When to use this recipe:** Porting a gcx resource to grafanactl.
+**When to use this recipe:** Porting a gcx resource to gcx.
 **When to use `/add-provider` instead:** Building a provider from scratch for a
 product that doesn't have a gcx client.
 
 ## Skill Structure
 
 This recipe covers the **mechanical implementation steps only** (Steps 1-8).
-Workflow orchestration, stage gates, and verification are governed by
+Workflow orchestration, phase gates, and verification are governed by
 `SKILL.md` — read it before starting any migration.
 
-- **Orchestration** is defined in SKILL.md's three-stage pipeline (Audit → Build → Verify).
-- **Stage gates** in SKILL.md control when you may proceed between stages.
-- **Verification** is a separate Verify stage in SKILL.md — not a recipe step.
+- **Orchestration** is defined in SKILL.md's five-phase pipeline (Phase 0–4).
+- **Phase gates** in SKILL.md control when you may proceed between phases.
+- **Phase 0** (Requirements Gathering) produces the context bundle autonomously.
+- **Phase 1** (Design Discovery) produces the ADR via interactive brainstorming.
+- **Phase 2** (Spec Planning) produces spec.md + plan.md + tasks.md.
+- **Phase 3** (Build) executes this recipe's mechanical steps (Steps 1-8).
+- **Phase 4** (Verification) runs smoke tests and produces the comparison report.
 
 If you are an agent reading this recipe: your orchestration comes from SKILL.md.
 This recipe provides the mechanical steps only.
+
+## Spec Document Format
+
+Phase 2 produces three documents that replace the old custom audit artifacts
+(parity table, architectural mapping, verification plan):
+
+- **spec.md** — functional requirements with FR-NNN numbering + acceptance
+  criteria in Given/When/Then format. Replaces the parity table.
+- **plan.md** — architecture decisions + HTTP client reference section (endpoint
+  table, auth signature, client construction). Replaces the architectural mapping.
+- **tasks.md** — dependency graph with waves + per-task deliverables including
+  mandatory smoke test tasks for all four output formats. Replaces the
+  verification plan.
+
+All three documents use YAML frontmatter. See `commands-reference.md` for the
+HTTP client reference section template that plan.md must include.
 
 ---
 
@@ -39,8 +59,8 @@ Verify these before starting any port:
 gcx --version
 
 # 2. Grafana context is configured and working
-grafanactl config view
-grafanactl --context=<ctx> resources schemas | head -5
+gcx config view
+gcx --context=<ctx> resources schemas | head -5
 
 # 3. gcx uses the same context (or configure separately)
 gcx --context=<ctx> health
@@ -50,8 +70,8 @@ gcx --context=<ctx> health
 mkdir -p internal/providers/{name}/{resource}
 ```
 
-If any of these fail, fix them before proceeding. Smoke tests (Step 8) require
-live API access to both gcx and grafanactl against the same Grafana instance.
+If any of these fail, fix them before proceeding. Smoke tests (Phase 4) require
+live API access to both gcx and gcx against the same Grafana instance.
 
 ---
 
@@ -61,7 +81,7 @@ Before starting a port, answer these questions:
 
 ```
 [ ] 1. Is this resource already on K8s API?
-      Run: grafanactl --context=ops resources schemas | grep -i {resource}
+      Run: gcx --context=ops resources schemas | grep -i {resource}
       If YES → no provider needed, it works via dynamic discovery.
 
 [ ] 2. What's the gcx source?
@@ -120,7 +140,7 @@ Copy structs from `gcx/pkg/grafana/{resource}/`. Adjustments:
 
 ### Step 3: Port client.go
 
-Translate from gcx's `grafana.Client` to grafanactl's HTTP pattern:
+Translate from gcx's `grafana.Client` to gcx's HTTP pattern:
 
 ```go
 // gcx pattern (before):
@@ -140,7 +160,7 @@ func (c *Client) ListResources(ctx context.Context) ([]Resource, error) {
 ```
 
 ```go
-// grafanactl pattern (after):
+// gcx pattern (after):
 type Client struct {
     baseURL string
     token   string
@@ -185,7 +205,7 @@ package {resource}
 
 import (
     "context"
-    "github.com/grafana/grafanactl/internal/resources/adapter"
+    "github.com/grafana/gcx/internal/resources/adapter"
 )
 
 func Register(loader ConfigLoader) {
@@ -228,10 +248,8 @@ func init() {
 }
 ```
 
-Add blank import in `cmd/grafanactl/root/command.go`:
-```go
-_ "github.com/grafana/grafanactl/internal/providers/{name}"
-```
+> **Note:** The blank import in `cmd/gcx/root/command.go` is added in Step 7
+> (Integration / Wiring), not here. Step 5 only covers `provider.go`.
 
 ### Step 6: Write tests
 
@@ -240,19 +258,29 @@ Minimum test coverage per resource:
 1. **Client tests** — httptest server returning known JSON, verify List/Get/Create/Update/Delete parse correctly
 2. **Adapter round-trip** — create a typed object → adapter wraps it → unwrap back → compare (no data loss)
 
-### Step 7: Verify
+### Step 7: Integration / Wiring
+
+After Build-Core and Build-Commands are complete, the integration task MUST:
+
+1. **Wire `Commands()` and `TypedRegistrations()`** in the provider's `init()`
+2. **Add blank import** in `cmd/gcx/root/command.go`
+3. **Fix import cycles** introduced by subpackage references
+4. **Fix variable name collisions** from package aliasing
+5. **Run `make lint`** and fix all new issues
 
 ```bash
-make all                                    # lint + tests + build + docs
-grafanactl providers                        # new provider listed
+GCX_AGENT_MODE=false make all    # MUST exit 0 — this is the Phase 3 gate
+gcx providers                    # new provider listed
 ```
 
-### Step 8: Smoke Test (MANDATORY — STOP GATE)
+### Step 8: Smoke Test (Phase 4 — MANDATORY)
 
-> **STOP AND REPORT.** Do not declare this step complete until you have run
-> the structured comparisons below and pasted the results into the
-> conversation. The user must see evidence that every command produces
-> equivalent output before the port is considered done.
+> **Phase 4 verification.** This step maps to Phase 4 steps 4A–4E in SKILL.md.
+> Smoke tests are MANDATORY — they MUST NOT be marked "optional" or "if live
+> instance available". If no live instance is available, block and report.
+>
+> Every show/list command MUST be tested with ALL FOUR output formats:
+> `-o json`, `-o table`, `-o wide`, `-o yaml`.
 
 Run every command side-by-side with gcx against a real instance. Don't skip
 this — wrong endpoint names, wrapped request bodies, and response shape
@@ -265,38 +293,38 @@ CTX=dev  # adjust to your context
 
 # --- List: compare resource IDs ---
 GCX_IDS=$(gcx --context=$CTX {resource} list -o json | jq -r '.[].id // .[].uid' | sort)
-GCTL_IDS=$(grafanactl --context=$CTX {resource} list -o json | jq -r '.[].metadata.name' | sort)
+GCTL_IDS=$(gcx --context=$CTX {resource} list -o json | jq -r '.[].metadata.name' | sort)
 echo "=== List ID diff ==="
 diff <(echo "$GCX_IDS") <(echo "$GCTL_IDS") && echo "MATCH" || echo "MISMATCH"
 
 # --- Get: compare key fields ---
 ID="<pick-an-id-from-list>"
 gcx --context=$CTX {resource} get $ID -o json | jq '{title, status, labels}' > /tmp/gcx_get.json
-grafanactl --context=$CTX {resource} get $ID -o json \
+gcx --context=$CTX {resource} get $ID -o json \
   | jq '{title: .spec.title, status: .spec.status, labels: .metadata.labels}' > /tmp/gctl_get.json
 echo "=== Get field diff ==="
 diff /tmp/gcx_get.json /tmp/gctl_get.json && echo "MATCH" || echo "MISMATCH"
 
 # --- Adapter path ---
 echo "=== Adapter path ==="
-grafanactl --context=$CTX resources get {alias} > /dev/null 2>&1 && echo "resources get: OK" || echo "resources get: FAIL"
-grafanactl --context=$CTX resources get {alias}/$ID -o json > /dev/null 2>&1 && echo "resources get/id: OK" || echo "resources get/id: FAIL"
+gcx --context=$CTX resources get {alias} > /dev/null 2>&1 && echo "resources get: OK" || echo "resources get: FAIL"
+gcx --context=$CTX resources get {alias}/$ID -o json > /dev/null 2>&1 && echo "resources get/id: OK" || echo "resources get/id: FAIL"
 
 # --- Ancillary commands (repeat per ancillary) ---
 echo "=== Ancillary: {subcommand} ==="
 gcx --context=$CTX {resource} {subcommand} -o json | jq length
-grafanactl --context=$CTX {resource} {subcommand} -o json | jq length
+gcx --context=$CTX {resource} {subcommand} -o json | jq length
 
 # --- Schema + example ---
 echo "=== Schema ==="
-grafanactl --context=$CTX resources schemas -o json | jq 'to_entries[] | select(.key | test("{group}")) | .value' | head -5
+gcx --context=$CTX resources schemas -o json | jq 'to_entries[] | select(.key | test("{group}")) | .value' | head -5
 echo "=== Example ==="
-grafanactl --context=$CTX resources examples {alias} | head -10
+gcx --context=$CTX resources examples {alias} | head -10
 
 # --- Output format check ---
 echo "=== Output formats ==="
 for fmt in table wide json yaml; do
-  GRAFANACTL_AGENT_MODE=false grafanactl --context=$CTX {resource} list -o $fmt > /dev/null 2>&1 \
+  GCX_AGENT_MODE=false gcx --context=$CTX {resource} list -o $fmt > /dev/null 2>&1 \
     && echo "$fmt: OK" || echo "$fmt: FAIL"
 done
 ```
@@ -314,7 +342,7 @@ Copy the output from 8a into the conversation. For each comparison:
 | Schema/example | Non-empty | Fix register.go |
 | Output formats | All `OK` | Fix codec registration |
 
-> **STOP.** Do not proceed to Step 9 until all checks pass or discrepancies
+> **STOP.** Do not pass the Phase 4 gate until all checks pass or discrepancies
 > are explicitly justified (e.g., "durationSeconds differs by 2s — acceptable").
 
 **Do NOT skip smoke tests.** The incidents port had two wrong endpoint names
@@ -380,15 +408,15 @@ that only surfaced during smoke testing:
 - Auth requires a two-step token exchange: AP token → k6 v3 token via
   `PUT /v3/account/grafana-app/start` with `X-Grafana-Key`, `X-Stack-Id`,
   `X-Grafana-Service-Token` headers.
-- The stack ID can be parsed from the grafanactl namespace (`stack-{id}`),
+- The stack ID can be parsed from the gcx namespace (`stack-{id}`),
   avoiding the need for a separate GCOM call.
 - The org ID (needed for env vars) comes from the auth response, not config.
 - The `perfsprint` linter enforces `errors.New` over `fmt.Errorf` for strings
   without format verbs — easy to miss when porting `fmt.Errorf("...")` patterns.
 - The `usestdlibvars` linter enforces `http.StatusCreated` etc. instead of
   raw `201`/`204`/`404` literals — gcx uses raw numbers everywhere.
-- **gcx `k6 token` vs grafanactl `k6 auth token`**: gcx exposes token exchange
-  as a top-level `token` subcommand; grafanactl nests it under `auth token`.
+- **gcx `k6 token` vs gcx `k6 auth token`**: gcx exposes token exchange
+  as a top-level `token` subcommand; gcx nests it under `auth token`.
   Both print the short-lived API token to stdout.
 - **Schedules `delete` takes `<load-test-id>` not `<schedule-id>`**: This
   is consistent with the API — delete is keyed on the load test, not the
@@ -398,7 +426,7 @@ that only surfaced during smoke testing:
   underlying run listing function. The duplication is intentional — the
   `testrun` sub-tree groups CRD-related operations together.
 - **gcx `schema` / `example` subcommands**: gcx exposes per-resource `schema`
-  and `example` subcommands under each resource group. grafanactl covers these
+  and `example` subcommands under each resource group. gcx covers these
   via `resources schemas` and `resources examples` at the global level.
   These are NOT missing — the coverage is different but equivalent.
 
@@ -504,5 +532,5 @@ is for **building providers from scratch**. Key differences:
 | Design doc | Optional (pattern is known) | Required per stage |
 | Auth | Copy gcx's auth model | Investigate from scratch |
 
-After porting, the provider should pass the same Phase 4 verification
-checklist from `/add-provider`.
+After porting, the provider must pass Phase 4 verification (SKILL.md steps
+4A–4E) including mandatory smoke tests with all four output formats.

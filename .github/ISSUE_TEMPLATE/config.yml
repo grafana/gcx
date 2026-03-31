@@ -1,14 +1,14 @@
 blank_issues_enabled: false
 contact_links:
   - name: ❓ Questions & Answers
-    url: https://github.com/grafana/grafanactl/discussions/categories/q-a
+    url: https://github.com/grafana/gcx/discussions/categories/q-a
     about: Ask questions and get answers from the community
   - name: 💬 Discussions
-    url: https://github.com/grafana/grafanactl/discussions
+    url: https://github.com/grafana/gcx/discussions
     about: Discuss ideas and share your thoughts with the community
   - name: 📚 Documentation
-    url: https://grafana.github.io/grafanactl/
+    url: https://grafana.github.io/gcx/
     about: Read the documentation for setup guides and command reference
   - name: 🔒 Security Issue
-    url: https://github.com/grafana/grafanactl/security/policy
+    url: https://github.com/grafana/gcx/security/policy
     about: Report security vulnerabilities in a private manner

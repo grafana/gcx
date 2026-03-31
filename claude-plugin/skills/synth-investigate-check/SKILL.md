@@ -1,7 +1,7 @@
 ---
 name: synth-investigate-check
 description: Use when the user wants to diagnose why a Synthetic Monitoring check is failing — triage probe failures, classify failure scope, run per-probe breakdown, and identify root cause. Trigger on phrases like "why is my check failing", "investigate synthetic check", "probe failures", "check is down". For check status overview use synth-check-status. For creating or managing checks use synth-manage-checks.
-allowed-tools: [grafanactl, Bash]
+allowed-tools: [gcx, Bash]
 ---
 
 # Synthetic Check Investigator
@@ -10,7 +10,7 @@ Investigate Synthetic Monitoring check failures by triaging probe data, classify
 
 ## Core Principles
 
-1. Use grafanactl commands — do not call Grafana APIs directly
+1. Use gcx commands — do not call Grafana APIs directly
 2. Trust the user's expertise — skip background explanations
 3. Use `-o json` for agent processing, default format for user display
 4. Show timeline graphs for time-series data — they communicate trends faster than text
@@ -18,19 +18,19 @@ Investigate Synthetic Monitoring check failures by triaging probe data, classify
 
 ## Prerequisites
 
-grafanactl configured with an active context and appropriate permissions.
+gcx configured with an active context and appropriate permissions.
 
 ## Investigation Workflow
 
 ### Step 1: Get Check Status (with early exit)
 
 ```bash
-grafanactl synth checks status <ID>
+gcx synth checks status <ID>
 ```
 
 If the user provided a name instead of ID, list first:
 ```bash
-grafanactl synth checks list -o json | jq -r '.[] | select(.job | test("<name>"; "i")) | [.id, .job, .target, .type] | @tsv'
+gcx synth checks list -o json | jq -r '.[] | select(.job | test("<name>"; "i")) | [.id, .job, .target, .type] | @tsv'
 ```
 
 **Early exit — OK:** Check success rate >= 50% across all probes.
@@ -38,7 +38,7 @@ Report: "Check `<job>` is healthy. Success rate: <rate>%. <probe_count> probes u
 Stop unless the user asks for more.
 
 **Early exit — NODATA:** No Prometheus metrics available.
-1. Get check config to verify `enabled: true` (`grafanactl synth checks get <ID> -o json | jq .spec.enabled`)
+1. Get check config to verify `enabled: true` (`gcx synth checks get <ID> -o json | jq .spec.enabled`)
 2. If disabled: report "Check is disabled — no metrics will appear until it is re-enabled."
 3. If enabled: report "No metrics found. Check datasource config or whether the SM stack is healthy."
 Stop after reporting.
@@ -46,7 +46,7 @@ Stop after reporting.
 ### Step 2: Get Check Configuration
 
 ```bash
-grafanactl synth checks get <ID> -o json
+gcx synth checks get <ID> -o json
 ```
 
 Extract: job name, target, check type (http/ping/dns/tcp/traceroute), probe list, frequency, timeout, alertSensitivity, enabled flag.
@@ -56,7 +56,7 @@ For HTTP checks also note: any assertion settings, TLS config, expected status c
 ### Step 3: Timeline Triage
 
 ```bash
-grafanactl synth checks timeline <ID> --from now-1h --to now
+gcx synth checks timeline <ID> --from now-1h --to now
 ```
 
 Show the graph output to the user. Then analyze the pattern:
@@ -71,14 +71,14 @@ Show the graph output to the user. Then analyze the pattern:
 
 Use a longer window if the failure started more than 1h ago:
 ```bash
-grafanactl synth checks timeline <ID> --from now-6h --to now
+gcx synth checks timeline <ID> --from now-6h --to now
 ```
 
 ### Step 4: Classify Failure Scope and Map Probes
 
 Get the probe list for geographic mapping:
 ```bash
-grafanactl synth probes list -o json
+gcx synth probes list -o json
 ```
 
 Cross-reference probe IDs from the check config against probe regions. Map failing probes to their regions.
@@ -96,33 +96,33 @@ Cross-reference probe IDs from the check config against probe regions. Map faili
 
 Resolve datasource UID if not already known:
 ```bash
-grafanactl datasources list --type prometheus
+gcx datasources list --type prometheus
 ```
 
 Run per-probe success rate to pinpoint failing probes:
 ```bash
-grafanactl datasources prometheus query <datasource-uid> \
+gcx datasources prometheus query <datasource-uid> \
   'avg by (probe) (probe_success{job="<job>",instance="<target>"})' \
   --from now-1h --to now --step 1m -o json
 ```
 
 Show as graph for the user:
 ```bash
-grafanactl datasources prometheus query <datasource-uid> \
+gcx datasources prometheus query <datasource-uid> \
   'avg by (probe) (probe_success{job="<job>",instance="<target>"})' \
   --from now-1h --to now --step 1m -o graph
 ```
 
 For HTTP checks, also run HTTP phase latency to locate where time is spent:
 ```bash
-grafanactl datasources prometheus query <datasource-uid> \
+gcx datasources prometheus query <datasource-uid> \
   'avg by (phase) (probe_http_duration_seconds{job="<job>",instance="<target>"})' \
   --from now-1h --to now --step 1m -o graph
 ```
 
 For SSL/TLS failures or near-expiry concerns:
 ```bash
-grafanactl datasources prometheus query <datasource-uid> \
+gcx datasources prometheus query <datasource-uid> \
   '(probe_ssl_earliest_cert_expiry{job="<job>",instance="<target>"} - time()) / 86400' \
   --from now-1h --to now --step 5m -o json
 ```
@@ -208,8 +208,8 @@ Use minimal formatting. Avoid excessive bold text. Trust the user to prioritize.
 
 ## Error Handling
 
-- `grafanactl synth checks status` returns no rows: check ID may be wrong — list all checks and confirm
-- `grafanactl synth probes list` fails: skip geographic mapping; classify probes by name where possible
-- `grafanactl datasources {kind} query` fails with datasource error: note it, skip PromQL steps, classify using timeline data only
+- `gcx synth checks status` returns no rows: check ID may be wrong — list all checks and confirm
+- `gcx synth probes list` fails: skip geographic mapping; classify probes by name where possible
+- `gcx datasources {kind} query` fails with datasource error: note it, skip PromQL steps, classify using timeline data only
 - Multiple checks match the search name: list all with IDs and targets, ask which to investigate
 - Timeline returns no data for the window: widen to `--from now-6h --to now` before concluding NODATA

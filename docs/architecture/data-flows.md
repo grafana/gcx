@@ -1,12 +1,12 @@
 # Resource Processing Pipelines
 
-Domain: Data flows — push, pull, delete, and serve pipelines in grafanactl.
+Domain: Data flows — push, pull, delete, and serve pipelines in gcx.
 
 ---
 
 ## 1. Overview
 
-grafanactl has five primary data flow pipelines:
+gcx has five primary data flow pipelines:
 
 ```
 PUSH:   Local disk → FSReader → filter → process → Pusher → Grafana API
@@ -25,11 +25,11 @@ on time series data and does not use the resource model.
 
 ## 2. PUSH Pipeline
 
-Entry point: `cmd/grafanactl/resources/push.go:95` (`RunE` closure in `pushCmd`).
+Entry point: `cmd/gcx/resources/push.go:95` (`RunE` closure in `pushCmd`).
 
 ```
 User invocation:
-  grafanactl resources push dashboards/foo
+  gcx resources push dashboards/foo
 
   ┌──────────────────────────────────────────────────────────────────────┐
   │ 1. Parse selectors                                                    │
@@ -116,7 +116,7 @@ User invocation:
 ```
 
 Key files:
-- `cmd/grafanactl/resources/push.go` — CLI wiring
+- `cmd/gcx/resources/push.go` — CLI wiring
 - `internal/resources/local/reader.go` — FSReader
 - `internal/resources/remote/pusher.go` — Pusher, upsertResource
 - `internal/resources/process/managerfields.go` — ManagerFieldsAppender
@@ -127,7 +127,7 @@ Key files:
 
 ## 3. PULL Pipeline
 
-Entry point: `cmd/grafanactl/resources/pull.go` (mirrors push structure).
+Entry point: `cmd/gcx/resources/pull.go` (mirrors push structure).
 
 ```
   ┌──────────────────────────────────────────────────────────────────────┐
@@ -167,7 +167,7 @@ Entry point: `cmd/grafanactl/resources/pull.go` (mirrors push structure).
   │      Apply Processors in order:                                       │
   │        ServerFieldsStripper — remove server-only annotations:        │
   │          AnnoKeyCreatedBy, AnnoKeyUpdatedBy, AnnoKeyUpdatedTimestamp  │
-  │          Manager annotations (if managed by grafanactl)               │
+  │          Manager annotations (if managed by gcx)               │
   │          Source path/checksum/timestamp annotations                   │
   │          LabelKeyDeprecatedInternalID                                 │
   │          Rebuilds clean object: {apiVersion, kind, metadata, spec}   │
@@ -273,11 +273,11 @@ backing client is a REST adapter or the k8s dynamic client.
 
 ## 5. QUERY Pipeline
 
-Entry point: `cmd/grafanactl/datasources/query/` package — per-kind constructors wired under each kind's subgroup (`datasources prometheus query`, `datasources loki query`, etc.).
+Entry point: `cmd/gcx/datasources/query/` package — per-kind constructors wired under each kind's subgroup (`datasources prometheus query`, `datasources loki query`, etc.).
 
 ```
 User invocation:
-  grafanactl datasources prometheus query <uid> 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m
+  gcx datasources prometheus query <uid> 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m
 
   ┌──────────────────────────────────────────────────────────────────────┐
   │ 1. Parse args and flags                                               │
@@ -394,11 +394,11 @@ User invocation:
 ```
 
 Key files:
-- `cmd/grafanactl/datasources/query/query.go` — shared opts, `resolveTypedArgs`, `validateDatasourceType`
-- `cmd/grafanactl/datasources/query/{prometheus,loki,pyroscope,tempo,generic}.go` — per-kind constructors (`PrometheusCmd`, `LokiCmd`, etc.)
-- `cmd/grafanactl/datasources/query/codecs.go` — `queryTableCodec`, `queryGraphCodec` (codec registry)
-- `cmd/grafanactl/datasources/query/time.go` — `ParseTime`, `ParseDuration` for flag parsing
-- `cmd/grafanactl/datasources/{prometheus,loki,pyroscope,tempo,generic}.go` — kind subgroups that wire in the query constructors
+- `cmd/gcx/datasources/query/query.go` — shared opts, `resolveTypedArgs`, `validateDatasourceType`
+- `cmd/gcx/datasources/query/{prometheus,loki,pyroscope,tempo,generic}.go` — per-kind constructors (`PrometheusCmd`, `LokiCmd`, etc.)
+- `cmd/gcx/datasources/query/codecs.go` — `queryTableCodec`, `queryGraphCodec` (codec registry)
+- `cmd/gcx/datasources/query/time.go` — `ParseTime`, `ParseDuration` for flag parsing
+- `cmd/gcx/datasources/{prometheus,loki,pyroscope,tempo,generic}.go` — kind subgroups that wire in the query constructors
 - `internal/config/resolver.go` — `DefaultDatasourceUID(ctx, kind)` — shared 2-tier UID resolution
 - `internal/query/prometheus/client.go` — HTTP client, request construction, response conversion
 - `internal/query/prometheus/formatter.go` — table rendering (vector/matrix/scalar)
@@ -602,7 +602,7 @@ a pull-then-push workflow will write back in the same format as the original fil
 
 Entry point: `internal/server/server.go:55` (`Server.Start`).
 
-Command: `grafanactl dev serve [DIR]...` (the serve command moved from `resources serve` to `dev serve` in PR #35; the implementation is unchanged).
+Command: `gcx dev serve [DIR]...` (the serve command moved from `resources serve` to `dev serve` in PR #35; the implementation is unchanged).
 
 ```
 Startup sequence:
@@ -634,9 +634,9 @@ Startup sequence:
   │    Live reload:                                           │
   │      GET /livereload → WebSocket upgrade                 │
   │                                                           │
-  │    grafanactl UI:                                         │
+  │    gcx UI:                                         │
   │      GET /  → resource index page (HTML template)        │
-  │      GET /grafanactl/{group}/{version}/{kind}/{name}      │
+  │      GET /gcx/{group}/{version}/{kind}/{name}      │
   │               → iframe wrapper for previewing resource   │
   └──────────────────┬───────────────────────────────────────┘
                      │
@@ -663,7 +663,7 @@ Startup sequence:
   │    })                                                     │
   │                                                           │
   │    ReloadResource builds JSON message:                   │
-  │    {"command":"reload","path":"/grafanactl/{apiVer}/{kind}/{name}"}
+  │    {"command":"reload","path":"/gcx/{apiVer}/{kind}/{name}"}
   │    → wsHub.broadcast channel                             │
   │                                                           │
   │    hub.run() goroutine broadcasts to all connections     │
@@ -718,12 +718,12 @@ Implements the [LiveReload protocol v7](http://livereload.com/protocols/official
 ```
 Browser connects: GET /livereload → WebSocket upgrade
   connection.reader() goroutine → waits for {"command":"hello"}
-  → responds: {"command":"hello","protocols":["...official-7"],"serverName":"grafanactl"}
+  → responds: {"command":"hello","protocols":["...official-7"],"serverName":"gcx"}
 
 File changes → ReloadResource(res) → broadcast:
-  {"command":"reload","path":"/grafanactl/{apiVersion}/{kind}/{name}"}
+  {"command":"reload","path":"/gcx/{apiVersion}/{kind}/{name}"}
 
-Browser's livereload client receives → navigates to /grafanactl/.../{name}
+Browser's livereload client receives → navigates to /gcx/.../{name}
 → iframe reloads with fresh dashboard data from in-memory resources
 ```
 

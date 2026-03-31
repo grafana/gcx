@@ -52,6 +52,23 @@ linters:
       - common-false-positives
       - legacy
       - std-error-handling
+    rules:
+      # Taint-analysis rules produce too many false positives for CLI tools
+      # that intentionally handle user-controlled paths and URLs.
+      - linters: [gosec]
+        text: "G702|G703|G704"
+      # Test data containing "token"/"credential" keys is not a real secret.
+      - linters: [gosec]
+        text: "G101"
+        path: "_test\\.go$"
+      # uintptr→int for term.GetSize / term.IsTerminal is the standard Go pattern.
+      - linters: [gosec]
+        text: "G115"
+        path: "(terminal|graph)/.*\\.go$"
+      # Build scripts: parser.ParseDir works fine; go/packages is overkill here.
+      - linters: [staticcheck]
+        text: "SA1019.*ParseDir"
+        path: "^scripts/"
 
 formatters:
   enable:

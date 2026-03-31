@@ -1,117 +1,53 @@
-# docs/
+# Documentation
 
-Documentation index for grafanactl.
+## For Users
 
-## Directory Structure
+- **[Installation](installation.md)** — Install gcx via Homebrew or binary download
+- **[Configuration](configuration.md)** — Set up contexts, authentication, and environments
+- **[Guides](guides/index.md)** — How-to guides for common workflows
+- **[CLI Reference](reference/cli/)** — Auto-generated command reference
+
+## For Contributors & Agents
+
+- **[CLAUDE.md](../CLAUDE.md)** — Agent entry point with doc map, conventions, and package index
+- **[DESIGN.md](../DESIGN.md)** — Architecture overview, ADR index, and package map
+- **[CONSTITUTION.md](../CONSTITUTION.md)** — Project invariants and constraints
+- **[Architecture](architecture/README.md)** — Deep-dive architecture docs per domain
+
+## Directory Layout
 
 ```
 docs/
-├── architecture/     # Per-domain codebase analysis — output of /map-codebase
-├── adrs/             # Architecture Decision Records — grouped by research slug
-│   └── {research-slug}/  # e.g., adrs/my-research/001-title.md
-├── specs/            # Spec packages, design docs, and implementation plans
-├── research/         # Findings and analysis — point-in-time snapshots
-├── investigations/   # Investigation reports and debugging post-mortems
-├── reference/        # Evergreen tool/API docs — updated in place
-│   ├── cli/          # Auto-generated CLI reference (make docs)
-│   ├── doc-maintenance.md  # Rules for which docs to update when
-│   └── stage-checklist.md  # Per-stage completion template
+├── architecture/     # Per-domain codebase analysis
+├── adrs/             # Architecture Decision Records
+├── reference/        # Evergreen tool/API docs, auto-generated CLI reference
 ├── guides/           # User-facing how-to guides
-├── methodologies/    # Architectural philosophy — evergreen
-├── _templates/       # One template per document type
-│   ├── adr.md
-│   └── research.md
-└── _archive/         # Raw output, code dumps, PoC artifacts
+├── research/         # Point-in-time research reports
+├── specs/            # Ephemeral spec packages (cleaned after merge)
+├── _templates/       # Templates for ADRs, specs, research reports
+└── assets/           # Images and static assets
 ```
 
-## Document Types
+### Templates
 
-### `architecture/` — Architecture Analysis
+Available in [`_templates/`](_templates/):
 
-For: per-domain codebase analysis — system architecture, patterns, data flows,
-CLI layer, client API, config system, and project structure. Content describes
-the current state of the codebase, not decisions. Updated in place as the
-codebase evolves. See [architecture/README.md](architecture/README.md) for
-the full index.
+| Template | Use For |
+|----------|---------|
+| `adr.md` | Architecture Decision Records |
+| `research.md` | Research reports |
+| `feature-spec.md` | New feature specs |
+| `feature-plan.md` | Architecture/design plans |
+| `feature-tasks.md` | Task breakdown with dependency waves |
+| `bugfix-spec.md` | Bug fix specs |
+| `refactor-spec.md` | Refactoring specs |
 
-### `adrs/` — Architecture Decision Records
-
-For: recording an architectural decision — what was decided, why, and what
-the consequences are.
-
-**Subdirectory convention**: ADRs are grouped in subdirectories named after the
-research report that spawned them. Derive the slug by stripping the date prefix
-and `.md` extension from the research filename. ADRs with no research origin go
-under `adrs/legacy/`.
-
-**Numbering**: local to each subdirectory (`NNN-title.md`). No global sequence.
-
-**Lifecycle**: `proposed` -> `accepted` -> `deprecated` | `superseded`
-
-**Required header fields** (all 4 must be present):
-```
-**Created**: YYYY-MM-DD
-**Status**: proposed | accepted | deprecated | superseded
-**Bead**: grafanactl-experiments-xxx (or "none")
-**Supersedes**: path/to/old.md (or "none")
-```
-
-Template: [`_templates/adr.md`](_templates/adr.md)
-
-### `specs/` — Specs and Design Documents
-
-For: implementation plans, design proposals, and structured spec-driven
-development (SDD). Each feature lives in its own subdirectory. SDD specs
-use the `spec.md` + `plan.md` + `tasks.md` triple; design docs may use
-a simpler plan + stage structure.
-
-Use `/plan-spec` to generate SDD specs and `/build-spec` to implement.
-
-### `research/` — Research Reports
-
-For: investigated a topic, evaluated options, gathered findings. No lifecycle —
-point-in-time snapshots. Filename must include date prefix.
-
-**Required header fields**:
-```
-**Created**: YYYY-MM-DD
-**Confidence**: X% (Low|Medium|High)
-**Sources**: N
-```
-
-Template: [`_templates/research.md`](_templates/research.md)
-
-### `investigations/` — Investigation Reports
-
-For: debugging post-mortems, root cause analyses. Point-in-time snapshots.
-Filename must include date prefix: `YYYY-MM-DD-short-name.md`.
-
-### `reference/` — Reference Docs
-
-For: documenting how to use a shipped tool or workflow. Evergreen, updated
-in place. Includes auto-generated CLI reference in `cli/`.
-
-### `guides/` — User Guides
-
-For: user-facing how-to documentation. Indexed via `guides/index.md`.
-
-### `methodologies/` — Methodologies
-
-Evergreen philosophical and architectural docs. No format changes — content
-determines structure.
-
-### `_archive/` — Archive
-
-Raw output, code dumps, PoC artifacts. No format requirements.
-
-## Naming Conventions
+### Conventions
 
 | Scope | Convention | Example |
-|---|---|---|
-| Feature subdirs | Lowercase hyphenated | `my-feature/`, `auth-refactor/` |
-| Point-in-time docs | `YYYY-MM-DD-short-name.md` | `2025-11-14-implementation-plan.md` |
-| Evergreen docs | Descriptive name only (no date) | `permissions-philosophy.md` |
-| Special dirs | Underscore prefix | `_templates/`, `_superseded/`, `_archive/` |
+|-------|-----------|---------|
+| Point-in-time docs | `YYYY-MM-DD-short-name.md` | `2026-03-27-gap-analysis.md` |
+| Evergreen docs | Descriptive name, no date | `provider-guide.md` |
+| Feature subdirs | Lowercase hyphenated | `cloud-rest-config/` |
 
-Short names drop the feature prefix — the directory provides context:
-`implementation-plan.md` not `my-feature-implementation-plan.md`.
+See [reference/doc-maintenance.md](reference/doc-maintenance.md) for which docs to update when.

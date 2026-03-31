@@ -3,8 +3,8 @@ package k6_test
 import (
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/providers/k6"
-	"github.com/grafana/grafanactl/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/providers/k6"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -24,15 +24,14 @@ func lookupByGVK(gvk schema.GroupVersionKind) (adapter.Registration, bool) {
 // registered in the global adapter registry via init().
 func TestAllResourcesRegistered(t *testing.T) {
 	tests := []struct {
-		kind    string
-		plural  string
-		aliases []string
+		kind   string
+		plural string
 	}{
-		{kind: "Project", plural: "projects", aliases: []string{"k6projects", "k6project", "k6proj"}},
-		{kind: "LoadTest", plural: "loadtests", aliases: []string{"k6loadtests", "k6loadtest", "k6lt"}},
-		{kind: "Schedule", plural: "schedules", aliases: []string{"k6schedules", "k6schedule", "k6sched"}},
-		{kind: "EnvVar", plural: "envvars", aliases: []string{"k6envvars", "k6envvar", "k6env"}},
-		{kind: "LoadZone", plural: "loadzones", aliases: []string{"k6loadzones", "k6loadzone", "k6lz"}},
+		{kind: "Project", plural: "projects"},
+		{kind: "LoadTest", plural: "loadtests"},
+		{kind: "Schedule", plural: "schedules"},
+		{kind: "EnvVar", plural: "envvars"},
+		{kind: "LoadZone", plural: "loadzones"},
 	}
 
 	for _, tt := range tests {
@@ -45,7 +44,7 @@ func TestAllResourcesRegistered(t *testing.T) {
 			reg, ok := lookupByGVK(gvk)
 			require.True(t, ok, "expected %s to be registered", tt.kind)
 			assert.Equal(t, tt.plural, reg.Descriptor.Plural)
-			assert.Equal(t, tt.aliases, reg.Aliases)
+			assert.Empty(t, reg.Aliases, "expected no adapter aliases for %s", tt.kind)
 		})
 	}
 }

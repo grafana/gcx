@@ -3,7 +3,7 @@ package providers_test
 import (
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/providers"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/stretchr/testify/assert"
 )
 

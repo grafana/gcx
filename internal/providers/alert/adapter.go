@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/grafana/grafanactl/internal/resources"
+	"github.com/grafana/gcx/internal/resources"
 )
 
 const (
@@ -17,7 +17,7 @@ const (
 	GroupKind = "AlertRuleGroup"
 )
 
-// RuleToResource converts a RuleStatus to a grafanactl Resource, wrapping the
+// RuleToResource converts a RuleStatus to a gcx Resource, wrapping the
 // alert rule fields in a Kubernetes-style object envelope with apiVersion, kind,
 // and metadata. The uid field is mapped to metadata.name.
 func RuleToResource(rule RuleStatus, namespace string) (*resources.Resource, error) {
@@ -47,7 +47,7 @@ func RuleToResource(rule RuleStatus, namespace string) (*resources.Resource, err
 	return resources.MustFromObject(obj, resources.SourceInfo{}), nil
 }
 
-// RuleFromResource converts a grafanactl Resource back to a RuleStatus.
+// RuleFromResource converts a gcx Resource back to a RuleStatus.
 // The UID is restored from metadata.name.
 func RuleFromResource(res *resources.Resource) (*RuleStatus, error) {
 	obj := res.Object.Object
@@ -78,7 +78,7 @@ func RuleFromResource(res *resources.Resource) (*RuleStatus, error) {
 	return &rule, nil
 }
 
-// GroupToResource converts a RuleGroup to a grafanactl Resource, wrapping the
+// GroupToResource converts a RuleGroup to a gcx Resource, wrapping the
 // alert rule group fields in a Kubernetes-style object envelope.
 // The name field is mapped to metadata.name.
 func GroupToResource(group RuleGroup, namespace string) (*resources.Resource, error) {
@@ -108,7 +108,7 @@ func GroupToResource(group RuleGroup, namespace string) (*resources.Resource, er
 	return resources.MustFromObject(obj, resources.SourceInfo{}), nil
 }
 
-// GroupFromResource converts a grafanactl Resource back to a RuleGroup.
+// GroupFromResource converts a gcx Resource back to a RuleGroup.
 // The Name is restored from metadata.name.
 func GroupFromResource(res *resources.Resource) (*RuleGroup, error) {
 	obj := res.Object.Object

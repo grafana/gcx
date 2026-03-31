@@ -1,8 +1,8 @@
 package alert
 
 import (
-	"github.com/grafana/grafanactl/internal/providers"
-	"github.com/grafana/grafanactl/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 )
 
@@ -19,7 +19,7 @@ type AlertProvider struct{}
 func (p *AlertProvider) Name() string { return "alert" }
 
 // ShortDesc returns a one-line description of the provider.
-func (p *AlertProvider) ShortDesc() string { return "Manage Grafana alerting resources." }
+func (p *AlertProvider) ShortDesc() string { return "Manage Grafana alert rules and alert groups" }
 
 // Commands returns the Cobra commands contributed by this provider.
 func (p *AlertProvider) Commands() []*cobra.Command {
@@ -53,8 +53,22 @@ func (p *AlertProvider) ConfigKeys() []providers.ConfigKey {
 	return nil
 }
 
-// ResourceAdapters returns adapter factories for Alert resource types.
-// Factories are registered globally via adapter.Register() in resource_adapter.go init().
-func (p *AlertProvider) ResourceAdapters() []adapter.Factory {
-	return nil
+// TypedRegistrations returns adapter registrations for Alert resource types.
+// Registrations are added globally by providers.Register() which calls this method.
+func (p *AlertProvider) TypedRegistrations() []adapter.Registration {
+	loader := &providers.ConfigLoader{}
+	return []adapter.Registration{
+		{
+			Factory:    NewRulesAdapterFactory(loader),
+			Descriptor: staticRulesDescriptor,
+			GVK:        staticRulesDescriptor.GroupVersionKind(),
+			Schema:     alertRuleSchema(),
+		},
+		{
+			Factory:    NewGroupsAdapterFactory(loader),
+			Descriptor: staticGroupsDescriptor,
+			GVK:        staticGroupsDescriptor.GroupVersionKind(),
+			Schema:     alertRuleGroupSchema(),
+		},
+	}
 }

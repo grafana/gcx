@@ -4,7 +4,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/grafana/grafanactl/internal/resources"
+	"github.com/grafana/gcx/internal/resources"
 )
 
 // OperationSummary tracks the results of a batch resource operation in a thread-safe manner.

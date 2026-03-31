@@ -3,7 +3,7 @@ package slo_test
 import (
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/providers/slo"
+	"github.com/grafana/gcx/internal/providers/slo"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

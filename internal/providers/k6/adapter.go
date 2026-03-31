@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/grafana/grafanactl/internal/resources"
+	"github.com/grafana/gcx/internal/resources"
 )
 
 const (
@@ -96,12 +96,12 @@ func restoreIntID(res *resources.Resource) int {
 // Project
 // ---------------------------------------------------------------------------
 
-// ToResource converts a Project to a grafanactl Resource.
+// ToResource converts a Project to a gcx Resource.
 func ToResource(p Project, namespace string) (*resources.Resource, error) {
 	return toResourceGeneric(p, "Project", strconv.Itoa(p.ID), namespace, []string{"id"})
 }
 
-// FromResource converts a grafanactl Resource back to a Project.
+// FromResource converts a gcx Resource back to a Project.
 func FromResource(res *resources.Resource) (*Project, error) {
 	p, err := fromResourceGeneric[Project](res)
 	if err != nil {
@@ -115,12 +115,12 @@ func FromResource(res *resources.Resource) (*Project, error) {
 // LoadTest
 // ---------------------------------------------------------------------------
 
-// LoadTestToResource converts a LoadTest to a grafanactl Resource.
+// LoadTestToResource converts a LoadTest to a gcx Resource.
 func LoadTestToResource(lt LoadTest, namespace string) (*resources.Resource, error) {
 	return toResourceGeneric(lt, "LoadTest", strconv.Itoa(lt.ID), namespace, []string{"id"})
 }
 
-// LoadTestFromResource converts a grafanactl Resource back to a LoadTest.
+// LoadTestFromResource converts a gcx Resource back to a LoadTest.
 func LoadTestFromResource(res *resources.Resource) (*LoadTest, error) {
 	lt, err := fromResourceGeneric[LoadTest](res)
 	if err != nil {
@@ -134,12 +134,12 @@ func LoadTestFromResource(res *resources.Resource) (*LoadTest, error) {
 // Schedule
 // ---------------------------------------------------------------------------
 
-// ScheduleToResource converts a Schedule to a grafanactl Resource.
+// ScheduleToResource converts a Schedule to a gcx Resource.
 func ScheduleToResource(s Schedule, namespace string) (*resources.Resource, error) {
 	return toResourceGeneric(s, "Schedule", strconv.Itoa(s.ID), namespace, []string{"id"})
 }
 
-// ScheduleFromResource converts a grafanactl Resource back to a Schedule.
+// ScheduleFromResource converts a gcx Resource back to a Schedule.
 func ScheduleFromResource(res *resources.Resource) (*Schedule, error) {
 	s, err := fromResourceGeneric[Schedule](res)
 	if err != nil {
@@ -153,12 +153,12 @@ func ScheduleFromResource(res *resources.Resource) (*Schedule, error) {
 // EnvVar
 // ---------------------------------------------------------------------------
 
-// EnvVarToResource converts an EnvVar to a grafanactl Resource.
+// EnvVarToResource converts an EnvVar to a gcx Resource.
 func EnvVarToResource(ev EnvVar, namespace string) (*resources.Resource, error) {
 	return toResourceGeneric(ev, "EnvVar", strconv.Itoa(ev.ID), namespace, []string{"id"})
 }
 
-// EnvVarFromResource converts a grafanactl Resource back to an EnvVar.
+// EnvVarFromResource converts a gcx Resource back to an EnvVar.
 func EnvVarFromResource(res *resources.Resource) (*EnvVar, error) {
 	ev, err := fromResourceGeneric[EnvVar](res)
 	if err != nil {
@@ -172,13 +172,13 @@ func EnvVarFromResource(res *resources.Resource) (*EnvVar, error) {
 // LoadZone
 // ---------------------------------------------------------------------------
 
-// LoadZoneToResource converts a LoadZone to a grafanactl Resource.
+// LoadZoneToResource converts a LoadZone to a gcx Resource.
 // The Name field (not the numeric ID) is used as metadata.name.
 func LoadZoneToResource(lz LoadZone, namespace string) (*resources.Resource, error) {
 	return toResourceGeneric(lz, "LoadZone", lz.Name, namespace, []string{"id"})
 }
 
-// LoadZoneFromResource converts a grafanactl Resource back to a LoadZone.
+// LoadZoneFromResource converts a gcx Resource back to a LoadZone.
 func LoadZoneFromResource(res *resources.Resource) (*LoadZone, error) {
 	lz, err := fromResourceGeneric[LoadZone](res)
 	if err != nil {

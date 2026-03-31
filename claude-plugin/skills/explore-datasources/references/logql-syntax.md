@@ -1,6 +1,6 @@
 # LogQL Selector Syntax Guide
 
-This guide covers LogQL stream selector syntax used with the `grafanactl datasources loki series` command.
+This guide covers LogQL stream selector syntax used with the `gcx datasources loki series` command.
 
 ## Overview
 
@@ -28,10 +28,10 @@ Match label with exact value:
 
 ```bash
 # Exact match
-grafanactl datasources loki series -d <uid> -M '{job="varlogs"}'
+gcx datasources loki series -d <uid> -M '{job="varlogs"}'
 
 # Multiple exact matches (AND)
-grafanactl datasources loki series -d <uid> -M '{job="varlogs", namespace="default"}'
+gcx datasources loki series -d <uid> -M '{job="varlogs", namespace="default"}'
 ```
 
 ### Not Equal: `!=`
@@ -40,10 +40,10 @@ Exclude label with specific value:
 
 ```bash
 # Exclude specific job
-grafanactl datasources loki series -d <uid> -M '{job!="system"}'
+gcx datasources loki series -d <uid> -M '{job!="system"}'
 
 # Combine with exact match
-grafanactl datasources loki series -d <uid> -M '{namespace="production", job!="debug"}'
+gcx datasources loki series -d <uid> -M '{namespace="production", job!="debug"}'
 ```
 
 ### Regex Match: `=~`
@@ -52,13 +52,13 @@ Match label with regular expression:
 
 ```bash
 # Match jobs starting with "app"
-grafanactl datasources loki series -d <uid> -M '{job=~"app.*"}'
+gcx datasources loki series -d <uid> -M '{job=~"app.*"}'
 
 # Match multiple patterns
-grafanactl datasources loki series -d <uid> -M '{container_name=~"prometheus.*|grafana.*"}'
+gcx datasources loki series -d <uid> -M '{container_name=~"prometheus.*|grafana.*"}'
 
 # Match namespace pattern
-grafanactl datasources loki series -d <uid> -M '{namespace=~"kube-.*"}'
+gcx datasources loki series -d <uid> -M '{namespace=~"kube-.*"}'
 ```
 
 ### Regex Not Match: `!~`
@@ -67,10 +67,10 @@ Exclude labels matching a regular expression:
 
 ```bash
 # Exclude test namespaces
-grafanactl datasources loki series -d <uid> -M '{namespace!~".*-test"}'
+gcx datasources loki series -d <uid> -M '{namespace!~".*-test"}'
 
 # Exclude debug and temp jobs
-grafanactl datasources loki series -d <uid> -M '{job!~"debug|temp"}'
+gcx datasources loki series -d <uid> -M '{job!~"debug|temp"}'
 ```
 
 ## Common Patterns
@@ -79,10 +79,10 @@ grafanactl datasources loki series -d <uid> -M '{job!~"debug|temp"}'
 
 ```bash
 # Find all streams with specific job
-grafanactl datasources loki series -d <uid> -M '{job="varlogs"}'
+gcx datasources loki series -d <uid> -M '{job="varlogs"}'
 
 # Find all streams in namespace
-grafanactl datasources loki series -d <uid> -M '{namespace="production"}'
+gcx datasources loki series -d <uid> -M '{namespace="production"}'
 ```
 
 ### Match Multiple Labels (AND)
@@ -91,10 +91,10 @@ All labels must match:
 
 ```bash
 # Job AND namespace
-grafanactl datasources loki series -d <uid> -M '{job="varlogs", namespace="default"}'
+gcx datasources loki series -d <uid> -M '{job="varlogs", namespace="default"}'
 
 # Three labels
-grafanactl datasources loki series -d <uid> -M '{job="api", namespace="production", environment="prod"}'
+gcx datasources loki series -d <uid> -M '{job="api", namespace="production", environment="prod"}'
 ```
 
 ### Match Multiple Selectors (OR)
@@ -103,30 +103,30 @@ Use multiple `-M` flags for OR logic:
 
 ```bash
 # Job A OR Job B
-grafanactl datasources loki series -d <uid> -M '{job="varlogs"}' -M '{job="systemlogs"}'
+gcx datasources loki series -d <uid> -M '{job="varlogs"}' -M '{job="systemlogs"}'
 
 # Different namespaces
-grafanactl datasources loki series -d <uid> -M '{namespace="prod"}' -M '{namespace="staging"}'
+gcx datasources loki series -d <uid> -M '{namespace="prod"}' -M '{namespace="staging"}'
 ```
 
 ### Regex for Multiple Values
 
 ```bash
 # Match multiple jobs with regex
-grafanactl datasources loki series -d <uid> -M '{job=~"app-.*"}'
+gcx datasources loki series -d <uid> -M '{job=~"app-.*"}'
 
 # Match containers with prefix
-grafanactl datasources loki series -d <uid> -M '{container_name=~"prometheus.*", component="server"}'
+gcx datasources loki series -d <uid> -M '{container_name=~"prometheus.*", component="server"}'
 ```
 
 ### Exclude Patterns
 
 ```bash
 # Exclude test environments
-grafanactl datasources loki series -d <uid> -M '{namespace!~".*-test"}'
+gcx datasources loki series -d <uid> -M '{namespace!~".*-test"}'
 
 # Production only, exclude debug
-grafanactl datasources loki series -d <uid> -M '{environment="production", job!="debug"}'
+gcx datasources loki series -d <uid> -M '{environment="production", job!="debug"}'
 ```
 
 ## Real-World Examples
@@ -135,52 +135,52 @@ grafanactl datasources loki series -d <uid> -M '{environment="production", job!=
 
 ```bash
 # All logs for myapp
-grafanactl datasources loki series -d <uid> -M '{app="myapp"}'
+gcx datasources loki series -d <uid> -M '{app="myapp"}'
 
 # Myapp in production
-grafanactl datasources loki series -d <uid> -M '{app="myapp", environment="production"}'
+gcx datasources loki series -d <uid> -M '{app="myapp", environment="production"}'
 
 # Myapp, exclude debug logs
-grafanactl datasources loki series -d <uid> -M '{app="myapp", level!="debug"}'
+gcx datasources loki series -d <uid> -M '{app="myapp", level!="debug"}'
 ```
 
 ### Find Container Logs
 
 ```bash
 # Specific container
-grafanactl datasources loki series -d <uid> -M '{container_name="nginx"}'
+gcx datasources loki series -d <uid> -M '{container_name="nginx"}'
 
 # All containers in pod
-grafanactl datasources loki series -d <uid> -M '{pod_name="web-server-abc123"}'
+gcx datasources loki series -d <uid> -M '{pod_name="web-server-abc123"}'
 
 # Containers matching pattern
-grafanactl datasources loki series -d <uid> -M '{container_name=~"nginx.*"}'
+gcx datasources loki series -d <uid> -M '{container_name=~"nginx.*"}'
 ```
 
 ### Find Kubernetes Logs
 
 ```bash
 # All logs in namespace
-grafanactl datasources loki series -d <uid> -M '{namespace="kube-system"}'
+gcx datasources loki series -d <uid> -M '{namespace="kube-system"}'
 
 # Specific deployment
-grafanactl datasources loki series -d <uid> -M '{namespace="default", deployment="api-server"}'
+gcx datasources loki series -d <uid> -M '{namespace="default", deployment="api-server"}'
 
 # All namespaces except system
-grafanactl datasources loki series -d <uid> -M '{namespace!~"kube-.*"}'
+gcx datasources loki series -d <uid> -M '{namespace!~"kube-.*"}'
 ```
 
 ### Find Service Logs
 
 ```bash
 # Logs from specific service
-grafanactl datasources loki series -d <uid> -M '{service="api"}'
+gcx datasources loki series -d <uid> -M '{service="api"}'
 
 # Service in specific cluster
-grafanactl datasources loki series -d <uid> -M '{service="api", cluster="us-west-1"}'
+gcx datasources loki series -d <uid> -M '{service="api", cluster="us-west-1"}'
 
 # Multiple services (OR logic)
-grafanactl datasources loki series -d <uid> -M '{service="api"}' -M '{service="worker"}'
+gcx datasources loki series -d <uid> -M '{service="api"}' -M '{service="worker"}'
 ```
 
 ## Shell Quoting
@@ -189,13 +189,13 @@ Always use single quotes around the selector to prevent shell interpretation:
 
 ```bash
 # ✅ Correct - single quotes outside
-grafanactl datasources loki series -d <uid> -M '{name="value", cluster="prod"}'
+gcx datasources loki series -d <uid> -M '{name="value", cluster="prod"}'
 
 # ❌ Wrong - shell interprets quotes
-grafanactl datasources loki series -d <uid> -M {name="value"}
+gcx datasources loki series -d <uid> -M {name="value"}
 
 # ❌ Wrong - double quotes outside cause parsing errors
-grafanactl datasources loki series -d <uid> -M "{name='value'}"
+gcx datasources loki series -d <uid> -M "{name='value'}"
 ```
 
 ## Limitations
@@ -217,7 +217,7 @@ The `series` command supports **label selectors only**, not full LogQL features:
 - Line filters: `{job="varlogs"} |~ "error.*"` (not supported)
 - Metrics: `rate({job="varlogs"}[5m])` (not supported)
 
-For these advanced features, use `grafanactl datasources loki query <uid> '<logql>'` to run full LogQL queries against a Loki datasource.
+For these advanced features, use `gcx datasources loki query <uid> '<logql>'` to run full LogQL queries against a Loki datasource.
 
 ## Regex Syntax
 
@@ -248,30 +248,30 @@ Loki uses [RE2 regex syntax](https://github.com/google/re2/wiki/Syntax). Common 
 1. **Start broad, then narrow**: Begin with a single label, then add more filters
    ```bash
    # Start
-   grafanactl datasources loki series -d <uid> -M '{job="varlogs"}'
+   gcx datasources loki series -d <uid> -M '{job="varlogs"}'
 
    # Then narrow
-   grafanactl datasources loki series -d <uid> -M '{job="varlogs", namespace="prod"}'
+   gcx datasources loki series -d <uid> -M '{job="varlogs", namespace="prod"}'
    ```
 
 2. **Use regex for exploration**: When you don't know exact values
    ```bash
    # Find all app-* jobs
-   grafanactl datasources loki series -d <uid> -M '{job=~"app-.*"}'
+   gcx datasources loki series -d <uid> -M '{job=~"app-.*"}'
    ```
 
 3. **Check label values first**: Use `labels` command to see available values
    ```bash
    # See what jobs exist
-   grafanactl datasources loki labels -d <uid> --label job
+   gcx datasources loki labels -d <uid> --label job
 
    # Then query specific job
-   grafanactl datasources loki series -d <uid> -M '{job="<value-from-above>"}'
+   gcx datasources loki series -d <uid> -M '{job="<value-from-above>"}'
    ```
 
 4. **Use JSON output for large results**: Pipe to jq for filtering
    ```bash
-   grafanactl datasources loki series -d <uid> -M '{namespace="prod"}' -o json | jq '.data[] | select(.job=="api")'
+   gcx datasources loki series -d <uid> -M '{namespace="prod"}' -o json | jq '.data[] | select(.job=="api")'
    ```
 
 ## See Also

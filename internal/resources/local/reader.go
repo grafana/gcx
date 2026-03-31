@@ -11,10 +11,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/logs"
+	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/grafana-app-sdk/logging"
-	"github.com/grafana/grafanactl/internal/format"
-	"github.com/grafana/grafanactl/internal/logs"
-	"github.com/grafana/grafanactl/internal/resources"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"

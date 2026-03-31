@@ -2,7 +2,7 @@
 
 PromQL query patterns for Synthetic Monitoring metrics. Run via:
 ```bash
-grafanactl datasources prometheus query <datasource-uid> '<query>' --from <start> --to <end> --step <step>
+gcx datasources prometheus query <datasource-uid> '<query>' --from <start> --to <end> --step <step>
 ```
 
 Replace `<job>` with the check job name and `<instance>` with the check target (URL or hostname).
@@ -103,7 +103,7 @@ avg by (probe) (probe_http_status_code{job="<job>",instance="<target>"})
 
 ## Useful Filters
 
-Filter by specific probe (use probe name from `grafanactl synth probes list`):
+Filter by specific probe (use probe name from `gcx synth probes list`):
 ```promql
 probe_success{job="<job>",instance="<target>",probe="<probe-name>"}
 ```
@@ -115,25 +115,25 @@ probe_success{job="<job>",instance="<target>",probe=~"<probe1>|<probe2>"}
 
 ---
 
-## Recommended Grafanactl Commands
+## Recommended Gcx Commands
 
 Quick per-probe check (JSON for agent processing):
 ```bash
-grafanactl datasources prometheus query <datasource-uid> \
+gcx datasources prometheus query <datasource-uid> \
   'avg by (probe) (probe_success{job="<job>",instance="<target>"})' \
   --from now-1h --to now --step 1m -o json
 ```
 
 Graph for user display:
 ```bash
-grafanactl datasources prometheus query <datasource-uid> \
+gcx datasources prometheus query <datasource-uid> \
   'avg by (probe) (probe_success{job="<job>",instance="<target>"})' \
   --from now-1h --to now --step 1m -o graph
 ```
 
 Cert expiry check:
 ```bash
-grafanactl datasources prometheus query <datasource-uid> \
+gcx datasources prometheus query <datasource-uid> \
   '(probe_ssl_earliest_cert_expiry{job="<job>",instance="<target>"} - time()) / 86400' \
   --from now-5m --to now --step 1m -o json
 ```

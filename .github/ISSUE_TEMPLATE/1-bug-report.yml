@@ -12,16 +12,16 @@ body:
 
         - Run your command with `-v`, `-vv`, or `-vvv` flags to get detailed output (more v's = more verbose)
         - Include the full command you ran, with all flags
-        - Check your configuration: `grafanactl config view`
+        - Check your configuration: `gcx config view`
         - Try the command with `--dry-run` if applicable
-        - Look for similar issues: [Search existing issues](https://github.com/grafana/grafanactl/issues)
+        - Look for similar issues: [Search existing issues](https://github.com/grafana/gcx/issues)
 
   - type: input
-    id: grafanactl_version
+    id: gcx_version
     attributes:
-      label: grafanactl Version
-      description: "Run `grafanactl version` to get this information"
-      placeholder: "grafanactl version v0.1.0 (commit: abc123, built: 2025-01-15)"
+      label: gcx Version
+      description: "Run `gcx version` to get this information"
+      placeholder: "gcx version v0.1.0 (commit: abc123, built: 2025-01-15)"
     validations:
       required: true
 
@@ -42,7 +42,7 @@ body:
     attributes:
       label: Command Executed
       description: What command did you run? Include all flags and arguments
-      placeholder: "grafanactl resources push --context=prod --dry-run ./dashboards/"
+      placeholder: "gcx resources push --context=prod --dry-run ./dashboards/"
       render: shell
     validations:
       required: true
@@ -65,7 +65,7 @@ body:
       label: What happened?
       description: Describe what went wrong in your own words
       placeholder: |
-        I was trying to push dashboards to production using grafanactl resources push,
+        I was trying to push dashboards to production using gcx resources push,
         but the command failed with a permission error. I can push to staging fine
         using the same dashboards.
     validations:
@@ -86,9 +86,9 @@ body:
       label: How can we reproduce this?
       description: Step-by-step instructions help us find the issue faster. Include commands exactly as you ran them.
       placeholder: |
-        1. Set context: grafanactl config use-context prod
-        2. Verify context: grafanactl config current-context
-        3. Try to push: grafanactl resources push ./dashboards/
+        1. Set context: gcx config use-context prod
+        2. Verify context: gcx config current-context
+        3. Try to push: gcx resources push ./dashboards/
         4. Observe error: 403 Forbidden
       value: |
         1.
@@ -126,7 +126,7 @@ body:
       description: Have you tried these common debugging steps?
       options:
         - label: I ran the command with -v, -vv, or -vvv flag for verbose output
-        - label: I checked my configuration with `grafanactl config view`
+        - label: I checked my configuration with `gcx config view`
         - label: I verified I'm using the correct context with `config current-context`
         - label: I verified my authentication token/credentials are valid
         - label: I checked the documentation for this command
@@ -137,6 +137,6 @@ body:
       label: Anything else we should know?
       description: Additional context, workarounds you've found, when this started happening, relevant configuration details, etc.
       placeholder: |
-        This started after upgrading to grafanactl v0.2.0.
+        This started after upgrading to gcx v0.2.0.
         I found that using --max-concurrent=1 makes it work, but it's very slow.
         My config uses token authentication with a service account token...

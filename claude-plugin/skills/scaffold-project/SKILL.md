@@ -2,32 +2,32 @@
 name: scaffold-project
 description: >
   Use when the user wants to create a new Grafana resources-as-code project,
-  start a new dashboards-as-code repo, scaffold a grafanactl project, or asks
-  "how do I get started with grafanactl". Triggers on phrases like "new project",
+  start a new dashboards-as-code repo, scaffold a gcx project, or asks
+  "how do I get started with gcx". Triggers on phrases like "new project",
   "scaffold", "bootstrap", "create project", "get started".
 ---
 
-# Scaffold a grafanactl Project
+# Scaffold a gcx Project
 
 Scaffold a new Go project for managing Grafana resources as code using
-`grafanactl dev scaffold`.
+`gcx dev scaffold`.
 
 ## Prerequisites
 
-Verify grafanactl is installed:
+Verify gcx is installed:
 
 ```bash
-grafanactl version
+gcx version
 ```
 
-If missing, see the `setup-grafanactl` skill.
+If missing, see the `setup-gcx` skill.
 
 ## Scaffolding
 
 ### Interactive Mode (recommended for first-time users)
 
 ```bash
-grafanactl dev scaffold
+gcx dev scaffold
 ```
 
 Prompts for:
@@ -37,14 +37,14 @@ Prompts for:
 ### Non-Interactive Mode
 
 ```bash
-grafanactl dev scaffold --project my-dashboards --go-module-path github.com/myorg/my-dashboards
+gcx dev scaffold --project my-dashboards --go-module-path github.com/myorg/my-dashboards
 ```
 
 ## What Gets Generated
 
 ```
 my-dashboards/
-├── .github/workflows/deploy.yaml   # CI/CD workflow for grafanactl push
+├── .github/workflows/deploy.yaml   # CI/CD workflow for gcx push
 ├── .gitignore
 ├── go.mod
 ├── main.go                         # Entrypoint — registers all resources
@@ -58,9 +58,9 @@ my-dashboards/
 ## Next Steps After Scaffolding
 
 1. `cd my-dashboards && go mod tidy`
-2. Configure grafanactl: `grafanactl config set server <URL>` and `grafanactl config set token <TOKEN>`
-3. Edit `internal/dashboards/sample.go` or generate new stubs with `grafanactl dev generate`
-4. Push to Grafana: `grafanactl resources push`
+2. Configure gcx: `gcx config set server <URL>` and `gcx config set token <TOKEN>`
+3. Edit `internal/dashboards/sample.go` or generate new stubs with `gcx dev generate`
+4. Push to Grafana: `gcx resources push`
 
 ## Common Issues
 
@@ -68,4 +68,4 @@ my-dashboards/
 |-------|-----|
 | `go mod tidy` fails | Ensure Go 1.24+ is installed |
 | Project name has spaces | Names are auto-kebab-cased; spaces become hyphens |
-| Want to add alert rules | Create `internal/alerts/` and use `grafanactl dev generate alerts/my-rule.go` |
+| Want to add alert rules | Create `internal/alerts/` and use `gcx dev generate alerts/my-rule.go` |

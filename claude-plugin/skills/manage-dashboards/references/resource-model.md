@@ -14,7 +14,7 @@ metadata:
   namespace: default  # org-id (on-prem) or stack-id (cloud)
   uid: abc123
   annotations:
-    grafana.app/managed-by: grafanactl
+    grafana.app/managed-by: gcx
     grafana.app/source-file: /path/to/dashboard.yaml
     grafana.app/source-format: yaml
 spec:
@@ -52,7 +52,7 @@ Grafana Instance
 
 1. **Folders → Dashboards**: Dashboards can optionally belong to a folder
    - Dashboard `spec.folderUID` must reference an existing folder UID
-   - grafanactl pushes folders before dashboards to ensure dependencies exist
+   - gcx pushes folders before dashboards to ensure dependencies exist
    - Dashboards without folderUID go to the "General" folder
 
 2. **Datasources → Dashboards**: Dashboard panels reference datasources by UID
@@ -81,11 +81,11 @@ Grafana organizes resources into API groups:
 - **notifications.grafana.app**: Notification templates
 
 ### Access Control
-- **iam.grafana.app**: Service accounts, API keys (read-only in grafanactl)
+- **iam.grafana.app**: Service accounts, API keys (read-only in gcx)
 - **team.grafana.app**: Teams and permissions
 
 ### Excluded Groups
-grafanactl excludes certain groups from normal operations:
+gcx excludes certain groups from normal operations:
 - **featuretoggle.grafana.app**: Internal feature flags
 - **iam.grafana.app**: Sensitive access control (requires special handling)
 
@@ -96,21 +96,21 @@ Resources track which tool manages them:
 ```yaml
 metadata:
   annotations:
-    grafana.app/managed-by: grafanactl
+    grafana.app/managed-by: gcx
     grafana.app/source-file: ./resources/dashboards/my-dashboard.yaml
     grafana.app/source-format: yaml
 ```
 
 ### Manager Behavior
 
-- **Resources created by grafanactl**: Can be freely modified by grafanactl
+- **Resources created by gcx**: Can be freely modified by gcx
 - **Resources created by UI/Terraform/other**: Protected by default
   - Use `--include-managed` to modify (use with caution)
   - Prevents accidental overwrites from different tools
 
 ### Three-Way Merge (Future)
 
-Currently grafanactl uses simple upsert logic. Future versions will implement proper three-way merge:
+Currently gcx uses simple upsert logic. Future versions will implement proper three-way merge:
 - Track field ownership by manager
 - Allow multiple managers to coexist
 - Detect and resolve conflicts
@@ -125,22 +125,22 @@ Resources can have multiple API versions:
 - **v1beta1**: Beta version, more stable
 - **v1**: Stable version (when available)
 
-grafanactl uses **preferred version** by default (typically latest stable version).
+gcx uses **preferred version** by default (typically latest stable version).
 
 ### Resource Versions (Future)
 
-Currently grafanactl does not track `resourceVersion` for optimistic locking. Future versions will:
+Currently gcx does not track `resourceVersion` for optimistic locking. Future versions will:
 - Include `resourceVersion` in metadata
 - Detect concurrent modifications
 - Retry on conflict with exponential backoff
 
 ## Discovery System
 
-grafanactl dynamically discovers available resources using Grafana's API:
+gcx dynamically discovers available resources using Grafana's API:
 
 ```bash
 # Discover what's available
-grafanactl resources schemas
+gcx resources schemas
 ```
 
 Discovery process:
@@ -152,7 +152,7 @@ Discovery process:
 
 ## Push Order
 
-When pushing multiple resources, grafanactl ensures correct order:
+When pushing multiple resources, gcx ensures correct order:
 
 1. **Phase 1 - Folders**: Create folders first
 2. **Phase 2 - Other Resources**: Create dashboards, datasources, etc.
@@ -161,7 +161,7 @@ When pushing multiple resources, grafanactl ensures correct order:
 Example:
 ```bash
 # This automatically handles ordering
-grafanactl resources push dashboards folders
+gcx resources push dashboards folders
 
 # Internally:
 # 1. Pushes all folders first
@@ -170,7 +170,7 @@ grafanactl resources push dashboards folders
 
 ## Source Tracking
 
-grafanactl tracks where resources came from:
+gcx tracks where resources came from:
 
 ```yaml
 metadata:
@@ -186,35 +186,35 @@ Benefits:
 
 ## Resource Filtering
 
-grafanactl supports flexible resource selection:
+gcx supports flexible resource selection:
 
 ### By Kind
 ```bash
-grafanactl resources pull dashboards
-grafanactl resources pull dashboards folders
+gcx resources pull dashboards
+gcx resources pull dashboards folders
 ```
 
 ### By UID
 ```bash
-grafanactl resources pull dashboards/my-dashboard-uid
-grafanactl resources pull dashboards/uid1,uid2,uid3
+gcx resources pull dashboards/my-dashboard-uid
+gcx resources pull dashboards/uid1,uid2,uid3
 ```
 
 ### By Version
 ```bash
 # Preferred version (default)
-grafanactl resources pull dashboards
+gcx resources pull dashboards
 
 # All versions
-grafanactl resources pull dashboards --all-versions
+gcx resources pull dashboards --all-versions
 
 # Specific version
-grafanactl resources pull dashboards.v1alpha1.dashboard.grafana.app
+gcx resources pull dashboards.v1alpha1.dashboard.grafana.app
 ```
 
 ## Memory Considerations
 
-grafanactl loads all resources into memory during operations:
+gcx loads all resources into memory during operations:
 - **Typical usage**: ~1MB per 100 dashboards
 - **Practical limit**: ~10,000 resources before memory pressure
 - **Mitigation**: Use selective pulling (specific resource types or UIDs)
@@ -226,7 +226,7 @@ Future versions may add streaming support for very large deployments.
 ### Create
 ```bash
 # Create new resource from file
-grafanactl resources push -p ./my-dashboard.yaml
+gcx resources push -p ./my-dashboard.yaml
 ```
 - UID auto-generated if not specified
 - Manager metadata added automatically
@@ -235,7 +235,7 @@ grafanactl resources push -p ./my-dashboard.yaml
 ### Read
 ```bash
 # Get resource from Grafana
-grafanactl resources pull dashboards/my-dashboard-uid
+gcx resources pull dashboards/my-dashboard-uid
 ```
 - Fetches current state from Grafana
 - Includes all metadata
@@ -244,17 +244,17 @@ grafanactl resources pull dashboards/my-dashboard-uid
 ### Update
 ```bash
 # Modify and push back
-grafanactl resources edit dashboards/my-dashboard-uid
-grafanactl resources push
+gcx resources edit dashboards/my-dashboard-uid
+gcx resources push
 ```
 - Requires existing UID in metadata
-- Only grafanactl-managed resources (unless `--include-managed`)
+- Only gcx-managed resources (unless `--include-managed`)
 - Server-managed fields stripped before update
 
 ### Delete
 ```bash
 # Remove from Grafana
-grafanactl resources delete dashboards/my-dashboard-uid
+gcx resources delete dashboards/my-dashboard-uid
 ```
 - Permanent deletion from Grafana
 - Does not delete local files
@@ -263,7 +263,7 @@ grafanactl resources delete dashboards/my-dashboard-uid
 ## Best Practices
 
 1. **Use UIDs consistently**: Always reference resources by UID, not name
-2. **Respect manager boundaries**: Don't mix grafanactl with UI/Terraform for same resources
+2. **Respect manager boundaries**: Don't mix gcx with UI/Terraform for same resources
 3. **Folders before dashboards**: Always push folders before dashboards that reference them
 4. **Selective pulling**: Pull only what you need to reduce memory usage
 5. **Version control**: Commit resources to git for history and collaboration

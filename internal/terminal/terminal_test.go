@@ -3,7 +3,7 @@ package terminal_test
 import (
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/terminal"
+	"github.com/grafana/gcx/internal/terminal"
 	"github.com/stretchr/testify/assert"
 )
 

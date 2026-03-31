@@ -4,7 +4,7 @@ package smcfg
 import (
 	"context"
 
-	"github.com/grafana/grafanactl/internal/config"
+	"github.com/grafana/gcx/internal/config"
 )
 
 // Loader can load SM credentials and the current namespace from config.

@@ -1,0 +1,52 @@
+## gcx config set
+
+Set a single value in a configuration file
+
+### Synopsis
+
+Set a single value in a configuration file.
+
+PROPERTY_NAME is a dot-delimited reference to the value to set. It can either represent a field or a map entry.
+
+PROPERTY_VALUE is the new value to set.
+
+```
+gcx config set PROPERTY_NAME PROPERTY_VALUE [flags]
+```
+
+### Examples
+
+```
+
+	# Set the "server" field on the "dev-instance" context to "https://grafana-dev.example"
+	gcx config set contexts.dev-instance.grafana.server https://grafana-dev.example
+
+	# Disable the validation of the server's SSL certificate in the "dev-instance" context
+	gcx config set contexts.dev-instance.grafana.insecure-skip-tls-verify true
+
+	# Set a value in the local config layer
+	gcx config set --file local contexts.prod.cloud.token my-token
+```
+
+### Options
+
+```
+      --file string   Config layer to write to (system, user, local)
+  -h, --help          help for set
+```
+
+### Options inherited from parent commands
+
+```
+      --agent            Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --config string    Path to the configuration file to use
+      --context string   Name of the context to use
+      --no-color         Disable color output
+      --no-truncate      Disable table column truncation (auto-enabled when stdout is piped)
+  -v, --verbose count    Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
+```
+
+### SEE ALSO
+
+* [gcx config](gcx_config.md)	 - View or manipulate configuration settings
+

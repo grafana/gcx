@@ -1,6 +1,6 @@
 ---
 name: add-provider
-description: Use when adding a new Grafana Cloud product provider to grafanactl (SLO, OnCall, Synthetic Monitoring, k6, ML, etc.), or when the user says "add provider", "new provider", or "integrate [product]".
+description: Use when adding a new Grafana Cloud product provider to gcx (SLO, OnCall, Synthetic Monitoring, k6, ML, etc.), or when the user says "add provider", "new provider", or "integrate [product]".
 ---
 
 # Add Provider
@@ -15,7 +15,7 @@ verified implementation. Four stages with human approval gates.
 - A bead task references provider implementation
 
 **When NOT to use**: If the product exposes a K8s-compatible `/apis` endpoint,
-it already works with `grafanactl resources` — no provider needed.
+it already works with `gcx resources` — no provider needed.
 
 **First**: Check `references/decision-tree.md` to confirm a provider is the
 right approach.
@@ -138,20 +138,20 @@ Stage 4 after implementation.
 Example pattern (replace with real product/resource names in actual spec):
 ```bash
 # Provider appears in list
-grafanactl providers | grep {name}
+gcx providers | grep {name}
 
 # Config secrets are redacted
-grafanactl config view | grep {name}
+gcx config view | grep {name}
 
 # CRUD operations work
-grafanactl {name} {resource} list
-grafanactl {name} {resource} get <test-id>
-grafanactl {name} {resource} push ./testdata/{resource}.yaml
-grafanactl {name} {resource} pull -d ./tmp/
-grafanactl {name} {resource} delete <test-id> --yes
+gcx {name} {resource} list
+gcx {name} {resource} get <test-id>
+gcx {name} {resource} push ./testdata/{resource}.yaml
+gcx {name} {resource} pull -d ./tmp/
+gcx {name} {resource} delete <test-id> --yes
 
 # Unified resources path works
-grafanactl resources get {alias}
+gcx resources get {alias}
 ```
 
 ### Gate: User Approves Design
@@ -209,7 +209,7 @@ complete, secrets marked, Validate returns actionable errors, blank import added
 no `os.Exit()`, cmdio status messages, help text standards, push idempotent,
 format-agnostic data fetching, promql-builder for PromQL.
 
-**Build**: `make all`, `grafanactl providers` lists it, `config view` redacts.
+**Build**: `make all`, `gcx providers` lists it, `config view` redacts.
 
 ### 4c. Update Architecture Docs
 
@@ -239,5 +239,5 @@ Spec plans: `docs/specs/slo-provider/`, `docs/specs/synth-provider/`
 | K8s CRDs not externally accessible | Verify with real API call before choosing K8s client |
 | Incomplete OpenAPI specs | Cross-reference with source code route handlers |
 | configLoader is non-trivial | Copy full impl from SLO, don't simplify |
-| Missing blank import | Add `_ ".../{name}"` in `cmd/grafanactl/root/command.go` |
+| Missing blank import | Add `_ ".../{name}"` in `cmd/gcx/root/command.go` |
 | readOnly fields in POST/PUT | Adapter must strip server-generated fields |

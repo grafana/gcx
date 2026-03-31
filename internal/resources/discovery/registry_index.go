@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/grafana-app-sdk/logging"
-	"github.com/grafana/grafanactl/internal/resources"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -301,16 +301,29 @@ func (r *RegistryIndex) Update(ctx context.Context, groups []*metav1.APIGroup, l
 }
 
 func (r *RegistryIndex) getKindCandidates(resource string) ([]schema.GroupKind, bool) {
-	if k, ok := r.kindNames[resource]; ok {
-		return k, true
-	} else if k, ok := r.singularNames[resource]; ok {
-		return k, true
-	} else if k, ok := r.pluralNames[resource]; ok {
-		return k, true
+	// Collect candidates from all maps so that filterCandidates can
+	// disambiguate by group/version. Without merging, an alias in
+	// singularNames can shadow a legitimate plural in pluralNames
+	// (e.g. alert's "rules" alias shadows KG's "rules" plural).
+	var candidates []schema.GroupKind
+	seen := make(map[schema.GroupKind]struct{})
+
+	for _, m := range []map[string][]schema.GroupKind{
+		r.kindNames,
+		r.singularNames,
+		r.pluralNames,
+	} {
+		if gks, ok := m[resource]; ok {
+			for _, gk := range gks {
+				if _, dup := seen[gk]; !dup {
+					seen[gk] = struct{}{}
+					candidates = append(candidates, gk)
+				}
+			}
+		}
 	}
 
-	// We don't have a kind name, so we can't find the resource.
-	return nil, false
+	return candidates, len(candidates) > 0
 }
 
 func (r *RegistryIndex) filterCandidates(

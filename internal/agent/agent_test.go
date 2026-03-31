@@ -3,7 +3,7 @@ package agent_test
 import (
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/agent"
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -39,29 +39,29 @@ func TestIsAgentMode(t *testing.T) {
 			wantMode: true,
 		},
 		{
-			name:     "GRAFANACTL_AGENT_MODE=1",
-			envVars:  map[string]string{"GRAFANACTL_AGENT_MODE": "1"},
+			name:     "GCX_AGENT_MODE=1",
+			envVars:  map[string]string{"GCX_AGENT_MODE": "1"},
 			wantMode: true,
 		},
 		{
-			name: "GRAFANACTL_AGENT_MODE=0 overrides CLAUDE_CODE=1",
+			name: "GCX_AGENT_MODE=0 overrides CLAUDE_CODE=1",
 			envVars: map[string]string{
-				"GRAFANACTL_AGENT_MODE": "0",
-				"CLAUDE_CODE":           "1",
+				"GCX_AGENT_MODE": "0",
+				"CLAUDE_CODE":    "1",
 			},
 			wantMode: false,
 		},
 		{
-			name: "GRAFANACTL_AGENT_MODE=false overrides CURSOR_AGENT=1",
+			name: "GCX_AGENT_MODE=false overrides CURSOR_AGENT=1",
 			envVars: map[string]string{
-				"GRAFANACTL_AGENT_MODE": "false",
-				"CURSOR_AGENT":          "1",
+				"GCX_AGENT_MODE": "false",
+				"CURSOR_AGENT":   "1",
 			},
 			wantMode: false,
 		},
 		{
-			name:     "GRAFANACTL_AGENT_MODE=no disables agent mode",
-			envVars:  map[string]string{"GRAFANACTL_AGENT_MODE": "no"},
+			name:     "GCX_AGENT_MODE=no disables agent mode",
+			envVars:  map[string]string{"GCX_AGENT_MODE": "no"},
 			wantMode: false,
 		},
 		{
@@ -86,13 +86,13 @@ func TestIsAgentMode(t *testing.T) {
 			wantMode: true,
 		},
 		{
-			name:     "case insensitive falsy: GRAFANACTL_AGENT_MODE=FALSE",
-			envVars:  map[string]string{"GRAFANACTL_AGENT_MODE": "FALSE"},
+			name:     "case insensitive falsy: GCX_AGENT_MODE=FALSE",
+			envVars:  map[string]string{"GCX_AGENT_MODE": "FALSE"},
 			wantMode: false,
 		},
 		{
-			name:     "case insensitive falsy: GRAFANACTL_AGENT_MODE=No",
-			envVars:  map[string]string{"GRAFANACTL_AGENT_MODE": "No"},
+			name:     "case insensitive falsy: GCX_AGENT_MODE=No",
+			envVars:  map[string]string{"GCX_AGENT_MODE": "No"},
 			wantMode: false,
 		},
 	}
@@ -127,7 +127,7 @@ func clearAgentEnv(t *testing.T) {
 	t.Helper()
 
 	for _, env := range []string{
-		"GRAFANACTL_AGENT_MODE",
+		"GCX_AGENT_MODE",
 		"CLAUDECODE",
 		"CLAUDE_CODE",
 		"CURSOR_AGENT",
@@ -160,8 +160,8 @@ func TestDetectedFromEnv(t *testing.T) {
 			wantEnv: false,
 		},
 		{
-			name:    "returns false when GRAFANACTL_AGENT_MODE=0",
-			envVars: map[string]string{"GRAFANACTL_AGENT_MODE": "0"},
+			name:    "returns false when GCX_AGENT_MODE=0",
+			envVars: map[string]string{"GCX_AGENT_MODE": "0"},
 			wantEnv: false,
 		},
 	}

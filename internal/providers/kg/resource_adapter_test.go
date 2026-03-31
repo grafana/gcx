@@ -3,7 +3,7 @@ package kg_test
 import (
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/providers/kg"
+	"github.com/grafana/gcx/internal/providers/kg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

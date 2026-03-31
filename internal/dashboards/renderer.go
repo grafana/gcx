@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/grafana/grafanactl/internal/config"
+	"github.com/grafana/gcx/internal/config"
 	"k8s.io/client-go/rest"
 )
 
@@ -49,7 +49,7 @@ type Client struct {
 	httpClient *http.Client
 }
 
-// NewClient creates a new renderer client using auth from the active grafanactl context.
+// NewClient creates a new renderer client using auth from the active gcx context.
 func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 	httpClient, err := rest.HTTPClientFor(&cfg.Config)
 	if err != nil {

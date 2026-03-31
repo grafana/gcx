@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/config"
+	"github.com/grafana/gcx/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -117,7 +117,7 @@ func TestLoadLayered_MergesThreeLayers(t *testing.T) {
 	userDir := t.TempDir()
 	localDir := t.TempDir()
 
-	systemFile := filepath.Join(systemDir, "grafanactl", "config.yaml")
+	systemFile := filepath.Join(systemDir, "gcx", "config.yaml")
 	require.NoError(t, os.MkdirAll(filepath.Dir(systemFile), 0o755))
 	require.NoError(t, os.WriteFile(systemFile, []byte(`
 contexts:
@@ -127,7 +127,7 @@ contexts:
 current-context: prod
 `), 0o600))
 
-	userFile := filepath.Join(userDir, "grafanactl", "config.yaml")
+	userFile := filepath.Join(userDir, "gcx", "config.yaml")
 	require.NoError(t, os.MkdirAll(filepath.Dir(userFile), 0o755))
 	require.NoError(t, os.WriteFile(userFile, []byte(`
 contexts:
@@ -139,7 +139,7 @@ contexts:
       server: https://staging.grafana.net
 `), 0o600))
 
-	localFile := filepath.Join(localDir, ".grafanactl.yaml")
+	localFile := filepath.Join(localDir, ".gcx.yaml")
 	require.NoError(t, os.WriteFile(localFile, []byte(`
 contexts:
   prod:

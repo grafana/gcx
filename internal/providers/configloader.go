@@ -7,11 +7,10 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/caarlos0/env/v11"
-	"github.com/grafana/grafanactl/internal/cloud"
-	"github.com/grafana/grafanactl/internal/config"
+	"github.com/grafana/gcx/internal/cloud"
+	"github.com/grafana/gcx/internal/config"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/rest"
 )
@@ -31,10 +30,10 @@ type CloudRESTConfig struct {
 }
 
 // HTTPClient returns a TLS-aware HTTP client derived from the REST config.
-// Returns a default client with 30s timeout when no REST config is present.
+// Returns the shared ExternalHTTPClient when no REST config is present.
 func (c CloudRESTConfig) HTTPClient() (*http.Client, error) {
 	if c.RESTConfig == nil {
-		return &http.Client{Timeout: 30 * time.Second}, nil
+		return ExternalHTTPClient(), nil
 	}
 	return rest.HTTPClientFor(c.RESTConfig)
 }
@@ -48,7 +47,7 @@ func (c CloudRESTConfig) ProviderConfig(name string) map[string]string {
 }
 
 // ConfigLoader is a minimal config loading helper shared across providers.
-// It avoids importing cmd/grafanactl/config (which would create an import cycle
+// It avoids importing cmd/gcx/config (which would create an import cycle
 // via internal/providers).
 type ConfigLoader struct {
 	configFile string
@@ -74,64 +73,66 @@ func (l *ConfigLoader) SetConfigFile(path string) {
 	l.configFile = path
 }
 
+// envOverride applies environment variable overrides to the config.
+// It ensures a current context exists, parses env vars into the context,
+// and resolves GRAFANA_PROVIDER_{NAME}_{KEY} env vars into provider config.
+func envOverride(cfg *config.Config) error {
+	if cfg.CurrentContext == "" {
+		cfg.CurrentContext = config.DefaultContextName
+	}
+
+	if !cfg.HasContext(cfg.CurrentContext) {
+		cfg.SetContext(cfg.CurrentContext, true, config.Context{})
+	}
+
+	curCtx := cfg.Contexts[cfg.CurrentContext]
+	if curCtx.Grafana == nil {
+		curCtx.Grafana = &config.GrafanaConfig{}
+	}
+
+	if err := env.Parse(curCtx); err != nil {
+		return err
+	}
+
+	// Resolve GRAFANA_PROVIDER_{NAME}_{KEY} environment variables.
+	const providerEnvPrefix = "GRAFANA_PROVIDER_"
+	for _, envVar := range os.Environ() {
+		parts := strings.SplitN(envVar, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		key, val := parts[0], parts[1]
+		if !strings.HasPrefix(key, providerEnvPrefix) {
+			continue
+		}
+
+		suffix := key[len(providerEnvPrefix):]
+		nameParts := strings.SplitN(suffix, "_", 2)
+		if len(nameParts) != 2 || nameParts[0] == "" || nameParts[1] == "" {
+			continue
+		}
+
+		providerName := strings.ToLower(nameParts[0])
+		configKey := strings.ReplaceAll(strings.ToLower(nameParts[1]), "_", "-")
+
+		if curCtx.Providers == nil {
+			curCtx.Providers = make(map[string]map[string]string)
+		}
+		if curCtx.Providers[providerName] == nil {
+			curCtx.Providers[providerName] = make(map[string]string)
+		}
+		curCtx.Providers[providerName][configKey] = val
+	}
+
+	return nil
+}
+
 // LoadGrafanaConfig loads the REST config from the config file, applying
 // env var overrides and context flags. It mirrors the logic in
-// cmd/grafanactl/config.Options.LoadGrafanaConfig.
+// cmd/gcx/config.Options.LoadGrafanaConfig.
 func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error) {
-	overrides := []config.Override{
-		// Apply env vars into the current context.
-		func(cfg *config.Config) error {
-			if cfg.CurrentContext == "" {
-				cfg.CurrentContext = config.DefaultContextName
-			}
-
-			if !cfg.HasContext(cfg.CurrentContext) {
-				cfg.SetContext(cfg.CurrentContext, true, config.Context{})
-			}
-
-			curCtx := cfg.Contexts[cfg.CurrentContext]
-			if curCtx.Grafana == nil {
-				curCtx.Grafana = &config.GrafanaConfig{}
-			}
-
-			if err := env.Parse(curCtx); err != nil {
-				return err
-			}
-
-			// Resolve GRAFANA_PROVIDER_{NAME}_{KEY} environment variables.
-			const providerEnvPrefix = "GRAFANA_PROVIDER_"
-			for _, envVar := range os.Environ() {
-				parts := strings.SplitN(envVar, "=", 2)
-				if len(parts) != 2 {
-					continue
-				}
-
-				key, val := parts[0], parts[1]
-				if !strings.HasPrefix(key, providerEnvPrefix) {
-					continue
-				}
-
-				suffix := key[len(providerEnvPrefix):]
-				nameParts := strings.SplitN(suffix, "_", 2)
-				if len(nameParts) != 2 || nameParts[0] == "" || nameParts[1] == "" {
-					continue
-				}
-
-				providerName := strings.ToLower(nameParts[0])
-				configKey := strings.ReplaceAll(strings.ToLower(nameParts[1]), "_", "-")
-
-				if curCtx.Providers == nil {
-					curCtx.Providers = make(map[string]map[string]string)
-				}
-				if curCtx.Providers[providerName] == nil {
-					curCtx.Providers[providerName] = make(map[string]string)
-				}
-				curCtx.Providers[providerName][configKey] = val
-			}
-
-			return nil
-		},
-	}
+	overrides := []config.Override{envOverride}
 
 	// Resolve context name: explicit flag takes priority, then context.Context carrier
 	// (set by resource commands to honour the --context flag for provider adapters).
@@ -265,4 +266,150 @@ func (l *ConfigLoader) LoadCloudConfig(ctx context.Context) (CloudRESTConfig, er
 		ProviderConfigs: curCtx.Providers,
 		RESTConfig:      restCfg,
 	}, nil
+}
+
+// configSource returns the config.Source to use for write-back operations.
+// Mirrors the resolution logic in config.LoadLayered.
+func (l *ConfigLoader) configSource() config.Source {
+	if l.configFile != "" {
+		return config.ExplicitConfigFile(l.configFile)
+	}
+	return config.StandardLocation()
+}
+
+// LoadProviderConfig loads the provider-specific config map and namespace for
+// the named provider from the config file, applying GRAFANA_PROVIDER_<NAME>_<KEY>
+// env var overrides. Returns (providerConfig, namespace, error).
+func (l *ConfigLoader) LoadProviderConfig(ctx context.Context, providerName string) (map[string]string, string, error) {
+	overrides := []config.Override{envOverride}
+
+	// Resolve context name.
+	ctxName := l.ctxName
+	if ctxName == "" {
+		ctxName = config.ContextNameFromCtx(ctx)
+	}
+	if ctxName != "" {
+		overrides = append(overrides, func(cfg *config.Config) error {
+			if !cfg.HasContext(ctxName) {
+				return config.ContextNotFound(ctxName)
+			}
+			cfg.CurrentContext = ctxName
+			return nil
+		})
+	}
+
+	// Minimal validation: context must exist.
+	overrides = append(overrides, func(cfg *config.Config) error {
+		if !cfg.HasContext(cfg.CurrentContext) {
+			return config.ContextNotFound(cfg.CurrentContext)
+		}
+		return nil
+	})
+
+	loaded, err := config.LoadLayered(ctx, l.configFile, overrides...)
+	if err != nil {
+		return nil, "", err
+	}
+
+	if !loaded.HasContext(loaded.CurrentContext) {
+		return nil, "", fmt.Errorf("context %q not found", loaded.CurrentContext)
+	}
+
+	curCtx := loaded.GetCurrentContext()
+
+	// Derive namespace from grafana config if available.
+	namespace := "default"
+	if curCtx.Grafana != nil && !curCtx.Grafana.IsEmpty() {
+		restCfg := curCtx.ToRESTConfig(ctx)
+		namespace = restCfg.Namespace
+	}
+
+	providerCfg := curCtx.Providers[providerName]
+	return providerCfg, namespace, nil
+}
+
+// SaveProviderConfig persists a single key-value pair to
+// contexts.[current].providers.[providerName].[key] in the config file.
+func (l *ConfigLoader) SaveProviderConfig(ctx context.Context, providerName, key, value string) error {
+	overrides := []config.Override{envOverride}
+
+	// Resolve context name.
+	ctxName := l.ctxName
+	if ctxName == "" {
+		ctxName = config.ContextNameFromCtx(ctx)
+	}
+	if ctxName != "" {
+		overrides = append(overrides, func(cfg *config.Config) error {
+			if !cfg.HasContext(ctxName) {
+				return config.ContextNotFound(ctxName)
+			}
+			cfg.CurrentContext = ctxName
+			return nil
+		})
+	}
+
+	// Minimal validation: context must exist.
+	overrides = append(overrides, func(cfg *config.Config) error {
+		if !cfg.HasContext(cfg.CurrentContext) {
+			return config.ContextNotFound(cfg.CurrentContext)
+		}
+		return nil
+	})
+
+	loaded, err := config.LoadLayered(ctx, l.configFile, overrides...)
+	if err != nil {
+		return err
+	}
+
+	curCtx := loaded.GetCurrentContext()
+	if curCtx == nil {
+		return fmt.Errorf("context %q not found", loaded.CurrentContext)
+	}
+
+	if curCtx.Providers == nil {
+		curCtx.Providers = make(map[string]map[string]string)
+	}
+	if curCtx.Providers[providerName] == nil {
+		curCtx.Providers[providerName] = make(map[string]string)
+	}
+	curCtx.Providers[providerName][key] = value
+	loaded.SetContext(loaded.CurrentContext, false, *curCtx)
+
+	return config.Write(ctx, l.configSource(), loaded)
+}
+
+// LoadFullConfig loads the full config from the config file, applying env var
+// overrides and context flags. Returns a pointer to the resolved Config.
+func (l *ConfigLoader) LoadFullConfig(ctx context.Context) (*config.Config, error) {
+	overrides := []config.Override{envOverride}
+
+	// Resolve context name.
+	ctxName := l.ctxName
+	if ctxName == "" {
+		ctxName = config.ContextNameFromCtx(ctx)
+	}
+	if ctxName != "" {
+		overrides = append(overrides, func(cfg *config.Config) error {
+			if !cfg.HasContext(ctxName) {
+				return config.ContextNotFound(ctxName)
+			}
+			cfg.CurrentContext = ctxName
+			return nil
+		})
+	}
+
+	// Minimal validation: context must exist.
+	overrides = append(overrides, func(cfg *config.Config) error {
+		if !cfg.HasContext(cfg.CurrentContext) {
+			return config.ContextNotFound(cfg.CurrentContext)
+		}
+		return nil
+	})
+
+	loaded, err := config.LoadLayered(ctx, l.configFile, overrides...)
+	if err != nil {
+		return nil, err
+	}
+
+	return &loaded, nil
 }

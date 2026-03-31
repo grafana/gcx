@@ -1,4 +1,4 @@
-# Codebase Architecture Analysis: grafanactl
+# Codebase Architecture Analysis: gcx
 
 *Generated: 2026-03-02 | Domains Analyzed: 6 | Overall Confidence: 92% (High)*
 
@@ -6,7 +6,7 @@
 
 ## Executive Summary
 
-- **grafanactl is a unified CLI for managing Grafana resources** operating in two tiers: (1) a K8s resource tier using Grafana 12+'s Kubernetes-compatible API via `k8s.io/client-go` for dashboards, folders, and other K8s-native resources; (2) a Cloud provider tier with pluggable providers for Grafana Cloud products (SLO, Synthetic Monitoring, OnCall, Fleet Management, K6 Cloud, Knowledge Graph, IRM Incidents, Alerting) that use product-specific REST APIs.
+- **gcx is a unified CLI for managing Grafana resources** operating in two tiers: (1) a K8s resource tier using Grafana 12+'s Kubernetes-compatible API via `k8s.io/client-go` for dashboards, folders, and other K8s-native resources; (2) a Cloud provider tier with pluggable providers for Grafana Cloud products (SLO, Synthetic Monitoring, OnCall, Fleet Management, K6 Cloud, Knowledge Graph, IRM Incidents, Alerting) that use product-specific REST APIs.
 - **The architecture is a clean layered monolith** with strict separation: CLI wiring (`cmd/`) holds no business logic; all domain logic lives in `internal/` organized by feature (config, resources, server, providers).
 - **Context-based multi-environment configuration** follows the kubectl kubeconfig pattern, enabling management of multiple Grafana instances (dev, staging, prod, cloud) from a single config file.
 - **A composable processor pipeline** transforms resources during push and pull, keeping I/O and transformation concerns decoupled.
@@ -37,7 +37,7 @@
 
 ```
 +-------------------------------------------------------------+
-|  CLI Layer (cmd/grafanactl/)                                 |
+|  CLI Layer (cmd/gcx/)                                 |
 |  - Cobra commands, flag parsing, output formatting           |
 |  - No business logic; only wiring and user interaction       |
 |  - internal/agent: agent-mode detection (env vars + --agent) |
@@ -102,17 +102,17 @@
 ### Key Architectural Decisions
 
 1. **Kubernetes client libraries as foundation.** Grafana 12+ exposes a K8s-compatible
-   API. Using `k8s.io/client-go` directly gives grafanactl pagination, discovery,
+   API. Using `k8s.io/client-go` directly gives gcx pagination, discovery,
    dry-run, error handling, and unstructured object support for free. The trade-off
    is a large vendor directory, but the implementation savings are substantial.
 
-2. **No public Go API.** Everything is under `internal/`. grafanactl is a CLI tool,
+2. **No public Go API.** Everything is under `internal/`. gcx is a CLI tool,
    not a library. This gives the team freedom to refactor without worrying about
    external API stability.
 
 3. **Dynamic resource types.** Resources are discovered at runtime via the Grafana
    API's discovery endpoint, not hardcoded. This means new resource types added to
-   Grafana are automatically available without grafanactl code changes.
+   Grafana are automatically available without gcx code changes.
 
 4. **Vendored dependencies.** All Go dependencies are committed to `vendor/`. This
    ensures reproducible builds without network access and makes the full dependency
@@ -261,13 +261,13 @@ Config
 ```
 
 This is a simplified kubeconfig: where kubectl separates clusters, users, and
-contexts into three reusable lists, grafanactl collapses everything into a single
+contexts into three reusable lists, gcx collapses everything into a single
 context entry. Simpler but means auth and server are always paired.
 
 ### Loading Chain
 
 ```
---config flag  >  $GRAFANACTL_CONFIG  >  $XDG_CONFIG_HOME  >  ~/.config  >  $XDG_CONFIG_DIRS
+--config flag  >  $GCX_CONFIG  >  $XDG_CONFIG_HOME  >  ~/.config  >  $XDG_CONFIG_DIRS
      |
      v
 YAML file read + decode
@@ -358,7 +358,7 @@ Kubernetes `StatusError` objects are translated through two layers:
 ### Command Structure
 
 ```
-grafanactl
+gcx
   +-- config             (--config, --context as persistent flags)
   |     +-- check, current-context, list-contexts, set, unset, use-context, view
   +-- resources          (--config, --context as persistent flags)
@@ -397,7 +397,7 @@ time, ensuring flags are already parsed.
 
 ### Adding a New Command
 
-1. Create `cmd/grafanactl/resources/mycommand.go` following the options pattern
+1. Create `cmd/gcx/resources/mycommand.go` following the options pattern
 2. Register in `resources/command.go` with `cmd.AddCommand(myCmd(configOpts))`
 3. No other wiring needed -- error handling, config loading, and logging are automatic
 
@@ -436,7 +436,7 @@ commands work identically inside and outside `devbox shell`.
 | Target | Purpose |
 |--------|---------|
 | `make all` | Full gate: lint + tests + build + docs |
-| `make build` | Compile to `bin/grafanactl` with version injection |
+| `make build` | Compile to `bin/gcx` with version injection |
 | `make tests` | Run all unit tests |
 | `make lint` | golangci-lint with project config |
 | `make docs` | Generate reference docs + build mkdocs site |
@@ -466,7 +466,7 @@ and checked for drift in CI.
 
 2. **Kubernetes ecosystem leverage.** Using k8s client-go directly avoids
    reimplementing discovery, pagination, dry-run, error handling, and unstructured
-   object representation. Dynamic resource types mean grafanactl stays compatible
+   object representation. Dynamic resource types mean gcx stays compatible
    as Grafana adds new resource kinds.
 
 3. **Consistent command patterns.** The options pattern, shared helpers, and
@@ -513,7 +513,7 @@ and checked for drift in CI.
    to `/bootdata` on every command.
 
 5. **Manager kind placeholder.** `ResourceManagerKind` uses `utils.ManagerKindKubectl`
-   (a kubectl constant) as a placeholder. Should be changed to a grafanactl-specific
+   (a kubectl constant) as a placeholder. Should be changed to a gcx-specific
    value.
 
 6. **Hardcoded rate limits.** QPS=50 and Burst=100 are not configurable. This
@@ -551,10 +551,10 @@ Files most important for understanding the codebase. Organized by architectural 
 
 | File | Purpose |
 |------|---------|
-| `cmd/grafanactl/main.go` | Binary entry point, error handling, version formatting |
-| `cmd/grafanactl/root/command.go` | Root Cobra command, logging setup, PersistentPreRun |
-| `cmd/grafanactl/resources/command.go` | Resources command group, configOpts injection |
-| `cmd/grafanactl/config/command.go` | Config commands + Options.LoadConfig/LoadGrafanaConfig |
+| `cmd/gcx/main.go` | Binary entry point, error handling, version formatting |
+| `cmd/gcx/root/command.go` | Root Cobra command, logging setup, PersistentPreRun |
+| `cmd/gcx/resources/command.go` | Resources command group, configOpts injection |
+| `cmd/gcx/config/command.go` | Config commands + Options.LoadConfig/LoadGrafanaConfig |
 
 ### Core Resource Abstractions
 
@@ -654,18 +654,37 @@ Files most important for understanding the codebase. Organized by architectural 
 
 | File | Purpose |
 |------|---------|
-| `cmd/grafanactl/fail/detailed.go` | DetailedError type (rich error rendering) |
-| `cmd/grafanactl/fail/convert.go` | ErrorToDetailedError (error type dispatch) |
+| `cmd/gcx/fail/detailed.go` | DetailedError type (rich error rendering) |
+| `cmd/gcx/fail/convert.go` | ErrorToDetailedError (error type dispatch) |
 
 ### Provider System
 
 | File | Purpose |
 |------|---------|
-| `internal/providers/provider.go` | `Provider` interface (incl. ResourceAdapters()), `ConfigKey` metadata type |
+| `internal/providers/provider.go` | `Provider` interface (incl. TypedRegistrations()), `ConfigKey` metadata type |
 | `internal/providers/registry.go` | `All()` — compile-time provider registry |
 | `internal/providers/redact.go` | `RedactSecrets()` — secure-by-default secret redaction |
-| `cmd/grafanactl/providers/command.go` | `providers` command (list registered providers) |
+| `cmd/gcx/providers/command.go` | `providers` command (list registered providers) |
 | `internal/providers/configloader.go` | Shared `ConfigLoader` — binds `--config`/`--context` flags and loads REST config for all providers |
+
+### Adaptive Telemetry Provider
+
+| File | Purpose |
+|------|---------|
+| `internal/providers/adaptive/provider.go` | `AdaptiveProvider` implementing the `providers.Provider` interface |
+| `internal/providers/adaptive/auth/` | Shared Basic auth helper and GCOM caching |
+| `internal/providers/adaptive/metrics/` | Metrics rules and recommendations (provider-only, read-only) |
+| `internal/providers/adaptive/logs/` | Logs patterns (provider-only, read-only) and exemptions (TypedCRUD adapter) |
+| `internal/providers/adaptive/traces/` | Traces recommendations (provider-only, read-only) and policies (TypedCRUD adapter) |
+
+### App Observability Provider
+
+| File | Purpose |
+|------|---------|
+| `internal/providers/appo11y/provider.go` | `AppO11yProvider` implementing the `providers.Provider` interface |
+| `internal/providers/appo11y/client.go` | Plugin proxy HTTP client (shared by both subpackages for testing) |
+| `internal/providers/appo11y/overrides/` | Overrides (MetricsGeneratorConfig) — singleton TypedCRUD with ETag concurrency |
+| `internal/providers/appo11y/settings/` | Settings (PluginSettings) — singleton TypedCRUD without ETag |
 
 ### Alert Provider
 
@@ -744,14 +763,14 @@ Files most important for understanding the codebase. Organized by architectural 
 | `internal/linter/tests.go` | Test runner for `.rego` test files |
 | `internal/linter/bundle/` | Embedded Rego bundle with built-in linting rules |
 | `internal/linter/builtins/` | Built-in rule validators (PromQL, LogQL) |
-| `cmd/grafanactl/linter/command.go` | `dev lint` subgroup (run, new, rules, test subcommands; formerly top-level `linter`) |
+| `cmd/gcx/linter/command.go` | `dev lint` subgroup (run, new, rules, test subcommands; formerly top-level `linter`) |
 | `scripts/linter-rules-reference/` | Code generator for linter rule reference documentation |
 
 ### Dev Command
 
 | File | Purpose |
 |------|---------|
-| `cmd/grafanactl/dev/command.go` | `dev` command group (import, scaffold, generate, lint, serve subcommands) |
+| `cmd/gcx/dev/command.go` | `dev` command group (import, scaffold, generate, lint, serve subcommands) |
 
 ### Datasource Query Clients
 
@@ -763,8 +782,8 @@ Files most important for understanding the codebase. Organized by architectural 
 | `internal/query/loki/client.go` | Loki query client (Query, Labels, LabelValues, Series) |
 | `internal/query/loki/types.go` | Request/response types for Loki |
 | `internal/query/loki/formatter.go` | Table/text formatting for Loki responses |
-| `cmd/grafanactl/datasources/command.go` | `datasources` command group (list, get, prometheus, loki, pyroscope, tempo, generic subcommands) |
-| `cmd/grafanactl/datasources/query/` | Per-kind `query` subcommand constructors and shared infrastructure (codecs, time parsing) |
+| `cmd/gcx/datasources/command.go` | `datasources` command group (list, get, prometheus, loki, pyroscope, tempo, generic subcommands) |
+| `cmd/gcx/datasources/query/` | Per-kind `query` subcommand constructors and shared infrastructure (codecs, time parsing) |
 
 ### Dashboard Image Renderer
 
@@ -772,8 +791,8 @@ Files most important for understanding the codebase. Organized by architectural 
 |------|---------|
 | `internal/dashboards/renderer.go` | HTTP client for Grafana Image Renderer API (`/render/d/`, `/render/d-solo/`) |
 | `internal/dashboards/types.go` | `SnapshotResult` struct for JSON/table output |
-| `cmd/grafanactl/dashboards/command.go` | `dashboards` command group |
-| `cmd/grafanactl/dashboards/snapshot.go` | `dashboards snapshot` — renders PNG images with kiosk mode, template variable overrides |
+| `cmd/gcx/dashboards/command.go` | `dashboards` command group |
+| `cmd/gcx/dashboards/snapshot.go` | `dashboards snapshot` — renders PNG images with kiosk mode, template variable overrides |
 
 ### Terminal Chart Rendering
 
@@ -839,15 +858,15 @@ These invariants are enforced by convention. Violating them will cause subtle bu
 
 1. Run `devbox shell` to get the full toolchain
 2. Run `make build` to verify the build works
-3. Read `cmd/grafanactl/main.go` to see the entry point
-4. Read `cmd/grafanactl/resources/push.go` as the canonical command example
+3. Read `cmd/gcx/main.go` to see the entry point
+4. Read `cmd/gcx/resources/push.go` as the canonical command example
 5. Read `internal/resources/resources.go` to understand the central data type
 6. Read `internal/resources/discovery/registry.go` to understand how user input
    resolves to API calls
 
 ### Understanding a Request Flow
 
-Trace `grafanactl resources push dashboards/my-dash -p ./resources`:
+Trace `gcx resources push dashboards/my-dash -p ./resources`:
 
 ```
 main.go             -> root.Command().Execute()
@@ -882,7 +901,7 @@ env parser, and redactor pick it up automatically.
 
 **Running locally against a test Grafana:** `make test-env-up` starts Grafana 12
 + MySQL 9. Use `--config testdata/integration-test-config.yaml` to point
-grafanactl at it.
+gcx at it.
 
 ---
 

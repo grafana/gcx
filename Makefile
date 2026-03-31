@@ -1,10 +1,14 @@
 SHELL := /bin/bash
 
-# Within devbox
 ifneq "$(DEVBOX_CONFIG_DIR)" ""
-    RUN_DEVBOX:=
-else # Normal shell
-    RUN_DEVBOX:=devbox run
+  # Within devbox
+  RUN_DEVBOX:=
+else ifneq ($(shell which devbox 2>/dev/null),)
+  # Devbox available, use it.
+  RUN_DEVBOX:=devbox run
+else
+  # No devbox, fall back to regular commands.
+  RUN_DEVBOX:=
 endif
 
 ##@ General
@@ -42,7 +46,7 @@ cli-tests: check-binaries ## Runs the CLI tests.
 
 .PHONY: linter-tests
 linter-tests: check-binaries ## Runs the linter rules tests.
-	$(RUN_DEVBOX) go run ./cmd/grafanactl/ dev lint test ./internal/linter/bundle/grafanactl/
+	$(RUN_DEVBOX) go run ./cmd/gcx/ dev lint test ./internal/linter/bundle/gcx/
 
 GIT_REVISION  ?= $(shell git rev-parse --short HEAD)
 GIT_VERSION   ?= $(shell git describe --tags --exact-match 2>/dev/null || echo "")
@@ -50,22 +54,21 @@ BUILD_DATE    ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 VERSION_FLAGS := -X main.version=${GIT_VERSION} -X main.commit=${GIT_REVISION} -X main.date=${BUILD_DATE}
 
 .PHONY: build
-build: check-binaries ## Builds the binary into the `./bin/grafanactl`.
+build: check-binaries ## Builds the binary into the `./bin/gcx`.
 	$(RUN_DEVBOX) go build \
 		-buildvcs=false \
 		-ldflags="${VERSION_FLAGS}" \
-		-o bin/grafanactl \
-		./cmd/grafanactl
+		-o bin/gcx \
+		./cmd/gcx
 
 .PHONY: install
 install: build ## Installs the binary into `$GOPATH/bin`.
-ifndef GOPATH
-	@echo "GOPATH is not defined"
-	exit 1
-endif
-	@cp "bin/grafanactl" "${GOPATH}/bin/grafanactl"
+	$(eval GOPATH := $(or $(GOPATH),$(shell go env GOPATH)))
+	@test -n "$(GOPATH)" || { echo "GOPATH is not defined and 'go env GOPATH' returned empty"; exit 1; }
+	@mkdir -p "$(GOPATH)/bin"
+	@cp "bin/gcx" "$(GOPATH)/bin/gcx"
 ifeq ($(shell uname),Darwin)
-	@codesign -s - "${GOPATH}/bin/grafanactl"
+	@codesign -s - "${GOPATH}/bin/gcx"
 endif
 
 .PHONY: deps
@@ -80,9 +83,14 @@ clean: ## Cleans the project.
 	rm -rf .devbox
 	rm -rf .venv
 
+.PHONY: setup
+setup: ## Sets up the local development environment (commit template, etc).
+	git config commit.template .gitmessage
+	@echo "Git commit template configured"
+
 .PHONY: check-binaries
 check-binaries: ## Check that the required binaries are present.
-	@devbox version >/dev/null 2>&1 || (echo "ERROR: devbox is required. See https://www.jetify.com/devbox/docs/quickstart/"; exit 1)
+	@go version >/dev/null 2>&1 || devbox version >/dev/null 2>&1 || (echo "ERROR: go or devbox is required. See https://www.jetify.com/devbox/docs/quickstart/"; exit 1)
 
 
 ##@ Documentation
@@ -100,7 +108,7 @@ reference-drift: cli-reference-drift env-var-reference-drift config-reference-dr
 .PHONY: cli-reference
 cli-reference: check-binaries ## Generates a reference for the CLI.
 	@rm -rf ./docs/reference/cli
-	@GRAFANACTL_AGENT_MODE=false $(RUN_DEVBOX) CGO_ENABLED=0 go run scripts/cmd-reference/*.go "./docs/reference/cli"
+	@GCX_AGENT_MODE=false $(RUN_DEVBOX) CGO_ENABLED=0 go run scripts/cmd-reference/*.go "./docs/reference/cli"
 
 .PHONY: env-var-reference
 env-var-reference: check-binaries ## Generates an environment variables reference.

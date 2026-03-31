@@ -4,7 +4,7 @@
 
 ## Quick Start
 
-**grafanactl** is a unified CLI for managing Grafana resources. It operates in two tiers: (1) a **K8s resource tier** that uses Grafana 12+'s Kubernetes-compatible API via `k8s.io/client-go` for dashboards, folders, and other K8s-native resources, and (2) a **Cloud provider tier** with pluggable providers for Grafana Cloud products (SLO, Synthetic Monitoring, OnCall, Fleet Management, etc.) that use product-specific REST APIs. Built in Go, it uses Cobra for CLI structure.
+**gcx** is a unified CLI for managing Grafana resources. It operates in two tiers: (1) a **K8s resource tier** that uses Grafana 12+'s Kubernetes-compatible API via `k8s.io/client-go` for dashboards, folders, and other K8s-native resources, and (2) a **Cloud provider tier** with pluggable providers for Grafana Cloud products (SLO, Synthetic Monitoring, OnCall, Fleet Management, etc.) that use product-specific REST APIs. Built in Go, it uses Cobra for CLI structure.
 
 ## Documentation Map
 
@@ -35,11 +35,26 @@
 | [provider-discovery-guide.md](docs/reference/provider-discovery-guide.md) | Pre-implementation research and design for new providers | Before designing a new provider (discovery phase) |
 | [provider-guide.md](docs/reference/provider-guide.md) | Step-by-step guide: implement + register a new provider | Adding a new Grafana product provider |
 | [design-guide.md](docs/reference/design-guide.md) | UX requirements: output, exit codes, errors, naming | Before implementing features, reviewing CLI UX |
+| [migration-gap-analysis.md](docs/reference/migration-gap-analysis.md) | Gap analysis between grafana-cloud-cli and gcx, with prioritized migration roadmap | Understanding what's missing before planning new features or migrations |
+
+### Templates (in `docs/_templates/`)
+
+Spec and planning templates for structured work. Use these when creating specs in `docs/specs/`.
+
+| Template | Use For |
+|----------|---------|
+| [feature-spec.md](docs/_templates/feature-spec.md) | New feature specs (problem, requirements, acceptance criteria) |
+| [feature-plan.md](docs/_templates/feature-plan.md) | Architecture/design plan for a feature spec |
+| [feature-tasks.md](docs/_templates/feature-tasks.md) | Task breakdown with dependency waves |
+| [bugfix-spec.md](docs/_templates/bugfix-spec.md) | Bug fix specs (current vs expected behavior, repro steps) |
+| [refactor-spec.md](docs/_templates/refactor-spec.md) | Refactoring specs (behavioral contract, migration steps) |
+| [adr.md](docs/_templates/adr.md) | Architecture Decision Records |
+| [research.md](docs/_templates/research.md) | Research reports |
 
 ## Architecture at a Glance
 
 ```
-CLI Layer (cmd/grafanactl/)              ← Cobra commands, zero business logic
+CLI Layer (cmd/gcx/)              ← Cobra commands, zero business logic
     ↓
 Business Logic (internal/resources/)     ← Resource model, selectors, filters, processors
     ↓                          ↓
@@ -74,7 +89,7 @@ Grafana K8s API            Product REST APIs
 > Always build to `bin/grafanactl` (not a temp binary) so the binary stays at a stable path for testing.
 
 ```bash
-make build       # Build to bin/grafanactl
+make build       # Build to bin/gcx
 make tests       # Run all tests with race detection
 make lint        # Run golangci-lint
 make all         # lint + tests + build + docs
@@ -85,9 +100,9 @@ make docs        # Generate + build all documentation
 > The `make docs` step regenerates `docs/reference/cli/` by running the binary, which
 > auto-detects agent mode from env vars like `CLAUDECODE` or `CLAUDE_CODE`. When those
 > are set, the binary flips default output formats (e.g. `"json"` instead of `"table"`),
-> producing wrong docs. `GRAFANACTL_AGENT_MODE=false` overrides all detection:
+> producing wrong docs. `GCX_AGENT_MODE=false` overrides all detection:
 > ```
-> GRAFANACTL_AGENT_MODE=false make all
+> GCX_AGENT_MODE=false make all
 > ```
 > Skipping this causes CI to fail with docs drift.
 
@@ -103,7 +118,7 @@ make docs        # Generate + build all documentation
 ## Package Map
 
 ```
-cmd/grafanactl/
+cmd/gcx/
 ├── root/        CLI root (logging, global flags)
 ├── config/      Config management commands (set, use-context, view...)
 ├── resources/   Resource commands (get, schemas, push, pull, delete, edit, validate)
@@ -113,6 +128,8 @@ cmd/grafanactl/
 ├── providers/   Provider list command
 ├── api/         Raw API passthrough command (direct Grafana API calls)
 ├── linter/      Linting commands (run, new, rules, test — mounted under dev lint)
+├── commands/    Commands catalog (agent-consumable metadata, resource types, live validation)
+├── helptree/    Compact text tree for agent context injection (help-tree command)
 ├── dev/         Developer commands (import, scaffold, generate, lint, serve)
 └── fail/        Structured error → user-friendly message conversion
 
@@ -134,13 +151,14 @@ internal/
 │   ├── k6/         K6 Cloud provider (projects, tests, runs, envvars)
 │   ├── kg/         Knowledge Graph (Asserts) provider
 │   ├── oncall/     OnCall provider (schedules, integrations, escalation chains)
+│   ├── appo11y/    App Observability provider (overrides, settings — singleton resources)
 │   ├── slo/        SLO provider (definitions, reports)
 │   └── synth/      Synthetic Monitoring provider (checks, probes)
 ├── dashboards/  Dashboard Image Renderer client (PNG snapshots)
 ├── query/       Datasource query clients
 │   ├── prometheus/  Prometheus HTTP query client
 │   └── loki/        Loki HTTP query client
-├── agent/       Agent mode detection (IsAgentMode, env-var + flag detection)
+├── agent/       Agent mode detection, command annotations, known-resource registry with operation hints
 ├── terminal/    TTY/pipe detection (IsPiped, NoTruncate, Detect) for output suppression
 ├── linter/      Linting engine (Rego rules, report aggregation, PromQL/LogQL validators)
 ├── graph/       Terminal chart rendering (ntcharts + lipgloss)
@@ -153,3 +171,51 @@ internal/
 ├── secrets/     Redactor for config view
 └── logs/        slog/klog integration
 ```
+
+<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
+## Beads Issue Tracker
+
+This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
+
+### Quick Reference
+
+```bash
+bd ready              # Find available work
+bd show <id>          # View issue details
+bd update <id> --claim  # Claim work
+bd close <id>         # Complete work
+```
+
+### Rules
+
+- Both `bd` and `dolt` commands MUST be executed from the repository root, not from worktrees
+- Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
+- Run `bd prime` for detailed command reference and session close protocol
+- Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
+
+## Session Completion
+
+**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+
+**MANDATORY WORKFLOW:**
+
+1. **File issues for remaining work** - Create issues for anything that needs follow-up
+2. **Run quality gates** (if code changed) - Tests, linters, builds
+3. **Update issue status** - Close finished work, update in-progress items
+4. **PUSH TO REMOTE** - This is MANDATORY:
+   ```bash
+   git pull --rebase
+   bd dolt push
+   git push
+   git status  # MUST show "up to date with origin"
+   ```
+5. **Clean up** - Clear stashes, prune remote branches
+6. **Verify** - All changes committed AND pushed
+7. **Hand off** - Provide context for next session
+
+**CRITICAL RULES:**
+- Work is NOT complete until `git push` succeeds
+- NEVER stop before pushing - that leaves work stranded locally
+- NEVER say "ready to push when you are" - YOU must push
+- If push fails, resolve and retry until it succeeds
+<!-- END BEADS INTEGRATION -->

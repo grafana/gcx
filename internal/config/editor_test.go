@@ -3,7 +3,7 @@ package config_test
 import (
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/config"
+	"github.com/grafana/gcx/internal/config"
 	"github.com/stretchr/testify/require"
 )
 

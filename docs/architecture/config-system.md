@@ -2,12 +2,12 @@
 
 ## Overview
 
-grafanactl uses a context-based multi-environment configuration model directly
+gcx uses a context-based multi-environment configuration model directly
 inspired by kubectl's kubeconfig. A single YAML file stores named contexts,
 each pointing to a different Grafana instance. One context is "current" at any
 time, and all commands operate against it unless overridden.
 
-All code lives under `internal/config/` and `cmd/grafanactl/config/command.go`.
+All code lives under `internal/config/` and `cmd/gcx/config/command.go`.
 
 ---
 
@@ -51,16 +51,16 @@ Source files:
 
 ### Comparison to kubectl kubeconfig
 
-| kubectl kubeconfig | grafanactl config | Notes |
+| kubectl kubeconfig | gcx config | Notes |
 |--------------------|-------------------|-------|
-| `clusters[]`       | `contexts[].grafana.server` | grafanactl merges cluster+auth into one context |
+| `clusters[]`       | `contexts[].grafana.server` | gcx merges cluster+auth into one context |
 | `users[]`          | `contexts[].grafana.{user,password,token}` | No separate user objects |
-| `contexts[]`       | `contexts{}` (map) | grafanactl uses a map, kubectl uses a list |
+| `contexts[]`       | `contexts{}` (map) | gcx uses a map, kubectl uses a list |
 | `current-context`  | `current-context` | Identical concept |
 | `namespace` in context | derived from org-id/stack-id | See Namespace Semantics below |
 
 Key difference: kubectl separates clusters, users, and contexts into three
-separate lists to allow reuse. grafanactl collapses all three into a single
+separate lists to allow reuse. gcx collapses all three into a single
 `Context` entry, which is simpler but means auth+server are always paired.
 
 ---
@@ -68,7 +68,7 @@ separate lists to allow reuse. grafanactl collapses all three into a single
 ## Annotated Config File Example
 
 ```yaml
-# ~/.config/grafanactl/config.yaml
+# ~/.config/gcx/config.yaml
 
 current-context: "production"   # which context is active
 
@@ -110,20 +110,20 @@ contexts:
 
 ```
 1. --config <path>          CLI flag → ExplicitConfigFile(path)
-2. $GRAFANACTL_CONFIG       env var  → StandardLocation() checks this first
-3. $XDG_CONFIG_HOME/grafanactl/config.yaml
-4. $HOME/.config/grafanactl/config.yaml
-5. $XDG_CONFIG_DIRS/grafanactl/config.yaml  (e.g., /etc/xdg/...)
+2. $GCX_CONFIG       env var  → StandardLocation() checks this first
+3. $XDG_CONFIG_HOME/gcx/config.yaml
+4. $HOME/.config/gcx/config.yaml
+5. $XDG_CONFIG_DIRS/gcx/config.yaml  (e.g., /etc/xdg/...)
 ```
 
 Source: `internal/config/loader.go:40-64` (`StandardLocation` function) and
-`cmd/grafanactl/config/command.go:103-109` (`configSource` method).
+`cmd/gcx/config/command.go:103-109` (`configSource` method).
 
 Constants defined in `loader.go`:
 ```go
-StandardConfigFolder   = "grafanactl"
+StandardConfigFolder   = "gcx"
 StandardConfigFileName = "config.yaml"
-ConfigFileEnvVar       = "GRAFANACTL_CONFIG"
+ConfigFileEnvVar       = "GCX_CONFIG"
 configFilePermissions  = 0o600   // file is always written with these perms
 ```
 
@@ -161,13 +161,13 @@ Loading steps (in `Load`, lines 66–98):
 
 ## Environment Variable Overrides
 
-> See also [design-guide.md](design-guide.md) Section 10 for the complete
+> See also [design-guide.md](../reference/design-guide.md) Section 10 for the complete
 > environment variable reference (core + provider + planned variables).
 
 Environment variables are applied as an `Override` function during load. They
 patch the **current context's** `GrafanaConfig` struct in-place.
 
-Implementation: `cmd/grafanactl/config/command.go:38-62` (`loadConfigTolerant`):
+Implementation: `cmd/gcx/config/command.go:38-62` (`loadConfigTolerant`):
 
 ```go
 func(cfg *config.Config) error {
@@ -230,7 +230,7 @@ if opts.Context != "" {
 }
 ```
 
-To switch permanently: `grafanactl config use-context <name>` writes the
+To switch permanently: `gcx config use-context <name>` writes the
 updated `current-context` field back to the file (`command.go:384-405`).
 
 `GetCurrentContext()` (types.go:33):
@@ -247,7 +247,7 @@ Returns `nil` if `CurrentContext` is empty or not found — callers must check.
 ## From Config to REST Client
 
 Once a context is loaded, it converts to a `NamespacedRESTConfig` which is
-passed to the k8s dynamic client. This is the bridge between grafanactl's
+passed to the k8s dynamic client. This is the bridge between gcx's
 config model and Kubernetes client-go:
 
 ```
@@ -259,7 +259,7 @@ Context.ToRESTConfig(ctx)
         │     QPS:     50       (hardcoded — TODO: make configurable)
         │     Burst:   100      (hardcoded)
         │   }
-        ├── TLS mapping: grafanactl TLS → rest.TLSClientConfig
+        ├── TLS mapping: gcx TLS → rest.TLSClientConfig
         ├── Auth: APIToken → BearerToken  (priority 1)
         │         User/Password → Username/Password  (priority 2)
         └── Namespace resolution (see below)
@@ -271,7 +271,7 @@ Source: `internal/config/rest.go`
 
 ## Namespace Semantics: org-id vs stack-id
 
-"Namespace" in grafanactl corresponds to the Kubernetes namespace used for all
+"Namespace" in gcx corresponds to the Kubernetes namespace used for all
 API calls to Grafana's K8s-compatible API. The mapping differs for on-prem vs
 cloud:
 
@@ -371,13 +371,13 @@ Path format: dot-separated YAML tag names.
 
 Examples:
 ```bash
-grafanactl config set current-context production
-grafanactl config set contexts.dev.grafana.server https://grafana-dev.example.com
-grafanactl config set contexts.dev.grafana.org-id 1
-grafanactl config set contexts.dev.grafana.tls.insecure-skip-verify true
+gcx config set current-context production
+gcx config set contexts.dev.grafana.server https://grafana-dev.example.com
+gcx config set contexts.dev.grafana.org-id 1
+gcx config set contexts.dev.grafana.tls.insecure-skip-verify true
 
-grafanactl config unset contexts.prod          # removes entire context entry
-grafanactl config unset contexts.dev.grafana.user
+gcx config unset contexts.prod          # removes entire context entry
+gcx config unset contexts.dev.grafana.user
 ```
 
 Path traversal algorithm (`editor.go:24-157`):
@@ -499,7 +499,7 @@ produce source-highlighted error output pointing to the exact YAML location.
 ## Complete Loading Call Chain
 
 ```
-grafanactl resources get dashboards
+gcx resources get dashboards
   └── resources/command.go → opts.LoadGrafanaConfig(ctx)
         └── cmd/config/command.go:LoadGrafanaConfig
               └── LoadConfig(ctx)
@@ -537,7 +537,7 @@ affect command behavior but are not tied to any specific Grafana context.
 ```go
 // internal/config/cli_options.go
 type CLIOptions struct {
-    AutoApprove bool `env:"GRAFANACTL_AUTO_APPROVE"`
+    AutoApprove bool `env:"GCX_AUTO_APPROVE"`
 }
 
 func LoadCLIOptions() (CLIOptions, error)
@@ -554,9 +554,9 @@ enables the `--force` flag for non-interactive operation in CI/CD pipelines.
 
 | Env Var | CLI Flag | Effect |
 |---------|----------|--------|
-| `GRAFANACTL_AUTO_APPROVE` | `--yes` / `-y` | Auto-enables `--force` on delete |
+| `GCX_AUTO_APPROVE` | `--yes` / `-y` | Auto-enables `--force` on delete |
 
-See [design-guide.md](design-guide.md) Section 10 for the full environment
+See [design-guide.md](../reference/design-guide.md) Section 10 for the full environment
 variable reference.
 
 ---
@@ -575,4 +575,4 @@ variable reference.
 | `internal/secrets/redactor.go` | `Redact` — reflection-based secret redaction |
 | `internal/providers/provider.go` | `Provider` interface + `ConfigKey` type |
 | `internal/providers/redact.go` | `RedactSecrets` — provider config redaction |
-| `cmd/grafanactl/config/command.go` | CLI commands + `Options.LoadConfig`/`LoadGrafanaConfig` |
+| `cmd/gcx/config/command.go` | CLI commands + `Options.LoadConfig`/`LoadGrafanaConfig` |

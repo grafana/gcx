@@ -3,8 +3,8 @@ package synth_test
 import (
 	"testing"
 
-	"github.com/grafana/grafanactl/internal/providers"
-	"github.com/grafana/grafanactl/internal/providers/synth"
+	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/synth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

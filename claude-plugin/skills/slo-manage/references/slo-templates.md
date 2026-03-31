@@ -48,7 +48,7 @@ spec:
         - key: summary
           value: "SLO slow burn: API availability degrading over time"
   destinationDatasource:
-    uid: <prometheus-datasource-uid> # resolve with: grafanactl datasources list --type prometheus
+    uid: <prometheus-datasource-uid> # resolve with: gcx datasources list --type prometheus
   folder:
     uid: <folder-uid>               # optional: omit to use root folder
 ```
