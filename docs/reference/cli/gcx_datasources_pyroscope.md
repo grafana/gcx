@@ -29,4 +29,5 @@ Operations specific to Pyroscope datasources such as profile-types and labels.
 * [gcx datasources pyroscope labels](gcx_datasources_pyroscope_labels.md)	 - List labels or label values
 * [gcx datasources pyroscope profile-types](gcx_datasources_pyroscope_profile-types.md)	 - List available profile types
 * [gcx datasources pyroscope query](gcx_datasources_pyroscope_query.md)	 - Execute a profiling query against a Pyroscope datasource
+* [gcx datasources pyroscope series](gcx_datasources_pyroscope_series.md)	 - Query profile time-series data from a Pyroscope datasource
 

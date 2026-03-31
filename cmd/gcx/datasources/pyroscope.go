@@ -25,6 +25,7 @@ func pyroscopeCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	cmd.AddCommand(profileTypesCmd(configOpts))
 	cmd.AddCommand(pyroscopeLabelsCmd(configOpts))
 	cmd.AddCommand(query.PyroscopeCmd(configOpts))
+	cmd.AddCommand(query.PyroscopeSeriesCmd(configOpts))
 
 	return cmd
 }

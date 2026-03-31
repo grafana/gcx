@@ -37,7 +37,7 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryRequest) (*QueryResponse, error) {
 	apiPath := c.buildResourcePath(datasourceUID, "querier.v1.QuerierService/SelectMergeStacktraces")
 
-	start, end := defaultTimeRange(req.Start, req.End)
+	start, end := DefaultTimeRange(req.Start, req.End)
 
 	// Build request body
 	bodyMap := map[string]any{
@@ -90,7 +90,7 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 func (c *Client) ProfileTypes(ctx context.Context, datasourceUID string, req ProfileTypesRequest) (*ProfileTypesResponse, error) {
 	apiPath := c.buildResourcePath(datasourceUID, "querier.v1.QuerierService/ProfileTypes")
 
-	start, end := defaultTimeRange(req.Start, req.End)
+	start, end := DefaultTimeRange(req.Start, req.End)
 
 	bodyMap := map[string]any{
 		"start": strconv.FormatInt(start.UnixMilli(), 10),
@@ -136,7 +136,7 @@ func (c *Client) ProfileTypes(ctx context.Context, datasourceUID string, req Pro
 func (c *Client) LabelNames(ctx context.Context, datasourceUID string, req LabelNamesRequest) (*LabelNamesResponse, error) {
 	apiPath := c.buildResourcePath(datasourceUID, "querier.v1.QuerierService/LabelNames")
 
-	start, end := defaultTimeRange(req.Start, req.End)
+	start, end := DefaultTimeRange(req.Start, req.End)
 
 	bodyMap := map[string]any{
 		"start": strconv.FormatInt(start.UnixMilli(), 10),
@@ -185,7 +185,7 @@ func (c *Client) LabelNames(ctx context.Context, datasourceUID string, req Label
 func (c *Client) LabelValues(ctx context.Context, datasourceUID string, req LabelValuesRequest) (*LabelValuesResponse, error) {
 	apiPath := c.buildResourcePath(datasourceUID, "querier.v1.QuerierService/LabelValues")
 
-	start, end := defaultTimeRange(req.Start, req.End)
+	start, end := DefaultTimeRange(req.Start, req.End)
 
 	bodyMap := map[string]any{
 		"name":  req.Name,
@@ -231,13 +231,78 @@ func (c *Client) LabelValues(ctx context.Context, datasourceUID string, req Labe
 	return &result, nil
 }
 
+// SelectSeries executes a SelectSeries query to get profile time-series data.
+func (c *Client) SelectSeries(ctx context.Context, datasourceUID string, req SelectSeriesRequest) (*SelectSeriesResponse, error) {
+	apiPath := c.buildResourcePath(datasourceUID, "querier.v1.QuerierService/SelectSeries")
+
+	start, end := DefaultTimeRange(req.Start, req.End)
+
+	bodyMap := map[string]any{
+		"profileTypeID": req.ProfileTypeID,
+		"labelSelector": req.LabelSelector,
+		"start":         strconv.FormatInt(start.UnixMilli(), 10),
+		"end":           strconv.FormatInt(end.UnixMilli(), 10),
+	}
+
+	if len(req.GroupBy) > 0 {
+		bodyMap["groupBy"] = req.GroupBy
+	}
+	if req.Step > 0 {
+		bodyMap["step"] = req.Step
+	}
+	if req.Aggregation != "" {
+		bodyMap["aggregation"] = req.Aggregation
+	}
+	if req.Limit > 0 {
+		bodyMap["limit"] = strconv.FormatInt(req.Limit, 10)
+	}
+
+	body, err := json.Marshal(bodyMap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute series query: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("series query failed with status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result SelectSeriesResponse
+	dec := json.NewDecoder(bytes.NewReader(respBody))
+	// UseNumber preserves numeric precision: Pyroscope's connect-rpc encodes
+	// int64 timestamps as JSON strings ("1711800000000") and values as integers.
+	dec.UseNumber()
+	if err := dec.Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &result, nil
+}
+
 func (c *Client) buildResourcePath(datasourceUID, resourcePath string) string {
 	return fmt.Sprintf("/api/datasources/proxy/uid/%s/%s",
 		datasourceUID, resourcePath)
 }
 
-// defaultTimeRange returns the provided time range, or defaults to the last hour if not set.
-func defaultTimeRange(start, end time.Time) (time.Time, time.Time) {
+// DefaultTimeRange returns the provided time range, or defaults to the last hour if not set.
+func DefaultTimeRange(start, end time.Time) (time.Time, time.Time) {
 	if start.IsZero() || end.IsZero() {
 		end = time.Now()
 		start = end.Add(-1 * time.Hour)
