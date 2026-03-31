@@ -470,69 +470,13 @@ then batch delete with confirmation prompt (or `--force` to skip).
 
 ---
 
-## Part 6: Command UX improvements
+## ~~Part 6: Command UX improvements~~ (DONE — implemented in Stage 1 PR)
 
-Smoke testing feedback on existing commands — enrich output, fix round-trip
-gaps, improve signal visibility.
+Resolved in commit `e6a9b8f`. Verified against live `ihub` stack with 2 clusters.
 
-### 6a: `show`/`get` round-trip gap after `apply` (k8s section dropped)
-
-Applying a manifest with k8s config and then running `show` drops the k8s
-section. Two possible causes:
-
-1. **API response shape**: `GetK8SInstrumentation` may return k8s state via a
-   `selection` field (e.g. `SELECTION_INCLUDED`) rather than individual boolean
-   fields. The `show` command checks `CostMetrics || EnergyMetrics || ...` — if
-   the API uses `selection` to indicate "k8s monitoring enabled" but leaves
-   booleans as false, the section gets omitted.
-2. **Apply didn't persist**: The `SetK8SInstrumentation` request shape may not
-   match what the API expects, causing a silent no-op.
-
-**Fix**: Investigate the actual `GetK8SInstrumentation` response for a cluster
-with k8s monitoring enabled. Adjust `show` to also check the `selection` field.
-Add an integration test: `apply` → `get` round-trip must be idempotent.
-
-### 6b: `discover` doesn't show per-workload signal types
-
-Currently shows `INSTRUMENTATION_STATUS_INSTRUMENTED` but not which signals
-(metrics/logs/traces) are active. The `DiscoveredItem` response from the API
-may include additional fields we're not surfacing.
-
-**Fix**: Check the full `RunK8sDiscovery` response shape for signal-level
-fields. Add columns to the `wide` table format:
-
-```
-gcx setup instrumentation discover k3d-shopk8s -o wide
-NAMESPACE   WORKLOAD      TYPE         STATUS          METRICS  LOGS  TRACES
-default     cartservice   deployment   instrumented    ✓        ✓     ✓
-default     frontend      deployment   instrumented    ✓        ✓     -
-```
-
-If the API doesn't return per-workload signals, this becomes a feature request
-for the Fleet Management API.
-
-### 6c: `status` output enrichment
-
-Current output is minimal:
-```json
-[{"name":"k3d-shopk8s","state":"K8S_MONITORING_STATUS_INSTRUMENTED","beylaErrors":0}]
-```
-
-The `RunK8sMonitoring` response already includes richer data (`namespaces`,
-`nodes`, `workloads`, `pods` fields on `ClusterState`). Surface these in the
-table and wide formats:
-
-```
-gcx setup instrumentation status
-CLUSTER        STATUS          WORKLOADS  PODS  BEYLA ERRORS
-
-gcx setup instrumentation status -o wide
-CLUSTER        STATUS          NODES  WORKLOADS  PODS  NAMESPACES  BEYLA ERRORS
-```
-
-**Fix**: Update `StatusTableCodec` to include `Workloads` and `Pods` in
-default table, add `Nodes` and `Namespaces` count in wide. The data is already
-in `ClusterState` — just not rendered.
+- **6a**: `show`/`get` k8s round-trip fixed — now checks `selection` field
+- **6b**: `discover -o wide` shows LANG and OS columns (API doesn't expose per-signal fields)
+- **6c**: `status` shows WORKLOADS and PODS in default table, adds NODES and NAMESPACES in wide
 
 ### External issues (not gcx — documented for awareness)
 
@@ -566,13 +510,12 @@ Part 1 (show→get + discover positional) ─── mechanical refactor
      │
      ├── Part 4 (add) ─── new command, uses existing instrumentation client
      │
-     ├── Part 5 (fleet collectors) ─── independent, fleet provider enhancement
-     │
-     └── Part 6 (command UX) ─── get round-trip fix, discover signals, status enrichment
+     └── Part 5 (fleet collectors) ─── independent, fleet provider enhancement
+
+Part 6 (command UX) ─── DONE in Stage 1 PR
 ```
 
-Parts 2–6 are independent of each other. Parts 2–4, 6 depend on Part 1
+Parts 2–5 are independent of each other. Parts 2–4 depend on Part 1
 (the revised command grammar). Part 5 has no deps on Part 1.
 Part 3's `setup init` is tracked under bead gcx-b22fd37d and may be
 implemented in a separate workstream.
-Part 6a (get round-trip) could be a quick fix in this PR if time permits.
