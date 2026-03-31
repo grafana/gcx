@@ -81,6 +81,13 @@ Grafana K8s API            Product REST APIs
 
 ## Essential Commands
 
+> **Without devbox**: All `make` targets require `devbox`. If you don't have it, use the direct Go commands instead:
+> ```bash
+> go build -buildvcs=false -o bin/grafanactl ./cmd/grafanactl/   # replaces make build
+> go test ./...                                                    # replaces make tests
+> ```
+> Always build to `bin/grafanactl` (not a temp binary) so the binary stays at a stable path for testing.
+
 ```bash
 make build       # Build to bin/gcx
 make tests       # Run all tests with race detection

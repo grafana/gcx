@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"net/url"
 	"os"
+	"strings"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/grafana"
@@ -25,14 +26,15 @@ func ErrorToDetailedError(err error) *DetailedError {
 	// Try to convert the error for common error categories
 	errorConverters := []func(err error) (*DetailedError, bool){
 		convertUsageErrors,
-		convertContextCanceled, // Context cancellation (must be first among generic wrapped errors)
-		convertConfigErrors,    // Config-related
-		convertFSErrors,        // FS-related
-		convertResourcesErrors, // Resources-related
-		convertNetworkErrors,   // Network-related errors
-		convertAPIErrors,       // API-related errors
-		convertVersionErrors,   // Version incompatibility errors
-		convertLinterErrors,    // Linter-related errors
+		convertContextCanceled,    // Context cancellation (must be first — cancellation can wrap other errors)
+		convertRequiredFlagErrors, // Cobra required-flag errors — must appear before generic checks
+		convertConfigErrors,       // Config-related
+		convertFSErrors,           // FS-related
+		convertResourcesErrors,    // Resources-related
+		convertNetworkErrors,      // Network-related errors
+		convertAPIErrors,          // API-related errors
+		convertVersionErrors,      // Version incompatibility errors
+		convertLinterErrors,       // Linter-related errors
 	}
 
 	for _, converter := range errorConverters {
@@ -236,6 +238,22 @@ func convertVersionErrors(err error) (*DetailedError, bool) {
 		}, true
 	}
 
+	return nil, false
+}
+
+func convertRequiredFlagErrors(err error) (*DetailedError, bool) {
+	// Cobra returns a plain error (not a typed error) for missing required flags.
+	// The message is always of the form: `required flag(s) "foo", "bar" not set`
+	msg := err.Error()
+	if strings.HasPrefix(msg, "required flag(s)") && strings.HasSuffix(msg, "not set") {
+		return &DetailedError{
+			Summary: "Missing required flags",
+			Parent:  err,
+			Suggestions: []string{
+				"Run the command with --help to see available flags and usage examples",
+			},
+		}, true
+	}
 	return nil, false
 }
 

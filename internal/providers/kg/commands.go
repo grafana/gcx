@@ -157,7 +157,9 @@ func readFileOrStdin(cmd *cobra.Command, path string) ([]byte, error) {
 }
 
 // searchByTypes fans out Search across multiple entity types and merges results.
-func searchByTypes(ctx context.Context, client *Client, entityTypes []string, assertionsOnly bool, sc *ScopeCriteria, startMs, endMs int64, pageNum int) ([]SearchResult, error) {
+// Server-side (5xx) failures for individual entity types are logged as warnings and skipped
+// so that a broken type does not abort results for all other types.
+func searchByTypes(ctx context.Context, cmd *cobra.Command, client *Client, entityTypes []string, assertionsOnly bool, sc *ScopeCriteria, startMs, endMs int64, pageNum int) ([]SearchResult, error) {
 	if startMs == 0 && endMs == 0 {
 		now := time.Now().UnixMilli()
 		startMs = now - 3600000
@@ -177,6 +179,11 @@ func searchByTypes(ctx context.Context, client *Client, entityTypes []string, as
 		}
 		results, err := client.Search(ctx, req)
 		if err != nil {
+			var apiErr *APIError
+			if errors.As(err, &apiErr) && apiErr.IsServerError() {
+				fmt.Fprintf(cmd.ErrOrStderr(), "warning: skipping entity type %q — server error: %v\n", et, apiErr)
+				continue
+			}
 			return nil, fmt.Errorf("search entity type %s: %w", et, err)
 		}
 		allResults = append(allResults, results...)
@@ -1014,7 +1021,7 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			results, err := searchByTypes(cmd.Context(), client, entityTypes, assertionsOnly, showScope.scopeCriteria(), 0, 0, page)
+			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, assertionsOnly, showScope.scopeCriteria(), 0, 0, page)
 			if err != nil {
 				return err
 			}
@@ -1027,7 +1034,47 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 	showScope.register(showCmd)
 	ioOpts.setup(showCmd.Flags())
 
-	cmd.AddCommand(showCmd)
+	// list subcommand
+	var (
+		listType       string
+		listAssertOnly bool
+		listScope      scopeFlags
+		listPage       int
+	)
+	listOpts := &entitiesShowOpts{}
+	listCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List entities by type (omit --type to list all types).",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := listOpts.IO.Validate(); err != nil {
+				return err
+			}
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			entityTypes, err := resolveEntityTypes(cmd, client, listType)
+			if err != nil {
+				return err
+			}
+			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, listAssertOnly, listScope.scopeCriteria(), 0, 0, listPage)
+			if err != nil {
+				return err
+			}
+			return listOpts.IO.Encode(cmd.OutOrStdout(), results)
+		},
+	}
+	listCmd.Flags().StringVar(&listType, "type", "", "Entity type (omit to list all)")
+	listCmd.Flags().BoolVar(&listAssertOnly, "assertions-only", false, "Only return entities with active assertions")
+	listCmd.Flags().IntVar(&listPage, "page", 0, "Page number (0-based)")
+	listScope.register(listCmd)
+	listOpts.setup(listCmd.Flags())
+
+	cmd.AddCommand(showCmd, listCmd)
 	return cmd
 }
 
@@ -1316,7 +1363,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			results, err := searchByTypes(cmd.Context(), client, entityTypes, true, activeScope.scopeCriteria(), startMs, endMs, activePage)
+			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, true, activeScope.scopeCriteria(), startMs, endMs, activePage)
 			if err != nil {
 				return err
 			}
@@ -1673,7 +1720,7 @@ func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			results, err := searchByTypes(cmd.Context(), client, entityTypes, false, searchEntitiesScope.scopeCriteria(), 0, 0, searchEntitiesPage)
+			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, false, searchEntitiesScope.scopeCriteria(), 0, 0, searchEntitiesPage)
 			if err != nil {
 				return err
 			}
@@ -1877,7 +1924,7 @@ func newHealthCommand(loader RESTConfigLoader) *cobra.Command {
 			if healthEntityType != "" {
 				entityTypes = []string{healthEntityType}
 			}
-			results, err := searchByTypes(cmd.Context(), client, entityTypes, true, healthScope.scopeCriteria(), startMs, endMs, 0)
+			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, true, healthScope.scopeCriteria(), startMs, endMs, 0)
 			if err != nil {
 				return err
 			}
