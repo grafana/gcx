@@ -2,7 +2,7 @@ name: 🐛 Bug Report
 description: Something isn't working as expected
 title: "[Bug]: "
 type: "Bug"
-labels: ["type::bug", "action/needs-triage"]
+labels: ["action/needs-triage"]
 body:
   - type: markdown
     attributes:

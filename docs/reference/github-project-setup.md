@@ -51,17 +51,19 @@ bd list --limit=3 --json | jq -r '.[] | "\(.id)\t\(.external_ref)"'
 
 ## Phase 2: Labels
 
-Beads auto-creates `priority::` and `type::` labels with default grey color.
-Clean up defaults, colorize, and add `area::` labels.
+Set up `priority/` and `area/` labels. Issue types (Bug, Task, Feature, Epic)
+are handled natively by GitHub's issue type system.
 
 ### Label scheme
 
 | Prefix | Purpose | Colors |
 |--------|---------|--------|
-| `priority::` | Severity (critical → none) | Red → green gradient |
-| `type::` | Issue kind (epic, feature, task, bug, chore) | Blue family + red for bugs |
-| `area::` | Codebase area (3-5 max) | Distinct colors |
+| `priority/` | Severity (critical → none) | Red → green gradient |
+| `area/` | Codebase area (3-5 max) | Distinct colors |
 | `action/` | Workflow state (needs-triage) | Yellow |
+
+> **Note**: Issue *types* (Bug, Task, Feature, Epic) are set via GitHub's
+> native issue type system, not labels.
 
 ### Remove unused labels
 
@@ -75,7 +77,7 @@ wait
 
 # Find non-standard labels to review
 gh label list --repo <owner>/<repo> --json name | jq -r '.[].name' | \
-  grep -v -E '^(priority::|type::|area::|action/)'
+  grep -v -E '^(priority/|area/|action/)'
 ```
 
 > **Keep labels referenced in `.github/`** (issue templates, dependabot, workflows).
@@ -85,18 +87,11 @@ gh label list --repo <owner>/<repo> --json name | jq -r '.[].name' | \
 
 ```bash
 # Priority — red→green severity gradient
-gh label edit "priority::critical" --repo <owner>/<repo> --color "b60205"
-gh label edit "priority::high"     --repo <owner>/<repo> --color "d93f0b"
-gh label edit "priority::medium"   --repo <owner>/<repo> --color "fbca04"
-gh label edit "priority::low"      --repo <owner>/<repo> --color "c2e0c6"
-gh label edit "priority::none"     --repo <owner>/<repo> --color "e4e4e4"
-
-# Type — blue family (bug uses red)
-gh label edit "type::epic"    --repo <owner>/<repo> --color "3E4B9E"
-gh label edit "type::feature" --repo <owner>/<repo> --color "0075ca"
-gh label edit "type::task"    --repo <owner>/<repo> --color "5DADE2"
-gh label edit "type::bug"     --repo <owner>/<repo> --color "d73a4a"
-gh label edit "type::chore"   --repo <owner>/<repo> --color "bfdadc"
+gh label edit "priority/critical" --repo <owner>/<repo> --color "b60205"
+gh label edit "priority/high"     --repo <owner>/<repo> --color "d93f0b"
+gh label edit "priority/medium"   --repo <owner>/<repo> --color "fbca04"
+gh label edit "priority/low"      --repo <owner>/<repo> --color "c2e0c6"
+gh label edit "priority/none"     --repo <owner>/<repo> --color "e4e4e4"
 ```
 
 ### Create area labels
@@ -104,7 +99,7 @@ gh label edit "type::chore"   --repo <owner>/<repo> --color "bfdadc"
 Determine areas from codebase structure and issue clustering (3-5 max).
 
 ```bash
-gh label create "area::<name>" --repo <owner>/<repo> \
+gh label create "area/<name>" --repo <owner>/<repo> \
   --color "<hex>" --description "<what it covers>"
 ```
 
@@ -116,16 +111,15 @@ Color palette: `1d76db` (blue), `5319e7` (purple), `0e8a16` (green),
 ```bash
 # Batch by area — parallel is fine for labels
 for n in <issue numbers>; do
-  gh issue edit $n --repo <owner>/<repo> --add-label "area::<name>" &
+  gh issue edit $n --repo <owner>/<repo> --add-label "area/<name>" &
 done
 wait
 ```
 
 ### Update issue templates
 
-After switching to `type::` labels, update `.github/ISSUE_TEMPLATE/*.yml` and
-`.github/dependabot.yaml` to reference the new label names. This allows
-removing the old `type/` labels later.
+Set `type:` in issue template frontmatter to map to GitHub's native issue
+types. Remove type labels from `labels:` — they're redundant.
 
 ## Phase 3: Sub-Issues (Hierarchy)
 
