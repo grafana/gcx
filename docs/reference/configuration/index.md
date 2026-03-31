@@ -21,6 +21,19 @@ contexts:
       # Note: if defined, the API Token takes precedence over basic auth credentials.
       # Optional.
       token: string
+      # ProxyEndpoint is the assistant backend URL used as a reverse proxy for
+      # OAuth-authenticated requests. Set automatically by `auth login`.
+      # This may differ from Server when cloud routing directs CLI traffic through
+      # a separate endpoint (e.g. the assistant app backend).
+      proxy-endpoint: string
+      # OAuthToken is the OAuth access token (gat_) obtained via `auth login`.
+      oauth-token: string
+      # OAuthRefreshToken is the refresh token (gar_) for renewing OAuthToken.
+      oauth-refresh-token: string
+      # OAuthTokenExpiresAt is the OAuthToken expiration time in RFC3339 format.
+      oauth-token-expires-at: string
+      # OAuthRefreshExpiresAt is the OAuthRefreshToken expiration time in RFC3339 format.
+      oauth-refresh-expires-at: string
       # OrgID specifies the organization targeted by this config.
       # Note: required when targeting an on-prem Grafana instance.
       # See StackID for Grafana Cloud instances.
