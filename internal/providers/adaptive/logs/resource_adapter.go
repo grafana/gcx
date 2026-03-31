@@ -54,34 +54,47 @@ func ExemptionExample() json.RawMessage {
 	return b
 }
 
+func newAdaptiveLogsClient(ctx context.Context, loader *providers.ConfigLoader) (*Client, error) {
+	signalAuth, err := adaptiveauth.ResolveSignalAuth(ctx, loader, "logs")
+	if err != nil {
+		return nil, err
+	}
+	return NewClient(signalAuth.BaseURL, signalAuth.TenantID, signalAuth.APIToken, signalAuth.HTTPClient), nil
+}
+
+func buildLogsTypedCRUD[T adapter.ResourceNamer](
+	desc resources.Descriptor,
+	list func(context.Context) ([]T, error),
+	get func(context.Context, string) (*T, error),
+	create func(context.Context, *T) (*T, error),
+	update func(context.Context, string, *T) (*T, error),
+	del func(context.Context, string) error,
+) *adapter.TypedCRUD[T] {
+	return &adapter.TypedCRUD[T]{
+		ListFn:      list,
+		GetFn:       get,
+		CreateFn:    create,
+		UpdateFn:    update,
+		DeleteFn:    del,
+		Namespace:   "default",
+		StripFields: []string{"id"},
+		Descriptor:  desc,
+	}
+}
+
 // NewExemptionTypedCRUD creates a TypedCRUD for adaptive log exemptions.
 func NewExemptionTypedCRUD(ctx context.Context, loader *providers.ConfigLoader) (*adapter.TypedCRUD[Exemption], string, error) {
-	signalAuth, err := adaptiveauth.ResolveSignalAuth(ctx, loader, "logs")
+	client, err := newAdaptiveLogsClient(ctx, loader)
 	if err != nil {
 		return nil, "", err
 	}
-	client := NewClient(signalAuth.BaseURL, signalAuth.TenantID, signalAuth.APIToken, signalAuth.HTTPClient)
-
-	crud := &adapter.TypedCRUD[Exemption]{
-		ListFn: func(ctx context.Context) ([]Exemption, error) {
-			return client.ListExemptions(ctx)
-		},
-		GetFn: func(ctx context.Context, name string) (*Exemption, error) {
-			return client.GetExemption(ctx, name)
-		},
-		CreateFn: func(ctx context.Context, e *Exemption) (*Exemption, error) {
-			return client.CreateExemption(ctx, e)
-		},
-		UpdateFn: func(ctx context.Context, name string, e *Exemption) (*Exemption, error) {
-			return client.UpdateExemption(ctx, name, e)
-		},
-		DeleteFn: func(ctx context.Context, name string) error {
-			return client.DeleteExemption(ctx, name)
-		},
-		Namespace:   "default",
-		StripFields: []string{"id"},
-		Descriptor:  exemptionDescriptorVar,
-	}
+	crud := buildLogsTypedCRUD(exemptionDescriptorVar,
+		client.ListExemptions,
+		client.GetExemption,
+		client.CreateExemption,
+		client.UpdateExemption,
+		client.DeleteExemption,
+	)
 	return crud, "default", nil
 }
 
@@ -145,32 +158,17 @@ func SegmentExample() json.RawMessage {
 
 // NewSegmentTypedCRUD creates a TypedCRUD for adaptive log segments.
 func NewSegmentTypedCRUD(ctx context.Context, loader *providers.ConfigLoader) (*adapter.TypedCRUD[LogSegment], string, error) {
-	signalAuth, err := adaptiveauth.ResolveSignalAuth(ctx, loader, "logs")
+	client, err := newAdaptiveLogsClient(ctx, loader)
 	if err != nil {
 		return nil, "", err
 	}
-	client := NewClient(signalAuth.BaseURL, signalAuth.TenantID, signalAuth.APIToken, signalAuth.HTTPClient)
-
-	crud := &adapter.TypedCRUD[LogSegment]{
-		ListFn: func(ctx context.Context) ([]LogSegment, error) {
-			return client.ListSegments(ctx)
-		},
-		GetFn: func(ctx context.Context, name string) (*LogSegment, error) {
-			return client.GetSegment(ctx, name)
-		},
-		CreateFn: func(ctx context.Context, s *LogSegment) (*LogSegment, error) {
-			return client.CreateSegment(ctx, s)
-		},
-		UpdateFn: func(ctx context.Context, name string, s *LogSegment) (*LogSegment, error) {
-			return client.UpdateSegment(ctx, name, s)
-		},
-		DeleteFn: func(ctx context.Context, name string) error {
-			return client.DeleteSegment(ctx, name)
-		},
-		Namespace:   "default",
-		StripFields: []string{"id"},
-		Descriptor:  segmentDescriptorVar,
-	}
+	crud := buildLogsTypedCRUD(segmentDescriptorVar,
+		client.ListSegments,
+		client.GetSegment,
+		client.CreateSegment,
+		client.UpdateSegment,
+		client.DeleteSegment,
+	)
 	return crud, "default", nil
 }
 
