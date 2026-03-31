@@ -90,9 +90,33 @@ func TestSegmentStatsTableCodec(t *testing.T) {
 	require.NoError(t, codec.Encode(&buf, stats))
 
 	out := buf.String()
-	assert.Contains(t, out, "SEGMENT ID")
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	require.NotEmpty(t, lines)
+	hdr := lines[0]
+	assert.Contains(t, hdr, "ID")
+	assert.Contains(t, hdr, "NAME")
+	assert.Contains(t, hdr, "SEGMENT")
+	assert.Contains(t, hdr, "VOLUME")
 	assert.Contains(t, out, "seg-1")
 	assert.Contains(t, out, "s1")
 	assert.Contains(t, out, "One")
 	assert.Contains(t, out, "1.00 KB")
+}
+
+func TestPatternsTableCodec_RecommendedRateAsterisk(t *testing.T) {
+	t.Parallel()
+
+	recs := []LogRecommendation{
+		{Pattern: "match", Volume: 100, ConfiguredDropRate: 0, RecommendedDropRate: 50, IngestedLines: 10, QueriedLines: 1},
+	}
+
+	opts := &patternsShowOpts{TopN: 0}
+	codec := &patternsTableCodec{wide: false, opts: opts}
+
+	var buf bytes.Buffer
+	require.NoError(t, codec.Encode(&buf, recs))
+
+	out := buf.String()
+	assert.Contains(t, out, "50.00 *")
+	assert.Contains(t, out, "* Recommended rate differs from drop rate by more than 10 percentage points.")
 }

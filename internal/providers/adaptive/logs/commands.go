@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"sort"
 	"text/tabwriter"
 
@@ -66,7 +67,7 @@ type patternsShowOpts struct {
 }
 
 func (o *patternsShowOpts) setup(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&o.SegmentID, "segment", "", "Only include patterns for this segment (SEGMENT ID column from patterns stats, or API map key / selector)")
+	cmd.Flags().StringVar(&o.SegmentID, "segment", "", "Only include patterns for this segment (ID column from patterns stats, or API map key / selector)")
 	cmd.Flags().IntVar(&o.TopN, "top", 10, "Table only: show top N patterns by volume; 0 shows all rows with no rollup")
 	o.IO.RegisterCustomCodec("table", &patternsTableCodec{wide: false, opts: o})
 	o.IO.RegisterCustomCodec("wide", &patternsTableCodec{wide: true, opts: o})
@@ -188,22 +189,22 @@ func (c *segmentStatsTableCodec) Encode(w io.Writer, v any) error {
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "SEGMENT ID\tSEGMENT\tNAME\tVOLUME")
+	fmt.Fprintln(tw, "ID\tNAME\tSEGMENT\tVOLUME")
 	noTruncate := c.opts != nil && c.opts.IO.NoTruncate
 	for _, s := range stats {
 		idCol := s.SegmentID
 		if idCol == "" {
 			idCol = "-"
 		}
-		keyCol := s.ID
+		segCol := s.ID
 		if !noTruncate {
 			if c.wide {
-				keyCol = truncate(keyCol, 120)
+				segCol = truncate(segCol, 120)
 			} else {
-				keyCol = truncate(keyCol, 80)
+				segCol = truncate(segCol, 80)
 			}
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", idCol, keyCol, s.Name, humanBytes(s.Volume))
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", idCol, s.Name, segCol, humanBytes(s.Volume))
 	}
 	return tw.Flush()
 }
@@ -251,13 +252,16 @@ func (c *patternsTableCodec) Encode(w io.Writer, v any) error {
 
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	if c.wide {
-		fmt.Fprintln(tw, "PATTERN\tDROP RATE\tRECOMMENDED RATE\tVOLUME\tINGESTED LINES\tQUERIED LINES\tQUERIED\tSUPERSEDED")
+		fmt.Fprintln(tw, "PATTERN\tQUERIED\tVOLUME\tDROP RATE\tRECOMMENDED RATE\tINGESTED LINES\tQUERIED LINES\tSUPERSEDED")
 	} else {
-		fmt.Fprintln(tw, "PATTERN\tDROP RATE\tRECOMMENDED RATE\tVOLUME\tQUERIED")
+		fmt.Fprintln(tw, "PATTERN\tQUERIED\tVOLUME\tDROP RATE\tRECOMMENDED RATE")
 	}
 
+	var anyRecRateMark bool
 	for _, rec := range head {
-		c.writePatternRow(tw, rec)
+		if c.writePatternRow(tw, rec) {
+			anyRecRateMark = true
+		}
 	}
 
 	if len(tail) > 0 {
@@ -277,18 +281,37 @@ func (c *patternsTableCodec) Encode(w io.Writer, v any) error {
 			pattern = truncate(pattern, 80)
 		}
 		if c.wide {
-			fmt.Fprintf(tw, "%s\t-\t-\t%s\t%d\t%d\t%s\t-\n",
-				pattern, humanBytes(vol), ing, q, queryIngestLabel(q, ing))
+			fmt.Fprintf(tw, "%s\t%s\t%s\t-\t-\t%d\t%d\t-\n",
+				pattern, queryIngestLabel(q, ing), humanBytes(vol), ing, q)
 		} else {
-			fmt.Fprintf(tw, "%s\t-\t-\t%s\t%s\n",
-				pattern, humanBytes(vol), queryIngestLabel(q, ing))
+			fmt.Fprintf(tw, "%s\t%s\t%s\t-\t-\n",
+				pattern, queryIngestLabel(q, ing), humanBytes(vol))
 		}
 	}
 
-	return tw.Flush()
+	if err := tw.Flush(); err != nil {
+		return err
+	}
+	if anyRecRateMark {
+		fmt.Fprintln(w, "\n* Recommended rate differs from drop rate by more than 10 percentage points.")
+	}
+	return nil
 }
 
-func (c *patternsTableCodec) writePatternRow(tw *tabwriter.Writer, rec LogRecommendation) {
+// recommendedRateCell formats the recommended drop rate and marks when it differs from the
+// configured drop rate by more than 10 percentage points.
+func recommendedRateCell(configured float32, recommended float64) (string, bool) {
+	cell := fmt.Sprintf("%.2f", recommended)
+	if math.Abs(float64(configured)-recommended) > 10 {
+		cell += " *"
+		return cell, true
+	}
+	return cell, false
+}
+
+// writePatternRow renders one recommendation row. It returns true when the recommended rate
+// cell includes a divergence marker.
+func (c *patternsTableCodec) writePatternRow(tw *tabwriter.Writer, rec LogRecommendation) bool {
 	pattern := rec.Pattern
 	if pattern == "" {
 		pattern = rec.Label()
@@ -296,26 +319,29 @@ func (c *patternsTableCodec) writePatternRow(tw *tabwriter.Writer, rec LogRecomm
 	if !c.wide {
 		pattern = truncate(pattern, 80)
 	}
+	recCell, marked := recommendedRateCell(rec.ConfiguredDropRate, rec.RecommendedDropRate)
+	queried := queryIngestLabel(rec.QueriedLines, rec.IngestedLines)
 	if c.wide {
-		fmt.Fprintf(tw, "%s\t%.2f\t%.2f\t%s\t%d\t%d\t%s\t%v\n",
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%.2f\t%s\t%d\t%d\t%v\n",
 			pattern,
-			rec.ConfiguredDropRate,
-			rec.RecommendedDropRate,
+			queried,
 			humanBytes(rec.Volume),
+			rec.ConfiguredDropRate,
+			recCell,
 			rec.IngestedLines,
 			rec.QueriedLines,
-			queryIngestLabel(rec.QueriedLines, rec.IngestedLines),
 			rec.Superseded,
 		)
 	} else {
-		fmt.Fprintf(tw, "%s\t%.2f\t%.2f\t%s\t%s\n",
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%.2f\t%s\n",
 			pattern,
-			rec.ConfiguredDropRate,
-			rec.RecommendedDropRate,
+			queried,
 			humanBytes(rec.Volume),
-			queryIngestLabel(rec.QueriedLines, rec.IngestedLines),
+			rec.ConfiguredDropRate,
+			recCell,
 		)
 	}
+	return marked
 }
 
 func truncate(s string, limit int) string {
