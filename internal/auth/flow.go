@@ -29,11 +29,6 @@ import (
 //go:embed templates/*.html
 var templateFS embed.FS
 
-var (
-	successTemplate = template.Must(template.ParseFS(templateFS, "templates/success.html"))
-	errorTemplate   = template.Must(template.ParseFS(templateFS, "templates/error.html"))
-)
-
 // Result contains the result of a successful authentication flow.
 type Result struct {
 	// Token is the gat_ access token for API authentication.
@@ -59,7 +54,7 @@ type Result struct {
 }
 
 // DefaultScopes are the scopes requested by grafanactl.
-var DefaultScopes = []string{"grafana-api:read", "grafana-api:write", "grafana-api:delete", "assistant:a2a"}
+var DefaultScopes = []string{"grafana-api:read", "grafana-api:write", "grafana-api:delete", "assistant:a2a"} //nolint:gochecknoglobals
 
 // Options configures the authentication flow.
 type Options struct {
@@ -74,12 +69,17 @@ type Options struct {
 	// Scopes specifies the token scopes to request.
 	// If empty, DefaultScopes are used.
 	Scopes []string
+
+	// Writer is the output writer for user-facing messages.
+	// Defaults to os.Stderr.
+	Writer io.Writer
 }
 
 // Flow manages the browser-based authentication process.
 type Flow struct {
 	endpoint string
 	opts     Options
+	writer   io.Writer
 }
 
 // NewFlow creates a new authentication flow for the given Grafana endpoint.
@@ -90,7 +90,11 @@ func NewFlow(endpoint string, opts Options) *Flow {
 	if len(opts.Scopes) == 0 {
 		opts.Scopes = DefaultScopes
 	}
-	return &Flow{endpoint: endpoint, opts: opts}
+	w := opts.Writer
+	if w == nil {
+		w = os.Stderr
+	}
+	return &Flow{endpoint: endpoint, opts: opts, writer: w}
 }
 
 // Run executes the authentication flow.
@@ -98,7 +102,7 @@ func (f *Flow) Run(ctx context.Context) (*Result, error) {
 	port := f.opts.Port
 	if port == 0 {
 		var err error
-		port, err = findAvailablePort(f.opts.BindAddress)
+		port, err = findAvailablePort(ctx, f.opts.BindAddress)
 		if err != nil {
 			return nil, fmt.Errorf("no available port: %w", err)
 		}
@@ -119,7 +123,7 @@ func (f *Flow) Run(ctx context.Context) (*Result, error) {
 	errCh := make(chan error, 1)
 	server := f.startCallbackServer(ctx, f.opts.BindAddress, port, state, codeVerifier, resultCh, errCh)
 
-	defer func() {
+	defer func() { //nolint:contextcheck // intentionally use Background for graceful shutdown after ctx cancellation
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = server.Shutdown(shutdownCtx)
@@ -136,18 +140,18 @@ func (f *Flow) Run(ctx context.Context) (*Result, error) {
 		authURL += "&scopes=" + url.QueryEscape(strings.Join(f.opts.Scopes, ","))
 	}
 
-	fmt.Println("Opening browser to authenticate...")
-	fmt.Printf("If browser doesn't open, visit:\n  %s\n\n", authURL)
+	fmt.Fprintln(f.writer, "Opening browser to authenticate...")
+	fmt.Fprintf(f.writer, "If browser doesn't open, visit:\n  %s\n\n", authURL)
 
-	fmt.Printf("Verification code: %s\n", verificationCode(codeChallenge))
-	fmt.Println("Check that this code matches what is shown in the browser before approving.")
-	fmt.Println()
+	fmt.Fprintf(f.writer, "Verification code: %s\n", verificationCode(codeChallenge))
+	fmt.Fprintln(f.writer, "Check that this code matches what is shown in the browser before approving.")
+	fmt.Fprintln(f.writer)
 
-	if err := openBrowser(authURL); err != nil {
-		fmt.Println("(Could not open browser automatically)")
+	if err := openBrowser(ctx, authURL); err != nil {
+		fmt.Fprintln(f.writer, "(Could not open browser automatically)")
 	}
 
-	fmt.Println("Waiting for authentication...")
+	fmt.Fprintln(f.writer, "Waiting for authentication...")
 
 	select {
 	case result := <-resultCh:
@@ -235,7 +239,7 @@ func (f *Flow) startCallbackServer(ctx context.Context, bindAddress string, port
 	return server
 }
 
-var allowedDomainSuffixes = []string{
+var allowedDomainSuffixes = []string{ //nolint:gochecknoglobals
 	".grafana.net",
 	".grafana-dev.net",
 	".grafana-ops.net",
@@ -344,9 +348,10 @@ func exchangeCodeForToken(ctx context.Context, endpoint, code, codeVerifier stri
 	return &result, nil
 }
 
-func findAvailablePort(bindAddress string) (int, error) {
+func findAvailablePort(ctx context.Context, bindAddress string) (int, error) {
+	var lc net.ListenConfig
 	for port := 54321; port < 54400; port++ {
-		listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", bindAddress, port))
+		listener, err := lc.Listen(ctx, "tcp", fmt.Sprintf("%s:%d", bindAddress, port))
 		if err == nil {
 			_ = listener.Close()
 			return port, nil
@@ -385,16 +390,16 @@ func verificationCode(codeChallenge string) string {
 	return h[:4] + "-" + h[4:]
 }
 
-func openBrowser(url string) error {
+func openBrowser(ctx context.Context, url string) error {
 	var cmd *exec.Cmd
 
 	switch runtime.GOOS {
 	case "darwin":
-		cmd = exec.Command("open", url)
+		cmd = exec.CommandContext(ctx, "open", url)
 	case "linux":
-		cmd = exec.Command("xdg-open", url)
+		cmd = exec.CommandContext(ctx, "xdg-open", url)
 	case "windows":
-		cmd = exec.Command("cmd", "/c", "start", url)
+		cmd = exec.CommandContext(ctx, "cmd", "/c", "start", url)
 	default:
 		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
 	}
@@ -403,9 +408,10 @@ func openBrowser(url string) error {
 }
 
 func renderSuccessPage(w http.ResponseWriter) {
+	tmpl := template.Must(template.ParseFS(templateFS, "templates/success.html"))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	var buf bytes.Buffer
-	if err := successTemplate.Execute(&buf, nil); err != nil {
+	if err := tmpl.Execute(&buf, nil); err != nil {
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
@@ -413,11 +419,12 @@ func renderSuccessPage(w http.ResponseWriter) {
 }
 
 func renderErrorPage(w http.ResponseWriter, errMsg string) {
+	tmpl := template.Must(template.ParseFS(templateFS, "templates/error.html"))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusBadRequest)
 	data := struct{ Error string }{Error: html.EscapeString(errMsg)}
 	var buf bytes.Buffer
-	if err := errorTemplate.Execute(&buf, data); err != nil {
+	if err := tmpl.Execute(&buf, data); err != nil {
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}

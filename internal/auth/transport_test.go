@@ -27,7 +27,11 @@ func TestRefreshTransport_SetsAuthorizationHeader(t *testing.T) {
 	}
 
 	client := &http.Client{Transport: transport}
-	resp, err := client.Get(backend.URL + "/api/test")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, backend.URL+"/api/test", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -57,7 +61,11 @@ func TestRefreshTransport_SkipsRefreshWhenTokenFresh(t *testing.T) {
 	}
 
 	client := &http.Client{Transport: transport}
-	resp, err := client.Get(refreshServer.URL + "/test")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, refreshServer.URL+"/test", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -94,7 +102,11 @@ func TestRefreshTransport_RefreshesWhenTokenExpiring(t *testing.T) {
 	}
 
 	client := &http.Client{Transport: transport}
-	resp, err := client.Get(refreshServer.URL + "/test")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, refreshServer.URL+"/test", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -140,7 +152,11 @@ func TestRefreshTransport_CallsOnRefreshCallback(t *testing.T) {
 	}
 
 	client := &http.Client{Transport: transport}
-	resp, err := client.Get(refreshServer.URL + "/test")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, refreshServer.URL+"/test", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

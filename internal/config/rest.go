@@ -6,9 +6,8 @@ import (
 	"time"
 
 	authlib "github.com/grafana/authlib/types"
-	"k8s.io/client-go/rest"
-
 	"github.com/grafana/gcx/internal/auth"
+	"k8s.io/client-go/rest"
 )
 
 // NamespacedRESTConfig is a REST config with a namespace.
@@ -64,7 +63,6 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) NamespacedRESTCon
 	// Authentication
 	var oauthTransport *auth.RefreshTransport
 	switch {
-
 	case cfg.Grafana.ProxyEndpoint != "" && cfg.Grafana.CLIToken != "":
 		// OAuth proxy mode: route requests through the assistant backend proxy.
 		// The ProxyEndpoint may differ from Server (e.g. cloud routing through

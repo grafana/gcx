@@ -716,7 +716,7 @@ func discoverPrometheusDatasource(ctx context.Context, curCtx *config.Context, r
 	// Resolve name → UID via the REST-config transport (OAuth proxy-aware).
 	dsClient, err := grafana.NewDatasourceClient(restCfg)
 	if err != nil {
-		return "", fmt.Errorf(
+		return "", errors.New(
 			"datasource UID is required: use --datasource-uid flag or set default-prometheus-datasource in config")
 	}
 	ds, err := dsClient.GetByName(ctx, dsName)

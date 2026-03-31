@@ -79,42 +79,16 @@ func (c *DatasourceClient) List(ctx context.Context) ([]*Datasource, error) {
 
 // GetByUID returns the datasource with the given UID.
 func (c *DatasourceClient) GetByUID(ctx context.Context, uid string) (*Datasource, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		c.host+"/api/datasources/uid/"+url.PathEscape(uid), nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get datasource: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("datasource %q not found", uid)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to get datasource %q: HTTP %d: %s", uid, resp.StatusCode, body)
-	}
-
-	var ds Datasource
-	if err := json.Unmarshal(body, &ds); err != nil {
-		return nil, fmt.Errorf("failed to parse datasource response: %w", err)
-	}
-
-	return &ds, nil
+	return c.get(ctx, "/api/datasources/uid/"+url.PathEscape(uid), uid)
 }
 
 // GetByName returns the datasource with the given display name.
 func (c *DatasourceClient) GetByName(ctx context.Context, name string) (*Datasource, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		c.host+"/api/datasources/name/"+url.PathEscape(name), nil)
+	return c.get(ctx, "/api/datasources/name/"+url.PathEscape(name), name)
+}
+
+func (c *DatasourceClient) get(ctx context.Context, path, identifier string) (*Datasource, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.host+path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -131,10 +105,10 @@ func (c *DatasourceClient) GetByName(ctx context.Context, name string) (*Datasou
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("datasource %q not found", name)
+		return nil, fmt.Errorf("datasource %q not found", identifier)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to get datasource by name %q: HTTP %d: %s", name, resp.StatusCode, body)
+		return nil, fmt.Errorf("failed to get datasource %q: HTTP %d: %s", identifier, resp.StatusCode, body)
 	}
 
 	var ds Datasource

@@ -149,7 +149,11 @@ func TestNamespacedRESTConfig_SetOnRefresh(t *testing.T) {
 	}
 
 	client := &http.Client{Transport: refreshTransport}
-	resp, err := client.Get(refreshServer.URL + "/test")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, refreshServer.URL+"/test", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
