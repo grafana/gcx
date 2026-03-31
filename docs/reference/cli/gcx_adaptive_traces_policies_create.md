@@ -1,11 +1,18 @@
-## gcx adaptive traces
+## gcx adaptive traces policies create
 
-Manage Adaptive Traces resources.
+Create an Adaptive Traces sampling policy from a file.
+
+```
+gcx adaptive traces policies create [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for traces
+  -f, --filename string   File containing the policy definition (use - for stdin)
+  -h, --help              help for create
+      --json string       Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+  -o, --output string     Output format. One of: json, yaml (default "yaml")
 ```
 
 ### Options inherited from parent commands
@@ -21,7 +28,5 @@ Manage Adaptive Traces resources.
 
 ### SEE ALSO
 
-* [gcx adaptive](gcx_adaptive.md)	 - Manage Grafana Cloud Adaptive Telemetry.
 * [gcx adaptive traces policies](gcx_adaptive_traces_policies.md)	 - Manage Adaptive Traces sampling policies.
-* [gcx adaptive traces recommendations](gcx_adaptive_traces_recommendations.md)	 - Manage Adaptive Traces recommendations.
 
