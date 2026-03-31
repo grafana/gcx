@@ -267,7 +267,7 @@ func (h *tracesHelper) policiesCommand() *cobra.Command {
 		Short: "Manage Adaptive Traces sampling policies.",
 	}
 	cmd.AddCommand(
-		h.policiesShowCommand(),
+		h.policiesListCommand(),
 		h.policiesGetCommand(),
 		h.policiesCreateCommand(),
 		h.policiesUpdateCommand(),
@@ -277,25 +277,25 @@ func (h *tracesHelper) policiesCommand() *cobra.Command {
 }
 
 // ---------------------------------------------------------------------------
-// policies show
+// policies list
 // ---------------------------------------------------------------------------
 
-type policiesShowOpts struct {
+type policiesListOpts struct {
 	IO cmdio.Options
 }
 
-func (o *policiesShowOpts) setup(flags *pflag.FlagSet) {
+func (o *policiesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &policyTableCodec{})
 	o.IO.RegisterCustomCodec("wide", &policyTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
 
-func (h *tracesHelper) policiesShowCommand() *cobra.Command {
-	opts := &policiesShowOpts{}
+func (h *tracesHelper) policiesListCommand() *cobra.Command {
+	opts := &policiesListOpts{}
 	cmd := &cobra.Command{
-		Use:   "show",
-		Short: "Show Adaptive Traces sampling policies.",
+		Use:   "list",
+		Short: "List Adaptive Traces sampling policies.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -526,6 +526,10 @@ type policiesDeleteOpts struct {
 
 func (o *policiesDeleteOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
+}
+
+func (o *policiesDeleteOpts) Validate() error {
+	return nil
 }
 
 func (h *tracesHelper) policiesDeleteCommand() *cobra.Command {

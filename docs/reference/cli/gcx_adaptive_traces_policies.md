@@ -25,6 +25,6 @@ Manage Adaptive Traces sampling policies.
 * [gcx adaptive traces policies create](gcx_adaptive_traces_policies_create.md)	 - Create an Adaptive Traces sampling policy from a file.
 * [gcx adaptive traces policies delete](gcx_adaptive_traces_policies_delete.md)	 - Delete one or more Adaptive Traces sampling policies.
 * [gcx adaptive traces policies get](gcx_adaptive_traces_policies_get.md)	 - Get an Adaptive Traces sampling policy by ID.
-* [gcx adaptive traces policies show](gcx_adaptive_traces_policies_show.md)	 - Show Adaptive Traces sampling policies.
+* [gcx adaptive traces policies list](gcx_adaptive_traces_policies_list.md)	 - List Adaptive Traces sampling policies.
 * [gcx adaptive traces policies update](gcx_adaptive_traces_policies_update.md)	 - Update an Adaptive Traces sampling policy by ID.
 
