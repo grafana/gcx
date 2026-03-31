@@ -70,8 +70,10 @@ func runShow(ctx context.Context, opts *showOpts, client *instrum.Client, cluste
 		cfg.Spec.App = &instrum.AppSpec{Namespaces: appResp.Namespaces}
 	}
 
-	// Only include k8s section if any field is enabled — omit spec.k8s: {} for unconfigured clusters (NC-008).
-	if k8sResp != nil && (k8sResp.CostMetrics || k8sResp.EnergyMetrics || k8sResp.ClusterEvents || k8sResp.NodeLogs) {
+	// Include k8s section if any field is enabled OR selection indicates monitoring is active.
+	// The API may return selection=SELECTION_INCLUDED with all bools false when k8s monitoring
+	// is enabled but no specific features are toggled yet.
+	if k8sResp != nil && (k8sResp.CostMetrics || k8sResp.EnergyMetrics || k8sResp.ClusterEvents || k8sResp.NodeLogs || k8sResp.Selection != "") {
 		cfg.Spec.K8s = &instrum.K8sSpec{
 			CostMetrics:   k8sResp.CostMetrics,
 			EnergyMetrics: k8sResp.EnergyMetrics,

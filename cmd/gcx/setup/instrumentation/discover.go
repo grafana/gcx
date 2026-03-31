@@ -88,7 +88,8 @@ func (c *DiscoverTableCodec) Format() format.Format {
 	return "table"
 }
 
-// Encode writes the discovery result as a table with columns NAMESPACE, WORKLOAD, TYPE, STATE.
+// Encode writes the discovery result as a table with columns NAMESPACE, WORKLOAD, TYPE, STATUS.
+// Wide format adds LANG and OS columns.
 func (c *DiscoverTableCodec) Encode(w io.Writer, v any) error {
 	result, ok := v.(*instrum.RunK8sDiscoveryResponse)
 	if !ok {
@@ -96,21 +97,32 @@ func (c *DiscoverTableCodec) Encode(w io.Writer, v any) error {
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAMESPACE\tWORKLOAD\tTYPE\tSTATE")
 
-	for _, item := range result.Items {
-		wType := item.WorkloadType
-		if wType == "" {
-			wType = "-"
+	if c.Wide {
+		fmt.Fprintln(tw, "NAMESPACE\tWORKLOAD\tTYPE\tSTATUS\tLANG\tOS")
+		for _, item := range result.Items {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
+				item.Namespace, item.DisplayName,
+				valOrDash(item.WorkloadType), valOrDash(item.InstrumentationStatus),
+				valOrDash(item.Lang), valOrDash(item.OS))
 		}
-		state := item.InstrumentationStatus
-		if state == "" {
-			state = "-"
+	} else {
+		fmt.Fprintln(tw, "NAMESPACE\tWORKLOAD\tTYPE\tSTATUS")
+		for _, item := range result.Items {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
+				item.Namespace, item.DisplayName,
+				valOrDash(item.WorkloadType), valOrDash(item.InstrumentationStatus))
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", item.Namespace, item.DisplayName, wType, state)
 	}
 
 	return tw.Flush()
+}
+
+func valOrDash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
 }
 
 // Decode is not supported for table format.

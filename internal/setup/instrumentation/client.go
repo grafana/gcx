@@ -146,10 +146,11 @@ type GetAppInstrumentationResponse struct {
 
 // GetK8SInstrumentationResponse is the unwrapped response from GetK8SInstrumentation.
 type GetK8SInstrumentationResponse struct {
-	CostMetrics   bool `json:"costmetrics"`
-	EnergyMetrics bool `json:"energymetrics"`
-	ClusterEvents bool `json:"clusterevents"`
-	NodeLogs      bool `json:"nodelogs"`
+	Selection     string `json:"selection,omitempty"`
+	CostMetrics   bool   `json:"costmetrics"`
+	EnergyMetrics bool   `json:"energymetrics"`
+	ClusterEvents bool   `json:"clusterevents"`
+	NodeLogs      bool   `json:"nodelogs"`
 }
 
 // DiscoveredItem represents a single discovered workload from RunK8sDiscovery.
@@ -160,6 +161,8 @@ type DiscoveredItem struct {
 	WorkloadType          string `json:"workloadType,omitempty"`
 	DisplayNamespace      string `json:"displayNamespace,omitempty"`
 	DisplayName           string `json:"displayName,omitempty"`
+	OS                    string `json:"os,omitempty"`
+	Lang                  string `json:"lang,omitempty"`
 	InstrumentationStatus string `json:"instrumentationStatus,omitempty"`
 }
 
@@ -253,6 +256,7 @@ func (c *Client) GetK8SInstrumentation(ctx context.Context, clusterName string) 
 		return nil, fmt.Errorf("GetK8SInstrumentation: decode response: %w", err)
 	}
 	return &GetK8SInstrumentationResponse{
+		Selection:     envelope.Cluster.Selection,
 		CostMetrics:   envelope.Cluster.CostMetrics,
 		EnergyMetrics: envelope.Cluster.EnergyMetrics,
 		ClusterEvents: envelope.Cluster.ClusterEvents,

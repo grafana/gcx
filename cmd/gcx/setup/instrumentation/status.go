@@ -23,6 +23,10 @@ import (
 type ClusterStatus struct {
 	Name        string  `json:"name" yaml:"name"`
 	State       string  `json:"state" yaml:"state"`
+	Workloads   int     `json:"workloads" yaml:"workloads"`
+	Pods        int     `json:"pods" yaml:"pods"`
+	Nodes       int     `json:"nodes,omitempty" yaml:"nodes,omitempty"`
+	Namespaces  int     `json:"namespaces,omitempty" yaml:"namespaces,omitempty"`
 	BeylaErrors float64 `json:"beylaErrors" yaml:"beylaErrors"`
 }
 
@@ -75,6 +79,10 @@ func newStatusCommand(loader fleetbase.ConfigLoader) *cobra.Command {
 				statuses = append(statuses, ClusterStatus{
 					Name:        cs.Name,
 					State:       cs.InstrumentationStatus,
+					Workloads:   cs.Workloads,
+					Pods:        cs.Pods,
+					Nodes:       cs.Nodes,
+					Namespaces:  len(cs.Namespaces),
 					BeylaErrors: beylaErrors[cs.Name],
 				})
 			}
@@ -171,9 +179,16 @@ func (c *StatusTableCodec) Encode(w io.Writer, v any) error {
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "CLUSTER\tSTATE\tBEYLA ERRORS")
-	for _, s := range statuses {
-		fmt.Fprintf(tw, "%s\t%s\t%.0f\n", s.Name, s.State, s.BeylaErrors)
+	if c.Wide {
+		fmt.Fprintln(tw, "CLUSTER\tSTATUS\tNODES\tWORKLOADS\tPODS\tNAMESPACES\tBEYLA ERRORS")
+		for _, s := range statuses {
+			fmt.Fprintf(tw, "%s\t%s\t%d\t%d\t%d\t%d\t%.0f\n", s.Name, s.State, s.Nodes, s.Workloads, s.Pods, s.Namespaces, s.BeylaErrors)
+		}
+	} else {
+		fmt.Fprintln(tw, "CLUSTER\tSTATUS\tWORKLOADS\tPODS\tBEYLA ERRORS")
+		for _, s := range statuses {
+			fmt.Fprintf(tw, "%s\t%s\t%d\t%d\t%.0f\n", s.Name, s.State, s.Workloads, s.Pods, s.BeylaErrors)
+		}
 	}
 	return tw.Flush()
 }

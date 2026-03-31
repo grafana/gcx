@@ -44,7 +44,7 @@ func TestStatusCommand(t *testing.T) {
 			args:      []string{"-o", "table"},
 			srvStatus: http.StatusOK,
 			srvBody:   `{"clusters":[{"name":"prod-1","instrumentationStatus":"active"},{"name":"staging-2","instrumentationStatus":"inactive"}]}`,
-			wantOut:   []string{"CLUSTER", "STATE", "BEYLA ERRORS", "prod-1", "active", "staging-2", "inactive"},
+			wantOut:   []string{"CLUSTER", "STATUS", "WORKLOADS", "PODS", "BEYLA ERRORS", "prod-1", "active", "staging-2", "inactive"},
 		},
 		{
 			name:       "cluster filter shows only matching cluster",
@@ -130,7 +130,7 @@ func TestStatusCommand_EmptyClusters(t *testing.T) {
 
 	out := stdout.String()
 	assert.Contains(t, out, "CLUSTER")
-	assert.Contains(t, out, "STATE")
+	assert.Contains(t, out, "STATUS")
 }
 
 // TestStatusCommand_FleetAPIError verifies that RunK8sMonitoring HTTP errors
