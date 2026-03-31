@@ -56,30 +56,40 @@ func (opts *sharedQueryOpts) Validate() error {
 		if err != nil {
 			return fmt.Errorf("invalid --window duration: %w", err)
 		}
+		if d <= 0 {
+			return errors.New("--window must be greater than 0")
+		}
 		now := time.Now()
 		opts.From = now.Add(-d).Format(time.RFC3339)
 		opts.To = now.Format(time.RFC3339)
 	}
 
-	if opts.Since != "" {
-		if opts.From != "" {
-			return errors.New("--since is mutually exclusive with --from")
-		}
-		d, err := ParseDuration(opts.Since)
-		if err != nil {
-			return fmt.Errorf("invalid --since duration: %w", err)
-		}
-		now := time.Now()
-		end, err := ParseTime(opts.To, now)
-		if err != nil {
-			return fmt.Errorf("invalid --to time: %w", err)
-		}
-		if end.IsZero() {
-			end = now
-		}
-		opts.From = end.Add(-d).Format(time.RFC3339)
-		opts.To = end.Format(time.RFC3339)
+	if opts.Since == "" {
+		return nil
 	}
+
+	if opts.From != "" {
+		return errors.New("--since is mutually exclusive with --from")
+	}
+
+	d, err := ParseDuration(opts.Since)
+	if err != nil {
+		return fmt.Errorf("invalid --since duration: %w", err)
+	}
+	if d <= 0 {
+		return errors.New("--since must be greater than 0")
+	}
+
+	now := time.Now()
+	end, err := ParseTime(opts.To, now)
+	if err != nil {
+		return fmt.Errorf("invalid --to time: %w", err)
+	}
+	if end.IsZero() {
+		end = now
+	}
+	opts.From = end.Add(-d).Format(time.RFC3339)
+	opts.To = end.Format(time.RFC3339)
 
 	return nil
 }
