@@ -816,7 +816,6 @@ func newServiceDashboardCommand(loader RESTConfigLoader) *cobra.Command {
 	return cmd
 }
 
-//nolint:dupl
 func newKPIDisplayCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "kpi-display",
@@ -851,7 +850,6 @@ func newKPIDisplayCommand(loader RESTConfigLoader) *cobra.Command {
 		},
 	}
 	createCmd.Flags().StringVarP(&fileFlag, "file", "f", "", "Input file (YAML)")
-	//nolint:dupl
 	_ = createCmd.MarkFlagRequired("file")
 	cmd.AddCommand(createCmd)
 	return cmd
