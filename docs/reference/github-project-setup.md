@@ -202,10 +202,11 @@ gh issue list --repo <owner>/<repo> --state open --limit 500 --json number --jq 
   done
 ```
 
-### Configure views (manual)
+### Configure views
 
-Board layout, grouping, sorting, and filters cannot be configured via API.
-Set up in the GitHub UI:
+View layout configuration (grouping, board vs. table) is not reliably
+exposable via `updateProjectV2View` as of this writing — verify current
+API support and fall back to the GitHub UI if unavailable:
 
 1. Change layout to **Board** (columns default to Status)
 2. **Group by** Labels for area swimlanes
@@ -219,6 +220,7 @@ Set up in the GitHub UI:
 - **No status filter on sync.** All issues (open + closed) are synced.
 - **First sync timestamp conflict.** Without `--prefer-local`, closed issues
   get reopened because GitHub copies have newer timestamps.
-- **Project views are UI-only.** No API for board configuration.
+- **Project views may need manual setup.** `updateProjectV2View` support
+  varies — verify current API capabilities before falling back to the UI.
 - **Beads label drift.** Subsequent syncs may recreate labels that were deleted.
   Monitor with `gh label list` after syncs.
