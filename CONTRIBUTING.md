@@ -24,8 +24,8 @@ $ bd migrate sync beads-sync   # configure the sync branch
 
 ```console
 $ bd ready                                              # list unblocked issues ready to work
-$ bd show gcx-experiments-<id>                   # view issue details
-$ bd update gcx-experiments-<id> --status=in_progress  # claim an issue
+$ bd show gcx-<id>                   # view issue details
+$ bd update gcx-<id> --status=in_progress  # claim an issue
 $ bd list                                               # all open issues
 $ bd stats                                              # summary counts
 ```
@@ -42,7 +42,7 @@ Priority scale: `0` (critical) → `4` (backlog). Types: `task`, `bug`, `feature
 ### Closing and syncing
 
 ```console
-$ bd close gcx-experiments-<id>   # mark done
+$ bd close gcx-<id>   # mark done
 $ bd sync                                # push issues to remote
 ```
 

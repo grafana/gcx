@@ -18,7 +18,7 @@ present (requires Go v1.24+).
 Run these two commands inside Claude Code:
 
 ```
-/plugin marketplace add grafana/gcx-experiments
+/plugin marketplace add grafana/gcx
 /plugin install gcx@gcx-marketplace
 ```
 

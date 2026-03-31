@@ -26,7 +26,7 @@ If the command is not found, build it from source. Requires
 [git](https://git-scm.com/) and [Go](https://go.dev/) v1.24+:
 
 ```bash
-tmp=$(mktemp -d) && git clone --depth 1 https://github.com/grafana/gcx-experiments.git "$tmp" && (cd "$tmp" && go install ./cmd/gcx) && rm -rf "$tmp"
+tmp=$(mktemp -d) && git clone --depth 1 https://github.com/grafana/gcx.git "$tmp" && (cd "$tmp" && go install ./cmd/gcx) && rm -rf "$tmp"
 ```
 
 After installing, verify the binary is on PATH:
