@@ -4,6 +4,10 @@ import (
 	"sort"
 )
 
+// defaultSegmentStatsKey is the aggregation bucket for recommendations that only have
+// top-level Volume; the API often omits a per-segment map for the default segment.
+const defaultSegmentStatsKey = "default"
+
 // filterPatternsBySegment returns recommendations whose Segments map contains a key matching
 // segmentRef. When catalog is non-nil, segmentRef may be a catalog LogSegment.ID or a selector
 // string; matching keys from the catalog are tried so maps keyed only by selector still match
@@ -60,8 +64,14 @@ type SegmentPatternStat struct {
 func AggregateSegmentVolumes(recs []LogRecommendation, segments []LogSegment) []SegmentPatternStat {
 	sums := make(map[string]uint64)
 	for _, rec := range recs {
-		for id, seg := range rec.Segments {
-			sums[id] += seg.Volume
+		if len(rec.Segments) > 0 {
+			for id, seg := range rec.Segments {
+				sums[id] += seg.Volume
+			}
+			continue
+		}
+		if rec.Volume > 0 {
+			sums[defaultSegmentStatsKey] += rec.Volume
 		}
 	}
 
@@ -87,7 +97,10 @@ func AggregateSegmentVolumes(recs []LogRecommendation, segments []LogSegment) []
 	out := make([]SegmentPatternStat, 0, len(sums))
 	for id, vol := range sums {
 		name := nameByKey[id]
-		if !known[id] {
+		switch {
+		case id == defaultSegmentStatsKey:
+			name = "Default"
+		case !known[id]:
 			name = "(unknown)"
 		}
 		out = append(out, SegmentPatternStat{

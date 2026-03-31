@@ -97,3 +97,30 @@ func TestAggregateSegmentVolumes_empty(t *testing.T) {
 	assert.Empty(t, logs.AggregateSegmentVolumes(nil, nil))
 	assert.Empty(t, logs.AggregateSegmentVolumes([]logs.LogRecommendation{{Pattern: "x"}}, nil))
 }
+
+func TestAggregateSegmentVolumes_topLevelVolumeAsDefaultSegment(t *testing.T) {
+	t.Parallel()
+
+	recs := []logs.LogRecommendation{
+		{Volume: 100},
+		{Volume: 40},
+	}
+	got := logs.AggregateSegmentVolumes(recs, nil)
+	require.Len(t, got, 1)
+	assert.Equal(t, "default", got[0].ID)
+	assert.Empty(t, got[0].SegmentID)
+	assert.Equal(t, "Default", got[0].Name)
+	assert.Equal(t, uint64(140), got[0].Volume)
+}
+
+func TestAggregateSegmentVolumes_prefersPerSegmentMapOverTopLevelVolume(t *testing.T) {
+	t.Parallel()
+
+	recs := []logs.LogRecommendation{
+		{Volume: 999, Segments: map[string]logs.Segment{"a": {Volume: 10}}},
+	}
+	got := logs.AggregateSegmentVolumes(recs, nil)
+	require.Len(t, got, 1)
+	assert.Equal(t, "a", got[0].ID)
+	assert.Equal(t, uint64(10), got[0].Volume)
+}

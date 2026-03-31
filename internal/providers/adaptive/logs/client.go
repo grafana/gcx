@@ -12,6 +12,8 @@ import (
 	"strconv"
 )
 
+const maxBodyReadBytes = 64 * 1024
+
 // Client is an HTTP client for the Adaptive Logs API.
 type Client struct {
 	baseURL    string
@@ -71,7 +73,7 @@ func (c *Client) GetExemption(ctx context.Context, id string) (*Exemption, error
 
 	exemption, err := decodeExemptionResponse(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode exemption response: %w", err)
+		return nil, err
 	}
 
 	return exemption, nil
@@ -103,14 +105,14 @@ func (c *Client) CreateExemption(ctx context.Context, e *Exemption) (*Exemption,
 }
 
 // UpdateExemption updates an existing log stream exemption by ID.
-// The API uses PATCH /adaptive-logs/exemptions/{id}.
+// The API uses PUT /adaptive-logs/exemptions/{id}.
 func (c *Client) UpdateExemption(ctx context.Context, id string, e *Exemption) (*Exemption, error) {
 	body, err := json.Marshal(e)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal exemption: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, http.MethodPatch, "/adaptive-logs/exemptions/"+url.PathEscape(id), bytes.NewReader(body))
+	resp, err := c.doRequest(ctx, http.MethodPut, "/adaptive-logs/exemptions/"+url.PathEscape(id), bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to update exemption %s: %w", id, err)
 	}
@@ -287,15 +289,10 @@ func (c *Client) DeleteSegment(ctx context.Context, id string) error {
 // {"result": ...} (webtools.APIResponse). Single-exemption endpoints use this shape;
 // list uses {"result": [...]} and is decoded separately in ListExemptions.
 func decodeExemptionResponse(r io.Reader) (*Exemption, error) {
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return nil, err
-	}
-
 	var env struct {
 		Result *Exemption `json:"result"`
 	}
-	if err := json.Unmarshal(data, &env); err != nil {
+	if err := json.NewDecoder(io.LimitReader(r, maxBodyReadBytes)).Decode(&env); err != nil {
 		return nil, fmt.Errorf("failed to decode exemption response: %w", err)
 	}
 	if env.Result == nil {
@@ -341,7 +338,7 @@ func (e *APIError) Error() string {
 
 // handleErrorResponse reads an error response body and returns an *APIError.
 func handleErrorResponse(resp *http.Response) error {
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyReadBytes))
 	if err != nil {
 		return &APIError{StatusCode: resp.StatusCode, Message: fmt.Sprintf("could not read response body: %v", err)}
 	}
@@ -360,7 +357,7 @@ func handleErrorResponse(resp *http.Response) error {
 	}
 
 	if len(body) > 0 {
-		return &APIError{StatusCode: resp.StatusCode, Message: string(body)}
+		return &APIError{StatusCode: resp.StatusCode, Message: "received non-JSON error response body"}
 	}
 
 	return &APIError{StatusCode: resp.StatusCode}

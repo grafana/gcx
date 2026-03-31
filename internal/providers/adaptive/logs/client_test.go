@@ -116,13 +116,13 @@ func TestAPIError_TypedError(t *testing.T) {
 			wantMessage: "access denied",
 		},
 		{
-			name: "falls back to raw body",
+			name: "sanitizes non-JSON response body",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusServiceUnavailable)
 				_, _ = w.Write([]byte("service unavailable"))
 			},
 			wantCode:    503,
-			wantMessage: "service unavailable",
+			wantMessage: "received non-JSON error response body",
 		},
 		{
 			name: "empty body",
@@ -235,7 +235,7 @@ func TestClient_UpdateExemption(t *testing.T) {
 			id:    "ex-1",
 			input: &logs.Exemption{StreamSelector: `{app="updated"}`},
 			handler: func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, http.MethodPatch, r.Method)
+				assert.Equal(t, http.MethodPut, r.Method)
 				assert.Equal(t, "/adaptive-logs/exemptions/ex-1", r.URL.Path)
 				writeJSON(w, map[string]any{
 					"result": logs.Exemption{ID: "ex-1", StreamSelector: `{app="updated"}`},
@@ -248,7 +248,7 @@ func TestClient_UpdateExemption(t *testing.T) {
 			id:    "ex-2",
 			input: &logs.Exemption{StreamSelector: `{app="wrapped"}`},
 			handler: func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, http.MethodPatch, r.Method)
+				assert.Equal(t, http.MethodPut, r.Method)
 				writeJSON(w, map[string]any{
 					"result": logs.Exemption{ID: "ex-2", StreamSelector: `{app="wrapped"}`},
 				})
@@ -260,7 +260,7 @@ func TestClient_UpdateExemption(t *testing.T) {
 			id:    "missing",
 			input: &logs.Exemption{},
 			handler: func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, http.MethodPatch, r.Method)
+				assert.Equal(t, http.MethodPut, r.Method)
 				w.WriteHeader(http.StatusNotFound)
 				writeJSON(w, map[string]any{"error": "not found"})
 			},

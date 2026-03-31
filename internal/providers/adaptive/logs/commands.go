@@ -15,6 +15,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/adaptive/auth"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 )
@@ -201,6 +202,9 @@ func (c *segmentStatsTableCodec) Encode(w io.Writer, v any) error {
 			idCol = "-"
 		}
 		segCol := s.ID
+		if segCol == defaultSegmentStatsKey && s.Name == "Default" {
+			segCol = "—"
+		}
 		if !noTruncate {
 			if c.wide {
 				segCol = truncate(segCol, 120)
@@ -551,14 +555,18 @@ func (h *logsHelper) exemptionsListCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			client, err := h.newClient(ctx)
+			crud, _, err := NewExemptionTypedCRUD(ctx, h.loader)
 			if err != nil {
 				return err
 			}
 
-			exemptions, err := client.ListExemptions(ctx)
+			typedObjs, err := crud.List(ctx)
 			if err != nil {
 				return err
+			}
+			exemptions := make([]Exemption, len(typedObjs))
+			for i := range typedObjs {
+				exemptions[i] = typedObjs[i].Spec
 			}
 
 			return opts.IO.Encode(cmd.OutOrStdout(), exemptions)
@@ -635,20 +643,22 @@ func (h *logsHelper) exemptionsCreateCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			client, err := h.newClient(ctx)
+			crud, _, err := NewExemptionTypedCRUD(ctx, h.loader)
 			if err != nil {
 				return err
 			}
 
-			created, err := client.CreateExemption(ctx, &Exemption{
-				StreamSelector: opts.StreamSelector,
-				Reason:         opts.Reason,
+			created, err := crud.Create(ctx, &adapter.TypedObject[Exemption]{
+				Spec: Exemption{
+					StreamSelector: opts.StreamSelector,
+					Reason:         opts.Reason,
+				},
 			})
 			if err != nil {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), created)
+			return opts.IO.Encode(cmd.OutOrStdout(), created.Spec)
 		},
 	}
 	opts.setup(cmd)
@@ -682,31 +692,33 @@ func (h *logsHelper) exemptionsUpdateCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			client, err := h.newClient(ctx)
+			crud, _, err := NewExemptionTypedCRUD(ctx, h.loader)
 			if err != nil {
 				return err
 			}
 
-			changedStream := cmd.Flags().Changed("stream-selector")
-			changedReason := cmd.Flags().Changed("reason")
-			if !changedStream && !changedReason {
+			if !cmd.Flags().Changed("stream-selector") && !cmd.Flags().Changed("reason") {
 				return errors.New("specify at least one of --stream-selector or --reason")
 			}
 
-			patch := &Exemption{}
-			if changedStream {
-				patch.StreamSelector = opts.StreamSelector
-			}
-			if changedReason {
-				patch.Reason = opts.Reason
+			existing, err := crud.Get(ctx, args[0])
+			if err != nil {
+				return fmt.Errorf("failed to fetch existing exemption for merge: %w", err)
 			}
 
-			updated, err := client.UpdateExemption(ctx, args[0], patch)
+			if cmd.Flags().Changed("stream-selector") {
+				existing.Spec.StreamSelector = opts.StreamSelector
+			}
+			if cmd.Flags().Changed("reason") {
+				existing.Spec.Reason = opts.Reason
+			}
+
+			updated, err := crud.Update(ctx, args[0], existing)
 			if err != nil {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), updated)
+			return opts.IO.Encode(cmd.OutOrStdout(), updated.Spec)
 		},
 	}
 	opts.setup(cmd)
@@ -715,19 +727,30 @@ func (h *logsHelper) exemptionsUpdateCommand() *cobra.Command {
 
 // exemptions delete
 
+type exemptionsDeleteOpts struct{}
+
+func (o *exemptionsDeleteOpts) setup(_ *cobra.Command) {}
+
+func (o *exemptionsDeleteOpts) Validate() error { return nil }
+
 func (h *logsHelper) exemptionsDeleteCommand() *cobra.Command {
+	opts := &exemptionsDeleteOpts{}
 	cmd := &cobra.Command{
 		Use:   "delete ID",
 		Short: "Delete an adaptive log exemption.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			ctx := cmd.Context()
-			client, err := h.newClient(ctx)
+			crud, _, err := NewExemptionTypedCRUD(ctx, h.loader)
 			if err != nil {
 				return err
 			}
 
-			if err := client.DeleteExemption(ctx, args[0]); err != nil {
+			if err := crud.Delete(ctx, args[0]); err != nil {
 				return err
 			}
 
@@ -735,6 +758,7 @@ func (h *logsHelper) exemptionsDeleteCommand() *cobra.Command {
 			return nil
 		},
 	}
+	opts.setup(cmd)
 	return cmd
 }
 
@@ -780,14 +804,18 @@ func (h *logsHelper) segmentsListCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			client, err := h.newClient(ctx)
+			crud, _, err := NewSegmentTypedCRUD(ctx, h.loader)
 			if err != nil {
 				return err
 			}
 
-			segments, err := client.ListSegments(ctx)
+			typedObjs, err := crud.List(ctx)
 			if err != nil {
 				return err
+			}
+			segments := make([]LogSegment, len(typedObjs))
+			for i := range typedObjs {
+				segments[i] = typedObjs[i].Spec
 			}
 
 			return opts.IO.Encode(cmd.OutOrStdout(), segments)
@@ -866,21 +894,23 @@ func (h *logsHelper) segmentsCreateCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			client, err := h.newClient(ctx)
+			crud, _, err := NewSegmentTypedCRUD(ctx, h.loader)
 			if err != nil {
 				return err
 			}
 
-			created, err := client.CreateSegment(ctx, &LogSegment{
-				Name:              opts.Name,
-				Selector:          opts.Selector,
-				FallbackToDefault: opts.FallbackToDefault,
+			created, err := crud.Create(ctx, &adapter.TypedObject[LogSegment]{
+				Spec: LogSegment{
+					Name:              opts.Name,
+					Selector:          opts.Selector,
+					FallbackToDefault: opts.FallbackToDefault,
+				},
 			})
 			if err != nil {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), created)
+			return opts.IO.Encode(cmd.OutOrStdout(), created.Spec)
 		},
 	}
 	opts.setup(cmd)
@@ -916,7 +946,7 @@ func (h *logsHelper) segmentsUpdateCommand() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			client, err := h.newClient(ctx)
+			crud, _, err := NewSegmentTypedCRUD(ctx, h.loader)
 			if err != nil {
 				return err
 			}
@@ -925,27 +955,27 @@ func (h *logsHelper) segmentsUpdateCommand() *cobra.Command {
 				return errors.New("specify at least one of --name, --selector, or --fallback-to-default")
 			}
 
-			existing, err := client.GetSegment(ctx, args[0])
+			existing, err := crud.Get(ctx, args[0])
 			if err != nil {
 				return fmt.Errorf("failed to fetch existing segment for merge: %w", err)
 			}
 
 			if cmd.Flags().Changed("name") {
-				existing.Name = opts.Name
+				existing.Spec.Name = opts.Name
 			}
 			if cmd.Flags().Changed("selector") {
-				existing.Selector = opts.Selector
+				existing.Spec.Selector = opts.Selector
 			}
 			if cmd.Flags().Changed("fallback-to-default") {
-				existing.FallbackToDefault = opts.FallbackToDefault
+				existing.Spec.FallbackToDefault = opts.FallbackToDefault
 			}
 
-			updated, err := client.UpdateSegment(ctx, args[0], existing)
+			updated, err := crud.Update(ctx, args[0], existing)
 			if err != nil {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), updated)
+			return opts.IO.Encode(cmd.OutOrStdout(), updated.Spec)
 		},
 	}
 	opts.setup(cmd)
@@ -954,19 +984,30 @@ func (h *logsHelper) segmentsUpdateCommand() *cobra.Command {
 
 // segments delete
 
+type segmentsDeleteOpts struct{}
+
+func (o *segmentsDeleteOpts) setup(_ *cobra.Command) {}
+
+func (o *segmentsDeleteOpts) Validate() error { return nil }
+
 func (h *logsHelper) segmentsDeleteCommand() *cobra.Command {
+	opts := &segmentsDeleteOpts{}
 	cmd := &cobra.Command{
 		Use:   "delete ID",
 		Short: "Delete an adaptive log segment.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			ctx := cmd.Context()
-			client, err := h.newClient(ctx)
+			crud, _, err := NewSegmentTypedCRUD(ctx, h.loader)
 			if err != nil {
 				return err
 			}
 
-			if err := client.DeleteSegment(ctx, args[0]); err != nil {
+			if err := crud.Delete(ctx, args[0]); err != nil {
 				return err
 			}
 
@@ -974,5 +1015,6 @@ func (h *logsHelper) segmentsDeleteCommand() *cobra.Command {
 			return nil
 		},
 	}
+	opts.setup(cmd)
 	return cmd
 }

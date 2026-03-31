@@ -66,6 +66,9 @@ func NewExemptionTypedCRUD(ctx context.Context, loader *providers.ConfigLoader) 
 		ListFn: func(ctx context.Context) ([]Exemption, error) {
 			return client.ListExemptions(ctx)
 		},
+		GetFn: func(ctx context.Context, name string) (*Exemption, error) {
+			return client.GetExemption(ctx, name)
+		},
 		CreateFn: func(ctx context.Context, e *Exemption) (*Exemption, error) {
 			return client.CreateExemption(ctx, e)
 		},
