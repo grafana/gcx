@@ -27,7 +27,6 @@ Manage Grafana Knowledge Graph entity types, rules, and datasets
 * [gcx kg entities](gcx_kg_entities.md)	 - Manage Knowledge Graph entities.
 * [gcx kg entity-types](gcx_kg_entity-types.md)	 - Manage Knowledge Graph entity types.
 * [gcx kg env](gcx_kg_env.md)	 - Manage Knowledge Graph environment configuration.
-* [gcx kg frontend-rules](gcx_kg_frontend-rules.md)	 - Push frontend observability rules.
 * [gcx kg graph-config](gcx_kg_graph-config.md)	 - Get the graph display configuration.
 * [gcx kg health](gcx_kg_health.md)	 - Show a health summary with active insight counts.
 * [gcx kg insights](gcx_kg_insights.md)	 - Query Knowledge Graph insights.
