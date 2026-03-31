@@ -1,6 +1,7 @@
 name: ⚙️ Configuration Issue
 description: Problems with gcx configuration, contexts, or authentication
 title: "[Config]: "
+type: "Task"
 labels: ["type::task", "action/needs-triage"]
 body:
   - type: markdown
