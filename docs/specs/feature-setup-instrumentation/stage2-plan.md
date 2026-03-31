@@ -419,6 +419,57 @@ App features without `--namespace` → error: `--namespace is required for app-l
 
 ---
 
+## Part 5: Fleet collector filtering and cleanup
+
+Fleet provider UX gap surfaced during smoke testing: `gcx fleet collectors list`
+returns all collectors across all clusters with no way to filter or prune stale
+entries from previous test runs.
+
+Not instrumentation-specific, but impacts the instrumentation workflow — users
+see clutter from old clusters mixed with active ones.
+
+### Changes to `gcx fleet collectors list`
+
+Add `--cluster` filter flag:
+
+```
+gcx fleet collectors list                        # all collectors (existing behavior)
+gcx fleet collectors list --cluster k3d-shopk8s  # filter by cluster name
+```
+
+Implementation: filter client-side on `Collector.RemoteAttributes["cluster"]`
+or equivalent cluster identifier field after fetching all collectors.
+
+### Stretch: `gcx fleet collectors prune`
+
+New subcommand to clean up stale collectors:
+
+```
+gcx fleet collectors prune --inactive-for 7d     # delete collectors inactive > 7 days
+gcx fleet collectors prune --cluster old-cluster  # delete all collectors for a cluster
+gcx fleet collectors prune --dry-run              # preview what would be deleted
+```
+
+Implementation: filter by `MarkedInactiveAt` timestamp and/or cluster name,
+then batch delete with confirmation prompt (or `--force` to skip).
+
+### Design Questions
+
+- **Cluster identification**: How is the cluster name stored on a collector?
+  `RemoteAttributes`, `LocalAttributes`, or `Name` prefix? Need to check the
+  actual API response shape.
+- **Prune safety**: Require `--force` or interactive confirmation? Suggest:
+  interactive confirmation by default, `--force` for CI.
+
+### Deliverables
+
+- `internal/providers/fleet/provider.go` — add `--cluster` flag to collector list
+- `internal/providers/fleet/provider.go` — new `prune` subcommand (stretch)
+- `internal/providers/fleet/provider_test.go` — unit tests
+- Updated CLI reference docs
+
+---
+
 ## Dependency Order
 
 ```
@@ -430,9 +481,13 @@ Part 1 (show→get + discover positional) ─── mechanical refactor
      │
      ├── Part 3 (init) ─── setup init (gcx-b22fd37d) + instrumentation init
      │
-     └── Part 4 (add) ─── new command, uses existing instrumentation client
+     ├── Part 4 (add) ─── new command, uses existing instrumentation client
+     │
+     └── Part 5 (fleet collectors) ─── independent, fleet provider enhancement
+
 ```
 
-Parts 2, 3, and 4 are independent of each other but all depend on Part 1
-(the revised command grammar). Part 3's `setup init` is tracked under
-bead gcx-b22fd37d and may be implemented in a separate workstream.
+Parts 2, 3, 4, and 5 are independent of each other. Parts 2–4 depend on
+Part 1 (the revised command grammar). Part 5 has no deps on Part 1.
+Part 3's `setup init` is tracked under bead gcx-b22fd37d and may be
+implemented in a separate workstream.
