@@ -53,8 +53,8 @@ type Result struct {
 	RefreshExpiresAt string
 }
 
-// DefaultScopes are the scopes requested by grafanactl.
-var DefaultScopes = []string{"grafana-api:read", "grafana-api:write", "grafana-api:delete", "assistant:a2a"} //nolint:gochecknoglobals
+// defaultScopes are the scopes requested by gcx.
+var defaultScopes = []string{"grafana-api:read", "grafana-api:write", "grafana-api:delete", "assistant:a2a"} //nolint:gochecknoglobals
 
 // Options configures the authentication flow.
 type Options struct {
@@ -88,7 +88,7 @@ func NewFlow(endpoint string, opts Options) *Flow {
 		opts.BindAddress = "127.0.0.1"
 	}
 	if len(opts.Scopes) == 0 {
-		opts.Scopes = DefaultScopes
+		opts.Scopes = defaultScopes
 	}
 	w := opts.Writer
 	if w == nil {
@@ -205,7 +205,7 @@ func (f *Flow) startCallbackServer(ctx context.Context, bindAddress string, port
 			exchangeResult, err := exchangeCodeForToken(ctx, endpoint, code, codeVerifier)
 			if err != nil {
 				errCh <- fmt.Errorf("token exchange failed: %w", err)
-				renderErrorPage(w, "Token exchange failed: "+err.Error())
+				renderErrorPage(w, "Token exchange failed")
 				return
 			}
 
@@ -258,7 +258,7 @@ func ValidateEndpointURL(endpoint string) error {
 
 	hostname := u.Hostname()
 
-	if (!strings.Contains(hostname, ".") && !strings.Contains(hostname, ":")) || hostname == "127.0.0.1" || hostname == "::1" {
+	if hostname == "localhost" || hostname == "127.0.0.1" || hostname == "::1" {
 		return nil
 	}
 
