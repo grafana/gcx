@@ -10,8 +10,8 @@ import (
 )
 
 // RunApply exposes the internal runApply function for use in external test packages.
-func RunApply(ctx context.Context, opts *applyOpts, client *instrum.Client, out io.Writer) error {
-	return runApply(ctx, opts, client, out)
+func RunApply(ctx context.Context, opts *applyOpts, client *instrum.Client, urls instrum.BackendURLs, out io.Writer) error {
+	return runApply(ctx, opts, client, urls, out)
 }
 
 // ApplyOpts is an alias for applyOpts so external tests can construct opts.

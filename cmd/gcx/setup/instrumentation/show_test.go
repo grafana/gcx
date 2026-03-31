@@ -71,8 +71,8 @@ func unmarshalTestYAML(data []byte, v any) error {
 // when a cluster has both app and k8s instrumentation configured.
 func TestRunShow_AppAndK8sConfig(t *testing.T) {
 	ts := &showTestServer{
-		getAppResp: `{"namespaces":[{"name":"frontend","selection":"included","tracing":true},{"name":"data","selection":"included"}]}`,
-		getK8sResp: `{"costmetrics":true,"clusterevents":true}`,
+		getAppResp: `{"cluster":{"name":"prod-1","namespaces":[{"name":"frontend","selection":"included","tracing":true},{"name":"data","selection":"included"}]}}`,
+		getK8sResp: `{"cluster":{"name":"prod-1","costmetrics":true,"clusterevents":true}}`,
 	}
 	srv := ts.start(t)
 
@@ -107,7 +107,7 @@ func TestRunShow_AppAndK8sConfig(t *testing.T) {
 func TestRunShow_JSONOutput(t *testing.T) {
 	ts := &showTestServer{
 		getAppResp: `{}`,
-		getK8sResp: `{"costmetrics":true,"nodelogs":true}`,
+		getK8sResp: `{"cluster":{"name":"prod-1","costmetrics":true,"nodelogs":true}}`,
 	}
 	srv := ts.start(t)
 
@@ -179,8 +179,8 @@ func TestRunShow_EmptyCluster(t *testing.T) {
 // datasource URLs, instance IDs, API tokens, or other stack-specific values.
 func TestRunShow_ManifestHasNoStackSpecificValues(t *testing.T) {
 	ts := &showTestServer{
-		getAppResp: `{"namespaces":[{"name":"frontend","selection":"included","tracing":true}]}`,
-		getK8sResp: `{"costmetrics":true}`,
+		getAppResp: `{"cluster":{"name":"prod-1","namespaces":[{"name":"frontend","selection":"included","tracing":true}]}}`,
+		getK8sResp: `{"cluster":{"name":"prod-1","costmetrics":true}}`,
 	}
 	srv := ts.start(t)
 

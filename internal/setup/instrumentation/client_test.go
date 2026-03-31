@@ -55,7 +55,7 @@ func assertConnectRequest(t *testing.T, cr *capturedRequest, wantPath string) {
 	assert.True(t, strings.HasSuffix(cr.Path, wantPath), "expected path suffix %q, got %q", wantPath, cr.Path)
 }
 
-func TestClient_GetAppInstrumentation(t *testing.T) { //nolint:dupl // Intentionally similar to RunK8sDiscovery — distinct endpoints.
+func TestClient_GetAppInstrumentation(t *testing.T) {
 	tests := []struct {
 		name        string
 		clusterName string
@@ -68,14 +68,14 @@ func TestClient_GetAppInstrumentation(t *testing.T) { //nolint:dupl // Intention
 			name:        "returns namespaces on 200",
 			clusterName: "prod-1",
 			respStatus:  http.StatusOK,
-			respBody:    `{"namespaces":[{"name":"default","selection":"included","tracing":true}]}`,
+			respBody:    `{"cluster":{"name":"prod-1","namespaces":[{"name":"default","selection":"included","tracing":true}]}}`,
 			wantNSCount: 1,
 		},
 		{
 			name:        "empty namespaces on 200",
 			clusterName: "empty-cluster",
 			respStatus:  http.StatusOK,
-			respBody:    `{}`,
+			respBody:    `{"cluster":{"name":"empty-cluster"}}`,
 			wantNSCount: 0,
 		},
 		{
@@ -143,7 +143,7 @@ func TestClient_SetAppInstrumentation(t *testing.T) {
 			defer srv.Close()
 
 			client := newTestClient(srv.URL)
-			err := client.SetAppInstrumentation(context.Background(), tt.clusterName, tt.namespaces)
+			err := client.SetAppInstrumentation(context.Background(), tt.clusterName, tt.namespaces, instrumentation.BackendURLs{})
 
 			assertConnectRequest(t, cr, "/instrumentation.v1.InstrumentationService/SetAppInstrumentation")
 			assert.Contains(t, cr.Body, tt.clusterName)
@@ -170,7 +170,7 @@ func TestClient_GetK8SInstrumentation(t *testing.T) {
 			name:        "returns k8s config on 200",
 			clusterName: "prod-1",
 			respStatus:  http.StatusOK,
-			respBody:    `{"costmetrics":true,"clusterevents":false}`,
+			respBody:    `{"cluster":{"name":"prod-1","costmetrics":true,"clusterevents":false}}`,
 			wantCost:    true,
 		},
 		{
@@ -236,7 +236,7 @@ func TestClient_SetK8SInstrumentation(t *testing.T) {
 			defer srv.Close()
 
 			client := newTestClient(srv.URL)
-			err := client.SetK8SInstrumentation(context.Background(), tt.clusterName, tt.k8s)
+			err := client.SetK8SInstrumentation(context.Background(), tt.clusterName, tt.k8s, instrumentation.BackendURLs{})
 
 			assertConnectRequest(t, cr, "/instrumentation.v1.InstrumentationService/SetK8SInstrumentation")
 			assert.Contains(t, cr.Body, tt.clusterName)
@@ -252,24 +252,21 @@ func TestClient_SetK8SInstrumentation(t *testing.T) {
 
 func TestClient_SetupK8sDiscovery(t *testing.T) {
 	tests := []struct {
-		name        string
-		clusterName string
-		respStatus  int
-		respBody    string
-		wantErr     bool
+		name       string
+		respStatus int
+		respBody   string
+		wantErr    bool
 	}{
 		{
-			name:        "successful setup",
-			clusterName: "prod-1",
-			respStatus:  http.StatusOK,
-			respBody:    `{}`,
+			name:       "successful setup",
+			respStatus: http.StatusOK,
+			respBody:   `{}`,
 		},
 		{
-			name:        "HTTP error returns error",
-			clusterName: "bad",
-			respStatus:  http.StatusForbidden,
-			respBody:    `{"error":"forbidden"}`,
-			wantErr:     true,
+			name:       "HTTP error returns error",
+			respStatus: http.StatusForbidden,
+			respBody:   `{"error":"forbidden"}`,
+			wantErr:    true,
 		},
 	}
 
@@ -280,10 +277,9 @@ func TestClient_SetupK8sDiscovery(t *testing.T) {
 			defer srv.Close()
 
 			client := newTestClient(srv.URL)
-			err := client.SetupK8sDiscovery(context.Background(), tt.clusterName)
+			err := client.SetupK8sDiscovery(context.Background(), instrumentation.BackendURLs{}, instrumentation.PromHeaders{ClusterID: "42", InstanceID: "123"})
 
 			assertConnectRequest(t, cr, "/discovery.v1.DiscoveryService/SetupK8sDiscovery")
-			assert.Contains(t, cr.Body, tt.clusterName)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -294,35 +290,31 @@ func TestClient_SetupK8sDiscovery(t *testing.T) {
 	}
 }
 
-func TestClient_RunK8sDiscovery(t *testing.T) { //nolint:dupl // Intentionally similar to GetAppInstrumentation — distinct endpoints.
+func TestClient_RunK8sDiscovery(t *testing.T) {
 	tests := []struct {
-		name        string
-		clusterName string
-		respStatus  int
-		respBody    string
-		wantErr     bool
-		wantNSCount int
+		name          string
+		respStatus    int
+		respBody      string
+		wantErr       bool
+		wantItemCount int
 	}{
 		{
-			name:        "returns discovered namespaces",
-			clusterName: "prod-1",
-			respStatus:  http.StatusOK,
-			respBody:    `{"namespaces":[{"name":"default","apps":[{"name":"web","type":"deployment"}]}]}`,
-			wantNSCount: 1,
+			name:          "returns discovered items",
+			respStatus:    http.StatusOK,
+			respBody:      `{"items":[{"clusterName":"cluster-1","namespace":"default","name":"web","workloadType":"deployment","displayNamespace":"default","displayName":"web","instrumentationStatus":"enabled"}]}`,
+			wantItemCount: 1,
 		},
 		{
-			name:        "empty discovery result",
-			clusterName: "empty",
-			respStatus:  http.StatusOK,
-			respBody:    `{}`,
-			wantNSCount: 0,
+			name:          "empty discovery result",
+			respStatus:    http.StatusOK,
+			respBody:      `{}`,
+			wantItemCount: 0,
 		},
 		{
-			name:        "HTTP error returns error",
-			clusterName: "bad",
-			respStatus:  http.StatusInternalServerError,
-			respBody:    `{"error":"server error"}`,
-			wantErr:     true,
+			name:       "HTTP error returns error",
+			respStatus: http.StatusInternalServerError,
+			respBody:   `{"error":"server error"}`,
+			wantErr:    true,
 		},
 	}
 
@@ -333,17 +325,16 @@ func TestClient_RunK8sDiscovery(t *testing.T) { //nolint:dupl // Intentionally s
 			defer srv.Close()
 
 			client := newTestClient(srv.URL)
-			resp, err := client.RunK8sDiscovery(context.Background(), tt.clusterName)
+			resp, err := client.RunK8sDiscovery(context.Background(), instrumentation.PromHeaders{ClusterID: "42", InstanceID: "123"})
 
 			assertConnectRequest(t, cr, "/discovery.v1.DiscoveryService/RunK8sDiscovery")
-			assert.Contains(t, cr.Body, tt.clusterName)
 
 			if tt.wantErr {
 				require.Error(t, err)
 				return
 			}
 			require.NoError(t, err)
-			assert.Len(t, resp.Namespaces, tt.wantNSCount)
+			assert.Len(t, resp.Items, tt.wantItemCount)
 		})
 	}
 }
@@ -360,7 +351,7 @@ func TestClient_RunK8sMonitoring(t *testing.T) {
 		{
 			name:           "returns cluster states",
 			respStatus:     http.StatusOK,
-			respBody:       `{"clusters":[{"name":"prod-1","state":"active"}]}`,
+			respBody:       `{"clusters":[{"name":"prod-1","instrumentationStatus":"active"}]}`,
 			wantCluster:    "prod-1",
 			wantClusterLen: 1,
 		},
@@ -384,7 +375,7 @@ func TestClient_RunK8sMonitoring(t *testing.T) {
 			defer srv.Close()
 
 			client := newTestClient(srv.URL)
-			resp, err := client.RunK8sMonitoring(context.Background())
+			resp, err := client.RunK8sMonitoring(context.Background(), instrumentation.PromHeaders{ClusterID: "42", InstanceID: "123"})
 
 			assertConnectRequest(t, cr, "/discovery.v1.DiscoveryService/RunK8sMonitoring")
 
@@ -407,21 +398,30 @@ func TestClient_AllEndpoints_RequestBodyContainsClusterName(t *testing.T) {
 		name           string
 		invoke         func(client *instrumentation.Client, captured *capturedRequest, srv *httptest.Server) error
 		wantPathSuffix string
+		checkBody      func(t *testing.T, body map[string]json.RawMessage)
 	}{
 		{
-			name: "GetAppInstrumentation sends clusterName",
+			name: "GetAppInstrumentation sends cluster_name",
 			invoke: func(client *instrumentation.Client, _ *capturedRequest, _ *httptest.Server) error {
 				_, err := client.GetAppInstrumentation(context.Background(), "my-cluster")
 				return err
 			},
 			wantPathSuffix: "/instrumentation.v1.InstrumentationService/GetAppInstrumentation",
+			checkBody: func(t *testing.T, body map[string]json.RawMessage) {
+				t.Helper()
+				assert.Contains(t, body, "cluster_name", "request body must contain cluster_name field (snake_case)")
+			},
 		},
 		{
-			name: "SetK8SInstrumentation sends clusterName",
+			name: "SetK8SInstrumentation sends cluster envelope",
 			invoke: func(client *instrumentation.Client, _ *capturedRequest, _ *httptest.Server) error {
-				return client.SetK8SInstrumentation(context.Background(), "my-cluster", instrumentation.K8sSpec{})
+				return client.SetK8SInstrumentation(context.Background(), "my-cluster", instrumentation.K8sSpec{}, instrumentation.BackendURLs{})
 			},
 			wantPathSuffix: "/instrumentation.v1.InstrumentationService/SetK8SInstrumentation",
+			checkBody: func(t *testing.T, body map[string]json.RawMessage) {
+				t.Helper()
+				assert.Contains(t, body, "cluster", "request body must contain cluster envelope")
+			},
 		},
 	}
 
@@ -443,7 +443,7 @@ func TestClient_AllEndpoints_RequestBodyContainsClusterName(t *testing.T) {
 
 			var body map[string]json.RawMessage
 			require.NoError(t, json.Unmarshal([]byte(capturedBody), &body))
-			assert.Contains(t, body, "clusterName", "request body must contain clusterName field")
+			tt.checkBody(t, body)
 		})
 	}
 }

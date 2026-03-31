@@ -45,23 +45,25 @@ func newDiscoverCommand(loader fleet.ConfigLoader) *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			fleetClient, _, err := fleet.LoadClient(ctx, loader)
+			r, err := fleet.LoadClientWithStack(ctx, loader)
 			if err != nil {
 				return fmt.Errorf("setup/instrumentation: %w", err)
 			}
 
-			client := instrum.NewClient(fleetClient)
+			client := instrum.NewClient(r.Client)
+			urls := instrum.BackendURLsFromStack(r.Stack)
+			promHdrs := instrum.PromHeadersFromStack(r.Stack)
 
-			if err := client.SetupK8sDiscovery(ctx, opts.Cluster); err != nil {
+			if err := client.SetupK8sDiscovery(ctx, urls, promHdrs); err != nil {
 				return fmt.Errorf("setup/instrumentation: %w", err)
 			}
 
-			result, err := client.RunK8sDiscovery(ctx, opts.Cluster)
+			result, err := client.RunK8sDiscovery(ctx, promHdrs)
 			if err != nil {
 				return fmt.Errorf("setup/instrumentation: %w", err)
 			}
 
-			if len(result.Namespaces) == 0 {
+			if len(result.Items) == 0 {
 				fmt.Fprintf(cmd.ErrOrStderr(), "No workloads discovered in cluster %q\n", opts.Cluster)
 				return nil
 			}
@@ -87,7 +89,6 @@ func (c *DiscoverTableCodec) Format() format.Format {
 }
 
 // Encode writes the discovery result as a table with columns NAMESPACE, WORKLOAD, TYPE, STATE.
-// Each discovered app in each namespace gets a flattened row.
 func (c *DiscoverTableCodec) Encode(w io.Writer, v any) error {
 	result, ok := v.(*instrum.RunK8sDiscoveryResponse)
 	if !ok {
@@ -97,18 +98,16 @@ func (c *DiscoverTableCodec) Encode(w io.Writer, v any) error {
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(tw, "NAMESPACE\tWORKLOAD\tTYPE\tSTATE")
 
-	for _, ns := range result.Namespaces {
-		for _, app := range ns.Apps {
-			appType := app.Type
-			if appType == "" {
-				appType = "-"
-			}
-			state := app.State
-			if state == "" {
-				state = "-"
-			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", ns.Name, app.Name, appType, state)
+	for _, item := range result.Items {
+		wType := item.WorkloadType
+		if wType == "" {
+			wType = "-"
 		}
+		state := item.InstrumentationStatus
+		if state == "" {
+			state = "-"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", item.Namespace, item.DisplayName, wType, state)
 	}
 
 	return tw.Flush()

@@ -36,13 +36,14 @@ func statusCmd(loader *providers.ConfigLoader) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 
-			base, _, err := fleetbase.LoadClient(ctx, loader)
+			r, err := fleetbase.LoadClientWithStack(ctx, loader)
 			if err != nil {
 				return fmt.Errorf("setup/instrumentation: %w", err)
 			}
-			client := instrum.NewClient(base)
+			client := instrum.NewClient(r.Client)
+			promHdrs := instrum.PromHeadersFromStack(r.Stack)
 
-			monResp, err := client.RunK8sMonitoring(ctx)
+			monResp, err := client.RunK8sMonitoring(ctx, promHdrs)
 			if err != nil {
 				return fmt.Errorf("setup/instrumentation: %w", err)
 			}

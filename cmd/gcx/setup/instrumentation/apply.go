@@ -42,12 +42,13 @@ func newApplyCommand(loader fleet.ConfigLoader) *cobra.Command {
 				return err
 			}
 			ctx := cmd.Context()
-			fleetClient, _, err := fleet.LoadClient(ctx, loader)
+			r, err := fleet.LoadClientWithStack(ctx, loader)
 			if err != nil {
 				return fmt.Errorf("setup/instrumentation: %w", err)
 			}
-			client := instrum.NewClient(fleetClient)
-			return runApply(ctx, opts, client, cmd.OutOrStdout())
+			client := instrum.NewClient(r.Client)
+			urls := instrum.BackendURLsFromStack(r.Stack)
+			return runApply(ctx, opts, client, urls, cmd.OutOrStdout())
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -55,7 +56,7 @@ func newApplyCommand(loader fleet.ConfigLoader) *cobra.Command {
 }
 
 // runApply is the core apply logic, separated for testability.
-func runApply(ctx context.Context, opts *applyOpts, client *instrum.Client, out io.Writer) error {
+func runApply(ctx context.Context, opts *applyOpts, client *instrum.Client, urls instrum.BackendURLs, out io.Writer) error {
 	data, err := os.ReadFile(opts.File)
 	if err != nil {
 		return fmt.Errorf("setup/instrumentation: %w", err)
@@ -73,13 +74,13 @@ func runApply(ctx context.Context, opts *applyOpts, client *instrum.Client, out 
 	cluster := config.Metadata.Name
 
 	if config.Spec.App != nil {
-		if err := applyApp(ctx, opts, client, cluster, config.Spec.App, out); err != nil {
+		if err := applyApp(ctx, opts, client, cluster, config.Spec.App, urls, out); err != nil {
 			return err
 		}
 	}
 
 	if config.Spec.K8s != nil {
-		if err := applyK8s(ctx, opts, client, cluster, config.Spec.K8s, out); err != nil {
+		if err := applyK8s(ctx, opts, client, cluster, config.Spec.K8s, urls, out); err != nil {
 			return err
 		}
 	}
@@ -87,7 +88,7 @@ func runApply(ctx context.Context, opts *applyOpts, client *instrum.Client, out 
 	return nil
 }
 
-func applyApp(ctx context.Context, opts *applyOpts, client *instrum.Client, cluster string, app *instrum.AppSpec, out io.Writer) error {
+func applyApp(ctx context.Context, opts *applyOpts, client *instrum.Client, cluster string, app *instrum.AppSpec, urls instrum.BackendURLs, out io.Writer) error {
 	remoteResp, err := client.GetAppInstrumentation(ctx, cluster)
 	if err != nil {
 		return fmt.Errorf("setup/instrumentation: %w", err)
@@ -104,20 +105,20 @@ func applyApp(ctx context.Context, opts *applyOpts, client *instrum.Client, clus
 		return nil
 	}
 
-	if err := client.SetAppInstrumentation(ctx, cluster, app.Namespaces); err != nil {
+	if err := client.SetAppInstrumentation(ctx, cluster, app.Namespaces, urls); err != nil {
 		return fmt.Errorf("setup/instrumentation: %w", err)
 	}
 	fmt.Fprintf(out, "applied spec.app for cluster %q\n", cluster)
 	return nil
 }
 
-func applyK8s(ctx context.Context, opts *applyOpts, client *instrum.Client, cluster string, k8s *instrum.K8sSpec, out io.Writer) error {
+func applyK8s(ctx context.Context, opts *applyOpts, client *instrum.Client, cluster string, k8s *instrum.K8sSpec, urls instrum.BackendURLs, out io.Writer) error {
 	if opts.DryRun {
 		fmt.Fprintf(out, "dry-run: would apply spec.k8s for cluster %q\n", cluster)
 		return nil
 	}
 
-	if err := client.SetK8SInstrumentation(ctx, cluster, *k8s); err != nil {
+	if err := client.SetK8SInstrumentation(ctx, cluster, *k8s, urls); err != nil {
 		return fmt.Errorf("setup/instrumentation: %w", err)
 	}
 	fmt.Fprintf(out, "applied spec.k8s for cluster %q\n", cluster)

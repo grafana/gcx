@@ -52,13 +52,14 @@ func newStatusCommand(loader fleetbase.ConfigLoader) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			base, _, err := fleetbase.LoadClient(ctx, loader)
+			r, err := fleetbase.LoadClientWithStack(ctx, loader)
 			if err != nil {
 				return fmt.Errorf("setup/instrumentation: %w", err)
 			}
-			client := instrum.NewClient(base)
+			client := instrum.NewClient(r.Client)
+			promHdrs := instrum.PromHeadersFromStack(r.Stack)
 
-			monResp, err := client.RunK8sMonitoring(ctx)
+			monResp, err := client.RunK8sMonitoring(ctx, promHdrs)
 			if err != nil {
 				return fmt.Errorf("setup/instrumentation: %w", err)
 			}
@@ -73,7 +74,7 @@ func newStatusCommand(loader fleetbase.ConfigLoader) *cobra.Command {
 				}
 				statuses = append(statuses, ClusterStatus{
 					Name:        cs.Name,
-					State:       cs.State,
+					State:       cs.InstrumentationStatus,
 					BeylaErrors: beylaErrors[cs.Name],
 				})
 			}

@@ -35,6 +35,7 @@ func ErrorToDetailedError(err error) *DetailedError {
 		convertAPIErrors,          // API-related errors
 		convertVersionErrors,      // Version incompatibility errors
 		convertLinterErrors,       // Linter-related errors
+		convertCloudConfigErrors,  // Cloud config / fleet / setup errors
 	}
 
 	for _, converter := range errorConverters {
@@ -46,6 +47,7 @@ func ErrorToDetailedError(err error) *DetailedError {
 
 	return &DetailedError{
 		Summary: "Unexpected error",
+		Details: err.Error(),
 		Parent:  err,
 	}
 }
@@ -254,6 +256,63 @@ func convertRequiredFlagErrors(err error) (*DetailedError, bool) {
 			},
 		}, true
 	}
+	return nil, false
+}
+
+func convertCloudConfigErrors(err error) (*DetailedError, bool) {
+	msg := err.Error()
+
+	// Cloud token missing.
+	if strings.Contains(msg, "cloud token is required") {
+		return &DetailedError{
+			Summary: "Cloud credentials not configured",
+			Details: msg,
+			Parent:  err,
+			Suggestions: []string{
+				"Set cloud.token in your config: gcx config set cloud.token <TOKEN>",
+				"Or set GRAFANA_CLOUD_TOKEN environment variable",
+			},
+		}, true
+	}
+
+	// Cloud stack not configured.
+	if strings.Contains(msg, "cloud stack is not configured") {
+		return &DetailedError{
+			Summary: "Cloud stack not configured",
+			Details: msg,
+			Parent:  err,
+			Suggestions: []string{
+				"Set cloud.stack in your config: gcx config set cloud.stack <STACK_SLUG>",
+				"Or set GRAFANA_CLOUD_STACK environment variable",
+			},
+		}, true
+	}
+
+	// Fleet management not available.
+	if strings.Contains(msg, "fleet management endpoint is not available") ||
+		strings.Contains(msg, "fleet management instance ID is not available") {
+		return &DetailedError{
+			Summary: "Fleet Management not available",
+			Details: msg,
+			Parent:  err,
+			Suggestions: []string{
+				"Fleet Management may not be enabled for this stack",
+				"Contact Grafana Cloud support to enable Fleet Management",
+			},
+		}, true
+	}
+
+	// Setup/instrumentation prefixed errors — surface them directly instead of "Unexpected error".
+	if strings.HasPrefix(msg, "setup/instrumentation:") || strings.Contains(msg, "setup/instrumentation:") {
+		// Extract the message after the prefix for the summary.
+		summary := "Setup instrumentation error"
+		return &DetailedError{
+			Summary: summary,
+			Details: msg,
+			Parent:  err,
+		}, true
+	}
+
 	return nil, false
 }
 

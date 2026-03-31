@@ -29,6 +29,15 @@ func (m *mockLoader) LoadCloudConfig(_ context.Context) (providers.CloudRESTConf
 		Stack: cloud.StackInfo{
 			AgentManagementInstanceURL: m.serverURL,
 			AgentManagementInstanceID:  1234,
+			HMInstancePromID:           5678,
+			HMInstancePromClusterID:    42,
+			HMInstancePromURL:          "https://prometheus-prod.grafana.net",
+			HLInstanceID:               9012,
+			HLInstanceURL:              "https://logs-prod.grafana.net",
+			HTInstanceID:               3456,
+			HTInstanceURL:              "https://tempo-prod.grafana.net",
+			HPInstanceID:               7890,
+			HPInstanceURL:              "https://profiles-prod.grafana.net",
 		},
 	}, nil
 }
@@ -71,7 +80,7 @@ func TestDiscoverCommand(t *testing.T) {
 			useServer:   true,
 			setupStatus: http.StatusOK,
 			runStatus:   http.StatusOK,
-			runBody:     `{"namespaces":[{"name":"default","apps":[{"name":"web","type":"deployment","state":"active"}]}]}`,
+			runBody:     `{"items":[{"namespace":"default","name":"web-abc","displayName":"web","workloadType":"deployment","instrumentationStatus":"active"}]}`,
 			wantStdout:  "NAMESPACE",
 		},
 		{
@@ -95,8 +104,8 @@ func TestDiscoverCommand(t *testing.T) {
 			useServer:   true,
 			setupStatus: http.StatusOK,
 			runStatus:   http.StatusOK,
-			runBody:     `{"namespaces":[{"name":"default","apps":[{"name":"web","type":"deployment","state":"active"}]}]}`,
-			wantStdout:  `"namespaces"`,
+			runBody:     `{"items":[{"namespace":"default","name":"web-abc","displayName":"web","workloadType":"deployment","instrumentationStatus":"active"}]}`,
+			wantStdout:  `"items"`,
 		},
 	}
 

@@ -42,6 +42,11 @@ func NewClient(baseURL, instanceID, apiToken string, useBasicAuth bool, httpClie
 // DoRequest builds and executes a POST request against the Fleet Management API.
 // It is exported so that packages composing this client can call the base transport.
 func (c *Client) DoRequest(ctx context.Context, path string, body any) (*http.Response, error) {
+	return c.DoRequestWithHeaders(ctx, path, body, nil)
+}
+
+// DoRequestWithHeaders is like DoRequest but adds extra headers to the request.
+func (c *Client) DoRequestWithHeaders(ctx context.Context, path string, body any, headers map[string]string) (*http.Response, error) {
 	var reqBody io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -58,6 +63,10 @@ func (c *Client) DoRequest(ctx context.Context, path string, body any) (*http.Re
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
 
 	if c.useBasicAuth {
 		req.SetBasicAuth(c.instanceID, c.apiToken)
