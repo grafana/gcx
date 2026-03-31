@@ -73,6 +73,11 @@ func runApply(ctx context.Context, opts *applyOpts, client *instrum.Client, urls
 
 	cluster := config.Metadata.Name
 
+	if config.Spec.App == nil && config.Spec.K8s == nil {
+		fmt.Fprintf(out, "nothing to apply: manifest has no spec.app or spec.k8s sections\n")
+		return nil
+	}
+
 	if config.Spec.App != nil {
 		if err := applyApp(ctx, opts, client, cluster, config.Spec.App, urls, out); err != nil {
 			return err
