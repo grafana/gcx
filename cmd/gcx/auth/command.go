@@ -76,10 +76,10 @@ func runLogin(cmd *cobra.Command, configOpts *configcmd.Options) error {
 
 	// Save tokens to the current context.
 	curCtx.Grafana.ProxyEndpoint = result.APIEndpoint
-	curCtx.Grafana.CLIToken = result.Token
-	curCtx.Grafana.CLIRefreshToken = result.RefreshToken
-	curCtx.Grafana.CLITokenExpiresAt = result.ExpiresAt
-	curCtx.Grafana.CLIRefreshExpiresAt = result.RefreshExpiresAt
+	curCtx.Grafana.OAuthToken = result.Token
+	curCtx.Grafana.OAuthRefreshToken = result.RefreshToken
+	curCtx.Grafana.OAuthTokenExpiresAt = result.ExpiresAt
+	curCtx.Grafana.OAuthRefreshExpiresAt = result.RefreshExpiresAt
 
 	if err := config.Write(ctx, configOpts.ConfigSource(), cfg); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)

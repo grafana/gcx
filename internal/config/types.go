@@ -188,17 +188,17 @@ type GrafanaConfig struct {
 	// a separate endpoint (e.g. the assistant app backend).
 	ProxyEndpoint string `env:"GRAFANA_PROXY_ENDPOINT" json:"proxy-endpoint,omitempty" yaml:"proxy-endpoint,omitempty"`
 
-	// CLIToken is the OAuth access token (gat_) obtained via `auth login`.
-	CLIToken string `datapolicy:"secret" json:"cli-token,omitempty" yaml:"cli-token,omitempty"`
+	// OAuthToken is the OAuth access token (gat_) obtained via `auth login`.
+	OAuthToken string `datapolicy:"secret" json:"oauth-token,omitempty" yaml:"oauth-token,omitempty"`
 
-	// CLIRefreshToken is the refresh token (gar_) for renewing CLIToken.
-	CLIRefreshToken string `datapolicy:"secret" json:"cli-refresh-token,omitempty" yaml:"cli-refresh-token,omitempty"`
+	// OAuthRefreshToken is the refresh token (gar_) for renewing OAuthToken.
+	OAuthRefreshToken string `datapolicy:"secret" json:"oauth-refresh-token,omitempty" yaml:"oauth-refresh-token,omitempty"`
 
-	// CLITokenExpiresAt is the CLIToken expiration time in RFC3339 format.
-	CLITokenExpiresAt string `json:"cli-token-expires-at,omitempty" yaml:"cli-token-expires-at,omitempty"`
+	// OAuthTokenExpiresAt is the OAuthToken expiration time in RFC3339 format.
+	OAuthTokenExpiresAt string `json:"oauth-token-expires-at,omitempty" yaml:"oauth-token-expires-at,omitempty"`
 
-	// CLIRefreshExpiresAt is the CLIRefreshToken expiration time in RFC3339 format.
-	CLIRefreshExpiresAt string `json:"cli-refresh-expires-at,omitempty" yaml:"cli-refresh-expires-at,omitempty"`
+	// OAuthRefreshExpiresAt is the OAuthRefreshToken expiration time in RFC3339 format.
+	OAuthRefreshExpiresAt string `json:"oauth-refresh-expires-at,omitempty" yaml:"oauth-refresh-expires-at,omitempty"`
 
 	// OrgID specifies the organization targeted by this config.
 	// Note: required when targeting an on-prem Grafana instance.

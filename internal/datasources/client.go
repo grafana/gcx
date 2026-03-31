@@ -12,7 +12,7 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-// Datasource holds the fields returned by the Grafana datasource REST API.
+// Datasource holds the fields returned by the legacy Grafana datasource REST API.
 type Datasource struct {
 	UID             string `json:"uid"`
 	Name            string `json:"name"`

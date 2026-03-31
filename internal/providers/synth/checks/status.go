@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
-	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/datasources"
+	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/graph"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"

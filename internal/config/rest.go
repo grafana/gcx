@@ -63,7 +63,7 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) NamespacedRESTCon
 	// Authentication
 	var oauthTransport *auth.RefreshTransport
 	switch {
-	case cfg.Grafana.ProxyEndpoint != "" && cfg.Grafana.CLIToken != "":
+	case cfg.Grafana.ProxyEndpoint != "" && cfg.Grafana.OAuthToken != "":
 		// OAuth proxy mode: route requests through the assistant backend proxy.
 		// The ProxyEndpoint may differ from Server (e.g. cloud routing through
 		// the assistant backend), so it is stored as a separate config field.
@@ -72,17 +72,17 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) NamespacedRESTCon
 		rcfg.Host = cfg.Grafana.ProxyEndpoint + "/api/cli/v1/proxy"
 
 		var expiresAt time.Time
-		if cfg.Grafana.CLITokenExpiresAt != "" {
+		if cfg.Grafana.OAuthTokenExpiresAt != "" {
 			var err error
-			if expiresAt, err = time.Parse(time.RFC3339, cfg.Grafana.CLITokenExpiresAt); err != nil {
+			if expiresAt, err = time.Parse(time.RFC3339, cfg.Grafana.OAuthTokenExpiresAt); err != nil {
 				// Zero time triggers an immediate refresh on first request.
 				expiresAt = time.Time{}
 			}
 		}
 		oauthTransport = &auth.RefreshTransport{
 			ProxyEndpoint: cfg.Grafana.ProxyEndpoint,
-			Token:         cfg.Grafana.CLIToken,
-			RefreshToken:  cfg.Grafana.CLIRefreshToken,
+			Token:         cfg.Grafana.OAuthToken,
+			RefreshToken:  cfg.Grafana.OAuthRefreshToken,
 			ExpiresAt:     expiresAt,
 		}
 		rcfg.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {

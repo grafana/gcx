@@ -152,10 +152,10 @@ func (opts *Options) LoadGrafanaConfig(ctx context.Context) (config.NamespacedRE
 		if c == nil || c.Grafana == nil {
 			return nil
 		}
-		c.Grafana.CLIToken = token
-		c.Grafana.CLIRefreshToken = refreshToken
-		c.Grafana.CLITokenExpiresAt = expiresAt
-		c.Grafana.CLIRefreshExpiresAt = refreshExpiresAt
+		c.Grafana.OAuthToken = token
+		c.Grafana.OAuthRefreshToken = refreshToken
+		c.Grafana.OAuthTokenExpiresAt = expiresAt
+		c.Grafana.OAuthRefreshExpiresAt = refreshExpiresAt
 		return config.Write(ctx, source, fresh)
 	})
 

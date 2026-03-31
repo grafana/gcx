@@ -89,7 +89,7 @@ func TestNewNamespacedRESTConfig_OAuthProxySetsHost(t *testing.T) {
 		Grafana: &config.GrafanaConfig{
 			Server:        "https://mystack.grafana.net",
 			ProxyEndpoint: "https://mystack.grafana.net/a/grafana-assistant-app",
-			CLIToken:      "gat_test-token",
+			OAuthToken:    "gat_test-token",
 			StackID:       123,
 		},
 	}
@@ -123,9 +123,9 @@ func TestNamespacedRESTConfig_SetOnRefresh(t *testing.T) {
 		Grafana: &config.GrafanaConfig{
 			Server:            refreshServer.URL,
 			ProxyEndpoint:     refreshServer.URL,
-			CLIToken:          "gat_expiring",
-			CLIRefreshToken:   "gar_old",
-			CLITokenExpiresAt: time.Now().Add(1 * time.Minute).Format(time.RFC3339),
+			OAuthToken:          "gat_expiring",
+			OAuthRefreshToken:   "gar_old",
+			OAuthTokenExpiresAt: time.Now().Add(1 * time.Minute).Format(time.RFC3339),
 			StackID:           123,
 		},
 	}
