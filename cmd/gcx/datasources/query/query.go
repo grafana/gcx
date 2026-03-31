@@ -23,6 +23,7 @@ type sharedQueryOpts struct {
 	From   string
 	To     string
 	Step   string
+	Since  string
 	Window string
 }
 
@@ -33,13 +34,18 @@ func (opts *sharedQueryOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.From, "from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
 	flags.StringVar(&opts.To, "to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
 	flags.StringVar(&opts.Step, "step", "", "Query step (e.g., '15s', '1m')")
-	flags.StringVar(&opts.Window, "window", "", "Convenience shorthand: sets --from to now-{window} and --to to now (mutually exclusive with --from/--to)")
+	flags.StringVar(&opts.Since, "since", "", "Duration before --to (or now if omitted); mutually exclusive with --from")
+	flags.StringVar(&opts.Window, "window", "", "Compatibility shorthand: sets --from to now-{window} and --to to now (mutually exclusive with --from/--to/--since)")
 }
 
-// Validate validates shared flags and resolves --window into From/To.
+// Validate validates shared flags and resolves --since/--window into From/To.
 func (opts *sharedQueryOpts) Validate() error {
 	if err := opts.IO.Validate(); err != nil {
 		return err
+	}
+
+	if opts.Window != "" && opts.Since != "" {
+		return errors.New("--window and --since are mutually exclusive")
 	}
 
 	if opts.Window != "" {
@@ -53,6 +59,26 @@ func (opts *sharedQueryOpts) Validate() error {
 		now := time.Now()
 		opts.From = now.Add(-d).Format(time.RFC3339)
 		opts.To = now.Format(time.RFC3339)
+	}
+
+	if opts.Since != "" {
+		if opts.From != "" {
+			return errors.New("--since is mutually exclusive with --from")
+		}
+		d, err := ParseDuration(opts.Since)
+		if err != nil {
+			return fmt.Errorf("invalid --since duration: %w", err)
+		}
+		now := time.Now()
+		end, err := ParseTime(opts.To, now)
+		if err != nil {
+			return fmt.Errorf("invalid --to time: %w", err)
+		}
+		if end.IsZero() {
+			end = now
+		}
+		opts.From = end.Add(-d).Format(time.RFC3339)
+		opts.To = end.Format(time.RFC3339)
 	}
 
 	return nil

@@ -23,8 +23,8 @@ gcx datasources prometheus query [DATASOURCE_UID] EXPR [flags]
   # Range query with explicit datasource UID
   gcx datasources prometheus query abc123 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m
 
-  # Convenience window flag
-  gcx datasources prometheus query abc123 'up' --window 1h
+  # Convenience since flag
+  gcx datasources prometheus query abc123 'up' --since 1h
 
   # Output as JSON
   gcx datasources prometheus query abc123 'up' -o json
@@ -37,9 +37,10 @@ gcx datasources prometheus query [DATASOURCE_UID] EXPR [flags]
   -h, --help            help for query
       --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
   -o, --output string   Output format. One of: graph, json, table, wide, yaml (default "table")
+      --since string    Duration before --to (or now if omitted); mutually exclusive with --from
       --step string     Query step (e.g., '15s', '1m')
       --to string       End time (RFC3339, Unix timestamp, or relative like 'now')
-      --window string   Convenience shorthand: sets --from to now-{window} and --to to now (mutually exclusive with --from/--to)
+      --window string   Compatibility shorthand: sets --from to now-{window} and --to to now (mutually exclusive with --from/--to/--since)
 ```
 
 ### Options inherited from parent commands

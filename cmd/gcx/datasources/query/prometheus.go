@@ -27,8 +27,8 @@ EXPR is the PromQL expression to evaluate.`,
   # Range query with explicit datasource UID
   gcx datasources prometheus query abc123 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m
 
-  # Convenience window flag
-  gcx datasources prometheus query abc123 'up' --window 1h
+  # Convenience since flag
+  gcx datasources prometheus query abc123 'up' --since 1h
 
   # Output as JSON
   gcx datasources prometheus query abc123 'up' -o json`,
