@@ -857,46 +857,6 @@ func newKPIDisplayCommand(loader RESTConfigLoader) *cobra.Command {
 	return cmd
 }
 
-//nolint:dupl
-func newFrontendRulesCommand(loader RESTConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "frontend-rules",
-		Short: "Push frontend observability rules.",
-	}
-	var fileFlag string
-	createCmd := &cobra.Command{
-		Use:   "create",
-		Short: "Upload frontend observability rules from a file (YAML).",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			data, err := readFileOrStdin(cmd, fileFlag)
-			if err != nil {
-				return fmt.Errorf("failed to read file: %w", err)
-			}
-			var rules FrontendO11yRuleGroup
-			if err := yaml.Unmarshal(data, &rules); err != nil {
-				return fmt.Errorf("invalid YAML: %w", err)
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			if err := client.UploadFrontendO11yRules(cmd.Context(), &rules); err != nil {
-				return err
-			}
-			cmdio.Success(cmd.OutOrStdout(), "Frontend observability rules uploaded")
-			return nil
-		},
-	}
-	createCmd.Flags().StringVarP(&fileFlag, "file", "f", "", "Input file (YAML)")
-	_ = createCmd.MarkFlagRequired("file")
-	cmd.AddCommand(createCmd)
-	return cmd
-}
-
 // ---------------------------------------------------------------------------
 // Environment commands
 // ---------------------------------------------------------------------------

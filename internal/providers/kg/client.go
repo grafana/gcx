@@ -329,34 +329,6 @@ func (c *Client) ConfigureKPIDisplay(ctx context.Context, cfg *KPIDisplayConfig)
 	return c.postJSON(ctx, pluginResourcePath+"/asserts/api-server/v1/config/display/kpi", cfg, nil)
 }
 
-// UploadFrontendO11yRules uploads Frontend Observability recording rules.
-func (c *Client) UploadFrontendO11yRules(ctx context.Context, rules *FrontendO11yRuleGroup) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		c.host+"/api/ruler/grafanacloud-logs/api/v1/rules/frontend-observability?subtype=mimir", nil)
-	if err != nil {
-		return fmt.Errorf("kg: create request: %w", err)
-	}
-
-	b, err := json.Marshal(rules)
-	if err != nil {
-		return fmt.Errorf("kg: marshal rules: %w", err)
-	}
-	req.Body = io.NopCloser(bytes.NewReader(b))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json, text/plain, */*")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("kg: execute request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return readError(resp)
-	}
-	return nil
-}
-
 // ---------------------------------------------------------------------------
 // Entity operations
 // ---------------------------------------------------------------------------

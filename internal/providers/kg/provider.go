@@ -53,7 +53,6 @@ func (p *KGProvider) Commands() []*cobra.Command {
 		newRelabelRulesCommand(loader),
 		newServiceDashboardCommand(loader),
 		newKPIDisplayCommand(loader),
-		newFrontendRulesCommand(loader),
 		// Environment
 		newEnvCommand(loader),
 		// Entities

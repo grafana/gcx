@@ -103,19 +103,6 @@ type KPIDisplayConfig struct {
 	MetricsView         bool `json:"metricsView" yaml:"metrics_view"`
 }
 
-// FrontendO11yRuleGroup represents a group of Frontend O11y recording rules.
-type FrontendO11yRuleGroup struct {
-	Name  string             `json:"name" yaml:"name"`
-	Rules []FrontendO11yRule `json:"rules" yaml:"rules"`
-}
-
-// FrontendO11yRule represents a single Frontend O11y recording rule.
-type FrontendO11yRule struct {
-	Record string            `json:"record" yaml:"record"`
-	Expr   string            `json:"expr" yaml:"expr"`
-	Labels map[string]string `json:"labels" yaml:"labels"`
-}
-
 // EntityKey identifies an entity in the Knowledge Graph.
 type EntityKey struct {
 	Type  string         `json:"type" yaml:"type"`
