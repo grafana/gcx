@@ -24,7 +24,8 @@ func ErrorToDetailedError(err error) *DetailedError {
 
 	// Try to convert the error for common error categories
 	errorConverters := []func(err error) (*DetailedError, bool){
-		convertContextCanceled, // Context cancellation (must be first — cancellation can wrap other errors)
+		convertUsageErrors,
+		convertContextCanceled, // Context cancellation (must be first among generic wrapped errors)
 		convertConfigErrors,    // Config-related
 		convertFSErrors,        // FS-related
 		convertResourcesErrors, // Resources-related
@@ -45,6 +46,24 @@ func ErrorToDetailedError(err error) *DetailedError {
 		Summary: "Unexpected error",
 		Parent:  err,
 	}
+}
+
+func convertUsageErrors(err error) (*DetailedError, bool) {
+	usageErr := &UsageError{}
+	if !errors.As(err, &usageErr) {
+		return nil, false
+	}
+
+	details := usageErr.Error()
+	if usageErr.Expected != "" {
+		details = fmt.Sprintf("%s\n\nExpected:\n  %s", details, usageErr.Expected)
+	}
+
+	return &DetailedError{
+		Summary:     "Invalid command usage",
+		Details:     details,
+		Suggestions: usageErr.Suggestions,
+	}, true
 }
 
 func convertConfigErrors(err error) (*DetailedError, bool) {

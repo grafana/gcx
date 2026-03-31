@@ -5,6 +5,7 @@ import (
 	"time"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
+	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/spf13/cobra"
 )
@@ -36,7 +37,7 @@ EXPR is the LogQL expression to evaluate.`,
 
   # Output as JSON
   gcx datasources loki query loki-001 '{job="varlogs"}' -o json`,
-		Args: cobra.RangeArgs(1, 2),
+		Args: validateLokiQueryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
 				return err
@@ -97,4 +98,15 @@ EXPR is the LogQL expression to evaluate.`,
 	cmd.Flags().IntVar(&limit, "limit", 1000, "Maximum number of log lines to return (0 means no limit)")
 
 	return cmd
+}
+
+func validateLokiQueryArgs(cmd *cobra.Command, args []string) error {
+	switch len(args) {
+	case 0:
+		return fail.NewCommandUsageError(cmd, "EXPR is required", nil)
+	case 1, 2:
+		return nil
+	default:
+		return fail.NewCommandUsageError(cmd, "too many arguments: expected [DATASOURCE_UID] EXPR", nil)
+	}
 }
