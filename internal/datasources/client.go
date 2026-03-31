@@ -1,4 +1,4 @@
-package grafana
+package datasources
 
 import (
 	"context"
@@ -26,29 +26,29 @@ type Datasource struct {
 	JSONData        any    `json:"jsonData"`
 }
 
-// DatasourceClient queries Grafana datasources via the NamespacedRESTConfig
+// Client queries Grafana datasources via the NamespacedRESTConfig
 // transport, ensuring OAuth proxy mode and token refresh are respected.
 // It mirrors the approach used by internal/query/prometheus and internal/query/loki.
-type DatasourceClient struct {
+type Client struct {
 	host       string
 	httpClient *http.Client
 }
 
-// NewDatasourceClient creates a client backed by the given REST config's
+// NewClient creates a client backed by the given REST config's
 // transport (including WrapTransport / RefreshTransport in OAuth proxy mode).
-func NewDatasourceClient(cfg config.NamespacedRESTConfig) (*DatasourceClient, error) {
+func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 	httpClient, err := rest.HTTPClientFor(&cfg.Config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
-	return &DatasourceClient{
+	return &Client{
 		host:       cfg.Host,
 		httpClient: httpClient,
 	}, nil
 }
 
 // List returns all datasources visible to the authenticated user.
-func (c *DatasourceClient) List(ctx context.Context) ([]*Datasource, error) {
+func (c *Client) List(ctx context.Context) ([]*Datasource, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.host+"/api/datasources", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -78,16 +78,16 @@ func (c *DatasourceClient) List(ctx context.Context) ([]*Datasource, error) {
 }
 
 // GetByUID returns the datasource with the given UID.
-func (c *DatasourceClient) GetByUID(ctx context.Context, uid string) (*Datasource, error) {
+func (c *Client) GetByUID(ctx context.Context, uid string) (*Datasource, error) {
 	return c.get(ctx, "/api/datasources/uid/"+url.PathEscape(uid), uid)
 }
 
 // GetByName returns the datasource with the given display name.
-func (c *DatasourceClient) GetByName(ctx context.Context, name string) (*Datasource, error) {
+func (c *Client) GetByName(ctx context.Context, name string) (*Datasource, error) {
 	return c.get(ctx, "/api/datasources/name/"+url.PathEscape(name), name)
 }
 
-func (c *DatasourceClient) get(ctx context.Context, path, identifier string) (*Datasource, error) {
+func (c *Client) get(ctx context.Context, path, identifier string) (*Datasource, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.host+path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)

@@ -12,7 +12,7 @@ import (
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	internalconfig "github.com/grafana/gcx/internal/config"
-	"github.com/grafana/gcx/internal/grafana"
+	"github.com/grafana/gcx/internal/datasources"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/pflag"
 )
@@ -111,7 +111,7 @@ func getDatasourceType(ctx context.Context, configOpts *cmdconfig.Options, datas
 		return "", err
 	}
 
-	dsClient, err := grafana.NewDatasourceClient(restCfg)
+	dsClient, err := datasources.NewClient(restCfg)
 	if err != nil {
 		return "", fmt.Errorf("failed to create datasource client: %w", err)
 	}

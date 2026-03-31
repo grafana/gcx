@@ -16,7 +16,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
-	"github.com/grafana/gcx/internal/grafana"
+	"github.com/grafana/gcx/internal/datasources"
 	"github.com/grafana/gcx/internal/graph"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
@@ -714,7 +714,7 @@ func discoverPrometheusDatasource(ctx context.Context, curCtx *config.Context, r
 	}
 
 	// Resolve name → UID via the REST-config transport (OAuth proxy-aware).
-	dsClient, err := grafana.NewDatasourceClient(restCfg)
+	dsClient, err := datasources.NewClient(restCfg)
 	if err != nil {
 		return "", errors.New(
 			"datasource UID is required: use --datasource-uid flag or set default-prometheus-datasource in config")

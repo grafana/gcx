@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
-	"github.com/grafana/gcx/internal/grafana"
+	dsclient "github.com/grafana/gcx/internal/datasources"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -50,7 +50,7 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			dsClient, err := grafana.NewDatasourceClient(restCfg)
+			dsClient, err := dsclient.NewClient(restCfg)
 			if err != nil {
 				return err
 			}

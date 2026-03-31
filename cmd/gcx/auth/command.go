@@ -27,8 +27,9 @@ func loginCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "login",
-		Short: "Authenticate to a Grafana stack",
-		Long: `Opens a browser to authenticate with your Grafana stack.
+		Short: "Authenticate to a Grafana stack with OAuth",
+		Long: `Opens a browser to authenticate with your Grafana stack using OAuth. This is an
+alternative to using an access token.
 
 On success, the CLI token and proxy endpoint are saved to your current config
 context. Subsequent commands will use the proxy to access Grafana's API with
