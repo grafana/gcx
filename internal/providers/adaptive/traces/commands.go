@@ -3,7 +3,6 @@ package traces
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +14,8 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/adaptive/auth"
+	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/terminal"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -41,6 +42,11 @@ func (h *tracesHelper) newClient(ctx context.Context) (*Client, error) {
 		return nil, err
 	}
 	return NewClient(signalAuth.BaseURL, signalAuth.TenantID, signalAuth.APIToken, signalAuth.HTTPClient), nil
+}
+
+func (h *tracesHelper) newPolicyCRUD(ctx context.Context) (*adapter.TypedCRUD[Policy], error) {
+	crud, _, err := NewPolicyTypedCRUD(ctx, h.loader)
+	return crud, err
 }
 
 func (h *tracesHelper) recommendationsCommand() *cobra.Command {
@@ -174,7 +180,7 @@ func (h *tracesHelper) recommendationsApplyCommand() *cobra.Command {
 			id := args[0]
 
 			if opts.DryRun {
-				cmdio.Info(cmd.OutOrStdout(), "[dry-run] Would apply recommendation %q", id)
+				cmdio.Info(cmd.ErrOrStderr(), "[dry-run] Would apply recommendation %q", id)
 				return nil
 			}
 
@@ -189,7 +195,7 @@ func (h *tracesHelper) recommendationsApplyCommand() *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Applied recommendation %q", id)
+			cmdio.Success(cmd.ErrOrStderr(), "Applied recommendation %q", id)
 			return nil
 		},
 	}
@@ -228,7 +234,7 @@ func (h *tracesHelper) recommendationsDismissCommand() *cobra.Command {
 			id := args[0]
 
 			if opts.DryRun {
-				cmdio.Info(cmd.OutOrStdout(), "[dry-run] Would dismiss recommendation %q", id)
+				cmdio.Info(cmd.ErrOrStderr(), "[dry-run] Would dismiss recommendation %q", id)
 				return nil
 			}
 
@@ -243,7 +249,7 @@ func (h *tracesHelper) recommendationsDismissCommand() *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Dismissed recommendation %q", id)
+			cmdio.Success(cmd.ErrOrStderr(), "Dismissed recommendation %q", id)
 			return nil
 		},
 	}
@@ -261,7 +267,7 @@ func (h *tracesHelper) policiesCommand() *cobra.Command {
 		Short: "Manage Adaptive Traces sampling policies.",
 	}
 	cmd.AddCommand(
-		h.policiesListCommand(),
+		h.policiesShowCommand(),
 		h.policiesGetCommand(),
 		h.policiesCreateCommand(),
 		h.policiesUpdateCommand(),
@@ -271,22 +277,22 @@ func (h *tracesHelper) policiesCommand() *cobra.Command {
 }
 
 // ---------------------------------------------------------------------------
-// policies list
+// policies show
 // ---------------------------------------------------------------------------
 
-type policiesListOpts struct {
+type policiesShowOpts struct {
 	IO cmdio.Options
 }
 
-func (o *policiesListOpts) setup(flags *pflag.FlagSet) {
+func (o *policiesShowOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &policyTableCodec{})
 	o.IO.RegisterCustomCodec("wide", &policyTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
 
-func (h *tracesHelper) policiesListCommand() *cobra.Command {
-	opts := &policiesListOpts{}
+func (h *tracesHelper) policiesShowCommand() *cobra.Command {
+	opts := &policiesShowOpts{}
 	cmd := &cobra.Command{
 		Use:   "show",
 		Short: "Show Adaptive Traces sampling policies.",
@@ -297,14 +303,19 @@ func (h *tracesHelper) policiesListCommand() *cobra.Command {
 
 			ctx := cmd.Context()
 
-			client, err := h.newClient(ctx)
+			crud, err := h.newPolicyCRUD(ctx)
 			if err != nil {
 				return err
 			}
 
-			policies, err := client.ListPolicies(ctx)
+			typedObjs, err := crud.List(ctx)
 			if err != nil {
 				return err
+			}
+
+			policies := make([]Policy, len(typedObjs))
+			for i := range typedObjs {
+				policies[i] = typedObjs[i].Spec
 			}
 
 			return opts.IO.Encode(cmd.OutOrStdout(), policies)
@@ -387,17 +398,17 @@ func (h *tracesHelper) policiesGetCommand() *cobra.Command {
 
 			ctx := cmd.Context()
 
-			client, err := h.newClient(ctx)
+			crud, err := h.newPolicyCRUD(ctx)
 			if err != nil {
 				return err
 			}
 
-			policy, err := client.GetPolicy(ctx, args[0])
+			typedObj, err := crud.Get(ctx, args[0])
 			if err != nil {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), policy)
+			return opts.IO.Encode(cmd.OutOrStdout(), &typedObj.Spec)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -405,21 +416,21 @@ func (h *tracesHelper) policiesGetCommand() *cobra.Command {
 }
 
 // ---------------------------------------------------------------------------
-// policies create
+// policies create / update (shared opts)
 // ---------------------------------------------------------------------------
 
-type policiesCreateOpts struct {
+type policyFileOpts struct {
 	IO   cmdio.Options
 	File string
 }
 
-func (o *policiesCreateOpts) setup(flags *pflag.FlagSet) {
+func (o *policyFileOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("yaml")
 	o.IO.BindFlags(flags)
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the policy definition (use - for stdin)")
 }
 
-func (o *policiesCreateOpts) Validate() error {
+func (o *policyFileOpts) Validate() error {
 	if o.File == "" {
 		return errors.New("--filename/-f is required")
 	}
@@ -427,7 +438,7 @@ func (o *policiesCreateOpts) Validate() error {
 }
 
 func (h *tracesHelper) policiesCreateCommand() *cobra.Command {
-	opts := &policiesCreateOpts{}
+	opts := &policyFileOpts{}
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create an Adaptive Traces sampling policy from a file.",
@@ -446,48 +457,27 @@ func (h *tracesHelper) policiesCreateCommand() *cobra.Command {
 				return err
 			}
 
-			client, err := h.newClient(ctx)
+			crud, err := h.newPolicyCRUD(ctx)
 			if err != nil {
 				return err
 			}
 
-			created, err := client.CreatePolicy(ctx, policy)
+			typedObj := &adapter.TypedObject[Policy]{Spec: *policy}
+			created, err := crud.Create(ctx, typedObj)
 			if err != nil {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Created policy %q (id=%s)", created.Name, created.ID)
-			return opts.IO.Encode(cmd.OutOrStdout(), created)
+			cmdio.Success(cmd.ErrOrStderr(), "Created policy %q (id=%s)", created.Spec.Name, created.Spec.ID)
+			return opts.IO.Encode(cmd.OutOrStdout(), &created.Spec)
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
 }
 
-// ---------------------------------------------------------------------------
-// policies update
-// ---------------------------------------------------------------------------
-
-type policiesUpdateOpts struct {
-	IO   cmdio.Options
-	File string
-}
-
-func (o *policiesUpdateOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("yaml")
-	o.IO.BindFlags(flags)
-	flags.StringVarP(&o.File, "filename", "f", "", "File containing the policy definition (use - for stdin)")
-}
-
-func (o *policiesUpdateOpts) Validate() error {
-	if o.File == "" {
-		return errors.New("--filename/-f is required")
-	}
-	return nil
-}
-
 func (h *tracesHelper) policiesUpdateCommand() *cobra.Command {
-	opts := &policiesUpdateOpts{}
+	opts := &policyFileOpts{}
 	cmd := &cobra.Command{
 		Use:   "update <id>",
 		Short: "Update an Adaptive Traces sampling policy by ID.",
@@ -507,18 +497,19 @@ func (h *tracesHelper) policiesUpdateCommand() *cobra.Command {
 				return err
 			}
 
-			client, err := h.newClient(ctx)
+			crud, err := h.newPolicyCRUD(ctx)
 			if err != nil {
 				return err
 			}
 
-			updated, err := client.UpdatePolicy(ctx, args[0], policy)
+			typedObj := &adapter.TypedObject[Policy]{Spec: *policy}
+			updated, err := crud.Update(ctx, args[0], typedObj)
 			if err != nil {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Updated policy %q (id=%s)", updated.Name, updated.ID)
-			return opts.IO.Encode(cmd.OutOrStdout(), updated)
+			cmdio.Success(cmd.ErrOrStderr(), "Updated policy %q (id=%s)", updated.Spec.Name, updated.Spec.ID)
+			return opts.IO.Encode(cmd.OutOrStdout(), &updated.Spec)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -545,7 +536,10 @@ func (h *tracesHelper) policiesDeleteCommand() *cobra.Command {
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !opts.Force {
-				fmt.Fprintf(cmd.OutOrStdout(), "Delete %d policy(ies)? [y/N] ", len(args))
+				if terminal.IsPiped() {
+					return errors.New("stdin is not a terminal, use --force to skip confirmation")
+				}
+				fmt.Fprintf(cmd.ErrOrStderr(), "Delete %d policy(ies)? [y/N] ", len(args))
 				reader := bufio.NewReader(cmd.InOrStdin())
 				answer, err := reader.ReadString('\n')
 				if err != nil {
@@ -553,26 +547,28 @@ func (h *tracesHelper) policiesDeleteCommand() *cobra.Command {
 				}
 				answer = strings.TrimSpace(strings.ToLower(answer))
 				if answer != "y" && answer != "yes" {
-					cmdio.Info(cmd.OutOrStdout(), "Aborted.")
+					cmdio.Info(cmd.ErrOrStderr(), "Aborted.")
 					return nil
 				}
 			}
 
 			ctx := cmd.Context()
 
-			client, err := h.newClient(ctx)
+			crud, err := h.newPolicyCRUD(ctx)
 			if err != nil {
 				return err
 			}
 
+			var errs []error
 			for _, id := range args {
-				if err := client.DeletePolicy(ctx, id); err != nil {
-					return fmt.Errorf("deleting policy %q: %w", id, err)
+				if err := crud.Delete(ctx, id); err != nil {
+					errs = append(errs, fmt.Errorf("deleting policy %q: %w", id, err))
+				} else {
+					cmdio.Success(cmd.ErrOrStderr(), "Deleted policy %q", id)
 				}
-				cmdio.Success(cmd.OutOrStdout(), "Deleted policy %q", id)
 			}
 
-			return nil
+			return errors.Join(errs...)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -582,6 +578,9 @@ func (h *tracesHelper) policiesDeleteCommand() *cobra.Command {
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
+
+// maxPolicyFileSize is the maximum size of a policy file (10 MB).
+const maxPolicyFileSize = 10 << 20
 
 // readPolicyFromFile reads and decodes a Policy from a file path or stdin ("-").
 func readPolicyFromFile(filePath string, stdin io.Reader) (*Policy, error) {
@@ -600,20 +599,17 @@ func readPolicyFromFile(filePath string, stdin io.Reader) (*Policy, error) {
 	return ReadPolicyFromReader(reader)
 }
 
-// ReadPolicyFromReader decodes a Policy from an io.Reader (JSON or YAML). Exported for testing.
+// ReadPolicyFromReader decodes a Policy from an io.Reader (YAML or JSON). Exported for testing.
 func ReadPolicyFromReader(reader io.Reader) (*Policy, error) {
-	data, err := io.ReadAll(reader)
+	data, err := io.ReadAll(io.LimitReader(reader, maxPolicyFileSize))
 	if err != nil {
 		return nil, fmt.Errorf("reading input: %w", err)
 	}
 
 	var policy Policy
-	if err := json.Unmarshal(data, &policy); err != nil {
-		// Try YAML if JSON fails.
-		yamlCodec := format.NewYAMLCodec()
-		if yamlErr := yamlCodec.Decode(strings.NewReader(string(data)), &policy); yamlErr != nil {
-			return nil, fmt.Errorf("decoding input (tried JSON and YAML): json=%w, yaml=%w", err, yamlErr)
-		}
+	yamlCodec := format.NewYAMLCodec()
+	if err := yamlCodec.Decode(strings.NewReader(string(data)), &policy); err != nil {
+		return nil, fmt.Errorf("decoding input: %w", err)
 	}
 
 	return &policy, nil
