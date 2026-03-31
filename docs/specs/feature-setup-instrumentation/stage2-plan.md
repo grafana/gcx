@@ -1,6 +1,6 @@
 ---
 type: feature-plan
-title: "Setup Instrumentation Stage 2: Command grammar, init, and add"
+title: "Setup Instrumentation Stage 2: Command grammar, check, init, and add"
 status: draft
 spec: docs/specs/feature-setup-instrumentation/spec.md
 adr: docs/adrs/instrumentation/001-instrumentation-provider-design.md
@@ -10,16 +10,20 @@ created: 2026-03-31
 
 # Setup Instrumentation Stage 2
 
-Refines the command grammar based on Stage 1 smoke testing, adds the
-imperative `add` verb, and introduces `init` for cluster bootstrapping.
+Refines the command grammar based on Stage 1 smoke testing, adds preflight
+`check` at both levels, cluster bootstrapping via `init`, and the imperative
+`add` verb.
 
 ## Revised Command Tree
 
 ```
 gcx setup
+├── init                                                # stack bootstrap (gcli init migration, bead gcx-b22fd37d)
+├── check                                               # shared preflight: config → GCOM → fleet URL → backend URLs
 ├── status                                              # aggregated product status
 └── instrumentation
-    ├── init      <cluster>                             # bootstrap cluster into Grafana Cloud
+    ├── init      <cluster>                             # cluster bootstrap: Helm chart + fleet connect
+    ├── check     <cluster>                             # product preflight: prom headers, cluster exists, API responds
     ├── status    [<cluster>]                           # per-cluster instrumentation state
     ├── discover  <cluster>                             # find instrumentable workloads
     ├── add       <cluster> --namespace=X --features=Y  # imperative edit (fetch-modify-apply)
@@ -27,20 +31,40 @@ gcx setup
     └── apply     -f <file> [--dry-run]                 # declarative import from manifest
 ```
 
+### Setup Area Pattern
+
+Products with a **discover → configure → verify** workflow live under `setup`.
+Each product can contribute its own `init` and `check`. Pure CRUD products
+(dashboards, SLOs) stay as providers.
+
+```
+gcx setup init              # stack-level: credentials, context
+gcx setup check             # stack-level: validate shared config chain
+gcx setup status            # aggregated: all products
+gcx setup instrumentation   # product: discover → configure → verify
+gcx setup alloy             # future: prepare → verify
+gcx setup integrations      # future: install → configure
+gcx setup kg                # future: enable → configure → verify
+```
+
 ### Workflow Model
 
 ```
-init ──► discover ──► add ──► get ──► apply
- │         │           │       │        │
- │         │           │       │        └─ declarative: make it look like this file
- │         │           │       └────────── export: capture current state as manifest
- │         │           └────────────────── imperative: change one thing now
- │         └────────────────────────────── read: see what's running
- └──────────────────────────────────────── bootstrap: connect cluster to Grafana Cloud
+setup init ──► instrumentation init ──► discover ──► add ──► get ──► apply
+    │               │                     │           │       │        │
+    │               │                     │           │       │        └─ declarative
+    │               │                     │           │       └────────── export
+    │               │                     │           └────────────────── imperative
+    │               │                     └────────────────────────────── read
+    │               └──────────────────────────────────────────────────── cluster bootstrap
+    └──────────────────────────────────────────────────────────────────── stack bootstrap
 
-Interactive workflow:  init → discover → add → add → ... → get (save for GitOps)
-GitOps workflow:       get (from staging) → git commit → apply (to production)
+setup check ──► instrumentation check   (diagnostic, run anytime)
 ```
+
+Interactive workflow:  `setup init` → `instrumentation init` → `discover` → `add` → `get`
+GitOps workflow:       `get` (from staging) → git commit → `apply` (to production)
+Debugging workflow:    `setup check` → `instrumentation check <cluster>`
 
 ---
 
@@ -54,11 +78,13 @@ to reflect the revised command grammar and Stage 2 scope.
 - **Command grammar**: `show` → `get` (kubectl convention for K8s-style manifests),
   `discover --cluster` → `discover <cluster>` (positional arg, consistent with
   `get`, `add`, `init`)
-- **Stage 2 scope**: refined from "imperative `add` verb" to three parts:
-  grammar fix (Part 1), `init` (Part 2), `add` (Part 3)
-- **Command tree**: full tree with all 6 instrumentation subcommands documented
+- **Stage 2 scope**: refined to four parts: grammar fix, check, init, add
+- **Command tree**: full tree with `setup`-level commands (`init`, `check`,
+  `status`) and all instrumentation subcommands
+- **Setup area pattern**: document that `init` and `check` exist at both the
+  `setup` level (shared) and per-product level (product-specific)
 - **Workflow model**: `add` is the interactive tool, `get` + `apply` is the
-  export/import loop for GitOps
+  export/import loop for GitOps, `check` is the diagnostic tool
 - **`--features` grammar**: comma-separated signal list replacing individual
   boolean flags. Valid values: `tracing`, `logging`, `profiling`,
   `processmetrics`, `extendedmetrics` (app-level); `costmetrics`,
@@ -108,28 +134,178 @@ Mechanical refactor — no new features, no API changes.
 
 ---
 
-## Part 2: `init` command — cluster bootstrapping
+## Part 2: `check` command — preflight validation
 
-Bridges the gap between "I have a k8s cluster" and "gcx can manage its
-instrumentation". Today this requires manually: creating an access policy,
-minting a token, finding the Fleet Management URL, and installing a Helm
-chart with the correct values.
+Two layers: shared `gcx setup check` validates the config chain that all
+setup products depend on; `gcx setup instrumentation check <cluster>` validates
+product-specific requirements for a given cluster.
 
-### Command
+### `gcx setup check`
+
+Validates the shared infrastructure chain. Each step reports PASS/FAIL with
+actionable error on failure.
+
+```
+$ gcx setup check
+STEP                        STATUS  DETAILS
+cloud.token configured      PASS    glc_***...***abc
+cloud.stack resolved        PASS    collector (from grafana.server hostname)
+GCOM API reachable          PASS    grafana-dev.com
+Stack info retrieved        PASS    id=1119524 region=dev-us-central-0
+Fleet Management URL        PASS    https://fleet-management-dev-...
+Fleet Management Instance   PASS    id=5001
+Backend URLs resolved       PASS    mimir ✓ loki ✓ tempo ✓ pyroscope ✓
+Prom headers available      PASS    cluster_id=42 instance_id=5678
+```
+
+Failure example:
+```
+$ gcx setup check
+STEP                        STATUS  DETAILS
+cloud.token configured      PASS    glc_***...***abc
+cloud.stack resolved        FAIL    cloud.stack not set; grafana.server not configured
+                                    → Set cloud.stack: gcx config set cloud.stack <SLUG>
+```
+
+Stops at first FAIL with actionable suggestion.
+
+#### Command
+
+```
+gcx setup check [--context=<name>] [-o json|table]
+```
+
+#### Flow
+
+```
+1. Load config (respects --context)
+2. Check cloud.token present
+3. Resolve stack slug (cloud.stack or grafana.server hostname)
+4. Call GCOM API to fetch stack info
+5. Check AgentManagementInstanceURL non-empty
+6. Check AgentManagementInstanceID non-zero
+7. Check backend URLs derivable (HMInstancePromURL, HLInstanceURL, etc.)
+8. Check HMInstancePromID and HMInstancePromClusterID non-zero
+9. (Optional) Ping fleet endpoint with auth to verify connectivity
+```
+
+#### Deliverables
+
+- `cmd/gcx/setup/check.go` — check command
+- `cmd/gcx/setup/check_test.go` — unit tests
+- Wire into `cmd/gcx/setup/command.go`
+
+### `gcx setup instrumentation check <cluster>`
+
+Validates instrumentation-specific requirements for a cluster, building on
+top of the shared check.
+
+```
+$ gcx setup instrumentation check k3d-shopk8s
+STEP                           STATUS  DETAILS
+Shared config (setup check)    PASS    8/8 checks passed
+Fleet API authentication       PASS    Basic auth accepted
+RunK8sMonitoring               PASS    API responds
+Cluster visible                PASS    k3d-shopk8s found in monitoring response
+Discovery endpoints            PASS    SetupK8sDiscovery + RunK8sDiscovery respond
+GetAppInstrumentation          PASS    API responds for cluster
+GetK8SInstrumentation          PASS    API responds for cluster
+```
+
+Failure example:
+```
+$ gcx setup instrumentation check k3d-shopk8s
+STEP                           STATUS  DETAILS
+Shared config (setup check)    PASS    8/8 checks passed
+Fleet API authentication       PASS    Basic auth accepted
+RunK8sMonitoring               PASS    API responds
+Cluster visible                FAIL    k3d-shopk8s not found in monitoring response
+                                       → Cluster may not have Alloy reporting yet
+                                       → Run: gcx setup instrumentation init k3d-shopk8s
+```
+
+#### Command
+
+```
+gcx setup instrumentation check <cluster> [--context=<name>] [-o json|table]
+```
+
+#### Flow
+
+```
+1. Run shared check (setup check logic) — fail fast if shared infra broken
+2. Authenticate to Fleet API (DoRequest to a known endpoint)
+3. Call RunK8sMonitoring with prom headers — verify response
+4. Check if <cluster> appears in monitoring response
+5. Call SetupK8sDiscovery + RunK8sDiscovery with prom headers — verify response
+6. Call GetAppInstrumentation for <cluster> — verify response
+7. Call GetK8SInstrumentation for <cluster> — verify response
+```
+
+#### Deliverables
+
+- `cmd/gcx/setup/instrumentation/check.go` — check command
+- `cmd/gcx/setup/instrumentation/check_test.go` — unit tests
+- Wire into `cmd/gcx/setup/instrumentation/command.go`
+
+---
+
+## Part 3: `init` command — bootstrapping
+
+Two layers: `gcx setup init` bootstraps stack credentials (migrates `gcli init`);
+`gcx setup instrumentation init <cluster>` bootstraps a cluster for
+instrumentation.
+
+### `gcx setup init`
+
+Migrates `gcli init` to gcx. Creates a scoped access policy and token from a
+minimal bootstrap token, saves config context.
+
+**Bead**: gcx-b22fd37d (Phase 5: Init/Onboarding)
+
+This is a separate workstream from instrumentation. The plan here documents
+the interface contract so `setup instrumentation init` can depend on it, but
+implementation follows the gcx-b22fd37d bead.
+
+#### Command
+
+```
+gcx setup init [--stack=<slug>] [--tier=readonly|telemetry|cloud-admin] [--ttl=2160h] [--force]
+```
+
+#### Flow (migrated from gcli init)
+
+```
+1. Resolve bootstrap token (flag → env → interactive prompt)
+2. Discover stacks via GCOM API
+3. Select stack (--stack flag or interactive prompt)
+4. Create access policy with scoped permissions
+5. Mint token for the access policy
+6. Save config context to ~/.config/gcx/config.yaml
+7. Auto-discover datasource UIDs
+```
+
+### `gcx setup instrumentation init <cluster>`
+
+Bootstraps a cluster for instrumentation: creates a cluster-scoped access
+policy, generates or applies Helm values for the grafana-cloud-onboarding
+chart to install Alloy + fleet agent.
+
+#### Command
 
 ```
 gcx setup instrumentation init <cluster> [--apply] [--helm-namespace=grafana-cloud]
 ```
 
-### Flow
+#### Flow
 
 ```
 1. Resolve stack info from cloud config (LoadCloudConfig → GCOM)
-2. Create access policy via GCOM API:
+2. Create cluster-scoped access policy via GCOM API:
    - Name: "<cluster>-instrumentation"
    - Scopes: fleet, metrics:write, logs:write, traces:write, profiles:write
 3. Mint token for the access policy
-4. Resolve backend URLs from stack info (same as apply)
+4. Resolve backend URLs from stack info
 5. Generate Helm values for grafana-cloud-onboarding chart:
    - cluster.name, fleet.url, fleet.token, auth.*
    - Mimir/Loki/Tempo/Pyroscope endpoints
@@ -137,27 +313,21 @@ gcx setup instrumentation init <cluster> [--apply] [--helm-namespace=grafana-clo
 7. With --apply: run helm install directly (requires helm in PATH)
 ```
 
-### Design Questions (to resolve during implementation)
+#### Design Questions (to resolve during implementation)
 
-- **Access policy API**: Which GCOM endpoint? `POST /api/v1/accesspolicies`?
-  Need to confirm the exact schema and required scopes.
-- **Idempotency**: What if the access policy already exists? Reuse? Error?
-  Suggest: check by name, reuse if exists, warn user.
-- **Token rotation**: Short-lived or long-lived? The Helm chart needs a
-  persistent token. Suggest: long-lived with clear warning.
-- **Helm chart version pinning**: Hard-code chart version or use latest?
-  Suggest: use `--version` flag with sensible default.
-- **Scope**: Does `init` belong at `gcx setup instrumentation init` or
-  `gcx setup init` (since connecting a cluster is cross-product)? Current
-  decision: keep under `instrumentation` for Stage 2, extract to `setup init`
-  if other products need the same bootstrap pattern.
+- **Access policy API**: Which GCOM endpoint? Confirm schema and required scopes.
+- **Idempotency**: Check by name, reuse if exists, warn user.
+- **Token rotation**: Long-lived with clear warning (Helm chart needs persistent token).
+- **Helm chart version pinning**: `--version` flag with sensible default.
+- **Helm chart**: `grafana-cloud-onboarding` vs `grafana-cloud` — tester noted
+  the correct chart is `grafana-cloud`, not `k8s-monitoring`.
 
-### New Dependencies
+#### New Dependencies
 
 - GCOM access policy API client (new code in `internal/cloud/`)
 - Helm CLI detection (optional, only for `--apply`)
 
-### Deliverables
+#### Deliverables
 
 - `cmd/gcx/setup/instrumentation/init.go` — init command
 - `internal/cloud/accesspolicy.go` — GCOM access policy + token API client
@@ -166,7 +336,7 @@ gcx setup instrumentation init <cluster> [--apply] [--helm-namespace=grafana-clo
 
 ---
 
-## Part 3: `add` command — imperative edit
+## Part 4: `add` command — imperative edit
 
 Quick imperative fetch-modify-apply for interactive use. Eliminates the need
 to manually edit YAML for common operations.
@@ -235,12 +405,9 @@ App features without `--namespace` → error: `--namespace is required for app-l
 
 ### Design Questions (to resolve during implementation)
 
-- **Remove semantics**: How to remove a namespace or disable a feature?
-  Options: `--features=-tracing` (toggle off), separate `remove` command,
-  or rely on `apply` with edited manifest. Suggest: defer to `apply` for
-  removal, keep `add` as additive-only for Stage 2.
-- **Selection field**: Default `included` for new namespaces? Or require
-  explicit `--selection=included|excluded`? Suggest: default `included`.
+- **Remove semantics**: Defer to `apply` for removal; keep `add` as
+  additive-only for Stage 2.
+- **Selection field**: Default `included` for new namespaces.
 - **Idempotency**: Running `add` twice with same args should be a no-op
   (already enabled). Not an error.
 
@@ -259,10 +426,13 @@ Part 0 (ADR update) ─── no code deps, do first
      │
 Part 1 (show→get + discover positional) ─── mechanical refactor
      │
-     ├── Part 2 (init) ─── new command, new GCOM client
+     ├── Part 2 (check) ─── setup check + instrumentation check
      │
-     └── Part 3 (add) ─── new command, uses existing instrumentation client
+     ├── Part 3 (init) ─── setup init (gcx-b22fd37d) + instrumentation init
+     │
+     └── Part 4 (add) ─── new command, uses existing instrumentation client
 ```
 
-Parts 2 and 3 are independent of each other but both depend on Part 1
-(the revised command grammar).
+Parts 2, 3, and 4 are independent of each other but all depend on Part 1
+(the revised command grammar). Part 3's `setup init` is tracked under
+bead gcx-b22fd37d and may be implemented in a separate workstream.
