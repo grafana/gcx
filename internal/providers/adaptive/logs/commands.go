@@ -7,6 +7,8 @@ import (
 	"io"
 	"math"
 	"sort"
+	"strconv"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/grafana/gcx/internal/format"
@@ -188,8 +190,10 @@ func (c *segmentStatsTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []SegmentPatternStat")
 	}
 
+	volW := segmentVolumeColumnWidth(stats)
+
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tNAME\tSEGMENT\tVOLUME")
+	fmt.Fprintf(tw, "ID\tNAME\tSEGMENT\t%s\n", rightAlign("VOLUME", volW))
 	noTruncate := c.opts != nil && c.opts.IO.NoTruncate
 	for _, s := range stats {
 		idCol := s.SegmentID
@@ -204,7 +208,7 @@ func (c *segmentStatsTableCodec) Encode(w io.Writer, v any) error {
 				segCol = truncate(segCol, 80)
 			}
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", idCol, s.Name, segCol, humanBytes(s.Volume))
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", idCol, s.Name, segCol, rightAlign(humanBytes(s.Volume), volW))
 	}
 	return tw.Flush()
 }
@@ -250,16 +254,29 @@ func (c *patternsTableCodec) Encode(w io.Writer, v any) error {
 		tail = sorted[topN:]
 	}
 
+	cw := computePatternColWidths(c.wide, head, tail)
+
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	if c.wide {
-		fmt.Fprintln(tw, "PATTERN\tQUERIED\tVOLUME\tDROP RATE\tRECOMMENDED RATE\tINGESTED LINES\tQUERIED LINES\tSUPERSEDED")
+		fmt.Fprintf(tw, "PATTERN\tQUERIED\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			rightAlign("VOLUME", cw.volume),
+			rightAlign("DROP RATE", cw.dropRate),
+			rightAlign("RECOMMENDED RATE", cw.recRate),
+			rightAlign("INGESTED LINES", cw.ingested),
+			rightAlign("QUERIED LINES", cw.queried),
+			rightAlign("SUPERSEDED", cw.superseded),
+		)
 	} else {
-		fmt.Fprintln(tw, "PATTERN\tQUERIED\tVOLUME\tDROP RATE\tRECOMMENDED RATE")
+		fmt.Fprintf(tw, "PATTERN\tQUERIED\t%s\t%s\t%s\n",
+			rightAlign("VOLUME", cw.volume),
+			rightAlign("DROP RATE", cw.dropRate),
+			rightAlign("RECOMMENDED RATE", cw.recRate),
+		)
 	}
 
 	var anyRecRateMark bool
 	for _, rec := range head {
-		if c.writePatternRow(tw, rec) {
+		if c.writePatternRow(tw, rec, cw) {
 			anyRecRateMark = true
 		}
 	}
@@ -281,11 +298,24 @@ func (c *patternsTableCodec) Encode(w io.Writer, v any) error {
 			pattern = truncate(pattern, 80)
 		}
 		if c.wide {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t-\t-\t%d\t%d\t-\n",
-				pattern, queryIngestLabel(q, ing), humanBytes(vol), ing, q)
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				pattern,
+				queryIngestLabel(q, ing),
+				rightAlign(humanBytes(vol), cw.volume),
+				rightAlign("-", cw.dropRate),
+				rightAlign("-", cw.recRate),
+				rightAlign(strconv.FormatUint(ing, 10), cw.ingested),
+				rightAlign(strconv.FormatUint(q, 10), cw.queried),
+				rightAlign("-", cw.superseded),
+			)
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t-\t-\n",
-				pattern, queryIngestLabel(q, ing), humanBytes(vol))
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+				pattern,
+				queryIngestLabel(q, ing),
+				rightAlign(humanBytes(vol), cw.volume),
+				rightAlign("-", cw.dropRate),
+				rightAlign("-", cw.recRate),
+			)
 		}
 	}
 
@@ -299,19 +329,20 @@ func (c *patternsTableCodec) Encode(w io.Writer, v any) error {
 }
 
 // recommendedRateCell formats the recommended drop rate and marks when it differs from the
-// configured drop rate by more than 10 percentage points.
-func recommendedRateCell(configured float32, recommended float64) (string, bool) {
-	cell := fmt.Sprintf("%.2f", recommended)
+// configured drop rate by more than 10 percentage points. The number is right-aligned in a
+// fixed inner width; a trailing " *" marks divergence and unmarked rows use "  " in the same
+// two-byte suffix slot so columns stay aligned.
+func recommendedRateCell(configured float32, recommended float64, innerWidth int) (string, bool) {
+	num := rightAlign(fmt.Sprintf("%.2f", recommended), innerWidth)
 	if math.Abs(float64(configured)-recommended) > 10 {
-		cell += " *"
-		return cell, true
+		return num + " *", true
 	}
-	return cell, false
+	return num + "  ", false
 }
 
 // writePatternRow renders one recommendation row. It returns true when the recommended rate
 // cell includes a divergence marker.
-func (c *patternsTableCodec) writePatternRow(tw *tabwriter.Writer, rec LogRecommendation) bool {
+func (c *patternsTableCodec) writePatternRow(tw *tabwriter.Writer, rec LogRecommendation, cw patternColWidths) bool {
 	pattern := rec.Pattern
 	if pattern == "" {
 		pattern = rec.Label()
@@ -319,26 +350,27 @@ func (c *patternsTableCodec) writePatternRow(tw *tabwriter.Writer, rec LogRecomm
 	if !c.wide {
 		pattern = truncate(pattern, 80)
 	}
-	recCell, marked := recommendedRateCell(rec.ConfiguredDropRate, rec.RecommendedDropRate)
+	recCell, marked := recommendedRateCell(rec.ConfiguredDropRate, rec.RecommendedDropRate, cw.recRate-2)
 	queried := queryIngestLabel(rec.QueriedLines, rec.IngestedLines)
+	dropStr := fmt.Sprintf("%.2f", rec.ConfiguredDropRate)
 	if c.wide {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%.2f\t%s\t%d\t%d\t%v\n",
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			pattern,
 			queried,
-			humanBytes(rec.Volume),
-			rec.ConfiguredDropRate,
-			recCell,
-			rec.IngestedLines,
-			rec.QueriedLines,
-			rec.Superseded,
+			rightAlign(humanBytes(rec.Volume), cw.volume),
+			rightAlign(dropStr, cw.dropRate),
+			rightAlign(recCell, cw.recRate),
+			rightAlign(strconv.FormatUint(rec.IngestedLines, 10), cw.ingested),
+			rightAlign(strconv.FormatUint(rec.QueriedLines, 10), cw.queried),
+			rightAlign(strconv.FormatBool(rec.Superseded), cw.superseded),
 		)
 	} else {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%.2f\t%s\n",
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
 			pattern,
 			queried,
-			humanBytes(rec.Volume),
-			rec.ConfiguredDropRate,
-			recCell,
+			rightAlign(humanBytes(rec.Volume), cw.volume),
+			rightAlign(dropStr, cw.dropRate),
+			rightAlign(recCell, cw.recRate),
 		)
 	}
 	return marked
@@ -349,6 +381,102 @@ func truncate(s string, limit int) string {
 		return s
 	}
 	return s[:limit-3] + "..."
+}
+
+// rightAlign left-pads s with spaces so the string has byte length width (for tabular numeric columns).
+func rightAlign(s string, width int) string {
+	if len(s) >= width {
+		return s
+	}
+	return strings.Repeat(" ", width-len(s)) + s
+}
+
+func segmentVolumeColumnWidth(stats []SegmentPatternStat) int {
+	w := len("VOLUME")
+	for _, s := range stats {
+		if l := len(humanBytes(s.Volume)); l > w {
+			w = l
+		}
+	}
+	return w
+}
+
+// patternColWidths holds precomputed byte widths for right-aligned numeric columns in patterns show.
+type patternColWidths struct {
+	volume     int
+	dropRate   int
+	recRate    int
+	ingested   int
+	queried    int
+	superseded int
+}
+
+func computePatternColWidths(wide bool, head, tail []LogRecommendation) patternColWidths {
+	var cw patternColWidths
+
+	cw.volume = len("VOLUME")
+	for _, rec := range head {
+		if l := len(humanBytes(rec.Volume)); l > cw.volume {
+			cw.volume = l
+		}
+	}
+	var tailVol, tailIng, tailQ uint64
+	for _, rec := range tail {
+		tailVol += rec.Volume
+		tailIng += rec.IngestedLines
+		tailQ += rec.QueriedLines
+	}
+	if len(tail) > 0 {
+		if l := len(humanBytes(tailVol)); l > cw.volume {
+			cw.volume = l
+		}
+	}
+
+	cw.dropRate = len("DROP RATE")
+	recNumW := 0
+	for _, rec := range head {
+		if l := len(fmt.Sprintf("%.2f", rec.ConfiguredDropRate)); l > cw.dropRate {
+			cw.dropRate = l
+		}
+		if l := len(fmt.Sprintf("%.2f", rec.RecommendedDropRate)); l > recNumW {
+			recNumW = l
+		}
+	}
+	cw.recRate = len("RECOMMENDED RATE")
+	if w := 2 + recNumW; w > cw.recRate {
+		cw.recRate = w
+	}
+
+	if wide {
+		widenPatternColWidths(&cw, head, tail, tailIng, tailQ)
+	}
+	return cw
+}
+
+func widenPatternColWidths(cw *patternColWidths, head, tail []LogRecommendation, tailIng, tailQ uint64) {
+	cw.ingested = len("INGESTED LINES")
+	cw.queried = len("QUERIED LINES")
+	cw.superseded = len("SUPERSEDED")
+	for _, rec := range head {
+		if l := len(strconv.FormatUint(rec.IngestedLines, 10)); l > cw.ingested {
+			cw.ingested = l
+		}
+		if l := len(strconv.FormatUint(rec.QueriedLines, 10)); l > cw.queried {
+			cw.queried = l
+		}
+		if l := len(strconv.FormatBool(rec.Superseded)); l > cw.superseded {
+			cw.superseded = l
+		}
+	}
+	if len(tail) == 0 {
+		return
+	}
+	if l := len(strconv.FormatUint(tailIng, 10)); l > cw.ingested {
+		cw.ingested = l
+	}
+	if l := len(strconv.FormatUint(tailQ, 10)); l > cw.queried {
+		cw.queried = l
+	}
 }
 
 const (
