@@ -1,17 +1,17 @@
-## gcx fleet pipelines create
+## gcx setup instrumentation show
 
-Create a pipeline from a file.
+Show current instrumentation config as a portable manifest.
 
 ```
-gcx fleet pipelines create [flags]
+gcx setup instrumentation show <cluster> [flags]
 ```
 
 ### Options
 
 ```
-  -f, --filename string   File containing the pipeline manifest (use - for stdin)
-      --force             Override protection guard for instrumentation-managed pipelines
-  -h, --help              help for create
+  -h, --help            help for show
+      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+  -o, --output string   Output format. One of: json, yaml (default "yaml")
 ```
 
 ### Options inherited from parent commands
@@ -27,5 +27,5 @@ gcx fleet pipelines create [flags]
 
 ### SEE ALSO
 
-* [gcx fleet pipelines](gcx_fleet_pipelines.md)	 - Manage Fleet Management pipelines.
+* [gcx setup instrumentation](gcx_setup_instrumentation.md)	 - Manage observability instrumentation for Kubernetes clusters.
 

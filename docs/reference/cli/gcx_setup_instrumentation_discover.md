@@ -1,17 +1,18 @@
-## gcx fleet pipelines create
+## gcx setup instrumentation discover
 
-Create a pipeline from a file.
+Discover instrumentable workloads in a cluster.
 
 ```
-gcx fleet pipelines create [flags]
+gcx setup instrumentation discover [flags]
 ```
 
 ### Options
 
 ```
-  -f, --filename string   File containing the pipeline manifest (use - for stdin)
-      --force             Override protection guard for instrumentation-managed pipelines
-  -h, --help              help for create
+      --cluster string   Cluster name (required)
+  -h, --help             help for discover
+      --json string      Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+  -o, --output string    Output format. One of: json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -27,5 +28,5 @@ gcx fleet pipelines create [flags]
 
 ### SEE ALSO
 
-* [gcx fleet pipelines](gcx_fleet_pipelines.md)	 - Manage Fleet Management pipelines.
+* [gcx setup instrumentation](gcx_setup_instrumentation.md)	 - Manage observability instrumentation for Kubernetes clusters.
 

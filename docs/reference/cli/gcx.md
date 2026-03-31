@@ -35,6 +35,7 @@ gcx is a unified CLI for managing Grafana resources, dashboards, datasources, al
 * [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall integrations, escalation chains, schedules, and routing
 * [gcx providers](gcx_providers.md)	 - List registered providers
 * [gcx resources](gcx_resources.md)	 - Manipulate Grafana resources
+* [gcx setup](gcx_setup.md)	 - Onboard and configure Grafana Cloud products.
 * [gcx slo](gcx_slo.md)	 - Manage Grafana SLO definitions and reports
 * [gcx synth](gcx_synth.md)	 - Manage Grafana Synthetic Monitoring checks and probes
 

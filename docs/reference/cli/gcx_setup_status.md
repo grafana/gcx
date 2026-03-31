@@ -1,17 +1,15 @@
-## gcx fleet pipelines create
+## gcx setup status
 
-Create a pipeline from a file.
+Show aggregated setup status across all products.
 
 ```
-gcx fleet pipelines create [flags]
+gcx setup status [flags]
 ```
 
 ### Options
 
 ```
-  -f, --filename string   File containing the pipeline manifest (use - for stdin)
-      --force             Override protection guard for instrumentation-managed pipelines
-  -h, --help              help for create
+  -h, --help   help for status
 ```
 
 ### Options inherited from parent commands
@@ -27,5 +25,5 @@ gcx fleet pipelines create [flags]
 
 ### SEE ALSO
 
-* [gcx fleet pipelines](gcx_fleet_pipelines.md)	 - Manage Fleet Management pipelines.
+* [gcx setup](gcx_setup.md)	 - Onboard and configure Grafana Cloud products.
 
