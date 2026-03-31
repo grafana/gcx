@@ -288,8 +288,8 @@ func (o *policiesListOpts) setup(flags *pflag.FlagSet) {
 func (h *tracesHelper) policiesListCommand() *cobra.Command {
 	opts := &policiesListOpts{}
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List Adaptive Traces sampling policies.",
+		Use:   "show",
+		Short: "Show Adaptive Traces sampling policies.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err

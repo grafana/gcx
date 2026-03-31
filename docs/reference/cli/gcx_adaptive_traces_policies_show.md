@@ -1,15 +1,15 @@
-## gcx adaptive traces policies list
+## gcx adaptive traces policies show
 
-List Adaptive Traces sampling policies.
+Show Adaptive Traces sampling policies.
 
 ```
-gcx adaptive traces policies list [flags]
+gcx adaptive traces policies show [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for list
+  -h, --help            help for show
       --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
   -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
 ```
