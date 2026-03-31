@@ -793,6 +793,10 @@ func (h *logsHelper) segmentsUpdateCommand() *cobra.Command {
 				return err
 			}
 
+			if !cmd.Flags().Changed("name") && !cmd.Flags().Changed("selector") && !cmd.Flags().Changed("fallback-to-default") {
+				return errors.New("specify at least one of --name, --selector, or --fallback-to-default")
+			}
+
 			existing, err := client.GetSegment(ctx, args[0])
 			if err != nil {
 				return fmt.Errorf("failed to fetch existing segment for merge: %w", err)

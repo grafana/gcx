@@ -283,9 +283,9 @@ func (c *Client) DeleteSegment(ctx context.Context, id string) error {
 	return nil
 }
 
-// decodeExemptionResponse handles both wrapped {"result": ...} and bare Exemption
-// JSON responses from the API. The create/update endpoints may wrap the response
-// in a {"result": ...} envelope (webtools.APIResponse).
+// decodeExemptionResponse decodes the Adaptive Logs API envelope
+// {"result": ...} (webtools.APIResponse). Single-exemption endpoints use this shape;
+// list uses {"result": [...]} and is decoded separately in ListExemptions.
 func decodeExemptionResponse(r io.Reader) (*Exemption, error) {
 	data, err := io.ReadAll(r)
 	if err != nil {
@@ -295,18 +295,13 @@ func decodeExemptionResponse(r io.Reader) (*Exemption, error) {
 	var env struct {
 		Result *Exemption `json:"result"`
 	}
-	if err := json.Unmarshal(data, &env); err == nil && env.Result != nil && env.Result.ID != "" {
-		return env.Result, nil
-	}
-
-	var bare Exemption
-	if err := json.Unmarshal(data, &bare); err != nil {
+	if err := json.Unmarshal(data, &env); err != nil {
 		return nil, fmt.Errorf("failed to decode exemption response: %w", err)
 	}
-	if bare.ID == "" {
-		return nil, errors.New("exemption response missing id")
+	if env.Result == nil {
+		return nil, errors.New("exemption response missing result")
 	}
-	return &bare, nil
+	return env.Result, nil
 }
 
 // doRequest builds and executes an HTTP request against the Adaptive Logs API.

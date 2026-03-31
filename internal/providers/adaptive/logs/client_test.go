@@ -161,7 +161,7 @@ func TestClient_CreateExemption(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:  "returns created exemption (bare response)",
+			name:  "returns created exemption (envelope)",
 			input: &logs.Exemption{StreamSelector: `{app="critical"}`},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodPost, r.Method)
@@ -174,7 +174,9 @@ func TestClient_CreateExemption(t *testing.T) {
 				assert.Equal(t, `{app="critical"}`, received.StreamSelector)
 
 				w.WriteHeader(http.StatusCreated)
-				writeJSON(w, logs.Exemption{ID: "new-id", StreamSelector: `{app="critical"}`})
+				writeJSON(w, map[string]any{
+					"result": logs.Exemption{ID: "new-id", StreamSelector: `{app="critical"}`},
+				})
 			},
 			wantID: "new-id",
 		},
@@ -229,13 +231,15 @@ func TestClient_UpdateExemption(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:  "returns updated exemption (bare response)",
+			name:  "returns updated exemption (envelope)",
 			id:    "ex-1",
 			input: &logs.Exemption{StreamSelector: `{app="updated"}`},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodPatch, r.Method)
 				assert.Equal(t, "/adaptive-logs/exemptions/ex-1", r.URL.Path)
-				writeJSON(w, logs.Exemption{ID: "ex-1", StreamSelector: `{app="updated"}`})
+				writeJSON(w, map[string]any{
+					"result": logs.Exemption{ID: "ex-1", StreamSelector: `{app="updated"}`},
+				})
 			},
 			wantID: "ex-1",
 		},

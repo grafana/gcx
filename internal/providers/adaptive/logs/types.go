@@ -105,7 +105,7 @@ type LogSegment struct {
 	ID                string `json:"id,omitempty"`
 	Selector          string `json:"selector,omitempty"`
 	Name              string `json:"name"`
-	FallbackToDefault bool   `json:"fallback_to_default,omitempty"`
+	FallbackToDefault bool   `json:"fallback_to_default"`
 	CreatedAt         string `json:"created_at,omitempty"`
 	UpdatedAt         string `json:"updated_at,omitempty"`
 	IsEarly           bool   `json:"is_early,omitempty"`
