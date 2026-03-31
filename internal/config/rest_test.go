@@ -121,12 +121,12 @@ func TestNamespacedRESTConfig_SetOnRefresh(t *testing.T) {
 
 	ctx := config.Context{
 		Grafana: &config.GrafanaConfig{
-			Server:            refreshServer.URL,
-			ProxyEndpoint:     refreshServer.URL,
+			Server:              refreshServer.URL,
+			ProxyEndpoint:       refreshServer.URL,
 			OAuthToken:          "gat_expiring",
 			OAuthRefreshToken:   "gar_old",
 			OAuthTokenExpiresAt: time.Now().Add(1 * time.Minute).Format(time.RFC3339),
-			StackID:           123,
+			StackID:             123,
 		},
 	}
 
