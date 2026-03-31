@@ -1,4 +1,5 @@
-// Package auth implements the browser-based OAuth PKCE authentication flow for grafanactl.
+// Package auth implements the browser-based OAuth PKCE authentication flow for gcx.
+// This file is based heavily on assistant-cli-internal/internal/tunnel/auth/flow.go.
 package auth
 
 import (
