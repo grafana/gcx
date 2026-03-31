@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"fmt"
 
 	configcmd "github.com/grafana/gcx/cmd/gcx/config"
@@ -26,15 +27,17 @@ func loginCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "login",
-		Short: "Authenticate to a Grafana stack via browser",
-		Long: `Opens a browser to authenticate with your Grafana stack using OAuth.
+		Short: "Authenticate to a Grafana stack",
+		Long: `Opens a browser to authenticate with your Grafana stack.
 
 On success, the CLI token and proxy endpoint are saved to your current config
 context. Subsequent commands will use the proxy to access Grafana's API with
 your identity and RBAC permissions.
 
-The Grafana server URL must already be configured in the current context
-(e.g., via 'grafanactl config set grafana.server https://your-stack.grafana.net').`,
+Your current context must be set to a context that has a grafana server
+configured before you can call this command. For example:
+	gcx config set contexts.<context>.grafana.server https://your-stack.grafana.net
+	gcx config use-context <context>`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runLogin(cmd, configOpts)
 		},
@@ -55,17 +58,19 @@ func runLogin(cmd *cobra.Command, configOpts *configcmd.Options) error {
 
 	curCtx := cfg.GetCurrentContext()
 	if curCtx == nil || curCtx.Grafana == nil || curCtx.Grafana.Server == "" {
-		return fmt.Errorf("grafana.server is not configured in context %q — set it with:\n  grafanactl config set grafana.server https://your-stack.grafana.net", cfg.CurrentContext)
+		return fmt.Errorf("grafana.server is not configured in context %q — set it with:\n  gcx config set contexts.<context>.grafana.server https://your-stack.grafana.net", cfg.CurrentContext)
 	}
 
-	flow := auth.NewFlow(curCtx.Grafana.Server, auth.Options{})
+	flow := auth.NewFlow(curCtx.Grafana.Server, auth.Options{
+		Writer: cmd.ErrOrStderr(),
+	})
 	result, err := flow.Run(ctx)
 	if err != nil {
 		return fmt.Errorf("authentication failed: %w", err)
 	}
 
 	if result.Token == "" || result.APIEndpoint == "" {
-		return fmt.Errorf("authentication succeeded but the server returned incomplete token data")
+		return errors.New("authentication succeeded but the server returned incomplete token data")
 	}
 
 	// Save tokens to the current context.
