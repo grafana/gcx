@@ -101,11 +101,15 @@ func applyApp(ctx context.Context, opts *applyOpts, client *instrum.Client, clus
 
 	remoteApp := &instrum.AppSpec{Namespaces: remoteResp.Namespaces}
 	diff := instrum.Compare(app, remoteApp)
-	if !diff.IsEmpty() {
+	if !diff.IsEmpty() && !opts.DryRun {
 		return buildOptimisticLockError(cluster, diff)
 	}
 
 	if opts.DryRun {
+		if !diff.IsEmpty() {
+			fmt.Fprintf(out, "dry-run: remote has items not in local manifest (would fail without --dry-run):\n")
+			writeDiffSummary(out, diff)
+		}
 		fmt.Fprintf(out, "dry-run: would apply spec.app for cluster %q (%d namespace(s))\n", cluster, len(app.Namespaces))
 		return nil
 	}
@@ -118,7 +122,22 @@ func applyApp(ctx context.Context, opts *applyOpts, client *instrum.Client, clus
 }
 
 func applyK8s(ctx context.Context, opts *applyOpts, client *instrum.Client, cluster string, k8s *instrum.K8sSpec, urls instrum.BackendURLs, out io.Writer) error {
+	remoteResp, err := client.GetK8SInstrumentation(ctx, cluster)
+	if err != nil {
+		return fmt.Errorf("setup/instrumentation: %w", err)
+	}
+
+	// Optimistic lock for k8s: fail if remote has features enabled that the local manifest doesn't.
+	remoteExtra := k8sRemoteOnlyFeatures(k8s, remoteResp)
+	if len(remoteExtra) > 0 && !opts.DryRun {
+		return buildK8sOptimisticLockError(cluster, remoteExtra)
+	}
+
 	if opts.DryRun {
+		if len(remoteExtra) > 0 {
+			fmt.Fprintf(out, "dry-run: remote k8s config has features not in local manifest (would fail without --dry-run): %s\n",
+				strings.Join(remoteExtra, ", "))
+		}
 		fmt.Fprintf(out, "dry-run: would apply spec.k8s for cluster %q\n", cluster)
 		return nil
 	}
@@ -128,6 +147,44 @@ func applyK8s(ctx context.Context, opts *applyOpts, client *instrum.Client, clus
 	}
 	fmt.Fprintf(out, "applied spec.k8s for cluster %q\n", cluster)
 	return nil
+}
+
+// k8sRemoteOnlyFeatures returns feature names that are enabled remotely but not in the local manifest.
+func k8sRemoteOnlyFeatures(local *instrum.K8sSpec, remote *instrum.GetK8SInstrumentationResponse) []string {
+	if remote == nil {
+		return nil
+	}
+	var extra []string
+	if remote.CostMetrics && !local.CostMetrics {
+		extra = append(extra, "costmetrics")
+	}
+	if remote.EnergyMetrics && !local.EnergyMetrics {
+		extra = append(extra, "energymetrics")
+	}
+	if remote.ClusterEvents && !local.ClusterEvents {
+		extra = append(extra, "clusterevents")
+	}
+	if remote.NodeLogs && !local.NodeLogs {
+		extra = append(extra, "nodelogs")
+	}
+	return extra
+}
+
+func writeDiffSummary(w io.Writer, diff *instrum.Diff) {
+	for _, ns := range diff.Namespaces {
+		fmt.Fprintf(w, "  - namespace %q\n", ns.Namespace)
+	}
+	for _, app := range diff.Apps {
+		fmt.Fprintf(w, "  - app %q in namespace %q\n", app.App, app.Namespace)
+	}
+}
+
+func buildK8sOptimisticLockError(cluster string, remoteExtra []string) error {
+	var sb strings.Builder
+	sb.WriteString("setup/instrumentation: remote k8s config has features not in local manifest: ")
+	sb.WriteString(strings.Join(remoteExtra, ", "))
+	fmt.Fprintf(&sb, "\nuse 'gcx setup instrumentation show %s -o yaml' to see the current remote config and reconcile", cluster)
+	return fmt.Errorf("%s", sb.String())
 }
 
 func buildOptimisticLockError(cluster string, diff *instrum.Diff) error {

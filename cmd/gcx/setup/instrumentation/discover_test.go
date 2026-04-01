@@ -80,7 +80,7 @@ func TestDiscoverCommand(t *testing.T) {
 			useServer:   true,
 			setupStatus: http.StatusOK,
 			runStatus:   http.StatusOK,
-			runBody:     `{"items":[{"namespace":"default","name":"web-abc","displayName":"web","workloadType":"deployment","instrumentationStatus":"active"}]}`,
+			runBody:     `{"items":[{"clusterName":"prod-1","namespace":"default","name":"web-abc","displayName":"web","workloadType":"deployment","instrumentationStatus":"active"}]}`,
 			wantStdout:  "NAMESPACE",
 		},
 		{
@@ -104,7 +104,7 @@ func TestDiscoverCommand(t *testing.T) {
 			useServer:   true,
 			setupStatus: http.StatusOK,
 			runStatus:   http.StatusOK,
-			runBody:     `{"items":[{"namespace":"default","name":"web-abc","displayName":"web","workloadType":"deployment","instrumentationStatus":"active"}]}`,
+			runBody:     `{"items":[{"clusterName":"prod-1","namespace":"default","name":"web-abc","displayName":"web","workloadType":"deployment","instrumentationStatus":"active"}]}`,
 			wantStdout:  `"items"`,
 		},
 	}

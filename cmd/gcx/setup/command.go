@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	instrum "github.com/grafana/gcx/internal/setup/instrumentation"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // Command returns the setup command area for onboarding and configuring
@@ -24,28 +25,49 @@ func Command() *cobra.Command {
 	loader.BindFlags(cmd.PersistentFlags())
 
 	cmd.AddCommand(instrumentation.Command(loader))
-	cmd.AddCommand(statusCmd(loader))
+	cmd.AddCommand(newStatusCommand(loader))
 
 	return cmd
 }
 
-func statusCmd(loader *providers.ConfigLoader) *cobra.Command {
-	return &cobra.Command{
+type setupStatusOpts struct {
+	IO setupStatusIO
+}
+
+func (o *setupStatusOpts) setup(flags *pflag.FlagSet) {
+	_ = flags // no flags yet — placeholder for future --output support
+}
+
+func (o *setupStatusOpts) Validate() error {
+	return nil
+}
+
+// setupStatusIO is a minimal output interface for the aggregated status table.
+// Kept separate from output.Options since aggregated status has a fixed table format.
+type setupStatusIO struct{}
+
+func newStatusCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &setupStatusOpts{}
+	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show aggregated setup status across all products.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			ctx := cmd.Context()
 
 			r, err := fleetbase.LoadClientWithStack(ctx, loader)
 			if err != nil {
-				return fmt.Errorf("setup/instrumentation: %w", err)
+				return fmt.Errorf("setup: %w", err)
 			}
 			client := instrum.NewClient(r.Client)
 			promHdrs := instrum.PromHeadersFromStack(r.Stack)
 
 			monResp, err := client.RunK8sMonitoring(ctx, promHdrs)
 			if err != nil {
-				return fmt.Errorf("setup/instrumentation: %w", err)
+				return fmt.Errorf("setup: %w", err)
 			}
 
 			enabled := "no"
@@ -59,6 +81,8 @@ func statusCmd(loader *providers.ConfigLoader) *cobra.Command {
 			})
 		},
 	}
+	opts.setup(cmd.Flags())
+	return cmd
 }
 
 type setupProductRow struct {

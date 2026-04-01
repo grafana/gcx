@@ -63,12 +63,21 @@ func newDiscoverCommand(loader fleet.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("setup/instrumentation: %w", err)
 			}
 
-			if len(result.Items) == 0 {
+			// The discovery API returns workloads across all clusters.
+			// Filter client-side to the requested cluster.
+			filtered := &instrum.RunK8sDiscoveryResponse{}
+			for _, item := range result.Items {
+				if item.ClusterName == opts.Cluster {
+					filtered.Items = append(filtered.Items, item)
+				}
+			}
+
+			if len(filtered.Items) == 0 {
 				fmt.Fprintf(cmd.ErrOrStderr(), "No workloads discovered in cluster %q\n", opts.Cluster)
 				return nil
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(cmd.OutOrStdout(), filtered)
 		},
 	}
 	opts.setup(cmd.Flags())

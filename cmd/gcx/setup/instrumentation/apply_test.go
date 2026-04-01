@@ -56,6 +56,11 @@ func (s *applyTestServer) start(t *testing.T) *httptest.Server {
 		w.WriteHeader(s.setAppStatus)
 		_, _ = w.Write([]byte(`{}`))
 	})
+	mux.HandleFunc("/instrumentation.v1.InstrumentationService/GetK8SInstrumentation", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"cluster":{"name":"prod-1"}}`))
+	})
 	mux.HandleFunc("/instrumentation.v1.InstrumentationService/SetK8SInstrumentation", func(w http.ResponseWriter, _ *http.Request) {
 		s.setK8sCalled.Store(true)
 		w.Header().Set("Content-Type", "application/json")

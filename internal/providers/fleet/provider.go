@@ -331,7 +331,7 @@ func (o *pipelineGetOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func (h *fleetHelper) newPipelineCreateCommand() *cobra.Command { //nolint:dupl // Intentionally similar to collector create — distinct resource types.
+func (h *fleetHelper) newPipelineCreateCommand() *cobra.Command {
 	opts := &pipelineWriteOpts{}
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -350,6 +350,10 @@ func (h *fleetHelper) newPipelineCreateCommand() *cobra.Command { //nolint:dupl 
 			pipeline, err := readPipelineFromFile(opts.File, cmd.InOrStdin())
 			if err != nil {
 				return err
+			}
+
+			if !opts.Force && IsManagedPipeline(pipeline.Name) {
+				return fmt.Errorf("pipeline %q is managed by Grafana Cloud instrumentation; use 'gcx setup instrumentation apply' to modify instrumentation config, or pass --force to override", pipeline.Name)
 			}
 
 			created, err := client.CreatePipeline(ctx, *pipeline)
@@ -602,7 +606,7 @@ func (o *collectorGetOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func (h *fleetHelper) newCollectorCreateCommand() *cobra.Command { //nolint:dupl // Intentionally similar to pipeline create — distinct resource types.
+func (h *fleetHelper) newCollectorCreateCommand() *cobra.Command {
 	opts := &collectorWriteOpts{}
 	cmd := &cobra.Command{
 		Use:   "create",

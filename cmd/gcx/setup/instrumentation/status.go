@@ -14,6 +14,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	queryprom "github.com/grafana/gcx/internal/query/prometheus"
 	instrum "github.com/grafana/gcx/internal/setup/instrumentation"
+	"github.com/grafana/promql-builder/go/promql"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -133,8 +134,16 @@ func queryBeylaErrors(ctx context.Context, loader fleetbase.ConfigLoader) map[st
 		return nil
 	}
 
-	const query = `sum by (k8s_cluster_name) (increase(beyla_instrumentation_errors_total[1h]))`
-	resp, err := promClient.Query(ctx, dsUID, queryprom.QueryRequest{Query: query})
+	// sum by (k8s_cluster_name) (increase(beyla_instrumentation_errors_total[1h]))
+	queryExpr, err := promql.Sum(
+		promql.Increase(
+			promql.NewVectorExprBuilder().Metric("beyla_instrumentation_errors_total").Range("1h"),
+		),
+	).By([]string{"k8s_cluster_name"}).Build()
+	if err != nil {
+		return nil
+	}
+	resp, err := promClient.Query(ctx, dsUID, queryprom.QueryRequest{Query: queryExpr.String()})
 	if err != nil {
 		return nil
 	}
