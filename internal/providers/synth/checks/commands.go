@@ -406,8 +406,8 @@ func newCreateCommand(loader smcfg.StatusLoader) *cobra.Command {
 			}
 			cmdio.Success(cmd.OutOrStdout(), "Created check %q (id=%d)", spec.Job, created.Spec.checkID)
 
-			// Write back server-assigned ID so subsequent pushes do updates.
-			if err := updateNameInFile(opts.File, strconv.FormatInt(created.Spec.checkID, 10)); err != nil {
+			// Write back the slug-id composite name so subsequent updates use the correct resource name.
+			if err := updateNameInFile(opts.File, created.Spec.name); err != nil {
 				cmdio.Warning(cmd.OutOrStdout(), "check created but could not update %s: %v", opts.File, err)
 			}
 
@@ -658,11 +658,17 @@ func checkDisplayName(c Check) string {
 	return name
 }
 
-// readCheckSpec reads and parses a check YAML file into a CheckSpec.
+// readCheckSpec reads and parses a single-document check YAML file into a CheckSpec.
+// Returns an error if the file contains multiple YAML documents (use "gcx resources push" for batch).
 func readCheckSpec(filePath string) (*CheckSpec, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", filePath, err)
+	}
+
+	// Reject multi-document YAML — create/update operate on a single check.
+	if hasMultipleDocuments(data) {
+		return nil, fmt.Errorf("%s contains multiple YAML documents — create/update operate on a single check; use 'gcx resources push checks' for batch operations", filePath)
 	}
 
 	var obj unstructured.Unstructured
@@ -683,8 +689,23 @@ func readCheckSpec(filePath string) (*CheckSpec, error) {
 	return spec, nil
 }
 
+// hasMultipleDocuments checks if YAML data contains more than one document
+// by looking for "---" document separators on their own line.
+func hasMultipleDocuments(data []byte) bool {
+	count := 0
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.TrimSpace(line) == "---" {
+			count++
+			if count > 1 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // updateNameInFile rewrites metadata.name in a YAML file to newName.
-// This is used after a create to persist the server-assigned numeric ID.
+// This is used after a create to persist the server-assigned resource name.
 func updateNameInFile(filePath, newName string) error {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
