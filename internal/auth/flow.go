@@ -180,7 +180,7 @@ func (f *Flow) startCallbackServer(ctx context.Context, bindAddress string, port
 			}
 
 			if errMsg := r.URL.Query().Get("error"); errMsg != "" {
-				errMsg = stripControlChars(errMsg)
+				errMsg = StripControlChars(errMsg)
 				errCh <- fmt.Errorf("authentication denied: %s", errMsg)
 				renderErrorPage(w, errMsg)
 				return
@@ -410,9 +410,9 @@ func openBrowser(ctx context.Context, url string) error {
 	return cmd.Start()
 }
 
-// stripControlChars sanitises errors to stop potentially malicious errors from
+// StripControlChars sanitises errors to stop potentially malicious errors from
 // being interpolated.
-func stripControlChars(s string) string {
+func StripControlChars(s string) string {
 	return strings.Map(func(r rune) rune {
 		if r < 0x20 || r == 0x7f {
 			return -1

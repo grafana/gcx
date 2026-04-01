@@ -1,6 +1,10 @@
-package auth
+package auth_test
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/grafana/gcx/internal/auth"
+)
 
 func TestStripControlChars(t *testing.T) {
 	tests := []struct {
@@ -19,9 +23,9 @@ func TestStripControlChars(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := stripControlChars(tt.input)
+			got := auth.StripControlChars(tt.input)
 			if got != tt.want {
-				t.Errorf("stripControlChars(%q) = %q, want %q", tt.input, got, tt.want)
+				t.Errorf("StripControlChars(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}
