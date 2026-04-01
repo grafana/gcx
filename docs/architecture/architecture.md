@@ -1,7 +1,5 @@
 # Codebase Architecture Analysis: gcx
 
-*Generated: 2026-03-02 | Domains Analyzed: 6 | Overall Confidence: 92% (High)*
-
 ---
 
 ## Executive Summary
@@ -17,17 +15,16 @@
 
 ## Confidence Assessment
 
-| Section | Score | Level | Rationale |
-|---------|-------|-------|-----------|
-| Project Structure | 96% | High | Exhaustive analysis of directory layout, build system, CI/CD, and toolchain |
-| Resource Model | 95% | High | Core abstractions thoroughly documented with type relationships |
-| CLI Layer | 94% | High | Complete command tree, options pattern, and error handling chain |
-| Client/API Layer | 93% | High | Both client paths documented; minor gaps in retry/timeout behavior |
-| Config System | 95% | High | Full loading chain, env overrides, namespace resolution covered |
-| Data Flows | 94% | High | All four pipelines documented with concurrency models |
-| Testing | 70% | Medium | No dedicated analyzer; coverage known to be moderate |
-| Infrastructure | 88% | Medium | CI/CD and build well-covered; deployment beyond GitHub Releases less clear |
-| **Overall** | **92%** | **High** | |
+| Section | Level | Rationale |
+|---------|-------|-----------|
+| Project Structure | High | Exhaustive analysis of directory layout, build system, CI/CD, and toolchain |
+| Resource Model | High | Core abstractions thoroughly documented with type relationships |
+| CLI Layer | High | Complete command tree, options pattern, and error handling chain |
+| Client/API Layer | High | Both client paths documented; minor gaps in retry/timeout behavior |
+| Config System | High | Full loading chain, env overrides, namespace resolution covered |
+| Data Flows | High | All four pipelines documented with concurrency models |
+| Testing | Medium | No dedicated analyzer; coverage known to be moderate |
+| Infrastructure | Medium | CI/CD and build well-covered; deployment beyond GitHub Releases less clear |
 
 ---
 
@@ -973,17 +970,16 @@ gcx at it.
 
 ### Analysis Coverage
 
-- Domains analyzed: 6 (project structure, resource model, CLI layer, client/API, config, data flows)
-- Patterns identified: 10 (see patterns.md)
-- Contradictions resolved: 5 (see patterns.md)
-- Key files referenced: 35+
+- Domains: project structure, resource model, CLI layer, client/API, config, data flows
+- Patterns: see `patterns.md` for the full catalog
+- Contradictions resolved: see `patterns.md`
 
 ### Confidence Rationale
 
-Overall confidence of 92% (High) is based on:
-- Six parallel analyzers covered all major code paths and architectural layers
+High overall confidence based on:
+- Parallel analyzers covered all major code paths and architectural layers
 - Strong agreement between domains on core patterns and design decisions
-- Five minor contradictions resolved with evidence from multiple sources
+- Contradictions resolved with evidence from multiple sources
 - Clear documentation in the codebase (CLAUDE.md, inline comments, code structure)
 - Primary gap: no dedicated test analysis; testing strategy reconstructed from
   cross-references

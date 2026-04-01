@@ -106,13 +106,13 @@ make docs        # Generate + build all documentation
 > ```
 > Skipping this causes CI to fail with docs drift.
 
-> **Update `docs/architecture/` when a PR changes architecture.** Specifically: adding
-> or removing packages under `internal/` or `cmd/`, introducing new architectural
-> patterns, changing core abstractions (Resource, Selector, Filter, Discovery),
-> or adding a new provider. Routine bug fixes, test changes, and small features
-> do not need it. Follow the structural checks in
-> [docs/reference/doc-maintenance.md](docs/reference/doc-maintenance.md) to audit
-> for staleness — keeping these docs accurate prevents agents from making bad
+> **Doc maintenance is a gate before creating a PR or finishing a session.**
+> If code changes touch `internal/` or `cmd/` structure, new architectural patterns,
+> core abstractions (Resource, Selector, Filter, Discovery), or add a provider:
+> run the structural checks in [docs/reference/doc-maintenance.md](docs/reference/doc-maintenance.md)
+> and update `CLAUDE.md` (package map), `DESIGN.md` (package table), and relevant
+> `docs/architecture/` files. Routine bug fixes, test changes, and small features
+> do not need it. Keeping these docs accurate prevents agents from making bad
 > assumptions in future sessions.
 
 ## Package Map

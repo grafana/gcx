@@ -1,7 +1,5 @@
 # Architecture Documentation Index
 
-> Generated: 2026-03-03 | Last updated: 2026-04-01 | Strategy: Standard | Confidence: 93%
->
 > High-level architecture documentation for gcx.
 > Start here, then navigate to specific docs as needed.
 
@@ -32,15 +30,15 @@ Two extension subsystems complement the core resource management path: the **pro
 
 ## Key Patterns Quick Reference
 
-- **Kubernetes Resource Model Adoption (97% confidence)**: Direct use of `k8s.io/apimachinery` and `k8s.io/client-go` because Grafana 12+ exposes a `/apis` endpoint with K8s semantics. All resources are unstructured objects with discovery at runtime.
+- **Kubernetes Resource Model Adoption**: Direct use of `k8s.io/apimachinery` and `k8s.io/client-go` because Grafana 12+ exposes a `/apis` endpoint with K8s semantics. All resources are unstructured objects with discovery at runtime.
 
-- **Options Pattern for CLI Commands (96% confidence)**: Every `resources` subcommand follows a four-part structure: opts struct → setup(flags) → Validate() → constructor that wires opts into cobra.Command. Shared concerns (OnErrorMode, io.Options, configOpts) are composed via embedding.
+- **Options Pattern for CLI Commands**: Every `resources` subcommand follows a four-part structure: opts struct → setup(flags) → Validate() → constructor that wires opts into cobra.Command. Shared concerns (OnErrorMode, io.Options, configOpts) are composed via embedding.
 
-- **Processor Pipeline (94% confidence)**: Resource transformations modeled as a `Processor` interface with a single `Process(res *Resource) error` method. Processors compose into ordered slices applied at well-defined points in push/pull pipelines.
+- **Processor Pipeline**: Resource transformations modeled as a `Processor` interface with a single `Process(res *Resource) error` method. Processors compose into ordered slices applied at well-defined points in push/pull pipelines.
 
-- **Selector-to-Filter Resolution (95% confidence)**: User input flows through two-stage resolution: CLI argument → Selector (partial, unvalidated) → Discovery Registry → Filter (fully resolved, complete GVK). Keeps CLI layer ignorant of API details.
+- **Selector-to-Filter Resolution**: User input flows through two-stage resolution: CLI argument → Selector (partial, unvalidated) → Discovery Registry → Filter (fully resolved, complete GVK). Keeps CLI layer ignorant of API details.
 
-- **Dual-Client Architecture (93% confidence)**: Dynamic client path uses `/apis` (K8s-compatible) with `k8s.io/client-go` for resource CRUD; OpenAPI client uses `/api` (Grafana REST) for health checks and version discovery.
+- **Dual-Client Architecture**: Dynamic client path uses `/apis` (K8s-compatible) with `k8s.io/client-go` for resource CRUD; OpenAPI client uses `/api` (Grafana REST) for health checks and version discovery.
 
 - **Provider Plugin System**: Interface + registry pattern for Cloud product providers (SLO, Synthetic Monitoring, OnCall, Fleet Management, K6 Cloud, Knowledge Graph, IRM Incidents, Alerting). Each provider self-registers and contributes CLI commands and resource adapters via the provider registry.
 
@@ -82,20 +80,6 @@ Four primary pipelines: PUSH (local→Grafana), PULL (Grafana→local), DELETE (
 
 ### [project-structure.md](project-structure.md)
 Directory layout rationale, build system (Makefile), CI/CD (GitHub Actions via .goreleaser.yaml), test fixtures, and dependency management. Contains notes on vendoring, devbox toolchain, and documentation generation.
-
----
-
-## Confidence Scores
-
-| Section | Score | Notes |
-|---------|-------|-------|
-| Project Structure | 96% | Exhaustive analysis of directory layout, build system, CI/CD |
-| Resource Model | 95% | Core abstractions thoroughly documented with type relationships |
-| CLI Layer | 94% | Complete command tree and options pattern analysis |
-| Client/API Layer | 93% | Both client paths documented; minor gaps in retry/timeout |
-| Config System | 95% | Full loading chain and environment overrides covered |
-| Data Flows | 94% | All four pipelines documented with concurrency models |
-| **Overall** | **92%** | High-quality analysis across all domains |
 
 ---
 
