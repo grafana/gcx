@@ -1,6 +1,6 @@
 name: 🐛 Bug Report
 description: Something isn't working as expected
-title: "[Bug]: "
+title: ""
 type: "Bug"
 labels: ["action/needs-triage"]
 body:
