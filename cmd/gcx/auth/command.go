@@ -8,6 +8,7 @@ import (
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // Command returns the `auth` command group.
@@ -22,8 +23,20 @@ func Command() *cobra.Command {
 	return cmd
 }
 
+type loginOpts struct {
+	Config configcmd.Options
+}
+
+func (opts *loginOpts) setup(flags *pflag.FlagSet) {
+	opts.Config.BindFlags(flags)
+}
+
+func (opts *loginOpts) Validate() error {
+	return nil
+}
+
 func loginCommand() *cobra.Command {
-	configOpts := &configcmd.Options{}
+	opts := &loginOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "login",
@@ -40,19 +53,22 @@ configured before you can call this command. For example:
 	gcx config set contexts.<context>.grafana.server https://your-stack.grafana.net
 	gcx config use-context <context>`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runLogin(cmd, configOpts)
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+			return runLogin(cmd, opts)
 		},
 	}
 
-	configOpts.BindFlags(cmd.Flags())
+	opts.setup(cmd.Flags())
 
 	return cmd
 }
 
-func runLogin(cmd *cobra.Command, configOpts *configcmd.Options) error {
+func runLogin(cmd *cobra.Command, opts *loginOpts) error {
 	ctx := cmd.Context()
 
-	cfg, err := configOpts.LoadConfigTolerant(ctx)
+	cfg, err := opts.Config.LoadConfigTolerant(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
@@ -85,7 +101,7 @@ func runLogin(cmd *cobra.Command, configOpts *configcmd.Options) error {
 	curCtx.Grafana.OAuthTokenExpiresAt = result.ExpiresAt
 	curCtx.Grafana.OAuthRefreshExpiresAt = result.RefreshExpiresAt
 
-	if err := config.Write(ctx, configOpts.ConfigSource(), cfg); err != nil {
+	if err := config.Write(ctx, opts.Config.ConfigSource(), cfg); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
