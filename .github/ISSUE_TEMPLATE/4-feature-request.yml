@@ -7,6 +7,8 @@ body:
   - type: markdown
     attributes:
       value: |
+        **Title tip:** Start with a verb, e.g. "Add CSV output format for resource listings"
+
         Have an idea for something new? We'd love to hear it! Help us understand your vision.
 
   - type: textarea
