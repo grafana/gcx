@@ -7,26 +7,19 @@
 <img src="https://img.shields.io/badge/status-public%20preview-orange" alt="Public Preview">
 </p>
 
-Bring Grafana Cloud to your command line and your agentic coding environment. Logs, traces, metrics, alerts, SLOs — accessible where you already work.
+Grafana Cloud and the Grafana Assistant — in your terminal and your agentic coding environment.
 
-```
-gcx datasources prometheus query 'rate(http_requests_total[5m])' --window 1h
-gcx datasources loki query '{app="checkout"} |= "error"' --window 1h
-gcx alert rules list                            # check what's firing
-gcx slo definitions list                        # review SLO status
-gcx synth checks list                           # synthetic monitoring
-gcx oncall schedules list                       # on-call schedules
-gcx resources push -p ./resources               # push local changes
-```
+Query production. Investigate alerts. Let the Assistant root-cause issues. Ship fixes with observability built in. Without leaving your editor.
+
+*"Don't guess. Check the actual production data."*
 
 ## Why gcx
 
 Agentic coding tools like Claude Code and Cursor have changed how developers build software. But they're flying blind. Code ships. Observability comes later — if it comes at all.
 
-gcx closes that gap. It connects your editor to your entire Grafana Cloud production stack, making observability a **development signal**, not an afterthought. Your code and your observability improve in the same loop.
+gcx closes that gap. It connects your editor to your entire Grafana Cloud production stack — including the Grafana Assistant — making observability a **development signal**, not an afterthought. When something breaks, the Assistant's investigation is already waiting: mitigations planned, context assembled, so you can act immediately.
 
-Tell your AI coding agent: *"Don't guess. Check the actual production data."*
-
+- **Grafana Assistant integration** — automated root-cause analysis, investigation summaries, and remediation suggestions powered by the Assistant
 - **Production-aware development** — query live metrics, logs, and traces without leaving your editor
 - **AI agent native** — JSON/YAML output, structured errors, predictable exit codes. Agent mode auto-detected for Claude Code, Copilot, Cursor, and others
 - **Full Grafana Cloud access** — dashboards, alerting, SLOs, Synthetic Monitoring, OnCall, K6, Fleet Management, Incidents, and more from a single CLI
@@ -51,7 +44,7 @@ Here's what it looks like when your coding agent has access to production:
 
 **1. An alert fires** — P95 latency on the checkout service crosses the SLO threshold.
 
-**2. Your agent investigates** — It queries live metrics and traces through gcx, pinpoints the root cause: a missing index on `customer_id` causing full table scans under load.
+**2. The Assistant investigates** — Your coding agent calls the Grafana Assistant through gcx. The Assistant has already started its investigation — it traces the issue to a missing index on `customer_id` causing full table scans under load.
 
 **3. It fixes the issue** — Drafts the migration, adds the index.
 
@@ -59,7 +52,7 @@ Here's what it looks like when your coding agent has access to production:
 
 **5. It ships** — Opens a PR, tests pass, deploys to production. The alert resolves.
 
-Investigation, fix, instrumentation, monitoring — without the developer ever leaving their editor. Because gcx builds on everything you've already configured in Grafana Cloud — your dashboards, your alerts, your datasources — no other tool can give you this depth out of the box.
+Investigation, fix, instrumentation, monitoring — without the developer ever leaving their editor. The Grafana Assistant provides the intelligence; gcx provides the interface. And because it all builds on everything you've already configured in Grafana Cloud — your dashboards, your alerts, your datasources — no other tool can give you this depth out of the box.
 
 ## Install
 
@@ -88,9 +81,9 @@ gcx completion bash > /etc/bash_completion.d/gcx  # bash
 ### AI Agent Plugin
 
 A [Claude Code plugin](claude-plugin/README.md) is included with skills for
-managing dashboards, exploring datasources, investigating alerts, debugging
-with Grafana observability data, and more. Install it alongside gcx to give
-your agent deep Grafana knowledge.
+managing dashboards, exploring datasources, investigating alerts with the
+Grafana Assistant, and debugging with live observability data. Install it
+alongside gcx to give your agent deep Grafana knowledge.
 
 ## Quick Start
 
