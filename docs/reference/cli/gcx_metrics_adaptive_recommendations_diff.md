@@ -1,19 +1,18 @@
-## gcx metrics adaptive recommendations apply
+## gcx metrics adaptive recommendations diff
 
-Apply specific or all recommendations as rules.
+Show what applying recommendation(s) would change.
 
 ```
-gcx metrics adaptive recommendations apply [<metric>...|--all] [flags]
+gcx metrics adaptive recommendations diff <metric>... [flags]
 ```
 
 ### Options
 
 ```
-      --all              Apply all recommendations (bulk)
-      --dry-run          Preview without applying
-  -h, --help             help for apply
+  -h, --help             help for diff
+      --json string      Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+  -o, --output string    Output format. One of: json, table, yaml (default "table")
       --segment string   Segment ID
-      --yes              Skip confirmation prompt
 ```
 
 ### Options inherited from parent commands

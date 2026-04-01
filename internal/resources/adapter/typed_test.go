@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -52,7 +54,7 @@ func newWidgetCRUD(widgets []TestWidget) *adapter.TypedCRUD[TestWidget] {
 					return &widgets[i], nil
 				}
 			}
-			return nil, errors.New("not found")
+			return nil, fmt.Errorf("widget %q: %w", name, adapter.ErrNotFound)
 		},
 	}
 }
@@ -115,18 +117,26 @@ func TestTypedCRUD_Get(t *testing.T) {
 	crud := newWidgetCRUD(widgets)
 	a := crud.AsAdapter()
 
-	item, err := a.Get(t.Context(), "w-1", metav1.GetOptions{})
-	require.NoError(t, err)
+	t.Run("returns existing resource", func(t *testing.T) {
+		item, err := a.Get(t.Context(), "w-1", metav1.GetOptions{})
+		require.NoError(t, err)
 
-	assert.Equal(t, "test.grafana.app/v1", item.GetAPIVersion())
-	assert.Equal(t, "Widget", item.GetKind())
-	assert.Equal(t, "w-1", item.GetName())
-	assert.Equal(t, "stack-1", item.GetNamespace())
+		assert.Equal(t, "test.grafana.app/v1", item.GetAPIVersion())
+		assert.Equal(t, "Widget", item.GetKind())
+		assert.Equal(t, "w-1", item.GetName())
+		assert.Equal(t, "stack-1", item.GetNamespace())
 
-	spec, ok := item.Object["spec"].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, "Alpha", spec["name"])
-	assert.NotContains(t, spec, "id")
+		spec, ok := item.Object["spec"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "Alpha", spec["name"])
+		assert.NotContains(t, spec, "id")
+	})
+
+	t.Run("returns K8s NotFound for missing resource", func(t *testing.T) {
+		_, err := a.Get(t.Context(), "w-missing", metav1.GetOptions{})
+		require.Error(t, err)
+		assert.True(t, apierrors.IsNotFound(err), "adapter Get must return Kubernetes-style NotFound, got: %v", err)
+	})
 }
 
 func TestTypedCRUD_Create(t *testing.T) {
@@ -296,10 +306,10 @@ func TestTypedCRUD_NilGetFn_FallbackToList(t *testing.T) {
 		assert.Equal(t, "blue", obj.Spec.Color)
 	})
 
-	t.Run("typed Get returns not-found for missing item", func(t *testing.T) {
+	t.Run("typed Get returns ErrNotFound for missing item", func(t *testing.T) {
 		_, err := crud.Get(t.Context(), "w-nonexistent")
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "not found")
+		assert.ErrorIs(t, err, adapter.ErrNotFound)
 	})
 
 	t.Run("adapter Get finds existing item by name", func(t *testing.T) {
@@ -313,11 +323,11 @@ func TestTypedCRUD_NilGetFn_FallbackToList(t *testing.T) {
 		assert.Equal(t, "Beta", spec["name"])
 	})
 
-	t.Run("adapter Get returns not-found for missing item", func(t *testing.T) {
+	t.Run("adapter Get returns K8s NotFound for missing item", func(t *testing.T) {
 		a := crud.AsAdapter()
 		_, err := a.Get(t.Context(), "w-nonexistent", metav1.GetOptions{})
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "not found")
+		assert.True(t, apierrors.IsNotFound(err), "expected Kubernetes-style NotFound error, got: %v", err)
 	})
 
 	t.Run("List still works normally", func(t *testing.T) {
@@ -627,6 +637,130 @@ func TestTypedCRUD_SetResourceName(t *testing.T) {
 	result, err := a.Create(t.Context(), input, metav1.CreateOptions{})
 	require.NoError(t, err)
 	assert.Equal(t, "restored-id", result.GetName(), "SetResourceName should set ID via ResourceIdentity")
+}
+
+func TestTypedCRUD_CreateDryRun(t *testing.T) {
+	createCalled := false
+	crud := newWidgetCRUD(nil)
+	crud.CreateFn = func(_ context.Context, _ *TestWidget) (*TestWidget, error) {
+		createCalled = true
+		return &TestWidget{ID: "w-new"}, nil
+	}
+
+	a := crud.AsAdapter()
+	input := buildWidgetUnstructured("w-input", "Gamma", "green")
+
+	t.Run("skips CreateFn when DryRun is set", func(t *testing.T) {
+		createCalled = false
+		result, err := a.Create(t.Context(), input, metav1.CreateOptions{
+			DryRun: []string{metav1.DryRunAll},
+		})
+		require.NoError(t, err)
+		assert.False(t, createCalled, "CreateFn must not be called during dry run")
+		assert.Equal(t, "w-input", result.GetName())
+	})
+
+	t.Run("calls CreateFn without DryRun", func(t *testing.T) {
+		createCalled = false
+		_, err := a.Create(t.Context(), input, metav1.CreateOptions{})
+		require.NoError(t, err)
+		assert.True(t, createCalled, "CreateFn must be called without dry run")
+	})
+}
+
+func TestTypedCRUD_UpdateDryRun(t *testing.T) {
+	updateCalled := false
+	crud := newWidgetCRUD(nil)
+	crud.UpdateFn = func(_ context.Context, _ string, _ *TestWidget) (*TestWidget, error) {
+		updateCalled = true
+		return &TestWidget{ID: "w-existing"}, nil
+	}
+
+	a := crud.AsAdapter()
+	input := buildWidgetUnstructured("w-existing", "Delta", "yellow")
+
+	t.Run("skips UpdateFn when DryRun is set", func(t *testing.T) {
+		updateCalled = false
+		result, err := a.Update(t.Context(), input, metav1.UpdateOptions{
+			DryRun: []string{metav1.DryRunAll},
+		})
+		require.NoError(t, err)
+		assert.False(t, updateCalled, "UpdateFn must not be called during dry run")
+		assert.Equal(t, "w-existing", result.GetName())
+	})
+
+	t.Run("calls UpdateFn without DryRun", func(t *testing.T) {
+		updateCalled = false
+		_, err := a.Update(t.Context(), input, metav1.UpdateOptions{})
+		require.NoError(t, err)
+		assert.True(t, updateCalled, "UpdateFn must be called without dry run")
+	})
+}
+
+func TestTypedCRUD_DryRunWithValidateFn(t *testing.T) {
+	t.Run("calls ValidateFn on Create dry run", func(t *testing.T) {
+		validateCalled := false
+		crud := newWidgetCRUD(nil)
+		crud.CreateFn = func(_ context.Context, _ *TestWidget) (*TestWidget, error) {
+			t.Fatal("CreateFn must not be called during dry run")
+			return nil, errors.New("unreachable")
+		}
+		crud.ValidateFn = func(_ context.Context, items []*TestWidget) error {
+			validateCalled = true
+			require.Len(t, items, 1)
+			assert.Equal(t, "Gamma", items[0].Name)
+			return nil
+		}
+
+		a := crud.AsAdapter()
+		input := buildWidgetUnstructured("w-input", "Gamma", "green")
+		_, err := a.Create(t.Context(), input, metav1.CreateOptions{
+			DryRun: []string{metav1.DryRunAll},
+		})
+		require.NoError(t, err)
+		assert.True(t, validateCalled, "ValidateFn must be called during dry run")
+	})
+
+	t.Run("calls ValidateFn on Update dry run", func(t *testing.T) {
+		validateCalled := false
+		crud := newWidgetCRUD(nil)
+		crud.UpdateFn = func(_ context.Context, _ string, _ *TestWidget) (*TestWidget, error) {
+			t.Fatal("UpdateFn must not be called during dry run")
+			return nil, errors.New("unreachable")
+		}
+		crud.ValidateFn = func(_ context.Context, items []*TestWidget) error {
+			validateCalled = true
+			require.Len(t, items, 1)
+			assert.Equal(t, "Delta", items[0].Name)
+			return nil
+		}
+
+		a := crud.AsAdapter()
+		input := buildWidgetUnstructured("w-existing", "Delta", "yellow")
+		_, err := a.Update(t.Context(), input, metav1.UpdateOptions{
+			DryRun: []string{metav1.DryRunAll},
+		})
+		require.NoError(t, err)
+		assert.True(t, validateCalled, "ValidateFn must be called during dry run")
+	})
+
+	t.Run("propagates ValidateFn error", func(t *testing.T) {
+		crud := newWidgetCRUD(nil)
+		crud.CreateFn = func(_ context.Context, item *TestWidget) (*TestWidget, error) {
+			return item, nil
+		}
+		crud.ValidateFn = func(_ context.Context, _ []*TestWidget) error {
+			return errors.New("invalid aggregation type")
+		}
+
+		a := crud.AsAdapter()
+		input := buildWidgetUnstructured("w-input", "Gamma", "green")
+		_, err := a.Create(t.Context(), input, metav1.CreateOptions{
+			DryRun: []string{metav1.DryRunAll},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid aggregation type")
+	})
 }
 
 func TestTypedObject_JSONSerialization(t *testing.T) {

@@ -22,6 +22,9 @@ Manage aggregation rules.
 ### SEE ALSO
 
 * [gcx metrics adaptive](gcx_metrics_adaptive.md)	 - Manage Adaptive Metrics resources
-* [gcx metrics adaptive rules show](gcx_metrics_adaptive_rules_show.md)	 - Show current aggregation rules.
-* [gcx metrics adaptive rules sync](gcx_metrics_adaptive_rules_sync.md)	 - Sync aggregation rules from a file or recommendations.
+* [gcx metrics adaptive rules create](gcx_metrics_adaptive_rules_create.md)	 - Create an aggregation rule.
+* [gcx metrics adaptive rules delete](gcx_metrics_adaptive_rules_delete.md)	 - Delete an aggregation rule.
+* [gcx metrics adaptive rules get](gcx_metrics_adaptive_rules_get.md)	 - Get an aggregation rule by metric name.
+* [gcx metrics adaptive rules list](gcx_metrics_adaptive_rules_list.md)	 - List aggregation rules.
+* [gcx metrics adaptive rules update](gcx_metrics_adaptive_rules_update.md)	 - Update an aggregation rule.
 

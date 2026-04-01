@@ -1,17 +1,18 @@
-## gcx metrics adaptive rules show
+## gcx metrics adaptive rules list
 
-Show current aggregation rules.
+List aggregation rules.
 
 ```
-gcx metrics adaptive rules show [flags]
+gcx metrics adaptive rules list [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for show
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
+  -h, --help             help for list
+      --json string      Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+  -o, --output string    Output format. One of: json, table, wide, yaml (default "table")
+      --segment string   Segment ID
 ```
 
 ### Options inherited from parent commands

@@ -1,20 +1,17 @@
-## gcx metrics adaptive rules sync
+## gcx metrics adaptive rules delete
 
-Sync aggregation rules from a file or recommendations.
+Delete an aggregation rule.
 
 ```
-gcx metrics adaptive rules sync [flags]
+gcx metrics adaptive rules delete <metric> [flags]
 ```
 
 ### Options
 
 ```
-      --dry-run                Print what would be synced without making changes
-  -f, --file string            File containing rules to sync (JSON or YAML)
-      --from-recommendations   Sync rules from current recommendations
-  -h, --help                   help for sync
-      --json string            Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string          Output format. One of: json, table, wide, yaml (default "table")
+  -h, --help             help for delete
+      --segment string   Segment ID
+      --yes              Skip confirmation prompt
 ```
 
 ### Options inherited from parent commands

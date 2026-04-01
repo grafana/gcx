@@ -1,19 +1,18 @@
-## gcx metrics adaptive recommendations apply
+## gcx metrics adaptive rules get
 
-Apply specific or all recommendations as rules.
+Get an aggregation rule by metric name.
 
 ```
-gcx metrics adaptive recommendations apply [<metric>...|--all] [flags]
+gcx metrics adaptive rules get <metric> [flags]
 ```
 
 ### Options
 
 ```
-      --all              Apply all recommendations (bulk)
-      --dry-run          Preview without applying
-  -h, --help             help for apply
+  -h, --help             help for get
+      --json string      Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+  -o, --output string    Output format. One of: json, yaml (default "json")
       --segment string   Segment ID
-      --yes              Skip confirmation prompt
 ```
 
 ### Options inherited from parent commands
@@ -29,5 +28,5 @@ gcx metrics adaptive recommendations apply [<metric>...|--all] [flags]
 
 ### SEE ALSO
 
-* [gcx metrics adaptive recommendations](gcx_metrics_adaptive_recommendations.md)	 - Manage metric recommendations.
+* [gcx metrics adaptive rules](gcx_metrics_adaptive_rules.md)	 - Manage aggregation rules.
 
