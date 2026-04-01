@@ -13,21 +13,6 @@
 
 ---
 
-## Confidence Assessment
-
-| Section | Level | Rationale |
-|---------|-------|-----------|
-| Project Structure | High | Exhaustive analysis of directory layout, build system, CI/CD, and toolchain |
-| Resource Model | High | Core abstractions thoroughly documented with type relationships |
-| CLI Layer | High | Complete command tree, options pattern, and error handling chain |
-| Client/API Layer | High | Both client paths documented; minor gaps in retry/timeout behavior |
-| Config System | High | Full loading chain, env overrides, namespace resolution covered |
-| Data Flows | High | All four pipelines documented with concurrency models |
-| Testing | Medium | No dedicated analyzer; coverage known to be moderate |
-| Infrastructure | Medium | CI/CD and build well-covered; deployment beyond GitHub Releases less clear |
-
----
-
 ## 1. Architecture Overview
 
 ### Layered Structure
@@ -938,60 +923,6 @@ gcx at it.
 
 ---
 
-## 14. Areas of Uncertainty
-
-**Sections with Lower Confidence:**
-
-- **Testing strategy** (70%): No dedicated analysis of test files. Coverage
-  estimated from cross-references in other domains. Test patterns (table-driven,
-  testdata fixtures) noted but not deeply validated.
-
-- **Retry and timeout behavior** (limited): The k8s client-go transport handles
-  retries internally, but the analysis did not trace specific retry policies,
-  timeout configurations, or backoff behavior.
-
-- **Production deployment patterns**: The codebase is a CLI tool, so "deployment"
-  means distributing binaries. How users actually integrate it into CI/CD
-  pipelines, GitOps workflows, or automated systems is outside the code analysis.
-
-**Recommended for Manual Review:**
-
-- `internal/resources/remote/pusher.go`: The upsert logic and its interaction
-  with resourceVersion conflicts deserves careful review if concurrent pushes
-  are a concern.
-
-- `internal/server/`: The serve command has significant complexity (reverse proxy,
-  WebSocket, file watching, dashboard interception) that warrants deeper review
-  for correctness in edge cases.
-
----
-
-## 15. Synthesis Notes
-
-### Analysis Coverage
-
-- Domains: project structure, resource model, CLI layer, client/API, config, data flows
-- Patterns: see `patterns.md` for the full catalog
-- Contradictions resolved: see `patterns.md`
-
-### Confidence Rationale
-
-High overall confidence based on:
-- Parallel analyzers covered all major code paths and architectural layers
-- Strong agreement between domains on core patterns and design decisions
-- Contradictions resolved with evidence from multiple sources
-- Clear documentation in the codebase (CLAUDE.md, inline comments, code structure)
-- Primary gap: no dedicated test analysis; testing strategy reconstructed from
-  cross-references
-
-### Analysis Limitations
-
-- **Runtime behavior not analyzed.** Static code analysis only; actual API responses,
-  error rates, and performance characteristics are not measured.
-- **Git history not analyzed.** Architectural evolution and decision rationale
-  require examining commit history and PR discussions.
-- **External service integrations not fully traced.** The Grafana API contract is
-  assumed from the k8s-compatible endpoint pattern; actual API behavior may differ.
 - **Serve command edge cases.** The reverse proxy, dashboard interception, and
   live reload have complex interaction patterns that may have subtle issues not
   visible in static analysis.
