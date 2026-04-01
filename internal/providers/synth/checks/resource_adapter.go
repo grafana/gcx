@@ -287,3 +287,26 @@ func invertIDMap(idMap map[string]int64) map[int64]string {
 	}
 	return nameMap
 }
+
+// FetchProbeInfo fetches all probes and returns two maps derived from a single API call:
+//   - idMap: probe name → numeric ID (for resolving probe names to IDs on push/create)
+//   - onlineMap: probe name → online status (for offline probe warnings)
+func FetchProbeInfo(ctx context.Context, loader smcfg.Loader) (map[string]int64, map[string]bool, error) {
+	baseURL, token, _, err := loader.LoadSMConfig(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("loading SM config for probe fetch: %w", err)
+	}
+
+	probeList, err := probes.NewClient(baseURL, token).List(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("fetching probe list: %w", err)
+	}
+
+	idMap := make(map[string]int64, len(probeList))
+	onlineMap := make(map[string]bool, len(probeList))
+	for _, p := range probeList {
+		idMap[p.Name] = p.ID
+		onlineMap[p.Name] = p.Online
+	}
+	return idMap, onlineMap, nil
+}

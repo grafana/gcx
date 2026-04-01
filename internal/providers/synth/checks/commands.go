@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -32,8 +32,8 @@ func Commands(loader smcfg.StatusLoader) *cobra.Command {
 	cmd.AddCommand(
 		newListCommand(loader),
 		newGetCommand(loader),
-		newPushCommand(loader),
-		newPullCommand(loader),
+		newCreateCommand(loader),
+		newUpdateCommand(loader),
 		newDeleteCommand(loader),
 		newStatusCommand(loader),
 		newTimelineCommand(loader),
@@ -46,7 +46,9 @@ func Commands(loader smcfg.StatusLoader) *cobra.Command {
 // ---------------------------------------------------------------------------
 
 type listOpts struct {
-	IO cmdio.Options
+	IO         cmdio.Options
+	Labels     []string
+	JobPattern string
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
@@ -54,6 +56,9 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &checkWideTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
+
+	flags.StringArrayVar(&o.Labels, "label", nil, "Filter by label key=value (repeatable, e.g. --label env=prod)")
+	flags.StringVar(&o.JobPattern, "job", "", "Filter by job name glob pattern (e.g. --job 'shopk8s-*')")
 }
 
 func newListCommand(loader smcfg.Loader) *cobra.Command {
@@ -61,12 +66,26 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List Synthetic Monitoring checks.",
+		Example: `  # List all checks.
+  gcx synth checks list
+
+  # Filter by job glob.
+  gcx synth checks list --job 'shopk8s-*'
+
+  # Filter by label.
+  gcx synth checks list --label env=prod`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
 
 			ctx := cmd.Context()
+
+			labelMap, err := ParseLabelFlags(opts.Labels)
+			if err != nil {
+				return err
+			}
+			filter := &CheckFilter{Labels: labelMap, JobPattern: opts.JobPattern}
 
 			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
@@ -83,16 +102,11 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 				return err
 			}
 
-			// Extract checkResource from TypedObject
-			checkResources := make([]checkResource, len(typedObjs))
+			// Build Check list for table codecs, applying filters.
+			checkList := make([]Check, 0, len(typedObjs))
 			for i := range typedObjs {
-				checkResources[i] = typedObjs[i].Spec
-			}
-
-			// Convert checkResources to Check for table codecs
-			checkList := make([]Check, len(checkResources))
-			for i, cr := range checkResources {
-				checkList[i] = Check{
+				cr := typedObjs[i].Spec
+				c := Check{
 					ID:               cr.checkID,
 					Job:              cr.Job,
 					Target:           cr.Target,
@@ -104,7 +118,10 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 					Settings:         cr.Settings,
 					BasicMetricsOnly: cr.BasicMetricsOnly,
 					AlertSensitivity: cr.AlertSensitivity,
-					Probes:           []int64{}, // Probe IDs not available from checkResource
+					Probes:           []int64{},
+				}
+				if filter.MatchCheck(c) {
+					checkList = append(checkList, c)
 				}
 			}
 
@@ -112,10 +129,19 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 				return codec.Encode(cmd.OutOrStdout(), checkList)
 			}
 
-			// For yaml/json output, marshal typed objects to unstructured
+			// For yaml/json output, marshal typed objects that pass the filter.
 			var objs []unstructured.Unstructured
 			for _, typedObj := range typedObjs {
-				// Marshal to JSON to ensure proper K8s envelope structure
+				cr := typedObj.Spec
+				c := Check{
+					ID:     cr.checkID,
+					Job:    cr.Job,
+					Target: cr.Target,
+					Labels: cr.Labels,
+				}
+				if !filter.MatchCheck(c) {
+					continue
+				}
 				objData, err := json.Marshal(typedObj)
 				if err != nil {
 					return fmt.Errorf("marshaling typed object: %w", err)
@@ -189,7 +215,8 @@ func (c *checkWideTableCodec) Decode(r io.Reader, v any) error {
 // ---------------------------------------------------------------------------
 
 type getOpts struct {
-	IO cmdio.Options
+	IO         cmdio.Options
+	ShowStatus bool
 }
 
 func (o *getOpts) setup(flags *pflag.FlagSet) {
@@ -197,14 +224,21 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &checkWideTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
+
+	flags.BoolVar(&o.ShowStatus, "show-status", false, "Query and display the check's current execution status from Prometheus")
 }
 
-func newGetCommand(loader smcfg.Loader) *cobra.Command {
+func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
 		Use:   "get ID",
 		Short: "Get a single Synthetic Monitoring check.",
-		Args:  cobra.ExactArgs(1),
+		Example: `  # Get check by numeric ID.
+  gcx synth checks get 42
+
+  # Get check with current execution status.
+  gcx synth checks get 42 --show-status`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -212,7 +246,7 @@ func newGetCommand(loader smcfg.Loader) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			// Try to parse as a numeric ID for compatibility
+			// Validate the argument is numeric.
 			_, err := strconv.ParseInt(args[0], 10, 64)
 			if err != nil {
 				return fmt.Errorf("invalid check ID %q: must be a number or name", args[0])
@@ -250,64 +284,13 @@ func newGetCommand(loader smcfg.Loader) *cobra.Command {
 			}
 
 			if codec.Format() == "table" || codec.Format() == "wide" {
-				return codec.Encode(cmd.OutOrStdout(), []Check{c})
+				if err := codec.Encode(cmd.OutOrStdout(), []Check{c}); err != nil {
+					return err
+				}
 			}
 
-			// For yaml/json, use the typed object
-			objData, err := json.Marshal(typedObj)
-			if err != nil {
-				return fmt.Errorf("marshaling typed object: %w", err)
-			}
-			var obj unstructured.Unstructured
-			if err := json.Unmarshal(objData, &obj); err != nil {
-				return fmt.Errorf("unmarshaling to unstructured: %w", err)
-			}
-			return codec.Encode(cmd.OutOrStdout(), &obj)
-		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
-}
-
-// ---------------------------------------------------------------------------
-// pull
-// ---------------------------------------------------------------------------
-
-type pullOpts struct {
-	OutputDir string
-}
-
-func (o *pullOpts) setup(flags *pflag.FlagSet) {
-	flags.StringVarP(&o.OutputDir, "output", "d", ".", "Directory to write check YAML files to")
-}
-
-func newPullCommand(loader smcfg.Loader) *cobra.Command {
-	opts := &pullOpts{}
-	cmd := &cobra.Command{
-		Use:   "pull",
-		Short: "Pull Synthetic Monitoring checks to disk.",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-
-			crud, _, err := NewTypedCRUD(ctx, loader)
-			if err != nil {
-				return err
-			}
-
-			typedObjs, err := crud.List(ctx)
-			if err != nil {
-				return err
-			}
-
-			outputDir := filepath.Join(opts.OutputDir, "checks")
-			if err := os.MkdirAll(outputDir, 0755); err != nil {
-				return fmt.Errorf("creating output directory %s: %w", outputDir, err)
-			}
-
-			yamlCodec := format.NewYAMLCodec()
-
-			for _, typedObj := range typedObjs {
-				// Convert to unstructured for YAML encoding
+			if codec.Format() != "table" && codec.Format() != "wide" {
+				// For yaml/json, use the typed object.
 				objData, err := json.Marshal(typedObj)
 				if err != nil {
 					return fmt.Errorf("marshaling typed object: %w", err)
@@ -316,22 +299,20 @@ func newPullCommand(loader smcfg.Loader) *cobra.Command {
 				if err := json.Unmarshal(objData, &obj); err != nil {
 					return fmt.Errorf("unmarshaling to unstructured: %w", err)
 				}
-
-				cr := typedObj.Spec
-				filePath := filepath.Join(outputDir, strconv.FormatInt(cr.checkID, 10)+".yaml")
-				f, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-				if err != nil {
-					return fmt.Errorf("opening file %s: %w", filePath, err)
+				if err := codec.Encode(cmd.OutOrStdout(), &obj); err != nil {
+					return err
 				}
-
-				if err := yamlCodec.Encode(f, &obj); err != nil {
-					f.Close()
-					return fmt.Errorf("writing check %d: %w", cr.checkID, err)
-				}
-				f.Close()
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Pulled %d checks to %s/", len(typedObjs), outputDir)
+			if opts.ShowStatus {
+				status, err := queryCheckStatus(ctx, loader, c.Job, c.Target)
+				if err != nil {
+					cmdio.Warning(cmd.OutOrStdout(), "could not retrieve execution status: %v", err)
+				} else {
+					cmdio.Info(cmd.OutOrStdout(), "status: %s", status)
+				}
+			}
+
 			return nil
 		},
 	}
@@ -340,105 +321,110 @@ func newPullCommand(loader smcfg.Loader) *cobra.Command {
 }
 
 // ---------------------------------------------------------------------------
-// push
+// create
 // ---------------------------------------------------------------------------
 
-type pushOpts struct {
-	DryRun bool
+type createOpts struct {
+	File            string
+	ShowStatus      bool
+	ValidateTargets bool
 }
 
-func (o *pushOpts) setup(flags *pflag.FlagSet) {
-	flags.BoolVar(&o.DryRun, "dry-run", false, "Preview changes without applying them")
+func (o *createOpts) setup(flags *pflag.FlagSet) {
+	flags.StringVarP(&o.File, "filename", "f", "", "File containing the check manifest (YAML)")
+	flags.BoolVar(&o.ShowStatus, "show-status", false, "Query and display check status after creation")
+	flags.BoolVar(&o.ValidateTargets, "validate-targets", false, "Pre-flight HTTP HEAD request for HTTP check targets (warning only)")
 }
 
-func newPushCommand(loader smcfg.Loader) *cobra.Command {
-	opts := &pushOpts{}
+func (o *createOpts) Validate() error {
+	if o.File == "" {
+		return errors.New("--filename/-f is required")
+	}
+	return nil
+}
+
+func newCreateCommand(loader smcfg.StatusLoader) *cobra.Command {
+	opts := &createOpts{}
 	cmd := &cobra.Command{
-		Use:   "push FILE...",
-		Short: "Push Synthetic Monitoring checks from files.",
-		Args:  cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		Use:   "create",
+		Short: "Create a Synthetic Monitoring check from a file.",
+		Example: `  # Create a check from a YAML file.
+  gcx synth checks create -f check.yaml
+
+  # Create and show resulting status.
+  gcx synth checks create -f check.yaml --show-status
+
+  # Validate HTTP target before creating.
+  gcx synth checks create -f check.yaml --validate-targets`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			ctx := cmd.Context()
+
+			// Fetch probe info for validation and offline probe warning.
+			probeIDMap, probeOnlineMap, err := FetchProbeInfo(ctx, loader)
+			if err != nil {
+				return err
+			}
+
+			spec, err := readCheckSpec(opts.File)
+			if err != nil {
+				return err
+			}
+
+			// Client-side validation before hitting the API.
+			if errs := ValidateCheckSpec(spec, probeIDMap); len(errs) > 0 {
+				return fmt.Errorf("check validation failed:\n  - %s", strings.Join(errs, "\n  - "))
+			}
+
+			// Warn if all probes are offline.
+			if AllProbesOffline(spec.Probes, probeOnlineMap) {
+				cmdio.Warning(cmd.OutOrStdout(), "all probes for check %q are offline — results will report NODATA", spec.Job)
+			}
+
+			// Optional HTTP target pre-flight.
+			if opts.ValidateTargets {
+				if err := ValidateHTTPTarget(spec.Settings.CheckType(), spec.Target, 5*time.Second); err != nil {
+					cmdio.Warning(cmd.OutOrStdout(), "target validation: %v", err)
+				}
+			}
 
 			crud, namespace, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
 
-			yamlCodec := format.NewYAMLCodec()
+			cr := checkResource{
+				CheckSpec: *spec,
+				name:      slugifyJob(spec.Job),
+				checkID:   0,
+			}
+			typedObj := &adapter.TypedObject[checkResource]{Spec: cr}
+			typedObj.SetName(cr.name)
+			typedObj.SetNamespace(namespace)
 
-			for _, filePath := range args {
-				data, err := os.ReadFile(filePath)
+			created, err := crud.Create(ctx, typedObj)
+			if err != nil {
+				return fmt.Errorf("creating check %q: %w", spec.Job, err)
+			}
+			cmdio.Success(cmd.OutOrStdout(), "Created check %q (id=%d)", spec.Job, created.Spec.checkID)
+
+			// Write back server-assigned ID so subsequent pushes do updates.
+			if err := updateNameInFile(opts.File, strconv.FormatInt(created.Spec.checkID, 10)); err != nil {
+				cmdio.Warning(cmd.OutOrStdout(), "check created but could not update %s: %v", opts.File, err)
+			}
+
+			if opts.ShowStatus {
+				status, err := queryCheckStatus(ctx, loader, spec.Job, spec.Target)
 				if err != nil {
-					return fmt.Errorf("reading %s: %w", filePath, err)
-				}
-
-				var obj unstructured.Unstructured
-				if err := yamlCodec.Decode(strings.NewReader(string(data)), &obj); err != nil {
-					return fmt.Errorf("parsing %s: %w", filePath, err)
-				}
-
-				res, err := resources.FromUnstructured(&obj)
-				if err != nil {
-					return fmt.Errorf("building resource from %s: %w", filePath, err)
-				}
-
-				spec, id, err := FromResource(res)
-				if err != nil {
-					return fmt.Errorf("converting resource from %s: %w", filePath, err)
-				}
-
-				// Set namespace from context if missing.
-				if obj.GetNamespace() == "" {
-					obj.SetNamespace(namespace)
-				}
-
-				// Reconstruct checkResource from spec and ID
-				cr := checkResource{
-					CheckSpec: *spec,
-					name:      "",
-					checkID:   id,
-				}
-				if id != 0 {
-					cr.name = slugifyJob(spec.Job) + "-" + strconv.FormatInt(id, 10)
+					cmdio.Warning(cmd.OutOrStdout(), "could not retrieve check status: %v", err)
 				} else {
-					cr.name = slugifyJob(spec.Job)
-				}
-
-				if opts.DryRun {
-					action := "create"
-					if id > 0 {
-						action = "update"
-					}
-					cmdio.Info(cmd.OutOrStdout(), "[dry-run] Would %s check %q (id=%d)", action, spec.Job, id)
-					continue
-				}
-
-				// Create typed object for CRUD operations
-				typedObj := &adapter.TypedObject[checkResource]{
-					Spec: cr,
-				}
-				typedObj.SetName(cr.name)
-				typedObj.SetNamespace(namespace)
-
-				if id == 0 {
-					created, err := crud.Create(ctx, typedObj)
-					if err != nil {
-						return fmt.Errorf("creating check %q: %w", spec.Job, err)
-					}
-					cmdio.Success(cmd.OutOrStdout(), "Created check %q (id=%d)", spec.Job, created.Spec.checkID)
-
-					// Update the local YAML file with the server-assigned ID.
-					if err := updateNameInFile(filePath, strconv.FormatInt(created.Spec.checkID, 10)); err != nil {
-						cmdio.Warning(cmd.OutOrStdout(), "Check created but could not update %s: %v", filePath, err)
-					}
-				} else {
-					if _, err := crud.Update(ctx, cr.name, typedObj); err != nil {
-						return fmt.Errorf("updating check %d: %w", id, err)
-					}
-					cmdio.Success(cmd.OutOrStdout(), "Updated check %q (id=%d)", spec.Job, id)
+					cmdio.Info(cmd.OutOrStdout(), "status: %s", status)
 				}
 			}
+
 			return nil
 		},
 	}
@@ -446,35 +432,125 @@ func newPushCommand(loader smcfg.Loader) *cobra.Command {
 	return cmd
 }
 
-// updateNameInFile rewrites metadata.name in a YAML file to newName.
-// This is used after a create to persist the server-assigned numeric ID.
-func updateNameInFile(filePath, newName string) error {
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return err
-	}
+// ---------------------------------------------------------------------------
+// update
+// ---------------------------------------------------------------------------
 
-	lines := strings.Split(string(data), "\n")
-	inMetadata := false
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "metadata:" {
-			inMetadata = true
-			continue
-		}
-		if inMetadata {
-			if strings.HasPrefix(trimmed, "name:") {
-				lines[i] = strings.Replace(line, trimmed, "name: "+strconv.Quote(newName), 1)
-				break
-			}
-			// Stop searching if we leave the metadata block (new top-level key).
-			if len(trimmed) > 0 && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
-				break
-			}
-		}
-	}
+type updateOpts struct {
+	File            string
+	ShowStatus      bool
+	ValidateTargets bool
+}
 
-	return os.WriteFile(filePath, []byte(strings.Join(lines, "\n")), 0600)
+func (o *updateOpts) setup(flags *pflag.FlagSet) {
+	flags.StringVarP(&o.File, "filename", "f", "", "File containing the check manifest (YAML)")
+	flags.BoolVar(&o.ShowStatus, "show-status", false, "Query and display the previous check status after update")
+	flags.BoolVar(&o.ValidateTargets, "validate-targets", false, "Pre-flight HTTP HEAD request for HTTP check targets (warning only)")
+}
+
+func (o *updateOpts) Validate() error {
+	if o.File == "" {
+		return errors.New("--filename/-f is required")
+	}
+	return nil
+}
+
+func newUpdateCommand(loader smcfg.StatusLoader) *cobra.Command {
+	opts := &updateOpts{}
+	cmd := &cobra.Command{
+		Use:   "update <name>",
+		Short: "Update a Synthetic Monitoring check from a file.",
+		Example: `  # Update a check using its resource name.
+  gcx synth checks update web-check-1234 -f check.yaml
+
+  # Update and show previous status.
+  gcx synth checks update web-check-1234 -f check.yaml --show-status`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			name := args[0]
+
+			// Extract numeric ID from the resource name (e.g. "web-check-1234" → 1234).
+			checkID, ok := extractIDFromSlug(name)
+			if !ok || checkID == 0 {
+				return fmt.Errorf("could not extract numeric check ID from name %q — use the resource name from 'gcx synth checks list'", name)
+			}
+
+			// Fetch probe info for validation and offline probe warning.
+			probeIDMap, probeOnlineMap, err := FetchProbeInfo(ctx, loader)
+			if err != nil {
+				return err
+			}
+
+			spec, err := readCheckSpec(opts.File)
+			if err != nil {
+				return err
+			}
+
+			// Client-side validation before hitting the API.
+			if errs := ValidateCheckSpec(spec, probeIDMap); len(errs) > 0 {
+				return fmt.Errorf("check validation failed:\n  - %s", strings.Join(errs, "\n  - "))
+			}
+
+			// Warn if all probes are offline.
+			if AllProbesOffline(spec.Probes, probeOnlineMap) {
+				cmdio.Warning(cmd.OutOrStdout(), "all probes for check %q are offline — results will report NODATA", spec.Job)
+			}
+
+			// Optional HTTP target pre-flight.
+			if opts.ValidateTargets {
+				if err := ValidateHTTPTarget(spec.Settings.CheckType(), spec.Target, 5*time.Second); err != nil {
+					cmdio.Warning(cmd.OutOrStdout(), "target validation: %v", err)
+				}
+			}
+
+			crud, namespace, err := NewTypedCRUD(ctx, loader)
+			if err != nil {
+				return err
+			}
+
+			cr := checkResource{
+				CheckSpec: *spec,
+				name:      name,
+				checkID:   checkID,
+			}
+			typedObj := &adapter.TypedObject[checkResource]{Spec: cr}
+			typedObj.SetName(name)
+			typedObj.SetNamespace(namespace)
+
+			if opts.ShowStatus {
+				// Query status before the update so we can report "previous status".
+				prevStatus, err := queryCheckStatus(ctx, loader, spec.Job, spec.Target)
+				if err != nil {
+					// Non-fatal — proceed with the update regardless.
+					cmdio.Warning(cmd.OutOrStdout(), "could not retrieve previous status: %v", err)
+				}
+
+				if _, err := crud.Update(ctx, name, typedObj); err != nil {
+					return fmt.Errorf("updating check %d: %w", checkID, err)
+				}
+
+				if prevStatus != "" {
+					cmdio.Success(cmd.OutOrStdout(), "Updated check %q (id=%d) — previous status: %s", spec.Job, checkID, prevStatus)
+				} else {
+					cmdio.Success(cmd.OutOrStdout(), "Updated check %q (id=%d)", spec.Job, checkID)
+				}
+				return nil
+			}
+
+			if _, err := crud.Update(ctx, name, typedObj); err != nil {
+				return fmt.Errorf("updating check %d: %w", checkID, err)
+			}
+			cmdio.Success(cmd.OutOrStdout(), "Updated check %q (id=%d)", spec.Job, checkID)
+			return nil
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
 }
 
 // ---------------------------------------------------------------------------
@@ -518,7 +594,7 @@ func newDeleteCommand(loader smcfg.Loader) *cobra.Command {
 			}
 
 			for _, arg := range args {
-				// Try as numeric ID first, otherwise use as name
+				// Try as numeric ID first, otherwise use as name.
 				id, err := strconv.ParseInt(arg, 10, 64)
 				var name string
 				if err == nil && id > 0 {
@@ -542,3 +618,59 @@ func newDeleteCommand(loader smcfg.Loader) *cobra.Command {
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
+
+// readCheckSpec reads and parses a check YAML file into a CheckSpec.
+func readCheckSpec(filePath string) (*CheckSpec, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", filePath, err)
+	}
+
+	var obj unstructured.Unstructured
+	if err := format.NewYAMLCodec().Decode(strings.NewReader(string(data)), &obj); err != nil {
+		return nil, fmt.Errorf("parsing %s: %w", filePath, err)
+	}
+
+	res, err := resources.FromUnstructured(&obj)
+	if err != nil {
+		return nil, fmt.Errorf("building resource from %s: %w", filePath, err)
+	}
+
+	spec, _, err := FromResource(res)
+	if err != nil {
+		return nil, fmt.Errorf("converting resource from %s: %w", filePath, err)
+	}
+
+	return spec, nil
+}
+
+// updateNameInFile rewrites metadata.name in a YAML file to newName.
+// This is used after a create to persist the server-assigned numeric ID.
+func updateNameInFile(filePath, newName string) error {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return err
+	}
+
+	lines := strings.Split(string(data), "\n")
+	inMetadata := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "metadata:" {
+			inMetadata = true
+			continue
+		}
+		if inMetadata {
+			if strings.HasPrefix(trimmed, "name:") {
+				lines[i] = strings.Replace(line, trimmed, "name: "+strconv.Quote(newName), 1)
+				break
+			}
+			// Stop searching if we leave the metadata block (new top-level key).
+			if len(trimmed) > 0 && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
+				break
+			}
+		}
+	}
+
+	return os.WriteFile(filePath, []byte(strings.Join(lines, "\n")), 0600)
+}
