@@ -32,6 +32,11 @@ Provider System (internal/providers/)     -- Pluggable Cloud product providers
     v
 Grafana REST API (/api endpoint)          -- Product-specific REST endpoints
 
+Setup System (cmd/gcx/setup/)            -- Onboarding and declarative product config
+    |                                        (not a provider — standalone command area)
+    v
+Fleet/Instrumentation APIs               -- via internal/fleet/ and internal/setup/instrumentation/
+
 Query Layer (internal/query/)             -- Prometheus, Loki, Pyroscope, Tempo
     |                                        (direct HTTP, no k8s machinery)
     v
@@ -72,6 +77,8 @@ See [docs/adrs/](docs/adrs/) for all ADRs.
 | `cmd/gcx/api/` | Raw API passthrough command |
 | `cmd/gcx/linter/` | Linting commands (run, new, rules, test) |
 | `cmd/gcx/dev/` | Developer commands (import, scaffold, generate, lint, serve) |
+| `cmd/gcx/setup/` | Setup command area (onboarding, instrumentation) |
+| `cmd/gcx/setup/instrumentation/` | Instrumentation subcommands (status, discover, show, apply) |
 | `cmd/gcx/fail/` | Structured error to user-friendly message conversion |
 | `internal/config/` | Config types, loader, editor, rest.Config builder |
 | `internal/resources/` | Core types: Resource, Selector, Filter, Descriptor |
@@ -103,6 +110,8 @@ See [docs/adrs/](docs/adrs/) for all ADRs.
 | `internal/grafana/` | OpenAPI client (health checks, version detection) |
 | `internal/output/` | Output codec registry (json, yaml, text, wide — field selection, formatting) |
 | `internal/format/` | JSON/YAML codecs |
+| `internal/fleet/` | Shared fleet base client (HTTP, auth, config — shared between fleet provider and setup/instrumentation) |
+| `internal/setup/instrumentation/` | Manifest types (InstrumentationConfig), instrumentation client, optimistic lock comparison |
 | `internal/cloud/` | GCOM HTTP client for Grafana Cloud stack discovery |
 | `internal/httputils/` | HTTP helpers (used by serve command's proxy) |
 | `internal/secrets/` | Redactor for config view |

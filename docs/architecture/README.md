@@ -1,6 +1,6 @@
 # Architecture Documentation Index
 
-> Generated: 2026-03-03 | Last updated: 2026-03-27 | Strategy: Standard | Confidence: 93%
+> Generated: 2026-03-03 | Last updated: 2026-04-01 | Strategy: Standard | Confidence: 93%
 >
 > High-level architecture documentation for gcx.
 > Start here, then navigate to specific docs as needed.

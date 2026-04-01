@@ -66,6 +66,16 @@
          |            | - Secret       |  | - Direct HTTP  |  +----------------+
          |            |   redaction    |  |   (no k8s      |
          |            +----------------+  |    machinery)  |  +------------------+
+         |                               +----------------+  | Setup Layer      |
+         |                                                    | (cmd/gcx/setup/, |
+         |            +----------------+                      |  internal/setup/)|
+         |            | Shared Fleet   |                      | - Instrumentation|
+         |            | (internal/     |<---------------------+   config & apply |
+         |            |  fleet/)       |                      | - Declarative    |
+         |            | - Base HTTP    |                      |   manifests      |
+         |            |   client       |                      +------------------+
+         |            | - Auth/config  |
+         |            +----------------+
          |                               +----------------+  | Linter Layer     |
          |                                                    | (internal/       |
          |                                                    |  linter/)        |
@@ -368,6 +378,10 @@ gcx
   |     (each kind subgroup exposes its own `query` subcommand)
   +-- providers
   |     (single command: list registered providers)
+  +-- setup                (--config, --context as persistent flags)
+  |     +-- status         (aggregated product status)
+  |     +-- instrumentation
+  |           +-- status, discover, show, apply
   +-- dev
         (import, scaffold, generate, lint, serve subcommands for code scaffolding/dev workflows)
 ```
@@ -716,6 +730,28 @@ Files most important for understanding the codebase. Organized by architectural 
 |------|---------|
 | `internal/providers/fleet/provider.go` | `FleetProvider` implementing the `providers.Provider` interface |
 | `internal/providers/fleet/client.go` | Fleet Management REST client |
+
+### Shared Fleet Client
+
+| File | Purpose |
+|------|---------|
+| `internal/fleet/client.go` | Shared fleet base HTTP client (used by fleet provider and setup/instrumentation) |
+| `internal/fleet/config.go` | Config loading, `LoadClientWithStack` helper |
+| `internal/fleet/errors.go` | Fleet API error types |
+
+### Setup / Instrumentation
+
+| File | Purpose |
+|------|---------|
+| `cmd/gcx/setup/command.go` | Setup command area: aggregated status, wires instrumentation subcommands |
+| `cmd/gcx/setup/instrumentation/command.go` | Instrumentation subcommand group |
+| `cmd/gcx/setup/instrumentation/apply.go` | Apply InstrumentationConfig manifest with optimistic lock |
+| `cmd/gcx/setup/instrumentation/show.go` | Export current remote config as portable manifest |
+| `cmd/gcx/setup/instrumentation/discover.go` | Discover instrumentable workloads |
+| `cmd/gcx/setup/instrumentation/status.go` | Per-cluster instrumentation status with Beyla error query |
+| `internal/setup/instrumentation/types.go` | InstrumentationConfig manifest types |
+| `internal/setup/instrumentation/client.go` | Instrumentation API client (GET/SET app/k8s, discovery, monitoring) |
+| `internal/setup/instrumentation/compare.go` | Optimistic lock diff comparison logic |
 
 ### K6 Cloud Provider
 

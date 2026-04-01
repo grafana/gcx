@@ -15,6 +15,8 @@ gcx/
 │       │   └── query/        # Per-kind query constructors and shared infrastructure (codecs, time parsing)
 │       ├── commands/         # 'commands' catalog (agent metadata, resource types, live validation)
 │       ├── helptree/        # 'help-tree' compact text tree for agent context injection
+│       ├── setup/            # 'setup' command area (onboarding, product config)
+│       │   └── instrumentation/  # Instrumentation subcommands (status, discover, show, apply)
 │       ├── dev/              # 'dev' subcommand (import, scaffold, generate, lint, serve)
 │       ├── providers/        # 'providers' subcommand implementation
 │       └── fail/             # Error → DetailedError conversion, exit codes
@@ -22,6 +24,9 @@ gcx/
 ├── internal/                 # All non-public packages (Go enforced)
 │   ├── agent/                # Agent-mode detection, command annotations, known-resource registry with operation hints
 │   ├── cloud/                # Grafana Cloud stack discovery via GCOM API
+│   ├── fleet/                # Shared fleet base client (HTTP, auth, config — shared by fleet provider and setup/instrumentation)
+│   ├── setup/
+│   │   └── instrumentation/  # InstrumentationConfig manifest types, API client, optimistic lock comparison
 │   ├── config/               # Config loading, context management, auth types
 │   │   └── testdata/         # YAML fixtures for config unit tests
 │   ├── format/               # JSON/YAML codec, format auto-detection

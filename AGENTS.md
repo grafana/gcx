@@ -130,12 +130,17 @@ cmd/gcx/
 ├── linter/      Linting commands (run, new, rules, test — mounted under dev lint)
 ├── commands/    Commands catalog (agent-consumable metadata, resource types, live validation)
 ├── helptree/    Compact text tree for agent context injection (help-tree command)
+├── setup/       Setup command area (onboarding, instrumentation — not a provider)
+│   └── instrumentation/  Instrumentation subcommands (status, discover, show, apply)
 ├── dev/         Developer commands (import, scaffold, generate, lint, serve)
 └── fail/        Structured error → user-friendly message conversion
 
 internal/
 ├── config/      Config types, loader, editor, rest.Config builder, stack-id discovery, context name helpers
 ├── cloud/       GCOM HTTP client for Grafana Cloud stack discovery
+├── fleet/       Shared fleet base client (HTTP, auth, config — used by fleet provider and setup/instrumentation)
+├── setup/
+│   └── instrumentation/  Manifest types, instrumentation client, optimistic lock comparison
 ├── resources/
 │   ├── *.go     Core types: Resource, Selector, Filter, Descriptor, Resources collection
 │   ├── adapter/    ResourceAdapter interface, Factory, ResourceClientRouter, self-registration

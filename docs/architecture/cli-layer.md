@@ -82,6 +82,23 @@ gcx (root)
 ├── providers                [cmd/gcx/providers/command.go]
 │   └── (list; no subcommands — prints NAME/DESCRIPTION table of registered providers)
 │
+├── setup                    [cmd/gcx/setup/command.go]
+│   ├── --config             [persistent: inherited from providers.ConfigLoader]
+│   ├── --context            [persistent: inherited from providers.ConfigLoader]
+│   ├── status               Aggregated setup status across all products
+│   └── instrumentation      [cmd/gcx/setup/instrumentation/command.go]
+│       ├── status           Per-cluster instrumentation state + Beyla errors
+│       │   ├── --cluster    Filter by cluster name
+│       │   └── --output / -o  table|wide|json|yaml
+│       ├── discover         Find instrumentable workloads in a cluster
+│       │   ├── --cluster    Cluster name (required)
+│       │   └── --output / -o  table|wide|json|yaml
+│       ├── show <CLUSTER>   Export current config as portable InstrumentationConfig manifest
+│       │   └── --output / -o  yaml|json
+│       └── apply            Apply an InstrumentationConfig manifest
+│           ├── --filename / -f  Path to manifest file (required)
+│           └── --dry-run    Preview changes without applying
+│
 └── dev                      [cmd/gcx/dev/command.go]
     ├── generate [FILE_PATH]... Generate typed Go stubs for new resources
     ├── import               Import existing Grafana resources as code
@@ -241,6 +258,15 @@ cmd/gcx/
 │       └── generic.go       GenericCmd() constructor
 ├── providers/
 │   └── command.go           providers command — lists registered providers
+├── setup/
+│   ├── command.go           setup group + aggregated status (wires providers.ConfigLoader)
+│   └── instrumentation/
+│       ├── command.go       instrumentation group (wires status, discover, show, apply)
+│       ├── status.go        instrumentation status — Beyla errors via promql-builder
+│       ├── discover.go      instrumentation discover — K8s workload discovery
+│       ├── show.go          instrumentation show — export InstrumentationConfig manifest
+│       ├── apply.go         instrumentation apply — apply manifest with optimistic lock
+│       └── export_test.go   test package aliases for unexported types
 ├── linter/
 │   ├── command.go           lint subgroup (run, new, rules, test subcommands; mounted under dev lint)
 │   ├── lint.go              dev lint run — lint resources against configured rules  [Use: "run"]
