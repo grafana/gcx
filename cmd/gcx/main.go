@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"runtime/debug"
 	"strings"
+	"time"
 
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/cmd/gcx/root"
@@ -92,9 +93,12 @@ func handleError(err error) {
 }
 
 func formatVersion() string {
-	// Fall back to VCS build info when ldflags are not set (e.g. go install).
-	if commit == "" || date == "" {
-		c, d := vcsInfo()
+	// Fall back to build info when ldflags are not set (e.g. go install).
+	if version == "" || commit == "" || date == "" {
+		v, c, d := vcsInfo()
+		if version == "" {
+			version = v
+		}
 		if commit == "" {
 			commit = c
 		}
@@ -110,13 +114,14 @@ func formatVersion() string {
 	return fmt.Sprintf("%s built from %s on %s", version, commit, date)
 }
 
-// vcsInfo extracts the short commit hash and timestamp from VCS build info.
-func vcsInfo() (string, string) {
+// vcsInfo extracts version, short commit hash, and timestamp from build info.
+func vcsInfo() (string, string, string) {
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
-		return "", ""
+		return "", "", ""
 	}
-	var c, d string
+	var v, c, d string
+	v = info.Main.Version
 	for _, s := range info.Settings {
 		switch s.Key {
 		case "vcs.revision":
@@ -127,5 +132,37 @@ func vcsInfo() (string, string) {
 			d = s.Value
 		}
 	}
-	return c, d
+	// For go install builds, VCS settings are absent but the pseudo-version
+	// contains the commit and timestamp: vX.Y.Z-0.YYYYMMDDHHMMSS-abcdef123456
+	if c == "" || d == "" {
+		pc, pd := parsePseudoVersion(v)
+		if c == "" {
+			c = pc
+		}
+		if d == "" {
+			d = pd
+		}
+	}
+	return v, c, d
+}
+
+// parsePseudoVersion extracts the short commit hash and timestamp from a Go
+// pseudo-version string (e.g. v0.1.1-0.20260401105553-2fbda4a2dd27).
+func parsePseudoVersion(v string) (string, string) {
+	// Split on "-" from the right: ...-YYYYMMDDHHMMSS-commithash
+	parts := strings.Split(v, "-")
+	if len(parts) < 3 {
+		return "", ""
+	}
+	hash := parts[len(parts)-1]
+	ts := parts[len(parts)-2]
+	if len(hash) < 7 || len(ts) != 14 {
+		return "", ""
+	}
+	commit := hash[:7]
+	date, err := time.Parse("20060102150405", ts)
+	if err != nil {
+		return commit, ""
+	}
+	return commit, date.UTC().Format(time.RFC3339)
 }
