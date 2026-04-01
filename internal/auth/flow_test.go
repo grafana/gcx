@@ -33,6 +33,7 @@ func TestValidateEndpointURL_RejectsUntrustedDomains(t *testing.T) {
 	}{
 		{"random domain", "https://evil.example.com"},
 		{"http non-local", "http://mystack.grafana.net"},
+		{"subdomain bypass", "https://evil.grafana.net.attacker.com"},
 	}
 
 	for _, tt := range tests {
