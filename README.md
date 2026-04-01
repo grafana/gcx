@@ -168,7 +168,7 @@ gcx provides dedicated commands for each Grafana Cloud product:
 | **Fleet Management** | `gcx fleet` | `fleet pipelines list`, `fleet collectors list` |
 | **IRM Incidents** | `gcx incidents` | `incidents list`, `incidents create -f incident.yaml` |
 | **Knowledge Graph** | `gcx kg` | `kg status`, `kg search`, `kg entities show` |
-| **Adaptive Telemetry** | `gcx adaptive` | `adaptive metrics recommendations list`, `adaptive logs patterns list` |
+| **Adaptive Telemetry** | `gcx adaptive` | `adaptive metrics recommendations show`, `adaptive logs patterns show` |
 
 ## Resource Management
 
