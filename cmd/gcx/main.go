@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/grafana/gcx/internal/agent"
+	"golang.org/x/mod/module"
 )
 
 // Version variables which are set at build time.
@@ -148,21 +149,19 @@ func vcsInfo() (string, string, string) {
 
 // parsePseudoVersion extracts the short commit hash and timestamp from a Go
 // pseudo-version string (e.g. v0.1.1-0.20260401105553-2fbda4a2dd27).
+// Returns empty strings for non-pseudo versions.
 func parsePseudoVersion(v string) (string, string) {
-	// Split on "-" from the right: ...-YYYYMMDDHHMMSS-commithash
-	parts := strings.Split(v, "-")
-	if len(parts) < 3 {
-		return "", ""
+	// Strip +dirty or other non-standard build metadata that Go embeds
+	// for local builds, as it is not valid semver and rejected by the module package.
+	if i := strings.LastIndex(v, "+"); i > 0 {
+		v = v[:i]
 	}
-	hash := parts[len(parts)-1]
-	ts := parts[len(parts)-2]
-	if len(hash) < 7 || len(ts) != 14 {
-		return "", ""
+	var c, d string
+	if rev, err := module.PseudoVersionRev(v); err == nil && rev != "" {
+		c = rev[:min(7, len(rev))]
 	}
-	commit := hash[:7]
-	date, err := time.Parse("20060102150405", ts)
-	if err != nil {
-		return commit, ""
+	if t, err := module.PseudoVersionTime(v); err == nil {
+		d = t.UTC().Format(time.RFC3339)
 	}
-	return commit, date.UTC().Format(time.RFC3339)
+	return c, d
 }
