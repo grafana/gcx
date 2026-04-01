@@ -25,13 +25,13 @@ type TokenRefresher func(token, refreshToken, expiresAt, refreshExpiresAt string
 // RefreshTransport wraps an http.RoundTripper and transparently refreshes
 // the gat_ access token when it is close to expiry.
 type RefreshTransport struct {
-	Base              http.RoundTripper
-	ProxyEndpoint     string
-	Token             string
-	RefreshToken      string
-	ExpiresAt         time.Time
-	RefreshExpiresAt  time.Time
-	OnRefresh         TokenRefresher
+	Base             http.RoundTripper
+	ProxyEndpoint    string
+	Token            string
+	RefreshToken     string
+	ExpiresAt        time.Time
+	RefreshExpiresAt time.Time
+	OnRefresh        TokenRefresher
 
 	mu         sync.Mutex
 	cond       *sync.Cond

@@ -185,8 +185,8 @@ func TestRefreshTransport_RejectsExpiredRefreshToken(t *testing.T) {
 		ProxyEndpoint:    backend.URL,
 		Token:            "gat_old",
 		RefreshToken:     "gar_expired",
-		ExpiresAt:        time.Now().Add(1 * time.Minute),        // within refresh threshold
-		RefreshExpiresAt: time.Now().Add(-1 * time.Hour),         // already expired
+		ExpiresAt:        time.Now().Add(1 * time.Minute), // within refresh threshold
+		RefreshExpiresAt: time.Now().Add(-1 * time.Hour),  // already expired
 	}
 
 	client := &http.Client{Transport: transport}
@@ -194,7 +194,10 @@ func TestRefreshTransport_RejectsExpiredRefreshToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	_, err = client.Do(req)
+	resp, err := client.Do(req)
+	if resp != nil {
+		resp.Body.Close()
+	}
 	if err == nil {
 		t.Fatal("expected error for expired refresh token, got nil")
 	}

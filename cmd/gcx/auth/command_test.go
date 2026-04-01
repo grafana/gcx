@@ -3,7 +3,6 @@ package auth_test
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -76,25 +75,25 @@ func TestLogin_successWritesTokensToConfig(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"status": "ok",
 			"data": map[string]string{
 				"token":              "gat_test_token",
-				"email":             "user@example.com",
-				"api_endpoint":      "http://127.0.0.1",
-				"expires_at":        time.Now().Add(time.Hour).Format(time.RFC3339),
-				"refresh_token":     "gar_test_refresh",
+				"email":              "user@example.com",
+				"api_endpoint":       "http://127.0.0.1",
+				"expires_at":         time.Now().Add(time.Hour).Format(time.RFC3339),
+				"refresh_token":      "gar_test_refresh",
 				"refresh_expires_at": time.Now().Add(24 * time.Hour).Format(time.RFC3339),
 			},
 		})
 	}))
 	defer exchangeSrv.Close()
 
-	cfg := fmt.Sprintf(`current-context: test
+	cfg := `current-context: test
 contexts:
   test:
     grafana:
-      server: %s`, exchangeSrv.URL)
+      server: ` + exchangeSrv.URL
 
 	configFile := testutils.CreateTempFile(t, cfg)
 
@@ -126,11 +125,12 @@ contexts:
 	}, 5*time.Second, 50*time.Millisecond, "callback server did not start")
 
 	// Simulate the browser redirect to the callback server.
-	callbackURL := fmt.Sprintf("http://127.0.0.1:%s/callback?state=%s&code=test_code&endpoint=%s",
-		port, state, exchangeSrv.URL)
-	resp, err := http.Get(callbackURL)
+	callbackURL := "http://127.0.0.1:" + port + "/callback?state=" + state + "&code=test_code&endpoint=" + exchangeSrv.URL
+	callbackReq, err := http.NewRequestWithContext(t.Context(), http.MethodGet, callbackURL, nil)
 	require.NoError(t, err)
-	resp.Body.Close()
+	resp, err := http.DefaultClient.Do(callbackReq)
+	require.NoError(t, err)
+	defer resp.Body.Close()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	// Wait for the command to finish.
