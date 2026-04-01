@@ -228,3 +228,28 @@ func TestParseLabelFlags(t *testing.T) {
 		})
 	}
 }
+
+func TestCheckFilter_Validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		filter  *checks.CheckFilter
+		wantErr bool
+	}{
+		{name: "nil filter", filter: nil},
+		{name: "valid glob", filter: &checks.CheckFilter{JobPattern: "shopk8s-*"}},
+		{name: "empty pattern", filter: &checks.CheckFilter{JobPattern: ""}},
+		{name: "invalid glob", filter: &checks.CheckFilter{JobPattern: "[invalid"}, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.filter.Validate()
+			if tt.wantErr && err == nil {
+				t.Error("expected error, got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}

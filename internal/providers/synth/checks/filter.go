@@ -14,6 +14,20 @@ type CheckFilter struct {
 	StatusStr  string
 }
 
+// Validate checks that the filter's patterns are syntactically valid.
+// Call this before using MatchCheck to fail fast on bad patterns.
+func (f *CheckFilter) Validate() error {
+	if f == nil {
+		return nil
+	}
+	if f.JobPattern != "" {
+		if _, err := filepath.Match(f.JobPattern, ""); err != nil {
+			return fmt.Errorf("invalid --job pattern %q: %w", f.JobPattern, err)
+		}
+	}
+	return nil
+}
+
 // MatchCheck returns true if the check matches the filter's label and job criteria.
 // Status filtering is not available here — use MatchResult after Prometheus data is available.
 func (f *CheckFilter) MatchCheck(c Check) bool {

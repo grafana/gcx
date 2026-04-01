@@ -554,6 +554,12 @@ func TestParseCheckTimeRange(t *testing.T) {
 			to:        "now",
 			wantErr:   true,
 		},
+		{
+			name:         "clock skew: created after now errors",
+			window:       "6h",
+			checkCreated: float64(now.Add(1 * time.Hour).Unix()),
+			wantErr:      true,
+		},
 	}
 
 	for _, tt := range tests {

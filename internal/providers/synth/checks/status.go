@@ -136,6 +136,9 @@ for each check. Requires a Prometheus datasource containing SM metrics.`,
 				JobPattern: opts.JobPattern,
 				StatusStr:  opts.StatusFilter,
 			}
+			if err := filter.Validate(); err != nil {
+				return err
+			}
 
 			// Load SM config — needed by all parallel branches below.
 			baseURL, token, _, err := loader.LoadSMConfig(ctx)
@@ -865,6 +868,10 @@ func ParseCheckTimeRange(fromToSet bool, from, to, window string, now time.Time,
 			start = created
 			clamped = true
 		}
+	}
+
+	if !start.Before(end) {
+		return time.Time{}, time.Time{}, false, errors.New("check was created after the query window ends; try a larger --window")
 	}
 
 	return start, end, clamped, nil

@@ -86,6 +86,9 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 				return err
 			}
 			filter := &CheckFilter{Labels: labelMap, JobPattern: opts.JobPattern}
+			if err := filter.Validate(); err != nil {
+				return err
+			}
 
 			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
@@ -612,38 +615,27 @@ func newDeleteCommand(loader smcfg.Loader) *cobra.Command {
 func encodeGetTable(w io.Writer, c Check, info checkStatusInfo, wide bool) error {
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 
-	hasStatus := info.Status != ""
+	header := "NAME\tJOB\tTARGET\tTYPE"
+	row := fmt.Sprintf("%s\t%s\t%s\t%s",
+		checkDisplayName(c), c.Job, c.Target, c.Settings.CheckType())
 
 	if wide {
-		header := "NAME\tJOB\tTARGET\tTYPE\tENABLED\tFREQ\tTIMEOUT\tPROBES"
-		row := fmt.Sprintf("%s\t%s\t%s\t%s\t%v\t%ds\t%ds\t%d",
-			checkDisplayName(c), c.Job, c.Target, c.Settings.CheckType(), c.Enabled,
-			c.Frequency/1000, c.Timeout/1000, len(c.Probes))
-		if hasStatus {
-			header += "\tSUCCESS\tSTATUS"
-			successStr := "--"
-			if info.Success != nil {
-				successStr = fmt.Sprintf("%.2f%%", *info.Success*100)
-			}
-			row += fmt.Sprintf("\t%s\t%s", successStr, info.Status)
-		}
-		fmt.Fprintln(tw, header)
-		fmt.Fprintln(tw, row)
-	} else {
-		header := "NAME\tJOB\tTARGET\tTYPE"
-		row := fmt.Sprintf("%s\t%s\t%s\t%s",
-			checkDisplayName(c), c.Job, c.Target, c.Settings.CheckType())
-		if hasStatus {
-			header += "\tSUCCESS\tSTATUS"
-			successStr := "--"
-			if info.Success != nil {
-				successStr = fmt.Sprintf("%.2f%%", *info.Success*100)
-			}
-			row += fmt.Sprintf("\t%s\t%s", successStr, info.Status)
-		}
-		fmt.Fprintln(tw, header)
-		fmt.Fprintln(tw, row)
+		header += "\tENABLED\tFREQ\tTIMEOUT\tPROBES"
+		row += fmt.Sprintf("\t%v\t%ds\t%ds\t%d",
+			c.Enabled, c.Frequency/1000, c.Timeout/1000, len(c.Probes))
 	}
+
+	if info.Status != "" {
+		successStr := "--"
+		if info.Success != nil {
+			successStr = fmt.Sprintf("%.2f%%", *info.Success*100)
+		}
+		header += "\tSUCCESS\tSTATUS"
+		row += fmt.Sprintf("\t%s\t%s", successStr, info.Status)
+	}
+
+	fmt.Fprintln(tw, header)
+	fmt.Fprintln(tw, row)
 
 	return tw.Flush()
 }
@@ -693,7 +685,7 @@ func readCheckSpec(filePath string) (*CheckSpec, error) {
 // by looking for "---" document separators on their own line.
 func hasMultipleDocuments(data []byte) bool {
 	count := 0
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		if strings.TrimSpace(line) == "---" {
 			count++
 			if count > 1 {
