@@ -4,14 +4,15 @@ import (
 	"context"
 	"io"
 
+	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/fleet"
 	instrum "github.com/grafana/gcx/internal/setup/instrumentation"
 	"github.com/spf13/cobra"
 )
 
 // RunApply exposes the internal runApply function for use in external test packages.
-func RunApply(ctx context.Context, opts *applyOpts, client *instrum.Client, urls instrum.BackendURLs, out io.Writer) error {
-	return runApply(ctx, opts, client, urls, out)
+func RunApply(ctx context.Context, opts *applyOpts, client *instrum.Client, urls instrum.BackendURLs, stack cloud.StackInfo, out io.Writer) error {
+	return runApply(ctx, opts, client, urls, stack, out)
 }
 
 // ApplyOpts is an alias for applyOpts so external tests can construct opts.

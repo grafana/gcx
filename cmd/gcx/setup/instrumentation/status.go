@@ -88,6 +88,11 @@ func newStatusCommand(loader fleetbase.ConfigLoader) *cobra.Command {
 				})
 			}
 
+			if len(statuses) == 0 {
+				fmt.Fprintf(cmd.ErrOrStderr(), "No clusters found. Fleet Management URL: %s\n", r.Stack.AgentManagementInstanceURL)
+				fmt.Fprintf(cmd.ErrOrStderr(), "To connect a cluster, see: gcx setup instrumentation apply --help\n")
+			}
+
 			return opts.IO.Encode(cmd.OutOrStdout(), statuses)
 		},
 	}

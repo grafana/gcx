@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/setup/instrumentation"
+	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/fleet"
 	instrum "github.com/grafana/gcx/internal/setup/instrumentation"
 	"github.com/stretchr/testify/assert"
@@ -125,7 +126,7 @@ func TestRunApply_AppOnly(t *testing.T) {
 	ts := &applyTestServer{}
 	srv := ts.start(t)
 
-	err := instrumentation.RunApply(context.Background(), &instrumentation.ApplyOpts{File: writeApplyManifest(t, manifestAppOnly)}, makeApplyClient(srv.URL), instrum.BackendURLs{}, &bytes.Buffer{})
+	err := instrumentation.RunApply(context.Background(), &instrumentation.ApplyOpts{File: writeApplyManifest(t, manifestAppOnly)}, makeApplyClient(srv.URL), instrum.BackendURLs{}, cloud.StackInfo{}, &bytes.Buffer{})
 	require.NoError(t, err)
 	assert.True(t, ts.setAppCalled.Load(), "SetAppInstrumentation must be called")
 	assert.False(t, ts.setK8sCalled.Load(), "SetK8SInstrumentation must NOT be called when spec.k8s is absent")
@@ -135,7 +136,7 @@ func TestRunApply_K8sOnly(t *testing.T) {
 	ts := &applyTestServer{}
 	srv := ts.start(t)
 
-	err := instrumentation.RunApply(context.Background(), &instrumentation.ApplyOpts{File: writeApplyManifest(t, manifestK8sOnly)}, makeApplyClient(srv.URL), instrum.BackendURLs{}, &bytes.Buffer{})
+	err := instrumentation.RunApply(context.Background(), &instrumentation.ApplyOpts{File: writeApplyManifest(t, manifestK8sOnly)}, makeApplyClient(srv.URL), instrum.BackendURLs{}, cloud.StackInfo{}, &bytes.Buffer{})
 	require.NoError(t, err)
 	assert.False(t, ts.setAppCalled.Load(), "SetAppInstrumentation must NOT be called when spec.app is absent")
 	assert.True(t, ts.setK8sCalled.Load(), "SetK8SInstrumentation must be called")
@@ -145,7 +146,7 @@ func TestRunApply_BothSections(t *testing.T) {
 	ts := &applyTestServer{}
 	srv := ts.start(t)
 
-	err := instrumentation.RunApply(context.Background(), &instrumentation.ApplyOpts{File: writeApplyManifest(t, manifestBoth)}, makeApplyClient(srv.URL), instrum.BackendURLs{}, &bytes.Buffer{})
+	err := instrumentation.RunApply(context.Background(), &instrumentation.ApplyOpts{File: writeApplyManifest(t, manifestBoth)}, makeApplyClient(srv.URL), instrum.BackendURLs{}, cloud.StackInfo{}, &bytes.Buffer{})
 	require.NoError(t, err)
 	assert.True(t, ts.setAppCalled.Load(), "SetAppInstrumentation must be called")
 	assert.True(t, ts.setK8sCalled.Load(), "SetK8SInstrumentation must be called")
@@ -166,7 +167,7 @@ func TestRunApply_OptimisticLockFailure(t *testing.T) {
 	srv := ts.start(t)
 
 	// Local manifest only has "frontend"; remote has "monitoring" — optimistic lock must fail.
-	err = instrumentation.RunApply(context.Background(), &instrumentation.ApplyOpts{File: writeApplyManifest(t, manifestAppOnly)}, makeApplyClient(srv.URL), instrum.BackendURLs{}, &bytes.Buffer{})
+	err = instrumentation.RunApply(context.Background(), &instrumentation.ApplyOpts{File: writeApplyManifest(t, manifestAppOnly)}, makeApplyClient(srv.URL), instrum.BackendURLs{}, cloud.StackInfo{}, &bytes.Buffer{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "setup/instrumentation:")
 	assert.Contains(t, err.Error(), `"monitoring"`)
@@ -202,7 +203,7 @@ spec:
       - name: backend
         selection: included
 `
-	err = instrumentation.RunApply(context.Background(), &instrumentation.ApplyOpts{File: writeApplyManifest(t, superset)}, makeApplyClient(srv.URL), instrum.BackendURLs{}, &bytes.Buffer{})
+	err = instrumentation.RunApply(context.Background(), &instrumentation.ApplyOpts{File: writeApplyManifest(t, superset)}, makeApplyClient(srv.URL), instrum.BackendURLs{}, cloud.StackInfo{}, &bytes.Buffer{})
 	require.NoError(t, err)
 	assert.True(t, ts.setAppCalled.Load(), "SetAppInstrumentation must be called when local is superset of remote")
 }
@@ -212,7 +213,7 @@ func TestRunApply_DryRun(t *testing.T) {
 	srv := ts.start(t)
 
 	var out bytes.Buffer
-	err := instrumentation.RunApply(context.Background(), &instrumentation.ApplyOpts{File: writeApplyManifest(t, manifestBoth), DryRun: true}, makeApplyClient(srv.URL), instrum.BackendURLs{}, &out)
+	err := instrumentation.RunApply(context.Background(), &instrumentation.ApplyOpts{File: writeApplyManifest(t, manifestBoth), DryRun: true}, makeApplyClient(srv.URL), instrum.BackendURLs{}, cloud.StackInfo{}, &out)
 	require.NoError(t, err)
 	assert.False(t, ts.setAppCalled.Load(), "SetAppInstrumentation must NOT be called during dry-run")
 	assert.False(t, ts.setK8sCalled.Load(), "SetK8SInstrumentation must NOT be called during dry-run")
@@ -225,7 +226,7 @@ kind: InstrumentationConfig
 metadata:
   name: prod-1
 `
-	err := instrumentation.RunApply(context.Background(), &instrumentation.ApplyOpts{File: writeApplyManifest(t, bad)}, nil, instrum.BackendURLs{}, &bytes.Buffer{})
+	err := instrumentation.RunApply(context.Background(), &instrumentation.ApplyOpts{File: writeApplyManifest(t, bad)}, nil, instrum.BackendURLs{}, cloud.StackInfo{}, &bytes.Buffer{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "setup/instrumentation:")
 	assert.Contains(t, err.Error(), "apiVersion")
@@ -237,7 +238,7 @@ kind: InstrumentationConfig
 metadata:
   name: ""
 `
-	err := instrumentation.RunApply(context.Background(), &instrumentation.ApplyOpts{File: writeApplyManifest(t, noName)}, nil, instrum.BackendURLs{}, &bytes.Buffer{})
+	err := instrumentation.RunApply(context.Background(), &instrumentation.ApplyOpts{File: writeApplyManifest(t, noName)}, nil, instrum.BackendURLs{}, cloud.StackInfo{}, &bytes.Buffer{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "setup/instrumentation:")
 	assert.Contains(t, err.Error(), "metadata.name")

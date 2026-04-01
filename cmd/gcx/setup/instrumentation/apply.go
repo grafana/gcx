@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/fleet"
 	instrum "github.com/grafana/gcx/internal/setup/instrumentation"
 	"github.com/spf13/cobra"
@@ -48,7 +49,7 @@ func newApplyCommand(loader fleet.ConfigLoader) *cobra.Command {
 			}
 			client := instrum.NewClient(r.Client)
 			urls := instrum.BackendURLsFromStack(r.Stack)
-			return runApply(ctx, opts, client, urls, cmd.OutOrStdout())
+			return runApply(ctx, opts, client, urls, r.Stack, cmd.OutOrStdout())
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -56,7 +57,7 @@ func newApplyCommand(loader fleet.ConfigLoader) *cobra.Command {
 }
 
 // runApply is the core apply logic, separated for testability.
-func runApply(ctx context.Context, opts *applyOpts, client *instrum.Client, urls instrum.BackendURLs, out io.Writer) error {
+func runApply(ctx context.Context, opts *applyOpts, client *instrum.Client, urls instrum.BackendURLs, stack cloud.StackInfo, out io.Writer) error {
 	data, err := os.ReadFile(opts.File)
 	if err != nil {
 		return fmt.Errorf("setup/instrumentation: %w", err)
@@ -90,7 +91,32 @@ func runApply(ctx context.Context, opts *applyOpts, client *instrum.Client, urls
 		}
 	}
 
+	if !opts.DryRun {
+		printPostApplyHint(out, cluster, stack)
+	}
+
 	return nil
+}
+
+// printPostApplyHint prints guidance on how to connect the cluster to Grafana Cloud
+// via the grafana-cloud-onboarding Helm chart. This surfaces the fleet management URL
+// and auth credentials that are otherwise not discoverable from gcx output.
+func printPostApplyHint(w io.Writer, cluster string, stack cloud.StackInfo) {
+	fleetURL := stack.AgentManagementInstanceURL
+	if fleetURL == "" {
+		return
+	}
+	instanceID := stack.AgentManagementInstanceID
+	fmt.Fprintf(w, "\nTo connect cluster %q to Grafana Cloud, install the Helm chart:\n\n", cluster)
+	fmt.Fprintf(w, "  helm repo add grafana https://grafana.github.io/helm-charts\n")
+	fmt.Fprintf(w, "  helm upgrade --install grafana-cloud -n monitoring --create-namespace \\\n")
+	fmt.Fprintf(w, "    grafana/grafana-cloud-onboarding \\\n")
+	fmt.Fprintf(w, "    --set \"cluster.name=%s\" \\\n", cluster)
+	fmt.Fprintf(w, "    --set \"grafanaCloud.fleetManagement.url=%s\" \\\n", fleetURL)
+	fmt.Fprintf(w, "    --set \"grafanaCloud.fleetManagement.auth.username=%d\" \\\n", instanceID)
+	fmt.Fprintf(w, "    --set \"grafanaCloud.fleetManagement.auth.password=<YOUR_CLOUD_ACCESS_TOKEN>\" \\\n")
+	fmt.Fprintf(w, "    --wait\n\n")
+	fmt.Fprintf(w, "Then verify: gcx setup instrumentation status\n")
 }
 
 func applyApp(ctx context.Context, opts *applyOpts, client *instrum.Client, cluster string, app *instrum.AppSpec, urls instrum.BackendURLs, out io.Writer) error {
