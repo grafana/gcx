@@ -286,28 +286,17 @@ func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
 				Probes:           []int64{},
 			}
 
-			// When --show-status is set, render as a status table (NAME + SUCCESS + STATUS columns).
-			if opts.ShowStatus && (codec.Format() == "table" || codec.Format() == "wide") {
-				info, err := queryCheckStatus(ctx, loader, c.Job, c.Target)
-				if err != nil {
-					cmdio.Warning(cmd.OutOrStdout(), "could not retrieve execution status: %v", err)
-					// Fall through to regular table output.
-				} else {
-					result := CheckStatusResult{
-						ID:      c.ID,
-						Job:     c.Job,
-						Target:  c.Target,
-						Type:    c.Settings.CheckType(),
-						Success: info.Success,
-						Status:  info.Status,
-					}
-					statusCodec := &StatusTableCodec{Wide: codec.Format() == "wide"}
-					return statusCodec.Encode(cmd.OutOrStdout(), []CheckStatusResult{result})
-				}
-			}
-
 			if codec.Format() == "table" || codec.Format() == "wide" {
-				return codec.Encode(cmd.OutOrStdout(), []Check{c})
+				// Query status before rendering so we can merge it into the table.
+				var info checkStatusInfo
+				if opts.ShowStatus {
+					var err error
+					info, err = queryCheckStatus(ctx, loader, c.Job, c.Target)
+					if err != nil {
+						cmdio.Warning(cmd.OutOrStdout(), "could not retrieve execution status: %v", err)
+					}
+				}
+				return encodeGetTable(cmd.OutOrStdout(), c, info, codec.Format() == "wide")
 			}
 
 			// For yaml/json, use the typed object.
@@ -617,6 +606,47 @@ func newDeleteCommand(loader smcfg.Loader) *cobra.Command {
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
+
+// encodeGetTable renders a single check as a table row, appending SUCCESS and STATUS
+// columns when status info is available (non-empty Status).
+func encodeGetTable(w io.Writer, c Check, info checkStatusInfo, wide bool) error {
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+
+	hasStatus := info.Status != ""
+
+	if wide {
+		header := "NAME\tJOB\tTARGET\tTYPE\tENABLED\tFREQ\tTIMEOUT\tPROBES"
+		row := fmt.Sprintf("%s\t%s\t%s\t%s\t%v\t%ds\t%ds\t%d",
+			checkDisplayName(c), c.Job, c.Target, c.Settings.CheckType(), c.Enabled,
+			c.Frequency/1000, c.Timeout/1000, len(c.Probes))
+		if hasStatus {
+			header += "\tSUCCESS\tSTATUS"
+			successStr := "--"
+			if info.Success != nil {
+				successStr = fmt.Sprintf("%.2f%%", *info.Success*100)
+			}
+			row += fmt.Sprintf("\t%s\t%s", successStr, info.Status)
+		}
+		fmt.Fprintln(tw, header)
+		fmt.Fprintln(tw, row)
+	} else {
+		header := "NAME\tJOB\tTARGET\tTYPE"
+		row := fmt.Sprintf("%s\t%s\t%s\t%s",
+			checkDisplayName(c), c.Job, c.Target, c.Settings.CheckType())
+		if hasStatus {
+			header += "\tSUCCESS\tSTATUS"
+			successStr := "--"
+			if info.Success != nil {
+				successStr = fmt.Sprintf("%.2f%%", *info.Success*100)
+			}
+			row += fmt.Sprintf("\t%s\t%s", successStr, info.Status)
+		}
+		fmt.Fprintln(tw, header)
+		fmt.Fprintln(tw, row)
+	}
+
+	return tw.Flush()
+}
 
 // checkDisplayName computes the user-facing "slug-id" resource name from a Check.
 // This is the name the user passes to get, update, and delete commands.
