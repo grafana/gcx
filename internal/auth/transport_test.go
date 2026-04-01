@@ -2,6 +2,7 @@ package auth_test
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -170,5 +171,34 @@ func TestRefreshTransport_CallsOnRefreshCallback(t *testing.T) {
 	}
 	if savedRefresh != "gar_new" {
 		t.Fatalf("expected saved refresh token %q, got %q", "gar_new", savedRefresh)
+	}
+}
+
+func TestRefreshTransport_RejectsExpiredRefreshToken(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	transport := &auth.RefreshTransport{
+		Base:             http.DefaultTransport,
+		ProxyEndpoint:    backend.URL,
+		Token:            "gat_old",
+		RefreshToken:     "gar_expired",
+		ExpiresAt:        time.Now().Add(1 * time.Minute),        // within refresh threshold
+		RefreshExpiresAt: time.Now().Add(-1 * time.Hour),         // already expired
+	}
+
+	client := &http.Client{Transport: transport}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, backend.URL+"/test", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	_, err = client.Do(req)
+	if err == nil {
+		t.Fatal("expected error for expired refresh token, got nil")
+	}
+	if !errors.Is(err, auth.ErrRefreshTokenExpired) {
+		t.Fatalf("expected ErrRefreshTokenExpired, got: %v", err)
 	}
 }

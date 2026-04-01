@@ -33,6 +33,16 @@ func (n *NamespacedRESTConfig) SetOnRefresh(fn auth.TokenRefresher) {
 	}
 }
 
+// parseRFC3339OrZero parses an RFC3339 timestamp, returning the zero time on
+// empty input or parse failure.
+func parseRFC3339OrZero(s string) time.Time {
+	if s == "" {
+		return time.Time{}
+	}
+	t, _ := time.Parse(time.RFC3339, s)
+	return t
+}
+
 // NewNamespacedRESTConfig creates a new namespaced REST config.
 func NewNamespacedRESTConfig(ctx context.Context, cfg Context) NamespacedRESTConfig {
 	rcfg := rest.Config{
@@ -71,20 +81,9 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) NamespacedRESTCon
 		// on rcfg to avoid client-go adding a redundant auth layer.
 		rcfg.Host = cfg.Grafana.ProxyEndpoint + "/api/cli/v1/proxy"
 
-		var expiresAt time.Time
-		if cfg.Grafana.OAuthTokenExpiresAt != "" {
-			var err error
-			if expiresAt, err = time.Parse(time.RFC3339, cfg.Grafana.OAuthTokenExpiresAt); err != nil {
-				// Zero time triggers an immediate refresh on first request.
-				expiresAt = time.Time{}
-			}
-		}
-		var refreshExpiresAt time.Time
-		if cfg.Grafana.OAuthRefreshExpiresAt != "" {
-			if parsed, err := time.Parse(time.RFC3339, cfg.Grafana.OAuthRefreshExpiresAt); err == nil {
-				refreshExpiresAt = parsed
-			}
-		}
+		// Zero time for ExpiresAt triggers an immediate refresh on first request.
+		expiresAt := parseRFC3339OrZero(cfg.Grafana.OAuthTokenExpiresAt)
+		refreshExpiresAt := parseRFC3339OrZero(cfg.Grafana.OAuthRefreshExpiresAt)
 		oauthTransport = &auth.RefreshTransport{
 			ProxyEndpoint:    cfg.Grafana.ProxyEndpoint,
 			Token:            cfg.Grafana.OAuthToken,

@@ -4,12 +4,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"sync"
 	"time"
 )
+
+// ErrRefreshTokenExpired is returned when the refresh token has expired and
+// the user must re-authenticate.
+var ErrRefreshTokenExpired = errors.New("refresh token expired: re-authentication required")
 
 // refreshThreshold is how far before token expiry we trigger a proactive refresh.
 const refreshThreshold = 5 * time.Minute
@@ -71,7 +76,7 @@ func (t *RefreshTransport) maybeRefresh(req *http.Request) error {
 
 	if !t.RefreshExpiresAt.IsZero() && time.Now().After(t.RefreshExpiresAt) {
 		t.mu.Unlock()
-		return fmt.Errorf("session expired, please run `gcx auth login` to re-authenticate")
+		return ErrRefreshTokenExpired
 	}
 
 	// Another goroutine is already refreshing — wait for it to finish.
@@ -110,6 +115,11 @@ func (t *RefreshTransport) maybeRefresh(req *http.Request) error {
 		return fmt.Errorf("server returned unparseable expires_at %q: %w", result.Data.ExpiresAt, parseErr)
 	}
 	t.ExpiresAt = parsed
+	if result.Data.RefreshExpiresAt != "" {
+		if rp, err := time.Parse(time.RFC3339, result.Data.RefreshExpiresAt); err == nil {
+			t.RefreshExpiresAt = rp
+		}
+	}
 	storedRefresh := t.RefreshToken
 	onRefresh := t.OnRefresh
 	t.mu.Unlock()

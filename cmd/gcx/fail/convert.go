@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/grafana"
 	"github.com/grafana/gcx/internal/linter"
@@ -29,6 +30,7 @@ func ErrorToDetailedError(err error) *DetailedError {
 		convertContextCanceled,    // Context cancellation (must be first — cancellation can wrap other errors)
 		convertRequiredFlagErrors, // Cobra required-flag errors — must appear before generic checks
 		convertConfigErrors,       // Config-related
+		convertAuthErrors,         // Auth-related (expired tokens)
 		convertFSErrors,           // FS-related
 		convertResourcesErrors,    // Resources-related
 		convertNetworkErrors,      // Network-related errors
@@ -105,6 +107,19 @@ func convertConfigErrors(err error) (*DetailedError, bool) {
 		}, true
 	}
 
+	return nil, false
+}
+
+func convertAuthErrors(err error) (*DetailedError, bool) {
+	if errors.Is(err, auth.ErrRefreshTokenExpired) {
+		return &DetailedError{
+			Parent:  err,
+			Summary: "Session expired",
+			Suggestions: []string{
+				"Run `gcx auth login` to re-authenticate",
+			},
+		}, true
+	}
 	return nil, false
 }
 
