@@ -231,13 +231,16 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
-		Use:   "get ID",
+		Use:   "get NAME",
 		Short: "Get a single Synthetic Monitoring check.",
-		Example: `  # Get check by numeric ID.
-  gcx synth checks get 42
+		Example: `  # Get check by resource name (from 'gcx synth checks list').
+  gcx synth checks get grafana-instance-health-5594
+
+  # Get check by numeric ID.
+  gcx synth checks get 5594
 
   # Get check with current execution status.
-  gcx synth checks get 42 --show-status`,
+  gcx synth checks get grafana-instance-health-5594 --show-status`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -246,10 +249,10 @@ func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			// Validate the argument is numeric.
-			_, err := strconv.ParseInt(args[0], 10, 64)
-			if err != nil {
-				return fmt.Errorf("invalid check ID %q: must be a number or name", args[0])
+			// Accept both slug-id names and bare numeric IDs.
+			name := args[0]
+			if _, ok := extractIDFromSlug(name); !ok {
+				return fmt.Errorf("invalid check name %q: must be a resource name (e.g. grafana-instance-health-5594) or numeric ID", name)
 			}
 
 			crud, _, err := NewTypedCRUD(ctx, loader)
@@ -257,7 +260,7 @@ func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
 				return err
 			}
 
-			typedObj, err := crud.Get(ctx, args[0])
+			typedObj, err := crud.Get(ctx, name)
 			if err != nil {
 				return err
 			}
@@ -568,7 +571,7 @@ func (o *deleteOpts) setup(flags *pflag.FlagSet) {
 func newDeleteCommand(loader smcfg.Loader) *cobra.Command {
 	opts := &deleteOpts{}
 	cmd := &cobra.Command{
-		Use:   "delete ID...",
+		Use:   "delete NAME...",
 		Short: "Delete Synthetic Monitoring checks.",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -593,20 +596,13 @@ func newDeleteCommand(loader smcfg.Loader) *cobra.Command {
 				return err
 			}
 
-			for _, arg := range args {
-				// Try as numeric ID first, otherwise use as name.
-				id, err := strconv.ParseInt(arg, 10, 64)
-				var name string
-				if err == nil && id > 0 {
-					name = slugifyJob("") + "-" + strconv.FormatInt(id, 10)
-				} else {
-					name = arg
-				}
-
+			for _, name := range args {
+				// Accepts both slug-id names (grafana-instance-health-5594) and bare numeric IDs (5594).
+				// DeleteFn extracts the numeric ID via extractIDFromSlug.
 				if err := crud.Delete(ctx, name); err != nil {
-					return fmt.Errorf("deleting check %s: %w", arg, err)
+					return fmt.Errorf("deleting check %s: %w", name, err)
 				}
-				cmdio.Success(cmd.OutOrStdout(), "Deleted check %s", arg)
+				cmdio.Success(cmd.OutOrStdout(), "Deleted check %s", name)
 			}
 			return nil
 		},
