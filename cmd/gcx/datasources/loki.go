@@ -6,7 +6,6 @@ import (
 	"io"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
-	"github.com/grafana/gcx/cmd/gcx/datasources/query"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -14,20 +13,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
-
-func lokiCmd(configOpts *cmdconfig.Options) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "loki",
-		Short: "Loki datasource operations",
-		Long:  "Operations specific to Loki datasources such as labels and series.",
-	}
-
-	cmd.AddCommand(lokiLabelsCmd(configOpts))
-	cmd.AddCommand(seriesCmd(configOpts))
-	cmd.AddCommand(query.LokiCmd(configOpts))
-
-	return cmd
-}
 
 type lokiLabelsOpts struct {
 	IO         cmdio.Options
@@ -49,7 +34,7 @@ func (opts *lokiLabelsOpts) Validate() error {
 }
 
 //nolint:dupl
-func lokiLabelsCmd(configOpts *cmdconfig.Options) *cobra.Command {
+func LokiLabelsCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	opts := &lokiLabelsOpts{}
 
 	cmd := &cobra.Command{
@@ -170,7 +155,7 @@ func (opts *seriesOpts) Validate() error {
 }
 
 //nolint:dupl
-func seriesCmd(configOpts *cmdconfig.Options) *cobra.Command {
+func SeriesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	opts := &seriesOpts{}
 
 	cmd := &cobra.Command{

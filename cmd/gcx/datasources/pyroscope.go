@@ -6,7 +6,6 @@ import (
 	"io"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
-	"github.com/grafana/gcx/cmd/gcx/datasources/query"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -14,21 +13,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
-
-func pyroscopeCmd(configOpts *cmdconfig.Options) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "pyroscope",
-		Short: "Pyroscope datasource operations",
-		Long:  "Operations specific to Pyroscope datasources such as profile-types and labels.",
-	}
-
-	cmd.AddCommand(profileTypesCmd(configOpts))
-	cmd.AddCommand(pyroscopeLabelsCmd(configOpts))
-	cmd.AddCommand(query.PyroscopeCmd(configOpts))
-	cmd.AddCommand(query.PyroscopeSeriesCmd(configOpts))
-
-	return cmd
-}
 
 type profileTypesOpts struct {
 	IO         cmdio.Options
@@ -47,7 +31,7 @@ func (opts *profileTypesOpts) Validate() error {
 	return opts.IO.Validate()
 }
 
-func profileTypesCmd(configOpts *cmdconfig.Options) *cobra.Command {
+func ProfileTypesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	opts := &profileTypesOpts{}
 
 	cmd := &cobra.Command{
@@ -147,7 +131,7 @@ func (opts *pyroscopeLabelsOpts) Validate() error {
 	return opts.IO.Validate()
 }
 
-func pyroscopeLabelsCmd(configOpts *cmdconfig.Options) *cobra.Command {
+func PyroscopeLabelsCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	opts := &pyroscopeLabelsOpts{}
 
 	cmd := &cobra.Command{

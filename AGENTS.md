@@ -157,10 +157,15 @@ internal/
 │   ├── incidents/  IRM Incidents provider
 │   ├── k6/         K6 Cloud provider (projects, tests, runs, envvars)
 │   ├── kg/         Knowledge Graph (Asserts) provider
+│   ├── logs/       Logs signal provider (Loki queries + Adaptive Logs commands)
+│   ├── metrics/    Metrics signal provider (Prometheus queries + Adaptive Metrics commands)
 │   ├── oncall/     OnCall provider (schedules, integrations, escalation chains)
 │   ├── appo11y/    App Observability provider (overrides, settings — singleton resources)
+│   ├── profiles/   Profiles signal provider (Pyroscope queries + adaptive stub)
 │   ├── slo/        SLO provider (definitions, reports)
-│   └── synth/      Synthetic Monitoring provider (checks, probes)
+│   ├── synth/      Synthetic Monitoring provider (checks, probes)
+│   ├── traces/     Traces signal provider (Tempo queries + Adaptive Traces commands)
+│   └── adaptive/   Shared adaptive subpackages (metrics/, logs/, traces/, auth/) — imported by signal providers
 ├── dashboards/  Dashboard Image Renderer client (PNG snapshots)
 ├── datasources/ Datasource HTTP client (legacy REST API)
 ├── query/       Datasource query clients

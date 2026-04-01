@@ -12,18 +12,14 @@ func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "datasources",
 		Short: "Manage and query Grafana datasources",
-		Long:  "List, inspect, and query Grafana datasources. Supports Prometheus, Loki, Pyroscope, and Tempo datasource-specific query operations alongside generic queries.",
+		Long:  "List, inspect, and query Grafana datasources. Use top-level signal commands (metrics, logs, traces, profiles) for datasource-specific queries.",
 	}
 
 	configOpts.BindFlags(cmd.PersistentFlags())
 
 	cmd.AddCommand(listCmd(configOpts))
 	cmd.AddCommand(getCmd(configOpts))
-	cmd.AddCommand(prometheusCmd(configOpts))
-	cmd.AddCommand(lokiCmd(configOpts))
-	cmd.AddCommand(pyroscopeCmd(configOpts))
-	cmd.AddCommand(tempoCmd())
-	cmd.AddCommand(genericCmd(configOpts))
+	cmd.AddCommand(queryCmd(configOpts))
 
 	return cmd
 }

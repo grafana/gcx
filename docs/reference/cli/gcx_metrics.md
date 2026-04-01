@@ -1,17 +1,13 @@
-## gcx datasources
+## gcx metrics
 
-Manage and query Grafana datasources
-
-### Synopsis
-
-List, inspect, and query Grafana datasources. Use top-level signal commands (metrics, logs, traces, profiles) for datasource-specific queries.
+Query Prometheus datasources and manage Adaptive Metrics
 
 ### Options
 
 ```
       --config string    Path to the configuration file to use
       --context string   Name of the context to use
-  -h, --help             help for datasources
+  -h, --help             help for metrics
 ```
 
 ### Options inherited from parent commands
@@ -26,7 +22,9 @@ List, inspect, and query Grafana datasources. Use top-level signal commands (met
 ### SEE ALSO
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
-* [gcx datasources get](gcx_datasources_get.md)	 - Get details of a specific datasource
-* [gcx datasources list](gcx_datasources_list.md)	 - List all datasources
-* [gcx datasources query](gcx_datasources_query.md)	 - Query any datasource (auto-detects type)
+* [gcx metrics adaptive](gcx_metrics_adaptive.md)	 - Manage Adaptive Metrics resources
+* [gcx metrics labels](gcx_metrics_labels.md)	 - List labels or label values
+* [gcx metrics metadata](gcx_metrics_metadata.md)	 - Get metric metadata
+* [gcx metrics query](gcx_metrics_query.md)	 - Execute a PromQL query against a Prometheus datasource
+* [gcx metrics targets](gcx_metrics_targets.md)	 - List scrape targets
 

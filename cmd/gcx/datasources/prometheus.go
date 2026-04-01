@@ -7,7 +7,6 @@ import (
 	"text/tabwriter"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
-	"github.com/grafana/gcx/cmd/gcx/datasources/query"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -15,21 +14,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
-
-func prometheusCmd(configOpts *cmdconfig.Options) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "prometheus",
-		Short: "Prometheus datasource operations",
-		Long:  "Operations specific to Prometheus datasources such as labels, metadata, and targets.",
-	}
-
-	cmd.AddCommand(labelsCmd(configOpts))
-	cmd.AddCommand(metadataCmd(configOpts))
-	cmd.AddCommand(targetsCmd(configOpts))
-	cmd.AddCommand(query.PrometheusCmd(configOpts))
-
-	return cmd
-}
 
 type labelsOpts struct {
 	IO         cmdio.Options
@@ -51,7 +35,7 @@ func (opts *labelsOpts) Validate() error {
 }
 
 //nolint:dupl
-func labelsCmd(configOpts *cmdconfig.Options) *cobra.Command {
+func LabelsCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	opts := &labelsOpts{}
 
 	cmd := &cobra.Command{
@@ -167,7 +151,7 @@ func (opts *metadataOpts) Validate() error {
 }
 
 //nolint:dupl
-func metadataCmd(configOpts *cmdconfig.Options) *cobra.Command {
+func MetadataCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	opts := &metadataOpts{}
 
 	cmd := &cobra.Command{
@@ -281,7 +265,7 @@ func (opts *targetsOpts) Validate() error {
 }
 
 //nolint:dupl
-func targetsCmd(configOpts *cmdconfig.Options) *cobra.Command {
+func TargetsCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	opts := &targetsOpts{}
 
 	cmd := &cobra.Command{

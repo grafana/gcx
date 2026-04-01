@@ -1,17 +1,13 @@
-## gcx datasources
+## gcx profiles
 
-Manage and query Grafana datasources
-
-### Synopsis
-
-List, inspect, and query Grafana datasources. Use top-level signal commands (metrics, logs, traces, profiles) for datasource-specific queries.
+Query Pyroscope datasources and manage continuous profiling
 
 ### Options
 
 ```
       --config string    Path to the configuration file to use
       --context string   Name of the context to use
-  -h, --help             help for datasources
+  -h, --help             help for profiles
 ```
 
 ### Options inherited from parent commands
@@ -26,7 +22,9 @@ List, inspect, and query Grafana datasources. Use top-level signal commands (met
 ### SEE ALSO
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
-* [gcx datasources get](gcx_datasources_get.md)	 - Get details of a specific datasource
-* [gcx datasources list](gcx_datasources_list.md)	 - List all datasources
-* [gcx datasources query](gcx_datasources_query.md)	 - Query any datasource (auto-detects type)
+* [gcx profiles adaptive](gcx_profiles_adaptive.md)	 - Manage Adaptive Profiles (not yet available)
+* [gcx profiles labels](gcx_profiles_labels.md)	 - List labels or label values
+* [gcx profiles profile-types](gcx_profiles_profile-types.md)	 - List available profile types
+* [gcx profiles query](gcx_profiles_query.md)	 - Execute a profiling query against a Pyroscope datasource
+* [gcx profiles series](gcx_profiles_series.md)	 - Query profile time-series data from a Pyroscope datasource
 

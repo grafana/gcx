@@ -1,17 +1,13 @@
-## gcx datasources
+## gcx logs
 
-Manage and query Grafana datasources
-
-### Synopsis
-
-List, inspect, and query Grafana datasources. Use top-level signal commands (metrics, logs, traces, profiles) for datasource-specific queries.
+Query Loki datasources and manage Adaptive Logs
 
 ### Options
 
 ```
       --config string    Path to the configuration file to use
       --context string   Name of the context to use
-  -h, --help             help for datasources
+  -h, --help             help for logs
 ```
 
 ### Options inherited from parent commands
@@ -26,7 +22,8 @@ List, inspect, and query Grafana datasources. Use top-level signal commands (met
 ### SEE ALSO
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
-* [gcx datasources get](gcx_datasources_get.md)	 - Get details of a specific datasource
-* [gcx datasources list](gcx_datasources_list.md)	 - List all datasources
-* [gcx datasources query](gcx_datasources_query.md)	 - Query any datasource (auto-detects type)
+* [gcx logs adaptive](gcx_logs_adaptive.md)	 - Manage Adaptive Logs resources
+* [gcx logs labels](gcx_logs_labels.md)	 - List labels or label values
+* [gcx logs query](gcx_logs_query.md)	 - Execute a LogQL query against a Loki datasource
+* [gcx logs series](gcx_logs_series.md)	 - List log streams
 

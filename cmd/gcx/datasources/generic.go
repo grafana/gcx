@@ -6,11 +6,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func genericCmd(configOpts *cmdconfig.Options) *cobra.Command {
+func queryCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "generic",
-		Short: "Generic datasource operations (auto-detects type)",
-		Long:  "Operations for any datasource type. The datasource type is auto-detected via the Grafana API.",
+		Use:   "query",
+		Short: "Query any datasource (auto-detects type)",
+		Long:  "Query any datasource type. The datasource type is auto-detected via the Grafana API.",
 	}
 
 	cmd.AddCommand(query.GenericCmd(configOpts))
