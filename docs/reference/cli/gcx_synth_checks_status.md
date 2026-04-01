@@ -22,6 +22,12 @@ gcx synth checks status [ID] [flags]
   # Show status of a specific check by ID.
   gcx synth checks status 42
 
+  # Filter by job name glob.
+  gcx synth checks status --job 'shopk8s-*'
+
+  # Filter by label and status.
+  gcx synth checks status --label env=prod --status FAILING
+
   # Specify the Prometheus datasource to query.
   gcx synth checks status --datasource-uid my-prometheus
 
@@ -34,8 +40,11 @@ gcx synth checks status [ID] [flags]
 ```
       --datasource-uid string   UID of the Prometheus datasource to query
   -h, --help                    help for status
+      --job string              Filter by job name glob pattern (e.g. --job 'shopk8s-*')
       --json string             Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --label stringArray       Filter by label key=value (repeatable, e.g. --label env=prod)
   -o, --output string           Output format. One of: graph, json, table, wide, yaml (default "table")
+      --status string           Filter results by status: OK, FAILING, or NODATA
 ```
 
 ### Options inherited from parent commands

@@ -3,7 +3,20 @@
 Get a single Synthetic Monitoring check.
 
 ```
-gcx synth checks get ID [flags]
+gcx synth checks get NAME [flags]
+```
+
+### Examples
+
+```
+  # Get check by resource name (from 'gcx synth checks list').
+  gcx synth checks get grafana-instance-health-5594
+
+  # Get check by numeric ID.
+  gcx synth checks get 5594
+
+  # Get check with current execution status.
+  gcx synth checks get grafana-instance-health-5594 --show-status
 ```
 
 ### Options
@@ -12,6 +25,7 @@ gcx synth checks get ID [flags]
   -h, --help            help for get
       --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
   -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
+      --show-status     Query and display the check's current execution status from Prometheus
 ```
 
 ### Options inherited from parent commands

@@ -1,16 +1,31 @@
-## gcx synth checks push
+## gcx synth checks create
 
-Push Synthetic Monitoring checks from files.
+Create a Synthetic Monitoring check from a file.
 
 ```
-gcx synth checks push FILE... [flags]
+gcx synth checks create [flags]
+```
+
+### Examples
+
+```
+  # Create a check from a YAML file.
+  gcx synth checks create -f check.yaml
+
+  # Create and show resulting status.
+  gcx synth checks create -f check.yaml --show-status
+
+  # Validate HTTP target before creating.
+  gcx synth checks create -f check.yaml --validate-targets
 ```
 
 ### Options
 
 ```
-      --dry-run   Preview changes without applying them
-  -h, --help      help for push
+  -f, --filename string    File containing the check manifest (YAML)
+  -h, --help               help for create
+      --show-status        Query and display check status after creation
+      --validate-targets   Pre-flight HTTP HEAD request for HTTP check targets (warning only)
 ```
 
 ### Options inherited from parent commands

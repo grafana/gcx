@@ -250,13 +250,9 @@ func (reader *FSReader) ReadFile(ctx context.Context, result *resources.Resource
 // hasMultipleYAMLDocuments returns true if data contains more than one
 // YAML document separator ("---" on its own line).
 func hasMultipleYAMLDocuments(data []byte) bool {
-	count := 0
 	for line := range bytes.SplitSeq(data, []byte("\n")) {
 		if string(bytes.TrimSpace(line)) == "---" {
-			count++
-			if count > 1 {
-				return true
-			}
+			return true
 		}
 	}
 	return false

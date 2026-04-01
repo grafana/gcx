@@ -1,16 +1,28 @@
-## gcx synth checks pull
+## gcx synth checks update
 
-Pull Synthetic Monitoring checks to disk.
+Update a Synthetic Monitoring check from a file.
 
 ```
-gcx synth checks pull [flags]
+gcx synth checks update <name> [flags]
+```
+
+### Examples
+
+```
+  # Update a check using its resource name.
+  gcx synth checks update web-check-1234 -f check.yaml
+
+  # Update and show previous status.
+  gcx synth checks update web-check-1234 -f check.yaml --show-status
 ```
 
 ### Options
 
 ```
-  -h, --help            help for pull
-  -d, --output string   Directory to write check YAML files to (default ".")
+  -f, --filename string    File containing the check manifest (YAML)
+  -h, --help               help for update
+      --show-status        Query and display the previous check status after update
+      --validate-targets   Pre-flight HTTP HEAD request for HTTP check targets (warning only)
 ```
 
 ### Options inherited from parent commands

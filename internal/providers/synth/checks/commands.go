@@ -684,13 +684,9 @@ func readCheckSpec(filePath string) (*CheckSpec, error) {
 // hasMultipleDocuments checks if YAML data contains more than one document
 // by looking for "---" document separators on their own line.
 func hasMultipleDocuments(data []byte) bool {
-	count := 0
 	for line := range strings.SplitSeq(string(data), "\n") {
 		if strings.TrimSpace(line) == "---" {
-			count++
-			if count > 1 {
-				return true
-			}
+			return true
 		}
 	}
 	return false
