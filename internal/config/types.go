@@ -266,6 +266,19 @@ func (grafana GrafanaConfig) Validate(contextName string) error {
 		}
 	}
 
+	hasProxy := grafana.ProxyEndpoint != ""
+	hasOAuth := grafana.OAuthToken != ""
+	if hasProxy != hasOAuth {
+		return ValidationError{
+			Path:    fmt.Sprintf("$.contexts.'%s'.grafana", contextName),
+			Message: "incomplete OAuth config: proxy-endpoint and oauth-token must both be set",
+			Suggestions: []string{
+				"Run `gcx auth login` to complete the OAuth flow",
+				"Or remove partial OAuth fields from the config",
+			},
+		}
+	}
+
 	if err := grafana.validateNamespace(contextName); err != nil {
 		return err
 	}
