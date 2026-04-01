@@ -1,4 +1,4 @@
-# gcx — Grafana CLI
+# gcx — Grafana Cloud CLI
 
 <p>
 <a href="https://github.com/grafana/gcx/actions/workflows/ci.yaml"><img src="https://github.com/grafana/gcx/actions/workflows/ci.yaml/badge.svg?branch=main" alt="CI"></a>
@@ -7,26 +7,31 @@
 <img src="https://img.shields.io/badge/status-public%20preview-orange" alt="Public Preview">
 </p>
 
-The official Grafana & Grafana Cloud CLI, designed for AI agents, GitOps, and CI/CD.
+Bring Grafana Cloud to your command line and your agentic coding environment. Logs, traces, metrics, alerts, SLOs — accessible where you already work.
 
 ```
-gcx resources get dashboards                    # list dashboards
-gcx alert rules list                            # list alert rules
-gcx datasources prometheus query 'up'           # run PromQL
-gcx oncall schedules list                       # list on-call schedules
-gcx slo definitions list                        # list SLOs
-gcx synth checks list                           # list synthetic checks
+gcx datasources prometheus query 'rate(http_requests_total[5m])' --window 1h
+gcx datasources loki query '{app="checkout"} |= "error"' --window 1h
+gcx alert rules list                            # check what's firing
+gcx slo definitions list                        # review SLO status
+gcx synth checks list                           # synthetic monitoring
+gcx oncall schedules list                       # on-call schedules
 gcx resources push -p ./resources               # push local changes
 ```
 
-## Overview
+## Why gcx
 
-gcx is a single CLI for managing both **Grafana** (dashboards, folders, alert rules, datasources) and **Grafana Cloud** products (SLOs, Synthetic Monitoring, OnCall, K6, Fleet Management, Incidents, Knowledge Graph, and Adaptive Telemetry).
+Agentic coding tools like Claude Code and Cursor have changed how developers build software. But they're flying blind. Code ships. Observability comes later — if it comes at all.
 
-- **Manage Grafana & Grafana Cloud** — one tool for dashboards, alerting, SLOs, on-call, synthetic checks, load testing, and more
-- **AI agent friendly** — JSON/YAML output, structured errors, predictable exit codes. Agent mode auto-detected for Claude Code, Copilot, Cursor, and others
-- **GitOps** — pull resources to files, version in git, push back with full round-trip fidelity
-- **Observability as code** — scaffold Go projects, import existing dashboards, lint with Rego rules, live-reload dev server
+gcx closes that gap. It connects your editor to your entire Grafana Cloud production stack, making observability a **development signal**, not an afterthought. Your code and your observability improve in the same loop.
+
+Tell your AI coding agent: *"Don't guess. Check the actual production data."*
+
+- **Production-aware development** — query live metrics, logs, and traces without leaving your editor
+- **AI agent native** — JSON/YAML output, structured errors, predictable exit codes. Agent mode auto-detected for Claude Code, Copilot, Cursor, and others
+- **Full Grafana Cloud access** — dashboards, alerting, SLOs, Synthetic Monitoring, OnCall, K6, Fleet Management, Incidents, and more from a single CLI
+- **GitOps & CI/CD** — pull resources to files, version in git, push back with full round-trip fidelity
+- **Observability as code** — scaffold projects, import dashboards, lint with Rego rules, live-reload dev server
 - **Multi-environment** — named contexts to switch between dev, staging, and production
 
 > [!NOTE]
@@ -39,6 +44,22 @@ gcx is a single CLI for managing both **Grafana** (dashboards, folders, alert ru
 > Bugs and issues are handled solely by Engineering teams. On-call support or SLAs are not available.
 
 See [Release life cycle for Grafana Labs](https://grafana.com/docs/release-life-cycle/).
+
+## The Agentic Workflow
+
+Here's what it looks like when your coding agent has access to production:
+
+**1. An alert fires** — P95 latency on the checkout service crosses the SLO threshold.
+
+**2. Your agent investigates** — It queries live metrics and traces through gcx, pinpoints the root cause: a missing index on `customer_id` causing full table scans under load.
+
+**3. It fixes the issue** — Drafts the migration, adds the index.
+
+**4. It prevents recurrence** — Instruments the service with OpenTelemetry spans, sets up a Synthetic Monitoring check on the checkout flow, and creates an alert rule on query duration.
+
+**5. It ships** — Opens a PR, tests pass, deploys to production. The alert resolves.
+
+Investigation, fix, instrumentation, monitoring — without the developer ever leaving their editor. Because gcx builds on everything you've already configured in Grafana Cloud — your dashboards, your alerts, your datasources — no other tool can give you this depth out of the box.
 
 ## Install
 
@@ -75,7 +96,15 @@ your agent deep Grafana knowledge.
 
 ### 1. Authenticate
 
-**Grafana (on-prem or Grafana Cloud instance):**
+**OAuth login (recommended):**
+
+```bash
+gcx auth login
+```
+
+Opens your browser, authenticates with Grafana Cloud, and configures everything automatically.
+
+**Service account token (on-prem or manual setup):**
 
 ```bash
 gcx config set contexts.my-grafana.grafana.server https://your-instance.grafana.net
@@ -121,8 +150,8 @@ gcx oncall schedules list                       # list on-call schedules
 gcx k6 load-tests list                          # list k6 load tests
 
 # Query datasources
-gcx datasources prometheus query 'rate(http_requests_total[5m])' --range=1h
-gcx datasources loki query '{app="nginx"} |= "error"' --range=1h
+gcx datasources prometheus query 'rate(http_requests_total[5m])' --window 1h
+gcx datasources loki query '{app="nginx"} |= "error"' --window 1h
 ```
 
 ## Grafana Cloud Products
@@ -139,7 +168,7 @@ gcx provides dedicated commands for each Grafana Cloud product:
 | **Fleet Management** | `gcx fleet` | `fleet pipelines list`, `fleet collectors list` |
 | **IRM Incidents** | `gcx incidents` | `incidents list`, `incidents create -f incident.yaml` |
 | **Knowledge Graph** | `gcx kg` | `kg status`, `kg search`, `kg entities show` |
-| **Adaptive Telemetry** | `gcx adaptive` | `adaptive metrics recommendations list`, `adaptive logs patterns list` |
+| **Adaptive Telemetry** | `gcx adaptive` | `adaptive metrics recommendations show`, `adaptive logs patterns show` |
 
 ## Resource Management
 
@@ -176,12 +205,12 @@ gcx alert rules list
 gcx alert groups list
 
 # PromQL queries
-gcx datasources prometheus query 'rate(http_requests_total[5m])' --range=1h
+gcx datasources prometheus query 'rate(http_requests_total[5m])' --window 1h
 gcx datasources prometheus labels
 gcx datasources prometheus metadata
 
 # LogQL queries
-gcx datasources loki query '{app="nginx"} |= "error"' --range=1h
+gcx datasources loki query '{app="nginx"} |= "error"' --window 1h
 gcx datasources loki labels
 gcx datasources loki series
 ```
