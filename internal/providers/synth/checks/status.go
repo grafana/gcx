@@ -361,7 +361,7 @@ Requires a Prometheus datasource containing SM metrics.`,
 			var start, end time.Time
 
 			var clamped bool
-			start, end, clamped, err = parseCheckTimeRange(fromToSet, opts.From, opts.To, opts.Window, now, c.Created)
+			start, end, clamped, err = ParseCheckTimeRange(fromToSet, opts.From, opts.To, opts.Window, now, c.Created)
 			if clamped {
 				age := now.Sub(time.Unix(int64(c.Created), 0)).Round(time.Minute)
 				cmdio.Info(cmd.OutOrStdout(), "Check was created %s ago — window adjusted to match", age)
@@ -829,13 +829,13 @@ func smMetricsDatasourceName(ctx context.Context, grafanaCtx *config.Context) (s
 // Window parsing
 // ---------------------------------------------------------------------------
 
-// parseCheckTimeRange resolves the start/end time range from either --from/--to
+// ParseCheckTimeRange resolves the start/end time range from either --from/--to
 // flags or --window shorthand. checkCreated is a Unix timestamp (float64) from
 // Check.Created; when non-zero and the user has not set --from explicitly, the
 // returned start is clamped to the check's creation time so that the window does
 // not extend into the past before the check existed. clamped is true when that
 // adjustment was applied.
-func parseCheckTimeRange(fromToSet bool, from, to, window string, now time.Time, checkCreated float64) (time.Time, time.Time, bool, error) {
+func ParseCheckTimeRange(fromToSet bool, from, to, window string, now time.Time, checkCreated float64) (time.Time, time.Time, bool, error) {
 	if fromToSet {
 		start, err := ParseCheckTimelineTime(from, now)
 		if err != nil {

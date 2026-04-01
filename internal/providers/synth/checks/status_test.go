@@ -493,3 +493,92 @@ func TestParseWindow(t *testing.T) {
 		})
 	}
 }
+
+func TestParseCheckTimeRange(t *testing.T) {
+	now := time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name         string
+		fromToSet    bool
+		from, to     string
+		window       string
+		checkCreated float64
+		wantStart    time.Time
+		wantEnd      time.Time
+		wantClamped  bool
+		wantErr      bool
+	}{
+		{
+			name:         "window only, no clamping (old check)",
+			window:       "6h",
+			checkCreated: float64(now.Add(-10 * time.Hour).Unix()),
+			wantStart:    now.Add(-6 * time.Hour),
+			wantEnd:      now,
+			wantClamped:  false,
+		},
+		{
+			name:         "window clamped to checkCreated (new check)",
+			window:       "6h",
+			checkCreated: float64(now.Add(-2 * time.Hour).Unix()),
+			wantStart:    now.Add(-2 * time.Hour),
+			wantEnd:      now,
+			wantClamped:  true,
+		},
+		{
+			name:         "checkCreated=0 means no clamping",
+			window:       "6h",
+			checkCreated: 0,
+			wantStart:    now.Add(-6 * time.Hour),
+			wantEnd:      now,
+			wantClamped:  false,
+		},
+		{
+			name:         "explicit --from/--to never clamps",
+			fromToSet:    true,
+			from:         "now-12h",
+			to:           "now",
+			checkCreated: float64(now.Add(-1 * time.Hour).Unix()),
+			wantStart:    now.Add(-12 * time.Hour),
+			wantEnd:      now,
+			wantClamped:  false,
+		},
+		{
+			name:    "invalid window",
+			window:  "abc",
+			wantErr: true,
+		},
+		{
+			name:      "invalid --from",
+			fromToSet: true,
+			from:      "garbage",
+			to:        "now",
+			wantErr:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			start, end, clamped, err := checks.ParseCheckTimeRange(
+				tt.fromToSet, tt.from, tt.to, tt.window, now, tt.checkCreated,
+			)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !start.Equal(tt.wantStart) {
+				t.Errorf("start = %v, want %v", start, tt.wantStart)
+			}
+			if !end.Equal(tt.wantEnd) {
+				t.Errorf("end = %v, want %v", end, tt.wantEnd)
+			}
+			if clamped != tt.wantClamped {
+				t.Errorf("clamped = %v, want %v", clamped, tt.wantClamped)
+			}
+		})
+	}
+}
