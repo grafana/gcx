@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -151,7 +152,7 @@ func TestResourceAdapter_Get_NonNumericName(t *testing.T) {
 
 	_, err = a.Get(context.Background(), "not-a-number", metav1.GetOptions{})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "numeric check ID")
+	assert.True(t, apierrors.IsNotFound(err), "expected NotFound error for non-numeric name, got: %v", err)
 }
 
 func TestResourceAdapter_Delete_NonNumericName(t *testing.T) {
