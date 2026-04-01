@@ -319,11 +319,6 @@ func (c *Client) ConfigureEnvironment(ctx context.Context, cfg EnvironmentConfig
 	return c.postJSON(ctx, environmentPath, cfg, nil)
 }
 
-// AddServiceDashboard configures the service dashboard settings.
-func (c *Client) AddServiceDashboard(ctx context.Context, cfg ServiceDashboardConfig) error {
-	return c.postJSON(ctx, pluginResourcePath+"/asserts/api-server/v1/config/dashboard/Service", cfg, nil)
-}
-
 // ConfigureKPIDisplay configures the KPI drawer display settings.
 func (c *Client) ConfigureKPIDisplay(ctx context.Context, cfg *KPIDisplayConfig) error {
 	return c.postJSON(ctx, pluginResourcePath+"/asserts/api-server/v1/config/display/kpi", cfg, nil)
