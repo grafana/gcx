@@ -29,6 +29,8 @@ import (
 //go:embed templates/*.html
 var templateFS embed.FS
 
+const maxResponseBytes = 10 << 20 // 10 MB
+
 // Result contains the result of a successful authentication flow.
 type Result struct {
 	// Token is the gat_ access token for API authentication.
@@ -325,7 +327,7 @@ func exchangeCodeForToken(ctx context.Context, endpoint, code, codeVerifier stri
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read exchange response: %w", err)
 	}

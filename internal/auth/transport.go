@@ -130,13 +130,15 @@ func (t *RefreshTransport) doRefresh(ctx context.Context, refreshToken string) (
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	limitedBody := io.LimitReader(resp.Body, maxResponseBytes)
+
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(limitedBody)
 		return nil, fmt.Errorf("refresh returned status %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	var result refreshResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(limitedBody).Decode(&result); err != nil {
 		return nil, fmt.Errorf("failed to parse refresh response: %w", err)
 	}
 

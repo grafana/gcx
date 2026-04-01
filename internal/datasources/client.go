@@ -12,6 +12,8 @@ import (
 	"k8s.io/client-go/rest"
 )
 
+const maxResponseBytes = 10 << 20 // 10 MB
+
 // Datasource holds the fields returned by the legacy Grafana datasource REST API.
 type Datasource struct {
 	UID             string `json:"uid"`
@@ -60,7 +62,7 @@ func (c *Client) List(ctx context.Context) ([]*Datasource, error) {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -99,7 +101,7 @@ func (c *Client) get(ctx context.Context, path, identifier string) (*Datasource,
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
