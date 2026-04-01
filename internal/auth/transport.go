@@ -28,6 +28,7 @@ type RefreshTransport struct {
 	OnRefresh     TokenRefresher
 
 	mu         sync.Mutex
+	cond       *sync.Cond
 	refreshing bool
 }
 
@@ -52,13 +53,30 @@ func (t *RefreshTransport) base() http.RoundTripper {
 	return http.DefaultTransport
 }
 
+func (t *RefreshTransport) initCond() {
+	if t.cond == nil {
+		t.cond = sync.NewCond(&t.mu)
+	}
+}
+
 func (t *RefreshTransport) maybeRefresh(req *http.Request) error {
 	t.mu.Lock()
-	if t.RefreshToken == "" || time.Until(t.ExpiresAt) > refreshThreshold || t.refreshing {
+	t.initCond()
+
+	if t.RefreshToken == "" || time.Until(t.ExpiresAt) > refreshThreshold {
 		t.mu.Unlock()
 		return nil
 	}
-	// Mark refreshing so concurrent callers skip the refresh.
+
+	// Another goroutine is already refreshing — wait for it to finish.
+	if t.refreshing {
+		for t.refreshing {
+			t.cond.Wait()
+		}
+		t.mu.Unlock()
+		return nil
+	}
+
 	t.refreshing = true
 	refreshToken := t.RefreshToken
 	t.mu.Unlock()
@@ -68,10 +86,14 @@ func (t *RefreshTransport) maybeRefresh(req *http.Request) error {
 
 	t.mu.Lock()
 	t.refreshing = false
+	// wake up any other waiting goroutines waiting on cond.Wait()
+	t.cond.Broadcast()
+
 	if err != nil {
 		t.mu.Unlock()
 		return err
 	}
+
 	t.Token = result.Data.Token
 	if result.Data.RefreshToken != "" {
 		t.RefreshToken = result.Data.RefreshToken
