@@ -949,33 +949,39 @@ func ParseWindow(s string) (time.Duration, error) {
 // by querying the Prometheus datasource. Returns "NODATA" if no data is available.
 // Errors are returned for connectivity or configuration failures — callers should
 // degrade gracefully (warn, not fail).
-func queryCheckStatus(ctx context.Context, loader smcfg.StatusLoader, job, target string) (string, error) {
+// checkStatusInfo holds the result of a single-check Prometheus status query.
+type checkStatusInfo struct {
+	Status  string
+	Success *float64 // nil when no data
+}
+
+func queryCheckStatus(ctx context.Context, loader smcfg.StatusLoader, job, target string) (checkStatusInfo, error) {
 	dsUID, err := resolveDataSourceUID(ctx, "", loader)
 	if err != nil {
-		return "", fmt.Errorf("resolving datasource: %w", err)
+		return checkStatusInfo{}, fmt.Errorf("resolving datasource: %w", err)
 	}
 
 	restCfg, err := loader.LoadGrafanaConfig(ctx)
 	if err != nil {
-		return "", fmt.Errorf("loading Grafana config: %w", err)
+		return checkStatusInfo{}, fmt.Errorf("loading Grafana config: %w", err)
 	}
 
 	promClient, err := prometheus.NewClient(restCfg)
 	if err != nil {
-		return "", fmt.Errorf("creating Prometheus client: %w", err)
+		return checkStatusInfo{}, fmt.Errorf("creating Prometheus client: %w", err)
 	}
 
 	q, err := BuildSuccessRateQuery(job, target)
 	if err != nil {
-		return "", fmt.Errorf("building status query: %w", err)
+		return checkStatusInfo{}, fmt.Errorf("building status query: %w", err)
 	}
 
 	successMap := queryInstantByJobInstance(ctx, promClient, dsUID, q)
 	key := job + "/" + target
 	if val, ok := successMap[key]; ok {
-		return computeCheckStatus(&val), nil
+		return checkStatusInfo{Status: computeCheckStatus(&val), Success: &val}, nil
 	}
-	return computeCheckStatus(nil), nil
+	return checkStatusInfo{Status: computeCheckStatus(nil)}, nil
 }
 
 // autoStep calculates a reasonable query step for the given time range,

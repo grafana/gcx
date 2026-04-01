@@ -286,37 +286,40 @@ func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
 				Probes:           []int64{},
 			}
 
-			if codec.Format() == "table" || codec.Format() == "wide" {
-				if err := codec.Encode(cmd.OutOrStdout(), []Check{c}); err != nil {
-					return err
-				}
-			}
-
-			if codec.Format() != "table" && codec.Format() != "wide" {
-				// For yaml/json, use the typed object.
-				objData, err := json.Marshal(typedObj)
-				if err != nil {
-					return fmt.Errorf("marshaling typed object: %w", err)
-				}
-				var obj unstructured.Unstructured
-				if err := json.Unmarshal(objData, &obj); err != nil {
-					return fmt.Errorf("unmarshaling to unstructured: %w", err)
-				}
-				if err := codec.Encode(cmd.OutOrStdout(), &obj); err != nil {
-					return err
-				}
-			}
-
-			if opts.ShowStatus {
-				status, err := queryCheckStatus(ctx, loader, c.Job, c.Target)
+			// When --show-status is set, render as a status table (NAME + SUCCESS + STATUS columns).
+			if opts.ShowStatus && (codec.Format() == "table" || codec.Format() == "wide") {
+				info, err := queryCheckStatus(ctx, loader, c.Job, c.Target)
 				if err != nil {
 					cmdio.Warning(cmd.OutOrStdout(), "could not retrieve execution status: %v", err)
+					// Fall through to regular table output.
 				} else {
-					cmdio.Info(cmd.OutOrStdout(), "status: %s", status)
+					result := CheckStatusResult{
+						ID:      c.ID,
+						Job:     c.Job,
+						Target:  c.Target,
+						Type:    c.Settings.CheckType(),
+						Success: info.Success,
+						Status:  info.Status,
+					}
+					statusCodec := &StatusTableCodec{Wide: codec.Format() == "wide"}
+					return statusCodec.Encode(cmd.OutOrStdout(), []CheckStatusResult{result})
 				}
 			}
 
-			return nil
+			if codec.Format() == "table" || codec.Format() == "wide" {
+				return codec.Encode(cmd.OutOrStdout(), []Check{c})
+			}
+
+			// For yaml/json, use the typed object.
+			objData, err := json.Marshal(typedObj)
+			if err != nil {
+				return fmt.Errorf("marshaling typed object: %w", err)
+			}
+			var obj unstructured.Unstructured
+			if err := json.Unmarshal(objData, &obj); err != nil {
+				return fmt.Errorf("unmarshaling to unstructured: %w", err)
+			}
+			return codec.Encode(cmd.OutOrStdout(), &obj)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -420,11 +423,11 @@ func newCreateCommand(loader smcfg.StatusLoader) *cobra.Command {
 			}
 
 			if opts.ShowStatus {
-				status, err := queryCheckStatus(ctx, loader, spec.Job, spec.Target)
+				info, err := queryCheckStatus(ctx, loader, spec.Job, spec.Target)
 				if err != nil {
 					cmdio.Warning(cmd.OutOrStdout(), "could not retrieve check status: %v", err)
 				} else {
-					cmdio.Info(cmd.OutOrStdout(), "status: %s", status)
+					cmdio.Info(cmd.OutOrStdout(), "status: %s", info.Status)
 				}
 			}
 
@@ -527,7 +530,7 @@ func newUpdateCommand(loader smcfg.StatusLoader) *cobra.Command {
 
 			if opts.ShowStatus {
 				// Query status before the update so we can report "previous status".
-				prevStatus, err := queryCheckStatus(ctx, loader, spec.Job, spec.Target)
+				prevInfo, err := queryCheckStatus(ctx, loader, spec.Job, spec.Target)
 				if err != nil {
 					// Non-fatal — proceed with the update regardless.
 					cmdio.Warning(cmd.OutOrStdout(), "could not retrieve previous status: %v", err)
@@ -537,8 +540,8 @@ func newUpdateCommand(loader smcfg.StatusLoader) *cobra.Command {
 					return fmt.Errorf("updating check %d: %w", checkID, err)
 				}
 
-				if prevStatus != "" {
-					cmdio.Success(cmd.OutOrStdout(), "Updated check %q (id=%d) — previous status: %s", spec.Job, checkID, prevStatus)
+				if prevInfo.Status != "" {
+					cmdio.Success(cmd.OutOrStdout(), "Updated check %q (id=%d) — previous status: %s", spec.Job, checkID, prevInfo.Status)
 				} else {
 					cmdio.Success(cmd.OutOrStdout(), "Updated check %q (id=%d)", spec.Job, checkID)
 				}
