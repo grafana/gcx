@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strings"
 
 	"github.com/grafana/gcx/cmd/gcx/fail"
@@ -91,9 +92,40 @@ func handleError(err error) {
 }
 
 func formatVersion() string {
+	// Fall back to VCS build info when ldflags are not set (e.g. go install).
+	if commit == "" || date == "" {
+		c, d := vcsInfo()
+		if commit == "" {
+			commit = c
+		}
+		if date == "" {
+			date = d
+		}
+	}
+
 	if version == "" {
 		version = "SNAPSHOT"
 	}
 
 	return fmt.Sprintf("%s built from %s on %s", version, commit, date)
+}
+
+// vcsInfo extracts the short commit hash and timestamp from VCS build info.
+func vcsInfo() (string, string) {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "", ""
+	}
+	var c, d string
+	for _, s := range info.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			if s.Value != "" {
+				c = s.Value[:min(7, len(s.Value))]
+			}
+		case "vcs.time":
+			d = s.Value
+		}
+	}
+	return c, d
 }
