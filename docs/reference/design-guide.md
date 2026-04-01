@@ -506,6 +506,22 @@ UX requirements. All items are `[ADOPT]` unless marked otherwise.
 - [ ] Data fetching is format-agnostic — do not gate fetches on `--output` value (Pattern 13)
 - [ ] PromQL queries use `promql-builder` (`github.com/grafana/promql-builder/go/promql`), not string formatting (Pattern 14)
 - [ ] List/get commands for CRUD resources wrap json/yaml output in K8s envelope manifests (see below)
+- [ ] Table output shows `NAME` (the slug-id or user-facing identifier), not bare numeric `ID` — users need the NAME for get/update/delete commands (see Slug-ID naming below)
+
+### Slug-ID Naming in Tables `[ADOPT]`
+
+Providers whose APIs use numeric IDs should display the composite
+`metadata.name` (e.g. `grafana-instance-health-5594`) as the `NAME` column in
+table/wide output. This is the identifier users copy-paste into `get`, `update`,
+and `delete` commands. Bare numeric IDs are accepted as input (for backward
+compatibility) but should not be the primary display column.
+
+Shared helpers in `internal/resources/adapter/slug.go` —
+`SlugifyName`, `ExtractIDFromSlug`, `ComposeName` — implement the slug-id
+convention. `SetResourceName` must extract and restore the API-level ID from
+the composite name so CRUD operations work after a K8s round-trip.
+
+Reference: Fleet (pipelines, collectors) and Synth (checks) providers.
 
 ### K8s Manifest Wrapping `[ADOPT]`
 

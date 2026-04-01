@@ -145,7 +145,7 @@ internal/
 │   └── instrumentation/  Manifest types, instrumentation client, optimistic lock comparison
 ├── resources/
 │   ├── *.go     Core types: Resource, Selector, Filter, Descriptor, Resources collection
-│   ├── adapter/    ResourceAdapter interface, Factory, ResourceClientRouter, self-registration
+│   ├── adapter/    ResourceAdapter interface, Factory, ResourceClientRouter, self-registration, slug-ID helpers
 │   ├── discovery/  API resource discovery, registry index, GVK resolution, OpenAPI schema fetcher
 │   ├── dynamic/    k8s dynamic client wrapper (namespaced + versioned)
 │   ├── local/      FSReader, FSWriter (disk I/O)

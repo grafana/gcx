@@ -82,7 +82,7 @@ See [docs/adrs/](docs/adrs/) for all ADRs.
 | `cmd/gcx/fail/` | Structured error to user-friendly message conversion |
 | `internal/config/` | Config types, loader, editor, rest.Config builder |
 | `internal/resources/` | Core types: Resource, Selector, Filter, Descriptor |
-| `internal/resources/adapter/` | ResourceAdapter interface, Factory, ResourceClientRouter, TypedCRUD[T], TypedObject[T], ResourceIdentity, ResourceNamer, SchemaFromType[T] |
+| `internal/resources/adapter/` | ResourceAdapter interface, Factory, ResourceClientRouter, TypedCRUD[T], TypedObject[T], ResourceIdentity, ResourceNamer, SchemaFromType[T], slug-ID helpers (SlugifyName, ExtractIDFromSlug, ComposeName) |
 | `internal/resources/discovery/` | API resource discovery, registry, GVK resolution |
 | `internal/resources/dynamic/` | k8s dynamic client wrapper |
 | `internal/resources/local/` | FSReader, FSWriter (disk I/O) |
