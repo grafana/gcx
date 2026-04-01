@@ -423,7 +423,7 @@ func renderErrorPage(w http.ResponseWriter, errMsg string) {
 	tmpl := template.Must(template.ParseFS(templateFS, "templates/error.html"))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusBadRequest)
-	data := struct{ Error string }{Error: html.EscapeString(errMsg)}
+	data := struct{ Error string }{Error: errMsg}
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
 		http.Error(w, "Internal error", http.StatusInternalServerError)
