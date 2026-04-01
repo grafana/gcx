@@ -219,24 +219,47 @@ func (reader *FSReader) Read(
 }
 
 // ReadFile reads a resource from a file.
-// It expects that the file only contains a single resource.
+// It expects that the file only contains a single resource. If a YAML file
+// contains multiple documents (separated by "---"), only the first is read
+// and a warning is logged.
 func (reader *FSReader) ReadFile(ctx context.Context, result *resources.Resource, filePath string) error {
 	logger := logging.FromContext(ctx).With(slog.String("component", "fs_reader"), slog.String("file", filePath))
 
-	decoder, err := reader.decoderForFormat(strings.TrimPrefix(path.Ext(filePath), "."))
+	ext := strings.TrimPrefix(path.Ext(filePath), ".")
+	decoder, err := reader.decoderForFormat(ext)
 	if err != nil {
 		return err
 	}
 
 	logger.Debug("Parsing file", slog.String("file", filePath), slog.String("codec", string(decoder.Format())))
 
-	file, err := os.Open(filePath)
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
 
-	return reader.readRaw(decoder, file, filePath, result)
+	// Warn on multi-document YAML — only the first document is processed.
+	if (ext == "yaml" || ext == "yml") && hasMultipleYAMLDocuments(data) {
+		logger.Warn("File contains multiple YAML documents — only the first will be processed; split into separate files for batch operations",
+			slog.String("file", filePath))
+	}
+
+	return reader.readRaw(decoder, bytes.NewReader(data), filePath, result)
+}
+
+// hasMultipleYAMLDocuments returns true if data contains more than one
+// YAML document separator ("---" on its own line).
+func hasMultipleYAMLDocuments(data []byte) bool {
+	count := 0
+	for line := range bytes.SplitSeq(data, []byte("\n")) {
+		if string(bytes.TrimSpace(line)) == "---" {
+			count++
+			if count > 1 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // ReadBytes reads a resource from a byte slice.
