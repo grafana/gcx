@@ -79,11 +79,18 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) NamespacedRESTCon
 				expiresAt = time.Time{}
 			}
 		}
+		var refreshExpiresAt time.Time
+		if cfg.Grafana.OAuthRefreshExpiresAt != "" {
+			if parsed, err := time.Parse(time.RFC3339, cfg.Grafana.OAuthRefreshExpiresAt); err == nil {
+				refreshExpiresAt = parsed
+			}
+		}
 		oauthTransport = &auth.RefreshTransport{
-			ProxyEndpoint: cfg.Grafana.ProxyEndpoint,
-			Token:         cfg.Grafana.OAuthToken,
-			RefreshToken:  cfg.Grafana.OAuthRefreshToken,
-			ExpiresAt:     expiresAt,
+			ProxyEndpoint:    cfg.Grafana.ProxyEndpoint,
+			Token:            cfg.Grafana.OAuthToken,
+			RefreshToken:     cfg.Grafana.OAuthRefreshToken,
+			ExpiresAt:        expiresAt,
+			RefreshExpiresAt: refreshExpiresAt,
 		}
 		rcfg.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
 			oauthTransport.Base = rt
