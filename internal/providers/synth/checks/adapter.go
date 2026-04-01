@@ -4,48 +4,24 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
 	"strconv"
-	"strings"
 
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 )
 
-// slugifyJob converts a check Job string to a K8s-safe name (RFC 1123 subdomain).
-// Spaces and unsupported chars are replaced with hyphens; result is lowercased.
-var nonAlphanumHyphen = regexp.MustCompile(`[^a-z0-9-]+`)
-var multiHyphen = regexp.MustCompile(`-+`)
+// Slug helpers — thin wrappers around adapter.SlugifyName / adapter.ExtractInt64IDFromSlug.
+// slugifyJob returns "check" (not "resource") for empty input to match the SM domain.
 
 func slugifyJob(job string) string {
-	s := strings.ToLower(job)
-	s = nonAlphanumHyphen.ReplaceAllString(s, "-")
-	s = multiHyphen.ReplaceAllString(s, "-")
-	s = strings.Trim(s, "-")
-	if s == "" {
+	s := adapter.SlugifyName(job)
+	if s == "resource" {
 		return "check"
 	}
 	return s
 }
 
-// extractIDFromSlug recovers the numeric check ID from a resource name.
-// It handles two formats:
-//   - "slug-<id>" (e.g. "web-check-8127") — current format, appended by ToResource
-//   - "<id>"      (e.g. "8127")           — legacy format from pre-slug versions
-//
-// Returns (id, true) on success, (0, false) if no numeric ID can be found.
-func extractIDFromSlug(name string) (int64, bool) {
-	// Legacy: pure numeric name.
-	if id, err := strconv.ParseInt(name, 10, 64); err == nil {
-		return id, true
-	}
-	// Current: "slug-<id>" — extract numeric suffix after the last hyphen.
-	if idx := strings.LastIndex(name, "-"); idx >= 0 {
-		if id, err := strconv.ParseInt(name[idx+1:], 10, 64); err == nil {
-			return id, true
-		}
-	}
-	return 0, false
-}
+func extractIDFromSlug(name string) (int64, bool) { return adapter.ExtractInt64IDFromSlug(name) }
 
 // ToResource converts an API Check + probe map to a K8s-envelope Resource.
 // probeNames maps probe ID → name for display in the YAML file.

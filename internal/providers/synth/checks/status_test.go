@@ -152,7 +152,7 @@ func TestStatusTableCodec_Encode(t *testing.T) {
 		output := buf.String()
 
 		// Verify header columns present in default table.
-		for _, col := range []string{"ID", "JOB", "TARGET", "SUCCESS", "STATUS"} {
+		for _, col := range []string{"NAME", "JOB", "TARGET", "SUCCESS", "STATUS"} {
 			if !strings.Contains(output, col) {
 				t.Errorf("missing header column %q in:\n%s", col, output)
 			}

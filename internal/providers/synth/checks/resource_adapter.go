@@ -41,8 +41,14 @@ type checkResource struct {
 // GetResourceName returns the pre-computed composite name (slug + check ID).
 func (cr checkResource) GetResourceName() string { return cr.name }
 
-// SetResourceName restores the composite name from metadata.
-func (cr *checkResource) SetResourceName(name string) { cr.name = name }
+// SetResourceName restores the composite name and extracts the numeric checkID from it.
+// The name format is "{slug}-{id}" (e.g. "grafana-instance-health-5594").
+func (cr *checkResource) SetResourceName(name string) {
+	cr.name = name
+	if id, ok := extractIDFromSlug(name); ok {
+		cr.checkID = id
+	}
+}
 
 // NewTypedCRUD creates a TypedCRUD for SM checks.
 // It loads config via the provided Loader and returns both CRUD and config.

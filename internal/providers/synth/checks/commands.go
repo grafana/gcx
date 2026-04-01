@@ -170,11 +170,11 @@ func (c *checkTableCodec) Encode(w io.Writer, v any) error {
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tJOB\tTARGET\tTYPE")
+	fmt.Fprintln(tw, "NAME\tJOB\tTARGET\tTYPE")
 
 	for _, c := range checkList {
-		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\n",
-			c.ID, c.Job, c.Target, c.Settings.CheckType())
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
+			checkDisplayName(c), c.Job, c.Target, c.Settings.CheckType())
 	}
 
 	return tw.Flush()
@@ -195,11 +195,11 @@ func (c *checkWideTableCodec) Encode(w io.Writer, v any) error {
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tJOB\tTARGET\tTYPE\tENABLED\tFREQ\tTIMEOUT\tPROBES")
+	fmt.Fprintln(tw, "NAME\tJOB\tTARGET\tTYPE\tENABLED\tFREQ\tTIMEOUT\tPROBES")
 
 	for _, c := range checkList {
-		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%v\t%ds\t%ds\t%d\n",
-			c.ID, c.Job, c.Target, c.Settings.CheckType(), c.Enabled,
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%v\t%ds\t%ds\t%d\n",
+			checkDisplayName(c), c.Job, c.Target, c.Settings.CheckType(), c.Enabled,
 			c.Frequency/1000, c.Timeout/1000, len(c.Probes))
 	}
 
@@ -618,6 +618,16 @@ func newDeleteCommand(loader smcfg.Loader) *cobra.Command {
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
+
+// checkDisplayName computes the user-facing "slug-id" resource name from a Check.
+// This is the name the user passes to get, update, and delete commands.
+func checkDisplayName(c Check) string {
+	name := slugifyJob(c.Job)
+	if c.ID != 0 {
+		name += "-" + strconv.FormatInt(c.ID, 10)
+	}
+	return name
+}
 
 // readCheckSpec reads and parses a check YAML file into a CheckSpec.
 func readCheckSpec(filePath string) (*CheckSpec, error) {

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -889,51 +888,10 @@ func (c *CollectorTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
 
-// ---------------------------------------------------------------------------
-// Slug helpers — name-ID naming for metadata.name
-// ---------------------------------------------------------------------------
+// Slug helpers — thin wrappers around adapter.SlugifyName / adapter.ExtractIDFromSlug.
 
-// nonAlphanumHyphen matches characters that are not lowercase alphanumeric or hyphens.
-//
-// Compiled regex for reuse across resource name conversions.
-var nonAlphanumHyphen = regexp.MustCompile(`[^a-z0-9-]+`)
-
-// multiHyphen matches consecutive hyphens.
-//
-// Compiled regex for reuse across resource name conversions.
-var multiHyphen = regexp.MustCompile(`-+`)
-
-// slugifyName converts a name to a K8s-safe slug (RFC 1123 subdomain).
-func slugifyName(name string) string {
-	s := strings.ToLower(name)
-	s = nonAlphanumHyphen.ReplaceAllString(s, "-")
-	s = multiHyphen.ReplaceAllString(s, "-")
-	s = strings.Trim(s, "-")
-	if s == "" {
-		return "resource"
-	}
-	return s
-}
-
-// extractIDFromSlug recovers the fleet resource ID from a metadata.name.
-// Handles three formats:
-//   - "slug-<id>" (e.g. "windowsconfig-18155") — current format
-//   - "<id>"      (e.g. "18155")               — plain numeric ID
-//   - "<name>"    (e.g. "windowsconfig")        — name-only, returns ("", false)
-func extractIDFromSlug(name string) (string, bool) {
-	// Pure numeric — treat as ID directly.
-	if _, err := strconv.Atoi(name); err == nil {
-		return name, true
-	}
-	// "slug-<id>" — extract numeric suffix after the last hyphen.
-	if idx := strings.LastIndex(name, "-"); idx >= 0 {
-		suffix := name[idx+1:]
-		if _, err := strconv.Atoi(suffix); err == nil {
-			return suffix, true
-		}
-	}
-	return "", false
-}
+func slugifyName(name string) string               { return adapter.SlugifyName(name) }
+func extractIDFromSlug(name string) (string, bool) { return adapter.ExtractIDFromSlug(name) }
 
 // ---------------------------------------------------------------------------
 // Resource conversion helpers
