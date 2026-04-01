@@ -171,7 +171,9 @@ func (f *Flow) startCallbackServer(ctx context.Context, bindAddress string, port
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
+		handled := false
 		once.Do(func() {
+			handled = true
 			state := r.URL.Query().Get("state")
 			if state != expectedState {
 				errCh <- errors.New("invalid state - possible CSRF attack")
@@ -225,6 +227,9 @@ func (f *Flow) startCallbackServer(ctx context.Context, bindAddress string, port
 			resultCh <- result
 			renderSuccessPage(w)
 		})
+		if !handled {
+			http.Error(w, "Authentication already processed", http.StatusGone)
+		}
 	})
 
 	server := &http.Server{
