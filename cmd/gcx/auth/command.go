@@ -74,6 +74,10 @@ func runLogin(cmd *cobra.Command, configOpts *configcmd.Options) error {
 		return errors.New("authentication succeeded but the server returned incomplete token data")
 	}
 
+	if err := auth.ValidateEndpointURL(result.APIEndpoint); err != nil {
+		return fmt.Errorf("server returned untrusted API endpoint %q: %w", result.APIEndpoint, err)
+	}
+
 	// Save tokens to the current context.
 	curCtx.Grafana.ProxyEndpoint = result.APIEndpoint
 	curCtx.Grafana.OAuthToken = result.Token
