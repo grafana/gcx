@@ -10,8 +10,8 @@
 Bring Grafana Cloud to your command line and your agentic coding environment. Logs, traces, metrics, alerts, SLOs — accessible where you already work.
 
 ```
-gcx datasources prometheus query 'rate(http_requests_total[5m])' --range=1h
-gcx datasources loki query '{app="checkout"} |= "error"' --range=1h
+gcx datasources prometheus query 'rate(http_requests_total[5m])' --window 1h
+gcx datasources loki query '{app="checkout"} |= "error"' --window 1h
 gcx alert rules list                            # check what's firing
 gcx slo definitions list                        # review SLO status
 gcx synth checks list                           # synthetic monitoring
@@ -150,8 +150,8 @@ gcx oncall schedules list                       # list on-call schedules
 gcx k6 load-tests list                          # list k6 load tests
 
 # Query datasources
-gcx datasources prometheus query 'rate(http_requests_total[5m])' --range=1h
-gcx datasources loki query '{app="nginx"} |= "error"' --range=1h
+gcx datasources prometheus query 'rate(http_requests_total[5m])' --window 1h
+gcx datasources loki query '{app="nginx"} |= "error"' --window 1h
 ```
 
 ## Grafana Cloud Products
@@ -205,12 +205,12 @@ gcx alert rules list
 gcx alert groups list
 
 # PromQL queries
-gcx datasources prometheus query 'rate(http_requests_total[5m])' --range=1h
+gcx datasources prometheus query 'rate(http_requests_total[5m])' --window 1h
 gcx datasources prometheus labels
 gcx datasources prometheus metadata
 
 # LogQL queries
-gcx datasources loki query '{app="nginx"} |= "error"' --range=1h
+gcx datasources loki query '{app="nginx"} |= "error"' --window 1h
 gcx datasources loki labels
 gcx datasources loki series
 ```
