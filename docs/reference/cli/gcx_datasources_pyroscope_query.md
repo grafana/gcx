@@ -44,7 +44,6 @@ gcx datasources pyroscope query [DATASOURCE_UID] EXPR [flags]
       --since string          Duration before --to (or now if omitted); mutually exclusive with --from
       --step string           Query step (e.g., '15s', '1m')
       --to string             End time (RFC3339, Unix timestamp, or relative like 'now')
-      --window string         Compatibility shorthand: sets --from to now-{window} and --to to now (mutually exclusive with --from/--to/--since)
 ```
 
 ### Options inherited from parent commands

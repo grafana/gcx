@@ -56,32 +56,12 @@ func TestSharedQueryOptsValidate(t *testing.T) {
 			},
 		},
 		{
-			name: "window defaults to now",
-			setup: func(opts *sharedQueryOpts) {
-				opts.Window = "1h"
-			},
-			assert: func(t *testing.T, opts *sharedQueryOpts) {
-				t.Helper()
-				require.NotEmpty(t, opts.From)
-				require.NotEmpty(t, opts.To)
-				assertRange(t, opts.From, opts.To, time.Hour)
-			},
-		},
-		{
 			name: "since and from are mutually exclusive",
 			setup: func(opts *sharedQueryOpts) {
 				opts.Since = "1h"
 				opts.From = "now-2h"
 			},
 			wantErr: "--since is mutually exclusive with --from",
-		},
-		{
-			name: "since and window are mutually exclusive",
-			setup: func(opts *sharedQueryOpts) {
-				opts.Since = "1h"
-				opts.Window = "1h"
-			},
-			wantErr: "--window and --since are mutually exclusive",
 		},
 		{
 			name: "invalid since duration rejected",
@@ -111,20 +91,6 @@ func TestSharedQueryOptsValidate(t *testing.T) {
 				opts.Since = "0"
 			},
 			wantErr: "--since must be greater than 0",
-		},
-		{
-			name: "negative window rejected",
-			setup: func(opts *sharedQueryOpts) {
-				opts.Window = "-1h"
-			},
-			wantErr: "--window must be greater than 0",
-		},
-		{
-			name: "zero window rejected",
-			setup: func(opts *sharedQueryOpts) {
-				opts.Window = "0"
-			},
-			wantErr: "--window must be greater than 0",
 		},
 	}
 

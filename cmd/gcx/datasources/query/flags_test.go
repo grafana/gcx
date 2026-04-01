@@ -136,55 +136,6 @@ func TestQuerySubcommandUse(t *testing.T) {
 	}
 }
 
-// TestWindowMutualExclusion verifies --window is mutually exclusive with --from/--to.
-func TestWindowMutualExclusion(t *testing.T) {
-	tests := []struct {
-		name      string
-		cmd       *cobra.Command
-		args      []string
-		expectErr string
-	}{
-		{
-			name:      "prometheus: window+from rejected",
-			cmd:       dsquery.PrometheusCmd(newConfigOpts()),
-			args:      []string{"query", "uid", "up", "--window", "1h", "--from", "now-2h"},
-			expectErr: "--window is mutually exclusive with --from and --to",
-		},
-		{
-			name:      "prometheus: window+to rejected",
-			cmd:       dsquery.PrometheusCmd(newConfigOpts()),
-			args:      []string{"query", "uid", "up", "--window", "1h", "--to", "now"},
-			expectErr: "--window is mutually exclusive with --from and --to",
-		},
-		{
-			name:      "loki: window+from rejected",
-			cmd:       dsquery.LokiCmd(newConfigOpts()),
-			args:      []string{"query", "uid", `{job="x"}`, "--window", "1h", "--from", "now-2h"},
-			expectErr: "--window is mutually exclusive with --from and --to",
-		},
-		{
-			name:      "pyroscope: window+from rejected",
-			cmd:       dsquery.PyroscopeCmd(newConfigOpts()),
-			args:      []string{"query", "uid", `{service_name="x"}`, "--window", "1h", "--from", "now-2h", "--profile-type", "cpu"},
-			expectErr: "--window is mutually exclusive with --from and --to",
-		},
-		{
-			name:      "generic: window+from rejected",
-			cmd:       dsquery.GenericCmd(newConfigOpts()),
-			args:      []string{"query", "uid", "expr", "--window", "1h", "--from", "now-2h"},
-			expectErr: "--window is mutually exclusive with --from and --to",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := executeQueryCommand(t, tt.cmd, tt.args)
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), tt.expectErr)
-		})
-	}
-}
-
 func TestSinceValidationOnCommands(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -215,30 +166,6 @@ func TestSinceValidationOnCommands(t *testing.T) {
 			cmd:       dsquery.GenericCmd(newConfigOpts()),
 			args:      []string{"query", "uid", "expr", "--since", "1h", "--from", "now-2h"},
 			expectErr: "--since is mutually exclusive with --from",
-		},
-		{
-			name:      "prometheus: since+window rejected",
-			cmd:       dsquery.PrometheusCmd(newConfigOpts()),
-			args:      []string{"query", "uid", "up", "--since", "1h", "--window", "1h"},
-			expectErr: "--window and --since are mutually exclusive",
-		},
-		{
-			name:      "loki: since+window rejected",
-			cmd:       dsquery.LokiCmd(newConfigOpts()),
-			args:      []string{"query", "uid", `{job="x"}`, "--since", "1h", "--window", "1h"},
-			expectErr: "--window and --since are mutually exclusive",
-		},
-		{
-			name:      "pyroscope: since+window rejected",
-			cmd:       dsquery.PyroscopeCmd(newConfigOpts()),
-			args:      []string{"query", "uid", `{service_name="x"}`, "--since", "1h", "--window", "1h", "--profile-type", "cpu"},
-			expectErr: "--window and --since are mutually exclusive",
-		},
-		{
-			name:      "generic: since+window rejected",
-			cmd:       dsquery.GenericCmd(newConfigOpts()),
-			args:      []string{"query", "uid", "expr", "--since", "1h", "--window", "1h"},
-			expectErr: "--window and --since are mutually exclusive",
 		},
 		{
 			name:      "loki: negative since rejected",

@@ -19,12 +19,11 @@ import (
 
 // sharedQueryOpts holds flags shared across all typed query subcommands.
 type sharedQueryOpts struct {
-	IO     cmdio.Options
-	From   string
-	To     string
-	Step   string
-	Since  string
-	Window string
+	IO    cmdio.Options
+	From  string
+	To    string
+	Step  string
+	Since string
 }
 
 func (opts *sharedQueryOpts) setup(flags *pflag.FlagSet) {
@@ -35,33 +34,12 @@ func (opts *sharedQueryOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.To, "to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
 	flags.StringVar(&opts.Step, "step", "", "Query step (e.g., '15s', '1m')")
 	flags.StringVar(&opts.Since, "since", "", "Duration before --to (or now if omitted); mutually exclusive with --from")
-	flags.StringVar(&opts.Window, "window", "", "Compatibility shorthand: sets --from to now-{window} and --to to now (mutually exclusive with --from/--to/--since)")
 }
 
-// Validate validates shared flags and resolves --since/--window into From/To.
+// Validate validates shared flags and resolves --since into From/To.
 func (opts *sharedQueryOpts) Validate() error {
 	if err := opts.IO.Validate(); err != nil {
 		return err
-	}
-
-	if opts.Window != "" && opts.Since != "" {
-		return errors.New("--window and --since are mutually exclusive")
-	}
-
-	if opts.Window != "" {
-		if opts.From != "" || opts.To != "" {
-			return errors.New("--window is mutually exclusive with --from and --to")
-		}
-		d, err := ParseDuration(opts.Window)
-		if err != nil {
-			return fmt.Errorf("invalid --window duration: %w", err)
-		}
-		if d <= 0 {
-			return errors.New("--window must be greater than 0")
-		}
-		now := time.Now()
-		opts.From = now.Add(-d).Format(time.RFC3339)
-		opts.To = now.Format(time.RFC3339)
 	}
 
 	if opts.Since == "" {
