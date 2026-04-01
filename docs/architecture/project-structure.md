@@ -8,6 +8,7 @@ gcx/
 │   └── gcx/           # Binary entry point (public surface)
 │       ├── main.go           # Version vars, main(), error handler
 │       ├── root/             # Root Cobra command, global flags, logging setup
+│       ├── auth/             # OAuth login command (browser-based PKCE flow)
 │       ├── config/           # 'config' subcommand implementations
 │       ├── resources/        # 'resources' subcommand implementations
 │       ├── dashboards/       # 'dashboards' subcommand (snapshot via Image Renderer)
@@ -21,6 +22,7 @@ gcx/
 │
 ├── internal/                 # All non-public packages (Go enforced)
 │   ├── agent/                # Agent-mode detection, command annotations, known-resource registry with operation hints
+│   ├── auth/                 # OAuth PKCE flow, token refresh transport
 │   ├── cloud/                # Grafana Cloud stack discovery via GCOM API
 │   ├── config/               # Config loading, context management, auth types
 │   │   └── testdata/         # YAML fixtures for config unit tests
@@ -57,6 +59,7 @@ gcx/
 │   │       ├── probes/       # Probe listing
 │   │       └── smcfg/        # SM config loader interfaces
 │   ├── dashboards/           # Dashboard Image Renderer client (PNG snapshots)
+│   ├── datasources/          # Datasource HTTP client (legacy REST API)
 │   ├── query/                # Datasource query clients
 │   │   ├── prometheus/       # Prometheus HTTP client (instant + range queries)
 │   │   └── loki/             # Loki HTTP client (log + metric queries)
