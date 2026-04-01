@@ -26,7 +26,6 @@ const (
 	assertionsPath   = pluginResourcePath + "/asserts/api-server/v1/assertions"
 	searchPath       = pluginResourcePath + "/asserts/api-server/v1/search"
 	rulesPath        = pluginResourcePath + "/asserts/api-server/v1/config/prom-rules/"
-	environmentPath  = pluginResourcePath + "/asserts/api-server/v1/config/environment"
 	entityLookupPath = pluginResourcePath + "/asserts/api-server/v1/entity"
 	graphDisplayPath = pluginResourcePath + "/asserts/api-server/v1/config/display/graph"
 )
@@ -304,20 +303,6 @@ func (c *Client) UploadRelabelRules(ctx context.Context, yamlContent string) err
 // ---------------------------------------------------------------------------
 // Environment & dashboard configuration
 // ---------------------------------------------------------------------------
-
-// GetEnvironment retrieves the current environment configuration.
-func (c *Client) GetEnvironment(ctx context.Context) (*EnvironmentConfig, error) {
-	var cfg EnvironmentConfig
-	if err := c.getJSON(ctx, environmentPath, &cfg); err != nil {
-		return nil, fmt.Errorf("kg: get environment: %w", err)
-	}
-	return &cfg, nil
-}
-
-// ConfigureEnvironment configures the environment/logs mapping.
-func (c *Client) ConfigureEnvironment(ctx context.Context, cfg EnvironmentConfig) error {
-	return c.postJSON(ctx, environmentPath, cfg, nil)
-}
 
 // AddServiceDashboard configures the service dashboard settings.
 func (c *Client) AddServiceDashboard(ctx context.Context, cfg ServiceDashboardConfig) error {
