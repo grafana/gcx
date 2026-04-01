@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"errors"
 	"fmt"
 
 	configcmd "github.com/grafana/gcx/cmd/gcx/config"
@@ -84,14 +83,6 @@ func runLogin(cmd *cobra.Command, opts *loginOpts) error {
 	result, err := flow.Run(ctx)
 	if err != nil {
 		return fmt.Errorf("authentication failed: %w", err)
-	}
-
-	if result.Token == "" || result.APIEndpoint == "" {
-		return errors.New("authentication succeeded but the server returned incomplete token data")
-	}
-
-	if err := auth.ValidateEndpointURL(result.APIEndpoint); err != nil {
-		return fmt.Errorf("server returned untrusted API endpoint %q: %w", result.APIEndpoint, err)
 	}
 
 	// Save tokens to the current context.

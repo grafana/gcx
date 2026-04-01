@@ -347,6 +347,9 @@ func exchangeCodeForToken(ctx context.Context, endpoint, code, codeVerifier stri
 	if result.Data.APIEndpoint == "" {
 		return nil, errors.New("exchange response missing api_endpoint")
 	}
+	if err := ValidateEndpointURL(result.Data.APIEndpoint); err != nil {
+		return nil, fmt.Errorf("exchange response contains untrusted api_endpoint: %w", err)
+	}
 
 	return &result, nil
 }
