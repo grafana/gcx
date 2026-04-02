@@ -24,14 +24,18 @@ esac
 
 # ── check dependencies ────────────────────────────────────────────────────────
 
-if ! command -v claude >/dev/null 2>&1; then
-  echo "Error: 'claude' CLI is required but not found. Install it from https://claude.ai/download" >&2
-  exit 1
-fi
+for cmd in claude svu; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "Error: '${cmd}' is required but not found." >&2
+    [[ "$cmd" == "claude" ]] && echo "Install from https://claude.ai/download" >&2
+    [[ "$cmd" == "svu" ]] && echo "Install with: go install github.com/caarlos0/svu/v3@latest" >&2
+    exit 1
+  fi
+done
 
 # ── get latest tag ────────────────────────────────────────────────────────────
 
-LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+LAST_TAG=$(svu current 2>/dev/null || echo "v0.0.0")
 
 # ── check for new commits since last tag ─────────────────────────────────────
 
@@ -48,19 +52,12 @@ fi
 
 # ── bump version ──────────────────────────────────────────────────────────────
 
-VERSION="${LAST_TAG#v}"
-IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
-MAJOR=${MAJOR:-0}
-MINOR=${MINOR:-0}
-PATCH=${PATCH:-0}
-
 case "$BUMP" in
-  major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
-  minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
-  patch) PATCH=$((PATCH + 1)) ;;
+  major) NEW_TAG=$(svu major) ;;
+  minor) NEW_TAG=$(svu minor) ;;
+  patch) NEW_TAG=$(svu patch) ;;
 esac
 
-NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
 TODAY=$(date -u +%Y-%m-%d)
 
 echo "Bumping ${LAST_TAG} → ${NEW_TAG}"

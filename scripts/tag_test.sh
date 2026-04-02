@@ -41,11 +41,37 @@ add_tag() {
   git -C "$dir" tag "$tag"
 }
 
-mock_claude() {
+mock_tools() {
   local dir
   dir=$(mktemp -d)
   printf '#!/bin/sh\necho "- mocked entry"\n' > "$dir/claude"
   chmod +x "$dir/claude"
+  # svu mock that delegates to real svu behavior via git tags
+  cat > "$dir/svu" <<'SVUSCRIPT'
+#!/bin/sh
+case "$1" in
+  current) git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0" ;;
+  major)
+    v=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+    v="${v#v}"; IFS='.' read -r M m p <<EOF
+$v
+EOF
+    echo "v$((M + 1)).0.0" ;;
+  minor)
+    v=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+    v="${v#v}"; IFS='.' read -r M m p <<EOF
+$v
+EOF
+    echo "v${M}.$((m + 1)).0" ;;
+  patch)
+    v=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+    v="${v#v}"; IFS='.' read -r M m p <<EOF
+$v
+EOF
+    echo "v${M}.${m}.$((p + 1))" ;;
+esac
+SVUSCRIPT
+  chmod +x "$dir/svu"
   echo "$dir"
 }
 
@@ -56,7 +82,7 @@ test_bump_patch() {
   dir=$(make_repo)
   add_tag "$dir" "v0.5.5"
   add_commit "$dir" "fix: some fix"
-  mock=$(mock_claude)
+  mock=$(mock_tools)
 
   local out
   out=$(cd "$dir" && PATH="$mock:$PATH" DRY_RUN=1 bash "$SCRIPT" patch 2>&1)
@@ -73,7 +99,7 @@ test_bump_minor() {
   dir=$(make_repo)
   add_tag "$dir" "v0.5.5"
   add_commit "$dir" "feat: new feature"
-  mock=$(mock_claude)
+  mock=$(mock_tools)
 
   local out
   out=$(cd "$dir" && PATH="$mock:$PATH" DRY_RUN=1 bash "$SCRIPT" minor 2>&1)
@@ -90,7 +116,7 @@ test_bump_major() {
   dir=$(make_repo)
   add_tag "$dir" "v0.5.5"
   add_commit "$dir" "feat!: breaking change"
-  mock=$(mock_claude)
+  mock=$(mock_tools)
 
   local out
   out=$(cd "$dir" && PATH="$mock:$PATH" DRY_RUN=1 bash "$SCRIPT" major 2>&1)
@@ -106,7 +132,7 @@ test_fallback_no_tags() {
   local dir mock
   dir=$(make_repo)
   add_commit "$dir" "feat: first feature"
-  mock=$(mock_claude)
+  mock=$(mock_tools)
 
   local out
   out=$(cd "$dir" && PATH="$mock:$PATH" DRY_RUN=1 bash "$SCRIPT" patch 2>&1)
@@ -170,7 +196,7 @@ test_no_new_commits() {
   local dir mock
   dir=$(make_repo)
   add_tag "$dir" "v0.1.0"
-  mock=$(mock_claude)
+  mock=$(mock_tools)
 
   local rc=0 out
   out=$(cd "$dir" && PATH="$mock:$PATH" bash "$SCRIPT" patch 2>&1) || rc=$?
@@ -189,7 +215,7 @@ test_changelog_created_if_missing() {
   dir=$(make_repo)
   add_tag "$dir" "v0.2.0"
   add_commit "$dir" "feat: add thing"
-  mock=$(mock_claude)
+  mock=$(mock_tools)
 
   (cd "$dir" && PATH="$mock:$PATH" DRY_RUN=1 bash "$SCRIPT" patch 2>&1) || true
 
@@ -210,7 +236,7 @@ test_changelog_prepended_if_exists() {
   echo "## v0.2.0 (2025-01-01)" > "$dir/CHANGELOG.md"
   echo "- old entry" >> "$dir/CHANGELOG.md"
 
-  mock=$(mock_claude)
+  mock=$(mock_tools)
 
   (cd "$dir" && PATH="$mock:$PATH" DRY_RUN=1 bash "$SCRIPT" patch 2>&1) || true
 
@@ -229,7 +255,7 @@ test_changelog_header_format() {
   dir=$(make_repo)
   add_tag "$dir" "v1.2.3"
   add_commit "$dir" "fix: something"
-  mock=$(mock_claude)
+  mock=$(mock_tools)
 
   (cd "$dir" && PATH="$mock:$PATH" DRY_RUN=1 bash "$SCRIPT" patch 2>&1) || true
 
@@ -248,7 +274,7 @@ test_release_notes_written() {
   dir=$(make_repo)
   add_tag "$dir" "v0.3.0"
   add_commit "$dir" "feat: something great"
-  mock=$(mock_claude)
+  mock=$(mock_tools)
 
   (cd "$dir" && PATH="$mock:$PATH" DRY_RUN=1 bash "$SCRIPT" patch 2>&1) || true
 
@@ -281,7 +307,7 @@ test_backfill_gap() {
   add_tag "$dir" "v0.2.0"
 
   add_commit "$dir" "fix: new fix"
-  mock=$(mock_claude)
+  mock=$(mock_tools)
 
   (cd "$dir" && PATH="$mock:$PATH" DRY_RUN=1 bash "$SCRIPT" patch 2>&1) || true
 
