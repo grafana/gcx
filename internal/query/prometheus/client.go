@@ -179,8 +179,6 @@ func (c *Client) LabelValues(ctx context.Context, datasourceUID, labelName strin
 }
 
 // Metadata returns metric metadata.
-//
-//nolint:dupl
 func (c *Client) Metadata(ctx context.Context, datasourceUID string, metric string) (*MetadataResponse, error) {
 	apiPath := c.buildMetadataPath(datasourceUID)
 
@@ -218,46 +216,6 @@ func (c *Client) Metadata(ctx context.Context, datasourceUID string, metric stri
 	return &result, nil
 }
 
-// Targets returns scrape targets.
-//
-//nolint:dupl
-func (c *Client) Targets(ctx context.Context, datasourceUID string, state string) (*TargetsResponse, error) {
-	apiPath := c.buildTargetsPath(datasourceUID)
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.restConfig.Host+apiPath, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	if state != "" {
-		q := httpReq.URL.Query()
-		q.Set("state", state)
-		httpReq.URL.RawQuery = q.Encode()
-	}
-
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get targets: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("targets query failed with status %d: %s", resp.StatusCode, string(respBody))
-	}
-
-	var result TargetsResponse
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	return &result, nil
-}
-
 func (c *Client) buildQueryPath() string {
 	return fmt.Sprintf("/apis/query.grafana.app/v0alpha1/namespaces/%s/query",
 		c.restConfig.Namespace)
@@ -274,8 +232,4 @@ func (c *Client) buildLabelValuesPath(datasourceUID, labelName string) string {
 
 func (c *Client) buildMetadataPath(datasourceUID string) string {
 	return fmt.Sprintf("/api/datasources/uid/%s/resources/api/v1/metadata", datasourceUID)
-}
-
-func (c *Client) buildTargetsPath(datasourceUID string) string {
-	return fmt.Sprintf("/api/datasources/uid/%s/resources/api/v1/targets", datasourceUID)
 }

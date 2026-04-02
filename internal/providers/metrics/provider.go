@@ -95,25 +95,6 @@ func (p *Provider) Commands() []*cobra.Command {
   gcx metrics metadata -d <datasource-uid> -o json`
 	cmd.AddCommand(metadataCmd)
 
-	targetsCmd := datasources.TargetsCmd(configOpts)
-	targetsCmd.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx metrics targets -d abc123 -o json",
-	}
-	targetsCmd.Example = `
-  # List active targets (use datasource UID, not name)
-  gcx metrics targets -d <datasource-uid>
-
-  # List dropped targets
-  gcx metrics targets -d <datasource-uid> --state dropped
-
-  # List all targets
-  gcx metrics targets -d <datasource-uid> --state any
-
-  # Output as JSON
-  gcx metrics targets -d <datasource-uid> -o json`
-	cmd.AddCommand(targetsCmd)
-
 	// Adaptive Metrics subcommands — rename Use from "metrics" to "adaptive".
 	adaptiveCmd := adaptivemetrics.Commands(loader)
 	adaptiveCmd.Use = "adaptive"

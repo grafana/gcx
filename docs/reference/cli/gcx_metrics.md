@@ -26,5 +26,4 @@ Query Prometheus datasources and manage Adaptive Metrics
 * [gcx metrics labels](gcx_metrics_labels.md)	 - List labels or label values
 * [gcx metrics metadata](gcx_metrics_metadata.md)	 - Get metric metadata
 * [gcx metrics query](gcx_metrics_query.md)	 - Execute a PromQL query against a Prometheus datasource
-* [gcx metrics targets](gcx_metrics_targets.md)	 - List scrape targets
 
