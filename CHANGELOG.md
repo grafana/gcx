@@ -1,3 +1,9 @@
+## v0.2.1 (2026-04-02)
+
+- Add automated release process with AI-generated changelogs
+- Remove Knowledge Graph (kg) env commands
+
+
 ## v0.2.0 (2026-04-02)
 
 - Add OAuth browser-based login for Grafana (`gcx auth login`)
