@@ -78,11 +78,6 @@ func labelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to create client: %w", err)
 			}
 
-			codec, err := opts.IO.Codec()
-			if err != nil {
-				return err
-			}
-
 			if opts.Label != "" {
 				resp, err := client.LabelValues(ctx, datasourceUID, pyroscope.LabelValuesRequest{
 					Name: opts.Label,
@@ -94,7 +89,7 @@ func labelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 				if opts.IO.OutputFormat == "table" {
 					return pyroscope.FormatLabelsTable(cmd.OutOrStdout(), resp.Names)
 				}
-				return codec.Encode(cmd.OutOrStdout(), resp)
+				return opts.IO.Encode(cmd.OutOrStdout(), resp)
 			}
 
 			resp, err := client.LabelNames(ctx, datasourceUID, pyroscope.LabelNamesRequest{})
@@ -105,7 +100,7 @@ func labelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 			if opts.IO.OutputFormat == "table" {
 				return pyroscope.FormatLabelsTable(cmd.OutOrStdout(), resp.Names)
 			}
-			return codec.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}
 

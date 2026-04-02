@@ -78,15 +78,10 @@ func profileTypesCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to get profile types: %w", err)
 			}
 
-			codec, err := opts.IO.Codec()
-			if err != nil {
-				return err
-			}
-
 			if opts.IO.OutputFormat == "table" {
 				return pyroscope.FormatProfileTypesTable(cmd.OutOrStdout(), resp)
 			}
-			return codec.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}
 
