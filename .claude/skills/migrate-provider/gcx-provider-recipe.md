@@ -456,6 +456,31 @@ that only surfaced during smoke testing:
   assertions) are best served as provider commands.
 - The command tree is large (~20 subcommands) — use inline closures for each
   command rather than trying to share RunE builders.
+### Plugin Proxy APIs (Faro / Frontend Observability)
+
+- Faro uses two different plugin proxy base paths:
+  - CRUD: `/api/plugin-proxy/grafana-kowalski-app/api-proxy/api/v1/app`
+  - Sourcemaps: `/api/plugins/grafana-kowalski-app/resources/api/v1/app/{id}/sourcemaps`
+- Auth: standard Grafana SA token via `rest.HTTPClientFor` — no separate token needed.
+- **API quirks preserved from gcx source:**
+  - Create MUST strip `ExtraLogLabels` (API returns 409) and `Settings` (API returns 500).
+  - Update MUST strip `Settings` (API returns 500).
+  - Create response is incomplete (missing `collectEndpointURL`, `appKey`) — must re-fetch
+    via List after creation to get full details.
+  - Update requires ID in both URL path and request body.
+  - `GetByName` is client-side: list all apps, filter by name (no server-side endpoint).
+- **Wire format conversion:** `ExtraLogLabels` is `map[string]string` in Go but
+  `[]{"key": k, "value": v}` on the wire. `ID` is `string` in Go but `int64` on wire.
+  Internal `toAPI()`/`fromAPI()` handles both conversions.
+- **Sourcemaps are sub-resources** (require parent app-id for all operations).
+  Per CONSTITUTION § Sub-resources, they use alternative verbs (`show-sourcemaps`,
+  `apply-sourcemap`, `remove-sourcemap`) and are NOT adapter-registered.
+- **Sourcemaps plugin endpoint returns 500** on dev/ops instances as of 2026-04-02.
+  This is a Faro plugin bug, not a gcx code issue. The request is correctly
+  constructed (verified via `-vvv` debug logging).
+- **Resource plural is `apps`** (not `faroapps`), so the full GVK selector is
+  `apps.v1alpha1.faro.ext.grafana.app`. Short form: `resources get apps`.
+
 ### Response Shape Differences
 
 - Some gcx clients unwrap response envelopes (e.g., `response.Data`) while
@@ -492,7 +517,7 @@ that only surfaced during smoke testing:
 | scim | users, groups | ⬜ planned | — | Phase 1.7 |
 | gcom | access policies, stacks, etc. | ⬜ planned | — | Phase 1.8 |
 | adaptive | metrics, logs, traces | ⬜ planned | — | Phase 1.9 |
-| faro | apps | ⬜ planned | — | Phase 1.9 |
+| faro | apps, sourcemaps | ✅ done (2026-04-02) | Claude | Plugin proxy API, TypedCRUD[FaroApp], sourcemaps as sub-resource verbs. Sourcemap smoke blocked by Faro plugin 500. |
 | grafana | annotations, lib panels, etc. | ⬜ planned | — | Phase 3 (non-K8s REST) |
 | iam | permissions, RBAC, SSO, OAuth | ⬜ planned | — | Phase 3-4 |
 
