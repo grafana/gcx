@@ -5,54 +5,53 @@
 
 version: 2
 
+project_name: gcx
+
+before:
+  hooks:
+    - go mod tidy
+
 builds:
   - id: gcx
     binary: gcx
     main: ./cmd/gcx
-
-    ldflags:
-      - -X main.version={{ .Version }}
-      - -X main.commit={{ .Commit }}
-      - -X main.date={{ .Date }}
 
     env:
       - CGO_ENABLED=0
 
     goos:
       - linux
-      - windows
       - darwin
+      - windows
+
+    goarch:
+      - amd64
+      - arm64
+
+    flags:
+      - -trimpath
+
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .Commit }}
+      - -X main.date={{ .Date }}
 
 archives:
   - id: gcx
     builds: [gcx]
     format: tar.gz
-    # this name template makes the OS and Arch compatible with the results of `uname`.
-    name_template: >-
-      {{ .ProjectName }}_
-      {{- title .Os }}_
-      {{- if eq .Arch "amd64" }}x86_64
-      {{- else if eq .Arch "386" }}i386
-      {{- else }}{{ .Arch }}{{ end }}
-      {{- if .Arm }}v{{ .Arm }}{{ end }}
-    # use zip for windows archives
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
         format: zip
 
 checksum:
-  name_template: "{{ .ProjectName }}_checksums.txt"
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+  algorithm: sha256
 
-snapshot:
-  version_template: "{{ incpatch .Version }}-next-{{ .ShortCommit }}"
+release:
+  header: "{{ .Env.RELEASE_NOTES }}"
 
 changelog:
-  use: github
-  sort: '' # use the output of `git log` as is
-  filters:
-    exclude:
-      - '^docs:'
-      - '^test:'
-      - '^tests:'
-      - '^chore:'
-      - '^Merge pull request'
+  disable: true
