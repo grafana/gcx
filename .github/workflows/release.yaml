@@ -38,10 +38,11 @@ jobs:
 
       - name: Set release notes
         run: |
+          delimiter="$(openssl rand -hex 16)"
           {
-            echo 'RELEASE_NOTES<<EOF'
+            echo "RELEASE_NOTES<<${delimiter}"
             cat .release-notes.md
-            echo EOF
+            echo "${delimiter}"
           } >> "$GITHUB_ENV"
 
       - name: Run GoReleaser
