@@ -26,15 +26,15 @@ gcx profiles series [DATASOURCE_UID] EXPR [flags]
 
   # Top services by CPU usage (ranked leaderboard)
   gcx profiles series '{}' \
-    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --window 1h --top
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --top
 
   # CPU usage over the last hour with 1-minute resolution
   gcx profiles series '{service_name="frontend"}' \
-    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --window 1h --step 1m
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --step 1m
 
   # Output as JSON
   gcx profiles series abc123 '{}' \
-    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --window 1h --top -o json
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --top -o json
 ```
 
 ### Options
@@ -48,10 +48,10 @@ gcx profiles series [DATASOURCE_UID] EXPR [flags]
       --limit int             Maximum number of series to return (default 10)
   -o, --output string         Output format. One of: graph, json, table, wide, yaml (default "table")
       --profile-type string   Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds') (required)
+      --since string          Duration before --to (or now if omitted); mutually exclusive with --from
       --step string           Query step (e.g., '15s', '1m')
       --to string             End time (RFC3339, Unix timestamp, or relative like 'now')
       --top                   Aggregate into a ranked leaderboard (equivalent to profilecli query top)
-      --window string         Convenience shorthand: sets --from to now-{window} and --to to now (mutually exclusive with --from/--to)
 ```
 
 ### Options inherited from parent commands

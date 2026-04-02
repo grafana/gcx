@@ -19,11 +19,11 @@ gcx profiles query [DATASOURCE_UID] EXPR [flags]
 
   # Profile query with explicit datasource UID
   gcx profiles query abc123 '{service_name="frontend"}' \
-    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --window 1h
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
 
   # Using configured default datasource
   gcx profiles query '{service_name="frontend"}' \
-    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --window 1h
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
 
   # Output as JSON
   gcx profiles query abc123 '{service_name="frontend"}' \
@@ -39,9 +39,9 @@ gcx profiles query [DATASOURCE_UID] EXPR [flags]
       --max-nodes int         Maximum nodes in flame graph (default 1024)
   -o, --output string         Output format. One of: graph, json, table, wide, yaml (default "table")
       --profile-type string   Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds') (required)
+      --since string          Duration before --to (or now if omitted); mutually exclusive with --from
       --step string           Query step (e.g., '15s', '1m')
       --to string             End time (RFC3339, Unix timestamp, or relative like 'now')
-      --window string         Convenience shorthand: sets --from to now-{window} and --to to now (mutually exclusive with --from/--to)
 ```
 
 ### Options inherited from parent commands

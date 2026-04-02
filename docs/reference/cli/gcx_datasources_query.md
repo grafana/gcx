@@ -42,9 +42,9 @@ gcx datasources query DATASOURCE_UID EXPR [flags]
       --max-nodes int         Maximum nodes in flame graph (pyroscope only) (default 1024)
   -o, --output string         Output format. One of: graph, json, table, wide, yaml (default "table")
       --profile-type string   Profile type ID for pyroscope queries (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds')
+      --since string          Duration before --to (or now if omitted); mutually exclusive with --from
       --step string           Query step (e.g., '15s', '1m')
       --to string             End time (RFC3339, Unix timestamp, or relative like 'now')
-      --window string         Convenience shorthand: sets --from to now-{window} and --to to now (mutually exclusive with --from/--to)
 ```
 
 ### Options inherited from parent commands

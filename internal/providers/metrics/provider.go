@@ -56,8 +56,8 @@ func (p *Provider) Commands() []*cobra.Command {
   # Range query with explicit datasource UID
   gcx metrics query abc123 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m
 
-  # Convenience window flag
-  gcx metrics query abc123 'up' --window 1h
+  # Query the last hour
+  gcx metrics query abc123 'up' --since 1h
 
   # Output as JSON
   gcx metrics query abc123 'up' -o json`
