@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/gcx/cmd/gcx/resources"
 	"github.com/grafana/gcx/cmd/gcx/setup"
 	"github.com/grafana/gcx/internal/agent"
+	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/providers"
 	_ "github.com/grafana/gcx/internal/providers/alert"     // Provider registrations — blank imports trigger init() self-registration.
@@ -69,6 +70,8 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	noTruncate := false
 	agentFlag := false
 	verbosity := 0
+	contextName := ""
+	configFile := ""
 
 	rootCmd := &cobra.Command{
 		Use:           path.Base(os.Args[0]),
@@ -123,7 +126,15 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 				klog.ContextualLogger(true),
 			)
 
-			cmd.SetContext(logging.Context(cmd.Context(), logger))
+			ctx := logging.Context(cmd.Context(), logger)
+
+			// Thread --context into Go context so provider config loaders
+			// can discover it via config.ContextNameFromCtx().
+			if contextName != "" {
+				ctx = internalconfig.ContextWithName(ctx, contextName)
+			}
+
+			cmd.SetContext(ctx)
 		},
 		Annotations: map[string]string{
 			cobra.CommandDisplayNameAnnotation: "gcx",
@@ -171,6 +182,8 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd.PersistentFlags().BoolVar(&noTruncate, "no-truncate", false, "Disable table column truncation (auto-enabled when stdout is piped)")
 	rootCmd.PersistentFlags().BoolVar(&agentFlag, "agent", false, "Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.")
 	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "Verbose mode. Multiple -v options increase the verbosity (maximum: 3).")
+	rootCmd.PersistentFlags().StringVar(&contextName, "context", "", "Name of the context to use (overrides current-context in config)")
+	rootCmd.PersistentFlags().StringVar(&configFile, "config", "", "Path to the configuration file")
 
 	return rootCmd
 }

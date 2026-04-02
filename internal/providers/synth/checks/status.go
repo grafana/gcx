@@ -265,12 +265,7 @@ for each check. Requires a Prometheus datasource containing SM metrics.`,
 				results = statusFiltered
 			}
 
-			codec, err := opts.IO.Codec()
-			if err != nil {
-				return err
-			}
-
-			return codec.Encode(cmd.OutOrStdout(), results)
+			return opts.IO.Encode(cmd.OutOrStdout(), results)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -415,12 +410,7 @@ Requires a Prometheus datasource containing SM metrics.`,
 				return nil
 			}
 
-			codec, err := opts.IO.Codec()
-			if err != nil {
-				return err
-			}
-
-			return codec.Encode(cmd.OutOrStdout(), CheckTimelinePayload{
+			return opts.IO.Encode(cmd.OutOrStdout(), CheckTimelinePayload{
 				Check:  *c,
 				Series: series,
 				Start:  start,

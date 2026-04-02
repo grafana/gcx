@@ -166,15 +166,15 @@ func TestJSONFieldSelection_MissingFieldIsNull(t *testing.T) {
 	assert.Nil(t, val, "missing field value must be null")
 }
 
-// TestJSONFieldSelection_MutualExclusionWithOutput verifies that providing
-// both --json and -o returns a usage error (FR-009).
+// TestJSONFieldSelection_RejectsNonJSONOutput verifies that providing
+// --json with a non-JSON -o format returns an error.
 //
 // Acceptance criterion:
 //
 //	GIVEN a gcx command
 //	WHEN both --json field1 and -o yaml are provided
-//	THEN the command exits with a usage error
-func TestJSONFieldSelection_MutualExclusionWithOutput(t *testing.T) {
+//	THEN the command exits with an error (field selection requires JSON)
+func TestJSONFieldSelection_RejectsNonJSONOutput(t *testing.T) {
 	opts := &cmdio.Options{}
 	opts.RegisterCustomCodec("yaml", &dummyCodec{})
 
@@ -185,8 +185,24 @@ func TestJSONFieldSelection_MutualExclusionWithOutput(t *testing.T) {
 	require.NoError(t, flags.Set("output", "yaml"))
 
 	err := opts.Validate()
-	require.Error(t, err, "expected error when --json and -o are both provided")
-	assert.Contains(t, err.Error(), "mutually exclusive")
+	require.Error(t, err, "expected error when --json and -o yaml are both provided")
+	assert.Contains(t, err.Error(), "--json requires JSON output")
+}
+
+// TestJSONFieldSelection_AllowsExplicitJSONOutput verifies that --json combined
+// with -o json is accepted (no conflict — both request JSON).
+func TestJSONFieldSelection_AllowsExplicitJSONOutput(t *testing.T) {
+	opts := &cmdio.Options{}
+	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	opts.BindFlags(flags)
+
+	require.NoError(t, flags.Set("json", "name"))
+	require.NoError(t, flags.Set("output", "json"))
+
+	err := opts.Validate()
+	require.NoError(t, err, "--json with -o json should be allowed")
+	assert.Equal(t, []string{"name"}, opts.JSONFields)
+	assert.Equal(t, "json", opts.OutputFormat)
 }
 
 // TestJSONFieldSelection_OptionsBindingReflectsFields verifies that

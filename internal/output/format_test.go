@@ -109,10 +109,17 @@ func TestJSONFlag_Parsing(t *testing.T) {
 			wantOutputFormat: "json",
 		},
 		{
-			name:            "--json and -o together returns mutual exclusion error",
+			name:            "--json and -o yaml returns error (non-JSON format)",
 			jsonFlagValue:   "name",
 			outputFlagValue: "yaml",
 			wantErr:         true,
+		},
+		{
+			name:             "--json and -o json is allowed",
+			jsonFlagValue:    "name",
+			outputFlagValue:  "json",
+			wantJSONFields:   []string{"name"},
+			wantOutputFormat: "json",
 		},
 	}
 

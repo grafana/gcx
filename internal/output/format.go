@@ -1,6 +1,7 @@
 package output
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/terminal"
 	"github.com/spf13/pflag"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 const jsonDiscoverySentinel = "?"
@@ -80,8 +82,10 @@ func (opts *Options) Validate() error {
 	return opts.applyJSONFlag()
 }
 
-// applyJSONFlag processes the --json flag value and enforces mutual exclusion
-// with -o/--output. It sets JSONFields, JSONDiscovery, or returns an error.
+// applyJSONFlag processes the --json flag value. When -o/--output is explicitly
+// set to a non-JSON format, it returns an error because field selection only
+// works with JSON output. Combining -o json with --json is allowed since
+// there is no conflict.
 func (opts *Options) applyJSONFlag() error {
 	if opts.flags == nil {
 		return nil
@@ -92,10 +96,11 @@ func (opts *Options) applyJSONFlag() error {
 		return nil
 	}
 
-	// Enforce mutual exclusion with -o/--output.
+	// Only reject when -o is explicitly set to a non-JSON format.
+	// -o json (or omitted) is fine — --json implies JSON anyway.
 	outputFlag := opts.flags.Lookup("output")
-	if outputFlag != nil && outputFlag.Changed {
-		return errors.New("--json and -o/--output are mutually exclusive: use one or the other, not both")
+	if outputFlag != nil && outputFlag.Changed && outputFlag.Value.String() != "json" {
+		return fmt.Errorf("--json requires JSON output, but -o %s was specified", outputFlag.Value.String())
 	}
 
 	jsonValue := jsonFlag.Value.String()
@@ -137,7 +142,85 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 		return err
 	}
 
+	// Intercept JSON field discovery and field selection when the resolved
+	// codec is JSON. Commands that already check JSONFields/JSONDiscovery
+	// before calling Encode() will never reach here (they return early), so
+	// there is no double-application risk.
+	if codec.Format() == format.JSON {
+		if opts.JSONDiscovery {
+			return opts.encodeDiscovery(dst, value)
+		}
+		if len(opts.JSONFields) > 0 {
+			return NewFieldSelectCodec(opts.JSONFields).Encode(dst, value)
+		}
+	}
+
 	return codec.Encode(dst, value)
+}
+
+// encodeDiscovery marshals value to discover its available field names, prints
+// them one per line, and returns without encoding the full value.
+func (opts *Options) encodeDiscovery(dst io.Writer, value any) error {
+	obj, err := marshalToSampleMap(value)
+	if err != nil {
+		return fmt.Errorf("field discovery: %w", err)
+	}
+	for _, field := range DiscoverFields(obj) {
+		fmt.Fprintln(dst, field)
+	}
+	return nil
+}
+
+// marshalToSampleMap converts an arbitrary value into a single map[string]any
+// suitable for field discovery. For slices/arrays it returns the first element.
+// Handles unstructured.Unstructured and unstructured.UnstructuredList directly
+// because their value-type MarshalJSON may not be available (pointer receiver).
+func marshalToSampleMap(value any) (map[string]any, error) {
+	// Handle k8s unstructured types directly — avoids MarshalJSON pointer
+	// receiver issues and is more efficient than marshal/unmarshal.
+	switch v := value.(type) {
+	case unstructured.Unstructured:
+		return v.Object, nil
+	case *unstructured.Unstructured:
+		return v.Object, nil
+	case unstructured.UnstructuredList:
+		if len(v.Items) > 0 {
+			return v.Items[0].Object, nil
+		}
+		return nil, errors.New("cannot discover fields from empty UnstructuredList")
+	case *unstructured.UnstructuredList:
+		if len(v.Items) > 0 {
+			return v.Items[0].Object, nil
+		}
+		return nil, errors.New("cannot discover fields from empty UnstructuredList")
+	case map[string]any:
+		return v, nil
+	}
+
+	data, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+
+	// Try as object first.
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err == nil {
+		// If the object has an "items" array, use the first element.
+		if raw, ok := m["items"]; ok {
+			if items := toSliceOfMaps(raw); len(items) > 0 {
+				return items[0], nil
+			}
+		}
+		return m, nil
+	}
+
+	// Try as array — use first element.
+	var arr []map[string]any
+	if err := json.Unmarshal(data, &arr); err == nil && len(arr) > 0 {
+		return arr[0], nil
+	}
+
+	return nil, fmt.Errorf("cannot discover fields from %T: not a JSON object or array", value)
 }
 
 // We have to return an interface here.

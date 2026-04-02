@@ -121,7 +121,7 @@ func newRulesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 					nonEmpty = append(nonEmpty, g)
 				}
 			}
-			return codec.Encode(cmd.OutOrStdout(), nonEmpty)
+			return opts.IO.Encode(cmd.OutOrStdout(), nonEmpty)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -220,12 +220,7 @@ func newRulesGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			codec, err := opts.IO.Codec()
-			if err != nil {
-				return err
-			}
-
-			return codec.Encode(cmd.OutOrStdout(), rule)
+			return opts.IO.Encode(cmd.OutOrStdout(), rule)
 		},
 	}
 	opts.setup(cmd.Flags())

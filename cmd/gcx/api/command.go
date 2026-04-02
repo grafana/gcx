@@ -195,9 +195,5 @@ func outputResponse(cmd *cobra.Command, opts *apiOpts, resp *http.Response) erro
 		return err
 	}
 
-	codec, err := opts.IO.Codec()
-	if err != nil {
-		return err
-	}
-	return codec.Encode(cmd.OutOrStdout(), data)
+	return opts.IO.Encode(cmd.OutOrStdout(), data)
 }

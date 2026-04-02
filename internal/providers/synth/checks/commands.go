@@ -155,7 +155,7 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 				}
 				objs = append(objs, obj)
 			}
-			return codec.Encode(cmd.OutOrStdout(), objs)
+			return opts.IO.Encode(cmd.OutOrStdout(), objs)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -311,7 +311,7 @@ func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
 			if err := json.Unmarshal(objData, &obj); err != nil {
 				return fmt.Errorf("unmarshaling to unstructured: %w", err)
 			}
-			return codec.Encode(cmd.OutOrStdout(), &obj)
+			return opts.IO.Encode(cmd.OutOrStdout(), &obj)
 		},
 	}
 	opts.setup(cmd.Flags())
