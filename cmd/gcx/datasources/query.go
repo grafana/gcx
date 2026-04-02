@@ -1,4 +1,4 @@
-package query
+package datasources
 
 import (
 	"errors"
@@ -13,8 +13,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// GenericCmd returns the `query` subcommand for the generic (auto-detect) datasource parent.
-func GenericCmd(configOpts *cmdconfig.Options) *cobra.Command {
+// QueryCmd returns the auto-detecting query command for the datasources group.
+func QueryCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
 	var profileType string
 	var maxNodes int64

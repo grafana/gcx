@@ -1,4 +1,4 @@
-package query_test
+package datasources_test
 
 import (
 	"bytes"
@@ -12,7 +12,7 @@ import (
 	"time"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
-	dsquery "github.com/grafana/gcx/cmd/gcx/datasources/query"
+	"github.com/grafana/gcx/cmd/gcx/datasources"
 	"github.com/grafana/gcx/internal/testutils"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -116,25 +116,25 @@ func parseUnixMillisField(t *testing.T, body map[string]any, key string) time.Ti
 	return time.UnixMilli(ms)
 }
 
-// TestQuerySubcommandUse verifies the generic constructor sets Use="query ...".
+// TestQuerySubcommandUse verifies the query constructor sets Use="query ...".
 func TestQuerySubcommandUse(t *testing.T) {
-	cmd := dsquery.GenericCmd(newConfigOpts())
+	cmd := datasources.QueryCmd(newConfigOpts())
 	assert.Equal(t, "query", cmd.Name())
 }
 
-func TestSinceValidationOnGenericCommand(t *testing.T) {
+func TestSinceValidationOnQueryCommand(t *testing.T) {
 	tests := []struct {
 		name      string
 		args      []string
 		expectErr string
 	}{
 		{
-			name:      "generic: since+from rejected",
+			name:      "since+from rejected",
 			args:      []string{"query", "uid", "expr", "--since", "1h", "--from", "now-2h"},
 			expectErr: "--since is mutually exclusive with --from",
 		},
 		{
-			name:      "generic: zero since rejected",
+			name:      "zero since rejected",
 			args:      []string{"query", "uid", "expr", "--since", "0"},
 			expectErr: "--since must be greater than 0",
 		},
@@ -142,7 +142,7 @@ func TestSinceValidationOnGenericCommand(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := dsquery.GenericCmd(newConfigOpts())
+			cmd := datasources.QueryCmd(newConfigOpts())
 			err := executeQueryCommand(t, cmd, tt.args)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.expectErr)
@@ -150,7 +150,7 @@ func TestSinceValidationOnGenericCommand(t *testing.T) {
 	}
 }
 
-func TestSinceResolvesRelativeRangeOnGenericCommand(t *testing.T) {
+func TestSinceResolvesRelativeRangeOnQueryCommand(t *testing.T) {
 	var capturedPath string
 	var capturedBody map[string]any
 	server := newQueryCaptureServer(t, "loki", func(path string, body map[string]any) {
@@ -160,7 +160,7 @@ func TestSinceResolvesRelativeRangeOnGenericCommand(t *testing.T) {
 	defer server.Close()
 
 	configOpts := newConfigOptsWithServer(t, server.URL)
-	cmd := dsquery.GenericCmd(configOpts)
+	cmd := datasources.QueryCmd(configOpts)
 
 	referenceNow := time.Now()
 	err := executeQueryCommand(t, cmd, []string{"query", "uid", `{job="x"}`, "--since", "1h", "--to", "now-6h", "-o", "json"})
@@ -175,8 +175,8 @@ func TestSinceResolvesRelativeRangeOnGenericCommand(t *testing.T) {
 	assert.WithinDuration(t, referenceNow.Add(-6*time.Hour), end, 5*time.Second)
 }
 
-// TestGenericRequiresBothArgs verifies that generic query requires exactly 2 positional args.
-func TestGenericRequiresBothArgs(t *testing.T) {
-	err := executeQueryCommand(t, dsquery.GenericCmd(newConfigOpts()), []string{"query"})
+// TestQueryRequiresBothArgs verifies that query requires exactly 2 positional args.
+func TestQueryRequiresBothArgs(t *testing.T) {
+	err := executeQueryCommand(t, datasources.QueryCmd(newConfigOpts()), []string{"query"})
 	require.Error(t, err)
 }
