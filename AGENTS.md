@@ -124,8 +124,8 @@ cmd/gcx/
 ├── config/      Config management commands (set, use-context, view...)
 ├── resources/   Resource commands (get, schemas, push, pull, delete, edit, validate)
 ├── dashboards/  Dashboard commands (snapshot via Image Renderer)
-├── datasources/ Datasource commands (list, get, query) + exported constructors for signal providers
-│   └── query/   Query subcommand shared infrastructure (codecs, time parsing, per-kind constructors)
+├── datasources/ Datasource commands (list, get, query)
+│   └── query/   Auto-detecting query command (GenericCmd only; shared infra in internal/datasources/query/)
 ├── providers/   Provider list command
 ├── api/         Raw API passthrough command (direct Grafana API calls)
 ├── linter/      Linting commands (run, new, rules, test — mounted under dev lint)
@@ -168,6 +168,7 @@ internal/
 │   └── adaptive/   Shared adaptive subpackages (metrics/, logs/, traces/, auth/) — imported by signal providers
 ├── dashboards/  Dashboard Image Renderer client (PNG snapshots)
 ├── datasources/ Datasource HTTP client (legacy REST API)
+│   └── query/   Shared query CLI utils (time parsing, codecs, opts, resolve helpers — used by signal providers and GenericCmd)
 ├── query/       Datasource query clients
 │   ├── prometheus/  Prometheus HTTP query client
 │   └── loki/        Loki HTTP query client
