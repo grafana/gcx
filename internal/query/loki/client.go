@@ -215,16 +215,16 @@ func (c *Client) buildQueryPath() string {
 }
 
 func (c *Client) buildLabelsPath(datasourceUID string) string {
-	return fmt.Sprintf("/api/datasources/uid/%s/resources/labels", datasourceUID)
+	return fmt.Sprintf("/api/datasources/uid/%s/resources/labels", url.PathEscape(datasourceUID))
 }
 
 func (c *Client) buildLabelValuesPath(datasourceUID, labelName string) string {
 	return fmt.Sprintf("/api/datasources/uid/%s/resources/label/%s/values",
-		datasourceUID, url.PathEscape(labelName))
+		url.PathEscape(datasourceUID), url.PathEscape(labelName))
 }
 
 func (c *Client) buildSeriesPath(datasourceUID string) string {
-	return fmt.Sprintf("/api/datasources/uid/%s/resources/series", datasourceUID)
+	return fmt.Sprintf("/api/datasources/uid/%s/resources/series", url.PathEscape(datasourceUID))
 }
 
 func convertGrafanaResponse(grafanaResp *GrafanaQueryResponse) *QueryResponse {

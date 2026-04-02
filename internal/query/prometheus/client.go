@@ -222,14 +222,14 @@ func (c *Client) buildQueryPath() string {
 }
 
 func (c *Client) buildLabelsPath(datasourceUID string) string {
-	return fmt.Sprintf("/api/datasources/uid/%s/resources/api/v1/labels", datasourceUID)
+	return fmt.Sprintf("/api/datasources/uid/%s/resources/api/v1/labels", url.PathEscape(datasourceUID))
 }
 
 func (c *Client) buildLabelValuesPath(datasourceUID, labelName string) string {
 	return fmt.Sprintf("/api/datasources/uid/%s/resources/api/v1/label/%s/values",
-		datasourceUID, url.PathEscape(labelName))
+		url.PathEscape(datasourceUID), url.PathEscape(labelName))
 }
 
 func (c *Client) buildMetadataPath(datasourceUID string) string {
-	return fmt.Sprintf("/api/datasources/uid/%s/resources/api/v1/metadata", datasourceUID)
+	return fmt.Sprintf("/api/datasources/uid/%s/resources/api/v1/metadata", url.PathEscape(datasourceUID))
 }

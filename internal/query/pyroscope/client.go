@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -298,7 +299,7 @@ func (c *Client) SelectSeries(ctx context.Context, datasourceUID string, req Sel
 
 func (c *Client) buildResourcePath(datasourceUID, resourcePath string) string {
 	return fmt.Sprintf("/api/datasources/proxy/uid/%s/%s",
-		datasourceUID, resourcePath)
+		url.PathEscape(datasourceUID), resourcePath)
 }
 
 // DefaultTimeRange returns the provided time range, or defaults to the last hour if not set.
