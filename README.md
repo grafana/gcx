@@ -89,15 +89,7 @@ alongside gcx to give your agent deep Grafana knowledge.
 
 ### 1. Authenticate
 
-**OAuth login (recommended):**
-
-```bash
-gcx auth login
-```
-
-Opens your browser, authenticates with Grafana Cloud, and configures everything automatically.
-
-**Service account token (on-prem or manual setup):**
+**Service account token (recommended):**
 
 ```bash
 gcx config set contexts.my-grafana.grafana.server https://your-instance.grafana.net
@@ -109,7 +101,7 @@ Use a [Grafana service account token](https://grafana.com/docs/grafana/latest/ad
 
 **Grafana Cloud products (SLO, Synth, OnCall, etc.):**
 
-Grafana Cloud products require a Cloud Access Policy token for API access. Set it in your context:
+Grafana Cloud products require a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/) for API access. Set it in your context:
 
 ```bash
 gcx config set contexts.my-grafana.cloud.token your-cloud-access-policy-token
@@ -124,6 +116,9 @@ export GRAFANA_TOKEN="your-service-account-token"
 export GRAFANA_CLOUD_TOKEN="your-cloud-access-policy-token"
 export GRAFANA_CLOUD_ORG="your-org-slug"
 ```
+
+> [!NOTE]
+> `gcx auth login` provides an experimental OAuth browser flow. Manual token setup above is the recommended approach for now. A consolidated authentication experience — including Grafana Assistant CLI integration — is coming soon.
 
 **Verify:** `gcx config check`
 
