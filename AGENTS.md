@@ -165,6 +165,7 @@ internal/
 │   └── remote/     Pusher, Puller, Deleter, FolderHierarchy, Summary
 ├── providers/   Provider plugin system (interface, registry, self-registration)
 │   ├── alert/      Alert provider (rules, groups — read-only)
+│   ├── faro/       Faro provider (Frontend Observability — apps CRUD, sourcemaps sub-resource)
 │   ├── fleet/      Fleet Management provider (pipeline and collector resources)
 │   ├── incidents/  IRM Incidents provider
 │   ├── k6/         K6 Cloud provider (projects, tests, runs, envvars)
