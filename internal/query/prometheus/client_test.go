@@ -1,13 +1,15 @@
-package prometheus
+package prometheus_test
 
 import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/grafana/gcx/internal/query/prometheus"
 )
 
 func TestBuildPathsEscapeDatasourceUID(t *testing.T) {
-	c := &Client{}
+	c := &prometheus.Client{}
 	uid := "uid/../admin"
 	escapedUID := url.PathEscape(uid)
 
@@ -15,9 +17,9 @@ func TestBuildPathsEscapeDatasourceUID(t *testing.T) {
 		name string
 		path string
 	}{
-		{"labels", c.buildLabelsPath(uid)},
-		{"labelValues", c.buildLabelValuesPath(uid, "job")},
-		{"metadata", c.buildMetadataPath(uid)},
+		{"labels", c.BuildLabelsPath(uid)},
+		{"labelValues", c.BuildLabelValuesPath(uid, "job")},
+		{"metadata", c.BuildMetadataPath(uid)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

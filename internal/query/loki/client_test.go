@@ -1,13 +1,15 @@
-package loki
+package loki_test
 
 import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/grafana/gcx/internal/query/loki"
 )
 
 func TestBuildPathsEscapeDatasourceUID(t *testing.T) {
-	c := &Client{}
+	c := &loki.Client{}
 	uid := "uid/../admin"
 	escapedUID := url.PathEscape(uid)
 
@@ -15,9 +17,9 @@ func TestBuildPathsEscapeDatasourceUID(t *testing.T) {
 		name string
 		path string
 	}{
-		{"labels", c.buildLabelsPath(uid)},
-		{"labelValues", c.buildLabelValuesPath(uid, "job")},
-		{"series", c.buildSeriesPath(uid)},
+		{"labels", c.BuildLabelsPath(uid)},
+		{"labelValues", c.BuildLabelValuesPath(uid, "job")},
+		{"series", c.BuildSeriesPath(uid)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

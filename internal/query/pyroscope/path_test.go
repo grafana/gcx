@@ -1,13 +1,15 @@
-package pyroscope
+package pyroscope_test
 
 import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/grafana/gcx/internal/query/pyroscope"
 )
 
 func TestBuildPathsEscapeDatasourceUID(t *testing.T) {
-	c := &Client{}
+	c := &pyroscope.Client{}
 	uid := "uid/../admin"
 	escapedUID := url.PathEscape(uid)
 
@@ -15,7 +17,7 @@ func TestBuildPathsEscapeDatasourceUID(t *testing.T) {
 		name string
 		path string
 	}{
-		{"resourcePath", c.buildResourcePath(uid, "querier.v1.QuerierService/ProfileTypes")},
+		{"resourcePath", c.BuildResourcePath(uid, "querier.v1.QuerierService/ProfileTypes")},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
