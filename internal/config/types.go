@@ -86,6 +86,9 @@ type Context struct {
 	// DefaultPyroscopeDatasource is the UID of the default Pyroscope datasource to use for queries.
 	DefaultPyroscopeDatasource string `json:"default-pyroscope-datasource,omitempty" yaml:"default-pyroscope-datasource,omitempty"`
 
+	// DefaultTempoDatasource is the UID of the default Tempo datasource to use for queries.
+	DefaultTempoDatasource string `json:"default-tempo-datasource,omitempty" yaml:"default-tempo-datasource,omitempty"`
+
 	// Datasources holds per-kind default datasource UIDs, indexed by datasource kind (e.g. "prometheus", "loki").
 	// Takes precedence over the legacy DefaultXxxDatasource fields when both are set.
 	Datasources map[string]string `json:"datasources,omitempty" yaml:"datasources,omitempty"`

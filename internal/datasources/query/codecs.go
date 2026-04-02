@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/query/pyroscope"
+	"github.com/grafana/gcx/internal/query/tempo"
 )
 
 type queryTableCodec struct{}
@@ -26,6 +27,10 @@ func (c *queryTableCodec) Encode(w io.Writer, data any) error {
 		return loki.FormatQueryTable(w, resp)
 	case *pyroscope.QueryResponse:
 		return pyroscope.FormatQueryTable(w, resp)
+	case *tempo.SearchResponse:
+		return tempo.FormatSearchTable(w, resp)
+	case *tempo.MetricsResponse:
+		return tempo.FormatMetricsTable(w, resp)
 	default:
 		return errors.New("invalid data type for query table codec")
 	}
@@ -47,6 +52,8 @@ func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 		return prometheus.FormatTable(w, resp)
 	case *loki.QueryResponse:
 		return loki.FormatQueryTableWide(w, resp)
+	case *tempo.SearchResponse:
+		return tempo.FormatSearchTable(w, resp)
 	default:
 		return errors.New("invalid data type for query wide codec")
 	}
@@ -79,6 +86,11 @@ func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
 		}
 	case *pyroscope.QueryResponse:
 		chartData, err = graph.FromPyroscopeResponse(resp)
+		if err != nil {
+			return err
+		}
+	case *tempo.MetricsResponse:
+		chartData, err = graph.FromTempoMetricsResponse(resp)
 		if err != nil {
 			return err
 		}

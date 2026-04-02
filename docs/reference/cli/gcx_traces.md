@@ -23,5 +23,9 @@ Query Tempo datasources and manage Adaptive Traces
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx traces adaptive](gcx_traces_adaptive.md)	 - Manage Adaptive Traces resources
-* [gcx traces query](gcx_traces_query.md)	 - Execute a Tempo query
+* [gcx traces get](gcx_traces_get.md)	 - Retrieve a trace by ID
+* [gcx traces metrics](gcx_traces_metrics.md)	 - Execute a TraceQL metrics query
+* [gcx traces search](gcx_traces_search.md)	 - Search for traces using a TraceQL query
+* [gcx traces tag-values](gcx_traces_tag-values.md)	 - List values for a trace tag
+* [gcx traces tags](gcx_traces_tags.md)	 - List trace tag names
 

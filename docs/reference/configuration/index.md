@@ -97,6 +97,8 @@ contexts:
     default-loki-datasource: string
     # DefaultPyroscopeDatasource is the UID of the default Pyroscope datasource to use for queries.
     default-pyroscope-datasource: string
+    # DefaultTempoDatasource is the UID of the default Tempo datasource to use for queries.
+    default-tempo-datasource: string
     # Datasources holds per-kind default datasource UIDs, indexed by datasource kind (e.g. "prometheus", "loki").
     # Takes precedence over the legacy DefaultXxxDatasource fields when both are set.
     datasources: 
