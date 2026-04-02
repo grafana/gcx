@@ -15,6 +15,9 @@ Filter keys (trace): model, provider, agent, agent.version, status,
 Filter keys (metadata): generation_count, eval.passed, eval.evaluator_id, eval.score_key, eval.score
 Operators: =, !=, >, <, >=, <=, =~ (regex)
 
+Returns a single page of results (controlled by --page-size). A warning is
+shown when more results are available.
+
 ```
 gcx sigil conversations search [flags]
 ```

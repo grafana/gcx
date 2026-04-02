@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"time"
@@ -71,13 +72,13 @@ func ListAll[T any](ctx context.Context, c *Client, basePath string, query url.V
 	}
 	var all []T
 
-	if query == nil {
-		query = url.Values{}
-	}
+	// Copy to avoid mutating the caller's map during pagination.
+	q := make(url.Values, len(query))
+	maps.Copy(q, query)
 
 	for {
 		path := basePath
-		if encoded := query.Encode(); encoded != "" {
+		if encoded := q.Encode(); encoded != "" {
 			path += "?" + encoded
 		}
 
@@ -109,7 +110,7 @@ func ListAll[T any](ctx context.Context, c *Client, basePath string, query url.V
 		if page.NextCursor == "" {
 			break
 		}
-		query.Set("cursor", page.NextCursor)
+		q.Set("cursor", page.NextCursor)
 	}
 
 	if all == nil {

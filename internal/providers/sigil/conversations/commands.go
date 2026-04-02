@@ -150,7 +150,10 @@ Filter syntax: key operator "value" (multiple filters separated by spaces).
 Filter keys (trace): model, provider, agent, agent.version, status,
   error.type, error.category, duration, tool.name, operation, namespace, cluster, service
 Filter keys (metadata): generation_count, eval.passed, eval.evaluator_id, eval.score_key, eval.score
-Operators: =, !=, >, <, >=, <=, =~ (regex)`,
+Operators: =, !=, >, <, >=, <=, =~ (regex)
+
+Returns a single page of results (controlled by --page-size). A warning is
+shown when more results are available.`,
 		Example: `  gcx sigil conversations search --filters 'agent = "claude-code"'
   gcx sigil conversations search --filters 'agent = "claude-code" model = "claude-opus-4-6"'
   gcx sigil conversations search --filters 'status = "error"' --from 2026-04-01T00:00:00Z --to 2026-04-02T00:00:00Z`,
