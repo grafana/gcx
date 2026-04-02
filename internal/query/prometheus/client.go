@@ -264,21 +264,18 @@ func (c *Client) buildQueryPath() string {
 }
 
 func (c *Client) buildLabelsPath(datasourceUID string) string {
-	return fmt.Sprintf("/apis/prometheus.datasource.grafana.app/v0alpha1/namespaces/%s/datasources/%s/resource/api/v1/labels",
-		c.restConfig.Namespace, datasourceUID)
+	return fmt.Sprintf("/api/datasources/uid/%s/resources/api/v1/labels", datasourceUID)
 }
 
 func (c *Client) buildLabelValuesPath(datasourceUID, labelName string) string {
-	return fmt.Sprintf("/apis/prometheus.datasource.grafana.app/v0alpha1/namespaces/%s/datasources/%s/resource/api/v1/label/%s/values",
-		c.restConfig.Namespace, datasourceUID, url.PathEscape(labelName))
+	return fmt.Sprintf("/api/datasources/uid/%s/resources/api/v1/label/%s/values",
+		datasourceUID, url.PathEscape(labelName))
 }
 
 func (c *Client) buildMetadataPath(datasourceUID string) string {
-	return fmt.Sprintf("/apis/prometheus.datasource.grafana.app/v0alpha1/namespaces/%s/datasources/%s/resource/api/v1/metadata",
-		c.restConfig.Namespace, datasourceUID)
+	return fmt.Sprintf("/api/datasources/uid/%s/resources/api/v1/metadata", datasourceUID)
 }
 
 func (c *Client) buildTargetsPath(datasourceUID string) string {
-	return fmt.Sprintf("/apis/prometheus.datasource.grafana.app/v0alpha1/namespaces/%s/datasources/%s/resource/api/v1/targets",
-		c.restConfig.Namespace, datasourceUID)
+	return fmt.Sprintf("/api/datasources/uid/%s/resources/api/v1/targets", datasourceUID)
 }
