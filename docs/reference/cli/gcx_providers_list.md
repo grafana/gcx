@@ -1,11 +1,17 @@
-## gcx auth
+## gcx providers list
 
-Manage authentication
+List registered providers
+
+```
+gcx providers list [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for auth
+  -h, --help            help for list
+      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+  -o, --output string   Output format. One of: json, text, yaml (default "text")
 ```
 
 ### Options inherited from parent commands
@@ -21,6 +27,5 @@ Manage authentication
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
-* [gcx auth login](gcx_auth_login.md)	 - Authenticate to a Grafana stack with OAuth
+* [gcx providers](gcx_providers.md)	 - Manage registered providers
 
