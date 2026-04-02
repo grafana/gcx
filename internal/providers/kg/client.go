@@ -28,7 +28,6 @@ const (
 	rulesPath        = pluginResourcePath + "/asserts/api-server/v1/config/prom-rules/"
 	entityLookupPath = pluginResourcePath + "/asserts/api-server/v1/entity"
 	graphDisplayPath = pluginResourcePath + "/asserts/api-server/v1/config/display/graph"
-	environmentPath  = pluginResourcePath + "/asserts/api-server/v1/config/environment"
 )
 
 // Client is an HTTP client for the Knowledge Graph (Asserts) API.
@@ -302,22 +301,8 @@ func (c *Client) UploadRelabelRules(ctx context.Context, yamlContent string) err
 }
 
 // ---------------------------------------------------------------------------
-// Environment & dashboard configuration
+// Dashboard configuration
 // ---------------------------------------------------------------------------
-
-// GetEnvironment retrieves the current environment configuration.
-func (c *Client) GetEnvironment(ctx context.Context) (*EnvironmentConfig, error) {
-	var cfg EnvironmentConfig
-	if err := c.getJSON(ctx, environmentPath, &cfg); err != nil {
-		return nil, fmt.Errorf("kg: get environment: %w", err)
-	}
-	return &cfg, nil
-}
-
-// ConfigureEnvironment configures the environment/logs mapping.
-func (c *Client) ConfigureEnvironment(ctx context.Context, cfg EnvironmentConfig) error {
-	return c.postJSON(ctx, environmentPath, cfg, nil)
-}
 
 // ConfigureKPIDisplay configures the KPI drawer display settings.
 func (c *Client) ConfigureKPIDisplay(ctx context.Context, cfg *KPIDisplayConfig) error {

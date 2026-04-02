@@ -91,14 +91,6 @@ type FilterGroup struct {
 	SiteLabelValues []string `json:"siteLabelValues"`
 }
 
-// EnvironmentConfig holds environment/logs mapping configuration.
-type EnvironmentConfig struct {
-	EnvName       string            `json:"envName" yaml:"envName"`
-	LokiDSUID     string            `json:"lokiDsUid,omitempty" yaml:"lokiDsUid,omitempty"`
-	LogsMapping   map[string]string `json:"logsMapping,omitempty" yaml:"logsMapping,omitempty"`
-	CustomMapping map[string]string `json:"customMapping,omitempty" yaml:"customMapping,omitempty"`
-}
-
 // KPIDisplayConfig holds configuration for the KPI drawer display settings.
 type KPIDisplayConfig struct {
 	DefaultDashboard    bool `json:"defaultDashboard" yaml:"default_dashboard"`
