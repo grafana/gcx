@@ -1,7 +1,10 @@
 # Adaptive Telemetry Provider: CLI UX and Resource Adapter Design
 
 **Created**: 2026-03-27
-**Status**: proposed
+**Status**: superseded
+
+> **Superseded by PR #324**: Adaptive commands are now nested under their signal providers (e.g., `gcx metrics adaptive`) rather than a top-level `gcx adaptive` command.
+
 **Bead**: grafanactl-experiments-e6h.1
 **Supersedes**: none
 

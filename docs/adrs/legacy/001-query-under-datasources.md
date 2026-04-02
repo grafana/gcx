@@ -35,6 +35,8 @@ Design rationale:
 3. `generic` provides an escape hatch for community and other datasources
 4. The structure is extensible — new kinds like SQL can be added later
 
+> **Note (PR #324)**: Per-kind subcommands (prometheus, loki, tempo, pyroscope) have been lifted to top-level signal providers. Only the generic auto-detecting `gcx datasources query` remains under datasources.
+
 ## Consequences
 
 - The `gcx query` top-level command is removed
