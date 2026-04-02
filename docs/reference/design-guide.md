@@ -100,7 +100,8 @@ gcx resources get dashboards/my-dash --json ?
 |-------|----------|
 | `--json field1,field2` | Emit JSON with only those fields; missing fields produce `null` |
 | `--json ?` | Print available field paths (one per line, sorted) and exit 0 |
-| `--json` + `-o` | Usage error — mutually exclusive |
+| `--json` + `-o json` | Allowed — both request JSON, no conflict |
+| `--json` + `-o <non-json>` | Usage error — field selection requires JSON output |
 
 **Field path syntax:** Dot-notation resolves nested fields. `metadata.name`
 extracts `metadata → name`. Top-level keys and `spec.*` sub-keys are enumerated
