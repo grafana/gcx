@@ -47,9 +47,10 @@ TRACEQL is the TraceQL expression to evaluate.`,
 			// Resolve default UID from config.
 			var defaultUID string
 			fullCfg, err := loader.LoadFullConfig(ctx)
-			if err == nil {
-				defaultUID = internalconfig.DefaultDatasourceUID(*fullCfg.GetCurrentContext(), "tempo")
+			if err != nil {
+				return err
 			}
+			defaultUID = internalconfig.DefaultDatasourceUID(*fullCfg.GetCurrentContext(), "tempo")
 
 			datasourceUID, expr, err := dsquery.ResolveTypedArgs(args, defaultUID, "tempo")
 			if err != nil {
@@ -92,14 +93,7 @@ TRACEQL is the TraceQL expression to evaluate.`,
 				return fmt.Errorf("search failed: %w", err)
 			}
 
-			switch shared.IO.OutputFormat {
-			case "table":
-				return tempo.FormatSearchTable(cmd.OutOrStdout(), resp)
-			case "wide":
-				return tempo.FormatSearchTable(cmd.OutOrStdout(), resp)
-			default:
-				return shared.IO.Encode(cmd.OutOrStdout(), resp)
-			}
+			return shared.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}
 

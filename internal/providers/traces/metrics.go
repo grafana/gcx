@@ -52,9 +52,10 @@ By default, this runs a range query. Use --instant for point-in-time queries.`,
 			// Resolve default UID from config.
 			var defaultUID string
 			fullCfg, err := loader.LoadFullConfig(ctx)
-			if err == nil {
-				defaultUID = internalconfig.DefaultDatasourceUID(*fullCfg.GetCurrentContext(), "tempo")
+			if err != nil {
+				return err
 			}
+			defaultUID = internalconfig.DefaultDatasourceUID(*fullCfg.GetCurrentContext(), "tempo")
 
 			datasourceUID, expr, err := dsquery.ResolveTypedArgs(args, defaultUID, "tempo")
 			if err != nil {
@@ -108,12 +109,7 @@ By default, this runs a range query. Use --instant for point-in-time queries.`,
 				return fmt.Errorf("metrics query failed: %w", err)
 			}
 
-			switch shared.IO.OutputFormat {
-			case "table":
-				return tempo.FormatMetricsTable(cmd.OutOrStdout(), resp)
-			default:
-				return shared.IO.Encode(cmd.OutOrStdout(), resp)
-			}
+			return shared.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}
 
