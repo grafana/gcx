@@ -22,18 +22,6 @@ func queryCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 DATASOURCE_UID is optional when datasources.prometheus is configured in your context.
 EXPR is the PromQL expression to evaluate.`,
-		Example: `
-  # Instant query using configured default datasource
-  gcx metrics query 'up{job="grafana"}'
-
-  # Range query with explicit datasource UID
-  gcx metrics query abc123 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m
-
-  # Convenience since flag
-  gcx metrics query abc123 'up' --since 1h
-
-  # Output as JSON
-  gcx metrics query abc123 'up' -o json`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
