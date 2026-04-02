@@ -24,11 +24,17 @@ gcx profiles series [DATASOURCE_UID] EXPR [flags]
 
 ```
 
-  # List series matching a selector (use datasource UID, not name)
-  gcx profiles series -d <datasource-uid> --match '{service_name="myservice"}'
+  # Top services by CPU usage (ranked leaderboard)
+  gcx profiles series '{}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --window 1h --top
+
+  # CPU usage over the last hour with 1-minute resolution
+  gcx profiles series '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --window 1h --step 1m
 
   # Output as JSON
-  gcx profiles series -d <datasource-uid> --match '{service_name="myservice"}' -o json
+  gcx profiles series abc123 '{}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --window 1h --top -o json
 ```
 
 ### Options

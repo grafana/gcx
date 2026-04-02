@@ -17,11 +17,17 @@ gcx profiles query [DATASOURCE_UID] EXPR [flags]
 
 ```
 
-  # Query profiles using configured default datasource
-  gcx profiles query <datasource-uid> 'process_cpu:cpu:nanoseconds:cpu:nanoseconds{}'
+  # Profile query with explicit datasource UID
+  gcx profiles query abc123 '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --window 1h
+
+  # Using configured default datasource
+  gcx profiles query '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --window 1h
 
   # Output as JSON
-  gcx profiles query <datasource-uid> '<expr>' -o json
+  gcx profiles query abc123 '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o json
 ```
 
 ### Options

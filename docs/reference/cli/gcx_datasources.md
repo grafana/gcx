@@ -28,5 +28,5 @@ List, inspect, and query Grafana datasources. Use top-level signal commands (met
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx datasources get](gcx_datasources_get.md)	 - Get details of a specific datasource
 * [gcx datasources list](gcx_datasources_list.md)	 - List all datasources
-* [gcx datasources query](gcx_datasources_query.md)	 - Query any datasource (auto-detects type)
+* [gcx datasources query](gcx_datasources_query.md)	 - Execute a query against any datasource (auto-detects type)
 

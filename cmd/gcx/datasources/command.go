@@ -2,6 +2,7 @@ package datasources
 
 import (
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
+	"github.com/grafana/gcx/cmd/gcx/datasources/query"
 	"github.com/spf13/cobra"
 )
 
@@ -19,7 +20,7 @@ func Command() *cobra.Command {
 
 	cmd.AddCommand(listCmd(configOpts))
 	cmd.AddCommand(getCmd(configOpts))
-	cmd.AddCommand(queryCmd(configOpts))
+	cmd.AddCommand(query.GenericCmd(configOpts))
 
 	return cmd
 }

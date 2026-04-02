@@ -32,13 +32,13 @@ client is used automatically. This is the escape hatch for datasource types
 that do not have a dedicated subcommand.`,
 		Example: `
   # Auto-detect and query any supported datasource
-  gcx datasources generic query ds-001 'up{job="grafana"}' --from now-1h --to now
+  gcx datasources query ds-001 'up{job="grafana"}' --from now-1h --to now
 
-  # Loki via generic (with limit)
-  gcx datasources generic query loki-001 '{job="varlogs"}' --from now-1h --to now --limit 200
+  # Loki via auto-detect (with limit)
+  gcx datasources query loki-001 '{job="varlogs"}' --from now-1h --to now --limit 200
 
-  # Pyroscope via generic
-  gcx datasources generic query pyro-001 '{service_name="frontend"}' \
+  # Pyroscope via auto-detect
+  gcx datasources query pyro-001 '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --from now-1h --to now`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {

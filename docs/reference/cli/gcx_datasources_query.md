@@ -1,15 +1,50 @@
 ## gcx datasources query
 
-Query any datasource (auto-detects type)
+Execute a query against any datasource (auto-detects type)
 
 ### Synopsis
 
-Query any datasource type. The datasource type is auto-detected via the Grafana API.
+Execute a query against any datasource, automatically detecting the datasource type.
+
+DATASOURCE_UID is always required (no default resolution for generic).
+EXPR is the query expression appropriate for the datasource type.
+
+The datasource type is detected via the Grafana API and the appropriate query
+client is used automatically. This is the escape hatch for datasource types
+that do not have a dedicated subcommand.
+
+```
+gcx datasources query DATASOURCE_UID EXPR [flags]
+```
+
+### Examples
+
+```
+
+  # Auto-detect and query any supported datasource
+  gcx datasources query ds-001 'up{job="grafana"}' --from now-1h --to now
+
+  # Loki via auto-detect (with limit)
+  gcx datasources query loki-001 '{job="varlogs"}' --from now-1h --to now --limit 200
+
+  # Pyroscope via auto-detect
+  gcx datasources query pyro-001 '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --from now-1h --to now
+```
 
 ### Options
 
 ```
-  -h, --help   help for query
+      --from string           Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
+  -h, --help                  help for query
+      --json string           Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --limit int             Maximum number of log lines to return for loki queries (0 means no limit) (default 1000)
+      --max-nodes int         Maximum nodes in flame graph (pyroscope only) (default 1024)
+  -o, --output string         Output format. One of: graph, json, table, wide, yaml (default "table")
+      --profile-type string   Profile type ID for pyroscope queries (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds')
+      --step string           Query step (e.g., '15s', '1m')
+      --to string             End time (RFC3339, Unix timestamp, or relative like 'now')
+      --window string         Convenience shorthand: sets --from to now-{window} and --to to now (mutually exclusive with --from/--to)
 ```
 
 ### Options inherited from parent commands
@@ -26,5 +61,4 @@ Query any datasource type. The datasource type is auto-detected via the Grafana 
 ### SEE ALSO
 
 * [gcx datasources](gcx_datasources.md)	 - Manage and query Grafana datasources
-* [gcx datasources query query](gcx_datasources_query_query.md)	 - Execute a query against any datasource (auto-detects type)
 
