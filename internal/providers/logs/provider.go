@@ -3,7 +3,7 @@ package logs
 import (
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/providers"
-	adaptivelogs "github.com/grafana/gcx/internal/providers/adaptive/logs"
+	adaptivelogs "github.com/grafana/gcx/internal/providers/logs/adaptive"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 )

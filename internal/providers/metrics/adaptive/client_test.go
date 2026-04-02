@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/grafana/gcx/internal/providers/adaptive/metrics"
+	metrics "github.com/grafana/gcx/internal/providers/metrics/adaptive"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

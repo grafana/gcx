@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	adaptiveauth "github.com/grafana/gcx/internal/auth/adaptive"
 	"github.com/grafana/gcx/internal/providers"
-	adaptiveauth "github.com/grafana/gcx/internal/providers/adaptive/auth"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"k8s.io/apimachinery/pkg/runtime/schema"

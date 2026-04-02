@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/grafana/gcx/internal/providers/adaptive/traces"
+	traces "github.com/grafana/gcx/internal/providers/traces/adaptive"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

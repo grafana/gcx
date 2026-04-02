@@ -138,6 +138,7 @@ cmd/gcx/
 
 internal/
 ├── auth/        OAuth PKCE flow, token refresh transport
+│   └── adaptive/  Shared adaptive telemetry auth (GCOM caching, Basic auth — used by signal providers)
 ├── config/      Config types, loader, editor, rest.Config builder, stack-id discovery, context name helpers
 ├── cloud/       GCOM HTTP client for Grafana Cloud stack discovery
 ├── fleet/       Shared fleet base client (HTTP, auth, config — used by fleet provider and setup/instrumentation)
@@ -164,8 +165,7 @@ internal/
 │   ├── profiles/   Profiles signal provider (Pyroscope queries + adaptive stub)
 │   ├── slo/        SLO provider (definitions, reports)
 │   ├── synth/      Synthetic Monitoring provider (checks, probes)
-│   ├── traces/     Traces signal provider (Tempo queries + Adaptive Traces commands)
-│   └── adaptive/   Shared adaptive subpackages (metrics/, logs/, traces/, auth/) — imported by signal providers
+│   └── traces/     Traces signal provider (Tempo queries + Adaptive Traces commands)
 ├── dashboards/  Dashboard Image Renderer client (PNG snapshots)
 ├── datasources/ Datasource HTTP client (legacy REST API)
 │   └── query/   Shared query CLI utils (time parsing, codecs, opts, resolve helpers — used by signal providers and GenericCmd)

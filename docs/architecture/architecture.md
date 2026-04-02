@@ -673,10 +673,10 @@ Each LGTM signal has its own provider in `internal/providers/{signal}/` that reg
 | `internal/providers/logs/` | Loki queries + Adaptive Logs (patterns, exemptions, segments) |
 | `internal/providers/traces/` | Tempo queries (stub) + Adaptive Traces (policies, recommendations) |
 | `internal/providers/profiles/` | Pyroscope queries + adaptive stub |
-| `internal/providers/adaptive/auth/` | Shared Basic auth helper and GCOM caching (imported by signal providers) |
-| `internal/providers/adaptive/metrics/` | Adaptive Metrics commands (imported by metrics provider) |
-| `internal/providers/adaptive/logs/` | Adaptive Logs commands + TypedCRUD adapters (imported by logs provider) |
-| `internal/providers/adaptive/traces/` | Adaptive Traces commands + TypedCRUD adapters (imported by traces provider) |
+| `internal/auth/adaptive/` | Shared Basic auth helper and GCOM caching (imported by all signal adaptive subpackages) |
+| `internal/providers/metrics/adaptive/` | Adaptive Metrics commands (rules, recommendations) |
+| `internal/providers/logs/adaptive/` | Adaptive Logs commands + TypedCRUD adapters (patterns, exemptions, segments) |
+| `internal/providers/traces/adaptive/` | Adaptive Traces commands + TypedCRUD adapters (policies, recommendations) |
 | `internal/datasources/query/` | Shared query CLI utils: time parsing, codecs, opts, resolve helpers |
 
 ### App Observability Provider

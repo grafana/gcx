@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/grafana/gcx/internal/providers/adaptive/logs"
+	logs "github.com/grafana/gcx/internal/providers/logs/adaptive"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

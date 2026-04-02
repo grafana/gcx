@@ -3,7 +3,7 @@ package traces
 import (
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/providers"
-	adaptivetraces "github.com/grafana/gcx/internal/providers/adaptive/traces"
+	adaptivetraces "github.com/grafana/gcx/internal/providers/traces/adaptive"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 )

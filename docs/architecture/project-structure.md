@@ -25,6 +25,7 @@ gcx/
 ├── internal/                 # All non-public packages (Go enforced)
 │   ├── agent/                # Agent-mode detection, command annotations, known-resource registry with operation hints
 │   ├── auth/                 # OAuth PKCE flow, token refresh transport
+│   │   └── adaptive/         # Shared adaptive telemetry auth (GCOM caching, Basic auth)
 │   ├── cloud/                # Grafana Cloud stack discovery via GCOM API
 │   ├── fleet/                # Shared fleet base client (HTTP, auth, config — shared by fleet provider and setup/instrumentation)
 │   ├── setup/
@@ -42,14 +43,12 @@ gcx/
 │   │   └── builtins/         # Built-in PromQL/LogQL validators
 │   ├── providers/            # Provider plugin system
 │   │   ├── configloader.go   # Shared ConfigLoader for all providers
-│   │   ├── adaptive/         # Shared adaptive subpackages (imported by signal providers)
-│   │   │   ├── auth/         # Shared Basic auth helper + GCOM caching
-│   │   │   ├── metrics/      # Adaptive Metrics rules and recommendations
-│   │   │   ├── logs/         # Adaptive Logs patterns, exemptions (TypedCRUD), segments (TypedCRUD)
-│   │   │   └── traces/       # Adaptive Traces recommendations and policies (TypedCRUD)
 │   │   ├── metrics/          # Metrics signal provider (Prometheus queries + Adaptive Metrics)
+│   │   │   └── adaptive/     # Adaptive Metrics commands (rules, recommendations)
 │   │   ├── logs/             # Logs signal provider (Loki queries + Adaptive Logs)
+│   │   │   └── adaptive/     # Adaptive Logs commands + TypedCRUD (patterns, exemptions, segments)
 │   │   ├── traces/           # Traces signal provider (Tempo queries + Adaptive Traces)
+│   │   │   └── adaptive/     # Adaptive Traces commands + TypedCRUD (policies, recommendations)
 │   │   ├── profiles/         # Profiles signal provider (Pyroscope queries + adaptive stub)
 │   │   ├── appo11y/          # App Observability provider (singleton config resources)
 │   │   │   ├── overrides/    # MetricsGeneratorConfig with ETag concurrency

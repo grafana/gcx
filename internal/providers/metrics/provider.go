@@ -3,7 +3,7 @@ package metrics
 import (
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/providers"
-	adaptivemetrics "github.com/grafana/gcx/internal/providers/adaptive/metrics"
+	adaptivemetrics "github.com/grafana/gcx/internal/providers/metrics/adaptive"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 )

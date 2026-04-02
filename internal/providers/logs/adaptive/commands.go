@@ -11,10 +11,10 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	auth "github.com/grafana/gcx/internal/auth/adaptive"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
-	"github.com/grafana/gcx/internal/providers/adaptive/auth"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"

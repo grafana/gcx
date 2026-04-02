@@ -3,8 +3,8 @@ package auth_test
 import (
 	"testing"
 
+	auth "github.com/grafana/gcx/internal/auth/adaptive"
 	"github.com/grafana/gcx/internal/cloud"
-	"github.com/grafana/gcx/internal/providers/adaptive/auth"
 )
 
 func TestExtractSignalInfo(t *testing.T) {
