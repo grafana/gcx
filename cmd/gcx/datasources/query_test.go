@@ -175,6 +175,30 @@ func TestSinceResolvesRelativeRangeOnQueryCommand(t *testing.T) {
 	assert.WithinDuration(t, referenceNow.Add(-6*time.Hour), end, 5*time.Second)
 }
 
+func TestSinceWithoutToDefaultsEndToNowOnQueryCommand(t *testing.T) {
+	var capturedBody map[string]any
+	server := newQueryCaptureServer(t, "loki", func(_ string, body map[string]any) {
+		capturedBody = body
+	})
+	defer server.Close()
+
+	configOpts := newConfigOptsWithServer(t, server.URL)
+	cmd := datasources.QueryCmd(configOpts)
+
+	referenceNow := time.Now()
+	err := executeQueryCommand(t, cmd, []string{"query", "uid", `{job="x"}`, "--since", "1h", "-o", "json"})
+	require.NoError(t, err)
+	require.NotNil(t, capturedBody)
+
+	start := parseUnixMillisField(t, capturedBody, "from")
+	end := parseUnixMillisField(t, capturedBody, "to")
+
+	// end should be approximately now (end.IsZero() path resolved to current time)
+	assert.WithinDuration(t, referenceNow, end, 5*time.Second)
+	// start should be end minus 1h
+	assert.WithinDuration(t, end.Add(-time.Hour), start, time.Second)
+}
+
 // TestQueryRequiresBothArgs verifies that query requires exactly 2 positional args.
 func TestQueryRequiresBothArgs(t *testing.T) {
 	err := executeQueryCommand(t, datasources.QueryCmd(newConfigOpts()), []string{"query"})
