@@ -42,11 +42,15 @@ gcx/
 │   │   └── builtins/         # Built-in PromQL/LogQL validators
 │   ├── providers/            # Provider plugin system
 │   │   ├── configloader.go   # Shared ConfigLoader for all providers
-│   │   ├── adaptive/         # Adaptive Telemetry provider (metrics rules/recs, logs patterns/exemptions, traces policies/recs)
+│   │   ├── adaptive/         # Shared adaptive subpackages (imported by signal providers)
 │   │   │   ├── auth/         # Shared Basic auth helper + GCOM caching
-│   │   │   ├── metrics/      # Metrics rules and recommendations (provider-only)
-│   │   │   ├── logs/         # Logs patterns (provider-only) and exemptions (TypedCRUD adapter)
-│   │   │   └── traces/       # Traces recommendations (provider-only) and policies (TypedCRUD adapter)
+│   │   │   ├── metrics/      # Adaptive Metrics rules and recommendations
+│   │   │   ├── logs/         # Adaptive Logs patterns, exemptions (TypedCRUD), segments (TypedCRUD)
+│   │   │   └── traces/       # Adaptive Traces recommendations and policies (TypedCRUD)
+│   │   ├── metrics/          # Metrics signal provider (Prometheus queries + Adaptive Metrics)
+│   │   ├── logs/             # Logs signal provider (Loki queries + Adaptive Logs)
+│   │   ├── traces/           # Traces signal provider (Tempo queries + Adaptive Traces)
+│   │   ├── profiles/         # Profiles signal provider (Pyroscope queries + adaptive stub)
 │   │   ├── appo11y/          # App Observability provider (singleton config resources)
 │   │   │   ├── overrides/    # MetricsGeneratorConfig with ETag concurrency
 │   │   │   └── settings/     # PluginSettings

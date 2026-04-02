@@ -97,7 +97,11 @@ See [docs/adrs/](docs/adrs/) for all ADRs.
 | `internal/providers/k6/` | K6 Cloud provider (projects, load tests, schedules, env vars, load zones) |
 | `internal/providers/kg/` | Knowledge Graph (Asserts) provider (rules, datasets, vendors, entity-types, scopes — read-only adapters; entities — provider CLI only) |
 | `internal/providers/incidents/` | IRM Incidents provider |
-| `internal/providers/adaptive/` | Adaptive Telemetry provider (metrics, logs, traces) — auth/, metrics/, logs/, traces/ subpackages |
+| `internal/providers/metrics/` | Metrics signal provider (Prometheus queries + Adaptive Metrics) |
+| `internal/providers/logs/` | Logs signal provider (Loki queries + Adaptive Logs) |
+| `internal/providers/traces/` | Traces signal provider (Tempo queries + Adaptive Traces) |
+| `internal/providers/profiles/` | Profiles signal provider (Pyroscope queries + adaptive stub) |
+| `internal/providers/adaptive/` | Shared adaptive subpackages (auth/, metrics/, logs/, traces/) — imported by signal providers |
 | `internal/providers/appo11y/` | App Observability provider (overrides, settings — singleton TypedCRUD resources) |
 | `internal/dashboards/` | Dashboard Image Renderer client |
 | `internal/query/prometheus/` | Prometheus HTTP query client |
