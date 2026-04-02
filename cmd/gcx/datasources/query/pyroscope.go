@@ -32,7 +32,7 @@ EXPR is the label selector (e.g., '{service_name="frontend"}').`,
   # Using configured default datasource
   gcx datasources pyroscope query '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
-    --window 1h
+    --since 1h
 
   # Output as JSON
   gcx datasources pyroscope query pyro-001 '{service_name="frontend"}' \

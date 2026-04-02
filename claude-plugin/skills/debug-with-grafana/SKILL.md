@@ -270,7 +270,7 @@ gcx resources get dashboards/<dashboard-uid> -ojson | \
 # Capture a full dashboard snapshot with variables matching the incident context
 # (requires grafana-image-renderer plugin on the Grafana instance)
 gcx dashboards snapshot <dashboard-uid> --output-dir ./debug-snapshots \
-  --var cluster=<cluster> --var job=<service-name> --window 1h
+  --var cluster=<cluster> --var job=<service-name> --since 1h
 
 # Capture the incident time window explicitly
 gcx dashboards snapshot <dashboard-uid> --from now-1h --to now \

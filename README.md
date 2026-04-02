@@ -138,8 +138,8 @@ gcx oncall schedules list                       # list on-call schedules
 gcx k6 load-tests list                          # list k6 load tests
 
 # Query datasources
-gcx datasources prometheus query 'rate(http_requests_total[5m])' --window 1h
-gcx datasources loki query '{app="nginx"} |= "error"' --window 1h
+gcx datasources prometheus query prom-001 'rate(http_requests_total[5m])' --since 1h
+gcx datasources loki query loki-001 '{app="nginx"} |= "error"' --since 1h
 ```
 
 ## Grafana Cloud Products
@@ -193,12 +193,12 @@ gcx alert rules list
 gcx alert groups list
 
 # PromQL queries
-gcx datasources prometheus query 'rate(http_requests_total[5m])' --window 1h
+gcx datasources prometheus query prom-001 'rate(http_requests_total[5m])' --since 1h
 gcx datasources prometheus labels
 gcx datasources prometheus metadata
 
 # LogQL queries
-gcx datasources loki query '{app="nginx"} |= "error"' --window 1h
+gcx datasources loki query loki-001 '{app="nginx"} |= "error"' --since 1h
 gcx datasources loki labels
 gcx datasources loki series
 ```

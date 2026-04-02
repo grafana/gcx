@@ -19,11 +19,11 @@ import (
 
 // sharedQueryOpts holds flags shared across all typed query subcommands.
 type sharedQueryOpts struct {
-	IO     cmdio.Options
-	From   string
-	To     string
-	Step   string
-	Window string
+	IO    cmdio.Options
+	From  string
+	To    string
+	Step  string
+	Since string
 }
 
 func (opts *sharedQueryOpts) setup(flags *pflag.FlagSet) {
@@ -33,27 +33,41 @@ func (opts *sharedQueryOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.From, "from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
 	flags.StringVar(&opts.To, "to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
 	flags.StringVar(&opts.Step, "step", "", "Query step (e.g., '15s', '1m')")
-	flags.StringVar(&opts.Window, "window", "", "Convenience shorthand: sets --from to now-{window} and --to to now (mutually exclusive with --from/--to)")
+	flags.StringVar(&opts.Since, "since", "", "Duration before --to (or now if omitted); mutually exclusive with --from")
 }
 
-// Validate validates shared flags and resolves --window into From/To.
+// Validate validates shared flags and resolves --since into From/To.
 func (opts *sharedQueryOpts) Validate() error {
 	if err := opts.IO.Validate(); err != nil {
 		return err
 	}
 
-	if opts.Window != "" {
-		if opts.From != "" || opts.To != "" {
-			return errors.New("--window is mutually exclusive with --from and --to")
-		}
-		d, err := ParseDuration(opts.Window)
-		if err != nil {
-			return fmt.Errorf("invalid --window duration: %w", err)
-		}
-		now := time.Now()
-		opts.From = now.Add(-d).Format(time.RFC3339)
-		opts.To = now.Format(time.RFC3339)
+	if opts.Since == "" {
+		return nil
 	}
+
+	if opts.From != "" {
+		return errors.New("--since is mutually exclusive with --from")
+	}
+
+	d, err := ParseDuration(opts.Since)
+	if err != nil {
+		return fmt.Errorf("invalid --since duration: %w", err)
+	}
+	if d <= 0 {
+		return errors.New("--since must be greater than 0")
+	}
+
+	now := time.Now()
+	end, err := ParseTime(opts.To, now)
+	if err != nil {
+		return fmt.Errorf("invalid --to time: %w", err)
+	}
+	if end.IsZero() {
+		end = now
+	}
+	opts.From = end.Add(-d).Format(time.RFC3339)
+	opts.To = end.Format(time.RFC3339)
 
 	return nil
 }

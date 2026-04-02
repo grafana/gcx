@@ -26,11 +26,11 @@ EXPR is the LogQL expression to evaluate.`,
   # Log query using configured default datasource
   gcx datasources loki query '{job="varlogs"}'
 
-  # Range query with explicit datasource UID
-  gcx datasources loki query loki-001 '{job="varlogs"}' --from now-1h --to now
+  # Query logs from the last hour with explicit datasource UID
+  gcx datasources loki query loki-001 '{job="varlogs"}' --since 1h
 
   # With custom limit
-  gcx datasources loki query loki-001 '{job="varlogs"}' --from now-1h --to now --limit 500
+  gcx datasources loki query loki-001 '{job="varlogs"}' --since 1h --limit 500
 
   # No limit (return all matching log lines)
   gcx datasources loki query loki-001 '{job="varlogs"}' --limit 0

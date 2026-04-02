@@ -20,11 +20,11 @@ gcx datasources loki query [DATASOURCE_UID] EXPR [flags]
   # Log query using configured default datasource
   gcx datasources loki query '{job="varlogs"}'
 
-  # Range query with explicit datasource UID
-  gcx datasources loki query loki-001 '{job="varlogs"}' --from now-1h --to now
+  # Query logs from the last hour with explicit datasource UID
+  gcx datasources loki query loki-001 '{job="varlogs"}' --since 1h
 
   # With custom limit
-  gcx datasources loki query loki-001 '{job="varlogs"}' --from now-1h --to now --limit 500
+  gcx datasources loki query loki-001 '{job="varlogs"}' --since 1h --limit 500
 
   # No limit (return all matching log lines)
   gcx datasources loki query loki-001 '{job="varlogs"}' --limit 0
@@ -41,9 +41,9 @@ gcx datasources loki query [DATASOURCE_UID] EXPR [flags]
       --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
       --limit int       Maximum number of log lines to return (0 means no limit) (default 1000)
   -o, --output string   Output format. One of: graph, json, table, wide, yaml (default "table")
+      --since string    Duration before --to (or now if omitted); mutually exclusive with --from
       --step string     Query step (e.g., '15s', '1m')
       --to string       End time (RFC3339, Unix timestamp, or relative like 'now')
-      --window string   Convenience shorthand: sets --from to now-{window} and --to to now (mutually exclusive with --from/--to)
 ```
 
 ### Options inherited from parent commands

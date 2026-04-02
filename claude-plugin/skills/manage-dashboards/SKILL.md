@@ -460,7 +460,7 @@ gcx dashboards snapshot <uid> --output-dir ./snapshots
 gcx dashboards snapshot <uid> --var cluster=prod --var datasource=grafanacloud-prom
 
 # With time range
-gcx dashboards snapshot <uid> --window 6h --var cluster=prod
+gcx dashboards snapshot <uid> --since 6h --var cluster=prod
 gcx dashboards snapshot <uid> --from now-1h --to now --tz UTC
 
 # Single panel (find panel IDs from the dashboard JSON: .spec.panels[].id)

@@ -34,7 +34,7 @@ func (opts *seriesOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.shared.From, "from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
 	flags.StringVar(&opts.shared.To, "to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
 	flags.StringVar(&opts.shared.Step, "step", "", "Query step (e.g., '15s', '1m')")
-	flags.StringVar(&opts.shared.Window, "window", "", "Convenience shorthand: sets --from to now-{window} and --to to now (mutually exclusive with --from/--to)")
+	flags.StringVar(&opts.shared.Since, "since", "", "Duration before --to (or now if omitted); mutually exclusive with --from")
 
 	flags.BoolVar(&opts.Top, "top", false, "Aggregate into a ranked leaderboard (equivalent to profilecli query top)")
 	flags.StringVar(&opts.ProfileType, "profile-type", "", "Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds') (required)")
@@ -79,27 +79,27 @@ EXPR is the label selector (e.g., '{service_name="frontend"}').`,
   # Top services by CPU usage (ranked leaderboard)
   gcx datasources pyroscope series '{}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
-    --window 1h --top
+    --since 1h --top
 
   # Top 20 services by memory, grouped by namespace
   gcx datasources pyroscope series '{}' \
     --profile-type memory:inuse_space:bytes:space:bytes \
-    --window 1h --top --group-by namespace --limit 20
+    --since 1h --top --group-by namespace --limit 20
 
   # CPU usage over the last hour with 1-minute resolution
   gcx datasources pyroscope series '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
-    --window 1h --step 1m
+    --since 1h --step 1m
 
   # Group by namespace
   gcx datasources pyroscope series '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
-    --window 1h --step 1m --group-by namespace
+    --since 1h --step 1m --group-by namespace
 
   # Line chart output
   gcx datasources pyroscope series '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
-    --window 1h --step 1m -o graph`,
+    --since 1h --step 1m -o graph`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {

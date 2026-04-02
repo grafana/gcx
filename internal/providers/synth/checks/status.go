@@ -286,7 +286,7 @@ type timelineOpts struct {
 	DatasourceUID string
 	From          string
 	To            string
-	Window        string
+	Since         string
 }
 
 func (o *timelineOpts) setup(flags *pflag.FlagSet) {
@@ -298,7 +298,7 @@ func (o *timelineOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.DatasourceUID, "datasource-uid", "", "UID of the Prometheus datasource to query")
 	flags.StringVar(&o.From, "from", "", "Start of the time range (e.g. now-6h, now-24h, RFC3339, Unix timestamp)")
 	flags.StringVar(&o.To, "to", "", "End of the time range (e.g. now, RFC3339, Unix timestamp)")
-	flags.StringVar(&o.Window, "window", "6h", "Time window to display (e.g. 1h, 6h, 24h, 7d)")
+	flags.StringVar(&o.Since, "since", "6h", "Duration before now to display (e.g. 1h, 6h, 24h, 7d)")
 }
 
 func newTimelineCommand(loader smcfg.StatusLoader) *cobra.Command {
@@ -314,8 +314,8 @@ Requires a Prometheus datasource containing SM metrics.`,
 		Example: `  # Render timeline for a check over the past 6 hours (default).
   gcx synth checks timeline 42
 
-  # Custom time window.
-  gcx synth checks timeline 42 --window 24h
+  # Custom duration.
+  gcx synth checks timeline 42 --since 24h
 
   # Explicit time range.
   gcx synth checks timeline 42 --from now-24h --to now
@@ -332,10 +332,10 @@ Requires a Prometheus datasource containing SM metrics.`,
 			}
 
 			// Validate flag combinations.
-			windowSet := cmd.Flags().Changed("window")
+			sinceSet := cmd.Flags().Changed("since")
 			fromToSet := cmd.Flags().Changed("from") || cmd.Flags().Changed("to")
-			if windowSet && fromToSet {
-				return errors.New("--window and --from/--to are mutually exclusive")
+			if sinceSet && fromToSet {
+				return errors.New("--since and --from/--to are mutually exclusive")
 			}
 
 			ctx := cmd.Context()
@@ -359,12 +359,12 @@ Requires a Prometheus datasource containing SM metrics.`,
 				return err
 			}
 
-			// Compute time range from --from/--to or --window.
+			// Compute time range from --from/--to or --since.
 			now := time.Now()
 			var start, end time.Time
 
 			var clamped bool
-			start, end, clamped, err = ParseCheckTimeRange(fromToSet, opts.From, opts.To, opts.Window, now, c.Created)
+			start, end, clamped, err = ParseCheckTimeRange(fromToSet, opts.From, opts.To, opts.Since, now, c.Created)
 			if clamped {
 				age := now.Sub(time.Unix(int64(c.Created), 0)).Round(time.Minute)
 				cmdio.Info(cmd.OutOrStdout(), "Check was created %s ago — window adjusted to match", age)
@@ -833,12 +833,12 @@ func smMetricsDatasourceName(ctx context.Context, grafanaCtx *config.Context) (s
 // ---------------------------------------------------------------------------
 
 // ParseCheckTimeRange resolves the start/end time range from either --from/--to
-// flags or --window shorthand. checkCreated is a Unix timestamp (float64) from
+// flags or --since shorthand. checkCreated is a Unix timestamp (float64) from
 // Check.Created; when non-zero and the user has not set --from explicitly, the
-// returned start is clamped to the check's creation time so that the window does
+// returned start is clamped to the check's creation time so that the range does
 // not extend into the past before the check existed. clamped is true when that
 // adjustment was applied.
-func ParseCheckTimeRange(fromToSet bool, from, to, window string, now time.Time, checkCreated float64) (time.Time, time.Time, bool, error) {
+func ParseCheckTimeRange(fromToSet bool, from, to, since string, now time.Time, checkCreated float64) (time.Time, time.Time, bool, error) {
 	if fromToSet {
 		start, err := ParseCheckTimelineTime(from, now)
 		if err != nil {
@@ -853,9 +853,9 @@ func ParseCheckTimeRange(fromToSet bool, from, to, window string, now time.Time,
 		}
 		return start, end, false, nil
 	}
-	w, err := ParseWindow(window)
+	w, err := ParseWindow(since)
 	if err != nil {
-		return time.Time{}, time.Time{}, false, fmt.Errorf("invalid --window: %w", err)
+		return time.Time{}, time.Time{}, false, fmt.Errorf("invalid --since: %w", err)
 	}
 	start := now.Add(-w)
 	end := now
@@ -871,7 +871,7 @@ func ParseCheckTimeRange(fromToSet bool, from, to, window string, now time.Time,
 	}
 
 	if !start.Before(end) {
-		return time.Time{}, time.Time{}, false, errors.New("check was created after the query window ends; try a larger --window")
+		return time.Time{}, time.Time{}, false, errors.New("check was created after the query range ends; try a larger --since")
 	}
 
 	return start, end, clamped, nil
