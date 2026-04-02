@@ -30,11 +30,11 @@ type ReportTimelinePayload struct {
 // ---------------------------------------------------------------------------
 
 type reportTimelineOpts struct {
-	IO     cmdio.Options
-	From   string
-	To     string
-	Since  string
-	Step   string
+	IO    cmdio.Options
+	From  string
+	To    string
+	Since string
+	Step  string
 }
 
 func (o *reportTimelineOpts) setup(flags *pflag.FlagSet) {

@@ -33,11 +33,11 @@ type SLITrendPayload struct {
 // ---------------------------------------------------------------------------
 
 type timelineOpts struct {
-	IO     cmdio.Options
-	From   string
-	To     string
-	Since  string
-	Step   string
+	IO    cmdio.Options
+	From  string
+	To    string
+	Since string
+	Step  string
 }
 
 func (o *timelineOpts) setup(flags *pflag.FlagSet) {
