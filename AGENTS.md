@@ -124,7 +124,7 @@ cmd/gcx/
 ├── config/      Config management commands (set, use-context, view...)
 ├── resources/   Resource commands (get, schemas, push, pull, delete, edit, validate)
 ├── dashboards/  Dashboard commands (snapshot via Image Renderer)
-├── datasources/ Datasource commands (list, get, prometheus, loki, pyroscope, tempo, generic)
+├── datasources/ Datasource commands (list, get, query) + exported constructors for signal providers
 │   └── query/   Query subcommand shared infrastructure (codecs, time parsing, per-kind constructors)
 ├── providers/   Provider list command
 ├── api/         Raw API passthrough command (direct Grafana API calls)
