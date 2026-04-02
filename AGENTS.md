@@ -96,6 +96,17 @@ make all         # lint + tests + build + docs
 make docs        # Generate + build all documentation
 ```
 
+> **Before running quality gates, rebase onto the latest upstream main.**
+> This catches conflicts early and ensures `make all` (especially `make docs`)
+> runs against the current command tree. If working on a worktree or ephemeral
+> branch with uncommitted changes, stash first:
+> ```
+> git stash --include-untracked
+> git fetch origin main && git rebase origin/main
+> git stash pop
+> ```
+> Resolve any conflicts before proceeding. If in doubt about the base branch, ask.
+
 > **Before pushing to a PR branch, always run `make all` with agent mode explicitly disabled.**
 > The `make docs` step regenerates `docs/reference/cli/` by running the binary, which
 > auto-detects agent mode from env vars like `CLAUDECODE` or `CLAUDE_CODE`. When those
