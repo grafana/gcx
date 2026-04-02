@@ -52,7 +52,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &TableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.IntVar(&o.Limit, "limit", 100, "Maximum number of conversations to return")
+	flags.IntVar(&o.Limit, "limit", 100, "Maximum number of conversations to return (0 for no limit)")
 }
 
 func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
@@ -313,6 +313,9 @@ func parseTimeRange(from, to string) (*SearchTimeRange, error) {
 	toT, err := time.Parse(time.RFC3339, to)
 	if err != nil {
 		return nil, fmt.Errorf("invalid --to value: %w", err)
+	}
+	if !fromT.Before(toT) {
+		return nil, errors.New("--from must be before --to")
 	}
 	return &SearchTimeRange{From: fromT, To: toT}, nil
 }

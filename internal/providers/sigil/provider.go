@@ -1,6 +1,7 @@
 package sigil
 
 import (
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/sigil/conversations"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -38,7 +39,12 @@ func (p *SigilProvider) Commands() []*cobra.Command {
 
 	loader.BindFlags(sigilCmd.PersistentFlags())
 
-	sigilCmd.AddCommand(conversations.Commands(loader))
+	convsCmd := conversations.Commands(loader)
+	convsCmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "medium",
+		agent.AnnotationLLMHint:   `gcx sigil conversations list --limit 10 -o json`,
+	}
+	sigilCmd.AddCommand(convsCmd)
 
 	return []*cobra.Command{sigilCmd}
 }
