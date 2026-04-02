@@ -14,6 +14,8 @@ import (
 	"k8s.io/client-go/rest"
 )
 
+const maxResponseBytes = 50 << 20 // 50 MB
+
 type Client struct {
 	restConfig config.NamespacedRESTConfig
 	httpClient *http.Client
@@ -85,7 +87,7 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -122,7 +124,7 @@ func (c *Client) Labels(ctx context.Context, datasourceUID string) (*LabelsRespo
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -153,7 +155,7 @@ func (c *Client) LabelValues(ctx context.Context, datasourceUID, labelName strin
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -192,7 +194,7 @@ func (c *Client) Series(ctx context.Context, datasourceUID string, matchers []st
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
