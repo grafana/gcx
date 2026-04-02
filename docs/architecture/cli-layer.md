@@ -49,7 +49,7 @@ gcx (root)
 │       ├── --height         Image height (default: -1/full-page dashboard, 600 panel)
 │       ├── --theme          light|dark (default: dark)
 │       ├── --from/--to      Time range (RFC3339, Unix, or relative)
-│       ├── --window         Time window shorthand (mutually exclusive with --from/--to)
+│       ├── --since          Duration before now (mutually exclusive with --from/--to)
 │       ├── --tz             Timezone
 │       ├── --org-id         Grafana org ID (default: 1)
 │       ├── --output-dir     Output directory (default: .)
@@ -65,11 +65,11 @@ gcx (root)
 │   │   ├── labels           [--datasource/-d UID] [--label/-l NAME]
 │   │   ├── metadata         [--datasource/-d UID] [--metric/-m NAME]
 │   │   ├── targets          [--datasource/-d UID] [--state active|dropped|any]
-│   │   └── query            [DATASOURCE_UID] EXPR   [--from] [--to] [--step] [--window] [-o]
+│   │   └── query            [DATASOURCE_UID] EXPR   [--from] [--to] [--step] [--since] [-o]
 │   ├── loki                 Loki-specific operations
 │   │   ├── labels           [--datasource/-d UID] [--label/-l NAME]
 │   │   ├── series           --match SELECTOR... [--datasource/-d UID]
-│   │   └── query            [DATASOURCE_UID] EXPR   [--from] [--to] [--window] [--limit] [-o]
+│   │   └── query            [DATASOURCE_UID] EXPR   [--from] [--to] [--since] [--limit] [-o]
 │   ├── pyroscope            Pyroscope-specific operations
 │   │   ├── labels           [--datasource/-d UID]
 │   │   ├── profile-types    [--datasource/-d UID]
@@ -77,7 +77,7 @@ gcx (root)
 │   ├── tempo                Tempo-specific operations
 │   │   └── query                                    (stub — "not yet implemented")
 │   └── generic              Generic datasource operations (auto-detects type)
-│       └── query            DATASOURCE_UID  EXPR    [--from] [--to] [--step] [--window] [--limit] [--profile-type] [--max-nodes] [-o]
+│       └── query            DATASOURCE_UID  EXPR    [--from] [--to] [--step] [--since] [--limit] [--profile-type] [--max-nodes] [-o]
 │
 ├── providers                [cmd/gcx/providers/command.go]
 │   └── (list; no subcommands — prints NAME/DESCRIPTION table of registered providers)
