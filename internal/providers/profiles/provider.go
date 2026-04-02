@@ -124,6 +124,11 @@ func adaptiveStubCmd() *cobra.Command {
 
 func (p *Provider) Validate(_ map[string]string) error { return nil }
 
-func (p *Provider) ConfigKeys() []providers.ConfigKey { return nil }
+func (p *Provider) ConfigKeys() []providers.ConfigKey {
+	return []providers.ConfigKey{
+		{Name: "profiles-tenant-id", Secret: false},
+		{Name: "profiles-tenant-url", Secret: false},
+	}
+}
 
 func (p *Provider) TypedRegistrations() []adapter.Registration { return nil }
