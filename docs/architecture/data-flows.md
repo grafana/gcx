@@ -273,11 +273,11 @@ backing client is a REST adapter or the k8s dynamic client.
 
 ## 5. QUERY Pipeline
 
-Entry point: `cmd/gcx/datasources/query/` package — per-kind constructors wired under each kind's subgroup (`datasources prometheus query`, `datasources loki query`, etc.).
+Entry point: per-signal provider packages (`internal/providers/{metrics,logs,traces,profiles}/query.go`) and the auto-detecting `cmd/gcx/datasources/query/generic.go`. Shared query CLI utils live in `internal/datasources/query/`.
 
 ```
 User invocation:
-  gcx datasources prometheus query <uid> 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m
+  gcx metrics query <uid> 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m
 
   ┌──────────────────────────────────────────────────────────────────────┐
   │ 1. Parse args and flags                                               │

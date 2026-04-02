@@ -663,15 +663,21 @@ Files most important for understanding the codebase. Organized by architectural 
 | `cmd/gcx/providers/command.go` | `providers` command (list registered providers) |
 | `internal/providers/configloader.go` | Shared `ConfigLoader` — binds `--config`/`--context` flags and loads REST config for all providers |
 
-### Adaptive Telemetry Provider
+### Signal Providers (Metrics, Logs, Traces, Profiles)
 
-| File | Purpose |
-|------|---------|
-| `internal/providers/adaptive/provider.go` | `AdaptiveProvider` implementing the `providers.Provider` interface |
-| `internal/providers/adaptive/auth/` | Shared Basic auth helper and GCOM caching |
-| `internal/providers/adaptive/metrics/` | Metrics rules and recommendations (provider-only, read-only) |
-| `internal/providers/adaptive/logs/` | Logs patterns (provider-only, read-only) and exemptions (TypedCRUD adapter) |
-| `internal/providers/adaptive/traces/` | Traces recommendations (provider-only, read-only) and policies (TypedCRUD adapter) |
+Each LGTM signal has its own provider in `internal/providers/{signal}/` that registers as a top-level command (`gcx metrics`, `gcx logs`, etc.). Each provider owns its datasource-origin commands (query, labels, metadata, series) and its adaptive subtree.
+
+| Package | Purpose |
+|---------|---------|
+| `internal/providers/metrics/` | Prometheus queries + Adaptive Metrics (rules, recommendations) |
+| `internal/providers/logs/` | Loki queries + Adaptive Logs (patterns, exemptions, segments) |
+| `internal/providers/traces/` | Tempo queries (stub) + Adaptive Traces (policies, recommendations) |
+| `internal/providers/profiles/` | Pyroscope queries + adaptive stub |
+| `internal/providers/adaptive/auth/` | Shared Basic auth helper and GCOM caching (imported by signal providers) |
+| `internal/providers/adaptive/metrics/` | Adaptive Metrics commands (imported by metrics provider) |
+| `internal/providers/adaptive/logs/` | Adaptive Logs commands + TypedCRUD adapters (imported by logs provider) |
+| `internal/providers/adaptive/traces/` | Adaptive Traces commands + TypedCRUD adapters (imported by traces provider) |
+| `internal/datasources/query/` | Shared query CLI utils: time parsing, codecs, opts, resolve helpers |
 
 ### App Observability Provider
 

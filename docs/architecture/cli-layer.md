@@ -249,18 +249,8 @@ cmd/gcx/
 │   ├── command.go           datasources group (list, get, query)
 │   ├── list.go              datasources list
 │   ├── get.go               datasources get
-│   ├── prometheus.go        exported constructors: LabelsCmd, MetadataCmd (used by metrics provider)
-│   ├── loki.go              exported constructors: LokiLabelsCmd, SeriesCmd (used by logs provider)
-│   ├── pyroscope.go         exported constructors: ProfileTypesCmd, PyroscopeLabelsCmd (used by profiles provider)
-│   └── query/               Query subcommand shared infrastructure (codecs, time parsing, per-kind constructors)
-│       ├── query.go         Shared opts, resolveTypedArgs, validateDatasourceType
-│       ├── codecs.go        queryTableCodec, queryGraphCodec (codec registry)
-│       ├── time.go          ParseTime, ParseDuration for flag parsing
-│       ├── prometheus.go    PrometheusCmd() constructor
-│       ├── loki.go          LokiCmd() constructor
-│       ├── pyroscope.go     PyroscopeCmd() constructor
-│       ├── tempo.go         TempoCmd() constructor (stub)
-│       └── generic.go       GenericCmd() constructor
+│   └── query/
+│       └── generic.go       GenericCmd() — auto-detecting query (imports shared infra from internal/datasources/query/)
 ├── providers/
 │   └── command.go           providers command — lists registered providers
 ├── setup/

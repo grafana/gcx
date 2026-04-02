@@ -12,8 +12,8 @@ gcx/
 │       ├── config/           # 'config' subcommand implementations
 │       ├── resources/        # 'resources' subcommand implementations
 │       ├── dashboards/       # 'dashboards' subcommand (snapshot via Image Renderer)
-│       ├── datasources/      # 'datasources' subcommand implementations
-│       │   └── query/        # Per-kind query constructors and shared infrastructure (codecs, time parsing)
+│       ├── datasources/      # 'datasources' subcommand (list, get, query)
+│       │   └── query/        # Auto-detecting query command (GenericCmd only)
 │       ├── commands/         # 'commands' catalog (agent metadata, resource types, live validation)
 │       ├── helptree/        # 'help-tree' compact text tree for agent context injection
 │       ├── setup/            # 'setup' command area (onboarding, product config)
@@ -69,6 +69,7 @@ gcx/
 │   │       └── smcfg/        # SM config loader interfaces
 │   ├── dashboards/           # Dashboard Image Renderer client (PNG snapshots)
 │   ├── datasources/          # Datasource HTTP client (legacy REST API)
+│   │   └── query/            # Shared query CLI utils (time parsing, codecs, opts, resolve helpers)
 │   ├── query/                # Datasource query clients
 │   │   ├── prometheus/       # Prometheus HTTP client (instant + range queries)
 │   │   └── loki/             # Loki HTTP client (log + metric queries)
