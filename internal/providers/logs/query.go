@@ -1,18 +1,20 @@
-package query
+package logs
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
-	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
-	"github.com/grafana/gcx/cmd/gcx/fail"
+	internalconfig "github.com/grafana/gcx/internal/config"
+	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/spf13/cobra"
 )
 
-// LokiCmd returns the `query` subcommand for a Loki datasource parent.
-func LokiCmd(configOpts *cmdconfig.Options) *cobra.Command {
-	shared := &sharedQueryOpts{}
+// queryCmd returns the `query` subcommand for a Loki datasource parent.
+func queryCmd(loader *providers.ConfigLoader) *cobra.Command {
+	shared := &dsquery.SharedOpts{}
 	var limit int
 
 	cmd := &cobra.Command{
@@ -45,22 +47,33 @@ EXPR is the LogQL expression to evaluate.`,
 
 			ctx := cmd.Context()
 
-			datasourceUID, expr, err := resolveTypedArgs(args, configOpts, ctx, "loki")
+			// Resolve default UID from config.
+			var defaultUID string
+			fullCfg, err := loader.LoadFullConfig(ctx)
+			if err == nil {
+				defaultUID = internalconfig.DefaultDatasourceUID(*fullCfg.GetCurrentContext(), "loki")
+			}
+
+			datasourceUID, expr, err := dsquery.ResolveTypedArgs(args, defaultUID, "loki")
 			if err != nil {
 				return err
 			}
 
-			if err := validateDatasourceType(ctx, configOpts, datasourceUID, "loki"); err != nil {
+			cfg, err := loader.LoadGrafanaConfig(ctx)
+			if err != nil {
 				return err
 			}
 
-			cfg, err := configOpts.LoadGrafanaConfig(ctx)
+			dsType, err := dsquery.GetDatasourceType(ctx, cfg, datasourceUID)
 			if err != nil {
+				return err
+			}
+			if err := dsquery.ValidateDatasourceType(dsType, "loki"); err != nil {
 				return err
 			}
 
 			now := time.Now()
-			start, end, step, err := shared.parseTimes(now)
+			start, end, step, err := shared.ParseTimes(now)
 			if err != nil {
 				return err
 			}
@@ -94,19 +107,19 @@ EXPR is the LogQL expression to evaluate.`,
 		},
 	}
 
-	shared.setup(cmd.Flags())
+	shared.Setup(cmd.Flags())
 	cmd.Flags().IntVar(&limit, "limit", 1000, "Maximum number of log lines to return (0 means no limit)")
 
 	return cmd
 }
 
-func validateLokiQueryArgs(cmd *cobra.Command, args []string) error {
+func validateLokiQueryArgs(_ *cobra.Command, args []string) error {
 	switch len(args) {
 	case 0:
-		return fail.NewCommandUsageError(cmd, "EXPR is required", nil)
+		return errors.New("EXPR is required")
 	case 1, 2:
 		return nil
 	default:
-		return fail.NewCommandUsageError(cmd, "too many arguments: expected [DATASOURCE_UID] EXPR", nil)
+		return errors.New("too many arguments: expected [DATASOURCE_UID] EXPR")
 	}
 }

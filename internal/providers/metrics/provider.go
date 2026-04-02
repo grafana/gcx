@@ -1,9 +1,6 @@
 package metrics
 
 import (
-	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
-	"github.com/grafana/gcx/cmd/gcx/datasources"
-	"github.com/grafana/gcx/cmd/gcx/datasources/query"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/providers"
 	adaptivemetrics "github.com/grafana/gcx/internal/providers/adaptive/metrics"
@@ -25,26 +22,22 @@ func (p *Provider) ShortDesc() string {
 }
 
 func (p *Provider) Commands() []*cobra.Command {
-	configOpts := &cmdconfig.Options{}
 	loader := &providers.ConfigLoader{}
 
 	cmd := &cobra.Command{
 		Use:   "metrics",
 		Short: p.ShortDesc(),
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			// Wire ConfigLoader from shared flags for adaptive subcommands.
-			loader.SetConfigFile(configOpts.ConfigFile)
-			loader.SetContextName(configOpts.Context)
 			if root := cmd.Root(); root.PersistentPreRun != nil {
 				root.PersistentPreRun(cmd, args)
 			}
 		},
 	}
 
-	configOpts.BindFlags(cmd.PersistentFlags())
+	loader.BindFlags(cmd.PersistentFlags())
 
-	// Datasource-origin subcommands — reuse existing constructors.
-	qCmd := query.PrometheusCmd(configOpts)
+	// Datasource-origin subcommands.
+	qCmd := queryCmd(loader)
 	qCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
 		agent.AnnotationLLMHint:   "gcx metrics query abc123 'up{job=\"grafana\"}' -o json",
@@ -63,12 +56,12 @@ func (p *Provider) Commands() []*cobra.Command {
   gcx metrics query abc123 'up' -o json`
 	cmd.AddCommand(qCmd)
 
-	labelsCmd := datasources.LabelsCmd(configOpts)
-	labelsCmd.Annotations = map[string]string{
+	lCmd := labelsCmd(loader)
+	lCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
 		agent.AnnotationLLMHint:   "gcx metrics labels -d abc123 -o json",
 	}
-	labelsCmd.Example = `
+	lCmd.Example = `
   # List all labels (use datasource UID, not name)
   gcx metrics labels -d <datasource-uid>
 
@@ -77,14 +70,14 @@ func (p *Provider) Commands() []*cobra.Command {
 
   # Output as JSON
   gcx metrics labels -d <datasource-uid> -o json`
-	cmd.AddCommand(labelsCmd)
+	cmd.AddCommand(lCmd)
 
-	metadataCmd := datasources.MetadataCmd(configOpts)
-	metadataCmd.Annotations = map[string]string{
+	mCmd := metadataCmd(loader)
+	mCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
 		agent.AnnotationLLMHint:   "gcx metrics metadata -d abc123 -o json",
 	}
-	metadataCmd.Example = `
+	mCmd.Example = `
   # Get all metric metadata (use datasource UID, not name)
   gcx metrics metadata -d <datasource-uid>
 
@@ -93,7 +86,7 @@ func (p *Provider) Commands() []*cobra.Command {
 
   # Output as JSON
   gcx metrics metadata -d <datasource-uid> -o json`
-	cmd.AddCommand(metadataCmd)
+	cmd.AddCommand(mCmd)
 
 	// Adaptive Metrics subcommands — rename Use from "metrics" to "adaptive".
 	adaptiveCmd := adaptivemetrics.Commands(loader)

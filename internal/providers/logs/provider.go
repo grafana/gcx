@@ -1,9 +1,6 @@
 package logs
 
 import (
-	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
-	"github.com/grafana/gcx/cmd/gcx/datasources"
-	"github.com/grafana/gcx/cmd/gcx/datasources/query"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/providers"
 	adaptivelogs "github.com/grafana/gcx/internal/providers/adaptive/logs"
@@ -25,25 +22,22 @@ func (p *Provider) ShortDesc() string {
 }
 
 func (p *Provider) Commands() []*cobra.Command {
-	configOpts := &cmdconfig.Options{}
 	loader := &providers.ConfigLoader{}
 
 	cmd := &cobra.Command{
 		Use:   "logs",
 		Short: p.ShortDesc(),
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			loader.SetConfigFile(configOpts.ConfigFile)
-			loader.SetContextName(configOpts.Context)
 			if root := cmd.Root(); root.PersistentPreRun != nil {
 				root.PersistentPreRun(cmd, args)
 			}
 		},
 	}
 
-	configOpts.BindFlags(cmd.PersistentFlags())
+	loader.BindFlags(cmd.PersistentFlags())
 
 	// Datasource-origin subcommands.
-	qCmd := query.LokiCmd(configOpts)
+	qCmd := queryCmd(loader)
 	qCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
 		agent.AnnotationLLMHint:   `gcx logs query abc123 '{job="grafana"}' -o json`,
@@ -59,12 +53,12 @@ func (p *Provider) Commands() []*cobra.Command {
   gcx logs query abc123 '{job="varlogs"}' -o json`
 	cmd.AddCommand(qCmd)
 
-	labelsCmd := datasources.LokiLabelsCmd(configOpts)
-	labelsCmd.Annotations = map[string]string{
+	lCmd := labelsCmd(loader)
+	lCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
 		agent.AnnotationLLMHint:   "gcx logs labels -d abc123 -o json",
 	}
-	labelsCmd.Example = `
+	lCmd.Example = `
   # List all labels (use datasource UID, not name)
   gcx logs labels -d <datasource-uid>
 
@@ -73,14 +67,14 @@ func (p *Provider) Commands() []*cobra.Command {
 
   # Output as JSON
   gcx logs labels -d <datasource-uid> -o json`
-	cmd.AddCommand(labelsCmd)
+	cmd.AddCommand(lCmd)
 
-	seriesCmd := datasources.SeriesCmd(configOpts)
-	seriesCmd.Annotations = map[string]string{
+	sCmd := seriesCmd(loader)
+	sCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
 		agent.AnnotationLLMHint:   `gcx logs series -d abc123 --match '{job="varlogs"}' -o json`,
 	}
-	seriesCmd.Example = `
+	sCmd.Example = `
   # List series matching a selector (use datasource UID, not name)
   gcx logs series -d <datasource-uid> --match '{job="varlogs"}'
 
@@ -89,7 +83,7 @@ func (p *Provider) Commands() []*cobra.Command {
 
   # Output as JSON
   gcx logs series -d <datasource-uid> --match '{job="varlogs"}' -o json`
-	cmd.AddCommand(seriesCmd)
+	cmd.AddCommand(sCmd)
 
 	// Adaptive Logs subcommands — rename Use from "logs" to "adaptive".
 	adaptiveCmd := adaptivelogs.Commands(loader)

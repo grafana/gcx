@@ -1,17 +1,19 @@
-package query
+package metrics
 
 import (
 	"fmt"
 	"time"
 
-	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
+	internalconfig "github.com/grafana/gcx/internal/config"
+	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/spf13/cobra"
 )
 
-// PrometheusCmd returns the `query` subcommand for a Prometheus datasource parent.
-func PrometheusCmd(configOpts *cmdconfig.Options) *cobra.Command {
-	shared := &sharedQueryOpts{}
+// queryCmd returns the `query` subcommand for a Prometheus datasource parent.
+func queryCmd(loader *providers.ConfigLoader) *cobra.Command {
+	shared := &dsquery.SharedOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "query [DATASOURCE_UID] EXPR",
@@ -40,22 +42,33 @@ EXPR is the PromQL expression to evaluate.`,
 
 			ctx := cmd.Context()
 
-			datasourceUID, expr, err := resolveTypedArgs(args, configOpts, ctx, "prometheus")
+			// Resolve default UID from config.
+			var defaultUID string
+			fullCfg, err := loader.LoadFullConfig(ctx)
+			if err == nil {
+				defaultUID = internalconfig.DefaultDatasourceUID(*fullCfg.GetCurrentContext(), "prometheus")
+			}
+
+			datasourceUID, expr, err := dsquery.ResolveTypedArgs(args, defaultUID, "prometheus")
 			if err != nil {
 				return err
 			}
 
-			if err := validateDatasourceType(ctx, configOpts, datasourceUID, "prometheus"); err != nil {
+			cfg, err := loader.LoadGrafanaConfig(ctx)
+			if err != nil {
 				return err
 			}
 
-			cfg, err := configOpts.LoadGrafanaConfig(ctx)
+			dsType, err := dsquery.GetDatasourceType(ctx, cfg, datasourceUID)
 			if err != nil {
+				return err
+			}
+			if err := dsquery.ValidateDatasourceType(dsType, "prometheus"); err != nil {
 				return err
 			}
 
 			now := time.Now()
-			start, end, step, err := shared.parseTimes(now)
+			start, end, step, err := shared.ParseTimes(now)
 			if err != nil {
 				return err
 			}
@@ -85,7 +98,7 @@ EXPR is the PromQL expression to evaluate.`,
 		},
 	}
 
-	shared.setup(cmd.Flags())
+	shared.Setup(cmd.Flags())
 
 	return cmd
 }

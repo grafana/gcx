@@ -1,17 +1,18 @@
-package query
+package query_test
 
 import (
 	"testing"
 	"time"
 
+	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestSharedQueryOptsValidate(t *testing.T) {
-	newOpts := func() *sharedQueryOpts {
-		return &sharedQueryOpts{IO: cmdio.Options{OutputFormat: "json"}}
+func TestSharedOptsValidate(t *testing.T) {
+	newOpts := func() *dsquery.SharedOpts {
+		return &dsquery.SharedOpts{IO: cmdio.Options{OutputFormat: "json"}}
 	}
 
 	assertRange := func(t *testing.T, from, to string, want time.Duration) {
@@ -27,16 +28,16 @@ func TestSharedQueryOptsValidate(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		setup   func(*sharedQueryOpts)
+		setup   func(*dsquery.SharedOpts)
 		wantErr string
-		assert  func(*testing.T, *sharedQueryOpts)
+		assert  func(*testing.T, *dsquery.SharedOpts)
 	}{
 		{
 			name: "since without to defaults to now",
-			setup: func(opts *sharedQueryOpts) {
+			setup: func(opts *dsquery.SharedOpts) {
 				opts.Since = "1h"
 			},
-			assert: func(t *testing.T, opts *sharedQueryOpts) {
+			assert: func(t *testing.T, opts *dsquery.SharedOpts) {
 				t.Helper()
 				require.NotEmpty(t, opts.From)
 				require.NotEmpty(t, opts.To)
@@ -45,11 +46,11 @@ func TestSharedQueryOptsValidate(t *testing.T) {
 		},
 		{
 			name: "since with explicit to resolves start relative to end",
-			setup: func(opts *sharedQueryOpts) {
+			setup: func(opts *dsquery.SharedOpts) {
 				opts.Since = "1h"
 				opts.To = "2026-03-31T10:00:00Z"
 			},
-			assert: func(t *testing.T, opts *sharedQueryOpts) {
+			assert: func(t *testing.T, opts *dsquery.SharedOpts) {
 				t.Helper()
 				assert.Equal(t, "2026-03-31T09:00:00Z", opts.From)
 				assert.Equal(t, "2026-03-31T10:00:00Z", opts.To)
@@ -57,7 +58,7 @@ func TestSharedQueryOptsValidate(t *testing.T) {
 		},
 		{
 			name: "since and from are mutually exclusive",
-			setup: func(opts *sharedQueryOpts) {
+			setup: func(opts *dsquery.SharedOpts) {
 				opts.Since = "1h"
 				opts.From = "now-2h"
 			},
@@ -65,14 +66,14 @@ func TestSharedQueryOptsValidate(t *testing.T) {
 		},
 		{
 			name: "invalid since duration rejected",
-			setup: func(opts *sharedQueryOpts) {
+			setup: func(opts *dsquery.SharedOpts) {
 				opts.Since = "tomorrow"
 			},
 			wantErr: "invalid --since duration",
 		},
 		{
 			name: "invalid to time rejected",
-			setup: func(opts *sharedQueryOpts) {
+			setup: func(opts *dsquery.SharedOpts) {
 				opts.Since = "1h"
 				opts.To = "later"
 			},
@@ -80,14 +81,14 @@ func TestSharedQueryOptsValidate(t *testing.T) {
 		},
 		{
 			name: "negative since rejected",
-			setup: func(opts *sharedQueryOpts) {
+			setup: func(opts *dsquery.SharedOpts) {
 				opts.Since = "-1h"
 			},
 			wantErr: "--since must be greater than 0",
 		},
 		{
 			name: "zero since rejected",
-			setup: func(opts *sharedQueryOpts) {
+			setup: func(opts *dsquery.SharedOpts) {
 				opts.Since = "0"
 			},
 			wantErr: "--since must be greater than 0",

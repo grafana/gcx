@@ -1,8 +1,6 @@
 package traces
 
 import (
-	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
-	"github.com/grafana/gcx/cmd/gcx/datasources/query"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/providers"
 	adaptivetraces "github.com/grafana/gcx/internal/providers/adaptive/traces"
@@ -24,25 +22,22 @@ func (p *Provider) ShortDesc() string {
 }
 
 func (p *Provider) Commands() []*cobra.Command {
-	configOpts := &cmdconfig.Options{}
 	loader := &providers.ConfigLoader{}
 
 	cmd := &cobra.Command{
 		Use:   "traces",
 		Short: p.ShortDesc(),
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			loader.SetConfigFile(configOpts.ConfigFile)
-			loader.SetContextName(configOpts.Context)
 			if root := cmd.Root(); root.PersistentPreRun != nil {
 				root.PersistentPreRun(cmd, args)
 			}
 		},
 	}
 
-	configOpts.BindFlags(cmd.PersistentFlags())
+	loader.BindFlags(cmd.PersistentFlags())
 
 	// Datasource-origin subcommand.
-	qCmd := query.TempoCmd()
+	qCmd := queryCmd()
 	qCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
 		agent.AnnotationLLMHint:   "gcx traces query",

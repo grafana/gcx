@@ -94,8 +94,8 @@ func (c *queryGraphCodec) Decode(io.Reader, any) error {
 	return errors.New("graph codec does not support decoding")
 }
 
-// registerCodecs registers the table, wide, and graph codecs on the given IO options.
-func registerCodecs(ioOpts *cmdio.Options) {
+// RegisterCodecs registers the table, wide, and graph codecs on the given IO options.
+func RegisterCodecs(ioOpts *cmdio.Options) {
 	ioOpts.RegisterCustomCodec("table", &queryTableCodec{})
 	ioOpts.RegisterCustomCodec("wide", &queryWideCodec{})
 	ioOpts.RegisterCustomCodec("graph", &queryGraphCodec{})

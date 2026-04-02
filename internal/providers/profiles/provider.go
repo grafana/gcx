@@ -3,9 +3,6 @@ package profiles
 import (
 	"fmt"
 
-	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
-	"github.com/grafana/gcx/cmd/gcx/datasources"
-	"github.com/grafana/gcx/cmd/gcx/datasources/query"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -26,7 +23,7 @@ func (p *Provider) ShortDesc() string {
 }
 
 func (p *Provider) Commands() []*cobra.Command {
-	configOpts := &cmdconfig.Options{}
+	loader := &providers.ConfigLoader{}
 
 	cmd := &cobra.Command{
 		Use:   "profiles",
@@ -38,10 +35,10 @@ func (p *Provider) Commands() []*cobra.Command {
 		},
 	}
 
-	configOpts.BindFlags(cmd.PersistentFlags())
+	loader.BindFlags(cmd.PersistentFlags())
 
 	// Datasource-origin subcommands.
-	qCmd := query.PyroscopeCmd(configOpts)
+	qCmd := queryCmd(loader)
 	qCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
 		agent.AnnotationLLMHint:   "gcx profiles query abc123 '{service_name=\"frontend\"}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h -o json",
@@ -60,12 +57,12 @@ func (p *Provider) Commands() []*cobra.Command {
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o json`
 	cmd.AddCommand(qCmd)
 
-	labelsCmd := datasources.PyroscopeLabelsCmd(configOpts)
-	labelsCmd.Annotations = map[string]string{
+	lCmd := labelsCmd(loader)
+	lCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
 		agent.AnnotationLLMHint:   "gcx profiles labels -d abc123 -o json",
 	}
-	labelsCmd.Example = `
+	lCmd.Example = `
   # List all labels (use datasource UID, not name)
   gcx profiles labels -d <datasource-uid>
 
@@ -74,27 +71,27 @@ func (p *Provider) Commands() []*cobra.Command {
 
   # Output as JSON
   gcx profiles labels -d <datasource-uid> -o json`
-	cmd.AddCommand(labelsCmd)
+	cmd.AddCommand(lCmd)
 
-	profileTypesCmd := datasources.ProfileTypesCmd(configOpts)
-	profileTypesCmd.Annotations = map[string]string{
+	ptCmd := profileTypesCmd(loader)
+	ptCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
 		agent.AnnotationLLMHint:   "gcx profiles profile-types -d abc123 -o json",
 	}
-	profileTypesCmd.Example = `
+	ptCmd.Example = `
   # List profile types (use datasource UID, not name)
   gcx profiles profile-types -d <datasource-uid>
 
   # Output as JSON
   gcx profiles profile-types -d <datasource-uid> -o json`
-	cmd.AddCommand(profileTypesCmd)
+	cmd.AddCommand(ptCmd)
 
-	seriesCmd := query.PyroscopeSeriesCmd(configOpts)
-	seriesCmd.Annotations = map[string]string{
+	sCmd := seriesCmd(loader)
+	sCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
 		agent.AnnotationLLMHint:   "gcx profiles series '{}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --top -o json",
 	}
-	seriesCmd.Example = `
+	sCmd.Example = `
   # Top services by CPU usage (ranked leaderboard)
   gcx profiles series '{}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --top
@@ -106,7 +103,7 @@ func (p *Provider) Commands() []*cobra.Command {
   # Output as JSON
   gcx profiles series abc123 '{}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --top -o json`
-	cmd.AddCommand(seriesCmd)
+	cmd.AddCommand(sCmd)
 
 	// Adaptive Profiles stub.
 	cmd.AddCommand(adaptiveStubCmd())

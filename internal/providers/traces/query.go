@@ -1,4 +1,4 @@
-package query
+package traces
 
 import (
 	"errors"
@@ -6,8 +6,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// TempoCmd returns the `query` subcommand for a Tempo datasource parent.
-func TempoCmd() *cobra.Command {
+// queryCmd returns the `query` subcommand for a Tempo datasource parent.
+func queryCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "query",
 		Short: "Execute a Tempo query",

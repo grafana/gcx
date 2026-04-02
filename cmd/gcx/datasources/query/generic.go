@@ -6,6 +6,7 @@ import (
 	"time"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
+	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/query/pyroscope"
@@ -14,7 +15,7 @@ import (
 
 // GenericCmd returns the `query` subcommand for the generic (auto-detect) datasource parent.
 func GenericCmd(configOpts *cmdconfig.Options) *cobra.Command {
-	shared := &sharedQueryOpts{}
+	shared := &dsquery.SharedOpts{}
 	var profileType string
 	var maxNodes int64
 	var limit int
@@ -50,19 +51,19 @@ that do not have a dedicated subcommand.`,
 			datasourceUID := args[0]
 			expr := args[1]
 
-			rawType, err := getDatasourceType(ctx, configOpts, datasourceUID)
-			if err != nil {
-				return err
-			}
-			dsType := normalizeKind(rawType)
-
 			cfg, err := configOpts.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
 
+			rawType, err := dsquery.GetDatasourceType(ctx, cfg, datasourceUID)
+			if err != nil {
+				return err
+			}
+			dsType := dsquery.NormalizeKind(rawType)
+
 			now := time.Now()
-			start, end, step, err := shared.parseTimes(now)
+			start, end, step, err := shared.ParseTimes(now)
 			if err != nil {
 				return err
 			}
@@ -155,7 +156,7 @@ that do not have a dedicated subcommand.`,
 		},
 	}
 
-	shared.setup(cmd.Flags())
+	shared.Setup(cmd.Flags())
 	cmd.Flags().StringVar(&profileType, "profile-type", "", "Profile type ID for pyroscope queries (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds')")
 	cmd.Flags().Int64Var(&maxNodes, "max-nodes", 1024, "Maximum nodes in flame graph (pyroscope only)")
 	cmd.Flags().IntVar(&limit, "limit", 1000, "Maximum number of log lines to return for loki queries (0 means no limit)")

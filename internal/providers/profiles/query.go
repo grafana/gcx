@@ -1,18 +1,20 @@
-package query
+package profiles
 
 import (
 	"errors"
 	"fmt"
 	"time"
 
-	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
+	internalconfig "github.com/grafana/gcx/internal/config"
+	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/pyroscope"
 	"github.com/spf13/cobra"
 )
 
-// PyroscopeCmd returns the `query` subcommand for a Pyroscope datasource parent.
-func PyroscopeCmd(configOpts *cmdconfig.Options) *cobra.Command {
-	shared := &sharedQueryOpts{}
+// queryCmd returns the `query` subcommand for a Pyroscope datasource parent.
+func queryCmd(loader *providers.ConfigLoader) *cobra.Command {
+	shared := &dsquery.SharedOpts{}
 	var profileType string
 	var maxNodes int64
 
@@ -49,22 +51,33 @@ EXPR is the label selector (e.g., '{service_name="frontend"}').`,
 
 			ctx := cmd.Context()
 
-			datasourceUID, expr, err := resolveTypedArgs(args, configOpts, ctx, "pyroscope")
+			// Resolve default UID from config.
+			var defaultUID string
+			fullCfg, err := loader.LoadFullConfig(ctx)
+			if err == nil {
+				defaultUID = internalconfig.DefaultDatasourceUID(*fullCfg.GetCurrentContext(), "pyroscope")
+			}
+
+			datasourceUID, expr, err := dsquery.ResolveTypedArgs(args, defaultUID, "pyroscope")
 			if err != nil {
 				return err
 			}
 
-			if err := validateDatasourceType(ctx, configOpts, datasourceUID, "pyroscope"); err != nil {
+			cfg, err := loader.LoadGrafanaConfig(ctx)
+			if err != nil {
 				return err
 			}
 
-			cfg, err := configOpts.LoadGrafanaConfig(ctx)
+			dsType, err := dsquery.GetDatasourceType(ctx, cfg, datasourceUID)
 			if err != nil {
+				return err
+			}
+			if err := dsquery.ValidateDatasourceType(dsType, "pyroscope"); err != nil {
 				return err
 			}
 
 			now := time.Now()
-			start, end, _, err := shared.parseTimes(now)
+			start, end, _, err := shared.ParseTimes(now)
 			if err != nil {
 				return err
 			}
@@ -95,7 +108,7 @@ EXPR is the label selector (e.g., '{service_name="frontend"}').`,
 		},
 	}
 
-	shared.setup(cmd.Flags())
+	shared.Setup(cmd.Flags())
 	cmd.Flags().StringVar(&profileType, "profile-type", "", "Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds') (required)")
 	cmd.Flags().Int64Var(&maxNodes, "max-nodes", 1024, "Maximum nodes in flame graph")
 

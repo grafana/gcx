@@ -1,4 +1,4 @@
-package query
+package profiles
 
 import (
 	"errors"
@@ -7,16 +7,18 @@ import (
 	"strings"
 	"time"
 
-	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
+	internalconfig "github.com/grafana/gcx/internal/config"
+	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/graph"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/pyroscope"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
-type seriesOpts struct {
-	shared      sharedQueryOpts
+type pyroscopeSeriesOpts struct {
+	shared      dsquery.SharedOpts
 	ProfileType string
 	GroupBy     []string
 	Aggregation string
@@ -24,10 +26,10 @@ type seriesOpts struct {
 	Top         bool
 }
 
-func (opts *seriesOpts) setup(flags *pflag.FlagSet) {
-	opts.shared.IO.RegisterCustomCodec("table", &seriesTableCodec{})
-	opts.shared.IO.RegisterCustomCodec("wide", &seriesWideCodec{})
-	opts.shared.IO.RegisterCustomCodec("graph", &seriesGraphCodec{})
+func (opts *pyroscopeSeriesOpts) setup(flags *pflag.FlagSet) {
+	opts.shared.IO.RegisterCustomCodec("table", &pyroscopeSeriesTableCodec{})
+	opts.shared.IO.RegisterCustomCodec("wide", &pyroscopeSeriesWideCodec{})
+	opts.shared.IO.RegisterCustomCodec("graph", &pyroscopeSeriesGraphCodec{})
 	opts.shared.IO.DefaultFormat("table")
 	opts.shared.IO.BindFlags(flags)
 
@@ -43,7 +45,7 @@ func (opts *seriesOpts) setup(flags *pflag.FlagSet) {
 	flags.Int64Var(&opts.Limit, "limit", 10, "Maximum number of series to return")
 }
 
-func (opts *seriesOpts) Validate() error {
+func (opts *pyroscopeSeriesOpts) Validate() error {
 	if err := opts.shared.Validate(); err != nil {
 		return err
 	}
@@ -57,9 +59,9 @@ func (opts *seriesOpts) Validate() error {
 	return nil
 }
 
-// PyroscopeSeriesCmd returns the `series` subcommand for a Pyroscope datasource parent.
-func PyroscopeSeriesCmd(configOpts *cmdconfig.Options) *cobra.Command {
-	opts := &seriesOpts{}
+// seriesCmd returns the `series` subcommand for a Pyroscope datasource parent.
+func seriesCmd(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &pyroscopeSeriesOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "series [DATASOURCE_UID] EXPR",
@@ -108,22 +110,33 @@ EXPR is the label selector (e.g., '{service_name="frontend"}').`,
 
 			ctx := cmd.Context()
 
-			datasourceUID, expr, err := resolveTypedArgs(args, configOpts, ctx, "pyroscope")
+			// Resolve default UID from config.
+			var defaultUID string
+			fullCfg, err := loader.LoadFullConfig(ctx)
+			if err == nil {
+				defaultUID = internalconfig.DefaultDatasourceUID(*fullCfg.GetCurrentContext(), "pyroscope")
+			}
+
+			datasourceUID, expr, err := dsquery.ResolveTypedArgs(args, defaultUID, "pyroscope")
 			if err != nil {
 				return err
 			}
 
-			if err := validateDatasourceType(ctx, configOpts, datasourceUID, "pyroscope"); err != nil {
+			cfg, err := loader.LoadGrafanaConfig(ctx)
+			if err != nil {
 				return err
 			}
 
-			cfg, err := configOpts.LoadGrafanaConfig(ctx)
+			dsType, err := dsquery.GetDatasourceType(ctx, cfg, datasourceUID)
 			if err != nil {
+				return err
+			}
+			if err := dsquery.ValidateDatasourceType(dsType, "pyroscope"); err != nil {
 				return err
 			}
 
 			now := time.Now()
-			start, end, step, err := opts.shared.parseTimes(now)
+			start, end, step, err := opts.shared.ParseTimes(now)
 			if err != nil {
 				return err
 			}
@@ -182,12 +195,12 @@ EXPR is the label selector (e.g., '{service_name="frontend"}').`,
 	return cmd
 }
 
-// seriesTableCodec renders SelectSeriesResponse or TopSeriesResponse as a table.
-type seriesTableCodec struct{}
+// pyroscopeSeriesTableCodec renders SelectSeriesResponse or TopSeriesResponse as a table.
+type pyroscopeSeriesTableCodec struct{}
 
-func (c *seriesTableCodec) Format() format.Format { return "table" }
+func (c *pyroscopeSeriesTableCodec) Format() format.Format { return "table" }
 
-func (c *seriesTableCodec) Encode(w io.Writer, data any) error {
+func (c *pyroscopeSeriesTableCodec) Encode(w io.Writer, data any) error {
 	switch resp := data.(type) {
 	case *pyroscope.SelectSeriesResponse:
 		return pyroscope.FormatSeriesTable(w, resp)
@@ -198,16 +211,16 @@ func (c *seriesTableCodec) Encode(w io.Writer, data any) error {
 	}
 }
 
-func (c *seriesTableCodec) Decode(io.Reader, any) error {
+func (c *pyroscopeSeriesTableCodec) Decode(io.Reader, any) error {
 	return errors.New("series table codec does not support decoding")
 }
 
-// seriesWideCodec renders SelectSeriesResponse with labels exploded into columns.
-type seriesWideCodec struct{}
+// pyroscopeSeriesWideCodec renders SelectSeriesResponse with labels exploded into columns.
+type pyroscopeSeriesWideCodec struct{}
 
-func (c *seriesWideCodec) Format() format.Format { return "wide" }
+func (c *pyroscopeSeriesWideCodec) Format() format.Format { return "wide" }
 
-func (c *seriesWideCodec) Encode(w io.Writer, data any) error {
+func (c *pyroscopeSeriesWideCodec) Encode(w io.Writer, data any) error {
 	switch resp := data.(type) {
 	case *pyroscope.SelectSeriesResponse:
 		return pyroscope.FormatSeriesTableWide(w, resp)
@@ -218,16 +231,16 @@ func (c *seriesWideCodec) Encode(w io.Writer, data any) error {
 	}
 }
 
-func (c *seriesWideCodec) Decode(io.Reader, any) error {
+func (c *pyroscopeSeriesWideCodec) Decode(io.Reader, any) error {
 	return errors.New("series wide codec does not support decoding")
 }
 
-// seriesGraphCodec renders SelectSeriesResponse as a terminal chart.
-type seriesGraphCodec struct{}
+// pyroscopeSeriesGraphCodec renders SelectSeriesResponse as a terminal chart.
+type pyroscopeSeriesGraphCodec struct{}
 
-func (c *seriesGraphCodec) Format() format.Format { return "graph" }
+func (c *pyroscopeSeriesGraphCodec) Format() format.Format { return "graph" }
 
-func (c *seriesGraphCodec) Encode(w io.Writer, data any) error {
+func (c *pyroscopeSeriesGraphCodec) Encode(w io.Writer, data any) error {
 	switch resp := data.(type) {
 	case *pyroscope.SelectSeriesResponse:
 		chartData, err := graph.FromPyroscopeSeriesResponse(resp)
@@ -245,6 +258,6 @@ func (c *seriesGraphCodec) Encode(w io.Writer, data any) error {
 	}
 }
 
-func (c *seriesGraphCodec) Decode(io.Reader, any) error {
+func (c *pyroscopeSeriesGraphCodec) Decode(io.Reader, any) error {
 	return errors.New("series graph codec does not support decoding")
 }

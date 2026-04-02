@@ -116,66 +116,25 @@ func parseUnixMillisField(t *testing.T, body map[string]any, key string) time.Ti
 	return time.UnixMilli(ms)
 }
 
-// TestQuerySubcommandUse verifies each exported constructor sets Use="query …".
+// TestQuerySubcommandUse verifies the generic constructor sets Use="query ...".
 func TestQuerySubcommandUse(t *testing.T) {
-	tests := []struct {
-		name string
-		cmd  *cobra.Command
-	}{
-		{"prometheus", dsquery.PrometheusCmd(newConfigOpts())},
-		{"loki", dsquery.LokiCmd(newConfigOpts())},
-		{"pyroscope", dsquery.PyroscopeCmd(newConfigOpts())},
-		{"tempo", dsquery.TempoCmd()},
-		{"generic", dsquery.GenericCmd(newConfigOpts())},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, "query", tt.cmd.Name())
-		})
-	}
+	cmd := dsquery.GenericCmd(newConfigOpts())
+	assert.Equal(t, "query", cmd.Name())
 }
 
-func TestSinceValidationOnCommands(t *testing.T) {
+func TestSinceValidationOnGenericCommand(t *testing.T) {
 	tests := []struct {
 		name      string
-		cmd       *cobra.Command
 		args      []string
 		expectErr string
 	}{
 		{
-			name:      "prometheus: since+from rejected",
-			cmd:       dsquery.PrometheusCmd(newConfigOpts()),
-			args:      []string{"query", "uid", "up", "--since", "1h", "--from", "now-2h"},
-			expectErr: "--since is mutually exclusive with --from",
-		},
-		{
-			name:      "loki: since+from rejected",
-			cmd:       dsquery.LokiCmd(newConfigOpts()),
-			args:      []string{"query", "uid", `{job="x"}`, "--since", "1h", "--from", "now-2h"},
-			expectErr: "--since is mutually exclusive with --from",
-		},
-		{
-			name:      "pyroscope: since+from rejected",
-			cmd:       dsquery.PyroscopeCmd(newConfigOpts()),
-			args:      []string{"query", "uid", `{service_name="x"}`, "--since", "1h", "--from", "now-2h", "--profile-type", "cpu"},
-			expectErr: "--since is mutually exclusive with --from",
-		},
-		{
 			name:      "generic: since+from rejected",
-			cmd:       dsquery.GenericCmd(newConfigOpts()),
 			args:      []string{"query", "uid", "expr", "--since", "1h", "--from", "now-2h"},
 			expectErr: "--since is mutually exclusive with --from",
 		},
 		{
-			name:      "loki: negative since rejected",
-			cmd:       dsquery.LokiCmd(newConfigOpts()),
-			args:      []string{"query", "uid", `{job="x"}`, "--since", "-1h"},
-			expectErr: "--since must be greater than 0",
-		},
-		{
 			name:      "generic: zero since rejected",
-			cmd:       dsquery.GenericCmd(newConfigOpts()),
 			args:      []string{"query", "uid", "expr", "--since", "0"},
 			expectErr: "--since must be greater than 0",
 		},
@@ -183,137 +142,37 @@ func TestSinceValidationOnCommands(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := executeQueryCommand(t, tt.cmd, tt.args)
+			cmd := dsquery.GenericCmd(newConfigOpts())
+			err := executeQueryCommand(t, cmd, tt.args)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.expectErr)
 		})
 	}
 }
 
-func TestSinceResolvesRelativeRangeOnCommands(t *testing.T) {
-	tests := []struct {
-		name           string
-		datasourceType string
-		newCmd         func(*cmdconfig.Options) *cobra.Command
-		args           []string
-		startField     string
-		endField       string
-	}{
-		{
-			name:           "prometheus",
-			datasourceType: "prometheus",
-			newCmd:         dsquery.PrometheusCmd,
-			args:           []string{"query", "uid", "up", "--since", "1h", "--to", "now-6h", "-o", "json"},
-			startField:     "from",
-			endField:       "to",
-		},
-		{
-			name:           "loki",
-			datasourceType: "loki",
-			newCmd:         dsquery.LokiCmd,
-			args:           []string{"query", "uid", `{job="x"}`, "--since", "1h", "--to", "now-6h", "-o", "json"},
-			startField:     "from",
-			endField:       "to",
-		},
-		{
-			name:           "pyroscope",
-			datasourceType: "grafana-pyroscope-datasource",
-			newCmd:         dsquery.PyroscopeCmd,
-			args:           []string{"query", "uid", `{service_name="x"}`, "--since", "1h", "--to", "now-6h", "--profile-type", "cpu", "-o", "json"},
-			startField:     "start",
-			endField:       "end",
-		},
-		{
-			name:           "generic",
-			datasourceType: "loki",
-			newCmd:         dsquery.GenericCmd,
-			args:           []string{"query", "uid", `{job="x"}`, "--since", "1h", "--to", "now-6h", "-o", "json"},
-			startField:     "from",
-			endField:       "to",
-		},
-	}
+func TestSinceResolvesRelativeRangeOnGenericCommand(t *testing.T) {
+	var capturedPath string
+	var capturedBody map[string]any
+	server := newQueryCaptureServer(t, "loki", func(path string, body map[string]any) {
+		capturedPath = path
+		capturedBody = body
+	})
+	defer server.Close()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var capturedPath string
-			var capturedBody map[string]any
-			server := newQueryCaptureServer(t, tt.datasourceType, func(path string, body map[string]any) {
-				capturedPath = path
-				capturedBody = body
-			})
-			defer server.Close()
+	configOpts := newConfigOptsWithServer(t, server.URL)
+	cmd := dsquery.GenericCmd(configOpts)
 
-			configOpts := newConfigOptsWithServer(t, server.URL)
-			cmd := tt.newCmd(configOpts)
+	referenceNow := time.Now()
+	err := executeQueryCommand(t, cmd, []string{"query", "uid", `{job="x"}`, "--since", "1h", "--to", "now-6h", "-o", "json"})
+	require.NoError(t, err)
+	require.NotEmpty(t, capturedPath)
+	require.NotNil(t, capturedBody)
 
-			referenceNow := time.Now()
-			err := executeQueryCommand(t, cmd, tt.args)
-			require.NoError(t, err)
-			require.NotEmpty(t, capturedPath)
-			require.NotNil(t, capturedBody)
+	start := parseUnixMillisField(t, capturedBody, "from")
+	end := parseUnixMillisField(t, capturedBody, "to")
 
-			start := parseUnixMillisField(t, capturedBody, tt.startField)
-			end := parseUnixMillisField(t, capturedBody, tt.endField)
-
-			assert.WithinDuration(t, end.Add(-time.Hour), start, time.Second)
-			assert.WithinDuration(t, referenceNow.Add(-6*time.Hour), end, 5*time.Second)
-		})
-	}
-}
-
-// TestNegativeConstraintFlags verifies that flags from other subcommands are NOT registered.
-func TestNegativeConstraintFlags(t *testing.T) {
-	tests := []struct {
-		name          string
-		cmd           *cobra.Command
-		forbiddenFlag string
-	}{
-		{
-			name:          "prometheus: no --profile-type",
-			cmd:           dsquery.PrometheusCmd(newConfigOpts()),
-			forbiddenFlag: "--profile-type",
-		},
-		{
-			name:          "prometheus: no --limit",
-			cmd:           dsquery.PrometheusCmd(newConfigOpts()),
-			forbiddenFlag: "--limit",
-		},
-		{
-			name:          "loki: no --profile-type",
-			cmd:           dsquery.LokiCmd(newConfigOpts()),
-			forbiddenFlag: "--profile-type",
-		},
-		{
-			name:          "pyroscope: no --limit",
-			cmd:           dsquery.PyroscopeCmd(newConfigOpts()),
-			forbiddenFlag: "--limit",
-		},
-		{
-			name:          "tempo: no --from",
-			cmd:           dsquery.TempoCmd(),
-			forbiddenFlag: "--from",
-		},
-		{
-			name:          "tempo: no --to",
-			cmd:           dsquery.TempoCmd(),
-			forbiddenFlag: "--to",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := executeQueryCommand(t, tt.cmd, []string{"query", tt.forbiddenFlag, "value"})
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), "unknown flag")
-		})
-	}
-}
-
-// TestTempoReturnsNotImplemented verifies the tempo stub error message.
-func TestTempoReturnsNotImplemented(t *testing.T) {
-	err := executeQueryCommand(t, dsquery.TempoCmd(), []string{"query"})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "tempo queries are not yet implemented")
+	assert.WithinDuration(t, end.Add(-time.Hour), start, time.Second)
+	assert.WithinDuration(t, referenceNow.Add(-6*time.Hour), end, 5*time.Second)
 }
 
 // TestGenericRequiresBothArgs verifies that generic query requires exactly 2 positional args.

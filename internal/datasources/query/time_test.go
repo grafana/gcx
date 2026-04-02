@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	dsquery "github.com/grafana/gcx/cmd/gcx/datasources/query"
+	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
