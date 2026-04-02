@@ -19,22 +19,22 @@ func TestSnapshotOpts_Validate(t *testing.T) {
 		wantHeight  int
 	}{
 		{
-			name:        "window with from is an error",
-			opts:        dashboards.SnapshotOptsForTest{Theme: "dark", Window: "6h", From: "now-2h"},
+			name:        "since with from is an error",
+			opts:        dashboards.SnapshotOptsForTest{Theme: "dark", Since: "6h", From: "now-2h"},
 			wantErr:     true,
-			errContains: "--window is mutually exclusive",
+			errContains: "--since is mutually exclusive",
 		},
 		{
-			name:        "window with to is an error",
-			opts:        dashboards.SnapshotOptsForTest{Theme: "dark", Window: "6h", To: "now"},
+			name:        "since with to is an error",
+			opts:        dashboards.SnapshotOptsForTest{Theme: "dark", Since: "6h", To: "now"},
 			wantErr:     true,
-			errContains: "--window is mutually exclusive",
+			errContains: "--since is mutually exclusive",
 		},
 		{
-			name:        "window with both from and to is an error",
-			opts:        dashboards.SnapshotOptsForTest{Theme: "dark", Window: "6h", From: "now-2h", To: "now"},
+			name:        "since with both from and to is an error",
+			opts:        dashboards.SnapshotOptsForTest{Theme: "dark", Since: "6h", From: "now-2h", To: "now"},
 			wantErr:     true,
-			errContains: "--window is mutually exclusive",
+			errContains: "--since is mutually exclusive",
 		},
 		{
 			name:        "invalid theme is an error",
@@ -49,8 +49,8 @@ func TestSnapshotOpts_Validate(t *testing.T) {
 			errContains: "--theme must be",
 		},
 		{
-			name:       "window alone expands to from/to",
-			opts:       dashboards.SnapshotOptsForTest{Theme: "dark", Window: "6h"},
+			name:       "since alone expands to from/to",
+			opts:       dashboards.SnapshotOptsForTest{Theme: "dark", Since: "6h"},
 			wantErr:    false,
 			wantFrom:   "now-6h",
 			wantTo:     "now",
@@ -58,8 +58,8 @@ func TestSnapshotOpts_Validate(t *testing.T) {
 			wantHeight: -1,
 		},
 		{
-			name:       "window with different value",
-			opts:       dashboards.SnapshotOptsForTest{Theme: "dark", Window: "7d"},
+			name:       "since with different value",
+			opts:       dashboards.SnapshotOptsForTest{Theme: "dark", Since: "7d"},
 			wantErr:    false,
 			wantFrom:   "now-7d",
 			wantTo:     "now",
@@ -102,7 +102,7 @@ func TestSnapshotOpts_Validate(t *testing.T) {
 			wantHeight: 300,
 		},
 		{
-			name:       "from and to without window is valid",
+			name:       "from and to without since is valid",
 			opts:       dashboards.SnapshotOptsForTest{Theme: "dark", From: "now-1h", To: "now"},
 			wantErr:    false,
 			wantFrom:   "now-1h",

@@ -392,28 +392,28 @@ func TestValidateTimelineFlags(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "only --window is valid",
-			flags:   map[string]string{"window": "24h"},
+			name:    "only --since is valid",
+			flags:   map[string]string{"since": "24h"},
 			wantErr: false,
 		},
 		{
-			name:    "--window with --from is mutually exclusive",
-			flags:   map[string]string{"window": "24h", "from": "now-1h"},
+			name:    "--since with --from is mutually exclusive",
+			flags:   map[string]string{"since": "24h", "from": "now-1h"},
 			wantErr: true,
 		},
 		{
-			name:    "--window with --to is mutually exclusive",
-			flags:   map[string]string{"window": "24h", "to": "now"},
+			name:    "--since with --to is mutually exclusive",
+			flags:   map[string]string{"since": "24h", "to": "now"},
 			wantErr: true,
 		},
 		{
-			name:    "--window with deprecated --start is mutually exclusive",
-			flags:   map[string]string{"window": "24h", "start": "now-1h"},
+			name:    "--since with deprecated --start is mutually exclusive",
+			flags:   map[string]string{"since": "24h", "start": "now-1h"},
 			wantErr: true,
 		},
 		{
-			name:    "--window with deprecated --end is mutually exclusive",
-			flags:   map[string]string{"window": "24h", "end": "now"},
+			name:    "--since with deprecated --end is mutually exclusive",
+			flags:   map[string]string{"since": "24h", "end": "now"},
 			wantErr: true,
 		},
 		{
@@ -426,10 +426,10 @@ func TestValidateTimelineFlags(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cmd := &cobra.Command{Use: "test"}
-			var from, to, window, start, end string
+			var from, to, since, start, end string
 			cmd.Flags().StringVar(&from, "from", "now-7d", "")
 			cmd.Flags().StringVar(&to, "to", "now", "")
-			cmd.Flags().StringVar(&window, "window", "", "")
+			cmd.Flags().StringVar(&since, "since", "", "")
 			cmd.Flags().StringVar(&start, "start", "now-7d", "")
 			cmd.Flags().StringVar(&end, "end", "now", "")
 

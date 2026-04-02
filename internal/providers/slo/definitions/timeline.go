@@ -36,7 +36,7 @@ type timelineOpts struct {
 	IO     cmdio.Options
 	From   string
 	To     string
-	Window string
+	Since  string
 	Step   string
 }
 
@@ -48,7 +48,7 @@ func (o *timelineOpts) setup(flags *pflag.FlagSet) {
 
 	flags.StringVar(&o.From, "from", "now-7d", "Start of the time range (e.g. now-7d, now-24h, RFC3339, Unix timestamp)")
 	flags.StringVar(&o.To, "to", "now", "End of the time range (e.g. now, RFC3339, Unix timestamp)")
-	flags.StringVar(&o.Window, "window", "", "Time window shorthand (e.g. 1h, 7d). Equivalent to --from now-<window> --to now.")
+	flags.StringVar(&o.Since, "since", "", "Duration before now (e.g. 1h, 7d). Equivalent to --from now-<since> --to now.")
 	flags.StringVar(&o.Step, "step", "", "Query step (e.g. 5m, 1h). Defaults to auto-computed value.")
 
 	// Deprecated aliases for backward compatibility.
@@ -58,14 +58,14 @@ func (o *timelineOpts) setup(flags *pflag.FlagSet) {
 	_ = flags.MarkDeprecated("end", "use --to instead")
 }
 
-// ValidateTimelineFlags checks that --window and --from/--to are not used together.
+// ValidateTimelineFlags checks that --since and --from/--to are not used together.
 // This is exported so that the reports package can reuse the same validation logic.
 func ValidateTimelineFlags(cmd *cobra.Command) error {
-	windowSet := cmd.Flags().Changed("window")
+	sinceSet := cmd.Flags().Changed("since")
 	fromToSet := cmd.Flags().Changed("from") || cmd.Flags().Changed("to") ||
 		cmd.Flags().Changed("start") || cmd.Flags().Changed("end")
-	if windowSet && fromToSet {
-		return errors.New("--window and --from/--to are mutually exclusive")
+	if sinceSet && fromToSet {
+		return errors.New("--since and --from/--to are mutually exclusive")
 	}
 	return nil
 }
@@ -89,8 +89,8 @@ grafana_slo_sli_window metrics.`,
   # Custom time range with explicit step.
   gcx slo definitions timeline --from now-24h --to now --step 5m
 
-  # Use window shorthand for the past 24 hours.
-  gcx slo definitions timeline --window 24h
+  # Use duration shorthand for the past 24 hours.
+  gcx slo definitions timeline --since 24h
 
   # Output timeline data as a table.
   gcx slo definitions timeline -o table`,
@@ -105,9 +105,9 @@ grafana_slo_sli_window metrics.`,
 				return err
 			}
 
-			// Apply --window shorthand.
-			if cmd.Flags().Changed("window") {
-				opts.From = "now-" + opts.Window
+			// Apply --since shorthand.
+			if cmd.Flags().Changed("since") {
+				opts.From = "now-" + opts.Since
 				opts.To = "now"
 			}
 
