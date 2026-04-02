@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/query/tempo"
 	"github.com/stretchr/testify/assert"
@@ -52,8 +53,9 @@ func TestFormatSearchTable(t *testing.T) {
 	assert.Contains(t, out, "backend")
 	assert.Contains(t, out, "1.50s") // 1500ms formatted as seconds
 
-	// Timestamp should be RFC3339
-	assert.Contains(t, out, "2023-11-14T")
+	// Timestamp should be RFC3339 in local timezone
+	expectedDate := time.Unix(0, 1700000000000000000).Format(time.RFC3339)[:11] // "YYYY-MM-DDT" prefix
+	assert.Contains(t, out, expectedDate)
 }
 
 func TestFormatSearchTable_Empty(t *testing.T) {
