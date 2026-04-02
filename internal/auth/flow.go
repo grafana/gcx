@@ -132,7 +132,7 @@ func (f *Flow) Run(ctx context.Context) (*Result, error) {
 	}()
 
 	authURL := fmt.Sprintf("%s/a/grafana-assistant-app/cli/auth?callback_port=%d&state=%s&code_challenge=%s&code_challenge_method=S256",
-		f.endpoint, port, url.QueryEscape(state), url.QueryEscape(codeChallenge))
+		strings.TrimSuffix(f.endpoint, "/"), port, url.QueryEscape(state), url.QueryEscape(codeChallenge))
 
 	if hostname, err := os.Hostname(); err == nil && hostname != "" {
 		authURL += "&device_name=" + url.QueryEscape(hostname)
@@ -305,7 +305,7 @@ func exchangeCodeForToken(ctx context.Context, endpoint, code, codeVerifier stri
 		return nil, fmt.Errorf("failed to marshal exchange request: %w", err)
 	}
 
-	exchangeURL := endpoint + "/api/cli/v1/auth/exchange"
+	exchangeURL := strings.TrimSuffix(endpoint, "/") + "/api/cli/v1/auth/exchange"
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()

@@ -84,6 +84,44 @@ func TestNewNamespacedRESTConfig_FallsBackWhenBootdataNotStack(t *testing.T) {
 	}
 }
 
+func TestNewNamespacedRESTConfig_TrimsTrailingSlash(t *testing.T) {
+	bootdataServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer bootdataServer.Close()
+
+	ctx := config.Context{
+		Grafana: &config.GrafanaConfig{
+			Server:  bootdataServer.URL + "/",
+			StackID: 1,
+		},
+	}
+
+	restCfg := config.NewNamespacedRESTConfig(t.Context(), ctx)
+
+	if restCfg.Host != bootdataServer.URL {
+		t.Fatalf("expected trailing slash to be trimmed: got %q, want %q", restCfg.Host, bootdataServer.URL)
+	}
+}
+
+func TestNewNamespacedRESTConfig_OAuthProxyTrimsTrailingSlash(t *testing.T) {
+	ctx := config.Context{
+		Grafana: &config.GrafanaConfig{
+			Server:        "https://mystack.grafana.net",
+			ProxyEndpoint: "https://mystack.grafana.net/a/grafana-assistant-app/",
+			OAuthToken:    "gat_test-token",
+			StackID:       123,
+		},
+	}
+
+	restCfg := config.NewNamespacedRESTConfig(t.Context(), ctx)
+
+	expectedHost := "https://mystack.grafana.net/a/grafana-assistant-app/api/cli/v1/proxy"
+	if restCfg.Host != expectedHost {
+		t.Fatalf("expected Host %q, got %q", expectedHost, restCfg.Host)
+	}
+}
+
 func TestNewNamespacedRESTConfig_OAuthProxySetsHost(t *testing.T) {
 	ctx := config.Context{
 		Grafana: &config.GrafanaConfig{
