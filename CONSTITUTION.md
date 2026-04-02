@@ -50,7 +50,7 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
 - **Command structure follows `$AREA $NOUN $VERB`.** Resource and provider
   commands use `gcx {area} {resource-type} {verb}` (e.g.
   `gcx slo definitions list`, `gcx resources get`,
-  `gcx datasources loki query`). Tooling commands (`dev`, `config`)
+  `gcx logs query`). Tooling commands (`dev`, `config`)
   may use `$AREA $VERB` when there is no meaningful noun — these operate on
   the project or CLI itself, not on Grafana resources.
 - **Extension commands nest under their resource type.** Domain-specific

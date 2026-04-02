@@ -107,17 +107,17 @@ failed requests.
 gcx datasources list -o json
 
 # Error rate trend (visualize to identify onset time)
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'rate(http_requests_total{job="<service>",status=~"5.."}[5m])' \
   --from now-2h --to now --step 1m -o graph
 
 # Break down by status code to distinguish error types
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'sum by(status) (rate(http_requests_total{job="<service>"}[5m]))' \
   --from now-2h --to now --step 1m -o json
 
 # Correlate with logs
-gcx datasources loki query <loki-uid> \
+gcx logs query <loki-uid> \
   '{job="<service>"} |= "error"' \
   --from now-2h --to now -o json
 ```
@@ -143,17 +143,17 @@ users reporting timeouts.
 **Key queries**:
 ```bash
 # P95 latency trend (visualize to identify onset)
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="<service>"}[5m]))' \
   --from now-2h --to now --step 1m -o graph
 
 # Per-endpoint breakdown
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'histogram_quantile(0.95, sum by(le, handler) (rate(http_request_duration_seconds_bucket{job="<service>"}[5m])))' \
   --from now-1h --to now --step 1m -o json
 
 # Log evidence of latency cause
-gcx datasources loki query <loki-uid> \
+gcx logs query <loki-uid> \
   '{job="<service>"} |~ "timeout|slow query|GC pause|waiting"' \
   --from now-2h --to now -o json
 ```
@@ -176,17 +176,17 @@ connections) are near capacity limits.
 **Key queries**:
 ```bash
 # CPU saturation
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'rate(container_cpu_usage_seconds_total{job="<service>"}[5m])' \
   --from now-2h --to now --step 1m -o graph
 
 # Memory utilization
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'container_memory_working_set_bytes{job="<service>"}' \
   --from now-2h --to now --step 1m -o graph
 
 # OOM or resource pressure in logs
-gcx datasources loki query <loki-uid> \
+gcx logs query <loki-uid> \
   '{job="<service>"} |~ "OOM|out of memory|evicted|killed|SIGKILL"' \
   --from now-2h --to now -o json
 ```
@@ -212,18 +212,18 @@ metrics are absent or flatlined at zero.
 **Key queries**:
 ```bash
 # Check if service is scraping (0 = reachable but failing, absent = not registered)
-gcx datasources prometheus query <prom-uid> 'up{job="<service>"}' -o json
+gcx metrics query <prom-uid> 'up{job="<service>"}' -o json
 
 # Check scrape targets
-gcx datasources prometheus targets -d <prom-uid> -o json
+gcx metrics targets -d <prom-uid> -o json
 
 # Check for recent data (widen window to find the last data point)
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'absent(up{job="<service>"})' \
   --from now-3h --to now --step 5m -o json
 
 # Crash signals in logs
-gcx datasources loki query <loki-uid> \
+gcx logs query <loki-uid> \
   '{job="<service>"} |~ "panic|crash|OOM|SIGTERM|SIGKILL"' \
   --from now-3h --to now -o json
 ```
@@ -302,7 +302,7 @@ names.
 **Step 2: Visualize error rate trend to find onset time.**
 
 ```bash
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'rate(http_requests_total{job="<service>",status=~"5.."}[5m])' \
   --from now-2h --to now --step 1m -o graph
 ```
@@ -313,7 +313,7 @@ approximate timestamp — this is the incident start time.
 **Step 3: Break down by status code.**
 
 ```bash
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'sum by(status) (rate(http_requests_total{job="<service>"}[5m]))' \
   --from now-2h --to now --step 1m -o json
 ```
@@ -337,7 +337,7 @@ overload/throttling; 504s point to upstream timeouts.
 **Step 4: Check latency at the same time.**
 
 ```bash
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="<service>"}[5m]))' \
   --from now-2h --to now --step 1m -o graph
 ```
@@ -348,7 +348,7 @@ If latency rose before errors, the root cause is likely a slow dependency
 **Step 5: Correlate with error logs in the incident window.**
 
 ```bash
-gcx datasources loki query <loki-uid> \
+gcx logs query <loki-uid> \
   '{job="<service>"} |= "error"' \
   --from now-2h --to now -o json
 ```
@@ -392,7 +392,7 @@ gcx datasources list -o json
 **Step 2: Visualize P95 latency trend.**
 
 ```bash
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="checkout"}[5m]))' \
   --from now-3h --to now --step 1m -o graph
 ```
@@ -403,7 +403,7 @@ the pre-degradation baseline visible earlier in the graph.
 **Step 3: Break down by endpoint to isolate scope.**
 
 ```bash
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'histogram_quantile(0.95, sum by(le, handler) (rate(http_request_duration_seconds_bucket{job="checkout"}[5m])))' \
   --from now-1h --to now --step 1m -o json
 ```
@@ -431,12 +431,12 @@ If one handler is slow: the issue is specific to that route's logic or query.
 
 ```bash
 # CPU saturation
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'rate(container_cpu_usage_seconds_total{job="checkout"}[5m])' \
   --from now-3h --to now --step 1m -o graph
 
 # Memory pressure
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'container_memory_working_set_bytes{job="checkout"}' \
   --from now-3h --to now --step 1m -o json
 ```
@@ -444,7 +444,7 @@ gcx datasources prometheus query <prom-uid> \
 **Step 5: Query logs for slow dependency indicators.**
 
 ```bash
-gcx datasources loki query <loki-uid> \
+gcx logs query <loki-uid> \
   '{job="checkout"} |~ "timeout|slow|waiting|db_query|external"' \
   --from now-3h --to now -o json
 ```
@@ -501,7 +501,7 @@ Error: request failed: 403 Forbidden
 When a query returns `{"result": []}` with no error:
 - Widen the time range: try `--from now-24h` to confirm data exists
 - Check whether the label selector matches: verify with
-  `gcx datasources prometheus labels -d <uid> -l job -o json`
+  `gcx metrics labels -d <uid> -l job -o json`
 - Verify the datasource UID is correct for the current context:
   `gcx datasources list -o json`
 - Simplify the query to its base metric (remove label filters) to confirm
@@ -535,12 +535,12 @@ the full result structure including timestamps, labels, and value arrays.
 ```bash
 # Correct: JSON for data analysis
 gcx datasources list -o json
-gcx datasources generic query <uid> '<expr>' --from now-1h --to now --step 1m -o json
+gcx datasources query <uid> '<expr>' --from now-1h --to now --step 1m -o json
 gcx resources list -o json
 
 # Wrong: text output when you need to extract values
 gcx datasources list        # no -o flag produces text
-gcx datasources generic query <uid> '<expr>'  # incomplete flags
+gcx datasources query <uid> '<expr>'  # incomplete flags
 ```
 
 ### User-Facing Visualizations: Use `-o graph`
@@ -551,12 +551,12 @@ immediately visible.
 
 ```bash
 # Error rate trend for user presentation
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'rate(http_requests_total{job="<service>",status=~"5.."}[5m])' \
   --from now-2h --to now --step 1m -o graph
 
 # Latency trend for user presentation
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="<service>"}[5m]))' \
   --from now-2h --to now --step 1m -o graph
 ```
@@ -578,10 +578,10 @@ gcx datasources list -o json
 **Always use the UID as a positional argument in query commands:**
 ```bash
 # Correct: UID in -d flag
-gcx datasources generic query abc123def456 'up{job="api"}' -o json
+gcx datasources query abc123def456 'up{job="api"}' -o json
 
 # Wrong: display name (never do this)
-gcx datasources generic query "My Prometheus" 'up{job="api"}' -o json
+gcx datasources query "My Prometheus" 'up{job="api"}' -o json
 ```
 
 Store UIDs as variables for multi-step investigations:
@@ -608,10 +608,10 @@ for `gcx datasources {kind} query`. Do not use `--start`/`--end` (those are not 
 
 ```bash
 # Correct
-gcx datasources generic query <uid> '<expr>' --from now-1h --to now --step 1m -o json
+gcx datasources query <uid> '<expr>' --from now-1h --to now --step 1m -o json
 
 # Wrong
-gcx datasources generic query <uid> '<expr>' --start now-1h --end now   # invalid flags
+gcx datasources query <uid> '<expr>' --start now-1h --end now   # invalid flags
 ```
 
 Relative time formats supported: `now`, `now-Xm`, `now-Xh`, `now-Xd`.

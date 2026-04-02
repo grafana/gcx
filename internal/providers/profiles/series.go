@@ -79,27 +79,27 @@ DATASOURCE_UID is optional when datasources.pyroscope is configured in your cont
 EXPR is the label selector (e.g., '{service_name="frontend"}').`,
 		Example: `
   # Top services by CPU usage (ranked leaderboard)
-  gcx datasources pyroscope series '{}' \
+  gcx profiles series '{}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
     --since 1h --top
 
   # Top 20 services by memory, grouped by namespace
-  gcx datasources pyroscope series '{}' \
+  gcx profiles series '{}' \
     --profile-type memory:inuse_space:bytes:space:bytes \
     --since 1h --top --group-by namespace --limit 20
 
   # CPU usage over the last hour with 1-minute resolution
-  gcx datasources pyroscope series '{service_name="frontend"}' \
+  gcx profiles series '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
     --since 1h --step 1m
 
   # Group by namespace
-  gcx datasources pyroscope series '{service_name="frontend"}' \
+  gcx profiles series '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
     --since 1h --step 1m --group-by namespace
 
   # Line chart output
-  gcx datasources pyroscope series '{service_name="frontend"}' \
+  gcx profiles series '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
     --since 1h --step 1m -o graph`,
 		Args: cobra.RangeArgs(1, 2),

@@ -43,13 +43,13 @@ func metadataCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Long:  "Get metadata (type, help text) for metrics from a Prometheus datasource.",
 		Example: `
 	# Get all metric metadata (use datasource UID, not name)
-	gcx datasources prometheus metadata -d <datasource-uid>
+	gcx metrics metadata -d <datasource-uid>
 
 	# Get metadata for a specific metric
-	gcx datasources prometheus metadata -d <datasource-uid> --metric http_requests_total
+	gcx metrics metadata -d <datasource-uid> --metric http_requests_total
 
 	# Output as JSON
-	gcx datasources prometheus metadata -d <datasource-uid> -o json`,
+	gcx metrics metadata -d <datasource-uid> -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err

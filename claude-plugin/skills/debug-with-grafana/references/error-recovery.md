@@ -100,7 +100,7 @@ Error: failed to query datasource: 404 Not Found
 4. Retry the query using the correct UID from the listing output:
 
    ```bash
-   gcx datasources prometheus query <correct-uid> '<expr>' --from now-1h --to now --step 1m -o json
+   gcx metrics query <correct-uid> '<expr>' --from now-1h --to now --step 1m -o json
    ```
 
 ---
@@ -133,27 +133,27 @@ Or for a range query:
 1. Verify that the metric exists and is being ingested:
 
    ```bash
-   gcx datasources prometheus metadata -d <uid> -m <metric-name> -o json
+   gcx metrics metadata -d <uid> -m <metric-name> -o json
    ```
 
 2. Check available label names and values for a Prometheus datasource:
 
    ```bash
-   gcx datasources prometheus labels -d <uid> -o json
-   gcx datasources prometheus labels -d <uid> -l job -o json
+   gcx metrics labels -d <uid> -o json
+   gcx metrics labels -d <uid> -l job -o json
    ```
 
 3. For Loki: confirm label names and streams are present:
 
    ```bash
-   gcx datasources loki labels -d <uid> -o json
-   gcx datasources loki labels -d <uid> -l service_name -o json
+   gcx logs labels -d <uid> -o json
+   gcx logs labels -d <uid> -l service_name -o json
    ```
 
 4. Broaden the time range to confirm whether data exists at all:
 
    ```bash
-   gcx datasources prometheus query <uid> '<metric>' --from now-24h --to now --step 5m -o json
+   gcx metrics query <uid> '<metric>' --from now-24h --to now --step 5m -o json
    ```
 
 5. Simplify the query to remove label filters and verify the base metric returns data:
@@ -161,7 +161,7 @@ Or for a range query:
    ```bash
    # Before: http_requests_total{job="api",code="500"}
    # After (simplified):
-   gcx datasources prometheus query <uid> 'http_requests_total' --from now-1h --to now --step 1m -o json
+   gcx metrics query <uid> 'http_requests_total' --from now-1h --to now --step 1m -o json
    ```
 
 ---
@@ -189,13 +189,13 @@ Error: failed to execute query: upstream timeout
 1. Reduce the time range to limit the number of data points:
 
    ```bash
-   gcx datasources prometheus query <uid> '<expr>' --from now-30m --to now --step 1m -o json
+   gcx metrics query <uid> '<expr>' --from now-30m --to now --step 1m -o json
    ```
 
 2. Increase the step interval to reduce the resolution and query load:
 
    ```bash
-   gcx datasources prometheus query <uid> '<expr>' --from now-1h --to now --step 5m -o json
+   gcx metrics query <uid> '<expr>' --from now-1h --to now --step 5m -o json
    ```
 
 3. Add label filters to reduce cardinality:
@@ -203,13 +203,13 @@ Error: failed to execute query: upstream timeout
    ```bash
    # Before: rate(http_requests_total[5m])
    # After (scoped):
-   gcx datasources prometheus query <uid> 'rate(http_requests_total{job="api"}[5m])' --from now-1h --to now --step 5m -o json
+   gcx metrics query <uid> 'rate(http_requests_total{job="api"}[5m])' --from now-1h --to now --step 5m -o json
    ```
 
 4. Check Prometheus scrape targets to confirm the datasource is healthy:
 
    ```bash
-   gcx datasources prometheus targets -d <uid> -o json
+   gcx metrics targets -d <uid> -o json
    ```
 
 5. Verify the Grafana instance is reachable by running a lightweight command:
@@ -252,7 +252,7 @@ Error: bad_data: invalid parameter "query": <details>
    ```bash
    # Broken: rate(http_requests_total{job="api"[5m])
    # Fixed:
-   gcx datasources prometheus query <uid> 'rate(http_requests_total{job="api"}[5m])' --from now-1h --to now --step 1m -o json
+   gcx metrics query <uid> 'rate(http_requests_total{job="api"}[5m])' --from now-1h --to now --step 1m -o json
    ```
 
 2. Confirm the datasource type matches the query language. List datasources and check the `type` field:
@@ -269,7 +269,7 @@ Error: bad_data: invalid parameter "query": <details>
    # Wrong: {job='api'}
    # Wrong: {job=api}
    # Correct:
-   gcx datasources loki query <uid> '{job="api"} |= "error"' --from now-1h --to now -o json
+   gcx logs query <uid> '{job="api"} |= "error"' --from now-1h --to now -o json
    ```
 
 4. For rate and increase functions, always specify the range window:
@@ -277,14 +277,14 @@ Error: bad_data: invalid parameter "query": <details>
    ```bash
    # Wrong: rate(http_requests_total{code="500"})
    # Correct:
-   gcx datasources prometheus query <uid> 'rate(http_requests_total{code="500"}[5m])' --from now-1h --to now --step 1m -o json
+   gcx metrics query <uid> 'rate(http_requests_total{code="500"}[5m])' --from now-1h --to now --step 1m -o json
    ```
 
 5. Use the Prometheus labels command to confirm label names and valid values before building complex queries:
 
    ```bash
-   gcx datasources prometheus labels -d <uid> -o json
-   gcx datasources prometheus labels -d <uid> -l code -o json
+   gcx metrics labels -d <uid> -o json
+   gcx metrics labels -d <uid> -l code -o json
    ```
 
 ---
@@ -296,7 +296,7 @@ Error: bad_data: invalid parameter "query": <details>
 | 401/403 auth error | `gcx config view` |
 | Wrong context | `gcx config use-context <name>` |
 | Datasource UID unknown | `gcx datasources list -o json` |
-| Empty results | `gcx datasources prometheus metadata -d <uid> -m <metric>` |
+| Empty results | `gcx metrics metadata -d <uid> -m <metric>` |
 | Query timeout | Increase `--step`, reduce time range |
 | PromQL parse error | Check braces, quotes, and range windows |
 | Loki parse error | Check stream selector syntax and double-quoted labels |

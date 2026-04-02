@@ -42,13 +42,13 @@ func labelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Long:  "List all labels or get values for a specific label from a Pyroscope datasource.",
 		Example: `
 	# List all labels (use datasource UID, not name)
-	gcx datasources pyroscope labels -d <datasource-uid>
+	gcx profiles labels -d <datasource-uid>
 
 	# Get values for a specific label
-	gcx datasources pyroscope labels -d <datasource-uid> --label service_name
+	gcx profiles labels -d <datasource-uid> --label service_name
 
 	# Output as JSON
-	gcx datasources pyroscope labels -d <datasource-uid> -o json`,
+	gcx profiles labels -d <datasource-uid> -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err

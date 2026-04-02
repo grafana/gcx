@@ -42,13 +42,13 @@ func labelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Long:  "List all labels or get values for a specific label from a Prometheus datasource.",
 		Example: `
 	# List all labels (use datasource UID, not name)
-	gcx datasources prometheus labels -d <datasource-uid>
+	gcx metrics labels -d <datasource-uid>
 
 	# Get values for a specific label
-	gcx datasources prometheus labels -d <datasource-uid> --label job
+	gcx metrics labels -d <datasource-uid> --label job
 
 	# Output as JSON
-	gcx datasources prometheus labels -d <datasource-uid> -o json`,
+	gcx metrics labels -d <datasource-uid> -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err

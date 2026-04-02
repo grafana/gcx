@@ -48,16 +48,16 @@ func seriesCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Long:  "List log streams (series) from a Loki datasource using LogQL stream selectors. At least one --match selector is required.",
 		Example: `
 	# List series matching a selector (use datasource UID, not name)
-	gcx datasources loki series -d <datasource-uid> --match '{job="varlogs"}'
+	gcx logs series -d <datasource-uid> --match '{job="varlogs"}'
 
 	# Match with regex and multiple labels
-	gcx datasources loki series -d <datasource-uid> --match '{container_name=~"prometheus.*", component="server"}'
+	gcx logs series -d <datasource-uid> --match '{container_name=~"prometheus.*", component="server"}'
 
 	# Multiple matchers (OR logic)
-	gcx datasources loki series -d <datasource-uid> --match '{job="varlogs"}' --match '{namespace="default"}'
+	gcx logs series -d <datasource-uid> --match '{job="varlogs"}' --match '{namespace="default"}'
 
 	# Output as JSON
-	gcx datasources loki series -d <datasource-uid> --match '{job="varlogs"}' -o json`,
+	gcx logs series -d <datasource-uid> --match '{job="varlogs"}' -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err

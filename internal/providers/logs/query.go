@@ -26,19 +26,19 @@ DATASOURCE_UID is optional when datasources.loki is configured in your context.
 EXPR is the LogQL expression to evaluate.`,
 		Example: `
   # Log query using configured default datasource
-  gcx datasources loki query '{job="varlogs"}'
+  gcx logs query '{job="varlogs"}'
 
   # Query logs from the last hour with explicit datasource UID
-  gcx datasources loki query loki-001 '{job="varlogs"}' --since 1h
+  gcx logs query loki-001 '{job="varlogs"}' --since 1h
 
   # With custom limit
-  gcx datasources loki query loki-001 '{job="varlogs"}' --since 1h --limit 500
+  gcx logs query loki-001 '{job="varlogs"}' --since 1h --limit 500
 
   # No limit (return all matching log lines)
-  gcx datasources loki query loki-001 '{job="varlogs"}' --limit 0
+  gcx logs query loki-001 '{job="varlogs"}' --limit 0
 
   # Output as JSON
-  gcx datasources loki query loki-001 '{job="varlogs"}' -o json`,
+  gcx logs query loki-001 '{job="varlogs"}' -o json`,
 		Args: validateLokiQueryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {

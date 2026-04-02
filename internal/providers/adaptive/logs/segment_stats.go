@@ -51,7 +51,7 @@ type SegmentPatternStat struct {
 	// ID is the recommendation API map key (often a LogQL selector string).
 	ID string `json:"id"`
 	// SegmentID is the catalog LogSegment id when the key resolved to a known segment; use with
-	// `gcx adaptive logs patterns show --segment <SegmentID>` when the API keys by selector.
+	// `gcx logs adaptive patterns show --segment <SegmentID>` when the API keys by selector.
 	SegmentID string `json:"segment_id,omitempty"`
 	Name      string `json:"name"`
 	Volume    uint64 `json:"volume"`

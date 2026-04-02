@@ -40,10 +40,10 @@ func profileTypesCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Long:  "List available profile types from a Pyroscope datasource.",
 		Example: `
 	# List profile types (use datasource UID, not name)
-	gcx datasources pyroscope profile-types -d <datasource-uid>
+	gcx profiles profile-types -d <datasource-uid>
 
 	# Output as JSON
-	gcx datasources pyroscope profile-types -d <datasource-uid> -o json`,
+	gcx profiles profile-types -d <datasource-uid> -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err

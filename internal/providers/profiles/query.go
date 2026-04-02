@@ -27,17 +27,17 @@ DATASOURCE_UID is optional when datasources.pyroscope is configured in your cont
 EXPR is the label selector (e.g., '{service_name="frontend"}').`,
 		Example: `
   # Profile query with explicit datasource UID
-  gcx datasources pyroscope query pyro-001 '{service_name="frontend"}' \
+  gcx profiles query pyro-001 '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
     --from now-1h --to now
 
   # Using configured default datasource
-  gcx datasources pyroscope query '{service_name="frontend"}' \
+  gcx profiles query '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
     --since 1h
 
   # Output as JSON
-  gcx datasources pyroscope query pyro-001 '{service_name="frontend"}' \
+  gcx profiles query pyro-001 '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o json`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
