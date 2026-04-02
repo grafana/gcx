@@ -10,7 +10,6 @@ gcx is a unified CLI for managing Grafana resources, dashboards, datasources, al
 
 ```
       --agent            Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
-      --config string    Path to the configuration file
       --context string   Name of the context to use (overrides current-context in config)
   -h, --help             help for gcx
       --no-color         Disable color output

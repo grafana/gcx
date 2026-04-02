@@ -112,7 +112,7 @@ See [docs/adrs/](docs/adrs/) for all ADRs.
 | `internal/graph/` | Terminal chart rendering |
 | `internal/server/` | Live dev server (Chi router, reverse proxy, websocket reload) |
 | `internal/grafana/` | OpenAPI client (health checks, version detection) |
-| `internal/output/` | Output codec registry (json, yaml, text, wide — field selection, formatting) |
+| `internal/output/` | Output codec registry (json, yaml, text, wide — field selection, discovery, k8s unstructured handling) |
 | `internal/format/` | JSON/YAML codecs |
 | `internal/fleet/` | Shared fleet base client (HTTP, auth, config — shared between fleet provider and setup/instrumentation) |
 | `internal/setup/instrumentation/` | Manifest types (InstrumentationConfig), instrumentation client, optimistic lock comparison |

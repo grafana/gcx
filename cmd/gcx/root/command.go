@@ -71,7 +71,6 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	agentFlag := false
 	verbosity := 0
 	contextName := ""
-	configFile := ""
 
 	rootCmd := &cobra.Command{
 		Use:           path.Base(os.Args[0]),
@@ -183,7 +182,6 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd.PersistentFlags().BoolVar(&agentFlag, "agent", false, "Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.")
 	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "Verbose mode. Multiple -v options increase the verbosity (maximum: 3).")
 	rootCmd.PersistentFlags().StringVar(&contextName, "context", "", "Name of the context to use (overrides current-context in config)")
-	rootCmd.PersistentFlags().StringVar(&configFile, "config", "", "Path to the configuration file")
 
 	return rootCmd
 }

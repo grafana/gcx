@@ -2,10 +2,6 @@
 
 Manage registered providers
 
-```
-gcx providers [flags]
-```
-
 ### Options
 
 ```
@@ -16,7 +12,6 @@ gcx providers [flags]
 
 ```
       --agent            Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
-      --config string    Path to the configuration file
       --context string   Name of the context to use (overrides current-context in config)
       --no-color         Disable color output
       --no-truncate      Disable table column truncation (auto-enabled when stdout is piped)

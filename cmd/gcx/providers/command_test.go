@@ -28,7 +28,7 @@ var _ coreproviders.Provider = (*mockProvider)(nil)
 func Test_ProvidersCommand_NoProviders(t *testing.T) {
 	testCase := testutils.CommandTestCase{
 		Cmd:     providers.Command(nil),
-		Command: []string{},
+		Command: []string{"list"},
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandSuccess(),
 			testutils.CommandOutputContains("No providers registered"),
@@ -43,7 +43,7 @@ func Test_ProvidersCommand_NilProvider(t *testing.T) {
 	// silently skipped; the command should still succeed.
 	testCase := testutils.CommandTestCase{
 		Cmd:     providers.Command([]coreproviders.Provider{nil}),
-		Command: []string{},
+		Command: []string{"list"},
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandSuccess(),
 		},
@@ -84,7 +84,7 @@ func Test_ProvidersCommand(t *testing.T) {
 
 			testCase := testutils.CommandTestCase{
 				Cmd:        providers.Command(tc.pp),
-				Command:    []string{},
+				Command:    []string{"list"},
 				Assertions: assertions,
 			}
 

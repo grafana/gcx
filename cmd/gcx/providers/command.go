@@ -25,11 +25,7 @@ func Command(pp []coreproviders.Provider) *cobra.Command {
 		Short: "Manage registered providers",
 	}
 
-	listCmd := newListCommand(pp)
-	cmd.AddCommand(listCmd)
-
-	// Default to "list" when "gcx providers" is invoked without a subcommand.
-	cmd.RunE = listCmd.RunE
+	cmd.AddCommand(newListCommand(pp))
 
 	return cmd
 }
