@@ -777,45 +777,6 @@ func newRelabelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	return cmd
 }
 
-func newServiceDashboardCommand(loader RESTConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "service-dashboard",
-		Short: "Configure service dashboard settings.",
-	}
-	var fileFlag string
-	createCmd := &cobra.Command{
-		Use:   "create",
-		Short: "Configure service dashboard from a file (YAML).",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			data, err := readFileOrStdin(cmd, fileFlag)
-			if err != nil {
-				return fmt.Errorf("failed to read file: %w", err)
-			}
-			var config ServiceDashboardConfig
-			if err := yaml.Unmarshal(data, &config); err != nil {
-				return fmt.Errorf("invalid YAML: %w", err)
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			if err := client.AddServiceDashboard(cmd.Context(), config); err != nil {
-				return err
-			}
-			cmdio.Success(cmd.OutOrStdout(), "Service dashboard configured")
-			return nil
-		},
-	}
-	createCmd.Flags().StringVarP(&fileFlag, "file", "f", "", "Input file (YAML)")
-	_ = createCmd.MarkFlagRequired("file")
-	cmd.AddCommand(createCmd)
-	return cmd
-}
-
 func newKPIDisplayCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "kpi-display",

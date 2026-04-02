@@ -301,13 +301,8 @@ func (c *Client) UploadRelabelRules(ctx context.Context, yamlContent string) err
 }
 
 // ---------------------------------------------------------------------------
-// Environment & dashboard configuration
+// Dashboard configuration
 // ---------------------------------------------------------------------------
-
-// AddServiceDashboard configures the service dashboard settings.
-func (c *Client) AddServiceDashboard(ctx context.Context, cfg ServiceDashboardConfig) error {
-	return c.postJSON(ctx, pluginResourcePath+"/asserts/api-server/v1/config/dashboard/Service", cfg, nil)
-}
 
 // ConfigureKPIDisplay configures the KPI drawer display settings.
 func (c *Client) ConfigureKPIDisplay(ctx context.Context, cfg *KPIDisplayConfig) error {

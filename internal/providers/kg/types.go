@@ -91,12 +91,6 @@ type FilterGroup struct {
 	SiteLabelValues []string `json:"siteLabelValues"`
 }
 
-// ServiceDashboardConfig holds service dashboard configuration.
-type ServiceDashboardConfig struct {
-	FolderUID   string `json:"folderUid" yaml:"folderUid"`
-	FolderTitle string `json:"folderTitle" yaml:"folderTitle"`
-}
-
 // KPIDisplayConfig holds configuration for the KPI drawer display settings.
 type KPIDisplayConfig struct {
 	DefaultDashboard    bool `json:"defaultDashboard" yaml:"default_dashboard"`
