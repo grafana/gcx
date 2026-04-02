@@ -5,10 +5,19 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/providers/faro"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func toTypedObjs(apps []faro.FaroApp) []adapter.TypedObject[faro.FaroApp] {
+	objs := make([]adapter.TypedObject[faro.FaroApp], len(apps))
+	for i, app := range apps {
+		objs[i] = adapter.TypedObject[faro.FaroApp]{Spec: app}
+	}
+	return objs
+}
 
 func TestAppTableCodec_Encode(t *testing.T) {
 	tests := []struct {
@@ -23,19 +32,21 @@ func TestAppTableCodec_Encode(t *testing.T) {
 			wide: false,
 			apps: []faro.FaroApp{
 				{
+					ID:                 "42",
 					Name:               "my-app",
 					AppKey:             "abc123",
 					CollectEndpointURL: "https://faro.example.com/collect/abc123",
 				},
 			},
 			wantCols: []string{"NAME", "APP KEY", "COLLECT ENDPOINT URL"},
-			wantRows: []string{"my-app", "abc123", "https://faro.example.com/collect/abc123"},
+			wantRows: []string{"my-app-42", "abc123", "https://faro.example.com/collect/abc123"},
 		},
 		{
 			name: "wide columns include extra fields",
 			wide: true,
 			apps: []faro.FaroApp{
 				{
+					ID:                 "42",
 					Name:               "my-app",
 					AppKey:             "abc123",
 					CollectEndpointURL: "https://faro.example.com/collect/abc123",
@@ -45,7 +56,7 @@ func TestAppTableCodec_Encode(t *testing.T) {
 				},
 			},
 			wantCols: []string{"NAME", "APP KEY", "COLLECT ENDPOINT URL", "CORS ORIGINS", "EXTRA LOG LABELS", "GEOLOCATION"},
-			wantRows: []string{"my-app", "abc123", "https://app.example.com", "team=frontend", "country"},
+			wantRows: []string{"my-app-42", "abc123", "https://app.example.com", "team=frontend", "country"},
 		},
 		{
 			name: "empty fields show dashes",
@@ -70,7 +81,7 @@ func TestAppTableCodec_Encode(t *testing.T) {
 			codec := &faro.AppTableCodec{Wide: tt.wide}
 			var buf bytes.Buffer
 
-			err := codec.Encode(&buf, tt.apps)
+			err := codec.Encode(&buf, toTypedObjs(tt.apps))
 			require.NoError(t, err)
 
 			output := buf.String()
@@ -90,7 +101,7 @@ func TestAppTableCodec_Encode_InvalidType(t *testing.T) {
 
 	err := codec.Encode(&buf, "not a slice")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected []FaroApp")
+	assert.Contains(t, err.Error(), "expected []TypedObject[FaroApp]")
 }
 
 func TestAppTableCodec_Decode_Unsupported(t *testing.T) {

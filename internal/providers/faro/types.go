@@ -16,7 +16,7 @@ type FaroApp struct {
 	AppKey             string            `json:"appKey,omitempty"`
 	CollectEndpointURL string            `json:"collectEndpointURL,omitempty"`
 	CORSOrigins        []CORSOrigin      `json:"corsOrigins,omitempty"`
-	ExtraLogLabels     map[string]string `json:"-"` // Not sent directly to API
+	ExtraLogLabels     map[string]string `json:"extraLogLabels,omitempty"`
 	Settings           *FaroAppSettings  `json:"settings,omitempty"`
 }
 

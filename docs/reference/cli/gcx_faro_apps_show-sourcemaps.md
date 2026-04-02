@@ -11,7 +11,7 @@ gcx faro apps show-sourcemaps <app-name> [flags]
 ```
   -h, --help            help for show-sourcemaps
       --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -o, --output string   Output format. One of: json, yaml (default "json")
+  -o, --output string   Output format. One of: json, yaml (default "text")
 ```
 
 ### Options inherited from parent commands

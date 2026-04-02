@@ -109,16 +109,6 @@ func newListCommand(loader RESTConfigLoader) *cobra.Command {
 				return err
 			}
 
-			// Table codec operates on raw []FaroApp for direct field access.
-			// Other formats (yaml/json) use the TypedObject envelope for K8s compatibility.
-			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
-				apps := make([]FaroApp, len(typedObjs))
-				for i := range typedObjs {
-					apps[i] = typedObjs[i].Spec
-				}
-				return opts.IO.Encode(cmd.OutOrStdout(), apps)
-			}
-
 			return opts.IO.Encode(cmd.OutOrStdout(), typedObjs)
 		},
 	}
@@ -140,10 +130,11 @@ func (c *AppTableCodec) Format() format.Format {
 }
 
 // Encode writes apps to the writer as a table.
+// It accepts []adapter.TypedObject[FaroApp] (from commands) and extracts .Spec internally.
 func (c *AppTableCodec) Encode(w io.Writer, v any) error {
-	apps, ok := v.([]FaroApp)
+	typedObjs, ok := v.([]adapter.TypedObject[FaroApp])
 	if !ok {
-		return errors.New("invalid data type for table codec: expected []FaroApp")
+		return errors.New("invalid data type for table codec: expected []TypedObject[FaroApp]")
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
@@ -153,7 +144,8 @@ func (c *AppTableCodec) Encode(w io.Writer, v any) error {
 		fmt.Fprintln(tw, "NAME\tAPP KEY\tCOLLECT ENDPOINT URL")
 	}
 
-	for _, app := range apps {
+	for _, obj := range typedObjs {
+		app := obj.Spec
 		appKey := app.AppKey
 		if appKey == "" {
 			appKey = "-"
@@ -167,9 +159,9 @@ func (c *AppTableCodec) Encode(w io.Writer, v any) error {
 			cors := corsOriginsString(app.CORSOrigins)
 			labels := labelsString(app.ExtraLogLabels)
 			geo := geolocationString(app.Settings)
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", app.Name, appKey, endpoint, cors, labels, geo)
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", app.GetResourceName(), appKey, endpoint, cors, labels, geo)
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\n", app.Name, appKey, endpoint)
+			fmt.Fprintf(tw, "%s\t%s\t%s\n", app.GetResourceName(), appKey, endpoint)
 		}
 	}
 
@@ -286,12 +278,7 @@ func newGetCommand(loader RESTConfigLoader) *cobra.Command {
 				return err
 			}
 
-			// Table/wide codec operates on []FaroApp for consistent formatting.
-			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
-				return opts.IO.Encode(cmd.OutOrStdout(), []FaroApp{typedObj.Spec})
-			}
-
-			return opts.IO.Encode(cmd.OutOrStdout(), typedObj)
+			return opts.IO.Encode(cmd.OutOrStdout(), []adapter.TypedObject[FaroApp]{*typedObj})
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -303,20 +290,14 @@ func newGetCommand(loader RESTConfigLoader) *cobra.Command {
 // ---------------------------------------------------------------------------
 
 type createOpts struct {
-	IO   cmdio.Options
 	File string
 }
 
 func (o *createOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("yaml")
-	o.IO.BindFlags(flags)
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the Faro app manifest (use - for stdin)")
 }
 
 func (o *createOpts) Validate() error {
-	if err := o.IO.Validate(); err != nil {
-		return err
-	}
 	if o.File == "" {
 		return errors.New("--filename/-f is required")
 	}
@@ -360,7 +341,7 @@ func newCreateCommand(loader RESTConfigLoader) *cobra.Command {
 			}
 
 			cmdio.Success(cmd.OutOrStdout(), "Created Faro app %q (id=%s)", created.Spec.Name, created.Spec.ID)
-			return opts.IO.Encode(cmd.OutOrStdout(), created)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -372,20 +353,14 @@ func newCreateCommand(loader RESTConfigLoader) *cobra.Command {
 // ---------------------------------------------------------------------------
 
 type updateOpts struct {
-	IO   cmdio.Options
 	File string
 }
 
 func (o *updateOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("yaml")
-	o.IO.BindFlags(flags)
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the Faro app manifest (use - for stdin)")
 }
 
 func (o *updateOpts) Validate() error {
-	if err := o.IO.Validate(); err != nil {
-		return err
-	}
 	if o.File == "" {
 		return errors.New("--filename/-f is required")
 	}
@@ -428,7 +403,7 @@ func newUpdateCommand(loader RESTConfigLoader) *cobra.Command {
 			}
 
 			cmdio.Success(cmd.OutOrStdout(), "Updated Faro app %q (id=%s)", updated.Spec.Name, updated.Spec.ID)
-			return opts.IO.Encode(cmd.OutOrStdout(), updated)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())

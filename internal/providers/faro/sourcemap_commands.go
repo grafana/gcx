@@ -20,7 +20,7 @@ type showSourcemapsOpts struct {
 }
 
 func (o *showSourcemapsOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("json")
+	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
 }
 

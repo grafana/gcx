@@ -18,8 +18,6 @@ gcx faro apps update <name> [flags]
 ```
   -f, --filename string   File containing the Faro app manifest (use - for stdin)
   -h, --help              help for update
-      --json string       Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -o, --output string     Output format. One of: json, yaml (default "yaml")
 ```
 
 ### Options inherited from parent commands
