@@ -10,9 +10,32 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 )
 
 const maxBodyReadBytes = 64 * 1024
+
+// maxAdaptiveDropRulesBodyBytes caps drop-rule HTTP response bodies. The list endpoint can
+// return large JSON; a 64KiB read silently truncated responses and broke decoding with
+// "unexpected end of JSON input".
+const maxAdaptiveDropRulesBodyBytes = 10 << 20 // 10 MiB
+
+// readDropRulesResponseBody reads resp.Body and closes it. It errors if the body is larger
+// than maxAdaptiveDropRulesBodyBytes (without truncating).
+func readDropRulesResponseBody(resp *http.Response) ([]byte, error) {
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxAdaptiveDropRulesBodyBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > maxAdaptiveDropRulesBodyBytes {
+		return nil, fmt.Errorf("response body exceeds maximum size (%d bytes)", maxAdaptiveDropRulesBodyBytes)
+	}
+	return body, nil
+}
+
+// dropRulesPath is the log-template-service route for adaptive log drop rules.
+const dropRulesPath = "/adaptive-logs/drop-rules"
 
 // Client is an HTTP client for the Adaptive Logs API.
 type Client struct {
@@ -285,6 +308,184 @@ func (c *Client) DeleteSegment(ctx context.Context, id string) error {
 	return nil
 }
 
+// decodeDropRulesListBody parses the list endpoint body: a bare JSON array, or the same
+// {"result": [...]} envelope as other adaptive logs endpoints; empty/whitespace bodies are
+// treated as an empty list (some stacks return HTTP 200 with no body when there are no rules).
+func decodeDropRulesListBody(body []byte) ([]DropRule, error) {
+	body = bytes.TrimSpace(body)
+	if len(body) == 0 {
+		return []DropRule{}, nil
+	}
+	var rules []DropRule
+	if err := json.Unmarshal(body, &rules); err == nil {
+		if rules == nil {
+			return []DropRule{}, nil
+		}
+		return rules, nil
+	}
+	var env struct {
+		Result []DropRule `json:"result"`
+	}
+	if err := json.Unmarshal(body, &env); err != nil {
+		return nil, err
+	}
+	if env.Result == nil {
+		return []DropRule{}, nil
+	}
+	return env.Result, nil
+}
+
+// ListDropRules lists adaptive log drop rules.
+// The API returns a bare JSON array (no wrapper). Optional filters are passed as query parameters.
+func (c *Client) ListDropRules(ctx context.Context, q DropRuleListQuery) ([]DropRule, error) {
+	vals := url.Values{}
+	if q.SegmentID != "" {
+		vals.Set("segment_id", q.SegmentID)
+	}
+	exp := q.ExpirationFilter
+	if exp == "" {
+		exp = "all"
+	}
+	vals.Set("expiration_filter", exp)
+
+	query := "?" + vals.Encode()
+
+	resp, err := c.doRequest(ctx, http.MethodGet, dropRulesPath+query, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list drop rules: %w", err)
+	}
+	body, err := readDropRulesResponseBody(resp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read drop rules response: %w", err)
+	}
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		rules, err := decodeDropRulesListBody(body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode drop rules response: %w", err)
+		}
+		return rules, nil
+	case http.StatusNotFound:
+		return nil, fmt.Errorf("adaptive logs drop rules: not found at %q (HTTP 404)", dropRulesPath)
+	default:
+		return nil, apiErrorFromResponseBody(resp.StatusCode, body)
+	}
+}
+
+// GetDropRule returns a single drop rule by ID.
+func (c *Client) GetDropRule(ctx context.Context, id string) (*DropRule, error) {
+	pathID := "/" + url.PathEscape(id)
+
+	resp, err := c.doRequest(ctx, http.MethodGet, dropRulesPath+pathID, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get drop rule %s: %w", id, err)
+	}
+	body, err := readDropRulesResponseBody(resp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read drop rule response: %w", err)
+	}
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		var rule DropRule
+		if err := json.Unmarshal(body, &rule); err != nil {
+			return nil, fmt.Errorf("failed to decode drop rule response: %w", err)
+		}
+		return &rule, nil
+	case http.StatusNotFound:
+		return nil, fmt.Errorf("adaptive logs drop rule %q: not found at %q (HTTP 404)", id, dropRulesPath)
+	default:
+		return nil, apiErrorFromResponseBody(resp.StatusCode, body)
+	}
+}
+
+// CreateDropRule creates a new adaptive log drop rule.
+func (c *Client) CreateDropRule(ctx context.Context, dr *DropRule) (*DropRule, error) {
+	payload, err := dropRuleCreatePayload(dr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal drop rule create payload: %w", err)
+	}
+
+	resp, err := c.doRequest(ctx, http.MethodPost, dropRulesPath, bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create drop rule: %w", err)
+	}
+	body, err := readDropRulesResponseBody(resp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read create drop rule response: %w", err)
+	}
+
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusCreated, http.StatusAccepted:
+		var created DropRule
+		if err := json.Unmarshal(body, &created); err != nil {
+			return nil, fmt.Errorf("failed to decode create drop rule response: %w", err)
+		}
+		return &created, nil
+	case http.StatusNotFound:
+		return nil, fmt.Errorf("adaptive logs drop rules create: not found at %q (HTTP 404)", dropRulesPath)
+	default:
+		return nil, apiErrorFromResponseBody(resp.StatusCode, body)
+	}
+}
+
+// UpdateDropRule updates an existing drop rule by ID.
+// The API expects a DropRuleUpdate-shaped body only (not full DropRule).
+func (c *Client) UpdateDropRule(ctx context.Context, id string, dr *DropRule) (*DropRule, error) {
+	payload, err := dropRuleUpdatePayload(dr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal drop rule update payload: %w", err)
+	}
+
+	pathID := "/" + url.PathEscape(id)
+
+	resp, err := c.doRequest(ctx, http.MethodPut, dropRulesPath+pathID, bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("failed to update drop rule %s: %w", id, err)
+	}
+	body, err := readDropRulesResponseBody(resp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read update drop rule response: %w", err)
+	}
+
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusAccepted:
+		var updated DropRule
+		if err := json.Unmarshal(body, &updated); err != nil {
+			return nil, fmt.Errorf("failed to decode update drop rule response: %w", err)
+		}
+		return &updated, nil
+	case http.StatusNotFound:
+		return nil, fmt.Errorf("adaptive logs drop rule %q: update not found at %q (HTTP 404)", id, dropRulesPath)
+	default:
+		return nil, apiErrorFromResponseBody(resp.StatusCode, body)
+	}
+}
+
+// DeleteDropRule deletes a drop rule by ID.
+func (c *Client) DeleteDropRule(ctx context.Context, id string) error {
+	pathID := "/" + url.PathEscape(id)
+
+	resp, err := c.doRequest(ctx, http.MethodDelete, dropRulesPath+pathID, nil)
+	if err != nil {
+		return fmt.Errorf("failed to delete drop rule %s: %w", id, err)
+	}
+	body, err := readDropRulesResponseBody(resp)
+	if err != nil {
+		return fmt.Errorf("failed to read delete drop rule response: %w", err)
+	}
+
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusNoContent:
+		return nil
+	case http.StatusNotFound:
+		return fmt.Errorf("adaptive logs drop rule %q: delete not found at %q (HTTP 404)", id, dropRulesPath)
+	default:
+		return apiErrorFromResponseBody(resp.StatusCode, body)
+	}
+}
+
 // decodeExemptionResponse decodes the Adaptive Logs API envelope
 // {"result": ...} (webtools.APIResponse). Single-exemption endpoints use this shape;
 // list uses {"result": [...]} and is decoded separately in ListExemptions.
@@ -342,23 +543,45 @@ func handleErrorResponse(resp *http.Response) error {
 	if err != nil {
 		return &APIError{StatusCode: resp.StatusCode, Message: fmt.Sprintf("could not read response body: %v", err)}
 	}
+	return apiErrorFromResponseBody(resp.StatusCode, body)
+}
 
+func apiErrorFromResponseBody(statusCode int, body []byte) error {
 	var errResp struct {
 		Error   string `json:"error"`
 		Message string `json:"message"`
 	}
 	if err := json.Unmarshal(body, &errResp); err == nil {
 		if errResp.Error != "" {
-			return &APIError{StatusCode: resp.StatusCode, Message: errResp.Error}
+			return &APIError{StatusCode: statusCode, Message: errResp.Error}
 		}
 		if errResp.Message != "" {
-			return &APIError{StatusCode: resp.StatusCode, Message: errResp.Message}
+			return &APIError{StatusCode: statusCode, Message: errResp.Message}
 		}
 	}
 
 	if len(body) > 0 {
-		return &APIError{StatusCode: resp.StatusCode, Message: "received non-JSON error response body"}
+		return &APIError{StatusCode: statusCode, Message: adaptiveErrorBodySummary(statusCode, body)}
 	}
 
-	return &APIError{StatusCode: resp.StatusCode}
+	return &APIError{StatusCode: statusCode}
+}
+
+// adaptiveErrorBodySummary turns a non-JSON or unmapped JSON error body into a short, single-line message.
+// Proxies often return HTML on 404; surfacing a prefix helps explain "Unexpected error" failures.
+func adaptiveErrorBodySummary(statusCode int, body []byte) string {
+	s := strings.TrimSpace(string(body))
+	s = strings.ReplaceAll(s, "\r\n", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	if s == "" {
+		if t := http.StatusText(statusCode); t != "" {
+			return t
+		}
+		return "empty response body"
+	}
+	const max = 240
+	if len(s) > max {
+		return s[:max] + "..."
+	}
+	return s
 }

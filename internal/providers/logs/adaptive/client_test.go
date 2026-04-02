@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	logs "github.com/grafana/gcx/internal/providers/logs/adaptive"
@@ -116,13 +117,13 @@ func TestAPIError_TypedError(t *testing.T) {
 			wantMessage: "access denied",
 		},
 		{
-			name: "sanitizes non-JSON response body",
+			name: "includes non-JSON response body text",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusServiceUnavailable)
 				_, _ = w.Write([]byte("service unavailable"))
 			},
 			wantCode:    503,
-			wantMessage: "received non-JSON error response body",
+			wantMessage: "service unavailable",
 		},
 		{
 			name: "empty body",
@@ -693,4 +694,291 @@ func TestClient_DeleteSegment(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+func TestClient_ListDropRules_HTTP404(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/adaptive-logs/drop-rules", r.URL.Path)
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte("404 page not found"))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	_, err := client.ListDropRules(t.Context(), logs.DropRuleListQuery{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "/adaptive-logs/drop-rules")
+}
+
+func TestClient_ListDropRules(t *testing.T) {
+	tests := []struct {
+		name      string
+		query     logs.DropRuleListQuery
+		handler   http.HandlerFunc
+		wantCount int
+		wantErr   bool
+	}{
+		{
+			name: "query params and bare array",
+			query: logs.DropRuleListQuery{
+				SegmentID:        "seg-a",
+				ExpirationFilter: "",
+			},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.Equal(t, "/adaptive-logs/drop-rules", r.URL.Path)
+				assert.Equal(t, "all", r.URL.Query().Get("expiration_filter"))
+				assert.Equal(t, "seg-a", r.URL.Query().Get("segment_id"))
+				writeJSON(w, []logs.DropRule{
+					{ID: "dr-1", Name: "r1", SegmentID: "seg-a", Version: 1},
+				})
+			},
+			wantCount: 1,
+		},
+		{
+			name:  "defaults expiration_filter to all",
+			query: logs.DropRuleListQuery{},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "all", r.URL.Query().Get("expiration_filter"))
+				writeJSON(w, []logs.DropRule{})
+			},
+			wantCount: 0,
+		},
+		{
+			name:  "HTTP 200 empty body means no rules",
+			query: logs.DropRuleListQuery{},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			},
+			wantCount: 0,
+		},
+		{
+			name:  "result envelope",
+			query: logs.DropRuleListQuery{},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				writeJSON(w, map[string]any{
+					"result": []logs.DropRule{{ID: "dr-env", Name: "wrapped", Version: 1}},
+				})
+			},
+			wantCount: 1,
+		},
+		{
+			name: "server error",
+			query: logs.DropRuleListQuery{
+				ExpirationFilter: "all",
+			},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(tt.handler)
+			defer server.Close()
+
+			client := newTestClient(t, server)
+			rules, err := client.ListDropRules(t.Context(), tt.query)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Len(t, rules, tt.wantCount)
+		})
+	}
+}
+
+func TestClient_ListDropRules_responseLargerThan64KiB(t *testing.T) {
+	// Regression: 64KiB LimitReader truncated list JSON and produced "unexpected end of JSON input".
+	large := strings.Repeat("x", 70_000)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, []logs.DropRule{{ID: "dr-big", Name: large, Version: 1}})
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	rules, err := client.ListDropRules(t.Context(), logs.DropRuleListQuery{})
+	require.NoError(t, err)
+	require.Len(t, rules, 1)
+	assert.Equal(t, large, rules[0].Name)
+}
+
+func TestClient_GetDropRule(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/adaptive-logs/drop-rules/550e8400-e29b-41d4-a716-446655440000", r.URL.Path)
+		writeJSON(w, logs.DropRule{ID: "550e8400-e29b-41d4-a716-446655440000", Name: "n", Version: 1})
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	rule, err := client.GetDropRule(t.Context(), "550e8400-e29b-41d4-a716-446655440000")
+	require.NoError(t, err)
+	require.NotNil(t, rule)
+	assert.Equal(t, "n", rule.Name)
+}
+
+func TestClient_CreateDropRule(t *testing.T) {
+	body := json.RawMessage(`{"drop_rate":0.5,"stream_selector":"{}"}`)
+	tests := []struct {
+		name    string
+		input   *logs.DropRule
+		handler http.HandlerFunc
+		wantID  string
+		wantErr bool
+	}{
+		{
+			name: "201 and create payload shape",
+			input: &logs.DropRule{
+				SegmentID: "__global__",
+				Version:   1,
+				Name:      "rule-a",
+				Body:      body,
+			},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodPost, r.Method)
+				assert.Equal(t, "/adaptive-logs/drop-rules", r.URL.Path)
+				var got map[string]json.RawMessage
+				if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+					t.Fatal(err)
+				}
+				assert.Contains(t, got, "segment_id")
+				assert.Contains(t, got, "version")
+				assert.Contains(t, got, "name")
+				assert.Contains(t, got, "body")
+				assert.NotContains(t, got, "id")
+
+				w.WriteHeader(http.StatusCreated)
+				writeJSON(w, logs.DropRule{ID: "new-id", Name: "rule-a", Version: 1, Body: body})
+			},
+			wantID: "new-id",
+		},
+		{
+			name: "server error",
+			input: &logs.DropRule{
+				SegmentID: "s",
+				Version:   1,
+				Name:      "n",
+				Body:      body,
+			},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusBadRequest)
+				writeJSON(w, map[string]any{"error": "invalid"})
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(tt.handler)
+			defer server.Close()
+
+			client := newTestClient(t, server)
+			created, err := client.CreateDropRule(t.Context(), tt.input)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantID, created.ID)
+		})
+	}
+}
+
+func TestClient_UpdateDropRule(t *testing.T) {
+	body := json.RawMessage(`{"drop_rate":0.3}`)
+	tests := []struct {
+		name    string
+		id      string
+		input   *logs.DropRule
+		handler http.HandlerFunc
+		wantErr bool
+	}{
+		{
+			name: "PUT sends update payload only",
+			id:   "550e8400-e29b-41d4-a716-446655440000",
+			input: &logs.DropRule{
+				Version:   2,
+				Name:      "updated",
+				Body:      body,
+				SegmentID: "should-not-appear",
+			},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodPut, r.Method)
+				assert.Equal(t, "/adaptive-logs/drop-rules/550e8400-e29b-41d4-a716-446655440000", r.URL.Path)
+				var got map[string]json.RawMessage
+				if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+					t.Fatal(err)
+				}
+				assert.NotContains(t, got, "segment_id")
+				assert.Contains(t, got, "version")
+				writeJSON(w, logs.DropRule{ID: "550e8400-e29b-41d4-a716-446655440000", Name: "updated", Version: 2, Body: body})
+			},
+		},
+		{
+			name: "not found",
+			id:   "missing",
+			input: &logs.DropRule{
+				Version: 1,
+				Name:    "n",
+				Body:    body,
+			},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+				writeJSON(w, map[string]any{"error": "not found"})
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(tt.handler)
+			defer server.Close()
+
+			client := newTestClient(t, server)
+			updated, err := client.UpdateDropRule(t.Context(), tt.id, tt.input)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, "updated", updated.Name)
+		})
+	}
+}
+
+func TestClient_DeleteDropRule(t *testing.T) {
+	t.Run("204", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, http.MethodDelete, r.Method)
+			assert.Equal(t, "/adaptive-logs/drop-rules/dr-1", r.URL.Path)
+			w.WriteHeader(http.StatusNoContent)
+		}))
+		defer server.Close()
+		require.NoError(t, newTestClient(t, server).DeleteDropRule(t.Context(), "dr-1"))
+	})
+	t.Run("404", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			writeJSON(w, map[string]any{"error": "not found"})
+		}))
+		defer server.Close()
+		require.Error(t, newTestClient(t, server).DeleteDropRule(t.Context(), "missing"))
+	})
+}
+
+func TestDropRuleSchema_Generates(t *testing.T) {
+	t.Parallel()
+	_ = logs.DropRuleSchema()
 }

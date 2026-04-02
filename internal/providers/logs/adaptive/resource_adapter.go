@@ -182,3 +182,90 @@ func NewSegmentAdapterFactory(loader *providers.ConfigLoader) adapter.Factory {
 		return crud.AsAdapter(), nil
 	}
 }
+
+// ---------------------------------------------------------------------------
+// DropRule resource adapter
+// ---------------------------------------------------------------------------
+
+const (
+	DropRuleAPIVersion = "adaptive-logs.ext.grafana.app/v1alpha1"
+	DropRuleKind       = "DropRule"
+)
+
+//nolint:gochecknoglobals // Static descriptor used in registration pattern.
+var dropRuleDescriptorVar = resources.Descriptor{
+	GroupVersion: schema.GroupVersion{
+		Group:   "adaptive-logs.ext.grafana.app",
+		Version: "v1alpha1",
+	},
+	Kind:     DropRuleKind,
+	Singular: "droprule",
+	Plural:   "droprules",
+}
+
+// DropRuleDescriptor returns the resource descriptor for adaptive log drop rules.
+func DropRuleDescriptor() resources.Descriptor { return dropRuleDescriptorVar }
+
+// DropRuleSchema returns a JSON Schema for the DropRule resource type.
+func DropRuleSchema() json.RawMessage {
+	return adapter.SchemaFromType[DropRule](DropRuleDescriptor())
+}
+
+// DropRuleExample returns an example DropRule manifest as JSON.
+func DropRuleExample() json.RawMessage {
+	example := map[string]any{
+		"apiVersion": DropRuleAPIVersion,
+		"kind":       DropRuleKind,
+		"metadata":   map[string]any{"name": "550e8400-e29b-41d4-a716-446655440000"},
+		"spec": map[string]any{
+			"segment_id": GlobalDropRuleSegmentID,
+			"version":    1,
+			"name":       "drop-noisy-info",
+			"body": map[string]any{
+				"drop_rate":         0.5,
+				"stream_selector":   `{app="nginx"}`,
+				"levels":            []string{"error", "warn"},
+				"log_line_contains": "timeout",
+			},
+		},
+	}
+	b, err := json.Marshal(example)
+	if err != nil {
+		panic(fmt.Sprintf("adaptive/logs: failed to marshal drop rule example: %v", err))
+	}
+	return b
+}
+
+// listDropRulesAll lists drop rules for resources get/pull (unfiltered by segment; expiration_filter=all).
+func listDropRulesAll(ctx context.Context, c *Client) ([]DropRule, error) {
+	return c.ListDropRules(ctx, DropRuleListQuery{ExpirationFilter: "all"})
+}
+
+// NewDropRuleTypedCRUD creates a TypedCRUD for adaptive log drop rules.
+func NewDropRuleTypedCRUD(ctx context.Context, loader *providers.ConfigLoader) (*adapter.TypedCRUD[DropRule], string, error) {
+	client, err := newAdaptiveLogsClient(ctx, loader)
+	if err != nil {
+		return nil, "", err
+	}
+	crud := buildLogsTypedCRUD(dropRuleDescriptorVar,
+		func(ctx context.Context) ([]DropRule, error) {
+			return listDropRulesAll(ctx, client)
+		},
+		client.GetDropRule,
+		client.CreateDropRule,
+		client.UpdateDropRule,
+		client.DeleteDropRule,
+	)
+	return crud, "default", nil
+}
+
+// NewDropRuleAdapterFactory returns an adapter.Factory for adaptive log drop rules.
+func NewDropRuleAdapterFactory(loader *providers.ConfigLoader) adapter.Factory {
+	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
+		crud, _, err := NewDropRuleTypedCRUD(ctx, loader)
+		if err != nil {
+			return nil, err
+		}
+		return crud.AsAdapter(), nil
+	}
+}

@@ -2,10 +2,12 @@ package logs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"math"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -31,6 +33,7 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		h.patternsCommand(),
 		h.exemptionsCommand(),
 		h.segmentsCommand(),
+		h.dropRulesCommand(),
 	)
 	return cmd
 }
@@ -1012,6 +1015,339 @@ func (h *logsHelper) segmentsDeleteCommand() *cobra.Command {
 			}
 
 			cmdio.Success(cmd.OutOrStdout(), "Deleted segment %q", args[0])
+			return nil
+		},
+	}
+	opts.setup(cmd)
+	return cmd
+}
+
+// ---------------------------------------------------------------------------
+// drop-rules
+// ---------------------------------------------------------------------------
+
+func (h *logsHelper) dropRulesCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "drop-rules",
+		Short: "Manage adaptive log drop rules.",
+		Long: "Manage adaptive log drop rules.\n\n" +
+			"Listing via `gcx resources get droprules` returns all rules for the tenant (no segment filter). " +
+			"`gcx logs adaptive drop-rules` subcommands operate on the " + GlobalDropRuleSegmentID + " segment only.",
+	}
+	cmd.AddCommand(
+		h.dropRulesListCommand(),
+		h.dropRulesCreateCommand(),
+		h.dropRulesUpdateCommand(),
+		h.dropRulesDeleteCommand(),
+	)
+	return cmd
+}
+
+// dropRules list
+
+type dropRulesListOpts struct {
+	IO               cmdio.Options
+	ExpirationFilter string
+}
+
+func (o *dropRulesListOpts) setup(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&o.ExpirationFilter, "expiration-filter", "all",
+		"Filter by expiration: all, active, or expired")
+	o.IO.RegisterCustomCodec("table", &dropRulesTableCodec{wide: false})
+	o.IO.RegisterCustomCodec("wide", &dropRulesTableCodec{wide: true})
+	o.IO.DefaultFormat("table")
+	o.IO.BindFlags(cmd.Flags())
+}
+
+func (h *logsHelper) dropRulesListCommand() *cobra.Command {
+	opts := &dropRulesListOpts{}
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List adaptive log drop rules.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			client, err := h.newClient(ctx)
+			if err != nil {
+				return err
+			}
+
+			rules, err := client.ListDropRules(ctx, DropRuleListQuery{
+				SegmentID:        GlobalDropRuleSegmentID,
+				ExpirationFilter: opts.ExpirationFilter,
+			})
+			if err != nil {
+				return err
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), rules)
+		},
+	}
+	opts.setup(cmd)
+	return cmd
+}
+
+type dropRulesTableCodec struct{ wide bool }
+
+func (c *dropRulesTableCodec) Format() format.Format {
+	if c.wide {
+		return "wide"
+	}
+	return "table"
+}
+
+func (c *dropRulesTableCodec) Encode(w io.Writer, v any) error {
+	rules, ok := v.([]DropRule)
+	if !ok {
+		return errors.New("invalid data type for table codec: expected []DropRule")
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	if c.wide {
+		fmt.Fprintln(tw, "ID\tNAME\tSEGMENT\tVERSION\tDISABLED\tEXPIRES AT\tCREATED AT\tUPDATED AT")
+	} else {
+		fmt.Fprintln(tw, "ID\tNAME\tSEGMENT\tVERSION\tDISABLED\tEXPIRES AT")
+	}
+
+	for _, r := range rules {
+		exp := r.ExpiresAt
+		if exp == "" {
+			exp = "-"
+		}
+		disabled := strconv.FormatBool(r.Disabled)
+		if c.wide {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\t%s\t%s\t%s\n",
+				r.ID, r.Name, r.SegmentID, r.Version, disabled, exp, r.CreatedAt, r.UpdatedAt)
+		} else {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\t%s\n",
+				r.ID, r.Name, r.SegmentID, r.Version, disabled, exp)
+		}
+	}
+
+	return tw.Flush()
+}
+
+func (c *dropRulesTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+func readDropRuleBodyJSON(bodyStr, bodyFile string) ([]byte, error) {
+	switch {
+	case bodyFile != "" && bodyStr != "":
+		return nil, errors.New("specify only one of --body or --body-file")
+	case bodyFile != "":
+		b, err := os.ReadFile(bodyFile)
+		if err != nil {
+			return nil, err
+		}
+		return bytesTrimJSON(b), nil
+	case bodyStr != "":
+		return []byte(bodyStr), nil
+	default:
+		return nil, nil
+	}
+}
+
+func bytesTrimJSON(b []byte) []byte {
+	return []byte(strings.TrimSpace(string(b)))
+}
+
+// dropRules create
+
+type dropRulesCreateOpts struct {
+	Version   int
+	Name      string
+	Disabled  bool
+	ExpiresAt string
+	Body      string
+	BodyFile  string
+	IO        cmdio.Options
+}
+
+func (o *dropRulesCreateOpts) setup(cmd *cobra.Command) {
+	cmd.Flags().IntVar(&o.Version, "version", 1, "Policy body schema version")
+	cmd.Flags().StringVar(&o.Name, "name", "", "Rule name (required)")
+	cmd.Flags().BoolVar(&o.Disabled, "disabled", false, "Create the rule in a disabled state")
+	cmd.Flags().StringVar(&o.ExpiresAt, "expires-at", "", "Optional RFC3339 expiry timestamp")
+	cmd.Flags().StringVar(&o.Body, "body", "", "JSON object for the rule body (e.g. v1 drop_rate, stream_selector, levels)")
+	cmd.Flags().StringVar(&o.BodyFile, "body-file", "", "Path to a JSON file for the rule body")
+	_ = cmd.MarkFlagRequired("name")
+	o.IO.DefaultFormat("json")
+	o.IO.BindFlags(cmd.Flags())
+}
+
+func (h *logsHelper) dropRulesCreateCommand() *cobra.Command {
+	opts := &dropRulesCreateOpts{}
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create an adaptive log drop rule.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			bodyJSON, err := readDropRuleBodyJSON(opts.Body, opts.BodyFile)
+			if err != nil {
+				return err
+			}
+			if len(bodyJSON) == 0 {
+				return errors.New("rule body is required: set --body or --body-file with a JSON object")
+			}
+			if !json.Valid(bodyJSON) {
+				return errors.New("rule body must be valid JSON")
+			}
+
+			ctx := cmd.Context()
+			crud, _, err := NewDropRuleTypedCRUD(ctx, h.loader)
+			if err != nil {
+				return err
+			}
+
+			created, err := crud.Create(ctx, &adapter.TypedObject[DropRule]{
+				Spec: DropRule{
+					SegmentID: GlobalDropRuleSegmentID,
+					Version:   opts.Version,
+					Name:      opts.Name,
+					Body:      bodyJSON,
+					ExpiresAt: opts.ExpiresAt,
+					Disabled:  opts.Disabled,
+				},
+			})
+			if err != nil {
+				return err
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), created.Spec)
+		},
+	}
+	opts.setup(cmd)
+	return cmd
+}
+
+// dropRules update
+
+type dropRulesUpdateOpts struct {
+	Version   int
+	Name      string
+	Disabled  bool
+	ExpiresAt string
+	Body      string
+	BodyFile  string
+	IO        cmdio.Options
+}
+
+func (o *dropRulesUpdateOpts) setup(cmd *cobra.Command) {
+	cmd.Flags().IntVar(&o.Version, "version", 0, "Policy body schema version")
+	cmd.Flags().StringVar(&o.Name, "name", "", "Rule name")
+	cmd.Flags().BoolVar(&o.Disabled, "disabled", false, "Whether the rule is disabled")
+	cmd.Flags().StringVar(&o.ExpiresAt, "expires-at", "", "RFC3339 expiry timestamp (omit flag to leave unchanged)")
+	cmd.Flags().StringVar(&o.Body, "body", "", "JSON object for the rule body")
+	cmd.Flags().StringVar(&o.BodyFile, "body-file", "", "Path to a JSON file for the rule body")
+	o.IO.DefaultFormat("json")
+	o.IO.BindFlags(cmd.Flags())
+}
+
+func (h *logsHelper) dropRulesUpdateCommand() *cobra.Command {
+	opts := &dropRulesUpdateOpts{}
+	cmd := &cobra.Command{
+		Use:   "update ID",
+		Short: "Update an adaptive log drop rule.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			if !cmd.Flags().Changed("version") && !cmd.Flags().Changed("name") && !cmd.Flags().Changed("disabled") &&
+				!cmd.Flags().Changed("expires-at") && !cmd.Flags().Changed("body") && !cmd.Flags().Changed("body-file") {
+				return errors.New("specify at least one of --version, --name, --disabled, --expires-at, --body, --body-file")
+			}
+
+			bodyJSON, err := readDropRuleBodyJSON(opts.Body, opts.BodyFile)
+			if err != nil {
+				return err
+			}
+			if cmd.Flags().Changed("body") || cmd.Flags().Changed("body-file") {
+				if len(bodyJSON) == 0 {
+					return errors.New("when updating body, provide a non-empty JSON object via --body or --body-file")
+				}
+				if !json.Valid(bodyJSON) {
+					return errors.New("rule body must be valid JSON")
+				}
+			}
+
+			ctx := cmd.Context()
+			crud, _, err := NewDropRuleTypedCRUD(ctx, h.loader)
+			if err != nil {
+				return err
+			}
+
+			existing, err := crud.Get(ctx, args[0])
+			if err != nil {
+				return fmt.Errorf("failed to fetch existing drop rule for merge: %w", err)
+			}
+
+			if cmd.Flags().Changed("version") {
+				existing.Spec.Version = opts.Version
+			}
+			if cmd.Flags().Changed("name") {
+				existing.Spec.Name = opts.Name
+			}
+			if cmd.Flags().Changed("disabled") {
+				existing.Spec.Disabled = opts.Disabled
+			}
+			if cmd.Flags().Changed("expires-at") {
+				existing.Spec.ExpiresAt = opts.ExpiresAt
+			}
+			if cmd.Flags().Changed("body") || cmd.Flags().Changed("body-file") {
+				existing.Spec.Body = bodyJSON
+			}
+
+			updated, err := crud.Update(ctx, args[0], existing)
+			if err != nil {
+				return err
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), updated.Spec)
+		},
+	}
+	opts.setup(cmd)
+	return cmd
+}
+
+// dropRules delete
+
+type dropRulesDeleteOpts struct{}
+
+func (o *dropRulesDeleteOpts) setup(_ *cobra.Command) {}
+
+func (o *dropRulesDeleteOpts) Validate() error { return nil }
+
+func (h *logsHelper) dropRulesDeleteCommand() *cobra.Command {
+	opts := &dropRulesDeleteOpts{}
+	cmd := &cobra.Command{
+		Use:   "delete ID",
+		Short: "Delete an adaptive log drop rule.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			crud, _, err := NewDropRuleTypedCRUD(ctx, h.loader)
+			if err != nil {
+				return err
+			}
+
+			if err := crud.Delete(ctx, args[0]); err != nil {
+				return err
+			}
+
+			cmdio.Success(cmd.OutOrStdout(), "Deleted drop rule %q", args[0])
 			return nil
 		},
 	}
