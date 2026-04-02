@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"text/tabwriter"
 
 	internalconfig "github.com/grafana/gcx/internal/config"
@@ -112,7 +113,13 @@ func (c *metadataTableCodec) Encode(w io.Writer, data any) error {
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(tw, "METRIC\tTYPE\tHELP")
 
-	for metric, entries := range resp.Data {
+	metrics := make([]string, 0, len(resp.Data))
+	for m := range resp.Data {
+		metrics = append(metrics, m)
+	}
+	sort.Strings(metrics)
+	for _, metric := range metrics {
+		entries := resp.Data[metric]
 		for _, entry := range entries {
 			fmt.Fprintf(tw, "%s\t%s\t%s\n", metric, entry.Type, entry.Help)
 		}
