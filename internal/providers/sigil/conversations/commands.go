@@ -202,7 +202,7 @@ func (c *TableCodec) Encode(w io.Writer, v any) error {
 	}
 
 	for _, conv := range convs {
-		title := truncate(conv.Title, 40)
+		title := sigilhttp.Truncate(conv.Title, 40)
 		lastActivity := sigilhttp.FormatTime(conv.LastGenerationAt)
 
 		if c.Wide {
@@ -248,7 +248,7 @@ func (c *SearchTableCodec) Encode(w io.Writer, v any) error {
 	}
 
 	for _, r := range results {
-		title := truncate(r.ConversationTitle, 40)
+		title := sigilhttp.Truncate(r.ConversationTitle, 40)
 		models := strings.Join(r.Models, ", ")
 		if models == "" {
 			models = "-"
@@ -299,15 +299,4 @@ func parseTimeRange(from, to string) (*SearchTimeRange, error) {
 		return nil, errors.New("--from must be before --to")
 	}
 	return &SearchTimeRange{From: fromT, To: toT}, nil
-}
-
-func truncate(s string, maxLen int) string {
-	if s == "" {
-		return "-"
-	}
-	r := []rune(s)
-	if len(r) > maxLen {
-		return string(r[:maxLen-3]) + "..."
-	}
-	return s
 }

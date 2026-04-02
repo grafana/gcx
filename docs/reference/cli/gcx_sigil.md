@@ -22,5 +22,8 @@ Manage Sigil AI observability resources
 ### SEE ALSO
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
+* [gcx sigil agents](gcx_sigil_agents.md)	 - Query Sigil agent catalog.
 * [gcx sigil conversations](gcx_sigil_conversations.md)	 - Query Sigil conversations.
+* [gcx sigil evaluators](gcx_sigil_evaluators.md)	 - Query Sigil evaluators.
+* [gcx sigil rules](gcx_sigil_rules.md)	 - Query Sigil evaluation rules.
 

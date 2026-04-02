@@ -3,7 +3,10 @@ package sigil
 import (
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/sigil/agents"
 	"github.com/grafana/gcx/internal/providers/sigil/conversations"
+	"github.com/grafana/gcx/internal/providers/sigil/eval/evaluators"
+	"github.com/grafana/gcx/internal/providers/sigil/eval/rules"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 )
@@ -45,6 +48,27 @@ func (p *SigilProvider) Commands() []*cobra.Command {
 		agent.AnnotationLLMHint:   `gcx sigil conversations show --limit 10 -o json`,
 	}
 	sigilCmd.AddCommand(convsCmd)
+
+	agentsCmd := agents.Commands(loader)
+	agentsCmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "medium",
+		agent.AnnotationLLMHint:   `gcx sigil agents show --limit 10 -o json`,
+	}
+	sigilCmd.AddCommand(agentsCmd)
+
+	evaluatorsCmd := evaluators.Commands(loader)
+	evaluatorsCmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "low",
+		agent.AnnotationLLMHint:   `gcx sigil evaluators show -o json`,
+	}
+
+	rulesCmd := rules.Commands(loader)
+	rulesCmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "low",
+		agent.AnnotationLLMHint:   `gcx sigil rules show -o json`,
+	}
+
+	sigilCmd.AddCommand(evaluatorsCmd, rulesCmd)
 
 	return []*cobra.Command{sigilCmd}
 }
