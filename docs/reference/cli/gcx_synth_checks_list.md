@@ -6,12 +6,27 @@ List Synthetic Monitoring checks.
 gcx synth checks list [flags]
 ```
 
+### Examples
+
+```
+  # List all checks.
+  gcx synth checks list
+
+  # Filter by job glob.
+  gcx synth checks list --job 'shopk8s-*'
+
+  # Filter by label.
+  gcx synth checks list --label env=prod
+```
+
 ### Options
 
 ```
-  -h, --help            help for list
-      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
+  -h, --help                help for list
+      --job string          Filter by job name glob pattern (e.g. --job 'shopk8s-*')
+      --json string         Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --label stringArray   Filter by label key=value (repeatable, e.g. --label env=prod)
+  -o, --output string       Output format. One of: json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands

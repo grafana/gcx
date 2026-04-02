@@ -74,6 +74,9 @@ type TimelinePoint struct {
 type statusOpts struct {
 	IO            cmdio.Options
 	DatasourceUID string
+	Labels        []string
+	JobPattern    string
+	StatusFilter  string
 }
 
 func (o *statusOpts) setup(flags *pflag.FlagSet) {
@@ -84,6 +87,9 @@ func (o *statusOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 
 	flags.StringVar(&o.DatasourceUID, "datasource-uid", "", "UID of the Prometheus datasource to query")
+	flags.StringArrayVar(&o.Labels, "label", nil, "Filter by label key=value (repeatable, e.g. --label env=prod)")
+	flags.StringVar(&o.JobPattern, "job", "", "Filter by job name glob pattern (e.g. --job 'shopk8s-*')")
+	flags.StringVar(&o.StatusFilter, "status", "", "Filter results by status: OK, FAILING, or NODATA")
 }
 
 func newStatusCommand(loader smcfg.StatusLoader) *cobra.Command {
@@ -101,6 +107,12 @@ for each check. Requires a Prometheus datasource containing SM metrics.`,
   # Show status of a specific check by ID.
   gcx synth checks status 42
 
+  # Filter by job name glob.
+  gcx synth checks status --job 'shopk8s-*'
+
+  # Filter by label and status.
+  gcx synth checks status --label env=prod --status FAILING
+
   # Specify the Prometheus datasource to query.
   gcx synth checks status --datasource-uid my-prometheus
 
@@ -113,6 +125,20 @@ for each check. Requires a Prometheus datasource containing SM metrics.`,
 			}
 
 			ctx := cmd.Context()
+
+			// Build check filter from flag values.
+			labelMap, err := ParseLabelFlags(opts.Labels)
+			if err != nil {
+				return err
+			}
+			filter := &CheckFilter{
+				Labels:     labelMap,
+				JobPattern: opts.JobPattern,
+				StatusStr:  opts.StatusFilter,
+			}
+			if err := filter.Validate(); err != nil {
+				return err
+			}
 
 			// Load SM config — needed by all parallel branches below.
 			baseURL, token, _, err := loader.LoadSMConfig(ctx)
@@ -133,7 +159,7 @@ for each check. Requires a Prometheus datasource containing SM metrics.`,
 
 			// Fan-out: fetch checks, probes, datasource UID, and REST config in parallel.
 			var (
-				checks       []Check
+				checkList    []Check
 				probeNameMap = map[int64]string{}
 				dsUID        string
 				restCfg      config.NamespacedRESTConfig
@@ -147,10 +173,10 @@ for each check. Requires a Prometheus datasource containing SM metrics.`,
 					if err != nil {
 						return err
 					}
-					checks = []Check{*c}
+					checkList = []Check{*c}
 				} else {
 					var listErr error
-					checks, listErr = smClient.List(initCtx)
+					checkList, listErr = smClient.List(initCtx)
 					return listErr
 				}
 				return nil
@@ -180,7 +206,15 @@ for each check. Requires a Prometheus datasource containing SM metrics.`,
 				return err
 			}
 
-			if len(checks) == 0 {
+			// Apply pre-Prometheus filters (job glob + labels) to reduce query scope.
+			var filtered []Check
+			for _, c := range checkList {
+				if filter.MatchCheck(c) {
+					filtered = append(filtered, c)
+				}
+			}
+
+			if len(filtered) == 0 {
 				cmdio.Info(cmd.OutOrStdout(), "No checks found.")
 				return nil
 			}
@@ -218,14 +252,20 @@ for each check. Requires a Prometheus datasource containing SM metrics.`,
 				return err
 			}
 
-			results := BuildCheckStatusResults(checks, successMap, probeCountMap, probeNameMap)
+			results := BuildCheckStatusResults(filtered, successMap, probeCountMap, probeNameMap)
 
-			codec, err := opts.IO.Codec()
-			if err != nil {
-				return err
+			// Apply post-Prometheus status filter.
+			if filter.StatusStr != "" {
+				var statusFiltered []CheckStatusResult
+				for _, r := range results {
+					if filter.MatchResult(r) {
+						statusFiltered = append(statusFiltered, r)
+					}
+				}
+				results = statusFiltered
 			}
 
-			return codec.Encode(cmd.OutOrStdout(), results)
+			return opts.IO.Encode(cmd.OutOrStdout(), results)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -241,7 +281,7 @@ type timelineOpts struct {
 	DatasourceUID string
 	From          string
 	To            string
-	Window        string
+	Since         string
 }
 
 func (o *timelineOpts) setup(flags *pflag.FlagSet) {
@@ -253,7 +293,7 @@ func (o *timelineOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.DatasourceUID, "datasource-uid", "", "UID of the Prometheus datasource to query")
 	flags.StringVar(&o.From, "from", "", "Start of the time range (e.g. now-6h, now-24h, RFC3339, Unix timestamp)")
 	flags.StringVar(&o.To, "to", "", "End of the time range (e.g. now, RFC3339, Unix timestamp)")
-	flags.StringVar(&o.Window, "window", "6h", "Time window to display (e.g. 1h, 6h, 24h, 7d)")
+	flags.StringVar(&o.Since, "since", "6h", "Duration before now to display (e.g. 1h, 6h, 24h, 7d)")
 }
 
 func newTimelineCommand(loader smcfg.StatusLoader) *cobra.Command {
@@ -269,8 +309,8 @@ Requires a Prometheus datasource containing SM metrics.`,
 		Example: `  # Render timeline for a check over the past 6 hours (default).
   gcx synth checks timeline 42
 
-  # Custom time window.
-  gcx synth checks timeline 42 --window 24h
+  # Custom duration.
+  gcx synth checks timeline 42 --since 24h
 
   # Explicit time range.
   gcx synth checks timeline 42 --from now-24h --to now
@@ -287,10 +327,10 @@ Requires a Prometheus datasource containing SM metrics.`,
 			}
 
 			// Validate flag combinations.
-			windowSet := cmd.Flags().Changed("window")
+			sinceSet := cmd.Flags().Changed("since")
 			fromToSet := cmd.Flags().Changed("from") || cmd.Flags().Changed("to")
-			if windowSet && fromToSet {
-				return errors.New("--window and --from/--to are mutually exclusive")
+			if sinceSet && fromToSet {
+				return errors.New("--since and --from/--to are mutually exclusive")
 			}
 
 			ctx := cmd.Context()
@@ -314,11 +354,16 @@ Requires a Prometheus datasource containing SM metrics.`,
 				return err
 			}
 
-			// Compute time range from --from/--to or --window.
+			// Compute time range from --from/--to or --since.
 			now := time.Now()
 			var start, end time.Time
 
-			start, end, err = parseCheckTimeRange(fromToSet, opts.From, opts.To, opts.Window, now)
+			var clamped bool
+			start, end, clamped, err = ParseCheckTimeRange(fromToSet, opts.From, opts.To, opts.Since, now, c.Created)
+			if clamped {
+				age := now.Sub(time.Unix(int64(c.Created), 0)).Round(time.Minute)
+				cmdio.Info(cmd.OutOrStdout(), "Check was created %s ago — window adjusted to match", age)
+			}
 			if err != nil {
 				return err
 			}
@@ -365,12 +410,7 @@ Requires a Prometheus datasource containing SM metrics.`,
 				return nil
 			}
 
-			codec, err := opts.IO.Codec()
-			if err != nil {
-				return err
-			}
-
-			return codec.Encode(cmd.OutOrStdout(), CheckTimelinePayload{
+			return opts.IO.Encode(cmd.OutOrStdout(), CheckTimelinePayload{
 				Check:  *c,
 				Series: series,
 				Start:  start,
@@ -782,28 +822,49 @@ func smMetricsDatasourceName(ctx context.Context, grafanaCtx *config.Context) (s
 // Window parsing
 // ---------------------------------------------------------------------------
 
-// parseCheckTimeRange resolves the start/end time range from either
-// --from/--to flags or --window shorthand.
-func parseCheckTimeRange(fromToSet bool, from, to, window string, now time.Time) (time.Time, time.Time, error) {
+// ParseCheckTimeRange resolves the start/end time range from either --from/--to
+// flags or --since shorthand. checkCreated is a Unix timestamp (float64) from
+// Check.Created; when non-zero and the user has not set --from explicitly, the
+// returned start is clamped to the check's creation time so that the range does
+// not extend into the past before the check existed. clamped is true when that
+// adjustment was applied.
+func ParseCheckTimeRange(fromToSet bool, from, to, since string, now time.Time, checkCreated float64) (time.Time, time.Time, bool, error) {
 	if fromToSet {
 		start, err := ParseCheckTimelineTime(from, now)
 		if err != nil {
-			return time.Time{}, time.Time{}, fmt.Errorf("invalid --from: %w", err)
+			return time.Time{}, time.Time{}, false, fmt.Errorf("invalid --from: %w", err)
 		}
 		end, err := ParseCheckTimelineTime(to, now)
 		if err != nil {
-			return time.Time{}, time.Time{}, fmt.Errorf("invalid --to: %w", err)
+			return time.Time{}, time.Time{}, false, fmt.Errorf("invalid --to: %w", err)
 		}
 		if !start.Before(end) {
-			return time.Time{}, time.Time{}, errors.New("--from must be before --to")
+			return time.Time{}, time.Time{}, false, errors.New("--from must be before --to")
 		}
-		return start, end, nil
+		return start, end, false, nil
 	}
-	w, err := ParseWindow(window)
+	w, err := ParseWindow(since)
 	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("invalid --window: %w", err)
+		return time.Time{}, time.Time{}, false, fmt.Errorf("invalid --since: %w", err)
 	}
-	return now.Add(-w), now, nil
+	start := now.Add(-w)
+	end := now
+	clamped := false
+
+	// Clamp start to check creation time if the check is newer than the window.
+	if checkCreated > 0 {
+		created := time.Unix(int64(checkCreated), 0)
+		if created.After(start) {
+			start = created
+			clamped = true
+		}
+	}
+
+	if !start.Before(end) {
+		return time.Time{}, time.Time{}, false, errors.New("check was created after the query range ends; try a larger --since")
+	}
+
+	return start, end, clamped, nil
 }
 
 // ParseCheckTimelineTime parses a time string for the check timeline command.
@@ -881,6 +942,45 @@ func ParseWindow(s string) (time.Duration, error) {
 	return 0, fmt.Errorf("invalid window %q: expected format like 1h, 6h, 24h, 7d", s)
 }
 
+// queryCheckStatus retrieves the current execution status string for a single check
+// by querying the Prometheus datasource. Returns "NODATA" if no data is available.
+// Errors are returned for connectivity or configuration failures — callers should
+// degrade gracefully (warn, not fail).
+// checkStatusInfo holds the result of a single-check Prometheus status query.
+type checkStatusInfo struct {
+	Status  string
+	Success *float64 // nil when no data
+}
+
+func queryCheckStatus(ctx context.Context, loader smcfg.StatusLoader, job, target string) (checkStatusInfo, error) {
+	dsUID, err := resolveDataSourceUID(ctx, "", loader)
+	if err != nil {
+		return checkStatusInfo{}, fmt.Errorf("resolving datasource: %w", err)
+	}
+
+	restCfg, err := loader.LoadGrafanaConfig(ctx)
+	if err != nil {
+		return checkStatusInfo{}, fmt.Errorf("loading Grafana config: %w", err)
+	}
+
+	promClient, err := prometheus.NewClient(restCfg)
+	if err != nil {
+		return checkStatusInfo{}, fmt.Errorf("creating Prometheus client: %w", err)
+	}
+
+	q, err := BuildSuccessRateQuery(job, target)
+	if err != nil {
+		return checkStatusInfo{}, fmt.Errorf("building status query: %w", err)
+	}
+
+	successMap := queryInstantByJobInstance(ctx, promClient, dsUID, q)
+	key := job + "/" + target
+	if val, ok := successMap[key]; ok {
+		return checkStatusInfo{Status: computeCheckStatus(&val), Success: &val}, nil
+	}
+	return checkStatusInfo{Status: computeCheckStatus(nil)}, nil
+}
+
 // autoStep calculates a reasonable query step for the given time range,
 // targeting ~200 data points. The minimum step is 1 minute.
 func autoStep(start, end time.Time) time.Duration {
@@ -896,6 +996,15 @@ func autoStep(start, end time.Time) time.Duration {
 // ---------------------------------------------------------------------------
 // Status table codec
 // ---------------------------------------------------------------------------
+
+// statusDisplayName computes the "slug-id" resource name from a CheckStatusResult.
+func statusDisplayName(r CheckStatusResult) string {
+	name := slugifyJob(r.Job)
+	if r.ID != 0 {
+		name += "-" + strconv.FormatInt(r.ID, 10)
+	}
+	return name
+}
 
 type StatusTableCodec struct {
 	Wide bool
@@ -917,9 +1026,9 @@ func (c *StatusTableCodec) Encode(w io.Writer, v any) error {
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 
 	if c.Wide {
-		fmt.Fprintln(tw, "ID\tJOB\tTARGET\tTYPE\tSUCCESS\tPROBES_UP\tPROBES_TOTAL\tPROBES\tSTATUS")
+		fmt.Fprintln(tw, "NAME\tJOB\tTARGET\tTYPE\tSUCCESS\tPROBES_UP\tPROBES_TOTAL\tPROBES\tSTATUS")
 	} else {
-		fmt.Fprintln(tw, "ID\tJOB\tTARGET\tSUCCESS\tSTATUS")
+		fmt.Fprintln(tw, "NAME\tJOB\tTARGET\tSUCCESS\tSTATUS")
 	}
 
 	for _, r := range results {
@@ -928,13 +1037,14 @@ func (c *StatusTableCodec) Encode(w io.Writer, v any) error {
 			successStr = fmt.Sprintf("%.2f%%", *r.Success*100)
 		}
 
+		name := statusDisplayName(r)
 		if c.Wide {
 			probesStr := strings.Join(r.ProbeNames, ", ")
-			fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%d\t%d\t%s\t%s\n",
-				r.ID, r.Job, r.Target, r.Type, successStr, r.ProbesUp, r.ProbesTotal, probesStr, r.Status)
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\t%d\t%s\t%s\n",
+				name, r.Job, r.Target, r.Type, successStr, r.ProbesUp, r.ProbesTotal, probesStr, r.Status)
 		} else {
-			fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\n",
-				r.ID, r.Job, r.Target, successStr, r.Status)
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+				name, r.Job, r.Target, successStr, r.Status)
 		}
 	}
 
@@ -1049,10 +1159,7 @@ func (c *StatusGraphCodec) Encode(w io.Writer, v any) error {
 		if r.Success == nil {
 			continue
 		}
-		label := r.Job
-		if label == "" {
-			label = fmt.Sprintf("check-%d", r.ID)
-		}
+		label := statusDisplayName(r)
 		items = append(items, graph.PercentageBarItem{
 			Name:  label,
 			Value: *r.Success * 100,

@@ -130,14 +130,12 @@ func TestErrorToDetailedError_ConverterOrdering(t *testing.T) {
 
 func TestErrorToDetailedError_UsageErrorIncludesExpectedSyntax(t *testing.T) {
 	rootCmd := &cobra.Command{Use: "gcx"}
-	datasourcesCmd := &cobra.Command{Use: "datasources"}
-	lokiCmd := &cobra.Command{Use: "loki"}
+	logsCmd := &cobra.Command{Use: "logs"}
 	queryCmd := &cobra.Command{Use: "query [DATASOURCE_UID] EXPR"}
 	queryCmd.Flags().Bool("json", false, "")
 
-	rootCmd.AddCommand(datasourcesCmd)
-	datasourcesCmd.AddCommand(lokiCmd)
-	lokiCmd.AddCommand(queryCmd)
+	rootCmd.AddCommand(logsCmd)
+	logsCmd.AddCommand(queryCmd)
 
 	got := fail.ErrorToDetailedError(fail.NewCommandUsageError(queryCmd, "EXPR is required", nil))
 
@@ -145,7 +143,7 @@ func TestErrorToDetailedError_UsageErrorIncludesExpectedSyntax(t *testing.T) {
 	assert.Equal(t, "Invalid command usage", got.Summary)
 	assert.Contains(t, got.Details, "EXPR is required")
 	assert.Contains(t, got.Details, "Expected:")
-	assert.Contains(t, got.Details, "gcx datasources loki query [DATASOURCE_UID] EXPR [flags]")
+	assert.Contains(t, got.Details, "gcx logs query [DATASOURCE_UID] EXPR [flags]")
 	require.Len(t, got.Suggestions, 1)
-	assert.Equal(t, "Run 'gcx datasources loki query --help' for full usage and examples", got.Suggestions[0])
+	assert.Equal(t, "Run 'gcx logs query --help' for full usage and examples", got.Suggestions[0])
 }

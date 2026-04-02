@@ -66,10 +66,19 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 
 	default:
 		// For arbitrary types: marshal → map → extract fields.
-		// Check if it's a collection type with an Items field.
 		m, err := toMap(value)
 		if err != nil {
-			return err
+			// toMap fails when value is an array/slice (JSON is [...] not {...}).
+			// Fall back to marshaling as an array of objects.
+			items, arrErr := toSlice(value)
+			if arrErr != nil {
+				return err // return the original toMap error
+			}
+			extracted := make([]map[string]any, len(items))
+			for i, item := range items {
+				extracted[i] = extractFields(item, c.fields)
+			}
+			return c.json.Encode(dst, map[string]any{"items": extracted})
 		}
 
 		// If the value serialized to an object with an "items" array treat it
@@ -142,6 +151,20 @@ func toMap(value any) (map[string]any, error) {
 		return nil, err
 	}
 	return m, nil
+}
+
+// toSlice marshals an arbitrary value to JSON and back into []map[string]any.
+// Returns an error if the JSON representation is not an array of objects.
+func toSlice(value any) ([]map[string]any, error) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	var arr []map[string]any
+	if err := json.Unmarshal(data, &arr); err != nil {
+		return nil, err
+	}
+	return arr, nil
 }
 
 // toSliceOfMaps converts an any value to []map[string]any. Values that are

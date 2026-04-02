@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -41,8 +42,14 @@ type checkResource struct {
 // GetResourceName returns the pre-computed composite name (slug + check ID).
 func (cr checkResource) GetResourceName() string { return cr.name }
 
-// SetResourceName restores the composite name from metadata.
-func (cr *checkResource) SetResourceName(name string) { cr.name = name }
+// SetResourceName restores the composite name and extracts the numeric checkID from it.
+// The name format is "{slug}-{id}" (e.g. "grafana-instance-health-5594").
+func (cr *checkResource) SetResourceName(name string) {
+	cr.name = name
+	if id, ok := extractIDFromSlug(name); ok {
+		cr.checkID = id
+	}
+}
 
 // NewTypedCRUD creates a TypedCRUD for SM checks.
 // It loads config via the provided Loader and returns both CRUD and config.
@@ -78,7 +85,11 @@ func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[
 		GetFn: func(ctx context.Context, name string) (*checkResource, error) {
 			id, ok := extractIDFromSlug(name)
 			if !ok {
-				return nil, fmt.Errorf("could not extract numeric check ID from name %q", name)
+				// Return NotFound so the push pipeline's upsert falls through to Create.
+				return nil, apierrors.NewNotFound(
+					schema.GroupResource{Group: staticDescriptor.GroupVersion.Group, Resource: staticDescriptor.Plural},
+					name,
+				)
 			}
 
 			check, err := checksClient.Get(ctx, id)
@@ -286,4 +297,27 @@ func invertIDMap(idMap map[string]int64) map[int64]string {
 		nameMap[id] = name
 	}
 	return nameMap
+}
+
+// FetchProbeInfo fetches all probes and returns two maps derived from a single API call:
+//   - idMap: probe name → numeric ID (for resolving probe names to IDs on push/create)
+//   - onlineMap: probe name → online status (for offline probe warnings)
+func FetchProbeInfo(ctx context.Context, loader smcfg.Loader) (map[string]int64, map[string]bool, error) {
+	baseURL, token, _, err := loader.LoadSMConfig(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("loading SM config for probe fetch: %w", err)
+	}
+
+	probeList, err := probes.NewClient(baseURL, token).List(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("fetching probe list: %w", err)
+	}
+
+	idMap := make(map[string]int64, len(probeList))
+	onlineMap := make(map[string]bool, len(probeList))
+	for _, p := range probeList {
+		idMap[p.Name] = p.ID
+		onlineMap[p.Name] = p.Online
+	}
+	return idMap, onlineMap, nil
 }

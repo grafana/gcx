@@ -180,29 +180,3 @@ func FormatMetadataTable(w io.Writer, resp *MetadataResponse) error {
 
 	return tw.Flush()
 }
-
-// FormatTargetsTable formats a TargetsResponse as a table.
-func FormatTargetsTable(w io.Writer, resp *TargetsResponse) error {
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "POOL\tENDPOINT\tHEALTH\tLAST SCRAPE\tERROR")
-
-	for _, target := range resp.Data.ActiveTargets {
-		lastScrape := target.LastScrape
-		if lastScrape == "" {
-			lastScrape = "-"
-		}
-		lastError := target.LastError
-		if lastError == "" {
-			lastError = "-"
-		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-			target.ScrapePool,
-			target.ScrapeURL,
-			target.Health,
-			lastScrape,
-			lastError,
-		)
-	}
-
-	return tw.Flush()
-}

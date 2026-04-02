@@ -26,9 +26,9 @@ const (
 	assertionsPath   = pluginResourcePath + "/asserts/api-server/v1/assertions"
 	searchPath       = pluginResourcePath + "/asserts/api-server/v1/search"
 	rulesPath        = pluginResourcePath + "/asserts/api-server/v1/config/prom-rules/"
-	environmentPath  = pluginResourcePath + "/asserts/api-server/v1/config/environment"
 	entityLookupPath = pluginResourcePath + "/asserts/api-server/v1/entity"
 	graphDisplayPath = pluginResourcePath + "/asserts/api-server/v1/config/display/graph"
+	environmentPath  = pluginResourcePath + "/asserts/api-server/v1/config/environment"
 )
 
 // Client is an HTTP client for the Knowledge Graph (Asserts) API.

@@ -30,11 +30,11 @@ type ReportTimelinePayload struct {
 // ---------------------------------------------------------------------------
 
 type reportTimelineOpts struct {
-	IO     cmdio.Options
-	From   string
-	To     string
-	Window string
-	Step   string
+	IO    cmdio.Options
+	From  string
+	To    string
+	Since string
+	Step  string
 }
 
 func (o *reportTimelineOpts) setup(flags *pflag.FlagSet) {
@@ -45,7 +45,7 @@ func (o *reportTimelineOpts) setup(flags *pflag.FlagSet) {
 
 	flags.StringVar(&o.From, "from", "now-7d", "Start of the time range (e.g. now-7d, now-24h, RFC3339, Unix timestamp)")
 	flags.StringVar(&o.To, "to", "now", "End of the time range (e.g. now, RFC3339, Unix timestamp)")
-	flags.StringVar(&o.Window, "window", "", "Time window shorthand (e.g. 1h, 7d). Equivalent to --from now-<window> --to now.")
+	flags.StringVar(&o.Since, "since", "", "Duration before now (e.g. 1h, 7d). Equivalent to --from now-<since> --to now.")
 	flags.StringVar(&o.Step, "step", "", "Query step (e.g. 5m, 1h). Defaults to auto-computed value.")
 
 	// Deprecated aliases for backward compatibility.
@@ -75,8 +75,8 @@ grafana_slo_sli_window metrics.`,
   # Custom time range with explicit step.
   gcx slo reports timeline --from now-24h --to now --step 5m
 
-  # Use window shorthand for the past 24 hours.
-  gcx slo reports timeline --window 24h
+  # Use duration shorthand for the past 24 hours.
+  gcx slo reports timeline --since 24h
 
   # Output timeline data as a table.
   gcx slo reports timeline -o table`,
@@ -91,9 +91,9 @@ grafana_slo_sli_window metrics.`,
 				return err
 			}
 
-			// Apply --window shorthand.
-			if cmd.Flags().Changed("window") {
-				opts.From = "now-" + opts.Window
+			// Apply --since shorthand.
+			if cmd.Flags().Changed("since") {
+				opts.From = "now-" + opts.Since
 				opts.To = "now"
 			}
 

@@ -105,12 +105,12 @@ For P99/P95 latency alerts:
 
 ```bash
 # Current latency percentiles
-gcx datasources prometheus query <uid> \
+gcx metrics query <uid> \
   'histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))' \
   --from now-1h --to now --step 1m -o graph
 
 # Latency by endpoint
-gcx datasources prometheus query <uid> \
+gcx metrics query <uid> \
   'histogram_quantile(0.99, sum by(job, handler) (rate(http_request_duration_seconds_bucket[5m])))' \
   --from now-1h --to now --step 1m -o json
 ```
@@ -121,12 +121,12 @@ For alerts on HTTP 5xx or error rates:
 
 ```bash
 # Overall error rate
-gcx datasources prometheus query <uid> \
+gcx metrics query <uid> \
   'rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m])' \
   --from now-1h --to now --step 1m -o graph
 
 # Error rate by service
-gcx datasources prometheus query <uid> \
+gcx metrics query <uid> \
   'sum by(job) (rate(http_requests_total{status=~"5.."}[5m])) / sum by(job) (rate(http_requests_total[5m]))' \
   --from now-1h --to now --step 1m -o json
 ```
@@ -137,17 +137,17 @@ For CPU, memory, or disk alerts:
 
 ```bash
 # CPU usage by pod
-gcx datasources prometheus query <uid> \
+gcx metrics query <uid> \
   'sum by(pod) (rate(container_cpu_usage_seconds_total[5m]))' \
   --from now-1h --to now --step 1m -o graph
 
 # Memory usage
-gcx datasources prometheus query <uid> \
+gcx metrics query <uid> \
   'container_memory_working_set_bytes{container!=""}' \
   --from now-30m --to now --step 1m -o json
 
 # Disk free percentage
-gcx datasources prometheus query <uid> \
+gcx metrics query <uid> \
   'node_filesystem_avail_bytes / node_filesystem_size_bytes' \
   --from now-6h --to now --step 5m -o graph
 ```
@@ -158,7 +158,7 @@ For cert expiry alerts:
 
 ```bash
 # Days until certificate expiry
-gcx datasources prometheus query <uid> \
+gcx metrics query <uid> \
   '(certmanager_certificate_expiration_timestamp_seconds - time()) / 86400' \
   --from now-1h --to now --step 10m -o json
 ```
@@ -169,12 +169,12 @@ For availability or SLO breach alerts:
 
 ```bash
 # Uptime over last hour
-gcx datasources prometheus query <uid> \
+gcx metrics query <uid> \
   'avg_over_time(up[1h])' \
   --from now-6h --to now --step 5m -o graph
 
 # Current up/down status
-gcx datasources prometheus query <uid> \
+gcx metrics query <uid> \
   'up == 0' \
   --from now-15m --to now --step 1m -o json
 ```
@@ -187,15 +187,15 @@ After identifying an issue from metrics, correlate with logs:
 
 ```bash
 # Find error logs for a service
-gcx datasources loki query <loki-uid> '{job="api-server"} |= "error"' \
+gcx logs query <loki-uid> '{job="api-server"} |= "error"' \
   --from now-1h --to now -o json
 
 # Find logs around the time the alert started firing (replace timestamp)
-gcx datasources loki query <loki-uid> '{namespace="production"} |= "error"' \
+gcx logs query <loki-uid> '{namespace="production"} |= "error"' \
   --from 2024-01-15T10:00:00Z --to 2024-01-15T10:30:00Z -o json
 
 # Rate of error log lines (for trend analysis)
-gcx datasources loki query <loki-uid> 'rate({job="api-server"} |= "error" [5m])' \
+gcx logs query <loki-uid> 'rate({job="api-server"} |= "error" [5m])' \
   --from now-2h --to now --step 1m -o graph
 ```
 
@@ -205,12 +205,12 @@ Loki metric queries (`rate()`, `count_over_time()`, etc.) produce one series per
 
 ```bash
 # BAD — one series per pod/namespace/level/... combination
-gcx datasources loki query <loki-uid> 'count_over_time({job="app"} [5m])'
+gcx logs query <loki-uid> 'count_over_time({job="app"} [5m])'
 
 # GOOD — aggregate down to what you need
-gcx datasources loki query <loki-uid> 'sum(count_over_time({job="app"} [5m]))'
-gcx datasources loki query <loki-uid> 'sum by(level) (count_over_time({job="app"} | json [5m]))'
-gcx datasources loki query <loki-uid> 'topk(10, sum by(pod) (rate({job="app"} [5m])))'
+gcx logs query <loki-uid> 'sum(count_over_time({job="app"} [5m]))'
+gcx logs query <loki-uid> 'sum by(level) (count_over_time({job="app"} | json [5m]))'
+gcx logs query <loki-uid> 'topk(10, sum by(pod) (rate({job="app"} [5m])))'
 ```
 
 Rule of thumb: if your query uses `rate()`, `count_over_time()`, or `bytes_over_time()`, wrap it with `sum()`, `sum by(label)`, or `topk()`.
@@ -229,7 +229,7 @@ Loki has two kinds of labels — confusing them causes silent failures:
 Common mistakes:
 - Filtering extracted labels in `{}` — fails silently: `{namespace="prod", pod="app-123"}` won't work if `pod` is extracted, not a stream label
 - Using `label_format` to rename extracted fields before they're parsed — add the parser stage first
-- Assuming a field visible in Grafana Explore is a stream label — check with `gcx datasources loki labels -d <uid>` (only shows stream labels)
+- Assuming a field visible in Grafana Explore is a stream label — check with `gcx logs labels -d <uid>` (only shows stream labels)
 
 ---
 
@@ -249,7 +249,7 @@ Common mistakes:
 Use `-o json` after `-o graph` to extract exact values:
 ```bash
 # Get the peak value during the alert window
-gcx datasources prometheus query <uid> '<query>' --from now-2h --to now --step 1m -o json | \
+gcx metrics query <uid> '<query>' --from now-2h --to now --step 1m -o json | \
   jq '[.data[].values[] | .value] | max'
 ```
 

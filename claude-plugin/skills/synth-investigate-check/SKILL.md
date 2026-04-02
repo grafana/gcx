@@ -101,28 +101,28 @@ gcx datasources list --type prometheus
 
 Run per-probe success rate to pinpoint failing probes:
 ```bash
-gcx datasources prometheus query <datasource-uid> \
+gcx metrics query <datasource-uid> \
   'avg by (probe) (probe_success{job="<job>",instance="<target>"})' \
   --from now-1h --to now --step 1m -o json
 ```
 
 Show as graph for the user:
 ```bash
-gcx datasources prometheus query <datasource-uid> \
+gcx metrics query <datasource-uid> \
   'avg by (probe) (probe_success{job="<job>",instance="<target>"})' \
   --from now-1h --to now --step 1m -o graph
 ```
 
 For HTTP checks, also run HTTP phase latency to locate where time is spent:
 ```bash
-gcx datasources prometheus query <datasource-uid> \
+gcx metrics query <datasource-uid> \
   'avg by (phase) (probe_http_duration_seconds{job="<job>",instance="<target>"})' \
   --from now-1h --to now --step 1m -o graph
 ```
 
 For SSL/TLS failures or near-expiry concerns:
 ```bash
-gcx datasources prometheus query <datasource-uid> \
+gcx metrics query <datasource-uid> \
   '(probe_ssl_earliest_cert_expiry{job="<job>",instance="<target>"} - time()) / 86400' \
   --from now-1h --to now --step 5m -o json
 ```

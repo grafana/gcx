@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	authlib "github.com/grafana/authlib/types"
@@ -48,7 +49,7 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) NamespacedRESTCon
 	rcfg := rest.Config{
 		// TODO add user agent
 		// UserAgent: cfg.UserAgent.ValueString(),
-		Host:            cfg.Grafana.Server,
+		Host:            strings.TrimSuffix(cfg.Grafana.Server, "/"),
 		APIPath:         "/apis",
 		TLSClientConfig: rest.TLSClientConfig{},
 		// TODO: make configurable
@@ -79,7 +80,7 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) NamespacedRESTCon
 		// the assistant backend), so it is stored as a separate config field.
 		// RefreshTransport handles bearer auth and token renewal; no BearerToken
 		// on rcfg to avoid client-go adding a redundant auth layer.
-		rcfg.Host = cfg.Grafana.ProxyEndpoint + "/api/cli/v1/proxy"
+		rcfg.Host = strings.TrimSuffix(cfg.Grafana.ProxyEndpoint, "/") + "/api/cli/v1/proxy"
 
 		// Zero time for ExpiresAt triggers an immediate refresh on first request.
 		expiresAt := parseRFC3339OrZero(cfg.Grafana.OAuthTokenExpiresAt)

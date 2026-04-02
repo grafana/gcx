@@ -215,18 +215,16 @@ func (c *Client) buildQueryPath() string {
 }
 
 func (c *Client) buildLabelsPath(datasourceUID string) string {
-	return fmt.Sprintf("/apis/loki.datasource.grafana.app/v0alpha1/namespaces/%s/datasources/%s/resource/labels",
-		c.restConfig.Namespace, datasourceUID)
+	return fmt.Sprintf("/api/datasources/uid/%s/resources/labels", datasourceUID)
 }
 
 func (c *Client) buildLabelValuesPath(datasourceUID, labelName string) string {
-	return fmt.Sprintf("/apis/loki.datasource.grafana.app/v0alpha1/namespaces/%s/datasources/%s/resource/label/%s/values",
-		c.restConfig.Namespace, datasourceUID, url.PathEscape(labelName))
+	return fmt.Sprintf("/api/datasources/uid/%s/resources/label/%s/values",
+		datasourceUID, url.PathEscape(labelName))
 }
 
 func (c *Client) buildSeriesPath(datasourceUID string) string {
-	return fmt.Sprintf("/apis/loki.datasource.grafana.app/v0alpha1/namespaces/%s/datasources/%s/resource/series",
-		c.restConfig.Namespace, datasourceUID)
+	return fmt.Sprintf("/api/datasources/uid/%s/resources/series", datasourceUID)
 }
 
 func convertGrafanaResponse(grafanaResp *GrafanaQueryResponse) *QueryResponse {

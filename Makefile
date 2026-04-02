@@ -30,6 +30,10 @@ help: ## Display this help.
 
 ##@ Development
 
+.PHONY: tag
+tag: ## Bumps version, generates changelog, tags, and pushes. Usage: make tag BUMP=<major|minor|patch>
+	@./scripts/tag.sh $(BUMP)
+
 .PHONY: all
 all: lint tests build docs ## Lints, tests, builds, and generates the documentation.
 

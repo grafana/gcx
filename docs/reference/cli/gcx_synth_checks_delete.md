@@ -3,7 +3,7 @@
 Delete Synthetic Monitoring checks.
 
 ```
-gcx synth checks delete ID... [flags]
+gcx synth checks delete NAME... [flags]
 ```
 
 ### Options

@@ -93,12 +93,12 @@ gcx datasources list --type prometheus
 
 ```bash
 # Success rate by dimension (e.g., cluster, status_code, endpoint)
-gcx datasources prometheus query <datasource-uid> \
+gcx metrics query <datasource-uid> \
   'sum by (<groupByLabel>) (rate(<successMetric>[5m])) / sum by (<groupByLabel>) (rate(<totalMetric>[5m]))' \
   --from now-1h --to now --step 1m
 
 # Error rate by dimension to spot the bad actor
-gcx datasources prometheus query <datasource-uid> \
+gcx metrics query <datasource-uid> \
   'sum by (<groupByLabel>) (rate(<totalMetric>[5m])) - sum by (<groupByLabel>) (rate(<successMetric>[5m]))' \
   --from now-1h --to now --step 1m
 ```
@@ -108,12 +108,12 @@ If `groupByLabels` is empty, try common dimensions: `cluster`, `namespace`, `ser
 **For freeform queries** — use the raw PromQL expression and add `by (<label>)` grouping:
 
 ```bash
-gcx datasources prometheus query <datasource-uid> \
+gcx metrics query <datasource-uid> \
   '<freeform_expression> by (cluster)' \
   --from now-1h --to now --step 1m
 
 # Also try other likely breakdown dimensions
-gcx datasources prometheus query <datasource-uid> \
+gcx metrics query <datasource-uid> \
   '<freeform_expression> by (namespace)' \
   --from now-1h --to now --step 1m
 ```

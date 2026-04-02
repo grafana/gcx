@@ -73,9 +73,9 @@ gcx slo definitions timeline --from now-7d --to now
 gcx slo definitions timeline <UUID> --from now-7d --to now
 ```
 
-Use `--window` as a shorthand when a single duration is more natural:
+Use `--since` as a shorthand when a single duration is more natural:
 ```bash
-gcx slo definitions timeline <UUID> --window 7d
+gcx slo definitions timeline <UUID> --since 7d
 ```
 
 The timeline command renders a graph by default — this is the preferred output for users.

@@ -19,10 +19,10 @@ Restructure the query command tree as:
 
 ```
 gcx datasources query
-  prometheus <UID> '<EXPR>' [--from] [--to] [--window]
-  loki       <UID> '<EXPR>' [--from] [--to] [--window]
-  tempo      <UID> '<EXPR>' [--from] [--to] [--window]
-  pyroscope  <UID> '<EXPR>' [--from] [--to] [--window]
+  prometheus <UID> '<EXPR>' [--from] [--to] [--since]
+  loki       <UID> '<EXPR>' [--from] [--to] [--since]
+  tempo      <UID> '<EXPR>' [--from] [--to] [--since]
+  pyroscope  <UID> '<EXPR>' [--from] [--to] [--since]
   generic    <UID> '<EXPR>'   # escape hatch for community/other datasources
 ```
 

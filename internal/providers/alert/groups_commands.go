@@ -62,12 +62,7 @@ func newGroupsListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			codec, err := opts.IO.Codec()
-			if err != nil {
-				return err
-			}
-
-			return codec.Encode(cmd.OutOrStdout(), groups)
+			return opts.IO.Encode(cmd.OutOrStdout(), groups)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -140,12 +135,7 @@ func newGroupsGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			codec, err := opts.IO.Codec()
-			if err != nil {
-				return err
-			}
-
-			return codec.Encode(cmd.OutOrStdout(), group)
+			return opts.IO.Encode(cmd.OutOrStdout(), group)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -232,12 +222,7 @@ func newGroupsStatusCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return nil
 			}
 
-			codec, err := opts.IO.Codec()
-			if err != nil {
-				return err
-			}
-
-			return codec.Encode(cmd.OutOrStdout(), groups)
+			return opts.IO.Encode(cmd.OutOrStdout(), groups)
 		},
 	}
 	opts.setup(cmd.Flags())

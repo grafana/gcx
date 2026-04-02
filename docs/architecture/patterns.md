@@ -423,11 +423,15 @@ falling back to the k8s dynamic client for non-provider resource types.
 - `internal/providers/synth/checks/resource_adapter.go`: Synthetic Monitoring implementation
 - `internal/providers/alert/resource_adapter.go`: Alert rules implementation
 
-**Synth checks identifier scheme (PR #35):** `metadata.name` is set to the job
-slug (a URL-safe version of the check job string via `slugifyJob()` in `adapter.go`),
-while `metadata.uid` stores the numeric API ID. On round-trips, the adapter recovers
-the numeric ID from `metadata.uid` (with a fallback to parsing `metadata.name` as a
-number for backward compatibility).
+**Slug-ID naming convention (Fleet, Synth checks):** Providers whose APIs use
+numeric IDs but whose users want human-readable names use a composite
+`metadata.name = slug-id` format (e.g. `grafana-instance-health-5594`).
+Shared helpers in `internal/resources/adapter/slug.go` — `SlugifyName`,
+`ExtractIDFromSlug`, `ExtractInt64IDFromSlug`, `ComposeName` — implement this
+pattern. `GetResourceName()` produces the composite name; `SetResourceName()`
+extracts and restores the numeric ID so that CRUD operations work after a K8s
+round-trip. Provider table output shows `NAME` (the slug-id) so users can
+copy-paste it directly into `get`, `update`, and `delete` commands.
 
 **Usage:** When a provider resource type needs CRUD via `gcx resources`, implement `ResourceAdapter`, call `adapter.Register()` in `init()`, and call `RegistryIndex.RegisterStatic()` in `discovery.NewDefaultRegistry`.
 

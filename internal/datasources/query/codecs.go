@@ -1,0 +1,103 @@
+package query
+
+import (
+	"errors"
+	"io"
+
+	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/graph"
+	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/query/loki"
+	"github.com/grafana/gcx/internal/query/prometheus"
+	"github.com/grafana/gcx/internal/query/pyroscope"
+)
+
+type queryTableCodec struct{}
+
+func (c *queryTableCodec) Format() format.Format {
+	return "table"
+}
+
+func (c *queryTableCodec) Encode(w io.Writer, data any) error {
+	switch resp := data.(type) {
+	case *prometheus.QueryResponse:
+		return prometheus.FormatTable(w, resp)
+	case *loki.QueryResponse:
+		return loki.FormatQueryTable(w, resp)
+	case *pyroscope.QueryResponse:
+		return pyroscope.FormatQueryTable(w, resp)
+	default:
+		return errors.New("invalid data type for query table codec")
+	}
+}
+
+func (c *queryTableCodec) Decode(io.Reader, any) error {
+	return errors.New("query table codec does not support decoding")
+}
+
+type queryWideCodec struct{}
+
+func (c *queryWideCodec) Format() format.Format {
+	return "wide"
+}
+
+func (c *queryWideCodec) Encode(w io.Writer, data any) error {
+	switch resp := data.(type) {
+	case *prometheus.QueryResponse:
+		return prometheus.FormatTable(w, resp)
+	case *loki.QueryResponse:
+		return loki.FormatQueryTableWide(w, resp)
+	default:
+		return errors.New("invalid data type for query wide codec")
+	}
+}
+
+func (c *queryWideCodec) Decode(io.Reader, any) error {
+	return errors.New("query wide codec does not support decoding")
+}
+
+type queryGraphCodec struct{}
+
+func (c *queryGraphCodec) Format() format.Format {
+	return "graph"
+}
+
+func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
+	var chartData *graph.ChartData
+	var err error
+
+	switch resp := data.(type) {
+	case *prometheus.QueryResponse:
+		chartData, err = graph.FromPrometheusResponse(resp)
+		if err != nil {
+			return err
+		}
+	case *loki.QueryResponse:
+		chartData, err = graph.FromLokiResponse(resp)
+		if err != nil {
+			return err
+		}
+	case *pyroscope.QueryResponse:
+		chartData, err = graph.FromPyroscopeResponse(resp)
+		if err != nil {
+			return err
+		}
+	default:
+		return errors.New("invalid data type for graph codec (expected *prometheus.QueryResponse, *loki.QueryResponse, or *pyroscope.QueryResponse)")
+	}
+
+	opts := graph.DefaultChartOptions()
+	return graph.RenderChart(w, chartData, opts)
+}
+
+func (c *queryGraphCodec) Decode(io.Reader, any) error {
+	return errors.New("graph codec does not support decoding")
+}
+
+// RegisterCodecs registers the table, wide, and graph codecs on the given IO options.
+func RegisterCodecs(ioOpts *cmdio.Options) {
+	ioOpts.RegisterCustomCodec("table", &queryTableCodec{})
+	ioOpts.RegisterCustomCodec("wide", &queryWideCodec{})
+	ioOpts.RegisterCustomCodec("graph", &queryGraphCodec{})
+	ioOpts.DefaultFormat("table")
+}

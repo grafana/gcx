@@ -9,16 +9,16 @@ gcx is a unified CLI for managing Grafana resources, dashboards, datasources, al
 ### Options
 
 ```
-      --agent           Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
-  -h, --help            help for gcx
-      --no-color        Disable color output
-      --no-truncate     Disable table column truncation (auto-enabled when stdout is piped)
-  -v, --verbose count   Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
+      --agent            Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --context string   Name of the context to use (overrides current-context in config)
+  -h, --help             help for gcx
+      --no-color         Disable color output
+      --no-truncate      Disable table column truncation (auto-enabled when stdout is piped)
+  -v, --verbose count    Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
 ```
 
 ### SEE ALSO
 
-* [gcx adaptive](gcx_adaptive.md)	 - Manage Grafana Cloud Adaptive Telemetry.
 * [gcx alert](gcx_alert.md)	 - Manage Grafana alert rules and alert groups
 * [gcx api](gcx_api.md)	 - Make direct HTTP requests to the Grafana API
 * [gcx appo11y](gcx_appo11y.md)	 - Manage Grafana App Observability settings
@@ -33,10 +33,14 @@ gcx is a unified CLI for managing Grafana resources, dashboards, datasources, al
 * [gcx incidents](gcx_incidents.md)	 - Manage Grafana Incident Response and Management (IRM) incidents
 * [gcx k6](gcx_k6.md)	 - Manage Grafana K6 Cloud projects, load tests, and schedules
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph entity types, rules, and datasets
+* [gcx logs](gcx_logs.md)	 - Query Loki datasources and manage Adaptive Logs
+* [gcx metrics](gcx_metrics.md)	 - Query Prometheus datasources and manage Adaptive Metrics
 * [gcx oncall](gcx_oncall.md)	 - Manage Grafana OnCall integrations, escalation chains, schedules, and routing
-* [gcx providers](gcx_providers.md)	 - List registered providers
+* [gcx profiles](gcx_profiles.md)	 - Query Pyroscope datasources and manage continuous profiling
+* [gcx providers](gcx_providers.md)	 - Manage registered providers
 * [gcx resources](gcx_resources.md)	 - Manipulate Grafana resources
 * [gcx setup](gcx_setup.md)	 - Onboard and configure Grafana Cloud products.
 * [gcx slo](gcx_slo.md)	 - Manage Grafana SLO definitions and reports
 * [gcx synth](gcx_synth.md)	 - Manage Grafana Synthetic Monitoring checks and probes
+* [gcx traces](gcx_traces.md)	 - Query Tempo datasources and manage Adaptive Traces
 

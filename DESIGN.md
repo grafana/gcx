@@ -82,7 +82,7 @@ See [docs/adrs/](docs/adrs/) for all ADRs.
 | `cmd/gcx/fail/` | Structured error to user-friendly message conversion |
 | `internal/config/` | Config types, loader, editor, rest.Config builder |
 | `internal/resources/` | Core types: Resource, Selector, Filter, Descriptor |
-| `internal/resources/adapter/` | ResourceAdapter interface, Factory, ResourceClientRouter, TypedCRUD[T], TypedObject[T], ResourceIdentity, ResourceNamer, SchemaFromType[T] |
+| `internal/resources/adapter/` | ResourceAdapter interface, Factory, ResourceClientRouter, TypedCRUD[T], TypedObject[T], ResourceIdentity, ResourceNamer, SchemaFromType[T], slug-ID helpers (SlugifyName, ExtractIDFromSlug, ComposeName) |
 | `internal/resources/discovery/` | API resource discovery, registry, GVK resolution |
 | `internal/resources/dynamic/` | k8s dynamic client wrapper |
 | `internal/resources/local/` | FSReader, FSWriter (disk I/O) |
@@ -97,7 +97,11 @@ See [docs/adrs/](docs/adrs/) for all ADRs.
 | `internal/providers/k6/` | K6 Cloud provider (projects, load tests, schedules, env vars, load zones) |
 | `internal/providers/kg/` | Knowledge Graph (Asserts) provider (rules, datasets, vendors, entity-types, scopes — read-only adapters; entities — provider CLI only) |
 | `internal/providers/incidents/` | IRM Incidents provider |
-| `internal/providers/adaptive/` | Adaptive Telemetry provider (metrics, logs, traces) — auth/, metrics/, logs/, traces/ subpackages |
+| `internal/providers/metrics/` | Metrics signal provider (Prometheus queries + Adaptive Metrics) |
+| `internal/providers/logs/` | Logs signal provider (Loki queries + Adaptive Logs) |
+| `internal/providers/traces/` | Traces signal provider (Tempo queries + Adaptive Traces) |
+| `internal/providers/profiles/` | Profiles signal provider (Pyroscope queries + adaptive stub) |
+| `internal/auth/adaptive/` | Shared adaptive telemetry auth (GCOM caching, Basic auth) — imported by signal adaptive subpackages |
 | `internal/providers/appo11y/` | App Observability provider (overrides, settings — singleton TypedCRUD resources) |
 | `internal/dashboards/` | Dashboard Image Renderer client |
 | `internal/query/prometheus/` | Prometheus HTTP query client |
@@ -108,7 +112,7 @@ See [docs/adrs/](docs/adrs/) for all ADRs.
 | `internal/graph/` | Terminal chart rendering |
 | `internal/server/` | Live dev server (Chi router, reverse proxy, websocket reload) |
 | `internal/grafana/` | OpenAPI client (health checks, version detection) |
-| `internal/output/` | Output codec registry (json, yaml, text, wide — field selection, formatting) |
+| `internal/output/` | Output codec registry (json, yaml, text, wide — field selection, discovery, k8s unstructured handling) |
 | `internal/format/` | JSON/YAML codecs |
 | `internal/fleet/` | Shared fleet base client (HTTP, auth, config — shared between fleet provider and setup/instrumentation) |
 | `internal/setup/instrumentation/` | Manifest types (InstrumentationConfig), instrumentation client, optimistic lock comparison |
