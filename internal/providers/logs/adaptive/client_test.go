@@ -745,38 +745,20 @@ func TestClient_ListDropRules(t *testing.T) {
 			wantCount: 0,
 		},
 		{
-			name:  "HTTP 200 empty body means no rules",
+			name:  "HTTP 200 empty body is invalid",
 			query: logs.DropRuleListQuery{},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 			},
-			wantCount: 0,
+			wantErr: true,
 		},
 		{
-			name:  "result envelope",
-			query: logs.DropRuleListQuery{},
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				writeJSON(w, map[string]any{
-					"result": []logs.DropRule{{ID: "dr-env", Name: "wrapped", Version: 1}},
-				})
-			},
-			wantCount: 1,
-		},
-		{
-			name:  "JSON object without result key errors",
+			name:  "JSON object is not a drop rule array",
 			query: logs.DropRuleListQuery{},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				writeJSON(w, map[string]any{"error": "degraded"})
 			},
 			wantErr: true,
-		},
-		{
-			name:  "result null means empty list",
-			query: logs.DropRuleListQuery{},
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				writeJSON(w, map[string]any{"result": nil})
-			},
-			wantCount: 0,
 		},
 		{
 			name: "server error",

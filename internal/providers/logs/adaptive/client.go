@@ -308,51 +308,9 @@ func (c *Client) DeleteSegment(ctx context.Context, id string) error {
 	return nil
 }
 
-// decodeDropRulesListBody parses the list endpoint body: a bare JSON array, or the same
-// {"result": [...]} envelope as other adaptive logs endpoints; empty/whitespace bodies are
-// treated as an empty list (some stacks return HTTP 200 with no body when there are no rules).
-func decodeDropRulesListBody(body []byte) ([]DropRule, error) {
-	body = bytes.TrimSpace(body)
-	if len(body) == 0 {
-		return []DropRule{}, nil
-	}
-	if body[0] == '[' {
-		var rules []DropRule
-		if err := json.Unmarshal(body, &rules); err != nil {
-			return nil, fmt.Errorf("failed to decode drop rules array: %w", err)
-		}
-		if rules == nil {
-			return []DropRule{}, nil
-		}
-		return rules, nil
-	}
-	if body[0] != '{' {
-		return nil, errors.New("unexpected drop rules response body")
-	}
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(body, &raw); err != nil {
-		return nil, fmt.Errorf("failed to decode drop rules response: %w", err)
-	}
-	resultRaw, ok := raw["result"]
-	if !ok {
-		return nil, errors.New(`drop rules response: expected top-level array or object with "result" key`)
-	}
-	resultRaw = bytes.TrimSpace(resultRaw)
-	if len(resultRaw) == 0 || string(resultRaw) == "null" {
-		return []DropRule{}, nil
-	}
-	var rules []DropRule
-	if err := json.Unmarshal(resultRaw, &rules); err != nil {
-		return nil, fmt.Errorf("failed to decode drop rules result: %w", err)
-	}
-	if rules == nil {
-		return []DropRule{}, nil
-	}
-	return rules, nil
-}
-
 // ListDropRules lists adaptive log drop rules.
-// The API returns a bare JSON array (no wrapper). Optional filters are passed as query parameters.
+// The log-template-service list handler returns a JSON array of drop rules (see handleListPolicies).
+// Optional filters are passed as query parameters.
 func (c *Client) ListDropRules(ctx context.Context, q DropRuleListQuery) ([]DropRule, error) {
 	vals := url.Values{}
 	if q.SegmentID != "" {
@@ -377,8 +335,8 @@ func (c *Client) ListDropRules(ctx context.Context, q DropRuleListQuery) ([]Drop
 
 	switch resp.StatusCode {
 	case http.StatusOK:
-		rules, err := decodeDropRulesListBody(body)
-		if err != nil {
+		var rules []DropRule
+		if err := json.Unmarshal(body, &rules); err != nil {
 			return nil, fmt.Errorf("failed to decode drop rules response: %w", err)
 		}
 		return rules, nil
