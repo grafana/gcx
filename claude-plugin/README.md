@@ -91,11 +91,13 @@ claude-plugin/
     │   └── references/
     │       ├── error-recovery.md
     │       └── query-patterns.md
-    └── manage-dashboards/
-        ├── SKILL.md
-        └── references/
-            ├── resource-operations.md
-            └── resource-model.md
+    ├── manage-dashboards/
+    │   ├── SKILL.md
+    │   └── references/
+    │       ├── resource-operations.md
+    │       └── resource-model.md
+    └── gcx-observability/
+        └── SKILL.md
 ```
 
 ## Example Conversations
