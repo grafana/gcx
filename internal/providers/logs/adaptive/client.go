@@ -316,23 +316,39 @@ func decodeDropRulesListBody(body []byte) ([]DropRule, error) {
 	if len(body) == 0 {
 		return []DropRule{}, nil
 	}
-	var rules []DropRule
-	if err := json.Unmarshal(body, &rules); err == nil {
+	if body[0] == '[' {
+		var rules []DropRule
+		if err := json.Unmarshal(body, &rules); err != nil {
+			return nil, fmt.Errorf("failed to decode drop rules array: %w", err)
+		}
 		if rules == nil {
 			return []DropRule{}, nil
 		}
 		return rules, nil
 	}
-	var env struct {
-		Result []DropRule `json:"result"`
+	if body[0] != '{' {
+		return nil, errors.New("unexpected drop rules response body")
 	}
-	if err := json.Unmarshal(body, &env); err != nil {
-		return nil, err
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("failed to decode drop rules response: %w", err)
 	}
-	if env.Result == nil {
+	resultRaw, ok := raw["result"]
+	if !ok {
+		return nil, errors.New(`drop rules response: expected top-level array or object with "result" key`)
+	}
+	resultRaw = bytes.TrimSpace(resultRaw)
+	if len(resultRaw) == 0 || string(resultRaw) == "null" {
 		return []DropRule{}, nil
 	}
-	return env.Result, nil
+	var rules []DropRule
+	if err := json.Unmarshal(resultRaw, &rules); err != nil {
+		return nil, fmt.Errorf("failed to decode drop rules result: %w", err)
+	}
+	if rules == nil {
+		return []DropRule{}, nil
+	}
+	return rules, nil
 }
 
 // ListDropRules lists adaptive log drop rules.

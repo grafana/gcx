@@ -51,9 +51,12 @@ const maxDropRuleFileSize = 10 << 20 // 10 MiB, aligned with adaptive traces pol
 
 // ReadDropRuleFileSpecFromReader decodes a DropRuleFileSpec from an io.Reader (YAML or JSON). Exported for testing.
 func ReadDropRuleFileSpecFromReader(reader io.Reader) (*DropRuleFileSpec, error) {
-	data, err := io.ReadAll(io.LimitReader(reader, maxDropRuleFileSize))
+	data, err := io.ReadAll(io.LimitReader(reader, maxDropRuleFileSize+1))
 	if err != nil {
 		return nil, fmt.Errorf("reading input: %w", err)
+	}
+	if int64(len(data)) > maxDropRuleFileSize {
+		return nil, fmt.Errorf("drop rule file exceeds maximum size (%d bytes)", maxDropRuleFileSize)
 	}
 
 	var spec DropRuleFileSpec
@@ -204,7 +207,8 @@ func dropRuleCreatePayload(dr *DropRule) ([]byte, error) {
 		Name      string         `json:"name"`
 		Body      DropRuleBodyV1 `json:"body"`
 		ExpiresAt string         `json:"expires_at,omitempty"`
-		Disabled  bool           `json:"disabled,omitempty"`
+		// No omitempty: false must serialize so create sends "disabled": false when intended.
+		Disabled bool `json:"disabled"`
 	}
 	p := payload{
 		SegmentID: dr.SegmentID,

@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const tenMiB = 10 << 20
+
 func TestReadDropRuleFileSpecFromReader_JSON(t *testing.T) {
 	t.Parallel()
 	input := `{
@@ -50,6 +52,14 @@ func TestReadDropRuleFileSpecFromReader_invalid(t *testing.T) {
 	t.Parallel()
 	_, err := logs.ReadDropRuleFileSpecFromReader(strings.NewReader("<<<"))
 	require.Error(t, err)
+}
+
+func TestReadDropRuleFileSpecFromReader_oversized(t *testing.T) {
+	t.Parallel()
+	oversized := strings.Repeat("a", tenMiB+1)
+	_, err := logs.ReadDropRuleFileSpecFromReader(strings.NewReader(oversized))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "exceeds maximum size")
 }
 
 func TestValueForJSONFieldDiscovery_emptyRules(t *testing.T) {

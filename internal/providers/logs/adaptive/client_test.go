@@ -763,6 +763,22 @@ func TestClient_ListDropRules(t *testing.T) {
 			wantCount: 1,
 		},
 		{
+			name:  "JSON object without result key errors",
+			query: logs.DropRuleListQuery{},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				writeJSON(w, map[string]any{"error": "degraded"})
+			},
+			wantErr: true,
+		},
+		{
+			name:  "result null means empty list",
+			query: logs.DropRuleListQuery{},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				writeJSON(w, map[string]any{"result": nil})
+			},
+			wantCount: 0,
+		},
+		{
 			name: "server error",
 			query: logs.DropRuleListQuery{
 				ExpirationFilter: "all",

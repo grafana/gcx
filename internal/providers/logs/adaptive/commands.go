@@ -1103,7 +1103,9 @@ type dropRulesGetOpts struct {
 }
 
 func (o *dropRulesGetOpts) setup(cmd *cobra.Command) {
-	o.IO.DefaultFormat("json")
+	o.IO.RegisterCustomCodec("table", &dropRulesTableCodec{wide: false})
+	o.IO.RegisterCustomCodec("wide", &dropRulesTableCodec{wide: true})
+	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(cmd.Flags())
 }
 
@@ -1152,9 +1154,14 @@ func (c *dropRulesTableCodec) Format() format.Format {
 }
 
 func (c *dropRulesTableCodec) Encode(w io.Writer, v any) error {
-	rules, ok := v.([]DropRule)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []DropRule")
+	var rules []DropRule
+	switch t := v.(type) {
+	case []DropRule:
+		rules = t
+	case DropRule:
+		rules = []DropRule{t}
+	default:
+		return errors.New("invalid data type for table codec: expected []DropRule or DropRule")
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
@@ -1260,7 +1267,7 @@ func (h *logsHelper) dropRulesCreateCommand() *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.ErrOrStderr(), "Created drop rule %q (id=%s)", created.Spec.Name, created.Spec.ID)
+			cmdio.Success(cmd.OutOrStdout(), "Created drop rule %q (id=%s)", created.Spec.Name, created.Spec.ID)
 			return opts.IO.Encode(cmd.OutOrStdout(), created.Spec)
 		},
 	}
@@ -1326,7 +1333,7 @@ func (h *logsHelper) dropRulesUpdateCommand() *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.ErrOrStderr(), "Updated drop rule %q (id=%s)", updated.Spec.Name, updated.Spec.ID)
+			cmdio.Success(cmd.OutOrStdout(), "Updated drop rule %q (id=%s)", updated.Spec.Name, updated.Spec.ID)
 			return opts.IO.Encode(cmd.OutOrStdout(), updated.Spec)
 		},
 	}
@@ -1363,7 +1370,7 @@ func (h *logsHelper) dropRulesDeleteCommand() *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.ErrOrStderr(), "Deleted drop rule %q", args[0])
+			cmdio.Success(cmd.OutOrStdout(), "Deleted drop rule %q", args[0])
 			return nil
 		},
 	}
