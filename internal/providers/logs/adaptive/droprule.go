@@ -223,7 +223,8 @@ func dropRuleUpdatePayload(dr *DropRule) ([]byte, error) {
 		Name      string         `json:"name"`
 		Body      DropRuleBodyV1 `json:"body"`
 		ExpiresAt string         `json:"expires_at,omitempty"`
-		Disabled  bool           `json:"disabled,omitempty"`
+		// No omitempty: false must serialize so re-enabling a rule sends "disabled": false.
+		Disabled bool `json:"disabled"`
 	}
 	p := payload{
 		Version:   dr.Version,

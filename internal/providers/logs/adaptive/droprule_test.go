@@ -23,7 +23,7 @@ func TestReadDropRuleFileSpecFromReader_JSON(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, spec.Version)
 	require.Equal(t, "rule-a", spec.Name)
-	require.Equal(t, 0.5, spec.Body.DropRate)
+	require.InDelta(t, 0.5, spec.Body.DropRate, 1e-9)
 	require.Equal(t, "{}", spec.Body.StreamSelector)
 	require.Equal(t, []string{"error"}, spec.Body.Levels)
 }
@@ -42,7 +42,7 @@ body:
 	spec, err := logs.ReadDropRuleFileSpecFromReader(strings.NewReader(input))
 	require.NoError(t, err)
 	require.Equal(t, "rule-yaml", spec.Name)
-	require.Equal(t, 10.0, spec.Body.DropRate)
+	require.InDelta(t, 10.0, spec.Body.DropRate, 1e-9)
 	require.Equal(t, `{app="nginx"}`, spec.Body.StreamSelector)
 }
 

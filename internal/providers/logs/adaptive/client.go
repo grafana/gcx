@@ -579,9 +579,9 @@ func adaptiveErrorBodySummary(statusCode int, body []byte) string {
 		}
 		return "empty response body"
 	}
-	const max = 240
-	if len(s) > max {
-		return s[:max] + "..."
+	const maxAdaptiveErrorSummaryLen = 240
+	if len(s) > maxAdaptiveErrorSummaryLen {
+		return s[:maxAdaptiveErrorSummaryLen] + "..."
 	}
 	return s
 }
