@@ -14,15 +14,16 @@ import (
 // queryCmd returns the `query` subcommand for a Prometheus datasource parent.
 func queryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
+	var datasource string
 
 	cmd := &cobra.Command{
-		Use:   "query [DATASOURCE_UID] EXPR",
+		Use:   "query EXPR",
 		Short: "Execute a PromQL query against a Prometheus datasource",
 		Long: `Execute a PromQL query against a Prometheus datasource.
 
-DATASOURCE_UID is optional when datasources.prometheus is configured in your context.
-EXPR is the PromQL expression to evaluate.`,
-		Args: cobra.RangeArgs(1, 2),
+EXPR is the PromQL expression to evaluate.
+Datasource is resolved from -d flag or datasources.prometheus in your context.`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
 				return err
@@ -30,17 +31,19 @@ EXPR is the PromQL expression to evaluate.`,
 
 			ctx := cmd.Context()
 
-			// Resolve default UID from config.
-			var defaultUID string
+			// Resolve datasource UID from -d flag or config.
+			var cfgCtx *internalconfig.Context
 			fullCfg, err := loader.LoadFullConfig(ctx)
 			if err == nil {
-				defaultUID = internalconfig.DefaultDatasourceUID(*fullCfg.GetCurrentContext(), "prometheus")
+				cfgCtx = fullCfg.GetCurrentContext()
 			}
 
-			datasourceUID, expr, err := dsquery.ResolveTypedArgs(args, defaultUID, "prometheus")
+			datasourceUID, err := dsquery.ResolveDatasourceFlag(datasource, cfgCtx, "prometheus")
 			if err != nil {
 				return err
 			}
+
+			expr := args[0]
 
 			cfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
@@ -87,6 +90,7 @@ EXPR is the PromQL expression to evaluate.`,
 	}
 
 	shared.Setup(cmd.Flags())
+	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.prometheus is configured)")
 
 	return cmd
 }

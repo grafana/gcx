@@ -40,20 +40,20 @@ func (p *Provider) Commands() []*cobra.Command {
 	qCmd := queryCmd(loader)
 	qCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   "gcx metrics query abc123 'up{job=\"grafana\"}' -o json",
+		agent.AnnotationLLMHint:   `gcx metrics query -d abc123 'up{job="grafana"}' -o json`,
 	}
 	qCmd.Example = `
   # Instant query using configured default datasource
   gcx metrics query 'up{job="grafana"}'
 
   # Range query with explicit datasource UID
-  gcx metrics query abc123 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m
+  gcx metrics query -d abc123 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m
 
   # Query the last hour
-  gcx metrics query abc123 'up' --since 1h
+  gcx metrics query 'up' --since 1h
 
   # Output as JSON
-  gcx metrics query abc123 'up' -o json`
+  gcx metrics query -d abc123 'up' -o json`
 	cmd.AddCommand(qCmd)
 
 	lCmd := labelsCmd(loader)
