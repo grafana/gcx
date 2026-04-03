@@ -42,7 +42,7 @@ func (p *SigilProvider) Commands() []*cobra.Command {
 	convsCmd := conversations.Commands(loader)
 	convsCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx sigil conversations list --limit 10 -o json`,
+		agent.AnnotationLLMHint:   `gcx sigil conversations show --limit 10 -o json`,
 	}
 	sigilCmd.AddCommand(convsCmd)
 

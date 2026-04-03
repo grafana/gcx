@@ -34,7 +34,7 @@ func TestSigilProvider_Commands(t *testing.T) {
 	require.NotNil(t, convsCmd)
 
 	convSubNames := commandNames(convsCmd)
-	for _, exp := range []string{"list", "get", "search"} {
+	for _, exp := range []string{"show", "search"} {
 		assert.Contains(t, convSubNames, exp)
 	}
 }

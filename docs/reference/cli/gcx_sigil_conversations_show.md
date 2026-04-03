@@ -1,17 +1,23 @@
-## gcx sigil conversations get
+## gcx sigil conversations show
 
-Get a conversation with all its generations.
+Show conversations or a single conversation detail.
+
+### Synopsis
+
+Show conversations. Without an ID, lists conversations (use --limit to control count).
+With an ID, shows the full conversation detail including all generations.
 
 ```
-gcx sigil conversations get <conversation-id> [flags]
+gcx sigil conversations show [conversation-id] [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
+  -h, --help            help for show
       --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -o, --output string   Output format. One of: json, yaml (default "yaml")
+      --limit int       Maximum number of conversations to return (0 for no limit) (default 100)
+  -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands

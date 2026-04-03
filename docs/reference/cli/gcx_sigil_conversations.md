@@ -22,7 +22,6 @@ Query Sigil conversations.
 ### SEE ALSO
 
 * [gcx sigil](gcx_sigil.md)	 - Manage Sigil AI observability resources
-* [gcx sigil conversations get](gcx_sigil_conversations_get.md)	 - Get a conversation with all its generations.
-* [gcx sigil conversations list](gcx_sigil_conversations_list.md)	 - List conversations.
 * [gcx sigil conversations search](gcx_sigil_conversations_search.md)	 - Search conversations with filters.
+* [gcx sigil conversations show](gcx_sigil_conversations_show.md)	 - Show conversations or a single conversation detail.
 

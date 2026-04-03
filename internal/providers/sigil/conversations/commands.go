@@ -33,21 +33,20 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 	}
 
 	cmd.AddCommand(
-		newListCommand(loader),
-		newGetCommand(loader),
+		newShowCommand(loader),
 		newSearchCommand(loader),
 	)
 	return cmd
 }
 
-// --- list ---
+// --- show (list + get) ---
 
-type listOpts struct {
+type showOpts struct {
 	IO    cmdio.Options
 	Limit int
 }
 
-func (o *listOpts) setup(flags *pflag.FlagSet) {
+func (o *showOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &TableCodec{})
 	o.IO.RegisterCustomCodec("wide", &TableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
@@ -55,47 +54,14 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	flags.IntVar(&o.Limit, "limit", 100, "Maximum number of conversations to return (0 for no limit)")
 }
 
-func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &listOpts{}
+func newShowCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &showOpts{}
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List conversations.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-			client, err := newClient(cmd, loader)
-			if err != nil {
-				return err
-			}
-			convs, err := client.List(cmd.Context(), opts.Limit)
-			if err != nil {
-				return err
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), convs)
-		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
-}
-
-// --- get ---
-
-type getOpts struct {
-	IO cmdio.Options
-}
-
-func (o *getOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("yaml")
-	o.IO.BindFlags(flags)
-}
-
-func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &getOpts{}
-	cmd := &cobra.Command{
-		Use:   "get <conversation-id>",
-		Short: "Get a conversation with all its generations.",
-		Args:  cobra.ExactArgs(1),
+		Use:   "show [conversation-id]",
+		Short: "Show conversations or a single conversation detail.",
+		Long: `Show conversations. Without an ID, lists conversations (use --limit to control count).
+With an ID, shows the full conversation detail including all generations.`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -104,11 +70,26 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			detail, err := client.Get(cmd.Context(), args[0])
+
+			if len(args) == 1 {
+				// Detail mode: get a single conversation by ID.
+				// Switch to yaml unless the user explicitly set --output.
+				if !cmd.Flags().Changed("output") {
+					opts.IO.OutputFormat = "yaml"
+				}
+				detail, err := client.Get(cmd.Context(), args[0])
+				if err != nil {
+					return err
+				}
+				return opts.IO.Encode(cmd.OutOrStdout(), detail)
+			}
+
+			// List mode: return conversations with limit.
+			convs, err := client.List(cmd.Context(), opts.Limit)
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), detail)
+			return opts.IO.Encode(cmd.OutOrStdout(), convs)
 		},
 	}
 	opts.setup(cmd.Flags())
