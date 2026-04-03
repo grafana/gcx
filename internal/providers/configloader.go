@@ -17,6 +17,9 @@ import (
 	"k8s.io/client-go/rest"
 )
 
+// errNoConfigSource indicates no config file exists to write to.
+var errNoConfigSource = errors.New("no config source available")
+
 // CloudRESTConfig holds the resolved Grafana Cloud configuration needed to
 // authenticate against cloud platform APIs.
 type CloudRESTConfig struct {
@@ -338,15 +341,15 @@ func (l *ConfigLoader) LoadProviderConfig(ctx context.Context, providerName stri
 // layered config or persist env-derived values.
 func (l *ConfigLoader) SaveDatasourceUID(ctx context.Context, kind, uid string) error {
 	source, err := l.datasourceWriteSource()
-	if err != nil {
-		return err
-	}
-	if source == nil {
+	if errors.Is(err, errNoConfigSource) {
 		logging.FromContext(ctx).Debug("no config file found; skipping datasource UID save",
 			slog.String("datasource_kind", kind),
 			slog.String("uid", uid),
 		)
 		return nil
+	}
+	if err != nil {
+		return err
 	}
 
 	loaded, err := config.Load(ctx, source)
@@ -400,7 +403,7 @@ func (l *ConfigLoader) datasourceWriteSource() (config.Source, error) {
 		return config.ExplicitConfigFile(sources[0].Path), nil
 	}
 
-	return nil, nil
+	return nil, errNoConfigSource
 }
 
 // SaveProviderConfig persists a single key-value pair to
