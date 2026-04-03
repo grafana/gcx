@@ -57,7 +57,6 @@ type showSourcemapsOpts struct {
 func (o *showSourcemapsOpts) setup(flags *pflag.FlagSet) {
 	flags.IntVar(&o.Limit, "limit", 0, "Maximum number of sourcemaps to return (0 for all)")
 	o.IO.RegisterCustomCodec("text", &SourcemapTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &SourcemapTableCodec{})
 	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
 }

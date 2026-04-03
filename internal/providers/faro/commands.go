@@ -2,10 +2,12 @@ package faro
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 	"text/tabwriter"
 
@@ -206,9 +208,14 @@ func labelsString(labels map[string]string) string {
 	if len(labels) == 0 {
 		return "-"
 	}
+	keys := make([]string, 0, len(labels))
+	for k := range labels {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
 	parts := make([]string, 0, len(labels))
-	for k, v := range labels {
-		parts = append(parts, k+"="+v)
+	for _, k := range keys {
+		parts = append(parts, k+"="+labels[k])
 	}
 	return strings.Join(parts, ", ")
 }
@@ -331,6 +338,11 @@ func newCreateCommand(loader RESTConfigLoader) *cobra.Command {
 				return err
 			}
 
+			if len(app.ExtraLogLabels) > 0 || app.Settings != nil {
+				cmdio.Warning(cmd.ErrOrStderr(),
+					"extraLogLabels and settings are ignored during creation (Faro API limitation); use update to apply them")
+			}
+
 			typedObj := &adapter.TypedObject[FaroApp]{Spec: *app}
 			typedObj.SetName(app.GetResourceName())
 			typedObj.SetNamespace(restCfg.Namespace)
@@ -450,7 +462,8 @@ func newDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 // ---------------------------------------------------------------------------
 
 // readAppFromFile reads a FaroApp spec from a file path or stdin.
-// It decodes a Kubernetes-style manifest and extracts the spec.
+// It decodes a Kubernetes-style manifest and JSON-round-trips the spec
+// into a FaroApp, so new fields are handled automatically.
 func readAppFromFile(file string, stdin io.Reader) (*FaroApp, error) {
 	var reader io.Reader
 	if file == "-" {
@@ -470,32 +483,22 @@ func readAppFromFile(file string, stdin io.Reader) (*FaroApp, error) {
 		return nil, fmt.Errorf("failed to parse input: %w", err)
 	}
 
-	// Extract spec from the unstructured manifest.
 	specRaw, ok := obj.Object["spec"]
 	if !ok {
 		return nil, errors.New("manifest is missing spec field")
 	}
 
-	specMap, ok := specRaw.(map[string]any)
-	if !ok {
-		return nil, errors.New("manifest spec is not a map")
+	// JSON round-trip: map[string]any → JSON → FaroApp.
+	specJSON, err := json.Marshal(specRaw)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode spec: %w", err)
+	}
+	var app FaroApp
+	if err := json.Unmarshal(specJSON, &app); err != nil {
+		return nil, fmt.Errorf("failed to parse spec: %w", err)
 	}
 
-	var app FaroApp
-	app.Name, _ = specMap["name"].(string)
-	app.AppKey, _ = specMap["appKey"].(string)
-	app.CollectEndpointURL, _ = specMap["collectEndpointURL"].(string)
-
-	// Parse corsOrigins.
-	app.CORSOrigins = parseCORSOrigins(specMap)
-
-	// Parse extraLogLabels.
-	app.ExtraLogLabels = parseExtraLogLabels(specMap)
-
-	// Parse settings.
-	app.Settings = parseSettings(specMap)
-
-	// Try to extract ID from metadata.name slug.
+	// Extract ID from metadata.name slug.
 	if metaName := obj.GetName(); metaName != "" {
 		if id, ok := adapter.ExtractIDFromSlug(metaName); ok {
 			app.ID = id
@@ -507,74 +510,4 @@ func readAppFromFile(file string, stdin io.Reader) (*FaroApp, error) {
 	}
 
 	return &app, nil
-}
-
-// parseCORSOrigins extracts corsOrigins from a spec map.
-func parseCORSOrigins(specMap map[string]any) []CORSOrigin {
-	corsRaw, ok := specMap["corsOrigins"]
-	if !ok {
-		return nil
-	}
-
-	corsSlice, ok := corsRaw.([]any)
-	if !ok {
-		return nil
-	}
-
-	var origins []CORSOrigin
-	for _, item := range corsSlice {
-		m, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		u, ok := m["url"].(string)
-		if !ok {
-			continue
-		}
-		origins = append(origins, CORSOrigin{URL: u})
-	}
-	return origins
-}
-
-// parseExtraLogLabels extracts extraLogLabels from a spec map.
-func parseExtraLogLabels(specMap map[string]any) map[string]string {
-	labelsRaw, ok := specMap["extraLogLabels"]
-	if !ok {
-		return nil
-	}
-
-	labelsMap, ok := labelsRaw.(map[string]any)
-	if !ok {
-		return nil
-	}
-
-	result := make(map[string]string, len(labelsMap))
-	for k, v := range labelsMap {
-		if s, ok := v.(string); ok {
-			result[k] = s
-		}
-	}
-
-	if len(result) == 0 {
-		return nil
-	}
-	return result
-}
-
-// parseSettings extracts settings from a spec map.
-func parseSettings(specMap map[string]any) *FaroAppSettings {
-	settingsRaw, ok := specMap["settings"]
-	if !ok {
-		return nil
-	}
-
-	settingsMap, ok := settingsRaw.(map[string]any)
-	if !ok {
-		return nil
-	}
-
-	settings := &FaroAppSettings{}
-	settings.GeolocationEnabled, _ = settingsMap["geolocationEnabled"].(bool)
-	settings.GeolocationLevel, _ = settingsMap["geolocationLevel"].(string)
-	return settings
 }
