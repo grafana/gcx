@@ -1,3 +1,19 @@
+## v0.2.2 (2026-04-03)
+
+- Add Grafana Assistant prompt command (A2A protocol)
+- Add Faro (Frontend Observability) provider
+- Add Sigil AI observability provider with conversations
+- Add Tempo trace query commands (search, get, metrics, tags)
+- Lift signal commands to top-level (metrics, logs, traces, profiles)
+- Add gcx-observability skill for Claude plugin
+- Improve auth login error when server is missing
+- Trim trailing slash from server URL in config
+- Centralize --json field selection in provider commands
+- Remove kg service-dashboard command
+- Align datasource query docs with Loki terminology
+- Recommend manual token config over auth login in docs
+
+
 ## v0.2.1 (2026-04-02)
 
 - Add automated release process with AI-generated changelogs

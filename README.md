@@ -89,7 +89,7 @@ alongside gcx to give your agent deep Grafana knowledge.
 
 ### 1. Authenticate
 
-**Service account token (recommended):**
+**Grafana API access (service account token, recommended):**
 
 ```bash
 gcx config set contexts.my-grafana.grafana.server https://your-instance.grafana.net
@@ -99,14 +99,18 @@ gcx config use-context my-grafana
 
 Use a [Grafana service account token](https://grafana.com/docs/grafana/latest/administration/service-accounts/) with **Editor** or **Admin** role.
 
-**Grafana Cloud products (SLO, Synth, OnCall, etc.):**
+**Grafana Cloud product APIs (SLO, Synth, OnCall, etc.):**
 
-Grafana Cloud products require a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/) for API access. Set it in your context:
+Grafana Cloud product commands require a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/):
 
 ```bash
 gcx config set contexts.my-grafana.cloud.token your-cloud-access-policy-token
-gcx config set contexts.my-grafana.cloud.org your-org-slug
+
+# Optional: set this only if gcx cannot derive the stack slug from grafana.server.
+gcx config set contexts.my-grafana.cloud.stack your-stack-slug
 ```
+
+You do not need to set `cloud.api-url` for `grafana.com`; gcx defaults to `https://grafana.com`. Set `cloud.api-url` only when you need a non-default Grafana Cloud API endpoint.
 
 **Environment variables (recommended for CI/CD and agents):**
 
@@ -114,11 +118,29 @@ gcx config set contexts.my-grafana.cloud.org your-org-slug
 export GRAFANA_SERVER="https://your-instance.grafana.net"
 export GRAFANA_TOKEN="your-service-account-token"
 export GRAFANA_CLOUD_TOKEN="your-cloud-access-policy-token"
-export GRAFANA_CLOUD_ORG="your-org-slug"
+
+# Optional: only needed if gcx cannot derive the stack slug from GRAFANA_SERVER.
+export GRAFANA_CLOUD_STACK="your-stack-slug"
+```
+
+**Browser-based OAuth login (experimental):**
+
+```bash
+gcx auth login --server https://byoc-grafana.com
+```
+
+This opens a browser and bootstraps the selected context without preconfiguring
+`grafana.server`. On success, gcx saves the server URL, OAuth access token,
+refresh token, and proxy endpoint to that context.
+
+If you want to save the login to a specific context:
+
+```bash
+gcx auth login --context my-grafana --server https://byoc-grafana.com
 ```
 
 > [!NOTE]
-> `gcx auth login` provides an experimental OAuth browser flow. Manual token setup above is the recommended approach for now. A consolidated authentication experience — including Grafana Assistant CLI integration — is coming soon.
+> For automation, CI/CD, and other non-interactive usage, the token-based setup above remains the recommended approach.
 
 **Verify:** `gcx config check`
 
