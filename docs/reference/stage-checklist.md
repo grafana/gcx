@@ -21,7 +21,8 @@ Use this template when completing each implementation stage.
 
 - [ ] Updated docs per [doc-maintenance.md](doc-maintenance.md) rules
 - [ ] New design docs created for any non-trivial decisions
-- [ ] DESIGN.md updated if package map or architecture changed
+- [ ] ARCHITECTURE.md updated if architectural decisions or ADRs changed
+- [ ] CLAUDE.md package map updated if packages added/removed
 - [ ] README.md updated if CLI usage changed
 
 ## Completion

@@ -8,9 +8,15 @@
 
 ## Documentation Map
 
-- **Architecture & patterns**: [docs/architecture/README.md](docs/architecture/README.md) — full index with navigation guide
-- **Reference guides**: [docs/reference/](docs/reference/) — provider guides, design guide, migration gap analysis
-- **Spec templates**: [docs/_templates/](docs/_templates/) — feature, bugfix, refactor, ADR, research templates
+| File | Purpose |
+|------|---------|
+| [CONSTITUTION.md](CONSTITUTION.md) | Invariants — things that cannot change without explicit human approval |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Architecture overview, pipeline diagrams, ADR index |
+| [DESIGN.md](DESIGN.md) | CLI UX design: command grammar, output model, exit codes, taste rules |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, testing environment, contribution workflow |
+| [docs/architecture/README.md](docs/architecture/README.md) | Detailed architecture docs (patterns, resource model, CLI layer, data flows, …) |
+| [docs/reference/](docs/reference/) | Provider guides, design implementation guide, CLI reference, migration analysis |
+| [docs/_templates/](docs/_templates/) | Spec and planning templates (feature, bugfix, refactor, ADR, research) |
 
 ## Architecture at a Glance
 
@@ -124,7 +130,7 @@ Run when code has been modified, before pushing or creating a PR.
    ```bash
    GCX_AGENT_MODE=false make all
    ```
-3. **Doc maintenance gate** — run the structural checks in [docs/reference/doc-maintenance.md](docs/reference/doc-maintenance.md). Update `CLAUDE.md` (package map), `DESIGN.md`, and relevant `docs/architecture/` files if any are stale.
+3. **Doc maintenance gate** — run the structural checks in [docs/reference/doc-maintenance.md](docs/reference/doc-maintenance.md). Update `CLAUDE.md` (package map), `ARCHITECTURE.md` (ADR table), and relevant `docs/architecture/` files if any are stale.
 4. **Push**
    ```bash
    git push
