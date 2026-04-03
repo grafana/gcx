@@ -2,7 +2,9 @@ package probes
 
 import (
 	"encoding/base64"
+	"errors"
 	"io"
+	"regexp"
 	"text/template"
 )
 
@@ -16,6 +18,28 @@ type DeployConfig struct {
 	APIServerURL string // SM API gRPC endpoint (e.g. "synthetic-monitoring-grpc.grafana.net:443")
 	Namespace    string // K8s namespace (default "synthetic-monitoring")
 	Image        string // SM agent container image
+}
+
+// k8sNameRe matches valid Kubernetes resource names (DNS label: lowercase
+// alphanumeric and hyphens, 1-63 chars, must start and end with alphanumeric).
+var k8sNameRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
+
+// Validate checks that all required fields are set and that ProbeName is a
+// valid Kubernetes resource name.
+func (c DeployConfig) Validate() error {
+	if c.ProbeToken == "" {
+		return errors.New("probe token is required")
+	}
+	if c.ProbeName == "" {
+		return errors.New("probe name is required")
+	}
+	if !k8sNameRe.MatchString(c.ProbeName) {
+		return errors.New("probe name must be a valid Kubernetes name (lowercase alphanumeric and hyphens, 1-63 chars)")
+	}
+	if c.APIServerURL == "" {
+		return errors.New("API server URL is required")
+	}
+	return nil
 }
 
 // manifestTemplate is the Go template for generating SM agent k8s manifests.

@@ -92,9 +92,45 @@ func TestRenderManifests(t *testing.T) {
 	}
 }
 
-func TestRenderManifests_SpecialChars(t *testing.T) {
+func TestK8sNameValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		wantErr bool
+	}{
+		{"my-probe", false},
+		{"a", false},
+		{"probe-123", false},
+		{"a-b", false},
+		{"", true},                      // empty
+		{"Uppercase", true},             // uppercase
+		{"has space", true},             // space
+		{"has/slash", true},             // slash
+		{"has.dot", true},               // dot
+		{"-leading", true},              // leading hyphen
+		{"trailing-", true},             // trailing hyphen
+		{strings.Repeat("a", 64), true}, // too long
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := probes.DeployConfig{
+				ProbeName:    tt.name,
+				ProbeToken:   "token",
+				APIServerURL: "grpc.example.com:443",
+				Namespace:    "default",
+				Image:        "img:latest",
+			}
+			err := cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() for name %q: error = %v, wantErr %v", tt.name, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestRenderManifests_CustomConfig(t *testing.T) {
 	cfg := probes.DeployConfig{
-		ProbeName:    "probe/with.special_chars",
+		ProbeName:    "my-custom-probe",
 		ProbeToken:   "tok3n+with/special=chars",
 		APIServerURL: "grpc.example.com:443",
 		Namespace:    "custom-ns",
@@ -108,12 +144,12 @@ func TestRenderManifests_SpecialChars(t *testing.T) {
 
 	output := buf.String()
 
-	// Probe name used as-is in resource names.
-	if !strings.Contains(output, "probe/with.special_chars") {
-		t.Error("probe name with special chars should appear in output")
+	// Probe name used in resource names.
+	if !strings.Contains(output, "my-custom-probe") {
+		t.Error("probe name should appear in output")
 	}
 
-	// Token should be base64-encoded correctly.
+	// Token should be base64-encoded correctly (including special chars).
 	encodedToken := base64.StdEncoding.EncodeToString([]byte("tok3n+with/special=chars"))
 	if !strings.Contains(output, encodedToken) {
 		t.Errorf("Secret should contain base64-encoded token %q", encodedToken)

@@ -200,6 +200,10 @@ func (o *deleteOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVarP(&o.Force, "force", "f", false, "Skip confirmation prompt")
 }
 
+func (o *deleteOpts) Validate() error {
+	return nil
+}
+
 func newDeleteCommand(loader smcfg.Loader) *cobra.Command {
 	opts := &deleteOpts{}
 	cmd := &cobra.Command{
@@ -207,6 +211,10 @@ func newDeleteCommand(loader smcfg.Loader) *cobra.Command {
 		Short: "Delete Synthetic Monitoring probes.",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			ctx := cmd.Context()
 			w := cmd.OutOrStdout()
 
@@ -246,12 +254,23 @@ func newDeleteCommand(loader smcfg.Loader) *cobra.Command {
 // token-reset
 // ---------------------------------------------------------------------------
 
+type tokenResetOpts struct{}
+
+func (o *tokenResetOpts) setup(_ *pflag.FlagSet) {}
+
+func (o *tokenResetOpts) Validate() error { return nil }
+
 func newTokenResetCommand(loader smcfg.Loader) *cobra.Command {
-	return &cobra.Command{
+	opts := &tokenResetOpts{}
+	cmd := &cobra.Command{
 		Use:   "token-reset ID",
 		Short: "Reset the auth token of a Synthetic Monitoring probe.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			ctx := cmd.Context()
 			w := cmd.OutOrStdout()
 
@@ -281,6 +300,8 @@ func newTokenResetCommand(loader smcfg.Loader) *cobra.Command {
 			return nil
 		},
 	}
+	opts.setup(cmd.Flags())
+	return cmd
 }
 
 // ---------------------------------------------------------------------------
@@ -304,16 +325,11 @@ func (o *deployOpts) setup(flags *pflag.FlagSet) {
 }
 
 func (o *deployOpts) Validate() error {
-	if o.Token == "" {
-		return errors.New("--token is required")
-	}
-	if o.ProbeName == "" {
-		return errors.New("--probe-name is required")
-	}
-	if o.APIServerURL == "" {
-		return errors.New("--api-server-url is required")
-	}
-	return nil
+	return DeployConfig{
+		ProbeName:    o.ProbeName,
+		ProbeToken:   o.Token,
+		APIServerURL: o.APIServerURL,
+	}.Validate()
 }
 
 func newDeployCommand() *cobra.Command {
