@@ -6,7 +6,7 @@ Update an adaptive log drop rule by ID.
 
 Update an adaptive log drop rule by ID.
 
-The file's top-level "version" is the policy body schema version (only 1 is supported). Omit it or set it to 1; do not confuse it with the rule revision in API responses.
+The file's top-level "version" is the rule schema version (only 1 is supported). Omit it or set it to 1; do not confuse it with the rule revision in API responses.
 
 ```
 gcx logs adaptive drop-rules update ID [flags]

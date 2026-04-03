@@ -8,7 +8,7 @@ Manage adaptive log drop rules.
 
 Use `list` or `get` to read rules. `list` applies the __global__ segment filter (same scope as create/update/delete). `gcx resources get droprules` lists all tenant rules without that filter when the resources command is available.
 
-Create and update load a rule from a file (`--filename` / `-f`), similar to Adaptive Traces policies. The file's top-level "version" is the policy schema version (only 1); omit or set it to 1 — not the revision field in API JSON.
+Create and update load a rule from a file (`--filename` / `-f`). The file's top-level "version" is the rule schema version (only 1); omit or set it to 1 — not the revision field in API JSON.
 
 ### Options
 
