@@ -34,6 +34,27 @@ func (n *NamespacedRESTConfig) SetOnRefresh(fn auth.TokenRefresher) {
 	}
 }
 
+// WireTokenPersistence registers an OnRefresh callback that reloads the config
+// from source, updates the OAuth token fields for contextName, and writes back.
+// No-op if the config is not using OAuth proxy mode.
+func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source Source, contextName string) {
+	n.SetOnRefresh(func(token, refreshToken, expiresAt, refreshExpiresAt string) error {
+		fresh, err := Load(ctx, source)
+		if err != nil {
+			return err
+		}
+		c := fresh.Contexts[contextName]
+		if c == nil || c.Grafana == nil {
+			return nil
+		}
+		c.Grafana.OAuthToken = token
+		c.Grafana.OAuthRefreshToken = refreshToken
+		c.Grafana.OAuthTokenExpiresAt = expiresAt
+		c.Grafana.OAuthRefreshExpiresAt = refreshExpiresAt
+		return Write(ctx, source, fresh)
+	})
+}
+
 // parseRFC3339OrZero parses an RFC3339 timestamp, returning the zero time on
 // empty input or parse failure.
 func parseRFC3339OrZero(s string) time.Time {

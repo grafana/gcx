@@ -173,24 +173,7 @@ func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.Namespaced
 	}
 
 	restCfg := loaded.GetCurrentContext().ToRESTConfig(ctx)
-
-	source := l.configSource()
-	contextName := loaded.CurrentContext
-	restCfg.SetOnRefresh(func(token, refreshToken, expiresAt, refreshExpiresAt string) error {
-		fresh, err := config.Load(ctx, source)
-		if err != nil {
-			return err
-		}
-		c := fresh.Contexts[contextName]
-		if c == nil || c.Grafana == nil {
-			return nil
-		}
-		c.Grafana.OAuthToken = token
-		c.Grafana.OAuthRefreshToken = refreshToken
-		c.Grafana.OAuthTokenExpiresAt = expiresAt
-		c.Grafana.OAuthRefreshExpiresAt = refreshExpiresAt
-		return config.Write(ctx, source, fresh)
-	})
+	restCfg.WireTokenPersistence(ctx, l.configSource(), loaded.CurrentContext)
 
 	return restCfg, nil
 }
@@ -280,24 +263,7 @@ func (l *ConfigLoader) LoadCloudConfig(ctx context.Context) (CloudRESTConfig, er
 	var restCfg *rest.Config
 	if curCtx.Grafana != nil && !curCtx.Grafana.IsEmpty() {
 		nrc := curCtx.ToRESTConfig(ctx)
-
-		source := l.configSource()
-		contextName := loaded.CurrentContext
-		nrc.SetOnRefresh(func(token, refreshToken, expiresAt, refreshExpiresAt string) error {
-			fresh, err := config.Load(ctx, source)
-			if err != nil {
-				return err
-			}
-			c := fresh.Contexts[contextName]
-			if c == nil || c.Grafana == nil {
-				return nil
-			}
-			c.Grafana.OAuthToken = token
-			c.Grafana.OAuthRefreshToken = refreshToken
-			c.Grafana.OAuthTokenExpiresAt = expiresAt
-			c.Grafana.OAuthRefreshExpiresAt = refreshExpiresAt
-			return config.Write(ctx, source, fresh)
-		})
+		nrc.WireTokenPersistence(ctx, l.configSource(), loaded.CurrentContext)
 
 		namespace = nrc.Namespace
 		restCfg = &nrc.Config
