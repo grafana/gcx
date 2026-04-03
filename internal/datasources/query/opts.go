@@ -35,7 +35,14 @@ func (opts *SharedOpts) Validate() error {
 		return err
 	}
 
+	// Validate --from/--to pairing when --since is not used.
 	if opts.Since == "" {
+		if opts.From != "" && opts.To == "" {
+			return errors.New("--to is required when --from is set")
+		}
+		if opts.To != "" && opts.From == "" {
+			return errors.New("--from is required when --to is set")
+		}
 		return nil
 	}
 
@@ -63,6 +70,12 @@ func (opts *SharedOpts) Validate() error {
 	opts.To = end.Format(time.RFC3339)
 
 	return nil
+}
+
+// IsRange returns true when both From and To are set, indicating a range query.
+// It should be called after Validate() which resolves --since into From/To.
+func (opts *SharedOpts) IsRange() bool {
+	return opts.From != "" && opts.To != ""
 }
 
 // ParseTimes parses From/To/Step into time.Time and time.Duration values.

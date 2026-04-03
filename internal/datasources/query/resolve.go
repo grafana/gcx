@@ -9,6 +9,25 @@ import (
 	"github.com/grafana/gcx/internal/datasources"
 )
 
+// ResolveDatasourceFlag resolves a datasource UID from the -d flag value or config fallback.
+// If flagValue is non-empty it is returned directly. Otherwise the UID is looked up
+// from cfgCtx (the current context's datasources.<kind> config key). cfgCtx may be nil
+// when config loading failed. If neither flag nor config provides a UID, an error is
+// returned mentioning both the -d flag and the config key.
+func ResolveDatasourceFlag(flagValue string, cfgCtx *config.Context, kind string) (string, error) {
+	if flagValue != "" {
+		return flagValue, nil
+	}
+
+	if cfgCtx != nil {
+		if uid := config.DefaultDatasourceUID(*cfgCtx, kind); uid != "" {
+			return uid, nil
+		}
+	}
+
+	return "", fmt.Errorf("datasource UID is required: use -d flag or set datasources.%s in config", kind)
+}
+
 // ResolveTypedArgs parses positional args for typed subcommands.
 // Typed subcommands accept: [DATASOURCE_UID] EXPR
 // If only one arg is provided, it is EXPR and DATASOURCE_UID is resolved from defaultUID.
