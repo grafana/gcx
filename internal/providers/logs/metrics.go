@@ -99,10 +99,6 @@ Instant vs range is deduced from time flags: no time flags = instant query,
 				return fmt.Errorf("metric query failed: %w", err)
 			}
 
-			if shared.IO.OutputFormat == "table" {
-				return loki.FormatMetricQueryTable(cmd.OutOrStdout(), resp)
-			}
-
 			return shared.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}

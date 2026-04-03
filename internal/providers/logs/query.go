@@ -83,14 +83,7 @@ Datasource is resolved from -d flag or datasources.loki in your context.`,
 				return fmt.Errorf("query failed: %w", err)
 			}
 
-			switch shared.IO.OutputFormat {
-			case "table":
-				return loki.FormatQueryTable(cmd.OutOrStdout(), resp)
-			case "wide":
-				return loki.FormatQueryTableWide(cmd.OutOrStdout(), resp)
-			default:
-				return shared.IO.Encode(cmd.OutOrStdout(), resp)
-			}
+			return shared.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}
 

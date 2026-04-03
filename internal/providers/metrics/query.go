@@ -81,10 +81,6 @@ Datasource is resolved from -d flag or datasources.prometheus in your context.`,
 				return fmt.Errorf("query failed: %w", err)
 			}
 
-			if shared.IO.OutputFormat == "table" {
-				return prometheus.FormatTable(cmd.OutOrStdout(), resp)
-			}
-
 			return shared.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}

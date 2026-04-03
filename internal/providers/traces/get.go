@@ -1,7 +1,6 @@
 package traces
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
@@ -15,12 +14,11 @@ import (
 )
 
 type getOpts struct {
+	dsquery.TimeRangeOpts
+
 	IO         cmdio.Options
 	Datasource string
 	LLM        bool
-	From       string
-	To         string
-	Since      string
 }
 
 func (opts *getOpts) setup(flags *pflag.FlagSet) {
@@ -29,50 +27,14 @@ func (opts *getOpts) setup(flags *pflag.FlagSet) {
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.tempo is configured)")
 	flags.BoolVar(&opts.LLM, "llm", false, "Request LLM-friendly trace format")
-	flags.StringVar(&opts.From, "from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
-	flags.StringVar(&opts.To, "to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
-	flags.StringVar(&opts.Since, "since", "", "Duration before --to (or now if omitted); mutually exclusive with --from")
+	opts.SetupTimeFlags(flags)
 }
 
 func (opts *getOpts) Validate() error {
 	if err := opts.IO.Validate(); err != nil {
 		return err
 	}
-
-	if opts.Since == "" {
-		if opts.From != "" && opts.To == "" {
-			return errors.New("--to is required when --from is set")
-		}
-		if opts.To != "" && opts.From == "" {
-			return errors.New("--from is required when --to is set")
-		}
-		return nil
-	}
-
-	if opts.From != "" {
-		return errors.New("--since is mutually exclusive with --from")
-	}
-
-	d, err := dsquery.ParseDuration(opts.Since)
-	if err != nil {
-		return fmt.Errorf("invalid --since duration: %w", err)
-	}
-	if d <= 0 {
-		return errors.New("--since must be greater than 0")
-	}
-
-	now := time.Now()
-	end, err := dsquery.ParseTime(opts.To, now)
-	if err != nil {
-		return fmt.Errorf("invalid --to time: %w", err)
-	}
-	if end.IsZero() {
-		end = now
-	}
-	opts.From = end.Add(-d).Format(time.RFC3339)
-	opts.To = end.Format(time.RFC3339)
-
-	return nil
+	return opts.ValidateTimeRange()
 }
 
 func getCmd(loader *providers.ConfigLoader) *cobra.Command {
@@ -125,13 +87,9 @@ Datasource is resolved from -d flag or datasources.tempo in your context.`,
 			}
 
 			now := time.Now()
-			start, err := dsquery.ParseTime(opts.From, now)
+			start, end, err := opts.ParseTimeRange(now)
 			if err != nil {
-				return fmt.Errorf("invalid --from time: %w", err)
-			}
-			end, err := dsquery.ParseTime(opts.To, now)
-			if err != nil {
-				return fmt.Errorf("invalid --to time: %w", err)
+				return err
 			}
 
 			client, err := tempo.NewClient(cfg)

@@ -12,6 +12,9 @@ Datasource is resolved from -d flag or datasources.loki in your context.
 Unlike 'logs query' which returns log lines, 'logs metrics' returns
 time-series data with proper table, graph, and JSON formatters.
 
+Instant vs range is deduced from time flags: no time flags = instant query,
+--since or --from/--to = range query.
+
 ```
 gcx logs metrics EXPR [flags]
 ```
