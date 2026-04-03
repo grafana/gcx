@@ -1,4 +1,4 @@
-# AGENTS.md — Agent Entry Point
+# gcx — Agent & Developer Entry Point
 
 > Lightweight map for autonomous coding agents. Read this first, then navigate to specific docs on demand.
 
@@ -20,23 +20,11 @@
 
 ## Architecture at a Glance
 
-```
-CLI Layer (cmd/gcx/)              <- Cobra commands, zero business logic
-    |
-Business Logic (internal/resources/)     <- Resource model, selectors, filters, processors
-    |                          |
-K8s Dynamic Client         Provider Adapters (internal/providers/*)
-(internal/resources/       <- Pluggable Cloud product providers
- dynamic/)                   (SLO, SM, OnCall, Fleet, KG, Incidents, Alert...)
-    |                          |
-Grafana K8s API            Product REST APIs
-(/apis endpoint)           (Cloud-specific endpoints)
-```
-
-**K8s tier flow**: User input -> Selector -> Discovery -> Filter -> Dynamic Client -> Grafana API
-**Provider tier flow**: User input -> Provider CLI -> Provider Client -> Product REST API
+Two tiers: **K8s resource tier** (dashboards, folders via `/apis`) and **Cloud provider tier** (SLO, SM, OnCall, etc. via product REST APIs). See [ARCHITECTURE.md](ARCHITECTURE.md) for pipeline diagrams and extension pipelines.
 
 ## Key Conventions
+
+> Authoritative source: [CONSTITUTION.md](CONSTITUTION.md) (invariants) and [DESIGN.md](DESIGN.md) (UX rules). This is the quick-reference summary.
 
 - **Options pattern**: Every command uses `opts struct` + `setup(flags)` + `Validate()` + constructor
 - **Processor pipeline**: `Processor.Process(*Resource) error` — composable transformations for push/pull
@@ -57,6 +45,8 @@ make docs        # Generate + build all documentation
 ```
 
 **Without devbox**: replace `make` targets with direct Go commands — `go build -buildvcs=false -o bin/gcx ./cmd/gcx/` and `go test ./...`. Always build to `bin/gcx`.
+
+> **Agent environments**: always prefix with `GCX_AGENT_MODE=false` — agent-mode auto-detection changes output defaults in `make docs`, producing wrong CLI reference docs.
 
 ## Testing
 
