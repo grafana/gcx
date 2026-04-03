@@ -2,10 +2,9 @@
 
 ## Vision
 
-kubectl-style CLI for managing Grafana 12+ resources via its Kubernetes-compatible API.
-Built in Go (~14k LOC), uses `k8s.io/client-go` and Cobra. Enables managing dashboards,
-folders, alert rules, SLOs, synthetic monitoring checks, and datasource queries from
-a single tool with multi-environment context support.
+See [VISION.md](VISION.md) for goals, roadmap, and product surface.
+
+**In brief:** kubectl-style CLI for managing the entire Grafana Cloud stack — dashboards, folders, alert rules, SLOs, synthetic monitoring, OnCall, K6, and more — from a single tool. Built in Go, uses `k8s.io/client-go` and Cobra. Every command serves both humans and AI agents.
 
 ## Pipeline
 
@@ -84,6 +83,7 @@ Package map (compact) is in [AGENTS.md](AGENTS.md). Detailed package description
 
 ## Related
 
+- [VISION.md](VISION.md) — goals, product surface, roadmap themes
 - [CONSTITUTION.md](CONSTITUTION.md) — architecture invariants and dependency rules
 - [DESIGN.md](DESIGN.md) — CLI UX design, command grammar, output model
 - [docs/reference/provider-guide.md](docs/reference/provider-guide.md) — how to add a new provider

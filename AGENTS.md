@@ -10,6 +10,7 @@
 
 | File | Purpose |
 |------|---------|
+| [VISION.md](VISION.md) | Goals, product surface, roadmap themes, release timeline |
 | [CONSTITUTION.md](CONSTITUTION.md) | Invariants — things that cannot change without explicit human approval |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Architecture overview, pipeline diagrams, ADR index |
 | [DESIGN.md](DESIGN.md) | CLI UX design: command grammar, output model, exit codes, taste rules |
