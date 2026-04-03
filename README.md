@@ -15,7 +15,9 @@ Query production. Investigate alerts. Let the Assistant root-cause issues. Ship 
 
 ## Why gcx
 
-Agentic coding tools like Claude Code and Cursor have changed how developers build software. But they're flying blind. Code ships. Observability comes later — if it comes at all.
+Agentic coding tools like Claude Code and Cursor have changed how developers build software.
+
+But we face a critical architectural gap: Our development environments are operating in a Context Vacuum.
 
 gcx closes that gap. It connects your editor to your entire Grafana Cloud production stack — including the Grafana Assistant — making observability a **development signal**, not an afterthought. When something breaks, the Assistant's investigation is already waiting: mitigations planned, context assembled, so you can act immediately.
 
