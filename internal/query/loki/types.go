@@ -66,6 +66,26 @@ type SeriesResponse struct {
 	Data   []map[string]string `json:"data"`
 }
 
+// MetricQueryResponse represents the response from a metric LogQL query.
+// It uses the same structure as a Prometheus response (time-series with metric labels).
+type MetricQueryResponse struct {
+	Status string               `json:"status"`
+	Data   MetricQueryData      `json:"data"`
+}
+
+// MetricQueryData holds the metric query result data.
+type MetricQueryData struct {
+	ResultType string               `json:"resultType"`
+	Result     []MetricQuerySample  `json:"result"`
+}
+
+// MetricQuerySample represents a single time-series from a metric LogQL query.
+type MetricQuerySample struct {
+	Metric map[string]string `json:"metric"`
+	Value  []any             `json:"value,omitempty"`  // [timestamp, value] for instant queries
+	Values [][]any           `json:"values,omitempty"` // [[timestamp, value], ...] for range queries
+}
+
 // GrafanaQueryResponse represents the response from Grafana's datasource query API.
 type GrafanaQueryResponse struct {
 	Results map[string]GrafanaResult `json:"results"`

@@ -150,6 +150,50 @@ func FromLokiResponse(resp *loki.QueryResponse) (*ChartData, error) {
 	return data, nil
 }
 
+// FromLokiMetricResponse converts a Loki metric query response (time-series) to ChartData.
+func FromLokiMetricResponse(resp *loki.MetricQueryResponse) (*ChartData, error) {
+	if resp == nil || len(resp.Data.Result) == 0 {
+		return &ChartData{}, nil
+	}
+
+	data := &ChartData{
+		Series: make([]Series, 0, len(resp.Data.Result)),
+	}
+
+	for _, sample := range resp.Data.Result {
+		series := Series{
+			Name:   formatMetricName(sample.Metric),
+			Labels: sample.Metric,
+			Points: make([]Point, 0),
+		}
+
+		switch resp.Data.ResultType {
+		case "vector":
+			if len(sample.Value) >= 2 {
+				t, v, err := parsePoint(sample.Value[0], sample.Value[1])
+				if err == nil {
+					series.Points = append(series.Points, Point{Time: t, Value: v})
+				}
+			}
+		case "matrix":
+			for _, vals := range sample.Values {
+				if len(vals) >= 2 {
+					t, v, err := parsePoint(vals[0], vals[1])
+					if err == nil {
+						series.Points = append(series.Points, Point{Time: t, Value: v})
+					}
+				}
+			}
+		}
+
+		if len(series.Points) > 0 {
+			data.Series = append(data.Series, series)
+		}
+	}
+
+	return data, nil
+}
+
 func parseLokiPoint(tsVal, valVal string) (time.Time, float64, error) {
 	nanos, err := strconv.ParseInt(tsVal, 10, 64)
 	if err != nil {

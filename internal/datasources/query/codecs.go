@@ -25,6 +25,8 @@ func (c *queryTableCodec) Encode(w io.Writer, data any) error {
 		return prometheus.FormatTable(w, resp)
 	case *loki.QueryResponse:
 		return loki.FormatQueryTable(w, resp)
+	case *loki.MetricQueryResponse:
+		return loki.FormatMetricQueryTable(w, resp)
 	case *pyroscope.QueryResponse:
 		return pyroscope.FormatQueryTable(w, resp)
 	case *tempo.SearchResponse:
@@ -81,6 +83,11 @@ func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
 		}
 	case *loki.QueryResponse:
 		chartData, err = graph.FromLokiResponse(resp)
+		if err != nil {
+			return err
+		}
+	case *loki.MetricQueryResponse:
+		chartData, err = graph.FromLokiMetricResponse(resp)
 		if err != nil {
 			return err
 		}
