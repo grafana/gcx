@@ -290,6 +290,32 @@ current-context: default
 	}
 }
 
+func TestConfigLoader_SaveDatasourceUID_SkipsWhenNoConfigExists(t *testing.T) {
+	homeDir := t.TempDir()
+	xdgDir := t.TempDir()
+	workDir := t.TempDir()
+
+	t.Chdir(workDir)
+
+	t.Cleanup(func() { xdg.Reload() })
+	t.Setenv("HOME", homeDir)
+	t.Setenv("XDG_CONFIG_HOME", xdgDir)
+	xdg.Reload()
+
+	loader := &providers.ConfigLoader{}
+	err := loader.SaveDatasourceUID(context.Background(), "tempo", "tempo-123")
+	require.NoError(t, err)
+
+	// Verify no config file was created on disk.
+	standardPath := filepath.Join(homeDir, ".config", "gcx", "config.yaml")
+	_, err = os.Stat(standardPath)
+	assert.True(t, os.IsNotExist(err), "config file should not have been created at %s", standardPath)
+
+	xdgPath := filepath.Join(xdgDir, "gcx", "config.yaml")
+	_, err = os.Stat(xdgPath)
+	assert.True(t, os.IsNotExist(err), "config file should not have been created at %s", xdgPath)
+}
+
 func TestConfigLoader_SaveDatasourceUID_ErrorsWithMultipleConfigSources(t *testing.T) {
 	homeDir := t.TempDir()
 	xdgDir := t.TempDir()

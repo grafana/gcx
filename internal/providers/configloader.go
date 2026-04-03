@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/caarlos0/env/v11"
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/rest"
 )
@@ -339,6 +341,13 @@ func (l *ConfigLoader) SaveDatasourceUID(ctx context.Context, kind, uid string) 
 	if err != nil {
 		return err
 	}
+	if source == nil {
+		logging.FromContext(ctx).Debug("no config file found; skipping datasource UID save",
+			slog.String("datasource_kind", kind),
+			slog.String("uid", uid),
+		)
+		return nil
+	}
 
 	loaded, err := config.Load(ctx, source)
 	if err != nil {
@@ -391,7 +400,7 @@ func (l *ConfigLoader) datasourceWriteSource() (config.Source, error) {
 		return config.ExplicitConfigFile(sources[0].Path), nil
 	}
 
-	return config.StandardLocation(), nil
+	return nil, nil
 }
 
 // SaveProviderConfig persists a single key-value pair to
