@@ -95,6 +95,20 @@ func TestResolveDatasource(t *testing.T) {
 		assert.True(t, resolved.Persist)
 	})
 
+	t.Run("auto-discovers via GRAFANA_SERVER env when no config exists", func(t *testing.T) {
+		t.Setenv("GRAFANA_SERVER", "https://ops.grafana.net")
+
+		restCfg := testDatasourceRESTConfig(t, []map[string]any{
+			{"uid": "tempo-1", "name": "Tempo Ops", "type": "tempo"},
+			{"uid": "grafanacloud-traces", "name": "grafanacloud-ops-traces", "type": "tempo"},
+		})
+
+		resolved, err := dsquery.ResolveDatasource(context.Background(), "", nil, restCfg, "tempo")
+		require.NoError(t, err)
+		assert.Equal(t, "grafanacloud-traces", resolved.UID)
+		assert.True(t, resolved.Persist)
+	})
+
 	t.Run("auto-discovers pyroscope datasource via normalized plugin id", func(t *testing.T) {
 		restCfg := testDatasourceRESTConfig(t, []map[string]any{
 			{"uid": "pyro-1", "name": "profiles", "type": "grafana-pyroscope-datasource"},

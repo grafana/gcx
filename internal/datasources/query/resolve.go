@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"sort"
 	"strings"
 
+	"github.com/caarlos0/env/v11"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/datasources"
 	"github.com/grafana/grafana-app-sdk/logging"
@@ -182,7 +182,11 @@ func configuredCloudStack(cfgCtx *config.Context) string {
 		}
 	}
 
-	return strings.TrimSpace(os.Getenv("GRAFANA_CLOUD_STACK"))
+	var fallback config.Context
+	fallback.Cloud = &config.CloudConfig{}
+	fallback.Grafana = &config.GrafanaConfig{}
+	_ = env.Parse(&fallback)
+	return strings.TrimSpace(fallback.ResolveStackSlug())
 }
 
 func canonicalCloudDatasource(matches []*datasources.Datasource, kind, stackSlug string) *datasources.Datasource {
