@@ -3,12 +3,14 @@ package profiles
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/pyroscope"
+	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
 )
 
@@ -41,7 +43,9 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 			// Resolve datasource UID from -d flag, config, or Grafana auto-discovery.
 			var cfgCtx *internalconfig.Context
 			fullCfg, err := loader.LoadFullConfig(ctx)
-			if err == nil {
+			if err != nil {
+				logging.FromContext(ctx).Warn("could not load config; falling back to auto-discovery", slog.String("error", err.Error()))
+			} else {
 				cfgCtx = fullCfg.GetCurrentContext()
 			}
 
