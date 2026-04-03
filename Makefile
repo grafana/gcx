@@ -56,12 +56,22 @@ GIT_REVISION  ?= $(shell git rev-parse --short HEAD)
 GIT_VERSION   ?= $(shell git describe --tags --exact-match 2>/dev/null || echo "")
 BUILD_DATE    ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 VERSION_FLAGS := -X main.version=${GIT_VERSION} -X main.commit=${GIT_REVISION} -X main.date=${BUILD_DATE}
+RELEASE_FLAGS := -s -w ${VERSION_FLAGS}
 
 .PHONY: build
 build: check-binaries ## Builds the binary into the `./bin/gcx`.
 	$(RUN_DEVBOX) go build \
 		-buildvcs=false \
 		-ldflags="${VERSION_FLAGS}" \
+		-o bin/gcx \
+		./cmd/gcx
+
+.PHONY: build-release
+build-release: check-binaries ## Builds a stripped, release-optimized binary into `./bin/gcx`.
+	$(RUN_DEVBOX) go build \
+		-buildvcs=false \
+		-trimpath \
+		-ldflags="$(RELEASE_FLAGS)" \
 		-o bin/gcx \
 		./cmd/gcx
 

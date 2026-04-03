@@ -4,7 +4,8 @@
     "go@1.26",
     "golangci-lint@2.9",
     "goreleaser@2.13.3",
-    "python312@3.12.12"
+    "python312@3.12.12",
+    "upx@5.1.1"
   ],
   "shell": {
     "init_hook": [
