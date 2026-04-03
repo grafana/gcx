@@ -3,6 +3,8 @@
 > Prescriptive UX requirements for anyone building new commands or providers.
 > Read this before implementing features. Reference alongside [cli-layer.md](../architecture/cli-layer.md)
 > for command structure and [patterns.md](../architecture/patterns.md) for architectural patterns.
+>
+> For the design philosophy overview (goals, grammar, output model), see [DESIGN.md](../../DESIGN.md) first.
 
 ## Status Markers
 
