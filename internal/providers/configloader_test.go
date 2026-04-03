@@ -302,10 +302,7 @@ func TestConfigLoader_SaveDatasourceUID_ErrorsWithMultipleConfigSources(t *testi
 	localFile := filepath.Join(workDir, ".gcx.yaml")
 	require.NoError(t, os.WriteFile(localFile, []byte("contexts:\n  default: {}\ncurrent-context: default\n"), 0o600))
 
-	cwd, err := os.Getwd()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = os.Chdir(cwd) })
-	require.NoError(t, os.Chdir(workDir))
+	t.Chdir(workDir)
 
 	t.Cleanup(func() { xdg.Reload() })
 	t.Setenv("HOME", homeDir)
@@ -313,7 +310,7 @@ func TestConfigLoader_SaveDatasourceUID_ErrorsWithMultipleConfigSources(t *testi
 	xdg.Reload()
 
 	loader := &providers.ConfigLoader{}
-	err = loader.SaveDatasourceUID(context.Background(), "tempo", "tempo-123")
+	err := loader.SaveDatasourceUID(context.Background(), "tempo", "tempo-123")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "multiple config files loaded")
 

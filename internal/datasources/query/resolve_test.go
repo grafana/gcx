@@ -135,10 +135,10 @@ func testDatasourceRESTConfig(t *testing.T, payload any) config.NamespacedRESTCo
 	t.Helper()
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, http.MethodGet, r.Method)
-		require.Equal(t, "/api/datasources", r.URL.Path)
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/api/datasources", r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
-		require.NoError(t, json.NewEncoder(w).Encode(payload))
+		assert.NoError(t, json.NewEncoder(w).Encode(payload))
 	}))
 	t.Cleanup(srv.Close)
 
