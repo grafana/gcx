@@ -61,6 +61,7 @@ Datasource HTTP APIs                      -- PromQL, LogQL, profile, trace queri
 | [012](docs/adrs/migrate-provider-rewrite/002-five-phase-pipeline-redesign.md) | Five-phase pipeline redesign for /migrate-provider | accepted |
 | [013](docs/adrs/appo11y-provider/001-cli-ux-and-resource-adapter-design.md) | App O11y provider: singleton TypedCRUD, ETag-as-annotation, verb naming | accepted |
 | [014](docs/adrs/instrumentation/001-instrumentation-provider-design.md) | Declarative Instrumentation Setup under `gcx setup` | proposed |
+| [015](docs/adrs/faro-provider/001-faro-provider-design.md) | Faro provider: CLI UX, TypedCRUD adapter, sourcemaps as sub-resource verbs | proposed |
 
 See [docs/adrs/](docs/adrs/) for all ADRs.
 
@@ -102,6 +103,7 @@ See [docs/adrs/](docs/adrs/) for all ADRs.
 | `internal/providers/traces/` | Traces signal provider (Tempo queries + Adaptive Traces) |
 | `internal/providers/profiles/` | Profiles signal provider (Pyroscope queries + adaptive stub) |
 | `internal/auth/adaptive/` | Shared adaptive telemetry auth (GCOM caching, Basic auth) — imported by signal adaptive subpackages |
+| `internal/providers/faro/` | Faro provider (Frontend Observability — apps CRUD, sourcemaps sub-resource verbs) |
 | `internal/providers/appo11y/` | App Observability provider (overrides, settings — singleton TypedCRUD resources) |
 | `internal/dashboards/` | Dashboard Image Renderer client |
 | `internal/query/prometheus/` | Prometheus HTTP query client |

@@ -54,6 +54,7 @@ gcx/
 │   │   │   ├── overrides/    # MetricsGeneratorConfig with ETag concurrency
 │   │   │   └── settings/     # PluginSettings
 │   │   ├── alert/            # Alert provider (rules and groups)
+│   │   ├── faro/             # Faro Frontend Observability provider (apps CRUD, sourcemaps sub-resource)
 │   │   ├── fleet/            # Fleet Management provider (pipeline and collector resources)
 │   │   ├── incidents/        # IRM Incidents provider
 │   │   ├── k6/              # K6 Cloud provider (projects, tests, runs, envvars)

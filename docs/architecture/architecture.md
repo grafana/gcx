@@ -758,6 +758,15 @@ Each LGTM signal has its own provider in `internal/providers/{signal}/` that reg
 | `internal/providers/incidents/commands.go` | IRM Incidents CLI commands |
 | `internal/providers/incidents/resource_adapter.go` | Resource adapter for incidents |
 
+### Faro Provider
+
+| File | Purpose |
+|------|---------|
+| `internal/providers/faro/provider.go` | `FaroProvider` implementing the `providers.Provider` interface |
+| `internal/providers/faro/client.go` | Faro REST client (plugin proxy, apps CRUD, sourcemaps) |
+| `internal/providers/faro/commands.go` | Faro CLI commands (apps list/get/create/update/delete, sourcemap sub-resource verbs) |
+| `internal/providers/faro/resource_adapter.go` | TypedCRUD[FaroApp] adapter (GVK: `app.v1alpha1.faro.ext.grafana.app`) |
+
 ### OnCall Provider
 
 | File | Purpose |

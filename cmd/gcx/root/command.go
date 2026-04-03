@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	_ "github.com/grafana/gcx/internal/providers/alert"     // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/appo11y"   // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/faro"      // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/fleet"     // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/incidents" // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/k6"        // Provider registrations — blank imports trigger init() self-registration.
