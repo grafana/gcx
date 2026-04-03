@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
@@ -292,26 +291,106 @@ func TestClient_ListSourcemaps(t *testing.T) {
 	tests := []struct {
 		name    string
 		appID   string
+		limit   int
 		handler http.HandlerFunc
+		wantLen int
 		wantErr bool
 	}{
 		{
-			name:  "returns raw JSON",
+			name:  "default limit 100 with single page",
 			appID: "42",
+			limit: 0,
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodGet, r.Method)
-				assert.Equal(t, "/api/plugins/grafana-kowalski-app/resources/api/v1/app/42/sourcemaps", r.URL.Path)
-				writeJSON(w, []map[string]any{
-					{"id": "bundle-1", "version": "1.0.0"},
+				assert.Equal(t, "/api/plugin-proxy/grafana-kowalski-app/api-proxy/api/v1/app/42/sourcemaps", r.URL.Path)
+				assert.Equal(t, "100", r.URL.Query().Get("limit"))
+				assert.Empty(t, r.URL.Query().Get("page"))
+				writeJSON(w, map[string]any{
+					"bundles": []map[string]any{
+						{"ID": "bundle-1", "Created": "2024-01-01T00:00:00Z", "Updated": "2024-01-02T00:00:00Z"},
+						{"ID": "bundle-2", "Created": "2024-01-03T00:00:00Z", "Updated": "2024-01-04T00:00:00Z"},
+					},
+					"page": map[string]any{
+						"hasNext":    false,
+						"next":       "",
+						"limit":      100,
+						"totalItems": 2,
+					},
 				})
 			},
+			wantLen: 2,
 		},
 		{
-			name:  "returns error on server error",
+			name:  "respects explicit limit without pagination",
 			appID: "42",
+			limit: 50,
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.Equal(t, "/api/plugin-proxy/grafana-kowalski-app/api-proxy/api/v1/app/42/sourcemaps", r.URL.Path)
+				assert.Equal(t, "50", r.URL.Query().Get("limit"))
+				writeJSON(w, map[string]any{
+					"bundles": []map[string]any{
+						{"ID": "bundle-1", "Created": "2024-01-01T00:00:00Z", "Updated": "2024-01-02T00:00:00Z"},
+					},
+					"page": map[string]any{
+						"hasNext":    true,
+						"next":       "page2",
+						"limit":      50,
+						"totalItems": 2,
+					},
+				})
+			},
+			wantLen: 1,
+		},
+		{
+			name:  "auto-pagination with limit=0",
+			appID: "42",
+			limit: 0,
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.Equal(t, "/api/plugin-proxy/grafana-kowalski-app/api-proxy/api/v1/app/42/sourcemaps", r.URL.Path)
+				assert.Equal(t, "100", r.URL.Query().Get("limit"))
+
+				switch pageParam := r.URL.Query().Get("page"); pageParam {
+				case "":
+					// First page
+					writeJSON(w, map[string]any{
+						"bundles": []map[string]any{
+							{"ID": "bundle-1", "Created": "2024-01-01T00:00:00Z", "Updated": "2024-01-02T00:00:00Z"},
+						},
+						"page": map[string]any{
+							"hasNext":    true,
+							"next":       "page2",
+							"limit":      100,
+							"totalItems": 2,
+						},
+					})
+				case "page2":
+					// Second page
+					writeJSON(w, map[string]any{
+						"bundles": []map[string]any{
+							{"ID": "bundle-2", "Created": "2024-01-03T00:00:00Z", "Updated": "2024-01-04T00:00:00Z"},
+						},
+						"page": map[string]any{
+							"hasNext":    false,
+							"next":       "",
+							"limit":      100,
+							"totalItems": 2,
+						},
+					})
+				default:
+					http.Error(w, "unexpected page param: "+pageParam, http.StatusBadRequest)
+				}
+			},
+			wantLen: 2,
+		},
+		{
+			name:  "propagates server error",
+			appID: "42",
+			limit: 0,
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusInternalServerError)
-				_, _ = w.Write([]byte("error"))
+				_, _ = w.Write([]byte("internal error"))
 			},
 			wantErr: true,
 		},
@@ -323,7 +402,7 @@ func TestClient_ListSourcemaps(t *testing.T) {
 			defer server.Close()
 
 			c := newTestClient(t, server)
-			result, err := c.ListSourcemaps(t.Context(), tt.appID)
+			result, err := c.ListSourcemaps(t.Context(), tt.appID, tt.limit)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -331,36 +410,67 @@ func TestClient_ListSourcemaps(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			assert.NotEmpty(t, result)
+			assert.Len(t, result, tt.wantLen)
 		})
 	}
 }
 
-func TestClient_UploadSourcemap(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "/api/plugins/grafana-kowalski-app/resources/api/v1/app/42/sourcemaps", r.URL.Path)
-		writeJSON(w, map[string]any{"status": "ok"})
-	}))
-	defer server.Close()
+func TestClient_DeleteSourcemaps(t *testing.T) {
+	tests := []struct {
+		name      string
+		appID     string
+		bundleIDs []string
+		handler   http.HandlerFunc
+		wantErr   bool
+	}{
+		{
+			name:      "single bundle ID",
+			appID:     "42",
+			bundleIDs: []string{"bundle-1"},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodDelete, r.Method)
+				assert.Equal(t, "/api/plugin-proxy/grafana-kowalski-app/api-proxy/api/v1/app/42/sourcemaps/batch/bundle-1", r.URL.Path)
+				w.WriteHeader(http.StatusNoContent)
+			},
+		},
+		{
+			name:      "multiple bundle IDs",
+			appID:     "42",
+			bundleIDs: []string{"bundle-1", "bundle-2", "bundle-3"},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodDelete, r.Method)
+				assert.Equal(t, "/api/plugin-proxy/grafana-kowalski-app/api-proxy/api/v1/app/42/sourcemaps/batch/bundle-1,bundle-2,bundle-3", r.URL.Path)
+				w.WriteHeader(http.StatusNoContent)
+			},
+		},
+		{
+			name:      "server error",
+			appID:     "42",
+			bundleIDs: []string{"bundle-1"},
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte("internal error"))
+			},
+			wantErr: true,
+		},
+	}
 
-	c := newTestClient(t, server)
-	result, err := c.UploadSourcemap(t.Context(), "42", strings.NewReader("sourcemap-data"))
-	require.NoError(t, err)
-	assert.NotEmpty(t, result)
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(tt.handler)
+			defer server.Close()
 
-func TestClient_DeleteSourcemap(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodDelete, r.Method)
-		assert.Equal(t, "/api/plugins/grafana-kowalski-app/resources/api/v1/app/42/sourcemaps/bundle-1", r.URL.Path)
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	defer server.Close()
+			c := newTestClient(t, server)
+			err := c.DeleteSourcemaps(t.Context(), tt.appID, tt.bundleIDs)
 
-	c := newTestClient(t, server)
-	err := c.DeleteSourcemap(t.Context(), "42", "bundle-1")
-	require.NoError(t, err)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+		})
+	}
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

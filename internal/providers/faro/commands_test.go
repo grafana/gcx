@@ -166,7 +166,8 @@ func TestProviderInterface(t *testing.T) {
 
 	assert.Equal(t, "faro", p.Name())
 	assert.NotEmpty(t, p.ShortDesc())
-	assert.Nil(t, p.ConfigKeys())
+	assert.Len(t, p.ConfigKeys(), 1)
+	assert.Equal(t, "faro-api-url", p.ConfigKeys()[0].Name)
 	require.NoError(t, p.Validate(nil))
 
 	regs := p.TypedRegistrations()

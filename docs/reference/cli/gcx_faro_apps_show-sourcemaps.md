@@ -6,12 +6,26 @@ Show sourcemaps for a Faro app.
 gcx faro apps show-sourcemaps <app-name> [flags]
 ```
 
+### Examples
+
+```
+  # List all sourcemaps for an app.
+  gcx faro apps show-sourcemaps my-web-app-42
+
+  # List the first 10 sourcemaps.
+  gcx faro apps show-sourcemaps my-web-app-42 --limit 10
+
+  # Output as JSON.
+  gcx faro apps show-sourcemaps my-web-app-42 -o json
+```
+
 ### Options
 
 ```
   -h, --help            help for show-sourcemaps
       --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -o, --output string   Output format. One of: json, yaml (default "text")
+      --limit int       Maximum number of sourcemaps to return (0 for all)
+  -o, --output string   Output format. One of: json, text, wide, yaml (default "text")
 ```
 
 ### Options inherited from parent commands

@@ -26,7 +26,11 @@ func (p *FaroProvider) ShortDesc() string {
 // ConfigKeys returns the configuration keys used by this provider.
 // Faro uses Grafana's built-in authentication and does not require
 // additional provider-specific keys.
-func (p *FaroProvider) ConfigKeys() []providers.ConfigKey { return nil }
+func (p *FaroProvider) ConfigKeys() []providers.ConfigKey {
+	return []providers.ConfigKey{
+		{Name: "faro-api-url", Secret: false},
+	}
+}
 
 // Validate checks that the given provider configuration is valid.
 func (p *FaroProvider) Validate(_ map[string]string) error { return nil }

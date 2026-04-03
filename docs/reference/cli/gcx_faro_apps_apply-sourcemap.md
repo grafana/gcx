@@ -16,8 +16,9 @@ gcx faro apps apply-sourcemap <app-name> [flags]
 ### Options
 
 ```
-  -f, --filename string   Path to the sourcemap file to upload
-  -h, --help              help for apply-sourcemap
+      --bundle-id string   Bundle ID (auto-generated if not set)
+  -f, --filename string    Path to the sourcemap file to upload
+  -h, --help               help for apply-sourcemap
 ```
 
 ### Options inherited from parent commands

@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
+	"strings"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/grafana-app-sdk/logging"
@@ -15,9 +17,25 @@ import (
 )
 
 const (
-	basePath          = "/api/plugin-proxy/grafana-kowalski-app/api-proxy/api/v1/app"
-	sourcemapBasePath = "/api/plugins/grafana-kowalski-app/resources/api/v1/app"
+	basePath = "/api/plugin-proxy/grafana-kowalski-app/api-proxy/api/v1/app"
 )
+
+// SourcemapBundle represents a sourcemap bundle from the Faro API.
+type SourcemapBundle struct {
+	ID      string `json:"ID"`
+	Created string `json:"Created"`
+	Updated string `json:"Updated"`
+}
+
+type sourcemapPage struct {
+	Bundles []SourcemapBundle `json:"bundles"`
+	Page    struct {
+		HasNext    bool   `json:"hasNext"`
+		Next       string `json:"next"`
+		Limit      int    `json:"limit"`
+		TotalItems int    `json:"totalItems"`
+	} `json:"page"`
+}
 
 // Client is an HTTP client for the Grafana Faro API.
 type Client struct {
@@ -208,62 +226,71 @@ func (c *Client) Delete(ctx context.Context, id string) error {
 }
 
 // ListSourcemaps retrieves sourcemaps for a Faro app.
-func (c *Client) ListSourcemaps(ctx context.Context, appID string) (json.RawMessage, error) {
-	path := fmt.Sprintf("%s/%s/sourcemaps", sourcemapBasePath, url.PathEscape(appID))
+// If limit is 0, all pages are fetched via auto-pagination (page size 100).
+// If limit > 0, only a single page of that size is returned.
+func (c *Client) ListSourcemaps(ctx context.Context, appID string, limit int) ([]SourcemapBundle, error) {
 	log := logging.FromContext(ctx)
-	log.Debug("Listing sourcemaps", "app_id", appID, "path", path)
+	log.Debug("Listing sourcemaps", "app_id", appID)
 
-	body, statusCode, err := c.doRequest(ctx, http.MethodGet, path, nil)
+	autoPaginate := limit == 0
+	if limit == 0 {
+		limit = 100
+	}
+
+	var allBundles []SourcemapBundle
+	nextPage := ""
+
+	for {
+		path := fmt.Sprintf("%s/%s/sourcemaps", basePath, url.PathEscape(appID))
+
+		q := url.Values{}
+		q.Set("limit", strconv.Itoa(limit))
+		if nextPage != "" {
+			q.Set("page", nextPage)
+		}
+		path += "?" + q.Encode()
+
+		log.Debug("Fetching sourcemap page", "app_id", appID, "path", path)
+		body, statusCode, err := c.doRequest(ctx, http.MethodGet, path, nil)
+		if err != nil {
+			return nil, fmt.Errorf("faro: list sourcemaps for app %s: %w", appID, err)
+		}
+
+		if statusCode >= 400 {
+			return nil, fmt.Errorf("faro: list sourcemaps for app %s: status %d, body: %s", appID, statusCode, string(body))
+		}
+
+		var page sourcemapPage
+		if err := json.Unmarshal(body, &page); err != nil {
+			return nil, fmt.Errorf("faro: decode sourcemap page: %w", err)
+		}
+
+		allBundles = append(allBundles, page.Bundles...)
+
+		if !autoPaginate || !page.Page.HasNext {
+			break
+		}
+		nextPage = page.Page.Next
+	}
+
+	log.Debug("Listed sourcemaps", "app_id", appID, "count", len(allBundles))
+	return allBundles, nil
+}
+
+// DeleteSourcemaps deletes sourcemap bundles for a Faro app.
+func (c *Client) DeleteSourcemaps(ctx context.Context, appID string, bundleIDs []string) error {
+	path := fmt.Sprintf("%s/%s/sourcemaps/batch/%s", basePath, url.PathEscape(appID), strings.Join(bundleIDs, ","))
+
+	log := logging.FromContext(ctx)
+	log.Info("Deleting sourcemap bundles", "app_id", appID, "bundle_count", len(bundleIDs))
+
+	body, statusCode, err := c.doRequest(ctx, http.MethodDelete, path, nil)
 	if err != nil {
-		return nil, fmt.Errorf("faro: list sourcemaps for app %s: %w", appID, err)
+		return fmt.Errorf("faro: delete sourcemaps for app %s: %w", appID, err)
 	}
 
 	if statusCode >= 400 {
-		return nil, fmt.Errorf("faro: list sourcemaps for app %s: status %d, body: %s", appID, statusCode, string(body))
-	}
-
-	return json.RawMessage(body), nil
-}
-
-// UploadSourcemap uploads a sourcemap for a Faro app.
-func (c *Client) UploadSourcemap(ctx context.Context, appID string, reader io.Reader) (json.RawMessage, error) {
-	path := fmt.Sprintf("%s/%s/sourcemaps", sourcemapBasePath, url.PathEscape(appID))
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.host+path, reader)
-	if err != nil {
-		return nil, fmt.Errorf("faro: create sourcemap upload request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/octet-stream")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("faro: upload sourcemap for app %s: %w", appID, err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("faro: read sourcemap upload response: %w", err)
-	}
-
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("faro: upload sourcemap for app %s: status %d, body: %s", appID, resp.StatusCode, string(body))
-	}
-
-	return json.RawMessage(body), nil
-}
-
-// DeleteSourcemap deletes a sourcemap bundle for a Faro app.
-func (c *Client) DeleteSourcemap(ctx context.Context, appID, bundleID string) error {
-	path := fmt.Sprintf("%s/%s/sourcemaps/%s", sourcemapBasePath, url.PathEscape(appID), url.PathEscape(bundleID))
-
-	_, statusCode, err := c.doRequest(ctx, http.MethodDelete, path, nil)
-	if err != nil {
-		return fmt.Errorf("faro: delete sourcemap %s for app %s: %w", bundleID, appID, err)
-	}
-
-	if statusCode >= 400 {
-		return fmt.Errorf("faro: delete sourcemap %s for app %s: status %d", bundleID, appID, statusCode)
+		return fmt.Errorf("faro: delete sourcemaps for app %s: status %d, body: %s", appID, statusCode, string(body))
 	}
 
 	return nil

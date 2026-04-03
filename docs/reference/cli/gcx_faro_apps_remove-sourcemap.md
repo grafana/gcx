@@ -1,9 +1,19 @@
 ## gcx faro apps remove-sourcemap
 
-Remove a sourcemap bundle from a Faro app.
+Remove sourcemap bundles from a Faro app.
 
 ```
-gcx faro apps remove-sourcemap <app-name> <bundle-id> [flags]
+gcx faro apps remove-sourcemap <app-name> <bundle-id> [bundle-id...] [flags]
+```
+
+### Examples
+
+```
+  # Remove a single sourcemap bundle.
+  gcx faro apps remove-sourcemap my-web-app-42 1234567890-abc12
+
+  # Remove multiple bundles at once.
+  gcx faro apps remove-sourcemap my-web-app-42 bundle-1 bundle-2 bundle-3
 ```
 
 ### Options

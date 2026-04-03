@@ -27,7 +27,7 @@ Manage Faro apps.
 * [gcx faro apps delete](gcx_faro_apps_delete.md)	 - Delete a Faro app.
 * [gcx faro apps get](gcx_faro_apps_get.md)	 - Get a Faro app by slug-id or name.
 * [gcx faro apps list](gcx_faro_apps_list.md)	 - List Faro apps.
-* [gcx faro apps remove-sourcemap](gcx_faro_apps_remove-sourcemap.md)	 - Remove a sourcemap bundle from a Faro app.
+* [gcx faro apps remove-sourcemap](gcx_faro_apps_remove-sourcemap.md)	 - Remove sourcemap bundles from a Faro app.
 * [gcx faro apps show-sourcemaps](gcx_faro_apps_show-sourcemaps.md)	 - Show sourcemaps for a Faro app.
 * [gcx faro apps update](gcx_faro_apps_update.md)	 - Update a Faro app from a file.
 
