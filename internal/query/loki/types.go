@@ -69,14 +69,14 @@ type SeriesResponse struct {
 // MetricQueryResponse represents the response from a metric LogQL query.
 // It uses the same structure as a Prometheus response (time-series with metric labels).
 type MetricQueryResponse struct {
-	Status string               `json:"status"`
-	Data   MetricQueryData      `json:"data"`
+	Status string          `json:"status"`
+	Data   MetricQueryData `json:"data"`
 }
 
 // MetricQueryData holds the metric query result data.
 type MetricQueryData struct {
-	ResultType string               `json:"resultType"`
-	Result     []MetricQuerySample  `json:"result"`
+	ResultType string              `json:"resultType"`
+	Result     []MetricQuerySample `json:"result"`
 }
 
 // MetricQuerySample represents a single time-series from a metric LogQL query.
