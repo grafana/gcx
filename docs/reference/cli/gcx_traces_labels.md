@@ -1,40 +1,52 @@
-## gcx traces tag-values
+## gcx traces labels
 
-List values for a trace tag
+List trace labels or label values
 
 ### Synopsis
 
-List values for a specific trace tag from a Tempo datasource, optionally filtered by scope and TraceQL query.
+List all trace labels or get values for a specific label from a Tempo datasource.
+
+When -l/--label is provided, returns values for that label.
+When -l is omitted, returns all label names.
+
+Datasource is resolved from -d flag or datasources.tempo in your context.
 
 ```
-gcx traces tag-values TAG [flags]
+gcx traces labels [flags]
 ```
 
 ### Examples
 
 ```
 
-  # List values for a tag (use datasource UID, not name)
-  gcx traces tag-values service.name -d <datasource-uid>
+  # List all labels
+  gcx traces labels -d <datasource-uid>
+
+  # Get values for a specific label
+  gcx traces labels -d <datasource-uid> -l service.name
+
+  # Using the tags alias
+  gcx traces tags -d <datasource-uid> -l service.name
 
   # Filter by scope
-  gcx traces tag-values service.name -d <datasource-uid> --scope resource
+  gcx traces labels -d <datasource-uid> -l service.name --scope span
 
   # Filter with a TraceQL query
-  gcx traces tag-values http.status_code -d <datasource-uid> -q '{ span.http.method = "GET" }'
+  gcx traces labels -d <datasource-uid> -q '{ span.http.status_code >= 500 }'
 
   # Output as JSON
-  gcx traces tag-values service.name -d <datasource-uid> -o json
+  gcx traces labels -d <datasource-uid> -o json
 ```
 
 ### Options
 
 ```
   -d, --datasource string   Datasource UID (required unless datasources.tempo is configured)
-  -h, --help                help for tag-values
+  -h, --help                help for labels
       --json string         Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+  -l, --label string        Get values for this label (omit to list all labels)
   -o, --output string       Output format. One of: json, table, yaml (default "table")
-  -q, --query string        TraceQL query to filter tag values
+  -q, --query string        TraceQL query to filter labels
       --scope string        Tag scope filter (resource, span, event, link, instrumentation)
 ```
 

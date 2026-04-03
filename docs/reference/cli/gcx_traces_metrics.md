@@ -6,46 +6,44 @@ Execute a TraceQL metrics query
 
 Execute a TraceQL metrics query against a Tempo datasource.
 
-DATASOURCE_UID is optional when datasources.tempo is configured in your context.
 TRACEQL is the TraceQL metrics expression to evaluate.
+Datasource is resolved from -d flag or datasources.tempo in your context.
 
-By default, this runs a range query. Use --instant for point-in-time queries.
+Instant vs range is deduced from time flags: no time flags = instant query,
+--since or --from/--to = range query.
 
 ```
-gcx traces metrics [DATASOURCE_UID] TRACEQL [flags]
+gcx traces metrics TRACEQL [flags]
 ```
 
 ### Examples
 
 ```
 
-  # Range query using configured default datasource
+  # Instant query (no time flags)
   gcx traces metrics '{ } | rate()'
 
-  # Range query with explicit datasource and time range
-  gcx traces metrics tempo-001 '{ } | rate()' --since 1h
+  # Range query with since
+  gcx traces metrics -d tempo-001 '{ } | rate()' --since 1h
 
-  # Instant query
-  gcx traces metrics tempo-001 '{ } | rate()' --instant --since 1h
-
-  # Custom step interval
-  gcx traces metrics tempo-001 '{ } | rate()' --since 1h --step 30s
+  # Range query with explicit time range
+  gcx traces metrics '{ } | rate()' --from now-1h --to now --step 30s
 
   # Output as JSON
-  gcx traces metrics tempo-001 '{ } | rate()' -o json
+  gcx traces metrics -d tempo-001 '{ } | rate()' -o json
 ```
 
 ### Options
 
 ```
-      --from string     Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-  -h, --help            help for metrics
-      --instant         Execute an instant query instead of a range query
-      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -o, --output string   Output format. One of: graph, json, table, wide, yaml (default "table")
-      --since string    Duration before --to (or now if omitted); mutually exclusive with --from
-      --step string     Query step (e.g., '15s', '1m')
-      --to string       End time (RFC3339, Unix timestamp, or relative like 'now')
+  -d, --datasource string   Datasource UID (required unless datasources.tempo is configured)
+      --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
+  -h, --help                help for metrics
+      --json string         Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+  -o, --output string       Output format. One of: graph, json, table, wide, yaml (default "table")
+      --since string        Duration before --to (or now if omitted); mutually exclusive with --from
+      --step string         Query step (e.g., '15s', '1m')
+      --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 
 ### Options inherited from parent commands

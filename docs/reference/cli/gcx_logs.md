@@ -24,6 +24,7 @@ Query Loki datasources and manage Adaptive Logs
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx logs adaptive](gcx_logs_adaptive.md)	 - Manage Adaptive Logs resources
 * [gcx logs labels](gcx_logs_labels.md)	 - List labels or label values
+* [gcx logs metrics](gcx_logs_metrics.md)	 - Execute a metric LogQL query against a Loki datasource
 * [gcx logs query](gcx_logs_query.md)	 - Execute a LogQL query against a Loki datasource
 * [gcx logs series](gcx_logs_series.md)	 - List log streams
 

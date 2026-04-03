@@ -1,30 +1,36 @@
-## gcx logs query
+## gcx logs metrics
 
-Execute a LogQL query against a Loki datasource
+Execute a metric LogQL query against a Loki datasource
 
 ### Synopsis
 
-Execute a LogQL query against a Loki datasource.
+Execute a metric LogQL query and return time-series results.
 
-EXPR is the LogQL expression to evaluate.
+EXPR is a metric LogQL expression (e.g., rate, count_over_time, sum).
 Datasource is resolved from -d flag or datasources.loki in your context.
 
+Unlike 'logs query' which returns log lines, 'logs metrics' returns
+time-series data with proper table, graph, and JSON formatters.
+
 ```
-gcx logs query EXPR [flags]
+gcx logs metrics EXPR [flags]
 ```
 
 ### Examples
 
 ```
 
-  # Query logs using configured default datasource
-  gcx logs query '{job="varlogs"}'
+  # Rate of log lines over 5 minutes
+  gcx logs metrics 'rate({job="varlogs"}[5m])' --since 1h -o table
 
-  # Query with explicit datasource UID
-  gcx logs query -d abc123 '{job="varlogs"} |= "error"'
+  # Count of error logs
+  gcx logs metrics 'count_over_time({job="varlogs"} |= "error" [5m])' --since 1h
+
+  # Line chart output
+  gcx logs metrics -d loki-001 'rate({job="varlogs"}[5m])' --since 1h -o graph
 
   # Output as JSON
-  gcx logs query -d abc123 '{job="varlogs"}' -o json
+  gcx logs metrics 'rate({job="varlogs"}[5m])' --since 1h -o json
 ```
 
 ### Options
@@ -32,9 +38,8 @@ gcx logs query EXPR [flags]
 ```
   -d, --datasource string   Datasource UID (required unless datasources.loki is configured)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-  -h, --help                help for query
+  -h, --help                help for metrics
       --json string         Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-      --limit int           Maximum number of log lines to return (0 means no limit) (default 1000)
   -o, --output string       Output format. One of: graph, json, table, wide, yaml (default "table")
       --since string        Duration before --to (or now if omitted); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')

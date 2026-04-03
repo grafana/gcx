@@ -1,4 +1,4 @@
-## gcx profiles series
+## gcx profiles metrics
 
 Query profile time-series data from a Pyroscope datasource
 
@@ -13,11 +13,11 @@ Use --top to aggregate the time range into a ranked leaderboard of the heaviest
 consumers (equivalent to profilecli query top). Without --top, returns raw
 time-series data points for trend analysis.
 
-DATASOURCE_UID is optional when datasources.pyroscope is configured in your context.
 EXPR is the label selector (e.g., '{service_name="frontend"}').
+Datasource is resolved from -d flag or datasources.pyroscope in your context.
 
 ```
-gcx profiles series [DATASOURCE_UID] EXPR [flags]
+gcx profiles metrics EXPR [flags]
 ```
 
 ### Examples
@@ -25,15 +25,15 @@ gcx profiles series [DATASOURCE_UID] EXPR [flags]
 ```
 
   # Top services by CPU usage (ranked leaderboard)
-  gcx profiles series '{}' \
+  gcx profiles metrics '{}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --top
 
   # CPU usage over the last hour with 1-minute resolution
-  gcx profiles series '{service_name="frontend"}' \
+  gcx profiles metrics -d pyro-001 '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --step 1m
 
   # Output as JSON
-  gcx profiles series abc123 '{}' \
+  gcx profiles metrics -d abc123 '{}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --top -o json
 ```
 
@@ -41,9 +41,10 @@ gcx profiles series [DATASOURCE_UID] EXPR [flags]
 
 ```
       --aggregation string    Aggregation type: 'sum' or 'average'
+  -d, --datasource string     Datasource UID (required unless datasources.pyroscope is configured)
       --from string           Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
       --group-by strings      Group series by label (repeatable, defaults to service_name)
-  -h, --help                  help for series
+  -h, --help                  help for metrics
       --json string           Comma-separated list of fields to include in JSON output, or '?' to discover available fields
       --limit int             Maximum number of series to return (default 10)
   -o, --output string         Output format. One of: graph, json, table, wide, yaml (default "table")

@@ -6,11 +6,11 @@ Execute a profiling query against a Pyroscope datasource
 
 Execute a profiling query against a Pyroscope datasource.
 
-DATASOURCE_UID is optional when datasources.pyroscope is configured in your context.
 EXPR is the label selector (e.g., '{service_name="frontend"}').
+Datasource is resolved from -d flag or datasources.pyroscope in your context.
 
 ```
-gcx profiles query [DATASOURCE_UID] EXPR [flags]
+gcx profiles query EXPR [flags]
 ```
 
 ### Examples
@@ -18,7 +18,7 @@ gcx profiles query [DATASOURCE_UID] EXPR [flags]
 ```
 
   # Profile query with explicit datasource UID
-  gcx profiles query abc123 '{service_name="frontend"}' \
+  gcx profiles query -d abc123 '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
 
   # Using configured default datasource
@@ -26,13 +26,14 @@ gcx profiles query [DATASOURCE_UID] EXPR [flags]
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
 
   # Output as JSON
-  gcx profiles query abc123 '{service_name="frontend"}' \
+  gcx profiles query -d abc123 '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o json
 ```
 
 ### Options
 
 ```
+  -d, --datasource string     Datasource UID (required unless datasources.pyroscope is configured)
       --from string           Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                  help for query
       --json string           Comma-separated list of fields to include in JSON output, or '?' to discover available fields

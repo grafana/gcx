@@ -6,11 +6,11 @@ Execute a PromQL query against a Prometheus datasource
 
 Execute a PromQL query against a Prometheus datasource.
 
-DATASOURCE_UID is optional when datasources.prometheus is configured in your context.
 EXPR is the PromQL expression to evaluate.
+Datasource is resolved from -d flag or datasources.prometheus in your context.
 
 ```
-gcx metrics query [DATASOURCE_UID] EXPR [flags]
+gcx metrics query EXPR [flags]
 ```
 
 ### Examples
@@ -21,25 +21,26 @@ gcx metrics query [DATASOURCE_UID] EXPR [flags]
   gcx metrics query 'up{job="grafana"}'
 
   # Range query with explicit datasource UID
-  gcx metrics query abc123 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m
+  gcx metrics query -d abc123 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m
 
   # Query the last hour
-  gcx metrics query abc123 'up' --since 1h
+  gcx metrics query 'up' --since 1h
 
   # Output as JSON
-  gcx metrics query abc123 'up' -o json
+  gcx metrics query -d abc123 'up' -o json
 ```
 
 ### Options
 
 ```
-      --from string     Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-  -h, --help            help for query
-      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -o, --output string   Output format. One of: graph, json, table, wide, yaml (default "table")
-      --since string    Duration before --to (or now if omitted); mutually exclusive with --from
-      --step string     Query step (e.g., '15s', '1m')
-      --to string       End time (RFC3339, Unix timestamp, or relative like 'now')
+  -d, --datasource string   Datasource UID (required unless datasources.prometheus is configured)
+      --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
+  -h, --help                help for query
+      --json string         Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+  -o, --output string       Output format. One of: graph, json, table, wide, yaml (default "table")
+      --since string        Duration before --to (or now if omitted); mutually exclusive with --from
+      --step string         Query step (e.g., '15s', '1m')
+      --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 
 ### Options inherited from parent commands
