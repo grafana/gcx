@@ -56,6 +56,7 @@ need to invoke them by name.
 | `investigate-alert` | "why is this alert firing", "investigate alert X" | Root-cause an alert using metrics, logs, and correlated signals |
 | `debug-with-grafana` | "debug this service", "diagnose latency", "troubleshoot errors" | 7-step diagnostic workflow: datasource → query → correlate → conclude |
 | `manage-dashboards` | "pull dashboards", "push to Grafana", "promote to production" | Full dashboard lifecycle: pull, push, create, validate, promote |
+| `gcx-observability` | "set up observability", "instrument my app", "observability setup" | End-to-end observability: instrumentation, SLOs, alerting, synthetic checks, k6, IRM, dashboards, cost optimization, GitOps export |
 
 ## Agents
 
