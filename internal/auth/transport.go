@@ -182,3 +182,31 @@ func (t *RefreshTransport) doRefresh(ctx context.Context, refreshToken string) (
 
 	return &result, nil
 }
+
+// DoRefresh calls the proxy refresh endpoint and returns new token credentials.
+// This is used by the assistant command's token refresher, which needs to refresh
+// tokens outside of an HTTP round-trip context.
+// RefreshResult holds the token credentials returned by a successful refresh.
+type RefreshResult struct {
+	Token            string
+	RefreshToken     string
+	ExpiresAt        string
+	RefreshExpiresAt string
+}
+
+// DoRefresh calls the proxy refresh endpoint and returns new token credentials.
+// This is used by the assistant command's token refresher, which needs to refresh
+// tokens outside of an HTTP round-trip context.
+func DoRefresh(ctx context.Context, proxyEndpoint, refreshTok string) (RefreshResult, error) {
+	t := &RefreshTransport{ProxyEndpoint: proxyEndpoint}
+	result, err := t.doRefresh(ctx, refreshTok)
+	if err != nil {
+		return RefreshResult{}, err
+	}
+	return RefreshResult{
+		Token:            result.Data.Token,
+		RefreshToken:     result.Data.RefreshToken,
+		ExpiresAt:        result.Data.ExpiresAt,
+		RefreshExpiresAt: result.Data.RefreshExpiresAt,
+	}, nil
+}

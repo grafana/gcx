@@ -374,43 +374,21 @@ Mark task in_progress. Requires Phase 4 contact points to exist.
 > **This phase completes the alerting -> IRM routing.** The contact point created in Phase 4 will be updated to point to the IRM integration webhook, ensuring all alerts flow through IRM for routing, escalation, and on-call management.
 
 **Pre-check — skip resources that already exist:**
-List existing IRM resources using `gcx oncall` read commands:
-```bash
-gcx oncall integrations list
-gcx oncall escalation-chains list
-gcx oncall schedules list
-gcx oncall routes list
-```
-Skip creation of any that already exist; capture IDs and webhook URLs from existing resources. Even if the integration already exists, still verify the Phase 4 contact point is pointing to its webhook URL.
-
-> **Note:** The `gcx oncall` provider is read-only (`list` and `get` only). All write operations use the OnCall REST API via `gcx api` passthrough.
+Discover the oncall command group (`gcx oncall --help`) and list integrations (`gcx oncall integrations list`), escalation chains (`gcx oncall escalation-chains list`), schedules (`gcx oncall schedules list`), and routes (`gcx oncall routes list`). Skip creation of any that already exist; capture IDs and webhook URLs from existing resources. Even if the integration already exists, still verify the Phase 4 contact point is pointing to its webhook URL.
 
 **Step 1 — parallel (independent of each other):**
 
 - **Agent A** — integration + escalation chain:
-  Create an integration and escalation chain via the OnCall API:
-  ```bash
-  gcx api /api/v1/integrations -X POST -d @integration.json
-  gcx oncall integrations list   # confirm and capture webhook URL
-  gcx api /api/v1/escalation_chains -X POST -d @escalation-chain.json
-  gcx oncall escalation-chains list   # confirm
-  ```
+  Discover oncall integration and escalation-chain subcommands (`gcx oncall integrations --help`, `gcx oncall escalation-chains --help`). Get examples if available, customize, create each, list to confirm and capture the integration webhook URL.
 
 - **Agent B** — schedules + shifts:
-  Create schedules and shifts for the on-call team from Phase 1:
-  ```bash
-  gcx api /api/v1/schedules -X POST -d @schedule.json
-  gcx oncall schedules list   # confirm
-  gcx api /api/v1/on_call_shifts -X POST -d @shift.json
-  ```
+  Discover oncall schedules and shifts subcommands (`gcx oncall schedules --help`, `gcx oncall shifts --help`). Get examples if available, customize for the on-call team from Phase 1, create each, list to confirm.
 
 Wait for both. Then **Step 2** (needs integration webhook URL from Agent A):
 
-Create a route via the OnCall API, then update the Phase 4 contact point to use the IRM webhook URL:
+Create a route: `gcx oncall routes create -f route.yaml`, list to confirm. Then update the Phase 4 contact point to use the IRM webhook URL:
 
 ```bash
-gcx api /api/v1/routes -X POST -d @route.json
-gcx oncall routes list   # confirm
 gcx api /api/v1/provisioning/contact-points/<uid> -X PUT -d @contact-point-updated.json
 gcx api /api/v1/provisioning/contact-points
 ```
