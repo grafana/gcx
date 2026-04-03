@@ -123,8 +123,24 @@ export GRAFANA_CLOUD_TOKEN="your-cloud-access-policy-token"
 export GRAFANA_CLOUD_STACK="your-stack-slug"
 ```
 
+**Browser-based OAuth login (experimental):**
+
+```bash
+gcx auth login --server https://byoc-grafana.com
+```
+
+This opens a browser and bootstraps the selected context without preconfiguring
+`grafana.server`. On success, gcx saves the server URL, OAuth access token,
+refresh token, and proxy endpoint to that context.
+
+If you want to save the login to a specific context:
+
+```bash
+gcx auth login --context my-grafana --server https://byoc-grafana.com
+```
+
 > [!NOTE]
-> `gcx auth login` provides an experimental browser-based OAuth flow. On success, it saves an OAuth access token, refresh token, and proxy endpoint to the selected context. Manual token setup above remains the recommended approach for now.
+> For automation, CI/CD, and other non-interactive usage, the token-based setup above remains the recommended approach.
 
 **Verify:** `gcx config check`
 
