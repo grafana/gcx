@@ -17,15 +17,16 @@ func queryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
 	var profileType string
 	var maxNodes int64
+	var datasource string
 
 	cmd := &cobra.Command{
-		Use:   "query [DATASOURCE_UID] EXPR",
+		Use:   "query EXPR",
 		Short: "Execute a profiling query against a Pyroscope datasource",
 		Long: `Execute a profiling query against a Pyroscope datasource.
 
-DATASOURCE_UID is optional when datasources.pyroscope is configured in your context.
-EXPR is the label selector (e.g., '{service_name="frontend"}').`,
-		Args: cobra.RangeArgs(1, 2),
+EXPR is the label selector (e.g., '{service_name="frontend"}').
+Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
 				return err
@@ -37,17 +38,19 @@ EXPR is the label selector (e.g., '{service_name="frontend"}').`,
 
 			ctx := cmd.Context()
 
-			// Resolve default UID from config.
-			var defaultUID string
+			// Resolve datasource UID from -d flag or config.
+			var cfgCtx *internalconfig.Context
 			fullCfg, err := loader.LoadFullConfig(ctx)
 			if err == nil {
-				defaultUID = internalconfig.DefaultDatasourceUID(*fullCfg.GetCurrentContext(), "pyroscope")
+				cfgCtx = fullCfg.GetCurrentContext()
 			}
 
-			datasourceUID, expr, err := dsquery.ResolveTypedArgs(args, defaultUID, "pyroscope")
+			datasourceUID, err := dsquery.ResolveDatasourceFlag(datasource, cfgCtx, "pyroscope")
 			if err != nil {
 				return err
 			}
+
+			expr := args[0]
 
 			cfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
@@ -95,6 +98,7 @@ EXPR is the label selector (e.g., '{service_name="frontend"}').`,
 	}
 
 	shared.Setup(cmd.Flags())
+	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pyroscope is configured)")
 	cmd.Flags().StringVar(&profileType, "profile-type", "", "Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds') (required)")
 	cmd.Flags().Int64Var(&maxNodes, "max-nodes", 1024, "Maximum nodes in flame graph")
 

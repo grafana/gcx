@@ -41,11 +41,11 @@ func (p *Provider) Commands() []*cobra.Command {
 	qCmd := queryCmd(loader)
 	qCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   "gcx profiles query abc123 '{service_name=\"frontend\"}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h -o json",
+		agent.AnnotationLLMHint:   `gcx profiles query -d abc123 '{service_name="frontend"}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h -o json`,
 	}
 	qCmd.Example = `
   # Profile query with explicit datasource UID
-  gcx profiles query abc123 '{service_name="frontend"}' \
+  gcx profiles query -d abc123 '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
 
   # Using configured default datasource
@@ -53,7 +53,7 @@ func (p *Provider) Commands() []*cobra.Command {
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
 
   # Output as JSON
-  gcx profiles query abc123 '{service_name="frontend"}' \
+  gcx profiles query -d abc123 '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o json`
 	cmd.AddCommand(qCmd)
 
@@ -86,24 +86,24 @@ func (p *Provider) Commands() []*cobra.Command {
   gcx profiles profile-types -d <datasource-uid> -o json`
 	cmd.AddCommand(ptCmd)
 
-	sCmd := seriesCmd(loader)
-	sCmd.Annotations = map[string]string{
+	mCmd := metricsCmd(loader)
+	mCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx profiles series '{}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --top -o json",
+		agent.AnnotationLLMHint:   "gcx profiles metrics '{}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --top -o json",
 	}
-	sCmd.Example = `
+	mCmd.Example = `
   # Top services by CPU usage (ranked leaderboard)
-  gcx profiles series '{}' \
+  gcx profiles metrics '{}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --top
 
   # CPU usage over the last hour with 1-minute resolution
-  gcx profiles series '{service_name="frontend"}' \
+  gcx profiles metrics -d pyro-001 '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --step 1m
 
   # Output as JSON
-  gcx profiles series abc123 '{}' \
+  gcx profiles metrics -d abc123 '{}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --top -o json`
-	cmd.AddCommand(sCmd)
+	cmd.AddCommand(mCmd)
 
 	// Adaptive Profiles stub.
 	cmd.AddCommand(adaptiveStubCmd())

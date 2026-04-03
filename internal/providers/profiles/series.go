@@ -17,8 +17,9 @@ import (
 	"github.com/spf13/pflag"
 )
 
-type pyroscopeSeriesOpts struct {
+type pyroscopeMetricsOpts struct {
 	shared      dsquery.SharedOpts
+	Datasource  string
 	ProfileType string
 	GroupBy     []string
 	Aggregation string
@@ -26,7 +27,7 @@ type pyroscopeSeriesOpts struct {
 	Top         bool
 }
 
-func (opts *pyroscopeSeriesOpts) setup(flags *pflag.FlagSet) {
+func (opts *pyroscopeMetricsOpts) setup(flags *pflag.FlagSet) {
 	opts.shared.IO.RegisterCustomCodec("table", &pyroscopeSeriesTableCodec{})
 	opts.shared.IO.RegisterCustomCodec("wide", &pyroscopeSeriesWideCodec{})
 	opts.shared.IO.RegisterCustomCodec("graph", &pyroscopeSeriesGraphCodec{})
@@ -38,6 +39,7 @@ func (opts *pyroscopeSeriesOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.shared.Step, "step", "", "Query step (e.g., '15s', '1m')")
 	flags.StringVar(&opts.shared.Since, "since", "", "Duration before --to (or now if omitted); mutually exclusive with --from")
 
+	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pyroscope is configured)")
 	flags.BoolVar(&opts.Top, "top", false, "Aggregate into a ranked leaderboard (equivalent to profilecli query top)")
 	flags.StringVar(&opts.ProfileType, "profile-type", "", "Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds') (required)")
 	flags.StringSliceVar(&opts.GroupBy, "group-by", nil, "Group series by label (repeatable, defaults to service_name)")
@@ -45,7 +47,7 @@ func (opts *pyroscopeSeriesOpts) setup(flags *pflag.FlagSet) {
 	flags.Int64Var(&opts.Limit, "limit", 10, "Maximum number of series to return")
 }
 
-func (opts *pyroscopeSeriesOpts) Validate() error {
+func (opts *pyroscopeMetricsOpts) Validate() error {
 	if err := opts.shared.Validate(); err != nil {
 		return err
 	}
@@ -59,12 +61,12 @@ func (opts *pyroscopeSeriesOpts) Validate() error {
 	return nil
 }
 
-// seriesCmd returns the `series` subcommand for a Pyroscope datasource parent.
-func seriesCmd(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &pyroscopeSeriesOpts{}
+// metricsCmd returns the `metrics` subcommand for a Pyroscope datasource parent.
+func metricsCmd(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &pyroscopeMetricsOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "series [DATASOURCE_UID] EXPR",
+		Use:   "metrics EXPR",
 		Short: "Query profile time-series data from a Pyroscope datasource",
 		Long: `Query profile time-series data via SelectSeries from a Pyroscope datasource.
 
@@ -75,34 +77,29 @@ Use --top to aggregate the time range into a ranked leaderboard of the heaviest
 consumers (equivalent to profilecli query top). Without --top, returns raw
 time-series data points for trend analysis.
 
-DATASOURCE_UID is optional when datasources.pyroscope is configured in your context.
-EXPR is the label selector (e.g., '{service_name="frontend"}').`,
+EXPR is the label selector (e.g., '{service_name="frontend"}').
+Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 		Example: `
   # Top services by CPU usage (ranked leaderboard)
-  gcx profiles series '{}' \
+  gcx profiles metrics '{}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
     --since 1h --top
 
   # Top 20 services by memory, grouped by namespace
-  gcx profiles series '{}' \
+  gcx profiles metrics '{}' \
     --profile-type memory:inuse_space:bytes:space:bytes \
     --since 1h --top --group-by namespace --limit 20
 
   # CPU usage over the last hour with 1-minute resolution
-  gcx profiles series '{service_name="frontend"}' \
+  gcx profiles metrics -d pyro-001 '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
     --since 1h --step 1m
 
-  # Group by namespace
-  gcx profiles series '{service_name="frontend"}' \
-    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
-    --since 1h --step 1m --group-by namespace
-
   # Line chart output
-  gcx profiles series '{service_name="frontend"}' \
+  gcx profiles metrics '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
     --since 1h --step 1m -o graph`,
-		Args: cobra.RangeArgs(1, 2),
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -110,17 +107,19 @@ EXPR is the label selector (e.g., '{service_name="frontend"}').`,
 
 			ctx := cmd.Context()
 
-			// Resolve default UID from config.
-			var defaultUID string
+			// Resolve datasource UID from -d flag or config.
+			var cfgCtx *internalconfig.Context
 			fullCfg, err := loader.LoadFullConfig(ctx)
 			if err == nil {
-				defaultUID = internalconfig.DefaultDatasourceUID(*fullCfg.GetCurrentContext(), "pyroscope")
+				cfgCtx = fullCfg.GetCurrentContext()
 			}
 
-			datasourceUID, expr, err := dsquery.ResolveTypedArgs(args, defaultUID, "pyroscope")
+			datasourceUID, err := dsquery.ResolveDatasourceFlag(opts.Datasource, cfgCtx, "pyroscope")
 			if err != nil {
 				return err
 			}
+
+			expr := args[0]
 
 			cfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
@@ -179,7 +178,7 @@ EXPR is the label selector (e.g., '{service_name="frontend"}').`,
 
 			resp, err := client.SelectSeries(ctx, datasourceUID, req)
 			if err != nil {
-				return fmt.Errorf("series query failed: %w", err)
+				return fmt.Errorf("metrics query failed: %w", err)
 			}
 
 			if opts.Top {
