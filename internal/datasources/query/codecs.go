@@ -102,7 +102,7 @@ func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
 			return err
 		}
 	default:
-		return errors.New("invalid data type for graph codec (expected *prometheus.QueryResponse, *loki.QueryResponse, or *pyroscope.QueryResponse)")
+		return errors.New("invalid data type for graph codec")
 	}
 
 	opts := graph.DefaultChartOptions()

@@ -25,7 +25,10 @@ EXPR is a metric LogQL expression (e.g., rate, count_over_time, sum).
 Datasource is resolved from -d flag or datasources.loki in your context.
 
 Unlike 'logs query' which returns log lines, 'logs metrics' returns
-time-series data with proper table, graph, and JSON formatters.`,
+time-series data with proper table, graph, and JSON formatters.
+
+Instant vs range is deduced from time flags: no time flags = instant query,
+--since or --from/--to = range query.`,
 		Example: `
   # Rate of log lines over 5 minutes
   gcx logs metrics 'rate({job="varlogs"}[5m])' --since 1h -o table
