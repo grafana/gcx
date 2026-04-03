@@ -138,7 +138,7 @@ func (opts *Options) LoadGrafanaConfig(ctx context.Context) (config.NamespacedRE
 	}
 
 	restCfg := cfg.GetCurrentContext().ToRESTConfig(ctx)
-	restCfg.WireTokenPersistence(ctx, opts.ConfigSource(), cfg.CurrentContext)
+	restCfg.WireTokenPersistence(ctx, opts.ConfigSource(), cfg.CurrentContext, cfg.Sources)
 
 	return restCfg, nil
 }

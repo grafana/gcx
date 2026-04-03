@@ -173,7 +173,7 @@ func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.Namespaced
 	}
 
 	restCfg := loaded.GetCurrentContext().ToRESTConfig(ctx)
-	restCfg.WireTokenPersistence(ctx, l.configSource(), loaded.CurrentContext)
+	restCfg.WireTokenPersistence(ctx, l.configSource(), loaded.CurrentContext, loaded.Sources)
 
 	return restCfg, nil
 }
@@ -263,7 +263,7 @@ func (l *ConfigLoader) LoadCloudConfig(ctx context.Context) (CloudRESTConfig, er
 	var restCfg *rest.Config
 	if curCtx.Grafana != nil && !curCtx.Grafana.IsEmpty() {
 		nrc := curCtx.ToRESTConfig(ctx)
-		nrc.WireTokenPersistence(ctx, l.configSource(), loaded.CurrentContext)
+		nrc.WireTokenPersistence(ctx, l.configSource(), loaded.CurrentContext, loaded.Sources)
 
 		namespace = nrc.Namespace
 		restCfg = &nrc.Config
