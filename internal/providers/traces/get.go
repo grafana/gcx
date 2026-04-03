@@ -40,6 +40,12 @@ func (opts *getOpts) Validate() error {
 	}
 
 	if opts.Since == "" {
+		if opts.From != "" && opts.To == "" {
+			return errors.New("--to is required when --from is set")
+		}
+		if opts.To != "" && opts.From == "" {
+			return errors.New("--from is required when --to is set")
+		}
 		return nil
 	}
 
@@ -73,25 +79,25 @@ func getCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &getOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "get [DATASOURCE_UID] TRACE_ID",
+		Use:   "get TRACE_ID",
 		Short: "Retrieve a trace by ID",
 		Long: `Retrieve a single trace by its trace ID from a Tempo datasource.
 
-DATASOURCE_UID is optional when datasources.tempo is configured in your context.
-TRACE_ID is the hex-encoded trace identifier to retrieve.`,
+TRACE_ID is the hex-encoded trace identifier to retrieve.
+Datasource is resolved from -d flag or datasources.tempo in your context.`,
 		Example: `
   # Get a trace using configured default datasource
   gcx traces get abc123def456
 
   # Get a trace with explicit datasource UID
-  gcx traces get tempo-001 abc123def456
+  gcx traces get -d tempo-001 abc123def456
 
   # Get LLM-friendly output
   gcx traces get abc123def456 --llm
 
   # Get a trace within a time range
   gcx traces get abc123def456 --since 1h`,
-		Args: validateGetArgs,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -99,31 +105,23 @@ TRACE_ID is the hex-encoded trace identifier to retrieve.`,
 
 			ctx := cmd.Context()
 
-			cfg, err := loader.LoadGrafanaConfig(ctx)
+			// Resolve datasource UID from -d flag or config.
+			var cfgCtx *internalconfig.Context
+			fullCfg, err := loader.LoadFullConfig(ctx)
+			if err == nil {
+				cfgCtx = fullCfg.GetCurrentContext()
+			}
+
+			datasourceUID, err := dsquery.ResolveDatasourceFlag(opts.Datasource, cfgCtx, "tempo")
 			if err != nil {
 				return err
 			}
 
-			datasourceUID := opts.Datasource
-			var traceID string
+			traceID := args[0]
 
-			switch len(args) {
-			case 1:
-				traceID = args[0]
-				if datasourceUID == "" {
-					fullCfg, err := loader.LoadFullConfig(ctx)
-					if err != nil {
-						return err
-					}
-					datasourceUID = internalconfig.DefaultDatasourceUID(*fullCfg.GetCurrentContext(), "tempo")
-				}
-			case 2:
-				datasourceUID = args[0]
-				traceID = args[1]
-			}
-
-			if datasourceUID == "" {
-				return errors.New("datasource UID is required: use -d flag, provide it as the first positional argument, or set datasources.tempo in config")
+			cfg, err := loader.LoadGrafanaConfig(ctx)
+			if err != nil {
+				return err
 			}
 
 			now := time.Now()
@@ -160,15 +158,4 @@ TRACE_ID is the hex-encoded trace identifier to retrieve.`,
 	opts.setup(cmd.Flags())
 
 	return cmd
-}
-
-func validateGetArgs(_ *cobra.Command, args []string) error {
-	switch len(args) {
-	case 0:
-		return errors.New("TRACE_ID is required")
-	case 1, 2:
-		return nil
-	default:
-		return errors.New("too many arguments: expected [DATASOURCE_UID] TRACE_ID")
-	}
 }

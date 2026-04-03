@@ -1,7 +1,6 @@
 package traces
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
@@ -12,31 +11,37 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// searchCmd returns the `search` subcommand for a Tempo datasource parent.
-func searchCmd(loader *providers.ConfigLoader) *cobra.Command {
+// queryCmd returns the `query` subcommand for a Tempo datasource parent.
+// It also registers `search` as a non-deprecated alias.
+func queryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
 	var limit int
+	var datasource string
 
 	cmd := &cobra.Command{
-		Use:   "search [DATASOURCE_UID] TRACEQL",
-		Short: "Search for traces using a TraceQL query",
+		Use:     "query TRACEQL",
+		Aliases: []string{"search"},
+		Short:   "Search for traces using a TraceQL query",
 		Long: `Search for traces using a TraceQL query against a Tempo datasource.
 
-DATASOURCE_UID is optional when datasources.tempo is configured in your context.
-TRACEQL is the TraceQL expression to evaluate.`,
+TRACEQL is the TraceQL expression to evaluate.
+Datasource is resolved from -d flag or datasources.tempo in your context.`,
 		Example: `
   # Search traces using configured default datasource
-  gcx traces search '{ span.http.status_code >= 500 }'
+  gcx traces query '{ span.http.status_code >= 500 }'
 
   # Search with explicit datasource UID and time range
-  gcx traces search tempo-001 '{ span.http.status_code >= 500 }' --since 1h
+  gcx traces query -d tempo-001 '{ span.http.status_code >= 500 }' --since 1h
+
+  # Using the search alias
+  gcx traces search '{ span.http.status_code >= 500 }' --since 1h
 
   # With custom limit
-  gcx traces search tempo-001 '{ span.http.status_code >= 500 }' --since 1h --limit 50
+  gcx traces query -d tempo-001 '{ span.http.status_code >= 500 }' --since 1h --limit 50
 
   # Output as JSON
-  gcx traces search tempo-001 '{ span.http.status_code >= 500 }' -o json`,
-		Args: validateSearchArgs,
+  gcx traces query -d tempo-001 '{ span.http.status_code >= 500 }' -o json`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
 				return err
@@ -44,18 +49,19 @@ TRACEQL is the TraceQL expression to evaluate.`,
 
 			ctx := cmd.Context()
 
-			// Resolve default UID from config.
-			var defaultUID string
+			// Resolve datasource UID from -d flag or config.
+			var cfgCtx *internalconfig.Context
 			fullCfg, err := loader.LoadFullConfig(ctx)
-			if err != nil {
-				return err
+			if err == nil {
+				cfgCtx = fullCfg.GetCurrentContext()
 			}
-			defaultUID = internalconfig.DefaultDatasourceUID(*fullCfg.GetCurrentContext(), "tempo")
 
-			datasourceUID, expr, err := dsquery.ResolveTypedArgs(args, defaultUID, "tempo")
+			datasourceUID, err := dsquery.ResolveDatasourceFlag(datasource, cfgCtx, "tempo")
 			if err != nil {
 				return err
 			}
+
+			expr := args[0]
 
 			cfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
@@ -98,18 +104,8 @@ TRACEQL is the TraceQL expression to evaluate.`,
 	}
 
 	shared.Setup(cmd.Flags())
+	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.tempo is configured)")
 	cmd.Flags().IntVar(&limit, "limit", 20, "Maximum number of traces to return (0 means no limit)")
 
 	return cmd
-}
-
-func validateSearchArgs(_ *cobra.Command, args []string) error {
-	switch len(args) {
-	case 0:
-		return errors.New("TRACEQL is required")
-	case 1, 2:
-		return nil
-	default:
-		return errors.New("too many arguments: expected [DATASOURCE_UID] TRACEQL")
-	}
 }

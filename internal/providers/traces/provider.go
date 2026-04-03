@@ -37,38 +37,31 @@ func (p *Provider) Commands() []*cobra.Command {
 	loader.BindFlags(cmd.PersistentFlags())
 
 	// Datasource-origin subcommands.
-	sCmd := searchCmd(loader)
-	sCmd.Annotations = map[string]string{
+	qCmd := queryCmd(loader)
+	qCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx traces search abc123 '{ span.http.status_code >= 500 }' -o json`,
+		agent.AnnotationLLMHint:   `gcx traces query -d abc123 '{ span.http.status_code >= 500 }' -o json`,
 	}
-	cmd.AddCommand(sCmd)
+	cmd.AddCommand(qCmd)
 
 	gCmd := getCmd(loader)
 	gCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   "gcx traces get abc123 <trace-id> -o json",
+		agent.AnnotationLLMHint:   "gcx traces get -d abc123 <trace-id> -o json",
 	}
 	cmd.AddCommand(gCmd)
 
-	tCmd := tagsCmd(loader)
-	tCmd.Annotations = map[string]string{
+	lCmd := labelsCmd(loader)
+	lCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx traces tags -d abc123 -o json",
+		agent.AnnotationLLMHint:   "gcx traces labels -d abc123 -o json",
 	}
-	cmd.AddCommand(tCmd)
-
-	tvCmd := tagValuesCmd(loader)
-	tvCmd.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx traces tag-values service.name -d abc123 -o json",
-	}
-	cmd.AddCommand(tvCmd)
+	cmd.AddCommand(lCmd)
 
 	mCmd := metricsCmd(loader)
 	mCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx traces metrics abc123 '{ } | rate()' -o json`,
+		agent.AnnotationLLMHint:   `gcx traces metrics -d abc123 '{ } | rate()' --since 1h -o json`,
 	}
 	cmd.AddCommand(mCmd)
 

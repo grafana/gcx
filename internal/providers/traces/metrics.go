@@ -1,7 +1,6 @@
 package traces
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
@@ -15,33 +14,31 @@ import (
 // metricsCmd returns the `metrics` subcommand for TraceQL metrics queries.
 func metricsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
-	var instant bool
+	var datasource string
 
 	cmd := &cobra.Command{
-		Use:   "metrics [DATASOURCE_UID] TRACEQL",
+		Use:   "metrics TRACEQL",
 		Short: "Execute a TraceQL metrics query",
 		Long: `Execute a TraceQL metrics query against a Tempo datasource.
 
-DATASOURCE_UID is optional when datasources.tempo is configured in your context.
 TRACEQL is the TraceQL metrics expression to evaluate.
+Datasource is resolved from -d flag or datasources.tempo in your context.
 
-By default, this runs a range query. Use --instant for point-in-time queries.`,
+Instant vs range is deduced from time flags: no time flags = instant query,
+--since or --from/--to = range query.`,
 		Example: `
-  # Range query using configured default datasource
+  # Instant query (no time flags)
   gcx traces metrics '{ } | rate()'
 
-  # Range query with explicit datasource and time range
-  gcx traces metrics tempo-001 '{ } | rate()' --since 1h
+  # Range query with since
+  gcx traces metrics -d tempo-001 '{ } | rate()' --since 1h
 
-  # Instant query
-  gcx traces metrics tempo-001 '{ } | rate()' --instant --since 1h
-
-  # Custom step interval
-  gcx traces metrics tempo-001 '{ } | rate()' --since 1h --step 30s
+  # Range query with explicit time range
+  gcx traces metrics '{ } | rate()' --from now-1h --to now --step 30s
 
   # Output as JSON
-  gcx traces metrics tempo-001 '{ } | rate()' -o json`,
-		Args: validateMetricsArgs,
+  gcx traces metrics -d tempo-001 '{ } | rate()' -o json`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
 				return err
@@ -49,18 +46,19 @@ By default, this runs a range query. Use --instant for point-in-time queries.`,
 
 			ctx := cmd.Context()
 
-			// Resolve default UID from config.
-			var defaultUID string
+			// Resolve datasource UID from -d flag or config.
+			var cfgCtx *internalconfig.Context
 			fullCfg, err := loader.LoadFullConfig(ctx)
-			if err != nil {
-				return err
+			if err == nil {
+				cfgCtx = fullCfg.GetCurrentContext()
 			}
-			defaultUID = internalconfig.DefaultDatasourceUID(*fullCfg.GetCurrentContext(), "tempo")
 
-			datasourceUID, expr, err := dsquery.ResolveTypedArgs(args, defaultUID, "tempo")
+			datasourceUID, err := dsquery.ResolveDatasourceFlag(datasource, cfgCtx, "tempo")
 			if err != nil {
 				return err
 			}
+
+			expr := args[0]
 
 			cfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
@@ -85,6 +83,9 @@ By default, this runs a range query. Use --instant for point-in-time queries.`,
 			if err != nil {
 				return fmt.Errorf("failed to create client: %w", err)
 			}
+
+			// Deduce instant vs range from time flag presence.
+			instant := !shared.IsRange()
 
 			step := shared.Step
 			if step == "" && !instant {
@@ -114,18 +115,7 @@ By default, this runs a range query. Use --instant for point-in-time queries.`,
 	}
 
 	shared.Setup(cmd.Flags())
-	cmd.Flags().BoolVar(&instant, "instant", false, "Execute an instant query instead of a range query")
+	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.tempo is configured)")
 
 	return cmd
-}
-
-func validateMetricsArgs(_ *cobra.Command, args []string) error {
-	switch len(args) {
-	case 0:
-		return errors.New("TRACEQL is required")
-	case 1, 2:
-		return nil
-	default:
-		return errors.New("too many arguments: expected [DATASOURCE_UID] TRACEQL")
-	}
 }
