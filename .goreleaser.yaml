@@ -12,7 +12,7 @@ before:
     - go mod tidy
 
 builds:
-  - id: gcx-linux
+  - id: gcx
     binary: gcx
     main: ./cmd/gcx
 
@@ -21,32 +21,6 @@ builds:
 
     goos:
       - linux
-
-    goarch:
-      - amd64
-      - arm64
-
-    flags:
-      - -trimpath
-
-    hooks:
-      post:
-        - cmd: upx --best --lzma {{ .Path }}
-
-    ldflags:
-      - -s -w
-      - -X main.version={{ .Version }}
-      - -X main.commit={{ .Commit }}
-      - -X main.date={{ .Date }}
-
-  - id: gcx-other
-    binary: gcx
-    main: ./cmd/gcx
-
-    env:
-      - CGO_ENABLED=0
-
-    goos:
       - darwin
       - windows
 
@@ -63,9 +37,15 @@ builds:
       - -X main.commit={{ .Commit }}
       - -X main.date={{ .Date }}
 
+upx:
+  - enabled: true
+    goos: [linux]
+    compress: best
+    lzma: true
+
 archives:
   - id: gcx
-    builds: [gcx-linux, gcx-other]
+    builds: [gcx]
     format: tar.gz
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
