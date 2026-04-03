@@ -32,7 +32,7 @@ func TestProviderRegistration(t *testing.T) {
 			subNames = append(subNames, sub.Name())
 		}
 
-		for _, expected := range []string{"query", "labels", "profile-types", "series", "adaptive"} {
+		for _, expected := range []string{"query", "labels", "profile-types", "metrics", "adaptive"} {
 			assert.Contains(t, subNames, expected, "missing subcommand %q", expected)
 		}
 	})
