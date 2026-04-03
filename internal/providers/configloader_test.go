@@ -6,9 +6,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/adrg/xdg"
 	"github.com/grafana/gcx/internal/cloud"
+	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -223,6 +226,104 @@ current-context: default
 	_, namespace, err := loader.LoadProviderConfig(context.Background(), "synth")
 	require.NoError(t, err)
 	assert.Equal(t, "default", namespace)
+}
+
+func TestConfigLoader_SaveDatasourceUID(t *testing.T) {
+	cfgFile := writeConfigFile(t, `
+contexts:
+  default: {}
+current-context: default
+`)
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgFile)
+
+	err := loader.SaveDatasourceUID(context.Background(), "tempo", "tempo-123")
+	require.NoError(t, err)
+
+	loaded, err := loader.LoadFullConfig(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, loaded.GetCurrentContext())
+	assert.Equal(t, "tempo-123", loaded.GetCurrentContext().Datasources["tempo"])
+}
+
+func TestConfigLoader_SaveDatasourceUID_PreservesCurrentContext(t *testing.T) {
+	cfgFile := writeConfigFile(t, `
+contexts:
+  default: {}
+  other: {}
+current-context: default
+`)
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgFile)
+	loader.SetContextName("other")
+
+	err := loader.SaveDatasourceUID(context.Background(), "tempo", "tempo-123")
+	require.NoError(t, err)
+
+	raw, err := internalconfig.Load(context.Background(), internalconfig.ExplicitConfigFile(cfgFile))
+	require.NoError(t, err)
+	assert.Equal(t, "default", raw.CurrentContext)
+	require.NotNil(t, raw.Contexts["other"])
+	assert.Equal(t, "tempo-123", raw.Contexts["other"].Datasources["tempo"])
+}
+
+func TestConfigLoader_SaveDatasourceUID_DoesNotPersistEnvOverrides(t *testing.T) {
+	cfgFile := writeConfigFile(t, `
+contexts:
+  default: {}
+current-context: default
+`)
+	t.Setenv("GRAFANA_SERVER", "https://env.example.com")
+
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgFile)
+
+	err := loader.SaveDatasourceUID(context.Background(), "tempo", "tempo-123")
+	require.NoError(t, err)
+
+	raw, err := internalconfig.Load(context.Background(), internalconfig.ExplicitConfigFile(cfgFile))
+	require.NoError(t, err)
+	require.NotNil(t, raw.GetCurrentContext())
+	assert.Equal(t, "tempo-123", raw.GetCurrentContext().Datasources["tempo"])
+	if raw.GetCurrentContext().Grafana != nil {
+		assert.Empty(t, raw.GetCurrentContext().Grafana.Server)
+	}
+}
+
+func TestConfigLoader_SaveDatasourceUID_ErrorsWithMultipleConfigSources(t *testing.T) {
+	homeDir := t.TempDir()
+	xdgDir := t.TempDir()
+	workDir := t.TempDir()
+
+	userFile := filepath.Join(homeDir, ".config", "gcx", "config.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(userFile), 0o755))
+	require.NoError(t, os.WriteFile(userFile, []byte("contexts:\n  default: {}\ncurrent-context: default\n"), 0o600))
+
+	localFile := filepath.Join(workDir, ".gcx.yaml")
+	require.NoError(t, os.WriteFile(localFile, []byte("contexts:\n  default: {}\ncurrent-context: default\n"), 0o600))
+
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+	require.NoError(t, os.Chdir(workDir))
+
+	t.Cleanup(func() { xdg.Reload() })
+	t.Setenv("HOME", homeDir)
+	t.Setenv("XDG_CONFIG_HOME", xdgDir)
+	xdg.Reload()
+
+	loader := &providers.ConfigLoader{}
+	err = loader.SaveDatasourceUID(context.Background(), "tempo", "tempo-123")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "multiple config files loaded")
+
+	userCfg, err := internalconfig.Load(context.Background(), internalconfig.ExplicitConfigFile(userFile))
+	require.NoError(t, err)
+	assert.Empty(t, userCfg.Contexts["default"].Datasources["tempo"])
+
+	localCfg, err := internalconfig.Load(context.Background(), internalconfig.ExplicitConfigFile(localFile))
+	require.NoError(t, err)
+	assert.Empty(t, localCfg.Contexts["default"].Datasources["tempo"])
 }
 
 // TestConfigLoader_SaveProviderConfig verifies AC-6: save and reload round-trip.

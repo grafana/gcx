@@ -328,6 +328,72 @@ func (l *ConfigLoader) LoadProviderConfig(ctx context.Context, providerName stri
 	return providerCfg, namespace, nil
 }
 
+// SaveDatasourceUID persists a single datasource UID to
+// contexts.[context].datasources.[kind] in the underlying config file.
+//
+// Unlike the read path, this writes the raw target file without applying env
+// overrides or changing current-context, so auto-discovery does not flatten a
+// layered config or persist env-derived values.
+func (l *ConfigLoader) SaveDatasourceUID(ctx context.Context, kind, uid string) error {
+	source, err := l.datasourceWriteSource()
+	if err != nil {
+		return err
+	}
+
+	loaded, err := config.Load(ctx, source)
+	if err != nil {
+		return err
+	}
+
+	ctxName := l.ctxName
+	if ctxName == "" {
+		ctxName = config.ContextNameFromCtx(ctx)
+	}
+	if ctxName == "" {
+		ctxName = loaded.CurrentContext
+	}
+	if ctxName == "" && loaded.HasContext(config.DefaultContextName) {
+		ctxName = config.DefaultContextName
+	}
+	if !loaded.HasContext(ctxName) {
+		return config.ContextNotFound(ctxName)
+	}
+
+	curCtx := loaded.Contexts[ctxName]
+	if curCtx == nil {
+		return fmt.Errorf("context %q not found", ctxName)
+	}
+	if curCtx.Datasources == nil {
+		curCtx.Datasources = make(map[string]string)
+	}
+	curCtx.Datasources[kind] = uid
+	loaded.SetContext(ctxName, false, *curCtx)
+
+	return config.Write(ctx, source, loaded)
+}
+
+func (l *ConfigLoader) datasourceWriteSource() (config.Source, error) {
+	if l.configFile != "" {
+		return config.ExplicitConfigFile(l.configFile), nil
+	}
+	if envPath := os.Getenv(config.ConfigFileEnvVar); envPath != "" {
+		return config.ExplicitConfigFile(envPath), nil
+	}
+
+	sources, err := config.DiscoverSources()
+	if err != nil {
+		return nil, err
+	}
+	if len(sources) > 1 {
+		return nil, errors.New("multiple config files loaded; refusing to auto-save discovered datasource UID without --config")
+	}
+	if len(sources) == 1 {
+		return config.ExplicitConfigFile(sources[0].Path), nil
+	}
+
+	return config.StandardLocation(), nil
+}
+
 // SaveProviderConfig persists a single key-value pair to
 // contexts.[current].providers.[providerName].[key] in the config file.
 func (l *ConfigLoader) SaveProviderConfig(ctx context.Context, providerName, key, value string) error {
