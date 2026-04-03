@@ -6,9 +6,9 @@ Manage adaptive log drop rules.
 
 Manage adaptive log drop rules.
 
-Listing via `gcx resources get droprules` returns all rules for the tenant (no segment filter). `gcx logs adaptive drop-rules` subcommands operate on the __global__ segment only.
+Use `list` or `get` to read rules. `list` applies the __global__ segment filter (same scope as create/update/delete). `gcx resources get droprules` lists all tenant rules without that filter when the resources command is available.
 
-Create and update load a rule definition from a file (`--filename` / `-f`), same pattern as Adaptive Traces policies.
+Create and update load a rule from a file (`--filename` / `-f`), similar to Adaptive Traces policies. The file's top-level "version" is the policy schema version (only 1); omit or set it to 1 — not the revision field in API JSON.
 
 ### Options
 
@@ -32,6 +32,7 @@ Create and update load a rule definition from a file (`--filename` / `-f`), same
 * [gcx logs adaptive](gcx_logs_adaptive.md)	 - Manage Adaptive Logs resources
 * [gcx logs adaptive drop-rules create](gcx_logs_adaptive_drop-rules_create.md)	 - Create an adaptive log drop rule from a file.
 * [gcx logs adaptive drop-rules delete](gcx_logs_adaptive_drop-rules_delete.md)	 - Delete an adaptive log drop rule.
+* [gcx logs adaptive drop-rules get](gcx_logs_adaptive_drop-rules_get.md)	 - Fetch one adaptive log drop rule by ID.
 * [gcx logs adaptive drop-rules list](gcx_logs_adaptive_drop-rules_list.md)	 - List adaptive log drop rules.
 * [gcx logs adaptive drop-rules update](gcx_logs_adaptive_drop-rules_update.md)	 - Update an adaptive log drop rule by ID.
 

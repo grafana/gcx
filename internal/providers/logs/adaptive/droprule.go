@@ -35,6 +35,9 @@ type DropRuleBodyV1 struct {
 // `gcx logs adaptive drop-rules create|update -f` (aligned with Adaptive Traces policy files).
 // It matches the API create/update fields; for create, segment_id defaults to GlobalDropRuleSegmentID
 // when omitted, and version defaults to 1 when omitted or zero.
+//
+// Version is the policy body schema version accepted by the API (only 1 today). It is not the
+// rule revision returned in list/get JSON — do not bump it to "update" a rule.
 type DropRuleFileSpec struct {
 	Version   int            `json:"version"`
 	Name      string         `json:"name"`
@@ -66,6 +69,9 @@ func validateDropRuleFileSpecCreate(s *DropRuleFileSpec) error {
 	if s.Name == "" {
 		return errors.New("name is required in the file")
 	}
+	if err := validateDropRuleFilePolicySchemaVersion(s.Version); err != nil {
+		return err
+	}
 	if s.SegmentID != "" && s.SegmentID != GlobalDropRuleSegmentID {
 		return fmt.Errorf("segment_id must be %q or omitted", GlobalDropRuleSegmentID)
 	}
@@ -76,7 +82,17 @@ func validateDropRuleFileSpecUpdate(s *DropRuleFileSpec) error {
 	if s.Name == "" {
 		return errors.New("name is required in the file")
 	}
+	if err := validateDropRuleFilePolicySchemaVersion(s.Version); err != nil {
+		return err
+	}
 	return nil
+}
+
+func validateDropRuleFilePolicySchemaVersion(v int) error {
+	if v == 0 || v == 1 {
+		return nil
+	}
+	return fmt.Errorf(`"version" in the file is the policy schema version (only 1 is supported); use 1 or omit, not %d`, v)
 }
 
 func dropRuleFileSpecToCreate(s *DropRuleFileSpec) DropRule {
@@ -99,13 +115,61 @@ func dropRuleFileSpecToCreate(s *DropRuleFileSpec) DropRule {
 }
 
 func dropRuleFileSpecToUpdate(s *DropRuleFileSpec) DropRule {
+	ver := s.Version
+	if ver == 0 {
+		ver = 1
+	}
 	return DropRule{
-		Version:   s.Version,
+		Version:   ver,
 		Name:      s.Name,
 		Body:      s.Body,
 		ExpiresAt: s.ExpiresAt,
 		Disabled:  s.Disabled,
 	}
+}
+
+// ValueForJSONFieldDiscovery returns a value for cmdio JSON field discovery (--json ?) on drop rule
+// list/get so optional fields (expires_at, disabled) appear even when JSON omitempty would omit them.
+func ValueForJSONFieldDiscovery(rules []DropRule) any {
+	if len(rules) == 0 {
+		return map[string]any{
+			"id":         "",
+			"tenant_id":  "",
+			"segment_id": "",
+			"version":    0,
+			"name":       "",
+			"body":       map[string]any{},
+			"created_at": "",
+			"updated_at": "",
+			"expires_at": "",
+			"disabled":   false,
+		}
+	}
+	r := rules[0]
+	return map[string]any{
+		"id":         r.ID,
+		"tenant_id":  r.TenantID,
+		"segment_id": r.SegmentID,
+		"version":    r.Version,
+		"name":       r.Name,
+		"body":       dropRuleBodyToMap(r.Body),
+		"created_at": r.CreatedAt,
+		"updated_at": r.UpdatedAt,
+		"expires_at": r.ExpiresAt,
+		"disabled":   r.Disabled,
+	}
+}
+
+func dropRuleBodyToMap(b DropRuleBodyV1) map[string]any {
+	data, err := json.Marshal(b)
+	if err != nil {
+		return map[string]any{}
+	}
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		return map[string]any{}
+	}
+	return m
 }
 
 // DropRule is an Adaptive Logs drop rule (HTTP: /adaptive-logs/drop-rules).
@@ -117,7 +181,7 @@ type DropRule struct {
 	SegmentID string         `json:"segment_id,omitempty"`
 	Version   int            `json:"version"`
 	Name      string         `json:"name"`
-	Body      DropRuleBodyV1 `json:"body,omitempty"`
+	Body      DropRuleBodyV1 `json:"body"`
 	CreatedAt string         `json:"created_at,omitempty"`
 	UpdatedAt string         `json:"updated_at,omitempty"`
 	ExpiresAt string         `json:"expires_at,omitempty"`

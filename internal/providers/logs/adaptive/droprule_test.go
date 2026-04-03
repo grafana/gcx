@@ -51,3 +51,11 @@ func TestReadDropRuleFileSpecFromReader_invalid(t *testing.T) {
 	_, err := logs.ReadDropRuleFileSpecFromReader(strings.NewReader("<<<"))
 	require.Error(t, err)
 }
+
+func TestValueForJSONFieldDiscovery_emptyRules(t *testing.T) {
+	t.Parallel()
+	v, ok := logs.ValueForJSONFieldDiscovery(nil).(map[string]any)
+	require.True(t, ok)
+	require.Contains(t, v, "expires_at")
+	require.Contains(t, v, "disabled")
+}

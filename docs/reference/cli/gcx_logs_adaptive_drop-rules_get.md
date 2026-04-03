@@ -1,24 +1,23 @@
-## gcx logs adaptive drop-rules create
+## gcx logs adaptive drop-rules get
 
-Create an adaptive log drop rule from a file.
+Fetch one adaptive log drop rule by ID.
 
 ### Synopsis
 
-Create an adaptive log drop rule from a file.
+Fetch one adaptive log drop rule by ID.
 
-The file's top-level "version" is the policy body schema version (only 1 is supported). Omit it or set it to 1; do not confuse it with the rule revision in API responses.
+For the __global__ segment scope, use `list` to enumerate rules first.
 
 ```
-gcx logs adaptive drop-rules create [flags]
+gcx logs adaptive drop-rules get ID [flags]
 ```
 
 ### Options
 
 ```
-  -f, --filename string   File containing the drop rule definition (use - for stdin)
-  -h, --help              help for create
-      --json string       Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -o, --output string     Output format. One of: json, yaml (default "json")
+  -h, --help            help for get
+      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+  -o, --output string   Output format. One of: json, yaml (default "json")
 ```
 
 ### Options inherited from parent commands

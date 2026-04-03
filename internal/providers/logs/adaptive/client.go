@@ -394,7 +394,7 @@ func (c *Client) GetDropRule(ctx context.Context, id string) (*DropRule, error) 
 		}
 		return &rule, nil
 	case http.StatusNotFound:
-		return nil, fmt.Errorf("adaptive logs drop rule %q: not found at %q (HTTP 404)", id, dropRulesPath)
+		return nil, fmt.Errorf("no adaptive log drop rule with id %q (HTTP 404)", id)
 	default:
 		return nil, apiErrorFromResponseBody(resp.StatusCode, body)
 	}
@@ -457,7 +457,7 @@ func (c *Client) UpdateDropRule(ctx context.Context, id string, dr *DropRule) (*
 		}
 		return &updated, nil
 	case http.StatusNotFound:
-		return nil, fmt.Errorf("adaptive logs drop rule %q: update not found at %q (HTTP 404)", id, dropRulesPath)
+		return nil, fmt.Errorf("no adaptive log drop rule with id %q (HTTP 404)", id)
 	default:
 		return nil, apiErrorFromResponseBody(resp.StatusCode, body)
 	}
@@ -480,7 +480,7 @@ func (c *Client) DeleteDropRule(ctx context.Context, id string) error {
 	case http.StatusOK, http.StatusNoContent:
 		return nil
 	case http.StatusNotFound:
-		return fmt.Errorf("adaptive logs drop rule %q: delete not found at %q (HTTP 404)", id, dropRulesPath)
+		return fmt.Errorf("no adaptive log drop rule with id %q (HTTP 404)", id)
 	default:
 		return apiErrorFromResponseBody(resp.StatusCode, body)
 	}

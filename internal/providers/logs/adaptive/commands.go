@@ -1030,12 +1030,14 @@ func (h *logsHelper) dropRulesCommand() *cobra.Command {
 		Use:   "drop-rules",
 		Short: "Manage adaptive log drop rules.",
 		Long: "Manage adaptive log drop rules.\n\n" +
-			"Listing via `gcx resources get droprules` returns all rules for the tenant (no segment filter). " +
-			"`gcx logs adaptive drop-rules` subcommands operate on the " + GlobalDropRuleSegmentID + " segment only.\n\n" +
-			"Create and update load a rule definition from a file (`--filename` / `-f`), same pattern as Adaptive Traces policies.",
+			"Use `list` or `get` to read rules. `list` applies the " + GlobalDropRuleSegmentID + " segment filter (same scope as create/update/delete). " +
+			"`gcx resources get droprules` lists all tenant rules without that filter when the resources command is available.\n\n" +
+			"Create and update load a rule from a file (`--filename` / `-f`), similar to Adaptive Traces policies. " +
+			"The file's top-level \"version\" is the policy schema version (only 1); omit or set it to 1 — not the revision field in API JSON.",
 	}
 	cmd.AddCommand(
 		h.dropRulesListCommand(),
+		h.dropRulesGetCommand(),
 		h.dropRulesCreateCommand(),
 		h.dropRulesUpdateCommand(),
 		h.dropRulesDeleteCommand(),
@@ -1083,7 +1085,57 @@ func (h *logsHelper) dropRulesListCommand() *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), rules)
+			out := any(rules)
+			if opts.IO.JSONDiscovery {
+				out = ValueForJSONFieldDiscovery(rules)
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), out)
+		},
+	}
+	opts.setup(cmd)
+	return cmd
+}
+
+// dropRules get
+
+type dropRulesGetOpts struct {
+	IO cmdio.Options
+}
+
+func (o *dropRulesGetOpts) setup(cmd *cobra.Command) {
+	o.IO.DefaultFormat("json")
+	o.IO.BindFlags(cmd.Flags())
+}
+
+func (h *logsHelper) dropRulesGetCommand() *cobra.Command {
+	opts := &dropRulesGetOpts{}
+	cmd := &cobra.Command{
+		Use:   "get ID",
+		Short: "Fetch one adaptive log drop rule by ID.",
+		Long: "Fetch one adaptive log drop rule by ID.\n\n" +
+			"For the " + GlobalDropRuleSegmentID + " segment scope, use `list` to enumerate rules first.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			crud, _, err := NewDropRuleTypedCRUD(ctx, h.loader)
+			if err != nil {
+				return err
+			}
+
+			got, err := crud.Get(ctx, args[0])
+			if err != nil {
+				return err
+			}
+
+			out := any(got.Spec)
+			if opts.IO.JSONDiscovery {
+				out = ValueForJSONFieldDiscovery([]DropRule{got.Spec})
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), out)
 		},
 	}
 	opts.setup(cmd)
@@ -1176,6 +1228,9 @@ func (h *logsHelper) dropRulesCreateCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create an adaptive log drop rule from a file.",
+		Long: "Create an adaptive log drop rule from a file.\n\n" +
+			"The file's top-level \"version\" is the policy body schema version (only 1 is supported). " +
+			"Omit it or set it to 1; do not confuse it with the rule revision in API responses.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -1238,7 +1293,10 @@ func (h *logsHelper) dropRulesUpdateCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update ID",
 		Short: "Update an adaptive log drop rule by ID.",
-		Args:  cobra.ExactArgs(1),
+		Long: "Update an adaptive log drop rule by ID.\n\n" +
+			"The file's top-level \"version\" is the policy body schema version (only 1 is supported). " +
+			"Omit it or set it to 1; do not confuse it with the rule revision in API responses.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -1305,7 +1363,7 @@ func (h *logsHelper) dropRulesDeleteCommand() *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Deleted drop rule %q", args[0])
+			cmdio.Success(cmd.ErrOrStderr(), "Deleted drop rule %q", args[0])
 			return nil
 		},
 	}
