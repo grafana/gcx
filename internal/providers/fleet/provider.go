@@ -77,6 +77,15 @@ func CollectorDescriptor() resources.Descriptor { return collectorDescriptorVar 
 
 func init() { //nolint:gochecknoinits // Self-registration pattern (like database/sql drivers).
 	providers.Register(&FleetProvider{})
+
+	adapter.RegisterNaturalKey(
+		pipelineDescriptorVar.GroupVersionKind(),
+		adapter.SpecFieldKey("name"),
+	)
+	adapter.RegisterNaturalKey(
+		collectorDescriptorVar.GroupVersionKind(),
+		adapter.SpecFieldKey("name"),
+	)
 }
 
 // ---------------------------------------------------------------------------

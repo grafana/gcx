@@ -11,6 +11,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
+func init() { //nolint:gochecknoinits // Natural key registration for cross-stack push identity matching.
+	adapter.RegisterNaturalKey(
+		staticDescriptor.GroupVersionKind(),
+		adapter.SpecFieldKey("name"),
+	)
+}
+
 const (
 	// APIVersion is the API version for Faro app resources.
 	APIVersion = "faro.ext.grafana.app/v1alpha1"

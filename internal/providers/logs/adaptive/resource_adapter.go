@@ -12,6 +12,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
+func init() { //nolint:gochecknoinits // Natural key registration for cross-stack push identity matching.
+	adapter.RegisterNaturalKey(
+		exemptionDescriptorVar.GroupVersionKind(),
+		adapter.SpecFieldKey("stream_selector"),
+	)
+}
+
 const (
 	ExemptionAPIVersion = "adaptive-logs.ext.grafana.app/v1alpha1"
 	ExemptionKind       = "Exemption"

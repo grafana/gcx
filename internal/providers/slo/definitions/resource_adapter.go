@@ -12,6 +12,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
+func init() { //nolint:gochecknoinits // Natural key registration for cross-stack push identity matching.
+	adapter.RegisterNaturalKey(
+		StaticDescriptor().GroupVersionKind(),
+		adapter.SpecFieldKey("name"),
+	)
+}
+
 // StaticDescriptor returns the resource descriptor for SLO definitions.
 func StaticDescriptor() resources.Descriptor {
 	return resources.Descriptor{
