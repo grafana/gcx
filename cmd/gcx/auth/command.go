@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	configcmd "github.com/grafana/gcx/cmd/gcx/config"
+	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/spf13/cobra"
@@ -74,7 +75,14 @@ func runLogin(cmd *cobra.Command, opts *loginOpts) error {
 
 	curCtx := cfg.GetCurrentContext()
 	if curCtx == nil || curCtx.Grafana == nil || curCtx.Grafana.Server == "" {
-		return fmt.Errorf("grafana.server is not configured in context %q — set it with:\n  gcx config set contexts.<context>.grafana.server https://your-stack.grafana.net", cfg.CurrentContext)
+		return fail.DetailedError{
+			Summary: "Grafana server not configured",
+			Details: fmt.Sprintf("Context %q does not define grafana.server.", cfg.CurrentContext),
+			Suggestions: []string{
+				fmt.Sprintf("Set it: gcx config set contexts.%s.grafana.server https://your-stack.grafana.net", cfg.CurrentContext),
+				"Or switch context: gcx config use-context <context>",
+			},
+		}
 	}
 
 	flow := auth.NewFlow(curCtx.Grafana.Server, auth.Options{

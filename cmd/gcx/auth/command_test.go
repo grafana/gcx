@@ -29,7 +29,9 @@ contexts:
 		Cmd:     authcmd.Command(),
 		Command: []string{"login", "--config", configFile},
 		Assertions: []testutils.CommandAssertion{
-			testutils.CommandErrorContains("grafana.server is not configured"),
+			testutils.CommandErrorContains("Error: Grafana server not configured"),
+			testutils.CommandErrorContains("Context \"test\" does not define grafana.server."),
+			testutils.CommandErrorContains("Set it: gcx config set contexts.test.grafana.server https://your-stack.grafana.net"),
 		},
 	}
 	tc.Run(t)
@@ -42,7 +44,9 @@ func TestLogin_noContext(t *testing.T) {
 		Cmd:     authcmd.Command(),
 		Command: []string{"login", "--config", configFile},
 		Assertions: []testutils.CommandAssertion{
-			testutils.CommandErrorContains("grafana.server is not configured"),
+			testutils.CommandErrorContains("Error: Grafana server not configured"),
+			testutils.CommandErrorContains("Context \"default\" does not define grafana.server."),
+			testutils.CommandErrorContains("Set it: gcx config set contexts.default.grafana.server https://your-stack.grafana.net"),
 		},
 	}
 	tc.Run(t)

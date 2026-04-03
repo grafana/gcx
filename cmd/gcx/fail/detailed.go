@@ -71,13 +71,17 @@ func (e DetailedError) Error() string {
 		}
 	}
 
+	formattedParent := ""
+	showParent := e.Parent != nil
 	if e.Parent != nil {
-		fmt.Fprintf(&buffer, "│\n├─ %s\n│\n", blue("Details:"))
-
 		// Will pretty-print YAML-related errors and leave the other ones as-is.
-		formattedErr := yaml.FormatError(e.Parent, !color.NoColor, true)
+		formattedParent = yaml.FormatError(e.Parent, !color.NoColor, true)
+		showParent = !sameRenderedMessage(e.Details, formattedParent)
+	}
 
-		for line := range strings.SplitSeq(formattedErr, "\n") {
+	if showParent {
+		fmt.Fprintf(&buffer, "│\n├─ %s\n│\n", blue("Details:"))
+		for line := range strings.SplitSeq(formattedParent, "\n") {
 			buffer.WriteString("│ " + line + "\n")
 		}
 	}
@@ -97,4 +101,18 @@ func (e DetailedError) Error() string {
 	buffer.WriteString("│\n└─\n")
 
 	return buffer.String()
+}
+
+func sameRenderedMessage(details string, parent string) bool {
+	normalize := func(s string) string {
+		s = strings.ReplaceAll(s, "\r\n", "\n")
+		return strings.TrimSpace(s)
+	}
+
+	normalizedDetails := normalize(details)
+	if normalizedDetails == "" {
+		return false
+	}
+
+	return normalizedDetails == normalize(parent)
 }
