@@ -107,24 +107,24 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 
 			ctx := cmd.Context()
 
-			// Resolve datasource UID from -d flag or config.
+			// Resolve datasource UID from -d flag, config, or Grafana auto-discovery.
 			var cfgCtx *internalconfig.Context
 			fullCfg, err := loader.LoadFullConfig(ctx)
 			if err == nil {
 				cfgCtx = fullCfg.GetCurrentContext()
 			}
 
-			datasourceUID, err := dsquery.ResolveDatasourceFlag(opts.Datasource, cfgCtx, "pyroscope")
+			cfg, err := loader.LoadGrafanaConfig(ctx)
+			if err != nil {
+				return err
+			}
+
+			datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "pyroscope")
 			if err != nil {
 				return err
 			}
 
 			expr := args[0]
-
-			cfg, err := loader.LoadGrafanaConfig(ctx)
-			if err != nil {
-				return err
-			}
 
 			dsType, err := dsquery.GetDatasourceType(ctx, cfg, datasourceUID)
 			if err != nil {

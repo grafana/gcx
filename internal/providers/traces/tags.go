@@ -82,19 +82,19 @@ Datasource is resolved from -d flag or datasources.tempo in your context.`,
 
 			ctx := cmd.Context()
 
-			// Resolve datasource UID from -d flag or config.
+			// Resolve datasource UID from -d flag, config, or Grafana auto-discovery.
 			var cfgCtx *internalconfig.Context
 			fullCfg, err := loader.LoadFullConfig(ctx)
 			if err == nil {
 				cfgCtx = fullCfg.GetCurrentContext()
 			}
 
-			datasourceUID, err := dsquery.ResolveDatasourceFlag(opts.Datasource, cfgCtx, "tempo")
+			cfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
 
-			cfg, err := loader.LoadGrafanaConfig(ctx)
+			datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "tempo")
 			if err != nil {
 				return err
 			}

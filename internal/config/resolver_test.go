@@ -72,9 +72,17 @@ func TestDefaultDatasourceUID(t *testing.T) {
 			expected: "",
 		},
 		{
+			name: "legacy tempo fallback when no datasources entry",
+			ctx: config.Context{
+				DefaultTempoDatasource: "legacy-tempo-uid",
+			},
+			kind:     "tempo",
+			expected: "legacy-tempo-uid",
+		},
+		{
 			name:     "returns empty string for unknown kind",
 			ctx:      config.Context{},
-			kind:     "tempo",
+			kind:     "unknown",
 			expected: "",
 		},
 		{

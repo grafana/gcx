@@ -6,6 +6,7 @@ import (
 	"io"
 
 	internalconfig "github.com/grafana/gcx/internal/config"
+	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
@@ -61,17 +62,15 @@ func labelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
-			// Resolve datasource
-			datasourceUID := opts.Datasource
-			if datasourceUID == "" {
-				fullCfg, err := loader.LoadFullConfig(ctx)
-				if err != nil {
-					return err
-				}
-				datasourceUID = internalconfig.DefaultDatasourceUID(*fullCfg.GetCurrentContext(), "prometheus")
+			var cfgCtx *internalconfig.Context
+			fullCfg, err := loader.LoadFullConfig(ctx)
+			if err == nil {
+				cfgCtx = fullCfg.GetCurrentContext()
 			}
-			if datasourceUID == "" {
-				return errors.New("datasource UID is required: use -d flag or set default-prometheus-datasource in config")
+
+			datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")
+			if err != nil {
+				return err
 			}
 
 			client, err := prometheus.NewClient(cfg)

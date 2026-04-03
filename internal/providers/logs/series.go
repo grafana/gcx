@@ -6,6 +6,7 @@ import (
 	"io"
 
 	internalconfig "github.com/grafana/gcx/internal/config"
+	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
@@ -70,16 +71,15 @@ func seriesCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
-			datasourceUID := opts.Datasource
-			if datasourceUID == "" {
-				fullCfg, err := loader.LoadFullConfig(ctx)
-				if err != nil {
-					return err
-				}
-				datasourceUID = internalconfig.DefaultDatasourceUID(*fullCfg.GetCurrentContext(), "loki")
+			var cfgCtx *internalconfig.Context
+			fullCfg, err := loader.LoadFullConfig(ctx)
+			if err == nil {
+				cfgCtx = fullCfg.GetCurrentContext()
 			}
-			if datasourceUID == "" {
-				return errors.New("datasource UID is required: use -d flag or set default-loki-datasource in config")
+
+			datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "loki")
+			if err != nil {
+				return err
 			}
 
 			client, err := loki.NewClient(cfg)
