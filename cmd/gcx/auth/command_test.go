@@ -32,6 +32,7 @@ contexts:
 			testutils.CommandErrorContains("Error: Grafana server not configured"),
 			testutils.CommandErrorContains("Context \"test\" does not define grafana.server."),
 			testutils.CommandErrorContains("Set it: gcx config set contexts.test.grafana.server https://your-stack.grafana.net"),
+			testutils.CommandErrorContains("Or pass it now: gcx auth login --server https://your-stack.grafana.net"),
 		},
 	}
 	tc.Run(t)
@@ -47,6 +48,28 @@ func TestLogin_noContext(t *testing.T) {
 			testutils.CommandErrorContains("Error: Grafana server not configured"),
 			testutils.CommandErrorContains("Context \"default\" does not define grafana.server."),
 			testutils.CommandErrorContains("Set it: gcx config set contexts.default.grafana.server https://your-stack.grafana.net"),
+			testutils.CommandErrorContains("Or pass it now: gcx auth login --server https://your-stack.grafana.net"),
+		},
+	}
+	tc.Run(t)
+}
+
+func TestLogin_missingServerInContextWithSpecialChars(t *testing.T) {
+	cfg := `current-context: "prod env.v2"
+contexts:
+  "prod env.v2":
+    grafana: {}`
+
+	configFile := testutils.CreateTempFile(t, cfg)
+
+	tc := testutils.CommandTestCase{
+		Cmd:     authcmd.Command(),
+		Command: []string{"login", "--config", configFile},
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandErrorContains("Error: Grafana server not configured"),
+			testutils.CommandErrorContains("Context \"prod env.v2\" does not define grafana.server."),
+			testutils.CommandErrorContains("Set it: gcx config set 'contexts.prod env\\.v2.grafana.server' https://your-stack.grafana.net"),
+			testutils.CommandErrorContains("Or pass it now: gcx auth login --server https://your-stack.grafana.net"),
 		},
 	}
 	tc.Run(t)
@@ -69,6 +92,17 @@ func (b *syncBuffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.buf.String()
+}
+
+func TestLogin_rejectsPositionalArgs(t *testing.T) {
+	tc := testutils.CommandTestCase{
+		Cmd:     authcmd.Command(),
+		Command: []string{"login", "https://ops.grafana.net"},
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandErrorContains("unknown command \"https://ops.grafana.net\" for \"auth login\""),
+		},
+	}
+	tc.Run(t)
 }
 
 func TestLogin_successWritesTokensToConfig(t *testing.T) {
