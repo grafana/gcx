@@ -1032,8 +1032,8 @@ func (h *logsHelper) dropRulesCommand() *cobra.Command {
 		Long: "Manage adaptive log drop rules.\n\n" +
 			"Use `list` or `get` to read rules. `list` applies the " + GlobalDropRuleSegmentID + " segment filter (same scope as create/update/delete). " +
 			"`gcx resources get droprules` lists all tenant rules without that filter when the resources command is available.\n\n" +
-			"Create and update load a rule from a file (`--filename` / `-f`), similar to Adaptive Traces policies. " +
-			"The file's top-level \"version\" is the policy schema version (only 1); omit or set it to 1 — not the revision field in API JSON.",
+			"Create and update load a rule from a file (`--filename` / `-f`). " +
+			"The file's top-level \"version\" is the rule schema version (only 1); omit or set it to 1 — not the revision field in API JSON.",
 	}
 	cmd.AddCommand(
 		h.dropRulesListCommand(),
@@ -1236,7 +1236,7 @@ func (h *logsHelper) dropRulesCreateCommand() *cobra.Command {
 		Use:   "create",
 		Short: "Create an adaptive log drop rule from a file.",
 		Long: "Create an adaptive log drop rule from a file.\n\n" +
-			"The file's top-level \"version\" is the policy body schema version (only 1 is supported). " +
+			"The file's top-level \"version\" is the rule schema version (only 1 is supported). " +
 			"Omit it or set it to 1; do not confuse it with the rule revision in API responses.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
@@ -1301,7 +1301,7 @@ func (h *logsHelper) dropRulesUpdateCommand() *cobra.Command {
 		Use:   "update ID",
 		Short: "Update an adaptive log drop rule by ID.",
 		Long: "Update an adaptive log drop rule by ID.\n\n" +
-			"The file's top-level \"version\" is the policy body schema version (only 1 is supported). " +
+			"The file's top-level \"version\" is the rule schema version (only 1 is supported). " +
 			"Omit it or set it to 1; do not confuse it with the rule revision in API responses.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

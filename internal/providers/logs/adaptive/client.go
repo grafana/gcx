@@ -309,7 +309,7 @@ func (c *Client) DeleteSegment(ctx context.Context, id string) error {
 }
 
 // ListDropRules lists adaptive log drop rules.
-// The log-template-service list handler returns a JSON array of drop rules (see handleListPolicies).
+// The log-template-service list handler returns a JSON array of drop rules.
 // Optional filters are passed as query parameters.
 func (c *Client) ListDropRules(ctx context.Context, q DropRuleListQuery) ([]DropRule, error) {
 	vals := url.Values{}

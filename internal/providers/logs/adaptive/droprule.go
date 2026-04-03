@@ -22,8 +22,8 @@ type DropRuleListQuery struct {
 	ExpirationFilter string
 }
 
-// DropRuleBodyV1 is the version 1 JSON policy body for adaptive log drop rules
-// (log-template-service pkg/droprule.PolicyBodyV1).
+// DropRuleBodyV1 is the version 1 JSON body for adaptive log drop rules
+// (log-template-service pkg/droprule).
 type DropRuleBodyV1 struct {
 	DropRate        float64  `json:"drop_rate"`
 	StreamSelector  string   `json:"stream_selector"`
@@ -32,11 +32,11 @@ type DropRuleBodyV1 struct {
 }
 
 // DropRuleFileSpec is the YAML/JSON document for
-// `gcx logs adaptive drop-rules create|update -f` (aligned with Adaptive Traces policy files).
+// `gcx logs adaptive drop-rules create|update -f`.
 // It matches the API create/update fields; for create, segment_id defaults to GlobalDropRuleSegmentID
 // when omitted, and version defaults to 1 when omitted or zero.
 //
-// Version is the policy body schema version accepted by the API (only 1 today). It is not the
+// Version is the rule schema version accepted by the API (only 1 today). It is not the
 // rule revision returned in list/get JSON — do not bump it to "update" a rule.
 type DropRuleFileSpec struct {
 	Version   int            `json:"version"`
@@ -47,7 +47,7 @@ type DropRuleFileSpec struct {
 	SegmentID string         `json:"segment_id,omitempty"`
 }
 
-const maxDropRuleFileSize = 10 << 20 // 10 MiB, aligned with adaptive traces policy files
+const maxDropRuleFileSize = 10 << 20 // 10 MiB
 
 // ReadDropRuleFileSpecFromReader decodes a DropRuleFileSpec from an io.Reader (YAML or JSON). Exported for testing.
 func ReadDropRuleFileSpecFromReader(reader io.Reader) (*DropRuleFileSpec, error) {
@@ -72,7 +72,7 @@ func validateDropRuleFileSpecCreate(s *DropRuleFileSpec) error {
 	if s.Name == "" {
 		return errors.New("name is required in the file")
 	}
-	if err := validateDropRuleFilePolicySchemaVersion(s.Version); err != nil {
+	if err := validateDropRuleFileSchemaVersion(s.Version); err != nil {
 		return err
 	}
 	if s.SegmentID != "" && s.SegmentID != GlobalDropRuleSegmentID {
@@ -85,17 +85,17 @@ func validateDropRuleFileSpecUpdate(s *DropRuleFileSpec) error {
 	if s.Name == "" {
 		return errors.New("name is required in the file")
 	}
-	if err := validateDropRuleFilePolicySchemaVersion(s.Version); err != nil {
+	if err := validateDropRuleFileSchemaVersion(s.Version); err != nil {
 		return err
 	}
 	return nil
 }
 
-func validateDropRuleFilePolicySchemaVersion(v int) error {
+func validateDropRuleFileSchemaVersion(v int) error {
 	if v == 0 || v == 1 {
 		return nil
 	}
-	return fmt.Errorf(`"version" in the file is the policy schema version (only 1 is supported); use 1 or omit, not %d`, v)
+	return fmt.Errorf(`"version" in the file is the rule schema version (only 1 is supported); use 1 or omit, not %d`, v)
 }
 
 func dropRuleFileSpecToCreate(s *DropRuleFileSpec) DropRule {
