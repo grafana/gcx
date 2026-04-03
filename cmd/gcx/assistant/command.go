@@ -11,20 +11,27 @@ import (
 	"sync"
 	"time"
 
+	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/assistant"
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/cobra"
 )
 
 // Command returns the assistant command group.
 func Command() *cobra.Command {
+	configOpts := &cmdconfig.Options{}
+
 	cmd := &cobra.Command{
 		Use:   "assistant",
 		Short: "Interact with Grafana Assistant",
 		Long:  "Send prompts to Grafana Assistant and receive streaming responses via the A2A protocol.",
 	}
-	cmd.AddCommand(promptCommand())
+
+	configOpts.BindFlags(cmd.PersistentFlags())
+	cmd.AddCommand(promptCommand(configOpts))
 	return cmd
 }
 
@@ -35,7 +42,7 @@ type promptOpts struct {
 	cont      bool // --continue
 	jsonOut   bool
 	noStream  bool
-	agent     string
+	agentID   string
 }
 
 func (o *promptOpts) setup(cmd *cobra.Command) {
@@ -44,10 +51,10 @@ func (o *promptOpts) setup(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&o.cont, "continue", false, "Continue the previous chat session")
 	cmd.Flags().BoolVar(&o.jsonOut, "json", false, "Output as JSON (streams NDJSON events by default)")
 	cmd.Flags().BoolVar(&o.noStream, "no-stream", false, "With --json, emit a single JSON object instead of streaming events")
-	cmd.Flags().StringVar(&o.agent, "agent", assistant.DefaultAgentID, "Agent ID to target")
+	cmd.Flags().StringVar(&o.agentID, "agent-id", assistant.DefaultAgentID, "Agent ID to target")
 }
 
-func (o *promptOpts) validate() error {
+func (o *promptOpts) Validate() error {
 	if o.contextID != "" && o.cont {
 		return errors.New("cannot use both --context-id and --continue flags")
 	}
@@ -67,7 +74,7 @@ type promptResult struct {
 	Error     string `json:"error,omitempty"`
 }
 
-func promptCommand() *cobra.Command {
+func promptCommand(configOpts *cmdconfig.Options) *cobra.Command {
 	opts := &promptOpts{}
 
 	cmd := &cobra.Command{
@@ -79,11 +86,15 @@ This is useful for scripting and automation. The response streams via
 the A2A (Agent-to-Agent) protocol over Server-Sent Events.`,
 		Args:    cobra.ExactArgs(1),
 		Example: "  gcx assistant prompt \"What alerts are firing?\"\n  gcx assistant prompt \"Show CPU usage\" --json\n  gcx assistant prompt \"Follow up\" --continue",
+		Annotations: map[string]string{
+			agent.AnnotationTokenCost: "large",
+			agent.AnnotationLLMHint:   "\"What alerts are firing?\" --json",
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
-			return runPrompt(cmd, args[0], opts)
+			return runPrompt(cmd, args[0], opts, configOpts)
 		},
 	}
 
@@ -91,7 +102,7 @@ the A2A (Agent-to-Agent) protocol over Server-Sent Events.`,
 	return cmd
 }
 
-func runPrompt(cmd *cobra.Command, message string, opts *promptOpts) error {
+func runPrompt(cmd *cobra.Command, message string, opts *promptOpts, configOpts *cmdconfig.Options) error {
 	ctx := cmd.Context()
 	jsonStream := opts.jsonOut && !opts.noStream
 	w := cmd.OutOrStdout()
@@ -121,7 +132,7 @@ func runPrompt(cmd *cobra.Command, message string, opts *promptOpts) error {
 	}
 
 	// Load config and build client
-	clientOpts, err := resolveClientOptions(ctx)
+	clientOpts, err := resolveClientOptions(ctx, configOpts)
 	if err != nil {
 		if opts.jsonOut {
 			return jsonError(err)
@@ -188,7 +199,7 @@ func handlePromptResult(cmd *cobra.Command, result assistant.StreamResult, opts 
 				Response:  result.Response,
 			})
 		case !opts.jsonOut:
-			printSuccess(errW, "Completed!")
+			cmdio.Success(errW, "Completed!")
 			fmt.Fprintln(w)
 			fmt.Fprintln(w, "--- Response ---")
 			fmt.Fprintln(w)
@@ -216,9 +227,9 @@ func handlePromptResult(cmd *cobra.Command, result assistant.StreamResult, opts 
 				Timeout:   opts.timeout,
 			})
 		default:
-			printWarning(errW, fmt.Sprintf("Request timed out after %ds. Task may still be processing.", opts.timeout))
+			cmdio.Warning(errW, "Request timed out after %ds. Task may still be processing.", opts.timeout)
 			if result.TaskID != "" {
-				printInfo(errW, "Task ID: "+result.TaskID)
+				cmdio.Info(errW, "Task ID: %s", result.TaskID)
 			}
 		}
 		return err
@@ -242,7 +253,7 @@ func handlePromptResult(cmd *cobra.Command, result assistant.StreamResult, opts 
 				Error:     result.ErrorMessage,
 			})
 		case !opts.jsonOut:
-			printError(errW, "Request failed: "+result.ErrorMessage)
+			cmdio.Error(errW, "Request failed: %s", result.ErrorMessage)
 		}
 		return err
 	}
@@ -257,7 +268,7 @@ func handlePromptResult(cmd *cobra.Command, result assistant.StreamResult, opts 
 				Status:    "canceled",
 			})
 		case !opts.jsonOut:
-			printWarning(errW, "Request was canceled")
+			cmdio.Warning(errW, "Request was canceled")
 		}
 		return err
 	}
@@ -274,40 +285,35 @@ func handlePromptResult(cmd *cobra.Command, result assistant.StreamResult, opts 
 			Status:    "unknown",
 		})
 	default:
-		printWarning(errW, "Request ended unexpectedly. The stream closed without a completion signal.")
+		cmdio.Warning(errW, "Request ended unexpectedly. The stream closed without a completion signal.")
 		if result.TaskID != "" {
-			printInfo(errW, "Task ID: "+result.TaskID)
+			cmdio.Info(errW, "Task ID: %s", result.TaskID)
 		}
 	}
 	return err
 }
 
 // resolveClientOptions loads the gcx config and builds assistant.ClientOptions.
-func resolveClientOptions(ctx context.Context) (assistant.ClientOptions, error) {
-	cfg, err := config.Load(ctx, config.StandardLocation())
+func resolveClientOptions(ctx context.Context, configOpts *cmdconfig.Options) (assistant.ClientOptions, error) {
+	cfg, err := configOpts.LoadConfig(ctx)
 	if err != nil {
-		return assistant.ClientOptions{}, fmt.Errorf("failed to load config: %w", err)
+		return assistant.ClientOptions{}, err
 	}
 
-	ctxName := config.ContextNameFromCtx(ctx)
-	if ctxName == "" {
-		ctxName = cfg.CurrentContext
-	}
-
-	curCtx := cfg.Contexts[ctxName]
+	curCtx := cfg.Contexts[cfg.CurrentContext]
 	if curCtx == nil {
-		return assistant.ClientOptions{}, fmt.Errorf("no context %q found in config; run 'gcx config set-context'", ctxName)
+		return assistant.ClientOptions{}, fmt.Errorf("no context %q found in config; run 'gcx config set-context'", cfg.CurrentContext)
 	}
 
 	grafana := curCtx.Grafana
 	if grafana == nil {
-		return assistant.ClientOptions{}, fmt.Errorf("no grafana config in context %q", ctxName)
+		return assistant.ClientOptions{}, fmt.Errorf("no grafana config in context %q", cfg.CurrentContext)
 	}
 
 	switch {
 	case grafana.ProxyEndpoint != "" && grafana.OAuthToken != "":
 		// OAuth path: direct API via ProxyEndpoint
-		refresher := buildTokenRefresher(ctx, &cfg, ctxName, grafana)
+		refresher := buildTokenRefresher(ctx, configOpts, &cfg, cfg.CurrentContext, grafana)
 		return assistant.ClientOptions{
 			GrafanaURL:     grafana.Server,
 			Token:          grafana.OAuthToken,
@@ -330,7 +336,7 @@ func resolveClientOptions(ctx context.Context) (assistant.ClientOptions, error) 
 const refreshThreshold = 5 * time.Minute
 
 // buildTokenRefresher creates a TokenRefresher that uses gcx's auth refresh mechanism.
-func buildTokenRefresher(ctx context.Context, cfg *config.Config, ctxName string, grafana *config.GrafanaConfig) assistant.TokenRefresher {
+func buildTokenRefresher(ctx context.Context, configOpts *cmdconfig.Options, cfg *config.Config, ctxName string, grafana *config.GrafanaConfig) assistant.TokenRefresher {
 	var mu sync.Mutex
 	token := grafana.OAuthToken
 	refreshToken := grafana.OAuthRefreshToken
@@ -371,13 +377,13 @@ func buildTokenRefresher(ctx context.Context, cfg *config.Config, ctxName string
 		}
 
 		// Persist to config
-		persistRefreshedTokens(ctx, cfg, ctxName, rr.Token, rr.RefreshToken, rr.ExpiresAt, rr.RefreshExpiresAt)
+		persistRefreshedTokens(ctx, configOpts, cfg, ctxName, rr.Token, rr.RefreshToken, rr.ExpiresAt, rr.RefreshExpiresAt)
 
 		return token, nil
 	}
 }
 
-func persistRefreshedTokens(ctx context.Context, cfg *config.Config, ctxName, token, refreshToken, expiresAt, refreshExpiresAt string) {
+func persistRefreshedTokens(ctx context.Context, configOpts *cmdconfig.Options, cfg *config.Config, ctxName, token, refreshToken, expiresAt, refreshExpiresAt string) {
 	curCtx := cfg.Contexts[ctxName]
 	if curCtx == nil || curCtx.Grafana == nil {
 		return
@@ -388,7 +394,7 @@ func persistRefreshedTokens(ctx context.Context, cfg *config.Config, ctxName, to
 	}
 	curCtx.Grafana.OAuthTokenExpiresAt = expiresAt
 	curCtx.Grafana.OAuthRefreshExpiresAt = refreshExpiresAt
-	_ = config.Write(ctx, config.StandardLocation(), *cfg)
+	_ = config.Write(ctx, configOpts.ConfigSource(), *cfg)
 }
 
 func parseRFC3339OrZero(s string) time.Time {
@@ -400,22 +406,6 @@ func parseRFC3339OrZero(s string) time.Time {
 }
 
 // Output helpers
-
-func printInfo(w io.Writer, msg string) {
-	fmt.Fprintln(w, msg)
-}
-
-func printSuccess(w io.Writer, msg string) {
-	fmt.Fprintf(w, "OK %s\n", msg)
-}
-
-func printWarning(w io.Writer, msg string) {
-	fmt.Fprintf(w, "WARNING: %s\n", msg)
-}
-
-func printError(w io.Writer, msg string) {
-	fmt.Fprintf(w, "ERROR: %s\n", msg)
-}
 
 func jsonLine(w io.Writer, data any) {
 	output, err := json.Marshal(data)
@@ -440,6 +430,6 @@ type sseLogger struct {
 	w io.Writer
 }
 
-func (l *sseLogger) Info(msg string)    { printInfo(l.w, msg) }
+func (l *sseLogger) Info(msg string)    { cmdio.Info(l.w, "%s", msg) }
 func (l *sseLogger) Debug(msg string)   {} // Silent by default; enable with -v flags
-func (l *sseLogger) Warning(msg string) { printWarning(l.w, msg) }
+func (l *sseLogger) Warning(msg string) { cmdio.Warning(l.w, "%s", msg) }
