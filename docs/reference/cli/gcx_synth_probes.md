@@ -22,5 +22,9 @@ Manage Synthetic Monitoring probes.
 ### SEE ALSO
 
 * [gcx synth](gcx_synth.md)	 - Manage Grafana Synthetic Monitoring checks and probes
+* [gcx synth probes create](gcx_synth_probes_create.md)	 - Create a Synthetic Monitoring probe.
+* [gcx synth probes delete](gcx_synth_probes_delete.md)	 - Delete Synthetic Monitoring probes.
+* [gcx synth probes deploy](gcx_synth_probes_deploy.md)	 - Generate Kubernetes manifests for deploying an SM agent.
 * [gcx synth probes list](gcx_synth_probes_list.md)	 - List Synthetic Monitoring probes.
+* [gcx synth probes token-reset](gcx_synth_probes_token-reset.md)	 - Reset the auth token of a Synthetic Monitoring probe.
 
