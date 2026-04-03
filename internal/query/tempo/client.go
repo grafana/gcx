@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/queryerror"
 	"k8s.io/client-go/rest"
 )
 
@@ -69,7 +70,7 @@ func (c *Client) Search(ctx context.Context, datasourceUID string, req SearchReq
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("trace search failed with status %d: %s", resp.StatusCode, string(respBody))
+		return nil, queryerror.FromBody("tempo", "search query", resp.StatusCode, respBody)
 	}
 
 	var result SearchResponse
@@ -114,7 +115,7 @@ func (c *Client) GetTrace(ctx context.Context, datasourceUID string, req GetTrac
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("get trace failed with status %d: %s", resp.StatusCode, string(respBody))
+		return nil, queryerror.FromBody("tempo", "get trace", resp.StatusCode, respBody)
 	}
 
 	var result GetTraceResponse
@@ -155,7 +156,7 @@ func (c *Client) Tags(ctx context.Context, datasourceUID string, req TagsRequest
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("tags query failed with status %d: %s", resp.StatusCode, string(respBody))
+		return nil, queryerror.FromBody("tempo", "tags query", resp.StatusCode, respBody)
 	}
 
 	var result TagsResponse
@@ -194,7 +195,7 @@ func (c *Client) TagValues(ctx context.Context, datasourceUID string, req TagVal
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("tag values query failed with status %d: %s", resp.StatusCode, string(respBody))
+		return nil, queryerror.FromBody("tempo", "tag values query", resp.StatusCode, respBody)
 	}
 
 	var result TagValuesResponse
@@ -239,7 +240,7 @@ func (c *Client) MetricsRange(ctx context.Context, datasourceUID string, req Met
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("metrics query failed with status %d: %s", resp.StatusCode, string(respBody))
+		return nil, queryerror.FromBody("tempo", "metrics query", resp.StatusCode, respBody)
 	}
 
 	var result MetricsResponse
@@ -282,7 +283,7 @@ func (c *Client) MetricsInstant(ctx context.Context, datasourceUID string, req M
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("metrics query failed with status %d: %s", resp.StatusCode, string(respBody))
+		return nil, queryerror.FromBody("tempo", "metrics query", resp.StatusCode, respBody)
 	}
 
 	var result MetricsResponse

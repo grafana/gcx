@@ -69,7 +69,7 @@ func (c *Client) List(ctx context.Context) ([]*Datasource, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to list datasources: HTTP %d: %s", resp.StatusCode, body)
+		return nil, NewAPIError("list datasources", "", resp.StatusCode, body)
 	}
 
 	var datasources []*Datasource
@@ -107,11 +107,8 @@ func (c *Client) get(ctx context.Context, path, identifier string) (*Datasource,
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("datasource %q not found", identifier)
-	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to get datasource %q: HTTP %d: %s", identifier, resp.StatusCode, body)
+		return nil, NewAPIError("get datasource", identifier, resp.StatusCode, body)
 	}
 
 	var ds Datasource

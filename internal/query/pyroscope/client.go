@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/queryerror"
 	"k8s.io/client-go/rest"
 )
 
@@ -78,7 +79,7 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("query failed with status %d: %s", resp.StatusCode, string(respBody))
+		return nil, queryerror.FromBody("pyroscope", "query", resp.StatusCode, respBody)
 	}
 
 	var result QueryResponse
@@ -124,7 +125,7 @@ func (c *Client) ProfileTypes(ctx context.Context, datasourceUID string, req Pro
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("profile types query failed with status %d: %s", resp.StatusCode, string(respBody))
+		return nil, queryerror.FromBody("pyroscope", "profile types query", resp.StatusCode, respBody)
 	}
 
 	var result ProfileTypesResponse
@@ -173,7 +174,7 @@ func (c *Client) LabelNames(ctx context.Context, datasourceUID string, req Label
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("label names query failed with status %d: %s", resp.StatusCode, string(respBody))
+		return nil, queryerror.FromBody("pyroscope", "label names query", resp.StatusCode, respBody)
 	}
 
 	var result LabelNamesResponse
@@ -223,7 +224,7 @@ func (c *Client) LabelValues(ctx context.Context, datasourceUID string, req Labe
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("label values query failed with status %d: %s", resp.StatusCode, string(respBody))
+		return nil, queryerror.FromBody("pyroscope", "label values query", resp.StatusCode, respBody)
 	}
 
 	var result LabelValuesResponse
@@ -284,7 +285,7 @@ func (c *Client) SelectSeries(ctx context.Context, datasourceUID string, req Sel
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("series query failed with status %d: %s", resp.StatusCode, string(respBody))
+		return nil, queryerror.FromBody("pyroscope", "series query", resp.StatusCode, respBody)
 	}
 
 	var result SelectSeriesResponse
