@@ -225,7 +225,7 @@ func DropRuleExample() json.RawMessage {
 				"drop_rate":         0.5,
 				"stream_selector":   `{app="nginx"}`,
 				"levels":            []string{"error", "warn"},
-				"log_line_contains": "timeout",
+				"log_line_contains": []string{"timeout"},
 			},
 		},
 	}

@@ -1,6 +1,6 @@
 ## gcx logs adaptive drop-rules create
 
-Create an adaptive log drop rule.
+Create an adaptive log drop rule from a file.
 
 ```
 gcx logs adaptive drop-rules create [flags]
@@ -9,15 +9,10 @@ gcx logs adaptive drop-rules create [flags]
 ### Options
 
 ```
-      --body string         JSON object for the rule body (e.g. v1 drop_rate, stream_selector, levels)
-      --body-file string    Path to a JSON file for the rule body
-      --disabled            Create the rule in a disabled state
-      --expires-at string   Optional RFC3339 expiry timestamp
-  -h, --help                help for create
-      --json string         Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-      --name string         Rule name (required)
-  -o, --output string       Output format. One of: json, yaml (default "json")
-      --version int         Policy body schema version (default 1)
+  -f, --filename string   File containing the drop rule definition (use - for stdin)
+  -h, --help              help for create
+      --json string       Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+  -o, --output string     Output format. One of: json, yaml (default "json")
 ```
 
 ### Options inherited from parent commands

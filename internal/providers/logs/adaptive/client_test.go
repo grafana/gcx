@@ -824,7 +824,7 @@ func TestClient_GetDropRule(t *testing.T) {
 }
 
 func TestClient_CreateDropRule(t *testing.T) {
-	body := json.RawMessage(`{"drop_rate":0.5,"stream_selector":"{}"}`)
+	body := logs.DropRuleBodyV1{DropRate: 0.5, StreamSelector: "{}"}
 	tests := []struct {
 		name    string
 		input   *logs.DropRule
@@ -894,7 +894,7 @@ func TestClient_CreateDropRule(t *testing.T) {
 }
 
 func TestClient_UpdateDropRule(t *testing.T) {
-	body := json.RawMessage(`{"drop_rate":0.3}`)
+	body := logs.DropRuleBodyV1{DropRate: 0.3}
 	tests := []struct {
 		name    string
 		id      string

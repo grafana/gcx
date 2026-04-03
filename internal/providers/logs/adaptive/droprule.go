@@ -2,7 +2,12 @@ package logs
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"strings"
 
+	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/resources/adapter"
 )
 
@@ -17,20 +22,106 @@ type DropRuleListQuery struct {
 	ExpirationFilter string
 }
 
+// DropRuleBodyV1 is the version 1 JSON policy body for adaptive log drop rules
+// (log-template-service pkg/droprule.PolicyBodyV1).
+type DropRuleBodyV1 struct {
+	DropRate        float64  `json:"drop_rate"`
+	StreamSelector  string   `json:"stream_selector"`
+	Levels          []string `json:"levels"`
+	LogLineContains []string `json:"log_line_contains,omitempty"`
+}
+
+// DropRuleFileSpec is the YAML/JSON document for
+// `gcx logs adaptive drop-rules create|update -f` (aligned with Adaptive Traces policy files).
+// It matches the API create/update fields; for create, segment_id defaults to GlobalDropRuleSegmentID
+// when omitted, and version defaults to 1 when omitted or zero.
+type DropRuleFileSpec struct {
+	Version   int            `json:"version"`
+	Name      string         `json:"name"`
+	Body      DropRuleBodyV1 `json:"body"`
+	ExpiresAt string         `json:"expires_at,omitempty"`
+	Disabled  bool           `json:"disabled,omitempty"`
+	SegmentID string         `json:"segment_id,omitempty"`
+}
+
+const maxDropRuleFileSize = 10 << 20 // 10 MiB, aligned with adaptive traces policy files
+
+// ReadDropRuleFileSpecFromReader decodes a DropRuleFileSpec from an io.Reader (YAML or JSON). Exported for testing.
+func ReadDropRuleFileSpecFromReader(reader io.Reader) (*DropRuleFileSpec, error) {
+	data, err := io.ReadAll(io.LimitReader(reader, maxDropRuleFileSize))
+	if err != nil {
+		return nil, fmt.Errorf("reading input: %w", err)
+	}
+
+	var spec DropRuleFileSpec
+	yamlCodec := format.NewYAMLCodec()
+	if err := yamlCodec.Decode(strings.NewReader(string(data)), &spec); err != nil {
+		return nil, fmt.Errorf("decoding input: %w", err)
+	}
+
+	return &spec, nil
+}
+
+func validateDropRuleFileSpecCreate(s *DropRuleFileSpec) error {
+	if s.Name == "" {
+		return errors.New("name is required in the file")
+	}
+	if s.SegmentID != "" && s.SegmentID != GlobalDropRuleSegmentID {
+		return fmt.Errorf("segment_id must be %q or omitted", GlobalDropRuleSegmentID)
+	}
+	return nil
+}
+
+func validateDropRuleFileSpecUpdate(s *DropRuleFileSpec) error {
+	if s.Name == "" {
+		return errors.New("name is required in the file")
+	}
+	return nil
+}
+
+func dropRuleFileSpecToCreate(s *DropRuleFileSpec) DropRule {
+	ver := s.Version
+	if ver == 0 {
+		ver = 1
+	}
+	seg := GlobalDropRuleSegmentID
+	if s.SegmentID != "" {
+		seg = s.SegmentID
+	}
+	return DropRule{
+		SegmentID: seg,
+		Version:   ver,
+		Name:      s.Name,
+		Body:      s.Body,
+		ExpiresAt: s.ExpiresAt,
+		Disabled:  s.Disabled,
+	}
+}
+
+func dropRuleFileSpecToUpdate(s *DropRuleFileSpec) DropRule {
+	return DropRule{
+		Version:   s.Version,
+		Name:      s.Name,
+		Body:      s.Body,
+		ExpiresAt: s.ExpiresAt,
+		Disabled:  s.Disabled,
+	}
+}
+
 // DropRule is an Adaptive Logs drop rule (HTTP: /adaptive-logs/drop-rules).
 //
 //nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type DropRule struct {
-	ID        string          `json:"id,omitempty"`
-	TenantID  string          `json:"tenant_id,omitempty"`
-	SegmentID string          `json:"segment_id,omitempty"`
-	Version   int             `json:"version"`
-	Name      string          `json:"name"`
-	Body      json.RawMessage `json:"body,omitempty"`
-	CreatedAt string          `json:"created_at,omitempty"`
-	UpdatedAt string          `json:"updated_at,omitempty"`
-	ExpiresAt string          `json:"expires_at,omitempty"`
-	Disabled  bool            `json:"disabled,omitempty"`
+	ID        string         `json:"id,omitempty"`
+	TenantID  string         `json:"tenant_id,omitempty"`
+	SegmentID string         `json:"segment_id,omitempty"`
+	Version   int            `json:"version"`
+	Name      string         `json:"name"`
+	Body      DropRuleBodyV1 `json:"body,omitempty"`
+	CreatedAt string         `json:"created_at,omitempty"`
+	UpdatedAt string         `json:"updated_at,omitempty"`
+	ExpiresAt string         `json:"expires_at,omitempty"`
+	Disabled  bool           `json:"disabled,omitempty"`
 }
 
 // GetResourceName implements adapter.ResourceNamer for TypedCRUD compatibility.
@@ -44,12 +135,12 @@ var _ adapter.ResourceIdentity = &DropRule{}
 
 func dropRuleCreatePayload(dr *DropRule) ([]byte, error) {
 	type payload struct {
-		SegmentID string          `json:"segment_id"`
-		Version   int             `json:"version"`
-		Name      string          `json:"name"`
-		Body      json.RawMessage `json:"body"`
-		ExpiresAt string          `json:"expires_at,omitempty"`
-		Disabled  bool            `json:"disabled,omitempty"`
+		SegmentID string         `json:"segment_id"`
+		Version   int            `json:"version"`
+		Name      string         `json:"name"`
+		Body      DropRuleBodyV1 `json:"body"`
+		ExpiresAt string         `json:"expires_at,omitempty"`
+		Disabled  bool           `json:"disabled,omitempty"`
 	}
 	p := payload{
 		SegmentID: dr.SegmentID,
@@ -64,11 +155,11 @@ func dropRuleCreatePayload(dr *DropRule) ([]byte, error) {
 
 func dropRuleUpdatePayload(dr *DropRule) ([]byte, error) {
 	type payload struct {
-		Version   int             `json:"version"`
-		Name      string          `json:"name"`
-		Body      json.RawMessage `json:"body"`
-		ExpiresAt string          `json:"expires_at,omitempty"`
-		Disabled  bool            `json:"disabled,omitempty"`
+		Version   int            `json:"version"`
+		Name      string         `json:"name"`
+		Body      DropRuleBodyV1 `json:"body"`
+		ExpiresAt string         `json:"expires_at,omitempty"`
+		Disabled  bool           `json:"disabled,omitempty"`
 	}
 	p := payload{
 		Version:   dr.Version,

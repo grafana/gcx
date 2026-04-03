@@ -1,6 +1,6 @@
 ## gcx logs adaptive drop-rules update
 
-Update an adaptive log drop rule.
+Update an adaptive log drop rule by ID.
 
 ```
 gcx logs adaptive drop-rules update ID [flags]
@@ -9,15 +9,10 @@ gcx logs adaptive drop-rules update ID [flags]
 ### Options
 
 ```
-      --body string         JSON object for the rule body
-      --body-file string    Path to a JSON file for the rule body
-      --disabled            Whether the rule is disabled
-      --expires-at string   RFC3339 expiry timestamp (omit flag to leave unchanged)
-  -h, --help                help for update
-      --json string         Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-      --name string         Rule name
-  -o, --output string       Output format. One of: json, yaml (default "json")
-      --version int         Policy body schema version
+  -f, --filename string   File containing the drop rule definition (use - for stdin)
+  -h, --help              help for update
+      --json string       Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+  -o, --output string     Output format. One of: json, yaml (default "json")
 ```
 
 ### Options inherited from parent commands

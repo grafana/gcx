@@ -2,7 +2,6 @@ package logs
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -1032,7 +1031,8 @@ func (h *logsHelper) dropRulesCommand() *cobra.Command {
 		Short: "Manage adaptive log drop rules.",
 		Long: "Manage adaptive log drop rules.\n\n" +
 			"Listing via `gcx resources get droprules` returns all rules for the tenant (no segment filter). " +
-			"`gcx logs adaptive drop-rules` subcommands operate on the " + GlobalDropRuleSegmentID + " segment only.",
+			"`gcx logs adaptive drop-rules` subcommands operate on the " + GlobalDropRuleSegmentID + " segment only.\n\n" +
+			"Create and update load a rule definition from a file (`--filename` / `-f`), same pattern as Adaptive Traces policies.",
 	}
 	cmd.AddCommand(
 		h.dropRulesListCommand(),
@@ -1134,70 +1134,62 @@ func (c *dropRulesTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
 
-func readDropRuleBodyJSON(bodyStr, bodyFile string) ([]byte, error) {
-	switch {
-	case bodyFile != "" && bodyStr != "":
-		return nil, errors.New("specify only one of --body or --body-file")
-	case bodyFile != "":
-		b, err := os.ReadFile(bodyFile)
+// readDropRuleFromFile reads and decodes a DropRuleFileSpec from a file path or stdin ("-").
+func readDropRuleFromFile(filePath string, stdin io.Reader) (*DropRuleFileSpec, error) {
+	var reader io.Reader
+	if filePath == "-" {
+		reader = stdin
+	} else {
+		f, err := os.Open(filePath)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("opening file %s: %w", filePath, err)
 		}
-		return bytesTrimJSON(b), nil
-	case bodyStr != "":
-		return []byte(bodyStr), nil
-	default:
-		return nil, nil
+		defer f.Close()
+		reader = f
 	}
-}
 
-func bytesTrimJSON(b []byte) []byte {
-	return []byte(strings.TrimSpace(string(b)))
+	return ReadDropRuleFileSpecFromReader(reader)
 }
 
 // dropRules create
 
 type dropRulesCreateOpts struct {
-	Version   int
-	Name      string
-	Disabled  bool
-	ExpiresAt string
-	Body      string
-	BodyFile  string
-	IO        cmdio.Options
+	File string
+	IO   cmdio.Options
 }
 
 func (o *dropRulesCreateOpts) setup(cmd *cobra.Command) {
-	cmd.Flags().IntVar(&o.Version, "version", 1, "Policy body schema version")
-	cmd.Flags().StringVar(&o.Name, "name", "", "Rule name (required)")
-	cmd.Flags().BoolVar(&o.Disabled, "disabled", false, "Create the rule in a disabled state")
-	cmd.Flags().StringVar(&o.ExpiresAt, "expires-at", "", "Optional RFC3339 expiry timestamp")
-	cmd.Flags().StringVar(&o.Body, "body", "", "JSON object for the rule body (e.g. v1 drop_rate, stream_selector, levels)")
-	cmd.Flags().StringVar(&o.BodyFile, "body-file", "", "Path to a JSON file for the rule body")
-	_ = cmd.MarkFlagRequired("name")
+	cmd.Flags().StringVarP(&o.File, "filename", "f", "", "File containing the drop rule definition (use - for stdin)")
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(cmd.Flags())
+}
+
+func (o *dropRulesCreateOpts) Validate() error {
+	if o.File == "" {
+		return errors.New("--filename/-f is required")
+	}
+	return nil
 }
 
 func (h *logsHelper) dropRulesCreateCommand() *cobra.Command {
 	opts := &dropRulesCreateOpts{}
 	cmd := &cobra.Command{
 		Use:   "create",
-		Short: "Create an adaptive log drop rule.",
+		Short: "Create an adaptive log drop rule from a file.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
 
-			bodyJSON, err := readDropRuleBodyJSON(opts.Body, opts.BodyFile)
+			spec, err := readDropRuleFromFile(opts.File, cmd.InOrStdin())
 			if err != nil {
 				return err
 			}
-			if len(bodyJSON) == 0 {
-				return errors.New("rule body is required: set --body or --body-file with a JSON object")
-			}
-			if !json.Valid(bodyJSON) {
-				return errors.New("rule body must be valid JSON")
+			if err := validateDropRuleFileSpecCreate(spec); err != nil {
+				return err
 			}
 
 			ctx := cmd.Context()
@@ -1207,19 +1199,13 @@ func (h *logsHelper) dropRulesCreateCommand() *cobra.Command {
 			}
 
 			created, err := crud.Create(ctx, &adapter.TypedObject[DropRule]{
-				Spec: DropRule{
-					SegmentID: GlobalDropRuleSegmentID,
-					Version:   opts.Version,
-					Name:      opts.Name,
-					Body:      bodyJSON,
-					ExpiresAt: opts.ExpiresAt,
-					Disabled:  opts.Disabled,
-				},
+				Spec: dropRuleFileSpecToCreate(spec),
 			})
 			if err != nil {
 				return err
 			}
 
+			cmdio.Success(cmd.ErrOrStderr(), "Created drop rule %q (id=%s)", created.Spec.Name, created.Spec.ID)
 			return opts.IO.Encode(cmd.OutOrStdout(), created.Spec)
 		},
 	}
@@ -1230,53 +1216,43 @@ func (h *logsHelper) dropRulesCreateCommand() *cobra.Command {
 // dropRules update
 
 type dropRulesUpdateOpts struct {
-	Version   int
-	Name      string
-	Disabled  bool
-	ExpiresAt string
-	Body      string
-	BodyFile  string
-	IO        cmdio.Options
+	File string
+	IO   cmdio.Options
 }
 
 func (o *dropRulesUpdateOpts) setup(cmd *cobra.Command) {
-	cmd.Flags().IntVar(&o.Version, "version", 0, "Policy body schema version")
-	cmd.Flags().StringVar(&o.Name, "name", "", "Rule name")
-	cmd.Flags().BoolVar(&o.Disabled, "disabled", false, "Whether the rule is disabled")
-	cmd.Flags().StringVar(&o.ExpiresAt, "expires-at", "", "RFC3339 expiry timestamp (omit flag to leave unchanged)")
-	cmd.Flags().StringVar(&o.Body, "body", "", "JSON object for the rule body")
-	cmd.Flags().StringVar(&o.BodyFile, "body-file", "", "Path to a JSON file for the rule body")
+	cmd.Flags().StringVarP(&o.File, "filename", "f", "", "File containing the drop rule definition (use - for stdin)")
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(cmd.Flags())
+}
+
+func (o *dropRulesUpdateOpts) Validate() error {
+	if o.File == "" {
+		return errors.New("--filename/-f is required")
+	}
+	return nil
 }
 
 func (h *logsHelper) dropRulesUpdateCommand() *cobra.Command {
 	opts := &dropRulesUpdateOpts{}
 	cmd := &cobra.Command{
 		Use:   "update ID",
-		Short: "Update an adaptive log drop rule.",
+		Short: "Update an adaptive log drop rule by ID.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
 
-			if !cmd.Flags().Changed("version") && !cmd.Flags().Changed("name") && !cmd.Flags().Changed("disabled") &&
-				!cmd.Flags().Changed("expires-at") && !cmd.Flags().Changed("body") && !cmd.Flags().Changed("body-file") {
-				return errors.New("specify at least one of --version, --name, --disabled, --expires-at, --body, --body-file")
-			}
-
-			bodyJSON, err := readDropRuleBodyJSON(opts.Body, opts.BodyFile)
+			spec, err := readDropRuleFromFile(opts.File, cmd.InOrStdin())
 			if err != nil {
 				return err
 			}
-			if cmd.Flags().Changed("body") || cmd.Flags().Changed("body-file") {
-				if len(bodyJSON) == 0 {
-					return errors.New("when updating body, provide a non-empty JSON object via --body or --body-file")
-				}
-				if !json.Valid(bodyJSON) {
-					return errors.New("rule body must be valid JSON")
-				}
+			if err := validateDropRuleFileSpecUpdate(spec); err != nil {
+				return err
 			}
 
 			ctx := cmd.Context()
@@ -1285,32 +1261,14 @@ func (h *logsHelper) dropRulesUpdateCommand() *cobra.Command {
 				return err
 			}
 
-			existing, err := crud.Get(ctx, args[0])
-			if err != nil {
-				return fmt.Errorf("failed to fetch existing drop rule for merge: %w", err)
-			}
-
-			if cmd.Flags().Changed("version") {
-				existing.Spec.Version = opts.Version
-			}
-			if cmd.Flags().Changed("name") {
-				existing.Spec.Name = opts.Name
-			}
-			if cmd.Flags().Changed("disabled") {
-				existing.Spec.Disabled = opts.Disabled
-			}
-			if cmd.Flags().Changed("expires-at") {
-				existing.Spec.ExpiresAt = opts.ExpiresAt
-			}
-			if cmd.Flags().Changed("body") || cmd.Flags().Changed("body-file") {
-				existing.Spec.Body = bodyJSON
-			}
-
-			updated, err := crud.Update(ctx, args[0], existing)
+			updated, err := crud.Update(ctx, args[0], &adapter.TypedObject[DropRule]{
+				Spec: dropRuleFileSpecToUpdate(spec),
+			})
 			if err != nil {
 				return err
 			}
 
+			cmdio.Success(cmd.ErrOrStderr(), "Updated drop rule %q (id=%s)", updated.Spec.Name, updated.Spec.ID)
 			return opts.IO.Encode(cmd.OutOrStdout(), updated.Spec)
 		},
 	}
