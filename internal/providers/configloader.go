@@ -172,7 +172,27 @@ func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.Namespaced
 		return config.NamespacedRESTConfig{}, fmt.Errorf("context %q not found", loaded.CurrentContext)
 	}
 
-	return loaded.GetCurrentContext().ToRESTConfig(ctx), nil
+	restCfg := loaded.GetCurrentContext().ToRESTConfig(ctx)
+
+	source := l.configSource()
+	contextName := loaded.CurrentContext
+	restCfg.SetOnRefresh(func(token, refreshToken, expiresAt, refreshExpiresAt string) error {
+		fresh, err := config.Load(ctx, source)
+		if err != nil {
+			return err
+		}
+		c := fresh.Contexts[contextName]
+		if c == nil || c.Grafana == nil {
+			return nil
+		}
+		c.Grafana.OAuthToken = token
+		c.Grafana.OAuthRefreshToken = refreshToken
+		c.Grafana.OAuthTokenExpiresAt = expiresAt
+		c.Grafana.OAuthRefreshExpiresAt = refreshExpiresAt
+		return config.Write(ctx, source, fresh)
+	})
+
+	return restCfg, nil
 }
 
 // LoadCloudConfig loads Grafana Cloud configuration, applying env var overrides.
@@ -260,6 +280,25 @@ func (l *ConfigLoader) LoadCloudConfig(ctx context.Context) (CloudRESTConfig, er
 	var restCfg *rest.Config
 	if curCtx.Grafana != nil && !curCtx.Grafana.IsEmpty() {
 		nrc := curCtx.ToRESTConfig(ctx)
+
+		source := l.configSource()
+		contextName := loaded.CurrentContext
+		nrc.SetOnRefresh(func(token, refreshToken, expiresAt, refreshExpiresAt string) error {
+			fresh, err := config.Load(ctx, source)
+			if err != nil {
+				return err
+			}
+			c := fresh.Contexts[contextName]
+			if c == nil || c.Grafana == nil {
+				return nil
+			}
+			c.Grafana.OAuthToken = token
+			c.Grafana.OAuthRefreshToken = refreshToken
+			c.Grafana.OAuthTokenExpiresAt = expiresAt
+			c.Grafana.OAuthRefreshExpiresAt = refreshExpiresAt
+			return config.Write(ctx, source, fresh)
+		})
+
 		namespace = nrc.Namespace
 		restCfg = &nrc.Config
 	}

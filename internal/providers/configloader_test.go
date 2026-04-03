@@ -411,6 +411,72 @@ current-context: default
 	assert.Equal(t, "default", cfg.CurrentContext)
 }
 
+// TestConfigLoader_LoadGrafanaConfig_PersistsRefreshedTokens verifies that
+// LoadGrafanaConfig wires SetOnRefresh so that a token refresh persists the
+// new tokens back to the config file on disk.
+func TestConfigLoader_LoadGrafanaConfig_PersistsRefreshedTokens(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/cli/v1/auth/refresh":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"token":              "gat_refreshed",
+					"expires_at":         "2099-01-01T00:00:00Z",
+					"refresh_token":      "gar_refreshed",
+					"refresh_expires_at": "2099-02-01T00:00:00Z",
+				},
+			})
+		case "/bootdata":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"user": map[string]any{"orgId": 1},
+			})
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer srv.Close()
+
+	cfgFile := writeConfigFile(t, `
+contexts:
+  default:
+    grafana:
+      server: "`+srv.URL+`"
+      proxy-endpoint: "`+srv.URL+`"
+      oauth-token: gat_expiring
+      oauth-refresh-token: gar_old
+      oauth-token-expires-at: "2020-01-01T00:00:00Z"
+      oauth-refresh-expires-at: "2099-01-01T00:00:00Z"
+      stack-id: 123
+current-context: default
+`)
+
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgFile)
+
+	restCfg, err := loader.LoadGrafanaConfig(context.Background())
+	require.NoError(t, err)
+
+	// Trigger a request through the REST config transport to force a refresh.
+	rt := restCfg.WrapTransport(http.DefaultTransport)
+	client := &http.Client{Transport: rt}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/test", nil)
+	require.NoError(t, err)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	// Re-read the config file and verify the refreshed tokens were persisted.
+	raw, err := os.ReadFile(cfgFile)
+	require.NoError(t, err)
+	contents := string(raw)
+	assert.Contains(t, contents, "gat_refreshed")
+	assert.Contains(t, contents, "gar_refreshed")
+	assert.Contains(t, contents, "2099-01-01T00:00:00Z")
+	assert.Contains(t, contents, "2099-02-01T00:00:00Z")
+}
+
 // TestConfigLoader_LoadGrafanaConfig_BackwardCompat verifies AC-4: LoadGrafanaConfig
 // still errors when no grafana server is configured.
 func TestConfigLoader_LoadGrafanaConfig_BackwardCompat(t *testing.T) {

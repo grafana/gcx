@@ -174,6 +174,42 @@ func TestRefreshTransport_CallsOnRefreshCallback(t *testing.T) {
 	}
 }
 
+func TestRefreshTransport_ReturnsErrRefreshTokenExpired_On401(t *testing.T) {
+	refreshServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/cli/v1/auth/refresh" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"statusCode":401,"message":"invalid or expired refresh token"}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer refreshServer.Close()
+
+	transport := &auth.RefreshTransport{
+		Base:          http.DefaultTransport,
+		ProxyEndpoint: refreshServer.URL,
+		Token:         "gat_old",
+		RefreshToken:  "gar_stale",
+		ExpiresAt:     time.Now().Add(1 * time.Minute), // within refresh threshold
+	}
+
+	client := &http.Client{Transport: transport}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, refreshServer.URL+"/test", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	resp, err := client.Do(req)
+	if resp != nil {
+		resp.Body.Close()
+	}
+	if err == nil {
+		t.Fatal("expected error for 401 refresh response, got nil")
+	}
+	if !errors.Is(err, auth.ErrRefreshTokenExpired) {
+		t.Fatalf("expected ErrRefreshTokenExpired, got: %v", err)
+	}
+}
+
 func TestRefreshTransport_RejectsExpiredRefreshToken(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
