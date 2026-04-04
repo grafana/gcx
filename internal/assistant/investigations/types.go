@@ -6,10 +6,16 @@ import "time"
 type InvestigationSummary struct {
 	ID        string    `json:"id"`
 	Title     string    `json:"title,omitempty"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	CreatedBy string    `json:"created_by,omitempty"`
+	State     string    `json:"state"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	Source    *Source   `json:"source,omitempty"`
+}
+
+// Source identifies who created an investigation.
+type Source struct {
+	Type   string `json:"type,omitempty"`
+	UserID string `json:"userId,omitempty"`
 }
 
 // Investigation is the full detail from GET /investigations/{id}.
@@ -43,12 +49,14 @@ type Todo struct {
 	Assignee string `json:"assignee,omitempty"`
 }
 
-// TimelineEntry is a single entry from GET /investigations/{id}/timeline-snapshot.
-type TimelineEntry struct {
-	Timestamp time.Time `json:"timestamp"`
-	Type      string    `json:"type"`
-	Summary   string    `json:"summary"`
-	Actor     string    `json:"actor,omitempty"`
+// TimelineAgent is agent activity from GET /investigations/{id}/timeline-snapshot.
+type TimelineAgent struct {
+	AgentID      string `json:"agentId"`
+	AgentName    string `json:"agentName"`
+	Status       string `json:"status"`
+	MessageCount int    `json:"messageCount"`
+	StartTime    int64  `json:"startTime"`
+	LastActivity int64  `json:"lastActivity"`
 }
 
 // ReportSummary is from GET /investigations/{id}/report-summary.

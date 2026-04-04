@@ -15,15 +15,15 @@ func TestListTableCodec_Encode(t *testing.T) {
 		{
 			ID:        "inv-1",
 			Title:     "High CPU investigation",
-			Status:    "running",
-			CreatedBy: "admin",
+			State:     "running",
+			Source:    &investigations.Source{UserID: "admin"},
 			CreatedAt: time.Date(2026, 4, 1, 10, 0, 0, 0, time.UTC),
 			UpdatedAt: time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC),
 		},
 		{
-			ID:     "inv-2",
-			Title:  "",
-			Status: "completed",
+			ID:    "inv-2",
+			Title: "",
+			State: "completed",
 		},
 	}
 
@@ -72,9 +72,9 @@ func TestListTableCodec_Encode(t *testing.T) {
 func TestListTableCodec_TitleTruncation(t *testing.T) {
 	summaries := []investigations.InvestigationSummary{
 		{
-			ID:     "inv-1",
-			Title:  "This is a very long title that should be truncated at forty characters",
-			Status: "running",
+			ID:    "inv-1",
+			Title: "This is a very long title that should be truncated at forty characters",
+			State: "running",
 		},
 	}
 
@@ -119,39 +119,45 @@ func TestTodosTableCodec_Encode(t *testing.T) {
 }
 
 func TestTimelineTableCodec_Encode(t *testing.T) {
-	entries := []investigations.TimelineEntry{
+	agents := []investigations.TimelineAgent{
 		{
-			Timestamp: time.Date(2026, 4, 1, 10, 0, 0, 0, time.UTC),
-			Type:      "task_started",
-			Summary:   "Started checking alerts",
-			Actor:     "agent",
+			AgentID:      "a-1",
+			AgentName:    "investigation_lead",
+			Status:       "completed",
+			MessageCount: 15,
+			StartTime:    1700000000000,
+			LastActivity: 1700000300000,
 		},
 		{
-			Timestamp: time.Date(2026, 4, 1, 10, 5, 0, 0, time.UTC),
-			Type:      "task_completed",
-			Summary:   "Finished alert check",
+			AgentID:      "a-2",
+			AgentName:    "prometheus_specialist",
+			Status:       "in_progress",
+			MessageCount: 3,
+			StartTime:    1700000100000,
+			LastActivity: 1700000200000,
 		},
 	}
 
 	t.Run("table", func(t *testing.T) {
 		codec := &investigations.TimelineTableCodec{}
 		var buf bytes.Buffer
-		require.NoError(t, codec.Encode(&buf, entries))
+		require.NoError(t, codec.Encode(&buf, agents))
 		out := buf.String()
-		assert.Contains(t, out, "TIMESTAMP")
-		assert.Contains(t, out, "TYPE")
-		assert.Contains(t, out, "SUMMARY")
-		assert.NotContains(t, out, "ACTOR")
+		assert.Contains(t, out, "AGENT ID")
+		assert.Contains(t, out, "NAME")
+		assert.Contains(t, out, "STATUS")
+		assert.Contains(t, out, "MESSAGES")
+		assert.NotContains(t, out, "LAST ACTIVITY")
 	})
 
 	t.Run("wide", func(t *testing.T) {
 		codec := &investigations.TimelineTableCodec{Wide: true}
 		var buf bytes.Buffer
-		require.NoError(t, codec.Encode(&buf, entries))
+		require.NoError(t, codec.Encode(&buf, agents))
 		out := buf.String()
-		assert.Contains(t, out, "ACTOR")
-		assert.Contains(t, out, "agent")
-		assert.Contains(t, out, "-") // empty actor
+		assert.Contains(t, out, "LAST ACTIVITY")
+		assert.Contains(t, out, "STARTED")
+		assert.Contains(t, out, "investigation_lead")
 	})
 
 	t.Run("wrong type", func(t *testing.T) {

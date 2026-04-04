@@ -38,14 +38,18 @@ func (c *Client) List(ctx context.Context, state string) ([]InvestigationSummary
 		return nil, assistanthttp.HandleErrorResponse(resp)
 	}
 
-	var summaries []InvestigationSummary
-	if err := json.NewDecoder(resp.Body).Decode(&summaries); err != nil {
+	var envelope struct {
+		Data struct {
+			Investigations []InvestigationSummary `json:"investigations"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
 		return nil, fmt.Errorf("failed to decode investigations: %w", err)
 	}
-	if summaries == nil {
+	if envelope.Data.Investigations == nil {
 		return []InvestigationSummary{}, nil
 	}
-	return summaries, nil
+	return envelope.Data.Investigations, nil
 }
 
 // Get returns full investigation detail by ID.
@@ -60,11 +64,13 @@ func (c *Client) Get(ctx context.Context, id string) (*Investigation, error) {
 		return nil, assistanthttp.HandleErrorResponse(resp)
 	}
 
-	var inv Investigation
-	if err := json.NewDecoder(resp.Body).Decode(&inv); err != nil {
+	var envelope struct {
+		Data Investigation `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
 		return nil, fmt.Errorf("failed to decode investigation: %w", err)
 	}
-	return &inv, nil
+	return &envelope.Data, nil
 }
 
 // Create creates a new investigation.
@@ -110,30 +116,27 @@ func (c *Client) Cancel(ctx context.Context, id string) (*CancelResponse, error)
 	return &result, nil
 }
 
-// Todos returns agent tasks for an investigation.
+// Todos returns agent tasks for an investigation by extracting them from the
+// timeline-snapshot endpoint, which lists all agents and their statuses.
 func (c *Client) Todos(ctx context.Context, id string) ([]Todo, error) {
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, "/investigations/"+url.PathEscape(id)+"/todos", nil)
+	agents, err := c.Timeline(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get todos for investigation %s: %w", id, err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, assistanthttp.HandleErrorResponse(resp)
-	}
-
-	var todos []Todo
-	if err := json.NewDecoder(resp.Body).Decode(&todos); err != nil {
-		return nil, fmt.Errorf("failed to decode todos: %w", err)
-	}
-	if todos == nil {
-		return []Todo{}, nil
+	todos := make([]Todo, 0, len(agents))
+	for _, a := range agents {
+		todos = append(todos, Todo{
+			ID:     a.AgentID,
+			Title:  a.AgentName,
+			Status: a.Status,
+		})
 	}
 	return todos, nil
 }
 
 // Timeline returns the activity timeline for an investigation.
-func (c *Client) Timeline(ctx context.Context, id string) ([]TimelineEntry, error) {
+func (c *Client) Timeline(ctx context.Context, id string) ([]TimelineAgent, error) {
 	resp, err := c.base.DoRequest(ctx, http.MethodGet, "/investigations/"+url.PathEscape(id)+"/timeline-snapshot", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get timeline for investigation %s: %w", id, err)
@@ -144,14 +147,18 @@ func (c *Client) Timeline(ctx context.Context, id string) ([]TimelineEntry, erro
 		return nil, assistanthttp.HandleErrorResponse(resp)
 	}
 
-	var entries []TimelineEntry
-	if err := json.NewDecoder(resp.Body).Decode(&entries); err != nil {
+	var envelope struct {
+		Data struct {
+			Agents []TimelineAgent `json:"agents"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
 		return nil, fmt.Errorf("failed to decode timeline: %w", err)
 	}
-	if entries == nil {
-		return []TimelineEntry{}, nil
+	if envelope.Data.Agents == nil {
+		return []TimelineAgent{}, nil
 	}
-	return entries, nil
+	return envelope.Data.Agents, nil
 }
 
 // Report returns the condensed report summary for an investigation.
@@ -166,11 +173,13 @@ func (c *Client) Report(ctx context.Context, id string) (*ReportSummary, error) 
 		return nil, assistanthttp.HandleErrorResponse(resp)
 	}
 
-	var report ReportSummary
-	if err := json.NewDecoder(resp.Body).Decode(&report); err != nil {
+	var envelope struct {
+		Data ReportSummary `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
 		return nil, fmt.Errorf("failed to decode report: %w", err)
 	}
-	return &report, nil
+	return &envelope.Data, nil
 }
 
 // Document returns a specific document from an investigation.
@@ -186,11 +195,13 @@ func (c *Client) Document(ctx context.Context, id, docID string) (*Document, err
 		return nil, assistanthttp.HandleErrorResponse(resp)
 	}
 
-	var doc Document
-	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
+	var envelope struct {
+		Data Document `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
 		return nil, fmt.Errorf("failed to decode document: %w", err)
 	}
-	return &doc, nil
+	return &envelope.Data, nil
 }
 
 // Approvals returns approval requests for an investigation.
@@ -205,12 +216,16 @@ func (c *Client) Approvals(ctx context.Context, id string) ([]Approval, error) {
 		return nil, assistanthttp.HandleErrorResponse(resp)
 	}
 
-	var approvals []Approval
-	if err := json.NewDecoder(resp.Body).Decode(&approvals); err != nil {
+	var envelope struct {
+		Data struct {
+			Approvals []Approval `json:"approvals"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
 		return nil, fmt.Errorf("failed to decode approvals: %w", err)
 	}
-	if approvals == nil {
+	if envelope.Data.Approvals == nil {
 		return []Approval{}, nil
 	}
-	return approvals, nil
+	return envelope.Data.Approvals, nil
 }

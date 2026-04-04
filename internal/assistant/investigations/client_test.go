@@ -51,9 +51,13 @@ func TestList(t *testing.T) {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodGet, r.Method)
 				assert.Contains(t, r.URL.Path, "/investigations/summary")
-				writeJSON(w, []investigations.InvestigationSummary{
-					{ID: "inv-1", Title: "Test", Status: "running"},
-					{ID: "inv-2", Title: "Test 2", Status: "completed"},
+				writeJSON(w, map[string]any{
+					"data": map[string]any{
+						"investigations": []investigations.InvestigationSummary{
+							{ID: "inv-1", Title: "Test", State: "running"},
+							{ID: "inv-2", Title: "Test 2", State: "completed"},
+						},
+					},
 				})
 			},
 			wantCount: 2,
@@ -63,8 +67,12 @@ func TestList(t *testing.T) {
 			state: "completed",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, "completed", r.URL.Query().Get("state"))
-				writeJSON(w, []investigations.InvestigationSummary{
-					{ID: "inv-2", Title: "Test 2", Status: "completed"},
+				writeJSON(w, map[string]any{
+					"data": map[string]any{
+						"investigations": []investigations.InvestigationSummary{
+							{ID: "inv-2", Title: "Test 2", State: "completed"},
+						},
+					},
 				})
 			},
 			wantCount: 1,
@@ -73,7 +81,11 @@ func TestList(t *testing.T) {
 			name:  "empty list",
 			state: "",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
-				writeJSON(w, []investigations.InvestigationSummary{})
+				writeJSON(w, map[string]any{
+					"data": map[string]any{
+						"investigations": []investigations.InvestigationSummary{},
+					},
+				})
 			},
 			wantCount: 0,
 		},
@@ -113,7 +125,9 @@ func TestGet(t *testing.T) {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodGet, r.Method)
 				assert.Contains(t, r.URL.Path, "/investigations/inv-1")
-				writeJSON(w, investigations.Investigation{"id": "inv-1", "title": "Test", "status": "running"})
+				writeJSON(w, map[string]any{
+					"data": investigations.Investigation{"id": "inv-1", "title": "Test", "status": "running"},
+				})
 			},
 		},
 		{
@@ -232,10 +246,14 @@ func TestCancel(t *testing.T) {
 func TestTodos(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
-		assert.Contains(t, r.URL.Path, "/investigations/inv-1/todos")
-		writeJSON(w, []investigations.Todo{
-			{ID: "t-1", Title: "Check alerts", Status: "completed"},
-			{ID: "t-2", Title: "Analyze logs", Status: "in_progress", Assignee: "agent"},
+		assert.Contains(t, r.URL.Path, "/investigations/inv-1/timeline-snapshot")
+		writeJSON(w, map[string]any{
+			"data": map[string]any{
+				"agents": []investigations.TimelineAgent{
+					{AgentID: "a-1", AgentName: "Check alerts", Status: "completed", MessageCount: 3},
+					{AgentID: "a-2", AgentName: "Analyze logs", Status: "in_progress", MessageCount: 1},
+				},
+			},
 		})
 	}))
 
@@ -246,26 +264,31 @@ func TestTodos(t *testing.T) {
 }
 
 func TestTimeline(t *testing.T) {
-	now := time.Now().Truncate(time.Second)
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Contains(t, r.URL.Path, "/investigations/inv-1/timeline-snapshot")
-		writeJSON(w, []investigations.TimelineEntry{
-			{Timestamp: now, Type: "task_started", Summary: "Started check alerts", Actor: "agent"},
+		writeJSON(w, map[string]any{
+			"data": map[string]any{
+				"agents": []investigations.TimelineAgent{
+					{AgentID: "a-1", AgentName: "investigation_lead", Status: "completed", MessageCount: 5, StartTime: 1700000000000, LastActivity: 1700000300000},
+				},
+			},
 		})
 	}))
 
-	entries, err := client.Timeline(t.Context(), "inv-1")
+	agents, err := client.Timeline(t.Context(), "inv-1")
 	require.NoError(t, err)
-	assert.Len(t, entries, 1)
-	assert.Equal(t, "task_started", entries[0].Type)
+	assert.Len(t, agents, 1)
+	assert.Equal(t, "investigation_lead", agents[0].AgentName)
 }
 
 func TestReport(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Contains(t, r.URL.Path, "/investigations/inv-1/report-summary")
-		writeJSON(w, investigations.ReportSummary{"summary": "All clear", "status": "completed"})
+		writeJSON(w, map[string]any{
+			"data": investigations.ReportSummary{"summary": "All clear", "phase": "completed"},
+		})
 	}))
 
 	report, err := client.Report(t.Context(), "inv-1")
@@ -277,7 +300,9 @@ func TestDocument(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Contains(t, r.URL.Path, "/investigations/inv-1/documents/doc-1")
-		writeJSON(w, investigations.Document{ID: "doc-1", Title: "Alert Analysis", Content: "Details here", Type: "markdown"})
+		writeJSON(w, map[string]any{
+			"data": investigations.Document{ID: "doc-1", Title: "Alert Analysis", Content: "Details here", Type: "markdown"},
+		})
 	}))
 
 	doc, err := client.Document(t.Context(), "inv-1", "doc-1")
@@ -291,8 +316,12 @@ func TestApprovals(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Contains(t, r.URL.Path, "/investigations/inv-1/approvals")
-		writeJSON(w, []investigations.Approval{
-			{ID: "a-1", Status: "pending", Approver: "user@grafana.com", CreatedAt: now},
+		writeJSON(w, map[string]any{
+			"data": map[string]any{
+				"approvals": []investigations.Approval{
+					{ID: "a-1", Status: "pending", Approver: "user@grafana.com", CreatedAt: now},
+				},
+			},
 		})
 	}))
 
@@ -304,7 +333,11 @@ func TestApprovals(t *testing.T) {
 
 func TestList_NullResponse(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("null"))
+		writeJSON(w, map[string]any{
+			"data": map[string]any{
+				"investigations": nil,
+			},
+		})
 	}))
 
 	summaries, err := client.List(t.Context(), "")

@@ -278,11 +278,11 @@ func newTimelineCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			entries, err := client.Timeline(cmd.Context(), args[0])
+			agents, err := client.Timeline(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), entries)
+			return opts.IO.Encode(cmd.OutOrStdout(), agents)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -432,15 +432,15 @@ func (c *ListTableCodec) Encode(w io.Writer, v any) error {
 
 		if c.Wide {
 			created := assistanthttp.FormatTime(s.CreatedAt)
-			createdBy := s.CreatedBy
-			if createdBy == "" {
-				createdBy = "-"
+			createdBy := "-"
+			if s.Source != nil && s.Source.UserID != "" {
+				createdBy = s.Source.UserID
 			}
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
-				s.ID, title, s.Status, createdBy, created, updated)
+				s.ID, title, s.State, createdBy, created, updated)
 		} else {
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
-				s.ID, title, s.Status, updated)
+				s.ID, title, s.State, updated)
 		}
 	}
 	return tw.Flush()
@@ -507,30 +507,26 @@ func (c *TimelineTableCodec) Format() format.Format {
 }
 
 func (c *TimelineTableCodec) Encode(w io.Writer, v any) error {
-	entries, ok := v.([]TimelineEntry)
+	agents, ok := v.([]TimelineAgent)
 	if !ok {
-		return errors.New("invalid data type for table codec: expected []TimelineEntry")
+		return errors.New("invalid data type for table codec: expected []TimelineAgent")
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	if c.Wide {
-		fmt.Fprintln(tw, "TIMESTAMP\tTYPE\tSUMMARY\tACTOR")
+		fmt.Fprintln(tw, "AGENT ID\tNAME\tSTATUS\tMESSAGES\tSTARTED\tLAST ACTIVITY")
 	} else {
-		fmt.Fprintln(tw, "TIMESTAMP\tTYPE\tSUMMARY")
+		fmt.Fprintln(tw, "AGENT ID\tNAME\tSTATUS\tMESSAGES")
 	}
 
-	for _, e := range entries {
-		ts := assistanthttp.FormatTime(e.Timestamp)
-		summary := truncate(e.Summary, 60)
-
+	for _, a := range agents {
+		name := truncate(a.AgentName, 40)
 		if c.Wide {
-			actor := e.Actor
-			if actor == "" {
-				actor = "-"
-			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", ts, e.Type, summary, actor)
+			started := assistanthttp.FormatMillis(a.StartTime)
+			lastAct := assistanthttp.FormatMillis(a.LastActivity)
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\t%s\n", a.AgentID, name, a.Status, a.MessageCount, started, lastAct)
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\n", ts, e.Type, summary)
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\n", a.AgentID, name, a.Status, a.MessageCount)
 		}
 	}
 	return tw.Flush()

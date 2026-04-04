@@ -72,3 +72,11 @@ func FormatTime(t time.Time) string {
 	}
 	return t.Format("2006-01-02 15:04")
 }
+
+// FormatMillis formats a Unix millisecond timestamp for table display.
+func FormatMillis(ms int64) string {
+	if ms == 0 {
+		return "-"
+	}
+	return time.UnixMilli(ms).UTC().Format("2006-01-02 15:04")
+}
