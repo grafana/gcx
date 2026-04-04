@@ -109,26 +109,43 @@ internal/
   logs/         slog/klog integration
 ```
 
+## Compliance Hierarchy
+
+Check work against these docs during planning, design, and implementation — in order of strictness.
+
+| # | Doc | Strictness | What to check | If violated |
+|---|-----|-----------|---------------|-------------|
+| 1 | [CONSTITUTION.md](CONSTITUTION.md) | **Hard invariant** — violation is a bug | Architecture invariants, dependency rules, provider registration, CLI grammar, typed resource requirements | Stop. Fix before proceeding. Violation requires explicit human approval to waive. |
+| 2 | [VISION.md](VISION.md) | **Strategic alignment** — violation is wasted work | Does this belong in gcx? Does it align with dual-purpose design, core beliefs, product surface? | Pause. Confirm direction with a human before investing more effort. |
+| 3 | [DESIGN.md](DESIGN.md) | **UX rules** — violation is a UX defect | Output model, exit codes, safety patterns, taste rules, `[CURRENT]`/`[ADOPT]` items in [design-guide.md](docs/reference/design-guide.md) | Fix. New code must comply with all `[CURRENT]` and `[ADOPT]` items. |
+| 4 | [ARCHITECTURE.md](ARCHITECTURE.md) | **Structural guidance** — violation is tech debt | Pipeline placement, package boundaries, patterns in [docs/architecture/](docs/architecture/README.md) | Prefer compliance. Deviation is acceptable with rationale (document in commit or ADR). |
+
+**When to check:**
+- **Planning/design**: Check VISION (2) and CONSTITUTION (1) — are we building the right thing, and can we build it within the rules?
+- **Implementation**: Check DESIGN (3) and ARCHITECTURE (4) — does the code follow UX rules and structural patterns?
+- **Pre-flight** (below): Final sweep across all four before pushing.
+
 ## Pre-Flight Checklist
 
 Run when code has been modified, before pushing or creating a PR.
 
-1. **Sync with base branch**
+1. **Compliance check** — verify changes against the [compliance hierarchy](#compliance-hierarchy) above. CONSTITUTION and DESIGN violations must be fixed. VISION misalignment must be flagged. ARCHITECTURE deviations must be documented.
+2. **Sync with base branch**
    ```bash
    git fetch origin main && git rebase origin/main
    ```
-2. **Quality gates pass** — `make docs` auto-detects agent mode from env vars (`CLAUDECODE`, `CLAUDE_CODE`) and flips output defaults, producing wrong docs. Always override:
+3. **Quality gates pass** — `make docs` auto-detects agent mode from env vars (`CLAUDECODE`, `CLAUDE_CODE`) and flips output defaults, producing wrong docs. Always override:
    ```bash
    GCX_AGENT_MODE=false make all
    ```
-3. **Doc maintenance gate** — run the structural checks in [docs/reference/doc-maintenance.md](docs/reference/doc-maintenance.md). Update `CLAUDE.md` (package map), `ARCHITECTURE.md` (ADR table), and relevant `docs/architecture/` files if any are stale.
-4. **Push**
+4. **Doc maintenance gate** — run the structural checks in [docs/reference/doc-maintenance.md](docs/reference/doc-maintenance.md). Update `CLAUDE.md` (package map), `ARCHITECTURE.md` (ADR table), and relevant `docs/architecture/` files if any are stale.
+5. **Push**
    ```bash
    git push
    git status   # must show "up to date with origin"
    ```
    Work is not done until push succeeds. If it fails, resolve and retry.
-5. **Beads** (if in use) — close completed issues and sync:
+6. **Beads** (if in use) — close completed issues and sync:
    ```bash
    bd close <id>      # from repo root, not worktrees
    bd dolt push
