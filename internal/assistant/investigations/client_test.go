@@ -334,6 +334,125 @@ func TestApprovals(t *testing.T) {
 	assert.Equal(t, "pending", approvals[0].Status)
 }
 
+func TestTimeline_ServerError(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("internal error"))
+	}))
+
+	_, err := client.Timeline(t.Context(), "inv-1")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "500")
+}
+
+func TestTimeline_NullAgents(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]any{
+			"data": map[string]any{
+				"agents": nil,
+			},
+		})
+	}))
+
+	agents, err := client.Timeline(t.Context(), "inv-1")
+	require.NoError(t, err)
+	assert.Empty(t, agents)
+}
+
+func TestReport_ServerError(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte("not found"))
+	}))
+
+	_, err := client.Report(t.Context(), "inv-1")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "404")
+}
+
+func TestDocument_ServerError(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte("not found"))
+	}))
+
+	_, err := client.Document(t.Context(), "inv-1", "doc-1")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "404")
+}
+
+func TestApprovals_ServerError(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("internal error"))
+	}))
+
+	_, err := client.Approvals(t.Context(), "inv-1")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "500")
+}
+
+func TestApprovals_NullList(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]any{
+			"data": map[string]any{
+				"approvals": nil,
+			},
+		})
+	}))
+
+	approvals, err := client.Approvals(t.Context(), "inv-1")
+	require.NoError(t, err)
+	assert.Empty(t, approvals)
+}
+
+func TestTodos_ServerError(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("internal error"))
+	}))
+
+	_, err := client.Todos(t.Context(), "inv-1")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "500")
+}
+
+func TestTodos_EmptyAgents(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]any{
+			"data": map[string]any{
+				"agents": []investigations.TimelineAgent{},
+			},
+		})
+	}))
+
+	todos, err := client.Todos(t.Context(), "inv-1")
+	require.NoError(t, err)
+	assert.Empty(t, todos)
+}
+
+func TestGet_InvalidJSON(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("{invalid"))
+	}))
+
+	_, err := client.Get(t.Context(), "inv-1")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to decode")
+}
+
+func TestList_InvalidJSON(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("{invalid"))
+	}))
+
+	_, err := client.List(t.Context(), "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to decode")
+}
+
 func TestList_NullResponse(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, map[string]any{
