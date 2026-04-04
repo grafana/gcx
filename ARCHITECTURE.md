@@ -4,7 +4,7 @@
 
 See [VISION.md](VISION.md) for goals, roadmap, and product surface.
 
-**In brief:** kubectl-style CLI for managing the entire Grafana Cloud stack — dashboards, folders, alert rules, SLOs, synthetic monitoring, OnCall, K6, and more — from a single tool. Built in Go, uses `k8s.io/client-go` and Cobra. Every command serves both humans and AI agents.
+**In brief:** A CLI for managing Grafana and Grafana Cloud. Supports dynamic Grafana API resources via a kubectl-like resources layer, and per-product features via the provider interface. Includes observability-as-code workflows (`gcx dev`), multi-stack configuration/contexts, and Grafana Assistant integration. Optimized for AI agents and human use.
 
 ## Pipeline
 
@@ -79,7 +79,17 @@ See [docs/adrs/](docs/adrs/) for all ADRs.
 | [data-flows.md](docs/architecture/data-flows.md) | Push/Pull/Serve/Delete pipelines |
 | [project-structure.md](docs/architecture/project-structure.md) | Build system, CI/CD, dependencies |
 
-Package map (compact) is in [AGENTS.md](AGENTS.md). Detailed package descriptions are in [docs/architecture/project-structure.md](docs/architecture/project-structure.md).
+Detailed package descriptions are in [docs/architecture/project-structure.md](docs/architecture/project-structure.md).
+
+## Taste Rules
+
+Enforced — see [CONSTITUTION.md § Taste Rules](CONSTITUTION.md#taste-rules) for the authoritative list.
+
+- **Options pattern** for every command: `opts` struct → `setup(flags)` → `Validate()` → constructor
+- **Error messages**: lowercase, no trailing punctuation
+- **Table-driven tests**: all Go tests follow [Go wiki conventions](https://go.dev/wiki/TableDrivenTests)
+- **errgroup concurrency**: bounded parallelism (default 10) for all batch I/O operations
+- **Commit format**: Title (one-liner) / What (description) / Why (rationale)
 
 ## Related
 

@@ -89,13 +89,7 @@ The `--json field1,field2` flag selects specific fields. `--json ?` discovers av
 
 ## Taste Rules
 
-These are enforced — see [CONSTITUTION.md § Taste Rules](CONSTITUTION.md#taste-rules) for the authoritative list.
-
-- **Options pattern** for every command: `opts` struct → `setup(flags)` → `Validate()` → constructor
-- **Error messages**: lowercase, no trailing punctuation
-- **Table-driven tests**: all Go tests follow [Go wiki conventions](https://go.dev/wiki/TableDrivenTests)
-- **errgroup concurrency**: bounded parallelism (default 10) for all batch I/O operations
-- **Commit format**: Title (one-liner) / What (description) / Why (rationale)
+Code taste rules (options pattern, error messages, test style, commit format) live in [ARCHITECTURE.md § Taste Rules](ARCHITECTURE.md#taste-rules). Authoritative source: [CONSTITUTION.md § Taste Rules](CONSTITUTION.md#taste-rules).
 
 ## Implementation Reference
 
