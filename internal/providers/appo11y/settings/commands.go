@@ -7,12 +7,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -106,14 +106,6 @@ func (c *settingsTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected *PluginSettings")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-
-	if c.Wide {
-		fmt.Fprintln(tw, "NAME\tLOG QUERY MODE\tMETRICS MODE\tLOGS QUERY (NS)\tLOGS QUERY (NO NS)")
-	} else {
-		fmt.Fprintln(tw, "NAME\tLOG QUERY MODE\tMETRICS MODE")
-	}
-
 	logQueryMode := s.JSONData.DefaultLogQueryMode
 	if logQueryMode == "" {
 		logQueryMode = "-"
@@ -127,13 +119,14 @@ func (c *settingsTableCodec) Encode(w io.Writer, v any) error {
 	if c.Wide {
 		logsQueryNS := s.JSONData.LogsQueryWithNamespace
 		logsQueryNoNS := s.JSONData.LogsQueryWithoutNamespace
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-			s.GetResourceName(), logQueryMode, metricsMode, logsQueryNS, logsQueryNoNS)
-	} else {
-		fmt.Fprintf(tw, "%s\t%s\t%s\n", s.GetResourceName(), logQueryMode, metricsMode)
+		t := style.NewTable("NAME", "LOG QUERY MODE", "METRICS MODE", "LOGS QUERY (NS)", "LOGS QUERY (NO NS)")
+		t.Row(s.GetResourceName(), logQueryMode, metricsMode, logsQueryNS, logsQueryNoNS)
+		return t.Render(w)
 	}
 
-	return tw.Flush()
+	t := style.NewTable("NAME", "LOG QUERY MODE", "METRICS MODE")
+	t.Row(s.GetResourceName(), logQueryMode, metricsMode)
+	return t.Render(w)
 }
 
 func (c *settingsTableCodec) Decode(_ io.Reader, _ any) error {

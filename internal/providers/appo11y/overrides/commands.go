@@ -8,11 +8,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -104,14 +104,6 @@ func (c *overridesTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected MetricsGeneratorConfig")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-
-	if c.Wide {
-		fmt.Fprintln(tw, "NAME\tCOLLECTION\tINTERVAL\tSERVICE GRAPHS\tSPAN METRICS\tSG DIMENSIONS\tSM DIMENSIONS")
-	} else {
-		fmt.Fprintln(tw, "NAME\tCOLLECTION\tINTERVAL\tSERVICE GRAPHS\tSPAN METRICS")
-	}
-
 	collection := "enabled"
 	if cfg.MetricsGenerator != nil && cfg.MetricsGenerator.DisableCollection {
 		collection = "disabled"
@@ -138,14 +130,14 @@ func (c *overridesTableCodec) Encode(w io.Writer, v any) error {
 	}
 
 	if c.Wide {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			cfg.GetResourceName(), collection, interval, serviceGraphs, spanMetrics, sgDimensions, smDimensions)
-	} else {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-			cfg.GetResourceName(), collection, interval, serviceGraphs, spanMetrics)
+		t := style.NewTable("NAME", "COLLECTION", "INTERVAL", "SERVICE GRAPHS", "SPAN METRICS", "SG DIMENSIONS", "SM DIMENSIONS")
+		t.Row(cfg.GetResourceName(), collection, interval, serviceGraphs, spanMetrics, sgDimensions, smDimensions)
+		return t.Render(w)
 	}
 
-	return tw.Flush()
+	t := style.NewTable("NAME", "COLLECTION", "INTERVAL", "SERVICE GRAPHS", "SPAN METRICS")
+	t.Row(cfg.GetResourceName(), collection, interval, serviceGraphs, spanMetrics)
+	return t.Render(w)
 }
 
 func (c *overridesTableCodec) Decode(_ io.Reader, _ any) error {

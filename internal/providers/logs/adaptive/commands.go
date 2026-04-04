@@ -10,13 +10,13 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 
 	auth "github.com/grafana/gcx/internal/auth/adaptive"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 )
@@ -195,8 +195,7 @@ func (c *segmentStatsTableCodec) Encode(w io.Writer, v any) error {
 
 	volW := segmentVolumeColumnWidth(stats)
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintf(tw, "ID\tNAME\tSEGMENT\t%s\n", rightAlign("VOLUME", volW))
+	t := style.NewTable("ID", "NAME", "SEGMENT", rightAlign("VOLUME", volW))
 	noTruncate := c.opts != nil && c.opts.IO.NoTruncate
 	for _, s := range stats {
 		idCol := s.SegmentID
@@ -214,9 +213,9 @@ func (c *segmentStatsTableCodec) Encode(w io.Writer, v any) error {
 				segCol = truncate(segCol, 80)
 			}
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", idCol, s.Name, segCol, rightAlign(humanBytes(s.Volume), volW))
+		t.Row(idCol, s.Name, segCol, rightAlign(humanBytes(s.Volume), volW))
 	}
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *segmentStatsTableCodec) Decode(_ io.Reader, _ any) error {
@@ -262,9 +261,9 @@ func (c *patternsTableCodec) Encode(w io.Writer, v any) error {
 
 	cw := computePatternColWidths(c.wide, head, tail)
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.wide {
-		fmt.Fprintf(tw, "PATTERN\tQUERIED\t%s\t%s\t%s\t%s\t%s\t%s\n",
+		t = style.NewTable("PATTERN", "QUERIED",
 			rightAlign("VOLUME", cw.volume),
 			rightAlign("DROP RATE", cw.dropRate),
 			rightAlign("RECOMMENDED RATE", cw.recRate),
@@ -273,7 +272,7 @@ func (c *patternsTableCodec) Encode(w io.Writer, v any) error {
 			rightAlign("SUPERSEDED", cw.superseded),
 		)
 	} else {
-		fmt.Fprintf(tw, "PATTERN\tQUERIED\t%s\t%s\t%s\n",
+		t = style.NewTable("PATTERN", "QUERIED",
 			rightAlign("VOLUME", cw.volume),
 			rightAlign("DROP RATE", cw.dropRate),
 			rightAlign("RECOMMENDED RATE", cw.recRate),
@@ -282,7 +281,7 @@ func (c *patternsTableCodec) Encode(w io.Writer, v any) error {
 
 	var anyRecRateMark bool
 	for _, rec := range head {
-		if c.writePatternRow(tw, rec, cw) {
+		if c.writePatternRow(t, rec, cw) {
 			anyRecRateMark = true
 		}
 	}
@@ -304,8 +303,7 @@ func (c *patternsTableCodec) Encode(w io.Writer, v any) error {
 			pattern = truncate(pattern, 80)
 		}
 		if c.wide {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				pattern,
+			t.Row(pattern,
 				queryIngestLabel(q, ing),
 				rightAlign(humanBytes(vol), cw.volume),
 				rightAlign("-", cw.dropRate),
@@ -315,8 +313,7 @@ func (c *patternsTableCodec) Encode(w io.Writer, v any) error {
 				rightAlign("-", cw.superseded),
 			)
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-				pattern,
+			t.Row(pattern,
 				queryIngestLabel(q, ing),
 				rightAlign(humanBytes(vol), cw.volume),
 				rightAlign("-", cw.dropRate),
@@ -325,7 +322,7 @@ func (c *patternsTableCodec) Encode(w io.Writer, v any) error {
 		}
 	}
 
-	if err := tw.Flush(); err != nil {
+	if err := t.Render(w); err != nil {
 		return err
 	}
 	if anyRecRateMark {
@@ -346,9 +343,9 @@ func recommendedRateCell(configured float32, recommended float64, innerWidth int
 	return num + "  ", false
 }
 
-// writePatternRow renders one recommendation row. It returns true when the recommended rate
+// writePatternRow appends one recommendation row to the table. It returns true when the recommended rate
 // cell includes a divergence marker.
-func (c *patternsTableCodec) writePatternRow(tw *tabwriter.Writer, rec LogRecommendation, cw patternColWidths) bool {
+func (c *patternsTableCodec) writePatternRow(t *style.TableBuilder, rec LogRecommendation, cw patternColWidths) bool {
 	pattern := rec.Pattern
 	if pattern == "" {
 		pattern = rec.Label()
@@ -360,8 +357,7 @@ func (c *patternsTableCodec) writePatternRow(tw *tabwriter.Writer, rec LogRecomm
 	queried := queryIngestLabel(rec.QueriedLines, rec.IngestedLines)
 	dropStr := fmt.Sprintf("%.2f", rec.ConfiguredDropRate)
 	if c.wide {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			pattern,
+		t.Row(pattern,
 			queried,
 			rightAlign(humanBytes(rec.Volume), cw.volume),
 			rightAlign(dropStr, cw.dropRate),
@@ -371,8 +367,7 @@ func (c *patternsTableCodec) writePatternRow(tw *tabwriter.Writer, rec LogRecomm
 			rightAlign(strconv.FormatBool(rec.Superseded), cw.superseded),
 		)
 	} else {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-			pattern,
+		t.Row(pattern,
 			queried,
 			rightAlign(humanBytes(rec.Volume), cw.volume),
 			rightAlign(dropStr, cw.dropRate),
@@ -593,25 +588,23 @@ func (c *exemptionsTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []Exemption")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.wide {
-		fmt.Fprintln(tw, "ID\tSTREAM SELECTOR\tREASON\tCREATED AT\tMANAGED BY\tEXPIRES AT\tACTIVE INTERVAL\tCREATED BY\tUPDATED AT")
+		t = style.NewTable("ID", "STREAM SELECTOR", "REASON", "CREATED AT", "MANAGED BY", "EXPIRES AT", "ACTIVE INTERVAL", "CREATED BY", "UPDATED AT")
 	} else {
-		fmt.Fprintln(tw, "ID\tSTREAM SELECTOR\tREASON\tCREATED AT\tMANAGED BY")
+		t = style.NewTable("ID", "STREAM SELECTOR", "REASON", "CREATED AT", "MANAGED BY")
 	}
 
 	for _, e := range exemptions {
 		if c.wide {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				e.ID, e.StreamSelector, e.Reason, e.CreatedAt, e.ManagedBy,
+			t.Row(e.ID, e.StreamSelector, e.Reason, e.CreatedAt, e.ManagedBy,
 				e.ExpiresAt, e.ActiveInterval, e.CreatedBy, e.UpdatedAt)
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-				e.ID, e.StreamSelector, e.Reason, e.CreatedAt, e.ManagedBy)
+			t.Row(e.ID, e.StreamSelector, e.Reason, e.CreatedAt, e.ManagedBy)
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *exemptionsTableCodec) Decode(_ io.Reader, _ any) error {
@@ -842,24 +835,22 @@ func (c *segmentsTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []LogSegment")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.wide {
-		fmt.Fprintln(tw, "ID\tNAME\tSELECTOR\tFALLBACK\tIS EARLY\tCREATED AT\tUPDATED AT")
+		t = style.NewTable("ID", "NAME", "SELECTOR", "FALLBACK", "IS EARLY", "CREATED AT", "UPDATED AT")
 	} else {
-		fmt.Fprintln(tw, "ID\tNAME\tSELECTOR\tFALLBACK")
+		t = style.NewTable("ID", "NAME", "SELECTOR", "FALLBACK")
 	}
 
 	for _, s := range segments {
 		if c.wide {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%v\t%v\t%s\t%s\n",
-				s.ID, s.Name, s.Selector, s.FallbackToDefault, s.IsEarly, s.CreatedAt, s.UpdatedAt)
+			t.Row(s.ID, s.Name, s.Selector, strconv.FormatBool(s.FallbackToDefault), strconv.FormatBool(s.IsEarly), s.CreatedAt, s.UpdatedAt)
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%v\n",
-				s.ID, s.Name, s.Selector, s.FallbackToDefault)
+			t.Row(s.ID, s.Name, s.Selector, strconv.FormatBool(s.FallbackToDefault))
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *segmentsTableCodec) Decode(_ io.Reader, _ any) error {
@@ -1164,11 +1155,11 @@ func (c *dropRulesTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []DropRule or DropRule")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.wide {
-		fmt.Fprintln(tw, "ID\tNAME\tSEGMENT\tVERSION\tDISABLED\tEXPIRES AT\tCREATED AT\tUPDATED AT")
+		t = style.NewTable("ID", "NAME", "SEGMENT", "VERSION", "DISABLED", "EXPIRES AT", "CREATED AT", "UPDATED AT")
 	} else {
-		fmt.Fprintln(tw, "ID\tNAME\tSEGMENT\tVERSION\tDISABLED\tEXPIRES AT")
+		t = style.NewTable("ID", "NAME", "SEGMENT", "VERSION", "DISABLED", "EXPIRES AT")
 	}
 
 	for _, r := range rules {
@@ -1178,15 +1169,13 @@ func (c *dropRulesTableCodec) Encode(w io.Writer, v any) error {
 		}
 		disabled := strconv.FormatBool(r.Disabled)
 		if c.wide {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\t%s\t%s\t%s\n",
-				r.ID, r.Name, r.SegmentID, r.Version, disabled, exp, r.CreatedAt, r.UpdatedAt)
+			t.Row(r.ID, r.Name, r.SegmentID, strconv.Itoa(r.Version), disabled, exp, r.CreatedAt, r.UpdatedAt)
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\t%s\n",
-				r.ID, r.Name, r.SegmentID, r.Version, disabled, exp)
+			t.Row(r.ID, r.Name, r.SegmentID, strconv.Itoa(r.Version), disabled, exp)
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *dropRulesTableCodec) Decode(_ io.Reader, _ any) error {

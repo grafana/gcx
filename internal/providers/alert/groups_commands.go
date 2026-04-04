@@ -2,12 +2,12 @@ package alert
 
 import (
 	"errors"
-	"fmt"
 	"io"
-	"text/tabwriter"
+	"strconv"
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -80,15 +80,12 @@ func (c *GroupsTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []RuleGroup")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tFOLDER\tRULES\tINTERVAL")
-
+	t := style.NewTable("NAME", "FOLDER", "RULES", "INTERVAL")
 	for _, g := range groups {
 		// Interval is in seconds per the Prometheus/Grafana ruler API contract.
-		fmt.Fprintf(tw, "%s\t%s\t%d\t%ds\n", g.Name, g.FolderUID, len(g.Rules), g.Interval)
+		t.Row(g.Name, g.FolderUID, strconv.Itoa(len(g.Rules)), strconv.Itoa(g.Interval)+"s")
 	}
-
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *GroupsTableCodec) Decode(r io.Reader, v any) error {
@@ -153,18 +150,15 @@ func (c *GroupRulesTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected *RuleGroup")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "UID\tNAME\tSTATE\tHEALTH\tPAUSED")
-
+	t := style.NewTable("UID", "NAME", "STATE", "HEALTH", "PAUSED")
 	for _, r := range group.Rules {
 		paused := "no"
 		if r.IsPaused {
 			paused = "yes"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", r.UID, r.Name, r.State, r.Health, paused)
+		t.Row(r.UID, r.Name, r.State, r.Health, paused)
 	}
-
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *GroupRulesTableCodec) Decode(r io.Reader, v any) error {
@@ -240,9 +234,7 @@ func (c *GroupsStatusTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for status table codec: expected []RuleGroup")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "GROUP\tRULES\tFIRING\tPENDING\tINACTIVE\tLAST_EVAL")
-
+	t := style.NewTable("GROUP", "RULES", "FIRING", "PENDING", "INACTIVE", "LAST_EVAL")
 	for _, g := range groups {
 		firing, pending, inactive := 0, 0, 0
 		for _, r := range g.Rules {
@@ -263,11 +255,9 @@ func (c *GroupsStatusTableCodec) Encode(w io.Writer, v any) error {
 		if lastEval == "0001-01-01T00:00:00Z" {
 			lastEval = "never"
 		}
-		fmt.Fprintf(tw, "%s\t%d\t%d\t%d\t%d\t%s\n",
-			g.Name, len(g.Rules), firing, pending, inactive, lastEval)
+		t.Row(g.Name, strconv.Itoa(len(g.Rules)), strconv.Itoa(firing), strconv.Itoa(pending), strconv.Itoa(inactive), lastEval)
 	}
-
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *GroupsStatusTableCodec) Decode(r io.Reader, v any) error {

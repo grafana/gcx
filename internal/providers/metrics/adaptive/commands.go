@@ -8,12 +8,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"text/tabwriter"
 
 	auth "github.com/grafana/gcx/internal/auth/adaptive"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -327,16 +327,11 @@ func (c *rulesTableCodec) Encode(w io.Writer, v any) error {
 		return fmt.Errorf("metrics: rules table codec: expected []MetricRule, got %T", v)
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "METRIC\tDROP LABELS\tAGGREGATIONS")
+	t := style.NewTable("METRIC", "DROP LABELS", "AGGREGATIONS")
 	for _, r := range rules {
-		fmt.Fprintf(tw, "%s\t%s\t%s\n",
-			r.MetricName,
-			strings.Join(r.DropLabels, ","),
-			strings.Join(r.Aggregations, ","),
-		)
+		t.Row(r.MetricName, strings.Join(r.DropLabels, ","), strings.Join(r.Aggregations, ","))
 	}
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *rulesTableCodec) Decode(_ io.Reader, _ any) error {
@@ -364,16 +359,11 @@ func (c *recommendationsTableCodec) Encode(w io.Writer, v any) error {
 		return fmt.Errorf("metrics: recommendations table codec: expected []MetricRecommendation, got %T", v)
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "METRIC\tDROP LABELS\tAGGREGATIONS")
+	t := style.NewTable("METRIC", "DROP LABELS", "AGGREGATIONS")
 	for _, r := range recs {
-		fmt.Fprintf(tw, "%s\t%s\t%s\n",
-			r.MetricName,
-			strings.Join(r.DropLabels, ","),
-			strings.Join(r.Aggregations, ","),
-		)
+		t.Row(r.MetricName, strings.Join(r.DropLabels, ","), strings.Join(r.Aggregations, ","))
 	}
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *recommendationsTableCodec) Decode(_ io.Reader, _ any) error {

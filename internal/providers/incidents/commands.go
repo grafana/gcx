@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -104,11 +105,11 @@ func (c *IncidentTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []Incident")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var tbl *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "INCIDENTID\tTITLE\tSTATUS\tSEVERITY\tTYPE\tCREATED")
+		tbl = style.NewTable("INCIDENTID", "TITLE", "STATUS", "SEVERITY", "TYPE", "CREATED")
 	} else {
-		fmt.Fprintln(tw, "INCIDENTID\tTITLE\tSTATUS\tSEVERITY\tCREATED")
+		tbl = style.NewTable("INCIDENTID", "TITLE", "STATUS", "SEVERITY", "CREATED")
 	}
 
 	for _, inc := range incs {
@@ -133,13 +134,13 @@ func (c *IncidentTableCodec) Encode(w io.Writer, v any) error {
 			if incType == "" {
 				incType = "-"
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", inc.IncidentID, title, inc.Status, severity, incType, created)
+			tbl.Row(inc.IncidentID, title, inc.Status, severity, incType, created)
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", inc.IncidentID, title, inc.Status, severity, created)
+			tbl.Row(inc.IncidentID, title, inc.Status, severity, created)
 		}
 	}
 
-	return tw.Flush()
+	return tbl.Render(w)
 }
 
 func (c *IncidentTableCodec) Decode(_ io.Reader, _ any) error {
@@ -449,9 +450,7 @@ func (c *ActivityTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []ActivityItem")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tKIND\tUSER\tTIME\tBODY")
-
+	t := style.NewTable("ID", "KIND", "USER", "TIME", "BODY")
 	for _, item := range items {
 		body := item.Body
 		if len(body) > 60 {
@@ -469,16 +468,10 @@ func (c *ActivityTableCodec) Encode(w io.Writer, v any) error {
 			eventTime = eventTime[:16]
 		}
 
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-			item.ActivityItemID,
-			item.ActivityKind,
-			item.User.Name,
-			eventTime,
-			body,
-		)
+		t.Row(item.ActivityItemID, item.ActivityKind, item.User.Name, eventTime, body)
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *ActivityTableCodec) Decode(_ io.Reader, _ any) error {
@@ -605,18 +598,15 @@ func (c *SeverityTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []Severity")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tLEVEL\tLABEL\tCOLOR")
-
+	t := style.NewTable("ID", "LEVEL", "LABEL", "COLOR")
 	for _, s := range sevs {
 		color := s.Color
 		if color == "" {
 			color = "-"
 		}
-		fmt.Fprintf(tw, "%s\t%d\t%s\t%s\n", s.SeverityID, s.Level, s.DisplayLabel, color)
+		t.Row(s.SeverityID, strconv.Itoa(s.Level), s.DisplayLabel, color)
 	}
-
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *SeverityTableCodec) Decode(_ io.Reader, _ any) error {

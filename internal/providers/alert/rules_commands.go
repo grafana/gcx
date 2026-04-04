@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"text/tabwriter"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -146,12 +146,11 @@ func (c *RulesTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []RuleStatus")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "UID\tNAME\tSTATE\tHEALTH\tLAST_EVAL\tEVAL_TIME\tPAUSED\tFOLDER")
+		t = style.NewTable("UID", "NAME", "STATE", "HEALTH", "LAST_EVAL", "EVAL_TIME", "PAUSED", "FOLDER")
 	} else {
-		fmt.Fprintln(tw, "UID\tNAME\tSTATE\tHEALTH\tPAUSED")
+		t = style.NewTable("UID", "NAME", "STATE", "HEALTH", "PAUSED")
 	}
 
 	for _, r := range rules {
@@ -166,14 +165,13 @@ func (c *RulesTableCodec) Encode(w io.Writer, v any) error {
 				lastEval = "never"
 			}
 			evalTime := fmt.Sprintf("%.3fs", r.EvaluationTime)
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				r.UID, r.Name, r.State, r.Health, lastEval, evalTime, paused, r.FolderUID)
+			t.Row(r.UID, r.Name, r.State, r.Health, lastEval, evalTime, paused, r.FolderUID)
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", r.UID, r.Name, r.State, r.Health, paused)
+			t.Row(r.UID, r.Name, r.State, r.Health, paused)
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *RulesTableCodec) Decode(r io.Reader, v any) error {
@@ -238,16 +236,14 @@ func (c *RuleDetailTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected *RuleStatus")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "UID\tNAME\tSTATE\tHEALTH\tPAUSED")
-
 	paused := "no"
 	if rule.IsPaused {
 		paused = "yes"
 	}
-	fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", rule.UID, rule.Name, rule.State, rule.Health, paused)
 
-	return tw.Flush()
+	t := style.NewTable("UID", "NAME", "STATE", "HEALTH", "PAUSED")
+	t.Row(rule.UID, rule.Name, rule.State, rule.Health, paused)
+	return t.Render(w)
 }
 
 func (c *RuleDetailTableCodec) Decode(r io.Reader, v any) error {
