@@ -688,6 +688,7 @@ type mockPushClient struct {
 	existingResources map[string]*unstructured.Unstructured
 	updatedObjects    map[string]*unstructured.Unstructured
 	listResults       map[schema.GroupVersionKind]*unstructured.UnstructuredList
+	listError         error
 }
 
 func (m *mockPushClient) Create(
@@ -745,6 +746,10 @@ func (m *mockPushClient) List(
 ) (*unstructured.UnstructuredList, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	if m.listError != nil {
+		return nil, m.listError
+	}
 
 	if m.listResults != nil {
 		if result, ok := m.listResults[desc.GroupVersionKind()]; ok {

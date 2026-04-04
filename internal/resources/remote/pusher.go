@@ -287,37 +287,41 @@ func (p *Pusher) upsertResource(
 		return nil
 	}
 
-	// If the resource does not exist, try natural key matching for cross-stack push.
-	if apierrors.IsNotFound(err) {
-		obj := src.ToUnstructured()
+	// If the error is not a NotFound, it's an unexpected API error — surface it.
+	if !apierrors.IsNotFound(err) {
+		return err
+	}
 
-		// Try natural key matching: the metadata.name may be a server-generated ID
-		// from a different stack. Look for a resource with the same content identity.
-		if remoteName, rv, found := findByNaturalKey(ctx, nkCache, desc, &obj); found {
-			obj.SetName(remoteName)
-			obj.SetResourceVersion(rv)
-			if _, err := p.client.Update(ctx, desc, &obj, metav1.UpdateOptions{
-				DryRun: dryRunOpts,
-			}); err != nil {
-				return err
-			}
-			log.Info("Resource updated via natural key match", "remoteName", remoteName)
-			return nil
-		}
+	// Resource does not exist — try natural key matching for cross-stack push.
+	obj := src.ToUnstructured()
 
-		// No natural key match — create as new resource.
-		if _, err := p.client.Create(ctx, desc, &obj, metav1.CreateOptions{
+	// The metadata.name may be a server-generated ID from a different stack.
+	// Look for a resource with the same content identity.
+	remoteName, rv, found, nkErr := findByNaturalKey(ctx, nkCache, desc, &obj)
+	if nkErr != nil {
+		return nkErr
+	}
+	if found {
+		obj.SetName(remoteName)
+		obj.SetResourceVersion(rv)
+		if _, err := p.client.Update(ctx, desc, &obj, metav1.UpdateOptions{
 			DryRun: dryRunOpts,
 		}); err != nil {
 			return err
 		}
-
-		log.Info("Resource created")
+		log.Info("Resource updated via natural key match", "remoteName", remoteName)
 		return nil
 	}
 
-	// Some unknown error occurred, return it.
-	return err
+	// No natural key match — create as new resource.
+	if _, err := p.client.Create(ctx, desc, &obj, metav1.CreateOptions{
+		DryRun: dryRunOpts,
+	}); err != nil {
+		return err
+	}
+
+	log.Info("Resource created")
+	return nil
 }
 
 func (p *Pusher) supportedDescriptors() map[schema.GroupVersionKind]resources.Descriptor {

@@ -2,6 +2,7 @@ package remote_test
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 
@@ -324,6 +325,47 @@ func TestPusher_NaturalKey_MultipleRemoteOneMatch(t *testing.T) {
 	updated, ok := mockClient.updatedObjects["remote-2"]
 	req.True(ok, "expected update with remote-2 name")
 	req.Equal("20", updated.GetResourceVersion())
+}
+
+// TestPusher_NaturalKey_ListErrorPropagated verifies that when the List call
+// fails during natural key matching, the error is propagated instead of
+// silently falling back to Create (which would produce duplicates).
+func TestPusher_NaturalKey_ListErrorPropagated(t *testing.T) {
+	const group = "listerr.test.grafana.app"
+	gvk := makeTestGVK(group)
+	adapter.RegisterNaturalKey(gvk, adapter.SpecFieldKey("name"))
+
+	req := require.New(t)
+
+	listErr := errors.New("network timeout listing remote resources")
+
+	mockClient := &mockPushClient{
+		operations:        []string{},
+		mu:                sync.Mutex{},
+		existingResources: nil,
+		listError:         listErr,
+	}
+
+	mockRegistry := &mockPushRegistry{
+		supportedResources: []resources.Descriptor{makeTestDescriptor(group)},
+	}
+
+	pusher := remote.NewPusher(mockClient, mockRegistry)
+
+	localRes := makeTestResource(group, "local-uuid", "My Resource")
+	testResources := resources.NewResources(localRes)
+
+	summary, err := pusher.Push(t.Context(), remote.PushRequest{
+		Resources:      testResources,
+		MaxConcurrency: 1,
+		IncludeManaged: true,
+	})
+
+	// The list error should be recorded as a failure — neither Create nor Update should be called.
+	req.NoError(err, "Push itself should not fail (error is recorded in summary)")
+	req.Equal(0, summary.SuccessCount())
+	req.Equal(1, summary.FailedCount())
+	req.Empty(mockClient.operations, "no Create or Update should be called when List fails")
 }
 
 // listTrackingMockClient wraps mockPushClient and tracks List calls.
