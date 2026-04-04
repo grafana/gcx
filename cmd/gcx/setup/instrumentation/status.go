@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"strconv"
-	"text/tabwriter"
 
 	internalconfig "github.com/grafana/gcx/internal/config"
 	fleetbase "github.com/grafana/gcx/internal/fleet"
@@ -14,6 +13,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	queryprom "github.com/grafana/gcx/internal/query/prometheus"
 	instrum "github.com/grafana/gcx/internal/setup/instrumentation"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/promql-builder/go/promql"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -192,19 +192,19 @@ func (c *StatusTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []ClusterStatus")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "CLUSTER\tSTATUS\tNODES\tWORKLOADS\tPODS\tNAMESPACES\tBEYLA ERRORS")
+		t = style.NewTable("CLUSTER", "STATUS", "NODES", "WORKLOADS", "PODS", "NAMESPACES", "BEYLA ERRORS")
 		for _, s := range statuses {
-			fmt.Fprintf(tw, "%s\t%s\t%d\t%d\t%d\t%d\t%.0f\n", s.Name, s.State, s.Nodes, s.Workloads, s.Pods, s.Namespaces, s.BeylaErrors)
+			t.Row(s.Name, s.State, strconv.Itoa(s.Nodes), strconv.Itoa(s.Workloads), strconv.Itoa(s.Pods), strconv.Itoa(s.Namespaces), fmt.Sprintf("%.0f", s.BeylaErrors))
 		}
 	} else {
-		fmt.Fprintln(tw, "CLUSTER\tSTATUS\tWORKLOADS\tPODS\tBEYLA ERRORS")
+		t = style.NewTable("CLUSTER", "STATUS", "WORKLOADS", "PODS", "BEYLA ERRORS")
 		for _, s := range statuses {
-			fmt.Fprintf(tw, "%s\t%s\t%d\t%d\t%.0f\n", s.Name, s.State, s.Workloads, s.Pods, s.BeylaErrors)
+			t.Row(s.Name, s.State, strconv.Itoa(s.Workloads), strconv.Itoa(s.Pods), fmt.Sprintf("%.0f", s.BeylaErrors))
 		}
 	}
-	return tw.Flush()
+	return t.Render(w)
 }
 
 // Decode is not supported for table format.

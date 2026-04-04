@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/gcx/internal/resources/local"
 	"github.com/grafana/gcx/internal/resources/process"
 	"github.com/grafana/gcx/internal/resources/remote"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -119,16 +120,21 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			res, err := FetchResources(ctx, FetchRequest{
-				Config: cfg,
-				// Strip server fields from the resources.
-				// This includes fields like `resourceVersion`, `uid`, etc.
-				Processors: []remote.Processor{
-					&process.ServerFieldsStripper{},
-				},
-				ExcludeManaged: !opts.IncludeManaged,
-				StopOnError:    opts.OnError.StopOnError(),
-			}, args)
+			var res *FetchResponse
+			err = style.RunWithSpinner(cmd.ErrOrStderr(), "Pulling resources…", func() error {
+				var fetchErr error
+				res, fetchErr = FetchResources(ctx, FetchRequest{
+					Config: cfg,
+					// Strip server fields from the resources.
+					// This includes fields like `resourceVersion`, `uid`, etc.
+					Processors: []remote.Processor{
+						&process.ServerFieldsStripper{},
+					},
+					ExcludeManaged: !opts.IncludeManaged,
+					StopOnError:    opts.OnError.StopOnError(),
+				}, args)
+				return fetchErr
+			})
 			if err != nil {
 				return err
 			}
@@ -146,19 +152,7 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			pullSummary := res.PullSummary
 
-			printer := cmdio.Success
-			if pullSummary.FailedCount() != 0 {
-				printer = cmdio.Warning
-				if pullSummary.SuccessCount() == 0 {
-					printer = cmdio.Error
-				}
-			}
-
-			if skipped := pullSummary.SkippedCount(); skipped > 0 {
-				printer(cmd.OutOrStdout(), "%d resources pulled, %d errors (%d resource types skipped — not listable)", pullSummary.SuccessCount(), pullSummary.FailedCount(), skipped)
-			} else {
-				printer(cmd.OutOrStdout(), "%d resources pulled, %d errors", pullSummary.SuccessCount(), pullSummary.FailedCount())
-			}
+			style.RenderSummary(cmd.OutOrStdout(), "pulled", pullSummary.SuccessCount(), pullSummary.FailedCount(), pullSummary.SkippedCount())
 
 			if opts.OnError.FailOnErrors() && pullSummary.FailedCount() > 0 {
 				return fmt.Errorf("%d resource(s) failed to pull", pullSummary.FailedCount())

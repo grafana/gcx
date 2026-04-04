@@ -9,12 +9,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"text/tabwriter"
 
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/graph"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/query/prometheus"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/promql-builder/go/promql"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -395,12 +395,11 @@ func (c *StatusTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for status table codec: expected []StatusResult")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "NAME\tUUID\tOBJECTIVE\tWINDOW\tSLI\tBUDGET\tBURN_RATE\tSLI_1H\tSLI_1D\tSTATUS")
+		t = style.NewTable("NAME", "UUID", "OBJECTIVE", "WINDOW", "SLI", "BUDGET", "BURN_RATE", "SLI_1H", "SLI_1D", "STATUS")
 	} else {
-		fmt.Fprintln(tw, "NAME\tUUID\tOBJECTIVE\tWINDOW\tSLI\tBUDGET\tSTATUS")
+		t = style.NewTable("NAME", "UUID", "OBJECTIVE", "WINDOW", "SLI", "BUDGET", "STATUS")
 	}
 
 	for _, r := range results {
@@ -412,16 +411,14 @@ func (c *StatusTableCodec) Encode(w io.Writer, v any) error {
 			burnRateStr := formatOptionalBurnRate(r.BurnRate)
 			sli1h := formatOptionalPercent(r.SLI1h)
 			sli1d := formatOptionalPercent(r.SLI1d)
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				r.Name, r.UUID, objective, r.Window, sliStr, budgetStr,
+			t.Row(r.Name, r.UUID, objective, r.Window, sliStr, budgetStr,
 				burnRateStr, sli1h, sli1d, r.Status)
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				r.Name, r.UUID, objective, r.Window, sliStr, budgetStr, r.Status)
+			t.Row(r.Name, r.UUID, objective, r.Window, sliStr, budgetStr, r.Status)
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 // Decode is not supported for the status table codec.

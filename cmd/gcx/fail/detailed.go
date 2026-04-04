@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/fatih/color"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/goccy/go-yaml"
+	"github.com/grafana/gcx/internal/style"
 )
 
 // DetailedError is used to describe errors in a human-friendly way.
@@ -58,16 +59,34 @@ type DetailedError struct {
 func (e DetailedError) Error() string {
 	buffer := strings.Builder{}
 
-	red := color.New(color.FgRed).SprintFunc()
-	blue := color.New(color.FgBlue).SprintFunc()
+	styled := style.IsStylingEnabled()
 
-	buffer.WriteString(red("Error: ") + e.Summary + "\n")
+	renderRed := func(s string) string {
+		if !styled {
+			return s
+		}
+		return lipgloss.NewStyle().Foreground(style.ColorError).Render(s)
+	}
+	renderBlue := func(s string) string {
+		if !styled {
+			return s
+		}
+		return lipgloss.NewStyle().Foreground(style.ColorPrimary).Render(s)
+	}
+
+	// Build the inner content with box-drawing connectors.
+	inner := strings.Builder{}
+	if styled {
+		inner.WriteString(style.Gradient("Error:", style.GradientAccentFrom, style.GradientAccentTo) + " " + e.Summary + "\n")
+	} else {
+		inner.WriteString(renderRed("Error: ") + e.Summary + "\n")
+	}
 
 	if e.Details != "" {
 		lines := strings.Split(e.Details, "\n")
-		buffer.WriteString("│\n")
+		inner.WriteString("│\n")
 		for _, line := range lines {
-			buffer.WriteString("│ " + line + "\n")
+			inner.WriteString("│ " + line + "\n")
 		}
 	}
 
@@ -75,30 +94,41 @@ func (e DetailedError) Error() string {
 	showParent := e.Parent != nil
 	if e.Parent != nil {
 		// Will pretty-print YAML-related errors and leave the other ones as-is.
-		formattedParent = yaml.FormatError(e.Parent, !color.NoColor, true)
+		formattedParent = yaml.FormatError(e.Parent, styled, true)
 		showParent = !sameRenderedMessage(e.Details, formattedParent)
 	}
 
 	if showParent {
-		fmt.Fprintf(&buffer, "│\n├─ %s\n│\n", blue("Details:"))
+		fmt.Fprintf(&inner, "│\n├─ %s\n│\n", renderBlue("Details:"))
 		for line := range strings.SplitSeq(formattedParent, "\n") {
-			buffer.WriteString("│ " + line + "\n")
+			inner.WriteString("│ " + line + "\n")
 		}
 	}
 
 	if len(e.Suggestions) != 0 {
-		fmt.Fprintf(&buffer, "│\n├─ %s\n│\n", blue("Suggestions:"))
+		fmt.Fprintf(&inner, "│\n├─ %s\n│\n", renderBlue("Suggestions:"))
 
 		for _, suggestion := range e.Suggestions {
-			buffer.WriteString("│ • " + suggestion + "\n")
+			inner.WriteString("│ • " + suggestion + "\n")
 		}
 	}
 
 	if e.DocsLink != "" {
-		fmt.Fprintf(&buffer, "│\n├─ %s\n│\n│ %s\n", blue("Learn more:"), e.DocsLink)
+		fmt.Fprintf(&inner, "│\n├─ %s\n│\n│ %s\n", renderBlue("Learn more:"), e.DocsLink)
 	}
 
-	buffer.WriteString("│\n└─\n")
+	inner.WriteString("│\n└─")
+
+	// Wrap in a bordered panel when styled.
+	if styled {
+		panel := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(style.ColorBorder).
+			Padding(0, 1)
+		buffer.WriteString(panel.Render(inner.String()) + "\n")
+	} else {
+		buffer.WriteString(inner.String() + "\n")
+	}
 
 	return buffer.String()
 }

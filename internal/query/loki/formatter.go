@@ -5,7 +5,8 @@ import (
 	"io"
 	"sort"
 	"strings"
-	"text/tabwriter"
+
+	"github.com/grafana/gcx/internal/style"
 )
 
 func FormatQueryTable(w io.Writer, resp *QueryResponse) error {
@@ -32,7 +33,6 @@ func FormatQueryTableWide(w io.Writer, resp *QueryResponse) error {
 		return nil
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	labelNames := collectStreamLabelNames(resp.Data.Result)
 
 	header := make([]string, 0, len(labelNames)+1)
@@ -40,7 +40,7 @@ func FormatQueryTableWide(w io.Writer, resp *QueryResponse) error {
 		header = append(header, strings.ToUpper(name))
 	}
 	header = append(header, "LINE")
-	fmt.Fprintln(tw, strings.Join(header, "\t"))
+	t := style.NewTable(header...)
 
 	for _, stream := range resp.Data.Result {
 		for _, value := range stream.Values {
@@ -57,20 +57,19 @@ func FormatQueryTableWide(w io.Writer, resp *QueryResponse) error {
 				}
 			}
 			row = append(row, value[1])
-			fmt.Fprintln(tw, strings.Join(row, "\t"))
+			t.Row(row...)
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func FormatLabelsTable(w io.Writer, resp *LabelsResponse) error {
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "LABEL")
+	t := style.NewTable("LABEL")
 	for _, label := range resp.Data {
-		fmt.Fprintln(tw, label)
+		t.Row(label)
 	}
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func FormatSeriesTable(w io.Writer, resp *SeriesResponse) error {
@@ -81,13 +80,11 @@ func FormatSeriesTable(w io.Writer, resp *SeriesResponse) error {
 
 	labelNames := collectLabelNames(resp.Data)
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-
 	header := make([]string, 0, len(labelNames))
 	for _, name := range labelNames {
 		header = append(header, strings.ToUpper(name))
 	}
-	fmt.Fprintln(tw, strings.Join(header, "\t"))
+	t := style.NewTable(header...)
 
 	for _, series := range resp.Data {
 		row := make([]string, 0, len(labelNames))
@@ -98,10 +95,10 @@ func FormatSeriesTable(w io.Writer, resp *SeriesResponse) error {
 				row = append(row, "")
 			}
 		}
-		fmt.Fprintln(tw, strings.Join(row, "\t"))
+		t.Row(row...)
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 // FormatMetricQueryTable formats a MetricQueryResponse as a table with TIMESTAMP, VALUE, and label columns.
@@ -111,8 +108,6 @@ func FormatMetricQueryTable(w io.Writer, resp *MetricQueryResponse) error {
 		return nil
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-
 	labelNames := collectMetricLabelNames(resp.Data.Result)
 
 	header := make([]string, 0, len(labelNames)+2)
@@ -120,7 +115,7 @@ func FormatMetricQueryTable(w io.Writer, resp *MetricQueryResponse) error {
 	for _, name := range labelNames {
 		header = append(header, strings.ToUpper(name))
 	}
-	fmt.Fprintln(tw, strings.Join(header, "\t"))
+	t := style.NewTable(header...)
 
 	for _, sample := range resp.Data.Result {
 		if len(sample.Values) > 0 {
@@ -133,7 +128,7 @@ func FormatMetricQueryTable(w io.Writer, resp *MetricQueryResponse) error {
 				for _, name := range labelNames {
 					row = append(row, sample.Metric[name])
 				}
-				fmt.Fprintln(tw, strings.Join(row, "\t"))
+				t.Row(row...)
 			}
 		} else if len(sample.Value) >= 2 {
 			row := make([]string, 0, len(labelNames)+2)
@@ -141,11 +136,11 @@ func FormatMetricQueryTable(w io.Writer, resp *MetricQueryResponse) error {
 			for _, name := range labelNames {
 				row = append(row, sample.Metric[name])
 			}
-			fmt.Fprintln(tw, strings.Join(row, "\t"))
+			t.Row(row...)
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func collectMetricLabelNames(samples []MetricQuerySample) []string {

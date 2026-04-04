@@ -6,72 +6,69 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 	"time"
+
+	"github.com/grafana/gcx/internal/style"
 )
 
 // FormatSearchTable formats a search response as a table.
 func FormatSearchTable(w io.Writer, resp *SearchResponse) error {
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "TRACE_ID\tSERVICE\tNAME\tDURATION\tSTART")
+	tbl := style.NewTable("TRACE_ID", "SERVICE", "NAME", "DURATION", "START")
 
-	for _, t := range resp.Traces {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-			t.TraceID,
-			t.RootServiceName,
-			t.RootTraceName,
-			formatDuration(t.DurationMs),
-			formatStartTime(t.StartTimeUnixNano),
+	for _, tr := range resp.Traces {
+		tbl.Row(
+			tr.TraceID,
+			tr.RootServiceName,
+			tr.RootTraceName,
+			formatDuration(tr.DurationMs),
+			formatStartTime(tr.StartTimeUnixNano),
 		)
 	}
 
-	return tw.Flush()
+	return tbl.Render(w)
 }
 
 // FormatTagsTable formats a tags response as a table.
 func FormatTagsTable(w io.Writer, resp *TagsResponse) error {
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "SCOPE\tTAG")
+	t := style.NewTable("SCOPE", "TAG")
 
 	for _, scope := range resp.Scopes {
 		for _, tag := range scope.Tags {
-			fmt.Fprintf(tw, "%s\t%s\n", scope.Name, tag)
+			t.Row(scope.Name, tag)
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 // FormatTagValuesTable formats a tag-values response as a table.
 func FormatTagValuesTable(w io.Writer, resp *TagValuesResponse) error {
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "TYPE\tVALUE")
+	t := style.NewTable("TYPE", "VALUE")
 
 	for _, tv := range resp.TagValues {
-		fmt.Fprintf(tw, "%s\t%s\n", tv.Type, fmt.Sprint(tv.Value))
+		t.Row(tv.Type, fmt.Sprint(tv.Value))
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 // FormatMetricsTable formats a metrics response as a table.
 func FormatMetricsTable(w io.Writer, resp *MetricsResponse) error {
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "LABELS\tTIMESTAMP\tVALUE")
+	t := style.NewTable("LABELS", "TIMESTAMP", "VALUE")
 
 	for _, series := range resp.Series {
 		labels := FormatMetricsLabels(series.Labels)
 
 		if len(series.Samples) > 0 {
 			for _, sample := range series.Samples {
-				fmt.Fprintf(tw, "%s\t%s\t%s\n",
+				t.Row(
 					labels,
 					sample.TimestampMs,
 					strconv.FormatFloat(sample.Value, 'f', -1, 64),
 				)
 			}
 		} else if series.Value != nil {
-			fmt.Fprintf(tw, "%s\t%s\t%s\n",
+			t.Row(
 				labels,
 				series.TimestampMs,
 				strconv.FormatFloat(*series.Value, 'f', -1, 64),
@@ -79,7 +76,7 @@ func FormatMetricsTable(w io.Writer, resp *MetricsResponse) error {
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 // FormatMetricsLabels formats metrics labels as a {key="val", ...} string.

@@ -17,6 +17,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/discovery"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/gcx/internal/terminal"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -111,6 +112,7 @@ func (opts *getOpts) setup(flags *pflag.FlagSet) {
 	bindOnErrorFlag(flags, &opts.OnError)
 	opts.IO.RegisterCustomCodec("text", &tableCodec{wide: false})
 	opts.IO.RegisterCustomCodec("wide", &tableCodec{wide: true})
+	opts.IO.RegisterCustomCodec("tree", &treeCodec{})
 	opts.IO.DefaultFormat("text")
 
 	// Bind all the flags
@@ -244,7 +246,7 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 
 			var encodeErr error
-			if opts.IO.OutputFormat != "text" && opts.IO.OutputFormat != "wide" {
+			if opts.IO.OutputFormat != "text" && opts.IO.OutputFormat != "wide" && opts.IO.OutputFormat != "tree" {
 				// Avoid printing a list of results if a single resource is being pulled,
 				// and we are not using the table output format.
 				if res.IsSingleTarget && len(output.Items) == 1 {
@@ -444,4 +446,84 @@ func sanitizeCell(v string, noTruncate bool) string {
 		}
 		return r
 	}, v)
+}
+
+// treeCodec renders resources as an indented tree grouped by folder.
+type treeCodec struct{}
+
+func (c *treeCodec) Format() format.Format {
+	return "tree"
+}
+
+func (c *treeCodec) Encode(output io.Writer, input any) error {
+	//nolint:forcetypeassert
+	items := input.(unstructured.UnstructuredList)
+
+	// folderAnnotation is the standard Grafana annotation for parent folder.
+	const folderAnnotation = "grafana.app/folder"
+
+	type item struct {
+		kind   string
+		name   string
+		folder string
+	}
+
+	allItems := make([]item, 0, len(items.Items))
+	for _, u := range items.Items {
+		folder := u.GetAnnotations()[folderAnnotation]
+		allItems = append(allItems, item{
+			kind:   u.GetKind(),
+			name:   u.GetName(),
+			folder: folder,
+		})
+	}
+
+	// Build folder nodes keyed by name.
+	folderNodes := make(map[string]*style.TreeNode)
+	for _, it := range allItems {
+		if it.kind == "Folder" {
+			folderNodes[it.name] = &style.TreeNode{Name: it.name, Kind: it.kind}
+		}
+	}
+
+	// Track root-level entries in order.
+	var roots []style.TreeNode
+	rootSeen := make(map[string]bool)
+
+	// Helper to ensure a folder appears as a root if it has no known parent.
+	addRoot := func(name string) {
+		if rootSeen[name] {
+			return
+		}
+		rootSeen[name] = true
+		if node, ok := folderNodes[name]; ok {
+			roots = append(roots, *node)
+		}
+	}
+
+	// Parent folders under their parent; non-folders attach to their folder.
+	for _, it := range allItems {
+		parent, hasParent := folderNodes[it.folder]
+		if it.kind == "Folder" {
+			if it.folder != "" && hasParent {
+				parent.Children = append(parent.Children, *folderNodes[it.name])
+				continue
+			}
+			addRoot(it.name)
+			continue
+		}
+		node := style.TreeNode{Name: it.name, Kind: it.kind}
+		if it.folder != "" && hasParent {
+			parent.Children = append(parent.Children, node)
+			continue
+		}
+		roots = append(roots, node)
+	}
+
+	style.RenderTree(output, roots)
+	return nil
+}
+
+func (c *treeCodec) Decode(io.Reader, any) error {
+	return errors.New("tree codec does not support decoding")
 }

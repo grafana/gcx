@@ -8,13 +8,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -127,11 +128,11 @@ func (c *reportTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []Report")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "UUID\tNAME\tTIME_SPAN\tSLOS\tSLO_UUIDS")
+		t = style.NewTable("UUID", "NAME", "TIME_SPAN", "SLOS", "SLO_UUIDS")
 	} else {
-		fmt.Fprintln(tw, "UUID\tNAME\tTIME_SPAN\tSLOS")
+		t = style.NewTable("UUID", "NAME", "TIME_SPAN", "SLOS")
 	}
 
 	for _, report := range rpts {
@@ -143,13 +144,13 @@ func (c *reportTableCodec) Encode(w io.Writer, v any) error {
 			for _, s := range report.ReportDefinition.Slos {
 				sloUUIDs = append(sloUUIDs, s.SloUUID)
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\n", report.UUID, report.Name, timeSpan, sloCount, strings.Join(sloUUIDs, ","))
+			t.Row(report.UUID, report.Name, timeSpan, strconv.Itoa(sloCount), strings.Join(sloUUIDs, ","))
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\n", report.UUID, report.Name, timeSpan, sloCount)
+			t.Row(report.UUID, report.Name, timeSpan, strconv.Itoa(sloCount))
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *reportTableCodec) Decode(_ io.Reader, _ any) error {

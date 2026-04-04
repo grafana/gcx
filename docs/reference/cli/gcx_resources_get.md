@@ -69,7 +69,7 @@ gcx resources get [RESOURCE_SELECTOR]... [flags]
                             ignore — continue processing all resources and exit 0
                             fail   — continue processing all resources and exit 1 if any failed (default)
                             abort  — stop on the first error and exit 1 (default "fail")
-  -o, --output string     Output format. One of: json, text, wide, yaml (default "text")
+  -o, --output string     Output format. One of: json, text, tree, wide, yaml (default "text")
 ```
 
 ### Options inherited from parent commands

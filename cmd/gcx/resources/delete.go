@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/gcx/internal/resources/local"
 	"github.com/grafana/gcx/internal/resources/remote"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -163,24 +164,20 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				DryRun:         opts.DryRun,
 			}
 
-			summary, err := deleter.Delete(ctx, req)
-			if err != nil {
+			var summary *remote.OperationSummary
+			delErr := style.RunWithSpinner(cmd.ErrOrStderr(), "Deleting resources…", func() error {
+				var e error
+				summary, e = deleter.Delete(ctx, req)
+				return e
+			})
+			if delErr != nil {
 				if summary != nil {
-					cmdio.Warning(cmd.OutOrStdout(), "%d resources deleted, %d errors (aborted)", summary.SuccessCount(), summary.FailedCount())
+					style.RenderSummary(cmd.OutOrStdout(), "deleted (aborted)", summary.SuccessCount(), summary.FailedCount(), 0)
 				}
-				return err
+				return delErr
 			}
 
-			// Reporting time.
-			printer := cmdio.Success
-			if summary.FailedCount() != 0 {
-				printer = cmdio.Warning
-				if summary.SuccessCount() == 0 {
-					printer = cmdio.Error
-				}
-			}
-
-			printer(cmd.OutOrStdout(), "%d resources deleted, %d errors", summary.SuccessCount(), summary.FailedCount())
+			style.RenderSummary(cmd.OutOrStdout(), "deleted", summary.SuccessCount(), summary.FailedCount(), 0)
 
 			if opts.OnError.FailOnErrors() && summary.FailedCount() > 0 {
 				return fmt.Errorf("%d resource(s) failed to delete", summary.FailedCount())

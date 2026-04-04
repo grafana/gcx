@@ -5,15 +5,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fatih/color"
 	"github.com/grafana/gcx/cmd/gcx/fail"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestDetailedError_Error_OmitsDuplicateParentDetails(t *testing.T) {
-	oldNoColor := color.NoColor
-	color.NoColor = true
-	t.Cleanup(func() { color.NoColor = oldNoColor })
+	style.SetEnabled(false)
+	t.Cleanup(func() { style.SetEnabled(true) })
 
 	err := fail.DetailedError{
 		Summary: "Unexpected error",
@@ -28,9 +27,8 @@ func TestDetailedError_Error_OmitsDuplicateParentDetails(t *testing.T) {
 }
 
 func TestDetailedError_Error_KeepsDistinctParentDetails(t *testing.T) {
-	oldNoColor := color.NoColor
-	color.NoColor = true
-	t.Cleanup(func() { color.NoColor = oldNoColor })
+	style.SetEnabled(false)
+	t.Cleanup(func() { style.SetEnabled(true) })
 
 	err := fail.DetailedError{
 		Summary: "File not found",

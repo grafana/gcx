@@ -4,17 +4,36 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/fatih/color"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/grafana/gcx/internal/style"
 )
 
 //nolint:gochecknoglobals
 var (
-	Green  = color.New(color.FgGreen).SprintfFunc()
-	Blue   = color.New(color.FgBlue).SprintfFunc()
-	Red    = color.New(color.FgRed).SprintfFunc()
-	Yellow = color.New(color.FgYellow).SprintfFunc()
+	greenStyle  = lipgloss.NewStyle().Foreground(style.ColorSuccess)
+	blueStyle   = lipgloss.NewStyle().Foreground(style.ColorPrimary)
+	redStyle    = lipgloss.NewStyle().Foreground(style.ColorError)
+	yellowStyle = lipgloss.NewStyle().Foreground(style.ColorWarning)
+	boldStyle   = lipgloss.NewStyle().Bold(true)
+)
 
-	Bold = color.New(color.Bold).SprintfFunc()
+func colorSprintf(s lipgloss.Style) func(format string, a ...any) string {
+	return func(format string, a ...any) string {
+		text := fmt.Sprintf(format, a...)
+		if !style.IsStylingEnabled() {
+			return text
+		}
+		return s.Render(text)
+	}
+}
+
+//nolint:gochecknoglobals
+var (
+	Green  = colorSprintf(greenStyle)
+	Blue   = colorSprintf(blueStyle)
+	Red    = colorSprintf(redStyle)
+	Yellow = colorSprintf(yellowStyle)
+	Bold   = colorSprintf(boldStyle)
 )
 
 func Success(stdout io.Writer, message string, args ...any) {

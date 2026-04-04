@@ -6,12 +6,12 @@ import (
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/format"
-	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/gcx/internal/resources/local"
 	"github.com/grafana/gcx/internal/resources/process"
 	"github.com/grafana/gcx/internal/resources/remote"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -168,20 +168,17 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				IncludeManaged: opts.IncludeManaged,
 			}
 
-			summary, err := pusher.Push(ctx, req)
+			var summary *remote.OperationSummary
+			err = style.RunWithSpinner(cmd.ErrOrStderr(), "Pushing resources…", func() error {
+				var pushErr error
+				summary, pushErr = pusher.Push(ctx, req)
+				return pushErr
+			})
 			if err != nil {
 				return err
 			}
 
-			printer := cmdio.Success
-			if summary.FailedCount() != 0 {
-				printer = cmdio.Warning
-				if summary.SuccessCount() == 0 {
-					printer = cmdio.Error
-				}
-			}
-
-			printer(cmd.OutOrStdout(), "%d resources pushed, %d errors", summary.SuccessCount(), summary.FailedCount())
+			style.RenderSummary(cmd.OutOrStdout(), "pushed", summary.SuccessCount(), summary.FailedCount(), 0)
 
 			if opts.OnError.FailOnErrors() && summary.FailedCount() > 0 {
 				return fmt.Errorf("%d resource(s) failed to push", summary.FailedCount())

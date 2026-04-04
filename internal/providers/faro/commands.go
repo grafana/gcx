@@ -9,12 +9,12 @@ import (
 	"os"
 	"sort"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -139,11 +139,11 @@ func (c *AppTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []TypedObject[FaroApp]")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "NAME\tAPP KEY\tCOLLECT ENDPOINT URL\tCORS ORIGINS\tEXTRA LOG LABELS\tGEOLOCATION")
+		t = style.NewTable("NAME", "APP KEY", "COLLECT ENDPOINT URL", "CORS ORIGINS", "EXTRA LOG LABELS", "GEOLOCATION")
 	} else {
-		fmt.Fprintln(tw, "NAME\tAPP KEY\tCOLLECT ENDPOINT URL")
+		t = style.NewTable("NAME", "APP KEY", "COLLECT ENDPOINT URL")
 	}
 
 	for _, obj := range typedObjs {
@@ -161,13 +161,13 @@ func (c *AppTableCodec) Encode(w io.Writer, v any) error {
 			cors := corsOriginsString(app.CORSOrigins)
 			labels := labelsString(app.ExtraLogLabels)
 			geo := geolocationString(app.Settings)
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", app.GetResourceName(), appKey, endpoint, cors, labels, geo)
+			t.Row(app.GetResourceName(), appKey, endpoint, cors, labels, geo)
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\n", app.GetResourceName(), appKey, endpoint)
+			t.Row(app.GetResourceName(), appKey, endpoint)
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 // Decode is not supported for table format.

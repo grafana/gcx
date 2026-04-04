@@ -4,11 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"text/tabwriter"
+	"strconv"
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -101,15 +102,18 @@ func (c *probeTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []Probe")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tNAME\tREGION\tPUBLIC\tONLINE")
+	t := style.NewTable("ID", "NAME", "REGION", "PUBLIC", "ONLINE")
 
 	for _, p := range probeList {
-		fmt.Fprintf(tw, "%d\t%s\t%s\t%v\t%v\n",
-			p.ID, p.Name, p.Region, p.Public, p.Online)
+		t.Row(
+			strconv.FormatInt(p.ID, 10),
+			p.Name,
+			p.Region,
+			strconv.FormatBool(p.Public),
+			strconv.FormatBool(p.Online))
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *probeTableCodec) Decode(r io.Reader, v any) error {

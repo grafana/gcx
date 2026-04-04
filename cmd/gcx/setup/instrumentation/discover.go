@@ -4,12 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"text/tabwriter"
 
 	"github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	instrum "github.com/grafana/gcx/internal/setup/instrumentation"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -105,26 +105,23 @@ func (c *DiscoverTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected *RunK8sDiscoveryResponse")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "NAMESPACE\tWORKLOAD\tTYPE\tSTATUS\tLANG\tOS")
+		t = style.NewTable("NAMESPACE", "WORKLOAD", "TYPE", "STATUS", "LANG", "OS")
 		for _, item := range result.Items {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
-				item.Namespace, item.DisplayName,
+			t.Row(item.Namespace, item.DisplayName,
 				valOrDash(item.WorkloadType), valOrDash(item.InstrumentationStatus),
 				valOrDash(item.Lang), valOrDash(item.OS))
 		}
 	} else {
-		fmt.Fprintln(tw, "NAMESPACE\tWORKLOAD\tTYPE\tSTATUS")
+		t = style.NewTable("NAMESPACE", "WORKLOAD", "TYPE", "STATUS")
 		for _, item := range result.Items {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
-				item.Namespace, item.DisplayName,
+			t.Row(item.Namespace, item.DisplayName,
 				valOrDash(item.WorkloadType), valOrDash(item.InstrumentationStatus))
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func valOrDash(s string) string {

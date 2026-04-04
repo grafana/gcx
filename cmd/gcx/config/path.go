@@ -1,12 +1,12 @@
 package config
 
 import (
-	"fmt"
-	"text/tabwriter"
+	"strconv"
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 )
 
@@ -59,12 +59,11 @@ func pathCmd(configOpts *Options) *cobra.Command {
 			}
 
 			// Default: table output.
-			tab := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', tabwriter.TabIndent|tabwriter.DiscardEmptyColumns)
-			fmt.Fprintf(tab, "PRIORITY\tTYPE\tPATH\tMODIFIED\n")
+			t := style.NewTable("PRIORITY", "TYPE", "PATH", "MODIFIED")
 			for _, e := range entries {
-				fmt.Fprintf(tab, "%d\t%s\t%s\t%s\n", e.Priority, e.Type, e.Path, e.Modified)
+				t.Row(strconv.Itoa(e.Priority), e.Type, e.Path, e.Modified)
 			}
-			return tab.Flush()
+			return t.Render(cmd.OutOrStdout())
 		},
 	}
 
