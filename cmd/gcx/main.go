@@ -72,6 +72,7 @@ func handleError(err error) {
 	detailedErr := fail.ErrorToDetailedError(err)
 	if detailedErr == nil {
 		os.Exit(1)
+		return // unreachable; hint for static analysis
 	}
 
 	exitCode := 1
