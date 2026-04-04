@@ -1,7 +1,6 @@
-package config
+package config_test
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,11 +25,11 @@ func TestResolveTokenPersistenceSource_ExplicitWins(t *testing.T) {
 	explicitFile := filepath.Join(dir, "explicit.yaml")
 	require.NoError(t, os.WriteFile(explicitFile, []byte("contexts: {}\n"), 0o600))
 
-	got := resolveTokenPersistenceSource(
-		context.Background(),
-		StandardLocation(),
+	got := config.ResolveTokenPersistenceSource(
+		t.Context(),
+		config.StandardLocation(),
 		"default",
-		[]ConfigSource{{Path: explicitFile, Type: "explicit"}},
+		[]config.ConfigSource{{Path: explicitFile, Type: "explicit"}},
 	)
 	path, err := got()
 	require.NoError(t, err)
@@ -61,11 +61,11 @@ contexts:
       oauth-token: gat_local
 `), 0o600))
 
-	got := resolveTokenPersistenceSource(
-		context.Background(),
-		StandardLocation(),
+	got := config.ResolveTokenPersistenceSource(
+		t.Context(),
+		config.StandardLocation(),
 		"default",
-		[]ConfigSource{
+		[]config.ConfigSource{
 			{Path: systemFile, Type: "system"},
 			{Path: userFile, Type: "user"},
 			{Path: localFile, Type: "local"},
@@ -84,11 +84,11 @@ func TestResolveTokenPersistenceSource_FallsBackToUserWhenContextNotFound(t *tes
 	require.NoError(t, os.WriteFile(userFile, []byte("contexts:\n  other: {}\n"), 0o600))
 	require.NoError(t, os.WriteFile(localFile, []byte("contexts:\n  other: {}\n"), 0o600))
 
-	got := resolveTokenPersistenceSource(
-		context.Background(),
-		StandardLocation(),
+	got := config.ResolveTokenPersistenceSource(
+		t.Context(),
+		config.StandardLocation(),
 		"default",
-		[]ConfigSource{
+		[]config.ConfigSource{
 			{Path: userFile, Type: "user"},
 			{Path: localFile, Type: "local"},
 		},
@@ -154,8 +154,8 @@ contexts:
       oauth-token: gat_local
 `)
 
-	restCfg := NewNamespacedRESTConfig(t.Context(), Context{
-		Grafana: &GrafanaConfig{
+	restCfg := config.NewNamespacedRESTConfig(t.Context(), config.Context{
+		Grafana: &config.GrafanaConfig{
 			Server:                srv.URL,
 			ProxyEndpoint:         srv.URL,
 			OAuthToken:            "gat_old",
@@ -167,9 +167,9 @@ contexts:
 	})
 	restCfg.WireTokenPersistence(
 		t.Context(),
-		ExplicitConfigFile(explicitFile),
+		config.ExplicitConfigFile(explicitFile),
 		"default",
-		[]ConfigSource{
+		[]config.ConfigSource{
 			{Path: explicitFile, Type: "explicit"},
 			{Path: userFile, Type: "user"},
 			{Path: localFile, Type: "local"},

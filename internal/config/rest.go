@@ -39,7 +39,7 @@ func (n *NamespacedRESTConfig) SetOnRefresh(fn auth.TokenRefresher) {
 // contextName, and writes back.
 // No-op if the config is not using OAuth proxy mode.
 func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source Source, contextName string, sources []ConfigSource) {
-	persistSource := resolveTokenPersistenceSource(ctx, source, contextName, sources)
+	persistSource := ResolveTokenPersistenceSource(ctx, source, contextName, sources)
 
 	n.SetOnRefresh(func(token, refreshToken, expiresAt, refreshExpiresAt string) error {
 		fresh, err := Load(ctx, persistSource)
@@ -67,7 +67,10 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 	})
 }
 
-func resolveTokenPersistenceSource(ctx context.Context, fallback Source, contextName string, sources []ConfigSource) Source {
+// ResolveTokenPersistenceSource picks the best config file to persist rotated OAuth tokens.
+// It returns a Source pointing to the highest-priority file that already contains OAuth fields
+// for the given context, falling back to the user-level config or the provided fallback.
+func ResolveTokenPersistenceSource(ctx context.Context, fallback Source, contextName string, sources []ConfigSource) Source {
 	if len(sources) == 0 {
 		return fallback
 	}
