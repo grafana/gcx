@@ -21,6 +21,13 @@ func HelpFunc(defaultHelp func(*cobra.Command, []string)) func(*cobra.Command, [
 
 		w := cmd.OutOrStdout()
 
+		// Show ASCII logo for the root command only.
+		if !cmd.HasParent() {
+			if logo := RenderLogo(); logo != "" {
+				fmt.Fprintln(w, logo)
+			}
+		}
+
 		// --- Long description ---
 		if cmd.Long != "" {
 			rendered, err := glamour.Render(cmd.Long, "dark")
