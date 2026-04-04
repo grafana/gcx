@@ -90,11 +90,13 @@ func (c *Client) Create(ctx context.Context, req CreateRequest) (*CreateResponse
 		return nil, assistanthttp.HandleErrorResponse(resp)
 	}
 
-	var result CreateResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	var envelope struct {
+		Data CreateResponse `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
 		return nil, fmt.Errorf("failed to decode create response: %w", err)
 	}
-	return &result, nil
+	return &envelope.Data, nil
 }
 
 // Cancel cancels a running investigation.
@@ -109,11 +111,13 @@ func (c *Client) Cancel(ctx context.Context, id string) (*CancelResponse, error)
 		return nil, assistanthttp.HandleErrorResponse(resp)
 	}
 
-	var result CancelResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	var envelope struct {
+		Data CancelResponse `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
 		return nil, fmt.Errorf("failed to decode cancel response: %w", err)
 	}
-	return &result, nil
+	return &envelope.Data, nil
 }
 
 // Todos returns agent tasks for an investigation by extracting them from the

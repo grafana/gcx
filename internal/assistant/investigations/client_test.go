@@ -173,7 +173,9 @@ func TestCreate(t *testing.T) {
 				assert.Equal(t, "Looking into alerts", req.Description)
 
 				w.WriteHeader(http.StatusCreated)
-				writeJSON(w, investigations.CreateResponse{ID: "inv-new", Status: "running"})
+				writeJSON(w, map[string]any{
+					"data": investigations.CreateResponse{ID: "inv-new", State: "running"},
+				})
 			},
 		},
 		{
@@ -199,7 +201,7 @@ func TestCreate(t *testing.T) {
 			}
 			require.NoError(t, err)
 			assert.Equal(t, "inv-new", resp.ID)
-			assert.Equal(t, "running", resp.Status)
+			assert.Equal(t, "running", resp.State)
 		})
 	}
 }
@@ -215,7 +217,9 @@ func TestCancel(t *testing.T) {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodPost, r.Method)
 				assert.Contains(t, r.URL.Path, "/investigations/inv-1/cancel")
-				writeJSON(w, investigations.CancelResponse{ID: "inv-1", Status: "cancelled"})
+				writeJSON(w, map[string]any{
+					"data": investigations.CancelResponse{Message: "Investigation cancelled."},
+				})
 			},
 		},
 		{
@@ -237,8 +241,7 @@ func TestCancel(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			assert.Equal(t, "inv-1", resp.ID)
-			assert.Equal(t, "cancelled", resp.Status)
+			assert.Equal(t, "Investigation cancelled.", resp.Message)
 		})
 	}
 }

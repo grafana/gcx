@@ -31,14 +31,13 @@ type CreateRequest struct {
 
 // CreateResponse is the response from POST /investigations.
 type CreateResponse struct {
-	ID     string `json:"id"`
-	Status string `json:"status,omitempty"`
+	ID    string `json:"id"`
+	State string `json:"state,omitempty"`
 }
 
 // CancelResponse is the response from POST /investigations/{id}/cancel.
 type CancelResponse struct {
-	ID     string `json:"id"`
-	Status string `json:"status,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 // Todo is a single agent task from GET /investigations/{id}/todos.
