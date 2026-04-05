@@ -15,7 +15,7 @@
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Architecture overview, pipeline diagrams, ADR index |
 | [DESIGN.md](DESIGN.md) | CLI UX design: command grammar, output model, exit codes, taste rules |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, testing environment, contribution workflow |
-| [docs/architecture/README.md](docs/architecture/README.md) | Detailed architecture docs (patterns, resource model, CLI layer, data flows, …) |
+| [docs/architecture/](docs/architecture/) | Deep-dive architecture docs (patterns, resource model, CLI layer, data flows, …) |
 | [docs/reference/](docs/reference/) | Provider guides, design implementation guide, CLI reference, migration analysis |
 | [docs/_templates/](docs/_templates/) | Spec and planning templates (feature, bugfix, refactor, ADR, research) |
 

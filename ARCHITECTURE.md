@@ -64,22 +64,65 @@ Datasource HTTP APIs                      -- PromQL, LogQL, profile, trace queri
 
 See [docs/adrs/](docs/adrs/) for all ADRs.
 
-## Detailed Architecture Docs
+## Architecture Docs
 
-[docs/architecture/README.md](docs/architecture/README.md) is the full index. It covers:
+Deep-dive docs live in [docs/architecture/](docs/architecture/). Each covers one domain:
 
-| Document | Domain |
-|----------|--------|
-| [architecture.md](docs/architecture/architecture.md) | Full system architecture with diagrams |
-| [patterns.md](docs/architecture/patterns.md) | Recurring patterns catalog |
-| [resource-model.md](docs/architecture/resource-model.md) | Resource, Selector, Filter, Discovery abstractions |
-| [cli-layer.md](docs/architecture/cli-layer.md) | Command tree, Options pattern, lifecycle |
-| [client-api-layer.md](docs/architecture/client-api-layer.md) | Dynamic client, auth, error translation |
-| [config-system.md](docs/architecture/config-system.md) | Contexts, env vars, TLS, namespace resolution |
-| [data-flows.md](docs/architecture/data-flows.md) | Push/Pull/Serve/Delete pipelines |
-| [project-structure.md](docs/architecture/project-structure.md) | Build system, CI/CD, dependencies |
+| Document | Domain | When to Read |
+|----------|--------|--------------|
+| [architecture.md](docs/architecture/architecture.md) | Full system architecture with diagrams | First-time orientation |
+| [patterns.md](docs/architecture/patterns.md) | Recurring patterns catalog | Before implementing new features |
+| [resource-model.md](docs/architecture/resource-model.md) | Resource, Selector, Filter, Discovery | Modifying resource handling |
+| [cli-layer.md](docs/architecture/cli-layer.md) | Command tree, Options pattern, lifecycle | Adding/modifying CLI commands |
+| [client-api-layer.md](docs/architecture/client-api-layer.md) | Dynamic client, auth, error translation | API communication changes |
+| [config-system.md](docs/architecture/config-system.md) | Contexts, env vars, TLS, namespace resolution | Config or auth changes |
+| [data-flows.md](docs/architecture/data-flows.md) | Push/Pull/Serve/Delete pipelines | Modifying resource sync |
+| [project-structure.md](docs/architecture/project-structure.md) | Build system, CI/CD, dependencies | Build issues, adding deps |
 
-Detailed package descriptions are in [docs/architecture/project-structure.md](docs/architecture/project-structure.md).
+See also `docs/reference/` for prescriptive guides: [provider-guide.md](docs/reference/provider-guide.md), [provider-discovery-guide.md](docs/reference/provider-discovery-guide.md), [design-guide.md](docs/reference/design-guide.md).
+
+### How to Navigate
+
+- **Starting a new feature**: Read `architecture.md` → `patterns.md` → relevant domain doc
+- **Fixing a bug**: Jump directly to the relevant domain doc
+- **Adding a CLI command**: Read `cli-layer.md` first, then `patterns.md`
+- **Understanding a data flow**: Read `data-flows.md`
+- **Adding config fields or auth**: Read `config-system.md`
+- **Modifying resource handling**: Read `resource-model.md`
+- **API communication or errors**: Read `client-api-layer.md`
+- **Build issues or dependencies**: Read `project-structure.md`
+
+### Key Patterns
+
+- **K8s Resource Model**: Direct use of `k8s.io/apimachinery` and `k8s.io/client-go`. All resources are `unstructured.Unstructured` with discovery at runtime — no pre-generated Go types.
+- **Options Pattern**: Every command follows opts struct → `setup(flags)` → `Validate()` → constructor. Shared concerns composed via embedding.
+- **Processor Pipeline**: `Processor.Process(*Resource) error` — composable transformations applied at defined points in push/pull pipelines.
+- **Selector → Filter Resolution**: CLI argument → Selector (partial) → Discovery Registry → Filter (fully resolved GVK). Keeps CLI layer ignorant of API details.
+- **Dual-Client Architecture**: `/apis` path (K8s-compatible, `k8s.io/client-go`) for resource CRUD; `/api` path (Grafana REST) for health checks and version discovery.
+- **Provider Plugin System**: Interface + registry. Each provider self-registers via `init()` and contributes CLI commands + resource adapters.
+- **Direct HTTP for Datasources**: Query clients bypass the k8s dynamic client, call datasource HTTP APIs directly (PromQL, LogQL, Pyroscope, Tempo).
+
+### Worked Examples
+
+**How does a resource get pushed to Grafana?**
+1. [data-flows.md](docs/architecture/data-flows.md) § "PUSH Pipeline" — numbered steps (parse selectors → resolve → read → push → summary)
+2. [resource-model.md](docs/architecture/resource-model.md) — Selector/Filter concepts
+3. [client-api-layer.md](docs/architecture/client-api-layer.md) — how Create/Update calls work
+
+**Adding a new CLI flag to `push`:**
+1. [cli-layer.md](docs/architecture/cli-layer.md) § "The Options Pattern"
+2. Look at `push.go` as the canonical example
+3. Add to opts struct → bind in `setup()` → validate in `Validate()`
+
+**Adding support for a new resource type:**
+1. [resource-model.md](docs/architecture/resource-model.md) § "Discovery System" — types are discovered at runtime, no hardcoding
+2. [patterns.md](docs/architecture/patterns.md) § "Processor Pipeline" — if custom handling is needed
+3. [data-flows.md](docs/architecture/data-flows.md) — where processors are applied
+
+**Debugging an authentication issue:**
+1. [config-system.md](docs/architecture/config-system.md) § "Auth Priority" — token vs user/password precedence
+2. [client-api-layer.md](docs/architecture/client-api-layer.md) — how auth wires into `rest.Config`
+3. [config-system.md](docs/architecture/config-system.md) — env var override behavior
 
 ## Taste Rules
 
