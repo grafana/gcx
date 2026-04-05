@@ -67,7 +67,7 @@ func IsStylingEnabled() bool {
 	}
 	// Final check: stdout must be a real terminal. This catches test
 	// environments where terminal.Detect() was never called.
-	return term.IsTerminal(int(os.Stdout.Fd())) //nolint:gosec
+	return term.IsTerminal(int(os.Stdout.Fd()))
 }
 
 // Gradient renders text with a linear color gradient between from and to.

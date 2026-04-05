@@ -102,7 +102,7 @@ func (tb *TableBuilder) renderStyled(w io.Writer) error {
 }
 
 func terminalWidth() int {
-	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 { //nolint:gosec
+	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
 		return w
 	}
 	return 80
