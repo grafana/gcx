@@ -13,12 +13,14 @@ func isLeaf(cmd *cobra.Command) bool {
 	return cmd.RunE != nil || cmd.Run != nil
 }
 
+//nolint:gochecknoglobals // constant-like lookup table for test validation
 var validTokenCosts = map[string]bool{
 	"small":  true,
 	"medium": true,
 	"large":  true,
 }
 
+//nolint:gochecknoglobals // constant-like skip list for test validation
 var skipTokenCost = map[string]bool{
 	"gcx completion bash":       true,
 	"gcx completion fish":       true,
@@ -95,15 +97,15 @@ func TestConsistency_LLMHintRequiresTokenCost(t *testing.T) {
 
 func TestConsistency_OnlyKnownAnnotationKeys(t *testing.T) {
 	knownKeys := map[string]bool{
-		agent.AnnotationTokenCost:      true,
-		agent.AnnotationLLMHint:        true,
-		agent.AnnotationRequiredScope:  true,
-		agent.AnnotationRequiredRole:   true,
-		agent.AnnotationRequiredAction: true,
-		cobra.BashCompOneRequiredFlag:  true,
-		cobra.BashCompCustom:           true,
-		cobra.BashCompFilenameExt:      true,
-		cobra.BashCompSubdirsInDir:     true,
+		agent.AnnotationTokenCost:          true,
+		agent.AnnotationLLMHint:            true,
+		agent.AnnotationRequiredScope:      true,
+		agent.AnnotationRequiredRole:       true,
+		agent.AnnotationRequiredAction:     true,
+		cobra.BashCompOneRequiredFlag:      true,
+		cobra.BashCompCustom:               true,
+		cobra.BashCompFilenameExt:          true,
+		cobra.BashCompSubdirsInDir:         true,
 		cobra.CommandDisplayNameAnnotation: true,
 	}
 
