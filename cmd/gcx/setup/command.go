@@ -20,9 +20,9 @@ func Command() *cobra.Command {
 		Use:   "setup",
 		Short: "Onboard and configure Grafana Cloud products.",
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			// Chain the parent's PersistentPreRun (root command sets up logging/context).
-			if parent := cmd.Parent(); parent != nil && parent.PersistentPreRun != nil {
-				parent.PersistentPreRun(cmd, args)
+			// Chain the root's PersistentPreRun (root command sets up logging/context).
+			if root := cmd.Root(); root != nil && root.PersistentPreRun != nil {
+				root.PersistentPreRun(cmd, args)
 			}
 		},
 	}

@@ -42,7 +42,7 @@ func (tb *TableBuilder) Render(w io.Writer) error {
 }
 
 func (tb *TableBuilder) renderPlain(w io.Writer) error {
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', tabwriter.TabIndent|tabwriter.DiscardEmptyColumns)
 	if len(tb.headers) > 0 {
 		for i, h := range tb.headers {
 			if i > 0 {

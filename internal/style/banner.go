@@ -33,4 +33,3 @@ func RenderLogo() string {
 
 	return strings.Join(lines, "\n") + "\n" + subtitle + "\n"
 }
-
