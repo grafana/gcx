@@ -2,7 +2,6 @@ package agent
 
 import "github.com/spf13/cobra"
 
-// annotation is a compact representation of command annotations.
 type annotation struct {
 	Cost string // "small", "medium", or "large"
 	Hint string // LLM scoping hint (required for medium/large)
@@ -22,11 +21,7 @@ var commandAnnotations = map[string]annotation{
 	// Core CLI commands (cmd/gcx/)
 	// -----------------------------------------------------------------------
 
-	// api
 	"gcx api": {Cost: "large", Hint: "GET /api/datasources -o json"},
-
-	// assistant
-	// (already annotated inline)
 
 	// auth
 	"gcx auth login": {Cost: "small"},
@@ -45,9 +40,6 @@ var commandAnnotations = map[string]annotation{
 	"gcx config use-context":     {Cost: "small"},
 	"gcx config view":            {Cost: "medium", Hint: "--minify -o json"},
 
-	// dashboards
-	// (already annotated inline)
-
 	// datasources
 	"gcx datasources get":   {Cost: "medium", Hint: "<uid> -o json"},
 	"gcx datasources list":  {Cost: "small"},
@@ -62,9 +54,6 @@ var commandAnnotations = map[string]annotation{
 	"gcx dev lint rules": {Cost: "small"},
 	"gcx dev lint run":  {Cost: "medium", Hint: "./dashboards -o compact"},
 	"gcx dev lint test": {Cost: "medium", Hint: "./rules --run TestName"},
-
-	// help-tree
-	// (already annotated inline)
 
 	// providers
 	"gcx providers list": {Cost: "small"},
@@ -233,7 +222,6 @@ var commandAnnotations = map[string]annotation{
 	"gcx logs adaptive segments delete":   {Cost: "small"},
 	"gcx logs adaptive segments list":     {Cost: "small"},
 	"gcx logs adaptive segments update":   {Cost: "small"},
-	// logs query/labels/metrics/series already annotated in provider.go
 
 	// -----------------------------------------------------------------------
 	// Metrics provider (adaptive)
@@ -242,7 +230,6 @@ var commandAnnotations = map[string]annotation{
 	"gcx metrics adaptive recommendations show":  {Cost: "small"},
 	"gcx metrics adaptive rules show":            {Cost: "small"},
 	"gcx metrics adaptive rules sync":            {Cost: "medium", Hint: "-f rules.yaml --dry-run -o json"},
-	// metrics query/labels/metadata already annotated in provider.go
 
 	// -----------------------------------------------------------------------
 	// OnCall provider
@@ -292,7 +279,6 @@ var commandAnnotations = map[string]annotation{
 	// Profiles provider (adaptive)
 	// -----------------------------------------------------------------------
 	"gcx profiles adaptive": {Cost: "small"},
-	// profiles query/labels/profile-types/metrics already annotated in provider.go
 
 	// -----------------------------------------------------------------------
 	// Sigil provider
@@ -341,7 +327,6 @@ var commandAnnotations = map[string]annotation{
 	"gcx traces adaptive recommendations apply":    {Cost: "small"},
 	"gcx traces adaptive recommendations dismiss":  {Cost: "small"},
 	"gcx traces adaptive recommendations show":     {Cost: "small"},
-	// traces query/get/labels/metrics already annotated in provider.go
 }
 
 // ApplyAnnotations walks the command tree and applies agent annotations from
@@ -349,7 +334,7 @@ var commandAnnotations = map[string]annotation{
 // registry entries only fill in missing keys. Call this after the full command
 // tree is assembled.
 func ApplyAnnotations(root *cobra.Command) {
-	walkCmd(root, func(cmd *cobra.Command) {
+	WalkCommands(root, func(cmd *cobra.Command) {
 		a, ok := commandAnnotations[cmd.CommandPath()]
 		if !ok {
 			return
@@ -366,9 +351,20 @@ func ApplyAnnotations(root *cobra.Command) {
 	})
 }
 
-func walkCmd(cmd *cobra.Command, fn func(*cobra.Command)) {
+// WalkCommands recursively calls fn on cmd and all its subcommands.
+func WalkCommands(cmd *cobra.Command, fn func(*cobra.Command)) {
 	fn(cmd)
 	for _, sub := range cmd.Commands() {
-		walkCmd(sub, fn)
+		WalkCommands(sub, fn)
 	}
+}
+
+// AnnotationRegistryPaths returns all command paths in the centralized
+// annotation registry. Used by consistency tests to detect orphaned entries.
+func AnnotationRegistryPaths() []string {
+	paths := make([]string, 0, len(commandAnnotations))
+	for p := range commandAnnotations {
+		paths = append(paths, p)
+	}
+	return paths
 }
