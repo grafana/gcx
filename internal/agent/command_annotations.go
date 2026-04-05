@@ -95,7 +95,7 @@ var commandAnnotations = map[string]annotation{
 	// -----------------------------------------------------------------------
 	// Faro provider
 	// -----------------------------------------------------------------------
-	"gcx faro apps apply-sourcemap":  {Cost: "small"},
+	"gcx faro apps apply-sourcemap":  {Cost: "small", Hint: "<app-name> -f <sourcemap-file>"},
 	"gcx faro apps create":           {Cost: "small"},
 	"gcx faro apps delete":           {Cost: "small"},
 	"gcx faro apps get":              {Cost: "small"},
@@ -107,12 +107,12 @@ var commandAnnotations = map[string]annotation{
 	// -----------------------------------------------------------------------
 	// Fleet provider
 	// -----------------------------------------------------------------------
-	"gcx fleet collectors create": {Cost: "small"},
+	"gcx fleet collectors create": {Cost: "small", Hint: "-f <manifest.yaml>"},
 	"gcx fleet collectors delete": {Cost: "small"},
 	"gcx fleet collectors get":    {Cost: "small"},
 	"gcx fleet collectors list":   {Cost: "small"},
 	"gcx fleet collectors update": {Cost: "small"},
-	"gcx fleet pipelines create":  {Cost: "small"},
+	"gcx fleet pipelines create":  {Cost: "small", Hint: "-f <manifest.yaml>"},
 	"gcx fleet pipelines delete":  {Cost: "small"},
 	"gcx fleet pipelines get":     {Cost: "small"},
 	"gcx fleet pipelines list":    {Cost: "small"},
@@ -135,13 +135,13 @@ var commandAnnotations = map[string]annotation{
 	// K6 provider
 	// -----------------------------------------------------------------------
 	"gcx k6 auth token":                        {Cost: "small"},
-	"gcx k6 env-vars create":                   {Cost: "small"},
+	"gcx k6 env-vars create":                   {Cost: "small", Hint: "-f <manifest.yaml>"},
 	"gcx k6 env-vars delete":                   {Cost: "small"},
 	"gcx k6 env-vars list":                     {Cost: "small"},
 	"gcx k6 env-vars update":                   {Cost: "small"},
-	"gcx k6 load-tests create":                 {Cost: "small"},
+	"gcx k6 load-tests create":                 {Cost: "small", Hint: "-f <manifest.yaml>"},
 	"gcx k6 load-tests delete":                 {Cost: "small"},
-	"gcx k6 load-tests get":                    {Cost: "small"},
+	"gcx k6 load-tests get":                    {Cost: "small", Hint: "<id-or-name> [--project-id <id>]"},
 	"gcx k6 load-tests list":                   {Cost: "small"},
 	"gcx k6 load-tests update":                 {Cost: "small"},
 	"gcx k6 load-tests update-script":          {Cost: "small"},
@@ -152,18 +152,18 @@ var commandAnnotations = map[string]annotation{
 	"gcx k6 load-zones create":                 {Cost: "small"},
 	"gcx k6 load-zones delete":                 {Cost: "small"},
 	"gcx k6 load-zones list":                   {Cost: "small"},
-	"gcx k6 projects create":                   {Cost: "small"},
+	"gcx k6 projects create":                   {Cost: "small", Hint: "-f <manifest.yaml>"},
 	"gcx k6 projects delete":                   {Cost: "small"},
 	"gcx k6 projects get":                      {Cost: "small"},
 	"gcx k6 projects list":                     {Cost: "small"},
 	"gcx k6 projects update":                   {Cost: "small"},
 	"gcx k6 runs list":                         {Cost: "small"},
-	"gcx k6 schedules create":                  {Cost: "small"},
+	"gcx k6 schedules create":                  {Cost: "small", Hint: "-f <manifest.yaml>"},
 	"gcx k6 schedules delete":                  {Cost: "small"},
 	"gcx k6 schedules get":                     {Cost: "small"},
 	"gcx k6 schedules list":                    {Cost: "small"},
 	"gcx k6 schedules update":                  {Cost: "small"},
-	"gcx k6 test-run emit":                     {Cost: "small"},
+	"gcx k6 test-run emit":                     {Cost: "small", Hint: "[test-name] --project-id <id> [--apply]"},
 	"gcx k6 test-run runs list":                {Cost: "small"},
 	"gcx k6 test-run status":                   {Cost: "small"},
 
@@ -245,7 +245,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx oncall alert-groups unresolve":    {Cost: "small"},
 	"gcx oncall alert-groups unsilence":    {Cost: "small"},
 	"gcx oncall alerts get":                {Cost: "small"},
-	"gcx oncall escalate":                  {Cost: "small"},
+	"gcx oncall escalate":                  {Cost: "small", Hint: "--title \"title\" --user-ids id1,id2"},
 	"gcx oncall escalation-chains get":     {Cost: "small"},
 	"gcx oncall escalation-chains list":    {Cost: "small"},
 	"gcx oncall escalation-policies get":   {Cost: "small"},
