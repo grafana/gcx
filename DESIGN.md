@@ -109,7 +109,7 @@ Prescriptive implementation rules live in [docs/design/](docs/design/), split by
 | [errors.md](docs/design/errors.md) | DetailedError structure, converters, in-band JSON errors |
 | [pipe-awareness.md](docs/design/pipe-awareness.md) | TTY detection, `--no-color`, pipe behavior |
 | [agent-mode.md](docs/design/agent-mode.md) | Agent mode detection, behavior changes, opt-out |
-| [provider-checklist.md](docs/design/provider-checklist.md) | Provider UX compliance, TypedCRUD, ConfigLoader |
+| [provider-checklist.md](docs/design/provider-checklist.md) | Provider UX compliance (architecture patterns in [patterns.md](docs/architecture/patterns.md)) |
 | [help-text.md](docs/design/help-text.md) | Command descriptions, examples format |
 | [naming.md](docs/design/naming.md) | Resource kinds, file naming, config keys, flags |
 | [environment-variables.md](docs/design/environment-variables.md) | Canonical environment variable reference |

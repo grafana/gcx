@@ -1,6 +1,6 @@
 # Provider Command Checklist
 
-> UX compliance checklist for new providers, plus Provider/Resources output consistency rules, the TypedCRUD pattern, and ConfigLoader usage.
+> UX compliance checklist for new providers. Architecture patterns (TypedCRUD, ConfigLoader, output consistency) are in [patterns.md](../architecture/patterns.md).
 > Status markers: **[CURRENT]** = enforced, **[ADOPT]** = new code must follow, **[PLANNED]** = future.
 
 Extends the interface checklist in [provider-guide.md](../reference/provider-guide.md) with
@@ -78,87 +78,6 @@ Commands that are **exempt** from K8s wrapping:
 
 ---
 
-## 14. Provider / Resources Output Consistency `[ADOPT]`
+## Architecture Patterns
 
-Provider CRUD commands must use their registered `ResourceAdapter` (via
-TypedCRUD) for data access, not raw REST clients. This ensures:
-
-- JSON/YAML output is identical to the `resources` pipeline by construction.
-- Table/wide codecs may access domain types `T` for richer columns (e.g.
-  SLI%, burn rate, budget remaining).
-- The `resources` pipeline uses generic resource columns (name, namespace,
-  age) for its table codec.
-
-Provider commands that bypass the adapter for CRUD operations are
-non-compliant. Extension commands (status, timeline, etc.) may use raw
-clients since they have no `resources` pipeline equivalent.
-
----
-
-## 15. TypedCRUD Pattern `[ADOPT → EVOLVE]`
-
-TypedCRUD is the current required pattern for new providers implementing
-ResourceAdapter. It bridges typed domain objects to Kubernetes-style
-unstructured envelopes.
-
-**Current requirement:** New providers must use TypedCRUD for adapter
-registration.
-
-**Trajectory:** Domain types should be designed with eventual K8s metadata
-interface compliance in mind (metadata.name, metadata.namespace,
-apiVersion/kind). The long-term goal is typed resources that satisfy K8s
-interfaces directly, eliminating the TypedCRUD bridge.
-
-Do not introduce new serialization bridges, dispatch patterns, or
-type-erasure mechanisms. If TypedCRUD does not fit your use case, raise
-the issue for architectural discussion.
-
----
-
-## 16. Provider ConfigLoader `[ADOPT]`
-
-All provider commands must use `providers.ConfigLoader` for flag binding
-(`--config`, `--context`) and config resolution (YAML + env var precedence).
-
-### ConfigLoader API
-
-| Method | Purpose | Used by |
-|--------|---------|---------|
-| `LoadGrafanaConfig(ctx)` | REST config for Grafana API calls | alert, fleet, incidents, kg, oncall, slo, synth |
-| `LoadCloudConfig(ctx)` | Cloud token + GCOM stack info | k6, fleet |
-| `LoadProviderConfig(ctx, name)` | Provider-specific `map[string]string` + namespace | synth, oncall, k6 |
-| `SaveProviderConfig(ctx, name, key, val)` | Write-back a single provider config key | synth (datasource UID) |
-| `LoadFullConfig(ctx)` | Full `*config.Config` (for cross-cutting lookups) | synth (datasource discovery) |
-
-### Provider-specific config pattern
-
-Providers that need custom keys (URLs, tokens, domain overrides) use
-`LoadProviderConfig` instead of ad-hoc `os.Getenv` or `ProviderConfig` map
-access. This ensures `GRAFANA_PROVIDER_<NAME>_<KEY>` env vars, config file
-values, and `--context` switching all work uniformly:
-
-```go
-// In provider's config loader or adapter factory:
-providerCfg, namespace, err := l.LoadProviderConfig(ctx, "synth")
-if err != nil {
-    return err
-}
-smURL := providerCfg["sm-url"]  // resolved from env or config file
-```
-
-Provider-specific defaults and fallbacks (e.g., `DefaultAPIDomain` for k6,
-plugin discovery for oncall) remain in the provider package — `ConfigLoader`
-is generic.
-
-### Do not
-
-- Import `cmd/gcx/config` from provider code (import cycle)
-- Roll custom flag binding for `--config`/`--context`
-- Construct HTTP clients or load credentials outside ConfigLoader
-- Hardcode env var names — ConfigLoader handles `GRAFANA_PROVIDER_*` resolution
-- Use `os.Getenv` for provider-specific env vars — use `LoadProviderConfig`
-- Swallow errors from `LoadProviderConfig` — propagate them; only fall through
-  to alternative resolution when the key is absent, not when config loading fails
-
-See [environment-variables.md](environment-variables.md) for the canonical env var reference including `GRAFANA_PROVIDER_*` patterns.
-See [naming.md § Config Key Naming](naming.md#93-config-key-naming-current) for naming conventions.
+Provider architecture patterns (TypedCRUD, ConfigLoader, output consistency) are documented in [patterns.md § Provider Plugin System](../architecture/patterns.md). Those are structural requirements; this file covers UX requirements.
