@@ -10,7 +10,9 @@ import (
 //
 //nolint:gochecknoglobals // Test export pattern.
 var (
-	WalkCommand            = walkCommand
+	WalkCommand = func(cmd *cobra.Command, parentPath string) CommandInfo {
+		return walkCommandWithOptions(cmd, parentPath, false)
+	}
 	WalkCommandWithOptions = walkCommandWithOptions
 	FlattenCommands        = flattenCommands
 	ExtractArgs            = extractArgs

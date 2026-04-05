@@ -5,15 +5,10 @@ import (
 	"github.com/grafana/gcx/internal/style"
 )
 
-// grafanaColors is the classic Grafana chart series palette, sourced from
-// the centralized style package.
-//
-//nolint:gochecknoglobals
-var grafanaColors = style.ChartPalette
-
-// ColorForIndex returns the color for a given series index.
+// ColorForIndex returns the color for a given series index, cycling through
+// the Grafana chart palette.
 func ColorForIndex(idx int) lipgloss.Color {
-	return grafanaColors[idx%len(grafanaColors)]
+	return style.ChartPalette[idx%len(style.ChartPalette)]
 }
 
 // Compliance status colors.

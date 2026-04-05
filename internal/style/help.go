@@ -1,7 +1,6 @@
 package style
 
 import (
-	"bytes"
 	"fmt"
 	"strings"
 
@@ -105,9 +104,7 @@ func HelpFunc(defaultHelp func(*cobra.Command, []string)) func(*cobra.Command, [
 			fmt.Fprintln(w, "Additional help topics:")
 			for _, sub := range cmd.Commands() {
 				if sub.IsAdditionalHelpTopicCommand() {
-					var buf bytes.Buffer
-					fmt.Fprintf(&buf, "  %-16s %s", sub.CommandPath(), sub.Short)
-					fmt.Fprintln(w, buf.String())
+					fmt.Fprintf(w, "  %-16s %s\n", sub.CommandPath(), sub.Short)
 				}
 			}
 			fmt.Fprintln(w)

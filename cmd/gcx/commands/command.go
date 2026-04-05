@@ -145,11 +145,6 @@ against live resource discovery and report uncovered or stale types.`,
 	return cmd
 }
 
-// walkCommand walks the command tree recursively, excluding hidden commands.
-func walkCommand(cmd *cobra.Command, parentPath string) CommandInfo {
-	return walkCommandWithOptions(cmd, parentPath, false)
-}
-
 // walkCommandWithOptions walks the command tree with configurable hidden command inclusion.
 func walkCommandWithOptions(cmd *cobra.Command, parentPath string, includeHidden bool) CommandInfo {
 	fullPath := cmd.Name()

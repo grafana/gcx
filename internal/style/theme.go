@@ -22,21 +22,12 @@ import (
 var (
 	// Semantic colors.
 	ColorPrimary = lipgloss.Color("#6E9FFF")
-	ColorSuccess = lipgloss.Color("#6CCF8E")
-	ColorWarning = lipgloss.Color("#FBAD37")
-	ColorError   = lipgloss.Color("#FF5286")
 	ColorMuted   = lipgloss.Color("#7D8085")
 	ColorBorder  = lipgloss.Color("#44474E")
-	ColorPanel   = lipgloss.Color("#181B1F")
 
-	// Gradient endpoints.
-	GradientBrandFrom  = lipgloss.Color("#FF9900") // Orange
+	// Gradient endpoints (used by the ASCII logo).
 	GradientBrandTo    = lipgloss.Color("#EAB839") // Amber
 	GradientAccentFrom = lipgloss.Color("#F2495C") // Coral
-	GradientAccentTo   = lipgloss.Color("#FF9900") // Orange
-	GradientCoolFrom   = lipgloss.Color("#3D71D9") // Blue
-	GradientCoolTo     = lipgloss.Color("#6ED0E0") // Cyan
-	GradientSuccessTo  = lipgloss.Color("#73BF69") // Green
 
 	// Grafana chart palette (classic series colors).
 	ChartPalette = []lipgloss.Color{
