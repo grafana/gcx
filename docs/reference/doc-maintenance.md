@@ -47,7 +47,7 @@
 |----------|-----------------|
 | `README.md` | Yes — update CLI flags or usage section |
 | `docs/reference/cli/` | Automatic — `make docs` regenerates |
-| `docs/reference/design-guide.md` | If UX conventions changed |
+| `docs/design/` | If UX conventions changed |
 
 ## General Rules
 

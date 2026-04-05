@@ -79,7 +79,7 @@ Deep-dive docs live in [docs/architecture/](docs/architecture/). Each covers one
 | [data-flows.md](docs/architecture/data-flows.md) | Push/Pull/Serve/Delete pipelines | Modifying resource sync |
 | [project-structure.md](docs/architecture/project-structure.md) | Build system, CI/CD, dependencies | Build issues, adding deps |
 
-See also `docs/reference/` for prescriptive guides: [provider-guide.md](docs/reference/provider-guide.md), [provider-discovery-guide.md](docs/reference/provider-discovery-guide.md), [design-guide.md](docs/reference/design-guide.md).
+See also: [docs/design/](docs/design/) for UX implementation guides, [docs/reference/](docs/reference/) for provider guides and CLI reference.
 
 ### How to Navigate
 

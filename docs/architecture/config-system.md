@@ -161,7 +161,7 @@ Loading steps (in `Load`, lines 66–98):
 
 ## Environment Variable Overrides
 
-> See also [design-guide.md](../reference/design-guide.md) Section 10 for the complete
+> See also [environment-variables.md](../design/environment-variables.md) for the complete
 > environment variable reference (core + provider + planned variables).
 
 Environment variables are applied as an `Override` function during load. They
@@ -556,7 +556,7 @@ enables the `--force` flag for non-interactive operation in CI/CD pipelines.
 |---------|----------|--------|
 | `GCX_AUTO_APPROVE` | `--yes` / `-y` | Auto-enables `--force` on delete |
 
-See [design-guide.md](../reference/design-guide.md) Section 10 for the full environment
+See [environment-variables.md](../design/environment-variables.md) for the full environment
 variable reference.
 
 ---

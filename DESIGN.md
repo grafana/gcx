@@ -2,7 +2,7 @@
 
 > Shared vocabulary for how gcx commands look and feel — for developers and agents implementing new commands or providers.
 >
-> This file covers philosophy and intent. Prescriptive implementation rules are in [docs/reference/design-guide.md](docs/reference/design-guide.md).
+> This file covers philosophy and intent. Prescriptive implementation rules are in [docs/design/](docs/design/).
 > Enforceable invariants (things that cannot change without explicit human approval) are in [CONSTITUTION.md](CONSTITUTION.md).
 
 ## Philosophy
@@ -46,7 +46,7 @@ Every command works identically for humans and agents. Agent mode changes defaul
 Agent mode is active when `GCX_AGENT_MODE=true`, or auto-detected from env vars (`CLAUDECODE`, `CLAUDE_CODE`).
 Explicit flags always override: `--output json` works in human mode; `--output text` works in agent mode.
 
-See [docs/reference/design-guide.md § Agent Mode](docs/reference/design-guide.md#6-agent-mode) for detection logic and opt-out.
+See [docs/design/agent-mode.md](docs/design/agent-mode.md) for detection logic and opt-out.
 
 ## Output Model
 
@@ -68,6 +68,8 @@ Default formats by command type:
 
 The `--json field1,field2` flag selects specific fields. `--json ?` discovers available field paths.
 
+See [docs/design/output.md](docs/design/output.md) for codec implementation, status messages, and mutation summaries.
+
 ## Exit Codes
 
 | Code | Meaning | When |
@@ -80,6 +82,8 @@ The `--json field1,field2` flag selects specific fields. `--json ?` discovers av
 | 5 | Cancelled | Ctrl+C, `context.Canceled` |
 | 6 | Version incompatible | Grafana < 12 detected |
 
+See [docs/design/exit-codes.md](docs/design/exit-codes.md) for implementation with `DetailedError` and converters.
+
 ## Safety Patterns
 
 - **Idempotent by default**: `push` is create-or-update. Safe to run repeatedly.
@@ -87,20 +91,28 @@ The `--json field1,field2` flag selects specific fields. `--json ?` discovers av
 - **Prompt before destructive ops**: `delete` prompts unless `--yes`/`-y` or `GCX_AUTO_APPROVE`.
 - **No prompt for reversible ops**: push, pull, config changes do not prompt.
 
+See [docs/design/safety.md](docs/design/safety.md) for implementation patterns and flag precedence.
+
 ## Taste Rules
 
 Code taste rules (options pattern, error messages, test style, commit format) live in [ARCHITECTURE.md § Taste Rules](ARCHITECTURE.md#taste-rules). Authoritative source: [CONSTITUTION.md § Taste Rules](CONSTITUTION.md#taste-rules).
 
-## Implementation Reference
+## Implementation Guides
 
-[docs/reference/design-guide.md](docs/reference/design-guide.md) is the prescriptive implementation guide. It contains:
+Prescriptive implementation rules live in [docs/design/](docs/design/), split by domain:
 
-- Output codec setup, status messages (`cmdio.Success`/`Warning`/`Error`/`Info`), JSON field selection
-- Exit code implementation with `DetailedError` and converters
-- Confirmation (`--yes`), dry-run, idempotency patterns with code examples
-- Error formatting, naming conventions, help text standards
-- Agent mode detection, behavior switches, opt-out mechanisms
-- Table formatting, wide codecs, column design
+| Document | Domain |
+|----------|--------|
+| [output.md](docs/design/output.md) | Output codecs, status messages, JSON field selection, mutation summaries |
+| [exit-codes.md](docs/design/exit-codes.md) | Exit code taxonomy and implementation |
+| [safety.md](docs/design/safety.md) | Confirmation prompts, `--yes`, dry-run, idempotency |
+| [errors.md](docs/design/errors.md) | DetailedError structure, converters, in-band JSON errors |
+| [pipe-awareness.md](docs/design/pipe-awareness.md) | TTY detection, `--no-color`, pipe behavior |
+| [agent-mode.md](docs/design/agent-mode.md) | Agent mode detection, behavior changes, opt-out |
+| [provider-checklist.md](docs/design/provider-checklist.md) | Provider UX compliance, TypedCRUD, ConfigLoader |
+| [help-text.md](docs/design/help-text.md) | Command descriptions, examples format |
+| [naming.md](docs/design/naming.md) | Resource kinds, file naming, config keys, flags |
+| [environment-variables.md](docs/design/environment-variables.md) | Canonical environment variable reference |
 
 Status markers (`[CURRENT]`, `[ADOPT]`, `[PLANNED]`) tell you what's enforced vs. aspirational.
 New commands and providers **must comply with all `[CURRENT]` and `[ADOPT]` items**.

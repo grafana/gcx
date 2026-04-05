@@ -406,7 +406,7 @@ see `internal/providers/redact_test.go` for table-driven examples.
 
 ## Checklist
 
-When implementing a new provider (see also [design-guide.md Section 7](design-guide.md#7-provider-command-checklist) for UX compliance requirements):
+When implementing a new provider (see also [provider-checklist.md](../design/provider-checklist.md) for UX compliance requirements):
 
 - [ ] Struct implements all five `Provider` interface methods
 - [ ] `Name()` is lowercase, unique, and stable (it is the map key in config files)

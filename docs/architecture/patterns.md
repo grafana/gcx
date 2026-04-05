@@ -303,7 +303,7 @@ only the wide table codec was expected to display.
 - `cmd/gcx/datasources/query/query.go`: query response passed to all codecs unchanged
 - `internal/output/format.go`: built-in JSON/YAML codecs fall through when no custom codec is registered
 
-**See also:** [design-guide.md §11](../reference/design-guide.md#11-codec-requirements-by-command-type-adopt) — codec requirements by command type, [§12](../reference/design-guide.md#12-mutation-command-output-adopt) — mutation command output spec.
+**See also:** [output.md](../design/output.md) — codec requirements by command type and mutation command output spec.
 
 ---
 
@@ -435,7 +435,7 @@ copy-paste it directly into `get`, `update`, and `delete` commands.
 
 **Usage:** When a provider resource type needs CRUD via `gcx resources`, implement `ResourceAdapter`, call `adapter.Register()` in `init()`, and call `RegistryIndex.RegisterStatic()` in `discovery.NewDefaultRegistry`.
 
-**See also:** [design-guide.md §14](../reference/design-guide.md#14-provider--resources-output-consistency-adopt) — provider CRUD commands must use ResourceAdapter, [§15](../reference/design-guide.md#15-typedcrud-pattern-adopt--evolve) — TypedCRUD pattern and trajectory, [§16](../reference/design-guide.md#16-provider-configloader-adopt) — ConfigLoader requirement for all providers.
+**See also:** [provider-checklist.md](../design/provider-checklist.md) — provider output consistency, TypedCRUD pattern, and ConfigLoader requirement.
 
 **Context threading for `--context` flag:** The selected config context name is
 threaded into adapter factories via Go's `context.Context` using helpers in

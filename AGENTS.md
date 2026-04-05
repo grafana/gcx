@@ -117,7 +117,7 @@ Check work against these docs during planning, design, and implementation — in
 |---|-----|-----------|---------------|-------------|
 | 1 | [CONSTITUTION.md](CONSTITUTION.md) | **Hard invariant** — violation is a bug | Architecture invariants, dependency rules, provider registration, CLI grammar, typed resource requirements | Stop. Fix before proceeding. Violation requires explicit human approval to waive. |
 | 2 | [VISION.md](VISION.md) | **Strategic alignment** — violation is wasted work | Does this belong in gcx? Does it align with dual-purpose design, core beliefs, product surface? | Pause. Confirm direction with a human before investing more effort. |
-| 3 | [DESIGN.md](DESIGN.md) | **UX rules** — violation is a UX defect | Output model, exit codes, safety patterns, taste rules, `[CURRENT]`/`[ADOPT]` items in [design-guide.md](docs/reference/design-guide.md) | Fix. New code must comply with all `[CURRENT]` and `[ADOPT]` items. |
+| 3 | [DESIGN.md](DESIGN.md) | **UX rules** — violation is a UX defect | Output model, exit codes, safety patterns, taste rules, `[CURRENT]`/`[ADOPT]` items in [docs/design/](docs/design/) | Fix. New code must comply with all `[CURRENT]` and `[ADOPT]` items. |
 | 4 | [ARCHITECTURE.md](ARCHITECTURE.md) | **Structural guidance** — violation is tech debt | Pipeline placement, package boundaries, patterns in [docs/architecture/](docs/architecture/README.md) | Prefer compliance. Deviation is acceptable with rationale (document in commit or ADR). |
 
 **When to check:**

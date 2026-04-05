@@ -7,7 +7,7 @@ Before implementing features or commands, read:
 - [ARCHITECTURE.md](ARCHITECTURE.md) — system architecture, pipeline diagrams, ADR index
 - [DESIGN.md](DESIGN.md) — CLI UX design: command grammar, output model, taste rules
 - [CONSTITUTION.md](CONSTITUTION.md) — invariants you must not violate
-- [docs/reference/design-guide.md](docs/reference/design-guide.md) — prescriptive implementation rules
+- [docs/design/](docs/design/) — prescriptive UX implementation rules (output, errors, agent mode, naming, …)
 
 ## Issue Tracking
 
