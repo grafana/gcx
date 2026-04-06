@@ -138,6 +138,7 @@ cmd/gcx/
 ├── datasources/ Datasource commands (list, get, query)
 │   └── query/   Auto-detecting query command (GenericCmd only; shared infra in internal/datasources/query/)
 ├── providers/   Provider commands (list)
+├── assistant/   Assistant commands (AI-powered investigations)
 ├── api/         Raw API passthrough command (direct Grafana API calls)
 ├── linter/      Linting commands (run, new, rules, test — mounted under dev lint)
 ├── commands/    Commands catalog (agent-consumable metadata, resource types, live validation)
@@ -185,6 +186,9 @@ internal/
 ├── query/       Datasource query clients
 │   ├── prometheus/  Prometheus HTTP query client
 │   └── loki/        Loki HTTP query client
+├── assistant/   Assistant client (A2A streaming, prompt, state management)
+│   ├── assistanthttp/  Base HTTP client for grafana-assistant-app plugin API
+│   └── investigations/ Investigation CRUD commands, table codecs, API client
 ├── agent/       Agent mode detection, command annotations, known-resource registry with operation hints
 ├── terminal/    TTY/pipe detection (IsPiped, NoTruncate, Detect) for output suppression
 ├── linter/      Linting engine (Rego rules, report aggregation, PromQL/LogQL validators)
