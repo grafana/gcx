@@ -34,6 +34,101 @@ func (n *NamespacedRESTConfig) SetOnRefresh(fn auth.TokenRefresher) {
 	}
 }
 
+// WireTokenPersistence registers an OnRefresh callback that reloads the config
+// from the most appropriate source, updates the OAuth token fields for
+// contextName, and writes back.
+// No-op if the config is not using OAuth proxy mode.
+func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source Source, contextName string, sources []ConfigSource) {
+	persistSource := ResolveTokenPersistenceSource(ctx, source, contextName, sources)
+
+	n.SetOnRefresh(func(token, refreshToken, expiresAt, refreshExpiresAt string) error {
+		fresh, err := Load(ctx, persistSource)
+		if err != nil {
+			return err
+		}
+
+		c := fresh.Contexts[contextName]
+		if c == nil {
+			c = &Context{}
+			if fresh.Contexts == nil {
+				fresh.Contexts = make(map[string]*Context)
+			}
+			fresh.Contexts[contextName] = c
+		}
+		if c.Grafana == nil {
+			c.Grafana = &GrafanaConfig{}
+		}
+
+		c.Grafana.OAuthToken = token
+		c.Grafana.OAuthRefreshToken = refreshToken
+		c.Grafana.OAuthTokenExpiresAt = expiresAt
+		c.Grafana.OAuthRefreshExpiresAt = refreshExpiresAt
+		return Write(ctx, persistSource, fresh)
+	})
+}
+
+// ResolveTokenPersistenceSource picks the best config file to persist rotated OAuth tokens.
+// It returns a Source pointing to the highest-priority file that already contains OAuth fields
+// for the given context, falling back to the user-level config or the provided fallback.
+func ResolveTokenPersistenceSource(ctx context.Context, fallback Source, contextName string, sources []ConfigSource) Source {
+	if len(sources) == 0 {
+		return fallback
+	}
+
+	// Explicit mode bypasses layered config and should always persist to the explicit file.
+	for _, src := range sources {
+		if src.Type == "explicit" {
+			return ExplicitConfigFile(src.Path)
+		}
+	}
+
+	if src, ok := pickHighestSourceForContext(ctx, sources, contextName, contextHasOAuthFields); ok {
+		return ExplicitConfigFile(src.Path)
+	}
+	if src, ok := pickHighestSourceForContext(ctx, sources, contextName, contextExists); ok {
+		return ExplicitConfigFile(src.Path)
+	}
+
+	// No source has the context; default to user layer when available.
+	for i := len(sources) - 1; i >= 0; i-- {
+		if sources[i].Type == "user" {
+			return ExplicitConfigFile(sources[i].Path)
+		}
+	}
+
+	return fallback
+}
+
+func pickHighestSourceForContext(ctx context.Context, sources []ConfigSource, contextName string, match func(*Context) bool) (ConfigSource, bool) {
+	// DiscoverSources returns low→high precedence, so scan in reverse.
+	for i := len(sources) - 1; i >= 0; i-- {
+		cfg, err := Load(ctx, ExplicitConfigFile(sources[i].Path))
+		if err != nil {
+			continue
+		}
+		if c := cfg.Contexts[contextName]; c != nil && match(c) {
+			return sources[i], true
+		}
+	}
+	return ConfigSource{}, false
+}
+
+func contextExists(c *Context) bool {
+	return c != nil
+}
+
+func contextHasOAuthFields(c *Context) bool {
+	if c == nil || c.Grafana == nil {
+		return false
+	}
+	g := c.Grafana
+	return g.OAuthToken != "" ||
+		g.OAuthRefreshToken != "" ||
+		g.OAuthTokenExpiresAt != "" ||
+		g.OAuthRefreshExpiresAt != "" ||
+		g.ProxyEndpoint != ""
+}
+
 // parseRFC3339OrZero parses an RFC3339 timestamp, returning the zero time on
 // empty input or parse failure.
 func parseRFC3339OrZero(s string) time.Time {

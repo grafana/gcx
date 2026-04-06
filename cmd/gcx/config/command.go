@@ -138,25 +138,7 @@ func (opts *Options) LoadGrafanaConfig(ctx context.Context) (config.NamespacedRE
 	}
 
 	restCfg := cfg.GetCurrentContext().ToRESTConfig(ctx)
-
-	// Wire token persistence: on refresh, reload config, update tokens, write back.
-	source := opts.ConfigSource()
-	contextName := cfg.CurrentContext
-	restCfg.SetOnRefresh(func(token, refreshToken, expiresAt, refreshExpiresAt string) error {
-		fresh, err := opts.LoadConfigTolerant(ctx)
-		if err != nil {
-			return err
-		}
-		c := fresh.Contexts[contextName]
-		if c == nil || c.Grafana == nil {
-			return nil
-		}
-		c.Grafana.OAuthToken = token
-		c.Grafana.OAuthRefreshToken = refreshToken
-		c.Grafana.OAuthTokenExpiresAt = expiresAt
-		c.Grafana.OAuthRefreshExpiresAt = refreshExpiresAt
-		return config.Write(ctx, source, fresh)
-	})
+	restCfg.WireTokenPersistence(ctx, opts.ConfigSource(), cfg.CurrentContext, cfg.Sources)
 
 	return restCfg, nil
 }
