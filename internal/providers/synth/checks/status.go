@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
@@ -23,6 +22,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/synth/probes"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 	"github.com/grafana/gcx/internal/query/prometheus"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/grafana/promql-builder/go/promql"
 	"github.com/spf13/cobra"
@@ -1023,12 +1023,11 @@ func (c *StatusTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for status table codec: expected []CheckStatusResult")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "NAME\tJOB\tTARGET\tTYPE\tSUCCESS\tPROBES_UP\tPROBES_TOTAL\tPROBES\tSTATUS")
+		t = style.NewTable("NAME", "JOB", "TARGET", "TYPE", "SUCCESS", "PROBES_UP", "PROBES_TOTAL", "PROBES", "STATUS")
 	} else {
-		fmt.Fprintln(tw, "NAME\tJOB\tTARGET\tSUCCESS\tSTATUS")
+		t = style.NewTable("NAME", "JOB", "TARGET", "SUCCESS", "STATUS")
 	}
 
 	for _, r := range results {
@@ -1040,15 +1039,14 @@ func (c *StatusTableCodec) Encode(w io.Writer, v any) error {
 		name := statusDisplayName(r)
 		if c.Wide {
 			probesStr := strings.Join(r.ProbeNames, ", ")
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\t%d\t%s\t%s\n",
-				name, r.Job, r.Target, r.Type, successStr, r.ProbesUp, r.ProbesTotal, probesStr, r.Status)
+			t.Row(name, r.Job, r.Target, r.Type, successStr,
+				strconv.Itoa(r.ProbesUp), strconv.Itoa(r.ProbesTotal), probesStr, r.Status)
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-				name, r.Job, r.Target, successStr, r.Status)
+			t.Row(name, r.Job, r.Target, successStr, r.Status)
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *StatusTableCodec) Decode(_ io.Reader, _ any) error {
@@ -1115,20 +1113,19 @@ func (c *TimelineTableCodec) Encode(w io.Writer, v any) error {
 		return fmt.Errorf("TimelineTableCodec: expected CheckTimelinePayload, got %T", v)
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "PROBE\tTIMESTAMP\tSUCCESS")
+	t := style.NewTable("PROBE", "TIMESTAMP", "SUCCESS")
 
 	for _, ts := range payload.Series {
 		for _, pt := range ts.Points {
-			fmt.Fprintf(tw, "%s\t%s\t%.4f\n",
+			t.Row(
 				ts.Probe,
 				pt.Time.Format(time.RFC3339),
-				pt.Value,
+				fmt.Sprintf("%.4f", pt.Value),
 			)
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *TimelineTableCodec) Decode(_ io.Reader, _ any) error {

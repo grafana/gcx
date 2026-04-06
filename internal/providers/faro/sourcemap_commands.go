@@ -7,12 +7,12 @@ import (
 	"io"
 	"os"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -33,12 +33,11 @@ func (c *SourcemapTableCodec) Encode(w io.Writer, v any) error {
 		return err
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "BUNDLE ID\tCREATED\tUPDATED")
+	t := style.NewTable("BUNDLE ID", "CREATED", "UPDATED")
 	for _, b := range bundles {
-		fmt.Fprintf(tw, "%s\t%s\t%s\n", b.ID, b.Created, b.Updated)
+		t.Row(b.ID, b.Created, b.Updated)
 	}
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *SourcemapTableCodec) Decode(_ io.Reader, _ any) error {

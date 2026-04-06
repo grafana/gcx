@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"text/tabwriter"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -145,11 +145,6 @@ against live resource discovery and report uncovered or stale types.`,
 	return cmd
 }
 
-// walkCommand walks the command tree recursively, excluding hidden commands.
-func walkCommand(cmd *cobra.Command, parentPath string) CommandInfo {
-	return walkCommandWithOptions(cmd, parentPath, false)
-}
-
 // walkCommandWithOptions walks the command tree with configurable hidden command inclusion.
 func walkCommandWithOptions(cmd *cobra.Command, parentPath string, includeHidden bool) CommandInfo {
 	fullPath := cmd.Name()
@@ -261,31 +256,29 @@ type commandsTextCodec struct{}
 func (c *commandsTextCodec) Format() format.Format { return "text" }
 
 func (c *commandsTextCodec) Encode(output io.Writer, value any) error {
-	tab := tabwriter.NewWriter(output, 0, 4, 2, ' ', tabwriter.TabIndent|tabwriter.DiscardEmptyColumns)
-
 	switch v := value.(type) {
 	case CatalogOutput:
-		fmt.Fprintf(tab, "COMMAND\tDESCRIPTION\tTOKEN_COST\n")
-		writeCommandTable(tab, v.Commands, "")
+		t := style.NewTable("COMMAND", "DESCRIPTION", "TOKEN_COST")
+		addCommandRows(t, v.Commands, "")
+		return t.Render(output)
 	case FlatCatalogOutput:
-		fmt.Fprintf(tab, "COMMAND\tDESCRIPTION\tTOKEN_COST\n")
+		t := style.NewTable("COMMAND", "DESCRIPTION", "TOKEN_COST")
 		for _, cmd := range v.Commands {
-			fmt.Fprintf(tab, "%s\t%s\t%s\n", cmd.FullPath, cmd.Description, cmd.TokenCost)
+			t.Row(cmd.FullPath, cmd.Description, cmd.TokenCost)
 		}
+		return t.Render(output)
 	case *agent.ValidationResult:
 		writeValidationReport(output, v)
 		return nil
 	default:
 		return fmt.Errorf("unsupported type for text codec: %T", value)
 	}
-
-	return tab.Flush()
 }
 
-func writeCommandTable(w io.Writer, info CommandInfo, indent string) {
-	fmt.Fprintf(w, "%s%s\t%s\t%s\n", indent, info.FullPath, info.Description, info.TokenCost)
+func addCommandRows(t *style.TableBuilder, info CommandInfo, indent string) {
+	t.Row(indent+info.FullPath, info.Description, info.TokenCost)
 	for _, sub := range info.Subcommands {
-		writeCommandTable(w, sub, indent+"  ")
+		addCommandRows(t, sub, indent+"  ")
 	}
 }
 

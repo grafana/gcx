@@ -9,12 +9,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/dashboards"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
@@ -248,8 +248,7 @@ func snapshotCmd(configOpts *cmdconfig.Options) *cobra.Command {
 }
 
 func renderSnapshotTable(w interface{ Write(b []byte) (int, error) }, results []dashboards.SnapshotResult) error {
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "UID\tPANEL\tFILE\tSIZE")
+	t := style.NewTable("UID", "PANEL", "FILE", "SIZE")
 
 	for _, r := range results {
 		panelStr := ""
@@ -264,8 +263,8 @@ func renderSnapshotTable(w interface{ Write(b []byte) (int, error) }, results []
 			sizeStr = fmt.Sprintf("%.1f KB", float64(r.FileSize)/1024)
 		}
 
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", r.UID, panelStr, r.FilePath, sizeStr)
+		t.Row(r.UID, panelStr, r.FilePath, sizeStr)
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }

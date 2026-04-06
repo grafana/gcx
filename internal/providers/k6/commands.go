@@ -10,11 +10,11 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/gcx/internal/terminal"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -238,11 +238,11 @@ func (c *ProjectTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []Project")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "ID\tNAME\tDEFAULT\tFOLDER UID\tCREATED\tUPDATED")
+		t = style.NewTable("ID", "NAME", "DEFAULT", "FOLDER UID", "CREATED", "UPDATED")
 	} else {
-		fmt.Fprintln(tw, "ID\tNAME\tDEFAULT\tCREATED")
+		t = style.NewTable("ID", "NAME", "DEFAULT", "CREATED")
 	}
 
 	for _, p := range projects {
@@ -271,12 +271,12 @@ func (c *ProjectTableCodec) Encode(w io.Writer, v any) error {
 			if folderUID == "" {
 				folderUID = "-"
 			}
-			fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%s\n", p.ID, p.Name, isDefault, folderUID, created, updated)
+			t.Row(strconv.Itoa(p.ID), p.Name, isDefault, folderUID, created, updated)
 		} else {
-			fmt.Fprintf(tw, "%d\t%s\t%s\t%s\n", p.ID, p.Name, isDefault, created)
+			t.Row(strconv.Itoa(p.ID), p.Name, isDefault, created)
 		}
 	}
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *ProjectTableCodec) Decode(_ io.Reader, _ any) error {
@@ -585,11 +585,11 @@ func (c *LoadTestTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []LoadTest")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var tbl *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "ID\tNAME\tPROJECT\tCREATED\tUPDATED")
+		tbl = style.NewTable("ID", "NAME", "PROJECT", "CREATED", "UPDATED")
 	} else {
-		fmt.Fprintln(tw, "ID\tNAME\tPROJECT\tCREATED")
+		tbl = style.NewTable("ID", "NAME", "PROJECT", "CREATED")
 	}
 
 	for _, t := range tests {
@@ -609,12 +609,12 @@ func (c *LoadTestTableCodec) Encode(w io.Writer, v any) error {
 			if updated == "" {
 				updated = "-"
 			}
-			fmt.Fprintf(tw, "%d\t%s\t%d\t%s\t%s\n", t.ID, t.Name, t.ProjectID, created, updated)
+			tbl.Row(strconv.Itoa(t.ID), t.Name, strconv.Itoa(t.ProjectID), created, updated)
 		} else {
-			fmt.Fprintf(tw, "%d\t%s\t%d\t%s\n", t.ID, t.Name, t.ProjectID, created)
+			tbl.Row(strconv.Itoa(t.ID), t.Name, strconv.Itoa(t.ProjectID), created)
 		}
 	}
-	return tw.Flush()
+	return tbl.Render(w)
 }
 
 func (c *LoadTestTableCodec) Decode(_ io.Reader, _ any) error {
@@ -914,8 +914,7 @@ func (c *TestRunTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []TestRunStatus")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tTEST ID\tSTATUS\tRESULT\tCREATED\tENDED")
+	t := style.NewTable("ID", "TEST ID", "STATUS", "RESULT", "CREATED", "ENDED")
 
 	for _, r := range runs {
 		created := r.Created
@@ -933,9 +932,9 @@ func (c *TestRunTableCodec) Encode(w io.Writer, v any) error {
 			ended = "-"
 		}
 		result := resultStatusString(r.ResultStatus)
-		fmt.Fprintf(tw, "%d\t%d\t%s\t%s\t%s\t%s\n", r.ID, r.LoadTestID, r.Status, result, created, ended)
+		t.Row(strconv.Itoa(r.ID), strconv.Itoa(r.LoadTestID), r.Status, result, created, ended)
 	}
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *TestRunTableCodec) Decode(_ io.Reader, _ any) error {
@@ -1020,8 +1019,7 @@ func (c *EnvVarTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []EnvVar")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tNAME\tVALUE\tDESCRIPTION")
+	t := style.NewTable("ID", "NAME", "VALUE", "DESCRIPTION")
 
 	for _, e := range envVars {
 		desc := e.Description
@@ -1032,9 +1030,9 @@ func (c *EnvVarTableCodec) Encode(w io.Writer, v any) error {
 		if len(value) > 40 {
 			value = value[:37] + "..."
 		}
-		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\n", e.ID, e.Name, value, desc)
+		t.Row(strconv.Itoa(e.ID), e.Name, value, desc)
 	}
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *EnvVarTableCodec) Decode(_ io.Reader, _ any) error {
@@ -1242,8 +1240,7 @@ func (c *ScheduleTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []Schedule")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tLOAD TEST\tSTARTS\tNEXT RUN\tDEACTIVATED")
+	t := style.NewTable("ID", "LOAD TEST", "STARTS", "NEXT RUN", "DEACTIVATED")
 
 	for _, s := range schedules {
 		starts := s.Starts
@@ -1264,9 +1261,9 @@ func (c *ScheduleTableCodec) Encode(w io.Writer, v any) error {
 		if s.Deactivated {
 			deactivated = "yes"
 		}
-		fmt.Fprintf(tw, "%d\t%d\t%s\t%s\t%s\n", s.ID, s.LoadTestID, starts, nextRun, deactivated)
+		t.Row(strconv.Itoa(s.ID), strconv.Itoa(s.LoadTestID), starts, nextRun, deactivated)
 	}
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *ScheduleTableCodec) Decode(_ io.Reader, _ any) error {
@@ -1502,17 +1499,16 @@ func (c *LoadZoneTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []LoadZone")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tNAME\tK6 LOAD ZONE ID")
+	t := style.NewTable("ID", "NAME", "K6 LOAD ZONE ID")
 
 	for _, z := range zones {
 		k6ID := z.K6LoadZoneID
 		if k6ID == "" {
 			k6ID = "-"
 		}
-		fmt.Fprintf(tw, "%d\t%s\t%s\n", z.ID, z.Name, k6ID)
+		t.Row(strconv.Itoa(z.ID), z.Name, k6ID)
 	}
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *LoadZoneTableCodec) Decode(_ io.Reader, _ any) error {
@@ -1643,16 +1639,15 @@ func (c *AllowedProjectTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []AllowedProject")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tNAME")
+	t := style.NewTable("ID", "NAME")
 	for _, p := range projects {
 		name := p.Name
 		if name == "" {
 			name = "-"
 		}
-		fmt.Fprintf(tw, "%d\t%s\n", p.ID, name)
+		t.Row(strconv.Itoa(p.ID), name)
 	}
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *AllowedProjectTableCodec) Decode(_ io.Reader, _ any) error {
@@ -1775,16 +1770,15 @@ func (c *AllowedLoadZoneTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []AllowedLoadZone")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tNAME")
+	t := style.NewTable("ID", "NAME")
 	for _, z := range zones {
 		name := z.Name
 		if name == "" {
 			name = "-"
 		}
-		fmt.Fprintf(tw, "%d\t%s\n", z.ID, name)
+		t.Row(strconv.Itoa(z.ID), name)
 	}
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *AllowedLoadZoneTableCodec) Decode(_ io.Reader, _ any) error {

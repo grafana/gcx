@@ -14,9 +14,11 @@ import (
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/assistant"
+	"github.com/grafana/gcx/internal/assistant/investigations"
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
 )
 
@@ -32,6 +34,24 @@ func Command() *cobra.Command {
 
 	configOpts.BindFlags(cmd.PersistentFlags())
 	cmd.AddCommand(promptCommand(configOpts))
+
+	// Create a ConfigLoader for investigations that shares the same --config/--context
+	// flags already bound by configOpts. Wire the values via PersistentPreRun so that
+	// the loader picks up flag values resolved at execution time.
+	invLoader := &providers.ConfigLoader{}
+	invCmd := investigations.Commands(invLoader)
+	invCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+		if root := cmd.Root(); root.PersistentPreRun != nil {
+			root.PersistentPreRun(cmd, args)
+		}
+		if configOpts.ConfigFile != "" {
+			invLoader.SetConfigFile(configOpts.ConfigFile)
+		}
+		if configOpts.Context != "" {
+			invLoader.SetContextName(configOpts.Context)
+		}
+	}
+	cmd.AddCommand(invCmd)
 	return cmd
 }
 

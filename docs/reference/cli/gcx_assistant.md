@@ -26,5 +26,6 @@ Send prompts to Grafana Assistant and receive streaming responses via the A2A pr
 ### SEE ALSO
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
+* [gcx assistant investigations](gcx_assistant_investigations.md)	 - Manage Grafana Assistant investigations.
 * [gcx assistant prompt](gcx_assistant_prompt.md)	 - Send a single message to Grafana Assistant
 

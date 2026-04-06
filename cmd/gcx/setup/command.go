@@ -3,12 +3,12 @@ package setup
 import (
 	"fmt"
 	"io"
-	"text/tabwriter"
 
 	"github.com/grafana/gcx/cmd/gcx/setup/instrumentation"
 	fleetbase "github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/providers"
 	instrum "github.com/grafana/gcx/internal/setup/instrumentation"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -19,6 +19,12 @@ func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "setup",
 		Short: "Onboard and configure Grafana Cloud products.",
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			// Chain the root's PersistentPreRun (root command sets up logging/context).
+			if root := cmd.Root(); root != nil && root.PersistentPreRun != nil {
+				root.PersistentPreRun(cmd, args)
+			}
+		},
 	}
 
 	loader := &providers.ConfigLoader{}
@@ -93,10 +99,9 @@ type setupProductRow struct {
 }
 
 func writeSetupStatusTable(w io.Writer, rows []setupProductRow) error {
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "PRODUCT\tENABLED\tHEALTH\tDETAILS")
+	t := style.NewTable("PRODUCT", "ENABLED", "HEALTH", "DETAILS")
 	for _, r := range rows {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", r.Product, r.Enabled, r.Health, r.Details)
+		t.Row(r.Product, r.Enabled, r.Health, r.Details)
 	}
-	return tw.Flush()
+	return t.Render(w)
 }

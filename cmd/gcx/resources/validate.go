@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"text/tabwriter"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/format"
@@ -13,6 +12,7 @@ import (
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/gcx/internal/resources/local"
 	"github.com/grafana/gcx/internal/resources/remote"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -186,18 +186,16 @@ func (c *validationTableCodec) Encode(output io.Writer, input any) error {
 	//nolint:forcetypeassert
 	summary := input.(*remote.OperationSummary)
 
-	tab := tabwriter.NewWriter(output, 0, 4, 2, ' ', tabwriter.TabIndent|tabwriter.DiscardEmptyColumns)
-
-	fmt.Fprintf(tab, "FILE\tERROR\n")
+	t := style.NewTable("FILE", "ERROR")
 	for _, failure := range summary.Failures() {
 		file := ""
 		if failure.Resource != nil {
 			file = failure.Resource.SourcePath()
 		}
-		fmt.Fprintf(tab, "%s\t%s\n", file, failure.Error)
+		t.Row(file, failure.Error.Error())
 	}
 
-	return tab.Flush()
+	return t.Render(output)
 }
 
 func (c *validationTableCodec) Decode(io.Reader, any) error {

@@ -4,13 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"text/tabwriter"
+	"strconv"
 
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/graph"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/slo/definitions"
 	"github.com/grafana/gcx/internal/query/prometheus"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
@@ -297,26 +298,23 @@ func (c *ReportStatusTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for report status table codec: expected []ReportStatusResult")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tTIME_SPAN\tSLOS\tCOMBINED_SLI\tCOMBINED_BUDGET\tSTATUS")
+	t := style.NewTable("NAME", "TIME_SPAN", "SLOS", "COMBINED_SLI", "COMBINED_BUDGET", "STATUS")
 
 	for _, r := range results {
 		sliStr := formatOptionalPercent(r.CombinedSLI)
 		budgetStr := formatOptionalBudget(r.CombinedBudget)
-		fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\t%s\n",
-			r.Name, r.TimeSpan, r.SLOCount, sliStr, budgetStr, r.Status)
+		t.Row(r.Name, r.TimeSpan, strconv.Itoa(r.SLOCount), sliStr, budgetStr, r.Status)
 
 		if c.Wide {
 			for _, slo := range r.SLOs {
 				sloSLI := formatOptionalPercent(slo.SLI)
 				sloBudget := formatOptionalBudget(slo.Budget)
-				fmt.Fprintf(tw, "  %s\t\t\t%s\t%s\t%s\n",
-					slo.Name, sloSLI, sloBudget, slo.Status)
+				t.Row("  "+slo.Name, "", "", sloSLI, sloBudget, slo.Status)
 			}
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *ReportStatusTableCodec) Decode(_ io.Reader, _ any) error {
