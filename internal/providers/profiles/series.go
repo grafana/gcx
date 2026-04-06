@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/grafana/gcx/internal/graph"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/pyroscope"
+	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -107,24 +109,26 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 
 			ctx := cmd.Context()
 
-			// Resolve datasource UID from -d flag or config.
+			// Resolve datasource UID from -d flag, config, or Grafana auto-discovery.
 			var cfgCtx *internalconfig.Context
 			fullCfg, err := loader.LoadFullConfig(ctx)
-			if err == nil {
+			if err != nil {
+				logging.FromContext(ctx).Warn("could not load config; falling back to auto-discovery", slog.String("error", err.Error()))
+			} else {
 				cfgCtx = fullCfg.GetCurrentContext()
 			}
-
-			datasourceUID, err := dsquery.ResolveDatasourceFlag(opts.Datasource, cfgCtx, "pyroscope")
-			if err != nil {
-				return err
-			}
-
-			expr := args[0]
 
 			cfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
+
+			datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "pyroscope")
+			if err != nil {
+				return err
+			}
+
+			expr := args[0]
 
 			dsType, err := dsquery.GetDatasourceType(ctx, cfg, datasourceUID)
 			if err != nil {

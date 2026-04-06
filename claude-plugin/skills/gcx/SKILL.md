@@ -18,20 +18,54 @@ structured output, and a consistent verb model across all resource types.
 ## Discover Before You Act
 
 gcx has a built-in command catalog. Never guess a command — discover it first.
+Use **progressive disclosure** to minimize token cost:
 
-**Find what's available:**
-- Full command catalog with metadata: `gcx commands --flat -o json`
-- Explore a command group: `gcx <group> --help`
-- Explore a specific command: `gcx <group> <subcommand> --help`
-- List registered product providers: `gcx providers`
+**Step 1 — Orient** (30 lines, all top-level groups):
+```bash
+gcx help-tree --depth 1 -o text
+```
 
-**Find how to build payloads:**
-- JSON schema for a resource type: `gcx resources schemas <kind>`
-- Example payload for a resource type: `gcx resources examples <kind>`
+**Step 2 — Drill down** (5-20 lines per group):
+```bash
+gcx help-tree <group> -o text      # full subtree for one group
+gcx <group> <subcommand> --help    # exact flags and args
+```
 
-When intent is unclear, start with the command catalog, then drill into `--help`
-for the matching group. If no command exists for the requested operation, say so
-and propose the nearest supported flow.
+**Build payloads:**
+```bash
+gcx resources schemas <kind>        # JSON schema for a resource type
+gcx resources examples <kind>       # example manifest
+```
+
+Only fall back to `gcx commands --flat -o json` when you need structured metadata
+for automation — it is 255KB and should not be used for orientation.
+
+### Intent-to-Group Quick Reference
+
+When you already know the user's intent, skip discovery and go straight to the
+right group:
+
+| Intent | Group | Example |
+|--------|-------|---------|
+| Dashboards, folders, K8s resources | `resources` | `gcx resources get dashboards` |
+| SLO definitions and reports | `slo` | `gcx slo list` |
+| Alert rules and groups | `alert` | `gcx alert rules list` |
+| Synthetic Monitoring checks | `synth` | `gcx synth checks list` |
+| OnCall schedules, integrations | `oncall` | `gcx oncall schedules list` |
+| K6 load tests, projects, runs | `k6` | `gcx k6 tests list` |
+| PromQL / Adaptive Metrics | `metrics` | `gcx metrics query 'up'` |
+| LogQL / Adaptive Logs | `logs` | `gcx logs query '{app="foo"}'` |
+| Profiling (Pyroscope) | `profiles` | `gcx profiles query` |
+| Tracing (Tempo) | `traces` | `gcx traces query` |
+| Datasource info and queries | `datasources` | `gcx datasources list` |
+| Fleet pipelines, collectors | `fleet` | `gcx fleet pipelines list` |
+| IRM Incidents | `incidents` | `gcx incidents list` |
+| Knowledge Graph (Asserts) | `kg` | `gcx kg entities list` |
+| Frontend Observability (Faro) | `faro` | `gcx faro apps list` |
+| App Observability | `appo11y` | `gcx appo11y overrides list` |
+
+If no command exists for the requested operation, say so and propose the nearest
+supported flow.
 
 ## Verify Context First
 

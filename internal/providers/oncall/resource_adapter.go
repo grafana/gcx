@@ -11,6 +11,21 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
+func init() { //nolint:gochecknoinits // Natural key registration for cross-stack push identity matching.
+	adapter.RegisterNaturalKey(
+		schema.GroupVersionKind{Group: APIGroup, Version: Version, Kind: "Integration"},
+		adapter.SpecFieldKey("name"),
+	)
+	adapter.RegisterNaturalKey(
+		schema.GroupVersionKind{Group: APIGroup, Version: Version, Kind: "Schedule"},
+		adapter.SpecFieldKey("name"),
+	)
+	adapter.RegisterNaturalKey(
+		schema.GroupVersionKind{Group: APIGroup, Version: Version, Kind: "EscalationChain"},
+		adapter.SpecFieldKey("name"),
+	)
+}
+
 // --- T1: Registration infrastructure ---
 
 // resourceMeta holds metadata for registering an OnCall resource type.

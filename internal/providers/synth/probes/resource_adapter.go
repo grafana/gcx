@@ -11,6 +11,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
+func init() { //nolint:gochecknoinits // Natural key registration for cross-stack push identity matching.
+	adapter.RegisterNaturalKey(
+		staticDescriptor.GroupVersionKind(),
+		adapter.SpecFieldKey("name"),
+	)
+}
+
 const (
 	// APIVersion is the Kubernetes API version for SM Probe resources.
 	APIVersion = "syntheticmonitoring.ext.grafana.app/v1alpha1"

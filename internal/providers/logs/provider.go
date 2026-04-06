@@ -127,5 +127,12 @@ func (p *Provider) TypedRegistrations() []adapter.Registration {
 			Schema:     adaptivelogs.SegmentSchema(),
 			Example:    adaptivelogs.SegmentExample(),
 		},
+		{
+			Factory:    adaptivelogs.NewDropRuleAdapterFactory(loader),
+			Descriptor: adaptivelogs.DropRuleDescriptor(),
+			GVK:        adaptivelogs.DropRuleDescriptor().GroupVersionKind(),
+			Schema:     adaptivelogs.DropRuleSchema(),
+			Example:    adaptivelogs.DropRuleExample(),
+		},
 	}
 }

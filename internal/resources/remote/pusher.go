@@ -21,6 +21,13 @@ type PushRegistry interface {
 	SupportedResources() resources.Descriptors
 }
 
+// PushLister is an optional interface that PushClient implementations may satisfy
+// to enable listing resources on the target. Used for natural-key matching during
+// cross-stack push operations.
+type PushLister interface {
+	List(ctx context.Context, desc resources.Descriptor, opts metav1.ListOptions) (*unstructured.UnstructuredList, error)
+}
+
 // PushClient is a client that can push resources to Grafana.
 type PushClient interface {
 	Create(
@@ -108,8 +115,15 @@ func (p *Pusher) Push(ctx context.Context, request PushRequest) (*OperationSumma
 		request.MaxConcurrency = 1
 	}
 
+	// Create natural key cache for cross-stack matching.
+	var lister PushLister
+	if l, ok := p.client.(PushLister); ok {
+		lister = l
+	}
+	nkCache := newNaturalKeyCache(lister)
+
 	// Phase 1: Push folders in hierarchical order
-	if err := p.pushFolders(ctx, request, supported, summary); err != nil {
+	if err := p.pushFolders(ctx, request, supported, summary, nkCache); err != nil {
 		return summary, err
 	}
 
@@ -125,7 +139,7 @@ func (p *Pusher) Push(ctx context.Context, request PushRequest) (*OperationSumma
 				return nil
 			}
 
-			return p.pushSingleResource(ctx, res, supported, summary, request)
+			return p.pushSingleResource(ctx, res, supported, summary, request, nkCache)
 		},
 	); err != nil {
 		return summary, err
@@ -142,6 +156,7 @@ func (p *Pusher) pushFolders(
 	request PushRequest,
 	supported map[schema.GroupVersionKind]resources.Descriptor,
 	summary *OperationSummary,
+	nkCache *naturalKeyCache,
 ) error {
 	// Collect all folder resources
 	var folders []*resources.Resource
@@ -164,7 +179,7 @@ func (p *Pusher) pushFolders(
 		levelResources := resources.NewResources(levelFolders...)
 		if err := levelResources.ForEachConcurrently(
 			ctx, request.MaxConcurrency, func(ctx context.Context, res *resources.Resource) error {
-				return p.pushSingleResource(ctx, res, supported, summary, request)
+				return p.pushSingleResource(ctx, res, supported, summary, request, nkCache)
 			},
 		); err != nil {
 			return err
@@ -181,6 +196,7 @@ func (p *Pusher) pushSingleResource(
 	supported map[schema.GroupVersionKind]resources.Descriptor,
 	summary *OperationSummary,
 	request PushRequest,
+	nkCache *naturalKeyCache,
 ) error {
 	name := res.Name()
 	gvk := res.GroupVersionKind()
@@ -227,7 +243,7 @@ func (p *Pusher) pushSingleResource(
 		return nil
 	}
 
-	if err := p.upsertResource(ctx, desc, name, res, request.DryRun, logger); err != nil {
+	if err := p.upsertResource(ctx, desc, name, res, request.DryRun, logger, nkCache); err != nil {
 		summary.RecordFailure(res, err)
 
 		if request.StopOnError {
@@ -246,7 +262,7 @@ func (p *Pusher) pushSingleResource(
 }
 
 func (p *Pusher) upsertResource(
-	ctx context.Context, desc resources.Descriptor, name string, src *resources.Resource, dryRun bool, log logging.Logger,
+	ctx context.Context, desc resources.Descriptor, name string, src *resources.Resource, dryRun bool, log logging.Logger, nkCache *naturalKeyCache,
 ) error {
 	var dryRunOpts []string
 	if dryRun {
@@ -271,21 +287,41 @@ func (p *Pusher) upsertResource(
 		return nil
 	}
 
-	// If the resource does not exist, create it.
-	if apierrors.IsNotFound(err) {
-		obj := src.ToUnstructured()
-		if _, err := p.client.Create(ctx, desc, &obj, metav1.CreateOptions{
+	// If the error is not a NotFound, it's an unexpected API error — surface it.
+	if !apierrors.IsNotFound(err) {
+		return err
+	}
+
+	// Resource does not exist — try natural key matching for cross-stack push.
+	obj := src.ToUnstructured()
+
+	// The metadata.name may be a server-generated ID from a different stack.
+	// Look for a resource with the same content identity.
+	remoteName, rv, found, nkErr := findByNaturalKey(ctx, nkCache, desc, &obj)
+	if nkErr != nil {
+		return nkErr
+	}
+	if found {
+		obj.SetName(remoteName)
+		obj.SetResourceVersion(rv)
+		if _, err := p.client.Update(ctx, desc, &obj, metav1.UpdateOptions{
 			DryRun: dryRunOpts,
 		}); err != nil {
 			return err
 		}
-
-		log.Info("Resource created")
+		log.Info("Resource updated via natural key match", "remoteName", remoteName)
 		return nil
 	}
 
-	// Some unknown error occurred, return it.
-	return err
+	// No natural key match — create as new resource.
+	if _, err := p.client.Create(ctx, desc, &obj, metav1.CreateOptions{
+		DryRun: dryRunOpts,
+	}); err != nil {
+		return err
+	}
+
+	log.Info("Resource created")
+	return nil
 }
 
 func (p *Pusher) supportedDescriptors() map[schema.GroupVersionKind]resources.Descriptor {

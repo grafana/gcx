@@ -1,11 +1,24 @@
-## gcx logs adaptive
+## gcx logs adaptive drop-rules update
 
-Manage Adaptive Logs resources
+Update an adaptive log drop rule by ID.
+
+### Synopsis
+
+Update an adaptive log drop rule by ID.
+
+The file's top-level "version" is the rule schema version (only 1 is supported). Omit it or set it to 1; do not confuse it with the rule revision in API responses.
+
+```
+gcx logs adaptive drop-rules update ID [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for adaptive
+  -f, --filename string   File containing the drop rule definition (use - for stdin)
+  -h, --help              help for update
+      --json string       Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+  -o, --output string     Output format. One of: json, yaml (default "json")
 ```
 
 ### Options inherited from parent commands
@@ -21,9 +34,5 @@ Manage Adaptive Logs resources
 
 ### SEE ALSO
 
-* [gcx logs](gcx_logs.md)	 - Query Loki datasources and manage Adaptive Logs
 * [gcx logs adaptive drop-rules](gcx_logs_adaptive_drop-rules.md)	 - Manage adaptive log drop rules.
-* [gcx logs adaptive exemptions](gcx_logs_adaptive_exemptions.md)	 - Manage adaptive log exemptions.
-* [gcx logs adaptive patterns](gcx_logs_adaptive_patterns.md)	 - Manage adaptive log patterns.
-* [gcx logs adaptive segments](gcx_logs_adaptive_segments.md)	 - Manage adaptive log segments.
 

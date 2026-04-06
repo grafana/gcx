@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 
 	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
@@ -11,6 +12,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/tempo"
+	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -82,19 +84,21 @@ Datasource is resolved from -d flag or datasources.tempo in your context.`,
 
 			ctx := cmd.Context()
 
-			// Resolve datasource UID from -d flag or config.
+			// Resolve datasource UID from -d flag, config, or Grafana auto-discovery.
 			var cfgCtx *internalconfig.Context
 			fullCfg, err := loader.LoadFullConfig(ctx)
-			if err == nil {
+			if err != nil {
+				logging.FromContext(ctx).Warn("could not load config; falling back to auto-discovery", slog.String("error", err.Error()))
+			} else {
 				cfgCtx = fullCfg.GetCurrentContext()
 			}
 
-			datasourceUID, err := dsquery.ResolveDatasourceFlag(opts.Datasource, cfgCtx, "tempo")
+			cfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
 
-			cfg, err := loader.LoadGrafanaConfig(ctx)
+			datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "tempo")
 			if err != nil {
 				return err
 			}

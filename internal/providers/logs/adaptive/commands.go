@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -31,6 +32,7 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		h.patternsCommand(),
 		h.exemptionsCommand(),
 		h.segmentsCommand(),
+		h.dropRulesCommand(),
 	)
 	return cmd
 }
@@ -1012,6 +1014,363 @@ func (h *logsHelper) segmentsDeleteCommand() *cobra.Command {
 			}
 
 			cmdio.Success(cmd.OutOrStdout(), "Deleted segment %q", args[0])
+			return nil
+		},
+	}
+	opts.setup(cmd)
+	return cmd
+}
+
+// ---------------------------------------------------------------------------
+// drop-rules
+// ---------------------------------------------------------------------------
+
+func (h *logsHelper) dropRulesCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "drop-rules",
+		Short: "Manage adaptive log drop rules.",
+		Long: "Manage adaptive log drop rules.\n\n" +
+			"Use `list` or `get` to read rules. `list` applies the " + GlobalDropRuleSegmentID + " segment filter (same scope as create/update/delete). " +
+			"`gcx resources get droprules` lists all tenant rules without that filter when the resources command is available.\n\n" +
+			"Create and update load a rule from a file (`--filename` / `-f`). " +
+			"The file's top-level \"version\" is the rule schema version (only 1); omit or set it to 1 — not the revision field in API JSON.",
+	}
+	cmd.AddCommand(
+		h.dropRulesListCommand(),
+		h.dropRulesGetCommand(),
+		h.dropRulesCreateCommand(),
+		h.dropRulesUpdateCommand(),
+		h.dropRulesDeleteCommand(),
+	)
+	return cmd
+}
+
+// dropRules list
+
+type dropRulesListOpts struct {
+	IO               cmdio.Options
+	ExpirationFilter string
+}
+
+func (o *dropRulesListOpts) setup(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&o.ExpirationFilter, "expiration-filter", "all",
+		"Filter by expiration: all, active, or expired")
+	o.IO.RegisterCustomCodec("table", &dropRulesTableCodec{wide: false})
+	o.IO.RegisterCustomCodec("wide", &dropRulesTableCodec{wide: true})
+	o.IO.DefaultFormat("table")
+	o.IO.BindFlags(cmd.Flags())
+}
+
+func (h *logsHelper) dropRulesListCommand() *cobra.Command {
+	opts := &dropRulesListOpts{}
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List adaptive log drop rules.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			client, err := h.newClient(ctx)
+			if err != nil {
+				return err
+			}
+
+			rules, err := client.ListDropRules(ctx, DropRuleListQuery{
+				SegmentID:        GlobalDropRuleSegmentID,
+				ExpirationFilter: opts.ExpirationFilter,
+			})
+			if err != nil {
+				return err
+			}
+
+			out := any(rules)
+			if opts.IO.JSONDiscovery {
+				out = ValueForJSONFieldDiscovery(rules)
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), out)
+		},
+	}
+	opts.setup(cmd)
+	return cmd
+}
+
+// dropRules get
+
+type dropRulesGetOpts struct {
+	IO cmdio.Options
+}
+
+func (o *dropRulesGetOpts) setup(cmd *cobra.Command) {
+	o.IO.RegisterCustomCodec("table", &dropRulesTableCodec{wide: false})
+	o.IO.RegisterCustomCodec("wide", &dropRulesTableCodec{wide: true})
+	o.IO.DefaultFormat("table")
+	o.IO.BindFlags(cmd.Flags())
+}
+
+func (h *logsHelper) dropRulesGetCommand() *cobra.Command {
+	opts := &dropRulesGetOpts{}
+	cmd := &cobra.Command{
+		Use:   "get ID",
+		Short: "Fetch one adaptive log drop rule by ID.",
+		Long: "Fetch one adaptive log drop rule by ID.\n\n" +
+			"For the " + GlobalDropRuleSegmentID + " segment scope, use `list` to enumerate rules first.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			crud, _, err := NewDropRuleTypedCRUD(ctx, h.loader)
+			if err != nil {
+				return err
+			}
+
+			got, err := crud.Get(ctx, args[0])
+			if err != nil {
+				return err
+			}
+
+			out := any(got.Spec)
+			if opts.IO.JSONDiscovery {
+				out = ValueForJSONFieldDiscovery([]DropRule{got.Spec})
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), out)
+		},
+	}
+	opts.setup(cmd)
+	return cmd
+}
+
+type dropRulesTableCodec struct{ wide bool }
+
+func (c *dropRulesTableCodec) Format() format.Format {
+	if c.wide {
+		return "wide"
+	}
+	return "table"
+}
+
+func (c *dropRulesTableCodec) Encode(w io.Writer, v any) error {
+	var rules []DropRule
+	switch t := v.(type) {
+	case []DropRule:
+		rules = t
+	case DropRule:
+		rules = []DropRule{t}
+	default:
+		return errors.New("invalid data type for table codec: expected []DropRule or DropRule")
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	if c.wide {
+		fmt.Fprintln(tw, "ID\tNAME\tSEGMENT\tVERSION\tDISABLED\tEXPIRES AT\tCREATED AT\tUPDATED AT")
+	} else {
+		fmt.Fprintln(tw, "ID\tNAME\tSEGMENT\tVERSION\tDISABLED\tEXPIRES AT")
+	}
+
+	for _, r := range rules {
+		exp := r.ExpiresAt
+		if exp == "" {
+			exp = "-"
+		}
+		disabled := strconv.FormatBool(r.Disabled)
+		if c.wide {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\t%s\t%s\t%s\n",
+				r.ID, r.Name, r.SegmentID, r.Version, disabled, exp, r.CreatedAt, r.UpdatedAt)
+		} else {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\t%s\n",
+				r.ID, r.Name, r.SegmentID, r.Version, disabled, exp)
+		}
+	}
+
+	return tw.Flush()
+}
+
+func (c *dropRulesTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// readDropRuleFromFile reads and decodes a DropRuleFileSpec from a file path or stdin ("-").
+func readDropRuleFromFile(filePath string, stdin io.Reader) (*DropRuleFileSpec, error) {
+	var reader io.Reader
+	if filePath == "-" {
+		reader = stdin
+	} else {
+		f, err := os.Open(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("opening file %s: %w", filePath, err)
+		}
+		defer f.Close()
+		reader = f
+	}
+
+	return ReadDropRuleFileSpecFromReader(reader)
+}
+
+// dropRules create
+
+type dropRulesCreateOpts struct {
+	File string
+	IO   cmdio.Options
+}
+
+func (o *dropRulesCreateOpts) setup(cmd *cobra.Command) {
+	cmd.Flags().StringVarP(&o.File, "filename", "f", "", "File containing the drop rule definition (use - for stdin)")
+	o.IO.DefaultFormat("json")
+	o.IO.BindFlags(cmd.Flags())
+}
+
+func (o *dropRulesCreateOpts) Validate() error {
+	if o.File == "" {
+		return errors.New("--filename/-f is required")
+	}
+	return nil
+}
+
+func (h *logsHelper) dropRulesCreateCommand() *cobra.Command {
+	opts := &dropRulesCreateOpts{}
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create an adaptive log drop rule from a file.",
+		Long: "Create an adaptive log drop rule from a file.\n\n" +
+			"The file's top-level \"version\" is the rule schema version (only 1 is supported). " +
+			"Omit it or set it to 1; do not confuse it with the rule revision in API responses.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			spec, err := readDropRuleFromFile(opts.File, cmd.InOrStdin())
+			if err != nil {
+				return err
+			}
+			if err := validateDropRuleFileSpecCreate(spec); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			crud, _, err := NewDropRuleTypedCRUD(ctx, h.loader)
+			if err != nil {
+				return err
+			}
+
+			created, err := crud.Create(ctx, &adapter.TypedObject[DropRule]{
+				Spec: dropRuleFileSpecToCreate(spec),
+			})
+			if err != nil {
+				return err
+			}
+
+			cmdio.Success(cmd.OutOrStdout(), "Created drop rule %q (id=%s)", created.Spec.Name, created.Spec.ID)
+			return opts.IO.Encode(cmd.OutOrStdout(), created.Spec)
+		},
+	}
+	opts.setup(cmd)
+	return cmd
+}
+
+// dropRules update
+
+type dropRulesUpdateOpts struct {
+	File string
+	IO   cmdio.Options
+}
+
+func (o *dropRulesUpdateOpts) setup(cmd *cobra.Command) {
+	cmd.Flags().StringVarP(&o.File, "filename", "f", "", "File containing the drop rule definition (use - for stdin)")
+	o.IO.DefaultFormat("json")
+	o.IO.BindFlags(cmd.Flags())
+}
+
+func (o *dropRulesUpdateOpts) Validate() error {
+	if o.File == "" {
+		return errors.New("--filename/-f is required")
+	}
+	return nil
+}
+
+func (h *logsHelper) dropRulesUpdateCommand() *cobra.Command {
+	opts := &dropRulesUpdateOpts{}
+	cmd := &cobra.Command{
+		Use:   "update ID",
+		Short: "Update an adaptive log drop rule by ID.",
+		Long: "Update an adaptive log drop rule by ID.\n\n" +
+			"The file's top-level \"version\" is the rule schema version (only 1 is supported). " +
+			"Omit it or set it to 1; do not confuse it with the rule revision in API responses.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			spec, err := readDropRuleFromFile(opts.File, cmd.InOrStdin())
+			if err != nil {
+				return err
+			}
+			if err := validateDropRuleFileSpecUpdate(spec); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			crud, _, err := NewDropRuleTypedCRUD(ctx, h.loader)
+			if err != nil {
+				return err
+			}
+
+			updated, err := crud.Update(ctx, args[0], &adapter.TypedObject[DropRule]{
+				Spec: dropRuleFileSpecToUpdate(spec),
+			})
+			if err != nil {
+				return err
+			}
+
+			cmdio.Success(cmd.OutOrStdout(), "Updated drop rule %q (id=%s)", updated.Spec.Name, updated.Spec.ID)
+			return opts.IO.Encode(cmd.OutOrStdout(), updated.Spec)
+		},
+	}
+	opts.setup(cmd)
+	return cmd
+}
+
+// dropRules delete
+
+type dropRulesDeleteOpts struct{}
+
+func (o *dropRulesDeleteOpts) setup(_ *cobra.Command) {}
+
+func (o *dropRulesDeleteOpts) Validate() error { return nil }
+
+func (h *logsHelper) dropRulesDeleteCommand() *cobra.Command {
+	opts := &dropRulesDeleteOpts{}
+	cmd := &cobra.Command{
+		Use:   "delete ID",
+		Short: "Delete an adaptive log drop rule.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			crud, _, err := NewDropRuleTypedCRUD(ctx, h.loader)
+			if err != nil {
+				return err
+			}
+
+			if err := crud.Delete(ctx, args[0]); err != nil {
+				return err
+			}
+
+			cmdio.Success(cmd.OutOrStdout(), "Deleted drop rule %q", args[0])
 			return nil
 		},
 	}

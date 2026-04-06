@@ -1,11 +1,23 @@
-## gcx logs adaptive
+## gcx logs adaptive drop-rules get
 
-Manage Adaptive Logs resources
+Fetch one adaptive log drop rule by ID.
+
+### Synopsis
+
+Fetch one adaptive log drop rule by ID.
+
+For the __global__ segment scope, use `list` to enumerate rules first.
+
+```
+gcx logs adaptive drop-rules get ID [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for adaptive
+  -h, --help            help for get
+      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+  -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -21,9 +33,5 @@ Manage Adaptive Logs resources
 
 ### SEE ALSO
 
-* [gcx logs](gcx_logs.md)	 - Query Loki datasources and manage Adaptive Logs
 * [gcx logs adaptive drop-rules](gcx_logs_adaptive_drop-rules.md)	 - Manage adaptive log drop rules.
-* [gcx logs adaptive exemptions](gcx_logs_adaptive_exemptions.md)	 - Manage adaptive log exemptions.
-* [gcx logs adaptive patterns](gcx_logs_adaptive_patterns.md)	 - Manage adaptive log patterns.
-* [gcx logs adaptive segments](gcx_logs_adaptive_segments.md)	 - Manage adaptive log segments.
 

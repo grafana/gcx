@@ -16,6 +16,14 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
+func TestMockPushClient_SatisfiesInterfaces(t *testing.T) {
+	var client any = &mockPushClient{}
+	_, ok := client.(remote.PushClient)
+	require.True(t, ok, "mockPushClient must satisfy PushClient")
+	_, ok = client.(remote.PushLister)
+	require.True(t, ok, "mockPushClient must satisfy PushLister")
+}
+
 func TestPusher_Push_FoldersFirst(t *testing.T) {
 	req := require.New(t)
 
@@ -679,6 +687,8 @@ type mockPushClient struct {
 	failureError      error
 	existingResources map[string]*unstructured.Unstructured
 	updatedObjects    map[string]*unstructured.Unstructured
+	listResults       map[schema.GroupVersionKind]*unstructured.UnstructuredList
+	listError         error
 }
 
 func (m *mockPushClient) Create(
@@ -729,6 +739,24 @@ func (m *mockPushClient) Get(
 
 	// Simulate resource not found to trigger Create operations.
 	return nil, apierrors.NewNotFound(desc.GroupVersionResource().GroupResource(), name)
+}
+
+func (m *mockPushClient) List(
+	_ context.Context, desc resources.Descriptor, _ metav1.ListOptions,
+) (*unstructured.UnstructuredList, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.listError != nil {
+		return nil, m.listError
+	}
+
+	if m.listResults != nil {
+		if result, ok := m.listResults[desc.GroupVersionKind()]; ok {
+			return result, nil
+		}
+	}
+	return &unstructured.UnstructuredList{}, nil
 }
 
 type mockPushRegistry struct {

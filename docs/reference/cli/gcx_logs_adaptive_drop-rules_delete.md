@@ -1,11 +1,15 @@
-## gcx logs adaptive
+## gcx logs adaptive drop-rules delete
 
-Manage Adaptive Logs resources
+Delete an adaptive log drop rule.
+
+```
+gcx logs adaptive drop-rules delete ID [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for adaptive
+  -h, --help   help for delete
 ```
 
 ### Options inherited from parent commands
@@ -21,9 +25,5 @@ Manage Adaptive Logs resources
 
 ### SEE ALSO
 
-* [gcx logs](gcx_logs.md)	 - Query Loki datasources and manage Adaptive Logs
 * [gcx logs adaptive drop-rules](gcx_logs_adaptive_drop-rules.md)	 - Manage adaptive log drop rules.
-* [gcx logs adaptive exemptions](gcx_logs_adaptive_exemptions.md)	 - Manage adaptive log exemptions.
-* [gcx logs adaptive patterns](gcx_logs_adaptive_patterns.md)	 - Manage adaptive log patterns.
-* [gcx logs adaptive segments](gcx_logs_adaptive_segments.md)	 - Manage adaptive log segments.
 
