@@ -199,12 +199,8 @@ func (c *VersionsTableCodec) Encode(w io.Writer, v any) error {
 	fmt.Fprintln(tw, "VERSION\tGENERATIONS\tTOOLS\tTOKENS\tFIRST SEEN\tLAST SEEN")
 
 	for _, ver := range versions {
-		hash := ver.EffectiveVersion
-		if len(hash) > 15 {
-			hash = hash[:15] + "..."
-		}
 		fmt.Fprintf(tw, "%s\t%d\t%d\t%d\t%s\t%s\n",
-			hash, ver.GenerationCount, ver.ToolCount, ver.TokenEstimate.Total,
+			ver.EffectiveVersion, ver.GenerationCount, ver.ToolCount, ver.TokenEstimate.Total,
 			sigilhttp.FormatTime(ver.FirstSeenAt), sigilhttp.FormatTime(ver.LastSeenAt))
 	}
 	return tw.Flush()

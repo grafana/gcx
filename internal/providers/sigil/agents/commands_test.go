@@ -97,8 +97,7 @@ func TestVersionsTableCodec_Encode(t *testing.T) {
 
 	output := buf.String()
 	assert.Contains(t, output, "VERSION")
-	assert.Contains(t, output, "sha256:abcdef12...") // truncated at 15 chars
-	assert.NotContains(t, output, "1234567890")      // full hash not shown
+	assert.Contains(t, output, "sha256:abcdef1234567890")
 	assert.Contains(t, output, "50")
 	assert.Contains(t, output, "2026-03-01 00:00")
 }
