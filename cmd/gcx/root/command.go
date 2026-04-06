@@ -20,6 +20,7 @@ import (
 	cmdproviders "github.com/grafana/gcx/cmd/gcx/providers"
 	"github.com/grafana/gcx/cmd/gcx/resources"
 	"github.com/grafana/gcx/cmd/gcx/setup"
+	"github.com/grafana/gcx/cmd/gcx/skills"
 	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/logs"
@@ -156,6 +157,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd.AddCommand(setup.Command())
 	rootCmd.AddCommand(datasources.Command())
 	rootCmd.AddCommand(resources.Command())
+	rootCmd.AddCommand(skills.Command())
 
 	rootCmd.AddCommand(cmdproviders.Command(pp))
 	for _, p := range pp {

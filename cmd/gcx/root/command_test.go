@@ -77,3 +77,8 @@ func TestNewCommand_MultipleProviders(t *testing.T) {
 	assert.NotNil(t, findSubcommand(rootCmd, "slo"), "expected 'slo' subcommand")
 	assert.NotNil(t, findSubcommand(rootCmd, "oncall"), "expected 'oncall' subcommand")
 }
+
+func TestNewCommand_SkillsCommandRegistered(t *testing.T) {
+	rootCmd := root.NewCommandForTest("v0.0.0-test", nil)
+	assert.NotNil(t, findSubcommand(rootCmd, "skills"), "expected 'skills' subcommand")
+}

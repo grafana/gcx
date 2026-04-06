@@ -426,7 +426,7 @@ Old CLI annotates every command with structured metadata:
   2. Inspect commands (`commands --flat`)
   3. Inspect help (specific command `--help`)
   4. Pull examples/schemas
-- **gcx status: MISSING** (skills are installed externally via Claude Code config, not bundled in binary)
+ - **gcx status: PARTIALLY EXISTS** -- `gcx skills list` and `gcx skills install <skill-name>` are available for local Claude-style skill installation from bundled repo assets.
 
 #### Layer 10: `gcx api-resources` -- Resource Type Registry
 - Lists all known resource types with NAME, APIVERSION, KIND
@@ -459,7 +459,7 @@ Old CLI annotates every command with structured metadata:
 | LLM hint annotation | Large commands hint scoping args | **Exists** (visible in `gcx commands` output, e.g. `llm_hint` on assistant prompt) | **CLOSED** |
 | Permission annotations | required_scope/role/action on commands | **Missing** | **MEDIUM** |
 | Permission-enriched errors | 403 -> "add scope X to your policy" | Generic structured errors only | **MEDIUM** |
-| Bundled LLM skills | `skills install` for Claude/Cursor/etc | External only (not in binary) | **LOW** |
+| Bundled LLM skills | `skills install` for Claude/Cursor/etc | **Partially exists** (`skills list/install`) | **LOW** |
 | Consistency enforcement | Test: all cmds have token_cost, large have llm_hint | **Partially exists** (annotations supported; enforcement test coverage unknown) | **MEDIUM** |
 | Field discovery (`--json ?`) | **Missing** | Exists | Old CLI gap |
 | Agent mode auto-detect | **Missing** | Exists | Old CLI gap |
@@ -478,7 +478,7 @@ Old CLI annotates every command with structured metadata:
 6. **`agent-card`** for A2A protocol compliance
 
 **P2 -- Nice to have:**
-7. **Bundled skills** (`skills install`)
+7. **Bundled skills** (`skills install`) -- **partially complete**
 8. **Tips annotation** on parent commands
 9. **`api-resources`** shorthand
 

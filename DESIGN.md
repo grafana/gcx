@@ -77,6 +77,7 @@ See [docs/adrs/](docs/adrs/) for all ADRs.
 | `cmd/gcx/providers/` | Provider list command |
 | `cmd/gcx/api/` | Raw API passthrough command |
 | `cmd/gcx/linter/` | Linting commands (run, new, rules, test) |
+| `cmd/gcx/skills/` | Bundled skill commands (list, install) |
 | `cmd/gcx/dev/` | Developer commands (import, scaffold, generate, lint, serve) |
 | `cmd/gcx/setup/` | Setup command area (onboarding, instrumentation) |
 | `cmd/gcx/setup/instrumentation/` | Instrumentation subcommands (status, discover, show, apply) |

@@ -142,6 +142,7 @@ cmd/gcx/
 ├── linter/      Linting commands (run, new, rules, test — mounted under dev lint)
 ├── commands/    Commands catalog (agent-consumable metadata, resource types, live validation)
 ├── helptree/    Compact text tree for agent context injection (help-tree command)
+├── skills/      Bundled skill commands (list, install)
 ├── setup/       Setup command area (onboarding, instrumentation — not a provider)
 │   └── instrumentation/  Instrumentation subcommands (status, discover, show, apply)
 ├── dev/         Developer commands (import, scaffold, generate, lint, serve)
