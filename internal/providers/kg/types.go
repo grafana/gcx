@@ -1,12 +1,31 @@
 // Package kg provides a client for the Grafana Knowledge Graph (Asserts) API.
 package kg
 
-// Status represents the Knowledge Graph status.
+// Status represents the Knowledge Graph stack status.
 type Status struct {
-	Status     string `json:"status"`
-	Progress   int    `json:"progress"`
-	Message    string `json:"message"`
-	StatusCode int    `json:"status_code"`
+	Status                  string              `json:"status"`
+	Enabled                 bool                `json:"enabled"`
+	AlertManagerConfigured  bool                `json:"alertManagerConfigured"`
+	GraphInstanceCreated    bool                `json:"graphInstanceCreated"`
+	UseGrafanaManagedAlerts bool                `json:"useGrafanaManagedAlerts"`
+	DisabledTime            *string             `json:"disabledTime,omitempty"`
+	Version                 int                 `json:"version"`
+	SanityCheckResults      []SanityCheckResult `json:"sanityCheckResults,omitempty"`
+}
+
+// SanityCheckResult represents a metric sanity check result (MetricSanityCheckResult).
+type SanityCheckResult struct {
+	CheckName   string             `json:"checkName"`
+	DataPresent bool               `json:"dataPresent"`
+	StepResults []SanityStepResult `json:"stepResults,omitempty"`
+}
+
+// SanityStepResult represents a single step within a sanity check (MetricSanityCheckStepResult).
+type SanityStepResult struct {
+	Name         string   `json:"name"`
+	Troubleshoot string   `json:"troubleshoot,omitempty"`
+	Blockers     []string `json:"blockers,omitempty"`
+	Warnings     []string `json:"warnings,omitempty"`
 }
 
 // Vendor represents a detected vendor in the metrics.
@@ -72,20 +91,6 @@ type FilterGroup struct {
 	SiteLabelValues []string `json:"siteLabelValues"`
 }
 
-// EnvironmentConfig holds environment/logs mapping configuration.
-type EnvironmentConfig struct {
-	EnvName       string            `json:"envName" yaml:"envName"`
-	LokiDSUID     string            `json:"lokiDsUid,omitempty" yaml:"lokiDsUid,omitempty"`
-	LogsMapping   map[string]string `json:"logsMapping,omitempty" yaml:"logsMapping,omitempty"`
-	CustomMapping map[string]string `json:"customMapping,omitempty" yaml:"customMapping,omitempty"`
-}
-
-// ServiceDashboardConfig holds service dashboard configuration.
-type ServiceDashboardConfig struct {
-	FolderUID   string `json:"folderUid" yaml:"folderUid"`
-	FolderTitle string `json:"folderTitle" yaml:"folderTitle"`
-}
-
 // KPIDisplayConfig holds configuration for the KPI drawer display settings.
 type KPIDisplayConfig struct {
 	DefaultDashboard    bool `json:"defaultDashboard" yaml:"default_dashboard"`
@@ -101,19 +106,6 @@ type KPIDisplayConfig struct {
 	TracesView          bool `json:"tracesView" yaml:"traces_view"`
 	PropertiesView      bool `json:"propertiesView" yaml:"properties_view"`
 	MetricsView         bool `json:"metricsView" yaml:"metrics_view"`
-}
-
-// FrontendO11yRuleGroup represents a group of Frontend O11y recording rules.
-type FrontendO11yRuleGroup struct {
-	Name  string             `json:"name" yaml:"name"`
-	Rules []FrontendO11yRule `json:"rules" yaml:"rules"`
-}
-
-// FrontendO11yRule represents a single Frontend O11y recording rule.
-type FrontendO11yRule struct {
-	Record string            `json:"record" yaml:"record"`
-	Expr   string            `json:"expr" yaml:"expr"`
-	Labels map[string]string `json:"labels" yaml:"labels"`
 }
 
 // EntityKey identifies an entity in the Knowledge Graph.

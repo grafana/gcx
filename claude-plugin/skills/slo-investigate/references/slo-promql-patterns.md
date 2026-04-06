@@ -108,17 +108,17 @@ sort_desc(grafana_slo_sli_window - on(slo_uuid) grafana_slo_objective)
 
 ```bash
 # Current window SLI
-gcx datasources prometheus query <datasource-uid> \
+gcx metrics query <datasource-uid> \
   'grafana_slo_sli_window{slo_uuid="<uuid>"}' \
   --from now-1h --to now --step 1m
 
 # Burn rate over last hour
-gcx datasources prometheus query <datasource-uid> \
+gcx metrics query <datasource-uid> \
   '(1 - grafana_slo_sli_1h{slo_uuid="<uuid>"}) / (1 - grafana_slo_objective{slo_uuid="<uuid>"})' \
   --from now-1h --to now --step 1m
 
 # Error budget trend (28-day window)
-gcx datasources prometheus query <datasource-uid> \
+gcx metrics query <datasource-uid> \
   '(grafana_slo_sli_window{slo_uuid="<uuid>"} - grafana_slo_objective{slo_uuid="<uuid>"}) / (1 - grafana_slo_objective{slo_uuid="<uuid>"})' \
   --from now-28d --to now --step 1h
 ```

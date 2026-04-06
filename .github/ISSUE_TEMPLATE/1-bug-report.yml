@@ -1,11 +1,14 @@
 name: 🐛 Bug Report
 description: Something isn't working as expected
-title: "[Bug]: "
-labels: ["type/bug", "action/needs-triage"]
+title: ""
+type: "Bug"
+labels: ["action/needs-triage"]
 body:
   - type: markdown
     attributes:
       value: |
+        **Title tip:** Describe the symptom, e.g. "Excessive warnings for unconfigured resources in resources get"
+
         Thanks for taking the time to report this issue! The more detail you provide, the faster we can help.
 
         ## Tips for Reporting CLI Issues

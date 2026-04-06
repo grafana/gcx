@@ -1,6 +1,6 @@
 ## gcx kg inspect
 
-Inspect an entity: info, assertions, and summary.
+Inspect an entity: info, insights, and summary.
 
 ```
 gcx kg inspect [Type--Name] [flags]

@@ -4,49 +4,51 @@ This document is a guide to help you through the process of contributing to `gcx
 
 ## Issue Tracking
 
-This project uses [beads (`bd`)](https://github.com/steveyegge/beads) — a local-first, git-backed issue tracker. Issues live as JSONL files under `.beads/` and sync to a dedicated `beads-sync` branch on the remote.
+Issues are tracked in [GitHub Issues](https://github.com/grafana/gcx/issues).
+Use the issue templates when creating new issues — they set the correct issue
+type and labels automatically.
 
-### Installing beads
+### Issue types
 
-```console
-$ curl -fsSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh | bash
-```
+GitHub's native issue types classify issues. Don't add type prefixes to titles.
 
-### First-time setup (after cloning)
+| Type | When to use |
+|------|-------------|
+| **Bug** | Something is broken or behaving unexpectedly |
+| **Task** | A specific piece of implementation work |
+| **Feature** | New functionality or capability |
+| **Enhancement** | Improvement to existing functionality |
+| **Epic** | Large effort spanning multiple issues |
 
-```console
-$ bd doctor                    # check health
-$ bd hooks install             # install git hooks
-$ bd migrate sync beads-sync   # configure the sync branch
-```
+### Issue title convention
 
-### Working with issues
+Write clear, concise titles. The style depends on the issue type:
 
-```console
-$ bd ready                                              # list unblocked issues ready to work
-$ bd show gcx-experiments-<id>                   # view issue details
-$ bd update gcx-experiments-<id> --status=in_progress  # claim an issue
-$ bd list                                               # all open issues
-$ bd stats                                              # summary counts
-```
+| Type | Style | Good | Bad |
+|------|-------|------|-----|
+| Task / Feature | **Imperative verb** | "Add OnCall provider" | "OnCall provider" |
+| Enhancement | **Imperative verb** | "Improve cold-start latency" | "[Enhancement]: cold start is slow" |
+| Bug | **Descriptive symptom** | "Excessive warnings for unconfigured resources" | "[Bug]: warnings" |
+| Epic | **Noun phrase (scope)** | "OAuth authentication via Grafana Assistant" | "Epic: do OAuth stuff" |
 
-### Creating issues
+Rules:
+- No type prefixes (`[Bug]:`, `Epic:`, `[Feature]:`) — the issue type field handles this
+- Start with a capital letter
+- Be specific — someone should understand the scope from the title alone
+- Tasks and features start with a verb: Add, Implement, Port, Create, Fix, Improve, etc.
 
-```console
-$ bd create --title="Fix auth timeout" --type=bug --priority=2
-$ bd create --title="Add streaming support" --type=feature --priority=3
-```
+### Labels
 
-Priority scale: `0` (critical) → `4` (backlog). Types: `task`, `bug`, `feature`, `epic`.
+| Prefix | Purpose |
+|--------|---------|
+| `area/` | Codebase area (providers, cli-ux, core, skills, docs) |
+| `priority/` | Severity (critical, high, medium, low, none) |
+| `action/` | Workflow state (needs-triage) |
 
-### Closing and syncing
+### Milestones
 
-```console
-$ bd close gcx-experiments-<id>   # mark done
-$ bd sync                                # push issues to remote
-```
-
-Run `bd sync` before `git push` at the end of a session. Issue history is stored on the `beads-sync` orphan branch and does not appear in `main`'s commit history.
+Issues are grouped into milestones representing release targets. Check the
+[milestones page](https://github.com/grafana/gcx/milestones) for current targets.
 
 ## Development environment
 

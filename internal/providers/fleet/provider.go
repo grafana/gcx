@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"text/tabwriter"
 
+	fleetbase "github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
@@ -77,6 +77,15 @@ func CollectorDescriptor() resources.Descriptor { return collectorDescriptorVar 
 
 func init() { //nolint:gochecknoinits // Self-registration pattern (like database/sql drivers).
 	providers.Register(&FleetProvider{})
+
+	adapter.RegisterNaturalKey(
+		pipelineDescriptorVar.GroupVersionKind(),
+		adapter.SpecFieldKey("name"),
+	)
+	adapter.RegisterNaturalKey(
+		collectorDescriptorVar.GroupVersionKind(),
+		adapter.SpecFieldKey("name"),
+	)
 }
 
 // ---------------------------------------------------------------------------
@@ -158,23 +167,11 @@ type fleetHelper struct {
 }
 
 func (h *fleetHelper) loadClient(ctx context.Context) (*Client, string, error) {
-	cloudCfg, err := h.loader.LoadCloudConfig(ctx)
+	base, namespace, err := fleetbase.LoadClient(ctx, h.loader)
 	if err != nil {
 		return nil, "", err
 	}
-	url := cloudCfg.Stack.AgentManagementInstanceURL
-	if url == "" {
-		return nil, "", errors.New("fleet management endpoint is not available for this stack")
-	}
-	if cloudCfg.Stack.AgentManagementInstanceID == 0 {
-		return nil, "", errors.New("fleet management instance ID is not available for this stack")
-	}
-	instanceID := strconv.Itoa(cloudCfg.Stack.AgentManagementInstanceID)
-	httpClient, err := cloudCfg.HTTPClient()
-	if err != nil {
-		return nil, "", fmt.Errorf("fleet: failed to create HTTP client: %w", err)
-	}
-	return NewClient(url, instanceID, cloudCfg.Token, true, httpClient), cloudCfg.Namespace, nil
+	return &Client{Client: base}, namespace, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -342,7 +339,7 @@ func (o *pipelineGetOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func (h *fleetHelper) newPipelineCreateCommand() *cobra.Command { //nolint:dupl // Intentionally similar to collector create — distinct resource types.
+func (h *fleetHelper) newPipelineCreateCommand() *cobra.Command {
 	opts := &pipelineWriteOpts{}
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -361,6 +358,10 @@ func (h *fleetHelper) newPipelineCreateCommand() *cobra.Command { //nolint:dupl 
 			pipeline, err := readPipelineFromFile(opts.File, cmd.InOrStdin())
 			if err != nil {
 				return err
+			}
+
+			if !opts.Force && IsManagedPipeline(pipeline.Name) {
+				return fmt.Errorf("pipeline %q is managed by Grafana Cloud instrumentation; use 'gcx setup instrumentation apply' to modify instrumentation config, or pass --force to override", pipeline.Name)
 			}
 
 			created, err := client.CreatePipeline(ctx, *pipeline)
@@ -393,12 +394,20 @@ func (h *fleetHelper) newPipelineUpdateCommand() *cobra.Command {
 				return err
 			}
 
+			existing, err := resolvePipeline(ctx, client, args[0])
+			if err != nil {
+				return err
+			}
+			if !opts.Force && IsManagedPipeline(existing.Name) {
+				return fmt.Errorf("pipeline %q is managed by Grafana Cloud instrumentation; use 'gcx setup instrumentation apply' to modify instrumentation config, or pass --force to override", existing.Name)
+			}
+
 			pipeline, err := readPipelineFromFile(opts.File, cmd.InOrStdin())
 			if err != nil {
 				return err
 			}
 
-			if err := client.UpdatePipeline(ctx, args[0], *pipeline); err != nil {
+			if err := client.UpdatePipeline(ctx, existing.ID, *pipeline); err != nil {
 				return err
 			}
 
@@ -427,7 +436,15 @@ func (h *fleetHelper) newPipelineDeleteCommand() *cobra.Command {
 				return err
 			}
 
-			if err := client.DeletePipeline(ctx, args[0]); err != nil {
+			existing, err := resolvePipeline(ctx, client, args[0])
+			if err != nil {
+				return err
+			}
+			if !opts.Force && IsManagedPipeline(existing.Name) {
+				return fmt.Errorf("pipeline %q is managed by Grafana Cloud instrumentation; use 'gcx setup instrumentation apply' to modify instrumentation config, or pass --force to override", existing.Name)
+			}
+
+			if err := client.DeletePipeline(ctx, existing.ID); err != nil {
 				return err
 			}
 
@@ -439,18 +456,24 @@ func (h *fleetHelper) newPipelineDeleteCommand() *cobra.Command {
 	return cmd
 }
 
-type pipelineDeleteOpts struct{}
+type pipelineDeleteOpts struct {
+	Force bool
+}
 
-func (o *pipelineDeleteOpts) setup(_ *pflag.FlagSet) {}
+func (o *pipelineDeleteOpts) setup(flags *pflag.FlagSet) {
+	flags.BoolVar(&o.Force, "force", false, "Override protection guard for instrumentation-managed pipelines")
+}
 
 func (o *pipelineDeleteOpts) Validate() error { return nil }
 
 type pipelineWriteOpts struct {
-	File string
+	File  string
+	Force bool
 }
 
 func (o *pipelineWriteOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the pipeline manifest (use - for stdin)")
+	flags.BoolVar(&o.Force, "force", false, "Override protection guard for instrumentation-managed pipelines")
 }
 
 func (o *pipelineWriteOpts) Validate() error {
@@ -458,6 +481,16 @@ func (o *pipelineWriteOpts) Validate() error {
 		return errors.New("--filename/-f is required")
 	}
 	return nil
+}
+
+// managedPipelinePrefix is the name prefix used by Grafana Cloud instrumentation
+// for Beyla pipelines created via gcx setup instrumentation apply.
+const managedPipelinePrefix = "beyla_k8s_appo11y_"
+
+// IsManagedPipeline reports whether a pipeline name is managed by Grafana Cloud
+// instrumentation and should not be modified directly via fleet pipeline commands.
+func IsManagedPipeline(name string) bool {
+	return strings.HasPrefix(name, managedPipelinePrefix)
 }
 
 // ---------------------------------------------------------------------------
@@ -581,7 +614,7 @@ func (o *collectorGetOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func (h *fleetHelper) newCollectorCreateCommand() *cobra.Command { //nolint:dupl // Intentionally similar to pipeline create — distinct resource types.
+func (h *fleetHelper) newCollectorCreateCommand() *cobra.Command {
 	opts := &collectorWriteOpts{}
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -864,51 +897,10 @@ func (c *CollectorTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
 
-// ---------------------------------------------------------------------------
-// Slug helpers — name-ID naming for metadata.name
-// ---------------------------------------------------------------------------
+// Slug helpers — thin wrappers around adapter.SlugifyName / adapter.ExtractIDFromSlug.
 
-// nonAlphanumHyphen matches characters that are not lowercase alphanumeric or hyphens.
-//
-// Compiled regex for reuse across resource name conversions.
-var nonAlphanumHyphen = regexp.MustCompile(`[^a-z0-9-]+`)
-
-// multiHyphen matches consecutive hyphens.
-//
-// Compiled regex for reuse across resource name conversions.
-var multiHyphen = regexp.MustCompile(`-+`)
-
-// slugifyName converts a name to a K8s-safe slug (RFC 1123 subdomain).
-func slugifyName(name string) string {
-	s := strings.ToLower(name)
-	s = nonAlphanumHyphen.ReplaceAllString(s, "-")
-	s = multiHyphen.ReplaceAllString(s, "-")
-	s = strings.Trim(s, "-")
-	if s == "" {
-		return "resource"
-	}
-	return s
-}
-
-// extractIDFromSlug recovers the fleet resource ID from a metadata.name.
-// Handles three formats:
-//   - "slug-<id>" (e.g. "windowsconfig-18155") — current format
-//   - "<id>"      (e.g. "18155")               — plain numeric ID
-//   - "<name>"    (e.g. "windowsconfig")        — name-only, returns ("", false)
-func extractIDFromSlug(name string) (string, bool) {
-	// Pure numeric — treat as ID directly.
-	if _, err := strconv.Atoi(name); err == nil {
-		return name, true
-	}
-	// "slug-<id>" — extract numeric suffix after the last hyphen.
-	if idx := strings.LastIndex(name, "-"); idx >= 0 {
-		suffix := name[idx+1:]
-		if _, err := strconv.Atoi(suffix); err == nil {
-			return suffix, true
-		}
-	}
-	return "", false
-}
+func slugifyName(name string) string               { return adapter.SlugifyName(name) }
+func extractIDFromSlug(name string) (string, bool) { return adapter.ExtractIDFromSlug(name) }
 
 // ---------------------------------------------------------------------------
 // Resource conversion helpers
@@ -1120,24 +1112,11 @@ type CloudConfigLoader interface {
 
 // NewPipelineTypedCRUD creates a TypedCRUD for Fleet pipelines.
 func NewPipelineTypedCRUD(ctx context.Context, loader CloudConfigLoader) (*adapter.TypedCRUD[Pipeline], string, error) {
-	cloudCfg, err := loader.LoadCloudConfig(ctx)
+	base, namespace, err := fleetbase.LoadClient(ctx, loader)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to load Fleet config for pipelines: %w", err)
 	}
-
-	url := cloudCfg.Stack.AgentManagementInstanceURL
-	if url == "" {
-		return nil, "", errors.New("fleet management endpoint is not available for this stack")
-	}
-	if cloudCfg.Stack.AgentManagementInstanceID == 0 {
-		return nil, "", errors.New("fleet management instance ID is not available for this stack")
-	}
-	instanceID := strconv.Itoa(cloudCfg.Stack.AgentManagementInstanceID)
-	httpClient, err := cloudCfg.HTTPClient()
-	if err != nil {
-		return nil, "", fmt.Errorf("fleet: failed to create HTTP client for pipelines: %w", err)
-	}
-	client := NewClient(url, instanceID, cloudCfg.Token, true, httpClient)
+	client := &Client{Client: base}
 
 	crud := &adapter.TypedCRUD[Pipeline]{
 		ListFn: client.ListPipelines,
@@ -1171,11 +1150,11 @@ func NewPipelineTypedCRUD(ctx context.Context, loader CloudConfigLoader) (*adapt
 			}
 			return client.DeletePipeline(ctx, id)
 		},
-		Namespace:   cloudCfg.Namespace,
+		Namespace:   namespace,
 		StripFields: []string{"id"},
 		Descriptor:  pipelineDescriptorVar,
 	}
-	return crud, cloudCfg.Namespace, nil
+	return crud, namespace, nil
 }
 
 // NewPipelineAdapterFactory returns a lazy adapter.Factory for fleet pipelines.
@@ -1191,24 +1170,11 @@ func NewPipelineAdapterFactory(loader CloudConfigLoader) adapter.Factory {
 
 // NewCollectorTypedCRUD creates a TypedCRUD for Fleet collectors.
 func NewCollectorTypedCRUD(ctx context.Context, loader CloudConfigLoader) (*adapter.TypedCRUD[Collector], string, error) {
-	cloudCfg, err := loader.LoadCloudConfig(ctx)
+	base, namespace, err := fleetbase.LoadClient(ctx, loader)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to load Fleet config for collectors: %w", err)
 	}
-
-	url := cloudCfg.Stack.AgentManagementInstanceURL
-	if url == "" {
-		return nil, "", errors.New("fleet management endpoint is not available for this stack")
-	}
-	if cloudCfg.Stack.AgentManagementInstanceID == 0 {
-		return nil, "", errors.New("fleet management instance ID is not available for this stack")
-	}
-	instanceID := strconv.Itoa(cloudCfg.Stack.AgentManagementInstanceID)
-	httpClient, err := cloudCfg.HTTPClient()
-	if err != nil {
-		return nil, "", fmt.Errorf("fleet: failed to create HTTP client for collectors: %w", err)
-	}
-	client := NewClient(url, instanceID, cloudCfg.Token, true, httpClient)
+	client := &Client{Client: base}
 
 	crud := &adapter.TypedCRUD[Collector]{
 		ListFn: client.ListCollectors,
@@ -1243,11 +1209,11 @@ func NewCollectorTypedCRUD(ctx context.Context, loader CloudConfigLoader) (*adap
 			}
 			return client.DeleteCollector(ctx, id)
 		},
-		Namespace:   cloudCfg.Namespace,
+		Namespace:   namespace,
 		StripFields: []string{"id"},
 		Descriptor:  collectorDescriptorVar,
 	}
-	return crud, cloudCfg.Namespace, nil
+	return crud, namespace, nil
 }
 
 // NewCollectorAdapterFactory returns a lazy adapter.Factory for fleet collectors.

@@ -94,16 +94,16 @@ using the datasource UID from Step 1:
 
 ```bash
 # SLI window metric (primary trend signal)
-gcx datasources prometheus query <datasource-uid> \
+gcx metrics query <datasource-uid> \
   'grafana_slo_sli_window{slo_uuid="<UUID>"}' \
   --from now-28d --to now --step 6h
 
 # Success and total rate for ratio SLOs
-gcx datasources prometheus query <datasource-uid> \
+gcx metrics query <datasource-uid> \
   'grafana_slo_success_rate_5m{slo_uuid="<UUID>"}' \
   --from now-28d --to now --step 6h
 
-gcx datasources prometheus query <datasource-uid> \
+gcx metrics query <datasource-uid> \
   'grafana_slo_total_rate_5m{slo_uuid="<UUID>"}' \
   --from now-28d --to now --step 6h
 ```

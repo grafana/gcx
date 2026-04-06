@@ -26,7 +26,6 @@ const (
 	assertionsPath   = pluginResourcePath + "/asserts/api-server/v1/assertions"
 	searchPath       = pluginResourcePath + "/asserts/api-server/v1/search"
 	rulesPath        = pluginResourcePath + "/asserts/api-server/v1/config/prom-rules/"
-	environmentPath  = pluginResourcePath + "/asserts/api-server/v1/config/environment"
 	entityLookupPath = pluginResourcePath + "/asserts/api-server/v1/entity"
 	graphDisplayPath = pluginResourcePath + "/asserts/api-server/v1/config/display/graph"
 )
@@ -130,16 +129,47 @@ func (c *Client) doYAML(ctx context.Context, method, path, yamlContent string) e
 	return nil
 }
 
-// readError reads the response body and returns a formatted error.
-func readError(resp *http.Response) error {
+// APIError is a structured error returned by the KG API.
+type APIError struct {
+	StatusCode int
+	message    string // extracted from JSON body, if available
+	rawBody    string
+}
+
+func (e *APIError) Error() string {
+	if e.message != "" {
+		return fmt.Sprintf("kg: request failed with status %d: %s", e.StatusCode, e.message)
+	}
+	if e.rawBody != "" {
+		return fmt.Sprintf("kg: request failed with status %d: %s", e.StatusCode, e.rawBody)
+	}
+	return fmt.Sprintf("kg: request failed with status %d", e.StatusCode)
+}
+
+// IsServerError returns true for 5xx status codes.
+func (e *APIError) IsServerError() bool {
+	return e.StatusCode >= 500
+}
+
+// readError reads the response body and returns a formatted APIError.
+func readError(resp *http.Response) *APIError {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("kg: request failed with status %d (could not read body: %w)", resp.StatusCode, err)
+		return &APIError{StatusCode: resp.StatusCode}
 	}
+	apiErr := &APIError{StatusCode: resp.StatusCode}
 	if len(body) > 0 {
-		return fmt.Errorf("kg: request failed with status %d: %s", resp.StatusCode, string(body))
+		// Try to extract a human-readable message from a JSON error body.
+		var jsonErr struct {
+			Message string `json:"message"`
+		}
+		if jsonErr2 := json.Unmarshal(body, &jsonErr); jsonErr2 == nil && jsonErr.Message != "" {
+			apiErr.message = jsonErr.Message
+		} else {
+			apiErr.rawBody = string(body)
+		}
 	}
-	return fmt.Errorf("kg: request failed with status %d", resp.StatusCode)
+	return apiErr
 }
 
 // ---------------------------------------------------------------------------
@@ -271,59 +301,12 @@ func (c *Client) UploadRelabelRules(ctx context.Context, yamlContent string) err
 }
 
 // ---------------------------------------------------------------------------
-// Environment & dashboard configuration
+// Dashboard configuration
 // ---------------------------------------------------------------------------
-
-// GetEnvironment retrieves the current environment configuration.
-func (c *Client) GetEnvironment(ctx context.Context) (*EnvironmentConfig, error) {
-	var cfg EnvironmentConfig
-	if err := c.getJSON(ctx, environmentPath, &cfg); err != nil {
-		return nil, fmt.Errorf("kg: get environment: %w", err)
-	}
-	return &cfg, nil
-}
-
-// ConfigureEnvironment configures the environment/logs mapping.
-func (c *Client) ConfigureEnvironment(ctx context.Context, cfg EnvironmentConfig) error {
-	return c.postJSON(ctx, environmentPath, cfg, nil)
-}
-
-// AddServiceDashboard configures the service dashboard settings.
-func (c *Client) AddServiceDashboard(ctx context.Context, cfg ServiceDashboardConfig) error {
-	return c.postJSON(ctx, pluginResourcePath+"/asserts/api-server/v1/config/dashboard/Service", cfg, nil)
-}
 
 // ConfigureKPIDisplay configures the KPI drawer display settings.
 func (c *Client) ConfigureKPIDisplay(ctx context.Context, cfg *KPIDisplayConfig) error {
 	return c.postJSON(ctx, pluginResourcePath+"/asserts/api-server/v1/config/display/kpi", cfg, nil)
-}
-
-// UploadFrontendO11yRules uploads Frontend Observability recording rules.
-func (c *Client) UploadFrontendO11yRules(ctx context.Context, rules *FrontendO11yRuleGroup) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		c.host+"/api/ruler/grafanacloud-logs/api/v1/rules/frontend-observability?subtype=mimir", nil)
-	if err != nil {
-		return fmt.Errorf("kg: create request: %w", err)
-	}
-
-	b, err := json.Marshal(rules)
-	if err != nil {
-		return fmt.Errorf("kg: marshal rules: %w", err)
-	}
-	req.Body = io.NopCloser(bytes.NewReader(b))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json, text/plain, */*")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("kg: execute request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return readError(resp)
-	}
-	return nil
 }
 
 // ---------------------------------------------------------------------------

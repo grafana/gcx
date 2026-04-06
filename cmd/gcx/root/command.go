@@ -9,25 +9,36 @@ import (
 	"github.com/fatih/color"
 	"github.com/go-logr/logr"
 	"github.com/grafana/gcx/cmd/gcx/api"
+	assistantcmd "github.com/grafana/gcx/cmd/gcx/assistant"
+	authcmd "github.com/grafana/gcx/cmd/gcx/auth"
 	"github.com/grafana/gcx/cmd/gcx/commands"
 	"github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/cmd/gcx/dashboards"
 	"github.com/grafana/gcx/cmd/gcx/datasources"
 	"github.com/grafana/gcx/cmd/gcx/dev"
+	"github.com/grafana/gcx/cmd/gcx/helptree"
 	cmdproviders "github.com/grafana/gcx/cmd/gcx/providers"
 	"github.com/grafana/gcx/cmd/gcx/resources"
+	"github.com/grafana/gcx/cmd/gcx/setup"
 	"github.com/grafana/gcx/internal/agent"
+	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/providers"
-	_ "github.com/grafana/gcx/internal/providers/adaptive"  // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/alert"     // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/appo11y"   // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/faro"      // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/fleet"     // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/incidents" // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/k6"        // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/kg"        // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/logs"      // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/metrics"   // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/oncall"    // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/profiles"  // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/sigil"     // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/slo"       // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/synth"     // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/traces"    // Provider registrations — blank imports trigger init() self-registration.
 	"github.com/grafana/gcx/internal/terminal"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
@@ -62,6 +73,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	noTruncate := false
 	agentFlag := false
 	verbosity := 0
+	contextName := ""
 
 	rootCmd := &cobra.Command{
 		Use:           path.Base(os.Args[0]),
@@ -116,7 +128,15 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 				klog.ContextualLogger(true),
 			)
 
-			cmd.SetContext(logging.Context(cmd.Context(), logger))
+			ctx := logging.Context(cmd.Context(), logger)
+
+			// Thread --context into Go context so provider config loaders
+			// can discover it via config.ContextNameFromCtx().
+			if contextName != "" {
+				ctx = internalconfig.ContextWithName(ctx, contextName)
+			}
+
+			cmd.SetContext(ctx)
 		},
 		Annotations: map[string]string{
 			cobra.CommandDisplayNameAnnotation: "gcx",
@@ -128,9 +148,12 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd.SetIn(os.Stdin)
 
 	rootCmd.AddCommand(api.Command())
+	rootCmd.AddCommand(assistantcmd.Command())
+	rootCmd.AddCommand(authcmd.Command())
 	rootCmd.AddCommand(config.Command())
 	rootCmd.AddCommand(dashboards.Command())
 	rootCmd.AddCommand(dev.Command())
+	rootCmd.AddCommand(setup.Command())
 	rootCmd.AddCommand(datasources.Command())
 	rootCmd.AddCommand(resources.Command())
 
@@ -149,6 +172,10 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	commandsConfigOpts.BindFlags(commandsCmd.Flags())
 	rootCmd.AddCommand(commandsCmd)
 
+	// Help-tree — compact text tree for agent context injection.
+	// Also registered last to see the full command tree.
+	rootCmd.AddCommand(helptree.Command(rootCmd))
+
 	// Note: Provider adapter factories are registered via adapter.Register()
 	// in each provider's init() function (same pattern as providers.Register).
 	// The discovery.Registry picks them up via adapter.RegisterAll() when
@@ -158,6 +185,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd.PersistentFlags().BoolVar(&noTruncate, "no-truncate", false, "Disable table column truncation (auto-enabled when stdout is piped)")
 	rootCmd.PersistentFlags().BoolVar(&agentFlag, "agent", false, "Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.")
 	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "Verbose mode. Multiple -v options increase the verbosity (maximum: 3).")
+	rootCmd.PersistentFlags().StringVar(&contextName, "context", "", "Name of the context to use (overrides current-context in config)")
 
 	return rootCmd
 }

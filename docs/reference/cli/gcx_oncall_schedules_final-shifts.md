@@ -9,11 +9,11 @@ gcx oncall schedules final-shifts <schedule-id> [flags]
 ### Options
 
 ```
-      --end string      End date (YYYY-MM-DD) (default "2026-04-05")
+      --end string      End date (YYYY-MM-DD) (default "YYYY-MM-DD")
   -h, --help            help for final-shifts
       --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
   -o, --output string   Output format. One of: json, table, yaml (default "table")
-      --start string    Start date (YYYY-MM-DD) (default "2026-03-29")
+      --start string    Start date (YYYY-MM-DD) (default "YYYY-MM-DD")
 ```
 
 ### Options inherited from parent commands

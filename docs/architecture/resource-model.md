@@ -377,6 +377,15 @@ requires domain types to implement `GetResourceName() string`. The full
 `ResourceIdentity` interface adds `SetResourceName(string)` for round-trip
 support (pointer receiver).
 
+**`SetResourceName` contract:** `SetResourceName` must restore enough internal
+state for CRUD operations to work — not just set the name string. For types
+with numeric API IDs encoded in a slug-id composite name (e.g.
+`grafana-instance-health-5594`), `SetResourceName` must parse and restore the
+numeric ID. Failing to do so causes `UpdateFn`/`DeleteFn` to receive a zero ID
+after a K8s round-trip through the `resources push/pull` pipeline. Shared
+helpers in `adapter/slug.go` (`ExtractIDFromSlug`, `ExtractInt64IDFromSlug`)
+support this pattern.
+
 ```
 ResourceIdentity interface (pointer types)
   +-- GetResourceName() string       -- extract identity for metadata.name

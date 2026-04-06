@@ -1,13 +1,14 @@
 SHELL := /bin/bash
 
-# Within devbox
 ifneq "$(DEVBOX_CONFIG_DIR)" ""
-    RUN_DEVBOX:=
-else ifneq ($(shell which go 2>/dev/null),)
-    # Required tools available natively; skip devbox
-    RUN_DEVBOX:=
-else # Normal shell
-    RUN_DEVBOX:=devbox run
+  # Within devbox
+  RUN_DEVBOX:=
+else ifneq ($(shell which devbox 2>/dev/null),)
+  # Devbox available, use it.
+  RUN_DEVBOX:=devbox run
+else
+  # No devbox, fall back to regular commands.
+  RUN_DEVBOX:=
 endif
 
 ##@ General
@@ -28,6 +29,10 @@ help: ## Display this help.
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
 ##@ Development
+
+.PHONY: tag
+tag: ## Bumps version, generates changelog, tags, and pushes. Usage: make tag BUMP=<major|minor|patch>
+	@./scripts/tag.sh $(BUMP)
 
 .PHONY: all
 all: lint tests build docs ## Lints, tests, builds, and generates the documentation.
@@ -81,6 +86,11 @@ clean: ## Cleans the project.
 	rm -rf vendor
 	rm -rf .devbox
 	rm -rf .venv
+
+.PHONY: setup
+setup: ## Sets up the local development environment (commit template, etc).
+	git config commit.template .gitmessage
+	@echo "Git commit template configured"
 
 .PHONY: check-binaries
 check-binaries: ## Check that the required binaries are present.

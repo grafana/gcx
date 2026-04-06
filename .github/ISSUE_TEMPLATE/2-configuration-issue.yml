@@ -1,11 +1,14 @@
 name: ⚙️ Configuration Issue
 description: Problems with gcx configuration, contexts, or authentication
-title: "[Config]: "
-labels: ["type/configuration", "action/needs-triage"]
+title: ""
+type: "Task"
+labels: ["action/needs-triage"]
 body:
   - type: markdown
     attributes:
       value: |
+        **Title tip:** Describe the problem, e.g. "Config context ignores env var overrides"
+
         Having trouble with configuration, contexts, or authentication? This template will help us assist you faster.
 
         ## Before You Submit

@@ -57,9 +57,9 @@ Show timeline when:
 - User asks about trends or history
 - Any check shows `FAILING` status
 
-With a time window (convenience shorthand):
+With a duration shorthand:
 ```bash
-gcx synth checks timeline <ID> --window <window>
+gcx synth checks timeline <ID> --since <duration>
 ```
 
 With an explicit time range:
@@ -69,13 +69,13 @@ gcx synth checks timeline <ID> --from <start> --to <end>
 
 Examples:
 ```bash
-gcx synth checks timeline 42 --window 1h
-gcx synth checks timeline 42 --window 6h
+gcx synth checks timeline 42 --since 1h
+gcx synth checks timeline 42 --since 6h
 gcx synth checks timeline 42 --from now-24h --to now
 gcx synth checks timeline 42 --from 2026-01-01T00:00:00Z --to 2026-01-02T00:00:00Z
 ```
 
-Note: `--window` and `--from`/`--to` are mutually exclusive. Use one or the other.
+Note: `--since` and `--from`/`--to` are mutually exclusive. Use one or the other.
 
 **Timeline pattern interpretation:**
 - Flat line at 1.0 — healthy; all probes succeeding consistently
@@ -146,6 +146,6 @@ Verify: gcx synth checks status <ID> -o json | jq '.spec.enabled'
 - **`gcx synth checks list` returns empty**: No checks configured in this context. Verify the gcx context with `gcx config view`.
 - **`gcx synth checks status <ID>` fails with "not found"**: Confirm the ID from `gcx synth checks list`. IDs are numeric.
 - **`gcx synth checks timeline <ID>` fails**: Verify the ID exists and that the check has been running long enough to have data. New checks may show no timeline data.
-- **`--window` and `--from`/`--to` both provided**: These flags are mutually exclusive. Use one or the other.
-- **Timeline shows no data for the selected window**: Try a longer window (e.g., `--window 24h` instead of `--window 1h`). The check may have been created recently.
+- **`--since` and `--from`/`--to` both provided**: These flags are mutually exclusive. Use one or the other.
+- **Timeline shows no data for the selected range**: Try a longer duration (e.g., `--since 24h` instead of `--since 1h`). The check may have been created recently.
 - **Context not set**: Run `gcx config view` to verify the active context. If multiple contexts exist and none specified, ask the user which to use.

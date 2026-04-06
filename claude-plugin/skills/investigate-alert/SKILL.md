@@ -60,12 +60,12 @@ Query the datasource. Use -o json to get the data for yourself. Use with a graph
 
 ```bash
 # Prometheus
-gcx datasources prometheus query <datasource-uid> '<query>' --from now-1h --to now --step 1m -o json
-gcx datasources prometheus query <datasource-uid> '<query>' --from now-1h --to now --step 1m -o graph
+gcx metrics query <datasource-uid> '<query>' --from now-1h --to now --step 1m -o json
+gcx metrics query <datasource-uid> '<query>' --from now-1h --to now --step 1m -o graph
 
 # Loki
-gcx datasources loki query <datasource-uid> '<query>' --from now-1h --to now -o json
-gcx datasources loki query <datasource-uid> '<query>' --from now-1h --to now -o graph
+gcx logs query <datasource-uid> '<query>' --from now-1h --to now -o json
+gcx logs query <datasource-uid> '<query>' --from now-1h --to now -o graph
 ```
 
 Analyze the results: What's the current value? Spike or gradual? When did it start?

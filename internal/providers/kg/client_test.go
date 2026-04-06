@@ -42,7 +42,7 @@ func TestClient_GetStatus(t *testing.T) {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodGet, r.Method)
 				assert.Contains(t, r.URL.Path, "v1/stack/status")
-				writeJSON(w, kg.Status{Status: "complete", Progress: 100})
+				writeJSON(w, kg.Status{Status: "complete", Enabled: true})
 			},
 		},
 		{
@@ -66,7 +66,7 @@ func TestClient_GetStatus(t *testing.T) {
 			}
 			require.NoError(t, err)
 			assert.Equal(t, "complete", status.Status)
-			assert.Equal(t, 100, status.Progress)
+			assert.True(t, status.Enabled)
 		})
 	}
 }

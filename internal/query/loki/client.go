@@ -14,6 +14,8 @@ import (
 	"k8s.io/client-go/rest"
 )
 
+const maxResponseBytes = 50 << 20 // 50 MB
+
 type Client struct {
 	restConfig config.NamespacedRESTConfig
 	httpClient *http.Client
@@ -85,7 +87,7 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -108,6 +110,81 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 	return convertGrafanaResponse(&grafanaResp), nil
 }
 
+// MetricQuery executes a metric LogQL query and returns a Prometheus-compatible time-series response.
+// Metric LogQL expressions (e.g., rate, count_over_time) return time-series data rather than log streams.
+func (c *Client) MetricQuery(ctx context.Context, datasourceUID string, req QueryRequest) (*MetricQueryResponse, error) {
+	apiPath := c.buildQueryPath()
+
+	query := map[string]any{
+		"refId": "A",
+		"datasource": map[string]any{
+			"type": "loki",
+			"uid":  datasourceUID,
+		},
+		"expr":       req.Query,
+		"intervalMs": 60000,
+	}
+
+	var from, to string
+	if req.IsRange() {
+		from = strconv.FormatInt(req.Start.UnixMilli(), 10)
+		to = strconv.FormatInt(req.End.UnixMilli(), 10)
+		if req.Step > 0 {
+			query["intervalMs"] = req.Step.Milliseconds()
+		}
+	} else {
+		from = "now-1m"
+		to = "now"
+		query["instant"] = true
+	}
+
+	bodyMap := map[string]any{
+		"queries": []any{query},
+		"from":    from,
+		"to":      to,
+	}
+
+	body, err := json.Marshal(bodyMap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("query failed with status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var grafanaResp GrafanaQueryResponse
+	if err := json.Unmarshal(respBody, &grafanaResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if result, ok := grafanaResp.Results["A"]; ok {
+		if result.Error != "" {
+			return nil, fmt.Errorf("query error: %s", result.Error)
+		}
+	}
+
+	return convertMetricResponse(&grafanaResp), nil
+}
+
 func (c *Client) Labels(ctx context.Context, datasourceUID string) (*LabelsResponse, error) {
 	apiPath := c.buildLabelsPath(datasourceUID)
 
@@ -122,7 +199,7 @@ func (c *Client) Labels(ctx context.Context, datasourceUID string) (*LabelsRespo
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -153,7 +230,7 @@ func (c *Client) LabelValues(ctx context.Context, datasourceUID, labelName strin
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -192,7 +269,7 @@ func (c *Client) Series(ctx context.Context, datasourceUID string, matchers []st
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -215,18 +292,16 @@ func (c *Client) buildQueryPath() string {
 }
 
 func (c *Client) buildLabelsPath(datasourceUID string) string {
-	return fmt.Sprintf("/apis/loki.datasource.grafana.app/v0alpha1/namespaces/%s/datasources/%s/resource/labels",
-		c.restConfig.Namespace, datasourceUID)
+	return fmt.Sprintf("/api/datasources/uid/%s/resources/labels", url.PathEscape(datasourceUID))
 }
 
 func (c *Client) buildLabelValuesPath(datasourceUID, labelName string) string {
-	return fmt.Sprintf("/apis/loki.datasource.grafana.app/v0alpha1/namespaces/%s/datasources/%s/resource/label/%s/values",
-		c.restConfig.Namespace, datasourceUID, url.PathEscape(labelName))
+	return fmt.Sprintf("/api/datasources/uid/%s/resources/label/%s/values",
+		url.PathEscape(datasourceUID), url.PathEscape(labelName))
 }
 
 func (c *Client) buildSeriesPath(datasourceUID string) string {
-	return fmt.Sprintf("/apis/loki.datasource.grafana.app/v0alpha1/namespaces/%s/datasources/%s/resource/series",
-		c.restConfig.Namespace, datasourceUID)
+	return fmt.Sprintf("/api/datasources/uid/%s/resources/series", url.PathEscape(datasourceUID))
 }
 
 func convertGrafanaResponse(grafanaResp *GrafanaQueryResponse) *QueryResponse {
@@ -474,5 +549,89 @@ func toString(v any) string {
 		return strconv.FormatInt(val, 10)
 	default:
 		return fmt.Sprintf("%v", v)
+	}
+}
+
+// convertMetricResponse converts a Grafana query response to a MetricQueryResponse
+// for metric LogQL queries (time-series data frames).
+func convertMetricResponse(grafanaResp *GrafanaQueryResponse) *MetricQueryResponse {
+	result := &MetricQueryResponse{
+		Status: "success",
+		Data: MetricQueryData{
+			ResultType: "vector",
+			Result:     []MetricQuerySample{},
+		},
+	}
+
+	grafanaResult, ok := grafanaResp.Results["A"]
+	if !ok {
+		return result
+	}
+
+	for _, frame := range grafanaResult.Frames {
+		if len(frame.Schema.Fields) < 2 || len(frame.Data.Values) < 2 {
+			continue
+		}
+
+		var timeIdx, valueIdx = -1, -1
+		var labels map[string]string
+
+		for i, field := range frame.Schema.Fields {
+			if field.Type == "time" {
+				timeIdx = i
+			} else if field.Type == "number" || field.Name == "Value" {
+				valueIdx = i
+				labels = field.Labels
+			}
+		}
+
+		if timeIdx == -1 || valueIdx == -1 {
+			continue
+		}
+
+		timeValues := frame.Data.Values[timeIdx]
+		valueValues := frame.Data.Values[valueIdx]
+
+		if len(timeValues) == 0 || len(valueValues) == 0 {
+			continue
+		}
+
+		sample := MetricQuerySample{
+			Metric: labels,
+		}
+
+		if len(timeValues) > 1 {
+			result.Data.ResultType = "matrix"
+			sample.Values = make([][]any, len(timeValues))
+			for i := range timeValues {
+				ts := toFloat64(timeValues[i]) / 1000.0
+				val := toFloat64(valueValues[i])
+				sample.Values[i] = []any{ts, strconv.FormatFloat(val, 'f', -1, 64)}
+			}
+		} else {
+			ts := toFloat64(timeValues[0]) / 1000.0
+			val := toFloat64(valueValues[0])
+			sample.Value = []any{ts, strconv.FormatFloat(val, 'f', -1, 64)}
+		}
+
+		result.Data.Result = append(result.Data.Result, sample)
+	}
+
+	return result
+}
+
+func toFloat64(v any) float64 {
+	switch val := v.(type) {
+	case float64:
+		return val
+	case int:
+		return float64(val)
+	case int64:
+		return float64(val)
+	case string:
+		f, _ := strconv.ParseFloat(val, 64)
+		return f
+	default:
+		return 0
 	}
 }

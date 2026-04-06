@@ -19,7 +19,7 @@ func AuthenticateAndProxyHandler(cfg *config.Context) http.HandlerFunc {
 			return
 		}
 
-		req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, cfg.Grafana.Server+r.URL.Path, nil)
+		req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, strings.TrimSuffix(cfg.Grafana.Server, "/")+r.URL.Path, nil)
 		if err != nil {
 			httputils.Error(r, w, http.StatusText(http.StatusInternalServerError), err, http.StatusInternalServerError)
 			return

@@ -27,4 +27,6 @@ test-*.yaml
 *.db
 
 # Beads / Dolt files (added by bd init)
+.beads
 .beads-credential-key
+

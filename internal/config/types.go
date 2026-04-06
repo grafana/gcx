@@ -86,6 +86,9 @@ type Context struct {
 	// DefaultPyroscopeDatasource is the UID of the default Pyroscope datasource to use for queries.
 	DefaultPyroscopeDatasource string `json:"default-pyroscope-datasource,omitempty" yaml:"default-pyroscope-datasource,omitempty"`
 
+	// DefaultTempoDatasource is the UID of the default Tempo datasource to use for queries.
+	DefaultTempoDatasource string `json:"default-tempo-datasource,omitempty" yaml:"default-tempo-datasource,omitempty"`
+
 	// Datasources holds per-kind default datasource UIDs, indexed by datasource kind (e.g. "prometheus", "loki").
 	// Takes precedence over the legacy DefaultXxxDatasource fields when both are set.
 	Datasources map[string]string `json:"datasources,omitempty" yaml:"datasources,omitempty"`
@@ -182,6 +185,24 @@ type GrafanaConfig struct {
 	// Optional.
 	APIToken string `datapolicy:"secret" env:"GRAFANA_TOKEN" json:"token,omitempty" yaml:"token,omitempty"`
 
+	// ProxyEndpoint is the assistant backend URL used as a reverse proxy for
+	// OAuth-authenticated requests. Set automatically by `auth login`.
+	// This may differ from Server when cloud routing directs CLI traffic through
+	// a separate endpoint (e.g. the assistant app backend).
+	ProxyEndpoint string `env:"GRAFANA_PROXY_ENDPOINT" json:"proxy-endpoint,omitempty" yaml:"proxy-endpoint,omitempty"`
+
+	// OAuthToken is the OAuth access token (gat_) obtained via `auth login`.
+	OAuthToken string `datapolicy:"secret" json:"oauth-token,omitempty" yaml:"oauth-token,omitempty"`
+
+	// OAuthRefreshToken is the refresh token (gar_) for renewing OAuthToken.
+	OAuthRefreshToken string `datapolicy:"secret" json:"oauth-refresh-token,omitempty" yaml:"oauth-refresh-token,omitempty"`
+
+	// OAuthTokenExpiresAt is the OAuthToken expiration time in RFC3339 format.
+	OAuthTokenExpiresAt string `json:"oauth-token-expires-at,omitempty" yaml:"oauth-token-expires-at,omitempty"`
+
+	// OAuthRefreshExpiresAt is the OAuthRefreshToken expiration time in RFC3339 format.
+	OAuthRefreshExpiresAt string `json:"oauth-refresh-expires-at,omitempty" yaml:"oauth-refresh-expires-at,omitempty"`
+
 	// OrgID specifies the organization targeted by this config.
 	// Note: required when targeting an on-prem Grafana instance.
 	// See StackID for Grafana Cloud instances.
@@ -244,6 +265,19 @@ func (grafana GrafanaConfig) Validate(contextName string) error {
 			Message: "server is required",
 			Suggestions: []string{
 				"Set the address of the Grafana server to connect to",
+			},
+		}
+	}
+
+	hasProxy := grafana.ProxyEndpoint != ""
+	hasOAuth := grafana.OAuthToken != ""
+	if hasProxy != hasOAuth {
+		return ValidationError{
+			Path:    fmt.Sprintf("$.contexts.'%s'.grafana", contextName),
+			Message: "incomplete OAuth config: proxy-endpoint and oauth-token must both be set",
+			Suggestions: []string{
+				"Run `gcx auth login` to complete the OAuth flow",
+				"Or remove partial OAuth fields from the config",
 			},
 		}
 	}

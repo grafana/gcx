@@ -157,7 +157,9 @@ func readFileOrStdin(cmd *cobra.Command, path string) ([]byte, error) {
 }
 
 // searchByTypes fans out Search across multiple entity types and merges results.
-func searchByTypes(ctx context.Context, client *Client, entityTypes []string, assertionsOnly bool, sc *ScopeCriteria, startMs, endMs int64, pageNum int) ([]SearchResult, error) {
+// Server-side (5xx) failures for individual entity types are logged as warnings and skipped
+// so that a broken type does not abort results for all other types.
+func searchByTypes(ctx context.Context, cmd *cobra.Command, client *Client, entityTypes []string, assertionsOnly bool, sc *ScopeCriteria, startMs, endMs int64, pageNum int) ([]SearchResult, error) {
 	if startMs == 0 && endMs == 0 {
 		now := time.Now().UnixMilli()
 		startMs = now - 3600000
@@ -177,6 +179,11 @@ func searchByTypes(ctx context.Context, client *Client, entityTypes []string, as
 		}
 		results, err := client.Search(ctx, req)
 		if err != nil {
+			var apiErr *APIError
+			if errors.As(err, &apiErr) && apiErr.IsServerError() {
+				fmt.Fprintf(cmd.ErrOrStderr(), "warning: skipping entity type %q — server error: %v\n", et, apiErr)
+				continue
+			}
 			return nil, fmt.Errorf("search entity type %s: %w", et, err)
 		}
 		allResults = append(allResults, results...)
@@ -770,46 +777,6 @@ func newRelabelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	return cmd
 }
 
-func newServiceDashboardCommand(loader RESTConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "service-dashboard",
-		Short: "Configure service dashboard settings.",
-	}
-	var fileFlag string
-	createCmd := &cobra.Command{
-		Use:   "create",
-		Short: "Configure service dashboard from a file (YAML).",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			data, err := readFileOrStdin(cmd, fileFlag)
-			if err != nil {
-				return fmt.Errorf("failed to read file: %w", err)
-			}
-			var config ServiceDashboardConfig
-			if err := yaml.Unmarshal(data, &config); err != nil {
-				return fmt.Errorf("invalid YAML: %w", err)
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			if err := client.AddServiceDashboard(cmd.Context(), config); err != nil {
-				return err
-			}
-			cmdio.Success(cmd.OutOrStdout(), "Service dashboard configured")
-			return nil
-		},
-	}
-	createCmd.Flags().StringVarP(&fileFlag, "file", "f", "", "Input file (YAML)")
-	_ = createCmd.MarkFlagRequired("file")
-	cmd.AddCommand(createCmd)
-	return cmd
-}
-
-//nolint:dupl
 func newKPIDisplayCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "kpi-display",
@@ -844,129 +811,9 @@ func newKPIDisplayCommand(loader RESTConfigLoader) *cobra.Command {
 		},
 	}
 	createCmd.Flags().StringVarP(&fileFlag, "file", "f", "", "Input file (YAML)")
-	//nolint:dupl
 	_ = createCmd.MarkFlagRequired("file")
 	cmd.AddCommand(createCmd)
 	return cmd
-}
-
-//nolint:dupl
-func newFrontendRulesCommand(loader RESTConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "frontend-rules",
-		Short: "Push frontend observability rules.",
-	}
-	var fileFlag string
-	createCmd := &cobra.Command{
-		Use:   "create",
-		Short: "Upload frontend observability rules from a file (YAML).",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			data, err := readFileOrStdin(cmd, fileFlag)
-			if err != nil {
-				return fmt.Errorf("failed to read file: %w", err)
-			}
-			var rules FrontendO11yRuleGroup
-			if err := yaml.Unmarshal(data, &rules); err != nil {
-				return fmt.Errorf("invalid YAML: %w", err)
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			if err := client.UploadFrontendO11yRules(cmd.Context(), &rules); err != nil {
-				return err
-			}
-			cmdio.Success(cmd.OutOrStdout(), "Frontend observability rules uploaded")
-			return nil
-		},
-	}
-	createCmd.Flags().StringVarP(&fileFlag, "file", "f", "", "Input file (YAML)")
-	_ = createCmd.MarkFlagRequired("file")
-	cmd.AddCommand(createCmd)
-	return cmd
-}
-
-// ---------------------------------------------------------------------------
-// Environment commands
-// ---------------------------------------------------------------------------
-
-func newEnvCommand(loader RESTConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "env",
-		Short: "Manage Knowledge Graph environment configuration.",
-	}
-
-	getOpts := &envGetOpts{}
-	getCmd := &cobra.Command{
-		Use:   "get",
-		Short: "Get the current environment configuration.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := getOpts.IO.Validate(); err != nil {
-				return err
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			envCfg, err := client.GetEnvironment(cmd.Context())
-			if err != nil {
-				return err
-			}
-			return getOpts.IO.Encode(cmd.OutOrStdout(), envCfg)
-		},
-	}
-	getOpts.setup(getCmd.Flags())
-
-	var setFile string
-	setCmd := &cobra.Command{
-		Use:   "set",
-		Short: "Configure environment from a file (YAML).",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			data, err := readFileOrStdin(cmd, setFile)
-			if err != nil {
-				return fmt.Errorf("failed to read file: %w", err)
-			}
-			var envCfg EnvironmentConfig
-			if err := yaml.Unmarshal(data, &envCfg); err != nil {
-				return fmt.Errorf("invalid YAML: %w", err)
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			if err := client.ConfigureEnvironment(cmd.Context(), envCfg); err != nil {
-				return err
-			}
-			cmdio.Success(cmd.OutOrStdout(), "Environment configured")
-			return nil
-		},
-	}
-	setCmd.Flags().StringVarP(&setFile, "file", "f", "", "Input file (YAML)")
-	_ = setCmd.MarkFlagRequired("file")
-
-	cmd.AddCommand(getCmd, setCmd)
-	return cmd
-}
-
-type envGetOpts struct {
-	IO cmdio.Options
-}
-
-func (o *envGetOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("yaml")
-	o.IO.BindFlags(flags)
 }
 
 // ---------------------------------------------------------------------------
@@ -1014,7 +861,7 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			results, err := searchByTypes(cmd.Context(), client, entityTypes, assertionsOnly, showScope.scopeCriteria(), 0, 0, page)
+			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, assertionsOnly, showScope.scopeCriteria(), 0, 0, page)
 			if err != nil {
 				return err
 			}
@@ -1022,12 +869,52 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 		},
 	}
 	showCmd.Flags().StringVar(&showType, "type", "", "Entity type (required for single entity, optional for list)")
-	showCmd.Flags().BoolVar(&assertionsOnly, "assertions-only", false, "Only return entities with active assertions (list mode)")
+	showCmd.Flags().BoolVar(&assertionsOnly, "insights-only", false, "Only return entities with active insights (list mode)")
 	showCmd.Flags().IntVar(&page, "page", 0, "Page number, 0-based (list mode)")
 	showScope.register(showCmd)
 	ioOpts.setup(showCmd.Flags())
 
-	cmd.AddCommand(showCmd)
+	// list subcommand
+	var (
+		listType       string
+		listAssertOnly bool
+		listScope      scopeFlags
+		listPage       int
+	)
+	listOpts := &entitiesShowOpts{}
+	listCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List entities by type (omit --type to list all types).",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := listOpts.IO.Validate(); err != nil {
+				return err
+			}
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			entityTypes, err := resolveEntityTypes(cmd, client, listType)
+			if err != nil {
+				return err
+			}
+			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, listAssertOnly, listScope.scopeCriteria(), 0, 0, listPage)
+			if err != nil {
+				return err
+			}
+			return listOpts.IO.Encode(cmd.OutOrStdout(), results)
+		},
+	}
+	listCmd.Flags().StringVar(&listType, "type", "", "Entity type (omit to list all)")
+	listCmd.Flags().BoolVar(&listAssertOnly, "assertions-only", false, "Only return entities with active assertions")
+	listCmd.Flags().IntVar(&listPage, "page", 0, "Page number (0-based)")
+	listScope.register(listCmd)
+	listOpts.setup(listCmd.Flags())
+
+	cmd.AddCommand(showCmd, listCmd)
 	return cmd
 }
 
@@ -1216,14 +1103,14 @@ func (o *scopesListOpts) setup(flags *pflag.FlagSet) {
 }
 
 // ---------------------------------------------------------------------------
-// Assertions commands
+// Insights commands
 // ---------------------------------------------------------------------------
 
 //nolint:maintidx
 func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "assertions",
-		Short: "Query Knowledge Graph assertions.",
+		Use:   "insights",
+		Short: "Query Knowledge Graph insights.",
 	}
 
 	// assertionsRunE builds a RunE that constructs an assertions request from flags,
@@ -1253,7 +1140,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 
 	queryCmd := &cobra.Command{
 		Use:   "query [Type--Name]",
-		Short: "Query assertions for a time range.",
+		Short: "Query insights for a time range.",
 		RunE: assertionsRunE(func(c *Client, ctx context.Context, req AssertionsRequest) (any, error) {
 			return c.QueryAssertions(ctx, req)
 		}),
@@ -1261,7 +1148,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 
 	summaryCmd := &cobra.Command{
 		Use:   "summary [Type--Name]",
-		Short: "Get assertions summary for a time range.",
+		Short: "Get insights summary for a time range.",
 		RunE: assertionsRunE(func(c *Client, ctx context.Context, req AssertionsRequest) (any, error) {
 			return c.AssertionsSummary(ctx, req)
 		}),
@@ -1269,7 +1156,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 
 	graphCmd := &cobra.Command{
 		Use:   "graph [Type--Name]",
-		Short: "Query assertions with graph topology.",
+		Short: "Query insights with graph topology.",
 		RunE: assertionsRunE(func(c *Client, ctx context.Context, req AssertionsRequest) (any, error) {
 			return c.AssertionsGraph(ctx, req)
 		}),
@@ -1295,7 +1182,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	activeOpts := &assertionsActiveOpts{}
 	activeCmd := &cobra.Command{
 		Use:   "active",
-		Short: "Show entities with active assertions.",
+		Short: "Show entities with active insights.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := activeOpts.IO.Validate(); err != nil {
 				return err
@@ -1316,7 +1203,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			results, err := searchByTypes(cmd.Context(), client, entityTypes, true, activeScope.scopeCriteria(), startMs, endMs, activePage)
+			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, true, activeScope.scopeCriteria(), startMs, endMs, activePage)
 			if err != nil {
 				return err
 			}
@@ -1336,7 +1223,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	var entityMetricScope scopeFlags
 	entityMetricCmd := &cobra.Command{
 		Use:   "entity-metric [Type--Name]",
-		Short: "Get metric data for a specific assertion on an entity.",
+		Short: "Get metric data for a specific insight on an entity.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
@@ -1362,9 +1249,9 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				assertionID, _ := cmd.Flags().GetString("assertion-id")
+				assertionID, _ := cmd.Flags().GetString("insight-id")
 				if assertionID == "" {
-					return errors.New("--assertion-id is required (or use --file)")
+					return errors.New("--insight-id is required (or use --file)")
 				}
 				startMs, endMs, err := entityMetricScope.resolveTime()
 				if err != nil {
@@ -1392,14 +1279,14 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	entityMetricCmd.Flags().StringP("file", "f", "", "Input file (YAML)")
 	entityMetricCmd.Flags().String("name", "", "Entity name")
 	entityMetricCmd.Flags().String("type", "", "Entity type")
-	entityMetricCmd.Flags().String("assertion-id", "", "Assertion ID")
+	entityMetricCmd.Flags().String("insight-id", "", "Insight ID")
 	entityMetricScope.register(entityMetricCmd)
 
 	// source-metrics subcommand
 	var sourceMetricsSince string
 	sourceMetricsCmd := &cobra.Command{
 		Use:   "source-metrics",
-		Short: "Get source metrics for a specific assertion.",
+		Short: "Get source metrics for a specific insight.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var req SourceMetricsRequest
 			//nolint:nestif
@@ -1413,9 +1300,9 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 					return fmt.Errorf("invalid YAML: %w", err)
 				}
 			} else {
-				assertionID, _ := cmd.Flags().GetString("assertion-id")
+				assertionID, _ := cmd.Flags().GetString("insight-id")
 				if assertionID == "" {
-					return errors.New("--assertion-id is required (or use --file)")
+					return errors.New("--insight-id is required (or use --file)")
 				}
 				startMs, endMs, err := resolveTimeEpochMs(sourceMetricsSince)
 				if err != nil {
@@ -1443,12 +1330,12 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 		},
 	}
 	sourceMetricsCmd.Flags().StringP("file", "f", "", "Input file (YAML)")
-	sourceMetricsCmd.Flags().String("assertion-id", "", "Assertion ID")
+	sourceMetricsCmd.Flags().String("insight-id", "", "Insight ID")
 	sourceMetricsCmd.Flags().StringVar(&sourceMetricsSince, "since", "", "Duration ago (e.g. 1h, 30m, 7d)")
 
 	exampleCmd := &cobra.Command{
 		Use:   "example",
-		Short: "Print an example assertions request YAML.",
+		Short: "Print an example insights request YAML.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return printYAMLExample(cmd.OutOrStdout(), exampleAssertionsRequest())
 		},
@@ -1546,15 +1433,15 @@ func filterBySeverity(results []SearchResult, sev string) []SearchResult {
 func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "search",
-		Short: "Search Knowledge Graph entities or assertions.",
+		Short: "Search Knowledge Graph entities or insights.",
 	}
 
-	// search assertions
+	// search insights
 	var searchAssertionsFile string
 	var searchAssertionsScope scopeFlags
 	searchAssertionsCmd := &cobra.Command{
-		Use:   "assertions",
-		Short: "Search for assertions matching a query.",
+		Use:   "insights",
+		Short: "Search for insights matching a query.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
@@ -1673,7 +1560,7 @@ func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			results, err := searchByTypes(cmd.Context(), client, entityTypes, false, searchEntitiesScope.scopeCriteria(), 0, 0, searchEntitiesPage)
+			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, false, searchEntitiesScope.scopeCriteria(), 0, 0, searchEntitiesPage)
 			if err != nil {
 				return err
 			}
@@ -1756,7 +1643,7 @@ func newInspectCommand(loader RESTConfigLoader) *cobra.Command {
 	ioOpts := &inspectOpts{}
 	cmd := &cobra.Command{
 		Use:   "inspect [Type--Name]",
-		Short: "Inspect an entity: info, assertions, and summary.",
+		Short: "Inspect an entity: info, insights, and summary.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := ioOpts.IO.Validate(); err != nil {
 				return err
@@ -1809,9 +1696,9 @@ func newInspectCommand(loader RESTConfigLoader) *cobra.Command {
 			}
 
 			result := map[string]any{
-				"entity":     entityInfo,
-				"assertions": assertions,
-				"summary":    summary,
+				"entity":   entityInfo,
+				"insights": assertions,
+				"summary":  summary,
 			}
 			return ioOpts.IO.Encode(cmd.OutOrStdout(), result)
 		},
@@ -1844,7 +1731,7 @@ func newHealthCommand(loader RESTConfigLoader) *cobra.Command {
 	ioOpts := &healthOpts{}
 	cmd := &cobra.Command{
 		Use:   "health",
-		Short: "Show a health summary with active assertion counts.",
+		Short: "Show a health summary with active insight counts.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := ioOpts.IO.Validate(); err != nil {
 				return err
@@ -1877,7 +1764,7 @@ func newHealthCommand(loader RESTConfigLoader) *cobra.Command {
 			if healthEntityType != "" {
 				entityTypes = []string{healthEntityType}
 			}
-			results, err := searchByTypes(cmd.Context(), client, entityTypes, true, healthScope.scopeCriteria(), startMs, endMs, 0)
+			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, true, healthScope.scopeCriteria(), startMs, endMs, 0)
 			if err != nil {
 				return err
 			}
@@ -1890,9 +1777,9 @@ func newHealthCommand(loader RESTConfigLoader) *cobra.Command {
 				}
 			}
 			return ioOpts.IO.Encode(cmd.OutOrStdout(), map[string]any{
-				"severityCounts":  sevCounts,
-				"totalEntities":   totalEntities,
-				"totalAssertions": len(results),
+				"severityCounts": sevCounts,
+				"totalEntities":  totalEntities,
+				"totalInsights":  len(results),
 			})
 		},
 	}

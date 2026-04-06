@@ -2,15 +2,20 @@ package discovery
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/discovery"
+	diskcached "k8s.io/client-go/discovery/cached/disk"
 )
 
 // ignoredResourceGroups is a list of resource groups that are supported by Grafana API.
@@ -40,11 +45,23 @@ type Registry struct {
 	adapters map[schema.GroupVersionKind]adapter.Factory
 }
 
-// NewDefaultRegistry creates a new discovery registry using the default discovery client.
+// defaultDiscoveryCacheTTL is how long cached discovery results remain valid.
+const defaultDiscoveryCacheTTL = 10 * time.Minute
+
+// NewDefaultRegistry creates a new discovery registry using a disk-cached discovery client.
 // It automatically registers all provider adapters into the registry via adapter.RegisterAll,
 // so that provider resource types are available alongside native K8s-style resources.
+// Discovery results are cached under ~/.cache/gcx/discovery/ (overridable via GCX_DISCOVERY_CACHE_DIR)
+// with a 10-minute TTL to avoid redundant API round-trips across CLI invocations.
 func NewDefaultRegistry(ctx context.Context, cfg config.NamespacedRESTConfig) (*Registry, error) {
-	client, err := discovery.NewDiscoveryClientForConfig(&cfg.Config)
+	cacheDir := DiscoveryCacheDir(cfg.Host, "")
+	return NewDefaultRegistryWithCacheDir(ctx, cfg, cacheDir)
+}
+
+// NewDefaultRegistryWithCacheDir creates a new discovery registry using a disk-cached
+// discovery client with the specified cache directory.
+func NewDefaultRegistryWithCacheDir(ctx context.Context, cfg config.NamespacedRESTConfig, cacheDir string) (*Registry, error) {
+	client, err := diskcached.NewCachedDiscoveryClientForConfig(&cfg.Config, cacheDir, "", defaultDiscoveryCacheTTL)
 	if err != nil {
 		return nil, err
 	}
@@ -57,6 +74,33 @@ func NewDefaultRegistry(ctx context.Context, cfg config.NamespacedRESTConfig) (*
 	adapter.RegisterAll(ctx, reg)
 
 	return reg, nil
+}
+
+// DiscoveryCacheDir returns the directory to use for caching discovery results.
+// Precedence: GCX_DISCOVERY_CACHE_DIR env var > overrideDir > computed default.
+// The computed default is a per-server subdirectory under ~/.cache/gcx/discovery/
+// using a SHA-256 hash of the server URL. Relative paths in GCX_DISCOVERY_CACHE_DIR
+// are ignored to prevent cache writes to unexpected locations.
+func DiscoveryCacheDir(serverURL, overrideDir string) string {
+	if dir := os.Getenv("GCX_DISCOVERY_CACHE_DIR"); dir != "" && filepath.IsAbs(dir) {
+		return dir
+	}
+	if overrideDir != "" {
+		return overrideDir
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Join(os.TempDir(), "gcx", "discovery")
+	}
+	h := sha256.Sum256([]byte(serverURL))
+	return filepath.Join(home, ".cache", "gcx", "discovery", hex.EncodeToString(h[:16]))
+}
+
+// NewCachedRegistry creates a new discovery registry from a Client interface.
+// This is a test helper — production code uses NewDefaultRegistry which wraps the
+// client with disk caching at the HTTP transport level.
+func NewCachedRegistry(ctx context.Context, client Client) (*Registry, error) {
+	return NewRegistry(ctx, client)
 }
 
 // NewRegistry creates a new discovery registry.

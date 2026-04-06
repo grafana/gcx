@@ -1,11 +1,14 @@
 name: 🚀 Enhancement
 description: Suggest an improvement to existing functionality
-title: "[Enhancement]: "
-labels: ["type/enhancement", "action/needs-triage"]
+title: ""
+type: "Feature"
+labels: ["action/needs-triage"]
 body:
   - type: markdown
     attributes:
       value: |
+        **Title tip:** Start with a verb, e.g. "Improve cold-start latency for help command"
+
         Found a way to make something better? We're all ears! Tell us about your improvement idea.
 
   - type: textarea

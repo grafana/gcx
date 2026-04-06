@@ -1,29 +1,25 @@
 ## gcx providers
 
-List registered providers
-
-```
-gcx providers [flags]
-```
+Manage registered providers
 
 ### Options
 
 ```
-  -h, --help            help for providers
-      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -o, --output string   Output format. One of: json, text, yaml (default "text")
+  -h, --help   help for providers
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --agent           Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
-      --no-color        Disable color output
-      --no-truncate     Disable table column truncation (auto-enabled when stdout is piped)
-  -v, --verbose count   Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
+      --agent            Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --context string   Name of the context to use (overrides current-context in config)
+      --no-color         Disable color output
+      --no-truncate      Disable table column truncation (auto-enabled when stdout is piped)
+  -v, --verbose count    Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
 ```
 
 ### SEE ALSO
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
+* [gcx providers list](gcx_providers_list.md)	 - List registered providers
 

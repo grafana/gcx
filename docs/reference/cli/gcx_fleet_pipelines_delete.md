@@ -9,7 +9,8 @@ gcx fleet pipelines delete <name> [flags]
 ### Options
 
 ```
-  -h, --help   help for delete
+      --force   Override protection guard for instrumentation-managed pipelines
+  -h, --help    help for delete
 ```
 
 ### Options inherited from parent commands

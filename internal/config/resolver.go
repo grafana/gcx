@@ -18,6 +18,8 @@ func DefaultDatasourceUID(ctx Context, kind string) string {
 		return ctx.DefaultLokiDatasource
 	case "pyroscope":
 		return ctx.DefaultPyroscopeDatasource
+	case "tempo":
+		return ctx.DefaultTempoDatasource
 	}
 
 	return ""

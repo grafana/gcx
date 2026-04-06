@@ -26,7 +26,7 @@ type snapshotOpts struct {
 	Theme       string
 	From        string
 	To          string
-	Window      string
+	Since       string
 	Tz          string
 	PanelID     int
 	OrgID       int
@@ -41,7 +41,7 @@ func (opts *snapshotOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.Theme, "theme", "dark", "Grafana theme (light or dark)")
 	flags.StringVar(&opts.From, "from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
 	flags.StringVar(&opts.To, "to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
-	flags.StringVar(&opts.Window, "window", "", "Time window shorthand (e.g. '1h', '7d'); expands to --from now-{window} --to now; mutually exclusive with --from/--to")
+	flags.StringVar(&opts.Since, "since", "", "Duration before now (e.g. '1h', '7d'); expands to --from now-{since} --to now; mutually exclusive with --from/--to")
 	flags.StringVar(&opts.Tz, "tz", "", "Timezone (e.g. 'UTC', 'America/New_York')")
 	flags.IntVar(&opts.PanelID, "panel", 0, "Panel ID to render a single panel instead of the full dashboard")
 	flags.IntVar(&opts.OrgID, "org-id", 1, "Grafana organization ID")
@@ -51,12 +51,12 @@ func (opts *snapshotOpts) setup(flags *pflag.FlagSet) {
 }
 
 func (opts *snapshotOpts) Validate() error {
-	if opts.Window != "" && (opts.From != "" || opts.To != "") {
-		return errors.New("--window is mutually exclusive with --from and --to")
+	if opts.Since != "" && (opts.From != "" || opts.To != "") {
+		return errors.New("--since is mutually exclusive with --from and --to")
 	}
 
-	if opts.Window != "" {
-		opts.From = "now-" + opts.Window
+	if opts.Since != "" {
+		opts.From = "now-" + opts.Since
 		opts.To = "now"
 	}
 
@@ -104,8 +104,8 @@ func snapshotCmd(configOpts *cmdconfig.Options) *cobra.Command {
   # Snapshot with custom dimensions and time range
   gcx dashboards snapshot my-dashboard-uid --width 1000 --height 500 --theme light --from now-1h --to now
 
-  # Snapshot using a time window shorthand
-  gcx dashboards snapshot my-dashboard-uid --window 6h
+  # Snapshot using a duration shorthand
+  gcx dashboards snapshot my-dashboard-uid --since 6h
 
   # Snapshot multiple dashboards to a specific directory
   gcx dashboards snapshot uid1 uid2 uid3 --output-dir ./snapshots

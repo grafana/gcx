@@ -58,31 +58,6 @@ type MetadataEntry struct {
 	Unit string `json:"unit,omitempty"`
 }
 
-// TargetsResponse represents the response from a targets query.
-type TargetsResponse struct {
-	Status string      `json:"status"`
-	Data   TargetsData `json:"data"`
-}
-
-// TargetsData contains active and dropped targets.
-type TargetsData struct {
-	ActiveTargets  []Target `json:"activeTargets"`
-	DroppedTargets []Target `json:"droppedTargets"`
-}
-
-// Target represents a single scrape target.
-type Target struct {
-	DiscoveredLabels   map[string]string `json:"discoveredLabels,omitempty"`
-	Labels             map[string]string `json:"labels,omitempty"`
-	ScrapePool         string            `json:"scrapePool,omitempty"`
-	ScrapeURL          string            `json:"scrapeUrl,omitempty"`
-	GlobalURL          string            `json:"globalUrl,omitempty"`
-	LastError          string            `json:"lastError,omitempty"`
-	LastScrape         string            `json:"lastScrape,omitempty"`
-	LastScrapeDuration float64           `json:"lastScrapeDuration,omitempty"`
-	Health             string            `json:"health,omitempty"`
-}
-
 // GrafanaQueryResponse represents the response from Grafana's datasource query API.
 type GrafanaQueryResponse struct {
 	Results map[string]GrafanaResult `json:"results"`

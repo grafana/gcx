@@ -2,7 +2,7 @@
 
 **Created**: YYYY-MM-DD
 **Status**: proposed
-**Bead**: gcx-experiments-xxx (or "none")
+**Bead**: gcx-xxx (or "none")
 **Supersedes**: path/to/old.md (or "none")
 
 <!-- Status lifecycle: proposed -> accepted -> deprecated | superseded -->

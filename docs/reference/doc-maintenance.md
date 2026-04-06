@@ -62,6 +62,12 @@
 4. **Don't duplicate** — cross-link between docs instead of copying content.
 5. **docs/ is the system of record** — organize by content type, not audience.
 6. **Run `make docs`** after any CLI changes — regenerates reference docs.
+7. **Don't hardcode volatile values** — avoid exact counts ("18 patterns",
+   "10 ADRs"), specific dates ("Generated: 2026-03-02", "Last updated: ..."),
+   confidence percentages, or domain counts in docs. These go stale immediately,
+   create merge conflicts, and add no value over `git log`. Use descriptive labels
+   instead ("recurring patterns", "high confidence"). The only exception is dates
+   in ADR status fields, which are inherently historical.
 
 ---
 
@@ -145,8 +151,8 @@ When updating docs to fix violations:
 2. **Add, don't rewrite** — insert new sections or rows; don't reorganize unaffected content
 3. **Stay high-level** — architecture-level descriptions, not implementation details
 4. **Cross-link** — add corresponding entries in README.md and CLAUDE.md if appropriate
-5. **Include confidence** — new pattern entries in `patterns.md` should include a confidence %
-6. **Update metadata** — change the `Last updated` date in `docs/architecture/README.md`
+5. **No metadata headers** — don't add "Generated:", "Last updated:", or
+   "Confidence: N%" lines to doc files. Use `git log` for provenance.
 
 ### Severity Definitions
 

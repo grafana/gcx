@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strings"
+	"time"
 
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/grafana/gcx/internal/agent"
+	"golang.org/x/mod/module"
 )
 
 // Version variables which are set at build time.
@@ -91,9 +94,74 @@ func handleError(err error) {
 }
 
 func formatVersion() string {
+	// Fall back to build info when ldflags are not set (e.g. go install).
+	if version == "" || commit == "" || date == "" {
+		v, c, d := vcsInfo()
+		if version == "" {
+			version = v
+		}
+		if commit == "" {
+			commit = c
+		}
+		if date == "" {
+			date = d
+		}
+	}
+
 	if version == "" {
 		version = "SNAPSHOT"
 	}
 
 	return fmt.Sprintf("%s built from %s on %s", version, commit, date)
+}
+
+// vcsInfo extracts version, short commit hash, and timestamp from build info.
+func vcsInfo() (string, string, string) {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "", "", ""
+	}
+	var v, c, d string
+	v = info.Main.Version
+	for _, s := range info.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			if s.Value != "" {
+				c = s.Value[:min(7, len(s.Value))]
+			}
+		case "vcs.time":
+			d = s.Value
+		}
+	}
+	// For go install builds, VCS settings are absent but the pseudo-version
+	// contains the commit and timestamp: vX.Y.Z-0.YYYYMMDDHHMMSS-abcdef123456
+	if c == "" || d == "" {
+		pc, pd := parsePseudoVersion(v)
+		if c == "" {
+			c = pc
+		}
+		if d == "" {
+			d = pd
+		}
+	}
+	return v, c, d
+}
+
+// parsePseudoVersion extracts the short commit hash and timestamp from a Go
+// pseudo-version string (e.g. v0.1.1-0.20260401105553-2fbda4a2dd27).
+// Returns empty strings for non-pseudo versions.
+func parsePseudoVersion(v string) (string, string) {
+	// Strip +dirty or other non-standard build metadata that Go embeds
+	// for local builds, as it is not valid semver and rejected by the module package.
+	if i := strings.LastIndex(v, "+"); i > 0 {
+		v = v[:i]
+	}
+	var c, d string
+	if rev, err := module.PseudoVersionRev(v); err == nil && rev != "" {
+		c = rev[:min(7, len(rev))]
+	}
+	if t, err := module.PseudoVersionTime(v); err == nil {
+		d = t.UTC().Format(time.RFC3339)
+	}
+	return c, d
 }

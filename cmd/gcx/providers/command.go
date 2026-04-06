@@ -1,7 +1,6 @@
 package providers
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	goio "io"
@@ -18,14 +17,26 @@ type providerItem struct {
 	Description string `json:"description"`
 }
 
-// Command returns the "providers" command that lists all registered providers.
+// Command returns the "providers" command group. Running "gcx providers"
+// without a subcommand is equivalent to "gcx providers list".
 func Command(pp []coreproviders.Provider) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "providers",
+		Short: "Manage registered providers",
+	}
+
+	cmd.AddCommand(newListCommand(pp))
+
+	return cmd
+}
+
+func newListCommand(pp []coreproviders.Provider) *cobra.Command {
 	opts := &cmdio.Options{}
 	opts.DefaultFormat("text")
 	opts.RegisterCustomCodec("text", &providersTextCodec{pp: pp})
 
 	cmd := &cobra.Command{
-		Use:   "providers",
+		Use:   "list",
 		Short: "List registered providers",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -41,28 +52,6 @@ func Command(pp []coreproviders.Provider) *cobra.Command {
 				items = append(items, providerItem{Name: p.Name(), Description: p.ShortDesc()})
 			}
 
-			if opts.JSONDiscovery {
-				if len(items) == 0 {
-					return errors.New("no providers available for field discovery")
-				}
-				m, err := providerItemToMap(items[0])
-				if err != nil {
-					return err
-				}
-				for _, field := range cmdio.DiscoverFields(m) {
-					fmt.Fprintln(cmd.OutOrStdout(), field)
-				}
-				return nil
-			}
-
-			if len(opts.JSONFields) > 0 {
-				type list struct {
-					Items []providerItem `json:"items"`
-				}
-				codec := cmdio.NewFieldSelectCodec(opts.JSONFields)
-				return codec.Encode(cmd.OutOrStdout(), list{Items: items})
-			}
-
 			return opts.Encode(cmd.OutOrStdout(), items)
 		},
 	}
@@ -70,19 +59,6 @@ func Command(pp []coreproviders.Provider) *cobra.Command {
 	opts.BindFlags(cmd.Flags())
 
 	return cmd
-}
-
-// providerItemToMap marshals a providerItem to map[string]any for field discovery.
-func providerItemToMap(item providerItem) (map[string]any, error) {
-	data, err := json.Marshal(item)
-	if err != nil {
-		return nil, err
-	}
-	var m map[string]any
-	if err := json.Unmarshal(data, &m); err != nil {
-		return nil, err
-	}
-	return m, nil
 }
 
 // providersTextCodec renders a tabwriter table of providers.

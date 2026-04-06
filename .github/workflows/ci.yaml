@@ -21,7 +21,7 @@ jobs:
           persist-credentials: false
 
       - name: Restore go vendors
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 #v5.0.3
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: |
             ~/go/pkg/mod
@@ -31,13 +31,13 @@ jobs:
             go-deps-${{ runner.os }}
 
       - name: Install devbox
-        uses: jetify-com/devbox-install-action@a0d2d53632934ae004f878c840055956d9f741b0 #v0.14.0
+        uses: jetify-com/devbox-install-action@8c6a66ed6273138b1915457069de78cb52fe3bd7 # v0.15.0
         with:
           enable-cache: 'true'
           devbox-version: ${{ env.DEVBOX_VERSION }}
 
       - name: Run golangci-lint
-        run: make lint
+        run: devbox run -- make lint
 
   tests:
     name: Tests
@@ -49,7 +49,7 @@ jobs:
           persist-credentials: false
 
       - name: Restore go vendors
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 #5.0.3
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # 5.0.4
         with:
           path: |
             ~/go/pkg/mod
@@ -59,13 +59,13 @@ jobs:
             go-deps-${{ runner.os }}
 
       - name: Install devbox
-        uses: jetify-com/devbox-install-action@a0d2d53632934ae004f878c840055956d9f741b0 #v0.14.0
+        uses: jetify-com/devbox-install-action@8c6a66ed6273138b1915457069de78cb52fe3bd7 # v0.15.0
         with:
           enable-cache: 'true'
           devbox-version: ${{ env.DEVBOX_VERSION }}
 
       - name: Tests
-        run: make tests
+        run: devbox run -- make tests
 
   docs:
     name: Documentation
@@ -77,14 +77,14 @@ jobs:
           persist-credentials: false
 
       - name: Install devbox
-        uses: jetify-com/devbox-install-action@a0d2d53632934ae004f878c840055956d9f741b0 #v0.14.0
+        uses: jetify-com/devbox-install-action@8c6a66ed6273138b1915457069de78cb52fe3bd7 # v0.15.0
         with:
           enable-cache: 'true'
           devbox-version: ${{ env.DEVBOX_VERSION }}
 
       - name: Check for drift in the generated documentation references
-        run: make reference-drift
+        run: devbox run -- make reference-drift
         shell: bash
 
       - name: Build documentation
-        run: make docs
+        run: devbox run -- make docs

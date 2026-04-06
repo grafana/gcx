@@ -273,11 +273,11 @@ backing client is a REST adapter or the k8s dynamic client.
 
 ## 5. QUERY Pipeline
 
-Entry point: `cmd/gcx/datasources/query/` package — per-kind constructors wired under each kind's subgroup (`datasources prometheus query`, `datasources loki query`, etc.).
+Entry point: per-signal provider packages (`internal/providers/{metrics,logs,traces,profiles}/query.go`) and the auto-detecting `cmd/gcx/datasources/query/generic.go`. Shared query CLI utils live in `internal/datasources/query/`.
 
 ```
 User invocation:
-  gcx datasources prometheus query <uid> 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m
+  gcx metrics query <uid> 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m
 
   ┌──────────────────────────────────────────────────────────────────────┐
   │ 1. Parse args and flags                                               │
@@ -285,7 +285,7 @@ User invocation:
   │                            subcommands when config default is set)   │
   │    --from / --to    time bounds (RFC3339, Unix epoch, or relative    │
   │                     e.g. "now-1h", "now")                            │
-  │    --window         convenience: sets --from=now-{window} --to=now   │
+  │    --since          convenience: sets --from=now-{since} --to=now    │
   │                     (mutually exclusive with --from/--to)            │
   │    --step           query step / interval (e.g. "15s", "1m")         │
   │    --limit          max log lines returned (loki and generic only;   │
@@ -312,7 +312,7 @@ User invocation:
   │    ParseTime(opts.From, now) → time.Time (zero if empty)             │
   │    ParseTime(opts.To, now)   → time.Time (zero if empty)             │
   │    ParseDuration(opts.Step)  → time.Duration (zero if empty)         │
-  │    --window already resolved to From/To by Validate() before RunE   │
+  │    --since already resolved to From/To by Validate() before RunE    │
   │                                                                       │
   │    IsRange() = From != zero && To != zero                            │
   │    Instant query: no --from/--to flags → uses "now-1m" to "now"     │

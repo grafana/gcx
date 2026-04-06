@@ -76,7 +76,7 @@ cmdio.Info(cmd.OutOrStdout(), "Using context %q", ctx)          // 🛈
 
 Status messages go to stdout. Errors (via `DetailedError`) go to stderr.
 
-Reference: `cmd/gcx/io/messages.go`
+Reference: `internal/output/messages.go`
 
 ### 1.5 JSON Field Selection `[CURRENT]`
 
@@ -100,7 +100,8 @@ gcx resources get dashboards/my-dash --json ?
 |-------|----------|
 | `--json field1,field2` | Emit JSON with only those fields; missing fields produce `null` |
 | `--json ?` | Print available field paths (one per line, sorted) and exit 0 |
-| `--json` + `-o` | Usage error — mutually exclusive |
+| `--json` + `-o json` | Allowed — both request JSON, no conflict |
+| `--json` + `-o <non-json>` | Usage error — field selection requires JSON output |
 
 **Field path syntax:** Dot-notation resolves nested fields. `metadata.name`
 extracts `metadata → name`. Top-level keys and `spec.*` sub-keys are enumerated
@@ -114,9 +115,9 @@ additional list calls are made (NC-005).
 **Backward compatibility:** `-o json` is unchanged — it still produces the full
 resource object. `--json` is an independent mechanism (NC-002).
 
-**Implementation:** `cmd/gcx/io/field_select.go` (`FieldSelectCodec`,
+**Implementation:** `internal/output/field_select.go` (`FieldSelectCodec`,
 `DiscoverFields`). Flag parsing and mutual-exclusion enforcement in
-`cmd/gcx/io/format.go` (`applyJSONFlag`).
+`internal/output/format.go` (`applyJSONFlag`).
 
 ---
 
@@ -506,6 +507,22 @@ UX requirements. All items are `[ADOPT]` unless marked otherwise.
 - [ ] Data fetching is format-agnostic — do not gate fetches on `--output` value (Pattern 13)
 - [ ] PromQL queries use `promql-builder` (`github.com/grafana/promql-builder/go/promql`), not string formatting (Pattern 14)
 - [ ] List/get commands for CRUD resources wrap json/yaml output in K8s envelope manifests (see below)
+- [ ] Table output shows `NAME` (the slug-id or user-facing identifier), not bare numeric `ID` — users need the NAME for get/update/delete commands (see Slug-ID naming below)
+
+### Slug-ID Naming in Tables `[ADOPT]`
+
+Providers whose APIs use numeric IDs should display the composite
+`metadata.name` (e.g. `grafana-instance-health-5594`) as the `NAME` column in
+table/wide output. This is the identifier users copy-paste into `get`, `update`,
+and `delete` commands. Bare numeric IDs are accepted as input (for backward
+compatibility) but should not be the primary display column.
+
+Shared helpers in `internal/resources/adapter/slug.go` —
+`SlugifyName`, `ExtractIDFromSlug`, `ComposeName` — implement the slug-id
+convention. `SetResourceName` must extract and restore the API-level ID from
+the composite name so CRUD operations work after a K8s round-trip.
+
+Reference: Fleet (pipelines, collectors) and Synth (checks) providers.
 
 ### K8s Manifest Wrapping `[ADOPT]`
 
@@ -519,7 +536,7 @@ Commands that are **exempt** from K8s wrapping:
 
 | Category | Examples | Rationale |
 |----------|----------|-----------|
-| Query/search results | `assertions query`, `search entities` | Time-series and aggregation results, not storable resources |
+| Query/search results | `insights query`, `search entities` | Time-series and aggregation results, not storable resources |
 | Operational views | `status`, `health`, `inspect` | Composite or derived data, not individual resources |
 | Read-only reference data | `vendors list`, `scopes list`, `entity-types list` | Discoverable metadata, not user-managed resources |
 | Singleton config | `env get`, `graph-config` | Single config objects, not collections of resources |
@@ -878,4 +895,4 @@ Maps sections to the cli-analysis recommendations (R1.1–R3.5):
 
 ---
 
-*Source: [cli-analysis-followup-changes.md](../research/2026-03-03-cli-analysis-followup-changes.md) cross-referenced against codebase as of 2026-03-04.*
+*Source: cross-referenced against codebase as of 2026-03-04.*

@@ -1,25 +1,19 @@
 package fleet
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"strings"
 
-	"github.com/grafana/gcx/internal/providers"
+	fleetbase "github.com/grafana/gcx/internal/fleet"
 )
 
 // Client is an HTTP client for the Grafana Fleet Management API.
-// All operations use POST (gRPC/Connect style).
+// It wraps the shared base client from internal/fleet/ and adds
+// pipeline-, collector-, and tenant-specific methods.
 type Client struct {
-	baseURL      string
-	instanceID   string
-	apiToken     string
-	useBasicAuth bool
-	httpClient   *http.Client
+	*fleetbase.Client
 }
 
 // NewClient creates a new Fleet Management client.
@@ -27,58 +21,19 @@ type Client struct {
 // Otherwise, requests use Bearer token auth.
 // If httpClient is nil, a default client with a 30-second timeout is used.
 func NewClient(baseURL, instanceID, apiToken string, useBasicAuth bool, httpClient *http.Client) *Client {
-	if httpClient == nil {
-		httpClient = providers.ExternalHTTPClient()
-	}
 	return &Client{
-		baseURL:      strings.TrimRight(baseURL, "/"),
-		instanceID:   instanceID,
-		apiToken:     apiToken,
-		useBasicAuth: useBasicAuth,
-		httpClient:   httpClient,
+		Client: fleetbase.NewClient(baseURL, instanceID, apiToken, useBasicAuth, httpClient),
 	}
 }
 
-// doRequest builds and executes a POST request against the Fleet Management API.
+// doRequest delegates to the embedded base client's DoRequest.
 func (c *Client) doRequest(ctx context.Context, path string, body any) (*http.Response, error) {
-	var reqBody io.Reader
-	if body != nil {
-		data, err := json.Marshal(body)
-		if err != nil {
-			return nil, fmt.Errorf("fleet: marshal request body: %w", err)
-		}
-		reqBody = bytes.NewReader(data)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, reqBody)
-	if err != nil {
-		return nil, fmt.Errorf("fleet: create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	if c.useBasicAuth {
-		req.SetBasicAuth(c.instanceID, c.apiToken)
-	} else {
-		req.Header.Set("Authorization", "Bearer "+c.apiToken)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("fleet: execute request: %w", err)
-	}
-
-	return resp, nil
+	return c.DoRequest(ctx, path, body)
 }
 
-// readErrorBody reads and returns the response body as a string for error messages.
+// readErrorBody delegates to the shared error body reader.
 func readErrorBody(resp *http.Response) string {
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "(could not read body)"
-	}
-	return string(body)
+	return fleetbase.ReadErrorBody(resp)
 }
 
 // ListPipelines returns all pipelines.

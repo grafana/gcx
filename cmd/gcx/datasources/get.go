@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
-	"github.com/grafana/gcx/internal/grafana"
+	dsclient "github.com/grafana/gcx/internal/datasources"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -45,22 +45,21 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			ctx := cmd.Context()
 			uid := args[0]
 
-			cfg, err := configOpts.LoadConfig(ctx)
+			restCfg, err := configOpts.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
 
-			gClient, err := grafana.ClientFromContext(cfg.GetCurrentContext())
+			dsClient, err := dsclient.NewClient(restCfg)
 			if err != nil {
 				return err
 			}
 
-			resp, err := gClient.Datasources.GetDataSourceByUID(uid)
+			ds, err := dsClient.GetByUID(ctx, uid)
 			if err != nil {
 				return fmt.Errorf("failed to get datasource: %w", err)
 			}
 
-			ds := resp.Payload
 			info := &datasourceDetail{
 				UID:       ds.UID,
 				Name:      ds.Name,

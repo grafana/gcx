@@ -30,6 +30,13 @@ See StackID for Grafana Cloud instances.
 Password to use when using with basic authentication.
 Optional.
 
+## `GRAFANA_PROXY_ENDPOINT`
+
+ProxyEndpoint is the assistant backend URL used as a reverse proxy for
+OAuth-authenticated requests. Set automatically by `auth login`.
+This may differ from Server when cloud routing directs CLI traffic through
+a separate endpoint (e.g. the assistant app backend).
+
 ## `GRAFANA_SERVER`
 
 Server is the address of the Grafana server (https://hostname:port/path).

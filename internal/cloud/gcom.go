@@ -24,8 +24,9 @@ type StackInfo struct {
 	RegionSlug string `json:"regionSlug"`
 
 	// Prometheus (Hosted Metrics)
-	HMInstancePromID  int    `json:"hmInstancePromId"`
-	HMInstancePromURL string `json:"hmInstancePromUrl"`
+	HMInstancePromID        int    `json:"hmInstancePromId"`
+	HMInstancePromURL       string `json:"hmInstancePromUrl"`
+	HMInstancePromClusterID int    `json:"hmInstancePromClusterId"`
 
 	// Loki (Hosted Logs)
 	HLInstanceID  int    `json:"hlInstanceId"`

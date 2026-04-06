@@ -25,5 +25,5 @@ gcx kg search example [flags]
 
 ### SEE ALSO
 
-* [gcx kg search](gcx_kg_search.md)	 - Search Knowledge Graph entities or assertions.
+* [gcx kg search](gcx_kg_search.md)	 - Search Knowledge Graph entities or insights.
 

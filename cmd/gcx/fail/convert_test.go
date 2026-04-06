@@ -9,6 +9,7 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/grafana"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	k8sapi "k8s.io/apimachinery/pkg/api/errors"
@@ -125,4 +126,24 @@ func TestErrorToDetailedError_ConverterOrdering(t *testing.T) {
 	require.NotNil(t, got)
 	require.NotNil(t, got.ExitCode, "ExitCode should be set")
 	assert.Equal(t, fail.ExitCancelled, *got.ExitCode, "context.Canceled should take precedence over auth errors")
+}
+
+func TestErrorToDetailedError_UsageErrorIncludesExpectedSyntax(t *testing.T) {
+	rootCmd := &cobra.Command{Use: "gcx"}
+	logsCmd := &cobra.Command{Use: "logs"}
+	queryCmd := &cobra.Command{Use: "query [DATASOURCE_UID] EXPR"}
+	queryCmd.Flags().Bool("json", false, "")
+
+	rootCmd.AddCommand(logsCmd)
+	logsCmd.AddCommand(queryCmd)
+
+	got := fail.ErrorToDetailedError(fail.NewCommandUsageError(queryCmd, "EXPR is required", nil))
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Invalid command usage", got.Summary)
+	assert.Contains(t, got.Details, "EXPR is required")
+	assert.Contains(t, got.Details, "Expected:")
+	assert.Contains(t, got.Details, "gcx logs query [DATASOURCE_UID] EXPR [flags]")
+	require.Len(t, got.Suggestions, 1)
+	assert.Equal(t, "Run 'gcx logs query --help' for full usage and examples", got.Suggestions[0])
 }

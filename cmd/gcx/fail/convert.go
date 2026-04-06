@@ -7,7 +7,9 @@ import (
 	"io/fs"
 	"net/url"
 	"os"
+	"strings"
 
+	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/grafana"
 	"github.com/grafana/gcx/internal/linter"
@@ -24,14 +26,18 @@ func ErrorToDetailedError(err error) *DetailedError {
 
 	// Try to convert the error for common error categories
 	errorConverters := []func(err error) (*DetailedError, bool){
-		convertContextCanceled, // Context cancellation (must be first — cancellation can wrap other errors)
-		convertConfigErrors,    // Config-related
-		convertFSErrors,        // FS-related
-		convertResourcesErrors, // Resources-related
-		convertNetworkErrors,   // Network-related errors
-		convertAPIErrors,       // API-related errors
-		convertVersionErrors,   // Version incompatibility errors
-		convertLinterErrors,    // Linter-related errors
+		convertUsageErrors,
+		convertContextCanceled,    // Context cancellation (must be first — cancellation can wrap other errors)
+		convertRequiredFlagErrors, // Cobra required-flag errors — must appear before generic checks
+		convertConfigErrors,       // Config-related
+		convertAuthErrors,         // Auth-related (expired tokens)
+		convertFSErrors,           // FS-related
+		convertResourcesErrors,    // Resources-related
+		convertNetworkErrors,      // Network-related errors
+		convertAPIErrors,          // API-related errors
+		convertVersionErrors,      // Version incompatibility errors
+		convertLinterErrors,       // Linter-related errors
+		convertCloudConfigErrors,  // Cloud config / fleet / setup errors
 	}
 
 	for _, converter := range errorConverters {
@@ -43,8 +49,27 @@ func ErrorToDetailedError(err error) *DetailedError {
 
 	return &DetailedError{
 		Summary: "Unexpected error",
+		Details: err.Error(),
 		Parent:  err,
 	}
+}
+
+func convertUsageErrors(err error) (*DetailedError, bool) {
+	usageErr := &UsageError{}
+	if !errors.As(err, &usageErr) {
+		return nil, false
+	}
+
+	details := usageErr.Error()
+	if usageErr.Expected != "" {
+		details = fmt.Sprintf("%s\n\nExpected:\n  %s", details, usageErr.Expected)
+	}
+
+	return &DetailedError{
+		Summary:     "Invalid command usage",
+		Details:     details,
+		Suggestions: usageErr.Suggestions,
+	}, true
 }
 
 func convertConfigErrors(err error) (*DetailedError, bool) {
@@ -84,6 +109,19 @@ func convertConfigErrors(err error) (*DetailedError, bool) {
 		}, true
 	}
 
+	return nil, false
+}
+
+func convertAuthErrors(err error) (*DetailedError, bool) {
+	if errors.Is(err, auth.ErrRefreshTokenExpired) {
+		return &DetailedError{
+			Parent:  err,
+			Summary: "Session expired",
+			Suggestions: []string{
+				"Run `gcx auth login` to re-authenticate",
+			},
+		}, true
+	}
 	return nil, false
 }
 
@@ -214,6 +252,79 @@ func convertVersionErrors(err error) (*DetailedError, bool) {
 				"Upgrade your Grafana instance to version 12.0.0 or later",
 			},
 			ExitCode: new(ExitVersionIncompatible),
+		}, true
+	}
+
+	return nil, false
+}
+
+func convertRequiredFlagErrors(err error) (*DetailedError, bool) {
+	// Cobra returns a plain error (not a typed error) for missing required flags.
+	// The message is always of the form: `required flag(s) "foo", "bar" not set`
+	msg := err.Error()
+	if strings.HasPrefix(msg, "required flag(s)") && strings.HasSuffix(msg, "not set") {
+		return &DetailedError{
+			Summary: "Missing required flags",
+			Parent:  err,
+			Suggestions: []string{
+				"Run the command with --help to see available flags and usage examples",
+			},
+		}, true
+	}
+	return nil, false
+}
+
+func convertCloudConfigErrors(err error) (*DetailedError, bool) {
+	msg := err.Error()
+
+	// Cloud token missing.
+	if strings.Contains(msg, "cloud token is required") {
+		return &DetailedError{
+			Summary: "Cloud credentials not configured",
+			Details: msg,
+			Parent:  err,
+			Suggestions: []string{
+				"Set cloud.token in your config: gcx config set cloud.token <TOKEN>",
+				"Or set GRAFANA_CLOUD_TOKEN environment variable",
+			},
+		}, true
+	}
+
+	// Cloud stack not configured.
+	if strings.Contains(msg, "cloud stack is not configured") {
+		return &DetailedError{
+			Summary: "Cloud stack not configured",
+			Details: msg,
+			Parent:  err,
+			Suggestions: []string{
+				"Set cloud.stack in your config: gcx config set cloud.stack <STACK_SLUG>",
+				"Or set GRAFANA_CLOUD_STACK environment variable",
+			},
+		}, true
+	}
+
+	// Fleet management not available.
+	if strings.Contains(msg, "fleet management endpoint is not available") ||
+		strings.Contains(msg, "fleet management instance ID is not available") {
+		return &DetailedError{
+			Summary: "Fleet Management not available",
+			Details: msg,
+			Parent:  err,
+			Suggestions: []string{
+				"Fleet Management may not be enabled for this stack",
+				"Contact Grafana Cloud support to enable Fleet Management",
+			},
+		}, true
+	}
+
+	// Setup/instrumentation prefixed errors — surface them directly instead of "Unexpected error".
+	if strings.HasPrefix(msg, "setup/instrumentation:") || strings.Contains(msg, "setup/instrumentation:") {
+		// Extract the message after the prefix for the summary.
+		summary := "Setup instrumentation error"
+		return &DetailedError{
+			Summary: summary,
+			Details: msg,
+			Parent:  err,
 		}, true
 	}
 

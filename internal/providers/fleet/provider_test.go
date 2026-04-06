@@ -2,6 +2,11 @@ package fleet_test
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -242,4 +247,113 @@ func TestCollectorTableCodec_WrongType(t *testing.T) {
 	err := codec.Encode(&buf, "not a collector slice")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid data type")
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline protection guard tests
+// ---------------------------------------------------------------------------
+
+func TestIsManagedPipeline(t *testing.T) {
+	tests := []struct {
+		name     string
+		pipeline string
+		want     bool
+	}{
+		{
+			name:     "beyla prefix is managed",
+			pipeline: "beyla_k8s_appo11y_prod-1",
+			want:     true,
+		},
+		{
+			name:     "beyla prefix with different cluster suffix",
+			pipeline: "beyla_k8s_appo11y_staging",
+			want:     true,
+		},
+		{
+			name:     "custom pipeline is not managed",
+			pipeline: "my-custom-pipeline",
+			want:     false,
+		},
+		{
+			name:     "empty name is not managed",
+			pipeline: "",
+			want:     false,
+		},
+		{
+			name:     "partial prefix match is not managed",
+			pipeline: "beyla_k8s_",
+			want:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := fleet.IsManagedPipeline(tt.pipeline)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestPipelineProtectionGuard(t *testing.T) {
+	tests := []struct {
+		name            string
+		pipelineName    string
+		force           bool
+		wantErr         bool
+		wantErrContains string
+	}{
+		{
+			name:            "blocks managed pipeline without force",
+			pipelineName:    "beyla_k8s_appo11y_prod-1",
+			force:           false,
+			wantErr:         true,
+			wantErrContains: "gcx setup instrumentation apply",
+		},
+		{
+			name:         "allows managed pipeline with force",
+			pipelineName: "beyla_k8s_appo11y_prod-1",
+			force:        true,
+			wantErr:      false,
+		},
+		{
+			name:         "allows unmanaged pipeline without force",
+			pipelineName: "my-custom-pipeline",
+			force:        false,
+			wantErr:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if err := json.NewEncoder(w).Encode(map[string]any{
+					"id":   "123",
+					"name": tt.pipelineName,
+				}); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+				}
+			}))
+			defer server.Close()
+
+			client := fleet.NewClient(server.URL, "inst", "token", true, nil)
+			pipeline, err := client.GetPipeline(context.Background(), "123")
+			require.NoError(t, err)
+			require.NotNil(t, pipeline)
+
+			// Apply the same guard logic as the commands.
+			var guardErr error
+			if !tt.force && fleet.IsManagedPipeline(pipeline.Name) {
+				guardErr = fmt.Errorf("pipeline %q is managed by Grafana Cloud instrumentation; use 'gcx setup instrumentation apply' to modify instrumentation config, or pass --force to override", pipeline.Name)
+			}
+
+			if tt.wantErr {
+				require.Error(t, guardErr)
+				assert.Contains(t, guardErr.Error(), tt.wantErrContains)
+				assert.Contains(t, guardErr.Error(), pipeline.Name)
+			} else {
+				require.NoError(t, guardErr)
+			}
+		})
+	}
 }

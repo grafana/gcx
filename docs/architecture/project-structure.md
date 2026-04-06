@@ -8,19 +8,28 @@ gcx/
 │   └── gcx/           # Binary entry point (public surface)
 │       ├── main.go           # Version vars, main(), error handler
 │       ├── root/             # Root Cobra command, global flags, logging setup
+│       ├── auth/             # OAuth login command (browser-based PKCE flow)
 │       ├── config/           # 'config' subcommand implementations
 │       ├── resources/        # 'resources' subcommand implementations
 │       ├── dashboards/       # 'dashboards' subcommand (snapshot via Image Renderer)
-│       ├── datasources/      # 'datasources' subcommand implementations
-│       │   └── query/        # Per-kind query constructors and shared infrastructure (codecs, time parsing)
+│       ├── datasources/      # 'datasources' subcommand (list, get, query)
+│       │   └── query/        # Auto-detecting query command (GenericCmd only)
 │       ├── commands/         # 'commands' catalog (agent metadata, resource types, live validation)
+│       ├── helptree/        # 'help-tree' compact text tree for agent context injection
+│       ├── setup/            # 'setup' command area (onboarding, product config)
+│       │   └── instrumentation/  # Instrumentation subcommands (status, discover, show, apply)
 │       ├── dev/              # 'dev' subcommand (import, scaffold, generate, lint, serve)
 │       ├── providers/        # 'providers' subcommand implementation
 │       └── fail/             # Error → DetailedError conversion, exit codes
 │
 ├── internal/                 # All non-public packages (Go enforced)
 │   ├── agent/                # Agent-mode detection, command annotations, known-resource registry with operation hints
+│   ├── auth/                 # OAuth PKCE flow, token refresh transport
+│   │   └── adaptive/         # Shared adaptive telemetry auth (GCOM caching, Basic auth)
 │   ├── cloud/                # Grafana Cloud stack discovery via GCOM API
+│   ├── fleet/                # Shared fleet base client (HTTP, auth, config — shared by fleet provider and setup/instrumentation)
+│   ├── setup/
+│   │   └── instrumentation/  # InstrumentationConfig manifest types, API client, optimistic lock comparison
 │   ├── config/               # Config loading, context management, auth types
 │   │   └── testdata/         # YAML fixtures for config unit tests
 │   ├── format/               # JSON/YAML codec, format auto-detection
@@ -34,12 +43,18 @@ gcx/
 │   │   └── builtins/         # Built-in PromQL/LogQL validators
 │   ├── providers/            # Provider plugin system
 │   │   ├── configloader.go   # Shared ConfigLoader for all providers
-│   │   ├── adaptive/         # Adaptive Telemetry provider (metrics rules/recs, logs patterns/exemptions, traces policies/recs)
-│   │   │   ├── auth/         # Shared Basic auth helper + GCOM caching
-│   │   │   ├── metrics/      # Metrics rules and recommendations (provider-only)
-│   │   │   ├── logs/         # Logs patterns (provider-only) and exemptions (TypedCRUD adapter)
-│   │   │   └── traces/       # Traces recommendations (provider-only) and policies (TypedCRUD adapter)
+│   │   ├── metrics/          # Metrics signal provider (Prometheus queries + Adaptive Metrics)
+│   │   │   └── adaptive/     # Adaptive Metrics commands (rules, recommendations)
+│   │   ├── logs/             # Logs signal provider (Loki queries + Adaptive Logs)
+│   │   │   └── adaptive/     # Adaptive Logs commands + TypedCRUD (patterns, exemptions, segments)
+│   │   ├── traces/           # Traces signal provider (Tempo queries + Adaptive Traces)
+│   │   │   └── adaptive/     # Adaptive Traces commands + TypedCRUD (policies, recommendations)
+│   │   ├── profiles/         # Profiles signal provider (Pyroscope queries + adaptive stub)
+│   │   ├── appo11y/          # App Observability provider (singleton config resources)
+│   │   │   ├── overrides/    # MetricsGeneratorConfig with ETag concurrency
+│   │   │   └── settings/     # PluginSettings
 │   │   ├── alert/            # Alert provider (rules and groups)
+│   │   ├── faro/             # Faro Frontend Observability provider (apps CRUD, sourcemaps sub-resource)
 │   │   ├── fleet/            # Fleet Management provider (pipeline and collector resources)
 │   │   ├── incidents/        # IRM Incidents provider
 │   │   ├── k6/              # K6 Cloud provider (projects, tests, runs, envvars)
@@ -53,6 +68,8 @@ gcx/
 │   │       ├── probes/       # Probe listing
 │   │       └── smcfg/        # SM config loader interfaces
 │   ├── dashboards/           # Dashboard Image Renderer client (PNG snapshots)
+│   ├── datasources/          # Datasource HTTP client (legacy REST API)
+│   │   └── query/            # Shared query CLI utils (time parsing, codecs, opts, resolve helpers)
 │   ├── query/                # Datasource query clients
 │   │   ├── prometheus/       # Prometheus HTTP client (instant + range queries)
 │   │   └── loki/             # Loki HTTP client (log + metric queries)

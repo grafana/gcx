@@ -9,8 +9,8 @@ import (
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/agent"
+	dsclient "github.com/grafana/gcx/internal/datasources"
 	"github.com/grafana/gcx/internal/format"
-	"github.com/grafana/gcx/internal/grafana"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -60,22 +60,21 @@ func listCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			cfg, err := configOpts.LoadConfig(ctx)
+			restCfg, err := configOpts.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
 
-			gClient, err := grafana.ClientFromContext(cfg.GetCurrentContext())
+			dsClient, err := dsclient.NewClient(restCfg)
 			if err != nil {
 				return err
 			}
 
-			resp, err := gClient.Datasources.GetDataSources()
+			datasources, err := dsClient.List(ctx)
 			if err != nil {
 				return fmt.Errorf("failed to list datasources: %w", err)
 			}
 
-			datasources := resp.Payload
 			if opts.Type != "" {
 				filtered := make([]*datasourceInfo, 0)
 				for _, ds := range datasources {

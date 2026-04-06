@@ -1,6 +1,10 @@
 package pyroscope
 
-import "time"
+import (
+	"encoding/json"
+	"sort"
+	"time"
+)
 
 // QueryRequest represents a Pyroscope profile query request.
 type QueryRequest struct {
@@ -86,4 +90,118 @@ type FunctionSample struct {
 	Self       int64
 	Total      int64
 	Percentage float64
+}
+
+// SelectSeriesRequest represents a request to query profile time-series data.
+type SelectSeriesRequest struct {
+	ProfileTypeID string
+	LabelSelector string
+	Start         time.Time
+	End           time.Time
+	GroupBy       []string
+	Step          float64 // resolution step in seconds
+	Aggregation   string  // "SUM" or "AVERAGE"
+	Limit         int64   // top-N series by total value
+}
+
+// SelectSeriesResponse represents the response from a SelectSeries query.
+type SelectSeriesResponse struct {
+	Series []TimeSeries `json:"series"`
+}
+
+// TimeSeries represents a single time series with labels and data points.
+type TimeSeries struct {
+	Labels []LabelPair `json:"labels"`
+	Points []TimePoint `json:"points"`
+}
+
+// LabelPair represents a key-value label pair.
+type LabelPair struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+// TimePoint represents a single data point in a time series.
+// Pyroscope's connect-rpc JSON encoding sends timestamp as a string and value as an integer.
+type TimePoint struct {
+	Value       json.Number  `json:"value"`
+	Timestamp   json.Number  `json:"timestamp"` // milliseconds since epoch, encoded as string
+	Annotations []Annotation `json:"annotations,omitempty"`
+}
+
+// Annotation represents metadata attached to a time-series point.
+type Annotation struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+// TimestampMs returns the timestamp as milliseconds since epoch.
+func (p TimePoint) TimestampMs() int64 {
+	v, _ := p.Timestamp.Int64()
+	return v
+}
+
+// FloatValue returns the point value as float64.
+func (p TimePoint) FloatValue() float64 {
+	v, _ := p.Value.Float64()
+	return v
+}
+
+// TopSeriesResponse represents an aggregated, ranked view of series data.
+type TopSeriesResponse struct {
+	ProfileType string           `json:"profileType"`
+	GroupBy     []string         `json:"groupBy"`
+	Series      []TopSeriesEntry `json:"series"`
+}
+
+// TopSeriesEntry represents a single ranked entry in a top-series response.
+type TopSeriesEntry struct {
+	Rank   int               `json:"rank"`
+	Labels map[string]string `json:"labels"`
+	Total  float64           `json:"total"`
+}
+
+// AggregateTopSeries converts a SelectSeriesResponse into a ranked TopSeriesResponse
+// by summing all points per series and sorting by total descending.
+func AggregateTopSeries(resp *SelectSeriesResponse, profileType string, groupBy []string, limit int) *TopSeriesResponse {
+	type entry struct {
+		labels map[string]string
+		total  float64
+	}
+
+	entries := make([]entry, 0, len(resp.Series))
+	for _, s := range resp.Series {
+		var total float64
+		for _, p := range s.Points {
+			total += p.FloatValue()
+		}
+		lbls := make(map[string]string, len(s.Labels))
+		for _, lp := range s.Labels {
+			lbls[lp.Name] = lp.Value
+		}
+		entries = append(entries, entry{labels: lbls, total: total})
+	}
+
+	// Sort by total descending.
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].total > entries[j].total
+	})
+
+	if limit > 0 && len(entries) > limit {
+		entries = entries[:limit]
+	}
+
+	result := &TopSeriesResponse{
+		ProfileType: profileType,
+		GroupBy:     groupBy,
+		Series:      make([]TopSeriesEntry, len(entries)),
+	}
+	for i, e := range entries {
+		result.Series[i] = TopSeriesEntry{
+			Rank:   i + 1,
+			Labels: e.labels,
+			Total:  e.total,
+		}
+	}
+	return result
 }

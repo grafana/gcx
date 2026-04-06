@@ -84,7 +84,7 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 				}
 				objs = append(objs, res.ToUnstructured())
 			}
-			return codec.Encode(cmd.OutOrStdout(), objs)
+			return opts.IO.Encode(cmd.OutOrStdout(), objs)
 		},
 	}
 	opts.setup(cmd.Flags())

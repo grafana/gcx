@@ -37,6 +37,20 @@
 | [design-guide.md](docs/reference/design-guide.md) | UX requirements: output, exit codes, errors, naming | Before implementing features, reviewing CLI UX |
 | [migration-gap-analysis.md](docs/reference/migration-gap-analysis.md) | Gap analysis between grafana-cloud-cli and gcx, with prioritized migration roadmap | Understanding what's missing before planning new features or migrations |
 
+### Templates (in `docs/_templates/`)
+
+Spec and planning templates for structured work. Use these when creating specs in `docs/specs/`.
+
+| Template | Use For |
+|----------|---------|
+| [feature-spec.md](docs/_templates/feature-spec.md) | New feature specs (problem, requirements, acceptance criteria) |
+| [feature-plan.md](docs/_templates/feature-plan.md) | Architecture/design plan for a feature spec |
+| [feature-tasks.md](docs/_templates/feature-tasks.md) | Task breakdown with dependency waves |
+| [bugfix-spec.md](docs/_templates/bugfix-spec.md) | Bug fix specs (current vs expected behavior, repro steps) |
+| [refactor-spec.md](docs/_templates/refactor-spec.md) | Refactoring specs (behavioral contract, migration steps) |
+| [adr.md](docs/_templates/adr.md) | Architecture Decision Records |
+| [research.md](docs/_templates/research.md) | Research reports |
+
 ## Architecture at a Glance
 
 ```
@@ -67,6 +81,13 @@ Grafana K8s API            Product REST APIs
 
 ## Essential Commands
 
+> **Without devbox**: All `make` targets require `devbox`. If you don't have it, use the direct Go commands instead:
+> ```bash
+> go build -buildvcs=false -o bin/gcx ./cmd/gcx/   # replaces make build
+> go test ./...                                      # replaces make tests
+> ```
+> Always build to `bin/gcx` (not a temp binary) so the binary stays at a stable path for testing.
+
 ```bash
 make build       # Build to bin/gcx
 make tests       # Run all tests with race detection
@@ -74,6 +95,17 @@ make lint        # Run golangci-lint
 make all         # lint + tests + build + docs
 make docs        # Generate + build all documentation
 ```
+
+> **Before running quality gates, rebase onto the latest upstream main.**
+> This catches conflicts early and ensures `make all` (especially `make docs`)
+> runs against the current command tree. If working on a worktree or ephemeral
+> branch with uncommitted changes, stash first:
+> ```
+> git stash --include-untracked
+> git fetch origin main && git rebase origin/main
+> git stash pop
+> ```
+> Resolve any conflicts before proceeding. If in doubt about the base branch, ask.
 
 > **Before pushing to a PR branch, always run `make all` with agent mode explicitly disabled.**
 > The `make docs` step regenerates `docs/reference/cli/` by running the binary, which
@@ -85,13 +117,13 @@ make docs        # Generate + build all documentation
 > ```
 > Skipping this causes CI to fail with docs drift.
 
-> **Update `docs/architecture/` when a PR changes architecture.** Specifically: adding
-> or removing packages under `internal/` or `cmd/`, introducing new architectural
-> patterns, changing core abstractions (Resource, Selector, Filter, Discovery),
-> or adding a new provider. Routine bug fixes, test changes, and small features
-> do not need it. Follow the structural checks in
-> [docs/reference/doc-maintenance.md](docs/reference/doc-maintenance.md) to audit
-> for staleness — keeping these docs accurate prevents agents from making bad
+> **Doc maintenance is a gate before creating a PR or finishing a session.**
+> If code changes touch `internal/` or `cmd/` structure, new architectural patterns,
+> core abstractions (Resource, Selector, Filter, Discovery), or add a provider:
+> run the structural checks in [docs/reference/doc-maintenance.md](docs/reference/doc-maintenance.md)
+> and update `CLAUDE.md` (package map), `DESIGN.md` (package table), and relevant
+> `docs/architecture/` files. Routine bug fixes, test changes, and small features
+> do not need it. Keeping these docs accurate prevents agents from making bad
 > assumptions in future sessions.
 
 ## Package Map
@@ -99,24 +131,33 @@ make docs        # Generate + build all documentation
 ```
 cmd/gcx/
 ├── root/        CLI root (logging, global flags)
+├── auth/        OAuth login command (browser-based PKCE flow)
 ├── config/      Config management commands (set, use-context, view...)
 ├── resources/   Resource commands (get, schemas, push, pull, delete, edit, validate)
 ├── dashboards/  Dashboard commands (snapshot via Image Renderer)
-├── datasources/ Datasource commands (list, get, prometheus, loki, pyroscope, tempo, generic)
-│   └── query/   Query subcommand shared infrastructure (codecs, time parsing, per-kind constructors)
-├── providers/   Provider list command
+├── datasources/ Datasource commands (list, get, query)
+│   └── query/   Auto-detecting query command (GenericCmd only; shared infra in internal/datasources/query/)
+├── providers/   Provider commands (list)
 ├── api/         Raw API passthrough command (direct Grafana API calls)
 ├── linter/      Linting commands (run, new, rules, test — mounted under dev lint)
 ├── commands/    Commands catalog (agent-consumable metadata, resource types, live validation)
+├── helptree/    Compact text tree for agent context injection (help-tree command)
+├── setup/       Setup command area (onboarding, instrumentation — not a provider)
+│   └── instrumentation/  Instrumentation subcommands (status, discover, show, apply)
 ├── dev/         Developer commands (import, scaffold, generate, lint, serve)
 └── fail/        Structured error → user-friendly message conversion
 
 internal/
+├── auth/        OAuth PKCE flow, token refresh transport
+│   └── adaptive/  Shared adaptive telemetry auth (GCOM caching, Basic auth — used by signal providers)
 ├── config/      Config types, loader, editor, rest.Config builder, stack-id discovery, context name helpers
 ├── cloud/       GCOM HTTP client for Grafana Cloud stack discovery
+├── fleet/       Shared fleet base client (HTTP, auth, config — used by fleet provider and setup/instrumentation)
+├── setup/
+│   └── instrumentation/  Manifest types, instrumentation client, optimistic lock comparison
 ├── resources/
 │   ├── *.go     Core types: Resource, Selector, Filter, Descriptor, Resources collection
-│   ├── adapter/    ResourceAdapter interface, Factory, ResourceClientRouter, self-registration
+│   ├── adapter/    ResourceAdapter interface, Factory, ResourceClientRouter, self-registration, slug-ID helpers
 │   ├── discovery/  API resource discovery, registry index, GVK resolution, OpenAPI schema fetcher
 │   ├── dynamic/    k8s dynamic client wrapper (namespaced + versioned)
 │   ├── local/      FSReader, FSWriter (disk I/O)
@@ -124,14 +165,23 @@ internal/
 │   └── remote/     Pusher, Puller, Deleter, FolderHierarchy, Summary
 ├── providers/   Provider plugin system (interface, registry, self-registration)
 │   ├── alert/      Alert provider (rules, groups — read-only)
+│   ├── faro/       Faro provider (Frontend Observability — apps CRUD, sourcemaps sub-resource)
 │   ├── fleet/      Fleet Management provider (pipeline and collector resources)
 │   ├── incidents/  IRM Incidents provider
 │   ├── k6/         K6 Cloud provider (projects, tests, runs, envvars)
 │   ├── kg/         Knowledge Graph (Asserts) provider
+│   ├── logs/       Logs signal provider (Loki queries + Adaptive Logs commands)
+│   ├── metrics/    Metrics signal provider (Prometheus queries + Adaptive Metrics commands)
 │   ├── oncall/     OnCall provider (schedules, integrations, escalation chains)
+│   ├── appo11y/    App Observability provider (overrides, settings — singleton resources)
+│   ├── profiles/   Profiles signal provider (Pyroscope queries + adaptive stub)
+│   ├── sigil/      Sigil AI observability provider (conversations — via grafana-sigil-app plugin API)
 │   ├── slo/        SLO provider (definitions, reports)
-│   └── synth/      Synthetic Monitoring provider (checks, probes)
+│   ├── synth/      Synthetic Monitoring provider (checks, probes)
+│   └── traces/     Traces signal provider (Tempo queries + Adaptive Traces commands)
 ├── dashboards/  Dashboard Image Renderer client (PNG snapshots)
+├── datasources/ Datasource HTTP client (legacy REST API)
+│   └── query/   Shared query CLI utils (time parsing, codecs, opts, resolve helpers — used by signal providers and GenericCmd)
 ├── query/       Datasource query clients
 │   ├── prometheus/  Prometheus HTTP query client
 │   └── loki/        Loki HTTP query client
@@ -142,56 +192,9 @@ internal/
 ├── testutils/   Shared test utilities
 ├── server/      Live dev server (Chi router, reverse proxy, websocket reload)
 ├── grafana/     OpenAPI client (health checks, version detection)
-├── output/      Output codec registry (json, yaml, text, wide — field selection, formatting)
+├── output/      Output codec registry (json, yaml, text, wide — field selection, discovery, k8s unstructured handling)
 ├── format/      JSON/YAML codecs with format auto-detection
 ├── httputils/   HTTP helpers (used by serve command's proxy)
 ├── secrets/     Redactor for config view
 └── logs/        slog/klog integration
 ```
-
-<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
-## Beads Issue Tracker
-
-This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
-
-### Quick Reference
-
-```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --claim  # Claim work
-bd close <id>         # Complete work
-```
-
-### Rules
-
-- Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
-- Run `bd prime` for detailed command reference and session close protocol
-- Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
-
-## Session Completion
-
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
-
-**MANDATORY WORKFLOW:**
-
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
-   ```bash
-   git pull --rebase
-   bd dolt push
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
-
-**CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
-<!-- END BEADS INTEGRATION -->

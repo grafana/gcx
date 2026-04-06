@@ -1,11 +1,14 @@
 name: ✨ Feature Request
 description: Suggest a completely new capability or feature
-title: "[Feature]: "
-labels: ["type/feature", "action/needs-triage"]
+title: ""
+type: "Feature"
+labels: ["action/needs-triage"]
 body:
   - type: markdown
     attributes:
       value: |
+        **Title tip:** Start with a verb, e.g. "Add CSV output format for resource listings"
+
         Have an idea for something new? We'd love to hear it! Help us understand your vision.
 
   - type: textarea

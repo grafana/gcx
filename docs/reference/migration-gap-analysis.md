@@ -17,12 +17,12 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 | `gcx auth status` | Show auth tier, scopes, token expiry | **Missing** |
 | `gcx session start/list/end/cleanup` | Temporary scoped troubleshooting sessions | **Missing** |
 | `gcx dir init/show/unpin` | Per-directory context pinning | **Missing** |
-| `gcx completion` | Shell completion (bash/zsh/fish/powershell) | **Missing** |
+| `gcx completion` | Shell completion (bash/zsh/fish/powershell) | **Exists** (`gcx completion bash\|fish\|powershell\|zsh`) |
 | `gcx version` | Print version | **Missing** (may be a hidden flag) |
 | `gcx agent-card` | A2A-compliant agent card generation | **Missing** |
-| `gcx commands` | List all commands and schemas (LLM-friendly) | **Missing** |
-| `gcx help-tree` | Compact command tree for LLM/scripting | **Missing** |
-| `gcx api-resources` | List all known resource types | **Missing** (partially covered by `resources schemas`) |
+| `gcx commands` | List all commands and schemas (LLM-friendly) | **Exists** (`gcx commands --flat -o json`, with `--validate` for live checks) |
+| `gcx help-tree` | Compact command tree for LLM/scripting | **Exists** (`gcx help-tree`) |
+| `gcx api-resources` | List all known resource types | **Partially exists** (`gcx commands` includes `resource_types` section; `resources schemas` covers K8s types) |
 | `gcx explain` | Field-level docs for resource types | **Missing** |
 | `gcx doctor` | Validate API endpoint availability | **Missing** |
 | `gcx lifecycle` | End-to-end lifecycle tests | **Missing** |
@@ -35,7 +35,7 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 | Config subcommands | `context show/use/list/delete` | `config view/current-context/list-contexts/use-context/set/unset/edit/path/check` |
 | Config layers | Single file | System/user/local layers (more advanced) |
 
-**Assessment:** New gcx has a *more sophisticated* config system but is missing the `init` bootstrap flow, auth status, sessions, and dir pinning.
+**Assessment:** New gcx has a *more sophisticated* config system, `commands` catalog, `help-tree`, and shell completion. Still missing the `init` bootstrap flow, auth status, sessions, and dir pinning.
 
 ---
 
@@ -47,7 +47,7 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 |------|-------------|-------|
 | `--token` | Cloud Access Policy token | gcx uses config contexts instead |
 | `--stack` | Target stack slug | gcx uses config contexts |
-| `--context` | Config context for this invocation | gcx uses `config use-context` |
+| `--context` | Config context for this invocation | **Exists** (global `--context` flag on root command) |
 | `-o, --output` (global) | Global output format (text/json/yaml/csv/jsonpath) | gcx has per-command `-o` but not global |
 | `-q, --quiet` | Suppress decorative output | **Missing** |
 | `--field` | Extract single field from output | **Missing** |
@@ -135,28 +135,28 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 | Pyroscope query | Via profiles cmd | `datasources pyroscope query` (exists) |
 | Tempo query | Via traces cmd | `datasources tempo query` (exists) |
 
-### Missing Resource Commands Entirely
+### Missing Dedicated Resource Commands
 
-| Old Command | Description |
-|-------------|-------------|
-| `gcx folders` | Full CRUD for folders |
-| `gcx folder-permissions` | Manage folder permissions |
-| `gcx dashboard-permissions` | Manage dashboard permissions |
-| `gcx annotations` | Full CRUD for annotations |
-| `gcx teams` | Full CRUD for teams |
-| `gcx users` | Full CRUD for users |
-| `gcx serviceaccounts` | Full CRUD + token management |
-| `gcx plugins` | List, get, enable, disable plugins |
-| `gcx query-history` | Full CRUD for query history |
-| `gcx library-panels` | Full CRUD for library panels |
-| `gcx playlists` | Full CRUD for playlists |
-| `gcx snapshots` | List, get, delete snapshots |
-| `gcx public-dashboards` | Full CRUD for public dashboards |
-| `gcx reports` | Full CRUD for scheduled reports |
-| `gcx silences` | Full CRUD for alert silences |
-| `gcx correlations` | Full CRUD for datasource correlations |
+| Old Command | Description | Status in gcx |
+|-------------|-------------|---------------|
+| `gcx folders` | Full CRUD for folders | **K8s tier** (Folder resource: `gcx resources get\|push\|pull\|delete folders`) |
+| `gcx folder-permissions` | Manage folder permissions | **Missing** |
+| `gcx dashboard-permissions` | Manage dashboard permissions | **Missing** |
+| `gcx annotations` | Full CRUD for annotations | **Missing** |
+| `gcx teams` | Full CRUD for teams | **Missing** (no K8s resource type) |
+| `gcx users` | Full CRUD for users | **Missing** (no K8s resource type) |
+| `gcx serviceaccounts` | Full CRUD + token management | **Missing** |
+| `gcx plugins` | List, get, enable, disable plugins | **K8s tier** (Plugin resource: `gcx resources get plugins`) |
+| `gcx query-history` | Full CRUD for query history | **K8s tier** (Query resource: `gcx resources get queries`) |
+| `gcx library-panels` | Full CRUD for library panels | **Missing** |
+| `gcx playlists` | Full CRUD for playlists | **K8s tier** (Playlist resource: `gcx resources get playlists`) |
+| `gcx snapshots` | List, get, delete snapshots | **K8s tier** (Snapshot resource: `gcx resources get snapshots`) |
+| `gcx public-dashboards` | Full CRUD for public dashboards | **Missing** |
+| `gcx reports` | Full CRUD for scheduled reports | **Missing** |
+| `gcx silences` | Full CRUD for alert silences | **Missing** |
+| `gcx correlations` | Full CRUD for datasource correlations | **Missing** |
 
-**Note:** Many of these may be accessible via `gcx resources get/push/pull` if the K8s API supports them. The gap is the dedicated shorthand commands with resource-specific flags.
+**Note:** Several resources are now accessible via the K8s resource tier (`gcx resources get/push/pull/delete`). The gap is dedicated shorthand commands with resource-specific flags. Additional K8s-tier resources discovered: SecureValue, Connection, AlertEnrichment, Repository, Job, Keeper, SandboxSettings, AnnouncementBanner.
 
 ---
 
@@ -175,68 +175,68 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 | `alerting settings` | Manage settings | **Missing** |
 | `alerting overrides` | Provisioning overrides | **Missing** |
 
-### Telemetry Commands (All Missing)
+### Telemetry Commands
 
-| Old Command | Description |
-|-------------|-------------|
-| `gcx metrics query/range` | PromQL queries (standalone) |
-| `gcx logs query` | LogQL queries (standalone) |
-| `gcx traces query/search` | TraceQL queries (standalone) |
-| `gcx profiles types/flamegraph/series/label-values` | Pyroscope queries (standalone) |
-| `gcx telemetry status` | Pipeline health and ingest rate |
-| `gcx telemetry cardinality` | Metric cardinality analysis |
-| `gcx telemetry diff` | Before/after cardinality comparison |
-| `gcx telemetry verify-pipeline` | Signal pipeline verification |
-| `gcx telemetry analyze` | Usage pattern analysis |
-| `gcx telemetry queries` | Common queries |
+| Old Command | Description | Status in gcx |
+|-------------|-------------|---------------|
+| `gcx metrics query/range` | PromQL queries (standalone) | **Exists** (`gcx metrics query`, `gcx metrics labels`, `gcx metrics metadata`) |
+| `gcx logs query` | LogQL queries (standalone) | **Exists** (`gcx logs query`, `gcx logs labels`, `gcx logs series`) |
+| `gcx traces query/search` | TraceQL queries (standalone) | **Exists** (`gcx traces search`, `gcx traces get`, `gcx traces tags`, `gcx traces tag-values`, `gcx traces metrics`) |
+| `gcx profiles types/flamegraph/series/label-values` | Pyroscope queries (standalone) | **Exists** (`gcx profiles query`, `gcx profiles labels`, `gcx profiles profile-types`, `gcx profiles series`) |
+| `gcx telemetry status` | Pipeline health and ingest rate | **Missing** |
+| `gcx telemetry cardinality` | Metric cardinality analysis | **Missing** |
+| `gcx telemetry diff` | Before/after cardinality comparison | **Missing** |
+| `gcx telemetry verify-pipeline` | Signal pipeline verification | **Missing** |
+| `gcx telemetry analyze` | Usage pattern analysis | **Missing** |
+| `gcx telemetry queries` | Common queries | **Missing** |
 
-**Note:** gcx has `datasources prometheus/loki/pyroscope/tempo query` which covers the query functionality, but lacks the standalone `metrics/logs/traces` aliases and the entire `telemetry` analysis suite.
+**Note:** gcx now has standalone signal providers (`gcx metrics`, `gcx logs`, `gcx traces`, `gcx profiles`) covering query + adaptive functionality. The `telemetry` analysis suite is still missing.
 
-### Adaptive / Cost Optimization (All Missing)
+### Adaptive / Cost Optimization
 
-| Old Command | Description |
-|-------------|-------------|
-| `gcx adaptive-logs exemptions/patterns` | Log reduction/sampling |
-| `gcx adaptive-metrics rules/recommendations` | Cardinality reduction |
-| `gcx adaptive-traces policies/recommendations/insights/tenants` | Trace sampling |
-| `gcx adaptive-profiles list/sync` | Profile sampling |
-| `gcx recording-rules prometheus/loki` | Recording rules management |
+| Old Command | Description | Status in gcx |
+|-------------|-------------|---------------|
+| `gcx adaptive-logs exemptions/patterns` | Log reduction/sampling | **Exists** (`gcx logs adaptive exemptions` CRUD, `gcx logs adaptive patterns show\|stats`, `gcx logs adaptive segments` CRUD) |
+| `gcx adaptive-metrics rules/recommendations` | Cardinality reduction | **Exists** (`gcx metrics adaptive rules show\|sync`, `gcx metrics adaptive recommendations show\|apply`) |
+| `gcx adaptive-traces policies/recommendations/insights/tenants` | Trace sampling | **Partially exists** (`gcx traces adaptive policies` CRUD, `gcx traces adaptive recommendations show\|apply\|dismiss`; insights/tenants **missing**) |
+| `gcx adaptive-profiles list/sync` | Profile sampling | **Stub** (`gcx profiles adaptive` exists but no subcommands listed) |
+| `gcx recording-rules prometheus/loki` | Recording rules management | **Partially exists** (RecordingRule K8s resource type available via `gcx resources get\|pull\|push`; no dedicated command) |
 
-### Other Observability (All Missing)
+### Other Observability
 
-| Old Command | Description |
-|-------------|-------------|
-| `gcx connections jobs` | Metric endpoint connections |
-| `gcx faro sourcemaps` | RUM source map management |
-| `gcx integrations` | Telemetry integrations CRUD |
-| `gcx app-o11y settings/overrides` | Application Observability |
-| `gcx alloy` | Alloy configuration CRUD |
-| `gcx otlp-endpoint` | Show OTLP endpoint config |
-| `gcx usage get/unused` | Resource usage analysis |
-| `gcx billing metrics` | Billing metrics query |
+| Old Command | Description | Status in gcx |
+|-------------|-------------|---------------|
+| `gcx connections jobs` | Metric endpoint connections | **K8s tier** (Connection, Job resources: `gcx resources get connections\|jobs`) |
+| `gcx faro sourcemaps` | RUM source map management | **Exists** (`gcx faro apps` full CRUD + `apply-sourcemap\|remove-sourcemap\|show-sourcemaps`) |
+| `gcx integrations` | Telemetry integrations CRUD | **Missing** |
+| `gcx app-o11y settings/overrides` | Application Observability | **Exists** (`gcx appo11y settings get\|update`, `gcx appo11y overrides get\|update`) |
+| `gcx alloy` | Alloy configuration CRUD | **Partially exists** (`gcx fleet pipelines\|collectors` CRUD; `gcx setup instrumentation status\|discover\|show\|apply`) |
+| `gcx otlp-endpoint` | Show OTLP endpoint config | **Missing** |
+| `gcx usage get/unused` | Resource usage analysis | **Missing** |
+| `gcx billing metrics` | Billing metrics query | **Missing** |
 
 ---
 
-## 7. Platform & Security (All Missing)
+## 7. Platform & Security
 
-| Old Command | Description |
-|-------------|-------------|
-| `gcx stacks list/get/create/update/delete/pause/resume` | Stack management |
-| `gcx access-policies` CRUD | Cloud access policy management |
-| `gcx credentials` | Bootstrap telemetry credentials |
-| `gcx invites` CRUD | Org invite management |
-| `gcx organizations` | Org settings |
-| `gcx quotas` | Org quota management |
-| `gcx rbac` | Custom RBAC roles CRUD |
-| `gcx oauth` | OAuth SSO get/update |
-| `gcx saml` | SAML SSO get/update |
-| `gcx sso-settings` | SSO provider settings |
-| `gcx scim` | SCIM resource CRUD |
-| `gcx securevalues` | Unified Storage secure values |
-| `gcx cloud-migrations` | Cloud migration CRUD |
-| `gcx stack-regions` | List available regions |
-| `gcx labels` | GOPS labels CRUD |
-| `gcx assistant tunnel/auth/prompt/credentials/agents/rotate` | Assistant/AI management |
+| Old Command | Description | Status in gcx |
+|-------------|-------------|---------------|
+| `gcx stacks list/get/create/update/delete/pause/resume` | Stack management | **Missing** |
+| `gcx access-policies` CRUD | Cloud access policy management | **Missing** |
+| `gcx credentials` | Bootstrap telemetry credentials | **Missing** |
+| `gcx invites` CRUD | Org invite management | **Missing** |
+| `gcx organizations` | Org settings | **Missing** |
+| `gcx quotas` | Org quota management | **Missing** |
+| `gcx rbac` | Custom RBAC roles CRUD | **Missing** |
+| `gcx oauth` | OAuth SSO get/update | **Missing** |
+| `gcx saml` | SAML SSO get/update | **Missing** |
+| `gcx sso-settings` | SSO provider settings | **Missing** |
+| `gcx scim` | SCIM resource CRUD | **Missing** |
+| `gcx securevalues` | Unified Storage secure values | **K8s tier** (SecureValue, Keeper resources: `gcx resources get securevalues\|keepers`) |
+| `gcx cloud-migrations` | Cloud migration CRUD | **Missing** |
+| `gcx stack-regions` | List available regions | **Missing** |
+| `gcx labels` | GOPS labels CRUD | **Missing** |
+| `gcx assistant tunnel/auth/prompt/credentials/agents/rotate` | Assistant/AI management | **Partially exists** (`gcx assistant prompt` with streaming A2A; tunnel/auth/credentials/agents/rotate **missing**) |
 
 ---
 
@@ -277,11 +277,11 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 | SM install-probes | Install command | **Missing** |
 | k6 projects | Full CRUD | Provider: exists |
 | k6 tests | Full CRUD | Provider: exists |
-| k6 schedules | Full CRUD | Provider: exists |
-| k6 env-vars | Full CRUD | Provider: exists |
-| k6 load-zones | Manage zones | Provider: exists |
-| k6 testrun | Run tests (CRD) | Provider: exists |
-| k6 token | Exchange AP token for k6 token | Provider: `auth` command (exists) |
+| k6 schedules | Full CRUD | Provider: exists (`gcx k6 schedules` CRUD) |
+| k6 env-vars | Full CRUD | Provider: exists (`gcx k6 env-vars` CRUD) |
+| k6 load-zones | Manage zones | Provider: exists (`gcx k6 load-zones` CRUD + `allowed-load-zones\|allowed-projects`) |
+| k6 testrun | Run tests (CRD) | Provider: exists (`gcx k6 test-run emit\|status\|runs`) |
+| k6 token | Exchange AP token for k6 token | Provider: `auth` command exists (`gcx k6 auth token`) |
 
 **Assessment:** Well-covered. Minor gaps in SM probes CRUD and install-probes.
 
@@ -289,7 +289,7 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 
 ## 10. Knowledge Graph
 
-**Assessment:** Both old and new have comprehensive KG support. New gcx provider covers all major subcommands (setup, enable, status, datasets, vendors, rules, model-rules, suppressions, relabel-rules, service-dashboard, kpi-display, frontend-rules, env, entities, entity-types, scopes, assertions, search, graph-config, inspect, health, open).
+**Assessment:** Both old and new have comprehensive KG support. New gcx provider covers all major subcommands (setup, enable, status, datasets, vendors, rules, model-rules, suppressions, relabel-rules, service-dashboard, kpi-display, frontend-rules, env, entities, entity-types, scopes, insights, search, graph-config, inspect, health, open).
 
 ---
 
@@ -328,12 +328,21 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 | Multi-path push/pull | Multiple `-p` paths for resource operations |
 | Agent mode | Auto-detected JSON output for LLM tooling |
 | Config layers | System/user/local config hierarchy |
+| `gcx sigil` | Sigil AI observability provider (conversations search/show) |
+| `gcx faro` | Faro Frontend Observability provider (apps CRUD, sourcemaps) |
+| `gcx appo11y` | App Observability settings/overrides management |
+| `gcx setup instrumentation` | Instrumentation discovery and apply (status/discover/show/apply) |
+| `gcx assistant prompt` | Grafana Assistant via A2A protocol (streaming SSE) |
+| `gcx api` | Direct HTTP passthrough to any Grafana API endpoint |
+| `gcx commands` | Machine-readable command catalog with token_cost, llm_hint, resource_types |
+| `gcx help-tree` | Token-efficient command tree for agents |
+| K8s resource types | SecureValue, Connection, Plugin, Repository, Job, Keeper, AnnouncementBanner, SandboxSettings, AlertEnrichment, Query, Preferences, ShortURL |
 
 ---
 
 ## 12. Agentic Discoverability Gap Analysis
 
-The old CLI has a deeply layered system for helping LLM/agent consumers discover capabilities, understand schemas, and choose next actions -- all without needing to read docs. The new gcx has *some* of this, but significant gaps remain.
+The old CLI has a deeply layered system for helping LLM/agent consumers discover capabilities, understand schemas, and choose next actions -- all without needing to read docs. The new gcx now covers the most critical layers (`commands`, `help-tree`, `token_cost`/`llm_hint` annotations) with remaining gaps in agent-card, explain, and permission annotations.
 
 ### What the Old CLI Has (10 Layers of Agentic Metadata)
 
@@ -343,7 +352,7 @@ The old CLI has a deeply layered system for helping LLM/agent consumers discover
 - Includes **`llm_hint`** per command (e.g., `"--since 30m --limit 20"`) -- tells agents how to scope large commands
 - Includes **`required_scope`**, **`required_role`**, **`required_action`** -- agents know permissions before calling
 - Supports `--flat -o json` for machine parsing
-- **gcx status: MISSING**
+- **gcx status: EXISTS** (`gcx commands --flat -o json`; includes `resource_types` section with operation hints; supports `--validate` for live checks against a Grafana instance)
 
 #### Layer 2: `gcx help-tree` -- Token-Efficient Command Tree
 - Compact indented text tree, 2 spaces per level
@@ -351,7 +360,7 @@ The old CLI has a deeply layered system for helping LLM/agent consumers discover
 - Detects enum patterns in flags (e.g., `ignore|fail|abort`)
 - Shows `# Tips` and `# hint:` annotations inline
 - Supports `--depth` to limit nesting and subtree filtering
-- **gcx status: MISSING**
+- **gcx status: EXISTS** (`gcx help-tree`)
 
 #### Layer 3: `gcx agent-card` -- A2A Agent Card
 - Machine-readable JSON describing: name, version, capabilities (dry_run, batch_input, stdin_pipe, json_output), skills (resource groups with actions), authentication schemes (env vars, flags), output modes
@@ -440,18 +449,18 @@ Old CLI annotates every command with structured metadata:
 
 | Capability | Old CLI | New gcx | Gap Severity |
 |------------|---------|---------|-------------|
-| Command catalog with metadata | `commands` (token_cost, llm_hint, permissions) | **Missing** | **HIGH** |
-| Token-efficient tree | `help-tree` (depth, subtree, tips) | **Missing** | **HIGH** |
+| Command catalog with metadata | `commands` (token_cost, llm_hint, permissions) | **Exists** (`gcx commands --flat -o json` with token_cost, llm_hint, resource_types) | **CLOSED** |
+| Token-efficient tree | `help-tree` (depth, subtree, tips) | **Exists** (`gcx help-tree`) | **CLOSED** |
 | A2A agent card | `agent-card` (skills, auth, capabilities) | **Missing** | **MEDIUM** |
 | Per-resource schema | `<resource> schema` (auto-generated from Go types) | `resources schemas` (centralized, server-fetched) | **LOW** (different approach) |
 | Per-resource example | `<resource> example` | `resources examples` (centralized) | **LOW** (different approach) |
 | Field-level docs | `explain resource.field.path` | **Missing** | **MEDIUM** |
-| Token cost annotation | Every command annotated | **Missing** | **HIGH** |
-| LLM hint annotation | Large commands hint scoping args | **Missing** | **HIGH** |
+| Token cost annotation | Every command annotated | **Exists** (visible in `gcx commands` output, e.g. assistant prompt has `token_cost: "large"`) | **CLOSED** |
+| LLM hint annotation | Large commands hint scoping args | **Exists** (visible in `gcx commands` output, e.g. `llm_hint` on assistant prompt) | **CLOSED** |
 | Permission annotations | required_scope/role/action on commands | **Missing** | **MEDIUM** |
 | Permission-enriched errors | 403 -> "add scope X to your policy" | Generic structured errors only | **MEDIUM** |
 | Bundled LLM skills | `skills install` for Claude/Cursor/etc | External only (not in binary) | **LOW** |
-| Consistency enforcement | Test: all cmds have token_cost, large have llm_hint | **Missing** | **HIGH** |
+| Consistency enforcement | Test: all cmds have token_cost, large have llm_hint | **Partially exists** (annotations supported; enforcement test coverage unknown) | **MEDIUM** |
 | Field discovery (`--json ?`) | **Missing** | Exists | Old CLI gap |
 | Agent mode auto-detect | **Missing** | Exists | Old CLI gap |
 | Structured error JSON | Basic error strings | `DetailedError` with suggestions | Old CLI gap |
@@ -459,9 +468,9 @@ Old CLI annotates every command with structured metadata:
 ### Recommended Priority for Agentic Features
 
 **P0 -- Must have for agent usability:**
-1. **Command annotations**: `token_cost` + `llm_hint` on all commands -- this is the single most impactful feature for agents choosing what to call
-2. **Consistency test**: Enforce annotations exist (prevents drift)
-3. **`commands` or `help-tree`**: At least one machine-readable command catalog
+1. ~~**Command annotations**: `token_cost` + `llm_hint` on all commands~~ -- **DONE** (supported in `gcx commands` output)
+2. **Consistency test**: Enforce annotations exist on all commands (prevents drift)
+3. ~~**`commands` or `help-tree`**: At least one machine-readable command catalog~~ -- **DONE** (both `gcx commands` and `gcx help-tree` exist)
 
 **P1 -- High value:**
 4. **Permission annotations** on commands with error enrichment
@@ -488,8 +497,8 @@ Old CLI annotates every command with structured metadata:
 1. **Alerting**: contact-points, notification-policies, mute-timings, templates
 2. **`status`** -- Unified health view (firing alerts + incidents + OnCall)
 3. **`diff`** -- Local vs remote comparison
-4. **Adaptive metrics/logs/traces** -- Cost optimization
-5. **Standalone `metrics/logs/traces` query aliases**
+4. ~~**Adaptive metrics/logs/traces**~~ -- **DONE** (`gcx metrics adaptive`, `gcx logs adaptive`, `gcx traces adaptive`)
+5. ~~**Standalone `metrics/logs/traces` query aliases**~~ -- **DONE** (`gcx metrics query`, `gcx logs query`, `gcx traces search`, `gcx profiles query`)
 6. **`--upsert` / `--if-not-exists`** -- Idempotent operations
 7. **`--jq` filter** -- Output post-processing
 8. **Datasource CRUD** (create/update/delete)
@@ -499,22 +508,22 @@ Old CLI annotates every command with structured metadata:
 ### P2 -- Medium Priority (important but less frequent)
 1. Platform: `rbac`, `oauth`, `saml`, `sso-settings`, `scim`
 2. Resource: `annotations`, `teams`, `users`, `serviceaccounts`, `plugins`
-3. Observability: `recording-rules`, `connections`, `faro`, `integrations`
+3. Observability: `integrations` (note: `recording-rules` via K8s tier, `connections` via K8s tier, `faro` **done**)
 4. `telemetry` analysis suite (cardinality, pipeline verification)
 5. `billing metrics`
 6. `audit` (cloud-side resource scanning)
 7. Session management (temporary scoped sessions)
 8. Verb-first shortcuts (`get/create/update/delete`)
 9. CSV and JSONPath output formats
-10. Shell completion
+10. ~~Shell completion~~ -- **DONE**
 
 ### P3 -- Low Priority (nice-to-have)
-1. `library-panels`, `playlists`, `snapshots`, `public-dashboards`, `reports`
-2. `query-history`, `correlations`, `silences`
-3. `cloud-migrations`, `securevalues`, `labels`
-4. `assistant` tunnel/auth/agents
-5. `app-o11y`, `alloy`, `otlp-endpoint`
-6. `agent-card`, `commands`, `help-tree`, `explain`
+1. `library-panels`, `public-dashboards`, `reports` (note: `playlists`, `snapshots` available via K8s tier)
+2. `correlations`, `silences`
+3. `cloud-migrations`, `labels` (note: `securevalues` available via K8s tier)
+4. `assistant` tunnel/auth/agents (note: `assistant prompt` **done**)
+5. `otlp-endpoint` (note: `app-o11y` **done**, `alloy` partially covered by fleet/setup)
+6. `agent-card`, `explain` (note: `commands` and `help-tree` **done**)
 7. Self-observability (OTLP tracing)
 8. Audit logging
 9. `usage get/unused`

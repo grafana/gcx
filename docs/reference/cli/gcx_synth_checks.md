@@ -22,11 +22,11 @@ Manage Synthetic Monitoring checks.
 ### SEE ALSO
 
 * [gcx synth](gcx_synth.md)	 - Manage Grafana Synthetic Monitoring checks and probes
+* [gcx synth checks create](gcx_synth_checks_create.md)	 - Create a Synthetic Monitoring check from a file.
 * [gcx synth checks delete](gcx_synth_checks_delete.md)	 - Delete Synthetic Monitoring checks.
 * [gcx synth checks get](gcx_synth_checks_get.md)	 - Get a single Synthetic Monitoring check.
 * [gcx synth checks list](gcx_synth_checks_list.md)	 - List Synthetic Monitoring checks.
-* [gcx synth checks pull](gcx_synth_checks_pull.md)	 - Pull Synthetic Monitoring checks to disk.
-* [gcx synth checks push](gcx_synth_checks_push.md)	 - Push Synthetic Monitoring checks from files.
 * [gcx synth checks status](gcx_synth_checks_status.md)	 - Show pass/fail status of Synthetic Monitoring checks.
 * [gcx synth checks timeline](gcx_synth_checks_timeline.md)	 - Render probe_success over time as a terminal line chart.
+* [gcx synth checks update](gcx_synth_checks_update.md)	 - Update a Synthetic Monitoring check from a file.
 

@@ -10,6 +10,7 @@ gcx fleet pipelines create [flags]
 
 ```
   -f, --filename string   File containing the pipeline manifest (use - for stdin)
+      --force             Override protection guard for instrumentation-managed pipelines
   -h, --help              help for create
 ```
 

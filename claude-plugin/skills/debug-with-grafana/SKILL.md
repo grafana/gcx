@@ -63,17 +63,17 @@ and data is flowing. This avoids wasting time on empty results.
 
 ```bash
 # Check that the target service is being scraped
-gcx datasources prometheus targets -d <prom-uid> -o json
+gcx metrics targets -d <prom-uid> -o json
 
 # Verify the relevant job label exists
-gcx datasources prometheus labels -d <prom-uid> -l job -o json
+gcx metrics labels -d <prom-uid> -l job -o json
 
 # For Loki: confirm log streams exist for the service
-gcx datasources loki labels -d <loki-uid> -l job -o json
-gcx datasources loki series -d <loki-uid> -M '{job="<service-name>"}' -o json
+gcx logs labels -d <loki-uid> -l job -o json
+gcx logs series -d <loki-uid> -M '{job="<service-name>"}' -o json
 
 # Spot-check: confirm uptime metrics are present for the service
-gcx datasources prometheus query <prom-uid> 'up{job="<service-name>"}' -o json
+gcx metrics query <prom-uid> 'up{job="<service-name>"}' -o json
 ```
 
 **Expected output shape:**
@@ -100,22 +100,22 @@ whether an error spike exists and when it began.
 
 ```bash
 # HTTP 5xx error rate (range query for trend)
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'rate(http_requests_total{job="<service-name>",status=~"5.."}[5m])' \
   --from now-1h --to now --step 1m -o json
 
 # Visualize the trend
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'rate(http_requests_total{job="<service-name>",status=~"5.."}[5m])' \
   --from now-1h --to now --step 1m -o graph
 
 # Error ratio (errors / total)
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'rate(http_requests_total{job="<service-name>",status=~"5.."}[5m]) / rate(http_requests_total{job="<service-name>"}[5m])' \
   --from now-1h --to now --step 1m -o json
 
 # Break down by status code to identify 500 vs 503 vs 504
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'sum by(status) (rate(http_requests_total{job="<service-name>"}[5m]))' \
   --from now-1h --to now --step 1m -o json
 ```
@@ -146,22 +146,22 @@ or failing fast (error issue). High latency often precedes error spikes.
 
 ```bash
 # P50/P95/P99 latency from histogram
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="<service-name>"}[5m]))' \
   --from now-1h --to now --step 1m -o json
 
 # Visualize P95 latency trend
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="<service-name>"}[5m]))' \
   --from now-1h --to now --step 1m -o graph
 
 # Average latency as a simpler signal if histograms are unavailable
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'rate(http_request_duration_seconds_sum{job="<service-name>"}[5m]) / rate(http_request_duration_seconds_count{job="<service-name>"}[5m])' \
   --from now-1h --to now --step 1m -o json
 
 # Latency by endpoint (if label available)
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'histogram_quantile(0.95, sum by(le, handler) (rate(http_request_duration_seconds_bucket{job="<service-name>"}[5m])))' \
   --from now-1h --to now --step 1m -o json
 ```
@@ -193,22 +193,22 @@ metrics cannot.
 
 ```bash
 # Error logs for the service in the incident window
-gcx datasources loki query <loki-uid> \
+gcx logs query <loki-uid> \
   '{job="<service-name>"} |= "error"' \
   --from now-1h --to now -o json
 
 # JSON-parsed logs with level filter (if structured logging)
-gcx datasources loki query <loki-uid> \
+gcx logs query <loki-uid> \
   '{job="<service-name>"} | json | level="error"' \
   --from now-1h --to now -o json
 
 # Error rate from logs (count over time)
-gcx datasources loki query <loki-uid> \
+gcx logs query <loki-uid> \
   'count_over_time({job="<service-name>"} |= "error" [5m])' \
   --from now-1h --to now --step 1m -o json
 
 # Grep for specific error patterns
-gcx datasources loki query <loki-uid> \
+gcx logs query <loki-uid> \
   '{job="<service-name>"} |~ "timeout|connection refused|OOM|panic"' \
   --from now-1h --to now -o json
 ```
@@ -270,7 +270,7 @@ gcx resources get dashboards/<dashboard-uid> -ojson | \
 # Capture a full dashboard snapshot with variables matching the incident context
 # (requires grafana-image-renderer plugin on the Grafana instance)
 gcx dashboards snapshot <dashboard-uid> --output-dir ./debug-snapshots \
-  --var cluster=<cluster> --var job=<service-name> --window 1h
+  --var cluster=<cluster> --var job=<service-name> --since 1h
 
 # Capture the incident time window explicitly
 gcx dashboards snapshot <dashboard-uid> --from now-1h --to now \
@@ -346,25 +346,25 @@ gcx datasources list -t prometheus -o json
 gcx datasources list -t loki -o json
 
 # Step 2: Confirm service is being scraped
-gcx datasources prometheus query <prom-uid> 'up{job="api"}' -o json
+gcx metrics query <prom-uid> 'up{job="api"}' -o json
 
 # Step 3: Observe error rate over last 2 hours (wider window to see the spike start)
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'rate(http_requests_total{job="api",status=~"5.."}[5m])' \
   --from now-2h --to now --step 1m -o graph
 
 # Identify which status codes are elevated
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'sum by(status) (rate(http_requests_total{job="api"}[5m]))' \
   --from now-2h --to now --step 1m -o json
 
 # Step 4: Check if latency rose at the same time
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="api"}[5m]))' \
   --from now-2h --to now --step 1m -o graph
 
 # Step 5: Get error logs in the spike window
-gcx datasources loki query <loki-uid> \
+gcx logs query <loki-uid> \
   '{job="api"} |= "error"' \
   --from now-2h --to now -o json
 
@@ -404,30 +404,30 @@ increasing from baseline. Match this to log timestamps in Step 5.
 gcx datasources list -t prometheus -o json
 
 # Step 2: Confirm service health (latency without errors suggests slow dependency)
-gcx datasources prometheus query <prom-uid> 'up{job="api"}' -o json
+gcx metrics query <prom-uid> 'up{job="api"}' -o json
 
 # Step 3: Error rate (confirm it's not elevated yet)
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'rate(http_requests_total{job="api",status=~"5.."}[5m])' \
   --from now-1h --to now --step 1m -o json
 
 # Step 4: P95 latency is the primary signal — visualize trend
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="api"}[5m]))' \
   --from now-2h --to now --step 1m -o graph
 
 # Break down by endpoint to isolate which routes are slow
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'histogram_quantile(0.95, sum by(le, handler) (rate(http_request_duration_seconds_bucket{job="api"}[5m])))' \
   --from now-1h --to now --step 1m -o json
 
 # Step 5: Check for timeout log patterns suggesting upstream dependency issue
-gcx datasources loki query <loki-uid> \
+gcx logs query <loki-uid> \
   '{job="api"} |~ "timeout|slow|waiting"' \
   --from now-2h --to now -o json
 
 # Check database or downstream service latency if metrics available
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'rate(db_query_duration_seconds_sum{job="api"}[5m]) / rate(db_query_duration_seconds_count{job="api"}[5m])' \
   --from now-2h --to now --step 1m -o json
 ```
@@ -465,32 +465,32 @@ handler-specific issue. Compare latency onset time with log timestamps.
 gcx datasources list -o json
 
 # Step 2: Check whether the service is being scraped at all
-gcx datasources prometheus targets -d <prom-uid> -o json | \
+gcx metrics targets -d <prom-uid> -o json | \
   jq '.[] | select(.labels.job == "api")'
 
 # Confirm up metric — value "0" means scrape failure, absent means not scraped
-gcx datasources prometheus query <prom-uid> 'up{job="api"}' -o json
+gcx metrics query <prom-uid> 'up{job="api"}' -o json
 
 # Check if the job label exists at all (absence = service was never registered)
-gcx datasources prometheus labels -d <prom-uid> -l job -o json
+gcx metrics labels -d <prom-uid> -l job -o json
 
 # Step 3: Without error rate data, check for recent data gaps
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'absent(up{job="api"})' \
   --from now-1h --to now --step 1m -o json
 
 # Step 4: Query latency from any recent data before the outage
-gcx datasources prometheus query <prom-uid> \
+gcx metrics query <prom-uid> \
   'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="api"}[5m]))' \
   --from now-3h --to now --step 5m -o graph
 
 # Step 5: Check Loki for last known logs before data disappeared
-gcx datasources loki query <loki-uid> \
+gcx logs query <loki-uid> \
   '{job="api"}' \
   --from now-3h --to now -o json
 
 # Crash or OOM signals in logs
-gcx datasources loki query <loki-uid> \
+gcx logs query <loki-uid> \
   '{job="api"} |~ "panic|OOM|killed|crashed|SIGTERM"' \
   --from now-3h --to now -o json
 

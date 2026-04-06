@@ -20,8 +20,8 @@ gcx synth checks timeline ID [flags]
   # Render timeline for a check over the past 6 hours (default).
   gcx synth checks timeline 42
 
-  # Custom time window.
-  gcx synth checks timeline 42 --window 24h
+  # Custom duration.
+  gcx synth checks timeline 42 --since 24h
 
   # Explicit time range.
   gcx synth checks timeline 42 --from now-24h --to now
@@ -41,8 +41,8 @@ gcx synth checks timeline ID [flags]
   -h, --help                    help for timeline
       --json string             Comma-separated list of fields to include in JSON output, or '?' to discover available fields
   -o, --output string           Output format. One of: graph, json, table, yaml (default "graph")
+      --since string            Duration before now to display (e.g. 1h, 6h, 24h, 7d) (default "6h")
       --to string               End of the time range (e.g. now, RFC3339, Unix timestamp)
-      --window string           Time window to display (e.g. 1h, 6h, 24h, 7d) (default "6h")
 ```
 
 ### Options inherited from parent commands

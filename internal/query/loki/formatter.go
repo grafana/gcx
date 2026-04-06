@@ -104,6 +104,68 @@ func FormatSeriesTable(w io.Writer, resp *SeriesResponse) error {
 	return tw.Flush()
 }
 
+// FormatMetricQueryTable formats a MetricQueryResponse as a table with TIMESTAMP, VALUE, and label columns.
+func FormatMetricQueryTable(w io.Writer, resp *MetricQueryResponse) error {
+	if len(resp.Data.Result) == 0 {
+		fmt.Fprintln(w, "No data")
+		return nil
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+
+	labelNames := collectMetricLabelNames(resp.Data.Result)
+
+	header := make([]string, 0, len(labelNames)+2)
+	header = append(header, "TIMESTAMP", "VALUE")
+	for _, name := range labelNames {
+		header = append(header, strings.ToUpper(name))
+	}
+	fmt.Fprintln(tw, strings.Join(header, "\t"))
+
+	for _, sample := range resp.Data.Result {
+		if len(sample.Values) > 0 {
+			for _, v := range sample.Values {
+				if len(v) < 2 {
+					continue
+				}
+				row := make([]string, 0, len(labelNames)+2)
+				row = append(row, fmt.Sprintf("%v", v[0]), fmt.Sprintf("%v", v[1]))
+				for _, name := range labelNames {
+					row = append(row, sample.Metric[name])
+				}
+				fmt.Fprintln(tw, strings.Join(row, "\t"))
+			}
+		} else if len(sample.Value) >= 2 {
+			row := make([]string, 0, len(labelNames)+2)
+			row = append(row, fmt.Sprintf("%v", sample.Value[0]), fmt.Sprintf("%v", sample.Value[1]))
+			for _, name := range labelNames {
+				row = append(row, sample.Metric[name])
+			}
+			fmt.Fprintln(tw, strings.Join(row, "\t"))
+		}
+	}
+
+	return tw.Flush()
+}
+
+func collectMetricLabelNames(samples []MetricQuerySample) []string {
+	nameSet := make(map[string]struct{})
+	for _, s := range samples {
+		for name := range s.Metric {
+			if !isHiddenLabel(name) {
+				nameSet[name] = struct{}{}
+			}
+		}
+	}
+
+	names := make([]string, 0, len(nameSet))
+	for name := range nameSet {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
 func collectStreamLabelNames(streams []StreamEntry) []string {
 	nameSet := make(map[string]struct{})
 	for _, stream := range streams {

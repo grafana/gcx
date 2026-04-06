@@ -14,6 +14,8 @@ import (
 	"k8s.io/client-go/rest"
 )
 
+const maxResponseBytes = 50 << 20 // 50 MB
+
 // Client is a client for executing Prometheus queries via Grafana's datasource API.
 type Client struct {
 	restConfig config.NamespacedRESTConfig
@@ -88,7 +90,7 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -129,7 +131,7 @@ func (c *Client) Labels(ctx context.Context, datasourceUID string) (*LabelsRespo
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -161,7 +163,7 @@ func (c *Client) LabelValues(ctx context.Context, datasourceUID, labelName strin
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -179,8 +181,6 @@ func (c *Client) LabelValues(ctx context.Context, datasourceUID, labelName strin
 }
 
 // Metadata returns metric metadata.
-//
-//nolint:dupl
 func (c *Client) Metadata(ctx context.Context, datasourceUID string, metric string) (*MetadataResponse, error) {
 	apiPath := c.buildMetadataPath(datasourceUID)
 
@@ -201,7 +201,7 @@ func (c *Client) Metadata(ctx context.Context, datasourceUID string, metric stri
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -218,67 +218,20 @@ func (c *Client) Metadata(ctx context.Context, datasourceUID string, metric stri
 	return &result, nil
 }
 
-// Targets returns scrape targets.
-//
-//nolint:dupl
-func (c *Client) Targets(ctx context.Context, datasourceUID string, state string) (*TargetsResponse, error) {
-	apiPath := c.buildTargetsPath(datasourceUID)
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.restConfig.Host+apiPath, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	if state != "" {
-		q := httpReq.URL.Query()
-		q.Set("state", state)
-		httpReq.URL.RawQuery = q.Encode()
-	}
-
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get targets: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("targets query failed with status %d: %s", resp.StatusCode, string(respBody))
-	}
-
-	var result TargetsResponse
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	return &result, nil
-}
-
 func (c *Client) buildQueryPath() string {
 	return fmt.Sprintf("/apis/query.grafana.app/v0alpha1/namespaces/%s/query",
 		c.restConfig.Namespace)
 }
 
 func (c *Client) buildLabelsPath(datasourceUID string) string {
-	return fmt.Sprintf("/apis/prometheus.datasource.grafana.app/v0alpha1/namespaces/%s/datasources/%s/resource/api/v1/labels",
-		c.restConfig.Namespace, datasourceUID)
+	return fmt.Sprintf("/api/datasources/uid/%s/resources/api/v1/labels", url.PathEscape(datasourceUID))
 }
 
 func (c *Client) buildLabelValuesPath(datasourceUID, labelName string) string {
-	return fmt.Sprintf("/apis/prometheus.datasource.grafana.app/v0alpha1/namespaces/%s/datasources/%s/resource/api/v1/label/%s/values",
-		c.restConfig.Namespace, datasourceUID, url.PathEscape(labelName))
+	return fmt.Sprintf("/api/datasources/uid/%s/resources/api/v1/label/%s/values",
+		url.PathEscape(datasourceUID), url.PathEscape(labelName))
 }
 
 func (c *Client) buildMetadataPath(datasourceUID string) string {
-	return fmt.Sprintf("/apis/prometheus.datasource.grafana.app/v0alpha1/namespaces/%s/datasources/%s/resource/api/v1/metadata",
-		c.restConfig.Namespace, datasourceUID)
-}
-
-func (c *Client) buildTargetsPath(datasourceUID string) string {
-	return fmt.Sprintf("/apis/prometheus.datasource.grafana.app/v0alpha1/namespaces/%s/datasources/%s/resource/api/v1/targets",
-		c.restConfig.Namespace, datasourceUID)
+	return fmt.Sprintf("/api/datasources/uid/%s/resources/api/v1/metadata", url.PathEscape(datasourceUID))
 }
