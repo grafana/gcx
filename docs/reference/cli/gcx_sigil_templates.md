@@ -1,11 +1,11 @@
-## gcx sigil evaluators
+## gcx sigil templates
 
-Manage evaluator definitions (LLM judge, regex, heuristic).
+Browse reusable evaluator blueprints (global and tenant-scoped).
 
 ### Options
 
 ```
-  -h, --help   help for evaluators
+  -h, --help   help for templates
 ```
 
 ### Options inherited from parent commands
@@ -22,8 +22,6 @@ Manage evaluator definitions (LLM judge, regex, heuristic).
 ### SEE ALSO
 
 * [gcx sigil](gcx_sigil.md)	 - Manage Sigil AI observability resources
-* [gcx sigil evaluators create](gcx_sigil_evaluators_create.md)	 - Create or update an evaluator from a file.
-* [gcx sigil evaluators delete](gcx_sigil_evaluators_delete.md)	 - Delete evaluators.
-* [gcx sigil evaluators show](gcx_sigil_evaluators_show.md)	 - Show evaluators or a single evaluator detail.
-* [gcx sigil evaluators test](gcx_sigil_evaluators_test.md)	 - Run an evaluator against a generation without persisting results.
+* [gcx sigil templates show](gcx_sigil_templates_show.md)	 - Show eval templates or a single template detail.
+* [gcx sigil templates versions](gcx_sigil_templates_versions.md)	 - List version history for an eval template.
 

@@ -1,6 +1,8 @@
 package eval
 
-import "time"
+import (
+	"time"
+)
 
 //nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type EvaluatorDefinition struct {
@@ -69,3 +71,66 @@ func (r RuleDefinition) GetResourceName() string { return r.RuleID }
 
 // SetResourceName implements adapter.ResourceIdentity.
 func (r *RuleDefinition) SetResourceName(name string) { r.RuleID = name }
+
+// TemplateDefinition is a list item from GET /eval/templates.
+type TemplateDefinition struct {
+	TemplateID    string     `json:"template_id"`
+	Scope         string     `json:"scope"` // global, tenant
+	Kind          string     `json:"kind"`
+	LatestVersion string     `json:"latest_version,omitempty"`
+	Description   string     `json:"description,omitempty"`
+	TenantID      string     `json:"tenant_id,omitempty"`
+	CreatedBy     string     `json:"created_by,omitempty"`
+	UpdatedBy     string     `json:"updated_by,omitempty"`
+	DeletedAt     *time.Time `json:"deleted_at,omitempty"`
+	CreatedAt     time.Time  `json:"created_at,omitzero"`
+	UpdatedAt     time.Time  `json:"updated_at,omitzero"`
+}
+
+// TemplateDetail is the full response from GET /eval/templates/{id}.
+// Uses map[string]any because it includes nested config, output_keys, and versions.
+type TemplateDetail map[string]any
+
+// TemplateVersion is a version item from GET /eval/templates/{id}/versions.
+type TemplateVersion struct {
+	TemplateID string         `json:"template_id"`
+	Version    string         `json:"version"`
+	Config     map[string]any `json:"config,omitempty"`
+	OutputKeys []OutputKey    `json:"output_keys,omitempty"`
+	Changelog  string         `json:"changelog,omitempty"`
+	CreatedBy  string         `json:"created_by,omitempty"`
+	UpdatedBy  string         `json:"updated_by,omitempty"`
+	CreatedAt  time.Time      `json:"created_at,omitzero"`
+	UpdatedAt  time.Time      `json:"updated_at,omitzero"`
+}
+
+// EvalTestRequest is the request body for POST /eval:test.
+type EvalTestRequest struct {
+	Kind           string         `json:"kind"`
+	Config         map[string]any `json:"config"`
+	OutputKeys     []OutputKey    `json:"output_keys"`
+	GenerationID   string         `json:"generation_id,omitempty"`
+	GenerationData any            `json:"generation_data,omitempty"`
+	ConversationID string         `json:"conversation_id,omitempty"`
+	From           *time.Time     `json:"from,omitempty"`
+	To             *time.Time     `json:"to,omitempty"`
+	At             *time.Time     `json:"at,omitempty"`
+}
+
+// EvalTestResponse is the response from POST /eval:test.
+type EvalTestResponse struct {
+	GenerationID    string          `json:"generation_id"`
+	ConversationID  string          `json:"conversation_id"`
+	Scores          []EvalTestScore `json:"scores"`
+	ExecutionTimeMs int64           `json:"execution_time_ms"`
+}
+
+// EvalTestScore is a single score returned by eval:test.
+type EvalTestScore struct {
+	Key         string         `json:"key"`
+	Type        string         `json:"type"`
+	Value       any            `json:"value"`
+	Passed      *bool          `json:"passed,omitempty"`
+	Explanation string         `json:"explanation,omitempty"`
+	Metadata    map[string]any `json:"metadata,omitempty"`
+}

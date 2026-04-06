@@ -1,11 +1,17 @@
-## gcx sigil rules
+## gcx sigil templates versions
 
-Manage rules that route generations to evaluators.
+List version history for an eval template.
+
+```
+gcx sigil templates versions <template-id> [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for rules
+  -h, --help            help for versions
+      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+  -o, --output string   Output format. One of: json, table, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -21,9 +27,5 @@ Manage rules that route generations to evaluators.
 
 ### SEE ALSO
 
-* [gcx sigil](gcx_sigil.md)	 - Manage Sigil AI observability resources
-* [gcx sigil rules create](gcx_sigil_rules_create.md)	 - Create an evaluation rule from a file.
-* [gcx sigil rules delete](gcx_sigil_rules_delete.md)	 - Delete evaluation rules.
-* [gcx sigil rules show](gcx_sigil_rules_show.md)	 - Show evaluation rules or a single rule detail.
-* [gcx sigil rules update](gcx_sigil_rules_update.md)	 - Update an evaluation rule from a file.
+* [gcx sigil templates](gcx_sigil_templates.md)	 - Browse reusable evaluator blueprints (global and tenant-scoped).
 

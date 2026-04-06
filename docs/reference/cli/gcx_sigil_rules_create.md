@@ -1,22 +1,31 @@
-## gcx sigil rules show
+## gcx sigil rules create
 
-Show evaluation rules or a single rule detail.
-
-### Synopsis
-
-Show evaluation rules. Without an ID, lists all rules.
-With an ID, shows the full rule definition.
+Create an evaluation rule from a file.
 
 ```
-gcx sigil rules show [rule-id] [flags]
+gcx sigil rules create [flags]
+```
+
+### Examples
+
+```
+  # Create a rule from a YAML file.
+  gcx sigil rules create -f rule.yaml
+
+  # Create from stdin.
+  gcx sigil rules create -f -
+
+  # Create and output as YAML.
+  gcx sigil rules create -f rule.json -o yaml
 ```
 
 ### Options
 
 ```
-  -h, --help            help for show
-      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
+  -f, --filename string   File containing the rule definition (use - for stdin)
+  -h, --help              help for create
+      --json string       Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+  -o, --output string     Output format. One of: json, yaml (default "json")
 ```
 
 ### Options inherited from parent commands

@@ -176,7 +176,7 @@ internal/
 │   ├── oncall/     OnCall provider (schedules, integrations, escalation chains)
 │   ├── appo11y/    App Observability provider (overrides, settings — singleton resources)
 │   ├── profiles/   Profiles signal provider (Pyroscope queries + adaptive stub)
-│   ├── sigil/      Sigil AI observability provider (conversations, agents, evaluators, rules — via grafana-sigil-app plugin API)
+│   ├── sigil/      Sigil AI observability provider (conversations, agents, evaluators, rules, templates — via grafana-sigil-app plugin API)
 │   ├── slo/        SLO provider (definitions, reports)
 │   ├── synth/      Synthetic Monitoring provider (checks, probes)
 │   └── traces/     Traces signal provider (Tempo queries + Adaptive Traces commands)

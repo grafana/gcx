@@ -32,5 +32,5 @@ gcx sigil evaluators show [evaluator-id] [flags]
 
 ### SEE ALSO
 
-* [gcx sigil evaluators](gcx_sigil_evaluators.md)	 - Query Sigil evaluators.
+* [gcx sigil evaluators](gcx_sigil_evaluators.md)	 - Manage evaluator definitions (LLM judge, regex, heuristic).
 

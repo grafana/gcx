@@ -7,6 +7,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/sigil/conversations"
 	"github.com/grafana/gcx/internal/providers/sigil/eval/evaluators"
 	"github.com/grafana/gcx/internal/providers/sigil/eval/rules"
+	"github.com/grafana/gcx/internal/providers/sigil/eval/templates"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 )
@@ -59,16 +60,22 @@ func (p *SigilProvider) Commands() []*cobra.Command {
 	evaluatorsCmd := evaluators.Commands(loader)
 	evaluatorsCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "low",
-		agent.AnnotationLLMHint:   `gcx sigil evaluators show -o json`,
+		agent.AnnotationLLMHint:   `gcx sigil evaluators show -o json; gcx sigil evaluators show <id> -o yaml; gcx sigil evaluators create -f def.yaml -o json; gcx sigil evaluators test -e <id> -g <gen-id> -o json; gcx sigil evaluators delete <id> --force`,
 	}
 
 	rulesCmd := rules.Commands(loader)
 	rulesCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "low",
-		agent.AnnotationLLMHint:   `gcx sigil rules show -o json`,
+		agent.AnnotationLLMHint:   `gcx sigil rules show -o json; gcx sigil rules show <id> -o yaml; gcx sigil rules create -f rule.yaml -o json; gcx sigil rules update <id> -f patch.yaml -o json; gcx sigil rules delete <id> --force`,
 	}
 
-	sigilCmd.AddCommand(evaluatorsCmd, rulesCmd)
+	templatesCmd := templates.Commands(loader)
+	templatesCmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "low",
+		agent.AnnotationLLMHint:   `gcx sigil templates show -o json; gcx sigil templates show <id> -o yaml; gcx sigil templates versions <id> -o json; gcx sigil templates show --scope global -o json`,
+	}
+
+	sigilCmd.AddCommand(evaluatorsCmd, rulesCmd, templatesCmd)
 
 	return []*cobra.Command{sigilCmd}
 }

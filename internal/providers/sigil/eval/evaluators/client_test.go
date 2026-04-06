@@ -87,3 +87,71 @@ func TestClient_Get_NotFound(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "404")
 }
+
+func TestClient_Create(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Contains(t, r.URL.Path, "/eval/evaluators")
+
+		var def eval.EvaluatorDefinition
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&def))
+		assert.Equal(t, "new-eval", def.EvaluatorID)
+
+		w.WriteHeader(http.StatusCreated)
+		writeJSON(w, eval.EvaluatorDefinition{
+			EvaluatorID: "new-eval",
+			Version:     "1.0",
+			Kind:        "llm_judge",
+		})
+	}))
+
+	created, err := client.Create(context.Background(), &eval.EvaluatorDefinition{
+		EvaluatorID: "new-eval",
+		Kind:        "llm_judge",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "new-eval", created.EvaluatorID)
+	assert.Equal(t, "1.0", created.Version)
+}
+
+func TestClient_Delete(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodDelete, r.Method)
+		assert.Contains(t, r.URL.Path, "/eval/evaluators/eval-1")
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	err := client.Delete(context.Background(), "eval-1")
+	require.NoError(t, err)
+}
+
+func TestClient_RunTest(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Contains(t, r.URL.Path, "/eval:test")
+
+		var req eval.EvalTestRequest
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		assert.Equal(t, "llm_judge", req.Kind)
+		assert.Equal(t, "gen-1", req.GenerationID)
+
+		passed := true
+		writeJSON(w, eval.EvalTestResponse{
+			GenerationID:    "gen-1",
+			ExecutionTimeMs: 150,
+			Scores: []eval.EvalTestScore{
+				{Key: "quality", Type: "number", Value: 0.9, Passed: &passed},
+			},
+		})
+	}))
+
+	resp, err := client.RunTest(context.Background(), &eval.EvalTestRequest{
+		Kind:         "llm_judge",
+		GenerationID: "gen-1",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "gen-1", resp.GenerationID)
+	assert.Equal(t, int64(150), resp.ExecutionTimeMs)
+	require.Len(t, resp.Scores, 1)
+	assert.Equal(t, "quality", resp.Scores[0].Key)
+}

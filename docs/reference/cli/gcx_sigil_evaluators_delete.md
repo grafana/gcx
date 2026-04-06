@@ -1,11 +1,16 @@
-## gcx sigil rules
+## gcx sigil evaluators delete
 
-Manage rules that route generations to evaluators.
+Delete evaluators.
+
+```
+gcx sigil evaluators delete ID... [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for rules
+  -f, --force   Skip confirmation prompt
+  -h, --help    help for delete
 ```
 
 ### Options inherited from parent commands
@@ -21,9 +26,5 @@ Manage rules that route generations to evaluators.
 
 ### SEE ALSO
 
-* [gcx sigil](gcx_sigil.md)	 - Manage Sigil AI observability resources
-* [gcx sigil rules create](gcx_sigil_rules_create.md)	 - Create an evaluation rule from a file.
-* [gcx sigil rules delete](gcx_sigil_rules_delete.md)	 - Delete evaluation rules.
-* [gcx sigil rules show](gcx_sigil_rules_show.md)	 - Show evaluation rules or a single rule detail.
-* [gcx sigil rules update](gcx_sigil_rules_update.md)	 - Update an evaluation rule from a file.
+* [gcx sigil evaluators](gcx_sigil_evaluators.md)	 - Manage evaluator definitions (LLM judge, regex, heuristic).
 

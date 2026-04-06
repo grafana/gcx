@@ -1,17 +1,23 @@
 package evaluators
 
 import (
+	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"strings"
 	"text/tabwriter"
 
+	"github.com/goccy/go-yaml"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/sigil/commandutil"
 	"github.com/grafana/gcx/internal/providers/sigil/eval"
 	"github.com/grafana/gcx/internal/providers/sigil/sigilhttp"
+	"github.com/grafana/gcx/internal/terminal"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -28,10 +34,13 @@ func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, err
 func Commands(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "evaluators",
-		Short: "Query Sigil evaluators.",
+		Short: "Manage evaluator definitions (LLM judge, regex, heuristic).",
 	}
 	cmd.AddCommand(
 		newShowCommand(loader),
+		newCreateCommand(loader),
+		newDeleteCommand(loader),
+		newTestCommand(loader),
 	)
 	return cmd
 }
@@ -89,6 +98,143 @@ With an ID, shows the full evaluator definition.`,
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// --- create ---
+
+type createOpts struct {
+	File string
+	IO   cmdio.Options
+}
+
+func (o *createOpts) setup(flags *pflag.FlagSet) {
+	flags.StringVarP(&o.File, "filename", "f", "", "File containing the evaluator definition (use - for stdin)")
+	o.IO.DefaultFormat("json")
+	o.IO.BindFlags(flags)
+}
+
+func (o *createOpts) Validate() error {
+	if o.File == "" {
+		return errors.New("--filename/-f is required")
+	}
+	return o.IO.Validate()
+}
+
+func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &createOpts{}
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create or update an evaluator from a file.",
+		Example: `  # Create an evaluator from a YAML file.
+  gcx sigil evaluators create -f evaluator.yaml
+
+  # Create from stdin.
+  gcx sigil evaluators create -f -
+
+  # Export a template, customize it, then create an evaluator.
+  gcx sigil templates show <template-id> -o yaml > evaluator.yaml
+  gcx sigil evaluators create -f evaluator.yaml`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
+			def, err := ReadEvaluatorFile(opts.File, cmd.InOrStdin())
+			if err != nil {
+				return err
+			}
+
+			client, err := newClient(cmd, loader)
+			if err != nil {
+				return err
+			}
+
+			created, err := client.Create(cmd.Context(), def)
+			if err != nil {
+				return err
+			}
+
+			cmdio.Success(cmd.ErrOrStderr(), "Evaluator %s created", created.EvaluatorID)
+			return opts.IO.Encode(cmd.OutOrStdout(), created)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+// --- delete ---
+
+type deleteOpts struct {
+	Force bool
+}
+
+func (o *deleteOpts) setup(flags *pflag.FlagSet) {
+	flags.BoolVarP(&o.Force, "force", "f", false, "Skip confirmation prompt")
+}
+
+func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &deleteOpts{}
+	cmd := &cobra.Command{
+		Use:   "delete ID...",
+		Short: "Delete evaluators.",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if !opts.Force {
+				if terminal.IsPiped() {
+					return errors.New("stdin is not a terminal, use --force to skip confirmation")
+				}
+				fmt.Fprintf(cmd.ErrOrStderr(), "Delete %d evaluator(s)? [y/N] ", len(args))
+				reader := bufio.NewReader(cmd.InOrStdin())
+				answer, err := reader.ReadString('\n')
+				if err != nil {
+					return fmt.Errorf("reading confirmation: %w", err)
+				}
+				answer = strings.TrimSpace(strings.ToLower(answer))
+				if answer != "y" && answer != "yes" {
+					cmdio.Info(cmd.ErrOrStderr(), "Aborted.")
+					return nil
+				}
+			}
+
+			client, err := newClient(cmd, loader)
+			if err != nil {
+				return err
+			}
+
+			for _, id := range args {
+				if err := client.Delete(cmd.Context(), id); err != nil {
+					return fmt.Errorf("deleting evaluator %s: %w", id, err)
+				}
+				cmdio.Success(cmd.ErrOrStderr(), "Deleted evaluator %s", id)
+			}
+			return nil
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+func ReadEvaluatorFile(path string, stdin io.Reader) (*eval.EvaluatorDefinition, error) {
+	var data []byte
+	var err error
+	if path == "-" {
+		data, err = io.ReadAll(stdin)
+	} else {
+		data, err = os.ReadFile(path)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", path, err)
+	}
+
+	var def eval.EvaluatorDefinition
+	if err := json.Unmarshal(data, &def); err != nil {
+		var yamlDef eval.EvaluatorDefinition
+		if yamlErr := yaml.Unmarshal(data, &yamlDef); yamlErr != nil {
+			return nil, fmt.Errorf("parsing %s: %w", path, yamlErr)
+		}
+		return &yamlDef, nil
+	}
+	return &def, nil
 }
 
 // --- table codec ---
