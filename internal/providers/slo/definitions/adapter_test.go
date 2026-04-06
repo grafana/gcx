@@ -55,6 +55,7 @@ func fullSlo() definitions.Slo {
 			Labels: []definitions.Label{{Key: "severity", Value: "critical"}},
 			FastBurn: &definitions.AlertingRule{
 				Annotations: []definitions.Label{{Key: "runbook", Value: "https://example.com"}},
+				Enrichments: []definitions.Enrichment{{Type: "assistantInvestigation"}},
 			},
 		},
 		DestinationDatasource: &definitions.DestinationDatasource{UID: "prom-uid"},
@@ -251,6 +252,35 @@ func TestRoundTrip_Threshold(t *testing.T) {
 	assert.Equal(t, original.Query.Threshold.ThresholdExpression, restored.Query.Threshold.ThresholdExpression)
 	assert.InEpsilon(t, original.Query.Threshold.Threshold.Value, restored.Query.Threshold.Threshold.Value, 1e-9)
 	assert.Equal(t, original.Query.Threshold.Threshold.Operator, restored.Query.Threshold.Threshold.Operator)
+}
+
+func TestRoundTrip_AlertingEnrichments(t *testing.T) {
+	original := minimalSlo()
+	original.Alerting = &definitions.Alerting{
+		FastBurn: &definitions.AlertingRule{
+			Annotations: []definitions.Label{{Key: "name", Value: "SLO Burn Rate Very High"}},
+			Enrichments: []definitions.Enrichment{{Type: "assistantInvestigation"}},
+		},
+		SlowBurn: &definitions.AlertingRule{
+			Annotations: []definitions.Label{{Key: "name", Value: "SLO Burn Rate High"}},
+			Enrichments: []definitions.Enrichment{{Type: "assistantInvestigation"}},
+		},
+	}
+
+	res, err := definitions.ToResource(original, "stack-123")
+	require.NoError(t, err)
+
+	restored, err := definitions.FromResource(res)
+	require.NoError(t, err)
+
+	require.NotNil(t, restored.Alerting)
+	require.NotNil(t, restored.Alerting.FastBurn)
+	require.Len(t, restored.Alerting.FastBurn.Enrichments, 1)
+	assert.Equal(t, "assistantInvestigation", restored.Alerting.FastBurn.Enrichments[0].Type)
+
+	require.NotNil(t, restored.Alerting.SlowBurn)
+	require.Len(t, restored.Alerting.SlowBurn.Enrichments, 1)
+	assert.Equal(t, "assistantInvestigation", restored.Alerting.SlowBurn.Enrichments[0].Type)
 }
 
 func TestFileNamer(t *testing.T) {

@@ -96,10 +96,16 @@ type Alerting struct {
 	AdvancedOptions *AdvancedOptions `json:"advancedOptions,omitempty"`
 }
 
-// AlertingRule holds labels and annotations for an alerting rule.
+// AlertingRule holds labels, annotations, and enrichments for an alerting rule.
 type AlertingRule struct {
-	Labels      []Label `json:"labels,omitempty"`
-	Annotations []Label `json:"annotations,omitempty"`
+	Labels      []Label      `json:"labels,omitempty"`
+	Annotations []Label      `json:"annotations,omitempty"`
+	Enrichments []Enrichment `json:"enrichments,omitempty"`
+}
+
+// Enrichment defines an enrichment action triggered when an alert fires.
+type Enrichment struct {
+	Type string `json:"type"`
 }
 
 // AdvancedOptions holds advanced alerting options.
