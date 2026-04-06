@@ -71,7 +71,7 @@ With a name, shows the full agent definition (use --version for a specific versi
 			}
 
 			if len(args) == 1 {
-				if !cmd.Flags().Changed("output") && !cmd.Flags().Changed("json") {
+				if sigilhttp.ShouldDefaultDetailToYAML(cmd) {
 					opts.IO.OutputFormat = "yaml"
 				}
 				detail, err := client.Lookup(cmd.Context(), args[0], opts.Version)

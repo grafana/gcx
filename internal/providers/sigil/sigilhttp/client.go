@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
@@ -147,6 +148,20 @@ func Truncate(s string, maxLen int) string {
 		return string(r[:maxLen-3]) + "..."
 	}
 	return s
+}
+
+// ShouldDefaultDetailToYAML reports whether a detail command should switch
+// from its list-oriented default format to YAML.
+//
+// Agent mode must keep JSON as the implicit default unless the user explicitly
+// requested another format.
+func ShouldDefaultDetailToYAML(cmd *cobra.Command) bool {
+	if agent.IsAgentMode() {
+		return false
+	}
+
+	flags := cmd.Flags()
+	return !flags.Changed("output") && !flags.Changed("json")
 }
 
 // HandleErrorResponse reads an error response body and returns a formatted error.

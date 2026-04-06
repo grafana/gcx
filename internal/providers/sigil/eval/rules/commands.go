@@ -68,7 +68,7 @@ With an ID, shows the full rule definition.`,
 			}
 
 			if len(args) == 1 {
-				if !cmd.Flags().Changed("output") && !cmd.Flags().Changed("json") {
+				if sigilhttp.ShouldDefaultDetailToYAML(cmd) {
 					opts.IO.OutputFormat = "yaml"
 				}
 				rule, err := client.Get(cmd.Context(), args[0])
