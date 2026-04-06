@@ -107,9 +107,8 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 				terminal.SetNoTruncate(true)
 			}
 
-			// Explicit --no-color flag or piped stdout disable color.
-			// fatih/color already handles NO_COLOR env var internally.
-			if noColors || terminal.IsPiped() {
+			// Explicit --no-color flag, NO_COLOR env var, or piped stdout disable color.
+			if noColors || os.Getenv("NO_COLOR") != "" || terminal.IsPiped() {
 				color.NoColor = true // globally disables colorized output
 				style.SetEnabled(false)
 			}
