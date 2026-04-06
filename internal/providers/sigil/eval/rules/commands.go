@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/sigil/commandutil"
 	"github.com/grafana/gcx/internal/providers/sigil/eval"
 	"github.com/grafana/gcx/internal/providers/sigil/sigilhttp"
 	"github.com/spf13/cobra"
@@ -68,8 +69,11 @@ With an ID, shows the full rule definition.`,
 			}
 
 			if len(args) == 1 {
-				if sigilhttp.ShouldDefaultDetailToYAML(cmd) {
+				if commandutil.ShouldDefaultDetailToYAML(cmd) {
 					opts.IO.OutputFormat = "yaml"
+				}
+				if err := commandutil.ValidateDetailOutputFormat(cmd, opts.IO.OutputFormat, "rule", args[0]); err != nil {
+					return err
 				}
 				rule, err := client.Get(cmd.Context(), args[0])
 				if err != nil {

@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/sigil/commandutil"
 	"github.com/grafana/gcx/internal/providers/sigil/sigilhttp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -71,9 +72,18 @@ With a name, shows the full agent definition (use --version for a specific versi
 			}
 
 			if len(args) == 1 {
-				if sigilhttp.ShouldDefaultDetailToYAML(cmd) {
+				if commandutil.ShouldDefaultDetailToYAML(cmd) {
 					opts.IO.OutputFormat = "yaml"
 				}
+
+				exampleArgs := []string{args[0]}
+				if opts.Version != "" {
+					exampleArgs = append(exampleArgs, "--version", opts.Version)
+				}
+				if err := commandutil.ValidateDetailOutputFormat(cmd, opts.IO.OutputFormat, "agent", exampleArgs...); err != nil {
+					return err
+				}
+
 				detail, err := client.Lookup(cmd.Context(), args[0], opts.Version)
 				if err != nil {
 					return err
