@@ -1,4 +1,4 @@
-package skills
+package skills_test
 
 import (
 	"bytes"
@@ -6,10 +6,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/grafana/gcx/cmd/gcx/skills"
 )
 
 func TestListCommand_EmbeddedSkills(t *testing.T) {
-	cmd := Command()
+	cmd := skills.Command()
 	cmd.SilenceErrors = true
 	cmd.SilenceUsage = true
 	var out bytes.Buffer
@@ -30,9 +32,9 @@ func TestListCommand_EmbeddedSkills(t *testing.T) {
 func TestListCommand_RespectsSourceOverride(t *testing.T) {
 	sourceDir := t.TempDir()
 	writeSkill(t, sourceDir, "team-custom", "team-custom", "Custom team skill")
-	t.Setenv(skillsSourceEnv, sourceDir)
+	t.Setenv("GCX_SKILLS_SOURCE_DIR", sourceDir)
 
-	cmd := Command()
+	cmd := skills.Command()
 	cmd.SilenceErrors = true
 	cmd.SilenceUsage = true
 	var out bytes.Buffer
@@ -50,10 +52,44 @@ func TestListCommand_RespectsSourceOverride(t *testing.T) {
 	}
 }
 
+func TestListCommand_FallbackFrontMatterParsing(t *testing.T) {
+	sourceDir := t.TempDir()
+	skillDir := filepath.Join(sourceDir, "debug-with-grafana")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+
+	content := "---\n" +
+		"name: debug-with-grafana\n" +
+		"description: Triggers for: \"service is down\"\n" +
+		"---\n\n" +
+		"# Debug with Grafana\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0o600); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+
+	t.Setenv("GCX_SKILLS_SOURCE_DIR", sourceDir)
+
+	cmd := skills.Command()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"list"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute list: %v", err)
+	}
+	if !strings.Contains(out.String(), "Triggers for:") {
+		t.Fatalf("expected fallback-parsed description in output: %q", out.String())
+	}
+}
+
 func TestInstallCommand_EmbeddedSkill(t *testing.T) {
 	installDir := t.TempDir()
 
-	cmd := Command()
+	cmd := skills.Command()
 	cmd.SilenceErrors = true
 	cmd.SilenceUsage = true
 	var out bytes.Buffer
@@ -79,9 +115,9 @@ func TestInstallCommandFailsIfAlreadyInstalledWithoutForce(t *testing.T) {
 	sourceDir := t.TempDir()
 	installDir := t.TempDir()
 	writeSkill(t, sourceDir, "gcx", "gcx", "Main gcx skill")
-	t.Setenv(skillsSourceEnv, sourceDir)
+	t.Setenv("GCX_SKILLS_SOURCE_DIR", sourceDir)
 
-	cmd := Command()
+	cmd := skills.Command()
 	cmd.SilenceErrors = true
 	cmd.SilenceUsage = true
 	cmd.SetOut(&bytes.Buffer{})
@@ -91,7 +127,7 @@ func TestInstallCommandFailsIfAlreadyInstalledWithoutForce(t *testing.T) {
 		t.Fatalf("first install failed: %v", err)
 	}
 
-	cmd2 := Command()
+	cmd2 := skills.Command()
 	cmd2.SilenceErrors = true
 	cmd2.SilenceUsage = true
 	cmd2.SetOut(&bytes.Buffer{})
@@ -103,22 +139,6 @@ func TestInstallCommandFailsIfAlreadyInstalledWithoutForce(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "already installed") {
 		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestReadSkillMetadata_FallbackParserHandlesColonInDescription(t *testing.T) {
-	content := "---\n" +
-		"name: debug-with-grafana\n" +
-		"description: Triggers for: \"service is down\"\n" +
-		"---\n\n" +
-		"# Debug with Grafana\n"
-
-	meta := readSkillMetadata([]byte(content))
-	if meta.Name != "debug-with-grafana" {
-		t.Fatalf("unexpected name: %q", meta.Name)
-	}
-	if !strings.Contains(meta.Description, "Triggers for:") {
-		t.Fatalf("unexpected description: %q", meta.Description)
 	}
 }
 
@@ -134,10 +154,10 @@ func writeSkill(t *testing.T, root, dir, name, desc string) {
 		"description: " + desc + "\n" +
 		"---\n\n" +
 		"# " + name + "\n"
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0o600); err != nil {
 		t.Fatalf("write SKILL.md: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(skillDir, "references", "notes.md"), []byte("reference"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(skillDir, "references", "notes.md"), []byte("reference"), 0o600); err != nil {
 		t.Fatalf("write reference file: %v", err)
 	}
 }

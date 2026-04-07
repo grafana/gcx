@@ -260,11 +260,10 @@ func readSkillMetadata(data []byte) skillFrontMatter {
 		return skillFrontMatter{}
 	}
 	trimmed := strings.TrimPrefix(content, "---\n")
-	end := strings.Index(trimmed, "\n---\n")
-	if end < 0 {
+	frontMatter, _, ok := strings.Cut(trimmed, "\n---\n")
+	if !ok {
 		return skillFrontMatter{}
 	}
-	frontMatter := trimmed[:end]
 
 	meta := skillFrontMatter{}
 	if err := yaml.Unmarshal([]byte(frontMatter), &meta); err != nil {
@@ -279,7 +278,7 @@ func readSkillMetadata(data []byte) skillFrontMatter {
 func parseFrontMatterFallback(frontMatter string) skillFrontMatter {
 	lines := strings.Split(frontMatter, "\n")
 	meta := skillFrontMatter{}
-	for i := 0; i < len(lines); i++ {
+	for i := range len(lines) {
 		line := strings.TrimRight(lines[i], " \t")
 		trimmed := strings.TrimSpace(line)
 		switch {
