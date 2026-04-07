@@ -23,10 +23,12 @@ Every command serves both humans and AI agents. Agent mode is auto-detected (Cla
 
 ## Core Beliefs
 
-- **Production is a development signal, not an afterthought.** Developers should query live metrics, logs, and traces without leaving their editor. When something breaks, the investigation context should already be there.
+- **Full platform coverage.** Every Grafana and Grafana Cloud feature will eventually be supported. One tool, not twenty — a developer managing SLOs, synthetic checks, alert rules, and dashboards shouldn't need four different CLIs with four different auth setups.
+- **Works everywhere Grafana does.** Usable across Grafana OSS and Grafana Cloud. The same commands, the same manifests, the same workflows — only the `--context` changes.
 - **Dual-purpose by design.** Humans and agents use the same commands. The CLI grammar, exit codes, and output shapes are designed for both audiences from day one — not bolted on later.
-- **One tool, not twenty.** A developer managing SLOs, synthetic checks, alert rules, and dashboards shouldn't need four different CLIs with four different auth setups.
-- **GitOps-native.** Pull resources to files, version in git, push back. Push is idempotent. The same manifests work across environments via `--context`. CI/CD is a first-class workflow, not an afterthought.
+- **Easy onboarding and setup.** Getting started should take minutes, not hours. `gcx setup` guides users through connection, auth, and product configuration. Sensible defaults everywhere.
+- **Consistent UX across all functionality.** Whether you're querying metrics, managing SLOs, or configuring OnCall schedules, the command grammar, output formats, flag conventions, and error messages follow the same patterns. See [DESIGN.md](DESIGN.md).
+- **GitOps-native.** Pull resources to files, version in git, push back. Push is idempotent. The same manifests work across environments via `--context`. CI/CD is a first-class workflow.
 - **Extensible without forking.** New Grafana Cloud products are added as providers — a self-contained package that implements an interface and self-registers. No changes to core code required.
 
 ## Grafana Assistant
@@ -38,27 +40,6 @@ The Grafana Assistant is gcx's differentiator. Where other CLIs stop at data ret
 - **End-to-end remediation** — investigation → fix → instrumentation → monitoring, without leaving the editor
 
 The workflow: alert fires → Assistant investigates → agent drafts fix → agent instruments with OpenTelemetry → agent creates monitoring → PR ships. Humans steer; agents execute.
-
-## Product Surface
-
-| Area | Products | Status |
-|------|----------|--------|
-| **Core resources** | Dashboards, folders, alert rules | Shipped |
-| **SLOs** | Definitions, reports, status, burn rate | Shipped |
-| **Synthetic Monitoring** | Checks, probes | Shipped |
-| **OnCall** | Schedules, integrations, escalation chains | Shipped |
-| **K6 Cloud** | Projects, load tests, runs, env vars | Shipped |
-| **Fleet Management** | Pipelines, collectors | Shipped |
-| **IRM Incidents** | Incident CRUD | Shipped |
-| **Knowledge Graph** | Rules, datasets, entities, scopes | Shipped |
-| **Observability signals** | Metrics (PromQL), Logs (LogQL), Traces (Tempo), Profiles (Pyroscope) | Shipped |
-| **Adaptive Telemetry** | Metrics, Logs, Traces recommendations | Shipped |
-| **App Observability** | Overrides, settings | Shipped |
-| **Frontend Observability** | Faro apps, sourcemaps | Shipped |
-| **Sigil (AI Observability)** | Conversations | Shipped |
-| **Grafana Assistant** | Conversations, investigations | In progress |
-| **Observability as Code** | Scaffold, import, serve, lint | Shipped |
-| **Setup** | Onboarding, instrumentation | Shipped |
 
 ## Roadmap Themes
 
