@@ -54,6 +54,29 @@ func probeSchema() json.RawMessage {
 	return adapter.SchemaFromType[probes.Probe](probes.StaticDescriptor())
 }
 
+// probeExample returns an example SM Probe manifest as JSON.
+func probeExample() json.RawMessage {
+	example := map[string]any{
+		"apiVersion": probes.APIVersion,
+		"kind":       probes.Kind,
+		"metadata": map[string]any{
+			"name": "my-private-probe",
+		},
+		"spec": map[string]any{
+			"name":      "my-private-probe",
+			"latitude":  51.5074,
+			"longitude": -0.1278,
+			"region":    "Europe",
+			"labels":    []map[string]string{{"name": "environment", "value": "production"}},
+		},
+	}
+	b, err := json.Marshal(example)
+	if err != nil {
+		panic(fmt.Sprintf("synth/probes: failed to marshal example: %v", err))
+	}
+	return b
+}
+
 // SynthProvider manages Grafana Synthetic Monitoring resources.
 type SynthProvider struct{}
 
@@ -127,6 +150,7 @@ func (p *SynthProvider) TypedRegistrations() []adapter.Registration {
 			Descriptor: probes.StaticDescriptor(),
 			GVK:        probes.StaticGVK(),
 			Schema:     probeSchema(),
+			Example:    probeExample(),
 		},
 	}
 }
