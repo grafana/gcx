@@ -226,25 +226,18 @@ func (r *Registry) makeFiltersForSelector(selector resources.Selector, preferred
 		}}, nil
 	}
 
-	// No version specified and preferred version only is requested
+	// No version specified — resolve descriptors across groups.
+	// LookupPreferredPerGroup returns the preferred version per group so that
+	// resource names spanning multiple API groups (e.g. datasources across
+	// *.datasource.grafana.app) produce one filter per group instead of
+	// picking an arbitrary single group.
+	var descs resources.Descriptors
+	var ok bool
 	if preferredVersionOnly {
-		desc, ok := r.index.LookupPartialGVK(selector.GroupVersionKind)
-		if !ok {
-			return nil, resources.InvalidSelectorError{
-				Command: selector.String(),
-				Err:     "the server does not support this resource",
-			}
-		}
-
-		return resources.Filters{{
-			Type:         selector.Type,
-			ResourceUIDs: selector.ResourceUIDs,
-			Descriptor:   desc,
-		}}, nil
+		descs, ok = r.index.LookupPreferredPerGroup(selector.GroupVersionKind)
+	} else {
+		descs, ok = r.index.LookupAllVersionsForPartialGVK(selector.GroupVersionKind)
 	}
-
-	// No version specified and we want all supported versions
-	descs, ok := r.index.LookupAllVersionsForPartialGVK(selector.GroupVersionKind)
 	if !ok {
 		return nil, resources.InvalidSelectorError{
 			Command: selector.String(),
@@ -252,7 +245,6 @@ func (r *Registry) makeFiltersForSelector(selector resources.Selector, preferred
 		}
 	}
 
-	// Create a filter for each supported version
 	filters := make(resources.Filters, 0, len(descs))
 	for _, desc := range descs {
 		filters = append(filters, resources.Filter{
@@ -261,7 +253,6 @@ func (r *Registry) makeFiltersForSelector(selector resources.Selector, preferred
 			Descriptor:   desc,
 		})
 	}
-
 	return filters, nil
 }
 
