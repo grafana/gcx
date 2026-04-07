@@ -110,6 +110,19 @@ internal/
   logs/         slog/klog integration
 ```
 
+## What to Read Before You Start
+
+| Task | Read first | Then |
+|------|-----------|------|
+| **Adding a new command** | [DESIGN.md](DESIGN.md) (grammar, output model) | [docs/design/](docs/design/) for implementation rules, [ARCHITECTURE.md](ARCHITECTURE.md) § CLI layer |
+| **Adding a new provider** | [ARCHITECTURE.md](ARCHITECTURE.md) § Provider System | [docs/reference/provider-guide.md](docs/reference/provider-guide.md), [docs/design/provider-checklist.md](docs/design/provider-checklist.md) |
+| **Adding a signal provider command** | [ARCHITECTURE.md](ARCHITECTURE.md) § Signal Providers | Existing signal provider code for the SharedOpts pattern |
+| **Modifying resource handling** | [ARCHITECTURE.md](ARCHITECTURE.md) § Resources Pipeline | [docs/architecture/resource-model.md](docs/architecture/resource-model.md), [docs/architecture/data-flows.md](docs/architecture/data-flows.md) |
+| **Changing config or auth** | [ARCHITECTURE.md](ARCHITECTURE.md) § Configuration + § Auth | [docs/architecture/config-system.md](docs/architecture/config-system.md), [docs/architecture/client-api-layer.md](docs/architecture/client-api-layer.md) |
+| **Fixing a bug** | [ARCHITECTURE.md](ARCHITECTURE.md) for the relevant subsystem | Jump directly to the deep-dive doc for that domain |
+| **Planning a new feature** | [VISION.md](VISION.md) (does it belong?), [CONSTITUTION.md](CONSTITUTION.md) (can we build it within the rules?) | [DESIGN.md](DESIGN.md) for UX, [ARCHITECTURE.md](ARCHITECTURE.md) for structure |
+| **Reviewing a PR** | [Compliance Hierarchy](#compliance-hierarchy) below | Check all 4 levels in order |
+
 ## Compliance Hierarchy
 
 Check work against these docs during planning, design, and implementation — in order of strictness.
