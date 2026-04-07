@@ -75,6 +75,45 @@ func TestBuildProbeCountQuery(t *testing.T) {
 	}
 }
 
+func TestBuildLatencyQuery(t *testing.T) {
+	tests := []struct {
+		name     string
+		job      string
+		instance string
+		want     string
+	}{
+		{
+			name:     "basic latency query",
+			job:      "my-check",
+			instance: "https://example.com",
+			want:     `avg by (job, instance) (avg_over_time(probe_duration_seconds{job="my-check",instance="https://example.com"}[5m]))`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := checks.BuildLatencyQuery(tt.job, tt.instance)
+			if err != nil {
+				t.Fatalf("BuildLatencyQuery() error = %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("BuildLatencyQuery() =\n  %s\nwant\n  %s", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildAllLatencyQuery(t *testing.T) {
+	got, err := checks.BuildAllLatencyQuery()
+	if err != nil {
+		t.Fatalf("BuildAllLatencyQuery() error = %v", err)
+	}
+	want := `avg by (job, instance) (avg_over_time(probe_duration_seconds[5m]))`
+	if got != want {
+		t.Errorf("BuildAllLatencyQuery() =\n  %s\nwant\n  %s", got, want)
+	}
+}
+
 func TestBuildTimelineQuery(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -108,16 +147,22 @@ func TestBuildTimelineQuery(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestStatusTableCodec_Encode(t *testing.T) {
+	latency250 := float64(250)
+	latency1107 := float64(1107)
+	reach9972 := float64(0.9972)
+
 	results := []checks.CheckStatusResult{
 		{
-			ID:          1,
-			Job:         "http-check",
-			Target:      "https://example.com",
-			Type:        "http",
-			Success:     new(0.9972),
-			ProbesUp:    3,
-			ProbesTotal: 3,
-			Status:      "OK",
+			ID:           1,
+			Job:          "http-check",
+			Target:       "https://example.com",
+			Type:         "http",
+			Success:      new(0.9972),
+			LatencyMs:    &latency250,
+			Reachability: &reach9972,
+			ProbesUp:     3,
+			ProbesTotal:  3,
+			Status:       "OK",
 		},
 		{
 			ID:          2,
@@ -125,6 +170,7 @@ func TestStatusTableCodec_Encode(t *testing.T) {
 			Target:      "10.0.0.1",
 			Type:        "ping",
 			Success:     new(0.0),
+			LatencyMs:   &latency1107,
 			ProbesUp:    0,
 			ProbesTotal: 2,
 			Status:      "FAILING",
@@ -152,14 +198,14 @@ func TestStatusTableCodec_Encode(t *testing.T) {
 		output := buf.String()
 
 		// Verify header columns present in default table.
-		for _, col := range []string{"NAME", "JOB", "TARGET", "SUCCESS", "STATUS"} {
+		for _, col := range []string{"NAME", "JOB", "TARGET", "SUCCESS", "LATENCY", "REACHABILITY", "STATUS"} {
 			if !strings.Contains(output, col) {
 				t.Errorf("missing header column %q in:\n%s", col, output)
 			}
 		}
 
 		// Verify wide-only columns are absent from default table.
-		for _, col := range []string{"TYPE", "PROBES_UP", "PROBES_TOTAL", "PROBES"} {
+		for _, col := range []string{"TYPE", "PROBES_UP", "PROBES_TOTAL"} {
 			if strings.Contains(output, col) {
 				t.Errorf("default table should not have column %q:\n%s", col, output)
 			}
@@ -171,6 +217,12 @@ func TestStatusTableCodec_Encode(t *testing.T) {
 		}
 		if !strings.Contains(output, "99.72%") {
 			t.Errorf("missing 99.72%% in:\n%s", output)
+		}
+		if !strings.Contains(output, "250ms") {
+			t.Errorf("missing 250ms latency in:\n%s", output)
+		}
+		if !strings.Contains(output, "1107ms") {
+			t.Errorf("missing 1107ms latency in:\n%s", output)
 		}
 		if !strings.Contains(output, "OK") {
 			t.Errorf("missing OK status in:\n%s", output)
@@ -189,15 +241,17 @@ func TestStatusTableCodec_Encode(t *testing.T) {
 	t.Run("wide output", func(t *testing.T) {
 		wideResults := []checks.CheckStatusResult{
 			{
-				ID:          1,
-				Job:         "http-check",
-				Target:      "https://example.com",
-				Type:        "http",
-				Success:     new(0.9972),
-				ProbesUp:    2,
-				ProbesTotal: 2,
-				ProbeNames:  []string{"Oregon", "Paris (offline)"},
-				Status:      "OK",
+				ID:           1,
+				Job:          "http-check",
+				Target:       "https://example.com",
+				Type:         "http",
+				Success:      new(0.9972),
+				LatencyMs:    &latency250,
+				Reachability: &reach9972,
+				ProbesUp:     2,
+				ProbesTotal:  2,
+				ProbeNames:   []string{"Oregon", "Paris (offline)"},
+				Status:       "OK",
 			},
 		}
 
@@ -210,15 +264,20 @@ func TestStatusTableCodec_Encode(t *testing.T) {
 
 		output := buf.String()
 
-		// Wide table must have PROBES column.
-		if !strings.Contains(output, "PROBES") {
-			t.Errorf("wide table should have PROBES column:\n%s", output)
+		// Wide table must have all columns including LATENCY and REACHABILITY.
+		for _, col := range []string{"PROBES", "LATENCY", "REACHABILITY"} {
+			if !strings.Contains(output, col) {
+				t.Errorf("wide table should have %s column:\n%s", col, output)
+			}
 		}
 		if !strings.Contains(output, "Oregon") {
 			t.Errorf("wide table should show probe name Oregon:\n%s", output)
 		}
 		if !strings.Contains(output, "Paris (offline)") {
 			t.Errorf("wide table should show Paris (offline):\n%s", output)
+		}
+		if !strings.Contains(output, "250ms") {
+			t.Errorf("wide table should show 250ms latency:\n%s", output)
 		}
 	})
 }
@@ -242,6 +301,7 @@ func TestBuildCheckStatusResults(t *testing.T) {
 		checks     []checks.Check
 		successMap map[string]float64
 		probeMap   map[string]float64
+		latencyMap map[string]float64
 		wantLen    int
 		verify     func(t *testing.T, results []checks.CheckStatusResult)
 	}{
@@ -252,6 +312,7 @@ func TestBuildCheckStatusResults(t *testing.T) {
 			},
 			successMap: map[string]float64{"check-1/https://example.com": 0.95},
 			probeMap:   map[string]float64{"check-1/https://example.com": 3},
+			latencyMap: map[string]float64{"check-1/https://example.com": 0.250},
 			wantLen:    1,
 			verify: func(t *testing.T, results []checks.CheckStatusResult) {
 				t.Helper()
@@ -268,6 +329,12 @@ func TestBuildCheckStatusResults(t *testing.T) {
 				if r.ProbesTotal != 3 {
 					t.Errorf("expected probesTotal 3, got %d", r.ProbesTotal)
 				}
+				if r.LatencyMs == nil || *r.LatencyMs != 250 {
+					t.Errorf("expected latencyMs 250, got %v", r.LatencyMs)
+				}
+				if r.Reachability == nil || *r.Reachability != 0.95 {
+					t.Errorf("expected reachability 0.95, got %v", r.Reachability)
+				}
 			},
 		},
 		{
@@ -277,6 +344,7 @@ func TestBuildCheckStatusResults(t *testing.T) {
 			},
 			successMap: map[string]float64{},
 			probeMap:   map[string]float64{},
+			latencyMap: map[string]float64{},
 			wantLen:    1,
 			verify: func(t *testing.T, results []checks.CheckStatusResult) {
 				t.Helper()
@@ -287,6 +355,12 @@ func TestBuildCheckStatusResults(t *testing.T) {
 				if r.Success != nil {
 					t.Errorf("expected nil success, got %v", *r.Success)
 				}
+				if r.LatencyMs != nil {
+					t.Errorf("expected nil latencyMs, got %v", *r.LatencyMs)
+				}
+				if r.Reachability != nil {
+					t.Errorf("expected nil reachability, got %v", *r.Reachability)
+				}
 			},
 		},
 		{
@@ -296,12 +370,16 @@ func TestBuildCheckStatusResults(t *testing.T) {
 			},
 			successMap: map[string]float64{"check-3/https://failing.com": 0.0},
 			probeMap:   map[string]float64{"check-3/https://failing.com": 1},
+			latencyMap: map[string]float64{"check-3/https://failing.com": 1.107},
 			wantLen:    1,
 			verify: func(t *testing.T, results []checks.CheckStatusResult) {
 				t.Helper()
 				r := results[0]
 				if r.Status != "FAILING" {
 					t.Errorf("expected status FAILING, got %s", r.Status)
+				}
+				if r.LatencyMs == nil || *r.LatencyMs != 1107 {
+					t.Errorf("expected latencyMs 1107, got %v", r.LatencyMs)
 				}
 			},
 		},
@@ -387,6 +465,7 @@ func TestBuildCheckStatusResults(t *testing.T) {
 			},
 			successMap: map[string]float64{"check-4/https://probes.com": 0.9},
 			probeMap:   map[string]float64{"check-4/https://probes.com": 2},
+			latencyMap: nil,
 			wantLen:    1,
 			verify: func(t *testing.T, results []checks.CheckStatusResult) {
 				t.Helper()
@@ -401,6 +480,9 @@ func TestBuildCheckStatusResults(t *testing.T) {
 				if r.ProbeNames[1] != "Paris (offline)" {
 					t.Errorf("expected probe name Paris (offline), got %s", r.ProbeNames[1])
 				}
+				if r.LatencyMs != nil {
+					t.Errorf("expected nil latencyMs with nil latencyMap, got %v", *r.LatencyMs)
+				}
 			},
 		},
 	}
@@ -412,7 +494,7 @@ func TestBuildCheckStatusResults(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			results := checks.BuildCheckStatusResults(tt.checks, tt.successMap, tt.probeMap, probeNameMap)
+			results := checks.BuildCheckStatusResults(tt.checks, tt.successMap, tt.probeMap, tt.latencyMap, probeNameMap)
 			if len(results) != tt.wantLen {
 				t.Fatalf("expected %d results, got %d", tt.wantLen, len(results))
 			}
