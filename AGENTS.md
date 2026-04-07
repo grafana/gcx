@@ -12,11 +12,12 @@
 |------|---------|
 | [VISION.md](VISION.md) | Goals, product surface, roadmap themes, release timeline |
 | [CONSTITUTION.md](CONSTITUTION.md) | Invariants — things that cannot change without explicit human approval |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Architecture overview, pipeline diagrams, ADR index |
-| [DESIGN.md](DESIGN.md) | CLI UX design: command grammar, output model, exit codes, taste rules |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System overview (all 7 subsystems), pipeline diagrams, ADR index |
+| [DESIGN.md](DESIGN.md) | CLI UX design: command grammar, output model, exit codes |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, testing environment, contribution workflow |
 | [docs/architecture/](docs/architecture/) | Deep-dive architecture docs (patterns, resource model, CLI layer, data flows, …) |
-| [docs/reference/](docs/reference/) | Provider guides, design implementation guide, CLI reference, migration analysis |
+| [docs/design/](docs/design/) | Prescriptive UX implementation rules (output, errors, agent mode, naming, …) |
+| [docs/reference/](docs/reference/) | Provider guides, CLI reference, migration analysis |
 | [docs/_templates/](docs/_templates/) | Spec and planning templates (feature, bugfix, refactor, ADR, research) |
 
 ## Architecture at a Glance
