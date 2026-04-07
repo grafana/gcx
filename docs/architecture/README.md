@@ -1,6 +1,6 @@
 # Architecture Documentation
 
-See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the full architecture overview, navigation guide, key patterns, ADR index, and worked examples.
+See `ARCHITECTURE.md` at the repository root for the full architecture overview, navigation guide, key patterns, ADR index, and worked examples.
 
 The deep-dive docs in this directory cover individual domains:
 

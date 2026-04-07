@@ -15,7 +15,7 @@ When to create a provider:
 - You want those config keys to integrate with `gcx config set` and
   `GRAFANA_PROVIDER_*` environment variables automatically
 
-Architecture reference: [patterns.md – Provider Plugin System](../architecture/patterns.md#11-provider-plugin-system-high-confidence-93) (Pattern 11),
+Architecture reference: [patterns.md – Provider Plugin System](../architecture/patterns.md#11-provider-plugin-system) (Pattern 11),
 [config-system.md](../architecture/config-system.md) (Provider config section).
 
 ---

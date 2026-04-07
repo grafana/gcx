@@ -1,6 +1,6 @@
 # Design Documentation
 
-See [DESIGN.md](../../DESIGN.md) for the design philosophy overview and navigation.
+See `DESIGN.md` at the repository root for the design philosophy overview and navigation.
 
 The docs in this directory are prescriptive implementation guides. Each subsection is tagged with a status marker:
 

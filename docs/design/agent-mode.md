@@ -38,13 +38,13 @@ When agent mode is active:
    per-command `DefaultFormat()` in `io.Options.BindFlags()`)
 2. **Color** is disabled (`color.NoColor = true` in `PersistentPreRun`)
 3. **Pipe-aware behavior** is forced: `IsPiped=true`, `NoTruncate=true`
-   regardless of actual TTY state (see [pipe-awareness.md § TTY Detection](pipe-awareness.md#51-tty-detection))
-4. **In-band error JSON** is written to stdout on failure (see [errors.md § In-Band Error Reporting](errors.md#44-in-band-error-reporting))
+   regardless of actual TTY state (see [pipe-awareness.md § TTY Detection](pipe-awareness.md#51-tty-detection-current))
+4. **In-band error JSON** is written to stdout on failure (see [errors.md § In-Band Error Reporting](errors.md#44-in-band-error-reporting-current))
 
 The following are **not yet implemented** (`[PLANNED]`):
 5. Spinners/progress indicators suppressed (none exist yet; the suppression
    contract via `IsPiped` is in place for when they are added)
-6. Confirmation prompts auto-approved ([safety.md § Agent Mode Auto-Approve](safety.md#33-agent-mode-auto-approve))
+6. Confirmation prompts auto-approved ([safety.md § Agent Mode Auto-Approve](safety.md#33-agent-mode-auto-approve-planned))
 
 ### 6.3 Opt-Out `[CURRENT]`
 

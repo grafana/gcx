@@ -58,4 +58,4 @@ Provider commands using non-K8s APIs should document their URL patterns in
 code comments.
 
 See [environment-variables.md](environment-variables.md) for the canonical env var naming reference.
-See [provider-checklist.md § Provider ConfigLoader](provider-checklist.md#16-provider-configloader-adopt) for how config key names map to env vars.
+See [patterns.md § Provider ConfigLoader](../architecture/patterns.md#provider-configloader-adopt) for how config key names map to env vars.
