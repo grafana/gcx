@@ -95,15 +95,17 @@ Codec Pipeline               table (default) | graph (terminal chart) | json | y
 
 ### 4. Developer Tooling (`gcx dev`)
 
-Observability-as-code workflows for managing Grafana resources as Go code.
+Observability-as-code workflows for managing Grafana resources as typed Go code via [grafana-foundation-sdk](https://github.com/grafana/grafana-foundation-sdk). The `gcx dev` commands produce and validate resources that feed into the standard `gcx resources` pipeline.
 
-- **`scaffold`** — Generate a new dashboards-as-code project (Go module + grafana-foundation-sdk)
-- **`import`** — Import existing dashboards from Grafana as Go builder code
-- **`serve`** — Live-reload dev server (Chi router, reverse proxy, WebSocket reload) — edit locally, preview in browser
+**End-to-end workflow:** `scaffold` → `import`/`add` → edit Go code → `serve`/`lint` → build to manifests → `resources push`
+
+- **`scaffold`** — Generate a new project (Go module + foundation-sdk + folder structure)
+- **`import`** — Import existing dashboards/alerts from Grafana as Go builder code
+- **`serve`** — Live-reload dev server (Chi router, reverse proxy, WebSocket reload) — edit code, preview in browser
 - **`lint`** — Lint resources with built-in and custom Rego rules (OPA engine in `internal/linter/`), including PromQL/LogQL expression validators
 - **`generate`** — Code generation utilities
 
-The linter engine is also used by `gcx resources validate` for pre-push validation.
+The linter engine is also used by `gcx resources validate` for pre-push validation. See [VISION.md § Observability as Code](VISION.md#observability-as-code) for the full workflow vision.
 
 ### 5. Setup & Instrumentation (`gcx setup`)
 
