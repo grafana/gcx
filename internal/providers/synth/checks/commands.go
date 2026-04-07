@@ -293,7 +293,7 @@ func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
 				var info checkStatusInfo
 				if opts.ShowStatus {
 					var err error
-					info, err = queryCheckStatus(ctx, loader, c.Job, c.Target)
+					info, err = queryCheckStatus(ctx, loader, c.Job, c.Target, c.AlertSensitivity)
 					if err != nil {
 						cmdio.Warning(cmd.OutOrStdout(), "could not retrieve execution status: %v", err)
 					}
@@ -414,7 +414,7 @@ func newCreateCommand(loader smcfg.StatusLoader) *cobra.Command {
 			}
 
 			if opts.ShowStatus {
-				info, err := queryCheckStatus(ctx, loader, spec.Job, spec.Target)
+				info, err := queryCheckStatus(ctx, loader, spec.Job, spec.Target, spec.AlertSensitivity)
 				if err != nil {
 					cmdio.Warning(cmd.OutOrStdout(), "could not retrieve check status: %v", err)
 				} else {
@@ -521,7 +521,7 @@ func newUpdateCommand(loader smcfg.StatusLoader) *cobra.Command {
 
 			if opts.ShowStatus {
 				// Query status before the update so we can report "previous status".
-				prevInfo, err := queryCheckStatus(ctx, loader, spec.Job, spec.Target)
+				prevInfo, err := queryCheckStatus(ctx, loader, spec.Job, spec.Target, spec.AlertSensitivity)
 				if err != nil {
 					// Non-fatal — proceed with the update regardless.
 					cmdio.Warning(cmd.OutOrStdout(), "could not retrieve previous status: %v", err)
