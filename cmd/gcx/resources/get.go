@@ -185,7 +185,7 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 	# Discover available JSON fields for a resource type:
 
-	gcx resources get dashboards --json ?
+	gcx resources get dashboards --json list
 
 	# Select specific fields (no external parsing needed):
 
@@ -199,7 +199,7 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			// FR-007: --json ? requires a resource selector to know which resource type to introspect.
 			if opts.IO.JSONDiscovery && len(args) == 0 {
-				return errors.New("--json ? requires a resource selector argument (e.g. gcx resources get dashboards --json ?)")
+				return errors.New("--json field discovery requires a resource selector argument (e.g. gcx resources get dashboards --json list)")
 			}
 
 			cfg, err := configOpts.LoadGrafanaConfig(ctx)

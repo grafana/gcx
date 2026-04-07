@@ -107,6 +107,12 @@ func TestJSONFlag_Parsing(t *testing.T) {
 			wantOutputFormat:  "json",
 		},
 		{
+			name:              "--json list sets JSONDiscovery",
+			jsonFlagValue:     "list",
+			wantJSONDiscovery: true,
+			wantOutputFormat:  "json",
+		},
+		{
 			name:             "--json not passed leaves JSONFields nil and JSONDiscovery false",
 			wantOutputFormat: "json",
 		},
@@ -212,9 +218,9 @@ func TestEncode_AgentModeHint(t *testing.T) {
 			stderrBuf.ReadFrom(r) //nolint:errcheck
 
 			if tc.wantHint {
-				assert.Contains(t, stderrBuf.String(), "--json ?")
+				assert.Contains(t, stderrBuf.String(), "--json list")
 			} else {
-				assert.NotContains(t, stderrBuf.String(), "--json ?")
+				assert.NotContains(t, stderrBuf.String(), "--json list")
 			}
 		})
 	}

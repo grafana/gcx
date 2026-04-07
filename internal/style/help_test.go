@@ -28,7 +28,7 @@ func TestHelpFunc_JSONTipShownWhenFlagExists(t *testing.T) {
 	cmd.Help() //nolint:errcheck
 
 	assert.Contains(t, buf.String(), "Tip:")
-	assert.Contains(t, buf.String(), "--json ?")
+	assert.Contains(t, buf.String(), "--json list")
 	assert.Contains(t, buf.String(), "--json field1,field2")
 }
 

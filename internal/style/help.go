@@ -9,7 +9,7 @@ import (
 )
 
 // jsonDiscoveryTip is the help text shown for commands that support --json field selection.
-const jsonDiscoveryTip = "Use --json ? to discover available fields, --json field1,field2 to select specific fields."
+const jsonDiscoveryTip = "Use --json list to discover available fields, --json field1,field2 to select specific fields."
 
 // HelpFunc returns a custom Cobra help function that renders Long descriptions
 // and Examples through glamour markdown rendering when styling is enabled.

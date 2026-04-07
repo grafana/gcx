@@ -18,7 +18,10 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-const jsonDiscoverySentinel = "?"
+const (
+	jsonDiscoverySentinel     = "?"
+	jsonDiscoveryListSentinel = "list"
+)
 
 type Options struct {
 	OutputFormat  string
@@ -70,7 +73,7 @@ func (opts *Options) BindFlags(flags *pflag.FlagSet) {
 	opts.NoTruncate = terminal.NoTruncate()
 
 	flags.StringVarP(&opts.OutputFormat, "output", "o", defaultFormat, "Output format. One of: "+strings.Join(opts.allowedCodecs(), ", "))
-	flags.String("json", "", "Comma-separated list of fields to include in JSON output, or '?' to discover available fields")
+	flags.String("json", "", "Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields")
 
 	opts.flags = flags
 }
@@ -106,7 +109,7 @@ func (opts *Options) applyJSONFlag() error {
 	}
 
 	jsonValue := jsonFlag.Value.String()
-	if jsonValue == jsonDiscoverySentinel {
+	if jsonValue == jsonDiscoverySentinel || jsonValue == jsonDiscoveryListSentinel {
 		opts.JSONDiscovery = true
 		return nil
 	}
@@ -149,7 +152,7 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 	// once per command invocation to stderr so it doesn't pollute stdout.
 	if !opts.agentHintShown && agent.IsAgentMode() && codec.Format() == format.JSON && len(opts.JSONFields) == 0 && !opts.JSONDiscovery {
 		opts.agentHintShown = true
-		fmt.Fprintln(os.Stderr, "hint: use --json ? to discover fields, --json field1,field2 to select — no external parsing needed")
+		fmt.Fprintln(os.Stderr, "hint: use --json list to discover fields, --json field1,field2 to select — no external parsing needed")
 	}
 
 	// Intercept JSON field discovery and field selection when the resolved
