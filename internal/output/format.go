@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"os"
 	"slices"
 	"sort"
 	"strings"
@@ -32,9 +33,10 @@ type Options struct {
 	// Populated from terminal.NoTruncate() during BindFlags.
 	NoTruncate bool
 
-	customCodecs  map[string]format.Codec
-	defaultFormat string
-	flags         *pflag.FlagSet
+	customCodecs   map[string]format.Codec
+	defaultFormat  string
+	flags          *pflag.FlagSet
+	agentHintShown bool
 }
 
 func (opts *Options) RegisterCustomCodec(name string, codec format.Codec) {
@@ -140,6 +142,14 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 	codec, err := opts.Codec()
 	if err != nil {
 		return err
+	}
+
+	// In agent mode, nudge toward --json field selection when the command
+	// outputs raw JSON without explicit --json usage. The hint is emitted
+	// once per command invocation to stderr so it doesn't pollute stdout.
+	if !opts.agentHintShown && agent.IsAgentMode() && codec.Format() == format.JSON && len(opts.JSONFields) == 0 && !opts.JSONDiscovery {
+		opts.agentHintShown = true
+		fmt.Fprintln(os.Stderr, "hint: use --json ? to discover fields, --json field1,field2 to select — no external parsing needed")
 	}
 
 	// Intercept JSON field discovery and field selection when the resolved

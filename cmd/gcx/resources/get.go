@@ -181,7 +181,15 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	gcx resources get slo
 	gcx resources get slo/my-slo-uuid
 	gcx resources get checks
-	gcx resources get rules`,
+	gcx resources get rules
+
+	# Discover available JSON fields for a resource type:
+
+	gcx resources get dashboards --json ?
+
+	# Select specific fields (no external parsing needed):
+
+	gcx resources get dashboards --json metadata.name,spec.title`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
 				return err

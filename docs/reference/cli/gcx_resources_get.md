@@ -58,6 +58,14 @@ gcx resources get [RESOURCE_SELECTOR]... [flags]
 	gcx resources get slo/my-slo-uuid
 	gcx resources get checks
 	gcx resources get rules
+
+	# Discover available JSON fields for a resource type:
+
+	gcx resources get dashboards --json ?
+
+	# Select specific fields (no external parsing needed):
+
+	gcx resources get dashboards --json metadata.name,spec.title
 ```
 
 ### Options

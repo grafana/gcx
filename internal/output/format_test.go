@@ -1,7 +1,9 @@
 package output_test
 
 import (
+	"bytes"
 	goio "io"
+	"os"
 	"testing"
 
 	"github.com/grafana/gcx/internal/agent"
@@ -151,6 +153,68 @@ func TestJSONFlag_Parsing(t *testing.T) {
 			assert.Equal(t, tc.wantJSONDiscovery, opts.JSONDiscovery)
 			if tc.wantOutputFormat != "" {
 				assert.Equal(t, tc.wantOutputFormat, opts.OutputFormat)
+			}
+		})
+	}
+}
+
+func TestEncode_AgentModeHint(t *testing.T) {
+	tests := []struct {
+		name      string
+		agentMode bool
+		jsonField string // if set, pass --json flag
+		wantHint  bool
+	}{
+		{
+			name:      "agent mode without --json emits hint",
+			agentMode: true,
+			wantHint:  true,
+		},
+		{
+			name:      "agent mode with --json fields suppresses hint",
+			agentMode: true,
+			jsonField: "name",
+			wantHint:  false,
+		},
+		{
+			name:      "non-agent mode does not emit hint",
+			agentMode: false,
+			wantHint:  false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			agent.SetFlag(tc.agentMode)
+			t.Cleanup(func() { agent.SetFlag(false) })
+
+			opts := &cmdio.Options{}
+			flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+			opts.BindFlags(flags)
+
+			if tc.jsonField != "" {
+				require.NoError(t, flags.Set("json", tc.jsonField))
+			}
+
+			require.NoError(t, opts.Validate())
+
+			// Capture stderr to check for hint.
+			oldStderr := os.Stderr
+			r, w, _ := os.Pipe()
+			os.Stderr = w
+			t.Cleanup(func() { os.Stderr = oldStderr })
+
+			var buf bytes.Buffer
+			require.NoError(t, opts.Encode(&buf, map[string]any{"name": "test"}))
+
+			w.Close()
+			var stderrBuf bytes.Buffer
+			stderrBuf.ReadFrom(r) //nolint:errcheck
+
+			if tc.wantHint {
+				assert.Contains(t, stderrBuf.String(), "--json ?")
+			} else {
+				assert.NotContains(t, stderrBuf.String(), "--json ?")
 			}
 		})
 	}

@@ -8,6 +8,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// jsonDiscoveryTip is the help text shown for commands that support --json field selection.
+const jsonDiscoveryTip = "Use --json ? to discover available fields, --json field1,field2 to select specific fields."
+
 // HelpFunc returns a custom Cobra help function that renders Long descriptions
 // and Examples through glamour markdown rendering when styling is enabled.
 // Falls back to Cobra's default help when styling is disabled.
@@ -15,6 +18,13 @@ func HelpFunc(defaultHelp func(*cobra.Command, []string)) func(*cobra.Command, [
 	return func(cmd *cobra.Command, args []string) {
 		if !IsStylingEnabled() {
 			defaultHelp(cmd, args)
+			// Append JSON discovery tip for commands that support --json.
+			if f := cmd.Flags().Lookup("json"); f != nil {
+				w := cmd.OutOrStdout()
+				fmt.Fprintln(w)
+				fmt.Fprintln(w, "Tip:")
+				fmt.Fprintln(w, "  "+jsonDiscoveryTip)
+			}
 			return
 		}
 
@@ -96,6 +106,13 @@ func HelpFunc(defaultHelp func(*cobra.Command, []string)) func(*cobra.Command, [
 		if cmd.HasAvailableInheritedFlags() {
 			fmt.Fprintln(w, "Global Flags:")
 			fmt.Fprint(w, cmd.InheritedFlags().FlagUsages())
+			fmt.Fprintln(w)
+		}
+
+		// --- JSON discovery tip ---
+		if f := cmd.Flags().Lookup("json"); f != nil {
+			fmt.Fprintln(w, "Tip:")
+			fmt.Fprintln(w, "  "+jsonDiscoveryTip)
 			fmt.Fprintln(w)
 		}
 
