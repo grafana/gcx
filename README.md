@@ -60,8 +60,12 @@ Investigation, fix, instrumentation, monitoring — without the developer ever l
 
 **Pre-built binary (Linux/macOS/Windows):**
 
+Download the latest archive for your OS and architecture from the
+[releases page](https://github.com/grafana/gcx/releases/latest),
+extract it, and move the binary to your PATH:
+
 ```bash
-curl -fL https://github.com/grafana/gcx/releases/latest/download/gcx-$(uname -s)-$(uname -m) -o gcx
+tar xzf gcx_*.tar.gz
 chmod +x gcx && sudo mv gcx /usr/local/bin/
 ```
 
@@ -298,7 +302,7 @@ jobs:
 
       - name: Install gcx
         run: |
-          curl -fL https://github.com/grafana/gcx/releases/latest/download/gcx-Linux-x86_64 -o gcx
+          curl -fL "$(curl -s https://api.github.com/repos/grafana/gcx/releases/latest | grep browser_download_url | grep linux_amd64.tar.gz | cut -d '"' -f 4)" | tar xz gcx
           chmod +x gcx && sudo mv gcx /usr/local/bin/
 
       - name: Deploy resources
