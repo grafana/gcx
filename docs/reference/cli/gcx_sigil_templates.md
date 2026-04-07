@@ -22,6 +22,7 @@ Browse reusable evaluator blueprints (global and tenant-scoped).
 ### SEE ALSO
 
 * [gcx sigil](gcx_sigil.md)	 - Manage Sigil AI observability resources
-* [gcx sigil templates show](gcx_sigil_templates_show.md)	 - Show eval templates or a single template detail.
+* [gcx sigil templates get](gcx_sigil_templates_get.md)	 - Get a single eval template.
+* [gcx sigil templates list](gcx_sigil_templates_list.md)	 - List eval templates.
 * [gcx sigil templates versions](gcx_sigil_templates_versions.md)	 - List version history for an eval template.
 

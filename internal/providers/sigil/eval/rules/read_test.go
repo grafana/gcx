@@ -36,39 +36,3 @@ evaluator_ids:
 	assert.Equal(t, "my-rule", def.RuleID)
 	assert.True(t, def.Enabled)
 }
-
-func Test_toJSON_RejectsNonObjectJSON(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-	}{
-		{name: "array", input: `[{"rule_id":"x"}]`},
-		{name: "string", input: `"hello"`},
-		{name: "number", input: `42`},
-		{name: "null", input: `null`},
-		{name: "boolean", input: `true`},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			_, err := rules.ToJSON([]byte(tc.input))
-			require.Error(t, err, "toJSON should reject non-object JSON: %s", tc.input)
-		})
-	}
-}
-
-func Test_toJSON_AcceptsValidObject(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-	}{
-		{name: "json object", input: `{"sample_rate": 0.5}`},
-		{name: "yaml object", input: "sample_rate: 0.5\n"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			out, err := rules.ToJSON([]byte(tc.input))
-			require.NoError(t, err)
-			assert.NotEmpty(t, out)
-		})
-	}
-}

@@ -1,22 +1,17 @@
-## gcx sigil evaluators show
+## gcx sigil rules get
 
-Show evaluators or a single evaluator detail.
-
-### Synopsis
-
-Show evaluators. Without an ID, lists all evaluators.
-With an ID, shows the full evaluator definition.
+Get a single evaluation rule.
 
 ```
-gcx sigil evaluators show [evaluator-id] [flags]
+gcx sigil rules get <rule-id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for show
+  -h, --help            help for get
       --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
+  -o, --output string   Output format. One of: json, yaml (default "yaml")
 ```
 
 ### Options inherited from parent commands
@@ -32,5 +27,5 @@ gcx sigil evaluators show [evaluator-id] [flags]
 
 ### SEE ALSO
 
-* [gcx sigil evaluators](gcx_sigil_evaluators.md)	 - Manage evaluator definitions (LLM judge, regex, heuristic).
+* [gcx sigil rules](gcx_sigil_rules.md)	 - Manage rules that route generations to evaluators.
 

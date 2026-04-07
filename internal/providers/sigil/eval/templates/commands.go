@@ -9,7 +9,6 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
-	"github.com/grafana/gcx/internal/providers/sigil/commandutil"
 	"github.com/grafana/gcx/internal/providers/sigil/eval"
 	"github.com/grafana/gcx/internal/providers/sigil/sigilhttp"
 	"github.com/spf13/cobra"
@@ -31,20 +30,21 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Browse reusable evaluator blueprints (global and tenant-scoped).",
 	}
 	cmd.AddCommand(
-		newShowCommand(loader),
+		newListCommand(loader),
+		newGetCommand(loader),
 		newVersionsCommand(loader),
 	)
 	return cmd
 }
 
-// --- show (list + get) ---
+// --- list ---
 
-type showOpts struct {
+type listOpts struct {
 	IO    cmdio.Options
 	Scope string
 }
 
-func (o *showOpts) setup(flags *pflag.FlagSet) {
+func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &TableCodec{})
 	o.IO.RegisterCustomCodec("wide", &TableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
@@ -52,29 +52,59 @@ func (o *showOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.Scope, "scope", "", `Filter by scope: "global" or "tenant"`)
 }
 
-func newShowCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &showOpts{}
+func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &listOpts{}
 	cmd := &cobra.Command{
-		Use:   "show [template-id]",
-		Short: "Show eval templates or a single template detail.",
-		Long: `Show eval templates. Without an ID, lists all templates.
-With an ID, shows the full template definition including config and output keys.
+		Use:   "list",
+		Short: "List eval templates.",
+		Example: `  # List all templates.
+  gcx sigil templates list
+
+  # Filter by scope.
+  gcx sigil templates list --scope global`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+			client, err := newClient(cmd, loader)
+			if err != nil {
+				return err
+			}
+			templates, err := client.List(cmd.Context(), opts.Scope)
+			if err != nil {
+				return err
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), templates)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+// --- get ---
+
+type getOpts struct {
+	IO cmdio.Options
+}
+
+func (o *getOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("yaml")
+	o.IO.BindFlags(flags)
+}
+
+func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &getOpts{}
+	cmd := &cobra.Command{
+		Use:   "get <template-id>",
+		Short: "Get a single eval template.",
+		Long: `Get the full template definition including config and output keys.
 
 Templates are reusable evaluator blueprints. Export a template as YAML,
 customize it, and create an evaluator with 'evaluators create -f'.`,
-		Example: `  # List all templates.
-  gcx sigil templates show
-
-  # Show a template's config and output keys.
-  gcx sigil templates show my-template
-
-  # Filter by scope.
-  gcx sigil templates show --scope global
-
-  # Export a template and create an evaluator from it.
-  gcx sigil templates show my-template -o yaml > evaluator.yaml
+		Example: `  # Get a template's config and output keys.
+  gcx sigil templates get my-template -o yaml > evaluator.yaml
   gcx sigil evaluators create -f evaluator.yaml`,
-		Args: cobra.MaximumNArgs(1),
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -83,26 +113,11 @@ customize it, and create an evaluator with 'evaluators create -f'.`,
 			if err != nil {
 				return err
 			}
-
-			if len(args) == 1 {
-				if commandutil.ShouldDefaultDetailToYAML(cmd) {
-					opts.IO.OutputFormat = "yaml"
-				}
-				if err := commandutil.ValidateDetailOutputFormat(cmd, opts.IO.OutputFormat, "template", args[0]); err != nil {
-					return err
-				}
-				detail, err := client.Get(cmd.Context(), args[0])
-				if err != nil {
-					return err
-				}
-				return opts.IO.Encode(cmd.OutOrStdout(), detail)
-			}
-
-			templates, err := client.List(cmd.Context(), opts.Scope)
+			detail, err := client.Get(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), templates)
+			return opts.IO.Encode(cmd.OutOrStdout(), detail)
 		},
 	}
 	opts.setup(cmd.Flags())

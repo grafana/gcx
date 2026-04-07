@@ -128,13 +128,20 @@ func TestClient_Update(t *testing.T) {
 		assert.Equal(t, http.MethodPatch, r.Method)
 		assert.Contains(t, r.URL.Path, "/eval/rules/rule-1")
 
+		var def eval.RuleDefinition
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&def))
+		assert.InDelta(t, 0.5, def.SampleRate, 0.001)
+
 		writeJSON(w, eval.RuleDefinition{
 			RuleID:     "rule-1",
 			SampleRate: 0.5,
 		})
 	}))
 
-	updated, err := client.Update(context.Background(), "rule-1", []byte(`{"sample_rate": 0.5}`))
+	updated, err := client.Update(context.Background(), "rule-1", &eval.RuleDefinition{
+		RuleID:     "rule-1",
+		SampleRate: 0.5,
+	})
 	require.NoError(t, err)
 	assert.Equal(t, "rule-1", updated.RuleID)
 	assert.InDelta(t, 0.5, updated.SampleRate, 0.001)

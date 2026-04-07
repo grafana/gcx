@@ -1,22 +1,17 @@
-## gcx sigil conversations show
+## gcx sigil agents list
 
-Show conversations or a single conversation detail.
-
-### Synopsis
-
-Show conversations. Without an ID, lists conversations (use --limit to control count).
-With an ID, shows the full conversation detail including all generations.
+List agents.
 
 ```
-gcx sigil conversations show [conversation-id] [flags]
+gcx sigil agents list [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for show
+  -h, --help            help for list
       --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-      --limit int       Maximum number of conversations to return (0 for no limit) (default 100)
+      --limit int       Maximum number of agents to return (default 100)
   -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
 ```
 
@@ -33,5 +28,5 @@ gcx sigil conversations show [conversation-id] [flags]
 
 ### SEE ALSO
 
-* [gcx sigil conversations](gcx_sigil_conversations.md)	 - Query Sigil conversations.
+* [gcx sigil agents](gcx_sigil_agents.md)	 - Query Sigil agent catalog.
 

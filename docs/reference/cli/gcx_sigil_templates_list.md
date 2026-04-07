@@ -1,25 +1,28 @@
-## gcx sigil rules update
+## gcx sigil templates list
 
-Update an evaluation rule from a file.
+List eval templates.
 
 ```
-gcx sigil rules update <rule-id> [flags]
+gcx sigil templates list [flags]
 ```
 
 ### Examples
 
 ```
-  # Update a rule from a YAML file.
-  gcx sigil rules update my-rule -f rule.yaml
+  # List all templates.
+  gcx sigil templates list
+
+  # Filter by scope.
+  gcx sigil templates list --scope global
 ```
 
 ### Options
 
 ```
-  -f, --filename string   File containing the full rule definition (use - for stdin)
-  -h, --help              help for update
-      --json string       Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-  -o, --output string     Output format. One of: json, yaml (default "json")
+  -h, --help            help for list
+      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+  -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
+      --scope string    Filter by scope: "global" or "tenant"
 ```
 
 ### Options inherited from parent commands
@@ -35,5 +38,5 @@ gcx sigil rules update <rule-id> [flags]
 
 ### SEE ALSO
 
-* [gcx sigil rules](gcx_sigil_rules.md)	 - Manage rules that route generations to evaluators.
+* [gcx sigil templates](gcx_sigil_templates.md)	 - Browse reusable evaluator blueprints (global and tenant-scoped).
 

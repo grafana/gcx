@@ -24,6 +24,7 @@ Manage evaluator definitions (LLM judge, regex, heuristic).
 * [gcx sigil](gcx_sigil.md)	 - Manage Sigil AI observability resources
 * [gcx sigil evaluators create](gcx_sigil_evaluators_create.md)	 - Create or update an evaluator from a file.
 * [gcx sigil evaluators delete](gcx_sigil_evaluators_delete.md)	 - Delete evaluators.
-* [gcx sigil evaluators show](gcx_sigil_evaluators_show.md)	 - Show evaluators or a single evaluator detail.
+* [gcx sigil evaluators get](gcx_sigil_evaluators_get.md)	 - Get a single evaluator definition.
+* [gcx sigil evaluators list](gcx_sigil_evaluators_list.md)	 - List evaluator definitions.
 * [gcx sigil evaluators test](gcx_sigil_evaluators_test.md)	 - Run an evaluator against a generation without persisting results.
 

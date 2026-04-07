@@ -22,6 +22,7 @@ Query Sigil agent catalog.
 ### SEE ALSO
 
 * [gcx sigil](gcx_sigil.md)	 - Manage Sigil AI observability resources
-* [gcx sigil agents show](gcx_sigil_agents_show.md)	 - Show agents or a single agent detail.
+* [gcx sigil agents get](gcx_sigil_agents_get.md)	 - Get a single agent definition.
+* [gcx sigil agents list](gcx_sigil_agents_list.md)	 - List agents.
 * [gcx sigil agents versions](gcx_sigil_agents_versions.md)	 - List version history for an agent.
 

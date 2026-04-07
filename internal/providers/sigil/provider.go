@@ -46,33 +46,33 @@ func (p *SigilProvider) Commands() []*cobra.Command {
 	convsCmd := conversations.Commands(loader)
 	convsCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx sigil conversations show --limit 10 -o json`,
+		agent.AnnotationLLMHint:   `gcx sigil conversations list --limit 10 -o json`,
 	}
 	sigilCmd.AddCommand(convsCmd)
 
 	agentsCmd := agents.Commands(loader)
 	agentsCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx sigil agents show --limit 10 -o json`,
+		agent.AnnotationLLMHint:   `gcx sigil agents list --limit 10 -o json`,
 	}
 	sigilCmd.AddCommand(agentsCmd)
 
 	evaluatorsCmd := evaluators.Commands(loader)
 	evaluatorsCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "low",
-		agent.AnnotationLLMHint:   `gcx sigil evaluators show -o json; gcx sigil evaluators show <id> -o yaml; gcx sigil evaluators create -f def.yaml -o json; gcx sigil evaluators test -e <id> -g <gen-id> -o json; gcx sigil evaluators delete <id> --force`,
+		agent.AnnotationLLMHint:   `gcx sigil evaluators list -o json; gcx sigil evaluators get <id> -o yaml; gcx sigil evaluators create -f def.yaml -o json; gcx sigil evaluators test -e <id> -g <gen-id> -o json; gcx sigil evaluators delete <id> --force`,
 	}
 
-	rulesCmd := rules.Commands(loader)
+	rulesCmd := rules.Commands()
 	rulesCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "low",
-		agent.AnnotationLLMHint:   `gcx sigil rules show -o json; gcx sigil rules show <id> -o yaml; gcx sigil rules create -f rule.yaml -o json; gcx sigil rules update <id> -f patch.yaml -o json; gcx sigil rules delete <id> --force`,
+		agent.AnnotationLLMHint:   `gcx sigil rules list -o json; gcx sigil rules get <id> -o yaml; gcx sigil rules create -f rule.yaml -o json; gcx sigil rules update <id> -f patch.yaml -o json; gcx sigil rules delete <id> --force`,
 	}
 
 	templatesCmd := templates.Commands(loader)
 	templatesCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "low",
-		agent.AnnotationLLMHint:   `gcx sigil templates show -o json; gcx sigil templates show <id> -o yaml; gcx sigil templates versions <id> -o json; gcx sigil templates show --scope global -o json`,
+		agent.AnnotationLLMHint:   `gcx sigil templates list -o json; gcx sigil templates get <id> -o yaml; gcx sigil templates versions <id> -o json; gcx sigil templates list --scope global -o json`,
 	}
 
 	sigilCmd.AddCommand(evaluatorsCmd, rulesCmd, templatesCmd)
@@ -96,5 +96,21 @@ func (p *SigilProvider) ConfigKeys() []providers.ConfigKey {
 
 // TypedRegistrations returns adapter registrations for Sigil resource types.
 func (p *SigilProvider) TypedRegistrations() []adapter.Registration {
-	return nil
+	evalDesc := evaluators.StaticDescriptor()
+	ruleDesc := rules.StaticDescriptor()
+
+	return []adapter.Registration{
+		{
+			Factory:    evaluators.NewLazyFactory(),
+			Descriptor: evalDesc,
+			GVK:        evalDesc.GroupVersionKind(),
+			Schema:     evaluators.EvaluatorSchema(),
+		},
+		{
+			Factory:    rules.NewLazyFactory(),
+			Descriptor: ruleDesc,
+			GVK:        ruleDesc.GroupVersionKind(),
+			Schema:     rules.RuleSchema(),
+		},
+	}
 }

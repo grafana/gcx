@@ -1,23 +1,21 @@
-## gcx sigil agents show
+## gcx sigil agents get
 
-Show agents or a single agent detail.
+Get a single agent definition.
 
 ### Synopsis
 
-Show agents. Without a name, lists agents (use --limit to control count).
-With a name, shows the full agent definition (use --version for a specific version).
+Get the full agent definition. Use --version for a specific version.
 
 ```
-gcx sigil agents show [agent-name] [flags]
+gcx sigil agents get <agent-name> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help             help for show
+  -h, --help             help for get
       --json string      Comma-separated list of fields to include in JSON output, or '?' to discover available fields
-      --limit int        Maximum number of agents to return (default 100)
-  -o, --output string    Output format. One of: json, table, wide, yaml (default "table")
+  -o, --output string    Output format. One of: json, yaml (default "yaml")
       --version string   Specific effective version to look up
 ```
 

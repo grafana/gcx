@@ -1,11 +1,18 @@
-## gcx sigil rules
+## gcx sigil conversations list
 
-Manage rules that route generations to evaluators.
+List conversations.
+
+```
+gcx sigil conversations list [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for rules
+  -h, --help            help for list
+      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --limit int       Maximum number of conversations to return (0 for no limit) (default 100)
+  -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -21,10 +28,5 @@ Manage rules that route generations to evaluators.
 
 ### SEE ALSO
 
-* [gcx sigil](gcx_sigil.md)	 - Manage Sigil AI observability resources
-* [gcx sigil rules create](gcx_sigil_rules_create.md)	 - Create an evaluation rule from a file.
-* [gcx sigil rules delete](gcx_sigil_rules_delete.md)	 - Delete evaluation rules.
-* [gcx sigil rules get](gcx_sigil_rules_get.md)	 - Get a single evaluation rule.
-* [gcx sigil rules list](gcx_sigil_rules_list.md)	 - List evaluation rules.
-* [gcx sigil rules update](gcx_sigil_rules_update.md)	 - Update an evaluation rule from a file.
+* [gcx sigil conversations](gcx_sigil_conversations.md)	 - Query Sigil conversations.
 

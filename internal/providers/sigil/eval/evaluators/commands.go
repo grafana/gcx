@@ -14,21 +14,14 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
-	"github.com/grafana/gcx/internal/providers/sigil/commandutil"
 	"github.com/grafana/gcx/internal/providers/sigil/eval"
 	"github.com/grafana/gcx/internal/providers/sigil/sigilhttp"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/terminal"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
-
-func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, error) {
-	base, err := sigilhttp.NewClientFromCommand(cmd, loader)
-	if err != nil {
-		return nil, err
-	}
-	return NewClient(base), nil
-}
 
 // Commands returns the evaluators command group.
 func Commands(loader *providers.ConfigLoader) *cobra.Command {
@@ -37,63 +30,111 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Manage evaluator definitions (LLM judge, regex, heuristic).",
 	}
 	cmd.AddCommand(
-		newShowCommand(loader),
-		newCreateCommand(loader),
-		newDeleteCommand(loader),
+		newListCommand(),
+		newGetCommand(),
+		newCreateCommand(),
+		newDeleteCommand(),
 		newTestCommand(loader),
 	)
 	return cmd
 }
 
-// --- show (list + get) ---
+// --- list ---
 
-type showOpts struct {
+type listOpts struct {
 	IO cmdio.Options
 }
 
-func (o *showOpts) setup(flags *pflag.FlagSet) {
+func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &TableCodec{})
 	o.IO.RegisterCustomCodec("wide", &TableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
 
-func newShowCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &showOpts{}
+func newListCommand() *cobra.Command {
+	opts := &listOpts{}
 	cmd := &cobra.Command{
-		Use:   "show [evaluator-id]",
-		Short: "Show evaluators or a single evaluator detail.",
-		Long: `Show evaluators. Without an ID, lists all evaluators.
-With an ID, shows the full evaluator definition.`,
-		Args: cobra.MaximumNArgs(1),
+		Use:   "list",
+		Short: "List evaluator definitions.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			crud, namespace, err := NewTypedCRUD(ctx)
+			if err != nil {
+				return err
+			}
+
+			typedObjs, err := crud.List(ctx)
+			if err != nil {
+				return err
+			}
+
+			specs := make([]eval.EvaluatorDefinition, len(typedObjs))
+			for i := range typedObjs {
+				specs[i] = typedObjs[i].Spec
+			}
+
+			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
+				return opts.IO.Encode(cmd.OutOrStdout(), specs)
+			}
+
+			objs := make([]unstructured.Unstructured, 0, len(specs))
+			for _, spec := range specs {
+				u, err := specToUnstructured(spec, namespace)
+				if err != nil {
+					return err
+				}
+				objs = append(objs, u)
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), objs)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+// --- get ---
+
+type getOpts struct {
+	IO cmdio.Options
+}
+
+func (o *getOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("yaml")
+	o.IO.BindFlags(flags)
+}
+
+func newGetCommand() *cobra.Command {
+	opts := &getOpts{}
+	cmd := &cobra.Command{
+		Use:   "get <evaluator-id>",
+		Short: "Get a single evaluator definition.",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			client, err := newClient(cmd, loader)
+
+			ctx := cmd.Context()
+			crud, namespace, err := NewTypedCRUD(ctx)
 			if err != nil {
 				return err
 			}
 
-			if len(args) == 1 {
-				if commandutil.ShouldDefaultDetailToYAML(cmd) {
-					opts.IO.OutputFormat = "yaml"
-				}
-				if err := commandutil.ValidateDetailOutputFormat(cmd, opts.IO.OutputFormat, "evaluator", args[0]); err != nil {
-					return err
-				}
-				evaluator, err := client.Get(cmd.Context(), args[0])
-				if err != nil {
-					return err
-				}
-				return opts.IO.Encode(cmd.OutOrStdout(), evaluator)
-			}
-
-			evaluators, err := client.List(cmd.Context())
+			typedObj, err := crud.Get(ctx, args[0])
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), evaluators)
+
+			u, err := specToUnstructured(typedObj.Spec, namespace)
+			if err != nil {
+				return err
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), &u)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -120,7 +161,7 @@ func (o *createOpts) Validate() error {
 	return o.IO.Validate()
 }
 
-func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
+func newCreateCommand() *cobra.Command {
 	opts := &createOpts{}
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -144,18 +185,20 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
-			client, err := newClient(cmd, loader)
+			ctx := cmd.Context()
+			crud, _, err := NewTypedCRUD(ctx)
 			if err != nil {
 				return err
 			}
 
-			created, err := client.Create(cmd.Context(), def)
+			typedObj := &adapter.TypedObject[eval.EvaluatorDefinition]{Spec: *def}
+			created, err := crud.Create(ctx, typedObj)
 			if err != nil {
 				return err
 			}
 
-			cmdio.Success(cmd.ErrOrStderr(), "Evaluator %s created", created.EvaluatorID)
-			return opts.IO.Encode(cmd.OutOrStdout(), created)
+			cmdio.Success(cmd.ErrOrStderr(), "Evaluator %s created", created.Spec.EvaluatorID)
+			return opts.IO.Encode(cmd.OutOrStdout(), created.Spec)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -172,7 +215,7 @@ func (o *deleteOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVarP(&o.Force, "force", "f", false, "Skip confirmation prompt")
 }
 
-func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
+func newDeleteCommand() *cobra.Command {
 	opts := &deleteOpts{}
 	cmd := &cobra.Command{
 		Use:   "delete ID...",
@@ -196,13 +239,14 @@ func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
 				}
 			}
 
-			client, err := newClient(cmd, loader)
+			ctx := cmd.Context()
+			crud, _, err := NewTypedCRUD(ctx)
 			if err != nil {
 				return err
 			}
 
 			for _, id := range args {
-				if err := client.Delete(cmd.Context(), id); err != nil {
+				if err := crud.Delete(ctx, id); err != nil {
 					return fmt.Errorf("deleting evaluator %s: %w", id, err)
 				}
 				cmdio.Success(cmd.ErrOrStderr(), "Deleted evaluator %s", id)

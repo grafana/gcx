@@ -72,9 +72,13 @@ func (c *Client) Create(ctx context.Context, rule *eval.RuleDefinition) (*eval.R
 	return &created, nil
 }
 
-// Update patches an existing rule with raw JSON.
-// Only the fields present in the input are included in the PATCH request.
-func (c *Client) Update(ctx context.Context, id string, body []byte) (*eval.RuleDefinition, error) {
+// Update sends a full rule definition as a PATCH request.
+func (c *Client) Update(ctx context.Context, id string, rule *eval.RuleDefinition) (*eval.RuleDefinition, error) {
+	body, err := json.Marshal(rule)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal rule: %w", err)
+	}
+
 	resp, err := c.base.DoRequest(ctx, http.MethodPatch, basePath+"/"+url.PathEscape(id), bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to update rule: %w", err)

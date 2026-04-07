@@ -18,6 +18,14 @@ import (
 	"github.com/spf13/pflag"
 )
 
+func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, error) {
+	base, err := sigilhttp.NewClientFromCommand(cmd, loader)
+	if err != nil {
+		return nil, err
+	}
+	return NewClient(base), nil
+}
+
 type testOpts struct {
 	EvaluatorID    string
 	GenerationID   string

@@ -9,7 +9,6 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
-	"github.com/grafana/gcx/internal/providers/sigil/commandutil"
 	"github.com/grafana/gcx/internal/providers/sigil/sigilhttp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -31,37 +30,72 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 	}
 
 	cmd.AddCommand(
-		newShowCommand(loader),
+		newListCommand(loader),
+		newGetCommand(loader),
 		newVersionsCommand(loader),
 	)
 	return cmd
 }
 
-// --- show (list + lookup) ---
+// --- list ---
 
-type showOpts struct {
-	IO      cmdio.Options
-	Limit   int
-	Version string
+type listOpts struct {
+	IO    cmdio.Options
+	Limit int
 }
 
-func (o *showOpts) setup(flags *pflag.FlagSet) {
+func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &ListTableCodec{})
 	o.IO.RegisterCustomCodec("wide", &ListTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.Limit, "limit", 100, "Maximum number of agents to return")
+}
+
+func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &listOpts{}
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List agents.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+			client, err := newClient(cmd, loader)
+			if err != nil {
+				return err
+			}
+			agents, err := client.List(cmd.Context(), opts.Limit)
+			if err != nil {
+				return err
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), agents)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+// --- get ---
+
+type getOpts struct {
+	IO      cmdio.Options
+	Version string
+}
+
+func (o *getOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("yaml")
+	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Version, "version", "", "Specific effective version to look up")
 }
 
-func newShowCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &showOpts{}
+func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &getOpts{}
 	cmd := &cobra.Command{
-		Use:   "show [agent-name]",
-		Short: "Show agents or a single agent detail.",
-		Long: `Show agents. Without a name, lists agents (use --limit to control count).
-With a name, shows the full agent definition (use --version for a specific version).`,
-		Args: cobra.MaximumNArgs(1),
+		Use:   "get <agent-name>",
+		Short: "Get a single agent definition.",
+		Long:  `Get the full agent definition. Use --version for a specific version.`,
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -70,32 +104,11 @@ With a name, shows the full agent definition (use --version for a specific versi
 			if err != nil {
 				return err
 			}
-
-			if len(args) == 1 {
-				if commandutil.ShouldDefaultDetailToYAML(cmd) {
-					opts.IO.OutputFormat = "yaml"
-				}
-
-				exampleArgs := []string{args[0]}
-				if opts.Version != "" {
-					exampleArgs = append(exampleArgs, "--version", opts.Version)
-				}
-				if err := commandutil.ValidateDetailOutputFormat(cmd, opts.IO.OutputFormat, "agent", exampleArgs...); err != nil {
-					return err
-				}
-
-				detail, err := client.Lookup(cmd.Context(), args[0], opts.Version)
-				if err != nil {
-					return err
-				}
-				return opts.IO.Encode(cmd.OutOrStdout(), detail)
-			}
-
-			agents, err := client.List(cmd.Context(), opts.Limit)
+			detail, err := client.Lookup(cmd.Context(), args[0], opts.Version)
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), agents)
+			return opts.IO.Encode(cmd.OutOrStdout(), detail)
 		},
 	}
 	opts.setup(cmd.Flags())
