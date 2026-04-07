@@ -60,10 +60,25 @@ Investigation, fix, instrumentation, monitoring — without the developer ever l
 
 **Pre-built binary (Linux/macOS/Windows):**
 
-```bash
-curl -fL https://github.com/grafana/gcx/releases/latest/download/gcx-$(uname -s)-$(uname -m) -o gcx
-chmod +x gcx && sudo mv gcx /usr/local/bin/
-```
+1. Navigate to the [latest release](https://github.com/grafana/gcx/releases/latest)
+2. Search for the binary matching your system / architecture
+3. Download the appropriate tarball
+4. Extract the release:
+
+  ```
+  tar -xvf gcx_<version>_<os>_<arch>.tar.gz
+  
+  # CHANGELOG.md
+  # LICENSE
+  # README.md
+  #gcx
+  ```
+
+5. Make it executable, move it to the $PATH:
+
+  ```bash
+  chmod +x gcx && sudo mv gcx /usr/local/bin/
+  ```
 
 **Go install:**
 
