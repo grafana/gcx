@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"os"
 	"slices"
 	"sort"
 	"strings"
@@ -17,7 +18,10 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-const jsonDiscoverySentinel = "?"
+const (
+	jsonDiscoverySentinel     = "?"
+	jsonDiscoveryListSentinel = "list"
+)
 
 type Options struct {
 	OutputFormat  string
@@ -32,9 +36,13 @@ type Options struct {
 	// Populated from terminal.NoTruncate() during BindFlags.
 	NoTruncate bool
 
-	customCodecs  map[string]format.Codec
-	defaultFormat string
-	flags         *pflag.FlagSet
+	// ErrWriter is the writer for hints and diagnostics (defaults to os.Stderr).
+	ErrWriter io.Writer
+
+	customCodecs   map[string]format.Codec
+	defaultFormat  string
+	flags          *pflag.FlagSet
+	agentHintShown bool
 }
 
 func (opts *Options) RegisterCustomCodec(name string, codec format.Codec) {
@@ -68,7 +76,7 @@ func (opts *Options) BindFlags(flags *pflag.FlagSet) {
 	opts.NoTruncate = terminal.NoTruncate()
 
 	flags.StringVarP(&opts.OutputFormat, "output", "o", defaultFormat, "Output format. One of: "+strings.Join(opts.allowedCodecs(), ", "))
-	flags.String("json", "", "Comma-separated list of fields to include in JSON output, or '?' to discover available fields")
+	flags.String("json", "", "Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields")
 
 	opts.flags = flags
 }
@@ -104,7 +112,7 @@ func (opts *Options) applyJSONFlag() error {
 	}
 
 	jsonValue := jsonFlag.Value.String()
-	if jsonValue == jsonDiscoverySentinel {
+	if jsonValue == jsonDiscoverySentinel || jsonValue == jsonDiscoveryListSentinel {
 		opts.JSONDiscovery = true
 		return nil
 	}
@@ -140,6 +148,18 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 	codec, err := opts.Codec()
 	if err != nil {
 		return err
+	}
+
+	// In agent mode, nudge toward --json field selection when the command
+	// outputs raw JSON without explicit --json usage. The hint is emitted
+	// once per command invocation to stderr so it doesn't pollute stdout.
+	if !opts.agentHintShown && agent.IsAgentMode() && codec.Format() == format.JSON && len(opts.JSONFields) == 0 && !opts.JSONDiscovery {
+		opts.agentHintShown = true
+		w := opts.ErrWriter
+		if w == nil {
+			w = os.Stderr
+		}
+		fmt.Fprintln(w, "hint: use --json list to discover fields, --json field1,field2 to select — no external parsing needed")
 	}
 
 	// Intercept JSON field discovery and field selection when the resolved

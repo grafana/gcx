@@ -1,26 +1,14 @@
 package graph
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"github.com/charmbracelet/lipgloss"
+	"github.com/grafana/gcx/internal/style"
+)
 
-// Grafana color palette for chart series.
-//
-//nolint:gochecknoglobals
-var grafanaColors = []lipgloss.Color{
-	lipgloss.Color("#7EB26D"), // Green
-	lipgloss.Color("#EAB839"), // Yellow
-	lipgloss.Color("#6ED0E0"), // Cyan
-	lipgloss.Color("#EF843C"), // Orange
-	lipgloss.Color("#E24D42"), // Red
-	lipgloss.Color("#1F78C1"), // Blue
-	lipgloss.Color("#BA43A9"), // Purple
-	lipgloss.Color("#705DA0"), // Violet
-	lipgloss.Color("#508642"), // Dark Green
-	lipgloss.Color("#CCA300"), // Gold
-}
-
-// ColorForIndex returns the color for a given series index.
+// ColorForIndex returns the color for a given series index, cycling through
+// the Grafana chart palette.
 func ColorForIndex(idx int) lipgloss.Color {
-	return grafanaColors[idx%len(grafanaColors)]
+	return style.ChartPalette[idx%len(style.ChartPalette)]
 }
 
 // Compliance status colors.

@@ -7,14 +7,15 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
-	"text/tabwriter"
 
 	auth "github.com/grafana/gcx/internal/auth/adaptive"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/gcx/internal/terminal"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -123,26 +124,23 @@ func (c *recommendationTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []Recommendation")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "ID\tMESSAGE\tTAGS\tAPPLIED\tDISMISSED\tSTALE\tCREATED AT\tACTIONS")
+		t = style.NewTable("ID", "MESSAGE", "TAGS", "APPLIED", "DISMISSED", "STALE", "CREATED AT", "ACTIONS")
 	} else {
-		fmt.Fprintln(tw, "ID\tMESSAGE\tTAGS\tAPPLIED\tDISMISSED\tSTALE\tCREATED AT")
+		t = style.NewTable("ID", "MESSAGE", "TAGS", "APPLIED", "DISMISSED", "STALE", "CREATED AT")
 	}
 
 	for _, r := range recs {
 		tags := strings.Join(r.Tags, ",")
 		if c.Wide {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%v\t%v\t%v\t%s\t%d\n",
-				r.ID, r.Message, tags, r.Applied, r.Dismissed, r.Stale, r.CreatedAt, len(r.Actions))
+			t.Row(r.ID, r.Message, tags, strconv.FormatBool(r.Applied), strconv.FormatBool(r.Dismissed), strconv.FormatBool(r.Stale), r.CreatedAt, strconv.Itoa(len(r.Actions)))
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%v\t%v\t%v\t%s\n",
-				r.ID, r.Message, tags, r.Applied, r.Dismissed, r.Stale, r.CreatedAt)
+			t.Row(r.ID, r.Message, tags, strconv.FormatBool(r.Applied), strconv.FormatBool(r.Dismissed), strconv.FormatBool(r.Stale), r.CreatedAt)
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *recommendationTableCodec) Decode(_ io.Reader, _ any) error {
@@ -347,25 +345,22 @@ func (c *policyTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []Policy")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "ID\tNAME\tTYPE\tEXPIRES AT\tCREATED BY\tCREATED AT")
+		t = style.NewTable("ID", "NAME", "TYPE", "EXPIRES AT", "CREATED BY", "CREATED AT")
 	} else {
-		fmt.Fprintln(tw, "ID\tNAME\tTYPE\tEXPIRES AT")
+		t = style.NewTable("ID", "NAME", "TYPE", "EXPIRES AT")
 	}
 
 	for _, p := range policies {
 		if c.Wide {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
-				p.ID, p.Name, p.Type, p.ExpiresAt, p.VersionCreatedBy, p.VersionCreatedAt)
+			t.Row(p.ID, p.Name, p.Type, p.ExpiresAt, p.VersionCreatedBy, p.VersionCreatedAt)
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
-				p.ID, p.Name, p.Type, p.ExpiresAt)
+			t.Row(p.ID, p.Name, p.Type, p.ExpiresAt)
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *policyTableCodec) Decode(_ io.Reader, _ any) error {

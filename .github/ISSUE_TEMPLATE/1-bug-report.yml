@@ -1,7 +1,6 @@
 name: 🐛 Bug Report
 description: Something isn't working as expected
-title: ""
-type: "Bug"
+title: 🐛 Bug Report
 labels: ["action/needs-triage"]
 body:
   - type: markdown

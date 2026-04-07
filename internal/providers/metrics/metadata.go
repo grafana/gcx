@@ -6,7 +6,6 @@ import (
 	"io"
 	"log/slog"
 	"sort"
-	"text/tabwriter"
 
 	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
@@ -14,6 +13,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -113,8 +113,7 @@ func (c *metadataTableCodec) Encode(w io.Writer, data any) error {
 		return errors.New("invalid data type for metadata table codec")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "METRIC\tTYPE\tHELP")
+	t := style.NewTable("METRIC", "TYPE", "HELP")
 
 	metrics := make([]string, 0, len(resp.Data))
 	for m := range resp.Data {
@@ -124,11 +123,11 @@ func (c *metadataTableCodec) Encode(w io.Writer, data any) error {
 	for _, metric := range metrics {
 		entries := resp.Data[metric]
 		for _, entry := range entries {
-			fmt.Fprintf(tw, "%s\t%s\t%s\n", metric, entry.Type, entry.Help)
+			t.Row(metric, entry.Type, entry.Help)
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *metadataTableCodec) Decode(io.Reader, any) error {

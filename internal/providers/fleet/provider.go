@@ -9,7 +9,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 
 	fleetbase "github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/format"
@@ -17,6 +16,7 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -77,6 +77,15 @@ func CollectorDescriptor() resources.Descriptor { return collectorDescriptorVar 
 
 func init() { //nolint:gochecknoinits // Self-registration pattern (like database/sql drivers).
 	providers.Register(&FleetProvider{})
+
+	adapter.RegisterNaturalKey(
+		pipelineDescriptorVar.GroupVersionKind(),
+		adapter.SpecFieldKey("name"),
+	)
+	adapter.RegisterNaturalKey(
+		collectorDescriptorVar.GroupVersionKind(),
+		adapter.SpecFieldKey("name"),
+	)
 }
 
 // ---------------------------------------------------------------------------
@@ -800,11 +809,11 @@ func (c *PipelineTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []Pipeline")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "ID\tNAME\tENABLED\tMATCHERS")
+		t = style.NewTable("ID", "NAME", "ENABLED", "MATCHERS")
 	} else {
-		fmt.Fprintln(tw, "ID\tNAME\tENABLED")
+		t = style.NewTable("ID", "NAME", "ENABLED")
 	}
 
 	for _, p := range pipelines {
@@ -817,13 +826,13 @@ func (c *PipelineTableCodec) Encode(w io.Writer, v any) error {
 			if matchers == "" {
 				matchers = "-"
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", p.ID, p.Name, enabled, matchers)
+			t.Row(p.ID, p.Name, enabled, matchers)
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\n", p.ID, p.Name, enabled)
+			t.Row(p.ID, p.Name, enabled)
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 // Decode is not supported for table format.
@@ -851,11 +860,11 @@ func (c *CollectorTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []Collector")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "ID\tNAME\tTYPE\tENABLED\tCREATED_AT")
+		t = style.NewTable("ID", "NAME", "TYPE", "ENABLED", "CREATED_AT")
 	} else {
-		fmt.Fprintln(tw, "ID\tNAME\tTYPE\tENABLED")
+		t = style.NewTable("ID", "NAME", "TYPE", "ENABLED")
 	}
 
 	for _, col := range collectors {
@@ -874,13 +883,13 @@ func (c *CollectorTableCodec) Encode(w io.Writer, v any) error {
 			if col.CreatedAt != nil {
 				createdAt = col.CreatedAt.Format("2006-01-02 15:04")
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", col.ID, col.Name, colType, enabled, createdAt)
+			t.Row(col.ID, col.Name, colType, enabled, createdAt)
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", col.ID, col.Name, colType, enabled)
+			t.Row(col.ID, col.Name, colType, enabled)
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 // Decode is not supported for table format.

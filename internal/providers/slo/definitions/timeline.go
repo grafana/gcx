@@ -8,13 +8,13 @@ import (
 	"math"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/graph"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/query/prometheus"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/promql-builder/go/promql"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -545,8 +545,7 @@ func (c *TimelineTableCodec) Encode(w io.Writer, v any) error {
 		return fmt.Errorf("timelineTableCodec: expected SLITrendPayload, got %T", v)
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tUUID\tTIMESTAMP\tSLI\tOBJECTIVE")
+	t := style.NewTable("NAME", "UUID", "TIMESTAMP", "SLI", "OBJECTIVE")
 
 	// Emit rows grouped by UUID, preserving SLOs slice order.
 	for _, slo := range payload.SLOs {
@@ -557,7 +556,7 @@ func (c *TimelineTableCodec) Encode(w io.Writer, v any) error {
 		for _, pt := range pts {
 			sliStr := fmt.Sprintf("%.4f%%", pt.Value*100)
 			objStr := fmt.Sprintf("%.2f%%", pt.Objective*100)
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+			t.Row(
 				pt.Name,
 				pt.UUID,
 				pt.Time.Format(time.RFC3339),
@@ -567,7 +566,7 @@ func (c *TimelineTableCodec) Encode(w io.Writer, v any) error {
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 // Decode is not supported for the timeline table codec.

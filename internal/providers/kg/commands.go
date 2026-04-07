@@ -9,12 +9,13 @@ import (
 	"os"
 	"os/exec"
 	"sort"
+	"strconv"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
@@ -420,12 +421,11 @@ func (c *DatasetTableCodec) Encode(w io.Writer, v any) error {
 	if !ok {
 		return errors.New("invalid data type for table codec: expected *DatasetsResponse")
 	}
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tDETECTED\tENABLED\tCONFIGURED")
+	t := style.NewTable("NAME", "DETECTED", "ENABLED", "CONFIGURED")
 	for _, item := range resp.Items {
-		fmt.Fprintf(tw, "%s\t%v\t%v\t%v\n", item.Name, item.Detected, item.Enabled, item.Configured)
+		t.Row(item.Name, strconv.FormatBool(item.Detected), strconv.FormatBool(item.Enabled), strconv.FormatBool(item.Configured))
 	}
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *DatasetTableCodec) Decode(_ io.Reader, _ any) error {
@@ -647,16 +647,15 @@ func (c *RuleTableCodec) Encode(w io.Writer, v any) error {
 	if !ok {
 		return errors.New("invalid data type for table codec: expected []Rule")
 	}
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tRECORD\tALERT\tEXPR")
+	t := style.NewTable("NAME", "RECORD", "ALERT", "EXPR")
 	for _, r := range rules {
 		expr := r.Expr
 		if len(expr) > 60 {
 			expr = expr[:57] + "..."
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", r.Name, r.Record, r.Alert, expr)
+		t.Row(r.Name, r.Record, r.Alert, expr)
 	}
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *RuleTableCodec) Decode(_ io.Reader, _ any) error {
@@ -959,16 +958,15 @@ func (c *EntityTableCodec) Encode(w io.Writer, v any) error {
 	if !ok {
 		return errors.New("invalid data type for table codec: expected []SearchResult")
 	}
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "TYPE\tNAME\tSCOPE\tACTIVE")
+	t := style.NewTable("TYPE", "NAME", "SCOPE", "ACTIVE")
 	for _, r := range results {
-		t := r.Type
-		if t == "" {
-			t = r.EntityType
+		typ := r.Type
+		if typ == "" {
+			typ = r.EntityType
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%v\n", t, r.Name, scopeStr(r.Scope), r.Active)
+		t.Row(typ, r.Name, scopeStr(r.Scope), strconv.FormatBool(r.Active))
 	}
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *EntityTableCodec) Decode(_ io.Reader, _ any) error {
@@ -1041,12 +1039,11 @@ func (c *EntityTypeTableCodec) Encode(w io.Writer, v any) error {
 		types = append(types, t)
 	}
 	sort.Strings(types)
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "TYPE\tCOUNT")
+	tbl := style.NewTable("TYPE", "COUNT")
 	for _, t := range types {
-		fmt.Fprintf(tw, "%s\t%d\n", t, counts[t])
+		tbl.Row(t, strconv.FormatInt(counts[t], 10))
 	}
-	return tw.Flush()
+	return tbl.Render(w)
 }
 
 func (c *EntityTypeTableCodec) Decode(_ io.Reader, _ any) error {

@@ -136,6 +136,19 @@ func FormatTime(t time.Time) string {
 	return t.Format("2006-01-02 15:04")
 }
 
+// Truncate returns s shortened to maxLen runes, adding "..." if truncated.
+// Returns "-" for empty strings.
+func Truncate(s string, maxLen int) string {
+	if s == "" {
+		return "-"
+	}
+	r := []rune(s)
+	if len(r) > maxLen {
+		return string(r[:maxLen-3]) + "..."
+	}
+	return s
+}
+
 // HandleErrorResponse reads an error response body and returns a formatted error.
 func HandleErrorResponse(resp *http.Response) error {
 	body, err := io.ReadAll(resp.Body)

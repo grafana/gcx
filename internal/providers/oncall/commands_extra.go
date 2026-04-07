@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"text/tabwriter"
 	"time"
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -489,9 +489,7 @@ func (c *FinalShiftTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []FinalShift")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "USER_PK\tEMAIL\tUSERNAME\tSTART\tEND")
-
+	t := style.NewTable("USER_PK", "EMAIL", "USERNAME", "START", "END")
 	for _, item := range items {
 		start := item.ShiftStart
 		if len(start) > 16 {
@@ -501,10 +499,9 @@ func (c *FinalShiftTableCodec) Encode(w io.Writer, v any) error {
 		if len(end) > 16 {
 			end = end[:16]
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", item.UserPK, item.UserEmail, item.UserUsername, start, end)
+		t.Row(item.UserPK, item.UserEmail, item.UserUsername, start, end)
 	}
-
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *FinalShiftTableCodec) Decode(_ io.Reader, _ any) error {

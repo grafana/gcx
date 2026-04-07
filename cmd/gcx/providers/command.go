@@ -4,11 +4,11 @@ import (
 	"errors"
 	"fmt"
 	goio "io"
-	"text/tabwriter"
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	coreproviders "github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 )
 
@@ -73,15 +73,14 @@ func (c *providersTextCodec) Encode(output goio.Writer, _ any) error {
 		fmt.Fprintf(output, "No providers registered.\n")
 		return nil
 	}
-	tab := tabwriter.NewWriter(output, 0, 4, 2, ' ', tabwriter.TabIndent|tabwriter.DiscardEmptyColumns)
-	fmt.Fprintf(tab, "NAME\tDESCRIPTION\n")
+	t := style.NewTable("NAME", "DESCRIPTION")
 	for _, p := range c.pp {
 		if p == nil {
 			continue
 		}
-		fmt.Fprintf(tab, "%s\t%s\n", p.Name(), p.ShortDesc())
+		t.Row(p.Name(), p.ShortDesc())
 	}
-	return tab.Flush()
+	return t.Render(output)
 }
 
 func (c *providersTextCodec) Decode(_ goio.Reader, _ any) error {

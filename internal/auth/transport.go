@@ -170,6 +170,10 @@ func (t *RefreshTransport) doRefresh(ctx context.Context, refreshToken string) (
 
 	limitedBody := io.LimitReader(resp.Body, maxResponseBytes)
 
+	if resp.StatusCode == http.StatusUnauthorized {
+		respBody, _ := io.ReadAll(limitedBody)
+		return nil, fmt.Errorf("refresh returned status %d: %s: %w", resp.StatusCode, string(respBody), ErrRefreshTokenExpired)
+	}
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(limitedBody)
 		return nil, fmt.Errorf("refresh returned status %d: %s", resp.StatusCode, string(respBody))

@@ -6,59 +6,54 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 	"time"
+
+	"github.com/grafana/gcx/internal/style"
 )
 
 // FormatQueryTable formats a Pyroscope query response as a table showing top functions.
 func FormatQueryTable(w io.Writer, resp *QueryResponse) error {
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "FUNCTION\tSELF\tTOTAL\tPERCENTAGE")
+	t := style.NewTable("FUNCTION", "SELF", "TOTAL", "PERCENTAGE")
 
 	if resp.Flamegraph == nil || len(resp.Flamegraph.Names) == 0 {
-		fmt.Fprintln(tw, "(no profile data)")
-		return tw.Flush()
+		t.Row("(no profile data)", "", "", "")
+		return t.Render(w)
 	}
 
 	samples := ExtractTopFunctions(resp.Flamegraph, 20)
 
 	for _, s := range samples {
-		fmt.Fprintf(tw, "%s\t%d\t%d\t%.2f%%\n",
+		t.Row(
 			truncateString(s.Name, 60),
-			s.Self,
-			s.Total,
-			s.Percentage)
+			strconv.FormatInt(s.Self, 10),
+			strconv.FormatInt(s.Total, 10),
+			fmt.Sprintf("%.2f%%", s.Percentage),
+		)
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 // FormatProfileTypesTable formats profile types as a table.
 func FormatProfileTypesTable(w io.Writer, resp *ProfileTypesResponse) error {
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tNAME\tSAMPLE_TYPE\tSAMPLE_UNIT")
+	t := style.NewTable("ID", "NAME", "SAMPLE_TYPE", "SAMPLE_UNIT")
 
 	for _, pt := range resp.ProfileTypes {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
-			pt.ID,
-			pt.Name,
-			pt.SampleType,
-			pt.SampleUnit)
+		t.Row(pt.ID, pt.Name, pt.SampleType, pt.SampleUnit)
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 // FormatLabelsTable formats label names or values as a table.
 func FormatLabelsTable(w io.Writer, labels []string) error {
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "LABEL")
+	t := style.NewTable("LABEL")
 
 	for _, label := range labels {
-		fmt.Fprintln(tw, label)
+		t.Row(label)
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 // ExtractTopFunctions extracts the top N functions by self time from a flame graph.
@@ -130,32 +125,30 @@ func ExtractTopFunctions(fg *Flamegraph, limit int) []FunctionSample {
 
 // FormatSeriesTable formats a SelectSeries response as a table with one row per data point.
 func FormatSeriesTable(w io.Writer, resp *SelectSeriesResponse) error {
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "LABELS\tTIMESTAMP\tVALUE")
+	t := style.NewTable("LABELS", "TIMESTAMP", "VALUE")
 
 	if len(resp.Series) == 0 {
-		fmt.Fprintln(tw, "(no series data)")
-		return tw.Flush()
+		t.Row("(no series data)", "", "")
+		return t.Render(w)
 	}
 
 	for _, s := range resp.Series {
 		labels := FormatLabelPairs(s.Labels)
 		for _, p := range s.Points {
 			ts := time.UnixMilli(p.TimestampMs()).UTC().Format(time.RFC3339)
-			fmt.Fprintf(tw, "%s\t%s\t%.2f\n", labels, ts, p.FloatValue())
+			t.Row(labels, ts, fmt.Sprintf("%.2f", p.FloatValue()))
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 // FormatSeriesTableWide formats a SelectSeries response with label pairs exploded into columns.
 func FormatSeriesTableWide(w io.Writer, resp *SelectSeriesResponse) error {
 	if len(resp.Series) == 0 {
-		tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-		fmt.Fprintln(tw, "TIMESTAMP\tVALUE")
-		fmt.Fprintln(tw, "(no series data)")
-		return tw.Flush()
+		t := style.NewTable("TIMESTAMP", "VALUE")
+		t.Row("(no series data)", "")
+		return t.Render(w)
 	}
 
 	// Collect all unique label names across all series (sorted for stable output).
@@ -172,13 +165,12 @@ func FormatSeriesTableWide(w io.Writer, resp *SelectSeriesResponse) error {
 	sort.Strings(labelNames)
 
 	// Build header.
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	header := make([]string, 0, len(labelNames)+2)
 	for _, name := range labelNames {
 		header = append(header, strings.ToUpper(name))
 	}
 	header = append(header, "TIMESTAMP", "VALUE")
-	fmt.Fprintln(tw, strings.Join(header, "\t"))
+	t := style.NewTable(header...)
 
 	// Write rows.
 	for _, s := range resp.Series {
@@ -193,11 +185,11 @@ func FormatSeriesTableWide(w io.Writer, resp *SelectSeriesResponse) error {
 			}
 			ts := time.UnixMilli(p.TimestampMs()).UTC().Format(time.RFC3339)
 			row = append(row, ts, fmt.Sprintf("%.2f", p.FloatValue()))
-			fmt.Fprintln(tw, strings.Join(row, "\t"))
+			t.Row(row...)
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 // FormatLabelPairs formats label pairs as {key=val, key=val, ...}.
@@ -214,12 +206,10 @@ func FormatLabelPairs(labels []LabelPair) string {
 
 // FormatTopSeriesTable formats a TopSeriesResponse as a ranked leaderboard table.
 func FormatTopSeriesTable(w io.Writer, resp *TopSeriesResponse) error {
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-
 	if len(resp.Series) == 0 {
-		fmt.Fprintln(tw, "RANK\tLABELS\tTOTAL")
-		fmt.Fprintln(tw, "(no series data)")
-		return tw.Flush()
+		t := style.NewTable("RANK", "LABELS", "TOTAL")
+		t.Row("(no series data)", "", "")
+		return t.Render(w)
 	}
 
 	// Detect sample unit from profile type for human-readable formatting.
@@ -227,41 +217,38 @@ func FormatTopSeriesTable(w io.Writer, resp *TopSeriesResponse) error {
 
 	// Build header with group-by label names as columns.
 	if len(resp.GroupBy) > 0 {
-		var hdr strings.Builder
-		hdr.WriteString("RANK")
+		header := make([]string, 0, len(resp.GroupBy)+2)
+		header = append(header, "RANK")
 		for _, name := range resp.GroupBy {
-			hdr.WriteString("\t")
-			hdr.WriteString(strings.ToUpper(name))
+			header = append(header, strings.ToUpper(name))
 		}
-		hdr.WriteString("\tTOTAL (")
-		hdr.WriteString(strings.ToUpper(sampleUnit))
-		hdr.WriteString(")")
-		fmt.Fprintln(tw, hdr.String())
+		header = append(header, "TOTAL ("+strings.ToUpper(sampleUnit)+")")
+		t := style.NewTable(header...)
 
 		for _, e := range resp.Series {
-			var row strings.Builder
-			row.WriteString(strconv.Itoa(e.Rank))
+			row := make([]string, 0, len(resp.GroupBy)+2)
+			row = append(row, strconv.Itoa(e.Rank))
 			for _, name := range resp.GroupBy {
 				v := e.Labels[name]
 				if v == "" {
 					v = "<unknown>"
 				}
-				row.WriteString("\t")
-				row.WriteString(v)
+				row = append(row, v)
 			}
-			row.WriteString("\t")
-			row.WriteString(formatHumanValue(e.Total, sampleUnit))
-			fmt.Fprintln(tw, row.String())
+			row = append(row, formatHumanValue(e.Total, sampleUnit))
+			t.Row(row...)
 		}
-	} else {
-		fmt.Fprintln(tw, "RANK\tLABELS\tTOTAL ("+strings.ToUpper(sampleUnit)+")")
-		for _, e := range resp.Series {
-			labels := FormatLabelsMap(e.Labels)
-			fmt.Fprintf(tw, "%d\t%s\t%s\n", e.Rank, labels, formatHumanValue(e.Total, sampleUnit))
-		}
+
+		return t.Render(w)
 	}
 
-	return tw.Flush()
+	t := style.NewTable("RANK", "LABELS", "TOTAL ("+strings.ToUpper(sampleUnit)+")")
+	for _, e := range resp.Series {
+		labels := FormatLabelsMap(e.Labels)
+		t.Row(strconv.Itoa(e.Rank), labels, formatHumanValue(e.Total, sampleUnit))
+	}
+
+	return t.Render(w)
 }
 
 // sampleUnitFromProfileType extracts the sample unit from a profile type ID.

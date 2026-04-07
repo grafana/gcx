@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"text/tabwriter"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/agent"
 	dsclient "github.com/grafana/gcx/internal/datasources"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -141,18 +141,16 @@ func (c *datasourceTableCodec) Encode(w io.Writer, data any) error {
 		return errors.New("invalid data type for table codec")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "UID\tNAME\tTYPE\tURL\tDEFAULT")
-
+	t := style.NewTable("UID", "NAME", "TYPE", "URL", "DEFAULT")
 	for _, ds := range datasources {
 		defaultStr := ""
 		if ds.Default {
 			defaultStr = "*"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", ds.UID, ds.Name, ds.Type, ds.URL, defaultStr)
+		t.Row(ds.UID, ds.Name, ds.Type, ds.URL, defaultStr)
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *datasourceTableCodec) Decode(io.Reader, any) error {

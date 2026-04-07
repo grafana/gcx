@@ -34,7 +34,12 @@ func main() {
 	// during command construction to set the default output format.
 	preParseAgentFlag()
 
-	handleError(root.Command(formatVersion()).ExecuteContext(ctx))
+	formattedVersion := formatVersion()
+	if err := root.ValidateArgs(root.Command(formattedVersion), os.Args[1:]); err != nil {
+		handleError(err)
+	}
+
+	handleError(root.Command(formattedVersion).ExecuteContext(ctx))
 }
 
 // preParseAgentFlag scans os.Args for --agent / --agent=true / --agent=false
@@ -72,6 +77,7 @@ func handleError(err error) {
 	detailedErr := fail.ErrorToDetailedError(err)
 	if detailedErr == nil {
 		os.Exit(1)
+		return // unreachable; hint for static analysis
 	}
 
 	exitCode := 1

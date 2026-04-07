@@ -82,3 +82,87 @@ func TestNewCommand_SkillsCommandRegistered(t *testing.T) {
 	rootCmd := root.NewCommandForTest("v0.0.0-test", nil)
 	assert.NotNil(t, findSubcommand(rootCmd, "skills"), "expected 'skills' subcommand")
 }
+
+func TestNewCommand_DefaultHelpAndCompletionRegistered(t *testing.T) {
+	rootCmd := root.NewCommandForTest("v0.0.0-test", nil)
+
+	var foundHelp, foundCompletion bool
+	for _, sub := range rootCmd.Commands() {
+		switch sub.Name() {
+		case "help":
+			foundHelp = true
+		case "completion":
+			foundCompletion = true
+		}
+	}
+
+	assert.True(t, foundHelp, "expected 'help' command to be registered")
+	assert.True(t, foundCompletion, "expected 'completion' command to be registered")
+}
+
+func TestValidateArgs_GroupCommandRejectsUnexpectedArgs(t *testing.T) {
+	agentsCmd := &cobra.Command{Use: "agents", Short: "Query agents.", RunE: func(_ *cobra.Command, _ []string) error { return nil }}
+	conversationsCmd := &cobra.Command{Use: "conversations", Short: "Query conversations.", RunE: func(_ *cobra.Command, _ []string) error { return nil }}
+	sigilCmd := &cobra.Command{Use: "sigil", Short: "Manage Sigil."}
+	sigilCmd.AddCommand(agentsCmd, conversationsCmd)
+
+	rootCmd := root.NewCommandForTest("v0.0.0-test", []providers.Provider{
+		&mockProvider{name: "sigil", commands: []*cobra.Command{sigilCmd}},
+	})
+
+	err := root.ValidateArgs(rootCmd, []string{"sigil", "--context", "dev", "show"})
+	require.Error(t, err)
+	require.ErrorContains(t, err, `unknown command "show" for "gcx sigil"`)
+	require.ErrorContains(t, err, "Usage:")
+	require.ErrorContains(t, err, "Available Commands:")
+	require.ErrorContains(t, err, "agents")
+	require.ErrorContains(t, err, "conversations")
+}
+
+func TestValidateArgs_GroupCommandRejectsUnexpectedArgsWithLeadingRootFlags(t *testing.T) {
+	agentsCmd := &cobra.Command{Use: "agents", Short: "Query agents.", RunE: func(_ *cobra.Command, _ []string) error { return nil }}
+	sigilCmd := &cobra.Command{Use: "sigil", Short: "Manage Sigil."}
+	sigilCmd.AddCommand(agentsCmd)
+
+	rootCmd := root.NewCommandForTest("v0.0.0-test", []providers.Provider{
+		&mockProvider{name: "sigil", commands: []*cobra.Command{sigilCmd}},
+	})
+
+	err := root.ValidateArgs(rootCmd, []string{"--agent", "--context", "dev", "sigil", "show"})
+	require.Error(t, err)
+	require.ErrorContains(t, err, `unknown command "show" for "gcx sigil"`)
+	require.ErrorContains(t, err, "Usage:")
+	require.ErrorContains(t, err, "Available Commands:")
+	require.ErrorContains(t, err, "agents")
+}
+
+func TestValidateArgs_NestedGroupRejectsUnexpectedArgs(t *testing.T) {
+	showCmd := &cobra.Command{Use: "show", Short: "Show agents.", RunE: func(_ *cobra.Command, _ []string) error { return nil }}
+	versionsCmd := &cobra.Command{Use: "versions", Short: "List versions.", RunE: func(_ *cobra.Command, _ []string) error { return nil }}
+	agentsCmd := &cobra.Command{Use: "agents", Short: "Query agents."}
+	agentsCmd.PersistentFlags().Int("limit", 0, "Limit")
+	agentsCmd.AddCommand(showCmd, versionsCmd)
+
+	sigilCmd := &cobra.Command{Use: "sigil", Short: "Manage Sigil."}
+	sigilCmd.AddCommand(agentsCmd)
+
+	rootCmd := root.NewCommandForTest("v0.0.0-test", []providers.Provider{
+		&mockProvider{name: "sigil", commands: []*cobra.Command{sigilCmd}},
+	})
+
+	err := root.ValidateArgs(rootCmd, []string{"sigil", "agents", "--limit", "10", "foo"})
+	require.Error(t, err)
+	require.ErrorContains(t, err, `unknown command "foo" for "gcx sigil agents"`)
+	require.ErrorContains(t, err, "Usage:")
+	require.ErrorContains(t, err, "Available Commands:")
+	require.ErrorContains(t, err, "show")
+	require.ErrorContains(t, err, "versions")
+}
+
+func TestValidateArgs_AllowsHelpAndCompletionCommands(t *testing.T) {
+	rootCmd := root.NewCommandForTest("v0.0.0-test", nil)
+
+	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"help"}))
+	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"help", "sigil"}))
+	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"completion", "bash"}))
+}

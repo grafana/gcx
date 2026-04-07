@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"text/tabwriter"
 	"time"
 
 	"github.com/grafana/gcx/internal/format"
@@ -12,6 +11,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/slo/definitions"
 	"github.com/grafana/gcx/internal/query/prometheus"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -323,8 +323,7 @@ func (c *ReportTimelineTableCodec) Encode(w io.Writer, v any) error {
 		return fmt.Errorf("reportTimelineTableCodec: expected ReportTimelinePayload, got %T", v)
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "REPORT\tNAME\tUUID\tTIMESTAMP\tSLI\tOBJECTIVE")
+	t := style.NewTable("REPORT", "NAME", "UUID", "TIMESTAMP", "SLI", "OBJECTIVE")
 
 	for _, rpt := range payload.Reports {
 		for _, rs := range rpt.ReportDefinition.Slos {
@@ -335,7 +334,7 @@ func (c *ReportTimelineTableCodec) Encode(w io.Writer, v any) error {
 			for _, pt := range pts {
 				sliStr := fmt.Sprintf("%.4f%%", pt.Value*100)
 				objStr := fmt.Sprintf("%.2f%%", pt.Objective*100)
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
+				t.Row(
 					rpt.Name,
 					pt.Name,
 					pt.UUID,
@@ -347,7 +346,7 @@ func (c *ReportTimelineTableCodec) Encode(w io.Writer, v any) error {
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 // Decode is not supported for the report timeline table codec.

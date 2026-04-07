@@ -26,6 +26,11 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Use a stable executable name for generated docs. `go run` executes this
+	// generator as a temporary binary named "main", which would otherwise leak
+	// into Cobra-generated help/completion examples.
+	os.Args[0] = "gcx"
+
 	cmd := root.Command("version")
 	cmd.DisableAutoGenTag = true
 

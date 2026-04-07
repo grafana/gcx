@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/caarlos0/env/v11"
 	"github.com/grafana/gcx/cmd/gcx/fail"
@@ -18,6 +17,7 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/gcx/internal/secrets"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -138,25 +138,7 @@ func (opts *Options) LoadGrafanaConfig(ctx context.Context) (config.NamespacedRE
 	}
 
 	restCfg := cfg.GetCurrentContext().ToRESTConfig(ctx)
-
-	// Wire token persistence: on refresh, reload config, update tokens, write back.
-	source := opts.ConfigSource()
-	contextName := cfg.CurrentContext
-	restCfg.SetOnRefresh(func(token, refreshToken, expiresAt, refreshExpiresAt string) error {
-		fresh, err := opts.LoadConfigTolerant(ctx)
-		if err != nil {
-			return err
-		}
-		c := fresh.Contexts[contextName]
-		if c == nil || c.Grafana == nil {
-			return nil
-		}
-		c.Grafana.OAuthToken = token
-		c.Grafana.OAuthRefreshToken = refreshToken
-		c.Grafana.OAuthTokenExpiresAt = expiresAt
-		c.Grafana.OAuthRefreshExpiresAt = refreshExpiresAt
-		return config.Write(ctx, source, fresh)
-	})
+	restCfg.WireTokenPersistence(ctx, opts.ConfigSource(), cfg.CurrentContext, cfg.Sources)
 
 	return restCfg, nil
 }
@@ -326,9 +308,7 @@ func listContextsCmd(configOpts *Options) *cobra.Command {
 				return err
 			}
 
-			tab := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', tabwriter.TabIndent|tabwriter.DiscardEmptyColumns)
-
-			fmt.Fprintf(tab, "CURRENT\tNAME\tGRAFANA SERVER\n")
+			t := style.NewTable("CURRENT", "NAME", "GRAFANA SERVER")
 			for _, context := range cfg.Contexts {
 				server := " "
 				if context.Grafana != nil {
@@ -340,10 +320,10 @@ func listContextsCmd(configOpts *Options) *cobra.Command {
 					current = "*"
 				}
 
-				fmt.Fprintf(tab, "%s\t%s\t%s\n", current, context.Name, server)
+				t.Row(current, context.Name, server)
 			}
 
-			return tab.Flush()
+			return t.Render(cmd.OutOrStdout())
 		},
 	}
 

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/adrg/xdg"
@@ -38,6 +39,12 @@ func writeConfigFile(t *testing.T, content string) string {
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
 	return f.Name()
+}
+
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(t, os.WriteFile(path, []byte(strings.TrimSpace(content)+"\n"), 0o600))
 }
 
 func TestConfigLoader_LoadCloudConfig_MissingToken(t *testing.T) {
@@ -409,6 +416,239 @@ current-context: default
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 	assert.Equal(t, "default", cfg.CurrentContext)
+}
+
+// TestConfigLoader_LoadGrafanaConfig_PersistsRefreshedTokens verifies that
+// LoadGrafanaConfig wires SetOnRefresh so that a token refresh persists the
+// new tokens back to the config file on disk.
+func TestConfigLoader_LoadGrafanaConfig_PersistsRefreshedTokens(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/cli/v1/auth/refresh":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"token":              "gat_refreshed",
+					"expires_at":         "2099-01-01T00:00:00Z",
+					"refresh_token":      "gar_refreshed",
+					"refresh_expires_at": "2099-02-01T00:00:00Z",
+				},
+			})
+		case "/bootdata":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"user": map[string]any{"orgId": 1},
+			})
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer srv.Close()
+
+	cfgFile := writeConfigFile(t, `
+contexts:
+  default:
+    grafana:
+      server: "`+srv.URL+`"
+      proxy-endpoint: "`+srv.URL+`"
+      oauth-token: gat_expiring
+      oauth-refresh-token: gar_old
+      oauth-token-expires-at: "2020-01-01T00:00:00Z"
+      oauth-refresh-expires-at: "2099-01-01T00:00:00Z"
+      stack-id: 123
+current-context: default
+`)
+
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgFile)
+
+	restCfg, err := loader.LoadGrafanaConfig(context.Background())
+	require.NoError(t, err)
+
+	// Trigger a request through the REST config transport to force a refresh.
+	rt := restCfg.WrapTransport(http.DefaultTransport)
+	client := &http.Client{Transport: rt}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/test", nil)
+	require.NoError(t, err)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	// Re-read the config file and verify the refreshed tokens were persisted.
+	raw, err := os.ReadFile(cfgFile)
+	require.NoError(t, err)
+	contents := string(raw)
+	assert.Contains(t, contents, "gat_refreshed")
+	assert.Contains(t, contents, "gar_refreshed")
+	assert.Contains(t, contents, "2099-01-01T00:00:00Z")
+	assert.Contains(t, contents, "2099-02-01T00:00:00Z")
+}
+
+func TestLoadGrafanaConfig_PersistsRefreshToLocalOAuthLayer(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/cli/v1/auth/refresh":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"token":              "gat_refreshed_local",
+					"expires_at":         "2099-01-01T00:00:00Z",
+					"refresh_token":      "gar_refreshed_local",
+					"refresh_expires_at": "2099-02-01T00:00:00Z",
+				},
+			})
+		case "/bootdata":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"user": map[string]any{"orgId": 1},
+			})
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer srv.Close()
+
+	homeDir := t.TempDir()
+	xdgDir := t.TempDir()
+	workDir := t.TempDir()
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("XDG_CONFIG_HOME", xdgDir)
+	xdg.Reload()
+	t.Chdir(workDir)
+
+	userFile := filepath.Join(homeDir, ".config", "gcx", "config.yaml")
+	localFile := filepath.Join(workDir, ".gcx.yaml")
+
+	writeFile(t, userFile, `
+contexts:
+  default:
+    grafana:
+      server: "`+srv.URL+`"
+      proxy-endpoint: "`+srv.URL+`"
+      oauth-token: gat_user_old
+      oauth-refresh-token: gar_user_old
+      oauth-token-expires-at: "2020-01-01T00:00:00Z"
+      oauth-refresh-expires-at: "2099-01-01T00:00:00Z"
+      stack-id: 123
+current-context: default
+`)
+	writeFile(t, localFile, `
+contexts:
+  default:
+    grafana:
+      proxy-endpoint: "`+srv.URL+`"
+      oauth-token: gat_local_old
+      oauth-refresh-token: gar_local_old
+      oauth-token-expires-at: "2020-01-01T00:00:00Z"
+      oauth-refresh-expires-at: "2099-01-01T00:00:00Z"
+`)
+
+	loader := &providers.ConfigLoader{}
+
+	restCfg, err := loader.LoadGrafanaConfig(context.Background())
+	require.NoError(t, err)
+
+	client := &http.Client{Transport: restCfg.WrapTransport(http.DefaultTransport)}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/test", nil)
+	require.NoError(t, err)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	localRaw, err := os.ReadFile(localFile)
+	require.NoError(t, err)
+	localContents := string(localRaw)
+	assert.Contains(t, localContents, "gat_refreshed_local")
+	assert.Contains(t, localContents, "gar_refreshed_local")
+
+	userRaw, err := os.ReadFile(userFile)
+	require.NoError(t, err)
+	userContents := string(userRaw)
+	assert.NotContains(t, userContents, "gat_refreshed_local")
+	assert.NotContains(t, userContents, "gar_refreshed_local")
+}
+
+func TestLoadGrafanaConfig_PersistsRefreshToHighestContextLayer(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/cli/v1/auth/refresh":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"token":              "gat_refreshed_local_ctx",
+					"expires_at":         "2099-03-01T00:00:00Z",
+					"refresh_token":      "gar_refreshed_local_ctx",
+					"refresh_expires_at": "2099-04-01T00:00:00Z",
+				},
+			})
+		case "/bootdata":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"user": map[string]any{"orgId": 1},
+			})
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer srv.Close()
+
+	homeDir := t.TempDir()
+	xdgDir := t.TempDir()
+	workDir := t.TempDir()
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("XDG_CONFIG_HOME", xdgDir)
+	xdg.Reload()
+	t.Chdir(workDir)
+
+	userFile := filepath.Join(homeDir, ".config", "gcx", "config.yaml")
+	localFile := filepath.Join(workDir, ".gcx.yaml")
+
+	writeFile(t, userFile, `
+contexts:
+  default:
+    grafana:
+      server: "`+srv.URL+`"
+      proxy-endpoint: "`+srv.URL+`"
+      oauth-token: gat_user_old
+      oauth-refresh-token: gar_user_old
+      oauth-token-expires-at: "2020-01-01T00:00:00Z"
+      oauth-refresh-expires-at: "2099-01-01T00:00:00Z"
+      stack-id: 123
+current-context: default
+`)
+	writeFile(t, localFile, `
+contexts:
+  default:
+    grafana:
+      server: "`+srv.URL+`"
+      proxy-endpoint: "`+srv.URL+`"
+`)
+
+	loader := &providers.ConfigLoader{}
+
+	restCfg, err := loader.LoadGrafanaConfig(context.Background())
+	require.NoError(t, err)
+
+	client := &http.Client{Transport: restCfg.WrapTransport(http.DefaultTransport)}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/test", nil)
+	require.NoError(t, err)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	userRaw, err := os.ReadFile(userFile)
+	require.NoError(t, err)
+	userContents := string(userRaw)
+	assert.NotContains(t, userContents, "gat_refreshed_local_ctx")
+	assert.NotContains(t, userContents, "gar_refreshed_local_ctx")
+
+	localRaw, err := os.ReadFile(localFile)
+	require.NoError(t, err)
+	localContents := string(localRaw)
+	assert.Contains(t, localContents, "gat_refreshed_local_ctx")
+	assert.Contains(t, localContents, "gar_refreshed_local_ctx")
 }
 
 // TestConfigLoader_LoadGrafanaConfig_BackwardCompat verifies AC-4: LoadGrafanaConfig

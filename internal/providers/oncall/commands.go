@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"io"
 	"strconv"
-	"text/tabwriter"
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -573,11 +573,11 @@ func (c *IntegrationTableCodec) Encode(w io.Writer, v any) error {
 		return err
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "ID\tNAME\tTYPE\tTEAM\tLINK")
+		t = style.NewTable("ID", "NAME", "TYPE", "TEAM", "LINK")
 	} else {
-		fmt.Fprintln(tw, "ID\tNAME\tTYPE")
+		t = style.NewTable("ID", "NAME", "TYPE")
 	}
 
 	for _, obj := range items {
@@ -587,13 +587,13 @@ func (c *IntegrationTableCodec) Encode(w io.Writer, v any) error {
 			name = truncate(name, 50)
 		}
 		if c.Wide {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", id, name, specStr(obj, "type"), orDash(specStr(obj, "team_id")), orDash(specStr(obj, "link")))
+			t.Row(id, name, specStr(obj, "type"), orDash(specStr(obj, "team_id")), orDash(specStr(obj, "link")))
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\n", id, name, specStr(obj, "type"))
+			t.Row(id, name, specStr(obj, "type"))
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *IntegrationTableCodec) Decode(_ io.Reader, _ any) error {
@@ -611,14 +611,11 @@ func (c *EscalationChainTableCodec) Encode(w io.Writer, v any) error {
 		return err
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tNAME\tTEAM")
-
+	t := style.NewTable("ID", "NAME", "TEAM")
 	for _, obj := range items {
-		fmt.Fprintf(tw, "%s\t%s\t%s\n", obj.GetName(), specStr(obj, "name"), orDash(specStr(obj, "team_id")))
+		t.Row(obj.GetName(), specStr(obj, "name"), orDash(specStr(obj, "team_id")))
 	}
-
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *EscalationChainTableCodec) Decode(_ io.Reader, _ any) error {
@@ -643,11 +640,11 @@ func (c *EscalationPolicyTableCodec) Encode(w io.Writer, v any) error {
 		return err
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "ID\tCHAIN\tPOS\tTYPE\tDURATION\tIMPORTANT\tNOTIFY-SCHEDULE")
+		t = style.NewTable("ID", "CHAIN", "POS", "TYPE", "DURATION", "IMPORTANT", "NOTIFY-SCHEDULE")
 	} else {
-		fmt.Fprintln(tw, "ID\tCHAIN\tPOS\tTYPE\tDURATION")
+		t = style.NewTable("ID", "CHAIN", "POS", "TYPE", "DURATION")
 	}
 
 	for _, obj := range items {
@@ -662,13 +659,13 @@ func (c *EscalationPolicyTableCodec) Encode(w io.Writer, v any) error {
 			if specBool(obj, "important") {
 				important = "true"
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\t%s\t%s\n", id, specStr(obj, "escalation_chain_id"), specInt(obj, "position"), specStr(obj, "type"), durStr, important, orDash(specStr(obj, "notify_on_call_from_schedule")))
+			t.Row(id, specStr(obj, "escalation_chain_id"), strconv.Itoa(specInt(obj, "position")), specStr(obj, "type"), durStr, important, orDash(specStr(obj, "notify_on_call_from_schedule")))
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\n", id, specStr(obj, "escalation_chain_id"), specInt(obj, "position"), specStr(obj, "type"), durStr)
+			t.Row(id, specStr(obj, "escalation_chain_id"), strconv.Itoa(specInt(obj, "position")), specStr(obj, "type"), durStr)
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *EscalationPolicyTableCodec) Decode(_ io.Reader, _ any) error {
@@ -693,11 +690,11 @@ func (c *ScheduleTableCodec) Encode(w io.Writer, v any) error {
 		return err
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "ID\tNAME\tTYPE\tTIMEZONE\tTEAM\tON-CALL-NOW")
+		t = style.NewTable("ID", "NAME", "TYPE", "TIMEZONE", "TEAM", "ON-CALL-NOW")
 	} else {
-		fmt.Fprintln(tw, "ID\tNAME\tTYPE\tTIMEZONE")
+		t = style.NewTable("ID", "NAME", "TYPE", "TIMEZONE")
 	}
 
 	for _, obj := range items {
@@ -710,13 +707,13 @@ func (c *ScheduleTableCodec) Encode(w io.Writer, v any) error {
 					onCallNow = fmt.Sprintf("%d users", len(arr))
 				}
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", id, specStr(obj, "name"), specStr(obj, "type"), tz, orDash(specStr(obj, "team_id")), onCallNow)
+			t.Row(id, specStr(obj, "name"), specStr(obj, "type"), tz, orDash(specStr(obj, "team_id")), onCallNow)
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", id, specStr(obj, "name"), specStr(obj, "type"), tz)
+			t.Row(id, specStr(obj, "name"), specStr(obj, "type"), tz)
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *ScheduleTableCodec) Decode(_ io.Reader, _ any) error {
@@ -741,11 +738,11 @@ func (c *WebhookTableCodec) Encode(w io.Writer, v any) error {
 		return err
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "ID\tNAME\tURL\tMETHOD\tTRIGGER\tENABLED")
+		t = style.NewTable("ID", "NAME", "URL", "METHOD", "TRIGGER", "ENABLED")
 	} else {
-		fmt.Fprintln(tw, "ID\tNAME\tTRIGGER\tENABLED")
+		t = style.NewTable("ID", "NAME", "TRIGGER", "ENABLED")
 	}
 
 	for _, obj := range items {
@@ -755,13 +752,13 @@ func (c *WebhookTableCodec) Encode(w io.Writer, v any) error {
 			enabled = "true"
 		}
 		if c.Wide {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", id, specStr(obj, "name"), orDash(specStr(obj, "url")), orDash(specStr(obj, "http_method")), specStr(obj, "trigger_type"), enabled)
+			t.Row(id, specStr(obj, "name"), orDash(specStr(obj, "url")), orDash(specStr(obj, "http_method")), specStr(obj, "trigger_type"), enabled)
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", id, specStr(obj, "name"), specStr(obj, "trigger_type"), enabled)
+			t.Row(id, specStr(obj, "name"), specStr(obj, "trigger_type"), enabled)
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *WebhookTableCodec) Decode(_ io.Reader, _ any) error {
@@ -786,11 +783,11 @@ func (c *AlertGroupTableCodec) Encode(w io.Writer, v any) error {
 		return err
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "ID\tTITLE\tSTATE\tALERTS\tCREATED\tINTEGRATION")
+		t = style.NewTable("ID", "TITLE", "STATE", "ALERTS", "CREATED", "INTEGRATION")
 	} else {
-		fmt.Fprintln(tw, "ID\tTITLE\tSTATE\tALERTS\tCREATED")
+		t = style.NewTable("ID", "TITLE", "STATE", "ALERTS", "CREATED")
 	}
 
 	for _, obj := range items {
@@ -809,13 +806,13 @@ func (c *AlertGroupTableCodec) Encode(w io.Writer, v any) error {
 		created = orDash(created)
 		alerts := specInt(obj, "alerts_count")
 		if c.Wide {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\t%s\n", id, title, specStr(obj, "state"), alerts, created, orDash(specStr(obj, "integration_id")))
+			t.Row(id, title, specStr(obj, "state"), strconv.Itoa(alerts), created, orDash(specStr(obj, "integration_id")))
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\n", id, title, specStr(obj, "state"), alerts, created)
+			t.Row(id, title, specStr(obj, "state"), strconv.Itoa(alerts), created)
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *AlertGroupTableCodec) Decode(_ io.Reader, _ any) error {
@@ -840,26 +837,24 @@ func (c *UserTableCodec) Encode(w io.Writer, v any) error {
 		return err
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "ID\tUSERNAME\tNAME\tEMAIL\tROLE\tTIMEZONE")
+		t = style.NewTable("ID", "USERNAME", "NAME", "EMAIL", "ROLE", "TIMEZONE")
 	} else {
-		fmt.Fprintln(tw, "ID\tUSERNAME\tNAME\tROLE\tTIMEZONE")
+		t = style.NewTable("ID", "USERNAME", "NAME", "ROLE", "TIMEZONE")
 	}
 
 	for _, obj := range items {
 		if c.Wide {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
-				obj.GetName(), specStr(obj, "username"), orDash(specStr(obj, "name")),
+			t.Row(obj.GetName(), specStr(obj, "username"), orDash(specStr(obj, "name")),
 				orDash(specStr(obj, "email")), orDash(specStr(obj, "role")), orDash(specStr(obj, "timezone")))
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-				obj.GetName(), specStr(obj, "username"), orDash(specStr(obj, "name")),
+			t.Row(obj.GetName(), specStr(obj, "username"), orDash(specStr(obj, "name")),
 				orDash(specStr(obj, "role")), orDash(specStr(obj, "timezone")))
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *UserTableCodec) Decode(_ io.Reader, _ any) error {
@@ -884,22 +879,22 @@ func (c *TeamTableCodec) Encode(w io.Writer, v any) error {
 		return err
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "ID\tNAME\tEMAIL\tGRAFANA-ID")
+		t = style.NewTable("ID", "NAME", "EMAIL", "GRAFANA-ID")
 	} else {
-		fmt.Fprintln(tw, "ID\tNAME\tEMAIL")
+		t = style.NewTable("ID", "NAME", "EMAIL")
 	}
 
 	for _, obj := range items {
 		if c.Wide {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\n", obj.GetName(), specStr(obj, "name"), orDash(specStr(obj, "email")), specInt(obj, "grafana_id"))
+			t.Row(obj.GetName(), specStr(obj, "name"), orDash(specStr(obj, "email")), strconv.Itoa(specInt(obj, "grafana_id")))
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\n", obj.GetName(), specStr(obj, "name"), orDash(specStr(obj, "email")))
+			t.Row(obj.GetName(), specStr(obj, "name"), orDash(specStr(obj, "email")))
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *TeamTableCodec) Decode(_ io.Reader, _ any) error {
@@ -924,11 +919,11 @@ func (c *ShiftTableCodec) Encode(w io.Writer, v any) error {
 		return err
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "ID\tNAME\tTYPE\tSTART\tDURATION\tFREQUENCY\tINTERVAL\tTEAM")
+		t = style.NewTable("ID", "NAME", "TYPE", "START", "DURATION", "FREQUENCY", "INTERVAL", "TEAM")
 	} else {
-		fmt.Fprintln(tw, "ID\tNAME\tTYPE\tSTART\tDURATION")
+		t = style.NewTable("ID", "NAME", "TYPE", "START", "DURATION")
 	}
 
 	for _, obj := range items {
@@ -946,13 +941,13 @@ func (c *ShiftTableCodec) Encode(w io.Writer, v any) error {
 			if interval > 0 {
 				intervalStr = strconv.Itoa(interval)
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", id, specStr(obj, "name"), specStr(obj, "type"), start, durStr, freq, intervalStr, orDash(specStr(obj, "team_id")))
+			t.Row(id, specStr(obj, "name"), specStr(obj, "type"), start, durStr, freq, intervalStr, orDash(specStr(obj, "team_id")))
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", id, specStr(obj, "name"), specStr(obj, "type"), start, durStr)
+			t.Row(id, specStr(obj, "name"), specStr(obj, "type"), start, durStr)
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *ShiftTableCodec) Decode(_ io.Reader, _ any) error {
@@ -977,11 +972,11 @@ func (c *RouteTableCodec) Encode(w io.Writer, v any) error {
 		return err
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "ID\tINTEGRATION\tCHAIN\tPOS\tROUTING-TYPE\tREGEX\tLAST")
+		t = style.NewTable("ID", "INTEGRATION", "CHAIN", "POS", "ROUTING-TYPE", "REGEX", "LAST")
 	} else {
-		fmt.Fprintln(tw, "ID\tINTEGRATION\tCHAIN\tPOS\tROUTING-TYPE")
+		t = style.NewTable("ID", "INTEGRATION", "CHAIN", "POS", "ROUTING-TYPE")
 	}
 
 	for _, obj := range items {
@@ -995,13 +990,13 @@ func (c *RouteTableCodec) Encode(w io.Writer, v any) error {
 			if len(regex) > 40 {
 				regex = regex[:37] + "..."
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\t%s\t%s\n", id, specStr(obj, "integration_id"), orDash(specStr(obj, "escalation_chain_id")), specInt(obj, "position"), orDash(specStr(obj, "routing_type")), regex, isLast)
+			t.Row(id, specStr(obj, "integration_id"), orDash(specStr(obj, "escalation_chain_id")), strconv.Itoa(specInt(obj, "position")), orDash(specStr(obj, "routing_type")), regex, isLast)
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\n", id, specStr(obj, "integration_id"), orDash(specStr(obj, "escalation_chain_id")), specInt(obj, "position"), orDash(specStr(obj, "routing_type")))
+			t.Row(id, specStr(obj, "integration_id"), orDash(specStr(obj, "escalation_chain_id")), strconv.Itoa(specInt(obj, "position")), orDash(specStr(obj, "routing_type")))
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *RouteTableCodec) Decode(_ io.Reader, _ any) error {
@@ -1019,14 +1014,11 @@ func (c *UserGroupTableCodec) Encode(w io.Writer, v any) error {
 		return err
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tNAME\tTYPE\tHANDLE")
-
+	t := style.NewTable("ID", "NAME", "TYPE", "HANDLE")
 	for _, obj := range items {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", obj.GetName(), orDash(specStr(obj, "name")), orDash(specStr(obj, "type")), orDash(specStr(obj, "handle")))
+		t.Row(obj.GetName(), orDash(specStr(obj, "name")), orDash(specStr(obj, "type")), orDash(specStr(obj, "handle")))
 	}
-
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *UserGroupTableCodec) Decode(_ io.Reader, _ any) error {
@@ -1044,14 +1036,11 @@ func (c *SlackChannelTableCodec) Encode(w io.Writer, v any) error {
 		return err
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tNAME\tSLACK-ID")
-
+	t := style.NewTable("ID", "NAME", "SLACK-ID")
 	for _, obj := range items {
-		fmt.Fprintf(tw, "%s\t%s\t%s\n", obj.GetName(), orDash(specStr(obj, "name")), orDash(specStr(obj, "slack_id")))
+		t.Row(obj.GetName(), orDash(specStr(obj, "name")), orDash(specStr(obj, "slack_id")))
 	}
-
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *SlackChannelTableCodec) Decode(_ io.Reader, _ any) error {
@@ -1069,18 +1058,15 @@ func (c *AlertTableCodec) Encode(w io.Writer, v any) error {
 		return err
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tALERT-GROUP\tCREATED")
-
+	t := style.NewTable("ID", "ALERT-GROUP", "CREATED")
 	for _, obj := range items {
 		created := specStr(obj, "created_at")
 		if len(created) > 16 {
 			created = created[:16]
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\n", obj.GetName(), specStr(obj, "alert_group_id"), orDash(created))
+		t.Row(obj.GetName(), specStr(obj, "alert_group_id"), orDash(created))
 	}
-
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *AlertTableCodec) Decode(_ io.Reader, _ any) error {
@@ -1105,11 +1091,11 @@ func (c *ResolutionNoteTableCodec) Encode(w io.Writer, v any) error {
 		return err
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "ID\tALERT-GROUP\tSOURCE\tCREATED\tTEXT")
+		t = style.NewTable("ID", "ALERT-GROUP", "SOURCE", "CREATED", "TEXT")
 	} else {
-		fmt.Fprintln(tw, "ID\tALERT-GROUP\tSOURCE\tCREATED")
+		t = style.NewTable("ID", "ALERT-GROUP", "SOURCE", "CREATED")
 	}
 
 	for _, obj := range items {
@@ -1122,13 +1108,13 @@ func (c *ResolutionNoteTableCodec) Encode(w io.Writer, v any) error {
 			if len(text) > 60 {
 				text = text[:57] + "..."
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", obj.GetName(), specStr(obj, "alert_group_id"), orDash(specStr(obj, "source")), orDash(created), orDash(text))
+			t.Row(obj.GetName(), specStr(obj, "alert_group_id"), orDash(specStr(obj, "source")), orDash(created), orDash(text))
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", obj.GetName(), specStr(obj, "alert_group_id"), orDash(specStr(obj, "source")), orDash(created))
+			t.Row(obj.GetName(), specStr(obj, "alert_group_id"), orDash(specStr(obj, "source")), orDash(created))
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *ResolutionNoteTableCodec) Decode(_ io.Reader, _ any) error {
@@ -1146,14 +1132,11 @@ func (c *OrganizationTableCodec) Encode(w io.Writer, v any) error {
 		return err
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tNAME\tSLUG")
-
+	t := style.NewTable("ID", "NAME", "SLUG")
 	for _, obj := range items {
-		fmt.Fprintf(tw, "%s\t%s\t%s\n", obj.GetName(), orDash(specStr(obj, "name")), orDash(specStr(obj, "slug")))
+		t.Row(obj.GetName(), orDash(specStr(obj, "name")), orDash(specStr(obj, "slug")))
 	}
-
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *OrganizationTableCodec) Decode(_ io.Reader, _ any) error {
@@ -1178,11 +1161,11 @@ func (c *ShiftSwapTableCodec) Encode(w io.Writer, v any) error {
 		return err
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "ID\tSCHEDULE\tSTATUS\tSTART\tEND\tBENEFICIARY\tBENEFACTOR\tCREATED")
+		t = style.NewTable("ID", "SCHEDULE", "STATUS", "START", "END", "BENEFICIARY", "BENEFACTOR", "CREATED")
 	} else {
-		fmt.Fprintln(tw, "ID\tSCHEDULE\tSTATUS\tSTART\tEND")
+		t = style.NewTable("ID", "SCHEDULE", "STATUS", "START", "END")
 	}
 
 	for _, obj := range items {
@@ -1200,13 +1183,13 @@ func (c *ShiftSwapTableCodec) Encode(w io.Writer, v any) error {
 			if len(created) > 16 {
 				created = created[:16]
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", id, orDash(specStr(obj, "schedule")), orDash(specStr(obj, "status")), orDash(start), orDash(end), orDash(specStr(obj, "beneficiary")), orDash(specStr(obj, "benefactor")), orDash(created))
+			t.Row(id, orDash(specStr(obj, "schedule")), orDash(specStr(obj, "status")), orDash(start), orDash(end), orDash(specStr(obj, "beneficiary")), orDash(specStr(obj, "benefactor")), orDash(created))
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", id, orDash(specStr(obj, "schedule")), orDash(specStr(obj, "status")), orDash(start), orDash(end))
+			t.Row(id, orDash(specStr(obj, "schedule")), orDash(specStr(obj, "status")), orDash(start), orDash(end))
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *ShiftSwapTableCodec) Decode(_ io.Reader, _ any) error {
@@ -1231,11 +1214,11 @@ func (c *PersonalNotificationRuleTableCodec) Encode(w io.Writer, v any) error {
 		return err
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "ID\tUSER\tSTEP\tTYPE\tDURATION\tCHANNEL")
+		t = style.NewTable("ID", "USER", "STEP", "TYPE", "DURATION", "CHANNEL")
 	} else {
-		fmt.Fprintln(tw, "ID\tUSER\tSTEP\tTYPE\tDURATION")
+		t = style.NewTable("ID", "USER", "STEP", "TYPE", "DURATION")
 	}
 
 	for _, obj := range items {
@@ -1246,13 +1229,13 @@ func (c *PersonalNotificationRuleTableCodec) Encode(w io.Writer, v any) error {
 			durStr = fmt.Sprintf("%ds", dur)
 		}
 		if c.Wide {
-			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\t%s\n", id, orDash(specStr(obj, "user_id")), specInt(obj, "step"), orDash(specStr(obj, "type")), durStr, orDash(specStr(obj, "notification_channel_id")))
+			t.Row(id, orDash(specStr(obj, "user_id")), strconv.Itoa(specInt(obj, "step")), orDash(specStr(obj, "type")), durStr, orDash(specStr(obj, "notification_channel_id")))
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\n", id, orDash(specStr(obj, "user_id")), specInt(obj, "step"), orDash(specStr(obj, "type")), durStr)
+			t.Row(id, orDash(specStr(obj, "user_id")), strconv.Itoa(specInt(obj, "step")), orDash(specStr(obj, "type")), durStr)
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *PersonalNotificationRuleTableCodec) Decode(_ io.Reader, _ any) error {

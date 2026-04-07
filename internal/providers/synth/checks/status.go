@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
@@ -23,6 +22,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/synth/probes"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 	"github.com/grafana/gcx/internal/query/prometheus"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/grafana/promql-builder/go/promql"
 	"github.com/spf13/cobra"
@@ -652,7 +652,7 @@ func BuildCheckStatusResults(checks []Check, successMap, probeCountMap map[strin
 			}
 		}
 
-		r.Status = computeCheckStatus(r.Success)
+		r.Status = computeCheckStatus(r.Success, c.AlertSensitivity)
 		results = append(results, r)
 	}
 
@@ -673,12 +673,21 @@ func buildProbeNameMap(ps []probes.Probe) map[int64]string {
 	return m
 }
 
-// computeCheckStatus determines the display status for a check.
-func computeCheckStatus(success *float64) string {
+// computeCheckStatus determines the display status for a check based on the
+// success rate and the check's alertSensitivity setting. Thresholds match the
+// Grafana Synthetic Monitoring alerting defaults: high=95%, medium=90%, low=75%.
+func computeCheckStatus(success *float64, sensitivity string) string {
 	if success == nil {
 		return "NODATA"
 	}
-	if *success >= 0.5 {
+	threshold := 0.90 // default (medium)
+	switch sensitivity {
+	case "high":
+		threshold = 0.95
+	case "low":
+		threshold = 0.75
+	}
+	if *success >= threshold {
 		return "OK"
 	}
 	return "FAILING"
@@ -952,7 +961,7 @@ type checkStatusInfo struct {
 	Success *float64 // nil when no data
 }
 
-func queryCheckStatus(ctx context.Context, loader smcfg.StatusLoader, job, target string) (checkStatusInfo, error) {
+func queryCheckStatus(ctx context.Context, loader smcfg.StatusLoader, job, target, sensitivity string) (checkStatusInfo, error) {
 	dsUID, err := resolveDataSourceUID(ctx, "", loader)
 	if err != nil {
 		return checkStatusInfo{}, fmt.Errorf("resolving datasource: %w", err)
@@ -976,9 +985,9 @@ func queryCheckStatus(ctx context.Context, loader smcfg.StatusLoader, job, targe
 	successMap := queryInstantByJobInstance(ctx, promClient, dsUID, q)
 	key := job + "/" + target
 	if val, ok := successMap[key]; ok {
-		return checkStatusInfo{Status: computeCheckStatus(&val), Success: &val}, nil
+		return checkStatusInfo{Status: computeCheckStatus(&val, sensitivity), Success: &val}, nil
 	}
-	return checkStatusInfo{Status: computeCheckStatus(nil)}, nil
+	return checkStatusInfo{Status: computeCheckStatus(nil, sensitivity)}, nil
 }
 
 // autoStep calculates a reasonable query step for the given time range,
@@ -1023,12 +1032,11 @@ func (c *StatusTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for status table codec: expected []CheckStatusResult")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "NAME\tJOB\tTARGET\tTYPE\tSUCCESS\tPROBES_UP\tPROBES_TOTAL\tPROBES\tSTATUS")
+		t = style.NewTable("NAME", "JOB", "TARGET", "TYPE", "SUCCESS", "PROBES_UP", "PROBES_TOTAL", "PROBES", "STATUS")
 	} else {
-		fmt.Fprintln(tw, "NAME\tJOB\tTARGET\tSUCCESS\tSTATUS")
+		t = style.NewTable("NAME", "JOB", "TARGET", "SUCCESS", "STATUS")
 	}
 
 	for _, r := range results {
@@ -1040,15 +1048,14 @@ func (c *StatusTableCodec) Encode(w io.Writer, v any) error {
 		name := statusDisplayName(r)
 		if c.Wide {
 			probesStr := strings.Join(r.ProbeNames, ", ")
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\t%d\t%s\t%s\n",
-				name, r.Job, r.Target, r.Type, successStr, r.ProbesUp, r.ProbesTotal, probesStr, r.Status)
+			t.Row(name, r.Job, r.Target, r.Type, successStr,
+				strconv.Itoa(r.ProbesUp), strconv.Itoa(r.ProbesTotal), probesStr, r.Status)
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-				name, r.Job, r.Target, successStr, r.Status)
+			t.Row(name, r.Job, r.Target, successStr, r.Status)
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *StatusTableCodec) Decode(_ io.Reader, _ any) error {
@@ -1115,20 +1122,19 @@ func (c *TimelineTableCodec) Encode(w io.Writer, v any) error {
 		return fmt.Errorf("TimelineTableCodec: expected CheckTimelinePayload, got %T", v)
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "PROBE\tTIMESTAMP\tSUCCESS")
+	t := style.NewTable("PROBE", "TIMESTAMP", "SUCCESS")
 
 	for _, ts := range payload.Series {
 		for _, pt := range ts.Points {
-			fmt.Fprintf(tw, "%s\t%s\t%.4f\n",
+			t.Row(
 				ts.Probe,
 				pt.Time.Format(time.RFC3339),
-				pt.Value,
+				fmt.Sprintf("%.4f", pt.Value),
 			)
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *TimelineTableCodec) Decode(_ io.Reader, _ any) error {

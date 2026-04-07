@@ -9,12 +9,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -123,11 +123,11 @@ func (c *sloTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []Slo")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "UUID\tNAME\tTARGET\tWINDOW\tSTATUS\tDESCRIPTION")
+		t = style.NewTable("UUID", "NAME", "TARGET", "WINDOW", "STATUS", "DESCRIPTION")
 	} else {
-		fmt.Fprintln(tw, "UUID\tNAME\tTARGET\tWINDOW\tSTATUS")
+		t = style.NewTable("UUID", "NAME", "TARGET", "WINDOW", "STATUS")
 	}
 
 	for _, slo := range slos {
@@ -144,13 +144,13 @@ func (c *sloTableCodec) Encode(w io.Writer, v any) error {
 		}
 
 		if c.Wide {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", slo.UUID, slo.Name, target, window, status, slo.Description)
+			t.Row(slo.UUID, slo.Name, target, window, status, slo.Description)
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", slo.UUID, slo.Name, target, window, status)
+			t.Row(slo.UUID, slo.Name, target, window, status)
 		}
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *sloTableCodec) Decode(_ io.Reader, _ any) error {

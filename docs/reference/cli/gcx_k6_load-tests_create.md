@@ -11,7 +11,7 @@ gcx k6 load-tests create [flags]
 ```
   -f, --filename string   File containing the test definition (JSON/YAML)
   -h, --help              help for create
-      --json string       Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --name string       Test name (required when --filename not used)
   -o, --output string     Output format. One of: json, yaml (default "yaml")
       --project-id int    Project ID (required when --filename not used)

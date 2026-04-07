@@ -6,13 +6,13 @@ import (
 	"io"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/sigil/sigilhttp"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -194,27 +194,25 @@ func (c *TableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []Conversation")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "ID\tTITLE\tGENERATIONS\tCREATED\tLAST ACTIVITY")
+		t = style.NewTable("ID", "TITLE", "GENERATIONS", "CREATED", "LAST ACTIVITY")
 	} else {
-		fmt.Fprintln(tw, "ID\tTITLE\tGENERATIONS\tLAST ACTIVITY")
+		t = style.NewTable("ID", "TITLE", "GENERATIONS", "LAST ACTIVITY")
 	}
 
 	for _, conv := range convs {
-		title := truncate(conv.Title, 40)
+		title := sigilhttp.Truncate(conv.Title, 40)
 		lastActivity := sigilhttp.FormatTime(conv.LastGenerationAt)
 
 		if c.Wide {
 			created := sigilhttp.FormatTime(conv.CreatedAt)
-			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\n",
-				conv.ID, title, conv.GenerationCount, created, lastActivity)
+			t.Row(conv.ID, title, strconv.Itoa(conv.GenerationCount), created, lastActivity)
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\n",
-				conv.ID, title, conv.GenerationCount, lastActivity)
+			t.Row(conv.ID, title, strconv.Itoa(conv.GenerationCount), lastActivity)
 		}
 	}
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *TableCodec) Decode(_ io.Reader, _ any) error {
@@ -240,15 +238,15 @@ func (c *SearchTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []SearchResult")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "ID\tTITLE\tGENERATIONS\tMODELS\tAGENTS\tERRORS\tLAST ACTIVITY")
+		t = style.NewTable("ID", "TITLE", "GENERATIONS", "MODELS", "AGENTS", "ERRORS", "LAST ACTIVITY")
 	} else {
-		fmt.Fprintln(tw, "ID\tTITLE\tGENERATIONS\tMODELS\tLAST ACTIVITY")
+		t = style.NewTable("ID", "TITLE", "GENERATIONS", "MODELS", "LAST ACTIVITY")
 	}
 
 	for _, r := range results {
-		title := truncate(r.ConversationTitle, 40)
+		title := sigilhttp.Truncate(r.ConversationTitle, 40)
 		models := strings.Join(r.Models, ", ")
 		if models == "" {
 			models = "-"
@@ -264,14 +262,12 @@ func (c *SearchTableCodec) Encode(w io.Writer, v any) error {
 			if r.ErrorCount > 0 {
 				errCount = strconv.Itoa(r.ErrorCount)
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\t%s\t%s\n",
-				r.ConversationID, title, r.GenerationCount, models, agents, errCount, lastActivity)
+			t.Row(r.ConversationID, title, strconv.Itoa(r.GenerationCount), models, agents, errCount, lastActivity)
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\n",
-				r.ConversationID, title, r.GenerationCount, models, lastActivity)
+			t.Row(r.ConversationID, title, strconv.Itoa(r.GenerationCount), models, lastActivity)
 		}
 	}
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *SearchTableCodec) Decode(_ io.Reader, _ any) error {
@@ -299,15 +295,4 @@ func parseTimeRange(from, to string) (*SearchTimeRange, error) {
 		return nil, errors.New("--from must be before --to")
 	}
 	return &SearchTimeRange{From: fromT, To: toT}, nil
-}
-
-func truncate(s string, maxLen int) string {
-	if s == "" {
-		return "-"
-	}
-	r := []rune(s)
-	if len(r) > maxLen {
-		return string(r[:maxLen-3]) + "..."
-	}
-	return s
 }

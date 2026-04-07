@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"text/tabwriter"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/format"
@@ -13,6 +12,7 @@ import (
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/resources/discovery"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/gcx/internal/terminal"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -228,31 +228,32 @@ func (c *tabCodec) Encode(output io.Writer, input any) error {
 	}
 
 	noTruncate := terminal.NoTruncate()
-	out := tabwriter.NewWriter(output, 0, 4, 2, ' ', tabwriter.TabIndent|tabwriter.DiscardEmptyColumns)
+
+	var t *style.TableBuilder
 	if c.wide {
-		fmt.Fprintf(out, "GROUP\tVERSION\tPLURAL\tSINGULAR\tKIND\n")
+		t = style.NewTable("GROUP", "VERSION", "PLURAL", "SINGULAR", "KIND")
 	} else {
-		fmt.Fprintf(out, "GROUP\tVERSION\tPLURAL\n")
+		t = style.NewTable("GROUP", "VERSION", "PLURAL")
 	}
 
 	for _, r := range descs {
 		gv := r.GroupVersion
 		if c.wide {
-			fmt.Fprintf(out, "%s\t%s\t%s\t%s\t%s\n",
+			t.Row(
 				sanitizeCell(gv.Group, noTruncate),
 				sanitizeCell(gv.Version, noTruncate),
 				sanitizeCell(r.Plural, noTruncate),
 				sanitizeCell(r.Singular, noTruncate),
 				sanitizeCell(r.Kind, noTruncate))
 		} else {
-			fmt.Fprintf(out, "%s\t%s\t%s\n",
+			t.Row(
 				sanitizeCell(gv.Group, noTruncate),
 				sanitizeCell(gv.Version, noTruncate),
 				sanitizeCell(r.Plural, noTruncate))
 		}
 	}
 
-	return out.Flush()
+	return t.Render(output)
 }
 
 func (c *tabCodec) Decode(io.Reader, any) error {

@@ -1,6 +1,7 @@
 package output_test
 
 import (
+	"bytes"
 	goio "io"
 	"testing"
 
@@ -105,6 +106,12 @@ func TestJSONFlag_Parsing(t *testing.T) {
 			wantOutputFormat:  "json",
 		},
 		{
+			name:              "--json list sets JSONDiscovery",
+			jsonFlagValue:     "list",
+			wantJSONDiscovery: true,
+			wantOutputFormat:  "json",
+		},
+		{
 			name:             "--json not passed leaves JSONFields nil and JSONDiscovery false",
 			wantOutputFormat: "json",
 		},
@@ -151,6 +158,59 @@ func TestJSONFlag_Parsing(t *testing.T) {
 			assert.Equal(t, tc.wantJSONDiscovery, opts.JSONDiscovery)
 			if tc.wantOutputFormat != "" {
 				assert.Equal(t, tc.wantOutputFormat, opts.OutputFormat)
+			}
+		})
+	}
+}
+
+func TestEncode_AgentModeHint(t *testing.T) {
+	tests := []struct {
+		name      string
+		agentMode bool
+		jsonField string // if set, pass --json flag
+		wantHint  bool
+	}{
+		{
+			name:      "agent mode without --json emits hint",
+			agentMode: true,
+			wantHint:  true,
+		},
+		{
+			name:      "agent mode with --json fields suppresses hint",
+			agentMode: true,
+			jsonField: "name",
+			wantHint:  false,
+		},
+		{
+			name:      "non-agent mode does not emit hint",
+			agentMode: false,
+			wantHint:  false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			agent.SetFlag(tc.agentMode)
+			t.Cleanup(func() { agent.SetFlag(false) })
+
+			var errBuf bytes.Buffer
+			opts := &cmdio.Options{ErrWriter: &errBuf}
+			flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+			opts.BindFlags(flags)
+
+			if tc.jsonField != "" {
+				require.NoError(t, flags.Set("json", tc.jsonField))
+			}
+
+			require.NoError(t, opts.Validate())
+
+			var buf bytes.Buffer
+			require.NoError(t, opts.Encode(&buf, map[string]any{"name": "test"}))
+
+			if tc.wantHint {
+				assert.Contains(t, errBuf.String(), "--json list")
+			} else {
+				assert.NotContains(t, errBuf.String(), "--json list")
 			}
 		})
 	}

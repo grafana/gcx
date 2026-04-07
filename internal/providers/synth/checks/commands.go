@@ -2,6 +2,7 @@ package checks
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,7 +10,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/grafana/gcx/internal/format"
@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -172,15 +173,13 @@ func (c *checkTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []Check")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tJOB\tTARGET\tTYPE")
+	t := style.NewTable("NAME", "JOB", "TARGET", "TYPE")
 
 	for _, c := range checkList {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
-			checkDisplayName(c), c.Job, c.Target, c.Settings.CheckType())
+		t.Row(checkDisplayName(c), c.Job, c.Target, c.Settings.CheckType())
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *checkTableCodec) Decode(r io.Reader, v any) error {
@@ -197,16 +196,17 @@ func (c *checkWideTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for wide codec: expected []Check")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tJOB\tTARGET\tTYPE\tENABLED\tFREQ\tTIMEOUT\tPROBES")
+	t := style.NewTable("NAME", "JOB", "TARGET", "TYPE", "ENABLED", "FREQ", "TIMEOUT", "PROBES")
 
 	for _, c := range checkList {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%v\t%ds\t%ds\t%d\n",
-			checkDisplayName(c), c.Job, c.Target, c.Settings.CheckType(), c.Enabled,
-			c.Frequency/1000, c.Timeout/1000, len(c.Probes))
+		t.Row(checkDisplayName(c), c.Job, c.Target, c.Settings.CheckType(),
+			strconv.FormatBool(c.Enabled),
+			fmt.Sprintf("%ds", c.Frequency/1000),
+			fmt.Sprintf("%ds", c.Timeout/1000),
+			strconv.Itoa(len(c.Probes)))
 	}
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *checkWideTableCodec) Decode(r io.Reader, v any) error {
@@ -294,7 +294,7 @@ func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
 				var info checkStatusInfo
 				if opts.ShowStatus {
 					var err error
-					info, err = queryCheckStatus(ctx, loader, c.Job, c.Target)
+					info, err = queryCheckStatus(ctx, loader, c.Job, c.Target, c.AlertSensitivity)
 					if err != nil {
 						cmdio.Warning(cmd.OutOrStdout(), "could not retrieve execution status: %v", err)
 					}
@@ -415,7 +415,7 @@ func newCreateCommand(loader smcfg.StatusLoader) *cobra.Command {
 			}
 
 			if opts.ShowStatus {
-				info, err := queryCheckStatus(ctx, loader, spec.Job, spec.Target)
+				info, err := queryCheckStatus(ctx, loader, spec.Job, spec.Target, spec.AlertSensitivity)
 				if err != nil {
 					cmdio.Warning(cmd.OutOrStdout(), "could not retrieve check status: %v", err)
 				} else {
@@ -521,10 +521,9 @@ func newUpdateCommand(loader smcfg.StatusLoader) *cobra.Command {
 			typedObj.SetNamespace(namespace)
 
 			if opts.ShowStatus {
-				// Query status before the update so we can report "previous status".
-				prevInfo, err := queryCheckStatus(ctx, loader, spec.Job, spec.Target)
+				prevSensitivity := existingSensitivity(ctx, loader, checkID, spec.AlertSensitivity)
+				prevInfo, err := queryCheckStatus(ctx, loader, spec.Job, spec.Target, prevSensitivity)
 				if err != nil {
-					// Non-fatal — proceed with the update regardless.
 					cmdio.Warning(cmd.OutOrStdout(), "could not retrieve previous status: %v", err)
 				}
 
@@ -549,6 +548,21 @@ func newUpdateCommand(loader smcfg.StatusLoader) *cobra.Command {
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// existingSensitivity fetches the current alertSensitivity for a check so that
+// "previous status" is evaluated against the old threshold, not the new spec's.
+// Falls back to fallback if the fetch fails for any reason.
+func existingSensitivity(ctx context.Context, loader smcfg.Loader, checkID int64, fallback string) string {
+	baseURL, token, _, err := loader.LoadSMConfig(ctx)
+	if err != nil {
+		return fallback
+	}
+	existing, err := NewClient(baseURL, token).Get(ctx, checkID)
+	if err != nil {
+		return fallback
+	}
+	return existing.AlertSensitivity
 }
 
 // ---------------------------------------------------------------------------
@@ -613,16 +627,16 @@ func newDeleteCommand(loader smcfg.Loader) *cobra.Command {
 // encodeGetTable renders a single check as a table row, appending SUCCESS and STATUS
 // columns when status info is available (non-empty Status).
 func encodeGetTable(w io.Writer, c Check, info checkStatusInfo, wide bool) error {
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-
-	header := "NAME\tJOB\tTARGET\tTYPE"
-	row := fmt.Sprintf("%s\t%s\t%s\t%s",
-		checkDisplayName(c), c.Job, c.Target, c.Settings.CheckType())
+	headers := []string{"NAME", "JOB", "TARGET", "TYPE"}
+	row := []string{checkDisplayName(c), c.Job, c.Target, c.Settings.CheckType()}
 
 	if wide {
-		header += "\tENABLED\tFREQ\tTIMEOUT\tPROBES"
-		row += fmt.Sprintf("\t%v\t%ds\t%ds\t%d",
-			c.Enabled, c.Frequency/1000, c.Timeout/1000, len(c.Probes))
+		headers = append(headers, "ENABLED", "FREQ", "TIMEOUT", "PROBES")
+		row = append(row,
+			strconv.FormatBool(c.Enabled),
+			fmt.Sprintf("%ds", c.Frequency/1000),
+			fmt.Sprintf("%ds", c.Timeout/1000),
+			strconv.Itoa(len(c.Probes)))
 	}
 
 	if info.Status != "" {
@@ -630,14 +644,14 @@ func encodeGetTable(w io.Writer, c Check, info checkStatusInfo, wide bool) error
 		if info.Success != nil {
 			successStr = fmt.Sprintf("%.2f%%", *info.Success*100)
 		}
-		header += "\tSUCCESS\tSTATUS"
-		row += fmt.Sprintf("\t%s\t%s", successStr, info.Status)
+		headers = append(headers, "SUCCESS", "STATUS")
+		row = append(row, successStr, info.Status)
 	}
 
-	fmt.Fprintln(tw, header)
-	fmt.Fprintln(tw, row)
+	t := style.NewTable(headers...)
+	t.Row(row...)
 
-	return tw.Flush()
+	return t.Render(w)
 }
 
 // checkDisplayName computes the user-facing "slug-id" resource name from a Check.

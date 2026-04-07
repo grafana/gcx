@@ -40,6 +40,7 @@ import (
 	_ "github.com/grafana/gcx/internal/providers/slo"       // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/synth"     // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/traces"    // Provider registrations — blank imports trigger init() self-registration.
+	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/gcx/internal/terminal"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
@@ -99,6 +100,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 				terminal.SetPiped(true)
 				terminal.SetNoTruncate(true)
 				color.NoColor = true
+				style.SetEnabled(false)
 			}
 
 			// Explicit --no-truncate flag overrides auto-detection.
@@ -106,10 +108,10 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 				terminal.SetNoTruncate(true)
 			}
 
-			// Explicit --no-color flag or piped stdout disable color.
-			// fatih/color already handles NO_COLOR env var internally.
-			if noColors || terminal.IsPiped() {
+			// Explicit --no-color flag, NO_COLOR env var, or piped stdout disable color.
+			if noColors || os.Getenv("NO_COLOR") != "" || terminal.IsPiped() {
 				color.NoColor = true // globally disables colorized output
+				style.SetEnabled(false)
 			}
 
 			logLevel := new(slog.LevelVar)
@@ -143,6 +145,9 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 			cobra.CommandDisplayNameAnnotation: "gcx",
 		},
 	}
+
+	defaultHelp := rootCmd.HelpFunc()
+	rootCmd.SetHelpFunc(style.HelpFunc(defaultHelp))
 
 	rootCmd.SetOut(os.Stdout)
 	rootCmd.SetErr(os.Stderr)
@@ -188,6 +193,12 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd.PersistentFlags().BoolVar(&agentFlag, "agent", false, "Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.")
 	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "Verbose mode. Multiple -v options increase the verbosity (maximum: 3).")
 	rootCmd.PersistentFlags().StringVar(&contextName, "context", "", "Name of the context to use (overrides current-context in config)")
+
+	// Initialize Cobra's built-in help/completion commands here so any code
+	// traversing the command tree before ExecuteContext() sees the same shape
+	// that Cobra will execute.
+	rootCmd.InitDefaultHelpCmd()
+	rootCmd.InitDefaultCompletionCmd()
 
 	return rootCmd
 }

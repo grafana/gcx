@@ -306,6 +306,81 @@ func TestBuildCheckStatusResults(t *testing.T) {
 			},
 		},
 		{
+			name: "medium sensitivity 60% success gets FAILING status",
+			checks: []checks.Check{
+				{ID: 5, Job: "check-5", Target: "https://degraded.com", Probes: []int64{1, 2}, AlertSensitivity: "medium", Settings: checks.CheckSettings{"http": map[string]any{}}},
+			},
+			successMap: map[string]float64{"check-5/https://degraded.com": 0.6},
+			probeMap:   map[string]float64{"check-5/https://degraded.com": 2},
+			wantLen:    1,
+			verify: func(t *testing.T, results []checks.CheckStatusResult) {
+				t.Helper()
+				if results[0].Status != "FAILING" {
+					t.Errorf("expected status FAILING, got %s", results[0].Status)
+				}
+			},
+		},
+		{
+			name: "high sensitivity 94% success gets FAILING status",
+			checks: []checks.Check{
+				{ID: 6, Job: "check-6", Target: "https://almost-ok.com", Probes: []int64{1}, AlertSensitivity: "high", Settings: checks.CheckSettings{"http": map[string]any{}}},
+			},
+			successMap: map[string]float64{"check-6/https://almost-ok.com": 0.94},
+			probeMap:   map[string]float64{"check-6/https://almost-ok.com": 1},
+			wantLen:    1,
+			verify: func(t *testing.T, results []checks.CheckStatusResult) {
+				t.Helper()
+				if results[0].Status != "FAILING" {
+					t.Errorf("expected status FAILING, got %s", results[0].Status)
+				}
+			},
+		},
+		{
+			name: "low sensitivity 76% success gets OK status",
+			checks: []checks.Check{
+				{ID: 7, Job: "check-7", Target: "https://low-sens.com", Probes: []int64{1}, AlertSensitivity: "low", Settings: checks.CheckSettings{"http": map[string]any{}}},
+			},
+			successMap: map[string]float64{"check-7/https://low-sens.com": 0.76},
+			probeMap:   map[string]float64{"check-7/https://low-sens.com": 1},
+			wantLen:    1,
+			verify: func(t *testing.T, results []checks.CheckStatusResult) {
+				t.Helper()
+				if results[0].Status != "OK" {
+					t.Errorf("expected status OK, got %s", results[0].Status)
+				}
+			},
+		},
+		{
+			name: "low sensitivity 74% success gets FAILING status",
+			checks: []checks.Check{
+				{ID: 8, Job: "check-8", Target: "https://low-fail.com", Probes: []int64{1}, AlertSensitivity: "low", Settings: checks.CheckSettings{"http": map[string]any{}}},
+			},
+			successMap: map[string]float64{"check-8/https://low-fail.com": 0.74},
+			probeMap:   map[string]float64{"check-8/https://low-fail.com": 1},
+			wantLen:    1,
+			verify: func(t *testing.T, results []checks.CheckStatusResult) {
+				t.Helper()
+				if results[0].Status != "FAILING" {
+					t.Errorf("expected status FAILING, got %s", results[0].Status)
+				}
+			},
+		},
+		{
+			name: "default sensitivity 89% success gets FAILING status",
+			checks: []checks.Check{
+				{ID: 9, Job: "check-9", Target: "https://no-sens.com", Probes: []int64{1}, Settings: checks.CheckSettings{"http": map[string]any{}}},
+			},
+			successMap: map[string]float64{"check-9/https://no-sens.com": 0.89},
+			probeMap:   map[string]float64{"check-9/https://no-sens.com": 1},
+			wantLen:    1,
+			verify: func(t *testing.T, results []checks.CheckStatusResult) {
+				t.Helper()
+				if results[0].Status != "FAILING" {
+					t.Errorf("expected status FAILING, got %s", results[0].Status)
+				}
+			},
+		},
+		{
 			name: "probe names populated from probe map",
 			checks: []checks.Check{
 				{ID: 4, Job: "check-4", Target: "https://probes.com", Probes: []int64{10, 20}, Settings: checks.CheckSettings{"http": map[string]any{}}},
