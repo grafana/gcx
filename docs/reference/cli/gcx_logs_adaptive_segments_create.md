@@ -11,7 +11,7 @@ gcx logs adaptive segments create [flags]
 ```
       --fallback-to-default   Fall back to default segment
   -h, --help                  help for create
-      --json string           Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --name string           Segment name (required)
   -o, --output string         Output format. One of: json, yaml (default "json")
       --selector string       Log stream selector (required)

@@ -19,7 +19,7 @@ gcx help-tree [COMMAND...] [flags]
 ```
       --depth int       Maximum nesting depth (1 = root + direct children, 0 = unlimited)
   -h, --help            help for help-tree
-      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: json, text, yaml (default "text")
 ```
 

@@ -11,7 +11,7 @@ gcx oncall escalate [flags]
 ```
   -h, --help               help for escalate
       --important          Mark as important
-      --json string        Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --message string     Message for the escalation
   -o, --output string      Output format. One of: json, yaml (default "text")
       --team-id string     Team ID

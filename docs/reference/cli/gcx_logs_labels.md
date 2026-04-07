@@ -29,7 +29,7 @@ gcx logs labels [flags]
 ```
   -d, --datasource string   Datasource UID (required unless default-loki-datasource is configured)
   -h, --help                help for labels
-      --json string         Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -l, --label string        Get values for this label (omit to list all labels)
   -o, --output string       Output format. One of: json, table, yaml (default "table")
 ```

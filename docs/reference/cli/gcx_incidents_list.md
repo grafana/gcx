@@ -10,7 +10,7 @@ gcx incidents list [flags]
 
 ```
   -h, --help            help for list
-      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int       Maximum number of incidents to return (default 100)
   -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
 ```

@@ -38,7 +38,7 @@ gcx slo definitions timeline [UUID] [flags]
 ```
       --from string     Start of the time range (e.g. now-7d, now-24h, RFC3339, Unix timestamp) (default "now-7d")
   -h, --help            help for timeline
-      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: graph, json, table, yaml (default "graph")
       --since string    Duration before now (e.g. 1h, 7d). Equivalent to --from now-<since> --to now.
       --step string     Query step (e.g. 5m, 1h). Defaults to auto-computed value.

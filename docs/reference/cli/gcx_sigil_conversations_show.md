@@ -15,7 +15,7 @@ gcx sigil conversations show [conversation-id] [flags]
 
 ```
   -h, --help            help for show
-      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int       Maximum number of conversations to return (0 for no limit) (default 100)
   -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
 ```

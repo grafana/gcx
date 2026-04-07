@@ -24,7 +24,7 @@ gcx synth checks list [flags]
 ```
   -h, --help                help for list
       --job string          Filter by job name glob pattern (e.g. --job 'shopk8s-*')
-      --json string         Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --label stringArray   Filter by label key=value (repeatable, e.g. --label env=prod)
   -o, --output string       Output format. One of: json, table, wide, yaml (default "table")
 ```

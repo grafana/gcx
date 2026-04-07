@@ -45,7 +45,7 @@ gcx profiles metrics EXPR [flags]
       --from string           Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
       --group-by strings      Group series by label (repeatable, defaults to service_name)
   -h, --help                  help for metrics
-      --json string           Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int             Maximum number of series to return (default 10)
   -o, --output string         Output format. One of: graph, json, table, wide, yaml (default "table")
       --profile-type string   Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds') (required)

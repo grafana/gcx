@@ -11,7 +11,7 @@ gcx kg insights active [flags]
 ```
       --env string         Environment scope
   -h, --help               help for active
-      --json string        Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --namespace string   Namespace scope
   -o, --output string      Output format. One of: json, yaml (default "json")
       --page int           Page number (0-based)
