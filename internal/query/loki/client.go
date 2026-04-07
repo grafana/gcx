@@ -421,7 +421,11 @@ func convertLegacyFormat(frame DataFrame, result *QueryResponse) {
 		case "time":
 			timeIdx = i
 		case "string", "number":
-			valueIdx = i
+			// Prefer named body fields ("Line", "body") over generic string fields
+			// like "id" or "tsNs" which appear after the body in Loki data frames.
+			if valueIdx == -1 || field.Name == "Line" || field.Name == "body" {
+				valueIdx = i
+			}
 		}
 		if len(field.Labels) > 0 {
 			labels = field.Labels
