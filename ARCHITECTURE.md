@@ -6,41 +6,153 @@ See [VISION.md](VISION.md) for goals, roadmap, and product surface.
 
 **In brief:** A CLI for managing Grafana and Grafana Cloud. Supports dynamic Grafana API resources via a kubectl-like resources layer, and per-product features via the provider interface. Includes observability-as-code workflows (`gcx dev`), multi-stack configuration/contexts, and Grafana Assistant integration. Optimized for AI agents and human use.
 
-## Pipeline
+## System Overview
+
+### 1. Resources Pipeline
+
+The core of gcx. Manages Grafana-native resources (dashboards, folders, alert rules, etc.) via Grafana 12's Kubernetes-compatible `/apis` endpoint.
 
 ```
-CLI Layer (cmd/gcx/)          -- Cobra commands, zero business logic
+User input                           gcx resources push ./dashboards/
     |
     v
-Business Logic (internal/resources/) -- Resource model, selectors, filters, processors
+Selector (partial)                   "dashboards/" or "dashboards/my-dash"
     |
     v
-Client Layer (internal/resources/dynamic/) -- k8s dynamic client wrapper
+Discovery Registry                   API call to /apis → available GVKs
     |
     v
-Grafana REST API (/apis endpoint)    -- K8s-compatible API (Grafana 12+)
+Filter (resolved)                    Full GVK: dashboard.grafana.app/v1alpha1
+    |
+    v
+Processors                           Strip server fields (pull) / add namespace (push)
+    |
+    v
+Dynamic Client (k8s.io/client-go)   Create-or-update via /apis endpoint
+    |
+    v
+Grafana K8s API                      /apis/{group}/{version}/namespaces/{ns}/{plural}/{name}
 ```
 
-**Core flow:** User input --> Selector (partial) --> Discovery --> Filter (resolved) --> Dynamic Client --> Grafana API
+**Operations:** `get`, `push` (create-or-update, idempotent), `pull` (export to local YAML/JSON), `delete`, `edit` (single resource, `$EDITOR`), `validate` (local linting via Rego), `schemas` (discover types), `examples` (show sample manifests).
 
-### Extension Pipelines
+**Key abstractions** ([resource-model.md](docs/architecture/resource-model.md)): `Resource` wraps `unstructured.Unstructured` — no pre-generated Go types. `Selector` → `Filter` two-stage resolution keeps CLI ignorant of API details. `Processor` pipeline composes transformations at defined pipeline points. `Discovery` registry resolves plural names and short names to full GVKs at runtime.
+
+**Data flows** ([data-flows.md](docs/architecture/data-flows.md)): Push reads local files, resolves selectors, applies processors, pushes via dynamic client with folder-before-dashboard ordering and bounded concurrency (errgroup, default 10). Pull fetches from API, strips server-managed fields, writes to disk grouped by kind.
+
+### 2. Provider System
+
+Pluggable adapters for Grafana Cloud products. Each provider is a self-contained package under `internal/providers/` that contributes CLI commands and optionally bridges into the resources pipeline.
 
 ```
-Provider System (internal/providers/)     -- Pluggable Cloud product providers
-    |                                        TypedRegistrations() → adapter.Register()
-    v
-Grafana REST API (/api endpoint)          -- Product-specific REST endpoints
-
-Setup System (cmd/gcx/setup/)            -- Onboarding and declarative product config
-    |                                        (not a provider — standalone command area)
-    v
-Fleet/Instrumentation APIs               -- via internal/fleet/ and internal/setup/instrumentation/
-
-Query Layer (internal/query/)             -- Prometheus, Loki, Pyroscope, Tempo
-    |                                        (direct HTTP, no k8s machinery)
-    v
-Datasource HTTP APIs                      -- PromQL, LogQL, profile, trace queries
+Provider (internal/providers/slo/)
+    |
+    +-- Commands()            Cobra commands: gcx slo definitions list
+    |
+    +-- TypedRegistrations()  Adapter registrations for resources pipeline
+    |       |
+    |       v
+    |   adapter.Register()    Makes provider resources accessible via gcx resources get/push/pull
+    |
+    +-- ConfigKeys()          Declares provider-specific config keys (token, url, ...)
+    |
+    +-- Validate()            Validates config before API calls
 ```
+
+**TypedCRUD\[T\]** bridges typed Go domain structs to K8s-style `unstructured.Unstructured` envelopes. Domain types implement `ResourceIdentity` (`GetResourceName`/`SetResourceName`). `TypedObject[T]` wraps them with `ObjectMeta` + `TypeMeta` for K8s compliance.
+
+**ConfigLoader** (`providers.ConfigLoader`) handles `--config`/`--context` flag binding, YAML + env var precedence, and provider-specific config resolution (`GRAFANA_PROVIDER_{NAME}_{KEY}`). All providers must use it — no ad-hoc `os.Getenv`.
+
+**Dual access paths** are permanent: provider commands (`gcx slo definitions list`) give ergonomic domain-specific tables; generic commands (`gcx resources get slos.v1alpha1.slo.ext.grafana.app`) serve the push/pull pipeline. JSON/YAML output is identical across both paths by construction (both use the same `ResourceAdapter`).
+
+**Deep-dive:** [patterns.md](docs/architecture/patterns.md) §11 (Provider Plugin System), §17–20 (TypedCRUD, K8s envelope, singleton, ETag). Implementation guide: [provider-guide.md](docs/reference/provider-guide.md).
+
+### 3. Signal Providers
+
+Top-level commands for querying observability datasources: `metrics`, `logs`, `traces`, `profiles`. These bypass the K8s dynamic client and call datasource HTTP APIs directly.
+
+```
+gcx metrics query -d prom-001 'rate(http_requests_total[5m])' --since 1h
+    |
+    v
+SharedOpts                   Shared flags: -d/--datasource, --from, --to, --since, --step
+    |
+    v
+Datasource Resolution        Resolves -d flag to datasource UID (by name, UID, or config default)
+    |
+    v
+Query Client                 internal/query/prometheus/ or internal/query/loki/ (direct HTTP)
+    |
+    v
+Codec Pipeline               table (default) | graph (terminal chart) | json | yaml
+```
+
+**Standardized verbs** (established by PR #348): `query` (execute queries), `labels` (list label names/values), `series`/`metrics` (list series or compute metric queries), `metadata` (metric metadata). All four signal providers share these verbs with identical flag semantics.
+
+**Adaptive telemetry** nests under each signal provider (`metrics adaptive`, `logs adaptive`, `traces adaptive`) with its own CRUD resources (rules, policies, exemptions, segments) and operational views (recommendations, patterns). Uses `internal/auth/adaptive/` for shared GCOM-cached Basic auth.
+
+**Graph rendering:** `internal/graph/` converts query responses to terminal charts via ntcharts + lipgloss. Available as `-o graph` on all query commands and SLO/synth timeline commands.
+
+### 4. Developer Tooling (`gcx dev`)
+
+Observability-as-code workflows for managing Grafana resources as Go code.
+
+- **`scaffold`** — Generate a new dashboards-as-code project (Go module + grafana-foundation-sdk)
+- **`import`** — Import existing dashboards from Grafana as Go builder code
+- **`serve`** — Live-reload dev server (Chi router, reverse proxy, WebSocket reload) — edit locally, preview in browser
+- **`lint`** — Lint resources with built-in and custom Rego rules (OPA engine in `internal/linter/`), including PromQL/LogQL expression validators
+- **`generate`** — Code generation utilities
+
+The linter engine is also used by `gcx resources validate` for pre-push validation.
+
+### 5. Setup & Instrumentation (`gcx setup`)
+
+Onboarding and declarative product configuration. Not a provider — standalone command area.
+
+- **`setup status`** — Check connection, auth, and product availability
+- **`setup instrumentation discover`** — Discover instrumentable workloads via Fleet Management
+- **`setup instrumentation show/apply`** — View and apply instrumentation configs with optimistic lock comparison
+
+Uses `internal/fleet/` (shared fleet base client) and `internal/setup/instrumentation/` (manifest types, instrumentation client). The fleet base client is shared between the setup system and the fleet provider.
+
+### 6. Configuration
+
+kubectl-inspired context-based multi-environment configuration.
+
+```yaml
+current-context: prod
+contexts:
+  prod:
+    grafana: { server: https://grafana.example.com, token: gf_... }
+    cloud: { token: glsa_..., org: my-org }
+    providers:
+      slo: { token: glsa_... }
+      synth: { sm-url: https://... }
+```
+
+**Loading chain:** Config file → env var overrides (`GRAFANA_SERVER`, `GRAFANA_TOKEN`, `GRAFANA_PROVIDER_{NAME}_{KEY}`) → CLI flags (`--context`). Env vars take precedence over YAML. The `--context` flag selects the active context; absent, `current-context` is used.
+
+**Namespace resolution:** `org-id` (on-prem, maps to K8s namespace) or `stack-id` (Cloud, discovered via GCOM). Providers use `ConfigLoader` which resolves these uniformly.
+
+**Secret handling:** Config keys marked `Secret: true` in provider `ConfigKeys()` are redacted in `gcx config view`. Undeclared keys and unknown providers are redacted by default (secure-by-default).
+
+**Deep-dive:** [config-system.md](docs/architecture/config-system.md).
+
+### 7. Authentication
+
+Multiple auth mechanisms for different tiers.
+
+| Mechanism | Used for | Implementation |
+|-----------|---------|----------------|
+| **Service account token** | Grafana K8s API (`/apis`), plugin APIs | Bearer token in `rest.Config` |
+| **Cloud Access Policy token** | GCOM stack discovery, Cloud product APIs | `internal/cloud/` GCOM client |
+| **OAuth PKCE** | Browser-based login (`gcx auth login`) | `internal/auth/` — token refresh transport persists to config |
+| **Basic auth** | Legacy Grafana instances | Username/password in `rest.Config` |
+| **Adaptive auth** | Signal provider adaptive telemetry APIs | `internal/auth/adaptive/` — GCOM-cached Basic auth shared across signal providers |
+
+**Precedence:** Token > OAuth > user/password. Explicit flags override env vars override config file. `ExternalHTTPClient()` must be used for APIs outside the Grafana server (K6 Cloud, OnCall, Synth, Fleet) — the k8s transport injects the Grafana bearer token on every request, which conflicts with product-specific auth.
+
+**Deep-dive:** [client-api-layer.md](docs/architecture/client-api-layer.md), [config-system.md](docs/architecture/config-system.md).
 
 ## Architecture Decision Records
 
@@ -92,16 +204,6 @@ See also: [docs/design/](docs/design/) for UX implementation guides, [docs/refer
 - **API communication or errors**: Read `client-api-layer.md`
 - **Build issues or dependencies**: Read `project-structure.md`
 
-### Key Patterns
-
-- **K8s Resource Model**: Direct use of `k8s.io/apimachinery` and `k8s.io/client-go`. All resources are `unstructured.Unstructured` with discovery at runtime — no pre-generated Go types.
-- **Options Pattern**: Every command follows opts struct → `setup(flags)` → `Validate()` → constructor. Shared concerns composed via embedding.
-- **Processor Pipeline**: `Processor.Process(*Resource) error` — composable transformations applied at defined points in push/pull pipelines.
-- **Selector → Filter Resolution**: CLI argument → Selector (partial) → Discovery Registry → Filter (fully resolved GVK). Keeps CLI layer ignorant of API details.
-- **Dual-Client Architecture**: `/apis` path (K8s-compatible, `k8s.io/client-go`) for resource CRUD; `/api` path (Grafana REST) for health checks and version discovery.
-- **Provider Plugin System**: Interface + registry. Each provider self-registers via `init()` and contributes CLI commands + resource adapters.
-- **Direct HTTP for Datasources**: Query clients bypass the k8s dynamic client, call datasource HTTP APIs directly (PromQL, LogQL, Pyroscope, Tempo).
-
 ### Worked Examples
 
 **How does a resource get pushed to Grafana?**
@@ -118,6 +220,11 @@ See also: [docs/design/](docs/design/) for UX implementation guides, [docs/refer
 1. [resource-model.md](docs/architecture/resource-model.md) § "Discovery System" — types are discovered at runtime, no hardcoding
 2. [patterns.md](docs/architecture/patterns.md) § "Processor Pipeline" — if custom handling is needed
 3. [data-flows.md](docs/architecture/data-flows.md) — where processors are applied
+
+**Adding a new provider:**
+1. [provider-guide.md](docs/reference/provider-guide.md) — step-by-step implementation guide
+2. [patterns.md](docs/architecture/patterns.md) § "Provider Plugin System" — interface, registration, TypedCRUD
+3. [provider-checklist.md](docs/design/provider-checklist.md) — UX compliance checklist
 
 **Debugging an authentication issue:**
 1. [config-system.md](docs/architecture/config-system.md) § "Auth Priority" — token vs user/password precedence
