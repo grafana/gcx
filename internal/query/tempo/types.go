@@ -109,6 +109,7 @@ type MetricsRequest struct {
 type MetricsResponse struct {
 	Series  []MetricsSeries `json:"series"`
 	Metrics map[string]any  `json:"metrics,omitempty"`
+	Instant bool            `json:"-"`
 }
 
 // MetricsSeries represents a single series in a metrics response.

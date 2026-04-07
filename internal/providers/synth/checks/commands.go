@@ -2,6 +2,7 @@ package checks
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -293,7 +294,7 @@ func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
 				var info checkStatusInfo
 				if opts.ShowStatus {
 					var err error
-					info, err = queryCheckStatus(ctx, loader, c.Job, c.Target)
+					info, err = queryCheckStatus(ctx, loader, c.Job, c.Target, c.AlertSensitivity)
 					if err != nil {
 						cmdio.Warning(cmd.OutOrStdout(), "could not retrieve execution status: %v", err)
 					}
@@ -414,7 +415,7 @@ func newCreateCommand(loader smcfg.StatusLoader) *cobra.Command {
 			}
 
 			if opts.ShowStatus {
-				info, err := queryCheckStatus(ctx, loader, spec.Job, spec.Target)
+				info, err := queryCheckStatus(ctx, loader, spec.Job, spec.Target, spec.AlertSensitivity)
 				if err != nil {
 					cmdio.Warning(cmd.OutOrStdout(), "could not retrieve check status: %v", err)
 				} else {
@@ -520,10 +521,9 @@ func newUpdateCommand(loader smcfg.StatusLoader) *cobra.Command {
 			typedObj.SetNamespace(namespace)
 
 			if opts.ShowStatus {
-				// Query status before the update so we can report "previous status".
-				prevInfo, err := queryCheckStatus(ctx, loader, spec.Job, spec.Target)
+				prevSensitivity := existingSensitivity(ctx, loader, checkID, spec.AlertSensitivity)
+				prevInfo, err := queryCheckStatus(ctx, loader, spec.Job, spec.Target, prevSensitivity)
 				if err != nil {
-					// Non-fatal — proceed with the update regardless.
 					cmdio.Warning(cmd.OutOrStdout(), "could not retrieve previous status: %v", err)
 				}
 
@@ -548,6 +548,21 @@ func newUpdateCommand(loader smcfg.StatusLoader) *cobra.Command {
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// existingSensitivity fetches the current alertSensitivity for a check so that
+// "previous status" is evaluated against the old threshold, not the new spec's.
+// Falls back to fallback if the fetch fails for any reason.
+func existingSensitivity(ctx context.Context, loader smcfg.Loader, checkID int64, fallback string) string {
+	baseURL, token, _, err := loader.LoadSMConfig(ctx)
+	if err != nil {
+		return fallback
+	}
+	existing, err := NewClient(baseURL, token).Get(ctx, checkID)
+	if err != nil {
+		return fallback
+	}
+	return existing.AlertSensitivity
 }
 
 // ---------------------------------------------------------------------------

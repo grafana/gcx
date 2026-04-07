@@ -39,7 +39,7 @@ gcx synth checks timeline ID [flags]
       --datasource-uid string   UID of the Prometheus datasource to query
       --from string             Start of the time range (e.g. now-6h, now-24h, RFC3339, Unix timestamp)
   -h, --help                    help for timeline
-      --json string             Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string             Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string           Output format. One of: graph, json, table, yaml (default "graph")
       --since string            Duration before now to display (e.g. 1h, 6h, 24h, 7d) (default "6h")
       --to string               End of the time range (e.g. now, RFC3339, Unix timestamp)

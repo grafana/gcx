@@ -36,7 +36,7 @@ gcx sigil conversations search [flags]
       --filters string   Filter expression for conversation search
       --from string      Start of time range (RFC3339, e.g. 2026-01-01T00:00:00Z)
   -h, --help             help for search
-      --json string      Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string    Output format. One of: json, table, wide, yaml (default "table")
       --page-size int    Number of results per page (default 50)
       --to string        End of time range (RFC3339, e.g. 2026-12-31T23:59:59Z)

@@ -1,7 +1,6 @@
 name: ⚙️ Configuration Issue
 description: Problems with gcx configuration, contexts, or authentication
-title: ""
-type: "Task"
+title: ⚙️ Configuration Issue
 labels: ["action/needs-triage"]
 body:
   - type: markdown

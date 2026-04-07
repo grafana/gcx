@@ -11,7 +11,7 @@ gcx k6 runs list [id-or-name] [flags]
 ```
   -h, --help             help for list
       --id int           Load test ID (skip name lookup)
-      --json string      Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string    Output format. One of: json, table, yaml (default "table")
       --project-id int   Project ID (required when looking up by name)
 ```

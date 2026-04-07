@@ -246,6 +246,7 @@ func (c *Client) MetricsRange(ctx context.Context, datasourceUID string, req Met
 	if err := json.Unmarshal(respBody, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
+	result.Instant = false
 
 	return &result, nil
 }
@@ -288,6 +289,7 @@ func (c *Client) MetricsInstant(ctx context.Context, datasourceUID string, req M
 	if err := json.Unmarshal(respBody, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
+	result.Instant = true
 
 	return &result, nil
 }

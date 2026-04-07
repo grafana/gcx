@@ -652,7 +652,7 @@ func BuildCheckStatusResults(checks []Check, successMap, probeCountMap map[strin
 			}
 		}
 
-		r.Status = computeCheckStatus(r.Success)
+		r.Status = computeCheckStatus(r.Success, c.AlertSensitivity)
 		results = append(results, r)
 	}
 
@@ -673,12 +673,21 @@ func buildProbeNameMap(ps []probes.Probe) map[int64]string {
 	return m
 }
 
-// computeCheckStatus determines the display status for a check.
-func computeCheckStatus(success *float64) string {
+// computeCheckStatus determines the display status for a check based on the
+// success rate and the check's alertSensitivity setting. Thresholds match the
+// Grafana Synthetic Monitoring alerting defaults: high=95%, medium=90%, low=75%.
+func computeCheckStatus(success *float64, sensitivity string) string {
 	if success == nil {
 		return "NODATA"
 	}
-	if *success >= 0.5 {
+	threshold := 0.90 // default (medium)
+	switch sensitivity {
+	case "high":
+		threshold = 0.95
+	case "low":
+		threshold = 0.75
+	}
+	if *success >= threshold {
 		return "OK"
 	}
 	return "FAILING"
@@ -952,7 +961,7 @@ type checkStatusInfo struct {
 	Success *float64 // nil when no data
 }
 
-func queryCheckStatus(ctx context.Context, loader smcfg.StatusLoader, job, target string) (checkStatusInfo, error) {
+func queryCheckStatus(ctx context.Context, loader smcfg.StatusLoader, job, target, sensitivity string) (checkStatusInfo, error) {
 	dsUID, err := resolveDataSourceUID(ctx, "", loader)
 	if err != nil {
 		return checkStatusInfo{}, fmt.Errorf("resolving datasource: %w", err)
@@ -976,9 +985,9 @@ func queryCheckStatus(ctx context.Context, loader smcfg.StatusLoader, job, targe
 	successMap := queryInstantByJobInstance(ctx, promClient, dsUID, q)
 	key := job + "/" + target
 	if val, ok := successMap[key]; ok {
-		return checkStatusInfo{Status: computeCheckStatus(&val), Success: &val}, nil
+		return checkStatusInfo{Status: computeCheckStatus(&val, sensitivity), Success: &val}, nil
 	}
-	return checkStatusInfo{Status: computeCheckStatus(nil)}, nil
+	return checkStatusInfo{Status: computeCheckStatus(nil, sensitivity)}, nil
 }
 
 // autoStep calculates a reasonable query step for the given time range,

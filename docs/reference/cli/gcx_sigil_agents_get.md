@@ -14,7 +14,7 @@ gcx sigil agents get <agent-name> [flags]
 
 ```
   -h, --help             help for get
-      --json string      Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string    Output format. One of: json, yaml (default "yaml")
       --version string   Specific effective version to look up
 ```

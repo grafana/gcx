@@ -39,7 +39,7 @@ gcx traces query TRACEQL [flags]
   -d, --datasource string   Datasource UID (required unless datasources.tempo is configured)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for query
-      --json string         Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int           Maximum number of traces to return (0 means no limit) (default 20)
   -o, --output string       Output format. One of: graph, json, table, wide, yaml (default "table")
       --since string        Duration before --to (or now if omitted); mutually exclusive with --from

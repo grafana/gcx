@@ -43,7 +43,7 @@ gcx api PATH [flags]
   -d, --data string          Request body (use @file for file, @- for stdin). Implies POST.
   -H, --header stringArray   Custom headers (repeatable)
   -h, --help                 help for api
-      --json string          Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -X, --method string        HTTP method (default: GET, or POST if -d is set)
   -o, --output string        Output format for JSON responses. One of: json, yaml (default "json")
 ```

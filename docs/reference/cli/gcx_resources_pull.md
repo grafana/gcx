@@ -64,7 +64,7 @@ gcx resources pull [RESOURCE_SELECTOR]... [flags]
 ```
   -h, --help              help for pull
       --include-managed   Include resources managed by tools other than gcx
-      --json string       Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --on-error string   How to handle errors during resource operations:
                             ignore — continue processing all resources and exit 0
                             fail   — continue processing all resources and exit 1 if any failed (default)

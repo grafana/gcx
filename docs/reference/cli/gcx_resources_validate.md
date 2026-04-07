@@ -35,7 +35,7 @@ gcx resources validate [RESOURCE_SELECTOR]... [flags]
 
 ```
   -h, --help                 help for validate
-      --json string          Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --max-concurrent int   Maximum number of concurrent operations (default 10)
       --on-error string      How to handle errors during resource operations:
                                ignore — continue processing all resources and exit 0

@@ -10,7 +10,7 @@ gcx k6 load-tests get <id-or-name> [flags]
 
 ```
   -h, --help             help for get
-      --json string      Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string    Output format. One of: json, yaml (default "yaml")
       --project-id int   Project ID (required when looking up by name)
 ```

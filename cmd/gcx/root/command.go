@@ -192,5 +192,11 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "Verbose mode. Multiple -v options increase the verbosity (maximum: 3).")
 	rootCmd.PersistentFlags().StringVar(&contextName, "context", "", "Name of the context to use (overrides current-context in config)")
 
+	// Initialize Cobra's built-in help/completion commands here so any code
+	// traversing the command tree before ExecuteContext() sees the same shape
+	// that Cobra will execute.
+	rootCmd.InitDefaultHelpCmd()
+	rootCmd.InitDefaultCompletionCmd()
+
 	return rootCmd
 }

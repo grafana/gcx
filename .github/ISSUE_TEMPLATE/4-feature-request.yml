@@ -1,7 +1,6 @@
 name: ✨ Feature Request
 description: Suggest a completely new capability or feature
-title: ""
-type: "Feature"
+title: ✨ Feature Request
 labels: ["action/needs-triage"]
 body:
   - type: markdown

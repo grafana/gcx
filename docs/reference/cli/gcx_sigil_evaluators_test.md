@@ -27,7 +27,7 @@ gcx sigil evaluators test [flags]
   -f, --filename string          File with full eval:test request body (use - for stdin)
   -g, --generation string        Generation ID to evaluate
   -h, --help                     help for test
-      --json string              Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string              Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string            Output format. One of: json, table, yaml (default "table")
 ```
 

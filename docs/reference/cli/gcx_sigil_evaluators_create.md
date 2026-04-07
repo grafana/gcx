@@ -25,7 +25,7 @@ gcx sigil evaluators create [flags]
 ```
   -f, --filename string   File containing the evaluator definition (use - for stdin)
   -h, --help              help for create
-      --json string       Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string     Output format. One of: json, yaml (default "json")
 ```
 
