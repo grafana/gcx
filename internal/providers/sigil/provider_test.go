@@ -28,7 +28,9 @@ func TestSigilProvider_Commands(t *testing.T) {
 	assert.Equal(t, "sigil", sigilCmd.Use)
 
 	subNames := commandNames(sigilCmd)
-	assert.Contains(t, subNames, "conversations")
+	for _, exp := range []string{"conversations", "agents", "evaluators", "rules"} {
+		assert.Contains(t, subNames, exp)
+	}
 
 	convsCmd := findSubcommand(sigilCmd, "conversations")
 	require.NotNil(t, convsCmd)

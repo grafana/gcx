@@ -1,0 +1,38 @@
+## gcx sigil agents show
+
+Show agents or a single agent detail.
+
+### Synopsis
+
+Show agents. Without a name, lists agents (use --limit to control count).
+With a name, shows the full agent definition (use --version for a specific version).
+
+```
+gcx sigil agents show [agent-name] [flags]
+```
+
+### Options
+
+```
+  -h, --help             help for show
+      --json string      Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --limit int        Maximum number of agents to return (default 100)
+  -o, --output string    Output format. One of: json, table, wide, yaml (default "table")
+      --version string   Specific effective version to look up
+```
+
+### Options inherited from parent commands
+
+```
+      --agent            Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --config string    Path to the configuration file to use
+      --context string   Name of the context to use
+      --no-color         Disable color output
+      --no-truncate      Disable table column truncation (auto-enabled when stdout is piped)
+  -v, --verbose count    Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
+```
+
+### SEE ALSO
+
+* [gcx sigil agents](gcx_sigil_agents.md)	 - Query Sigil agent catalog.
+
