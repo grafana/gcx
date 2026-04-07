@@ -109,7 +109,7 @@ labels and rendering raw numbers without context.
 
 `logs metrics` will have proper time-series formatters and `-o graph` support.
 
-### 5. Traces: `labels -l` for tag value discovery, drop `--instant`
+### 5. Traces: `labels -l` for tag value discovery, keep `--instant`
 
 Merge `tags` and `tag-values` into a single `labels` command with `-l/--label`
 flag, matching the pattern used by metrics, logs, and profiles:
@@ -128,22 +128,32 @@ think in "tags"), so `tags -l NAME` also works. `tag-values` is dropped.
 **Rejected:** Keeping both `labels -l NAME` and a separate `label-values NAME`
 command. Gives users two ways to do the same thing with no clear winner.
 
-Drop the `--instant` flag from `traces metrics`. Deduce instant vs range from
-time flag presence, matching how `metrics query` works for Prometheus.
+Keep the `--instant` flag on `traces metrics`.
 
-**Time flag rules** (enforced by `SharedOpts.Validate`, applies to all signals):
+Tempo's instant query is not "query at a single timestamp" in the Prometheus
+sense. It computes a single value across a selected time range, accepts
+`--since` / `--from` / `--to`, and defaults to the last hour when no time range
+is provided. That means gcx cannot infer instant vs range from time-flag
+presence alone.
+
+**Trace metrics rules**:
 
 | Flags provided | Query mode |
 |----------------|------------|
-| (none) | Instant (at current time) |
-| `--since 1h` | Range (resolves to `--from now-1h --to now`) |
+| (none) | Range over the last hour |
+| `--instant` | Instant over the last hour |
+| `--since 1h` | Range over the last hour |
+| `--instant --since 1h` | Instant over the last hour |
 | `--from X --to Y` | Range |
+| `--instant --from X --to Y` | Instant |
+| `--step` | Range step |
+| `--instant --step ...` | Error: step does not apply to instant queries |
 | `--from X` alone | Error: `--to` is required when `--from` is set |
 | `--to Y` alone | Error: `--from` is required when `--to` is set |
 | `--since` + `--from` | Error: mutually exclusive |
 
-`SharedOpts` must be updated to reject `--from` without `--to` and vice versa
-(currently it silently produces a zero time, which falls through to instant).
+This is a Tempo-specific exception to the simpler Prometheus/Loki-style
+inference from time flags.
 
 ### 6. Aliases and clean breaks
 
