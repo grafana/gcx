@@ -54,6 +54,27 @@ func FormatTagValuesTable(w io.Writer, resp *TagValuesResponse) error {
 
 // FormatMetricsTable formats a metrics response as a table.
 func FormatMetricsTable(w io.Writer, resp *MetricsResponse) error {
+	if metricsTableHasTimestamps(resp) {
+		return formatMetricsTableWithTimestamps(w, resp)
+	}
+	return formatMetricsTableWithoutTimestamps(w, resp)
+}
+
+func metricsTableHasTimestamps(resp *MetricsResponse) bool {
+	for _, series := range resp.Series {
+		if len(series.Samples) > 0 || series.TimestampMs != "" {
+			return true
+		}
+		if series.Value != nil {
+			return false
+		}
+	}
+
+	// Preserve the existing empty-response header shape.
+	return true
+}
+
+func formatMetricsTableWithTimestamps(w io.Writer, resp *MetricsResponse) error {
 	t := style.NewTable("LABELS", "TIMESTAMP", "VALUE")
 
 	for _, series := range resp.Series {
@@ -67,13 +88,33 @@ func FormatMetricsTable(w io.Writer, resp *MetricsResponse) error {
 					strconv.FormatFloat(sample.Value, 'f', -1, 64),
 				)
 			}
-		} else if series.Value != nil {
+			continue
+		}
+
+		if series.Value != nil {
 			t.Row(
 				labels,
 				series.TimestampMs,
 				strconv.FormatFloat(*series.Value, 'f', -1, 64),
 			)
 		}
+	}
+
+	return t.Render(w)
+}
+
+func formatMetricsTableWithoutTimestamps(w io.Writer, resp *MetricsResponse) error {
+	t := style.NewTable("LABELS", "VALUE")
+
+	for _, series := range resp.Series {
+		if series.Value == nil {
+			continue
+		}
+
+		t.Row(
+			FormatMetricsLabels(series.Labels),
+			strconv.FormatFloat(*series.Value, 'f', -1, 64),
+		)
 	}
 
 	return t.Render(w)
