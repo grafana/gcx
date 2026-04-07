@@ -41,49 +41,6 @@ The Grafana Assistant is gcx's differentiator. Where other CLIs stop at data ret
 
 The workflow: alert fires → Assistant investigates → agent drafts fix → agent instruments with OpenTelemetry → agent creates monitoring → PR ships. Humans steer; agents execute.
 
-## Roadmap Themes
-
-Drawn from current milestones and open issues:
-
-### Authentication & Identity
-- OAuth browser flow with refresh token rotation
-- Cloud Access Policy token support
-- Token scope metadata and expiry tracking
-- Unified `gcx auth login` experience
-
-### Assistant & AI Integration
-- Investigation CRUD (create, continue, summarize)
-- A2A (Agent-to-Agent) protocol support
-- Conversational troubleshooting via CLI
-
-### Platform Completeness
-- SCIM provider (user/team provisioning)
-- GCom provider (access policies, billing, stacks)
-- Cloud Migrations provider
-- ML provider
-- Cloud Provider integrations (AWS, Azure)
-- Recording rules (Loki, Prometheus)
-
-### Developer Experience
-- Universal list filters (`--limit`, `--labels`, `--field-selectors`)
-- Mutation summary tables for push/pull/delete
-- Cold-start latency reduction
-- Configurable HTTP client settings and `--timeout`
-- Auto-generated examples from OpenAPI schemas
-
-### Quality & Operations
-- Local JSONL audit logging for mutations
-- API call attribution headers
-- Smoke test infrastructure with bootstrap tokens
-
-## Release Timeline
-
-| Milestone | Target | Focus |
-|-----------|--------|-------|
-| Internal Release | 2026-04-03 | Core stability, provider coverage |
-| Private Preview | 2026-04-11 | UX polish, Assistant integration, provider completeness |
-| Public Preview | 2026-04-20 | OAuth, platform providers, universal list filters |
-
 ## Related
 
 - [README.md](README.md) — user-facing introduction and quick start
