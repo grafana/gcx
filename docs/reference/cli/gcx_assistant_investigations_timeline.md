@@ -10,7 +10,7 @@ gcx assistant investigations timeline <id> [flags]
 
 ```
   -h, --help            help for timeline
-      --json string     Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
 ```
 

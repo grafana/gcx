@@ -58,13 +58,21 @@ gcx resources get [RESOURCE_SELECTOR]... [flags]
 	gcx resources get slo/my-slo-uuid
 	gcx resources get checks
 	gcx resources get rules
+
+	# Discover available JSON fields for a resource type:
+
+	gcx resources get dashboards --json list
+
+	# Select specific fields (no external parsing needed):
+
+	gcx resources get dashboards --json metadata.name,spec.title
 ```
 
 ### Options
 
 ```
   -h, --help              help for get
-      --json string       Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --on-error string   How to handle errors during resource operations:
                             ignore — continue processing all resources and exit 0
                             fail   — continue processing all resources and exit 1 if any failed (default)

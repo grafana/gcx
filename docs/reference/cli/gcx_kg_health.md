@@ -11,7 +11,7 @@ gcx kg health [flags]
 ```
       --env string         Environment scope
   -h, --help               help for health
-      --json string        Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --namespace string   Namespace scope
   -o, --output string      Output format. One of: json, yaml (default "json")
       --since string       Duration ago (e.g. 1h, 30m, 7d) — default 1h

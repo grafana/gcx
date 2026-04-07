@@ -11,7 +11,7 @@ gcx traces adaptive policies update <id> [flags]
 ```
   -f, --filename string   File containing the policy definition (use - for stdin)
   -h, --help              help for update
-      --json string       Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string     Output format. One of: json, yaml (default "yaml")
 ```
 

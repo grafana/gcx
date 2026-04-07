@@ -181,7 +181,15 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	gcx resources get slo
 	gcx resources get slo/my-slo-uuid
 	gcx resources get checks
-	gcx resources get rules`,
+	gcx resources get rules
+
+	# Discover available JSON fields for a resource type:
+
+	gcx resources get dashboards --json list
+
+	# Select specific fields (no external parsing needed):
+
+	gcx resources get dashboards --json metadata.name,spec.title`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -191,7 +199,7 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			// FR-007: --json ? requires a resource selector to know which resource type to introspect.
 			if opts.IO.JSONDiscovery && len(args) == 0 {
-				return errors.New("--json ? requires a resource selector argument (e.g. gcx resources get dashboards --json ?)")
+				return errors.New("--json field discovery requires a resource selector argument (e.g. gcx resources get dashboards --json list)")
 			}
 
 			cfg, err := configOpts.LoadGrafanaConfig(ctx)

@@ -23,7 +23,7 @@ gcx commands [flags]
       --flat             Flatten the command tree into a single list
   -h, --help             help for commands
       --include-hidden   Include hidden commands in the output
-      --json string      Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string    Output format. One of: json, text, yaml (default "json")
       --validate         Validate catalog against a live Grafana instance (requires configured context)
 ```

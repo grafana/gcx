@@ -10,7 +10,7 @@ gcx logs adaptive patterns show [flags]
 
 ```
   -h, --help             help for show
-      --json string      Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string    Output format. One of: json, table, wide, yaml (default "table")
       --segment string   Only include patterns for this segment (ID column from patterns stats, or API map key / selector)
       --top int          Table only: show top N patterns by volume; 0 shows all rows with no rollup (default 10)
