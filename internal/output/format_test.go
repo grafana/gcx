@@ -3,7 +3,6 @@ package output_test
 import (
 	"bytes"
 	goio "io"
-	"os"
 	"testing"
 
 	"github.com/grafana/gcx/internal/agent"
@@ -194,7 +193,8 @@ func TestEncode_AgentModeHint(t *testing.T) {
 			agent.SetFlag(tc.agentMode)
 			t.Cleanup(func() { agent.SetFlag(false) })
 
-			opts := &cmdio.Options{}
+			var errBuf bytes.Buffer
+			opts := &cmdio.Options{ErrWriter: &errBuf}
 			flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
 			opts.BindFlags(flags)
 
@@ -204,23 +204,13 @@ func TestEncode_AgentModeHint(t *testing.T) {
 
 			require.NoError(t, opts.Validate())
 
-			// Capture stderr to check for hint.
-			oldStderr := os.Stderr
-			r, w, _ := os.Pipe()
-			os.Stderr = w
-			t.Cleanup(func() { os.Stderr = oldStderr })
-
 			var buf bytes.Buffer
 			require.NoError(t, opts.Encode(&buf, map[string]any{"name": "test"}))
 
-			w.Close()
-			var stderrBuf bytes.Buffer
-			stderrBuf.ReadFrom(r) //nolint:errcheck
-
 			if tc.wantHint {
-				assert.Contains(t, stderrBuf.String(), "--json list")
+				assert.Contains(t, errBuf.String(), "--json list")
 			} else {
-				assert.NotContains(t, stderrBuf.String(), "--json list")
+				assert.NotContains(t, errBuf.String(), "--json list")
 			}
 		})
 	}

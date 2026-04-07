@@ -36,6 +36,9 @@ type Options struct {
 	// Populated from terminal.NoTruncate() during BindFlags.
 	NoTruncate bool
 
+	// ErrWriter is the writer for hints and diagnostics (defaults to os.Stderr).
+	ErrWriter io.Writer
+
 	customCodecs   map[string]format.Codec
 	defaultFormat  string
 	flags          *pflag.FlagSet
@@ -152,7 +155,11 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 	// once per command invocation to stderr so it doesn't pollute stdout.
 	if !opts.agentHintShown && agent.IsAgentMode() && codec.Format() == format.JSON && len(opts.JSONFields) == 0 && !opts.JSONDiscovery {
 		opts.agentHintShown = true
-		fmt.Fprintln(os.Stderr, "hint: use --json list to discover fields, --json field1,field2 to select — no external parsing needed")
+		w := opts.ErrWriter
+		if w == nil {
+			w = os.Stderr
+		}
+		fmt.Fprintln(w, "hint: use --json list to discover fields, --json field1,field2 to select — no external parsing needed")
 	}
 
 	// Intercept JSON field discovery and field selection when the resolved
