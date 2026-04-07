@@ -92,15 +92,15 @@ All resource commands accept selectors: `gcx resources get dashboards`,
 
 ## Datasource Queries
 
-The `gcx datasources` group provides typed query interfaces:
-- `list` / `get` — discover available datasources
-- `prometheus` — PromQL queries (query, labels, metadata, targets)
-- `loki` — LogQL queries (query, labels, series)
-- `pyroscope` — profiling queries
-- `tempo` — trace queries
-- `generic` — auto-detect datasource type
+The `gcx datasources` group provides datasource discovery (`list`, `get`,
+`query`). Signal-specific query commands are top-level groups:
+- `gcx metrics` — PromQL queries and metadata (`query`, `labels`, `metadata`)
+- `gcx logs` — LogQL queries and label/series discovery (`query`, `labels`, `series`)
+- `gcx traces` — trace search/query commands
+- `gcx profiles` — profiling query commands
 
-Use `gcx datasources <type> --help` to discover type-specific flags.
+Use `gcx metrics --help`, `gcx logs --help`, `gcx traces --help`, and
+`gcx profiles --help` for signal-specific flags.
 
 ## Provider Commands
 

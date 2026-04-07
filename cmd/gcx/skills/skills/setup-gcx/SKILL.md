@@ -309,8 +309,8 @@ If it reports a missing server or empty context:
 # Verify current context is set
 gcx config view
 
-# Ensure the current-context field is not empty
-gcx config set current-context <your-context-name>
+# Ensure the intended context is active
+gcx config use-context <your-context-name>
 ```
 
 If it reports a missing namespace (stack ID or org ID):

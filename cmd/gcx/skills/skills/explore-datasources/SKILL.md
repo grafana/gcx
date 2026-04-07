@@ -42,11 +42,11 @@ gcx metrics labels -d <datasource-uid> --label job
 # List all available metrics with descriptions
 gcx metrics metadata -d <datasource-uid>
 
-# Check what systems are being scraped
-gcx metrics targets -d <datasource-uid>
+# Spot-check whether samples are being ingested
+gcx metrics query <datasource-uid> 'up' --from now-15m --to now
 ```
 
-**Expected output:** Tables showing labels, metrics, or targets depending on command.
+**Expected output:** Tables showing labels, metrics, or query results depending on command.
 
 #### For Loki Datasources
 
@@ -127,8 +127,8 @@ After setting defaults, you can omit the `-d` flag in datasource commands.
 **Actions:**
 1. Verify datasource exists: `gcx datasources get <uid>`
 2. Check if service is being monitored:
-   - Prometheus: `gcx metrics targets -d <uid>`
-   - Look for service in scrape targets
+   - Prometheus: `gcx metrics labels -d <uid> --label job`
+   - Confirm the expected service label exists
 3. Verify labels exist: `gcx metrics labels -d <uid> --label job`
 4. Test simple query: `gcx metrics query <uid> 'up{job="service-x"}'`
 
@@ -200,7 +200,7 @@ gcx logs series -d <uid> -M {name="value"}
 **Cause:** Datasource has no data or hasn't scraped/ingested anything yet.
 
 **Solution:**
-1. For Prometheus: Check targets are active: `gcx metrics targets -d <uid>`
+1. For Prometheus: verify ingest with a simple query: `gcx metrics query <uid> 'up' --from now-15m --to now`
 2. For Loki: Verify labels exist: `gcx logs labels -d <uid>`
 3. Check datasource URL is reachable: `gcx datasources get <uid>`
 

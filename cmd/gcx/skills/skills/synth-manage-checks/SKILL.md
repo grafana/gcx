@@ -13,7 +13,7 @@ Manage SM checks using gcx. Experienced operators — no hand-holding.
 1. Use gcx commands; never call Grafana APIs directly (no curl, no HTTP calls)
 2. Trust the user's expertise — no explanations of what SM or gcx is
 3. Use `-o json` for agent processing; default table format for user display
-4. Always dry-run before pushing: `--dry-run` first, actual push only on success
+4. Prefer explicit create/update flows (`create`, `update`) over generic wrappers
 5. Probe names are case-sensitive — always copy-paste from `gcx synth probes list`
 
 ## Workflow 1: Create New Check
@@ -74,19 +74,19 @@ Configuration guidance:
 - **alertSensitivity**: `high` = alert if >5% failing; `medium` = >10%; `low` = >25%; `none` = no alerts
 - **basicMetricsOnly**: `true` reduces metric cardinality (fewer label dimensions); `false` emits full metrics
 
-### Step 4: Dry-run and Push
+### Step 4: Create the Check
 
 ```bash
-# Always dry-run first
-gcx synth checks push <file.yaml> --dry-run
+# Optional pre-flight validation for HTTP targets
+gcx synth checks create -f <file.yaml> --validate-targets
 
-# Push only after dry-run succeeds
-gcx synth checks push <file.yaml>
+# Create check from manifest
+gcx synth checks create -f <file.yaml>
 ```
 
-Push semantics:
-- **Non-numeric `metadata.name`** (e.g., `my-api-check`): creates a new check; server assigns a numeric ID and updates the local file
-- **Numeric `metadata.name`** (e.g., `12345`): updates the existing check with that ID
+Create/update semantics in this repo:
+- **Create**: `gcx synth checks create -f <file.yaml>`
+- **Update**: `gcx synth checks update <name-or-id> -f <file.yaml>`
 
 After creation, verify with:
 ```bash
@@ -100,23 +100,24 @@ gcx synth checks status <ID>
 
 Fetch the specific check or all checks:
 ```bash
-# Get single check as YAML (use ID from list output)
-gcx synth checks get <ID> -o yaml > check-<ID>.yaml
+# Get single check as YAML (use ID or resource name from list output)
+gcx synth checks get <ID_OR_NAME> -o yaml > check.yaml
 
-# Or pull all checks to a directory
-gcx synth checks pull -d ./sm-checks/
+# Export all checks (iterate over list output)
+gcx synth checks list -o json
+gcx synth checks get <ID_OR_NAME> -o yaml > ./sm-checks/<name>.yaml
 ```
 
-### Step 2: Edit and Push
+### Step 2: Edit and Update
 
-Edit the pulled YAML file (the `metadata.name` will be the numeric ID). Modify only the fields that need changing.
+Edit the YAML file and modify only the fields that need changing.
 
 ```bash
-# Dry-run the update
-gcx synth checks push check-<ID>.yaml --dry-run
+# Optional pre-flight validation for HTTP targets
+gcx synth checks update <ID_OR_NAME> -f check.yaml --validate-targets
 
-# Apply
-gcx synth checks push check-<ID>.yaml
+# Apply update
+gcx synth checks update <ID_OR_NAME> -f check.yaml
 ```
 
 ## Workflow 3: GitOps Sync (Pull/Push)
@@ -124,15 +125,16 @@ gcx synth checks push check-<ID>.yaml
 Pull all checks to local directory, edit in source control, push to apply:
 
 ```bash
-# Pull all checks to directory
-gcx synth checks pull -d ./sm-checks/
+# Pull all checks: list names/IDs, then export each check
+gcx synth checks list -o json
+gcx synth checks get <ID_OR_NAME> -o yaml > ./sm-checks/<name>.yaml
 
-# Edit files as needed, then push each changed file
-gcx synth checks push ./sm-checks/<file>.yaml --dry-run
-gcx synth checks push ./sm-checks/<file>.yaml
+# Edit files as needed, then apply each update
+gcx synth checks update <ID_OR_NAME> -f ./sm-checks/<name>.yaml --validate-targets
+gcx synth checks update <ID_OR_NAME> -f ./sm-checks/<name>.yaml
 ```
 
-For bulk push from a directory, push files individually to control which checks are updated. Review dry-run output before each push.
+For bulk updates, iterate over changed files and update each check explicitly.
 
 ## Workflow 4: Delete Checks
 

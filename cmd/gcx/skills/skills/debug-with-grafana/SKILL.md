@@ -62,8 +62,8 @@ Before querying specific metrics, confirm the target service is instrumented
 and data is flowing. This avoids wasting time on empty results.
 
 ```bash
-# Check that the target service is being scraped
-gcx metrics targets -d <prom-uid> -o json
+# Check that samples exist for the service
+gcx metrics query <prom-uid> 'up{job="<service-name>"}' --from now-15m --to now -o json
 
 # Verify the relevant job label exists
 gcx metrics labels -d <prom-uid> -l job -o json
@@ -464,9 +464,8 @@ handler-specific issue. Compare latency onset time with log timestamps.
 # Step 1: Verify datasource connectivity first (simplest possible query)
 gcx datasources list -o json
 
-# Step 2: Check whether the service is being scraped at all
-gcx metrics targets -d <prom-uid> -o json | \
-  jq '.[] | select(.labels.job == "api")'
+# Step 2: Check whether the service has recent samples
+gcx metrics query <prom-uid> 'up{job="api"}' --from now-15m --to now -o json
 
 # Confirm up metric — value "0" means scrape failure, absent means not scraped
 gcx metrics query <prom-uid> 'up{job="api"}' -o json

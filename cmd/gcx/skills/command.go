@@ -278,7 +278,7 @@ func readSkillMetadata(data []byte) skillFrontMatter {
 func parseFrontMatterFallback(frontMatter string) skillFrontMatter {
 	lines := strings.Split(frontMatter, "\n")
 	meta := skillFrontMatter{}
-	for i := range len(lines) {
+	for i := range lines {
 		line := strings.TrimRight(lines[i], " \t")
 		trimmed := strings.TrimSpace(line)
 		switch {

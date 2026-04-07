@@ -141,7 +141,7 @@ Ask the user a **single `AskUserQuestion`** to confirm/adjust these defaults:
 
 For each journey `J` from Phase 1, launch an agent that:
 - Discovers the SLO command group (`gcx slo --help`, `gcx slo definitions --help`) to find available subcommands and flags.
-- Runs `gcx slo definitions example` to get a template if available, then customizes it: name, availability target, latency target, 28d window.
+- Uses an existing definition as a template (for example: `gcx slo definitions list` then `gcx slo definitions get <UUID> -o yaml`) and customizes it: name, availability target, latency target, 28d window.
 - Writes the result to `slo-J.yaml`.
 
 Do **not** create the SLOs yet — Phase 4 does that after signals are flowing. Store all `slo-*.yaml` files for Phase 4.
@@ -347,7 +347,7 @@ Wait for all agents. Mark task completed.
 Mark task in_progress.
 
 **Pre-check — skip resources that already exist:**
-Discover the k6 command group (`gcx k6 --help`) and list existing projects (`gcx k6 projects list`), tests (`gcx k6 tests list`), and schedules (`gcx k6 schedules list`). If a project with the expected name exists, capture its ID and skip creation. Skip test and schedule creation for any endpoint that already has them.
+Discover the k6 command group (`gcx k6 --help`) and list existing projects (`gcx k6 projects list`), load tests (`gcx k6 load-tests list`), and schedules (`gcx k6 schedules list`). If a project with the expected name exists, capture its ID and skip creation. Skip test and schedule creation for any endpoint that already has them.
 
 **Step 1 — parallel:**
 
@@ -367,33 +367,33 @@ Mark task completed.
 
 ---
 
-### Phase 7: IRM Setup
+### Phase 7: IRM Setup (Read-Only in This Repo)
 
 Mark task in_progress. Requires Phase 4 contact points to exist.
 
-> **This phase completes the alerting -> IRM routing.** The contact point created in Phase 4 will be updated to point to the IRM integration webhook, ensuring all alerts flow through IRM for routing, escalation, and on-call management.
+> **Important:** In this repo, `gcx oncall` commands are read-only (`list/get`). Use this phase to verify existing IRM/OnCall resources and routing, then provide manual/API follow-up steps for creation.
 
-**Pre-check — skip resources that already exist:**
-Discover the oncall command group (`gcx oncall --help`) and list integrations (`gcx oncall integrations list`), escalation chains (`gcx oncall escalation-chains list`), schedules (`gcx oncall schedules list`), and routes (`gcx oncall routes list`). Skip creation of any that already exist; capture IDs and webhook URLs from existing resources. Even if the integration already exists, still verify the Phase 4 contact point is pointing to its webhook URL.
+**Pre-check — inventory existing resources:**
+Discover the oncall command group (`gcx oncall --help`) and list integrations (`gcx oncall integrations list`), escalation chains (`gcx oncall escalation-chains list`), schedules (`gcx oncall schedules list`), and routes (`gcx oncall routes list`). Capture IDs and webhook URLs from existing resources. Verify the Phase 4 contact point is pointing to the expected webhook URL.
 
-**Step 1 — parallel (independent of each other):**
+**Step 1 — parallel verification (independent):**
 
-- **Agent A** — integration + escalation chain:
-  Discover oncall integration and escalation-chain subcommands (`gcx oncall integrations --help`, `gcx oncall escalation-chains --help`). Get examples if available, customize, create each, list to confirm and capture the integration webhook URL.
+- **Agent A** — integration + escalation chain audit:
+  Discover oncall integration and escalation-chain subcommands (`gcx oncall integrations --help`, `gcx oncall escalation-chains --help`). List/get resources, verify names/owners, and capture integration webhook URLs.
 
-- **Agent B** — schedules + shifts:
-  Discover oncall schedules and shifts subcommands (`gcx oncall schedules --help`, `gcx oncall shifts --help`). Get examples if available, customize for the on-call team from Phase 1, create each, list to confirm.
+- **Agent B** — schedules + shifts audit:
+  Discover oncall schedules and shifts subcommands (`gcx oncall schedules --help`, `gcx oncall shifts --help`). List/get resources and confirm rotation/timezone coverage for the on-call team from Phase 1.
 
 Wait for both. Then **Step 2** (needs integration webhook URL from Agent A):
 
-Create a route: `gcx oncall routes create -f route.yaml`, list to confirm. Then update the Phase 4 contact point to use the IRM webhook URL:
+Update the Phase 4 contact point to use the IRM webhook URL:
 
 ```bash
 gcx api /api/v1/provisioning/contact-points/<uid> -X PUT -d @contact-point-updated.json
 gcx api /api/v1/provisioning/contact-points
 ```
 
-Verify the webhook URL is correct. Mark task completed.
+Verify the webhook URL is correct. If required OnCall resources are missing, report the exact missing items and provide manual follow-up actions (create integration/escalation chain/schedule/route in Grafana UI or API). Mark task completed.
 
 ---
 
@@ -520,12 +520,12 @@ Run `gcx setup instrumentation status` and `gcx setup status` for overall health
 
 - **Agent A** — SLO pass/fail status: list all SLOs (`gcx slo definitions list`) and check reports (`gcx slo reports list`). Flag any SLO already burning error budget — investigate before declaring setup complete.
 
-- **Agent B** — k6 schedule verification: list all k6 schedules (`gcx k6 schedules list`) and cross-reference with k6 tests (`gcx k6 tests list`). Flag any test without a schedule — schedules are required.
+- **Agent B** — k6 schedule verification: list all k6 schedules (`gcx k6 schedules list`) and cross-reference with load tests (`gcx k6 load-tests list`). Flag any load test without a schedule — schedules are required.
 
 - **Agent C** — synthetic check health: list all synthetic checks (`gcx synth checks list`) and check status for each (`gcx synth checks status <id>`). Confirm all are enabled and showing recent results.
 
 Wait for all agents. Then synthesize a **prioritized recommendations list**:
-- k6 tests missing schedules -> add schedule immediately
+- k6 load tests missing schedules -> add schedule immediately
 - Journeys missing custom spans -> add OTEL SDK instrumentation
 - Services with only auto-instrumentation -> add profiling
 - Frontend journeys -> add k6 browser test
@@ -549,7 +549,7 @@ SLOs                         3     ok
 Alerting rule groups         4     ok
 Contact points               1     ok
 Synthetic checks             5     ok
-k6 tests                     3     ok
+k6 load tests                3     ok
 k6 schedules                 3     ok  (every test must have one)
 IRM integrations             1     ok
 Faro apps                    1     ok  (if frontend stack)
