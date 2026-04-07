@@ -366,6 +366,7 @@ func TestMetricsRange(t *testing.T) {
 			}
 			require.NoError(t, err)
 			assert.NotNil(t, resp)
+			assert.False(t, resp.Instant)
 		})
 	}
 }
@@ -422,6 +423,7 @@ func TestMetricsInstant(t *testing.T) {
 			}
 			require.NoError(t, err)
 			assert.NotNil(t, resp)
+			assert.True(t, resp.Instant)
 		})
 	}
 }

@@ -117,6 +117,7 @@ func TestFormatTagValuesTable(t *testing.T) {
 
 func TestFormatMetricsTable_Range(t *testing.T) {
 	resp := &tempo.MetricsResponse{
+		Instant: false,
 		Series: []tempo.MetricsSeries{
 			{
 				Labels: []tempo.MetricsLabel{
@@ -147,6 +148,7 @@ func TestFormatMetricsTable_Range(t *testing.T) {
 func TestFormatMetricsTable_Instant(t *testing.T) {
 	val := float64(99)
 	resp := &tempo.MetricsResponse{
+		Instant: true,
 		Series: []tempo.MetricsSeries{
 			{
 				Labels: []tempo.MetricsLabel{
@@ -163,14 +165,17 @@ func TestFormatMetricsTable_Instant(t *testing.T) {
 	require.NoError(t, err)
 
 	out := buf.String()
-	assert.Contains(t, out, "TIMESTAMP")
+	assert.Contains(t, out, "LABELS")
+	assert.Contains(t, out, "VALUE")
+	assert.NotContains(t, out, "TIMESTAMP")
 	assert.Contains(t, out, "99")
-	assert.Contains(t, out, "1700003600000")
+	assert.NotContains(t, out, "1700003600000")
 }
 
 func TestFormatMetricsTable_InstantWithoutTimestamp(t *testing.T) {
 	val := float64(99)
 	resp := &tempo.MetricsResponse{
+		Instant: true,
 		Series: []tempo.MetricsSeries{
 			{
 				Labels: []tempo.MetricsLabel{
@@ -194,6 +199,7 @@ func TestFormatMetricsTable_InstantWithoutTimestamp(t *testing.T) {
 
 func TestFormatMetricsTable_EmptySeries(t *testing.T) {
 	resp := &tempo.MetricsResponse{
+		Instant: false,
 		Series: []tempo.MetricsSeries{
 			{
 				Labels: []tempo.MetricsLabel{
