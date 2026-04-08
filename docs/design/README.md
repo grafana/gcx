@@ -6,7 +6,7 @@ The docs in this directory are prescriptive implementation guides. Each subsecti
 
 - **`[CURRENT]`** — Implemented and enforced. Follow exactly.
 - **`[ADOPT]`** — Not consistently applied yet. New code MUST follow this.
-- **`[PLANNED]`** — Future infrastructure. Documented for context.
+- **`[ASSESS]`** — Not yet implemented. Documented for future direction. ([ThoughtWorks Radar](https://www.thoughtworks.com/radar))
 
 New commands and providers **must comply with all `[CURRENT]` and `[ADOPT]` items**.
 

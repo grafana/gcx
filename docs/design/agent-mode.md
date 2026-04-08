@@ -1,7 +1,7 @@
 # Agent Mode
 
 > Covers agent mode detection via environment variables and --agent flag, behavior changes when active, opt-out mechanisms, and exempt commands.
-> Status markers: **[CURRENT]** = enforced, **[ADOPT]** = new code must follow, **[PLANNED]** = future.
+> Status markers: **[CURRENT]** = enforced, **[ADOPT]** = new code must follow, **[ASSESS]** = future direction ([ThoughtWorks Radar](https://www.thoughtworks.com/radar)).
 
 ---
 
@@ -42,7 +42,7 @@ When agent mode is active:
    regardless of actual TTY state (see [pipe-awareness.md § TTY Detection](pipe-awareness.md#51-tty-detection-current))
 4. **In-band error JSON** is written to stdout on failure (see [errors.md § In-Band Error Reporting](errors.md#44-in-band-error-reporting-current))
 
-The following are **not yet implemented** (`[PLANNED]`):
+The following are **not yet implemented** (`[ASSESS]`):
 5. Spinners/progress indicators suppressed (none exist yet; the suppression
    contract via `IsPiped` is in place for when they are added)
 6. Confirmation prompts auto-approved ([safety.md § Agent Mode Auto-Approve](safety.md#33-agent-mode-auto-approve-planned))
@@ -54,7 +54,7 @@ Explicit flags override agent mode defaults:
 - `--agent=false` disables agent mode entirely (even when env vars are set)
 - `GCX_AGENT_MODE=0` disables agent mode regardless of other env vars
 
-### 6.4 Exempt Commands `[PLANNED]`
+### 6.4 Exempt Commands `[ASSESS]`
 
 Commands that produce non-data output are exempt from format switching:
 - `config set`, `config use-context` — confirmations only

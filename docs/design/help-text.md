@@ -1,7 +1,7 @@
 # Help Text Standards
 
 > Conventions for command descriptions (Use/Short/Long fields), examples format, and planned help topics for cross-cutting concerns.
-> Status markers: **[CURRENT]** = enforced, **[ADOPT]** = new code must follow, **[PLANNED]** = future.
+> Status markers: **[CURRENT]** = enforced, **[ADOPT]** = new code must follow, **[ASSESS]** = future direction ([ThoughtWorks Radar](https://www.thoughtworks.com/radar)).
 
 ---
 
@@ -43,7 +43,7 @@ Example: `  # List all SLOs
   gcx slo list --context=prod`,
 ```
 
-### 8.3 Help Topics `[PLANNED]`
+### 8.3 Help Topics `[ASSESS]`
 
 Dedicated help pages for cross-cutting concerns:
 

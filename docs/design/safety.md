@@ -1,7 +1,7 @@
 # Confirmation and Safety
 
 > Covers when to prompt users before destructive operations, the --yes/GCX_AUTO_APPROVE pattern, dry-run support, and push idempotency.
-> Status markers: **[CURRENT]** = enforced, **[ADOPT]** = new code must follow, **[PLANNED]** = future.
+> Status markers: **[CURRENT]** = enforced, **[ADOPT]** = new code must follow, **[ASSESS]** = future direction ([ThoughtWorks Radar](https://www.thoughtworks.com/radar)).
 
 ---
 
@@ -47,7 +47,7 @@ if (opts.Yes || cliOpts.AutoApprove) && !opts.Force {
 
 **Flag precedence:** Explicit flag value > --yes flag > env var > default
 
-### 3.3 Agent Mode Auto-Approve `[PLANNED]`
+### 3.3 Agent Mode Auto-Approve `[ASSESS]`
 
 When agent mode is active ([agent-mode.md](agent-mode.md)), prompts are auto-approved. Agents
 cannot interact with TTY prompts.

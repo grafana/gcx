@@ -1,7 +1,7 @@
 # Exit Code Taxonomy
 
 > Defines the exit codes used by gcx commands, their meanings, and how to set them in error converters.
-> Status markers: **[CURRENT]** = enforced, **[ADOPT]** = new code must follow, **[PLANNED]** = future.
+> Status markers: **[CURRENT]** = enforced, **[ADOPT]** = new code must follow, **[ASSESS]** = future direction ([ThoughtWorks Radar](https://www.thoughtworks.com/radar)).
 
 ---
 

@@ -24,7 +24,7 @@ incrementally for existing code).
 
 The three documents are cross-referenced but serve distinct roles. Constitution
 is short and authoritative. Design guide is long and detailed with
-`[CURRENT]`/`[ADOPT]`/`[PLANNED]` status markers. DESIGN.md is a thin map.
+`[CURRENT]`/`[ADOPT]`/`[ASSESS]` status markers. DESIGN.md is a thin map.
 
 ---
 
@@ -240,7 +240,7 @@ clients since they have no `resources` pipeline equivalent.
 ### Update: TypedCRUD `[ADOPT -> EVOLVE]`
 
 ```markdown
-### X.X TypedCRUD Pattern `[ADOPT → EVOLVE]`
+### X.X TypedCRUD Pattern `[ADOPT → TRIAL]`
 
 TypedCRUD is the current required pattern for new providers implementing
 ResourceAdapter. It bridges typed domain objects to Kubernetes-style

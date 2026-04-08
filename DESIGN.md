@@ -114,5 +114,5 @@ Prescriptive implementation rules live in [docs/design/](docs/design/), split by
 | [naming.md](docs/design/naming.md) | Resource kinds, file naming, config keys, flags |
 | [environment-variables.md](docs/design/environment-variables.md) | Canonical environment variable reference |
 
-Status markers (`[CURRENT]`, `[ADOPT]`, `[PLANNED]`) tell you what's enforced vs. aspirational.
+Status markers (`[CURRENT]`, `[ADOPT]`, `[ASSESS]`) tell you what's enforced vs. aspirational.
 New commands and providers **must comply with all `[CURRENT]` and `[ADOPT]` items**.

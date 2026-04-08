@@ -1,7 +1,7 @@
 # Environment Variable Reference
 
 > Canonical reference for all environment variables recognized by gcx. Other docs should link here rather than duplicating this list.
-> Status markers: **[CURRENT]** = enforced, **[ADOPT]** = new code must follow, **[PLANNED]** = future.
+> Status markers: **[CURRENT]** = enforced, **[ADOPT]** = new code must follow, **[ASSESS]** = future direction ([ThoughtWorks Radar](https://www.thoughtworks.com/radar)).
 
 ---
 

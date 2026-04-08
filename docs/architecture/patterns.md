@@ -2,14 +2,14 @@
 
 ## Status Marker Vocabulary
 
-Patterns are tagged with status markers adapted from the [ThoughtWorks Technology Radar](https://www.thoughtworks.com/radar):
+Patterns are tagged with status markers using [ThoughtWorks Technology Radar](https://www.thoughtworks.com/radar) terminology (plus `[CURRENT]`, which has no radar equivalent):
 
-| Marker | Radar equivalent | Meaning |
-|--------|-----------------|---------|
-| `[CURRENT]` | — | Implemented and enforced. All existing code already follows this. |
-| `[ADOPT]` | Adopt | New code must follow this. Not yet consistently applied to existing code. |
-| `[EVOLVE]` | Trial | In active use with known limitations; likely to be replaced or promoted. Prefer for new code unless a better option exists. |
-| `[PLANNED]` | Assess | Not yet implemented. Documented for context and future direction. |
+| Marker | Meaning |
+|--------|---------|
+| `[CURRENT]` | Implemented and enforced. All existing code already follows this. |
+| `[ADOPT]` | New code must follow this. Not yet consistently applied to existing code. |
+| `[TRIAL]` | In active use with known limitations; likely to be replaced or promoted. Prefer for new code unless a better option exists. |
+| `[ASSESS]` | Not yet implemented. Documented for context and future direction. |
 
 ## Architectural Patterns Identified
 
@@ -461,7 +461,7 @@ Provider commands that bypass the adapter for CRUD operations are
 non-compliant. Extension commands (status, timeline, etc.) may use raw
 clients since they have no `resources` pipeline equivalent.
 
-### TypedCRUD Pattern `[ADOPT → EVOLVE]`
+### TypedCRUD Pattern `[ADOPT → TRIAL]`
 
 TypedCRUD is the current required pattern for new providers implementing
 ResourceAdapter. It bridges typed domain objects to Kubernetes-style

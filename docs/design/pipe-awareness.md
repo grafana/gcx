@@ -1,7 +1,7 @@
 # Pipe-Awareness
 
 > Describes TTY detection, automatic pipe behavior, --no-color, NO_COLOR environment variable support, and future auto-format switching.
-> Status markers: **[CURRENT]** = enforced, **[ADOPT]** = new code must follow, **[PLANNED]** = future.
+> Status markers: **[CURRENT]** = enforced, **[ADOPT]** = new code must follow, **[ASSESS]** = future direction ([ThoughtWorks Radar](https://www.thoughtworks.com/radar)).
 
 ---
 
@@ -59,7 +59,7 @@ The [no-color.org](https://no-color.org/) convention. The `fatih/color`
 library already checks `NO_COLOR` automatically, so this works today. Document
 it in help text and env var references so users know it's available.
 
-### 5.4 Auto-Format Switching `[PLANNED]`
+### 5.4 Auto-Format Switching `[ASSESS]`
 
 Future consideration: when piped and no explicit `-o` flag, commands with
 `text` default could auto-switch to a more parseable format (e.g. JSON or
