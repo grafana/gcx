@@ -45,7 +45,7 @@ When agent mode is active:
 The following are **not yet implemented** (`[ASSESS]`):
 5. Spinners/progress indicators suppressed (none exist yet; the suppression
    contract via `IsPiped` is in place for when they are added)
-6. Confirmation prompts auto-approved ([safety.md § Agent Mode Auto-Approve](safety.md#33-agent-mode-auto-approve-planned))
+6. Confirmation prompts auto-approved ([safety.md § Agent Mode Auto-Approve](safety.md#33-agent-mode-auto-approve-assess))
 
 ### 6.3 Opt-Out `[CURRENT]`
 
