@@ -83,31 +83,59 @@ cmd/gcx/
   fail/         Structured error conversion
 
 internal/
-  auth/         OAuth PKCE flow, token refresh (adaptive/ for signal providers)
-  config/       Config types, loader, editor, rest.Config builder
-  cloud/        GCOM HTTP client (stack discovery)
-  fleet/        Shared fleet base client
-  setup/        Instrumentation manifest types + client
-  resources/    Core types + adapter/, discovery/, dynamic/, local/, process/, remote/
-  providers/    Provider registry + per-product adapters (alert, faro, fleet, incidents, k6, kg,
-                logs, metrics, oncall, appo11y, profiles, sigil, slo, synth, traces)
-  dashboards/   Image Renderer client
-  datasources/  Datasource HTTP client + query/ shared CLI utils
-  query/        Query clients (prometheus/, loki/)
-  assistant/    Assistant client (A2A streaming, prompt, investigations)
-  agent/        Agent mode detection, command annotations
-  style/        Terminal styling (Neon Dark theme, TableBuilder, glamour help)
-  terminal/     TTY/pipe detection
-  linter/       Rego rules, report aggregation
-  graph/        Terminal chart rendering
-  output/       Output codec registry (json, yaml, text, wide)
-  format/       JSON/YAML codecs, auto-detection
-  testutils/    Shared test utilities
-  server/       Live dev server
-  grafana/      OpenAPI client
-  httputils/    HTTP helpers
-  secrets/      Redactor for config view
-  logs/         slog/klog integration
+├── auth/        OAuth PKCE flow, token refresh transport
+│   └── adaptive/  Shared adaptive telemetry auth (GCOM caching, Basic auth — used by signal providers)
+├── config/      Config types, loader, editor, rest.Config builder, stack-id discovery, context name helpers
+├── cloud/       GCOM HTTP client for Grafana Cloud stack discovery
+├── fleet/       Shared fleet base client (HTTP, auth, config — used by fleet provider and setup/instrumentation)
+├── setup/
+│   └── instrumentation/  Manifest types, instrumentation client, optimistic lock comparison
+├── resources/
+│   ├── *.go     Core types: Resource, Selector, Filter, Descriptor, Resources collection
+│   ├── adapter/    ResourceAdapter interface, Factory, ResourceClientRouter, self-registration, slug-ID helpers
+│   ├── discovery/  API resource discovery, registry index, GVK resolution, OpenAPI schema fetcher
+│   ├── dynamic/    k8s dynamic client wrapper (namespaced + versioned)
+│   ├── local/      FSReader, FSWriter (disk I/O)
+│   ├── process/    Processors: ManagerFields, ServerFields, Namespace
+│   └── remote/     Pusher, Puller, Deleter, FolderHierarchy, Summary
+├── providers/   Provider plugin system (interface, registry, self-registration)
+│   ├── alert/      Alert provider (rules, groups — read-only)
+│   ├── faro/       Faro provider (Frontend Observability — apps CRUD, sourcemaps sub-resource)
+│   ├── fleet/      Fleet Management provider (pipeline and collector resources)
+│   ├── incidents/  IRM Incidents provider
+│   ├── k6/         K6 Cloud provider (projects, tests, runs, envvars)
+│   ├── kg/         Knowledge Graph (Asserts) provider
+│   ├── logs/       Logs signal provider (Loki queries + Adaptive Logs commands)
+│   ├── metrics/    Metrics signal provider (Prometheus queries + Adaptive Metrics commands)
+│   ├── oncall/     OnCall provider (schedules, integrations, escalation chains)
+│   ├── appo11y/    App Observability provider (overrides, settings — singleton resources)
+│   ├── profiles/   Profiles signal provider (Pyroscope queries + adaptive stub)
+│   ├── sigil/      Sigil AI observability provider (conversations, agents, generations, evaluators, rules, templates, scores, judge — via grafana-sigil-app plugin API)
+│   ├── slo/        SLO provider (definitions, reports)
+│   ├── synth/      Synthetic Monitoring provider (checks, probes)
+│   └── traces/     Traces signal provider (Tempo queries + Adaptive Traces commands)
+├── dashboards/  Dashboard Image Renderer client (PNG snapshots)
+├── datasources/ Datasource HTTP client (legacy REST API)
+│   └── query/   Shared query CLI utils (time parsing, codecs, opts, resolve helpers — used by signal providers and GenericCmd)
+├── query/       Datasource query clients
+│   ├── prometheus/  Prometheus HTTP query client
+│   └── loki/        Loki HTTP query client
+├── assistant/   Assistant client (A2A streaming, prompt, state management)
+│   ├── assistanthttp/  Base HTTP client for grafana-assistant-app plugin API
+│   └── investigations/ Investigation CRUD commands, table codecs, API client
+├── agent/       Agent mode detection, command annotations, known-resource registry with operation hints
+├── style/       Terminal styling (Grafana Neon Dark theme, TableBuilder, ASCII banner, glamour help)
+├── terminal/    TTY/pipe detection (IsPiped, NoTruncate, Detect) for output suppression
+├── linter/      Linting engine (Rego rules, report aggregation, PromQL/LogQL validators)
+├── graph/       Terminal chart rendering (ntcharts + lipgloss)
+├── testutils/   Shared test utilities
+├── server/      Live dev server (Chi router, reverse proxy, websocket reload)
+├── grafana/     OpenAPI client (health checks, version detection)
+├── output/      Output codec registry (json, yaml, text, wide — field selection, discovery, k8s unstructured handling)
+├── format/      JSON/YAML codecs with format auto-detection
+├── httputils/   HTTP helpers (used by serve command's proxy)
+├── secrets/     Redactor for config view
+└── logs/        slog/klog integration
 ```
 
 ## What to Read Before You Start

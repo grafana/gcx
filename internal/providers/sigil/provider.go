@@ -6,8 +6,11 @@ import (
 	"github.com/grafana/gcx/internal/providers/sigil/agents"
 	"github.com/grafana/gcx/internal/providers/sigil/conversations"
 	"github.com/grafana/gcx/internal/providers/sigil/eval/evaluators"
+	"github.com/grafana/gcx/internal/providers/sigil/eval/judge"
 	"github.com/grafana/gcx/internal/providers/sigil/eval/rules"
 	"github.com/grafana/gcx/internal/providers/sigil/eval/templates"
+	"github.com/grafana/gcx/internal/providers/sigil/generations"
+	"github.com/grafana/gcx/internal/providers/sigil/scores"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 )
@@ -75,7 +78,25 @@ func (p *SigilProvider) Commands() []*cobra.Command {
 		agent.AnnotationLLMHint:   `gcx sigil templates list -o json; gcx sigil templates get <id> -o yaml; gcx sigil templates versions <id> -o json; gcx sigil templates list --scope global -o json`,
 	}
 
-	sigilCmd.AddCommand(evaluatorsCmd, rulesCmd, templatesCmd)
+	generationsCmd := generations.Commands(loader)
+	generationsCmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "medium",
+		agent.AnnotationLLMHint:   `gcx sigil generations get <generation-id> -o json`,
+	}
+
+	scoresCmd := scores.Commands(loader)
+	scoresCmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "low",
+		agent.AnnotationLLMHint:   `gcx sigil scores list <generation-id> -o json; gcx sigil scores list <generation-id> -o wide`,
+	}
+
+	judgeCmd := judge.Commands(loader)
+	judgeCmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "low",
+		agent.AnnotationLLMHint:   `gcx sigil judge providers -o json; gcx sigil judge models --provider openai -o json`,
+	}
+
+	sigilCmd.AddCommand(evaluatorsCmd, rulesCmd, templatesCmd, generationsCmd, scoresCmd, judgeCmd)
 
 	return []*cobra.Command{sigilCmd}
 }

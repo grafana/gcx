@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"text/tabwriter"
 
 	"github.com/goccy/go-yaml"
 	"github.com/grafana/gcx/internal/format"
@@ -14,6 +13,7 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/sigil/eval"
 	"github.com/grafana/gcx/internal/providers/sigil/sigilhttp"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -159,9 +159,7 @@ func (c *TestTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected *EvalTestResponse")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "KEY\tTYPE\tVALUE\tPASSED\tEXPLANATION")
-
+	t := style.NewTable("KEY", "TYPE", "VALUE", "PASSED", "EXPLANATION")
 	for _, s := range resp.Scores {
 		passed := "-"
 		if s.Passed != nil {
@@ -173,12 +171,10 @@ func (c *TestTableCodec) Encode(w io.Writer, v any) error {
 		}
 
 		explanation := sigilhttp.Truncate(s.Explanation, 60)
-
-		fmt.Fprintf(tw, "%s\t%s\t%v\t%s\t%s\n",
-			s.Key, s.Type, s.Value, passed, explanation)
+		t.Row(s.Key, s.Type, fmt.Sprintf("%v", s.Value), passed, explanation)
 	}
 
-	if err := tw.Flush(); err != nil {
+	if err := t.Render(w); err != nil {
 		return err
 	}
 

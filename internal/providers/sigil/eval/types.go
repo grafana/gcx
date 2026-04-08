@@ -134,3 +134,18 @@ type EvalTestScore struct {
 	Explanation string         `json:"explanation,omitempty"`
 	Metadata    map[string]any `json:"metadata,omitempty"`
 }
+
+// JudgeProvider is a provider from GET /eval/judge/providers.
+type JudgeProvider struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
+// JudgeModel is a model from GET /eval/judge/models.
+type JudgeModel struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Provider      string `json:"provider"`
+	ContextWindow int    `json:"context_window"`
+}

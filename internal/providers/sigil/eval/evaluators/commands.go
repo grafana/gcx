@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/goccy/go-yaml"
 	"github.com/grafana/gcx/internal/format"
@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/sigil/eval"
 	"github.com/grafana/gcx/internal/providers/sigil/sigilhttp"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/gcx/internal/terminal"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -300,11 +301,11 @@ func (c *TableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []EvaluatorDefinition")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "ID\tVERSION\tKIND\tDESCRIPTION\tOUTPUTS\tCREATED BY\tCREATED AT")
+		t = style.NewTable("ID", "VERSION", "KIND", "DESCRIPTION", "OUTPUTS", "CREATED BY", "CREATED AT")
 	} else {
-		fmt.Fprintln(tw, "ID\tVERSION\tKIND\tDESCRIPTION")
+		t = style.NewTable("ID", "VERSION", "KIND", "DESCRIPTION")
 	}
 
 	for _, e := range evaluators {
@@ -315,14 +316,12 @@ func (c *TableCodec) Encode(w io.Writer, v any) error {
 			if createdBy == "" {
 				createdBy = "-"
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%s\t%s\n",
-				e.EvaluatorID, e.Version, e.Kind, desc, len(e.OutputKeys), createdBy, sigilhttp.FormatTime(e.CreatedAt))
+			t.Row(e.EvaluatorID, e.Version, e.Kind, desc, strconv.Itoa(len(e.OutputKeys)), createdBy, sigilhttp.FormatTime(e.CreatedAt))
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
-				e.EvaluatorID, e.Version, e.Kind, desc)
+			t.Row(e.EvaluatorID, e.Version, e.Kind, desc)
 		}
 	}
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *TableCodec) Decode(_ io.Reader, _ any) error {
