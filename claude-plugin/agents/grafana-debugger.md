@@ -214,8 +214,8 @@ metrics are absent or flatlined at zero.
 # Check if service is scraping (0 = reachable but failing, absent = not registered)
 gcx metrics query <prom-uid> 'up{job="<service>"}' -o json
 
-# Check scrape targets
-gcx metrics targets -d <prom-uid> -o json
+# Check scrape targets via up metric
+gcx metrics query <prom-uid> 'up' -o json
 
 # Check for recent data (widen window to find the last data point)
 gcx metrics query <prom-uid> \

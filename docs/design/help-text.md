@@ -33,13 +33,13 @@ command, progressing from simple to complex:
 
 ```go
 Example: `  # List all SLOs
-  gcx slo list
+  gcx slo definitions list
 
   # List SLOs with JSON output
-  gcx slo list -o json
+  gcx slo definitions list -o json
 
   # List SLOs from a specific context
-  gcx slo list --context=prod`,
+  gcx slo definitions list --context=prod`,
 ```
 
 ### 8.3 Help Topics
