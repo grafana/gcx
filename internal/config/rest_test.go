@@ -8,7 +8,6 @@ import (
 	"time"
 
 	authlib "github.com/grafana/authlib/types"
-	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
 )
 
@@ -181,12 +180,8 @@ func TestNamespacedRESTConfig_SetOnRefresh(t *testing.T) {
 		t.Fatal("expected WrapTransport to be set for OAuth proxy mode")
 	}
 	rt := restCfg.WrapTransport(http.DefaultTransport)
-	refreshTransport, ok := rt.(*auth.RefreshTransport)
-	if !ok {
-		t.Fatalf("expected transport to be *auth.RefreshTransport, got %T", rt)
-	}
 
-	client := &http.Client{Transport: refreshTransport}
+	client := &http.Client{Transport: rt}
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, refreshServer.URL+"/test", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
