@@ -16,6 +16,7 @@ Agent mode is detected via environment variables at `init()` time in
 | Variable | Set by | Effect |
 |----------|--------|--------|
 | `GCX_AGENT_MODE` | Explicit opt-in/out | `1`/`true`/`yes` enables; `0`/`false`/`no` **disables** (overrides all others) |
+| `CLAUDECODE` | Claude Code | Truthy value activates agent mode |
 | `CLAUDE_CODE` | Claude Code | Truthy value activates agent mode |
 | `CURSOR_AGENT` | Cursor | Truthy value activates agent mode |
 | `GITHUB_COPILOT` | GitHub Copilot | Truthy value activates agent mode |

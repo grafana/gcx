@@ -10,7 +10,7 @@ See [VISION.md](VISION.md) for goals, roadmap, and product surface.
 
 ### 1. Resources Pipeline
 
-The core of gcx. Manages Grafana-native resources (dashboards, folders, alert rules, etc.) via Grafana 12's Kubernetes-compatible `/apis` endpoint.
+The core of gcx. Manages Grafana-native resources (dashboards, folders, alert rules, etc.) with Grafana's Kubernetes-compatible `/apis` endpoint (available in Grafana 12 or later).
 
 ```
 User input                           gcx resources push ./dashboards/
@@ -65,7 +65,7 @@ Provider (internal/providers/slo/)
 
 **Dual access paths** are permanent: provider commands (`gcx slo definitions list`) give ergonomic domain-specific tables; generic commands (`gcx resources get slos.v1alpha1.slo.ext.grafana.app`) serve the push/pull pipeline. JSON/YAML output is identical across both paths by construction (both use the same `ResourceAdapter`).
 
-**Deep-dive:** [patterns.md](docs/architecture/patterns.md) §11 (Provider Plugin System), §17–20 (TypedCRUD, K8s envelope, singleton, ETag). Implementation guide: [provider-guide.md](docs/reference/provider-guide.md).
+**Deep-dive:** [patterns.md](docs/architecture/patterns.md) [§11 (Provider Plugin System)](docs/architecture/patterns.md#11-provider-plugin-system), [§17 (K8s Envelope Wrapping)](docs/architecture/patterns.md#17-k8s-envelope-wrapping-for-provider-listget), [§18 (Table-Driven TypedCRUD)](docs/architecture/patterns.md#18-table-driven-typedcrud-registration-for-providers), [§19 (Singleton Adapter)](docs/architecture/patterns.md#19-singleton-adapter-pattern-adopt), [§20 (ETag-as-Annotation)](docs/architecture/patterns.md#20-etag-as-annotation-pattern-adopt). Implementation guide: [provider-guide.md](docs/reference/provider-guide.md).
 
 ### 3. Signal Providers
 
@@ -87,7 +87,7 @@ Query Client                 internal/query/prometheus/ or internal/query/loki/ 
 Codec Pipeline               table (default) | graph (terminal chart) | json | yaml
 ```
 
-**Standardized verbs** (established by PR #348): `query` (execute queries), `labels` (list label names/values), `series`/`metrics` (list series or compute metric queries), `metadata` (metric metadata). All four signal providers share these verbs with identical flag semantics.
+**Standardized verbs**: `query` (execute queries), `labels` (list label names/values), `series`/`metrics` (list series or compute metric queries), `metadata` (metric metadata). All four signal providers share these verbs with identical flag semantics.
 
 **Adaptive telemetry** nests under each signal provider (`metrics adaptive`, `logs adaptive`, `traces adaptive`) with its own CRUD resources (rules, policies, exemptions, segments) and operational views (recommendations, patterns). Uses `internal/auth/adaptive/` for shared GCOM-cached Basic auth.
 

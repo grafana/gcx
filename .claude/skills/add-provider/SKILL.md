@@ -163,7 +163,7 @@ Present ADRs and spec. Do not proceed to implementation until approved.
 ## Stage 3: Implement
 
 > **Guide**: `docs/reference/provider-guide.md` (Steps 1–7)
-> **UX Guide**: `docs/reference/design-guide.md` (all `[CURRENT]` and `[ADOPT]` items)
+> **UX Guide**: `docs/design/` (all `[CURRENT]` and `[ADOPT]` items)
 
 Implement one stage at a time per the approved spec. Each stage's doc is
 self-contained enough to resume in a fresh session.
@@ -200,7 +200,7 @@ a real Grafana instance. Record results (pass/fail + output).
 
 ### 4b. Run Checklists
 
-From `docs/reference/design-guide.md` Section 7 and `docs/reference/provider-guide.md`:
+From `docs/design/provider-checklist.md` and `docs/reference/provider-guide.md`:
 
 **Interface**: All 5 Provider methods, `Name()` lowercase/unique, ConfigKeys
 complete, secrets marked, Validate returns actionable errors, blank import added.

@@ -68,7 +68,7 @@ The Grafana Assistant is gcx's differentiator. Where other CLIs stop at data ret
 - **Conversational troubleshooting** — ask questions about your production environment in natural language
 - **End-to-end remediation** — investigation → fix → instrumentation → monitoring, without leaving the editor
 
-The workflow: alert fires → Assistant investigates → agent drafts fix → agent instruments with OpenTelemetry → agent creates monitoring → PR ships. Humans steer; agents execute.
+The workflow: alert fires → Assistant investigates → agent drafts fix → agent instruments the code → agent creates monitoring → PR ships.
 
 ## Related
 

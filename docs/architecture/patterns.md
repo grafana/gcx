@@ -1,5 +1,16 @@
 # Pattern Analysis and Contradiction Resolutions
 
+## Status Marker Vocabulary
+
+Patterns are tagged with status markers adapted from the [ThoughtWorks Technology Radar](https://www.thoughtworks.com/radar):
+
+| Marker | Radar equivalent | Meaning |
+|--------|-----------------|---------|
+| `[CURRENT]` | — | Implemented and enforced. All existing code already follows this. |
+| `[ADOPT]` | Adopt | New code must follow this. Not yet consistently applied to existing code. |
+| `[EVOLVE]` | Trial | In active use with known limitations; likely to be replaced or promoted. Prefer for new code unless a better option exists. |
+| `[PLANNED]` | Assess | Not yet implemented. Documented for context and future direction. |
+
 ## Architectural Patterns Identified
 
 ### 1. Kubernetes Resource Model Adoption

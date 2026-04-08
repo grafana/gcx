@@ -12,7 +12,7 @@
 | Variable | Scope | Effect |
 |----------|-------|--------|
 | `GRAFANA_SERVER` | context | Grafana server URL |
-| `GRAFANA_TOKEN` | context | API token (precedence over user/pass) |
+| `GRAFANA_TOKEN` | context | API token (this takes precedence over user/pass) |
 | `GRAFANA_USER` | context | Basic auth username |
 | `GRAFANA_PASSWORD` | context | Basic auth password |
 | `GRAFANA_ORG_ID` | context | On-prem org ID (namespace) |
@@ -51,6 +51,7 @@ Accepts: `1`, `true`, `0`, `false` (parsed by `caarlos0/env/v11`)
 | Variable | Source | Effect |
 |----------|--------|--------|
 | `GCX_AGENT_MODE` | Explicit opt-in/out | `1`/`true`/`yes` enables agent mode; `0`/`false`/`no` disables (overrides all others) |
+| `CLAUDECODE` | Claude Code | Truthy value activates agent mode |
 | `CLAUDE_CODE` | Claude Code | Truthy value activates agent mode |
 | `CURSOR_AGENT` | Cursor | Truthy value activates agent mode |
 | `GITHUB_COPILOT` | GitHub Copilot | Truthy value activates agent mode |
