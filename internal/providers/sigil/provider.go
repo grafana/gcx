@@ -51,14 +51,11 @@ func (p *SigilProvider) Commands() []*cobra.Command {
 		agent.AnnotationTokenCost: "medium",
 		agent.AnnotationLLMHint:   `gcx sigil conversations list --limit 10 -o json`,
 	}
-	sigilCmd.AddCommand(convsCmd)
-
 	agentsCmd := agents.Commands(loader)
 	agentsCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
 		agent.AnnotationLLMHint:   `gcx sigil agents list --limit 10 -o json`,
 	}
-	sigilCmd.AddCommand(agentsCmd)
 
 	evaluatorsCmd := evaluators.Commands(loader)
 	evaluatorsCmd.Annotations = map[string]string{
@@ -96,7 +93,7 @@ func (p *SigilProvider) Commands() []*cobra.Command {
 		agent.AnnotationLLMHint:   `gcx sigil judge providers -o json; gcx sigil judge models --provider openai -o json`,
 	}
 
-	sigilCmd.AddCommand(evaluatorsCmd, rulesCmd, templatesCmd, generationsCmd, scoresCmd, judgeCmd)
+	sigilCmd.AddCommand(convsCmd, agentsCmd, evaluatorsCmd, rulesCmd, templatesCmd, generationsCmd, scoresCmd, judgeCmd)
 
 	return []*cobra.Command{sigilCmd}
 }

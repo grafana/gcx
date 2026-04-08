@@ -58,7 +58,7 @@ func TestModelsTableCodec_Encode(t *testing.T) {
 		{
 			name: "headers and data",
 			want: []string{"ID", "NAME", "PROVIDER", "CONTEXT WINDOW",
-				"gpt-4o", "GPT-4o", "openai", "128k"},
+				"gpt-4o", "GPT-4o", "openai", "128000"},
 		},
 		{
 			name: "zero context window shows dash",

@@ -116,7 +116,7 @@ func (c *TableCodec) Encode(w io.Writer, v any) error {
 			if ruleID == "" {
 				ruleID = "-"
 			}
-			explanation := sigilhttp.Truncate(s.Explanation, 40)
+			explanation := sigilhttp.Truncate(s.Explanation, 80)
 			t.Row(s.ScoreKey, s.ScoreType, s.Value.Display(), passed,
 				s.EvaluatorID, s.EvaluatorVersion, ruleID, explanation,
 				sigilhttp.FormatTime(s.CreatedAt))

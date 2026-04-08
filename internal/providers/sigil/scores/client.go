@@ -24,5 +24,5 @@ func (c *Client) ListByGeneration(ctx context.Context, generationID string, limi
 	if limit > 0 {
 		query.Set("limit", strconv.Itoa(limit))
 	}
-	return sigilhttp.ListAll[Score](ctx, c.base, "/query/generations/"+url.PathEscape(generationID)+"/scores", query, limit)
+	return sigilhttp.ListAll[Score](ctx, c.base, "/query/generations/"+url.PathEscape(generationID)+"/scores", query)
 }

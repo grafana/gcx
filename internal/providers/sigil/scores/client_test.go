@@ -36,9 +36,6 @@ func newTestClient(t *testing.T, handler http.Handler) *scores.Client {
 	return scores.NewClient(base)
 }
 
-func ptrBool(b bool) *bool       { return &b }
-func ptrFloat(f float64) *float64 { return &f }
-
 func TestClient_ListByGeneration(t *testing.T) {
 	now := time.Now().Truncate(time.Second)
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -55,8 +52,8 @@ func TestClient_ListByGeneration(t *testing.T) {
 					EvaluatorVersion: "1",
 					ScoreKey:         "relevance",
 					ScoreType:        "number",
-					Value:            scores.ScoreValue{Number: ptrFloat(0.95)},
-					Passed:           ptrBool(true),
+					Value:            scores.ScoreValue{Number: new(0.95)},
+					Passed:           new(true),
 					CreatedAt:        now,
 				},
 				{
@@ -66,8 +63,8 @@ func TestClient_ListByGeneration(t *testing.T) {
 					EvaluatorVersion: "1",
 					ScoreKey:         "harmful",
 					ScoreType:        "bool",
-					Value:            scores.ScoreValue{Bool: ptrBool(false)},
-					Passed:           ptrBool(true),
+					Value:            scores.ScoreValue{Bool: new(false)},
+					Passed:           new(true),
 					CreatedAt:        now,
 				},
 			},

@@ -2,8 +2,8 @@ package judge
 
 import (
 	"errors"
-	"fmt"
 	"io"
+	"strconv"
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -119,6 +119,7 @@ func newModelsCommand(loader *providers.ConfigLoader) *cobra.Command {
 		},
 	}
 	opts.setup(cmd.Flags())
+	_ = cmd.MarkFlagRequired("provider")
 	return cmd
 }
 
@@ -161,7 +162,7 @@ func (c *ModelsTableCodec) Encode(w io.Writer, v any) error {
 	for _, m := range models {
 		ctx := "-"
 		if m.ContextWindow > 0 {
-			ctx = fmt.Sprintf("%dk", m.ContextWindow/1000)
+			ctx = strconv.Itoa(m.ContextWindow)
 		}
 		t.Row(m.ID, m.Name, m.Provider, ctx)
 	}
