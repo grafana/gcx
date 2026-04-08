@@ -144,6 +144,7 @@ func (c *datasourceTableCodec) Encode(w io.Writer, data any) error {
 		return errors.New("invalid data type for table codec")
 	}
 
+	// we haven't added ACCESS here, because it doesn't provide much value (its nearly always "proxy")
 	t := style.NewTable("UID", "NAME", "TYPE", "URL", "DEFAULT")
 	for _, ds := range datasources {
 		defaultStr := ""
