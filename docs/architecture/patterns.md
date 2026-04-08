@@ -303,7 +303,7 @@ only the wide table codec was expected to display.
 - `cmd/gcx/datasources/query/query.go`: query response passed to all codecs unchanged
 - `internal/output/format.go`: built-in JSON/YAML codecs fall through when no custom codec is registered
 
-**See also:** [design-guide.md §11](../reference/design-guide.md#11-codec-requirements-by-command-type-adopt) — codec requirements by command type, [§12](../reference/design-guide.md#12-mutation-command-output-adopt) — mutation command output spec.
+**See also:** [output.md](../design/output.md) — codec requirements by command type and mutation command output spec.
 
 ---
 
@@ -435,7 +435,60 @@ copy-paste it directly into `get`, `update`, and `delete` commands.
 
 **Usage:** When a provider resource type needs CRUD via `gcx resources`, implement `ResourceAdapter`, call `adapter.Register()` in `init()`, and call `RegistryIndex.RegisterStatic()` in `discovery.NewDefaultRegistry`.
 
-**See also:** [design-guide.md §14](../reference/design-guide.md#14-provider--resources-output-consistency-adopt) — provider CRUD commands must use ResourceAdapter, [§15](../reference/design-guide.md#15-typedcrud-pattern-adopt--evolve) — TypedCRUD pattern and trajectory, [§16](../reference/design-guide.md#16-provider-configloader-adopt) — ConfigLoader requirement for all providers.
+### Provider / Resources Output Consistency
+
+Provider CRUD commands must use their registered `ResourceAdapter` (via
+TypedCRUD) for data access, not raw REST clients. This ensures:
+
+- JSON/YAML output is identical to the `resources` pipeline by construction.
+- Table/wide codecs may access domain types `T` for richer columns (e.g.
+  SLI%, burn rate, budget remaining).
+- The `resources` pipeline uses generic resource columns (name, namespace,
+  age) for its table codec.
+
+Provider commands that bypass the adapter for CRUD operations are
+non-compliant. Extension commands (status, timeline, etc.) may use raw
+clients since they have no `resources` pipeline equivalent.
+
+### TypedCRUD Pattern
+
+TypedCRUD is the current required pattern for new providers implementing
+ResourceAdapter. It bridges typed domain objects to Kubernetes-style
+unstructured envelopes.
+
+**Current requirement:** New providers must use TypedCRUD for adapter
+registration.
+
+**Trajectory:** Domain types should be designed with eventual K8s metadata
+interface compliance in mind (metadata.name, metadata.namespace,
+apiVersion/kind). The long-term goal is typed resources that satisfy K8s
+interfaces directly, eliminating the TypedCRUD bridge.
+
+Do not introduce new serialization bridges, dispatch patterns, or
+type-erasure mechanisms. If TypedCRUD does not fit your use case, raise
+the issue for architectural discussion.
+
+### Provider ConfigLoader
+
+All provider commands must use `providers.ConfigLoader` for flag binding
+(`--config`, `--context`) and config resolution (YAML + env var precedence).
+
+| Method | Purpose | Used by |
+|--------|---------|---------|
+| `LoadGrafanaConfig(ctx)` | REST config for Grafana API calls | alert, fleet, incidents, kg, oncall, slo, synth |
+| `LoadCloudConfig(ctx)` | Cloud token + GCOM stack info | k6, fleet |
+| `LoadProviderConfig(ctx, name)` | Provider-specific `map[string]string` + namespace | synth, oncall, k6 |
+| `SaveProviderConfig(ctx, name, key, val)` | Write-back a single provider config key | synth (datasource UID) |
+| `LoadFullConfig(ctx)` | Full `*config.Config` (for cross-cutting lookups) | synth (datasource discovery) |
+
+Do not:
+- Import `cmd/gcx/config` from provider code (import cycle)
+- Roll custom flag binding for `--config`/`--context`
+- Construct HTTP clients or load credentials outside ConfigLoader
+- Hardcode env var names — ConfigLoader handles `GRAFANA_PROVIDER_*` resolution
+- Use `os.Getenv` for provider-specific env vars — use `LoadProviderConfig`
+
+See [provider-checklist.md](../design/provider-checklist.md) for the UX compliance checklist.
 
 **Context threading for `--context` flag:** The selected config context name is
 threaded into adapter factories via Go's `context.Context` using helpers in

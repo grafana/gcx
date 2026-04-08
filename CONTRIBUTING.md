@@ -2,6 +2,13 @@
 
 This document is a guide to help you through the process of contributing to `gcx`.
 
+Before implementing features or commands, read:
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) — system architecture, pipeline diagrams, ADR index
+- [DESIGN.md](DESIGN.md) — CLI UX design: command grammar, output model, taste rules
+- [CONSTITUTION.md](CONSTITUTION.md) — invariants you must not violate
+- [docs/design/](docs/design/) — prescriptive UX implementation rules (output, errors, agent mode, naming, …)
+
 ## Issue Tracking
 
 Issues are tracked in [GitHub Issues](https://github.com/grafana/gcx/issues).

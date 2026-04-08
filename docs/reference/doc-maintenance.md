@@ -6,16 +6,15 @@
 
 | Document | Update Required? |
 |----------|-----------------|
-| `DESIGN.md` | Yes — update package map table |
+| `CLAUDE.md` | Yes — update package map section (compact) |
 | `docs/architecture/` | Yes — run structural checks below |
-| `CLAUDE.md` | Yes — update package map section |
 | `README.md` | Only if it affects CLI usage or quick start |
 
 ### Changing a Core Feature or API
 
 | Document | Update Required? |
 |----------|-----------------|
-| `DESIGN.md` | Yes — if architectural decisions changed |
+| `ARCHITECTURE.md` | Yes — if architectural decisions changed |
 | `README.md` | Yes — if user-visible behavior changed |
 | `docs/architecture/` | Yes — run structural checks below |
 | `docs/reference/cli/` | Automatic — `make docs` regenerates CLI reference |
@@ -24,14 +23,13 @@
 
 | Document | Update Required? |
 |----------|-----------------|
-| `DESIGN.md` | Yes — add row to ADR summary table |
+| `ARCHITECTURE.md` | Yes — add row to ADR summary table |
 | New file | Create `docs/adrs/<research-slug>/NNN-title.md` |
 
 ### Adding a New Provider
 
 | Document | Update Required? |
 |----------|-----------------|
-| `DESIGN.md` | Yes — add to package map |
 | `CLAUDE.md` | Yes — update package map section |
 | `docs/architecture/` | Yes — run structural checks below |
 | `docs/reference/provider-guide.md` | Only if the pattern changes |
@@ -49,25 +47,17 @@
 |----------|-----------------|
 | `README.md` | Yes — update CLI flags or usage section |
 | `docs/reference/cli/` | Automatic — `make docs` regenerates |
-| `docs/reference/design-guide.md` | If UX conventions changed |
+| `docs/design/` | If UX conventions changed |
 
 ## General Rules
 
-1. **Every PR should include doc updates** for any user-visible or
-   architecture-level change.
-2. **DESIGN.md is the architecture index** — if you add a new doc file, link
-   it from DESIGN.md.
-3. **CLAUDE.md is the agent entry point** — keep it as a TOC; put
-   details in docs/.
+1. **Every PR should include doc updates** for any user-visible or architecture-level change.
+2. **Root-level docs are the entry layer** — ARCHITECTURE.md for architecture/ADRs, DESIGN.md for UX/taste, CONSTITUTION.md for invariants. Link from these to `docs/` for details; don't put implementation detail in root files.
+3. **CLAUDE.md (= AGENTS.md) is the agent entry point** — keep it as a short TOC with a package map; put details in `docs/`.
 4. **Don't duplicate** — cross-link between docs instead of copying content.
 5. **docs/ is the system of record** — organize by content type, not audience.
 6. **Run `make docs`** after any CLI changes — regenerates reference docs.
-7. **Don't hardcode volatile values** — avoid exact counts ("18 patterns",
-   "10 ADRs"), specific dates ("Generated: 2026-03-02", "Last updated: ..."),
-   confidence percentages, or domain counts in docs. These go stale immediately,
-   create merge conflicts, and add no value over `git log`. Use descriptive labels
-   instead ("recurring patterns", "high confidence"). The only exception is dates
-   in ADR status fields, which are inherently historical.
+7. **Don't hardcode volatile values** — avoid exact counts ("18 patterns", "10 ADRs"), specific dates ("Generated: 2026-03-02", "Last updated: ..."), confidence percentages, or domain counts in docs. These go stale immediately, create merge conflicts, and add no value over `git log`. Use descriptive labels instead ("recurring patterns", "high confidence"). The only exception is dates in ADR status fields, which are inherently historical.
 
 ---
 
@@ -84,7 +74,7 @@ that shift architecture — not line-level edits, test changes, or formatting.
 Every top-level directory in `internal/` should appear in:
 - `docs/architecture/architecture.md` (layered architecture description)
 - `docs/architecture/project-structure.md` (directory layout section)
-- `DESIGN.md` (package map table)
+- `CLAUDE.md` (compact package map)
 
 **Severity:** Missing coverage (medium) for new architectural layers. Low for
 utility packages nested under existing layers.
