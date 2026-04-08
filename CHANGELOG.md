@@ -1,3 +1,38 @@
+## v0.2.4 (2026-04-08)
+
+
+
+- Add sigil evaluator/rule CRUD and templates commands
+- Add sigil agents and eval read-only commands
+- Add synthetic monitoring private probe management
+- Restructure adaptive metrics command layout
+- Promote `--json ?` as primary discovery for programmatic use
+- Reject stray arguments on group commands
+- Improve error messages for wrong/unknown commands
+- Fix graph output for non-series query results
+- Fix empty timestamp display in traces instant tables
+- Fix synth check status to use alertSensitivity thresholds
+- Include alerting enrichments in SLO definitions get/list
+- Add titles to all issues
+- Restructure docs into VISION, ARCHITECTURE, DESIGN split
+- Fix command syntax and install instructions in README
+
+## v0.2.3 (2026-04-07)
+
+
+
+- Fix OAuth token persistence on refresh
+- Add styled tables and ASCII logo with Neon Dark theme
+- Add assistant investigation CRUD commands
+- Improve agent discoverability with progressive disclosure
+- Fix error propagation in natural key matching
+- Add natural key matching for cross-stack resource push
+- Add adaptive log drop-rules CLI and client
+- Add datasource autodiscovery
+- Update Kubernetes and CI dependencies
+- Improve auth login and README documentation
+
+
 ## v0.2.2 (2026-04-03)
 
 - Add Grafana Assistant prompt command (A2A protocol)
