@@ -15,7 +15,7 @@ gcx metrics adaptive rules update <metric> [flags]
       --drop                          Drop the metric entirely
       --drop-labels strings           Labels to drop (comma-separated)
   -h, --help                          help for update
-      --json string                   Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string                   Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --keep-labels strings           Labels to keep (comma-separated)
       --match-type string             Match type: exact, prefix, or suffix
   -o, --output string                 Output format. One of: json, yaml (default "json")

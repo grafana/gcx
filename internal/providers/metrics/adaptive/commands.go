@@ -427,16 +427,16 @@ func applySelectiveRecommendations(cmd *cobra.Command, client *Client, opts *rec
 		return fmt.Errorf("fetch rules ETag: %w", err)
 	}
 
-	anyFailed := false
+	var failed []string
 	for _, item := range items {
-		ok := applyOneItem(ctx, cmd, client, item, opts.Segment, &rulesEtag)
-		if !ok {
-			anyFailed = true
+		if !applyOneItem(ctx, cmd, client, item, opts.Segment, &rulesEtag) {
+			failed = append(failed, item.rec.Metric)
 		}
 	}
 
-	if anyFailed {
-		return errors.New("one or more operations failed")
+	if len(failed) > 0 {
+		return fmt.Errorf("failed to apply %d of %d recommendation(s): %s",
+			len(failed), len(items), strings.Join(failed, ", "))
 	}
 	return nil
 }

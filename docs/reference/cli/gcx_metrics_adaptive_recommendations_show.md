@@ -11,7 +11,7 @@ gcx metrics adaptive recommendations show [flags]
 ```
       --action stringArray   Filter by action: add, update, remove, keep (repeatable)
   -h, --help                 help for show
-      --json string          Comma-separated list of fields to include in JSON output, or '?' to discover available fields
+      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string        Output format. One of: json, table, wide, yaml (default "table")
       --reverse              Reverse the default sort order
       --segment string       Segment ID
