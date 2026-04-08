@@ -1,15 +1,6 @@
 # Pattern Analysis and Contradiction Resolutions
 
-## Status Marker Vocabulary
-
-Patterns are tagged with status markers using [ThoughtWorks Technology Radar](https://www.thoughtworks.com/radar) terminology (plus `[CURRENT]`, which has no radar equivalent):
-
-| Marker | Meaning |
-|--------|---------|
-| `[CURRENT]` | Implemented and enforced. All existing code already follows this. |
-| `[ADOPT]` | New code must follow this. Not yet consistently applied to existing code. |
-| `[TRIAL]` | In active use with known limitations; likely to be replaced or promoted. Prefer for new code unless a better option exists. |
-| `[ASSESS]` | Not yet implemented. Documented for context and future direction. |
+Status markers (`[CURRENT]`, `[ADOPT]`, `[TRIAL]`, `[ASSESS]`) follow [DESIGN.md § Status Markers](../../DESIGN.md#status-markers).
 
 ## Architectural Patterns Identified
 

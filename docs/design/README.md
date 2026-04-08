@@ -2,11 +2,7 @@
 
 See `DESIGN.md` at the repository root for the design philosophy overview and navigation.
 
-The docs in this directory are prescriptive implementation guides. Each subsection is tagged with a status marker:
-
-- **`[CURRENT]`** — Implemented and enforced. Follow exactly.
-- **`[ADOPT]`** — Not consistently applied yet. New code MUST follow this.
-- **`[ASSESS]`** — Not yet implemented. Documented for future direction. ([ThoughtWorks Radar](https://www.thoughtworks.com/radar))
+The docs in this directory are prescriptive implementation guides. Each subsection is tagged with a status marker — see [DESIGN.md § Status Markers](../../DESIGN.md#status-markers) for the vocabulary.
 
 New commands and providers **must comply with all `[CURRENT]` and `[ADOPT]` items**.
 

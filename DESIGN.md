@@ -114,5 +114,15 @@ Prescriptive implementation rules live in [docs/design/](docs/design/), split by
 | [naming.md](docs/design/naming.md) | Resource kinds, file naming, config keys, flags |
 | [environment-variables.md](docs/design/environment-variables.md) | Canonical environment variable reference |
 
-Status markers (`[CURRENT]`, `[ADOPT]`, `[ASSESS]`) tell you what's enforced vs. aspirational.
+### Status Markers
+
+Each subsection is tagged using [ThoughtWorks Technology Radar](https://www.thoughtworks.com/radar) terminology (`[CURRENT]` has no radar equivalent):
+
+| Marker | Meaning |
+|--------|---------|
+| `[CURRENT]` | Implemented and enforced. All existing code already follows this. |
+| `[ADOPT]` | New code must follow this. Not yet consistently applied to existing code. |
+| `[TRIAL]` | In active use with known limitations; likely to be replaced or promoted. |
+| `[ASSESS]` | Not yet implemented. Documented for future direction. |
+
 New commands and providers **must comply with all `[CURRENT]` and `[ADOPT]` items**.

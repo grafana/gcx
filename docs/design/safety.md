@@ -1,7 +1,7 @@
 # Confirmation and Safety
 
 > Covers when to prompt users before destructive operations, the --yes/GCX_AUTO_APPROVE pattern, dry-run support, and push idempotency.
-> Status markers: **[CURRENT]** = enforced, **[ADOPT]** = new code must follow, **[ASSESS]** = future direction ([ThoughtWorks Radar](https://www.thoughtworks.com/radar)).
+> Status markers: see [DESIGN.md § Status Markers](../../DESIGN.md#status-markers).
 
 ---
 

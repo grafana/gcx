@@ -1,7 +1,7 @@
 # Pipe-Awareness
 
 > Describes TTY detection, automatic pipe behavior, --no-color, NO_COLOR environment variable support, and future auto-format switching.
-> Status markers: **[CURRENT]** = enforced, **[ADOPT]** = new code must follow, **[ASSESS]** = future direction ([ThoughtWorks Radar](https://www.thoughtworks.com/radar)).
+> Status markers: see [DESIGN.md § Status Markers](../../DESIGN.md#status-markers).
 
 ---
 

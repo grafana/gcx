@@ -1,7 +1,7 @@
 # Provider Command Checklist
 
 > UX compliance checklist for new providers. Architecture patterns (TypedCRUD, ConfigLoader, output consistency) are in [patterns.md](../architecture/patterns.md).
-> Status markers: **[CURRENT]** = enforced, **[ADOPT]** = new code must follow, **[ASSESS]** = future direction ([ThoughtWorks Radar](https://www.thoughtworks.com/radar)).
+> Status markers: see [DESIGN.md § Status Markers](../../DESIGN.md#status-markers).
 
 Extends the interface checklist in [provider-guide.md](../reference/provider-guide.md) with
 UX requirements. All items are `[ADOPT]` unless marked otherwise.
