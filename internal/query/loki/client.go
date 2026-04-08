@@ -92,6 +92,26 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
+	// Fall back to legacy /api/ds/query if K8s query API doesn't exist.
+	if resp.StatusCode == http.StatusNotFound {
+		resp.Body.Close()
+		apiPath = "/api/ds/query"
+		httpReq, err = http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewBuffer(body))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+		resp, err = c.httpClient.Do(httpReq)
+		if err != nil {
+			return nil, fmt.Errorf("failed to execute query: %w", err)
+		}
+		defer resp.Body.Close()
+		respBody, err = io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+		if err != nil {
+			return nil, fmt.Errorf("failed to read response: %w", err)
+		}
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("query failed with status %d: %s", resp.StatusCode, string(respBody))
 	}
@@ -165,6 +185,26 @@ func (c *Client) MetricQuery(ctx context.Context, datasourceUID string, req Quer
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	// Fall back to legacy /api/ds/query if K8s query API doesn't exist.
+	if resp.StatusCode == http.StatusNotFound {
+		resp.Body.Close()
+		apiPath = "/api/ds/query"
+		httpReq, err = http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewBuffer(body))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+		resp, err = c.httpClient.Do(httpReq)
+		if err != nil {
+			return nil, fmt.Errorf("failed to execute query: %w", err)
+		}
+		defer resp.Body.Close()
+		respBody, err = io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+		if err != nil {
+			return nil, fmt.Errorf("failed to read response: %w", err)
+		}
 	}
 
 	if resp.StatusCode != http.StatusOK {
