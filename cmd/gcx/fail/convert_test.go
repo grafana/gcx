@@ -147,3 +147,13 @@ func TestErrorToDetailedError_UsageErrorIncludesExpectedSyntax(t *testing.T) {
 	require.Len(t, got.Suggestions, 1)
 	assert.Equal(t, "Run 'gcx logs query --help' for full usage and examples", got.Suggestions[0])
 }
+
+func TestErrorToDetailedError_CobraUnknownCommandError(t *testing.T) {
+	got := fail.ErrorToDetailedError(errors.New(`unknown command "foo" for "gcx kg"`))
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Invalid command usage", got.Summary)
+	assert.Equal(t, `unknown command "foo" for "gcx kg"`, got.Details)
+	require.Len(t, got.Suggestions, 1)
+	assert.Equal(t, "Run 'gcx kg --help' for full usage and examples", got.Suggestions[0])
+}
