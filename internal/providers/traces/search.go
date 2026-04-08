@@ -107,7 +107,7 @@ Datasource is resolved from -d flag or datasources.tempo in your context.`,
 		},
 	}
 
-	shared.Setup(cmd.Flags())
+	shared.Setup(cmd.Flags(), false)
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.tempo is configured)")
 	cmd.Flags().IntVar(&limit, "limit", 20, "Maximum number of traces to return (0 means no limit)")
 

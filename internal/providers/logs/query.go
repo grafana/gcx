@@ -91,7 +91,7 @@ Datasource is resolved from -d flag or datasources.loki in your context.`,
 		},
 	}
 
-	shared.Setup(cmd.Flags())
+	shared.Setup(cmd.Flags(), false)
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
 	cmd.Flags().IntVar(&limit, "limit", 1000, "Maximum number of log lines to return (0 means no limit)")
 

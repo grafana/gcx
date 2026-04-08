@@ -118,7 +118,7 @@ Instant vs range is deduced from time flags: no time flags = instant query,
 		},
 	}
 
-	shared.Setup(cmd.Flags())
+	shared.Setup(cmd.Flags(), true)
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.tempo is configured)")
 
 	return cmd

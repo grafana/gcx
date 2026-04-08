@@ -94,8 +94,8 @@ type SharedOpts struct {
 }
 
 // Setup registers shared query flags on the given flag set.
-func (opts *SharedOpts) Setup(flags *pflag.FlagSet) {
-	RegisterCodecs(&opts.IO)
+func (opts *SharedOpts) Setup(flags *pflag.FlagSet, enableGraph bool) {
+	RegisterCodecs(&opts.IO, enableGraph)
 	opts.IO.BindFlags(flags)
 
 	opts.SetupTimeFlags(flags)
