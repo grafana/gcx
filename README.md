@@ -166,8 +166,8 @@ gcx oncall schedules list                       # list on-call schedules
 gcx k6 load-tests list                          # list k6 load tests
 
 # Query datasources
-gcx metrics query prom-001 'rate(http_requests_total[5m])' --since 1h
-gcx logs query loki-001 '{app="nginx"} |= "error"' --since 1h
+gcx metrics query 'rate(http_requests_total[5m])' --since 1h
+gcx logs query '{app="nginx"} |= "error"' --since 1h
 ```
 
 ## Grafana Cloud Products
@@ -184,7 +184,8 @@ gcx provides dedicated commands for each Grafana Cloud product:
 | **Fleet Management** | `gcx fleet` | `fleet pipelines list`, `fleet collectors list` |
 | **IRM Incidents** | `gcx incidents` | `incidents list`, `incidents create -f incident.yaml` |
 | **Knowledge Graph** | `gcx kg` | `kg status`, `kg search`, `kg entities show` |
-| **Adaptive Telemetry** | `gcx adaptive` | `adaptive metrics recommendations show`, `adaptive logs patterns show` |
+| **Adaptive Metrics** | `gcx metrics adaptive` | `metrics adaptive recommendations show`, `metrics adaptive rules list` |
+| **Adaptive Logs** | `gcx logs adaptive` | `logs adaptive patterns show`, `logs adaptive drop-rules list` |
 
 ## Resource Management
 
@@ -221,14 +222,14 @@ gcx alert rules list
 gcx alert groups list
 
 # PromQL queries
-gcx metrics query prom-001 'rate(http_requests_total[5m])' --since 1h
+gcx metrics query 'rate(http_requests_total[5m])' --since 1h
 gcx metrics labels
 gcx metrics metadata
 
 # LogQL queries
-gcx logs query loki-001 '{app="nginx"} |= "error"' --since 1h
+gcx logs query '{app="nginx"} |= "error"' --since 1h
 gcx logs labels
-gcx logs series
+gcx logs series --match '{app="nginx"}'
 ```
 
 gcx also supports Pyroscope (profiling) and Tempo (traces) datasources.
