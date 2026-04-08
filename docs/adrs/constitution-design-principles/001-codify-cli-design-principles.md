@@ -240,7 +240,7 @@ clients since they have no `resources` pipeline equivalent.
 ### Update: TypedCRUD `[ADOPT -> EVOLVE]`
 
 ```markdown
-### X.X TypedCRUD Pattern `[ADOPT → TRIAL]`
+### X.X TypedCRUD Pattern `[ADOPT]`
 
 TypedCRUD is the current required pattern for new providers implementing
 ResourceAdapter. It bridges typed domain objects to Kubernetes-style

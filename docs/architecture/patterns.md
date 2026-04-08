@@ -452,7 +452,7 @@ Provider commands that bypass the adapter for CRUD operations are
 non-compliant. Extension commands (status, timeline, etc.) may use raw
 clients since they have no `resources` pipeline equivalent.
 
-### TypedCRUD Pattern `[ADOPT → TRIAL]`
+### TypedCRUD Pattern `[ADOPT]`
 
 TypedCRUD is the current required pattern for new providers implementing
 ResourceAdapter. It bridges typed domain objects to Kubernetes-style
