@@ -26,12 +26,6 @@
 | `ARCHITECTURE.md` | Yes — add row to ADR summary table |
 | New file | Create `docs/adrs/<research-slug>/NNN-title.md` |
 
-### Moving or Deleting a Doc File
-
-ADR documents are historical records — do **not** update their content to fix broken links caused by later file moves or deletions. The broken link is accurate for the time the ADR was written. Leave the link in place; it will return a 404 and that is expected and acceptable.
-
-For non-ADR docs (architecture guides, design docs, reference files), broken links are a **stale reference** defect and must be fixed.
-
 ### Adding a New Provider
 
 | Document | Update Required? |

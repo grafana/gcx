@@ -19,7 +19,7 @@ incrementally for existing code).
 | Document | Role | Audience |
 |----------|------|----------|
 | `CONSTITUTION.md` | Invariants — "what you must not break" | All contributors, gate for PRs |
-| `docs/reference/design-guide.md` | Prescriptive UX handbook — "how to build correctly" | Implementers, code reviewers |
+| `docs/design/` | Prescriptive UX handbook — "how to build correctly" | Implementers, code reviewers |
 | `DESIGN.md` | Orientation map — "what is this project" | First-time readers, navigation |
 
 The three documents are cross-referenced but serve distinct roles. Constitution
@@ -60,7 +60,7 @@ Every command serves both humans and agents. Agent mode switches defaults
 (JSON output, no color, no truncation) but does not change available
 functionality. Explicit flags always override agent mode defaults.
 
-See [design-guide.md §6](docs/reference/design-guide.md#6-agent-mode) for
+See [agent-mode.md](docs/design/agent-mode.md) for
 agent mode detection, behavior changes, and opt-out mechanisms.
 
 - **All output goes through the codec system.** No command writes unstructured
@@ -130,7 +130,7 @@ agent mode detection, behavior changes, and opt-out mechanisms.
 
 ---
 
-## docs/reference/design-guide.md — New/Updated Sections
+## docs/design/ — New/Updated Sections
 
 ### New: Codec Requirements by Command Type `[ADOPT]`
 
