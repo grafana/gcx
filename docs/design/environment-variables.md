@@ -1,13 +1,12 @@
 # Environment Variable Reference
 
 > Canonical reference for all environment variables recognized by gcx. Other docs should link here rather than duplicating this list.
-> Status markers: see [DESIGN.md § Status Markers](../../DESIGN.md#status-markers).
 
 ---
 
 ## 10. Environment Variable Reference
 
-### Core Variables `[CURRENT]`
+### Core Variables
 
 | Variable | Scope | Effect |
 |----------|-------|--------|
@@ -20,7 +19,7 @@
 | `GCX_CONFIG` | global | Config file path override |
 | `NO_COLOR` | global | Disable color output ([no-color.org](https://no-color.org/)) |
 
-### Provider Variables `[CURRENT]`
+### Provider Variables
 
 Pattern: `GRAFANA_PROVIDER_{NAME}_{KEY}=value`
 
@@ -36,7 +35,7 @@ Provider names and keys are case-normalized. Env vars override YAML config.
 See [../architecture/config-system.md](../architecture/config-system.md) for the loading chain and
 [../reference/provider-guide.md](../reference/provider-guide.md) for the `ConfigKeys()` pattern.
 
-### Implemented Variables `[CURRENT]`
+### Implemented Variables
 
 | Variable | Effect | Documentation |
 |----------|--------|---------------|
@@ -46,7 +45,7 @@ Accepts: `1`, `true`, `0`, `false` (parsed by `caarlos0/env/v11`)
 
 **Implementation:** `internal/config/cli_options.go` - `CLIOptions` struct loaded via `LoadCLIOptions()`
 
-### Agent Mode Variables `[CURRENT]`
+### Agent Mode Variables
 
 | Variable | Source | Effect |
 |----------|--------|--------|
@@ -57,5 +56,5 @@ Accepts: `1`, `true`, `0`, `false` (parsed by `caarlos0/env/v11`)
 | `GITHUB_COPILOT` | GitHub Copilot | Truthy value activates agent mode |
 | `AMAZON_Q` | Amazon Q | Truthy value activates agent mode |
 
-Detection runs at `init()` time in `internal/agent/agent.go`. See [agent-mode.md § Detection](agent-mode.md#61-detection-current) for
+Detection runs at `init()` time in `internal/agent/agent.go`. See [agent-mode.md § Detection](agent-mode.md#61-detection) for
 full detection priority and the `--agent` flag.

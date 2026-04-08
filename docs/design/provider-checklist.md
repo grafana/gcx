@@ -1,16 +1,15 @@
 # Provider Command Checklist
 
 > UX compliance checklist for new providers. Architecture patterns (TypedCRUD, ConfigLoader, output consistency) are in [patterns.md](../architecture/patterns.md).
-> Status markers: see [DESIGN.md § Status Markers](../../DESIGN.md#status-markers).
 
 Extends the interface checklist in [provider-guide.md](../reference/provider-guide.md) with
-UX requirements. All items are `[ADOPT]` unless marked otherwise.
+UX requirements. All items are unless marked otherwise.
 
 ---
 
 ## 7. Provider Command Checklist
 
-### Interface Compliance `[CURRENT]`
+### Interface Compliance
 
 - [ ] Struct implements all five `Provider` interface methods
 - [ ] `Name()` is lowercase, unique, and stable (it's the config map key)
@@ -19,7 +18,7 @@ UX requirements. All items are `[ADOPT]` unless marked otherwise.
 - [ ] `Validate()` returns error pointing to `gcx config set ...`
 - [ ] Provider added to `internal/providers/registry.go:All()`
 
-### UX Compliance `[ADOPT]`
+### UX Compliance
 
 - [ ] All data-display commands support `-o json/yaml` (inherited from `io.Options`)
 - [ ] List/get commands register a `text` table codec as default format
@@ -36,7 +35,7 @@ UX requirements. All items are `[ADOPT]` unless marked otherwise.
 - [ ] List/get commands for CRUD resources wrap json/yaml output in K8s envelope manifests (see below)
 - [ ] Table output shows `NAME` (the slug-id or user-facing identifier), not bare numeric `ID` — users need the NAME for get/update/delete commands (see Slug-ID naming below)
 
-### Slug-ID Naming in Tables `[ADOPT]`
+### Slug-ID Naming in Tables
 
 Providers whose APIs use numeric IDs should display the composite
 `metadata.name` (e.g. `grafana-instance-health-5594`) as the `NAME` column in
@@ -51,7 +50,7 @@ the composite name so CRUD operations work after a K8s round-trip.
 
 Reference: Fleet (pipelines, collectors) and Synth (checks) providers.
 
-### K8s Manifest Wrapping `[ADOPT]`
+### K8s Manifest Wrapping
 
 Provider list/get commands that output **CRUD resources** (resources the user can
 create, update, and delete via the CLI) must wrap json/yaml output in K8s
@@ -68,7 +67,7 @@ Commands that are **exempt** from K8s wrapping:
 | Read-only reference data | `vendors list`, `scopes list`, `entity-types list` | Discoverable metadata, not user-managed resources |
 | Singleton config | `env get`, `graph-config` | Single config objects, not collections of resources |
 
-### Build Verification `[CURRENT]`
+### Build Verification
 
 - [ ] `make build` succeeds
 - [ ] `make tests` passes with no regressions

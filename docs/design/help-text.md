@@ -1,13 +1,12 @@
 # Help Text Standards
 
 > Conventions for command descriptions (Use/Short/Long fields), examples format, and planned help topics for cross-cutting concerns.
-> Status markers: see [DESIGN.md § Status Markers](../../DESIGN.md#status-markers).
 
 ---
 
 ## 8. Help Text Standards
 
-### 8.1 Command Descriptions `[ADOPT]`
+### 8.1 Command Descriptions
 
 | Field | Convention | Example |
 |-------|-----------|---------|
@@ -27,7 +26,7 @@ Short: "A command that lists SLO definitions"
 Short: "Lists SLOs"  // missing period
 ```
 
-### 8.2 Examples Format `[CURRENT]`
+### 8.2 Examples Format
 
 Examples are prefixed with a comment explaining intent. Show 3-5 examples per
 command, progressing from simple to complex:
@@ -43,7 +42,7 @@ Example: `  # List all SLOs
   gcx slo list --context=prod`,
 ```
 
-### 8.3 Help Topics `[ASSESS]`
+### 8.3 Help Topics
 
 Dedicated help pages for cross-cutting concerns:
 

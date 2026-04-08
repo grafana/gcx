@@ -1,13 +1,12 @@
 # Confirmation and Safety
 
 > Covers when to prompt users before destructive operations, the --yes/GCX_AUTO_APPROVE pattern, dry-run support, and push idempotency.
-> Status markers: see [DESIGN.md § Status Markers](../../DESIGN.md#status-markers).
 
 ---
 
 ## 3. Confirmation and Safety
 
-### 3.1 When to Prompt `[ADOPT]`
+### 3.1 When to Prompt
 
 Prompt the user before:
 - Deleting remote resources (single or bulk)
@@ -47,18 +46,18 @@ if (opts.Yes || cliOpts.AutoApprove) && !opts.Force {
 
 **Flag precedence:** Explicit flag value > --yes flag > env var > default
 
-### 3.3 Agent Mode Auto-Approve `[ASSESS]`
+### 3.3 Agent Mode Auto-Approve
 
 When agent mode is active ([agent-mode.md](agent-mode.md)), prompts are auto-approved. Agents
 cannot interact with TTY prompts.
 
-### 3.4 Dry-Run `[CURRENT]`
+### 3.4 Dry-Run
 
 `--dry-run` is available on `push` and `delete`. It passes
 `DryRun: []string{"All"}` to Kubernetes API options. Always document dry-run
 support in new commands that modify remote state.
 
-### 3.5 Push Idempotency `[CURRENT]`
+### 3.5 Push Idempotency
 
 Push is **idempotent** (create-or-update). The flow: Get → if exists: Update
 with `resourceVersion`, if 404: Create. Safe to run repeatedly with the same

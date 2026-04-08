@@ -2,9 +2,9 @@
 
 See `DESIGN.md` at the repository root for the design philosophy overview and navigation.
 
-The docs in this directory are prescriptive implementation guides. Each subsection is tagged with a status marker — see [DESIGN.md § Status Markers](../../DESIGN.md#status-markers) for the vocabulary.
+The docs in this directory are prescriptive implementation guides.
 
-New commands and providers **must comply with all `[CURRENT]` and `[ADOPT]` items**.
+New commands and providers **must comply with all rules documented here**.
 
 | Document | Domain |
 |----------|--------|

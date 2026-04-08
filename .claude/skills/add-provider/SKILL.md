@@ -163,7 +163,7 @@ Present ADRs and spec. Do not proceed to implementation until approved.
 ## Stage 3: Implement
 
 > **Guide**: `docs/reference/provider-guide.md` (Steps 1–7)
-> **UX Guide**: `docs/design/` (all `[CURRENT]` and `[ADOPT]` items)
+> **UX Guide**: `docs/design/`
 
 Implement one stage at a time per the approved spec. Each stage's doc is
 self-contained enough to resume in a fresh session.

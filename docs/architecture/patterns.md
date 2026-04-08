@@ -1,7 +1,5 @@
 # Pattern Analysis and Contradiction Resolutions
 
-Status markers (`[CURRENT]`, `[ADOPT]`, `[TRIAL]`, `[ASSESS]`) follow [DESIGN.md § Status Markers](../../DESIGN.md#status-markers).
-
 ## Architectural Patterns Identified
 
 ### 1. Kubernetes Resource Model Adoption
@@ -437,7 +435,7 @@ copy-paste it directly into `get`, `update`, and `delete` commands.
 
 **Usage:** When a provider resource type needs CRUD via `gcx resources`, implement `ResourceAdapter`, call `adapter.Register()` in `init()`, and call `RegistryIndex.RegisterStatic()` in `discovery.NewDefaultRegistry`.
 
-### Provider / Resources Output Consistency `[ADOPT]`
+### Provider / Resources Output Consistency
 
 Provider CRUD commands must use their registered `ResourceAdapter` (via
 TypedCRUD) for data access, not raw REST clients. This ensures:
@@ -452,7 +450,7 @@ Provider commands that bypass the adapter for CRUD operations are
 non-compliant. Extension commands (status, timeline, etc.) may use raw
 clients since they have no `resources` pipeline equivalent.
 
-### TypedCRUD Pattern `[ADOPT]`
+### TypedCRUD Pattern
 
 TypedCRUD is the current required pattern for new providers implementing
 ResourceAdapter. It bridges typed domain objects to Kubernetes-style
@@ -470,7 +468,7 @@ Do not introduce new serialization bridges, dispatch patterns, or
 type-erasure mechanisms. If TypedCRUD does not fit your use case, raise
 the issue for architectural discussion.
 
-### Provider ConfigLoader `[ADOPT]`
+### Provider ConfigLoader
 
 All provider commands must use `providers.ConfigLoader` for flag binding
 (`--config`, `--context`) and config resolution (YAML + env var precedence).

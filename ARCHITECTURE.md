@@ -65,7 +65,7 @@ Provider (internal/providers/slo/)
 
 **Dual access paths** are permanent: provider commands (`gcx slo definitions list`) give ergonomic domain-specific tables; generic commands (`gcx resources get slos.v1alpha1.slo.ext.grafana.app`) serve the push/pull pipeline. JSON/YAML output is identical across both paths by construction (both use the same `ResourceAdapter`).
 
-**Deep-dive:** [patterns.md](docs/architecture/patterns.md) [§11 (Provider Plugin System)](docs/architecture/patterns.md#11-provider-plugin-system), [§17 (K8s Envelope Wrapping)](docs/architecture/patterns.md#17-k8s-envelope-wrapping-for-provider-listget), [§18 (Table-Driven TypedCRUD)](docs/architecture/patterns.md#18-table-driven-typedcrud-registration-for-providers), [§19 (Singleton Adapter)](docs/architecture/patterns.md#19-singleton-adapter-pattern-adopt), [§20 (ETag-as-Annotation)](docs/architecture/patterns.md#20-etag-as-annotation-pattern-adopt). Implementation guide: [provider-guide.md](docs/reference/provider-guide.md).
+**Deep-dive:** [patterns.md](docs/architecture/patterns.md) [§11 (Provider Plugin System)](docs/architecture/patterns.md#11-provider-plugin-system), [§17 (K8s Envelope Wrapping)](docs/architecture/patterns.md#17-k8s-envelope-wrapping-for-provider-listget), [§18 (Table-Driven TypedCRUD)](docs/architecture/patterns.md#18-table-driven-typedcrud-registration-for-providers), [§19 (Singleton Adapter)](docs/architecture/patterns.md#19-singleton-adapter-pattern), [§20 (ETag-as-Annotation)](docs/architecture/patterns.md#20-etag-as-annotation-pattern). Implementation guide: [provider-guide.md](docs/reference/provider-guide.md).
 
 ### 3. Signal Providers
 

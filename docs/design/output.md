@@ -1,7 +1,6 @@
 # Output Contract
 
 > Defines the rules for command output: codecs, status messages, JSON field selection, codec requirements by command type, mutation command summaries, and pull format consistency.
-> Status markers: see [DESIGN.md § Status Markers](../../DESIGN.md#status-markers).
 
 Reference alongside [cli-layer.md](../architecture/cli-layer.md) for command structure and [patterns.md](../architecture/patterns.md) for architectural patterns.
 
@@ -9,7 +8,7 @@ Reference alongside [cli-layer.md](../architecture/cli-layer.md) for command str
 
 ## 1. Output Contract
 
-### 1.1 Built-in Codecs `[CURRENT]`
+### 1.1 Built-in Codecs
 
 Every command gets `json` and `yaml` output for free via `io.Options`. These
 produce the full resource object as returned by the API — no envelope wrapping,
@@ -20,7 +19,7 @@ ioOpts := &io.Options{}
 ioOpts.BindFlags(cmd.Flags())
 ```
 
-### 1.2 Custom Codecs `[CURRENT]`
+### 1.2 Custom Codecs
 
 Commands register additional formats (e.g. `text`, `wide`, `graph`) via
 `io.Options.RegisterCustomCodec()`. The `text` codec is a Kubernetes-style
@@ -38,7 +37,7 @@ columns to render; the built-in JSON/YAML codecs serialize the full data
 structure. Do not gate data fetches on `opts.IO.OutputFormat` — this causes
 JSON/YAML to silently omit fields. See Pattern 13 in `patterns.md`.
 
-### 1.3 Default Format by Command Type `[ADOPT]`
+### 1.3 Default Format by Command Type
 
 | Command type | Default format | Rationale |
 |-------------|---------------|-----------|
@@ -51,7 +50,7 @@ When building a new command: call `ioOpts.DefaultFormat("text")` for data
 display commands and register a table codec. Don't leave `json` as the default
 for interactive commands.
 
-### 1.4 Status Messages `[CURRENT]`
+### 1.4 Status Messages
 
 Use the `cmdio` functions for operation feedback — they use Unicode symbols
 and respect `color.NoColor`:
@@ -67,7 +66,7 @@ Status messages go to stdout. Errors (via `DetailedError`) go to stderr.
 
 Reference: `internal/output/messages.go`
 
-### 1.5 JSON Field Selection `[CURRENT]`
+### 1.5 JSON Field Selection
 
 The `--json` flag selects specific fields from output objects. When provided,
 output is always JSON regardless of the `--output` default.
@@ -110,7 +109,7 @@ resource object. `--json` is an independent mechanism (NC-002).
 
 ---
 
-## 11. Codec Requirements by Command Type `[ADOPT]`
+## 11. Codec Requirements by Command Type
 
 | Command type | `text` (table) | `wide` | `json` | `yaml` | Domain-specific |
 |---|---|---|---|---|---|
@@ -126,7 +125,7 @@ Codec registration happens in `setup(flags)`, not in `RunE`.
 
 ---
 
-## 12. Mutation Command Output `[ADOPT]`
+## 12. Mutation Command Output
 
 ### 12.1 Summary Table
 
@@ -175,7 +174,7 @@ Verbose opt-in (`-v` or `-o wide`) adds a `"succeeded"` array for audit.
 
 ---
 
-## 13. Pull Format Consistency `[ADOPT]`
+## 13. Pull Format Consistency
 
 `pull` accepts a `--format` flag (values: `yaml`, `json`; default: `yaml`)
 that enforces consistent file format on disk. All pulled files use the

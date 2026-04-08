@@ -1,13 +1,12 @@
 # Pipe-Awareness
 
 > Describes TTY detection, automatic pipe behavior, --no-color, NO_COLOR environment variable support, and future auto-format switching.
-> Status markers: see [DESIGN.md § Status Markers](../../DESIGN.md#status-markers).
 
 ---
 
 ## 5. Pipe-Awareness
 
-### 5.1 TTY Detection `[CURRENT]`
+### 5.1 TTY Detection
 
 Root `PersistentPreRun` calls `terminal.Detect()` which uses
 `term.IsTerminal(os.Stdout.Fd())` to determine whether stdout is connected to
@@ -47,19 +46,19 @@ Codecs read `terminal.IsPiped()` and `terminal.NoTruncate()` at encode time
 (via `io.Options.IsPiped` and `io.Options.NoTruncate` populated during
 `BindFlags`). Table codecs use `NoTruncate` to skip ellipsis truncation.
 
-### 5.2 `--no-color` Flag `[CURRENT]`
+### 5.2 `--no-color` Flag
 
 Implemented in `cmd/gcx/root/command.go`. Sets `color.NoColor = true`
 globally. Takes precedence over TTY auto-detection — passing `--no-color` on
 a TTY still disables color.
 
-### 5.3 `NO_COLOR` Environment Variable `[ADOPT]`
+### 5.3 `NO_COLOR` Environment Variable
 
 The [no-color.org](https://no-color.org/) convention. The `fatih/color`
 library already checks `NO_COLOR` automatically, so this works today. Document
 it in help text and env var references so users know it's available.
 
-### 5.4 Auto-Format Switching `[ASSESS]`
+### 5.4 Auto-Format Switching
 
 Future consideration: when piped and no explicit `-o` flag, commands with
 `text` default could auto-switch to a more parseable format (e.g. JSON or

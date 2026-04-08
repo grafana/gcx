@@ -1,13 +1,12 @@
 # Agent Mode
 
 > Covers agent mode detection via environment variables and --agent flag, behavior changes when active, opt-out mechanisms, and exempt commands.
-> Status markers: see [DESIGN.md § Status Markers](../../DESIGN.md#status-markers).
 
 ---
 
 ## 6. Agent Mode
 
-### 6.1 Detection `[CURRENT]`
+### 6.1 Detection
 
 Agent mode is detected via environment variables at `init()` time in
 `internal/agent/agent.go` and via the `--agent` CLI flag pre-parsed in
@@ -32,33 +31,33 @@ explicitly disables agent mode even when env vars are set.
 
 Reference: `internal/agent/agent.go`
 
-### 6.2 Behavior Changes `[CURRENT]`
+### 6.2 Behavior Changes
 
 When agent mode is active:
 1. **Default output format** becomes `json` for all commands (overrides
    per-command `DefaultFormat()` in `io.Options.BindFlags()`)
 2. **Color** is disabled (`color.NoColor = true` in `PersistentPreRun`)
 3. **Pipe-aware behavior** is forced: `IsPiped=true`, `NoTruncate=true`
-   regardless of actual TTY state (see [pipe-awareness.md § TTY Detection](pipe-awareness.md#51-tty-detection-current))
-4. **In-band error JSON** is written to stdout on failure (see [errors.md § In-Band Error Reporting](errors.md#44-in-band-error-reporting-current))
+   regardless of actual TTY state (see [pipe-awareness.md § TTY Detection](pipe-awareness.md#51-tty-detection))
+4. **In-band error JSON** is written to stdout on failure (see [errors.md § In-Band Error Reporting](errors.md#44-in-band-error-reporting))
 
-The following are **not yet implemented** (`[ASSESS]`):
+The following are **not yet implemented**:
 5. Spinners/progress indicators suppressed (none exist yet; the suppression
    contract via `IsPiped` is in place for when they are added)
-6. Confirmation prompts auto-approved ([safety.md § Agent Mode Auto-Approve](safety.md#33-agent-mode-auto-approve-assess))
+6. Confirmation prompts auto-approved ([safety.md § Agent Mode Auto-Approve](safety.md#33-agent-mode-auto-approve))
 
-### 6.3 Opt-Out `[CURRENT]`
+### 6.3 Opt-Out
 
 Explicit flags override agent mode defaults:
 - `-o text` or `-o yaml` overrides the JSON default
 - `--agent=false` disables agent mode entirely (even when env vars are set)
 - `GCX_AGENT_MODE=0` disables agent mode regardless of other env vars
 
-### 6.4 Exempt Commands `[ASSESS]`
+### 6.4 Exempt Commands
 
 Commands that produce non-data output are exempt from format switching:
 - `config set`, `config use-context` — confirmations only
 - `serve` — starts a long-running server
 - `push`, `pull` — output is status messages, not data
 
-See [environment-variables.md § Agent Mode Variables](environment-variables.md#agent-mode-variables-current) for the full variable reference.
+See [environment-variables.md § Agent Mode Variables](environment-variables.md#agent-mode-variables) for the full variable reference.

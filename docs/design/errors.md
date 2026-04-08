@@ -1,13 +1,12 @@
 # Error Design
 
 > Describes the DetailedError structure, how to write good suggestions, how to add error converters, and in-band JSON error reporting for agent mode.
-> Status markers: see [DESIGN.md § Status Markers](../../DESIGN.md#status-markers).
 
 ---
 
 ## 4. Error Design
 
-### 4.1 DetailedError Structure `[CURRENT]`
+### 4.1 DetailedError Structure
 
 All errors rendered to users pass through `DetailedError`:
 
@@ -37,7 +36,7 @@ Error: File not found
 
 Reference: `cmd/gcx/fail/detailed.go`
 
-### 4.2 Writing Good Suggestions `[ADOPT]`
+### 4.2 Writing Good Suggestions
 
 Every `DetailedError` **should** include at least one actionable suggestion.
 Suggestions must be commands the user can run — not vague advice:
@@ -56,7 +55,7 @@ Suggestions: []string{
 }
 ```
 
-### 4.3 Error Converter Extension `[CURRENT]`
+### 4.3 Error Converter Extension
 
 Add new error types by implementing a converter function and appending to
 `errorConverters` in `cmd/gcx/fail/convert.go`:
@@ -78,7 +77,7 @@ func convertMyErrors(err error) (*DetailedError, bool) {
 Converters are tried in order — first match wins. Place more specific
 converters before more general ones.
 
-### 4.4 In-Band Error Reporting `[CURRENT]`
+### 4.4 In-Band Error Reporting
 
 When agent mode is active and a command fails, a JSON error object is written
 to **stdout** in addition to the existing stderr `DetailedError` output

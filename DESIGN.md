@@ -24,13 +24,7 @@ gcx logs query --from=1h
 gcx oncall schedules get my-schedule
 ```
 
-Rules (authoritative in [CONSTITUTION.md § CLI Grammar](CONSTITUTION.md#cli-grammar)):
-
-- **Positional arguments** = the subject (resource selectors, UIDs, file paths, expressions)
-- **Flags** = modifiers (output format, concurrency, dry-run, filters)
-- **Extension commands** nest under their resource type — never at top level
-- **`$AREA $VERB`** is valid for tooling commands (`dev`, `config`) where there's no meaningful noun
-- If it can be done with list/get/push/pull/delete, it is **not** an extension
+See [CONSTITUTION.md § CLI Grammar](CONSTITUTION.md#cli-grammar) for the authoritative rules (positional arguments, flags, extension commands, verb constraints).
 
 ## Dual-Purpose Design
 
@@ -113,16 +107,3 @@ Prescriptive implementation rules live in [docs/design/](docs/design/), split by
 | [help-text.md](docs/design/help-text.md) | Command descriptions, examples format |
 | [naming.md](docs/design/naming.md) | Resource kinds, file naming, config keys, flags |
 | [environment-variables.md](docs/design/environment-variables.md) | Canonical environment variable reference |
-
-### Status Markers
-
-Each subsection is tagged using [ThoughtWorks Technology Radar](https://www.thoughtworks.com/radar) terminology (`[CURRENT]` has no radar equivalent):
-
-| Marker | Meaning |
-|--------|---------|
-| `[CURRENT]` | Implemented and enforced. All existing code already follows this. |
-| `[ADOPT]` | New code must follow this. Not yet consistently applied to existing code. |
-| `[TRIAL]` | In active use with known limitations; likely to be replaced or promoted. |
-| `[ASSESS]` | Not yet implemented. Documented for future direction. |
-
-New commands and providers **must comply with all `[CURRENT]` and `[ADOPT]` items**.

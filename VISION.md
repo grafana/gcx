@@ -1,6 +1,6 @@
 # Vision: gcx
 
-> What gcx is, why it exists, and where it's going.
+> What gcx is and why it exists.
 
 ## One-Liner
 
@@ -23,6 +23,7 @@ Every command serves both humans and AI agents. Agent mode is auto-detected (Cla
 
 ## Core Beliefs
 
+- **Terminal-first alternative to the Grafana UI.** Everything you can do in the web UI, you should be able to do from your terminal. For humans who prefer the CLI and for agents that can't use a browser, gcx is the primary interface to Grafana.
 - **Full platform coverage.** Every Grafana and Grafana Cloud feature will eventually be supported. One tool, not twenty — a developer managing SLOs, synthetic checks, alert rules, and dashboards shouldn't need four different CLIs with four different auth setups.
 - **Works everywhere Grafana does.** Usable across Grafana OSS and Grafana Cloud. The same commands, the same manifests, the same workflows — only the `--context` changes.
 - **Dual-purpose by design.** Humans and agents use the same commands. The CLI grammar, exit codes, and output shapes are designed for both audiences from day one — not bolted on later.
@@ -33,32 +34,7 @@ Every command serves both humans and AI agents. Agent mode is auto-detected (Cla
 
 ## Observability as Code
 
-gcx provides an end-to-end workflow for managing Grafana resources as Go code using the [grafana-foundation-sdk](https://github.com/grafana/grafana-foundation-sdk). The workflow is:
-
-```
-gcx dev scaffold            Create a new Foundation SDK project (Go module, folder structure)
-        |
-        v
-gcx dev import              Import existing dashboards/alerts from Grafana as Go builder code
-gcx dev add                 Add new resources from templates
-        |
-        v
-    Edit Go code            Write dashboards, alerts, SLOs as typed Go — IDE completion, compile-time checks
-        |
-        v
-gcx dev serve               Live-reload preview server — edit code, see changes in browser
-gcx dev lint                Lint with built-in + custom Rego rules (PromQL/LogQL validators)
-        |
-        v
-    go run ./... > resources/    Build Go code → produce JSON/YAML manifests
-        |
-        v
-gcx resources push -p resources/    Push manifests to Grafana (idempotent, folder-before-dashboard)
-```
-
-The key insight: `gcx dev` commands produce and validate resources that feed into the standard `gcx resources` pipeline. The two tiers compose — developer tooling generates the same manifests that GitOps workflows consume.
-
-**Gap:** There's currently no `gcx dev render` or `gcx dev export` command to build Go code into manifests in one step. Today this requires `go run ./...` piped or redirected. A built-in render step would close the loop.
+The `gcx dev` commands provide an end-to-end workflow for managing Grafana resources as Go code using the [grafana-foundation-sdk](https://github.com/grafana/grafana-foundation-sdk) — scaffold, import, lint, live-preview, and push. Developer tooling generates the same manifests that the `gcx resources` pipeline and GitOps workflows consume. See [ARCHITECTURE.md § Observability as Code](ARCHITECTURE.md#6-observability-as-code-gcx-dev) for the full workflow.
 
 ## Grafana Assistant
 

@@ -1,13 +1,12 @@
 # Exit Code Taxonomy
 
 > Defines the exit codes used by gcx commands, their meanings, and how to set them in error converters.
-> Status markers: see [DESIGN.md § Status Markers](../../DESIGN.md#status-markers).
 
 ---
 
 ## 2. Exit Code Taxonomy
 
-### 2.1 Exit Codes `[CURRENT]`
+### 2.1 Exit Codes
 
 | Code | Constant | Meaning | When |
 |------|----------|---------|------|
@@ -29,7 +28,7 @@ Constants defined in `cmd/gcx/fail/exitcodes.go`.
   context and produces exit code 5.
 - Exit codes 2, 4, and 6 are defined as constants but not yet wired to converters.
 
-### 2.2 Setting Exit Codes in Converters `[ADOPT]`
+### 2.2 Setting Exit Codes in Converters
 
 When writing or modifying error converters in `cmd/gcx/fail/convert.go`,
 set the `ExitCode` field on `DetailedError`:
@@ -47,7 +46,7 @@ return &DetailedError{
 For partial failures, the command itself should set exit code 4 when
 `OperationSummary.FailedCount() > 0`.
 
-### 2.3 Cobra Usage Errors `[CURRENT]`
+### 2.3 Cobra Usage Errors
 
 Cobra itself handles usage errors (bad flags, missing required args). With
 `SilenceUsage: true` set on the root command, these errors flow through
