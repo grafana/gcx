@@ -7,6 +7,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -149,6 +150,32 @@ func TestSharedOptsValidate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSharedOptsSetup_GraphSupport(t *testing.T) {
+	t.Run("graph disabled rejects graph output", func(t *testing.T) {
+		opts := &dsquery.SharedOpts{}
+		flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+		opts.Setup(flags, false)
+
+		require.NoError(t, flags.Parse([]string{"-o", "graph"}))
+		err := opts.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unknown output format 'graph'")
+		assert.Contains(t, err.Error(), "json")
+		assert.Contains(t, err.Error(), "table")
+		assert.Contains(t, err.Error(), "wide")
+		assert.Contains(t, err.Error(), "yaml")
+	})
+
+	t.Run("graph enabled accepts graph output", func(t *testing.T) {
+		opts := &dsquery.SharedOpts{}
+		flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+		opts.Setup(flags, true)
+
+		require.NoError(t, flags.Parse([]string{"-o", "graph"}))
+		require.NoError(t, opts.Validate())
+	})
 }
 
 func TestResolveDatasourceFlag(t *testing.T) {

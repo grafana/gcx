@@ -89,7 +89,7 @@ Datasource is resolved from -d flag or datasources.prometheus in your context.`,
 		},
 	}
 
-	shared.Setup(cmd.Flags())
+	shared.Setup(cmd.Flags(), true)
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.prometheus is configured)")
 
 	return cmd
