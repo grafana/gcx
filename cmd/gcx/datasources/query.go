@@ -99,12 +99,14 @@ that do not have a dedicated subcommand.`,
 					return fmt.Errorf("failed to create client: %w", err)
 				}
 
+				effectiveLimit := dsquery.EffectiveLokiLimit(limit, shared.IO.OutputFormat, cmd.Flags().Changed("limit"))
+
 				req := loki.QueryRequest{
 					Query: expr,
 					Start: start,
 					End:   end,
 					Step:  step,
-					Limit: limit,
+					Limit: effectiveLimit,
 				}
 
 				resp, err := client.Query(ctx, datasourceUID, req)
@@ -159,7 +161,7 @@ that do not have a dedicated subcommand.`,
 	shared.Setup(cmd.Flags(), true)
 	cmd.Flags().StringVar(&profileType, "profile-type", "", "Profile type ID for pyroscope queries (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds')")
 	cmd.Flags().Int64Var(&maxNodes, "max-nodes", 1024, "Maximum nodes in flame graph (pyroscope only)")
-	cmd.Flags().IntVar(&limit, "limit", 1000, "Maximum number of log lines to return for loki queries (0 means no limit)")
+	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, fmt.Sprintf("Maximum number of log lines to return for loki queries (0 means no limit). If omitted, table/wide use %d and other formats use %d", dsquery.HumanLokiLimit, dsquery.DefaultLokiLimit))
 
 	return cmd
 }
