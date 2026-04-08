@@ -84,6 +84,7 @@ func listCmd(configOpts *cmdconfig.Options) *cobra.Command {
 							Name:     ds.Name,
 							Type:     ds.Type,
 							URL:      ds.URL,
+							Access:   ds.Access,
 							Default:  ds.IsDefault,
 							ReadOnly: ds.ReadOnly,
 						})
@@ -99,6 +100,7 @@ func listCmd(configOpts *cmdconfig.Options) *cobra.Command {
 					Name:     ds.Name,
 					Type:     ds.Type,
 					URL:      ds.URL,
+					Access:   ds.Access,
 					Default:  ds.IsDefault,
 					ReadOnly: ds.ReadOnly,
 				})
@@ -117,6 +119,7 @@ type datasourceInfo struct {
 	Name     string `json:"name" yaml:"name"`
 	Type     string `json:"type" yaml:"type"`
 	URL      string `json:"url" yaml:"url"`
+	Access   string `json:"access" yaml:"access"`
 	Default  bool   `json:"default" yaml:"default"`
 	ReadOnly bool   `json:"readOnly" yaml:"readOnly"`
 }
