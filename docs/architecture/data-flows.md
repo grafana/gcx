@@ -289,9 +289,7 @@ User invocation:
   │                     (mutually exclusive with --from/--to)            │
   │    --step           query step / interval (e.g. "15s", "1m")         │
   │    --limit          max log lines returned (loki and generic only;   │
-  │                     explicit value wins; when omitted: table/wide    │
-  │                     default to 50, other formats default to 1000;    │
-  │                     0 = no limit)                                    │
+  │                     default 50; 0 = no limit)                        │
   │    --profile-type   required for pyroscope; also on generic          │
   │    -o               output format: table (default), graph, json, yaml│
   └───────────────────────┬──────────────────────────────────────────────┘
@@ -345,10 +343,7 @@ User invocation:
   │      client.Query(ctx, datasourceUID, QueryRequest{...})             │
   │                                                                       │
   │        POST /apis/query.grafana.app/v0alpha1/namespaces/{ns}/query   │
-  │        Body: same structure with "type":"loki",                     │
-  │              "maxLines": effective limit (50 for implicit            │
-  │              table/wide, 1000 for other implicit formats, or          │
-  │              explicit --limit value)                                  │
+  │        Body: same structure with "type":"loki", "maxLines":limit     │
   └───────────────────────┬──────────────────────────────────────────────┘
                           │
   ┌───────────────────────▼──────────────────────────────────────────────┐

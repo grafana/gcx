@@ -30,8 +30,7 @@ Datasource is resolved from -d flag or datasources.loki in your context.
 Default table output is optimized for humans. Use -o raw for original line
 bodies or -o json for the full structured response.
 
-When --limit is omitted, table/wide use 50 lines by default; other formats
-keep the legacy 1000-line default.`,
+Default --limit is 50; use --limit 0 for no cap.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
@@ -80,14 +79,12 @@ keep the legacy 1000-line default.`,
 				return fmt.Errorf("failed to create client: %w", err)
 			}
 
-			effectiveLimit := dsquery.EffectiveLokiLimit(limit, shared.IO.OutputFormat, cmd.Flags().Changed("limit"))
-
 			req := loki.QueryRequest{
 				Query: expr,
 				Start: start,
 				End:   end,
 				Step:  step,
-				Limit: effectiveLimit,
+				Limit: limit,
 			}
 
 			resp, err := client.Query(ctx, datasourceUID, req)
@@ -105,7 +102,7 @@ keep the legacy 1000-line default.`,
 	shared.SetupTimeFlags(cmd.Flags())
 	cmd.Flags().StringVar(&shared.Step, "step", "", "Query step (e.g., '15s', '1m')")
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
-	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, fmt.Sprintf("Maximum number of log lines to return (0 means no limit). If omitted, table/wide use %d and other formats use %d", dsquery.HumanLokiLimit, dsquery.DefaultLokiLimit))
+	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, fmt.Sprintf("Maximum number of log lines to return (0 means no limit, default %d)", dsquery.DefaultLokiLimit))
 
 	return cmd
 }
