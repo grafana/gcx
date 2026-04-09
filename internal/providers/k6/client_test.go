@@ -1,6 +1,7 @@
 package k6_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -31,7 +32,7 @@ func newAuthenticatedClient(t *testing.T, handler http.Handler) *k6.Client {
 	}))
 	t.Cleanup(srv.Close)
 
-	client := k6.NewClient(srv.URL, nil)
+	client := k6.NewClient(context.Background(), srv.URL, nil)
 	err := client.Authenticate(t.Context(), "test-ap-token", 999)
 	require.NoError(t, err)
 	assert.Equal(t, 42, client.OrgID())
@@ -74,7 +75,7 @@ func TestClient_Authenticate(t *testing.T) {
 			srv := httptest.NewServer(tt.handler)
 			defer srv.Close()
 
-			client := k6.NewClient(srv.URL, nil)
+			client := k6.NewClient(context.Background(), srv.URL, nil)
 			err := client.Authenticate(t.Context(), "test-token", 999)
 
 			if tt.wantErr {

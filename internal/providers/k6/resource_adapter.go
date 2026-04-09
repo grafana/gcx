@@ -80,7 +80,7 @@ func authenticatedClient(ctx context.Context, loader CloudConfigLoader) (*Client
 	// token via the k8s transport round-tripper, causing 401 from the K6 API.
 	httpClient := httputils.NewDefaultClient(ctx)
 
-	client := NewClient(domain, httpClient)
+	client := NewClient(ctx, domain, httpClient)
 	if err := client.Authenticate(ctx, cfg.Token, cfg.Stack.ID); err != nil {
 		return nil, "", fmt.Errorf("k6 auth failed (PUT %s): %w -- ensure your token has k6 scopes", authPath, err)
 	}

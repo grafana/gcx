@@ -17,7 +17,7 @@ import (
 
 // newTestClient creates an instrumentation Client pointed at the given test server URL.
 func newTestClient(serverURL string) *instrumentation.Client {
-	f := fleet.NewClient(serverURL, "inst-id", "api-token", true, nil)
+	f := fleet.NewClient(context.Background(), serverURL, "inst-id", "api-token", true, nil)
 	return instrumentation.NewClient(f)
 }
 

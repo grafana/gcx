@@ -31,9 +31,9 @@ type Client struct {
 
 // NewClient creates a new Adaptive Metrics client.
 // If httpClient is nil, httputils.NewDefaultClient is used.
-func NewClient(baseURL string, tenantID int, apiToken string, httpClient *http.Client) *Client {
+func NewClient(ctx context.Context, baseURL string, tenantID int, apiToken string, httpClient *http.Client) *Client {
 	if httpClient == nil {
-		httpClient = httputils.NewDefaultClient(context.Background())
+		httpClient = httputils.NewDefaultClient(ctx)
 	}
 	return &Client{
 		baseURL:    baseURL,

@@ -122,7 +122,7 @@ func (l *configLoader) LoadOnCallClient(ctx context.Context) (*Client, string, e
 		}
 	}
 
-	client, err := NewClient(oncallURL, restCfg)
+	client, err := NewClient(ctx, oncallURL, restCfg)
 	if err != nil {
 		return nil, "", err
 	}

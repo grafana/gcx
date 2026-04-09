@@ -105,7 +105,7 @@ func (h *metricsHelper) recommendationsListCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client := NewClient(signalAuth.BaseURL, signalAuth.TenantID, signalAuth.APIToken, signalAuth.HTTPClient)
+			client := NewClient(ctx, signalAuth.BaseURL, signalAuth.TenantID, signalAuth.APIToken, signalAuth.HTTPClient)
 
 			recs, err := client.ListRecommendations(ctx, opts.Segment, opts.Actions)
 			if err != nil {
@@ -179,7 +179,7 @@ func (h *metricsHelper) recommendationsDiffCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client := NewClient(signalAuth.BaseURL, signalAuth.TenantID, signalAuth.APIToken, signalAuth.HTTPClient)
+			client := NewClient(ctx, signalAuth.BaseURL, signalAuth.TenantID, signalAuth.APIToken, signalAuth.HTTPClient)
 
 			allRecs, err := client.ListRecommendations(ctx, opts.Segment, nil)
 			if err != nil {
@@ -270,7 +270,7 @@ func (h *metricsHelper) recommendationsApplyCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client := NewClient(signalAuth.BaseURL, signalAuth.TenantID, signalAuth.APIToken, signalAuth.HTTPClient)
+			client := NewClient(ctx, signalAuth.BaseURL, signalAuth.TenantID, signalAuth.APIToken, signalAuth.HTTPClient)
 
 			if opts.All {
 				return applyAllRecommendations(cmd, client, opts)

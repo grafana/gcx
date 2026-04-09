@@ -235,4 +235,3 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) NamespacedRESTCon
 		oauthTransport: oauthTransport,
 	}
 }
-

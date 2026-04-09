@@ -15,7 +15,7 @@ import (
 
 func newTestClient(t *testing.T, server *httptest.Server) *metrics.Client {
 	t.Helper()
-	return metrics.NewClient(server.URL, 12345, "test-token", nil)
+	return metrics.NewClient(context.Background(), server.URL, 12345, "test-token", nil)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

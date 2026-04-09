@@ -75,7 +75,7 @@ func (s *applyTestServer) start(t *testing.T) *httptest.Server {
 }
 
 func makeApplyClient(serverURL string) *instrum.Client {
-	f := fleet.NewClient(serverURL, "inst-id", "api-token", true, nil)
+	f := fleet.NewClient(context.Background(), serverURL, "inst-id", "api-token", true, nil)
 	return instrum.NewClient(f)
 }
 

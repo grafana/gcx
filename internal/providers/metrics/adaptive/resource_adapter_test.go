@@ -135,7 +135,7 @@ func TestDryRunCallsCheckRulesInsteadOfMutation(t *testing.T) {
 
 func newTestEtagClient(t *testing.T, server *httptest.Server) *Client {
 	t.Helper()
-	return NewClient(server.URL, 1, "token", nil)
+	return NewClient(context.Background(), server.URL, 1, "token", nil)
 }
 
 func writeJSONEtag(w http.ResponseWriter, v any, etag string) {

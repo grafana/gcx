@@ -24,6 +24,7 @@ func TestLoggingRoundTripper_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
@@ -37,7 +38,10 @@ func TestLoggingRoundTripper_TransportError(t *testing.T) {
 	rt := &httputils.LoggingRoundTripper{Base: base}
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/api", nil)
 
-	_, err := rt.RoundTrip(req)
+	resp, err := rt.RoundTrip(req)
+	if resp != nil {
+		defer resp.Body.Close()
+	}
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("expected %v, got %v", wantErr, err)
 	}
@@ -54,6 +58,7 @@ func TestLoggingRoundTripper_5xx(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Fatalf("expected 502, got %d", resp.StatusCode)
 	}

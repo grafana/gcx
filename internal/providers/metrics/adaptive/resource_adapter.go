@@ -65,7 +65,7 @@ func newAdaptiveMetricsClient(ctx context.Context, loader *providers.ConfigLoade
 	if err != nil {
 		return nil, err
 	}
-	return NewClient(signalAuth.BaseURL, signalAuth.TenantID, signalAuth.APIToken, signalAuth.HTTPClient), nil
+	return NewClient(ctx, signalAuth.BaseURL, signalAuth.TenantID, signalAuth.APIToken, signalAuth.HTTPClient), nil
 }
 
 // etagManager manages the global ETag required by the Adaptive Metrics rules API.
