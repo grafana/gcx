@@ -2,15 +2,14 @@ package templates
 
 import (
 	"errors"
-	"fmt"
 	"io"
-	"text/tabwriter"
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/sigil/eval"
 	"github.com/grafana/gcx/internal/providers/sigil/sigilhttp"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -181,11 +180,11 @@ func (c *TableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []TemplateDefinition")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var tb *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "ID\tSCOPE\tKIND\tLATEST VERSION\tDESCRIPTION\tCREATED BY\tCREATED AT")
+		tb = style.NewTable("ID", "SCOPE", "KIND", "LATEST VERSION", "DESCRIPTION", "CREATED BY", "CREATED AT")
 	} else {
-		fmt.Fprintln(tw, "ID\tSCOPE\tKIND\tLATEST VERSION\tDESCRIPTION")
+		tb = style.NewTable("ID", "SCOPE", "KIND", "LATEST VERSION", "DESCRIPTION")
 	}
 
 	for _, t := range templates {
@@ -200,14 +199,12 @@ func (c *TableCodec) Encode(w io.Writer, v any) error {
 			if createdBy == "" {
 				createdBy = "-"
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				t.TemplateID, t.Scope, t.Kind, version, desc, createdBy, sigilhttp.FormatTime(t.CreatedAt))
+			tb.Row(t.TemplateID, t.Scope, t.Kind, version, desc, createdBy, sigilhttp.FormatTime(t.CreatedAt))
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-				t.TemplateID, t.Scope, t.Kind, version, desc)
+			tb.Row(t.TemplateID, t.Scope, t.Kind, version, desc)
 		}
 	}
-	return tw.Flush()
+	return tb.Render(w)
 }
 
 func (c *TableCodec) Decode(_ io.Reader, _ any) error {
@@ -225,19 +222,16 @@ func (c *VersionsTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []TemplateVersion")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "VERSION\tCHANGELOG\tCREATED BY\tCREATED AT")
-
+	t := style.NewTable("VERSION", "CHANGELOG", "CREATED BY", "CREATED AT")
 	for _, ver := range versions {
 		changelog := sigilhttp.Truncate(ver.Changelog, 50)
 		createdBy := ver.CreatedBy
 		if createdBy == "" {
 			createdBy = "-"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
-			ver.Version, changelog, createdBy, sigilhttp.FormatTime(ver.CreatedAt))
+		t.Row(ver.Version, changelog, createdBy, sigilhttp.FormatTime(ver.CreatedAt))
 	}
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *VersionsTableCodec) Decode(_ io.Reader, _ any) error {
