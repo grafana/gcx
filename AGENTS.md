@@ -139,6 +139,26 @@ Check work against these docs during planning, design, and implementation — in
 - **Implementation**: Check DESIGN (3) and ARCHITECTURE (4) — does the code follow UX rules and structural patterns?
 - **Pre-flight** (below): Final sweep across all four before pushing.
 
+## Releasing
+
+Automated via `make tag`. Requires `claude` CLI and [`svu`](https://github.com/caarlos0/svu).
+
+```bash
+make tag BUMP=patch   # or minor, major
+```
+
+This generates a changelog entry (via Claude), updates `CHANGELOG.md` and `.release-notes.md`, commits, tags, and pushes. The tag push triggers the GoReleaser workflow.
+
+**With branch protection** (can't push directly to main): the script will fail at the push step. Instead:
+1. Create a branch, commit the changelog, open a PR
+2. Merge the PR
+3. Tag the merge commit on main and push the tag:
+   ```bash
+   git checkout main && git pull
+   git tag v0.X.Y
+   git push origin v0.X.Y
+   ```
+
 ## Pre-Flight Checklist
 
 Run when code has been modified, before pushing or creating a PR.
