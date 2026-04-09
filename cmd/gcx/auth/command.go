@@ -14,6 +14,15 @@ import (
 	"github.com/spf13/pflag"
 )
 
+var unsupportedCommandsWarningTemplate = `WARNING: OAuth login is experimental. The following commands require a service account token instead:
+  - incidents
+  - oncall
+  - faro
+  - slo
+  - resources (partial)
+
+To use a token: gcx config set %s TOKEN`
+
 // Command returns the `auth` command group.
 func Command() *cobra.Command {
 	cmd := &cobra.Command{
@@ -55,7 +64,7 @@ func loginCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "login",
 		Args:  cobra.NoArgs,
-		Short: "Authenticate to a Grafana stack with OAuth",
+		Short: "(experimental) Authenticate to a Grafana stack with OAuth",
 		Long: `Opens a browser to authenticate with your Grafana stack using OAuth. This is an
 alternative to using an access token.
 
@@ -69,11 +78,13 @@ grafana.server.
 
 Without --server, the selected context must already define grafana.server. For
 example:
-	gcx config set contexts.<context>.grafana.server https://your-stack.grafana.net
-	gcx config use-context <context>`,
-		Example: `  gcx auth login --server https://your-stack.grafana.net
-  gcx auth login --context prod --server https://prod.grafana.net
-  gcx auth login`,
+	gcx config set contexts.my-stack.grafana.server https://my-stack.grafana.net
+	gcx config use-context my-stack
+
+` + fmt.Sprintf(unsupportedCommandsWarningTemplate, "contexts.CONTEXT.grafana.token"),
+		Example: `gcx auth login --server https://my-stack.grafana.net
+gcx auth login --context prod --server https://prod.grafana.net
+gcx auth login`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -101,9 +112,9 @@ func runLogin(cmd *cobra.Command, opts *loginOpts) error {
 			Summary: "Grafana server not configured",
 			Details: fmt.Sprintf("Context %q does not define grafana.server.", cfg.CurrentContext),
 			Suggestions: []string{
-				fmt.Sprintf("Set it: gcx config set %s https://your-stack.grafana.net", formatConfigPathArg("contexts", cfg.CurrentContext, "grafana", "server")),
-				"Or pass it now: gcx auth login --server https://your-stack.grafana.net",
-				"Or switch context: gcx config use-context <context>",
+				fmt.Sprintf("Set it: gcx config set %s https://my-stack.grafana.net", formatConfigPathArg("contexts", cfg.CurrentContext, "grafana", "server")),
+				"Or pass it now: gcx auth login --server https://my-stack.grafana.net",
+				"Or switch context: gcx config use-context my-context",
 			},
 		}
 	}
@@ -128,6 +139,8 @@ func runLogin(cmd *cobra.Command, opts *loginOpts) error {
 	}
 
 	fmt.Fprintf(cmd.OutOrStdout(), "Authenticated as %s. Tokens saved to context %q.\n", result.Email, cfg.CurrentContext)
+	tokenPath := formatConfigPathArg("contexts", cfg.CurrentContext, "grafana", "token")
+	fmt.Fprintf(cmd.ErrOrStderr(), "\n"+unsupportedCommandsWarningTemplate+"\n", tokenPath)
 
 	return nil
 }
