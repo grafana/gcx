@@ -129,9 +129,17 @@ func (context *Context) ResolveStackSlug() string {
 		return ""
 	}
 
-	parsed, err := url.Parse(context.Grafana.Server)
+	slug, _ := stackSlugFromServerURL(context.Grafana.Server)
+	return slug
+}
+
+// stackSlugFromServerURL attempts to extract a Grafana Cloud stack slug from
+// a server URL. It returns the slug and true for *.grafana.net and
+// *.grafana-dev.net URLs, or ("", false) for anything else.
+func stackSlugFromServerURL(serverURL string) (string, bool) {
+	parsed, err := url.Parse(serverURL)
 	if err != nil {
-		return ""
+		return "", false
 	}
 
 	host := parsed.Hostname()
@@ -142,11 +150,32 @@ func (context *Context) ResolveStackSlug() string {
 			if i := strings.Index(slug, "."); i >= 0 {
 				slug = slug[:i]
 			}
-			return slug
+			if slug == "" {
+				continue
+			}
+			return slug, true
 		}
 	}
 
-	return ""
+	return "", false
+}
+
+// ContextNameFromServerURL derives a context name from a Grafana server URL.
+// For Grafana Cloud URLs (*.grafana.net, *.grafana-dev.net), it returns the
+// stack slug (e.g. "mystack" from "https://mystack.grafana.net").
+// For other URLs, it returns the hostname.
+// Returns DefaultContextName if the URL cannot be parsed.
+func ContextNameFromServerURL(serverURL string) string {
+	if slug, ok := stackSlugFromServerURL(serverURL); ok {
+		return slug
+	}
+
+	parsed, err := url.Parse(serverURL)
+	if err != nil || parsed.Hostname() == "" {
+		return DefaultContextName
+	}
+
+	return parsed.Hostname()
 }
 
 // ResolveGCOMURL returns the Grafana Cloud API (GCOM) base URL for this context.
