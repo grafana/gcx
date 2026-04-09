@@ -40,8 +40,8 @@ gcx metrics labels -d <uid> --label code
 ## Pattern 3: Discovering Available Services
 
 ```bash
-# 1. List active scrape targets
-gcx metrics targets -d <uid>
+# 1. Check active scrape targets
+gcx metrics query -d <uid> 'up'
 
 # 2. Get unique jobs
 gcx metrics labels -d <uid> --label job
@@ -129,17 +129,14 @@ done
 Monitor scrape target health:
 
 ```bash
-# List active targets
-gcx metrics targets -d <uid>
-
-# Check for dropped targets (potential issues)
-gcx metrics targets -d <uid> --state dropped
-
-# List all targets (active + dropped)
-gcx metrics targets -d <uid> --state any
+# Check active targets via up metric
+gcx metrics query -d <uid> 'up'
 
 # Query for down targets
 gcx metrics query <uid> 'up == 0'
+
+# List available metrics metadata
+gcx metrics metadata -d <uid>
 ```
 
 ## Use Case Workflows

@@ -239,8 +239,8 @@ gcx metrics labels -d <uid> --label instance
 gcx metrics metadata -d <uid>
 gcx metrics metadata -d <uid> --metric http_requests_total
 
-# List scrape targets
-gcx metrics targets -d <uid>
+# Check scrape targets via up metric
+gcx metrics query -d <uid> 'up'
 ```
 
 ### Discovery Workflow

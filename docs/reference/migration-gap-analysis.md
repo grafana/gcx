@@ -18,7 +18,7 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 | `gcx session start/list/end/cleanup` | Temporary scoped troubleshooting sessions | **Missing** |
 | `gcx dir init/show/unpin` | Per-directory context pinning | **Missing** |
 | `gcx completion` | Shell completion (bash/zsh/fish/powershell) | **Exists** (`gcx completion bash\|fish\|powershell\|zsh`) |
-| `gcx version` | Print version | **Missing** (may be a hidden flag) |
+| `gcx version` | Print version | **Exists** (`gcx --version` flag) |
 | `gcx agent-card` | A2A-compliant agent card generation | **Missing** |
 | `gcx commands` | List all commands and schemas (LLM-friendly) | **Exists** (`gcx commands --flat -o json`, with `--validate` for live checks) |
 | `gcx help-tree` | Compact command tree for LLM/scripting | **Exists** (`gcx help-tree`) |
