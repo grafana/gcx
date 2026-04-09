@@ -1,17 +1,23 @@
-## gcx faro apps list
+## gcx frontend apps update
 
-List Faro apps.
+Update a Frontend Observability app from a file.
 
 ```
-gcx faro apps list [flags]
+gcx frontend apps update <name> [flags]
+```
+
+### Examples
+
+```
+  # Update an app using its slug-id.
+  gcx frontend apps update my-web-app-42 -f app.yaml
 ```
 
 ### Options
 
 ```
-  -h, --help            help for list
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
+  -f, --filename string   File containing the Frontend Observability app manifest (use - for stdin)
+  -h, --help              help for update
 ```
 
 ### Options inherited from parent commands
@@ -27,5 +33,5 @@ gcx faro apps list [flags]
 
 ### SEE ALSO
 
-* [gcx faro apps](gcx_faro_apps.md)	 - Manage Faro apps.
+* [gcx frontend apps](gcx_frontend_apps.md)	 - Manage Frontend Observability apps.
 

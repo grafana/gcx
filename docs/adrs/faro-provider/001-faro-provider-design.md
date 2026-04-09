@@ -34,7 +34,7 @@ Faro is a multi-resource provider (apps + sourcemaps), so apps get their own
 noun level:
 
 ```
-gcx faro
+gcx frontend
 └── apps (app)
     ├── list   [--limit int]
     ├── get    [slug-id] [--name <name>]
@@ -141,7 +141,7 @@ Wide columns: + CORSOrigins count, ExtraLogLabels count, Settings summary.
 
 ## Consequences
 
-- `gcx faro apps list/get/create/update/delete` provides ergonomic CRUD
+- `gcx frontend apps list/get/create/update/delete` provides ergonomic CRUD
 - `gcx resources get faroapps` works via adapter for push/pull pipeline
 - JSON/YAML output is identical between both paths (enforced by TypedCRUD)
 - Sourcemaps deferred as sub-resource verbs under `apps` — clean extension point

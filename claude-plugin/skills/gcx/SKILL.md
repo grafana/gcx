@@ -61,7 +61,7 @@ right group:
 | Fleet pipelines, collectors | `fleet` | `gcx fleet pipelines list` |
 | IRM Incidents | `incidents` | `gcx incidents list` |
 | Knowledge Graph (Asserts) | `kg` | `gcx kg entities list` |
-| Frontend Observability (Faro) | `faro` | `gcx faro apps list` |
+| Frontend Observability | `frontend` | `gcx frontend apps list` |
 | App Observability | `appo11y` | `gcx appo11y overrides list` |
 
 If no command exists for the requested operation, say so and propose the nearest

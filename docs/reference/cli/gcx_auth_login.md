@@ -23,7 +23,7 @@ example:
 WARNING: OAuth login is experimental. The following commands require a service account token instead:
   - incidents
   - oncall
-  - faro
+  - frontend
   - slo
   - resources (partial)
 

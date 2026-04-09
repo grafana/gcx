@@ -1,23 +1,25 @@
-## gcx faro apps update
+## gcx frontend apps remove-sourcemap
 
-Update a Faro app from a file.
+Remove sourcemap bundles from a Frontend Observability app.
 
 ```
-gcx faro apps update <name> [flags]
+gcx frontend apps remove-sourcemap <app-name> <bundle-id> [bundle-id...] [flags]
 ```
 
 ### Examples
 
 ```
-  # Update a Faro app using its slug-id.
-  gcx faro apps update my-web-app-42 -f app.yaml
+  # Remove a single sourcemap bundle.
+  gcx frontend apps remove-sourcemap my-web-app-42 1234567890-abc12
+
+  # Remove multiple bundles at once.
+  gcx frontend apps remove-sourcemap my-web-app-42 bundle-1 bundle-2 bundle-3
 ```
 
 ### Options
 
 ```
-  -f, --filename string   File containing the Faro app manifest (use - for stdin)
-  -h, --help              help for update
+  -h, --help   help for remove-sourcemap
 ```
 
 ### Options inherited from parent commands
@@ -33,5 +35,5 @@ gcx faro apps update <name> [flags]
 
 ### SEE ALSO
 
-* [gcx faro apps](gcx_faro_apps.md)	 - Manage Faro apps.
+* [gcx frontend apps](gcx_frontend_apps.md)	 - Manage Frontend Observability apps.
 

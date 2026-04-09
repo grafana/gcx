@@ -1,24 +1,26 @@
-## gcx faro apps apply-sourcemap
+## gcx frontend apps create
 
-Upload a sourcemap for a Faro app.
+Create a Frontend Observability app from a file.
 
 ```
-gcx faro apps apply-sourcemap <app-name> [flags]
+gcx frontend apps create [flags]
 ```
 
 ### Examples
 
 ```
-  # Upload a sourcemap bundle.
-  gcx faro apps apply-sourcemap my-web-app-42 -f bundle.js.map
+  # Create an app from a YAML file.
+  gcx frontend apps create -f app.yaml
+
+  # Create from stdin.
+  cat app.yaml | gcx frontend apps create -f -
 ```
 
 ### Options
 
 ```
-      --bundle-id string   Bundle ID (auto-generated if not set)
-  -f, --filename string    Path to the sourcemap file to upload
-  -h, --help               help for apply-sourcemap
+  -f, --filename string   File containing the Frontend Observability app manifest (use - for stdin)
+  -h, --help              help for create
 ```
 
 ### Options inherited from parent commands
@@ -34,5 +36,5 @@ gcx faro apps apply-sourcemap <app-name> [flags]
 
 ### SEE ALSO
 
-* [gcx faro apps](gcx_faro_apps.md)	 - Manage Faro apps.
+* [gcx frontend apps](gcx_frontend_apps.md)	 - Manage Frontend Observability apps.
 

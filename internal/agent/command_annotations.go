@@ -108,16 +108,16 @@ var commandAnnotations = map[string]annotation{
 	"gcx appo11y settings update":  {Cost: "small"},
 
 	// -----------------------------------------------------------------------
-	// Faro provider
+	// Frontend Observability provider
 	// -----------------------------------------------------------------------
-	"gcx faro apps apply-sourcemap":  {Cost: "small", Hint: "<app-name> -f <sourcemap-file>"},
-	"gcx faro apps create":           {Cost: "small"},
-	"gcx faro apps delete":           {Cost: "small"},
-	"gcx faro apps get":              {Cost: "small"},
-	"gcx faro apps list":             {Cost: "small"},
-	"gcx faro apps remove-sourcemap": {Cost: "small"},
-	"gcx faro apps show-sourcemaps":  {Cost: "small"},
-	"gcx faro apps update":           {Cost: "small"},
+	"gcx frontend apps apply-sourcemap":  {Cost: "small", Hint: "<app-name> -f <sourcemap-file>"},
+	"gcx frontend apps create":           {Cost: "small"},
+	"gcx frontend apps delete":           {Cost: "small"},
+	"gcx frontend apps get":              {Cost: "small"},
+	"gcx frontend apps list":             {Cost: "small"},
+	"gcx frontend apps remove-sourcemap": {Cost: "small"},
+	"gcx frontend apps show-sourcemaps":  {Cost: "small"},
+	"gcx frontend apps update":           {Cost: "small"},
 
 	// -----------------------------------------------------------------------
 	// Fleet provider

@@ -1,13 +1,13 @@
-## gcx faro
+## gcx frontend
 
-Manage Grafana Frontend Observability (Faro) resources
+Manage Grafana Frontend Observability resources
 
 ### Options
 
 ```
       --config string    Path to the configuration file to use
       --context string   Name of the context to use
-  -h, --help             help for faro
+  -h, --help             help for frontend
 ```
 
 ### Options inherited from parent commands
@@ -22,5 +22,5 @@ Manage Grafana Frontend Observability (Faro) resources
 ### SEE ALSO
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
-* [gcx faro apps](gcx_faro_apps.md)	 - Manage Faro apps.
+* [gcx frontend apps](gcx_frontend_apps.md)	 - Manage Frontend Observability apps.
 
