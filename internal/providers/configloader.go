@@ -37,9 +37,9 @@ type CloudRESTConfig struct {
 
 // HTTPClient returns a TLS-aware HTTP client derived from the REST config.
 // Returns a new default HTTP client when no REST config is present.
-func (c CloudRESTConfig) HTTPClient() (*http.Client, error) {
+func (c CloudRESTConfig) HTTPClient(ctx context.Context) (*http.Client, error) {
 	if c.RESTConfig == nil {
-		return httputils.NewDefaultClient(context.Background()), nil
+		return httputils.NewDefaultClient(ctx), nil
 	}
 	return rest.HTTPClientFor(c.RESTConfig)
 }

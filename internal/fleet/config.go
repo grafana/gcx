@@ -55,13 +55,13 @@ func LoadClientWithStack(ctx context.Context, loader ConfigLoader) (*ClientResul
 	}
 
 	instanceID := strconv.Itoa(cloudCfg.Stack.AgentManagementInstanceID)
-	httpClient, err := cloudCfg.HTTPClient()
+	httpClient, err := cloudCfg.HTTPClient(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("fleet: failed to create HTTP client: %w", err)
 	}
 
 	return &ClientResult{
-		Client:    NewClient(url, instanceID, cloudCfg.Token, true, httpClient),
+		Client:    NewClient(ctx, url, instanceID, cloudCfg.Token, true, httpClient),
 		Namespace: cloudCfg.Namespace,
 		Stack:     cloudCfg.Stack,
 	}, nil

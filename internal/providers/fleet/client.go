@@ -20,9 +20,9 @@ type Client struct {
 // When useBasicAuth is true, requests use Basic auth with instanceID:apiToken.
 // Otherwise, requests use Bearer token auth.
 // If httpClient is nil, a default client with a 30-second timeout is used.
-func NewClient(baseURL, instanceID, apiToken string, useBasicAuth bool, httpClient *http.Client) *Client {
+func NewClient(ctx context.Context, baseURL, instanceID, apiToken string, useBasicAuth bool, httpClient *http.Client) *Client {
 	return &Client{
-		Client: fleetbase.NewClient(baseURL, instanceID, apiToken, useBasicAuth, httpClient),
+		Client: fleetbase.NewClient(ctx, baseURL, instanceID, apiToken, useBasicAuth, httpClient),
 	}
 }
 

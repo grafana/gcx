@@ -61,7 +61,7 @@ func TestNewClient_DoRequest_AuthHeaders(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := fleet.NewClient(server.URL, tt.instanceID, tt.apiToken, tt.useBasicAuth, nil)
+			client := fleet.NewClient(context.Background(), server.URL, tt.instanceID, tt.apiToken, tt.useBasicAuth, nil)
 			resp, err := client.DoRequest(context.Background(), "/some.v1.Service/Method", nil)
 			require.NoError(t, err)
 			defer resp.Body.Close()
@@ -114,7 +114,7 @@ func TestNewClient_DoRequest_RequestFormat(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := fleet.NewClient(server.URL, "inst", "tok", true, nil)
+			client := fleet.NewClient(context.Background(), server.URL, "inst", "tok", true, nil)
 			resp, err := client.DoRequest(context.Background(), tt.path, tt.body)
 			require.NoError(t, err)
 			defer resp.Body.Close()
@@ -140,7 +140,7 @@ func TestNewClient_DoRequest_URLTrimming(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := fleet.NewClient(server.URL+"/", "inst", "tok", true, nil)
+	client := fleet.NewClient(context.Background(), server.URL+"/", "inst", "tok", true, nil)
 	resp, err := client.DoRequest(context.Background(), "/path.v1.Service/Method", nil)
 	require.NoError(t, err)
 	defer resp.Body.Close()

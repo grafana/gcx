@@ -26,9 +26,9 @@ type Client struct {
 // When useBasicAuth is true, requests use Basic auth with instanceID:apiToken.
 // Otherwise, requests use Bearer token auth.
 // If httpClient is nil, httputils.NewDefaultClient is used.
-func NewClient(baseURL, instanceID, apiToken string, useBasicAuth bool, httpClient *http.Client) *Client {
+func NewClient(ctx context.Context, baseURL, instanceID, apiToken string, useBasicAuth bool, httpClient *http.Client) *Client {
 	if httpClient == nil {
-		httpClient = httputils.NewDefaultClient(context.Background())
+		httpClient = httputils.NewDefaultClient(ctx)
 	}
 	return &Client{
 		baseURL:      strings.TrimRight(baseURL, "/"),

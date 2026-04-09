@@ -336,7 +336,7 @@ func TestPipelineProtectionGuard(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := fleet.NewClient(server.URL, "inst", "token", true, nil)
+			client := fleet.NewClient(context.Background(), server.URL, "inst", "token", true, nil)
 			pipeline, err := client.GetPipeline(context.Background(), "123")
 			require.NoError(t, err)
 			require.NotNil(t, pipeline)

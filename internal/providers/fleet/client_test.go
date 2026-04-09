@@ -14,7 +14,7 @@ import (
 
 func newTestClient(t *testing.T, server *httptest.Server) *fleet.Client {
 	t.Helper()
-	return fleet.NewClient(server.URL, "test-instance", "test-token", true, nil)
+	return fleet.NewClient(context.Background(), server.URL, "test-instance", "test-token", true, nil)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

@@ -52,7 +52,7 @@ func getCachedSignalAuth(ctx context.Context, loader *providers.ConfigLoader, si
 		return SignalAuth{}, false, fmt.Errorf("adaptive: failed to load cloud config for token: %w", cloudErr)
 	}
 
-	httpClient, httpErr := cloudCfg.HTTPClient()
+	httpClient, httpErr := cloudCfg.HTTPClient(ctx)
 	if httpErr != nil {
 		return SignalAuth{}, false, fmt.Errorf("adaptive: failed to create HTTP client: %w", httpErr)
 	}
@@ -89,7 +89,7 @@ func ResolveSignalAuth(ctx context.Context, loader *providers.ConfigLoader, sign
 		return SignalAuth{}, err
 	}
 
-	httpClient, err := cloudCfg.HTTPClient()
+	httpClient, err := cloudCfg.HTTPClient(ctx)
 	if err != nil {
 		return SignalAuth{}, fmt.Errorf("adaptive: failed to create HTTP client: %w", err)
 	}
