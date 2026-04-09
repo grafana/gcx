@@ -628,6 +628,125 @@ func TestRegistryIndex_RegisterStatic(t *testing.T) {
 	})
 }
 
+func TestRegistryIndex_LookupPreferredPerGroup(t *testing.T) {
+	tests := []struct {
+		name      string
+		discovery func() ([]*metav1.APIGroup, []*metav1.APIResourceList)
+		gvk       resources.PartialGVK
+		want      resources.Descriptors
+		wantOK    bool
+	}{
+		{
+			name:      "no group returns preferred version from every group",
+			discovery: getMultiGroupSameResourceDiscovery,
+			gvk:       resources.PartialGVK{Resource: "datasource"},
+			want: resources.Descriptors{
+				{
+					Kind:     "DataSource",
+					Plural:   "datasources",
+					Singular: "datasource",
+					GroupVersion: schema.GroupVersion{
+						Group:   "prometheus.datasource.grafana.app",
+						Version: "v0alpha1",
+					},
+				},
+				{
+					Kind:     "DataSource",
+					Plural:   "datasources",
+					Singular: "datasource",
+					GroupVersion: schema.GroupVersion{
+						Group:   "loki.datasource.grafana.app",
+						Version: "v0alpha1",
+					},
+				},
+				{
+					Kind:     "DataSource",
+					Plural:   "datasources",
+					Singular: "datasource",
+					GroupVersion: schema.GroupVersion{
+						Group:   "tempo.datasource.grafana.app",
+						Version: "v0alpha1",
+					},
+				},
+			},
+			wantOK: true,
+		},
+		{
+			name:      "with group returns only that group",
+			discovery: getMultiGroupSameResourceDiscovery,
+			gvk: resources.PartialGVK{
+				Resource: "datasource",
+				Group:    "loki.datasource.grafana.app",
+			},
+			want: resources.Descriptors{
+				{
+					Kind:     "DataSource",
+					Plural:   "datasources",
+					Singular: "datasource",
+					GroupVersion: schema.GroupVersion{
+						Group:   "loki.datasource.grafana.app",
+						Version: "v0alpha1",
+					},
+				},
+			},
+			wantOK: true,
+		},
+		{
+			name:      "single group resource returns one descriptor",
+			discovery: getSingleVersionDiscovery,
+			gvk:       resources.PartialGVK{Resource: "dashboard"},
+			want: resources.Descriptors{
+				{
+					Kind:     "Dashboard",
+					Plural:   "dashboards",
+					Singular: "dashboard",
+					GroupVersion: schema.GroupVersion{
+						Group:   "dashboard.grafana.app",
+						Version: "v1",
+					},
+				},
+			},
+			wantOK: true,
+		},
+		{
+			name:      "multi-version single group returns preferred version only",
+			discovery: getMultipleVersionsDiscovery,
+			gvk:       resources.PartialGVK{Resource: "dashboard"},
+			want: resources.Descriptors{
+				{
+					Kind:     "Dashboard",
+					Plural:   "dashboards",
+					Singular: "dashboard",
+					GroupVersion: schema.GroupVersion{
+						Group:   "dashboard.grafana.app",
+						Version: "v2",
+					},
+				},
+			},
+			wantOK: true,
+		},
+		{
+			name:      "non-existent resource returns not found",
+			discovery: getSingleVersionDiscovery,
+			gvk:       resources.PartialGVK{Resource: "nonexistent"},
+			want:      nil,
+			wantOK:    false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			registryIndex := discovery.NewRegistryIndex()
+			groups, resources := test.discovery()
+			require.NoError(t, registryIndex.Update(t.Context(), groups, resources))
+
+			actual, ok := registryIndex.LookupPreferredPerGroup(test.gvk)
+			assert.ElementsMatch(t, test.want, actual)
+			assert.Equal(t, test.wantOK, ok)
+		})
+	}
+}
+
 func getEmptyDiscovery() ([]*metav1.APIGroup, []*metav1.APIResourceList) {
 	return []*metav1.APIGroup{}, []*metav1.APIResourceList{}
 }
@@ -801,6 +920,64 @@ func getMixedVersionsDiscovery() ([]*metav1.APIGroup, []*metav1.APIResourceList)
 					Kind:         "Folder",
 					Namespaced:   true,
 				},
+			},
+		},
+	}
+
+	return groups, resources
+}
+
+// getMultiGroupSameResourceDiscovery simulates the datasource scenario where
+// the same resource name ("datasource"/"datasources") appears across multiple
+// API groups (one per datasource plugin type).
+func getMultiGroupSameResourceDiscovery() ([]*metav1.APIGroup, []*metav1.APIResourceList) {
+	groups := []*metav1.APIGroup{
+		{
+			Name: "prometheus.datasource.grafana.app",
+			Versions: []metav1.GroupVersionForDiscovery{
+				{GroupVersion: "prometheus.datasource.grafana.app/v0alpha1", Version: "v0alpha1"},
+			},
+			PreferredVersion: metav1.GroupVersionForDiscovery{
+				GroupVersion: "prometheus.datasource.grafana.app/v0alpha1", Version: "v0alpha1",
+			},
+		},
+		{
+			Name: "loki.datasource.grafana.app",
+			Versions: []metav1.GroupVersionForDiscovery{
+				{GroupVersion: "loki.datasource.grafana.app/v0alpha1", Version: "v0alpha1"},
+			},
+			PreferredVersion: metav1.GroupVersionForDiscovery{
+				GroupVersion: "loki.datasource.grafana.app/v0alpha1", Version: "v0alpha1",
+			},
+		},
+		{
+			Name: "tempo.datasource.grafana.app",
+			Versions: []metav1.GroupVersionForDiscovery{
+				{GroupVersion: "tempo.datasource.grafana.app/v0alpha1", Version: "v0alpha1"},
+			},
+			PreferredVersion: metav1.GroupVersionForDiscovery{
+				GroupVersion: "tempo.datasource.grafana.app/v0alpha1", Version: "v0alpha1",
+			},
+		},
+	}
+
+	resources := []*metav1.APIResourceList{
+		{
+			GroupVersion: "prometheus.datasource.grafana.app/v0alpha1",
+			APIResources: []metav1.APIResource{
+				{Name: "datasources", SingularName: "datasource", Kind: "DataSource", Namespaced: true},
+			},
+		},
+		{
+			GroupVersion: "loki.datasource.grafana.app/v0alpha1",
+			APIResources: []metav1.APIResource{
+				{Name: "datasources", SingularName: "datasource", Kind: "DataSource", Namespaced: true},
+			},
+		},
+		{
+			GroupVersion: "tempo.datasource.grafana.app/v0alpha1",
+			APIResources: []metav1.APIResource{
+				{Name: "datasources", SingularName: "datasource", Kind: "DataSource", Namespaced: true},
 			},
 		},
 	}

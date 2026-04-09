@@ -354,79 +354,33 @@ func (c *tableCodec) Encode(output io.Writer, input any) error {
 	// and controls whether columns are omitted in (wide: false) tables.
 	table := &metav1.Table{
 		ColumnDefinitions: []metav1.TableColumnDefinition{
-			{
-				Name:        "KIND",
-				Type:        "string",
-				Priority:    0,
-				Description: "The kind of the resource.",
-			},
-			{
-				Name:        "NAME",
-				Type:        "string",
-				Format:      "name",
-				Priority:    0,
-				Description: "The name of the resource.",
-			},
-			{
-				Name:        "NAMESPACE",
-				Priority:    0,
-				Description: "The namespace of the resource.",
-			},
-			{
-				Name:        "AGE",
-				Type:        "string",
-				Format:      "date-time",
-				Priority:    1,
-				Description: "The age of the resource.",
-			},
+			{Name: "KIND", Type: "string", Priority: 0, Description: "The kind of the resource."},
+			{Name: "GROUP", Type: "string", Priority: 0, Description: "The API group name."},
+			{Name: "VERSION", Type: "string", Priority: 1, Description: "The API version."},
+			{Name: "NAME", Type: "string", Format: "name", Priority: 0, Description: "The name of the resource."},
+			{Name: "AGE", Type: "string", Format: "date-time", Priority: 1, Description: "The age of the resource."},
 		},
-	}
-
-	if c.wide {
-		table.ColumnDefinitions = append(table.ColumnDefinitions, metav1.TableColumnDefinition{
-			Name:     "GROUPVERSION",
-			Type:     "string",
-			Priority: 0,
-		})
 	}
 
 	noTruncate := terminal.NoTruncate()
 	for _, r := range items.Items {
+		gvk := r.GroupVersionKind()
 		age := duration.HumanDuration(time.Since(r.GetCreationTimestamp().Time))
-		var row metav1.TableRow
-		if c.wide {
-			row = metav1.TableRow{
-				Cells: []any{
-					sanitizeCell(r.GetKind(), noTruncate),
-					sanitizeCell(r.GetName(), noTruncate),
-					sanitizeCell(r.GetNamespace(), noTruncate),
-					sanitizeCell(age, noTruncate),
-					sanitizeCell(r.GroupVersionKind().GroupVersion().String(), noTruncate),
-				},
-				Object: runtime.RawExtension{
-					Object: &r,
-				},
-			}
-		} else {
-			row = metav1.TableRow{
-				Cells: []any{
-					sanitizeCell(r.GetKind(), noTruncate),
-					sanitizeCell(r.GetName(), noTruncate),
-					sanitizeCell(r.GetNamespace(), noTruncate),
-					sanitizeCell(age, noTruncate),
-				},
-				Object: runtime.RawExtension{
-					Object: &r,
-				},
-			}
-		}
 
-		table.Rows = append(table.Rows, row)
+		table.Rows = append(table.Rows, metav1.TableRow{
+			Cells: []any{
+				sanitizeCell(r.GetKind(), noTruncate),
+				sanitizeCell(gvk.Group, noTruncate),
+				sanitizeCell(gvk.Version, noTruncate),
+				sanitizeCell(r.GetName(), noTruncate),
+				sanitizeCell(age, noTruncate),
+			},
+			Object: runtime.RawExtension{Object: &r},
+		})
 	}
 
 	printer := printers.NewTablePrinter(printers.PrintOptions{
-		Wide:       c.wide,
-		ShowLabels: c.wide,
+		Wide: c.wide,
 		// TODO: sorting doesn't actually do anything,
 		// though it is supported in the options.
 		// SortBy:     "name",

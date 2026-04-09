@@ -383,6 +383,47 @@ func TestRegistry_MakeFilters_WithOptions(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:                   "preferPreferredVersion=true with multi-group resource returns all groups",
+			discovery:              getMultiGroupSameResourceDiscovery,
+			preferPreferredVersion: true,
+			selectors: resources.Selectors{
+				{
+					Type:             resources.FilterTypeAll,
+					GroupVersionKind: resources.PartialGVK{Resource: "datasource"},
+				},
+			},
+			want: resources.Filters{
+				{
+					Type: resources.FilterTypeAll,
+					Descriptor: resources.Descriptor{
+						GroupVersion: schema.GroupVersion{Group: "prometheus.datasource.grafana.app", Version: "v0alpha1"},
+						Kind:         "DataSource",
+						Plural:       "datasources",
+						Singular:     "datasource",
+					},
+				},
+				{
+					Type: resources.FilterTypeAll,
+					Descriptor: resources.Descriptor{
+						GroupVersion: schema.GroupVersion{Group: "loki.datasource.grafana.app", Version: "v0alpha1"},
+						Kind:         "DataSource",
+						Plural:       "datasources",
+						Singular:     "datasource",
+					},
+				},
+				{
+					Type: resources.FilterTypeAll,
+					Descriptor: resources.Descriptor{
+						GroupVersion: schema.GroupVersion{Group: "tempo.datasource.grafana.app", Version: "v0alpha1"},
+						Kind:         "DataSource",
+						Plural:       "datasources",
+						Singular:     "datasource",
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
 			name:                   "specific version provided ignores preferPreferredVersion",
 			discovery:              getMixedVersionsDiscovery,
 			preferPreferredVersion: true,
