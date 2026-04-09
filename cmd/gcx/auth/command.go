@@ -64,7 +64,7 @@ func loginCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "login",
 		Args:  cobra.NoArgs,
-		Short: "(experimental) Authenticate to a Grafana stack with OAuth",
+		Short: "Authenticate to a Grafana stack with OAuth (experimental)",
 		Long: `Opens a browser to authenticate with your Grafana stack using OAuth. This is an
 alternative to using an access token.
 
