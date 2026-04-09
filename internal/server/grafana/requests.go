@@ -1,10 +1,12 @@
 package grafana
 
 import (
+	"crypto/tls"
 	"errors"
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/httputils"
@@ -28,11 +30,15 @@ func AuthenticateAndProxyHandler(cfg *config.Context) http.HandlerFunc {
 		AuthenticateRequest(cfg.Grafana, req)
 		req.Header.Set("User-Agent", httputils.UserAgent)
 
-		client, err := httputils.NewHTTPClient(cfg)
-		if err != nil {
-			httputils.Error(r, w, http.StatusText(http.StatusInternalServerError), err, http.StatusInternalServerError)
-			return
+		var tlsCfg *tls.Config
+		if cfg.Grafana != nil && cfg.Grafana.TLS != nil {
+			tlsCfg = cfg.Grafana.TLS.ToStdTLSConfig()
 		}
+		client := httputils.NewClient(httputils.ClientOpts{
+			TLSConfig:   tlsCfg,
+			Timeout:     10 * time.Second,
+			Middlewares: []httputils.Middleware{httputils.LoggingMiddleware, httputils.RequestResponseLoggingMiddleware},
+		})
 
 		client.CheckRedirect = func(req *http.Request, _ []*http.Request) error {
 			// Being redirected to the login page means authentication is misconfigured.

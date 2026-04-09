@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"html/template"
@@ -64,8 +65,13 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 
 	s.subpath = strings.TrimSuffix(u.Path, "/")
+
+	var tlsCfg *tls.Config
+	if s.context.Grafana != nil && s.context.Grafana.TLS != nil {
+		tlsCfg = s.context.Grafana.TLS.ToStdTLSConfig()
+	}
 	s.proxy = &httputil.ReverseProxy{
-		Transport: httputils.NewTransport(s.context),
+		Transport: httputils.NewTransport(tlsCfg),
 		Rewrite: func(r *httputil.ProxyRequest) {
 			u.Path = "" // to ensure possible sub-paths won't be added twice.
 			r.SetURL(u)
