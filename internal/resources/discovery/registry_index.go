@@ -135,6 +135,56 @@ func (r *RegistryIndex) LookupPartialGVK(gvk resources.PartialGVK) (resources.De
 	return desc, true
 }
 
+// LookupPreferredPerGroup returns the preferred-version descriptor for every group
+// that supports the given resource. When no group is specified in the partial GVK,
+// this returns one descriptor per unique group (using each group's preferred version)
+// instead of picking an arbitrary single group.
+// If a group or version is specified, it falls back to single-descriptor lookup.
+func (r *RegistryIndex) LookupPreferredPerGroup(gvk resources.PartialGVK) (resources.Descriptors, bool) {
+	if gvk.Group != "" || gvk.Version != "" {
+		desc, ok := r.LookupPartialGVK(gvk)
+		if !ok {
+			return nil, false
+		}
+		return resources.Descriptors{desc}, true
+	}
+
+	candidates, ok := r.getKindCandidates(gvk.Resource)
+	if !ok {
+		return nil, false
+	}
+
+	// Collect one descriptor per unique group, using each group's preferred version.
+	seen := make(map[string]struct{})
+	var result resources.Descriptors
+	for _, gk := range candidates {
+		if _, dup := seen[gk.Group]; dup {
+			continue
+		}
+		seen[gk.Group] = struct{}{}
+
+		gv, ok := r.preferredVersions[gk.Group]
+		if !ok {
+			continue
+		}
+		descs, ok := r.descriptors[gv]
+		if !ok {
+			continue
+		}
+		for _, desc := range descs {
+			if desc.Kind == gk.Kind {
+				result = append(result, desc)
+				break
+			}
+		}
+	}
+
+	if len(result) == 0 {
+		return nil, false
+	}
+	return result, true
+}
+
 // LookupAllVersionsForPartialGVK returns all descriptors for the provided partial GVK.
 // This is useful when you want to get all supported versions of a resource type.
 // If group is provided, it will only return versions for that group.
