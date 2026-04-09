@@ -82,9 +82,9 @@ example:
 	gcx config use-context my-stack
 
 ` + fmt.Sprintf(unsupportedCommandsWarningTemplate, "contexts.CONTEXT.grafana.token"),
-		Example: `gcx auth login --server https://my-stack.grafana.net
-gcx auth login --context prod --server https://prod.grafana.net
-gcx auth login`,
+		Example: `  gcx auth login --server https://my-stack.grafana.net
+  gcx auth login --context prod --server https://prod.grafana.net
+  gcx auth login`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
