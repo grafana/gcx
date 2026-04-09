@@ -8,7 +8,7 @@ import (
 
 	authlib "github.com/grafana/authlib/types"
 	"github.com/grafana/gcx/internal/auth"
-	"github.com/grafana/grafana-app-sdk/logging"
+	"github.com/grafana/gcx/internal/httputils"
 	"k8s.io/client-go/rest"
 )
 
@@ -226,7 +226,7 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) NamespacedRESTCon
 		if prevWrap != nil {
 			rt = prevWrap(rt)
 		}
-		return &debugTransport{base: rt}
+		return &httputils.LoggingRoundTripper{Base: rt}
 	}
 
 	return NamespacedRESTConfig{
@@ -236,21 +236,3 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) NamespacedRESTCon
 	}
 }
 
-// debugTransport logs HTTP method, URL, and response status at Debug level.
-type debugTransport struct {
-	base http.RoundTripper
-}
-
-func (t *debugTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	logger := logging.FromContext(req.Context())
-	logger.Debug("HTTP request", "method", req.Method, "url", req.URL.String())
-
-	resp, err := t.base.RoundTrip(req)
-	if err != nil {
-		logger.Debug("HTTP error", "method", req.Method, "url", req.URL.String(), "error", err)
-		return resp, err
-	}
-
-	logger.Debug("HTTP response", "method", req.Method, "url", req.URL.String(), "status", resp.StatusCode)
-	return resp, nil
-}
