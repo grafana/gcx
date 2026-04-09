@@ -102,7 +102,7 @@ Default --limit is 50; use --limit 0 for no cap.`,
 	shared.SetupTimeFlags(cmd.Flags())
 	cmd.Flags().StringVar(&shared.Step, "step", "", "Query step (e.g., '15s', '1m')")
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
-	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, fmt.Sprintf("Maximum number of log lines to return (0 means no limit, default %d)", dsquery.DefaultLokiLimit))
+	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, "Maximum number of log lines to return (0 means no limit)")
 
 	return cmd
 }

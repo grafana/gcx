@@ -159,7 +159,7 @@ that do not have a dedicated subcommand.`,
 	shared.Setup(cmd.Flags(), true)
 	cmd.Flags().StringVar(&profileType, "profile-type", "", "Profile type ID for pyroscope queries (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds')")
 	cmd.Flags().Int64Var(&maxNodes, "max-nodes", 1024, "Maximum nodes in flame graph (pyroscope only)")
-	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, fmt.Sprintf("Maximum number of log lines to return for loki queries (0 means no limit, default %d)", dsquery.DefaultLokiLimit))
+	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, "Maximum number of log lines to return for loki queries (0 means no limit)")
 
 	return cmd
 }
