@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/gcx/cmd/gcx/setup"
 	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/providers"
 	_ "github.com/grafana/gcx/internal/providers/alert"     // Provider registrations — blank imports trigger init() self-registration.
@@ -75,6 +76,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	agentFlag := false
 	verbosity := 0
 	contextName := ""
+	logHTTPPayload := false
 
 	rootCmd := &cobra.Command{
 		Use:           path.Base(os.Args[0]),
@@ -138,6 +140,10 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 				ctx = internalconfig.ContextWithName(ctx, contextName)
 			}
 
+			if logHTTPPayload {
+				ctx = httputils.WithPayloadLogging(ctx, true)
+			}
+
 			cmd.SetContext(ctx)
 		},
 		Annotations: map[string]string{
@@ -191,6 +197,8 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd.PersistentFlags().BoolVar(&agentFlag, "agent", false, "Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.")
 	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "Verbose mode. Multiple -v options increase the verbosity (maximum: 3).")
 	rootCmd.PersistentFlags().StringVar(&contextName, "context", "", "Name of the context to use (overrides current-context in config)")
+	rootCmd.PersistentFlags().BoolVar(&logHTTPPayload, "log-http-payload", false,
+		"Log full HTTP request/response bodies (includes headers — may expose tokens)")
 
 	// Initialize Cobra's built-in help/completion commands here so any code
 	// traversing the command tree before ExecuteContext() sees the same shape
