@@ -371,44 +371,50 @@ data-frame envelope:
 **Does NOT use:**
 - `dynamic.Interface`, `Unstructured`, or GVK resolution
 - `ParseStatusError` / `APIError` (errors are plain Go errors with HTTP status)
-- `internal/httputils` (manages its own `*http.Client`)
 
 ---
 
 ## HTTP Utilities (`internal/httputils`)
 
-These utilities are used by the **local development server** (`internal/server`),
-not by the dynamic client path.
+Central HTTP client factory for all non-K8s HTTP calls. The K8s dynamic client
+path uses `rest.Config` with a `WrapTransport` hook that chains
+`LoggingRoundTripper`; all other callers use `httputils` directly.
 
-### `client.go` — Transport Factory
-
-```go
-func NewTransport(gCtx *config.Context) *http.Transport  // TLS-aware transport
-func NewHTTPClient(gCtx *config.Context) (*http.Client, error)
-```
-
-`NewHTTPClient` wraps the transport in `LoggedHTTPRoundTripper` and applies a
-10-second request timeout. Used by the serve command's reverse proxy.
-
-### `logger.go` — Logging Round-Tripper
+### `client.go` — Client Factory
 
 ```go
-type LoggedHTTPRoundTripper struct {
-    DecoratedTransport http.RoundTripper
-}
+func NewDefaultClient(ctx context.Context) *http.Client   // standard: LoggingRoundTripper, 60s timeout
+func NewClient(opts ClientOpts) *http.Client               // custom: explicit middleware, TLS, timeout
 ```
 
-Dumps full request/response bytes to debug log via `httputil.DumpRequest` /
-`httputil.DumpResponse`. Applied as the outermost transport layer in
-`NewHTTPClient`. This logging is context-aware (uses `logging.FromContext`).
+`NewDefaultClient` wraps the transport with `LoggingRoundTripper` (Debug for
+2xx/3xx/4xx, Warn for 5xx + transport errors). When `PayloadLogging(ctx)` is
+true (set by `--log-http-payload`), it additionally wraps with
+`RequestResponseLoggingMiddleware` for full request/response body dumps.
+
+`NewClient` accepts explicit `ClientOpts` for custom middleware stacks, TLS
+configuration, and timeouts. If `Middlewares` is nil, it defaults to
+`[]Middleware{LoggingMiddleware}`.
+
+### `context.go` — Payload Logging Context
+
+```go
+func WithPayloadLogging(ctx context.Context, enabled bool) context.Context
+func PayloadLogging(ctx context.Context) bool
+```
+
+The `--log-http-payload` flag value is threaded into the context by root
+`PersistentPreRun` and read by `NewDefaultClient`. This avoids passing flag
+values through constructor chains.
+
+### `logger.go` — Logging Round-Trippers
+
+| Type | Log level | Content | Visible at |
+|------|-----------|---------|------------|
+| `LoggingRoundTripper` | Debug (2xx-4xx), Warn (5xx/error) | method, URL, status | `-vvv` / `-v` |
+| `RequestResponseLoggingRoundTripper` | Debug | Full body via `httputil.Dump*` | `-vvv` + `--log-http-payload` |
 
 ### `response.go` — Server Response Helpers
-
-```go
-func Error(r, w, msg, err, code)   // logs warning + writes HTTP error response
-func Write(r, w, content)          // writes bytes, logs on error
-func WriteJSON(r, w, content)      // JSON-marshals and writes with Content-Type header
-```
 
 Used by server-side HTTP handlers in `internal/server/handlers/`.
 
@@ -418,7 +424,20 @@ Used by server-side HTTP handlers in `internal/server/handlers/`.
 const UserAgent = "gcx"
 ```
 
-Defined but not yet applied to the dynamic client (TODO in `rest.go:21`).
+### Callers
+
+| Caller | Factory | Notes |
+|--------|---------|-------|
+| Provider clients (SLO, OnCall, Synth, Fleet, K6) | `NewDefaultClient(ctx)` | Via `CloudRESTConfig.HTTPClient(ctx)` when `RESTConfig` is nil; see note below |
+| Assistant client | `NewDefaultClient(ctx)` | Direct call |
+| K8s tier (dynamic client, query clients) | `rest.Config.WrapTransport` | Chains `LoggingRoundTripper` via `NewNamespacedRESTConfig` |
+| Dev server (`internal/server`) | `NewClient(ClientOpts{...})` | Custom TLS from config context |
+
+> **Note on `CloudRESTConfig.HTTPClient(ctx)`:** When `RESTConfig` is nil (most
+> external-API providers), it delegates to `httputils.NewDefaultClient(ctx)` and
+> gets `LoggingRoundTripper`. When `RESTConfig` is non-nil, it falls back to
+> `rest.HTTPClientFor()`, which does NOT go through `httputils` directly — logging
+> is provided by the K8s `WrapTransport` chain instead.
 
 ---
 
@@ -515,7 +534,8 @@ To add a new operation to the dynamic client path (e.g., `Patch`):
 | `internal/resources/dynamic/versioned_client.go` | Version-aware client for pull operations |
 | `internal/resources/dynamic/errors.go` | `ParseStatusError()` / `APIError` — error translation |
 | `internal/grafana/client.go` | OpenAPI client factory for /api operations |
-| `internal/httputils/client.go` | HTTP transport factory (used by serve command) |
+| `internal/httputils/client.go` | Central HTTP client factory (`NewDefaultClient`, `NewClient`) |
+| `internal/httputils/context.go` | `--log-http-payload` context threading |
 | `internal/httputils/logger.go` | Debug-logging round-tripper |
 | `internal/httputils/response.go` | HTTP response helpers for server handlers |
 | `internal/resources/remote/remote.go` | `Processor` interface definition |

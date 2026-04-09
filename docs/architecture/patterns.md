@@ -261,9 +261,16 @@ all three client paths without duplication.
 **not** use `rest.HTTPClientFor`. The k8s transport round-tripper injects the
 Grafana bearer token on every outgoing request, which conflicts with the
 product's own auth mechanism (e.g. OnCall raw token, K6 X-Grafana-Key).
-These providers use `providers.ExternalHTTPClient()` — a shared, well-tuned
-`*http.Client` singleton with no auth injection — and set their own auth
-headers per request.
+These providers use `httputils.NewDefaultClient(ctx)` — a fresh `*http.Client`
+per call with `LoggingRoundTripper` and no auth injection — and set their own
+auth headers per request.
+
+**HTTP logging layer:** All client paths share `httputils.LoggingRoundTripper`
+for request/response logging. The K8s tier chains it via `rest.Config.WrapTransport`
+in `NewNamespacedRESTConfig`; the provider tier gets it via
+`httputils.NewDefaultClient(ctx)`. The `--log-http-payload` flag adds full body
+dumps via `RequestResponseLoggingRoundTripper` for the provider tier only — the
+K8s transport manages its own body handling and does not support payload dumping.
 
 **Output rendering:** Query results can be rendered as tables, JSON/YAML, or
 terminal charts (`internal/graph`). The `query` command registers custom codecs
@@ -681,14 +688,17 @@ pre-filtered fetch.
 
 ### 4. httputils Usage Scope
 
-**Observed in:** Client/API domain states that `internal/httputils` is used by
-the local development server, not by the dynamic client path.
+**Observed in:** Client/API domain previously stated that `internal/httputils`
+was used only by the local development server, not by the dynamic client path.
 
-**Resolution:** Confirmed. Despite being named "httputils," this package is NOT
-part of the primary API client chain. The k8s dynamic client has its own
-transport stack. `httputils` provides transport for the serve command's reverse
-proxy and for any direct HTTP calls (like `DiscoverStackID`). This naming could
-be confusing to newcomers.
+**Resolution:** This is no longer accurate after the HTTP logging refactor.
+`httputils` is now the central HTTP client factory for all non-K8s client
+paths. Provider clients, the assistant client, and the dev server all use
+`httputils.NewDefaultClient(ctx)` or `httputils.NewClient(ClientOpts{...})`.
+The K8s dynamic client path chains `httputils.LoggingRoundTripper` via
+`rest.Config.WrapTransport` in `NewNamespacedRESTConfig`. The only HTTP path
+that does not touch httputils is the OpenAPI client (`grafana-openapi-client-go`),
+which manages its own transport.
 
 ### 5. CI Drift Check Coverage
 
