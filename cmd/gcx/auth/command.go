@@ -146,6 +146,11 @@ func runLogin(cmd *cobra.Command, opts *loginOpts) error {
 }
 
 func loadLoginConfig(ctx context.Context, opts *loginOpts) (config.Config, error) {
+	// Auto-derive context name from server URL when no explicit --context given.
+	if opts.Server != "" && opts.Config.Context == "" {
+		opts.Config.Context = config.ContextNameFromServerURL(opts.Server)
+	}
+
 	var overrides []config.Override
 	if opts.Server != "" && opts.Config.Context != "" {
 		targetContext := opts.Config.Context
