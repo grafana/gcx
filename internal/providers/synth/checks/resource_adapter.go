@@ -66,8 +66,8 @@ func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[
 		return nil, "", fmt.Errorf("failed to load SM config for checks: %w", err)
 	}
 
-	checksClient := NewClient(baseURL, token)
-	probesClient := probes.NewClient(baseURL, token)
+	checksClient := NewClient(ctx, baseURL, token)
+	probesClient := probes.NewClient(ctx, baseURL, token)
 
 	crud := &adapter.TypedCRUD[checkResource]{
 		ListFn: func(ctx context.Context) ([]checkResource, error) {
@@ -315,7 +315,7 @@ func FetchProbeInfo(ctx context.Context, loader smcfg.Loader) (map[string]int64,
 		return nil, nil, fmt.Errorf("loading SM config for probe fetch: %w", err)
 	}
 
-	probeList, err := probes.NewClient(baseURL, token).List(ctx)
+	probeList, err := probes.NewClient(ctx, baseURL, token).List(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("fetching probe list: %w", err)
 	}

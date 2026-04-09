@@ -13,7 +13,7 @@ import (
 )
 
 func newTestClient(server *httptest.Server) *checks.Client {
-	return checks.NewClient(server.URL, "test-token")
+	return checks.NewClient(context.Background(), server.URL, "test-token")
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

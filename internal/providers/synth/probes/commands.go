@@ -150,7 +150,7 @@ func newCreateCommand(loader smcfg.Loader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client := NewClient(baseURL, token)
+			client := NewClient(ctx, baseURL, token)
 
 			var labels []ProbeLabel
 			for _, l := range opts.Labels {
@@ -283,7 +283,7 @@ func newTokenResetCommand(loader smcfg.Loader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client := NewClient(baseURL, token)
+			client := NewClient(ctx, baseURL, token)
 
 			probe, err := client.Get(ctx, id)
 			if err != nil {

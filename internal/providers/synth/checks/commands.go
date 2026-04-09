@@ -558,7 +558,7 @@ func existingSensitivity(ctx context.Context, loader smcfg.Loader, checkID int64
 	if err != nil {
 		return fallback
 	}
-	existing, err := NewClient(baseURL, token).Get(ctx, checkID)
+	existing, err := NewClient(ctx, baseURL, token).Get(ctx, checkID)
 	if err != nil {
 		return fallback
 	}

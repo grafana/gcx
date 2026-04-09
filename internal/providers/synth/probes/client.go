@@ -22,11 +22,11 @@ type Client struct {
 
 // NewClient creates a new SM probes client.
 // baseURL is the SM service root (e.g. "https://synthetic-monitoring-api.grafana.net").
-func NewClient(baseURL, token string) *Client {
+func NewClient(ctx context.Context, baseURL, token string) *Client {
 	return &Client{
 		baseURL:    strings.TrimRight(baseURL, "/") + "/api/v1",
 		token:      token,
-		httpClient: httputils.NewDefaultClient(context.Background()),
+		httpClient: httputils.NewDefaultClient(ctx),
 	}
 }
 

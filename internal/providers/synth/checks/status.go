@@ -148,7 +148,7 @@ Requires a Prometheus datasource containing SM metrics.`,
 				return err
 			}
 
-			smClient := NewClient(baseURL, token)
+			smClient := NewClient(ctx, baseURL, token)
 
 			// Parse optional check ID arg before launching goroutines.
 			var filterID int64
@@ -185,7 +185,7 @@ Requires a Prometheus datasource containing SM metrics.`,
 			})
 
 			initG.Go(func() error {
-				probeList, err := probes.NewClient(baseURL, token).List(initCtx)
+				probeList, err := probes.NewClient(initCtx, baseURL, token).List(initCtx)
 				if err == nil {
 					probeNameMap = buildProbeNameMap(probeList)
 				}
@@ -358,7 +358,7 @@ Requires a Prometheus datasource containing SM metrics.`,
 				return err
 			}
 
-			client := NewClient(baseURL, token)
+			client := NewClient(ctx, baseURL, token)
 
 			c, err := client.Get(ctx, id)
 			if err != nil {

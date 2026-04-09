@@ -55,7 +55,7 @@ func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to load SM config for probes: %w", err)
 	}
-	client := NewClient(baseURL, token)
+	client := NewClient(ctx, baseURL, token)
 
 	crud := &adapter.TypedCRUD[Probe]{
 		ListFn: client.List,

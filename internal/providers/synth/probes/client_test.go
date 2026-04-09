@@ -60,7 +60,7 @@ func TestClient_Create(t *testing.T) {
 			srv := httptest.NewServer(tc.handler)
 			defer srv.Close()
 
-			client := probes.NewClient(srv.URL, "test-token")
+			client := probes.NewClient(context.Background(), srv.URL, "test-token")
 			got, err := client.Create(context.Background(), tc.probe)
 			if tc.wantErr {
 				require.Error(t, err)
@@ -80,7 +80,7 @@ func TestClient_Create_Error(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := probes.NewClient(srv.URL, "test-token")
+	client := probes.NewClient(context.Background(), srv.URL, "test-token")
 	_, err := client.Create(context.Background(), probes.Probe{Name: "bad"})
 	require.Error(t, err)
 }
@@ -124,7 +124,7 @@ func TestClient_Get(t *testing.T) {
 			srv := httptest.NewServer(tc.handler)
 			defer srv.Close()
 
-			client := probes.NewClient(srv.URL, "test-token")
+			client := probes.NewClient(context.Background(), srv.URL, "test-token")
 			got, err := client.Get(context.Background(), tc.id)
 			if tc.wantErr {
 				require.Error(t, err)
@@ -181,7 +181,7 @@ func TestClient_ResetToken(t *testing.T) {
 			srv := httptest.NewServer(tc.handler)
 			defer srv.Close()
 
-			client := probes.NewClient(srv.URL, "test-token")
+			client := probes.NewClient(context.Background(), srv.URL, "test-token")
 			got, err := client.ResetToken(context.Background(), tc.probe)
 			if tc.wantErr {
 				require.Error(t, err)
@@ -225,7 +225,7 @@ func TestClient_Delete(t *testing.T) {
 			srv := httptest.NewServer(tc.handler)
 			defer srv.Close()
 
-			client := probes.NewClient(srv.URL, "test-token")
+			client := probes.NewClient(context.Background(), srv.URL, "test-token")
 			err := client.Delete(context.Background(), tc.id)
 			if tc.wantErr {
 				require.Error(t, err)
@@ -242,7 +242,7 @@ func TestClient_Delete_Error(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := probes.NewClient(srv.URL, "test-token")
+	client := probes.NewClient(context.Background(), srv.URL, "test-token")
 	err := client.Delete(context.Background(), 999)
 	require.Error(t, err)
 }
@@ -305,7 +305,7 @@ func TestClient_List(t *testing.T) {
 			srv := httptest.NewServer(tc.handler)
 			defer srv.Close()
 
-			client := probes.NewClient(srv.URL, "test-token")
+			client := probes.NewClient(context.Background(), srv.URL, "test-token")
 			got, err := client.List(context.Background())
 			if tc.wantErr {
 				require.Error(t, err)
