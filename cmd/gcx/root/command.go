@@ -114,7 +114,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 			}
 
 			logLevel := new(slog.LevelVar)
-			logLevel.Set(slog.LevelWarn)
+			logLevel.Set(slog.LevelError)
 			// Multiplying the number of occurrences of the `-v` flag by 4 (gap between log levels in slog)
 			// allows us to increase the logger's verbosity.
 			logLevel.Set(logLevel.Level() - slog.Level(min(verbosity, 3)*4))
