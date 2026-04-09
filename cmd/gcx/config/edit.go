@@ -42,7 +42,7 @@ If only one config file exists, it is opened directly.`,
 					return fbErr
 				}
 
-				cmdio.Warning(cmd.ErrOrStderr(),
+				cmdio.Warning(cmd.OutOrStdout(),
 					"Configuration in %s could not be parsed; opening in editor so you can fix it.", fallbackPath)
 				return openInEditor(cmd.Context(), fallbackPath)
 			}
