@@ -32,6 +32,8 @@ UX requirements. All items are unless marked otherwise.
 - [ ] Push-like operations are idempotent (create-or-update)
 - [ ] Data fetching is format-agnostic — do not gate fetches on `--output` value (Pattern 13)
 - [ ] PromQL queries use `promql-builder` (`github.com/grafana/promql-builder/go/promql`), not string formatting (Pattern 14)
+- [ ] HTTP clients use `httputils.NewDefaultClient(ctx)` or `cloudCfg.HTTPClient(ctx)`,
+  not bare `http.Client{}` or `http.DefaultClient` (Step 4b in provider-guide.md)
 - [ ] List/get commands for CRUD resources wrap json/yaml output in K8s envelope manifests (see below)
 - [ ] Table output shows `NAME` (the slug-id or user-facing identifier), not bare numeric `ID` — users need the NAME for get/update/delete commands (see Slug-ID naming below)
 

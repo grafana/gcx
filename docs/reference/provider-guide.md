@@ -268,6 +268,95 @@ Reference: `internal/providers/slo/definitions/status.go`, `internal/query/prome
 
 ---
 
+## Step 4b: HTTP Client Construction
+
+Provider commands that call external APIs must use `httputils.NewDefaultClient(ctx)`
+to create their HTTP client. This is typically done inside the provider client
+constructor, not in the command `RunE`.
+
+### Standard pattern
+
+```go
+import "github.com/grafana/gcx/internal/httputils"
+
+type Client struct {
+    httpClient *http.Client
+    baseURL    string
+    token      string
+}
+
+func NewClient(ctx context.Context, baseURL, token string) *Client {
+    return &Client{
+        httpClient: httputils.NewDefaultClient(ctx),
+        baseURL:    baseURL,
+        token:      token,
+    }
+}
+```
+
+`NewDefaultClient(ctx)` provides:
+- **`LoggingRoundTripper`** — logs method/URL/status at Debug (2xx-4xx) or Warn
+  (5xx/error), visible with `-vvv` / `-v`
+- **`--log-http-payload` support** — when the flag is set (threaded via context),
+  full request/response body dumps are added at Debug level
+- **60-second timeout** and sensible TLS defaults (TLS 1.2+, verify enabled)
+- **No auth injection** — providers set their own auth headers per request
+
+### Via CloudRESTConfig (recommended for cloud providers)
+
+Providers that call Grafana Cloud product APIs (external domains) get their
+HTTP client through `CloudRESTConfig`, returned by `loader.LoadCloudConfig`:
+
+```go
+func newClient(ctx context.Context, loader *providers.ConfigLoader) (*Client, error) {
+    cloudCfg, err := loader.LoadCloudConfig(ctx)
+    if err != nil {
+        return nil, err
+    }
+    httpClient, err := cloudCfg.HTTPClient(ctx)
+    if err != nil {
+        return nil, err
+    }
+    return &Client{httpClient: httpClient}, nil
+}
+```
+
+`CloudRESTConfig.HTTPClient(ctx)` delegates to `httputils.NewDefaultClient(ctx)`
+when no `rest.Config` is set — logging and payload dumping are automatic.
+
+### What NOT to do
+
+```go
+// BAD: bare http.Client — no logging, no --log-http-payload support
+client := &http.Client{Timeout: 30 * time.Second}
+
+// BAD: http.DefaultClient — shared mutable state, no logging
+resp, err := http.DefaultClient.Get(url)
+
+// BAD: rest.HTTPClientFor for external APIs — injects Grafana bearer token
+httpClient, _ := rest.HTTPClientFor(&cfg.Config)
+
+// BAD: custom transport without LoggingRoundTripper
+client := &http.Client{Transport: &http.Transport{...}}
+```
+
+### When to use `NewClient(ClientOpts{...})`
+
+Use the explicit factory only when you need custom TLS, non-default timeout,
+or additional middleware:
+
+```go
+client := httputils.NewClient(httputils.ClientOpts{
+    TLSConfig:   customTLS,
+    Timeout:     5 * time.Second,
+    Middlewares: []httputils.Middleware{httputils.LoggingMiddleware, myCustomMiddleware},
+})
+```
+
+Always include `httputils.LoggingMiddleware` in custom middleware stacks.
+
+---
+
 ## Step 5: Register the Provider
 
 Providers self-register using the `Register()` function in your provider's `init()` function.
