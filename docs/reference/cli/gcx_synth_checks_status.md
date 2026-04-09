@@ -4,10 +4,11 @@ Show pass/fail status of Synthetic Monitoring checks.
 
 ### Synopsis
 
-Show pass/fail status by combining the SM API with Prometheus probe_success metrics.
+Show pass/fail status by combining the SM API with Prometheus metrics.
 
-Displays current success rate, number of probes reporting, and health status
-for each check. Requires a Prometheus datasource containing SM metrics.
+Displays current success rate, latency (from probe_duration_seconds),
+number of probes reporting, and health status for each check.
+Requires a Prometheus datasource containing SM metrics.
 
 ```
 gcx synth checks status [ID] [flags]

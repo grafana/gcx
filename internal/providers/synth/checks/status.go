@@ -36,17 +36,16 @@ import (
 
 // CheckStatusResult holds merged check + metric data for a single check.
 type CheckStatusResult struct {
-	ID           int64    `json:"id"`
-	Job          string   `json:"job"`
-	Target       string   `json:"target"`
-	Type         string   `json:"type"`
-	Success      *float64 `json:"success,omitempty"`
-	ProbesUp     int      `json:"probesUp"`
-	ProbesTotal  int      `json:"probesTotal"`
-	LatencyMs    *float64 `json:"latencyMs,omitempty"`
-	Reachability *float64 `json:"reachability,omitempty"`
-	ProbeNames   []string `json:"probeNames,omitempty"`
-	Status       string   `json:"status"`
+	ID          int64    `json:"id"`
+	Job         string   `json:"job"`
+	Target      string   `json:"target"`
+	Type        string   `json:"type"`
+	Success     *float64 `json:"success,omitempty"`
+	ProbesUp    int      `json:"probesUp"`
+	ProbesTotal int      `json:"probesTotal"`
+	LatencyMs   *float64 `json:"latencyMs,omitempty"`
+	ProbeNames  []string `json:"probeNames,omitempty"`
+	Status      string   `json:"status"`
 }
 
 // CheckTimelinePayload is passed to timeline codecs for encoding.
@@ -101,9 +100,9 @@ func newStatusCommand(loader smcfg.StatusLoader) *cobra.Command {
 		Short: "Show pass/fail status of Synthetic Monitoring checks.",
 		Long: `Show pass/fail status by combining the SM API with Prometheus metrics.
 
-Displays current success rate, latency (from probe_duration_seconds), reachability
-(success rate over a 5-minute window), number of probes reporting, and health status
-for each check. Requires a Prometheus datasource containing SM metrics.`,
+Displays current success rate, latency (from probe_duration_seconds),
+number of probes reporting, and health status for each check.
+Requires a Prometheus datasource containing SM metrics.`,
 		Example: `  # Show status of all checks.
   gcx synth checks status
 
@@ -686,8 +685,6 @@ func BuildCheckStatusResults(checks []Check, successMap, probeCountMap, latencyM
 		if val, ok := successMap[key]; ok {
 			s := val
 			r.Success = &s
-			re := val
-			r.Reachability = &re
 		}
 
 		if cnt, ok := probeCountMap[key]; ok {
@@ -1087,9 +1084,9 @@ func (c *StatusTableCodec) Encode(w io.Writer, v any) error {
 
 	var t *style.TableBuilder
 	if c.Wide {
-		t = style.NewTable("NAME", "JOB", "TARGET", "TYPE", "SUCCESS", "LATENCY", "REACHABILITY", "PROBES_UP", "PROBES_TOTAL", "PROBES", "STATUS")
+		t = style.NewTable("NAME", "JOB", "TARGET", "TYPE", "SUCCESS", "LATENCY", "PROBES_UP", "PROBES_TOTAL", "PROBES", "STATUS")
 	} else {
-		t = style.NewTable("NAME", "JOB", "TARGET", "SUCCESS", "LATENCY", "REACHABILITY", "STATUS")
+		t = style.NewTable("NAME", "JOB", "TARGET", "SUCCESS", "LATENCY", "STATUS")
 	}
 
 	for _, r := range results {
@@ -1103,18 +1100,13 @@ func (c *StatusTableCodec) Encode(w io.Writer, v any) error {
 			latencyStr = fmt.Sprintf("%.0fms", *r.LatencyMs)
 		}
 
-		reachStr := "--"
-		if r.Reachability != nil {
-			reachStr = fmt.Sprintf("%.2f%%", *r.Reachability*100)
-		}
-
 		name := statusDisplayName(r)
 		if c.Wide {
 			probesStr := strings.Join(r.ProbeNames, ", ")
-			t.Row(name, r.Job, r.Target, r.Type, successStr, latencyStr, reachStr,
+			t.Row(name, r.Job, r.Target, r.Type, successStr, latencyStr,
 				strconv.Itoa(r.ProbesUp), strconv.Itoa(r.ProbesTotal), probesStr, r.Status)
 		} else {
-			t.Row(name, r.Job, r.Target, successStr, latencyStr, reachStr, r.Status)
+			t.Row(name, r.Job, r.Target, successStr, latencyStr, r.Status)
 		}
 	}
 

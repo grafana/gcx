@@ -149,20 +149,18 @@ func TestBuildTimelineQuery(t *testing.T) {
 func TestStatusTableCodec_Encode(t *testing.T) {
 	latency250 := float64(250)
 	latency1107 := float64(1107)
-	reach9972 := float64(0.9972)
 
 	results := []checks.CheckStatusResult{
 		{
-			ID:           1,
-			Job:          "http-check",
-			Target:       "https://example.com",
-			Type:         "http",
-			Success:      new(0.9972),
-			LatencyMs:    &latency250,
-			Reachability: &reach9972,
-			ProbesUp:     3,
-			ProbesTotal:  3,
-			Status:       "OK",
+			ID:          1,
+			Job:         "http-check",
+			Target:      "https://example.com",
+			Type:        "http",
+			Success:     new(0.9972),
+			LatencyMs:   &latency250,
+			ProbesUp:    3,
+			ProbesTotal: 3,
+			Status:      "OK",
 		},
 		{
 			ID:          2,
@@ -198,14 +196,14 @@ func TestStatusTableCodec_Encode(t *testing.T) {
 		output := buf.String()
 
 		// Verify header columns present in default table.
-		for _, col := range []string{"NAME", "JOB", "TARGET", "SUCCESS", "LATENCY", "REACHABILITY", "STATUS"} {
+		for _, col := range []string{"NAME", "JOB", "TARGET", "SUCCESS", "LATENCY", "STATUS"} {
 			if !strings.Contains(output, col) {
 				t.Errorf("missing header column %q in:\n%s", col, output)
 			}
 		}
 
 		// Verify wide-only columns are absent from default table.
-		for _, col := range []string{"TYPE", "PROBES_UP", "PROBES_TOTAL"} {
+		for _, col := range []string{"TYPE", "PROBES_UP", "PROBES_TOTAL", "REACHABILITY"} {
 			if strings.Contains(output, col) {
 				t.Errorf("default table should not have column %q:\n%s", col, output)
 			}
@@ -241,17 +239,16 @@ func TestStatusTableCodec_Encode(t *testing.T) {
 	t.Run("wide output", func(t *testing.T) {
 		wideResults := []checks.CheckStatusResult{
 			{
-				ID:           1,
-				Job:          "http-check",
-				Target:       "https://example.com",
-				Type:         "http",
-				Success:      new(0.9972),
-				LatencyMs:    &latency250,
-				Reachability: &reach9972,
-				ProbesUp:     2,
-				ProbesTotal:  2,
-				ProbeNames:   []string{"Oregon", "Paris (offline)"},
-				Status:       "OK",
+				ID:          1,
+				Job:         "http-check",
+				Target:      "https://example.com",
+				Type:        "http",
+				Success:     new(0.9972),
+				LatencyMs:   &latency250,
+				ProbesUp:    2,
+				ProbesTotal: 2,
+				ProbeNames:  []string{"Oregon", "Paris (offline)"},
+				Status:      "OK",
 			},
 		}
 
@@ -264,8 +261,8 @@ func TestStatusTableCodec_Encode(t *testing.T) {
 
 		output := buf.String()
 
-		// Wide table must have all columns including LATENCY and REACHABILITY.
-		for _, col := range []string{"PROBES", "LATENCY", "REACHABILITY"} {
+		// Wide table must have all columns including LATENCY.
+		for _, col := range []string{"PROBES", "LATENCY"} {
 			if !strings.Contains(output, col) {
 				t.Errorf("wide table should have %s column:\n%s", col, output)
 			}
@@ -332,9 +329,6 @@ func TestBuildCheckStatusResults(t *testing.T) {
 				if r.LatencyMs == nil || *r.LatencyMs != 250 {
 					t.Errorf("expected latencyMs 250, got %v", r.LatencyMs)
 				}
-				if r.Reachability == nil || *r.Reachability != 0.95 {
-					t.Errorf("expected reachability 0.95, got %v", r.Reachability)
-				}
 			},
 		},
 		{
@@ -357,9 +351,6 @@ func TestBuildCheckStatusResults(t *testing.T) {
 				}
 				if r.LatencyMs != nil {
 					t.Errorf("expected nil latencyMs, got %v", *r.LatencyMs)
-				}
-				if r.Reachability != nil {
-					t.Errorf("expected nil reachability, got %v", *r.Reachability)
 				}
 			},
 		},
