@@ -30,18 +30,19 @@ func metricsCmd(loader *providers.ConfigLoader) *cobra.Command {
 TRACEQL is the TraceQL metrics expression to evaluate.
 Datasource is resolved from -d flag or datasources.tempo in your context.
 
-Range mode is the default. Use --instant to compute a single value across
-selected time range. If no time range is provided, gcx queries the last hour,
-matching Tempo's default window.`,
+Instant vs range is deduced from time flags: no time flags = instant query,
+--since or --from/--to = range query. Use --instant to force an instant query
+even when a time range is provided. If no time flags are set, gcx queries the
+last hour by default.`,
 		Example: `
-  # Range query over the last hour (default)
+  # Instant query over the last hour (default, no time flags)
   gcx traces metrics '{ } | rate()'
 
-  # Range query with explicit relative window
+  # Range query with relative window
   gcx traces metrics -d tempo-001 '{ } | rate()' --since 1h
 
-  # Instant query over the last hour
-  gcx traces metrics '{ } | rate()' --instant
+  # Instant query with explicit time range
+  gcx traces metrics '{ } | rate()' --instant --since 1h
 
   # Range query with explicit time range and step
   gcx traces metrics '{ } | rate()' --from now-1h --to now --step 30s
@@ -97,7 +98,7 @@ matching Tempo's default window.`,
 			}
 
 			var resp *tempo.MetricsResponse
-			if instant {
+			if req.Instant {
 				resp, err = client.MetricsInstant(ctx, datasourceUID, req)
 			} else {
 				resp, err = client.MetricsRange(ctx, datasourceUID, req)
@@ -117,7 +118,10 @@ matching Tempo's default window.`,
 	return cmd
 }
 
-func buildMetricsRequest(expr string, shared *dsquery.SharedOpts, instant bool, now time.Time) (tempo.MetricsRequest, error) {
+func buildMetricsRequest(expr string, shared *dsquery.SharedOpts, instantFlag bool, now time.Time) (tempo.MetricsRequest, error) {
+	// Infer instant from time flag absence, consistent with how metrics query (Prometheus) works.
+	instant := instantFlag || !shared.IsRange()
+
 	if instant && shared.Step != "" {
 		return tempo.MetricsRequest{}, errors.New("--step is not supported with --instant")
 	}

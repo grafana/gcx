@@ -128,32 +128,31 @@ think in "tags"), so `tags -l NAME` also works. `tag-values` is dropped.
 **Rejected:** Keeping both `labels -l NAME` and a separate `label-values NAME`
 command. Gives users two ways to do the same thing with no clear winner.
 
-Keep the `--instant` flag on `traces metrics`.
+Keep the `--instant` flag on `traces metrics`. Instant vs range is inferred
+from time flag presence — matching how `metrics query` (Prometheus) works —
+and `--instant` lets callers override to instant even when a time range is
+provided.
 
-Tempo's instant query is not "query at a single timestamp" in the Prometheus
-sense. It computes a single value across a selected time range, accepts
-`--since` / `--from` / `--to`, and defaults to the last hour when no time range
-is provided. That means gcx cannot infer instant vs range from time-flag
-presence alone.
+Tempo's instant query computes a single value across a selected time range and
+accepts `--since` / `--from` / `--to`. When no time flags are set, both instant
+and range queries default to the last hour. The difference from Prometheus is
+only in what the API returns: a single data point vs a time series.
 
-**Trace metrics rules**:
+**Time flag rules** (consistent with all other signals):
 
 | Flags provided | Query mode |
 |----------------|------------|
-| (none) | Range over the last hour |
-| `--instant` | Instant over the last hour |
-| `--since 1h` | Range over the last hour |
-| `--instant --since 1h` | Instant over the last hour |
+| (none) | Instant over last hour (inferred) |
+| `--instant` | Instant over last hour (explicit) |
+| `--since 1h` | Range over last hour |
+| `--instant --since 1h` | Instant over last hour |
 | `--from X --to Y` | Range |
-| `--instant --from X --to Y` | Instant |
-| `--step` | Range step |
-| `--instant --step ...` | Error: step does not apply to instant queries |
+| `--instant --from X --to Y` | Instant over that range |
+| `--step` alone | Error: instant inferred, step not supported with instant |
+| `--instant --step ...` | Error: step not supported with instant |
 | `--from X` alone | Error: `--to` is required when `--from` is set |
 | `--to Y` alone | Error: `--from` is required when `--to` is set |
 | `--since` + `--from` | Error: mutually exclusive |
-
-This is a Tempo-specific exception to the simpler Prometheus/Loki-style
-inference from time flags.
 
 ### 6. Aliases and clean breaks
 
