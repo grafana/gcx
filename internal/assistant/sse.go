@@ -52,12 +52,12 @@ func (h *InteractiveApprovalHandler) HandleApproval(req ApprovalRequest) bool {
 }
 
 // StreamChat sends a message and streams the response via A2A SSE.
-func StreamChat(ctx context.Context, baseURL, token, agentID, prompt string, opts StreamOptions, logger Logger) StreamResult {
-	return StreamChatWithApproval(ctx, baseURL, token, agentID, prompt, opts, logger, nil)
+func StreamChat(ctx context.Context, baseURL, token, agentID, prompt string, opts StreamOptions, logger Logger, httpClient *http.Client) StreamResult {
+	return StreamChatWithApproval(ctx, baseURL, token, agentID, prompt, opts, logger, nil, httpClient)
 }
 
 // StreamChatWithApproval sends a message and streams the response, handling approval requests.
-func StreamChatWithApproval(ctx context.Context, baseURL, token, agentID, prompt string, opts StreamOptions, logger Logger, approvalHandler ApprovalHandler) StreamResult {
+func StreamChatWithApproval(ctx context.Context, baseURL, token, agentID, prompt string, opts StreamOptions, logger Logger, approvalHandler ApprovalHandler, httpClient *http.Client) StreamResult {
 	if logger == nil {
 		logger = NopLogger{}
 	}
@@ -92,7 +92,7 @@ func StreamChatWithApproval(ctx context.Context, baseURL, token, agentID, prompt
 
 	logger.Debug("Sending A2A request to " + url)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			logger.Warning(fmt.Sprintf("Timeout after %ds", timeout))
@@ -109,7 +109,7 @@ func StreamChatWithApproval(ctx context.Context, baseURL, token, agentID, prompt
 		return StreamResult{Failed: true, ErrorMessage: fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(respBody))}
 	}
 
-	return processA2ASSEStream(ctx, resp.Body, timeout, logger, baseURL, token, approvalHandler, opts.OnEvent)
+	return processA2ASSEStream(ctx, resp.Body, timeout, logger, baseURL, token, approvalHandler, opts.OnEvent, httpClient)
 }
 
 // streamState carries mutable state through the SSE stream processing helpers.
@@ -123,6 +123,7 @@ type streamState struct {
 	baseURL                string
 	token                  string
 	approvalHandler        ApprovalHandler
+	httpClient             *http.Client
 }
 
 // handleStatusUpdate processes a status-update event. Returns true if the caller should return immediately.
@@ -311,7 +312,7 @@ func (s *streamState) handleArtifactApproval(ctx context.Context, artifactUpdate
 			s.logger.Warning(fmt.Sprintf("Approval required for %s but no handler available - auto-denying", approvalReq.ToolName))
 		}
 
-		if err := SubmitApproval(ctx, s.baseURL, s.token, approvalReq.ID, approvalReq.ChatID, approvalReq.TenantID, approvalReq.UserID, approved); err != nil {
+		if err := SubmitApproval(ctx, s.baseURL, s.token, approvalReq.ID, approvalReq.ChatID, approvalReq.TenantID, approvalReq.UserID, approved, s.httpClient); err != nil {
 			s.logger.Warning(fmt.Sprintf("Failed to submit approval: %v", err))
 		} else if approved {
 			s.logger.Info("Approved - continuing...")
@@ -402,13 +403,14 @@ func (s *streamState) handleTaskCanceled(task A2ATask) {
 }
 
 // processA2ASSEStream processes the A2A SSE stream and returns the result.
-func processA2ASSEStream(ctx context.Context, body io.Reader, timeout int, logger Logger, baseURL, token string, approvalHandler ApprovalHandler, onEvent func(StreamEvent)) StreamResult {
+func processA2ASSEStream(ctx context.Context, body io.Reader, timeout int, logger Logger, baseURL, token string, approvalHandler ApprovalHandler, onEvent func(StreamEvent), httpClient *http.Client) StreamResult {
 	s := &streamState{
 		onEvent:         onEvent,
 		logger:          logger,
 		baseURL:         baseURL,
 		token:           token,
 		approvalHandler: approvalHandler,
+		httpClient:      httpClient,
 	}
 
 	scanner := bufio.NewScanner(body)

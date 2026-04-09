@@ -58,7 +58,7 @@ func (e *ChatEndpoints) Chat(chatID string) string {
 }
 
 // FetchChat fetches a single chat by ID from the Chat API.
-func FetchChat(ctx context.Context, baseURL, token, chatID string) (*Chat, error) {
+func FetchChat(ctx context.Context, baseURL, token, chatID string, httpClient *http.Client) (*Chat, error) {
 	endpoints := GetChatEndpoints(baseURL)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoints.Chat(chatID), nil)
@@ -70,7 +70,7 @@ func FetchChat(ctx context.Context, baseURL, token, chatID string) (*Chat, error
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("X-App-Source", "cli")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -96,7 +96,7 @@ func FetchChat(ctx context.Context, baseURL, token, chatID string) (*Chat, error
 }
 
 // FetchChatMessages fetches messages for a chat from the REST API.
-func FetchChatMessages(ctx context.Context, baseURL, token, chatID string) ([]ChatMessage, error) {
+func FetchChatMessages(ctx context.Context, baseURL, token, chatID string, httpClient *http.Client) ([]ChatMessage, error) {
 	endpoints := GetChatEndpoints(baseURL)
 	url := fmt.Sprintf("%s/%s/all-messages", endpoints.Chats(), chatID)
 
@@ -109,7 +109,7 @@ func FetchChatMessages(ctx context.Context, baseURL, token, chatID string) ([]Ch
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("X-App-Source", "cli")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -165,7 +165,7 @@ func CreateMessageStreamRequest(prompt, contextID string) ([]byte, error) {
 }
 
 // SubmitApproval sends an approval response to the dedicated approval endpoint.
-func SubmitApproval(ctx context.Context, baseURL, token, approvalID, chatID, tenantID, userID string, approved bool) error {
+func SubmitApproval(ctx context.Context, baseURL, token, approvalID, chatID, tenantID, userID string, approved bool, httpClient *http.Client) error {
 	endpoints := GetA2AEndpoints(baseURL)
 	url := endpoints.Approval(approvalID)
 
@@ -191,7 +191,7 @@ func SubmitApproval(ctx context.Context, baseURL, token, approvalID, chatID, ten
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("X-App-Source", "cli")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send approval: %w", err)
 	}

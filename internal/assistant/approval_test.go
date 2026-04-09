@@ -85,7 +85,7 @@ func TestSubmitApproval_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	err := assistant.SubmitApproval(context.Background(), server.URL, "test-token", "approval-123", "chat-456", "tenant-789", "user-abc", true)
+	err := assistant.SubmitApproval(context.Background(), server.URL, "test-token", "approval-123", "chat-456", "tenant-789", "user-abc", true, http.DefaultClient)
 	if err != nil {
 		t.Fatalf("SubmitApproval() error = %v", err)
 	}
@@ -105,7 +105,7 @@ func TestSubmitApproval_Error(t *testing.T) {
 	}))
 	defer server.Close()
 
-	err := assistant.SubmitApproval(context.Background(), server.URL, "test-token", "approval-123", "chat-456", "tenant-789", "user-abc", true)
+	err := assistant.SubmitApproval(context.Background(), server.URL, "test-token", "approval-123", "chat-456", "tenant-789", "user-abc", true, http.DefaultClient)
 	if err == nil {
 		t.Error("SubmitApproval() should return error for non-success status")
 	}

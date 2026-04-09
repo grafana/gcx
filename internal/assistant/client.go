@@ -3,8 +3,11 @@ package assistant
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
+
+	"github.com/grafana/gcx/internal/httputils"
 )
 
 // DefaultAgentID is the default agent to use if not specified.
@@ -17,6 +20,7 @@ type Client struct {
 	token          string
 	logger         Logger
 	tokenRefresher TokenRefresher
+	httpClient     *http.Client
 }
 
 // New creates a new Client with the given options.
@@ -28,12 +32,18 @@ func New(opts ClientOptions) *Client {
 		baseURL = strings.TrimSuffix(opts.APIEndpoint, "/") + "/api/cli/v1"
 	}
 
+	httpClient := opts.HTTPClient
+	if httpClient == nil {
+		httpClient = httputils.NewDefaultClient(context.Background())
+	}
+
 	return &Client{
 		grafanaURL:     grafanaURL,
 		baseURL:        baseURL,
 		token:          opts.Token,
 		logger:         NopLogger{},
 		tokenRefresher: opts.TokenRefresher,
+		httpClient:     httpClient,
 	}
 }
 
@@ -53,12 +63,12 @@ func (c *Client) ChatWithApproval(ctx context.Context, prompt string, opts Strea
 
 	promptWithContext := prompt + "\n" + FormatTimeContext()
 
-	return StreamChatWithApproval(ctx, c.baseURL, c.freshToken(), DefaultAgentID, promptWithContext, opts, c.logger, approvalHandler)
+	return StreamChatWithApproval(ctx, c.baseURL, c.freshToken(), DefaultAgentID, promptWithContext, opts, c.logger, approvalHandler, c.httpClient)
 }
 
 // GetChat fetches a single chat by ID.
 func (c *Client) GetChat(ctx context.Context, chatID string) (*Chat, error) {
-	return FetchChat(ctx, c.baseURL, c.freshToken(), chatID)
+	return FetchChat(ctx, c.baseURL, c.freshToken(), chatID, c.httpClient)
 }
 
 // ValidateCLIContext validates that a context ID belongs to a CLI-created chat.

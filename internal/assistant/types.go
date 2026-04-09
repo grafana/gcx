@@ -3,6 +3,7 @@ package assistant
 
 import (
 	"encoding/json"
+	"net/http"
 	"strings"
 )
 
@@ -206,6 +207,8 @@ type ClientOptions struct {
 	Token          string
 	APIEndpoint    string
 	TokenRefresher TokenRefresher
+	// HTTPClient is an optional custom HTTP client. If nil, httputils.NewDefaultClient is used.
+	HTTPClient *http.Client
 }
 
 // StreamOptions represents options for streaming.
