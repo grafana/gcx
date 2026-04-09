@@ -17,8 +17,8 @@ import (
 	"github.com/grafana/gcx/internal/datasources"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/graph"
+	"github.com/grafana/gcx/internal/httputils"
 	cmdio "github.com/grafana/gcx/internal/output"
-	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/synth/probes"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 	"github.com/grafana/gcx/internal/query/prometheus"
@@ -849,7 +849,8 @@ func smMetricsDatasourceName(ctx context.Context, grafanaCtx *config.Context) (s
 		req.SetBasicAuth(grafanaCtx.Grafana.User, grafanaCtx.Grafana.Password)
 	}
 
-	resp, err := providers.ExternalHTTPClient().Do(req)
+	client := httputils.NewDefaultClient(ctx)
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}

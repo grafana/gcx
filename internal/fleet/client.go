@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/httputils"
 )
 
 // Client is a base HTTP client for the Grafana Fleet Management API.
@@ -25,10 +25,10 @@ type Client struct {
 // NewClient creates a new Fleet Management base client.
 // When useBasicAuth is true, requests use Basic auth with instanceID:apiToken.
 // Otherwise, requests use Bearer token auth.
-// If httpClient is nil, providers.ExternalHTTPClient() is used.
+// If httpClient is nil, httputils.NewDefaultClient is used.
 func NewClient(baseURL, instanceID, apiToken string, useBasicAuth bool, httpClient *http.Client) *Client {
 	if httpClient == nil {
-		httpClient = providers.ExternalHTTPClient()
+		httpClient = httputils.NewDefaultClient(context.Background())
 	}
 	return &Client{
 		baseURL:      strings.TrimRight(baseURL, "/"),

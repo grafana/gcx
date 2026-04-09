@@ -12,6 +12,7 @@ import (
 	"github.com/caarlos0/env/v11"
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/rest"
@@ -35,10 +36,10 @@ type CloudRESTConfig struct {
 }
 
 // HTTPClient returns a TLS-aware HTTP client derived from the REST config.
-// Returns the shared ExternalHTTPClient when no REST config is present.
+// Returns a new default HTTP client when no REST config is present.
 func (c CloudRESTConfig) HTTPClient() (*http.Client, error) {
 	if c.RESTConfig == nil {
-		return ExternalHTTPClient(), nil
+		return httputils.NewDefaultClient(context.Background()), nil
 	}
 	return rest.HTTPClientFor(c.RESTConfig)
 }

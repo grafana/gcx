@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 )
 
@@ -26,7 +26,7 @@ func NewClient(baseURL, token string) *Client {
 	return &Client{
 		baseURL:    strings.TrimRight(baseURL, "/") + "/api/v1",
 		token:      token,
-		httpClient: providers.ExternalHTTPClient(),
+		httpClient: httputils.NewDefaultClient(context.Background()),
 	}
 }
 

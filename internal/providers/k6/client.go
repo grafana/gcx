@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/httputils"
 )
 
 const (
@@ -46,7 +46,7 @@ func NewClient(apiDomain string, httpClient *http.Client) *Client {
 		apiDomain = DefaultAPIDomain
 	}
 	if httpClient == nil {
-		httpClient = providers.ExternalHTTPClient()
+		httpClient = httputils.NewDefaultClient(context.Background())
 	}
 	return &Client{
 		apiDomain: strings.TrimRight(apiDomain, "/"),

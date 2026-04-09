@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -77,7 +78,7 @@ func authenticatedClient(ctx context.Context, loader CloudConfigLoader) (*Client
 	// K6 API uses its own auth (X-Grafana-Key token exchange), not the Grafana
 	// bearer token. Using rest.HTTPClientFor() would inject the Grafana bearer
 	// token via the k8s transport round-tripper, causing 401 from the K6 API.
-	httpClient := providers.ExternalHTTPClient()
+	httpClient := httputils.NewDefaultClient(ctx)
 
 	client := NewClient(domain, httpClient)
 	if err := client.Authenticate(ctx, cfg.Token, cfg.Stack.ID); err != nil {
