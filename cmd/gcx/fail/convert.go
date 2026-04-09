@@ -124,6 +124,10 @@ func convertConfigErrors(err error) (*DetailedError, bool) {
 			Summary: "Could not parse configuration",
 			Details: fmt.Sprintf("Invalid configuration found in '%s'.", unmarshalErr.File),
 			Parent:  unmarshalErr.Err,
+			Suggestions: []string{
+				"Fix the file with: gcx config edit",
+				"Check for syntax errors such as incorrect indentation or unknown fields",
+			},
 		}, true
 	}
 
