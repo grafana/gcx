@@ -1,27 +1,16 @@
-## gcx faro apps get
+## gcx frontend apps list
 
-Get a Faro app by slug-id or name.
-
-```
-gcx faro apps get [slug-id] [flags]
-```
-
-### Examples
+List Frontend Observability apps.
 
 ```
-  # Get by slug-id.
-  gcx faro apps get my-web-app-42
-
-  # Get by name.
-  gcx faro apps get --name "My Web App"
+gcx frontend apps list [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
+  -h, --help            help for list
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --name string     Get Faro app by name instead of slug-id
   -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
 ```
 
@@ -38,5 +27,5 @@ gcx faro apps get [slug-id] [flags]
 
 ### SEE ALSO
 
-* [gcx faro apps](gcx_faro_apps.md)	 - Manage Faro apps.
+* [gcx frontend apps](gcx_frontend_apps.md)	 - Manage Frontend Observability apps.
 

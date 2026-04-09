@@ -135,7 +135,7 @@ func TestProviderCommands(t *testing.T) {
 
 	require.Len(t, cmds, 1, "expected one top-level command")
 	faroCmd := cmds[0]
-	assert.Equal(t, "faro", faroCmd.Use)
+	assert.Equal(t, "frontend", faroCmd.Use)
 
 	// Find the apps subcommand.
 	var appsCmd *cobra.Command

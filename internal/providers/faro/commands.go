@@ -93,7 +93,7 @@ func newListCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &listOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List Faro apps.",
+		Short: "List Frontend Observability apps.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -245,19 +245,19 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &AppTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.StringVar(&o.Name, "name", "", "Get Faro app by name instead of slug-id")
+	flags.StringVar(&o.Name, "name", "", "Get Frontend Observability app by name instead of slug-id")
 }
 
 func newGetCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
 		Use:   "get [slug-id]",
-		Short: "Get a Faro app by slug-id or name.",
+		Short: "Get a Frontend Observability app by slug-id or name.",
 		Example: `  # Get by slug-id.
-  gcx faro apps get my-web-app-42
+  gcx frontend apps get my-web-app-42
 
   # Get by name.
-  gcx faro apps get --name "My Web App"`,
+  gcx frontend apps get --name "My Web App"`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -301,7 +301,7 @@ type createOpts struct {
 }
 
 func (o *createOpts) setup(flags *pflag.FlagSet) {
-	flags.StringVarP(&o.File, "filename", "f", "", "File containing the Faro app manifest (use - for stdin)")
+	flags.StringVarP(&o.File, "filename", "f", "", "File containing the Frontend Observability app manifest (use - for stdin)")
 }
 
 func (o *createOpts) Validate() error {
@@ -315,12 +315,12 @@ func newCreateCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &createOpts{}
 	cmd := &cobra.Command{
 		Use:   "create",
-		Short: "Create a Faro app from a file.",
-		Example: `  # Create a Faro app from a YAML file.
-  gcx faro apps create -f app.yaml
+		Short: "Create a Frontend Observability app from a file.",
+		Example: `  # Create an app from a YAML file.
+  gcx frontend apps create -f app.yaml
 
   # Create from stdin.
-  cat app.yaml | gcx faro apps create -f -`,
+  cat app.yaml | gcx frontend apps create -f -`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -340,7 +340,7 @@ func newCreateCommand(loader RESTConfigLoader) *cobra.Command {
 
 			if len(app.ExtraLogLabels) > 0 || app.Settings != nil {
 				cmdio.Warning(cmd.ErrOrStderr(),
-					"extraLogLabels and settings are ignored during creation (Faro API limitation); use update to apply them")
+					"extraLogLabels and settings are ignored during creation (API limitation); use update to apply them")
 			}
 
 			typedObj := &adapter.TypedObject[FaroApp]{Spec: *app}
@@ -352,7 +352,7 @@ func newCreateCommand(loader RESTConfigLoader) *cobra.Command {
 				return fmt.Errorf("creating faro app %q: %w", app.Name, err)
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Created Faro app %q (id=%s)", created.Spec.Name, created.Spec.ID)
+			cmdio.Success(cmd.OutOrStdout(), "Created Frontend Observability app %q (id=%s)", created.Spec.Name, created.Spec.ID)
 			return nil
 		},
 	}
@@ -369,7 +369,7 @@ type updateOpts struct {
 }
 
 func (o *updateOpts) setup(flags *pflag.FlagSet) {
-	flags.StringVarP(&o.File, "filename", "f", "", "File containing the Faro app manifest (use - for stdin)")
+	flags.StringVarP(&o.File, "filename", "f", "", "File containing the Frontend Observability app manifest (use - for stdin)")
 }
 
 func (o *updateOpts) Validate() error {
@@ -383,9 +383,9 @@ func newUpdateCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &updateOpts{}
 	cmd := &cobra.Command{
 		Use:   "update <name>",
-		Short: "Update a Faro app from a file.",
-		Example: `  # Update a Faro app using its slug-id.
-  gcx faro apps update my-web-app-42 -f app.yaml`,
+		Short: "Update a Frontend Observability app from a file.",
+		Example: `  # Update an app using its slug-id.
+  gcx frontend apps update my-web-app-42 -f app.yaml`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -414,7 +414,7 @@ func newUpdateCommand(loader RESTConfigLoader) *cobra.Command {
 				return fmt.Errorf("updating faro app %q: %w", name, err)
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Updated Faro app %q (id=%s)", updated.Spec.Name, updated.Spec.ID)
+			cmdio.Success(cmd.OutOrStdout(), "Updated Frontend Observability app %q (id=%s)", updated.Spec.Name, updated.Spec.ID)
 			return nil
 		},
 	}
@@ -434,7 +434,7 @@ func newDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &deleteOpts{}
 	cmd := &cobra.Command{
 		Use:   "delete <name>",
-		Short: "Delete a Faro app.",
+		Short: "Delete a Frontend Observability app.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -449,7 +449,7 @@ func newDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 				return fmt.Errorf("deleting faro app %q: %w", name, err)
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Deleted Faro app %q", name)
+			cmdio.Success(cmd.OutOrStdout(), "Deleted Frontend Observability app %q", name)
 			return nil
 		},
 	}

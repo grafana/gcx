@@ -20,7 +20,7 @@ func (p *FaroProvider) Name() string { return "faro" }
 
 // ShortDesc returns a one-line description of the provider.
 func (p *FaroProvider) ShortDesc() string {
-	return "Manage Grafana Frontend Observability (Faro) resources"
+	return "Manage Grafana Frontend Observability resources"
 }
 
 // ConfigKeys returns the configuration keys used by this provider.
@@ -40,14 +40,14 @@ func (p *FaroProvider) Commands() []*cobra.Command {
 	loader := &providers.ConfigLoader{}
 
 	faroCmd := &cobra.Command{
-		Use:   "faro",
+		Use:   "frontend",
 		Short: p.ShortDesc(),
 	}
 	loader.BindFlags(faroCmd.PersistentFlags())
 
 	appsCmd := &cobra.Command{
 		Use:     "apps",
-		Short:   "Manage Faro apps.",
+		Short:   "Manage Frontend Observability apps.",
 		Aliases: []string{"app"},
 	}
 

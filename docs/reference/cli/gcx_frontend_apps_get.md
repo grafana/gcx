@@ -1,31 +1,28 @@
-## gcx faro apps show-sourcemaps
+## gcx frontend apps get
 
-Show sourcemaps for a Faro app.
+Get a Frontend Observability app by slug-id or name.
 
 ```
-gcx faro apps show-sourcemaps <app-name> [flags]
+gcx frontend apps get [slug-id] [flags]
 ```
 
 ### Examples
 
 ```
-  # List all sourcemaps for an app.
-  gcx faro apps show-sourcemaps my-web-app-42
+  # Get by slug-id.
+  gcx frontend apps get my-web-app-42
 
-  # List the first 10 sourcemaps.
-  gcx faro apps show-sourcemaps my-web-app-42 --limit 10
-
-  # Output as JSON.
-  gcx faro apps show-sourcemaps my-web-app-42 -o json
+  # Get by name.
+  gcx frontend apps get --name "My Web App"
 ```
 
 ### Options
 
 ```
-  -h, --help            help for show-sourcemaps
+  -h, --help            help for get
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int       Maximum number of sourcemaps to return (0 for all)
-  -o, --output string   Output format. One of: json, text, yaml (default "text")
+      --name string     Get Frontend Observability app by name instead of slug-id
+  -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -41,5 +38,5 @@ gcx faro apps show-sourcemaps <app-name> [flags]
 
 ### SEE ALSO
 
-* [gcx faro apps](gcx_faro_apps.md)	 - Manage Faro apps.
+* [gcx frontend apps](gcx_frontend_apps.md)	 - Manage Frontend Observability apps.
 

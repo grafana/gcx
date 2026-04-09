@@ -64,15 +64,15 @@ func newShowSourcemapsCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &showSourcemapsOpts{}
 	cmd := &cobra.Command{
 		Use:   "show-sourcemaps <app-name>",
-		Short: "Show sourcemaps for a Faro app.",
+		Short: "Show sourcemaps for a Frontend Observability app.",
 		Example: `  # List all sourcemaps for an app.
-  gcx faro apps show-sourcemaps my-web-app-42
+  gcx frontend apps show-sourcemaps my-web-app-42
 
   # List the first 10 sourcemaps.
-  gcx faro apps show-sourcemaps my-web-app-42 --limit 10
+  gcx frontend apps show-sourcemaps my-web-app-42 --limit 10
 
   # Output as JSON.
-  gcx faro apps show-sourcemaps my-web-app-42 -o json`,
+  gcx frontend apps show-sourcemaps my-web-app-42 -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -130,9 +130,9 @@ func newApplySourcemapCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &applySourcemapOpts{}
 	cmd := &cobra.Command{
 		Use:   "apply-sourcemap <app-name>",
-		Short: "Upload a sourcemap for a Faro app.",
+		Short: "Upload a sourcemap for a Frontend Observability app.",
 		Example: `  # Upload a sourcemap bundle.
-  gcx faro apps apply-sourcemap my-web-app-42 -f bundle.js.map`,
+  gcx frontend apps apply-sourcemap my-web-app-42 -f bundle.js.map`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -193,12 +193,12 @@ func newApplySourcemapCommand(loader *providers.ConfigLoader) *cobra.Command {
 func newRemoveSourcemapCommand(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "remove-sourcemap <app-name> <bundle-id> [bundle-id...]",
-		Short: "Remove sourcemap bundles from a Faro app.",
+		Short: "Remove sourcemap bundles from a Frontend Observability app.",
 		Example: `  # Remove a single sourcemap bundle.
-  gcx faro apps remove-sourcemap my-web-app-42 1234567890-abc12
+  gcx frontend apps remove-sourcemap my-web-app-42 1234567890-abc12
 
   # Remove multiple bundles at once.
-  gcx faro apps remove-sourcemap my-web-app-42 bundle-1 bundle-2 bundle-3`,
+  gcx frontend apps remove-sourcemap my-web-app-42 bundle-1 bundle-2 bundle-3`,
 		Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()

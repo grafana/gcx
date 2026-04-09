@@ -1,9 +1,9 @@
-## gcx faro apps delete
+## gcx frontend apps delete
 
-Delete a Faro app.
+Delete a Frontend Observability app.
 
 ```
-gcx faro apps delete <name> [flags]
+gcx frontend apps delete <name> [flags]
 ```
 
 ### Options
@@ -25,5 +25,5 @@ gcx faro apps delete <name> [flags]
 
 ### SEE ALSO
 
-* [gcx faro apps](gcx_faro_apps.md)	 - Manage Faro apps.
+* [gcx frontend apps](gcx_frontend_apps.md)	 - Manage Frontend Observability apps.
 

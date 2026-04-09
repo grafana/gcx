@@ -226,15 +226,15 @@ Then wait for infrastructure signals to appear by polling `gcx setup instrumenta
   List pipelines (`gcx fleet pipelines list`) to confirm pipeline exists and is receiving data.
   Verify collectors are healthy: `gcx fleet collectors list`.
 
-- **Agent C** — Faro frontend observability (skip if no frontend stack from Phase 1):
-  Discover the Faro command group (`gcx faro --help`, `gcx faro apps --help`).
-  List existing Faro apps: `gcx faro apps list`. If an app for this project already exists, skip creation.
-  Otherwise, create a Faro app configured for the application URL and name:
+- **Agent C** — Frontend observability (skip if no frontend stack from Phase 1):
+  Discover the frontend command group (`gcx frontend --help`, `gcx frontend apps --help`).
+  List existing Frontend Observability apps: `gcx frontend apps list`. If an app for this project already exists, skip creation.
+  Otherwise, create a Frontend Observability app configured for the application URL and name:
   ```bash
-  gcx faro apps create -f faro-app.yaml
+  gcx frontend apps create -f faro-app.yaml
   ```
-  Verify: `gcx faro apps list` to confirm the app was created and capture the app ID.
-  If the frontend uses sourcemaps, upload them: `gcx faro apps apply-sourcemap <app-name> -f <sourcemap>`.
+  Verify: `gcx frontend apps list` to confirm the app was created and capture the app ID.
+  If the frontend uses sourcemaps, upload them: `gcx frontend apps apply-sourcemap <app-name> -f <sourcemap>`.
 
 - **Agent D** — Synthetic checks (early deployment for traffic seeding):
   Deploy the `check-*.yaml` files from Phase 2 now, before instrumentation is fully verified. For each endpoint, check if the check already exists (`gcx synth checks list`); if not, create it: `gcx synth checks create -f check-<endpoint>.yaml`. List checks to confirm each is enabled with probes assigned.
@@ -427,7 +427,7 @@ Generate dashboards covering:
 - SLO burn rates across all journeys
 - Error rate + latency percentiles (p50/p95/p99)
 - Request volume + top errors
-- Frontend RUM (if Faro was configured in Phase 3 — verify with `gcx faro apps list`)
+- Frontend RUM (if configured in Phase 3 — verify with `gcx frontend apps list`)
 - k6 load test results
 
 Each agent:
