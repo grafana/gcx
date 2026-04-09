@@ -141,7 +141,7 @@ Ask the user a **single `AskUserQuestion`** to confirm/adjust these defaults:
 
 For each journey `J` from Phase 1, launch an agent that:
 - Discovers the SLO command group (`gcx slo --help`, `gcx slo definitions --help`) to find available subcommands and flags.
-- Runs `gcx resources examples slo-definitions` to get a template if available, then customizes it: name, availability target, latency target, 28d window.
+- Runs `gcx resources examples slo` to get a template if available, then customizes it: name, availability target, latency target, 28d window.
 - Writes the result to `slo-J.yaml`.
 
 Do **not** create the SLOs yet — Phase 4 does that after signals are flowing. Store all `slo-*.yaml` files for Phase 4.

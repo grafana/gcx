@@ -240,7 +240,7 @@ gcx metrics metadata -d <uid>
 gcx metrics metadata -d <uid> --metric http_requests_total
 
 # Check scrape targets via up metric
-gcx metrics query <uid> 'up'
+gcx metrics query -d <uid> 'up'
 ```
 
 ### Discovery Workflow

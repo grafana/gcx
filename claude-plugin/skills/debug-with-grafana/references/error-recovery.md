@@ -209,7 +209,7 @@ Error: failed to execute query: upstream timeout
 4. Check Prometheus scrape targets to confirm the datasource is healthy:
 
    ```bash
-   gcx metrics query <uid> 'up' -o json
+   gcx metrics query -d <uid> 'up' -o json
    ```
 
 5. Verify the Grafana instance is reachable by running a lightweight command:

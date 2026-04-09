@@ -41,7 +41,7 @@ gcx metrics labels -d <uid> --label code
 
 ```bash
 # 1. Check active scrape targets
-gcx metrics query <uid> 'up'
+gcx metrics query -d <uid> 'up'
 
 # 2. Get unique jobs
 gcx metrics labels -d <uid> --label job
@@ -130,7 +130,7 @@ Monitor scrape target health:
 
 ```bash
 # Check active targets via up metric
-gcx metrics query <uid> 'up'
+gcx metrics query -d <uid> 'up'
 
 # Query for down targets
 gcx metrics query <uid> 'up == 0'

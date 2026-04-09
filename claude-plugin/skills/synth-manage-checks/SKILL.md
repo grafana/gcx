@@ -103,7 +103,7 @@ Edit the YAML file (the `metadata.name` will be the numeric ID). Modify only the
 
 ```bash
 # Update the check from file
-gcx synth checks update -f check-<ID>.yaml
+gcx synth checks update <ID> -f check-<ID>.yaml
 ```
 
 ## Workflow 3: GitOps Sync (Pull/Push)
@@ -118,7 +118,7 @@ gcx synth checks list -o yaml
 gcx synth checks get <ID> -o yaml > ./sm-checks/check-<ID>.yaml
 
 # Edit files as needed, then update each changed file
-gcx synth checks update -f ./sm-checks/check-<ID>.yaml
+gcx synth checks update <ID> -f ./sm-checks/check-<ID>.yaml
 ```
 
 For bulk updates, update files individually to control which checks are changed.
