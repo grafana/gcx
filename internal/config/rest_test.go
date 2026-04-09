@@ -180,6 +180,9 @@ func TestNamespacedRESTConfig_SetOnRefresh(t *testing.T) {
 		t.Fatal("expected WrapTransport to be set for OAuth proxy mode")
 	}
 	rt := restCfg.WrapTransport(http.DefaultTransport)
+	if _, ok := rt.(*config.DebugTransport); !ok {
+		t.Fatalf("expected outermost transport to be *config.DebugTransport, got %T", rt)
+	}
 
 	client := &http.Client{Transport: rt}
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, refreshServer.URL+"/test", nil)
