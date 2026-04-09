@@ -9,7 +9,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/goccy/go-yaml"
 	"github.com/grafana/gcx/internal/format"
@@ -17,6 +16,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/sigil/eval"
 	"github.com/grafana/gcx/internal/providers/sigil/sigilhttp"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/gcx/internal/terminal"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -358,11 +358,11 @@ func (c *TableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []RuleDefinition")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "ID\tENABLED\tSELECTOR\tSAMPLE RATE\tEVALUATORS\tCREATED BY\tCREATED AT")
+		t = style.NewTable("ID", "ENABLED", "SELECTOR", "SAMPLE RATE", "EVALUATORS", "CREATED BY", "CREATED AT")
 	} else {
-		fmt.Fprintln(tw, "ID\tENABLED\tSELECTOR\tSAMPLE RATE\tEVALUATORS")
+		t = style.NewTable("ID", "ENABLED", "SELECTOR", "SAMPLE RATE", "EVALUATORS")
 	}
 
 	for _, r := range rules {
@@ -381,14 +381,12 @@ func (c *TableCodec) Encode(w io.Writer, v any) error {
 			if createdBy == "" {
 				createdBy = "-"
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				r.RuleID, enabled, r.Selector, sampleRate, evalIDs, createdBy, sigilhttp.FormatTime(r.CreatedAt))
+			t.Row(r.RuleID, enabled, r.Selector, sampleRate, evalIDs, createdBy, sigilhttp.FormatTime(r.CreatedAt))
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-				r.RuleID, enabled, r.Selector, sampleRate, evalIDs)
+			t.Row(r.RuleID, enabled, r.Selector, sampleRate, evalIDs)
 		}
 	}
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *TableCodec) Decode(_ io.Reader, _ any) error {
