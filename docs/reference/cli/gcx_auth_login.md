@@ -1,6 +1,6 @@
 ## gcx auth login
 
-Authenticate to a Grafana stack with OAuth
+Authenticate to a Grafana stack with OAuth (experimental)
 
 ### Synopsis
 
@@ -17,8 +17,17 @@ grafana.server.
 
 Without --server, the selected context must already define grafana.server. For
 example:
-	gcx config set contexts.<context>.grafana.server https://your-stack.grafana.net
-	gcx config use-context <context>
+	gcx config set contexts.my-stack.grafana.server https://my-stack.grafana.net
+	gcx config use-context my-stack
+
+WARNING: OAuth login is experimental. The following commands require a service account token instead:
+  - incidents
+  - oncall
+  - faro
+  - slo
+  - resources (partial)
+
+To use a token: gcx config set contexts.CONTEXT.grafana.token TOKEN
 
 ```
 gcx auth login [flags]
@@ -27,7 +36,7 @@ gcx auth login [flags]
 ### Examples
 
 ```
-  gcx auth login --server https://your-stack.grafana.net
+  gcx auth login --server https://my-stack.grafana.net
   gcx auth login --context prod --server https://prod.grafana.net
   gcx auth login
 ```

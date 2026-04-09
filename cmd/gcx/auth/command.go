@@ -14,7 +14,7 @@ import (
 	"github.com/spf13/pflag"
 )
 
-var unsupportedCommandsWarningTemplate = `WARNING: OAuth login is experimental. The following commands require a service account token instead:
+const unsupportedCommandsWarningTemplate = `WARNING: OAuth login is experimental. The following commands require a service account token instead:
   - incidents
   - oncall
   - faro
