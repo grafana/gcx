@@ -124,6 +124,7 @@ func TestGrafanaConfig_Validate_MismatchedStackID(t *testing.T) {
 	err := cfg.Validate("ctx")
 	req.Error(err)
 	req.ErrorContains(err, "mismatched")
+	req.ErrorContains(err, "contexts.ctx.grafana.stack-id")
 }
 
 func TestGrafanaConfig_Validate_MissingStackWhenBootdataUnavailable(t *testing.T) {
@@ -139,6 +140,8 @@ func TestGrafanaConfig_Validate_MissingStackWhenBootdataUnavailable(t *testing.T
 	err := cfg.Validate("ctx")
 	req.Error(err)
 	req.ErrorContains(err, "missing")
+	req.ErrorContains(err, "contexts.ctx.grafana.org-id")
+	req.ErrorContains(err, "contexts.ctx.grafana.stack-id")
 }
 
 func TestGrafanaConfig_Validate_BootdataUnavailableAndSuppliedStackId(t *testing.T) {

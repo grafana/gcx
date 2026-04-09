@@ -8,6 +8,7 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/grafana/gcx/cmd/gcx/fail"
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/grafana"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -146,6 +147,19 @@ func TestErrorToDetailedError_UsageErrorIncludesExpectedSyntax(t *testing.T) {
 	assert.Contains(t, got.Details, "gcx logs query [DATASOURCE_UID] EXPR [flags]")
 	require.Len(t, got.Suggestions, 1)
 	assert.Equal(t, "Run 'gcx logs query --help' for full usage and examples", got.Suggestions[0])
+}
+
+func TestErrorToDetailedError_UnmarshalErrorSuggestsConfigEdit(t *testing.T) {
+	got := fail.ErrorToDetailedError(config.UnmarshalError{
+		File: "/home/user/.config/gcx/config.yaml",
+		Err:  errors.New(`unknown field "bad-field"`),
+	})
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Could not parse configuration", got.Summary)
+	assert.Contains(t, got.Details, "/home/user/.config/gcx/config.yaml")
+	require.Len(t, got.Suggestions, 2)
+	assert.Contains(t, got.Suggestions[0], "gcx config edit")
 }
 
 func TestErrorToDetailedError_CobraUnknownCommandError(t *testing.T) {

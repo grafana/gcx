@@ -228,10 +228,11 @@ func (grafana GrafanaConfig) validateNamespace(contextName string) error {
 		if discoveryErr != nil {
 			return ValidationError{
 				Path:    fmt.Sprintf("$.contexts.'%s'.grafana", contextName),
-				Message: fmt.Sprintf("missing contexts.%[1]s.org-id or contexts.%[1]s.stack-id", contextName),
+				Message: fmt.Sprintf("missing contexts.%[1]s.grafana.org-id or contexts.%[1]s.grafana.stack-id", contextName),
 				Suggestions: []string{
 					"Specify the Grafana Org ID for on-prem Grafana",
 					"Specify the Grafana Cloud Stack ID for Grafana Cloud",
+					"Find your Stack ID at grafana.com under your stack's details page",
 				},
 			}
 		}
@@ -248,7 +249,7 @@ func (grafana GrafanaConfig) validateNamespace(contextName string) error {
 	if discoveredStackID != grafana.StackID {
 		return ValidationError{
 			Path:    fmt.Sprintf("$.contexts.'%s'.grafana", contextName),
-			Message: fmt.Sprintf("mismatched contexts.%[1]s.stack-id, discovered %d - was %d in config", contextName, discoveredStackID, grafana.StackID),
+			Message: fmt.Sprintf("mismatched contexts.%[1]s.grafana.stack-id, discovered %d - was %d in config", contextName, discoveredStackID, grafana.StackID),
 			Suggestions: []string{
 				"Specify the correct Grafana Cloud Stack ID for Grafana Cloud or omit the stack-id param",
 			},

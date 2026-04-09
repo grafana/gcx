@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	internalConfig "github.com/grafana/gcx/internal/config"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -29,7 +30,21 @@ If only one config file exists, it is opened directly.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := configOpts.loadConfigTolerantLayered(cmd.Context())
 			if err != nil {
-				return err
+				// If config is unparseable (invalid YAML / unknown fields), fall back
+				// to opening the broken file directly so the user can fix it.
+				var unmarshalErr internalConfig.UnmarshalError
+				if !errors.As(err, &unmarshalErr) {
+					return err
+				}
+
+				fallbackPath, fbErr := editFallbackPath(unmarshalErr, args)
+				if fbErr != nil {
+					return fbErr
+				}
+
+				cmdio.Warning(cmd.ErrOrStderr(),
+					"Configuration in %s could not be parsed; opening in editor so you can fix it.", fallbackPath)
+				return openInEditor(cmd.Context(), fallbackPath)
 			}
 
 			sources := cfg.Sources
@@ -104,6 +119,30 @@ func createConfigForType(typ string) (string, error) {
 	default:
 		return "", fmt.Errorf("cannot create %s config file; only 'local' and 'user' are supported with --create", typ)
 	}
+}
+
+// editFallbackPath determines which file to open when the config cannot be parsed.
+// If the user asked for a specific type, DiscoverSources finds it without parsing.
+// Otherwise the file reported in the UnmarshalError is used.
+func editFallbackPath(unmarshalErr internalConfig.UnmarshalError, args []string) (string, error) {
+	if len(args) == 1 {
+		sources, err := internalConfig.DiscoverSources()
+		if err != nil {
+			return "", err
+		}
+		for _, s := range sources {
+			if s.Type == args[0] {
+				return s.Path, nil
+			}
+		}
+		return "", fmt.Errorf("no %s config file found", args[0])
+	}
+
+	if unmarshalErr.File != "" {
+		return unmarshalErr.File, nil
+	}
+
+	return "", fmt.Errorf("could not determine which config file to edit: %w", unmarshalErr)
 }
 
 func openInEditor(ctx context.Context, path string) error {
