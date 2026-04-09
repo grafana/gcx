@@ -27,6 +27,17 @@ var commandAnnotations = map[string]annotation{
 
 	"gcx api": {Cost: "large", Hint: "GET /api/datasources -o json"},
 
+	// assistant
+	"gcx assistant investigations approvals": {Cost: "medium", Hint: "<id> -o json"},
+	"gcx assistant investigations cancel":    {Cost: "small"},
+	"gcx assistant investigations create":    {Cost: "small"},
+	"gcx assistant investigations document":  {Cost: "medium", Hint: "<investigation-id> <document-id> -o json"},
+	"gcx assistant investigations get":       {Cost: "medium", Hint: "<id> -o json"},
+	"gcx assistant investigations list":      {Cost: "small"},
+	"gcx assistant investigations report":    {Cost: "medium", Hint: "<id> -o json"},
+	"gcx assistant investigations timeline":  {Cost: "medium", Hint: "<id> -o json"},
+	"gcx assistant investigations todos":     {Cost: "medium", Hint: "<id> -o json"},
+
 	// auth
 	"gcx auth login": {Cost: "small"},
 
@@ -209,8 +220,14 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg vendors list":            {Cost: "small"},
 
 	// -----------------------------------------------------------------------
-	// Logs provider (adaptive)
+	// Logs provider
 	// -----------------------------------------------------------------------
+	"gcx logs labels":  {Cost: "small"},
+	"gcx logs metrics": {Cost: "large", Hint: "'rate({job=\"myapp\"}[5m])' --since 1h -o json"},
+	"gcx logs query":   {Cost: "large", Hint: "'{job=\"myapp\"}' --since 1h --limit 100 -o json"},
+	"gcx logs series":  {Cost: "medium", Hint: "--match '{job=\"myapp\"}' -o json"},
+
+	// Logs adaptive
 	"gcx logs adaptive drop-rules create": {Cost: "small"},
 	"gcx logs adaptive drop-rules delete": {Cost: "small"},
 	"gcx logs adaptive drop-rules get":    {Cost: "small"},
@@ -228,12 +245,21 @@ var commandAnnotations = map[string]annotation{
 	"gcx logs adaptive segments update":   {Cost: "small"},
 
 	// -----------------------------------------------------------------------
-	// Metrics provider (adaptive)
+	// Metrics provider
 	// -----------------------------------------------------------------------
+	"gcx metrics labels":   {Cost: "small"},
+	"gcx metrics metadata": {Cost: "medium", Hint: "--metric <name> -o json"},
+	"gcx metrics query":    {Cost: "large", Hint: "'up' --since 1h -o json"},
+
+	// Metrics adaptive
 	"gcx metrics adaptive recommendations apply": {Cost: "small"},
+	"gcx metrics adaptive recommendations diff":  {Cost: "medium", Hint: "<metric> -o json"},
 	"gcx metrics adaptive recommendations show":  {Cost: "small"},
-	"gcx metrics adaptive rules show":            {Cost: "small"},
-	"gcx metrics adaptive rules sync":            {Cost: "medium", Hint: "-f rules.yaml --dry-run -o json"},
+	"gcx metrics adaptive rules create":          {Cost: "small"},
+	"gcx metrics adaptive rules delete":          {Cost: "small"},
+	"gcx metrics adaptive rules get":             {Cost: "small"},
+	"gcx metrics adaptive rules list":            {Cost: "small"},
+	"gcx metrics adaptive rules update":          {Cost: "small"},
 
 	// -----------------------------------------------------------------------
 	// OnCall provider
@@ -280,15 +306,46 @@ var commandAnnotations = map[string]annotation{
 	"gcx oncall webhooks list":              {Cost: "small"},
 
 	// -----------------------------------------------------------------------
-	// Profiles provider (adaptive)
+	// Profiles provider
 	// -----------------------------------------------------------------------
 	"gcx profiles adaptive": {Cost: "small"},
+	"gcx profiles labels":   {Cost: "small"},
+	"gcx profiles metrics":  {Cost: "large", Hint: "'{service_name=\"frontend\"}' --profile-type cpu --since 1h -o json"},
+	"gcx profiles query":    {Cost: "large", Hint: "'{service_name=\"frontend\"}' --profile-type cpu --since 1h -o json"},
 
 	// -----------------------------------------------------------------------
 	// Sigil provider
 	// -----------------------------------------------------------------------
+	"gcx sigil agents get":      {Cost: "small"},
+	"gcx sigil agents list":     {Cost: "small"},
+	"gcx sigil agents versions": {Cost: "small"},
+
+	"gcx sigil conversations get":    {Cost: "medium", Hint: "<conversation-id> -o json"},
+	"gcx sigil conversations list":   {Cost: "small"},
 	"gcx sigil conversations search": {Cost: "medium", Hint: "--from 2024-01-01 --to 2024-01-31 -o json"},
-	"gcx sigil conversations show":   {Cost: "medium", Hint: "--limit 10 -o json"},
+
+	"gcx sigil evaluators create": {Cost: "small"},
+	"gcx sigil evaluators delete": {Cost: "small"},
+	"gcx sigil evaluators get":    {Cost: "small"},
+	"gcx sigil evaluators list":   {Cost: "small"},
+	"gcx sigil evaluators test":   {Cost: "medium", Hint: "<evaluator-id> -o json"},
+
+	"gcx sigil generations get": {Cost: "medium", Hint: "<generation-id> -o json"},
+
+	"gcx sigil judge models":    {Cost: "small"},
+	"gcx sigil judge providers": {Cost: "small"},
+
+	"gcx sigil rules create": {Cost: "small"},
+	"gcx sigil rules delete": {Cost: "small"},
+	"gcx sigil rules get":    {Cost: "small"},
+	"gcx sigil rules list":   {Cost: "small"},
+	"gcx sigil rules update": {Cost: "small"},
+
+	"gcx sigil scores list": {Cost: "small"},
+
+	"gcx sigil templates get":      {Cost: "small"},
+	"gcx sigil templates list":     {Cost: "small"},
+	"gcx sigil templates versions": {Cost: "small"},
 
 	// -----------------------------------------------------------------------
 	// SLO provider
@@ -311,18 +368,28 @@ var commandAnnotations = map[string]annotation{
 	// -----------------------------------------------------------------------
 	// Synthetic Monitoring provider
 	// -----------------------------------------------------------------------
-	"gcx synth checks create":   {Cost: "small"},
-	"gcx synth checks delete":   {Cost: "small"},
-	"gcx synth checks get":      {Cost: "small"},
-	"gcx synth checks list":     {Cost: "small"},
-	"gcx synth checks status":   {Cost: "medium", Hint: "--job <name> -o json"},
-	"gcx synth checks timeline": {Cost: "medium", Hint: "<id> --since 1h -o json"},
-	"gcx synth checks update":   {Cost: "small"},
-	"gcx synth probes list":     {Cost: "small"},
+	"gcx synth checks create":      {Cost: "small"},
+	"gcx synth checks delete":      {Cost: "small"},
+	"gcx synth checks get":         {Cost: "small"},
+	"gcx synth checks list":        {Cost: "small"},
+	"gcx synth checks status":      {Cost: "medium", Hint: "--job <name> -o json"},
+	"gcx synth checks timeline":    {Cost: "medium", Hint: "<id> --since 1h -o json"},
+	"gcx synth checks update":      {Cost: "small"},
+	"gcx synth probes create":      {Cost: "small"},
+	"gcx synth probes delete":      {Cost: "small"},
+	"gcx synth probes deploy":      {Cost: "small"},
+	"gcx synth probes list":        {Cost: "small"},
+	"gcx synth probes token-reset": {Cost: "small"},
 
 	// -----------------------------------------------------------------------
-	// Traces provider (adaptive)
+	// Traces provider
 	// -----------------------------------------------------------------------
+	"gcx traces get":     {Cost: "large", Hint: "<trace-id> --llm -o json"},
+	"gcx traces labels":  {Cost: "small"},
+	"gcx traces metrics": {Cost: "large", Hint: "'rate({ span.http.status_code >= 500 }[5m])' --since 1h -o json"},
+	"gcx traces query":   {Cost: "large", Hint: "'{ span.http.status_code >= 500 }' --since 1h --limit 20 -o json"},
+
+	// Traces adaptive
 	"gcx traces adaptive policies create":         {Cost: "small"},
 	"gcx traces adaptive policies delete":         {Cost: "small"},
 	"gcx traces adaptive policies get":            {Cost: "small"},

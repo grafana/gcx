@@ -26,6 +26,7 @@ var skipTokenCost = map[string]bool{
 	"gcx completion fish":       true,
 	"gcx completion powershell": true,
 	"gcx completion zsh":        true,
+	"gcx help":                  true,
 }
 
 func buildRootCmd() *cobra.Command {
