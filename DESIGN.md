@@ -64,6 +64,58 @@ The `--json field1,field2` flag selects specific fields. `--json ?` discovers av
 
 See [docs/design/output.md](docs/design/output.md) for codec implementation, status messages, and mutation summaries.
 
+## Verbosity and Diagnostic Output
+
+gcx is quiet by default — stdout carries only the requested data, stderr carries
+nothing unless something goes wrong. Use `-v` flags to increase diagnostic output.
+
+### Log level ladder
+
+The root `--verbose` / `-v` flag maps to `slog` levels. Each additional `-v`
+lowers the threshold by one level (4 points in slog's scale):
+
+| Flags | slog threshold | What you see |
+|-------|---------------|--------------|
+| (none) | Error | Only hard errors — the command failed |
+| `-v` | Warn | HTTP 5xx responses, transport failures, deprecation warnings |
+| `-vv` | Info | Notable events — config loading, discovery, auth |
+| `-vvv` | Debug | Every HTTP request/response (method, URL, status) |
+
+Maximum is `-vvv`; additional flags beyond three have no effect.
+
+### HTTP request logging
+
+With `-vvv`, every outbound HTTP call logs at Debug:
+
+```
+DEBUG http request method=GET url=https://...
+DEBUG http response method=GET url=https://... status=200
+```
+
+5xx responses and transport errors (connection refused, timeout, TLS) surface
+at Warn — visible with just `-v`:
+
+```
+WARN http response method=GET url=https://... status=502
+WARN http error   method=GET url=https://... error="connection refused"
+```
+
+### `--log-http-payload`
+
+Dumps the full request and response bodies (via `httputil.DumpRequest` /
+`httputil.DumpResponse`) at Debug level. Requires `-vvv` to be visible.
+
+```
+gcx --log-http-payload -vvv slo list
+```
+
+**Warning:** The dump includes all headers, including `Authorization`. Treat
+the output as sensitive — do not paste it into public issues or logs.
+
+This flag applies to the provider tier (`httputils.NewDefaultClient`). The K8s
+resource tier (transport chain built by `NewNamespacedRESTConfig`) does not
+support payload dumping — only `LoggingRoundTripper` is wired into that path.
+
 ## Exit Codes
 
 | Code | Meaning | When |
