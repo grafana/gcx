@@ -53,7 +53,7 @@ func TestRunLogin_serverBootstrapsDefaultContext(t *testing.T) {
 	}
 
 	require.NoError(t, runLogin(cmd, opts))
-	assert.Empty(t, stderr.String())
+	assert.Contains(t, stderr.String(), "WARNING: OAuth login is experimental")
 	assert.Contains(t, stdout.String(), "Authenticated as user@example.com. Tokens saved to context \"default\".")
 
 	saved, err := config.Load(t.Context(), config.ExplicitConfigFile(configFile))

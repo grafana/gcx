@@ -31,8 +31,8 @@ contexts:
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandErrorContains("Error: Grafana server not configured"),
 			testutils.CommandErrorContains("Context \"test\" does not define grafana.server."),
-			testutils.CommandErrorContains("Set it: gcx config set contexts.test.grafana.server https://your-stack.grafana.net"),
-			testutils.CommandErrorContains("Or pass it now: gcx auth login --server https://your-stack.grafana.net"),
+			testutils.CommandErrorContains("Set it: gcx config set contexts.test.grafana.server https://my-stack.grafana.net"),
+			testutils.CommandErrorContains("Or pass it now: gcx auth login --server https://my-stack.grafana.net"),
 		},
 	}
 	tc.Run(t)
@@ -47,8 +47,8 @@ func TestLogin_noContext(t *testing.T) {
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandErrorContains("Error: Grafana server not configured"),
 			testutils.CommandErrorContains("Context \"default\" does not define grafana.server."),
-			testutils.CommandErrorContains("Set it: gcx config set contexts.default.grafana.server https://your-stack.grafana.net"),
-			testutils.CommandErrorContains("Or pass it now: gcx auth login --server https://your-stack.grafana.net"),
+			testutils.CommandErrorContains("Set it: gcx config set contexts.default.grafana.server https://my-stack.grafana.net"),
+			testutils.CommandErrorContains("Or pass it now: gcx auth login --server https://my-stack.grafana.net"),
 		},
 	}
 	tc.Run(t)
@@ -68,8 +68,8 @@ contexts:
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandErrorContains("Error: Grafana server not configured"),
 			testutils.CommandErrorContains("Context \"prod env.v2\" does not define grafana.server."),
-			testutils.CommandErrorContains("Set it: gcx config set 'contexts.prod env\\.v2.grafana.server' https://your-stack.grafana.net"),
-			testutils.CommandErrorContains("Or pass it now: gcx auth login --server https://your-stack.grafana.net"),
+			testutils.CommandErrorContains("Set it: gcx config set 'contexts.prod env\\.v2.grafana.server' https://my-stack.grafana.net"),
+			testutils.CommandErrorContains("Or pass it now: gcx auth login --server https://my-stack.grafana.net"),
 		},
 	}
 	tc.Run(t)
