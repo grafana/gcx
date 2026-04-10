@@ -3,7 +3,7 @@ package retry
 import (
 	"io"
 	"math"
-	"math/rand/v2"
+	"math/rand/v2" // nosemgrep: go.lang.security.audit.crypto.math_random.math-random-used -- jitter does not need crypto randomness
 	"net"
 	"net/http"
 	"strconv"
