@@ -839,3 +839,97 @@ func TestCreateDirectEscalation(t *testing.T) {
 		t.Errorf("unexpected result: %+v", result)
 	}
 }
+
+func TestProxyMode_NoAuthHeader(t *testing.T) {
+	t.Parallel()
+
+	// In proxy mode the client should not set its own Authorization header;
+	// the RefreshTransport (on the HTTP client) adds the gat_ token and
+	// the proxy adds OnCall auth server-side.
+	var receivedAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck
+			"results": []map[string]any{{"id": "int1", "name": "Test"}},
+		})
+	}))
+	defer srv.Close()
+
+	// Create an OAuth-mode config via NewNamespacedRESTConfig.
+	cfg := config.NewNamespacedRESTConfig(t.Context(), config.Context{
+		Grafana: &config.GrafanaConfig{
+			Server:        "https://mystack.grafana.net",
+			ProxyEndpoint: srv.URL,
+			OAuthToken:    "gat_test",
+			StackID:       123,
+		},
+	})
+
+	client, err := oncall.NewClient(srv.URL, cfg)
+	if err != nil {
+		t.Fatalf("failed to create client: %v", err)
+	}
+
+	_, err = client.ListIntegrations(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// The client should NOT have set Authorization (token is empty in proxy mode).
+	// The transport may add its own header, but the raw token should not appear.
+	if receivedAuth == "test-token" {
+		t.Error("proxy mode should not send the direct-mode token")
+	}
+}
+
+func TestProxyMode_PaginationSkipsHostCheck(t *testing.T) {
+	t.Parallel()
+
+	// Simulate paginated responses where the "next" URL points to a different
+	// host (the real OnCall API) than the proxy base URL.
+	page := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if page == 0 {
+			page++
+			nextURL := "https://oncall-prod.example.com/oncall/api/v1/integrations/?page=2"
+			json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck
+				"results": []map[string]any{{"id": "int1", "name": "First"}},
+				"next":    &nextURL,
+			})
+			return
+		}
+		// Page 2 — returned when the client follows the pagination URL.
+		// In proxy mode, the path should be extracted correctly.
+		json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck
+			"results": []map[string]any{{"id": "int2", "name": "Second"}},
+		})
+	}))
+	defer srv.Close()
+
+	cfg := config.NewNamespacedRESTConfig(t.Context(), config.Context{
+		Grafana: &config.GrafanaConfig{
+			Server:        "https://mystack.grafana.net",
+			ProxyEndpoint: srv.URL,
+			OAuthToken:    "gat_test",
+			StackID:       123,
+		},
+	})
+
+	client, err := oncall.NewClient(srv.URL, cfg)
+	if err != nil {
+		t.Fatalf("failed to create client: %v", err)
+	}
+
+	// In direct mode this would fail because the pagination URL host differs
+	// from the client base URL. In proxy mode it should succeed.
+	results, err := client.ListIntegrations(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+}

@@ -36,31 +36,45 @@ const (
 
 // Client is an HTTP client for the Grafana OnCall API.
 type Client struct {
-	oncallURL  string
-	stackURL   string
-	token      string
-	httpClient *http.Client
+	oncallURL    string
+	stackURL     string
+	token        string
+	httpClient   *http.Client
+	isOAuthProxy bool
 }
 
 // NewClient creates a new OnCall client from the given REST config and OnCall API URL.
 // oncallURL is the OnCall API base URL (e.g., https://oncall-prod-us-central-0.grafana.net/oncall).
 // cfg is the namespaced REST config providing auth, TLS, and the stack URL.
 func NewClient(oncallURL string, cfg config.NamespacedRESTConfig) (*Client, error) {
-	// OnCall API uses its own auth (raw token in Authorization header), not the
-	// Grafana bearer token. Using rest.HTTPClientFor() would inject the Grafana
-	// bearer token via the k8s transport round-tripper, causing 404/auth errors.
-	httpClient := providers.ExternalHTTPClient()
+	var httpClient *http.Client
+	var token string
+	isOAuthProxy := cfg.IsOAuthProxy()
 
-	token := cfg.BearerToken
-	if strings.HasPrefix(token, "Bearer ") {
-		slog.Warn("OnCall token already contains 'Bearer ' prefix — this may be a misconfiguration; the token is used as-is without an additional prefix")
+	if isOAuthProxy {
+		// OAuth mode: route through the assistant external provider proxy.
+		// Use the k8s HTTP client which has the RefreshTransport (gat_ auth).
+		// The proxy adds the real OnCall auth (SA token) on the server side.
+		var err error
+		httpClient, err = rest.HTTPClientFor(&cfg.Config)
+		if err != nil {
+			return nil, fmt.Errorf("oncall: create oauth http client: %w", err)
+		}
+	} else {
+		// Direct mode: use standalone HTTP client with SA token.
+		httpClient = providers.ExternalHTTPClient()
+		token = cfg.BearerToken
+		if strings.HasPrefix(token, "Bearer ") {
+			slog.Warn("OnCall token already contains 'Bearer ' prefix — this may be a misconfiguration; the token is used as-is without an additional prefix")
+		}
 	}
 
 	return &Client{
-		oncallURL:  strings.TrimRight(oncallURL, "/"),
-		stackURL:   cfg.Host,
-		token:      token,
-		httpClient: httpClient,
+		oncallURL:    strings.TrimRight(oncallURL, "/"),
+		stackURL:     cfg.Host,
+		token:        token,
+		httpClient:   httpClient,
+		isOAuthProxy: isOAuthProxy,
 	}, nil
 }
 
@@ -70,10 +84,14 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body io.Rea
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	// OnCall API uses raw token auth (no "Bearer" prefix), matching the cloud CLI's WithRawTokenAuth().
-	req.Header.Set("Authorization", c.token)
+	// When calling directly, set OnCall's raw token auth (no "Bearer" prefix).
+	// When proxying through the oauth server, the RefreshTransport adds the
+	// gat_ token and the proxy adds OnCall auth server-side.
+	if c.token != "" {
+		req.Header.Set("Authorization", c.token)
+	}
 	req.Header.Set("Content-Type", "application/json")
-	if c.stackURL != "" {
+	if c.stackURL != "" && !c.isOAuthProxy {
 		req.Header.Set("X-Grafana-Url", c.stackURL)
 	}
 
@@ -151,7 +169,10 @@ func iterResources[T any](c *Client, ctx context.Context, path, resourceType str
 				return
 			}
 			baseURL, _ := url.Parse(c.oncallURL)
-			if nextURL.Host != "" && nextURL.Host != baseURL.Host {
+			// When using the OAuth proxy, the pagination URL points to the real
+			// OnCall host which differs from the proxy base URL, so skip the host
+			// check.
+			if nextURL.Host != "" && nextURL.Host != baseURL.Host && !c.isOAuthProxy {
 				var z T
 				yield(z, fmt.Errorf("oncall: pagination URL host %q does not match base URL host %q", nextURL.Host, baseURL.Host))
 				return
@@ -159,7 +180,21 @@ func iterResources[T any](c *Client, ctx context.Context, path, resourceType str
 			// The API returns an absolute path that may include the oncallURL
 			// path prefix (e.g. "/oncall/api/v1/..."). Strip the base path so
 			// doRequest (which prepends oncallURL) doesn't double it.
-			next = strings.TrimPrefix(nextURL.Path, baseURL.Path)
+			//
+			// When using the OAuth proxy, the base URL is the proxy, not the real
+			// OnCall host. Extract the relative API path by finding the /api/
+			// boundary — all OnCall API paths start with /api/v1/.
+			if c.isOAuthProxy {
+				// OnCall's base path (e.g. "/oncall") never contains "/api/",
+				// so the first match is always the start of the API route.
+				if idx := strings.Index(nextURL.Path, "/api/"); idx >= 0 {
+					next = nextURL.Path[idx:]
+				} else {
+					next = nextURL.Path
+				}
+			} else {
+				next = strings.TrimPrefix(nextURL.Path, baseURL.Path)
+			}
 			if nextURL.RawQuery != "" {
 				next += "?" + nextURL.RawQuery
 			}

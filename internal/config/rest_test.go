@@ -121,6 +121,37 @@ func TestNewNamespacedRESTConfig_OAuthProxyTrimsTrailingSlash(t *testing.T) {
 	}
 }
 
+func TestNamespacedRESTConfig_IsOAuthProxy(t *testing.T) {
+	t.Run("true when OAuth configured", func(t *testing.T) {
+		ctx := config.Context{
+			Grafana: &config.GrafanaConfig{
+				Server:        "https://mystack.grafana.net",
+				ProxyEndpoint: "https://mystack.grafana.net/a/grafana-assistant-app",
+				OAuthToken:    "gat_test-token",
+				StackID:       123,
+			},
+		}
+		restCfg := config.NewNamespacedRESTConfig(t.Context(), ctx)
+		if !restCfg.IsOAuthProxy() {
+			t.Fatal("expected IsOAuthProxy() to return true for OAuth config")
+		}
+	})
+
+	t.Run("false when token auth", func(t *testing.T) {
+		ctx := config.Context{
+			Grafana: &config.GrafanaConfig{
+				Server:   "https://mystack.grafana.net",
+				APIToken: "glsa_test-token",
+				StackID:  123,
+			},
+		}
+		restCfg := config.NewNamespacedRESTConfig(t.Context(), ctx)
+		if restCfg.IsOAuthProxy() {
+			t.Fatal("expected IsOAuthProxy() to return false for token auth config")
+		}
+	})
+}
+
 func TestNewNamespacedRESTConfig_OAuthProxySetsHost(t *testing.T) {
 	ctx := config.Context{
 		Grafana: &config.GrafanaConfig{

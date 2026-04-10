@@ -25,6 +25,11 @@ type NamespacedRESTConfig struct {
 	oauthTransport *auth.RefreshTransport
 }
 
+// IsOAuthProxy reports whether the config is using OAuth proxy mode.
+func (n *NamespacedRESTConfig) IsOAuthProxy() bool {
+	return n.oauthTransport != nil
+}
+
 // SetOnRefresh registers a callback that is invoked after a successful OAuth
 // token refresh. This allows the call site (which has access to the config
 // source) to persist refreshed tokens back to the config file.
