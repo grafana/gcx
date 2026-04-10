@@ -45,6 +45,13 @@ type instancesListOpts struct {
 	State     string
 }
 
+func (o *instancesListOpts) Validate() error {
+	if err := o.IO.Validate(); err != nil {
+		return err
+	}
+	return validateAlertState(o.State)
+}
+
 func (o *instancesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &InstancesTableCodec{})
 	o.IO.RegisterCustomCodec("wide", &InstancesTableCodec{Wide: true})
@@ -62,10 +69,7 @@ func newInstancesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 		Use:   "list",
 		Short: "List alert instances.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-			if err := validateAlertState(opts.State); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 

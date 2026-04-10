@@ -214,6 +214,36 @@ Run when code has been modified, before pushing or creating a PR.
    bd dolt push
    ```
 
+## Mandatory Pre-Commit Checklist
+
+Run this checklist **before every commit** (not only before PR/push):
+
+1. **Format touched files**
+   ```bash
+   gofmt -w <touched-go-files>
+   ```
+2. **Lint passes**
+   ```bash
+   make lint
+   ```
+   If `devbox` is unavailable, use the project-local binary/toolchain equivalent.
+3. **Targeted tests pass** for changed packages
+   ```bash
+   go test ./path/to/changed/package/...
+   ```
+4. **Full test suite passes**
+   ```bash
+   go test ./...
+   ```
+5. **Reference docs regenerated when command/output surface changes**
+   ```bash
+   GCX_AGENT_MODE=false make reference
+   ```
+6. **No unstaged surprises**
+   ```bash
+   git status
+   ```
+
 ## Beads Issue Tracker (optional)
 
 This project can use **bd (beads)** for issue tracking. Run `bd prime` for full command reference.

@@ -10,86 +10,118 @@ import (
 )
 
 func TestInstancesTableCodec_Encode(t *testing.T) {
-	codec := &alert.InstancesTableCodec{}
-	assert.Equal(t, "table", string(codec.Format()))
-
-	instances := []alert.AlertInstanceRecord{
+	tests := []struct {
+		name         string
+		codec        *alert.InstancesTableCodec
+		instances    []alert.AlertInstanceRecord
+		wantFormat   string
+		wantContains []string
+	}{
 		{
-			RuleUID:  "rule-1",
-			RuleName: "CPU High",
-			State:    alert.StateFiring,
-			ActiveAt: "2026-04-08T12:34:56Z",
-			Value:    91.5,
-			Labels: map[string]string{
-				"instance": "api-1",
+			name:  "table mode",
+			codec: &alert.InstancesTableCodec{},
+			instances: []alert.AlertInstanceRecord{
+				{
+					RuleUID:  "rule-1",
+					RuleName: "CPU High",
+					State:    alert.StateFiring,
+					ActiveAt: "2026-04-08T12:34:56Z",
+					Value:    91.5,
+					Labels: map[string]string{
+						"instance": "api-1",
+					},
+				},
+				{
+					RuleUID:  "rule-2",
+					RuleName: "Disk Full",
+					State:    alert.StatePending,
+				},
+			},
+			wantFormat: "table",
+			wantContains: []string{
+				"RULE_UID",
+				"RULE",
+				"STATE",
+				"ACTIVE_AT",
+				"VALUE",
+				"LABELS",
+				"rule-1",
+				"CPU High",
+				"91.5",
+				"instance=api-1",
+				"-",
 			},
 		},
 		{
-			RuleUID:  "rule-2",
-			RuleName: "Disk Full",
-			State:    alert.StatePending,
-		},
-	}
-
-	var buf bytes.Buffer
-	err := codec.Encode(&buf, instances)
-	require.NoError(t, err)
-
-	output := buf.String()
-	assert.Contains(t, output, "RULE_UID")
-	assert.Contains(t, output, "RULE")
-	assert.Contains(t, output, "STATE")
-	assert.Contains(t, output, "ACTIVE_AT")
-	assert.Contains(t, output, "VALUE")
-	assert.Contains(t, output, "LABELS")
-	assert.Contains(t, output, "rule-1")
-	assert.Contains(t, output, "CPU High")
-	assert.Contains(t, output, "91.5")
-	assert.Contains(t, output, "instance=api-1")
-	assert.Contains(t, output, "-", "missing values should render as dash")
-}
-
-func TestInstancesTableCodec_EncodeWide(t *testing.T) {
-	codec := &alert.InstancesTableCodec{Wide: true}
-	assert.Equal(t, "wide", string(codec.Format()))
-
-	instances := []alert.AlertInstanceRecord{
-		{
-			RuleUID:   "rule-1",
-			RuleName:  "CPU High",
-			GroupName: "platform",
-			FolderUID: "folder-a",
-			State:     alert.StateFiring,
-			ActiveAt:  "2026-04-08T12:34:56Z",
-			Value:     99,
-			Labels: map[string]string{
-				"instance": "api-1",
-				"severity": "critical",
+			name:  "wide mode",
+			codec: &alert.InstancesTableCodec{Wide: true},
+			instances: []alert.AlertInstanceRecord{
+				{
+					RuleUID:   "rule-1",
+					RuleName:  "CPU High",
+					GroupName: "platform",
+					FolderUID: "folder-a",
+					State:     alert.StateFiring,
+					ActiveAt:  "2026-04-08T12:34:56Z",
+					Value:     99,
+					Labels: map[string]string{
+						"instance": "api-1",
+						"severity": "critical",
+					},
+				},
+			},
+			wantFormat: "wide",
+			wantContains: []string{
+				"GROUP",
+				"FOLDER",
+				"LABELS",
+				"instance=api-1",
+				"severity=critical",
 			},
 		},
 	}
 
-	var buf bytes.Buffer
-	err := codec.Encode(&buf, instances)
-	require.NoError(t, err)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.wantFormat, string(tc.codec.Format()))
 
-	output := buf.String()
-	assert.Contains(t, output, "GROUP")
-	assert.Contains(t, output, "FOLDER")
-	assert.Contains(t, output, "LABELS")
-	assert.Contains(t, output, "instance=api-1")
-	assert.Contains(t, output, "severity=critical")
+			var buf bytes.Buffer
+			err := tc.codec.Encode(&buf, tc.instances)
+			require.NoError(t, err)
+
+			output := buf.String()
+			for _, want := range tc.wantContains {
+				assert.Contains(t, output, want)
+			}
+		})
+	}
 }
 
-func TestInstancesTableCodec_InvalidType(t *testing.T) {
-	codec := &alert.InstancesTableCodec{}
-	var buf bytes.Buffer
-	err := codec.Encode(&buf, "not instances")
-	require.Error(t, err)
-}
+func TestInstancesTableCodec_Errors(t *testing.T) {
+	tests := []struct {
+		name string
+		run  func(*alert.InstancesTableCodec) error
+	}{
+		{
+			name: "invalid encode type",
+			run: func(codec *alert.InstancesTableCodec) error {
+				var buf bytes.Buffer
+				return codec.Encode(&buf, "not instances")
+			},
+		},
+		{
+			name: "decode not supported",
+			run: func(codec *alert.InstancesTableCodec) error {
+				return codec.Decode(nil, nil)
+			},
+		},
+	}
 
-func TestInstancesTableCodec_Decode(t *testing.T) {
-	codec := &alert.InstancesTableCodec{}
-	err := codec.Decode(nil, nil)
-	require.Error(t, err)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			codec := &alert.InstancesTableCodec{}
+			err := tc.run(codec)
+			require.Error(t, err)
+		})
+	}
 }
