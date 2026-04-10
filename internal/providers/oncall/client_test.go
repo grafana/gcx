@@ -866,7 +866,7 @@ func TestProxyMode_NoAuthHeader(t *testing.T) {
 		},
 	})
 
-	client, err := oncall.NewClient(srv.URL, cfg)
+	client, err := oncall.NewClient(t.Context(), srv.URL, cfg)
 	if err != nil {
 		t.Fatalf("failed to create client: %v", err)
 	}
@@ -917,7 +917,7 @@ func TestProxyMode_PaginationSkipsHostCheck(t *testing.T) {
 		},
 	})
 
-	client, err := oncall.NewClient(srv.URL, cfg)
+	client, err := oncall.NewClient(t.Context(), srv.URL, cfg)
 	if err != nil {
 		t.Fatalf("failed to create client: %v", err)
 	}
