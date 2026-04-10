@@ -207,7 +207,9 @@ type ClientOptions struct {
 	Token          string
 	APIEndpoint    string
 	TokenRefresher TokenRefresher
-	// HTTPClient is an optional custom HTTP client. If nil, httputils.NewDefaultClient is used.
+	// HTTPClient is an optional custom HTTP client. If nil, httputils.NewDefaultClient(context.Background()) is used.
+	// Callers that need context-aware behaviour (e.g. --log-http-payload) should set this field explicitly
+	// using httputils.NewDefaultClient(ctx).
 	HTTPClient *http.Client
 }
 

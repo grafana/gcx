@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/gcx/internal/assistant/investigations"
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/httputils"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
@@ -339,6 +340,7 @@ func resolveClientOptions(ctx context.Context, configOpts *cmdconfig.Options) (a
 			Token:          grafana.OAuthToken,
 			APIEndpoint:    grafana.ProxyEndpoint,
 			TokenRefresher: refresher,
+			HTTPClient:     httputils.NewDefaultClient(ctx),
 		}, nil
 
 	case grafana.APIToken != "":
@@ -346,6 +348,7 @@ func resolveClientOptions(ctx context.Context, configOpts *cmdconfig.Options) (a
 		return assistant.ClientOptions{
 			GrafanaURL: grafana.Server,
 			Token:      grafana.APIToken,
+			HTTPClient: httputils.NewDefaultClient(ctx),
 		}, nil
 
 	default:

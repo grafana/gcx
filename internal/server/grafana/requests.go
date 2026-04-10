@@ -34,10 +34,14 @@ func AuthenticateAndProxyHandler(cfg *config.Context) http.HandlerFunc {
 		if cfg.Grafana != nil && cfg.Grafana.TLS != nil {
 			tlsCfg = cfg.Grafana.TLS.ToStdTLSConfig()
 		}
+		middlewares := []httputils.Middleware{httputils.LoggingMiddleware}
+		if httputils.PayloadLogging(r.Context()) {
+			middlewares = append(middlewares, httputils.RequestResponseLoggingMiddleware)
+		}
 		client := httputils.NewClient(httputils.ClientOpts{
 			TLSConfig:   tlsCfg,
 			Timeout:     10 * time.Second,
-			Middlewares: []httputils.Middleware{httputils.LoggingMiddleware, httputils.RequestResponseLoggingMiddleware},
+			Middlewares: middlewares,
 		})
 
 		client.CheckRedirect = func(req *http.Request, _ []*http.Request) error {
