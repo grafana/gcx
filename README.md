@@ -58,6 +58,19 @@ Investigation, fix, instrumentation, monitoring — without the developer ever l
 
 ## Install
 
+**Quick install (Linux/macOS):**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | sh
+```
+
+Downloads the latest release, verifies the SHA-256 checksum, and installs to
+`~/.local/bin`. Override the location with `INSTALL_DIR`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | INSTALL_DIR=/usr/local/bin sh
+```
+
 **Pre-built binary (Linux/macOS/Windows):**
 
 Download the latest archive for your OS and architecture from the
