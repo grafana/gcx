@@ -35,6 +35,7 @@ Two tiers: **K8s resource tier** (dashboards, folders via `/apis`) and **Cloud p
 - **Config = kubectl kubeconfig**: Named contexts with server/auth/namespace, env var overrides
 - **Format-agnostic data fetching**: Commands fetch all data regardless of `--output` format; codecs control display, not data acquisition (see Pattern 13 in `docs/architecture/patterns.md`)
 - **PromQL via promql-builder**: Use `github.com/grafana/promql-builder/go/promql` for PromQL construction, not string formatting (see Pattern 14 in `docs/architecture/patterns.md`)
+- **Portable agent skills live under `claude-plugin/skills/`**: Treat that tree as the canonical portable Agent Skills bundle. Do not add distributable gcx skills under repo-local `.agents/skills/` — that changes repo-context discovery semantics for tools that scan `.agents`.
 
 ## Essential Commands
 

@@ -100,10 +100,12 @@ gcx completion fish > ~/.config/fish/completions/gcx #fish
 
 ### AI Agent Plugin
 
-A [Claude Code plugin](claude-plugin/README.md) is included with skills for
-managing dashboards, exploring datasources, investigating alerts with the
-Grafana Assistant, and debugging with live observability data. Install it
-alongside gcx to give your agent deep Grafana knowledge.
+A [Claude Code plugin](claude-plugin/README.md) is included with a portable
+Agent Skills bundle for gcx workflows: setup, dashboard GitOps, datasource
+exploration, alert investigation, structured debugging, SLO management,
+Synthetic Monitoring workflows, project scaffolding, resource generation and
+import, and end-to-end observability rollout. Install it alongside gcx to give
+your agent deep Grafana knowledge.
 
 ## Quick Start
 

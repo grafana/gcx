@@ -2,8 +2,10 @@
 
 A Claude Code plugin that gives AI agents deep knowledge of gcx — the
 kubectl-style CLI for managing Grafana resources. With this plugin, Claude can
-debug Grafana incidents, explore datasources, manage dashboards, and drive full
-GitOps workflows without hand-holding.
+set up gcx, scaffold resources-as-code projects, generate and import Grafana
+resources, manage dashboards, explore datasources, investigate alerts, debug
+live systems, work with SLOs and Synthetic Monitoring, and drive full GitOps
+workflows without hand-holding.
 
 ## Prerequisites
 
@@ -44,19 +46,47 @@ Once the plugin is installed, ask Claude to configure gcx:
 This skill walks through creating a named context pointing at your Grafana
 instance, verifying connectivity, and confirming your credentials are working.
 
+## Repository Contract
+
+`claude-plugin/skills/` is the current canonical portable Agent Skills bundle
+for gcx. The Claude plugin consumes that tree directly today, and future
+generic `.agents` installers should read from the same source rather than
+forking or duplicating skill content elsewhere in the repository.
+
+Claude-specific packaging remains under:
+
+- `.claude-plugin/` — plugin manifest and marketplace metadata
+- `agents/` — Claude-facing specialist personas
+
+Do not add distributable gcx skills under repo-local `.agents/skills/`. Tools
+that follow the `.agents` convention treat that path as repo-context guidance
+for working on this repository, not as a globally installable skill bundle.
+
 ## Skills
 
 Skills are triggered automatically when you describe what you want. You do not
-need to invoke them by name.
+need to invoke them by name. The table below is the current inventory of the
+canonical portable skill bundle under `claude-plugin/skills/`.
 
-| Skill | Trigger phrases | What it does |
-|-------|----------------|--------------|
-| `setup-gcx` | "set up gcx", "configure gcx" | Install, authenticate, and verify gcx |
-| `explore-datasources` | "what datasources exist", "explore metrics", "find log streams" | Discover Prometheus metrics, Loki log streams, labels, and series |
-| `investigate-alert` | "why is this alert firing", "investigate alert X" | Root-cause an alert using metrics, logs, and correlated signals |
-| `debug-with-grafana` | "debug this service", "diagnose latency", "troubleshoot errors" | 7-step diagnostic workflow: datasource → query → correlate → conclude |
-| `manage-dashboards` | "pull dashboards", "push to Grafana", "promote to production" | Full dashboard lifecycle: pull, push, create, validate, promote |
-| `gcx-observability` | "set up observability", "instrument my app", "observability setup" | End-to-end observability: instrumentation, SLOs, alerting, synthetic checks, k6, IRM, dashboards, cost optimization, GitOps export |
+| Skill | Purpose |
+|-------|---------|
+| `setup-gcx` | Install gcx if needed, configure authentication, and verify connectivity to Grafana |
+| `gcx` | Use gcx as the default control plane for Grafana resources and queries |
+| `scaffold-project` | Scaffold a new gcx resources-as-code project |
+| `generate-resource-stubs` | Generate typed Grafana resource stubs as Go code |
+| `import-dashboards` | Import existing Grafana dashboards into Go builder code |
+| `manage-dashboards` | Pull, validate, create, push, and promote dashboards |
+| `explore-datasources` | Discover datasources, metrics, labels, and log streams |
+| `investigate-alert` | Investigate why a Grafana alert is firing and what it impacts |
+| `debug-with-grafana` | Run a structured diagnostic workflow across metrics, logs, and dashboards |
+| `slo-check-status` | Check SLO health and summarize current status |
+| `slo-investigate` | Diagnose why a specific SLO is breaching or alerting |
+| `slo-manage` | Create, update, pull, push, and delete SLO definitions |
+| `slo-optimize` | Analyze SLO trends and recommend objective or alerting improvements |
+| `synth-check-status` | Check Synthetic Monitoring health, status, and trends |
+| `synth-investigate-check` | Diagnose why a Synthetic Monitoring check is failing |
+| `synth-manage-checks` | Create, update, pull, push, and delete Synthetic Monitoring checks |
+| `gcx-observability` | Roll out end-to-end observability: instrumentation, SLOs, alerts, synth, k6, IRM, dashboards, and cost optimization |
 
 ## Agents
 
@@ -71,33 +101,14 @@ Agents are specialist personas invoked automatically for multi-step tasks.
 ```
 claude-plugin/
 ├── .claude-plugin/
-│   └── plugin.json                    # Plugin manifest
+│   └── plugin.json           # Plugin manifest
 ├── agents/
-│   └── grafana-debugger.md            # Debugging specialist agent
+│   └── grafana-debugger.md   # Claude-specific specialist agent
 └── skills/
-    ├── setup-gcx/
+    ├── <skill-name>/
     │   ├── SKILL.md
-    │   └── references/configuration.md
-    ├── explore-datasources/
-    │   ├── SKILL.md
-    │   └── references/
-    │       ├── discovery-patterns.md
-    │       └── logql-syntax.md
-    ├── investigate-alert/
-    │   ├── SKILL.md
-    │   └── references/alert-investigation-patterns.md
-    ├── debug-with-grafana/
-    │   ├── SKILL.md
-    │   └── references/
-    │       ├── error-recovery.md
-    │       └── query-patterns.md
-    ├── manage-dashboards/
-    │   ├── SKILL.md
-    │   └── references/
-    │       ├── resource-operations.md
-    │       └── resource-model.md
-    └── gcx-observability/
-        └── SKILL.md
+    │   └── references/...    # Optional skill-specific docs
+    └── ...                   # Canonical portable gcx skill bundle
 ```
 
 ## Example Conversations
