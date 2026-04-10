@@ -120,19 +120,20 @@ func (c *InstancesTableCodec) Encode(w io.Writer, v any) error {
 	if c.Wide {
 		t = style.NewTable("RULE_UID", "RULE", "GROUP", "FOLDER", "STATE", "ACTIVE_AT", "VALUE", "LABELS")
 	} else {
-		t = style.NewTable("RULE_UID", "RULE", "STATE", "ACTIVE_AT", "VALUE")
+		t = style.NewTable("RULE_UID", "RULE", "STATE", "ACTIVE_AT", "VALUE", "LABELS")
 	}
 
 	for _, inst := range instances {
 		activeAt := orDash(inst.ActiveAt)
 		value := dashForNil(inst.Value)
+		labels := formatLabels(inst.Labels)
 
 		if c.Wide {
-			t.Row(inst.RuleUID, inst.RuleName, inst.GroupName, orDash(inst.FolderUID), inst.State, activeAt, value, formatLabels(inst.Labels))
+			t.Row(inst.RuleUID, inst.RuleName, inst.GroupName, orDash(inst.FolderUID), inst.State, activeAt, value, labels)
 			continue
 		}
 
-		t.Row(inst.RuleUID, inst.RuleName, inst.State, activeAt, value)
+		t.Row(inst.RuleUID, inst.RuleName, inst.State, activeAt, value, labels)
 	}
 	return t.Render(w)
 }

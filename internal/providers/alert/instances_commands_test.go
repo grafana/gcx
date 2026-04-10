@@ -20,6 +20,9 @@ func TestInstancesTableCodec_Encode(t *testing.T) {
 			State:    StateFiring,
 			ActiveAt: "2026-04-08T12:34:56Z",
 			Value:    91.5,
+			Labels: map[string]string{
+				"instance": "api-1",
+			},
 		},
 		{
 			RuleUID:  "rule-2",
@@ -38,9 +41,11 @@ func TestInstancesTableCodec_Encode(t *testing.T) {
 	assert.Contains(t, output, "STATE")
 	assert.Contains(t, output, "ACTIVE_AT")
 	assert.Contains(t, output, "VALUE")
+	assert.Contains(t, output, "LABELS")
 	assert.Contains(t, output, "rule-1")
 	assert.Contains(t, output, "CPU High")
 	assert.Contains(t, output, "91.5")
+	assert.Contains(t, output, "instance=api-1")
 	assert.Contains(t, output, "-", "missing values should render as dash")
 }
 
