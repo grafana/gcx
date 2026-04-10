@@ -1,3 +1,25 @@
+## v0.2.5 (2026-04-10)
+
+
+
+- Rename `faro` CLI command to `frontend`
+- Auto-derive context name from server URL during login
+- Add OAuth experimental warning to login flow
+- Add `assistant:chat` scope to OAuth flow
+- Add HTTP traffic debug logging
+- Add Sigil generations, scores, and judge commands
+- Add latency and reachability to synth checks status
+- Add access property to datasource list and get
+- Centralized agent annotations with consistency tests
+- Fix null stream labels and missing content in log queries
+- Improve human-readable logs query output
+- Require `--instant` flag for TraceQL instant metrics
+- Fall back to `/api/ds/query` for Loki and Prometheus
+- Resolve datasources across all API groups
+- Make config edit resilient to broken configs
+- Fix invalid CLI commands in docs and skills
+
+
 ## v0.2.4 (2026-04-08)
 
 
