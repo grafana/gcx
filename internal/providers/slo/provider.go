@@ -38,7 +38,7 @@ func (p *SLOProvider) Commands() []*cobra.Command {
 	// Bind config flags on the parent — all subcommands inherit these.
 	loader.BindFlags(sloCmd.PersistentFlags())
 
-	sloCmd.AddCommand(definitions.Commands())
+	sloCmd.AddCommand(definitions.Commands(loader))
 	sloCmd.AddCommand(reports.Commands(loader))
 
 	return []*cobra.Command{sloCmd}

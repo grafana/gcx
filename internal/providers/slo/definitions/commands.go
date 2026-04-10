@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
@@ -20,21 +21,26 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
+// GrafanaConfigLoader can load a NamespacedRESTConfig from the active context.
+type GrafanaConfigLoader interface {
+	LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error)
+}
+
 // Commands returns the definitions command group with CRUD subcommands.
-func Commands() *cobra.Command {
+func Commands(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "definitions",
 		Short:   "Manage SLO definitions.",
 		Aliases: []string{"def", "defs"},
 	}
 	cmd.AddCommand(
-		newListCommand(),
-		newGetCommand(),
-		newPushCommand(),
-		newPullCommand(),
-		newDeleteCommand(),
-		newStatusCommand(),
-		newTimelineCommand(),
+		newListCommand(loader),
+		newGetCommand(loader),
+		newPushCommand(loader),
+		newPullCommand(loader),
+		newDeleteCommand(loader),
+		newStatusCommand(loader),
+		newTimelineCommand(loader),
 	)
 	return cmd
 }
@@ -54,7 +60,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newListCommand() *cobra.Command {
+func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &listOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -66,7 +72,7 @@ func newListCommand() *cobra.Command {
 
 			ctx := cmd.Context()
 
-			crud, cfg, err := NewTypedCRUD(ctx)
+			crud, cfg, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -170,7 +176,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newGetCommand() *cobra.Command {
+func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
 		Use:   "get UUID",
@@ -184,7 +190,7 @@ func newGetCommand() *cobra.Command {
 			ctx := cmd.Context()
 			uuid := args[0]
 
-			crud, cfg, err := NewTypedCRUD(ctx)
+			crud, cfg, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -220,7 +226,7 @@ func (o *pullOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.OutputDir, "output-dir", "d", ".", "Directory to write SLO definition files to")
 }
 
-func newPullCommand() *cobra.Command {
+func newPullCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &pullOpts{}
 	cmd := &cobra.Command{
 		Use:   "pull",
@@ -228,7 +234,7 @@ func newPullCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			crud, cfg, err := NewTypedCRUD(ctx)
+			crud, cfg, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -286,7 +292,7 @@ func (o *pushOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Preview changes without making them")
 }
 
-func newPushCommand() *cobra.Command {
+func newPushCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &pushOpts{}
 	cmd := &cobra.Command{
 		Use:   "push FILE...",
@@ -295,7 +301,7 @@ func newPushCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			crud, _, err := NewTypedCRUD(ctx)
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -402,7 +408,7 @@ func (o *deleteOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVarP(&o.Force, "force", "f", false, "Skip confirmation prompt")
 }
 
-func newDeleteCommand() *cobra.Command {
+func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &deleteOpts{}
 	cmd := &cobra.Command{
 		Use:   "delete UUID...",
@@ -426,7 +432,7 @@ func newDeleteCommand() *cobra.Command {
 				}
 			}
 
-			crud, _, err := NewTypedCRUD(ctx)
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}

@@ -70,7 +70,7 @@ func ValidateTimelineFlags(cmd *cobra.Command) error {
 	return nil
 }
 
-func newTimelineCommand() *cobra.Command {
+func newTimelineCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &timelineOpts{}
 	cmd := &cobra.Command{
 		Use:   "timeline [UUID]",
@@ -113,7 +113,7 @@ grafana_slo_sli_window metrics.`,
 
 			ctx := cmd.Context()
 
-			crud, cfg, err := NewTypedCRUD(ctx)
+			crud, cfg, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
