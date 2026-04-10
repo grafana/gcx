@@ -9,6 +9,7 @@ import (
 	authlib "github.com/grafana/authlib/types"
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/httputils"
+	"github.com/grafana/gcx/internal/retry"
 	"k8s.io/client-go/rest"
 )
 
@@ -222,6 +223,7 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) NamespacedRESTCon
 
 	// Wrap transport with debug logging so `-vvv` shows every HTTP request.
 	// When --log-http-payload is set, also add full request/response body dumps.
+	// Outermost layer: retry for rate limiting (429) and transient errors.
 	prevWrap := rcfg.WrapTransport
 	payloadLogging := httputils.PayloadLogging(ctx)
 	rcfg.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
@@ -232,7 +234,7 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) NamespacedRESTCon
 		if payloadLogging {
 			rt = &httputils.RequestResponseLoggingRoundTripper{DecoratedTransport: rt}
 		}
-		return rt
+		return &retry.Transport{Base: rt}
 	}
 
 	return NamespacedRESTConfig{

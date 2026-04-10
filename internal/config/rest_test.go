@@ -10,6 +10,7 @@ import (
 	authlib "github.com/grafana/authlib/types"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/httputils"
+	"github.com/grafana/gcx/internal/retry"
 )
 
 func TestNewNamespacedRESTConfig_UsesBootdataStack(t *testing.T) {
@@ -212,8 +213,12 @@ func TestNamespacedRESTConfig_SetOnRefresh(t *testing.T) {
 		t.Fatal("expected WrapTransport to be set for OAuth proxy mode")
 	}
 	rt := restCfg.WrapTransport(http.DefaultTransport)
-	if _, ok := rt.(*httputils.LoggingRoundTripper); !ok {
-		t.Fatalf("expected outermost transport to be *httputils.LoggingRoundTripper, got %T", rt)
+	retryRT, ok := rt.(*retry.Transport)
+	if !ok {
+		t.Fatalf("expected outermost transport to be *retry.Transport, got %T", rt)
+	}
+	if _, ok := retryRT.Base.(*httputils.LoggingRoundTripper); !ok {
+		t.Fatalf("expected retry.Transport.Base to be *httputils.LoggingRoundTripper, got %T", retryRT.Base)
 	}
 
 	client := &http.Client{Transport: rt}
