@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/retry"
+	"github.com/grafana/gcx/internal/version"
 	"k8s.io/client-go/rest"
 )
 
@@ -149,8 +150,7 @@ func parseRFC3339OrZero(s string) time.Time {
 // NewNamespacedRESTConfig creates a new namespaced REST config.
 func NewNamespacedRESTConfig(ctx context.Context, cfg Context) NamespacedRESTConfig {
 	rcfg := rest.Config{
-		// TODO add user agent
-		// UserAgent: cfg.UserAgent.ValueString(),
+		UserAgent:       version.UserAgent(),
 		Host:            strings.TrimSuffix(cfg.Grafana.Server, "/"),
 		APIPath:         "/apis",
 		TLSClientConfig: rest.TLSClientConfig{},

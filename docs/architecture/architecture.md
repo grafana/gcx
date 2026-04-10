@@ -526,8 +526,8 @@ and checked for drift in CI.
 
 ### Low Priority
 
-9. **UserAgent not applied to dynamic client.** `httputils.UserAgent` is defined
-   but not set on the k8s REST config (noted as TODO).
+9. ~~**UserAgent not applied to dynamic client.**~~ Resolved. `version.UserAgent()`
+   is now set on `rest.Config.UserAgent` and `UserAgentTransport` wraps all HTTP clients.
 
 10. **httputils naming confusion.** This package is used by the serve command's
     reverse proxy, not by the primary API client. The name could mislead newcomers

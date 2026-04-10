@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/grafana/gcx/internal/agent"
+	appversion "github.com/grafana/gcx/internal/version"
 	"golang.org/x/mod/module"
 )
 
@@ -35,6 +36,7 @@ func main() {
 	preParseAgentFlag()
 
 	formattedVersion := formatVersion()
+	appversion.Set(version)
 	if err := root.ValidateArgs(root.Command(formattedVersion), os.Args[1:]); err != nil {
 		handleError(err)
 	}

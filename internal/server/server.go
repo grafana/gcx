@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/logs"
+	"github.com/grafana/gcx/internal/version"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/server/grafana"
 	"github.com/grafana/gcx/internal/server/handlers"
@@ -79,7 +80,7 @@ func (s *Server) Start(ctx context.Context) error {
 			grafana.AuthenticateRequest(s.context.Grafana, r.Out)
 
 			r.Out.Header.Del("Origin")
-			r.Out.Header.Set("User-Agent", httputils.UserAgent)
+			r.Out.Header.Set("User-Agent", version.UserAgent())
 		},
 	}
 
