@@ -52,6 +52,47 @@ detect_arch() {
     esac
 }
 
+detect_user_shell() {
+    if [ -n "${SHELL:-}" ]; then
+        printf '%s\n' "${SHELL##*/}"
+    else
+        printf '%s\n' "sh"
+    fi
+}
+
+print_path_instructions() {
+    install_dir="$1"
+    shell_name=$(detect_user_shell)
+
+    echo ""
+    case "$shell_name" in
+        bash)
+            info "${install_dir} is not in your PATH. Add it with:"
+            echo ""
+            info "  echo 'export PATH=\"${install_dir}:\$PATH\"' >> ~/.bashrc"
+            info "  . ~/.bashrc"
+            ;;
+        zsh)
+            info "${install_dir} is not in your PATH. Add it with:"
+            echo ""
+            info "  echo 'export PATH=\"${install_dir}:\$PATH\"' >> ~/.zshrc"
+            info "  source ~/.zshrc"
+            ;;
+        fish)
+            info "${install_dir} is not in your PATH. Add it with:"
+            echo ""
+            info "  mkdir -p ~/.config/fish"
+            info "  echo 'fish_add_path ${install_dir}' >> ~/.config/fish/config.fish"
+            info "  source ~/.config/fish/config.fish"
+            ;;
+        *)
+            info "${install_dir} is not in your PATH. Add it to your shell startup file:"
+            echo ""
+            info "  export PATH=\"${install_dir}:\$PATH\""
+            ;;
+    esac
+}
+
 get_latest_version() {
     url="https://api.github.com/repos/${GITHUB_REPO}/releases/latest"
     auth_header=""
@@ -158,12 +199,7 @@ main() {
     case ":${PATH}:" in
         *":${install_dir}:"*) ;;
         *)
-            echo ""
-            info "${install_dir} is not in your PATH. Add it by running:"
-            echo ""
-            info "  export PATH=\"${install_dir}:\$PATH\""
-            echo ""
-            info "Add that line to your shell profile (~/.bashrc, ~/.zshrc, etc.)"
+            print_path_instructions "$install_dir"
             ;;
     esac
 
