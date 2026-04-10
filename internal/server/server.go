@@ -19,11 +19,11 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/logs"
-	"github.com/grafana/gcx/internal/version"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/server/grafana"
 	"github.com/grafana/gcx/internal/server/handlers"
 	"github.com/grafana/gcx/internal/server/livereload"
+	"github.com/grafana/gcx/internal/version"
 	"github.com/grafana/grafana-app-sdk/logging"
 )
 
