@@ -39,6 +39,7 @@ type ListOptions struct {
 	RuleUID    string
 	GroupName  string
 	FolderUID  string
+	State      string
 	GroupLimit int
 }
 
@@ -53,6 +54,9 @@ func (c *Client) List(ctx context.Context, opts ListOptions) (*RulesResponse, er
 	}
 	if opts.FolderUID != "" {
 		params.Set("folder_uid", opts.FolderUID)
+	}
+	if opts.State != "" {
+		params.Add("state", opts.State)
 	}
 	if opts.GroupLimit > 0 {
 		params.Set("group_limit", strconv.Itoa(opts.GroupLimit))

@@ -89,7 +89,7 @@ func TestInstancesTableCodec_Decode(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestCollectAlertInstances_FiltersByState(t *testing.T) {
+func TestCollectAlertInstances(t *testing.T) {
 	groups := []RuleGroup{
 		{
 			Name:      "g1",
@@ -116,14 +116,9 @@ func TestCollectAlertInstances_FiltersByState(t *testing.T) {
 		},
 	}
 
-	all := collectAlertInstances(groups, "")
+	all := collectAlertInstances(groups)
 	require.Len(t, all, 3)
-
-	firing := collectAlertInstances(groups, StateFiring)
-	require.Len(t, firing, 2)
-	for _, inst := range firing {
-		assert.Equal(t, StateFiring, inst.State)
-	}
+	assert.Equal(t, StateFiring, all[2].State, "instance without state should fall back to parent rule state")
 }
 
 func TestValidateAlertState(t *testing.T) {

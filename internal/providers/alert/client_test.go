@@ -70,10 +70,11 @@ func TestClient_List(t *testing.T) {
 		},
 		{
 			name: "filter params sent",
-			opts: alert.ListOptions{GroupName: "my-group", FolderUID: "folder-uid"},
+			opts: alert.ListOptions{GroupName: "my-group", FolderUID: "folder-uid", State: alert.StateFiring},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, "my-group", r.URL.Query().Get("rule_group"))
 				assert.Equal(t, "folder-uid", r.URL.Query().Get("folder_uid"))
+				assert.Equal(t, alert.StateFiring, r.URL.Query().Get("state"))
 				writeJSON(w, alert.RulesResponse{Status: "success", Data: alert.RulesData{}})
 			},
 			wantGroups: 0,

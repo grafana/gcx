@@ -77,6 +77,7 @@ func newRulesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 			resp, err := client.List(ctx, ListOptions{
 				GroupName: opts.GroupName,
 				FolderUID: opts.FolderUID,
+				State:     opts.State,
 			})
 			if err != nil {
 				return err
@@ -91,24 +92,10 @@ func newRulesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				var rules []RuleStatus
 				for _, g := range resp.Data.Groups {
 					for _, r := range g.Rules {
-						if opts.State == "" || r.State == opts.State {
-							rules = append(rules, r)
-						}
+						rules = append(rules, r)
 					}
 				}
 				return codec.Encode(cmd.OutOrStdout(), rules)
-			}
-
-			if opts.State != "" {
-				for i := range resp.Data.Groups {
-					var filtered []RuleStatus
-					for _, r := range resp.Data.Groups[i].Rules {
-						if r.State == opts.State {
-							filtered = append(filtered, r)
-						}
-					}
-					resp.Data.Groups[i].Rules = filtered
-				}
 			}
 
 			// Filter out groups with no rules to avoid empty groups in JSON/YAML output.

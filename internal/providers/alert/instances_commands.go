@@ -84,12 +84,13 @@ func newInstancesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				RuleUID:   opts.RuleUID,
 				GroupName: opts.GroupName,
 				FolderUID: opts.FolderUID,
+				State:     opts.State,
 			})
 			if err != nil {
 				return err
 			}
 
-			instances := collectAlertInstances(resp.Data.Groups, opts.State)
+			instances := collectAlertInstances(resp.Data.Groups)
 			return opts.IO.Encode(cmd.OutOrStdout(), instances)
 		},
 	}
@@ -140,7 +141,7 @@ func (c *InstancesTableCodec) Decode(r io.Reader, v any) error {
 	return errors.New("table format does not support decoding")
 }
 
-func collectAlertInstances(groups []RuleGroup, stateFilter string) []AlertInstanceRecord {
+func collectAlertInstances(groups []RuleGroup) []AlertInstanceRecord {
 	var instances []AlertInstanceRecord
 	for _, g := range groups {
 		for _, r := range g.Rules {
@@ -148,9 +149,6 @@ func collectAlertInstances(groups []RuleGroup, stateFilter string) []AlertInstan
 				state := a.State
 				if state == "" {
 					state = r.State
-				}
-				if stateFilter != "" && state != stateFilter {
-					continue
 				}
 
 				instances = append(instances, AlertInstanceRecord{
