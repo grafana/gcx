@@ -59,11 +59,8 @@ func newRulesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			if opts.State != "" {
-				validStates := map[string]bool{StateFiring: true, StatePending: true, StateInactive: true}
-				if !validStates[opts.State] {
-					return fmt.Errorf("invalid state %q: must be one of firing, pending, inactive", opts.State)
-				}
+			if err := validateAlertState(opts.State); err != nil {
+				return err
 			}
 
 			ctx := cmd.Context()

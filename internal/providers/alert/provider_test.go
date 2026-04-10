@@ -33,6 +33,7 @@ func TestAlertProvider_Commands(t *testing.T) {
 	}
 	assert.True(t, subNames["rules"], "alert should have rules subcommand")
 	assert.True(t, subNames["groups"], "alert should have groups subcommand")
+	assert.True(t, subNames["instances"], "alert should have instances subcommand")
 
 	// Verify rules sub-commands.
 	var rulesCmd *cobra.Command

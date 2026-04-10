@@ -23,5 +23,6 @@ Manage Grafana alert rules and alert groups
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx alert groups](gcx_alert_groups.md)	 - Manage alert rule groups.
+* [gcx alert instances](gcx_alert_instances.md)	 - Manage alert instances.
 * [gcx alert rules](gcx_alert_rules.md)	 - Manage alert rules.
 
