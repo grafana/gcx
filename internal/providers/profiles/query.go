@@ -22,13 +22,13 @@ func queryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	var datasource string
 
 	cmd := &cobra.Command{
-		Use:   "query EXPR",
+		Use:   "query [EXPR]",
 		Short: "Execute a profiling query against a Pyroscope datasource",
 		Long: `Execute a profiling query against a Pyroscope datasource.
 
 EXPR is the label selector (e.g., '{service_name="frontend"}').
 Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
 				return err
@@ -59,7 +59,10 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 				return err
 			}
 
-			expr := args[0]
+			expr, err := shared.ResolveExpr(args, 0)
+			if err != nil {
+				return err
+			}
 
 			dsType, err := dsquery.GetDatasourceType(ctx, cfg, datasourceUID)
 			if err != nil {

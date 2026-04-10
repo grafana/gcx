@@ -16,7 +16,7 @@ Instant vs range is deduced from time flags: no time flags = instant query,
 --since or --from/--to = range query.
 
 ```
-gcx logs metrics EXPR [flags]
+gcx logs metrics [EXPR] [flags]
 ```
 
 ### Examples
@@ -40,6 +40,7 @@ gcx logs metrics EXPR [flags]
 
 ```
   -d, --datasource string   Datasource UID (required unless datasources.loki is configured)
+      --expr string         Query expression (alternative to positional argument)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for metrics
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields

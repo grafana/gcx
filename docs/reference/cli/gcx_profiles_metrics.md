@@ -17,7 +17,7 @@ EXPR is the label selector (e.g., '{service_name="frontend"}').
 Datasource is resolved from -d flag or datasources.pyroscope in your context.
 
 ```
-gcx profiles metrics EXPR [flags]
+gcx profiles metrics [EXPR] [flags]
 ```
 
 ### Examples
@@ -42,6 +42,7 @@ gcx profiles metrics EXPR [flags]
 ```
       --aggregation string    Aggregation type: 'sum' or 'average'
   -d, --datasource string     Datasource UID (required unless datasources.pyroscope is configured)
+      --expr string           Query expression (alternative to positional argument)
       --from string           Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
       --group-by strings      Group series by label (repeatable, defaults to service_name)
   -h, --help                  help for metrics

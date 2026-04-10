@@ -19,7 +19,7 @@ func metricsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	var datasource string
 
 	cmd := &cobra.Command{
-		Use:   "metrics EXPR",
+		Use:   "metrics [EXPR]",
 		Short: "Execute a metric LogQL query against a Loki datasource",
 		Long: `Execute a metric LogQL query and return time-series results.
 
@@ -43,7 +43,7 @@ Instant vs range is deduced from time flags: no time flags = instant query,
 
   # Output as JSON
   gcx logs metrics 'rate({job="varlogs"}[5m])' --since 1h -o json`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
 				return err
@@ -70,7 +70,10 @@ Instant vs range is deduced from time flags: no time flags = instant query,
 				return err
 			}
 
-			expr := args[0]
+			expr, err := shared.ResolveExpr(args, 0)
+			if err != nil {
+				return err
+			}
 
 			dsType, err := dsquery.GetDatasourceType(ctx, cfg, datasourceUID)
 			if err != nil {

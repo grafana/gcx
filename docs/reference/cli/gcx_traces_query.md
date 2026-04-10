@@ -10,7 +10,7 @@ TRACEQL is the TraceQL expression to evaluate.
 Datasource is resolved from -d flag or datasources.tempo in your context.
 
 ```
-gcx traces query TRACEQL [flags]
+gcx traces query [TRACEQL] [flags]
 ```
 
 ### Examples
@@ -37,6 +37,7 @@ gcx traces query TRACEQL [flags]
 
 ```
   -d, --datasource string   Datasource UID (required unless datasources.tempo is configured)
+      --expr string         Query expression (alternative to positional argument)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for query
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields

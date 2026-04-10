@@ -41,6 +41,7 @@ func (opts *pyroscopeMetricsOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.shared.Step, "step", "", "Query step (e.g., '15s', '1m')")
 	flags.StringVar(&opts.shared.Since, "since", "", "Duration before --to (or now if omitted); mutually exclusive with --from")
 
+	opts.shared.SetupExprFlag(flags)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pyroscope is configured)")
 	flags.BoolVar(&opts.Top, "top", false, "Aggregate into a ranked leaderboard (equivalent to profilecli query top)")
 	flags.StringVar(&opts.ProfileType, "profile-type", "", "Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds') (required)")
@@ -68,7 +69,7 @@ func metricsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &pyroscopeMetricsOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "metrics EXPR",
+		Use:   "metrics [EXPR]",
 		Short: "Query profile time-series data from a Pyroscope datasource",
 		Long: `Query profile time-series data via SelectSeries from a Pyroscope datasource.
 
@@ -101,7 +102,7 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
   gcx profiles metrics '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
     --since 1h --step 1m -o graph`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -128,7 +129,10 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 				return err
 			}
 
-			expr := args[0]
+			expr, err := opts.shared.ResolveExpr(args, 0)
+			if err != nil {
+				return err
+			}
 
 			dsType, err := dsquery.GetDatasourceType(ctx, cfg, datasourceUID)
 			if err != nil {

@@ -15,7 +15,7 @@ even when a time range is provided. If no time flags are set, gcx queries the
 last hour by default.
 
 ```
-gcx traces metrics TRACEQL [flags]
+gcx traces metrics [TRACEQL] [flags]
 ```
 
 ### Examples
@@ -42,6 +42,7 @@ gcx traces metrics TRACEQL [flags]
 
 ```
   -d, --datasource string   Datasource UID (required unless datasources.tempo is configured)
+      --expr string         Query expression (alternative to positional argument)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for metrics
       --instant             Run an instant query over the selected time range instead of a range query

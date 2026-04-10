@@ -14,7 +14,7 @@ client is used automatically. This is the escape hatch for datasource types
 that do not have a dedicated subcommand.
 
 ```
-gcx datasources query DATASOURCE_UID EXPR [flags]
+gcx datasources query DATASOURCE_UID [EXPR] [flags]
 ```
 
 ### Examples
@@ -35,6 +35,7 @@ gcx datasources query DATASOURCE_UID EXPR [flags]
 ### Options
 
 ```
+      --expr string           Query expression (alternative to positional argument)
       --from string           Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                  help for query
       --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
