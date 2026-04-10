@@ -80,6 +80,7 @@ go install github.com/grafana/gcx/cmd/gcx@latest
 ```bash
 gcx completion zsh > "${fpath[1]}/_gcx"   # zsh
 gcx completion bash > /etc/bash_completion.d/gcx  # bash
+gcx completion fish > ~/.config/fish/completions/gcx #fish
 ```
 
 **Verify:** `gcx --version`
