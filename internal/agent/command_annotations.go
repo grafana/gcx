@@ -93,11 +93,12 @@ var commandAnnotations = map[string]annotation{
 	// -----------------------------------------------------------------------
 	// Alert provider
 	// -----------------------------------------------------------------------
-	"gcx alert groups get":    {Cost: "small"},
-	"gcx alert groups list":   {Cost: "small"},
-	"gcx alert groups status": {Cost: "medium", Hint: "<name> -o json"},
-	"gcx alert rules get":     {Cost: "small"},
-	"gcx alert rules list":    {Cost: "medium", Hint: "--folder <uid> --group <name> -o json"},
+	"gcx alert groups get":     {Cost: "small"},
+	"gcx alert groups list":    {Cost: "small"},
+	"gcx alert groups status":  {Cost: "medium", Hint: "<name> -o json"},
+	"gcx alert instances list": {Cost: "large", Hint: "--state firing --group <name> -o json"},
+	"gcx alert rules get":      {Cost: "small"},
+	"gcx alert rules list":     {Cost: "medium", Hint: "--folder <uid> --group <name> -o json"},
 
 	// -----------------------------------------------------------------------
 	// App Observability provider

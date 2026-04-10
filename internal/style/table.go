@@ -102,8 +102,11 @@ func (tb *TableBuilder) renderStyled(w io.Writer) error {
 }
 
 func terminalWidth() int {
-	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
-		return w
+	stdoutFD, ok := safeFDToInt(os.Stdout.Fd())
+	if ok {
+		if w, _, err := term.GetSize(stdoutFD); err == nil && w > 0 {
+			return w
+		}
 	}
 	return 80
 }

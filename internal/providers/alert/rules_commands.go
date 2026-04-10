@@ -91,9 +91,7 @@ func newRulesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if codec.Format() == "table" || codec.Format() == "wide" {
 				var rules []RuleStatus
 				for _, g := range resp.Data.Groups {
-					for _, r := range g.Rules {
-						rules = append(rules, r)
-					}
+					rules = append(rules, g.Rules...)
 				}
 				return codec.Encode(cmd.OutOrStdout(), rules)
 			}

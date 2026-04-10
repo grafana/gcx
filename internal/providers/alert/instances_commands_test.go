@@ -1,23 +1,23 @@
-package alert
+package alert_test
 
 import (
 	"bytes"
-	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/providers/alert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestInstancesTableCodec_Encode(t *testing.T) {
-	codec := &InstancesTableCodec{}
+	codec := &alert.InstancesTableCodec{}
 	assert.Equal(t, "table", string(codec.Format()))
 
-	instances := []AlertInstanceRecord{
+	instances := []alert.AlertInstanceRecord{
 		{
 			RuleUID:  "rule-1",
 			RuleName: "CPU High",
-			State:    StateFiring,
+			State:    alert.StateFiring,
 			ActiveAt: "2026-04-08T12:34:56Z",
 			Value:    91.5,
 			Labels: map[string]string{
@@ -27,7 +27,7 @@ func TestInstancesTableCodec_Encode(t *testing.T) {
 		{
 			RuleUID:  "rule-2",
 			RuleName: "Disk Full",
-			State:    StatePending,
+			State:    alert.StatePending,
 		},
 	}
 
@@ -50,16 +50,16 @@ func TestInstancesTableCodec_Encode(t *testing.T) {
 }
 
 func TestInstancesTableCodec_EncodeWide(t *testing.T) {
-	codec := &InstancesTableCodec{Wide: true}
+	codec := &alert.InstancesTableCodec{Wide: true}
 	assert.Equal(t, "wide", string(codec.Format()))
 
-	instances := []AlertInstanceRecord{
+	instances := []alert.AlertInstanceRecord{
 		{
 			RuleUID:   "rule-1",
 			RuleName:  "CPU High",
 			GroupName: "platform",
 			FolderUID: "folder-a",
-			State:     StateFiring,
+			State:     alert.StateFiring,
 			ActiveAt:  "2026-04-08T12:34:56Z",
 			Value:     99,
 			Labels: map[string]string{
@@ -82,57 +82,14 @@ func TestInstancesTableCodec_EncodeWide(t *testing.T) {
 }
 
 func TestInstancesTableCodec_InvalidType(t *testing.T) {
-	codec := &InstancesTableCodec{}
+	codec := &alert.InstancesTableCodec{}
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, "not instances")
 	require.Error(t, err)
 }
 
 func TestInstancesTableCodec_Decode(t *testing.T) {
-	codec := &InstancesTableCodec{}
+	codec := &alert.InstancesTableCodec{}
 	err := codec.Decode(nil, nil)
 	require.Error(t, err)
-}
-
-func TestCollectAlertInstances(t *testing.T) {
-	groups := []RuleGroup{
-		{
-			Name:      "g1",
-			FolderUID: "folder-1",
-			Rules: []RuleStatus{
-				{
-					UID:   "rule-1",
-					Name:  "CPU High",
-					State: StateFiring,
-					Alerts: []AlertInstance{
-						{State: StateFiring, Value: 90, ActiveAt: "2026-04-08T10:00:00Z"},
-						{State: StatePending, Value: 80, ActiveAt: "2026-04-08T10:01:00Z"},
-					},
-				},
-				{
-					UID:   "rule-2",
-					Name:  "Memory High",
-					State: StateFiring,
-					Alerts: []AlertInstance{
-						{State: "", Value: 95}, // falls back to rule state
-					},
-				},
-			},
-		},
-	}
-
-	all := collectAlertInstances(groups)
-	require.Len(t, all, 3)
-	assert.Equal(t, StateFiring, all[2].State, "instance without state should fall back to parent rule state")
-}
-
-func TestValidateAlertState(t *testing.T) {
-	require.NoError(t, validateAlertState(""))
-	require.NoError(t, validateAlertState(StateFiring))
-	require.NoError(t, validateAlertState(StatePending))
-	require.NoError(t, validateAlertState(StateInactive))
-
-	err := validateAlertState("broken")
-	require.Error(t, err)
-	assert.True(t, strings.Contains(err.Error(), "invalid state"))
 }
