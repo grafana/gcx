@@ -15,7 +15,7 @@ bodies or -o json for the full structured response.
 Default --limit is 50; use --limit 0 for no cap.
 
 ```
-gcx logs query EXPR [flags]
+gcx logs query [EXPR] [flags]
 ```
 
 ### Examples
@@ -39,6 +39,7 @@ gcx logs query EXPR [flags]
 
 ```
   -d, --datasource string   Datasource UID (required unless datasources.loki is configured)
+      --expr string         Query expression (alternative to positional argument)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for query
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields

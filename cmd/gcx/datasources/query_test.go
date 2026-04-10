@@ -199,8 +199,45 @@ func TestSinceWithoutToDefaultsEndToNowOnQueryCommand(t *testing.T) {
 	assert.WithinDuration(t, end.Add(-time.Hour), start, time.Second)
 }
 
-// TestQueryRequiresBothArgs verifies that query requires exactly 2 positional args.
-func TestQueryRequiresBothArgs(t *testing.T) {
+// TestQueryRequiresDatasourceUID verifies that query requires at least a datasource UID.
+func TestQueryRequiresDatasourceUID(t *testing.T) {
 	err := executeQueryCommand(t, datasources.QueryCmd(newConfigOpts()), []string{"query"})
 	require.Error(t, err)
+}
+
+func TestExprFlagSmoke_DatasourcesQuery(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		wantErr    string
+		notSubstrs []string
+	}{
+		{
+			name:       "--expr accepted instead of positional",
+			args:       []string{"query", "uid", "--expr", "up"},
+			notSubstrs: []string{"expression is required", "accepts"},
+		},
+		{
+			name:    "both positional and --expr rejected",
+			args:    []string{"query", "uid", "up", "--expr", "up"},
+			wantErr: "not both",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := datasources.QueryCmd(newConfigOpts())
+			err := executeQueryCommand(t, cmd, tt.args)
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				return
+			}
+			if err != nil {
+				for _, s := range tt.notSubstrs {
+					assert.NotContains(t, err.Error(), s)
+				}
+			}
+		})
+	}
 }

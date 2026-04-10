@@ -10,7 +10,7 @@ EXPR is the label selector (e.g., '{service_name="frontend"}').
 Datasource is resolved from -d flag or datasources.pyroscope in your context.
 
 ```
-gcx profiles query EXPR [flags]
+gcx profiles query [EXPR] [flags]
 ```
 
 ### Examples
@@ -34,6 +34,7 @@ gcx profiles query EXPR [flags]
 
 ```
   -d, --datasource string     Datasource UID (required unless datasources.pyroscope is configured)
+      --expr string           Query expression (alternative to positional argument)
       --from string           Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                  help for query
       --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields

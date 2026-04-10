@@ -23,7 +23,7 @@ func metricsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	var instant bool
 
 	cmd := &cobra.Command{
-		Use:   "metrics TRACEQL",
+		Use:   "metrics [TRACEQL]",
 		Short: "Execute a TraceQL metrics query",
 		Long: `Execute a TraceQL metrics query against a Tempo datasource.
 
@@ -49,9 +49,14 @@ last hour by default.`,
 
   # Output as JSON
   gcx traces metrics -d tempo-001 '{ } | rate()' -o json`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
+				return err
+			}
+
+			expr, err := shared.ResolveExpr(args, 0)
+			if err != nil {
 				return err
 			}
 
@@ -75,8 +80,6 @@ last hour by default.`,
 			if err != nil {
 				return err
 			}
-
-			expr := args[0]
 
 			dsType, err := dsquery.GetDatasourceType(ctx, cfg, datasourceUID)
 			if err != nil {

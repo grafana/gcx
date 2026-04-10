@@ -19,15 +19,21 @@ func queryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	var datasource string
 
 	cmd := &cobra.Command{
-		Use:   "query EXPR",
+		Use:   "query [EXPR]",
 		Short: "Execute a PromQL query against a Prometheus datasource",
 		Long: `Execute a PromQL query against a Prometheus datasource.
 
-EXPR is the PromQL expression to evaluate.
+EXPR is the PromQL expression to evaluate, passed as a positional argument or
+via --expr (familiar to promtool users).
 Datasource is resolved from -d flag or datasources.prometheus in your context.`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
+				return err
+			}
+
+			expr, err := shared.ResolveExpr(args, 0)
+			if err != nil {
 				return err
 			}
 
@@ -51,8 +57,6 @@ Datasource is resolved from -d flag or datasources.prometheus in your context.`,
 			if err != nil {
 				return err
 			}
-
-			expr := args[0]
 
 			dsType, err := dsquery.GetDatasourceType(ctx, cfg, datasourceUID)
 			if err != nil {

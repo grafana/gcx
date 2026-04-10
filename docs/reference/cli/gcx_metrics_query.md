@@ -6,11 +6,12 @@ Execute a PromQL query against a Prometheus datasource
 
 Execute a PromQL query against a Prometheus datasource.
 
-EXPR is the PromQL expression to evaluate.
+EXPR is the PromQL expression to evaluate, passed as a positional argument or
+via --expr (familiar to promtool users).
 Datasource is resolved from -d flag or datasources.prometheus in your context.
 
 ```
-gcx metrics query EXPR [flags]
+gcx metrics query [EXPR] [flags]
 ```
 
 ### Examples
@@ -34,6 +35,7 @@ gcx metrics query EXPR [flags]
 
 ```
   -d, --datasource string   Datasource UID (required unless datasources.prometheus is configured)
+      --expr string         Query expression (alternative to positional argument)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for query
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields

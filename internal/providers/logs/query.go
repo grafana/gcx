@@ -20,7 +20,7 @@ func queryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	var datasource string
 
 	cmd := &cobra.Command{
-		Use:   "query EXPR",
+		Use:   "query [EXPR]",
 		Short: "Execute a LogQL query against a Loki datasource",
 		Long: `Execute a LogQL query against a Loki datasource.
 
@@ -31,9 +31,14 @@ Default table output is optimized for humans. Use -o raw for original line
 bodies or -o json for the full structured response.
 
 Default --limit is 50; use --limit 0 for no cap.`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
+				return err
+			}
+
+			expr, err := shared.ResolveExpr(args, 0)
+			if err != nil {
 				return err
 			}
 
@@ -57,8 +62,6 @@ Default --limit is 50; use --limit 0 for no cap.`,
 			if err != nil {
 				return err
 			}
-
-			expr := args[0]
 
 			dsType, err := dsquery.GetDatasourceType(ctx, cfg, datasourceUID)
 			if err != nil {
@@ -101,6 +104,7 @@ Default --limit is 50; use --limit 0 for no cap.`,
 	shared.IO.BindFlags(cmd.Flags())
 	shared.SetupTimeFlags(cmd.Flags())
 	cmd.Flags().StringVar(&shared.Step, "step", "", "Query step (e.g., '15s', '1m')")
+	shared.SetupExprFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
 	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, "Maximum number of log lines to return (0 means no limit)")
 
