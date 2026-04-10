@@ -270,42 +270,24 @@ Reference: `internal/providers/slo/definitions/status.go`, `internal/query/prome
 
 ## Step 4b: HTTP Client Construction
 
-Provider commands that call external APIs must use `httputils.NewDefaultClient(ctx)`
-to create their HTTP client. This is typically done inside the provider client
-constructor, not in the command `RunE`.
+The right HTTP client depends on the **active auth mode**, not on whether the
+target is an "external" domain. The decision tree:
 
-### Standard pattern
+```
+Using LoadCloudConfig?  ──yes──▶  cloudCfg.HTTPClient(ctx)   ← always correct
+                                    │
+                                    ├─ SA token mode  → httputils.NewDefaultClient(ctx)
+                                    └─ OAuth proxy mode → rest.HTTPClientFor (proxy adds provider auth)
 
-```go
-import "github.com/grafana/gcx/internal/httputils"
-
-type Client struct {
-    httpClient *http.Client
-    baseURL    string
-    token      string
-}
-
-func NewClient(ctx context.Context, baseURL, token string) *Client {
-    return &Client{
-        httpClient: httputils.NewDefaultClient(ctx),
-        baseURL:    baseURL,
-        token:      token,
-    }
-}
+Not using LoadCloudConfig?  ──────▶  httputils.NewDefaultClient(ctx)
+(token passed directly to NewClient)
 ```
 
-`NewDefaultClient(ctx)` provides:
-- **`LoggingRoundTripper`** — logs method/URL/status at Debug (2xx-4xx) or Warn
-  (5xx/error), visible with `-vvv` / `-v`
-- **`--log-http-payload` support** — when the flag is set (threaded via context),
-  full request/response body dumps are added at Debug level
-- **60-second timeout** and sensible TLS defaults (TLS 1.2+, verify enabled)
-- **No auth injection** — providers set their own auth headers per request
+**Always prefer `cloudCfg.HTTPClient(ctx)`** when `LoadCloudConfig` is available
+— it picks the right client for the active auth mode automatically, including
+future proxy routing changes.
 
-### Via CloudRESTConfig (recommended for cloud providers)
-
-Providers that call Grafana Cloud product APIs (external domains) get their
-HTTP client through `CloudRESTConfig`, returned by `loader.LoadCloudConfig`:
+### Via CloudRESTConfig (preferred)
 
 ```go
 func newClient(ctx context.Context, loader *providers.ConfigLoader) (*Client, error) {
@@ -321,8 +303,34 @@ func newClient(ctx context.Context, loader *providers.ConfigLoader) (*Client, er
 }
 ```
 
-`CloudRESTConfig.HTTPClient(ctx)` delegates to `httputils.NewDefaultClient(ctx)`
-when no `rest.Config` is set — logging and payload dumping are automatic.
+`CloudRESTConfig.HTTPClient(ctx)` selects the client based on auth mode:
+- **SA token** (`RESTConfig == nil`) → `httputils.NewDefaultClient(ctx)` — no
+  auth injection, provider sets its own headers per request
+- **OAuth proxy** (`RESTConfig != nil`) → `rest.HTTPClientFor` — RefreshTransport
+  handles gat_ token renewal; the proxy adds provider auth server-side
+
+Both paths carry `LoggingRoundTripper` and respect `--log-http-payload`.
+
+### Direct construction (when CloudRESTConfig is unavailable)
+
+When the provider receives credentials directly (not via `LoadCloudConfig`),
+use `httputils.NewDefaultClient(ctx)` in the constructor:
+
+```go
+func NewClient(ctx context.Context, baseURL, token string) *Client {
+    return &Client{
+        httpClient: httputils.NewDefaultClient(ctx),
+        baseURL:    baseURL,
+        token:      token,
+    }
+}
+```
+
+`NewDefaultClient(ctx)` provides:
+- **`LoggingRoundTripper`** — Debug for 2xx-4xx, Warn for 5xx/errors
+- **`--log-http-payload` support** — full body dumps when the flag is set
+- **60-second timeout** and sensible TLS defaults (TLS 1.2+, verify enabled)
+- **No auth injection** — provider sets its own auth headers per request
 
 ### What NOT to do
 
@@ -333,7 +341,8 @@ client := &http.Client{Timeout: 30 * time.Second}
 // BAD: http.DefaultClient — shared mutable state, no logging
 resp, err := http.DefaultClient.Get(url)
 
-// BAD: rest.HTTPClientFor for external APIs — injects Grafana bearer token
+// BAD: rest.HTTPClientFor directly for SA-token providers — injects Grafana
+// bearer token, conflicting with the provider's own auth headers
 httpClient, _ := rest.HTTPClientFor(&cfg.Config)
 
 // BAD: custom transport without LoggingRoundTripper
