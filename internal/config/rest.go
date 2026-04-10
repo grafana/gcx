@@ -221,12 +221,18 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) NamespacedRESTCon
 	}
 
 	// Wrap transport with debug logging so `-vvv` shows every HTTP request.
+	// When --log-http-payload is set, also add full request/response body dumps.
 	prevWrap := rcfg.WrapTransport
+	payloadLogging := httputils.PayloadLogging(ctx)
 	rcfg.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
 		if prevWrap != nil {
 			rt = prevWrap(rt)
 		}
-		return &httputils.LoggingRoundTripper{Base: rt}
+		rt = &httputils.LoggingRoundTripper{Base: rt}
+		if payloadLogging {
+			rt = &httputils.RequestResponseLoggingRoundTripper{DecoratedTransport: rt}
+		}
+		return rt
 	}
 
 	return NamespacedRESTConfig{

@@ -269,8 +269,9 @@ auth headers per request.
 for request/response logging. The K8s tier chains it via `rest.Config.WrapTransport`
 in `NewNamespacedRESTConfig`; the provider tier gets it via
 `httputils.NewDefaultClient(ctx)`. The `--log-http-payload` flag adds full body
-dumps via `RequestResponseLoggingRoundTripper` for the provider tier only — the
-K8s transport manages its own body handling and does not support payload dumping.
+dumps via `RequestResponseLoggingRoundTripper` across both tiers — `NewDefaultClient`
+checks `PayloadLogging(ctx)` directly; `NewNamespacedRESTConfig` checks it when
+building the `WrapTransport` chain.
 
 **Output rendering:** Query results can be rendered as tables, JSON/YAML, or
 terminal charts (`internal/graph`). The `query` command registers custom codecs

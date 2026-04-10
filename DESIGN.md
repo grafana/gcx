@@ -112,9 +112,9 @@ gcx --log-http-payload -vvv slo list
 **Warning:** The dump includes all headers, including `Authorization`. Treat
 the output as sensitive — do not paste it into public issues or logs.
 
-This flag applies to the provider tier (`httputils.NewDefaultClient`). The K8s
-resource tier (transport chain built by `NewNamespacedRESTConfig`) does not
-support payload dumping — only `LoggingRoundTripper` is wired into that path.
+This flag applies to all HTTP tiers — both the provider tier
+(`httputils.NewDefaultClient`) and the K8s resource tier (transport chain built
+by `NewNamespacedRESTConfig` via `WrapTransport`).
 
 ## Exit Codes
 
