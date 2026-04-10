@@ -22,11 +22,25 @@ var (
 // When stdout is not a TTY (i.e., piped), IsPiped is set to true and NoTruncate
 // is also set to true automatically. Call this once from root PersistentPreRun.
 func Detect() {
-	isPiped := !term.IsTerminal(int(os.Stdout.Fd()))
+	isPiped := !StdoutIsTerminal()
 	piped.Store(isPiped)
 	if isPiped {
 		noTruncate.Store(true)
 	}
+}
+
+// StdoutIsTerminal reports whether stdout is connected to a real terminal.
+func StdoutIsTerminal() bool {
+	return term.IsTerminal(int(os.Stdout.Fd()))
+}
+
+// StdoutWidth returns the current stdout terminal width, or 0 when unknown.
+func StdoutWidth() int {
+	width, _, err := term.GetSize(int(os.Stdout.Fd()))
+	if err != nil || width <= 0 {
+		return 0
+	}
+	return width
 }
 
 // IsPiped reports whether stdout is not connected to a terminal.

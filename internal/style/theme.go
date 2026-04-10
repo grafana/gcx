@@ -6,14 +6,12 @@ package style
 import (
 	"fmt"
 	"math"
-	"os"
 	"strings"
 	"sync/atomic"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/terminal"
-	"golang.org/x/term"
 )
 
 // Grafana Neon Dark — color palette derived from Grafana's official dark theme.
@@ -67,8 +65,7 @@ func IsStylingEnabled() bool {
 	}
 	// Final check: stdout must be a real terminal. This catches test
 	// environments where terminal.Detect() was never called.
-	stdoutFD, ok := safeFDToInt(os.Stdout.Fd())
-	return ok && term.IsTerminal(stdoutFD)
+	return terminal.StdoutIsTerminal()
 }
 
 // Gradient renders text with a linear color gradient between from and to.
