@@ -84,6 +84,7 @@ gcx/
 │   │   ├── local/            # FSReader / FSWriter (disk I/O)
 │   │   ├── process/          # Processor pipeline (manager fields, server fields)
 │   │   └── remote/           # Puller, Pusher, Deleter (Grafana API ops)
+│   ├── version/              # Global version string (Set once from main; provides UserAgent() for HTTP clients)
 │   └── server/               # Local dev server for 'dev serve'
 │       ├── embed/            # Static assets (embedded via go:embed)
 │       ├── grafana/          # Grafana proxy and mock handlers
