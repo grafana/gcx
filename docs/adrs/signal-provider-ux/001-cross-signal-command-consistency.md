@@ -109,7 +109,7 @@ labels and rendering raw numbers without context.
 
 `logs metrics` will have proper time-series formatters and `-o graph` support.
 
-### 5. Traces: `labels -l` for tag value discovery, drop `--instant`
+### 5. Traces: `labels -l` for tag value discovery, keep `--instant`
 
 Merge `tags` and `tag-values` into a single `labels` command with `-l/--label`
 flag, matching the pattern used by metrics, logs, and profiles:
@@ -128,22 +128,31 @@ think in "tags"), so `tags -l NAME` also works. `tag-values` is dropped.
 **Rejected:** Keeping both `labels -l NAME` and a separate `label-values NAME`
 command. Gives users two ways to do the same thing with no clear winner.
 
-Drop the `--instant` flag from `traces metrics`. Deduce instant vs range from
-time flag presence, matching how `metrics query` works for Prometheus.
+Keep the `--instant` flag on `traces metrics`. Instant vs range is inferred
+from time flag presence — matching how `metrics query` (Prometheus) works —
+and `--instant` lets callers override to instant even when a time range is
+provided.
 
-**Time flag rules** (enforced by `SharedOpts.Validate`, applies to all signals):
+Tempo's instant query computes a single value across a selected time range and
+accepts `--since` / `--from` / `--to`. When no time flags are set, both instant
+and range queries default to the last hour. The difference from Prometheus is
+only in what the API returns: a single data point vs a time series.
+
+**Time flag rules** (consistent with all other signals):
 
 | Flags provided | Query mode |
 |----------------|------------|
-| (none) | Instant (at current time) |
-| `--since 1h` | Range (resolves to `--from now-1h --to now`) |
+| (none) | Instant over last hour (inferred) |
+| `--instant` | Instant over last hour (explicit) |
+| `--since 1h` | Range over last hour |
+| `--instant --since 1h` | Instant over last hour |
 | `--from X --to Y` | Range |
+| `--instant --from X --to Y` | Instant over that range |
+| `--step` alone | Error: instant inferred, step not supported with instant |
+| `--instant --step ...` | Error: step not supported with instant |
 | `--from X` alone | Error: `--to` is required when `--from` is set |
 | `--to Y` alone | Error: `--from` is required when `--to` is set |
 | `--since` + `--from` | Error: mutually exclusive |
-
-`SharedOpts` must be updated to reject `--from` without `--to` and vice versa
-(currently it silently produces a zero time, which falls through to instant).
 
 ### 6. Aliases and clean breaks
 

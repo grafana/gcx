@@ -43,6 +43,7 @@ type CheckStatusResult struct {
 	Success     *float64 `json:"success,omitempty"`
 	ProbesUp    int      `json:"probesUp"`
 	ProbesTotal int      `json:"probesTotal"`
+	LatencyMs   *float64 `json:"latencyMs,omitempty"`
 	ProbeNames  []string `json:"probeNames,omitempty"`
 	Status      string   `json:"status"`
 }
@@ -97,10 +98,11 @@ func newStatusCommand(loader smcfg.StatusLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status [ID]",
 		Short: "Show pass/fail status of Synthetic Monitoring checks.",
-		Long: `Show pass/fail status by combining the SM API with Prometheus probe_success metrics.
+		Long: `Show pass/fail status by combining the SM API with Prometheus metrics.
 
-Displays current success rate, number of probes reporting, and health status
-for each check. Requires a Prometheus datasource containing SM metrics.`,
+Displays current success rate, latency (from probe_duration_seconds),
+number of probes reporting, and health status for each check.
+Requires a Prometheus datasource containing SM metrics.`,
 		Example: `  # Show status of all checks.
   gcx synth checks status
 
@@ -224,7 +226,7 @@ for each check. Requires a Prometheus datasource containing SM metrics.`,
 				return err
 			}
 
-			// Two aggregate queries — one HTTP call each, covering all checks at once.
+			// Three aggregate queries — one HTTP call each, covering all checks at once.
 			successQ, err := BuildAllSuccessRateQuery()
 			if err != nil {
 				return err
@@ -233,10 +235,15 @@ for each check. Requires a Prometheus datasource containing SM metrics.`,
 			if err != nil {
 				return err
 			}
+			latencyQ, err := BuildAllLatencyQuery()
+			if err != nil {
+				return err
+			}
 
 			var (
 				successMap    map[string]float64
 				probeCountMap map[string]float64
+				latencyMap    map[string]float64
 			)
 
 			promG, promCtx := errgroup.WithContext(ctx)
@@ -248,11 +255,15 @@ for each check. Requires a Prometheus datasource containing SM metrics.`,
 				probeCountMap = queryInstantByJobInstance(promCtx, promClient, dsUID, probeCountQ)
 				return nil
 			})
+			promG.Go(func() error {
+				latencyMap = queryInstantByJobInstance(promCtx, promClient, dsUID, latencyQ)
+				return nil
+			})
 			if err := promG.Wait(); err != nil {
 				return err
 			}
 
-			results := BuildCheckStatusResults(filtered, successMap, probeCountMap, probeNameMap)
+			results := BuildCheckStatusResults(filtered, successMap, probeCountMap, latencyMap, probeNameMap)
 
 			// Apply post-Prometheus status filter.
 			if filter.StatusStr != "" {
@@ -471,6 +482,38 @@ func BuildAllSuccessRateQuery() (string, error) {
 	return expr.String(), nil
 }
 
+// BuildAllLatencyQuery builds a PromQL query for the average probe_duration_seconds
+// of all checks. The result is keyed by (job, instance) labels and covers all checks
+// in one HTTP call.
+func BuildAllLatencyQuery() (string, error) {
+	expr, err := promql.Avg(
+		promql.AvgOverTime(
+			promql.Vector("probe_duration_seconds").Range("5m"),
+		),
+	).By([]string{"job", "instance"}).Build()
+	if err != nil {
+		return "", err
+	}
+	return expr.String(), nil
+}
+
+// BuildLatencyQuery builds a PromQL query for the average probe_duration_seconds
+// over 5 minutes for a single check, grouped by job and instance.
+func BuildLatencyQuery(job, instance string) (string, error) {
+	expr, err := promql.Avg(
+		promql.AvgOverTime(
+			promql.Vector("probe_duration_seconds").
+				Label("job", job).
+				Label("instance", instance).
+				Range("5m"),
+		),
+	).By([]string{"job", "instance"}).Build()
+	if err != nil {
+		return "", err
+	}
+	return expr.String(), nil
+}
+
 // BuildAllProbeCountQuery builds a PromQL query counting probes per check across all checks.
 func BuildAllProbeCountQuery() (string, error) {
 	expr, err := promql.Count(
@@ -622,9 +665,10 @@ func parseMatrixValue(raw any) (float64, error) {
 // ---------------------------------------------------------------------------
 
 // BuildCheckStatusResults merges check definitions with metric data.
+// latencyMap maps "job/instance" to probe_duration_seconds (will be converted to ms).
 // probeNames maps probe ID to display name (e.g. "Oregon" or "Paris (offline)").
 // Pass nil or an empty map if probe names are unavailable.
-func BuildCheckStatusResults(checks []Check, successMap, probeCountMap map[string]float64, probeNames map[int64]string) []CheckStatusResult {
+func BuildCheckStatusResults(checks []Check, successMap, probeCountMap, latencyMap map[string]float64, probeNames map[int64]string) []CheckStatusResult {
 	results := make([]CheckStatusResult, 0, len(checks))
 
 	for _, c := range checks {
@@ -639,11 +683,17 @@ func BuildCheckStatusResults(checks []Check, successMap, probeCountMap map[strin
 		}
 
 		if val, ok := successMap[key]; ok {
-			r.Success = &val
+			s := val
+			r.Success = &s
 		}
 
 		if cnt, ok := probeCountMap[key]; ok {
 			r.ProbesUp = int(cnt)
+		}
+
+		if sec, ok := latencyMap[key]; ok {
+			ms := sec * 1000
+			r.LatencyMs = &ms
 		}
 
 		for _, pid := range c.Probes {
@@ -1034,9 +1084,9 @@ func (c *StatusTableCodec) Encode(w io.Writer, v any) error {
 
 	var t *style.TableBuilder
 	if c.Wide {
-		t = style.NewTable("NAME", "JOB", "TARGET", "TYPE", "SUCCESS", "PROBES_UP", "PROBES_TOTAL", "PROBES", "STATUS")
+		t = style.NewTable("NAME", "JOB", "TARGET", "TYPE", "SUCCESS", "LATENCY", "PROBES_UP", "PROBES_TOTAL", "PROBES", "STATUS")
 	} else {
-		t = style.NewTable("NAME", "JOB", "TARGET", "SUCCESS", "STATUS")
+		t = style.NewTable("NAME", "JOB", "TARGET", "SUCCESS", "LATENCY", "STATUS")
 	}
 
 	for _, r := range results {
@@ -1045,13 +1095,18 @@ func (c *StatusTableCodec) Encode(w io.Writer, v any) error {
 			successStr = fmt.Sprintf("%.2f%%", *r.Success*100)
 		}
 
+		latencyStr := "--"
+		if r.LatencyMs != nil {
+			latencyStr = fmt.Sprintf("%.0fms", *r.LatencyMs)
+		}
+
 		name := statusDisplayName(r)
 		if c.Wide {
 			probesStr := strings.Join(r.ProbeNames, ", ")
-			t.Row(name, r.Job, r.Target, r.Type, successStr,
+			t.Row(name, r.Job, r.Target, r.Type, successStr, latencyStr,
 				strconv.Itoa(r.ProbesUp), strconv.Itoa(r.ProbesTotal), probesStr, r.Status)
 		} else {
-			t.Row(name, r.Job, r.Target, successStr, r.Status)
+			t.Row(name, r.Job, r.Target, successStr, latencyStr, r.Status)
 		}
 	}
 

@@ -17,7 +17,7 @@ Scaffold a new Go project for managing Grafana resources as code using
 Verify gcx is installed:
 
 ```bash
-gcx version
+gcx --version
 ```
 
 If missing, see the `setup-gcx` skill.

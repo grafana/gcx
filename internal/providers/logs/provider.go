@@ -49,6 +49,9 @@ func (p *Provider) Commands() []*cobra.Command {
   # Query with explicit datasource UID
   gcx logs query -d abc123 '{job="varlogs"} |= "error"'
 
+  # Raw line bodies only
+  gcx logs query -d abc123 '{job="varlogs"}' -o raw
+
   # Output as JSON
   gcx logs query -d abc123 '{job="varlogs"}' -o json`
 	cmd.AddCommand(qCmd)

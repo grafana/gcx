@@ -20,6 +20,7 @@ type Datasource struct {
 	Name            string `json:"name"`
 	Type            string `json:"type"`
 	URL             string `json:"url"`
+	Access          string `json:"access"`
 	IsDefault       bool   `json:"isDefault"`
 	ReadOnly        bool   `json:"readOnly"`
 	Database        string `json:"database"`

@@ -22,13 +22,13 @@ func queryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	var datasource string
 
 	cmd := &cobra.Command{
-		Use:   "query EXPR",
+		Use:   "query [EXPR]",
 		Short: "Execute a profiling query against a Pyroscope datasource",
 		Long: `Execute a profiling query against a Pyroscope datasource.
 
 EXPR is the label selector (e.g., '{service_name="frontend"}').
 Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
 				return err
@@ -36,6 +36,11 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 
 			if profileType == "" {
 				return errors.New("--profile-type is required for pyroscope queries")
+			}
+
+			expr, err := shared.ResolveExpr(args, 0)
+			if err != nil {
+				return err
 			}
 
 			ctx := cmd.Context()
@@ -58,8 +63,6 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 			if err != nil {
 				return err
 			}
-
-			expr := args[0]
 
 			dsType, err := dsquery.GetDatasourceType(ctx, cfg, datasourceUID)
 			if err != nil {
@@ -101,7 +104,7 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 		},
 	}
 
-	shared.Setup(cmd.Flags())
+	shared.Setup(cmd.Flags(), true)
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pyroscope is configured)")
 	cmd.Flags().StringVar(&profileType, "profile-type", "", "Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds') (required)")
 	cmd.Flags().Int64Var(&maxNodes, "max-nodes", 1024, "Maximum nodes in flame graph")

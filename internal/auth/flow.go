@@ -56,7 +56,7 @@ type Result struct {
 }
 
 // defaultScopes are the scopes requested by gcx.
-var defaultScopes = []string{"grafana-api:read", "grafana-api:write", "grafana-api:delete", "assistant:a2a"} //nolint:gochecknoglobals
+var defaultScopes = []string{"grafana-api:read", "grafana-api:write", "grafana-api:delete", "assistant:a2a", "assistant:chat"} //nolint:gochecknoglobals
 
 // Options configures the authentication flow.
 type Options struct {

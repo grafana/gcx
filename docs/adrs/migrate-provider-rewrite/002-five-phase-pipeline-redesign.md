@@ -73,7 +73,7 @@ Phase 4: Verification (spec compliance + smoke tests)
 
 1. Reads the grafana-cloud-cli source for the target provider (requires the
    user to have added the source directory via `/add-dir` or equivalent).
-2. Reads project compliance docs: CONSTITUTION.md, `docs/reference/design-guide.md`,
+2. Reads project compliance docs: CONSTITUTION.md, `docs/design/`,
    `docs/reference/provider-guide.md`, `docs/reference/provider-discovery-guide.md`.
 3. Reads the closest existing provider pattern in `internal/providers/`.
 4. Maps every grafana-cloud-cli subcommand to a proposed gcx equivalent.
@@ -263,5 +263,5 @@ Keep the Audit → Build → Verify structure with dual blackbox isolation.
 - Retire the sealed envelope concept from all skill materials.
 - Lift implementation-specific patterns from D-008 (auth subpackage), D-009
   (variable shadowing), D-010 (lint checklist), D-013 (debug logging) to
-  CONSTITUTION.md and/or `docs/reference/design-guide.md`.
+  CONSTITUTION.md and/or `docs/design/`.
 - First validation: next provider port from the migration epic.

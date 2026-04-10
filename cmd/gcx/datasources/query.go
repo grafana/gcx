@@ -21,7 +21,7 @@ func QueryCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	var limit int
 
 	cmd := &cobra.Command{
-		Use:   "query DATASOURCE_UID EXPR",
+		Use:   "query DATASOURCE_UID [EXPR]",
 		Short: "Execute a query against any datasource (auto-detects type)",
 		Long: `Execute a query against any datasource, automatically detecting the datasource type.
 
@@ -41,7 +41,7 @@ that do not have a dedicated subcommand.`,
   # Pyroscope via auto-detect
   gcx datasources query pyro-001 '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --from now-1h --to now`,
-		Args: cobra.ExactArgs(2),
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
 				return err
@@ -49,7 +49,10 @@ that do not have a dedicated subcommand.`,
 
 			ctx := cmd.Context()
 			datasourceUID := args[0]
-			expr := args[1]
+			expr, err := shared.ResolveExpr(args, 1)
+			if err != nil {
+				return err
+			}
 
 			cfg, err := configOpts.LoadGrafanaConfig(ctx)
 			if err != nil {
@@ -156,10 +159,10 @@ that do not have a dedicated subcommand.`,
 		},
 	}
 
-	shared.Setup(cmd.Flags())
+	shared.Setup(cmd.Flags(), true)
 	cmd.Flags().StringVar(&profileType, "profile-type", "", "Profile type ID for pyroscope queries (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds')")
 	cmd.Flags().Int64Var(&maxNodes, "max-nodes", 1024, "Maximum nodes in flame graph (pyroscope only)")
-	cmd.Flags().IntVar(&limit, "limit", 1000, "Maximum number of log lines to return for loki queries (0 means no limit)")
+	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, "Maximum number of log lines to return for loki queries (0 means no limit)")
 
 	return cmd
 }

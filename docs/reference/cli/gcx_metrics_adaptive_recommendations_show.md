@@ -1,6 +1,6 @@
 ## gcx metrics adaptive recommendations show
 
-Show current metric recommendations.
+Show metric recommendations.
 
 ```
 gcx metrics adaptive recommendations show [flags]
@@ -9,9 +9,14 @@ gcx metrics adaptive recommendations show [flags]
 ### Options
 
 ```
-  -h, --help            help for show
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
+      --action stringArray   Filter by action: add, update, remove, keep (repeatable)
+  -h, --help                 help for show
+      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string        Output format. One of: json, table, wide, yaml (default "table")
+      --reverse              Reverse the default sort order
+      --segment string       Segment ID
+      --sort string          Sort by: metric, savings, series-before, series-after, action (default "metric")
+      --top int              Limit to top N results (0 = all)
 ```
 
 ### Options inherited from parent commands

@@ -19,12 +19,12 @@ incrementally for existing code).
 | Document | Role | Audience |
 |----------|------|----------|
 | `CONSTITUTION.md` | Invariants — "what you must not break" | All contributors, gate for PRs |
-| `docs/reference/design-guide.md` | Prescriptive UX handbook — "how to build correctly" | Implementers, code reviewers |
+| `docs/design/` | Prescriptive UX handbook — "how to build correctly" | Implementers, code reviewers |
 | `DESIGN.md` | Orientation map — "what is this project" | First-time readers, navigation |
 
 The three documents are cross-referenced but serve distinct roles. Constitution
 is short and authoritative. Design guide is long and detailed with
-`[CURRENT]`/`[ADOPT]`/`[PLANNED]` status markers. DESIGN.md is a thin map.
+status markers. DESIGN.md is a thin map.
 
 ---
 
@@ -60,7 +60,7 @@ Every command serves both humans and agents. Agent mode switches defaults
 (JSON output, no color, no truncation) but does not change available
 functionality. Explicit flags always override agent mode defaults.
 
-See [design-guide.md §6](docs/reference/design-guide.md#6-agent-mode) for
+See [agent-mode.md](docs/design/agent-mode.md) for
 agent mode detection, behavior changes, and opt-out mechanisms.
 
 - **All output goes through the codec system.** No command writes unstructured
@@ -130,14 +130,14 @@ agent mode detection, behavior changes, and opt-out mechanisms.
 
 ---
 
-## docs/reference/design-guide.md — New/Updated Sections
+## docs/design/ — New/Updated Sections
 
-### New: Codec Requirements by Command Type `[ADOPT]`
+### New: Codec Requirements by Command Type
 
 Add after Section 1.3 (Default Format by Command Type):
 
 ```markdown
-### 1.X Codec Requirements by Command Type `[ADOPT]`
+### 1.X Codec Requirements by Command Type
 
 | Command type | `text` (table) | `wide` | `json` | `yaml` | Domain-specific |
 |---|---|---|---|---|---|
@@ -152,12 +152,12 @@ and call `DefaultFormat("text")`. The `text` codec is the human default;
 Codec registration happens in `setup(flags)`, not in `RunE`.
 ```
 
-### New: Mutation Command Output `[ADOPT]`
+### New: Mutation Command Output
 
 Add as a new section:
 
 ```markdown
-## X. Mutation Command Output `[ADOPT]`
+## X. Mutation Command Output
 
 ### X.1 Summary Table
 
@@ -205,10 +205,10 @@ status messages as the primary output.
 Verbose opt-in (`-v` or `-o wide`) adds a `"succeeded"` array for audit.
 ```
 
-### New: Pull Format Consistency `[ADOPT]`
+### New: Pull Format Consistency
 
 ```markdown
-### X.X Pull Format Consistency `[ADOPT]`
+### X.X Pull Format Consistency
 
 `pull` accepts a `--format` flag (values: `yaml`, `json`; default: `yaml`)
 that enforces consistent file format on disk. All pulled files use the
@@ -218,10 +218,10 @@ Files are written as `plural.version.group/name.{ext}` where `{ext}`
 matches the chosen format (`.yaml` or `.json`).
 ```
 
-### New: Provider Command / Resources Pipeline Consistency `[ADOPT]`
+### New: Provider Command / Resources Pipeline Consistency
 
 ```markdown
-### X.X Provider / Resources Output Consistency `[ADOPT]`
+### X.X Provider / Resources Output Consistency
 
 Provider CRUD commands must use their registered `ResourceAdapter` (via
 TypedCRUD) for data access, not raw REST clients. This ensures:
@@ -237,10 +237,10 @@ non-compliant. Extension commands (status, timeline, etc.) may use raw
 clients since they have no `resources` pipeline equivalent.
 ```
 
-### Update: TypedCRUD `[ADOPT -> EVOLVE]`
+### Update: TypedCRUD
 
 ```markdown
-### X.X TypedCRUD Pattern `[ADOPT → EVOLVE]`
+### X.X TypedCRUD Pattern
 
 TypedCRUD is the current required pattern for new providers implementing
 ResourceAdapter. It bridges typed domain objects to Kubernetes-style
@@ -259,10 +259,10 @@ type-erasure mechanisms. If TypedCRUD does not fit your use case, raise
 the issue for architectural discussion.
 ```
 
-### New: ConfigLoader Requirement `[ADOPT]`
+### New: ConfigLoader Requirement
 
 ```markdown
-### X.X Provider ConfigLoader `[ADOPT]`
+### X.X Provider ConfigLoader
 
 All provider commands must use `providers.ConfigLoader` for flag binding
 (`--config`, `--context`) and config resolution (YAML + env var precedence).

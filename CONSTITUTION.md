@@ -68,7 +68,7 @@ Every command serves both humans and agents. Agent mode switches defaults
 (JSON output, no color, no truncation) but does not change available
 functionality. Explicit flags always override agent mode defaults.
 
-See [design-guide.md §6](docs/reference/design-guide.md#6-agent-mode) for
+See [agent-mode.md](docs/design/agent-mode.md) for
 agent mode detection, behavior changes, and opt-out mechanisms.
 
 - **All output goes through the codec system.** No command writes unstructured

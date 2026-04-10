@@ -25,5 +25,5 @@ With this workflow, you can define and manage dashboards as code, saving them to
 1. Push the generated resources to your Grafana instance:
    ```shell
    gcx config use-context YOUR_CONTEXT  # for example "dev"
-   gcx resources push -d ./resources/
+   gcx resources push -p ./resources/
    ```

@@ -91,3 +91,69 @@ func TestClient_Get_NotFound(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "404")
 }
+
+func TestClient_Create(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Contains(t, r.URL.Path, "/eval/rules")
+
+		var def eval.RuleDefinition
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&def))
+		assert.Equal(t, "new-rule", def.RuleID)
+
+		w.WriteHeader(http.StatusCreated)
+		writeJSON(w, eval.RuleDefinition{
+			RuleID:       "new-rule",
+			Enabled:      true,
+			Selector:     "user_visible_turn",
+			SampleRate:   1.0,
+			EvaluatorIDs: []string{"eval-1"},
+		})
+	}))
+
+	created, err := client.Create(context.Background(), &eval.RuleDefinition{
+		RuleID:       "new-rule",
+		Enabled:      true,
+		Selector:     "user_visible_turn",
+		SampleRate:   1.0,
+		EvaluatorIDs: []string{"eval-1"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "new-rule", created.RuleID)
+	assert.True(t, created.Enabled)
+}
+
+func TestClient_Update(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPatch, r.Method)
+		assert.Contains(t, r.URL.Path, "/eval/rules/rule-1")
+
+		var def eval.RuleDefinition
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&def))
+		assert.InDelta(t, 0.5, def.SampleRate, 0.001)
+
+		writeJSON(w, eval.RuleDefinition{
+			RuleID:     "rule-1",
+			SampleRate: 0.5,
+		})
+	}))
+
+	updated, err := client.Update(context.Background(), "rule-1", &eval.RuleDefinition{
+		RuleID:     "rule-1",
+		SampleRate: 0.5,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "rule-1", updated.RuleID)
+	assert.InDelta(t, 0.5, updated.SampleRate, 0.001)
+}
+
+func TestClient_Delete(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodDelete, r.Method)
+		assert.Contains(t, r.URL.Path, "/eval/rules/rule-1")
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	err := client.Delete(context.Background(), "rule-1")
+	require.NoError(t, err)
+}

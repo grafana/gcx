@@ -5,7 +5,7 @@ Reference: `internal/providers/incidents/commands.go` for working examples.
 
 ## Output Format Compliance
 
-> Reference: `docs/reference/design-guide.md` Section 1.3 (`[ADOPT]`)
+> Reference: `docs/design/output.md`
 
 All provider commands must comply with the default format rules:
 

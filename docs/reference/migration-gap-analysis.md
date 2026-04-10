@@ -18,7 +18,7 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 | `gcx session start/list/end/cleanup` | Temporary scoped troubleshooting sessions | **Missing** |
 | `gcx dir init/show/unpin` | Per-directory context pinning | **Missing** |
 | `gcx completion` | Shell completion (bash/zsh/fish/powershell) | **Exists** (`gcx completion bash\|fish\|powershell\|zsh`) |
-| `gcx version` | Print version | **Missing** (may be a hidden flag) |
+| `gcx version` | Print version | **Exists** (`gcx --version` flag) |
 | `gcx agent-card` | A2A-compliant agent card generation | **Missing** |
 | `gcx commands` | List all commands and schemas (LLM-friendly) | **Exists** (`gcx commands --flat -o json`, with `--validate` for live checks) |
 | `gcx help-tree` | Compact command tree for LLM/scripting | **Exists** (`gcx help-tree`) |
@@ -207,7 +207,7 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 | Old Command | Description | Status in gcx |
 |-------------|-------------|---------------|
 | `gcx connections jobs` | Metric endpoint connections | **K8s tier** (Connection, Job resources: `gcx resources get connections\|jobs`) |
-| `gcx faro sourcemaps` | RUM source map management | **Exists** (`gcx faro apps` full CRUD + `apply-sourcemap\|remove-sourcemap\|show-sourcemaps`) |
+| `gcx frontend sourcemaps` | RUM source map management | **Exists** (`gcx frontend apps` full CRUD + `apply-sourcemap\|remove-sourcemap\|show-sourcemaps`) |
 | `gcx integrations` | Telemetry integrations CRUD | **Missing** |
 | `gcx app-o11y settings/overrides` | Application Observability | **Exists** (`gcx appo11y settings get\|update`, `gcx appo11y overrides get\|update`) |
 | `gcx alloy` | Alloy configuration CRUD | **Partially exists** (`gcx fleet pipelines\|collectors` CRUD; `gcx setup instrumentation status\|discover\|show\|apply`) |
@@ -329,7 +329,7 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 | Agent mode | Auto-detected JSON output for LLM tooling |
 | Config layers | System/user/local config hierarchy |
 | `gcx sigil` | Sigil AI observability provider (conversations search/show) |
-| `gcx faro` | Faro Frontend Observability provider (apps CRUD, sourcemaps) |
+| `gcx frontend` | Frontend Observability provider (apps CRUD, sourcemaps) |
 | `gcx appo11y` | App Observability settings/overrides management |
 | `gcx setup instrumentation` | Instrumentation discovery and apply (status/discover/show/apply) |
 | `gcx assistant prompt` | Grafana Assistant via A2A protocol (streaming SSE) |

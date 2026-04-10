@@ -141,7 +141,7 @@ Ask the user a **single `AskUserQuestion`** to confirm/adjust these defaults:
 
 For each journey `J` from Phase 1, launch an agent that:
 - Discovers the SLO command group (`gcx slo --help`, `gcx slo definitions --help`) to find available subcommands and flags.
-- Runs `gcx slo definitions example` to get a template if available, then customizes it: name, availability target, latency target, 28d window.
+- Runs `gcx resources examples slo` to get a template if available, then customizes it: name, availability target, latency target, 28d window.
 - Writes the result to `slo-J.yaml`.
 
 Do **not** create the SLOs yet — Phase 4 does that after signals are flowing. Store all `slo-*.yaml` files for Phase 4.
@@ -226,15 +226,15 @@ Then wait for infrastructure signals to appear by polling `gcx setup instrumenta
   List pipelines (`gcx fleet pipelines list`) to confirm pipeline exists and is receiving data.
   Verify collectors are healthy: `gcx fleet collectors list`.
 
-- **Agent C** — Faro frontend observability (skip if no frontend stack from Phase 1):
-  Discover the Faro command group (`gcx faro --help`, `gcx faro apps --help`).
-  List existing Faro apps: `gcx faro apps list`. If an app for this project already exists, skip creation.
-  Otherwise, create a Faro app configured for the application URL and name:
+- **Agent C** — Frontend observability (skip if no frontend stack from Phase 1):
+  Discover the frontend command group (`gcx frontend --help`, `gcx frontend apps --help`).
+  List existing Frontend Observability apps: `gcx frontend apps list`. If an app for this project already exists, skip creation.
+  Otherwise, create a Frontend Observability app configured for the application URL and name:
   ```bash
-  gcx faro apps create -f faro-app.yaml
+  gcx frontend apps create -f faro-app.yaml
   ```
-  Verify: `gcx faro apps list` to confirm the app was created and capture the app ID.
-  If the frontend uses sourcemaps, upload them: `gcx faro apps apply-sourcemap <app-name> -f <sourcemap>`.
+  Verify: `gcx frontend apps list` to confirm the app was created and capture the app ID.
+  If the frontend uses sourcemaps, upload them: `gcx frontend apps apply-sourcemap <app-name> -f <sourcemap>`.
 
 - **Agent D** — Synthetic checks (early deployment for traffic seeding):
   Deploy the `check-*.yaml` files from Phase 2 now, before instrumentation is fully verified. For each endpoint, check if the check already exists (`gcx synth checks list`); if not, create it: `gcx synth checks create -f check-<endpoint>.yaml`. List checks to confirm each is enabled with probes assigned.
@@ -347,7 +347,7 @@ Wait for all agents. Mark task completed.
 Mark task in_progress.
 
 **Pre-check — skip resources that already exist:**
-Discover the k6 command group (`gcx k6 --help`) and list existing projects (`gcx k6 projects list`), tests (`gcx k6 tests list`), and schedules (`gcx k6 schedules list`). If a project with the expected name exists, capture its ID and skip creation. Skip test and schedule creation for any endpoint that already has them.
+Discover the k6 command group (`gcx k6 --help`) and list existing projects (`gcx k6 projects list`), load tests (`gcx k6 load-tests list`), and schedules (`gcx k6 schedules list`). If a project with the expected name exists, capture its ID and skip creation. Skip test and schedule creation for any endpoint that already has them.
 
 **Step 1 — parallel:**
 
@@ -386,7 +386,7 @@ Discover the oncall command group (`gcx oncall --help`) and list integrations (`
 
 Wait for both. Then **Step 2** (needs integration webhook URL from Agent A):
 
-Create a route: `gcx oncall routes create -f route.yaml`, list to confirm. Then update the Phase 4 contact point to use the IRM webhook URL:
+Create a route via the API: `gcx api /api/v1/routes -X POST -d @route.yaml`, then `gcx oncall routes list` to confirm. Then update the Phase 4 contact point to use the IRM webhook URL:
 
 ```bash
 gcx api /api/v1/provisioning/contact-points/<uid> -X PUT -d @contact-point-updated.json
@@ -427,7 +427,7 @@ Generate dashboards covering:
 - SLO burn rates across all journeys
 - Error rate + latency percentiles (p50/p95/p99)
 - Request volume + top errors
-- Frontend RUM (if Faro was configured in Phase 3 — verify with `gcx faro apps list`)
+- Frontend RUM (if configured in Phase 3 — verify with `gcx frontend apps list`)
 - k6 load test results
 
 Each agent:
@@ -489,7 +489,7 @@ Ask the user where in their repo to place the export (default: `./grafana/`).
 - **Agent A** — export (run_in_background: true, can be slow):
   Pull all resources to the chosen directory:
   ```bash
-  gcx resources pull -d ./grafana/
+  gcx resources pull -p ./grafana/
   ```
 
 - **Agent B** — prepare CI snippet while export runs:
@@ -520,7 +520,7 @@ Run `gcx setup instrumentation status` and `gcx setup status` for overall health
 
 - **Agent A** — SLO pass/fail status: list all SLOs (`gcx slo definitions list`) and check reports (`gcx slo reports list`). Flag any SLO already burning error budget — investigate before declaring setup complete.
 
-- **Agent B** — k6 schedule verification: list all k6 schedules (`gcx k6 schedules list`) and cross-reference with k6 tests (`gcx k6 tests list`). Flag any test without a schedule — schedules are required.
+- **Agent B** — k6 schedule verification: list all k6 schedules (`gcx k6 schedules list`) and cross-reference with k6 load tests (`gcx k6 load-tests list`). Flag any test without a schedule — schedules are required.
 
 - **Agent C** — synthetic check health: list all synthetic checks (`gcx synth checks list`) and check status for each (`gcx synth checks status <id>`). Confirm all are enabled and showing recent results.
 

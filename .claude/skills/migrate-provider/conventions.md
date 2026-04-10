@@ -61,9 +61,9 @@ its section reference before proceeding to Phase 1.
 |----------|---------|-------------|-------|
 | `CONSTITUTION.md` | CLI Grammar | Yes / No / Partial | {which rules apply to this provider's command tree} |
 | `CONSTITUTION.md` | Output Conventions | Yes / No / Partial | {format defaults, codec requirements} |
-| `docs/reference/design-guide.md` | 1.1 Naming | Yes / No / Partial | {noun choice, alias conventions} |
-| `docs/reference/design-guide.md` | 1.3 Output Formats | Yes / No / Partial | {table/wide/json/yaml compliance} |
-| `docs/reference/design-guide.md` | 1.4 Exit Codes | Yes / No / Partial | {error handling conventions} |
+| `docs/design/naming.md` | Naming | Yes / No / Partial | {noun choice, alias conventions} |
+| `docs/design/output.md` | Output Formats | Yes / No / Partial | {table/wide/json/yaml compliance} |
+| `docs/design/exit-codes.md` | Exit Codes | Yes / No / Partial | {error handling conventions} |
 | `docs/reference/provider-guide.md` | Provider Interface | Yes / No / Partial | {registration, ConfigKeys, TypedCRUD} |
 | `docs/reference/provider-guide.md` | Adapter Wiring | Yes / No / Partial | {GVK, aliases, schema/example} |
 | `docs/reference/provider-discovery-guide.md` | API Discovery | Yes / No / Partial | {auth model, endpoint patterns, pagination} |

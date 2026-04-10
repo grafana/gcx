@@ -157,7 +157,7 @@ func TestIntegrationListProviderResourceRoutesToAdapter(t *testing.T) {
 		_, err := router.List(context.Background(), integrationSLODescriptor, metav1.ListOptions{})
 		require.NoError(t, err)
 	})
-	require.Equal(t, 1, sloAdapter.listCalled, "SLO adapter should handle List")
+	require.Equal(t, int32(1), sloAdapter.listCalled.Load(), "SLO adapter should handle List")
 	require.Equal(t, 0, dynClient.listCalled, "dynamic client should NOT be called for SLO")
 }
 
@@ -178,7 +178,7 @@ func TestIntegrationNativeResourceFallsToDynamicClient(t *testing.T) {
 
 	_, err := router.List(context.Background(), integrationDashboardDescriptor, metav1.ListOptions{})
 	require.NoError(t, err)
-	require.Equal(t, 0, sloAdapter.listCalled, "SLO adapter should NOT be called for dashboards")
+	require.Equal(t, int32(0), sloAdapter.listCalled.Load(), "SLO adapter should NOT be called for dashboards")
 	require.Equal(t, 1, dynClient.listCalled, "dynamic client should handle dashboards")
 }
 
@@ -201,7 +201,7 @@ func TestIntegrationGetProviderResourceRoutesToAdapter(t *testing.T) {
 		_, err := router.Get(context.Background(), integrationSLODescriptor, "my-slo", metav1.GetOptions{})
 		require.NoError(t, err)
 	})
-	require.Equal(t, 1, sloAdapter.getCalled)
+	require.Equal(t, int32(1), sloAdapter.getCalled.Load())
 }
 
 // TestIntegrationCreateProviderResourceRoutesToAdapter verifies:
@@ -224,7 +224,7 @@ func TestIntegrationCreateProviderResourceRoutesToAdapter(t *testing.T) {
 		_, err := router.Create(context.Background(), integrationSLODescriptor, obj, metav1.CreateOptions{})
 		require.NoError(t, err)
 	})
-	require.Equal(t, 1, sloAdapter.createCalled)
+	require.Equal(t, int32(1), sloAdapter.createCalled.Load())
 	require.Equal(t, 0, dynClient.createCalled)
 }
 
@@ -248,7 +248,7 @@ func TestIntegrationUpdateProviderResourceRoutesToAdapter(t *testing.T) {
 		_, err := router.Update(context.Background(), integrationSLODescriptor, obj, metav1.UpdateOptions{})
 		require.NoError(t, err)
 	})
-	require.Equal(t, 1, sloAdapter.updateCalled)
+	require.Equal(t, int32(1), sloAdapter.updateCalled.Load())
 	require.Equal(t, 0, dynClient.updateCalled)
 }
 
@@ -271,7 +271,7 @@ func TestIntegrationDeleteProviderResourceRoutesToAdapter(t *testing.T) {
 		err := router.Delete(context.Background(), integrationSLODescriptor, "my-slo", metav1.DeleteOptions{})
 		require.NoError(t, err)
 	})
-	require.Equal(t, 1, sloAdapter.deleteCalled)
+	require.Equal(t, int32(1), sloAdapter.deleteCalled.Load())
 	require.Equal(t, 0, dynClient.deleteCalled)
 }
 

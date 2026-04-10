@@ -7,6 +7,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -147,6 +148,110 @@ func TestSharedOptsValidate(t *testing.T) {
 			if tt.assert != nil {
 				tt.assert(t, opts)
 			}
+		})
+	}
+}
+
+func TestSharedOptsSetup_GraphSupport(t *testing.T) {
+	t.Run("graph disabled rejects graph output", func(t *testing.T) {
+		opts := &dsquery.SharedOpts{}
+		flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+		opts.Setup(flags, false)
+
+		require.NoError(t, flags.Parse([]string{"-o", "graph"}))
+		err := opts.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unknown output format 'graph'")
+		assert.Contains(t, err.Error(), "json")
+		assert.Contains(t, err.Error(), "table")
+		assert.Contains(t, err.Error(), "wide")
+		assert.Contains(t, err.Error(), "yaml")
+	})
+
+	t.Run("graph enabled accepts graph output", func(t *testing.T) {
+		opts := &dsquery.SharedOpts{}
+		flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+		opts.Setup(flags, true)
+
+		require.NoError(t, flags.Parse([]string{"-o", "graph"}))
+		require.NoError(t, opts.Validate())
+	})
+}
+
+func TestResolveExpr(t *testing.T) {
+	tests := []struct {
+		name         string
+		flagExpr     string
+		args         []string
+		exprArgIndex int
+		want         string
+		wantErr      string
+	}{
+		{
+			name:         "positional arg only",
+			args:         []string{"up"},
+			exprArgIndex: 0,
+			want:         "up",
+		},
+		{
+			name:         "flag only",
+			flagExpr:     "up",
+			args:         []string{},
+			exprArgIndex: 0,
+			want:         "up",
+		},
+		{
+			name:         "both provided",
+			flagExpr:     "up",
+			args:         []string{"up"},
+			exprArgIndex: 0,
+			wantErr:      "provide the expression as a positional argument or via --expr, not both",
+		},
+		{
+			name:         "neither provided",
+			args:         []string{},
+			exprArgIndex: 0,
+			wantErr:      "expression is required: provide it as a positional argument or via --expr",
+		},
+		{
+			name:         "generic command positional (arg index 1)",
+			args:         []string{"uid", "up"},
+			exprArgIndex: 1,
+			want:         "up",
+		},
+		{
+			name:         "generic command flag (arg index 1 absent)",
+			flagExpr:     "up",
+			args:         []string{"uid"},
+			exprArgIndex: 1,
+			want:         "up",
+		},
+		{
+			name:         "generic command both (arg index 1)",
+			flagExpr:     "up",
+			args:         []string{"uid", "up"},
+			exprArgIndex: 1,
+			wantErr:      "not both",
+		},
+		{
+			name:         "generic command neither (arg index 1 absent, no flag)",
+			args:         []string{"uid"},
+			exprArgIndex: 1,
+			wantErr:      "expression is required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := &dsquery.SharedOpts{Expr: tt.flagExpr}
+			got, err := opts.ResolveExpr(tt.args, tt.exprArgIndex)
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

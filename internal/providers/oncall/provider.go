@@ -110,9 +110,16 @@ func (l *configLoader) LoadOnCallClient(ctx context.Context) (*Client, string, e
 		return nil, "", err
 	}
 
-	oncallURL, err := l.discoverOnCallURL(ctx, restCfg)
-	if err != nil {
-		return nil, "", err
+	var oncallURL string
+	if restCfg.IsOAuthProxy() {
+		// When using the OAuth proxy, route through the assistant external provider proxy.
+		// cfg.Host is "{proxyEndpoint}/api/cli/v1/proxy". Append the external provider path.
+		oncallURL = restCfg.Host + "/external/oncall"
+	} else {
+		oncallURL, err = l.discoverOnCallURL(ctx, restCfg)
+		if err != nil {
+			return nil, "", err
+		}
 	}
 
 	client, err := NewClient(oncallURL, restCfg)

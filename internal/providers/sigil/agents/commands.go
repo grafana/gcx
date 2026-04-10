@@ -2,15 +2,14 @@ package agents
 
 import (
 	"errors"
-	"fmt"
 	"io"
-	"text/tabwriter"
+	"strconv"
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
-	"github.com/grafana/gcx/internal/providers/sigil/commandutil"
 	"github.com/grafana/gcx/internal/providers/sigil/sigilhttp"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -31,37 +30,72 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 	}
 
 	cmd.AddCommand(
-		newShowCommand(loader),
+		newListCommand(loader),
+		newGetCommand(loader),
 		newVersionsCommand(loader),
 	)
 	return cmd
 }
 
-// --- show (list + lookup) ---
+// --- list ---
 
-type showOpts struct {
-	IO      cmdio.Options
-	Limit   int
-	Version string
+type listOpts struct {
+	IO    cmdio.Options
+	Limit int
 }
 
-func (o *showOpts) setup(flags *pflag.FlagSet) {
+func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &ListTableCodec{})
 	o.IO.RegisterCustomCodec("wide", &ListTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.Limit, "limit", 100, "Maximum number of agents to return")
+}
+
+func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &listOpts{}
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List agents.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+			client, err := newClient(cmd, loader)
+			if err != nil {
+				return err
+			}
+			agents, err := client.List(cmd.Context(), opts.Limit)
+			if err != nil {
+				return err
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), agents)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+// --- get ---
+
+type getOpts struct {
+	IO      cmdio.Options
+	Version string
+}
+
+func (o *getOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("yaml")
+	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Version, "version", "", "Specific effective version to look up")
 }
 
-func newShowCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &showOpts{}
+func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &getOpts{}
 	cmd := &cobra.Command{
-		Use:   "show [agent-name]",
-		Short: "Show agents or a single agent detail.",
-		Long: `Show agents. Without a name, lists agents (use --limit to control count).
-With a name, shows the full agent definition (use --version for a specific version).`,
-		Args: cobra.MaximumNArgs(1),
+		Use:   "get <agent-name>",
+		Short: "Get a single agent definition.",
+		Long:  `Get the full agent definition. Use --version for a specific version.`,
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -70,32 +104,11 @@ With a name, shows the full agent definition (use --version for a specific versi
 			if err != nil {
 				return err
 			}
-
-			if len(args) == 1 {
-				if commandutil.ShouldDefaultDetailToYAML(cmd) {
-					opts.IO.OutputFormat = "yaml"
-				}
-
-				exampleArgs := []string{args[0]}
-				if opts.Version != "" {
-					exampleArgs = append(exampleArgs, "--version", opts.Version)
-				}
-				if err := commandutil.ValidateDetailOutputFormat(cmd, opts.IO.OutputFormat, "agent", exampleArgs...); err != nil {
-					return err
-				}
-
-				detail, err := client.Lookup(cmd.Context(), args[0], opts.Version)
-				if err != nil {
-					return err
-				}
-				return opts.IO.Encode(cmd.OutOrStdout(), detail)
-			}
-
-			agents, err := client.List(cmd.Context(), opts.Limit)
+			detail, err := client.Lookup(cmd.Context(), args[0], opts.Version)
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), agents)
+			return opts.IO.Encode(cmd.OutOrStdout(), detail)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -158,25 +171,25 @@ func (c *ListTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []Agent")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "NAME\tVERSIONS\tGENERATIONS\tTOOLS\tTOKENS\tFIRST SEEN\tLAST SEEN")
+		t = style.NewTable("NAME", "VERSIONS", "GENERATIONS", "TOOLS", "TOKENS", "FIRST SEEN", "LAST SEEN")
 	} else {
-		fmt.Fprintln(tw, "NAME\tVERSIONS\tGENERATIONS\tTOOLS\tLAST SEEN")
+		t = style.NewTable("NAME", "VERSIONS", "GENERATIONS", "TOOLS", "LAST SEEN")
 	}
 
 	for _, a := range agents {
 		lastSeen := sigilhttp.FormatTime(a.LatestSeenAt)
 		if c.Wide {
 			firstSeen := sigilhttp.FormatTime(a.FirstSeenAt)
-			fmt.Fprintf(tw, "%s\t%d\t%d\t%d\t%d\t%s\t%s\n",
-				a.AgentName, a.VersionCount, a.GenerationCount, a.ToolCount, a.TokenEstimate.Total, firstSeen, lastSeen)
+			t.Row(a.AgentName, strconv.Itoa(a.VersionCount), strconv.FormatInt(a.GenerationCount, 10),
+				strconv.Itoa(a.ToolCount), strconv.Itoa(a.TokenEstimate.Total), firstSeen, lastSeen)
 		} else {
-			fmt.Fprintf(tw, "%s\t%d\t%d\t%d\t%s\n",
-				a.AgentName, a.VersionCount, a.GenerationCount, a.ToolCount, lastSeen)
+			t.Row(a.AgentName, strconv.Itoa(a.VersionCount), strconv.FormatInt(a.GenerationCount, 10),
+				strconv.Itoa(a.ToolCount), lastSeen)
 		}
 	}
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *ListTableCodec) Decode(_ io.Reader, _ any) error {
@@ -195,15 +208,13 @@ func (c *VersionsTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []AgentVersion")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "VERSION\tGENERATIONS\tTOOLS\tTOKENS\tFIRST SEEN\tLAST SEEN")
-
+	t := style.NewTable("VERSION", "GENERATIONS", "TOOLS", "TOKENS", "FIRST SEEN", "LAST SEEN")
 	for _, ver := range versions {
-		fmt.Fprintf(tw, "%s\t%d\t%d\t%d\t%s\t%s\n",
-			ver.EffectiveVersion, ver.GenerationCount, ver.ToolCount, ver.TokenEstimate.Total,
+		t.Row(ver.EffectiveVersion, strconv.FormatInt(ver.GenerationCount, 10),
+			strconv.Itoa(ver.ToolCount), strconv.Itoa(ver.TokenEstimate.Total),
 			sigilhttp.FormatTime(ver.FirstSeenAt), sigilhttp.FormatTime(ver.LastSeenAt))
 	}
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *VersionsTableCodec) Decode(_ io.Reader, _ any) error {

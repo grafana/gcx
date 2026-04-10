@@ -57,6 +57,21 @@ func newProbeTestServer(t *testing.T, probeList []probes.Probe) *httptest.Server
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(probeList)
 	})
+	mux.HandleFunc("/api/v1/probe/add", func(w http.ResponseWriter, r *http.Request) {
+		var p probes.Probe
+		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		p.ID = 42
+		resp := probes.CreateResponse{Probe: p, Token: "generated-token"}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	})
+	mux.HandleFunc("/api/v1/probe/delete/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"msg":"Probe deleted","probeID":1}`))
+	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return srv
@@ -139,15 +154,41 @@ func TestProbeResourceAdapter_Get_NonNumericName(t *testing.T) {
 	assert.Contains(t, err.Error(), "numeric ID")
 }
 
-func TestProbeResourceAdapter_Create_ReadOnly(t *testing.T) {
-	loader := &fakeProbeLoader{baseURL: "http://unused", token: "t", namespace: "default"}
+func TestProbeResourceAdapter_Create(t *testing.T) {
+	srv := newProbeTestServer(t, stubProbes)
+
+	loader := &fakeProbeLoader{baseURL: srv.URL, token: "test-token", namespace: "default"}
 	factory := probes.NewAdapterFactory(loader)
 
 	a, err := factory(context.Background())
 	require.NoError(t, err)
 
-	_, err = a.Create(context.Background(), &unstructured.Unstructured{}, metav1.CreateOptions{})
-	require.ErrorIs(t, err, errors.ErrUnsupported)
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": probes.APIVersion,
+			"kind":       probes.Kind,
+			"metadata":   map[string]any{"name": "new-probe"},
+			"spec": map[string]any{
+				"name":      "Tokyo",
+				"region":    "APAC",
+				"latitude":  35.6,
+				"longitude": 139.7,
+			},
+		},
+	}
+
+	created, err := a.Create(context.Background(), obj, metav1.CreateOptions{})
+	require.NoError(t, err)
+	require.NotNil(t, created)
+
+	assert.Equal(t, probes.APIVersion, created.GetAPIVersion())
+	assert.Equal(t, probes.Kind, created.GetKind())
+	assert.Equal(t, "42", created.GetName(), "name should be the server-assigned probe ID")
+
+	spec, ok := created.Object["spec"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "Tokyo", spec["name"])
+	assert.Equal(t, false, spec["public"], "public must be forced to false for private probes")
 }
 
 func TestProbeResourceAdapter_Update_ReadOnly(t *testing.T) {
@@ -161,15 +202,29 @@ func TestProbeResourceAdapter_Update_ReadOnly(t *testing.T) {
 	require.ErrorIs(t, err, errors.ErrUnsupported)
 }
 
-func TestProbeResourceAdapter_Delete_ReadOnly(t *testing.T) {
-	loader := &fakeProbeLoader{baseURL: "http://unused", token: "t", namespace: "default"}
+func TestProbeResourceAdapter_Delete(t *testing.T) {
+	srv := newProbeTestServer(t, stubProbes)
+
+	loader := &fakeProbeLoader{baseURL: srv.URL, token: "test-token", namespace: "default"}
 	factory := probes.NewAdapterFactory(loader)
 
 	a, err := factory(context.Background())
 	require.NoError(t, err)
 
 	err = a.Delete(context.Background(), "1", metav1.DeleteOptions{})
-	require.ErrorIs(t, err, errors.ErrUnsupported)
+	require.NoError(t, err)
+}
+
+func TestProbeResourceAdapter_Delete_NonNumericName(t *testing.T) {
+	loader := &fakeProbeLoader{baseURL: "http://unused", token: "t", namespace: "default"}
+	factory := probes.NewAdapterFactory(loader)
+
+	a, err := factory(context.Background())
+	require.NoError(t, err)
+
+	err = a.Delete(context.Background(), "not-a-number", metav1.DeleteOptions{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "numeric ID")
 }
 
 func TestProbeResourceAdapter_Descriptor(t *testing.T) {

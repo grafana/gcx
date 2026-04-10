@@ -491,7 +491,7 @@ func (e editor) OpenInTempFile(ctx context.Context, buffer io.Reader, format str
 
 ## Output Formatting (`internal/output/`)
 
-> See also [design-guide.md](../reference/design-guide.md) Sections 1–2 for output contract,
+> See also [output.md](../design/output.md) for output contract and [exit-codes.md](../design/exit-codes.md) for
 > exit code taxonomy, and default format conventions.
 
 ### `io.Options` — Format Selection
@@ -523,7 +523,7 @@ codec.Encode(cmd.OutOrStdout(), data)
 **`IsPiped` and `NoTruncate`** are populated during `BindFlags` from the
 `internal/terminal` package-level state, which is set by root `PersistentPreRun`
 before any command runs. Table codecs should read `opts.IO.NoTruncate` to
-decide whether to truncate long column values. See `design-guide.md` Section 5.1.
+decide whether to truncate long column values. See [pipe-awareness.md](../design/pipe-awareness.md).
 
 **`--json` flag** is registered by `BindFlags` on the command's `FlagSet`.
 `Validate()` calls `applyJSONFlag()` which:
@@ -604,7 +604,7 @@ They prefix with colored Unicode symbols (✔ ⚠ ✘ 🛈). `--no-color` disabl
 
 ## Error Handling (`cmd/gcx/fail/`)
 
-> See also [design-guide.md](../reference/design-guide.md) Section 4 for error design guidelines,
+> See also [errors.md](../design/errors.md) for error design guidelines,
 > writing good suggestions, and exit code assignments.
 
 ### `DetailedError` — Structured Error Type

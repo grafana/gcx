@@ -1,16 +1,19 @@
 ## gcx metrics adaptive recommendations apply
 
-Apply recommendations as aggregation rules.
+Apply specific or all recommendations as rules.
 
 ```
-gcx metrics adaptive recommendations apply [flags]
+gcx metrics adaptive recommendations apply [<metric>...|--all] [flags]
 ```
 
 ### Options
 
 ```
-      --dry-run   Print what would be synced without making changes
-  -h, --help      help for apply
+      --all              Apply all recommendations (bulk)
+      --dry-run          Preview without applying
+  -h, --help             help for apply
+      --segment string   Segment ID
+      --yes              Skip confirmation prompt
 ```
 
 ### Options inherited from parent commands

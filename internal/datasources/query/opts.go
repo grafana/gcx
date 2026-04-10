@@ -91,15 +91,42 @@ type SharedOpts struct {
 
 	IO   cmdio.Options
 	Step string
+	Expr string
+}
+
+// SetupExprFlag registers the --expr flag on the given flag set.
+// Exposed separately from Setup for commands that register flags manually
+// (e.g., logs query, profiles metrics).
+func (opts *SharedOpts) SetupExprFlag(flags *pflag.FlagSet) {
+	flags.StringVar(&opts.Expr, "expr", "", "Query expression (alternative to positional argument)")
 }
 
 // Setup registers shared query flags on the given flag set.
-func (opts *SharedOpts) Setup(flags *pflag.FlagSet) {
-	RegisterCodecs(&opts.IO)
+func (opts *SharedOpts) Setup(flags *pflag.FlagSet, enableGraph bool) {
+	RegisterCodecs(&opts.IO, enableGraph)
 	opts.IO.BindFlags(flags)
 
 	opts.SetupTimeFlags(flags)
+	opts.SetupExprFlag(flags)
 	flags.StringVar(&opts.Step, "step", "", "Query step (e.g., '15s', '1m')")
+}
+
+// ResolveExpr resolves the query expression from either the --expr flag or a
+// positional argument at exprArgIndex. Exactly one source must provide the expression.
+func (opts *SharedOpts) ResolveExpr(args []string, exprArgIndex int) (string, error) {
+	haveFlag := opts.Expr != ""
+	haveArg := exprArgIndex < len(args)
+
+	if haveFlag && haveArg {
+		return "", errors.New("provide the expression as a positional argument or via --expr, not both")
+	}
+	if !haveFlag && !haveArg {
+		return "", errors.New("expression is required: provide it as a positional argument or via --expr")
+	}
+	if haveFlag {
+		return opts.Expr, nil
+	}
+	return args[exprArgIndex], nil
 }
 
 // Validate validates shared flags and resolves --since into From/To.

@@ -24,6 +24,10 @@ Manage Sigil AI observability resources
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx sigil agents](gcx_sigil_agents.md)	 - Query Sigil agent catalog.
 * [gcx sigil conversations](gcx_sigil_conversations.md)	 - Query Sigil conversations.
-* [gcx sigil evaluators](gcx_sigil_evaluators.md)	 - Query Sigil evaluators.
-* [gcx sigil rules](gcx_sigil_rules.md)	 - Query Sigil evaluation rules.
+* [gcx sigil evaluators](gcx_sigil_evaluators.md)	 - Manage evaluator definitions (LLM judge, regex, heuristic).
+* [gcx sigil generations](gcx_sigil_generations.md)	 - Inspect individual LLM generations.
+* [gcx sigil judge](gcx_sigil_judge.md)	 - List LLM providers and models available for LLM-judge evaluators.
+* [gcx sigil rules](gcx_sigil_rules.md)	 - Manage rules that route generations to evaluators.
+* [gcx sigil scores](gcx_sigil_scores.md)	 - View evaluation scores for generations.
+* [gcx sigil templates](gcx_sigil_templates.md)	 - Browse reusable evaluator blueprints (global and tenant-scoped).
 

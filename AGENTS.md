@@ -1,4 +1,4 @@
-# AGENTS.md — Agent Entry Point
+# gcx — Agent & Developer Entry Point
 
 > Lightweight map for autonomous coding agents. Read this first, then navigate to specific docs on demand.
 
@@ -8,68 +8,25 @@
 
 ## Documentation Map
 
-### Primary References
-
-| Document | What It Covers | Read When |
-|----------|---------------|-----------|
-| [CLAUDE.md](CLAUDE.md) | Build commands, test commands, project conventions, code org standards | Running builds/tests, understanding conventions |
-| [docs/architecture/README.md](docs/architecture/README.md) | Full index of architecture docs with navigation guide | Deep-diving into any architectural domain |
-
-### Architecture Docs (in `docs/architecture/`)
-
-| Document | Domain | Read When |
-|----------|--------|-----------|
-| [architecture.md](docs/architecture/architecture.md) | System-wide architecture overview | First-time orientation, understanding overall design |
-| [patterns.md](docs/architecture/patterns.md) | Recurring patterns catalog (18 patterns) | Before implementing new features |
-| [resource-model.md](docs/architecture/resource-model.md) | Resource, Selector, Filter, Discovery abstractions | Modifying resource handling |
-| [cli-layer.md](docs/architecture/cli-layer.md) | Command tree, Options pattern, lifecycle | Adding/modifying CLI commands |
-| [client-api-layer.md](docs/architecture/client-api-layer.md) | Dynamic client, auth, error translation | API communication changes |
-| [config-system.md](docs/architecture/config-system.md) | Contexts, env vars, TLS, namespace resolution | Config or auth changes |
-| [data-flows.md](docs/architecture/data-flows.md) | Push/Pull/Serve/Delete pipelines | Modifying resource sync flows |
-| [project-structure.md](docs/architecture/project-structure.md) | Build system, CI/CD, dependencies, directory layout | Build issues, adding deps |
-
-### Reference Guides (in `docs/reference/`)
-
-| Document | Domain | Read When |
-|----------|--------|-----------|
-| [provider-discovery-guide.md](docs/reference/provider-discovery-guide.md) | Pre-implementation research and design for new providers | Before designing a new provider (discovery phase) |
-| [provider-guide.md](docs/reference/provider-guide.md) | Step-by-step guide: implement + register a new provider | Adding a new Grafana product provider |
-| [design-guide.md](docs/reference/design-guide.md) | UX requirements: output, exit codes, errors, naming | Before implementing features, reviewing CLI UX |
-| [migration-gap-analysis.md](docs/reference/migration-gap-analysis.md) | Gap analysis between grafana-cloud-cli and gcx, with prioritized migration roadmap | Understanding what's missing before planning new features or migrations |
-
-### Templates (in `docs/_templates/`)
-
-Spec and planning templates for structured work. Use these when creating specs in `docs/specs/`.
-
-| Template | Use For |
-|----------|---------|
-| [feature-spec.md](docs/_templates/feature-spec.md) | New feature specs (problem, requirements, acceptance criteria) |
-| [feature-plan.md](docs/_templates/feature-plan.md) | Architecture/design plan for a feature spec |
-| [feature-tasks.md](docs/_templates/feature-tasks.md) | Task breakdown with dependency waves |
-| [bugfix-spec.md](docs/_templates/bugfix-spec.md) | Bug fix specs (current vs expected behavior, repro steps) |
-| [refactor-spec.md](docs/_templates/refactor-spec.md) | Refactoring specs (behavioral contract, migration steps) |
-| [adr.md](docs/_templates/adr.md) | Architecture Decision Records |
-| [research.md](docs/_templates/research.md) | Research reports |
+| File | Purpose |
+|------|---------|
+| [VISION.md](VISION.md) | Goals, product surface, roadmap themes, release timeline |
+| [CONSTITUTION.md](CONSTITUTION.md) | Invariants — things that cannot change without explicit human approval |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System overview (all 7 subsystems), pipeline diagrams, ADR index |
+| [DESIGN.md](DESIGN.md) | CLI UX design: command grammar, output model, exit codes |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, testing environment, contribution workflow |
+| [docs/architecture/](docs/architecture/) | Deep-dive architecture docs (patterns, resource model, CLI layer, data flows, …) |
+| [docs/design/](docs/design/) | Prescriptive UX implementation rules (output, errors, agent mode, naming, …) |
+| [docs/reference/](docs/reference/) | Provider guides, CLI reference, migration analysis |
+| [docs/_templates/](docs/_templates/) | Spec and planning templates (feature, bugfix, refactor, ADR, research) |
 
 ## Architecture at a Glance
 
-```
-CLI Layer (cmd/gcx/)              ← Cobra commands, zero business logic
-    ↓
-Business Logic (internal/resources/)     ← Resource model, selectors, filters, processors
-    ↓                          ↓
-K8s Dynamic Client         Provider Adapters (internal/providers/*)
-(internal/resources/       ← Pluggable Cloud product providers
- dynamic/)                   (SLO, SM, OnCall, Fleet, KG, Incidents, Alert...)
-    ↓                          ↓
-Grafana K8s API            Product REST APIs
-(/apis endpoint)           (Cloud-specific endpoints)
-```
-
-**K8s tier flow**: User input → Selector → Discovery → Filter → Dynamic Client → Grafana API
-**Provider tier flow**: User input → Provider CLI → Provider Client → Product REST API
+Two tiers: **K8s resource tier** (dashboards, folders via `/apis`) and **Cloud provider tier** (SLO, SM, OnCall, etc. via product REST APIs). See [ARCHITECTURE.md](ARCHITECTURE.md) for pipeline diagrams and extension pipelines.
 
 ## Key Conventions
+
+> Authoritative source: [CONSTITUTION.md](CONSTITUTION.md) (invariants) and [DESIGN.md](DESIGN.md) (UX rules). This is the quick-reference summary.
 
 - **Options pattern**: Every command uses `opts struct` + `setup(flags)` + `Validate()` + constructor
 - **Processor pipeline**: `Processor.Process(*Resource) error` — composable transformations for push/pull
@@ -78,15 +35,9 @@ Grafana K8s API            Product REST APIs
 - **Config = kubectl kubeconfig**: Named contexts with server/auth/namespace, env var overrides
 - **Format-agnostic data fetching**: Commands fetch all data regardless of `--output` format; codecs control display, not data acquisition (see Pattern 13 in `docs/architecture/patterns.md`)
 - **PromQL via promql-builder**: Use `github.com/grafana/promql-builder/go/promql` for PromQL construction, not string formatting (see Pattern 14 in `docs/architecture/patterns.md`)
+- **Portable agent skills live under `claude-plugin/skills/`**: Treat that tree as the canonical portable Agent Skills bundle. Do not add distributable gcx skills under repo-local `.agents/skills/` — that changes repo-context discovery semantics for tools that scan `.agents`.
 
 ## Essential Commands
-
-> **Without devbox**: All `make` targets require `devbox`. If you don't have it, use the direct Go commands instead:
-> ```bash
-> go build -buildvcs=false -o bin/gcx ./cmd/gcx/   # replaces make build
-> go test ./...                                      # replaces make tests
-> ```
-> Always build to `bin/gcx` (not a temp binary) so the binary stays at a stable path for testing.
 
 ```bash
 make build       # Build to bin/gcx
@@ -96,57 +47,41 @@ make all         # lint + tests + build + docs
 make docs        # Generate + build all documentation
 ```
 
-> **Before running quality gates, rebase onto the latest upstream main.**
-> This catches conflicts early and ensures `make all` (especially `make docs`)
-> runs against the current command tree. If working on a worktree or ephemeral
-> branch with uncommitted changes, stash first:
-> ```
-> git stash --include-untracked
-> git fetch origin main && git rebase origin/main
-> git stash pop
-> ```
-> Resolve any conflicts before proceeding. If in doubt about the base branch, ask.
+**Without devbox**: replace `make` targets with direct Go commands — `go build -buildvcs=false -o bin/gcx ./cmd/gcx/` and `go test ./...`. Always build to `bin/gcx`.
 
-> **Before pushing to a PR branch, always run `make all` with agent mode explicitly disabled.**
-> The `make docs` step regenerates `docs/reference/cli/` by running the binary, which
-> auto-detects agent mode from env vars like `CLAUDECODE` or `CLAUDE_CODE`. When those
-> are set, the binary flips default output formats (e.g. `"json"` instead of `"table"`),
-> producing wrong docs. `GCX_AGENT_MODE=false` overrides all detection:
-> ```
-> GCX_AGENT_MODE=false make all
-> ```
-> Skipping this causes CI to fail with docs drift.
+> **Agent environments**: always prefix with `GCX_AGENT_MODE=false` — agent-mode auto-detection changes output defaults in `make docs`, producing wrong CLI reference docs.
 
-> **Doc maintenance is a gate before creating a PR or finishing a session.**
-> If code changes touch `internal/` or `cmd/` structure, new architectural patterns,
-> core abstractions (Resource, Selector, Filter, Discovery), or add a provider:
-> run the structural checks in [docs/reference/doc-maintenance.md](docs/reference/doc-maintenance.md)
-> and update `CLAUDE.md` (package map), `DESIGN.md` (package table), and relevant
-> `docs/architecture/` files. Routine bug fixes, test changes, and small features
-> do not need it. Keeping these docs accurate prevents agents from making bad
-> assumptions in future sessions.
+## Testing
+
+```bash
+go test ./internal/providers/traces/...   # Run one package
+go test -run TestQueryCodec ./internal/... # Run matching tests across packages
+go test -race -count=1 ./...              # Full suite with race detection (same as make tests)
+```
+
+Prefer table-driven tests. See existing `_test.go` files for patterns.
 
 ## Package Map
 
+> Full map with sub-packages: [docs/architecture/project-structure.md](docs/architecture/project-structure.md)
+
 ```
 cmd/gcx/
-├── root/        CLI root (logging, global flags)
-├── auth/        OAuth login command (browser-based PKCE flow)
-├── config/      Config management commands (set, use-context, view...)
-├── resources/   Resource commands (get, schemas, push, pull, delete, edit, validate)
-├── dashboards/  Dashboard commands (snapshot via Image Renderer)
-├── datasources/ Datasource commands (list, get, query)
-│   └── query/   Auto-detecting query command (GenericCmd only; shared infra in internal/datasources/query/)
-├── providers/   Provider commands (list)
-├── assistant/   Assistant commands (AI-powered investigations)
-├── api/         Raw API passthrough command (direct Grafana API calls)
-├── linter/      Linting commands (run, new, rules, test — mounted under dev lint)
-├── commands/    Commands catalog (agent-consumable metadata, resource types, live validation)
-├── helptree/    Compact text tree for agent context injection (help-tree command)
-├── setup/       Setup command area (onboarding, instrumentation — not a provider)
-│   └── instrumentation/  Instrumentation subcommands (status, discover, show, apply)
-├── dev/         Developer commands (import, scaffold, generate, lint, serve)
-└── fail/        Structured error → user-friendly message conversion
+  root/         CLI root (logging, global flags)
+  auth/         OAuth login (browser PKCE)
+  config/       Config management (set, use-context, view)
+  resources/    Resource commands (get, schemas, push, pull, delete, edit, validate)
+  dashboards/   Dashboard snapshot (Image Renderer)
+  datasources/  Datasource commands (list, get, query)
+  providers/    Provider list command
+  assistant/    Assistant commands (AI-powered investigations)
+  api/          Raw API passthrough
+  linter/       Linting (mounted under dev lint)
+  commands/     Commands catalog (agent metadata)
+  helptree/     Help tree for agent context
+  setup/        Onboarding + instrumentation
+  dev/          Developer tools (import, scaffold, generate, lint, serve)
+  fail/         Structured error conversion
 
 internal/
 ├── auth/        OAuth PKCE flow, token refresh transport
@@ -166,7 +101,7 @@ internal/
 │   └── remote/     Pusher, Puller, Deleter, FolderHierarchy, Summary
 ├── providers/   Provider plugin system (interface, registry, self-registration)
 │   ├── alert/      Alert provider (rules, groups — read-only)
-│   ├── faro/       Faro provider (Frontend Observability — apps CRUD, sourcemaps sub-resource)
+│   ├── faro/       Frontend Observability provider (apps CRUD, sourcemaps sub-resource) — CLI: `gcx frontend`
 │   ├── fleet/      Fleet Management provider (pipeline and collector resources)
 │   ├── incidents/  IRM Incidents provider
 │   ├── k6/         K6 Cloud provider (projects, tests, runs, envvars)
@@ -176,7 +111,7 @@ internal/
 │   ├── oncall/     OnCall provider (schedules, integrations, escalation chains)
 │   ├── appo11y/    App Observability provider (overrides, settings — singleton resources)
 │   ├── profiles/   Profiles signal provider (Pyroscope queries + adaptive stub)
-│   ├── sigil/      Sigil AI observability provider (conversations, agents, evaluators, rules — via grafana-sigil-app plugin API)
+│   ├── sigil/      Sigil AI observability provider (conversations, agents, generations, evaluators, rules, templates, scores, judge — via grafana-sigil-app plugin API)
 │   ├── slo/        SLO provider (definitions, reports)
 │   ├── synth/      Synthetic Monitoring provider (checks, probes)
 │   └── traces/     Traces signal provider (Tempo queries + Adaptive Traces commands)
@@ -202,4 +137,91 @@ internal/
 ├── httputils/   HTTP helpers (used by serve command's proxy)
 ├── secrets/     Redactor for config view
 └── logs/        slog/klog integration
+```
+
+## What to Read Before You Start
+
+| Task | Read first | Then |
+|------|-----------|------|
+| **Adding a new command** | [DESIGN.md](DESIGN.md) (grammar, output model) | [docs/design/](docs/design/) for implementation rules, [ARCHITECTURE.md](ARCHITECTURE.md) § CLI layer |
+| **Adding a new provider** | [ARCHITECTURE.md](ARCHITECTURE.md) § Provider System | [docs/reference/provider-guide.md](docs/reference/provider-guide.md), [docs/design/provider-checklist.md](docs/design/provider-checklist.md) |
+| **Adding a signal provider command** | [ARCHITECTURE.md](ARCHITECTURE.md) § Signal Providers | Existing signal provider code for the SharedOpts pattern |
+| **Modifying resource handling** | [ARCHITECTURE.md](ARCHITECTURE.md) § Resources Pipeline | [docs/architecture/resource-model.md](docs/architecture/resource-model.md), [docs/architecture/data-flows.md](docs/architecture/data-flows.md) |
+| **Changing config or auth** | [ARCHITECTURE.md](ARCHITECTURE.md) § Configuration + § Auth | [docs/architecture/config-system.md](docs/architecture/config-system.md), [docs/architecture/client-api-layer.md](docs/architecture/client-api-layer.md) |
+| **Fixing a bug** | [ARCHITECTURE.md](ARCHITECTURE.md) for the relevant subsystem | Jump directly to the deep-dive doc for that domain |
+| **Planning a new feature** | [VISION.md](VISION.md) (does it belong?), [CONSTITUTION.md](CONSTITUTION.md) (can we build it within the rules?) | [DESIGN.md](DESIGN.md) for UX, [ARCHITECTURE.md](ARCHITECTURE.md) for structure |
+| **Reviewing a PR** | [Compliance Hierarchy](#compliance-hierarchy) below | Check all 4 levels in order |
+
+## Compliance Hierarchy
+
+Check work against these docs during planning, design, and implementation — in order of strictness.
+
+| # | Doc | Strictness | What to check | If violated |
+|---|-----|-----------|---------------|-------------|
+| 1 | [CONSTITUTION.md](CONSTITUTION.md) | **Hard invariant** — violation is a bug | Architecture invariants, dependency rules, provider registration, CLI grammar, typed resource requirements | Stop. Fix before proceeding. Violation requires explicit human approval to waive. |
+| 2 | [VISION.md](VISION.md) | **Strategic alignment** — violation is wasted work | Does this belong in gcx? Does it align with dual-purpose design, core beliefs, product surface? | Pause. Confirm direction with a human before investing more effort. |
+| 3 | [DESIGN.md](DESIGN.md) | **UX rules** — violation is a UX defect | Output model, exit codes, safety patterns, taste rules in [docs/design/](docs/design/) | Fix. New code must comply. |
+| 4 | [ARCHITECTURE.md](ARCHITECTURE.md) | **Structural guidance** — violation is tech debt | Pipeline placement, package boundaries, patterns in [docs/architecture/](docs/architecture/README.md) | Prefer compliance. Deviation is acceptable with rationale (document in commit or ADR). |
+
+**When to check:**
+- **Planning/design**: Check VISION (2) and CONSTITUTION (1) — are we building the right thing, and can we build it within the rules?
+- **Implementation**: Check DESIGN (3) and ARCHITECTURE (4) — does the code follow UX rules and structural patterns?
+- **Pre-flight** (below): Final sweep across all four before pushing.
+
+## Releasing
+
+Automated via `make tag`. Requires `claude` CLI and [`svu`](https://github.com/caarlos0/svu).
+
+```bash
+make tag BUMP=patch   # or minor, major
+```
+
+This generates a changelog entry (via Claude), updates `CHANGELOG.md` and `.release-notes.md`, commits, tags, and pushes. The tag push triggers the GoReleaser workflow.
+
+**With branch protection** (can't push directly to main): the script will fail at the push step. Instead:
+1. Create a branch, commit the changelog, open a PR
+2. Merge the PR
+3. Tag the merge commit on main and push the tag:
+   ```bash
+   git checkout main && git pull
+   git tag v0.X.Y
+   git push origin v0.X.Y
+   ```
+
+## Pre-Flight Checklist
+
+Run when code has been modified, before pushing or creating a PR.
+
+1. **Compliance check** — verify changes against the [compliance hierarchy](#compliance-hierarchy) above. CONSTITUTION and DESIGN violations must be fixed. VISION misalignment must be flagged. ARCHITECTURE deviations must be documented.
+2. **Sync with base branch**
+   ```bash
+   git fetch origin main && git rebase origin/main
+   ```
+3. **Quality gates pass** — `make docs` auto-detects agent mode from env vars (`CLAUDECODE`, `CLAUDE_CODE`) and flips output defaults, producing wrong docs. Always override:
+   ```bash
+   GCX_AGENT_MODE=false make all
+   ```
+4. **Doc maintenance gate** — run the structural checks in [docs/reference/doc-maintenance.md](docs/reference/doc-maintenance.md). Update `CLAUDE.md` (package map), `ARCHITECTURE.md` (ADR table), and relevant `docs/architecture/` files if any are stale.
+5. **Push**
+   ```bash
+   git push
+   git status   # must show "up to date with origin"
+   ```
+   Work is not done until push succeeds. If it fails, resolve and retry.
+6. **Beads** (if in use) — close completed issues and sync:
+   ```bash
+   bd close <id>      # from repo root, not worktrees
+   bd dolt push
+   ```
+
+## Beads Issue Tracker (optional)
+
+This project can use **bd (beads)** for issue tracking. Run `bd prime` for full command reference.
+
+```bash
+bd ready                  # Find available work
+bd show <id>              # View issue details
+bd update <id> --claim    # Claim work
+bd close <id>             # Complete work
+bd dolt push              # Sync to Dolt remote (run from repo root, not worktrees)
 ```

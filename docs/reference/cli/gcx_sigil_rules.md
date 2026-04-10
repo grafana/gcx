@@ -1,6 +1,6 @@
 ## gcx sigil rules
 
-Query Sigil evaluation rules.
+Manage rules that route generations to evaluators.
 
 ### Options
 
@@ -22,5 +22,9 @@ Query Sigil evaluation rules.
 ### SEE ALSO
 
 * [gcx sigil](gcx_sigil.md)	 - Manage Sigil AI observability resources
-* [gcx sigil rules show](gcx_sigil_rules_show.md)	 - Show evaluation rules or a single rule detail.
+* [gcx sigil rules create](gcx_sigil_rules_create.md)	 - Create an evaluation rule from a file.
+* [gcx sigil rules delete](gcx_sigil_rules_delete.md)	 - Delete evaluation rules.
+* [gcx sigil rules get](gcx_sigil_rules_get.md)	 - Get a single evaluation rule.
+* [gcx sigil rules list](gcx_sigil_rules_list.md)	 - List evaluation rules.
+* [gcx sigil rules update](gcx_sigil_rules_update.md)	 - Update an evaluation rule from a file.
 

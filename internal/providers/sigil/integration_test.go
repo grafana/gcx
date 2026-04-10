@@ -16,8 +16,10 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/sigil/agents"
 	"github.com/grafana/gcx/internal/providers/sigil/conversations"
+	"github.com/grafana/gcx/internal/providers/sigil/eval"
 	"github.com/grafana/gcx/internal/providers/sigil/eval/evaluators"
 	"github.com/grafana/gcx/internal/providers/sigil/eval/rules"
+	"github.com/grafana/gcx/internal/providers/sigil/eval/templates"
 	"github.com/grafana/gcx/internal/providers/sigil/sigilhttp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -119,12 +121,59 @@ func fakePluginMux() *http.ServeMux {
 			})
 		})
 
+	mux.HandleFunc("/api/plugins/grafana-sigil-app/resources/eval/evaluators/eval-1",
+		func(w http.ResponseWriter, _ *http.Request) {
+			writeJSON(w, map[string]any{
+				"evaluator_id": "eval-1", "version": "1.0", "kind": "llm_judge",
+				"description": "Quality check",
+				"config":      map[string]any{"model": "gpt-4"},
+				"output_keys": []map[string]any{{"key": "quality", "type": "number"}},
+			})
+		})
+
 	mux.HandleFunc("/api/plugins/grafana-sigil-app/resources/eval/rules",
 		func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(w, map[string]any{
 				"items": []map[string]any{
 					{"rule_id": "rule-1", "enabled": true, "selector": "user_visible_turn",
 						"sample_rate": 1.0, "evaluator_ids": []string{"eval-1"}},
+				},
+			})
+		})
+
+	mux.HandleFunc("/api/plugins/grafana-sigil-app/resources/eval:test",
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			passed := true
+			writeJSON(w, map[string]any{
+				"generation_id":     "gen-1",
+				"conversation_id":   "conv-1",
+				"execution_time_ms": 150,
+				"scores": []map[string]any{
+					{"key": "quality", "type": "number", "value": 0.9, "passed": passed, "explanation": "Good quality"},
+				},
+			})
+		})
+
+	mux.HandleFunc("/api/plugins/grafana-sigil-app/resources/eval/templates",
+		func(w http.ResponseWriter, _ *http.Request) {
+			writeJSON(w, map[string]any{
+				"items": []map[string]any{
+					{"template_id": "tpl-1", "scope": "global", "kind": "llm_judge",
+						"latest_version": "2026-04-01", "description": "Quality template"},
+				},
+			})
+		})
+
+	mux.HandleFunc("/api/plugins/grafana-sigil-app/resources/eval/templates/tpl-1/versions",
+		func(w http.ResponseWriter, _ *http.Request) {
+			writeJSON(w, map[string]any{
+				"items": []map[string]any{
+					{"template_id": "tpl-1", "version": "2026-04-01", "changelog": "Initial release",
+						"created_by": "admin"},
 				},
 			})
 		})
@@ -272,4 +321,75 @@ func TestIntegration_RulesListToTable(t *testing.T) {
 	assert.Contains(t, output, "rule-1")
 	assert.Contains(t, output, "user_visible_turn")
 	assert.Contains(t, output, "eval-1")
+}
+
+func TestIntegration_EvalTestRunTest(t *testing.T) {
+	base := newBase(t, fakePluginMux())
+	client := evaluators.NewClient(base)
+
+	resp, err := client.RunTest(context.Background(), &eval.EvalTestRequest{
+		Kind:         "llm_judge",
+		GenerationID: "gen-1",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "gen-1", resp.GenerationID)
+	assert.Equal(t, int64(150), resp.ExecutionTimeMs)
+	require.Len(t, resp.Scores, 1)
+	assert.Equal(t, "quality", resp.Scores[0].Key)
+}
+
+func TestIntegration_EvalTestToTable(t *testing.T) {
+	base := newBase(t, fakePluginMux())
+	client := evaluators.NewClient(base)
+
+	resp, err := client.RunTest(context.Background(), &eval.EvalTestRequest{
+		Kind:         "llm_judge",
+		GenerationID: "gen-1",
+	})
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	codec := &evaluators.TestTableCodec{}
+	require.NoError(t, codec.Encode(&buf, resp))
+
+	output := buf.String()
+	assert.Contains(t, output, "quality")
+	assert.Contains(t, output, "gen-1")
+	assert.Contains(t, output, "150ms")
+}
+
+func TestIntegration_TemplatesListToTable(t *testing.T) {
+	base := newBase(t, fakePluginMux())
+	client := templates.NewClient(base)
+
+	items, err := client.List(context.Background(), "")
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, "tpl-1", items[0].TemplateID)
+
+	var buf bytes.Buffer
+	codec := &templates.TableCodec{}
+	require.NoError(t, codec.Encode(&buf, items))
+
+	output := buf.String()
+	assert.Contains(t, output, "tpl-1")
+	assert.Contains(t, output, "global")
+	assert.Contains(t, output, "llm_judge")
+}
+
+func TestIntegration_TemplateVersionsToTable(t *testing.T) {
+	base := newBase(t, fakePluginMux())
+	client := templates.NewClient(base)
+
+	versions, err := client.ListVersions(context.Background(), "tpl-1")
+	require.NoError(t, err)
+	require.Len(t, versions, 1)
+
+	var buf bytes.Buffer
+	codec := &templates.VersionsTableCodec{}
+	require.NoError(t, codec.Encode(&buf, versions))
+
+	output := buf.String()
+	assert.Contains(t, output, "2026-04-01")
+	assert.Contains(t, output, "Initial release")
 }

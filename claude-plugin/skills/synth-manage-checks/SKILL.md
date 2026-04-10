@@ -74,19 +74,12 @@ Configuration guidance:
 - **alertSensitivity**: `high` = alert if >5% failing; `medium` = >10%; `low` = >25%; `none` = no alerts
 - **basicMetricsOnly**: `true` reduces metric cardinality (fewer label dimensions); `false` emits full metrics
 
-### Step 4: Dry-run and Push
+### Step 4: Create the Check
 
 ```bash
-# Always dry-run first
-gcx synth checks push <file.yaml> --dry-run
-
-# Push only after dry-run succeeds
-gcx synth checks push <file.yaml>
+# Create from file
+gcx synth checks create -f <file.yaml>
 ```
-
-Push semantics:
-- **Non-numeric `metadata.name`** (e.g., `my-api-check`): creates a new check; server assigns a numeric ID and updates the local file
-- **Numeric `metadata.name`** (e.g., `12345`): updates the existing check with that ID
 
 After creation, verify with:
 ```bash
@@ -98,41 +91,37 @@ gcx synth checks status <ID>
 
 ### Step 1: Pull Current Definition
 
-Fetch the specific check or all checks:
+Fetch the specific check:
 ```bash
 # Get single check as YAML (use ID from list output)
 gcx synth checks get <ID> -o yaml > check-<ID>.yaml
-
-# Or pull all checks to a directory
-gcx synth checks pull -d ./sm-checks/
 ```
 
-### Step 2: Edit and Push
+### Step 2: Edit and Update
 
-Edit the pulled YAML file (the `metadata.name` will be the numeric ID). Modify only the fields that need changing.
+Edit the YAML file (the `metadata.name` will be the numeric ID). Modify only the fields that need changing.
 
 ```bash
-# Dry-run the update
-gcx synth checks push check-<ID>.yaml --dry-run
-
-# Apply
-gcx synth checks push check-<ID>.yaml
+# Update the check from file
+gcx synth checks update <ID> -f check-<ID>.yaml
 ```
 
 ## Workflow 3: GitOps Sync (Pull/Push)
 
-Pull all checks to local directory, edit in source control, push to apply:
+List all checks, export to files, edit in source control, then update to apply:
 
 ```bash
-# Pull all checks to directory
-gcx synth checks pull -d ./sm-checks/
+# List all checks and export each to YAML
+gcx synth checks list -o yaml
 
-# Edit files as needed, then push each changed file
-gcx synth checks push ./sm-checks/<file>.yaml --dry-run
-gcx synth checks push ./sm-checks/<file>.yaml
+# Get a specific check as YAML
+gcx synth checks get <ID> -o yaml > ./sm-checks/check-<ID>.yaml
+
+# Edit files as needed, then update each changed file
+gcx synth checks update <ID> -f ./sm-checks/check-<ID>.yaml
 ```
 
-For bulk push from a directory, push files individually to control which checks are updated. Review dry-run output before each push.
+For bulk updates, update files individually to control which checks are changed.
 
 ## Workflow 4: Delete Checks
 

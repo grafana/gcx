@@ -48,11 +48,11 @@ right group:
 | Intent | Group | Example |
 |--------|-------|---------|
 | Dashboards, folders, K8s resources | `resources` | `gcx resources get dashboards` |
-| SLO definitions and reports | `slo` | `gcx slo list` |
+| SLO definitions and reports | `slo` | `gcx slo definitions list` |
 | Alert rules and groups | `alert` | `gcx alert rules list` |
 | Synthetic Monitoring checks | `synth` | `gcx synth checks list` |
 | OnCall schedules, integrations | `oncall` | `gcx oncall schedules list` |
-| K6 load tests, projects, runs | `k6` | `gcx k6 tests list` |
+| K6 load tests, projects, runs | `k6` | `gcx k6 load-tests list` |
 | PromQL / Adaptive Metrics | `metrics` | `gcx metrics query 'up'` |
 | LogQL / Adaptive Logs | `logs` | `gcx logs query '{app="foo"}'` |
 | Profiling (Pyroscope) | `profiles` | `gcx profiles query` |
@@ -61,7 +61,7 @@ right group:
 | Fleet pipelines, collectors | `fleet` | `gcx fleet pipelines list` |
 | IRM Incidents | `incidents` | `gcx incidents list` |
 | Knowledge Graph (Asserts) | `kg` | `gcx kg entities list` |
-| Frontend Observability (Faro) | `faro` | `gcx faro apps list` |
+| Frontend Observability | `frontend` | `gcx frontend apps list` |
 | App Observability | `appo11y` | `gcx appo11y overrides list` |
 
 If no command exists for the requested operation, say so and propose the nearest

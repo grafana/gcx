@@ -9,9 +9,11 @@
 
 ## For Contributors & Agents
 
-- **[CLAUDE.md](../CLAUDE.md)** — Agent entry point with doc map, conventions, and package index
-- **[DESIGN.md](../DESIGN.md)** — Architecture overview, ADR index, and package map
-- **[CONSTITUTION.md](../CONSTITUTION.md)** — Project invariants and constraints
+- **[CLAUDE.md](../CLAUDE.md)** — Agent entry point: doc map, build commands, package index
+- **[CONSTITUTION.md](../CONSTITUTION.md)** — Project invariants and constraints (authoritative)
+- **[ARCHITECTURE.md](../ARCHITECTURE.md)** — Architecture overview, pipeline diagrams, ADR index
+- **[DESIGN.md](../DESIGN.md)** — CLI UX design: command grammar, output model, taste rules
+- **[CONTRIBUTING.md](../CONTRIBUTING.md)** — Dev setup, testing, contribution workflow
 - **[Architecture](architecture/README.md)** — Deep-dive architecture docs per domain
 
 ## Directory Layout

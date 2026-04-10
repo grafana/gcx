@@ -82,10 +82,7 @@ func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
 			return err
 		}
 	case *loki.QueryResponse:
-		chartData, err = graph.FromLokiResponse(resp)
-		if err != nil {
-			return err
-		}
+		return errors.New("graph output is not supported for log stream queries; use -o table/json/yaml or use 'gcx logs metrics' for time-series data")
 	case *loki.MetricQueryResponse:
 		chartData, err = graph.FromLokiMetricResponse(resp)
 		if err != nil {
@@ -96,6 +93,8 @@ func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
 		if err != nil {
 			return err
 		}
+	case *tempo.SearchResponse:
+		return errors.New("graph output is not supported for trace search results; use -o table/json/yaml")
 	case *tempo.MetricsResponse:
 		chartData, err = graph.FromTempoMetricsResponse(resp)
 		if err != nil {
@@ -113,10 +112,13 @@ func (c *queryGraphCodec) Decode(io.Reader, any) error {
 	return errors.New("graph codec does not support decoding")
 }
 
-// RegisterCodecs registers the table, wide, and graph codecs on the given IO options.
-func RegisterCodecs(ioOpts *cmdio.Options) {
+// RegisterCodecs registers the table and wide codecs, plus graph when enabled,
+// on the given IO options.
+func RegisterCodecs(ioOpts *cmdio.Options, enableGraph bool) {
 	ioOpts.RegisterCustomCodec("table", &queryTableCodec{})
 	ioOpts.RegisterCustomCodec("wide", &queryWideCodec{})
-	ioOpts.RegisterCustomCodec("graph", &queryGraphCodec{})
+	if enableGraph {
+		ioOpts.RegisterCustomCodec("graph", &queryGraphCodec{})
+	}
 	ioOpts.DefaultFormat("table")
 }

@@ -15,7 +15,7 @@ When to create a provider:
 - You want those config keys to integrate with `gcx config set` and
   `GRAFANA_PROVIDER_*` environment variables automatically
 
-Architecture reference: [patterns.md – Provider Plugin System](../architecture/patterns.md#11-provider-plugin-system-high-confidence-93) (Pattern 11),
+Architecture reference: [patterns.md – Provider Plugin System](../architecture/patterns.md#11-provider-plugin-system) (Pattern 11),
 [config-system.md](../architecture/config-system.md) (Provider config section).
 
 ---
@@ -406,7 +406,7 @@ see `internal/providers/redact_test.go` for table-driven examples.
 
 ## Checklist
 
-When implementing a new provider (see also [design-guide.md Section 7](design-guide.md#7-provider-command-checklist) for UX compliance requirements):
+When implementing a new provider (see also [provider-checklist.md](../design/provider-checklist.md) for UX compliance requirements):
 
 - [ ] Struct implements all five `Provider` interface methods
 - [ ] `Name()` is lowercase, unique, and stable (it is the map key in config files)

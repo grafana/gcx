@@ -58,6 +58,19 @@ Investigation, fix, instrumentation, monitoring — without the developer ever l
 
 ## Install
 
+**Quick install (Linux/macOS):**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | sh
+```
+
+Downloads the latest release, verifies the SHA-256 checksum, and installs to
+`~/.local/bin`. Override the location with `INSTALL_DIR`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | INSTALL_DIR=/usr/local/bin sh
+```
+
 **Pre-built binary (Linux/macOS/Windows):**
 
 Download the latest archive for your OS and architecture from the
@@ -80,16 +93,19 @@ go install github.com/grafana/gcx/cmd/gcx@latest
 ```bash
 gcx completion zsh > "${fpath[1]}/_gcx"   # zsh
 gcx completion bash > /etc/bash_completion.d/gcx  # bash
+gcx completion fish > ~/.config/fish/completions/gcx #fish
 ```
 
 **Verify:** `gcx --version`
 
 ### AI Agent Plugin
 
-A [Claude Code plugin](claude-plugin/README.md) is included with skills for
-managing dashboards, exploring datasources, investigating alerts with the
-Grafana Assistant, and debugging with live observability data. Install it
-alongside gcx to give your agent deep Grafana knowledge.
+A [Claude Code plugin](claude-plugin/README.md) is included with a portable
+Agent Skills bundle for gcx workflows: setup, dashboard GitOps, datasource
+exploration, alert investigation, structured debugging, SLO management,
+Synthetic Monitoring workflows, project scaffolding, resource generation and
+import, and end-to-end observability rollout. Install it alongside gcx to give
+your agent deep Grafana knowledge.
 
 ## Quick Start
 
@@ -166,8 +182,8 @@ gcx oncall schedules list                       # list on-call schedules
 gcx k6 load-tests list                          # list k6 load tests
 
 # Query datasources
-gcx metrics query prom-001 'rate(http_requests_total[5m])' --since 1h
-gcx logs query loki-001 '{app="nginx"} |= "error"' --since 1h
+gcx metrics query 'rate(http_requests_total[5m])' --since 1h
+gcx logs query '{app="nginx"} |= "error"' --since 1h
 ```
 
 ## Grafana Cloud Products
@@ -184,7 +200,8 @@ gcx provides dedicated commands for each Grafana Cloud product:
 | **Fleet Management** | `gcx fleet` | `fleet pipelines list`, `fleet collectors list` |
 | **IRM Incidents** | `gcx incidents` | `incidents list`, `incidents create -f incident.yaml` |
 | **Knowledge Graph** | `gcx kg` | `kg status`, `kg search`, `kg entities show` |
-| **Adaptive Telemetry** | `gcx adaptive` | `adaptive metrics recommendations show`, `adaptive logs patterns show` |
+| **Adaptive Metrics** | `gcx metrics adaptive` | `metrics adaptive recommendations show`, `metrics adaptive rules list` |
+| **Adaptive Logs** | `gcx logs adaptive` | `logs adaptive patterns show`, `logs adaptive drop-rules list` |
 
 ## Resource Management
 
@@ -221,14 +238,14 @@ gcx alert rules list
 gcx alert groups list
 
 # PromQL queries
-gcx metrics query prom-001 'rate(http_requests_total[5m])' --since 1h
+gcx metrics query 'rate(http_requests_total[5m])' --since 1h
 gcx metrics labels
 gcx metrics metadata
 
 # LogQL queries
-gcx logs query loki-001 '{app="nginx"} |= "error"' --since 1h
+gcx logs query '{app="nginx"} |= "error"' --since 1h
 gcx logs labels
-gcx logs series
+gcx logs series --match '{app="nginx"}'
 ```
 
 gcx also supports Pyroscope (profiling) and Tempo (traces) datasources.

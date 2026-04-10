@@ -14,7 +14,7 @@ client is used automatically. This is the escape hatch for datasource types
 that do not have a dedicated subcommand.
 
 ```
-gcx datasources query DATASOURCE_UID EXPR [flags]
+gcx datasources query DATASOURCE_UID [EXPR] [flags]
 ```
 
 ### Examples
@@ -35,10 +35,11 @@ gcx datasources query DATASOURCE_UID EXPR [flags]
 ### Options
 
 ```
+      --expr string           Query expression (alternative to positional argument)
       --from string           Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                  help for query
       --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int             Maximum number of log lines to return for loki queries (0 means no limit) (default 1000)
+      --limit int             Maximum number of log lines to return for loki queries (0 means no limit) (default 50)
       --max-nodes int         Maximum nodes in flame graph (pyroscope only) (default 1024)
   -o, --output string         Output format. One of: graph, json, table, wide, yaml (default "table")
       --profile-type string   Profile type ID for pyroscope queries (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds')

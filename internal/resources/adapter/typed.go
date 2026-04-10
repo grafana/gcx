@@ -5,12 +5,21 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/grafana/gcx/internal/resources"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
+
+// ErrNotFound is returned by TypedCRUD.Get when a resource does not exist.
+// Provider GetFn implementations should wrap this sentinel (via fmt.Errorf
+// with %w) so that the adapter layer can convert provider-specific not-found
+// errors into Kubernetes-style NotFound, enabling the generic push upsert
+// path to fall through to Create.
+var ErrNotFound = errors.New("not found")
 
 // TypedObject wraps a domain type T with Kubernetes metadata, producing the
 // standard {apiVersion, kind, metadata, spec} envelope when serialized to JSON.
@@ -43,6 +52,12 @@ type TypedCRUD[T ResourceNamer] struct {
 
 	// DeleteFn deletes an item by name. Nil means delete is unsupported.
 	DeleteFn func(ctx context.Context, name string) error
+
+	// ValidateFn validates items without performing mutations. Called during
+	// DryRun (e.g. resources validate, push --dry-run) instead of CreateFn/UpdateFn.
+	// When nil and DryRun is requested, Create/Update validate the
+	// unstructured→typed conversion only (no server call).
+	ValidateFn func(ctx context.Context, items []*T) error
 
 	// Namespace is set on every produced envelope's metadata.namespace.
 	Namespace string
@@ -106,7 +121,7 @@ func (c *TypedCRUD[T]) Get(ctx context.Context, name string) (*TypedObject[T], e
 			return nil, err
 		}
 		if item == nil {
-			return nil, fmt.Errorf("resource %q not found", name)
+			return nil, fmt.Errorf("resource %q: %w", name, ErrNotFound)
 		}
 		obj := c.wrapTypedObject(*item)
 		return &obj, nil
@@ -127,7 +142,7 @@ func (c *TypedCRUD[T]) Get(ctx context.Context, name string) (*TypedObject[T], e
 			return &obj, nil
 		}
 	}
-	return nil, fmt.Errorf("resource %q not found", name)
+	return nil, fmt.Errorf("resource %q: %w", name, ErrNotFound)
 }
 
 // Create creates a new item via CreateFn and returns the result as TypedObject[T].
@@ -315,6 +330,13 @@ func (a *typedAdapter[T]) Get(ctx context.Context, name string, _ metav1.GetOpti
 	// Delegate to TypedCRUD.Get which handles nil GetFn fallback.
 	obj, err := a.crud.Get(ctx, name)
 	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			gr := schema.GroupResource{
+				Group:    a.crud.Descriptor.GroupVersion.Group,
+				Resource: a.crud.Descriptor.Plural,
+			}
+			return nil, apierrors.NewNotFound(gr, name)
+		}
 		return nil, err
 	}
 
@@ -326,7 +348,7 @@ func (a *typedAdapter[T]) Get(ctx context.Context, name string, _ metav1.GetOpti
 	return &u, nil
 }
 
-func (a *typedAdapter[T]) Create(ctx context.Context, obj *unstructured.Unstructured, _ metav1.CreateOptions) (*unstructured.Unstructured, error) {
+func (a *typedAdapter[T]) Create(ctx context.Context, obj *unstructured.Unstructured, opts metav1.CreateOptions) (*unstructured.Unstructured, error) {
 	if a.crud.CreateFn == nil {
 		return nil, errors.ErrUnsupported
 	}
@@ -334,6 +356,10 @@ func (a *typedAdapter[T]) Create(ctx context.Context, obj *unstructured.Unstruct
 	_, item, err := a.crud.fromUnstructured(obj)
 	if err != nil {
 		return nil, err
+	}
+
+	if isDryRun(opts.DryRun) {
+		return a.dryRunValidate(ctx, item)
 	}
 
 	created, err := a.crud.CreateFn(ctx, item)
@@ -349,7 +375,7 @@ func (a *typedAdapter[T]) Create(ctx context.Context, obj *unstructured.Unstruct
 	return &u, nil
 }
 
-func (a *typedAdapter[T]) Update(ctx context.Context, obj *unstructured.Unstructured, _ metav1.UpdateOptions) (*unstructured.Unstructured, error) {
+func (a *typedAdapter[T]) Update(ctx context.Context, obj *unstructured.Unstructured, opts metav1.UpdateOptions) (*unstructured.Unstructured, error) {
 	if a.crud.UpdateFn == nil {
 		return nil, errors.ErrUnsupported
 	}
@@ -357,6 +383,10 @@ func (a *typedAdapter[T]) Update(ctx context.Context, obj *unstructured.Unstruct
 	name, item, err := a.crud.fromUnstructured(obj)
 	if err != nil {
 		return nil, err
+	}
+
+	if isDryRun(opts.DryRun) {
+		return a.dryRunValidate(ctx, item)
 	}
 
 	updated, err := a.crud.UpdateFn(ctx, name, item)
@@ -378,6 +408,25 @@ func (a *typedAdapter[T]) Delete(ctx context.Context, name string, _ metav1.Dele
 	}
 
 	return a.crud.DeleteFn(ctx, name)
+}
+
+// dryRunValidate validates item via ValidateFn (if set) and returns the
+// round-tripped unstructured object without performing any mutation.
+func (a *typedAdapter[T]) dryRunValidate(ctx context.Context, item *T) (*unstructured.Unstructured, error) {
+	if a.crud.ValidateFn != nil {
+		if err := a.crud.ValidateFn(ctx, []*T{item}); err != nil {
+			return nil, err
+		}
+	}
+	u, err := a.crud.toUnstructured(*item)
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+func isDryRun(dryRun []string) bool {
+	return slices.Contains(dryRun, metav1.DryRunAll)
 }
 
 // TypedRegistration bridges TypedCRUD to the existing Registration system.

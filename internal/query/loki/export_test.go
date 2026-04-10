@@ -13,3 +13,13 @@ func (c *Client) BuildLabelValuesPath(datasourceUID, labelName string) string {
 func (c *Client) BuildSeriesPath(datasourceUID string) string {
 	return c.buildSeriesPath(datasourceUID)
 }
+
+// ConvertGrafanaResponse exposes convertGrafanaResponse for testing.
+func ConvertGrafanaResponse(resp *GrafanaQueryResponse) *QueryResponse {
+	return convertGrafanaResponse(resp)
+}
+
+// ParseLabels exposes parseLabels for testing.
+func ParseLabels(v any) map[string]string {
+	return parseLabels(v)
+}

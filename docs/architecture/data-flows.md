@@ -289,7 +289,7 @@ User invocation:
   │                     (mutually exclusive with --from/--to)            │
   │    --step           query step / interval (e.g. "15s", "1m")         │
   │    --limit          max log lines returned (loki and generic only;   │
-  │                     default 1000; 0 = no limit)                      │
+  │                     default 50; 0 = no limit)                        │
   │    --profile-type   required for pyroscope; also on generic          │
   │    -o               output format: table (default), graph, json, yaml│
   └───────────────────────┬──────────────────────────────────────────────┘
@@ -343,7 +343,7 @@ User invocation:
   │      client.Query(ctx, datasourceUID, QueryRequest{...})             │
   │                                                                       │
   │        POST /apis/query.grafana.app/v0alpha1/namespaces/{ns}/query   │
-  │        Body: same structure with "type":"loki", "maxLines":1000      │
+  │        Body: same structure with "type":"loki", "maxLines":limit     │
   └───────────────────────┬──────────────────────────────────────────────┘
                           │
   ┌───────────────────────▼──────────────────────────────────────────────┐
@@ -374,8 +374,9 @@ User invocation:
   │      prometheus: FormatTable → tabwriter with label columns +        │
   │        TIMESTAMP | VALUE; vector = one row per series,               │
   │        matrix = one row per data point                               │
-  │      loki: FormatQueryTable → tabwriter with TIMESTAMP | LABELS |   │
-  │        VALUE columns                                                 │
+  │      loki: FormatQueryTable → human-friendly log table with         │
+  │        TIME plus optional LEVEL/SOURCE/STREAM/DETAILS columns       │
+  │        derived from JSON/logfmt bodies; wide expands visible labels │
   │                                                                       │
   │    -o graph:                                                          │
   │      queryGraphCodec.Encode → graph.FromPrometheusResponse() or      │

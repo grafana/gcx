@@ -27,6 +27,7 @@ func ErrorToDetailedError(err error) *DetailedError {
 	// Try to convert the error for common error categories
 	errorConverters := []func(err error) (*DetailedError, bool){
 		convertUsageErrors,
+		convertCobraUnknownCommandErrors,
 		convertContextCanceled,    // Context cancellation (must be first — cancellation can wrap other errors)
 		convertRequiredFlagErrors, // Cobra required-flag errors — must appear before generic checks
 		convertConfigErrors,       // Config-related
@@ -72,6 +73,34 @@ func convertUsageErrors(err error) (*DetailedError, bool) {
 	}, true
 }
 
+func convertCobraUnknownCommandErrors(err error) (*DetailedError, bool) {
+	msg := strings.TrimSpace(err.Error())
+	if !strings.HasPrefix(msg, "unknown command ") {
+		return nil, false
+	}
+
+	detailed := &DetailedError{
+		Summary: "Invalid command usage",
+		Details: msg,
+	}
+
+	const marker = ` for "`
+	idx := strings.LastIndex(msg, marker)
+	if idx == -1 || !strings.HasSuffix(msg, `"`) {
+		return detailed, true
+	}
+
+	commandPath := strings.TrimSpace(msg[idx+len(marker) : len(msg)-1])
+	if commandPath == "" {
+		return detailed, true
+	}
+
+	detailed.Suggestions = []string{
+		fmt.Sprintf("Run '%s --help' for full usage and examples", commandPath),
+	}
+	return detailed, true
+}
+
 func convertConfigErrors(err error) (*DetailedError, bool) {
 	validationErr := config.ValidationError{}
 	if errors.As(err, &validationErr) {
@@ -95,6 +124,10 @@ func convertConfigErrors(err error) (*DetailedError, bool) {
 			Summary: "Could not parse configuration",
 			Details: fmt.Sprintf("Invalid configuration found in '%s'.", unmarshalErr.File),
 			Parent:  unmarshalErr.Err,
+			Suggestions: []string{
+				"Fix the file with: gcx config edit",
+				"Check for syntax errors such as incorrect indentation or unknown fields",
+			},
 		}, true
 	}
 

@@ -198,5 +198,8 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd.InitDefaultHelpCmd()
 	rootCmd.InitDefaultCompletionCmd()
 
+	// Apply centralized agent annotations (token_cost, llm_hint) to the
+	// full command tree. Must run after all commands are registered.
+	agent.ApplyAnnotations(rootCmd)
 	return rootCmd
 }

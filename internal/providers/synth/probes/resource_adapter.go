@@ -64,18 +64,24 @@ func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[
 			if err != nil {
 				return nil, fmt.Errorf("probe name must be a numeric ID, got %q: %w", name, err)
 			}
-			probeList, err := client.List(ctx)
-			if err != nil {
-				return nil, fmt.Errorf("failed to list probes: %w", err)
-			}
-			for i := range probeList {
-				if probeList[i].ID == id {
-					return &probeList[i], nil
-				}
-			}
-			return nil, fmt.Errorf("probe %d not found", id)
+			return client.Get(ctx, id)
 		},
-		// CreateFn, UpdateFn, DeleteFn all nil (read-only)
+		CreateFn: func(ctx context.Context, item *Probe) (*Probe, error) {
+			item.Public = false
+			resp, err := client.Create(ctx, *item)
+			if err != nil {
+				return nil, err
+			}
+			return &resp.Probe, nil
+		},
+		DeleteFn: func(ctx context.Context, name string) error {
+			id, err := strconv.ParseInt(name, 10, 64)
+			if err != nil {
+				return fmt.Errorf("probe name must be a numeric ID, got %q: %w", name, err)
+			}
+			return client.Delete(ctx, id)
+		},
+		// UpdateFn nil — not yet supported
 		Namespace:   namespace,
 		StripFields: []string{"id", "tenantId", "created", "modified", "onlineChange", "online", "version"},
 		Descriptor:  staticDescriptor,

@@ -92,6 +92,26 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
+	// Fall back to legacy /api/ds/query if K8s query API doesn't exist.
+	if resp.StatusCode == http.StatusNotFound {
+		resp.Body.Close()
+		apiPath = "/api/ds/query"
+		httpReq, err = http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewBuffer(body))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+		resp, err = c.httpClient.Do(httpReq)
+		if err != nil {
+			return nil, fmt.Errorf("failed to execute query: %w", err)
+		}
+		defer resp.Body.Close()
+		respBody, err = io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+		if err != nil {
+			return nil, fmt.Errorf("failed to read response: %w", err)
+		}
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("query failed with status %d: %s", resp.StatusCode, string(respBody))
 	}
@@ -165,6 +185,26 @@ func (c *Client) MetricQuery(ctx context.Context, datasourceUID string, req Quer
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	// Fall back to legacy /api/ds/query if K8s query API doesn't exist.
+	if resp.StatusCode == http.StatusNotFound {
+		resp.Body.Close()
+		apiPath = "/api/ds/query"
+		httpReq, err = http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewBuffer(body))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+		resp, err = c.httpClient.Do(httpReq)
+		if err != nil {
+			return nil, fmt.Errorf("failed to execute query: %w", err)
+		}
+		defer resp.Body.Close()
+		respBody, err = io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+		if err != nil {
+			return nil, fmt.Errorf("failed to read response: %w", err)
+		}
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -343,8 +383,16 @@ func convertGrafanaResponse(grafanaResp *GrafanaQueryResponse) *QueryResponse {
 		}
 
 		labelsIdx, hasLabels := fieldIndices["labels"]
+
 		timestampIdx, hasTimestamp := fieldIndices["timestamp"]
+		if !hasTimestamp {
+			timestampIdx, hasTimestamp = fieldIndices["Time"]
+		}
+
 		bodyIdx, hasBody := fieldIndices["body"]
+		if !hasBody {
+			bodyIdx, hasBody = fieldIndices["Line"]
+		}
 
 		// Handle log-lines format (per-line labels in values)
 		if hasLabels && hasTimestamp && hasBody {
@@ -414,18 +462,30 @@ func convertLegacyFormat(frame DataFrame, result *QueryResponse) {
 	}
 
 	var timeIdx, valueIdx = -1, -1
-	var labels map[string]string
+	labels := make(map[string]string)
+
+	var fallbackValueIdx = -1
+	contentFields := map[string]bool{
+		"Line": true, "line": true, "body": true, "Body": true, "value": true,
+	}
 
 	for i, field := range frame.Schema.Fields {
 		switch field.Type {
 		case "time":
 			timeIdx = i
 		case "string", "number":
-			valueIdx = i
+			if contentFields[field.Name] {
+				valueIdx = i
+			} else if fallbackValueIdx == -1 {
+				fallbackValueIdx = i
+			}
 		}
 		if len(field.Labels) > 0 {
 			labels = field.Labels
 		}
+	}
+	if valueIdx == -1 {
+		valueIdx = fallbackValueIdx
 	}
 
 	if timeIdx == -1 || valueIdx == -1 {
@@ -478,7 +538,7 @@ func extractStats(frameStats []FrameStat) *QueryStats {
 
 func parseLabels(v any) map[string]string {
 	if v == nil {
-		return nil
+		return map[string]string{}
 	}
 	if m, ok := v.(map[string]any); ok {
 		labels := make(map[string]string, len(m))
@@ -488,9 +548,18 @@ func parseLabels(v any) map[string]string {
 		return labels
 	}
 	if m, ok := v.(map[string]string); ok {
+		if m == nil {
+			return map[string]string{}
+		}
 		return m
 	}
-	return nil
+	if s, ok := v.(string); ok && len(s) > 0 && s[0] == '{' {
+		var labels map[string]string
+		if err := json.Unmarshal([]byte(s), &labels); err == nil {
+			return labels
+		}
+	}
+	return map[string]string{}
 }
 
 func labelsKey(labels map[string]string) string {

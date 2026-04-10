@@ -19,7 +19,7 @@ environment variables) and resolving common setup errors.
 First, check whether gcx is already installed:
 
 ```bash
-gcx version
+gcx --version
 ```
 
 If the command is not found, build it from source. Requires
@@ -32,7 +32,7 @@ tmp=$(mktemp -d) && git clone --depth 1 https://github.com/grafana/gcx.git "$tmp
 After installing, verify the binary is on PATH:
 
 ```bash
-gcx version
+gcx --version
 ```
 
 ## Configuration Model

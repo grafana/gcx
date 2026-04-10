@@ -3,6 +3,7 @@ package adapter_test
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 
 	"github.com/grafana/gcx/internal/resources"
@@ -99,38 +100,39 @@ func (m *mockDynamicClient) Delete(_ context.Context, _ resources.Descriptor, _ 
 }
 
 // countingAdapter wraps mockAdapter and counts invocations.
+// Counters are atomic because GetMultiple calls Get concurrently via errgroup.
 type countingAdapter struct {
 	mockAdapter
 
-	listCalled   int
-	getCalled    int
-	createCalled int
-	updateCalled int
-	deleteCalled int
+	listCalled   atomic.Int32
+	getCalled    atomic.Int32
+	createCalled atomic.Int32
+	updateCalled atomic.Int32
+	deleteCalled atomic.Int32
 }
 
 func (a *countingAdapter) List(ctx context.Context, opts metav1.ListOptions) (*unstructured.UnstructuredList, error) {
-	a.listCalled++
+	a.listCalled.Add(1)
 	return a.mockAdapter.List(ctx, opts)
 }
 
 func (a *countingAdapter) Get(ctx context.Context, name string, opts metav1.GetOptions) (*unstructured.Unstructured, error) {
-	a.getCalled++
+	a.getCalled.Add(1)
 	return a.mockAdapter.Get(ctx, name, opts)
 }
 
 func (a *countingAdapter) Create(ctx context.Context, obj *unstructured.Unstructured, opts metav1.CreateOptions) (*unstructured.Unstructured, error) {
-	a.createCalled++
+	a.createCalled.Add(1)
 	return a.mockAdapter.Create(ctx, obj, opts)
 }
 
 func (a *countingAdapter) Update(ctx context.Context, obj *unstructured.Unstructured, opts metav1.UpdateOptions) (*unstructured.Unstructured, error) {
-	a.updateCalled++
+	a.updateCalled.Add(1)
 	return a.mockAdapter.Update(ctx, obj, opts)
 }
 
 func (a *countingAdapter) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
-	a.deleteCalled++
+	a.deleteCalled.Add(1)
 	return a.mockAdapter.Delete(ctx, name, opts)
 }
 
@@ -162,7 +164,7 @@ func TestRouterDelegatesListToAdapter(t *testing.T) {
 
 	_, err := router.List(context.Background(), sloDescriptor, metav1.ListOptions{})
 	require.NoError(t, err)
-	require.Equal(t, 1, sloAdapter.listCalled, "adapter List should be called once")
+	require.Equal(t, int32(1), sloAdapter.listCalled.Load(), "adapter List should be called once")
 	require.Equal(t, 0, dynClient.listCalled, "dynamic client List should NOT be called")
 }
 
@@ -184,7 +186,7 @@ func TestRouterDelegatesListToDynamicForNonProvider(t *testing.T) {
 
 	_, err := router.List(context.Background(), dashboardDescriptor, metav1.ListOptions{})
 	require.NoError(t, err)
-	require.Equal(t, 0, sloAdapter.listCalled, "SLO adapter List should NOT be called")
+	require.Equal(t, int32(0), sloAdapter.listCalled.Load(), "SLO adapter List should NOT be called")
 	require.Equal(t, 1, dynClient.listCalled, "dynamic client List should be called once")
 }
 
@@ -240,7 +242,7 @@ func TestRouterCachesAdapterInstance(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, 1, factoryCallCount, "factory should be called only once (caching)")
-	require.Equal(t, 2, sloAdapter.listCalled, "adapter List should be called twice")
+	require.Equal(t, int32(2), sloAdapter.listCalled.Load(), "adapter List should be called twice")
 }
 
 // TestRouterDelegatesGetToAdapter verifies Get routes to adapter when registered.
@@ -254,7 +256,7 @@ func TestRouterDelegatesGetToAdapter(t *testing.T) {
 
 	_, err := router.Get(context.Background(), sloDescriptor, "my-slo", metav1.GetOptions{})
 	require.NoError(t, err)
-	require.Equal(t, 1, sloAdapter.getCalled)
+	require.Equal(t, int32(1), sloAdapter.getCalled.Load())
 	require.Equal(t, 0, dynClient.getCalled)
 }
 
@@ -280,7 +282,7 @@ func TestRouterGetMultipleUsesErrGroupForAdapter(t *testing.T) {
 
 	_, err := router.GetMultiple(context.Background(), sloDescriptor, []string{"slo-1", "slo-2", "slo-3"}, metav1.GetOptions{})
 	require.NoError(t, err)
-	require.Equal(t, 3, sloAdapter.getCalled, "adapter Get should be called once per name")
+	require.Equal(t, int32(3), sloAdapter.getCalled.Load(), "adapter Get should be called once per name")
 	require.Equal(t, 0, dynClient.getMultipleCalled)
 }
 
@@ -306,7 +308,7 @@ func TestRouterDelegatesCreateToAdapter(t *testing.T) {
 	obj := &unstructured.Unstructured{}
 	_, err := router.Create(context.Background(), sloDescriptor, obj, metav1.CreateOptions{})
 	require.NoError(t, err)
-	require.Equal(t, 1, sloAdapter.createCalled)
+	require.Equal(t, int32(1), sloAdapter.createCalled.Load())
 	require.Equal(t, 0, dynClient.createCalled)
 }
 
@@ -322,7 +324,7 @@ func TestRouterDelegatesUpdateToAdapter(t *testing.T) {
 	obj := &unstructured.Unstructured{}
 	_, err := router.Update(context.Background(), sloDescriptor, obj, metav1.UpdateOptions{})
 	require.NoError(t, err)
-	require.Equal(t, 1, sloAdapter.updateCalled)
+	require.Equal(t, int32(1), sloAdapter.updateCalled.Load())
 	require.Equal(t, 0, dynClient.updateCalled)
 }
 
@@ -337,7 +339,7 @@ func TestRouterDelegatesDeleteToAdapter(t *testing.T) {
 
 	err := router.Delete(context.Background(), sloDescriptor, "my-slo", metav1.DeleteOptions{})
 	require.NoError(t, err)
-	require.Equal(t, 1, sloAdapter.deleteCalled)
+	require.Equal(t, int32(1), sloAdapter.deleteCalled.Load())
 	require.Equal(t, 0, dynClient.deleteCalled)
 }
 

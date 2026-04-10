@@ -124,6 +124,7 @@ func TestGrafanaConfig_Validate_MismatchedStackID(t *testing.T) {
 	err := cfg.Validate("ctx")
 	req.Error(err)
 	req.ErrorContains(err, "mismatched")
+	req.ErrorContains(err, "contexts.ctx.grafana.stack-id")
 }
 
 func TestGrafanaConfig_Validate_MissingStackWhenBootdataUnavailable(t *testing.T) {
@@ -139,6 +140,8 @@ func TestGrafanaConfig_Validate_MissingStackWhenBootdataUnavailable(t *testing.T
 	err := cfg.Validate("ctx")
 	req.Error(err)
 	req.ErrorContains(err, "missing")
+	req.ErrorContains(err, "contexts.ctx.grafana.org-id")
+	req.ErrorContains(err, "contexts.ctx.grafana.stack-id")
 }
 
 func TestGrafanaConfig_Validate_BootdataUnavailableAndSuppliedStackId(t *testing.T) {
@@ -308,6 +311,57 @@ func TestContext_ResolveStackSlug(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			req := require.New(t)
 			req.Equal(tc.expected, tc.ctx.ResolveStackSlug())
+		})
+	}
+}
+
+func TestContextNameFromServerURL(t *testing.T) {
+	testCases := []struct {
+		name     string
+		url      string
+		expected string
+	}{
+		{
+			name:     "grafana.net URL returns stack slug",
+			url:      "https://mystack.grafana.net",
+			expected: "mystack",
+		},
+		{
+			name:     "grafana-dev.net URL returns stack slug",
+			url:      "https://mystack.grafana-dev.net",
+			expected: "mystack",
+		},
+		{
+			name:     "regional grafana.net URL returns first component",
+			url:      "https://mystack.us.grafana.net",
+			expected: "mystack",
+		},
+		{
+			name:     "non-grafana URL returns hostname",
+			url:      "https://grafana.mycompany.com",
+			expected: "grafana.mycompany.com",
+		},
+		{
+			name:     "localhost URL returns hostname",
+			url:      "http://localhost:3000",
+			expected: "localhost",
+		},
+		{
+			name:     "empty string returns default",
+			url:      "",
+			expected: "default",
+		},
+		{
+			name:     "unparseable URL returns default",
+			url:      "://invalid",
+			expected: "default",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := require.New(t)
+			req.Equal(tc.expected, config.ContextNameFromServerURL(tc.url))
 		})
 	}
 }

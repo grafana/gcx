@@ -1,96 +1,342 @@
 package rules
 
 import (
+	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 
+	"github.com/goccy/go-yaml"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
-	"github.com/grafana/gcx/internal/providers"
-	"github.com/grafana/gcx/internal/providers/sigil/commandutil"
 	"github.com/grafana/gcx/internal/providers/sigil/eval"
 	"github.com/grafana/gcx/internal/providers/sigil/sigilhttp"
+	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/style"
+	"github.com/grafana/gcx/internal/terminal"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, error) {
-	base, err := sigilhttp.NewClientFromCommand(cmd, loader)
-	if err != nil {
-		return nil, err
-	}
-	return NewClient(base), nil
-}
-
 // Commands returns the rules command group.
-func Commands(loader *providers.ConfigLoader) *cobra.Command {
+func Commands() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rules",
-		Short: "Query Sigil evaluation rules.",
+		Short: "Manage rules that route generations to evaluators.",
 	}
 	cmd.AddCommand(
-		newShowCommand(loader),
+		newListCommand(),
+		newGetCommand(),
+		newCreateCommand(),
+		newUpdateCommand(),
+		newDeleteCommand(),
 	)
 	return cmd
 }
 
-// --- show (list + get) ---
+// --- list ---
 
-type showOpts struct {
+type listOpts struct {
 	IO cmdio.Options
 }
 
-func (o *showOpts) setup(flags *pflag.FlagSet) {
+func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &TableCodec{})
 	o.IO.RegisterCustomCodec("wide", &TableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
 
-func newShowCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &showOpts{}
+func newListCommand() *cobra.Command {
+	opts := &listOpts{}
 	cmd := &cobra.Command{
-		Use:   "show [rule-id]",
-		Short: "Show evaluation rules or a single rule detail.",
-		Long: `Show evaluation rules. Without an ID, lists all rules.
-With an ID, shows the full rule definition.`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		Use:   "list",
+		Short: "List evaluation rules.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			client, err := newClient(cmd, loader)
+
+			ctx := cmd.Context()
+			crud, namespace, err := NewTypedCRUD(ctx)
 			if err != nil {
 				return err
 			}
 
-			if len(args) == 1 {
-				if commandutil.ShouldDefaultDetailToYAML(cmd) {
-					opts.IO.OutputFormat = "yaml"
-				}
-				if err := commandutil.ValidateDetailOutputFormat(cmd, opts.IO.OutputFormat, "rule", args[0]); err != nil {
-					return err
-				}
-				rule, err := client.Get(cmd.Context(), args[0])
+			typedObjs, err := crud.List(ctx)
+			if err != nil {
+				return err
+			}
+
+			specs := make([]eval.RuleDefinition, len(typedObjs))
+			for i := range typedObjs {
+				specs[i] = typedObjs[i].Spec
+			}
+
+			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
+				return opts.IO.Encode(cmd.OutOrStdout(), specs)
+			}
+
+			objs := make([]unstructured.Unstructured, 0, len(specs))
+			for _, spec := range specs {
+				u, err := specToUnstructured(spec, namespace)
 				if err != nil {
 					return err
 				}
-				return opts.IO.Encode(cmd.OutOrStdout(), rule)
+				objs = append(objs, u)
 			}
-
-			rules, err := client.List(cmd.Context())
-			if err != nil {
-				return err
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), rules)
+			return opts.IO.Encode(cmd.OutOrStdout(), objs)
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// --- get ---
+
+type getOpts struct {
+	IO cmdio.Options
+}
+
+func (o *getOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("yaml")
+	o.IO.BindFlags(flags)
+}
+
+func newGetCommand() *cobra.Command {
+	opts := &getOpts{}
+	cmd := &cobra.Command{
+		Use:   "get <rule-id>",
+		Short: "Get a single evaluation rule.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			crud, namespace, err := NewTypedCRUD(ctx)
+			if err != nil {
+				return err
+			}
+
+			typedObj, err := crud.Get(ctx, args[0])
+			if err != nil {
+				return err
+			}
+
+			u, err := specToUnstructured(typedObj.Spec, namespace)
+			if err != nil {
+				return err
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), &u)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+// --- create ---
+
+type createOpts struct {
+	File string
+	IO   cmdio.Options
+}
+
+func (o *createOpts) setup(flags *pflag.FlagSet) {
+	flags.StringVarP(&o.File, "filename", "f", "", "File containing the rule definition (use - for stdin)")
+	o.IO.DefaultFormat("json")
+	o.IO.BindFlags(flags)
+}
+
+func (o *createOpts) Validate() error {
+	if o.File == "" {
+		return errors.New("--filename/-f is required")
+	}
+	return o.IO.Validate()
+}
+
+func newCreateCommand() *cobra.Command {
+	opts := &createOpts{}
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create an evaluation rule from a file.",
+		Example: `  # Create a rule from a YAML file.
+  gcx sigil rules create -f rule.yaml
+
+  # Create from stdin.
+  gcx sigil rules create -f -
+
+  # Create and output as YAML.
+  gcx sigil rules create -f rule.json -o yaml`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
+			rule, err := ReadRuleFile(opts.File, cmd.InOrStdin())
+			if err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			crud, _, err := NewTypedCRUD(ctx)
+			if err != nil {
+				return err
+			}
+
+			typedObj := &adapter.TypedObject[eval.RuleDefinition]{Spec: *rule}
+			created, err := crud.Create(ctx, typedObj)
+			if err != nil {
+				return err
+			}
+
+			cmdio.Success(cmd.ErrOrStderr(), "Rule %s created", created.Spec.RuleID)
+			return opts.IO.Encode(cmd.OutOrStdout(), created.Spec)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+// --- update ---
+
+type updateOpts struct {
+	File string
+	IO   cmdio.Options
+}
+
+func (o *updateOpts) setup(flags *pflag.FlagSet) {
+	flags.StringVarP(&o.File, "filename", "f", "", "File containing the full rule definition (use - for stdin)")
+	o.IO.DefaultFormat("json")
+	o.IO.BindFlags(flags)
+}
+
+func (o *updateOpts) Validate() error {
+	if o.File == "" {
+		return errors.New("--filename/-f is required")
+	}
+	return o.IO.Validate()
+}
+
+func newUpdateCommand() *cobra.Command {
+	opts := &updateOpts{}
+	cmd := &cobra.Command{
+		Use:   "update <rule-id>",
+		Short: "Update an evaluation rule from a file.",
+		Example: `  # Update a rule from a YAML file.
+  gcx sigil rules update my-rule -f rule.yaml`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
+			rule, err := ReadRuleFile(opts.File, cmd.InOrStdin())
+			if err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			crud, _, err := NewTypedCRUD(ctx)
+			if err != nil {
+				return err
+			}
+
+			typedObj := &adapter.TypedObject[eval.RuleDefinition]{Spec: *rule}
+			updated, err := crud.Update(ctx, args[0], typedObj)
+			if err != nil {
+				return err
+			}
+
+			cmdio.Success(cmd.ErrOrStderr(), "Rule %s updated", updated.Spec.RuleID)
+			return opts.IO.Encode(cmd.OutOrStdout(), updated.Spec)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+// --- delete ---
+
+type deleteOpts struct {
+	Force bool
+}
+
+func (o *deleteOpts) setup(flags *pflag.FlagSet) {
+	flags.BoolVarP(&o.Force, "force", "f", false, "Skip confirmation prompt")
+}
+
+func newDeleteCommand() *cobra.Command {
+	opts := &deleteOpts{}
+	cmd := &cobra.Command{
+		Use:   "delete ID...",
+		Short: "Delete evaluation rules.",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if !opts.Force {
+				if terminal.IsPiped() {
+					return errors.New("stdin is not a terminal, use --force to skip confirmation")
+				}
+				fmt.Fprintf(cmd.ErrOrStderr(), "Delete %d rule(s)? [y/N] ", len(args))
+				reader := bufio.NewReader(cmd.InOrStdin())
+				answer, err := reader.ReadString('\n')
+				if err != nil {
+					return fmt.Errorf("reading confirmation: %w", err)
+				}
+				answer = strings.TrimSpace(strings.ToLower(answer))
+				if answer != "y" && answer != "yes" {
+					cmdio.Info(cmd.ErrOrStderr(), "Aborted.")
+					return nil
+				}
+			}
+
+			ctx := cmd.Context()
+			crud, _, err := NewTypedCRUD(ctx)
+			if err != nil {
+				return err
+			}
+
+			for _, id := range args {
+				if err := crud.Delete(ctx, id); err != nil {
+					return fmt.Errorf("deleting rule %s: %w", id, err)
+				}
+				cmdio.Success(cmd.ErrOrStderr(), "Deleted rule %s", id)
+			}
+			return nil
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+func ReadFile(path string, stdin io.Reader) ([]byte, error) {
+	if path == "-" {
+		return io.ReadAll(stdin)
+	}
+	return os.ReadFile(path)
+}
+
+func ReadRuleFile(path string, stdin io.Reader) (*eval.RuleDefinition, error) {
+	data, err := ReadFile(path, stdin)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", path, err)
+	}
+
+	var def eval.RuleDefinition
+	if err := json.Unmarshal(data, &def); err != nil {
+		var yamlDef eval.RuleDefinition
+		if yamlErr := yaml.Unmarshal(data, &yamlDef); yamlErr != nil {
+			return nil, fmt.Errorf("parsing %s: %w", path, yamlErr)
+		}
+		return &yamlDef, nil
+	}
+	return &def, nil
 }
 
 // --- table codec ---
@@ -112,11 +358,11 @@ func (c *TableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []RuleDefinition")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	var t *style.TableBuilder
 	if c.Wide {
-		fmt.Fprintln(tw, "ID\tENABLED\tSELECTOR\tSAMPLE RATE\tEVALUATORS\tCREATED BY\tCREATED AT")
+		t = style.NewTable("ID", "ENABLED", "SELECTOR", "SAMPLE RATE", "EVALUATORS", "CREATED BY", "CREATED AT")
 	} else {
-		fmt.Fprintln(tw, "ID\tENABLED\tSELECTOR\tSAMPLE RATE\tEVALUATORS")
+		t = style.NewTable("ID", "ENABLED", "SELECTOR", "SAMPLE RATE", "EVALUATORS")
 	}
 
 	for _, r := range rules {
@@ -135,14 +381,12 @@ func (c *TableCodec) Encode(w io.Writer, v any) error {
 			if createdBy == "" {
 				createdBy = "-"
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				r.RuleID, enabled, r.Selector, sampleRate, evalIDs, createdBy, sigilhttp.FormatTime(r.CreatedAt))
+			t.Row(r.RuleID, enabled, r.Selector, sampleRate, evalIDs, createdBy, sigilhttp.FormatTime(r.CreatedAt))
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-				r.RuleID, enabled, r.Selector, sampleRate, evalIDs)
+			t.Row(r.RuleID, enabled, r.Selector, sampleRate, evalIDs)
 		}
 	}
-	return tw.Flush()
+	return t.Render(w)
 }
 
 func (c *TableCodec) Decode(_ io.Reader, _ any) error {

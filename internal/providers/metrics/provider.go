@@ -106,4 +106,15 @@ func (p *Provider) ConfigKeys() []providers.ConfigKey {
 	}
 }
 
-func (p *Provider) TypedRegistrations() []adapter.Registration { return nil }
+func (p *Provider) TypedRegistrations() []adapter.Registration {
+	loader := &providers.ConfigLoader{}
+	return []adapter.Registration{
+		{
+			Factory:    adaptivemetrics.NewRuleAdapterFactory(loader),
+			Descriptor: adaptivemetrics.RuleDescriptor(),
+			GVK:        adaptivemetrics.RuleDescriptor().GroupVersionKind(),
+			Schema:     adaptivemetrics.RuleSchema(),
+			Example:    adaptivemetrics.RuleExample(),
+		},
+	}
+}

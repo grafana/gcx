@@ -21,5 +21,5 @@ Manage authentication
 ### SEE ALSO
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
-* [gcx auth login](gcx_auth_login.md)	 - Authenticate to a Grafana stack with OAuth
+* [gcx auth login](gcx_auth_login.md)	 - Authenticate to a Grafana stack with OAuth (experimental)
 
