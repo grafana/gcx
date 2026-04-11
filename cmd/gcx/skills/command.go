@@ -48,7 +48,7 @@ func (o *installOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("text", &installTextCodec{})
 	o.IO.BindFlags(flags)
 
-	flags.StringVar(&o.Dir, "dir", defaultRoot, "Root directory for the .agents installation (default: ~/.agents)")
+	flags.StringVar(&o.Dir, "dir", defaultRoot, "Root directory for the .agents installation")
 	flags.BoolVar(&o.Force, "force", false, "Overwrite existing differing files managed by the gcx skills bundle")
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Preview the installation without writing files")
 }
