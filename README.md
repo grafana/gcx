@@ -98,14 +98,30 @@ gcx completion fish > ~/.config/fish/completions/gcx #fish
 
 **Verify:** `gcx --version`
 
-### AI Agent Plugin
+### Agent Skills
 
-A [Claude Code plugin](claude-plugin/README.md) is included with a portable
-Agent Skills bundle for gcx workflows: setup, dashboard GitOps, datasource
-exploration, alert investigation, structured debugging, SLO management,
-Synthetic Monitoring workflows, project scaffolding, resource generation and
-import, and end-to-end observability rollout. Install it alongside gcx to give
-your agent deep Grafana knowledge.
+gcx ships a portable Agent Skills bundle for setup, dashboard GitOps,
+datasource exploration, alert investigation, structured debugging, SLO
+management, Synthetic Monitoring workflows, project scaffolding, resource
+generation and import, and end-to-end observability rollout.
+
+**Claude Code**
+
+Use the dedicated [Claude Code plugin](claude-plugin/README.md):
+
+```text
+/plugin marketplace add grafana/gcx
+/plugin install gcx@gcx-marketplace
+```
+
+**Other `.agents`-compatible harnesses**
+
+For example: OpenAI Codex, OpenCode, and Pi. Install the same portable bundle
+into `~/.agents/skills` with:
+
+```bash
+gcx skills install
+```
 
 ## Quick Start
 

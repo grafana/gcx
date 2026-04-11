@@ -18,6 +18,7 @@ gcx/
 │       ├── helptree/        # 'help-tree' compact text tree for agent context injection
 │       ├── setup/            # 'setup' command area (onboarding, product config)
 │       │   └── instrumentation/  # Instrumentation subcommands (status, discover, show, apply)
+│       ├── skills/           # 'skills' subcommand (portable Agent Skills installer for .agents bundles)
 │       ├── dev/              # 'dev' subcommand (import, scaffold, generate, lint, serve)
 │       ├── providers/        # 'providers' subcommand implementation
 │       └── fail/             # Error → DetailedError conversion, exit codes
