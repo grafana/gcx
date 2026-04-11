@@ -21,7 +21,7 @@ gcx skills install [flags]
 ### Options
 
 ```
-      --dir string      Root directory for the .agents installation (default: ~/.agents) (default "~/.agents")
+      --dir string      Root directory for the .agents installation (default "~/.agents")
       --dry-run         Preview the installation without writing files
       --force           Overwrite existing differing files managed by the gcx skills bundle
   -h, --help            help for install
