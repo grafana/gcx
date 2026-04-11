@@ -1,4 +1,4 @@
-package skills
+package skills //nolint:testpackage // Tests exercise unexported installer helpers directly to cover conflict and dry-run behavior.
 
 import (
 	"bytes"
@@ -67,7 +67,7 @@ func TestInstallSkills_ConflictingFileRequiresForce(t *testing.T) {
 	root := filepath.Join(t.TempDir(), ".agents")
 	target := filepath.Join(root, "skills", "alpha")
 	require.NoError(t, os.MkdirAll(target, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(target, "SKILL.md"), []byte("local-change"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(target, "SKILL.md"), []byte("local-change"), 0o600))
 
 	_, err := installSkills(testSkillsFS(), root, false, false)
 	require.Error(t, err)
@@ -80,7 +80,7 @@ func TestInstallSkills_ForceOverwritesDifferingFiles(t *testing.T) {
 	root := filepath.Join(t.TempDir(), ".agents")
 	target := filepath.Join(root, "skills", "alpha")
 	require.NoError(t, os.MkdirAll(target, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(target, "SKILL.md"), []byte("local-change"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(target, "SKILL.md"), []byte("local-change"), 0o600))
 
 	result, err := installSkills(testSkillsFS(), root, true, false)
 	require.NoError(t, err)

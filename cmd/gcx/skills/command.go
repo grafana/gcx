@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	claudeplugin "github.com/grafana/gcx/claude-plugin"
@@ -138,11 +139,11 @@ func (c *installTextCodec) Encode(dst goio.Writer, value any) error {
 	t := style.NewTable("FIELD", "VALUE")
 	t.Row("ROOT", result.Root)
 	t.Row("SKILLS DIR", result.SkillsDir)
-	t.Row("SKILLS", fmt.Sprintf("%d", result.SkillCount))
-	t.Row("FILES", fmt.Sprintf("%d", result.FileCount))
-	t.Row(writtenLabel, fmt.Sprintf("%d", result.Written))
-	t.Row("OVERWRITTEN", fmt.Sprintf("%d", result.Overwritten))
-	t.Row("UNCHANGED", fmt.Sprintf("%d", result.Unchanged))
+	t.Row("SKILLS", strconv.Itoa(result.SkillCount))
+	t.Row("FILES", strconv.Itoa(result.FileCount))
+	t.Row(writtenLabel, strconv.Itoa(result.Written))
+	t.Row("OVERWRITTEN", strconv.Itoa(result.Overwritten))
+	t.Row("UNCHANGED", strconv.Itoa(result.Unchanged))
 	if err := t.Render(dst); err != nil {
 		return err
 	}
@@ -227,7 +228,7 @@ func installSkills(source fs.FS, root string, force bool, dryRun bool) (installR
 	return result, nil
 }
 
-func syncFile(source fs.FS, sourcePath string, targetPath string, force bool, dryRun bool) (changed bool, overwritten bool, err error) {
+func syncFile(source fs.FS, sourcePath string, targetPath string, force bool, dryRun bool) (bool, bool, error) {
 	sourceData, err := fs.ReadFile(source, sourcePath)
 	if err != nil {
 		return false, false, err
