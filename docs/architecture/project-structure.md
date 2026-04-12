@@ -69,6 +69,7 @@ gcx/
 │   │       ├── checks/       # Checks status, timeline, CRUD
 │   │       ├── probes/       # Probe listing
 │   │       └── smcfg/        # SM config loader interfaces
+│   ├── deeplink/             # Deep link URL template registry and browser opener
 │   ├── dashboards/           # Dashboard Image Renderer client (PNG snapshots)
 │   ├── datasources/          # Datasource HTTP client (legacy REST API)
 │   │   └── query/            # Shared query CLI utils (time parsing, codecs, opts, resolve helpers)

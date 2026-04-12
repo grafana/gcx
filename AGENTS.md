@@ -116,6 +116,7 @@ internal/
 │   ├── slo/        SLO provider (definitions, reports)
 │   ├── synth/      Synthetic Monitoring provider (checks, probes)
 │   └── traces/     Traces signal provider (Tempo queries + Adaptive Traces commands)
+├── deeplink/    Deep link URL template registry and browser opener
 ├── dashboards/  Dashboard Image Renderer client (PNG snapshots)
 ├── datasources/ Datasource HTTP client (legacy REST API)
 │   └── query/   Shared query CLI utils (time parsing, codecs, opts, resolve helpers — used by signal providers and GenericCmd)

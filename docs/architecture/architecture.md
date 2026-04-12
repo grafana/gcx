@@ -818,6 +818,12 @@ Each LGTM signal has its own provider in `internal/providers/{signal}/` that reg
 | `cmd/gcx/datasources/command.go` | `datasources` command group (list, get, prometheus, loki, pyroscope, tempo, generic subcommands) |
 | `cmd/gcx/datasources/query/` | Per-kind `query` subcommand constructors and shared infrastructure (codecs, time parsing) |
 
+### Deep Link URLs
+
+| File | Purpose |
+|------|---------|
+| `internal/deeplink/deeplink.go` | URL template registry, resolve, inject, browser open for resource deep links |
+
 ### Dashboard Image Renderer
 
 | File | Purpose |
