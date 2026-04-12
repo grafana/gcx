@@ -25,8 +25,10 @@ var (
 	patterns = map[groupKind]string{}
 )
 
-// InvestigationGVK is the synthetic GVK for investigations (not adapter-backed).
-var InvestigationGVK = schema.GroupVersionKind{Group: "assistant.grafana.app", Version: "v1", Kind: "Investigation"}
+// InvestigationGVK returns the synthetic GVK for investigations (not adapter-backed).
+func InvestigationGVK() schema.GroupVersionKind {
+	return schema.GroupVersionKind{Group: "assistant.grafana.app", Version: "v1", Kind: "Investigation"}
+}
 
 func init() { //nolint:gochecknoinits // Register K8s-native and non-adapter resource URL patterns.
 	// Dashboards and folders are served by Grafana core, not a provider plugin.
@@ -34,7 +36,7 @@ func init() { //nolint:gochecknoinits // Register K8s-native and non-adapter res
 	RegisterPattern(schema.GroupVersionKind{Group: "folder.grafana.app", Kind: "Folder"}, "/dashboards/f/{name}")
 
 	// Investigations are not adapter-backed but have a browser UI.
-	RegisterPattern(InvestigationGVK, "/a/grafana-assistant-app/investigations/{name}")
+	RegisterPattern(InvestigationGVK(), "/a/grafana-assistant-app/investigations/{name}")
 }
 
 // RegisterPattern associates a URL path template with a GVK.

@@ -192,7 +192,7 @@ func newGetSubcommand[T adapter.ResourceNamer](
 				if url == "" {
 					return fmt.Errorf("no deep link URL available for %s/%s", crud.Descriptor.Kind, typedObj.Name)
 				}
-				cmdio.Info(cmd.OutOrStdout(), "Opening %s", url)
+				cmdio.Info(cmd.ErrOrStderr(), "Opening %s", url)
 				return deeplink.Open(url)
 			}
 
