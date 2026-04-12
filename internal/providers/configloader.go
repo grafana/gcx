@@ -60,6 +60,43 @@ type ConfigLoader struct {
 	ctxName    string
 }
 
+func (l *ConfigLoader) resolvedContextName(ctx context.Context) string {
+	if l.ctxName != "" {
+		return l.ctxName
+	}
+	return config.ContextNameFromCtx(ctx)
+}
+
+func contextSelectionOverride(ctxName string) config.Override {
+	return func(cfg *config.Config) error {
+		if ctxName == "" {
+			return nil
+		}
+		if !cfg.HasContext(ctxName) {
+			return config.ContextNotFound(ctxName)
+		}
+		cfg.CurrentContext = ctxName
+		return nil
+	}
+}
+
+func cloudEnvOverride(cfg *config.Config) error {
+	if cfg.CurrentContext == "" {
+		cfg.CurrentContext = config.DefaultContextName
+	}
+
+	if !cfg.HasContext(cfg.CurrentContext) {
+		cfg.SetContext(cfg.CurrentContext, true, config.Context{})
+	}
+
+	curCtx := cfg.Contexts[cfg.CurrentContext]
+	if curCtx.Cloud == nil {
+		curCtx.Cloud = &config.CloudConfig{}
+	}
+
+	return env.Parse(curCtx)
+}
+
 // BindFlags registers --config and --context flags on the given flag set.
 func (l *ConfigLoader) BindFlags(flags *pflag.FlagSet) {
 	flags.StringVar(&l.configFile, "config", "", "Path to the configuration file to use")
@@ -138,24 +175,9 @@ func envOverride(cfg *config.Config) error {
 // env var overrides and context flags. It mirrors the logic in
 // cmd/gcx/config.Options.LoadGrafanaConfig.
 func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error) {
-	overrides := []config.Override{envOverride}
-
-	// Resolve context name: explicit flag takes priority, then context.Context carrier
-	// (set by resource commands to honour the --context flag for provider adapters).
-	ctxName := l.ctxName
-	if ctxName == "" {
-		ctxName = config.ContextNameFromCtx(ctx)
-	}
-	if ctxName != "" {
-		overrides = append(overrides, func(cfg *config.Config) error {
-			if !cfg.HasContext(ctxName) {
-				return config.ContextNotFound(ctxName)
-			}
-			cfg.CurrentContext = ctxName
-			return nil
-		})
-	}
-
+	ctxName := l.resolvedContextName(ctx)
+	overrides := []config.Override{contextSelectionOverride(ctxName), envOverride}
+	
 	// Validate after loading.
 	overrides = append(overrides, func(cfg *config.Config) error {
 		if !cfg.HasContext(cfg.CurrentContext) {
@@ -184,44 +206,8 @@ func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.Namespaced
 // It validates that cloud.token is present, resolves the stack slug and GCOM URL,
 // calls the GCOM API to discover stack info, and returns a CloudRESTConfig.
 func (l *ConfigLoader) LoadCloudConfig(ctx context.Context) (CloudRESTConfig, error) {
-	overrides := []config.Override{
-		// Apply env vars into the current context.
-		func(cfg *config.Config) error {
-			if cfg.CurrentContext == "" {
-				cfg.CurrentContext = config.DefaultContextName
-			}
-
-			if !cfg.HasContext(cfg.CurrentContext) {
-				cfg.SetContext(cfg.CurrentContext, true, config.Context{})
-			}
-
-			curCtx := cfg.Contexts[cfg.CurrentContext]
-			if curCtx.Cloud == nil {
-				curCtx.Cloud = &config.CloudConfig{}
-			}
-
-			if err := env.Parse(curCtx); err != nil {
-				return err
-			}
-
-			return nil
-		},
-	}
-
-	// Resolve context name.
-	ctxName := l.ctxName
-	if ctxName == "" {
-		ctxName = config.ContextNameFromCtx(ctx)
-	}
-	if ctxName != "" {
-		overrides = append(overrides, func(cfg *config.Config) error {
-			if !cfg.HasContext(ctxName) {
-				return config.ContextNotFound(ctxName)
-			}
-			cfg.CurrentContext = ctxName
-			return nil
-		})
-	}
+	ctxName := l.resolvedContextName(ctx)
+	overrides := []config.Override{contextSelectionOverride(ctxName), cloudEnvOverride}
 
 	loaded, err := config.LoadLayered(ctx, l.configFile, overrides...)
 	if err != nil {
@@ -292,22 +278,8 @@ func (l *ConfigLoader) configSource() config.Source {
 // the named provider from the config file, applying GRAFANA_PROVIDER_<NAME>_<KEY>
 // env var overrides. Returns (providerConfig, namespace, error).
 func (l *ConfigLoader) LoadProviderConfig(ctx context.Context, providerName string) (map[string]string, string, error) {
-	overrides := []config.Override{envOverride}
-
-	// Resolve context name.
-	ctxName := l.ctxName
-	if ctxName == "" {
-		ctxName = config.ContextNameFromCtx(ctx)
-	}
-	if ctxName != "" {
-		overrides = append(overrides, func(cfg *config.Config) error {
-			if !cfg.HasContext(ctxName) {
-				return config.ContextNotFound(ctxName)
-			}
-			cfg.CurrentContext = ctxName
-			return nil
-		})
-	}
+	ctxName := l.resolvedContextName(ctx)
+	overrides := []config.Override{contextSelectionOverride(ctxName), envOverride}
 
 	// Minimal validation: context must exist.
 	overrides = append(overrides, func(cfg *config.Config) error {
