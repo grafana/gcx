@@ -101,9 +101,14 @@ func discoverFieldsViaOpenAPI(ctx context.Context, cfg config.NamespacedRESTConf
 	return schemaToFieldPaths(specSchema), nil
 }
 
+// defaultListLimit is the default number of items returned per resource type.
+// Use --limit=0 to fetch all items.
+const defaultListLimit = 200
+
 type getOpts struct {
 	IO      cmdio.Options
 	OnError OnErrorMode
+	Limit   int64
 }
 
 func (opts *getOpts) setup(flags *pflag.FlagSet) {
@@ -113,6 +118,8 @@ func (opts *getOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.RegisterCustomCodec("wide", &tableCodec{wide: true})
 	opts.IO.DefaultFormat("text")
 
+	flags.Int64Var(&opts.Limit, "limit", defaultListLimit, "Maximum number of items to fetch per resource type (0 for all)")
+
 	// Bind all the flags
 	opts.IO.BindFlags(flags)
 }
@@ -120,6 +127,10 @@ func (opts *getOpts) setup(flags *pflag.FlagSet) {
 func (opts *getOpts) Validate() error {
 	if err := opts.IO.Validate(); err != nil {
 		return err
+	}
+
+	if opts.Limit < 0 {
+		return errors.New("--limit must be a non-negative integer")
 	}
 
 	return opts.OnError.Validate()
@@ -223,6 +234,7 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			fetchReq := FetchRequest{
 				Config:      cfg,
 				StopOnError: opts.OnError.StopOnError(),
+				Limit:       opts.Limit,
 			}
 			// --json ? only needs one resource for field introspection; avoid
 			// a full list operation to satisfy NC-005.
@@ -274,6 +286,12 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			if encodeErr != nil {
 				return encodeErr
+			}
+
+			if res.PullSummary.IsTruncated() {
+				fmt.Fprintf(cmd.ErrOrStderr(),
+					"Showing first %d items per resource type. Use --limit=0 to fetch all.\n",
+					opts.Limit)
 			}
 
 			if opts.OnError.FailOnErrors() && res.PullSummary.FailedCount() > 0 {

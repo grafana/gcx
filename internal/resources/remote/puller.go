@@ -136,6 +136,9 @@ func (p *Puller) Pull(ctx context.Context, req PullRequest) (*OperationSummary, 
 						summary.RecordFailure(nil, err)
 					}
 				} else {
+					if res.GetContinue() != "" {
+						summary.RecordTruncated()
+					}
 					partialRes[idx] = res.Items
 				}
 			case resources.FilterTypeMultiple:
