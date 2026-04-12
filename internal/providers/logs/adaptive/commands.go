@@ -1083,9 +1083,7 @@ func (h *logsHelper) dropRulesListCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if opts.Limit > 0 && int64(len(rules)) > opts.Limit {
-				rules = rules[:opts.Limit]
-			}
+			rules = adapter.TruncateSlice(rules, opts.Limit)
 
 			out := any(rules)
 			if opts.IO.JSONDiscovery {

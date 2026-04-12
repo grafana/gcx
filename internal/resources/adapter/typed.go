@@ -14,6 +14,27 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
+// TruncateSlice returns at most limit items from the slice.
+// When limit is 0 or negative, the original slice is returned unchanged.
+func TruncateSlice[T any](items []T, limit int64) []T {
+	if limit > 0 && int64(len(items)) > limit {
+		return items[:limit]
+	}
+	return items
+}
+
+// LimitedListFn wraps a simple list function (no limit parameter) into the
+// ListFn signature expected by TypedCRUD, applying client-side truncation.
+func LimitedListFn[T any](fn func(ctx context.Context) ([]T, error)) func(ctx context.Context, limit int64) ([]T, error) {
+	return func(ctx context.Context, limit int64) ([]T, error) {
+		items, err := fn(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return TruncateSlice(items, limit), nil
+	}
+}
+
 // ErrNotFound is returned by TypedCRUD.Get when a resource does not exist.
 // Provider GetFn implementations should wrap this sentinel (via fmt.Errorf
 // with %w) so that the adapter layer can convert provider-specific not-found

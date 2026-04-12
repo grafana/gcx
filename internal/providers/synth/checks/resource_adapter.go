@@ -86,11 +86,7 @@ func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[
 				result = append(result, checkToResource(check, nameMap))
 			}
 
-			if limit > 0 && int64(len(result)) > limit {
-				result = result[:limit]
-			}
-
-			return result, nil
+			return adapter.TruncateSlice(result, limit), nil
 		},
 
 		GetFn: func(ctx context.Context, name string) (*checkResource, error) {

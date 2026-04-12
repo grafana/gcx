@@ -15,6 +15,7 @@ import (
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -360,9 +361,7 @@ func newDatasetsCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if listOpts.Limit > 0 && int64(len(result.Items)) > listOpts.Limit {
-				result.Items = result.Items[:listOpts.Limit]
-			}
+			result.Items = adapter.TruncateSlice(result.Items, listOpts.Limit)
 			return listOpts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
@@ -467,9 +466,7 @@ func newVendorsCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if listOpts.Limit > 0 && int64(len(vendors)) > listOpts.Limit {
-				vendors = vendors[:listOpts.Limit]
-			}
+			vendors = adapter.TruncateSlice(vendors, listOpts.Limit)
 			return listOpts.IO.Encode(cmd.OutOrStdout(), vendors)
 		},
 	}
@@ -829,7 +826,6 @@ func newKPIDisplayCommand(loader RESTConfigLoader) *cobra.Command {
 // Entities commands
 // ---------------------------------------------------------------------------
 
-//nolint:dupl // entities list mirrors search entities with different flags
 func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "entities",
@@ -875,9 +871,7 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if ioOpts.Limit > 0 && int64(len(results)) > ioOpts.Limit {
-				results = results[:ioOpts.Limit]
-			}
+			results = adapter.TruncateSlice(results, ioOpts.Limit)
 			return ioOpts.IO.Encode(cmd.OutOrStdout(), results)
 		},
 	}
@@ -918,9 +912,7 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if listOpts.Limit > 0 && int64(len(results)) > listOpts.Limit {
-				results = results[:listOpts.Limit]
-			}
+			results = adapter.TruncateSlice(results, listOpts.Limit)
 			return listOpts.IO.Encode(cmd.OutOrStdout(), results)
 		},
 	}
@@ -1450,7 +1442,6 @@ func filterBySeverity(results []SearchResult, sev string) []SearchResult {
 // Search commands
 // ---------------------------------------------------------------------------
 
-//nolint:dupl // search entities mirrors entities list with different flags
 func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "search",
@@ -1585,9 +1576,7 @@ func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if searchEntitiesOpts.Limit > 0 && int64(len(results)) > searchEntitiesOpts.Limit {
-				results = results[:searchEntitiesOpts.Limit]
-			}
+			results = adapter.TruncateSlice(results, searchEntitiesOpts.Limit)
 			return searchEntitiesOpts.IO.Encode(cmd.OutOrStdout(), results)
 		},
 	}

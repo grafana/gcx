@@ -58,16 +58,7 @@ func NewTypedCRUD(ctx context.Context) (*adapter.TypedCRUD[eval.EvaluatorDefinit
 	client := NewClient(base)
 
 	crud := &adapter.TypedCRUD[eval.EvaluatorDefinition]{
-		ListFn: func(ctx context.Context, limit int64) ([]eval.EvaluatorDefinition, error) {
-			items, err := client.List(ctx)
-			if err != nil {
-				return nil, err
-			}
-			if limit > 0 && int64(len(items)) > limit {
-				items = items[:limit]
-			}
-			return items, nil
-		},
+		ListFn: adapter.LimitedListFn(client.List),
 		GetFn: func(ctx context.Context, name string) (*eval.EvaluatorDefinition, error) {
 			return client.Get(ctx, name)
 		},

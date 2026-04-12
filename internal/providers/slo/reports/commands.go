@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -90,9 +91,7 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			if opts.Limit > 0 && int64(len(rpts)) > opts.Limit {
-				rpts = rpts[:opts.Limit]
-			}
+			rpts = adapter.TruncateSlice(rpts, opts.Limit)
 
 			// Table codec operates on raw []Report for direct field access.
 			// Other formats (yaml/json) convert to K8s envelope Resources

@@ -9,6 +9,7 @@ import (
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -54,9 +55,7 @@ func newAlertGroupListCommand(loader OnCallConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if opts.Limit > 0 && int64(len(items)) > opts.Limit {
-				items = items[:opts.Limit]
-			}
+			items = adapter.TruncateSlice(items, opts.Limit)
 
 			objs, err := itemsToUnstructured(items, "AlertGroup", "id", namespace)
 			if err != nil {
@@ -117,9 +116,7 @@ func newAlertGroupListAlertsCommand(loader OnCallConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if opts.Limit > 0 && int64(len(items)) > opts.Limit {
-				items = items[:opts.Limit]
-			}
+			items = adapter.TruncateSlice(items, opts.Limit)
 
 			objs, err := itemsToUnstructured(items, "Alert", "id", namespace)
 			if err != nil {

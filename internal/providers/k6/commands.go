@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/gcx/internal/terminal"
 	"github.com/spf13/cobra"
@@ -564,9 +565,7 @@ func newTestsListCommand(loader CloudConfigLoader) *cobra.Command {
 				}
 				tests = filtered
 			}
-			if opts.Limit > 0 && int64(len(tests)) > opts.Limit {
-				tests = tests[:opts.Limit]
-			}
+			tests = adapter.TruncateSlice(tests, opts.Limit)
 			return opts.IO.Encode(cmd.OutOrStdout(), tests)
 		},
 	}
@@ -905,9 +904,7 @@ func newRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if opts.Limit > 0 && int64(len(runs)) > opts.Limit {
-				runs = runs[:opts.Limit]
-			}
+			runs = adapter.TruncateSlice(runs, opts.Limit)
 			return opts.IO.Encode(cmd.OutOrStdout(), runs)
 		},
 	}
@@ -1015,9 +1012,7 @@ func newEnvVarsListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if opts.Limit > 0 && int64(len(envVars)) > opts.Limit {
-				envVars = envVars[:opts.Limit]
-			}
+			envVars = adapter.TruncateSlice(envVars, opts.Limit)
 			return opts.IO.Encode(cmd.OutOrStdout(), envVars)
 		},
 	}
@@ -1317,9 +1312,7 @@ func newSchedulesListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if opts.Limit > 0 && int64(len(schedules)) > opts.Limit {
-				schedules = schedules[:opts.Limit]
-			}
+			schedules = adapter.TruncateSlice(schedules, opts.Limit)
 			return opts.IO.Encode(cmd.OutOrStdout(), schedules)
 		},
 	}
@@ -1567,9 +1560,7 @@ func newLoadZonesListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if opts.Limit > 0 && int64(len(zones)) > opts.Limit {
-				zones = zones[:opts.Limit]
-			}
+			zones = adapter.TruncateSlice(zones, opts.Limit)
 			return opts.IO.Encode(cmd.OutOrStdout(), zones)
 		},
 	}
@@ -2100,9 +2091,7 @@ func newTestrunRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if opts.Limit > 0 && int64(len(runs)) > opts.Limit {
-				runs = runs[:opts.Limit]
-			}
+			runs = adapter.TruncateSlice(runs, opts.Limit)
 			return opts.IO.Encode(cmd.OutOrStdout(), runs)
 		},
 	}

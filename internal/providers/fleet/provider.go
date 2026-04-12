@@ -217,9 +217,7 @@ func (h *fleetHelper) newPipelineListCommand() *cobra.Command {
 				return err
 			}
 
-			if opts.Limit > 0 && int64(len(pipelines)) > opts.Limit {
-				pipelines = pipelines[:opts.Limit]
-			}
+			pipelines = adapter.TruncateSlice(pipelines, opts.Limit)
 
 			// Table codec operates on raw []Pipeline for direct field access.
 			// Other formats (yaml/json) convert to K8s envelope Resources
@@ -543,9 +541,7 @@ func (h *fleetHelper) newCollectorListCommand() *cobra.Command {
 				return err
 			}
 
-			if opts.Limit > 0 && int64(len(collectors)) > opts.Limit {
-				collectors = collectors[:opts.Limit]
-			}
+			collectors = adapter.TruncateSlice(collectors, opts.Limit)
 
 			// Table codec operates on raw []Collector for direct field access.
 			// Other formats (yaml/json) convert to K8s envelope Resources
@@ -1133,16 +1129,7 @@ func NewPipelineTypedCRUD(ctx context.Context, loader CloudConfigLoader) (*adapt
 	client := &Client{Client: base}
 
 	crud := &adapter.TypedCRUD[Pipeline]{
-		ListFn: func(ctx context.Context, limit int64) ([]Pipeline, error) {
-			items, err := client.ListPipelines(ctx)
-			if err != nil {
-				return nil, err
-			}
-			if limit > 0 && int64(len(items)) > limit {
-				items = items[:limit]
-			}
-			return items, nil
-		},
+		ListFn: adapter.LimitedListFn(client.ListPipelines),
 		GetFn: func(ctx context.Context, name string) (*Pipeline, error) {
 			return resolvePipeline(ctx, client, name)
 		},
@@ -1200,16 +1187,7 @@ func NewCollectorTypedCRUD(ctx context.Context, loader CloudConfigLoader) (*adap
 	client := &Client{Client: base}
 
 	crud := &adapter.TypedCRUD[Collector]{
-		ListFn: func(ctx context.Context, limit int64) ([]Collector, error) {
-			items, err := client.ListCollectors(ctx)
-			if err != nil {
-				return nil, err
-			}
-			if limit > 0 && int64(len(items)) > limit {
-				items = items[:limit]
-			}
-			return items, nil
-		},
+		ListFn: adapter.LimitedListFn(client.ListCollectors),
 		GetFn: func(ctx context.Context, name string) (*Collector, error) {
 			return resolveCollector(ctx, client, name)
 		},

@@ -34,16 +34,7 @@ func NewTypedCRUD(ctx context.Context, loader RESTConfigLoader) (*adapter.TypedC
 	}
 
 	crud := &adapter.TypedCRUD[FaroApp]{
-		ListFn: func(ctx context.Context, limit int64) ([]FaroApp, error) {
-			items, err := client.List(ctx)
-			if err != nil {
-				return nil, err
-			}
-			if limit > 0 && int64(len(items)) > limit {
-				items = items[:limit]
-			}
-			return items, nil
-		},
+		ListFn: adapter.LimitedListFn(client.List),
 
 		GetFn: func(ctx context.Context, name string) (*FaroApp, error) {
 			id, ok := adapter.ExtractIDFromSlug(name)

@@ -58,16 +58,7 @@ func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[
 	client := NewClient(ctx, baseURL, token)
 
 	crud := &adapter.TypedCRUD[Probe]{
-		ListFn: func(ctx context.Context, limit int64) ([]Probe, error) {
-			items, err := client.List(ctx)
-			if err != nil {
-				return nil, err
-			}
-			if limit > 0 && int64(len(items)) > limit {
-				items = items[:limit]
-			}
-			return items, nil
-		},
+		ListFn: adapter.LimitedListFn(client.List),
 		GetFn: func(ctx context.Context, name string) (*Probe, error) {
 			id, err := strconv.ParseInt(name, 10, 64)
 			if err != nil {

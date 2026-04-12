@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/sigil/eval"
 	"github.com/grafana/gcx/internal/providers/sigil/sigilhttp"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -75,9 +76,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if opts.Limit > 0 && int64(len(templates)) > opts.Limit {
-				templates = templates[:opts.Limit]
-			}
+			templates = adapter.TruncateSlice(templates, opts.Limit)
 			return opts.IO.Encode(cmd.OutOrStdout(), templates)
 		},
 	}

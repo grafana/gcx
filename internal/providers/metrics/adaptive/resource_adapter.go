@@ -133,10 +133,7 @@ func (em *etagManager) list(ctx context.Context, limit int64) ([]MetricRule, err
 		return nil, err
 	}
 	em.etag = etag
-	if limit > 0 && int64(len(rules)) > limit {
-		rules = rules[:limit]
-	}
-	return rules, nil
+	return adapter.TruncateSlice(rules, limit), nil
 }
 
 func (em *etagManager) get(ctx context.Context, name string) (*MetricRule, error) {

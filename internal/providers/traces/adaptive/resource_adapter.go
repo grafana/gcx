@@ -66,16 +66,7 @@ func NewPolicyTypedCRUD(ctx context.Context, loader *providers.ConfigLoader) (*a
 	client := NewClient(signalAuth.BaseURL, signalAuth.TenantID, signalAuth.APIToken, signalAuth.HTTPClient)
 
 	crud := &adapter.TypedCRUD[Policy]{
-		ListFn: func(ctx context.Context, limit int64) ([]Policy, error) {
-			items, err := client.ListPolicies(ctx)
-			if err != nil {
-				return nil, err
-			}
-			if limit > 0 && int64(len(items)) > limit {
-				items = items[:limit]
-			}
-			return items, nil
-		},
+		ListFn: adapter.LimitedListFn(client.ListPolicies),
 		GetFn: func(ctx context.Context, name string) (*Policy, error) {
 			return client.GetPolicy(ctx, name)
 		},

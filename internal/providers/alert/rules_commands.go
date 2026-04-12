@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -95,9 +96,7 @@ func newRulesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				for _, g := range resp.Data.Groups {
 					rules = append(rules, g.Rules...)
 				}
-				if opts.Limit > 0 && int64(len(rules)) > opts.Limit {
-					rules = rules[:opts.Limit]
-				}
+				rules = adapter.TruncateSlice(rules, opts.Limit)
 				return codec.Encode(cmd.OutOrStdout(), rules)
 			}
 
@@ -108,9 +107,7 @@ func newRulesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 					nonEmpty = append(nonEmpty, g)
 				}
 			}
-			if opts.Limit > 0 && int64(len(nonEmpty)) > opts.Limit {
-				nonEmpty = nonEmpty[:opts.Limit]
-			}
+			nonEmpty = adapter.TruncateSlice(nonEmpty, opts.Limit)
 			return opts.IO.Encode(cmd.OutOrStdout(), nonEmpty)
 		},
 	}

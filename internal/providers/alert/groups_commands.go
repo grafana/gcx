@@ -7,6 +7,7 @@ import (
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -64,9 +65,7 @@ func newGroupsListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			if opts.Limit > 0 && int64(len(groups)) > opts.Limit {
-				groups = groups[:opts.Limit]
-			}
+			groups = adapter.TruncateSlice(groups, opts.Limit)
 
 			return opts.IO.Encode(cmd.OutOrStdout(), groups)
 		},
