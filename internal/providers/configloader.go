@@ -176,15 +176,16 @@ func envOverride(cfg *config.Config) error {
 // cmd/gcx/config.Options.LoadGrafanaConfig.
 func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error) {
 	ctxName := l.resolvedContextName(ctx)
-	overrides := []config.Override{contextSelectionOverride(ctxName), envOverride}
-	
-	// Validate after loading.
-	overrides = append(overrides, func(cfg *config.Config) error {
-		if !cfg.HasContext(cfg.CurrentContext) {
-			return config.ContextNotFound(cfg.CurrentContext)
-		}
-		return cfg.GetCurrentContext().Validate()
-	})
+	overrides := []config.Override{
+		contextSelectionOverride(ctxName),
+		envOverride,
+		func(cfg *config.Config) error {
+			if !cfg.HasContext(cfg.CurrentContext) {
+				return config.ContextNotFound(cfg.CurrentContext)
+			}
+			return cfg.GetCurrentContext().Validate()
+		},
+	}
 
 	loaded, err := config.LoadLayered(ctx, l.configFile, overrides...)
 	if err != nil {
@@ -279,15 +280,16 @@ func (l *ConfigLoader) configSource() config.Source {
 // env var overrides. Returns (providerConfig, namespace, error).
 func (l *ConfigLoader) LoadProviderConfig(ctx context.Context, providerName string) (map[string]string, string, error) {
 	ctxName := l.resolvedContextName(ctx)
-	overrides := []config.Override{contextSelectionOverride(ctxName), envOverride}
-
-	// Minimal validation: context must exist.
-	overrides = append(overrides, func(cfg *config.Config) error {
-		if !cfg.HasContext(cfg.CurrentContext) {
-			return config.ContextNotFound(cfg.CurrentContext)
-		}
-		return nil
-	})
+	overrides := []config.Override{
+		contextSelectionOverride(ctxName),
+		envOverride,
+		func(cfg *config.Config) error {
+			if !cfg.HasContext(cfg.CurrentContext) {
+				return config.ContextNotFound(cfg.CurrentContext)
+			}
+			return nil
+		},
+	}
 
 	loaded, err := config.LoadLayered(ctx, l.configFile, overrides...)
 	if err != nil {
