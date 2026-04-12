@@ -167,7 +167,8 @@ func newProjectsCommand(loader CloudConfigLoader) *cobra.Command {
 }
 
 type projectsListOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *projectsListOpts) setup(flags *pflag.FlagSet) {
@@ -175,6 +176,7 @@ func (o *projectsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &ProjectTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 func newProjectsListCommand(loader CloudConfigLoader) *cobra.Command {
@@ -191,7 +193,7 @@ func newProjectsListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			typedObjs, err := crud.List(ctx)
+			typedObjs, err := crud.List(ctx, opts.Limit)
 			if err != nil {
 				return err
 			}
@@ -523,6 +525,7 @@ func newTestsCommand(loader CloudConfigLoader) *cobra.Command {
 type testsListOpts struct {
 	IO        cmdio.Options
 	ProjectID int
+	Limit     int64
 }
 
 func (o *testsListOpts) setup(flags *pflag.FlagSet) {
@@ -531,6 +534,7 @@ func (o *testsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.ProjectID, "project-id", 0, "Filter by project ID")
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 func newTestsListCommand(loader CloudConfigLoader) *cobra.Command {
@@ -559,6 +563,9 @@ func newTestsListCommand(loader CloudConfigLoader) *cobra.Command {
 					}
 				}
 				tests = filtered
+			}
+			if opts.Limit > 0 && int64(len(tests)) > opts.Limit {
+				tests = tests[:opts.Limit]
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), tests)
 		},
@@ -847,6 +854,7 @@ type runsListOpts struct {
 	IO        cmdio.Options
 	ProjectID int
 	TestID    int
+	Limit     int64
 }
 
 func (o *runsListOpts) setup(flags *pflag.FlagSet) {
@@ -855,6 +863,7 @@ func (o *runsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.ProjectID, "project-id", 0, "Project ID (required when looking up by name)")
 	flags.IntVar(&o.TestID, "id", 0, "Load test ID (skip name lookup)")
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 func newRunsListCommand(loader CloudConfigLoader) *cobra.Command {
@@ -895,6 +904,9 @@ func newRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 			runs, err := client.ListTestRuns(ctx, loadTestID)
 			if err != nil {
 				return err
+			}
+			if opts.Limit > 0 && int64(len(runs)) > opts.Limit {
+				runs = runs[:opts.Limit]
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), runs)
 		},
@@ -974,13 +986,15 @@ func newEnvVarsCommand(loader CloudConfigLoader) *cobra.Command {
 }
 
 type envVarsListOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *envVarsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &EnvVarTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 func newEnvVarsListCommand(loader CloudConfigLoader) *cobra.Command {
@@ -1000,6 +1014,9 @@ func newEnvVarsListCommand(loader CloudConfigLoader) *cobra.Command {
 			envVars, err := client.ListEnvVars(ctx)
 			if err != nil {
 				return err
+			}
+			if opts.Limit > 0 && int64(len(envVars)) > opts.Limit {
+				envVars = envVars[:opts.Limit]
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), envVars)
 		},
@@ -1271,13 +1288,15 @@ func (c *ScheduleTableCodec) Decode(_ io.Reader, _ any) error {
 }
 
 type schedulesListOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *schedulesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &ScheduleTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 func newSchedulesListCommand(loader CloudConfigLoader) *cobra.Command {
@@ -1297,6 +1316,9 @@ func newSchedulesListCommand(loader CloudConfigLoader) *cobra.Command {
 			schedules, err := client.ListSchedules(ctx)
 			if err != nil {
 				return err
+			}
+			if opts.Limit > 0 && int64(len(schedules)) > opts.Limit {
+				schedules = schedules[:opts.Limit]
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), schedules)
 		},
@@ -1516,13 +1538,15 @@ func (c *LoadZoneTableCodec) Decode(_ io.Reader, _ any) error {
 }
 
 type loadZonesListOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *loadZonesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &LoadZoneTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 func newLoadZonesListCommand(loader CloudConfigLoader) *cobra.Command {
@@ -1542,6 +1566,9 @@ func newLoadZonesListCommand(loader CloudConfigLoader) *cobra.Command {
 			zones, err := client.ListLoadZones(ctx)
 			if err != nil {
 				return err
+			}
+			if opts.Limit > 0 && int64(len(zones)) > opts.Limit {
+				zones = zones[:opts.Limit]
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), zones)
 		},
@@ -2033,6 +2060,7 @@ type testrunRunsListOpts struct {
 	IO        cmdio.Options
 	ProjectID int
 	ID        int
+	Limit     int64
 }
 
 func (o *testrunRunsListOpts) setup(flags *pflag.FlagSet) {
@@ -2041,6 +2069,7 @@ func (o *testrunRunsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.ProjectID, "project-id", 0, "k6 Cloud project ID (required when using name lookup)")
 	flags.IntVar(&o.ID, "id", 0, "Load test ID (skip name lookup)")
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 func newTestrunRunsListCommand(loader CloudConfigLoader) *cobra.Command {
@@ -2070,6 +2099,9 @@ func newTestrunRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 			runs, err := client.ListTestRuns(ctx, test.ID)
 			if err != nil {
 				return err
+			}
+			if opts.Limit > 0 && int64(len(runs)) > opts.Limit {
+				runs = runs[:opts.Limit]
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), runs)
 		},

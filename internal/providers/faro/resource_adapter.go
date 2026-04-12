@@ -151,8 +151,15 @@ func NewFactoryFromConfig(cfg internalconfig.NamespacedRESTConfig) adapter.Facto
 // newTypedAdapter builds the TypedCRUD[FaroApp] adapter for the given client and namespace.
 func newTypedAdapter(client *Client, namespace string) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[FaroApp]{
-		ListFn: func(ctx context.Context) ([]FaroApp, error) {
-			return client.List(ctx)
+		ListFn: func(ctx context.Context, limit int64) ([]FaroApp, error) {
+			items, err := client.List(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if limit > 0 && int64(len(items)) > limit {
+				items = items[:limit]
+			}
+			return items, nil
 		},
 
 		GetFn: func(ctx context.Context, name string) (*FaroApp, error) {

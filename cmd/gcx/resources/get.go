@@ -103,7 +103,7 @@ func discoverFieldsViaOpenAPI(ctx context.Context, cfg config.NamespacedRESTConf
 
 // defaultListLimit is the default number of items returned per resource type.
 // Use --limit=0 to fetch all items.
-const defaultListLimit = 200
+const defaultListLimit = 50
 
 type getOpts struct {
 	IO      cmdio.Options

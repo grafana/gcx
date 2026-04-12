@@ -37,6 +37,7 @@ type rulesListOpts struct {
 	GroupName string
 	FolderUID string
 	State     string
+	Limit     int64
 }
 
 func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
@@ -47,6 +48,7 @@ func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.GroupName, "group", "", "Filter by group name")
 	flags.StringVar(&o.FolderUID, "folder", "", "Filter by folder UID")
 	flags.StringVar(&o.State, "state", "", "Filter by rule state (firing, pending, inactive)")
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
 }
 
 func newRulesListCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -93,6 +95,9 @@ func newRulesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				for _, g := range resp.Data.Groups {
 					rules = append(rules, g.Rules...)
 				}
+				if opts.Limit > 0 && int64(len(rules)) > opts.Limit {
+					rules = rules[:opts.Limit]
+				}
 				return codec.Encode(cmd.OutOrStdout(), rules)
 			}
 
@@ -102,6 +107,9 @@ func newRulesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				if len(g.Rules) > 0 {
 					nonEmpty = append(nonEmpty, g)
 				}
+			}
+			if opts.Limit > 0 && int64(len(nonEmpty)) > opts.Limit {
+				nonEmpty = nonEmpty[:opts.Limit]
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), nonEmpty)
 		},

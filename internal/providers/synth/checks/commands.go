@@ -50,6 +50,7 @@ type listOpts struct {
 	IO         cmdio.Options
 	Labels     []string
 	JobPattern string
+	Limit      int64
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
@@ -60,6 +61,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 
 	flags.StringArrayVar(&o.Labels, "label", nil, "Filter by label key=value (repeatable, e.g. --label env=prod)")
 	flags.StringVar(&o.JobPattern, "job", "", "Filter by job name glob pattern (e.g. --job 'shopk8s-*')")
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 func newListCommand(loader smcfg.Loader) *cobra.Command {
@@ -96,7 +98,7 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx)
+			typedObjs, err := crud.List(ctx, opts.Limit)
 			if err != nil {
 				return err
 			}

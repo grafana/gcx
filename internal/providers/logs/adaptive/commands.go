@@ -531,7 +531,8 @@ func (h *logsHelper) exemptionsCommand() *cobra.Command {
 // exemptions list
 
 type exemptionsListOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *exemptionsListOpts) setup(cmd *cobra.Command) {
@@ -539,8 +540,10 @@ func (o *exemptionsListOpts) setup(cmd *cobra.Command) {
 	o.IO.RegisterCustomCodec("wide", &exemptionsTableCodec{wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(cmd.Flags())
+	cmd.Flags().Int64Var(&o.Limit, "limit", 50, "Maximum number of exemptions to return (0 for no limit)")
 }
 
+//nolint:dupl // exemptions and segments list follow identical TypedCRUD pattern
 func (h *logsHelper) exemptionsListCommand() *cobra.Command {
 	opts := &exemptionsListOpts{}
 	cmd := &cobra.Command{
@@ -557,7 +560,7 @@ func (h *logsHelper) exemptionsListCommand() *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx)
+			typedObjs, err := crud.List(ctx, opts.Limit)
 			if err != nil {
 				return err
 			}
@@ -778,7 +781,8 @@ func (h *logsHelper) segmentsCommand() *cobra.Command {
 // segments list
 
 type segmentsListOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *segmentsListOpts) setup(cmd *cobra.Command) {
@@ -786,8 +790,10 @@ func (o *segmentsListOpts) setup(cmd *cobra.Command) {
 	o.IO.RegisterCustomCodec("wide", &segmentsTableCodec{wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(cmd.Flags())
+	cmd.Flags().Int64Var(&o.Limit, "limit", 50, "Maximum number of segments to return (0 for no limit)")
 }
 
+//nolint:dupl // segments and exemptions list follow identical TypedCRUD pattern
 func (h *logsHelper) segmentsListCommand() *cobra.Command {
 	opts := &segmentsListOpts{}
 	cmd := &cobra.Command{
@@ -804,7 +810,7 @@ func (h *logsHelper) segmentsListCommand() *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx)
+			typedObjs, err := crud.List(ctx, opts.Limit)
 			if err != nil {
 				return err
 			}
@@ -1041,6 +1047,7 @@ func (h *logsHelper) dropRulesCommand() *cobra.Command {
 type dropRulesListOpts struct {
 	IO               cmdio.Options
 	ExpirationFilter string
+	Limit            int64
 }
 
 func (o *dropRulesListOpts) setup(cmd *cobra.Command) {
@@ -1050,6 +1057,7 @@ func (o *dropRulesListOpts) setup(cmd *cobra.Command) {
 	o.IO.RegisterCustomCodec("wide", &dropRulesTableCodec{wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(cmd.Flags())
+	cmd.Flags().Int64Var(&o.Limit, "limit", 50, "Maximum number of drop rules to return (0 for no limit)")
 }
 
 func (h *logsHelper) dropRulesListCommand() *cobra.Command {
@@ -1074,6 +1082,9 @@ func (h *logsHelper) dropRulesListCommand() *cobra.Command {
 			})
 			if err != nil {
 				return err
+			}
+			if opts.Limit > 0 && int64(len(rules)) > opts.Limit {
+				rules = rules[:opts.Limit]
 			}
 
 			out := any(rules)

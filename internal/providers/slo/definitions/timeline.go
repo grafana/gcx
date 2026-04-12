@@ -127,7 +127,7 @@ grafana_slo_sli_window metrics.`,
 				}
 				slos = []Slo{s.Spec}
 			} else {
-				typedObjs, err := crud.List(ctx)
+				typedObjs, err := crud.List(ctx, 0)
 				if err != nil {
 					return err
 				}

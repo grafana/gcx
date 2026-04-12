@@ -13,6 +13,7 @@ gcx kg entities show [name] [flags]
   -h, --help               help for show
       --insights-only      Only return entities with active insights (list mode)
       --json string        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int          Maximum number of items to return (0 for all) (default 50)
       --namespace string   Namespace scope
   -o, --output string      Output format. One of: json, table, yaml (default "table")
       --page int           Page number, 0-based (list mode)

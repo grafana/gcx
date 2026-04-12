@@ -360,6 +360,9 @@ func newDatasetsCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if listOpts.Limit > 0 && int64(len(result.Items)) > listOpts.Limit {
+				result.Items = result.Items[:listOpts.Limit]
+			}
 			return listOpts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
@@ -402,13 +405,15 @@ func newDatasetsCommand(loader RESTConfigLoader) *cobra.Command {
 }
 
 type datasetsListOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *datasetsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &DatasetTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 // DatasetTableCodec renders datasets as a table.
@@ -436,8 +441,6 @@ func (c *DatasetTableCodec) Decode(_ io.Reader, _ any) error {
 // Vendors command
 // ---------------------------------------------------------------------------
 
-//nolint:dupl
-//nolint:dupl
 func newVendorsCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "vendors",
@@ -464,6 +467,9 @@ func newVendorsCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if listOpts.Limit > 0 && int64(len(vendors)) > listOpts.Limit {
+				vendors = vendors[:listOpts.Limit]
+			}
 			return listOpts.IO.Encode(cmd.OutOrStdout(), vendors)
 		},
 	}
@@ -474,12 +480,14 @@ func newVendorsCommand(loader RESTConfigLoader) *cobra.Command {
 }
 
 type vendorsListOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *vendorsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 // ---------------------------------------------------------------------------
@@ -505,7 +513,7 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			typedObjs, err := crud.List(ctx)
+			typedObjs, err := crud.List(ctx, rulesListOpts.Limit)
 			if err != nil {
 				return err
 			}
@@ -619,13 +627,15 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 }
 
 type rulesListOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &RuleTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 type rulesGetOpts struct {
@@ -819,6 +829,7 @@ func newKPIDisplayCommand(loader RESTConfigLoader) *cobra.Command {
 // Entities commands
 // ---------------------------------------------------------------------------
 
+//nolint:dupl // entities list mirrors search entities with different flags
 func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "entities",
@@ -864,6 +875,9 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if ioOpts.Limit > 0 && int64(len(results)) > ioOpts.Limit {
+				results = results[:ioOpts.Limit]
+			}
 			return ioOpts.IO.Encode(cmd.OutOrStdout(), results)
 		},
 	}
@@ -904,6 +918,9 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if listOpts.Limit > 0 && int64(len(results)) > listOpts.Limit {
+				results = results[:listOpts.Limit]
+			}
 			return listOpts.IO.Encode(cmd.OutOrStdout(), results)
 		},
 	}
@@ -939,13 +956,15 @@ func showSingleEntity(cmd *cobra.Command, client *Client, entityType, name strin
 }
 
 type entitiesShowOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *entitiesShowOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &EntityTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 // EntityTableCodec renders search results as a table.
@@ -1014,13 +1033,15 @@ func newEntityTypesCommand(loader RESTConfigLoader) *cobra.Command {
 }
 
 type entityTypesListOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *entityTypesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &EntityTypeTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 // EntityTypeTableCodec renders entity types as a table.
@@ -1091,12 +1112,14 @@ func newScopesCommand(loader RESTConfigLoader) *cobra.Command {
 }
 
 type scopesListOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *scopesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 // ---------------------------------------------------------------------------
@@ -1427,6 +1450,7 @@ func filterBySeverity(results []SearchResult, sev string) []SearchResult {
 // Search commands
 // ---------------------------------------------------------------------------
 
+//nolint:dupl // search entities mirrors entities list with different flags
 func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "search",
@@ -1561,6 +1585,9 @@ func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if searchEntitiesOpts.Limit > 0 && int64(len(results)) > searchEntitiesOpts.Limit {
+				results = results[:searchEntitiesOpts.Limit]
+			}
 			return searchEntitiesOpts.IO.Encode(cmd.OutOrStdout(), results)
 		},
 	}
@@ -1582,12 +1609,14 @@ func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 }
 
 type searchEntitiesListOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *searchEntitiesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 // ---------------------------------------------------------------------------

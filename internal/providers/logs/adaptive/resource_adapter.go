@@ -78,7 +78,16 @@ func buildLogsTypedCRUD[T adapter.ResourceNamer](
 	del func(context.Context, string) error,
 ) *adapter.TypedCRUD[T] {
 	return &adapter.TypedCRUD[T]{
-		ListFn:      list,
+		ListFn: func(ctx context.Context, limit int64) ([]T, error) {
+			items, err := list(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if limit > 0 && int64(len(items)) > limit {
+				items = items[:limit]
+			}
+			return items, nil
+		},
 		GetFn:       get,
 		CreateFn:    create,
 		UpdateFn:    update,

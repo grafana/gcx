@@ -45,7 +45,7 @@ func newWidgetCRUD(widgets []TestWidget) *adapter.TypedCRUD[TestWidget] {
 		StripFields: []string{"id", "secret"},
 		Descriptor:  widgetDesc,
 		Aliases:     []string{"wdg"},
-		ListFn: func(_ context.Context) ([]TestWidget, error) {
+		ListFn: func(_ context.Context, _ int64) ([]TestWidget, error) {
 			return widgets, nil
 		},
 		GetFn: func(_ context.Context, name string) (*TestWidget, error) {
@@ -262,7 +262,7 @@ func TestTypedCRUD_NilListFn(t *testing.T) {
 	}
 
 	t.Run("typed List returns ErrUnsupported", func(t *testing.T) {
-		_, err := crud.List(t.Context())
+		_, err := crud.List(t.Context(), 0)
 		assert.ErrorIs(t, err, errors.ErrUnsupported)
 	})
 
@@ -292,7 +292,7 @@ func TestTypedCRUD_NilGetFn_FallbackToList(t *testing.T) {
 		Namespace:  "stack-1",
 		Descriptor: widgetDesc,
 		Aliases:    []string{"wdg"},
-		ListFn: func(_ context.Context) ([]TestWidget, error) {
+		ListFn: func(_ context.Context, _ int64) ([]TestWidget, error) {
 			return widgets, nil
 		},
 		// GetFn intentionally nil — should fall back to list + filter
@@ -331,7 +331,7 @@ func TestTypedCRUD_NilGetFn_FallbackToList(t *testing.T) {
 	})
 
 	t.Run("List still works normally", func(t *testing.T) {
-		result, err := crud.List(t.Context())
+		result, err := crud.List(t.Context(), 0)
 		require.NoError(t, err)
 		assert.Len(t, result, 3)
 	})
@@ -351,7 +351,7 @@ func TestTypedCRUD_NilGetFn_NilListFn(t *testing.T) {
 	})
 
 	t.Run("typed List returns ErrUnsupported", func(t *testing.T) {
-		_, err := crud.List(t.Context())
+		_, err := crud.List(t.Context(), 0)
 		assert.ErrorIs(t, err, errors.ErrUnsupported)
 	})
 }
@@ -522,7 +522,7 @@ func TestTypedCRUD_TypedList(t *testing.T) {
 	}
 	crud := newWidgetCRUD(widgets)
 
-	result, err := crud.List(t.Context())
+	result, err := crud.List(t.Context(), 0)
 	require.NoError(t, err)
 	require.Len(t, result, 2)
 
@@ -599,7 +599,7 @@ func TestTypedCRUD_ResourceIdentity(t *testing.T) {
 	}
 	crud := &adapter.TypedCRUD[TestWidget]{
 		Namespace: "stack-1",
-		ListFn:    func(_ context.Context) ([]TestWidget, error) { return widgets, nil },
+		ListFn:    func(_ context.Context, _ int64) ([]TestWidget, error) { return widgets, nil },
 		GetFn: func(_ context.Context, name string) (*TestWidget, error) {
 			return &widgets[0], nil
 		},
@@ -607,7 +607,7 @@ func TestTypedCRUD_ResourceIdentity(t *testing.T) {
 	}
 
 	// Test typed List uses GetResourceName()
-	result, err := crud.List(t.Context())
+	result, err := crud.List(t.Context(), 0)
 	require.NoError(t, err)
 	require.Len(t, result, 1)
 	assert.Equal(t, "w-1", result[0].GetName(), "should use GetResourceName() from ResourceIdentity")

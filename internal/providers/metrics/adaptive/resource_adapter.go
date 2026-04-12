@@ -125,7 +125,7 @@ func (em *etagManager) withETag(ctx context.Context, fn func(etag string) (strin
 	return nil
 }
 
-func (em *etagManager) list(ctx context.Context) ([]MetricRule, error) {
+func (em *etagManager) list(ctx context.Context, limit int64) ([]MetricRule, error) {
 	em.mu.Lock()
 	defer em.mu.Unlock()
 	rules, etag, err := em.client.ListRules(ctx, em.segment)
@@ -133,6 +133,9 @@ func (em *etagManager) list(ctx context.Context) ([]MetricRule, error) {
 		return nil, err
 	}
 	em.etag = etag
+	if limit > 0 && int64(len(rules)) > limit {
+		rules = rules[:limit]
+	}
 	return rules, nil
 }
 

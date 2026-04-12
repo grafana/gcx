@@ -217,6 +217,10 @@ func (h *fleetHelper) newPipelineListCommand() *cobra.Command {
 				return err
 			}
 
+			if opts.Limit > 0 && int64(len(pipelines)) > opts.Limit {
+				pipelines = pipelines[:opts.Limit]
+			}
+
 			// Table codec operates on raw []Pipeline for direct field access.
 			// Other formats (yaml/json) convert to K8s envelope Resources
 			// for consistency with get/pull and round-trip support.
@@ -241,7 +245,8 @@ func (h *fleetHelper) newPipelineListCommand() *cobra.Command {
 }
 
 type pipelineListOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *pipelineListOpts) setup(flags *pflag.FlagSet) {
@@ -249,6 +254,8 @@ func (o *pipelineListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &PipelineTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
+
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 func (h *fleetHelper) newPipelineGetCommand() *cobra.Command { //nolint:dupl // Intentionally similar to collector get — distinct resource types.
@@ -536,6 +543,10 @@ func (h *fleetHelper) newCollectorListCommand() *cobra.Command {
 				return err
 			}
 
+			if opts.Limit > 0 && int64(len(collectors)) > opts.Limit {
+				collectors = collectors[:opts.Limit]
+			}
+
 			// Table codec operates on raw []Collector for direct field access.
 			// Other formats (yaml/json) convert to K8s envelope Resources
 			// for consistency with get/pull and round-trip support.
@@ -560,7 +571,8 @@ func (h *fleetHelper) newCollectorListCommand() *cobra.Command {
 }
 
 type collectorListOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *collectorListOpts) setup(flags *pflag.FlagSet) {
@@ -568,6 +580,8 @@ func (o *collectorListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &CollectorTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
+
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 func (h *fleetHelper) newCollectorGetCommand() *cobra.Command { //nolint:dupl // Intentionally similar to pipeline get — distinct resource types.
@@ -1119,7 +1133,16 @@ func NewPipelineTypedCRUD(ctx context.Context, loader CloudConfigLoader) (*adapt
 	client := &Client{Client: base}
 
 	crud := &adapter.TypedCRUD[Pipeline]{
-		ListFn: client.ListPipelines,
+		ListFn: func(ctx context.Context, limit int64) ([]Pipeline, error) {
+			items, err := client.ListPipelines(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if limit > 0 && int64(len(items)) > limit {
+				items = items[:limit]
+			}
+			return items, nil
+		},
 		GetFn: func(ctx context.Context, name string) (*Pipeline, error) {
 			return resolvePipeline(ctx, client, name)
 		},
@@ -1177,7 +1200,16 @@ func NewCollectorTypedCRUD(ctx context.Context, loader CloudConfigLoader) (*adap
 	client := &Client{Client: base}
 
 	crud := &adapter.TypedCRUD[Collector]{
-		ListFn: client.ListCollectors,
+		ListFn: func(ctx context.Context, limit int64) ([]Collector, error) {
+			items, err := client.ListCollectors(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if limit > 0 && int64(len(items)) > limit {
+				items = items[:limit]
+			}
+			return items, nil
+		},
 		GetFn: func(ctx context.Context, name string) (*Collector, error) {
 			return resolveCollector(ctx, client, name)
 		},

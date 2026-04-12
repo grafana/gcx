@@ -507,6 +507,7 @@ type rulesListOpts struct {
 	cmdio.Options
 
 	Segment string
+	Limit   int64
 }
 
 func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
@@ -515,6 +516,7 @@ func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
 	o.RegisterCustomCodec("wide", &rulesTableCodec{wide: true})
 	o.BindFlags(flags)
 	flags.StringVar(&o.Segment, "segment", "", "Segment ID")
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of rules to return (0 for no limit)")
 }
 
 func (h *metricsHelper) rulesListCommand() *cobra.Command {
@@ -533,7 +535,7 @@ func (h *metricsHelper) rulesListCommand() *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx)
+			typedObjs, err := crud.List(ctx, opts.Limit)
 			if err != nil {
 				return err
 			}

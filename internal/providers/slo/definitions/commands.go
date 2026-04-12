@@ -50,7 +50,8 @@ func Commands(loader GrafanaConfigLoader) *cobra.Command {
 // ---------------------------------------------------------------------------
 
 type listOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
@@ -58,6 +59,8 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &sloTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
+
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -77,7 +80,7 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx)
+			typedObjs, err := crud.List(ctx, opts.Limit)
 			if err != nil {
 				return err
 			}
@@ -239,7 +242,7 @@ func newPullCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx)
+			typedObjs, err := crud.List(ctx, 0)
 			if err != nil {
 				return err
 			}

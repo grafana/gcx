@@ -73,7 +73,7 @@ gcx resources get [RESOURCE_SELECTOR]... [flags]
 ```
   -h, --help              help for get
       --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int         Maximum number of items to fetch per resource type (0 for all) (default 200)
+      --limit int         Maximum number of items to fetch per resource type (0 for all) (default 50)
       --on-error string   How to handle errors during resource operations:
                             ignore — continue processing all resources and exit 0
                             fail   — continue processing all resources and exit 1 if any failed (default)

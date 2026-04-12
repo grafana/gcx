@@ -52,6 +52,7 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 type listOpts struct {
 	IO    cmdio.Options
 	State string
+	Limit int
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
@@ -60,6 +61,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.State, "state", "", "Filter by investigation state (e.g. running, completed, cancelled)")
+	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of investigations to return")
 }
 
 func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
@@ -79,6 +81,9 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			summaries, err := client.List(cmd.Context(), opts.State)
 			if err != nil {
 				return err
+			}
+			if opts.Limit > 0 && len(summaries) > opts.Limit {
+				summaries = summaries[:opts.Limit]
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), summaries)
 		},

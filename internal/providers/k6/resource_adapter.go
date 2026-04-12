@@ -129,7 +129,16 @@ func newSubResourceFactory(loader CloudConfigLoader, rd resourceDef) adapter.Fac
 
 func newProjectCRUD(c *Client, ns string, desc resources.Descriptor) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[Project]{
-		ListFn: c.ListProjects,
+		ListFn: func(ctx context.Context, limit int64) ([]Project, error) {
+			items, err := c.ListProjects(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if limit > 0 && int64(len(items)) > limit {
+				items = items[:limit]
+			}
+			return items, nil
+		},
 		GetFn: func(ctx context.Context, name string) (*Project, error) {
 			id, err := strconv.Atoi(name)
 			if err != nil {
@@ -166,7 +175,16 @@ func newProjectCRUD(c *Client, ns string, desc resources.Descriptor) adapter.Res
 
 func newLoadTestCRUD(c *Client, ns string, desc resources.Descriptor) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[LoadTest]{
-		ListFn: c.ListLoadTests,
+		ListFn: func(ctx context.Context, limit int64) ([]LoadTest, error) {
+			items, err := c.ListLoadTests(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if limit > 0 && int64(len(items)) > limit {
+				items = items[:limit]
+			}
+			return items, nil
+		},
 		GetFn: func(ctx context.Context, name string) (*LoadTest, error) {
 			id, err := strconv.Atoi(name)
 			if err != nil {
@@ -203,7 +221,16 @@ func newLoadTestCRUD(c *Client, ns string, desc resources.Descriptor) adapter.Re
 
 func newScheduleCRUD(c *Client, ns string, desc resources.Descriptor) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[Schedule]{
-		ListFn: c.ListSchedules,
+		ListFn: func(ctx context.Context, limit int64) ([]Schedule, error) {
+			items, err := c.ListSchedules(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if limit > 0 && int64(len(items)) > limit {
+				items = items[:limit]
+			}
+			return items, nil
+		},
 		GetFn: func(ctx context.Context, name string) (*Schedule, error) {
 			id, err := strconv.Atoi(name)
 			if err != nil {
@@ -250,7 +277,16 @@ func newScheduleCRUD(c *Client, ns string, desc resources.Descriptor) adapter.Re
 
 func newEnvVarCRUD(c *Client, ns string, desc resources.Descriptor) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[EnvVar]{
-		ListFn: c.ListEnvVars,
+		ListFn: func(ctx context.Context, limit int64) ([]EnvVar, error) {
+			items, err := c.ListEnvVars(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if limit > 0 && int64(len(items)) > limit {
+				items = items[:limit]
+			}
+			return items, nil
+		},
 		GetFn: func(ctx context.Context, name string) (*EnvVar, error) {
 			// EnvVars don't have a single-get endpoint; list-then-filter.
 			id, err := strconv.Atoi(name)
@@ -307,7 +343,16 @@ func newEnvVarCRUD(c *Client, ns string, desc resources.Descriptor) adapter.Reso
 
 func newLoadZoneCRUD(c *Client, ns string, desc resources.Descriptor) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[LoadZone]{
-		ListFn: c.ListLoadZones,
+		ListFn: func(ctx context.Context, limit int64) ([]LoadZone, error) {
+			items, err := c.ListLoadZones(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if limit > 0 && int64(len(items)) > limit {
+				items = items[:limit]
+			}
+			return items, nil
+		},
 		GetFn: func(ctx context.Context, name string) (*LoadZone, error) {
 			// List-then-filter by name.
 			zones, err := c.ListLoadZones(ctx)
@@ -483,7 +528,16 @@ func NewTypedCRUDProject(ctx context.Context, loader CloudConfigLoader) (*adapte
 		return nil, "", err
 	}
 	crud := &adapter.TypedCRUD[Project]{
-		ListFn: client.ListProjects,
+		ListFn: func(ctx context.Context, limit int64) ([]Project, error) {
+			items, err := client.ListProjects(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if limit > 0 && int64(len(items)) > limit {
+				items = items[:limit]
+			}
+			return items, nil
+		},
 		GetFn: func(ctx context.Context, name string) (*Project, error) {
 			id, err := strconv.Atoi(name)
 			if err != nil {
@@ -522,7 +576,16 @@ func NewTypedCRUDLoadTest(ctx context.Context, loader CloudConfigLoader) (*adapt
 		return nil, "", err
 	}
 	crud := &adapter.TypedCRUD[LoadTest]{
-		ListFn: client.ListAllLoadTests,
+		ListFn: func(ctx context.Context, limit int64) ([]LoadTest, error) {
+			items, err := client.ListAllLoadTests(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if limit > 0 && int64(len(items)) > limit {
+				items = items[:limit]
+			}
+			return items, nil
+		},
 		GetFn: func(ctx context.Context, name string) (*LoadTest, error) {
 			id, err := strconv.Atoi(name)
 			if err != nil {
@@ -561,7 +624,16 @@ func NewTypedCRUDSchedule(ctx context.Context, loader CloudConfigLoader) (*adapt
 		return nil, "", err
 	}
 	crud := &adapter.TypedCRUD[Schedule]{
-		ListFn: client.ListSchedules,
+		ListFn: func(ctx context.Context, limit int64) ([]Schedule, error) {
+			items, err := client.ListSchedules(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if limit > 0 && int64(len(items)) > limit {
+				items = items[:limit]
+			}
+			return items, nil
+		},
 		GetFn: func(ctx context.Context, name string) (*Schedule, error) {
 			id, err := strconv.Atoi(name)
 			if err != nil {
@@ -609,7 +681,16 @@ func NewTypedCRUDEnvVar(ctx context.Context, loader CloudConfigLoader) (*adapter
 		return nil, "", err
 	}
 	crud := &adapter.TypedCRUD[EnvVar]{
-		ListFn: client.ListEnvVars,
+		ListFn: func(ctx context.Context, limit int64) ([]EnvVar, error) {
+			items, err := client.ListEnvVars(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if limit > 0 && int64(len(items)) > limit {
+				items = items[:limit]
+			}
+			return items, nil
+		},
 		GetFn: func(ctx context.Context, name string) (*EnvVar, error) {
 			id, err := strconv.Atoi(name)
 			if err != nil {
@@ -666,7 +747,16 @@ func NewTypedCRUDLoadZone(ctx context.Context, loader CloudConfigLoader) (*adapt
 		return nil, "", err
 	}
 	crud := &adapter.TypedCRUD[LoadZone]{
-		ListFn: client.ListLoadZones,
+		ListFn: func(ctx context.Context, limit int64) ([]LoadZone, error) {
+			items, err := client.ListLoadZones(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if limit > 0 && int64(len(items)) > limit {
+				items = items[:limit]
+			}
+			return items, nil
+		},
 		GetFn: func(ctx context.Context, name string) (*LoadZone, error) {
 			zones, err := client.ListLoadZones(ctx)
 			if err != nil {

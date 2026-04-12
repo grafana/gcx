@@ -25,10 +25,12 @@ import (
 type listOpts struct {
 	IO       cmdio.Options
 	Resource string // resource name for codec selection (e.g. "integrations")
+	Limit    int64
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet, resource string) {
 	o.Resource = resource
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 	switch resource {
 	case "integrations":
 		o.IO.RegisterCustomCodec("table", &IntegrationTableCodec{})
@@ -114,7 +116,7 @@ func newListSubcommand[T adapter.ResourceNamer](
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx)
+			typedObjs, err := crud.List(ctx, listOpts.Limit)
 			if err != nil {
 				return err
 			}

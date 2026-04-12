@@ -37,7 +37,8 @@ type TypedCRUD[T ResourceNamer] struct {
 	// ListFn lists all items of this type.
 	// Nil means list is unsupported (returns errors.ErrUnsupported).
 	// Also used as a fallback for Get when GetFn is nil.
-	ListFn func(ctx context.Context) ([]T, error)
+	// The limit parameter caps the number of items returned (0 means no limit).
+	ListFn func(ctx context.Context, limit int64) ([]T, error)
 
 	// GetFn returns a single item by name.
 	// Nil means get falls back to ListFn + client-side name filtering.
@@ -91,14 +92,15 @@ func (c *TypedCRUD[T]) restoreName(name string, item *T) {
 
 // --- Typed public methods ---
 
-// List returns all items as TypedObject[T] with correct TypeMeta and ObjectMeta.
+// List returns items as TypedObject[T] with correct TypeMeta and ObjectMeta.
+// The limit parameter caps the number of items returned (0 means no limit).
 // Returns errors.ErrUnsupported when ListFn is nil.
-func (c *TypedCRUD[T]) List(ctx context.Context) ([]TypedObject[T], error) {
+func (c *TypedCRUD[T]) List(ctx context.Context, limit int64) ([]TypedObject[T], error) {
 	if c.ListFn == nil {
 		return nil, errors.ErrUnsupported
 	}
 
-	items, err := c.ListFn(ctx)
+	items, err := c.ListFn(ctx, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +134,7 @@ func (c *TypedCRUD[T]) Get(ctx context.Context, name string) (*TypedObject[T], e
 		return nil, errors.ErrUnsupported
 	}
 
-	items, err := c.ListFn(ctx)
+	items, err := c.ListFn(ctx, 0) // no limit — need all items for name lookup
 	if err != nil {
 		return nil, err
 	}
@@ -304,12 +306,12 @@ func (a *typedAdapter[T]) Example() json.RawMessage {
 	return a.example
 }
 
-func (a *typedAdapter[T]) List(ctx context.Context, _ metav1.ListOptions) (*unstructured.UnstructuredList, error) {
+func (a *typedAdapter[T]) List(ctx context.Context, opts metav1.ListOptions) (*unstructured.UnstructuredList, error) {
 	if a.crud.ListFn == nil {
 		return nil, errors.ErrUnsupported
 	}
 
-	items, err := a.crud.ListFn(ctx)
+	items, err := a.crud.ListFn(ctx, opts.Limit)
 	if err != nil {
 		return nil, err
 	}

@@ -42,7 +42,8 @@ func Commands() *cobra.Command {
 // --- list ---
 
 type listOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
@@ -50,6 +51,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &TableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of rules to return (0 for no limit)")
 }
 
 func newListCommand() *cobra.Command {
@@ -68,7 +70,7 @@ func newListCommand() *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx)
+			typedObjs, err := crud.List(ctx, opts.Limit)
 			if err != nil {
 				return err
 			}

@@ -279,7 +279,8 @@ func (h *tracesHelper) policiesCommand() *cobra.Command {
 // ---------------------------------------------------------------------------
 
 type policiesListOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *policiesListOpts) setup(flags *pflag.FlagSet) {
@@ -287,6 +288,7 @@ func (o *policiesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &policyTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of policies to return (0 for no limit)")
 }
 
 func (h *tracesHelper) policiesListCommand() *cobra.Command {
@@ -306,7 +308,7 @@ func (h *tracesHelper) policiesListCommand() *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx)
+			typedObjs, err := crud.List(ctx, opts.Limit)
 			if err != nil {
 				return err
 			}

@@ -107,7 +107,7 @@ grafana_slo_* metrics.`,
 				}
 				slos = []Slo{typedObj.Spec}
 			} else {
-				typedObjs, err := crud.List(ctx)
+				typedObjs, err := crud.List(ctx, 0)
 				if err != nil {
 					return err
 				}

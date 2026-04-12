@@ -54,6 +54,9 @@ func newAlertGroupListCommand(loader OnCallConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if opts.Limit > 0 && int64(len(items)) > opts.Limit {
+				items = items[:opts.Limit]
+			}
 
 			objs, err := itemsToUnstructured(items, "AlertGroup", "id", namespace)
 			if err != nil {
@@ -113,6 +116,9 @@ func newAlertGroupListAlertsCommand(loader OnCallConfigLoader) *cobra.Command {
 			items, err := client.ListAlerts(cmd.Context(), args[0])
 			if err != nil {
 				return err
+			}
+			if opts.Limit > 0 && int64(len(items)) > opts.Limit {
+				items = items[:opts.Limit]
 			}
 
 			objs, err := itemsToUnstructured(items, "Alert", "id", namespace)

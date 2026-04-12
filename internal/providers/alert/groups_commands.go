@@ -27,13 +27,15 @@ func groupsCommands(loader GrafanaConfigLoader) *cobra.Command {
 }
 
 type groupsListOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *groupsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &GroupsTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
 }
 
 func newGroupsListCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -60,6 +62,10 @@ func newGroupsListCommand(loader GrafanaConfigLoader) *cobra.Command {
 			groups, err := client.ListGroups(ctx)
 			if err != nil {
 				return err
+			}
+
+			if opts.Limit > 0 && int64(len(groups)) > opts.Limit {
+				groups = groups[:opts.Limit]
 			}
 
 			return opts.IO.Encode(cmd.OutOrStdout(), groups)

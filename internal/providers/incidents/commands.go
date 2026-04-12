@@ -33,7 +33,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &IncidentTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.IntVar(&o.Limit, "limit", 100, "Maximum number of incidents to return")
+	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of incidents to return")
 }
 
 func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -53,7 +53,7 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx)
+			typedObjs, err := crud.List(ctx, int64(opts.Limit))
 			if err != nil {
 				return err
 			}

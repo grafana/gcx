@@ -157,8 +157,15 @@ func NewAdapterFactory(loader RESTConfigLoader) adapter.Factory {
 		}
 
 		crud := &adapter.TypedCRUD[Rule]{
-			ListFn: func(ctx context.Context) ([]Rule, error) {
-				return client.ListRules(ctx)
+			ListFn: func(ctx context.Context, limit int64) ([]Rule, error) {
+				items, err := client.ListRules(ctx)
+				if err != nil {
+					return nil, err
+				}
+				if limit > 0 && int64(len(items)) > limit {
+					items = items[:limit]
+				}
+				return items, nil
 			},
 			GetFn: func(ctx context.Context, name string) (*Rule, error) {
 				return client.GetRule(ctx, name)
@@ -183,8 +190,15 @@ func NewTypedCRUD(ctx context.Context, loader RESTConfigLoader) (*adapter.TypedC
 	}
 
 	crud := &adapter.TypedCRUD[Rule]{
-		ListFn: func(ctx context.Context) ([]Rule, error) {
-			return client.ListRules(ctx)
+		ListFn: func(ctx context.Context, limit int64) ([]Rule, error) {
+			items, err := client.ListRules(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if limit > 0 && int64(len(items)) > limit {
+				items = items[:limit]
+			}
+			return items, nil
 		},
 		GetFn: func(ctx context.Context, name string) (*Rule, error) {
 			return client.GetRule(ctx, name)
@@ -369,8 +383,15 @@ func newListOnlyFactory[T adapter.ResourceNamer](
 			return nil, fmt.Errorf("kg: failed to create client: %w", err)
 		}
 		crud := &adapter.TypedCRUD[T]{
-			ListFn: func(ctx context.Context) ([]T, error) {
-				return listFn(client, ctx)
+			ListFn: func(ctx context.Context, limit int64) ([]T, error) {
+				items, err := listFn(client, ctx)
+				if err != nil {
+					return nil, err
+				}
+				if limit > 0 && int64(len(items)) > limit {
+					items = items[:limit]
+				}
+				return items, nil
 			},
 			Namespace:  cfg.Namespace,
 			Descriptor: desc,
