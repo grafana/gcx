@@ -30,9 +30,10 @@ func init() { //nolint:gochecknoinits // Natural key registration for cross-stac
 
 // resourceMeta holds metadata for registering an OnCall resource type.
 type resourceMeta struct {
-	Descriptor resources.Descriptor
-	Schema     json.RawMessage
-	Example    json.RawMessage
+	Descriptor  resources.Descriptor
+	Schema      json.RawMessage
+	Example     json.RawMessage
+	URLTemplate string // Deep link URL template (e.g., "/a/grafana-oncall-app/schedules/{name}").
 }
 
 // crudOption configures optional CRUD operations on a TypedCRUD instance.
@@ -107,10 +108,11 @@ func buildOnCallRegistration[T adapter.ResourceNamer](
 
 			return crud.AsAdapter(), nil
 		},
-		Descriptor: desc,
-		GVK:        desc.GroupVersionKind(),
-		Schema:     meta.Schema,
-		Example:    meta.Example,
+		Descriptor:  desc,
+		GVK:         desc.GroupVersionKind(),
+		Schema:      meta.Schema,
+		Example:     meta.Example,
+		URLTemplate: meta.URLTemplate,
 	}
 }
 
@@ -141,7 +143,8 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta := onCallMeta("Integration", "integration", "integrations")
 	meta.Schema = adapter.SchemaFromType[Integration](meta.Descriptor)
 	meta.Example = integrationExample()
-	reg := buildOnCallRegistration(loader, meta,
+	meta.URLTemplate = "/a/grafana-oncall-app/integrations/{name}"
+	regs = append(regs, buildOnCallRegistration(loader, meta,
 		func(ctx context.Context, c *Client) ([]Integration, error) { return c.ListIntegrations(ctx) },
 		func(ctx context.Context, c *Client, name string) (*Integration, error) {
 			return c.GetIntegration(ctx, name)
@@ -155,15 +158,14 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		withDelete[Integration](func(ctx context.Context, c *Client, name string) error {
 			return c.DeleteIntegration(ctx, name)
 		}),
-	)
-	reg.URLTemplate = "/a/grafana-oncall-app/integrations/{name}"
-	regs = append(regs, reg)
+	))
 
 	// 2. EscalationChain — full CRUD
 	meta = onCallMeta("EscalationChain", "escalationchain", "escalationchains")
 	meta.Schema = adapter.SchemaFromType[EscalationChain](meta.Descriptor)
 	meta.Example = escalationChainExample()
-	reg = buildOnCallRegistration(loader, meta,
+	meta.URLTemplate = "/a/grafana-oncall-app/escalation-chains/{name}"
+	regs = append(regs, buildOnCallRegistration(loader, meta,
 		func(ctx context.Context, c *Client) ([]EscalationChain, error) { return c.ListEscalationChains(ctx) },
 		func(ctx context.Context, c *Client, name string) (*EscalationChain, error) {
 			return c.GetEscalationChain(ctx, name)
@@ -177,9 +179,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		withDelete[EscalationChain](func(ctx context.Context, c *Client, name string) error {
 			return c.DeleteEscalationChain(ctx, name)
 		}),
-	)
-	reg.URLTemplate = "/a/grafana-oncall-app/escalation-chains/{name}"
-	regs = append(regs, reg)
+	))
 
 	// 3. EscalationPolicy — full CRUD (list with empty filter)
 	meta = onCallMeta("EscalationPolicy", "escalationpolicy", "escalationpolicies")
@@ -207,7 +207,8 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta = onCallMeta("Schedule", "schedule", "schedules")
 	meta.Schema = adapter.SchemaFromType[Schedule](meta.Descriptor)
 	meta.Example = scheduleExample()
-	reg = buildOnCallRegistration(loader, meta,
+	meta.URLTemplate = "/a/grafana-oncall-app/schedules/{name}"
+	regs = append(regs, buildOnCallRegistration(loader, meta,
 		func(ctx context.Context, c *Client) ([]Schedule, error) { return c.ListSchedules(ctx) },
 		func(ctx context.Context, c *Client, name string) (*Schedule, error) { return c.GetSchedule(ctx, name) },
 		withCreate(func(ctx context.Context, c *Client, item *Schedule) (*Schedule, error) {
@@ -219,9 +220,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		withDelete[Schedule](func(ctx context.Context, c *Client, name string) error {
 			return c.DeleteSchedule(ctx, name)
 		}),
-	)
-	reg.URLTemplate = "/a/grafana-oncall-app/schedules/{name}"
-	regs = append(regs, reg)
+	))
 
 	// 5. Shift — CRUD with ShiftRequest conversion for create/update
 	meta = onCallMeta("Shift", "shift", "shifts")
@@ -273,7 +272,8 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta = onCallMeta("OutgoingWebhook", "outgoingwebhook", "outgoingwebhooks")
 	meta.Schema = adapter.SchemaFromType[OutgoingWebhook](meta.Descriptor)
 	meta.Example = outgoingWebhookExample()
-	reg = buildOnCallRegistration(loader, meta,
+	meta.URLTemplate = "/a/grafana-oncall-app/outgoing-webhooks/{name}"
+	regs = append(regs, buildOnCallRegistration(loader, meta,
 		func(ctx context.Context, c *Client) ([]OutgoingWebhook, error) { return c.ListOutgoingWebhooks(ctx) },
 		func(ctx context.Context, c *Client, name string) (*OutgoingWebhook, error) {
 			return c.GetOutgoingWebhook(ctx, name)
@@ -287,14 +287,13 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		withDelete[OutgoingWebhook](func(ctx context.Context, c *Client, name string) error {
 			return c.DeleteOutgoingWebhook(ctx, name)
 		}),
-	)
-	reg.URLTemplate = "/a/grafana-oncall-app/outgoing-webhooks/{name}"
-	regs = append(regs, reg)
+	))
 
 	// 8. AlertGroup — read-only + delete
 	meta = onCallMeta("AlertGroup", "alertgroup", "alertgroups")
 	meta.Schema = adapter.SchemaFromType[AlertGroup](meta.Descriptor)
-	reg = buildOnCallRegistration(loader, meta,
+	meta.URLTemplate = "/a/grafana-oncall-app/alert-groups/{name}"
+	regs = append(regs, buildOnCallRegistration(loader, meta,
 		func(ctx context.Context, c *Client) ([]AlertGroup, error) { return c.ListAlertGroups(ctx) }, // no filter
 		func(ctx context.Context, c *Client, name string) (*AlertGroup, error) {
 			return c.GetAlertGroup(ctx, name)
@@ -302,9 +301,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		withDelete[AlertGroup](func(ctx context.Context, c *Client, name string) error {
 			return c.DeleteAlertGroup(ctx, name)
 		}),
-	)
-	reg.URLTemplate = "/a/grafana-oncall-app/alert-groups/{name}"
-	regs = append(regs, reg)
+	))
 
 	// 9. User — read-only
 	meta = onCallMeta("User", "oncalluser", "oncallusers")

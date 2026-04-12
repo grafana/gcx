@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 	"text/tabwriter"
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
@@ -122,7 +121,10 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				url := strings.TrimRight(cfg.Host, "/") + "/a/grafana-assistant-app/investigations/" + args[0]
+				url := deeplink.Resolve(cfg.Host, deeplink.InvestigationGVK, args[0])
+				if url == "" {
+					return fmt.Errorf("no deep link URL available for investigation %s", args[0])
+				}
 				cmdio.Info(cmd.OutOrStdout(), "Opening %s", url)
 				return deeplink.Open(url)
 			}

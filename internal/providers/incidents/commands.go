@@ -366,11 +366,7 @@ func newOpenCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 
 			cmdio.Info(cmd.OutOrStdout(), "Opening %s", url)
-			if err := deeplink.Open(url); err != nil {
-				return fmt.Errorf("failed to open browser: %w", err)
-			}
-
-			return nil
+			return deeplink.Open(url)
 		},
 	}
 	opts.setup(cmd.Flags())
