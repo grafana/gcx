@@ -60,10 +60,11 @@ func (p *AlertProvider) TypedRegistrations() []adapter.Registration {
 	loader := &providers.ConfigLoader{}
 	return []adapter.Registration{
 		{
-			Factory:    NewRulesAdapterFactory(loader),
-			Descriptor: staticRulesDescriptor,
-			GVK:        staticRulesDescriptor.GroupVersionKind(),
-			Schema:     alertRuleSchema(),
+			Factory:     NewRulesAdapterFactory(loader),
+			Descriptor:  staticRulesDescriptor,
+			GVK:         staticRulesDescriptor.GroupVersionKind(),
+			Schema:      alertRuleSchema(),
+			URLTemplate: "/alerting/{name}/view",
 		},
 		{
 			Factory:    NewGroupsAdapterFactory(loader),

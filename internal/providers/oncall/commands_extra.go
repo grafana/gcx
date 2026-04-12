@@ -7,6 +7,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -61,6 +62,8 @@ func newAlertGroupListCommand(loader OnCallConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			deeplink.InjectURLs(objs, client.StackURL())
 
 			return opts.IO.Encode(cmd.OutOrStdout(), objs)
 		},

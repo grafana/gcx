@@ -4,9 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
+	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
@@ -95,12 +97,14 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 // --- get ---
 
 type getOpts struct {
-	IO cmdio.Options
+	IO   cmdio.Options
+	Open bool
 }
 
 func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("yaml")
 	o.IO.BindFlags(flags)
+	flags.BoolVar(&o.Open, "open", false, "Open the investigation in the default browser")
 }
 
 func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
@@ -112,6 +116,15 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
+			}
+			if opts.Open {
+				cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+				if err != nil {
+					return err
+				}
+				url := strings.TrimRight(cfg.Host, "/") + "/a/grafana-assistant-app/investigations/" + args[0]
+				cmdio.Info(cmd.OutOrStdout(), "Opening %s", url)
+				return deeplink.Open(url)
 			}
 			client, err := newClient(cmd, loader)
 			if err != nil {

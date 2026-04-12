@@ -142,18 +142,20 @@ func (p *FleetProvider) TypedRegistrations() []adapter.Registration {
 	loader := &providers.ConfigLoader{}
 	return []adapter.Registration{
 		{
-			Factory:    NewPipelineAdapterFactory(loader),
-			Descriptor: PipelineDescriptor(),
-			GVK:        PipelineDescriptor().GroupVersionKind(),
-			Schema:     pipelineSchema(),
-			Example:    pipelineExample(),
+			Factory:     NewPipelineAdapterFactory(loader),
+			Descriptor:  PipelineDescriptor(),
+			GVK:         PipelineDescriptor().GroupVersionKind(),
+			Schema:      pipelineSchema(),
+			Example:     pipelineExample(),
+			URLTemplate: "/a/grafana-fleet-app/pipelines/{name}",
 		},
 		{
-			Factory:    NewCollectorAdapterFactory(loader),
-			Descriptor: CollectorDescriptor(),
-			GVK:        CollectorDescriptor().GroupVersionKind(),
-			Schema:     collectorSchema(),
-			Example:    collectorExample(),
+			Factory:     NewCollectorAdapterFactory(loader),
+			Descriptor:  CollectorDescriptor(),
+			GVK:         CollectorDescriptor().GroupVersionKind(),
+			Schema:      collectorSchema(),
+			Example:     collectorExample(),
+			URLTemplate: "/a/grafana-fleet-app/collectors/{name}",
 		},
 	}
 }

@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/style"
-	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -360,11 +360,13 @@ func newOpenCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			host := strings.TrimRight(restCfg.Host, "/")
-			url := fmt.Sprintf("%s/a/grafana-incident-app/incidents/%s", host, id)
+			url := deeplink.Resolve(restCfg.Host, staticDescriptor.GroupVersionKind(), id)
+			if url == "" {
+				return fmt.Errorf("no deep link URL available for incident %s", id)
+			}
 
 			cmdio.Info(cmd.OutOrStdout(), "Opening %s", url)
-			if err := browser.OpenURL(url); err != nil {
+			if err := deeplink.Open(url); err != nil {
 				return fmt.Errorf("failed to open browser: %w", err)
 			}
 

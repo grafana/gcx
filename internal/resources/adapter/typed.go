@@ -454,12 +454,13 @@ func isDryRun(dryRun []string) bool {
 
 // TypedRegistration bridges TypedCRUD to the existing Registration system.
 type TypedRegistration[T ResourceNamer] struct {
-	Descriptor resources.Descriptor
-	Aliases    []string
-	GVK        schema.GroupVersionKind
-	Schema     json.RawMessage
-	Example    json.RawMessage
-	Factory    func(ctx context.Context) (*TypedCRUD[T], error)
+	Descriptor  resources.Descriptor
+	Aliases     []string
+	GVK         schema.GroupVersionKind
+	Schema      json.RawMessage
+	Example     json.RawMessage
+	URLTemplate string // URL path template for deep links (e.g., "/a/grafana-oncall-app/schedules/{name}").
+	Factory     func(ctx context.Context) (*TypedCRUD[T], error)
 }
 
 // ToRegistration converts to a standard Registration.
@@ -477,10 +478,11 @@ func (r TypedRegistration[T]) ToRegistration() Registration {
 			}
 			return a, nil
 		},
-		Descriptor: r.Descriptor,
-		Aliases:    r.Aliases,
-		GVK:        r.GVK,
-		Schema:     r.Schema,
-		Example:    r.Example,
+		Descriptor:  r.Descriptor,
+		Aliases:     r.Aliases,
+		GVK:         r.GVK,
+		Schema:      r.Schema,
+		Example:     r.Example,
+		URLTemplate: r.URLTemplate,
 	}
 }

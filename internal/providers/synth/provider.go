@@ -139,18 +139,20 @@ func (p *SynthProvider) TypedRegistrations() []adapter.Registration {
 	loader := &configLoader{}
 	return []adapter.Registration{
 		{
-			Factory:    checks.NewAdapterFactory(loader),
-			Descriptor: checks.StaticDescriptor(),
-			GVK:        checks.StaticGVK(),
-			Schema:     checkSchema(),
-			Example:    checkExample(),
+			Factory:     checks.NewAdapterFactory(loader),
+			Descriptor:  checks.StaticDescriptor(),
+			GVK:         checks.StaticGVK(),
+			Schema:      checkSchema(),
+			Example:     checkExample(),
+			URLTemplate: "/a/grafana-synthetic-monitoring-app/checks/{name}",
 		},
 		{
-			Factory:    probes.NewAdapterFactory(loader),
-			Descriptor: probes.StaticDescriptor(),
-			GVK:        probes.StaticGVK(),
-			Schema:     probeSchema(),
-			Example:    probeExample(),
+			Factory:     probes.NewAdapterFactory(loader),
+			Descriptor:  probes.StaticDescriptor(),
+			GVK:         probes.StaticGVK(),
+			Schema:      probeSchema(),
+			Example:     probeExample(),
+			URLTemplate: "/a/grafana-synthetic-monitoring-app/probes/{name}",
 		},
 	}
 }

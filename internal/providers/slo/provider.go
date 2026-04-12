@@ -63,11 +63,12 @@ func (p *SLOProvider) TypedRegistrations() []adapter.Registration {
 	desc := definitions.StaticDescriptor()
 	return []adapter.Registration{
 		{
-			Factory:    definitions.NewLazyFactory(),
-			Descriptor: desc,
-			GVK:        desc.GroupVersionKind(),
-			Schema:     definitions.SloSchema(),
-			Example:    definitions.SloExample(),
+			Factory:     definitions.NewLazyFactory(),
+			Descriptor:  desc,
+			GVK:         desc.GroupVersionKind(),
+			Schema:      definitions.SloSchema(),
+			Example:     definitions.SloExample(),
+			URLTemplate: "/a/grafana-slo-app/slo/{name}",
 		},
 	}
 }

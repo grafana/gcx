@@ -141,7 +141,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta := onCallMeta("Integration", "integration", "integrations")
 	meta.Schema = adapter.SchemaFromType[Integration](meta.Descriptor)
 	meta.Example = integrationExample()
-	regs = append(regs, buildOnCallRegistration(loader, meta,
+	reg := buildOnCallRegistration(loader, meta,
 		func(ctx context.Context, c *Client) ([]Integration, error) { return c.ListIntegrations(ctx) },
 		func(ctx context.Context, c *Client, name string) (*Integration, error) {
 			return c.GetIntegration(ctx, name)
@@ -155,13 +155,15 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		withDelete[Integration](func(ctx context.Context, c *Client, name string) error {
 			return c.DeleteIntegration(ctx, name)
 		}),
-	))
+	)
+	reg.URLTemplate = "/a/grafana-oncall-app/integrations/{name}"
+	regs = append(regs, reg)
 
 	// 2. EscalationChain — full CRUD
 	meta = onCallMeta("EscalationChain", "escalationchain", "escalationchains")
 	meta.Schema = adapter.SchemaFromType[EscalationChain](meta.Descriptor)
 	meta.Example = escalationChainExample()
-	regs = append(regs, buildOnCallRegistration(loader, meta,
+	reg = buildOnCallRegistration(loader, meta,
 		func(ctx context.Context, c *Client) ([]EscalationChain, error) { return c.ListEscalationChains(ctx) },
 		func(ctx context.Context, c *Client, name string) (*EscalationChain, error) {
 			return c.GetEscalationChain(ctx, name)
@@ -175,7 +177,9 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		withDelete[EscalationChain](func(ctx context.Context, c *Client, name string) error {
 			return c.DeleteEscalationChain(ctx, name)
 		}),
-	))
+	)
+	reg.URLTemplate = "/a/grafana-oncall-app/escalation-chains/{name}"
+	regs = append(regs, reg)
 
 	// 3. EscalationPolicy — full CRUD (list with empty filter)
 	meta = onCallMeta("EscalationPolicy", "escalationpolicy", "escalationpolicies")
@@ -203,7 +207,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta = onCallMeta("Schedule", "schedule", "schedules")
 	meta.Schema = adapter.SchemaFromType[Schedule](meta.Descriptor)
 	meta.Example = scheduleExample()
-	regs = append(regs, buildOnCallRegistration(loader, meta,
+	reg = buildOnCallRegistration(loader, meta,
 		func(ctx context.Context, c *Client) ([]Schedule, error) { return c.ListSchedules(ctx) },
 		func(ctx context.Context, c *Client, name string) (*Schedule, error) { return c.GetSchedule(ctx, name) },
 		withCreate(func(ctx context.Context, c *Client, item *Schedule) (*Schedule, error) {
@@ -215,7 +219,9 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		withDelete[Schedule](func(ctx context.Context, c *Client, name string) error {
 			return c.DeleteSchedule(ctx, name)
 		}),
-	))
+	)
+	reg.URLTemplate = "/a/grafana-oncall-app/schedules/{name}"
+	regs = append(regs, reg)
 
 	// 5. Shift — CRUD with ShiftRequest conversion for create/update
 	meta = onCallMeta("Shift", "shift", "shifts")
@@ -267,7 +273,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta = onCallMeta("OutgoingWebhook", "outgoingwebhook", "outgoingwebhooks")
 	meta.Schema = adapter.SchemaFromType[OutgoingWebhook](meta.Descriptor)
 	meta.Example = outgoingWebhookExample()
-	regs = append(regs, buildOnCallRegistration(loader, meta,
+	reg = buildOnCallRegistration(loader, meta,
 		func(ctx context.Context, c *Client) ([]OutgoingWebhook, error) { return c.ListOutgoingWebhooks(ctx) },
 		func(ctx context.Context, c *Client, name string) (*OutgoingWebhook, error) {
 			return c.GetOutgoingWebhook(ctx, name)
@@ -281,12 +287,14 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		withDelete[OutgoingWebhook](func(ctx context.Context, c *Client, name string) error {
 			return c.DeleteOutgoingWebhook(ctx, name)
 		}),
-	))
+	)
+	reg.URLTemplate = "/a/grafana-oncall-app/outgoing-webhooks/{name}"
+	regs = append(regs, reg)
 
 	// 8. AlertGroup — read-only + delete
 	meta = onCallMeta("AlertGroup", "alertgroup", "alertgroups")
 	meta.Schema = adapter.SchemaFromType[AlertGroup](meta.Descriptor)
-	regs = append(regs, buildOnCallRegistration(loader, meta,
+	reg = buildOnCallRegistration(loader, meta,
 		func(ctx context.Context, c *Client) ([]AlertGroup, error) { return c.ListAlertGroups(ctx) }, // no filter
 		func(ctx context.Context, c *Client, name string) (*AlertGroup, error) {
 			return c.GetAlertGroup(ctx, name)
@@ -294,7 +302,9 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		withDelete[AlertGroup](func(ctx context.Context, c *Client, name string) error {
 			return c.DeleteAlertGroup(ctx, name)
 		}),
-	))
+	)
+	reg.URLTemplate = "/a/grafana-oncall-app/alert-groups/{name}"
+	regs = append(regs, reg)
 
 	// 9. User — read-only
 	meta = onCallMeta("User", "oncalluser", "oncallusers")
@@ -599,16 +609,17 @@ func shiftSwapExample() json.RawMessage {
 // NewTypedCRUD[T adapter.ResourceNamer] creates a TypedCRUD instance for CLI commands.
 // It mirrors buildOnCallRegistration but returns TypedCRUD directly instead of Registration.
 // This factory pattern allows commands to use typed methods without going through the adapter.
+// Returns (crud, namespace, grafanaHost, error).
 func NewTypedCRUD[T adapter.ResourceNamer](
 	ctx context.Context,
 	loader OnCallConfigLoader,
 	listFn func(ctx context.Context, client *Client) ([]T, error),
 	getFn func(ctx context.Context, client *Client, name string) (*T, error), // nil for list-only resources
 	opts ...crudOption[T],
-) (*adapter.TypedCRUD[T], string, error) {
+) (*adapter.TypedCRUD[T], string, string, error) {
 	client, namespace, err := loader.LoadOnCallClient(ctx)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to load OnCall config: %w", err)
+		return nil, "", "", fmt.Errorf("failed to load OnCall config: %w", err)
 	}
 
 	crud := &adapter.TypedCRUD[T]{
@@ -629,5 +640,5 @@ func NewTypedCRUD[T adapter.ResourceNamer](
 		opt(client, crud)
 	}
 
-	return crud, namespace, nil
+	return crud, namespace, client.StackURL(), nil
 }

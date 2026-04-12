@@ -15,11 +15,12 @@ import (
 
 // resourceDef defines a single k6 sub-resource type for adapter registration.
 type resourceDef struct {
-	kind     string
-	singular string
-	plural   string
-	schema   json.RawMessage
-	example  json.RawMessage
+	kind        string
+	singular    string
+	plural      string
+	schema      json.RawMessage
+	example     json.RawMessage
+	urlTemplate string // Deep link URL template (e.g., "/a/k6-app/projects/{name}"). Empty means no deep link.
 }
 
 // allResources returns the definitions for all k6 resource types.
@@ -27,13 +28,15 @@ func allResources() []resourceDef {
 	return []resourceDef{
 		{
 			kind: "Project", singular: "project", plural: "projects",
-			schema:  projectSchema(),
-			example: projectExample(),
+			schema:      projectSchema(),
+			example:     projectExample(),
+			urlTemplate: "/a/k6-app/projects/{name}",
 		},
 		{
 			kind: "LoadTest", singular: "loadtest", plural: "loadtests",
-			schema:  loadTestSchema(),
-			example: loadTestExample(),
+			schema:      loadTestSchema(),
+			example:     loadTestExample(),
+			urlTemplate: "/a/k6-app/tests/{name}",
 		},
 		{
 			kind: "Schedule", singular: "schedule", plural: "schedules",

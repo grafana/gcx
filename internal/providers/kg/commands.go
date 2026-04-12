@@ -7,12 +7,12 @@ import (
 	"io"
 	"maps"
 	"os"
-	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -1827,10 +1827,9 @@ func newOpenCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			host := strings.TrimRight(cfg.Host, "/")
-			url := host + "/a/grafana-asserts-app"
+			url := strings.TrimRight(cfg.Host, "/") + "/a/grafana-asserts-app"
 			cmdio.Info(cmd.OutOrStdout(), "Opening %s", url)
-			if err := exec.CommandContext(cmd.Context(), "open", url).Start(); err != nil {
+			if err := deeplink.Open(url); err != nil {
 				return fmt.Errorf("failed to open browser: %w", err)
 			}
 			return nil

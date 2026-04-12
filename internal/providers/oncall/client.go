@@ -43,6 +43,9 @@ type Client struct {
 	isOAuthProxy bool
 }
 
+// StackURL returns the Grafana server URL (used for deep links).
+func (c *Client) StackURL() string { return c.stackURL }
+
 // NewClient creates a new OnCall client from the given REST config and OnCall API URL.
 // oncallURL is the OnCall API base URL (e.g., https://oncall-prod-us-central-0.grafana.net/oncall).
 // cfg is the namespaced REST config providing auth, TLS, and the stack URL.
