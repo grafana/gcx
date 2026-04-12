@@ -24,6 +24,14 @@ type metricsHelper struct {
 	loader *providers.ConfigLoader
 }
 
+func (h *metricsHelper) newClient(ctx context.Context) (*Client, error) {
+	signalAuth, err := auth.ResolveSignalAuth(ctx, h.loader, "metrics")
+	if err != nil {
+		return nil, err
+	}
+	return NewClient(ctx, signalAuth.BaseURL, signalAuth.TenantID, signalAuth.APIToken, signalAuth.HTTPClient), nil
+}
+
 // Commands returns the Cobra command tree for adaptive metrics management.
 func Commands(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
@@ -35,6 +43,8 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 	cmd.AddCommand(
 		h.recommendationsCommand(),
 		h.rulesCommand(),
+		h.segmentsCommand(),
+		h.exemptionsCommand(),
 	)
 
 	return cmd
@@ -662,7 +672,11 @@ func (h *metricsHelper) rulesCreateCommand() *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.ErrOrStderr(), "Created rule for %s.", opts.Metric)
+			if opts.Segment != "" {
+				cmdio.Success(cmd.ErrOrStderr(), "Created rule for %s in segment %s.", opts.Metric, opts.Segment)
+			} else {
+				cmdio.Success(cmd.ErrOrStderr(), "Created rule for %s.", opts.Metric)
+			}
 			return opts.Encode(cmd.OutOrStdout(), created.Spec)
 		},
 	}
@@ -754,7 +768,11 @@ func (h *metricsHelper) rulesUpdateCommand() *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.ErrOrStderr(), "Updated rule for %s.", args[0])
+			if opts.Segment != "" {
+				cmdio.Success(cmd.ErrOrStderr(), "Updated rule for %s in segment %s.", args[0], opts.Segment)
+			} else {
+				cmdio.Success(cmd.ErrOrStderr(), "Updated rule for %s.", args[0])
+			}
 			return opts.Encode(cmd.OutOrStdout(), updated.Spec)
 		},
 	}
@@ -808,7 +826,11 @@ func (h *metricsHelper) rulesDeleteCommand() *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(stderr, "Deleted rule for %s.", metric)
+			if opts.Segment != "" {
+				cmdio.Success(stderr, "Deleted rule for %s in segment %s.", metric, opts.Segment)
+			} else {
+				cmdio.Success(stderr, "Deleted rule for %s.", metric)
+			}
 			return nil
 		},
 	}
@@ -847,7 +869,7 @@ func (c *rulesTableCodec) Encode(w io.Writer, v any) error {
 		if c.wide {
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%v\t%s\t%s\t%s\n",
 				r.Metric,
-				defaultStr(r.MatchType, "exact"),
+				defaultStr(r.MatchType),
 				strings.Join(r.DropLabels, ","),
 				strings.Join(r.KeepLabels, ","),
 				strings.Join(r.Aggregations, ","),
@@ -859,7 +881,7 @@ func (c *rulesTableCodec) Encode(w io.Writer, v any) error {
 		} else {
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
 				r.Metric,
-				defaultStr(r.MatchType, "exact"),
+				defaultStr(r.MatchType),
 				strings.Join(r.DropLabels, ","),
 				strings.Join(r.KeepLabels, ","),
 				strings.Join(r.Aggregations, ","),
@@ -873,9 +895,9 @@ func (c *rulesTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
 
-func defaultStr(s, fallback string) string {
+func defaultStr(s string) string {
 	if s == "" {
-		return fallback
+		return "exact"
 	}
 	return s
 }
@@ -883,6 +905,19 @@ func defaultStr(s, fallback string) string {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// normalizeExemption fills in server-omitted defaults so that JSON output
+// is complete and subsequent updates don't send empty values the server rejects.
+func normalizeExemption(e *MetricExemption) {
+	if e.MatchType == "" {
+		e.MatchType = "exact"
+	}
+	// The server returns Go zero-time "0001-01-01T00:00:00Z" when there is
+	// no expiration. Replace with empty string so JSON/table output is clean.
+	if strings.HasPrefix(e.ExpiresAt, "0001-01-01") {
+		e.ExpiresAt = ""
+	}
+}
 
 func formatValidationErrors(errs []string) error {
 	var sb strings.Builder
@@ -1031,4 +1066,875 @@ func sortRecommendations(recs []MetricRecommendation, by string, reverse bool) {
 		}
 		return less
 	})
+}
+
+// ---------------------------------------------------------------------------
+// segments
+// ---------------------------------------------------------------------------
+
+func (h *metricsHelper) segmentsCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "segments",
+		Short: "Manage Adaptive Metrics segments.",
+	}
+	cmd.AddCommand(
+		h.segmentsListCommand(),
+		h.segmentsGetCommand(),
+		h.segmentsCreateCommand(),
+		h.segmentsUpdateCommand(),
+		h.segmentsDeleteCommand(),
+	)
+	return cmd
+}
+
+// segments list
+
+type segmentsListOpts struct {
+	cmdio.Options
+
+	Limit int
+}
+
+func (o *segmentsListOpts) setup(flags *pflag.FlagSet) {
+	o.DefaultFormat("table")
+	o.RegisterCustomCodec("table", &segmentsTableCodec{wide: false})
+	o.RegisterCustomCodec("wide", &segmentsTableCodec{wide: true})
+	o.BindFlags(flags)
+	flags.IntVar(&o.Limit, "limit", 0, "Maximum number of segments to return (0 for no limit)")
+}
+
+func (h *metricsHelper) segmentsListCommand() *cobra.Command {
+	opts := &segmentsListOpts{}
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List Adaptive Metrics segments.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			client, err := h.newClient(ctx)
+			if err != nil {
+				return err
+			}
+
+			segments, err := client.ListSegments(ctx)
+			if err != nil {
+				return err
+			}
+
+			total := len(segments)
+			if opts.Limit > 0 && opts.Limit < total {
+				segments = segments[:opts.Limit]
+			}
+
+			fmt.Fprintf(cmd.ErrOrStderr(), "%d segment(s)\n", total)
+			if len(segments) == 0 {
+				return nil
+			}
+
+			return opts.Encode(cmd.OutOrStdout(), segments)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+// segments get
+
+type segmentsGetOpts struct {
+	cmdio.Options
+}
+
+func (o *segmentsGetOpts) setup(flags *pflag.FlagSet) {
+	o.DefaultFormat("json")
+	o.RegisterCustomCodec("table", &segmentsTableCodec{wide: false})
+	o.RegisterCustomCodec("wide", &segmentsTableCodec{wide: true})
+	o.BindFlags(flags)
+}
+
+func (h *metricsHelper) segmentsGetCommand() *cobra.Command {
+	opts := &segmentsGetOpts{}
+	cmd := &cobra.Command{
+		Use:   "get <id>",
+		Short: "Get an Adaptive Metrics segment by ID.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			client, err := h.newClient(ctx)
+			if err != nil {
+				return err
+			}
+
+			segment, err := client.GetSegment(ctx, args[0])
+			if err != nil {
+				return err
+			}
+
+			return opts.Encode(cmd.OutOrStdout(), segment)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+// segments create
+
+type segmentsCreateOpts struct {
+	cmdio.Options
+
+	Name              string
+	Selector          string
+	FallbackToDefault bool
+	AutoApply         bool
+}
+
+func (o *segmentsCreateOpts) setup(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&o.Name, "name", "", "Segment name (required)")
+	cmd.Flags().StringVar(&o.Selector, "selector", "", "PromQL label selector (required)")
+	cmd.Flags().BoolVar(&o.FallbackToDefault, "fallback-to-default", false, "Fall back to default segment when no rules match")
+	cmd.Flags().BoolVar(&o.AutoApply, "auto-apply", false, "Automatically apply recommendations")
+	_ = cmd.MarkFlagRequired("name")
+	_ = cmd.MarkFlagRequired("selector")
+	o.DefaultFormat("json")
+	o.BindFlags(cmd.Flags())
+}
+
+func (h *metricsHelper) segmentsCreateCommand() *cobra.Command {
+	opts := &segmentsCreateOpts{}
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create an Adaptive Metrics segment.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			client, err := h.newClient(ctx)
+			if err != nil {
+				return err
+			}
+
+			seg := &MetricSegment{
+				Name:              opts.Name,
+				Selector:          opts.Selector,
+				FallbackToDefault: opts.FallbackToDefault,
+				AutoApply:         &AutoApplyConfig{Enabled: opts.AutoApply},
+			}
+
+			created, err := client.CreateSegment(ctx, seg)
+			if err != nil {
+				return err
+			}
+
+			cmdio.Success(cmd.ErrOrStderr(), "Created segment %s.", created.ID)
+			return opts.Encode(cmd.OutOrStdout(), created)
+		},
+	}
+	opts.setup(cmd)
+	return cmd
+}
+
+// segments update
+
+type segmentsUpdateOpts struct {
+	cmdio.Options
+
+	Name              string
+	Selector          string
+	FallbackToDefault bool
+	AutoApply         bool
+}
+
+func (o *segmentsUpdateOpts) setup(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&o.Name, "name", "", "Segment name")
+	cmd.Flags().StringVar(&o.Selector, "selector", "", "PromQL label selector")
+	cmd.Flags().BoolVar(&o.FallbackToDefault, "fallback-to-default", false, "Fall back to default segment when no rules match")
+	cmd.Flags().BoolVar(&o.AutoApply, "auto-apply", false, "Automatically apply recommendations")
+	o.DefaultFormat("json")
+	o.BindFlags(cmd.Flags())
+}
+
+func (h *metricsHelper) segmentsUpdateCommand() *cobra.Command {
+	opts := &segmentsUpdateOpts{}
+	cmd := &cobra.Command{
+		Use:   "update <id>",
+		Short: "Update an Adaptive Metrics segment.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
+			flags := cmd.Flags()
+			if !flags.Changed("name") && !flags.Changed("selector") &&
+				!flags.Changed("fallback-to-default") && !flags.Changed("auto-apply") {
+				return errors.New("specify at least one flag to update")
+			}
+
+			ctx := cmd.Context()
+			client, err := h.newClient(ctx)
+			if err != nil {
+				return err
+			}
+
+			id := args[0]
+			existing, err := client.GetSegment(ctx, id)
+			if err != nil {
+				return fmt.Errorf("failed to fetch existing segment for merge: %w", err)
+			}
+
+			if flags.Changed("name") {
+				existing.Name = opts.Name
+			}
+			if flags.Changed("selector") {
+				existing.Selector = opts.Selector
+			}
+			if flags.Changed("fallback-to-default") {
+				existing.FallbackToDefault = opts.FallbackToDefault
+			}
+			if flags.Changed("auto-apply") {
+				if existing.AutoApply == nil {
+					existing.AutoApply = &AutoApplyConfig{}
+				}
+				existing.AutoApply.Enabled = opts.AutoApply
+			}
+
+			updated, err := client.UpdateSegment(ctx, id, existing)
+			if err != nil {
+				return err
+			}
+
+			cmdio.Success(cmd.ErrOrStderr(), "Updated segment %s.", id)
+			return opts.Encode(cmd.OutOrStdout(), updated)
+		},
+	}
+	opts.setup(cmd)
+	return cmd
+}
+
+// segments delete
+
+type segmentsDeleteOpts struct {
+	Yes bool
+}
+
+func (o *segmentsDeleteOpts) setup(flags *pflag.FlagSet) {
+	flags.BoolVar(&o.Yes, "yes", false, "Skip confirmation prompt")
+}
+
+func (h *metricsHelper) segmentsDeleteCommand() *cobra.Command {
+	opts := &segmentsDeleteOpts{}
+	cmd := &cobra.Command{
+		Use:   "delete <id>",
+		Short: "Delete an Adaptive Metrics segment.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id := args[0]
+			stderr := cmd.ErrOrStderr()
+
+			if !opts.Yes {
+				fmt.Fprintf(stderr, "Delete segment %s? [y/N] ", id)
+				reader := bufio.NewReader(cmd.InOrStdin())
+				answer, err := reader.ReadString('\n')
+				if err != nil {
+					return fmt.Errorf("read confirmation: %w", err)
+				}
+				answer = strings.TrimSpace(strings.ToLower(answer))
+				if answer != "y" && answer != "yes" {
+					cmdio.Info(stderr, "Aborted.")
+					return nil
+				}
+			}
+
+			ctx := cmd.Context()
+			client, err := h.newClient(ctx)
+			if err != nil {
+				return err
+			}
+
+			if err := client.DeleteSegment(ctx, id); err != nil {
+				return err
+			}
+
+			cmdio.Success(stderr, "Deleted segment %s.", id)
+			return nil
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+// ---------------------------------------------------------------------------
+// segments table codecs
+// ---------------------------------------------------------------------------
+
+type segmentsTableCodec struct {
+	wide bool
+}
+
+func (c *segmentsTableCodec) Format() format.Format {
+	if c.wide {
+		return "wide"
+	}
+	return "table"
+}
+
+func (c *segmentsTableCodec) Encode(w io.Writer, v any) error {
+	segments, ok := v.([]MetricSegment)
+	if !ok {
+		// Also accept *MetricSegment for single-item returns.
+		if s, ok2 := v.(*MetricSegment); ok2 {
+			segments = []MetricSegment{*s}
+		} else {
+			return fmt.Errorf("metrics: segments table codec: expected []MetricSegment, got %T", v)
+		}
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	if c.wide {
+		fmt.Fprintln(tw, "ID\tNAME\tSELECTOR\tFALLBACK\tAUTO APPLY\tRECOMMENDATION CONFIG ID")
+	} else {
+		fmt.Fprintln(tw, "ID\tNAME\tSELECTOR\tFALLBACK\tAUTO APPLY")
+	}
+	for _, s := range segments {
+		autoApply := false
+		if s.AutoApply != nil {
+			autoApply = s.AutoApply.Enabled
+		}
+		recConfigID := ""
+		if s.RecommendationConfigurationID != nil {
+			recConfigID = *s.RecommendationConfigurationID
+		}
+		selector := s.Selector
+		if !c.wide && len(selector) > 60 {
+			selector = selector[:57] + "..."
+		}
+		if c.wide {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%v\t%v\t%s\n",
+				s.ID, s.Name, s.Selector, s.FallbackToDefault, autoApply, recConfigID)
+		} else {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%v\t%v\n",
+				s.ID, s.Name, selector, s.FallbackToDefault, autoApply)
+		}
+	}
+	return tw.Flush()
+}
+
+func (c *segmentsTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// ---------------------------------------------------------------------------
+// exemptions
+// ---------------------------------------------------------------------------
+
+func (h *metricsHelper) exemptionsCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "exemptions",
+		Short: "Manage Adaptive Metrics recommendation exemptions.",
+	}
+	cmd.AddCommand(
+		h.exemptionsListCommand(),
+		h.exemptionsGetCommand(),
+		h.exemptionsCreateCommand(),
+		h.exemptionsUpdateCommand(),
+		h.exemptionsDeleteCommand(),
+	)
+	return cmd
+}
+
+// exemptions list
+
+type exemptionsListOpts struct {
+	cmdio.Options
+
+	Segment     string
+	AllSegments bool
+	Limit       int
+}
+
+func (o *exemptionsListOpts) setup(flags *pflag.FlagSet) {
+	o.DefaultFormat("table")
+	o.RegisterCustomCodec("table", &exemptionsTableCodec{wide: false})
+	o.RegisterCustomCodec("wide", &exemptionsTableCodec{wide: true})
+	o.BindFlags(flags)
+	flags.StringVar(&o.Segment, "segment", "", "Segment ID")
+	flags.BoolVar(&o.AllSegments, "all-segments", false, "List exemptions across all segments")
+	flags.IntVar(&o.Limit, "limit", 0, "Maximum number of exemptions to return (0 for no limit)")
+}
+
+func (h *metricsHelper) exemptionsListCommand() *cobra.Command {
+	opts := &exemptionsListOpts{}
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List Adaptive Metrics recommendation exemptions.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+			if opts.Segment != "" && opts.AllSegments {
+				return errors.New("--segment and --all-segments are mutually exclusive")
+			}
+
+			ctx := cmd.Context()
+			client, err := h.newClient(ctx)
+			if err != nil {
+				return err
+			}
+
+			if opts.AllSegments {
+				entries, err := client.ListSegmentedExemptions(ctx)
+				if err != nil {
+					return err
+				}
+				total := 0
+				for i := range entries {
+					for j := range entries[i].Exemptions {
+						normalizeExemption(&entries[i].Exemptions[j])
+					}
+					total += len(entries[i].Exemptions)
+				}
+				fmt.Fprintf(cmd.ErrOrStderr(), "%d exemption(s) across %d segment(s)\n", total, len(entries))
+				if total == 0 {
+					return nil
+				}
+				return opts.Encode(cmd.OutOrStdout(), entries)
+			}
+
+			exemptions, err := client.ListExemptions(ctx, opts.Segment)
+			if err != nil {
+				return err
+			}
+
+			for i := range exemptions {
+				normalizeExemption(&exemptions[i])
+			}
+
+			total := len(exemptions)
+			if opts.Limit > 0 && opts.Limit < total {
+				exemptions = exemptions[:opts.Limit]
+			}
+
+			fmt.Fprintf(cmd.ErrOrStderr(), "%d exemption(s)\n", total)
+			if len(exemptions) == 0 {
+				return nil
+			}
+
+			return opts.Encode(cmd.OutOrStdout(), exemptions)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+// exemptions get
+
+type exemptionsGetOpts struct {
+	cmdio.Options
+
+	Segment string
+}
+
+func (o *exemptionsGetOpts) setup(flags *pflag.FlagSet) {
+	o.DefaultFormat("json")
+	o.RegisterCustomCodec("table", &exemptionsTableCodec{wide: false})
+	o.RegisterCustomCodec("wide", &exemptionsTableCodec{wide: true})
+	o.BindFlags(flags)
+	flags.StringVar(&o.Segment, "segment", "", "Segment ID")
+}
+
+func (h *metricsHelper) exemptionsGetCommand() *cobra.Command {
+	opts := &exemptionsGetOpts{}
+	cmd := &cobra.Command{
+		Use:   "get <id>",
+		Short: "Get a recommendation exemption by ID.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			client, err := h.newClient(ctx)
+			if err != nil {
+				return err
+			}
+
+			exemption, err := client.GetExemption(ctx, args[0], opts.Segment)
+			if err != nil {
+				return err
+			}
+
+			normalizeExemption(exemption)
+			return opts.Encode(cmd.OutOrStdout(), exemption)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+// exemptions create
+
+type exemptionsCreateOpts struct {
+	cmdio.Options
+
+	Metric                 string
+	MatchType              string
+	KeepLabels             []string
+	DisableRecommendations bool
+	Reason                 string
+	ManagedBy              string
+	ActiveInterval         string
+	Segment                string
+}
+
+// setupExemptionFlags registers the common flags for exemption create/update.
+func setupExemptionFlags(
+	f *pflag.FlagSet,
+	metric, matchType *string, keepLabels *[]string,
+	disableRecs *bool, reason, managedBy, activeInterval, segment *string,
+	matchTypeDefault, activeIntervalDefault string,
+	opts *cmdio.Options,
+) {
+	f.StringVar(metric, "metric", "", "Metric name or pattern")
+	f.StringVar(matchType, "match-type", matchTypeDefault, "Match type: exact, prefix, or suffix")
+	f.StringSliceVar(keepLabels, "keep-labels", nil, "Labels to keep (comma-separated)")
+	f.BoolVar(disableRecs, "disable-recommendations", false, "Disable all recommendations for matched metrics")
+	f.StringVar(reason, "reason", "", "Reason for the exemption")
+	f.StringVar(managedBy, "managed-by", "", "Manager identifier")
+	f.StringVar(activeInterval, "active-interval", activeIntervalDefault, "Active interval (e.g. 30d, 1h)")
+	f.StringVar(segment, "segment", "", "Segment ID")
+	opts.DefaultFormat("json")
+	opts.BindFlags(f)
+}
+
+func (o *exemptionsCreateOpts) setup(cmd *cobra.Command) {
+	setupExemptionFlags(cmd.Flags(),
+		&o.Metric, &o.MatchType, &o.KeepLabels,
+		&o.DisableRecommendations, &o.Reason, &o.ManagedBy, &o.ActiveInterval, &o.Segment,
+		"exact", "30d", &o.Options,
+	)
+}
+
+func (o *exemptionsCreateOpts) Validate() error {
+	if err := o.Options.Validate(); err != nil {
+		return err
+	}
+	if o.Metric == "" && len(o.KeepLabels) == 0 {
+		return errors.New("either --metric or --keep-labels must be set")
+	}
+	if o.DisableRecommendations && len(o.KeepLabels) > 0 {
+		return errors.New("--disable-recommendations and --keep-labels are mutually exclusive")
+	}
+	return nil
+}
+
+func (h *metricsHelper) exemptionsCreateCommand() *cobra.Command {
+	opts := &exemptionsCreateOpts{}
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create a recommendation exemption.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			client, err := h.newClient(ctx)
+			if err != nil {
+				return err
+			}
+
+			e := &MetricExemption{
+				Metric:                 opts.Metric,
+				MatchType:              opts.MatchType,
+				KeepLabels:             opts.KeepLabels,
+				DisableRecommendations: opts.DisableRecommendations,
+				Reason:                 opts.Reason,
+				ManagedBy:              opts.ManagedBy,
+				ActiveInterval:         opts.ActiveInterval,
+			}
+
+			created, err := client.CreateExemption(ctx, e, opts.Segment)
+			if err != nil {
+				return err
+			}
+
+			normalizeExemption(created)
+			if opts.Segment != "" {
+				cmdio.Success(cmd.ErrOrStderr(), "Created exemption %s in segment %s.", created.ID, opts.Segment)
+			} else {
+				cmdio.Success(cmd.ErrOrStderr(), "Created exemption %s.", created.ID)
+			}
+			return opts.Encode(cmd.OutOrStdout(), created)
+		},
+	}
+	opts.setup(cmd)
+	return cmd
+}
+
+// exemptions update
+
+type exemptionsUpdateOpts struct {
+	cmdio.Options
+
+	Metric                 string
+	MatchType              string
+	KeepLabels             []string
+	DisableRecommendations bool
+	Reason                 string
+	ManagedBy              string
+	ActiveInterval         string
+	Segment                string
+}
+
+func (o *exemptionsUpdateOpts) setup(cmd *cobra.Command) {
+	setupExemptionFlags(cmd.Flags(),
+		&o.Metric, &o.MatchType, &o.KeepLabels,
+		&o.DisableRecommendations, &o.Reason, &o.ManagedBy, &o.ActiveInterval, &o.Segment,
+		"", "", &o.Options,
+	)
+}
+
+func (h *metricsHelper) exemptionsUpdateCommand() *cobra.Command {
+	opts := &exemptionsUpdateOpts{}
+	cmd := &cobra.Command{
+		Use:   "update <id>",
+		Short: "Update a recommendation exemption.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
+			flags := cmd.Flags()
+			if !flags.Changed("metric") && !flags.Changed("match-type") && !flags.Changed("keep-labels") &&
+				!flags.Changed("disable-recommendations") && !flags.Changed("reason") &&
+				!flags.Changed("managed-by") && !flags.Changed("active-interval") {
+				return errors.New("specify at least one flag to update")
+			}
+
+			ctx := cmd.Context()
+			client, err := h.newClient(ctx)
+			if err != nil {
+				return err
+			}
+
+			id := args[0]
+			existing, err := client.GetExemption(ctx, id, opts.Segment)
+			if err != nil {
+				return fmt.Errorf("failed to fetch existing exemption for merge: %w", err)
+			}
+
+			if flags.Changed("metric") {
+				existing.Metric = opts.Metric
+			}
+			if flags.Changed("match-type") {
+				existing.MatchType = opts.MatchType
+			}
+			if flags.Changed("keep-labels") {
+				existing.KeepLabels = opts.KeepLabels
+			}
+			if flags.Changed("disable-recommendations") {
+				existing.DisableRecommendations = opts.DisableRecommendations
+			}
+			if flags.Changed("reason") {
+				existing.Reason = opts.Reason
+			}
+			if flags.Changed("managed-by") {
+				existing.ManagedBy = opts.ManagedBy
+			}
+			if flags.Changed("active-interval") {
+				existing.ActiveInterval = opts.ActiveInterval
+			}
+
+			normalizeExemption(existing)
+			existing.CreatedAt = ""
+			existing.UpdatedAt = ""
+			existing.ExpiresAt = ""
+
+			if _, err := client.UpdateExemption(ctx, id, existing, opts.Segment); err != nil {
+				return err
+			}
+
+			if opts.Segment != "" {
+				cmdio.Success(cmd.ErrOrStderr(), "Updated exemption %s in segment %s.", id, opts.Segment)
+			} else {
+				cmdio.Success(cmd.ErrOrStderr(), "Updated exemption %s.", id)
+			}
+
+			fresh, err := client.GetExemption(ctx, id, opts.Segment)
+			if err != nil {
+				return fmt.Errorf("re-fetch after update: %w", err)
+			}
+			normalizeExemption(fresh)
+			return opts.Encode(cmd.OutOrStdout(), fresh)
+		},
+	}
+	opts.setup(cmd)
+	return cmd
+}
+
+// exemptions delete
+
+type exemptionsDeleteOpts struct {
+	Segment string
+	Yes     bool
+}
+
+func (o *exemptionsDeleteOpts) setup(flags *pflag.FlagSet) {
+	flags.StringVar(&o.Segment, "segment", "", "Segment ID")
+	flags.BoolVar(&o.Yes, "yes", false, "Skip confirmation prompt")
+}
+
+func (h *metricsHelper) exemptionsDeleteCommand() *cobra.Command {
+	opts := &exemptionsDeleteOpts{}
+	cmd := &cobra.Command{
+		Use:   "delete <id>",
+		Short: "Delete a recommendation exemption.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id := args[0]
+			stderr := cmd.ErrOrStderr()
+
+			if !opts.Yes {
+				fmt.Fprintf(stderr, "Delete exemption %s? [y/N] ", id)
+				reader := bufio.NewReader(cmd.InOrStdin())
+				answer, err := reader.ReadString('\n')
+				if err != nil {
+					return fmt.Errorf("read confirmation: %w", err)
+				}
+				answer = strings.TrimSpace(strings.ToLower(answer))
+				if answer != "y" && answer != "yes" {
+					cmdio.Info(stderr, "Aborted.")
+					return nil
+				}
+			}
+
+			ctx := cmd.Context()
+			client, err := h.newClient(ctx)
+			if err != nil {
+				return err
+			}
+
+			if err := client.DeleteExemption(ctx, id, opts.Segment); err != nil {
+				return err
+			}
+
+			if opts.Segment != "" {
+				cmdio.Success(stderr, "Deleted exemption %s in segment %s.", id, opts.Segment)
+			} else {
+				cmdio.Success(stderr, "Deleted exemption %s.", id)
+			}
+			return nil
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+// ---------------------------------------------------------------------------
+// exemptions table codecs
+// ---------------------------------------------------------------------------
+
+type exemptionsTableCodec struct {
+	wide bool
+}
+
+func (c *exemptionsTableCodec) Format() format.Format {
+	if c.wide {
+		return "wide"
+	}
+	return "table"
+}
+
+func (c *exemptionsTableCodec) Encode(w io.Writer, v any) error {
+	// Handle []MetricExemption, *MetricExemption (single get), and []ExemptionsBySegmentEntry (--all-segments).
+	switch data := v.(type) {
+	case []MetricExemption:
+		return c.encodeExemptions(w, data)
+	case *MetricExemption:
+		return c.encodeExemptions(w, []MetricExemption{*data})
+	case []ExemptionsBySegmentEntry:
+		return c.encodeSegmentedExemptions(w, data)
+	default:
+		return fmt.Errorf("metrics: exemptions table codec: expected []MetricExemption or []ExemptionsBySegmentEntry, got %T", v)
+	}
+}
+
+func (c *exemptionsTableCodec) encodeExemptions(w io.Writer, exemptions []MetricExemption) error {
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+
+	if c.wide {
+		fmt.Fprintln(tw, "ID\tMETRIC\tMATCH TYPE\tKEEP LABELS\tDISABLE RECS\tREASON\tMANAGED BY\tEXPIRES AT\tACTIVE INTERVAL\tCREATED AT\tUPDATED AT")
+	} else {
+		fmt.Fprintln(tw, "ID\tMETRIC\tMATCH TYPE\tKEEP LABELS\tDISABLE RECS")
+	}
+
+	for _, e := range exemptions {
+		if c.wide {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%v\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				e.ID, e.Metric,
+				defaultStr(e.MatchType),
+				strings.Join(e.KeepLabels, ","),
+				e.DisableRecommendations,
+				e.Reason, e.ManagedBy, e.ExpiresAt, e.ActiveInterval, e.CreatedAt, e.UpdatedAt,
+			)
+		} else {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%v\n",
+				e.ID, e.Metric,
+				defaultStr(e.MatchType),
+				strings.Join(e.KeepLabels, ","),
+				e.DisableRecommendations,
+			)
+		}
+	}
+	return tw.Flush()
+}
+
+func (c *exemptionsTableCodec) encodeSegmentedExemptions(w io.Writer, entries []ExemptionsBySegmentEntry) error {
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+
+	if c.wide {
+		fmt.Fprintln(tw, "SEGMENT\tID\tMETRIC\tMATCH TYPE\tKEEP LABELS\tDISABLE RECS\tREASON\tMANAGED BY\tEXPIRES AT\tACTIVE INTERVAL\tCREATED AT\tUPDATED AT")
+	} else {
+		fmt.Fprintln(tw, "SEGMENT\tID\tMETRIC\tMATCH TYPE\tKEEP LABELS\tDISABLE RECS")
+	}
+
+	for _, entry := range entries {
+		segName := entry.Segment.Name
+		if segName == "" {
+			segName = "(default)"
+		}
+		for _, e := range entry.Exemptions {
+			if c.wide {
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%v\t%s\t%s\t%s\t%s\t%s\t%s\n",
+					segName, e.ID, e.Metric,
+					defaultStr(e.MatchType),
+					strings.Join(e.KeepLabels, ","),
+					e.DisableRecommendations,
+					e.Reason, e.ManagedBy, e.ExpiresAt, e.ActiveInterval, e.CreatedAt, e.UpdatedAt,
+				)
+			} else {
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%v\n",
+					segName, e.ID, e.Metric,
+					defaultStr(e.MatchType),
+					strings.Join(e.KeepLabels, ","),
+					e.DisableRecommendations,
+				)
+			}
+		}
+	}
+	return tw.Flush()
+}
+
+func (c *exemptionsTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
 }

@@ -116,5 +116,19 @@ func (p *Provider) TypedRegistrations() []adapter.Registration {
 			Schema:     adaptivemetrics.RuleSchema(),
 			Example:    adaptivemetrics.RuleExample(),
 		},
+		{
+			Factory:    adaptivemetrics.NewSegmentAdapterFactory(loader),
+			Descriptor: adaptivemetrics.SegmentDescriptor(),
+			GVK:        adaptivemetrics.SegmentDescriptor().GroupVersionKind(),
+			Schema:     adaptivemetrics.SegmentSchema(),
+			Example:    adaptivemetrics.SegmentExample(),
+		},
+		{
+			Factory:    adaptivemetrics.NewExemptionAdapterFactory(loader),
+			Descriptor: adaptivemetrics.ExemptionDescriptor(),
+			GVK:        adaptivemetrics.ExemptionDescriptor().GroupVersionKind(),
+			Schema:     adaptivemetrics.ExemptionSchema(),
+			Example:    adaptivemetrics.ExemptionExample(),
+		},
 	}
 }

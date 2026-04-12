@@ -264,6 +264,16 @@ var commandAnnotations = map[string]annotation{
 	"gcx metrics adaptive rules get":             {Cost: "small"},
 	"gcx metrics adaptive rules list":            {Cost: "small"},
 	"gcx metrics adaptive rules update":          {Cost: "small"},
+	"gcx metrics adaptive segments create":       {Cost: "small"},
+	"gcx metrics adaptive segments delete":       {Cost: "small"},
+	"gcx metrics adaptive segments get":          {Cost: "small"},
+	"gcx metrics adaptive segments list":         {Cost: "small"},
+	"gcx metrics adaptive segments update":       {Cost: "small"},
+	"gcx metrics adaptive exemptions create":     {Cost: "small"},
+	"gcx metrics adaptive exemptions delete":     {Cost: "small"},
+	"gcx metrics adaptive exemptions get":        {Cost: "small"},
+	"gcx metrics adaptive exemptions list":       {Cost: "small"},
+	"gcx metrics adaptive exemptions update":     {Cost: "small"},
 
 	// -----------------------------------------------------------------------
 	// OnCall provider
