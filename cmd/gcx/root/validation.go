@@ -26,6 +26,16 @@ func ValidateArgs(rootCmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// Cobra registers its hidden shell-completion helpers lazily inside
+	// ExecuteC, so they are absent from the command tree at validation time.
+	// Let them through to Cobra's normal dispatch.
+	if len(trimmedArgs) > 0 {
+		switch trimmedArgs[0] {
+		case cobra.ShellCompRequestCmd, cobra.ShellCompNoDescRequestCmd:
+			return nil
+		}
+	}
+
 	cmd, remaining, ok := traverseArgs(rootCmd, trimmedArgs)
 	if !ok || cmd == nil {
 		return nil

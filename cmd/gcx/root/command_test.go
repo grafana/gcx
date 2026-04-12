@@ -160,4 +160,11 @@ func TestValidateArgs_AllowsHelpAndCompletionCommands(t *testing.T) {
 	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"help"}))
 	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"help", "sigil"}))
 	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"completion", "bash"}))
+
+	// Cobra's hidden shell helpers are registered lazily inside ExecuteC, so
+	// ValidateArgs must let them through to Cobra's normal dispatch.
+	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"__complete", ""}))
+	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"__complete", "sigil", ""}))
+	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"__completeNoDesc", ""}))
+	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"--agent", "__complete", ""}))
 }
