@@ -49,6 +49,20 @@ func TestResolve(t *testing.T) {
 			expected: "https://mystack.grafana.net/a/test-app/widgets/",
 		},
 		{
+			name:     "version-agnostic: matches different version",
+			host:     "https://mystack.grafana.net",
+			gvk:      schema.GroupVersionKind{Group: "test.grafana.app", Version: "v2beta1", Kind: "Widget"},
+			resName:  "widget-1",
+			expected: "https://mystack.grafana.net/a/test-app/widgets/widget-1",
+		},
+		{
+			name:     "dashboard v0alpha1",
+			host:     "https://mystack.grafana.net",
+			gvk:      schema.GroupVersionKind{Group: "dashboard.grafana.app", Version: "v0alpha1", Kind: "Dashboard"},
+			resName:  "abc-123",
+			expected: "https://mystack.grafana.net/d/abc-123",
+		},
+		{
 			name:     "dashboard v1beta1",
 			host:     "https://mystack.grafana.net",
 			gvk:      schema.GroupVersionKind{Group: "dashboard.grafana.app", Version: "v1beta1", Kind: "Dashboard"},
@@ -56,9 +70,9 @@ func TestResolve(t *testing.T) {
 			expected: "https://mystack.grafana.net/d/abc-123",
 		},
 		{
-			name:     "folder v1beta1",
+			name:     "folder any version",
 			host:     "https://mystack.grafana.net",
-			gvk:      schema.GroupVersionKind{Group: "folder.grafana.app", Version: "v1beta1", Kind: "Folder"},
+			gvk:      schema.GroupVersionKind{Group: "folder.grafana.app", Version: "v99", Kind: "Folder"},
 			resName:  "my-folder",
 			expected: "https://mystack.grafana.net/dashboards/f/my-folder",
 		},

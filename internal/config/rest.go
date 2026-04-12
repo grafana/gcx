@@ -21,6 +21,11 @@ type NamespacedRESTConfig struct {
 
 	Namespace string
 
+	// GrafanaURL is the user-facing Grafana server URL (e.g., "https://mystack.grafana.net").
+	// This is always the original grafana.server value, even when Host is rewritten
+	// to a proxy endpoint for OAuth mode. Use this for deep link URLs, not Host.
+	GrafanaURL string
+
 	// oauthTransport holds a reference to the RefreshTransport when OAuth proxy
 	// mode is active, allowing callers to wire the OnRefresh callback after
 	// construction (Option C: call-site wiring).
@@ -240,6 +245,7 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) NamespacedRESTCon
 	return NamespacedRESTConfig{
 		Config:         rcfg,
 		Namespace:      namespace,
+		GrafanaURL:     strings.TrimSuffix(cfg.Grafana.Server, "/"),
 		oauthTransport: oauthTransport,
 	}
 }

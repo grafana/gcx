@@ -37,14 +37,15 @@ const (
 // Client is an HTTP client for the Grafana OnCall API.
 type Client struct {
 	oncallURL    string
-	stackURL     string
+	stackURL     string // REST config host (may be proxy URL in OAuth mode)
+	grafanaURL   string // User-facing Grafana server URL (for deep links)
 	token        string
 	httpClient   *http.Client
 	isOAuthProxy bool
 }
 
-// StackURL returns the Grafana server URL (used for deep links).
-func (c *Client) StackURL() string { return c.stackURL }
+// GrafanaURL returns the user-facing Grafana server URL (used for deep links).
+func (c *Client) GrafanaURL() string { return c.grafanaURL }
 
 // NewClient creates a new OnCall client from the given REST config and OnCall API URL.
 // oncallURL is the OnCall API base URL (e.g., https://oncall-prod-us-central-0.grafana.net/oncall).
@@ -77,6 +78,7 @@ func NewClient(ctx context.Context, oncallURL string, cfg config.NamespacedRESTC
 	return &Client{
 		oncallURL:    strings.TrimRight(oncallURL, "/"),
 		stackURL:     cfg.Host,
+		grafanaURL:   cfg.GrafanaURL,
 		token:        token,
 		httpClient:   httpClient,
 		isOAuthProxy: isOAuthProxy,

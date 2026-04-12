@@ -637,5 +637,5 @@ func NewTypedCRUD[T adapter.ResourceNamer](
 		opt(client, crud)
 	}
 
-	return crud, namespace, client.StackURL(), nil
+	return crud, namespace, client.GrafanaURL(), nil
 }

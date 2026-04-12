@@ -121,7 +121,7 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				url := deeplink.Resolve(cfg.Host, deeplink.InvestigationGVK, args[0])
+				url := deeplink.Resolve(cfg.GrafanaURL, deeplink.InvestigationGVK, args[0])
 				if url == "" {
 					return fmt.Errorf("no deep link URL available for investigation %s", args[0])
 				}

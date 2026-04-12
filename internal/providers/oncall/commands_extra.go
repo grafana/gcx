@@ -63,7 +63,7 @@ func newAlertGroupListCommand(loader OnCallConfigLoader) *cobra.Command {
 				return err
 			}
 
-			deeplink.InjectURLs(objs, client.StackURL())
+			deeplink.InjectURLs(objs, client.GrafanaURL())
 
 			return opts.IO.Encode(cmd.OutOrStdout(), objs)
 		},

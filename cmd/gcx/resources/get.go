@@ -253,7 +253,7 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			resources.SortUnstructured(output.Items)
 
 			// Inject deep link URLs into each resource.
-			deeplink.InjectURLs(output.Items, cfg.Host)
+			deeplink.InjectURLs(output.Items, cfg.GrafanaURL)
 
 			// --json ? discovery fallback: print fields from a fetched sample.
 			if opts.IO.JSONDiscovery {
