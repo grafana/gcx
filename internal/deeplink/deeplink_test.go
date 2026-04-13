@@ -5,6 +5,7 @@ import (
 
 	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -76,6 +77,13 @@ func TestResolve(t *testing.T) {
 			resName:  "my-folder",
 			expected: "https://mystack.grafana.net/dashboards/f/my-folder",
 		},
+		{
+			name:     "name with special characters is path-escaped",
+			host:     "https://mystack.grafana.net",
+			gvk:      gvk,
+			resName:  "my widget/2024",
+			expected: "https://mystack.grafana.net/a/test-app/widgets/my%20widget%2F2024",
+		},
 	}
 
 	for _, tt := range tests {
@@ -84,6 +92,26 @@ func TestResolve(t *testing.T) {
 			assert.Equal(t, tt.expected, got)
 		})
 	}
+}
+
+func TestOpen(t *testing.T) {
+	t.Run("rejects javascript scheme", func(t *testing.T) {
+		err := deeplink.Open("javascript:alert(1)")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "refusing to open non-http URL")
+	})
+
+	t.Run("rejects file scheme", func(t *testing.T) {
+		err := deeplink.Open("file:///etc/passwd")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "refusing to open non-http URL")
+	})
+
+	t.Run("rejects schemeless URL", func(t *testing.T) {
+		err := deeplink.Open("mystack.grafana.net/d/abc")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "refusing to open non-http URL")
+	})
 }
 
 func TestInjectURL(t *testing.T) {

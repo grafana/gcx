@@ -1828,7 +1828,7 @@ func newOpenCommand(loader RESTConfigLoader) *cobra.Command {
 				return err
 			}
 			url := strings.TrimRight(cfg.GrafanaURL, "/") + "/a/grafana-asserts-app"
-			cmdio.Info(cmd.OutOrStdout(), "Opening %s", url)
+			cmdio.Info(cmd.ErrOrStderr(), "Opening %s", url)
 			return deeplink.Open(url)
 		},
 	}

@@ -365,7 +365,7 @@ func newOpenCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return fmt.Errorf("no deep link URL available for incident %s", id)
 			}
 
-			cmdio.Info(cmd.OutOrStdout(), "Opening %s", url)
+			cmdio.Info(cmd.ErrOrStderr(), "Opening %s", url)
 			return deeplink.Open(url)
 		},
 	}

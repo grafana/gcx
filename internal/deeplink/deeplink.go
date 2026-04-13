@@ -1,6 +1,8 @@
 package deeplink
 
 import (
+	"fmt"
+	"net/url"
 	"strings"
 	"sync"
 
@@ -57,7 +59,7 @@ func Resolve(host string, gvk schema.GroupVersionKind, name string) string {
 	if !ok {
 		return ""
 	}
-	return strings.TrimRight(host, "/") + strings.ReplaceAll(tmpl, "{name}", name)
+	return strings.TrimRight(host, "/") + strings.ReplaceAll(tmpl, "{name}", url.PathEscape(name))
 }
 
 // InjectURL sets the top-level "url" field on an unstructured object
@@ -78,6 +80,10 @@ func InjectURLs(items []unstructured.Unstructured, host string) {
 }
 
 // Open opens the given URL in the default browser.
-func Open(url string) error {
-	return browser.OpenURL(url)
+// Returns an error if the URL does not use http or https scheme.
+func Open(rawURL string) error {
+	if !strings.HasPrefix(rawURL, "https://") && !strings.HasPrefix(rawURL, "http://") {
+		return fmt.Errorf("refusing to open non-http URL: %s", rawURL)
+	}
+	return browser.OpenURL(rawURL)
 }
