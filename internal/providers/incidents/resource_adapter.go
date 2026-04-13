@@ -14,15 +14,15 @@ import (
 
 func init() { //nolint:gochecknoinits // Natural key registration for cross-stack push identity matching.
 	adapter.RegisterNaturalKey(
-		staticDescriptor.GroupVersionKind(),
+		StaticDescriptor.GroupVersionKind(),
 		adapter.SpecFieldKey("title"),
 	)
 }
 
-// staticDescriptor is the resource descriptor for incident resources.
+// StaticDescriptor is the resource descriptor for incident resources.
 //
 //nolint:gochecknoglobals // Static descriptor used in init() self-registration pattern.
-var staticDescriptor = resources.Descriptor{
+var StaticDescriptor = resources.Descriptor{
 	GroupVersion: schema.GroupVersion{
 		Group:   "incident.ext.grafana.app",
 		Version: "v1alpha1",
@@ -33,7 +33,7 @@ var staticDescriptor = resources.Descriptor{
 }
 
 // incidentSchema returns a JSON Schema for the Incident resource type.
-func incidentSchema() json.RawMessage {
+func IncidentSchema() json.RawMessage {
 	schema := map[string]any{
 		"$schema": "https://json-schema.org/draft/2020-12/schema",
 		"$id":     "https://grafana.com/schemas/Incident",
@@ -73,7 +73,7 @@ func incidentSchema() json.RawMessage {
 }
 
 // incidentExample returns an example Incident manifest as JSON.
-func incidentExample() json.RawMessage {
+func IncidentExample() json.RawMessage {
 	example := map[string]any{
 		"apiVersion": APIVersion,
 		"kind":       Kind,
@@ -163,7 +163,7 @@ func newTypedAdapter(client *Client, namespace string) adapter.ResourceAdapter {
 
 		StripFields: []string{"incidentID"},
 		Namespace:   namespace,
-		Descriptor:  staticDescriptor,
+		Descriptor:  StaticDescriptor,
 	}
 
 	return crud.AsAdapter()
@@ -209,7 +209,7 @@ func NewTypedCRUD(ctx context.Context, loader GrafanaConfigLoader, query Inciden
 
 		StripFields: []string{"incidentID"},
 		Namespace:   cfg.Namespace,
-		Descriptor:  staticDescriptor,
+		Descriptor:  StaticDescriptor,
 	}
 
 	return crud, cfg, nil

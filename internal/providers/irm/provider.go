@@ -62,4 +62,9 @@ func (p *IRMProvider) Commands() []*cobra.Command {
 
 func (p *IRMProvider) Validate(_ map[string]string) error        { return nil }
 func (p *IRMProvider) ConfigKeys() []providers.ConfigKey          { return nil }
-func (p *IRMProvider) TypedRegistrations() []adapter.Registration { return nil }
+func (p *IRMProvider) TypedRegistrations() []adapter.Registration {
+	loader := &configLoader{}
+	regs := buildOnCallRegistrations(loader)
+	regs = append(regs, buildIncidentRegistrations(loader)...)
+	return regs
+}

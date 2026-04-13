@@ -69,10 +69,10 @@ func (p *IncidentsProvider) TypedRegistrations() []adapter.Registration {
 	return []adapter.Registration{
 		{
 			Factory:     NewAdapterFactory(loader),
-			Descriptor:  staticDescriptor,
-			GVK:         staticDescriptor.GroupVersionKind(),
-			Schema:      incidentSchema(),
-			Example:     incidentExample(),
+			Descriptor:  StaticDescriptor,
+			GVK:         StaticDescriptor.GroupVersionKind(),
+			Schema:      IncidentSchema(),
+			Example:     IncidentExample(),
 			URLTemplate: "/a/grafana-incident-app/incidents/{name}",
 		},
 	}
