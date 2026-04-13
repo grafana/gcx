@@ -90,6 +90,9 @@ var commandAnnotations = map[string]annotation{
 	"gcx setup instrumentation show":     {Cost: "medium", Hint: "<cluster> -o json"},
 	"gcx setup instrumentation status":   {Cost: "small"},
 
+	// skills
+	"gcx skills install": {Cost: "small"},
+
 	// -----------------------------------------------------------------------
 	// Alert provider
 	// -----------------------------------------------------------------------
