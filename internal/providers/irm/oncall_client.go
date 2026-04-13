@@ -1,14 +1,15 @@
 package irm
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"bytes"
 	"io"
 	"iter"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/grafana/gcx/internal/config"
@@ -18,32 +19,33 @@ import (
 // Internal API paths (relative to basePath, which is the plugin resources root).
 // The IRM plugin proxy prepends "api/internal/v1/" before forwarding to the backend.
 const (
-	basePath = "/api/plugins/grafana-irm-app/resources"
+	// BasePath is the plugin resources root for the IRM app.
+	BasePath = "/api/plugins/grafana-irm-app/resources"
 
-	integrationsPath      = "alert_receive_channels/"
-	escalationChainsPath  = "escalation_chains/"
+	integrationsPath       = "alert_receive_channels/"
+	escalationChainsPath   = "escalation_chains/"
 	escalationPoliciesPath = "escalation_policies/"
-	schedulesPath         = "schedules/"
-	shiftsPath            = "oncall_shifts/"
-	routesPath            = "channel_filters/"
-	webhooksPath          = "webhooks/"
-	alertGroupsPath       = "alertgroups/"
-	usersPath             = "users/"
-	currentUserPath       = "user/"
-	teamsPath             = "teams/"
-	userGroupsPath        = "user_groups/"
-	slackChannelsPath     = "slack_channels/"
-	alertsPath            = "alerts/"
-	organizationPath      = "organization/"
-	resolutionNotesPath   = "resolution_notes/"
-	shiftSwapsPath        = "shift_swaps/"
-	directPagingPath      = "direct_paging"
+	schedulesPath          = "schedules/"
+	shiftsPath             = "oncall_shifts/"
+	routesPath             = "channel_filters/"
+	webhooksPath           = "webhooks/"
+	alertGroupsPath        = "alertgroups/"
+	usersPath              = "users/"
+	currentUserPath        = "user/"
+	teamsPath              = "teams/"
+	userGroupsPath         = "user_groups/"
+	slackChannelsPath      = "slack_channels/"
+	alertsPath             = "alerts/"
+	organizationPath       = "organization/"
+	resolutionNotesPath    = "resolution_notes/"
+	shiftSwapsPath         = "shift_swaps/"
+	directPagingPath       = "direct_paging"
 )
 
 // OnCallClient is an HTTP client for the OnCall internal API via the IRM plugin proxy.
 type OnCallClient struct {
-	httpClient *http.Client
-	host       string
+	HTTPClient *http.Client
+	Host       string
 }
 
 // NewOnCallClient creates a new OnCall client from the given REST config.
@@ -53,18 +55,19 @@ func NewOnCallClient(cfg config.NamespacedRESTConfig) (*OnCallClient, error) {
 	if err != nil {
 		return nil, fmt.Errorf("irm oncall: create http client: %w", err)
 	}
-	return &OnCallClient{httpClient: httpClient, host: cfg.Host}, nil
+	return &OnCallClient{HTTPClient: httpClient, Host: cfg.Host}, nil
 }
 
-func (c *OnCallClient) doRequest(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
-	reqURL := c.host + basePath + "/" + path
+// DoRequest builds and executes an HTTP request against the OnCall internal API via the plugin proxy.
+func (c *OnCallClient) DoRequest(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
+	reqURL := c.Host + BasePath + "/" + path
 	req, err := http.NewRequestWithContext(ctx, method, reqURL, body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -93,7 +96,7 @@ func iterResources[T any](c *OnCallClient, ctx context.Context, path, resourceTy
 				return
 			}
 
-			resp, err := c.doRequest(ctx, http.MethodGet, next, nil)
+			resp, err := c.DoRequest(ctx, http.MethodGet, next, nil)
 			if err != nil {
 				var z T
 				yield(z, fmt.Errorf("irm: list %s: %w", resourceType, err))
@@ -149,7 +152,7 @@ func iterResources[T any](c *OnCallClient, ctx context.Context, path, resourceTy
 				break
 			}
 
-			next, err = extractNextPath(*nextURL)
+			next, err = ExtractNextPath(*nextURL)
 			if err != nil {
 				var z T
 				yield(z, fmt.Errorf("irm: pagination %s: %w", resourceType, err))
@@ -159,11 +162,11 @@ func iterResources[T any](c *OnCallClient, ctx context.Context, path, resourceTy
 	}
 }
 
-// extractNextPath extracts the relative API path from a pagination URL.
+// ExtractNextPath extracts the relative API path from a pagination URL.
 // The backend returns absolute URLs pointing to the real OnCall host
 // (e.g., "https://oncall-prod/oncall/api/internal/v1/alertgroups/?page=2").
 // We extract the path after "api/internal/v1/" and re-request through the proxy.
-func extractNextPath(rawURL string) (string, error) {
+func ExtractNextPath(rawURL string) (string, error) {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
 		return "", fmt.Errorf("invalid pagination URL %q: %w", rawURL, err)
@@ -187,18 +190,46 @@ func extractNextPath(rawURL string) (string, error) {
 }
 
 func collectAll[T any](it iter.Seq2[T, error]) ([]T, error) {
+	return collectN(it, 0)
+}
+
+// collectN collects up to n items from an iterator. If n <= 0, all items are collected.
+func collectN[T any](it iter.Seq2[T, error], n int) ([]T, error) {
 	var items []T
 	for item, err := range it {
 		if err != nil {
 			return nil, err
 		}
 		items = append(items, item)
+		if n > 0 && len(items) >= n {
+			break
+		}
 	}
 	return items, nil
 }
 
+// ListOption configures list behaviour (e.g. early termination).
+type ListOption func(*listConfig)
+
+type listConfig struct {
+	limit int
+}
+
+// WithLimit stops collecting after n items (0 = no limit).
+func WithLimit(n int) ListOption {
+	return func(c *listConfig) { c.limit = n }
+}
+
+func applyListOpts(opts []ListOption) listConfig {
+	var cfg listConfig
+	for _, o := range opts {
+		o(&cfg)
+	}
+	return cfg
+}
+
 func getResource[T any](c *OnCallClient, ctx context.Context, basePath, id, resourceType string) (*T, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, fmt.Sprintf("%s%s/", basePath, url.PathEscape(id)), nil)
+	resp, err := c.DoRequest(ctx, http.MethodGet, fmt.Sprintf("%s%s/", basePath, url.PathEscape(id)), nil)
 	if err != nil {
 		return nil, fmt.Errorf("irm: get %s: %w", resourceType, err)
 	}
@@ -224,7 +255,7 @@ func createResource[In any, Out any](c *OnCallClient, ctx context.Context, path 
 		return nil, fmt.Errorf("irm: marshal %s: %w", resourceType, err)
 	}
 
-	resp, err := c.doRequest(ctx, http.MethodPost, path, bytes.NewReader(data))
+	resp, err := c.DoRequest(ctx, http.MethodPost, path, bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("irm: create %s: %w", resourceType, err)
 	}
@@ -247,7 +278,7 @@ func updateResource[In any, Out any](c *OnCallClient, ctx context.Context, baseP
 		return nil, fmt.Errorf("irm: marshal %s: %w", resourceType, err)
 	}
 
-	resp, err := c.doRequest(ctx, http.MethodPut, fmt.Sprintf("%s%s/", basePath, url.PathEscape(id)), bytes.NewReader(data))
+	resp, err := c.DoRequest(ctx, http.MethodPut, fmt.Sprintf("%s%s/", basePath, url.PathEscape(id)), bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("irm: update %s: %w", resourceType, err)
 	}
@@ -265,7 +296,7 @@ func updateResource[In any, Out any](c *OnCallClient, ctx context.Context, baseP
 }
 
 func deleteResource(c *OnCallClient, ctx context.Context, basePath, id, resourceType string) error {
-	resp, err := c.doRequest(ctx, http.MethodDelete, fmt.Sprintf("%s%s/", basePath, url.PathEscape(id)), nil)
+	resp, err := c.DoRequest(ctx, http.MethodDelete, fmt.Sprintf("%s%s/", basePath, url.PathEscape(id)), nil)
 	if err != nil {
 		return fmt.Errorf("irm: delete %s: %w", resourceType, err)
 	}
@@ -381,10 +412,10 @@ func (c *OnCallClient) ListFilterEvents(ctx context.Context, scheduleID, userTZ,
 	params.Set("type", "final")
 	params.Set("user_tz", userTZ)
 	params.Set("starting_date", startingDate)
-	params.Set("days", fmt.Sprintf("%d", days))
+	params.Set("days", strconv.Itoa(days))
 	path := fmt.Sprintf("%s%s/filter_events/?%s", schedulesPath, url.PathEscape(scheduleID), params.Encode())
 
-	resp, err := c.doRequest(ctx, http.MethodGet, path, nil)
+	resp, err := c.DoRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("irm: list final shifts: %w", err)
 	}
@@ -473,8 +504,9 @@ func (c *OnCallClient) DeleteWebhook(ctx context.Context, id string) error {
 
 // --- Alert Groups ---
 
-func (c *OnCallClient) ListAlertGroups(ctx context.Context) ([]AlertGroup, error) {
-	return collectAll(iterResources[AlertGroup](c, ctx, alertGroupsPath, "alert group"))
+func (c *OnCallClient) ListAlertGroups(ctx context.Context, opts ...ListOption) ([]AlertGroup, error) {
+	cfg := applyListOpts(opts)
+	return collectN(iterResources[AlertGroup](c, ctx, alertGroupsPath, "alert group"), cfg.limit)
 }
 
 func (c *OnCallClient) GetAlertGroup(ctx context.Context, id string) (*AlertGroup, error) {
@@ -498,7 +530,7 @@ func (c *OnCallClient) SilenceAlertGroup(ctx context.Context, id string, delaySe
 	if err != nil {
 		return fmt.Errorf("irm: marshal silence request: %w", err)
 	}
-	resp, err := c.doRequest(ctx, http.MethodPost, fmt.Sprintf("%s%s/silence/", alertGroupsPath, url.PathEscape(id)), bytes.NewReader(data))
+	resp, err := c.DoRequest(ctx, http.MethodPost, fmt.Sprintf("%s%s/silence/", alertGroupsPath, url.PathEscape(id)), bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("irm: silence alert group: %w", err)
 	}
@@ -522,7 +554,7 @@ func (c *OnCallClient) UnsilenceAlertGroup(ctx context.Context, id string) error
 }
 
 func (c *OnCallClient) alertGroupAction(ctx context.Context, id, action string) error {
-	resp, err := c.doRequest(ctx, http.MethodPost, fmt.Sprintf("%s%s/%s/", alertGroupsPath, url.PathEscape(id), action), nil)
+	resp, err := c.DoRequest(ctx, http.MethodPost, fmt.Sprintf("%s%s/%s/", alertGroupsPath, url.PathEscape(id), action), nil)
 	if err != nil {
 		return fmt.Errorf("irm: %s alert group: %w", action, err)
 	}
@@ -544,7 +576,7 @@ func (c *OnCallClient) GetUser(ctx context.Context, id string) (*User, error) {
 }
 
 func (c *OnCallClient) GetCurrentUser(ctx context.Context) (*User, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, currentUserPath, nil)
+	resp, err := c.DoRequest(ctx, http.MethodGet, currentUserPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("irm: get current user: %w", err)
 	}
@@ -583,12 +615,13 @@ func (c *OnCallClient) ListSlackChannels(ctx context.Context) ([]SlackChannel, e
 
 // --- Alerts ---
 
-func (c *OnCallClient) ListAlerts(ctx context.Context, alertGroupID string) ([]Alert, error) {
+func (c *OnCallClient) ListAlerts(ctx context.Context, alertGroupID string, opts ...ListOption) ([]Alert, error) {
 	params := url.Values{}
 	if alertGroupID != "" {
 		params.Set("alert_group_id", alertGroupID)
 	}
-	return collectAll(iterResources[Alert](c, ctx, pathWithParams(alertsPath, params), "alert"))
+	cfg := applyListOpts(opts)
+	return collectN(iterResources[Alert](c, ctx, pathWithParams(alertsPath, params), "alert"), cfg.limit)
 }
 
 func (c *OnCallClient) GetAlert(ctx context.Context, id string) (*Alert, error) {
@@ -598,7 +631,7 @@ func (c *OnCallClient) GetAlert(ctx context.Context, id string) (*Alert, error) 
 // --- Organization ---
 
 func (c *OnCallClient) GetOrganization(ctx context.Context) (*Organization, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, organizationPath, nil)
+	resp, err := c.DoRequest(ctx, http.MethodGet, organizationPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("irm: get organization: %w", err)
 	}
@@ -666,7 +699,7 @@ func (c *OnCallClient) TakeShiftSwap(ctx context.Context, id string, input TakeS
 	if err != nil {
 		return nil, fmt.Errorf("irm: marshal take shift swap: %w", err)
 	}
-	resp, err := c.doRequest(ctx, http.MethodPost, fmt.Sprintf("%s%s/take/", shiftSwapsPath, url.PathEscape(id)), bytes.NewReader(data))
+	resp, err := c.DoRequest(ctx, http.MethodPost, fmt.Sprintf("%s%s/take/", shiftSwapsPath, url.PathEscape(id)), bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("irm: take shift swap: %w", err)
 	}

@@ -12,13 +12,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-func init() { //nolint:gochecknoinits // Natural key registration for cross-stack push identity matching.
-	adapter.RegisterNaturalKey(
-		StaticDescriptor.GroupVersionKind(),
-		adapter.SpecFieldKey("title"),
-	)
-}
-
 // StaticDescriptor is the resource descriptor for incident resources.
 //
 //nolint:gochecknoglobals // Static descriptor used in init() self-registration pattern.

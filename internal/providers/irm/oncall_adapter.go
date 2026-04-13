@@ -27,9 +27,10 @@ func init() { //nolint:gochecknoinits // Natural key registration for cross-stac
 }
 
 type resourceMeta struct {
-	Descriptor resources.Descriptor
-	Schema     json.RawMessage
-	Example    json.RawMessage
+	Descriptor  resources.Descriptor
+	Schema      json.RawMessage
+	Example     json.RawMessage
+	URLTemplate string
 }
 
 func withCreate[T adapter.ResourceNamer](fn func(ctx context.Context, c *OnCallClient, item *T) (*T, error)) crudOption[T] {
@@ -78,7 +79,7 @@ func buildRegistration[T adapter.ResourceNamer](
 			}
 
 			if listFn != nil {
-				crud.ListFn = func(ctx context.Context) ([]T, error) { return listFn(ctx, client) }
+				crud.ListFn = adapter.LimitedListFn(func(ctx context.Context) ([]T, error) { return listFn(ctx, client) })
 			}
 
 			if getFn != nil {
@@ -93,13 +94,13 @@ func buildRegistration[T adapter.ResourceNamer](
 
 			return crud.AsAdapter(), nil
 		},
-		Descriptor: desc,
-		GVK:        desc.GroupVersionKind(),
-		Schema:     meta.Schema,
-		Example:    meta.Example,
+		Descriptor:  desc,
+		GVK:         desc.GroupVersionKind(),
+		Schema:      meta.Schema,
+		Example:     meta.Example,
+		URLTemplate: meta.URLTemplate,
 	}
 }
-
 
 func oncallMeta(kind, singular, plural string) resourceMeta {
 	return resourceMeta{
@@ -123,6 +124,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta := oncallMeta("Integration", "integration", "integrations")
 	meta.Schema = adapter.SchemaFromType[Integration](meta.Descriptor)
 	meta.Example = integrationExample()
+	meta.URLTemplate = "/a/grafana-oncall-app/integrations/{name}"
 	regs = append(regs, buildRegistration(loader, meta,
 		func(ctx context.Context, c *OnCallClient) ([]Integration, error) { return c.ListIntegrations(ctx) },
 		func(ctx context.Context, c *OnCallClient, name string) (*Integration, error) {
@@ -143,6 +145,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta = oncallMeta("EscalationChain", "escalationchain", "escalationchains")
 	meta.Schema = adapter.SchemaFromType[EscalationChain](meta.Descriptor)
 	meta.Example = escalationChainExample()
+	meta.URLTemplate = "/a/grafana-oncall-app/escalation-chains/{name}"
 	regs = append(regs, buildRegistration(loader, meta,
 		func(ctx context.Context, c *OnCallClient) ([]EscalationChain, error) {
 			return c.ListEscalationChains(ctx)
@@ -187,9 +190,12 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta = oncallMeta("Schedule", "schedule", "schedules")
 	meta.Schema = adapter.SchemaFromType[Schedule](meta.Descriptor)
 	meta.Example = scheduleExample()
+	meta.URLTemplate = "/a/grafana-oncall-app/schedules/{name}"
 	regs = append(regs, buildRegistration(loader, meta,
 		func(ctx context.Context, c *OnCallClient) ([]Schedule, error) { return c.ListSchedules(ctx) },
-		func(ctx context.Context, c *OnCallClient, name string) (*Schedule, error) { return c.GetSchedule(ctx, name) },
+		func(ctx context.Context, c *OnCallClient, name string) (*Schedule, error) {
+			return c.GetSchedule(ctx, name)
+		},
 		withCreate(func(ctx context.Context, c *OnCallClient, item *Schedule) (*Schedule, error) {
 			return c.CreateSchedule(ctx, *item)
 		}),
@@ -241,9 +247,12 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta = oncallMeta("Webhook", "webhook", "webhooks")
 	meta.Schema = adapter.SchemaFromType[Webhook](meta.Descriptor)
 	meta.Example = webhookExample()
+	meta.URLTemplate = "/a/grafana-oncall-app/outgoing-webhooks/{name}"
 	regs = append(regs, buildRegistration(loader, meta,
 		func(ctx context.Context, c *OnCallClient) ([]Webhook, error) { return c.ListWebhooks(ctx) },
-		func(ctx context.Context, c *OnCallClient, name string) (*Webhook, error) { return c.GetWebhook(ctx, name) },
+		func(ctx context.Context, c *OnCallClient, name string) (*Webhook, error) {
+			return c.GetWebhook(ctx, name)
+		},
 		withCreate(func(ctx context.Context, c *OnCallClient, item *Webhook) (*Webhook, error) {
 			return c.CreateWebhook(ctx, *item)
 		}),
@@ -258,6 +267,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	// 8. AlertGroup — read-only + delete
 	meta = oncallMeta("AlertGroup", "alertgroup", "alertgroups")
 	meta.Schema = adapter.SchemaFromType[AlertGroup](meta.Descriptor)
+	meta.URLTemplate = "/a/grafana-oncall-app/alert-groups/{name}"
 	regs = append(regs, buildRegistration(loader, meta,
 		func(ctx context.Context, c *OnCallClient) ([]AlertGroup, error) { return c.ListAlertGroups(ctx) },
 		func(ctx context.Context, c *OnCallClient, name string) (*AlertGroup, error) {
@@ -378,18 +388,18 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 
 func shiftToRequest(s *Shift) ShiftRequest {
 	return ShiftRequest{
-		Name:                       s.Name,
-		Type:                       s.Type,
-		Schedule:                   s.Schedule,
-		PriorityLevel:              s.PriorityLevel,
-		ShiftStart:                 s.ShiftStart,
-		RotationStart:              s.RotationStart,
-		Until:                      s.Until,
-		Frequency:                  s.Frequency,
-		Interval:                   s.Interval,
-		ByDay:                      s.ByDay,
-		WeekStart:                  s.WeekStart,
-		RollingUsers:               s.RollingUsers,
+		Name:          s.Name,
+		Type:          s.Type,
+		Schedule:      s.Schedule,
+		PriorityLevel: s.PriorityLevel,
+		ShiftStart:    s.ShiftStart,
+		RotationStart: s.RotationStart,
+		Until:         s.Until,
+		Frequency:     s.Frequency,
+		Interval:      s.Interval,
+		ByDay:         s.ByDay,
+		WeekStart:     s.WeekStart,
+		RollingUsers:  s.RollingUsers,
 	}
 }
 
@@ -401,9 +411,9 @@ func integrationExample() json.RawMessage {
 		"kind":       "Integration",
 		"metadata":   map[string]any{"name": "my-alertmanager"},
 		"spec": map[string]any{
-			"verbal_name":      "my-alertmanager",
+			"verbal_name":       "my-alertmanager",
 			"description_short": "Receives alerts from Alertmanager",
-			"integration":      "alertmanager",
+			"integration":       "alertmanager",
 		},
 	})
 }
@@ -423,8 +433,8 @@ func escalationPolicyExample() json.RawMessage {
 		"kind":       "EscalationPolicy",
 		"metadata":   map[string]any{"name": "my-policy"},
 		"spec": map[string]any{
-			"escalation_chain":     "ABCD1234",
-			"step":                 0,
+			"escalation_chain":      "ABCD1234",
+			"step":                  0,
 			"notify_to_users_queue": []string{"U1234"},
 		},
 	})
@@ -466,7 +476,7 @@ func routeExample() json.RawMessage {
 		"metadata":   map[string]any{"name": "my-route"},
 		"spec": map[string]any{
 			"alert_receive_channel": "INT1234",
-			"filtering_term":       "severity=critical",
+			"filtering_term":        "severity=critical",
 		},
 	})
 }

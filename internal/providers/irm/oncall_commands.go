@@ -107,7 +107,7 @@ func newListSubcommand[T adapter.ResourceNamer](
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx)
+			typedObjs, err := crud.List(ctx, 0)
 			if err != nil {
 				return err
 			}
@@ -194,7 +194,7 @@ func newTypedCRUD[T adapter.ResourceNamer](
 	}
 
 	crud := &adapter.TypedCRUD[T]{
-		ListFn:      func(ctx context.Context) ([]T, error) { return listFn(ctx, client) },
+		ListFn:      adapter.LimitedListFn(func(ctx context.Context) ([]T, error) { return listFn(ctx, client) }),
 		StripFields: defaultStripFields,
 		Namespace:   namespace,
 	}
@@ -289,9 +289,13 @@ func newSchedulesCmd(loader OnCallConfigLoader) *cobra.Command {
 	cmd.AddCommand(
 		newListSubcommand(loader, "schedules", "Schedule", "List OnCall schedules.", "id",
 			func(ctx context.Context, c *OnCallClient) ([]Schedule, error) { return c.ListSchedules(ctx) },
-			func(ctx context.Context, c *OnCallClient, name string) (*Schedule, error) { return c.GetSchedule(ctx, name) }),
+			func(ctx context.Context, c *OnCallClient, name string) (*Schedule, error) {
+				return c.GetSchedule(ctx, name)
+			}),
 		newGetSubcommand(loader, "Get a schedule by ID.",
-			func(ctx context.Context, c *OnCallClient, name string) (*Schedule, error) { return c.GetSchedule(ctx, name) }),
+			func(ctx context.Context, c *OnCallClient, name string) (*Schedule, error) {
+				return c.GetSchedule(ctx, name)
+			}),
 		newScheduleFinalShiftsCommand(loader),
 	)
 	return cmd
@@ -338,9 +342,13 @@ func newWebhooksCmd(loader OnCallConfigLoader) *cobra.Command {
 	cmd.AddCommand(
 		newListSubcommand(loader, "webhooks", "Webhook", "List outgoing webhooks.", "id",
 			func(ctx context.Context, c *OnCallClient) ([]Webhook, error) { return c.ListWebhooks(ctx) },
-			func(ctx context.Context, c *OnCallClient, name string) (*Webhook, error) { return c.GetWebhook(ctx, name) }),
+			func(ctx context.Context, c *OnCallClient, name string) (*Webhook, error) {
+				return c.GetWebhook(ctx, name)
+			}),
 		newGetSubcommand(loader, "Get an outgoing webhook by ID.",
-			func(ctx context.Context, c *OnCallClient, name string) (*Webhook, error) { return c.GetWebhook(ctx, name) }),
+			func(ctx context.Context, c *OnCallClient, name string) (*Webhook, error) {
+				return c.GetWebhook(ctx, name)
+			}),
 	)
 	return cmd
 }
@@ -554,7 +562,7 @@ func (c *integrationTableCodec) Encode(w io.Writer, v any) error {
 			name = truncate(name, 50)
 		}
 		if c.Wide {
-			t.Row(id, name, specStr(obj, "integration"), orDash(fmt.Sprint(specStr(obj, "team"))), orDash(specStr(obj, "integration_url")))
+			t.Row(id, name, specStr(obj, "integration"), orDash(specStr(obj, "team")), orDash(specStr(obj, "integration_url")))
 		} else {
 			t.Row(id, name, specStr(obj, "integration"))
 		}
@@ -579,7 +587,7 @@ func (c *escalationChainTableCodec) Encode(w io.Writer, v any) error {
 	}
 	t := style.NewTable("ID", "NAME", "TEAM")
 	for _, obj := range items {
-		t.Row(obj.GetName(), specStr(obj, "name"), orDash(fmt.Sprint(specStr(obj, "team"))))
+		t.Row(obj.GetName(), specStr(obj, "name"), orDash(specStr(obj, "team")))
 	}
 	return t.Render(w)
 }
@@ -656,7 +664,7 @@ func (c *scheduleTableCodec) Encode(w io.Writer, v any) error {
 		id := obj.GetName()
 		tz := orDash(specStr(obj, "time_zone"))
 		if c.Wide {
-			t.Row(id, specStr(obj, "name"), specStr(obj, "type"), tz, orDash(fmt.Sprint(specStr(obj, "team"))))
+			t.Row(id, specStr(obj, "name"), specStr(obj, "type"), tz, orDash(specStr(obj, "team")))
 		} else {
 			t.Row(id, specStr(obj, "name"), specStr(obj, "type"), tz)
 		}
@@ -825,7 +833,7 @@ func (c *alertGroupTableCodec) Encode(w io.Writer, v any) error {
 		alerts := specInt(obj, "alerts_count")
 		status := specStr(obj, "status")
 		if c.Wide {
-			t.Row(id, status, strconv.Itoa(alerts), started, orDash(specStr(obj, "alert_receive_channel")), orDash(fmt.Sprint(specStr(obj, "team"))))
+			t.Row(id, status, strconv.Itoa(alerts), started, orDash(specStr(obj, "alert_receive_channel")), orDash(specStr(obj, "team")))
 		} else {
 			t.Row(id, status, strconv.Itoa(alerts), started)
 		}
