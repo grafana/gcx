@@ -42,26 +42,26 @@ func newAlertGroupsCommand(loader OnCallConfigLoader) *cobra.Command {
 		newAlertGroupListCommand(loader),
 		newAlertGroupListAlertsCommand(loader),
 		newGetSubcommand(loader, "Get an alert group by ID.",
-			func(ctx context.Context, c *OnCallClient, name string) (*AlertGroup, error) {
+			func(ctx context.Context, c OnCallAPI, name string) (*AlertGroup, error) {
 				return c.GetAlertGroup(ctx, name)
 			}),
-		newAlertGroupActionCommand(loader, "acknowledge", "Acknowledge an alert group.", func(c *OnCallClient, cmd *cobra.Command, id string) error {
+		newAlertGroupActionCommand(loader, "acknowledge", "Acknowledge an alert group.", func(c OnCallAPI, cmd *cobra.Command, id string) error {
 			return c.AcknowledgeAlertGroup(cmd.Context(), id)
 		}),
-		newAlertGroupActionCommand(loader, "resolve", "Resolve an alert group.", func(c *OnCallClient, cmd *cobra.Command, id string) error {
+		newAlertGroupActionCommand(loader, "resolve", "Resolve an alert group.", func(c OnCallAPI, cmd *cobra.Command, id string) error {
 			return c.ResolveAlertGroup(cmd.Context(), id)
 		}),
-		newAlertGroupActionCommand(loader, "unacknowledge", "Unacknowledge an alert group.", func(c *OnCallClient, cmd *cobra.Command, id string) error {
+		newAlertGroupActionCommand(loader, "unacknowledge", "Unacknowledge an alert group.", func(c OnCallAPI, cmd *cobra.Command, id string) error {
 			return c.UnacknowledgeAlertGroup(cmd.Context(), id)
 		}),
-		newAlertGroupActionCommand(loader, "unresolve", "Unresolve an alert group.", func(c *OnCallClient, cmd *cobra.Command, id string) error {
+		newAlertGroupActionCommand(loader, "unresolve", "Unresolve an alert group.", func(c OnCallAPI, cmd *cobra.Command, id string) error {
 			return c.UnresolveAlertGroup(cmd.Context(), id)
 		}),
 		newAlertGroupSilenceCommand(loader),
-		newAlertGroupActionCommand(loader, "unsilence", "Unsilence an alert group.", func(c *OnCallClient, cmd *cobra.Command, id string) error {
+		newAlertGroupActionCommand(loader, "unsilence", "Unsilence an alert group.", func(c OnCallAPI, cmd *cobra.Command, id string) error {
 			return c.UnsilenceAlertGroup(cmd.Context(), id)
 		}),
-		newAlertGroupActionCommand(loader, "delete", "Delete an alert group.", func(c *OnCallClient, cmd *cobra.Command, id string) error {
+		newAlertGroupActionCommand(loader, "delete", "Delete an alert group.", func(c OnCallAPI, cmd *cobra.Command, id string) error {
 			return c.DeleteAlertGroup(cmd.Context(), id)
 		}),
 	)
@@ -190,7 +190,7 @@ func (o *alertGroupActionOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newAlertGroupActionCommand(loader OnCallConfigLoader, name, short string, actionFn func(*OnCallClient, *cobra.Command, string) error) *cobra.Command {
+func newAlertGroupActionCommand(loader OnCallConfigLoader, name, short string, actionFn func(OnCallAPI, *cobra.Command, string) error) *cobra.Command {
 	opts := &alertGroupActionOpts{}
 	cmd := &cobra.Command{
 		Use:   name + " <id>",
@@ -354,10 +354,10 @@ func newUsersCommand(loader OnCallConfigLoader) *cobra.Command {
 
 	cmd.AddCommand(
 		newListSubcommand(loader, "users", "User", "List OnCall users.", "pk",
-			func(ctx context.Context, c *OnCallClient) ([]User, error) { return c.ListUsers(ctx) },
-			func(ctx context.Context, c *OnCallClient, name string) (*User, error) { return c.GetUser(ctx, name) }),
+			func(ctx context.Context, c OnCallAPI) ([]User, error) { return c.ListUsers(ctx) },
+			func(ctx context.Context, c OnCallAPI, name string) (*User, error) { return c.GetUser(ctx, name) }),
 		newGetSubcommand(loader, "Get a user by ID.",
-			func(ctx context.Context, c *OnCallClient, name string) (*User, error) { return c.GetUser(ctx, name) }),
+			func(ctx context.Context, c OnCallAPI, name string) (*User, error) { return c.GetUser(ctx, name) }),
 		newUsersCurrentCommand(loader),
 	)
 
