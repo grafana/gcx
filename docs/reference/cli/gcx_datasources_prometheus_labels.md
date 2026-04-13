@@ -1,32 +1,36 @@
-## gcx profiles profile-types
+## gcx datasources prometheus labels
 
-List available profile types
+List labels or label values
 
 ### Synopsis
 
-List available profile types from a Pyroscope datasource.
+List all labels or get values for a specific label from a Prometheus datasource.
 
 ```
-gcx profiles profile-types [flags]
+gcx datasources prometheus labels [flags]
 ```
 
 ### Examples
 
 ```
 
-  # List profile types (use datasource UID, not name)
-  gcx profiles profile-types -d UID
+	# List all labels (use datasource UID, not name)
+	gcx datasources prometheus labels -d UID
 
-  # Output as JSON
-  gcx profiles profile-types -d UID -o json
+	# Get values for a specific label
+	gcx datasources prometheus labels -d UID --label job
+
+	# Output as JSON
+	gcx datasources prometheus labels -d UID -o json
 ```
 
 ### Options
 
 ```
-  -d, --datasource string   Datasource UID (required unless default-pyroscope-datasource is configured)
-  -h, --help                help for profile-types
+  -d, --datasource string   Datasource UID (required unless default-prometheus-datasource is configured)
+  -h, --help                help for labels
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -l, --label string        Get values for this label (omit to list all labels)
   -o, --output string       Output format. One of: json, table, yaml (default "table")
 ```
 
@@ -44,5 +48,5 @@ gcx profiles profile-types [flags]
 
 ### SEE ALSO
 
-* [gcx profiles](gcx_profiles.md)	 - Query Pyroscope datasources and manage continuous profiling
+* [gcx datasources prometheus](gcx_datasources_prometheus.md)	 - Query Prometheus datasources
 

@@ -1,45 +1,45 @@
-## gcx traces query
+## gcx datasources prometheus query
 
-Search for traces using a TraceQL query
+Execute a PromQL query against a Prometheus datasource
 
 ### Synopsis
 
-Search for traces using a TraceQL query against a Tempo datasource.
+Execute a PromQL query against a Prometheus datasource.
 
-TRACEQL is the TraceQL expression to evaluate.
-Datasource is resolved from -d flag or datasources.tempo in your context.
+EXPR is the PromQL expression to evaluate, passed as a positional argument or
+via --expr (familiar to promtool users).
+Datasource is resolved from -d flag or datasources.prometheus in your context.
 
 ```
-gcx traces query [TRACEQL] [flags]
+gcx datasources prometheus query [EXPR] [flags]
 ```
 
 ### Examples
 
 ```
 
-  # Search traces using configured default datasource
-  gcx datasources tempo query '{ span.http.status_code >= 500 }'
+  # Instant query using configured default datasource
+  gcx datasources prometheus query 'up{job="grafana"}'
 
-  # Search with explicit datasource UID and time range
-  gcx datasources tempo query -d UID '{ span.http.status_code >= 500 }' --since 1h
+  # Range query with explicit datasource UID
+  gcx datasources prometheus query -d UID 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m
 
-  # With custom limit
-  gcx datasources tempo query -d UID '{ span.http.status_code >= 500 }' --since 1h --limit 50
+  # Query the last hour
+  gcx datasources prometheus query 'up' --since 1h
 
   # Output as JSON
-  gcx datasources tempo query -d UID '{ span.http.status_code >= 500 }' -o json
+  gcx datasources prometheus query -d UID 'up' -o json
 ```
 
 ### Options
 
 ```
-  -d, --datasource string   Datasource UID (required unless datasources.tempo is configured)
+  -d, --datasource string   Datasource UID (required unless datasources.prometheus is configured)
       --expr string         Query expression (alternative to positional argument)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for query
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int           Maximum number of traces to return (0 means no limit) (default 20)
-  -o, --output string       Output format. One of: json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: graph, json, table, wide, yaml (default "table")
       --since string        Duration before --to (or now if omitted); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
@@ -59,5 +59,5 @@ gcx traces query [TRACEQL] [flags]
 
 ### SEE ALSO
 
-* [gcx traces](gcx_traces.md)	 - Query Tempo datasources and manage Adaptive Traces
+* [gcx datasources prometheus](gcx_datasources_prometheus.md)	 - Query Prometheus datasources
 

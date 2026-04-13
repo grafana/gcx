@@ -1,45 +1,50 @@
-## gcx traces query
+## gcx datasources loki query
 
-Search for traces using a TraceQL query
+Execute a LogQL query against a Loki datasource
 
 ### Synopsis
 
-Search for traces using a TraceQL query against a Tempo datasource.
+Execute a LogQL query against a Loki datasource.
 
-TRACEQL is the TraceQL expression to evaluate.
-Datasource is resolved from -d flag or datasources.tempo in your context.
+EXPR is the LogQL expression to evaluate.
+Datasource is resolved from -d flag or datasources.loki in your context.
+
+Default table output is optimized for humans. Use -o raw for original line
+bodies or -o json for the full structured response.
+
+Default --limit is 50; use --limit 0 for no cap.
 
 ```
-gcx traces query [TRACEQL] [flags]
+gcx datasources loki query [EXPR] [flags]
 ```
 
 ### Examples
 
 ```
 
-  # Search traces using configured default datasource
-  gcx datasources tempo query '{ span.http.status_code >= 500 }'
+  # Query logs using configured default datasource
+  gcx datasources loki query '{job="varlogs"}'
 
-  # Search with explicit datasource UID and time range
-  gcx datasources tempo query -d UID '{ span.http.status_code >= 500 }' --since 1h
+  # Query with explicit datasource UID
+  gcx datasources loki query -d UID '{job="varlogs"} |= "error"'
 
-  # With custom limit
-  gcx datasources tempo query -d UID '{ span.http.status_code >= 500 }' --since 1h --limit 50
+  # Raw line bodies only
+  gcx datasources loki query -d UID '{job="varlogs"}' -o raw
 
   # Output as JSON
-  gcx datasources tempo query -d UID '{ span.http.status_code >= 500 }' -o json
+  gcx datasources loki query -d UID '{job="varlogs"}' -o json
 ```
 
 ### Options
 
 ```
-  -d, --datasource string   Datasource UID (required unless datasources.tempo is configured)
+  -d, --datasource string   Datasource UID (required unless datasources.loki is configured)
       --expr string         Query expression (alternative to positional argument)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for query
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int           Maximum number of traces to return (0 means no limit) (default 20)
-  -o, --output string       Output format. One of: json, table, wide, yaml (default "table")
+      --limit int           Maximum number of log lines to return (0 means no limit) (default 50)
+  -o, --output string       Output format. One of: json, raw, table, wide, yaml (default "table")
       --since string        Duration before --to (or now if omitted); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
@@ -59,5 +64,5 @@ gcx traces query [TRACEQL] [flags]
 
 ### SEE ALSO
 
-* [gcx traces](gcx_traces.md)	 - Query Tempo datasources and manage Adaptive Traces
+* [gcx datasources loki](gcx_datasources_loki.md)	 - Query Loki datasources
 

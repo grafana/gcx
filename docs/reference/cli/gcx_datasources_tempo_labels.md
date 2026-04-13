@@ -1,4 +1,4 @@
-## gcx traces labels
+## gcx datasources tempo labels
 
 List trace labels or label values
 
@@ -12,7 +12,7 @@ When -l is omitted, returns all label names.
 Datasource is resolved from -d flag or datasources.tempo in your context.
 
 ```
-gcx traces labels [flags]
+gcx datasources tempo labels [flags]
 ```
 
 ### Examples
@@ -64,5 +64,5 @@ gcx traces labels [flags]
 
 ### SEE ALSO
 
-* [gcx traces](gcx_traces.md)	 - Query Tempo datasources and manage Adaptive Traces
+* [gcx datasources tempo](gcx_datasources_tempo.md)	 - Query Tempo datasources
 

@@ -1,4 +1,4 @@
-## gcx profiles profile-types
+## gcx datasources pyroscope profile-types
 
 List available profile types
 
@@ -7,18 +7,18 @@ List available profile types
 List available profile types from a Pyroscope datasource.
 
 ```
-gcx profiles profile-types [flags]
+gcx datasources pyroscope profile-types [flags]
 ```
 
 ### Examples
 
 ```
 
-  # List profile types (use datasource UID, not name)
-  gcx profiles profile-types -d UID
+	# List profile types (use datasource UID, not name)
+	gcx datasources pyroscope profile-types -d UID
 
-  # Output as JSON
-  gcx profiles profile-types -d UID -o json
+	# Output as JSON
+	gcx datasources pyroscope profile-types -d UID -o json
 ```
 
 ### Options
@@ -44,5 +44,5 @@ gcx profiles profile-types [flags]
 
 ### SEE ALSO
 
-* [gcx profiles](gcx_profiles.md)	 - Query Pyroscope datasources and manage continuous profiling
+* [gcx datasources pyroscope](gcx_datasources_pyroscope.md)	 - Query Pyroscope datasources
 

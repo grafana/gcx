@@ -15,13 +15,13 @@ gcx metrics metadata [flags]
 ```
 
   # Get all metric metadata (use datasource UID, not name)
-  gcx metrics metadata -d <datasource-uid>
+  gcx metrics metadata -d UID
 
   # Get metadata for a specific metric
-  gcx metrics metadata -d <datasource-uid> --metric http_requests_total
+  gcx metrics metadata -d UID --metric http_requests_total
 
   # Output as JSON
-  gcx metrics metadata -d <datasource-uid> -o json
+  gcx metrics metadata -d UID -o json
 ```
 
 ### Options

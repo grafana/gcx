@@ -15,13 +15,13 @@ gcx logs labels [flags]
 ```
 
   # List all labels (use datasource UID, not name)
-  gcx logs labels -d <datasource-uid>
+  gcx logs labels -d UID
 
   # Get values for a specific label
-  gcx logs labels -d <datasource-uid> --label job
+  gcx logs labels -d UID --label job
 
   # Output as JSON
-  gcx logs labels -d <datasource-uid> -o json
+  gcx logs labels -d UID -o json
 ```
 
 ### Options

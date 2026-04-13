@@ -24,16 +24,16 @@ gcx logs metrics [EXPR] [flags]
 ```
 
   # Rate of log lines over 5 minutes
-  gcx logs metrics 'rate({job="varlogs"}[5m])' --since 1h -o table
+  gcx datasources loki metrics 'rate({job="varlogs"}[5m])' --since 1h -o table
 
   # Count of error logs
-  gcx logs metrics 'count_over_time({job="varlogs"} |= "error" [5m])' --since 1h
+  gcx datasources loki metrics 'count_over_time({job="varlogs"} |= "error" [5m])' --since 1h
 
   # Line chart output
-  gcx logs metrics -d loki-001 'rate({job="varlogs"}[5m])' --since 1h -o graph
+  gcx datasources loki metrics -d loki-001 'rate({job="varlogs"}[5m])' --since 1h -o graph
 
   # Output as JSON
-  gcx logs metrics 'rate({job="varlogs"}[5m])' --since 1h -o json
+  gcx datasources loki metrics 'rate({job="varlogs"}[5m])' --since 1h -o json
 ```
 
 ### Options

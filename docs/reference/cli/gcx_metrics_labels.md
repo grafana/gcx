@@ -15,13 +15,13 @@ gcx metrics labels [flags]
 ```
 
   # List all labels (use datasource UID, not name)
-  gcx metrics labels -d <datasource-uid>
+  gcx metrics labels -d UID
 
   # Get values for a specific label
-  gcx metrics labels -d <datasource-uid> --label job
+  gcx metrics labels -d UID --label job
 
   # Output as JSON
-  gcx metrics labels -d <datasource-uid> -o json
+  gcx metrics labels -d UID -o json
 ```
 
 ### Options

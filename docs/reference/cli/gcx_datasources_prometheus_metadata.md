@@ -1,32 +1,36 @@
-## gcx profiles profile-types
+## gcx datasources prometheus metadata
 
-List available profile types
+Get metric metadata
 
 ### Synopsis
 
-List available profile types from a Pyroscope datasource.
+Get metadata (type, help text) for metrics from a Prometheus datasource.
 
 ```
-gcx profiles profile-types [flags]
+gcx datasources prometheus metadata [flags]
 ```
 
 ### Examples
 
 ```
 
-  # List profile types (use datasource UID, not name)
-  gcx profiles profile-types -d UID
+	# Get all metric metadata (use datasource UID, not name)
+	gcx datasources prometheus metadata -d UID
 
-  # Output as JSON
-  gcx profiles profile-types -d UID -o json
+	# Get metadata for a specific metric
+	gcx datasources prometheus metadata -d UID --metric http_requests_total
+
+	# Output as JSON
+	gcx datasources prometheus metadata -d UID -o json
 ```
 
 ### Options
 
 ```
-  -d, --datasource string   Datasource UID (required unless default-pyroscope-datasource is configured)
-  -h, --help                help for profile-types
+  -d, --datasource string   Datasource UID (required unless default-prometheus-datasource is configured)
+  -h, --help                help for metadata
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -m, --metric string       Filter by metric name
   -o, --output string       Output format. One of: json, table, yaml (default "table")
 ```
 
@@ -44,5 +48,5 @@ gcx profiles profile-types [flags]
 
 ### SEE ALSO
 
-* [gcx profiles](gcx_profiles.md)	 - Query Pyroscope datasources and manage continuous profiling
+* [gcx datasources prometheus](gcx_datasources_prometheus.md)	 - Query Prometheus datasources
 

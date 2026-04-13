@@ -1,0 +1,64 @@
+## gcx datasources pyroscope query
+
+Execute a profiling query against a Pyroscope datasource
+
+### Synopsis
+
+Execute a profiling query against a Pyroscope datasource.
+
+EXPR is the label selector (e.g., '{service_name="frontend"}').
+Datasource is resolved from -d flag or datasources.pyroscope in your context.
+
+```
+gcx datasources pyroscope query [EXPR] [flags]
+```
+
+### Examples
+
+```
+
+  # Profile query with explicit datasource UID
+  gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
+
+  # Using configured default datasource
+  gcx datasources pyroscope query '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
+
+  # Output as JSON
+  gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o json
+```
+
+### Options
+
+```
+  -d, --datasource string     Datasource UID (required unless datasources.pyroscope is configured)
+      --expr string           Query expression (alternative to positional argument)
+      --from string           Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
+  -h, --help                  help for query
+      --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --max-nodes int         Maximum nodes in flame graph (default 1024)
+  -o, --output string         Output format. One of: graph, json, table, wide, yaml (default "table")
+      --profile-type string   Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds') (required)
+      --since string          Duration before --to (or now if omitted); mutually exclusive with --from
+      --step string           Query step (e.g., '15s', '1m')
+      --to string             End time (RFC3339, Unix timestamp, or relative like 'now')
+```
+
+### Options inherited from parent commands
+
+```
+      --agent              Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --config string      Path to the configuration file to use
+      --context string     Name of the context to use
+      --log-http-payload   Log full HTTP request/response bodies (includes headers — may expose tokens)
+      --no-color           Disable color output
+      --no-truncate        Disable table column truncation (auto-enabled when stdout is piped)
+  -v, --verbose count      Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
+```
+
+### SEE ALSO
+
+* [gcx datasources pyroscope](gcx_datasources_pyroscope.md)	 - Query Pyroscope datasources
+

@@ -1,32 +1,39 @@
-## gcx profiles profile-types
+## gcx datasources loki series
 
-List available profile types
+List log streams
 
 ### Synopsis
 
-List available profile types from a Pyroscope datasource.
+List log streams (series) from a Loki datasource using LogQL stream selectors. At least one --match selector is required.
 
 ```
-gcx profiles profile-types [flags]
+gcx datasources loki series [flags]
 ```
 
 ### Examples
 
 ```
 
-  # List profile types (use datasource UID, not name)
-  gcx profiles profile-types -d UID
+	# List series matching a selector (use datasource UID, not name)
+	gcx datasources loki series -d UID --match '{job="varlogs"}'
 
-  # Output as JSON
-  gcx profiles profile-types -d UID -o json
+	# Match with regex and multiple labels
+	gcx datasources loki series -d UID --match '{container_name=~"prometheus.*", component="server"}'
+
+	# Multiple matchers (OR logic)
+	gcx datasources loki series -d UID --match '{job="varlogs"}' --match '{namespace="default"}'
+
+	# Output as JSON
+	gcx datasources loki series -d UID --match '{job="varlogs"}' -o json
 ```
 
 ### Options
 
 ```
-  -d, --datasource string   Datasource UID (required unless default-pyroscope-datasource is configured)
-  -h, --help                help for profile-types
+  -d, --datasource string   Datasource UID (required unless default-loki-datasource is configured)
+  -h, --help                help for series
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -M, --match stringArray   LogQL stream selector (required, e.g., '{job="varlogs"}')
   -o, --output string       Output format. One of: json, table, yaml (default "table")
 ```
 
@@ -44,5 +51,5 @@ gcx profiles profile-types [flags]
 
 ### SEE ALSO
 
-* [gcx profiles](gcx_profiles.md)	 - Query Pyroscope datasources and manage continuous profiling
+* [gcx datasources loki](gcx_datasources_loki.md)	 - Query Loki datasources
 

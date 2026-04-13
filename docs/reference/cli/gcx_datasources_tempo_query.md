@@ -1,4 +1,4 @@
-## gcx traces query
+## gcx datasources tempo query
 
 Search for traces using a TraceQL query
 
@@ -10,7 +10,7 @@ TRACEQL is the TraceQL expression to evaluate.
 Datasource is resolved from -d flag or datasources.tempo in your context.
 
 ```
-gcx traces query [TRACEQL] [flags]
+gcx datasources tempo query [TRACEQL] [flags]
 ```
 
 ### Examples
@@ -59,5 +59,5 @@ gcx traces query [TRACEQL] [flags]
 
 ### SEE ALSO
 
-* [gcx traces](gcx_traces.md)	 - Query Tempo datasources and manage Adaptive Traces
+* [gcx datasources tempo](gcx_datasources_tempo.md)	 - Query Tempo datasources
 

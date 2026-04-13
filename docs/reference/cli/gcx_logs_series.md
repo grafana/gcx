@@ -15,13 +15,13 @@ gcx logs series [flags]
 ```
 
   # List series matching a selector (use datasource UID, not name)
-  gcx logs series -d <datasource-uid> --match '{job="varlogs"}'
+  gcx logs series -d UID --match '{job="varlogs"}'
 
   # Multiple matchers (OR logic)
-  gcx logs series -d <datasource-uid> --match '{job="varlogs"}' --match '{namespace="default"}'
+  gcx logs series -d UID --match '{job="varlogs"}' --match '{namespace="default"}'
 
   # Output as JSON
-  gcx logs series -d <datasource-uid> --match '{job="varlogs"}' -o json
+  gcx logs series -d UID --match '{job="varlogs"}' -o json
 ```
 
 ### Options

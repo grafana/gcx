@@ -15,13 +15,13 @@ gcx profiles labels [flags]
 ```
 
   # List all labels (use datasource UID, not name)
-  gcx profiles labels -d <datasource-uid>
+  gcx profiles labels -d UID
 
   # Get values for a specific label
-  gcx profiles labels -d <datasource-uid> --label service_name
+  gcx profiles labels -d UID --label service_name
 
   # Output as JSON
-  gcx profiles labels -d <datasource-uid> -o json
+  gcx profiles labels -d UID -o json
 ```
 
 ### Options
