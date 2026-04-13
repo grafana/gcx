@@ -1,3 +1,23 @@
+## v0.2.6 (2026-04-13)
+
+
+
+- Add `--limit` flag with default pagination (50) to all list commands
+- Add retry transport for rate limiting and transient HTTP errors
+- Unified HTTP client construction with debug logging
+- Set consistent User-Agent header on all HTTP clients
+- Add `alert instances list` with server-side state filtering
+- Route OnCall requests through OAuth proxy
+- Add `skills install` command for .agents-compatible harnesses
+- Add `--expr` flag alias for datasource query commands
+- Add curl-pipe installer script with shell-specific PATH instructions
+- Fix config context selection before env overrides in provider loaders
+- Fix SLO definitions commands not inheriting parent config loader
+- Restore shell tab-completion
+- Add Fish shell completion docs
+- Update Go and Docker dependencies
+
+
 ## v0.2.5 (2026-04-10)
 
 
