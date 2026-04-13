@@ -85,6 +85,11 @@ func handleErrorResponse(resp *http.Response) error {
 	return fmt.Errorf("request failed with status %d", resp.StatusCode)
 }
 
+type paginatedResponse[T any] struct {
+	Results []T     `json:"results"`
+	Next    *string `json:"next"`
+}
+
 // iterResources yields items one at a time across paginated API pages.
 func iterResources[T any](c *OnCallClient, ctx context.Context, path, resourceType string) iter.Seq2[T, error] {
 	return func(yield func(T, error) bool) {

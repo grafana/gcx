@@ -1,4 +1,4 @@
-package irm
+package oncalltypes
 
 const (
 	// APIGroup is the API group for all OnCall resources.
@@ -10,4 +10,4 @@ const (
 )
 
 //nolint:gochecknoglobals // constant-like slice shared by commands and adapter registrations
-var defaultStripFields = []string{"id", "pk", "password", "authorization_header"}
+var DefaultStripFields = []string{"id", "pk", "password", "authorization_header"} //nolint:gochecknoglobals

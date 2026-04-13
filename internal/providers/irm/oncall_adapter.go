@@ -73,7 +73,7 @@ func buildRegistration[T adapter.ResourceNamer](
 			}
 
 			crud := &adapter.TypedCRUD[T]{
-				StripFields: defaultStripFields,
+				StripFields: DefaultStripFields,
 				Namespace:   namespace,
 				Descriptor:  desc,
 			}

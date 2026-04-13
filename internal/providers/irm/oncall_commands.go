@@ -195,7 +195,7 @@ func newTypedCRUD[T adapter.ResourceNamer](
 
 	crud := &adapter.TypedCRUD[T]{
 		ListFn:      adapter.LimitedListFn(func(ctx context.Context) ([]T, error) { return listFn(ctx, client) }),
-		StripFields: defaultStripFields,
+		StripFields: DefaultStripFields,
 		Namespace:   namespace,
 	}
 

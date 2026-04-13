@@ -1,4 +1,4 @@
-package irm
+package oncalltypes
 
 func (x Integration) GetResourceName() string           { return x.ID }
 func (x *Integration) SetResourceName(name string)      { x.ID = name }
@@ -316,10 +316,4 @@ type FilterEventsResponse struct {
 	Name   string            `json:"name"`
 	Type   any               `json:"type"`
 	Events []FinalShiftEvent `json:"events"`
-}
-
-// paginatedResponse is the generic paginated response from the OnCall internal API.
-type paginatedResponse[T any] struct {
-	Results []T     `json:"results"`
-	Next    *string `json:"next"`
 }
