@@ -1,6 +1,6 @@
 ## gcx k6 schedules create
 
-Create a K6 schedule from a file.
+Create a k6 schedule from a file.
 
 ```
 gcx k6 schedules create [flags]
@@ -28,5 +28,5 @@ gcx k6 schedules create [flags]
 
 ### SEE ALSO
 
-* [gcx k6 schedules](gcx_k6_schedules.md)	 - Manage K6 Cloud schedules.
+* [gcx k6 schedules](gcx_k6_schedules.md)	 - Manage k6 Cloud schedules.
 

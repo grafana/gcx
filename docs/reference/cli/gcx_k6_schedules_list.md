@@ -1,6 +1,6 @@
 ## gcx k6 schedules list
 
-List all K6 schedules.
+List all k6 schedules.
 
 ```
 gcx k6 schedules list [flags]
@@ -29,5 +29,5 @@ gcx k6 schedules list [flags]
 
 ### SEE ALSO
 
-* [gcx k6 schedules](gcx_k6_schedules.md)	 - Manage K6 Cloud schedules.
+* [gcx k6 schedules](gcx_k6_schedules.md)	 - Manage k6 Cloud schedules.
 

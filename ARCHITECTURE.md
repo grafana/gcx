@@ -152,7 +152,7 @@ Multiple auth mechanisms for different tiers.
 | **Basic auth** | Legacy Grafana instances | Username/password in `rest.Config` |
 | **Adaptive auth** | Signal provider adaptive telemetry APIs | `internal/auth/adaptive/` — GCOM-cached Basic auth shared across signal providers |
 
-**Precedence:** Token > OAuth > user/password. Explicit flags override env vars override config file. `httputils.NewDefaultClient(ctx)` must be used for APIs outside the Grafana server (K6 Cloud, OnCall, Synth, Fleet) — the k8s transport injects the Grafana bearer token on every request, which conflicts with product-specific auth.
+**Precedence:** Token > OAuth > user/password. Explicit flags override env vars override config file. `httputils.NewDefaultClient(ctx)` must be used for APIs outside the Grafana server (k6 Cloud, OnCall, Synth, Fleet) — the k8s transport injects the Grafana bearer token on every request, which conflicts with product-specific auth.
 
 **Deep-dive:** [client-api-layer.md](docs/architecture/client-api-layer.md), [config-system.md](docs/architecture/config-system.md).
 

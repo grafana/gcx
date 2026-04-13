@@ -154,7 +154,7 @@ func decodeYAMLOrJSON(data []byte, target any) error {
 func newProjectsCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "projects",
-		Short:   "Manage K6 Cloud projects.",
+		Short:   "Manage k6 Cloud projects.",
 		Aliases: []string{"project", "proj"},
 	}
 	cmd.AddCommand(
@@ -184,7 +184,7 @@ func newProjectsListCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &projectsListOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List K6 Cloud projects.",
+		Short: "List k6 Cloud projects.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -299,7 +299,7 @@ func newProjectsGetCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &projectsGetOpts{}
 	cmd := &cobra.Command{
 		Use:   "get <id-or-name>",
-		Short: "Get a single K6 project by ID or name.",
+		Short: "Get a single k6 project by ID or name.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -347,7 +347,7 @@ func newProjectsCreateCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &projectsCreateOpts{}
 	cmd := &cobra.Command{
 		Use:   "create",
-		Short: "Create a new K6 project from a file.",
+		Short: "Create a new k6 project from a file.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -420,7 +420,7 @@ func newProjectsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &projectsUpdateOpts{}
 	cmd := &cobra.Command{
 		Use:   "update <id-or-name>",
-		Short: "Update a K6 project.",
+		Short: "Update a k6 project.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.File == "" {
@@ -480,7 +480,7 @@ func newProjectsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 func newProjectsDeleteCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <id-or-name>",
-		Short: "Delete a K6 project.",
+		Short: "Delete a k6 project.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -509,7 +509,7 @@ func newProjectsDeleteCommand(loader CloudConfigLoader) *cobra.Command {
 func newTestsCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "load-tests",
-		Short:   "Manage K6 Cloud load tests.",
+		Short:   "Manage k6 Cloud load tests.",
 		Aliases: []string{"tests", "test"},
 	}
 	cmd.AddCommand(
@@ -542,7 +542,7 @@ func newTestsListCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &testsListOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List K6 Cloud load tests.",
+		Short: "List k6 Cloud load tests.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -642,7 +642,7 @@ func newTestsGetCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &testsGetOpts{}
 	cmd := &cobra.Command{
 		Use:   "get <id-or-name>",
-		Short: "Get a single K6 load test by ID or name.",
+		Short: "Get a single k6 load test by ID or name.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -687,7 +687,7 @@ func newTestsCreateCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &testsCreateOpts{}
 	cmd := &cobra.Command{
 		Use:   "create",
-		Short: "Create a new K6 load test.",
+		Short: "Create a new k6 load test.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -728,7 +728,7 @@ func newTestsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &testsUpdateOpts{}
 	cmd := &cobra.Command{
 		Use:   "update <id>",
-		Short: "Update a K6 load test from a file.",
+		Short: "Update a k6 load test from a file.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.File == "" {
@@ -777,7 +777,7 @@ func newTestsUpdateScriptCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &testsUpdateScriptOpts{}
 	cmd := &cobra.Command{
 		Use:   "update-script <id>",
-		Short: "Update the script of a K6 load test from a file.",
+		Short: "Update the script of a k6 load test from a file.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.File == "" {
@@ -813,7 +813,7 @@ func newTestsUpdateScriptCommand(loader CloudConfigLoader) *cobra.Command {
 func newTestsDeleteCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <id>",
-		Short: "Delete a K6 load test.",
+		Short: "Delete a k6 load test.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -842,7 +842,7 @@ func newTestsDeleteCommand(loader CloudConfigLoader) *cobra.Command {
 func newRunsCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "runs",
-		Short:   "Manage K6 test runs.",
+		Short:   "Manage k6 test runs.",
 		Aliases: []string{"run"},
 	}
 	cmd.AddCommand(newRunsListCommand(loader))
@@ -970,7 +970,7 @@ func resultStatusString(status int) string {
 func newEnvVarsCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "env-vars",
-		Short:   "Manage K6 Cloud environment variables.",
+		Short:   "Manage k6 Cloud environment variables.",
 		Aliases: []string{"envvars", "envvar", "env"},
 	}
 	cmd.AddCommand(
@@ -998,7 +998,7 @@ func newEnvVarsListCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &envVarsListOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List K6 environment variables.",
+		Short: "List k6 environment variables.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -1063,7 +1063,7 @@ func newEnvVarsCreateCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &envVarsCreateOpts{}
 	cmd := &cobra.Command{
 		Use:   "create",
-		Short: "Create a K6 environment variable from a file.",
+		Short: "Create a k6 environment variable from a file.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if opts.File == "" {
 				return errors.New("--filename/-f is required")
@@ -1117,7 +1117,7 @@ func newEnvVarsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &envVarsUpdateOpts{}
 	cmd := &cobra.Command{
 		Use:   "update <id>",
-		Short: "Update a K6 environment variable.",
+		Short: "Update a k6 environment variable.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.File == "" {
@@ -1166,7 +1166,7 @@ func newEnvVarsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 func newEnvVarsDeleteCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <id>",
-		Short: "Delete a K6 environment variable.",
+		Short: "Delete a k6 environment variable.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -1195,7 +1195,7 @@ func newEnvVarsDeleteCommand(loader CloudConfigLoader) *cobra.Command {
 func newAuthCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "auth",
-		Short: "K6 authentication commands.",
+		Short: "k6 authentication commands.",
 	}
 	cmd.AddCommand(newTokenCommand(loader))
 	return cmd
@@ -1228,7 +1228,7 @@ func newTokenCommand(loader CloudConfigLoader) *cobra.Command {
 func newSchedulesCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "schedules",
-		Short:   "Manage K6 Cloud schedules.",
+		Short:   "Manage k6 Cloud schedules.",
 		Aliases: []string{"schedule"},
 	}
 	cmd.AddCommand(
@@ -1298,7 +1298,7 @@ func newSchedulesListCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &schedulesListOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List all K6 schedules.",
+		Short: "List all k6 schedules.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -1333,7 +1333,7 @@ func newSchedulesGetCommand(loader CloudConfigLoader) *cobra.Command { //nolint:
 	opts := &schedulesGetOpts{}
 	cmd := &cobra.Command{
 		Use:   "get <id>",
-		Short: "Get a single K6 schedule by ID.",
+		Short: "Get a single k6 schedule by ID.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -1373,7 +1373,7 @@ func newSchedulesCreateCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &schedulesCreateOpts{}
 	cmd := &cobra.Command{
 		Use:   "create",
-		Short: "Create a K6 schedule from a file.",
+		Short: "Create a k6 schedule from a file.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if opts.LoadTestID == 0 {
 				return errors.New("--load-test-id is required")
@@ -1421,7 +1421,7 @@ func newSchedulesUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &schedulesUpdateOpts{}
 	cmd := &cobra.Command{
 		Use:   "update <id>",
-		Short: "Update a K6 schedule from a file.",
+		Short: "Update a k6 schedule from a file.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.File == "" {
@@ -1461,7 +1461,7 @@ func newSchedulesUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 func newSchedulesDeleteCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <load-test-id>",
-		Short: "Delete the schedule for a K6 load test.",
+		Short: "Delete the schedule for a k6 load test.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -1490,7 +1490,7 @@ func newSchedulesDeleteCommand(loader CloudConfigLoader) *cobra.Command {
 func newLoadZonesCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "load-zones",
-		Short:   "Manage K6 private load zones.",
+		Short:   "Manage k6 private load zones.",
 		Aliases: []string{"load-zone", "lz"},
 	}
 	cmd.AddCommand(
@@ -1514,7 +1514,7 @@ func (c *LoadZoneTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected []LoadZone")
 	}
 
-	t := style.NewTable("ID", "NAME", "K6 LOAD ZONE ID")
+	t := style.NewTable("ID", "NAME", "k6 LOAD ZONE ID")
 
 	for _, z := range zones {
 		k6ID := z.K6LoadZoneID
@@ -1546,7 +1546,7 @@ func newLoadZonesListCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &loadZonesListOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List all K6 load zones.",
+		Short: "List all k6 load zones.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err

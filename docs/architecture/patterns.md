@@ -257,10 +257,10 @@ query/stream endpoints that return Grafana-native response formats, not
 all three client paths without duplication.
 
 **Contrast with external APIs:** Provider clients calling **external** APIs
-(K6 Cloud, OnCall, Synth, Fleet — domains outside the Grafana server) must
+(k6 Cloud, OnCall, Synth, Fleet — domains outside the Grafana server) must
 **not** use `rest.HTTPClientFor`. The k8s transport round-tripper injects the
 Grafana bearer token on every outgoing request, which conflicts with the
-product's own auth mechanism (e.g. OnCall raw token, K6 X-Grafana-Key).
+product's own auth mechanism (e.g. OnCall raw token, k6 X-Grafana-Key).
 These providers use `httputils.NewDefaultClient(ctx)` — a fresh `*http.Client`
 per call with `LoggingRoundTripper` and no auth injection — and set their own
 auth headers per request.

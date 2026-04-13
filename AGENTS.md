@@ -105,7 +105,7 @@ internal/
 │   ├── faro/       Frontend Observability provider (apps CRUD, sourcemaps sub-resource) — CLI: `gcx frontend`
 │   ├── fleet/      Fleet Management provider (pipeline and collector resources)
 │   ├── incidents/  IRM Incidents provider
-│   ├── k6/         K6 Cloud provider (projects, tests, runs, envvars)
+│   ├── k6/         k6 Cloud provider (projects, tests, runs, envvars)
 │   ├── kg/         Knowledge Graph (Asserts) provider
 │   ├── logs/       Logs signal provider (Loki queries + Adaptive Logs commands)
 │   ├── metrics/    Metrics signal provider (Prometheus queries + Adaptive Metrics commands)

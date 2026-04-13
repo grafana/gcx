@@ -4,7 +4,7 @@
 
 ## Executive Summary
 
-- **gcx is a unified CLI for managing Grafana resources** operating in two tiers: (1) a K8s resource tier using Grafana 12+'s Kubernetes-compatible API via `k8s.io/client-go` for dashboards, folders, and other K8s-native resources; (2) a Cloud provider tier with pluggable providers for Grafana Cloud products (SLO, Synthetic Monitoring, OnCall, Fleet Management, K6 Cloud, Knowledge Graph, IRM Incidents, Alerting) that use product-specific REST APIs.
+- **gcx is a unified CLI for managing Grafana resources** operating in two tiers: (1) a K8s resource tier using Grafana 12+'s Kubernetes-compatible API via `k8s.io/client-go` for dashboards, folders, and other K8s-native resources; (2) a Cloud provider tier with pluggable providers for Grafana Cloud products (SLO, Synthetic Monitoring, OnCall, Fleet Management, k6 Cloud, Knowledge Graph, IRM Incidents, Alerting) that use product-specific REST APIs.
 - **The architecture is a clean layered monolith** with strict separation: CLI wiring (`cmd/`) holds no business logic; all domain logic lives in `internal/` organized by feature (config, resources, server, providers).
 - **Context-based multi-environment configuration** follows the kubectl kubeconfig pattern, enabling management of multiple Grafana instances (dev, staging, prod, cloud) from a single config file.
 - **A composable processor pipeline** transforms resources during push and pull, keeping I/O and transformation concerns decoupled.
@@ -741,13 +741,13 @@ Each LGTM signal has its own provider in `internal/providers/{signal}/` that reg
 | `internal/setup/instrumentation/client.go` | Instrumentation API client (GET/SET app/k8s, discovery, monitoring) |
 | `internal/setup/instrumentation/compare.go` | Optimistic lock diff comparison logic |
 
-### K6 Cloud Provider
+### k6 Cloud Provider
 
 | File | Purpose |
 |------|---------|
 | `internal/providers/k6/provider.go` | `K6Provider` implementing the `providers.Provider` interface |
-| `internal/providers/k6/client.go` | K6 Cloud REST client (token exchange auth, projects, tests, runs, envvars) |
-| `internal/providers/k6/commands.go` | K6 CLI commands (projects, tests, runs, envvars, token) |
+| `internal/providers/k6/client.go` | k6 Cloud REST client (token exchange auth, projects, tests, runs, envvars) |
+| `internal/providers/k6/commands.go` | k6 CLI commands (projects, tests, runs, envvars, token) |
 | `internal/providers/k6/resource_adapter.go` | Resource adapter for k6 projects |
 
 ### IRM Incidents Provider

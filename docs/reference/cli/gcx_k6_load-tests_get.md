@@ -1,6 +1,6 @@
 ## gcx k6 load-tests get
 
-Get a single K6 load test by ID or name.
+Get a single k6 load test by ID or name.
 
 ```
 gcx k6 load-tests get <id-or-name> [flags]
@@ -29,5 +29,5 @@ gcx k6 load-tests get <id-or-name> [flags]
 
 ### SEE ALSO
 
-* [gcx k6 load-tests](gcx_k6_load-tests.md)	 - Manage K6 Cloud load tests.
+* [gcx k6 load-tests](gcx_k6_load-tests.md)	 - Manage k6 Cloud load tests.
 

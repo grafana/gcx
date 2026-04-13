@@ -26,5 +26,5 @@ gcx k6 auth token [flags]
 
 ### SEE ALSO
 
-* [gcx k6 auth](gcx_k6_auth.md)	 - K6 authentication commands.
+* [gcx k6 auth](gcx_k6_auth.md)	 - k6 authentication commands.
 

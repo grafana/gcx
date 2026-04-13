@@ -216,7 +216,7 @@ spec map level and requires JSON→map→delete. The approach is hybrid:
   coexist until `StripFields` is resolved at a higher level.
 - **Provider command migration is breadth work**: ~8 providers, each with multiple CRUD
   commands. Mechanical but touches many files. Atomic commits per provider mitigate risk.
-- **`SetResourceName` error swallowing**: K6 and synth types with int IDs silently
+- **`SetResourceName` error swallowing**: k6 and synth types with int IDs silently
   discard parse errors, matching current `RestoreNameFn` behavior but baked into a
   formal interface.
 

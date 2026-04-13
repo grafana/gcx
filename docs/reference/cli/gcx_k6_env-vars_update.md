@@ -1,6 +1,6 @@
 ## gcx k6 env-vars update
 
-Update a K6 environment variable.
+Update a k6 environment variable.
 
 ```
 gcx k6 env-vars update <id> [flags]
@@ -27,5 +27,5 @@ gcx k6 env-vars update <id> [flags]
 
 ### SEE ALSO
 
-* [gcx k6 env-vars](gcx_k6_env-vars.md)	 - Manage K6 Cloud environment variables.
+* [gcx k6 env-vars](gcx_k6_env-vars.md)	 - Manage k6 Cloud environment variables.
 

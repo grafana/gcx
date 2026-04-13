@@ -58,3 +58,8 @@ code comments.
 
 See [environment-variables.md](environment-variables.md) for the canonical env var naming reference.
 See [patterns.md § Provider ConfigLoader](../architecture/patterns.md#provider-configloader) for how config key names map to env vars.
+
+### 9.6 Branding Consistency
+
+For k6-related tools specifically, make sure to use "k6" (lowercase "k") and not "K6". This is only relevant for docstrings, documentation and other user-facing strings.
+Examples: "k6 Open Source", "k6 Cloud".

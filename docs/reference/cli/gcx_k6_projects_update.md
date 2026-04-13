@@ -1,6 +1,6 @@
 ## gcx k6 projects update
 
-Update a K6 project.
+Update a k6 project.
 
 ```
 gcx k6 projects update <id-or-name> [flags]
@@ -27,5 +27,5 @@ gcx k6 projects update <id-or-name> [flags]
 
 ### SEE ALSO
 
-* [gcx k6 projects](gcx_k6_projects.md)	 - Manage K6 Cloud projects.
+* [gcx k6 projects](gcx_k6_projects.md)	 - Manage k6 Cloud projects.
 

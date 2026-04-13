@@ -1,6 +1,6 @@
 ## gcx k6 projects create
 
-Create a new K6 project from a file.
+Create a new k6 project from a file.
 
 ```
 gcx k6 projects create [flags]
@@ -29,5 +29,5 @@ gcx k6 projects create [flags]
 
 ### SEE ALSO
 
-* [gcx k6 projects](gcx_k6_projects.md)	 - Manage K6 Cloud projects.
+* [gcx k6 projects](gcx_k6_projects.md)	 - Manage k6 Cloud projects.
 

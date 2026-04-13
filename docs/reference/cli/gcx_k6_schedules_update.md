@@ -1,6 +1,6 @@
 ## gcx k6 schedules update
 
-Update a K6 schedule from a file.
+Update a k6 schedule from a file.
 
 ```
 gcx k6 schedules update <id> [flags]
@@ -27,5 +27,5 @@ gcx k6 schedules update <id> [flags]
 
 ### SEE ALSO
 
-* [gcx k6 schedules](gcx_k6_schedules.md)	 - Manage K6 Cloud schedules.
+* [gcx k6 schedules](gcx_k6_schedules.md)	 - Manage k6 Cloud schedules.
 
