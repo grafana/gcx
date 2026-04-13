@@ -5,6 +5,8 @@ import "context"
 // OnCallAPI defines the operations available on the OnCall backend.
 // Both the plugin proxy client (OAuth) and the public API client (SA token)
 // implement this interface, returning data in the internal API type shape.
+//
+// Once oncallpublic is removed, we can remove this interface.
 type OnCallAPI interface {
 	ListIntegrations(ctx context.Context) ([]Integration, error)
 	GetIntegration(ctx context.Context, id string) (*Integration, error)
