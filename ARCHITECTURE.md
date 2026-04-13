@@ -89,6 +89,8 @@ Codec Pipeline               table (default) | graph (terminal chart) | json | y
 
 **Standardized verbs**: `query` (execute queries), `labels` (list label names/values), `series`/`metrics` (list series or compute metric queries), `metadata` (metric metadata). All four signal providers share these verbs with identical flag semantics.
 
+**Dual command mounting**: Datasource commands are accessible via two paths — top-level signal commands (`gcx metrics query`) and the `datasources` subgroup (`gcx datasources prometheus query`). Both paths call the same exported command constructors. The `DatasourceProvider` interface (`internal/datasources/provider.go`) and its registry (`internal/datasources/registry.go`) handle the second path. Each signal provider package registers both a `Provider` (for the top-level command + adaptive telemetry) and a `DatasourceProvider` (for the `datasources` subgroup) in its `init()` functions.
+
 **Adaptive telemetry** nests under each signal provider (`metrics adaptive`, `logs adaptive`, `traces adaptive`) with its own CRUD resources (rules, policies, exemptions, segments) and operational views (recommendations, patterns). Uses `internal/auth/adaptive/` for shared GCOM-cached Basic auth.
 
 **Graph rendering:** `internal/graph/` converts query responses to terminal charts via ntcharts + lipgloss. Available as `-o graph` on all query commands and SLO/synth timeline commands.

@@ -72,7 +72,7 @@ cmd/gcx/
   config/       Config management (set, use-context, view)
   resources/    Resource commands (get, schemas, push, pull, delete, edit, validate)
   dashboards/   Dashboard snapshot (Image Renderer)
-  datasources/  Datasource commands (list, get, query)
+  datasources/  Datasource commands (list, get, query, per-type subcommands via DatasourceProvider)
   providers/    Provider list command
   assistant/    Assistant commands (AI-powered investigations)
   api/          Raw API passthrough
@@ -118,7 +118,7 @@ internal/
 │   └── traces/     Traces signal provider (Tempo queries + Adaptive Traces commands)
 ├── deeplink/    Deep link URL template registry and browser opener
 ├── dashboards/  Dashboard Image Renderer client (PNG snapshots)
-├── datasources/ Datasource HTTP client (legacy REST API)
+├── datasources/ Datasource HTTP client, DatasourceProvider interface + registry
 │   └── query/   Shared query CLI utils (time parsing, codecs, opts, resolve helpers — used by signal providers and GenericCmd)
 ├── query/       Datasource query clients
 │   ├── prometheus/  Prometheus HTTP query client
