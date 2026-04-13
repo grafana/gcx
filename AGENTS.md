@@ -239,11 +239,17 @@ Run this checklist **before every commit** (not only before PR/push):
    ```bash
    go test ./...
    ```
-5. **Reference docs regenerated when command/output surface changes**
+5. **Reference docs regenerated** (CI runs `make reference-drift` which fails on any drift)
    ```bash
    GCX_AGENT_MODE=false make reference
    ```
-6. **No unstaged surprises**
+   This regenerates CLI reference, env-var reference, config reference, and linter-rules reference. Required when changes touch commands, flags, config fields, env vars, or linter rules.
+6. **Docs build succeeds** (CI runs `make docs` after the drift check)
+   ```bash
+   make docs
+   ```
+   If `devbox`/`mkdocs` is unavailable, skip — CI will catch build failures.
+7. **No unstaged surprises**
    ```bash
    git status
    ```

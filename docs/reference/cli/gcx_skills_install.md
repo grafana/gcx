@@ -13,11 +13,11 @@ gcx skills install [SKILL]... [flags]
 ### Examples
 
 ```
-  gcx skills install gcx
-  gcx skills install gcx setup-gcx debug-with-grafana
+  gcx skills install setup-gcx
+  gcx skills install setup-gcx debug-with-grafana explore-datasources
   gcx skills install --all
   gcx skills install --all --dry-run
-  gcx skills install gcx --force
+  gcx skills install setup-gcx --force
 ```
 
 ### Options
