@@ -55,6 +55,7 @@ func (p *IRMProvider) Commands() []*cobra.Command {
 	)
 
 	irmCmd.AddCommand(oncallCmd)
+	irmCmd.AddCommand(newIncidentsCmd(loader))
 
 	return []*cobra.Command{irmCmd}
 }
