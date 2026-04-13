@@ -36,13 +36,13 @@ func (p *IncidentsProvider) Commands() []*cobra.Command {
 	loader.BindFlags(incCmd.PersistentFlags())
 
 	incCmd.AddCommand(
-		newListCommand(loader),
-		newGetCommand(loader),
-		newCreateCommand(loader),
-		newCloseCommand(loader),
-		newActivityCommand(loader),
-		newSeveritiesCommand(loader),
-		newOpenCommand(loader),
+		NewListCommand(loader),
+		NewGetCommand(loader),
+		NewCreateCommand(loader),
+		NewCloseCommand(loader),
+		NewActivityCommand(loader),
+		NewSeveritiesCommand(loader),
+		NewOpenCommand(loader),
 	)
 
 	return []*cobra.Command{incCmd}

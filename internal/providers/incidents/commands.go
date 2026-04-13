@@ -36,7 +36,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of incidents to return")
 }
 
-func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
+func NewListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &listOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -160,7 +160,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
+func NewGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
 		Use:   "get <id>",
@@ -217,7 +217,7 @@ func (o *createOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the incident manifest (use - for stdin)")
 }
 
-func newCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
+func NewCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &createOpts{}
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -301,7 +301,7 @@ type closeOpts struct {
 func (o *closeOpts) setup(_ *pflag.FlagSet) {}
 func (o *closeOpts) Validate() error        { return nil }
 
-func newCloseCommand(loader GrafanaConfigLoader) *cobra.Command {
+func NewCloseCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &closeOpts{loader: loader}
 	cmd := &cobra.Command{
 		Use:   "close <id>",
@@ -345,7 +345,7 @@ type openOpts struct {
 func (o *openOpts) setup(_ *pflag.FlagSet) {}
 func (o *openOpts) Validate() error        { return nil }
 
-func newOpenCommand(loader GrafanaConfigLoader) *cobra.Command {
+func NewOpenCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &openOpts{loader: loader}
 	cmd := &cobra.Command{
 		Use:   "open <id>",
@@ -377,7 +377,7 @@ func newOpenCommand(loader GrafanaConfigLoader) *cobra.Command {
 // activity commands
 // ---------------------------------------------------------------------------
 
-func newActivityCommand(loader GrafanaConfigLoader) *cobra.Command {
+func NewActivityCommand(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "activity",
 		Short: "Manage incident activity timeline.",
@@ -531,7 +531,7 @@ func newActivityAddCommand(loader GrafanaConfigLoader) *cobra.Command {
 // severities commands
 // ---------------------------------------------------------------------------
 
-func newSeveritiesCommand(loader GrafanaConfigLoader) *cobra.Command {
+func NewSeveritiesCommand(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "severities",
 		Short:   "Manage incident severity levels.",
