@@ -1,3 +1,7 @@
+// Package oncallpublic provides a client for the public API of the OnCall
+// backend. We only need this right now because the IRM plugin proxy
+// rejects SA tokens for all requests, but work is in progress to change that.
+// Once the IRM plugin proxy supports SA tokens, we can rip out this package.
 package oncallpublic
 
 import (
@@ -18,23 +22,23 @@ import (
 )
 
 const (
-	integrationsPath      = "/api/v1/integrations/"
-	escalationChainsPath  = "/api/v1/escalation_chains/"
+	integrationsPath       = "/api/v1/integrations/"
+	escalationChainsPath   = "/api/v1/escalation_chains/"
 	escalationPoliciesPath = "/api/v1/escalation_policies/"
-	schedulesPath         = "/api/v1/schedules/"
-	shiftsPath            = "/api/v1/on_call_shifts/"
-	routesPath            = "/api/v1/routes/"
-	webhooksPath          = "/api/v1/webhooks/"
-	alertGroupsPath       = "/api/v1/alert_groups/"
-	usersPath             = "/api/v1/users/"
-	teamsPath             = "/api/v1/teams/"
-	userGroupsPath        = "/api/v1/user_groups/"
-	slackChannelsPath     = "/api/v1/slack_channels/"
-	alertsPath            = "/api/v1/alerts/"
-	organizationsPath     = "/api/v1/organizations/"
-	resolutionNotesPath   = "/api/v1/resolution_notes/"
-	shiftSwapsPath        = "/api/v1/shift_swaps/"
-	escalationsPath       = "/api/v1/escalations/"
+	schedulesPath          = "/api/v1/schedules/"
+	shiftsPath             = "/api/v1/on_call_shifts/"
+	routesPath             = "/api/v1/routes/"
+	webhooksPath           = "/api/v1/webhooks/"
+	alertGroupsPath        = "/api/v1/alert_groups/"
+	usersPath              = "/api/v1/users/"
+	teamsPath              = "/api/v1/teams/"
+	userGroupsPath         = "/api/v1/user_groups/"
+	slackChannelsPath      = "/api/v1/slack_channels/"
+	alertsPath             = "/api/v1/alerts/"
+	organizationsPath      = "/api/v1/organizations/"
+	resolutionNotesPath    = "/api/v1/resolution_notes/"
+	shiftSwapsPath         = "/api/v1/shift_swaps/"
+	escalationsPath        = "/api/v1/escalations/"
 )
 
 // Client calls the OnCall public API directly with an SA token.

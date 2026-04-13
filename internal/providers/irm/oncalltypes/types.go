@@ -1,3 +1,7 @@
+// package oncalltypes defines types for the oncall provider. It is only separate
+// from the irm package to allow us to put the temporary oncallpublic package in
+// a separate package: we needed to avoid an import cycle. When we rip out the
+// oncallpublic package, we can put these types back in the irm package.
 package oncalltypes
 
 func (x Integration) GetResourceName() string           { return x.ID }
