@@ -1,15 +1,29 @@
-## gcx skills
+## gcx skills list
 
-Manage portable gcx Agent Skills
+List skills bundled with the gcx binary
 
 ### Synopsis
 
-Install the canonical portable gcx Agent Skills bundle for .agents-compatible agent harnesses.
+List skills bundled with the gcx binary, including each skill's short description and install status.
+
+```
+gcx skills list [flags]
+```
+
+### Examples
+
+```
+  gcx skills list
+  gcx skills list -o json
+```
 
 ### Options
 
 ```
-  -h, --help   help for skills
+      --dir string      Root directory for the .agents installation (used to check installed status) (default "~/.agents")
+  -h, --help            help for list
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: json, text, yaml (default "text")
 ```
 
 ### Options inherited from parent commands
@@ -25,8 +39,5 @@ Install the canonical portable gcx Agent Skills bundle for .agents-compatible ag
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
-* [gcx skills install](gcx_skills_install.md)	 - Install bundled gcx skills into ~/.agents/skills
-* [gcx skills list](gcx_skills_list.md)	 - List skills bundled with the gcx binary
-* [gcx skills uninstall](gcx_skills_uninstall.md)	 - Uninstall installed skills from ~/.agents/skills
+* [gcx skills](gcx_skills.md)	 - Manage portable gcx Agent Skills
 

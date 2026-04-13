@@ -1,35 +1,34 @@
-## gcx skills install
+## gcx skills uninstall
 
-Install bundled gcx skills into ~/.agents/skills
+Uninstall installed skills from ~/.agents/skills
 
 ### Synopsis
 
-Install one or more bundled gcx Agent Skills into a user-level .agents directory for tools that follow the .agents skill convention. Use --all to install the entire bundle.
+Remove one or more installed skills from a user-level .agents skills directory.
 
 ```
-gcx skills install [SKILL]... [flags]
+gcx skills uninstall [SKILL]... [flags]
 ```
 
 ### Examples
 
 ```
-  gcx skills install gcx
-  gcx skills install gcx setup-gcx debug-with-grafana
-  gcx skills install --all
-  gcx skills install --all --dry-run
-  gcx skills install gcx --force
+  gcx skills uninstall grafanacloud-gcx
+  gcx skills uninstall grafanacloud-gcx skill-installer
+  gcx skills uninstall --all --yes
+  gcx skills uninstall --all --yes --dry-run
 ```
 
 ### Options
 
 ```
-      --all             Install all bundled skills
+      --all             Uninstall all skills in the target directory
       --dir string      Root directory for the .agents installation (default "~/.agents")
-      --dry-run         Preview the installation without writing files
-      --force           Overwrite existing differing files managed by the gcx skills bundle
-  -h, --help            help for install
+      --dry-run         Preview the uninstall without removing files
+  -h, --help            help for uninstall
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: json, text, yaml (default "text")
+  -y, --yes             Auto-approve uninstalling all skills
 ```
 
 ### Options inherited from parent commands
