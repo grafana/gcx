@@ -73,6 +73,19 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 	})
 }
 
+// RESTConfigForContext constructs a namespaced REST config for the named
+// context and wires OAuth token persistence when proxy auth is enabled.
+func (cfg Config) RESTConfigForContext(ctx context.Context, contextName string, source Source) (NamespacedRESTConfig, error) {
+	if !cfg.HasContext(contextName) {
+		return NamespacedRESTConfig{}, ContextNotFound(contextName)
+	}
+
+	restCfg := cfg.Contexts[contextName].ToRESTConfig(ctx)
+	restCfg.WireTokenPersistence(ctx, source, contextName, cfg.Sources)
+
+	return restCfg, nil
+}
+
 // ResolveTokenPersistenceSource picks the best config file to persist rotated OAuth tokens.
 // It returns a Source pointing to the highest-priority file that already contains OAuth fields
 // for the given context, falling back to the user-level config or the provided fallback.

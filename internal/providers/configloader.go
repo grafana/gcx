@@ -198,10 +198,7 @@ func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.Namespaced
 		return config.NamespacedRESTConfig{}, err
 	}
 
-	restCfg := loaded.GetCurrentContext().ToRESTConfig(ctx)
-	restCfg.WireTokenPersistence(ctx, l.configSource(), loaded.CurrentContext, loaded.Sources)
-
-	return restCfg, nil
+	return loaded.RESTConfigForContext(ctx, loaded.CurrentContext, l.configSource())
 }
 
 // LoadCloudConfig loads Grafana Cloud configuration, applying env var overrides.
@@ -248,8 +245,10 @@ func (l *ConfigLoader) LoadCloudConfig(ctx context.Context) (CloudRESTConfig, er
 	namespace := "default"
 	var restCfg *rest.Config
 	if curCtx.Grafana != nil && !curCtx.Grafana.IsEmpty() {
-		nrc := curCtx.ToRESTConfig(ctx)
-		nrc.WireTokenPersistence(ctx, l.configSource(), loaded.CurrentContext, loaded.Sources)
+		nrc, err := loaded.RESTConfigForContext(ctx, loaded.CurrentContext, l.configSource())
+		if err != nil {
+			return CloudRESTConfig{}, err
+		}
 
 		namespace = nrc.Namespace
 		restCfg = &nrc.Config

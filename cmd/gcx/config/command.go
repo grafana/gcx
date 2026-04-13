@@ -137,10 +137,7 @@ func (opts *Options) LoadGrafanaConfig(ctx context.Context) (config.NamespacedRE
 		return config.NamespacedRESTConfig{}, err
 	}
 
-	restCfg := cfg.GetCurrentContext().ToRESTConfig(ctx)
-	restCfg.WireTokenPersistence(ctx, opts.ConfigSource(), cfg.CurrentContext, cfg.Sources)
-
-	return restCfg, nil
+	return cfg.RESTConfigForContext(ctx, cfg.CurrentContext, opts.ConfigSource())
 }
 
 // loadConfigTolerantLayered loads the configuration using the layered discovery
@@ -359,8 +356,12 @@ func checkCmd(configOpts *Options) *cobra.Command {
 			cmd.Println()
 
 			var checkErr error
+			fallbackSource := config.StandardLocation()
+			if cfg.Source != "" {
+				fallbackSource = config.ExplicitConfigFile(cfg.Source)
+			}
 			for _, gCtx := range cfg.Contexts {
-				if err := checkContext(cmd, gCtx); err != nil {
+				if err := checkContext(cmd, cfg, gCtx, fallbackSource); err != nil {
 					checkErr = err
 				}
 			}
@@ -372,7 +373,7 @@ func checkCmd(configOpts *Options) *cobra.Command {
 	return cmd
 }
 
-func checkContext(cmd *cobra.Command, gCtx *config.Context) error {
+func checkContext(cmd *cobra.Command, cfg config.Config, gCtx *config.Context, fallbackSource config.Source) error {
 	stdout := cmd.OutOrStdout()
 	title := "Context: "
 	titleLen := len(title) + len(gCtx.Name)
@@ -409,7 +410,15 @@ func checkContext(cmd *cobra.Command, gCtx *config.Context) error {
 
 	cmdio.Success(stdout, "Configuration: %s", cmdio.Green("valid"))
 
-	if _, err := discovery.NewDefaultRegistry(cmd.Context(), config.NewNamespacedRESTConfig(cmd.Context(), *gCtx)); err != nil {
+	restCfg, err := cfg.RESTConfigForContext(cmd.Context(), gCtx.Name, fallbackSource)
+	if err != nil {
+		cmdio.Error(stdout, "Connectivity: %s", cmdio.Red(summarizeError(err)))
+		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("skipped")+"\n")
+		printSuggestions(err)
+		return nil
+	}
+
+	if _, err := discovery.NewDefaultRegistry(cmd.Context(), restCfg); err != nil {
 		cmdio.Error(stdout, "Connectivity: %s", cmdio.Red(summarizeError(err)))
 		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("skipped")+"\n")
 		printSuggestions(err)
