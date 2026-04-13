@@ -1,10 +1,11 @@
-package logs
+package loki
 
 import (
 	"fmt"
 	"log/slog"
 	"time"
 
+	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/providers"
@@ -13,8 +14,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// metricsCmd returns the `metrics` subcommand for metric LogQL queries.
-func metricsCmd(loader *providers.ConfigLoader) *cobra.Command {
+// MetricsCmd returns the `metrics` subcommand for metric LogQL queries.
+func MetricsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
 	var datasource string
 
@@ -33,16 +34,16 @@ Instant vs range is deduced from time flags: no time flags = instant query,
 --since or --from/--to = range query.`,
 		Example: `
   # Rate of log lines over 5 minutes
-  gcx logs metrics 'rate({job="varlogs"}[5m])' --since 1h -o table
+  gcx datasources loki metrics 'rate({job="varlogs"}[5m])' --since 1h -o table
 
   # Count of error logs
-  gcx logs metrics 'count_over_time({job="varlogs"} |= "error" [5m])' --since 1h
+  gcx datasources loki metrics 'count_over_time({job="varlogs"} |= "error" [5m])' --since 1h
 
   # Line chart output
-  gcx logs metrics -d loki-001 'rate({job="varlogs"}[5m])' --since 1h -o graph
+  gcx datasources loki metrics -d loki-001 'rate({job="varlogs"}[5m])' --since 1h -o graph
 
   # Output as JSON
-  gcx logs metrics 'rate({job="varlogs"}[5m])' --since 1h -o json`,
+  gcx datasources loki metrics 'rate({job="varlogs"}[5m])' --since 1h -o json`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
@@ -108,6 +109,11 @@ Instant vs range is deduced from time flags: no time flags = instant query,
 
 			return shared.IO.Encode(cmd.OutOrStdout(), resp)
 		},
+	}
+
+	cmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "medium",
+		agent.AnnotationLLMHint:   `gcx datasources loki metrics -d UID 'rate({job="grafana"}[5m])' --since 1h -o json`,
 	}
 
 	shared.Setup(cmd.Flags(), true)

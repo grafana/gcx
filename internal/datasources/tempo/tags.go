@@ -1,4 +1,4 @@
-package traces
+package tempo
 
 import (
 	"errors"
@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 
+	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
@@ -43,9 +44,9 @@ func (opts *labelsOpts) Validate() error {
 	return tempo.ValidateTagScope(opts.Scope)
 }
 
-// labelsCmd returns the `labels` subcommand for Tempo tag/label discovery.
+// LabelsCmd returns the `labels` subcommand for Tempo tag/label discovery.
 // It also registers `tags` as a non-deprecated alias.
-func labelsCmd(loader *providers.ConfigLoader) *cobra.Command {
+func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &labelsOpts{}
 
 	cmd := &cobra.Command{
@@ -60,22 +61,22 @@ When -l is omitted, returns all label names.
 Datasource is resolved from -d flag or datasources.tempo in your context.`,
 		Example: `
   # List all labels
-  gcx traces labels -d <datasource-uid>
+  gcx datasources tempo labels -d UID
 
   # Get values for a specific label
-  gcx traces labels -d <datasource-uid> -l service.name
+  gcx datasources tempo labels -d UID -l service.name
 
   # Using the tags alias
-  gcx traces tags -d <datasource-uid> -l service.name
+  gcx datasources tempo tags -d UID -l service.name
 
   # Filter by scope
-  gcx traces labels -d <datasource-uid> -l service.name --scope span
+  gcx datasources tempo labels -d UID -l service.name --scope span
 
   # Filter with a TraceQL query
-  gcx traces labels -d <datasource-uid> -q '{ span.http.status_code >= 500 }'
+  gcx datasources tempo labels -d UID -q '{ span.http.status_code >= 500 }'
 
   # Output as JSON
-  gcx traces labels -d <datasource-uid> -o json`,
+  gcx datasources tempo labels -d UID -o json`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
@@ -140,6 +141,11 @@ Datasource is resolved from -d flag or datasources.tempo in your context.`,
 
 			return opts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
+	}
+
+	cmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "small",
+		agent.AnnotationLLMHint:   "gcx datasources tempo labels -d UID -o json",
 	}
 
 	opts.setup(cmd.Flags())

@@ -1,4 +1,4 @@
-package metrics
+package prometheus
 
 import (
 	"errors"
@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"sort"
 
+	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
@@ -38,7 +39,7 @@ func (opts *metadataOpts) Validate() error {
 	return opts.IO.Validate()
 }
 
-func metadataCmd(loader *providers.ConfigLoader) *cobra.Command {
+func MetadataCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &metadataOpts{}
 
 	cmd := &cobra.Command{
@@ -47,13 +48,13 @@ func metadataCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Long:  "Get metadata (type, help text) for metrics from a Prometheus datasource.",
 		Example: `
 	# Get all metric metadata (use datasource UID, not name)
-	gcx metrics metadata -d <datasource-uid>
+	gcx datasources prometheus metadata -d UID
 
 	# Get metadata for a specific metric
-	gcx metrics metadata -d <datasource-uid> --metric http_requests_total
+	gcx datasources prometheus metadata -d UID --metric http_requests_total
 
 	# Output as JSON
-	gcx metrics metadata -d <datasource-uid> -o json`,
+	gcx datasources prometheus metadata -d UID -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -95,6 +96,11 @@ func metadataCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 			return opts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
+	}
+
+	cmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "small",
+		agent.AnnotationLLMHint:   "gcx datasources prometheus metadata -d UID -o json",
 	}
 
 	opts.setup(cmd.Flags())

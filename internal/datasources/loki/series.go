@@ -1,4 +1,4 @@
-package logs
+package loki
 
 import (
 	"errors"
@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 
+	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
@@ -42,7 +43,7 @@ func (opts *seriesOpts) Validate() error {
 	return nil
 }
 
-func seriesCmd(loader *providers.ConfigLoader) *cobra.Command {
+func SeriesCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &seriesOpts{}
 
 	cmd := &cobra.Command{
@@ -51,16 +52,16 @@ func seriesCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Long:  "List log streams (series) from a Loki datasource using LogQL stream selectors. At least one --match selector is required.",
 		Example: `
 	# List series matching a selector (use datasource UID, not name)
-	gcx logs series -d <datasource-uid> --match '{job="varlogs"}'
+	gcx datasources loki series -d UID --match '{job="varlogs"}'
 
 	# Match with regex and multiple labels
-	gcx logs series -d <datasource-uid> --match '{container_name=~"prometheus.*", component="server"}'
+	gcx datasources loki series -d UID --match '{container_name=~"prometheus.*", component="server"}'
 
 	# Multiple matchers (OR logic)
-	gcx logs series -d <datasource-uid> --match '{job="varlogs"}' --match '{namespace="default"}'
+	gcx datasources loki series -d UID --match '{job="varlogs"}' --match '{namespace="default"}'
 
 	# Output as JSON
-	gcx logs series -d <datasource-uid> --match '{job="varlogs"}' -o json`,
+	gcx datasources loki series -d UID --match '{job="varlogs"}' -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -102,6 +103,11 @@ func seriesCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 			return opts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
+	}
+
+	cmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "small",
+		agent.AnnotationLLMHint:   `gcx datasources loki series -d UID --match '{job="varlogs"}' -o json`,
 	}
 
 	opts.setup(cmd.Flags())

@@ -1,4 +1,4 @@
-package profiles
+package pyroscope
 
 import (
 	"errors"
@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
@@ -64,8 +65,8 @@ func (opts *pyroscopeMetricsOpts) Validate() error {
 	return nil
 }
 
-// metricsCmd returns the `metrics` subcommand for a Pyroscope datasource parent.
-func metricsCmd(loader *providers.ConfigLoader) *cobra.Command {
+// MetricsCmd returns the `metrics` subcommand for a Pyroscope datasource parent.
+func MetricsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &pyroscopeMetricsOpts{}
 
 	cmd := &cobra.Command{
@@ -84,22 +85,22 @@ EXPR is the label selector (e.g., '{service_name="frontend"}').
 Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 		Example: `
   # Top services by CPU usage (ranked leaderboard)
-  gcx profiles metrics '{}' \
+  gcx datasources pyroscope metrics '{}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
     --since 1h --top
 
   # Top 20 services by memory, grouped by namespace
-  gcx profiles metrics '{}' \
+  gcx datasources pyroscope metrics '{}' \
     --profile-type memory:inuse_space:bytes:space:bytes \
     --since 1h --top --group-by namespace --limit 20
 
   # CPU usage over the last hour with 1-minute resolution
-  gcx profiles metrics -d pyro-001 '{service_name="frontend"}' \
+  gcx datasources pyroscope metrics -d pyro-001 '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
     --since 1h --step 1m
 
   # Line chart output
-  gcx profiles metrics '{service_name="frontend"}' \
+  gcx datasources pyroscope metrics '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
     --since 1h --step 1m -o graph`,
 		Args: cobra.RangeArgs(0, 1),
@@ -196,6 +197,11 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 
 			return opts.shared.IO.Encode(cmd.OutOrStdout(), resp)
 		},
+	}
+
+	cmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "small",
+		agent.AnnotationLLMHint:   "gcx datasources pyroscope metrics '{}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --top -o json",
 	}
 
 	opts.setup(cmd.Flags())

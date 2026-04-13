@@ -1,10 +1,11 @@
-package traces
+package tempo
 
 import (
 	"fmt"
 	"log/slog"
 	"time"
 
+	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/providers"
@@ -13,9 +14,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// queryCmd returns the `query` subcommand for a Tempo datasource parent.
+// QueryCmd returns the `query` subcommand for a Tempo datasource parent.
 // It also registers `search` as a non-deprecated alias.
-func queryCmd(loader *providers.ConfigLoader) *cobra.Command {
+func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
 	var limit int
 	var datasource string
@@ -30,19 +31,16 @@ TRACEQL is the TraceQL expression to evaluate.
 Datasource is resolved from -d flag or datasources.tempo in your context.`,
 		Example: `
   # Search traces using configured default datasource
-  gcx traces query '{ span.http.status_code >= 500 }'
+  gcx datasources tempo query '{ span.http.status_code >= 500 }'
 
   # Search with explicit datasource UID and time range
-  gcx traces query -d tempo-001 '{ span.http.status_code >= 500 }' --since 1h
-
-  # Using the search alias
-  gcx traces search '{ span.http.status_code >= 500 }' --since 1h
+  gcx datasources tempo query -d UID '{ span.http.status_code >= 500 }' --since 1h
 
   # With custom limit
-  gcx traces query -d tempo-001 '{ span.http.status_code >= 500 }' --since 1h --limit 50
+  gcx datasources tempo query -d UID '{ span.http.status_code >= 500 }' --since 1h --limit 50
 
   # Output as JSON
-  gcx traces query -d tempo-001 '{ span.http.status_code >= 500 }' -o json`,
+  gcx datasources tempo query -d UID '{ span.http.status_code >= 500 }' -o json`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
@@ -108,6 +106,11 @@ Datasource is resolved from -d flag or datasources.tempo in your context.`,
 
 			return shared.IO.Encode(cmd.OutOrStdout(), resp)
 		},
+	}
+
+	cmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "medium",
+		agent.AnnotationLLMHint:   `gcx datasources tempo query -d UID '{ span.http.status_code >= 500 }' -o json`,
 	}
 
 	shared.Setup(cmd.Flags(), false)

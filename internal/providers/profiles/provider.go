@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/grafana/gcx/internal/agent"
+	dspyroscope "github.com/grafana/gcx/internal/datasources/pyroscope"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
@@ -37,8 +38,9 @@ func (p *Provider) Commands() []*cobra.Command {
 
 	loader.BindFlags(cmd.PersistentFlags())
 
-	// Datasource-origin subcommands.
-	qCmd := queryCmd(loader)
+	// Grab the commands from the datasources package, and override the examples
+	// and annotations to be suitable for the top-level commands.
+	qCmd := dspyroscope.QueryCmd(loader)
 	qCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
 		agent.AnnotationLLMHint:   `gcx profiles query -d abc123 '{service_name="frontend"}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h -o json`,
@@ -57,36 +59,36 @@ func (p *Provider) Commands() []*cobra.Command {
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o json`
 	cmd.AddCommand(qCmd)
 
-	lCmd := labelsCmd(loader)
+	lCmd := dspyroscope.LabelsCmd(loader)
 	lCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
 		agent.AnnotationLLMHint:   "gcx profiles labels -d abc123 -o json",
 	}
 	lCmd.Example = `
   # List all labels (use datasource UID, not name)
-  gcx profiles labels -d <datasource-uid>
+  gcx profiles labels -d UID
 
   # Get values for a specific label
-  gcx profiles labels -d <datasource-uid> --label service_name
+  gcx profiles labels -d UID --label service_name
 
   # Output as JSON
-  gcx profiles labels -d <datasource-uid> -o json`
+  gcx profiles labels -d UID -o json`
 	cmd.AddCommand(lCmd)
 
-	ptCmd := profileTypesCmd(loader)
+	ptCmd := dspyroscope.ProfileTypesCmd(loader)
 	ptCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
 		agent.AnnotationLLMHint:   "gcx profiles profile-types -d abc123 -o json",
 	}
 	ptCmd.Example = `
   # List profile types (use datasource UID, not name)
-  gcx profiles profile-types -d <datasource-uid>
+  gcx profiles profile-types -d UID
 
   # Output as JSON
-  gcx profiles profile-types -d <datasource-uid> -o json`
+  gcx profiles profile-types -d UID -o json`
 	cmd.AddCommand(ptCmd)
 
-	mCmd := metricsCmd(loader)
+	mCmd := dspyroscope.MetricsCmd(loader)
 	mCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
 		agent.AnnotationLLMHint:   "gcx profiles metrics '{}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --top -o json",
@@ -121,6 +123,10 @@ func adaptiveStubCmd() *cobra.Command {
 		},
 	}
 }
+
+// queryCmd and metricsCmd are thin wrappers used by expr_test.go.
+func queryCmd(loader *providers.ConfigLoader) *cobra.Command   { return dspyroscope.QueryCmd(loader) }
+func metricsCmd(loader *providers.ConfigLoader) *cobra.Command { return dspyroscope.MetricsCmd(loader) }
 
 func (p *Provider) Validate(_ map[string]string) error { return nil }
 

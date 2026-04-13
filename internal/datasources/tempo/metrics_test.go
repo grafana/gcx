@@ -1,5 +1,5 @@
 //nolint:testpackage // Tests cover the unexported request builder used by the command.
-package traces
+package tempo
 
 import (
 	"testing"

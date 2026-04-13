@@ -1,4 +1,4 @@
-package profiles
+package pyroscope
 
 import (
 	"errors"
@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 
+	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
@@ -34,7 +35,7 @@ func (opts *profileTypesOpts) Validate() error {
 	return opts.IO.Validate()
 }
 
-func profileTypesCmd(loader *providers.ConfigLoader) *cobra.Command {
+func ProfileTypesCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &profileTypesOpts{}
 
 	cmd := &cobra.Command{
@@ -43,10 +44,10 @@ func profileTypesCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Long:  "List available profile types from a Pyroscope datasource.",
 		Example: `
 	# List profile types (use datasource UID, not name)
-	gcx profiles profile-types -d <datasource-uid>
+	gcx datasources pyroscope profile-types -d UID
 
 	# Output as JSON
-	gcx profiles profile-types -d <datasource-uid> -o json`,
+	gcx datasources pyroscope profile-types -d UID -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -87,6 +88,11 @@ func profileTypesCmd(loader *providers.ConfigLoader) *cobra.Command {
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
+	}
+
+	cmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "small",
+		agent.AnnotationLLMHint:   "gcx datasources pyroscope profile-types -d UID -o json",
 	}
 
 	opts.setup(cmd.Flags())

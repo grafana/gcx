@@ -1,4 +1,4 @@
-package profiles
+package pyroscope
 
 import (
 	"errors"
@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/providers"
@@ -14,8 +15,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// queryCmd returns the `query` subcommand for a Pyroscope datasource parent.
-func queryCmd(loader *providers.ConfigLoader) *cobra.Command {
+// QueryCmd returns the `query` subcommand for a Pyroscope datasource parent.
+func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
 	var profileType string
 	var maxNodes int64
@@ -28,6 +29,18 @@ func queryCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 EXPR is the label selector (e.g., '{service_name="frontend"}').
 Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
+		Example: `
+  # Profile query with explicit datasource UID
+  gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
+
+  # Using configured default datasource
+  gcx datasources pyroscope query '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
+
+  # Output as JSON
+  gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o json`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
@@ -102,6 +115,11 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 
 			return shared.IO.Encode(cmd.OutOrStdout(), resp)
 		},
+	}
+
+	cmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "medium",
+		agent.AnnotationLLMHint:   `gcx datasources pyroscope query -d UID '{service_name="frontend"}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h -o json`,
 	}
 
 	shared.Setup(cmd.Flags(), true)

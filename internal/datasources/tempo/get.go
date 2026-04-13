@@ -1,10 +1,11 @@
-package traces
+package tempo
 
 import (
 	"fmt"
 	"log/slog"
 	"time"
 
+	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -39,7 +40,7 @@ func (opts *getOpts) Validate() error {
 	return opts.ValidateTimeRange()
 }
 
-func getCmd(loader *providers.ConfigLoader) *cobra.Command {
+func GetCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &getOpts{}
 
 	cmd := &cobra.Command{
@@ -51,16 +52,16 @@ TRACE_ID is the hex-encoded trace identifier to retrieve.
 Datasource is resolved from -d flag or datasources.tempo in your context.`,
 		Example: `
   # Get a trace using configured default datasource
-  gcx traces get abc123def456
+  gcx datasources tempo get abc123def456
 
   # Get a trace with explicit datasource UID
-  gcx traces get -d tempo-001 abc123def456
+  gcx datasources tempo get -d tempo-001 abc123def456
 
   # Get LLM-friendly output
-  gcx traces get abc123def456 --llm
+  gcx datasources tempo get abc123def456 --llm
 
   # Get a trace within a time range
-  gcx traces get abc123def456 --since 1h`,
+  gcx datasources tempo get abc123def456 --since 1h`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -115,6 +116,11 @@ Datasource is resolved from -d flag or datasources.tempo in your context.`,
 
 			return opts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
+	}
+
+	cmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "medium",
+		agent.AnnotationLLMHint:   "gcx datasources tempo get -d UID <trace-id> -o json",
 	}
 
 	opts.setup(cmd.Flags())

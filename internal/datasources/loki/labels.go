@@ -1,4 +1,4 @@
-package logs
+package loki
 
 import (
 	"errors"
@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 
+	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
@@ -36,7 +37,7 @@ func (opts *lokiLabelsOpts) Validate() error {
 	return opts.IO.Validate()
 }
 
-func labelsCmd(loader *providers.ConfigLoader) *cobra.Command {
+func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &lokiLabelsOpts{}
 
 	cmd := &cobra.Command{
@@ -45,13 +46,13 @@ func labelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Long:  "List all labels or get values for a specific label from a Loki datasource.",
 		Example: `
 	# List all labels (use datasource UID, not name)
-	gcx logs labels -d <datasource-uid>
+	gcx datasources loki labels -d UID
 
 	# Get values for a specific label
-	gcx logs labels -d <datasource-uid> --label job
+	gcx datasources loki labels -d UID --label job
 
 	# Output as JSON
-	gcx logs labels -d <datasource-uid> -o json`,
+	gcx datasources loki labels -d UID -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -106,6 +107,11 @@ func labelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 			return opts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
+	}
+
+	cmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "small",
+		agent.AnnotationLLMHint:   "gcx datasources loki labels -d UID -o json",
 	}
 
 	opts.setup(cmd.Flags())

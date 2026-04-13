@@ -1,36 +1,44 @@
-package logs
+package prometheus
 
 import (
 	"fmt"
 	"log/slog"
 	"time"
 
+	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/providers"
-	"github.com/grafana/gcx/internal/query/loki"
+	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
 )
 
-// queryCmd returns the `query` subcommand for a Loki datasource parent.
-func queryCmd(loader *providers.ConfigLoader) *cobra.Command {
+// QueryCmd returns the `query` subcommand for a Prometheus datasource parent.
+func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
-	var limit int
 	var datasource string
 
 	cmd := &cobra.Command{
 		Use:   "query [EXPR]",
-		Short: "Execute a LogQL query against a Loki datasource",
-		Long: `Execute a LogQL query against a Loki datasource.
+		Short: "Execute a PromQL query against a Prometheus datasource",
+		Long: `Execute a PromQL query against a Prometheus datasource.
 
-EXPR is the LogQL expression to evaluate.
-Datasource is resolved from -d flag or datasources.loki in your context.
+EXPR is the PromQL expression to evaluate, passed as a positional argument or
+via --expr (familiar to promtool users).
+Datasource is resolved from -d flag or datasources.prometheus in your context.`,
+		Example: `
+  # Instant query using configured default datasource
+  gcx datasources prometheus query 'up{job="grafana"}'
 
-Default table output is optimized for humans. Use -o raw for original line
-bodies or -o json for the full structured response.
+  # Range query with explicit datasource UID
+  gcx datasources prometheus query -d UID 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m
 
-Default --limit is 50; use --limit 0 for no cap.`,
+  # Query the last hour
+  gcx datasources prometheus query 'up' --since 1h
+
+  # Output as JSON
+  gcx datasources prometheus query -d UID 'up' -o json`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
@@ -58,7 +66,7 @@ Default --limit is 50; use --limit 0 for no cap.`,
 				return err
 			}
 
-			datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, datasource, cfgCtx, cfg, "loki")
+			datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, datasource, cfgCtx, cfg, "prometheus")
 			if err != nil {
 				return err
 			}
@@ -67,7 +75,7 @@ Default --limit is 50; use --limit 0 for no cap.`,
 			if err != nil {
 				return err
 			}
-			if err := dsquery.ValidateDatasourceType(dsType, "loki"); err != nil {
+			if err := dsquery.ValidateDatasourceType(dsType, "prometheus"); err != nil {
 				return err
 			}
 
@@ -77,17 +85,16 @@ Default --limit is 50; use --limit 0 for no cap.`,
 				return err
 			}
 
-			client, err := loki.NewClient(cfg)
+			client, err := prometheus.NewClient(cfg)
 			if err != nil {
 				return fmt.Errorf("failed to create client: %w", err)
 			}
 
-			req := loki.QueryRequest{
+			req := prometheus.QueryRequest{
 				Query: expr,
 				Start: start,
 				End:   end,
 				Step:  step,
-				Limit: limit,
 			}
 
 			resp, err := client.Query(ctx, datasourceUID, req)
@@ -99,14 +106,13 @@ Default --limit is 50; use --limit 0 for no cap.`,
 		},
 	}
 
-	dsquery.RegisterCodecs(&shared.IO, false)
-	shared.IO.RegisterCustomCodec("raw", loki.NewRawQueryCodec())
-	shared.IO.BindFlags(cmd.Flags())
-	shared.SetupTimeFlags(cmd.Flags())
-	cmd.Flags().StringVar(&shared.Step, "step", "", "Query step (e.g., '15s', '1m')")
-	shared.SetupExprFlag(cmd.Flags())
-	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
-	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, "Maximum number of log lines to return (0 means no limit)")
+	cmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "medium",
+		agent.AnnotationLLMHint:   `gcx datasources prometheus query -d UID 'up{job="grafana"}' -o json`,
+	}
+
+	shared.Setup(cmd.Flags(), true)
+	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.prometheus is configured)")
 
 	return cmd
 }

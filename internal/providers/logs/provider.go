@@ -2,6 +2,7 @@ package logs
 
 import (
 	"github.com/grafana/gcx/internal/agent"
+	dsloki "github.com/grafana/gcx/internal/datasources/loki"
 	"github.com/grafana/gcx/internal/providers"
 	adaptivelogs "github.com/grafana/gcx/internal/providers/logs/adaptive"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -36,8 +37,9 @@ func (p *Provider) Commands() []*cobra.Command {
 
 	loader.BindFlags(cmd.PersistentFlags())
 
-	// Datasource-origin subcommands.
-	qCmd := queryCmd(loader)
+	// Grab the commands from the datasources package, and override the examples
+	// and annotations to be suitable for the top-level commands.
+	qCmd := dsloki.QueryCmd(loader)
 	qCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
 		agent.AnnotationLLMHint:   `gcx logs query -d abc123 '{job="grafana"}' -o json`,
@@ -56,43 +58,43 @@ func (p *Provider) Commands() []*cobra.Command {
   gcx logs query -d abc123 '{job="varlogs"}' -o json`
 	cmd.AddCommand(qCmd)
 
-	mqCmd := metricsCmd(loader)
+	mqCmd := dsloki.MetricsCmd(loader)
 	mqCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
 		agent.AnnotationLLMHint:   `gcx logs metrics -d abc123 'rate({job="grafana"}[5m])' --since 1h -o json`,
 	}
 	cmd.AddCommand(mqCmd)
 
-	lCmd := labelsCmd(loader)
+	lCmd := dsloki.LabelsCmd(loader)
 	lCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
 		agent.AnnotationLLMHint:   "gcx logs labels -d abc123 -o json",
 	}
 	lCmd.Example = `
   # List all labels (use datasource UID, not name)
-  gcx logs labels -d <datasource-uid>
+  gcx logs labels -d UID
 
   # Get values for a specific label
-  gcx logs labels -d <datasource-uid> --label job
+  gcx logs labels -d UID --label job
 
   # Output as JSON
-  gcx logs labels -d <datasource-uid> -o json`
+  gcx logs labels -d UID -o json`
 	cmd.AddCommand(lCmd)
 
-	sCmd := seriesCmd(loader)
+	sCmd := dsloki.SeriesCmd(loader)
 	sCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
 		agent.AnnotationLLMHint:   `gcx logs series -d abc123 --match '{job="varlogs"}' -o json`,
 	}
 	sCmd.Example = `
   # List series matching a selector (use datasource UID, not name)
-  gcx logs series -d <datasource-uid> --match '{job="varlogs"}'
+  gcx logs series -d UID --match '{job="varlogs"}'
 
   # Multiple matchers (OR logic)
-  gcx logs series -d <datasource-uid> --match '{job="varlogs"}' --match '{namespace="default"}'
+  gcx logs series -d UID --match '{job="varlogs"}' --match '{namespace="default"}'
 
   # Output as JSON
-  gcx logs series -d <datasource-uid> --match '{job="varlogs"}' -o json`
+  gcx logs series -d UID --match '{job="varlogs"}' -o json`
 	cmd.AddCommand(sCmd)
 
 	// Adaptive Logs subcommands — rename Use from "logs" to "adaptive".
@@ -103,6 +105,10 @@ func (p *Provider) Commands() []*cobra.Command {
 
 	return []*cobra.Command{cmd}
 }
+
+// queryCmd and metricsCmd are thin wrappers used by expr_test.go.
+func queryCmd(loader *providers.ConfigLoader) *cobra.Command   { return dsloki.QueryCmd(loader) }
+func metricsCmd(loader *providers.ConfigLoader) *cobra.Command { return dsloki.MetricsCmd(loader) }
 
 func (p *Provider) Validate(_ map[string]string) error { return nil }
 

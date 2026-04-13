@@ -2,6 +2,7 @@ package traces
 
 import (
 	"github.com/grafana/gcx/internal/agent"
+	dstempo "github.com/grafana/gcx/internal/datasources/tempo"
 	"github.com/grafana/gcx/internal/providers"
 	adaptivetraces "github.com/grafana/gcx/internal/providers/traces/adaptive"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -36,29 +37,30 @@ func (p *Provider) Commands() []*cobra.Command {
 
 	loader.BindFlags(cmd.PersistentFlags())
 
-	// Datasource-origin subcommands.
-	qCmd := queryCmd(loader)
+	// Grab the commands from the datasources package, and override the examples
+	// and annotations to be suitable for the top-level commands.
+	qCmd := dstempo.QueryCmd(loader)
 	qCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
 		agent.AnnotationLLMHint:   `gcx traces query -d abc123 '{ span.http.status_code >= 500 }' -o json`,
 	}
 	cmd.AddCommand(qCmd)
 
-	gCmd := getCmd(loader)
+	gCmd := dstempo.GetCmd(loader)
 	gCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
 		agent.AnnotationLLMHint:   "gcx traces get -d abc123 <trace-id> -o json",
 	}
 	cmd.AddCommand(gCmd)
 
-	lCmd := labelsCmd(loader)
+	lCmd := dstempo.LabelsCmd(loader)
 	lCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
 		agent.AnnotationLLMHint:   "gcx traces labels -d abc123 -o json",
 	}
 	cmd.AddCommand(lCmd)
 
-	mCmd := metricsCmd(loader)
+	mCmd := dstempo.MetricsCmd(loader)
 	mCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
 		agent.AnnotationLLMHint:   `gcx traces metrics -d abc123 '{ } | rate()' --since 1h -o json`,
@@ -73,6 +75,10 @@ func (p *Provider) Commands() []*cobra.Command {
 
 	return []*cobra.Command{cmd}
 }
+
+// queryCmd and metricsCmd are thin wrappers used by expr_test.go.
+func queryCmd(loader *providers.ConfigLoader) *cobra.Command   { return dstempo.QueryCmd(loader) }
+func metricsCmd(loader *providers.ConfigLoader) *cobra.Command { return dstempo.MetricsCmd(loader) }
 
 func (p *Provider) Validate(_ map[string]string) error { return nil }
 

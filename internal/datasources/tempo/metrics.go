@@ -1,4 +1,4 @@
-package traces
+package tempo
 
 import (
 	"errors"
@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/providers"
@@ -16,8 +17,8 @@ import (
 
 const defaultTraceMetricsWindow = time.Hour
 
-// metricsCmd returns the `metrics` subcommand for TraceQL metrics queries.
-func metricsCmd(loader *providers.ConfigLoader) *cobra.Command {
+// MetricsCmd returns the `metrics` subcommand for TraceQL metrics queries.
+func MetricsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
 	var datasource string
 	var instant bool
@@ -36,19 +37,19 @@ even when a time range is provided. If no time flags are set, gcx queries the
 last hour by default.`,
 		Example: `
   # Instant query over the last hour (default, no time flags)
-  gcx traces metrics '{ } | rate()'
+  gcx datasources tempo metrics '{ } | rate()'
 
   # Range query with relative window
-  gcx traces metrics -d tempo-001 '{ } | rate()' --since 1h
+  gcx datasources tempo metrics -d tempo-001 '{ } | rate()' --since 1h
 
   # Instant query with explicit time range
-  gcx traces metrics '{ } | rate()' --instant --since 1h
+  gcx datasources tempo metrics '{ } | rate()' --instant --since 1h
 
   # Range query with explicit time range and step
-  gcx traces metrics '{ } | rate()' --from now-1h --to now --step 30s
+  gcx datasources tempo metrics '{ } | rate()' --from now-1h --to now --step 30s
 
   # Output as JSON
-  gcx traces metrics -d tempo-001 '{ } | rate()' -o json`,
+  gcx datasources tempo metrics -d tempo-001 '{ } | rate()' -o json`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
@@ -112,6 +113,11 @@ last hour by default.`,
 
 			return shared.IO.Encode(cmd.OutOrStdout(), resp)
 		},
+	}
+
+	cmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "medium",
+		agent.AnnotationLLMHint:   `gcx datasources tempo metrics -d UID '{ } | rate()' --since 1h -o json`,
 	}
 
 	shared.Setup(cmd.Flags(), true)

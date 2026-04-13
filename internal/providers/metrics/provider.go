@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"github.com/grafana/gcx/internal/agent"
+	dsprometheus "github.com/grafana/gcx/internal/datasources/prometheus"
 	"github.com/grafana/gcx/internal/providers"
 	adaptivemetrics "github.com/grafana/gcx/internal/providers/metrics/adaptive"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -36,8 +37,9 @@ func (p *Provider) Commands() []*cobra.Command {
 
 	loader.BindFlags(cmd.PersistentFlags())
 
-	// Datasource-origin subcommands.
-	qCmd := queryCmd(loader)
+	// Grab the commands from the datasources package, and override the examples
+	// and annotations to be suitable for the top-level commands.
+	qCmd := dsprometheus.QueryCmd(loader)
 	qCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
 		agent.AnnotationLLMHint:   `gcx metrics query -d abc123 'up{job="grafana"}' -o json`,
@@ -56,36 +58,36 @@ func (p *Provider) Commands() []*cobra.Command {
   gcx metrics query -d abc123 'up' -o json`
 	cmd.AddCommand(qCmd)
 
-	lCmd := labelsCmd(loader)
+	lCmd := dsprometheus.LabelsCmd(loader)
 	lCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
 		agent.AnnotationLLMHint:   "gcx metrics labels -d abc123 -o json",
 	}
 	lCmd.Example = `
   # List all labels (use datasource UID, not name)
-  gcx metrics labels -d <datasource-uid>
+  gcx metrics labels -d UID
 
   # Get values for a specific label
-  gcx metrics labels -d <datasource-uid> --label job
+  gcx metrics labels -d UID --label job
 
   # Output as JSON
-  gcx metrics labels -d <datasource-uid> -o json`
+  gcx metrics labels -d UID -o json`
 	cmd.AddCommand(lCmd)
 
-	mCmd := metadataCmd(loader)
+	mCmd := dsprometheus.MetadataCmd(loader)
 	mCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
 		agent.AnnotationLLMHint:   "gcx metrics metadata -d abc123 -o json",
 	}
 	mCmd.Example = `
   # Get all metric metadata (use datasource UID, not name)
-  gcx metrics metadata -d <datasource-uid>
+  gcx metrics metadata -d UID
 
   # Get metadata for a specific metric
-  gcx metrics metadata -d <datasource-uid> --metric http_requests_total
+  gcx metrics metadata -d UID --metric http_requests_total
 
   # Output as JSON
-  gcx metrics metadata -d <datasource-uid> -o json`
+  gcx metrics metadata -d UID -o json`
 	cmd.AddCommand(mCmd)
 
 	// Adaptive Metrics subcommands — rename Use from "metrics" to "adaptive".
@@ -96,6 +98,9 @@ func (p *Provider) Commands() []*cobra.Command {
 
 	return []*cobra.Command{cmd}
 }
+
+// queryCmd is a thin wrapper used by expr_test.go.
+func queryCmd(loader *providers.ConfigLoader) *cobra.Command { return dsprometheus.QueryCmd(loader) }
 
 func (p *Provider) Validate(_ map[string]string) error { return nil }
 
