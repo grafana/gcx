@@ -33,24 +33,24 @@ type resourceMeta struct {
 	URLTemplate string
 }
 
-func withCreate[T adapter.ResourceNamer](fn func(ctx context.Context, c *OnCallClient, item *T) (*T, error)) crudOption[T] {
-	return func(client *OnCallClient, crud *adapter.TypedCRUD[T]) {
+func withCreate[T adapter.ResourceNamer](fn func(ctx context.Context, c OnCallAPI, item *T) (*T, error)) crudOption[T] {
+	return func(client OnCallAPI, crud *adapter.TypedCRUD[T]) {
 		crud.CreateFn = func(ctx context.Context, item *T) (*T, error) {
 			return fn(ctx, client, item)
 		}
 	}
 }
 
-func withUpdate[T adapter.ResourceNamer](fn func(ctx context.Context, c *OnCallClient, name string, item *T) (*T, error)) crudOption[T] {
-	return func(client *OnCallClient, crud *adapter.TypedCRUD[T]) {
+func withUpdate[T adapter.ResourceNamer](fn func(ctx context.Context, c OnCallAPI, name string, item *T) (*T, error)) crudOption[T] {
+	return func(client OnCallAPI, crud *adapter.TypedCRUD[T]) {
 		crud.UpdateFn = func(ctx context.Context, name string, item *T) (*T, error) {
 			return fn(ctx, client, name, item)
 		}
 	}
 }
 
-func withDelete[T adapter.ResourceNamer](fn func(ctx context.Context, c *OnCallClient, name string) error) crudOption[T] {
-	return func(client *OnCallClient, crud *adapter.TypedCRUD[T]) {
+func withDelete[T adapter.ResourceNamer](fn func(ctx context.Context, c OnCallAPI, name string) error) crudOption[T] {
+	return func(client OnCallAPI, crud *adapter.TypedCRUD[T]) {
 		crud.DeleteFn = func(ctx context.Context, name string) error {
 			return fn(ctx, client, name)
 		}
@@ -60,8 +60,8 @@ func withDelete[T adapter.ResourceNamer](fn func(ctx context.Context, c *OnCallC
 func buildRegistration[T adapter.ResourceNamer](
 	loader OnCallConfigLoader,
 	meta resourceMeta,
-	listFn func(ctx context.Context, client *OnCallClient) ([]T, error),
-	getFn func(ctx context.Context, client *OnCallClient, name string) (*T, error),
+	listFn func(ctx context.Context, client OnCallAPI) ([]T, error),
+	getFn func(ctx context.Context, client OnCallAPI, name string) (*T, error),
 	opts ...crudOption[T],
 ) adapter.Registration {
 	desc := meta.Descriptor
@@ -126,17 +126,17 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta.Example = integrationExample()
 	meta.URLTemplate = "/a/grafana-oncall-app/integrations/{name}"
 	regs = append(regs, buildRegistration(loader, meta,
-		func(ctx context.Context, c *OnCallClient) ([]Integration, error) { return c.ListIntegrations(ctx) },
-		func(ctx context.Context, c *OnCallClient, name string) (*Integration, error) {
+		func(ctx context.Context, c OnCallAPI) ([]Integration, error) { return c.ListIntegrations(ctx) },
+		func(ctx context.Context, c OnCallAPI, name string) (*Integration, error) {
 			return c.GetIntegration(ctx, name)
 		},
-		withCreate(func(ctx context.Context, c *OnCallClient, item *Integration) (*Integration, error) {
+		withCreate(func(ctx context.Context, c OnCallAPI, item *Integration) (*Integration, error) {
 			return c.CreateIntegration(ctx, *item)
 		}),
-		withUpdate(func(ctx context.Context, c *OnCallClient, name string, item *Integration) (*Integration, error) {
+		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Integration) (*Integration, error) {
 			return c.UpdateIntegration(ctx, name, *item)
 		}),
-		withDelete[Integration](func(ctx context.Context, c *OnCallClient, name string) error {
+		withDelete[Integration](func(ctx context.Context, c OnCallAPI, name string) error {
 			return c.DeleteIntegration(ctx, name)
 		}),
 	))
@@ -147,19 +147,19 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta.Example = escalationChainExample()
 	meta.URLTemplate = "/a/grafana-oncall-app/escalation-chains/{name}"
 	regs = append(regs, buildRegistration(loader, meta,
-		func(ctx context.Context, c *OnCallClient) ([]EscalationChain, error) {
+		func(ctx context.Context, c OnCallAPI) ([]EscalationChain, error) {
 			return c.ListEscalationChains(ctx)
 		},
-		func(ctx context.Context, c *OnCallClient, name string) (*EscalationChain, error) {
+		func(ctx context.Context, c OnCallAPI, name string) (*EscalationChain, error) {
 			return c.GetEscalationChain(ctx, name)
 		},
-		withCreate(func(ctx context.Context, c *OnCallClient, item *EscalationChain) (*EscalationChain, error) {
+		withCreate(func(ctx context.Context, c OnCallAPI, item *EscalationChain) (*EscalationChain, error) {
 			return c.CreateEscalationChain(ctx, *item)
 		}),
-		withUpdate(func(ctx context.Context, c *OnCallClient, name string, item *EscalationChain) (*EscalationChain, error) {
+		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *EscalationChain) (*EscalationChain, error) {
 			return c.UpdateEscalationChain(ctx, name, *item)
 		}),
-		withDelete[EscalationChain](func(ctx context.Context, c *OnCallClient, name string) error {
+		withDelete[EscalationChain](func(ctx context.Context, c OnCallAPI, name string) error {
 			return c.DeleteEscalationChain(ctx, name)
 		}),
 	))
@@ -169,19 +169,19 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta.Schema = adapter.SchemaFromType[EscalationPolicy](meta.Descriptor)
 	meta.Example = escalationPolicyExample()
 	regs = append(regs, buildRegistration(loader, meta,
-		func(ctx context.Context, c *OnCallClient) ([]EscalationPolicy, error) {
+		func(ctx context.Context, c OnCallAPI) ([]EscalationPolicy, error) {
 			return c.ListEscalationPolicies(ctx, "")
 		},
-		func(ctx context.Context, c *OnCallClient, name string) (*EscalationPolicy, error) {
+		func(ctx context.Context, c OnCallAPI, name string) (*EscalationPolicy, error) {
 			return c.GetEscalationPolicy(ctx, name)
 		},
-		withCreate(func(ctx context.Context, c *OnCallClient, item *EscalationPolicy) (*EscalationPolicy, error) {
+		withCreate(func(ctx context.Context, c OnCallAPI, item *EscalationPolicy) (*EscalationPolicy, error) {
 			return c.CreateEscalationPolicy(ctx, *item)
 		}),
-		withUpdate(func(ctx context.Context, c *OnCallClient, name string, item *EscalationPolicy) (*EscalationPolicy, error) {
+		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *EscalationPolicy) (*EscalationPolicy, error) {
 			return c.UpdateEscalationPolicy(ctx, name, *item)
 		}),
-		withDelete[EscalationPolicy](func(ctx context.Context, c *OnCallClient, name string) error {
+		withDelete[EscalationPolicy](func(ctx context.Context, c OnCallAPI, name string) error {
 			return c.DeleteEscalationPolicy(ctx, name)
 		}),
 	))
@@ -192,17 +192,17 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta.Example = scheduleExample()
 	meta.URLTemplate = "/a/grafana-oncall-app/schedules/{name}"
 	regs = append(regs, buildRegistration(loader, meta,
-		func(ctx context.Context, c *OnCallClient) ([]Schedule, error) { return c.ListSchedules(ctx) },
-		func(ctx context.Context, c *OnCallClient, name string) (*Schedule, error) {
+		func(ctx context.Context, c OnCallAPI) ([]Schedule, error) { return c.ListSchedules(ctx) },
+		func(ctx context.Context, c OnCallAPI, name string) (*Schedule, error) {
 			return c.GetSchedule(ctx, name)
 		},
-		withCreate(func(ctx context.Context, c *OnCallClient, item *Schedule) (*Schedule, error) {
+		withCreate(func(ctx context.Context, c OnCallAPI, item *Schedule) (*Schedule, error) {
 			return c.CreateSchedule(ctx, *item)
 		}),
-		withUpdate(func(ctx context.Context, c *OnCallClient, name string, item *Schedule) (*Schedule, error) {
+		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Schedule) (*Schedule, error) {
 			return c.UpdateSchedule(ctx, name, *item)
 		}),
-		withDelete[Schedule](func(ctx context.Context, c *OnCallClient, name string) error {
+		withDelete[Schedule](func(ctx context.Context, c OnCallAPI, name string) error {
 			return c.DeleteSchedule(ctx, name)
 		}),
 	))
@@ -212,15 +212,15 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta.Schema = adapter.SchemaFromType[Shift](meta.Descriptor)
 	meta.Example = shiftExample()
 	regs = append(regs, buildRegistration(loader, meta,
-		func(ctx context.Context, c *OnCallClient) ([]Shift, error) { return c.ListShifts(ctx) },
-		func(ctx context.Context, c *OnCallClient, name string) (*Shift, error) { return c.GetShift(ctx, name) },
-		withCreate(func(ctx context.Context, c *OnCallClient, item *Shift) (*Shift, error) {
+		func(ctx context.Context, c OnCallAPI) ([]Shift, error) { return c.ListShifts(ctx) },
+		func(ctx context.Context, c OnCallAPI, name string) (*Shift, error) { return c.GetShift(ctx, name) },
+		withCreate(func(ctx context.Context, c OnCallAPI, item *Shift) (*Shift, error) {
 			return c.CreateShift(ctx, shiftToRequest(item))
 		}),
-		withUpdate(func(ctx context.Context, c *OnCallClient, name string, item *Shift) (*Shift, error) {
+		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Shift) (*Shift, error) {
 			return c.UpdateShift(ctx, name, shiftToRequest(item))
 		}),
-		withDelete[Shift](func(ctx context.Context, c *OnCallClient, name string) error {
+		withDelete[Shift](func(ctx context.Context, c OnCallAPI, name string) error {
 			return c.DeleteShift(ctx, name)
 		}),
 	))
@@ -230,15 +230,15 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta.Schema = adapter.SchemaFromType[Route](meta.Descriptor)
 	meta.Example = routeExample()
 	regs = append(regs, buildRegistration(loader, meta,
-		func(ctx context.Context, c *OnCallClient) ([]Route, error) { return c.ListRoutes(ctx, "") },
-		func(ctx context.Context, c *OnCallClient, name string) (*Route, error) { return c.GetRoute(ctx, name) },
-		withCreate(func(ctx context.Context, c *OnCallClient, item *Route) (*Route, error) {
+		func(ctx context.Context, c OnCallAPI) ([]Route, error) { return c.ListRoutes(ctx, "") },
+		func(ctx context.Context, c OnCallAPI, name string) (*Route, error) { return c.GetRoute(ctx, name) },
+		withCreate(func(ctx context.Context, c OnCallAPI, item *Route) (*Route, error) {
 			return c.CreateRoute(ctx, *item)
 		}),
-		withUpdate(func(ctx context.Context, c *OnCallClient, name string, item *Route) (*Route, error) {
+		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Route) (*Route, error) {
 			return c.UpdateRoute(ctx, name, *item)
 		}),
-		withDelete[Route](func(ctx context.Context, c *OnCallClient, name string) error {
+		withDelete[Route](func(ctx context.Context, c OnCallAPI, name string) error {
 			return c.DeleteRoute(ctx, name)
 		}),
 	))
@@ -249,17 +249,17 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta.Example = webhookExample()
 	meta.URLTemplate = "/a/grafana-oncall-app/outgoing-webhooks/{name}"
 	regs = append(regs, buildRegistration(loader, meta,
-		func(ctx context.Context, c *OnCallClient) ([]Webhook, error) { return c.ListWebhooks(ctx) },
-		func(ctx context.Context, c *OnCallClient, name string) (*Webhook, error) {
+		func(ctx context.Context, c OnCallAPI) ([]Webhook, error) { return c.ListWebhooks(ctx) },
+		func(ctx context.Context, c OnCallAPI, name string) (*Webhook, error) {
 			return c.GetWebhook(ctx, name)
 		},
-		withCreate(func(ctx context.Context, c *OnCallClient, item *Webhook) (*Webhook, error) {
+		withCreate(func(ctx context.Context, c OnCallAPI, item *Webhook) (*Webhook, error) {
 			return c.CreateWebhook(ctx, *item)
 		}),
-		withUpdate(func(ctx context.Context, c *OnCallClient, name string, item *Webhook) (*Webhook, error) {
+		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Webhook) (*Webhook, error) {
 			return c.UpdateWebhook(ctx, name, *item)
 		}),
-		withDelete[Webhook](func(ctx context.Context, c *OnCallClient, name string) error {
+		withDelete[Webhook](func(ctx context.Context, c OnCallAPI, name string) error {
 			return c.DeleteWebhook(ctx, name)
 		}),
 	))
@@ -269,11 +269,11 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta.Schema = adapter.SchemaFromType[AlertGroup](meta.Descriptor)
 	meta.URLTemplate = "/a/grafana-oncall-app/alert-groups/{name}"
 	regs = append(regs, buildRegistration(loader, meta,
-		func(ctx context.Context, c *OnCallClient) ([]AlertGroup, error) { return c.ListAlertGroups(ctx) },
-		func(ctx context.Context, c *OnCallClient, name string) (*AlertGroup, error) {
+		func(ctx context.Context, c OnCallAPI) ([]AlertGroup, error) { return c.ListAlertGroups(ctx) },
+		func(ctx context.Context, c OnCallAPI, name string) (*AlertGroup, error) {
 			return c.GetAlertGroup(ctx, name)
 		},
-		withDelete[AlertGroup](func(ctx context.Context, c *OnCallClient, name string) error {
+		withDelete[AlertGroup](func(ctx context.Context, c OnCallAPI, name string) error {
 			return c.DeleteAlertGroup(ctx, name)
 		}),
 	))
@@ -282,23 +282,23 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta = oncallMeta("User", "oncalluser", "oncallusers")
 	meta.Schema = adapter.SchemaFromType[User](meta.Descriptor)
 	regs = append(regs, buildRegistration(loader, meta,
-		func(ctx context.Context, c *OnCallClient) ([]User, error) { return c.ListUsers(ctx) },
-		func(ctx context.Context, c *OnCallClient, name string) (*User, error) { return c.GetUser(ctx, name) },
+		func(ctx context.Context, c OnCallAPI) ([]User, error) { return c.ListUsers(ctx) },
+		func(ctx context.Context, c OnCallAPI, name string) (*User, error) { return c.GetUser(ctx, name) },
 	))
 
 	// 10. Team — read-only
 	meta = oncallMeta("Team", "oncallteam", "oncallteams")
 	meta.Schema = adapter.SchemaFromType[Team](meta.Descriptor)
 	regs = append(regs, buildRegistration(loader, meta,
-		func(ctx context.Context, c *OnCallClient) ([]Team, error) { return c.ListTeams(ctx) },
-		func(ctx context.Context, c *OnCallClient, name string) (*Team, error) { return c.GetTeam(ctx, name) },
+		func(ctx context.Context, c OnCallAPI) ([]Team, error) { return c.ListTeams(ctx) },
+		func(ctx context.Context, c OnCallAPI, name string) (*Team, error) { return c.GetTeam(ctx, name) },
 	))
 
 	// 11. UserGroup — list-only
 	meta = oncallMeta("UserGroup", "usergroup", "usergroups")
 	meta.Schema = adapter.SchemaFromType[UserGroup](meta.Descriptor)
 	regs = append(regs, buildRegistration(loader, meta,
-		func(ctx context.Context, c *OnCallClient) ([]UserGroup, error) { return c.ListUserGroups(ctx) },
+		func(ctx context.Context, c OnCallAPI) ([]UserGroup, error) { return c.ListUserGroups(ctx) },
 		nil,
 	))
 
@@ -306,7 +306,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta = oncallMeta("SlackChannel", "slackchannel", "slackchannels")
 	meta.Schema = adapter.SchemaFromType[SlackChannel](meta.Descriptor)
 	regs = append(regs, buildRegistration(loader, meta,
-		func(ctx context.Context, c *OnCallClient) ([]SlackChannel, error) { return c.ListSlackChannels(ctx) },
+		func(ctx context.Context, c OnCallAPI) ([]SlackChannel, error) { return c.ListSlackChannels(ctx) },
 		nil,
 	))
 
@@ -315,7 +315,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta.Schema = adapter.SchemaFromType[Alert](meta.Descriptor)
 	regs = append(regs, buildRegistration(loader, meta,
 		nil,
-		func(ctx context.Context, c *OnCallClient, name string) (*Alert, error) { return c.GetAlert(ctx, name) },
+		func(ctx context.Context, c OnCallAPI, name string) (*Alert, error) { return c.GetAlert(ctx, name) },
 	))
 
 	// 14. Organization — read-only (singular endpoint, no list)
@@ -323,7 +323,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta.Schema = adapter.SchemaFromType[Organization](meta.Descriptor)
 	regs = append(regs, buildRegistration[Organization](loader, meta,
 		nil,
-		func(ctx context.Context, c *OnCallClient, _ string) (*Organization, error) {
+		func(ctx context.Context, c OnCallAPI, _ string) (*Organization, error) {
 			return c.GetOrganization(ctx)
 		},
 	))
@@ -333,24 +333,24 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta.Schema = adapter.SchemaFromType[ResolutionNote](meta.Descriptor)
 	meta.Example = resolutionNoteExample()
 	regs = append(regs, buildRegistration(loader, meta,
-		func(ctx context.Context, c *OnCallClient) ([]ResolutionNote, error) {
+		func(ctx context.Context, c OnCallAPI) ([]ResolutionNote, error) {
 			return c.ListResolutionNotes(ctx, "")
 		},
-		func(ctx context.Context, c *OnCallClient, name string) (*ResolutionNote, error) {
+		func(ctx context.Context, c OnCallAPI, name string) (*ResolutionNote, error) {
 			return c.GetResolutionNote(ctx, name)
 		},
-		withCreate(func(ctx context.Context, c *OnCallClient, item *ResolutionNote) (*ResolutionNote, error) {
+		withCreate(func(ctx context.Context, c OnCallAPI, item *ResolutionNote) (*ResolutionNote, error) {
 			return c.CreateResolutionNote(ctx, CreateResolutionNoteInput{
 				AlertGroup: item.AlertGroup,
 				Text:       item.Text,
 			})
 		}),
-		withUpdate(func(ctx context.Context, c *OnCallClient, name string, item *ResolutionNote) (*ResolutionNote, error) {
+		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *ResolutionNote) (*ResolutionNote, error) {
 			return c.UpdateResolutionNote(ctx, name, UpdateResolutionNoteInput{
 				Text: item.Text,
 			})
 		}),
-		withDelete[ResolutionNote](func(ctx context.Context, c *OnCallClient, name string) error {
+		withDelete[ResolutionNote](func(ctx context.Context, c OnCallAPI, name string) error {
 			return c.DeleteResolutionNote(ctx, name)
 		}),
 	))
@@ -360,11 +360,11 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta.Schema = adapter.SchemaFromType[ShiftSwap](meta.Descriptor)
 	meta.Example = shiftSwapExample()
 	regs = append(regs, buildRegistration(loader, meta,
-		func(ctx context.Context, c *OnCallClient) ([]ShiftSwap, error) { return c.ListShiftSwaps(ctx) },
-		func(ctx context.Context, c *OnCallClient, name string) (*ShiftSwap, error) {
+		func(ctx context.Context, c OnCallAPI) ([]ShiftSwap, error) { return c.ListShiftSwaps(ctx) },
+		func(ctx context.Context, c OnCallAPI, name string) (*ShiftSwap, error) {
 			return c.GetShiftSwap(ctx, name)
 		},
-		withCreate(func(ctx context.Context, c *OnCallClient, item *ShiftSwap) (*ShiftSwap, error) {
+		withCreate(func(ctx context.Context, c OnCallAPI, item *ShiftSwap) (*ShiftSwap, error) {
 			return c.CreateShiftSwap(ctx, CreateShiftSwapInput{
 				Schedule:    item.Schedule,
 				SwapStart:   item.SwapStart,
@@ -372,13 +372,13 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 				Beneficiary: item.Beneficiary,
 			})
 		}),
-		withUpdate(func(ctx context.Context, c *OnCallClient, name string, item *ShiftSwap) (*ShiftSwap, error) {
+		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *ShiftSwap) (*ShiftSwap, error) {
 			return c.UpdateShiftSwap(ctx, name, UpdateShiftSwapInput{
 				SwapStart: item.SwapStart,
 				SwapEnd:   item.SwapEnd,
 			})
 		}),
-		withDelete[ShiftSwap](func(ctx context.Context, c *OnCallClient, name string) error {
+		withDelete[ShiftSwap](func(ctx context.Context, c OnCallAPI, name string) error {
 			return c.DeleteShiftSwap(ctx, name)
 		}),
 	))
