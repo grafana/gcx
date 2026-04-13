@@ -81,11 +81,11 @@ func newInstallCommand(source fs.FS) *cobra.Command {
 		Use:   "install [SKILL]...",
 		Short: "Install bundled gcx skills into ~/.agents/skills",
 		Long:  "Install one or more bundled gcx Agent Skills into a user-level .agents directory for tools that follow the .agents skill convention. Use --all to install the entire bundle.",
-		Example: `  gcx skills install gcx
-  gcx skills install gcx setup-gcx debug-with-grafana
+		Example: `  gcx skills install setup-gcx
+  gcx skills install setup-gcx debug-with-grafana explore-datasources
   gcx skills install --all
   gcx skills install --all --dry-run
-  gcx skills install gcx --force`,
+  gcx skills install setup-gcx --force`,
 		Args: cobra.ArbitraryArgs,
 		ValidArgsFunction: func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 			names, err := bundledSkillNames(source)
@@ -439,8 +439,8 @@ func normalizeDescription(description string) string {
 }
 
 func fallbackSkillDescription(data []byte) string {
-	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
-	for _, line := range lines {
+	content := strings.ReplaceAll(string(data), "\r\n", "\n")
+	for line := range strings.SplitSeq(content, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
 			continue
