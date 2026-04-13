@@ -22,7 +22,7 @@ Manage k6 TestRun CRD manifests.
 
 ### SEE ALSO
 
-* [gcx k6](gcx_k6.md)	 - Manage Grafana K6 Cloud projects, load tests, and schedules
+* [gcx k6](gcx_k6.md)	 - Manage Grafana k6 Cloud projects, load tests, and schedules
 * [gcx k6 test-run emit](gcx_k6_test-run_emit.md)	 - Fetch a k6 Cloud test and emit Kubernetes TestRun CRD manifests.
 * [gcx k6 test-run runs](gcx_k6_test-run_runs.md)	 - Query k6 Cloud test run history.
 * [gcx k6 test-run status](gcx_k6_test-run_status.md)	 - Show the most recent test run status for a k6 load test.

@@ -1,6 +1,6 @@
 ## gcx k6 load-tests
 
-Manage K6 Cloud load tests.
+Manage k6 Cloud load tests.
 
 ### Options
 
@@ -22,11 +22,11 @@ Manage K6 Cloud load tests.
 
 ### SEE ALSO
 
-* [gcx k6](gcx_k6.md)	 - Manage Grafana K6 Cloud projects, load tests, and schedules
-* [gcx k6 load-tests create](gcx_k6_load-tests_create.md)	 - Create a new K6 load test.
-* [gcx k6 load-tests delete](gcx_k6_load-tests_delete.md)	 - Delete a K6 load test.
-* [gcx k6 load-tests get](gcx_k6_load-tests_get.md)	 - Get a single K6 load test by ID or name.
-* [gcx k6 load-tests list](gcx_k6_load-tests_list.md)	 - List K6 Cloud load tests.
-* [gcx k6 load-tests update](gcx_k6_load-tests_update.md)	 - Update a K6 load test from a file.
-* [gcx k6 load-tests update-script](gcx_k6_load-tests_update-script.md)	 - Update the script of a K6 load test from a file.
+* [gcx k6](gcx_k6.md)	 - Manage Grafana k6 Cloud projects, load tests, and schedules
+* [gcx k6 load-tests create](gcx_k6_load-tests_create.md)	 - Create a new k6 load test.
+* [gcx k6 load-tests delete](gcx_k6_load-tests_delete.md)	 - Delete a k6 load test.
+* [gcx k6 load-tests get](gcx_k6_load-tests_get.md)	 - Get a single k6 load test by ID or name.
+* [gcx k6 load-tests list](gcx_k6_load-tests_list.md)	 - List k6 Cloud load tests.
+* [gcx k6 load-tests update](gcx_k6_load-tests_update.md)	 - Update a k6 load test from a file.
+* [gcx k6 load-tests update-script](gcx_k6_load-tests_update-script.md)	 - Update the script of a k6 load test from a file.
 

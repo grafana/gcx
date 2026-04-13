@@ -1,6 +1,6 @@
 ## gcx k6 projects delete
 
-Delete a K6 project.
+Delete a k6 project.
 
 ```
 gcx k6 projects delete <id-or-name> [flags]
@@ -26,5 +26,5 @@ gcx k6 projects delete <id-or-name> [flags]
 
 ### SEE ALSO
 
-* [gcx k6 projects](gcx_k6_projects.md)	 - Manage K6 Cloud projects.
+* [gcx k6 projects](gcx_k6_projects.md)	 - Manage k6 Cloud projects.
 

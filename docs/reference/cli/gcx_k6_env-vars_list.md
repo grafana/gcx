@@ -1,6 +1,6 @@
 ## gcx k6 env-vars list
 
-List K6 environment variables.
+List k6 environment variables.
 
 ```
 gcx k6 env-vars list [flags]
@@ -29,5 +29,5 @@ gcx k6 env-vars list [flags]
 
 ### SEE ALSO
 
-* [gcx k6 env-vars](gcx_k6_env-vars.md)	 - Manage K6 Cloud environment variables.
+* [gcx k6 env-vars](gcx_k6_env-vars.md)	 - Manage k6 Cloud environment variables.
 

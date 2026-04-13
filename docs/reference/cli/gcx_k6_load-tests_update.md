@@ -1,6 +1,6 @@
 ## gcx k6 load-tests update
 
-Update a K6 load test from a file.
+Update a k6 load test from a file.
 
 ```
 gcx k6 load-tests update <id> [flags]
@@ -27,5 +27,5 @@ gcx k6 load-tests update <id> [flags]
 
 ### SEE ALSO
 
-* [gcx k6 load-tests](gcx_k6_load-tests.md)	 - Manage K6 Cloud load tests.
+* [gcx k6 load-tests](gcx_k6_load-tests.md)	 - Manage k6 Cloud load tests.
 

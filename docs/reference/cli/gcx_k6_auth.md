@@ -1,6 +1,6 @@
 ## gcx k6 auth
 
-K6 authentication commands.
+k6 authentication commands.
 
 ### Options
 
@@ -22,6 +22,6 @@ K6 authentication commands.
 
 ### SEE ALSO
 
-* [gcx k6](gcx_k6.md)	 - Manage Grafana K6 Cloud projects, load tests, and schedules
+* [gcx k6](gcx_k6.md)	 - Manage Grafana k6 Cloud projects, load tests, and schedules
 * [gcx k6 auth token](gcx_k6_auth_token.md)	 - Print the authenticated k6 API token.
 

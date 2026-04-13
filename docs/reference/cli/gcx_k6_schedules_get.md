@@ -1,6 +1,6 @@
 ## gcx k6 schedules get
 
-Get a single K6 schedule by ID.
+Get a single k6 schedule by ID.
 
 ```
 gcx k6 schedules get <id> [flags]
@@ -28,5 +28,5 @@ gcx k6 schedules get <id> [flags]
 
 ### SEE ALSO
 
-* [gcx k6 schedules](gcx_k6_schedules.md)	 - Manage K6 Cloud schedules.
+* [gcx k6 schedules](gcx_k6_schedules.md)	 - Manage k6 Cloud schedules.
 
