@@ -4,42 +4,42 @@ go 1.26.0
 
 require (
 	github.com/Masterminds/semver/v3 v3.4.0
-	github.com/NimbleMarkets/ntcharts v0.4.0
+	github.com/NimbleMarkets/ntcharts v0.5.1
 	github.com/adrg/xdg v0.5.3
-	github.com/caarlos0/env/v11 v11.3.1
+	github.com/caarlos0/env/v11 v11.4.0
 	github.com/charmbracelet/glamour v1.0.0
 	github.com/charmbracelet/huh v0.8.0
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
-	github.com/fatih/color v1.18.0
+	github.com/fatih/color v1.19.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-logr/logr v1.4.3
-	github.com/go-openapi/strfmt v0.25.0
+	github.com/go-openapi/strfmt v0.26.1
 	github.com/goccy/go-yaml v1.19.2
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
-	github.com/grafana/authlib/types v0.0.0-20260218111514-582136a04938
-	github.com/grafana/grafana-app-sdk/logging v0.50.4
+	github.com/grafana/authlib/types 820a9134c412
+	github.com/grafana/grafana-app-sdk/logging v0.53.1
 	github.com/grafana/grafana-foundation-sdk/go v0.0.12
-	github.com/grafana/grafana-openapi-client-go v0.0.0-20251202103709-7ef691d4df1d
+	github.com/grafana/grafana-openapi-client-go ee77c4f6f90e
 	github.com/grafana/grafana/apps/folder v0.0.0-20250724095330-d852bde2a5fb
 	github.com/grafana/grafana/pkg/apimachinery v0.0.0-20250903133002-4e28cba1c53a
-	github.com/grafana/loki/v3 v3.4.2
-	github.com/grafana/promql-builder/go v0.0.0-20250916111012-8fa9625b89a3
+	github.com/grafana/loki/v3 v3.7.1
+	github.com/grafana/promql-builder/go v0.0.4
 	github.com/huandu/xstrings v1.5.0
 	github.com/invopop/jsonschema v0.13.0
-	github.com/olekukonko/tablewriter v1.1.3
-	github.com/open-policy-agent/opa v1.14.0
+	github.com/olekukonko/tablewriter v1.1.4
+	github.com/open-policy-agent/opa v1.15.2
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
-	github.com/prometheus/prometheus v0.55.0
+	github.com/prometheus/prometheus v0.311.1
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
-	golang.org/x/mod v0.32.0
-	golang.org/x/sync v0.19.0
-	golang.org/x/term v0.40.0
-	golang.org/x/tools v0.41.0
+	golang.org/x/mod v0.35.0
+	golang.org/x/sync v0.20.0
+	golang.org/x/term v0.42.0
+	golang.org/x/tools v0.44.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/apimachinery v0.35.3
 	k8s.io/cli-runtime v0.35.3
