@@ -357,8 +357,8 @@ func checkCmd(configOpts *Options) *cobra.Command {
 
 			var checkErr error
 			fallbackSource := config.StandardLocation()
-			if cfg.Source != "" {
-				fallbackSource = config.ExplicitConfigFile(cfg.Source)
+			if configOpts.ConfigFile != "" {
+				fallbackSource = config.ExplicitConfigFile(configOpts.ConfigFile)
 			}
 			for _, gCtx := range cfg.Contexts {
 				if err := checkContext(cmd, cfg, gCtx, fallbackSource); err != nil {
