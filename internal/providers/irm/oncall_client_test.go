@@ -1,4 +1,4 @@
-package irm
+package irm_test
 
 import (
 	"context"
@@ -7,13 +7,15 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/grafana/gcx/internal/providers/irm"
 )
 
-func newTestOnCallClient(t *testing.T, handler http.Handler) *OnCallClient {
+func newTestOnCallClient(t *testing.T, handler http.Handler) *irm.OnCallClient {
 	t.Helper()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
-	return &OnCallClient{httpClient: srv.Client(), host: srv.URL}
+	return &irm.OnCallClient{HTTPClient: srv.Client(), Host: srv.URL}
 }
 
 func TestDoRequestURL(t *testing.T) {
@@ -25,11 +27,13 @@ func TestDoRequestURL(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	_, err := client.doRequest(context.Background(), http.MethodGet, "alert_receive_channels/", nil)
+	resp, err := client.DoRequest(context.Background(), http.MethodGet, "alert_receive_channels/", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := basePath + "/alert_receive_channels/"
+	resp.Body.Close()
+
+	want := irm.BasePath + "/alert_receive_channels/"
 	if gotPath != want {
 		t.Errorf("got path %q, want %q", gotPath, want)
 	}
@@ -44,10 +48,12 @@ func TestDoRequestNoAuthHeader(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	_, err := client.doRequest(context.Background(), http.MethodGet, "test/", nil)
+	resp, err := client.DoRequest(context.Background(), http.MethodGet, "test/", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	resp.Body.Close()
+
 	if gotAuth != "" {
 		t.Errorf("expected no Authorization header, got %q", gotAuth)
 	}
@@ -57,7 +63,7 @@ func TestListIntegrations(t *testing.T) {
 	t.Parallel()
 
 	client := newTestOnCallClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		wantPath := basePath + "/" + integrationsPath
+		wantPath := irm.BasePath + "/alert_receive_channels/"
 		if r.URL.Path != wantPath {
 			t.Errorf("got path %q, want %q", r.URL.Path, wantPath)
 		}
@@ -86,7 +92,7 @@ func TestGetIntegration(t *testing.T) {
 	t.Parallel()
 
 	client := newTestOnCallClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		wantPath := basePath + "/" + integrationsPath + "int1/"
+		wantPath := irm.BasePath + "/alert_receive_channels/int1/"
 		if r.URL.Path != wantPath {
 			t.Errorf("got path %q, want %q", r.URL.Path, wantPath)
 		}
@@ -120,8 +126,7 @@ func TestPaginationExtractsPathFromBackendURL(t *testing.T) {
 			})
 			return
 		}
-		// Page 2: verify the client re-requested through the proxy with the extracted path.
-		wantPath := basePath + "/escalation_chains/"
+		wantPath := irm.BasePath + "/escalation_chains/"
 		if r.URL.Path != wantPath {
 			t.Errorf("page 2 path: got %q, want %q", r.URL.Path, wantPath)
 		}
@@ -194,7 +199,7 @@ func TestAlertGroupAction(t *testing.T) {
 	if gotMethod != http.MethodPost {
 		t.Errorf("expected POST, got %s", gotMethod)
 	}
-	wantPath := basePath + "/alertgroups/ag1/acknowledge/"
+	wantPath := irm.BasePath + "/alertgroups/ag1/acknowledge/"
 	if gotPath != wantPath {
 		t.Errorf("got path %q, want %q", gotPath, wantPath)
 	}
@@ -204,7 +209,7 @@ func TestGetCurrentUser(t *testing.T) {
 	t.Parallel()
 
 	client := newTestOnCallClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		wantPath := basePath + "/" + currentUserPath
+		wantPath := irm.BasePath + "/user/"
 		if r.URL.Path != wantPath {
 			t.Errorf("got path %q, want %q", r.URL.Path, wantPath)
 		}
@@ -228,7 +233,7 @@ func TestCreateDirectPaging(t *testing.T) {
 
 	var gotBody map[string]any
 	client := newTestOnCallClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		wantPath := basePath + "/" + directPagingPath
+		wantPath := irm.BasePath + "/direct_paging"
 		if r.URL.Path != wantPath {
 			t.Errorf("got path %q, want %q", r.URL.Path, wantPath)
 		}
@@ -240,9 +245,9 @@ func TestCreateDirectPaging(t *testing.T) {
 		json.NewEncoder(w).Encode(map[string]any{"alert_group_id": "ag1"}) //nolint:errcheck
 	}))
 
-	input := DirectPagingInput{
+	input := irm.DirectPagingInput{
 		Title: "Page oncall",
-		Users: []UserReference{{ID: "u1", Important: true}},
+		Users: []irm.UserReference{{ID: "u1", Important: true}},
 		Team:  "t1",
 	}
 	result, err := client.CreateDirectPaging(context.Background(), input)
@@ -253,12 +258,14 @@ func TestCreateDirectPaging(t *testing.T) {
 		t.Errorf("unexpected result: %+v", result)
 	}
 
-	// Verify internal API input format.
 	users, ok := gotBody["users"].([]any)
 	if !ok || len(users) != 1 {
 		t.Fatalf("expected users array with 1 item, got %v", gotBody["users"])
 	}
-	userRef := users[0].(map[string]any)
+	userRef, ok := users[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected user reference to be map, got %T", users[0])
+	}
 	if userRef["id"] != "u1" || userRef["important"] != true {
 		t.Errorf("unexpected user reference: %v", userRef)
 	}
@@ -268,9 +275,9 @@ func TestExtractNextPath(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		rawURL  string
-		want    string
+		name   string
+		rawURL string
+		want   string
 	}{
 		{
 			name:   "page-based with oncall prefix",
@@ -297,11 +304,10 @@ func TestExtractNextPath(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := extractNextPath(tt.rawURL)
+			got, err := irm.ExtractNextPath(tt.rawURL)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			// Normalize: extractNextPath may or may not include trailing bits
 			got = strings.TrimPrefix(got, "/")
 			want := strings.TrimPrefix(tt.want, "/")
 			if got != want {

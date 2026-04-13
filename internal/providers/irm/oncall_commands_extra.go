@@ -22,6 +22,7 @@ import (
 
 type alertGroupListOpts struct {
 	listOpts
+
 	MaxAge string
 }
 
@@ -299,7 +300,7 @@ func newScheduleFinalShiftsCommand(loader OnCallConfigLoader) *cobra.Command {
 			}
 			days := int(endDate.Sub(startDate).Hours()/24) + 1
 			if days < 1 {
-				return fmt.Errorf("--end must be after --start")
+				return errors.New("--end must be after --start")
 			}
 
 			tz := time.Now().Location().String()
@@ -308,7 +309,7 @@ func newScheduleFinalShiftsCommand(loader OnCallConfigLoader) *cobra.Command {
 				return err
 			}
 
-				var shifts []FlatShift
+			var shifts []FlatShift
 			for _, event := range result.Events {
 				if event.IsGap {
 					continue

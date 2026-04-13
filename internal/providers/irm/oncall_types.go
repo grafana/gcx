@@ -1,37 +1,37 @@
 package irm
 
-func (x Integration) GetResourceName() string              { return x.ID }
-func (x *Integration) SetResourceName(name string)         { x.ID = name }
-func (x EscalationChain) GetResourceName() string          { return x.ID }
-func (x *EscalationChain) SetResourceName(name string)     { x.ID = name }
-func (x EscalationPolicy) GetResourceName() string         { return x.ID }
-func (x *EscalationPolicy) SetResourceName(name string)    { x.ID = name }
-func (x Schedule) GetResourceName() string                 { return x.ID }
-func (x *Schedule) SetResourceName(name string)            { x.ID = name }
-func (x Shift) GetResourceName() string                    { return x.ID }
-func (x *Shift) SetResourceName(name string)               { x.ID = name }
-func (x Team) GetResourceName() string                     { return x.ID }
-func (x *Team) SetResourceName(name string)                { x.ID = name }
-func (x Route) GetResourceName() string                    { return x.ID }
-func (x *Route) SetResourceName(name string)               { x.ID = name }
-func (x Webhook) GetResourceName() string                  { return x.ID }
-func (x *Webhook) SetResourceName(name string)             { x.ID = name }
-func (x AlertGroup) GetResourceName() string               { return x.PK }
-func (x *AlertGroup) SetResourceName(name string)          { x.PK = name }
-func (x User) GetResourceName() string                     { return x.PK }
-func (x *User) SetResourceName(name string)                { x.PK = name }
-func (x UserGroup) GetResourceName() string                { return x.ID }
-func (x *UserGroup) SetResourceName(name string)           { x.ID = name }
-func (x SlackChannel) GetResourceName() string             { return x.ID }
-func (x *SlackChannel) SetResourceName(name string)        { x.ID = name }
-func (x Alert) GetResourceName() string                    { return x.ID }
-func (x *Alert) SetResourceName(name string)               { x.ID = name }
-func (x ResolutionNote) GetResourceName() string           { return x.ID }
-func (x *ResolutionNote) SetResourceName(name string)      { x.ID = name }
-func (x ShiftSwap) GetResourceName() string                { return x.ID }
-func (x *ShiftSwap) SetResourceName(name string)           { x.ID = name }
-func (x Organization) GetResourceName() string             { return x.PK }
-func (x *Organization) SetResourceName(name string)        { x.PK = name }
+func (x Integration) GetResourceName() string           { return x.ID }
+func (x *Integration) SetResourceName(name string)      { x.ID = name }
+func (x EscalationChain) GetResourceName() string       { return x.ID }
+func (x *EscalationChain) SetResourceName(name string)  { x.ID = name }
+func (x EscalationPolicy) GetResourceName() string      { return x.ID }
+func (x *EscalationPolicy) SetResourceName(name string) { x.ID = name }
+func (x Schedule) GetResourceName() string              { return x.ID }
+func (x *Schedule) SetResourceName(name string)         { x.ID = name }
+func (x Shift) GetResourceName() string                 { return x.ID }
+func (x *Shift) SetResourceName(name string)            { x.ID = name }
+func (x Team) GetResourceName() string                  { return x.ID }
+func (x *Team) SetResourceName(name string)             { x.ID = name }
+func (x Route) GetResourceName() string                 { return x.ID }
+func (x *Route) SetResourceName(name string)            { x.ID = name }
+func (x Webhook) GetResourceName() string               { return x.ID }
+func (x *Webhook) SetResourceName(name string)          { x.ID = name }
+func (x AlertGroup) GetResourceName() string            { return x.PK }
+func (x *AlertGroup) SetResourceName(name string)       { x.PK = name }
+func (x User) GetResourceName() string                  { return x.PK }
+func (x *User) SetResourceName(name string)             { x.PK = name }
+func (x UserGroup) GetResourceName() string             { return x.ID }
+func (x *UserGroup) SetResourceName(name string)        { x.ID = name }
+func (x SlackChannel) GetResourceName() string          { return x.ID }
+func (x *SlackChannel) SetResourceName(name string)     { x.ID = name }
+func (x Alert) GetResourceName() string                 { return x.ID }
+func (x *Alert) SetResourceName(name string)            { x.ID = name }
+func (x ResolutionNote) GetResourceName() string        { return x.ID }
+func (x *ResolutionNote) SetResourceName(name string)   { x.ID = name }
+func (x ShiftSwap) GetResourceName() string             { return x.ID }
+func (x *ShiftSwap) SetResourceName(name string)        { x.ID = name }
+func (x Organization) GetResourceName() string          { return x.PK }
+func (x *Organization) SetResourceName(name string)     { x.PK = name }
 
 // Field names match the OnCall internal API (api/internal/v1/).
 
@@ -60,17 +60,17 @@ type EscalationChain struct {
 
 //nolint:recvcheck
 type EscalationPolicy struct {
-	ID                 string `json:"id,omitempty"`
-	Step               any    `json:"step"`
-	WaitDelay          any    `json:"wait_delay,omitempty"`
-	EscalationChain    string `json:"escalation_chain"`
-	NotifyToUsersQueue any    `json:"notify_to_users_queue,omitempty"`
-	NotifySchedule     any    `json:"notify_schedule,omitempty"`
-	NotifyToTeamMembers any   `json:"notify_to_team_members,omitempty"`
-	NotifyToGroup      any    `json:"notify_to_group,omitempty"`
-	CustomWebhook      any    `json:"custom_webhook,omitempty"`
-	Important          bool   `json:"important,omitempty"`
-	Severity           string `json:"severity,omitempty"`
+	ID                  string `json:"id,omitempty"`
+	Step                any    `json:"step"`
+	WaitDelay           any    `json:"wait_delay,omitempty"`
+	EscalationChain     string `json:"escalation_chain"`
+	NotifyToUsersQueue  any    `json:"notify_to_users_queue,omitempty"`
+	NotifySchedule      any    `json:"notify_schedule,omitempty"`
+	NotifyToTeamMembers any    `json:"notify_to_team_members,omitempty"`
+	NotifyToGroup       any    `json:"notify_to_group,omitempty"`
+	CustomWebhook       any    `json:"custom_webhook,omitempty"`
+	Important           bool   `json:"important,omitempty"`
+	Severity            string `json:"severity,omitempty"`
 }
 
 //nolint:recvcheck
@@ -198,12 +198,12 @@ type Alert struct {
 
 //nolint:recvcheck
 type ResolutionNote struct {
-	ID        string `json:"id,omitempty"`
+	ID         string `json:"id,omitempty"`
 	AlertGroup string `json:"alert_group,omitempty"`
-	Author    any    `json:"author,omitempty"`
-	Source    any    `json:"source,omitempty"`
-	CreatedAt string `json:"created_at,omitempty"`
-	Text      string `json:"text,omitempty"`
+	Author     any    `json:"author,omitempty"`
+	Source     any    `json:"source,omitempty"`
+	CreatedAt  string `json:"created_at,omitempty"`
+	Text       string `json:"text,omitempty"`
 }
 
 //nolint:recvcheck
@@ -221,9 +221,9 @@ type ShiftSwap struct {
 
 //nolint:recvcheck
 type Organization struct {
-	PK      string `json:"pk,omitempty"`
-	OrgID   int    `json:"org_id,omitempty"`
-	Name    string `json:"name,omitempty"`
+	PK        string `json:"pk,omitempty"`
+	OrgID     int    `json:"org_id,omitempty"`
+	Name      string `json:"name,omitempty"`
 	StackSlug string `json:"stack_slug,omitempty"`
 }
 
@@ -272,19 +272,19 @@ type DirectPagingResult struct {
 }
 
 type ShiftRequest struct {
-	Name                       string     `json:"name"`
-	Type                       any        `json:"type"`
-	Schedule                   string     `json:"schedule,omitempty"`
-	PriorityLevel              int        `json:"priority_level,omitempty"`
-	ShiftStart                 string     `json:"shift_start,omitempty"`
-	RotationStart              string     `json:"rotation_start,omitempty"`
-	Until                      string     `json:"until,omitempty"`
-	Frequency                  any        `json:"frequency,omitempty"`
-	Interval                   int        `json:"interval,omitempty"`
-	ByDay                      []string   `json:"by_day,omitempty"`
-	WeekStart                  string     `json:"week_start,omitempty"`
-	RollingUsers               any        `json:"rolling_users,omitempty"`
-	StartRotationFromUserIndex *int       `json:"start_rotation_from_user_index,omitempty"`
+	Name                       string   `json:"name"`
+	Type                       any      `json:"type"`
+	Schedule                   string   `json:"schedule,omitempty"`
+	PriorityLevel              int      `json:"priority_level,omitempty"`
+	ShiftStart                 string   `json:"shift_start,omitempty"`
+	RotationStart              string   `json:"rotation_start,omitempty"`
+	Until                      string   `json:"until,omitempty"`
+	Frequency                  any      `json:"frequency,omitempty"`
+	Interval                   int      `json:"interval,omitempty"`
+	ByDay                      []string `json:"by_day,omitempty"`
+	WeekStart                  string   `json:"week_start,omitempty"`
+	RollingUsers               any      `json:"rolling_users,omitempty"`
+	StartRotationFromUserIndex *int     `json:"start_rotation_from_user_index,omitempty"`
 }
 
 // FlatShift is a flattened per-user shift row derived from filter_events response.
@@ -298,12 +298,12 @@ type FlatShift struct {
 
 // FinalShiftEvent represents an event from the schedule filter_events endpoint.
 type FinalShiftEvent struct {
-	Start    string `json:"start"`
-	End      string `json:"end"`
-	AllDay   bool   `json:"all_day,omitempty"`
-	IsGap    bool   `json:"is_gap,omitempty"`
-	IsOverride bool `json:"is_override,omitempty"`
-	Users    []struct {
+	Start      string `json:"start"`
+	End        string `json:"end"`
+	AllDay     bool   `json:"all_day,omitempty"`
+	IsGap      bool   `json:"is_gap,omitempty"`
+	IsOverride bool   `json:"is_override,omitempty"`
+	Users      []struct {
 		DisplayName string `json:"display_name"`
 		PK          string `json:"pk"`
 		Email       string `json:"email"`
@@ -312,9 +312,9 @@ type FinalShiftEvent struct {
 
 // FilterEventsResponse is the response from schedules/{id}/filter_events/.
 type FilterEventsResponse struct {
-	ID     string           `json:"id"`
-	Name   string           `json:"name"`
-	Type   any              `json:"type"`
+	ID     string            `json:"id"`
+	Name   string            `json:"name"`
+	Type   any               `json:"type"`
 	Events []FinalShiftEvent `json:"events"`
 }
 

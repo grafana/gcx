@@ -360,7 +360,7 @@ func NewOpenCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			url := deeplink.Resolve(restCfg.GrafanaURL, staticDescriptor.GroupVersionKind(), id)
+			url := deeplink.Resolve(restCfg.GrafanaURL, StaticDescriptor.GroupVersionKind(), id)
 			if url == "" {
 				return fmt.Errorf("no deep link URL available for incident %s", id)
 			}
