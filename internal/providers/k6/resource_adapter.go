@@ -15,11 +15,12 @@ import (
 
 // resourceDef defines a single k6 sub-resource type for adapter registration.
 type resourceDef struct {
-	kind     string
-	singular string
-	plural   string
-	schema   json.RawMessage
-	example  json.RawMessage
+	kind        string
+	singular    string
+	plural      string
+	schema      json.RawMessage
+	example     json.RawMessage
+	urlTemplate string // Deep link URL template (e.g., "/a/k6-app/projects/{name}"). Empty means no deep link.
 }
 
 // allResources returns the definitions for all k6 resource types.
@@ -27,13 +28,15 @@ func allResources() []resourceDef {
 	return []resourceDef{
 		{
 			kind: "Project", singular: "project", plural: "projects",
-			schema:  projectSchema(),
-			example: projectExample(),
+			schema:      projectSchema(),
+			example:     projectExample(),
+			urlTemplate: "/a/k6-app/projects/{name}",
 		},
 		{
 			kind: "LoadTest", singular: "loadtest", plural: "loadtests",
-			schema:  loadTestSchema(),
-			example: loadTestExample(),
+			schema:      loadTestSchema(),
+			example:     loadTestExample(),
+			urlTemplate: "/a/k6-app/tests/{name}",
 		},
 		{
 			kind: "Schedule", singular: "schedule", plural: "schedules",
@@ -129,7 +132,7 @@ func newSubResourceFactory(loader CloudConfigLoader, rd resourceDef) adapter.Fac
 
 func newProjectCRUD(c *Client, ns string, desc resources.Descriptor) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[Project]{
-		ListFn: c.ListProjects,
+		ListFn: adapter.LimitedListFn(c.ListProjects),
 		GetFn: func(ctx context.Context, name string) (*Project, error) {
 			id, err := strconv.Atoi(name)
 			if err != nil {
@@ -166,7 +169,7 @@ func newProjectCRUD(c *Client, ns string, desc resources.Descriptor) adapter.Res
 
 func newLoadTestCRUD(c *Client, ns string, desc resources.Descriptor) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[LoadTest]{
-		ListFn: c.ListLoadTests,
+		ListFn: adapter.LimitedListFn(c.ListLoadTests),
 		GetFn: func(ctx context.Context, name string) (*LoadTest, error) {
 			id, err := strconv.Atoi(name)
 			if err != nil {
@@ -203,7 +206,7 @@ func newLoadTestCRUD(c *Client, ns string, desc resources.Descriptor) adapter.Re
 
 func newScheduleCRUD(c *Client, ns string, desc resources.Descriptor) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[Schedule]{
-		ListFn: c.ListSchedules,
+		ListFn: adapter.LimitedListFn(c.ListSchedules),
 		GetFn: func(ctx context.Context, name string) (*Schedule, error) {
 			id, err := strconv.Atoi(name)
 			if err != nil {
@@ -250,7 +253,7 @@ func newScheduleCRUD(c *Client, ns string, desc resources.Descriptor) adapter.Re
 
 func newEnvVarCRUD(c *Client, ns string, desc resources.Descriptor) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[EnvVar]{
-		ListFn: c.ListEnvVars,
+		ListFn: adapter.LimitedListFn(c.ListEnvVars),
 		GetFn: func(ctx context.Context, name string) (*EnvVar, error) {
 			// EnvVars don't have a single-get endpoint; list-then-filter.
 			id, err := strconv.Atoi(name)
@@ -307,7 +310,7 @@ func newEnvVarCRUD(c *Client, ns string, desc resources.Descriptor) adapter.Reso
 
 func newLoadZoneCRUD(c *Client, ns string, desc resources.Descriptor) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[LoadZone]{
-		ListFn: c.ListLoadZones,
+		ListFn: adapter.LimitedListFn(c.ListLoadZones),
 		GetFn: func(ctx context.Context, name string) (*LoadZone, error) {
 			// List-then-filter by name.
 			zones, err := c.ListLoadZones(ctx)
@@ -483,7 +486,7 @@ func NewTypedCRUDProject(ctx context.Context, loader CloudConfigLoader) (*adapte
 		return nil, "", err
 	}
 	crud := &adapter.TypedCRUD[Project]{
-		ListFn: client.ListProjects,
+		ListFn: adapter.LimitedListFn(client.ListProjects),
 		GetFn: func(ctx context.Context, name string) (*Project, error) {
 			id, err := strconv.Atoi(name)
 			if err != nil {
@@ -522,7 +525,7 @@ func NewTypedCRUDLoadTest(ctx context.Context, loader CloudConfigLoader) (*adapt
 		return nil, "", err
 	}
 	crud := &adapter.TypedCRUD[LoadTest]{
-		ListFn: client.ListAllLoadTests,
+		ListFn: adapter.LimitedListFn(client.ListAllLoadTests),
 		GetFn: func(ctx context.Context, name string) (*LoadTest, error) {
 			id, err := strconv.Atoi(name)
 			if err != nil {
@@ -561,7 +564,7 @@ func NewTypedCRUDSchedule(ctx context.Context, loader CloudConfigLoader) (*adapt
 		return nil, "", err
 	}
 	crud := &adapter.TypedCRUD[Schedule]{
-		ListFn: client.ListSchedules,
+		ListFn: adapter.LimitedListFn(client.ListSchedules),
 		GetFn: func(ctx context.Context, name string) (*Schedule, error) {
 			id, err := strconv.Atoi(name)
 			if err != nil {
@@ -609,7 +612,7 @@ func NewTypedCRUDEnvVar(ctx context.Context, loader CloudConfigLoader) (*adapter
 		return nil, "", err
 	}
 	crud := &adapter.TypedCRUD[EnvVar]{
-		ListFn: client.ListEnvVars,
+		ListFn: adapter.LimitedListFn(client.ListEnvVars),
 		GetFn: func(ctx context.Context, name string) (*EnvVar, error) {
 			id, err := strconv.Atoi(name)
 			if err != nil {
@@ -666,7 +669,7 @@ func NewTypedCRUDLoadZone(ctx context.Context, loader CloudConfigLoader) (*adapt
 		return nil, "", err
 	}
 	crud := &adapter.TypedCRUD[LoadZone]{
-		ListFn: client.ListLoadZones,
+		ListFn: adapter.LimitedListFn(client.ListLoadZones),
 		GetFn: func(ctx context.Context, name string) (*LoadZone, error) {
 			zones, err := client.ListLoadZones(ctx)
 			if err != nil {

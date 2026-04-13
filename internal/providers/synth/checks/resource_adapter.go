@@ -70,7 +70,7 @@ func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[
 	probesClient := probes.NewClient(ctx, baseURL, token)
 
 	crud := &adapter.TypedCRUD[checkResource]{
-		ListFn: func(ctx context.Context) ([]checkResource, error) {
+		ListFn: func(ctx context.Context, limit int64) ([]checkResource, error) {
 			checkList, err := checksClient.List(ctx)
 			if err != nil {
 				return nil, fmt.Errorf("failed to list checks: %w", err)
@@ -86,7 +86,7 @@ func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[
 				result = append(result, checkToResource(check, nameMap))
 			}
 
-			return result, nil
+			return adapter.TruncateSlice(result, limit), nil
 		},
 
 		GetFn: func(ctx context.Context, name string) (*checkResource, error) {

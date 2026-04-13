@@ -8,6 +8,7 @@ import (
 	"io"
 	"strconv"
 
+	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -25,10 +26,12 @@ import (
 type listOpts struct {
 	IO       cmdio.Options
 	Resource string // resource name for codec selection (e.g. "integrations")
+	Limit    int64
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet, resource string) {
 	o.Resource = resource
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 	switch resource {
 	case "integrations":
 		o.IO.RegisterCustomCodec("table", &IntegrationTableCodec{})
@@ -83,12 +86,14 @@ func (o *listOpts) setup(flags *pflag.FlagSet, resource string) {
 
 // getOpts configures a get subcommand.
 type getOpts struct {
-	IO cmdio.Options
+	IO   cmdio.Options
+	Open bool
 }
 
 func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("yaml")
 	o.IO.BindFlags(flags)
+	flags.BoolVar(&o.Open, "open", false, "Open the resource in the default browser")
 }
 
 // newListSubcommand creates a "list" subcommand using TypedCRUD.
@@ -109,12 +114,12 @@ func newListSubcommand[T adapter.ResourceNamer](
 			}
 
 			ctx := cmd.Context()
-			crud, namespace, err := NewTypedCRUD(ctx, loader, listFn, getFn, opts...)
+			crud, namespace, host, err := NewTypedCRUD(ctx, loader, listFn, getFn, opts...)
 			if err != nil {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx)
+			typedObjs, err := crud.List(ctx, listOpts.Limit)
 			if err != nil {
 				return err
 			}
@@ -146,6 +151,8 @@ func newListSubcommand[T adapter.ResourceNamer](
 				}}
 			}
 
+			deeplink.InjectURLs(objs, host)
+
 			return listOpts.IO.Encode(cmd.OutOrStdout(), objs)
 		},
 	}
@@ -169,7 +176,7 @@ func newGetSubcommand[T adapter.ResourceNamer](
 			}
 
 			ctx := cmd.Context()
-			crud, _, err := NewTypedCRUD(ctx, loader, func(_ context.Context, _ *Client) ([]T, error) { return nil, nil }, getFn)
+			crud, _, host, err := NewTypedCRUD(ctx, loader, func(_ context.Context, _ *Client) ([]T, error) { return nil, nil }, getFn)
 			if err != nil {
 				return err
 			}
@@ -177,6 +184,16 @@ func newGetSubcommand[T adapter.ResourceNamer](
 			typedObj, err := crud.Get(ctx, args[0])
 			if err != nil {
 				return err
+			}
+
+			if getOpts.Open {
+				gvk := crud.Descriptor.GroupVersionKind()
+				url := deeplink.Resolve(host, gvk, typedObj.Name)
+				if url == "" {
+					return fmt.Errorf("no deep link URL available for %s/%s", crud.Descriptor.Kind, typedObj.Name)
+				}
+				cmdio.Info(cmd.ErrOrStderr(), "Opening %s", url)
+				return deeplink.Open(url)
 			}
 
 			return getOpts.IO.Encode(cmd.OutOrStdout(), typedObj.Spec)

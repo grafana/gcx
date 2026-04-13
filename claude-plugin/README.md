@@ -46,12 +46,11 @@ Once the plugin is installed, ask Claude to configure gcx:
 This skill walks through creating a named context pointing at your Grafana
 instance, verifying connectivity, and confirming your credentials are working.
 
-## Repository Contract
+## Skills
 
 `claude-plugin/skills/` is the current canonical portable Agent Skills bundle
-for gcx. The Claude plugin consumes that tree directly today, and future
-generic `.agents` installers should read from the same source rather than
-forking or duplicating skill content elsewhere in the repository.
+for gcx. The Claude plugin consumes that tree directly today, and the generic
+`.agents` installer exposed by `gcx skills install` reads from the same source.
 
 Claude-specific packaging remains under:
 
@@ -62,11 +61,9 @@ Do not add distributable gcx skills under repo-local `.agents/skills/`. Tools
 that follow the `.agents` convention treat that path as repo-context guidance
 for working on this repository, not as a globally installable skill bundle.
 
-## Skills
-
 Skills are triggered automatically when you describe what you want. You do not
 need to invoke them by name. The table below is the current inventory of the
-canonical portable skill bundle under `claude-plugin/skills/`.
+canonical portable skill bundle.
 
 | Skill | Purpose |
 |-------|---------|

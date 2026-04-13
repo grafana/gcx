@@ -78,7 +78,7 @@ func buildLogsTypedCRUD[T adapter.ResourceNamer](
 	del func(context.Context, string) error,
 ) *adapter.TypedCRUD[T] {
 	return &adapter.TypedCRUD[T]{
-		ListFn:      list,
+		ListFn:      adapter.LimitedListFn(list),
 		GetFn:       get,
 		CreateFn:    create,
 		UpdateFn:    update,

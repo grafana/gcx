@@ -39,13 +39,16 @@ func Commands(loader smcfg.Loader) *cobra.Command {
 // ---------------------------------------------------------------------------
 
 type listOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &probeTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
+
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 func newListCommand(loader smcfg.Loader) *cobra.Command {
@@ -65,7 +68,7 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx)
+			typedObjs, err := crud.List(ctx, opts.Limit)
 			if err != nil {
 				return err
 			}

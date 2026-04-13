@@ -526,8 +526,8 @@ and checked for drift in CI.
 
 ### Low Priority
 
-9. **UserAgent not applied to dynamic client.** `httputils.UserAgent` is defined
-   but not set on the k8s REST config (noted as TODO).
+9. ~~**UserAgent not applied to dynamic client.**~~ Resolved. `version.UserAgent()`
+   is now set on `rest.Config.UserAgent` and `UserAgentTransport` wraps all HTTP clients.
 
 10. **httputils naming confusion.** This package is used by the serve command's
     reverse proxy, not by the primary API client. The name could mislead newcomers
@@ -817,6 +817,12 @@ Each LGTM signal has its own provider in `internal/providers/{signal}/` that reg
 | `internal/query/loki/formatter.go` | Table/text formatting for Loki responses |
 | `cmd/gcx/datasources/command.go` | `datasources` command group (list, get, prometheus, loki, pyroscope, tempo, generic subcommands) |
 | `cmd/gcx/datasources/query/` | Per-kind `query` subcommand constructors and shared infrastructure (codecs, time parsing) |
+
+### Deep Link URLs
+
+| File | Purpose |
+|------|---------|
+| `internal/deeplink/deeplink.go` | URL template registry, resolve, inject, browser open for resource deep links |
 
 ### Dashboard Image Renderer
 

@@ -10,6 +10,9 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/grafana/gcx/internal/httputils"
+	"github.com/grafana/gcx/internal/retry"
 )
 
 // StackInfo holds the information about a Grafana Cloud stack as returned by the GCOM API.
@@ -70,7 +73,8 @@ func NewGCOMClient(baseURL, token string) (*GCOMClient, error) {
 	}
 
 	httpClient := &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout:   30 * time.Second,
+		Transport: &httputils.UserAgentTransport{Base: &retry.Transport{}},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if req.URL.Host != parsedBase.Host {
 				return fmt.Errorf("gcom client: refusing cross-domain redirect to %s (configured base: %s)",

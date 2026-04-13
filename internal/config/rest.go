@@ -9,6 +9,8 @@ import (
 	authlib "github.com/grafana/authlib/types"
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/httputils"
+	"github.com/grafana/gcx/internal/retry"
+	"github.com/grafana/gcx/internal/version"
 	"k8s.io/client-go/rest"
 )
 
@@ -18,6 +20,11 @@ type NamespacedRESTConfig struct {
 	rest.Config
 
 	Namespace string
+
+	// GrafanaURL is the user-facing Grafana server URL (e.g., "https://mystack.grafana.net").
+	// This is always the original grafana.server value, even when Host is rewritten
+	// to a proxy endpoint for OAuth mode. Use this for deep link URLs, not Host.
+	GrafanaURL string
 
 	// oauthTransport holds a reference to the RefreshTransport when OAuth proxy
 	// mode is active, allowing callers to wire the OnRefresh callback after
@@ -161,8 +168,7 @@ func parseRFC3339OrZero(s string) time.Time {
 // NewNamespacedRESTConfig creates a new namespaced REST config.
 func NewNamespacedRESTConfig(ctx context.Context, cfg Context) NamespacedRESTConfig {
 	rcfg := rest.Config{
-		// TODO add user agent
-		// UserAgent: cfg.UserAgent.ValueString(),
+		UserAgent:       version.UserAgent(),
 		Host:            strings.TrimSuffix(cfg.Grafana.Server, "/"),
 		APIPath:         "/apis",
 		TLSClientConfig: rest.TLSClientConfig{},
@@ -235,6 +241,7 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) NamespacedRESTCon
 
 	// Wrap transport with debug logging so `-vvv` shows every HTTP request.
 	// When --log-http-payload is set, also add full request/response body dumps.
+	// Outermost layer: retry for rate limiting (429) and transient errors.
 	prevWrap := rcfg.WrapTransport
 	payloadLogging := httputils.PayloadLogging(ctx)
 	rcfg.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
@@ -245,12 +252,13 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) NamespacedRESTCon
 		if payloadLogging {
 			rt = &httputils.RequestResponseLoggingRoundTripper{DecoratedTransport: rt}
 		}
-		return rt
+		return &retry.Transport{Base: rt}
 	}
 
 	return NamespacedRESTConfig{
 		Config:         rcfg,
 		Namespace:      namespace,
+		GrafanaURL:     strings.TrimSuffix(cfg.Grafana.Server, "/"),
 		oauthTransport: oauthTransport,
 	}
 }

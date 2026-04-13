@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -50,7 +51,8 @@ func Commands(loader GrafanaConfigLoader) *cobra.Command {
 // ---------------------------------------------------------------------------
 
 type listOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
@@ -58,6 +60,8 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &reportTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
+
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -86,6 +90,8 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			rpts = adapter.TruncateSlice(rpts, opts.Limit)
 
 			// Table codec operates on raw []Report for direct field access.
 			// Other formats (yaml/json) convert to K8s envelope Resources

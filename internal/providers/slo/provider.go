@@ -38,7 +38,7 @@ func (p *SLOProvider) Commands() []*cobra.Command {
 	// Bind config flags on the parent — all subcommands inherit these.
 	loader.BindFlags(sloCmd.PersistentFlags())
 
-	sloCmd.AddCommand(definitions.Commands())
+	sloCmd.AddCommand(definitions.Commands(loader))
 	sloCmd.AddCommand(reports.Commands(loader))
 
 	return []*cobra.Command{sloCmd}
@@ -63,11 +63,12 @@ func (p *SLOProvider) TypedRegistrations() []adapter.Registration {
 	desc := definitions.StaticDescriptor()
 	return []adapter.Registration{
 		{
-			Factory:    definitions.NewLazyFactory(),
-			Descriptor: desc,
-			GVK:        desc.GroupVersionKind(),
-			Schema:     definitions.SloSchema(),
-			Example:    definitions.SloExample(),
+			Factory:     definitions.NewLazyFactory(),
+			Descriptor:  desc,
+			GVK:         desc.GroupVersionKind(),
+			Schema:      definitions.SloSchema(),
+			Example:     definitions.SloExample(),
+			URLTemplate: "/a/grafana-slo-app/slo/{name}",
 		},
 	}
 }

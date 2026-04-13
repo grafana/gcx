@@ -5,6 +5,8 @@ import (
 	"crypto/tls"
 	"net/http"
 	"time"
+
+	"github.com/grafana/gcx/internal/retry"
 )
 
 // Middleware wraps an http.RoundTripper, e.g. for logging or tracing.
@@ -44,6 +46,9 @@ func NewClient(opts ClientOpts) *http.Client {
 	for _, mw := range middlewares {
 		rt = mw(rt)
 	}
+	// Outermost layers: User-Agent injection, then retry for rate limiting (429) and transient errors.
+	rt = &retry.Transport{Base: rt}
+	rt = &UserAgentTransport{Base: rt}
 	return &http.Client{Timeout: timeout, Transport: rt}
 }
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -27,13 +28,15 @@ func groupsCommands(loader GrafanaConfigLoader) *cobra.Command {
 }
 
 type groupsListOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *groupsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &GroupsTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
 }
 
 func newGroupsListCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -61,6 +64,8 @@ func newGroupsListCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			groups = adapter.TruncateSlice(groups, opts.Limit)
 
 			return opts.IO.Encode(cmd.OutOrStdout(), groups)
 		},

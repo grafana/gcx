@@ -34,9 +34,7 @@ func NewTypedCRUD(ctx context.Context, loader RESTConfigLoader) (*adapter.TypedC
 	}
 
 	crud := &adapter.TypedCRUD[FaroApp]{
-		ListFn: func(ctx context.Context) ([]FaroApp, error) {
-			return client.List(ctx)
-		},
+		ListFn: adapter.LimitedListFn(client.List),
 
 		GetFn: func(ctx context.Context, name string) (*FaroApp, error) {
 			id, ok := adapter.ExtractIDFromSlug(name)
@@ -79,7 +77,8 @@ func NewTypedCRUD(ctx context.Context, loader RESTConfigLoader) (*adapter.TypedC
 // ---------------------------------------------------------------------------
 
 type listOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
@@ -87,6 +86,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &AppTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
 }
 
 func newListCommand(loader RESTConfigLoader) *cobra.Command {
@@ -106,7 +106,7 @@ func newListCommand(loader RESTConfigLoader) *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx)
+			typedObjs, err := crud.List(ctx, opts.Limit)
 			if err != nil {
 				return err
 			}

@@ -1,6 +1,9 @@
 package providers
 
-import "github.com/grafana/gcx/internal/resources/adapter"
+import (
+	"github.com/grafana/gcx/internal/deeplink"
+	"github.com/grafana/gcx/internal/resources/adapter"
+)
 
 // registry holds all providers registered via Register().
 var registry []Provider //nolint:gochecknoglobals // Self-registration pattern requires package-level state.
@@ -13,6 +16,9 @@ func Register(p Provider) {
 	registry = append(registry, p)
 	for _, reg := range p.TypedRegistrations() {
 		adapter.Register(reg)
+		if reg.URLTemplate != "" {
+			deeplink.RegisterPattern(reg.GVK, reg.URLTemplate)
+		}
 	}
 }
 

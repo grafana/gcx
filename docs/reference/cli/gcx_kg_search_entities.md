@@ -12,6 +12,7 @@ gcx kg search entities [flags]
       --env string         Environment scope
   -h, --help               help for entities
       --json string        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int          Maximum number of items to return (0 for all) (default 50)
       --namespace string   Namespace scope
   -o, --output string      Output format. One of: json, yaml (default "json")
       --page int           Page number (0-based)

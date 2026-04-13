@@ -88,6 +88,62 @@ func TestOperationSummary_Failures(t *testing.T) {
 	}
 }
 
+func TestOperationSummary_Truncated(t *testing.T) {
+	tests := []struct {
+		name           string
+		truncatedCalls int
+		wantTruncated  bool
+	}{
+		{
+			name:           "not truncated by default",
+			truncatedCalls: 0,
+			wantTruncated:  false,
+		},
+		{
+			name:           "truncated after RecordTruncated",
+			truncatedCalls: 1,
+			wantTruncated:  true,
+		},
+		{
+			name:           "multiple RecordTruncated calls",
+			truncatedCalls: 3,
+			wantTruncated:  true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			summary := &remote.OperationSummary{}
+
+			for range tc.truncatedCalls {
+				summary.RecordTruncated()
+			}
+
+			require.Equal(t, tc.wantTruncated, summary.IsTruncated())
+		})
+	}
+}
+
+func TestOperationSummary_TruncatedThreadSafety(t *testing.T) {
+	const goroutines = 50
+
+	summary := &remote.OperationSummary{}
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	for range goroutines {
+		go func() {
+			defer wg.Done()
+			summary.RecordTruncated()
+		}()
+	}
+
+	wg.Wait()
+
+	require.True(t, summary.IsTruncated())
+}
+
 func TestOperationSummary_FailureContents(t *testing.T) {
 	summary := &remote.OperationSummary{}
 	err := errors.New("something went wrong")

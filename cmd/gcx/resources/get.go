@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
@@ -38,8 +39,8 @@ func printFieldDiscoveryResults(out io.Writer, obj map[string]any) {
 // schemaToFieldPaths converts an OpenAPI spec schema to field paths compatible
 // with the --json ? output format (top-level keys + spec.* sub-fields).
 func schemaToFieldPaths(specSchema map[string]any) []string {
-	// Always include the standard K8s envelope fields.
-	paths := []string{"apiVersion", "kind", "metadata", "spec", "status"}
+	// Always include the standard K8s envelope fields plus the deep link URL.
+	paths := []string{"apiVersion", "kind", "metadata", "spec", "status", "url"}
 
 	if props, ok := specSchema["properties"].(map[string]any); ok {
 		for key := range props {
@@ -101,9 +102,15 @@ func discoverFieldsViaOpenAPI(ctx context.Context, cfg config.NamespacedRESTConf
 	return schemaToFieldPaths(specSchema), nil
 }
 
+// defaultListLimit is the default number of items returned per resource type.
+// Use --limit=0 to fetch all items.
+const defaultListLimit = 50
+
 type getOpts struct {
 	IO      cmdio.Options
 	OnError OnErrorMode
+	Limit   int64
+	Open    bool
 }
 
 func (opts *getOpts) setup(flags *pflag.FlagSet) {
@@ -113,13 +120,20 @@ func (opts *getOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.RegisterCustomCodec("wide", &tableCodec{wide: true})
 	opts.IO.DefaultFormat("text")
 
+	flags.Int64Var(&opts.Limit, "limit", defaultListLimit, "Maximum number of items to fetch per resource type (0 for all)")
+
 	// Bind all the flags
 	opts.IO.BindFlags(flags)
+	flags.BoolVar(&opts.Open, "open", false, "Open the resource in the default browser")
 }
 
 func (opts *getOpts) Validate() error {
 	if err := opts.IO.Validate(); err != nil {
 		return err
+	}
+
+	if opts.Limit < 0 {
+		return errors.New("--limit must be a non-negative integer")
 	}
 
 	return opts.OnError.Validate()
@@ -223,6 +237,7 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			fetchReq := FetchRequest{
 				Config:      cfg,
 				StopOnError: opts.OnError.StopOnError(),
+				Limit:       opts.Limit,
 			}
 			// --json ? only needs one resource for field introspection; avoid
 			// a full list operation to satisfy NC-005.
@@ -237,6 +252,9 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			output := res.Resources.ToUnstructuredList()
 			resources.SortUnstructured(output.Items)
 
+			// Inject deep link URLs into each resource.
+			deeplink.InjectURLs(output.Items, cfg.GrafanaURL)
+
 			// --json ? discovery fallback: print fields from a fetched sample.
 			if opts.IO.JSONDiscovery {
 				if len(output.Items) == 0 {
@@ -244,6 +262,19 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				}
 				printFieldDiscoveryResults(cmd.OutOrStdout(), output.Items[0].Object)
 				return nil
+			}
+
+			// --open: open the resource in the default browser.
+			if opts.Open {
+				if !res.IsSingleTarget || len(output.Items) != 1 {
+					return errors.New("--open requires exactly one resource (e.g. gcx resources get dashboards/my-uid --open)")
+				}
+				url, _ := output.Items[0].Object["url"].(string)
+				if url == "" {
+					return fmt.Errorf("no deep link URL available for %s/%s", output.Items[0].GetKind(), output.Items[0].GetName())
+				}
+				cmdio.Info(cmd.ErrOrStderr(), "Opening %s", url)
+				return deeplink.Open(url)
 			}
 
 			// --json field1,field2: use FieldSelectCodec for output.
@@ -274,6 +305,12 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			if encodeErr != nil {
 				return encodeErr
+			}
+
+			if res.PullSummary.IsTruncated() {
+				fmt.Fprintf(cmd.ErrOrStderr(),
+					"Showing first %d items per resource type. Use --limit=0 to fetch all.\n",
+					opts.Limit)
 			}
 
 			if opts.OnError.FailOnErrors() && res.PullSummary.FailedCount() > 0 {
@@ -359,6 +396,7 @@ func (c *tableCodec) Encode(output io.Writer, input any) error {
 			{Name: "VERSION", Type: "string", Priority: 1, Description: "The API version."},
 			{Name: "NAME", Type: "string", Format: "name", Priority: 0, Description: "The name of the resource."},
 			{Name: "AGE", Type: "string", Format: "date-time", Priority: 1, Description: "The age of the resource."},
+			{Name: "URL", Type: "string", Priority: 1, Description: "The deep link URL for the resource."},
 		},
 	}
 
@@ -366,6 +404,7 @@ func (c *tableCodec) Encode(output io.Writer, input any) error {
 	for _, r := range items.Items {
 		gvk := r.GroupVersionKind()
 		age := duration.HumanDuration(time.Since(r.GetCreationTimestamp().Time))
+		url, _ := r.Object["url"].(string)
 
 		table.Rows = append(table.Rows, metav1.TableRow{
 			Cells: []any{
@@ -374,6 +413,7 @@ func (c *tableCodec) Encode(output io.Writer, input any) error {
 				sanitizeCell(gvk.Version, noTruncate),
 				sanitizeCell(r.GetName(), noTruncate),
 				sanitizeCell(age, noTruncate),
+				sanitizeCell(url, noTruncate),
 			},
 			Object: runtime.RawExtension{Object: &r},
 		})

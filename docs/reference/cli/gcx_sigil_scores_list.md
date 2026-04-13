@@ -15,7 +15,7 @@ gcx sigil scores list <generation-id> [flags]
 ```
   -h, --help            help for list
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int       Maximum number of scores to return (default 100)
+      --limit int       Maximum number of scores to return (default 50)
   -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
 ```
 

@@ -119,16 +119,18 @@ func (p *SigilProvider) TypedRegistrations() []adapter.Registration {
 
 	return []adapter.Registration{
 		{
-			Factory:    evaluators.NewLazyFactory(),
-			Descriptor: evalDesc,
-			GVK:        evalDesc.GroupVersionKind(),
-			Schema:     evaluators.EvaluatorSchema(),
+			Factory:     evaluators.NewLazyFactory(),
+			Descriptor:  evalDesc,
+			GVK:         evalDesc.GroupVersionKind(),
+			Schema:      evaluators.EvaluatorSchema(),
+			URLTemplate: "/a/grafana-sigil-app/evaluators/{name}",
 		},
 		{
-			Factory:    rules.NewLazyFactory(),
-			Descriptor: ruleDesc,
-			GVK:        ruleDesc.GroupVersionKind(),
-			Schema:     rules.RuleSchema(),
+			Factory:     rules.NewLazyFactory(),
+			Descriptor:  ruleDesc,
+			GVK:         ruleDesc.GroupVersionKind(),
+			Schema:      rules.RuleSchema(),
+			URLTemplate: "/a/grafana-sigil-app/rules/{name}",
 		},
 	}
 }

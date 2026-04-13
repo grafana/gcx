@@ -13,6 +13,7 @@ type OperationSummary struct {
 	successCount atomic.Int64
 	failedCount  atomic.Int64
 	skippedCount atomic.Int64
+	truncated    atomic.Bool
 	mu           sync.Mutex
 	failures     []OperationFailure
 }
@@ -66,6 +67,16 @@ func (s *OperationSummary) FailedCount() int {
 // does not support the requested operation.
 func (s *OperationSummary) SkippedCount() int {
 	return int(s.skippedCount.Load())
+}
+
+// RecordTruncated records that a list response was truncated (more items available).
+func (s *OperationSummary) RecordTruncated() {
+	s.truncated.Store(true)
+}
+
+// IsTruncated reports whether any list response was truncated.
+func (s *OperationSummary) IsTruncated() bool {
+	return s.truncated.Load()
 }
 
 // Failures returns all recorded operation failures.

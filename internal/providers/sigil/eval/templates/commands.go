@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/sigil/eval"
 	"github.com/grafana/gcx/internal/providers/sigil/sigilhttp"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -41,6 +42,7 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 type listOpts struct {
 	IO    cmdio.Options
 	Scope string
+	Limit int64
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
@@ -49,6 +51,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Scope, "scope", "", `Filter by scope: "global" or "tenant"`)
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of templates to return (0 for no limit)")
 }
 
 func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
@@ -73,6 +76,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			templates = adapter.TruncateSlice(templates, opts.Limit)
 			return opts.IO.Encode(cmd.OutOrStdout(), templates)
 		},
 	}

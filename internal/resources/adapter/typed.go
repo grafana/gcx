@@ -14,6 +14,27 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
+// TruncateSlice returns at most limit items from the slice.
+// When limit is 0 or negative, the original slice is returned unchanged.
+func TruncateSlice[T any](items []T, limit int64) []T {
+	if limit > 0 && int64(len(items)) > limit {
+		return items[:limit]
+	}
+	return items
+}
+
+// LimitedListFn wraps a simple list function (no limit parameter) into the
+// ListFn signature expected by TypedCRUD, applying client-side truncation.
+func LimitedListFn[T any](fn func(ctx context.Context) ([]T, error)) func(ctx context.Context, limit int64) ([]T, error) {
+	return func(ctx context.Context, limit int64) ([]T, error) {
+		items, err := fn(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return TruncateSlice(items, limit), nil
+	}
+}
+
 // ErrNotFound is returned by TypedCRUD.Get when a resource does not exist.
 // Provider GetFn implementations should wrap this sentinel (via fmt.Errorf
 // with %w) so that the adapter layer can convert provider-specific not-found
@@ -37,7 +58,8 @@ type TypedCRUD[T ResourceNamer] struct {
 	// ListFn lists all items of this type.
 	// Nil means list is unsupported (returns errors.ErrUnsupported).
 	// Also used as a fallback for Get when GetFn is nil.
-	ListFn func(ctx context.Context) ([]T, error)
+	// The limit parameter caps the number of items returned (0 means no limit).
+	ListFn func(ctx context.Context, limit int64) ([]T, error)
 
 	// GetFn returns a single item by name.
 	// Nil means get falls back to ListFn + client-side name filtering.
@@ -91,14 +113,15 @@ func (c *TypedCRUD[T]) restoreName(name string, item *T) {
 
 // --- Typed public methods ---
 
-// List returns all items as TypedObject[T] with correct TypeMeta and ObjectMeta.
+// List returns items as TypedObject[T] with correct TypeMeta and ObjectMeta.
+// The limit parameter caps the number of items returned (0 means no limit).
 // Returns errors.ErrUnsupported when ListFn is nil.
-func (c *TypedCRUD[T]) List(ctx context.Context) ([]TypedObject[T], error) {
+func (c *TypedCRUD[T]) List(ctx context.Context, limit int64) ([]TypedObject[T], error) {
 	if c.ListFn == nil {
 		return nil, errors.ErrUnsupported
 	}
 
-	items, err := c.ListFn(ctx)
+	items, err := c.ListFn(ctx, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +155,7 @@ func (c *TypedCRUD[T]) Get(ctx context.Context, name string) (*TypedObject[T], e
 		return nil, errors.ErrUnsupported
 	}
 
-	items, err := c.ListFn(ctx)
+	items, err := c.ListFn(ctx, 0) // no limit — need all items for name lookup
 	if err != nil {
 		return nil, err
 	}
@@ -304,12 +327,12 @@ func (a *typedAdapter[T]) Example() json.RawMessage {
 	return a.example
 }
 
-func (a *typedAdapter[T]) List(ctx context.Context, _ metav1.ListOptions) (*unstructured.UnstructuredList, error) {
+func (a *typedAdapter[T]) List(ctx context.Context, opts metav1.ListOptions) (*unstructured.UnstructuredList, error) {
 	if a.crud.ListFn == nil {
 		return nil, errors.ErrUnsupported
 	}
 
-	items, err := a.crud.ListFn(ctx)
+	items, err := a.crud.ListFn(ctx, opts.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -431,12 +454,13 @@ func isDryRun(dryRun []string) bool {
 
 // TypedRegistration bridges TypedCRUD to the existing Registration system.
 type TypedRegistration[T ResourceNamer] struct {
-	Descriptor resources.Descriptor
-	Aliases    []string
-	GVK        schema.GroupVersionKind
-	Schema     json.RawMessage
-	Example    json.RawMessage
-	Factory    func(ctx context.Context) (*TypedCRUD[T], error)
+	Descriptor  resources.Descriptor
+	Aliases     []string
+	GVK         schema.GroupVersionKind
+	Schema      json.RawMessage
+	Example     json.RawMessage
+	URLTemplate string // URL path template for deep links (e.g., "/a/grafana-oncall-app/schedules/{name}").
+	Factory     func(ctx context.Context) (*TypedCRUD[T], error)
 }
 
 // ToRegistration converts to a standard Registration.
@@ -454,10 +478,11 @@ func (r TypedRegistration[T]) ToRegistration() Registration {
 			}
 			return a, nil
 		},
-		Descriptor: r.Descriptor,
-		Aliases:    r.Aliases,
-		GVK:        r.GVK,
-		Schema:     r.Schema,
-		Example:    r.Example,
+		Descriptor:  r.Descriptor,
+		Aliases:     r.Aliases,
+		GVK:         r.GVK,
+		Schema:      r.Schema,
+		Example:     r.Example,
+		URLTemplate: r.URLTemplate,
 	}
 }

@@ -69,13 +69,9 @@ func SloExample() json.RawMessage {
 	return b
 }
 
-// NewTypedCRUD creates a TypedCRUD for SLO definitions.
-// It loads config via ConfigLoader (same pattern as the adapter factory).
+// NewTypedCRUD creates a TypedCRUD for SLO definitions using the provided loader.
 // Returns both the CRUD instance and the config for additional operations like Prometheus queries.
-func NewTypedCRUD(ctx context.Context) (*adapter.TypedCRUD[Slo], internalconfig.NamespacedRESTConfig, error) {
-	var loader providers.ConfigLoader
-	loader.SetContextName(internalconfig.ContextNameFromCtx(ctx))
-
+func NewTypedCRUD(ctx context.Context, loader GrafanaConfigLoader) (*adapter.TypedCRUD[Slo], internalconfig.NamespacedRESTConfig, error) {
 	cfg, err := loader.LoadGrafanaConfig(ctx)
 	if err != nil {
 		return nil, internalconfig.NamespacedRESTConfig{}, fmt.Errorf("failed to load REST config for SLO: %w", err)
@@ -88,7 +84,7 @@ func NewTypedCRUD(ctx context.Context) (*adapter.TypedCRUD[Slo], internalconfig.
 
 	//nolint:dupl // Duplicate TypedCRUD initialization intentional between factory functions.
 	crud := &adapter.TypedCRUD[Slo]{
-		ListFn: client.List,
+		ListFn: adapter.LimitedListFn(client.List),
 		GetFn: func(ctx context.Context, name string) (*Slo, error) {
 			return client.Get(ctx, name)
 		},
@@ -128,7 +124,9 @@ func NewTypedCRUD(ctx context.Context) (*adapter.TypedCRUD[Slo], internalconfig.
 // and by SLOProvider.ResourceAdapters().
 func NewLazyFactory() adapter.Factory {
 	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
-		crud, _, err := NewTypedCRUD(ctx)
+		var loader providers.ConfigLoader
+		loader.SetContextName(internalconfig.ContextNameFromCtx(ctx))
+		crud, _, err := NewTypedCRUD(ctx, &loader)
 		if err != nil {
 			return nil, err
 		}
@@ -148,7 +146,7 @@ func NewFactoryFromConfig(cfg internalconfig.NamespacedRESTConfig) adapter.Facto
 
 		//nolint:dupl // Duplicate TypedCRUD initialization intentional between factory functions.
 		crud := &adapter.TypedCRUD[Slo]{
-			ListFn: client.List,
+			ListFn: adapter.LimitedListFn(client.List),
 			GetFn: func(ctx context.Context, name string) (*Slo, error) {
 				return client.Get(ctx, name)
 			},

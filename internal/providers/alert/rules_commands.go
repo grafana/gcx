@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -37,6 +38,7 @@ type rulesListOpts struct {
 	GroupName string
 	FolderUID string
 	State     string
+	Limit     int64
 }
 
 func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
@@ -47,6 +49,7 @@ func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.GroupName, "group", "", "Filter by group name")
 	flags.StringVar(&o.FolderUID, "folder", "", "Filter by folder UID")
 	flags.StringVar(&o.State, "state", "", "Filter by rule state (firing, pending, inactive)")
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
 }
 
 func newRulesListCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -93,6 +96,7 @@ func newRulesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				for _, g := range resp.Data.Groups {
 					rules = append(rules, g.Rules...)
 				}
+				rules = adapter.TruncateSlice(rules, opts.Limit)
 				return codec.Encode(cmd.OutOrStdout(), rules)
 			}
 
@@ -103,6 +107,7 @@ func newRulesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 					nonEmpty = append(nonEmpty, g)
 				}
 			}
+			nonEmpty = adapter.TruncateSlice(nonEmpty, opts.Limit)
 			return opts.IO.Encode(cmd.OutOrStdout(), nonEmpty)
 		},
 	}

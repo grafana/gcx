@@ -28,7 +28,6 @@ func AuthenticateAndProxyHandler(cfg *config.Context) http.HandlerFunc {
 		}
 
 		AuthenticateRequest(cfg.Grafana, req)
-		req.Header.Set("User-Agent", httputils.UserAgent)
 
 		var tlsCfg *tls.Config
 		if cfg.Grafana != nil && cfg.Grafana.TLS != nil {

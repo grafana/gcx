@@ -7,14 +7,15 @@ import (
 	"io"
 	"maps"
 	"os"
-	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -360,6 +361,7 @@ func newDatasetsCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			result.Items = adapter.TruncateSlice(result.Items, listOpts.Limit)
 			return listOpts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
@@ -402,13 +404,15 @@ func newDatasetsCommand(loader RESTConfigLoader) *cobra.Command {
 }
 
 type datasetsListOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *datasetsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &DatasetTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 // DatasetTableCodec renders datasets as a table.
@@ -436,8 +440,6 @@ func (c *DatasetTableCodec) Decode(_ io.Reader, _ any) error {
 // Vendors command
 // ---------------------------------------------------------------------------
 
-//nolint:dupl
-//nolint:dupl
 func newVendorsCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "vendors",
@@ -464,6 +466,7 @@ func newVendorsCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			vendors = adapter.TruncateSlice(vendors, listOpts.Limit)
 			return listOpts.IO.Encode(cmd.OutOrStdout(), vendors)
 		},
 	}
@@ -474,12 +477,14 @@ func newVendorsCommand(loader RESTConfigLoader) *cobra.Command {
 }
 
 type vendorsListOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *vendorsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 // ---------------------------------------------------------------------------
@@ -505,7 +510,7 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			typedObjs, err := crud.List(ctx)
+			typedObjs, err := crud.List(ctx, rulesListOpts.Limit)
 			if err != nil {
 				return err
 			}
@@ -619,13 +624,15 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 }
 
 type rulesListOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &RuleTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 type rulesGetOpts struct {
@@ -864,6 +871,7 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			results = adapter.TruncateSlice(results, ioOpts.Limit)
 			return ioOpts.IO.Encode(cmd.OutOrStdout(), results)
 		},
 	}
@@ -904,6 +912,7 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			results = adapter.TruncateSlice(results, listOpts.Limit)
 			return listOpts.IO.Encode(cmd.OutOrStdout(), results)
 		},
 	}
@@ -939,13 +948,15 @@ func showSingleEntity(cmd *cobra.Command, client *Client, entityType, name strin
 }
 
 type entitiesShowOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *entitiesShowOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &EntityTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 // EntityTableCodec renders search results as a table.
@@ -1014,13 +1025,15 @@ func newEntityTypesCommand(loader RESTConfigLoader) *cobra.Command {
 }
 
 type entityTypesListOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *entityTypesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &EntityTypeTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 // EntityTypeTableCodec renders entity types as a table.
@@ -1091,12 +1104,14 @@ func newScopesCommand(loader RESTConfigLoader) *cobra.Command {
 }
 
 type scopesListOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *scopesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 // ---------------------------------------------------------------------------
@@ -1561,6 +1576,7 @@ func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			results = adapter.TruncateSlice(results, searchEntitiesOpts.Limit)
 			return searchEntitiesOpts.IO.Encode(cmd.OutOrStdout(), results)
 		},
 	}
@@ -1582,12 +1598,14 @@ func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 }
 
 type searchEntitiesListOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *searchEntitiesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 // ---------------------------------------------------------------------------
@@ -1809,13 +1827,9 @@ func newOpenCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			host := strings.TrimRight(cfg.Host, "/")
-			url := host + "/a/grafana-asserts-app"
-			cmdio.Info(cmd.OutOrStdout(), "Opening %s", url)
-			if err := exec.CommandContext(cmd.Context(), "open", url).Start(); err != nil {
-				return fmt.Errorf("failed to open browser: %w", err)
-			}
-			return nil
+			url := strings.TrimRight(cfg.GrafanaURL, "/") + "/a/grafana-asserts-app"
+			cmdio.Info(cmd.ErrOrStderr(), "Opening %s", url)
+			return deeplink.Open(url)
 		},
 	}
 }

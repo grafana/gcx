@@ -12,6 +12,7 @@ gcx k6 test-run runs list [test-name] [flags]
   -h, --help             help for list
       --id int           Load test ID (skip name lookup)
       --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int        Maximum number of items to return (0 for all) (default 50)
   -o, --output string    Output format. One of: json, table, yaml (default "table")
       --project-id int   k6 Cloud project ID (required when using name lookup)
 ```

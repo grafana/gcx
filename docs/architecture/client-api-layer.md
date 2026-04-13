@@ -418,11 +418,12 @@ values through constructor chains.
 
 Used by server-side HTTP handlers in `internal/server/handlers/`.
 
-### `constants.go`
+### `useragent.go`
 
-```go
-const UserAgent = "gcx"
-```
+`UserAgentTransport` wraps any `http.RoundTripper` and injects the `User-Agent`
+header (`gcx/{version} ({os}/{arch})`) via `version.UserAgent()` on every request.
+Used by `NewClient` (and thus `NewDefaultClient`) and `NewGCOMClient`. The k8s
+dynamic client gets User-Agent through `rest.Config.UserAgent`.
 
 ### Callers
 

@@ -20,6 +20,8 @@ type mockPullClient struct {
 	listResults map[string][]unstructured.Unstructured
 	// listErrors maps descriptor plural to the error returned by List.
 	listErrors map[string]error
+	// continueToken, when non-empty, is set on the returned list to simulate truncated results.
+	continueToken string
 }
 
 func (m *mockPullClient) Get(
@@ -44,7 +46,11 @@ func (m *mockPullClient) List(
 	}
 
 	items := m.listResults[desc.Plural]
-	return &unstructured.UnstructuredList{Items: items}, nil
+	res := &unstructured.UnstructuredList{Items: items}
+	if m.continueToken != "" {
+		res.SetContinue(m.continueToken)
+	}
+	return res, nil
 }
 
 // mockPullRegistry implements PullRegistry for testing.
@@ -89,10 +95,13 @@ func TestPuller_Pull(t *testing.T) {
 		listResults      map[string][]unstructured.Unstructured
 		listErrors       map[string]error
 		stopOnError      bool
+		limit            int64
+		continueToken    string
 		wantError        bool
 		wantSuccessCount int
 		wantFailedCount  int
 		wantSkippedCount int
+		wantTruncated    bool
 	}{
 		{
 			name: "all resources succeed",
@@ -186,6 +195,54 @@ func TestPuller_Pull(t *testing.T) {
 			wantFailedCount:  1,
 			wantSkippedCount: 0,
 		},
+		{
+			name: "list with limit and more results available",
+			listResults: map[string][]unstructured.Unstructured{
+				"dashboards": {
+					makeUnstructuredDashboard("d-1"),
+					makeUnstructuredDashboard("d-2"),
+					makeUnstructuredDashboard("d-3"),
+					makeUnstructuredDashboard("d-4"),
+					makeUnstructuredDashboard("d-5"),
+				},
+			},
+			limit:            5,
+			continueToken:    "next-page-token",
+			wantSuccessCount: 5,
+			wantTruncated:    true,
+		},
+		{
+			name: "list with limit and no more results",
+			listResults: map[string][]unstructured.Unstructured{
+				"dashboards": {
+					makeUnstructuredDashboard("d-1"),
+					makeUnstructuredDashboard("d-2"),
+					makeUnstructuredDashboard("d-3"),
+				},
+			},
+			limit:            5,
+			wantSuccessCount: 3,
+			wantTruncated:    false,
+		},
+		{
+			name: "list without limit is not truncated",
+			listResults: map[string][]unstructured.Unstructured{
+				"dashboards": {
+					makeUnstructuredDashboard("d-1"),
+					makeUnstructuredDashboard("d-2"),
+					makeUnstructuredDashboard("d-3"),
+					makeUnstructuredDashboard("d-4"),
+					makeUnstructuredDashboard("d-5"),
+					makeUnstructuredDashboard("d-6"),
+					makeUnstructuredDashboard("d-7"),
+					makeUnstructuredDashboard("d-8"),
+					makeUnstructuredDashboard("d-9"),
+					makeUnstructuredDashboard("d-10"),
+				},
+			},
+			wantSuccessCount: 10,
+			wantTruncated:    false,
+		},
 	}
 
 	for _, tc := range tests {
@@ -193,8 +250,9 @@ func TestPuller_Pull(t *testing.T) {
 			req := require.New(t)
 
 			mockClient := &mockPullClient{
-				listResults: tc.listResults,
-				listErrors:  tc.listErrors,
+				listResults:   tc.listResults,
+				listErrors:    tc.listErrors,
+				continueToken: tc.continueToken,
 			}
 
 			desc := dashboardDescriptor()
@@ -214,6 +272,7 @@ func TestPuller_Pull(t *testing.T) {
 				},
 				Resources:   dest,
 				StopOnError: tc.stopOnError,
+				Limit:       tc.limit,
 			}
 
 			summary, err := puller.Pull(context.Background(), pullReq)
@@ -238,6 +297,9 @@ func TestPuller_Pull(t *testing.T) {
 					req.Error(failure.Error)
 				}
 			}
+
+			// Verify truncation tracking.
+			req.Equal(tc.wantTruncated, summary.IsTruncated())
 
 			// For success cases, verify the destination received the resources.
 			if tc.wantSuccessCount > 0 {

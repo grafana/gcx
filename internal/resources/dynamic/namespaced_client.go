@@ -39,10 +39,20 @@ func NewNamespacedClient(namespace string, client dynamic.Interface) *Namespaced
 }
 
 // List lists resources from the server.
-// It automatically handles pagination to return all resources using the client-go pager.
+//
+// When opts.Limit > 0, a single direct API call is made and the response
+// (including its Continue token) is returned as-is. This enables callers
+// to detect truncated results and display pagination hints.
+//
+// When opts.Limit == 0, the client-go pager fetches all pages transparently.
 func (c *NamespacedClient) List(
 	ctx context.Context, desc resources.Descriptor, opts metav1.ListOptions,
 ) (*unstructured.UnstructuredList, error) {
+	if opts.Limit > 0 {
+		res, err := c.client.Resource(desc.GroupVersionResource()).Namespace(c.namespace).List(ctx, opts)
+		return res, ParseStatusError(err)
+	}
+
 	pager := pager.New(func(ctx context.Context, opts metav1.ListOptions) (runtime.Object, error) {
 		return c.client.Resource(desc.GroupVersionResource()).Namespace(c.namespace).List(ctx, opts)
 	})

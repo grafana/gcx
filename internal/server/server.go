@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/gcx/internal/server/grafana"
 	"github.com/grafana/gcx/internal/server/handlers"
 	"github.com/grafana/gcx/internal/server/livereload"
+	"github.com/grafana/gcx/internal/version"
 	"github.com/grafana/grafana-app-sdk/logging"
 )
 
@@ -79,7 +80,7 @@ func (s *Server) Start(ctx context.Context) error {
 			grafana.AuthenticateRequest(s.context.Grafana, r.Out)
 
 			r.Out.Header.Del("Origin")
-			r.Out.Header.Set("User-Agent", httputils.UserAgent)
+			r.Out.Header.Set("User-Agent", version.UserAgent())
 		},
 	}
 

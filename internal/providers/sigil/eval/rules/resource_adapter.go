@@ -57,7 +57,7 @@ func NewTypedCRUD(ctx context.Context) (*adapter.TypedCRUD[eval.RuleDefinition],
 	client := NewClient(base)
 
 	crud := &adapter.TypedCRUD[eval.RuleDefinition]{
-		ListFn: client.List,
+		ListFn: adapter.LimitedListFn(client.List),
 		GetFn: func(ctx context.Context, name string) (*eval.RuleDefinition, error) {
 			return client.Get(ctx, name)
 		},

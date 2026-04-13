@@ -18,6 +18,7 @@ gcx/
 │       ├── helptree/        # 'help-tree' compact text tree for agent context injection
 │       ├── setup/            # 'setup' command area (onboarding, product config)
 │       │   └── instrumentation/  # Instrumentation subcommands (status, discover, show, apply)
+│       ├── skills/           # 'skills' subcommand (portable Agent Skills installer for .agents bundles)
 │       ├── dev/              # 'dev' subcommand (import, scaffold, generate, lint, serve)
 │       ├── providers/        # 'providers' subcommand implementation
 │       └── fail/             # Error → DetailedError conversion, exit codes
@@ -37,6 +38,7 @@ gcx/
 │   ├── grafana/              # Thin wrapper over grafana-openapi-client-go
 │   ├── graph/                # Terminal chart rendering (ntcharts + lipgloss)
 │   ├── httputils/            # REST client helpers, request/response utilities
+│   ├── retry/                # Retry transport (429/5xx/connection errors, exponential backoff, Retry-After)
 │   ├── logs/                 # slog + k8s klog integration, verbosity
 │   ├── linter/               # OPA/Rego-based resource linter engine
 │   │   ├── bundle/           # Embedded Rego bundle with built-in rules
@@ -67,6 +69,7 @@ gcx/
 │   │       ├── checks/       # Checks status, timeline, CRUD
 │   │       ├── probes/       # Probe listing
 │   │       └── smcfg/        # SM config loader interfaces
+│   ├── deeplink/             # Deep link URL template registry and browser opener
 │   ├── dashboards/           # Dashboard Image Renderer client (PNG snapshots)
 │   ├── datasources/          # Datasource HTTP client (legacy REST API)
 │   │   └── query/            # Shared query CLI utils (time parsing, codecs, opts, resolve helpers)
@@ -82,6 +85,7 @@ gcx/
 │   │   ├── local/            # FSReader / FSWriter (disk I/O)
 │   │   ├── process/          # Processor pipeline (manager fields, server fields)
 │   │   └── remote/           # Puller, Pusher, Deleter (Grafana API ops)
+│   ├── version/              # Global version string (Set once from main; provides UserAgent() for HTTP clients)
 │   └── server/               # Local dev server for 'dev serve'
 │       ├── embed/            # Static assets (embedded via go:embed)
 │       ├── grafana/          # Grafana proxy and mock handlers

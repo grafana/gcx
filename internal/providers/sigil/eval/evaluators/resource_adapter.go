@@ -58,7 +58,7 @@ func NewTypedCRUD(ctx context.Context) (*adapter.TypedCRUD[eval.EvaluatorDefinit
 	client := NewClient(base)
 
 	crud := &adapter.TypedCRUD[eval.EvaluatorDefinition]{
-		ListFn: client.List,
+		ListFn: adapter.LimitedListFn(client.List),
 		GetFn: func(ctx context.Context, name string) (*eval.EvaluatorDefinition, error) {
 			return client.Get(ctx, name)
 		},

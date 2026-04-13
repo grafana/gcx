@@ -142,18 +142,20 @@ func (p *FleetProvider) TypedRegistrations() []adapter.Registration {
 	loader := &providers.ConfigLoader{}
 	return []adapter.Registration{
 		{
-			Factory:    NewPipelineAdapterFactory(loader),
-			Descriptor: PipelineDescriptor(),
-			GVK:        PipelineDescriptor().GroupVersionKind(),
-			Schema:     pipelineSchema(),
-			Example:    pipelineExample(),
+			Factory:     NewPipelineAdapterFactory(loader),
+			Descriptor:  PipelineDescriptor(),
+			GVK:         PipelineDescriptor().GroupVersionKind(),
+			Schema:      pipelineSchema(),
+			Example:     pipelineExample(),
+			URLTemplate: "/a/grafana-fleet-app/pipelines/{name}",
 		},
 		{
-			Factory:    NewCollectorAdapterFactory(loader),
-			Descriptor: CollectorDescriptor(),
-			GVK:        CollectorDescriptor().GroupVersionKind(),
-			Schema:     collectorSchema(),
-			Example:    collectorExample(),
+			Factory:     NewCollectorAdapterFactory(loader),
+			Descriptor:  CollectorDescriptor(),
+			GVK:         CollectorDescriptor().GroupVersionKind(),
+			Schema:      collectorSchema(),
+			Example:     collectorExample(),
+			URLTemplate: "/a/grafana-fleet-app/collectors/{name}",
 		},
 	}
 }
@@ -217,6 +219,8 @@ func (h *fleetHelper) newPipelineListCommand() *cobra.Command {
 				return err
 			}
 
+			pipelines = adapter.TruncateSlice(pipelines, opts.Limit)
+
 			// Table codec operates on raw []Pipeline for direct field access.
 			// Other formats (yaml/json) convert to K8s envelope Resources
 			// for consistency with get/pull and round-trip support.
@@ -241,7 +245,8 @@ func (h *fleetHelper) newPipelineListCommand() *cobra.Command {
 }
 
 type pipelineListOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *pipelineListOpts) setup(flags *pflag.FlagSet) {
@@ -249,6 +254,8 @@ func (o *pipelineListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &PipelineTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
+
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 func (h *fleetHelper) newPipelineGetCommand() *cobra.Command { //nolint:dupl // Intentionally similar to collector get — distinct resource types.
@@ -536,6 +543,8 @@ func (h *fleetHelper) newCollectorListCommand() *cobra.Command {
 				return err
 			}
 
+			collectors = adapter.TruncateSlice(collectors, opts.Limit)
+
 			// Table codec operates on raw []Collector for direct field access.
 			// Other formats (yaml/json) convert to K8s envelope Resources
 			// for consistency with get/pull and round-trip support.
@@ -560,7 +569,8 @@ func (h *fleetHelper) newCollectorListCommand() *cobra.Command {
 }
 
 type collectorListOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int64
 }
 
 func (o *collectorListOpts) setup(flags *pflag.FlagSet) {
@@ -568,6 +578,8 @@ func (o *collectorListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &CollectorTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
+
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 func (h *fleetHelper) newCollectorGetCommand() *cobra.Command { //nolint:dupl // Intentionally similar to pipeline get — distinct resource types.
@@ -1119,7 +1131,7 @@ func NewPipelineTypedCRUD(ctx context.Context, loader CloudConfigLoader) (*adapt
 	client := &Client{Client: base}
 
 	crud := &adapter.TypedCRUD[Pipeline]{
-		ListFn: client.ListPipelines,
+		ListFn: adapter.LimitedListFn(client.ListPipelines),
 		GetFn: func(ctx context.Context, name string) (*Pipeline, error) {
 			return resolvePipeline(ctx, client, name)
 		},
@@ -1177,7 +1189,7 @@ func NewCollectorTypedCRUD(ctx context.Context, loader CloudConfigLoader) (*adap
 	client := &Client{Client: base}
 
 	crud := &adapter.TypedCRUD[Collector]{
-		ListFn: client.ListCollectors,
+		ListFn: adapter.LimitedListFn(client.ListCollectors),
 		GetFn: func(ctx context.Context, name string) (*Collector, error) {
 			return resolveCollector(ctx, client, name)
 		},

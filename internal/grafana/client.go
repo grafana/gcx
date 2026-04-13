@@ -9,6 +9,7 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"github.com/go-openapi/strfmt"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/version"
 	goapi "github.com/grafana/grafana-openapi-client-go/client"
 )
 
@@ -38,6 +39,9 @@ func ClientFromContext(ctx *config.Context) (*goapi.GrafanaHTTPAPI, error) {
 		Host:     grafanaURL.Host,
 		BasePath: strings.TrimLeft(grafanaURL.Path+"/api", "/"),
 		Schemes:  []string{grafanaURL.Scheme},
+		HTTPHeaders: map[string]string{
+			"User-Agent": version.UserAgent(),
+		},
 	}
 
 	if ctx.Grafana.TLS != nil {

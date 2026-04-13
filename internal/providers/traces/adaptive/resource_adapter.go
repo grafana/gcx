@@ -66,9 +66,7 @@ func NewPolicyTypedCRUD(ctx context.Context, loader *providers.ConfigLoader) (*a
 	client := NewClient(signalAuth.BaseURL, signalAuth.TenantID, signalAuth.APIToken, signalAuth.HTTPClient)
 
 	crud := &adapter.TypedCRUD[Policy]{
-		ListFn: func(ctx context.Context) ([]Policy, error) {
-			return client.ListPolicies(ctx)
-		},
+		ListFn: adapter.LimitedListFn(client.ListPolicies),
 		GetFn: func(ctx context.Context, name string) (*Policy, error) {
 			return client.GetPolicy(ctx, name)
 		},

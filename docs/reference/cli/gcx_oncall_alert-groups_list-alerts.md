@@ -11,6 +11,7 @@ gcx oncall alert-groups list-alerts <alert-group-id> [flags]
 ```
   -h, --help            help for list-alerts
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int       Maximum number of items to return (0 for all) (default 50)
   -o, --output string   Output format. One of: json, table, yaml (default "table")
 ```
 

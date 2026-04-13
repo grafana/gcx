@@ -80,6 +80,7 @@ cmd/gcx/
   commands/     Commands catalog (agent metadata)
   helptree/     Help tree for agent context
   setup/        Onboarding + instrumentation
+  skills/       Portable Agent Skills installer for .agents-compatible tools
   dev/          Developer tools (import, scaffold, generate, lint, serve)
   fail/         Structured error conversion
 
@@ -115,6 +116,7 @@ internal/
 │   ├── slo/        SLO provider (definitions, reports)
 │   ├── synth/      Synthetic Monitoring provider (checks, probes)
 │   └── traces/     Traces signal provider (Tempo queries + Adaptive Traces commands)
+├── deeplink/    Deep link URL template registry and browser opener
 ├── dashboards/  Dashboard Image Renderer client (PNG snapshots)
 ├── datasources/ Datasource HTTP client (legacy REST API)
 │   └── query/   Shared query CLI utils (time parsing, codecs, opts, resolve helpers — used by signal providers and GenericCmd)
@@ -134,7 +136,9 @@ internal/
 ├── grafana/     OpenAPI client (health checks, version detection)
 ├── output/      Output codec registry (json, yaml, text, wide — field selection, discovery, k8s unstructured handling)
 ├── format/      JSON/YAML codecs with format auto-detection
+├── retry/       Retry transport (429, 502/503/504, transient connection errors — wraps all HTTP tiers)
 ├── httputils/   HTTP helpers (used by serve command's proxy)
+├── version/     Global version string (Set once from main; provides UserAgent() for HTTP clients)
 ├── secrets/     Redactor for config view
 └── logs/        slog/klog integration
 ```

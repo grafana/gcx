@@ -30,9 +30,10 @@ func init() { //nolint:gochecknoinits // Natural key registration for cross-stac
 
 // resourceMeta holds metadata for registering an OnCall resource type.
 type resourceMeta struct {
-	Descriptor resources.Descriptor
-	Schema     json.RawMessage
-	Example    json.RawMessage
+	Descriptor  resources.Descriptor
+	Schema      json.RawMessage
+	Example     json.RawMessage
+	URLTemplate string // Deep link URL template (e.g., "/a/grafana-oncall-app/schedules/{name}").
 }
 
 // crudOption configures optional CRUD operations on a TypedCRUD instance.
@@ -90,7 +91,9 @@ func buildOnCallRegistration[T adapter.ResourceNamer](
 			}
 
 			if listFn != nil {
-				crud.ListFn = func(ctx context.Context) ([]T, error) { return listFn(ctx, client) }
+				crud.ListFn = adapter.LimitedListFn(func(ctx context.Context) ([]T, error) {
+					return listFn(ctx, client)
+				})
 			}
 
 			if getFn != nil {
@@ -105,10 +108,11 @@ func buildOnCallRegistration[T adapter.ResourceNamer](
 
 			return crud.AsAdapter(), nil
 		},
-		Descriptor: desc,
-		GVK:        desc.GroupVersionKind(),
-		Schema:     meta.Schema,
-		Example:    meta.Example,
+		Descriptor:  desc,
+		GVK:         desc.GroupVersionKind(),
+		Schema:      meta.Schema,
+		Example:     meta.Example,
+		URLTemplate: meta.URLTemplate,
 	}
 }
 
@@ -139,6 +143,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta := onCallMeta("Integration", "integration", "integrations")
 	meta.Schema = adapter.SchemaFromType[Integration](meta.Descriptor)
 	meta.Example = integrationExample()
+	meta.URLTemplate = "/a/grafana-oncall-app/integrations/{name}"
 	regs = append(regs, buildOnCallRegistration(loader, meta,
 		func(ctx context.Context, c *Client) ([]Integration, error) { return c.ListIntegrations(ctx) },
 		func(ctx context.Context, c *Client, name string) (*Integration, error) {
@@ -159,6 +164,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta = onCallMeta("EscalationChain", "escalationchain", "escalationchains")
 	meta.Schema = adapter.SchemaFromType[EscalationChain](meta.Descriptor)
 	meta.Example = escalationChainExample()
+	meta.URLTemplate = "/a/grafana-oncall-app/escalation-chains/{name}"
 	regs = append(regs, buildOnCallRegistration(loader, meta,
 		func(ctx context.Context, c *Client) ([]EscalationChain, error) { return c.ListEscalationChains(ctx) },
 		func(ctx context.Context, c *Client, name string) (*EscalationChain, error) {
@@ -201,6 +207,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta = onCallMeta("Schedule", "schedule", "schedules")
 	meta.Schema = adapter.SchemaFromType[Schedule](meta.Descriptor)
 	meta.Example = scheduleExample()
+	meta.URLTemplate = "/a/grafana-oncall-app/schedules/{name}"
 	regs = append(regs, buildOnCallRegistration(loader, meta,
 		func(ctx context.Context, c *Client) ([]Schedule, error) { return c.ListSchedules(ctx) },
 		func(ctx context.Context, c *Client, name string) (*Schedule, error) { return c.GetSchedule(ctx, name) },
@@ -265,6 +272,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta = onCallMeta("OutgoingWebhook", "outgoingwebhook", "outgoingwebhooks")
 	meta.Schema = adapter.SchemaFromType[OutgoingWebhook](meta.Descriptor)
 	meta.Example = outgoingWebhookExample()
+	meta.URLTemplate = "/a/grafana-oncall-app/outgoing-webhooks/{name}"
 	regs = append(regs, buildOnCallRegistration(loader, meta,
 		func(ctx context.Context, c *Client) ([]OutgoingWebhook, error) { return c.ListOutgoingWebhooks(ctx) },
 		func(ctx context.Context, c *Client, name string) (*OutgoingWebhook, error) {
@@ -284,6 +292,7 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	// 8. AlertGroup — read-only + delete
 	meta = onCallMeta("AlertGroup", "alertgroup", "alertgroups")
 	meta.Schema = adapter.SchemaFromType[AlertGroup](meta.Descriptor)
+	meta.URLTemplate = "/a/grafana-oncall-app/alert-groups/{name}"
 	regs = append(regs, buildOnCallRegistration(loader, meta,
 		func(ctx context.Context, c *Client) ([]AlertGroup, error) { return c.ListAlertGroups(ctx) }, // no filter
 		func(ctx context.Context, c *Client, name string) (*AlertGroup, error) {
@@ -597,20 +606,23 @@ func shiftSwapExample() json.RawMessage {
 // NewTypedCRUD[T adapter.ResourceNamer] creates a TypedCRUD instance for CLI commands.
 // It mirrors buildOnCallRegistration but returns TypedCRUD directly instead of Registration.
 // This factory pattern allows commands to use typed methods without going through the adapter.
+// Returns (crud, namespace, grafanaHost, error).
 func NewTypedCRUD[T adapter.ResourceNamer](
 	ctx context.Context,
 	loader OnCallConfigLoader,
 	listFn func(ctx context.Context, client *Client) ([]T, error),
 	getFn func(ctx context.Context, client *Client, name string) (*T, error), // nil for list-only resources
 	opts ...crudOption[T],
-) (*adapter.TypedCRUD[T], string, error) {
+) (*adapter.TypedCRUD[T], string, string, error) {
 	client, namespace, err := loader.LoadOnCallClient(ctx)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to load OnCall config: %w", err)
+		return nil, "", "", fmt.Errorf("failed to load OnCall config: %w", err)
 	}
 
 	crud := &adapter.TypedCRUD[T]{
-		ListFn:      func(ctx context.Context) ([]T, error) { return listFn(ctx, client) },
+		ListFn: adapter.LimitedListFn(func(ctx context.Context) ([]T, error) {
+			return listFn(ctx, client)
+		}),
 		StripFields: []string{"id", "password", "authorization_header"},
 		Namespace:   namespace,
 	}
@@ -625,5 +637,5 @@ func NewTypedCRUD[T adapter.ResourceNamer](
 		opt(client, crud)
 	}
 
-	return crud, namespace, nil
+	return crud, namespace, client.GrafanaURL(), nil
 }

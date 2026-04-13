@@ -11,6 +11,7 @@ gcx oncall alert-groups get <id> [flags]
 ```
   -h, --help            help for get
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --open            Open the resource in the default browser
   -o, --output string   Output format. One of: json, yaml (default "yaml")
 ```
 

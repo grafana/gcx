@@ -16,7 +16,7 @@ func TestDatasetAdapter_List(t *testing.T) {
 	crud := &adapter.TypedCRUD[kg.DatasetItem]{
 		Namespace:  "stack-1",
 		Descriptor: kg.DatasetDescriptor(),
-		ListFn: func(_ context.Context) ([]kg.DatasetItem, error) {
+		ListFn: func(_ context.Context, _ int64) ([]kg.DatasetItem, error) {
 			return []kg.DatasetItem{
 				{Name: "kubernetes", Detected: true, Enabled: true, Configured: true},
 				{Name: "otel", Detected: true, Enabled: false, Configured: false},
@@ -40,7 +40,7 @@ func TestDatasetAdapter_GetFallback(t *testing.T) {
 	crud := &adapter.TypedCRUD[kg.DatasetItem]{
 		Namespace:  "stack-1",
 		Descriptor: kg.DatasetDescriptor(),
-		ListFn: func(_ context.Context) ([]kg.DatasetItem, error) {
+		ListFn: func(_ context.Context, _ int64) ([]kg.DatasetItem, error) {
 			return []kg.DatasetItem{
 				{Name: "kubernetes", Detected: true, Enabled: true},
 				{Name: "otel", Detected: false, Enabled: false},
@@ -68,7 +68,7 @@ func TestVendorAdapter_List(t *testing.T) {
 	crud := &adapter.TypedCRUD[kg.Vendor]{
 		Namespace:  "stack-1",
 		Descriptor: kg.VendorDescriptor(),
-		ListFn: func(_ context.Context) ([]kg.Vendor, error) {
+		ListFn: func(_ context.Context, _ int64) ([]kg.Vendor, error) {
 			return []kg.Vendor{
 				{Name: "nginx", Enabled: true},
 				{Name: "redis", Enabled: false},
@@ -91,7 +91,7 @@ func TestEntityTypeAdapter_List(t *testing.T) {
 	crud := &adapter.TypedCRUD[kg.EntityType]{
 		Namespace:  "stack-1",
 		Descriptor: kg.EntityTypeDescriptor(),
-		ListFn: func(_ context.Context) ([]kg.EntityType, error) {
+		ListFn: func(_ context.Context, _ int64) ([]kg.EntityType, error) {
 			return []kg.EntityType{
 				{Name: "Service", Count: 42},
 				{Name: "Namespace", Count: 5},
@@ -118,7 +118,7 @@ func TestScopeAdapter_List(t *testing.T) {
 	crud := &adapter.TypedCRUD[kg.Scope]{
 		Namespace:  "stack-1",
 		Descriptor: kg.ScopeDescriptor(),
-		ListFn: func(_ context.Context) ([]kg.Scope, error) {
+		ListFn: func(_ context.Context, _ int64) ([]kg.Scope, error) {
 			return []kg.Scope{
 				{Name: "env", Values: []string{"prod", "staging"}},
 				{Name: "site", Values: []string{"us-east"}},
@@ -140,7 +140,7 @@ func TestRuleAdapter_List(t *testing.T) {
 	crud := &adapter.TypedCRUD[kg.Rule]{
 		Namespace:  "stack-1",
 		Descriptor: kg.RuleDescriptor(),
-		ListFn: func(_ context.Context) ([]kg.Rule, error) {
+		ListFn: func(_ context.Context, _ int64) ([]kg.Rule, error) {
 			return []kg.Rule{
 				{Name: "service:http_requests:rate5m", Expr: "sum(rate(http_requests_total[5m])) by (service)", Record: "service:http_requests:rate5m"},
 				{Name: "high-error-rate", Alert: "HighErrorRate", Expr: "rate(http_errors_total[5m]) > 0.1"},

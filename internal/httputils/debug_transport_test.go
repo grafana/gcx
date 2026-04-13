@@ -1,9 +1,9 @@
 package httputils_test
 
 import (
+	"context"
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/grafana/gcx/internal/httputils"
@@ -18,7 +18,7 @@ func TestLoggingRoundTripper_Success(t *testing.T) {
 		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
 	})
 	rt := &httputils.LoggingRoundTripper{Base: base}
-	req := httptest.NewRequest(http.MethodGet, "http://example.com/api", nil)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.com/api", nil)
 
 	resp, err := rt.RoundTrip(req)
 	if err != nil {
@@ -36,7 +36,7 @@ func TestLoggingRoundTripper_TransportError(t *testing.T) {
 		return nil, wantErr
 	})
 	rt := &httputils.LoggingRoundTripper{Base: base}
-	req := httptest.NewRequest(http.MethodGet, "http://example.com/api", nil)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.com/api", nil)
 
 	resp, err := rt.RoundTrip(req)
 	if resp != nil {
@@ -52,7 +52,7 @@ func TestLoggingRoundTripper_5xx(t *testing.T) {
 		return &http.Response{StatusCode: http.StatusBadGateway, Body: http.NoBody}, nil
 	})
 	rt := &httputils.LoggingRoundTripper{Base: base}
-	req := httptest.NewRequest(http.MethodGet, "http://example.com/api", nil)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.com/api", nil)
 
 	resp, err := rt.RoundTrip(req)
 	if err != nil {

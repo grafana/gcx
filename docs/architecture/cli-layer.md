@@ -106,6 +106,13 @@ gcx (root)
 │           ├── --filename / -f  Path to manifest file (required)
 │           └── --dry-run    Preview changes without applying
 │
+├── skills                   [cmd/gcx/skills/command.go]
+│   └── install             Install the canonical portable gcx Agent Skills bundle into a .agents root
+│       ├── --dir           .agents root directory (default: ~/.agents)
+│       ├── --force         Overwrite existing differing files
+│       ├── --dry-run       Preview installation without writing files
+│       └── --output / -o   text|json|yaml
+│
 └── dev                      [cmd/gcx/dev/command.go]
     ├── generate [FILE_PATH]... Generate typed Go stubs for new resources
     ├── import               Import existing Grafana resources as code

@@ -12,6 +12,7 @@ gcx logs adaptive drop-rules list [flags]
       --expiration-filter string   Filter by expiration: all, active, or expired (default "all")
   -h, --help                       help for list
       --json string                Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int                  Maximum number of drop rules to return (0 for no limit) (default 50)
   -o, --output string              Output format. One of: json, table, wide, yaml (default "table")
 ```
 

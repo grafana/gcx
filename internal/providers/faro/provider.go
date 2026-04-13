@@ -71,11 +71,12 @@ func (p *FaroProvider) TypedRegistrations() []adapter.Registration {
 	loader := &providers.ConfigLoader{}
 	return []adapter.Registration{
 		{
-			Factory:    NewAdapterFactory(loader),
-			Descriptor: staticDescriptor,
-			GVK:        staticDescriptor.GroupVersionKind(),
-			Schema:     FaroAppSchema(),
-			Example:    FaroAppExample(),
+			Factory:     NewAdapterFactory(loader),
+			Descriptor:  staticDescriptor,
+			GVK:         staticDescriptor.GroupVersionKind(),
+			Schema:      FaroAppSchema(),
+			Example:     FaroAppExample(),
+			URLTemplate: "/a/grafana-faro-app/apps/{name}",
 		},
 	}
 }

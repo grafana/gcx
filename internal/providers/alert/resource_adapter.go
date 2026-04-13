@@ -83,7 +83,7 @@ func NewTypedCRUDRules(ctx context.Context, loader GrafanaConfigLoader) (*adapte
 	}
 
 	crud := &adapter.TypedCRUD[RuleStatus]{
-		ListFn: func(ctx context.Context) ([]RuleStatus, error) {
+		ListFn: func(ctx context.Context, limit int64) ([]RuleStatus, error) {
 			resp, err := client.List(ctx, ListOptions{})
 			if err != nil {
 				return nil, fmt.Errorf("failed to list alert rules: %w", err)
@@ -92,7 +92,7 @@ func NewTypedCRUDRules(ctx context.Context, loader GrafanaConfigLoader) (*adapte
 			for _, group := range resp.Data.Groups {
 				rules = append(rules, group.Rules...)
 			}
-			return rules, nil
+			return adapter.TruncateSlice(rules, limit), nil
 		},
 		GetFn: func(ctx context.Context, name string) (*RuleStatus, error) {
 			rule, err := client.GetRule(ctx, name)
@@ -121,13 +121,13 @@ func NewTypedCRUDGroups(ctx context.Context, loader GrafanaConfigLoader) (*adapt
 	}
 
 	crud := &adapter.TypedCRUD[RuleGroup]{
-		ListFn: func(ctx context.Context) ([]RuleGroup, error) {
+		ListFn: adapter.LimitedListFn(func(ctx context.Context) ([]RuleGroup, error) {
 			groups, err := client.ListGroups(ctx)
 			if err != nil {
 				return nil, fmt.Errorf("failed to list alert rule groups: %w", err)
 			}
 			return groups, nil
-		},
+		}),
 		GetFn: func(ctx context.Context, name string) (*RuleGroup, error) {
 			group, err := client.GetGroup(ctx, name)
 			if err != nil {

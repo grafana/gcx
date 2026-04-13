@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/style"
-	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -33,7 +33,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &IncidentTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.IntVar(&o.Limit, "limit", 100, "Maximum number of incidents to return")
+	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of incidents to return")
 }
 
 func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -53,7 +53,7 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx)
+			typedObjs, err := crud.List(ctx, int64(opts.Limit))
 			if err != nil {
 				return err
 			}
@@ -360,15 +360,13 @@ func newOpenCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			host := strings.TrimRight(restCfg.Host, "/")
-			url := fmt.Sprintf("%s/a/grafana-incident-app/incidents/%s", host, id)
-
-			cmdio.Info(cmd.OutOrStdout(), "Opening %s", url)
-			if err := browser.OpenURL(url); err != nil {
-				return fmt.Errorf("failed to open browser: %w", err)
+			url := deeplink.Resolve(restCfg.GrafanaURL, staticDescriptor.GroupVersionKind(), id)
+			if url == "" {
+				return fmt.Errorf("no deep link URL available for incident %s", id)
 			}
 
-			return nil
+			cmdio.Info(cmd.ErrOrStderr(), "Opening %s", url)
+			return deeplink.Open(url)
 		},
 	}
 	opts.setup(cmd.Flags())

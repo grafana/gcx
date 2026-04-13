@@ -13,6 +13,7 @@ gcx alert rules list [flags]
       --group string    Filter by group name
   -h, --help            help for list
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int       Maximum number of items to return (0 for unlimited) (default 50)
   -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
       --state string    Filter by rule state (firing, pending, inactive)
 ```

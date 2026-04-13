@@ -52,7 +52,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &TableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.IntVar(&o.Limit, "limit", 100, "Maximum number of conversations to return (0 for no limit)")
+	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of conversations to return (0 for no limit)")
 }
 
 func newListCommand(loader *providers.ConfigLoader) *cobra.Command {

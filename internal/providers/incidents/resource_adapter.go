@@ -137,8 +137,12 @@ func NewFactoryFromConfig(cfg internalconfig.NamespacedRESTConfig) adapter.Facto
 // newTypedAdapter builds the TypedCRUD[Incident] adapter for the given client and namespace.
 func newTypedAdapter(client *Client, namespace string) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[Incident]{
-		ListFn: func(ctx context.Context) ([]Incident, error) {
-			return client.List(ctx, IncidentQuery{})
+		ListFn: func(ctx context.Context, limit int64) ([]Incident, error) {
+			q := IncidentQuery{}
+			if limit > 0 {
+				q.Limit = int(limit)
+			}
+			return client.List(ctx, q)
 		},
 
 		GetFn: func(ctx context.Context, name string) (*Incident, error) {
@@ -179,8 +183,12 @@ func NewTypedCRUD(ctx context.Context, loader GrafanaConfigLoader, query Inciden
 	}
 
 	crud := &adapter.TypedCRUD[Incident]{
-		ListFn: func(ctx context.Context) ([]Incident, error) {
-			return client.List(ctx, query)
+		ListFn: func(ctx context.Context, limit int64) ([]Incident, error) {
+			q := query
+			if limit > 0 {
+				q.Limit = int(limit)
+			}
+			return client.List(ctx, q)
 		},
 
 		GetFn: func(ctx context.Context, name string) (*Incident, error) {
