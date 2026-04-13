@@ -1,4 +1,4 @@
-package incidents_test
+package irm_test
 
 import (
 	"encoding/json"
@@ -7,19 +7,19 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
-	"github.com/grafana/gcx/internal/providers/incidents"
+	"github.com/grafana/gcx/internal/providers/irm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
 )
 
-func newTestClient(t *testing.T, server *httptest.Server) *incidents.Client {
+func newTestClient(t *testing.T, server *httptest.Server) *irm.IncidentClient {
 	t.Helper()
 	cfg := config.NamespacedRESTConfig{
 		Config:    rest.Config{Host: server.URL},
 		Namespace: "stack-123",
 	}
-	c, err := incidents.NewClient(cfg)
+	c, err := irm.NewIncidentClient(cfg)
 	require.NoError(t, err)
 	return c
 }
@@ -90,7 +90,7 @@ func TestClient_List(t *testing.T) {
 			defer server.Close()
 
 			c := newTestClient(t, server)
-			result, err := c.List(t.Context(), incidents.IncidentQuery{})
+			result, err := c.List(t.Context(), irm.IncidentQuery{})
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -167,7 +167,7 @@ func TestClient_Create(t *testing.T) {
 	defer server.Close()
 
 	c := newTestClient(t, server)
-	inc, err := c.Create(t.Context(), &incidents.Incident{
+	inc, err := c.Create(t.Context(), &irm.Incident{
 		Title:  "DB Outage",
 		Status: "active",
 	})

@@ -1,4 +1,4 @@
-package incidents
+package irm
 
 import (
 	"errors"
@@ -23,12 +23,12 @@ import (
 // list command
 // ---------------------------------------------------------------------------
 
-type listOpts struct {
+type incidentListOpts struct {
 	IO    cmdio.Options
 	Limit int
 }
 
-func (o *listOpts) setup(flags *pflag.FlagSet) {
+func (o *incidentListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &IncidentTableCodec{})
 	o.IO.RegisterCustomCodec("wide", &IncidentTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
@@ -37,7 +37,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 }
 
 func NewListCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &listOpts{}
+	opts := &incidentListOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List incidents.",
@@ -151,17 +151,17 @@ func (c *IncidentTableCodec) Decode(_ io.Reader, _ any) error {
 // get command
 // ---------------------------------------------------------------------------
 
-type getOpts struct {
+type incidentGetOpts struct {
 	IO cmdio.Options
 }
 
-func (o *getOpts) setup(flags *pflag.FlagSet) {
+func (o *incidentGetOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("yaml")
 	o.IO.BindFlags(flags)
 }
 
 func NewGetCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &getOpts{}
+	opts := &incidentGetOpts{}
 	cmd := &cobra.Command{
 		Use:   "get <id>",
 		Short: "Get a single incident by ID.",
@@ -179,7 +179,7 @@ func NewGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			client, err := NewClient(restCfg)
+			client, err := NewIncidentClient(restCfg)
 			if err != nil {
 				return err
 			}
@@ -266,7 +266,7 @@ func NewCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to convert resource to incident: %w", err)
 			}
 
-			client, err := NewClient(restCfg)
+			client, err := NewIncidentClient(restCfg)
 			if err != nil {
 				return err
 			}
@@ -316,7 +316,7 @@ func NewCloseCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			client, err := NewClient(restCfg)
+			client, err := NewIncidentClient(restCfg)
 			if err != nil {
 				return err
 			}
@@ -360,7 +360,7 @@ func NewOpenCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			url := deeplink.Resolve(restCfg.GrafanaURL, StaticDescriptor.GroupVersionKind(), id)
+			url := deeplink.Resolve(restCfg.GrafanaURL, incidentStaticDescriptor.GroupVersionKind(), id)
 			if url == "" {
 				return fmt.Errorf("no deep link URL available for incident %s", id)
 			}
@@ -420,7 +420,7 @@ func newActivityListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			client, err := NewClient(restCfg)
+			client, err := NewIncidentClient(restCfg)
 			if err != nil {
 				return err
 			}
@@ -510,7 +510,7 @@ func newActivityAddCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			client, err := NewClient(restCfg)
+			client, err := NewIncidentClient(restCfg)
 			if err != nil {
 				return err
 			}
@@ -568,7 +568,7 @@ func newSeveritiesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			client, err := NewClient(restCfg)
+			client, err := NewIncidentClient(restCfg)
 			if err != nil {
 				return err
 			}

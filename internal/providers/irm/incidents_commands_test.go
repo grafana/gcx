@@ -1,4 +1,4 @@
-package incidents_test
+package irm_test
 
 import (
 	"bytes"
@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/gcx/internal/providers/incidents"
+	"github.com/grafana/gcx/internal/providers/irm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,9 +17,9 @@ import (
 
 func TestIncidentTableCodec_Encode(t *testing.T) {
 	t0 := time.Date(2024, 6, 15, 10, 30, 0, 0, time.UTC)
-	ft := incidents.FlexTime(t0)
+	ft := irm.FlexTime(t0)
 
-	incs := []incidents.Incident{
+	incs := []irm.Incident{
 		{
 			IncidentID:  "inc-001",
 			Title:       "Database outage in production",
@@ -32,7 +32,7 @@ func TestIncidentTableCodec_Encode(t *testing.T) {
 			Title:       "Minor latency spike",
 			Status:      "resolved",
 			Severity:    "",
-			CreatedTime: incidents.FlexTime(time.Time{}),
+			CreatedTime: irm.FlexTime(time.Time{}),
 		},
 	}
 
@@ -64,7 +64,7 @@ func TestIncidentTableCodec_Encode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			codec := &incidents.IncidentTableCodec{Wide: tt.wide}
+			codec := &irm.IncidentTableCodec{Wide: tt.wide}
 			var buf bytes.Buffer
 			err := codec.Encode(&buf, incs)
 			require.NoError(t, err)
@@ -81,7 +81,7 @@ func TestIncidentTableCodec_Encode(t *testing.T) {
 }
 
 func TestIncidentTableCodec_EncodeWrongType(t *testing.T) {
-	codec := &incidents.IncidentTableCodec{}
+	codec := &irm.IncidentTableCodec{}
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, "not-a-slice-of-incidents")
 	require.Error(t, err)
@@ -90,7 +90,7 @@ func TestIncidentTableCodec_EncodeWrongType(t *testing.T) {
 
 func TestIncidentTableCodec_TitleTruncation(t *testing.T) {
 	longTitle := strings.Repeat("A", 60)
-	incs := []incidents.Incident{
+	incs := []irm.Incident{
 		{
 			IncidentID: "inc-trunc",
 			Title:      longTitle,
@@ -98,7 +98,7 @@ func TestIncidentTableCodec_TitleTruncation(t *testing.T) {
 		},
 	}
 
-	codec := &incidents.IncidentTableCodec{Wide: false}
+	codec := &irm.IncidentTableCodec{Wide: false}
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, incs)
 	require.NoError(t, err)
@@ -110,7 +110,7 @@ func TestIncidentTableCodec_TitleTruncation(t *testing.T) {
 
 func TestIncidentTableCodec_WideTitleNotTruncated(t *testing.T) {
 	longTitle := strings.Repeat("A", 60)
-	incs := []incidents.Incident{
+	incs := []irm.Incident{
 		{
 			IncidentID: "inc-wide",
 			Title:      longTitle,
@@ -118,7 +118,7 @@ func TestIncidentTableCodec_WideTitleNotTruncated(t *testing.T) {
 		},
 	}
 
-	codec := &incidents.IncidentTableCodec{Wide: true}
+	codec := &irm.IncidentTableCodec{Wide: true}
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, incs)
 	require.NoError(t, err)
@@ -128,12 +128,12 @@ func TestIncidentTableCodec_WideTitleNotTruncated(t *testing.T) {
 }
 
 func TestIncidentTableCodec_Format(t *testing.T) {
-	assert.Equal(t, "table", string((&incidents.IncidentTableCodec{}).Format()))
-	assert.Equal(t, "wide", string((&incidents.IncidentTableCodec{Wide: true}).Format()))
+	assert.Equal(t, "table", string((&irm.IncidentTableCodec{}).Format()))
+	assert.Equal(t, "wide", string((&irm.IncidentTableCodec{Wide: true}).Format()))
 }
 
 func TestIncidentTableCodec_DecodeUnsupported(t *testing.T) {
-	codec := &incidents.IncidentTableCodec{}
+	codec := &irm.IncidentTableCodec{}
 	err := codec.Decode(nil, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "does not support decoding")
@@ -144,14 +144,14 @@ func TestIncidentTableCodec_DecodeUnsupported(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestActivityTableCodec_Encode(t *testing.T) {
-	items := []incidents.ActivityItem{
+	items := []irm.ActivityItem{
 		{
 			ActivityItemID: "act-001",
 			IncidentID:     "inc-123",
 			ActivityKind:   "userNote",
 			Body:           "This is a note",
 			EventTime:      "2024-06-15T10:30:00Z",
-			User:           incidents.ActivityUser{UserID: "u-1", Name: "Alice"},
+			User:           irm.ActivityUser{UserID: "u-1", Name: "Alice"},
 		},
 		{
 			ActivityItemID: "act-002",
@@ -159,11 +159,11 @@ func TestActivityTableCodec_Encode(t *testing.T) {
 			ActivityKind:   "statusChange",
 			Body:           "Status changed to resolved",
 			CreatedTime:    "2024-06-15T11:00:00Z",
-			User:           incidents.ActivityUser{UserID: "u-2", Name: "Bob"},
+			User:           irm.ActivityUser{UserID: "u-2", Name: "Bob"},
 		},
 	}
 
-	codec := &incidents.ActivityTableCodec{}
+	codec := &irm.ActivityTableCodec{}
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, items)
 	require.NoError(t, err)
@@ -180,7 +180,7 @@ func TestActivityTableCodec_Encode(t *testing.T) {
 
 func TestActivityTableCodec_LongBodyTruncated(t *testing.T) {
 	longBody := strings.Repeat("X", 80)
-	items := []incidents.ActivityItem{
+	items := []irm.ActivityItem{
 		{
 			ActivityItemID: "act-long",
 			ActivityKind:   "userNote",
@@ -188,7 +188,7 @@ func TestActivityTableCodec_LongBodyTruncated(t *testing.T) {
 		},
 	}
 
-	codec := &incidents.ActivityTableCodec{}
+	codec := &irm.ActivityTableCodec{}
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, items)
 	require.NoError(t, err)
@@ -203,13 +203,13 @@ func TestActivityTableCodec_LongBodyTruncated(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestSeverityTableCodec_Encode(t *testing.T) {
-	sevs := []incidents.Severity{
+	sevs := []irm.Severity{
 		{SeverityID: "sev-1", DisplayLabel: "Critical", Level: 1, Color: "#FF0000"},
 		{SeverityID: "sev-2", DisplayLabel: "High", Level: 2, Color: "#FF8800"},
 		{SeverityID: "sev-3", DisplayLabel: "Low", Level: 3},
 	}
 
-	codec := &incidents.SeverityTableCodec{}
+	codec := &irm.SeverityTableCodec{}
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, sevs)
 	require.NoError(t, err)
