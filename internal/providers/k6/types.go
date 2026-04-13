@@ -19,7 +19,7 @@ func (ev *EnvVar) SetResourceName(name string) { ev.ID, _ = strconv.Atoi(name) }
 func (lz LoadZone) GetResourceName() string      { return lz.Name }
 func (lz *LoadZone) SetResourceName(name string) { lz.Name = name }
 
-// Project represents a K6 Cloud project (v6 API).
+// Project represents a k6 Cloud project (v6 API).
 //
 //nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type Project struct {
@@ -31,7 +31,7 @@ type Project struct {
 	Updated          string `json:"updated,omitempty"`
 }
 
-// LoadTest represents a K6 load test (v6 API).
+// LoadTest represents a k6 load test (v6 API).
 //
 //nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type LoadTest struct {
@@ -43,7 +43,7 @@ type LoadTest struct {
 	Updated   string `json:"updated,omitempty"`
 }
 
-// EnvVar represents a K6 Cloud environment variable.
+// EnvVar represents a k6 Cloud environment variable.
 //
 //nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type EnvVar struct {
@@ -64,7 +64,7 @@ type TestRunStatus struct {
 	ReferenceID  string `json:"reference_id,omitempty"`
 }
 
-// authResponse is the response from K6 authentication.
+// authResponse is the response from k6 authentication.
 type authResponse struct {
 	OrgID          string `json:"organization_id"`
 	V3GrafanaToken string `json:"v3_grafana_token"`
@@ -103,7 +103,7 @@ type testRunsResponse struct {
 	Value []TestRunStatus `json:"value"`
 }
 
-// Schedule represents a K6 schedule (v6 API).
+// Schedule represents a k6 schedule (v6 API).
 //
 //nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type Schedule struct {
@@ -134,7 +134,7 @@ type schedulesResponse struct {
 	Count int        `json:"@count,omitempty"`
 }
 
-// LoadZone represents a K6 private load zone.
+// LoadZone represents a k6 private load zone.
 //
 //nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type LoadZone struct {

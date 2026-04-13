@@ -24,7 +24,7 @@ gcx closes that gap. It connects your editor to your entire Grafana Cloud produc
 - **Grafana Assistant integration** — automated root-cause analysis, investigation summaries, and remediation suggestions powered by the Assistant
 - **Production-aware development** — query live metrics, logs, and traces without leaving your editor
 - **AI agent native** — JSON/YAML output, structured errors, predictable exit codes. Agent mode auto-detected for Claude Code, Copilot, Cursor, and others
-- **Full Grafana Cloud access** — dashboards, alerting, SLOs, Synthetic Monitoring, OnCall, K6, Fleet Management, Incidents, and more from a single CLI
+- **Full Grafana Cloud access** — dashboards, alerting, SLOs, Synthetic Monitoring, OnCall, k6, Fleet Management, Incidents, and more from a single CLI
 - **GitOps & CI/CD** — pull resources to files, version in git, push back with full round-trip fidelity
 - **Observability as code** — scaffold projects, import dashboards, lint with Rego rules, live-reload dev server
 - **Multi-environment** — named contexts to switch between dev, staging, and production
@@ -212,7 +212,7 @@ gcx provides dedicated commands for each Grafana Cloud product:
 | **Synthetic Monitoring** | `gcx synth` | `synth checks list`, `synth probes list` |
 | **OnCall** | `gcx oncall` | `oncall schedules list`, `oncall integrations list` |
 | **Alerting** | `gcx alert` | `alert rules list`, `alert groups list` |
-| **K6 Cloud** | `gcx k6` | `k6 load-tests list`, `k6 runs list` |
+| **k6 Cloud** | `gcx k6` | `k6 load-tests list`, `k6 runs list` |
 | **Fleet Management** | `gcx fleet` | `fleet pipelines list`, `fleet collectors list` |
 | **IRM Incidents** | `gcx incidents` | `incidents list`, `incidents create -f incident.yaml` |
 | **Knowledge Graph** | `gcx kg` | `kg status`, `kg search`, `kg entities show` |

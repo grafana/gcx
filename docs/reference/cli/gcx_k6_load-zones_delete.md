@@ -26,5 +26,5 @@ gcx k6 load-zones delete <name> [flags]
 
 ### SEE ALSO
 
-* [gcx k6 load-zones](gcx_k6_load-zones.md)	 - Manage K6 private load zones.
+* [gcx k6 load-zones](gcx_k6_load-zones.md)	 - Manage k6 private load zones.
 

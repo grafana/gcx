@@ -1,6 +1,6 @@
 ## gcx k6 load-tests delete
 
-Delete a K6 load test.
+Delete a k6 load test.
 
 ```
 gcx k6 load-tests delete <id> [flags]
@@ -26,5 +26,5 @@ gcx k6 load-tests delete <id> [flags]
 
 ### SEE ALSO
 
-* [gcx k6 load-tests](gcx_k6_load-tests.md)	 - Manage K6 Cloud load tests.
+* [gcx k6 load-tests](gcx_k6_load-tests.md)	 - Manage k6 Cloud load tests.
 

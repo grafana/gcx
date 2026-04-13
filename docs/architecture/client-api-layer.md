@@ -429,7 +429,7 @@ dynamic client gets User-Agent through `rest.Config.UserAgent`.
 
 | Caller | Factory | Notes |
 |--------|---------|-------|
-| Provider clients (SLO, OnCall, Synth, Fleet, K6) | `NewDefaultClient(ctx)` | Via `CloudRESTConfig.HTTPClient(ctx)` when `RESTConfig` is nil; see note below |
+| Provider clients (SLO, OnCall, Synth, Fleet, k6) | `NewDefaultClient(ctx)` | Via `CloudRESTConfig.HTTPClient(ctx)` when `RESTConfig` is nil; see note below |
 | Assistant client | `NewDefaultClient(ctx)` | Direct call |
 | K8s tier (dynamic client, query clients) | `rest.Config.WrapTransport` | Chains `LoggingRoundTripper` via `NewNamespacedRESTConfig` |
 | Dev server (`internal/server`) | `NewClient(ClientOpts{...})` | Custom TLS from config context |

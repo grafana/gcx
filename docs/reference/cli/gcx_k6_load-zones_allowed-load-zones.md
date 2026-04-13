@@ -22,7 +22,7 @@ Manage load zones allowed for a project.
 
 ### SEE ALSO
 
-* [gcx k6 load-zones](gcx_k6_load-zones.md)	 - Manage K6 private load zones.
+* [gcx k6 load-zones](gcx_k6_load-zones.md)	 - Manage k6 private load zones.
 * [gcx k6 load-zones allowed-load-zones list](gcx_k6_load-zones_allowed-load-zones_list.md)	 - List load zones allowed for a project.
 * [gcx k6 load-zones allowed-load-zones update](gcx_k6_load-zones_allowed-load-zones_update.md)	 - Update load zones allowed for a project.
 

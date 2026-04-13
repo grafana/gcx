@@ -1,6 +1,6 @@
 ## gcx k6 projects get
 
-Get a single K6 project by ID or name.
+Get a single k6 project by ID or name.
 
 ```
 gcx k6 projects get <id-or-name> [flags]
@@ -28,5 +28,5 @@ gcx k6 projects get <id-or-name> [flags]
 
 ### SEE ALSO
 
-* [gcx k6 projects](gcx_k6_projects.md)	 - Manage K6 Cloud projects.
+* [gcx k6 projects](gcx_k6_projects.md)	 - Manage k6 Cloud projects.
 

@@ -31,5 +31,5 @@ gcx k6 runs list [id-or-name] [flags]
 
 ### SEE ALSO
 
-* [gcx k6 runs](gcx_k6_runs.md)	 - Manage K6 test runs.
+* [gcx k6 runs](gcx_k6_runs.md)	 - Manage k6 test runs.
 

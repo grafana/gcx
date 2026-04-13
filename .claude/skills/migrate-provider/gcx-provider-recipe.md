@@ -402,9 +402,9 @@ that only surfaced during smoke testing:
 - Cursor-based pagination: the `contextPayload` field carries the cursor value
   between pages, not a separate cursor parameter.
 
-### Token Exchange Auth (K6)
+### Token Exchange Auth (k6)
 
-- K6 uses a **separate API domain** (`api.k6.io`), not the Grafana stack URL.
+- k6 uses a **separate API domain** (`api.k6.io`), not the Grafana stack URL.
 - Auth requires a two-step token exchange: AP token → k6 v3 token via
   `PUT /v3/account/grafana-app/start` with `X-Grafana-Key`, `X-Stack-Id`,
   `X-Grafana-Service-Token` headers.
@@ -533,7 +533,7 @@ that only surfaced during smoke testing:
 - OnCall API URL discovered via GCOM, not configured directly
 - Iterator-based pagination — port the pattern, don't simplify
 
-**K6** (multi-tenant auth):
+**k6** (multi-tenant auth):
 - Two auth modes: org-level and stack-level
 - Separate API domain (not Grafana stack URL)
 - Check gcx's `k6/client_envvar_test.go` for auth resolution logic

@@ -1,6 +1,6 @@
 ## gcx k6 env-vars create
 
-Create a K6 environment variable from a file.
+Create a k6 environment variable from a file.
 
 ```
 gcx k6 env-vars create [flags]
@@ -27,5 +27,5 @@ gcx k6 env-vars create [flags]
 
 ### SEE ALSO
 
-* [gcx k6 env-vars](gcx_k6_env-vars.md)	 - Manage K6 Cloud environment variables.
+* [gcx k6 env-vars](gcx_k6_env-vars.md)	 - Manage k6 Cloud environment variables.
 

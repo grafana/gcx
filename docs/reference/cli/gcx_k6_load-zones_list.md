@@ -1,6 +1,6 @@
 ## gcx k6 load-zones list
 
-List all K6 load zones.
+List all k6 load zones.
 
 ```
 gcx k6 load-zones list [flags]
@@ -29,5 +29,5 @@ gcx k6 load-zones list [flags]
 
 ### SEE ALSO
 
-* [gcx k6 load-zones](gcx_k6_load-zones.md)	 - Manage K6 private load zones.
+* [gcx k6 load-zones](gcx_k6_load-zones.md)	 - Manage k6 private load zones.
 

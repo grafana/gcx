@@ -111,7 +111,7 @@ func (b *resourceBuilder) build() KnownResource {
 
 // KnownResources is the static registry of well-known Grafana K8s resource types
 // that are NOT backed by provider adapters. Provider-backed types (SLO, OnCall, Fleet,
-// K6, KG, Incidents, Alert, Synth) are already registered via adapter.AllRegistrations().
+// k6, KG, Incidents, Alert, Synth) are already registered via adapter.AllRegistrations().
 //
 // This list was verified against a live Grafana 13.0 stack.
 var KnownResources = []KnownResource{ //nolint:gochecknoglobals // Static registry, same pattern as providers.registry.

@@ -52,7 +52,7 @@ right group:
 | Alert rules and groups | `alert` | `gcx alert rules list` |
 | Synthetic Monitoring checks | `synth` | `gcx synth checks list` |
 | OnCall schedules, integrations | `oncall` | `gcx oncall schedules list` |
-| K6 load tests, projects, runs | `k6` | `gcx k6 load-tests list` |
+| k6 load tests, projects, runs | `k6` | `gcx k6 load-tests list` |
 | PromQL / Adaptive Metrics | `metrics` | `gcx metrics query 'up'` |
 | LogQL / Adaptive Logs | `logs` | `gcx logs query '{app="foo"}'` |
 | Profiling (Pyroscope) | `profiles` | `gcx profiles query` |

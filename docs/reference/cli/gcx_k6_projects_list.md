@@ -1,6 +1,6 @@
 ## gcx k6 projects list
 
-List K6 Cloud projects.
+List k6 Cloud projects.
 
 ```
 gcx k6 projects list [flags]
@@ -29,5 +29,5 @@ gcx k6 projects list [flags]
 
 ### SEE ALSO
 
-* [gcx k6 projects](gcx_k6_projects.md)	 - Manage K6 Cloud projects.
+* [gcx k6 projects](gcx_k6_projects.md)	 - Manage k6 Cloud projects.
 
