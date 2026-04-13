@@ -1,4 +1,4 @@
-package irm
+package oncalltypes
 
 import "context"
 
@@ -89,6 +89,3 @@ type OnCallAPI interface {
 
 	CreateDirectPaging(ctx context.Context, input DirectPagingInput) (*DirectPagingResult, error)
 }
-
-// Compile-time check that OnCallClient implements OnCallAPI.
-var _ OnCallAPI = (*OnCallClient)(nil)
