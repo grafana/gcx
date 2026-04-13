@@ -1,4 +1,4 @@
-package incidents
+package irm
 
 import (
 	"context"
@@ -12,10 +12,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// StaticDescriptor is the resource descriptor for incident resources.
+// incidentStaticDescriptor is the resource descriptor for incident resources.
 //
 //nolint:gochecknoglobals // Static descriptor used in init() self-registration pattern.
-var StaticDescriptor = resources.Descriptor{
+var incidentStaticDescriptor = resources.Descriptor{
 	GroupVersion: schema.GroupVersion{
 		Group:   "incident.ext.grafana.app",
 		Version: "v1alpha1",
@@ -32,8 +32,8 @@ func IncidentSchema() json.RawMessage {
 		"$id":     "https://grafana.com/schemas/Incident",
 		"type":    "object",
 		"properties": map[string]any{
-			"apiVersion": map[string]any{"type": "string", "const": APIVersion},
-			"kind":       map[string]any{"type": "string", "const": Kind},
+			"apiVersion": map[string]any{"type": "string", "const": IncidentAPIVersion},
+			"kind":       map[string]any{"type": "string", "const": IncidentKind},
 			"metadata": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -68,8 +68,8 @@ func IncidentSchema() json.RawMessage {
 // incidentExample returns an example Incident manifest as JSON.
 func IncidentExample() json.RawMessage {
 	example := map[string]any{
-		"apiVersion": APIVersion,
-		"kind":       Kind,
+		"apiVersion": IncidentAPIVersion,
+		"kind":       IncidentKind,
 		"metadata": map[string]any{
 			"name": "my-incident",
 		},
@@ -96,16 +96,16 @@ type GrafanaConfigLoader interface {
 	LoadGrafanaConfig(ctx context.Context) (internalconfig.NamespacedRESTConfig, error)
 }
 
-// NewAdapterFactory returns a lazy adapter.Factory for incidents.
+// NewIncidentAdapterFactory returns a lazy adapter.Factory for incidents.
 // The factory captures the GrafanaConfigLoader and constructs the client on first invocation.
-func NewAdapterFactory(loader GrafanaConfigLoader) adapter.Factory {
+func NewIncidentAdapterFactory(loader GrafanaConfigLoader) adapter.Factory {
 	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
 		cfg, err := loader.LoadGrafanaConfig(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load REST config for incidents adapter: %w", err)
 		}
 
-		client, err := NewClient(cfg)
+		client, err := NewIncidentClient(cfg)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create incidents client: %w", err)
 		}
@@ -118,7 +118,7 @@ func NewAdapterFactory(loader GrafanaConfigLoader) adapter.Factory {
 // creates a Client using the provided NamespacedRESTConfig.
 func NewFactoryFromConfig(cfg internalconfig.NamespacedRESTConfig) adapter.Factory {
 	return func(_ context.Context) (adapter.ResourceAdapter, error) {
-		client, err := NewClient(cfg)
+		client, err := NewIncidentClient(cfg)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create incidents client: %w", err)
 		}
@@ -128,7 +128,7 @@ func NewFactoryFromConfig(cfg internalconfig.NamespacedRESTConfig) adapter.Facto
 }
 
 // newTypedAdapter builds the TypedCRUD[Incident] adapter for the given client and namespace.
-func newTypedAdapter(client *Client, namespace string) adapter.ResourceAdapter {
+func newTypedAdapter(client *IncidentClient, namespace string) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[Incident]{
 		ListFn: func(ctx context.Context, limit int64) ([]Incident, error) {
 			q := IncidentQuery{}
@@ -156,7 +156,7 @@ func newTypedAdapter(client *Client, namespace string) adapter.ResourceAdapter {
 
 		StripFields: []string{"incidentID"},
 		Namespace:   namespace,
-		Descriptor:  StaticDescriptor,
+		Descriptor:  incidentStaticDescriptor,
 	}
 
 	return crud.AsAdapter()
@@ -170,7 +170,7 @@ func NewTypedCRUD(ctx context.Context, loader GrafanaConfigLoader, query Inciden
 		return nil, internalconfig.NamespacedRESTConfig{}, fmt.Errorf("failed to load REST config for incidents: %w", err)
 	}
 
-	client, err := NewClient(cfg)
+	client, err := NewIncidentClient(cfg)
 	if err != nil {
 		return nil, internalconfig.NamespacedRESTConfig{}, fmt.Errorf("failed to create incidents client: %w", err)
 	}
@@ -202,7 +202,7 @@ func NewTypedCRUD(ctx context.Context, loader GrafanaConfigLoader, query Inciden
 
 		StripFields: []string{"incidentID"},
 		Namespace:   cfg.Namespace,
-		Descriptor:  StaticDescriptor,
+		Descriptor:  incidentStaticDescriptor,
 	}
 
 	return crud, cfg, nil

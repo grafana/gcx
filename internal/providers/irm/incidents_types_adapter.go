@@ -1,4 +1,4 @@
-package incidents
+package irm
 
 import (
 	"encoding/json"
@@ -10,9 +10,9 @@ import (
 
 const (
 	// APIVersion is the API version for incident resources.
-	APIVersion = "incident.ext.grafana.app/v1alpha1"
+	IncidentAPIVersion = "incident.ext.grafana.app/v1alpha1"
 	// Kind is the kind for incident resources.
-	Kind = "Incident"
+	IncidentKind = "Incident"
 )
 
 // ToResource converts an Incident to a gcx Resource, wrapping the incident
@@ -33,8 +33,8 @@ func ToResource(inc Incident, namespace string) (*resources.Resource, error) {
 	delete(specMap, "incidentID")
 
 	obj := map[string]any{
-		"apiVersion": APIVersion,
-		"kind":       Kind,
+		"apiVersion": IncidentAPIVersion,
+		"kind":       IncidentKind,
 		"metadata": map[string]any{
 			"name":      inc.IncidentID,
 			"namespace": namespace,

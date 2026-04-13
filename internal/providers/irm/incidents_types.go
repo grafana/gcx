@@ -1,4 +1,4 @@
-package incidents
+package irm
 
 import (
 	"time"

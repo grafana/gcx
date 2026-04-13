@@ -1,7 +1,6 @@
 package irm
 
 import (
-	"github.com/grafana/gcx/internal/providers/incidents"
 	"github.com/spf13/cobra"
 )
 
@@ -13,13 +12,13 @@ func newIncidentsCmd(loader *configLoader) *cobra.Command {
 	}
 
 	incCmd.AddCommand(
-		incidents.NewListCommand(loader),
-		incidents.NewGetCommand(loader),
-		incidents.NewCreateCommand(loader),
-		incidents.NewCloseCommand(loader),
-		incidents.NewActivityCommand(loader),
-		incidents.NewSeveritiesCommand(loader),
-		incidents.NewOpenCommand(loader),
+		NewListCommand(loader),
+		NewGetCommand(loader),
+		NewCreateCommand(loader),
+		NewCloseCommand(loader),
+		NewActivityCommand(loader),
+		NewSeveritiesCommand(loader),
+		NewOpenCommand(loader),
 	)
 
 	return incCmd

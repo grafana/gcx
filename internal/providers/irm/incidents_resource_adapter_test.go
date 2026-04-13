@@ -1,4 +1,4 @@
-package incidents_test
+package irm_test
 
 import (
 	"encoding/json"
@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
-	"github.com/grafana/gcx/internal/providers/incidents"
+	"github.com/grafana/gcx/internal/providers/irm"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
@@ -23,7 +23,7 @@ func newTestAdapter(t *testing.T, server *httptest.Server, namespace string) ada
 		Config:    rest.Config{Host: server.URL},
 		Namespace: namespace,
 	}
-	factory := incidents.NewFactoryFromConfig(cfg)
+	factory := irm.NewFactoryFromConfig(cfg)
 	a, err := factory(t.Context())
 	require.NoError(t, err)
 	return a
@@ -80,8 +80,8 @@ func TestResourceAdapter_List(t *testing.T) {
 				})
 			},
 			wantLen:       2,
-			wantAPIVer:    incidents.APIVersion,
-			wantKind:      incidents.Kind,
+			wantAPIVer:    irm.IncidentAPIVersion,
+			wantKind:      irm.IncidentKind,
 			wantNamespace: "stack-123",
 		},
 		{
@@ -177,8 +177,8 @@ func TestResourceAdapter_Get(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantName, result.GetName())
-			assert.Equal(t, incidents.APIVersion, result.GetAPIVersion())
-			assert.Equal(t, incidents.Kind, result.GetKind())
+			assert.Equal(t, irm.IncidentAPIVersion, result.GetAPIVersion())
+			assert.Equal(t, irm.IncidentKind, result.GetKind())
 		})
 	}
 }
@@ -194,19 +194,19 @@ func TestResourceAdapter_Create(t *testing.T) {
 
 	a := newTestAdapter(t, server, "stack-123")
 
-	inputInc := incidents.Incident{
+	inputInc := irm.Incident{
 		Title:  "New Incident",
 		Status: "active",
 	}
-	res, err := incidents.ToResource(inputInc, "stack-123")
+	res, err := irm.ToResource(inputInc, "stack-123")
 	require.NoError(t, err)
 	obj := res.ToUnstructured()
 
 	result, err := a.Create(t.Context(), &obj, metav1.CreateOptions{})
 	require.NoError(t, err)
 	assert.Equal(t, "new-456", result.GetName())
-	assert.Equal(t, incidents.APIVersion, result.GetAPIVersion())
-	assert.Equal(t, incidents.Kind, result.GetKind())
+	assert.Equal(t, irm.IncidentAPIVersion, result.GetAPIVersion())
+	assert.Equal(t, irm.IncidentKind, result.GetKind())
 }
 
 func TestResourceAdapter_Update(t *testing.T) {
@@ -223,12 +223,12 @@ func TestResourceAdapter_Update(t *testing.T) {
 
 	a := newTestAdapter(t, server, "stack-123")
 
-	inputInc := incidents.Incident{
+	inputInc := irm.Incident{
 		IncidentID: "inc-789",
 		Title:      "Updated",
 		Status:     "resolved",
 	}
-	res, err := incidents.ToResource(inputInc, "stack-123")
+	res, err := irm.ToResource(inputInc, "stack-123")
 	require.NoError(t, err)
 	obj := res.ToUnstructured()
 
@@ -250,14 +250,14 @@ func TestResourceAdapter_Delete(t *testing.T) {
 }
 
 func TestResourceAdapter_RoundTrip(t *testing.T) {
-	originalInc := incidents.Incident{
+	originalInc := irm.Incident{
 		IncidentID:   "rt-inc-001",
 		Title:        "Round-trip Incident",
 		Status:       "active",
 		Severity:     "critical",
 		Description:  "Tests full marshal/unmarshal cycle",
 		IncidentType: "default",
-		Labels: []incidents.IncidentLabel{
+		Labels: []irm.IncidentLabel{
 			{Key: "team", Label: "platform"},
 		},
 	}
@@ -278,7 +278,7 @@ func TestResourceAdapter_RoundTrip(t *testing.T) {
 	res, err := resources.FromUnstructured(obj)
 	require.NoError(t, err)
 
-	restored, err := incidents.FromResource(res)
+	restored, err := irm.FromResource(res)
 	require.NoError(t, err)
 
 	assert.Equal(t, originalInc.IncidentID, restored.IncidentID)
@@ -308,8 +308,8 @@ func TestResourceAdapter_ListPopulatesMetadata(t *testing.T) {
 	item := result.Items[0]
 	assert.Equal(t, "meta-inc", item.GetName())
 	assert.Equal(t, "meta-ns", item.GetNamespace())
-	assert.Equal(t, incidents.APIVersion, item.GetAPIVersion())
-	assert.Equal(t, incidents.Kind, item.GetKind())
+	assert.Equal(t, irm.IncidentAPIVersion, item.GetAPIVersion())
+	assert.Equal(t, irm.IncidentKind, item.GetKind())
 
 	spec, found, err := unstructured.NestedMap(item.Object, "spec")
 	require.NoError(t, err)
