@@ -315,10 +315,11 @@ var commandAnnotations = map[string]annotation{
 	// -----------------------------------------------------------------------
 	// Profiles provider
 	// -----------------------------------------------------------------------
-	"gcx profiles adaptive": {Cost: "small"},
-	"gcx profiles labels":   {Cost: "small"},
-	"gcx profiles metrics":  {Cost: "large", Hint: "'{service_name=\"frontend\"}' --profile-type cpu --since 1h -o json"},
-	"gcx profiles query":    {Cost: "large", Hint: "'{service_name=\"frontend\"}' --profile-type cpu --since 1h -o json"},
+	"gcx profiles adaptive":      {Cost: "small"},
+	"gcx profiles labels":        {Cost: "small"},
+	"gcx profiles metrics":       {Cost: "large", Hint: "'{service_name=\"frontend\"}' --profile-type cpu --since 1h -o json"},
+	"gcx profiles profile-types": {Cost: "small"},
+	"gcx profiles query":         {Cost: "large", Hint: "'{service_name=\"frontend\"}' --profile-type cpu --since 1h -o json"},
 
 	// -----------------------------------------------------------------------
 	// Sigil provider
