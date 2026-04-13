@@ -11,10 +11,15 @@ import (
 
 func TestNewDefaultClient_HasRetryAndLoggingTransport(t *testing.T) {
 	client := httputils.NewDefaultClient(context.Background())
-	// Outermost layer is retry.Transport.
-	retryRT, ok := client.Transport.(*retry.Transport)
+	// Outermost layer is UserAgentTransport.
+	uaRT, ok := client.Transport.(*httputils.UserAgentTransport)
 	if !ok {
-		t.Fatalf("expected outermost Transport to be *retry.Transport, got %T", client.Transport)
+		t.Fatalf("expected outermost Transport to be *httputils.UserAgentTransport, got %T", client.Transport)
+	}
+	// Next layer is retry.Transport.
+	retryRT, ok := uaRT.Base.(*retry.Transport)
+	if !ok {
+		t.Fatalf("expected UserAgentTransport.Base to be *retry.Transport, got %T", uaRT.Base)
 	}
 	// Inner layer is LoggingRoundTripper.
 	if _, ok := retryRT.Base.(*httputils.LoggingRoundTripper); !ok {
@@ -25,10 +30,15 @@ func TestNewDefaultClient_HasRetryAndLoggingTransport(t *testing.T) {
 func TestNewDefaultClient_WithPayloadLogging(t *testing.T) {
 	ctx := httputils.WithPayloadLogging(context.Background(), true)
 	client := httputils.NewDefaultClient(ctx)
-	// Outermost layer is retry.Transport.
-	retryRT, ok := client.Transport.(*retry.Transport)
+	// Outermost layer is UserAgentTransport.
+	uaRT, ok := client.Transport.(*httputils.UserAgentTransport)
 	if !ok {
-		t.Fatalf("expected outermost Transport to be *retry.Transport, got %T", client.Transport)
+		t.Fatalf("expected outermost Transport to be *httputils.UserAgentTransport, got %T", client.Transport)
+	}
+	// Next layer is retry.Transport.
+	retryRT, ok := uaRT.Base.(*retry.Transport)
+	if !ok {
+		t.Fatalf("expected UserAgentTransport.Base to be *retry.Transport, got %T", uaRT.Base)
 	}
 	// Inner layer is RequestResponseLoggingRoundTripper (payload logging enabled).
 	if _, ok := retryRT.Base.(*httputils.RequestResponseLoggingRoundTripper); !ok {
@@ -40,10 +50,15 @@ func TestNewClient_CustomMiddleware(t *testing.T) {
 	client := httputils.NewClient(httputils.ClientOpts{
 		Middlewares: []httputils.Middleware{httputils.RequestResponseLoggingMiddleware},
 	})
-	// Outermost layer is retry.Transport.
-	retryRT, ok := client.Transport.(*retry.Transport)
+	// Outermost layer is UserAgentTransport.
+	uaRT, ok := client.Transport.(*httputils.UserAgentTransport)
 	if !ok {
-		t.Fatalf("expected outermost Transport to be *retry.Transport, got %T", client.Transport)
+		t.Fatalf("expected outermost Transport to be *httputils.UserAgentTransport, got %T", client.Transport)
+	}
+	// Next layer is retry.Transport.
+	retryRT, ok := uaRT.Base.(*retry.Transport)
+	if !ok {
+		t.Fatalf("expected UserAgentTransport.Base to be *retry.Transport, got %T", uaRT.Base)
 	}
 	// Inner layer is the custom middleware.
 	if _, ok := retryRT.Base.(*httputils.RequestResponseLoggingRoundTripper); !ok {
