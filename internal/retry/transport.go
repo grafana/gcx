@@ -1,6 +1,7 @@
 package retry
 
 import (
+	"errors"
 	"io"
 	"math"
 	"math/rand/v2" // nosemgrep: go.lang.security.audit.crypto.math_random.math-random-used -- jitter does not need crypto randomness
@@ -241,47 +242,35 @@ func isIdempotent(method string) bool {
 
 // isTransientConnectionError checks whether an error is a transient network
 // error that is worth retrying (connection refused, reset, DNS temporary).
+//
+// Concrete types are checked before the net.Error interface because both
+// *net.OpError and *net.DNSError implement net.Error. Checking the interface
+// first would match them and return netErr.Timeout() — which is false for
+// connection-refused errors, silently skipping the retry.
 func isTransientConnectionError(err error) bool {
 	if err == nil {
 		return false
 	}
 
-	// Check for net.Error (timeout, temporary).
-	var netErr net.Error
-	if ok := errorAs(err, &netErr); ok {
-		return netErr.Timeout()
-	}
-
-	// Check for net.OpError wrapping syscall-level connection errors.
+	// Check for net.OpError wrapping syscall-level connection errors
+	// (ECONNREFUSED, ECONNRESET, etc.).
 	var opErr *net.OpError
-	if ok := errorAs(err, &opErr); ok {
+	if errors.As(err, &opErr) {
 		return true
 	}
 
 	// Check for net.DNSError with IsTemporary.
 	var dnsErr *net.DNSError
-	if ok := errorAs(err, &dnsErr); ok {
+	if errors.As(err, &dnsErr) {
 		return dnsErr.IsTemporary
 	}
 
-	return false
-}
-
-// errorAs is a thin wrapper around errors.As to avoid importing "errors" for
-// a single call. It's inlined by the compiler.
-func errorAs[T any](err error, target *T) bool {
-	// Walk the error chain manually to find the target type.
-	for err != nil {
-		if t, ok := err.(T); ok {
-			*target = t
-			return true
-		}
-		u, ok := err.(interface{ Unwrap() error })
-		if !ok {
-			return false
-		}
-		err = u.Unwrap()
+	// Fallback: check for net.Error interface (timeout, temporary).
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return netErr.Timeout()
 	}
+
 	return false
 }
 

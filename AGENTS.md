@@ -134,6 +134,7 @@ internal/
 ├── grafana/     OpenAPI client (health checks, version detection)
 ├── output/      Output codec registry (json, yaml, text, wide — field selection, discovery, k8s unstructured handling)
 ├── format/      JSON/YAML codecs with format auto-detection
+├── retry/       Retry transport (429, 502/503/504, transient connection errors — wraps all HTTP tiers)
 ├── httputils/   HTTP helpers (used by serve command's proxy)
 ├── secrets/     Redactor for config view
 └── logs/        slog/klog integration
