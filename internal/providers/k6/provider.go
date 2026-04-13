@@ -14,7 +14,7 @@ func init() { //nolint:gochecknoinits // Self-registration pattern (like databas
 	providers.Register(&K6Provider{})
 }
 
-// K6Provider manages K6 Cloud resources (projects, load tests, environment variables).
+// K6Provider manages k6 Cloud resources (projects, load tests, environment variables).
 type K6Provider struct{}
 
 // Name returns the unique identifier for this provider.
@@ -22,7 +22,7 @@ func (p *K6Provider) Name() string { return "k6" }
 
 // ShortDesc returns a one-line description of the provider.
 func (p *K6Provider) ShortDesc() string {
-	return "Manage Grafana K6 Cloud projects, load tests, and schedules"
+	return "Manage Grafana k6 Cloud projects, load tests, and schedules"
 }
 
 // Commands returns the Cobra commands contributed by this provider.
@@ -62,7 +62,7 @@ func (p *K6Provider) ConfigKeys() []providers.ConfigKey {
 	}
 }
 
-// TypedRegistrations returns adapter registrations for K6 resource types.
+// TypedRegistrations returns adapter registrations for k6 resource types.
 func (p *K6Provider) TypedRegistrations() []adapter.Registration {
 	loader := &providers.ConfigLoader{}
 	registrations := make([]adapter.Registration, 0, len(allResources()))

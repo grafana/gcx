@@ -78,9 +78,9 @@ func authenticatedClient(ctx context.Context, loader CloudConfigLoader) (*Client
 		}
 	}
 
-	// K6 API uses its own auth (X-Grafana-Key token exchange), not the Grafana
+	// k6 API uses its own auth (X-Grafana-Key token exchange), not the Grafana
 	// bearer token. Using rest.HTTPClientFor() would inject the Grafana bearer
-	// token via the k8s transport round-tripper, causing 401 from the K6 API.
+	// token via the k8s transport round-tripper, causing 401 from the k6 API.
 	httpClient := httputils.NewDefaultClient(ctx)
 
 	client := NewClient(ctx, domain, httpClient)
@@ -479,7 +479,7 @@ func loadZoneExample() json.RawMessage {
 // NewTypedCRUD factories for CLI commands
 // ---------------------------------------------------------------------------
 
-// NewTypedCRUD[Project] creates a TypedCRUD for K6 projects.
+// NewTypedCRUD[Project] creates a TypedCRUD for k6 projects.
 func NewTypedCRUDProject(ctx context.Context, loader CloudConfigLoader) (*adapter.TypedCRUD[Project], string, error) {
 	client, ns, err := authenticatedClient(ctx, loader)
 	if err != nil {
@@ -518,7 +518,7 @@ func NewTypedCRUDProject(ctx context.Context, loader CloudConfigLoader) (*adapte
 	return crud, ns, nil
 }
 
-// NewTypedCRUD[LoadTest] creates a TypedCRUD for K6 load tests.
+// NewTypedCRUD[LoadTest] creates a TypedCRUD for k6 load tests.
 func NewTypedCRUDLoadTest(ctx context.Context, loader CloudConfigLoader) (*adapter.TypedCRUD[LoadTest], string, error) {
 	client, ns, err := authenticatedClient(ctx, loader)
 	if err != nil {
@@ -557,7 +557,7 @@ func NewTypedCRUDLoadTest(ctx context.Context, loader CloudConfigLoader) (*adapt
 	return crud, ns, nil
 }
 
-// NewTypedCRUD[Schedule] creates a TypedCRUD for K6 schedules.
+// NewTypedCRUD[Schedule] creates a TypedCRUD for k6 schedules.
 func NewTypedCRUDSchedule(ctx context.Context, loader CloudConfigLoader) (*adapter.TypedCRUD[Schedule], string, error) {
 	client, ns, err := authenticatedClient(ctx, loader)
 	if err != nil {
@@ -605,7 +605,7 @@ func NewTypedCRUDSchedule(ctx context.Context, loader CloudConfigLoader) (*adapt
 	return crud, ns, nil
 }
 
-// NewTypedCRUD[EnvVar] creates a TypedCRUD for K6 environment variables.
+// NewTypedCRUD[EnvVar] creates a TypedCRUD for k6 environment variables.
 func NewTypedCRUDEnvVar(ctx context.Context, loader CloudConfigLoader) (*adapter.TypedCRUD[EnvVar], string, error) {
 	client, ns, err := authenticatedClient(ctx, loader)
 	if err != nil {
@@ -662,7 +662,7 @@ func NewTypedCRUDEnvVar(ctx context.Context, loader CloudConfigLoader) (*adapter
 	return crud, ns, nil
 }
 
-// NewTypedCRUD[LoadZone] creates a TypedCRUD for K6 load zones.
+// NewTypedCRUD[LoadZone] creates a TypedCRUD for k6 load zones.
 func NewTypedCRUDLoadZone(ctx context.Context, loader CloudConfigLoader) (*adapter.TypedCRUD[LoadZone], string, error) {
 	client, ns, err := authenticatedClient(ctx, loader)
 	if err != nil {

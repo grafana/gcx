@@ -170,7 +170,7 @@ func (c *Client) setAuth(req *http.Request) {
     req.Header.Set("Authorization", "Bearer "+c.providerToken)
 }
 
-// Token exchange (e.g., K6):
+// Token exchange (e.g., k6):
 func (c *Client) setAuth(req *http.Request) {
     req.Header.Set("Authorization", "Bearer "+c.exchangedToken)
 }

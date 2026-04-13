@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	// DefaultAPIDomain is the default K6 Cloud API domain.
+	// DefaultAPIDomain is the default k6 Cloud API domain.
 	DefaultAPIDomain = "https://api.k6.io"
 
 	authPath       = "/v3/account/grafana-app/start"
@@ -29,7 +29,7 @@ const (
 	plzPath        = "/cloud-resources/v1/load-zones"
 )
 
-// Client is an HTTP client for the K6 Cloud API.
+// Client is an HTTP client for the k6 Cloud API.
 // It must be authenticated before use by calling Authenticate.
 type Client struct {
 	apiDomain string
@@ -39,7 +39,7 @@ type Client struct {
 	http      *http.Client
 }
 
-// NewClient creates a new K6 Cloud client with the given API domain.
+// NewClient creates a new k6 Cloud client with the given API domain.
 // If httpClient is nil, a default client with a 60-second timeout is used.
 func NewClient(ctx context.Context, apiDomain string, httpClient *http.Client) *Client {
 	if apiDomain == "" {
@@ -308,7 +308,7 @@ func (c *Client) ListLoadTests(ctx context.Context) ([]LoadTest, error) {
 }
 
 // listLoadTests fetches load tests from the given path, paginating through all pages.
-// The K6 v6 API uses OData-style pagination with $skip/$top parameters and @count.
+// The k6 v6 API uses OData-style pagination with $skip/$top parameters and @count.
 func (c *Client) listLoadTests(ctx context.Context, path string) ([]LoadTest, error) {
 	const pageSize = 100
 	var all []LoadTest

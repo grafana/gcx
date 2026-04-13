@@ -9,7 +9,7 @@
 
 Two Grafana CLIs exist with complementary strengths:
 
-- **Cloud CLI** — broad product coverage (OnCall, K6, Fleet, Incidents, Knowledge Graph, ML, SCIM, etc.) and a polished agentic UX (agent annotations, `commands` JSON tree, agent-card, audit logging). Architecture is provider-per-command with hand-written adapters.
+- **Cloud CLI** — broad product coverage (OnCall, k6, Fleet, Incidents, Knowledge Graph, ML, SCIM, etc.) and a polished agentic UX (agent annotations, `commands` JSON tree, agent-card, audit logging). Architecture is provider-per-command with hand-written adapters.
 - **gcx** — solid architecture (K8s-compatible API tier, pluggable `Provider` + `ResourceAdapter` pattern, `TypedCRUD[T]` generic, push/pull/diff pipelines) but narrower product coverage (K8s-native resources only: dashboards, folders, datasources, alert rules, SLOs, synth).
 
 The team needs a **single CLI for GrafanaCon 2026** — one binary that covers all Grafana Cloud products with gcx's architectural discipline.
@@ -69,7 +69,7 @@ Work proceeds in dependency order, not by product:
 ```
 Phase 0: Foundation — TypedCRUD[T] generic (already built)
     ↓
-Phase 1: Complex Providers (OnCall, K6, Fleet, Incidents, KG, ML, SCIM, GCom)
+Phase 1: Complex Providers (OnCall, k6, Fleet, Incidents, KG, ML, SCIM, GCom)
     ↓ (parallelizable)
 Phase 2: UX/AX (agent annotations, commands tree, audit logging, config enhancements)
     ↓
@@ -102,7 +102,7 @@ Phase 1 and 2 are parallelizable. GrafanaCon critical path: Phase 0 (done) + Pha
 ### Negative
 - The cloud CLI's agentic UX features (agent annotations, `commands` tree, audit logging) must be ported into gcx — they don't come for free
 - Cloud CLI users must migrate to gcx; the cloud CLI will be deprecated
-- Complex providers (OnCall with 17 resource types, K6 with multi-tenant auth) require bespoke TypedCRUD wiring patterns
+- Complex providers (OnCall with 17 resource types, k6 with multi-tenant auth) require bespoke TypedCRUD wiring patterns
 
 ### Neutral
 - Cloud CLI resource clients are ported as-is; API types and HTTP clients are preserved

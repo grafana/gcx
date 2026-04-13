@@ -10,7 +10,7 @@ Grafana Cloud and the Grafana Assistant — in your terminal and your agentic co
 
 Agentic coding tools have changed how developers build software. But they're flying blind — code ships, observability comes later (if at all). Production context lives in Grafana dashboards, alert rules, and SLO definitions. Developer context lives in the editor. The two don't talk to each other.
 
-Meanwhile, Grafana Cloud has grown into a platform with dozens of products — SLOs, Synthetic Monitoring, OnCall, Fleet Management, K6, Incidents, Knowledge Graph, Adaptive Telemetry — each with its own API, its own auth story, its own CLI gap. Managing them requires context-switching between web UIs, curl commands, and Terraform configs.
+Meanwhile, Grafana Cloud has grown into a platform with dozens of products — SLOs, Synthetic Monitoring, OnCall, Fleet Management, k6, Incidents, Knowledge Graph, Adaptive Telemetry — each with its own API, its own auth story, its own CLI gap. Managing them requires context-switching between web UIs, curl commands, and Terraform configs.
 
 ## The Solution
 

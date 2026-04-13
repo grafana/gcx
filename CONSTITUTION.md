@@ -147,7 +147,7 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   credentials independently — this ensures consistent env var precedence,
   secret handling, and auth behavior across all providers.
 - **`httputils.NewDefaultClient(ctx)` for external APIs.** Provider clients
-  calling APIs outside the Grafana server (K6 Cloud, OnCall, Synth, Fleet —
+  calling APIs outside the Grafana server (k6 Cloud, OnCall, Synth, Fleet —
   any domain other than `cfg.Host`) must use `httputils.NewDefaultClient(ctx)`,
   never `rest.HTTPClientFor()`. The k8s transport round-tripper injects the
   Grafana bearer token on every outgoing request, which conflicts with the

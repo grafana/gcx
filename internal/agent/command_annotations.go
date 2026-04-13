@@ -151,7 +151,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx incidents severities list": {Cost: "small"},
 
 	// -----------------------------------------------------------------------
-	// K6 provider
+	// k6 provider
 	// -----------------------------------------------------------------------
 	"gcx k6 auth token":                           {Cost: "small"},
 	"gcx k6 env-vars create":                      {Cost: "small", Hint: "-f <manifest.yaml>"},
