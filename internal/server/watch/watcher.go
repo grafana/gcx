@@ -83,8 +83,9 @@ func (w *Watcher) Watch() {
 				}
 			case err, ok := <-w.notifier.Errors:
 				if !ok {
-					w.logger.Warn("watch error", logs.Err(err))
+					return
 				}
+				w.logger.Warn("watch error", logs.Err(err))
 			}
 		}
 	}()
