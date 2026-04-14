@@ -504,7 +504,7 @@ func itemsToUnstructured[T any](items []T, kind, idField, namespace string) ([]u
 	return objs, nil
 }
 
-type finalShiftTableCodec struct{}
+type finalShiftTableCodec struct{ noDecodeCodec }
 
 func (c *finalShiftTableCodec) Format() format.Format { return "table" }
 
@@ -527,8 +527,4 @@ func (c *finalShiftTableCodec) Encode(w io.Writer, v any) error {
 		t.Row(item.UserPK, item.UserEmail, item.UserUsername, start, end)
 	}
 	return t.Render(w)
-}
-
-func (c *finalShiftTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
 }

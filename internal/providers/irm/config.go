@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/irm/oncallpublic"
 )
@@ -38,7 +39,7 @@ func (l *configLoader) LoadOnCallClient(ctx context.Context) (OnCallAPI, string,
 	// SA token mode: the IRM plugin proxy rejects SA tokens, so call the
 	// OnCall public API directly. This path will be removed when the OnCall
 	// backend supports SA tokens through PluginAuthentication.
-	oncallURL, err := l.discoverOnCallURL(ctx)
+	oncallURL, err := l.discoverOnCallURL(ctx, restCfg)
 	if err != nil {
 		return nil, "", err
 	}
@@ -50,7 +51,7 @@ func (l *configLoader) LoadOnCallClient(ctx context.Context) (OnCallAPI, string,
 }
 
 // discoverOnCallURL resolves the OnCall API URL from provider config or plugin settings.
-func (l *configLoader) discoverOnCallURL(ctx context.Context) (string, error) {
+func (l *configLoader) discoverOnCallURL(ctx context.Context, restCfg config.NamespacedRESTConfig) (string, error) {
 	providerCfg, _, err := l.LoadProviderConfig(ctx, "oncall")
 	if err != nil {
 		return "", err
@@ -59,11 +60,7 @@ func (l *configLoader) discoverOnCallURL(ctx context.Context) (string, error) {
 		return u, nil
 	}
 
-	cfg, err := l.LoadGrafanaConfig(ctx)
-	if err != nil {
-		return "", err
-	}
-	discovered, err := oncallpublic.DiscoverOnCallURL(ctx, cfg)
+	discovered, err := oncallpublic.DiscoverOnCallURL(ctx, restCfg)
 	if err != nil {
 		return "", fmt.Errorf("failed to discover OnCall API URL: %w", err)
 	}

@@ -2,7 +2,6 @@ package irm
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -112,30 +111,13 @@ func newListSubcommand[T adapter.ResourceNamer](
 				return err
 			}
 
-			objs := make([]unstructured.Unstructured, len(typedObjs))
-			for i, typedObj := range typedObjs {
-				data, err := json.Marshal(typedObj.Spec)
-				if err != nil {
-					return fmt.Errorf("failed to marshal %s: %w", kind, err)
-				}
-
-				var m map[string]any
-				if err := json.Unmarshal(data, &m); err != nil {
-					return fmt.Errorf("failed to unmarshal %s: %w", kind, err)
-				}
-
-				id := typedObj.Spec.GetResourceName()
-				delete(m, idField)
-
-				objs[i] = unstructured.Unstructured{Object: map[string]any{
-					"apiVersion": APIVersion,
-					"kind":       kind,
-					"metadata": map[string]any{
-						"name":      id,
-						"namespace": namespace,
-					},
-					"spec": m,
-				}}
+			specs := make([]T, len(typedObjs))
+			for i, obj := range typedObjs {
+				specs[i] = obj.Spec
+			}
+			objs, err := itemsToUnstructured(specs, kind, idField, namespace)
+			if err != nil {
+				return err
 			}
 
 			return lo.IO.Encode(cmd.OutOrStdout(), objs)
@@ -416,12 +398,28 @@ func newOrganizationsCmd(loader OnCallConfigLoader) *cobra.Command {
 		Short:   "View organization info.",
 		Aliases: []string{"organization", "org"},
 	}
-	cmd.AddCommand(
-		newGetSubcommand(loader, "Get organization info.",
-			func(ctx context.Context, c OnCallAPI, _ string) (*Organization, error) {
-				return c.GetOrganization(ctx)
-			}),
-	)
+	opts := &getOpts{}
+	getCmd := &cobra.Command{
+		Use:   "get",
+		Short: "Get organization info.",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+			client, _, err := loader.LoadOnCallClient(cmd.Context())
+			if err != nil {
+				return err
+			}
+			org, err := client.GetOrganization(cmd.Context())
+			if err != nil {
+				return err
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), org)
+		},
+	}
+	opts.setup(getCmd.Flags())
+	cmd.AddCommand(getCmd)
 	return cmd
 }
 
@@ -470,6 +468,14 @@ func newShiftSwapsCmd(loader OnCallConfigLoader) *cobra.Command {
 // ---------------------------------------------------------------------------
 // Table codecs — accept []unstructured.Unstructured (Pattern 13 compliant)
 // ---------------------------------------------------------------------------
+
+// noDecodeCodec is embedded in all table codecs to provide the shared
+// Decode stub — table format is output-only.
+type noDecodeCodec struct{}
+
+func (noDecodeCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
 
 func specStr(obj unstructured.Unstructured, key string) string {
 	spec, ok := obj.Object["spec"].(map[string]any)
@@ -535,7 +541,11 @@ func truncate(s string, maxLen int) string {
 
 // --- Integration codec (internal: verbal_name, integration, team) ---
 
-type integrationTableCodec struct{ Wide bool }
+type integrationTableCodec struct {
+	noDecodeCodec
+
+	Wide bool
+}
 
 func (c *integrationTableCodec) Format() format.Format {
 	if c.Wide {
@@ -570,13 +580,9 @@ func (c *integrationTableCodec) Encode(w io.Writer, v any) error {
 	return t.Render(w)
 }
 
-func (c *integrationTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
 // --- EscalationChain codec ---
 
-type escalationChainTableCodec struct{}
+type escalationChainTableCodec struct{ noDecodeCodec }
 
 func (c *escalationChainTableCodec) Format() format.Format { return "table" }
 
@@ -592,13 +598,13 @@ func (c *escalationChainTableCodec) Encode(w io.Writer, v any) error {
 	return t.Render(w)
 }
 
-func (c *escalationChainTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
 // --- EscalationPolicy codec (internal: step, wait_delay, escalation_chain) ---
 
-type escalationPolicyTableCodec struct{ Wide bool }
+type escalationPolicyTableCodec struct {
+	noDecodeCodec
+
+	Wide bool
+}
 
 func (c *escalationPolicyTableCodec) Format() format.Format {
 	if c.Wide {
@@ -634,13 +640,13 @@ func (c *escalationPolicyTableCodec) Encode(w io.Writer, v any) error {
 	return t.Render(w)
 }
 
-func (c *escalationPolicyTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
 // --- Schedule codec ---
 
-type scheduleTableCodec struct{ Wide bool }
+type scheduleTableCodec struct {
+	noDecodeCodec
+
+	Wide bool
+}
 
 func (c *scheduleTableCodec) Format() format.Format {
 	if c.Wide {
@@ -672,13 +678,13 @@ func (c *scheduleTableCodec) Encode(w io.Writer, v any) error {
 	return t.Render(w)
 }
 
-func (c *scheduleTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
 // --- Shift codec (internal: shift_start, shift_end, priority_level) ---
 
-type shiftTableCodec struct{ Wide bool }
+type shiftTableCodec struct {
+	noDecodeCodec
+
+	Wide bool
+}
 
 func (c *shiftTableCodec) Format() format.Format {
 	if c.Wide {
@@ -711,13 +717,13 @@ func (c *shiftTableCodec) Encode(w io.Writer, v any) error {
 	return t.Render(w)
 }
 
-func (c *shiftTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
 // --- Route codec (internal: alert_receive_channel, escalation_chain, filtering_term) ---
 
-type routeTableCodec struct{ Wide bool }
+type routeTableCodec struct {
+	noDecodeCodec
+
+	Wide bool
+}
 
 func (c *routeTableCodec) Format() format.Format {
 	if c.Wide {
@@ -756,13 +762,13 @@ func (c *routeTableCodec) Encode(w io.Writer, v any) error {
 	return t.Render(w)
 }
 
-func (c *routeTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
 // --- Webhook codec ---
 
-type webhookTableCodec struct{ Wide bool }
+type webhookTableCodec struct {
+	noDecodeCodec
+
+	Wide bool
+}
 
 func (c *webhookTableCodec) Format() format.Format {
 	if c.Wide {
@@ -797,13 +803,13 @@ func (c *webhookTableCodec) Encode(w io.Writer, v any) error {
 	return t.Render(w)
 }
 
-func (c *webhookTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
 // --- AlertGroup codec (internal: pk, status, started_at) ---
 
-type alertGroupTableCodec struct{ Wide bool }
+type alertGroupTableCodec struct {
+	noDecodeCodec
+
+	Wide bool
+}
 
 func (c *alertGroupTableCodec) Format() format.Format {
 	if c.Wide {
@@ -841,13 +847,13 @@ func (c *alertGroupTableCodec) Encode(w io.Writer, v any) error {
 	return t.Render(w)
 }
 
-func (c *alertGroupTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
 // --- User codec (internal: pk, avatar, current_team) ---
 
-type userTableCodec struct{ Wide bool }
+type userTableCodec struct {
+	noDecodeCodec
+
+	Wide bool
+}
 
 func (c *userTableCodec) Format() format.Format {
 	if c.Wide {
@@ -879,13 +885,9 @@ func (c *userTableCodec) Encode(w io.Writer, v any) error {
 	return t.Render(w)
 }
 
-func (c *userTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
 // --- Team codec ---
 
-type teamTableCodec struct{}
+type teamTableCodec struct{ noDecodeCodec }
 
 func (c *teamTableCodec) Format() format.Format { return "table" }
 
@@ -901,13 +903,9 @@ func (c *teamTableCodec) Encode(w io.Writer, v any) error {
 	return t.Render(w)
 }
 
-func (c *teamTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
 // --- UserGroup codec ---
 
-type userGroupTableCodec struct{}
+type userGroupTableCodec struct{ noDecodeCodec }
 
 func (c *userGroupTableCodec) Format() format.Format { return "table" }
 
@@ -923,13 +921,9 @@ func (c *userGroupTableCodec) Encode(w io.Writer, v any) error {
 	return t.Render(w)
 }
 
-func (c *userGroupTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
 // --- SlackChannel codec ---
 
-type slackChannelTableCodec struct{}
+type slackChannelTableCodec struct{ noDecodeCodec }
 
 func (c *slackChannelTableCodec) Format() format.Format { return "table" }
 
@@ -945,13 +939,9 @@ func (c *slackChannelTableCodec) Encode(w io.Writer, v any) error {
 	return t.Render(w)
 }
 
-func (c *slackChannelTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
 // --- Alert codec ---
 
-type alertTableCodec struct{}
+type alertTableCodec struct{ noDecodeCodec }
 
 func (c *alertTableCodec) Format() format.Format { return "table" }
 
@@ -971,13 +961,9 @@ func (c *alertTableCodec) Encode(w io.Writer, v any) error {
 	return t.Render(w)
 }
 
-func (c *alertTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
 // --- Organization codec ---
 
-type organizationTableCodec struct{}
+type organizationTableCodec struct{ noDecodeCodec }
 
 func (c *organizationTableCodec) Format() format.Format { return "table" }
 
@@ -993,13 +979,13 @@ func (c *organizationTableCodec) Encode(w io.Writer, v any) error {
 	return t.Render(w)
 }
 
-func (c *organizationTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
 // --- ResolutionNote codec ---
 
-type resolutionNoteTableCodec struct{ Wide bool }
+type resolutionNoteTableCodec struct {
+	noDecodeCodec
+
+	Wide bool
+}
 
 func (c *resolutionNoteTableCodec) Format() format.Format {
 	if c.Wide {
@@ -1037,13 +1023,13 @@ func (c *resolutionNoteTableCodec) Encode(w io.Writer, v any) error {
 	return t.Render(w)
 }
 
-func (c *resolutionNoteTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
 // --- ShiftSwap codec ---
 
-type shiftSwapTableCodec struct{ Wide bool }
+type shiftSwapTableCodec struct {
+	noDecodeCodec
+
+	Wide bool
+}
 
 func (c *shiftSwapTableCodec) Format() format.Format {
 	if c.Wide {
@@ -1084,8 +1070,4 @@ func (c *shiftSwapTableCodec) Encode(w io.Writer, v any) error {
 		}
 	}
 	return t.Render(w)
-}
-
-func (c *shiftSwapTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
 }

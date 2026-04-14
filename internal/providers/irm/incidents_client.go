@@ -4,17 +4,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"k8s.io/client-go/rest"
 )
 
-// ErrNotFound is returned when a requested incident does not exist.
-var ErrNotFound = errors.New("incident not found")
+// ErrNotFound wraps adapter.ErrNotFound so the adapter layer can detect
+// not-found and fall through to Create during push upsert.
+var ErrNotFound = fmt.Errorf("incident: %w", adapter.ErrNotFound)
 
 const incidentBasePath = "/api/plugins/grafana-irm-app/resources/api"
 

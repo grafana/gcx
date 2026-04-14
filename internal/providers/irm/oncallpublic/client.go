@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/httputils"
@@ -147,7 +148,7 @@ func iterResources[T any](ctx context.Context, c *Client, path, resourceType str
 			resp, err := c.doRequest(ctx, http.MethodGet, next, nil)
 			if err != nil {
 				var z T
-				yield(z, fmt.Errorf("oncall: list %s: %w", resourceType, err))
+				yield(z, fmt.Errorf("irm: list %s: %w", resourceType, err))
 				return
 			}
 
@@ -163,7 +164,7 @@ func iterResources[T any](ctx context.Context, c *Client, path, resourceType str
 			if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 				resp.Body.Close()
 				var z T
-				yield(z, fmt.Errorf("oncall: decode %s: %w", resourceType, err))
+				yield(z, fmt.Errorf("irm: decode %s: %w", resourceType, err))
 				return
 			}
 			resp.Body.Close()
@@ -180,13 +181,13 @@ func iterResources[T any](ctx context.Context, c *Client, path, resourceType str
 			nextURL, parseErr := url.Parse(*result.Next)
 			if parseErr != nil {
 				var z T
-				yield(z, fmt.Errorf("oncall: invalid pagination URL %q: %w", *result.Next, parseErr))
+				yield(z, fmt.Errorf("irm: invalid pagination URL %q: %w", *result.Next, parseErr))
 				return
 			}
 			baseURL, _ := url.Parse(c.oncallURL)
 			if nextURL.Host != "" && nextURL.Host != baseURL.Host {
 				var z T
-				yield(z, fmt.Errorf("oncall: pagination URL host %q does not match base URL host %q", nextURL.Host, baseURL.Host))
+				yield(z, fmt.Errorf("irm: pagination URL host %q does not match base URL host %q", nextURL.Host, baseURL.Host))
 				return
 			}
 			next = strings.TrimPrefix(nextURL.Path, baseURL.Path)
@@ -218,7 +219,7 @@ func collectN[T any](it iter.Seq2[T, error], n int) ([]T, error) {
 func getResource[T any](ctx context.Context, c *Client, basePath, id, resourceType string) (*T, error) {
 	resp, err := c.doRequest(ctx, http.MethodGet, fmt.Sprintf("%s%s/", basePath, url.PathEscape(id)), nil)
 	if err != nil {
-		return nil, fmt.Errorf("oncall: get %s: %w", resourceType, err)
+		return nil, fmt.Errorf("irm: get %s: %w", resourceType, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
@@ -229,7 +230,7 @@ func getResource[T any](ctx context.Context, c *Client, basePath, id, resourceTy
 	}
 	var result T
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("oncall: decode %s: %w", resourceType, err)
+		return nil, fmt.Errorf("irm: decode %s: %w", resourceType, err)
 	}
 	return &result, nil
 }
@@ -237,11 +238,11 @@ func getResource[T any](ctx context.Context, c *Client, basePath, id, resourceTy
 func createResource[In any, Out any](ctx context.Context, c *Client, path string, body In, resourceType string) (*Out, error) {
 	data, err := json.Marshal(body)
 	if err != nil {
-		return nil, fmt.Errorf("oncall: marshal %s: %w", resourceType, err)
+		return nil, fmt.Errorf("irm: marshal %s: %w", resourceType, err)
 	}
 	resp, err := c.doRequest(ctx, http.MethodPost, path, bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("oncall: create %s: %w", resourceType, err)
+		return nil, fmt.Errorf("irm: create %s: %w", resourceType, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
@@ -249,7 +250,7 @@ func createResource[In any, Out any](ctx context.Context, c *Client, path string
 	}
 	var result Out
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("oncall: decode created %s: %w", resourceType, err)
+		return nil, fmt.Errorf("irm: decode created %s: %w", resourceType, err)
 	}
 	return &result, nil
 }
@@ -257,11 +258,11 @@ func createResource[In any, Out any](ctx context.Context, c *Client, path string
 func updateResource[In any, Out any](ctx context.Context, c *Client, basePath, id string, body In, resourceType string) (*Out, error) {
 	data, err := json.Marshal(body)
 	if err != nil {
-		return nil, fmt.Errorf("oncall: marshal %s: %w", resourceType, err)
+		return nil, fmt.Errorf("irm: marshal %s: %w", resourceType, err)
 	}
 	resp, err := c.doRequest(ctx, http.MethodPut, fmt.Sprintf("%s%s/", basePath, url.PathEscape(id)), bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("oncall: update %s: %w", resourceType, err)
+		return nil, fmt.Errorf("irm: update %s: %w", resourceType, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -269,7 +270,7 @@ func updateResource[In any, Out any](ctx context.Context, c *Client, basePath, i
 	}
 	var result Out
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("oncall: decode updated %s: %w", resourceType, err)
+		return nil, fmt.Errorf("irm: decode updated %s: %w", resourceType, err)
 	}
 	return &result, nil
 }
@@ -277,7 +278,7 @@ func updateResource[In any, Out any](ctx context.Context, c *Client, basePath, i
 func deleteResource(ctx context.Context, c *Client, basePath, id, resourceType string) error {
 	resp, err := c.doRequest(ctx, http.MethodDelete, fmt.Sprintf("%s%s/", basePath, url.PathEscape(id)), nil)
 	if err != nil {
-		return fmt.Errorf("oncall: delete %s: %w", resourceType, err)
+		return fmt.Errorf("irm: delete %s: %w", resourceType, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
@@ -289,7 +290,7 @@ func deleteResource(ctx context.Context, c *Client, basePath, id, resourceType s
 func alertGroupAction(ctx context.Context, c *Client, id, action string) error {
 	resp, err := c.doRequest(ctx, http.MethodPost, fmt.Sprintf("%s%s/%s/", alertGroupsPath, url.PathEscape(id), action), nil)
 	if err != nil {
-		return fmt.Errorf("oncall: %s alert group: %w", action, err)
+		return fmt.Errorf("irm: %s alert group: %w", action, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -470,9 +471,15 @@ func (c *Client) DeleteSchedule(ctx context.Context, id string) error {
 func (c *Client) ListFilterEvents(ctx context.Context, scheduleID, userTZ, startingDate string, days int) (*oncalltypes.FilterEventsResponse, error) {
 	// The public API uses final_shifts, not filter_events.
 	// Fetch and convert to the FilterEventsResponse shape.
+	start, err := time.Parse("2006-01-02", startingDate)
+	if err != nil {
+		return nil, fmt.Errorf("irm: parse start date: %w", err)
+	}
+	endDate := start.AddDate(0, 0, days-1).Format("2006-01-02")
+
 	params := url.Values{}
 	params.Set("start_date", startingDate)
-	params.Set("end_date", startingDate) // will be computed properly by the command
+	params.Set("end_date", endDate)
 	path := fmt.Sprintf("%s%s/final_shifts/?%s", schedulesPath, url.PathEscape(scheduleID), params.Encode())
 	items, err := collectAll(iterResources[finalShift](ctx, c, path, "final shift"))
 	if err != nil {
@@ -649,11 +656,11 @@ func (c *Client) ResolveAlertGroup(ctx context.Context, id string) error {
 func (c *Client) SilenceAlertGroup(ctx context.Context, id string, delaySecs int) error {
 	data, err := json.Marshal(map[string]int{"delay": delaySecs})
 	if err != nil {
-		return fmt.Errorf("oncall: marshal silence request: %w", err)
+		return fmt.Errorf("irm: marshal silence request: %w", err)
 	}
 	resp, err := c.doRequest(ctx, http.MethodPost, fmt.Sprintf("%s%s/silence/", alertGroupsPath, url.PathEscape(id)), bytes.NewReader(data))
 	if err != nil {
-		return fmt.Errorf("oncall: silence alert group: %w", err)
+		return fmt.Errorf("irm: silence alert group: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -694,7 +701,7 @@ func (c *Client) GetUser(ctx context.Context, id string) (*oncalltypes.User, err
 func (c *Client) GetCurrentUser(ctx context.Context) (*oncalltypes.User, error) {
 	resp, err := c.doRequest(ctx, http.MethodGet, usersPath+"current/", nil)
 	if err != nil {
-		return nil, fmt.Errorf("oncall: get current user: %w", err)
+		return nil, fmt.Errorf("irm: get current user: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -702,7 +709,7 @@ func (c *Client) GetCurrentUser(ctx context.Context) (*oncalltypes.User, error) 
 	}
 	var u user
 	if err := json.NewDecoder(resp.Body).Decode(&u); err != nil {
-		return nil, fmt.Errorf("oncall: decode current user: %w", err)
+		return nil, fmt.Errorf("irm: decode current user: %w", err)
 	}
 	r := adaptUser(u)
 	return &r, nil
@@ -861,11 +868,11 @@ func (c *Client) DeleteShiftSwap(ctx context.Context, id string) error {
 func (c *Client) TakeShiftSwap(ctx context.Context, id string, input oncalltypes.TakeShiftSwapInput) (*oncalltypes.ShiftSwap, error) {
 	data, err := json.Marshal(input)
 	if err != nil {
-		return nil, fmt.Errorf("oncall: marshal take shift swap: %w", err)
+		return nil, fmt.Errorf("irm: marshal take shift swap: %w", err)
 	}
 	resp, err := c.doRequest(ctx, http.MethodPost, fmt.Sprintf("%s%s/take/", shiftSwapsPath, url.PathEscape(id)), bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("oncall: take shift swap: %w", err)
+		return nil, fmt.Errorf("irm: take shift swap: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -873,7 +880,7 @@ func (c *Client) TakeShiftSwap(ctx context.Context, id string, input oncalltypes
 	}
 	var p shiftSwap
 	if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
-		return nil, fmt.Errorf("oncall: decode shift swap: %w", err)
+		return nil, fmt.Errorf("irm: decode shift swap: %w", err)
 	}
 	r := adaptShiftSwap(p)
 	return &r, nil
@@ -895,11 +902,15 @@ func (c *Client) CreateDirectPaging(ctx context.Context, input oncalltypes.Direc
 	}
 	if len(input.Users) > 0 {
 		ids := make([]string, len(input.Users))
+		important := false
 		for i, u := range input.Users {
 			ids[i] = u.ID
+			if u.Important {
+				important = true
+			}
 		}
 		pubInput["user_ids"] = ids
-		if input.Users[0].Important {
+		if important {
 			pubInput["important"] = true
 		}
 	}

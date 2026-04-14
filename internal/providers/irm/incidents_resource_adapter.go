@@ -127,39 +127,33 @@ func NewFactoryFromConfig(cfg internalconfig.NamespacedRESTConfig) adapter.Facto
 	}
 }
 
-// newTypedAdapter builds the TypedCRUD[Incident] adapter for the given client and namespace.
-func newTypedAdapter(client *IncidentClient, namespace string) adapter.ResourceAdapter {
-	crud := &adapter.TypedCRUD[Incident]{
+// newIncidentCRUD builds the shared TypedCRUD[Incident] for the given client, namespace, and query.
+func newIncidentCRUD(client *IncidentClient, namespace string, query IncidentQuery) *adapter.TypedCRUD[Incident] {
+	return &adapter.TypedCRUD[Incident]{
 		ListFn: func(ctx context.Context, limit int64) ([]Incident, error) {
-			q := IncidentQuery{}
+			q := query
 			if limit > 0 {
 				q.Limit = int(limit)
 			}
 			return client.List(ctx, q)
 		},
-
-		GetFn: func(ctx context.Context, name string) (*Incident, error) {
-			return client.Get(ctx, name)
-		},
-
-		CreateFn: func(ctx context.Context, inc *Incident) (*Incident, error) {
-			return client.Create(ctx, inc)
-		},
-
+		GetFn:    func(ctx context.Context, name string) (*Incident, error) { return client.Get(ctx, name) },
+		CreateFn: func(ctx context.Context, inc *Incident) (*Incident, error) { return client.Create(ctx, inc) },
 		UpdateFn: func(ctx context.Context, name string, inc *Incident) (*Incident, error) {
 			return client.UpdateStatus(ctx, name, inc.Status)
 		},
-
 		DeleteFn: func(_ context.Context, _ string) error {
 			return errors.New("incidents: delete is not supported by the IRM API")
 		},
-
 		StripFields: []string{"incidentID"},
 		Namespace:   namespace,
 		Descriptor:  incidentStaticDescriptor,
 	}
+}
 
-	return crud.AsAdapter()
+// newTypedAdapter builds the TypedCRUD[Incident] adapter for the given client and namespace.
+func newTypedAdapter(client *IncidentClient, namespace string) adapter.ResourceAdapter {
+	return newIncidentCRUD(client, namespace, IncidentQuery{}).AsAdapter()
 }
 
 // NewTypedCRUD creates a TypedCRUD for incidents.
@@ -175,35 +169,5 @@ func NewTypedCRUD(ctx context.Context, loader GrafanaConfigLoader, query Inciden
 		return nil, internalconfig.NamespacedRESTConfig{}, fmt.Errorf("failed to create incidents client: %w", err)
 	}
 
-	crud := &adapter.TypedCRUD[Incident]{
-		ListFn: func(ctx context.Context, limit int64) ([]Incident, error) {
-			q := query
-			if limit > 0 {
-				q.Limit = int(limit)
-			}
-			return client.List(ctx, q)
-		},
-
-		GetFn: func(ctx context.Context, name string) (*Incident, error) {
-			return client.Get(ctx, name)
-		},
-
-		CreateFn: func(ctx context.Context, inc *Incident) (*Incident, error) {
-			return client.Create(ctx, inc)
-		},
-
-		UpdateFn: func(ctx context.Context, name string, inc *Incident) (*Incident, error) {
-			return client.UpdateStatus(ctx, name, inc.Status)
-		},
-
-		DeleteFn: func(_ context.Context, _ string) error {
-			return errors.New("incidents: delete is not supported by the IRM API")
-		},
-
-		StripFields: []string{"incidentID"},
-		Namespace:   cfg.Namespace,
-		Descriptor:  incidentStaticDescriptor,
-	}
-
-	return crud, cfg, nil
+	return newIncidentCRUD(client, cfg.Namespace, query), cfg, nil
 }
