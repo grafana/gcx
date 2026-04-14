@@ -44,6 +44,18 @@ curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh
 rm ~/.local/bin/gcx
 ```
 
+## Homebrew (macOS/Linux)
+
+```shell
+brew install grafana/grafana/gcx
+```
+
+To upgrade:
+
+```shell
+brew upgrade gcx
+```
+
 ## Prebuilt binaries
 
 Prebuilt binaries are available for a variety of operating systems and architectures.
