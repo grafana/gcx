@@ -525,7 +525,7 @@ func NewTypedCRUDLoadTest(ctx context.Context, loader CloudConfigLoader) (*adapt
 		return nil, "", err
 	}
 	crud := &adapter.TypedCRUD[LoadTest]{
-		ListFn: adapter.LimitedListFn(client.ListAllLoadTests),
+		ListFn: adapter.LimitedListFn(client.ListLoadTests),
 		GetFn: func(ctx context.Context, name string) (*LoadTest, error) {
 			id, err := strconv.Atoi(name)
 			if err != nil {

@@ -10,7 +10,6 @@ import (
 	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
-	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -52,11 +51,10 @@ func newAlertGroupListCommand(loader OnCallConfigLoader) *cobra.Command {
 				filter.StartedAt = startedAt
 			}
 
-			items, err := client.ListAlertGroups(cmd.Context(), filter)
+			items, err := client.ListAlertGroups(cmd.Context(), filter, WithLimit(int(opts.Limit)))
 			if err != nil {
 				return err
 			}
-			items = adapter.TruncateSlice(items, opts.Limit)
 
 			objs, err := itemsToUnstructured(items, "AlertGroup", "id", namespace)
 			if err != nil {
@@ -115,11 +113,10 @@ func newAlertGroupListAlertsCommand(loader OnCallConfigLoader) *cobra.Command {
 				return err
 			}
 
-			items, err := client.ListAlerts(cmd.Context(), args[0])
+			items, err := client.ListAlerts(cmd.Context(), args[0], WithLimit(int(opts.Limit)))
 			if err != nil {
 				return err
 			}
-			items = adapter.TruncateSlice(items, opts.Limit)
 
 			objs, err := itemsToUnstructured(items, "Alert", "id", namespace)
 			if err != nil {

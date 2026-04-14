@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
 )
@@ -21,11 +22,28 @@ func NewClient(base *assistanthttp.Client) *Client {
 	return &Client{base: base}
 }
 
+// ListOptions holds optional parameters for listing investigations.
+type ListOptions struct {
+	State  string
+	Limit  int
+	Offset int
+}
+
 // List returns investigation summaries.
-func (c *Client) List(ctx context.Context, state string) ([]InvestigationSummary, error) {
+func (c *Client) List(ctx context.Context, opts ListOptions) ([]InvestigationSummary, error) {
+	params := url.Values{}
+	if opts.State != "" {
+		params.Set("state", opts.State)
+	}
+	if opts.Limit > 0 {
+		params.Set("limit", strconv.Itoa(opts.Limit))
+	}
+	if opts.Offset > 0 {
+		params.Set("offset", strconv.Itoa(opts.Offset))
+	}
 	path := "/investigations/summary"
-	if state != "" {
-		path += "?" + url.Values{"state": {state}}.Encode()
+	if len(params) > 0 {
+		path += "?" + params.Encode()
 	}
 
 	resp, err := c.base.DoRequest(ctx, http.MethodGet, path, nil)

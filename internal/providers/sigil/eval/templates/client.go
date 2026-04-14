@@ -24,12 +24,13 @@ func NewClient(base *sigilhttp.Client) *Client {
 }
 
 // List returns templates, optionally filtered by scope.
-func (c *Client) List(ctx context.Context, scope string) ([]eval.TemplateDefinition, error) {
+// An optional maxItems argument limits how many items are fetched (0 = no limit).
+func (c *Client) List(ctx context.Context, scope string, maxItems ...int) ([]eval.TemplateDefinition, error) {
 	query := url.Values{}
 	if scope != "" {
 		query.Set("scope", scope)
 	}
-	return sigilhttp.ListAll[eval.TemplateDefinition](ctx, c.base, basePath, query)
+	return sigilhttp.ListAll[eval.TemplateDefinition](ctx, c.base, basePath, query, maxItems...)
 }
 
 // Get returns a single template by ID.
