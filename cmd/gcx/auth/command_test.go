@@ -17,64 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLogin_missingServer(t *testing.T) {
-	cfg := `current-context: test
-contexts:
-  test:
-    grafana: {}`
-
-	configFile := testutils.CreateTempFile(t, cfg)
-
-	tc := testutils.CommandTestCase{
-		Cmd:     authcmd.Command(),
-		Command: []string{"login", "--config", configFile},
-		Assertions: []testutils.CommandAssertion{
-			testutils.CommandErrorContains("Error: Grafana server not configured"),
-			testutils.CommandErrorContains("Context \"test\" does not define grafana.server."),
-			testutils.CommandErrorContains("Set it: gcx config set contexts.test.grafana.server https://my-stack.grafana.net"),
-			testutils.CommandErrorContains("Or pass it now: gcx auth login --server https://my-stack.grafana.net"),
-		},
-	}
-	tc.Run(t)
-}
-
-func TestLogin_noContext(t *testing.T) {
-	configFile := testutils.CreateTempFile(t, "contexts:")
-
-	tc := testutils.CommandTestCase{
-		Cmd:     authcmd.Command(),
-		Command: []string{"login", "--config", configFile},
-		Assertions: []testutils.CommandAssertion{
-			testutils.CommandErrorContains("Error: Grafana server not configured"),
-			testutils.CommandErrorContains("Context \"default\" does not define grafana.server."),
-			testutils.CommandErrorContains("Set it: gcx config set contexts.default.grafana.server https://my-stack.grafana.net"),
-			testutils.CommandErrorContains("Or pass it now: gcx auth login --server https://my-stack.grafana.net"),
-		},
-	}
-	tc.Run(t)
-}
-
-func TestLogin_missingServerInContextWithSpecialChars(t *testing.T) {
-	cfg := `current-context: "prod env.v2"
-contexts:
-  "prod env.v2":
-    grafana: {}`
-
-	configFile := testutils.CreateTempFile(t, cfg)
-
-	tc := testutils.CommandTestCase{
-		Cmd:     authcmd.Command(),
-		Command: []string{"login", "--config", configFile},
-		Assertions: []testutils.CommandAssertion{
-			testutils.CommandErrorContains("Error: Grafana server not configured"),
-			testutils.CommandErrorContains("Context \"prod env.v2\" does not define grafana.server."),
-			testutils.CommandErrorContains("Set it: gcx config set 'contexts.prod env\\.v2.grafana.server' https://my-stack.grafana.net"),
-			testutils.CommandErrorContains("Or pass it now: gcx auth login --server https://my-stack.grafana.net"),
-		},
-	}
-	tc.Run(t)
-}
-
 // syncBuffer is a goroutine-safe bytes.Buffer for capturing output
 // from a command running in a separate goroutine.
 type syncBuffer struct {

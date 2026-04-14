@@ -14,12 +14,6 @@ your identity and RBAC permissions.
 If --server is provided, gcx uses that server for this login and saves it to
 the selected context. This lets you bootstrap auth without preconfiguring
 grafana.server.
-
-Without --server, the selected context must already define grafana.server. For
-example:
-	gcx config set contexts.my-stack.grafana.server https://my-stack.grafana.net
-	gcx config use-context my-stack
-
 WARNING: OAuth login is experimental. The following commands require a service account token instead:
   - incidents
   - oncall

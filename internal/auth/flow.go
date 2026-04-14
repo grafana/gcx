@@ -53,6 +53,10 @@ type Result struct {
 
 	// RefreshExpiresAt is the refresh token expiration time in RFC3339 format.
 	RefreshExpiresAt string
+
+	// InstanceEndpoint is the endpoint returned by the grafana instance itself
+	// Only used if the endpoint isn't available during auth (e.g. signing in through grafana.com)
+	InstanceEndpoint string
 }
 
 // defaultScopes are the scopes requested by gcx.
@@ -131,8 +135,13 @@ func (f *Flow) Run(ctx context.Context) (*Result, error) {
 		_ = server.Shutdown(shutdownCtx)
 	}()
 
+	authEndpoint := strings.TrimSuffix(f.endpoint, "/")
+	if authEndpoint == "" {
+		authEndpoint = "https://grafana.com/launch"
+	}
+
 	authURL := fmt.Sprintf("%s/a/grafana-assistant-app/cli/auth?callback_port=%d&state=%s&code_challenge=%s&code_challenge_method=S256",
-		strings.TrimSuffix(f.endpoint, "/"), port, url.QueryEscape(state), url.QueryEscape(codeChallenge))
+		authEndpoint, port, url.QueryEscape(state), url.QueryEscape(codeChallenge))
 
 	if hostname, err := os.Hostname(); err == nil && hostname != "" {
 		authURL += "&device_name=" + url.QueryEscape(hostname)
@@ -214,6 +223,18 @@ func (f *Flow) startCallbackServer(ctx context.Context, bindAddress string, port
 				return
 			}
 
+			instanceEndpoint := r.URL.Query().Get("instanceEndpoint")
+			if instanceEndpoint != "" {
+				// only check if explicitly specified
+				// a missing value is not critical if the user has manually specified the grafana url
+				_, err = url.Parse(instanceEndpoint)
+				if err != nil {
+					errCh <- fmt.Errorf("invalid endpoint url: %w", err)
+					renderErrorPage(w, "Invalid instance endpoint passed")
+					return
+				}
+			}
+
 			result := &Result{
 				Token:            exchangeResult.Data.Token,
 				Email:            exchangeResult.Data.Email,
@@ -222,6 +243,7 @@ func (f *Flow) startCallbackServer(ctx context.Context, bindAddress string, port
 				ExpiresAt:        exchangeResult.Data.ExpiresAt,
 				RefreshToken:     exchangeResult.Data.RefreshToken,
 				RefreshExpiresAt: exchangeResult.Data.RefreshExpiresAt,
+				InstanceEndpoint: instanceEndpoint,
 			}
 
 			resultCh <- result
