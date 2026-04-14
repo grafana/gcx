@@ -53,7 +53,7 @@ func resolveLoadTest(cmd *cobra.Command, client *Client, idFlag, projectID int, 
 		return client.GetLoadTestByName(ctx, projectID, nameArg)
 	}
 	// No project-id: scan all tests.
-	all, err := client.ListAllLoadTests(ctx)
+	all, err := client.ListLoadTests(ctx)
 	if err != nil {
 		return nil, err
 	}

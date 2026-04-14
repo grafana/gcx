@@ -507,18 +507,10 @@ func applyListOpts(opts []ListOption) listConfig {
 }
 
 // ListAlertGroups returns all alert groups, optionally filtered.
-func (c *Client) ListAlertGroups(ctx context.Context, filters ...any) ([]AlertGroup, error) {
+func (c *Client) ListAlertGroups(ctx context.Context, filter AlertGroupFilter, opts ...ListOption) ([]AlertGroup, error) {
 	params := url.Values{}
-	var opts []ListOption
-	for _, f := range filters {
-		switch v := f.(type) {
-		case AlertGroupFilter:
-			if v.StartedAt != "" {
-				params.Set("started_at", v.StartedAt)
-			}
-		case ListOption:
-			opts = append(opts, v)
-		}
+	if filter.StartedAt != "" {
+		params.Set("started_at", filter.StartedAt)
 	}
 	cfg := applyListOpts(opts)
 	return collectN(iterResources[AlertGroup](c, ctx, pathWithParams(AlertGroupsPath, params), "alert group"), cfg.limit)

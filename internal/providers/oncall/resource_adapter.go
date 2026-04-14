@@ -294,7 +294,9 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta.Schema = adapter.SchemaFromType[AlertGroup](meta.Descriptor)
 	meta.URLTemplate = "/a/grafana-oncall-app/alert-groups/{name}"
 	regs = append(regs, buildOnCallRegistration(loader, meta,
-		func(ctx context.Context, c *Client) ([]AlertGroup, error) { return c.ListAlertGroups(ctx) }, // no filter
+		func(ctx context.Context, c *Client) ([]AlertGroup, error) {
+			return c.ListAlertGroups(ctx, AlertGroupFilter{})
+		},
 		func(ctx context.Context, c *Client, name string) (*AlertGroup, error) {
 			return c.GetAlertGroup(ctx, name)
 		},

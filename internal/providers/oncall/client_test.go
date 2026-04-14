@@ -184,7 +184,7 @@ func TestListAlertGroups(t *testing.T) {
 	defer srv.Close()
 
 	client := newTestClient(t, srv)
-	items, err := client.ListAlertGroups(context.Background())
+	items, err := client.ListAlertGroups(context.Background(), oncall.AlertGroupFilter{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -229,7 +229,7 @@ func TestListAlertGroups_StopsEarlyWithLimit(t *testing.T) {
 	srvURL = srv.URL
 
 	client := newTestClient(t, srv)
-	items, err := client.ListAlertGroups(context.Background(), oncall.WithLimit(1))
+	items, err := client.ListAlertGroups(context.Background(), oncall.AlertGroupFilter{}, oncall.WithLimit(1))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

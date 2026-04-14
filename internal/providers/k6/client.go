@@ -289,11 +289,6 @@ func (c *Client) GetProjectByName(ctx context.Context, name string) (*Project, e
 // Load Tests
 // ---------------------------------------------------------------------------
 
-// ListAllLoadTests retrieves all load tests across all projects.
-func (c *Client) ListAllLoadTests(ctx context.Context) ([]LoadTest, error) {
-	return c.listLoadTests(ctx, loadTestsPath, 0)
-}
-
 // ListLoadTestsByProject retrieves load tests filtered by project ID.
 // Uses the server-side project_id query parameter to avoid fetching all tests.
 func (c *Client) ListLoadTestsByProject(ctx context.Context, projectID int) ([]LoadTest, error) {
@@ -319,11 +314,10 @@ func (c *Client) listLoadTests(ctx context.Context, path string, limit int) ([]L
 	const defaultPageSize = 100
 	var all []LoadTest
 
-	for offset := 0; ; offset += defaultPageSize {
+	for {
 		pageSize := defaultPageSize
 		if limit > 0 {
-			remaining := limit - len(all)
-			if remaining < pageSize {
+			if remaining := limit - len(all); remaining < pageSize {
 				pageSize = remaining
 			}
 		}
@@ -332,7 +326,7 @@ func (c *Client) listLoadTests(ctx context.Context, path string, limit int) ([]L
 		if strings.Contains(path, "?") {
 			sep = "&"
 		}
-		pagePath := fmt.Sprintf("%s%s$skip=%d&$top=%d", path, sep, offset, pageSize)
+		pagePath := fmt.Sprintf("%s%s$skip=%d&$top=%d", path, sep, len(all), pageSize)
 
 		resp, err := c.doJSON(ctx, http.MethodGet, pagePath, nil)
 		if err != nil {
