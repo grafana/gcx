@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"unicode"
@@ -129,7 +130,7 @@ func runLogin(cmd *cobra.Command, opts *loginOpts) error {
 	if curCtx.Grafana.Server == "" {
 		// we didn't know the instance endpoint before signing in
 		if result.InstanceEndpoint == "" {
-			return fmt.Errorf("instance did not provide its endpoint url")
+			return errors.New("instance did not provide its endpoint url")
 		}
 		curCtx.Grafana.Server = result.InstanceEndpoint
 	}
