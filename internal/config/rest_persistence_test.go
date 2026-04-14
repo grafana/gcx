@@ -268,3 +268,121 @@ func TestConfig_RESTConfigForContext_ContextNotFound(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "context not found")
 }
+
+// TestRegressionTokenPersistence_WithAndWithoutWiring is the regression test
+// for the OAuth token persistence bug (checkContext used NewNamespacedRESTConfig
+// without WireTokenPersistence, so refreshed tokens were never written to disk).
+//
+// It runs two sub-tests against the same mock server:
+//   - "without_persistence" shows the bug: tokens rotate in-memory but the
+//     config file still has the old values.
+//   - "with_RESTConfigForContext" shows the fix: RESTConfigForContext wires
+//     persistence, so rotated tokens are written back to disk.
+func TestRegressionTokenPersistence_WithAndWithoutWiring(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/cli/v1/auth/refresh":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"token":              "gat_rotated",
+					"expires_at":         "2099-01-01T00:00:00Z",
+					"refresh_token":      "gar_rotated",
+					"refresh_expires_at": "2099-02-01T00:00:00Z",
+				},
+			})
+		case "/bootdata":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"user": map[string]any{"orgId": 1},
+			})
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer srv.Close()
+
+	makeConfigFile := func(t *testing.T) string {
+		t.Helper()
+		dir := t.TempDir()
+		cfgFile := filepath.Join(dir, "config.yaml")
+		writeTestConfigFile(t, cfgFile, `
+contexts:
+  default:
+    grafana:
+      server: "`+srv.URL+`"
+      proxy-endpoint: "`+srv.URL+`"
+      oauth-token: gat_old
+      oauth-refresh-token: gar_old
+      oauth-token-expires-at: "2020-01-01T00:00:00Z"
+      oauth-refresh-expires-at: "2099-01-01T00:00:00Z"
+      stack-id: 1
+current-context: default
+`)
+		return cfgFile
+	}
+
+	doRequest := func(t *testing.T, restCfg config.NamespacedRESTConfig) {
+		t.Helper()
+		client := &http.Client{Transport: restCfg.WrapTransport(http.DefaultTransport)}
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/test", nil)
+		require.NoError(t, err)
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+	}
+
+	// Sub-test A: reproduces the bug on main — NewNamespacedRESTConfig without
+	// WireTokenPersistence. Tokens refresh in-memory but never persist.
+	t.Run("without_persistence", func(t *testing.T) {
+		cfgFile := makeConfigFile(t)
+
+		restCfg := config.NewNamespacedRESTConfig(t.Context(), config.Context{
+			Grafana: &config.GrafanaConfig{
+				Server:                srv.URL,
+				ProxyEndpoint:         srv.URL,
+				OAuthToken:            "gat_old",
+				OAuthRefreshToken:     "gar_old",
+				OAuthTokenExpiresAt:   "2020-01-01T00:00:00Z",
+				OAuthRefreshExpiresAt: "2099-01-01T00:00:00Z",
+				StackID:               1,
+			},
+		})
+		require.True(t, restCfg.IsOAuthProxy())
+
+		doRequest(t, restCfg)
+
+		raw, err := os.ReadFile(cfgFile)
+		require.NoError(t, err)
+		contents := string(raw)
+		// BUG: tokens were refreshed in-memory but NOT written to disk.
+		assert.NotContains(t, contents, "gat_rotated",
+			"without WireTokenPersistence, rotated tokens must NOT appear on disk (demonstrating the bug)")
+		assert.Contains(t, contents, "gat_old",
+			"config file should still have the old token (bug: refresh was lost)")
+	})
+
+	// Sub-test B: the fix — RESTConfigForContext wires persistence automatically.
+	t.Run("with_RESTConfigForContext", func(t *testing.T) {
+		cfgFile := makeConfigFile(t)
+
+		loaded, err := config.Load(t.Context(), config.ExplicitConfigFile(cfgFile))
+		require.NoError(t, err)
+		loaded.Sources = []config.ConfigSource{{Path: cfgFile, Type: "explicit"}}
+
+		restCfg, err := loaded.RESTConfigForContext(t.Context(), "default", config.ExplicitConfigFile(cfgFile))
+		require.NoError(t, err)
+		require.True(t, restCfg.IsOAuthProxy())
+
+		doRequest(t, restCfg)
+
+		raw, err := os.ReadFile(cfgFile)
+		require.NoError(t, err)
+		contents := string(raw)
+		// FIX: RESTConfigForContext wires persistence, so tokens are written back.
+		assert.Contains(t, contents, "gat_rotated",
+			"with RESTConfigForContext, rotated access token must be persisted")
+		assert.Contains(t, contents, "gar_rotated",
+			"with RESTConfigForContext, rotated refresh token must be persisted")
+	})
+}
