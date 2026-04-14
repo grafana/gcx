@@ -1,33 +1,27 @@
-## gcx skills install
+## gcx skills list
 
-Install bundled gcx skills into ~/.agents/skills
+List skills bundled with the gcx binary
 
 ### Synopsis
 
-Install one or more bundled gcx Agent Skills into a user-level .agents directory for tools that follow the .agents skill convention. Use --all to install the entire bundle.
+List skills bundled with the gcx binary, including each skill's short description and install status.
 
 ```
-gcx skills install [SKILL]... [flags]
+gcx skills list [flags]
 ```
 
 ### Examples
 
 ```
-  gcx skills install setup-gcx
-  gcx skills install setup-gcx debug-with-grafana explore-datasources
-  gcx skills install --all
-  gcx skills install --all --dry-run
-  gcx skills install setup-gcx --force
+  gcx skills list
+  gcx skills list -o json
 ```
 
 ### Options
 
 ```
-      --all             Install all bundled skills
-      --dir string      Root directory for the .agents installation (default "~/.agents")
-      --dry-run         Preview the installation without writing files
-      --force           Overwrite existing differing files managed by the gcx skills bundle
-  -h, --help            help for install
+      --dir string      Root directory for the .agents installation (used to check installed status) (default "~/.agents")
+  -h, --help            help for list
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: json, text, yaml (default "text")
 ```
