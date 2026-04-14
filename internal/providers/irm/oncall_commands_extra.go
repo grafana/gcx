@@ -124,10 +124,8 @@ func filterAlertGroupsByMaxAge(items []AlertGroup, maxAge string) ([]AlertGroup,
 		}
 		t, err := time.Parse(time.RFC3339, ag.StartedAt)
 		if err != nil {
-			// Try alternate format
 			t, err = time.Parse("2006-01-02T15:04:05", ag.StartedAt)
 			if err != nil {
-				filtered = append(filtered, ag)
 				continue
 			}
 		}

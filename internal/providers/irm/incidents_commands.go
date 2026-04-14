@@ -4,7 +4,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newIncidentsCmd(loader *configLoader) *cobra.Command {
+func newIncidentsCmd(loader GrafanaConfigLoader) *cobra.Command {
 	incCmd := &cobra.Command{
 		Use:     "incidents",
 		Short:   "Manage incidents.",

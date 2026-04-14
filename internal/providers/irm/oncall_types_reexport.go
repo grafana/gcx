@@ -44,4 +44,5 @@ const (
 	Version    = oncalltypes.Version
 )
 
+//nolint:gochecknoglobals // constant-like slice shared by commands and adapter registrations
 var DefaultStripFields = oncalltypes.DefaultStripFields

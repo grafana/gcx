@@ -48,3 +48,4 @@ gcx is a unified CLI for managing Grafana resources, dashboards, datasources, al
 * [gcx slo](gcx_slo.md)	 - Manage Grafana SLO definitions and reports
 * [gcx synth](gcx_synth.md)	 - Manage Grafana Synthetic Monitoring checks and probes
 * [gcx traces](gcx_traces.md)	 - Query Tempo datasources and manage Adaptive Traces
+

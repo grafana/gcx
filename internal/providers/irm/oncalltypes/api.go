@@ -2,11 +2,35 @@ package oncalltypes
 
 import "context"
 
+// ListOption configures list behaviour (e.g. early termination).
+type ListOption func(*ListConfig)
+
+// ListConfig holds resolved list options.
+type ListConfig struct {
+	Limit int
+}
+
+// WithLimit stops collecting after n items (0 = no limit).
+func WithLimit(n int) ListOption {
+	return func(c *ListConfig) { c.Limit = n }
+}
+
+// ApplyListOpts resolves a slice of ListOption into a ListConfig.
+func ApplyListOpts(opts []ListOption) ListConfig {
+	var cfg ListConfig
+	for _, o := range opts {
+		o(&cfg)
+	}
+	return cfg
+}
+
 // OnCallAPI defines the operations available on the OnCall backend.
 // Both the plugin proxy client (OAuth) and the public API client (SA token)
 // implement this interface, returning data in the internal API type shape.
 //
 // Once oncallpublic is removed, we can remove this interface.
+//
+//nolint:interfacebloat // we can remove this temporary interface definition when oncallpublic is ripped out
 type OnCallAPI interface {
 	ListIntegrations(ctx context.Context) ([]Integration, error)
 	GetIntegration(ctx context.Context, id string) (*Integration, error)
@@ -51,7 +75,7 @@ type OnCallAPI interface {
 	UpdateWebhook(ctx context.Context, id string, w Webhook) (*Webhook, error)
 	DeleteWebhook(ctx context.Context, id string) error
 
-	ListAlertGroups(ctx context.Context) ([]AlertGroup, error)
+	ListAlertGroups(ctx context.Context, opts ...ListOption) ([]AlertGroup, error)
 	GetAlertGroup(ctx context.Context, id string) (*AlertGroup, error)
 	DeleteAlertGroup(ctx context.Context, id string) error
 	AcknowledgeAlertGroup(ctx context.Context, id string) error
@@ -71,7 +95,7 @@ type OnCallAPI interface {
 	ListUserGroups(ctx context.Context) ([]UserGroup, error)
 	ListSlackChannels(ctx context.Context) ([]SlackChannel, error)
 
-	ListAlerts(ctx context.Context, alertGroupID string) ([]Alert, error)
+	ListAlerts(ctx context.Context, alertGroupID string, opts ...ListOption) ([]Alert, error)
 	GetAlert(ctx context.Context, id string) (*Alert, error)
 
 	GetOrganization(ctx context.Context) (*Organization, error)

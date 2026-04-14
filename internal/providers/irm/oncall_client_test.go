@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/providers/irm"
+	"github.com/grafana/gcx/internal/providers/irm/oncalltypes"
 )
 
 func newTestOnCallClient(t *testing.T, handler http.Handler) *irm.OnCallClient {
@@ -214,7 +215,7 @@ func TestListAlertGroups_StopsEarlyWithLimit(t *testing.T) {
 	srvURL = srv.URL
 
 	client := &irm.OnCallClient{HTTPClient: srv.Client(), Host: srv.URL}
-	items, err := client.ListAlertGroups(context.Background(), irm.WithLimit(1))
+	items, err := client.ListAlertGroups(context.Background(), oncalltypes.WithLimit(1))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

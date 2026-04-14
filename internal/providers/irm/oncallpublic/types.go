@@ -26,26 +26,26 @@ type escalationChain struct {
 }
 
 type escalationPolicy struct {
-	ID                      string   `json:"id,omitempty"`
-	EscalationChainID       string   `json:"escalation_chain_id"`
-	Position                int      `json:"position"`
-	Type                    string   `json:"type"`
-	Duration                any      `json:"duration,omitempty"`
-	PersonsToNotify         []string `json:"persons_to_notify,omitempty"`
-	NotifyOnCallFromSchedule string  `json:"notify_on_call_from_schedule,omitempty"`
-	GroupsToNotify          []string `json:"groups_to_notify,omitempty"`
-	ActionToTrigger         string   `json:"action_to_trigger,omitempty"`
-	Important               bool     `json:"important,omitempty"`
-	Severity                string   `json:"severity,omitempty"`
+	ID                       string   `json:"id,omitempty"`
+	EscalationChainID        string   `json:"escalation_chain_id"`
+	Position                 int      `json:"position"`
+	Type                     string   `json:"type"`
+	Duration                 any      `json:"duration,omitempty"`
+	PersonsToNotify          []string `json:"persons_to_notify,omitempty"`
+	NotifyOnCallFromSchedule string   `json:"notify_on_call_from_schedule,omitempty"`
+	GroupsToNotify           []string `json:"groups_to_notify,omitempty"`
+	ActionToTrigger          string   `json:"action_to_trigger,omitempty"`
+	Important                bool     `json:"important,omitempty"`
+	Severity                 string   `json:"severity,omitempty"`
 }
 
 type schedule struct {
-	ID       string `json:"id,omitempty"`
-	Name     string `json:"name"`
-	Type     string `json:"type,omitempty"`
-	TeamID   string `json:"team_id,omitempty"`
-	TimeZone string `json:"time_zone,omitempty"`
-	OnCallNow any   `json:"on_call_now,omitempty"`
+	ID        string `json:"id,omitempty"`
+	Name      string `json:"name"`
+	Type      string `json:"type,omitempty"`
+	TeamID    string `json:"team_id,omitempty"`
+	TimeZone  string `json:"time_zone,omitempty"`
+	OnCallNow any    `json:"on_call_now,omitempty"`
 	Slack     any    `json:"slack,omitempty"`
 }
 

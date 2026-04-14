@@ -9,5 +9,4 @@ const (
 	Version = "v1alpha1"
 )
 
-//nolint:gochecknoglobals // constant-like slice shared by commands and adapter registrations
 var DefaultStripFields = []string{"id", "pk", "password", "authorization_header"} //nolint:gochecknoglobals

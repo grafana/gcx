@@ -179,7 +179,7 @@ func adaptResolutionNote(p resolutionNote) oncalltypes.ResolutionNote {
 		ID:         p.ID,
 		AlertGroup: p.AlertGroupID,
 		Author:     author,
-		Source:      p.Source,
+		Source:     p.Source,
 		CreatedAt:  p.CreatedAt,
 		Text:       p.Text,
 	}

@@ -5,8 +5,10 @@
 package oncallpublic
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"iter"
@@ -98,7 +100,7 @@ func DiscoverOnCallURL(ctx context.Context, cfg config.NamespacedRESTConfig) (st
 	}
 
 	if settings.JSONData.OnCallAPIURL == "" {
-		return "", fmt.Errorf("OnCall API URL not found in plugin settings")
+		return "", errors.New("OnCall API URL not found in plugin settings")
 	}
 
 	return settings.JSONData.OnCallAPIURL, nil
@@ -109,7 +111,11 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body io.Rea
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("Authorization", c.token)
+	if strings.HasPrefix(c.token, "Bearer ") {
+		req.Header.Set("Authorization", c.token)
+	} else {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	if c.stackURL != "" {
 		req.Header.Set("X-Grafana-Url", c.stackURL)
@@ -132,7 +138,7 @@ func handleErrorResponse(resp *http.Response) error {
 	return fmt.Errorf("request failed with status %d", resp.StatusCode)
 }
 
-func iterResources[T any](c *Client, ctx context.Context, path, resourceType string) iter.Seq2[T, error] {
+func iterResources[T any](ctx context.Context, c *Client, path, resourceType string) iter.Seq2[T, error] {
 	return func(yield func(T, error) bool) {
 		next := path
 		for next != "" {
@@ -196,17 +202,24 @@ func iterResources[T any](c *Client, ctx context.Context, path, resourceType str
 }
 
 func collectAll[T any](it iter.Seq2[T, error]) ([]T, error) {
+	return collectN(it, 0)
+}
+
+func collectN[T any](it iter.Seq2[T, error], n int) ([]T, error) {
 	var items []T
 	for item, err := range it {
 		if err != nil {
 			return nil, err
 		}
 		items = append(items, item)
+		if n > 0 && len(items) >= n {
+			break
+		}
 	}
 	return items, nil
 }
 
-func getResource[T any](c *Client, ctx context.Context, basePath, id, resourceType string) (*T, error) {
+func getResource[T any](ctx context.Context, c *Client, basePath, id, resourceType string) (*T, error) {
 	resp, err := c.doRequest(ctx, http.MethodGet, fmt.Sprintf("%s%s/", basePath, url.PathEscape(id)), nil)
 	if err != nil {
 		return nil, fmt.Errorf("oncall: get %s: %w", resourceType, err)
@@ -225,12 +238,12 @@ func getResource[T any](c *Client, ctx context.Context, basePath, id, resourceTy
 	return &result, nil
 }
 
-func createResource[In any, Out any](c *Client, ctx context.Context, path string, body In, resourceType string) (*Out, error) {
+func createResource[In any, Out any](ctx context.Context, c *Client, path string, body In, resourceType string) (*Out, error) {
 	data, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("oncall: marshal %s: %w", resourceType, err)
 	}
-	resp, err := c.doRequest(ctx, http.MethodPost, path, strings.NewReader(string(data)))
+	resp, err := c.doRequest(ctx, http.MethodPost, path, bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("oncall: create %s: %w", resourceType, err)
 	}
@@ -245,12 +258,12 @@ func createResource[In any, Out any](c *Client, ctx context.Context, path string
 	return &result, nil
 }
 
-func updateResource[In any, Out any](c *Client, ctx context.Context, basePath, id string, body In, resourceType string) (*Out, error) {
+func updateResource[In any, Out any](ctx context.Context, c *Client, basePath, id string, body In, resourceType string) (*Out, error) {
 	data, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("oncall: marshal %s: %w", resourceType, err)
 	}
-	resp, err := c.doRequest(ctx, http.MethodPut, fmt.Sprintf("%s%s/", basePath, url.PathEscape(id)), strings.NewReader(string(data)))
+	resp, err := c.doRequest(ctx, http.MethodPut, fmt.Sprintf("%s%s/", basePath, url.PathEscape(id)), bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("oncall: update %s: %w", resourceType, err)
 	}
@@ -265,7 +278,7 @@ func updateResource[In any, Out any](c *Client, ctx context.Context, basePath, i
 	return &result, nil
 }
 
-func deleteResource(c *Client, ctx context.Context, basePath, id, resourceType string) error {
+func deleteResource(ctx context.Context, c *Client, basePath, id, resourceType string) error {
 	resp, err := c.doRequest(ctx, http.MethodDelete, fmt.Sprintf("%s%s/", basePath, url.PathEscape(id)), nil)
 	if err != nil {
 		return fmt.Errorf("oncall: delete %s: %w", resourceType, err)
@@ -277,7 +290,7 @@ func deleteResource(c *Client, ctx context.Context, basePath, id, resourceType s
 	return nil
 }
 
-func alertGroupAction(c *Client, ctx context.Context, id, action string) error {
+func alertGroupAction(ctx context.Context, c *Client, id, action string) error {
 	resp, err := c.doRequest(ctx, http.MethodPost, fmt.Sprintf("%s%s/%s/", alertGroupsPath, url.PathEscape(id), action), nil)
 	if err != nil {
 		return fmt.Errorf("oncall: %s alert group: %w", action, err)
@@ -299,7 +312,7 @@ func pathWithParams(base string, params url.Values) string {
 // --- OnCallAPI implementation ---
 
 func (c *Client) ListIntegrations(ctx context.Context) ([]oncalltypes.Integration, error) {
-	items, err := collectAll(iterResources[integration](c, ctx, integrationsPath, "integration"))
+	items, err := collectAll(iterResources[integration](ctx, c, integrationsPath, "integration"))
 	if err != nil {
 		return nil, err
 	}
@@ -307,7 +320,7 @@ func (c *Client) ListIntegrations(ctx context.Context) ([]oncalltypes.Integratio
 }
 
 func (c *Client) GetIntegration(ctx context.Context, id string) (*oncalltypes.Integration, error) {
-	p, err := getResource[integration](c, ctx, integrationsPath, id, "integration")
+	p, err := getResource[integration](ctx, c, integrationsPath, id, "integration")
 	if err != nil {
 		return nil, err
 	}
@@ -316,7 +329,7 @@ func (c *Client) GetIntegration(ctx context.Context, id string) (*oncalltypes.In
 }
 
 func (c *Client) CreateIntegration(ctx context.Context, i oncalltypes.Integration) (*oncalltypes.Integration, error) {
-	p, err := createResource[oncalltypes.Integration, integration](c, ctx, integrationsPath, i, "integration")
+	p, err := createResource[oncalltypes.Integration, integration](ctx, c, integrationsPath, i, "integration")
 	if err != nil {
 		return nil, err
 	}
@@ -325,7 +338,7 @@ func (c *Client) CreateIntegration(ctx context.Context, i oncalltypes.Integratio
 }
 
 func (c *Client) UpdateIntegration(ctx context.Context, id string, i oncalltypes.Integration) (*oncalltypes.Integration, error) {
-	p, err := updateResource[oncalltypes.Integration, integration](c, ctx, integrationsPath, id, i, "integration")
+	p, err := updateResource[oncalltypes.Integration, integration](ctx, c, integrationsPath, id, i, "integration")
 	if err != nil {
 		return nil, err
 	}
@@ -334,11 +347,11 @@ func (c *Client) UpdateIntegration(ctx context.Context, id string, i oncalltypes
 }
 
 func (c *Client) DeleteIntegration(ctx context.Context, id string) error {
-	return deleteResource(c, ctx, integrationsPath, id, "integration")
+	return deleteResource(ctx, c, integrationsPath, id, "integration")
 }
 
 func (c *Client) ListEscalationChains(ctx context.Context) ([]oncalltypes.EscalationChain, error) {
-	items, err := collectAll(iterResources[escalationChain](c, ctx, escalationChainsPath, "escalation chain"))
+	items, err := collectAll(iterResources[escalationChain](ctx, c, escalationChainsPath, "escalation chain"))
 	if err != nil {
 		return nil, err
 	}
@@ -346,7 +359,7 @@ func (c *Client) ListEscalationChains(ctx context.Context) ([]oncalltypes.Escala
 }
 
 func (c *Client) GetEscalationChain(ctx context.Context, id string) (*oncalltypes.EscalationChain, error) {
-	p, err := getResource[escalationChain](c, ctx, escalationChainsPath, id, "escalation chain")
+	p, err := getResource[escalationChain](ctx, c, escalationChainsPath, id, "escalation chain")
 	if err != nil {
 		return nil, err
 	}
@@ -355,7 +368,7 @@ func (c *Client) GetEscalationChain(ctx context.Context, id string) (*oncalltype
 }
 
 func (c *Client) CreateEscalationChain(ctx context.Context, ec oncalltypes.EscalationChain) (*oncalltypes.EscalationChain, error) {
-	p, err := createResource[oncalltypes.EscalationChain, escalationChain](c, ctx, escalationChainsPath, ec, "escalation chain")
+	p, err := createResource[oncalltypes.EscalationChain, escalationChain](ctx, c, escalationChainsPath, ec, "escalation chain")
 	if err != nil {
 		return nil, err
 	}
@@ -364,7 +377,7 @@ func (c *Client) CreateEscalationChain(ctx context.Context, ec oncalltypes.Escal
 }
 
 func (c *Client) UpdateEscalationChain(ctx context.Context, id string, ec oncalltypes.EscalationChain) (*oncalltypes.EscalationChain, error) {
-	p, err := updateResource[oncalltypes.EscalationChain, escalationChain](c, ctx, escalationChainsPath, id, ec, "escalation chain")
+	p, err := updateResource[oncalltypes.EscalationChain, escalationChain](ctx, c, escalationChainsPath, id, ec, "escalation chain")
 	if err != nil {
 		return nil, err
 	}
@@ -373,7 +386,7 @@ func (c *Client) UpdateEscalationChain(ctx context.Context, id string, ec oncall
 }
 
 func (c *Client) DeleteEscalationChain(ctx context.Context, id string) error {
-	return deleteResource(c, ctx, escalationChainsPath, id, "escalation chain")
+	return deleteResource(ctx, c, escalationChainsPath, id, "escalation chain")
 }
 
 func (c *Client) ListEscalationPolicies(ctx context.Context, chainID string) ([]oncalltypes.EscalationPolicy, error) {
@@ -381,7 +394,7 @@ func (c *Client) ListEscalationPolicies(ctx context.Context, chainID string) ([]
 	if chainID != "" {
 		params.Set("escalation_chain_id", chainID)
 	}
-	items, err := collectAll(iterResources[escalationPolicy](c, ctx, pathWithParams(escalationPoliciesPath, params), "escalation policy"))
+	items, err := collectAll(iterResources[escalationPolicy](ctx, c, pathWithParams(escalationPoliciesPath, params), "escalation policy"))
 	if err != nil {
 		return nil, err
 	}
@@ -389,7 +402,7 @@ func (c *Client) ListEscalationPolicies(ctx context.Context, chainID string) ([]
 }
 
 func (c *Client) GetEscalationPolicy(ctx context.Context, id string) (*oncalltypes.EscalationPolicy, error) {
-	p, err := getResource[escalationPolicy](c, ctx, escalationPoliciesPath, id, "escalation policy")
+	p, err := getResource[escalationPolicy](ctx, c, escalationPoliciesPath, id, "escalation policy")
 	if err != nil {
 		return nil, err
 	}
@@ -398,7 +411,7 @@ func (c *Client) GetEscalationPolicy(ctx context.Context, id string) (*oncalltyp
 }
 
 func (c *Client) CreateEscalationPolicy(ctx context.Context, ep oncalltypes.EscalationPolicy) (*oncalltypes.EscalationPolicy, error) {
-	p, err := createResource[oncalltypes.EscalationPolicy, escalationPolicy](c, ctx, escalationPoliciesPath, ep, "escalation policy")
+	p, err := createResource[oncalltypes.EscalationPolicy, escalationPolicy](ctx, c, escalationPoliciesPath, ep, "escalation policy")
 	if err != nil {
 		return nil, err
 	}
@@ -407,7 +420,7 @@ func (c *Client) CreateEscalationPolicy(ctx context.Context, ep oncalltypes.Esca
 }
 
 func (c *Client) UpdateEscalationPolicy(ctx context.Context, id string, ep oncalltypes.EscalationPolicy) (*oncalltypes.EscalationPolicy, error) {
-	p, err := updateResource[oncalltypes.EscalationPolicy, escalationPolicy](c, ctx, escalationPoliciesPath, id, ep, "escalation policy")
+	p, err := updateResource[oncalltypes.EscalationPolicy, escalationPolicy](ctx, c, escalationPoliciesPath, id, ep, "escalation policy")
 	if err != nil {
 		return nil, err
 	}
@@ -416,11 +429,11 @@ func (c *Client) UpdateEscalationPolicy(ctx context.Context, id string, ep oncal
 }
 
 func (c *Client) DeleteEscalationPolicy(ctx context.Context, id string) error {
-	return deleteResource(c, ctx, escalationPoliciesPath, id, "escalation policy")
+	return deleteResource(ctx, c, escalationPoliciesPath, id, "escalation policy")
 }
 
 func (c *Client) ListSchedules(ctx context.Context) ([]oncalltypes.Schedule, error) {
-	items, err := collectAll(iterResources[schedule](c, ctx, schedulesPath, "schedule"))
+	items, err := collectAll(iterResources[schedule](ctx, c, schedulesPath, "schedule"))
 	if err != nil {
 		return nil, err
 	}
@@ -428,7 +441,7 @@ func (c *Client) ListSchedules(ctx context.Context) ([]oncalltypes.Schedule, err
 }
 
 func (c *Client) GetSchedule(ctx context.Context, id string) (*oncalltypes.Schedule, error) {
-	p, err := getResource[schedule](c, ctx, schedulesPath, id, "schedule")
+	p, err := getResource[schedule](ctx, c, schedulesPath, id, "schedule")
 	if err != nil {
 		return nil, err
 	}
@@ -437,7 +450,7 @@ func (c *Client) GetSchedule(ctx context.Context, id string) (*oncalltypes.Sched
 }
 
 func (c *Client) CreateSchedule(ctx context.Context, s oncalltypes.Schedule) (*oncalltypes.Schedule, error) {
-	p, err := createResource[oncalltypes.Schedule, schedule](c, ctx, schedulesPath, s, "schedule")
+	p, err := createResource[oncalltypes.Schedule, schedule](ctx, c, schedulesPath, s, "schedule")
 	if err != nil {
 		return nil, err
 	}
@@ -446,7 +459,7 @@ func (c *Client) CreateSchedule(ctx context.Context, s oncalltypes.Schedule) (*o
 }
 
 func (c *Client) UpdateSchedule(ctx context.Context, id string, s oncalltypes.Schedule) (*oncalltypes.Schedule, error) {
-	p, err := updateResource[oncalltypes.Schedule, schedule](c, ctx, schedulesPath, id, s, "schedule")
+	p, err := updateResource[oncalltypes.Schedule, schedule](ctx, c, schedulesPath, id, s, "schedule")
 	if err != nil {
 		return nil, err
 	}
@@ -455,7 +468,7 @@ func (c *Client) UpdateSchedule(ctx context.Context, id string, s oncalltypes.Sc
 }
 
 func (c *Client) DeleteSchedule(ctx context.Context, id string) error {
-	return deleteResource(c, ctx, schedulesPath, id, "schedule")
+	return deleteResource(ctx, c, schedulesPath, id, "schedule")
 }
 
 func (c *Client) ListFilterEvents(ctx context.Context, scheduleID, userTZ, startingDate string, days int) (*oncalltypes.FilterEventsResponse, error) {
@@ -465,7 +478,7 @@ func (c *Client) ListFilterEvents(ctx context.Context, scheduleID, userTZ, start
 	params.Set("start_date", startingDate)
 	params.Set("end_date", startingDate) // will be computed properly by the command
 	path := fmt.Sprintf("%s%s/final_shifts/?%s", schedulesPath, url.PathEscape(scheduleID), params.Encode())
-	items, err := collectAll(iterResources[finalShift](c, ctx, path, "final shift"))
+	items, err := collectAll(iterResources[finalShift](ctx, c, path, "final shift"))
 	if err != nil {
 		return nil, err
 	}
@@ -487,7 +500,7 @@ func (c *Client) ListFilterEvents(ctx context.Context, scheduleID, userTZ, start
 }
 
 func (c *Client) ListShifts(ctx context.Context) ([]oncalltypes.Shift, error) {
-	items, err := collectAll(iterResources[shift](c, ctx, shiftsPath, "shift"))
+	items, err := collectAll(iterResources[shift](ctx, c, shiftsPath, "shift"))
 	if err != nil {
 		return nil, err
 	}
@@ -495,7 +508,7 @@ func (c *Client) ListShifts(ctx context.Context) ([]oncalltypes.Shift, error) {
 }
 
 func (c *Client) GetShift(ctx context.Context, id string) (*oncalltypes.Shift, error) {
-	p, err := getResource[shift](c, ctx, shiftsPath, id, "shift")
+	p, err := getResource[shift](ctx, c, shiftsPath, id, "shift")
 	if err != nil {
 		return nil, err
 	}
@@ -504,7 +517,7 @@ func (c *Client) GetShift(ctx context.Context, id string) (*oncalltypes.Shift, e
 }
 
 func (c *Client) CreateShift(ctx context.Context, s oncalltypes.ShiftRequest) (*oncalltypes.Shift, error) {
-	p, err := createResource[oncalltypes.ShiftRequest, shift](c, ctx, shiftsPath, s, "shift")
+	p, err := createResource[oncalltypes.ShiftRequest, shift](ctx, c, shiftsPath, s, "shift")
 	if err != nil {
 		return nil, err
 	}
@@ -513,7 +526,7 @@ func (c *Client) CreateShift(ctx context.Context, s oncalltypes.ShiftRequest) (*
 }
 
 func (c *Client) UpdateShift(ctx context.Context, id string, s oncalltypes.ShiftRequest) (*oncalltypes.Shift, error) {
-	p, err := updateResource[oncalltypes.ShiftRequest, shift](c, ctx, shiftsPath, id, s, "shift")
+	p, err := updateResource[oncalltypes.ShiftRequest, shift](ctx, c, shiftsPath, id, s, "shift")
 	if err != nil {
 		return nil, err
 	}
@@ -522,7 +535,7 @@ func (c *Client) UpdateShift(ctx context.Context, id string, s oncalltypes.Shift
 }
 
 func (c *Client) DeleteShift(ctx context.Context, id string) error {
-	return deleteResource(c, ctx, shiftsPath, id, "shift")
+	return deleteResource(ctx, c, shiftsPath, id, "shift")
 }
 
 func (c *Client) ListRoutes(ctx context.Context, integrationID string) ([]oncalltypes.Route, error) {
@@ -530,7 +543,7 @@ func (c *Client) ListRoutes(ctx context.Context, integrationID string) ([]oncall
 	if integrationID != "" {
 		params.Set("integration_id", integrationID)
 	}
-	items, err := collectAll(iterResources[route](c, ctx, pathWithParams(routesPath, params), "route"))
+	items, err := collectAll(iterResources[route](ctx, c, pathWithParams(routesPath, params), "route"))
 	if err != nil {
 		return nil, err
 	}
@@ -538,7 +551,7 @@ func (c *Client) ListRoutes(ctx context.Context, integrationID string) ([]oncall
 }
 
 func (c *Client) GetRoute(ctx context.Context, id string) (*oncalltypes.Route, error) {
-	p, err := getResource[route](c, ctx, routesPath, id, "route")
+	p, err := getResource[route](ctx, c, routesPath, id, "route")
 	if err != nil {
 		return nil, err
 	}
@@ -547,7 +560,7 @@ func (c *Client) GetRoute(ctx context.Context, id string) (*oncalltypes.Route, e
 }
 
 func (c *Client) CreateRoute(ctx context.Context, rt oncalltypes.Route) (*oncalltypes.Route, error) {
-	p, err := createResource[oncalltypes.Route, route](c, ctx, routesPath, rt, "route")
+	p, err := createResource[oncalltypes.Route, route](ctx, c, routesPath, rt, "route")
 	if err != nil {
 		return nil, err
 	}
@@ -556,7 +569,7 @@ func (c *Client) CreateRoute(ctx context.Context, rt oncalltypes.Route) (*oncall
 }
 
 func (c *Client) UpdateRoute(ctx context.Context, id string, rt oncalltypes.Route) (*oncalltypes.Route, error) {
-	p, err := updateResource[oncalltypes.Route, route](c, ctx, routesPath, id, rt, "route")
+	p, err := updateResource[oncalltypes.Route, route](ctx, c, routesPath, id, rt, "route")
 	if err != nil {
 		return nil, err
 	}
@@ -565,11 +578,11 @@ func (c *Client) UpdateRoute(ctx context.Context, id string, rt oncalltypes.Rout
 }
 
 func (c *Client) DeleteRoute(ctx context.Context, id string) error {
-	return deleteResource(c, ctx, routesPath, id, "route")
+	return deleteResource(ctx, c, routesPath, id, "route")
 }
 
 func (c *Client) ListWebhooks(ctx context.Context) ([]oncalltypes.Webhook, error) {
-	items, err := collectAll(iterResources[webhook](c, ctx, webhooksPath, "webhook"))
+	items, err := collectAll(iterResources[webhook](ctx, c, webhooksPath, "webhook"))
 	if err != nil {
 		return nil, err
 	}
@@ -577,7 +590,7 @@ func (c *Client) ListWebhooks(ctx context.Context) ([]oncalltypes.Webhook, error
 }
 
 func (c *Client) GetWebhook(ctx context.Context, id string) (*oncalltypes.Webhook, error) {
-	p, err := getResource[webhook](c, ctx, webhooksPath, id, "webhook")
+	p, err := getResource[webhook](ctx, c, webhooksPath, id, "webhook")
 	if err != nil {
 		return nil, err
 	}
@@ -586,7 +599,7 @@ func (c *Client) GetWebhook(ctx context.Context, id string) (*oncalltypes.Webhoo
 }
 
 func (c *Client) CreateWebhook(ctx context.Context, w oncalltypes.Webhook) (*oncalltypes.Webhook, error) {
-	p, err := createResource[oncalltypes.Webhook, webhook](c, ctx, webhooksPath, w, "webhook")
+	p, err := createResource[oncalltypes.Webhook, webhook](ctx, c, webhooksPath, w, "webhook")
 	if err != nil {
 		return nil, err
 	}
@@ -595,7 +608,7 @@ func (c *Client) CreateWebhook(ctx context.Context, w oncalltypes.Webhook) (*onc
 }
 
 func (c *Client) UpdateWebhook(ctx context.Context, id string, w oncalltypes.Webhook) (*oncalltypes.Webhook, error) {
-	p, err := updateResource[oncalltypes.Webhook, webhook](c, ctx, webhooksPath, id, w, "webhook")
+	p, err := updateResource[oncalltypes.Webhook, webhook](ctx, c, webhooksPath, id, w, "webhook")
 	if err != nil {
 		return nil, err
 	}
@@ -604,11 +617,12 @@ func (c *Client) UpdateWebhook(ctx context.Context, id string, w oncalltypes.Web
 }
 
 func (c *Client) DeleteWebhook(ctx context.Context, id string) error {
-	return deleteResource(c, ctx, webhooksPath, id, "webhook")
+	return deleteResource(ctx, c, webhooksPath, id, "webhook")
 }
 
-func (c *Client) ListAlertGroups(ctx context.Context) ([]oncalltypes.AlertGroup, error) {
-	items, err := collectAll(iterResources[alertGroup](c, ctx, alertGroupsPath, "alert group"))
+func (c *Client) ListAlertGroups(ctx context.Context, opts ...oncalltypes.ListOption) ([]oncalltypes.AlertGroup, error) {
+	cfg := oncalltypes.ApplyListOpts(opts)
+	items, err := collectN(iterResources[alertGroup](ctx, c, alertGroupsPath, "alert group"), cfg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -616,7 +630,7 @@ func (c *Client) ListAlertGroups(ctx context.Context) ([]oncalltypes.AlertGroup,
 }
 
 func (c *Client) GetAlertGroup(ctx context.Context, id string) (*oncalltypes.AlertGroup, error) {
-	p, err := getResource[alertGroup](c, ctx, alertGroupsPath, id, "alert group")
+	p, err := getResource[alertGroup](ctx, c, alertGroupsPath, id, "alert group")
 	if err != nil {
 		return nil, err
 	}
@@ -625,15 +639,15 @@ func (c *Client) GetAlertGroup(ctx context.Context, id string) (*oncalltypes.Ale
 }
 
 func (c *Client) DeleteAlertGroup(ctx context.Context, id string) error {
-	return deleteResource(c, ctx, alertGroupsPath, id, "alert group")
+	return deleteResource(ctx, c, alertGroupsPath, id, "alert group")
 }
 
 func (c *Client) AcknowledgeAlertGroup(ctx context.Context, id string) error {
-	return alertGroupAction(c, ctx, id, "acknowledge")
+	return alertGroupAction(ctx, c, id, "acknowledge")
 }
 
 func (c *Client) ResolveAlertGroup(ctx context.Context, id string) error {
-	return alertGroupAction(c, ctx, id, "resolve")
+	return alertGroupAction(ctx, c, id, "resolve")
 }
 
 func (c *Client) SilenceAlertGroup(ctx context.Context, id string, delaySecs int) error {
@@ -641,7 +655,7 @@ func (c *Client) SilenceAlertGroup(ctx context.Context, id string, delaySecs int
 	if err != nil {
 		return fmt.Errorf("oncall: marshal silence request: %w", err)
 	}
-	resp, err := c.doRequest(ctx, http.MethodPost, fmt.Sprintf("%s%s/silence/", alertGroupsPath, url.PathEscape(id)), strings.NewReader(string(data)))
+	resp, err := c.doRequest(ctx, http.MethodPost, fmt.Sprintf("%s%s/silence/", alertGroupsPath, url.PathEscape(id)), bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("oncall: silence alert group: %w", err)
 	}
@@ -653,19 +667,19 @@ func (c *Client) SilenceAlertGroup(ctx context.Context, id string, delaySecs int
 }
 
 func (c *Client) UnacknowledgeAlertGroup(ctx context.Context, id string) error {
-	return alertGroupAction(c, ctx, id, "unacknowledge")
+	return alertGroupAction(ctx, c, id, "unacknowledge")
 }
 
 func (c *Client) UnresolveAlertGroup(ctx context.Context, id string) error {
-	return alertGroupAction(c, ctx, id, "unresolve")
+	return alertGroupAction(ctx, c, id, "unresolve")
 }
 
 func (c *Client) UnsilenceAlertGroup(ctx context.Context, id string) error {
-	return alertGroupAction(c, ctx, id, "unsilence")
+	return alertGroupAction(ctx, c, id, "unsilence")
 }
 
 func (c *Client) ListUsers(ctx context.Context) ([]oncalltypes.User, error) {
-	items, err := collectAll(iterResources[user](c, ctx, usersPath, "user"))
+	items, err := collectAll(iterResources[user](ctx, c, usersPath, "user"))
 	if err != nil {
 		return nil, err
 	}
@@ -673,7 +687,7 @@ func (c *Client) ListUsers(ctx context.Context) ([]oncalltypes.User, error) {
 }
 
 func (c *Client) GetUser(ctx context.Context, id string) (*oncalltypes.User, error) {
-	p, err := getResource[user](c, ctx, usersPath, id, "user")
+	p, err := getResource[user](ctx, c, usersPath, id, "user")
 	if err != nil {
 		return nil, err
 	}
@@ -699,7 +713,7 @@ func (c *Client) GetCurrentUser(ctx context.Context) (*oncalltypes.User, error) 
 }
 
 func (c *Client) ListTeams(ctx context.Context) ([]oncalltypes.Team, error) {
-	items, err := collectAll(iterResources[team](c, ctx, teamsPath, "team"))
+	items, err := collectAll(iterResources[team](ctx, c, teamsPath, "team"))
 	if err != nil {
 		return nil, err
 	}
@@ -707,7 +721,7 @@ func (c *Client) ListTeams(ctx context.Context) ([]oncalltypes.Team, error) {
 }
 
 func (c *Client) GetTeam(ctx context.Context, id string) (*oncalltypes.Team, error) {
-	p, err := getResource[team](c, ctx, teamsPath, id, "team")
+	p, err := getResource[team](ctx, c, teamsPath, id, "team")
 	if err != nil {
 		return nil, err
 	}
@@ -716,7 +730,7 @@ func (c *Client) GetTeam(ctx context.Context, id string) (*oncalltypes.Team, err
 }
 
 func (c *Client) ListUserGroups(ctx context.Context) ([]oncalltypes.UserGroup, error) {
-	items, err := collectAll(iterResources[userGroup](c, ctx, userGroupsPath, "user group"))
+	items, err := collectAll(iterResources[userGroup](ctx, c, userGroupsPath, "user group"))
 	if err != nil {
 		return nil, err
 	}
@@ -724,19 +738,20 @@ func (c *Client) ListUserGroups(ctx context.Context) ([]oncalltypes.UserGroup, e
 }
 
 func (c *Client) ListSlackChannels(ctx context.Context) ([]oncalltypes.SlackChannel, error) {
-	items, err := collectAll(iterResources[slackChannel](c, ctx, slackChannelsPath, "slack channel"))
+	items, err := collectAll(iterResources[slackChannel](ctx, c, slackChannelsPath, "slack channel"))
 	if err != nil {
 		return nil, err
 	}
 	return adaptSlice(items, adaptSlackChannel), nil
 }
 
-func (c *Client) ListAlerts(ctx context.Context, alertGroupID string) ([]oncalltypes.Alert, error) {
+func (c *Client) ListAlerts(ctx context.Context, alertGroupID string, opts ...oncalltypes.ListOption) ([]oncalltypes.Alert, error) {
 	params := url.Values{}
 	if alertGroupID != "" {
 		params.Set("alert_group_id", alertGroupID)
 	}
-	items, err := collectAll(iterResources[alert](c, ctx, pathWithParams(alertsPath, params), "alert"))
+	cfg := oncalltypes.ApplyListOpts(opts)
+	items, err := collectN(iterResources[alert](ctx, c, pathWithParams(alertsPath, params), "alert"), cfg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -744,7 +759,7 @@ func (c *Client) ListAlerts(ctx context.Context, alertGroupID string) ([]oncallt
 }
 
 func (c *Client) GetAlert(ctx context.Context, id string) (*oncalltypes.Alert, error) {
-	p, err := getResource[alert](c, ctx, alertsPath, id, "alert")
+	p, err := getResource[alert](ctx, c, alertsPath, id, "alert")
 	if err != nil {
 		return nil, err
 	}
@@ -754,12 +769,12 @@ func (c *Client) GetAlert(ctx context.Context, id string) (*oncalltypes.Alert, e
 
 func (c *Client) GetOrganization(ctx context.Context) (*oncalltypes.Organization, error) {
 	// The public API has a list endpoint; get the first org.
-	items, err := collectAll(iterResources[organization](c, ctx, organizationsPath, "organization"))
+	items, err := collectAll(iterResources[organization](ctx, c, organizationsPath, "organization"))
 	if err != nil {
 		return nil, err
 	}
 	if len(items) == 0 {
-		return nil, fmt.Errorf("irm: no organizations found")
+		return nil, errors.New("irm: no organizations found")
 	}
 	r := adaptOrganization(items[0])
 	return &r, nil
@@ -770,7 +785,7 @@ func (c *Client) ListResolutionNotes(ctx context.Context, alertGroupID string) (
 	if alertGroupID != "" {
 		params.Set("alert_group_id", alertGroupID)
 	}
-	items, err := collectAll(iterResources[resolutionNote](c, ctx, pathWithParams(resolutionNotesPath, params), "resolution note"))
+	items, err := collectAll(iterResources[resolutionNote](ctx, c, pathWithParams(resolutionNotesPath, params), "resolution note"))
 	if err != nil {
 		return nil, err
 	}
@@ -778,7 +793,7 @@ func (c *Client) ListResolutionNotes(ctx context.Context, alertGroupID string) (
 }
 
 func (c *Client) GetResolutionNote(ctx context.Context, id string) (*oncalltypes.ResolutionNote, error) {
-	p, err := getResource[resolutionNote](c, ctx, resolutionNotesPath, id, "resolution note")
+	p, err := getResource[resolutionNote](ctx, c, resolutionNotesPath, id, "resolution note")
 	if err != nil {
 		return nil, err
 	}
@@ -787,7 +802,7 @@ func (c *Client) GetResolutionNote(ctx context.Context, id string) (*oncalltypes
 }
 
 func (c *Client) CreateResolutionNote(ctx context.Context, input oncalltypes.CreateResolutionNoteInput) (*oncalltypes.ResolutionNote, error) {
-	p, err := createResource[oncalltypes.CreateResolutionNoteInput, resolutionNote](c, ctx, resolutionNotesPath, input, "resolution note")
+	p, err := createResource[oncalltypes.CreateResolutionNoteInput, resolutionNote](ctx, c, resolutionNotesPath, input, "resolution note")
 	if err != nil {
 		return nil, err
 	}
@@ -796,7 +811,7 @@ func (c *Client) CreateResolutionNote(ctx context.Context, input oncalltypes.Cre
 }
 
 func (c *Client) UpdateResolutionNote(ctx context.Context, id string, input oncalltypes.UpdateResolutionNoteInput) (*oncalltypes.ResolutionNote, error) {
-	p, err := updateResource[oncalltypes.UpdateResolutionNoteInput, resolutionNote](c, ctx, resolutionNotesPath, id, input, "resolution note")
+	p, err := updateResource[oncalltypes.UpdateResolutionNoteInput, resolutionNote](ctx, c, resolutionNotesPath, id, input, "resolution note")
 	if err != nil {
 		return nil, err
 	}
@@ -805,11 +820,11 @@ func (c *Client) UpdateResolutionNote(ctx context.Context, id string, input onca
 }
 
 func (c *Client) DeleteResolutionNote(ctx context.Context, id string) error {
-	return deleteResource(c, ctx, resolutionNotesPath, id, "resolution note")
+	return deleteResource(ctx, c, resolutionNotesPath, id, "resolution note")
 }
 
 func (c *Client) ListShiftSwaps(ctx context.Context) ([]oncalltypes.ShiftSwap, error) {
-	items, err := collectAll(iterResources[shiftSwap](c, ctx, shiftSwapsPath, "shift swap"))
+	items, err := collectAll(iterResources[shiftSwap](ctx, c, shiftSwapsPath, "shift swap"))
 	if err != nil {
 		return nil, err
 	}
@@ -817,7 +832,7 @@ func (c *Client) ListShiftSwaps(ctx context.Context) ([]oncalltypes.ShiftSwap, e
 }
 
 func (c *Client) GetShiftSwap(ctx context.Context, id string) (*oncalltypes.ShiftSwap, error) {
-	p, err := getResource[shiftSwap](c, ctx, shiftSwapsPath, id, "shift swap")
+	p, err := getResource[shiftSwap](ctx, c, shiftSwapsPath, id, "shift swap")
 	if err != nil {
 		return nil, err
 	}
@@ -826,7 +841,7 @@ func (c *Client) GetShiftSwap(ctx context.Context, id string) (*oncalltypes.Shif
 }
 
 func (c *Client) CreateShiftSwap(ctx context.Context, input oncalltypes.CreateShiftSwapInput) (*oncalltypes.ShiftSwap, error) {
-	p, err := createResource[oncalltypes.CreateShiftSwapInput, shiftSwap](c, ctx, shiftSwapsPath, input, "shift swap")
+	p, err := createResource[oncalltypes.CreateShiftSwapInput, shiftSwap](ctx, c, shiftSwapsPath, input, "shift swap")
 	if err != nil {
 		return nil, err
 	}
@@ -835,7 +850,7 @@ func (c *Client) CreateShiftSwap(ctx context.Context, input oncalltypes.CreateSh
 }
 
 func (c *Client) UpdateShiftSwap(ctx context.Context, id string, input oncalltypes.UpdateShiftSwapInput) (*oncalltypes.ShiftSwap, error) {
-	p, err := updateResource[oncalltypes.UpdateShiftSwapInput, shiftSwap](c, ctx, shiftSwapsPath, id, input, "shift swap")
+	p, err := updateResource[oncalltypes.UpdateShiftSwapInput, shiftSwap](ctx, c, shiftSwapsPath, id, input, "shift swap")
 	if err != nil {
 		return nil, err
 	}
@@ -844,7 +859,7 @@ func (c *Client) UpdateShiftSwap(ctx context.Context, id string, input oncalltyp
 }
 
 func (c *Client) DeleteShiftSwap(ctx context.Context, id string) error {
-	return deleteResource(c, ctx, shiftSwapsPath, id, "shift swap")
+	return deleteResource(ctx, c, shiftSwapsPath, id, "shift swap")
 }
 
 func (c *Client) TakeShiftSwap(ctx context.Context, id string, input oncalltypes.TakeShiftSwapInput) (*oncalltypes.ShiftSwap, error) {
@@ -852,7 +867,7 @@ func (c *Client) TakeShiftSwap(ctx context.Context, id string, input oncalltypes
 	if err != nil {
 		return nil, fmt.Errorf("oncall: marshal take shift swap: %w", err)
 	}
-	resp, err := c.doRequest(ctx, http.MethodPost, fmt.Sprintf("%s%s/take/", shiftSwapsPath, url.PathEscape(id)), strings.NewReader(string(data)))
+	resp, err := c.doRequest(ctx, http.MethodPost, fmt.Sprintf("%s%s/take/", shiftSwapsPath, url.PathEscape(id)), bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("oncall: take shift swap: %w", err)
 	}
@@ -893,7 +908,7 @@ func (c *Client) CreateDirectPaging(ctx context.Context, input oncalltypes.Direc
 		}
 	}
 
-	p, err := createResource[map[string]any, directEscalationResult](c, ctx, escalationsPath, pubInput, "direct escalation")
+	p, err := createResource[map[string]any, directEscalationResult](ctx, c, escalationsPath, pubInput, "direct escalation")
 	if err != nil {
 		return nil, err
 	}
