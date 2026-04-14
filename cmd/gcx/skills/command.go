@@ -33,7 +33,7 @@ func Command() *cobra.Command {
 
 	cmd.AddCommand(newInstallCommand(claudeplugin.SkillsFS()))
 	cmd.AddCommand(newListCommand(claudeplugin.SkillsFS()))
-	cmd.AddCommand(newUninstallCommand())
+	cmd.AddCommand(newUninstallCommand(claudeplugin.SkillsFS()))
 
 	return cmd
 }
@@ -351,49 +351,6 @@ func isSkillInstalled(skillsDir string, name string) bool {
 	return err == nil && !info.IsDir()
 }
 
-func listInstalledSkills(root string) (listResult, error) {
-	root = filepath.Clean(root)
-	skillsDir := filepath.Join(root, "skills")
-	result := listResult{}
-
-	entries, err := os.ReadDir(skillsDir)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return result, nil
-		}
-		return listResult{}, err
-	}
-
-	result.Skills = make([]skillInfo, 0, len(entries))
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		skillPath := filepath.Join(skillsDir, entry.Name())
-		skillDocPath := filepath.Join(skillPath, "SKILL.md")
-		data, err := os.ReadFile(skillDocPath)
-		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				continue
-			}
-			return listResult{}, err
-		}
-
-		result.Skills = append(result.Skills, skillInfo{
-			Name:             entry.Name(),
-			ShortDescription: extractSkillShortDescription(data),
-		})
-	}
-
-	sort.Slice(result.Skills, func(i int, j int) bool {
-		return result.Skills[i].Name < result.Skills[j].Name
-	})
-	result.SkillCount = len(result.Skills)
-
-	return result, nil
-}
-
 type skillFrontMatter struct {
 	Description string `yaml:"description"`
 }
@@ -628,6 +585,7 @@ type uninstallOpts struct {
 	All    bool
 	Yes    bool
 	DryRun bool
+	Source fs.FS
 	IO     cmdio.Options
 }
 
@@ -637,12 +595,15 @@ func (o *uninstallOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 
 	flags.StringVar(&o.Dir, "dir", "~/.agents", "Root directory for the .agents installation")
-	flags.BoolVar(&o.All, "all", false, "Uninstall all skills in the target directory")
+	flags.BoolVar(&o.All, "all", false, "Uninstall all gcx-managed skills")
 	flags.BoolVarP(&o.Yes, "yes", "y", false, "Auto-approve uninstalling all skills")
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Preview the uninstall without removing files")
 }
 
 func (o *uninstallOpts) Validate(args []string) error {
+	if o.Source == nil {
+		return errors.New("skills source is not configured")
+	}
 	if o.All && len(args) > 0 {
 		return errors.New("skill names cannot be provided when --all is set")
 	}
@@ -652,18 +613,25 @@ func (o *uninstallOpts) Validate(args []string) error {
 	return o.IO.Validate()
 }
 
-func newUninstallCommand() *cobra.Command {
-	opts := &uninstallOpts{}
+func newUninstallCommand(source fs.FS) *cobra.Command {
+	opts := &uninstallOpts{Source: source}
 
 	cmd := &cobra.Command{
 		Use:   "uninstall [SKILL]...",
-		Short: "Uninstall installed skills from ~/.agents/skills",
-		Long:  "Remove one or more installed skills from a user-level .agents skills directory.",
-		Example: `  gcx skills uninstall grafanacloud-gcx
-  gcx skills uninstall grafanacloud-gcx skill-installer
+		Short: "Uninstall gcx-managed skills from ~/.agents/skills",
+		Long:  "Remove one or more gcx-managed skills from a user-level .agents skills directory. Only skills bundled with gcx can be uninstalled; non-gcx skills are never touched.",
+		Example: `  gcx skills uninstall setup-gcx
+  gcx skills uninstall setup-gcx debug-with-grafana
   gcx skills uninstall --all --yes
   gcx skills uninstall --all --yes --dry-run`,
 		Args: cobra.ArbitraryArgs,
+		ValidArgsFunction: func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+			names, err := bundledSkillNames(source)
+			if err != nil {
+				return nil, cobra.ShellCompDirectiveError
+			}
+			return names, cobra.ShellCompDirectiveNoFileComp
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(args); err != nil {
 				return err
@@ -675,7 +643,7 @@ func newUninstallCommand() *cobra.Command {
 			}
 
 			if opts.All && !opts.Yes && !cliOpts.AutoApprove {
-				return errors.New("refusing to uninstall all skills without --yes (or GCX_AUTO_APPROVE=1)")
+				return errors.New("refusing to uninstall all gcx skills without --yes (or GCX_AUTO_APPROVE=1)")
 			}
 
 			root, err := resolveInstallRoot(opts.Dir)
@@ -683,15 +651,24 @@ func newUninstallCommand() *cobra.Command {
 				return err
 			}
 
+			bundled, err := bundledSkillNames(opts.Source)
+			if err != nil {
+				return err
+			}
+			bundledSet := make(map[string]struct{}, len(bundled))
+			for _, name := range bundled {
+				bundledSet[name] = struct{}{}
+			}
+
 			targets := args
 			if opts.All {
-				listResult, err := listInstalledSkills(root)
-				if err != nil {
-					return err
-				}
-				targets = make([]string, 0, len(listResult.Skills))
-				for _, skill := range listResult.Skills {
-					targets = append(targets, skill.Name)
+				// --all only targets gcx-bundled skills, never non-gcx skills.
+				targets = bundled
+			} else {
+				for _, name := range args {
+					if _, ok := bundledSet[name]; !ok {
+						return fmt.Errorf("unknown skill %q (use 'gcx skills list' to see gcx-managed skills)", name)
+					}
 				}
 			}
 

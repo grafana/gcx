@@ -1,10 +1,10 @@
 ## gcx skills uninstall
 
-Uninstall installed skills from ~/.agents/skills
+Uninstall gcx-managed skills from ~/.agents/skills
 
 ### Synopsis
 
-Remove one or more installed skills from a user-level .agents skills directory.
+Remove one or more gcx-managed skills from a user-level .agents skills directory. Only skills bundled with gcx can be uninstalled; non-gcx skills are never touched.
 
 ```
 gcx skills uninstall [SKILL]... [flags]
@@ -13,8 +13,8 @@ gcx skills uninstall [SKILL]... [flags]
 ### Examples
 
 ```
-  gcx skills uninstall grafanacloud-gcx
-  gcx skills uninstall grafanacloud-gcx skill-installer
+  gcx skills uninstall setup-gcx
+  gcx skills uninstall setup-gcx debug-with-grafana
   gcx skills uninstall --all --yes
   gcx skills uninstall --all --yes --dry-run
 ```
@@ -22,7 +22,7 @@ gcx skills uninstall [SKILL]... [flags]
 ### Options
 
 ```
-      --all             Uninstall all skills in the target directory
+      --all             Uninstall all gcx-managed skills
       --dir string      Root directory for the .agents installation (default "~/.agents")
       --dry-run         Preview the uninstall without removing files
   -h, --help            help for uninstall

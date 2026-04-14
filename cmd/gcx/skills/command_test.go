@@ -5,7 +5,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -189,37 +188,6 @@ func TestInstallCommand_NoArgsNoAllReturnsError(t *testing.T) {
 	require.ErrorContains(t, err, "provide at least one skill name or use --all")
 }
 
-func TestListInstalledSkills_ListsOnlySkillDirectories(t *testing.T) {
-	t.Parallel()
-
-	root := filepath.Join(t.TempDir(), ".agents")
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "skills", "alpha"), 0o755))
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "skills", "beta"), 0o755))
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "skills", "notes"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "skills", "alpha", "SKILL.md"), []byte("alpha"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "skills", "beta", "SKILL.md"), []byte("beta"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "skills", "README.md"), []byte("docs"), 0o600))
-
-	result, err := listInstalledSkills(root)
-	require.NoError(t, err)
-	require.Equal(t, []skillInfo{
-		{Name: "alpha", ShortDescription: "alpha"},
-		{Name: "beta", ShortDescription: "beta"},
-	}, result.Skills)
-	require.Equal(t, 2, result.SkillCount)
-}
-
-func TestListInstalledSkills_MissingDirectoryReturnsEmpty(t *testing.T) {
-	t.Parallel()
-
-	root := filepath.Join(t.TempDir(), ".agents")
-
-	result, err := listInstalledSkills(root)
-	require.NoError(t, err)
-	require.Empty(t, result.Skills)
-	require.Zero(t, result.SkillCount)
-}
-
 func TestListBundledSkills_ReturnsSourceSkills(t *testing.T) {
 	t.Parallel()
 
@@ -251,25 +219,19 @@ func TestListBundledSkills_ShowsInstalledStatus(t *testing.T) {
 	require.False(t, result.Skills[1].Installed)
 }
 
-func TestListInstalledSkills_ParsesFrontMatterDescription(t *testing.T) {
+func TestExtractSkillShortDescription_ParsesFrontMatter(t *testing.T) {
 	t.Parallel()
 
-	root := filepath.Join(t.TempDir(), ".agents")
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "skills", "sample"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "skills", "sample", "SKILL.md"), []byte(`---
+	data := []byte(`---
 name: sample
 description: >
   Use this skill to do an example operation in a concise way.
 ---
 
 # Sample
-`), 0o600))
-
-	result, err := listInstalledSkills(root)
-	require.NoError(t, err)
-	require.Len(t, result.Skills, 1)
-	require.Equal(t, "sample", result.Skills[0].Name)
-	require.Equal(t, "Use this skill to do an example operation in a concise way.", result.Skills[0].ShortDescription)
+`)
+	desc := extractSkillShortDescription(data)
+	require.Equal(t, "Use this skill to do an example operation in a concise way.", desc)
 }
 
 func TestListCommand_JSONIncludesShortDescription(t *testing.T) {
@@ -347,7 +309,7 @@ func TestUninstallSkills_InvalidName(t *testing.T) {
 func TestUninstallCommand_AllRequiresApproval(t *testing.T) {
 	t.Setenv("GCX_AUTO_APPROVE", "0")
 
-	cmd := newUninstallCommand()
+	cmd := newUninstallCommand(testSkillsFS())
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 	cmd.SetOut(stdout)
@@ -356,19 +318,23 @@ func TestUninstallCommand_AllRequiresApproval(t *testing.T) {
 
 	err := cmd.Execute()
 	require.Error(t, err)
-	require.ErrorContains(t, err, "refusing to uninstall all skills without --yes")
+	require.ErrorContains(t, err, "refusing to uninstall all gcx skills without --yes")
 }
 
-func TestUninstallCommand_AllWithYesRemovesInstalledSkills(t *testing.T) {
+func TestUninstallCommand_AllWithYesRemovesOnlyBundledSkills(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
 	agent.ResetForTesting()
 	root := filepath.Join(t.TempDir(), ".agents")
+
+	// Install gcx-bundled skills (alpha, beta) and a non-gcx skill (external).
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "skills", "alpha"), 0o755))
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "skills", "beta"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "skills", "external"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "skills", "alpha", "SKILL.md"), []byte("alpha"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "skills", "beta", "SKILL.md"), []byte("beta"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "skills", "external", "SKILL.md"), []byte("not from gcx"), 0o600))
 
-	cmd := newUninstallCommand()
+	cmd := newUninstallCommand(testSkillsFS())
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 	cmd.SetOut(stdout)
@@ -378,9 +344,27 @@ func TestUninstallCommand_AllWithYesRemovesInstalledSkills(t *testing.T) {
 	err := cmd.Execute()
 	require.NoError(t, err)
 	require.Contains(t, stdout.String(), "Uninstalled 2 skill(s)")
-	require.True(t, strings.Contains(stdout.String(), "Removed: alpha, beta") || strings.Contains(stdout.String(), "Removed: beta, alpha"))
 
+	// Bundled skills removed.
 	_, err = os.Stat(filepath.Join(root, "skills", "alpha"))
-	require.Error(t, err)
 	require.True(t, os.IsNotExist(err))
+	_, err = os.Stat(filepath.Join(root, "skills", "beta"))
+	require.True(t, os.IsNotExist(err))
+
+	// Non-gcx skill is untouched.
+	_, err = os.Stat(filepath.Join(root, "skills", "external", "SKILL.md"))
+	require.NoError(t, err)
+}
+
+func TestUninstallCommand_RejectsNonBundledSkillName(t *testing.T) {
+	cmd := newUninstallCommand(testSkillsFS())
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+	cmd.SetArgs([]string{"external"})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	require.ErrorContains(t, err, "unknown skill")
 }
