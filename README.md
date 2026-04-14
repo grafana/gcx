@@ -7,6 +7,8 @@
 <img src="https://img.shields.io/badge/status-public%20preview-orange" alt="Public Preview">
 </p>
 
+![gcx](./gcx.png)
+
 Grafana Cloud and the Grafana Assistant — in your terminal and your agentic coding environment.
 
 Query production. Investigate alerts. Let the Assistant root-cause issues. Ship fixes with observability built in. Without leaving your editor.
