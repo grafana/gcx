@@ -9,10 +9,11 @@ gcx irm incidents list [flags]
 ### Options
 
 ```
-  -h, --help            help for list
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int       Maximum number of incidents to return (default 50)
-  -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
+  -h, --help             help for list
+      --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --labels strings   Filter by labels (key:value format, may be repeated)
+      --limit int        Maximum number of incidents to return (default 50)
+  -o, --output string    Output format. One of: json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
