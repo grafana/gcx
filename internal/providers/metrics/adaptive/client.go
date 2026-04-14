@@ -52,19 +52,8 @@ func NewClient(ctx context.Context, baseURL string, tenantID int, apiToken strin
 	}
 }
 
-// doRequest builds and executes a GET request against the Adaptive Metrics API.
-func (c *Client) doRequest(ctx context.Context, path string) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
-	if err != nil {
-		return nil, fmt.Errorf("metrics: create request: %w", err)
-	}
-	req.SetBasicAuth(strconv.Itoa(c.tenantID), c.apiToken)
-
-	return c.httpClient.Do(req)
-}
-
-// doMutatingRequest builds and executes a POST/PUT/DELETE request with an optional JSON body.
-func (c *Client) doMutatingRequest(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
+// doRequest builds and executes an HTTP request against the Adaptive Metrics API.
+func (c *Client) doRequest(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, body)
 	if err != nil {
 		return nil, fmt.Errorf("metrics: create request: %w", err)
@@ -83,7 +72,7 @@ func (c *Client) doMutatingRequest(ctx context.Context, method, path string, bod
 
 // ListSegments returns all Adaptive Metrics segments.
 func (c *Client) ListSegments(ctx context.Context) ([]MetricSegment, error) {
-	resp, err := c.doRequest(ctx, "/aggregations/rules/segments")
+	resp, err := c.doRequest(ctx, http.MethodGet, "/aggregations/rules/segments", nil)
 	if err != nil {
 		return nil, fmt.Errorf("metrics: list segments: %w", err)
 	}
@@ -130,7 +119,7 @@ func (c *Client) CreateSegment(ctx context.Context, s *MetricSegment) (*MetricSe
 		return nil, fmt.Errorf("metrics: create segment: marshal: %w", err)
 	}
 
-	resp, err := c.doMutatingRequest(ctx, http.MethodPost, "/aggregations/rules/segments", bytes.NewReader(data))
+	resp, err := c.doRequest(ctx, http.MethodPost, "/aggregations/rules/segments", bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("metrics: create segment: %w", err)
 	}
@@ -158,7 +147,7 @@ func (c *Client) UpdateSegment(ctx context.Context, id string, s *MetricSegment)
 	}
 
 	path := "/aggregations/rules/segments?segment=" + url.QueryEscape(id)
-	resp, err := c.doMutatingRequest(ctx, http.MethodPut, path, bytes.NewReader(data))
+	resp, err := c.doRequest(ctx, http.MethodPut, path, bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("metrics: update segment: %w", err)
 	}
@@ -180,7 +169,7 @@ func (c *Client) UpdateSegment(ctx context.Context, id string, s *MetricSegment)
 // DeleteSegment deletes a segment by ID. Returns 409 if the segment has dependent data.
 func (c *Client) DeleteSegment(ctx context.Context, id string) error {
 	path := "/aggregations/rules/segments?segment=" + url.QueryEscape(id)
-	resp, err := c.doMutatingRequest(ctx, http.MethodDelete, path, nil)
+	resp, err := c.doRequest(ctx, http.MethodDelete, path, nil)
 	if err != nil {
 		return fmt.Errorf("metrics: delete segment: %w", err)
 	}
@@ -210,7 +199,7 @@ func (c *Client) ListExemptions(ctx context.Context, segment string) ([]MetricEx
 		path += "?segment=" + url.QueryEscape(segment)
 	}
 
-	resp, err := c.doRequest(ctx, path)
+	resp, err := c.doRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("metrics: list exemptions: %w", err)
 	}
@@ -237,7 +226,7 @@ func (c *Client) ListExemptions(ctx context.Context, segment string) ([]MetricEx
 
 // ListSegmentedExemptions returns all exemptions grouped by segment.
 func (c *Client) ListSegmentedExemptions(ctx context.Context) ([]ExemptionsBySegmentEntry, error) {
-	resp, err := c.doRequest(ctx, "/v1/recommendations/segmented_exemptions")
+	resp, err := c.doRequest(ctx, http.MethodGet, "/v1/recommendations/segmented_exemptions", nil)
 	if err != nil {
 		return nil, fmt.Errorf("metrics: list segmented exemptions: %w", err)
 	}
@@ -268,7 +257,7 @@ func (c *Client) GetExemption(ctx context.Context, id, segment string) (*MetricE
 		path += "?segment=" + url.QueryEscape(segment)
 	}
 
-	resp, err := c.doRequest(ctx, path)
+	resp, err := c.doRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("metrics: get exemption: %w", err)
 	}
@@ -307,7 +296,7 @@ func (c *Client) CreateExemption(ctx context.Context, e *MetricExemption, segmen
 		return nil, fmt.Errorf("metrics: create exemption: marshal: %w", err)
 	}
 
-	resp, err := c.doMutatingRequest(ctx, http.MethodPost, path, bytes.NewReader(data))
+	resp, err := c.doRequest(ctx, http.MethodPost, path, bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("metrics: create exemption: %w", err)
 	}
@@ -344,7 +333,7 @@ func (c *Client) UpdateExemption(ctx context.Context, id string, e *MetricExempt
 		return nil, fmt.Errorf("metrics: update exemption: marshal: %w", err)
 	}
 
-	resp, err := c.doMutatingRequest(ctx, http.MethodPut, path, bytes.NewReader(data))
+	resp, err := c.doRequest(ctx, http.MethodPut, path, bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("metrics: update exemption: %w", err)
 	}
@@ -370,7 +359,7 @@ func (c *Client) DeleteExemption(ctx context.Context, id, segment string) error 
 		path += "?segment=" + url.QueryEscape(segment)
 	}
 
-	resp, err := c.doMutatingRequest(ctx, http.MethodDelete, path, nil)
+	resp, err := c.doRequest(ctx, http.MethodDelete, path, nil)
 	if err != nil {
 		return fmt.Errorf("metrics: delete exemption: %w", err)
 	}
@@ -391,7 +380,7 @@ func (c *Client) ListRules(ctx context.Context, segment string) ([]MetricRule, s
 		path += "?segment=" + url.QueryEscape(segment)
 	}
 
-	resp, err := c.doRequest(ctx, path)
+	resp, err := c.doRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, "", fmt.Errorf("metrics: list rules: %w", err)
 	}
@@ -421,7 +410,7 @@ func (c *Client) GetRule(ctx context.Context, metric, segment string) (MetricRul
 		path += "?segment=" + url.QueryEscape(segment)
 	}
 
-	resp, err := c.doRequest(ctx, path)
+	resp, err := c.doRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return MetricRule{}, fmt.Errorf("metrics: get rule: %w", err)
 	}
@@ -644,7 +633,7 @@ func (c *Client) ListRecommendations(ctx context.Context, segment string, action
 		params.Add("action", a)
 	}
 
-	resp, err := c.doRequest(ctx, "/aggregations/recommendations?"+params.Encode())
+	resp, err := c.doRequest(ctx, http.MethodGet, "/aggregations/recommendations?"+params.Encode(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("metrics: list recommendations: %w", err)
 	}
@@ -672,7 +661,7 @@ func (c *Client) ListRecommendedRules(ctx context.Context, segment string) ([]Me
 		params.Set("segment", segment)
 	}
 
-	resp, err := c.doRequest(ctx, "/aggregations/recommendations?"+params.Encode())
+	resp, err := c.doRequest(ctx, http.MethodGet, "/aggregations/recommendations?"+params.Encode(), nil)
 	if err != nil {
 		return nil, "", fmt.Errorf("metrics: list recommended rules: %w", err)
 	}
