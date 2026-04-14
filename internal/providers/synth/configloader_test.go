@@ -8,6 +8,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -227,6 +228,35 @@ current-context: default
 	cfg, err := l.LoadConfig(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, wantURL, cfg.GetCurrentContext().Providers["synth"]["sm-url"])
+}
+
+// TestDiscoverSMURL_UsesGrafanaURL verifies that discoverSMURL uses GrafanaURL
+// (the original Grafana server) rather than Host (which may be a proxy endpoint).
+// This prevents a bug where OAuth proxy users hit the wrong endpoint.
+func TestDiscoverSMURL_UsesGrafanaURL(t *testing.T) {
+	const wantURL = "https://synthetic-monitoring-api-eu-west-2.grafana.net"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/plugins/grafana-synthetic-monitoring-app/settings" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"jsonData": map[string]any{"apiHost": wantURL},
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	// Simulate OAuth proxy mode: Host points to a proxy, GrafanaURL points to the real server.
+	cfg := config.NamespacedRESTConfig{
+		GrafanaURL: srv.URL,
+	}
+	cfg.Host = "https://proxy.example.com/api/cli/v1/proxy"
+
+	got, err := discoverSMURL(context.Background(), cfg)
+	require.NoError(t, err)
+	assert.Equal(t, wantURL, got)
 }
 
 // TestConfigLoader_LoadSMConfig_AutoDiscoveryFallsBackToError verifies that

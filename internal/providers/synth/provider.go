@@ -221,7 +221,7 @@ func (l *configLoader) tryDiscoverSMURL(ctx context.Context) string {
 		return ""
 	}
 
-	discovered, err := DiscoverSMURL(ctx, restCfg)
+	discovered, err := discoverSMURL(ctx, restCfg)
 	if err != nil {
 		slog.DebugContext(ctx, "SM URL auto-discovery failed", "error", err)
 		return ""
@@ -312,21 +312,20 @@ func registerSMInstall(ctx context.Context, smURL, cloudToken string, stack clou
 	return result.AccessToken, nil
 }
 
-// DiscoverSMURL fetches the SM API URL from the SM plugin settings endpoint.
+// discoverSMURL fetches the SM API URL from the SM plugin settings endpoint.
 // This queries /api/plugins/grafana-synthetic-monitoring-app/settings and reads
 // jsonData.apiHost, which contains the regional SM API base URL.
-func DiscoverSMURL(ctx context.Context, cfg config.NamespacedRESTConfig) (string, error) {
+func discoverSMURL(ctx context.Context, cfg config.NamespacedRESTConfig) (string, error) {
 	httpClient, err := rest.HTTPClientFor(&cfg.Config)
 	if err != nil {
 		return "", fmt.Errorf("failed to create HTTP client: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		cfg.Host+"/api/plugins/grafana-synthetic-monitoring-app/settings", nil)
+		cfg.GrafanaURL+"/api/plugins/grafana-synthetic-monitoring-app/settings", nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
