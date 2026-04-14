@@ -1127,9 +1127,10 @@ func (h *metricsHelper) segmentsListCommand() *cobra.Command {
 			total := len(segments)
 			if opts.Limit > 0 && opts.Limit < total {
 				segments = segments[:opts.Limit]
+				fmt.Fprintf(cmd.ErrOrStderr(), "%d of %d segment(s)\n", opts.Limit, total)
+			} else {
+				fmt.Fprintf(cmd.ErrOrStderr(), "%d segment(s)\n", total)
 			}
-
-			fmt.Fprintf(cmd.ErrOrStderr(), "%d segment(s)\n", total)
 			if len(segments) == 0 {
 				return nil
 			}
@@ -1482,6 +1483,9 @@ func (h *metricsHelper) exemptionsListCommand() *cobra.Command {
 			if opts.Segment != "" && opts.AllSegments {
 				return errors.New("--segment and --all-segments are mutually exclusive")
 			}
+			if opts.AllSegments && opts.Limit > 0 {
+				return errors.New("--limit is not supported with --all-segments; use --segment to target a specific segment")
+			}
 
 			ctx := cmd.Context()
 			client, err := h.newClient(ctx)
@@ -1520,9 +1524,10 @@ func (h *metricsHelper) exemptionsListCommand() *cobra.Command {
 			total := len(exemptions)
 			if opts.Limit > 0 && opts.Limit < total {
 				exemptions = exemptions[:opts.Limit]
+				fmt.Fprintf(cmd.ErrOrStderr(), "%d of %d exemption(s)\n", opts.Limit, total)
+			} else {
+				fmt.Fprintf(cmd.ErrOrStderr(), "%d exemption(s)\n", total)
 			}
-
-			fmt.Fprintf(cmd.ErrOrStderr(), "%d exemption(s)\n", total)
 			if len(exemptions) == 0 {
 				return nil
 			}
