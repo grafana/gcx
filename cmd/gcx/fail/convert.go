@@ -328,10 +328,10 @@ func convertSMConfigErrors(err error) (*DetailedError, bool) {
 	if strings.Contains(msg, "SM token not configured") {
 		return &DetailedError{
 			Summary: "SM token not configured",
-			Details: "The SM publisher token is required but not set in this context.\nTokens cannot be auto-discovered — they must be set manually.",
+			Details: "The SM publisher token could not be resolved.\nAuto-discovery via register/install requires cloud.token and cloud.stack in the current context.",
 			Parent:  err,
 			Suggestions: []string{
-				"Find the token in Grafana: open your SM plugin settings page (/a/grafana-synthetic-monitoring-app)",
+				"Run gcx setup to auto-discover all provider settings",
 				"Set it: gcx config set providers.synth.sm-token <TOKEN>",
 				"Or use env var: export GRAFANA_PROVIDER_SYNTH_SM_TOKEN=<TOKEN>",
 				"Check other contexts: gcx config view",

@@ -275,6 +275,119 @@ current-context: default
 	assert.Equal(t, "https://explicit.sm", smURL)
 }
 
+// TestConfigLoader_LoadSMConfig_TokenAutoDiscovery verifies that sm-token is
+// auto-discovered via the SM register/install API when cloud config is available.
+func TestConfigLoader_LoadSMConfig_TokenAutoDiscovery(t *testing.T) {
+	const wantToken = "sm-access-token-abc123"
+
+	// Mock SM API server that handles both plugin settings and register/install.
+	smSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/api/v1/register/install" && r.Method == http.MethodPost {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"accessToken": wantToken,
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer smSrv.Close()
+
+	// Mock GCOM server that returns stack info.
+	gcomSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":                12345,
+			"slug":              "teststack",
+			"regionSlug":        "eu-west-2",
+			"hmInstancePromId":  67890,
+			"hlInstanceId":      11111,
+			"hmInstancePromUrl": "https://prom.example.com",
+			"hlInstanceUrl":     "https://loki.example.com",
+		})
+	}))
+	defer gcomSrv.Close()
+
+	cfgFile := writeConfigFile(t, `
+contexts:
+  default:
+    grafana:
+      server: https://teststack.grafana.net
+      token: test-token
+      stack-id: 12345
+    cloud:
+      token: cloud-token-xyz
+      stack: teststack
+      api-url: `+gcomSrv.URL+`
+    providers:
+      synth:
+        sm-url: `+smSrv.URL+`
+current-context: default
+`)
+
+	l := newTestLoader(t, cfgFile)
+
+	smURL, smToken, _, err := l.LoadSMConfig(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, smSrv.URL, smURL)
+	assert.Equal(t, wantToken, smToken)
+}
+
+// TestConfigLoader_LoadSMConfig_TokenPersistsToConfig verifies that an
+// auto-discovered SM token is saved to the config file for subsequent runs.
+func TestConfigLoader_LoadSMConfig_TokenPersistsToConfig(t *testing.T) {
+	const wantToken = "sm-access-token-persisted"
+
+	smSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/api/v1/register/install" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"accessToken": wantToken})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer smSrv.Close()
+
+	gcomSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": 12345, "slug": "teststack", "regionSlug": "eu",
+			"hmInstancePromId": 1, "hlInstanceId": 2,
+			"hmInstancePromUrl": "https://prom.example.com",
+			"hlInstanceUrl":     "https://loki.example.com",
+		})
+	}))
+	defer gcomSrv.Close()
+
+	cfgFile := writeConfigFile(t, `
+contexts:
+  default:
+    grafana:
+      server: https://teststack.grafana.net
+      token: test-token
+      stack-id: 12345
+    cloud:
+      token: cloud-token
+      stack: teststack
+      api-url: `+gcomSrv.URL+`
+    providers:
+      synth:
+        sm-url: `+smSrv.URL+`
+current-context: default
+`)
+
+	l := newTestLoader(t, cfgFile)
+
+	_, smToken, _, err := l.LoadSMConfig(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, wantToken, smToken)
+
+	// Verify persisted.
+	cfg, err := l.LoadConfig(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, wantToken, cfg.GetCurrentContext().Providers["synth"]["sm-token"])
+}
+
 // TestConfigLoader_SaveMetricsDatasourceUID_RoundTrip verifies AC-6: saving and
 // reloading sm-metrics-datasource-uid round-trips correctly.
 func TestConfigLoader_SaveMetricsDatasourceUID_RoundTrip(t *testing.T) {

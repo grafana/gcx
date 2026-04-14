@@ -190,15 +190,15 @@ func TestErrorToDetailedError_SMURLNotConfigured(t *testing.T) {
 
 func TestErrorToDetailedError_SMTokenNotConfigured(t *testing.T) {
 	err := fmt.Errorf("failed to load SM config for checks: %w",
-		errors.New("SM token not configured: set providers.synth.sm-token in config or GRAFANA_PROVIDER_SYNTH_SM_TOKEN env var"))
+		errors.New("SM token not configured: auto-discovery via register/install failed or no cloud.token configured"))
 
 	got := fail.ErrorToDetailedError(err)
 
 	require.NotNil(t, got)
 	assert.Equal(t, "SM token not configured", got.Summary)
-	assert.Contains(t, got.Details, "Tokens cannot be auto-discovered")
+	assert.Contains(t, got.Details, "register/install requires cloud.token")
 	require.Len(t, got.Suggestions, 4)
-	assert.Contains(t, got.Suggestions[0], "SM plugin settings")
+	assert.Contains(t, got.Suggestions[0], "gcx setup")
 	assert.Contains(t, got.Suggestions[1], "gcx config set providers.synth.sm-token")
 	assert.Contains(t, got.Suggestions[2], "GRAFANA_PROVIDER_SYNTH_SM_TOKEN")
 	assert.Contains(t, got.Suggestions[3], "gcx config view")
