@@ -2,6 +2,9 @@ package synth //nolint:testpackage // Tests need access to unexported configLoad
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 
@@ -139,6 +142,137 @@ current-context: default
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "SM token not configured")
 	assert.Empty(t, smURL)
+}
+
+// TestConfigLoader_LoadSMConfig_AutoDiscovery verifies that sm-url is auto-discovered
+// from plugin settings when not explicitly configured and a Grafana server is available.
+func TestConfigLoader_LoadSMConfig_AutoDiscovery(t *testing.T) {
+	const wantURL = "https://synthetic-monitoring-api-eu-west-2.grafana.net"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/plugins/grafana-synthetic-monitoring-app/settings" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"jsonData": map[string]any{
+					"apiHost": wantURL,
+				},
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	cfgFile := writeConfigFile(t, `
+contexts:
+  default:
+    grafana:
+      server: `+srv.URL+`
+      token: test-token
+      stack-id: 12345
+    providers:
+      synth:
+        sm-token: tok-test
+current-context: default
+`)
+
+	l := newTestLoader(t, cfgFile)
+
+	smURL, smToken, _, err := l.LoadSMConfig(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, wantURL, smURL)
+	assert.Equal(t, "tok-test", smToken)
+}
+
+// TestConfigLoader_LoadSMConfig_AutoDiscoveryPersistsToConfig verifies that an
+// auto-discovered SM URL is saved to the config file for subsequent runs.
+func TestConfigLoader_LoadSMConfig_AutoDiscoveryPersistsToConfig(t *testing.T) {
+	const wantURL = "https://synthetic-monitoring-api-eu-west-2.grafana.net"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/plugins/grafana-synthetic-monitoring-app/settings" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"jsonData": map[string]any{
+					"apiHost": wantURL,
+				},
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	cfgFile := writeConfigFile(t, `
+contexts:
+  default:
+    grafana:
+      server: `+srv.URL+`
+      token: test-token
+      stack-id: 12345
+    providers:
+      synth:
+        sm-token: tok-test
+current-context: default
+`)
+
+	l := newTestLoader(t, cfgFile)
+
+	// First call: auto-discovers and persists.
+	smURL, _, _, err := l.LoadSMConfig(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, wantURL, smURL)
+
+	// Verify persisted: reload config and check the value was saved.
+	cfg, err := l.LoadConfig(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, wantURL, cfg.GetCurrentContext().Providers["synth"]["sm-url"])
+}
+
+// TestConfigLoader_LoadSMConfig_AutoDiscoveryFallsBackToError verifies that
+// when auto-discovery fails (no Grafana server), a clear error is returned.
+func TestConfigLoader_LoadSMConfig_AutoDiscoveryFallsBackToError(t *testing.T) {
+	cfgFile := writeConfigFile(t, `
+contexts:
+  default:
+    providers:
+      synth:
+        sm-token: tok
+current-context: default
+`)
+
+	l := newTestLoader(t, cfgFile)
+
+	_, _, _, err := l.LoadSMConfig(context.Background()) //nolint:dogsled // Only testing error return.
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "SM URL not configured")
+}
+
+// TestConfigLoader_LoadSMConfig_ExplicitURLSkipsAutoDiscovery verifies that
+// auto-discovery is not attempted when sm-url is already configured.
+func TestConfigLoader_LoadSMConfig_ExplicitURLSkipsAutoDiscovery(t *testing.T) {
+	// Server that would fail if called — proves discovery was skipped.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("auto-discovery should not be attempted when sm-url is configured")
+		http.Error(w, "should not be called", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	cfgFile := writeConfigFile(t, `
+contexts:
+  default:
+    providers:
+      synth:
+        sm-url: https://explicit.sm
+        sm-token: tok-test
+current-context: default
+`)
+
+	l := newTestLoader(t, cfgFile)
+
+	smURL, _, _, err := l.LoadSMConfig(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "https://explicit.sm", smURL)
 }
 
 // TestConfigLoader_SaveMetricsDatasourceUID_RoundTrip verifies AC-6: saving and

@@ -38,6 +38,7 @@ func ErrorToDetailedError(err error) *DetailedError {
 		convertAPIErrors,          // API-related errors
 		convertVersionErrors,      // Version incompatibility errors
 		convertLinterErrors,       // Linter-related errors
+		convertSMConfigErrors,     // Synthetic Monitoring config errors
 		convertCloudConfigErrors,  // Cloud config / fleet / setup errors
 	}
 
@@ -304,6 +305,40 @@ func convertRequiredFlagErrors(err error) (*DetailedError, bool) {
 			},
 		}, true
 	}
+	return nil, false
+}
+
+func convertSMConfigErrors(err error) (*DetailedError, bool) {
+	msg := err.Error()
+
+	if strings.Contains(msg, "SM URL not configured") {
+		return &DetailedError{
+			Summary: "SM URL not configured",
+			Details: "The Synthetic Monitoring API URL could not be resolved.\nAuto-discovery requires a Grafana server in the current context.",
+			Parent:  err,
+			Suggestions: []string{
+				"Run gcx setup to auto-discover all provider settings",
+				"Set manually: gcx config set providers.synth.sm-url https://synthetic-monitoring-api-<region>.grafana.net",
+				"Or use env var: export GRAFANA_PROVIDER_SYNTH_SM_URL=<URL>",
+				"Check other contexts: gcx config view",
+			},
+		}, true
+	}
+
+	if strings.Contains(msg, "SM token not configured") {
+		return &DetailedError{
+			Summary: "SM token not configured",
+			Details: "The SM publisher token is required but not set in this context.\nTokens cannot be auto-discovered — they must be set manually.",
+			Parent:  err,
+			Suggestions: []string{
+				"Find the token in Grafana: open your SM plugin settings page (/a/grafana-synthetic-monitoring-app)",
+				"Set it: gcx config set providers.synth.sm-token <TOKEN>",
+				"Or use env var: export GRAFANA_PROVIDER_SYNTH_SM_TOKEN=<TOKEN>",
+				"Check other contexts: gcx config view",
+			},
+		}, true
+	}
+
 	return nil, false
 }
 

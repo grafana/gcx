@@ -48,16 +48,15 @@ func TestSynthProvider_Validate(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "valid config",
+			name: "valid config with both keys",
 			cfg: map[string]string{
 				"sm-url":   "https://synthetic-monitoring-api.grafana.net",
 				"sm-token": "my-token",
 			},
 		},
 		{
-			name:    "missing sm-url",
-			cfg:     map[string]string{"sm-token": "token"},
-			wantErr: true,
+			name: "valid config without sm-url (auto-discoverable)",
+			cfg:  map[string]string{"sm-token": "token"},
 		},
 		{
 			name:    "missing sm-token",
