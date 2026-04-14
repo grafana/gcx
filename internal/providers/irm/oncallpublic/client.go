@@ -111,11 +111,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body io.Rea
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	if strings.HasPrefix(c.token, "Bearer ") {
-		req.Header.Set("Authorization", c.token)
-	} else {
-		req.Header.Set("Authorization", "Bearer "+c.token)
-	}
+	req.Header.Set("Authorization", c.token)
 	req.Header.Set("Content-Type", "application/json")
 	if c.stackURL != "" {
 		req.Header.Set("X-Grafana-Url", c.stackURL)
