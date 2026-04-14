@@ -24,8 +24,9 @@ import (
 // ---------------------------------------------------------------------------
 
 type incidentListOpts struct {
-	IO    cmdio.Options
-	Limit int
+	IO     cmdio.Options
+	Limit  int
+	Labels []string
 }
 
 func (o *incidentListOpts) setup(flags *pflag.FlagSet) {
@@ -34,6 +35,33 @@ func (o *incidentListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of incidents to return")
+	flags.StringSliceVar(&o.Labels, "labels", nil, "Filter by labels (key:value format, may be repeated)")
+}
+
+func (o *incidentListOpts) Validate() error {
+	if err := o.IO.Validate(); err != nil {
+		return err
+	}
+	for _, l := range o.Labels {
+		if !strings.Contains(l, ":") {
+			return fmt.Errorf("invalid label %q: must be in key:value format", l)
+		}
+	}
+	return nil
+}
+
+// BuildQueryString converts --labels values into the IRM query string format.
+// Each label is formatted as field:Tags:'key:value' and multiple labels are
+// separated by a space.
+func BuildQueryString(labels []string) string {
+	if len(labels) == 0 {
+		return ""
+	}
+	parts := make([]string, len(labels))
+	for i, l := range labels {
+		parts[i] = "field:Tags:'" + l + "'"
+	}
+	return strings.Join(parts, " ")
 }
 
 func NewListCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -42,13 +70,17 @@ func NewListCommand(loader GrafanaConfigLoader) *cobra.Command {
 		Use:   "list",
 		Short: "List incidents.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.IO.Validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 
 			ctx := cmd.Context()
 
-			crud, restCfg, err := NewTypedCRUD(ctx, loader, IncidentQuery{Limit: opts.Limit})
+			query := IncidentQuery{
+				Limit:       opts.Limit,
+				QueryString: BuildQueryString(opts.Labels),
+			}
+			crud, restCfg, err := NewTypedCRUD(ctx, loader, query)
 			if err != nil {
 				return err
 			}

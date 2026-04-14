@@ -202,6 +202,73 @@ func TestActivityTableCodec_LongBodyTruncated(t *testing.T) {
 // SeverityTableCodec tests
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// buildQueryString / label validation tests
+// ---------------------------------------------------------------------------
+
+func TestBuildQueryString(t *testing.T) {
+	tests := []struct {
+		name   string
+		labels []string
+		want   string
+	}{
+		{
+			name:   "no labels produces empty string",
+			labels: nil,
+			want:   "",
+		},
+		{
+			name:   "single label",
+			labels: []string{"team:platform"},
+			want:   "field:Tags:'team:platform'",
+		},
+		{
+			name:   "multiple labels",
+			labels: []string{"team:platform", "env:production"},
+			want:   "field:Tags:'team:platform' field:Tags:'env:production'",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := incidents.BuildQueryString(tt.labels)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestListOpts_LabelValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		labels  []string
+		wantErr string
+	}{
+		{
+			name:   "valid labels pass",
+			labels: []string{"team:platform", "env:prod"},
+		},
+		{
+			name:    "missing colon fails",
+			labels:  []string{"nocolon"},
+			wantErr: "must be in key:value format",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := incidents.NewTestListCommand(tt.labels)
+			cmd.SetArgs([]string{})
+			err := cmd.Execute()
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// SeverityTableCodec tests
+// ---------------------------------------------------------------------------
+
 func TestSeverityTableCodec_Encode(t *testing.T) {
 	sevs := []irm.Severity{
 		{SeverityID: "sev-1", DisplayLabel: "Critical", Level: 1, Color: "#FF0000"},
