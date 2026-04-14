@@ -9,13 +9,13 @@ description: >
 
 # Generate gcx Marketing Slide
 
-Regenerate `slide.html` — a 1440x900 "bento box" marketing slide — so that every
-command shown is verified against the live binary and all stats are accurate.
+Regenerate `docs/bento_marketing_slide.html` — a 1440x900 "bento box" marketing slide — so
+that every command shown is verified against the live binary and all stats are accurate.
 
 ## Prerequisites
 
 - Go toolchain available
-- `slide.html` must exist at the repo root
+- `docs/bento_marketing_slide.html` must exist
 
 ## Workflow
 
@@ -95,8 +95,8 @@ Pick the best commands per card from the help-tree output. Selection criteria:
 
 ### Stage 4: Update slide.html
 
-Update `slide.html` preserving the exact layout and styling. Only modify HTML content
-inside card elements and the stats bar — never touch CSS or grid structure.
+Update `docs/bento_marketing_slide.html` preserving the exact layout and styling. Only modify
+HTML content inside card elements and the stats bar — never touch CSS or grid structure.
 
 #### Layout
 
@@ -149,7 +149,7 @@ Update with exact counts from Stage 1:
 
 ### Stage 5: Verify
 
-1. Open `slide.html` in a browser: `open slide.html`
+1. Open in a browser: `open docs/bento_marketing_slide.html`
 2. Check at 1440x900 viewport — no text overflow, no layout breaks
 3. Confirm narrow cards (3fr) don't have lines wrapping or clipping
 
