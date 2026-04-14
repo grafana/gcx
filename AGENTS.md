@@ -248,6 +248,18 @@ Run this checklist **before every commit** (not only before PR/push):
    git status
    ```
 
+## GitHub Issues
+
+When creating or commenting on GitHub issues, **always anonymize system-specific details**. Replace real values with placeholders:
+
+- Stack names / context names → `<my-context>`, `<stack>`
+- URLs with stack or region identifiers → `https://example-<region>.grafana.net`
+- Hosted IDs, stack IDs, org IDs → `12345`, `99999`
+- Datasource names with stack slugs → `grafanacloud-<stack>-prom`
+- API tokens, credentials → never include, even partially
+
+This applies to issue bodies, comments, and code snippets embedded in issues.
+
 ## Beads Issue Tracker (optional)
 
 This project can use **bd (beads)** for issue tracking. Run `bd prime` for full command reference.
