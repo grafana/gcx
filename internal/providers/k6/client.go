@@ -290,30 +290,44 @@ func (c *Client) GetProjectByName(ctx context.Context, name string) (*Project, e
 // ---------------------------------------------------------------------------
 
 // ListAllLoadTests retrieves all load tests across all projects.
-// This is an alias for ListLoadTests for clarity when both variants are used.
 func (c *Client) ListAllLoadTests(ctx context.Context) ([]LoadTest, error) {
-	return c.ListLoadTests(ctx)
+	return c.listLoadTests(ctx, loadTestsPath, 0)
 }
 
 // ListLoadTestsByProject retrieves load tests filtered by project ID.
 // Uses the server-side project_id query parameter to avoid fetching all tests.
 func (c *Client) ListLoadTestsByProject(ctx context.Context, projectID int) ([]LoadTest, error) {
 	path := fmt.Sprintf(loadTestsPath+"?project_id=%d", projectID)
-	return c.listLoadTests(ctx, path)
+	return c.listLoadTests(ctx, path, 0)
 }
 
 // ListLoadTests retrieves all load tests across all projects, handling pagination.
 func (c *Client) ListLoadTests(ctx context.Context) ([]LoadTest, error) {
-	return c.listLoadTests(ctx, loadTestsPath)
+	return c.listLoadTests(ctx, loadTestsPath, 0)
+}
+
+// ListLoadTestsWithLimit retrieves load tests with a server-side limit on the
+// number of results. Pass 0 for no limit (fetches all).
+func (c *Client) ListLoadTestsWithLimit(ctx context.Context, limit int) ([]LoadTest, error) {
+	return c.listLoadTests(ctx, loadTestsPath, limit)
 }
 
 // listLoadTests fetches load tests from the given path, paginating through all pages.
 // The k6 v6 API uses OData-style pagination with $skip/$top parameters and @count.
-func (c *Client) listLoadTests(ctx context.Context, path string) ([]LoadTest, error) {
-	const pageSize = 100
+// If limit > 0, at most limit items are fetched by setting $top accordingly.
+func (c *Client) listLoadTests(ctx context.Context, path string, limit int) ([]LoadTest, error) {
+	const defaultPageSize = 100
 	var all []LoadTest
 
-	for offset := 0; ; offset += pageSize {
+	for offset := 0; ; offset += defaultPageSize {
+		pageSize := defaultPageSize
+		if limit > 0 {
+			remaining := limit - len(all)
+			if remaining < pageSize {
+				pageSize = remaining
+			}
+		}
+
 		sep := "?"
 		if strings.Contains(path, "?") {
 			sep = "&"
@@ -338,6 +352,12 @@ func (c *Client) listLoadTests(ctx context.Context, path string) ([]LoadTest, er
 		}
 
 		all = append(all, result.Value...)
+
+		// Stop if limit reached.
+		if limit > 0 && len(all) >= limit {
+			all = all[:limit]
+			break
+		}
 
 		// Stop if we got fewer results than page size or have fetched all (per @count).
 		if len(result.Value) < pageSize || (result.Count > 0 && len(all) >= result.Count) {

@@ -552,7 +552,7 @@ func newTestsListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			tests, err := client.ListLoadTests(ctx)
+			tests, err := client.ListLoadTestsWithLimit(ctx, int(opts.Limit))
 			if err != nil {
 				return err
 			}
@@ -565,7 +565,6 @@ func newTestsListCommand(loader CloudConfigLoader) *cobra.Command {
 				}
 				tests = filtered
 			}
-			tests = adapter.TruncateSlice(tests, opts.Limit)
 			return opts.IO.Encode(cmd.OutOrStdout(), tests)
 		},
 	}

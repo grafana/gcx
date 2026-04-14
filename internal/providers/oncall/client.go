@@ -211,12 +211,20 @@ func iterResources[T any](c *Client, ctx context.Context, path, resourceType str
 
 // collectAll collects all items from an iterator into a slice.
 func collectAll[T any](it iter.Seq2[T, error]) ([]T, error) {
+	return collectN(it, 0)
+}
+
+// collectN collects up to n items from an iterator. If n <= 0, all items are collected.
+func collectN[T any](it iter.Seq2[T, error], n int) ([]T, error) {
 	var items []T
 	for item, err := range it {
 		if err != nil {
 			return nil, err
 		}
 		items = append(items, item)
+		if n > 0 && len(items) >= n {
+			break
+		}
 	}
 	return items, nil
 }
@@ -478,13 +486,42 @@ type AlertGroupFilter struct {
 	StartedAt string
 }
 
-// ListAlertGroups returns all alert groups, optionally filtered.
-func (c *Client) ListAlertGroups(ctx context.Context, filters ...AlertGroupFilter) ([]AlertGroup, error) {
-	params := url.Values{}
-	if len(filters) > 0 && filters[0].StartedAt != "" {
-		params.Set("started_at", filters[0].StartedAt)
+// ListOption configures list behaviour (e.g. early termination).
+type ListOption func(*listConfig)
+
+type listConfig struct {
+	limit int
+}
+
+// WithLimit stops collecting after n items (0 = no limit).
+func WithLimit(n int) ListOption {
+	return func(c *listConfig) { c.limit = n }
+}
+
+func applyListOpts(opts []ListOption) listConfig {
+	var cfg listConfig
+	for _, o := range opts {
+		o(&cfg)
 	}
-	return collectAll(iterResources[AlertGroup](c, ctx, pathWithParams(AlertGroupsPath, params), "alert group"))
+	return cfg
+}
+
+// ListAlertGroups returns all alert groups, optionally filtered.
+func (c *Client) ListAlertGroups(ctx context.Context, filters ...any) ([]AlertGroup, error) {
+	params := url.Values{}
+	var opts []ListOption
+	for _, f := range filters {
+		switch v := f.(type) {
+		case AlertGroupFilter:
+			if v.StartedAt != "" {
+				params.Set("started_at", v.StartedAt)
+			}
+		case ListOption:
+			opts = append(opts, v)
+		}
+	}
+	cfg := applyListOpts(opts)
+	return collectN(iterResources[AlertGroup](c, ctx, pathWithParams(AlertGroupsPath, params), "alert group"), cfg.limit)
 }
 
 // GetAlertGroup retrieves an alert group by ID.
@@ -628,12 +665,13 @@ func (c *Client) DeletePersonalNotificationRule(ctx context.Context, id string) 
 // --- Alerts ---
 
 // ListAlerts returns all alerts, optionally filtered by alert group.
-func (c *Client) ListAlerts(ctx context.Context, alertGroupID string) ([]Alert, error) {
+func (c *Client) ListAlerts(ctx context.Context, alertGroupID string, opts ...ListOption) ([]Alert, error) {
 	params := url.Values{}
 	if alertGroupID != "" {
 		params.Set("alert_group_id", alertGroupID)
 	}
-	return collectAll(iterResources[Alert](c, ctx, pathWithParams("/api/v1/alerts/", params), "alert"))
+	cfg := applyListOpts(opts)
+	return collectN(iterResources[Alert](c, ctx, pathWithParams("/api/v1/alerts/", params), "alert"), cfg.limit)
 }
 
 // GetAlert retrieves an alert by ID.

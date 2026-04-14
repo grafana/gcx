@@ -40,14 +40,13 @@ func writeJSON(w http.ResponseWriter, v any) {
 func TestList(t *testing.T) {
 	tests := []struct {
 		name      string
-		state     string
+		opts      investigations.ListOptions
 		handler   http.HandlerFunc
 		wantCount int
 		wantErr   bool
 	}{
 		{
-			name:  "success",
-			state: "",
+			name: "success",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodGet, r.Method)
 				assert.Contains(t, r.URL.Path, "/investigations/summary")
@@ -63,8 +62,8 @@ func TestList(t *testing.T) {
 			wantCount: 2,
 		},
 		{
-			name:  "filter by state",
-			state: "completed",
+			name: "filter by state",
+			opts: investigations.ListOptions{State: "completed"},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, "completed", r.URL.Query().Get("state"))
 				writeJSON(w, map[string]any{
@@ -78,8 +77,23 @@ func TestList(t *testing.T) {
 			wantCount: 1,
 		},
 		{
-			name:  "empty list",
-			state: "",
+			name: "pagination params",
+			opts: investigations.ListOptions{Limit: 10, Offset: 20},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "10", r.URL.Query().Get("limit"))
+				assert.Equal(t, "20", r.URL.Query().Get("offset"))
+				writeJSON(w, map[string]any{
+					"data": map[string]any{
+						"investigations": []investigations.InvestigationSummary{
+							{ID: "inv-3", Title: "Test 3", State: "running"},
+						},
+					},
+				})
+			},
+			wantCount: 1,
+		},
+		{
+			name: "empty list",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				writeJSON(w, map[string]any{
 					"data": map[string]any{
@@ -90,8 +104,7 @@ func TestList(t *testing.T) {
 			wantCount: 0,
 		},
 		{
-			name:  "server error",
-			state: "",
+			name: "server error",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusInternalServerError)
 				_, _ = w.Write([]byte("internal error"))
@@ -103,7 +116,7 @@ func TestList(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			client := newTestClient(t, tt.handler)
-			summaries, err := client.List(t.Context(), tt.state)
+			summaries, err := client.List(t.Context(), tt.opts)
 			if tt.wantErr {
 				require.Error(t, err)
 				return
@@ -448,7 +461,7 @@ func TestList_InvalidJSON(t *testing.T) {
 		_, _ = w.Write([]byte("{invalid"))
 	}))
 
-	_, err := client.List(t.Context(), "")
+	_, err := client.List(t.Context(), investigations.ListOptions{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to decode")
 }
@@ -462,7 +475,7 @@ func TestList_NullResponse(t *testing.T) {
 		})
 	}))
 
-	summaries, err := client.List(t.Context(), "")
+	summaries, err := client.List(t.Context(), investigations.ListOptions{})
 	require.NoError(t, err)
 	assert.Empty(t, summaries)
 }

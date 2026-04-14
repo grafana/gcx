@@ -197,6 +197,55 @@ func TestListAlertGroups(t *testing.T) {
 	}
 }
 
+func TestListAlertGroups_StopsEarlyWithLimit(t *testing.T) {
+	t.Parallel()
+
+	var srvURL string
+	pageHits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		pageHits++
+		w.Header().Set("Content-Type", "application/json")
+		switch pageHits {
+		case 1:
+			nextURL := srvURL + "/api/v1/alert_groups/?page=2"
+			json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck
+				"results": []map[string]any{
+					{"id": "ag1", "title": "Alert 1", "state": "firing", "alerts_count": 1},
+					{"id": "ag2", "title": "Alert 2", "state": "firing", "alerts_count": 2},
+				},
+				"next": nextURL,
+			})
+		default:
+			// This page should never be fetched when limit=1
+			json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck
+				"results": []map[string]any{
+					{"id": "ag3", "title": "Alert 3", "state": "resolved", "alerts_count": 1},
+				},
+				"next": nil,
+			})
+		}
+	}))
+	defer srv.Close()
+	srvURL = srv.URL
+
+	client := newTestClient(t, srv)
+	items, err := client.ListAlertGroups(context.Background(), oncall.WithLimit(1))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(items) != 1 {
+		t.Fatalf("expected 1 alert group with limit=1, got %d", len(items))
+	}
+	if items[0].ID != "ag1" {
+		t.Errorf("expected first alert group, got %s", items[0].ID)
+	}
+	// Should not have fetched page 2
+	if pageHits > 1 {
+		t.Errorf("expected only 1 page fetch with limit=1, but fetched %d pages", pageHits)
+	}
+}
+
 func TestGetIntegration_NotFound(t *testing.T) {
 	t.Parallel()
 
