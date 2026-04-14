@@ -1,11 +1,18 @@
-## gcx metrics adaptive
+## gcx metrics adaptive segments list
 
-Manage Adaptive Metrics resources
+List Adaptive Metrics segments.
+
+```
+gcx metrics adaptive segments list [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for adaptive
+  -h, --help            help for list
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int       Maximum number of segments to return (0 for no limit)
+  -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -22,9 +29,5 @@ Manage Adaptive Metrics resources
 
 ### SEE ALSO
 
-* [gcx metrics](gcx_metrics.md)	 - Query Prometheus datasources and manage Adaptive Metrics
-* [gcx metrics adaptive exemptions](gcx_metrics_adaptive_exemptions.md)	 - Manage Adaptive Metrics recommendation exemptions.
-* [gcx metrics adaptive recommendations](gcx_metrics_adaptive_recommendations.md)	 - Manage metric recommendations.
-* [gcx metrics adaptive rules](gcx_metrics_adaptive_rules.md)	 - Manage aggregation rules.
 * [gcx metrics adaptive segments](gcx_metrics_adaptive_segments.md)	 - Manage Adaptive Metrics segments.
 
