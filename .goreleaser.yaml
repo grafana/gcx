@@ -39,12 +39,12 @@ builds:
 
 archives:
   - id: gcx
-    builds: [gcx]
-    format: tar.gz
+    ids: [gcx]
+    formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
 
 checksum:
   name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
@@ -53,19 +53,19 @@ checksum:
 release:
   header: "{{ .Env.RELEASE_NOTES }}"
 
-brews:
-  - repository:
+homebrew_casks:
+  - name: gcx
+    ids:
+      - gcx
+    binaries:
+      - gcx
+    homepage: "https://github.com/grafana/gcx"
+    description: "Grafana Cloud CLI"
+    directory: Casks
+    repository:
       owner: grafana
       name: homebrew-grafana
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    directory: .
-    homepage: "https://github.com/grafana/gcx"
-    description: "Grafana Cloud CLI"
-    license: "Apache-2.0"
-    install: |
-      bin.install "gcx"
-    test: |
-      system "#{bin}/gcx", "--version"
 
 changelog:
   disable: true
