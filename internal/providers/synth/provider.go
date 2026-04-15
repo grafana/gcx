@@ -192,39 +192,36 @@ func (l *configLoader) LoadSMConfig(ctx context.Context) (string, string, string
 
 	// Tier 2: auto-discover SM URL from plugin settings when not explicitly configured.
 	if smURL == "" {
-		smURL = l.tryDiscoverSMURL(ctx)
-	}
-
-	if smURL == "" {
-		return "", "", "", errors.New(
-			"SM URL not configured: auto-discovery from Grafana plugin settings failed or no Grafana server configured")
+		var discoverErr error
+		smURL, discoverErr = l.tryDiscoverSMURL(ctx)
+		if smURL == "" {
+			return "", "", "", fmt.Errorf("SM URL not configured: %w", discoverErr)
+		}
 	}
 
 	// Tier 2: auto-discover SM token via register/install when not explicitly configured.
 	if smToken == "" {
-		smToken = l.tryDiscoverSMToken(ctx, smURL)
-	}
-
-	if smToken == "" {
-		return "", "", "", errors.New(
-			"SM token not configured: auto-discovery via register/install failed or no cloud.token configured")
+		var discoverErr error
+		smToken, discoverErr = l.tryDiscoverSMToken(ctx, smURL)
+		if smToken == "" {
+			return "", "", "", fmt.Errorf("SM token not configured: %w", discoverErr)
+		}
 	}
 
 	return smURL, smToken, namespace, nil
 }
 
 // tryDiscoverSMURL attempts to auto-discover the SM URL from Grafana plugin settings
-// and persists it to config on success. Returns empty string on failure.
-func (l *configLoader) tryDiscoverSMURL(ctx context.Context) string {
+// and persists it to config on success. Returns empty string and the reason on failure.
+func (l *configLoader) tryDiscoverSMURL(ctx context.Context) (string, error) {
 	restCfg, err := l.LoadGrafanaConfig(ctx)
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("no Grafana server configured: %w", err)
 	}
 
 	discovered, err := discoverSMURL(ctx, restCfg)
 	if err != nil {
-		slog.DebugContext(ctx, "SM URL auto-discovery failed", "error", err)
-		return ""
+		return "", fmt.Errorf("plugin settings query failed: %w", err)
 	}
 
 	// Persist to config so subsequent runs skip the API call.
@@ -232,29 +229,27 @@ func (l *configLoader) tryDiscoverSMURL(ctx context.Context) string {
 		slog.DebugContext(ctx, "failed to cache discovered SM URL to config", "error", saveErr)
 	}
 
-	return discovered
+	return discovered, nil
 }
 
 // tryDiscoverSMToken attempts to auto-discover the SM token via the SM register/install
-// API using cloud credentials from GCOM. Persists to config on success. Returns empty string on failure.
-func (l *configLoader) tryDiscoverSMToken(ctx context.Context, smURL string) string {
+// API using cloud credentials from GCOM. Persists to config on success. Returns empty string and the reason on failure.
+func (l *configLoader) tryDiscoverSMToken(ctx context.Context, smURL string) (string, error) {
 	cloudCfg, err := l.LoadCloudConfig(ctx)
 	if err != nil {
-		slog.DebugContext(ctx, "SM token auto-discovery skipped: no cloud config", "error", err)
-		return ""
+		return "", fmt.Errorf("no cloud config: %w", err)
 	}
 
 	token, err := registerSMInstall(ctx, smURL, cloudCfg.Token, cloudCfg.Stack)
 	if err != nil {
-		slog.DebugContext(ctx, "SM token auto-discovery failed", "error", err)
-		return ""
+		return "", fmt.Errorf("register/install API failed: %w", err)
 	}
 
 	if saveErr := l.SaveProviderConfig(ctx, "synth", "sm-token", token); saveErr != nil {
 		slog.DebugContext(ctx, "failed to cache discovered SM token to config", "error", saveErr)
 	}
 
-	return token
+	return token, nil
 }
 
 // registerSMInstall calls the SM register/install endpoint to obtain an access token.
