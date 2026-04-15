@@ -210,6 +210,46 @@ func TestRefreshTransport_ReturnsErrRefreshTokenExpired_On401(t *testing.T) {
 	}
 }
 
+func TestRefreshTransport_PreservesExistingAuthorizationHeader(t *testing.T) {
+	var gotHeader string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHeader = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	transport := &auth.RefreshTransport{
+		Base:          http.DefaultTransport,
+		ProxyEndpoint: backend.URL,
+		Token:         "gat_test-token",
+		ExpiresAt:     time.Now().Add(1 * time.Hour),
+	}
+
+	client := &http.Client{Transport: transport}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, backend.URL+"/api/test", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	req.SetBasicAuth("12345", "glc_secret")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if gotHeader == "Bearer gat_test-token" {
+		t.Fatal("RefreshTransport overwrote existing Authorization header with bearer token")
+	}
+	if gotHeader == "" {
+		t.Fatal("Authorization header was not forwarded")
+	}
+	// Verify it's still the Basic auth header.
+	if want := "Basic MTIzNDU6Z2xjX3NlY3JldA=="; gotHeader != want {
+		t.Fatalf("expected Authorization header %q, got %q", want, gotHeader)
+	}
+}
+
 func TestRefreshTransport_RejectsExpiredRefreshToken(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

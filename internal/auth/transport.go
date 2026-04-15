@@ -39,6 +39,12 @@ type RefreshTransport struct {
 }
 
 func (t *RefreshTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// If the caller already set an Authorization header (e.g. Basic auth for
+	// adaptive metrics), respect it and skip OAuth bearer injection.
+	if req.Header.Get("Authorization") != "" {
+		return t.base().RoundTrip(req)
+	}
+
 	if err := t.maybeRefresh(req); err != nil {
 		return nil, fmt.Errorf("token refresh failed: %w", err)
 	}
