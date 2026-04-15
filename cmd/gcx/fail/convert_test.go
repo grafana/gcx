@@ -263,8 +263,9 @@ func TestErrorToDetailedError_FleetScopeError(t *testing.T) {
 			wantScope: "fleet-management:write",
 		},
 		{
-			name: "delete pipeline invalid scope is not matched",
-			err:  errors.New(`fleet: delete pipeline abc123: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
+			name:      "delete pipeline invalid scope suggests fleet-management:write",
+			err:       errors.New(`fleet: delete pipeline abc123: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
+			wantScope: "fleet-management:write",
 		},
 	}
 

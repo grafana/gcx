@@ -386,7 +386,7 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 
 	// Fleet API scope error on write operations.
 	if strings.Contains(msg, "fleet:") && strings.Contains(msg, "invalid scope") &&
-		(strings.Contains(msg, "create ") || strings.Contains(msg, "update ")) {
+		(strings.Contains(msg, "create ") || strings.Contains(msg, "update ") || strings.Contains(msg, "delete ")) {
 		return &DetailedError{
 			Parent:  err,
 			Summary: "Fleet Management: permission denied",
