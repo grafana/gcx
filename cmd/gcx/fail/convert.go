@@ -385,6 +385,18 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 		}, true
 	}
 
+	// Stack info lookup forbidden — access policy missing stacks:read scope.
+	if strings.Contains(msg, "failed to get stack info for") && strings.Contains(msg, "status 403") {
+		return &DetailedError{
+			Parent:  err,
+			Summary: "Cloud stack lookup: permission denied",
+			Suggestions: []string{
+				"Ensure your access policy includes the stacks:read scope",
+			},
+			ExitCode: new(ExitAuthFailure),
+		}, true
+	}
+
 	// Setup/instrumentation prefixed errors — surface them directly instead of "Unexpected error".
 	if strings.HasPrefix(msg, "setup/instrumentation:") || strings.Contains(msg, "setup/instrumentation:") {
 		// Extract the message after the prefix for the summary.

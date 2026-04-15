@@ -172,6 +172,55 @@ func TestErrorToDetailedError_CobraUnknownCommandError(t *testing.T) {
 	assert.Equal(t, "Run 'gcx kg --help' for full usage and examples", got.Suggestions[0])
 }
 
+func TestErrorToDetailedError_CloudStackLookupForbidden(t *testing.T) {
+	tests := []struct {
+		name        string
+		err         error
+		wantMatch   bool
+		wantSummary string
+	}{
+		{
+			name:        "k6 stack info 403 suggests stacks:read scope",
+			err:         errors.New("k6: load cloud config: failed to get stack info for \"mystack\": status 403: forbidden"),
+			wantMatch:   true,
+			wantSummary: "Cloud stack lookup: permission denied",
+		},
+		{
+			name:        "faro stack info 403 also matches",
+			err:         errors.New("cloud config required for sourcemap upload: failed to get stack info for \"mystack\": status 403: forbidden"),
+			wantMatch:   true,
+			wantSummary: "Cloud stack lookup: permission denied",
+		},
+		{
+			name:      "stack info 404 is not matched",
+			err:       errors.New("k6: load cloud config: failed to get stack info for \"mystack\": status 404: not found"),
+			wantMatch: false,
+		},
+		{
+			name:      "403 without stack info is not matched",
+			err:       errors.New("k6: list projects: status 403: forbidden"),
+			wantMatch: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tc.err)
+
+			if !tc.wantMatch {
+				assert.Equal(t, "Unexpected error", got.Summary)
+				return
+			}
+
+			assert.Equal(t, tc.wantSummary, got.Summary)
+			require.NotNil(t, got.ExitCode)
+			assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+			require.Len(t, got.Suggestions, 1)
+			assert.Contains(t, got.Suggestions[0], "stacks:read")
+		})
+	}
+}
+
 func TestErrorToDetailedError_SMURLNotConfigured(t *testing.T) {
 	err := fmt.Errorf("failed to load SM config for checks: %w",
 		fmt.Errorf("SM URL not configured: %w", errors.New("no Grafana server configured: grafana config is required")))
