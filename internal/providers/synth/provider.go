@@ -310,14 +310,25 @@ func registerSMInstall(ctx context.Context, smURL, cloudToken string, stack clou
 // discoverSMURL fetches the SM API URL from the SM plugin settings endpoint.
 // This queries /api/plugins/grafana-synthetic-monitoring-app/settings and reads
 // jsonData.apiHost, which contains the regional SM API base URL.
+//
+// In OAuth proxy mode, requests are routed through cfg.Host (the proxy) which
+// forwards them to the real Grafana server with proper auth. In direct mode,
+// requests go straight to cfg.GrafanaURL with the configured bearer token.
 func discoverSMURL(ctx context.Context, cfg config.NamespacedRESTConfig) (string, error) {
 	httpClient, err := rest.HTTPClientFor(&cfg.Config)
 	if err != nil {
 		return "", fmt.Errorf("failed to create HTTP client: %w", err)
 	}
 
+	// In OAuth proxy mode, cfg.Host routes through the proxy which handles auth.
+	// In direct mode, use GrafanaURL (the real Grafana server).
+	baseURL := cfg.GrafanaURL
+	if cfg.IsOAuthProxy() {
+		baseURL = cfg.Host
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		cfg.GrafanaURL+"/api/plugins/grafana-synthetic-monitoring-app/settings", nil)
+		baseURL+"/api/plugins/grafana-synthetic-monitoring-app/settings", nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}

@@ -230,10 +230,9 @@ current-context: default
 	assert.Equal(t, wantURL, cfg.GetCurrentContext().Providers["synth"]["sm-url"])
 }
 
-// TestDiscoverSMURL_UsesGrafanaURL verifies that discoverSMURL uses GrafanaURL
-// (the original Grafana server) rather than Host (which may be a proxy endpoint).
-// This prevents a bug where OAuth proxy users hit the wrong endpoint.
-func TestDiscoverSMURL_UsesGrafanaURL(t *testing.T) {
+// TestDiscoverSMURL_DirectMode verifies that discoverSMURL uses GrafanaURL
+// in direct (non-proxy) mode.
+func TestDiscoverSMURL_DirectMode(t *testing.T) {
 	const wantURL = "https://synthetic-monitoring-api-eu-west-2.grafana.net"
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -248,13 +247,52 @@ func TestDiscoverSMURL_UsesGrafanaURL(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Simulate OAuth proxy mode: Host points to a proxy, GrafanaURL points to the real server.
 	cfg := config.NamespacedRESTConfig{
 		GrafanaURL: srv.URL,
 	}
-	cfg.Host = "https://proxy.example.com/api/cli/v1/proxy"
+	cfg.Host = srv.URL
 
 	got, err := discoverSMURL(context.Background(), cfg)
+	require.NoError(t, err)
+	assert.Equal(t, wantURL, got)
+}
+
+// TestDiscoverSMURL_OAuthProxyMode verifies that discoverSMURL routes through
+// cfg.Host (the proxy) in OAuth proxy mode, not cfg.GrafanaURL (the direct server).
+func TestDiscoverSMURL_OAuthProxyMode(t *testing.T) {
+	const wantURL = "https://synthetic-monitoring-api-us-east-0.grafana.net"
+
+	// This server simulates the proxy. In OAuth proxy mode, cfg.Host is set to
+	// <proxy>/api/cli/v1/proxy, so the full request path becomes
+	// /api/cli/v1/proxy/api/plugins/grafana-synthetic-monitoring-app/settings.
+	const proxyPrefix = "/api/cli/v1/proxy"
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == proxyPrefix+"/api/plugins/grafana-synthetic-monitoring-app/settings" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"jsonData": map[string]any{"apiHost": wantURL},
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer proxy.Close()
+
+	// Build a config that looks like OAuth proxy mode.
+	// IsOAuthProxy() returns true when the oauthTransport is set, which happens
+	// via NewNamespacedRESTConfig when proxy-endpoint + oauth-token are present.
+	ctx := config.Context{
+		Name: "test",
+		Grafana: &config.GrafanaConfig{
+			Server:        "https://grafana.example.com",
+			ProxyEndpoint: proxy.URL,
+			OAuthToken:    "gat_test",
+		},
+	}
+	restCfg := config.NewNamespacedRESTConfig(context.Background(), ctx)
+	require.True(t, restCfg.IsOAuthProxy(), "config should be in OAuth proxy mode")
+
+	got, err := discoverSMURL(context.Background(), restCfg)
 	require.NoError(t, err)
 	assert.Equal(t, wantURL, got)
 }
