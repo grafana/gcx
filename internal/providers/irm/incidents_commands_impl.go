@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/shared"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -24,9 +25,11 @@ import (
 // ---------------------------------------------------------------------------
 
 type incidentListOpts struct {
-	IO     cmdio.Options
-	Limit  int
-	Labels []string
+	IO       cmdio.Options
+	Limit    int
+	Labels   []string
+	DateFrom string
+	DateTo   string
 }
 
 func (o *incidentListOpts) setup(flags *pflag.FlagSet) {
@@ -36,6 +39,8 @@ func (o *incidentListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of incidents to return")
 	flags.StringSliceVar(&o.Labels, "labels", nil, "Filter by labels (key:value format, may be repeated)")
+	flags.StringVar(&o.DateFrom, "from", "", "Start of time range (RFC3339, unix timestamp, or relative e.g. now-7d)")
+	flags.StringVar(&o.DateTo, "to", "", "End of time range (RFC3339, unix timestamp, or relative e.g. now)")
 }
 
 func (o *incidentListOpts) Validate() error {
@@ -45,6 +50,17 @@ func (o *incidentListOpts) Validate() error {
 	for _, l := range o.Labels {
 		if !strings.Contains(l, ":") {
 			return fmt.Errorf("invalid label %q: must be in key:value format", l)
+		}
+	}
+	now := time.Now()
+	if o.DateFrom != "" {
+		if _, err := shared.ParseTime(o.DateFrom, now); err != nil {
+			return fmt.Errorf("invalid --from value: %w", err)
+		}
+	}
+	if o.DateTo != "" {
+		if _, err := shared.ParseTime(o.DateTo, now); err != nil {
+			return fmt.Errorf("invalid --to value: %w", err)
 		}
 	}
 	return nil
@@ -76,11 +92,22 @@ func NewListCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			query := IncidentQuery{
-				Limit:       opts.Limit,
-				QueryString: BuildQueryString(opts.Labels),
+			q := IncidentQuery{
+				Limit:          opts.Limit,
+				IncidentLabels: opts.Labels,
 			}
-			crud, restCfg, err := NewTypedCRUD(ctx, loader, query)
+			now := time.Now()
+			if opts.DateFrom != "" {
+				t, _ := shared.ParseTime(opts.DateFrom, now)
+				ft := FlexTime(t)
+				q.DateFrom = &ft
+			}
+			if opts.DateTo != "" {
+				t, _ := shared.ParseTime(opts.DateTo, now)
+				ft := FlexTime(t)
+				q.DateTo = &ft
+			}
+			crud, restCfg, err := NewTypedCRUD(ctx, loader, q)
 			if err != nil {
 				return err
 			}

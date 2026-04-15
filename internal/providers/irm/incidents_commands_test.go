@@ -203,38 +203,8 @@ func TestActivityTableCodec_LongBodyTruncated(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// buildQueryString / label validation tests
+// label validation tests
 // ---------------------------------------------------------------------------
-
-func TestBuildQueryString(t *testing.T) {
-	tests := []struct {
-		name   string
-		labels []string
-		want   string
-	}{
-		{
-			name:   "no labels produces empty string",
-			labels: nil,
-			want:   "",
-		},
-		{
-			name:   "single label",
-			labels: []string{"team:platform"},
-			want:   "field:Tags:'team:platform'",
-		},
-		{
-			name:   "multiple labels",
-			labels: []string{"team:platform", "env:production"},
-			want:   "field:Tags:'team:platform' field:Tags:'env:production'",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := incidents.BuildQueryString(tt.labels)
-			assert.Equal(t, tt.want, got)
-		})
-	}
-}
 
 func TestListOpts_LabelValidation(t *testing.T) {
 	tests := []struct {
@@ -254,12 +224,61 @@ func TestListOpts_LabelValidation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := incidents.NewTestListCommand(tt.labels)
+			cmd := incidents.NewTestListCommand(tt.labels, "", "")
 			cmd.SetArgs([]string{})
 			err := cmd.Execute()
 			if tt.wantErr != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestListOpts_DateValidation(t *testing.T) {
+	tests := []struct {
+		name     string
+		dateFrom string
+		dateTo   string
+		wantErr  string
+	}{
+		{
+			name: "no dates passes",
+		},
+		{
+			name:     "valid RFC3339 from",
+			dateFrom: "2024-06-15T10:30:00Z",
+		},
+		{
+			name:   "valid relative to",
+			dateTo: "now",
+		},
+		{
+			name:     "valid relative range",
+			dateFrom: "now-7d",
+			dateTo:   "now",
+		},
+		{
+			name:     "invalid from",
+			dateFrom: "not-a-date",
+			wantErr:  "invalid --from value",
+		},
+		{
+			name:    "invalid to",
+			dateTo:  "not-a-date",
+			wantErr: "invalid --to value",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := incidents.NewTestListCommand(nil, tt.dateFrom, tt.dateTo)
+			cmd.SetArgs([]string{})
+			err := cmd.Execute()
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
