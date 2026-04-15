@@ -389,7 +389,7 @@ func TestClient_UpdateConfig(t *testing.T) {
 				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 
 				var cfg traces.TenantConfig
-				require.NoError(t, json.NewDecoder(r.Body).Decode(&cfg))
+				assert.NoError(t, json.NewDecoder(r.Body).Decode(&cfg))
 				assert.True(t, cfg.DisableAnomalyPolicies)
 				assert.True(t, cfg.SpanNameSemconvTransformEnabled)
 				assert.Equal(t, "v1.3.0", cfg.SpanNameSemconvVersion)

@@ -397,6 +397,8 @@ var commandAnnotations = map[string]annotation{
 	"gcx traces query":   {Cost: "large", Hint: "'{ span.http.status_code >= 500 }' --since 1h --limit 20 -o json"},
 
 	// Traces adaptive
+	"gcx traces adaptive config get":              {Cost: "small"},
+	"gcx traces adaptive config update":           {Cost: "small"},
 	"gcx traces adaptive policies create":         {Cost: "small"},
 	"gcx traces adaptive policies delete":         {Cost: "small"},
 	"gcx traces adaptive policies get":            {Cost: "small"},

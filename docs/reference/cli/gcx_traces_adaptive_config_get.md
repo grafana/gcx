@@ -1,11 +1,17 @@
-## gcx traces adaptive
+## gcx traces adaptive config get
 
-Manage Adaptive Traces resources
+Get Adaptive Traces tenant configuration.
+
+```
+gcx traces adaptive config get [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for adaptive
+  -h, --help            help for get
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: json, table, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -22,8 +28,5 @@ Manage Adaptive Traces resources
 
 ### SEE ALSO
 
-* [gcx traces](gcx_traces.md)	 - Query Tempo datasources and manage Adaptive Traces
 * [gcx traces adaptive config](gcx_traces_adaptive_config.md)	 - Manage Adaptive Traces tenant configuration.
-* [gcx traces adaptive policies](gcx_traces_adaptive_policies.md)	 - Manage Adaptive Traces sampling policies.
-* [gcx traces adaptive recommendations](gcx_traces_adaptive_recommendations.md)	 - Manage Adaptive Traces recommendations.
 
