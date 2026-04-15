@@ -225,37 +225,46 @@ func TestErrorToDetailedError_FleetScopeError(t *testing.T) {
 	tests := []struct {
 		name      string
 		err       error
-		wantMatch bool
+		wantScope string
 	}{
 		{
 			name:      "list pipelines invalid scope suggests fleet-management:read",
 			err:       errors.New(`fleet: list pipelines: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantMatch: true,
+			wantScope: "fleet-management:read",
 		},
 		{
 			name:      "list collectors invalid scope suggests fleet-management:read",
 			err:       errors.New(`fleet: list collectors: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantMatch: true,
+			wantScope: "fleet-management:read",
 		},
 		{
 			name:      "get pipeline invalid scope suggests fleet-management:read",
 			err:       errors.New(`fleet: get pipeline abc123: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantMatch: true,
+			wantScope: "fleet-management:read",
 		},
 		{
-			name:      "create pipeline invalid scope is not matched",
+			name:      "create pipeline invalid scope suggests fleet-management:write",
 			err:       errors.New(`fleet: create pipeline: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantMatch: false,
+			wantScope: "fleet-management:write",
 		},
 		{
-			name:      "update pipeline invalid scope is not matched",
+			name:      "update pipeline invalid scope suggests fleet-management:write",
 			err:       errors.New(`fleet: update pipeline abc123: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantMatch: false,
+			wantScope: "fleet-management:write",
 		},
 		{
-			name:      "delete pipeline invalid scope is not matched",
-			err:       errors.New(`fleet: delete pipeline abc123: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantMatch: false,
+			name:      "create collector invalid scope suggests fleet-management:write",
+			err:       errors.New(`fleet: create collector: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
+			wantScope: "fleet-management:write",
+		},
+		{
+			name:      "update collector invalid scope suggests fleet-management:write",
+			err:       errors.New(`fleet: update collector abc123: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
+			wantScope: "fleet-management:write",
+		},
+		{
+			name: "delete pipeline invalid scope is not matched",
+			err:  errors.New(`fleet: delete pipeline abc123: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
 		},
 	}
 
@@ -263,7 +272,7 @@ func TestErrorToDetailedError_FleetScopeError(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got := fail.ErrorToDetailedError(tc.err)
 
-			if !tc.wantMatch {
+			if tc.wantScope == "" {
 				assert.Equal(t, "Unexpected error", got.Summary)
 				return
 			}
@@ -272,7 +281,7 @@ func TestErrorToDetailedError_FleetScopeError(t *testing.T) {
 			require.NotNil(t, got.ExitCode)
 			assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
 			require.Len(t, got.Suggestions, 1)
-			assert.Contains(t, got.Suggestions[0], "fleet-management:read")
+			assert.Contains(t, got.Suggestions[0], tc.wantScope)
 		})
 	}
 }

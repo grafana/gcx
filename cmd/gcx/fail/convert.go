@@ -384,6 +384,19 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 		}, true
 	}
 
+	// Fleet API scope error on write operations.
+	if strings.Contains(msg, "fleet:") && strings.Contains(msg, "invalid scope") &&
+		(strings.Contains(msg, "create ") || strings.Contains(msg, "update ")) {
+		return &DetailedError{
+			Parent:  err,
+			Summary: "Fleet Management: permission denied",
+			Suggestions: []string{
+				"Ensure your cloud.token access policy includes the fleet-management:write scope",
+			},
+			ExitCode: new(ExitAuthFailure),
+		}, true
+	}
+
 	// Fleet management not available.
 	if strings.Contains(msg, "fleet management endpoint is not available") ||
 		strings.Contains(msg, "fleet management instance ID is not available") {
