@@ -191,13 +191,8 @@ var commandAnnotations = map[string]annotation{
 	// -----------------------------------------------------------------------
 	// Knowledge Graph provider
 	// -----------------------------------------------------------------------
-	"gcx kg datasets activate":       {Cost: "small"},
-	"gcx kg datasets list":           {Cost: "small"},
-	"gcx kg enable":                  {Cost: "small"},
 	"gcx kg entities list":           {Cost: "medium", Hint: "--type <type> --since 1h -o json"},
 	"gcx kg entities show":           {Cost: "medium", Hint: "<Type--Name> --type <type> -o json"},
-	"gcx kg entity-types list":       {Cost: "small"},
-	"gcx kg graph-config":            {Cost: "small"},
 	"gcx kg health":                  {Cost: "medium", Hint: "--type <type> --since 1h -o json"},
 	"gcx kg insights active":         {Cost: "medium", Hint: "--type <type> --severity critical -o json"},
 	"gcx kg insights entity-metric":  {Cost: "medium", Hint: "<Type--Name> --insight-id <id>"},
@@ -207,7 +202,6 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg insights source-metrics": {Cost: "medium", Hint: "--insight-id <id> --since 1h"},
 	"gcx kg insights summary":        {Cost: "medium", Hint: "<Type--Name> -o json"},
 	"gcx kg inspect":                 {Cost: "medium", Hint: "<Type--Name> -o json"},
-	"gcx kg kpi-display create":      {Cost: "small"},
 	"gcx kg model-rules create":      {Cost: "small"},
 	"gcx kg open":                    {Cost: "small"},
 	"gcx kg relabel-rules create":    {Cost: "small"},
@@ -220,10 +214,8 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg search example":          {Cost: "small"},
 	"gcx kg search insights":         {Cost: "medium", Hint: "--type <type> --since 1h"},
 	"gcx kg search sample":           {Cost: "small"},
-	"gcx kg setup":                   {Cost: "small"},
 	"gcx kg status":                  {Cost: "small"},
 	"gcx kg suppressions create":     {Cost: "small"},
-	"gcx kg vendors list":            {Cost: "small"},
 
 	// -----------------------------------------------------------------------
 	// Logs provider

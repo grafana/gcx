@@ -22,6 +22,6 @@ Push model rules to the Knowledge Graph.
 
 ### SEE ALSO
 
-* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph entity types, rules, and datasets
+* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
 * [gcx kg model-rules create](gcx_kg_model-rules_create.md)	 - Upload model rules from a YAML file.
 
