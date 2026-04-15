@@ -224,7 +224,7 @@ func TestListOpts_LabelValidation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := incidents.NewTestListCommand(tt.labels, "", "")
+			cmd := irm.NewTestListCommand(tt.labels, "", "")
 			cmd.SetArgs([]string{})
 			err := cmd.Execute()
 			if tt.wantErr != "" {
@@ -271,7 +271,7 @@ func TestListOpts_DateValidation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := incidents.NewTestListCommand(nil, tt.dateFrom, tt.dateTo)
+			cmd := irm.NewTestListCommand(nil, tt.dateFrom, tt.dateTo)
 			cmd.SetArgs([]string{})
 			err := cmd.Execute()
 			if tt.wantErr != "" {
