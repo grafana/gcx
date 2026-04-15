@@ -81,6 +81,14 @@ uid2    API Latency P99 < 200ms     99.50%   30d      at_risk
 uid3    Payment Processing          99.95%   30d      breaching
 ```
 
+**Visualize metrics directly in your terminal:**
+
+```sh
+$ gcx metrics query 'topk(6, sum by (container) (rate(container_cpu_usage_seconds_total{namespace="ditl-demo-prod", container!="", container!="POD"}[5m])))' --since 6h -o graph
+```
+
+![Terminal graph output](./graph_example.png)
+
 ## Install
 
 **Quick install (Linux/macOS):**
