@@ -1,21 +1,27 @@
-package assistant
+package assistant_test
 
 import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/grafana/gcx/cmd/gcx/assistant"
 )
 
-func TestNewAssistantStreamingHTTPClient_TimeoutMatchesStreamSeconds(t *testing.T) {
-	c := newAssistantStreamingHTTPClient(context.Background(), 420)
-	if c.Timeout != 420*time.Second {
-		t.Fatalf("Timeout: got %v, want %v", c.Timeout, 420*time.Second)
-	}
-}
-
-func TestNewAssistantStreamingHTTPClient_DefaultsWhenNonPositive(t *testing.T) {
-	c := newAssistantStreamingHTTPClient(context.Background(), 0)
-	if c.Timeout != 300*time.Second {
-		t.Fatalf("Timeout: got %v, want default 300s", c.Timeout)
+func TestNewAssistantStreamingHTTPClient(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		input int
+		want  time.Duration
+	}{
+		{"positive value", 420, 420 * time.Second},
+		{"non-positive defaults to 300s", 0, 300 * time.Second},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := assistant.NewAssistantStreamingHTTPClient(context.Background(), tc.input)
+			if c.Timeout != tc.want {
+				t.Fatalf("Timeout: got %v, want %v", c.Timeout, tc.want)
+			}
+		})
 	}
 }
