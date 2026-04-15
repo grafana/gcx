@@ -22,7 +22,7 @@ Search Knowledge Graph entities or insights.
 
 ### SEE ALSO
 
-* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph entity types, rules, and datasets
+* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
 * [gcx kg search entities](gcx_kg_search_entities.md)	 - Search for entities by type.
 * [gcx kg search example](gcx_kg_search_example.md)	 - Print an example search request YAML.
 * [gcx kg search insights](gcx_kg_search_insights.md)	 - Search for insights matching a query.

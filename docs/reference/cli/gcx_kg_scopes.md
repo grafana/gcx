@@ -22,6 +22,6 @@ Manage Knowledge Graph entity scopes.
 
 ### SEE ALSO
 
-* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph entity types, rules, and datasets
+* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
 * [gcx kg scopes list](gcx_kg_scopes_list.md)	 - List entity scopes.
 

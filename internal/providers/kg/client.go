@@ -27,7 +27,6 @@ const (
 	searchPath       = pluginResourcePath + "/asserts/api-server/v1/search"
 	rulesPath        = pluginResourcePath + "/asserts/api-server/v1/config/prom-rules/"
 	entityLookupPath = pluginResourcePath + "/asserts/api-server/v1/entity"
-	graphDisplayPath = pluginResourcePath + "/asserts/api-server/v1/config/display/graph"
 )
 
 // Client is an HTTP client for the Knowledge Graph (Asserts) API.
@@ -68,11 +67,6 @@ func (c *Client) getJSON(ctx context.Context, path string, v any) error {
 // If v is nil, the response body is discarded.
 func (c *Client) postJSON(ctx context.Context, path string, body, v any) error {
 	return c.doJSON(ctx, http.MethodPost, path, body, v)
-}
-
-// putJSON performs a PUT request with a JSON body and decodes the response into v.
-func (c *Client) putJSON(ctx context.Context, path string, body, v any) error {
-	return c.doJSON(ctx, http.MethodPut, path, body, v)
 }
 
 // doJSON performs an HTTP request with a JSON body and decodes the response into v.
@@ -173,18 +167,8 @@ func readError(resp *http.Response) *APIError {
 }
 
 // ---------------------------------------------------------------------------
-// Lifecycle operations
+// Stack status
 // ---------------------------------------------------------------------------
-
-// Setup initializes the Asserts plugin.
-func (c *Client) Setup(ctx context.Context) error {
-	return c.postJSON(ctx, pluginResourcePath+"/asserts-setup", struct{}{}, nil)
-}
-
-// Enable enables the Knowledge Graph feature.
-func (c *Client) Enable(ctx context.Context) error {
-	return c.postJSON(ctx, pluginResourcePath+"/asserts/api-server/v2/stack/enable", struct{}{}, nil)
-}
 
 // GetStatus retrieves the current Knowledge Graph status.
 func (c *Client) GetStatus(ctx context.Context) (*Status, error) {
@@ -193,87 +177,6 @@ func (c *Client) GetStatus(ctx context.Context) (*Status, error) {
 		return nil, fmt.Errorf("kg: get status: %w", err)
 	}
 	return &status, nil
-}
-
-// ---------------------------------------------------------------------------
-// Dataset operations
-// ---------------------------------------------------------------------------
-
-// GetDatasets retrieves the current dataset configuration.
-func (c *Client) GetDatasets(ctx context.Context) (*DatasetsResponse, error) {
-	var result DatasetsResponse
-	if err := c.getJSON(ctx, pluginResourcePath+"/asserts/api-server/v2/stack/datasets", &result); err != nil {
-		return nil, fmt.Errorf("kg: get datasets: %w", err)
-	}
-	return &result, nil
-}
-
-// ActivateDataset activates a dataset (kubernetes, otel, prometheus, aws, etc).
-func (c *Client) ActivateDataset(ctx context.Context, dataset string, cfg DatasetConfig) error {
-	body := DatasetActivationRequest{
-		DatasetType:     dataset,
-		DisabledVendors: []string{},
-		FilterGroups:    cfg.FilterGroups,
-	}
-	if len(body.FilterGroups) == 0 {
-		body.FilterGroups = []FilterGroup{{
-			Filters:         []string{},
-			EnvLabel:        defaultEnvLabel(dataset),
-			SiteLabel:       "",
-			EnvLabelValues:  []string{},
-			SiteLabelValues: []string{},
-		}}
-	}
-	return c.putJSON(ctx, pluginResourcePath+"/asserts/api-server/v2/stack/dataset", body, nil)
-}
-
-// GetVendors retrieves the list of detected vendors.
-// The API may return either {"vendors": [...]} or a bare [...] array.
-func (c *Client) GetVendors(ctx context.Context) ([]Vendor, error) {
-	path := pluginResourcePath + "/asserts/api-server/v2/stack/dataset/prometheus/vendors"
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.host+path, nil)
-	if err != nil {
-		return nil, fmt.Errorf("kg: create request: %w", err)
-	}
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("kg: execute request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return nil, readError(resp)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("kg: read vendors response: %w", err)
-	}
-
-	// The API returns {"items": [...]} with vendor objects.
-	var wrapped struct {
-		Items []Vendor `json:"items"`
-	}
-	if err := json.Unmarshal(body, &wrapped); err != nil {
-		return nil, fmt.Errorf("kg: decode vendors: %w", err)
-	}
-	return wrapped.Items, nil
-}
-
-func defaultEnvLabel(dataset string) string {
-	switch dataset {
-	case "otel":
-		return "k8s_cluster_name"
-	case "aws":
-		return "account_id"
-	case "azure":
-		return "subscription_id"
-	case "gcp":
-		return "project_id"
-	default:
-		return "cluster"
-	}
 }
 
 // ---------------------------------------------------------------------------
@@ -298,15 +201,6 @@ func (c *Client) UploadSuppressions(ctx context.Context, yamlContent string) err
 // UploadRelabelRules uploads relabel rules configuration.
 func (c *Client) UploadRelabelRules(ctx context.Context, yamlContent string) error {
 	return c.doYAML(ctx, http.MethodPut, pluginResourcePath+"/asserts/api-server/v2/config/relabel-rules/prologue", yamlContent)
-}
-
-// ---------------------------------------------------------------------------
-// Dashboard configuration
-// ---------------------------------------------------------------------------
-
-// ConfigureKPIDisplay configures the KPI drawer display settings.
-func (c *Client) ConfigureKPIDisplay(ctx context.Context, cfg *KPIDisplayConfig) error {
-	return c.postJSON(ctx, pluginResourcePath+"/asserts/api-server/v1/config/display/kpi", cfg, nil)
 }
 
 // ---------------------------------------------------------------------------
@@ -528,17 +422,4 @@ func (c *Client) GetRule(ctx context.Context, name string) (*Rule, error) {
 		return nil, fmt.Errorf("kg: rule %q not found", name)
 	}
 	return &wrapper.Rules[0], nil
-}
-
-// ---------------------------------------------------------------------------
-// Graph display config
-// ---------------------------------------------------------------------------
-
-// GetGraphDisplayConfig retrieves the graph display configuration.
-func (c *Client) GetGraphDisplayConfig(ctx context.Context) (*GraphDisplayConfig, error) {
-	var result GraphDisplayConfig
-	if err := c.getJSON(ctx, graphDisplayPath, &result); err != nil {
-		return nil, fmt.Errorf("kg: get graph display config: %w", err)
-	}
-	return &result, nil
 }

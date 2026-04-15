@@ -30,27 +30,6 @@ var (
 		Plural:       "rules",
 	}
 
-	datasetDescriptor = resources.Descriptor{
-		GroupVersion: kgGroupVersion,
-		Kind:         "Dataset",
-		Singular:     "dataset",
-		Plural:       "datasets",
-	}
-
-	vendorDescriptor = resources.Descriptor{
-		GroupVersion: kgGroupVersion,
-		Kind:         "Vendor",
-		Singular:     "vendor",
-		Plural:       "vendors",
-	}
-
-	entityTypeDescriptor = resources.Descriptor{
-		GroupVersion: kgGroupVersion,
-		Kind:         "EntityType",
-		Singular:     "entitytype",
-		Plural:       "entitytypes",
-	}
-
 	scopeDescriptor = resources.Descriptor{
 		GroupVersion: kgGroupVersion,
 		Kind:         "Scope",
@@ -63,15 +42,6 @@ var (
 
 // RuleDescriptor returns the resource descriptor for KG rules.
 func RuleDescriptor() resources.Descriptor { return staticDescriptor }
-
-// DatasetDescriptor returns the resource descriptor for KG datasets.
-func DatasetDescriptor() resources.Descriptor { return datasetDescriptor }
-
-// VendorDescriptor returns the resource descriptor for KG vendors.
-func VendorDescriptor() resources.Descriptor { return vendorDescriptor }
-
-// EntityTypeDescriptor returns the resource descriptor for KG entity types.
-func EntityTypeDescriptor() resources.Descriptor { return entityTypeDescriptor }
 
 // ScopeDescriptor returns the resource descriptor for KG scopes.
 func ScopeDescriptor() resources.Descriptor { return scopeDescriptor }
@@ -214,100 +184,6 @@ func RuleToResource(rule Rule, namespace string) (*resources.Resource, error) {
 	}
 
 	return resources.MustFromObject(obj, resources.SourceInfo{}), nil
-}
-
-// ---------------------------------------------------------------------------
-// Dataset adapter
-// ---------------------------------------------------------------------------
-
-// DatasetSchema returns a JSON Schema for the KG Dataset resource type.
-func DatasetSchema() json.RawMessage { return mustSchema("KGDataset", "Dataset", datasetSpecSchema()) }
-
-func datasetSpecSchema() map[string]any {
-	return map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"name":       map[string]any{"type": "string"},
-			"detected":   map[string]any{"type": "boolean"},
-			"enabled":    map[string]any{"type": "boolean"},
-			"configured": map[string]any{"type": "boolean"},
-		},
-		"required": []string{"name"},
-	}
-}
-
-// NewDatasetAdapterFactory returns a lazy adapter.Factory for KG datasets.
-func NewDatasetAdapterFactory(loader RESTConfigLoader) adapter.Factory {
-	return newListOnlyFactory[DatasetItem](loader, datasetDescriptor,
-		func(client *Client, ctx context.Context) ([]DatasetItem, error) {
-			resp, err := client.GetDatasets(ctx)
-			if err != nil {
-				return nil, err
-			}
-			return resp.Items, nil
-		})
-}
-
-// ---------------------------------------------------------------------------
-// Vendor adapter
-// ---------------------------------------------------------------------------
-
-// VendorSchema returns a JSON Schema for the KG Vendor resource type.
-func VendorSchema() json.RawMessage { return mustSchema("KGVendor", "Vendor", vendorSpecSchema()) }
-
-func vendorSpecSchema() map[string]any {
-	return map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"name":    map[string]any{"type": "string"},
-			"enabled": map[string]any{"type": "boolean"},
-		},
-		"required": []string{"name"},
-	}
-}
-
-// NewVendorAdapterFactory returns a lazy adapter.Factory for KG vendors.
-func NewVendorAdapterFactory(loader RESTConfigLoader) adapter.Factory {
-	return newListOnlyFactory[Vendor](loader, vendorDescriptor,
-		func(client *Client, ctx context.Context) ([]Vendor, error) {
-			return client.GetVendors(ctx)
-		})
-}
-
-// ---------------------------------------------------------------------------
-// EntityType adapter
-// ---------------------------------------------------------------------------
-
-// EntityTypeSchema returns a JSON Schema for the KG EntityType resource type.
-func EntityTypeSchema() json.RawMessage {
-	return mustSchema("KGEntityType", "EntityType", entityTypeSpecSchema())
-}
-
-func entityTypeSpecSchema() map[string]any {
-	return map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"name":  map[string]any{"type": "string"},
-			"count": map[string]any{"type": "integer"},
-		},
-		"required": []string{"name"},
-	}
-}
-
-// NewEntityTypeAdapterFactory returns a lazy adapter.Factory for KG entity types.
-func NewEntityTypeAdapterFactory(loader RESTConfigLoader) adapter.Factory {
-	return newListOnlyFactory[EntityType](loader, entityTypeDescriptor,
-		func(client *Client, ctx context.Context) ([]EntityType, error) {
-			counts, err := client.CountEntityTypes(ctx)
-			if err != nil {
-				return nil, err
-			}
-			result := make([]EntityType, 0, len(counts))
-			for name, count := range counts {
-				result = append(result, EntityType{Name: name, Count: count})
-			}
-			return result, nil
-		})
 }
 
 // ---------------------------------------------------------------------------

@@ -512,7 +512,7 @@ that only surfaced during smoke testing:
 | incidents | incidents | ✅ done (2026-03-20) | Claude | IRM plugin API, gRPC-style POST endpoints |
 | k6 | projects, tests, runs, envs, schedules, load-zones, envvars | ✅ done + verified (2026-03-24) | Claude | Token exchange auth, separate API domain. Full command tree verified live against dev context. Schedules, load-zones, and testrun CRD commands added beyond original scope. |
 | fleet | pipelines, collectors, tenant | ✅ done (2026-03-20) | Claude | gRPC/Connect API, separate URL + basic auth, 3 resource types |
-| kg | datasets, rules, entities, assertions, search | ✅ done (2026-03-20) | Claude | Plugin proxy API, 20+ subcommands, rules as ResourceAdapter |
+| kg | rules, scopes, entities, assertions, search, insights | ✅ done (2026-03-20) | Claude | Plugin proxy API; typed resources: rules + scopes |
 | ml | jobs, holidays | ⬜ planned | — | Phase 1.6 |
 | scim | users, groups | ⬜ planned | — | Phase 1.7 |
 | gcom | access policies, stacks, etc. | ⬜ planned | — | Phase 1.8 |

@@ -23,7 +23,7 @@ func (p *KGProvider) Name() string { return "kg" }
 
 // ShortDesc returns a one-line description of the provider.
 func (p *KGProvider) ShortDesc() string {
-	return "Manage Grafana Knowledge Graph entity types, rules, and datasets"
+	return "Manage Grafana Knowledge Graph rules, entities, and insights"
 }
 
 // Commands returns the Cobra commands contributed by this provider.
@@ -39,29 +39,19 @@ func (p *KGProvider) Commands() []*cobra.Command {
 	loader.BindFlags(kgCmd.PersistentFlags())
 
 	kgCmd.AddCommand(
-		// Lifecycle
-		newSetupCommand(loader),
-		newEnableCommand(loader),
 		newStatusCommand(loader),
-		// Datasets
-		newDatasetsCommand(loader),
-		newVendorsCommand(loader),
 		// Configuration upload
 		newRulesCommand(loader),
 		newModelRulesCommand(loader),
 		newSuppressionsCommand(loader),
 		newRelabelRulesCommand(loader),
-		newKPIDisplayCommand(loader),
 		// Entities
 		newEntitiesCommand(loader),
-		newEntityTypesCommand(loader),
 		newScopesCommand(loader),
 		// Assertions
 		newAssertionsCommand(loader),
 		// Search
 		newSearchCommand(loader),
-		// Graph
-		newGraphConfigCommand(loader),
 		// High-level
 		newInspectCommand(loader),
 		newHealthCommand(loader),
@@ -91,24 +81,6 @@ func (p *KGProvider) TypedRegistrations() []adapter.Registration {
 			GVK:        staticDescriptor.GroupVersionKind(),
 			Schema:     RuleSchema(),
 			Example:    RuleExample(),
-		},
-		{
-			Factory:    NewDatasetAdapterFactory(loader),
-			Descriptor: datasetDescriptor,
-			GVK:        datasetDescriptor.GroupVersionKind(),
-			Schema:     DatasetSchema(),
-		},
-		{
-			Factory:    NewVendorAdapterFactory(loader),
-			Descriptor: vendorDescriptor,
-			GVK:        vendorDescriptor.GroupVersionKind(),
-			Schema:     VendorSchema(),
-		},
-		{
-			Factory:    NewEntityTypeAdapterFactory(loader),
-			Descriptor: entityTypeDescriptor,
-			GVK:        entityTypeDescriptor.GroupVersionKind(),
-			Schema:     EntityTypeSchema(),
 		},
 		{
 			Factory:    NewScopeAdapterFactory(loader),
