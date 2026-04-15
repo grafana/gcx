@@ -718,7 +718,6 @@ func (c *EntityTableCodec) Decode(_ io.Reader, _ any) error {
 // Scopes command
 // ---------------------------------------------------------------------------
 
-//nolint:dupl
 func newScopesCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "scopes",
