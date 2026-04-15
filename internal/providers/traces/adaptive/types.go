@@ -34,6 +34,8 @@ func (p *Policy) SetResourceName(name string) { p.ID = name }
 var _ adapter.ResourceIdentity = &Policy{}
 
 // TenantConfig represents the writable configuration for an adaptive traces tenant.
+// The API does not support partial updates — all fields must be provided on
+// every update. Omitted fields will be reset to their zero values.
 type TenantConfig struct {
 	DisableAnomalyPolicies          bool   `json:"disable_anomaly_policies" yaml:"disable_anomaly_policies"`
 	SpanNameSemconvTransformEnabled bool   `json:"span_name_semconv_transform_enabled" yaml:"span_name_semconv_transform_enabled"`

@@ -213,7 +213,9 @@ func (c *Client) GetConfig(ctx context.Context) (*ReadonlyTenantConfig, error) {
 	return &cfg, nil
 }
 
-// UpdateConfig updates the tenant configuration.
+// UpdateConfig replaces the entire tenant configuration. The API does not
+// support partial updates — all fields must be set in cfg. Callers should
+// first call GetConfig, modify the desired fields, and pass the full object.
 func (c *Client) UpdateConfig(ctx context.Context, cfg *TenantConfig) (*TenantConfig, error) {
 	body, err := json.Marshal(cfg)
 	if err != nil {

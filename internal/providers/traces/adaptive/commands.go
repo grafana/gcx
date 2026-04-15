@@ -167,6 +167,7 @@ func (h *tracesHelper) configUpdateCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update",
 		Short: "Update Adaptive Traces tenant configuration.",
+		Long:  "Replace the Adaptive Traces tenant configuration. The API does not support partial updates — all fields must be present in the input file. Use 'gcx traces adaptive config get' to fetch the current configuration, edit the desired fields, then pass the full file to this command.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
