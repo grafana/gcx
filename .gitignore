@@ -16,6 +16,7 @@
 .claude/*
 !.claude/skills/
 !.claude/CLAUDE.md
+!.claude/settings.json
 .claude/settings.local.json
 
 # Integration testing artifacts
