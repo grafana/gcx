@@ -3,7 +3,7 @@
 Get organization info.
 
 ```
-gcx irm oncall organizations get <id> [flags]
+gcx irm oncall organizations get [flags]
 ```
 
 ### Options
