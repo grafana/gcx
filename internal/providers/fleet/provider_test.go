@@ -123,6 +123,22 @@ func TestCollectorToResource_StripsID(t *testing.T) {
 	assert.Equal(t, "test-collector-88888", res.Object.GetName(), "metadata.name should be slug-id")
 }
 
+func TestCollectorToResource_NonNumericID(t *testing.T) {
+	col := fleet.Collector{
+		ID:            "gke-dev-us-central-0-a9f49189-r6z4",
+		CollectorType: "alloy",
+	}
+
+	res, err := fleet.CollectorToResource(col, "default")
+	require.NoError(t, err)
+	assert.Equal(t, "gke-dev-us-central-0-a9f49189-r6z4", res.Object.GetName(),
+		"metadata.name should be the bare ID when Name is empty")
+
+	roundTripped, err := fleet.CollectorFromResource(res)
+	require.NoError(t, err)
+	assert.Equal(t, col.ID, roundTripped.ID, "non-numeric ID should survive round-trip")
+}
+
 // ---------------------------------------------------------------------------
 // PipelineTableCodec tests
 // ---------------------------------------------------------------------------

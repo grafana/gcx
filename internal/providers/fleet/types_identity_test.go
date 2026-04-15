@@ -60,4 +60,14 @@ func TestCollector_ResourceIdentity(t *testing.T) {
 	if c.ID != "99" {
 		t.Errorf("SetResourceName (numeric): ID = %q, want %q", c.ID, "99")
 	}
+
+	// Non-numeric IDs (e.g. hostnames) round-trip through the resource name.
+	cHost := &fleet.Collector{ID: "gke-dev-us-central-0-a9f49189-r6z4"}
+	if got := cHost.GetResourceName(); got != "gke-dev-us-central-0-a9f49189-r6z4" {
+		t.Errorf("GetResourceName() (non-numeric ID) = %q, want %q", got, "gke-dev-us-central-0-a9f49189-r6z4")
+	}
+	cHost.SetResourceName("gke-dev-us-central-0-a9f49189-r6z4")
+	if cHost.ID != "gke-dev-us-central-0-a9f49189-r6z4" {
+		t.Errorf("SetResourceName (non-numeric): ID = %q, want %q", cHost.ID, "gke-dev-us-central-0-a9f49189-r6z4")
+	}
 }

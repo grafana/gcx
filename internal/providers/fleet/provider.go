@@ -317,10 +317,13 @@ func resolvePipeline(ctx context.Context, client *Client, ref string) (*Pipeline
 
 // resolveCollector looks up a collector by slug-id, plain ID, or name.
 func resolveCollector(ctx context.Context, client *Client, ref string) (*Collector, error) {
-	// Try extracting a numeric ID from the reference (handles "name-123" and "123").
-	if id, ok := extractIDFromSlug(ref); ok {
-		c, err := client.GetCollector(ctx, id)
-		if err == nil {
+	// Try the ref directly as an ID first.
+	if c, err := client.GetCollector(ctx, ref); err == nil {
+		return c, nil
+	}
+	// Try extracting a numeric ID from a slug (handles "name-123").
+	if id, ok := extractIDFromSlug(ref); ok && id != ref {
+		if c, err := client.GetCollector(ctx, id); err == nil {
 			return c, nil
 		}
 	}
@@ -890,14 +893,19 @@ func (c *CollectorTableCodec) Encode(w io.Writer, v any) error {
 			colType = "-"
 		}
 
+		name := col.Name
+		if name == "" {
+			name = "-"
+		}
+
 		if c.Wide {
 			createdAt := "-"
 			if col.CreatedAt != nil {
 				createdAt = col.CreatedAt.Format("2006-01-02 15:04")
 			}
-			t.Row(col.ID, col.Name, colType, enabled, createdAt)
+			t.Row(col.ID, name, colType, enabled, createdAt)
 		} else {
-			t.Row(col.ID, col.Name, colType, enabled)
+			t.Row(col.ID, name, colType, enabled)
 		}
 	}
 
@@ -1002,10 +1010,12 @@ func CollectorToResource(col Collector, namespace string) (*resources.Resource, 
 	// Strip the ID from spec — it lives in metadata.name.
 	delete(specMap, "id")
 
-	// Build slug-id name for unique identification.
-	name := slugifyName(col.Name)
-	if col.ID != "" {
-		name = name + "-" + col.ID
+	// Build metadata.name for unique identification.
+	// When the collector has a human-readable name, use "slug-id" format.
+	// Otherwise use the ID directly (collector IDs are already k8s-safe strings).
+	name := col.ID
+	if col.Name != "" {
+		name = slugifyName(col.Name) + "-" + col.ID
 	}
 
 	obj := map[string]any{
@@ -1045,9 +1055,11 @@ func CollectorFromResource(res *resources.Resource) (*Collector, error) {
 		return nil, fmt.Errorf("failed to unmarshal spec to collector: %w", err)
 	}
 
-	// Restore ID from metadata.name slug.
+	// Restore ID from metadata.name — try slug extraction first, fall back to full name.
 	if id, ok := extractIDFromSlug(res.Raw.GetName()); ok {
 		col.ID = id
+	} else if col.ID == "" {
+		col.ID = res.Raw.GetName()
 	}
 
 	return &col, nil
