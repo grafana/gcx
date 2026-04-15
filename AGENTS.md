@@ -141,6 +141,7 @@ internal/
 ├── version/     Global version string (Set once from main; provides UserAgent() for HTTP clients)
 ├── secrets/     Redactor for config view
 └── logs/        slog/klog integration
+└── shared/      Shared utilities (date handling, duration, etc.) to be shared across integrations.
 ```
 
 ## What to Read Before You Start
