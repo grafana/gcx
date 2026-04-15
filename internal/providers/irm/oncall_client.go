@@ -214,7 +214,6 @@ func collectN[T any](it iter.Seq2[T, error], n int) ([]T, error) {
 	return items, nil
 }
 
-
 func getResource[T any](ctx context.Context, c *OnCallClient, basePath, id, resourceType string) (*T, error) {
 	resp, err := c.DoRequest(ctx, http.MethodGet, fmt.Sprintf("%s%s/", basePath, url.PathEscape(id)), nil)
 	if err != nil {

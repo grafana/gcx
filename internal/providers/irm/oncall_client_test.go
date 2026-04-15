@@ -194,7 +194,7 @@ func TestListAlertGroups_StopsEarlyWithLimit(t *testing.T) {
 		switch pageHits {
 		case 1:
 			nextURL := srvURL + irm.BasePath + "/alertgroups/?page=2"
-			json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck
+			json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck,errchkjson
 				"results": []map[string]any{
 					{"pk": "ag1", "title": "Alert 1", "state": "firing", "alerts_count": 1},
 					{"pk": "ag2", "title": "Alert 2", "state": "firing", "alerts_count": 2},
@@ -202,7 +202,7 @@ func TestListAlertGroups_StopsEarlyWithLimit(t *testing.T) {
 				"next": nextURL,
 			})
 		default:
-			json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck
+			json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck,errchkjson
 				"results": []map[string]any{
 					{"pk": "ag3", "title": "Alert 3", "state": "resolved", "alerts_count": 1},
 				},
