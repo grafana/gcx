@@ -246,8 +246,15 @@ gcx provides dedicated commands for each Grafana Cloud product:
 | **Fleet Management** | `gcx fleet` | `fleet pipelines list`, `fleet collectors list` |
 | **IRM Incidents** | `gcx incidents` | `incidents list`, `incidents create -f incident.yaml` |
 | **Knowledge Graph** | `gcx kg` | `kg status`, `kg search`, `kg entities show` |
+| **Frontend Observability** | `gcx frontend` | `frontend apps list`, `frontend apps get` |
+| **App Observability** | `gcx appo11y` | `appo11y overrides get`, `appo11y settings get` |
+| **Sigil (AI Observability)** | `gcx sigil` | `sigil conversations list`, `sigil agents list`, `sigil rules list` |
+| **Assistant** | `gcx assistant` | `assistant prompt`, `assistant investigations list`, `assistant investigations report` |
 | **Adaptive Metrics** | `gcx metrics adaptive` | `metrics adaptive recommendations show`, `metrics adaptive rules list` |
 | **Adaptive Logs** | `gcx logs adaptive` | `logs adaptive patterns show`, `logs adaptive drop-rules list` |
+| **Adaptive Traces** | `gcx traces adaptive` | `traces adaptive recommendations show`, `traces adaptive policies list` |
+| **Profiles (Pyroscope)** | `gcx profiles` | `profiles query`, `profiles labels` |
+| **Traces (Tempo)** | `gcx traces` | `traces query`, `traces get`, `traces labels` |
 
 ## Resource Management
 
