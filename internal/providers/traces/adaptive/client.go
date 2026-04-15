@@ -193,6 +193,51 @@ func (c *Client) DismissRecommendation(ctx context.Context, id string) error {
 	return nil
 }
 
+// GetConfig returns the tenant configuration.
+func (c *Client) GetConfig(ctx context.Context) (*ReadonlyTenantConfig, error) {
+	resp, err := c.doRequest(ctx, http.MethodGet, "/adaptive-traces/api/v1/config", nil)
+	if err != nil {
+		return nil, fmt.Errorf("getting config: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, handleErrorResponse(resp)
+	}
+
+	var cfg ReadonlyTenantConfig
+	if err := json.NewDecoder(resp.Body).Decode(&cfg); err != nil {
+		return nil, fmt.Errorf("decoding config: %w", err)
+	}
+
+	return &cfg, nil
+}
+
+// UpdateConfig updates the tenant configuration.
+func (c *Client) UpdateConfig(ctx context.Context, cfg *TenantConfig) (*TenantConfig, error) {
+	body, err := json.Marshal(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("marshalling config: %w", err)
+	}
+
+	resp, err := c.doRequest(ctx, http.MethodPut, "/adaptive-traces/api/v1/config", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("updating config: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, handleErrorResponse(resp)
+	}
+
+	var updated TenantConfig
+	if err := json.NewDecoder(resp.Body).Decode(&updated); err != nil {
+		return nil, fmt.Errorf("decoding updated config: %w", err)
+	}
+
+	return &updated, nil
+}
+
 func (c *Client) doRequest(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, body)
 	if err != nil {

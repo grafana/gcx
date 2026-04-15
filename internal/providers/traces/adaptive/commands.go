@@ -28,6 +28,7 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Manage Adaptive Traces resources.",
 	}
 	h := &tracesHelper{loader: loader}
+	cmd.AddCommand(h.configCommand())
 	cmd.AddCommand(h.policiesCommand())
 	cmd.AddCommand(h.recommendationsCommand())
 	return cmd
@@ -48,6 +49,183 @@ func (h *tracesHelper) newClient(ctx context.Context) (*Client, error) {
 func (h *tracesHelper) newPolicyCRUD(ctx context.Context) (*adapter.TypedCRUD[Policy], error) {
 	crud, _, err := NewPolicyTypedCRUD(ctx, h.loader)
 	return crud, err
+}
+
+// ===========================================================================
+// config
+// ===========================================================================
+
+func (h *tracesHelper) configCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "config",
+		Short: "Manage Adaptive Traces tenant configuration.",
+	}
+	cmd.AddCommand(
+		h.configGetCommand(),
+		h.configUpdateCommand(),
+	)
+	return cmd
+}
+
+// ---------------------------------------------------------------------------
+// config get
+// ---------------------------------------------------------------------------
+
+type configGetOpts struct {
+	IO cmdio.Options
+}
+
+func (o *configGetOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("table", &configTableCodec{})
+	o.IO.DefaultFormat("table")
+	o.IO.BindFlags(flags)
+}
+
+func (h *tracesHelper) configGetCommand() *cobra.Command {
+	opts := &configGetOpts{}
+	cmd := &cobra.Command{
+		Use:   "get",
+		Short: "Get Adaptive Traces tenant configuration.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+
+			client, err := h.newClient(ctx)
+			if err != nil {
+				return err
+			}
+
+			cfg, err := client.GetConfig(ctx)
+			if err != nil {
+				return err
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), cfg)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+// NewConfigTableCodec creates a table codec for config. Exported for testing.
+func NewConfigTableCodec() *configTableCodec {
+	return &configTableCodec{}
+}
+
+type configTableCodec struct{}
+
+func (c *configTableCodec) Format() format.Format { return "table" }
+
+func (c *configTableCodec) Encode(w io.Writer, v any) error {
+	cfg, ok := v.(*ReadonlyTenantConfig)
+	if !ok {
+		return errors.New("invalid data type for table codec: expected *ReadonlyTenantConfig")
+	}
+
+	t := style.NewTable("SETTING", "VALUE")
+	t.Row("disable_anomaly_policies", strconv.FormatBool(cfg.DisableAnomalyPolicies))
+	t.Row("span_name_semconv_transform_enabled", strconv.FormatBool(cfg.SpanNameSemconvTransformEnabled))
+	t.Row("span_name_semconv_version", cfg.SpanNameSemconvVersion)
+	if cfg.AnomalyRateLimitBytesPerSec > 0 {
+		t.Row("anomaly_rate_limit_bytes_per_sec", strconv.FormatFloat(cfg.AnomalyRateLimitBytesPerSec, 'f', -1, 64))
+	}
+
+	return t.Render(w)
+}
+
+func (c *configTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// ---------------------------------------------------------------------------
+// config update
+// ---------------------------------------------------------------------------
+
+type configUpdateOpts struct {
+	IO   cmdio.Options
+	File string
+}
+
+func (o *configUpdateOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("yaml")
+	o.IO.BindFlags(flags)
+	flags.StringVarP(&o.File, "filename", "f", "", "File containing the config definition (use - for stdin)")
+}
+
+func (o *configUpdateOpts) Validate() error {
+	if o.File == "" {
+		return errors.New("--filename/-f is required")
+	}
+	return nil
+}
+
+func (h *tracesHelper) configUpdateCommand() *cobra.Command {
+	opts := &configUpdateOpts{}
+	cmd := &cobra.Command{
+		Use:   "update",
+		Short: "Update Adaptive Traces tenant configuration.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+
+			cfg, err := readConfigFromFile(opts.File, cmd.InOrStdin())
+			if err != nil {
+				return err
+			}
+
+			client, err := h.newClient(ctx)
+			if err != nil {
+				return err
+			}
+
+			updated, err := client.UpdateConfig(ctx, cfg)
+			if err != nil {
+				return err
+			}
+
+			cmdio.Success(cmd.ErrOrStderr(), "Updated tenant configuration")
+			return opts.IO.Encode(cmd.OutOrStdout(), updated)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+// readConfigFromFile reads and decodes a TenantConfig from a file path or stdin ("-").
+func readConfigFromFile(filePath string, stdin io.Reader) (*TenantConfig, error) {
+	var reader io.Reader
+	if filePath == "-" {
+		reader = stdin
+	} else {
+		f, err := os.Open(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("opening file %s: %w", filePath, err)
+		}
+		defer f.Close()
+		reader = f
+	}
+
+	data, err := io.ReadAll(io.LimitReader(reader, maxPolicyFileSize))
+	if err != nil {
+		return nil, fmt.Errorf("reading input: %w", err)
+	}
+
+	var cfg TenantConfig
+	yamlCodec := format.NewYAMLCodec()
+	if err := yamlCodec.Decode(strings.NewReader(string(data)), &cfg); err != nil {
+		return nil, fmt.Errorf("decoding input: %w", err)
+	}
+
+	return &cfg, nil
 }
 
 func (h *tracesHelper) recommendationsCommand() *cobra.Command {

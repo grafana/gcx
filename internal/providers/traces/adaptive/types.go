@@ -33,6 +33,23 @@ func (p *Policy) SetResourceName(name string) { p.ID = name }
 // Compile-time assertion that *Policy satisfies ResourceIdentity.
 var _ adapter.ResourceIdentity = &Policy{}
 
+// TenantConfig represents the writable configuration for an adaptive traces tenant.
+type TenantConfig struct {
+	DisableAnomalyPolicies          bool   `json:"disable_anomaly_policies" yaml:"disable_anomaly_policies"`
+	SpanNameSemconvTransformEnabled bool   `json:"span_name_semconv_transform_enabled" yaml:"span_name_semconv_transform_enabled"`
+	SpanNameSemconvVersion          string `json:"span_name_semconv_version" yaml:"span_name_semconv_version"`
+}
+
+// ReadonlyTenantConfig is the response model for GET /api/v1/config.
+// It is a superset of TenantConfig, including computed fields like the
+// anomaly rate limit that are set by the forecaster.
+type ReadonlyTenantConfig struct {
+	AnomalyRateLimitBytesPerSec     float64 `json:"anomaly_rate_limit_bytes_per_sec,omitempty" yaml:"anomaly_rate_limit_bytes_per_sec,omitempty"`
+	DisableAnomalyPolicies          bool    `json:"disable_anomaly_policies" yaml:"disable_anomaly_policies"`
+	SpanNameSemconvTransformEnabled bool    `json:"span_name_semconv_transform_enabled" yaml:"span_name_semconv_transform_enabled"`
+	SpanNameSemconvVersion          string  `json:"span_name_semconv_version" yaml:"span_name_semconv_version"`
+}
+
 // PolicySeed represents the policy configuration embedded in a recommendation action.
 type PolicySeed struct {
 	ID               string `json:"id"`

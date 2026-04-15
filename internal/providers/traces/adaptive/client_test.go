@@ -300,6 +300,137 @@ func TestClient_DeletePolicy(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// GetConfig
+// ---------------------------------------------------------------------------
+
+func TestClient_GetConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		handler http.HandlerFunc
+		want    *traces.ReadonlyTenantConfig
+		wantErr bool
+	}{
+		{
+			name: "success",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.Equal(t, "/adaptive-traces/api/v1/config", r.URL.Path)
+				assert.Equal(t, "Basic NDI6dGVzdC10b2tlbg==", r.Header.Get("Authorization"))
+				writeJSON(w, traces.ReadonlyTenantConfig{
+					DisableAnomalyPolicies:          true,
+					SpanNameSemconvTransformEnabled: false,
+					SpanNameSemconvVersion:          "v1.2.0",
+					AnomalyRateLimitBytesPerSec:     1024.5,
+				})
+			},
+			want: &traces.ReadonlyTenantConfig{
+				DisableAnomalyPolicies:          true,
+				SpanNameSemconvTransformEnabled: false,
+				SpanNameSemconvVersion:          "v1.2.0",
+				AnomalyRateLimitBytesPerSec:     1024.5,
+			},
+		},
+		{
+			name: "server error",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+				writeJSON(w, map[string]string{"error": "internal server error"})
+			},
+			wantErr: true,
+		},
+		{
+			name: "not found",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(tc.handler)
+			defer srv.Close()
+
+			client := newTestClient(srv)
+			got, err := client.GetConfig(context.Background())
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// UpdateConfig
+// ---------------------------------------------------------------------------
+
+func TestClient_UpdateConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     *traces.TenantConfig
+		handler http.HandlerFunc
+		want    *traces.TenantConfig
+		wantErr bool
+	}{
+		{
+			name: "success",
+			cfg: &traces.TenantConfig{
+				DisableAnomalyPolicies:          true,
+				SpanNameSemconvTransformEnabled: true,
+				SpanNameSemconvVersion:          "v1.3.0",
+			},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodPut, r.Method)
+				assert.Equal(t, "/adaptive-traces/api/v1/config", r.URL.Path)
+				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+
+				var cfg traces.TenantConfig
+				require.NoError(t, json.NewDecoder(r.Body).Decode(&cfg))
+				assert.True(t, cfg.DisableAnomalyPolicies)
+				assert.True(t, cfg.SpanNameSemconvTransformEnabled)
+				assert.Equal(t, "v1.3.0", cfg.SpanNameSemconvVersion)
+
+				writeJSON(w, cfg)
+			},
+			want: &traces.TenantConfig{
+				DisableAnomalyPolicies:          true,
+				SpanNameSemconvTransformEnabled: true,
+				SpanNameSemconvVersion:          "v1.3.0",
+			},
+		},
+		{
+			name: "server error",
+			cfg:  &traces.TenantConfig{},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusBadRequest)
+				writeJSON(w, map[string]string{"error": "bad request"})
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(tc.handler)
+			defer srv.Close()
+
+			client := newTestClient(srv)
+			got, err := client.UpdateConfig(context.Background(), tc.cfg)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // ListRecommendations
 // ---------------------------------------------------------------------------
 

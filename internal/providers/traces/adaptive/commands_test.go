@@ -14,6 +14,60 @@ import (
 )
 
 // ---------------------------------------------------------------------------
+// configTableCodec
+// ---------------------------------------------------------------------------
+
+func TestConfigTableCodec(t *testing.T) {
+	t.Run("renders all fields", func(t *testing.T) {
+		var buf bytes.Buffer
+		codec := traces.NewConfigTableCodec()
+		err := codec.Encode(&buf, &traces.ReadonlyTenantConfig{
+			DisableAnomalyPolicies:          true,
+			SpanNameSemconvTransformEnabled: false,
+			SpanNameSemconvVersion:          "v1.2.0",
+			AnomalyRateLimitBytesPerSec:     1024.5,
+		})
+		require.NoError(t, err)
+
+		output := buf.String()
+		assert.Contains(t, output, "SETTING")
+		assert.Contains(t, output, "VALUE")
+		assert.Contains(t, output, "disable_anomaly_policies")
+		assert.Contains(t, output, "true")
+		assert.Contains(t, output, "span_name_semconv_transform_enabled")
+		assert.Contains(t, output, "false")
+		assert.Contains(t, output, "span_name_semconv_version")
+		assert.Contains(t, output, "v1.2.0")
+		assert.Contains(t, output, "anomaly_rate_limit_bytes_per_sec")
+		assert.Contains(t, output, "1024.5")
+	})
+
+	t.Run("omits zero anomaly rate", func(t *testing.T) {
+		var buf bytes.Buffer
+		codec := traces.NewConfigTableCodec()
+		err := codec.Encode(&buf, &traces.ReadonlyTenantConfig{})
+		require.NoError(t, err)
+
+		output := buf.String()
+		assert.NotContains(t, output, "anomaly_rate_limit_bytes_per_sec")
+	})
+
+	t.Run("wrong type", func(t *testing.T) {
+		var buf bytes.Buffer
+		codec := traces.NewConfigTableCodec()
+		err := codec.Encode(&buf, "not a config")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "expected *ReadonlyTenantConfig")
+	})
+
+	t.Run("decode unsupported", func(t *testing.T) {
+		codec := traces.NewConfigTableCodec()
+		err := codec.Decode(nil, nil)
+		require.Error(t, err)
+	})
+}
+
+// ---------------------------------------------------------------------------
 // policyTableCodec
 // ---------------------------------------------------------------------------
 
