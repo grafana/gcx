@@ -15,8 +15,6 @@ import (
 )
 
 const unsupportedCommandsWarningTemplate = `WARNING: OAuth login is experimental. The following commands require a service account token instead:
-  - incidents
-  - oncall
   - frontend
   - slo
   - resources (partial)
