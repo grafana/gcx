@@ -11,12 +11,14 @@ gcx kg insights entity-metric [Type--Name] [flags]
 ```
       --env string          Environment scope
   -f, --file string         Input file (YAML)
+      --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for entity-metric
       --insight-id string   Insight ID
       --name string         Entity name
       --namespace string    Namespace scope
-      --since string        Duration ago (e.g. 1h, 30m, 7d) — default 1h
+      --since string        Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
       --site string         Site scope
+      --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
       --type string         Entity type
 ```
 

@@ -10,6 +10,7 @@ gcx kg entities show [name] [flags]
 
 ```
       --env string         Environment scope
+      --from string        Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help               help for show
       --insights-only      Only return entities with active insights (list mode)
       --json string        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
@@ -17,8 +18,9 @@ gcx kg entities show [name] [flags]
       --namespace string   Namespace scope
   -o, --output string      Output format. One of: json, table, yaml (default "table")
       --page int           Page number, 0-based (list mode)
-      --since string       Duration ago (e.g. 1h, 30m, 7d) — default 1h
+      --since string       Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
       --site string        Site scope
+      --to string          End time (RFC3339, Unix timestamp, or relative like 'now')
       --type string        Entity type (required for single entity, optional for list)
 ```
 

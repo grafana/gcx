@@ -10,12 +10,14 @@ gcx kg health [flags]
 
 ```
       --env string         Environment scope
+      --from string        Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help               help for health
       --json string        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --namespace string   Namespace scope
   -o, --output string      Output format. One of: json, yaml (default "json")
-      --since string       Duration ago (e.g. 1h, 30m, 7d) — default 1h
+      --since string       Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
       --site string        Site scope
+      --to string          End time (RFC3339, Unix timestamp, or relative like 'now')
       --type string        Limit to a specific entity type
 ```
 

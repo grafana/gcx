@@ -11,14 +11,16 @@ gcx kg entities list [flags]
 ```
       --assertions-only    Only return entities with active assertions
       --env string         Environment scope
+      --from string        Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help               help for list
       --json string        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int          Maximum number of items to return (0 for all) (default 50)
       --namespace string   Namespace scope
   -o, --output string      Output format. One of: json, table, yaml (default "table")
       --page int           Page number (0-based)
-      --since string       Duration ago (e.g. 1h, 30m, 7d) — default 1h
+      --since string       Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
       --site string        Site scope
+      --to string          End time (RFC3339, Unix timestamp, or relative like 'now')
       --type string        Entity type (omit to list all)
 ```
 

@@ -659,6 +659,7 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 		listPage       int
 	)
 	listOpts := &entitiesShowOpts{}
+	//nolint:dupl
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List entities by type (omit --type to list all types).",
@@ -1256,6 +1257,7 @@ func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 		searchEntitiesPage  int
 	)
 	searchEntitiesOpts := &searchEntitiesListOpts{}
+	//nolint:dupl
 	searchEntitiesCmd := &cobra.Command{
 		Use:   "entities",
 		Short: "Search for entities by type.",

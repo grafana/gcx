@@ -9,8 +9,14 @@ gcx kg search sample [flags]
 ### Options
 
 ```
-  -h, --help          help for sample
-      --type string   Entity type
+      --env string         Environment scope
+      --from string        Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
+  -h, --help               help for sample
+      --namespace string   Namespace scope
+      --since string       Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
+      --site string        Site scope
+      --to string          End time (RFC3339, Unix timestamp, or relative like 'now')
+      --type string        Entity type
 ```
 
 ### Options inherited from parent commands

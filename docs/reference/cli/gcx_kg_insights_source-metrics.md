@@ -10,9 +10,11 @@ gcx kg insights source-metrics [flags]
 
 ```
   -f, --file string         Input file (YAML)
+      --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for source-metrics
       --insight-id string   Insight ID
-      --since string        Duration ago (e.g. 1h, 30m, 7d)
+      --since string        Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
+      --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 
 ### Options inherited from parent commands
