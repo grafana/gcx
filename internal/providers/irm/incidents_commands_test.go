@@ -202,6 +202,92 @@ func TestActivityTableCodec_LongBodyTruncated(t *testing.T) {
 // SeverityTableCodec tests
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// label validation tests
+// ---------------------------------------------------------------------------
+
+func TestListOpts_LabelValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		labels  []string
+		wantErr string
+	}{
+		{
+			name:   "valid labels pass",
+			labels: []string{"team:platform", "env:prod"},
+		},
+		{
+			name:    "missing colon fails",
+			labels:  []string{"nocolon"},
+			wantErr: "must be in key:value format",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := irm.NewTestListCommand(tt.labels, "", "")
+			cmd.SetArgs([]string{})
+			err := cmd.Execute()
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestListOpts_DateValidation(t *testing.T) {
+	tests := []struct {
+		name     string
+		dateFrom string
+		dateTo   string
+		wantErr  string
+	}{
+		{
+			name: "no dates passes",
+		},
+		{
+			name:     "valid RFC3339 from",
+			dateFrom: "2024-06-15T10:30:00Z",
+		},
+		{
+			name:   "valid relative to",
+			dateTo: "now",
+		},
+		{
+			name:     "valid relative range",
+			dateFrom: "now-7d",
+			dateTo:   "now",
+		},
+		{
+			name:     "invalid from",
+			dateFrom: "not-a-date",
+			wantErr:  "invalid --from value",
+		},
+		{
+			name:    "invalid to",
+			dateTo:  "not-a-date",
+			wantErr: "invalid --to value",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := irm.NewTestListCommand(nil, tt.dateFrom, tt.dateTo)
+			cmd.SetArgs([]string{})
+			err := cmd.Execute()
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// SeverityTableCodec tests
+// ---------------------------------------------------------------------------
+
 func TestSeverityTableCodec_Encode(t *testing.T) {
 	sevs := []irm.Severity{
 		{SeverityID: "sev-1", DisplayLabel: "Critical", Level: 1, Color: "#FF0000"},

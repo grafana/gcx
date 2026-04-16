@@ -92,6 +92,7 @@ gcx/
 │       ├── handlers/         # Chi HTTP handler implementations
 │       ├── livereload/       # WebSocket live reload broadcaster
 │       └── watch/            # fsnotify file watcher integration
+│   ├── shared/               # Shared utilities (date handling, duration, etc.) to be shared across integrations.
 │
 ├── scripts/                  # Standalone Go programs for code generation
 │   ├── cmd-reference/        # Generates CLI docs from Cobra tree
