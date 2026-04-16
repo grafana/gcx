@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/shared"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -27,11 +28,13 @@ import (
 // Helpers
 // ---------------------------------------------------------------------------
 
-// scopeFlags holds the --env/--namespace/--site/--since flags.
+// scopeFlags holds the --env/--namespace/--site/--from/--to/--since flags.
 type scopeFlags struct {
 	env       string
 	namespace string
 	site      string
+	from      string
+	to        string
 	since     string
 }
 
@@ -39,10 +42,33 @@ func (f *scopeFlags) register(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&f.env, "env", "", "Environment scope")
 	cmd.Flags().StringVar(&f.namespace, "namespace", "", "Namespace scope")
 	cmd.Flags().StringVar(&f.site, "site", "", "Site scope")
-	cmd.Flags().StringVar(&f.since, "since", "", "Duration ago (e.g. 1h, 30m, 7d) — default 1h")
+	cmd.Flags().StringVar(&f.from, "from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
+	cmd.Flags().StringVar(&f.to, "to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
+	cmd.Flags().StringVar(&f.since, "since", "", "Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)")
 }
 
 func (f *scopeFlags) resolveTime() (int64, int64, error) {
+	if f.since != "" && (f.from != "" || f.to != "") {
+		return 0, 0, errors.New("--since is mutually exclusive with --from/--to")
+	}
+	if f.from != "" || f.to != "" {
+		if f.from == "" {
+			return 0, 0, errors.New("--from is required when --to is set")
+		}
+		if f.to == "" {
+			return 0, 0, errors.New("--to is required when --from is set")
+		}
+		now := time.Now()
+		start, err := shared.ParseTime(f.from, now)
+		if err != nil {
+			return 0, 0, fmt.Errorf("invalid --from: %w", err)
+		}
+		end, err := shared.ParseTime(f.to, now)
+		if err != nil {
+			return 0, 0, fmt.Errorf("invalid --to: %w", err)
+		}
+		return start.UnixMilli(), end.UnixMilli(), nil
+	}
 	return resolveTimeEpochMs(f.since)
 }
 
@@ -102,6 +128,15 @@ func resolveTimeEpochMs(since string) (int64, int64, error) {
 		}
 	}
 	return now - d.Milliseconds(), now, nil
+}
+
+// resolveTimeFromFlags reads --from/--to/--since from a command and resolves them to epoch ms.
+func resolveTimeFromFlags(cmd *cobra.Command) (int64, int64, error) {
+	from, _ := cmd.Flags().GetString("from")
+	to, _ := cmd.Flags().GetString("to")
+	since, _ := cmd.Flags().GetString("since")
+	sf := scopeFlags{from: from, to: to, since: since}
+	return sf.resolveTime()
 }
 
 func parseEntityArg(args []string) (string, string, error) {
@@ -587,9 +622,14 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 				return err
 			}
 
+			startMs, endMs, err := showScope.resolveTime()
+			if err != nil {
+				return err
+			}
+
 			// Single entity mode: name provided
 			if len(args) == 1 {
-				return showSingleEntity(cmd, client, showType, args[0], &showScope, &ioOpts.IO)
+				return showSingleEntity(cmd, client, showType, args[0], &showScope, startMs, endMs, &ioOpts.IO)
 			}
 
 			// List mode: no name
@@ -597,7 +637,7 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, assertionsOnly, showScope.scopeCriteria(), 0, 0, page)
+			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, assertionsOnly, showScope.scopeCriteria(), startMs, endMs, page)
 			if err != nil {
 				return err
 			}
@@ -634,11 +674,15 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			startMs, endMs, err := listScope.resolveTime()
+			if err != nil {
+				return err
+			}
 			entityTypes, err := resolveEntityTypes(cmd, client, listType)
 			if err != nil {
 				return err
 			}
-			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, listAssertOnly, listScope.scopeCriteria(), 0, 0, listPage)
+			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, listAssertOnly, listScope.scopeCriteria(), startMs, endMs, listPage)
 			if err != nil {
 				return err
 			}
@@ -656,23 +700,23 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 	return cmd
 }
 
-func showSingleEntity(cmd *cobra.Command, client *Client, entityType, name string, scope *scopeFlags, io *cmdio.Options) error {
+func showSingleEntity(cmd *cobra.Command, client *Client, entityType, name string, scope *scopeFlags, startMs, endMs int64, io *cmdio.Options) error {
 	if entityType == "" {
 		return errors.New("--type is required when showing a single entity")
 	}
 	if sm := scope.scopeMap(); sm != nil {
-		info, err := client.GetEntityInfo(cmd.Context(), entityType, name, sm, 0, 0)
+		info, err := client.GetEntityInfo(cmd.Context(), entityType, name, sm, startMs, endMs)
 		if err != nil {
 			return err
 		}
 		return io.Encode(cmd.OutOrStdout(), info)
 	}
-	entity, err := client.LookupEntity(cmd.Context(), entityType, name, nil, 0, 0)
+	entity, err := client.LookupEntity(cmd.Context(), entityType, name, nil, startMs, endMs)
 	if err != nil {
 		return err
 	}
 	if entity == nil {
-		return fmt.Errorf("entity %s/%s not found in last 1 hour (it may exist with a specific --env/--namespace/--site scope)", entityType, name)
+		return fmt.Errorf("entity %s/%s not found in the specified time window (it may exist with a specific --env/--namespace/--site scope)", entityType, name)
 	}
 	return io.Encode(cmd.OutOrStdout(), entity)
 }
@@ -831,7 +875,9 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 		sub.Flags().String("env", "", "Environment scope")
 		sub.Flags().String("namespace", "", "Namespace scope")
 		sub.Flags().String("site", "", "Site scope")
-		sub.Flags().String("since", "", "Duration ago (e.g. 1h, 30m, 7d) — default 1h")
+		sub.Flags().String("from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
+		sub.Flags().String("to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
+		sub.Flags().String("since", "", "Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)")
 	}
 
 	// active subcommand
@@ -945,7 +991,6 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	entityMetricScope.register(entityMetricCmd)
 
 	// source-metrics subcommand
-	var sourceMetricsSince string
 	sourceMetricsCmd := &cobra.Command{
 		Use:   "source-metrics",
 		Short: "Get source metrics for a specific insight.",
@@ -966,7 +1011,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 				if assertionID == "" {
 					return errors.New("--insight-id is required (or use --file)")
 				}
-				startMs, endMs, err := resolveTimeEpochMs(sourceMetricsSince)
+				startMs, endMs, err := resolveTimeFromFlags(cmd)
 				if err != nil {
 					return err
 				}
@@ -993,7 +1038,9 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	}
 	sourceMetricsCmd.Flags().StringP("file", "f", "", "Input file (YAML)")
 	sourceMetricsCmd.Flags().String("insight-id", "", "Insight ID")
-	sourceMetricsCmd.Flags().StringVar(&sourceMetricsSince, "since", "", "Duration ago (e.g. 1h, 30m, 7d)")
+	sourceMetricsCmd.Flags().String("from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
+	sourceMetricsCmd.Flags().String("to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
+	sourceMetricsCmd.Flags().String("since", "", "Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)")
 
 	exampleCmd := &cobra.Command{
 		Use:   "example",
@@ -1040,8 +1087,7 @@ func buildAssertionsRequestFromFlags(cmd *cobra.Command, args []string, client *
 	env, _ := cmd.Flags().GetString("env")
 	namespace, _ := cmd.Flags().GetString("namespace")
 	site, _ := cmd.Flags().GetString("site")
-	since, _ := cmd.Flags().GetString("since")
-	startMs, endMs, err := resolveTimeEpochMs(since)
+	startMs, endMs, err := resolveTimeFromFlags(cmd)
 	if err != nil {
 		return AssertionsRequest{}, err
 	}
@@ -1164,7 +1210,10 @@ func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 	searchAssertionsScope.register(searchAssertionsCmd)
 
 	// search sample
-	var searchSampleType string
+	var (
+		searchSampleType  string
+		searchSampleScope scopeFlags
+	)
 	searchSampleCmd := &cobra.Command{
 		Use:   "sample",
 		Short: "Return a sample of entities by type.",
@@ -1177,9 +1226,12 @@ func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			now := time.Now().UnixMilli()
+			startMs, endMs, err := searchSampleScope.resolveTime()
+			if err != nil {
+				return err
+			}
 			req := SampleSearchRequest{
-				TimeCriteria: &TimeCriteria{Start: now - 3600000, End: now},
+				TimeCriteria: &TimeCriteria{Start: startMs, End: endMs},
 				FilterCriteria: []EntityMatcher{{
 					EntityType:       searchSampleType,
 					PropertyMatchers: []PropertyMatcher{{Name: "name", Op: "IS NOT NULL", Type: "String"}},
@@ -1195,6 +1247,7 @@ func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 	}
 	searchSampleCmd.Flags().StringVar(&searchSampleType, "type", "", "Entity type")
 	_ = searchSampleCmd.MarkFlagRequired("type")
+	searchSampleScope.register(searchSampleCmd)
 
 	// search entities
 	var (
@@ -1218,11 +1271,15 @@ func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			startMs, endMs, err := searchEntitiesScope.resolveTime()
+			if err != nil {
+				return err
+			}
 			entityTypes, err := resolveEntityTypes(cmd, client, searchEntitiesType)
 			if err != nil {
 				return err
 			}
-			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, false, searchEntitiesScope.scopeCriteria(), 0, 0, searchEntitiesPage)
+			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, false, searchEntitiesScope.scopeCriteria(), startMs, endMs, searchEntitiesPage)
 			if err != nil {
 				return err
 			}
