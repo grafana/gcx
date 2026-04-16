@@ -110,7 +110,7 @@ the A2A (Agent-to-Agent) protocol over Server-Sent Events.`,
 		Example: "  gcx assistant prompt \"What alerts are firing?\"\n  gcx assistant prompt \"Show CPU usage\" --json\n  gcx assistant prompt \"Follow up\" --continue",
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "large",
-			agent.AnnotationLLMHint:   "\"What alerts are firing?\" --json",
+			agent.AnnotationLLMHint:   "Prefer deterministic gcx commands (gcx metrics query, gcx slo definitions status, gcx alert instances list) for precise data retrieval. Use assistant prompt for reasoning: root cause analysis, holistic health questions, or when you don't know which metrics/labels exist — the Assistant's Infrastructure Memories know your stack topology. Example: \"Why is checkout-latency spiking?\" --json",
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {

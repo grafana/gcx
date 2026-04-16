@@ -30,7 +30,7 @@ var commandAnnotations = map[string]annotation{
 	// assistant
 	"gcx assistant investigations approvals": {Cost: "medium", Hint: "<id> -o json"},
 	"gcx assistant investigations cancel":    {Cost: "small"},
-	"gcx assistant investigations create":    {Cost: "small"},
+	"gcx assistant investigations create":    {Cost: "small", Hint: "Use for deep cross-signal root cause analysis. Dispatches specialist agents for metrics, logs, traces, and profiles in parallel — more efficient than chaining individual gcx query commands. Example: --title=\"Checkout latency spike after deploy\""},
 	"gcx assistant investigations document":  {Cost: "medium", Hint: "<investigation-id> <document-id> -o json"},
 	"gcx assistant investigations get":       {Cost: "medium", Hint: "<id> -o json"},
 	"gcx assistant investigations list":      {Cost: "small"},
