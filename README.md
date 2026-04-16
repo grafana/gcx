@@ -106,6 +106,8 @@ curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh
 
 **Homebrew (macOS):**
 
+*COMING SOON*
+
 ```bash
 brew install --cask grafana/grafana/gcx
 ```
