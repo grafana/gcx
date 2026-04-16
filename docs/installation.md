@@ -44,16 +44,16 @@ curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh
 rm ~/.local/bin/gcx
 ```
 
-## Homebrew (macOS/Linux)
+## Homebrew (macOS)
 
 ```shell
-brew install grafana/grafana/gcx
+brew install --cask grafana/grafana/gcx
 ```
 
 To upgrade:
 
 ```shell
-brew upgrade grafana/grafana/gcx
+brew upgrade --cask grafana/grafana/gcx
 ```
 
 ## Prebuilt binaries

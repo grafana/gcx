@@ -104,10 +104,10 @@ Downloads the latest release, verifies the SHA-256 checksum, and installs to
 curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | INSTALL_DIR=/usr/local/bin sh
 ```
 
-**Homebrew (macOS/Linux):**
+**Homebrew (macOS):**
 
 ```bash
-brew install grafana/grafana/gcx
+brew install --cask grafana/grafana/gcx
 ```
 
 **Pre-built binary (Linux/macOS/Windows):**
