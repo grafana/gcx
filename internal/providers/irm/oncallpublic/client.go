@@ -203,7 +203,7 @@ func collectAll[T any](it iter.Seq2[T, error]) ([]T, error) {
 }
 
 func collectN[T any](it iter.Seq2[T, error], n int) ([]T, error) {
-	var items []T
+	items := make([]T, 0, max(0, n))
 	for item, err := range it {
 		if err != nil {
 			return nil, err
@@ -485,7 +485,7 @@ func (c *Client) ListFilterEvents(ctx context.Context, scheduleID, userTZ, start
 	if err != nil {
 		return nil, err
 	}
-	var events []oncalltypes.FinalShiftEvent
+	events := make([]oncalltypes.FinalShiftEvent, 0, len(items))
 	for _, fs := range items {
 		events = append(events, oncalltypes.FinalShiftEvent{
 			Start: fs.ShiftStart,

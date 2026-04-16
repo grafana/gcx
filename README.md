@@ -231,7 +231,7 @@ gcx resources get folders                       # list all folders
 gcx alert rules list                            # list alert rules
 
 # Grafana Cloud products
-gcx slo definitions list                        # list SLOs
+gcx slo definitions list                        # list all SLO definitions
 gcx synth checks list                           # list synthetic monitoring checks
 gcx oncall schedules list                       # list on-call schedules
 gcx k6 load-tests list                          # list k6 load tests

@@ -359,7 +359,7 @@ var commandAnnotations = map[string]annotation{
 	// -----------------------------------------------------------------------
 	"gcx slo definitions delete":   {Cost: "small"},
 	"gcx slo definitions get":      {Cost: "small"},
-	"gcx slo definitions list":     {Cost: "small"},
+	"gcx slo definitions list":     {Cost: "medium", Hint: "--limit 50 -o json"},
 	"gcx slo definitions pull":     {Cost: "medium", Hint: "-d ./slo-definitions"},
 	"gcx slo definitions push":     {Cost: "medium", Hint: "./definitions.yaml --dry-run"},
 	"gcx slo definitions status":   {Cost: "medium", Hint: "<uuid> -o json"},

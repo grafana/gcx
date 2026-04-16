@@ -24,7 +24,7 @@ func RenderLogo() string {
 		return ""
 	}
 
-	var lines []string
+	lines := make([]string, 0, len(asciiLogo))
 	for _, line := range asciiLogo {
 		lines = append(lines, Gradient(line, GradientAccentFrom, GradientBrandTo))
 	}

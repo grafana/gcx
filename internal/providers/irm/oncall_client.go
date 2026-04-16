@@ -201,7 +201,7 @@ func collectAll[T any](it iter.Seq2[T, error]) ([]T, error) {
 
 // collectN collects up to n items from an iterator. If n <= 0, all items are collected.
 func collectN[T any](it iter.Seq2[T, error], n int) ([]T, error) {
-	var items []T
+	items := make([]T, 0, max(0, n))
 	for item, err := range it {
 		if err != nil {
 			return nil, err
