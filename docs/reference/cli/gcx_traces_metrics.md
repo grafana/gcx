@@ -22,20 +22,11 @@ gcx traces metrics [TRACEQL] [flags]
 
 ```
 
-  # Instant query over the last hour (default, no time flags)
-  gcx datasources tempo metrics '{ } | rate()'
-
-  # Range query with relative window
-  gcx datasources tempo metrics -d tempo-001 '{ } | rate()' --since 1h
-
-  # Instant query with explicit time range
-  gcx datasources tempo metrics '{ } | rate()' --instant --since 1h
-
-  # Range query with explicit time range and step
-  gcx datasources tempo metrics '{ } | rate()' --from now-1h --to now --step 30s
+  # Run a TraceQL metrics query
+  gcx traces metrics -d UID '{ } | rate()' --since 1h
 
   # Output as JSON
-  gcx datasources tempo metrics -d tempo-001 '{ } | rate()' -o json
+  gcx traces metrics -d UID '{ } | rate()' --since 1h -o json
 ```
 
 ### Options

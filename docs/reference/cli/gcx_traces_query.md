@@ -17,17 +17,11 @@ gcx traces query [TRACEQL] [flags]
 
 ```
 
-  # Search traces using configured default datasource
-  gcx datasources tempo query '{ span.http.status_code >= 500 }'
-
-  # Search with explicit datasource UID and time range
-  gcx datasources tempo query -d UID '{ span.http.status_code >= 500 }' --since 1h
-
-  # With custom limit
-  gcx datasources tempo query -d UID '{ span.http.status_code >= 500 }' --since 1h --limit 50
+  # Run a TraceQL query
+  gcx traces query -d UID '{ span.http.status_code >= 500 }'
 
   # Output as JSON
-  gcx datasources tempo query -d UID '{ span.http.status_code >= 500 }' -o json
+  gcx traces query -d UID '{ span.http.status_code >= 500 }' -o json
 ```
 
 ### Options

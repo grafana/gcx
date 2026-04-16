@@ -17,17 +17,11 @@ gcx traces get TRACE_ID [flags]
 
 ```
 
-  # Get a trace using configured default datasource
-  gcx datasources tempo get abc123def456
+  # Fetch a trace by ID
+  gcx traces get -d UID <trace-id>
 
-  # Get a trace with explicit datasource UID
-  gcx datasources tempo get -d tempo-001 abc123def456
-
-  # Get LLM-friendly output
-  gcx datasources tempo get abc123def456 --llm
-
-  # Get a trace within a time range
-  gcx datasources tempo get abc123def456 --since 1h
+  # Output as JSON
+  gcx traces get -d UID <trace-id> -o json
 ```
 
 ### Options

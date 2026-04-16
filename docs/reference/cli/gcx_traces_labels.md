@@ -20,22 +20,10 @@ gcx traces labels [flags]
 ```
 
   # List all labels
-  gcx datasources tempo labels -d UID
-
-  # Get values for a specific label
-  gcx datasources tempo labels -d UID -l service.name
-
-  # Using the tags alias
-  gcx datasources tempo tags -d UID -l service.name
-
-  # Filter by scope
-  gcx datasources tempo labels -d UID -l service.name --scope span
-
-  # Filter with a TraceQL query
-  gcx datasources tempo labels -d UID -q '{ span.http.status_code >= 500 }'
+  gcx traces labels -d UID
 
   # Output as JSON
-  gcx datasources tempo labels -d UID -o json
+  gcx traces labels -d UID -o json
 ```
 
 ### Options

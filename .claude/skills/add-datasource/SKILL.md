@@ -174,8 +174,8 @@ Reference: `internal/datasources/prometheus/`, `internal/datasources/loki/`
 ### Step 2: DatasourceProvider
 
 Add a registration file in `internal/datasources/providers/`. This package
-already contains the shared `dsCmdWithConfig` helper and registrations for
-the four built-in datasources.
+contains one registration file per built-in datasource (see
+`prometheus.go`, `loki.go`, `tempo.go`, `pyroscope.go`).
 
 ```go
 // internal/datasources/providers/{kind}.go
@@ -184,10 +184,11 @@ package providers
 import (
     "github.com/grafana/gcx/internal/datasources"
     "github.com/grafana/gcx/internal/datasources/{kind}"
+    "github.com/grafana/gcx/internal/providers"
     "github.com/spf13/cobra"
 )
 
-func init() {
+func init() { //nolint:gochecknoinits // Self-registration pattern (like database/sql drivers).
     datasources.RegisterProvider(&{kind}DSProvider{})
 }
 
@@ -196,20 +197,23 @@ type {kind}DSProvider struct{}
 func (p *{kind}DSProvider) Kind() string      { return "{kind}" }
 func (p *{kind}DSProvider) ShortDesc() string { return "Query {Name} datasources" }
 
-func (p *{kind}DSProvider) QueryCmd() *cobra.Command {
-    return dsCmdWithConfig({kind}.QueryCmd)
+func (p *{kind}DSProvider) QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
+    return {kind}.QueryCmd(loader)
 }
 
-func (p *{kind}DSProvider) ExtraCommands() []*cobra.Command {
+func (p *{kind}DSProvider) ExtraCommands(loader *providers.ConfigLoader) []*cobra.Command {
     return []*cobra.Command{
-        // dsCmdWithConfig({kind}.LabelsCmd),
+        // {kind}.LabelsCmd(loader),
     }
 }
 ```
 
-The `dsCmdWithConfig` helper is already defined in
-`internal/datasources/providers/config.go` — it creates a `ConfigLoader`,
-passes it to the command constructor, and binds `--config`/`--context` flags.
+The `DatasourceProvider` interface is defined in
+`internal/datasources/provider.go`. The `loader` is supplied by the mounting
+code in `cmd/gcx/datasources/command.go`, which binds `--config`/`--context`
+on each provider sub-command. Forward it to each command constructor.
+
+Reference: `internal/datasources/providers/prometheus.go`.
 
 ### Step 3: Registration & Wiring
 

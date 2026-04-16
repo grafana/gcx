@@ -44,6 +44,12 @@ func (p *Provider) Commands() []*cobra.Command {
 		agent.AnnotationTokenCost: "medium",
 		agent.AnnotationLLMHint:   `gcx traces query -d abc123 '{ span.http.status_code >= 500 }' -o json`,
 	}
+	qCmd.Example = `
+  # Run a TraceQL query
+  gcx traces query -d UID '{ span.http.status_code >= 500 }'
+
+  # Output as JSON
+  gcx traces query -d UID '{ span.http.status_code >= 500 }' -o json`
 	cmd.AddCommand(qCmd)
 
 	gCmd := dstempo.GetCmd(loader)
@@ -51,6 +57,12 @@ func (p *Provider) Commands() []*cobra.Command {
 		agent.AnnotationTokenCost: "medium",
 		agent.AnnotationLLMHint:   "gcx traces get -d abc123 <trace-id> -o json",
 	}
+	gCmd.Example = `
+  # Fetch a trace by ID
+  gcx traces get -d UID <trace-id>
+
+  # Output as JSON
+  gcx traces get -d UID <trace-id> -o json`
 	cmd.AddCommand(gCmd)
 
 	lCmd := dstempo.LabelsCmd(loader)
@@ -58,6 +70,12 @@ func (p *Provider) Commands() []*cobra.Command {
 		agent.AnnotationTokenCost: "small",
 		agent.AnnotationLLMHint:   "gcx traces labels -d abc123 -o json",
 	}
+	lCmd.Example = `
+  # List all labels
+  gcx traces labels -d UID
+
+  # Output as JSON
+  gcx traces labels -d UID -o json`
 	cmd.AddCommand(lCmd)
 
 	mCmd := dstempo.MetricsCmd(loader)
@@ -65,6 +83,12 @@ func (p *Provider) Commands() []*cobra.Command {
 		agent.AnnotationTokenCost: "medium",
 		agent.AnnotationLLMHint:   `gcx traces metrics -d abc123 '{ } | rate()' --since 1h -o json`,
 	}
+	mCmd.Example = `
+  # Run a TraceQL metrics query
+  gcx traces metrics -d UID '{ } | rate()' --since 1h
+
+  # Output as JSON
+  gcx traces metrics -d UID '{ } | rate()' --since 1h -o json`
 	cmd.AddCommand(mCmd)
 
 	// Adaptive Traces subcommands — rename Use from "traces" to "adaptive".

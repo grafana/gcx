@@ -63,6 +63,12 @@ func (p *Provider) Commands() []*cobra.Command {
 		agent.AnnotationTokenCost: "medium",
 		agent.AnnotationLLMHint:   `gcx logs metrics -d abc123 'rate({job="grafana"}[5m])' --since 1h -o json`,
 	}
+	mqCmd.Example = `
+  # Run a metric query over logs
+  gcx logs metrics -d UID 'rate({job="grafana"}[5m])' --since 1h
+
+  # Output as JSON
+  gcx logs metrics -d UID 'rate({job="grafana"}[5m])' --since 1h -o json`
 	cmd.AddCommand(mqCmd)
 
 	lCmd := dsloki.LabelsCmd(loader)
