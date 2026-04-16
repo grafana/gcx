@@ -243,6 +243,27 @@ func TestClient_ListLoadTests(t *testing.T) {
 	assert.Equal(t, "My Test", tests[0].Name)
 }
 
+func TestClient_ListLoadTests_WithLimit(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		// When limit=5 is passed, $top should be 5 instead of the default 100
+		assert.Equal(t, "5", r.URL.Query().Get("$top"))
+		assert.Equal(t, "0", r.URL.Query().Get("$skip"))
+		w.Header().Set("Content-Type", "application/json")
+		writeJSON(t, w, map[string]any{
+			"value": []map[string]any{
+				{"id": 1, "name": "Test 1", "project_id": 1},
+				{"id": 2, "name": "Test 2", "project_id": 1},
+			},
+		})
+	})
+
+	client := newAuthenticatedClient(t, handler)
+	tests, err := client.ListLoadTestsWithLimit(t.Context(), 5)
+	require.NoError(t, err)
+	assert.Len(t, tests, 2)
+}
+
 func TestClient_GetLoadTest(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)

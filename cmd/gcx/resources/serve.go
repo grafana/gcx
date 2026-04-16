@@ -175,7 +175,7 @@ support for file notifications.
 				}
 
 				// Start listening for events.
-				go watcher.Watch()
+				watcher.Watch(cmd.Context())
 			}
 
 			serverCfg := server.Config{

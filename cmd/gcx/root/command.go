@@ -26,21 +26,20 @@ import (
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/providers"
-	_ "github.com/grafana/gcx/internal/providers/alert"     // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/appo11y"   // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/faro"      // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/fleet"     // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/incidents" // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/k6"        // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/kg"        // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/logs"      // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/metrics"   // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/oncall"    // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/profiles"  // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/sigil"     // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/slo"       // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/synth"     // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/traces"    // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/alert"    // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/appo11y"  // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/faro"     // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/fleet"    // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/irm"      // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/k6"       // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/kg"       // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/logs"     // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/metrics"  // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/profiles" // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/sigil"    // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/slo"      // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/synth"    // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/traces"   // Provider registrations — blank imports trigger init() self-registration.
 	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/gcx/internal/terminal"
 	"github.com/grafana/grafana-app-sdk/logging"

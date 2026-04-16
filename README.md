@@ -7,6 +7,8 @@
 <img src="https://img.shields.io/badge/status-public%20preview-orange" alt="Public Preview">
 </p>
 
+![gcx](./gcx.png)
+
 Grafana Cloud and the Grafana Assistant — in your terminal and your agentic coding environment.
 
 Query production. Investigate alerts. Let the Assistant root-cause issues. Ship fixes with observability built in. Without leaving your editor.
@@ -15,30 +17,14 @@ Query production. Investigate alerts. Let the Assistant root-cause issues. Ship 
 
 ## Why gcx
 
-Agentic coding tools like Claude Code and Cursor have changed how developers build software.
+GCX brings the full power of Grafana Cloud and Grafana Assistant to your command line. It bridges the gap between your local environment and key observability insights from Grafana Cloud.
 
-But we face a critical architectural gap: Our development environments are operating in a Context Vacuum.
+But there is a dangerous gap. Adoption of agentic coding tools like Cursor and Claude Code have exploded. You are building faster than ever before. Your agents see your code — but they are blind to your production environment. They don't see the latency spikes, the server load, or whether you're actually hitting your SLOs. They write code based on what could happen, not what is actually happening.
 
-gcx closes that gap. It connects your editor to your entire Grafana Cloud production stack — including the Grafana Assistant — making observability a **development signal**, not an afterthought. When something breaks, the Assistant's investigation is already waiting: mitigations planned, context assembled, so you can act immediately.
-
-- **Grafana Assistant integration** — automated root-cause analysis, investigation summaries, and remediation suggestions powered by the Assistant
-- **Production-aware development** — query live metrics, logs, and traces without leaving your editor
-- **AI agent native** — JSON/YAML output, structured errors, predictable exit codes. Agent mode auto-detected for Claude Code, Copilot, Cursor, and others
-- **Full Grafana Cloud access** — dashboards, alerting, SLOs, Synthetic Monitoring, OnCall, k6, Fleet Management, Incidents, and more from a single CLI
-- **GitOps & CI/CD** — pull resources to files, version in git, push back with full round-trip fidelity
-- **Observability as code** — scaffold projects, import dashboards, lint with Rego rules, live-reload dev server
-- **Multi-environment** — named contexts to switch between dev, staging, and production
+We built GCX to close that gap.
 
 > [!NOTE]
 > **gcx requires Grafana 12 or above.** Older Grafana versions are not supported.
-
-## Maturity
-
-> [!WARNING]
-> **This project is currently *in public preview*, which means that it is still under active development.**
-> Bugs and issues are handled solely by Engineering teams. On-call support or SLAs are not available.
-
-See [Release life cycle for Grafana Labs](https://grafana.com/docs/release-life-cycle/).
 
 ## The Agentic Workflow
 
@@ -55,6 +41,53 @@ Here's what it looks like when your coding agent has access to production:
 **5. It ships** — Opens a PR, tests pass, deploys to production. The alert resolves.
 
 Investigation, fix, instrumentation, monitoring — without the developer ever leaving their editor. The Grafana Assistant provides the intelligence; gcx provides the interface. And because it all builds on everything you've already configured in Grafana Cloud — your dashboards, your alerts, your datasources — no other tool can give you this depth out of the box.
+
+```sh
+$ gcx assistant investigations list
+ID    TITLE                                     STATUS     UPDATED
+abc1  Checkout P95 latency breach               active     2m ago
+def2  Memory leak in payment-svc                resolved   1h ago
+```
+
+## See It in Action
+
+**Query production from your terminal:**
+
+```sh
+$ gcx metrics query 'rate(http_requests_total{service="checkout"}[5m])' --since 1h
+SERVICE     TIMESTAMP             VALUE
+checkout    2026-04-15 09:00:00   142.3
+checkout    2026-04-15 09:05:00   151.7
+checkout    2026-04-15 09:10:00   289.4
+checkout    2026-04-15 09:15:00   312.1
+```
+
+**Check what's firing:**
+
+```sh
+$ gcx alert rules list --state firing
+UID     NAME                            STATE    HEALTH   PAUSED
+abc1    Checkout P95 > SLO threshold    firing   ok       no
+def2    Disk usage > 85%                firing   ok       no
+```
+
+**Review SLO status:**
+
+```sh
+$ gcx slo definitions list
+UUID    NAME                        TARGET   WINDOW   STATUS
+uid1    Checkout Availability       99.90%   30d      ok
+uid2    API Latency P99 < 200ms     99.50%   30d      at_risk
+uid3    Payment Processing          99.95%   30d      breaching
+```
+
+**Visualize metrics directly in your terminal:**
+
+```sh
+$ gcx metrics query 'topk(6, sum by (container) (rate(container_cpu_usage_seconds_total{namespace="ditl-demo-prod", container!="", container!="POD"}[5m])))' --since 6h -o graph
+```
+
+![Terminal graph output](./graph_example.png)
 
 ## Install
 
@@ -208,6 +241,11 @@ gcx metrics query 'rate(http_requests_total[5m])' --since 1h
 gcx logs query '{app="nginx"} |= "error"' --since 1h
 ```
 
+## Maturity
+
+> [!WARNING]
+> **Public preview** — gcx is under active development. Bugs are handled by Engineering; on-call support and SLAs are not available. See [release life cycle](https://grafana.com/docs/release-life-cycle/).
+
 ## Grafana Cloud Products
 
 gcx provides dedicated commands for each Grafana Cloud product:
@@ -222,8 +260,15 @@ gcx provides dedicated commands for each Grafana Cloud product:
 | **Fleet Management** | `gcx fleet` | `fleet pipelines list`, `fleet collectors list` |
 | **IRM Incidents** | `gcx incidents` | `incidents list`, `incidents create -f incident.yaml` |
 | **Knowledge Graph** | `gcx kg` | `kg status`, `kg search`, `kg entities show` |
+| **Frontend Observability** | `gcx frontend` | `frontend apps list`, `frontend apps get` |
+| **App Observability** | `gcx appo11y` | `appo11y overrides get`, `appo11y settings get` |
+| **Sigil (AI Observability)** | `gcx sigil` | `sigil conversations list`, `sigil agents list`, `sigil rules list` |
+| **Assistant** | `gcx assistant` | `assistant prompt`, `assistant investigations list`, `assistant investigations report` |
 | **Adaptive Metrics** | `gcx metrics adaptive` | `metrics adaptive recommendations show`, `metrics adaptive rules list` |
 | **Adaptive Logs** | `gcx logs adaptive` | `logs adaptive patterns show`, `logs adaptive drop-rules list` |
+| **Adaptive Traces** | `gcx traces adaptive` | `traces adaptive recommendations show`, `traces adaptive policies list` |
+| **Profiles (Pyroscope)** | `gcx profiles` | `profiles query`, `profiles labels` |
+| **Traces (Tempo)** | `gcx traces` | `traces query`, `traces get`, `traces labels` |
 
 ## Resource Management
 

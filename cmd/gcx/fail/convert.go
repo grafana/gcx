@@ -38,6 +38,7 @@ func ErrorToDetailedError(err error) *DetailedError {
 		convertAPIErrors,          // API-related errors
 		convertVersionErrors,      // Version incompatibility errors
 		convertLinterErrors,       // Linter-related errors
+		convertSMConfigErrors,     // Synthetic Monitoring config errors
 		convertCloudConfigErrors,  // Cloud config / fleet / setup errors
 	}
 
@@ -307,6 +308,40 @@ func convertRequiredFlagErrors(err error) (*DetailedError, bool) {
 	return nil, false
 }
 
+func convertSMConfigErrors(err error) (*DetailedError, bool) {
+	msg := err.Error()
+
+	if strings.Contains(msg, "SM URL not configured") {
+		return &DetailedError{
+			Summary: "SM URL not configured",
+			Details: msg,
+			Parent:  err,
+			Suggestions: []string{
+				"Set manually: gcx config set providers.synth.sm-url https://synthetic-monitoring-api-<region>.grafana.net",
+				"Or use env var: export GRAFANA_PROVIDER_SYNTH_SM_URL=<URL>",
+				"Auto-discovery requires grafana.server in the current context",
+				"Check config: gcx config view",
+			},
+		}, true
+	}
+
+	if strings.Contains(msg, "SM token not configured") {
+		return &DetailedError{
+			Summary: "SM token not configured",
+			Details: msg,
+			Parent:  err,
+			Suggestions: []string{
+				"Set it: gcx config set providers.synth.sm-token <TOKEN>",
+				"Or use env var: export GRAFANA_PROVIDER_SYNTH_SM_TOKEN=<TOKEN>",
+				"Auto-discovery requires cloud.token and cloud.stack in the current context",
+				"Check config: gcx config view",
+			},
+		}, true
+	}
+
+	return nil, false
+}
+
 func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 	msg := err.Error()
 
@@ -336,6 +371,32 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 		}, true
 	}
 
+	// Fleet API scope error on read operations.
+	if strings.Contains(msg, "fleet:") && strings.Contains(msg, "invalid scope") &&
+		(strings.Contains(msg, "list ") || strings.Contains(msg, "get ")) {
+		return &DetailedError{
+			Parent:  err,
+			Summary: "Fleet Management: permission denied",
+			Suggestions: []string{
+				"Ensure your cloud.token access policy includes the fleet-management:read scope",
+			},
+			ExitCode: new(ExitAuthFailure),
+		}, true
+	}
+
+	// Fleet API scope error on write operations.
+	if strings.Contains(msg, "fleet:") && strings.Contains(msg, "invalid scope") &&
+		(strings.Contains(msg, "create ") || strings.Contains(msg, "update ") || strings.Contains(msg, "delete ")) {
+		return &DetailedError{
+			Parent:  err,
+			Summary: "Fleet Management: permission denied",
+			Suggestions: []string{
+				"Ensure your cloud.token access policy includes the fleet-management:write scope",
+			},
+			ExitCode: new(ExitAuthFailure),
+		}, true
+	}
+
 	// Fleet management not available.
 	if strings.Contains(msg, "fleet management endpoint is not available") ||
 		strings.Contains(msg, "fleet management instance ID is not available") {
@@ -347,6 +408,18 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 				"Fleet Management may not be enabled for this stack",
 				"Contact Grafana Cloud support to enable Fleet Management",
 			},
+		}, true
+	}
+
+	// Stack info lookup forbidden — access policy missing stacks:read scope.
+	if strings.Contains(msg, "failed to get stack info for") && strings.Contains(msg, "status 403") {
+		return &DetailedError{
+			Parent:  err,
+			Summary: "Cloud stack lookup: permission denied",
+			Suggestions: []string{
+				"Ensure your access policy includes the stacks:read scope",
+			},
+			ExitCode: new(ExitAuthFailure),
 		}, true
 	}
 

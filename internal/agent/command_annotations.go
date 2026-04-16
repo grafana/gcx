@@ -25,12 +25,12 @@ var commandAnnotations = map[string]annotation{
 	// Core CLI commands (cmd/gcx/)
 	// -----------------------------------------------------------------------
 
-	"gcx api": {Cost: "large", Hint: "GET /api/datasources -o json"},
+	"gcx api": {Cost: "large", Hint: "Run gcx help-tree --depth 1 to discover dedicated commands. Prefer gcx slo, gcx metrics query, gcx logs query, gcx alert, etc. Reserve gcx api for endpoints without a dedicated command. Example: GET /api/health -o json"},
 
 	// assistant
 	"gcx assistant investigations approvals": {Cost: "medium", Hint: "<id> -o json"},
 	"gcx assistant investigations cancel":    {Cost: "small"},
-	"gcx assistant investigations create":    {Cost: "small"},
+	"gcx assistant investigations create":    {Cost: "small", Hint: "Use for deep cross-signal root cause analysis. Dispatches specialist agents for metrics, logs, traces, and profiles in parallel — more efficient than chaining individual gcx query commands. Example: --title=\"Checkout latency spike after deploy\""},
 	"gcx assistant investigations document":  {Cost: "medium", Hint: "<investigation-id> <document-id> -o json"},
 	"gcx assistant investigations get":       {Cost: "medium", Hint: "<id> -o json"},
 	"gcx assistant investigations list":      {Cost: "small"},
@@ -58,7 +58,7 @@ var commandAnnotations = map[string]annotation{
 	// datasources
 	"gcx datasources get":   {Cost: "medium", Hint: "<uid> -o json"},
 	"gcx datasources list":  {Cost: "small"},
-	"gcx datasources query": {Cost: "large", Hint: "<datasource-uid> 'up' --since 1h -o json"},
+	"gcx datasources query": {Cost: "large", Hint: "Run gcx help-tree metrics (or logs, traces, profiles) to discover signal commands. Prefer gcx metrics query for PromQL, gcx logs query for LogQL, gcx traces query for TraceQL, gcx profiles query for profiling. Example: <datasource-uid> 'up' --since 1h -o json"},
 
 	// dev
 	"gcx dev generate":   {Cost: "small"},
@@ -91,7 +91,9 @@ var commandAnnotations = map[string]annotation{
 	"gcx setup instrumentation status":   {Cost: "small"},
 
 	// skills
-	"gcx skills install": {Cost: "small"},
+	"gcx skills install":   {Cost: "small"},
+	"gcx skills list":      {Cost: "small"},
+	"gcx skills uninstall": {Cost: "small"},
 
 	// -----------------------------------------------------------------------
 	// Alert provider
@@ -139,16 +141,16 @@ var commandAnnotations = map[string]annotation{
 	"gcx fleet tenant limits":     {Cost: "small"},
 
 	// -----------------------------------------------------------------------
-	// Incidents provider
+	// IRM Incidents
 	// -----------------------------------------------------------------------
-	"gcx incidents activity add":    {Cost: "small"},
-	"gcx incidents activity list":   {Cost: "small"},
-	"gcx incidents close":           {Cost: "small"},
-	"gcx incidents create":          {Cost: "small"},
-	"gcx incidents get":             {Cost: "small"},
-	"gcx incidents list":            {Cost: "small"},
-	"gcx incidents open":            {Cost: "small"},
-	"gcx incidents severities list": {Cost: "small"},
+	"gcx irm incidents activity add":    {Cost: "small"},
+	"gcx irm incidents activity list":   {Cost: "small"},
+	"gcx irm incidents close":           {Cost: "small"},
+	"gcx irm incidents create":          {Cost: "small"},
+	"gcx irm incidents get":             {Cost: "small"},
+	"gcx irm incidents list":            {Cost: "small"},
+	"gcx irm incidents open":            {Cost: "small"},
+	"gcx irm incidents severities list": {Cost: "small"},
 
 	// -----------------------------------------------------------------------
 	// k6 provider
@@ -189,13 +191,8 @@ var commandAnnotations = map[string]annotation{
 	// -----------------------------------------------------------------------
 	// Knowledge Graph provider
 	// -----------------------------------------------------------------------
-	"gcx kg datasets activate":       {Cost: "small"},
-	"gcx kg datasets list":           {Cost: "small"},
-	"gcx kg enable":                  {Cost: "small"},
 	"gcx kg entities list":           {Cost: "medium", Hint: "--type <type> --since 1h -o json"},
 	"gcx kg entities show":           {Cost: "medium", Hint: "<Type--Name> --type <type> -o json"},
-	"gcx kg entity-types list":       {Cost: "small"},
-	"gcx kg graph-config":            {Cost: "small"},
 	"gcx kg health":                  {Cost: "medium", Hint: "--type <type> --since 1h -o json"},
 	"gcx kg insights active":         {Cost: "medium", Hint: "--type <type> --severity critical -o json"},
 	"gcx kg insights entity-metric":  {Cost: "medium", Hint: "<Type--Name> --insight-id <id>"},
@@ -205,7 +202,6 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg insights source-metrics": {Cost: "medium", Hint: "--insight-id <id> --since 1h"},
 	"gcx kg insights summary":        {Cost: "medium", Hint: "<Type--Name> -o json"},
 	"gcx kg inspect":                 {Cost: "medium", Hint: "<Type--Name> -o json"},
-	"gcx kg kpi-display create":      {Cost: "small"},
 	"gcx kg model-rules create":      {Cost: "small"},
 	"gcx kg open":                    {Cost: "small"},
 	"gcx kg relabel-rules create":    {Cost: "small"},
@@ -218,10 +214,8 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg search example":          {Cost: "small"},
 	"gcx kg search insights":         {Cost: "medium", Hint: "--type <type> --since 1h"},
 	"gcx kg search sample":           {Cost: "small"},
-	"gcx kg setup":                   {Cost: "small"},
 	"gcx kg status":                  {Cost: "small"},
 	"gcx kg suppressions create":     {Cost: "small"},
-	"gcx kg vendors list":            {Cost: "small"},
 
 	// -----------------------------------------------------------------------
 	// Logs provider
@@ -264,50 +258,59 @@ var commandAnnotations = map[string]annotation{
 	"gcx metrics adaptive rules get":             {Cost: "small"},
 	"gcx metrics adaptive rules list":            {Cost: "small"},
 	"gcx metrics adaptive rules update":          {Cost: "small"},
+	"gcx metrics adaptive segments create":       {Cost: "small"},
+	"gcx metrics adaptive segments delete":       {Cost: "small"},
+	"gcx metrics adaptive segments get":          {Cost: "small"},
+	"gcx metrics adaptive segments list":         {Cost: "small"},
+	"gcx metrics adaptive segments update":       {Cost: "small"},
+	"gcx metrics adaptive exemptions create":     {Cost: "small"},
+	"gcx metrics adaptive exemptions delete":     {Cost: "small"},
+	"gcx metrics adaptive exemptions get":        {Cost: "small"},
+	"gcx metrics adaptive exemptions list":       {Cost: "small"},
+	"gcx metrics adaptive exemptions update":     {Cost: "small"},
 
 	// -----------------------------------------------------------------------
-	// OnCall provider
+	// IRM OnCall
 	// -----------------------------------------------------------------------
-	"gcx oncall alert-groups acknowledge":   {Cost: "small"},
-	"gcx oncall alert-groups delete":        {Cost: "small"},
-	"gcx oncall alert-groups get":           {Cost: "small"},
-	"gcx oncall alert-groups list":          {Cost: "small"},
-	"gcx oncall alert-groups list-alerts":   {Cost: "small"},
-	"gcx oncall alert-groups resolve":       {Cost: "small"},
-	"gcx oncall alert-groups silence":       {Cost: "small"},
-	"gcx oncall alert-groups unacknowledge": {Cost: "small"},
-	"gcx oncall alert-groups unresolve":     {Cost: "small"},
-	"gcx oncall alert-groups unsilence":     {Cost: "small"},
-	"gcx oncall alerts get":                 {Cost: "small"},
-	"gcx oncall escalate":                   {Cost: "small", Hint: "--title \"title\" --user-ids id1,id2"},
-	"gcx oncall escalation-chains get":      {Cost: "small"},
-	"gcx oncall escalation-chains list":     {Cost: "small"},
-	"gcx oncall escalation-policies get":    {Cost: "small"},
-	"gcx oncall escalation-policies list":   {Cost: "small"},
-	"gcx oncall integrations get":           {Cost: "small"},
-	"gcx oncall integrations list":          {Cost: "small"},
-	"gcx oncall organizations get":          {Cost: "small"},
-	"gcx oncall organizations list":         {Cost: "small"},
-	"gcx oncall resolution-notes get":       {Cost: "small"},
-	"gcx oncall resolution-notes list":      {Cost: "small"},
-	"gcx oncall routes get":                 {Cost: "small"},
-	"gcx oncall routes list":                {Cost: "small"},
-	"gcx oncall schedules final-shifts":     {Cost: "medium", Hint: "<schedule-id> --start 2024-01-01 --end 2024-01-31 -o json"},
-	"gcx oncall schedules get":              {Cost: "small"},
-	"gcx oncall schedules list":             {Cost: "small"},
-	"gcx oncall shift-swaps get":            {Cost: "small"},
-	"gcx oncall shift-swaps list":           {Cost: "small"},
-	"gcx oncall shifts get":                 {Cost: "small"},
-	"gcx oncall shifts list":                {Cost: "small"},
-	"gcx oncall slack-channels list":        {Cost: "small"},
-	"gcx oncall teams get":                  {Cost: "small"},
-	"gcx oncall teams list":                 {Cost: "small"},
-	"gcx oncall user-groups list":           {Cost: "small"},
-	"gcx oncall users current":              {Cost: "small"},
-	"gcx oncall users get":                  {Cost: "small"},
-	"gcx oncall users list":                 {Cost: "small"},
-	"gcx oncall webhooks get":               {Cost: "small"},
-	"gcx oncall webhooks list":              {Cost: "small"},
+	"gcx irm oncall alert-groups acknowledge":   {Cost: "small"},
+	"gcx irm oncall alert-groups delete":        {Cost: "small"},
+	"gcx irm oncall alert-groups get":           {Cost: "small"},
+	"gcx irm oncall alert-groups list":          {Cost: "small"},
+	"gcx irm oncall alert-groups list-alerts":   {Cost: "small"},
+	"gcx irm oncall alert-groups resolve":       {Cost: "small"},
+	"gcx irm oncall alert-groups silence":       {Cost: "small"},
+	"gcx irm oncall alert-groups unacknowledge": {Cost: "small"},
+	"gcx irm oncall alert-groups unresolve":     {Cost: "small"},
+	"gcx irm oncall alert-groups unsilence":     {Cost: "small"},
+	"gcx irm oncall alerts get":                 {Cost: "small"},
+	"gcx irm oncall escalate":                   {Cost: "small", Hint: "--title \"title\" --user-ids id1,id2"},
+	"gcx irm oncall escalation-chains get":      {Cost: "small"},
+	"gcx irm oncall escalation-chains list":     {Cost: "small"},
+	"gcx irm oncall escalation-policies get":    {Cost: "small"},
+	"gcx irm oncall escalation-policies list":   {Cost: "small"},
+	"gcx irm oncall integrations get":           {Cost: "small"},
+	"gcx irm oncall integrations list":          {Cost: "small"},
+	"gcx irm oncall organizations get":          {Cost: "small"},
+	"gcx irm oncall resolution-notes get":       {Cost: "small"},
+	"gcx irm oncall resolution-notes list":      {Cost: "small"},
+	"gcx irm oncall routes get":                 {Cost: "small"},
+	"gcx irm oncall routes list":                {Cost: "small"},
+	"gcx irm oncall schedules final-shifts":     {Cost: "medium", Hint: "<schedule-id> --start 2024-01-01 --end 2024-01-31 -o json"},
+	"gcx irm oncall schedules get":              {Cost: "small"},
+	"gcx irm oncall schedules list":             {Cost: "small"},
+	"gcx irm oncall shift-swaps get":            {Cost: "small"},
+	"gcx irm oncall shift-swaps list":           {Cost: "small"},
+	"gcx irm oncall shifts get":                 {Cost: "small"},
+	"gcx irm oncall shifts list":                {Cost: "small"},
+	"gcx irm oncall slack-channels list":        {Cost: "small"},
+	"gcx irm oncall teams get":                  {Cost: "small"},
+	"gcx irm oncall teams list":                 {Cost: "small"},
+	"gcx irm oncall user-groups list":           {Cost: "small"},
+	"gcx irm oncall users current":              {Cost: "small"},
+	"gcx irm oncall users get":                  {Cost: "small"},
+	"gcx irm oncall users list":                 {Cost: "small"},
+	"gcx irm oncall webhooks get":               {Cost: "small"},
+	"gcx irm oncall webhooks list":              {Cost: "small"},
 
 	// -----------------------------------------------------------------------
 	// Profiles provider

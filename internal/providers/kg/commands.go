@@ -216,82 +216,14 @@ func resolveEntityTypes(cmd *cobra.Command, client *Client, entityType string) (
 }
 
 // ---------------------------------------------------------------------------
-// Lifecycle commands
+// Stack status
 // ---------------------------------------------------------------------------
-
-func newSetupCommand(loader RESTConfigLoader) *cobra.Command {
-	opts := &setupOpts{}
-	cmd := &cobra.Command{
-		Use:   "setup",
-		Short: "Initialize the Knowledge Graph plugin.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.Validate(); err != nil {
-				return err
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			if err := client.Setup(cmd.Context()); err != nil {
-				return err
-			}
-			cmdio.Success(cmd.OutOrStdout(), "Knowledge Graph plugin initialized")
-			return nil
-		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
-}
-
-type setupOpts struct{}
-
-func (o *setupOpts) setup(_ *pflag.FlagSet) {}
-
-func (o *setupOpts) Validate() error { return nil }
-
-func newEnableCommand(loader RESTConfigLoader) *cobra.Command {
-	opts := &enableOpts{}
-	cmd := &cobra.Command{
-		Use:   "enable",
-		Short: "Enable the Knowledge Graph feature.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.Validate(); err != nil {
-				return err
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			if err := client.Enable(cmd.Context()); err != nil {
-				return err
-			}
-			cmdio.Success(cmd.OutOrStdout(), "Knowledge Graph enabled")
-			return nil
-		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
-}
-
-type enableOpts struct{}
-
-func (o *enableOpts) setup(_ *pflag.FlagSet) {}
-
-func (o *enableOpts) Validate() error { return nil }
 
 func newStatusCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &statusOpts{}
 	cmd := &cobra.Command{
 		Use:   "status",
-		Short: "Show Knowledge Graph status and entity counts.",
+		Short: "Show Knowledge Graph stack status.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -308,14 +240,7 @@ func newStatusCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			counts, err := client.CountEntityTypes(cmd.Context())
-			if err != nil {
-				return err
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), map[string]any{
-				"status":       status,
-				"entityCounts": counts,
-			})
+			return opts.IO.Encode(cmd.OutOrStdout(), status)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -329,162 +254,6 @@ type statusOpts struct {
 func (o *statusOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
-}
-
-// ---------------------------------------------------------------------------
-// Datasets commands
-// ---------------------------------------------------------------------------
-
-func newDatasetsCommand(loader RESTConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "datasets",
-		Short: "Manage Knowledge Graph datasets.",
-	}
-
-	listOpts := &datasetsListOpts{}
-	listCmd := &cobra.Command{
-		Use:   "list",
-		Short: "List Knowledge Graph datasets.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := listOpts.IO.Validate(); err != nil {
-				return err
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			result, err := client.GetDatasets(cmd.Context())
-			if err != nil {
-				return err
-			}
-			result.Items = adapter.TruncateSlice(result.Items, listOpts.Limit)
-			return listOpts.IO.Encode(cmd.OutOrStdout(), result)
-		},
-	}
-	listOpts.setup(listCmd.Flags())
-
-	var activateFile string
-	activateCmd := &cobra.Command{
-		Use:   "activate <name>",
-		Short: "Activate a dataset.",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			data, err := readFileOrStdin(cmd, activateFile)
-			if err != nil {
-				return fmt.Errorf("failed to read file: %w", err)
-			}
-			var config DatasetConfig
-			if err := yaml.Unmarshal(data, &config); err != nil { //nolint:musttag
-				return fmt.Errorf("invalid YAML: %w", err)
-			}
-			restCfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(restCfg)
-			if err != nil {
-				return err
-			}
-			if err := client.ActivateDataset(cmd.Context(), args[0], config); err != nil {
-				return err
-			}
-			cmdio.Success(cmd.OutOrStdout(), "Dataset %s activated", args[0])
-			return nil
-		},
-	}
-	activateCmd.Flags().StringVarP(&activateFile, "file", "f", "", "File containing dataset config (YAML)")
-	_ = activateCmd.MarkFlagRequired("file")
-
-	cmd.AddCommand(listCmd, activateCmd)
-	return cmd
-}
-
-type datasetsListOpts struct {
-	IO    cmdio.Options
-	Limit int64
-}
-
-func (o *datasetsListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &DatasetTableCodec{})
-	o.IO.DefaultFormat("table")
-	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
-}
-
-// DatasetTableCodec renders datasets as a table.
-type DatasetTableCodec struct{}
-
-func (c *DatasetTableCodec) Format() format.Format { return "table" }
-
-func (c *DatasetTableCodec) Encode(w io.Writer, v any) error {
-	resp, ok := v.(*DatasetsResponse)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected *DatasetsResponse")
-	}
-	t := style.NewTable("NAME", "DETECTED", "ENABLED", "CONFIGURED")
-	for _, item := range resp.Items {
-		t.Row(item.Name, strconv.FormatBool(item.Detected), strconv.FormatBool(item.Enabled), strconv.FormatBool(item.Configured))
-	}
-	return t.Render(w)
-}
-
-func (c *DatasetTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
-// ---------------------------------------------------------------------------
-// Vendors command
-// ---------------------------------------------------------------------------
-
-func newVendorsCommand(loader RESTConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "vendors",
-		Short: "Manage Knowledge Graph vendors.",
-	}
-
-	listOpts := &vendorsListOpts{}
-	listCmd := &cobra.Command{
-		Use:   "list",
-		Short: "List detected vendors.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := listOpts.IO.Validate(); err != nil {
-				return err
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			vendors, err := client.GetVendors(cmd.Context())
-			if err != nil {
-				return err
-			}
-			vendors = adapter.TruncateSlice(vendors, listOpts.Limit)
-			return listOpts.IO.Encode(cmd.OutOrStdout(), vendors)
-		},
-	}
-	listOpts.setup(listCmd.Flags())
-
-	cmd.AddCommand(listCmd)
-	return cmd
-}
-
-type vendorsListOpts struct {
-	IO    cmdio.Options
-	Limit int64
-}
-
-func (o *vendorsListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("json")
-	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 // ---------------------------------------------------------------------------
@@ -783,45 +552,6 @@ func newRelabelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	return cmd
 }
 
-func newKPIDisplayCommand(loader RESTConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "kpi-display",
-		Short: "Configure KPI display settings.",
-	}
-	var fileFlag string
-	createCmd := &cobra.Command{
-		Use:   "create",
-		Short: "Configure KPI display from a file (YAML).",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			data, err := readFileOrStdin(cmd, fileFlag)
-			if err != nil {
-				return fmt.Errorf("failed to read file: %w", err)
-			}
-			var config KPIDisplayConfig
-			if err := yaml.Unmarshal(data, &config); err != nil {
-				return fmt.Errorf("invalid YAML: %w", err)
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			if err := client.ConfigureKPIDisplay(cmd.Context(), &config); err != nil {
-				return err
-			}
-			cmdio.Success(cmd.OutOrStdout(), "KPI display configured")
-			return nil
-		},
-	}
-	createCmd.Flags().StringVarP(&fileFlag, "file", "f", "", "Input file (YAML)")
-	_ = createCmd.MarkFlagRequired("file")
-	cmd.AddCommand(createCmd)
-	return cmd
-}
-
 // ---------------------------------------------------------------------------
 // Entities commands
 // ---------------------------------------------------------------------------
@@ -985,89 +715,9 @@ func (c *EntityTableCodec) Decode(_ io.Reader, _ any) error {
 }
 
 // ---------------------------------------------------------------------------
-// Entity types commands
-// ---------------------------------------------------------------------------
-
-//nolint:dupl
-func newEntityTypesCommand(loader RESTConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "entity-types",
-		Short: "Manage Knowledge Graph entity types.",
-	}
-
-	listOpts := &entityTypesListOpts{}
-	listCmd := &cobra.Command{
-		Use:   "list",
-		Short: "List entity types with counts.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := listOpts.IO.Validate(); err != nil {
-				return err
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			counts, err := client.CountEntityTypes(cmd.Context())
-			if err != nil {
-				return err
-			}
-			return listOpts.IO.Encode(cmd.OutOrStdout(), counts)
-		},
-	}
-	listOpts.setup(listCmd.Flags())
-
-	cmd.AddCommand(listCmd)
-	return cmd
-}
-
-type entityTypesListOpts struct {
-	IO    cmdio.Options
-	Limit int64
-}
-
-func (o *entityTypesListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &EntityTypeTableCodec{})
-	o.IO.DefaultFormat("table")
-	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
-}
-
-// EntityTypeTableCodec renders entity types as a table.
-type EntityTypeTableCodec struct{}
-
-func (c *EntityTypeTableCodec) Format() format.Format { return "table" }
-
-func (c *EntityTypeTableCodec) Encode(w io.Writer, v any) error {
-	counts, ok := v.(map[string]int64)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected map[string]int64")
-	}
-	// Sort types alphabetically for stable output.
-	types := make([]string, 0, len(counts))
-	for t := range counts {
-		types = append(types, t)
-	}
-	sort.Strings(types)
-	tbl := style.NewTable("TYPE", "COUNT")
-	for _, t := range types {
-		tbl.Row(t, strconv.FormatInt(counts[t], 10))
-	}
-	return tbl.Render(w)
-}
-
-func (c *EntityTypeTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
-// ---------------------------------------------------------------------------
 // Scopes command
 // ---------------------------------------------------------------------------
 
-//nolint:dupl
 func newScopesCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "scopes",
@@ -1606,47 +1256,6 @@ func (o *searchEntitiesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
-}
-
-// ---------------------------------------------------------------------------
-// Graph config command
-// ---------------------------------------------------------------------------
-
-func newGraphConfigCommand(loader RESTConfigLoader) *cobra.Command {
-	ioOpts := &graphConfigOpts{}
-	cmd := &cobra.Command{
-		Use:   "graph-config",
-		Short: "Get the graph display configuration.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := ioOpts.IO.Validate(); err != nil {
-				return err
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			result, err := client.GetGraphDisplayConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			return ioOpts.IO.Encode(cmd.OutOrStdout(), result)
-		},
-	}
-	ioOpts.setup(cmd.Flags())
-	return cmd
-}
-
-type graphConfigOpts struct {
-	IO cmdio.Options
-}
-
-func (o *graphConfigOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("json")
-	o.IO.BindFlags(flags)
 }
 
 // ---------------------------------------------------------------------------

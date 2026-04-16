@@ -171,3 +171,150 @@ func TestErrorToDetailedError_CobraUnknownCommandError(t *testing.T) {
 	require.Len(t, got.Suggestions, 1)
 	assert.Equal(t, "Run 'gcx kg --help' for full usage and examples", got.Suggestions[0])
 }
+
+func TestErrorToDetailedError_CloudStackLookupForbidden(t *testing.T) {
+	tests := []struct {
+		name        string
+		err         error
+		wantMatch   bool
+		wantSummary string
+	}{
+		{
+			name:        "k6 stack info 403 suggests stacks:read scope",
+			err:         errors.New("k6: load cloud config: failed to get stack info for \"mystack\": status 403: forbidden"),
+			wantMatch:   true,
+			wantSummary: "Cloud stack lookup: permission denied",
+		},
+		{
+			name:        "faro stack info 403 also matches",
+			err:         errors.New("cloud config required for sourcemap upload: failed to get stack info for \"mystack\": status 403: forbidden"),
+			wantMatch:   true,
+			wantSummary: "Cloud stack lookup: permission denied",
+		},
+		{
+			name:      "stack info 404 is not matched",
+			err:       errors.New("k6: load cloud config: failed to get stack info for \"mystack\": status 404: not found"),
+			wantMatch: false,
+		},
+		{
+			name:      "403 without stack info is not matched",
+			err:       errors.New("k6: list projects: status 403: forbidden"),
+			wantMatch: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tc.err)
+
+			if !tc.wantMatch {
+				assert.Equal(t, "Unexpected error", got.Summary)
+				return
+			}
+
+			assert.Equal(t, tc.wantSummary, got.Summary)
+			require.NotNil(t, got.ExitCode)
+			assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+			require.Len(t, got.Suggestions, 1)
+			assert.Contains(t, got.Suggestions[0], "stacks:read")
+		})
+	}
+}
+
+func TestErrorToDetailedError_FleetScopeError(t *testing.T) {
+	tests := []struct {
+		name      string
+		err       error
+		wantScope string
+	}{
+		{
+			name:      "list pipelines invalid scope suggests fleet-management:read",
+			err:       errors.New(`fleet: list pipelines: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
+			wantScope: "fleet-management:read",
+		},
+		{
+			name:      "list collectors invalid scope suggests fleet-management:read",
+			err:       errors.New(`fleet: list collectors: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
+			wantScope: "fleet-management:read",
+		},
+		{
+			name:      "get pipeline invalid scope suggests fleet-management:read",
+			err:       errors.New(`fleet: get pipeline abc123: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
+			wantScope: "fleet-management:read",
+		},
+		{
+			name:      "create pipeline invalid scope suggests fleet-management:write",
+			err:       errors.New(`fleet: create pipeline: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
+			wantScope: "fleet-management:write",
+		},
+		{
+			name:      "update pipeline invalid scope suggests fleet-management:write",
+			err:       errors.New(`fleet: update pipeline abc123: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
+			wantScope: "fleet-management:write",
+		},
+		{
+			name:      "create collector invalid scope suggests fleet-management:write",
+			err:       errors.New(`fleet: create collector: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
+			wantScope: "fleet-management:write",
+		},
+		{
+			name:      "update collector invalid scope suggests fleet-management:write",
+			err:       errors.New(`fleet: update collector abc123: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
+			wantScope: "fleet-management:write",
+		},
+		{
+			name:      "delete pipeline invalid scope suggests fleet-management:write",
+			err:       errors.New(`fleet: delete pipeline abc123: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
+			wantScope: "fleet-management:write",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tc.err)
+
+			if tc.wantScope == "" {
+				assert.Equal(t, "Unexpected error", got.Summary)
+				return
+			}
+
+			assert.Equal(t, "Fleet Management: permission denied", got.Summary)
+			require.NotNil(t, got.ExitCode)
+			assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+			require.Len(t, got.Suggestions, 1)
+			assert.Contains(t, got.Suggestions[0], tc.wantScope)
+		})
+	}
+}
+
+func TestErrorToDetailedError_SMURLNotConfigured(t *testing.T) {
+	err := fmt.Errorf("failed to load SM config for checks: %w",
+		fmt.Errorf("SM URL not configured: %w", errors.New("no Grafana server configured: grafana config is required")))
+
+	got := fail.ErrorToDetailedError(err)
+
+	require.NotNil(t, got)
+	assert.Equal(t, "SM URL not configured", got.Summary)
+	assert.Contains(t, got.Details, "SM URL not configured")
+	require.Len(t, got.Suggestions, 4)
+	assert.Contains(t, got.Suggestions[0], "gcx config set providers.synth.sm-url")
+	assert.Contains(t, got.Suggestions[1], "GRAFANA_PROVIDER_SYNTH_SM_URL")
+	assert.Contains(t, got.Suggestions[2], "grafana.server")
+	assert.Contains(t, got.Suggestions[3], "gcx config view")
+}
+
+func TestErrorToDetailedError_SMTokenNotConfigured(t *testing.T) {
+	err := fmt.Errorf("failed to load SM config for checks: %w",
+		fmt.Errorf("SM token not configured: %w", errors.New("no cloud config: cloud token is required")))
+
+	got := fail.ErrorToDetailedError(err)
+
+	require.NotNil(t, got)
+	assert.Equal(t, "SM token not configured", got.Summary)
+	assert.Contains(t, got.Details, "SM token not configured")
+	require.Len(t, got.Suggestions, 4)
+	assert.Contains(t, got.Suggestions[0], "gcx config set providers.synth.sm-token")
+	assert.Contains(t, got.Suggestions[1], "GRAFANA_PROVIDER_SYNTH_SM_TOKEN")
+	assert.Contains(t, got.Suggestions[2], "cloud.token")
+	assert.Contains(t, got.Suggestions[3], "gcx config view")
+}

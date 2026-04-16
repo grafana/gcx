@@ -23,6 +23,8 @@ Manage Adaptive Metrics resources
 ### SEE ALSO
 
 * [gcx metrics](gcx_metrics.md)	 - Query Prometheus datasources and manage Adaptive Metrics
+* [gcx metrics adaptive exemptions](gcx_metrics_adaptive_exemptions.md)	 - Manage Adaptive Metrics recommendation exemptions.
 * [gcx metrics adaptive recommendations](gcx_metrics_adaptive_recommendations.md)	 - Manage metric recommendations.
 * [gcx metrics adaptive rules](gcx_metrics_adaptive_rules.md)	 - Manage aggregation rules.
+* [gcx metrics adaptive segments](gcx_metrics_adaptive_segments.md)	 - Manage Adaptive Metrics segments.
 

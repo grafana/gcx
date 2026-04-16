@@ -11,7 +11,10 @@ jobs:
   claude-review:
     # Run on opened/ready_for_review (if not draft), or on unlabeled only if
     # the removed label is 'claude-reviewed' (manual re-review trigger).
+    # Skip all bot PRs (Dependabot, Renovate, etc.) — user.type is 'Bot' for
+    # GitHub App accounts, 'User' for humans.
     if: |
+      github.event.pull_request.user.type != 'Bot' &&
       github.event.pull_request.draft == false &&
       (github.event.action != 'unlabeled' || github.event.label.name == 'claude-reviewed')
     runs-on: ubuntu-latest
@@ -34,7 +37,7 @@ jobs:
 
       - name: Run Claude Code Review
         id: claude-review
-        uses: anthropics/claude-code-action@b47fd721da662d48c5680e154ad16a73ed74d2e0 # v1
+        uses: anthropics/claude-code-action@1c8b699d43e9bfed42b48ef15da85d89bab70960 # v1
         with:
           anthropic_api_key: ${{ env.ANTHROPIC_API_KEY }}
           use_sticky_comment: true

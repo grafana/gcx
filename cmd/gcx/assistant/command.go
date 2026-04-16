@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -109,7 +110,7 @@ the A2A (Agent-to-Agent) protocol over Server-Sent Events.`,
 		Example: "  gcx assistant prompt \"What alerts are firing?\"\n  gcx assistant prompt \"Show CPU usage\" --json\n  gcx assistant prompt \"Follow up\" --continue",
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "large",
-			agent.AnnotationLLMHint:   "\"What alerts are firing?\" --json",
+			agent.AnnotationLLMHint:   "Prefer deterministic gcx commands (gcx metrics query, gcx slo definitions status, gcx alert instances list) for precise data retrieval. Use assistant prompt for reasoning: root cause analysis, holistic health questions, or when you don't know which metrics/labels exist — the Assistant's Infrastructure Memories know your stack topology. Example: \"Why is checkout-latency spiking?\" --json",
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -152,15 +153,13 @@ func runPrompt(cmd *cobra.Command, message string, opts *promptOpts, configOpts 
 		contextID = lastContextID
 	}
 
-	// Load config and build client
-	clientOpts, err := resolveClientOptions(ctx, configOpts)
+	clientOpts, err := resolveAssistantClientOptions(ctx, configOpts, opts.timeout)
 	if err != nil {
 		if opts.jsonOut {
 			return jsonError(err)
 		}
 		return err
 	}
-
 	c := assistant.New(clientOpts)
 
 	// Validate context ID if provided
@@ -314,8 +313,10 @@ func handlePromptResult(cmd *cobra.Command, result assistant.StreamResult, opts 
 	return err
 }
 
-// resolveClientOptions loads the gcx config and builds assistant.ClientOptions.
-func resolveClientOptions(ctx context.Context, configOpts *cmdconfig.Options) (assistant.ClientOptions, error) {
+// resolveAssistantClientOptions loads the gcx config and returns assistant
+// ClientOptions for assistant prompt, including an HTTP client whose Timeout
+// matches streamTimeoutSeconds (see --timeout and SSE body reads).
+func resolveAssistantClientOptions(ctx context.Context, configOpts *cmdconfig.Options, streamTimeoutSeconds int) (assistant.ClientOptions, error) {
 	cfg, err := configOpts.LoadConfig(ctx)
 	if err != nil {
 		return assistant.ClientOptions{}, err
@@ -331,6 +332,8 @@ func resolveClientOptions(ctx context.Context, configOpts *cmdconfig.Options) (a
 		return assistant.ClientOptions{}, fmt.Errorf("no grafana config in context %q", cfg.CurrentContext)
 	}
 
+	httpClient := newAssistantStreamingHTTPClient(ctx, streamTimeoutSeconds)
+
 	switch {
 	case grafana.ProxyEndpoint != "" && grafana.OAuthToken != "":
 		// OAuth path: direct API via ProxyEndpoint
@@ -340,7 +343,7 @@ func resolveClientOptions(ctx context.Context, configOpts *cmdconfig.Options) (a
 			Token:          grafana.OAuthToken,
 			APIEndpoint:    grafana.ProxyEndpoint,
 			TokenRefresher: refresher,
-			HTTPClient:     httputils.NewDefaultClient(ctx),
+			HTTPClient:     httpClient,
 		}, nil
 
 	case grafana.APIToken != "":
@@ -348,12 +351,32 @@ func resolveClientOptions(ctx context.Context, configOpts *cmdconfig.Options) (a
 		return assistant.ClientOptions{
 			GrafanaURL: grafana.Server,
 			Token:      grafana.APIToken,
-			HTTPClient: httputils.NewDefaultClient(ctx),
+			HTTPClient: httpClient,
 		}, nil
 
 	default:
 		return assistant.ClientOptions{}, errors.New("no authentication configured; run 'gcx auth login' or set grafana.token in config")
 	}
+}
+
+// newAssistantStreamingHTTPClient returns an HTTP client suitable for assistant
+// A2A streaming: Timeout spans the full response body read and must align with
+// internal/assistant StreamOptions.Timeout (see --timeout on assistant prompt).
+func newAssistantStreamingHTTPClient(ctx context.Context, streamTimeoutSeconds int) *http.Client {
+	if streamTimeoutSeconds <= 0 {
+		streamTimeoutSeconds = 300
+	}
+	d := time.Duration(streamTimeoutSeconds) * time.Second
+	if httputils.PayloadLogging(ctx) {
+		return httputils.NewClient(httputils.ClientOpts{
+			Timeout: d,
+			Middlewares: []httputils.Middleware{
+				httputils.LoggingMiddleware,
+				httputils.RequestResponseLoggingMiddleware,
+			},
+		})
+	}
+	return httputils.NewClient(httputils.ClientOpts{Timeout: d})
 }
 
 const refreshThreshold = 5 * time.Minute

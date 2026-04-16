@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -40,6 +41,80 @@ func TestRefreshTransport_SetsAuthorizationHeader(t *testing.T) {
 
 	if gotHeader != "Bearer gat_test-token" {
 		t.Fatalf("expected Authorization header %q, got %q", "Bearer gat_test-token", gotHeader)
+	}
+}
+
+func TestRefreshTransport_PreservesExistingAuthorizationHeader(t *testing.T) {
+	var gotHeader string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHeader = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	transport := &auth.RefreshTransport{
+		Base:          http.DefaultTransport,
+		ProxyEndpoint: backend.URL,
+		Token:         "gat_test-token",
+		ExpiresAt:     time.Now().Add(1 * time.Hour),
+	}
+
+	client := &http.Client{Transport: transport}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, backend.URL+"/api/test", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	req.SetBasicAuth("123", "cloud-api-token")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if !strings.HasPrefix(gotHeader, "Basic ") {
+		t.Fatalf("expected Authorization header to start with %q, got %q", "Basic ", gotHeader)
+	}
+}
+
+func TestRefreshTransport_SkipsRefreshWhenAuthorizationPreset(t *testing.T) {
+	var refreshCalls atomic.Int32
+	var gotHeader string
+	refreshServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/cli/v1/auth/refresh" {
+			refreshCalls.Add(1)
+		}
+		gotHeader = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer refreshServer.Close()
+
+	transport := &auth.RefreshTransport{
+		Base:          http.DefaultTransport,
+		ProxyEndpoint: refreshServer.URL,
+		Token:         "gat_old",
+		RefreshToken:  "gar_old",
+		ExpiresAt:     time.Now().Add(1 * time.Minute), // within refresh threshold
+	}
+
+	client := &http.Client{Transport: transport}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, refreshServer.URL+"/test", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	req.SetBasicAuth("123", "cloud-api-token")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if refreshCalls.Load() != 0 {
+		t.Fatalf("expected no refresh calls, got %d", refreshCalls.Load())
+	}
+	if !strings.HasPrefix(gotHeader, "Basic ") {
+		t.Fatalf("expected Authorization header to start with %q, got %q", "Basic ", gotHeader)
 	}
 }
 

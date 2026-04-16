@@ -53,7 +53,7 @@ func resolveLoadTest(cmd *cobra.Command, client *Client, idFlag, projectID int, 
 		return client.GetLoadTestByName(ctx, projectID, nameArg)
 	}
 	// No project-id: scan all tests.
-	all, err := client.ListAllLoadTests(ctx)
+	all, err := client.ListLoadTests(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -552,20 +552,21 @@ func newTestsListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			tests, err := client.ListLoadTests(ctx)
-			if err != nil {
-				return err
-			}
+			var tests []LoadTest
 			if opts.ProjectID != 0 {
-				var filtered []LoadTest
-				for _, t := range tests {
-					if t.ProjectID == opts.ProjectID {
-						filtered = append(filtered, t)
-					}
+				tests, err = client.ListLoadTestsByProject(ctx, opts.ProjectID)
+				if err != nil {
+					return err
 				}
-				tests = filtered
+				if l := int(opts.Limit); l > 0 && len(tests) > l {
+					tests = tests[:l]
+				}
+			} else {
+				tests, err = client.ListLoadTestsWithLimit(ctx, int(opts.Limit))
+				if err != nil {
+					return err
+				}
 			}
-			tests = adapter.TruncateSlice(tests, opts.Limit)
 			return opts.IO.Encode(cmd.OutOrStdout(), tests)
 		},
 	}

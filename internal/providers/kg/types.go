@@ -28,86 +28,6 @@ type SanityStepResult struct {
 	Warnings     []string `json:"warnings,omitempty"`
 }
 
-// Vendor represents a detected vendor in the metrics.
-//
-//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
-type Vendor struct {
-	Name    string `json:"name"`
-	Enabled bool   `json:"enabled"`
-}
-
-// GetResourceName returns the vendor name.
-func (v Vendor) GetResourceName() string { return v.Name }
-
-// SetResourceName sets the vendor name.
-func (v *Vendor) SetResourceName(name string) { v.Name = name }
-
-// VendorsResponse is the response from the vendors API.
-type VendorsResponse struct {
-	Vendors []Vendor `json:"vendors"`
-}
-
-// DatasetsResponse is the response from the datasets API.
-type DatasetsResponse struct {
-	Items []DatasetItem `json:"items"`
-}
-
-// DatasetItem represents a dataset in the API response.
-//
-//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
-type DatasetItem struct {
-	Name       string `json:"name"`
-	Detected   bool   `json:"detected"`
-	Enabled    bool   `json:"enabled"`
-	Configured bool   `json:"configured"`
-}
-
-// GetResourceName returns the dataset name.
-func (d DatasetItem) GetResourceName() string { return d.Name }
-
-// SetResourceName sets the dataset name.
-func (d *DatasetItem) SetResourceName(name string) { d.Name = name }
-
-// DatasetConfig holds configuration for activating a dataset.
-type DatasetConfig struct {
-	Enabled      bool              `json:"enabled" yaml:"enabled"`
-	Matchers     map[string]string `json:"matchers,omitempty" yaml:"matchers,omitempty"`
-	FilterGroups []FilterGroup     `json:"filterGroups,omitempty" yaml:"filterGroups,omitempty"`
-}
-
-// DatasetActivationRequest is the request body for activating a dataset.
-type DatasetActivationRequest struct {
-	DatasetType     string        `json:"datasetType"`
-	DisabledVendors []string      `json:"disabledVendors"`
-	FilterGroups    []FilterGroup `json:"filterGroups"`
-}
-
-// FilterGroup defines filtering for dataset activation.
-type FilterGroup struct {
-	Filters         []string `json:"filters"`
-	EnvLabel        string   `json:"envLabel"`
-	SiteLabel       string   `json:"siteLabel"`
-	EnvLabelValues  []string `json:"envLabelValues"`
-	SiteLabelValues []string `json:"siteLabelValues"`
-}
-
-// KPIDisplayConfig holds configuration for the KPI drawer display settings.
-type KPIDisplayConfig struct {
-	DefaultDashboard    bool `json:"defaultDashboard" yaml:"default_dashboard"`
-	AdditionalDashboard bool `json:"additionalDashboard" yaml:"additional_dashboard"`
-	FrameworkDashboard  bool `json:"frameworkDashboard" yaml:"framework_dashboard"`
-	RuntimeDashboard    bool `json:"runtimeDashboard" yaml:"runtime_dashboard"`
-	K8sAppView          bool `json:"k8sAppView" yaml:"k8s_app_view"`
-	AppO11yAppView      bool `json:"appO11yAppView" yaml:"app_o11y_app_view"`
-	ProfilesView        bool `json:"profilesView" yaml:"profiles_view"`
-	FrontendO11yAppView bool `json:"frontendO11yAppView" yaml:"frontend_o11y_app_view"`
-	AWSAppView          bool `json:"awsAppView" yaml:"aws_app_view"`
-	LogsView            bool `json:"logsView" yaml:"logs_view"`
-	TracesView          bool `json:"tracesView" yaml:"traces_view"`
-	PropertiesView      bool `json:"propertiesView" yaml:"properties_view"`
-	MetricsView         bool `json:"metricsView" yaml:"metrics_view"`
-}
-
 // EntityKey identifies an entity in the Knowledge Graph.
 type EntityKey struct {
 	Type  string         `json:"type" yaml:"type"`
@@ -309,44 +229,11 @@ type SourceMetricsResponse struct {
 	DataSourceUID string            `json:"dataSourceUid,omitempty"`
 }
 
-// GraphDisplayConfig holds entity and edge display settings.
-type GraphDisplayConfig struct {
-	EntityTypes map[string]EntityTypeDisplayConfig `json:"entities"`
-	EdgeTypes   map[string]EdgeTypeDisplayConfig   `json:"edges"`
-}
-
-// EntityTypeDisplayConfig holds display settings for an entity type.
-type EntityTypeDisplayConfig struct {
-	Color string `json:"color"`
-	Icon  string `json:"icon"`
-	Shape string `json:"shape"`
-}
-
-// EdgeTypeDisplayConfig holds display settings for an edge type.
-type EdgeTypeDisplayConfig struct {
-	Color string `json:"color"`
-	Style string `json:"style"`
-}
-
 // GetResourceName returns the composite "Type--Name" identity for the entity.
 func (e GraphEntity) GetResourceName() string { return e.Type + "--" + e.Name }
 
 // SetResourceName sets the entity name (Type is set separately).
 func (e *GraphEntity) SetResourceName(name string) { e.Name = name }
-
-// EntityType represents a discovered entity type with its instance count.
-//
-//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
-type EntityType struct {
-	Name  string `json:"name"`
-	Count int64  `json:"count"`
-}
-
-// GetResourceName returns the entity type name.
-func (e EntityType) GetResourceName() string { return e.Name }
-
-// SetResourceName sets the entity type name.
-func (e *EntityType) SetResourceName(name string) { e.Name = name }
 
 // Scope represents a scope dimension with its known values.
 //

@@ -10,10 +10,7 @@ import (
 // Compile-time assertions for ResourceIdentity compliance.
 var (
 	_ adapter.ResourceIdentity = &kg.Rule{}
-	_ adapter.ResourceIdentity = &kg.DatasetItem{}
-	_ adapter.ResourceIdentity = &kg.Vendor{}
 	_ adapter.ResourceIdentity = &kg.GraphEntity{}
-	_ adapter.ResourceIdentity = &kg.EntityType{}
 	_ adapter.ResourceIdentity = &kg.Scope{}
 )
 
@@ -35,11 +32,8 @@ func TestAllTypes_ResourceIdentity(t *testing.T) {
 		wantName     string
 		wantAfterSet string // expected GetResourceName after SetResourceName("new-name")
 	}{
-		{"DatasetItem", &kg.DatasetItem{Name: "kubernetes"}, "kubernetes", "new-name"},
-		{"Vendor", &kg.Vendor{Name: "nginx"}, "nginx", "new-name"},
 		// GraphEntity has composite identity: Type--Name. SetResourceName only sets Name.
 		{"GraphEntity", &kg.GraphEntity{Type: "Service", Name: "frontend"}, "Service--frontend", "Service--new-name"},
-		{"EntityType", &kg.EntityType{Name: "Service", Count: 42}, "Service", "new-name"},
 		{"Scope", &kg.Scope{Name: "env", Values: []string{"prod"}}, "env", "new-name"},
 	}
 	for _, tt := range tests {

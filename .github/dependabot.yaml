@@ -21,3 +21,14 @@ updates:
       go:
         patterns:
           - "*"
+    ignore:
+      # Pinned dependency chain — loki v3.4.2 is the root cause.
+      # loki v3.5+ requires loki/pkg/push pseudo-versions not published to the
+      # Go module proxy (monorepo replace directive). prometheus and strfmt are
+      # pinned because loki v3.4.2 depends on prometheus v0.55.0's package layout
+      # (tsdb/errors, otlptranslator) and strfmt v0.26+ triggers a missing
+      # go-openapi/testify/v2/assert/yaml package during go mod tidy.
+      # Remove these ignores once loki publishes pkg/push to the Go proxy.
+      - dependency-name: "github.com/grafana/loki/*"
+      - dependency-name: "github.com/prometheus/prometheus"
+      - dependency-name: "github.com/go-openapi/strfmt"

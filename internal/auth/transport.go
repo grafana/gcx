@@ -39,6 +39,11 @@ type RefreshTransport struct {
 }
 
 func (t *RefreshTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// Provider requests may carry their own BasicAuth credentials.
+	if req.Header.Get("Authorization") != "" {
+		return t.base().RoundTrip(req)
+	}
+
 	if err := t.maybeRefresh(req); err != nil {
 		return nil, fmt.Errorf("token refresh failed: %w", err)
 	}

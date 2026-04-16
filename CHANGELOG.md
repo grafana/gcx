@@ -1,3 +1,26 @@
+## v0.2.7 (2026-04-15)
+
+
+
+- Consolidate OnCall + Incidents under unified `irm` provider
+- Add adaptive metrics segments and exemptions commands
+- Adopt server-side pagination for list commands
+- Auto-discover Synthetic Monitoring URL from plugin settings
+- Improve skills list output, add installed status, single-skill install
+- Fix adaptive telemetry auth when using OAuth for Grafana
+- Suggest `stacks:read` scope on cloud stack lookup 403
+- Update OAuth coverage warning to remove incidents/oncall
+- Align assistant SSE HTTP client timeout with `--timeout` flag
+- Fix `gcx dev serve` not exiting on Ctrl+C
+- Fix watcher error channel handling
+- Trim Knowledge Graph CLI surface and typed resources
+- Add marketing bento-box slide with verified CLI commands
+- Upgrade ASCII logo to ANSI Shadow font
+- Use "k6" instead of "K6" in UI text
+- Restructure README for better narrative flow
+- Dependency updates (Go modules, GitHub Actions)
+
+
 ## v0.2.6 (2026-04-13)
 
 

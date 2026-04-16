@@ -168,27 +168,6 @@ func TestClient_GetRule(t *testing.T) {
 	}
 }
 
-func TestClient_GetDatasets(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodGet, r.Method)
-		assert.Contains(t, r.URL.Path, "v2/stack/datasets")
-		writeJSON(w, kg.DatasetsResponse{
-			Items: []kg.DatasetItem{
-				{Name: "kubernetes", Detected: true, Enabled: true, Configured: true},
-				{Name: "otel", Detected: true, Enabled: false, Configured: false},
-			},
-		})
-	}))
-	defer server.Close()
-
-	client := newTestClient(t, server)
-	result, err := client.GetDatasets(t.Context())
-	require.NoError(t, err)
-	assert.Len(t, result.Items, 2)
-	assert.Equal(t, "kubernetes", result.Items[0].Name)
-	assert.True(t, result.Items[0].Enabled)
-}
-
 func TestClient_CountEntityTypes(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
@@ -205,19 +184,6 @@ func TestClient_CountEntityTypes(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(42), counts["Service"])
 	assert.Equal(t, int64(5), counts["Namespace"])
-}
-
-func TestClient_Setup(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Contains(t, r.URL.Path, "asserts-setup")
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	client := newTestClient(t, server)
-	err := client.Setup(t.Context())
-	require.NoError(t, err)
 }
 
 func TestClient_UploadPromRules(t *testing.T) {

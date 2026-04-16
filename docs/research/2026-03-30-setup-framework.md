@@ -20,7 +20,6 @@ its own setup/enable/init commands with no shared structure:
 | Product | grafana-cloud-cli | gcx (current) |
 |---------|------------------|---------------|
 | Auth bootstrap | `gcx init` | Manual `config set` |
-| KG | `kg setup` + `kg enable` | `kg setup` + `kg enable` |
 | Instrumentation | `fleet discovery setup` + `fleet instrumentation app set` | Nothing |
 | Integrations | `integrations install <slug>` | Nothing |
 | Plugins | `plugins install` / `plugins incidents enable` | Nothing |
@@ -131,7 +130,7 @@ From analysis of grafana-cloud-cli:
 
 ```
 1. AUTH BOOTSTRAP     gcx init → "I can talk to Grafana Cloud"
-2. PRODUCT ENABLE     kg setup / plugins install → "Product X is turned on"
+2. PRODUCT ENABLE     Grafana UI / plugins install → "Product X is turned on"
 3. AGENT DEPLOY       helm install alloy → "Collector is running in my cluster"
 4. SIGNAL CONFIG      instrumentation set → "I'm collecting signals"
 5. VERIFY             status / doctor → "It's all working"

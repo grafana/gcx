@@ -1,17 +1,24 @@
 package synth
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"net/http"
+	"strings"
 
+	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/synth/checks"
 	"github.com/grafana/gcx/internal/providers/synth/probes"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
+	"k8s.io/client-go/rest"
 )
 
 func init() { //nolint:gochecknoinits // Self-registration pattern (like database/sql drivers).
@@ -112,13 +119,9 @@ func (p *SynthProvider) Commands() []*cobra.Command {
 }
 
 // Validate checks that the given provider configuration is valid.
-func (p *SynthProvider) Validate(cfg map[string]string) error {
-	if cfg["sm-url"] == "" {
-		return errors.New("sm-url is required for the synth provider")
-	}
-	if cfg["sm-token"] == "" {
-		return errors.New("sm-token is required for the synth provider")
-	}
+// Neither sm-url nor sm-token are required here because both can be auto-discovered:
+// sm-url from plugin settings, sm-token via the SM register/install API.
+func (p *SynthProvider) Validate(_ map[string]string) error {
 	return nil
 }
 
@@ -165,9 +168,19 @@ type configLoader struct {
 }
 
 // LoadSMConfig loads the SM base URL, token, and K8s namespace from config.
-// Priority (highest first):
-//  1. GRAFANA_PROVIDER_SYNTH_SM_URL / GRAFANA_PROVIDER_SYNTH_SM_TOKEN env vars
-//  2. Config file: providers.synth.sm-url / sm-token
+//
+// SM URL resolution priority (highest first):
+//  1. GRAFANA_PROVIDER_SYNTH_SM_URL env var / providers.synth.sm-url in config
+//  2. Auto-discovery from SM plugin settings (jsonData.apiHost) — requires grafana.server
+//  3. Error with actionable guidance
+//
+// SM token resolution priority (highest first):
+//  1. GRAFANA_PROVIDER_SYNTH_SM_TOKEN env var / providers.synth.sm-token in config
+//  2. Auto-discovery via SM register/install API — requires cloud.token + stack info from GCOM
+//  3. Error with actionable guidance
+//
+// When auto-discovery succeeds, values are persisted to config so subsequent
+// invocations skip the API calls.
 func (l *configLoader) LoadSMConfig(ctx context.Context) (string, string, string, error) {
 	providerCfg, namespace, err := l.LoadProviderConfig(ctx, "synth")
 	if err != nil {
@@ -177,16 +190,173 @@ func (l *configLoader) LoadSMConfig(ctx context.Context) (string, string, string
 	smURL := providerCfg["sm-url"]
 	smToken := providerCfg["sm-token"]
 
+	// Tier 2: auto-discover SM URL from plugin settings when not explicitly configured.
 	if smURL == "" {
-		return "", "", "", errors.New(
-			"SM URL not configured: set providers.synth.sm-url in config or GRAFANA_PROVIDER_SYNTH_SM_URL env var")
+		var discoverErr error
+		smURL, discoverErr = l.tryDiscoverSMURL(ctx)
+		if smURL == "" {
+			return "", "", "", fmt.Errorf("SM URL not configured: %w", discoverErr)
+		}
 	}
+
+	// Tier 2: auto-discover SM token via register/install when not explicitly configured.
 	if smToken == "" {
-		return "", "", "", errors.New(
-			"SM token not configured: set providers.synth.sm-token in config or GRAFANA_PROVIDER_SYNTH_SM_TOKEN env var")
+		var discoverErr error
+		smToken, discoverErr = l.tryDiscoverSMToken(ctx, smURL)
+		if smToken == "" {
+			return "", "", "", fmt.Errorf("SM token not configured: %w", discoverErr)
+		}
 	}
 
 	return smURL, smToken, namespace, nil
+}
+
+// tryDiscoverSMURL attempts to auto-discover the SM URL from Grafana plugin settings
+// and persists it to config on success. Returns empty string and the reason on failure.
+func (l *configLoader) tryDiscoverSMURL(ctx context.Context) (string, error) {
+	restCfg, err := l.LoadGrafanaConfig(ctx)
+	if err != nil {
+		return "", fmt.Errorf("no Grafana server configured: %w", err)
+	}
+
+	discovered, err := discoverSMURL(ctx, restCfg)
+	if err != nil {
+		return "", fmt.Errorf("plugin settings query failed: %w", err)
+	}
+
+	// Persist to config so subsequent runs skip the API call.
+	if saveErr := l.SaveProviderConfig(ctx, "synth", "sm-url", discovered); saveErr != nil {
+		slog.DebugContext(ctx, "failed to cache discovered SM URL to config", "error", saveErr)
+	}
+
+	return discovered, nil
+}
+
+// tryDiscoverSMToken attempts to auto-discover the SM token via the SM register/install
+// API using cloud credentials from GCOM. Persists to config on success. Returns empty string and the reason on failure.
+func (l *configLoader) tryDiscoverSMToken(ctx context.Context, smURL string) (string, error) {
+	cloudCfg, err := l.LoadCloudConfig(ctx)
+	if err != nil {
+		return "", fmt.Errorf("no cloud config: %w", err)
+	}
+
+	token, err := registerSMInstall(ctx, smURL, cloudCfg.Token, cloudCfg.Stack)
+	if err != nil {
+		return "", fmt.Errorf("register/install API failed: %w", err)
+	}
+
+	if saveErr := l.SaveProviderConfig(ctx, "synth", "sm-token", token); saveErr != nil {
+		slog.DebugContext(ctx, "failed to cache discovered SM token to config", "error", saveErr)
+	}
+
+	return token, nil
+}
+
+// registerSMInstall calls the SM register/install endpoint to obtain an access token.
+// This uses a Grafana Cloud access policy token and GCOM stack info to register with
+// the SM API, which returns a publisher token for subsequent API calls.
+func registerSMInstall(ctx context.Context, smURL, cloudToken string, stack cloud.StackInfo) (string, error) {
+	reqBody := struct {
+		StackID           int    `json:"stackId"`
+		MetricsInstanceID int    `json:"metricsInstanceId"`
+		LogsInstanceID    int    `json:"logsInstanceId"`
+		PublisherToken    string `json:"publisherToken"`
+		RegionSlug        string `json:"regionSlug"`
+	}{
+		StackID:           stack.ID,
+		MetricsInstanceID: stack.HMInstancePromID,
+		LogsInstanceID:    stack.HLInstanceID,
+		PublisherToken:    cloudToken,
+		RegionSlug:        stack.RegionSlug,
+	}
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal register/install request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		strings.TrimRight(smURL, "/")+"/api/v1/register/install", bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+cloudToken)
+
+	resp, err := httputils.NewDefaultClient(ctx).Do(req)
+	if err != nil {
+		return "", fmt.Errorf("SM register/install request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("SM register/install returned HTTP %d", resp.StatusCode)
+	}
+
+	var result struct {
+		AccessToken string `json:"accessToken"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("failed to decode register/install response: %w", err)
+	}
+
+	if result.AccessToken == "" {
+		return "", errors.New("SM register/install returned empty access token")
+	}
+
+	return result.AccessToken, nil
+}
+
+// discoverSMURL fetches the SM API URL from the SM plugin settings endpoint.
+// This queries /api/plugins/grafana-synthetic-monitoring-app/settings and reads
+// jsonData.apiHost, which contains the regional SM API base URL.
+//
+// In OAuth proxy mode, requests are routed through cfg.Host (the proxy) which
+// forwards them to the real Grafana server with proper auth. In direct mode,
+// requests go straight to cfg.GrafanaURL with the configured bearer token.
+func discoverSMURL(ctx context.Context, cfg config.NamespacedRESTConfig) (string, error) {
+	httpClient, err := rest.HTTPClientFor(&cfg.Config)
+	if err != nil {
+		return "", fmt.Errorf("failed to create HTTP client: %w", err)
+	}
+
+	// In OAuth proxy mode, cfg.Host routes through the proxy which handles auth.
+	// In direct mode, use GrafanaURL (the real Grafana server).
+	baseURL := cfg.GrafanaURL
+	if cfg.IsOAuthProxy() {
+		baseURL = cfg.Host
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		baseURL+"/api/plugins/grafana-synthetic-monitoring-app/settings", nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to get SM plugin settings: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("SM plugin settings returned HTTP %d", resp.StatusCode)
+	}
+
+	var settings struct {
+		JSONData struct {
+			APIHost string `json:"apiHost"`
+		} `json:"jsonData"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&settings); err != nil {
+		return "", fmt.Errorf("failed to decode SM plugin settings: %w", err)
+	}
+
+	if settings.JSONData.APIHost == "" {
+		return "", errors.New("apiHost not found in SM plugin settings")
+	}
+
+	return settings.JSONData.APIHost, nil
 }
 
 // LoadConfig loads the full config for datasource UID lookup from context settings.

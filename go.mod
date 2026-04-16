@@ -8,12 +8,12 @@ require (
 	github.com/adrg/xdg v0.5.3
 	github.com/caarlos0/env/v11 v11.4.0
 	github.com/charmbracelet/glamour v1.0.0
-	github.com/charmbracelet/huh v0.8.0
+	github.com/charmbracelet/huh v1.0.0
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
 	github.com/fatih/color v1.19.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-chi/chi/v5 v5.2.5
-	github.com/go-logfmt/logfmt v0.6.0
+	github.com/go-logfmt/logfmt v0.6.1
 	github.com/go-logr/logr v1.4.3
 	github.com/go-openapi/strfmt v0.25.0
 	github.com/goccy/go-yaml v1.19.2
@@ -21,26 +21,26 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/grafana/authlib/types v0.0.0-20260218111514-582136a04938
-	github.com/grafana/grafana-app-sdk/logging v0.53.1
+	github.com/grafana/grafana-app-sdk/logging v0.53.2
 	github.com/grafana/grafana-foundation-sdk/go v0.0.12
 	github.com/grafana/grafana-openapi-client-go v0.0.0-20251202103709-7ef691d4df1d
 	github.com/grafana/grafana/apps/folder v0.0.0-20250724095330-d852bde2a5fb
 	github.com/grafana/grafana/pkg/apimachinery v0.0.0-20250903133002-4e28cba1c53a
-	github.com/grafana/loki/v3 v3.4.2 // pinned: v3.5+ uses loki/pkg/push pseudo-versions not on Go proxy (monorepo replace directive)
+	github.com/grafana/loki/v3 v3.4.2 // pinned: v3.5+ requires loki/pkg/push pseudo-versions not on Go proxy; also pins prometheus+strfmt versions below
 	github.com/grafana/promql-builder/go v0.0.0-20250916111012-8fa9625b89a3
 	github.com/huandu/xstrings v1.5.0
 	github.com/invopop/jsonschema v0.13.0
 	github.com/olekukonko/tablewriter v1.1.4
 	github.com/open-policy-agent/opa v1.15.2
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
-	github.com/prometheus/prometheus v0.55.0 // pinned: v0.311+ requires strfmt v0.26+ which triggers go-openapi/testify/v2 assert/yaml removal bug
+	github.com/prometheus/prometheus v0.55.0 // pinned: loki v3.4.2 depends on v0.55.0 package layout (tsdb/errors, otlptranslator); upgrade requires loki upgrade first
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
-	golang.org/x/mod v0.33.0
+	golang.org/x/mod v0.35.0
 	golang.org/x/sync v0.20.0
-	golang.org/x/term v0.41.0
-	golang.org/x/tools v0.42.0
+	golang.org/x/term v0.42.0
+	golang.org/x/tools v0.44.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/apimachinery v0.35.3
 	k8s.io/cli-runtime v0.35.3
@@ -270,12 +270,12 @@ require (
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f // indirect
-	golang.org/x/crypto v0.49.0 // indirect
+	golang.org/x/crypto v0.50.0 // indirect
 	golang.org/x/exp v0.0.0-20241108190413-2d47ceb2692f // indirect
-	golang.org/x/net v0.52.0 // indirect
+	golang.org/x/net v0.53.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
-	golang.org/x/sys v0.42.0 // indirect
-	golang.org/x/text v0.35.0 // indirect
+	golang.org/x/sys v0.43.0 // indirect
+	golang.org/x/text v0.36.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9 // indirect

@@ -12,6 +12,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -142,8 +143,23 @@ func (s *Server) Start(ctx context.Context) error {
 	r.Get("/gcx/{group}/{version}/{kind}/{name}", s.iframeHandler)
 	r.Handle("/gcx/assets/*", http.StripPrefix("/gcx/assets/", http.FileServer(http.FS(assetsFS))))
 
-	//nolint:gosec
-	return http.ListenAndServe(fmt.Sprintf("%s:%d", s.config.ListenAddr, s.config.Port), r)
+	httpServer := &http.Server{
+		Addr:              fmt.Sprintf("%s:%d", s.config.ListenAddr, s.config.Port),
+		Handler:           r,
+		ReadHeaderTimeout: 30 * time.Second,
+	}
+
+	go func() {
+		<-ctx.Done()
+		if err := httpServer.Shutdown(context.WithoutCancel(ctx)); err != nil {
+			logging.FromContext(ctx).Warn("server shutdown error", "err", err)
+		}
+	}()
+
+	if err := httpServer.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
 }
 
 func (s *Server) applyStaticProxyConfig(r chi.Router, config handlers.StaticProxyConfig) {

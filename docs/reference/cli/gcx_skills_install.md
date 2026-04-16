@@ -1,26 +1,29 @@
 ## gcx skills install
 
-Install the portable gcx skill bundle into ~/.agents/skills
+Install bundled gcx skills into ~/.agents/skills
 
 ### Synopsis
 
-Install the canonical portable gcx Agent Skills bundle into a user-level .agents directory for tools that follow the .agents skill convention.
+Install one or more bundled gcx Agent Skills into a user-level .agents directory for tools that follow the .agents skill convention. Use --all to install the entire bundle.
 
 ```
-gcx skills install [flags]
+gcx skills install [SKILL]... [flags]
 ```
 
 ### Examples
 
 ```
-  gcx skills install
-  gcx skills install --dry-run
-  gcx skills install --dir ~/.agents --force
+  gcx skills install setup-gcx
+  gcx skills install setup-gcx debug-with-grafana explore-datasources
+  gcx skills install --all
+  gcx skills install --all --dry-run
+  gcx skills install setup-gcx --force
 ```
 
 ### Options
 
 ```
+      --all             Install all bundled skills
       --dir string      Root directory for the .agents installation (default "~/.agents")
       --dry-run         Preview the installation without writing files
       --force           Overwrite existing differing files managed by the gcx skills bundle

@@ -141,6 +141,7 @@ internal/
 ├── version/     Global version string (Set once from main; provides UserAgent() for HTTP clients)
 ├── secrets/     Redactor for config view
 └── logs/        slog/klog integration
+└── shared/      Shared utilities (date handling, duration, etc.) to be shared across integrations.
 ```
 
 ## What to Read Before You Start
@@ -239,14 +240,32 @@ Run this checklist **before every commit** (not only before PR/push):
    ```bash
    go test ./...
    ```
-5. **Reference docs regenerated when command/output surface changes**
+5. **Reference docs regenerated** (CI runs `make reference-drift` which fails on any drift)
    ```bash
    GCX_AGENT_MODE=false make reference
    ```
-6. **No unstaged surprises**
+   This regenerates CLI reference, env-var reference, config reference, and linter-rules reference. Required when changes touch commands, flags, config fields, env vars, or linter rules.
+6. **Docs build succeeds** (CI runs `make docs` after the drift check)
+   ```bash
+   make docs
+   ```
+   If `devbox`/`mkdocs` is unavailable, skip — CI will catch build failures.
+7. **No unstaged surprises**
    ```bash
    git status
    ```
+
+## GitHub Issues
+
+When creating or commenting on GitHub issues, **always anonymize system-specific details**. Replace real values with placeholders:
+
+- Stack names / context names → `<my-context>`, `<stack>`
+- URLs with stack or region identifiers → `https://example-<region>.grafana.net`
+- Hosted IDs, stack IDs, org IDs → `12345`, `99999`
+- Datasource names with stack slugs → `grafanacloud-<stack>-prom`
+- API tokens, credentials → never include, even partially
+
+This applies to issue bodies, comments, and code snippets embedded in issues.
 
 ## Beads Issue Tracker (optional)
 

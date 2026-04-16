@@ -42,43 +42,21 @@ func TestSynthProvider_ConfigKeys(t *testing.T) {
 func TestSynthProvider_Validate(t *testing.T) {
 	p := &synth.SynthProvider{}
 
+	// Validate always returns nil because both sm-url and sm-token
+	// can be auto-discovered at runtime.
 	tests := []struct {
-		name    string
-		cfg     map[string]string
-		wantErr bool
+		name string
+		cfg  map[string]string
 	}{
-		{
-			name: "valid config",
-			cfg: map[string]string{
-				"sm-url":   "https://synthetic-monitoring-api.grafana.net",
-				"sm-token": "my-token",
-			},
-		},
-		{
-			name:    "missing sm-url",
-			cfg:     map[string]string{"sm-token": "token"},
-			wantErr: true,
-		},
-		{
-			name:    "missing sm-token",
-			cfg:     map[string]string{"sm-url": "https://example.com"},
-			wantErr: true,
-		},
-		{
-			name:    "empty config",
-			cfg:     map[string]string{},
-			wantErr: true,
-		},
+		{name: "both keys set", cfg: map[string]string{"sm-url": "https://example.com", "sm-token": "tok"}},
+		{name: "only sm-url", cfg: map[string]string{"sm-url": "https://example.com"}},
+		{name: "only sm-token", cfg: map[string]string{"sm-token": "tok"}},
+		{name: "empty config", cfg: map[string]string{}},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := p.Validate(tc.cfg)
-			if tc.wantErr {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-			}
+			require.NoError(t, p.Validate(tc.cfg))
 		})
 	}
 }

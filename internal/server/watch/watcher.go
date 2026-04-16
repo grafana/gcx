@@ -62,10 +62,13 @@ func (w *Watcher) Add(watchPaths ...string) error {
 	return nil
 }
 
-func (w *Watcher) Watch() {
+func (w *Watcher) Watch(ctx context.Context) {
 	go func() {
+		defer w.notifier.Close()
 		for {
 			select {
+			case <-ctx.Done():
+				return
 			case event, ok := <-w.notifier.Events:
 				if !ok {
 					return
