@@ -221,6 +221,72 @@ func TestErrorToDetailedError_CloudStackLookupForbidden(t *testing.T) {
 	}
 }
 
+func TestErrorToDetailedError_FleetScopeError(t *testing.T) {
+	tests := []struct {
+		name      string
+		err       error
+		wantScope string
+	}{
+		{
+			name:      "list pipelines invalid scope suggests fleet-management:read",
+			err:       errors.New(`fleet: list pipelines: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
+			wantScope: "fleet-management:read",
+		},
+		{
+			name:      "list collectors invalid scope suggests fleet-management:read",
+			err:       errors.New(`fleet: list collectors: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
+			wantScope: "fleet-management:read",
+		},
+		{
+			name:      "get pipeline invalid scope suggests fleet-management:read",
+			err:       errors.New(`fleet: get pipeline abc123: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
+			wantScope: "fleet-management:read",
+		},
+		{
+			name:      "create pipeline invalid scope suggests fleet-management:write",
+			err:       errors.New(`fleet: create pipeline: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
+			wantScope: "fleet-management:write",
+		},
+		{
+			name:      "update pipeline invalid scope suggests fleet-management:write",
+			err:       errors.New(`fleet: update pipeline abc123: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
+			wantScope: "fleet-management:write",
+		},
+		{
+			name:      "create collector invalid scope suggests fleet-management:write",
+			err:       errors.New(`fleet: create collector: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
+			wantScope: "fleet-management:write",
+		},
+		{
+			name:      "update collector invalid scope suggests fleet-management:write",
+			err:       errors.New(`fleet: update collector abc123: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
+			wantScope: "fleet-management:write",
+		},
+		{
+			name:      "delete pipeline invalid scope suggests fleet-management:write",
+			err:       errors.New(`fleet: delete pipeline abc123: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
+			wantScope: "fleet-management:write",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tc.err)
+
+			if tc.wantScope == "" {
+				assert.Equal(t, "Unexpected error", got.Summary)
+				return
+			}
+
+			assert.Equal(t, "Fleet Management: permission denied", got.Summary)
+			require.NotNil(t, got.ExitCode)
+			assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+			require.Len(t, got.Suggestions, 1)
+			assert.Contains(t, got.Suggestions[0], tc.wantScope)
+		})
+	}
+}
+
 func TestErrorToDetailedError_SMURLNotConfigured(t *testing.T) {
 	err := fmt.Errorf("failed to load SM config for checks: %w",
 		fmt.Errorf("SM URL not configured: %w", errors.New("no Grafana server configured: grafana config is required")))

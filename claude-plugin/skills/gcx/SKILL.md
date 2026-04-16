@@ -67,6 +67,17 @@ right group:
 If no command exists for the requested operation, say so and propose the nearest
 supported flow.
 
+### Avoid Raw API Passthrough
+
+**Do not use `gcx api`** when a dedicated command exists. `gcx api` is a low-level
+fallback for endpoints not yet covered by dedicated commands. Dedicated commands
+provide proper output formatting, pagination, error handling, and token-efficient
+output. Check the intent-to-group table above first.
+
+Similarly, prefer `gcx metrics query` over `gcx datasources query <prometheus-uid>`
+for PromQL queries — the signal-specific command handles datasource resolution
+automatically.
+
 ## Verify Context First
 
 Before any operation, confirm which environment is targeted:

@@ -25,7 +25,7 @@ var commandAnnotations = map[string]annotation{
 	// Core CLI commands (cmd/gcx/)
 	// -----------------------------------------------------------------------
 
-	"gcx api": {Cost: "large", Hint: "GET /api/datasources -o json"},
+	"gcx api": {Cost: "large", Hint: "Run gcx help-tree --depth 1 to discover dedicated commands. Prefer gcx slo, gcx metrics query, gcx logs query, gcx alert, etc. Reserve gcx api for endpoints without a dedicated command. Example: GET /api/health -o json"},
 
 	// assistant
 	"gcx assistant investigations approvals": {Cost: "medium", Hint: "<id> -o json"},
@@ -58,7 +58,7 @@ var commandAnnotations = map[string]annotation{
 	// datasources
 	"gcx datasources get":   {Cost: "medium", Hint: "<uid> -o json"},
 	"gcx datasources list":  {Cost: "small"},
-	"gcx datasources query": {Cost: "large", Hint: "<datasource-uid> 'up' --since 1h -o json"},
+	"gcx datasources query": {Cost: "large", Hint: "Run gcx help-tree metrics (or logs, traces, profiles) to discover signal commands. Prefer gcx metrics query for PromQL, gcx logs query for LogQL, gcx traces query for TraceQL, gcx profiles query for profiling. Example: <datasource-uid> 'up' --since 1h -o json"},
 
 	// dev
 	"gcx dev generate":   {Cost: "small"},
