@@ -53,7 +53,7 @@ brew install grafana/grafana/gcx
 To upgrade:
 
 ```shell
-brew upgrade gcx
+brew upgrade grafana/grafana/gcx
 ```
 
 ## Prebuilt binaries
