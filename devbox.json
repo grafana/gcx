@@ -8,7 +8,6 @@
   ],
   "shell": {
     "init_hook": [
-      "unset GOROOT",
       "echo 'Entering Python venv' && . $VENV_DIR/bin/activate",
       "echo 'Installing dependencies...' && make deps",
       "[ \"$(uname)\" = Darwin ] && { found=; for sdk in /Library/Developer/CommandLineTools/SDKs/MacOSX*.sdk /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX*.sdk; do [ -d \"$sdk\" ] && head -10 \"$sdk/usr/lib/libSystem.tbd\" 2>/dev/null | grep '^targets:' | grep -q ' arm64-macos' && export SDKROOT=$sdk CGO_LDFLAGS=\"-isysroot $sdk\" && found=1 && break; done; [ -z \"$found\" ] && echo 'WARNING: No macOS SDK with arm64 support found — CGO linking may fail'; } || true"
