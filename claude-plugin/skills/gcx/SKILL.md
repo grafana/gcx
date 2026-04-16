@@ -147,6 +147,44 @@ The `gcx datasources` group provides typed query interfaces:
 
 Use `gcx datasources <type> --help` to discover type-specific flags.
 
+## Grafana Assistant
+
+gcx provides direct access to the Grafana Assistant — use it for **reasoning
+and exploration**, not data retrieval. Deterministic commands are faster and
+cheaper for known queries; the Assistant adds value when you need intelligence.
+
+| Situation | Use | Example |
+|-----------|-----|---------|
+| You know the exact query | Deterministic command | `gcx metrics query 'rate(http_requests_total[5m])'` |
+| You don't know which metrics/labels exist | `gcx assistant prompt` | `"What metrics exist for the checkout service?"` |
+| You need cross-signal root cause analysis | `gcx assistant investigations` | Multi-agent parallel exploration across metrics, logs, traces, profiles |
+| You need a precise, repeatable data point | Deterministic command | `gcx slo definitions status`, `gcx alert instances list --state firing` |
+| You need to understand service dependencies | `gcx assistant prompt` | `"How are services in namespace X connected?"` — Assistant Memories know your stack topology |
+
+### Commands
+
+```bash
+# Ask a question (Assistant uses Infrastructure Memories for context)
+gcx assistant prompt "What services are unhealthy in namespace checkout?"
+
+# Follow up on the previous conversation
+gcx assistant prompt "Dig into the database connection issue" --continue
+
+# Launch a deep investigation (multi-agent, parallel signal exploration)
+gcx assistant investigations create --title="Checkout latency spike"
+
+# Monitor and read results
+gcx assistant investigations timeline <id>
+gcx assistant investigations report <id>
+```
+
+### Recommended Workflow: Interleave Both
+
+1. **Detect** with deterministic commands — `gcx alert instances list --state firing`
+2. **Understand** with the Assistant — `gcx assistant prompt "Why is checkout-latency firing?"`
+3. **Investigate** if needed — `gcx assistant investigations create --title="..."`
+4. **Verify fix** with deterministic commands — `gcx slo definitions status <uuid>`
+
 ## Provider Commands
 
 Product-specific providers register their own top-level command groups.
