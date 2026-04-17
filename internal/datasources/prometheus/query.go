@@ -16,6 +16,12 @@ import (
 
 // QueryCmd returns the `query` subcommand for a Prometheus datasource parent.
 func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
+	return QueryCmdWithDefault(loader, "")
+}
+
+// QueryCmdWithDefault returns the query command with a fallback datasource
+// UID used when --datasource is not provided. Pass "" for no default.
+func QueryCmdWithDefault(loader *providers.ConfigLoader, defaultDS string) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
 	var datasource string
 
@@ -66,7 +72,12 @@ Datasource is resolved from -d flag or datasources.prometheus in your context.`,
 				return err
 			}
 
-			datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, datasource, cfgCtx, cfg, "prometheus")
+			effectiveDS := datasource
+			if effectiveDS == "" {
+				effectiveDS = defaultDS
+			}
+
+			datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, effectiveDS, cfgCtx, cfg, "prometheus")
 			if err != nil {
 				return err
 			}

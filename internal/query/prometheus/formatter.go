@@ -154,6 +154,41 @@ func FormatLabelsTable(w io.Writer, resp *LabelsResponse) error {
 	return t.Render(w)
 }
 
+// FormatSeriesTable formats a SeriesResponse as a table. Each row is a single
+// series rendered in Prometheus selector syntax ({k="v",k2="v2"}) with labels
+// sorted for stability.
+func FormatSeriesTable(w io.Writer, resp *SeriesResponse) error {
+	t := style.NewTable("SERIES")
+	for _, series := range resp.Data {
+		t.Row(formatSeriesSelector(series))
+	}
+	return t.Render(w)
+}
+
+func formatSeriesSelector(labels map[string]string) string {
+	if len(labels) == 0 {
+		return "{}"
+	}
+	keys := make([]string, 0, len(labels))
+	for k := range labels {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var b strings.Builder
+	b.WriteByte('{')
+	for i, k := range keys {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(k)
+		b.WriteByte('=')
+		b.WriteString(strconv.Quote(labels[k]))
+	}
+	b.WriteByte('}')
+	return b.String()
+}
+
 // FormatMetadataTable formats a MetadataResponse as a table.
 func FormatMetadataTable(w io.Writer, resp *MetadataResponse) error {
 	t := style.NewTable("METRIC", "TYPE", "HELP")

@@ -38,6 +38,12 @@ func (opts *labelsOpts) Validate() error {
 }
 
 func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
+	return LabelsCmdWithDefault(loader, "")
+}
+
+// LabelsCmdWithDefault returns the labels command with a fallback datasource
+// UID used when --datasource is not provided. Pass "" for no default.
+func LabelsCmdWithDefault(loader *providers.ConfigLoader, defaultDS string) *cobra.Command {
 	opts := &labelsOpts{}
 
 	cmd := &cobra.Command{
@@ -73,7 +79,12 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 				cfgCtx = fullCfg.GetCurrentContext()
 			}
 
-			datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")
+			effectiveDS := opts.Datasource
+			if effectiveDS == "" {
+				effectiveDS = defaultDS
+			}
+
+			datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, effectiveDS, cfgCtx, cfg, "prometheus")
 			if err != nil {
 				return err
 			}

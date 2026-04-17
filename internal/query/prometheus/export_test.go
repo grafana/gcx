@@ -13,3 +13,7 @@ func (c *Client) BuildLabelValuesPath(datasourceUID, labelName string) string {
 func (c *Client) BuildMetadataPath(datasourceUID string) string {
 	return c.buildMetadataPath(datasourceUID)
 }
+
+func (c *Client) BuildSeriesPath(datasourceUID string) string {
+	return c.buildSeriesPath(datasourceUID)
+}

@@ -24,7 +24,9 @@ Query Prometheus datasources and manage Adaptive Metrics
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx metrics adaptive](gcx_metrics_adaptive.md)	 - Manage Adaptive Metrics resources
+* [gcx metrics billing](gcx_metrics_billing.md)	 - Query Grafana Cloud billing metrics (grafanacloud_*)
 * [gcx metrics labels](gcx_metrics_labels.md)	 - List labels or label values
 * [gcx metrics metadata](gcx_metrics_metadata.md)	 - Get metric metadata
 * [gcx metrics query](gcx_metrics_query.md)	 - Execute a PromQL query against a Prometheus datasource
+* [gcx metrics series](gcx_metrics_series.md)	 - List time series matching one or more selectors
 

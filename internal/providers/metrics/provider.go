@@ -90,6 +90,15 @@ func (p *Provider) Commands() []*cobra.Command {
   gcx metrics metadata -d UID -o json`
 	cmd.AddCommand(mCmd)
 
+	sCmd := seriesCmd(loader)
+	sCmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "medium",
+		agent.AnnotationLLMHint:   `gcx metrics series -d abc123 '{__name__="up"}' --since 1h -o json`,
+	}
+	cmd.AddCommand(sCmd)
+
+	cmd.AddCommand(BillingCommands(loader))
+
 	// Adaptive Metrics subcommands — rename Use from "metrics" to "adaptive".
 	adaptiveCmd := adaptivemetrics.Commands(loader)
 	adaptiveCmd.Use = "adaptive"
