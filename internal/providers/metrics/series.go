@@ -30,8 +30,8 @@ func (opts *seriesOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.DefaultFormat("table")
 	opts.IO.BindFlags(flags)
 
-	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless default-prometheus-datasource is configured)")
-	flags.StringSliceVar(&opts.Match, "match", nil, "Additional series selector(s); repeatable")
+	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.prometheus is configured)")
+	flags.StringArrayVar(&opts.Match, "match", nil, "Additional series selector(s); repeatable")
 	opts.TimeRange.SetupTimeFlags(flags)
 }
 
@@ -94,10 +94,6 @@ func runSeries(cmd *cobra.Command, loader *providers.ConfigLoader, opts *seriesO
 	resp, err := client.Series(ctx, datasourceUID, selectors, start, end)
 	if err != nil {
 		return fmt.Errorf("failed to list series: %w", err)
-	}
-
-	if opts.IO.OutputFormat == "table" {
-		return prometheus.FormatSeriesTable(cmd.OutOrStdout(), resp)
 	}
 
 	return opts.IO.Encode(cmd.OutOrStdout(), resp)

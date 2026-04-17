@@ -67,6 +67,11 @@ gcx (root)
 │   ├── query                [DATASOURCE_UID] EXPR   [--from] [--to] [--step] [--since] [-o]
 │   ├── labels               [--datasource/-d UID] [--label/-l NAME]
 │   ├── metadata             [--datasource/-d UID] [--metric/-m NAME]
+│   ├── series               [SELECTOR] [--datasource/-d UID] [--match SELECTOR]... [--from] [--to] [--since]
+│   ├── billing              Query grafanacloud_* billing metrics via pre-provisioned grafanacloud-usage datasource
+│   │   ├── query            EXPR   [--from] [--to] [--step] [--since] [-o]
+│   │   ├── labels           [--label/-l NAME]
+│   │   └── series           [SELECTOR] [--match SELECTOR]... [--from] [--to] [--since]
 │   └── adaptive             Adaptive Metrics (rules show/sync, recommendations show/apply)
 │
 ├── logs                     [internal/providers/logs/provider.go] (registered via providers.Register)
