@@ -21,6 +21,7 @@ gcx is a unified CLI for managing Grafana resources, dashboards, datasources, al
 ### SEE ALSO
 
 * [gcx alert](gcx_alert.md)	 - Manage Grafana alert rules and alert groups
+* [gcx annotations](gcx_annotations.md)	 - Manage Grafana annotations
 * [gcx api](gcx_api.md)	 - Make direct HTTP requests to the Grafana API
 * [gcx appo11y](gcx_appo11y.md)	 - Manage Grafana App Observability settings
 * [gcx assistant](gcx_assistant.md)	 - Interact with Grafana Assistant
@@ -39,8 +40,12 @@ gcx is a unified CLI for managing Grafana resources, dashboards, datasources, al
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
 * [gcx logs](gcx_logs.md)	 - Query Loki datasources and manage Adaptive Logs
 * [gcx metrics](gcx_metrics.md)	 - Query Prometheus datasources and manage Adaptive Metrics
+* [gcx org](gcx_org.md)	 - Manage Grafana organization resources
+* [gcx permissions](gcx_permissions.md)	 - Manage Grafana folder and dashboard permissions
+* [gcx preferences](gcx_preferences.md)	 - Manage Grafana org preferences
 * [gcx profiles](gcx_profiles.md)	 - Query Pyroscope datasources and manage continuous profiling
 * [gcx providers](gcx_providers.md)	 - Manage registered providers
+* [gcx public-dashboards](gcx_public-dashboards.md)	 - Manage public dashboards
 * [gcx resources](gcx_resources.md)	 - Manipulate Grafana resources
 * [gcx setup](gcx_setup.md)	 - Onboard and configure Grafana Cloud products.
 * [gcx sigil](gcx_sigil.md)	 - Manage Sigil AI observability resources
