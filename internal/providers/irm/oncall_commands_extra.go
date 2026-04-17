@@ -472,7 +472,7 @@ func newEscalateCommand(loader OnCallConfigLoader) *cobra.Command {
 // ---------------------------------------------------------------------------
 
 func itemsToUnstructured[T any](items []T, kind, idField, namespace string) ([]unstructured.Unstructured, error) {
-	var objs []unstructured.Unstructured
+	objs := make([]unstructured.Unstructured, 0, len(items))
 	for _, item := range items {
 		data, err := json.Marshal(item)
 		if err != nil {

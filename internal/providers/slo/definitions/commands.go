@@ -60,7 +60,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
+	flags.Int64Var(&o.Limit, "limit", 0, "Maximum number of items to return after fetch (0 for all; use a positive value to trim output only)")
 }
 
 func newListCommand(loader GrafanaConfigLoader) *cobra.Command {

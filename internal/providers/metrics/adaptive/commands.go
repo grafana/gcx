@@ -368,7 +368,7 @@ func applySelectiveRecommendations(cmd *cobra.Command, client *Client, opts *rec
 		recsByMetric[r.Metric] = r
 	}
 
-	var items []applyItem
+	items := make([]applyItem, 0, len(metrics))
 	for _, m := range metrics {
 		rec, ok := recsByMetric[m]
 		if !ok {

@@ -374,7 +374,7 @@ func renderLegend(series []Series) string {
 		return ""
 	}
 
-	var legendParts []string
+	legendParts := make([]string, 0, len(series))
 	for i, s := range series {
 		// Use the series-specific Color if set; otherwise fall back to ColorForIndex.
 		color := s.Color
@@ -398,7 +398,7 @@ func renderBarLegend(series []Series) string {
 		return ""
 	}
 
-	var legendParts []string
+	legendParts := make([]string, 0, len(series))
 	for i, s := range series {
 		if len(s.Points) == 0 {
 			continue

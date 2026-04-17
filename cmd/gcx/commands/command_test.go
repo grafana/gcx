@@ -248,7 +248,7 @@ func TestCollectResourceTypes(t *testing.T) {
 			Aliases: []string{"slo", "slos"},
 			GVK:     schema.GroupVersionKind{Group: "slo.grafana.app", Version: "v1", Kind: "SLODefinition"},
 			Operations: map[string]agent.OperationHint{
-				"get": {TokenCost: "medium", LLMHint: "gcx slo definitions list"},
+				"get": {TokenCost: "medium", LLMHint: "gcx slo definitions list --limit 50 -o json"},
 			},
 		},
 	}

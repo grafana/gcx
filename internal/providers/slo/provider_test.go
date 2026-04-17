@@ -48,6 +48,18 @@ func TestSLOProvider_Commands(t *testing.T) {
 	assert.Contains(t, subNames, "pull")
 	assert.Contains(t, subNames, "delete")
 
+	var listCmd *cobra.Command
+	for _, sub := range defsCmd.Commands() {
+		if sub.Name() == "list" {
+			listCmd = sub
+			break
+		}
+	}
+	require.NotNil(t, listCmd)
+	limitFlag := listCmd.Flags().Lookup("limit")
+	require.NotNil(t, limitFlag)
+	assert.Equal(t, "0", limitFlag.DefValue, "list --limit should default to 0 (all SLOs); API returns the full list either way")
+
 	// Find reports subcommand
 	var reportsCmd *cobra.Command
 	for _, sub := range sloCmd.Commands() {
