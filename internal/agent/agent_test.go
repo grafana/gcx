@@ -138,6 +138,7 @@ func clearAgentEnv(t *testing.T) {
 		"CURSOR_AGENT",
 		"GITHUB_COPILOT",
 		"AMAZON_Q",
+		"OPENCODE",
 	} {
 		t.Setenv(env, "")
 	}
