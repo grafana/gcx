@@ -19,7 +19,6 @@ type Client struct {
 	host       string
 }
 
-// NewClient creates a new permissions client.
 func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 	httpClient, err := rest.HTTPClientFor(&cfg.Config)
 	if err != nil {
@@ -36,22 +35,18 @@ func dashboardPath(uid string) string {
 	return fmt.Sprintf("/api/dashboards/uid/%s/permissions", url.PathEscape(uid))
 }
 
-// GetFolder retrieves the permissions for a folder by UID.
 func (c *Client) GetFolder(ctx context.Context, uid string) ([]Item, error) {
 	return c.get(ctx, folderPath(uid), "folder")
 }
 
-// SetFolder replaces the permissions for a folder by UID.
 func (c *Client) SetFolder(ctx context.Context, uid string, items []Item) error {
 	return c.post(ctx, folderPath(uid), items, "folder")
 }
 
-// GetDashboard retrieves the permissions for a dashboard by UID.
 func (c *Client) GetDashboard(ctx context.Context, uid string) ([]Item, error) {
 	return c.get(ctx, dashboardPath(uid), "dashboard")
 }
 
-// SetDashboard replaces the permissions for a dashboard by UID.
 func (c *Client) SetDashboard(ctx context.Context, uid string, items []Item) error {
 	return c.post(ctx, dashboardPath(uid), items, "dashboard")
 }
@@ -106,7 +101,6 @@ func (c *Client) post(ctx context.Context, path string, items []Item, label stri
 	return nil
 }
 
-// handleErrorResponse reads an error response body and returns a formatted error.
 func handleErrorResponse(resp *http.Response) error {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -115,11 +109,11 @@ func handleErrorResponse(resp *http.Response) error {
 
 	var errResp ErrorResponse
 	if err := json.Unmarshal(body, &errResp); err == nil {
-		if errResp.Error != "" {
-			return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, errResp.Error)
+		if msg := errResp.Error; msg != "" {
+			return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, msg)
 		}
-		if errResp.Message != "" {
-			return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, errResp.Message)
+		if msg := errResp.Message; msg != "" {
+			return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, msg)
 		}
 	}
 

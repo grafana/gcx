@@ -18,7 +18,6 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-// stubLoader implements GrafanaConfigLoader for tests.
 type stubLoader struct {
 	cfg config.NamespacedRESTConfig
 	err error

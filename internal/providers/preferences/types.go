@@ -1,7 +1,7 @@
 // Package preferences provides Grafana organization preferences management.
 package preferences
 
-// ErrorResponse is the error response body returned by the Grafana preferences API.
+// ErrorResponse is the error body returned by the Grafana preferences API.
 type ErrorResponse struct {
 	Message string `json:"message"`
 }

@@ -14,12 +14,14 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-func newTestClient(t *testing.T, server *httptest.Server) *org.Client {
+// newTestServer starts an httptest.Server with the given handler and returns
+// an org.Client pointed at it. The server is closed when the test ends.
+func newTestServer(t *testing.T, handler http.HandlerFunc) *org.Client {
 	t.Helper()
-	cfg := config.NamespacedRESTConfig{
-		Config: rest.Config{Host: server.URL},
-	}
-	client, err := org.NewClient(cfg)
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	client, err := org.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}})
 	require.NoError(t, err)
 	return client
 }
@@ -54,14 +56,14 @@ func TestClient_ListUsers(t *testing.T) {
 		},
 		{
 			name: "empty",
-			handler: func(w http.ResponseWriter, r *http.Request) {
+			handler: func(w http.ResponseWriter, _ *http.Request) {
 				writeJSON(w, []org.OrgUser{})
 			},
 			wantCount: 0,
 		},
 		{
 			name: "server error",
-			handler: func(w http.ResponseWriter, r *http.Request) {
+			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusInternalServerError)
 				_, _ = w.Write([]byte(`{"message":"boom"}`))
 			},
@@ -71,10 +73,7 @@ func TestClient_ListUsers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(tt.handler)
-			defer server.Close()
-
-			client := newTestClient(t, server)
+			client := newTestServer(t, tt.handler)
 			users, err := client.ListUsers(t.Context())
 
 			if tt.wantErr {
@@ -118,7 +117,7 @@ func TestClient_AddUser(t *testing.T) {
 		{
 			name: "missing role rejected by server",
 			req:  org.AddUserRequest{LoginOrEmail: "alice@example.com"},
-			handler: func(w http.ResponseWriter, r *http.Request) {
+			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusBadRequest)
 				_, _ = w.Write([]byte(`{"message":"role is required"}`))
 			},
@@ -128,10 +127,7 @@ func TestClient_AddUser(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(tt.handler)
-			defer server.Close()
-
-			client := newTestClient(t, server)
+			client := newTestServer(t, tt.handler)
 			err := client.AddUser(t.Context(), tt.req)
 
 			if tt.wantErr {
@@ -176,17 +172,14 @@ func TestClient_UpdateUserRole(t *testing.T) {
 			name:    "not found",
 			userID:  999,
 			role:    "Viewer",
-			handler: func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNotFound) },
+			handler: func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNotFound) },
 			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(tt.handler)
-			defer server.Close()
-
-			client := newTestClient(t, server)
+			client := newTestServer(t, tt.handler)
 			err := client.UpdateUserRole(t.Context(), tt.userID, tt.role)
 
 			if tt.wantErr {
@@ -217,7 +210,7 @@ func TestClient_RemoveUser(t *testing.T) {
 		{
 			name:   "not found",
 			userID: 999,
-			handler: func(w http.ResponseWriter, r *http.Request) {
+			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
 				_, _ = w.Write([]byte(`{"message":"not found"}`))
 			},
@@ -227,10 +220,7 @@ func TestClient_RemoveUser(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(tt.handler)
-			defer server.Close()
-
-			client := newTestClient(t, server)
+			client := newTestServer(t, tt.handler)
 			err := client.RemoveUser(t.Context(), tt.userID)
 
 			if tt.wantErr {

@@ -14,14 +14,14 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-func newTestClient(t *testing.T, server *httptest.Server) *preferences.Client {
+func newTestClient(t *testing.T, handler http.HandlerFunc) (*preferences.Client, func()) {
 	t.Helper()
-	cfg := config.NamespacedRESTConfig{
+	server := httptest.NewServer(handler)
+	client, err := preferences.NewClient(config.NamespacedRESTConfig{
 		Config: rest.Config{Host: server.URL},
-	}
-	client, err := preferences.NewClient(cfg)
+	})
 	require.NoError(t, err)
-	return client
+	return client, server.Close
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
@@ -33,122 +33,66 @@ func writeJSON(w http.ResponseWriter, v any) {
 	_, _ = w.Write(data)
 }
 
-func TestClient_Get(t *testing.T) {
-	tests := []struct {
-		name     string
-		handler  http.HandlerFunc
-		wantErr  bool
-		wantPref preferences.OrgPreferences
-	}{
-		{
-			name: "success",
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, http.MethodGet, r.Method)
-				assert.Equal(t, "/api/org/preferences", r.URL.Path)
-				writeJSON(w, preferences.OrgPreferences{
-					Theme:           "dark",
-					Timezone:        "UTC",
-					WeekStart:       "monday",
-					Locale:          "en-US",
-					HomeDashboardID: 42,
-				})
-			},
-			wantPref: preferences.OrgPreferences{
-				Theme:           "dark",
-				Timezone:        "UTC",
-				WeekStart:       "monday",
-				Locale:          "en-US",
-				HomeDashboardID: 42,
-			},
-		},
-		{
-			name: "server error",
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusInternalServerError)
-				writeJSON(w, preferences.ErrorResponse{Message: "boom"})
-			},
-			wantErr: true,
-		},
+func TestClient_Get_Success(t *testing.T) {
+	want := preferences.OrgPreferences{
+		Theme:           "dark",
+		Timezone:        "UTC",
+		WeekStart:       "monday",
+		Locale:          "en-US",
+		HomeDashboardID: 42,
 	}
+	client, cleanup := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/api/org/preferences", r.URL.Path)
+		writeJSON(w, want)
+	})
+	defer cleanup()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(tt.handler)
-			defer server.Close()
-
-			client := newTestClient(t, server)
-			got, err := client.Get(t.Context())
-
-			if tt.wantErr {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), "500")
-				return
-			}
-
-			require.NoError(t, err)
-			assert.Equal(t, tt.wantPref, *got)
-		})
-	}
+	got, err := client.Get(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, want, *got)
 }
 
-func TestClient_Update(t *testing.T) {
-	tests := []struct {
-		name    string
-		prefs   preferences.OrgPreferences
-		handler http.HandlerFunc
-		wantErr bool
-	}{
-		{
-			name: "success",
-			prefs: preferences.OrgPreferences{
-				Theme:    "light",
-				Timezone: "Europe/Amsterdam",
-			},
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, http.MethodPut, r.Method)
-				assert.Equal(t, "/api/org/preferences", r.URL.Path)
-				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+func TestClient_Get_ServerError(t *testing.T) {
+	client, cleanup := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		writeJSON(w, preferences.ErrorResponse{Message: "boom"})
+	})
+	defer cleanup()
 
-				body, err := io.ReadAll(r.Body)
-				if !assert.NoError(t, err) {
-					return
-				}
+	_, err := client.Get(t.Context())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "500")
+}
 
-				var got preferences.OrgPreferences
-				if !assert.NoError(t, json.Unmarshal(body, &got)) {
-					return
-				}
-				assert.Equal(t, "light", got.Theme)
-				assert.Equal(t, "Europe/Amsterdam", got.Timezone)
+func TestClient_Update_Success(t *testing.T) {
+	prefs := preferences.OrgPreferences{Theme: "light", Timezone: "Europe/Amsterdam"}
+	client, cleanup := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPut, r.Method)
+		assert.Equal(t, "/api/org/preferences", r.URL.Path)
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 
-				writeJSON(w, map[string]string{"message": "Preferences updated"})
-			},
-		},
-		{
-			name:  "server error",
-			prefs: preferences.OrgPreferences{Theme: "dark"},
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusInternalServerError)
-				writeJSON(w, preferences.ErrorResponse{Message: "boom"})
-			},
-			wantErr: true,
-		},
-	}
+		body, err := io.ReadAll(r.Body)
+		assert.NoError(t, err)
+		var got preferences.OrgPreferences
+		assert.NoError(t, json.Unmarshal(body, &got))
+		assert.Equal(t, prefs, got)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(tt.handler)
-			defer server.Close()
+		writeJSON(w, map[string]string{"message": "Preferences updated"})
+	})
+	defer cleanup()
 
-			client := newTestClient(t, server)
-			err := client.Update(t.Context(), &tt.prefs)
+	require.NoError(t, client.Update(t.Context(), &prefs))
+}
 
-			if tt.wantErr {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), "500")
-				return
-			}
-			require.NoError(t, err)
-		})
-	}
+func TestClient_Update_ServerError(t *testing.T) {
+	client, cleanup := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		writeJSON(w, preferences.ErrorResponse{Message: "boom"})
+	})
+	defer cleanup()
+
+	err := client.Update(t.Context(), &preferences.OrgPreferences{Theme: "dark"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "500")
 }

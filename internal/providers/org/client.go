@@ -48,18 +48,14 @@ func (c *Client) AddUser(ctx context.Context, req AddUserRequest) error {
 // UpdateUserRole changes the role of a user in the current organization.
 func (c *Client) UpdateUserRole(ctx context.Context, userID int, role string) error {
 	path := fmt.Sprintf("/api/org/users/%d", userID)
-	body := map[string]string{"role": role}
-	return c.do(ctx, http.MethodPatch, path, body, nil)
+	return c.do(ctx, http.MethodPatch, path, map[string]string{"role": role}, nil)
 }
 
 // RemoveUser removes a user from the current organization.
 func (c *Client) RemoveUser(ctx context.Context, userID int) error {
-	path := fmt.Sprintf("/api/org/users/%d", userID)
-	return c.do(ctx, http.MethodDelete, path, nil, nil)
+	return c.do(ctx, http.MethodDelete, fmt.Sprintf("/api/org/users/%d", userID), nil, nil)
 }
 
-// do executes an HTTP request, encoding body as JSON when non-nil and decoding
-// the response into out when non-nil.
 func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
 	var reader io.Reader
 	if body != nil {
@@ -90,7 +86,6 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 	}
 
 	if out == nil {
-		// Drain body so the connection can be reused.
 		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil
 	}
@@ -101,31 +96,31 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 	return nil
 }
 
-// handleErrorResponse reads an error response body and returns a formatted error.
 func handleErrorResponse(resp *http.Response) error {
 	body, readErr := io.ReadAll(resp.Body)
 	if readErr != nil {
 		return fmt.Errorf("request failed with status %d (could not read body: %w)", resp.StatusCode, readErr)
 	}
 
+	var msg string
 	var errResp errorResponse
-	if err := json.Unmarshal(body, &errResp); err == nil {
-		msg := errResp.Message
+	if json.Unmarshal(body, &errResp) == nil {
+		msg = errResp.Message
 		if msg == "" {
 			msg = errResp.Error
-		}
-		if msg != "" {
-			if resp.StatusCode == http.StatusNotFound {
-				return fmt.Errorf("%w: %s (status %d)", ErrNotFound, msg, resp.StatusCode)
-			}
-			return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, msg)
 		}
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
+		if msg != "" {
+			return fmt.Errorf("%w: %s (status %d)", ErrNotFound, msg, resp.StatusCode)
+		}
 		return fmt.Errorf("%w (status %d)", ErrNotFound, resp.StatusCode)
 	}
 
+	if msg != "" {
+		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, msg)
+	}
 	if len(body) > 0 {
 		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))
 	}

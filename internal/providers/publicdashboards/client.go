@@ -79,8 +79,6 @@ func (c *Client) Delete(ctx context.Context, dashboardUID, pdUID string) error {
 	return c.do(ctx, http.MethodDelete, dashboardItemPath(dashboardUID, pdUID), nil, nil)
 }
 
-// do issues an HTTP request, optionally marshalling body and decoding into out.
-// out may be nil for responses whose body should be discarded.
 func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
 	var reader io.Reader
 	if body != nil {
@@ -122,7 +120,6 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 	return nil
 }
 
-// handleErrorResponse reads an error response body and returns a formatted error.
 func handleErrorResponse(resp *http.Response) error {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

@@ -53,30 +53,36 @@ func TestReadPublicDashboardSpec_FileMissing(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestCreateCommand_RequiresDashboardUID(t *testing.T) {
-	cmd := publicdashboards.NewCreateCommandForTest(stubLoader{})
-	// Provide a file flag but omit --dashboard-uid; command should fail with
-	// MarkFlagRequired error before reaching RunE.
-	cmd.SetArgs([]string{"-f", "pd.json"})
-	cmd.SetOut(&bytes.Buffer{})
-	cmd.SetErr(&bytes.Buffer{})
-	cmd.SilenceUsage = true
-	cmd.SilenceErrors = true
+func TestCreateCommand_RequiredFlags(t *testing.T) {
+	tests := []struct {
+		name        string
+		args        []string
+		wantInError string
+	}{
+		{
+			name:        "missing dashboard-uid",
+			args:        []string{"-f", "pd.json"},
+			wantInError: "dashboard-uid",
+		},
+		{
+			name:        "missing file",
+			args:        []string{"--dashboard-uid", "abc"},
+			wantInError: "file",
+		},
+	}
 
-	err := cmd.Execute()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "dashboard-uid")
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := publicdashboards.NewCreateCommandForTest(stubLoader{})
+			cmd.SetArgs(tt.args)
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetErr(&bytes.Buffer{})
+			cmd.SilenceUsage = true
+			cmd.SilenceErrors = true
 
-func TestCreateCommand_RequiresFile(t *testing.T) {
-	cmd := publicdashboards.NewCreateCommandForTest(stubLoader{})
-	cmd.SetArgs([]string{"--dashboard-uid", "abc"})
-	cmd.SetOut(&bytes.Buffer{})
-	cmd.SetErr(&bytes.Buffer{})
-	cmd.SilenceUsage = true
-	cmd.SilenceErrors = true
-
-	err := cmd.Execute()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "file")
+			err := cmd.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantInError)
+		})
+	}
 }

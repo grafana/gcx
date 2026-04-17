@@ -82,8 +82,7 @@ func (c *Client) Get(ctx context.Context, id int64) (*Annotation, error) {
 // server-assigned identifier.
 func (c *Client) Create(ctx context.Context, a *Annotation) error {
 	var result struct {
-		ID      int64  `json:"id"`
-		Message string `json:"message"`
+		ID int64 `json:"id"`
 	}
 	if err := c.doRequest(ctx, http.MethodPost, basePath, a, &result); err != nil {
 		return err
@@ -95,25 +94,16 @@ func (c *Client) Create(ctx context.Context, a *Annotation) error {
 // Update patches an existing annotation. The patch map may include any subset
 // of text, tags, time, timeEnd.
 func (c *Client) Update(ctx context.Context, id int64, patch map[string]any) error {
-	path := fmt.Sprintf("%s/%d", basePath, id)
-	var result struct {
-		Message string `json:"message"`
-	}
-	return c.doRequest(ctx, http.MethodPatch, path, patch, &result)
+	return c.doRequest(ctx, http.MethodPatch, fmt.Sprintf("%s/%d", basePath, id), patch, nil)
 }
 
 // Delete removes an annotation by ID.
 func (c *Client) Delete(ctx context.Context, id int64) error {
-	path := fmt.Sprintf("%s/%d", basePath, id)
-	var result struct {
-		Message string `json:"message"`
-	}
-	return c.doRequest(ctx, http.MethodDelete, path, nil, &result)
+	return c.doRequest(ctx, http.MethodDelete, fmt.Sprintf("%s/%d", basePath, id), nil, nil)
 }
 
-// doRequest performs an HTTP request and decodes the response into out.
-// If body is non-nil it is JSON-encoded as the request body. If out is nil
-// the response body is discarded.
+// doRequest performs an HTTP request. If body is non-nil it is JSON-encoded as
+// the request body; if out is non-nil the response body is JSON-decoded into it.
 func (c *Client) doRequest(ctx context.Context, method, path string, body, out any) error {
 	var reqBody io.Reader
 	if body != nil {

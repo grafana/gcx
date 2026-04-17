@@ -23,7 +23,6 @@ type GrafanaConfigLoader interface {
 	LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error)
 }
 
-// boolLabel renders a bool as "yes"/"no" for table display.
 func boolLabel(v bool) string {
 	if v {
 		return "yes"
@@ -31,26 +30,23 @@ func boolLabel(v bool) string {
 	return "no"
 }
 
-// readPublicDashboardSpec reads a JSON public dashboard spec from filePath.
-// If filePath is "-", it reads from stdin (or the provided reader if non-nil).
-func readPublicDashboardSpec(filePath string, stdin io.Reader) (*PublicDashboard, error) {
-	var data []byte
-	if filePath == "-" {
-		src := stdin
-		if src == nil {
-			src = os.Stdin
-		}
-		b, err := io.ReadAll(src)
+// readPublicDashboardSpec reads a JSON public dashboard spec from path, or from
+// stdin when path is "-".
+func readPublicDashboardSpec(path string, stdin io.Reader) (*PublicDashboard, error) {
+	var (
+		data []byte
+		err  error
+	)
+	if path == "-" {
+		data, err = io.ReadAll(stdin)
 		if err != nil {
 			return nil, fmt.Errorf("reading stdin: %w", err)
 		}
-		data = b
 	} else {
-		b, err := os.ReadFile(filePath)
+		data, err = os.ReadFile(path)
 		if err != nil {
-			return nil, fmt.Errorf("reading %s: %w", filePath, err)
+			return nil, fmt.Errorf("reading %s: %w", path, err)
 		}
-		data = b
 	}
 
 	var pd PublicDashboard
@@ -58,6 +54,19 @@ func readPublicDashboardSpec(filePath string, stdin io.Reader) (*PublicDashboard
 		return nil, fmt.Errorf("parsing public dashboard spec: %w", err)
 	}
 	return &pd, nil
+}
+
+// encodeOne encodes a single PublicDashboard, wrapping it in a slice so the
+// table codec can render it uniformly with list results.
+func encodeOne(opts *cmdio.Options, w io.Writer, pd *PublicDashboard) error {
+	codec, err := opts.Codec()
+	if err != nil {
+		return err
+	}
+	if codec.Format() == "table" {
+		return codec.Encode(w, []PublicDashboard{*pd})
+	}
+	return opts.Encode(w, pd)
 }
 
 // ---- list ----
@@ -145,7 +154,7 @@ type getOpts struct {
 }
 
 func (o *getOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &DetailTableCodec{})
+	o.IO.RegisterCustomCodec("table", &ListTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -177,39 +186,11 @@ func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), pd)
+			return encodeOne(&opts.IO, cmd.OutOrStdout(), pd)
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
-}
-
-// DetailTableCodec renders a single public dashboard as a table row.
-type DetailTableCodec struct{}
-
-func (c *DetailTableCodec) Format() format.Format { return "table" }
-
-func (c *DetailTableCodec) Encode(w io.Writer, v any) error {
-	pd, ok := v.(*PublicDashboard)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected *PublicDashboard")
-	}
-
-	t := style.NewTable("DASHBOARD_UID", "PD_UID", "ACCESS_TOKEN", "ENABLED", "ANNOTATIONS", "TIME_SELECT", "SHARE")
-	t.Row(
-		pd.DashboardUID,
-		pd.UID,
-		pd.AccessToken,
-		boolLabel(pd.IsEnabled),
-		boolLabel(pd.AnnotationsEnabled),
-		boolLabel(pd.TimeSelectionEnabled),
-		pd.Share,
-	)
-	return t.Render(w)
-}
-
-func (c *DetailTableCodec) Decode(r io.Reader, v any) error {
-	return errors.New("table format does not support decoding")
 }
 
 // ---- create ----
@@ -221,7 +202,7 @@ type createOpts struct {
 }
 
 func (o *createOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &DetailTableCodec{})
+	o.IO.RegisterCustomCodec("table", &ListTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.DashboardUID, "dashboard-uid", "", "Parent dashboard UID (required)")
@@ -259,11 +240,12 @@ func newCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), created)
+			return encodeOne(&opts.IO, cmd.OutOrStdout(), created)
 		},
 	}
 	opts.setup(cmd.Flags())
-	mustMarkRequired(cmd, "dashboard-uid", "file")
+	_ = cmd.MarkFlagRequired("dashboard-uid")
+	_ = cmd.MarkFlagRequired("file")
 	return cmd
 }
 
@@ -276,7 +258,7 @@ type updateOpts struct {
 }
 
 func (o *updateOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &DetailTableCodec{})
+	o.IO.RegisterCustomCodec("table", &ListTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.DashboardUID, "dashboard-uid", "", "Parent dashboard UID (required)")
@@ -315,11 +297,12 @@ func newUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), updated)
+			return encodeOne(&opts.IO, cmd.OutOrStdout(), updated)
 		},
 	}
 	opts.setup(cmd.Flags())
-	mustMarkRequired(cmd, "dashboard-uid", "file")
+	_ = cmd.MarkFlagRequired("dashboard-uid")
+	_ = cmd.MarkFlagRequired("file")
 	return cmd
 }
 
@@ -360,16 +343,6 @@ func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 		},
 	}
 	opts.setup(cmd.Flags())
-	mustMarkRequired(cmd, "dashboard-uid")
+	_ = cmd.MarkFlagRequired("dashboard-uid")
 	return cmd
-}
-
-// mustMarkRequired marks the given flags required on cmd, panicking on
-// programmer error (unknown flag name).
-func mustMarkRequired(cmd *cobra.Command, names ...string) {
-	for _, name := range names {
-		if err := cmd.MarkFlagRequired(name); err != nil {
-			panic(fmt.Errorf("marking flag %q required: %w", name, err))
-		}
-	}
 }

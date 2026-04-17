@@ -33,6 +33,18 @@ func writeJSON(w http.ResponseWriter, v any) {
 	_, _ = w.Write(data)
 }
 
+// decodeSetBody reads a POST permissions request body and returns the contained items.
+func decodeSetBody(t *testing.T, r *http.Request) []permissions.Item {
+	t.Helper()
+	body, err := io.ReadAll(r.Body)
+	require.NoError(t, err)
+	var received struct {
+		Items []permissions.Item `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(body, &received))
+	return received.Items
+}
+
 func TestClient_GetFolder(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -93,7 +105,7 @@ func TestClient_GetFolder(t *testing.T) {
 	}
 }
 
-//nolint:dupl // Folder and dashboard permission tests follow the same shape by design.
+//nolint:dupl // near-duplicate of TestClient_SetDashboard; kept readable as two focused tests.
 func TestClient_SetFolder(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -109,19 +121,10 @@ func TestClient_SetFolder(t *testing.T) {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodPost, r.Method)
 				assert.Equal(t, "/api/folders/folder-abc/permissions", r.URL.Path)
-				body, err := io.ReadAll(r.Body)
-				if !assert.NoError(t, err) {
-					return
-				}
-				var received struct {
-					Items []permissions.Item `json:"items"`
-				}
-				if !assert.NoError(t, json.Unmarshal(body, &received)) {
-					return
-				}
-				assert.Len(t, received.Items, 1)
-				assert.Equal(t, "Viewer", received.Items[0].Role)
-				assert.Equal(t, 1, received.Items[0].Permission)
+				items := decodeSetBody(t, r)
+				assert.Len(t, items, 1)
+				assert.Equal(t, "Viewer", items[0].Role)
+				assert.Equal(t, 1, items[0].Permission)
 				w.WriteHeader(http.StatusOK)
 				_, _ = w.Write([]byte(`{"message":"ok"}`))
 			},
@@ -206,7 +209,7 @@ func TestClient_GetDashboard(t *testing.T) {
 	}
 }
 
-//nolint:dupl // Folder and dashboard permission tests follow the same shape by design.
+//nolint:dupl // near-duplicate of TestClient_SetFolder; kept readable as two focused tests.
 func TestClient_SetDashboard(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -222,19 +225,10 @@ func TestClient_SetDashboard(t *testing.T) {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodPost, r.Method)
 				assert.Equal(t, "/api/dashboards/uid/dash-xyz/permissions", r.URL.Path)
-				body, err := io.ReadAll(r.Body)
-				if !assert.NoError(t, err) {
-					return
-				}
-				var received struct {
-					Items []permissions.Item `json:"items"`
-				}
-				if !assert.NoError(t, json.Unmarshal(body, &received)) {
-					return
-				}
-				assert.Len(t, received.Items, 1)
-				assert.Equal(t, 5, received.Items[0].TeamID)
-				assert.Equal(t, 2, received.Items[0].Permission)
+				items := decodeSetBody(t, r)
+				assert.Len(t, items, 1)
+				assert.Equal(t, 5, items[0].TeamID)
+				assert.Equal(t, 2, items[0].Permission)
 				w.WriteHeader(http.StatusOK)
 				_, _ = w.Write([]byte(`{"message":"ok"}`))
 			},

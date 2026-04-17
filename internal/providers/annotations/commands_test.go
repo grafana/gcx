@@ -49,7 +49,7 @@ func newRecordingServer(t *testing.T) *recordingServer {
 }
 
 // runListCmd executes the list subcommand with the given args against the
-// recording server and returns the captured request plus any error.
+// recording server.
 func runListCmd(t *testing.T, rs *recordingServer, args ...string) error {
 	t.Helper()
 	cmd := annotations.NewListCommandForTest(&stubLoader{host: rs.server.URL})

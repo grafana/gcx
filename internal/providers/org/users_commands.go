@@ -22,7 +22,6 @@ type GrafanaConfigLoader interface {
 	LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error)
 }
 
-// usersCommands returns the users command group.
 func usersCommands(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "users",
@@ -38,7 +37,23 @@ func usersCommands(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// --- list ---
+// newClient loads the REST config via the given loader and returns an API client.
+func newClient(ctx context.Context, loader GrafanaConfigLoader) (*Client, error) {
+	restCfg, err := loader.LoadGrafanaConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return NewClient(restCfg)
+}
+
+// parseUserID parses a positional USER-ID argument.
+func parseUserID(arg string) (int, error) {
+	id, err := strconv.Atoi(arg)
+	if err != nil {
+		return 0, fmt.Errorf("invalid user id %q: %w", arg, err)
+	}
+	return id, nil
+}
 
 type usersListOpts struct {
 	IO    cmdio.Options
@@ -57,18 +72,13 @@ func newUsersListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List users in the current organization.",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
 
 			ctx := cmd.Context()
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
-			if err != nil {
-				return err
-			}
-
-			client, err := NewClient(restCfg)
+			client, err := newClient(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -108,11 +118,9 @@ func (c *UsersTableCodec) Encode(w io.Writer, v any) error {
 	return t.Render(w)
 }
 
-func (c *UsersTableCodec) Decode(r io.Reader, v any) error {
+func (c *UsersTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
-
-// --- get ---
 
 type usersGetOpts struct {
 	IO cmdio.Options
@@ -136,14 +144,7 @@ func newUsersGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			needle := strings.ToLower(strings.TrimSpace(args[0]))
-
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
-			if err != nil {
-				return err
-			}
-
-			client, err := NewClient(restCfg)
+			client, err := newClient(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -153,9 +154,9 @@ func newUsersGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
+			needle := strings.TrimSpace(args[0])
 			for i := range users {
 				if strings.EqualFold(users[i].Login, needle) || strings.EqualFold(users[i].Email, needle) {
-					// Encode as a single-item slice so the table codec can render it.
 					return opts.IO.Encode(cmd.OutOrStdout(), []OrgUser{users[i]})
 				}
 			}
@@ -166,11 +167,19 @@ func newUsersGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// --- add ---
-
 type usersAddOpts struct {
 	Login string
 	Role  string
+}
+
+func (o *usersAddOpts) Validate() error {
+	if o.Login == "" {
+		return errors.New("--login is required")
+	}
+	if o.Role == "" {
+		return errors.New("--role is required")
+	}
+	return nil
 }
 
 func newUsersAddCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -178,21 +187,13 @@ func newUsersAddCommand(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add",
 		Short: "Add a user to the current organization.",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if opts.Login == "" {
-				return errors.New("--login is required")
-			}
-			if opts.Role == "" {
-				return errors.New("--role is required")
-			}
-
-			ctx := cmd.Context()
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
-			if err != nil {
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 
-			client, err := NewClient(restCfg)
+			ctx := cmd.Context()
+			client, err := newClient(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -213,8 +214,6 @@ func newUsersAddCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// --- update-role ---
-
 type usersUpdateRoleOpts struct {
 	Role string
 }
@@ -229,18 +228,13 @@ func newUsersUpdateRoleCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if opts.Role == "" {
 				return errors.New("--role is required")
 			}
-			userID, err := strconv.Atoi(args[0])
-			if err != nil {
-				return fmt.Errorf("invalid user id %q: %w", args[0], err)
-			}
-
-			ctx := cmd.Context()
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
+			userID, err := parseUserID(args[0])
 			if err != nil {
 				return err
 			}
 
-			client, err := NewClient(restCfg)
+			ctx := cmd.Context()
+			client, err := newClient(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -257,26 +251,19 @@ func newUsersUpdateRoleCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// --- remove ---
-
 func newUsersRemoveCommand(loader GrafanaConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
+	return &cobra.Command{
 		Use:   "remove USER-ID",
 		Short: "Remove a user from the current organization.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			userID, err := strconv.Atoi(args[0])
-			if err != nil {
-				return fmt.Errorf("invalid user id %q: %w", args[0], err)
-			}
-
-			ctx := cmd.Context()
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
+			userID, err := parseUserID(args[0])
 			if err != nil {
 				return err
 			}
 
-			client, err := NewClient(restCfg)
+			ctx := cmd.Context()
+			client, err := newClient(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -289,5 +276,4 @@ func newUsersRemoveCommand(loader GrafanaConfigLoader) *cobra.Command {
 			return nil
 		},
 	}
-	return cmd
 }

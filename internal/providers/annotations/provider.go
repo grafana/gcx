@@ -15,28 +15,27 @@ func init() { //nolint:gochecknoinits // Self-registration pattern (like databas
 // AnnotationsProvider manages Grafana annotations.
 type AnnotationsProvider struct{}
 
-// Name returns the unique identifier for this provider.
 func (p *AnnotationsProvider) Name() string { return "annotations" }
 
-// ShortDesc returns a one-line description of the provider.
 func (p *AnnotationsProvider) ShortDesc() string { return "Manage Grafana annotations" }
 
-// Commands returns the Cobra commands contributed by this provider.
 func (p *AnnotationsProvider) Commands() []*cobra.Command {
 	loader := &providers.ConfigLoader{}
 
 	root := &cobra.Command{
 		Use:   "annotations",
 		Short: p.ShortDesc(),
-		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			if r := cmd.Root(); r.PersistentPreRun != nil {
-				r.PersistentPreRun(cmd, args)
-			}
-		},
+	}
+	// Bubble parent PersistentPreRun when attached to a real CLI root; guard
+	// against self-recursion when root itself is used as the root (e.g. in
+	// isolated tests where cmd.Root() == root).
+	root.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+		if r := cmd.Root(); r != root && r.PersistentPreRun != nil {
+			r.PersistentPreRun(cmd, args)
+		}
 	}
 
 	loader.BindFlags(root.PersistentFlags())
-
 	root.AddCommand(
 		newListCommand(loader),
 		newGetCommand(loader),
@@ -48,12 +47,8 @@ func (p *AnnotationsProvider) Commands() []*cobra.Command {
 	return []*cobra.Command{root}
 }
 
-// Validate checks that the given provider configuration is valid.
-func (p *AnnotationsProvider) Validate(cfg map[string]string) error { return nil }
+func (p *AnnotationsProvider) Validate(_ map[string]string) error { return nil }
 
-// ConfigKeys returns the configuration keys used by this provider.
 func (p *AnnotationsProvider) ConfigKeys() []providers.ConfigKey { return nil }
 
-// TypedRegistrations returns adapter registrations for resource types.
-// Annotations are not currently exposed as typed resources.
 func (p *AnnotationsProvider) TypedRegistrations() []adapter.Registration { return nil }

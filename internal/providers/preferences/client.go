@@ -20,7 +20,7 @@ type Client struct {
 	host       string
 }
 
-// NewClient creates a new preferences client.
+// NewClient creates a new preferences client bound to the provided REST config.
 func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 	httpClient, err := rest.HTTPClientFor(&cfg.Config)
 	if err != nil {
@@ -32,7 +32,7 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 // Get returns the current organization's preferences.
 func (c *Client) Get(ctx context.Context) (*OrgPreferences, error) {
 	var result OrgPreferences
-	if err := c.doRequest(ctx, http.MethodGet, basePath, nil, &result); err != nil {
+	if err := c.do(ctx, http.MethodGet, basePath, nil, &result); err != nil {
 		return nil, err
 	}
 	return &result, nil
@@ -40,21 +40,20 @@ func (c *Client) Get(ctx context.Context) (*OrgPreferences, error) {
 
 // Update replaces the current organization's preferences.
 func (c *Client) Update(ctx context.Context, prefs *OrgPreferences) error {
-	return c.doRequest(ctx, http.MethodPut, basePath, prefs, nil)
+	return c.do(ctx, http.MethodPut, basePath, prefs, nil)
 }
 
-// doRequest performs an HTTP request and optionally decodes the response into out.
-func (c *Client) doRequest(ctx context.Context, method, path string, body, out any) error {
-	var reqBody io.Reader
+func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
+	var reader io.Reader
 	if body != nil {
-		encoded, err := json.Marshal(body)
+		buf, err := json.Marshal(body)
 		if err != nil {
-			return fmt.Errorf("failed to encode request body: %w", err)
+			return fmt.Errorf("failed to marshal request body: %w", err)
 		}
-		reqBody = bytes.NewReader(encoded)
+		reader = bytes.NewReader(buf)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, c.host+path, reqBody)
+	req, err := http.NewRequestWithContext(ctx, method, c.host+path, reader)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -77,14 +76,12 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body, out a
 		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil
 	}
-
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
 		return fmt.Errorf("failed to decode response: %w", err)
 	}
 	return nil
 }
 
-// handleErrorResponse reads an error response body and returns a formatted error.
 func handleErrorResponse(resp *http.Response) error {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -95,7 +92,6 @@ func handleErrorResponse(resp *http.Response) error {
 	if err := json.Unmarshal(body, &errResp); err == nil && errResp.Message != "" {
 		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, errResp.Message)
 	}
-
 	if len(body) > 0 {
 		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))
 	}

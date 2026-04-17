@@ -24,9 +24,18 @@ type GrafanaConfigLoader interface {
 	LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error)
 }
 
+// clientFor resolves the active Grafana context and constructs an annotations
+// client from it.
+func clientFor(ctx context.Context, loader GrafanaConfigLoader) (*Client, error) {
+	restCfg, err := loader.LoadGrafanaConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return NewClient(restCfg)
+}
+
 const defaultLookback = 24 * time.Hour
 
-// listOpts holds the parsed flags for the list command.
 type listOpts struct {
 	IO       cmdio.Options
 	Lookback time.Duration
@@ -51,11 +60,11 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 // --from/--to override --lookback; when neither is set, --lookback applies
 // ending at now.
 func (o *listOpts) resolveRange(cmd *cobra.Command) (int64, int64, error) {
-	fromChanged := cmd.Flags().Changed("from")
-	toChanged := cmd.Flags().Changed("to")
-	lookbackChanged := cmd.Flags().Changed("lookback")
+	flags := cmd.Flags()
+	fromChanged := flags.Changed("from")
+	toChanged := flags.Changed("to")
 
-	if lookbackChanged && (fromChanged || toChanged) {
+	if flags.Changed("lookback") && (fromChanged || toChanged) {
 		return 0, 0, errors.New("--lookback cannot be used together with --from or --to")
 	}
 
@@ -64,9 +73,7 @@ func (o *listOpts) resolveRange(cmd *cobra.Command) (int64, int64, error) {
 	}
 
 	now := time.Now()
-	to := now.UnixMilli()
-	from := now.Add(-o.Lookback).UnixMilli()
-	return from, to, nil
+	return now.Add(-o.Lookback).UnixMilli(), now.UnixMilli(), nil
 }
 
 func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -93,12 +100,7 @@ to widen the window, or --from/--to for an explicit time range (epoch ms).`,
 			}
 
 			ctx := cmd.Context()
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
-			if err != nil {
-				return err
-			}
-
-			client, err := NewClient(restCfg)
+			client, err := clientFor(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -192,12 +194,7 @@ func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
-			if err != nil {
-				return err
-			}
-
-			client, err := NewClient(restCfg)
+			client, err := clientFor(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -252,12 +249,7 @@ func newCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
-			if err != nil {
-				return err
-			}
-
-			client, err := NewClient(restCfg)
+			client, err := clientFor(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -308,12 +300,7 @@ func newUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
-			if err != nil {
-				return err
-			}
-
-			client, err := NewClient(restCfg)
+			client, err := clientFor(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -334,7 +321,7 @@ func newUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
 // ---- delete ----
 
 func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
+	return &cobra.Command{
 		Use:     "delete ID",
 		Short:   "Delete an annotation by ID.",
 		Example: "  gcx annotations delete 1",
@@ -346,12 +333,7 @@ func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
-			if err != nil {
-				return err
-			}
-
-			client, err := NewClient(restCfg)
+			client, err := clientFor(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -364,7 +346,6 @@ func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 			return nil
 		},
 	}
-	return cmd
 }
 
 // ---- helpers ----

@@ -25,8 +25,6 @@ func newTestClient(t *testing.T, server *httptest.Server) *annotations.Client {
 	return client
 }
 
-// writeJSON encodes v as JSON to w.
-// Panics on marshal error since test data is always known-good.
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	data, err := json.Marshal(v)
@@ -360,7 +358,6 @@ func TestClient_ErrorResponses(t *testing.T) {
 	}
 }
 
-// Sanity check: tag order must be preserved as per repeated ?tags=... semantics.
 func TestClient_List_TagOrder(t *testing.T) {
 	var capturedQuery string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -372,6 +369,5 @@ func TestClient_List_TagOrder(t *testing.T) {
 	client := newTestClient(t, server)
 	_, err := client.List(t.Context(), annotations.ListOptions{Tags: []string{"a", "b", "c"}})
 	require.NoError(t, err)
-	// Each tag should appear as a separate query value.
 	assert.Equal(t, 3, strings.Count(capturedQuery, "tags="))
 }

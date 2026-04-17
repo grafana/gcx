@@ -22,10 +22,6 @@ type GrafanaConfigLoader interface {
 	LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error)
 }
 
-// ---------------------------------------------------------------------------
-// get command
-// ---------------------------------------------------------------------------
-
 type getOpts struct {
 	IO cmdio.Options
 }
@@ -72,10 +68,8 @@ func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 // PreferencesTableCodec renders organization preferences as a KEY/VALUE table.
 type PreferencesTableCodec struct{}
 
-// Format reports the codec's output format identifier.
 func (c *PreferencesTableCodec) Format() format.Format { return "table" }
 
-// Encode writes the preferences as a simple KEY/VALUE table.
 func (c *PreferencesTableCodec) Encode(w io.Writer, v any) error {
 	prefs, ok := v.(*OrgPreferences)
 	if !ok {
@@ -91,14 +85,9 @@ func (c *PreferencesTableCodec) Encode(w io.Writer, v any) error {
 	return t.Render(w)
 }
 
-// Decode is not supported for the preferences table codec.
 func (c *PreferencesTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
-
-// ---------------------------------------------------------------------------
-// update command
-// ---------------------------------------------------------------------------
 
 type updateOpts struct {
 	File string
@@ -158,8 +147,6 @@ func newUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// readInput reads the update payload from the given path, or from stdin when
-// path is "-".
 func readInput(stdin io.Reader, path string) ([]byte, error) {
 	if path == "-" {
 		data, err := io.ReadAll(stdin)

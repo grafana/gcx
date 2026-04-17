@@ -15,13 +15,10 @@ func init() { //nolint:gochecknoinits // Self-registration pattern (like databas
 // PreferencesProvider manages Grafana organization preferences.
 type PreferencesProvider struct{}
 
-// Name returns the unique identifier for this provider.
 func (p *PreferencesProvider) Name() string { return "preferences" }
 
-// ShortDesc returns a one-line description of the provider.
 func (p *PreferencesProvider) ShortDesc() string { return "Manage Grafana org preferences" }
 
-// Commands returns the Cobra commands contributed by this provider.
 func (p *PreferencesProvider) Commands() []*cobra.Command {
 	loader := &providers.ConfigLoader{}
 
@@ -43,13 +40,10 @@ func (p *PreferencesProvider) Commands() []*cobra.Command {
 	return []*cobra.Command{cmd}
 }
 
-// Validate checks that the given provider configuration is valid.
 func (p *PreferencesProvider) Validate(_ map[string]string) error { return nil }
 
-// ConfigKeys returns the configuration keys used by this provider.
-// Preferences uses the standard Grafana SA token; no additional keys are required.
+// ConfigKeys returns no keys; preferences uses the standard Grafana SA token.
 func (p *PreferencesProvider) ConfigKeys() []providers.ConfigKey { return nil }
 
-// TypedRegistrations returns adapter registrations for Preferences resource types.
-// Preferences are a singleton settings resource exposed only through imperative commands.
+// TypedRegistrations returns none; preferences is a singleton exposed only via imperative commands.
 func (p *PreferencesProvider) TypedRegistrations() []adapter.Registration { return nil }
