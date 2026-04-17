@@ -19,6 +19,7 @@ var agentEnvVars = []string{ //nolint:gochecknoglobals
 	"CURSOR_AGENT",
 	"GITHUB_COPILOT",
 	"AMAZON_Q",
+	"OPENCODE",
 }
 
 var (
