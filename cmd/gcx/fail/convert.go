@@ -243,7 +243,7 @@ func queryErrorSummary(apiErr *queryerror.APIError) string {
 
 	switch apiErr.StatusCode {
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return fmt.Sprintf("Authentication failed querying %s", datasource)
+		return "Authentication failed querying " + datasource
 	case http.StatusBadRequest:
 		if language := queryErrorLanguage(apiErr); apiErr.IsParseError() && language != "" {
 			return fmt.Sprintf("Invalid %s query", language)
@@ -263,14 +263,11 @@ func queryErrorSummary(apiErr *queryerror.APIError) string {
 }
 
 func queryErrorNotFoundSummary(apiErr *queryerror.APIError) string {
-	switch apiErr.Datasource {
-	case "tempo":
-		if apiErr.Operation == "get trace" {
-			return "Trace not found"
-		}
+	if apiErr.Datasource == "tempo" && apiErr.Operation == "get trace" {
+		return "Trace not found"
 	}
 
-	return fmt.Sprintf("%s resource not found", queryErrorDatasourceName(apiErr.Datasource))
+	return queryErrorDatasourceName(apiErr.Datasource) + " resource not found"
 }
 
 func queryErrorDetails(apiErr *queryerror.APIError) string {
@@ -503,9 +500,9 @@ func serviceAPIErrorSummary(apiErr serviceAPIError) string {
 
 	switch apiErr.HTTPStatusCode() {
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return fmt.Sprintf("Authentication failed querying %s", service)
+		return "Authentication failed querying " + service
 	case http.StatusNotFound:
-		return fmt.Sprintf("%s API resource not found", service)
+		return service + " API resource not found"
 	default:
 		return fmt.Sprintf("%s API request failed (HTTP %d)", service, apiErr.HTTPStatusCode())
 	}
@@ -534,13 +531,13 @@ func wrappedTypedErrorContext(err error, inner error) string {
 		return ""
 	}
 
-	idx := strings.Index(message, innerMessage)
-	if idx < 0 {
+	prefix, after, found := strings.Cut(message, innerMessage)
+	if !found {
 		return ""
 	}
 
-	prefix := trimWrapperPrefix(message[:idx])
-	suffix := trimWrapperSuffix(message[idx+len(innerMessage):])
+	prefix = trimWrapperPrefix(prefix)
+	suffix := trimWrapperSuffix(after)
 
 	parts := []string{}
 	if prefix != "" && !isGenericAPIWrapperPrefix(prefix) {
@@ -841,7 +838,7 @@ func fallbackDetailedError(err error) *DetailedError {
 	}
 }
 
-func summarizeFallbackError(err error) (summary, details string, parent error) {
+func summarizeFallbackError(err error) (string, string, error) {
 	if err == nil {
 		return "Unexpected error", "", nil
 	}
@@ -850,7 +847,7 @@ func summarizeFallbackError(err error) (summary, details string, parent error) {
 		return humanizeSummary(wrappedSummary), "", wrappedParent
 	}
 
-	summary, details = splitErrorMessage(err.Error())
+	summary, details := splitErrorMessage(err.Error())
 	return humanizeSummary(summary), details, nil
 }
 
@@ -873,7 +870,7 @@ func fallbackWrappedSummary(err error) (string, error, bool) {
 	return message, parent, true
 }
 
-func splitErrorMessage(message string) (summary, details string) {
+func splitErrorMessage(message string) (string, string) {
 	message = strings.TrimSpace(message)
 	if message == "" {
 		return "Unexpected error", ""

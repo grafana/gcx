@@ -2,7 +2,6 @@ package datasources_test
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -37,7 +36,7 @@ func TestList_ReturnsTypedAPIError(t *testing.T) {
 	require.Error(t, err)
 
 	var apiErr *datasources.APIError
-	require.True(t, errors.As(err, &apiErr))
+	require.ErrorAs(t, err, &apiErr)
 	assert.Equal(t, "list datasources", apiErr.Operation)
 	assert.Equal(t, http.StatusForbidden, apiErr.StatusCode)
 	assert.Equal(t, "access denied", apiErr.Message)
@@ -55,7 +54,7 @@ func TestGetByUID_ReturnsTypedNotFoundError(t *testing.T) {
 	require.Error(t, err)
 
 	var apiErr *datasources.APIError
-	require.True(t, errors.As(err, &apiErr))
+	require.ErrorAs(t, err, &apiErr)
 	assert.Equal(t, "get datasource", apiErr.Operation)
 	assert.Equal(t, "missing", apiErr.Identifier)
 	assert.Equal(t, http.StatusNotFound, apiErr.StatusCode)

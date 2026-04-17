@@ -78,7 +78,7 @@ type commonErrorEnvelope struct {
 	Details string `json:"details"`
 }
 
-func extractMessage(body []byte) (message, errorSource string, statusCode int) {
+func extractMessage(body []byte) (string, string, int) {
 	trimmed := strings.TrimSpace(string(body))
 	if trimmed == "" {
 		return "", "", 0

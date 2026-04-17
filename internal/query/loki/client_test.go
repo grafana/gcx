@@ -2,7 +2,6 @@ package loki_test
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -62,7 +61,7 @@ func TestQuery_ReturnsTypedAPIErrorForGrafanaEnvelope(t *testing.T) {
 	require.Error(t, err)
 
 	var apiErr *queryerror.APIError
-	require.True(t, errors.As(err, &apiErr))
+	require.ErrorAs(t, err, &apiErr)
 	assert.Equal(t, "loki", apiErr.Datasource)
 	assert.Equal(t, "query", apiErr.Operation)
 	assert.Equal(t, http.StatusBadRequest, apiErr.StatusCode)

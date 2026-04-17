@@ -55,7 +55,7 @@ func TestErrorToDetailedError_NonCanceledError(t *testing.T) {
 	assert.Nil(t, got.ExitCode, "non-canceled errors should have nil ExitCode")
 	assert.Equal(t, "Some other error", got.Summary)
 	assert.Empty(t, got.Details)
-	assert.Nil(t, got.Parent)
+	assert.NoError(t, got.Parent)
 }
 
 func TestErrorToDetailedError_WrappedErrorUsesOuterSummary(t *testing.T) {
