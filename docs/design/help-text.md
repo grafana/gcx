@@ -32,11 +32,14 @@ Examples are prefixed with a comment explaining intent. Show 3-5 examples per
 command, progressing from simple to complex:
 
 ```go
-Example: `  # List all SLOs
+Example: `  # List all SLOs (default: no row cap; API returns the full list)
   gcx slo definitions list
 
   # List SLOs with JSON output
   gcx slo definitions list -o json
+
+  # Trim printed rows after fetch (optional; same API payload either way)
+  gcx slo definitions list --limit 50
 
   # List SLOs from a specific context
   gcx slo definitions list --context=prod`,

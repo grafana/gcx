@@ -26,7 +26,7 @@ func filterPatternsBySegment(recs []LogRecommendation, segmentRef string, catalo
 		}
 	}
 	seen := make(map[string]bool)
-	var keys []string
+	keys := make([]string, 0, len(matchKeys))
 	for _, k := range matchKeys {
 		if k == "" || seen[k] {
 			continue

@@ -2,6 +2,7 @@
 
 
 
+- Default `gcx slo definitions list --limit` to 0 (print all SLOs); raise agent `token_cost` to medium with hint to use `--limit` when narrowing output
 - Consolidate OnCall + Incidents under unified `irm` provider
 - Add adaptive metrics segments and exemptions commands
 - Adopt server-side pagination for list commands

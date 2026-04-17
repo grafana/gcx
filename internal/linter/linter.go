@@ -172,12 +172,13 @@ func New(opts ...Option) (*Linter, error) {
 }
 
 func (linter *Linter) Rules(ctx context.Context) ([]Rule, error) {
-	var rules []Rule
-
 	preparedQuery, err := linter.prepare(ctx)
 	if err != nil {
 		return nil, err
 	}
+
+	mods := preparedQuery.Modules()
+	rules := make([]Rule, 0, len(mods))
 
 	updateFromAnnotations := func(r *Rule, annotations []*ast.Annotations) {
 		if len(annotations) == 0 {
@@ -201,7 +202,7 @@ func (linter *Linter) Rules(ctx context.Context) ([]Rule, error) {
 	}
 
 	// Builtin rules
-	for _, module := range preparedQuery.Modules() {
+	for _, module := range mods {
 		parts := unquotedPath(module.Package.Path)
 
 		// 0   1     2        3        4
@@ -229,7 +230,7 @@ func (linter *Linter) Rules(ctx context.Context) ([]Rule, error) {
 	}
 
 	// custom rules
-	for _, module := range preparedQuery.Modules() {
+	for _, module := range mods {
 		parts := unquotedPath(module.Package.Path)
 
 		// 0      1   2     3        4        5
