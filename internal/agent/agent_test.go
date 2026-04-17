@@ -39,6 +39,11 @@ func TestIsAgentMode(t *testing.T) {
 			wantMode: true,
 		},
 		{
+			name:     "OPENCODE=1",
+			envVars:  map[string]string{"OPENCODE": "1"},
+			wantMode: true,
+		},
+		{
 			name:     "GCX_AGENT_MODE=1",
 			envVars:  map[string]string{"GCX_AGENT_MODE": "1"},
 			wantMode: true,
