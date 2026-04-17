@@ -249,6 +249,67 @@ func TestRefreshTransport_CallsOnRefreshCallback(t *testing.T) {
 	}
 }
 
+func TestRefreshTransport_PersistsTokensWhenExpiresAtUnparseable(t *testing.T) {
+	refreshServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/cli/v1/auth/refresh" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"token":              "gat_new",
+					"expires_at":         "",
+					"refresh_token":      "gar_new",
+					"refresh_expires_at": "",
+				},
+			})
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer refreshServer.Close()
+
+	var saved struct {
+		token, refresh string
+		called         bool
+	}
+	transport := &auth.RefreshTransport{
+		Base:          http.DefaultTransport,
+		ProxyEndpoint: refreshServer.URL,
+		Token:         "gat_old",
+		RefreshToken:  "gar_old",
+		ExpiresAt:     time.Now().Add(1 * time.Minute),
+		OnRefresh: func(token, refreshToken, expiresAt, refreshExpiresAt string) error {
+			saved.called = true
+			saved.token = token
+			saved.refresh = refreshToken
+			return nil
+		},
+	}
+
+	client := &http.Client{Transport: transport}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, refreshServer.URL+"/test", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	resp, err := client.Do(req)
+	if resp != nil {
+		resp.Body.Close()
+	}
+	if err != nil {
+		t.Fatalf("expected request to succeed despite unparseable expires_at, got: %v", err)
+	}
+	if !saved.called {
+		t.Fatal("expected OnRefresh to be called even with unparseable expires_at")
+	}
+	if saved.token != "gat_new" {
+		t.Fatalf("expected saved token %q, got %q", "gat_new", saved.token)
+	}
+	if saved.refresh != "gar_new" {
+		t.Fatalf("expected saved refresh token %q, got %q", "gar_new", saved.refresh)
+	}
+	if transport.Token != "gat_new" {
+		t.Fatalf("expected in-memory token %q, got %q", "gat_new", transport.Token)
+	}
+}
+
 func TestRefreshTransport_ReturnsErrRefreshTokenExpired_On401(t *testing.T) {
 	refreshServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/cli/v1/auth/refresh" {

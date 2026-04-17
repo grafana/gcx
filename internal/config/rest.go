@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gofrs/flock"
 	authlib "github.com/grafana/authlib/types"
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/httputils"
@@ -47,15 +48,53 @@ func (n *NamespacedRESTConfig) SetOnRefresh(fn auth.TokenRefresher) {
 	}
 }
 
-// WireTokenPersistence registers an OnRefresh callback that reloads the config
-// from the most appropriate source, updates the OAuth token fields for
-// contextName, and writes back.
-// No-op if the config is not using OAuth proxy mode.
+// WireTokenPersistence registers callbacks that cross-process-lock the config
+// file, reload it so concurrent gcx invocations don't both consume the same
+// rotating refresh token, and write rotated tokens back after a successful
+// refresh. No-op if the config is not using OAuth proxy mode.
 func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source Source, contextName string, sources []ConfigSource) {
+	if n.oauthTransport == nil {
+		return
+	}
 	persistSource := ResolveTokenPersistenceSource(ctx, source, contextName, sources)
+	// Persistence runs inside an HTTP RoundTrip whose request context may be
+	// cancelled the moment the caller has what it needs. Use a context
+	// detached from that cancellation so Load/Write always complete.
+	persistCtx := context.WithoutCancel(ctx)
+
+	n.oauthTransport.Lock = func(reqCtx context.Context) (func(), error) {
+		path, err := persistSource()
+		if err != nil {
+			return nil, err
+		}
+		lock := flock.New(path + ".lock")
+		lockCtx, cancel := context.WithTimeout(context.WithoutCancel(reqCtx), 30*time.Second)
+		defer cancel()
+		if ok, err := lock.TryLockContext(lockCtx, 100*time.Millisecond); err != nil || !ok {
+			return nil, err
+		}
+		return func() { _ = lock.Unlock() }, nil
+	}
+
+	n.oauthTransport.Reload = func() (auth.StoredTokens, bool, error) {
+		fresh, err := Load(persistCtx, persistSource)
+		if err != nil {
+			return auth.StoredTokens{}, false, err
+		}
+		c := fresh.Contexts[contextName]
+		if c == nil || c.Grafana == nil || c.Grafana.OAuthRefreshToken == "" {
+			return auth.StoredTokens{}, false, nil
+		}
+		return auth.StoredTokens{
+			Token:            c.Grafana.OAuthToken,
+			RefreshToken:     c.Grafana.OAuthRefreshToken,
+			ExpiresAt:        parseRFC3339OrZero(c.Grafana.OAuthTokenExpiresAt),
+			RefreshExpiresAt: parseRFC3339OrZero(c.Grafana.OAuthRefreshExpiresAt),
+		}, true, nil
+	}
 
 	n.SetOnRefresh(func(token, refreshToken, expiresAt, refreshExpiresAt string) error {
-		fresh, err := Load(ctx, persistSource)
+		fresh, err := Load(persistCtx, persistSource)
 		if err != nil {
 			return err
 		}
@@ -76,7 +115,7 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 		c.Grafana.OAuthRefreshToken = refreshToken
 		c.Grafana.OAuthTokenExpiresAt = expiresAt
 		c.Grafana.OAuthRefreshExpiresAt = refreshExpiresAt
-		return Write(ctx, persistSource, fresh)
+		return Write(persistCtx, persistSource, fresh)
 	})
 }
 

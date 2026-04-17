@@ -48,6 +48,8 @@ require (
 	k8s.io/klog/v2 v2.140.0
 )
 
+require github.com/gofrs/flock v0.13.0
+
 require (
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 // indirect
