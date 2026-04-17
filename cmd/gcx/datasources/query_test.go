@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/cmd/gcx/datasources"
 	"github.com/grafana/gcx/internal/testutils"
 	"github.com/spf13/cobra"
@@ -27,14 +26,10 @@ func helperRoot(sub *cobra.Command) *cobra.Command {
 	return root
 }
 
-func newConfigOpts() *cmdconfig.Options {
-	return &cmdconfig.Options{}
-}
-
-func newConfigOptsWithServer(t *testing.T, serverURL string) *cmdconfig.Options {
+func newConfigFileForServer(t *testing.T, serverURL string) string {
 	t.Helper()
 
-	configFile := testutils.CreateTempFile(t, fmt.Sprintf(`current-context: test
+	return testutils.CreateTempFile(t, fmt.Sprintf(`current-context: test
 contexts:
   test:
     grafana:
@@ -42,8 +37,6 @@ contexts:
       token: test-token
       org-id: 1
 `, serverURL))
-
-	return &cmdconfig.Options{ConfigFile: configFile}
 }
 
 func executeQueryCommand(t *testing.T, cmd *cobra.Command, args []string) error {
@@ -118,7 +111,7 @@ func parseUnixMillisField(t *testing.T, body map[string]any, key string) time.Ti
 
 // TestQuerySubcommandUse verifies the query constructor sets Use="query ...".
 func TestQuerySubcommandUse(t *testing.T) {
-	cmd := datasources.QueryCmd(newConfigOpts())
+	cmd := datasources.QueryCmd()
 	assert.Equal(t, "query", cmd.Name())
 }
 
@@ -142,7 +135,7 @@ func TestSinceValidationOnQueryCommand(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := datasources.QueryCmd(newConfigOpts())
+			cmd := datasources.QueryCmd()
 			err := executeQueryCommand(t, cmd, tt.args)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.expectErr)
@@ -159,11 +152,11 @@ func TestSinceResolvesRelativeRangeOnQueryCommand(t *testing.T) {
 	})
 	defer server.Close()
 
-	configOpts := newConfigOptsWithServer(t, server.URL)
-	cmd := datasources.QueryCmd(configOpts)
+	configFile := newConfigFileForServer(t, server.URL)
+	cmd := datasources.QueryCmd()
 
 	referenceNow := time.Now()
-	err := executeQueryCommand(t, cmd, []string{"query", "uid", `{job="x"}`, "--since", "1h", "--to", "now-6h", "-o", "json"})
+	err := executeQueryCommand(t, cmd, []string{"query", "uid", `{job="x"}`, "--config", configFile, "--since", "1h", "--to", "now-6h", "-o", "json"})
 	require.NoError(t, err)
 	require.NotEmpty(t, capturedPath)
 	require.NotNil(t, capturedBody)
@@ -182,11 +175,11 @@ func TestSinceWithoutToDefaultsEndToNowOnQueryCommand(t *testing.T) {
 	})
 	defer server.Close()
 
-	configOpts := newConfigOptsWithServer(t, server.URL)
-	cmd := datasources.QueryCmd(configOpts)
+	configFile := newConfigFileForServer(t, server.URL)
+	cmd := datasources.QueryCmd()
 
 	referenceNow := time.Now()
-	err := executeQueryCommand(t, cmd, []string{"query", "uid", `{job="x"}`, "--since", "1h", "-o", "json"})
+	err := executeQueryCommand(t, cmd, []string{"query", "uid", `{job="x"}`, "--config", configFile, "--since", "1h", "-o", "json"})
 	require.NoError(t, err)
 	require.NotNil(t, capturedBody)
 
@@ -201,7 +194,7 @@ func TestSinceWithoutToDefaultsEndToNowOnQueryCommand(t *testing.T) {
 
 // TestQueryRequiresDatasourceUID verifies that query requires at least a datasource UID.
 func TestQueryRequiresDatasourceUID(t *testing.T) {
-	err := executeQueryCommand(t, datasources.QueryCmd(newConfigOpts()), []string{"query"})
+	err := executeQueryCommand(t, datasources.QueryCmd(), []string{"query"})
 	require.Error(t, err)
 }
 
@@ -226,7 +219,7 @@ func TestExprFlagSmoke_DatasourcesQuery(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := datasources.QueryCmd(newConfigOpts())
+			cmd := datasources.QueryCmd()
 			err := executeQueryCommand(t, cmd, tt.args)
 			if tt.wantErr != "" {
 				require.Error(t, err)

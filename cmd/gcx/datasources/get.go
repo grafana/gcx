@@ -23,7 +23,8 @@ func (opts *getOpts) Validate() error {
 	return opts.IO.Validate()
 }
 
-func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
+func getCmd() *cobra.Command {
+	configOpts := &cmdconfig.Options{}
 	opts := &getOpts{}
 
 	cmd := &cobra.Command{
@@ -78,6 +79,7 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 		},
 	}
 
+	configOpts.BindFlags(cmd.Flags())
 	opts.setup(cmd.Flags())
 	return cmd
 }

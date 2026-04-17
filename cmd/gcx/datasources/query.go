@@ -14,7 +14,8 @@ import (
 )
 
 // QueryCmd returns the auto-detecting query command for the datasources group.
-func QueryCmd(configOpts *cmdconfig.Options) *cobra.Command {
+func QueryCmd() *cobra.Command {
+	configOpts := &cmdconfig.Options{}
 	shared := &dsquery.SharedOpts{}
 	var profileType string
 	var maxNodes int64
@@ -159,6 +160,7 @@ that do not have a dedicated subcommand.`,
 		},
 	}
 
+	configOpts.BindFlags(cmd.Flags())
 	shared.Setup(cmd.Flags(), true)
 	cmd.Flags().StringVar(&profileType, "profile-type", "", "Profile type ID for pyroscope queries (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds')")
 	cmd.Flags().Int64Var(&maxNodes, "max-nodes", 1024, "Maximum nodes in flame graph (pyroscope only)")

@@ -35,7 +35,8 @@ func (opts *listOpts) Validate() error {
 	return opts.IO.Validate()
 }
 
-func listCmd(configOpts *cmdconfig.Options) *cobra.Command {
+func listCmd() *cobra.Command {
+	configOpts := &cmdconfig.Options{}
 	opts := &listOpts{}
 
 	cmd := &cobra.Command{
@@ -119,6 +120,7 @@ func listCmd(configOpts *cmdconfig.Options) *cobra.Command {
 		},
 	}
 
+	configOpts.BindFlags(cmd.Flags())
 	opts.setup(cmd.Flags())
 	return cmd
 }
