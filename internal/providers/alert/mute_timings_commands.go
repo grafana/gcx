@@ -2,7 +2,6 @@ package alert
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -158,7 +157,6 @@ func (o *muteTimingsMutateOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the mute timing definition (JSON/YAML, use - for stdin)")
 }
 
-//nolint:dupl // Similar structure to contact-points create command is intentional
 func newMuteTimingsCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &muteTimingsMutateOpts{}
 	cmd := &cobra.Command{
@@ -226,13 +224,31 @@ func newMuteTimingsUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
+type muteTimingsDeleteOpts struct {
+	Force bool
+}
+
+func (o *muteTimingsDeleteOpts) setup(flags *pflag.FlagSet) {
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
+}
+
+//nolint:dupl // Similar structure to contact-points and templates delete commands is intentional
 func newMuteTimingsDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
+	opts := &muteTimingsDeleteOpts{}
 	cmd := &cobra.Command{
 		Use:   "delete NAME",
 		Short: "Delete a mute timing by name.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
+			ok, err := confirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
+				"Delete mute timing "+args[0]+"?")
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return nil
+			}
 			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
@@ -244,10 +260,11 @@ func newMuteTimingsDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err := client.DeleteMuteTiming(ctx, args[0]); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Deleted mute timing %s\n", args[0])
+			cmdio.Success(cmd.OutOrStdout(), "Deleted mute timing %s", args[0])
 			return nil
 		},
 	}
+	opts.setup(cmd.Flags())
 	return cmd
 }
 

@@ -1,12 +1,15 @@
 package alert
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 
+	"github.com/grafana/gcx/internal/config"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"sigs.k8s.io/yaml"
 )
 
@@ -44,6 +47,34 @@ func readProvisioningInput(file string, stdin io.Reader, out any) error {
 		return fmt.Errorf("failed to parse input: %w", err)
 	}
 	return nil
+}
+
+// confirmDestructive prompts the user to confirm a destructive operation,
+// honoring the --force flag and the GCX_AUTO_APPROVE env var. Returns true if
+// the caller should proceed, false if the user declined.
+func confirmDestructive(in io.Reader, out io.Writer, force bool, prompt string) (bool, error) {
+	if force {
+		return true, nil
+	}
+	cliOpts, err := config.LoadCLIOptions()
+	if err != nil {
+		return false, err
+	}
+	if cliOpts.AutoApprove {
+		return true, nil
+	}
+
+	fmt.Fprintf(out, "%s [y/N] ", prompt)
+	answer, err := bufio.NewReader(in).ReadString('\n')
+	if err != nil {
+		return false, fmt.Errorf("failed to read confirmation: %w", err)
+	}
+	answer = strings.TrimSpace(strings.ToLower(answer))
+	if answer != "y" && answer != "yes" {
+		cmdio.Info(out, "Aborted.")
+		return false, nil
+	}
+	return true, nil
 }
 
 // validateExportFormat rejects unknown export formats early with a helpful
