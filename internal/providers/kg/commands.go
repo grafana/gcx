@@ -7,6 +7,7 @@ import (
 	"io"
 	"maps"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -87,6 +88,70 @@ func (f *scopeFlags) scopeCriteria() *ScopeCriteria {
 		return nil
 	}
 	return &ScopeCriteria{NameAndValues: vals}
+}
+
+// validateScopes checks that any set scope values exist in the KG scope registry.
+// If a value is not an exact match it fetches known values, finds candidates by
+// substring match, and returns an error with actionable hints so the caller
+// (human or LLM) can retry with the correct value. Validation is best-effort:
+// if the scopes API is unavailable the error is silently ignored.
+func (f *scopeFlags) validateScopes(ctx context.Context, client *Client) error {
+	type check struct{ flag, dim, value string }
+	checks := []check{
+		{"--env", "env", f.env},
+		{"--site", "site", f.site},
+		{"--namespace", "namespace", f.namespace},
+	}
+	var active []check
+	for _, c := range checks {
+		if c.value != "" {
+			active = append(active, c)
+		}
+	}
+	if len(active) == 0 {
+		return nil
+	}
+	scopes, err := client.ListEntityScopes(ctx)
+	if err != nil {
+		return nil // best-effort
+	}
+	var errs []string
+	for _, c := range active {
+		known := scopes[c.dim]
+		if len(known) == 0 {
+			continue
+		}
+		if slices.Contains(known, c.value) {
+			continue
+		}
+		lower := strings.ToLower(c.value)
+		var candidates []string
+		for _, v := range known {
+			if strings.Contains(strings.ToLower(v), lower) {
+				candidates = append(candidates, v)
+			}
+		}
+		sort.Strings(candidates)
+		var msg string
+		if len(candidates) > 0 {
+			msg = fmt.Sprintf("unknown %s value %q — did you mean one of: %s", c.flag, c.value, strings.Join(candidates, ", "))
+		} else {
+			all := append([]string(nil), known...)
+			sort.Strings(all)
+			shown := all
+			suffix := ""
+			if len(shown) > 10 {
+				shown = shown[:10]
+				suffix = fmt.Sprintf(" (and %d more — run gcx kg scopes list)", len(all)-10)
+			}
+			msg = fmt.Sprintf("unknown %s value %q — known %s values: %s%s", c.flag, c.value, c.dim, strings.Join(shown, ", "), suffix)
+		}
+		errs = append(errs, msg)
+	}
+	if len(errs) > 0 {
+		return errors.New(strings.Join(errs, "\n"))
+	}
+	return nil
 }
 
 func (f *scopeFlags) scopeMap() map[string]string {
@@ -622,6 +687,9 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 				return err
 			}
 
+			if err := showScope.validateScopes(cmd.Context(), client); err != nil {
+				return err
+			}
 			startMs, endMs, err := showScope.resolveTime()
 			if err != nil {
 				return err
@@ -672,6 +740,9 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 			}
 			client, err := NewClient(cfg)
 			if err != nil {
+				return err
+			}
+			if err := listScope.validateScopes(cmd.Context(), client); err != nil {
 				return err
 			}
 			startMs, endMs, err := listScope.resolveTime()
@@ -903,6 +974,9 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := activeScope.validateScopes(cmd.Context(), client); err != nil {
+				return err
+			}
 			startMs, endMs, err := activeScope.resolveTime()
 			if err != nil {
 				return err
@@ -960,6 +1034,9 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 				assertionID, _ := cmd.Flags().GetString("insight-id")
 				if assertionID == "" {
 					return errors.New("--insight-id is required (or use --file)")
+				}
+				if err := entityMetricScope.validateScopes(cmd.Context(), client); err != nil {
+					return err
 				}
 				startMs, endMs, err := entityMetricScope.resolveTime()
 				if err != nil {
@@ -1087,6 +1164,10 @@ func buildAssertionsRequestFromFlags(cmd *cobra.Command, args []string, client *
 	env, _ := cmd.Flags().GetString("env")
 	namespace, _ := cmd.Flags().GetString("namespace")
 	site, _ := cmd.Flags().GetString("site")
+	sf := scopeFlags{env: env, site: site, namespace: namespace}
+	if err := sf.validateScopes(cmd.Context(), client); err != nil {
+		return AssertionsRequest{}, err
+	}
 	startMs, endMs, err := resolveTimeFromFlags(cmd)
 	if err != nil {
 		return AssertionsRequest{}, err
@@ -1172,6 +1253,9 @@ func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 			} else {
 				entityType, _ := cmd.Flags().GetString("type")
 				entityName, _ := cmd.Flags().GetString("name")
+				if err := searchAssertionsScope.validateScopes(cmd.Context(), client); err != nil {
+					return err
+				}
 				startMs, endMs, err := searchAssertionsScope.resolveTime()
 				if err != nil {
 					return err
@@ -1224,6 +1308,9 @@ func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 			}
 			client, err := NewClient(cfg)
 			if err != nil {
+				return err
+			}
+			if err := searchSampleScope.validateScopes(cmd.Context(), client); err != nil {
 				return err
 			}
 			startMs, endMs, err := searchSampleScope.resolveTime()
@@ -1281,6 +1368,9 @@ func newInspectCommand(loader RESTConfigLoader) *cobra.Command {
 			}
 			client, err := NewClient(cfg)
 			if err != nil {
+				return err
+			}
+			if err := inspectScope.validateScopes(cmd.Context(), client); err != nil {
 				return err
 			}
 			startMs, endMs, err := inspectScope.resolveTime()
@@ -1369,6 +1459,9 @@ func newHealthCommand(loader RESTConfigLoader) *cobra.Command {
 			}
 			client, err := NewClient(cfg)
 			if err != nil {
+				return err
+			}
+			if err := healthScope.validateScopes(cmd.Context(), client); err != nil {
 				return err
 			}
 			startMs, endMs, err := healthScope.resolveTime()
