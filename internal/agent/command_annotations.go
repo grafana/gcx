@@ -210,7 +210,6 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg rules get":               {Cost: "small"},
 	"gcx kg rules list":              {Cost: "small"},
 	"gcx kg scopes list":             {Cost: "small"},
-	"gcx kg search entities":         {Cost: "medium", Hint: "--type <type> -o json"},
 	"gcx kg search example":          {Cost: "small"},
 	"gcx kg search insights":         {Cost: "medium", Hint: "--type <type> --since 1h"},
 	"gcx kg search sample":           {Cost: "small"},
