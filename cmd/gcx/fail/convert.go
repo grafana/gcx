@@ -877,7 +877,16 @@ func splitErrorMessage(message string) (string, string) {
 	}
 
 	if i := strings.Index(message, ": "); i > 0 {
-		return strings.TrimSpace(message[:i]), strings.TrimSpace(message[i+2:])
+		prefix := strings.TrimSpace(message[:i])
+		// Only treat sentence-like prefixes as summaries. Single-token
+		// provider tags (e.g. "k6:", "fleet:") make poor summaries —
+		// fall back to "Unexpected error" and surface the raw message
+		// as details. A typed converter should handle the provider's
+		// error type for a richer summary.
+		if strings.Contains(prefix, " ") {
+			return prefix, strings.TrimSpace(message[i+2:])
+		}
+		return "Unexpected error", message
 	}
 	if i := strings.Index(message, "\n"); i > 0 {
 		return strings.TrimSpace(message[:i]), strings.TrimSpace(message[i+1:])
