@@ -2,7 +2,6 @@ package alert
 
 import (
 	"errors"
-	"fmt"
 	"io"
 
 	"github.com/grafana/gcx/internal/format"
@@ -144,7 +143,6 @@ func (o *contactPointsMutateOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the contact point definition (JSON/YAML, use - for stdin)")
 }
 
-//nolint:dupl // Similar structure to mute-timings create command is intentional
 func newContactPointsCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &contactPointsMutateOpts{}
 	cmd := &cobra.Command{
@@ -212,13 +210,31 @@ func newContactPointsUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
+type contactPointsDeleteOpts struct {
+	Force bool
+}
+
+func (o *contactPointsDeleteOpts) setup(flags *pflag.FlagSet) {
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
+}
+
+//nolint:dupl // Similar structure to mute-timings and templates delete commands is intentional
 func newContactPointsDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
+	opts := &contactPointsDeleteOpts{}
 	cmd := &cobra.Command{
 		Use:   "delete UID",
 		Short: "Delete a contact point by UID.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
+			ok, err := confirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
+				"Delete contact point "+args[0]+"?")
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return nil
+			}
 			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
@@ -230,10 +246,11 @@ func newContactPointsDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err := client.DeleteContactPoint(ctx, args[0]); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Deleted contact point %s\n", args[0])
+			cmdio.Success(cmd.OutOrStdout(), "Deleted contact point %s", args[0])
 			return nil
 		},
 	}
+	opts.setup(cmd.Flags())
 	return cmd
 }
 

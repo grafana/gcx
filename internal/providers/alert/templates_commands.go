@@ -2,7 +2,6 @@ package alert
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"strconv"
 
@@ -184,13 +183,31 @@ so the same command handles both create and update.`,
 	return cmd
 }
 
+type templatesDeleteOpts struct {
+	Force bool
+}
+
+func (o *templatesDeleteOpts) setup(flags *pflag.FlagSet) {
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
+}
+
+//nolint:dupl // Similar structure to contact-points and mute-timings delete commands is intentional
 func newTemplatesDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
+	opts := &templatesDeleteOpts{}
 	cmd := &cobra.Command{
 		Use:   "delete NAME",
 		Short: "Delete a notification template by name.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
+			ok, err := confirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
+				"Delete notification template "+args[0]+"?")
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return nil
+			}
 			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
@@ -202,9 +219,10 @@ func newTemplatesDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err := client.DeleteTemplate(ctx, args[0]); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Deleted template %s\n", args[0])
+			cmdio.Success(cmd.OutOrStdout(), "Deleted template %s", args[0])
 			return nil
 		},
 	}
+	opts.setup(cmd.Flags())
 	return cmd
 }

@@ -9,7 +9,8 @@ gcx alert templates delete NAME [flags]
 ### Options
 
 ```
-  -h, --help   help for delete
+      --force   Skip confirmation prompt
+  -h, --help    help for delete
 ```
 
 ### Options inherited from parent commands

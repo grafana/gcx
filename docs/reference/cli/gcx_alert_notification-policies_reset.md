@@ -9,7 +9,8 @@ gcx alert notification-policies reset [flags]
 ### Options
 
 ```
-  -h, --help   help for reset
+      --force   Skip confirmation prompt
+  -h, --help    help for reset
 ```
 
 ### Options inherited from parent commands

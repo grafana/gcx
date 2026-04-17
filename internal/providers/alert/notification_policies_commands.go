@@ -1,8 +1,6 @@
 package alert
 
 import (
-	"fmt"
-
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -88,7 +86,7 @@ func newNotificationPoliciesSetCommand(loader GrafanaConfigLoader) *cobra.Comman
 			if err := client.SetNotificationPolicy(ctx, policy); err != nil {
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "Notification policy updated")
+			cmdio.Success(cmd.OutOrStdout(), "Notification policy updated")
 			return nil
 		},
 	}
@@ -96,12 +94,29 @@ func newNotificationPoliciesSetCommand(loader GrafanaConfigLoader) *cobra.Comman
 	return cmd
 }
 
+type notificationPoliciesResetOpts struct {
+	Force bool
+}
+
+func (o *notificationPoliciesResetOpts) setup(flags *pflag.FlagSet) {
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
+}
+
 func newNotificationPoliciesResetCommand(loader GrafanaConfigLoader) *cobra.Command {
+	opts := &notificationPoliciesResetOpts{}
 	cmd := &cobra.Command{
 		Use:   "reset",
 		Short: "Reset the notification policy tree to its default.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
+			ok, err := confirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
+				"Reset notification policy tree to default? This replaces the entire tree.")
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return nil
+			}
 			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
@@ -113,10 +128,11 @@ func newNotificationPoliciesResetCommand(loader GrafanaConfigLoader) *cobra.Comm
 			if err := client.ResetNotificationPolicy(ctx); err != nil {
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "Notification policy reset to default")
+			cmdio.Success(cmd.OutOrStdout(), "Notification policy reset to default")
 			return nil
 		},
 	}
+	opts.setup(cmd.Flags())
 	return cmd
 }
 
