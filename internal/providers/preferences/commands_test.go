@@ -92,23 +92,36 @@ func TestReadInput_FileMissing(t *testing.T) {
 func TestUpdateCommand_File(t *testing.T) {
 	var received OrgPreferences
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodPut, r.Method)
 		assert.Equal(t, "/api/org/preferences", r.URL.Path)
-		body, err := io.ReadAll(r.Body)
-		if !assert.NoError(t, err) {
-			return
+		switch r.Method {
+		case http.MethodPut:
+			body, err := io.ReadAll(r.Body)
+			if !assert.NoError(t, err) {
+				return
+			}
+			if !assert.NoError(t, json.Unmarshal(body, &received)) {
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"message":"Preferences updated"}`))
+		case http.MethodGet:
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(received)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
-		if !assert.NoError(t, json.Unmarshal(body, &received)) {
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"message":"Preferences updated"}`))
 	}))
 	defer server.Close()
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "prefs.json")
-	require.NoError(t, os.WriteFile(path, []byte(`{"theme":"light","timezone":"UTC"}`), 0o600))
+	manifest := `{
+  "apiVersion": "preferences.ext.grafana.app/v1alpha1",
+  "kind": "OrgPreferences",
+  "metadata": {"name": "default"},
+  "spec": {"theme": "light", "timezone": "UTC"}
+}`
+	require.NoError(t, os.WriteFile(path, []byte(manifest), 0o600))
 
 	loader := &stubLoader{cfg: config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}}}
 	cmd := newUpdateCommand(loader)

@@ -15,10 +15,13 @@ func init() { //nolint:gochecknoinits // Self-registration pattern (like databas
 // OrgProvider manages Grafana organization resources.
 type OrgProvider struct{}
 
+// Name returns the unique identifier for this provider.
 func (p *OrgProvider) Name() string { return "org" }
 
+// ShortDesc returns a one-line description of the provider.
 func (p *OrgProvider) ShortDesc() string { return "Manage Grafana organization resources" }
 
+// Commands returns the Cobra commands contributed by this provider.
 func (p *OrgProvider) Commands() []*cobra.Command {
 	loader := &providers.ConfigLoader{}
 
@@ -41,8 +44,22 @@ func (p *OrgProvider) Commands() []*cobra.Command {
 	return []*cobra.Command{orgCmd}
 }
 
+// Validate checks that the given provider configuration is valid.
 func (p *OrgProvider) Validate(_ map[string]string) error { return nil }
 
+// ConfigKeys returns the configuration keys used by this provider.
 func (p *OrgProvider) ConfigKeys() []providers.ConfigKey { return nil }
 
-func (p *OrgProvider) TypedRegistrations() []adapter.Registration { return nil }
+// TypedRegistrations returns adapter registrations for OrgUser resource types.
+func (p *OrgProvider) TypedRegistrations() []adapter.Registration {
+	loader := &providers.ConfigLoader{}
+	return []adapter.Registration{
+		{
+			Factory:    NewUsersAdapterFactory(loader),
+			Descriptor: staticUsersDescriptor,
+			GVK:        staticUsersDescriptor.GroupVersionKind(),
+			Schema:     OrgUserSchema(),
+			Example:    OrgUserExample(),
+		},
+	}
+}

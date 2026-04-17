@@ -26,3 +26,33 @@ type ErrorResponse struct {
 	Error   string `json:"error,omitempty"`
 	Message string `json:"message,omitempty"`
 }
+
+// FolderPermissions is the per-folder permissions document. It is a singleton
+// per folder UID — the ResourceName IS the folder UID.
+//
+//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
+type FolderPermissions struct {
+	UID   string `json:"-"`
+	Items []Item `json:"items"`
+}
+
+// GetResourceName returns the folder UID.
+func (fp FolderPermissions) GetResourceName() string { return fp.UID }
+
+// SetResourceName sets the folder UID from the resource name.
+func (fp *FolderPermissions) SetResourceName(name string) { fp.UID = name }
+
+// DashboardPermissions is the per-dashboard permissions document. It is a
+// singleton per dashboard UID — the ResourceName IS the dashboard UID.
+//
+//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
+type DashboardPermissions struct {
+	UID   string `json:"-"`
+	Items []Item `json:"items"`
+}
+
+// GetResourceName returns the dashboard UID.
+func (dp DashboardPermissions) GetResourceName() string { return dp.UID }
+
+// SetResourceName sets the dashboard UID from the resource name.
+func (dp *DashboardPermissions) SetResourceName(name string) { dp.UID = name }

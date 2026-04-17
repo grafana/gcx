@@ -19,6 +19,8 @@ type NavbarPrefs struct {
 }
 
 // OrgPreferences represents Grafana organization preferences.
+//
+//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type OrgPreferences struct {
 	Theme           string      `json:"theme,omitempty"`
 	HomeDashboardID int         `json:"homeDashboardId,omitempty"`
@@ -27,3 +29,9 @@ type OrgPreferences struct {
 	Locale          string      `json:"locale,omitempty"`
 	Navbar          NavbarPrefs `json:"navbar"`
 }
+
+// GetResourceName returns the fixed singleton name.
+func (p OrgPreferences) GetResourceName() string { return "default" }
+
+// SetResourceName is a no-op because this is a singleton resource.
+func (p *OrgPreferences) SetResourceName(_ string) {}

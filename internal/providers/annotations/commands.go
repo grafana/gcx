@@ -1,7 +1,6 @@
 package annotations
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,30 +10,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
-// GrafanaConfigLoader can load a NamespacedRESTConfig from the active context.
-type GrafanaConfigLoader interface {
-	LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error)
-}
-
-// clientFor resolves the active Grafana context and constructs an annotations
-// client from it.
-func clientFor(ctx context.Context, loader GrafanaConfigLoader) (*Client, error) {
-	restCfg, err := loader.LoadGrafanaConfig(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return NewClient(restCfg)
-}
-
 const defaultLookback = 24 * time.Hour
+
+// ---- list ----
 
 type listOpts struct {
 	IO       cmdio.Options
@@ -76,7 +62,7 @@ func (o *listOpts) resolveRange(cmd *cobra.Command) (int64, int64, error) {
 	return now.Add(-o.Lookback).UnixMilli(), now.UnixMilli(), nil
 }
 
-func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newListCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &listOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -89,7 +75,7 @@ to widen the window, or --from/--to for an explicit time range (epoch ms).`,
 			"  gcx annotations list --lookback 168h\n" +
 			"  gcx annotations list --tags deploy,prod\n" +
 			"  gcx annotations list --limit 20",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
@@ -100,22 +86,28 @@ to widen the window, or --from/--to for an explicit time range (epoch ms).`,
 			}
 
 			ctx := cmd.Context()
-			client, err := clientFor(ctx, loader)
-			if err != nil {
-				return err
-			}
 
-			list, err := client.List(ctx, ListOptions{
+			base := ListOptions{
 				From:  from,
 				To:    to,
 				Tags:  opts.Tags,
 				Limit: opts.Limit,
-			})
+			}
+
+			crud, _, err := NewTypedCRUD(ctx, loader, base)
 			if err != nil {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), list)
+			// The per-call limit in TypedCRUD.List is a client-side cap on
+			// TypedObject results. The server-side limit is already carried by
+			// base.Limit, so we pass 0 here to avoid double-truncation.
+			typedObjs, err := crud.List(ctx, 0)
+			if err != nil {
+				return err
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), typedObjs)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -123,18 +115,22 @@ to widen the window, or --from/--to for an explicit time range (epoch ms).`,
 }
 
 // ListTableCodec renders annotations as a tabular table.
+// It accepts []adapter.TypedObject[Annotation] and extracts .Spec for each row.
 type ListTableCodec struct{}
 
+// Format returns the output format name.
 func (c *ListTableCodec) Format() format.Format { return "table" }
 
+// Encode writes annotations to the writer as a table.
 func (c *ListTableCodec) Encode(w io.Writer, v any) error {
-	list, ok := v.([]Annotation)
+	typedObjs, ok := v.([]adapter.TypedObject[Annotation])
 	if !ok {
-		return errors.New("invalid data type for table codec: expected []Annotation")
+		return errors.New("invalid data type for table codec: expected []TypedObject[Annotation]")
 	}
 
 	t := style.NewTable("ID", "TIME", "DASHBOARD", "TAGS", "TEXT")
-	for _, a := range list {
+	for _, obj := range typedObjs {
+		a := obj.Spec
 		ts := ""
 		if a.Time > 0 {
 			ts = time.Unix(a.Time/1000, 0).UTC().Format(time.RFC3339)
@@ -150,7 +146,8 @@ func (c *ListTableCodec) Encode(w io.Writer, v any) error {
 	return t.Render(w)
 }
 
-func (c *ListTableCodec) Decode(r io.Reader, v any) error {
+// Decode is not supported for the table format.
+func (c *ListTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
 
@@ -176,7 +173,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newGetCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
 		Use:     "get ID",
@@ -188,30 +185,25 @@ func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			id, err := parseID(args[0])
-			if err != nil {
+			// Validate the ID up front so users get a clear error before we
+			// open a client connection.
+			if err := validateID(args[0]); err != nil {
 				return err
 			}
 
 			ctx := cmd.Context()
-			client, err := clientFor(ctx, loader)
+
+			crud, _, err := NewTypedCRUD(ctx, loader, ListOptions{})
 			if err != nil {
 				return err
 			}
 
-			a, err := client.Get(ctx, id)
+			typedObj, err := crud.Get(ctx, args[0])
 			if err != nil {
 				return err
 			}
 
-			codec, err := opts.IO.Codec()
-			if err != nil {
-				return err
-			}
-			if codec.Format() == "table" {
-				return codec.Encode(cmd.OutOrStdout(), []Annotation{*a})
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), a)
+			return opts.IO.Encode(cmd.OutOrStdout(), []adapter.TypedObject[Annotation]{*typedObj})
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -224,41 +216,42 @@ type createOpts struct {
 	File string
 }
 
-func newCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newCreateCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &createOpts{}
 	cmd := &cobra.Command{
 		Use:     "create",
 		Short:   "Create an annotation from a JSON file.",
 		Example: "  gcx annotations create -f annotation.json\n  cat annotation.json | gcx annotations create -f -",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			if opts.File == "" {
 				return errors.New("--file is required")
 			}
 
-			data, err := readFileOrStdin(cmd.InOrStdin(), opts.File)
+			a, err := readAnnotationFromFile(cmd.InOrStdin(), opts.File)
 			if err != nil {
 				return err
-			}
-
-			var a Annotation
-			if err := json.Unmarshal(data, &a); err != nil {
-				return fmt.Errorf("failed to parse annotation: %w", err)
 			}
 			if a.Text == "" {
 				return errors.New("annotation text is required")
 			}
 
 			ctx := cmd.Context()
-			client, err := clientFor(ctx, loader)
+
+			crud, restCfg, err := NewTypedCRUD(ctx, loader, ListOptions{})
 			if err != nil {
 				return err
 			}
 
-			if err := client.Create(ctx, &a); err != nil {
+			typedObj := &adapter.TypedObject[Annotation]{Spec: *a}
+			typedObj.SetName(a.GetResourceName())
+			typedObj.SetNamespace(restCfg.Namespace)
+
+			created, err := crud.Create(ctx, typedObj)
+			if err != nil {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "created annotation %d", a.ID)
+			cmdio.Success(cmd.OutOrStdout(), "Annotation created id=%d", created.Spec.ID)
 			return nil
 		},
 	}
@@ -273,7 +266,7 @@ type updateOpts struct {
 	File string
 }
 
-func newUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newUpdateCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &updateOpts{}
 	cmd := &cobra.Command{
 		Use:     "update ID",
@@ -281,35 +274,34 @@ func newUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
 		Example: "  gcx annotations update 1 -f patch.json",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id, err := parseID(args[0])
-			if err != nil {
+			if err := validateID(args[0]); err != nil {
 				return err
 			}
 			if opts.File == "" {
 				return errors.New("--file is required")
 			}
 
-			data, err := readFileOrStdin(cmd.InOrStdin(), opts.File)
+			a, err := readAnnotationFromFile(cmd.InOrStdin(), opts.File)
 			if err != nil {
 				return err
-			}
-
-			var patch map[string]any
-			if err := json.Unmarshal(data, &patch); err != nil {
-				return fmt.Errorf("failed to parse patch: %w", err)
 			}
 
 			ctx := cmd.Context()
-			client, err := clientFor(ctx, loader)
+
+			crud, restCfg, err := NewTypedCRUD(ctx, loader, ListOptions{})
 			if err != nil {
 				return err
 			}
 
-			if err := client.Update(ctx, id, patch); err != nil {
+			typedObj := &adapter.TypedObject[Annotation]{Spec: *a}
+			typedObj.SetName(args[0])
+			typedObj.SetNamespace(restCfg.Namespace)
+
+			if _, err := crud.Update(ctx, args[0], typedObj); err != nil {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "updated annotation %d", id)
+			cmdio.Success(cmd.OutOrStdout(), "Annotation updated id=%s", args[0])
 			return nil
 		},
 	}
@@ -320,29 +312,29 @@ func newUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 // ---- delete ----
 
-func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 	return &cobra.Command{
 		Use:     "delete ID",
 		Short:   "Delete an annotation by ID.",
 		Example: "  gcx annotations delete 1",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id, err := parseID(args[0])
-			if err != nil {
+			if err := validateID(args[0]); err != nil {
 				return err
 			}
 
 			ctx := cmd.Context()
-			client, err := clientFor(ctx, loader)
+
+			crud, _, err := NewTypedCRUD(ctx, loader, ListOptions{})
 			if err != nil {
 				return err
 			}
 
-			if err := client.Delete(ctx, id); err != nil {
+			if err := crud.Delete(ctx, args[0]); err != nil {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "deleted annotation %d", id)
+			cmdio.Success(cmd.OutOrStdout(), "Annotation deleted id=%s", args[0])
 			return nil
 		},
 	}
@@ -350,12 +342,25 @@ func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 // ---- helpers ----
 
-func parseID(s string) (int64, error) {
-	id, err := strconv.ParseInt(s, 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("invalid annotation ID %q: %w", s, err)
+func validateID(s string) error {
+	if _, err := strconv.ParseInt(s, 10, 64); err != nil {
+		return fmt.Errorf("invalid annotation ID %q: %w", s, err)
 	}
-	return id, nil
+	return nil
+}
+
+// readAnnotationFromFile reads the given path (or stdin for "-") and parses it
+// as a JSON Annotation spec.
+func readAnnotationFromFile(stdin io.Reader, path string) (*Annotation, error) {
+	data, err := readFileOrStdin(stdin, path)
+	if err != nil {
+		return nil, err
+	}
+	var a Annotation
+	if err := json.Unmarshal(data, &a); err != nil {
+		return nil, fmt.Errorf("failed to parse annotation: %w", err)
+	}
+	return &a, nil
 }
 
 // readFileOrStdin reads the given path, or stdin when path is "-".

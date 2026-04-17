@@ -13,12 +13,13 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/annotations"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
 )
 
-// stubLoader satisfies GrafanaConfigLoader for tests, pointing at the given
+// stubLoader satisfies RESTConfigLoader for tests, pointing at the given
 // httptest server.
 type stubLoader struct{ host string }
 
@@ -145,7 +146,7 @@ func TestListTableCodec_Truncation(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, []annotations.Annotation{a})
+	err := codec.Encode(&buf, []adapter.TypedObject[annotations.Annotation]{{Spec: a}})
 	require.NoError(t, err)
 
 	out := buf.String()

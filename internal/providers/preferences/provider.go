@@ -45,5 +45,16 @@ func (p *PreferencesProvider) Validate(_ map[string]string) error { return nil }
 // ConfigKeys returns no keys; preferences uses the standard Grafana SA token.
 func (p *PreferencesProvider) ConfigKeys() []providers.ConfigKey { return nil }
 
-// TypedRegistrations returns none; preferences is a singleton exposed only via imperative commands.
-func (p *PreferencesProvider) TypedRegistrations() []adapter.Registration { return nil }
+// TypedRegistrations returns adapter registrations for organization preferences.
+func (p *PreferencesProvider) TypedRegistrations() []adapter.Registration {
+	desc := StaticDescriptor()
+	return []adapter.Registration{
+		{
+			Factory:    NewLazyFactory(),
+			Descriptor: desc,
+			GVK:        desc.GroupVersionKind(),
+			Schema:     PreferencesSchema(),
+			Example:    PreferencesExample(),
+		},
+	}
+}

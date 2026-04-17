@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/grafana/gcx/internal/config"
 	"k8s.io/client-go/rest"
@@ -31,8 +32,8 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 	return &Client{httpClient: httpClient, host: cfg.Host}, nil
 }
 
-// ListUsers returns all users in the current organization.
-func (c *Client) ListUsers(ctx context.Context) ([]OrgUser, error) {
+// List returns all users in the current organization.
+func (c *Client) List(ctx context.Context) ([]OrgUser, error) {
 	var users []OrgUser
 	if err := c.do(ctx, http.MethodGet, "/api/org/users", nil, &users); err != nil {
 		return nil, err
@@ -40,8 +41,38 @@ func (c *Client) ListUsers(ctx context.Context) ([]OrgUser, error) {
 	return users, nil
 }
 
-// AddUser adds a user (by login or email) to the current organization.
-func (c *Client) AddUser(ctx context.Context, req AddUserRequest) error {
+// Get returns a single user in the current organization by numeric user ID.
+// The Grafana /api/org/users endpoint has no single-user sub-resource, so this
+// lists all users and filters client-side.
+func (c *Client) Get(ctx context.Context, userID int) (*OrgUser, error) {
+	users, err := c.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range users {
+		if users[i].UserID == userID {
+			return &users[i], nil
+		}
+	}
+	return nil, fmt.Errorf("user id %d: %w", userID, ErrNotFound)
+}
+
+// GetByLoginOrEmail returns a single user matching the given login or email.
+func (c *Client) GetByLoginOrEmail(ctx context.Context, loginOrEmail string) (*OrgUser, error) {
+	users, err := c.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range users {
+		if strings.EqualFold(users[i].Login, loginOrEmail) || strings.EqualFold(users[i].Email, loginOrEmail) {
+			return &users[i], nil
+		}
+	}
+	return nil, fmt.Errorf("user %q: %w", loginOrEmail, ErrNotFound)
+}
+
+// Add adds a user (by login or email) to the current organization.
+func (c *Client) Add(ctx context.Context, req AddUserRequest) error {
 	return c.do(ctx, http.MethodPost, "/api/org/users", req, nil)
 }
 

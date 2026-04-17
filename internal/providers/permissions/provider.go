@@ -47,6 +47,24 @@ func (p *PermissionsProvider) Validate(map[string]string) error { return nil }
 
 func (p *PermissionsProvider) ConfigKeys() []providers.ConfigKey { return nil }
 
-// Permissions are exposed as imperative verbs only, so there are no typed
-// resource adapters to register.
-func (p *PermissionsProvider) TypedRegistrations() []adapter.Registration { return nil }
+// TypedRegistrations returns adapter registrations for folder and dashboard
+// permission resource types.
+func (p *PermissionsProvider) TypedRegistrations() []adapter.Registration {
+	loader := &providers.ConfigLoader{}
+	return []adapter.Registration{
+		{
+			Factory:    NewFolderAdapterFactory(loader),
+			Descriptor: staticFolderDescriptor,
+			GVK:        staticFolderDescriptor.GroupVersionKind(),
+			Schema:     FolderPermissionsSchema(),
+			Example:    FolderPermissionsExample(),
+		},
+		{
+			Factory:    NewDashboardAdapterFactory(loader),
+			Descriptor: staticDashboardDescriptor,
+			GVK:        staticDashboardDescriptor.GroupVersionKind(),
+			Schema:     DashboardPermissionsSchema(),
+			Example:    DashboardPermissionsExample(),
+		},
+	}
+}

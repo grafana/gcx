@@ -2,19 +2,23 @@ package preferences
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 // GrafanaConfigLoader can load a NamespacedRESTConfig from the active context.
@@ -43,22 +47,28 @@ func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
+
+			crud, cfg, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
 
-			client, err := NewClient(restCfg)
+			typedObj, err := crud.Get(ctx, "default")
 			if err != nil {
 				return err
 			}
 
-			prefs, err := client.Get(ctx)
-			if err != nil {
-				return err
+			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
+				return opts.IO.Encode(cmd.OutOrStdout(), &typedObj.Spec)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), prefs)
+			res, err := ToResource(typedObj.Spec, cfg.Namespace)
+			if err != nil {
+				return fmt.Errorf("failed to convert preferences to resource: %w", err)
+			}
+
+			obj := res.ToUnstructured()
+			return opts.IO.Encode(cmd.OutOrStdout(), &obj)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -94,7 +104,7 @@ type updateOpts struct {
 }
 
 func (o *updateOpts) setup(flags *pflag.FlagSet) {
-	flags.StringVarP(&o.File, "file", "f", "", "Path to a JSON preferences file, or '-' for stdin")
+	flags.StringVarP(&o.File, "file", "f", "", "Path to a preferences manifest file (JSON or YAML), or '-' for stdin")
 }
 
 func (o *updateOpts) Validate() error {
@@ -108,7 +118,7 @@ func newUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &updateOpts{}
 	cmd := &cobra.Command{
 		Use:   "update",
-		Short: "Update organization preferences from a JSON file.",
+		Short: "Update organization preferences from a manifest file.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -119,24 +129,45 @@ func newUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			var prefs OrgPreferences
-			if err := json.Unmarshal(data, &prefs); err != nil {
-				return fmt.Errorf("failed to parse preferences JSON: %w", err)
+			var codec interface {
+				Decode(src io.Reader, value any) error
+			}
+			switch strings.ToLower(filepath.Ext(opts.File)) {
+			case ".yaml", ".yml":
+				codec = format.NewYAMLCodec()
+			default:
+				codec = format.NewJSONCodec()
+			}
+
+			var obj unstructured.Unstructured
+			if err := codec.Decode(strings.NewReader(string(data)), &obj); err != nil {
+				return fmt.Errorf("failed to parse %s: %w", opts.File, err)
+			}
+
+			res, err := resources.FromUnstructured(&obj)
+			if err != nil {
+				return fmt.Errorf("failed to build resource from %s: %w", opts.File, err)
+			}
+
+			p, err := FromResource(res)
+			if err != nil {
+				return fmt.Errorf("failed to extract preferences from %s: %w", opts.File, err)
 			}
 
 			ctx := cmd.Context()
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
+
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
 
-			client, err := NewClient(restCfg)
-			if err != nil {
-				return err
+			typedObj := &adapter.TypedObject[OrgPreferences]{
+				Spec: *p,
 			}
+			typedObj.SetName("default")
 
-			if err := client.Update(ctx, &prefs); err != nil {
-				return err
+			if _, err := crud.Update(ctx, "default", typedObj); err != nil {
+				return fmt.Errorf("failed to update preferences: %w", err)
 			}
 
 			cmdio.Success(cmd.OutOrStdout(), "Organization preferences updated")

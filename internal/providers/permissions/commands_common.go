@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -23,26 +24,77 @@ type GrafanaConfigLoader interface {
 }
 
 // resourceKind describes one permission-bearing resource type (folder or dashboard).
+// Operations are routed through a TypedCRUD whose Get/Update return the wrapped
+// TypedObject envelope with the items encoded in Spec.Items.
 type resourceKind struct {
 	// name is the user-facing singular noun (e.g. "folder").
 	name string
-	// get retrieves permissions for the resource with the given UID.
-	get func(c *Client, ctx context.Context, uid string) ([]Item, error)
-	// set replaces permissions for the resource with the given UID.
-	set func(c *Client, ctx context.Context, uid string, items []Item) error
+	// get retrieves the items for the given UID.
+	get func(ctx context.Context, loader GrafanaConfigLoader, uid string) ([]Item, error)
+	// update replaces the permissions for the given UID, returning the
+	// re-read items from the server.
+	update func(ctx context.Context, loader GrafanaConfigLoader, uid string, items []Item) ([]Item, error)
 }
 
-//nolint:gochecknoglobals // immutable resource-kind dispatch tables.
+//nolint:gochecknoglobals,dupl // immutable resource-kind dispatch tables; folder and dashboard are near-duplicates kept readable as two focused functions.
 var (
 	folderKind = resourceKind{
 		name: "folder",
-		get:  (*Client).GetFolder,
-		set:  (*Client).SetFolder,
+		get: func(ctx context.Context, loader GrafanaConfigLoader, uid string) ([]Item, error) {
+			crud, err := NewFolderTypedCRUD(ctx, loader)
+			if err != nil {
+				return nil, err
+			}
+			obj, err := crud.Get(ctx, uid)
+			if err != nil {
+				return nil, err
+			}
+			return obj.Spec.Items, nil
+		},
+		update: func(ctx context.Context, loader GrafanaConfigLoader, uid string, items []Item) ([]Item, error) {
+			crud, err := NewFolderTypedCRUD(ctx, loader)
+			if err != nil {
+				return nil, err
+			}
+			typedObj := &adapter.TypedObject[FolderPermissions]{
+				Spec: FolderPermissions{UID: uid, Items: items},
+			}
+			typedObj.SetName(uid)
+			updated, err := crud.Update(ctx, uid, typedObj)
+			if err != nil {
+				return nil, err
+			}
+			return updated.Spec.Items, nil
+		},
 	}
 	dashboardKind = resourceKind{
 		name: "dashboard",
-		get:  (*Client).GetDashboard,
-		set:  (*Client).SetDashboard,
+		get: func(ctx context.Context, loader GrafanaConfigLoader, uid string) ([]Item, error) {
+			crud, err := NewDashboardTypedCRUD(ctx, loader)
+			if err != nil {
+				return nil, err
+			}
+			obj, err := crud.Get(ctx, uid)
+			if err != nil {
+				return nil, err
+			}
+			return obj.Spec.Items, nil
+		},
+		update: func(ctx context.Context, loader GrafanaConfigLoader, uid string, items []Item) ([]Item, error) {
+			crud, err := NewDashboardTypedCRUD(ctx, loader)
+			if err != nil {
+				return nil, err
+			}
+			typedObj := &adapter.TypedObject[DashboardPermissions]{
+				Spec: DashboardPermissions{UID: uid, Items: items},
+			}
+			typedObj.SetName(uid)
+			updated, err := crud.Update(ctx, uid, typedObj)
+			if err != nil {
+				return nil, err
+			}
+			return updated.Spec.Items, nil
+		},
 	}
 )
 
@@ -81,12 +133,7 @@ func newGetCommand(loader GrafanaConfigLoader, kind resourceKind) *cobra.Command
 			}
 
 			ctx := cmd.Context()
-			client, err := newClientFromLoader(ctx, loader)
-			if err != nil {
-				return err
-			}
-
-			items, err := kind.get(client, ctx, args[0])
+			items, err := kind.get(ctx, loader, args[0])
 			if err != nil {
 				return err
 			}
@@ -126,12 +173,7 @@ func newUpdateCommand(loader GrafanaConfigLoader, kind resourceKind) *cobra.Comm
 			}
 
 			ctx := cmd.Context()
-			client, err := newClientFromLoader(ctx, loader)
-			if err != nil {
-				return err
-			}
-
-			if err := kind.set(client, ctx, args[0], items); err != nil {
+			if _, err := kind.update(ctx, loader, args[0], items); err != nil {
 				return err
 			}
 
@@ -206,6 +248,9 @@ func permissionName(p int) string {
 }
 
 // PermissionsTableCodec renders a slice of permission items as a table.
+// It accepts either a bare []Item or a *adapter.TypedObject[FolderPermissions] /
+// *adapter.TypedObject[DashboardPermissions], rendering .Spec.Items in the
+// typed-object case.
 type PermissionsTableCodec struct{}
 
 // Format reports the codec's output format identifier.
@@ -213,9 +258,9 @@ func (c *PermissionsTableCodec) Format() format.Format { return "table" }
 
 // Encode writes the table representation of v to w.
 func (c *PermissionsTableCodec) Encode(w io.Writer, v any) error {
-	items, ok := v.([]Item)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Item")
+	items, err := itemsFromValue(v)
+	if err != nil {
+		return err
 	}
 
 	t := style.NewTable("ROLE", "USER", "TEAM", "PERMISSION")
@@ -232,4 +277,18 @@ func (c *PermissionsTableCodec) Encode(w io.Writer, v any) error {
 // Decode is not supported for the table codec.
 func (c *PermissionsTableCodec) Decode(io.Reader, any) error {
 	return errors.New("table format does not support decoding")
+}
+
+// itemsFromValue extracts the permission items from the supported value shapes.
+func itemsFromValue(v any) ([]Item, error) {
+	switch val := v.(type) {
+	case []Item:
+		return val, nil
+	case *adapter.TypedObject[FolderPermissions]:
+		return val.Spec.Items, nil
+	case *adapter.TypedObject[DashboardPermissions]:
+		return val.Spec.Items, nil
+	default:
+		return nil, errors.New("invalid data type for table codec: expected []Item or permissions TypedObject")
+	}
 }

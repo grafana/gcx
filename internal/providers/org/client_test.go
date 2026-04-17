@@ -35,7 +35,7 @@ func writeJSON(w http.ResponseWriter, v any) {
 	_, _ = w.Write(data)
 }
 
-func TestClient_ListUsers(t *testing.T) {
+func TestClient_List(t *testing.T) {
 	tests := []struct {
 		name      string
 		handler   http.HandlerFunc
@@ -74,7 +74,7 @@ func TestClient_ListUsers(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			client := newTestServer(t, tt.handler)
-			users, err := client.ListUsers(t.Context())
+			users, err := client.List(t.Context())
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -86,7 +86,7 @@ func TestClient_ListUsers(t *testing.T) {
 	}
 }
 
-func TestClient_AddUser(t *testing.T) {
+func TestClient_Add(t *testing.T) {
 	tests := []struct {
 		name    string
 		req     org.AddUserRequest
@@ -128,7 +128,7 @@ func TestClient_AddUser(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			client := newTestServer(t, tt.handler)
-			err := client.AddUser(t.Context(), tt.req)
+			err := client.Add(t.Context(), tt.req)
 
 			if tt.wantErr {
 				require.Error(t, err)

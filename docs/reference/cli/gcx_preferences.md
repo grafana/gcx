@@ -24,5 +24,5 @@ Manage Grafana org preferences
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx preferences get](gcx_preferences_get.md)	 - Get the current organization preferences.
-* [gcx preferences update](gcx_preferences_update.md)	 - Update organization preferences from a JSON file.
+* [gcx preferences update](gcx_preferences_update.md)	 - Update organization preferences from a manifest file.
 

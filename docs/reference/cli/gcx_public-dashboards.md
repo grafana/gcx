@@ -25,7 +25,7 @@ Manage public dashboards
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx public-dashboards create](gcx_public-dashboards_create.md)	 - Create a public dashboard config from a JSON file.
 * [gcx public-dashboards delete](gcx_public-dashboards_delete.md)	 - Delete a public dashboard config.
-* [gcx public-dashboards get](gcx_public-dashboards_get.md)	 - Get the public dashboard config for a dashboard.
+* [gcx public-dashboards get](gcx_public-dashboards_get.md)	 - Get a public dashboard by its UID.
 * [gcx public-dashboards list](gcx_public-dashboards_list.md)	 - List all public dashboards.
 * [gcx public-dashboards update](gcx_public-dashboards_update.md)	 - Update a public dashboard config from a JSON file.
 

@@ -49,7 +49,7 @@ func (p *PublicDashboardsProvider) Commands() []*cobra.Command {
 }
 
 // Validate checks that the given provider configuration is valid.
-func (p *PublicDashboardsProvider) Validate(cfg map[string]string) error {
+func (p *PublicDashboardsProvider) Validate(_ map[string]string) error {
 	return nil
 }
 
@@ -58,8 +58,16 @@ func (p *PublicDashboardsProvider) ConfigKeys() []providers.ConfigKey {
 	return nil
 }
 
-// TypedRegistrations returns adapter registrations for typed resources.
-// Public dashboards are not exposed through the unified resources pipeline.
+// TypedRegistrations returns adapter registrations for PublicDashboard resource types.
 func (p *PublicDashboardsProvider) TypedRegistrations() []adapter.Registration {
-	return nil
+	loader := &providers.ConfigLoader{}
+	return []adapter.Registration{
+		{
+			Factory:    NewAdapterFactory(loader),
+			Descriptor: staticDescriptor,
+			GVK:        staticDescriptor.GroupVersionKind(),
+			Schema:     PublicDashboardSchema(),
+			Example:    PublicDashboardExample(),
+		},
+	}
 }

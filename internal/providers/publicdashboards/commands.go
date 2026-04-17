@@ -1,7 +1,6 @@
 package publicdashboards
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,7 +8,6 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -18,10 +16,9 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// GrafanaConfigLoader can load a NamespacedRESTConfig from the active context.
-type GrafanaConfigLoader interface {
-	LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error)
-}
+// GrafanaConfigLoader is the loader interface used by command constructors.
+// It is an alias for RESTConfigLoader to keep existing test names stable.
+type GrafanaConfigLoader = RESTConfigLoader
 
 func boolLabel(v bool) string {
 	if v {
@@ -56,17 +53,17 @@ func readPublicDashboardSpec(path string, stdin io.Reader) (*PublicDashboard, er
 	return &pd, nil
 }
 
-// encodeOne encodes a single PublicDashboard, wrapping it in a slice so the
-// table codec can render it uniformly with list results.
-func encodeOne(opts *cmdio.Options, w io.Writer, pd *PublicDashboard) error {
+// encodeOne encodes a single TypedObject[PublicDashboard], wrapping it in a
+// slice so the table codec can render it uniformly with list results.
+func encodeOne(opts *cmdio.Options, w io.Writer, obj *adapter.TypedObject[PublicDashboard]) error {
 	codec, err := opts.Codec()
 	if err != nil {
 		return err
 	}
 	if codec.Format() == "table" {
-		return codec.Encode(w, []PublicDashboard{*pd})
+		return codec.Encode(w, []adapter.TypedObject[PublicDashboard]{*obj})
 	}
-	return opts.Encode(w, pd)
+	return opts.Encode(w, obj)
 }
 
 // ---- list ----
@@ -88,29 +85,23 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all public dashboards.",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
 
 			ctx := cmd.Context()
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
 
-			client, err := NewClient(restCfg)
+			typedObjs, err := crud.List(ctx, opts.Limit)
 			if err != nil {
 				return err
 			}
 
-			list, err := client.List(ctx)
-			if err != nil {
-				return err
-			}
-
-			list = adapter.TruncateSlice(list, opts.Limit)
-			return opts.IO.Encode(cmd.OutOrStdout(), list)
+			return opts.IO.Encode(cmd.OutOrStdout(), typedObjs)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -118,18 +109,22 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 }
 
 // ListTableCodec renders public dashboards as a tabular table.
+// It consumes []adapter.TypedObject[PublicDashboard].
 type ListTableCodec struct{}
 
+// Format returns the output format name.
 func (c *ListTableCodec) Format() format.Format { return "table" }
 
+// Encode writes public dashboards to w as a table.
 func (c *ListTableCodec) Encode(w io.Writer, v any) error {
-	list, ok := v.([]PublicDashboard)
+	objs, ok := v.([]adapter.TypedObject[PublicDashboard])
 	if !ok {
-		return errors.New("invalid data type for table codec: expected []PublicDashboard")
+		return errors.New("invalid data type for table codec: expected []TypedObject[PublicDashboard]")
 	}
 
 	t := style.NewTable("DASHBOARD_UID", "PD_UID", "ACCESS_TOKEN", "ENABLED", "ANNOTATIONS", "TIME_SELECT", "SHARE")
-	for _, pd := range list {
+	for _, obj := range objs {
+		pd := obj.Spec
 		t.Row(
 			pd.DashboardUID,
 			pd.UID,
@@ -143,7 +138,8 @@ func (c *ListTableCodec) Encode(w io.Writer, v any) error {
 	return t.Render(w)
 }
 
-func (c *ListTableCodec) Decode(r io.Reader, v any) error {
+// Decode is not supported for table format.
+func (c *ListTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
 
@@ -162,8 +158,8 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
-		Use:   "get DASHBOARD_UID",
-		Short: "Get the public dashboard config for a dashboard.",
+		Use:   "get PD_UID",
+		Short: "Get a public dashboard by its UID.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -171,22 +167,17 @@ func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
 
-			client, err := NewClient(restCfg)
+			obj, err := crud.Get(ctx, args[0])
 			if err != nil {
 				return err
 			}
 
-			pd, err := client.Get(ctx, args[0])
-			if err != nil {
-				return err
-			}
-
-			return encodeOne(&opts.IO, cmd.OutOrStdout(), pd)
+			return encodeOne(&opts.IO, cmd.OutOrStdout(), obj)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -214,28 +205,29 @@ func newCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a public dashboard config from a JSON file.",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
 
-			pd, err := readPublicDashboardSpec(opts.File, cmd.InOrStdin())
+			spec, err := readPublicDashboardSpec(opts.File, cmd.InOrStdin())
 			if err != nil {
 				return err
 			}
+			// The --dashboard-uid flag is authoritative for the parent dashboard.
+			spec.DashboardUID = opts.DashboardUID
 
 			ctx := cmd.Context()
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
+			crud, restCfg, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
 
-			client, err := NewClient(restCfg)
-			if err != nil {
-				return err
-			}
+			typedObj := &adapter.TypedObject[PublicDashboard]{Spec: *spec}
+			typedObj.SetName(spec.UID)
+			typedObj.SetNamespace(restCfg.Namespace)
 
-			created, err := client.Create(ctx, opts.DashboardUID, pd)
+			created, err := crud.Create(ctx, typedObj)
 			if err != nil {
 				return err
 			}
@@ -276,23 +268,26 @@ func newUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			pd, err := readPublicDashboardSpec(opts.File, cmd.InOrStdin())
+			spec, err := readPublicDashboardSpec(opts.File, cmd.InOrStdin())
 			if err != nil {
 				return err
 			}
+			// The --dashboard-uid flag is authoritative for the parent dashboard.
+			spec.DashboardUID = opts.DashboardUID
 
 			ctx := cmd.Context()
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
+			name := args[0]
+
+			crud, restCfg, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
 
-			client, err := NewClient(restCfg)
-			if err != nil {
-				return err
-			}
+			typedObj := &adapter.TypedObject[PublicDashboard]{Spec: *spec}
+			typedObj.SetName(name)
+			typedObj.SetNamespace(restCfg.Namespace)
 
-			updated, err := client.Update(ctx, opts.DashboardUID, args[0], pd)
+			updated, err := crud.Update(ctx, name, typedObj)
 			if err != nil {
 				return err
 			}
@@ -308,13 +303,9 @@ func newUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 // ---- delete ----
 
-type deleteOpts struct {
-	DashboardUID string
-}
+type deleteOpts struct{}
 
-func (o *deleteOpts) setup(flags *pflag.FlagSet) {
-	flags.StringVar(&o.DashboardUID, "dashboard-uid", "", "Parent dashboard UID (required)")
-}
+func (o *deleteOpts) setup(_ *pflag.FlagSet) {}
 
 func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &deleteOpts{}
@@ -324,25 +315,21 @@ func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
+			name := args[0]
+
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
 
-			client, err := NewClient(restCfg)
-			if err != nil {
+			if err := crud.Delete(ctx, name); err != nil {
 				return err
 			}
 
-			if err := client.Delete(ctx, opts.DashboardUID, args[0]); err != nil {
-				return err
-			}
-
-			cmdio.Info(cmd.OutOrStdout(), "deleted public dashboard %s", strconv.Quote(args[0]))
+			cmdio.Info(cmd.OutOrStdout(), "deleted public dashboard %s", strconv.Quote(name))
 			return nil
 		},
 	}
 	opts.setup(cmd.Flags())
-	_ = cmd.MarkFlagRequired("dashboard-uid")
 	return cmd
 }

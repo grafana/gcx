@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"strconv"
-	"strings"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
@@ -37,15 +36,6 @@ func usersCommands(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// newClient loads the REST config via the given loader and returns an API client.
-func newClient(ctx context.Context, loader GrafanaConfigLoader) (*Client, error) {
-	restCfg, err := loader.LoadGrafanaConfig(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return NewClient(restCfg)
-}
-
 // parseUserID parses a positional USER-ID argument.
 func parseUserID(arg string) (int, error) {
 	id, err := strconv.Atoi(arg)
@@ -54,6 +44,10 @@ func parseUserID(arg string) (int, error) {
 	}
 	return id, nil
 }
+
+// ---------------------------------------------------------------------------
+// list command
+// ---------------------------------------------------------------------------
 
 type usersListOpts struct {
 	IO    cmdio.Options
@@ -78,18 +72,17 @@ func newUsersListCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			client, err := newClient(ctx, loader)
+			crud, _, err := NewUsersTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
 
-			users, err := client.ListUsers(ctx)
+			typedObjs, err := crud.List(ctx, opts.Limit)
 			if err != nil {
 				return err
 			}
 
-			users = adapter.TruncateSlice(users, opts.Limit)
-			return opts.IO.Encode(cmd.OutOrStdout(), users)
+			return opts.IO.Encode(cmd.OutOrStdout(), typedObjs)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -99,16 +92,20 @@ func newUsersListCommand(loader GrafanaConfigLoader) *cobra.Command {
 // UsersTableCodec renders org users as a table.
 type UsersTableCodec struct{}
 
+// Format returns the output format name.
 func (c *UsersTableCodec) Format() format.Format { return "table" }
 
+// Encode writes users to the writer as a table.
+// It accepts []adapter.TypedObject[OrgUser] (from commands) and extracts .Spec internally.
 func (c *UsersTableCodec) Encode(w io.Writer, v any) error {
-	users, ok := v.([]OrgUser)
+	typedObjs, ok := v.([]adapter.TypedObject[OrgUser])
 	if !ok {
-		return errors.New("invalid data type for table codec: expected []OrgUser")
+		return errors.New("invalid data type for table codec: expected []TypedObject[OrgUser]")
 	}
 
 	t := style.NewTable("USER_ID", "LOGIN", "NAME", "EMAIL", "ROLE", "LAST_SEEN")
-	for _, u := range users {
+	for _, obj := range typedObjs {
+		u := obj.Spec
 		lastSeen := u.LastSeenAtAge
 		if lastSeen == "" {
 			lastSeen = u.LastSeenAt
@@ -118,9 +115,14 @@ func (c *UsersTableCodec) Encode(w io.Writer, v any) error {
 	return t.Render(w)
 }
 
+// Decode is not supported for table format.
 func (c *UsersTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
+
+// ---------------------------------------------------------------------------
+// get command
+// ---------------------------------------------------------------------------
 
 type usersGetOpts struct {
 	IO cmdio.Options
@@ -144,28 +146,37 @@ func newUsersGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			client, err := newClient(ctx, loader)
+			crud, cfg, err := NewUsersTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
 
-			users, err := client.ListUsers(ctx)
+			// Resolve login/email → numeric ID using a raw client call,
+			// then route through TypedCRUD.Get by the canonical ID name.
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			user, err := client.GetByLoginOrEmail(ctx, args[0])
 			if err != nil {
 				return err
 			}
 
-			needle := strings.TrimSpace(args[0])
-			for i := range users {
-				if strings.EqualFold(users[i].Login, needle) || strings.EqualFold(users[i].Email, needle) {
-					return opts.IO.Encode(cmd.OutOrStdout(), []OrgUser{users[i]})
-				}
+			typedObj, err := crud.Get(ctx, strconv.Itoa(user.UserID))
+			if err != nil {
+				return err
 			}
-			return fmt.Errorf("user %q: %w", args[0], ErrNotFound)
+
+			return opts.IO.Encode(cmd.OutOrStdout(), []adapter.TypedObject[OrgUser]{*typedObj})
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
 }
+
+// ---------------------------------------------------------------------------
+// add command
+// ---------------------------------------------------------------------------
 
 type usersAddOpts struct {
 	Login string
@@ -193,19 +204,25 @@ func newUsersAddCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			client, err := newClient(ctx, loader)
+			crud, cfg, err := NewUsersTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
 
-			if err := client.AddUser(ctx, AddUserRequest{
+			ou := OrgUser{
 				LoginOrEmail: opts.Login,
 				Role:         opts.Role,
-			}); err != nil {
+			}
+			typedObj := &adapter.TypedObject[OrgUser]{Spec: ou}
+			typedObj.SetNamespace(cfg.Namespace)
+
+			created, err := crud.Create(ctx, typedObj)
+			if err != nil {
 				return err
 			}
 
-			cmdio.Info(cmd.OutOrStdout(), "Added user %s to organization with role %s.", opts.Login, opts.Role)
+			cmdio.Success(cmd.OutOrStdout(), "Added user %s to organization with role %s (id=%d).",
+				opts.Login, opts.Role, created.Spec.UserID)
 			return nil
 		},
 	}
@@ -213,6 +230,10 @@ func newUsersAddCommand(loader GrafanaConfigLoader) *cobra.Command {
 	cmd.Flags().StringVar(&opts.Role, "role", "", "Role for the user, e.g. Admin, Editor, Viewer (required)")
 	return cmd
 }
+
+// ---------------------------------------------------------------------------
+// update-role command
+// ---------------------------------------------------------------------------
 
 type usersUpdateRoleOpts struct {
 	Role string
@@ -234,22 +255,30 @@ func newUsersUpdateRoleCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			client, err := newClient(ctx, loader)
+			crud, cfg, err := NewUsersTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
 
-			if err := client.UpdateUserRole(ctx, userID, opts.Role); err != nil {
+			ou := OrgUser{Role: opts.Role}
+			typedObj := &adapter.TypedObject[OrgUser]{Spec: ou}
+			typedObj.SetNamespace(cfg.Namespace)
+
+			if _, err := crud.Update(ctx, args[0], typedObj); err != nil {
 				return err
 			}
 
-			cmdio.Info(cmd.OutOrStdout(), "Updated user %d role to %s.", userID, opts.Role)
+			cmdio.Success(cmd.OutOrStdout(), "Updated user %d role to %s.", userID, opts.Role)
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&opts.Role, "role", "", "New role for the user, e.g. Admin, Editor, Viewer (required)")
 	return cmd
 }
+
+// ---------------------------------------------------------------------------
+// remove command
+// ---------------------------------------------------------------------------
 
 func newUsersRemoveCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return &cobra.Command{
@@ -263,16 +292,16 @@ func newUsersRemoveCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			client, err := newClient(ctx, loader)
+			crud, _, err := NewUsersTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
 
-			if err := client.RemoveUser(ctx, userID); err != nil {
+			if err := crud.Delete(ctx, args[0]); err != nil {
 				return err
 			}
 
-			cmdio.Info(cmd.OutOrStdout(), "Removed user %d from organization.", userID)
+			cmdio.Success(cmd.OutOrStdout(), "Removed user %d from organization.", userID)
 			return nil
 		},
 	}

@@ -9,8 +9,7 @@ gcx public-dashboards delete PD_UID [flags]
 ### Options
 
 ```
-      --dashboard-uid string   Parent dashboard UID (required)
-  -h, --help                   help for delete
+  -h, --help   help for delete
 ```
 
 ### Options inherited from parent commands

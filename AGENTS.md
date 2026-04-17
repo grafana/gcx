@@ -101,20 +101,25 @@ internal/
 │   ├── process/    Processors: ManagerFields, ServerFields, Namespace
 │   └── remote/     Pusher, Puller, Deleter, FolderHierarchy, Summary
 ├── providers/   Provider plugin system (interface, registry, self-registration)
-│   ├── alert/      Alert provider (rules, groups — read-only)
-│   ├── faro/       Frontend Observability provider (apps CRUD, sourcemaps sub-resource) — CLI: `gcx frontend`
-│   ├── fleet/      Fleet Management provider (pipeline and collector resources)
-│   ├── irm/        IRM provider (OnCall + Incidents — schedules, integrations, escalation chains, incidents)
-│   ├── k6/         k6 Cloud provider (projects, tests, runs, envvars)
-│   ├── kg/         Knowledge Graph (Asserts) provider
-│   ├── logs/       Logs signal provider (Loki queries + Adaptive Logs commands)
-│   ├── metrics/    Metrics signal provider (Prometheus queries + Adaptive Metrics commands)
-│   ├── appo11y/    App Observability provider (overrides, settings — singleton resources)
-│   ├── profiles/   Profiles signal provider (Pyroscope queries + adaptive stub)
-│   ├── sigil/      Sigil AI observability provider (conversations, agents, generations, evaluators, rules, templates, scores, judge — via grafana-sigil-app plugin API)
-│   ├── slo/        SLO provider (definitions, reports)
-│   ├── synth/      Synthetic Monitoring provider (checks, probes)
-│   └── traces/     Traces signal provider (Tempo queries + Adaptive Traces commands)
+│   ├── alert/            Alert provider (rules, groups — read-only)
+│   ├── annotations/      Annotations provider (full CRUD on dashboard/panel annotations)
+│   ├── appo11y/          App Observability provider (overrides, settings — singleton resources)
+│   ├── faro/             Frontend Observability provider (apps CRUD, sourcemaps sub-resource) — CLI: `gcx frontend`
+│   ├── fleet/            Fleet Management provider (pipeline and collector resources)
+│   ├── irm/              IRM provider (OnCall + Incidents — schedules, integrations, escalation chains, incidents)
+│   ├── k6/               k6 Cloud provider (projects, tests, runs, envvars)
+│   ├── kg/               Knowledge Graph (Asserts) provider
+│   ├── logs/             Logs signal provider (Loki queries + Adaptive Logs commands)
+│   ├── metrics/          Metrics signal provider (Prometheus queries + Adaptive Metrics commands)
+│   ├── org/              Org provider (users list/get/add/update-role/remove)
+│   ├── permissions/      Permissions provider (folder + dashboard permission items — get/update)
+│   ├── preferences/      Preferences provider (org preferences — singleton get/update)
+│   ├── profiles/         Profiles signal provider (Pyroscope queries + adaptive stub)
+│   ├── publicdashboards/ Public Dashboards provider (full CRUD on public dashboard tokens)
+│   ├── sigil/            Sigil AI observability provider (conversations, agents, generations, evaluators, rules, templates, scores, judge — via grafana-sigil-app plugin API)
+│   ├── slo/              SLO provider (definitions, reports)
+│   ├── synth/            Synthetic Monitoring provider (checks, probes)
+│   └── traces/           Traces signal provider (Tempo queries + Adaptive Traces commands)
 ├── deeplink/    Deep link URL template registry and browser opener
 ├── dashboards/  Dashboard Image Renderer client (PNG snapshots)
 ├── datasources/ Datasource HTTP client, DatasourceProvider interface + registry

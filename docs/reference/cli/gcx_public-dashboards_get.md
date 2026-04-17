@@ -1,9 +1,9 @@
 ## gcx public-dashboards get
 
-Get the public dashboard config for a dashboard.
+Get a public dashboard by its UID.
 
 ```
-gcx public-dashboards get DASHBOARD_UID [flags]
+gcx public-dashboards get PD_UID [flags]
 ```
 
 ### Options

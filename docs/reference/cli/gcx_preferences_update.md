@@ -1,6 +1,6 @@
 ## gcx preferences update
 
-Update organization preferences from a JSON file.
+Update organization preferences from a manifest file.
 
 ```
 gcx preferences update [flags]
@@ -9,7 +9,7 @@ gcx preferences update [flags]
 ### Options
 
 ```
-  -f, --file string   Path to a JSON preferences file, or '-' for stdin
+  -f, --file string   Path to a preferences manifest file (JSON or YAML), or '-' for stdin
   -h, --help          help for update
 ```
 
