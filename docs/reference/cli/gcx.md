@@ -4,7 +4,7 @@ Control plane for Grafana Cloud operations
 
 ### Synopsis
 
-gcx is a unified CLI for managing Grafana resources, dashboards, datasources, alerting, and Cloud product APIs (SLO, OnCall, Synthetic Monitoring, Fleet, k6, and more).
+gcx is a unified CLI for managing Grafana resources, dashboards, datasources, alerting, and Cloud product APIs (SLO, IRM, Synthetic Monitoring, Fleet, k6, and more).
 
 ### Options
 

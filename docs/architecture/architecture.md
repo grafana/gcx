@@ -750,13 +750,16 @@ Each LGTM signal has its own provider in `internal/providers/{signal}/` that reg
 | `internal/providers/k6/commands.go` | k6 CLI commands (projects, tests, runs, envvars, token) |
 | `internal/providers/k6/resource_adapter.go` | Resource adapter for k6 projects |
 
-### IRM Incidents Provider
+### IRM Provider (OnCall + Incidents)
 
 | File | Purpose |
 |------|---------|
-| `internal/providers/incidents/provider.go` | `IncidentsProvider` implementing the `providers.Provider` interface |
-| `internal/providers/incidents/commands.go` | IRM Incidents CLI commands |
-| `internal/providers/incidents/resource_adapter.go` | Resource adapter for incidents |
+| `internal/providers/irm/provider.go` | `IRMProvider` implementing the `providers.Provider` interface (registers `gcx irm` with `oncall` and `incidents` subcommands) |
+| `internal/providers/irm/oncall_client.go` | OnCall REST client |
+| `internal/providers/irm/oncall_commands.go` | OnCall CLI commands (schedules, integrations, escalation chains) |
+| `internal/providers/irm/oncall_adapter.go` | Resource adapter for OnCall resources |
+| `internal/providers/irm/incidents_client.go` | Incidents REST client |
+| `internal/providers/irm/incidents_commands.go` | IRM Incidents CLI commands (list, get, create, close, activity, severities) |
 
 ### Faro Provider
 
@@ -766,15 +769,6 @@ Each LGTM signal has its own provider in `internal/providers/{signal}/` that reg
 | `internal/providers/faro/client.go` | Faro REST client (plugin proxy, apps CRUD, sourcemaps) |
 | `internal/providers/faro/commands.go` | Faro CLI commands (apps list/get/create/update/delete, sourcemap sub-resource verbs) |
 | `internal/providers/faro/resource_adapter.go` | TypedCRUD[FaroApp] adapter (GVK: `app.v1alpha1.faro.ext.grafana.app`) |
-
-### OnCall Provider
-
-| File | Purpose |
-|------|---------|
-| `internal/providers/oncall/provider.go` | `OnCallProvider` implementing the `providers.Provider` interface |
-| `internal/providers/oncall/client.go` | OnCall REST client |
-| `internal/providers/oncall/commands.go` | OnCall CLI commands (schedules, integrations, escalation chains) |
-| `internal/providers/oncall/resource_adapter.go` | Resource adapter for OnCall resources |
 
 ### Knowledge Graph (Asserts) Provider
 

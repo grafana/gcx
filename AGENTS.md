@@ -4,7 +4,7 @@
 
 ## Quick Start
 
-**gcx** is a unified CLI for managing Grafana resources. It operates in two tiers: (1) a **K8s resource tier** that uses Grafana 12+'s Kubernetes-compatible API via `k8s.io/client-go` for dashboards, folders, and other K8s-native resources, and (2) a **Cloud provider tier** with pluggable providers for Grafana Cloud products (SLO, Synthetic Monitoring, OnCall, Fleet Management, etc.) that use product-specific REST APIs. Built in Go, it uses Cobra for CLI structure.
+**gcx** is a unified CLI for managing Grafana resources. It operates in two tiers: (1) a **K8s resource tier** that uses Grafana 12+'s Kubernetes-compatible API via `k8s.io/client-go` for dashboards, folders, and other K8s-native resources, and (2) a **Cloud provider tier** with pluggable providers for Grafana Cloud products (SLO, Synthetic Monitoring, IRM, Fleet Management, etc.) that use product-specific REST APIs. Built in Go, it uses Cobra for CLI structure.
 
 ## Documentation Map
 
@@ -22,7 +22,7 @@
 
 ## Architecture at a Glance
 
-Two tiers: **K8s resource tier** (dashboards, folders via `/apis`) and **Cloud provider tier** (SLO, SM, OnCall, etc. via product REST APIs). See [ARCHITECTURE.md](ARCHITECTURE.md) for pipeline diagrams and extension pipelines.
+Two tiers: **K8s resource tier** (dashboards, folders via `/apis`) and **Cloud provider tier** (SLO, SM, IRM, etc. via product REST APIs). See [ARCHITECTURE.md](ARCHITECTURE.md) for pipeline diagrams and extension pipelines.
 
 ## Key Conventions
 
@@ -104,12 +104,11 @@ internal/
 │   ├── alert/      Alert provider (rules, groups — read-only)
 │   ├── faro/       Frontend Observability provider (apps CRUD, sourcemaps sub-resource) — CLI: `gcx frontend`
 │   ├── fleet/      Fleet Management provider (pipeline and collector resources)
-│   ├── incidents/  IRM Incidents provider
+│   ├── irm/        IRM provider (OnCall + Incidents — schedules, integrations, escalation chains, incidents)
 │   ├── k6/         k6 Cloud provider (projects, tests, runs, envvars)
 │   ├── kg/         Knowledge Graph (Asserts) provider
 │   ├── logs/       Logs signal provider (Loki queries + Adaptive Logs commands)
 │   ├── metrics/    Metrics signal provider (Prometheus queries + Adaptive Metrics commands)
-│   ├── oncall/     OnCall provider (schedules, integrations, escalation chains)
 │   ├── appo11y/    App Observability provider (overrides, settings — singleton resources)
 │   ├── profiles/   Profiles signal provider (Pyroscope queries + adaptive stub)
 │   ├── sigil/      Sigil AI observability provider (conversations, agents, generations, evaluators, rules, templates, scores, judge — via grafana-sigil-app plugin API)

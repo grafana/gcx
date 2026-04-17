@@ -51,7 +51,7 @@ right group:
 | SLO definitions and reports | `slo` | `gcx slo definitions list` |
 | Alert rules and groups | `alert` | `gcx alert rules list` |
 | Synthetic Monitoring checks | `synth` | `gcx synth checks list` |
-| OnCall schedules, integrations | `oncall` | `gcx oncall schedules list` |
+| IRM (OnCall + Incidents) | `irm` | `gcx irm oncall schedules list`, `gcx irm incidents list` |
 | k6 load tests, projects, runs | `k6` | `gcx k6 load-tests list` |
 | PromQL / Adaptive Metrics | `metrics` | `gcx metrics query 'up'` |
 | LogQL / Adaptive Logs | `logs` | `gcx logs query '{app="foo"}'` |
@@ -59,7 +59,6 @@ right group:
 | Tracing (Tempo) | `traces` | `gcx traces query` |
 | Datasource info and queries | `datasources` | `gcx datasources list` |
 | Fleet pipelines, collectors | `fleet` | `gcx fleet pipelines list` |
-| IRM Incidents | `incidents` | `gcx incidents list` |
 | Knowledge Graph (Asserts) | `kg` | `gcx kg entities list` |
 | Frontend Observability | `frontend` | `gcx frontend apps list` |
 | App Observability | `appo11y` | `gcx appo11y overrides list` |

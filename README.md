@@ -178,7 +178,7 @@ gcx config use-context my-grafana
 
 Use a [Grafana service account token](https://grafana.com/docs/grafana/latest/administration/service-accounts/) with **Editor** or **Admin** role.
 
-**Grafana Cloud product APIs (SLO, Synth, OnCall, etc.):**
+**Grafana Cloud product APIs (SLO, Synth, IRM, etc.):**
 
 Grafana Cloud product commands require a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/):
 
@@ -235,7 +235,7 @@ gcx alert rules list                            # list alert rules
 # Grafana Cloud products
 gcx slo definitions list                        # list SLOs
 gcx synth checks list                           # list synthetic monitoring checks
-gcx oncall schedules list                       # list on-call schedules
+gcx irm oncall schedules list                    # list on-call schedules
 gcx k6 load-tests list                          # list k6 load tests
 
 # Query datasources
@@ -256,11 +256,10 @@ gcx provides dedicated commands for each Grafana Cloud product:
 |---------|---------|----------|
 | **SLOs** | `gcx slo` | `slo definitions list`, `slo reports list` |
 | **Synthetic Monitoring** | `gcx synth` | `synth checks list`, `synth probes list` |
-| **OnCall** | `gcx oncall` | `oncall schedules list`, `oncall integrations list` |
+| **IRM** | `gcx irm` | `irm oncall schedules list`, `irm oncall integrations list`, `irm incidents list`, `irm incidents create -f incident.yaml` |
 | **Alerting** | `gcx alert` | `alert rules list`, `alert groups list` |
 | **k6 Cloud** | `gcx k6` | `k6 load-tests list`, `k6 runs list` |
 | **Fleet Management** | `gcx fleet` | `fleet pipelines list`, `fleet collectors list` |
-| **IRM Incidents** | `gcx incidents` | `incidents list`, `incidents create -f incident.yaml` |
 | **Knowledge Graph** | `gcx kg` | `kg status`, `kg search`, `kg entities show` |
 | **Frontend Observability** | `gcx frontend` | `frontend apps list`, `frontend apps get` |
 | **App Observability** | `gcx appo11y` | `appo11y overrides get`, `appo11y settings get` |

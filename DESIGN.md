@@ -21,7 +21,7 @@ Command structure follows `$AREA $NOUN $VERB`:
 gcx slo definitions list
 gcx resources push ./dashboards/
 gcx logs query --from=1h
-gcx oncall schedules get my-schedule
+gcx irm oncall schedules get my-schedule
 ```
 
 See [CONSTITUTION.md § CLI Grammar](CONSTITUTION.md#cli-grammar) for the authoritative rules (positional arguments, flags, extension commands, verb constraints).
