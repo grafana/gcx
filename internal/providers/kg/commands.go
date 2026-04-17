@@ -659,7 +659,6 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 		listPage       int
 	)
 	listOpts := &entitiesShowOpts{}
-	//nolint:dupl
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List entities by type (omit --type to list all types).",
@@ -1250,50 +1249,6 @@ func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 	_ = searchSampleCmd.MarkFlagRequired("type")
 	searchSampleScope.register(searchSampleCmd)
 
-	// search entities
-	var (
-		searchEntitiesType  string
-		searchEntitiesScope scopeFlags
-		searchEntitiesPage  int
-	)
-	searchEntitiesOpts := &searchEntitiesListOpts{}
-	//nolint:dupl
-	searchEntitiesCmd := &cobra.Command{
-		Use:   "entities",
-		Short: "Search for entities by type.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := searchEntitiesOpts.IO.Validate(); err != nil {
-				return err
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			startMs, endMs, err := searchEntitiesScope.resolveTime()
-			if err != nil {
-				return err
-			}
-			entityTypes, err := resolveEntityTypes(cmd, client, searchEntitiesType)
-			if err != nil {
-				return err
-			}
-			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, false, searchEntitiesScope.scopeCriteria(), startMs, endMs, searchEntitiesPage)
-			if err != nil {
-				return err
-			}
-			results = adapter.TruncateSlice(results, searchEntitiesOpts.Limit)
-			return searchEntitiesOpts.IO.Encode(cmd.OutOrStdout(), results)
-		},
-	}
-	searchEntitiesCmd.Flags().StringVar(&searchEntitiesType, "type", "", "Entity type (omit to search all)")
-	searchEntitiesCmd.Flags().IntVar(&searchEntitiesPage, "page", 0, "Page number (0-based)")
-	searchEntitiesScope.register(searchEntitiesCmd)
-	searchEntitiesOpts.setup(searchEntitiesCmd.Flags())
-
 	searchExampleCmd := &cobra.Command{
 		Use:   "example",
 		Short: "Print an example search request YAML.",
@@ -1302,19 +1257,8 @@ func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(searchAssertionsCmd, searchSampleCmd, searchEntitiesCmd, searchExampleCmd)
+	cmd.AddCommand(searchAssertionsCmd, searchSampleCmd, searchExampleCmd)
 	return cmd
-}
-
-type searchEntitiesListOpts struct {
-	IO    cmdio.Options
-	Limit int64
-}
-
-func (o *searchEntitiesListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("json")
-	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 // ---------------------------------------------------------------------------
