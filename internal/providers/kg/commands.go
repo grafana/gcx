@@ -113,7 +113,7 @@ func (f *scopeFlags) validateScopes(ctx context.Context, client *Client) error {
 	}
 	scopes, err := client.ListEntityScopes(ctx)
 	if err != nil {
-		return nil // best-effort
+		return nil //nolint:nilerr // best-effort: scope validation is advisory
 	}
 	var errs []string
 	for _, c := range active {
@@ -883,7 +883,7 @@ func (o *scopesListOpts) setup(flags *pflag.FlagSet) {
 // Insights commands
 // ---------------------------------------------------------------------------
 
-//nolint:maintidx
+//nolint:maintidx,gocyclo
 func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "insights",

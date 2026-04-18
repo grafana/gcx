@@ -1,4 +1,4 @@
-package kg
+package kg_test
 
 import (
 	"encoding/json"
@@ -6,22 +6,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/providers/kg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"k8s.io/client-go/rest"
 )
-
-func newInternalTestClient(t *testing.T, server *httptest.Server) *Client {
-	t.Helper()
-	cfg := config.NamespacedRESTConfig{
-		Config:    rest.Config{Host: server.URL},
-		Namespace: "stack-123",
-	}
-	c, err := NewClient(cfg)
-	require.NoError(t, err)
-	return c
-}
 
 func scopesHandler(scopes map[string][]string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -38,45 +26,45 @@ func TestScopeFlags_ValidateScopes(t *testing.T) {
 	}
 
 	tests := []struct {
-		name        string
-		flags       scopeFlags
+		name         string
+		flags        kg.ScopeFlags
 		serverScopes map[string][]string
-		serverErr   bool
-		wantErr     bool
-		errContains string
+		serverErr    bool
+		wantErr      bool
+		errContains  string
 	}{
 		{
 			name:         "no scope flags set — skips validation",
-			flags:        scopeFlags{},
+			flags:        kg.NewTestScopeFlags("", "", ""),
 			serverScopes: knownScopes,
 		},
 		{
 			name:         "exact match — no error",
-			flags:        scopeFlags{env: "ops-eu-south-0"},
+			flags:        kg.NewTestScopeFlags("ops-eu-south-0", "", ""),
 			serverScopes: knownScopes,
 		},
 		{
 			name:         "exact match multiple flags — no error",
-			flags:        scopeFlags{env: "ops-eu-south-0", namespace: "default"},
+			flags:        kg.NewTestScopeFlags("ops-eu-south-0", "", "default"),
 			serverScopes: knownScopes,
 		},
 		{
 			name:         "partial match — error with candidates",
-			flags:        scopeFlags{env: "ops"},
+			flags:        kg.NewTestScopeFlags("ops", "", ""),
 			serverScopes: knownScopes,
 			wantErr:      true,
 			errContains:  `did you mean one of: ops-eu-north-1, ops-eu-south-0`,
 		},
 		{
 			name:         "no candidates — lists known values",
-			flags:        scopeFlags{env: "totally-unknown"},
+			flags:        kg.NewTestScopeFlags("totally-unknown", "", ""),
 			serverScopes: knownScopes,
 			wantErr:      true,
 			errContains:  `known env values:`,
 		},
 		{
-			name:         "known values truncated at 10 with hint",
-			flags:        scopeFlags{env: "zzz-no-match"},
+			name:  "known values truncated at 10 with hint",
+			flags: kg.NewTestScopeFlags("zzz-no-match", "", ""),
 			serverScopes: map[string][]string{
 				"env": {"a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8", "a9", "a10", "a11"},
 			},
@@ -85,24 +73,24 @@ func TestScopeFlags_ValidateScopes(t *testing.T) {
 		},
 		{
 			name:         "multiple invalid flags — error lists all",
-			flags:        scopeFlags{env: "bad-env", site: "bad-site"},
+			flags:        kg.NewTestScopeFlags("bad-env", "bad-site", ""),
 			serverScopes: knownScopes,
 			wantErr:      true,
 			errContains:  "--env",
 		},
 		{
 			name:      "API error — best-effort, no error returned",
-			flags:     scopeFlags{env: "anything"},
+			flags:     kg.NewTestScopeFlags("anything", "", ""),
 			serverErr: true,
 		},
 		{
 			name:         "empty known values for dimension — skips that dimension",
-			flags:        scopeFlags{env: "whatever"},
+			flags:        kg.NewTestScopeFlags("whatever", "", ""),
 			serverScopes: map[string][]string{"env": {}},
 		},
 		{
 			name:         "case-insensitive substring match",
-			flags:        scopeFlags{env: "OPS"},
+			flags:        kg.NewTestScopeFlags("OPS", "", ""),
 			serverScopes: knownScopes,
 			wantErr:      true,
 			errContains:  "ops-eu",
@@ -120,8 +108,8 @@ func TestScopeFlags_ValidateScopes(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := newInternalTestClient(t, server)
-			err := tt.flags.validateScopes(t.Context(), client)
+			client := newTestClient(t, server)
+			err := tt.flags.ValidateScopes(t.Context(), client)
 
 			if tt.wantErr {
 				require.Error(t, err)
