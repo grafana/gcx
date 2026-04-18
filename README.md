@@ -26,70 +26,9 @@ We built GCX to close that gap.
 > [!NOTE]
 > **gcx requires Grafana 12 or above.** Older Grafana versions are not supported.
 
-## The Agentic Workflow
+## Quick Start
 
-Here's what it looks like when your coding agent has access to production:
-
-**1. An alert fires** — P95 latency on the checkout service crosses the SLO threshold.
-
-**2. The Assistant investigates** — Your coding agent calls the Grafana Assistant through gcx. The Assistant has already started its investigation — it traces the issue to a missing index on `customer_id` causing full table scans under load.
-
-**3. It fixes the issue** — Drafts the migration, adds the index.
-
-**4. It prevents recurrence** — Instruments the service with OpenTelemetry spans, sets up a Synthetic Monitoring check on the checkout flow, and creates an alert rule on query duration.
-
-**5. It ships** — Opens a PR, tests pass, deploys to production. The alert resolves.
-
-Investigation, fix, instrumentation, monitoring — without the developer ever leaving their editor. The Grafana Assistant provides the intelligence; gcx provides the interface. And because it all builds on everything you've already configured in Grafana Cloud — your dashboards, your alerts, your datasources — no other tool can give you this depth out of the box.
-
-```sh
-$ gcx assistant investigations list
-ID    TITLE                                     STATUS     UPDATED
-abc1  Checkout P95 latency breach               active     2m ago
-def2  Memory leak in payment-svc                resolved   1h ago
-```
-
-## See It in Action
-
-**Query production from your terminal:**
-
-```sh
-$ gcx metrics query 'rate(http_requests_total{service="checkout"}[5m])' --since 1h
-SERVICE     TIMESTAMP             VALUE
-checkout    2026-04-15 09:00:00   142.3
-checkout    2026-04-15 09:05:00   151.7
-checkout    2026-04-15 09:10:00   289.4
-checkout    2026-04-15 09:15:00   312.1
-```
-
-**Check what's firing:**
-
-```sh
-$ gcx alert rules list --state firing
-UID     NAME                            STATE    HEALTH   PAUSED
-abc1    Checkout P95 > SLO threshold    firing   ok       no
-def2    Disk usage > 85%                firing   ok       no
-```
-
-**Review SLO status:**
-
-```sh
-$ gcx slo definitions list
-UUID    NAME                        TARGET   WINDOW   STATUS
-uid1    Checkout Availability       99.90%   30d      ok
-uid2    API Latency P99 < 200ms     99.50%   30d      at_risk
-uid3    Payment Processing          99.95%   30d      breaching
-```
-
-**Visualize metrics directly in your terminal:**
-
-```sh
-$ gcx metrics query 'topk(6, sum by (container) (rate(container_cpu_usage_seconds_total{namespace="ditl-demo-prod", container!="", container!="POD"}[5m])))' --since 6h -o graph
-```
-
-![Terminal graph output](./graph_example.png)
-
-## Install
+### 1. Install
 
 **Quick install (Linux/macOS):**
 
@@ -139,34 +78,27 @@ gcx completion fish > ~/.config/fish/completions/gcx.fish  # fish
 
 **Verify:** `gcx --version`
 
-### Agent Skills
 
-gcx ships a portable Agent Skills bundle for setup, dashboard GitOps,
-datasource exploration, alert investigation, structured debugging, SLO
-management, Synthetic Monitoring workflows, project scaffolding, resource
-generation and import, and end-to-end observability rollout.
+### 2. Authenticate
 
-**Claude Code**
-
-Use the dedicated [Claude Code plugin](claude-plugin/README.md):
-
-```text
-/plugin marketplace add grafana/gcx
-/plugin install gcx@gcx-marketplace
-```
-
-**Other `.agents`-compatible harnesses**
-
-For example: OpenAI Codex, OpenCode, and Pi. Install the same portable bundle
-into `~/.agents/skills` with:
+**Browser-based OAuth login (Experimental, Simple):**
 
 ```bash
-gcx skills install
+gcx auth login --server https://byoc-grafana.com
 ```
 
-## Quick Start
+This opens a browser and bootstraps the selected context without preconfiguring
+`grafana.server`. On success, gcx saves the server URL, OAuth access token,
+refresh token, and proxy endpoint to that context.
 
-### 1. Authenticate
+If you want to save the login to a specific context:
+
+```bash
+gcx auth login --context my-grafana --server https://byoc-grafana.com
+```
+
+> [!NOTE]
+> Some plugin endpoints might not work reliably with this approach.
 
 **Grafana API access (service account token, recommended):**
 
@@ -202,28 +134,52 @@ export GRAFANA_CLOUD_TOKEN="your-cloud-access-policy-token"
 export GRAFANA_CLOUD_STACK="your-stack-slug"
 ```
 
-**Browser-based OAuth login (experimental):**
-
-```bash
-gcx auth login --server https://byoc-grafana.com
-```
-
-This opens a browser and bootstraps the selected context without preconfiguring
-`grafana.server`. On success, gcx saves the server URL, OAuth access token,
-refresh token, and proxy endpoint to that context.
-
-If you want to save the login to a specific context:
-
-```bash
-gcx auth login --context my-grafana --server https://byoc-grafana.com
-```
-
 > [!NOTE]
 > For automation, CI/CD, and other non-interactive usage, the token-based setup above remains the recommended approach.
 
 **Verify:** `gcx config check`
 
-### 2. Explore
+### 3. See It in Action
+
+**Query production from your terminal:**
+
+```sh
+$ gcx metrics query 'rate(http_requests_total{service="checkout"}[5m])' --since 1h
+SERVICE     TIMESTAMP             VALUE
+checkout    2026-04-15 09:00:00   142.3
+checkout    2026-04-15 09:05:00   151.7
+checkout    2026-04-15 09:10:00   289.4
+checkout    2026-04-15 09:15:00   312.1
+```
+
+**Check what's firing:**
+
+```sh
+$ gcx alert rules list --state firing
+UID     NAME                            STATE    HEALTH   PAUSED
+abc1    Checkout P95 > SLO threshold    firing   ok       no
+def2    Disk usage > 85%                firing   ok       no
+```
+
+**Review SLO status:**
+
+```sh
+$ gcx slo definitions list
+UUID    NAME                        TARGET   WINDOW   STATUS
+uid1    Checkout Availability       99.90%   30d      ok
+uid2    API Latency P99 < 200ms     99.50%   30d      at_risk
+uid3    Payment Processing          99.95%   30d      breaching
+```
+
+**Visualize metrics directly in your terminal:**
+
+```sh
+$ gcx metrics query 'topk(6, sum by (container) (rate(container_cpu_usage_seconds_total{namespace="ditl-demo-prod", container!="", container!="POD"}[5m])))' --since 6h -o graph
+```
+
+![Terminal graph output](./graph_example.png)
+
+**Explore more**
 
 ```bash
 # Grafana resources
@@ -233,14 +189,71 @@ gcx resources get folders                       # list all folders
 gcx alert rules list                            # list alert rules
 
 # Grafana Cloud products
-gcx slo definitions list                        # list all SLO definitions
 gcx synth checks list                           # list synthetic monitoring checks
-gcx irm oncall schedules list                    # list on-call schedules
+gcx irm oncall schedules list                   # list on-call schedules
 gcx k6 load-tests list                          # list k6 load tests
 
-# Query datasources
-gcx metrics query 'rate(http_requests_total[5m])' --since 1h
+# Query more datasources
 gcx logs query '{app="nginx"} |= "error"' --since 1h
+gcx traces query '{.cluster="dev-us-central-0"}' --since 1h
+```
+
+### 4. Install Agent Skills
+
+gcx ships a portable Agent Skills bundle for setup, dashboard GitOps,
+datasource exploration, alert investigation, structured debugging, SLO
+management, Synthetic Monitoring workflows, project scaffolding, resource
+generation and import, and end-to-end observability rollout.
+
+**For Claude Code**
+
+Use the dedicated [Claude Code plugin](claude-plugin/README.md):
+
+```text
+/plugin marketplace add grafana/gcx
+/plugin install gcx@gcx-marketplace
+```
+
+**For other `.agents`-compatible harnesses**
+
+For example: OpenAI Codex, OpenCode, and Pi. View the skills shipped in the bundle with:
+
+```sh
+gcx skills list
+18 skill(s) bundled with gcx
+
+SKILL                      INSTALLED    DESCRIPTION
+explore-datasources        yes          Discover what datasources, metrics, labels, and log streams are available in a Grafana instance.
+gcx-observability          yes          (Experimental) End-to-end observability setup for Grafana Cloud.
+....
+```
+
+Install the bundle into `~/.agents/skills` with:
+```sh
+gcx skills install --all
+```
+
+## The Agentic Workflow
+
+Here's what it looks like when your coding agent has access to production:
+
+**1. An alert fires** — P95 latency on the checkout service crosses the SLO threshold.
+
+**2. The Assistant investigates** — Your coding agent calls the Grafana Assistant through gcx. The Assistant has already started its investigation — it traces the issue to a missing index on `customer_id` causing full table scans under load.
+
+**3. It fixes the issue** — Drafts the migration, adds the index.
+
+**4. It prevents recurrence** — Instruments the service with OpenTelemetry spans, sets up a Synthetic Monitoring check on the checkout flow, and creates an alert rule on query duration.
+
+**5. It ships** — Opens a PR, tests pass, deploys to production. The alert resolves.
+
+Investigation, fix, instrumentation, monitoring — without the developer ever leaving their editor. The Grafana Assistant provides the intelligence; gcx provides the interface. And because it all builds on everything you've already configured in Grafana Cloud — your dashboards, your alerts, your datasources — no other tool can give you this depth out of the box.
+
+```sh
+$ gcx assistant investigations list
+ID    TITLE                                     STATUS     UPDATED
+abc1  Checkout P95 latency breach               active     2m ago
+def2  Memory leak in payment-svc                resolved   1h ago
 ```
 
 ## Maturity
