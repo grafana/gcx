@@ -28,7 +28,7 @@ We built GCX to close that gap.
 
 ## Quick Start
 
-## 1. Install
+### 1. Install
 
 **Quick install (Linux/macOS):**
 
@@ -97,7 +97,8 @@ If you want to save the login to a specific context:
 gcx auth login --context my-grafana --server https://byoc-grafana.com
 ```
 
-> [NOTE] Some plugin endpoints might not work reliably with this approach.
+> [!NOTE]
+> Some plugin endpoints might not work reliably with this approach.
 
 **Grafana API access (service account token, recommended):**
 
@@ -133,7 +134,8 @@ export GRAFANA_CLOUD_TOKEN="your-cloud-access-policy-token"
 export GRAFANA_CLOUD_STACK="your-stack-slug"
 ```
 
-> [NOTE] For automation, CI/CD, and other non-interactive usage, the token-based setup above remains the recommended approach.
+> [!NOTE]
+> For automation, CI/CD, and other non-interactive usage, the token-based setup above remains the recommended approach.
 
 **Verify:** `gcx config check`
 
