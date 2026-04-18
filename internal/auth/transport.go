@@ -96,6 +96,30 @@ func (t *RefreshTransport) initCond() {
 	}
 }
 
+// adoptFreshStoredTokens reloads tokens from disk and, if they're both fresh
+// and different from what we hold in memory, adopts them and returns true.
+// Returns false when no reloader is configured, the disk state is missing or
+// stale, or the stored refresh token matches ours (nothing to adopt).
+func (t *RefreshTransport) adoptFreshStoredTokens() bool {
+	if t.Reload == nil {
+		return false
+	}
+	stored, ok, _ := t.Reload()
+	if !ok || stored.RefreshToken == "" || time.Until(stored.ExpiresAt) <= refreshThreshold {
+		return false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if stored.RefreshToken == t.RefreshToken {
+		return false
+	}
+	t.Token = stored.Token
+	t.RefreshToken = stored.RefreshToken
+	t.ExpiresAt = stored.ExpiresAt
+	t.RefreshExpiresAt = stored.RefreshExpiresAt
+	return true
+}
+
 func (t *RefreshTransport) maybeRefresh(req *http.Request) error {
 	t.mu.Lock()
 	t.initCond()
@@ -122,7 +146,6 @@ func (t *RefreshTransport) maybeRefresh(req *http.Request) error {
 	t.refreshing = true
 	t.mu.Unlock()
 
-	// Signal refresh-complete to in-process waiters no matter how we exit.
 	defer func() {
 		t.mu.Lock()
 		t.refreshing = false
@@ -130,36 +153,19 @@ func (t *RefreshTransport) maybeRefresh(req *http.Request) error {
 		t.mu.Unlock()
 	}()
 
-	// Serialize with other gcx processes holding the same config file, so the
+	// Serialize with other gcx processes sharing this config file, so the
 	// rotating refresh token is never consumed by two callers at once.
-	var release func()
 	if t.Lock != nil {
-		r, lerr := t.Lock(req.Context())
-		if lerr == nil && r != nil {
-			release = r
+		if release, err := t.Lock(req.Context()); err == nil && release != nil {
 			defer release()
 		}
 	}
 
-	// After acquiring the cross-process lock, re-read disk state. If another
-	// process already refreshed while we were waiting, adopt its tokens and
-	// skip the network refresh entirely — presenting our now-stale refresh
-	// token would get us a 401 and a real lockout. We only adopt when the
-	// stored access token is actually fresh; otherwise the on-disk tokens
-	// are just a stale snapshot and we should proceed with our own refresh.
-	if t.Reload != nil {
-		if stored, ok, _ := t.Reload(); ok && stored.RefreshToken != "" && time.Until(stored.ExpiresAt) > refreshThreshold {
-			t.mu.Lock()
-			if stored.RefreshToken != t.RefreshToken {
-				t.Token = stored.Token
-				t.RefreshToken = stored.RefreshToken
-				t.ExpiresAt = stored.ExpiresAt
-				t.RefreshExpiresAt = stored.RefreshExpiresAt
-				t.mu.Unlock()
-				return nil
-			}
-			t.mu.Unlock()
-		}
+	// If another process already refreshed while we waited for the lock,
+	// adopt its tokens and skip the network call. Presenting our now-stale
+	// refresh token would earn a 401 and a real lockout.
+	if t.adoptFreshStoredTokens() {
+		return nil
 	}
 
 	t.mu.Lock()
@@ -168,26 +174,20 @@ func (t *RefreshTransport) maybeRefresh(req *http.Request) error {
 
 	// Network call happens outside the lock.
 	result, err := t.doRefresh(req.Context(), refreshToken)
-
-	t.mu.Lock()
 	if err != nil {
-		t.mu.Unlock()
 		return err
 	}
 
 	// A successful refresh response must never be dropped: the server has
 	// already consumed the old refresh token and rotated it, so discarding
 	// the response would leave the client with an invalid refresh token.
+	t.mu.Lock()
 	t.Token = result.Data.Token
 	if result.Data.RefreshToken != "" {
 		t.RefreshToken = result.Data.RefreshToken
 	}
-	if parsed, err := time.Parse(time.RFC3339, result.Data.ExpiresAt); err == nil {
-		t.ExpiresAt = parsed
-	} else {
-		// Unparseable expiry: fall back to zero time so the next request re-refreshes.
-		t.ExpiresAt = time.Time{}
-	}
+	// Unparseable expiry falls back to zero time so the next request re-refreshes.
+	t.ExpiresAt, _ = time.Parse(time.RFC3339, result.Data.ExpiresAt)
 	if rp, err := time.Parse(time.RFC3339, result.Data.RefreshExpiresAt); err == nil {
 		t.RefreshExpiresAt = rp
 	}
