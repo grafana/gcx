@@ -360,7 +360,7 @@ func checkCmd(configOpts *Options) *cobra.Command {
 
 			var checkErr error
 			for _, gCtx := range cfg.Contexts {
-				if err := checkContext(cmd, gCtx); err != nil {
+				if err := checkContext(cmd, cfg, gCtx, configOpts.ConfigSource()); err != nil {
 					checkErr = err
 				}
 			}
@@ -372,7 +372,7 @@ func checkCmd(configOpts *Options) *cobra.Command {
 	return cmd
 }
 
-func checkContext(cmd *cobra.Command, gCtx *config.Context) error {
+func checkContext(cmd *cobra.Command, cfg config.Config, gCtx *config.Context, source config.Source) error {
 	stdout := cmd.OutOrStdout()
 	title := "Context: "
 	titleLen := len(title) + len(gCtx.Name)
@@ -409,7 +409,10 @@ func checkContext(cmd *cobra.Command, gCtx *config.Context) error {
 
 	cmdio.Success(stdout, "Configuration: %s", cmdio.Green("valid"))
 
-	if _, err := discovery.NewDefaultRegistry(cmd.Context(), config.NewNamespacedRESTConfig(cmd.Context(), *gCtx)); err != nil {
+	restCfg := gCtx.ToRESTConfig(cmd.Context())
+	restCfg.WireTokenPersistence(cmd.Context(), source, gCtx.Name, cfg.Sources)
+
+	if _, err := discovery.NewDefaultRegistry(cmd.Context(), restCfg); err != nil {
 		cmdio.Error(stdout, "Connectivity: %s", cmdio.Red(summarizeError(err)))
 		cmdio.Warning(stdout, "Grafana version: %s", cmdio.Yellow("skipped")+"\n")
 		printSuggestions(err)
