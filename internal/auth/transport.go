@@ -172,8 +172,15 @@ func (t *RefreshTransport) maybeRefresh(req *http.Request) error {
 	refreshToken := t.RefreshToken
 	t.mu.Unlock()
 
-	// Network call happens outside the lock.
-	result, err := t.doRefresh(req.Context(), refreshToken)
+	// Detach from the caller's context: if the refresh is already in flight,
+	// the server may have consumed and rotated the refresh token. Aborting
+	// now would leave us with a stale token on disk and a locked-out user.
+	// A bounded timeout still protects against a hung proxy.
+	refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(req.Context()), 30*time.Second)
+	defer cancel()
+
+	// Network call happens outside the in-process mutex.
+	result, err := t.doRefresh(refreshCtx, refreshToken)
 	if err != nil {
 		return err
 	}
@@ -258,9 +265,6 @@ func (t *RefreshTransport) doRefresh(ctx context.Context, refreshToken string) (
 	return &result, nil
 }
 
-// DoRefresh calls the proxy refresh endpoint and returns new token credentials.
-// This is used by the assistant command's token refresher, which needs to refresh
-// tokens outside of an HTTP round-trip context.
 // RefreshResult holds the token credentials returned by a successful refresh.
 type RefreshResult struct {
 	Token            string
