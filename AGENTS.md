@@ -122,6 +122,7 @@ internal/
 ├── query/       Datasource query clients
 │   ├── prometheus/  Prometheus HTTP query client
 │   └── loki/        Loki HTTP query client
+├── queryerror/  Typed API error for datasource query failures (APIError type, New/FromBody constructors, IsParseError helper)
 ├── assistant/   Assistant client (A2A streaming, prompt, state management)
 │   ├── assistanthttp/  Base HTTP client for grafana-assistant-app plugin API
 │   └── investigations/ Investigation CRUD commands, table codecs, API client

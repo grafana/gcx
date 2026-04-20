@@ -140,6 +140,21 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("kg: request failed with status %d", e.StatusCode)
 }
 
+func (e *APIError) HTTPStatusCode() int {
+	return e.StatusCode
+}
+
+func (e *APIError) APIServiceName() string {
+	return "Knowledge Graph"
+}
+
+func (e *APIError) APIUserMessage() string {
+	if e.message != "" {
+		return e.message
+	}
+	return e.rawBody
+}
+
 // IsServerError returns true for 5xx status codes.
 func (e *APIError) IsServerError() bool {
 	return e.StatusCode >= 500

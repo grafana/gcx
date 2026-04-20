@@ -5,14 +5,19 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/datasources"
 	"github.com/grafana/gcx/internal/grafana"
 	"github.com/grafana/gcx/internal/linter"
+	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/grafana/gcx/internal/resources"
 	k8sapi "k8s.io/apimachinery/pkg/api/errors"
 )
@@ -32,6 +37,9 @@ func ErrorToDetailedError(err error) *DetailedError {
 		convertRequiredFlagErrors, // Cobra required-flag errors — must appear before generic checks
 		convertConfigErrors,       // Config-related
 		convertAuthErrors,         // Auth-related (expired tokens)
+		convertQueryErrors,        // Datasource query errors
+		convertDatasourceErrors,   // Grafana datasource REST API errors
+		convertServiceAPIErrors,   // Other structured HTTP API errors
 		convertFSErrors,           // FS-related
 		convertResourcesErrors,    // Resources-related
 		convertNetworkErrors,      // Network-related errors
@@ -49,11 +57,7 @@ func ErrorToDetailedError(err error) *DetailedError {
 		}
 	}
 
-	return &DetailedError{
-		Summary: "Unexpected error",
-		Details: err.Error(),
-		Parent:  err,
-	}
+	return fallbackDetailedError(err)
 }
 
 func convertUsageErrors(err error) (*DetailedError, bool) {
@@ -210,6 +214,395 @@ func convertAPIErrors(err error) (*DetailedError, bool) {
 		Parent:  err,
 		Summary: fmt.Sprintf("API error: %s - code %d", reason, code),
 	}, true
+}
+
+func convertQueryErrors(err error) (*DetailedError, bool) {
+	apiErr := &queryerror.APIError{}
+	if !errors.As(err, &apiErr) {
+		return nil, false
+	}
+
+	detailedErr := &DetailedError{
+		Summary:     queryErrorSummary(apiErr),
+		Details:     joinErrorDetails(wrappedTypedErrorContext(err, apiErr), queryErrorDetails(apiErr)),
+		Suggestions: queryErrorSuggestions(apiErr),
+	}
+	if sameRenderedMessage(detailedErr.Details, detailedErr.Summary) {
+		detailedErr.Details = ""
+	}
+
+	if apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden {
+		detailedErr.ExitCode = new(ExitAuthFailure)
+	}
+
+	return detailedErr, true
+}
+
+func queryErrorSummary(apiErr *queryerror.APIError) string {
+	datasource := queryErrorDatasourceName(apiErr.Datasource)
+
+	switch apiErr.StatusCode {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return "Authentication failed querying " + datasource
+	case http.StatusBadRequest:
+		if language := queryErrorLanguage(apiErr); apiErr.IsParseError() && language != "" {
+			return fmt.Sprintf("Invalid %s query", language)
+		}
+		if apiErr.Operation != "" {
+			return fmt.Sprintf("Invalid %s %s", datasource, apiErr.Operation)
+		}
+		return fmt.Sprintf("Invalid %s request", datasource)
+	case http.StatusNotFound:
+		return queryErrorNotFoundSummary(apiErr)
+	default:
+		if apiErr.Operation != "" {
+			return fmt.Sprintf("%s %s failed (HTTP %d)", datasource, apiErr.Operation, apiErr.StatusCode)
+		}
+		return fmt.Sprintf("%s request failed (HTTP %d)", datasource, apiErr.StatusCode)
+	}
+}
+
+func queryErrorNotFoundSummary(apiErr *queryerror.APIError) string {
+	if apiErr.Datasource == "tempo" && apiErr.Operation == "get trace" {
+		return "Trace not found"
+	}
+
+	return queryErrorDatasourceName(apiErr.Datasource) + " resource not found"
+}
+
+func queryErrorDetails(apiErr *queryerror.APIError) string {
+	details := apiErr.Message
+	if details == "" {
+		details = fmt.Sprintf("%s returned HTTP %d", queryErrorDatasourceName(apiErr.Datasource), apiErr.StatusCode)
+	}
+
+	if apiErr.ErrorSource != "" && apiErr.ErrorSource != "downstream" {
+		details = fmt.Sprintf("%s\n\nSource: %s", details, apiErr.ErrorSource)
+	}
+
+	return details
+}
+
+func queryErrorSuggestions(apiErr *queryerror.APIError) []string {
+	if apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden {
+		return []string{
+			"Review your Grafana credentials: gcx config view",
+			"Re-authenticate if needed: gcx auth login",
+		}
+	}
+
+	suggestions := []string{}
+	if apiErr.IsParseError() && strings.Contains(strings.ToLower(apiErr.Message), "expecting string") {
+		if example := queryErrorStringLiteralExample(apiErr); example != "" {
+			suggestions = append(suggestions, example)
+		}
+	}
+
+	if help := queryErrorHelpCommand(apiErr); help != "" {
+		suggestions = append(suggestions, fmt.Sprintf("Run '%s' for usage and examples", help))
+	}
+
+	return suggestions
+}
+
+func queryErrorDatasourceName(datasource string) string {
+	switch datasource {
+	case "loki":
+		return "Loki"
+	case "prometheus":
+		return "Prometheus"
+	case "pyroscope":
+		return "Pyroscope"
+	case "tempo":
+		return "Tempo"
+	default:
+		if datasource == "" {
+			return "Datasource"
+		}
+		return strings.ToUpper(datasource[:1]) + datasource[1:]
+	}
+}
+
+func queryErrorLanguage(apiErr *queryerror.APIError) string {
+	switch apiErr.Datasource {
+	case "loki":
+		if apiErr.Operation == "query" || apiErr.Operation == "metric query" || apiErr.Operation == "series query" {
+			return "LogQL"
+		}
+	case "prometheus":
+		if apiErr.Operation == "query" {
+			return "PromQL"
+		}
+	case "pyroscope":
+		if apiErr.Operation == "query" || apiErr.Operation == "series query" {
+			return "Pyroscope selector"
+		}
+	case "tempo":
+		if apiErr.Operation == "search query" || apiErr.Operation == "metrics query" {
+			return "TraceQL"
+		}
+	}
+
+	return ""
+}
+
+func queryErrorStringLiteralExample(apiErr *queryerror.APIError) string {
+	switch apiErr.Datasource {
+	case "loki":
+		return `Try a quoted selector value, e.g. gcx logs query '{namespace="prod"}'`
+	case "prometheus":
+		return `Try a quoted selector value, e.g. gcx metrics query 'up{job="grafana"}'`
+	case "pyroscope":
+		return `Try a quoted selector value, e.g. gcx profiles query '{service_name="frontend"}' --profile-type <PROFILE_TYPE>`
+	case "tempo":
+		return `Try a quoted string literal, e.g. gcx traces query '{ resource.service.name = "checkout" }'`
+	default:
+		return ""
+	}
+}
+
+func queryErrorHelpCommand(apiErr *queryerror.APIError) string {
+	switch apiErr.Datasource {
+	case "loki":
+		switch apiErr.Operation {
+		case "query":
+			return "gcx logs query --help"
+		case "metric query":
+			return "gcx logs metrics --help"
+		case "labels query", "label values query":
+			return "gcx logs labels --help"
+		case "series query":
+			return "gcx logs series --help"
+		}
+	case "prometheus":
+		switch apiErr.Operation {
+		case "query":
+			return "gcx metrics query --help"
+		case "labels query", "label values query":
+			return "gcx metrics labels --help"
+		case "metadata query":
+			return "gcx metrics metadata --help"
+		}
+	case "pyroscope":
+		switch apiErr.Operation {
+		case "query":
+			return "gcx profiles query --help"
+		case "profile types query":
+			return "gcx profiles profile-types --help"
+		case "label names query", "label values query":
+			return "gcx profiles labels --help"
+		case "series query":
+			return "gcx profiles metrics --help"
+		}
+	case "tempo":
+		switch apiErr.Operation {
+		case "search query":
+			return "gcx traces query --help"
+		case "get trace":
+			return "gcx traces get --help"
+		case "tags query", "tag values query":
+			return "gcx traces labels --help"
+		case "metrics query":
+			return "gcx traces metrics --help"
+		}
+	}
+
+	return ""
+}
+
+type serviceAPIError interface {
+	error
+	HTTPStatusCode() int
+	APIServiceName() string
+	APIUserMessage() string
+}
+
+func convertDatasourceErrors(err error) (*DetailedError, bool) {
+	apiErr := &datasources.APIError{}
+	if !errors.As(err, &apiErr) {
+		return nil, false
+	}
+
+	detailedErr := &DetailedError{
+		Summary:     datasourceErrorSummary(apiErr),
+		Details:     joinErrorDetails(wrappedTypedErrorContext(err, apiErr), strings.TrimSpace(apiErr.APIUserMessage())),
+		Suggestions: datasourceErrorSuggestions(apiErr),
+	}
+	if sameRenderedMessage(detailedErr.Details, detailedErr.Summary) {
+		detailedErr.Details = ""
+	}
+	if apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden {
+		detailedErr.ExitCode = new(ExitAuthFailure)
+	}
+
+	return detailedErr, true
+}
+
+func datasourceErrorSummary(apiErr *datasources.APIError) string {
+	switch apiErr.StatusCode {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return "Authentication failed querying datasources"
+	case http.StatusNotFound:
+		if apiErr.Identifier != "" {
+			return fmt.Sprintf("Datasource %q not found", apiErr.Identifier)
+		}
+		return "Datasource not found"
+	default:
+		if apiErr.Operation != "" {
+			return fmt.Sprintf("Could not %s (HTTP %d)", apiErr.Operation, apiErr.StatusCode)
+		}
+		return fmt.Sprintf("Datasource API request failed (HTTP %d)", apiErr.StatusCode)
+	}
+}
+
+func datasourceErrorSuggestions(apiErr *datasources.APIError) []string {
+	switch apiErr.StatusCode {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return []string{
+			"Review your Grafana credentials: gcx config view",
+			"Re-authenticate if needed: gcx auth login",
+		}
+	case http.StatusNotFound:
+		return []string{
+			"List available datasources: gcx datasources list",
+		}
+	default:
+		return nil
+	}
+}
+
+func convertServiceAPIErrors(err error) (*DetailedError, bool) {
+	var apiErr serviceAPIError
+	if !errors.As(err, &apiErr) {
+		return nil, false
+	}
+
+	detailedErr := &DetailedError{
+		Summary:     serviceAPIErrorSummary(apiErr),
+		Details:     joinErrorDetails(wrappedTypedErrorContext(err, apiErr), strings.TrimSpace(apiErr.APIUserMessage())),
+		Suggestions: serviceAPIErrorSuggestions(apiErr),
+	}
+	if sameRenderedMessage(detailedErr.Details, detailedErr.Summary) {
+		detailedErr.Details = ""
+	}
+	if code := apiErr.HTTPStatusCode(); code == http.StatusUnauthorized || code == http.StatusForbidden {
+		detailedErr.ExitCode = new(ExitAuthFailure)
+	}
+
+	return detailedErr, true
+}
+
+func serviceAPIErrorSummary(apiErr serviceAPIError) string {
+	service := strings.TrimSpace(apiErr.APIServiceName())
+	if service == "" {
+		service = "API"
+	}
+
+	switch apiErr.HTTPStatusCode() {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return "Authentication failed querying " + service
+	case http.StatusNotFound:
+		return service + " API resource not found"
+	default:
+		return fmt.Sprintf("%s API request failed (HTTP %d)", service, apiErr.HTTPStatusCode())
+	}
+}
+
+func serviceAPIErrorSuggestions(apiErr serviceAPIError) []string {
+	switch apiErr.HTTPStatusCode() {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return []string{
+			"Review your Grafana credentials: gcx config view",
+			"Re-authenticate if needed: gcx auth login",
+		}
+	default:
+		return nil
+	}
+}
+
+func wrappedTypedErrorContext(err error, inner error) string {
+	if err == nil || inner == nil {
+		return ""
+	}
+
+	message := strings.TrimSpace(err.Error())
+	innerMessage := strings.TrimSpace(inner.Error())
+	if message == "" || innerMessage == "" || message == innerMessage {
+		return ""
+	}
+
+	prefix, after, found := strings.Cut(message, innerMessage)
+	if !found {
+		return ""
+	}
+
+	prefix = trimWrapperPrefix(prefix)
+	suffix := trimWrapperSuffix(after)
+
+	parts := []string{}
+	if prefix != "" && !isGenericAPIWrapperPrefix(prefix) {
+		parts = append(parts, prefix)
+	}
+	if suffix != "" {
+		parts = append(parts, suffix)
+	}
+
+	return joinErrorDetails(parts...)
+}
+
+func trimWrapperPrefix(prefix string) string {
+	prefix = strings.TrimSpace(prefix)
+	prefix = strings.TrimRight(prefix, ":;,- ")
+	return strings.TrimSpace(prefix)
+}
+
+func trimWrapperSuffix(suffix string) string {
+	suffix = strings.TrimSpace(suffix)
+	suffix = strings.TrimLeft(suffix, ":;,- ")
+	return strings.TrimSpace(suffix)
+}
+
+func isGenericAPIWrapperPrefix(prefix string) bool {
+	prefix = strings.ToLower(strings.TrimSpace(prefix))
+
+	switch prefix {
+	case "",
+		"query failed",
+		"search failed",
+		"get trace failed",
+		"metrics query failed",
+		"labels query failed",
+		"label values query failed",
+		"metadata query failed",
+		"failed to get labels",
+		"failed to get label values",
+		"failed to get metadata",
+		"failed to get profile types",
+		"failed to get series",
+		"failed to get datasource":
+		// Exact-match only: UID-containing variants such as
+		// `failed to get datasource "my-uid"` identify which datasource
+		// failed and must be preserved as wrapper context.
+		return true
+	default:
+		return false
+	}
+}
+
+func joinErrorDetails(parts ...string) string {
+	joined := []string{}
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if len(joined) > 0 && sameRenderedMessage(joined[len(joined)-1], part) {
+			continue
+		}
+		joined = append(joined, part)
+	}
+
+	return strings.Join(joined, "\n\n")
 }
 
 func convertResourcesErrors(err error) (*DetailedError, bool) {
@@ -435,6 +828,89 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 	}
 
 	return nil, false
+}
+
+func fallbackDetailedError(err error) *DetailedError {
+	summary, details, parent := summarizeFallbackError(err)
+	return &DetailedError{
+		Summary: summary,
+		Details: details,
+		Parent:  parent,
+	}
+}
+
+func summarizeFallbackError(err error) (string, string, error) {
+	if err == nil {
+		return "Unexpected error", "", nil
+	}
+
+	if wrappedSummary, wrappedParent, ok := fallbackWrappedSummary(err); ok {
+		return humanizeSummary(wrappedSummary), "", wrappedParent
+	}
+
+	summary, details := splitErrorMessage(err.Error())
+	return humanizeSummary(summary), details, nil
+}
+
+func fallbackWrappedSummary(err error) (string, error, bool) {
+	parent := errors.Unwrap(err)
+	if parent == nil {
+		return "", nil, false
+	}
+
+	message := strings.TrimSpace(err.Error())
+	parentMsg := strings.TrimSpace(parent.Error())
+	if parentMsg != "" && strings.HasSuffix(message, ": "+parentMsg) {
+		message = strings.TrimSpace(strings.TrimSuffix(message, ": "+parentMsg))
+	}
+
+	if message == "" {
+		message = strings.TrimSpace(err.Error())
+	}
+
+	return message, parent, true
+}
+
+func splitErrorMessage(message string) (string, string) {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return "Unexpected error", ""
+	}
+
+	if i := strings.Index(message, ": "); i > 0 {
+		prefix := strings.TrimSpace(message[:i])
+		// Only treat sentence-like prefixes as summaries. Single-token
+		// provider tags (e.g. "k6:", "fleet:") make poor summaries —
+		// fall back to "Unexpected error" and surface the raw message
+		// as details. A typed converter should handle the provider's
+		// error type for a richer summary.
+		if strings.Contains(prefix, " ") {
+			return prefix, strings.TrimSpace(message[i+2:])
+		}
+		return "Unexpected error", message
+	}
+	if i := strings.Index(message, "\n"); i > 0 {
+		return strings.TrimSpace(message[:i]), strings.TrimSpace(message[i+1:])
+	}
+
+	return message, ""
+}
+
+func humanizeSummary(summary string) string {
+	summary = strings.TrimSpace(summary)
+	if summary == "" {
+		return "Unexpected error"
+	}
+
+	r, size := utf8.DecodeRuneInString(summary)
+	if r == utf8.RuneError && size == 0 {
+		return "Unexpected error"
+	}
+	if unicode.IsLower(r) {
+		return string(unicode.ToUpper(r)) + summary[size:]
+	}
+
+	return summary
 }
 
 func convertContextCanceled(err error) (*DetailedError, bool) {
