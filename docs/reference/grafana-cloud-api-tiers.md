@@ -74,7 +74,7 @@ reflecting Grafana's 10-year evolution from REST to K8s-style to plugin-hosted:
 
 - `internal/resources/` + `cmd/gcx/resources/` → K8s-style API tier
 - `internal/datasources/` + `cmd/gcx/datasources/` → `/api/datasources` + per-ds query clients
-- `internal/providers/<product>/` → plugin-resources and plugin-proxy routes, one provider per product (alert, slo, synth, irm, faro, k6, sigil, kg, appo11y, ml, fleet)
+- `internal/providers/<product>/` → plugin-resources and plugin-proxy routes, one provider per product (alert, slo, synth, irm, faro, k6, sigil, kg, appo11y, fleet)
 - `internal/assistant/` → `/a/<id>/...` CLI proxy + A2A SSE streaming
 
 The K8s-style tier is where Grafana's architecture is heading. Legacy REST and
