@@ -30,3 +30,12 @@ func All() []Provider {
 	}
 	return registry
 }
+
+// SetRegistryForTest replaces the global registry with ps for the duration of
+// a test and returns a restore function that reverts to the previous state.
+// Use testhelpers.SetupTestRegistry for automatic cleanup via t.Cleanup.
+func SetRegistryForTest(ps []Provider) func() {
+	prev := registry
+	registry = ps
+	return func() { registry = prev }
+}
