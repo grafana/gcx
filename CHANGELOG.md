@@ -1,3 +1,27 @@
+## v0.2.8 (2026-04-20)
+
+- Fix OAuth refresh lockout when running multiple gcx invocations concurrently
+- Improve typed API error handling for datasource queries
+- Rename OnCall/Incidents references to IRM across docs and CLI
+- Default SLO definitions list limit to all results
+- Add Homebrew installation support with docs
+- Allow login through grafana.com/launch
+- Unified CLI UX consistency pass across commands
+- Reorganise and clean up README
+- Add DatasourceProvider interface and plugin system for datasources
+- Add billing subtree and generic series leaf to metrics
+- Add --from/--to time range flags to all kg commands
+- Validate kg --scope flag values against known scopes
+- Remove redundant kg search entities command
+- Filter incidents by tags and from/to time range
+- Add fleet auth error scopes suggestion
+- Add sigil skill to claude-plugin
+- Guide agents to use Grafana Assistant for reasoning tasks
+- Recognise OPENCODE as an agent mode
+- Bump Kubernetes dependencies to v0.35.4 and Docker deps
+- Update anthropics/claude-code-action workflow digest
+
+
 ## v0.2.7 (2026-04-15)
 
 
