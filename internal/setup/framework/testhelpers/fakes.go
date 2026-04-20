@@ -42,9 +42,16 @@ type FakeSetupable struct {
 	ShouldPanic      bool
 	Categories_      []framework.InfraCategory
 	ValidateSetupErr error
-	SetupErr         error
-	SetupCalled      bool
-	LastParams       map[string]string
+	// ValidateSetupErrs is consumed one per call; if exhausted, ValidateSetupErr is used.
+	ValidateSetupErrs []error
+	validateCallCount int
+	SetupErr          error
+	SetupCalled       bool
+	LastParams        map[string]string
+	// OnSetup is called at the start of Setup, before recording or returning errors.
+	OnSetup func()
+	// SetupOrderRecorder, when non-nil, gets ProductName_ appended on each Setup call.
+	SetupOrderRecorder *[]string
 }
 
 var _ framework.Setupable = (*FakeSetupable)(nil)
@@ -71,11 +78,22 @@ func (f *FakeSetupable) ResolveChoices(_ context.Context, _ string) ([]string, e
 
 func (f *FakeSetupable) ValidateSetup(_ context.Context, params map[string]string) error {
 	f.LastParams = params
+	idx := f.validateCallCount
+	f.validateCallCount++
+	if idx < len(f.ValidateSetupErrs) {
+		return f.ValidateSetupErrs[idx]
+	}
 	return f.ValidateSetupErr
 }
 
 func (f *FakeSetupable) Setup(_ context.Context, params map[string]string) error {
+	if f.OnSetup != nil {
+		f.OnSetup()
+	}
 	f.SetupCalled = true
 	f.LastParams = params
+	if f.SetupOrderRecorder != nil {
+		*f.SetupOrderRecorder = append(*f.SetupOrderRecorder, f.ProductName_)
+	}
 	return f.SetupErr
 }
