@@ -30,5 +30,6 @@ Manage Grafana k6 Cloud projects, load tests, and schedules
 * [gcx k6 projects](gcx_k6_projects.md)	 - Manage k6 Cloud projects.
 * [gcx k6 runs](gcx_k6_runs.md)	 - Manage k6 test runs.
 * [gcx k6 schedules](gcx_k6_schedules.md)	 - Manage k6 Cloud schedules.
+* [gcx k6 setup](gcx_k6_setup.md)	 - Set up k6 (not yet implemented).
 * [gcx k6 test-run](gcx_k6_test-run.md)	 - Manage k6 TestRun CRD manifests.
 

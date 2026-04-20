@@ -1,17 +1,15 @@
-## gcx setup status
+## gcx frontend setup
 
-Show aggregated setup status across all products.
+Set up faro (not yet implemented).
 
 ```
-gcx setup status [flags]
+gcx frontend setup [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for status
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: json, text, wide, yaml (default "text")
+  -h, --help   help for setup
 ```
 
 ### Options inherited from parent commands
@@ -28,5 +26,5 @@ gcx setup status [flags]
 
 ### SEE ALSO
 
-* [gcx setup](gcx_setup.md)	 - Onboard and configure Grafana Cloud products.
+* [gcx frontend](gcx_frontend.md)	 - Manage Grafana Frontend Observability resources
 

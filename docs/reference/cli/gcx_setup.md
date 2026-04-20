@@ -24,5 +24,6 @@ Onboard and configure Grafana Cloud products.
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx setup instrumentation](gcx_setup_instrumentation.md)	 - Manage observability instrumentation for Kubernetes clusters.
+* [gcx setup run](gcx_setup_run.md)	 - Interactive orchestrator for product setup.
 * [gcx setup status](gcx_setup_status.md)	 - Show aggregated setup status across all products.
 

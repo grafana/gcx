@@ -1,17 +1,27 @@
-## gcx setup status
+## gcx setup run
 
-Show aggregated setup status across all products.
+Interactive orchestrator for product setup.
+
+### Synopsis
+
+Run the interactive setup flow to onboard and configure Grafana Cloud products.
+
+This command is interactive and requires a terminal (stdin must be a TTY).
+In agent mode or non-interactive environments, use the per-product setup commands instead:
+  gcx <product> setup
+
+For example:
+  gcx slo setup
+  gcx synth setup
 
 ```
-gcx setup status [flags]
+gcx setup run [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for status
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: json, text, wide, yaml (default "text")
+  -h, --help   help for run
 ```
 
 ### Options inherited from parent commands

@@ -25,4 +25,5 @@ Manage Grafana App Observability settings
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx appo11y overrides](gcx_appo11y_overrides.md)	 - Manage App Observability metrics generator overrides.
 * [gcx appo11y settings](gcx_appo11y_settings.md)	 - Manage App Observability plugin settings.
+* [gcx appo11y setup](gcx_appo11y_setup.md)	 - Set up appo11y (not yet implemented).
 
