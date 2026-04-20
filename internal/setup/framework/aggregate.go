@@ -32,7 +32,6 @@ func AggregateStatusFrom(ctx context.Context, timeout time.Duration, providers [
 	g.SetLimit(10)
 
 	for i, sd := range providers {
-		i, sd := i, sd
 		g.Go(func() error {
 			cctx, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()
