@@ -7,7 +7,7 @@ require (
 	github.com/NimbleMarkets/ntcharts v0.5.1
 	github.com/adrg/xdg v0.5.3
 	github.com/caarlos0/env/v11 v11.4.0
-	github.com/charmbracelet/glamour v1.0.0
+	github.com/charmbracelet/glamour/v2 v2.0.0
 	github.com/charmbracelet/huh v1.0.0
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
 	github.com/fatih/color v1.19.0
