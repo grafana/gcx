@@ -1,13 +1,15 @@
 package setup
 
 import (
-	"fmt"
+	"errors"
 	"io"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/grafana/gcx/cmd/gcx/setup/instrumentation"
-	fleetbase "github.com/grafana/gcx/internal/fleet"
+	"github.com/grafana/gcx/internal/format"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
-	instrum "github.com/grafana/gcx/internal/setup/instrumentation"
+	"github.com/grafana/gcx/internal/setup/framework"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -31,28 +33,28 @@ func Command() *cobra.Command {
 	loader.BindFlags(cmd.PersistentFlags())
 
 	cmd.AddCommand(instrumentation.Command(loader))
-	cmd.AddCommand(newStatusCommand(loader))
+	cmd.AddCommand(NewStatusCommand())
 
 	return cmd
 }
 
 type setupStatusOpts struct {
-	IO setupStatusIO
+	IO cmdio.Options
 }
 
 func (o *setupStatusOpts) setup(flags *pflag.FlagSet) {
-	_ = flags // no flags yet — placeholder for future --output support
+	o.IO.RegisterCustomCodec("text", &statusTextCodec{})
+	o.IO.RegisterCustomCodec("wide", &statusTextCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
 }
 
 func (o *setupStatusOpts) Validate() error {
-	return nil
+	return o.IO.Validate()
 }
 
-// setupStatusIO is a minimal output interface for the aggregated status table.
-// Kept separate from output.Options since aggregated status has a fixed table format.
-type setupStatusIO struct{}
-
-func newStatusCommand(loader *providers.ConfigLoader) *cobra.Command {
+// NewStatusCommand returns the `setup status` subcommand. Exported for testing.
+func NewStatusCommand() *cobra.Command {
 	opts := &setupStatusOpts{}
 	cmd := &cobra.Command{
 		Use:   "status",
@@ -61,47 +63,51 @@ func newStatusCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.Validate(); err != nil {
 				return err
 			}
-
-			ctx := cmd.Context()
-
-			r, err := fleetbase.LoadClientWithStack(ctx, loader)
-			if err != nil {
-				return fmt.Errorf("setup: %w", err)
-			}
-			client := instrum.NewClient(r.Client)
-			promHdrs := instrum.PromHeadersFromStack(r.Stack)
-
-			monResp, err := client.RunK8sMonitoring(ctx, promHdrs)
-			if err != nil {
-				return fmt.Errorf("setup: %w", err)
-			}
-
-			enabled := "no"
-			if len(monResp.Clusters) > 0 {
-				enabled = "yes"
-			}
-			details := fmt.Sprintf("%d clusters", len(monResp.Clusters))
-
-			return writeSetupStatusTable(cmd.OutOrStdout(), []setupProductRow{
-				{Product: "instrumentation", Enabled: enabled, Health: "healthy", Details: details},
-			})
+			statuses := framework.AggregateStatus(cmd.Context(), 0)
+			return opts.IO.Encode(cmd.OutOrStdout(), statuses)
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
 }
 
-type setupProductRow struct {
-	Product string
-	Enabled string
-	Health  string
-	Details string
+type statusTextCodec struct{}
+
+func (c *statusTextCodec) Format() format.Format {
+	return "text"
 }
 
-func writeSetupStatusTable(w io.Writer, rows []setupProductRow) error {
-	t := style.NewTable("PRODUCT", "ENABLED", "HEALTH", "DETAILS")
-	for _, r := range rows {
-		t.Row(r.Product, r.Enabled, r.Health, r.Details)
+func (c *statusTextCodec) Encode(w io.Writer, data any) error {
+	statuses, ok := data.([]framework.ProductStatus)
+	if !ok {
+		return errors.New("statusTextCodec: expected []framework.ProductStatus")
+	}
+	t := style.NewTable("PRODUCT", "STATE", "DETAILS", "HINT")
+	for _, s := range statuses {
+		stateStr := string(s.State)
+		if style.IsStylingEnabled() {
+			stateStr = colorState(s.State)
+		}
+		t.Row(s.Product, stateStr, s.Details, s.SetupHint)
 	}
 	return t.Render(w)
+}
+
+func (c *statusTextCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("text codec does not support decoding")
+}
+
+func colorState(state framework.ProductState) string {
+	var color lipgloss.Color
+	switch state {
+	case framework.StateActive:
+		color = lipgloss.Color("#7EB26D")
+	case framework.StateConfigured:
+		color = lipgloss.Color("#EAB839")
+	case framework.StateError:
+		color = lipgloss.Color("#F2495C")
+	default:
+		color = style.ColorMuted
+	}
+	return lipgloss.NewStyle().Foreground(color).Render(string(state))
 }
