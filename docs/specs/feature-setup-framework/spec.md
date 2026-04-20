@@ -1,7 +1,7 @@
 ---
 type: feature-spec
 title: "Setup Framework: Interfaces, Stubs, and Orchestration"
-status: approved
+status: done
 adr: docs/adrs/setup-framework/001-setup-framework-interfaces-and-orchestration.md
 created: 2026-04-17
 ---
