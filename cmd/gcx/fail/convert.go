@@ -745,7 +745,7 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 			Details: msg,
 			Parent:  err,
 			Suggestions: []string{
-				"Set cloud.token in your config: gcx config set cloud.token <TOKEN>",
+				"Set cloud.token in your config: gcx config set contexts.<context>.cloud.token <TOKEN>",
 				"Or set GRAFANA_CLOUD_TOKEN environment variable",
 			},
 		}, true
@@ -758,7 +758,7 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 			Details: msg,
 			Parent:  err,
 			Suggestions: []string{
-				"Set cloud.stack in your config: gcx config set cloud.stack <STACK_SLUG>",
+				"Set cloud.stack in your config: gcx config set contexts.<context>.cloud.stack <STACK_SLUG>",
 				"Or set GRAFANA_CLOUD_STACK environment variable",
 			},
 		}, true
