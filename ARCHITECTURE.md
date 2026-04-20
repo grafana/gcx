@@ -177,6 +177,7 @@ Multiple auth mechanisms for different tiers.
 | [013](docs/adrs/appo11y-provider/001-cli-ux-and-resource-adapter-design.md) | App O11y provider: singleton TypedCRUD, ETag-as-annotation, verb naming | accepted |
 | [014](docs/adrs/instrumentation/001-instrumentation-provider-design.md) | Declarative Instrumentation Setup under `gcx setup` | proposed |
 | [015](docs/adrs/faro-provider/001-faro-provider-design.md) | Faro provider: CLI UX, TypedCRUD adapter, sourcemaps as sub-resource verbs | proposed |
+| [016](docs/adrs/setup-framework/001-setup-framework-interfaces-and-orchestration.md) | Setup Framework: StatusDetectable/Setupable interfaces, AggregateStatus, gcx setup run orchestration | accepted |
 
 See [docs/adrs/](docs/adrs/) for all ADRs.
 
