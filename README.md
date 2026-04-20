@@ -62,6 +62,17 @@ tar xzf gcx_*.tar.gz
 chmod +x gcx && sudo mv gcx /usr/local/bin/
 ```
 
+> [!NOTE]
+> **macOS Gatekeeper**: gcx release binaries are not yet Apple-notarized, so
+> macOS may block the binary with *"Apple could not verify…"* or *"killed: 9"*.
+> The `curl | sh` installer above handles this automatically. For manual
+> downloads, remove the quarantine attribute and ad-hoc sign the binary:
+>
+> ```sh
+> xattr -d com.apple.quarantine /usr/local/bin/gcx 2>/dev/null || true
+> codesign --sign - --force /usr/local/bin/gcx   # needed on Apple Silicon
+> ```
+
 **Go install:**
 
 ```bash
