@@ -24,9 +24,9 @@ working on gcx or integrating with Grafana Cloud.
 │  Auth: service-account token / OAuth PKCE                              │
 ├────────────────────────────────────────────────────────────────────────┤
 │  Tier 3 — REGIONAL RUNTIME (one hostname per product per region)       │
-│  {prometheus,logs,tempo,profiles}-prod-NN.grafana.net/...              │
+│  per-product regional hosts under grafana.net                          │
 │  Signal stores (Mimir/Loki/Tempo/Pyroscope), ingest, product services  │
-│  Auth: Basic (instance-id:token), product tokens                       │
+│  Auth: instance credential, product tokens                             │
 ├────────────────────────────────────────────────────────────────────────┤
 │  Tier 4 — GLOBAL PRODUCT REST                                          │
 │  api.k6.io                                                             │
@@ -82,33 +82,25 @@ plugin-resources coexist indefinitely because many products haven't moved.
 
 ## Tier 3 — Regional runtime
 
-**Host**: `<product>-prod-NN.grafana.net` — one dedicated hostname per product
-per region (NN = region number, e.g. `prometheus-prod-36.grafana.net`).
-**Auth**: Basic (instance-id:token); product tokens for SM/OnCall/Faro.
-**Protocols**: REST dominates; Fleet Management and SM also speak gRPC/connect.
+**Host**: dedicated per-product regional hostnames under `grafana.net`.
+**Auth**: instance credential or product-specific token.
+**Protocols**: mostly REST; some products also speak gRPC/connect.
 **Role**: the actual data plane — where signals are stored, queried, and
 ingested, plus product services with latency-critical APIs.
 
-```
-prometheus-prod-NN          Mimir          query + push + ruler + aggregations
-logs-prod-NN                Loki           query + push + adaptive_logs
-tempo-prod-NN               Tempo          query + push + adaptive_traces
-profiles-prod-NN            Pyroscope      query + connect services
-alertmanager-prod-NN        Alertmanager   regional AM
-otlp-gateway-prod-NN        OTLP           unified ingest
-synthetic-monitoring-api-*  SM             REST + gRPC
-fleet-management-prod-NN    Fleet          connect-go (collector.v1, pipeline.v1)
-oncall-prod-NN              OnCall         public API
-faro-api-*, faro-collector  Faro           API + RUM ingest
-```
+Surfaces:
 
-**GEM/GEL/GET admin** endpoints (`/admin/api/v1/tenants`) live on the same
-hostnames — Enterprise-only tenant management.
+- Signal stores (Mimir, Loki, Tempo, Pyroscope) — query + ingest per region
+- Regional Alertmanager and OTLP gateway
+- Product runtimes for SM, Fleet, OnCall, Faro on their own regional hosts
+
+GEM/GEL/GET also expose Enterprise-only tenant administration on the same
+hostnames.
 
 **gcx mapping**:
 
 - `internal/query/prometheus`, `internal/query/loki` → signal store queries
-- `internal/auth/adaptive/` → shared Basic-auth-with-GCOM-cache transport used by all signal providers
+- `internal/auth/adaptive/` → shared adaptive auth transport used by all signal providers
 - `internal/fleet/` → Fleet Management connect client
 - `internal/providers/{metrics,logs,traces,profiles}/` → signal + adaptive commands
 - `internal/providers/synth/`, `internal/providers/irm/` → regional REST clients
@@ -133,7 +125,7 @@ calls go to the global host.
 | GCOM token                   | Control plane                                           | `internal/cloud/`                            |
 | OAuth PKCE                   | Interactive stack login                                 | `internal/auth/` + `cmd/gcx/auth/`           |
 | Service-account token        | Stack REST + K8s API                                    | `internal/config/` (rest.Config builder)     |
-| Basic (instance-id:token)    | Regional runtime (Mimir/Loki/Tempo/Pyroscope, Fleet)    | `internal/auth/adaptive/`                    |
+| Instance credential          | Regional runtime (signal stores, Fleet)                 | `internal/auth/adaptive/`                    |
 | Product tokens               | SM, OnCall, Faro, k6                                    | per-provider client                          |
 
 ### Hybrid products (multi-tier surfaces)
