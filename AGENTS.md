@@ -91,6 +91,7 @@ internal/
 ├── cloud/       GCOM HTTP client for Grafana Cloud stack discovery
 ├── fleet/       Shared fleet base client (HTTP, auth, config — used by fleet provider and setup/instrumentation)
 ├── setup/
+│   ├── framework/        Setup framework: StatusDetectable/Setupable interfaces, AggregateStatus, Run orchestrator, prompt widgets, testhelpers
 │   └── instrumentation/  Manifest types, instrumentation client, optimistic lock comparison
 ├── resources/
 │   ├── *.go     Core types: Resource, Selector, Filter, Descriptor, Resources collection
