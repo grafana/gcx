@@ -34,6 +34,7 @@ func Command() *cobra.Command {
 
 	cmd.AddCommand(instrumentation.Command(loader))
 	cmd.AddCommand(NewStatusCommand())
+	cmd.AddCommand(NewRunCommand(loader))
 
 	return cmd
 }
