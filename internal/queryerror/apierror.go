@@ -35,9 +35,15 @@ func New(datasource, operation string, statusCode int, message, errorSource stri
 // FromBody constructs an APIError by extracting the most useful message from an
 // HTTP response body. It understands Grafana's datasource query envelope as
 // well as common {"error": ...} / {"message": ...} JSON responses.
+//
+// The embedded `results.*.status` from the Grafana query envelope is only used
+// as a fallback when the transport status is 2xx — i.e., to surface query-level
+// failures hiding inside a 200 OK. When the transport status is already an
+// error (4xx/5xx), it is kept as the authoritative signal so auth, proxy, and
+// gateway failures are not misclassified by downstream-supplied status codes.
 func FromBody(datasource, operation string, statusCode int, body []byte) *APIError {
 	message, errorSource, parsedStatus := extractMessage(body)
-	if parsedStatus != 0 {
+	if parsedStatus != 0 && statusCode >= 200 && statusCode < 300 {
 		statusCode = parsedStatus
 	}
 	return New(datasource, operation, statusCode, message, errorSource)

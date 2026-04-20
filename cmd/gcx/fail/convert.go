@@ -565,23 +565,24 @@ func trimWrapperSuffix(suffix string) string {
 func isGenericAPIWrapperPrefix(prefix string) bool {
 	prefix = strings.ToLower(strings.TrimSpace(prefix))
 
-	switch {
-	case prefix == "":
-		return true
-	case prefix == "query failed",
-		prefix == "search failed",
-		prefix == "get trace failed",
-		prefix == "metrics query failed",
-		prefix == "labels query failed",
-		prefix == "label values query failed",
-		prefix == "metadata query failed",
-		prefix == "failed to get labels",
-		prefix == "failed to get label values",
-		prefix == "failed to get metadata",
-		prefix == "failed to get profile types",
-		prefix == "failed to get series":
-		return true
-	case strings.HasPrefix(prefix, "failed to get datasource"):
+	switch prefix {
+	case "",
+		"query failed",
+		"search failed",
+		"get trace failed",
+		"metrics query failed",
+		"labels query failed",
+		"label values query failed",
+		"metadata query failed",
+		"failed to get labels",
+		"failed to get label values",
+		"failed to get metadata",
+		"failed to get profile types",
+		"failed to get series",
+		"failed to get datasource":
+		// Exact-match only: UID-containing variants such as
+		// `failed to get datasource "my-uid"` identify which datasource
+		// failed and must be preserved as wrapper context.
 		return true
 	default:
 		return false

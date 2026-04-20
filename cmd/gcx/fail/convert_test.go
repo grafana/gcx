@@ -176,6 +176,29 @@ func TestErrorToDetailedError_DatasourceNotFound(t *testing.T) {
 	assert.Equal(t, []string{"List available datasources: gcx datasources list"}, got.Suggestions)
 }
 
+func TestErrorToDetailedError_WrappedDatasourceErrorPreservesUID(t *testing.T) {
+	// Wrapper pattern from internal/datasources/query/resolve.go:
+	//     fmt.Errorf("failed to get datasource %q: %w", uid, err)
+	// The UID identifies which datasource failed and must survive the
+	// generic-wrapper filter so users can tell them apart in flows that
+	// query multiple datasources.
+	err := fmt.Errorf("failed to get datasource %q: %w", "my-prom-uid", &datasources.APIError{
+		Operation:  "get datasource",
+		Identifier: "my-prom-uid",
+		StatusCode: 404,
+		Message:    "Datasource not found",
+	})
+
+	got := fail.ErrorToDetailedError(err)
+
+	require.NotNil(t, got)
+	assert.Equal(t, `Datasource "my-prom-uid" not found`, got.Summary)
+	assert.Contains(t, got.Details, `failed to get datasource "my-prom-uid"`,
+		"UID-bearing wrapper prefix must be preserved so users can identify which datasource failed")
+	assert.Contains(t, got.Details, "Datasource not found")
+	assert.Equal(t, []string{"List available datasources: gcx datasources list"}, got.Suggestions)
+}
+
 func TestErrorToDetailedError_WrappedDatasourceErrorPreservesOuterGuidance(t *testing.T) {
 	err := fmt.Errorf(
 		"SM metrics datasource %q not found in Grafana: %w; use --datasource-uid or set default-prometheus-datasource in config",
