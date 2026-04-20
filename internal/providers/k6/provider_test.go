@@ -3,7 +3,6 @@ package k6_test
 import (
 	"bytes"
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/grafana/gcx/internal/providers/k6"
@@ -50,7 +49,7 @@ func TestK6Provider_ValidateSetup(t *testing.T) {
 func TestK6Provider_Setup(t *testing.T) {
 	p := &k6.K6Provider{}
 	err := p.Setup(context.Background(), nil)
-	assert.True(t, errors.Is(err, framework.ErrSetupNotSupported))
+	require.ErrorIs(t, err, framework.ErrSetupNotSupported)
 }
 
 func TestK6Provider_SetupCommand(t *testing.T) {
@@ -71,6 +70,6 @@ func TestK6Provider_SetupCommand(t *testing.T) {
 	setupCmd.SetErr(stderr)
 	err := setupCmd.RunE(setupCmd, nil)
 
-	assert.True(t, errors.Is(err, framework.ErrSetupNotSupported))
+	require.ErrorIs(t, err, framework.ErrSetupNotSupported)
 	assert.NotEmpty(t, stderr.String())
 }

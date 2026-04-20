@@ -10,7 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"slices"
-	"time"
+	"strings"
 
 	"github.com/grafana/gcx/internal/setup/framework/prompt"
 	"github.com/grafana/gcx/internal/terminal"
@@ -27,12 +27,11 @@ type Summary struct {
 
 // Options configures a Run invocation.
 type Options struct {
-	In            io.Reader
-	StdinFile     *os.File  // needed for secret prompts; may be nil (disables Secret kind)
-	Out           io.Writer // informational output
-	Err           io.Writer // error/warning output
-	StatusTimeout time.Duration
-	Providers     []Setupable // if nil, DiscoverSetupable() is used
+	In        io.Reader
+	StdinFile *os.File    // needed for secret prompts; may be nil (disables Secret kind)
+	Out       io.Writer   // informational output
+	Err       io.Writer   // error/warning output
+	Providers []Setupable // if nil, DiscoverSetupable() is used
 	// IsInteractive overrides the default TTY check (terminal.StdinIsTerminal).
 	// Useful for tests that inject a bytes.Buffer as stdin.
 	IsInteractive func() bool
@@ -50,6 +49,8 @@ type Options struct {
 // Returns a non-nil error only for unrecoverable failures (e.g., I/O errors).
 // Per-provider Setup() failures are recorded in Summary.Failed; Run continues.
 // Context cancellation (Ctrl-C) is handled internally and returns (summary, nil).
+//
+//nolint:gocyclo,maintidx
 func Run(ctx context.Context, opts Options) (Summary, error) {
 	var summary Summary
 
@@ -58,7 +59,7 @@ func Run(ctx context.Context, opts Options) (Summary, error) {
 		isInteractive = opts.IsInteractive
 	}
 	if !isInteractive() {
-		return summary, fmt.Errorf("gcx setup run requires an interactive terminal (stdin is not a TTY)")
+		return summary, errors.New("gcx setup run requires an interactive terminal (stdin is not a TTY)")
 	}
 
 	// Wrap ctx with signal handling so Ctrl-C cancels the run cleanly.
@@ -113,7 +114,7 @@ func Run(ctx context.Context, opts Options) (Summary, error) {
 	}
 
 	if len(catOrder) == 0 {
-		fmt.Fprintln(out, "No interactive setup flows available.")
+		fmt.Fprintln(errOut, "No interactive setup flows available.")
 		return summary, nil
 	}
 
@@ -130,7 +131,7 @@ func Run(ctx context.Context, opts Options) (Summary, error) {
 		return summary, fmt.Errorf("category selection: %w", err)
 	}
 	if len(selected) == 0 {
-		fmt.Fprintln(out, "No categories selected. Nothing to do.")
+		fmt.Fprintln(errOut, "No categories selected. Nothing to do.")
 		return summary, nil
 	}
 
@@ -181,12 +182,12 @@ func Run(ctx context.Context, opts Options) (Summary, error) {
 		}
 
 		var collectedParams map[string]string
-		for {
-			if ctx.Err() != nil {
-				break
-			}
-			params, err := collectProviderParams(ctx, p, selectedIDs, in, out, collectedParams, secretFn)
+		for ctx.Err() == nil {
+			params, err := collectProviderParams(ctx, p, selectedIDs, in, out, errOut, collectedParams, secretFn)
 			if err != nil {
+				if ctx.Err() != nil {
+					break
+				}
 				return summary, fmt.Errorf("collecting params for %s: %w", p.ProductName(), err)
 			}
 			collectedParams = params
@@ -263,18 +264,6 @@ func Run(ctx context.Context, opts Options) (Summary, error) {
 		summary.Completed = append(summary.Completed, pp.provider.ProductName())
 	}
 
-	// Post-run status table.
-	timeout := opts.StatusTimeout
-	if timeout <= 0 {
-		timeout = defaultAggregateTimeout
-	}
-	allSD := setupableToStatusDetectable(selectedProviders)
-	statuses := AggregateStatusFrom(ctx, timeout, allSD)
-	fmt.Fprintln(out, "\n=== Post-Run Status ===")
-	for _, s := range statuses {
-		fmt.Fprintf(out, "  %-20s %s\n", s.Product, s.State)
-	}
-
 	printSummary(errOut, &summary)
 	return summary, nil
 }
@@ -287,6 +276,7 @@ func collectProviderParams(
 	selectedIDs map[InfraCategoryID]bool,
 	in *bufio.Reader,
 	out io.Writer,
+	errOut io.Writer,
 	prev map[string]string,
 	secretFn func(string) (string, error),
 ) (map[string]string, error) {
@@ -298,7 +288,7 @@ func collectProviderParams(
 		}
 		for _, param := range cat.Params {
 			if ctx.Err() != nil {
-				return params, nil
+				return params, ctx.Err()
 			}
 
 			def := param.Default
@@ -322,26 +312,38 @@ func collectProviderParams(
 					val = "false"
 				}
 			case ParamKindChoice:
-				val, err = prompt.Choice(in, out, param.Prompt, param.Choices, def)
+				choices := param.Choices
+				if len(choices) == 0 {
+					resolved, rErr := p.ResolveChoices(ctx, param.Name)
+					if rErr != nil {
+						fmt.Fprintf(errOut, "warning: could not resolve choices for %s: %v\n", param.Name, rErr)
+					} else {
+						choices = resolved
+					}
+				}
+				val, err = prompt.Choice(in, out, param.Prompt, choices, def)
 				if err != nil {
 					return nil, err
 				}
 			case ParamKindMultiChoice:
+				choices := param.Choices
+				if len(choices) == 0 {
+					resolved, rErr := p.ResolveChoices(ctx, param.Name)
+					if rErr != nil {
+						fmt.Fprintf(errOut, "warning: could not resolve choices for %s: %v\n", param.Name, rErr)
+					} else {
+						choices = resolved
+					}
+				}
 				var defs []string
 				if def != "" {
 					defs = []string{def}
 				}
-				vals, mErr := prompt.MultiChoice(in, out, param.Prompt, param.Choices, defs)
+				vals, mErr := prompt.MultiChoice(in, out, param.Prompt, choices, defs)
 				if mErr != nil {
 					return nil, mErr
 				}
-				// Encode multi-choice as comma-separated.
-				for i, v := range vals {
-					if i > 0 {
-						val += ","
-					}
-					val += v
-				}
+				val = strings.Join(vals, ",")
 			default: // ParamKindText and Secret
 				if param.Secret && secretFn != nil {
 					val, err = secretFn(param.Prompt)
@@ -360,15 +362,6 @@ func collectProviderParams(
 		}
 	}
 	return params, nil
-}
-
-// setupableToStatusDetectable upcasts a []Setupable to []StatusDetectable.
-func setupableToStatusDetectable(ps []Setupable) []StatusDetectable {
-	out := make([]StatusDetectable, len(ps))
-	for i, p := range ps {
-		out[i] = p
-	}
-	return out
 }
 
 func printSummary(w io.Writer, s *Summary) {

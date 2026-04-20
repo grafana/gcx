@@ -35,13 +35,15 @@ func (f *FakeStatusDetectable) Status(_ context.Context) (*framework.ProductStat
 
 // FakeSetupable is a test double that implements framework.Setupable.
 type FakeSetupable struct {
-	ProductName_     string
-	Status_          *framework.ProductStatus
-	StatusErr        error
-	Latency          time.Duration
-	ShouldPanic      bool
-	Categories_      []framework.InfraCategory
-	ValidateSetupErr error
+	ProductName_ string
+	Status_      *framework.ProductStatus
+	StatusErr    error
+	Latency      time.Duration
+	ShouldPanic  bool
+	Categories_  []framework.InfraCategory
+	// ResolveChoicesResult maps param names to dynamic choices returned by ResolveChoices.
+	ResolveChoicesResult map[string][]string
+	ValidateSetupErr     error
 	// ValidateSetupErrs is consumed one per call; if exhausted, ValidateSetupErr is used.
 	ValidateSetupErrs []error
 	validateCallCount int
@@ -72,7 +74,12 @@ func (f *FakeSetupable) InfraCategories() []framework.InfraCategory {
 	return f.Categories_
 }
 
-func (f *FakeSetupable) ResolveChoices(_ context.Context, _ string) ([]string, error) {
+func (f *FakeSetupable) ResolveChoices(_ context.Context, paramName string) ([]string, error) {
+	if f.ResolveChoicesResult != nil {
+		if result, ok := f.ResolveChoicesResult[paramName]; ok {
+			return result, nil
+		}
+	}
 	return nil, nil
 }
 

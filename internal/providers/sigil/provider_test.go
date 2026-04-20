@@ -3,7 +3,6 @@ package sigil_test
 import (
 	"bytes"
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/grafana/gcx/internal/providers/sigil"
@@ -100,7 +99,7 @@ func TestSigilProvider_ValidateSetup(t *testing.T) {
 func TestSigilProvider_Setup(t *testing.T) {
 	p := &sigil.SigilProvider{}
 	err := p.Setup(context.Background(), nil)
-	assert.True(t, errors.Is(err, framework.ErrSetupNotSupported))
+	require.ErrorIs(t, err, framework.ErrSetupNotSupported)
 }
 
 func TestSigilProvider_SetupCommand(t *testing.T) {
@@ -115,6 +114,6 @@ func TestSigilProvider_SetupCommand(t *testing.T) {
 	setupCmd.SetErr(stderr)
 	err := setupCmd.RunE(setupCmd, nil)
 
-	assert.True(t, errors.Is(err, framework.ErrSetupNotSupported))
+	require.ErrorIs(t, err, framework.ErrSetupNotSupported)
 	assert.NotEmpty(t, stderr.String())
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/setup/framework"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -23,6 +24,7 @@ func newSetupCommand(p *SigilProvider) *cobra.Command {
 		Short:         "Set up sigil (not yet implemented).",
 		SilenceErrors: true,
 		SilenceUsage:  true,
+		Annotations:   map[string]string{agent.AnnotationTokenCost: "small"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
 				return err

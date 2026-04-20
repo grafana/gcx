@@ -3,7 +3,6 @@ package irm_test
 import (
 	"bytes"
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/grafana/gcx/internal/providers/irm"
@@ -50,7 +49,7 @@ func TestIRMProvider_ValidateSetup(t *testing.T) {
 func TestIRMProvider_Setup(t *testing.T) {
 	p := &irm.IRMProvider{}
 	err := p.Setup(context.Background(), nil)
-	assert.True(t, errors.Is(err, framework.ErrSetupNotSupported))
+	require.ErrorIs(t, err, framework.ErrSetupNotSupported)
 }
 
 func TestIRMProvider_SetupCommand(t *testing.T) {
@@ -71,6 +70,6 @@ func TestIRMProvider_SetupCommand(t *testing.T) {
 	setupCmd.SetErr(stderr)
 	err := setupCmd.RunE(setupCmd, nil)
 
-	assert.True(t, errors.Is(err, framework.ErrSetupNotSupported))
+	require.ErrorIs(t, err, framework.ErrSetupNotSupported)
 	assert.NotEmpty(t, stderr.String())
 }

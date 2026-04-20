@@ -1,6 +1,7 @@
 package setup
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/grafana/gcx/cmd/gcx/fail"
@@ -44,6 +45,7 @@ In agent mode or non-interactive environments, use the per-product setup command
 For example:
   gcx slo setup
   gcx synth setup`,
+		Annotations: map[string]string{agent.AnnotationTokenCost: "small"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -74,7 +76,20 @@ For example:
 					ExitCode: &ec,
 				}
 			}
-			_ = summary
+
+			if len(summary.Cancelled) > 0 || cmd.Context().Err() != nil {
+				ec := fail.ExitCancelled
+				return &fail.DetailedError{
+					Summary:  "setup cancelled",
+					ExitCode: &ec,
+				}
+			}
+
+			statuses := framework.AggregateStatus(cmd.Context(), 0)
+			if encErr := (&statusTextCodec{}).Encode(cmd.OutOrStdout(), statuses); encErr != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not render status: %v\n", encErr)
+			}
+
 			return nil
 		},
 	}

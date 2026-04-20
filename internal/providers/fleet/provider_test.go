@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -403,7 +402,7 @@ func TestFleetProvider_ValidateSetup(t *testing.T) {
 func TestFleetProvider_Setup(t *testing.T) {
 	p := &fleet.FleetProvider{}
 	err := p.Setup(context.Background(), nil)
-	assert.True(t, errors.Is(err, framework.ErrSetupNotSupported))
+	require.ErrorIs(t, err, framework.ErrSetupNotSupported)
 }
 
 func TestFleetProvider_SetupCommand(t *testing.T) {
@@ -424,6 +423,6 @@ func TestFleetProvider_SetupCommand(t *testing.T) {
 	setupCmd.SetErr(stderr)
 	err := setupCmd.RunE(setupCmd, nil)
 
-	assert.True(t, errors.Is(err, framework.ErrSetupNotSupported))
+	require.ErrorIs(t, err, framework.ErrSetupNotSupported)
 	assert.NotEmpty(t, stderr.String())
 }

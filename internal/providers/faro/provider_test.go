@@ -3,7 +3,6 @@ package faro_test
 import (
 	"bytes"
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/grafana/gcx/internal/providers/faro"
@@ -50,7 +49,7 @@ func TestFaroProvider_ValidateSetup(t *testing.T) {
 func TestFaroProvider_Setup(t *testing.T) {
 	p := &faro.FaroProvider{}
 	err := p.Setup(context.Background(), nil)
-	assert.True(t, errors.Is(err, framework.ErrSetupNotSupported))
+	require.ErrorIs(t, err, framework.ErrSetupNotSupported)
 }
 
 func TestFaroProvider_SetupCommand(t *testing.T) {
@@ -71,6 +70,6 @@ func TestFaroProvider_SetupCommand(t *testing.T) {
 	setupCmd.SetErr(stderr)
 	err := setupCmd.RunE(setupCmd, nil)
 
-	assert.True(t, errors.Is(err, framework.ErrSetupNotSupported))
+	require.ErrorIs(t, err, framework.ErrSetupNotSupported)
 	assert.NotEmpty(t, stderr.String())
 }

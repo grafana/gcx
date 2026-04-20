@@ -22,6 +22,7 @@ func makeOpts(in string, providers []framework.Setupable) framework.Options {
 	}
 }
 
+//nolint:gochecknoglobals // test-only constant-like data
 var infraCat = framework.InfraCategory{
 	ID:    "infra",
 	Label: "Infrastructure",
@@ -30,6 +31,7 @@ var infraCat = framework.InfraCategory{
 	},
 }
 
+//nolint:gochecknoglobals // test-only constant-like data
 var secretInfraCat = framework.InfraCategory{
 	ID:    "infra",
 	Label: "Infrastructure",
@@ -173,8 +175,8 @@ func TestRun_AlphabeticalOrder(t *testing.T) {
 		mkProvider("alpha"),
 		mkProvider("mu"),
 	}
-	// Input: Enter (select all categories) + 3x "val\n" for 3 param prompts + Enter (confirm)
-	opts := makeOpts("\nval\nval\nval\n\n", providers)
+	// Input: Enter (select all categories) + 3x distinct values for 3 param prompts + Enter (confirm)
+	opts := makeOpts("\nv1\nv2\nv3\n\n", providers)
 	summary, err := framework.Run(context.Background(), opts)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -308,5 +310,36 @@ func TestRun_UserRefusal(t *testing.T) {
 	}
 	if len(summary.Cancelled) == 0 {
 		t.Errorf("expected alpha in Cancelled, got %+v", summary)
+	}
+}
+
+// TestRun_ResolveChoices verifies that ResolveChoices is called when param.Choices is empty.
+func TestRun_ResolveChoices(t *testing.T) {
+	dynamicChoicesCat := framework.InfraCategory{
+		ID:    "infra",
+		Label: "Infrastructure",
+		Params: []framework.SetupParam{
+			{Name: "region", Prompt: "Region", Kind: framework.ParamKindChoice},
+		},
+	}
+	p := &testhelpers.FakeSetupable{
+		ProductName_: "alpha",
+		Status_:      notConfiguredStatus("alpha"),
+		Categories_:  []framework.InfraCategory{dynamicChoicesCat},
+		ResolveChoicesResult: map[string][]string{
+			"region": {"us-east", "eu-west", "ap-south"},
+		},
+	}
+	// Input: Enter (categories) + "1\n" (select first choice) + Enter (confirm)
+	opts := makeOpts("\n1\n\n", []framework.Setupable{p})
+	summary, err := framework.Run(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(summary.Completed) != 1 || summary.Completed[0] != "alpha" {
+		t.Errorf("expected alpha completed, got %+v", summary)
+	}
+	if p.LastParams["region"] != "us-east" {
+		t.Errorf("expected region=us-east, got %v", p.LastParams)
 	}
 }

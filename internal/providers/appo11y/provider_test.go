@@ -3,7 +3,6 @@ package appo11y_test
 import (
 	"bytes"
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/grafana/gcx/internal/providers"
@@ -118,7 +117,7 @@ func TestAppO11yProvider_ValidateSetup(t *testing.T) {
 func TestAppO11yProvider_Setup(t *testing.T) {
 	p := &appo11y.AppO11yProvider{}
 	err := p.Setup(context.Background(), nil)
-	assert.True(t, errors.Is(err, framework.ErrSetupNotSupported))
+	assert.ErrorIs(t, err, framework.ErrSetupNotSupported)
 }
 
 func TestAppO11yProvider_SetupCommand(t *testing.T) {
@@ -139,6 +138,6 @@ func TestAppO11yProvider_SetupCommand(t *testing.T) {
 	setupCmd.SetErr(stderr)
 	err := setupCmd.RunE(setupCmd, nil)
 
-	assert.True(t, errors.Is(err, framework.ErrSetupNotSupported), "expected ErrSetupNotSupported, got %v", err)
+	require.ErrorIs(t, err, framework.ErrSetupNotSupported, "expected ErrSetupNotSupported, got %v", err)
 	assert.NotEmpty(t, stderr.String(), "expected message written to stderr")
 }

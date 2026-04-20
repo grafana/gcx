@@ -72,7 +72,7 @@ func Bool(in io.Reader, out io.Writer, prompt string, def bool) (bool, error) {
 			return def, nil
 		default:
 			if err != nil {
-				return def, nil
+				return def, err
 			}
 			fmt.Fprintln(out, "Please enter y or n.")
 		}
