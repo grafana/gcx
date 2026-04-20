@@ -8,6 +8,8 @@ Set a single value in a configuration file.
 
 PROPERTY_NAME is a dot-delimited reference to the value to set. It can either represent a field or a map entry.
 
+A bare path (e.g. "cloud.token") is resolved against the current context and is equivalent to "contexts.<current-context>.<path>". Use a fully qualified path (starting with "contexts.<name>.") to target a specific context.
+
 PROPERTY_VALUE is the new value to set.
 
 ```
@@ -18,11 +20,14 @@ gcx config set PROPERTY_NAME PROPERTY_VALUE [flags]
 
 ```
 
+	# Set the "server" field on the current context to "https://grafana-dev.example"
+	gcx config set grafana.server https://grafana-dev.example
+
 	# Set the "server" field on the "dev-instance" context to "https://grafana-dev.example"
 	gcx config set contexts.dev-instance.grafana.server https://grafana-dev.example
 
-	# Disable the validation of the server's SSL certificate in the "dev-instance" context
-	gcx config set contexts.dev-instance.grafana.insecure-skip-tls-verify true
+	# Disable the validation of the server's SSL certificate in the current context
+	gcx config set grafana.insecure-skip-tls-verify true
 
 	# Set a value in the local config layer
 	gcx config set --file local contexts.prod.cloud.token my-token

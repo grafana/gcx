@@ -231,6 +231,45 @@ current-context: dev`),
 	viewCmd.Run(t)
 }
 
+func Test_SetCommand_barePathResolvesAgainstCurrentContext(t *testing.T) {
+	cfg := `current-context: dev`
+
+	configFile := testutils.CreateTempFile(t, cfg)
+
+	setCloudToken := testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"set", "--config", configFile, "cloud.token", "glc_abc123"},
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandSuccess(),
+		},
+	}
+	setCloudToken.Run(t)
+
+	viewCmd := testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"view", "--config", configFile, "--minify", "--raw"},
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandSuccess(),
+			testutils.CommandOutputContains(`cloud:
+      token: glc_abc123`),
+		},
+	}
+	viewCmd.Run(t)
+}
+
+func Test_SetCommand_barePathWithoutCurrentContextErrors(t *testing.T) {
+	configFile := testutils.CreateTempFile(t, `contexts: {}`)
+
+	testCase := testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"set", "--config", configFile, "cloud.token", "glc_abc123"},
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandErrorContains("no current context set"),
+		},
+	}
+	testCase.Run(t)
+}
+
 func Test_UnsetCommand(t *testing.T) {
 	cfg := `contexts:
   dev:

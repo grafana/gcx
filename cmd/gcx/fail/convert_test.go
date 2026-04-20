@@ -473,7 +473,7 @@ func TestErrorToDetailedError_CloudTokenNotConfigured(t *testing.T) {
 	require.NotNil(t, got)
 	assert.Equal(t, "Cloud credentials not configured", got.Summary)
 	require.Len(t, got.Suggestions, 2)
-	assert.Contains(t, got.Suggestions[0], "gcx config set contexts.<context>.cloud.token")
+	assert.Contains(t, got.Suggestions[0], "gcx config set cloud.token")
 	assert.Contains(t, got.Suggestions[1], "GRAFANA_CLOUD_TOKEN")
 }
 
@@ -485,7 +485,7 @@ func TestErrorToDetailedError_CloudStackNotConfigured(t *testing.T) {
 	require.NotNil(t, got)
 	assert.Equal(t, "Cloud stack not configured", got.Summary)
 	require.Len(t, got.Suggestions, 2)
-	assert.Contains(t, got.Suggestions[0], "gcx config set contexts.<context>.cloud.stack")
+	assert.Contains(t, got.Suggestions[0], "gcx config set cloud.stack")
 	assert.Contains(t, got.Suggestions[1], "GRAFANA_CLOUD_STACK")
 }
 
