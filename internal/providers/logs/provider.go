@@ -1,13 +1,18 @@
 package logs
 
 import (
+	"context"
+
 	"github.com/grafana/gcx/internal/agent"
 	dsloki "github.com/grafana/gcx/internal/datasources/loki"
 	"github.com/grafana/gcx/internal/providers"
 	adaptivelogs "github.com/grafana/gcx/internal/providers/logs/adaptive"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/setup/framework"
 	"github.com/spf13/cobra"
 )
+
+var _ framework.StatusDetectable = &Provider{}
 
 func init() { //nolint:gochecknoinits // Self-registration pattern (like database/sql drivers).
 	providers.Register(&Provider{})
@@ -117,6 +122,19 @@ func queryCmd(loader *providers.ConfigLoader) *cobra.Command   { return dsloki.Q
 func metricsCmd(loader *providers.ConfigLoader) *cobra.Command { return dsloki.MetricsCmd(loader) }
 
 func (p *Provider) Validate(_ map[string]string) error { return nil }
+
+// ProductName returns the human-readable product name.
+func (p *Provider) ProductName() string { return p.Name() }
+
+// Status returns the current configuration state based on config key presence.
+// This is a v1 stub: it never probes any API. Config is loaded from the active
+// context; a missing or unreadable config is treated as StateNotConfigured.
+func (p *Provider) Status(ctx context.Context) (*framework.ProductStatus, error) {
+	loader := &providers.ConfigLoader{}
+	cfg, _, _ := loader.LoadProviderConfig(ctx, p.Name())
+	s := framework.ConfigKeysStatus(p, cfg)
+	return &s, nil
+}
 
 func (p *Provider) ConfigKeys() []providers.ConfigKey {
 	return []providers.ConfigKey{
