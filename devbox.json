@@ -3,7 +3,7 @@
   "packages": [
     "go@1.26",
     "golangci-lint@2.9",
-    "goreleaser@2.13.3",
+    "goreleaser@2.15.2",
     "python312@3.12.13"
   ],
   "shell": {
