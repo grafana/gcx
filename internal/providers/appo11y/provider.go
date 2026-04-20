@@ -1,10 +1,13 @@
 package appo11y
 
 import (
+	"context"
+
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/appo11y/overrides"
 	"github.com/grafana/gcx/internal/providers/appo11y/settings"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/setup/framework"
 	"github.com/spf13/cobra"
 )
 
@@ -31,6 +34,33 @@ func (p *AppO11yProvider) ConfigKeys() []providers.ConfigKey { return nil }
 // App Observability requires no provider-specific configuration.
 func (p *AppO11yProvider) Validate(_ map[string]string) error { return nil }
 
+// ProductName implements framework.StatusDetectable.
+func (p *AppO11yProvider) ProductName() string { return p.Name() }
+
+// Status implements framework.StatusDetectable using a config-key heuristic.
+func (p *AppO11yProvider) Status(ctx context.Context) (*framework.ProductStatus, error) {
+	var loader providers.ConfigLoader
+	cfg, _, _ := loader.LoadProviderConfig(ctx, p.Name())
+	status := framework.ConfigKeysStatus(p, cfg)
+	return &status, nil
+}
+
+// InfraCategories implements framework.Setupable.
+func (p *AppO11yProvider) InfraCategories() []framework.InfraCategory { return nil }
+
+// ResolveChoices implements framework.Setupable.
+func (p *AppO11yProvider) ResolveChoices(_ context.Context, _ string) ([]string, error) {
+	return nil, nil
+}
+
+// ValidateSetup implements framework.Setupable.
+func (p *AppO11yProvider) ValidateSetup(_ context.Context, _ map[string]string) error { return nil }
+
+// Setup implements framework.Setupable.
+func (p *AppO11yProvider) Setup(_ context.Context, _ map[string]string) error {
+	return framework.ErrSetupNotSupported
+}
+
 // Commands returns the Cobra commands contributed by this provider.
 func (p *AppO11yProvider) Commands() []*cobra.Command {
 	loader := &providers.ConfigLoader{}
@@ -50,6 +80,7 @@ func (p *AppO11yProvider) Commands() []*cobra.Command {
 
 	cmd.AddCommand(overrides.Commands())
 	cmd.AddCommand(settings.Commands())
+	cmd.AddCommand(newSetupCommand(p))
 	return []*cobra.Command{cmd}
 }
 

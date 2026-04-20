@@ -1,0 +1,43 @@
+package kg
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	"github.com/grafana/gcx/internal/setup/framework"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+)
+
+type setupOpts struct{}
+
+func (o *setupOpts) setup(_ *pflag.FlagSet) {}
+
+func (o *setupOpts) Validate() error { return nil }
+
+func newSetupCommand(p *KGProvider) *cobra.Command {
+	opts := &setupOpts{}
+	cmd := &cobra.Command{
+		Use:           "setup",
+		Short:         "Set up kg (not yet implemented).",
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+			ctx := cmd.Context()
+			if ctx == nil {
+				ctx = context.Background()
+			}
+			err := p.Setup(ctx, nil)
+			if errors.Is(err, framework.ErrSetupNotSupported) {
+				fmt.Fprintf(cmd.ErrOrStderr(), "setup not yet implemented for %s\n", p.Name())
+			}
+			return err
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
