@@ -12,12 +12,26 @@ import (
 	"github.com/grafana/gcx/internal/query/influxdb"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
+
+type queryOpts struct {
+	dsquery.SharedOpts
+	Datasource string
+}
+
+func (opts *queryOpts) setup(flags *pflag.FlagSet) {
+	opts.SharedOpts.Setup(flags, false)
+	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.influxdb is configured)")
+}
+
+func (opts *queryOpts) Validate() error {
+	return opts.SharedOpts.Validate()
+}
 
 // QueryCmd returns the `query` subcommand for an InfluxDB datasource parent.
 func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
-	shared := &dsquery.SharedOpts{}
-	var datasource string
+	opts := &queryOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "query [EXPR]",
@@ -39,11 +53,11 @@ Datasource is resolved from -d flag or datasources.influxdb in your context.`,
   gcx datasources influxdb query -d UID 'SELECT * FROM "cpu" LIMIT 10' -o json`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := shared.Validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 
-			expr, err := shared.ResolveExpr(args, 0)
+			expr, err := opts.ResolveExpr(args, 0)
 			if err != nil {
 				return err
 			}
@@ -63,7 +77,7 @@ Datasource is resolved from -d flag or datasources.influxdb in your context.`,
 				return err
 			}
 
-			datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, datasource, cfgCtx, cfg, "influxdb")
+			datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "influxdb")
 			if err != nil {
 				return err
 			}
@@ -82,7 +96,7 @@ Datasource is resolved from -d flag or datasources.influxdb in your context.`,
 			}
 
 			now := time.Now()
-			start, end, _, err := shared.ParseTimes(now)
+			start, end, _, err := opts.ParseTimes(now)
 			if err != nil {
 				return err
 			}
@@ -104,7 +118,7 @@ Datasource is resolved from -d flag or datasources.influxdb in your context.`,
 				return fmt.Errorf("query failed: %w", err)
 			}
 
-			return shared.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}
 
@@ -113,9 +127,8 @@ Datasource is resolved from -d flag or datasources.influxdb in your context.`,
 		agent.AnnotationLLMHint:   `gcx datasources influxdb query -d UID 'SELECT mean("value") FROM "cpu" WHERE time > now() - 1h' -o json`,
 	}
 
-	shared.Setup(cmd.Flags(), false)
+	opts.setup(cmd.Flags())
 	_ = cmd.Flags().MarkHidden("step")
-	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.influxdb is configured)")
 
 	return cmd
 }

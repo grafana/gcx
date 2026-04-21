@@ -98,10 +98,6 @@ func FieldKeysCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to get field keys: %w", err)
 			}
 
-			if opts.IO.OutputFormat == "table" {
-				return influxdb.FormatFieldKeysTable(cmd.OutOrStdout(), resp)
-			}
-
 			return opts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}

@@ -99,10 +99,6 @@ func MeasurementsCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to get measurements: %w", err)
 			}
 
-			if opts.IO.OutputFormat == "table" {
-				return influxdb.FormatMeasurementsTable(cmd.OutOrStdout(), resp)
-			}
-
 			return opts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}
