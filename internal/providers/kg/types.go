@@ -114,16 +114,24 @@ type AssertionSummary struct {
 	AggregateAssertionScores AssertionScores `json:"aggregateAssertionScores"`
 }
 
+// EntitySearchResponse is the result of a free-text entity name search.
+type EntitySearchResponse struct {
+	Results         []SearchResult      `json:"results"`
+	Total           int                 `json:"total"`
+	AvailableScopes map[string][]string `json:"available_scopes,omitempty"`
+}
+
 // SearchResult is a single search result item.
 type SearchResult struct {
-	ID         int               `json:"id,omitempty"`
-	Name       string            `json:"name"`
-	Type       string            `json:"type"`
-	EntityType string            `json:"entityType,omitempty"`
-	Active     bool              `json:"active,omitempty"`
-	Scope      map[string]string `json:"scope,omitempty"`
-	Properties map[string]any    `json:"properties,omitempty"`
-	Assertion  map[string]any    `json:"assertion,omitempty"`
+	ID             int               `json:"id,omitempty"`
+	Name           string            `json:"name"`
+	Type           string            `json:"type"`
+	EntityType     string            `json:"entityType,omitempty"`
+	Active         bool              `json:"active,omitempty"`
+	Scope          map[string]string `json:"scope,omitempty"`
+	Properties     map[string]any    `json:"properties,omitempty"`
+	Assertion      map[string]any    `json:"assertion,omitempty"`
+	AssertionCount int               `json:"assertionCount,omitempty"`
 }
 
 // GraphEntity is the rich entity returned by entity get/lookup endpoints.

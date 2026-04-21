@@ -217,9 +217,9 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg describe traces":         {Cost: "small", Hint: "Tempo label mappings for trace drilldown"},
 	"gcx kg describe profiles":       {Cost: "small", Hint: "Pyroscope label mappings for profile drilldown"},
 	"gcx kg describe all":            {Cost: "medium", Hint: "load all sections at once [--since 1h]"},
+	"gcx kg search entities":         {Cost: "small", Hint: "<query> [--type <type>] [--env <env>]"},
 	"gcx kg search example":          {Cost: "small"},
 	"gcx kg search insights":         {Cost: "medium", Hint: "--type <type> --since 1h"},
-	"gcx kg search sample":           {Cost: "small"},
 	"gcx kg status":                  {Cost: "small"},
 	"gcx kg suppressions create":     {Cost: "small"},
 

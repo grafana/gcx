@@ -224,8 +224,11 @@ func resolveEntityTypeAndName(cmd *cobra.Command, args []string) (string, string
 	}
 	name, _ := cmd.Flags().GetString("name")
 	entityType, _ := cmd.Flags().GetString("type")
-	if entityType == "" || name == "" {
-		return "", "", errors.New("entity type and name required: use positional arg (Type--Name) or --type/--name flags")
+	if name == "" {
+		return "", "", errors.New("entity name required: use positional arg (Type--Name) or --name flag")
+	}
+	if entityType == "" {
+		entityType = "Service"
 	}
 	return entityType, name, nil
 }
@@ -1233,18 +1236,207 @@ func filterBySeverity(results []SearchResult, sev string) []SearchResult {
 // Search commands
 // ---------------------------------------------------------------------------
 
+type searchCmdOpts struct {
+	IO cmdio.Options
+}
+
+func (o *searchCmdOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("table", &SearchTableCodec{})
+	o.IO.DefaultFormat("table")
+	o.IO.BindFlags(flags)
+}
+
+// SearchTableCodec renders an EntitySearchResponse as a table with optional scope hints.
+type SearchTableCodec struct{}
+
+func (c *SearchTableCodec) Format() format.Format { return "table" }
+
+func (c *SearchTableCodec) Encode(w io.Writer, v any) error {
+	resp, ok := v.(EntitySearchResponse)
+	if !ok {
+		return errors.New("invalid data type for table codec: expected EntitySearchResponse")
+	}
+	if len(resp.Results) == 0 {
+		fmt.Fprintln(w, "No entities found.")
+		if len(resp.AvailableScopes) > 0 {
+			fmt.Fprintln(w, "\nAvailable scopes:")
+			dims := make([]string, 0, len(resp.AvailableScopes))
+			for d := range resp.AvailableScopes {
+				dims = append(dims, d)
+			}
+			sort.Strings(dims)
+			for _, dim := range dims {
+				vals := append([]string(nil), resp.AvailableScopes[dim]...)
+				sort.Strings(vals)
+				fmt.Fprintf(w, "  %-12s %s\n", dim+":", strings.Join(vals, ", "))
+			}
+		}
+		return nil
+	}
+	t := style.NewTable("TYPE", "NAME", "SCOPE", "INSIGHTS")
+	for _, r := range resp.Results {
+		typ := r.Type
+		if typ == "" {
+			typ = r.EntityType
+		}
+		insights := ""
+		if r.AssertionCount > 0 {
+			insights = strconv.Itoa(r.AssertionCount)
+		}
+		t.Row(typ, r.Name, scopeStr(r.Scope), insights)
+	}
+	return t.Render(w)
+}
+
+func (c *SearchTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// nameMatchRank returns a sort key: 0=exact, 1=prefix, 2=contains.
+func nameMatchRank(name, query string) int {
+	l, q := strings.ToLower(name), strings.ToLower(query)
+	if l == q {
+		return 0
+	}
+	if strings.HasPrefix(l, q) {
+		return 1
+	}
+	return 2
+}
+
 func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "search",
 		Short: "Search Knowledge Graph entities or insights.",
 	}
 
-	// search insights
+	// search entities subcommand
+	var (
+		searchEntityType string
+		searchLimit      int
+		searchScope      scopeFlags
+	)
+	opts := &searchCmdOpts{}
+	entitiesCmd := &cobra.Command{
+		Use:   "entities <query>",
+		Short: "Search Knowledge Graph entities by name.",
+		Long: `Search Knowledge Graph entities whose names contain the query string.
+
+Results are ranked by match quality: exact name matches first, then prefix
+matches, then substring matches. Use --type to restrict to one entity type.
+Scope flags (--env, --namespace, --site) are optional; omit them to search
+across all scopes.
+
+When no results are found, available scope values are printed as recovery hints.`,
+		Example: `  # Search across all entity types
+  gcx kg search entities api-server
+
+  # Narrow to a specific type
+  gcx kg search entities api-server --type Service
+
+  # Filter to a specific environment
+  gcx kg search entities api-server --env prod
+
+  # JSON output for scripting
+  gcx kg search entities api-server --output json`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+			query := args[0]
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			if err := searchScope.validateScopes(cmd.Context(), client); err != nil {
+				return err
+			}
+			startMs, endMs, err := searchScope.resolveTime()
+			if err != nil {
+				return err
+			}
+			entityTypes, err := resolveEntityTypes(cmd, client, searchEntityType)
+			if err != nil {
+				return err
+			}
+			sc := searchScope.scopeCriteria()
+			var allResults []SearchResult
+			for _, et := range entityTypes {
+				req := SampleSearchRequest{
+					TimeCriteria: &TimeCriteria{Start: startMs, End: endMs},
+					ScopeCriteria: sc,
+					FilterCriteria: []EntityMatcher{{
+						EntityType:       et,
+						PropertyMatchers: []PropertyMatcher{{Name: "name", Op: "CONTAINS", Value: query}},
+					}},
+					SampleSize: searchLimit,
+				}
+				results, err := client.SearchSample(cmd.Context(), req)
+				if err != nil {
+					var apiErr *APIError
+					if errors.As(err, &apiErr) && apiErr.IsServerError() {
+						fmt.Fprintf(cmd.ErrOrStderr(), "warning: skipping entity type %q — server error: %v\n", et, apiErr)
+						continue
+					}
+					return fmt.Errorf("search entity type %s: %w", et, err)
+				}
+				allResults = append(allResults, results...)
+			}
+			sort.SliceStable(allResults, func(i, j int) bool {
+				ri, rj := nameMatchRank(allResults[i].Name, query), nameMatchRank(allResults[j].Name, query)
+				if ri != rj {
+					return ri < rj
+				}
+				if allResults[i].Type != allResults[j].Type {
+					return allResults[i].Type < allResults[j].Type
+				}
+				return allResults[i].Name < allResults[j].Name
+			})
+			for i := range allResults {
+				allResults[i].Properties = nil
+			}
+			resp := EntitySearchResponse{Results: allResults, Total: len(allResults)}
+			if len(allResults) == 0 {
+				if scopes, err := client.ListEntityScopes(cmd.Context()); err == nil {
+					resp.AvailableScopes = scopes
+				}
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+		},
+	}
+	entitiesCmd.Flags().StringVar(&searchEntityType, "type", "", "Entity type (default: all types)")
+	entitiesCmd.Flags().IntVar(&searchLimit, "limit", 20, "Maximum results per entity type")
+	searchScope.register(entitiesCmd)
+	opts.setup(entitiesCmd.Flags())
+
+	// search insights subcommand
 	var searchAssertionsFile string
 	var searchAssertionsScope scopeFlags
 	searchAssertionsCmd := &cobra.Command{
 		Use:   "insights",
 		Short: "Search for insights matching a query.",
+		Example: `  # Search all Service insights
+  gcx kg search insights --type Service
+
+  # Search insights for a named entity
+  gcx kg search insights --type Service --name api-server --env prod
+
+  # Supply a full request as a YAML file
+  gcx kg search insights --file request.yaml
+
+  # Example request.yaml:
+  #
+  #   filterCriteria:
+  #     - entityType: Service
+  #       havingAssertion: true
+  #   timeCriteria:
+  #     start: 1700000000
+  #     end:   1700003600`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
@@ -1307,64 +1499,43 @@ func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 	searchAssertionsCmd.Flags().String("name", "", "Entity name filter")
 	searchAssertionsScope.register(searchAssertionsCmd)
 
-	// search sample
-	var (
-		searchSampleType  string
-		searchSampleScope scopeFlags
-	)
-	searchSampleCmd := &cobra.Command{
-		Use:   "sample",
-		Short: "Return a sample of entities by type.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			if err := searchSampleScope.validateScopes(cmd.Context(), client); err != nil {
-				return err
-			}
-			startMs, endMs, err := searchSampleScope.resolveTime()
-			if err != nil {
-				return err
-			}
-			req := SampleSearchRequest{
-				TimeCriteria: &TimeCriteria{Start: startMs, End: endMs},
-				FilterCriteria: []EntityMatcher{{
-					EntityType:       searchSampleType,
-					PropertyMatchers: []PropertyMatcher{{Name: "name", Op: "IS NOT NULL", Type: "String"}},
-				}},
-				SampleSize: 300,
-			}
-			results, err := client.SearchSample(cmd.Context(), req)
-			if err != nil {
-				return err
-			}
-			return (&cmdio.Options{OutputFormat: "json"}).Encode(cmd.OutOrStdout(), results)
-		},
-	}
-	searchSampleCmd.Flags().StringVar(&searchSampleType, "type", "", "Entity type")
-	_ = searchSampleCmd.MarkFlagRequired("type")
-	searchSampleScope.register(searchSampleCmd)
-
-	searchExampleCmd := &cobra.Command{
-		Use:   "example",
-		Short: "Print an example search request YAML.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return printYAMLExample(cmd.OutOrStdout(), exampleSearchRequest())
-		},
-	}
-
-	cmd.AddCommand(searchAssertionsCmd, searchSampleCmd, searchExampleCmd)
+	cmd.AddCommand(entitiesCmd, searchAssertionsCmd)
 	return cmd
 }
 
 // ---------------------------------------------------------------------------
 // Inspect command
 // ---------------------------------------------------------------------------
+
+// inspectScopeHint searches for an entity by exact name across all scopes and
+// returns formatted retry suggestions when GetEntityInfo returns 404. This helps
+// agents and users recover when the scope is incomplete or wrong.
+func inspectScopeHint(ctx context.Context, client *Client, entityType, name string, startMs, endMs int64) string {
+	req := SampleSearchRequest{
+		TimeCriteria: &TimeCriteria{Start: startMs, End: endMs},
+		FilterCriteria: []EntityMatcher{{
+			EntityType:       entityType,
+			PropertyMatchers: []PropertyMatcher{{Name: "name", Op: "EQUALS", Value: name}},
+		}},
+		SampleSize: 10,
+	}
+	results, err := client.SearchSample(ctx, req)
+	if err != nil || len(results) == 0 {
+		return ""
+	}
+	var lines []string
+	lines = append(lines, fmt.Sprintf("Found %d matching %s entr%s in other scopes — retry with:", len(results), entityType, map[bool]string{true: "y", false: "ies"}[len(results) == 1]))
+	for _, r := range results {
+		parts := []string{fmt.Sprintf("  gcx kg inspect %s--%s", r.Type, r.Name)}
+		for _, dim := range []string{"env", "namespace", "site"} {
+			if v := r.Scope[dim]; v != "" {
+				parts = append(parts, fmt.Sprintf("--%s %s", dim, v))
+			}
+		}
+		lines = append(lines, strings.Join(parts, " "))
+	}
+	return strings.Join(lines, "\n")
+}
 
 func newInspectCommand(loader RESTConfigLoader) *cobra.Command {
 	var inspectScope scopeFlags
@@ -1385,6 +1556,15 @@ func newInspectCommand(loader RESTConfigLoader) *cobra.Command {
 				return err
 			}
 			if err := inspectScope.validateScopes(cmd.Context(), client); err != nil {
+				name, _ := cmd.Flags().GetString("name")
+				if name == "" && len(args) > 0 {
+					if _, n, parseErr := parseEntityArg(args); parseErr == nil {
+						name = n
+					}
+				}
+				if name != "" {
+					return fmt.Errorf("%w\nRun 'gcx kg search entities %s' to see which environments and namespaces this entity exists in.", err, name)
+				}
 				return err
 			}
 			startMs, endMs, err := inspectScope.resolveTime()
@@ -1408,6 +1588,12 @@ func newInspectCommand(loader RESTConfigLoader) *cobra.Command {
 
 			entityInfo, err := client.GetEntityInfo(cmd.Context(), entityType, name, scope, startMs, endMs)
 			if err != nil {
+				var apiErr *APIError
+				if errors.As(err, &apiErr) && apiErr.StatusCode == 404 {
+					if hint := inspectScopeHint(cmd.Context(), client, entityType, name, startMs, endMs); hint != "" {
+						return fmt.Errorf("%w\n\n%s", err, hint)
+					}
+				}
 				return err
 			}
 
@@ -2073,22 +2259,6 @@ func exampleAssertionsRequest() AssertionsRequest {
 		IncludeConnectedAssertions: true,
 		AlertCategories:            []string{"Saturation", "Anomaly"},
 		Severities:                 []string{"critical", "warning"},
-	}
-}
-
-func exampleSearchRequest() SearchRequest {
-	return SearchRequest{
-		FilterCriteria: []EntityMatcher{
-			{
-				EntityType:      "Service",
-				HavingAssertion: true,
-			},
-		},
-		TimeCriteria: &TimeCriteria{
-			Start: 1700000000,
-			End:   1700003600,
-		},
-		PageNum: 0,
 	}
 }
 
