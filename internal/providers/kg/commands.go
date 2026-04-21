@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"net/http"
 	"os"
 	"slices"
 	"sort"
@@ -224,8 +225,11 @@ func resolveEntityTypeAndName(cmd *cobra.Command, args []string) (string, string
 	}
 	name, _ := cmd.Flags().GetString("name")
 	entityType, _ := cmd.Flags().GetString("type")
-	if entityType == "" || name == "" {
-		return "", "", errors.New("entity type and name required: use positional arg (Type--Name) or --type/--name flags")
+	if name == "" {
+		return "", "", errors.New("entity name required: use positional arg (Type--Name) or --name flag")
+	}
+	if entityType == "" {
+		entityType = "Service"
 	}
 	return entityType, name, nil
 }
@@ -1263,18 +1267,36 @@ func filterBySeverity(results []SearchResult, sev string) []SearchResult {
 // Search commands
 // ---------------------------------------------------------------------------
 
+
 func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "search",
 		Short: "Search Knowledge Graph entities or insights.",
 	}
 
-	// search insights
+	// search insights subcommand
 	var searchAssertionsFile string
 	var searchAssertionsScope scopeFlags
 	searchAssertionsCmd := &cobra.Command{
 		Use:   "insights",
 		Short: "Search for insights matching a query.",
+		Example: `  # Search all Service insights
+  gcx kg search insights --type Service
+
+  # Search insights for a named entity
+  gcx kg search insights --type Service --name api-server --env prod
+
+  # Supply a full request as a YAML file
+  gcx kg search insights --file request.yaml
+
+  # Example request.yaml:
+  #
+  #   filterCriteria:
+  #     - entityType: Service
+  #       havingAssertion: true
+  #   timeCriteria:
+  #     start: 1700000000
+  #     end:   1700003600`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
@@ -1345,6 +1367,36 @@ func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 // Inspect command
 // ---------------------------------------------------------------------------
 
+// inspectScopeHint searches for an entity by exact name across all scopes and
+// returns formatted retry suggestions when GetEntityInfo returns 404. This helps
+// agents and users recover when the scope is incomplete or wrong.
+func inspectScopeHint(ctx context.Context, client *Client, entityType, name string, startMs, endMs int64) string {
+	req := SampleSearchRequest{
+		TimeCriteria: &TimeCriteria{Start: startMs, End: endMs},
+		FilterCriteria: []EntityMatcher{{
+			EntityType:       entityType,
+			PropertyMatchers: []PropertyMatcher{{Name: "name", Op: "EQUALS", Value: name}},
+		}},
+		SampleSize: 10,
+	}
+	results, err := client.SearchSample(ctx, req)
+	if err != nil || len(results) == 0 {
+		return ""
+	}
+	var lines []string
+	lines = append(lines, fmt.Sprintf("Found %d matching %s entr%s in other scopes — retry with:", len(results), entityType, map[bool]string{true: "y", false: "ies"}[len(results) == 1]))
+	for _, r := range results {
+		parts := []string{fmt.Sprintf("  gcx kg inspect %s--%s", r.Type, r.Name)}
+		for _, dim := range []string{"env", "namespace", "site"} {
+			if v := r.Scope[dim]; v != "" {
+				parts = append(parts, fmt.Sprintf("--%s %s", dim, v))
+			}
+		}
+		lines = append(lines, strings.Join(parts, " "))
+	}
+	return strings.Join(lines, "\n")
+}
+
 func newInspectCommand(loader RESTConfigLoader) *cobra.Command {
 	var inspectScope scopeFlags
 	ioOpts := &inspectOpts{}
@@ -1364,6 +1416,15 @@ func newInspectCommand(loader RESTConfigLoader) *cobra.Command {
 				return err
 			}
 			if err := inspectScope.validateScopes(cmd.Context(), client); err != nil {
+				name, _ := cmd.Flags().GetString("name")
+				if name == "" && len(args) > 0 {
+					if _, n, parseErr := parseEntityArg(args); parseErr == nil {
+						name = n
+					}
+				}
+				if name != "" {
+					return fmt.Errorf("%w\nRun 'gcx kg search entities %s' to see which environments and namespaces this entity exists in", err, name)
+				}
 				return err
 			}
 			startMs, endMs, err := inspectScope.resolveTime()
@@ -1385,30 +1446,31 @@ func newInspectCommand(loader RESTConfigLoader) *cobra.Command {
 				}
 			}
 
-			entityInfo, err := client.GetEntityInfo(cmd.Context(), entityType, name, scope, startMs, endMs)
+			llmReq := LLMSummaryRequest{
+				StartTime: startMs,
+				EndTime:   endMs,
+				EntityKeys: []EntityKey{{
+					Type:  entityType,
+					Name:  name,
+					Scope: toAnyMap(scope),
+				}},
+				SuggestionSrcEntities:                        []EntityKey{},
+				GroupAssertions:                              true,
+				AlertCategories:                              []string{"saturation", "amend", "anomaly", "failure", "error"},
+				HideAssertionsOlderThanNHours:                48,
+				HideAssertionsPresentMoreThanPercentageOfTime: 90,
+				IncludeSuggestions:                           true,
+				IncludeRcaPatterns:                           true,
+			}
+			result, err := client.LLMSummary(cmd.Context(), llmReq)
 			if err != nil {
+				var apiErr *APIError
+				if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+					if hint := inspectScopeHint(cmd.Context(), client, entityType, name, startMs, endMs); hint != "" {
+						return fmt.Errorf("%w\n\n%s", err, hint)
+					}
+				}
 				return err
-			}
-
-			scopeAny := toAnyMap(scope)
-			req := AssertionsRequest{
-				StartTime:  startMs,
-				EndTime:    endMs,
-				EntityKeys: []EntityKey{{Type: entityType, Name: name, Scope: scopeAny}},
-			}
-			assertions, err := client.QueryAssertions(cmd.Context(), req)
-			if err != nil {
-				return err
-			}
-			summary, err := client.AssertionsSummary(cmd.Context(), req)
-			if err != nil {
-				return err
-			}
-
-			result := map[string]any{
-				"entity":   entityInfo,
-				"insights": assertions,
-				"summary":  summary,
 			}
 			return ioOpts.IO.Encode(cmd.OutOrStdout(), result)
 		},
@@ -1509,6 +1571,173 @@ type healthOpts struct {
 func (o *healthOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
+}
+
+// ---------------------------------------------------------------------------
+// Traverse command
+// ---------------------------------------------------------------------------
+
+// stripInternalProperties removes FalkorDB-internal keys (prefixed with "_")
+// from a properties map so agents do not see implementation-detail fields.
+func stripInternalProperties(props map[string]any) {
+	for k := range props {
+		if strings.HasPrefix(k, "_") {
+			delete(props, k)
+		}
+	}
+}
+
+// anyScopeStr formats a map[string]any scope the same way scopeStr does.
+func anyScopeStr(scope map[string]any) string {
+	if len(scope) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(scope))
+	for k, v := range scope {
+		parts = append(parts, fmt.Sprintf("%s=%v", k, v))
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, ", ")
+}
+
+type traverseOpts struct {
+	IO cmdio.Options
+}
+
+func (o *traverseOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("table", &TraverseTableCodec{})
+	o.IO.DefaultFormat("table")
+	o.IO.BindFlags(flags)
+}
+
+// TraverseTableCodec renders a CypherSearchResponse as two tables: entities and connections.
+type TraverseTableCodec struct{}
+
+func (c *TraverseTableCodec) Format() format.Format { return "table" }
+
+func (c *TraverseTableCodec) Encode(w io.Writer, v any) error {
+	resp, ok := v.(CypherSearchResponse)
+	if !ok {
+		return errors.New("invalid data type for table codec: expected CypherSearchResponse")
+	}
+	if len(resp.Entities) == 0 && len(resp.Edges) == 0 {
+		fmt.Fprintln(w, "No results found.")
+		return nil
+	}
+	if len(resp.Entities) > 0 {
+		fmt.Fprintf(w, "ENTITIES (%d):\n", len(resp.Entities))
+		t := style.NewTable("TYPE", "NAME", "SCOPE", "INSIGHTS")
+		for _, e := range resp.Entities {
+			insights := ""
+			if n := len(e.Insights); n > 0 {
+				insights = strconv.Itoa(n)
+			}
+			t.Row(e.Type, e.Name, anyScopeStr(e.Scope), insights)
+		}
+		if err := t.Render(w); err != nil {
+			return err
+		}
+	}
+	if len(resp.Edges) > 0 {
+		fmt.Fprintf(w, "\nCONNECTIONS (%d):\n", len(resp.Edges))
+		t := style.NewTable("SOURCE", "RELATION", "DESTINATION")
+		for _, e := range resp.Edges {
+			src := e.SourceType + "/" + e.SourceName
+			dst := e.DestinationType + "/" + e.DestinationName
+			t.Row(src, e.Type, dst)
+		}
+		if err := t.Render(w); err != nil {
+			return err
+		}
+	}
+	if !resp.LastPage {
+		fmt.Fprintf(w, "\n(page %d — use --page %d for more)\n", resp.PageNum, resp.PageNum+1)
+	}
+	return nil
+}
+
+func (c *TraverseTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+const maxTraverseEntities = 50
+
+func newTraverseCommand(loader RESTConfigLoader) *cobra.Command {
+	var (
+		traverseScope scopeFlags
+		withInsights  bool
+		page          int
+	)
+	ioOpts := &traverseOpts{}
+	cmd := &cobra.Command{
+		Use:   "traverse <cypher-query>",
+		Short: "Execute a Cypher query against the Knowledge Graph.",
+		Long: `Execute a Cypher query and return matching entities and relationships.
+
+The Knowledge Graph uses FalkorDB Cypher syntax. Entity nodes are typed
+(e.g. Service, Pod, Deployment) and edges represent relationships between them.
+
+Use --with-insights to include active SAAFE insight counts on each entity.
+Use --page to paginate large result sets (results are capped at 50 entities per page).`,
+		Example: `  # Find all services routed to by api-server
+  gcx kg traverse "MATCH (s:Service {name:'api-server'})-[:ROUTES]->(d:Service) RETURN s, d" --env prod
+
+  # Find any downstream dependencies (any relationship type)
+  gcx kg traverse "MATCH (s:Service {name:'api-server'})-[r]->(d:Service) RETURN s, r, d" --env prod
+
+  # Include insight details on returned entities
+  gcx kg traverse "MATCH (s:Service {name:'api-server'})-[r]->(d:Service) RETURN s, r, d" --with-insights`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := ioOpts.IO.Validate(); err != nil {
+				return err
+			}
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			if err := traverseScope.validateScopes(cmd.Context(), client); err != nil {
+				return err
+			}
+			startMs, endMs, err := traverseScope.resolveTime()
+			if err != nil {
+				return err
+			}
+			req := CypherSearchRequest{
+				CypherQuery:   args[0],
+				TimeCriteria:  &TimeCriteria{Start: startMs, End: endMs},
+				ScopeCriteria: traverseScope.scopeCriteria(),
+				PageNum:       page,
+				WithInsights:  withInsights,
+			}
+			resp, err := client.CypherSearch(cmd.Context(), req)
+			if err != nil {
+				return err
+			}
+			for i := range resp.Entities {
+				stripInternalProperties(resp.Entities[i].Properties)
+			}
+			if len(resp.Entities) > maxTraverseEntities {
+				fmt.Fprintf(cmd.ErrOrStderr(), "note: %d entities returned — truncated to %d; use --page for more\n", len(resp.Entities), maxTraverseEntities)
+				for i := range resp.Entities {
+					resp.Entities[i].Properties = nil
+					resp.Entities[i].Insights = nil
+					resp.Entities[i].ConnectedInsights = nil
+				}
+				resp.Entities = resp.Entities[:maxTraverseEntities]
+			}
+			return ioOpts.IO.Encode(cmd.OutOrStdout(), resp)
+		},
+	}
+	traverseScope.register(cmd)
+	cmd.Flags().BoolVar(&withInsights, "with-insights", false, "Include active SAAFE insights on each entity")
+	cmd.Flags().IntVar(&page, "page", 0, "Page number (0-based)")
+	ioOpts.setup(cmd.Flags())
+	return cmd
 }
 
 // ---------------------------------------------------------------------------

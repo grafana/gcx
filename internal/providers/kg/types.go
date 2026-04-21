@@ -114,16 +114,62 @@ type AssertionSummary struct {
 	AggregateAssertionScores AssertionScores `json:"aggregateAssertionScores"`
 }
 
+// CypherSearchRequest is the request body for POST /v1/search/cypher.
+type CypherSearchRequest struct {
+	CypherQuery   string         `json:"cypherQuery"`
+	TimeCriteria  *TimeCriteria  `json:"timeCriteria,omitempty"`
+	ScopeCriteria *ScopeCriteria `json:"scopeCriteria,omitempty"`
+	PageNum       int            `json:"pageNum,omitempty"`
+	WithInsights  bool           `json:"withInsights,omitempty"`
+}
+
+// CypherInsight is a SAAFE insight attached to an entity in a Cypher response.
+type CypherInsight struct {
+	Name     string `json:"name"`
+	Severity string `json:"severity"`
+	Category string `json:"category"`
+}
+
+// CypherEntity is an entity node returned by the Cypher search endpoint.
+type CypherEntity struct {
+	Type              string          `json:"type"`
+	Name              string          `json:"name"`
+	Scope             map[string]any  `json:"scope,omitempty"`
+	Properties        map[string]any  `json:"properties,omitempty"`
+	Insights          []CypherInsight `json:"insights,omitempty"`
+	ConnectedInsights []CypherInsight `json:"connectedInsights,omitempty"`
+}
+
+// CypherEdge is a relationship between two entities in a Cypher response.
+type CypherEdge struct {
+	Type             string         `json:"type"`
+	SourceName       string         `json:"sourceName"`
+	SourceType       string         `json:"sourceType"`
+	SourceScope      map[string]any `json:"sourceScope,omitempty"`
+	DestinationName  string         `json:"destinationName"`
+	DestinationType  string         `json:"destinationType"`
+	DestinationScope map[string]any `json:"destinationScope,omitempty"`
+}
+
+// CypherSearchResponse is the response from POST /v1/search/cypher.
+type CypherSearchResponse struct {
+	Entities []CypherEntity `json:"entities"`
+	Edges    []CypherEdge   `json:"edges"`
+	PageNum  int            `json:"pageNum"`
+	LastPage bool           `json:"lastPage"`
+}
+
 // SearchResult is a single search result item.
 type SearchResult struct {
-	ID         int               `json:"id,omitempty"`
-	Name       string            `json:"name"`
-	Type       string            `json:"type"`
-	EntityType string            `json:"entityType,omitempty"`
-	Active     bool              `json:"active,omitempty"`
-	Scope      map[string]string `json:"scope,omitempty"`
-	Properties map[string]any    `json:"properties,omitempty"`
-	Assertion  map[string]any    `json:"assertion,omitempty"`
+	ID             int               `json:"id,omitempty"`
+	Name           string            `json:"name"`
+	Type           string            `json:"type"`
+	EntityType     string            `json:"entityType,omitempty"`
+	Active         bool              `json:"active,omitempty"`
+	Scope          map[string]string `json:"scope,omitempty"`
+	Properties     map[string]any    `json:"properties,omitempty"`
+	Assertion      map[string]any    `json:"assertion,omitempty"`
+	AssertionCount int               `json:"assertionCount,omitempty"`
 }
 
 // GraphEntity is the rich entity returned by entity get/lookup endpoints.
@@ -367,6 +413,20 @@ type EntityTypeSchema struct {
 type KGSchemaResult struct {
 	EntityTypes   []EntityTypeSchema `json:"entityTypes"`
 	Relationships []string           `json:"relationships"`
+}
+
+// LLMSummaryRequest is the request body for POST /v1/assertions/llm-summary.
+type LLMSummaryRequest struct {
+	StartTime                                    int64       `json:"startTime"`
+	EndTime                                      int64       `json:"endTime"`
+	EntityKeys                                   []EntityKey `json:"entityKeys"`
+	SuggestionSrcEntities                        []EntityKey `json:"suggestionSrcEntities"`
+	GroupAssertions                              bool        `json:"groupAssertions"`
+	AlertCategories                              []string    `json:"alertCategories,omitempty"`
+	HideAssertionsOlderThanNHours               int         `json:"hideAssertionsOlderThanNHours"`
+	HideAssertionsPresentMoreThanPercentageOfTime int        `json:"hideAssertionsPresentMoreThanPercentageOfTime"`
+	IncludeSuggestions                          bool        `json:"includeSuggestions"`
+	IncludeRcaPatterns                          bool        `json:"includeRcaPatterns"`
 }
 
 // KGMetadataOutput is the structured output from gcx kg metadata.

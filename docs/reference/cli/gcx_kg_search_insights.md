@@ -6,6 +6,28 @@ Search for insights matching a query.
 gcx kg search insights [flags]
 ```
 
+### Examples
+
+```
+  # Search all Service insights
+  gcx kg search insights --type Service
+
+  # Search insights for a named entity
+  gcx kg search insights --type Service --name api-server --env prod
+
+  # Supply a full request as a YAML file
+  gcx kg search insights --file request.yaml
+
+  # Example request.yaml:
+  #
+  #   filterCriteria:
+  #     - entityType: Service
+  #       havingAssertion: true
+  #   timeCriteria:
+  #     start: 1700000000
+  #     end:   1700003600
+```
+
 ### Options
 
 ```

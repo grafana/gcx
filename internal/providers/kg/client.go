@@ -25,6 +25,7 @@ const (
 	scopesPath       = pluginResourcePath + "/asserts/api-server/v1/entity_scope"
 	assertionsPath   = pluginResourcePath + "/asserts/api-server/v1/assertions"
 	searchPath       = pluginResourcePath + "/asserts/api-server/v1/search"
+	cypherPath       = searchPath + "/cypher"
 	rulesPath        = pluginResourcePath + "/asserts/api-server/v1/config/prom-rules/"
 	entityLookupPath = pluginResourcePath + "/asserts/api-server/v1/entity"
 	v2ConfigPath     = pluginResourcePath + "/asserts/api-server/v2/config"
@@ -394,6 +395,15 @@ func (c *Client) SearchAssertions(ctx context.Context, req SearchRequest) ([]Ass
 	return result, nil
 }
 
+// CypherSearch executes a Cypher query against the Knowledge Graph.
+func (c *Client) CypherSearch(ctx context.Context, req CypherSearchRequest) (CypherSearchResponse, error) {
+	var resp CypherSearchResponse
+	if err := c.postJSON(ctx, cypherPath, req, &resp); err != nil {
+		return CypherSearchResponse{}, fmt.Errorf("kg: cypher search: %w", err)
+	}
+	return resp, nil
+}
+
 // SearchSample returns a sample of search results.
 func (c *Client) SearchSample(ctx context.Context, req SampleSearchRequest) ([]SearchResult, error) {
 	var wrapper struct {
@@ -454,6 +464,15 @@ func (c *Client) FetchProfileConfigs(ctx context.Context) (ProfileConfigsRespons
 		return ProfileConfigsResponse{}, fmt.Errorf("kg: fetch profile configs: %w", err)
 	}
 	return resp, nil
+}
+
+// LLMSummary fetches entity health data from the LLM summary endpoint.
+func (c *Client) LLMSummary(ctx context.Context, req LLMSummaryRequest) (map[string]any, error) {
+	var result map[string]any
+	if err := c.postJSON(ctx, assertionsPath+"/llm-summary", req, &result); err != nil {
+		return nil, fmt.Errorf("kg: llm summary: %w", err)
+	}
+	return result, nil
 }
 
 // ---------------------------------------------------------------------------
