@@ -11,6 +11,7 @@ import (
 	"strconv"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/queryerror"
 	"k8s.io/client-go/rest"
 )
 
@@ -113,7 +114,7 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("query failed with status %d: %s", resp.StatusCode, string(respBody))
+		return nil, queryerror.FromBody("loki", "query", resp.StatusCode, respBody)
 	}
 
 	var grafanaResp GrafanaQueryResponse
@@ -123,7 +124,11 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 
 	if result, ok := grafanaResp.Results["A"]; ok {
 		if result.Error != "" {
-			return nil, fmt.Errorf("query error: %s", result.Error)
+			status := result.Status
+			if status == 0 {
+				status = http.StatusBadRequest
+			}
+			return nil, queryerror.New("loki", "query", status, result.Error, result.ErrorSource)
 		}
 	}
 
@@ -208,7 +213,7 @@ func (c *Client) MetricQuery(ctx context.Context, datasourceUID string, req Quer
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("query failed with status %d: %s", resp.StatusCode, string(respBody))
+		return nil, queryerror.FromBody("loki", "metric query", resp.StatusCode, respBody)
 	}
 
 	var grafanaResp GrafanaQueryResponse
@@ -218,7 +223,11 @@ func (c *Client) MetricQuery(ctx context.Context, datasourceUID string, req Quer
 
 	if result, ok := grafanaResp.Results["A"]; ok {
 		if result.Error != "" {
-			return nil, fmt.Errorf("query error: %s", result.Error)
+			status := result.Status
+			if status == 0 {
+				status = http.StatusBadRequest
+			}
+			return nil, queryerror.New("loki", "metric query", status, result.Error, result.ErrorSource)
 		}
 	}
 
@@ -245,7 +254,7 @@ func (c *Client) Labels(ctx context.Context, datasourceUID string) (*LabelsRespo
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("labels query failed with status %d: %s", resp.StatusCode, string(respBody))
+		return nil, queryerror.FromBody("loki", "labels query", resp.StatusCode, respBody)
 	}
 
 	var result LabelsResponse
@@ -276,7 +285,7 @@ func (c *Client) LabelValues(ctx context.Context, datasourceUID, labelName strin
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("label values query failed with status %d: %s", resp.StatusCode, string(respBody))
+		return nil, queryerror.FromBody("loki", "label values query", resp.StatusCode, respBody)
 	}
 
 	var result LabelsResponse
@@ -315,7 +324,7 @@ func (c *Client) Series(ctx context.Context, datasourceUID string, matchers []st
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("series query failed with status %d: %s", resp.StatusCode, string(respBody))
+		return nil, queryerror.FromBody("loki", "series query", resp.StatusCode, respBody)
 	}
 
 	var result SeriesResponse

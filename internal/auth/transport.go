@@ -22,6 +22,23 @@ const refreshThreshold = 5 * time.Minute
 // TokenRefresher is called after a successful refresh to persist the new tokens.
 type TokenRefresher func(token, refreshToken, expiresAt, refreshExpiresAt string) error
 
+// TokenLocker acquires a cross-process lock around the refresh/persist cycle
+// and returns a release function. Returning a nil release and an error causes
+// the refresh to proceed without a lock (best-effort).
+type TokenLocker func(ctx context.Context) (release func(), err error)
+
+// StoredTokens describes tokens currently on disk.
+type StoredTokens struct {
+	Token            string
+	RefreshToken     string
+	ExpiresAt        time.Time
+	RefreshExpiresAt time.Time
+}
+
+// TokenReloader reads the latest tokens from disk. Returns false if no
+// persisted tokens are available.
+type TokenReloader func() (StoredTokens, bool, error)
+
 // RefreshTransport wraps an http.RoundTripper and transparently refreshes
 // the gat_ access token when it is close to expiry.
 type RefreshTransport struct {
@@ -32,6 +49,15 @@ type RefreshTransport struct {
 	ExpiresAt        time.Time
 	RefreshExpiresAt time.Time
 	OnRefresh        TokenRefresher
+
+	// Lock, if set, is called before a refresh to serialize concurrent gcx
+	// invocations that share a config file. Without it, two processes race to
+	// refresh the same rotating refresh token and one gets locked out.
+	Lock TokenLocker
+	// Reload, if set, is called inside the lock before issuing the network
+	// refresh. If another process has already refreshed, its tokens are
+	// adopted and the network refresh is skipped.
+	Reload TokenReloader
 
 	mu         sync.Mutex
 	cond       *sync.Cond
@@ -70,6 +96,30 @@ func (t *RefreshTransport) initCond() {
 	}
 }
 
+// adoptFreshStoredTokens reloads tokens from disk and, if they're both fresh
+// and different from what we hold in memory, adopts them and returns true.
+// Returns false when no reloader is configured, the disk state is missing or
+// stale, or the stored refresh token matches ours (nothing to adopt).
+func (t *RefreshTransport) adoptFreshStoredTokens() bool {
+	if t.Reload == nil {
+		return false
+	}
+	stored, ok, _ := t.Reload()
+	if !ok || stored.RefreshToken == "" || time.Until(stored.ExpiresAt) <= refreshThreshold {
+		return false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if stored.RefreshToken == t.RefreshToken {
+		return false
+	}
+	t.Token = stored.Token
+	t.RefreshToken = stored.RefreshToken
+	t.ExpiresAt = stored.ExpiresAt
+	t.RefreshExpiresAt = stored.RefreshExpiresAt
+	return true
+}
+
 func (t *RefreshTransport) maybeRefresh(req *http.Request) error {
 	t.mu.Lock()
 	t.initCond()
@@ -94,36 +144,59 @@ func (t *RefreshTransport) maybeRefresh(req *http.Request) error {
 	}
 
 	t.refreshing = true
+	t.mu.Unlock()
+
+	defer func() {
+		t.mu.Lock()
+		t.refreshing = false
+		t.cond.Broadcast()
+		t.mu.Unlock()
+	}()
+
+	// Serialize with other gcx processes sharing this config file, so the
+	// rotating refresh token is never consumed by two callers at once.
+	if t.Lock != nil {
+		if release, err := t.Lock(req.Context()); err == nil && release != nil {
+			defer release()
+		}
+	}
+
+	// If another process already refreshed while we waited for the lock,
+	// adopt its tokens and skip the network call. Presenting our now-stale
+	// refresh token would earn a 401 and a real lockout.
+	if t.adoptFreshStoredTokens() {
+		return nil
+	}
+
+	t.mu.Lock()
 	refreshToken := t.RefreshToken
 	t.mu.Unlock()
 
-	// Network call happens outside the lock.
-	result, err := t.doRefresh(req.Context(), refreshToken)
+	// Detach from the caller's context: if the refresh is already in flight,
+	// the server may have consumed and rotated the refresh token. Aborting
+	// now would leave us with a stale token on disk and a locked-out user.
+	// A bounded timeout still protects against a hung proxy.
+	refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(req.Context()), 30*time.Second)
+	defer cancel()
 
-	t.mu.Lock()
-	t.refreshing = false
-	// wake up any other waiting goroutines waiting on cond.Wait()
-	t.cond.Broadcast()
-
+	// Network call happens outside the in-process mutex.
+	result, err := t.doRefresh(refreshCtx, refreshToken)
 	if err != nil {
-		t.mu.Unlock()
 		return err
 	}
 
+	// A successful refresh response must never be dropped: the server has
+	// already consumed the old refresh token and rotated it, so discarding
+	// the response would leave the client with an invalid refresh token.
+	t.mu.Lock()
 	t.Token = result.Data.Token
 	if result.Data.RefreshToken != "" {
 		t.RefreshToken = result.Data.RefreshToken
 	}
-	parsed, parseErr := time.Parse(time.RFC3339, result.Data.ExpiresAt)
-	if parseErr != nil {
-		t.mu.Unlock()
-		return fmt.Errorf("server returned unparseable expires_at %q: %w", result.Data.ExpiresAt, parseErr)
-	}
-	t.ExpiresAt = parsed
-	if result.Data.RefreshExpiresAt != "" {
-		if rp, err := time.Parse(time.RFC3339, result.Data.RefreshExpiresAt); err == nil {
-			t.RefreshExpiresAt = rp
-		}
+	// Unparseable expiry falls back to zero time so the next request re-refreshes.
+	t.ExpiresAt, _ = time.Parse(time.RFC3339, result.Data.ExpiresAt)
+	if rp, err := time.Parse(time.RFC3339, result.Data.RefreshExpiresAt); err == nil {
+		t.RefreshExpiresAt = rp
 	}
 	storedRefresh := t.RefreshToken
 	onRefresh := t.OnRefresh
@@ -192,9 +265,6 @@ func (t *RefreshTransport) doRefresh(ctx context.Context, refreshToken string) (
 	return &result, nil
 }
 
-// DoRefresh calls the proxy refresh endpoint and returns new token credentials.
-// This is used by the assistant command's token refresher, which needs to refresh
-// tokens outside of an HTTP round-trip context.
 // RefreshResult holds the token credentials returned by a successful refresh.
 type RefreshResult struct {
 	Token            string

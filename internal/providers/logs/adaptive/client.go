@@ -511,6 +511,18 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("API request failed (HTTP %d)", e.StatusCode)
 }
 
+func (e *APIError) HTTPStatusCode() int {
+	return e.StatusCode
+}
+
+func (e *APIError) APIServiceName() string {
+	return "Adaptive Logs"
+}
+
+func (e *APIError) APIUserMessage() string {
+	return e.Message
+}
+
 // handleErrorResponse reads an error response body and returns an *APIError.
 func handleErrorResponse(resp *http.Response) error {
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyReadBytes))

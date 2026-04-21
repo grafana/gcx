@@ -1,6 +1,7 @@
 package auth_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -249,6 +250,67 @@ func TestRefreshTransport_CallsOnRefreshCallback(t *testing.T) {
 	}
 }
 
+func TestRefreshTransport_PersistsTokensWhenExpiresAtUnparseable(t *testing.T) {
+	refreshServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/cli/v1/auth/refresh" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"token":              "gat_new",
+					"expires_at":         "",
+					"refresh_token":      "gar_new",
+					"refresh_expires_at": "",
+				},
+			})
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer refreshServer.Close()
+
+	var saved struct {
+		token, refresh string
+		called         bool
+	}
+	transport := &auth.RefreshTransport{
+		Base:          http.DefaultTransport,
+		ProxyEndpoint: refreshServer.URL,
+		Token:         "gat_old",
+		RefreshToken:  "gar_old",
+		ExpiresAt:     time.Now().Add(1 * time.Minute),
+		OnRefresh: func(token, refreshToken, expiresAt, refreshExpiresAt string) error {
+			saved.called = true
+			saved.token = token
+			saved.refresh = refreshToken
+			return nil
+		},
+	}
+
+	client := &http.Client{Transport: transport}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, refreshServer.URL+"/test", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	resp, err := client.Do(req)
+	if resp != nil {
+		resp.Body.Close()
+	}
+	if err != nil {
+		t.Fatalf("expected request to succeed despite unparseable expires_at, got: %v", err)
+	}
+	if !saved.called {
+		t.Fatal("expected OnRefresh to be called even with unparseable expires_at")
+	}
+	if saved.token != "gat_new" {
+		t.Fatalf("expected saved token %q, got %q", "gat_new", saved.token)
+	}
+	if saved.refresh != "gar_new" {
+		t.Fatalf("expected saved refresh token %q, got %q", "gar_new", saved.refresh)
+	}
+	if transport.Token != "gat_new" {
+		t.Fatalf("expected in-memory token %q, got %q", "gat_new", transport.Token)
+	}
+}
+
 func TestRefreshTransport_ReturnsErrRefreshTokenExpired_On401(t *testing.T) {
 	refreshServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/cli/v1/auth/refresh" {
@@ -282,6 +344,75 @@ func TestRefreshTransport_ReturnsErrRefreshTokenExpired_On401(t *testing.T) {
 	}
 	if !errors.Is(err, auth.ErrRefreshTokenExpired) {
 		t.Fatalf("expected ErrRefreshTokenExpired, got: %v", err)
+	}
+}
+
+// TestRefreshTransport_NetworkRefreshSurvivesRequestCancellation guards the
+// same invariant as the parse-failure fix: a successful refresh response must
+// never be dropped, because the server has already rotated the refresh token.
+// If the caller's context is cancelled while the refresh is in flight, the
+// refresh must still complete — otherwise we lose the newly rotated tokens and
+// the next invocation is locked out with a 401.
+func TestRefreshTransport_NetworkRefreshSurvivesRequestCancellation(t *testing.T) {
+	refreshReceived := make(chan struct{})
+	serverCanRespond := make(chan struct{})
+
+	refreshServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/cli/v1/auth/refresh" {
+			close(refreshReceived)
+			<-serverCanRespond
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"token":              "gat_new",
+					"expires_at":         time.Now().Add(1 * time.Hour).Format(time.RFC3339),
+					"refresh_token":      "gar_new",
+					"refresh_expires_at": time.Now().Add(24 * time.Hour).Format(time.RFC3339),
+				},
+			})
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer refreshServer.Close()
+
+	transport := &auth.RefreshTransport{
+		Base:          http.DefaultTransport,
+		ProxyEndpoint: refreshServer.URL,
+		Token:         "gat_old",
+		RefreshToken:  "gar_old",
+		ExpiresAt:     time.Now().Add(1 * time.Minute),
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	// Cancel the caller's context the moment the refresh request arrives at
+	// the server — simulating a user Ctrl+C (or parent timeout) while the
+	// server is about to rotate the token.
+	go func() {
+		<-refreshReceived
+		cancel()
+		// Give the cancellation a moment to propagate, then let the server
+		// finish rotating and writing the response.
+		time.Sleep(50 * time.Millisecond)
+		close(serverCanRespond)
+	}()
+
+	client := &http.Client{Transport: transport}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, refreshServer.URL+"/test", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	resp, _ := client.Do(req)
+	if resp != nil {
+		resp.Body.Close()
+	}
+
+	// The outer request will fail because ctx is cancelled, but the refresh
+	// must have completed and the rotated tokens must have been adopted.
+	if transport.Token != "gat_new" {
+		t.Fatalf("expected refresh to survive ctx cancellation (token=%q); server rotated the refresh token but client never learned it", transport.Token)
+	}
+	if transport.RefreshToken != "gar_new" {
+		t.Fatalf("expected refresh token to be rotated to %q, got %q", "gar_new", transport.RefreshToken)
 	}
 }
 

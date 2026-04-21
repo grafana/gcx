@@ -1,12 +1,15 @@
 package config_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
@@ -198,4 +201,228 @@ contexts:
 	require.NoError(t, err)
 	assert.NotContains(t, string(localRaw), "gat_explicit_new")
 	assert.NotContains(t, string(localRaw), "gar_explicit_new")
+}
+
+// refresher returns the OnRefresh callback wired by WireTokenPersistence, so
+// tests can invoke persistence directly without a full HTTP round-trip.
+func refresher(t *testing.T, rc config.NamespacedRESTConfig) func(token, refreshToken, expiresAt, refreshExpiresAt string) error {
+	t.Helper()
+	fn := rc.OnRefreshForTest()
+	require.NotNil(t, fn, "expected WireTokenPersistence to install an OnRefresh callback")
+	return fn
+}
+
+// Bug 1 — WireTokenPersistence must complete its Load/Write even after the
+// command context that built the REST config is cancelled. Otherwise a
+// rotated refresh token is issued by the server but never written to disk,
+// leaving the user locked out on the next invocation.
+func TestWireTokenPersistence_WritesAfterContextCancelled(t *testing.T) {
+	dir := t.TempDir()
+	explicitFile := filepath.Join(dir, "explicit.yaml")
+	writeTestConfigFile(t, explicitFile, `
+contexts:
+  default:
+    grafana:
+      server: https://example.invalid
+      proxy-endpoint: https://example.invalid
+      oauth-token: gat_old
+      oauth-refresh-token: gar_old
+      oauth-token-expires-at: "2020-01-01T00:00:00Z"
+      oauth-refresh-expires-at: "2099-01-01T00:00:00Z"
+      stack-id: 1
+current-context: default
+`)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	restCfg := config.NewNamespacedRESTConfig(ctx, config.Context{
+		Grafana: &config.GrafanaConfig{
+			Server:                "https://example.invalid",
+			ProxyEndpoint:         "https://example.invalid",
+			OAuthToken:            "gat_old",
+			OAuthRefreshToken:     "gar_old",
+			OAuthTokenExpiresAt:   "2020-01-01T00:00:00Z",
+			OAuthRefreshExpiresAt: "2099-01-01T00:00:00Z",
+			StackID:               1,
+		},
+	})
+	restCfg.WireTokenPersistence(
+		ctx,
+		config.ExplicitConfigFile(explicitFile),
+		"default",
+		[]config.ConfigSource{{Path: explicitFile, Type: "explicit"}},
+	)
+	cancel()
+
+	err := refresher(t, restCfg)(
+		"gat_rotated",
+		"gar_rotated",
+		"2099-01-01T00:00:00Z",
+		"2099-02-01T00:00:00Z",
+	)
+	require.NoError(t, err, "OnRefresh must not fail when the request ctx is cancelled")
+
+	raw, err := os.ReadFile(explicitFile)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), "gat_rotated")
+	assert.Contains(t, string(raw), "gar_rotated")
+}
+
+// Bug 2 — Two concurrent gcx invocations must not both consume the same
+// refresh token. The first to acquire the lock refreshes; the second should
+// observe the freshly-written tokens on disk and adopt them without calling
+// the refresh endpoint a second time.
+func TestWireTokenPersistence_ConcurrentRefreshesSerializeViaFileLock(t *testing.T) {
+	var refreshCalls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/cli/v1/auth/refresh" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		n := refreshCalls.Add(1)
+		if n > 1 {
+			// Proxy-style rotation: second caller presents a now-consumed refresh token.
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"statusCode":401,"message":"invalid or expired refresh token"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{
+				"token":              "gat_new",
+				"expires_at":         "2099-01-01T00:00:00Z",
+				"refresh_token":      "gar_new",
+				"refresh_expires_at": "2099-02-01T00:00:00Z",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	file := filepath.Join(dir, "config.yaml")
+	writeTestConfigFile(t, file, `
+contexts:
+  default:
+    grafana:
+      server: "`+srv.URL+`"
+      proxy-endpoint: "`+srv.URL+`"
+      oauth-token: gat_old
+      oauth-refresh-token: gar_old
+      oauth-token-expires-at: "2020-01-01T00:00:00Z"
+      oauth-refresh-expires-at: "2099-01-01T00:00:00Z"
+      stack-id: 1
+current-context: default
+`)
+
+	newTransport := func() *http.Client {
+		cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(file))
+		require.NoError(t, err)
+		rc := config.NewNamespacedRESTConfig(t.Context(), *cfg.Contexts["default"])
+		rc.WireTokenPersistence(
+			t.Context(),
+			config.ExplicitConfigFile(file),
+			"default",
+			[]config.ConfigSource{{Path: file, Type: "explicit"}},
+		)
+		return &http.Client{Transport: rc.WrapTransport(http.DefaultTransport)}
+	}
+
+	var wg sync.WaitGroup
+	var errs [2]error
+	for i := range errs {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			c := newTransport()
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/test", nil)
+			if err != nil {
+				errs[i] = err
+				return
+			}
+			resp, err := c.Do(req)
+			if resp != nil {
+				_ = resp.Body.Close()
+			}
+			errs[i] = err
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		require.NoError(t, err, "process %d should not fail", i)
+	}
+	raw, err := os.ReadFile(file)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), "gat_new")
+	assert.Contains(t, string(raw), "gar_new")
+}
+
+// Bug 5 — Tokens persisted in one "invocation" must be re-loadable and usable
+// for the next. Simulates two sequential gcx invocations sharing a config file.
+func TestWireTokenPersistence_RoundTripAcrossInvocations(t *testing.T) {
+	var refreshCalls atomic.Int32
+	var presentedRefresh atomic.Value // string
+	presentedRefresh.Store("")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/cli/v1/auth/refresh" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		refreshCalls.Add(1)
+		var body struct {
+			RefreshToken string `json:"refresh_token"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		presentedRefresh.Store(body.RefreshToken)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{
+				"token":              "gat_rotated",
+				"expires_at":         "2020-01-01T00:00:00Z", // still stale so a second invocation re-refreshes
+				"refresh_token":      "gar_rotated",
+				"refresh_expires_at": "2099-02-01T00:00:00Z",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	file := filepath.Join(dir, "config.yaml")
+	writeTestConfigFile(t, file, `
+contexts:
+  default:
+    grafana:
+      server: "`+srv.URL+`"
+      proxy-endpoint: "`+srv.URL+`"
+      oauth-token: gat_old
+      oauth-refresh-token: gar_old
+      oauth-token-expires-at: "2020-01-01T00:00:00Z"
+      oauth-refresh-expires-at: "2099-01-01T00:00:00Z"
+      stack-id: 1
+current-context: default
+`)
+
+	runInvocation := func() {
+		cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(file))
+		require.NoError(t, err)
+		rc := config.NewNamespacedRESTConfig(t.Context(), *cfg.Contexts["default"])
+		rc.WireTokenPersistence(
+			t.Context(),
+			config.ExplicitConfigFile(file),
+			"default",
+			[]config.ConfigSource{{Path: file, Type: "explicit"}},
+		)
+		c := &http.Client{Transport: rc.WrapTransport(http.DefaultTransport)}
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/test", nil)
+		require.NoError(t, err)
+		resp, err := c.Do(req)
+		require.NoError(t, err)
+		_ = resp.Body.Close()
+	}
+
+	runInvocation() // refresh with gar_old
+	assert.Equal(t, "gar_old", presentedRefresh.Load())
+
+	runInvocation() // second invocation must present the rotated gar_rotated
+	assert.Equal(t, "gar_rotated", presentedRefresh.Load(), "second invocation must load the rotated refresh token from disk")
 }

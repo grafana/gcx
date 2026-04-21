@@ -26,30 +26,131 @@ We built GCX to close that gap.
 > [!NOTE]
 > **gcx requires Grafana 12 or above.** Older Grafana versions are not supported.
 
-## The Agentic Workflow
+## Quick Start
 
-Here's what it looks like when your coding agent has access to production:
+### 1. Install
 
-**1. An alert fires** — P95 latency on the checkout service crosses the SLO threshold.
-
-**2. The Assistant investigates** — Your coding agent calls the Grafana Assistant through gcx. The Assistant has already started its investigation — it traces the issue to a missing index on `customer_id` causing full table scans under load.
-
-**3. It fixes the issue** — Drafts the migration, adds the index.
-
-**4. It prevents recurrence** — Instruments the service with OpenTelemetry spans, sets up a Synthetic Monitoring check on the checkout flow, and creates an alert rule on query duration.
-
-**5. It ships** — Opens a PR, tests pass, deploys to production. The alert resolves.
-
-Investigation, fix, instrumentation, monitoring — without the developer ever leaving their editor. The Grafana Assistant provides the intelligence; gcx provides the interface. And because it all builds on everything you've already configured in Grafana Cloud — your dashboards, your alerts, your datasources — no other tool can give you this depth out of the box.
+**Quick install (Linux/macOS):**
 
 ```sh
-$ gcx assistant investigations list
-ID    TITLE                                     STATUS     UPDATED
-abc1  Checkout P95 latency breach               active     2m ago
-def2  Memory leak in payment-svc                resolved   1h ago
+curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | sh
 ```
 
-## See It in Action
+Downloads the latest release, verifies the SHA-256 checksum, and installs to
+`~/.local/bin`. Override the location with `INSTALL_DIR`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | INSTALL_DIR=/usr/local/bin sh
+```
+
+**Homebrew (macOS):**
+
+*COMING SOON*
+
+```bash
+brew install --cask grafana/grafana/gcx
+```
+
+**Pre-built binary (Linux/macOS/Windows):**
+
+Download the latest archive for your OS and architecture from the
+[releases page](https://github.com/grafana/gcx/releases/latest),
+extract it, and move the binary to your PATH:
+
+```bash
+tar xzf gcx_*.tar.gz
+chmod +x gcx && sudo mv gcx /usr/local/bin/
+```
+
+> [!NOTE]
+> **macOS Gatekeeper**: gcx release binaries are not yet Apple-notarized, so
+> macOS may block the binary with *"Apple could not verify…"* or *"killed: 9"*.
+> The `curl | sh` installer above handles this automatically. For manual
+> downloads, remove the quarantine attribute and ad-hoc sign the binary:
+>
+> ```sh
+> xattr -d com.apple.quarantine /usr/local/bin/gcx 2>/dev/null || true
+> codesign --sign - --force /usr/local/bin/gcx   # needed on Apple Silicon
+> ```
+
+**Go install:**
+
+```bash
+go install github.com/grafana/gcx/cmd/gcx@latest
+```
+
+**Shell completion:**
+
+```bash
+gcx completion zsh > "${fpath[1]}/_gcx"   # zsh
+gcx completion bash > /etc/bash_completion.d/gcx  # bash
+gcx completion fish > ~/.config/fish/completions/gcx.fish  # fish
+```
+
+**Verify:** `gcx --version`
+
+
+### 2. Authenticate
+
+**Browser-based OAuth login (Experimental, Simple):**
+
+```bash
+gcx auth login --server https://byoc-grafana.com
+```
+
+This opens a browser and bootstraps the selected context without preconfiguring
+`grafana.server`. On success, gcx saves the server URL, OAuth access token,
+refresh token, and proxy endpoint to that context.
+
+If you want to save the login to a specific context:
+
+```bash
+gcx auth login --context my-grafana --server https://byoc-grafana.com
+```
+
+> [!NOTE]
+> Some plugin endpoints might not work reliably with this approach.
+
+**Grafana API access (service account token, recommended):**
+
+```bash
+gcx config set contexts.my-grafana.grafana.server https://your-instance.grafana.net
+gcx config set contexts.my-grafana.grafana.token your-service-account-token
+gcx config use-context my-grafana
+```
+
+Use a [Grafana service account token](https://grafana.com/docs/grafana/latest/administration/service-accounts/) with **Editor** or **Admin** role.
+
+**Grafana Cloud product APIs (SLO, Synth, IRM, etc.):**
+
+Grafana Cloud product commands require a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/):
+
+```bash
+gcx config set contexts.my-grafana.cloud.token your-cloud-access-policy-token
+
+# Optional: set this only if gcx cannot derive the stack slug from grafana.server.
+gcx config set contexts.my-grafana.cloud.stack your-stack-slug
+```
+
+You do not need to set `cloud.api-url` for `grafana.com`; gcx defaults to `https://grafana.com`. Set `cloud.api-url` only when you need a non-default Grafana Cloud API endpoint.
+
+**Environment variables (recommended for CI/CD and agents):**
+
+```bash
+export GRAFANA_SERVER="https://your-instance.grafana.net"
+export GRAFANA_TOKEN="your-service-account-token"
+export GRAFANA_CLOUD_TOKEN="your-cloud-access-policy-token"
+
+# Optional: only needed if gcx cannot derive the stack slug from GRAFANA_SERVER.
+export GRAFANA_CLOUD_STACK="your-stack-slug"
+```
+
+> [!NOTE]
+> For automation, CI/CD, and other non-interactive usage, the token-based setup above remains the recommended approach.
+
+**Verify:** `gcx config check`
+
+### 3. See It in Action
 
 **Query production from your terminal:**
 
@@ -89,141 +190,7 @@ $ gcx metrics query 'topk(6, sum by (container) (rate(container_cpu_usage_second
 
 ![Terminal graph output](./graph_example.png)
 
-## Install
-
-**Quick install (Linux/macOS):**
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | sh
-```
-
-Downloads the latest release, verifies the SHA-256 checksum, and installs to
-`~/.local/bin`. Override the location with `INSTALL_DIR`:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | INSTALL_DIR=/usr/local/bin sh
-```
-
-**Homebrew (macOS):**
-
-*COMING SOON*
-
-```bash
-brew install --cask grafana/grafana/gcx
-```
-
-**Pre-built binary (Linux/macOS/Windows):**
-
-Download the latest archive for your OS and architecture from the
-[releases page](https://github.com/grafana/gcx/releases/latest),
-extract it, and move the binary to your PATH:
-
-```bash
-tar xzf gcx_*.tar.gz
-chmod +x gcx && sudo mv gcx /usr/local/bin/
-```
-
-**Go install:**
-
-```bash
-go install github.com/grafana/gcx/cmd/gcx@latest
-```
-
-**Shell completion:**
-
-```bash
-gcx completion zsh > "${fpath[1]}/_gcx"   # zsh
-gcx completion bash > /etc/bash_completion.d/gcx  # bash
-gcx completion fish > ~/.config/fish/completions/gcx.fish  # fish
-```
-
-**Verify:** `gcx --version`
-
-### Agent Skills
-
-gcx ships a portable Agent Skills bundle for setup, dashboard GitOps,
-datasource exploration, alert investigation, structured debugging, SLO
-management, Synthetic Monitoring workflows, project scaffolding, resource
-generation and import, and end-to-end observability rollout.
-
-**Claude Code**
-
-Use the dedicated [Claude Code plugin](claude-plugin/README.md):
-
-```text
-/plugin marketplace add grafana/gcx
-/plugin install gcx@gcx-marketplace
-```
-
-**Other `.agents`-compatible harnesses**
-
-For example: OpenAI Codex, OpenCode, and Pi. Install the same portable bundle
-into `~/.agents/skills` with:
-
-```bash
-gcx skills install
-```
-
-## Quick Start
-
-### 1. Authenticate
-
-**Grafana API access (service account token, recommended):**
-
-```bash
-gcx config set contexts.my-grafana.grafana.server https://your-instance.grafana.net
-gcx config set contexts.my-grafana.grafana.token your-service-account-token
-gcx config use-context my-grafana
-```
-
-Use a [Grafana service account token](https://grafana.com/docs/grafana/latest/administration/service-accounts/) with **Editor** or **Admin** role.
-
-**Grafana Cloud product APIs (SLO, Synth, IRM, etc.):**
-
-Grafana Cloud product commands require a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/):
-
-```bash
-gcx config set contexts.my-grafana.cloud.token your-cloud-access-policy-token
-
-# Optional: set this only if gcx cannot derive the stack slug from grafana.server.
-gcx config set contexts.my-grafana.cloud.stack your-stack-slug
-```
-
-You do not need to set `cloud.api-url` for `grafana.com`; gcx defaults to `https://grafana.com`. Set `cloud.api-url` only when you need a non-default Grafana Cloud API endpoint.
-
-**Environment variables (recommended for CI/CD and agents):**
-
-```bash
-export GRAFANA_SERVER="https://your-instance.grafana.net"
-export GRAFANA_TOKEN="your-service-account-token"
-export GRAFANA_CLOUD_TOKEN="your-cloud-access-policy-token"
-
-# Optional: only needed if gcx cannot derive the stack slug from GRAFANA_SERVER.
-export GRAFANA_CLOUD_STACK="your-stack-slug"
-```
-
-**Browser-based OAuth login (experimental):**
-
-```bash
-gcx auth login --server https://byoc-grafana.com
-```
-
-This opens a browser and bootstraps the selected context without preconfiguring
-`grafana.server`. On success, gcx saves the server URL, OAuth access token,
-refresh token, and proxy endpoint to that context.
-
-If you want to save the login to a specific context:
-
-```bash
-gcx auth login --context my-grafana --server https://byoc-grafana.com
-```
-
-> [!NOTE]
-> For automation, CI/CD, and other non-interactive usage, the token-based setup above remains the recommended approach.
-
-**Verify:** `gcx config check`
-
-### 2. Explore
+**Explore more**
 
 ```bash
 # Grafana resources
@@ -233,14 +200,71 @@ gcx resources get folders                       # list all folders
 gcx alert rules list                            # list alert rules
 
 # Grafana Cloud products
-gcx slo definitions list                        # list all SLO definitions
 gcx synth checks list                           # list synthetic monitoring checks
-gcx irm oncall schedules list                    # list on-call schedules
+gcx irm oncall schedules list                   # list on-call schedules
 gcx k6 load-tests list                          # list k6 load tests
 
-# Query datasources
-gcx metrics query 'rate(http_requests_total[5m])' --since 1h
+# Query more datasources
 gcx logs query '{app="nginx"} |= "error"' --since 1h
+gcx traces query '{.cluster="dev-us-central-0"}' --since 1h
+```
+
+### 4. Install Agent Skills
+
+gcx ships a portable Agent Skills bundle for setup, dashboard GitOps,
+datasource exploration, alert investigation, structured debugging, SLO
+management, Synthetic Monitoring workflows, project scaffolding, resource
+generation and import, and end-to-end observability rollout.
+
+**For Claude Code**
+
+Use the dedicated [Claude Code plugin](claude-plugin/README.md):
+
+```text
+/plugin marketplace add grafana/gcx
+/plugin install gcx@gcx-marketplace
+```
+
+**For other `.agents`-compatible harnesses**
+
+For example: OpenAI Codex, OpenCode, and Pi. View the skills shipped in the bundle with:
+
+```sh
+gcx skills list
+18 skill(s) bundled with gcx
+
+SKILL                      INSTALLED    DESCRIPTION
+explore-datasources        yes          Discover what datasources, metrics, labels, and log streams are available in a Grafana instance.
+gcx-observability          yes          (Experimental) End-to-end observability setup for Grafana Cloud.
+....
+```
+
+Install the bundle into `~/.agents/skills` with:
+```sh
+gcx skills install --all
+```
+
+## The Agentic Workflow
+
+Here's what it looks like when your coding agent has access to production:
+
+**1. An alert fires** — P95 latency on the checkout service crosses the SLO threshold.
+
+**2. The Assistant investigates** — Your coding agent calls the Grafana Assistant through gcx. The Assistant has already started its investigation — it traces the issue to a missing index on `customer_id` causing full table scans under load.
+
+**3. It fixes the issue** — Drafts the migration, adds the index.
+
+**4. It prevents recurrence** — Instruments the service with OpenTelemetry spans, sets up a Synthetic Monitoring check on the checkout flow, and creates an alert rule on query duration.
+
+**5. It ships** — Opens a PR, tests pass, deploys to production. The alert resolves.
+
+Investigation, fix, instrumentation, monitoring — without the developer ever leaving their editor. The Grafana Assistant provides the intelligence; gcx provides the interface. And because it all builds on everything you've already configured in Grafana Cloud — your dashboards, your alerts, your datasources — no other tool can give you this depth out of the box.
+
+```sh
+$ gcx assistant investigations list
+ID    TITLE                                     STATUS     UPDATED
+abc1  Checkout P95 latency breach               active     2m ago
+def2  Memory leak in payment-svc                resolved   1h ago
 ```
 
 ## Maturity
