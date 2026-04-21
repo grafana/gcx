@@ -20,6 +20,7 @@ type setupProvider struct {
 	stubProvider
 
 	categories []framework.InfraCategory
+	setupErr   error // returned by Setup(); nil means success
 }
 
 func (p *setupProvider) ProductName() string { return p.name }
@@ -31,7 +32,7 @@ func (p *setupProvider) ResolveChoices(_ context.Context, _ string) ([]string, e
 	return nil, nil
 }
 func (p *setupProvider) ValidateSetup(_ context.Context, _ map[string]string) error { return nil }
-func (p *setupProvider) Setup(_ context.Context, _ map[string]string) error         { return nil }
+func (p *setupProvider) Setup(_ context.Context, _ map[string]string) error         { return p.setupErr }
 
 func TestRunCommand_AgentModeRefusal(t *testing.T) {
 	agent.SetFlag(true)
@@ -163,5 +164,52 @@ func TestRunCommand_CancelledSummary(t *testing.T) {
 	}
 	if detailedErr.ExitCode == nil || *detailedErr.ExitCode != fail.ExitCancelled {
 		t.Errorf("expected exit code %d, got %v", fail.ExitCancelled, detailedErr.ExitCode)
+	}
+}
+
+func TestRunCommand_FailedExitCode(t *testing.T) {
+	agent.SetFlag(false)
+	t.Cleanup(agent.ResetForTesting)
+
+	setup.SetIsInteractiveForTest(func() bool { return true })
+	t.Cleanup(func() { setup.SetIsInteractiveForTest(nil) })
+
+	ps := []providers.Provider{
+		&setupProvider{
+			stubProvider: stubProvider{name: "svc"},
+			setupErr:     errors.New("boom"),
+			categories: []framework.InfraCategory{
+				{
+					ID:    "infra",
+					Label: "Infrastructure",
+					Params: []framework.SetupParam{
+						{Name: "endpoint", Prompt: "Endpoint", Kind: framework.ParamKindText, Required: true},
+					},
+				},
+			},
+		},
+	}
+	testhelpers.SetupTestRegistry(t, ps)
+
+	cmd := setup.NewRunCommand(nil)
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	// Enter (select all categories) + param value + "y" (confirm preview → triggers Setup())
+	cmd.SetIn(strings.NewReader("\nval\ny\n"))
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+
+	err := cmd.ExecuteContext(context.Background())
+	if err == nil {
+		t.Fatal("expected error when setup operation fails, got nil")
+	}
+
+	var detailedErr *fail.DetailedError
+	if !errors.As(err, &detailedErr) {
+		t.Fatalf("expected *fail.DetailedError, got %T: %v", err, err)
+	}
+	if detailedErr.ExitCode == nil || *detailedErr.ExitCode != fail.ExitPartialFailure {
+		t.Errorf("expected exit code %d (ExitPartialFailure), got %v", fail.ExitPartialFailure, detailedErr.ExitCode)
 	}
 }

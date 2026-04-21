@@ -58,6 +58,9 @@ type SetupParam struct {
 // configuration/activation state without performing a full setup.
 type StatusDetectable interface {
 	ProductName() string
+	// Status returns the current configuration state of this product.
+	// Implementations MUST return promptly when ctx is cancelled — the caller
+	// may cancel ctx to enforce a deadline. Do not ignore ctx.Done().
 	Status(ctx context.Context) (*ProductStatus, error)
 }
 
@@ -74,9 +77,13 @@ type Setupable interface {
 	ResolveChoices(ctx context.Context, paramName string) ([]string, error)
 
 	// ValidateSetup validates setup parameters without applying them.
+	// IMPORTANT: Error messages MUST NOT include raw secret parameter values.
+	// The orchestrator prints ValidateSetup errors to stderr verbatim.
 	ValidateSetup(ctx context.Context, params map[string]string) error
 
 	// Setup applies the provided parameters to configure the product.
+	// IMPORTANT: Error messages MUST NOT include raw secret parameter values.
+	// The orchestrator prints Setup errors to stderr verbatim.
 	Setup(ctx context.Context, params map[string]string) error
 }
 

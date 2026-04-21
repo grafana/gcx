@@ -39,7 +39,7 @@ This spec turns the ADR into an executable plan: the interfaces, types, orchestr
 - Orchestrator invocation of `Setupable.Setup()` in-process only — never subprocess.
 - Stub coverage across all 14 existing providers:
   - **Signal/data providers** (alert, logs, metrics, profiles, traces) implement `StatusDetectable` only. `Status()` uses a `ConfigKeys()` presence heuristic; no API probing.
-  - **Setup-capable providers** (appo11y, faro, fleet, incidents, k6, kg, sigil, slo, synth) implement `Setupable`. `Setup()` returns `ErrSetupNotSupported`. `InfraCategories()` returns `nil`. `ValidateSetup()` returns `nil` (no-op). `ResolveChoices()` returns `(nil, nil)`.
+  - **Setup-capable providers** (appo11y, faro, fleet, irm, k6, kg, sigil, slo, synth) implement `Setupable`. `Setup()` returns `ErrSetupNotSupported`. `InfraCategories()` returns `nil`. `ValidateSetup()` returns `nil` (no-op). `ResolveChoices()` returns `(nil, nil)`.
 - Interactive prompt widgets for `text`, `bool`, `choice` (single select), `multi_choice` (multi-select), and secret (masked input). Minimal implementation, no heavy UI dependency.
 - Preview rendering with secret masking (`***` for any `SetupParam` where `Secret == true`).
 - Validation retry flow: on `ValidateSetup` error, re-prompt all fields for that provider with previously-collected values as defaults; loop until validation passes or the user cancels.
@@ -142,7 +142,7 @@ This spec turns the ADR into an executable plan: the interfaces, types, orchestr
 
 - FR-046: Every existing signal provider (alert, logs, metrics, profiles, traces) MUST implement `StatusDetectable` and MUST NOT implement `Setupable`.
 - FR-047: Every existing signal provider stub `Status()` MUST determine state from `ConfigKeys()` presence: when every non-secret required config key has a value, return `StateConfigured`; otherwise return `StateNotConfigured`. The stub MUST NOT perform any API probe.
-- FR-048: Every existing setup-capable provider (appo11y, faro, fleet, incidents, k6, kg, sigil, slo, synth) MUST implement `Setupable`.
+- FR-048: Every existing setup-capable provider (appo11y, faro, fleet, irm, k6, kg, sigil, slo, synth) MUST implement `Setupable`.
 - FR-049: Every existing setup-capable provider stub `Setup()` MUST return `ErrSetupNotSupported`.
 - FR-050: Every existing setup-capable provider stub `InfraCategories()` MUST return `nil`.
 - FR-051: Every existing setup-capable provider stub `ValidateSetup()` MUST return `nil` (no-op validation).

@@ -22,6 +22,7 @@ func newSetupCommand(p *SLOProvider) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "setup",
 		Short:         "Set up slo (not yet implemented).",
+		Args:          cobra.NoArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Annotations:   map[string]string{agent.AnnotationTokenCost: "small"},

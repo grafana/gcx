@@ -24,5 +24,5 @@ Manage Grafana Frontend Observability resources
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx frontend apps](gcx_frontend_apps.md)	 - Manage Frontend Observability apps.
-* [gcx frontend setup](gcx_frontend_setup.md)	 - Set up faro (not yet implemented).
+* [gcx frontend setup](gcx_frontend_setup.md)	 - Set up Frontend Observability (not yet implemented).
 

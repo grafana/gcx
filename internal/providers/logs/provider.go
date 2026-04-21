@@ -131,6 +131,7 @@ func (p *Provider) ProductName() string { return p.Name() }
 // context; a missing or unreadable config is treated as StateNotConfigured.
 func (p *Provider) Status(ctx context.Context) (*framework.ProductStatus, error) {
 	loader := &providers.ConfigLoader{}
+	// TODO: add proper error handling once provider setup is implemented
 	cfg, _, _ := loader.LoadProviderConfig(ctx, p.Name())
 	s := framework.ConfigKeysStatus(p, cfg)
 	return &s, nil

@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/setup/framework"
 	"github.com/spf13/cobra"
@@ -23,16 +24,23 @@ func SetIsInteractiveForTest(fn func() bool) {
 }
 
 type runOpts struct {
-	loader *providers.ConfigLoader
+	IO cmdio.Options
 }
 
-func (o *runOpts) setup(_ *pflag.FlagSet) {}
+func (o *runOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("text", &statusTextCodec{})
+	o.IO.RegisterCustomCodec("wide", &statusTextCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+}
 
-func (o *runOpts) Validate() error { return nil }
+func (o *runOpts) Validate() error {
+	return o.IO.Validate()
+}
 
 // NewRunCommand returns the `setup run` subcommand. Exported for testing.
 func NewRunCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &runOpts{loader: loader}
+	opts := &runOpts{}
 	cmd := &cobra.Command{
 		Use:   "run",
 		Short: "Interactive orchestrator for product setup.",
@@ -85,8 +93,16 @@ For example:
 				}
 			}
 
-			statuses := framework.AggregateStatus(cmd.Context(), 0)
-			if encErr := (&statusTextCodec{}).Encode(cmd.OutOrStdout(), statuses); encErr != nil {
+			if len(summary.Failed) > 0 {
+				ec := fail.ExitPartialFailure
+				return &fail.DetailedError{
+					Summary:  "one or more setup operations failed",
+					ExitCode: &ec,
+				}
+			}
+
+			statuses := framework.AggregateStatus(cmd.Context())
+			if encErr := opts.IO.Encode(cmd.OutOrStdout(), statuses); encErr != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not render status: %v\n", encErr)
 			}
 

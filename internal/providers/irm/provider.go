@@ -27,6 +27,7 @@ func (p *IRMProvider) ProductName() string { return p.Name() }
 // Status implements framework.StatusDetectable using a config-key heuristic.
 func (p *IRMProvider) Status(ctx context.Context) (*framework.ProductStatus, error) {
 	var loader providers.ConfigLoader
+	// TODO: add proper error handling once provider setup is implemented
 	cfg, _, _ := loader.LoadProviderConfig(ctx, p.Name())
 	status := framework.ConfigKeysStatus(p, cfg)
 	return &status, nil

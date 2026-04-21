@@ -108,6 +108,7 @@ func (p *SigilProvider) ProductName() string { return p.Name() }
 // Status implements framework.StatusDetectable using a config-key heuristic.
 func (p *SigilProvider) Status(ctx context.Context) (*framework.ProductStatus, error) {
 	var loader providers.ConfigLoader
+	// TODO: add proper error handling once provider setup is implemented
 	cfg, _, _ := loader.LoadProviderConfig(ctx, p.Name())
 	status := framework.ConfigKeysStatus(p, cfg)
 	return &status, nil
@@ -132,7 +133,7 @@ func (p *SigilProvider) Setup(_ context.Context, _ map[string]string) error {
 // Validate checks that the given provider configuration is valid.
 // The Sigil provider uses Grafana's built-in authentication via the plugin API,
 // so no extra keys are required.
-func (p *SigilProvider) Validate(cfg map[string]string) error {
+func (p *SigilProvider) Validate(_ map[string]string) error {
 	return nil
 }
 

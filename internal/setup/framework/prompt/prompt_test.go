@@ -108,6 +108,7 @@ func TestChoice(t *testing.T) {
 		{name: "out-of-range re-prompts then succeeds", input: "5\n1\n", want: "a"},
 		{name: "non-numeric re-prompts then succeeds", input: "x\n3\n", want: "c"},
 		{name: "eof no def returns error", input: "", wantErr: true},
+		{name: "eof with def returns def and error", input: "", def: "b", want: "b", wantErr: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -117,6 +118,9 @@ func TestChoice(t *testing.T) {
 			if tc.wantErr {
 				if err == nil {
 					t.Fatalf("expected error, got %q", got)
+				}
+				if tc.want != "" && got != tc.want {
+					t.Errorf("got %q, want %q", got, tc.want)
 				}
 				return
 			}
@@ -146,6 +150,8 @@ func TestMultiChoice(t *testing.T) {
 		{name: "empty defs empty input returns nil", input: "\n", defs: nil, want: nil},
 		{name: "spaces around numbers", input: " 1 , 3 \n", defs: nil, want: []string{"a", "c"}},
 		{name: "single selection", input: "4\n", defs: nil, want: []string{"d"}},
+		{name: "eof with defs returns defs and error", input: "", defs: []string{"b"}, want: []string{"b"}, wantErr: true},
+		{name: "eof no defs returns nil and error", input: "", defs: nil, wantErr: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -155,6 +161,9 @@ func TestMultiChoice(t *testing.T) {
 			if tc.wantErr {
 				if err == nil {
 					t.Fatalf("expected error, got %v", got)
+				}
+				if tc.want != nil && !reflect.DeepEqual(got, tc.want) {
+					t.Errorf("got %v, want %v", got, tc.want)
 				}
 				return
 			}

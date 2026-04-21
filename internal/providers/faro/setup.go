@@ -21,7 +21,8 @@ func newSetupCommand(p *FaroProvider) *cobra.Command {
 	opts := &setupOpts{}
 	cmd := &cobra.Command{
 		Use:           "setup",
-		Short:         "Set up faro (not yet implemented).",
+		Short:         "Set up Frontend Observability (not yet implemented).",
+		Args:          cobra.NoArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Annotations:   map[string]string{agent.AnnotationTokenCost: "small"},
@@ -35,7 +36,7 @@ func newSetupCommand(p *FaroProvider) *cobra.Command {
 			}
 			err := p.Setup(ctx, nil)
 			if errors.Is(err, framework.ErrSetupNotSupported) {
-				fmt.Fprintf(cmd.ErrOrStderr(), "setup not yet implemented for %s\n", p.Name())
+				fmt.Fprintf(cmd.ErrOrStderr(), "setup not yet implemented for %s\n", p.ProductName())
 			}
 			return err
 		},

@@ -313,6 +313,46 @@ func TestRun_UserRefusal(t *testing.T) {
 	}
 }
 
+// TestRun_StatusErrorSkipsProvider verifies that a provider whose Status() returns an error
+// is skipped (not prompted for params), appears in summary.Skipped, and emits a warning.
+func TestRun_StatusErrorSkipsProvider(t *testing.T) {
+	statusErr := errors.New("connection refused")
+	p := &testhelpers.FakeSetupable{
+		ProductName_: "alpha",
+		StatusErr:    statusErr,
+		Categories_:  []framework.InfraCategory{infraCat},
+	}
+	var errBuf bytes.Buffer
+	opts := framework.Options{
+		In:            strings.NewReader("\n"), // Enter for category selection; no further input needed
+		Out:           &bytes.Buffer{},
+		Err:           &errBuf,
+		Providers:     []framework.Setupable{p},
+		IsInteractive: func() bool { return true },
+		SecretFn:      func(label string) (string, error) { return "secret-value", nil },
+	}
+	summary, err := framework.Run(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(summary.Skipped) != 1 || summary.Skipped[0] != "alpha" {
+		t.Errorf("expected alpha in Skipped, got %+v", summary)
+	}
+	if p.SetupCalled {
+		t.Error("Setup should not have been called for provider with Status() error")
+	}
+	if p.LastParams != nil {
+		t.Error("params should not have been collected for provider with Status() error")
+	}
+	warnMsg := errBuf.String()
+	if !strings.Contains(warnMsg, "warning: could not determine status") {
+		t.Errorf("expected warning on stderr, got: %q", warnMsg)
+	}
+	if !strings.Contains(warnMsg, "alpha") {
+		t.Errorf("expected provider name in warning, got: %q", warnMsg)
+	}
+}
+
 // TestRun_ResolveChoices verifies that ResolveChoices is called when param.Choices is empty.
 func TestRun_ResolveChoices(t *testing.T) {
 	dynamicChoicesCat := framework.InfraCategory{

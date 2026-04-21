@@ -22,6 +22,7 @@ func newSetupCommand(p *KGProvider) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "setup",
 		Short:         "Set up kg (not yet implemented).",
+		Args:          cobra.NoArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Annotations:   map[string]string{agent.AnnotationTokenCost: "small"},

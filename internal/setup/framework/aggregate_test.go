@@ -11,6 +11,10 @@ import (
 	"github.com/grafana/gcx/internal/setup/framework/testhelpers"
 )
 
+// Deadline/timeout enforcement is the caller's responsibility via context.
+// Pass a context.WithTimeout or context.WithDeadline to AggregateStatus /
+// AggregateStatusFrom when bounded execution time is required.
+
 func TestAggregateStatusFrom(t *testing.T) {
 	active := func(name string) *framework.ProductStatus {
 		return &framework.ProductStatus{Product: name, State: framework.StateActive}
@@ -29,7 +33,7 @@ func TestAggregateStatusFrom(t *testing.T) {
 			&testhelpers.FakeStatusDetectable{ProductName_: "B-provider", Status_: notConfigured("B-provider")},
 		}
 
-		got := aggregateFrom(t, providers, time.Second)
+		got := aggregateFrom(t, providers)
 
 		requireLen(t, got, 3)
 		requireProduct(t, got[0], "A-provider", framework.StateConfigured)
@@ -45,7 +49,7 @@ func TestAggregateStatusFrom(t *testing.T) {
 			&testhelpers.FakeStatusDetectable{ProductName_: "C-ok", Status_: active("C-ok")},
 		}
 
-		got := aggregateFrom(t, providers, time.Second)
+		got := aggregateFrom(t, providers)
 
 		requireLen(t, got, 3)
 		requireProduct(t, got[0], "A-ok", framework.StateActive)
@@ -56,29 +60,8 @@ func TestAggregateStatusFrom(t *testing.T) {
 		requireProduct(t, got[2], "C-ok", framework.StateActive)
 	})
 
-	t.Run("timeout: slow provider returns StateError within bounded time", func(t *testing.T) {
-		providers := []framework.StatusDetectable{
-			&testhelpers.FakeStatusDetectable{ProductName_: "A-fast", Status_: active("A-fast")},
-			// sleeps 10s but timeout is 500ms
-			&testhelpers.FakeStatusDetectable{ProductName_: "B-slow", Latency: 10 * time.Second, Status_: active("B-slow")},
-			&testhelpers.FakeStatusDetectable{ProductName_: "C-fast", Status_: active("C-fast")},
-		}
-
-		perProvider := 500 * time.Millisecond
-		start := time.Now()
-		got := aggregateFrom(t, providers, perProvider)
-		elapsed := time.Since(start)
-
-		// Must complete well within 10s (slow provider's sleep).
-		if elapsed > 3*time.Second {
-			t.Errorf("AggregateStatus took %v, expected < 3s", elapsed)
-		}
-
-		requireLen(t, got, 3)
-		requireProduct(t, got[0], "A-fast", framework.StateActive)
-		requireProduct(t, got[1], "B-slow", framework.StateError)
-		requireProduct(t, got[2], "C-fast", framework.StateActive)
-	})
+	// Timeout/deadline enforcement is the caller's responsibility via context.
+	// Pass context.WithTimeout to AggregateStatusFrom when bounded execution is needed.
 
 	t.Run("panic: panicking provider is StateError; siblings succeed", func(t *testing.T) {
 		providers := []framework.StatusDetectable{
@@ -87,7 +70,7 @@ func TestAggregateStatusFrom(t *testing.T) {
 			&testhelpers.FakeStatusDetectable{ProductName_: "C-ok", Status_: active("C-ok")},
 		}
 
-		got := aggregateFrom(t, providers, time.Second)
+		got := aggregateFrom(t, providers)
 
 		requireLen(t, got, 3)
 		requireProduct(t, got[0], "A-ok", framework.StateActive)
@@ -104,7 +87,7 @@ func TestAggregateStatusFrom(t *testing.T) {
 			&testhelpers.FakeStatusDetectable{ProductName_: "B-second-alpha", Latency: 20 * time.Millisecond, Status_: active("B-second-alpha")},
 		}
 
-		got := aggregateFrom(t, providers, time.Second)
+		got := aggregateFrom(t, providers)
 
 		requireLen(t, got, 3)
 		requireProduct(t, got[0], "A-first-alpha", framework.StateActive)
@@ -129,36 +112,20 @@ func TestAggregateStatusFrom(t *testing.T) {
 			providers[i] = makeProvider(providerName(i))
 		}
 
-		got := aggregateFrom(t, providers, 5*time.Second)
+		got := aggregateFrom(t, providers)
 		requireLen(t, got, 20)
 
 		if maxSeen.Load() > 10 {
 			t.Errorf("max concurrency %d exceeds limit of 10", maxSeen.Load())
 		}
 	})
-
-	t.Run("default timeout applied when timeout<=0", func(t *testing.T) {
-		// Just verify it doesn't panic and returns results.
-		providers := []framework.StatusDetectable{
-			&testhelpers.FakeStatusDetectable{ProductName_: "A", Status_: active("A")},
-		}
-		// timeout=0 triggers default; use the exported aggregateStatusFrom via integration path
-		got := aggregateFrom(t, providers, 0)
-		requireLen(t, got, 1)
-		requireProduct(t, got[0], "A", framework.StateActive)
-	})
 }
 
 // helpers
 
-func aggregateFrom(t *testing.T, providers []framework.StatusDetectable, timeout time.Duration) []framework.ProductStatus {
+func aggregateFrom(t *testing.T, providers []framework.StatusDetectable) []framework.ProductStatus {
 	t.Helper()
-	// Access the package-internal aggregateStatusFrom via the exported AggregateStatus
-	// by using testhelpers.SetupTestRegistry to populate the global registry.
-	// However, since aggregateStatusFrom is unexported, we use the exported path
-	// through the global registry for integration coverage.
-	// For isolation, use a test registry.
-	return framework.AggregateStatusFrom(context.Background(), timeout, providers)
+	return framework.AggregateStatusFrom(context.Background(), providers)
 }
 
 func requireLen(t *testing.T, got []framework.ProductStatus, want int) {

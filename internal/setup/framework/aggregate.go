@@ -5,27 +5,20 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"time"
 
 	"golang.org/x/sync/errgroup"
 )
 
-const defaultAggregateTimeout = 5 * time.Second
-
 // AggregateStatus calls Status() on every StatusDetectable provider in parallel.
-// timeout <= 0 defaults to 5 seconds.
 // Returns []ProductStatus sorted alphabetically by ProductName().
-func AggregateStatus(ctx context.Context, timeout time.Duration) []ProductStatus {
-	return AggregateStatusFrom(ctx, timeout, DiscoverStatusDetectable())
+// Deadline management is the caller's responsibility via ctx.
+func AggregateStatus(ctx context.Context) []ProductStatus {
+	return AggregateStatusFrom(ctx, DiscoverStatusDetectable())
 }
 
 // AggregateStatusFrom is like AggregateStatus but operates on an explicit
 // provider list instead of the global registry. Useful for testing.
-func AggregateStatusFrom(ctx context.Context, timeout time.Duration, providers []StatusDetectable) []ProductStatus {
-	if timeout <= 0 {
-		timeout = defaultAggregateTimeout
-	}
-
+func AggregateStatusFrom(ctx context.Context, providers []StatusDetectable) []ProductStatus {
 	results := make([]ProductStatus, len(providers))
 
 	g := new(errgroup.Group)
@@ -33,14 +26,12 @@ func AggregateStatusFrom(ctx context.Context, timeout time.Duration, providers [
 
 	for i, sd := range providers {
 		g.Go(func() error {
-			cctx, cancel := context.WithTimeout(ctx, timeout)
-			defer cancel()
-			results[i] = collectStatus(cctx, sd, timeout)
+			results[i] = collectStatus(ctx, sd)
 			return nil
 		})
 	}
 
-	_ = g.Wait()
+	_ = g.Wait() // goroutines always return nil; errors are collected in collectStatus
 
 	slices.SortFunc(results, func(a, b ProductStatus) int {
 		return cmp.Compare(a.Product, b.Product)
@@ -50,9 +41,11 @@ func AggregateStatusFrom(ctx context.Context, timeout time.Duration, providers [
 }
 
 // collectStatus calls sd.Status in an isolated goroutine, recovering panics and
-// enforcing the per-provider deadline via a select on cctx.Done().
+// propagating context cancellation via a select on ctx.Done().
 // It always sets result.Product = sd.ProductName().
-func collectStatus(cctx context.Context, sd StatusDetectable, timeout time.Duration) ProductStatus {
+// The buffered done channel (size 1) prevents the goroutine from blocking if ctx
+// is cancelled before the goroutine writes its result.
+func collectStatus(ctx context.Context, sd StatusDetectable) ProductStatus {
 	name := sd.ProductName()
 	done := make(chan ProductStatus, 1)
 
@@ -69,7 +62,7 @@ func collectStatus(cctx context.Context, sd StatusDetectable, timeout time.Durat
 			done <- ps
 		}()
 
-		status, err := sd.Status(cctx)
+		status, err := sd.Status(ctx)
 		if err != nil {
 			ps = ProductStatus{Product: name, State: StateError, Details: err.Error()}
 			return
@@ -85,11 +78,11 @@ func collectStatus(cctx context.Context, sd StatusDetectable, timeout time.Durat
 	select {
 	case s := <-done:
 		return s
-	case <-cctx.Done():
+	case <-ctx.Done():
 		return ProductStatus{
 			Product: name,
 			State:   StateError,
-			Details: fmt.Sprintf("status check timed out after %v", timeout),
+			Details: "status check cancelled",
 		}
 	}
 }

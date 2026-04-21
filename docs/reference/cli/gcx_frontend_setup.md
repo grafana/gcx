@@ -1,6 +1,6 @@
 ## gcx frontend setup
 
-Set up faro (not yet implemented).
+Set up Frontend Observability (not yet implemented).
 
 ```
 gcx frontend setup [flags]

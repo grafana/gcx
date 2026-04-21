@@ -60,6 +60,7 @@ func (p *K6Provider) ProductName() string { return p.Name() }
 // Status implements framework.StatusDetectable using a config-key heuristic.
 func (p *K6Provider) Status(ctx context.Context) (*framework.ProductStatus, error) {
 	var loader providers.ConfigLoader
+	// TODO: add proper error handling once provider setup is implemented
 	cfg, _, _ := loader.LoadProviderConfig(ctx, p.Name())
 	status := framework.ConfigKeysStatus(p, cfg)
 	return &status, nil
@@ -82,7 +83,7 @@ func (p *K6Provider) Setup(_ context.Context, _ map[string]string) error {
 }
 
 // Validate checks that the given provider configuration is valid.
-func (p *K6Provider) Validate(cfg map[string]string) error {
+func (p *K6Provider) Validate(_ map[string]string) error {
 	return nil
 }
 

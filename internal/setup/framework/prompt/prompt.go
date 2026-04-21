@@ -101,11 +101,14 @@ func Choice(in io.Reader, out io.Writer, prompt string, options []string, def st
 		line = strings.TrimSpace(line)
 
 		if line == "" {
+			if err != nil {
+				if def != "" {
+					return def, err
+				}
+				return "", err
+			}
 			if def != "" {
 				return def, nil
-			}
-			if err != nil {
-				return "", err
 			}
 			fmt.Fprintln(out, "Please enter a number.")
 			continue
@@ -114,7 +117,7 @@ func Choice(in io.Reader, out io.Writer, prompt string, options []string, def st
 		n, parseErr := strconv.Atoi(line)
 		if parseErr != nil || n < 1 || n > len(options) {
 			if err != nil {
-				return "", fmt.Errorf("prompt: invalid selection %q", line)
+				return "", err
 			}
 			fmt.Fprintf(out, "Please enter a number between 1 and %d.\n", len(options))
 			continue
@@ -126,6 +129,8 @@ func Choice(in io.Reader, out io.Writer, prompt string, options []string, def st
 
 // MultiChoice presents a numbered menu allowing comma-separated selection (e.g. "1,3").
 // defs contains the initially-selected options. Pressing Enter with no input returns defs.
+// If defs is nil/empty and the user presses Enter, returns (nil, nil) — callers that
+// require at least one selection must check the returned slice length.
 // Returns an error after maxRetries failed attempts.
 func MultiChoice(in io.Reader, out io.Writer, prompt string, options []string, defs []string) ([]string, error) {
 	defSet := make(map[string]bool, len(defs))
@@ -149,7 +154,7 @@ func MultiChoice(in io.Reader, out io.Writer, prompt string, options []string, d
 		line = strings.TrimSpace(line)
 
 		if line == "" {
-			return defs, nil
+			return defs, err
 		}
 
 		parts := strings.Split(line, ",")
@@ -167,7 +172,7 @@ func MultiChoice(in io.Reader, out io.Writer, prompt string, options []string, d
 
 		if !valid {
 			if err != nil {
-				return nil, fmt.Errorf("prompt: invalid selection %q", line)
+				return nil, err
 			}
 			fmt.Fprintf(out, "Please enter valid numbers between 1 and %d.\n", len(options))
 			continue
@@ -187,5 +192,9 @@ func Secret(f *os.File, out io.Writer, prompt string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return string(b), nil
+	s := string(b)
+	for i := range b {
+		b[i] = 0
+	}
+	return s, nil
 }

@@ -54,6 +54,7 @@ func (p *SLOProvider) ProductName() string { return p.Name() }
 // Status implements framework.StatusDetectable using a config-key heuristic.
 func (p *SLOProvider) Status(ctx context.Context) (*framework.ProductStatus, error) {
 	var loader providers.ConfigLoader
+	// TODO: add proper error handling once provider setup is implemented
 	cfg, _, _ := loader.LoadProviderConfig(ctx, p.Name())
 	status := framework.ConfigKeysStatus(p, cfg)
 	return &status, nil
@@ -78,7 +79,7 @@ func (p *SLOProvider) Setup(_ context.Context, _ map[string]string) error {
 // Validate checks that the given provider configuration is valid.
 // The SLO provider uses Grafana's built-in authentication, so no extra keys
 // are required.
-func (p *SLOProvider) Validate(cfg map[string]string) error {
+func (p *SLOProvider) Validate(_ map[string]string) error {
 	return nil
 }
 

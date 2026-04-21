@@ -66,7 +66,7 @@ Provider stubs (14 files touched):
         alert, logs, metrics, profiles, traces
             └─ Status() delegates to framework.ConfigKeysStatus()
     Setup-capable providers (Setupable, stubs):
-        appo11y, faro, fleet, incidents, k6, kg, sigil, slo, synth
+        appo11y, faro, fleet, irm, k6, kg, sigil, slo, synth
             ├─ Status() delegates to framework.ConfigKeysStatus()
             ├─ InfraCategories(), ResolveChoices(), ValidateSetup() stubs
             └─ Setup() returns ErrSetupNotSupported
@@ -127,7 +127,7 @@ No config keys, env vars, or flags are removed. The command name itself is uncha
 **What is newly available:**
 
 - Public Go types in `internal/setup/framework`: `StatusDetectable`, `Setupable`, `ProductStatus`, `ProductState`, `InfraCategory`, `InfraCategoryID`, `SetupParam`, `ParamKind`, `ErrSetupNotSupported`.
-- New CLI commands: `gcx setup run` (interactive orchestrator) and `gcx <provider-area> setup` for each of the 9 setup-capable providers (appo11y, faro, fleet, incidents, k6, kg, sigil, slo, synth). All 9 per-provider commands currently return `ErrSetupNotSupported`; Area 7 of the roadmap will replace the stubs with real implementations.
+- New CLI commands: `gcx setup run` (interactive orchestrator) and `gcx <provider-area> setup` for each of the 9 setup-capable providers (appo11y, faro, fleet, irm, k6, kg, sigil, slo, synth). All 9 per-provider commands currently return `ErrSetupNotSupported`; Area 7 of the roadmap will replace the stubs with real implementations.
 - New `gcx setup status` rendering across all 14 providers with codec support (text / json / yaml / wide) and agent-mode JSON default.
 
 ## Package Layout
@@ -152,7 +152,7 @@ New and touched paths:
 
 - `internal/providers/<area>/provider.go` **(modified — 14 files)** — add `Status()` method to signal providers (5); add `Status()`, `InfraCategories()`, `ResolveChoices()`, `ValidateSetup()`, `Setup()` stubs to setup-capable providers (9).
   - Signal providers (StatusDetectable only): `alert`, `logs`, `metrics`, `profiles`, `traces`.
-  - Setup-capable providers (Setupable stub): `appo11y`, `faro`, `fleet`, `incidents`, `k6`, `kg`, `sigil`, `slo`, `synth`.
+  - Setup-capable providers (Setupable stub): `appo11y`, `faro`, `fleet`, `irm`, `k6`, `kg`, `sigil`, `slo`, `synth`.
 - `internal/providers/<area>/setup.go` **(new — 9 files)** — per-provider Cobra `setup` subcommand; registered via `provider.Commands()`; calls `Setupable.Setup()` which returns `ErrSetupNotSupported` until Area 7 replaces the stubs. Help text marks the command "not yet implemented".
 - `internal/providers/<area>/provider_test.go` **(modified — 14 files)** — assert stub method presence and `Setup()` returns `ErrSetupNotSupported` where applicable.
 
@@ -167,7 +167,7 @@ Ordered workstreams suitable for downstream task decomposition:
 5. Implement `framework.Orchestrator` (`Run`) covering: discovery, category select, skip-if-configured (via pre-run `Status()`), param collection, validation retry loop, preview with secret masking, sequential `Setup()` invocation, summary rendering, `signal.NotifyContext` Ctrl-C handling. Fake-provider tests exercise each path including interrupt and validation retry.
 6. Add `gcx setup run` command in `cmd/gcx/setup/run.go` using the opts pattern; early agent-mode refusal returning usage-error exit code; delegate to `framework.Run`. Integration tests via `SetupTestRegistry` cover agent-mode refusal and a full interactive flow against a fake provider.
 7. Add StatusDetectable-only stubs to the 5 signal providers (`alert`, `logs`, `metrics`, `profiles`, `traces`) by delegating `Status()` to `framework.ConfigKeysStatus`. Per-provider tests assert stub method presence and config-keys-driven state resolution.
-8. Add `Setupable` stubs plus `<provider-area> setup` Cobra commands to the 9 setup-capable providers (`appo11y`, `faro`, `fleet`, `incidents`, `k6`, `kg`, `sigil`, `slo`, `synth`). Each stub `Setup()` returns `ErrSetupNotSupported`; the Cobra command surfaces a "not yet implemented" help string and exits non-zero when invoked. Per-provider tests assert command existence, exit behaviour, and error sentinel identity.
+8. Add `Setupable` stubs plus `<provider-area> setup` Cobra commands to the 9 setup-capable providers (`appo11y`, `faro`, `fleet`, `irm`, `k6`, `kg`, `sigil`, `slo`, `synth`). Each stub `Setup()` returns `ErrSetupNotSupported`; the Cobra command surfaces a "not yet implemented" help string and exits non-zero when invoked. Per-provider tests assert command existence, exit behaviour, and error sentinel identity.
 9. Regenerate reference docs (`GCX_AGENT_MODE=false make reference`) and run `GCX_AGENT_MODE=false make all`.
 
 ## Testing Strategy

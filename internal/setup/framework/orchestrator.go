@@ -41,6 +41,12 @@ type Options struct {
 	SecretFn func(label string) (string, error)
 }
 
+// providerParams holds a provider and its collected parameter values.
+type providerParams struct {
+	provider Setupable
+	params   map[string]string
+}
+
 // Run is the interactive setup orchestrator.
 // It discovers Setupable providers, presents a category multi-select,
 // collects parameters per provider, shows a preview, confirms, then calls
@@ -49,8 +55,6 @@ type Options struct {
 // Returns a non-nil error only for unrecoverable failures (e.g., I/O errors).
 // Per-provider Setup() failures are recorded in Summary.Failed; Run continues.
 // Context cancellation (Ctrl-C) is handled internally and returns (summary, nil).
-//
-//nolint:gocyclo,maintidx
 func Run(ctx context.Context, opts Options) (Summary, error) {
 	var summary Summary
 
@@ -97,6 +101,67 @@ func Run(ctx context.Context, opts Options) (Summary, error) {
 		return cmp.Compare(a.ProductName(), b.ProductName())
 	})
 
+	secretFn := opts.SecretFn
+	if secretFn == nil && opts.StdinFile != nil {
+		f := opts.StdinFile
+		secretFn = func(label string) (string, error) {
+			return prompt.Secret(f, errOut, label)
+		}
+	}
+
+	selectedProviders, selectedIDs, err := selectCategories(ctx, in, out, errOut, providers)
+	if err != nil {
+		return summary, err
+	}
+	if selectedProviders == nil {
+		return summary, nil
+	}
+
+	confirmed, collectionSummary, err := collectAllParams(ctx, in, out, errOut, selectedProviders, selectedIDs, secretFn)
+	if err != nil {
+		return summary, err
+	}
+	// Merge partial summary state (Skipped, Cancelled) from collection phase.
+	summary.Skipped = append(summary.Skipped, collectionSummary.Skipped...)
+	summary.Cancelled = append(summary.Cancelled, collectionSummary.Cancelled...)
+
+	if len(confirmed) == 0 {
+		printSummary(errOut, &summary)
+		return summary, nil
+	}
+
+	ok, err := previewAndConfirm(ctx, in, out, errOut, confirmed)
+	if err != nil {
+		return summary, err
+	}
+	if !ok {
+		for _, pp := range confirmed {
+			summary.Cancelled = append(summary.Cancelled, pp.provider.ProductName())
+		}
+		printSummary(errOut, &summary)
+		return summary, nil
+	}
+
+	setupSummary := executeSetups(ctx, errOut, confirmed)
+	summary.Completed = append(summary.Completed, setupSummary.Completed...)
+	summary.Failed = append(summary.Failed, setupSummary.Failed...)
+	summary.NotImplemented = append(summary.NotImplemented, setupSummary.NotImplemented...)
+	summary.Cancelled = append(summary.Cancelled, setupSummary.Cancelled...)
+
+	printSummary(errOut, &summary)
+	return summary, nil
+}
+
+// selectCategories builds the category selection UI, prompts the user, and
+// returns the filtered list of providers plus the set of selected category IDs.
+// Returns (nil, nil, nil) when there is nothing to do (no categories or nothing selected).
+func selectCategories(
+	_ context.Context,
+	in *bufio.Reader,
+	out io.Writer,
+	errOut io.Writer,
+	providers []Setupable,
+) ([]Setupable, map[InfraCategoryID]bool, error) {
 	// Build the category map (first-label-wins for duplicate IDs).
 	type catEntry struct {
 		id    InfraCategoryID
@@ -115,7 +180,7 @@ func Run(ctx context.Context, opts Options) (Summary, error) {
 
 	if len(catOrder) == 0 {
 		fmt.Fprintln(errOut, "No interactive setup flows available.")
-		return summary, nil
+		return nil, nil, nil
 	}
 
 	// Build label list and reverse-map for user selection.
@@ -128,11 +193,11 @@ func Run(ctx context.Context, opts Options) (Summary, error) {
 
 	selected, err := prompt.MultiChoice(in, out, "Select infrastructure categories to set up:", catLabels, catLabels)
 	if err != nil {
-		return summary, fmt.Errorf("category selection: %w", err)
+		return nil, nil, fmt.Errorf("category selection: %w", err)
 	}
 	if len(selected) == 0 {
 		fmt.Fprintln(errOut, "No categories selected. Nothing to do.")
-		return summary, nil
+		return nil, nil, nil
 	}
 
 	selectedIDs := make(map[InfraCategoryID]bool, len(selected))
@@ -151,34 +216,40 @@ func Run(ctx context.Context, opts Options) (Summary, error) {
 		}
 	}
 
-	secretFn := opts.SecretFn
-	if secretFn == nil && opts.StdinFile != nil {
-		f := opts.StdinFile
-		secretFn = func(label string) (string, error) {
-			return prompt.Secret(f, errOut, label)
-		}
-	}
+	return selectedProviders, selectedIDs, nil
+}
 
-	// Per-provider parameter collection.
-	type providerParams struct {
-		provider Setupable
-		params   map[string]string
-	}
-	confirmed := make([]providerParams, 0, len(selectedProviders))
+// collectAllParams collects parameters for each provider, handling status checks,
+// validation retries, and context cancellation. Returns confirmed provider+param
+// pairs and a partial Summary capturing Skipped and Cancelled providers.
+func collectAllParams(
+	ctx context.Context,
+	in *bufio.Reader,
+	out io.Writer,
+	errOut io.Writer,
+	providers []Setupable,
+	selectedIDs map[InfraCategoryID]bool,
+	secretFn func(string) (string, error),
+) ([]providerParams, Summary, error) {
+	var summary Summary
+	confirmed := make([]providerParams, 0, len(providers))
 
-	for _, p := range selectedProviders {
+	for _, p := range providers {
 		if ctx.Err() != nil {
 			summary.Cancelled = append(summary.Cancelled, p.ProductName())
 			continue
 		}
 
 		status, err := p.Status(ctx)
-		if err == nil && status != nil {
-			if status.State == StateConfigured || status.State == StateActive {
-				fmt.Fprintf(errOut, "%s: already configured, skipping\n", p.ProductName())
-				summary.Skipped = append(summary.Skipped, p.ProductName())
-				continue
-			}
+		if err != nil {
+			fmt.Fprintf(errOut, "warning: could not determine status for %s: %v\n", p.ProductName(), err)
+			summary.Skipped = append(summary.Skipped, p.ProductName())
+			continue
+		}
+		if status != nil && (status.State == StateConfigured || status.State == StateActive) {
+			fmt.Fprintf(errOut, "%s: already configured, skipping\n", p.ProductName())
+			summary.Skipped = append(summary.Skipped, p.ProductName())
+			continue
 		}
 
 		var collectedParams map[string]string
@@ -188,7 +259,7 @@ func Run(ctx context.Context, opts Options) (Summary, error) {
 				if ctx.Err() != nil {
 					break
 				}
-				return summary, fmt.Errorf("collecting params for %s: %w", p.ProductName(), err)
+				return confirmed, summary, fmt.Errorf("collecting params for %s: %w", p.ProductName(), err)
 			}
 			collectedParams = params
 
@@ -207,12 +278,18 @@ func Run(ctx context.Context, opts Options) (Summary, error) {
 		confirmed = append(confirmed, providerParams{provider: p, params: collectedParams})
 	}
 
-	if len(confirmed) == 0 {
-		printSummary(errOut, &summary)
-		return summary, nil
-	}
+	return confirmed, summary, nil
+}
 
-	// Preview block.
+// previewAndConfirm displays the setup preview block and asks the user to confirm.
+// Returns (false, nil) when the user declines.
+func previewAndConfirm(
+	_ context.Context,
+	in *bufio.Reader,
+	out io.Writer,
+	_ io.Writer,
+	confirmed []providerParams,
+) (bool, error) {
 	fmt.Fprintln(out, "\n=== Setup Preview ===")
 	for _, pp := range confirmed {
 		fmt.Fprintf(out, "\n%s:\n", pp.provider.ProductName())
@@ -234,17 +311,15 @@ func Run(ctx context.Context, opts Options) (Summary, error) {
 
 	ok, err := prompt.Bool(in, out, "Continue?", true)
 	if err != nil {
-		return summary, fmt.Errorf("confirmation prompt: %w", err)
+		return false, fmt.Errorf("confirmation prompt: %w", err)
 	}
-	if !ok {
-		for _, pp := range confirmed {
-			summary.Cancelled = append(summary.Cancelled, pp.provider.ProductName())
-		}
-		printSummary(errOut, &summary)
-		return summary, nil
-	}
+	return ok, nil
+}
 
-	// Sequential Setup invocations.
+// executeSetups calls Setup() sequentially for each confirmed provider and
+// returns a Summary capturing the outcomes.
+func executeSetups(ctx context.Context, errOut io.Writer, confirmed []providerParams) Summary {
+	var summary Summary
 	for _, pp := range confirmed {
 		if ctx.Err() != nil {
 			summary.Cancelled = append(summary.Cancelled, pp.provider.ProductName())
@@ -263,9 +338,7 @@ func Run(ctx context.Context, opts Options) (Summary, error) {
 		}
 		summary.Completed = append(summary.Completed, pp.provider.ProductName())
 	}
-
-	printSummary(errOut, &summary)
-	return summary, nil
+	return summary
 }
 
 // collectProviderParams collects all parameters for a single provider from
@@ -292,8 +365,14 @@ func collectProviderParams(
 			}
 
 			def := param.Default
-			if v, ok := prev[param.Name]; ok && v != "" {
-				def = v
+			if !param.Secret {
+				if v, ok := prev[param.Name]; ok && v != "" {
+					def = v
+				}
+			}
+
+			if param.Secret && param.Kind != ParamKindText && param.Kind != "" {
+				return nil, fmt.Errorf("param %q has Secret=true but Kind=%q: Secret is only valid for ParamKindText", param.Name, param.Kind)
 			}
 
 			var val string
@@ -344,8 +423,11 @@ func collectProviderParams(
 					return nil, mErr
 				}
 				val = strings.Join(vals, ",")
-			default: // ParamKindText and Secret
-				if param.Secret && secretFn != nil {
+			default: // ParamKindText
+				if param.Secret {
+					if secretFn == nil {
+						return nil, fmt.Errorf("cannot collect secret param %q: no StdinFile provided", param.Name)
+					}
 					val, err = secretFn(param.Prompt)
 					if err != nil {
 						return nil, err

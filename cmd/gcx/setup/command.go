@@ -64,7 +64,7 @@ func NewStatusCommand() *cobra.Command {
 			if err := opts.Validate(); err != nil {
 				return err
 			}
-			statuses := framework.AggregateStatus(cmd.Context(), 0)
+			statuses := framework.AggregateStatus(cmd.Context())
 			return opts.IO.Encode(cmd.OutOrStdout(), statuses)
 		},
 	}

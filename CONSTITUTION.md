@@ -81,6 +81,12 @@ agent mode detection, behavior changes, and opt-out mechanisms.
 - **STDOUT is the result, STDERR is the diagnostic.** Summary tables and
   resource data go to stdout. Failure details and progress feedback go to
   stderr. Both use structured formats (tables or JSON), not unstructured prose.
+- **Interactive wizard commands are exempt from the STDOUT=data rule.** Commands
+  that are TTY-guarded (refuse when stdin is not a terminal), agent-mode-blocked
+  (refuse with exit code 2 when `agent.IsAgentMode()` is true), and have no
+  machine-readable output surface may write prompts, previews, and interactive
+  prose to stdout. `gcx setup run` is the canonical example. These commands must
+  be listed in `docs/design/agent-mode.md § 6.4 Exempt Commands`.
 
 ## Push/Pull Philosophy
 
@@ -139,6 +145,12 @@ agent mode detection, behavior changes, and opt-out mechanisms.
 - No circular dependencies between packages.
 - Provider implementations (`internal/providers/*/`) may import core resource types but not
   other providers.
+- **`internal/providers` (top-level package) MUST NOT import `internal/setup/framework`.**
+  Individual provider packages (`internal/providers/*/`) may import `internal/setup/framework`
+  to implement `StatusDetectable` and `Setupable`. The top-level `internal/providers` package
+  (containing the registry) must not import `framework` — this would create a cycle since
+  `framework` imports `internal/providers` for discovery. Enforce via code review;
+  consider adding a `depguard` rule to `.golangci.yaml` when the project upgrades the linter config.
 - Query clients (`internal/query/*/`) bypass the k8s dynamic client — they call datasource
   HTTP APIs directly.
 - PromQL construction uses `github.com/grafana/promql-builder/go/promql`, not string formatting.
