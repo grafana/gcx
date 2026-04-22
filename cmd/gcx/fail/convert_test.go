@@ -239,6 +239,19 @@ func TestErrorToDetailedError_GenericServiceAPIAuthFailure(t *testing.T) {
 	assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
 }
 
+func TestErrorToDetailedError_AdaptiveLogsScopeSuggestion(t *testing.T) {
+	got := fail.ErrorToDetailedError(fakeServiceAPIError{
+		statusCode: 401,
+		service:    "Adaptive Logs",
+		message:    "authentication error: invalid scope requested",
+	})
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Authentication failed querying Adaptive Logs", got.Summary)
+	require.Len(t, got.Suggestions, 3)
+	assert.Contains(t, got.Suggestions[2], "adaptive-logs:admin")
+}
+
 func TestErrorToDetailedError_WrappedServiceAPIErrorPreservesOuterContext(t *testing.T) {
 	err := fmt.Errorf("kg: get rule %q: %w", "prod-errors", fakeServiceAPIError{
 		statusCode: 404,

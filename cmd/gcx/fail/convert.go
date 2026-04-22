@@ -511,10 +511,14 @@ func serviceAPIErrorSummary(apiErr serviceAPIError) string {
 func serviceAPIErrorSuggestions(apiErr serviceAPIError) []string {
 	switch apiErr.HTTPStatusCode() {
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return []string{
+		suggestions := []string{
 			"Review your Grafana credentials: gcx config view",
 			"Re-authenticate if needed: gcx auth login",
 		}
+		if apiErr.APIServiceName() == "Adaptive Logs" && strings.Contains(apiErr.APIUserMessage(), "invalid scope") {
+			suggestions = append(suggestions, "Ensure your access policy includes the adaptive-logs:admin scope")
+		}
+		return suggestions
 	default:
 		return nil
 	}
