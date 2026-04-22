@@ -87,7 +87,11 @@ func newBootdataHTTPClient(cfg GrafanaConfig) *http.Client {
 	}
 
 	if cfg.TLS != nil {
-		transport.TLSClientConfig = cfg.TLS.ToStdTLSConfig()
+		tlsCfg, err := cfg.TLS.ToStdTLSConfig()
+		if err != nil {
+			return &http.Client{Timeout: 5 * time.Second, Transport: transport}
+		}
+		transport.TLSClientConfig = tlsCfg
 	}
 
 	return &http.Client{

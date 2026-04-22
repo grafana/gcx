@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -204,6 +205,10 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) NamespacedRESTCon
 	}
 
 	if cfg.Grafana.TLS != nil {
+		// Resolve file paths to data before passing to the k8s REST client.
+		if err := cfg.Grafana.TLS.ResolveFiles(); err != nil {
+			slog.WarnContext(ctx, "failed to resolve TLS files", "error", err)
+		}
 		// Kubernetes really is wonderful, huh.
 		// tl;dr it has its own TLSClientConfig,
 		// and it's not compatible with the one from the "crypto/tls" package.
