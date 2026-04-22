@@ -625,7 +625,14 @@ func (c *Client) DeleteWebhook(ctx context.Context, id string) error {
 
 func (c *Client) ListAlertGroups(ctx context.Context, opts ...oncalltypes.ListOption) ([]oncalltypes.AlertGroup, error) {
 	cfg := oncalltypes.ApplyListOpts(opts)
-	items, err := collectN(iterResources[alertGroup](ctx, c, alertGroupsPath, "alert group"), cfg.Limit)
+	params := url.Values{}
+	if cfg.StartedAfter != nil {
+		const layout = "2006-01-02T15:04:05"
+		start := cfg.StartedAfter.UTC().Format(layout)
+		end := time.Now().UTC().Format(layout)
+		params.Set("started_at", start+"_"+end)
+	}
+	items, err := collectN(iterResources[alertGroup](ctx, c, pathWithParams(alertGroupsPath, params), "alert group"), cfg.Limit)
 	if err != nil {
 		return nil, err
 	}

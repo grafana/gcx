@@ -24,7 +24,8 @@ But there is a dangerous gap. Adoption of agentic coding tools like Cursor and C
 We built GCX to close that gap.
 
 > [!NOTE]
-> **gcx requires Grafana 12 or above.** Older Grafana versions are not supported.
+> gcx supports Grafana Cloud, Enterprise, and OSS, see the [compatibility matrix](#compatibility) for details on what is and isn't supported across different Grafana products.
+> **Grafana 12 or above is required.** Older Grafana versions are not supported.
 
 ## Quick Start
 
@@ -95,7 +96,7 @@ gcx completion fish > ~/.config/fish/completions/gcx.fish  # fish
 **Browser-based OAuth login (Experimental, Simple):**
 
 ```bash
-gcx auth login --server https://byoc-grafana.com
+gcx auth login --server https://grafana.example.com
 ```
 
 This opens a browser and bootstraps the selected context without preconfiguring
@@ -105,7 +106,7 @@ refresh token, and proxy endpoint to that context.
 If you want to save the login to a specific context:
 
 ```bash
-gcx auth login --context my-grafana --server https://byoc-grafana.com
+gcx auth login --context my-grafana --server https://grafana.example.com
 ```
 
 > [!NOTE]
@@ -266,6 +267,25 @@ ID    TITLE                                     STATUS     UPDATED
 abc1  Checkout P95 latency breach               active     2m ago
 def2  Memory leak in payment-svc                resolved   1h ago
 ```
+
+## Compatibility
+
+gcx works across Grafana's product offerings. Feature availability depends on your deployment:
+
+| Feature | OSS (12+) | Enterprise (12+) | Cloud | BYOC |
+|---------|:---------:|:----------------:|:-----:|:----:|
+| Resource management (dashboards, folders) | ✓ | ✓ | ✓ | ✓ |
+| Alert rules | ✓ | ✓ | ✓ | ✓ |
+| Raw API passthrough (`gcx api`) | ✓ | ✓ | ✓ | ✓ |
+| Observability as Code (`gcx dev`) | ✓ | ✓ | ✓ | ✓ |
+| Signal queries (metrics, logs, traces, profiles) | ✓ † | ✓ † | ✓ | ✓ |
+| SLO, Synthetic Monitoring, IRM, k6, Fleet, etc. | ✗ | ✗ | ✓ | ◐ |
+| Adaptive Metrics / Logs / Traces | ✗ | ✗ | ✓ | ◐ |
+| Grafana Assistant | ✗ | ✗ | ✓ | ✗ |
+
+**† Self-hosted signal queries** — `gcx metrics query`, `gcx logs query`, `gcx traces query`, and `gcx profiles query` work against self-hosted datasources (Prometheus, Loki, Tempo, Pyroscope), but datasource endpoints must be configured manually. For Grafana Cloud, endpoints are auto-discovered from your stack.
+
+**◐ BYOC** — Bring Your Own Cloud runs the Grafana stack on your own infrastructure while connecting to the Grafana Cloud control plane. Core Grafana features (dashboards, alerts, signal queries) work in full. Cloud product availability (SLO, Synthetic Monitoring, IRM, etc.) depends on which plugins are installed and configured in your BYOC stack.
 
 ## Maturity
 
