@@ -10,6 +10,7 @@ import (
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers/irm/oncalltypes"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -84,19 +85,19 @@ func newAlertGroupListCommand(loader OnCallConfigLoader) *cobra.Command {
 				return err
 			}
 
-			// The internal API uses cursor-based pagination; started_at filter
-			// may or may not be supported the same way. For now, fetch all and
-			// filter client-side if --max-age is set.
-			items, err := client.ListAlertGroups(cmd.Context())
-			if err != nil {
-				return err
+			var listOpts []oncalltypes.ListOption
+			if opts.MaxAge != "" {
+				dur, err := parseDuration(opts.MaxAge)
+				if err != nil {
+					return fmt.Errorf("invalid --max-age value %q: %w", opts.MaxAge, err)
+				}
+				cutoff := time.Now().UTC().Add(-dur)
+				listOpts = append(listOpts, oncalltypes.WithStartedAfter(cutoff))
 			}
 
-			if opts.MaxAge != "" {
-				items, err = filterAlertGroupsByMaxAge(items, opts.MaxAge)
-				if err != nil {
-					return err
-				}
+			items, err := client.ListAlertGroups(cmd.Context(), listOpts...)
+			if err != nil {
+				return err
 			}
 
 			objs, err := itemsToUnstructured(items, "AlertGroup", "pk", namespace)
@@ -109,31 +110,6 @@ func newAlertGroupListCommand(loader OnCallConfigLoader) *cobra.Command {
 	}
 	opts.setup(cmd.Flags())
 	return cmd
-}
-
-func filterAlertGroupsByMaxAge(items []AlertGroup, maxAge string) ([]AlertGroup, error) {
-	dur, err := parseDuration(maxAge)
-	if err != nil {
-		return nil, fmt.Errorf("invalid --max-age value %q: %w", maxAge, err)
-	}
-	cutoff := time.Now().UTC().Add(-dur)
-	var filtered []AlertGroup
-	for _, ag := range items {
-		if ag.StartedAt == "" {
-			continue
-		}
-		t, err := time.Parse(time.RFC3339, ag.StartedAt)
-		if err != nil {
-			t, err = time.Parse("2006-01-02T15:04:05", ag.StartedAt)
-			if err != nil {
-				continue
-			}
-		}
-		if t.After(cutoff) {
-			filtered = append(filtered, ag)
-		}
-	}
-	return filtered, nil
 }
 
 func parseDuration(s string) (time.Duration, error) {
