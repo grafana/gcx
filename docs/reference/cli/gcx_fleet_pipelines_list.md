@@ -9,6 +9,7 @@ gcx fleet pipelines list [flags]
 ### Options
 
 ```
+      --full            Include spec.contents (full Alloy config) in json/yaml output
   -h, --help            help for list
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int       Maximum number of items to return (0 for all) (default 50)

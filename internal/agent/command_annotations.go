@@ -84,11 +84,25 @@ var commandAnnotations = map[string]annotation{
 	"gcx resources validate": {Cost: "medium", Hint: "-p ./dashboards"},
 
 	// setup
-	"gcx setup status":                   {Cost: "small"},
-	"gcx setup instrumentation apply":    {Cost: "small"},
-	"gcx setup instrumentation discover": {Cost: "medium", Hint: "--cluster <name> -o json"},
-	"gcx setup instrumentation show":     {Cost: "medium", Hint: "<cluster> -o json"},
-	"gcx setup instrumentation status":   {Cost: "small"},
+	"gcx setup status": {Cost: "small"},
+
+	// -----------------------------------------------------------------------
+	// Instrumentation provider
+	// -----------------------------------------------------------------------
+	"gcx instrumentation clusters list":     {Cost: "medium", Hint: "-o json"},
+	"gcx instrumentation clusters get":      {Cost: "small", Hint: "<cluster-name> -o json"},
+	"gcx instrumentation clusters create":   {Cost: "small", Hint: "-f cluster.yaml"},
+	"gcx instrumentation clusters update":   {Cost: "small", Hint: "<cluster-name> -f cluster.yaml"},
+	"gcx instrumentation clusters delete":   {Cost: "small", Hint: "<cluster-name>"},
+	"gcx instrumentation apps list":         {Cost: "medium", Hint: "[--cluster <name>] -o json"},
+	"gcx instrumentation apps get":          {Cost: "small", Hint: "<cluster-namespace> -o json"},
+	"gcx instrumentation apps create":       {Cost: "small", Hint: "-f app.yaml"},
+	"gcx instrumentation apps update":       {Cost: "small", Hint: "<name> -f app.yaml"},
+	"gcx instrumentation apps delete":       {Cost: "small", Hint: "<name>"},
+	"gcx instrumentation clusters setup":    {Cost: "small", Hint: "<cluster>"},
+	"gcx instrumentation clusters discover": {Cost: "medium", Hint: "<cluster> -o json"},
+	"gcx instrumentation clusters check":    {Cost: "small", Hint: "<cluster>"},
+	"gcx instrumentation status":            {Cost: "small"},
 
 	// skills
 	"gcx skills install":   {Cost: "small"},

@@ -1,3 +1,54 @@
+## v0.2.10 (unreleased)
+
+### Breaking Changes
+
+- **`gcx setup instrumentation` removed** — the entire `gcx setup instrumentation` command subtree (`apply`, `discover`, `show`, `status`) has been removed with no backward-compatibility alias. Use the new `gcx instrumentation` provider commands instead.
+- **`InstrumentationConfig` kind removed** — `setup.grafana.app/v1alpha1` / `InstrumentationConfig` manifests are no longer accepted by `gcx resources push`. Decompose them into `Cluster` + `App` manifests for `instrumentation.grafana.app/v1alpha1`.
+
+### Migration: `gcx setup instrumentation` → `gcx instrumentation`
+
+| Old command | New command |
+|-------------|-------------|
+| `gcx setup instrumentation apply -f config.yaml` | `gcx instrumentation clusters create -f cluster.yaml` + `gcx instrumentation apps create -f app.yaml` |
+| `gcx setup instrumentation discover <cluster>` | `gcx instrumentation discover <cluster>` |
+| `gcx setup instrumentation show <cluster>` | `gcx instrumentation clusters get <cluster>` (K8s flags only) or `gcx instrumentation status --cluster <cluster>` (full view) |
+| `gcx setup instrumentation status` | `gcx instrumentation status` |
+
+**Manifest migration:** Replace `InstrumentationConfig` manifests with separate `Cluster` and `App` resource files:
+
+```yaml
+# Old: setup.grafana.app/v1alpha1 / InstrumentationConfig
+# New: instrumentation.grafana.app/v1alpha1 / Cluster
+apiVersion: instrumentation.grafana.app/v1alpha1
+kind: Cluster
+metadata:
+  name: my-cluster
+spec:
+  costMetrics: true
+  nodeLogs: true
+```
+
+```yaml
+# New: instrumentation.grafana.app/v1alpha1 / App
+apiVersion: instrumentation.grafana.app/v1alpha1
+kind: App
+metadata:
+  name: my-cluster-payments
+spec:
+  cluster: my-cluster
+  namespace: payments
+  tracing: true
+  logging: true
+```
+
+### New Features
+
+- Add `gcx instrumentation` top-level provider with `clusters` and `apps` CRUD commands
+- Integrate `Cluster` and `App` kinds with `gcx resources pull` / `gcx resources push` pipeline
+- Optimistic-lock protection: writes are rejected if remote contains items absent from local manifest
+- `gcx instrumentation clusters setup`: cluster name is now optional — the interactive wizard prompts for it when omitted. The wizard is driven by `charmbracelet/huh`, with line-oriented accessible mode in piped shells. Post-install hint now lists the required access policy token scopes (`metrics:read`, `set:alloy-data-write`) and links to the access-policies docs.
+- `gcx instrumentation` commands now emit a structured stderr footer after the primary result, surfacing the eventual-consistency quirk: submitted configs are persisted but won't appear in `list`/`get` until the Alloy collector reports discovery (~30s after Helm install). Coverage spans all 14 instrumentation commands — post-mutation notes on writes (`clusters create/update/delete`, `clusters setup`, `apps create/update/delete`); empty-state notes and next-step hints on zero-row reads (`clusters list`, `apps list`, `status`, `clusters discover`); 404 hints on `clusters get` and `apps get`; FAIL hints on `clusters check`; and a universal "data reflects collector state" note on all successful reads. The footer uses strict `warn:` → `note:` → `hint:` ordering regardless of call order. Hints render as `hint: to <purpose>:` + an indented command line for triple-click copy-paste. Prefixes are plain text, capped at 3 hints per site. This is a provider-local spike; cross-cutting standardization is tracked in #549.
+
 ## v0.2.9 (2026-04-23)
 
 - Consolidated `gcx auth` and `gcx config` into a unified `gcx login` command
@@ -32,7 +83,6 @@
 - Recognise OPENCODE as an agent mode
 - Bump Kubernetes dependencies to v0.35.4 and Docker deps
 - Update anthropics/claude-code-action workflow digest
-
 
 ## v0.2.7 (2026-04-15)
 

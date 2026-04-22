@@ -307,7 +307,7 @@ func TestPipelineProtectionGuard(t *testing.T) {
 			pipelineName:    "beyla_k8s_appo11y_prod-1",
 			force:           false,
 			wantErr:         true,
-			wantErrContains: "gcx setup instrumentation apply",
+			wantErrContains: "gcx instrumentation clusters update",
 		},
 		{
 			name:         "allows managed pipeline with force",
@@ -344,7 +344,7 @@ func TestPipelineProtectionGuard(t *testing.T) {
 			// Apply the same guard logic as the commands.
 			var guardErr error
 			if !tt.force && fleet.IsManagedPipeline(pipeline.Name) {
-				guardErr = fmt.Errorf("pipeline %q is managed by Grafana Cloud instrumentation; use 'gcx setup instrumentation apply' to modify instrumentation config, or pass --force to override", pipeline.Name)
+				guardErr = fmt.Errorf("pipeline %q is managed by Grafana Cloud instrumentation; use 'gcx instrumentation clusters update <cluster> -f <file>' to modify instrumentation config, or pass --force to override", pipeline.Name)
 			}
 
 			if tt.wantErr {

@@ -228,7 +228,11 @@ func (h *fleetHelper) newPipelineListCommand() *cobra.Command {
 				return opts.IO.Encode(cmd.OutOrStdout(), pipelines)
 			}
 
-			var objs []unstructured.Unstructured
+			// Pattern 13: always hand full objects to the codec. The
+			// registered pipelineListContentsCodec decides whether to strip
+			// spec.contents based on --full, keeping display concerns in the
+			// codec layer.
+			objs := make([]unstructured.Unstructured, 0, len(pipelines))
 			for _, p := range pipelines {
 				res, err := PipelineToResource(p, namespace)
 				if err != nil {
@@ -237,6 +241,9 @@ func (h *fleetHelper) newPipelineListCommand() *cobra.Command {
 				objs = append(objs, res.ToUnstructured())
 			}
 
+			if !opts.Full && len(objs) > 0 {
+				cmdio.Info(cmd.ErrOrStderr(), "spec.contents omitted — pass --full to include, or `gcx fleet pipelines get <id> -o yaml` for a single pipeline.")
+			}
 			return opts.IO.Encode(cmd.OutOrStdout(), objs)
 		},
 	}
@@ -247,16 +254,50 @@ func (h *fleetHelper) newPipelineListCommand() *cobra.Command {
 type pipelineListOpts struct {
 	IO    cmdio.Options
 	Limit int64
+	Full  bool
 }
 
 func (o *pipelineListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &PipelineTableCodec{})
 	o.IO.RegisterCustomCodec("wide", &PipelineTableCodec{Wide: true})
+	// Wrap the default JSON/YAML codecs so they can strip spec.contents when
+	// --full is off. Codec reads Full via pointer, so it picks up the
+	// post-parse flag value.
+	o.IO.RegisterCustomCodec("json", &pipelineListContentsCodec{inner: format.NewJSONCodec(), full: &o.Full})
+	o.IO.RegisterCustomCodec("yaml", &pipelineListContentsCodec{inner: format.NewYAMLCodec(), full: &o.Full})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
+	flags.BoolVar(&o.Full, "full", false, "Include spec.contents (full Alloy config) in json/yaml output")
 }
+
+// pipelineListContentsCodec wraps a json/yaml codec and optionally strips
+// spec.contents from unstructured pipeline lists when --full is not set.
+// Keeps field-omission in the codec (Pattern 13: codecs control display).
+type pipelineListContentsCodec struct {
+	inner format.Codec
+	full  *bool
+}
+
+func (c *pipelineListContentsCodec) Format() format.Format { return c.inner.Format() }
+
+func (c *pipelineListContentsCodec) Encode(w io.Writer, v any) error {
+	if c.full != nil && !*c.full {
+		if objs, ok := v.([]unstructured.Unstructured); ok {
+			trimmed := make([]unstructured.Unstructured, len(objs))
+			for i, obj := range objs {
+				clone := obj.DeepCopy()
+				unstructured.RemoveNestedField(clone.Object, "spec", "contents")
+				trimmed[i] = *clone
+			}
+			return c.inner.Encode(w, trimmed)
+		}
+	}
+	return c.inner.Encode(w, v)
+}
+
+func (c *pipelineListContentsCodec) Decode(r io.Reader, v any) error { return c.inner.Decode(r, v) }
 
 func (h *fleetHelper) newPipelineGetCommand() *cobra.Command { //nolint:dupl // Intentionally similar to collector get — distinct resource types.
 	opts := &pipelineGetOpts{}
@@ -368,7 +409,7 @@ func (h *fleetHelper) newPipelineCreateCommand() *cobra.Command {
 			}
 
 			if !opts.Force && IsManagedPipeline(pipeline.Name) {
-				return fmt.Errorf("pipeline %q is managed by Grafana Cloud instrumentation; use 'gcx setup instrumentation apply' to modify instrumentation config, or pass --force to override", pipeline.Name)
+				return fmt.Errorf("pipeline %q is managed by Grafana Cloud instrumentation; use 'gcx instrumentation clusters update <cluster> -f <file>' to modify instrumentation config, or pass --force to override", pipeline.Name)
 			}
 
 			created, err := client.CreatePipeline(ctx, *pipeline)
@@ -406,7 +447,7 @@ func (h *fleetHelper) newPipelineUpdateCommand() *cobra.Command {
 				return err
 			}
 			if !opts.Force && IsManagedPipeline(existing.Name) {
-				return fmt.Errorf("pipeline %q is managed by Grafana Cloud instrumentation; use 'gcx setup instrumentation apply' to modify instrumentation config, or pass --force to override", existing.Name)
+				return fmt.Errorf("pipeline %q is managed by Grafana Cloud instrumentation; use 'gcx instrumentation clusters update <cluster> -f <file>' to modify instrumentation config, or pass --force to override", existing.Name)
 			}
 
 			pipeline, err := readPipelineFromFile(opts.File, cmd.InOrStdin())
@@ -448,7 +489,7 @@ func (h *fleetHelper) newPipelineDeleteCommand() *cobra.Command {
 				return err
 			}
 			if !opts.Force && IsManagedPipeline(existing.Name) {
-				return fmt.Errorf("pipeline %q is managed by Grafana Cloud instrumentation; use 'gcx setup instrumentation apply' to modify instrumentation config, or pass --force to override", existing.Name)
+				return fmt.Errorf("pipeline %q is managed by Grafana Cloud instrumentation; use 'gcx instrumentation clusters update <cluster> -f <file>' to modify instrumentation config, or pass --force to override", existing.Name)
 			}
 
 			if err := client.DeletePipeline(ctx, existing.ID); err != nil {
@@ -490,14 +531,10 @@ func (o *pipelineWriteOpts) Validate() error {
 	return nil
 }
 
-// managedPipelinePrefix is the name prefix used by Grafana Cloud instrumentation
-// for Beyla pipelines created via gcx setup instrumentation apply.
-const managedPipelinePrefix = "beyla_k8s_appo11y_"
-
 // IsManagedPipeline reports whether a pipeline name is managed by Grafana Cloud
 // instrumentation and should not be modified directly via fleet pipeline commands.
 func IsManagedPipeline(name string) bool {
-	return strings.HasPrefix(name, managedPipelinePrefix)
+	return strings.HasPrefix(name, fleetbase.ManagedPipelinePrefix)
 }
 
 // ---------------------------------------------------------------------------
@@ -543,6 +580,10 @@ func (h *fleetHelper) newCollectorListCommand() *cobra.Command {
 				return err
 			}
 
+			if opts.Cluster != "" {
+				collectors = filterCollectorsByCluster(collectors, opts.Cluster)
+			}
+
 			collectors = adapter.TruncateSlice(collectors, opts.Limit)
 
 			// Table codec operates on raw []Collector for direct field access.
@@ -569,8 +610,9 @@ func (h *fleetHelper) newCollectorListCommand() *cobra.Command {
 }
 
 type collectorListOpts struct {
-	IO    cmdio.Options
-	Limit int64
+	IO      cmdio.Options
+	Limit   int64
+	Cluster string
 }
 
 func (o *collectorListOpts) setup(flags *pflag.FlagSet) {
@@ -580,6 +622,26 @@ func (o *collectorListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
+	flags.StringVar(&o.Cluster, "cluster", "", "Filter collectors by cluster name (matches remote_attributes/local_attributes: cluster, k8s_cluster, cluster_name)")
+}
+
+// filterCollectorsByCluster returns the subset of collectors whose attributes
+// identify them as belonging to the given cluster. Checks remote_attributes
+// and local_attributes for any of the commonly-used cluster keys. Returns an
+// empty slice if no match — callers should not treat empty as an error since
+// the cluster key may not be present on every deployment.
+func filterCollectorsByCluster(collectors []Collector, cluster string) []Collector {
+	keys := []string{"cluster", "k8s_cluster", "cluster_name", "k8s_cluster_name"}
+	out := collectors[:0:0]
+	for _, c := range collectors {
+		for _, k := range keys {
+			if c.RemoteAttributes[k] == cluster || c.LocalAttributes[k] == cluster {
+				out = append(out, c)
+				break
+			}
+		}
+	}
+	return out
 }
 
 func (h *fleetHelper) newCollectorGetCommand() *cobra.Command { //nolint:dupl // Intentionally similar to pipeline get — distinct resource types.

@@ -16,8 +16,7 @@ gcx/
 │       │   └── query/        # Auto-detecting query command (GenericCmd only)
 │       ├── commands/         # 'commands' catalog (agent metadata, resource types, live validation)
 │       ├── helptree/        # 'help-tree' compact text tree for agent context injection
-│       ├── setup/            # 'setup' command area (onboarding, product config)
-│       │   └── instrumentation/  # Instrumentation subcommands (status, discover, show, apply)
+│       ├── setup/            # 'setup' command area (onboarding, stack-level config)
 │       ├── skills/           # 'skills' subcommand (portable Agent Skills installer for .agents bundles)
 │       ├── dev/              # 'dev' subcommand (import, scaffold, generate, lint, serve)
 │       ├── providers/        # 'providers' subcommand implementation
@@ -28,9 +27,7 @@ gcx/
 │   ├── auth/                 # OAuth PKCE flow, token refresh transport
 │   │   └── adaptive/         # Shared adaptive telemetry auth (GCOM caching, Basic auth)
 │   ├── cloud/                # Grafana Cloud stack discovery via GCOM API
-│   ├── fleet/                # Shared fleet base client (HTTP, auth, config — shared by fleet provider and setup/instrumentation)
-│   ├── setup/
-│   │   └── instrumentation/  # InstrumentationConfig manifest types, API client, optimistic lock comparison
+│   ├── fleet/                # Shared fleet base client (HTTP, auth, config — shared by fleet and instrumentation providers)
 │   ├── config/               # Config loading, context management, auth types
 │   │   └── testdata/         # YAML fixtures for config unit tests
 │   ├── format/               # JSON/YAML codec, format auto-detection
@@ -59,6 +56,8 @@ gcx/
 │   │   ├── faro/             # Frontend Observability provider (apps CRUD, sourcemaps sub-resource) — CLI: `gcx frontend`
 │   │   ├── fleet/            # Fleet Management provider (pipeline and collector resources)
 │   │   ├── incidents/        # IRM Incidents provider
+│   │   ├── instrumentation/  # Instrumentation provider (Cluster + App CRUD, `gcx resources` pipeline integration, setup wizard, discover, status, check)
+│   │   │   └── wire/         # Bootstrap package that assembles the command tree (breaks import cycle)
 │   │   ├── k6/              # k6 Cloud provider (projects, tests, runs, envvars)
 │   │   ├── kg/               # Knowledge Graph (Asserts) provider
 │   │   ├── oncall/           # OnCall provider (schedules, integrations, escalation chains)

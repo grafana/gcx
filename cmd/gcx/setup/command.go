@@ -4,10 +4,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/grafana/gcx/cmd/gcx/setup/instrumentation"
 	fleetbase "github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/providers"
-	instrum "github.com/grafana/gcx/internal/setup/instrumentation"
+	instrum "github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -20,7 +19,6 @@ func Command() *cobra.Command {
 		Use:   "setup",
 		Short: "Onboard and configure Grafana Cloud products.",
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			// Chain the root's PersistentPreRun (root command sets up logging/context).
 			if root := cmd.Root(); root != nil && root.PersistentPreRun != nil {
 				root.PersistentPreRun(cmd, args)
 			}
@@ -30,27 +28,16 @@ func Command() *cobra.Command {
 	loader := &providers.ConfigLoader{}
 	loader.BindFlags(cmd.PersistentFlags())
 
-	cmd.AddCommand(instrumentation.Command(loader))
 	cmd.AddCommand(newStatusCommand(loader))
 
 	return cmd
 }
 
-type setupStatusOpts struct {
-	IO setupStatusIO
-}
+type setupStatusOpts struct{}
 
-func (o *setupStatusOpts) setup(flags *pflag.FlagSet) {
-	_ = flags // no flags yet — placeholder for future --output support
-}
+func (o *setupStatusOpts) setup(_ *pflag.FlagSet) {}
 
-func (o *setupStatusOpts) Validate() error {
-	return nil
-}
-
-// setupStatusIO is a minimal output interface for the aggregated status table.
-// Kept separate from output.Options since aggregated status has a fixed table format.
-type setupStatusIO struct{}
+func (o *setupStatusOpts) Validate() error { return nil }
 
 func newStatusCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &setupStatusOpts{}

@@ -9,10 +9,11 @@ gcx fleet collectors list [flags]
 ### Options
 
 ```
-  -h, --help            help for list
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int       Maximum number of items to return (0 for all) (default 50)
-  -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
+      --cluster string   Filter collectors by cluster name (matches remote_attributes/local_attributes: cluster, k8s_cluster, cluster_name)
+  -h, --help             help for list
+      --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int        Maximum number of items to return (0 for all) (default 50)
+  -o, --output string    Output format. One of: json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands

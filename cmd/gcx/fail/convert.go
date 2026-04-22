@@ -818,12 +818,10 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 		}, true
 	}
 
-	// Setup/instrumentation prefixed errors — surface them directly instead of "Unexpected error".
-	if strings.HasPrefix(msg, "setup/instrumentation:") || strings.Contains(msg, "setup/instrumentation:") {
-		// Extract the message after the prefix for the summary.
-		summary := "Setup instrumentation error"
+	// Instrumentation provider prefixed errors — surface them directly instead of "Unexpected error".
+	if strings.HasPrefix(msg, "instrumentation:") {
 		return &DetailedError{
-			Summary: summary,
+			Summary: "Instrumentation error",
 			Details: msg,
 			Parent:  err,
 		}, true
