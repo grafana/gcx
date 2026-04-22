@@ -260,13 +260,17 @@ func (opts *Options) builtinCodecs() map[string]format.Codec {
 }
 
 func (opts *Options) allowedCodecs() []string {
-	allowedCodecs := slices.Collect(maps.Keys(opts.builtinCodecs()))
+	// Merge builtins and custom codecs into a set so that custom codecs
+	// that shadow a builtin name (e.g. a custom "json" codec) are not listed twice.
+	all := make(map[string]struct{})
+	for name := range opts.builtinCodecs() {
+		all[name] = struct{}{}
+	}
 	for name := range opts.customCodecs {
-		allowedCodecs = append(allowedCodecs, name)
+		all[name] = struct{}{}
 	}
 
-	// the allowed codecs are stored in a map: let's sort them to make the
-	// return value of this function deterministic
+	allowedCodecs := slices.Collect(maps.Keys(all))
 	sort.Strings(allowedCodecs)
 
 	return allowedCodecs
