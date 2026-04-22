@@ -405,6 +405,47 @@ var commandAnnotations = map[string]annotation{
 	"gcx traces adaptive recommendations apply":   {Cost: "small"},
 	"gcx traces adaptive recommendations dismiss": {Cost: "small"},
 	"gcx traces adaptive recommendations show":    {Cost: "small"},
+
+	// -----------------------------------------------------------------------
+	// Annotations provider
+	// -----------------------------------------------------------------------
+	"gcx annotations create": {Cost: "small", Hint: "-f annotation.json (requires text field)"},
+	"gcx annotations delete": {Cost: "small", Hint: "<id>"},
+	"gcx annotations get":    {Cost: "small", Hint: "<id> -o json"},
+	"gcx annotations list":   {Cost: "small", Hint: "--lookback 24h (default) or --from/--to (epoch ms); filter with --tags deploy,prod; cap with --limit"},
+	"gcx annotations update": {Cost: "small", Hint: "<id> -f patch.json"},
+
+	// -----------------------------------------------------------------------
+	// Org provider
+	// -----------------------------------------------------------------------
+	"gcx org users add":         {Cost: "small", Hint: "--login <login-or-email> --role Editor"},
+	"gcx org users get":         {Cost: "small", Hint: "<login-or-email> -o json"},
+	"gcx org users list":        {Cost: "small", Hint: "--limit 50 -o json"},
+	"gcx org users remove":      {Cost: "small", Hint: "<user-id>"},
+	"gcx org users update-role": {Cost: "small", Hint: "<user-id> --role Admin"},
+
+	// -----------------------------------------------------------------------
+	// Permissions provider
+	// -----------------------------------------------------------------------
+	"gcx permissions dashboard get":    {Cost: "small"},
+	"gcx permissions dashboard update": {Cost: "small", Hint: "<uid> -f permissions.json"},
+	"gcx permissions folder get":       {Cost: "small"},
+	"gcx permissions folder update":    {Cost: "small", Hint: "<uid> -f permissions.json"},
+
+	// -----------------------------------------------------------------------
+	// Preferences provider
+	// -----------------------------------------------------------------------
+	"gcx preferences get":    {Cost: "small"},
+	"gcx preferences update": {Cost: "small", Hint: "-f preferences.json"},
+
+	// -----------------------------------------------------------------------
+	// Public Dashboards provider
+	// -----------------------------------------------------------------------
+	"gcx public-dashboards create": {Cost: "small", Hint: "--dashboard-uid <uid> -f public-dashboard.json"},
+	"gcx public-dashboards delete": {Cost: "small", Hint: "<pd-uid> --dashboard-uid <uid>"},
+	"gcx public-dashboards get":    {Cost: "small", Hint: "<dashboard-uid> -o json"},
+	"gcx public-dashboards list":   {Cost: "small", Hint: "--limit 50 -o json"},
+	"gcx public-dashboards update": {Cost: "small", Hint: "<pd-uid> --dashboard-uid <uid> -f public-dashboard.json"},
 }
 
 // ApplyAnnotations walks the command tree and applies agent annotations from
