@@ -1,5 +1,6 @@
 ## v0.2.8 (2026-04-20)
 
+- Rename `gcx sigil` command and provider to `gcx aio11y` (AI Observability)
 - Fix OAuth refresh lockout when running multiple gcx invocations concurrently
 - Improve typed API error handling for datasource queries
 - Rename OnCall/Incidents references to IRM across docs and CLI

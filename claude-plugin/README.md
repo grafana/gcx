@@ -80,7 +80,7 @@ canonical portable skill bundle.
 | `slo-investigate` | Diagnose why a specific SLO is breaching or alerting |
 | `slo-manage` | Create, update, pull, push, and delete SLO definitions |
 | `slo-optimize` | Analyze SLO trends and recommend objective or alerting improvements |
-| `sigil` | Browse conversations, manage evaluators and rules, set up online evaluation for LLM quality scoring |
+| `aio11y` | Browse conversations, manage evaluators and rules, set up online evaluation for LLM quality scoring (AI Observability) |
 | `synth-check-status` | Check Synthetic Monitoring health, status, and trends |
 | `synth-investigate-check` | Diagnose why a Synthetic Monitoring check is failing |
 | `synth-manage-checks` | Create, update, pull, push, and delete Synthetic Monitoring checks |
