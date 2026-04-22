@@ -185,7 +185,7 @@ func TestIntegration_ConversationsListToTable(t *testing.T) {
 	base := newBase(t, fakePluginMux())
 	client := conversations.NewClient(base)
 
-	items, err := client.List(context.Background(), 0)
+	items, err := client.List(context.Background())
 	require.NoError(t, err)
 	require.Len(t, items, 2)
 
@@ -247,7 +247,7 @@ func TestIntegration_AgentsListToTable(t *testing.T) {
 	base := newBase(t, fakePluginMux())
 	client := agents.NewClient(base)
 
-	items, err := client.List(context.Background(), 0)
+	items, err := client.List(context.Background())
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 

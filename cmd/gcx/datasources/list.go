@@ -17,9 +17,8 @@ import (
 )
 
 type listOpts struct {
-	IO    cmdio.Options
-	Type  string
-	Limit int
+	IO   cmdio.Options
+	Type string
 }
 
 func (opts *listOpts) setup(flags *pflag.FlagSet) {
@@ -28,7 +27,6 @@ func (opts *listOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.BindFlags(flags)
 
 	flags.StringVarP(&opts.Type, "type", "t", "", "Filter by datasource type (e.g., prometheus, loki)")
-	flags.IntVar(&opts.Limit, "limit", 50, "Maximum number of datasources to return")
 }
 
 func (opts *listOpts) Validate() error {
@@ -93,9 +91,6 @@ func listCmd() *cobra.Command {
 						})
 					}
 				}
-				if opts.Limit > 0 && len(filtered) > opts.Limit {
-					filtered = filtered[:opts.Limit]
-				}
 				return outputDatasources(cmd, opts, filtered)
 			}
 
@@ -110,10 +105,6 @@ func listCmd() *cobra.Command {
 					Default:  ds.IsDefault,
 					ReadOnly: ds.ReadOnly,
 				})
-			}
-
-			if opts.Limit > 0 && len(infos) > opts.Limit {
-				infos = infos[:opts.Limit]
 			}
 
 			return outputDatasources(cmd, opts, infos)

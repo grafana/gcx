@@ -24,13 +24,12 @@ func NewClient(base *aio11yhttp.Client) *Client {
 }
 
 // List returns templates, optionally filtered by scope.
-// An optional maxItems argument limits how many items are fetched (0 = no limit).
-func (c *Client) List(ctx context.Context, scope string, maxItems ...int) ([]eval.TemplateDefinition, error) {
+func (c *Client) List(ctx context.Context, scope string) ([]eval.TemplateDefinition, error) {
 	query := url.Values{}
 	if scope != "" {
 		query.Set("scope", scope)
 	}
-	return aio11yhttp.ListAll[eval.TemplateDefinition](ctx, c.base, basePath, query, maxItems...)
+	return aio11yhttp.ListAll[eval.TemplateDefinition](ctx, c.base, basePath, query)
 }
 
 // Get returns a single template by ID.

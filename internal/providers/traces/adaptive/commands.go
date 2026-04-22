@@ -12,6 +12,7 @@ import (
 
 	auth "github.com/grafana/gcx/internal/auth/adaptive"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/limit"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -279,8 +280,7 @@ func (h *tracesHelper) policiesCommand() *cobra.Command {
 // ---------------------------------------------------------------------------
 
 type policiesListOpts struct {
-	IO    cmdio.Options
-	Limit int64
+	IO cmdio.Options
 }
 
 func (o *policiesListOpts) setup(flags *pflag.FlagSet) {
@@ -288,7 +288,6 @@ func (o *policiesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &policyTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of policies to return (0 for no limit)")
 }
 
 func (h *tracesHelper) policiesListCommand() *cobra.Command {
@@ -308,7 +307,7 @@ func (h *tracesHelper) policiesListCommand() *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx, opts.Limit)
+			typedObjs, err := crud.List(ctx, limit.Resolve(ctx, 50))
 			if err != nil {
 				return err
 			}

@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/limit"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -50,8 +51,7 @@ func Commands(loader GrafanaConfigLoader) *cobra.Command {
 // ---------------------------------------------------------------------------
 
 type listOpts struct {
-	IO    cmdio.Options
-	Limit int64
+	IO cmdio.Options
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
@@ -59,8 +59,6 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &sloTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-
-	flags.Int64Var(&o.Limit, "limit", 0, "Maximum number of items to return after fetch (0 for all; use a positive value to trim output only)")
 }
 
 func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -80,7 +78,7 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx, opts.Limit)
+			typedObjs, err := crud.List(ctx, limit.Resolve(ctx, 50))
 			if err != nil {
 				return err
 			}

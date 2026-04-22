@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/limit"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -168,8 +169,7 @@ func newProjectsCommand(loader CloudConfigLoader) *cobra.Command {
 }
 
 type projectsListOpts struct {
-	IO    cmdio.Options
-	Limit int64
+	IO cmdio.Options
 }
 
 func (o *projectsListOpts) setup(flags *pflag.FlagSet) {
@@ -177,7 +177,6 @@ func (o *projectsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &ProjectTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 func newProjectsListCommand(loader CloudConfigLoader) *cobra.Command {
@@ -194,7 +193,7 @@ func newProjectsListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			typedObjs, err := crud.List(ctx, opts.Limit)
+			typedObjs, err := crud.List(ctx, limit.Resolve(ctx, 50))
 			if err != nil {
 				return err
 			}
@@ -526,7 +525,6 @@ func newTestsCommand(loader CloudConfigLoader) *cobra.Command {
 type testsListOpts struct {
 	IO        cmdio.Options
 	ProjectID int
-	Limit     int64
 }
 
 func (o *testsListOpts) setup(flags *pflag.FlagSet) {
@@ -535,7 +533,6 @@ func (o *testsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.ProjectID, "project-id", 0, "Filter by project ID")
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 func newTestsListCommand(loader CloudConfigLoader) *cobra.Command {
@@ -552,17 +549,18 @@ func newTestsListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			effectiveLimit := limit.Resolve(ctx, 50)
 			var tests []LoadTest
 			if opts.ProjectID != 0 {
 				tests, err = client.ListLoadTestsByProject(ctx, opts.ProjectID)
 				if err != nil {
 					return err
 				}
-				if l := int(opts.Limit); l > 0 && len(tests) > l {
+				if l := int(effectiveLimit); l > 0 && len(tests) > l {
 					tests = tests[:l]
 				}
 			} else {
-				tests, err = client.ListLoadTestsWithLimit(ctx, int(opts.Limit))
+				tests, err = client.ListLoadTestsWithLimit(ctx, int(effectiveLimit))
 				if err != nil {
 					return err
 				}
@@ -854,7 +852,6 @@ type runsListOpts struct {
 	IO        cmdio.Options
 	ProjectID int
 	TestID    int
-	Limit     int64
 }
 
 func (o *runsListOpts) setup(flags *pflag.FlagSet) {
@@ -863,7 +860,6 @@ func (o *runsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.ProjectID, "project-id", 0, "Project ID (required when looking up by name)")
 	flags.IntVar(&o.TestID, "id", 0, "Load test ID (skip name lookup)")
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 func newRunsListCommand(loader CloudConfigLoader) *cobra.Command {
@@ -905,7 +901,7 @@ func newRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			runs = adapter.TruncateSlice(runs, opts.Limit)
+			runs = adapter.TruncateSlice(runs, limit.Resolve(ctx, 50))
 			return opts.IO.Encode(cmd.OutOrStdout(), runs)
 		},
 	}
@@ -984,15 +980,13 @@ func newEnvVarsCommand(loader CloudConfigLoader) *cobra.Command {
 }
 
 type envVarsListOpts struct {
-	IO    cmdio.Options
-	Limit int64
+	IO cmdio.Options
 }
 
 func (o *envVarsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &EnvVarTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 func newEnvVarsListCommand(loader CloudConfigLoader) *cobra.Command {
@@ -1013,7 +1007,7 @@ func newEnvVarsListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			envVars = adapter.TruncateSlice(envVars, opts.Limit)
+			envVars = adapter.TruncateSlice(envVars, limit.Resolve(ctx, 50))
 			return opts.IO.Encode(cmd.OutOrStdout(), envVars)
 		},
 	}
@@ -1284,15 +1278,13 @@ func (c *ScheduleTableCodec) Decode(_ io.Reader, _ any) error {
 }
 
 type schedulesListOpts struct {
-	IO    cmdio.Options
-	Limit int64
+	IO cmdio.Options
 }
 
 func (o *schedulesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &ScheduleTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 func newSchedulesListCommand(loader CloudConfigLoader) *cobra.Command {
@@ -1313,7 +1305,7 @@ func newSchedulesListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			schedules = adapter.TruncateSlice(schedules, opts.Limit)
+			schedules = adapter.TruncateSlice(schedules, limit.Resolve(ctx, 50))
 			return opts.IO.Encode(cmd.OutOrStdout(), schedules)
 		},
 	}
@@ -1532,15 +1524,13 @@ func (c *LoadZoneTableCodec) Decode(_ io.Reader, _ any) error {
 }
 
 type loadZonesListOpts struct {
-	IO    cmdio.Options
-	Limit int64
+	IO cmdio.Options
 }
 
 func (o *loadZonesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &LoadZoneTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 func newLoadZonesListCommand(loader CloudConfigLoader) *cobra.Command {
@@ -1561,7 +1551,7 @@ func newLoadZonesListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			zones = adapter.TruncateSlice(zones, opts.Limit)
+			zones = adapter.TruncateSlice(zones, limit.Resolve(ctx, 50))
 			return opts.IO.Encode(cmd.OutOrStdout(), zones)
 		},
 	}
@@ -2052,7 +2042,6 @@ type testrunRunsListOpts struct {
 	IO        cmdio.Options
 	ProjectID int
 	ID        int
-	Limit     int64
 }
 
 func (o *testrunRunsListOpts) setup(flags *pflag.FlagSet) {
@@ -2061,7 +2050,6 @@ func (o *testrunRunsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.ProjectID, "project-id", 0, "k6 Cloud project ID (required when using name lookup)")
 	flags.IntVar(&o.ID, "id", 0, "Load test ID (skip name lookup)")
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 func newTestrunRunsListCommand(loader CloudConfigLoader) *cobra.Command {
@@ -2092,7 +2080,7 @@ func newTestrunRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			runs = adapter.TruncateSlice(runs, opts.Limit)
+			runs = adapter.TruncateSlice(runs, limit.Resolve(ctx, 50))
 			return opts.IO.Encode(cmd.OutOrStdout(), runs)
 		},
 	}

@@ -41,7 +41,6 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 type listOpts struct {
 	IO    cmdio.Options
 	Scope string
-	Limit int64
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
@@ -50,7 +49,6 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Scope, "scope", "", `Filter by scope: "global" or "tenant"`)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of templates to return (0 for no limit)")
 }
 
 func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
@@ -71,7 +69,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			templates, err := client.List(cmd.Context(), opts.Scope, int(opts.Limit))
+			templates, err := client.List(cmd.Context(), opts.Scope)
 			if err != nil {
 				return err
 			}

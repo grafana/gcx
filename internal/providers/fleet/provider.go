@@ -12,6 +12,7 @@ import (
 
 	fleetbase "github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/limit"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources"
@@ -219,7 +220,7 @@ func (h *fleetHelper) newPipelineListCommand() *cobra.Command {
 				return err
 			}
 
-			pipelines = adapter.TruncateSlice(pipelines, opts.Limit)
+			pipelines = adapter.TruncateSlice(pipelines, limit.Resolve(ctx, 50))
 
 			// Table codec operates on raw []Pipeline for direct field access.
 			// Other formats (yaml/json) convert to K8s envelope Resources
@@ -245,8 +246,7 @@ func (h *fleetHelper) newPipelineListCommand() *cobra.Command {
 }
 
 type pipelineListOpts struct {
-	IO    cmdio.Options
-	Limit int64
+	IO cmdio.Options
 }
 
 func (o *pipelineListOpts) setup(flags *pflag.FlagSet) {
@@ -254,8 +254,6 @@ func (o *pipelineListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &PipelineTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 func (h *fleetHelper) newPipelineGetCommand() *cobra.Command { //nolint:dupl // Intentionally similar to collector get — distinct resource types.
@@ -543,7 +541,7 @@ func (h *fleetHelper) newCollectorListCommand() *cobra.Command {
 				return err
 			}
 
-			collectors = adapter.TruncateSlice(collectors, opts.Limit)
+			collectors = adapter.TruncateSlice(collectors, limit.Resolve(ctx, 50))
 
 			// Table codec operates on raw []Collector for direct field access.
 			// Other formats (yaml/json) convert to K8s envelope Resources
@@ -569,8 +567,7 @@ func (h *fleetHelper) newCollectorListCommand() *cobra.Command {
 }
 
 type collectorListOpts struct {
-	IO    cmdio.Options
-	Limit int64
+	IO cmdio.Options
 }
 
 func (o *collectorListOpts) setup(flags *pflag.FlagSet) {
@@ -578,8 +575,6 @@ func (o *collectorListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &CollectorTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 func (h *fleetHelper) newCollectorGetCommand() *cobra.Command { //nolint:dupl // Intentionally similar to pipeline get — distinct resource types.

@@ -1,6 +1,7 @@
 package root
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"path"
@@ -25,6 +26,7 @@ import (
 	internalconfig "github.com/grafana/gcx/internal/config"
 	_ "github.com/grafana/gcx/internal/datasources/providers" // DatasourceProvider registrations — blank imports trigger init() self-registration.
 	"github.com/grafana/gcx/internal/httputils"
+	"github.com/grafana/gcx/internal/limit"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/providers"
 	_ "github.com/grafana/gcx/internal/providers/aio11y"   // Provider registrations — blank imports trigger init() self-registration.
@@ -78,6 +80,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	verbosity := 0
 	contextName := ""
 	logHTTPPayload := false
+	var limitVal int64
 
 	rootCmd := &cobra.Command{
 		Use:           path.Base(os.Args[0]),
@@ -86,7 +89,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true, // We want to print errors ourselves
 		Version:       version,
-		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			// Track whether --json was explicitly set on the resolved command.
 			// Only mark active when the command actually declares a --json flag,
 			// preventing false positives for subcommands that don't support it.
@@ -145,7 +148,19 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 				ctx = httputils.WithPayloadLogging(ctx, true)
 			}
 
+			// Thread --limit into context. Explicit CLI value always wins;
+			// agent mode gets a default cap to prevent unbounded scans.
+			if f := cmd.Root().PersistentFlags().Lookup("limit"); f != nil && f.Changed {
+				if limitVal < 0 {
+					return fmt.Errorf("invalid --limit value %d: must be >= 0 (0 = unlimited)", limitVal)
+				}
+				ctx = limit.WithLimit(ctx, limitVal, true)
+			} else if agent.IsAgentMode() {
+				ctx = limit.WithLimit(ctx, 50, false)
+			}
+
 			cmd.SetContext(ctx)
+			return nil
 		},
 		Annotations: map[string]string{
 			cobra.CommandDisplayNameAnnotation: "gcx",
@@ -201,6 +216,8 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd.PersistentFlags().StringVar(&contextName, "context", "", "Name of the context to use (overrides current-context in config)")
 	rootCmd.PersistentFlags().BoolVar(&logHTTPPayload, "log-http-payload", false,
 		"Log full HTTP request/response bodies (includes headers — may expose tokens)")
+	rootCmd.PersistentFlags().Int64Var(&limitVal, "limit", 0,
+		"Maximum number of items to return from list operations (0 for all; defaults to 50 in agent mode)")
 
 	// Initialize Cobra's built-in help/completion commands here so any code
 	// traversing the command tree before ExecuteContext() sees the same shape

@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/limit"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/aio11y/aio11yhttp"
@@ -36,8 +37,7 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 // --- list ---
 
 type listOpts struct {
-	IO    cmdio.Options
-	Limit int
+	IO cmdio.Options
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
@@ -45,7 +45,6 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &TableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of scores to return")
 }
 
 func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
@@ -63,7 +62,8 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			scores, err := client.ListByGeneration(cmd.Context(), args[0], opts.Limit)
+			ctx := cmd.Context()
+			scores, err := client.ListByGeneration(ctx, args[0], int(limit.Resolve(ctx, 50)))
 			if err != nil {
 				return err
 			}

@@ -55,7 +55,7 @@ func TestClient_List(t *testing.T) {
 		})
 	}))
 
-	items, err := client.List(context.Background(), 0)
+	items, err := client.List(context.Background())
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, "conv-1", items[0].ID)

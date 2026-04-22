@@ -13,6 +13,7 @@ import (
 
 	auth "github.com/grafana/gcx/internal/auth/adaptive"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/limit"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -517,7 +518,6 @@ type rulesListOpts struct {
 	cmdio.Options
 
 	Segment string
-	Limit   int64
 }
 
 func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
@@ -526,7 +526,6 @@ func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
 	o.RegisterCustomCodec("wide", &rulesTableCodec{wide: true})
 	o.BindFlags(flags)
 	flags.StringVar(&o.Segment, "segment", "", "Segment ID")
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of rules to return (0 for no limit)")
 }
 
 func (h *metricsHelper) rulesListCommand() *cobra.Command {
@@ -545,7 +544,7 @@ func (h *metricsHelper) rulesListCommand() *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx, opts.Limit)
+			typedObjs, err := crud.List(ctx, limit.Resolve(ctx, 50))
 			if err != nil {
 				return err
 			}
@@ -1091,8 +1090,6 @@ func (h *metricsHelper) segmentsCommand() *cobra.Command {
 
 type segmentsListOpts struct {
 	cmdio.Options
-
-	Limit int
 }
 
 func (o *segmentsListOpts) setup(flags *pflag.FlagSet) {
@@ -1100,7 +1097,6 @@ func (o *segmentsListOpts) setup(flags *pflag.FlagSet) {
 	o.RegisterCustomCodec("table", &segmentsTableCodec{wide: false})
 	o.RegisterCustomCodec("wide", &segmentsTableCodec{wide: true})
 	o.BindFlags(flags)
-	flags.IntVar(&o.Limit, "limit", 0, "Maximum number of segments to return (0 for no limit)")
 }
 
 func (h *metricsHelper) segmentsListCommand() *cobra.Command {
@@ -1124,13 +1120,7 @@ func (h *metricsHelper) segmentsListCommand() *cobra.Command {
 				return err
 			}
 
-			total := len(segments)
-			if opts.Limit > 0 && opts.Limit < total {
-				segments = segments[:opts.Limit]
-				fmt.Fprintf(cmd.ErrOrStderr(), "%d of %d segment(s)\n", opts.Limit, total)
-			} else {
-				fmt.Fprintf(cmd.ErrOrStderr(), "%d segment(s)\n", total)
-			}
+			fmt.Fprintf(cmd.ErrOrStderr(), "%d segment(s)\n", len(segments))
 			if len(segments) == 0 {
 				return nil
 			}
@@ -1458,7 +1448,6 @@ type exemptionsListOpts struct {
 
 	Segment     string
 	AllSegments bool
-	Limit       int
 }
 
 func (o *exemptionsListOpts) setup(flags *pflag.FlagSet) {
@@ -1468,7 +1457,6 @@ func (o *exemptionsListOpts) setup(flags *pflag.FlagSet) {
 	o.BindFlags(flags)
 	flags.StringVar(&o.Segment, "segment", "", "Segment ID")
 	flags.BoolVar(&o.AllSegments, "all-segments", false, "List exemptions across all segments")
-	flags.IntVar(&o.Limit, "limit", 0, "Maximum number of exemptions to return (0 for no limit)")
 }
 
 func (h *metricsHelper) exemptionsListCommand() *cobra.Command {
@@ -1482,9 +1470,6 @@ func (h *metricsHelper) exemptionsListCommand() *cobra.Command {
 			}
 			if opts.Segment != "" && opts.AllSegments {
 				return errors.New("--segment and --all-segments are mutually exclusive")
-			}
-			if opts.AllSegments && opts.Limit > 0 {
-				return errors.New("--limit is not supported with --all-segments; use --segment to target a specific segment")
 			}
 
 			ctx := cmd.Context()
@@ -1521,13 +1506,7 @@ func (h *metricsHelper) exemptionsListCommand() *cobra.Command {
 				normalizeExemption(&exemptions[i])
 			}
 
-			total := len(exemptions)
-			if opts.Limit > 0 && opts.Limit < total {
-				exemptions = exemptions[:opts.Limit]
-				fmt.Fprintf(cmd.ErrOrStderr(), "%d of %d exemption(s)\n", opts.Limit, total)
-			} else {
-				fmt.Fprintf(cmd.ErrOrStderr(), "%d exemption(s)\n", total)
-			}
+			fmt.Fprintf(cmd.ErrOrStderr(), "%d exemption(s)\n", len(exemptions))
 			if len(exemptions) == 0 {
 				return nil
 			}

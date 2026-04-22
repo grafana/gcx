@@ -71,7 +71,7 @@ func TestClient_ListByGeneration(t *testing.T) {
 		})
 	}))
 
-	items, err := client.ListByGeneration(context.Background(), "gen-1", 100)
+	items, err := client.ListByGeneration(context.Background(), "gen-1", 0)
 	require.NoError(t, err)
 	require.Len(t, items, 2)
 	assert.Equal(t, "relevance", items[0].ScoreKey)

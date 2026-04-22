@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
 	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/limit"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
@@ -53,7 +54,6 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 type listOpts struct {
 	IO     cmdio.Options
 	State  string
-	Limit  int
 	Offset int
 }
 
@@ -63,7 +63,6 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.State, "state", "", "Filter by investigation state (e.g. running, completed, cancelled)")
-	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of investigations to return")
 	flags.IntVar(&o.Offset, "offset", 0, "Number of investigations to skip (for pagination)")
 }
 
@@ -77,13 +76,14 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
+			resolvedLimit := int(limit.Resolve(cmd.Context(), 50))
 			client, err := newClient(cmd, loader)
 			if err != nil {
 				return err
 			}
 			summaries, err := client.List(cmd.Context(), ListOptions{
 				State:  opts.State,
-				Limit:  opts.Limit,
+				Limit:  resolvedLimit,
 				Offset: opts.Offset,
 			})
 			if err != nil {

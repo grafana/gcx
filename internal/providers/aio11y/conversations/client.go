@@ -21,9 +21,9 @@ func NewClient(base *aio11yhttp.Client) *Client {
 	return &Client{base: base}
 }
 
-// List returns conversations, limited to the given count. Pass 0 for no limit.
-func (c *Client) List(ctx context.Context, limit int) ([]Conversation, error) {
-	return aio11yhttp.ListAll[Conversation](ctx, c.base, "/query/conversations", nil, limit)
+// List returns all conversations.
+func (c *Client) List(ctx context.Context) ([]Conversation, error) {
+	return aio11yhttp.ListAll[Conversation](ctx, c.base, "/query/conversations", nil)
 }
 
 // Get returns a single conversation by ID with all its generations.

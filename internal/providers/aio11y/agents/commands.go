@@ -40,8 +40,7 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 // --- list ---
 
 type listOpts struct {
-	IO    cmdio.Options
-	Limit int
+	IO cmdio.Options
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
@@ -49,7 +48,6 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &ListTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of agents to return")
 }
 
 func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
@@ -65,7 +63,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			agents, err := client.List(cmd.Context(), opts.Limit)
+			agents, err := client.List(cmd.Context())
 			if err != nil {
 				return err
 			}
