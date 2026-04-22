@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/limit"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 	"github.com/grafana/gcx/internal/style"
@@ -65,7 +66,7 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx, 0)
+			typedObjs, err := crud.List(ctx, limit.Resolve(ctx, 50))
 			if err != nil {
 				return err
 			}

@@ -12,6 +12,7 @@ import (
 
 	fleetbase "github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/limit"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources"
@@ -218,6 +219,8 @@ func (h *fleetHelper) newPipelineListCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			pipelines = adapter.TruncateSlice(pipelines, limit.Resolve(ctx, 50))
 
 			// Table codec operates on raw []Pipeline for direct field access.
 			// Other formats (yaml/json) convert to K8s envelope Resources
@@ -537,6 +540,8 @@ func (h *fleetHelper) newCollectorListCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			collectors = adapter.TruncateSlice(collectors, limit.Resolve(ctx, 50))
 
 			// Table codec operates on raw []Collector for direct field access.
 			// Other formats (yaml/json) convert to K8s envelope Resources

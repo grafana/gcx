@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/gcx/internal/limit"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/gcx/internal/terminal"
 	"github.com/spf13/cobra"
@@ -192,7 +193,7 @@ func newProjectsListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			typedObjs, err := crud.List(ctx, 0)
+			typedObjs, err := crud.List(ctx, limit.Resolve(ctx, 50))
 			if err != nil {
 				return err
 			}
@@ -900,6 +901,7 @@ func newRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			runs = adapter.TruncateSlice(runs, limit.Resolve(ctx, 50))
 			return opts.IO.Encode(cmd.OutOrStdout(), runs)
 		},
 	}
@@ -1005,6 +1007,7 @@ func newEnvVarsListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			envVars = adapter.TruncateSlice(envVars, limit.Resolve(ctx, 50))
 			return opts.IO.Encode(cmd.OutOrStdout(), envVars)
 		},
 	}
@@ -1302,6 +1305,7 @@ func newSchedulesListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			schedules = adapter.TruncateSlice(schedules, limit.Resolve(ctx, 50))
 			return opts.IO.Encode(cmd.OutOrStdout(), schedules)
 		},
 	}
@@ -1547,6 +1551,7 @@ func newLoadZonesListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			zones = adapter.TruncateSlice(zones, limit.Resolve(ctx, 50))
 			return opts.IO.Encode(cmd.OutOrStdout(), zones)
 		},
 	}
@@ -2075,6 +2080,7 @@ func newTestrunRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			runs = adapter.TruncateSlice(runs, limit.Resolve(ctx, 50))
 			return opts.IO.Encode(cmd.OutOrStdout(), runs)
 		},
 	}

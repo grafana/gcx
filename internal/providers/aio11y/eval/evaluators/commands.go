@@ -12,6 +12,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/limit"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/aio11y/aio11yhttp"
@@ -69,7 +70,7 @@ func newListCommand() *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx, 0)
+			typedObjs, err := crud.List(ctx, limit.Resolve(ctx, 50))
 			if err != nil {
 				return err
 			}
