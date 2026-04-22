@@ -1,6 +1,7 @@
 package root
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"path"
@@ -88,7 +89,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true, // We want to print errors ourselves
 		Version:       version,
-		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			// Track whether --json was explicitly set on the resolved command.
 			// Only mark active when the command actually declares a --json flag,
 			// preventing false positives for subcommands that don't support it.
@@ -150,12 +151,16 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 			// Thread --limit into context. Explicit CLI value always wins;
 			// agent mode gets a default cap to prevent unbounded scans.
 			if f := cmd.Root().PersistentFlags().Lookup("limit"); f != nil && f.Changed {
+				if limitVal < 0 {
+					return fmt.Errorf("invalid --limit value %d: must be >= 0 (0 = unlimited)", limitVal)
+				}
 				ctx = limit.WithLimit(ctx, limitVal, true)
 			} else if agent.IsAgentMode() {
 				ctx = limit.WithLimit(ctx, 50, false)
 			}
 
 			cmd.SetContext(ctx)
+			return nil
 		},
 		Annotations: map[string]string{
 			cobra.CommandDisplayNameAnnotation: "gcx",
