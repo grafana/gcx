@@ -22,6 +22,8 @@ import (
 	k8sapi "k8s.io/apimachinery/pkg/api/errors"
 )
 
+const reauthSuggestion = "Re-authenticate if needed: gcx login"
+
 func ErrorToDetailedError(err error) *DetailedError {
 	var converted bool
 	detailedErr := &DetailedError{}
@@ -287,7 +289,7 @@ func queryErrorSuggestions(apiErr *queryerror.APIError) []string {
 	if apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden {
 		return []string{
 			"Review your Grafana credentials: gcx config view",
-			"Re-authenticate if needed: gcx auth login",
+			reauthSuggestion,
 		}
 	}
 
@@ -460,7 +462,7 @@ func datasourceErrorSuggestions(apiErr *datasources.APIError) []string {
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return []string{
 			"Review your Grafana credentials: gcx config view",
-			"Re-authenticate if needed: gcx auth login",
+			reauthSuggestion,
 		}
 	case http.StatusNotFound:
 		return []string{
@@ -513,7 +515,7 @@ func serviceAPIErrorSuggestions(apiErr serviceAPIError) []string {
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return []string{
 			"Review your Grafana credentials: gcx config view",
-			"Re-authenticate if needed: gcx auth login",
+			reauthSuggestion,
 		}
 	default:
 		return nil

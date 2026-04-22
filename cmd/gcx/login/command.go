@@ -3,6 +3,7 @@ package login
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -13,14 +14,31 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	internalauth "github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/login"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/term"
 )
 
+// LoginResult is the structured post-login summary that the output codecs
+// render. It mirrors the human-facing information emitted by the legacy prose
+// output, plus fields that structured consumers (agent mode, scripts) may want
+// (StackSlug, HasCloudToken).
+type LoginResult struct {
+	ContextName    string `json:"contextName" yaml:"contextName"`
+	Server         string `json:"server" yaml:"server"`
+	AuthMethod     string `json:"authMethod" yaml:"authMethod"`
+	Cloud          bool   `json:"cloud" yaml:"cloud"`
+	GrafanaVersion string `json:"grafanaVersion,omitempty" yaml:"grafanaVersion,omitempty"`
+	StackSlug      string `json:"stackSlug,omitempty" yaml:"stackSlug,omitempty"`
+	HasCloudToken  bool   `json:"hasCloudToken" yaml:"hasCloudToken"`
+}
+
 type loginOpts struct {
 	Config      configcmd.Options
+	IO          cmdio.Options
 	Server      string
 	Token       string
 	CloudToken  string
@@ -31,12 +49,42 @@ type loginOpts struct {
 
 func (opts *loginOpts) setup(flags *pflag.FlagSet) {
 	opts.Config.BindFlags(flags)
+	// Register a human-text codec and use it as the default for interactive
+	// terminals. cmdio.BindFlags overrides the default with "json" when
+	// agent.IsAgentMode() is true, so we don't branch on agent mode here.
+	opts.IO.RegisterCustomCodec("text", &loginTextCodec{})
+	opts.IO.DefaultFormat("text")
+	opts.IO.BindFlags(flags)
+
 	flags.StringVar(&opts.Server, "server", "", "Grafana server URL (e.g. https://my-stack.grafana.net)")
 	flags.StringVar(&opts.Token, "token", "", "Grafana service account token")
 	flags.StringVar(&opts.CloudToken, "cloud-token", "", "Grafana Cloud API token (enables Cloud management features)")
 	flags.StringVar(&opts.CloudAPIURL, "cloud-api-url", "", "Override Grafana Cloud API URL")
 	flags.BoolVar(&opts.Cloud, "cloud", false, "Force Grafana Cloud target (skip auto-detection)")
 	flags.BoolVar(&opts.Yes, "yes", false, "Non-interactive: skip optional prompts and use defaults")
+}
+
+// Validate checks opts and args for internal consistency before runLogin executes.
+// Returns an error if a positional CONTEXT_NAME argument is combined with the
+// --context flag (they're mutually exclusive to prevent silent confusion).
+// Also validates the output codec options (format name, --json flag shape).
+func (opts *loginOpts) Validate(args []string) error {
+	if len(args) == 1 && opts.Config.Context != "" {
+		return fail.DetailedError{
+			Summary: "conflicting context specification",
+			Details: fmt.Sprintf(
+				"Positional argument %q and --context=%q both specified. Use one.",
+				args[0], opts.Config.Context,
+			),
+			Suggestions: []string{
+				"Drop --context and use the positional form: gcx login " + args[0],
+			},
+		}
+	}
+	if err := opts.IO.Validate(); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Command returns the `login` Cobra command.
@@ -62,6 +110,9 @@ first-time setup if no current context is configured.`,
   gcx login --yes prod --token glsa_xxx
   gcx login --yes --server https://localhost:3000 --token glsa_xxx`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(args); err != nil {
+				return err
+			}
 			return runLogin(cmd, opts, args)
 		},
 	}
@@ -75,20 +126,9 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	ctx := cmd.Context()
 
 	// Positional arg takes precedence; --context flag is compat.
-	// Error if both are given to prevent silent confusion.
+	// Mutual exclusion is enforced earlier in loginOpts.Validate.
 	var contextName string
 	switch {
-	case len(args) == 1 && flags.Config.Context != "":
-		return fail.DetailedError{
-			Summary: "conflicting context specification",
-			Details: fmt.Sprintf(
-				"Positional argument %q and --context=%q both specified. Use one.",
-				args[0], flags.Config.Context,
-			),
-			Suggestions: []string{
-				"Drop --context and use the positional form: gcx login " + args[0],
-			},
-		}
 	case len(args) == 1:
 		contextName = args[0]
 	default:
@@ -124,19 +164,24 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 		!agent.IsAgentMode()
 
 	opts := login.Options{
-		Server:        flags.Server,
-		ContextName:   contextName,
-		GrafanaToken:  flags.Token,
-		CloudToken:    flags.CloudToken,
-		CloudAPIURL:   flags.CloudAPIURL,
-		Yes:           flags.Yes,
-		Cloud:         flags.Cloud,
-		ConfigSource:  flags.Config.ConfigSource(),
-		StagedContext: &config.Context{}, // enables Run() to cache across sentinel retries
-		NewAuthFlow: func(server string, ao internalauth.Options) login.AuthFlow {
-			return internalauth.NewFlow(server, ao)
+		Inputs: login.Inputs{
+			Server:       flags.Server,
+			ContextName:  contextName,
+			GrafanaToken: flags.Token,
+			CloudToken:   flags.CloudToken,
+			CloudAPIURL:  flags.CloudAPIURL,
+			Yes:          flags.Yes,
+			Writer:       cmd.ErrOrStderr(),
 		},
-		Writer: cmd.ErrOrStderr(),
+		Hooks: login.Hooks{
+			ConfigSource: flags.Config.ConfigSource(),
+			NewAuthFlow: func(server string, ao internalauth.Options) login.AuthFlow {
+				return internalauth.NewFlow(server, ao)
+			},
+		},
+		RetryState: login.RetryState{
+			StagedContext: &config.Context{}, // enables Run() to cache across sentinel retries
+		},
 	}
 
 	if flags.Cloud {
@@ -144,10 +189,13 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	}
 
 	for {
-		result, err := login.Run(ctx, opts)
+		result, err := login.Run(ctx, &opts)
 		if err == nil {
-			printResult(cmd, flags.Server, result)
-			return nil
+			// Use opts.Server (the canonical runtime value mutated by
+			// interactive prompts / retries) rather than flags.Server, which
+			// can be empty on first-time setup when the user typed the URL
+			// into the huh form.
+			return printResult(cmd, &flags.IO, opts.Server, result)
 		}
 
 		var needInput *login.ErrNeedInput
@@ -160,7 +208,9 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 			}
 			if formErr := askForInput(needInput, &opts, sourceCtx); formErr != nil {
 				if errors.Is(formErr, huh.ErrUserAborted) {
-					fmt.Fprintln(cmd.OutOrStdout(), "Aborted.")
+					// Route advisory to stderr so stdout remains parseable
+					// for -o json / -o yaml consumers.
+					fmt.Fprintln(cmd.ErrOrStderr(), "Aborted.")
 					return nil
 				}
 				return formErr
@@ -172,7 +222,9 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 			}
 			if formErr := askForClarification(needClarification, &opts); formErr != nil {
 				if errors.Is(formErr, huh.ErrUserAborted) {
-					fmt.Fprintln(cmd.OutOrStdout(), "Aborted.")
+					// Route advisory to stderr so stdout remains parseable
+					// for -o json / -o yaml consumers.
+					fmt.Fprintln(cmd.ErrOrStderr(), "Aborted.")
 					return nil
 				}
 				return formErr
@@ -263,19 +315,41 @@ func askForInput(e *login.ErrNeedInput, opts *login.Options, sourceCtx *config.C
 // askGrafanaAuth prompts for an authentication method and, when "token" is
 // chosen, for the token itself. When existingToken is non-empty (re-auth),
 // the token prompt allows empty input to reuse the stored token.
+//
+// The auth-method menu is tailored to the resolved target:
+//   - On-prem: OAuth is not offered (the Grafana instance cannot issue the
+//     tokens our OAuth flow relies on). The token prompt is shown directly.
+//   - Cloud: OAuth is offered first as the recommended path, with token as
+//     the fallback.
+//   - Unknown (target still ambiguous): both options are offered, token
+//     first to match the historical default.
 func askGrafanaAuth(opts *login.Options, existingToken string) error {
+	tokenOption := huh.NewOption("Service account token (requires permissions for managing service accounts)", "token")
+	oauthOption := huh.NewOption("OAuth (browser) — recommended for cloud stacks; experimental on some configurations, fall back to a service account token if you hit issues", "oauth")
+
+	var options []huh.Option[string]
+	switch opts.Target {
+	case login.TargetOnPrem:
+		options = []huh.Option[string]{tokenOption}
+	case login.TargetCloud:
+		options = []huh.Option[string]{oauthOption, tokenOption}
+	default: // TargetUnknown
+		options = []huh.Option[string]{tokenOption, oauthOption}
+	}
+
 	authMethod := "token"
-	methodForm := huh.NewForm(huh.NewGroup(
-		huh.NewSelect[string]().
-			Title("Authentication method").
-			Options(
-				huh.NewOption("Service account token (requires permissions for managing service accounts)", "token"),
-				huh.NewOption("OAuth (browser) — experimental, some functionality may not work; fall back to a service account token if you hit auth issues", "oauth"),
-			).
-			Value(&authMethod),
-	))
-	if err := methodForm.Run(); err != nil {
-		return err
+	// On-prem has a single option; skip the one-item menu and fall through
+	// to the token-input prompt directly.
+	if len(options) > 1 {
+		methodForm := huh.NewForm(huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Authentication method").
+				Options(options...).
+				Value(&authMethod),
+		))
+		if err := methodForm.Run(); err != nil {
+			return err
+		}
 	}
 	if authMethod == "oauth" {
 		opts.UseOAuth = true
@@ -380,7 +454,6 @@ func askForClarification(e *login.ErrNeedClarification, opts *login.Options) err
 		switch choice {
 		case "cloud":
 			opts.Target = login.TargetCloud
-			opts.Cloud = true
 		default:
 			opts.Target = login.TargetOnPrem
 		}
@@ -452,11 +525,17 @@ func structuredClarificationError(e *login.ErrNeedClarification) error {
 
 // printModeHeader writes a one- or two-line status banner so the user
 // can see what the upcoming login will do before any prompts appear.
+// It routes to stderr so that `-o json`/`-o yaml` leave stdout clean for
+// downstream parsing; terminal users still see the banner alongside normal
+// output because stderr is typically merged into the visible stream.
 func printModeHeader(cmd *cobra.Command, cfg config.Config, contextName string, sourceCtx *config.Context) {
-	w := cmd.OutOrStdout()
+	w := cmd.ErrOrStderr()
 	switch {
-	case sourceCtx != nil && sourceCtx.Grafana != nil:
-		// Re-auth path.
+	case sourceCtx != nil && sourceCtx.Grafana != nil && sourceCtx.Grafana.Server != "":
+		// Re-auth path. Guard on non-empty Server so the synthetic default
+		// context injected by LoadConfigTolerant (empty Server) doesn't print
+		// a misleading "Refreshing context \"default\" (server: )" banner on
+		// first-time setup — that case falls through to the new-context arm.
 		name := contextName
 		if name == "" {
 			name = cfg.CurrentContext
@@ -487,28 +566,67 @@ func existingContextNames(cfg config.Config) []string {
 	return names
 }
 
-// printResult writes the post-login summary to stdout.
-func printResult(cmd *cobra.Command, server string, result login.Result) {
-	w := cmd.OutOrStdout()
+// printResult converts the login.Result into a LoginResult and writes it to
+// stdout using the configured output codec. Advisory prose (the CAP token
+// note) is routed to stderr so that JSON/YAML consumers receive clean,
+// parseable output on stdout.
+func printResult(cmd *cobra.Command, ioOpts *cmdio.Options, server string, result login.Result) error {
 	if server == "" {
 		server = result.ContextName
 	}
-	fmt.Fprintf(w, "Logged in to %s\n", server)
-	fmt.Fprintf(w, "  Context:     %s\n", result.ContextName)
-	fmt.Fprintf(w, "  Auth method: %s\n", result.AuthMethod)
-	if result.GrafanaVersion != "" {
-		fmt.Fprintf(w, "  Version:     %s\n", result.GrafanaVersion)
+	lr := LoginResult{
+		ContextName:    result.ContextName,
+		Server:         server,
+		AuthMethod:     result.AuthMethod,
+		Cloud:          result.IsCloud,
+		GrafanaVersion: result.GrafanaVersion,
+		StackSlug:      result.StackSlug,
+		HasCloudToken:  result.HasCloudToken,
 	}
-	if result.IsCloud {
+	if err := ioOpts.Encode(cmd.OutOrStdout(), lr); err != nil {
+		return err
+	}
+	// Route advisory prose to stderr. This keeps stdout parseable for
+	// json/yaml consumers while still surfacing the CAP-token guidance
+	// to humans (terminals typically merge stderr into the visible stream).
+	if result.IsCloud && !result.HasCloudToken {
+		ew := cmd.ErrOrStderr()
+		fmt.Fprintln(ew)
+		fmt.Fprintln(ew, "Note: Cloud API commands require a Cloud Access Policy token.")
+		fmt.Fprintf(ew, "Run 'gcx login --context %s' to add one.\n", result.ContextName)
+	}
+	return nil
+}
+
+// loginTextCodec renders LoginResult as the human-friendly multi-line summary
+// that was previously printed inline. It's registered as the "text" codec and
+// is the default for interactive terminals.
+type loginTextCodec struct{}
+
+func (c *loginTextCodec) Format() format.Format { return "text" }
+
+func (c *loginTextCodec) Encode(w io.Writer, value any) error {
+	lr, ok := value.(LoginResult)
+	if !ok {
+		return fmt.Errorf("login text codec: unsupported type %T", value)
+	}
+	fmt.Fprintf(w, "Logged in to %s\n", lr.Server)
+	fmt.Fprintf(w, "  Context:     %s\n", lr.ContextName)
+	fmt.Fprintf(w, "  Auth method: %s\n", lr.AuthMethod)
+	if lr.GrafanaVersion != "" {
+		fmt.Fprintf(w, "  Version:     %s\n", lr.GrafanaVersion)
+	}
+	if lr.Cloud {
 		fmt.Fprintln(w, "  Grafana Cloud: yes")
-		if result.StackSlug != "" {
-			fmt.Fprintf(w, "  Stack:       %s\n", result.StackSlug)
-		}
-		if !result.HasCloudToken {
-			fmt.Fprintf(w, "\nNote: Cloud API commands require a CAP token.\n")
-			fmt.Fprintf(w, "Run 'gcx login --context %s' to add one.\n", result.ContextName)
+		if lr.StackSlug != "" {
+			fmt.Fprintf(w, "  Stack:       %s\n", lr.StackSlug)
 		}
 	} else {
 		fmt.Fprintln(w, "  Grafana Cloud: no")
 	}
+	return nil
+}
+
+func (c *loginTextCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("login text codec does not support decoding")
 }

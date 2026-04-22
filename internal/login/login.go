@@ -23,10 +23,11 @@ const (
 	TargetOnPrem
 )
 
-// Options holds all inputs required by Run. Injection fields (ConfigSource,
-// NewAuthFlow, Writer, ValidateFn, DetectFn) allow unit tests to run without
-// real filesystem, browser, or network access.
-type Options struct {
+// Inputs carries the user-facing values that shape a login: server URL,
+// target classification, authentication tokens, context name, and UX flags.
+// All fields are directly populated from CLI flags or interactive prompts;
+// none carry internal state or injection hooks.
+type Inputs struct {
 	Server       string
 	ContextName  string
 	Target       Target
@@ -35,19 +36,44 @@ type Options struct {
 	CloudAPIURL  string
 	UseOAuth     bool
 	Yes          bool
-	Cloud        bool
+
+	// Writer receives human-facing OAuth progress output. When nil, the
+	// internal/login package discards writes (NC-001: the package is UI-free
+	// and never touches os.Stderr on its own). CLI callers should pass
+	// cmd.ErrOrStderr().
+	Writer io.Writer
+}
+
+// Hooks carries injection seams that decouple Run from filesystem,
+// network, and browser side effects. Each hook has a safe default behaviour
+// when left nil (real config, live HTTP detection, real connectivity check).
+// Tests supply stubs to exercise Run deterministically.
+type Hooks struct {
+	// ConfigSource determines where the config file is read from and
+	// written to. Nil falls back to config.StandardLocation().
 	ConfigSource config.Source
-	NewAuthFlow  func(server string, opts auth.Options) AuthFlow
-	Writer       io.Writer
+
+	// NewAuthFlow constructs the OAuth PKCE flow. Must be non-nil when
+	// UseOAuth is true; otherwise Run returns an error. Callers typically
+	// pass a factory that wraps auth.NewFlow.
+	NewAuthFlow func(server string, opts auth.Options) AuthFlow
 
 	// ValidateFn overrides connectivity validation for testing.
-	// Returns the Grafana version string on success. When nil, the real Validate() is used.
+	// Returns the Grafana version string on success. When nil, the real
+	// Validate() is used.
 	ValidateFn func(ctx context.Context, opts Options, restCfg config.NamespacedRESTConfig) (string, error)
 
-	// DetectFn overrides target detection for testing.
-	// When nil, DetectTarget with httputils.NewDefaultClient(ctx) is used.
+	// DetectFn overrides target detection for testing. When nil,
+	// DetectTarget with httputils.NewDefaultClient(ctx) is used.
 	DetectFn func(ctx context.Context, server string) (Target, error)
+}
 
+// RetryState carries plumbing used by the CLI layer when Run returns a
+// sentinel (ErrNeedInput / ErrNeedClarification) and is re-invoked after
+// the caller resolves the missing value. These fields are never set on
+// the first invocation and should be treated as internal protocol between
+// Run and its retry-loop caller.
+type RetryState struct {
 	// StagedContext carries partially-resolved state across sentinel
 	// retries. The CLI allocates it once as &config.Context{} before the
 	// Run() retry loop; Run() populates StagedContext.Grafana and
@@ -72,6 +98,21 @@ type Options struct {
 	// user knows to be safe (e.g. Grafana Cloud hiding the version string
 	// from anonymous callers).
 	ForceSave bool
+}
+
+// Options is the top-level input to Run. It embeds three semantic groupings:
+//
+//   - Inputs: user-facing values (server, tokens, flags).
+//   - Hooks: injection seams for testing (ConfigSource, ValidateFn, …).
+//   - RetryState: cross-invocation plumbing for the sentinel retry loop.
+//
+// Fields are promoted via embedding, so callers may either initialise the
+// sub-structs explicitly (clearer for mixed inputs) or read/write fields
+// flatly on an existing Options value (e.g. `opts.Server = "…"`).
+type Options struct {
+	Inputs
+	Hooks
+	RetryState
 }
 
 // Result is returned by Run on success and carries enough data for callers to
@@ -131,7 +172,12 @@ type AuthFlow interface {
 //  6. Build REST config and run connectivity validation
 //  7. Persist context to config
 //  8. Return Result
-func Run(ctx context.Context, opts Options) (Result, error) {
+//
+// Run takes opts by pointer so that resolved values (notably Target after
+// auto-detection) propagate back to the caller and remain available across
+// the CLI sentinel-retry flow. Callers that retry after ErrNeedInput /
+// ErrNeedClarification should reuse the same Options value.
+func Run(ctx context.Context, opts *Options) (Result, error) {
 	// Step 1: server must be set
 	if opts.Server == "" {
 		return Result{}, &ErrNeedInput{Fields: []string{"server"}}
@@ -152,7 +198,7 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 	// Step 3: detect target
 	target := opts.Target
 	if target == TargetUnknown {
-		detected, err := detectTarget(ctx, opts)
+		detected, err := detectTarget(ctx, *opts)
 		if err != nil {
 			return Result{}, fmt.Errorf("target detection failed: %w", err)
 		}
@@ -172,14 +218,19 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 		}
 	}
 
+	// Propagate the resolved target back to opts so that (a) subsequent
+	// sentinel-retry iterations skip re-detection and (b) the CLI prompt
+	// layer can branch on target (e.g. drop the OAuth option for on-prem).
+	opts.Target = target
+
 	// Step 4: Grafana auth
-	authMethod, grafanaCfg, err := resolveGrafanaAuth(ctx, opts, target)
+	authMethod, grafanaCfg, err := resolveGrafanaAuth(ctx, *opts, target)
 	if err != nil {
 		return Result{}, err
 	}
 
 	// Step 5: Cloud API token (Cloud targets only)
-	cloudCfg, err := resolveCloudAuth(opts, target)
+	cloudCfg, err := resolveCloudAuth(*opts, target)
 	if err != nil {
 		return Result{}, err
 	}
@@ -198,7 +249,7 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 		if validateFn == nil {
 			validateFn = Validate
 		}
-		v, err := validateFn(ctx, opts, restCfg)
+		v, err := validateFn(ctx, *opts, restCfg)
 		if err != nil {
 			// Non-interactive callers with --yes get a hard fail — they did not
 			// opt in to "save anyway". The debug prompt is an interactive-only
@@ -219,7 +270,7 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 	}
 
 	// Step 7: Persist to config (write only after all validation passes)
-	if err := persistContext(ctx, opts, contextName, tempCtx); err != nil {
+	if err := persistContext(ctx, *opts, contextName, tempCtx); err != nil {
 		return Result{}, err
 	}
 
@@ -246,7 +297,11 @@ func detectTarget(ctx context.Context, opts Options) (Target, error) {
 // Priority: explicit GrafanaToken → UseOAuth flag → ErrNeedInput.
 // OAuth is attempted only when UseOAuth is set; the caller (CLI) is responsible
 // for setting UseOAuth based on user intent or interactive prompts.
-func resolveGrafanaAuth(ctx context.Context, opts Options, _ Target) (string, *config.GrafanaConfig, error) {
+//
+// For on-prem targets, OrgID defaults to 1 when unset. This keeps fresh
+// on-prem logins from tripping over config.GrafanaConfig.validateNamespace
+// (which attempts DiscoverStackID against /bootdata and hard-fails on OSS).
+func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (string, *config.GrafanaConfig, error) {
 	// Cache hit: StagedContext already has Grafana resolved (previous
 	// retry), reuse without re-running OAuth/token auth.
 	if opts.StagedContext != nil && opts.StagedContext.Grafana != nil {
@@ -268,9 +323,14 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, _ Target) (string, *c
 		if opts.NewAuthFlow == nil {
 			return "", nil, errors.New("OAuth requested but no auth flow factory provided")
 		}
+		// The internal/login package is UI-free (NC-001) — it never touches
+		// process streams directly. Callers that want OAuth output surfaced
+		// to the user must supply a Writer explicitly (the CLI passes
+		// cmd.ErrOrStderr()). When unset, discard silently rather than
+		// leaking to os.Stderr.
 		w := opts.Writer
 		if w == nil {
-			w = os.Stderr
+			w = io.Discard
 		}
 		flow := opts.NewAuthFlow(opts.Server, auth.Options{Writer: w})
 		result, err := flow.Run(ctx)
@@ -289,6 +349,14 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, _ Target) (string, *c
 		return "", nil, &ErrNeedInput{Fields: []string{"grafana-auth"}}
 	}
 
+	// Default OrgID=1 for fresh on-prem logins. Without this, validateNamespace
+	// calls DiscoverStackID (hits /bootdata) which fails on OSS Grafana and
+	// produces a confusing hard error on an otherwise valid setup. Cloud
+	// logins leave OrgID=0 so StackID discovery runs normally.
+	if target == TargetOnPrem && grafanaCfg.OrgID == 0 {
+		grafanaCfg.OrgID = 1
+	}
+
 	// Populate cache so subsequent retries skip this step.
 	if opts.StagedContext != nil {
 		opts.StagedContext.Grafana = grafanaCfg
@@ -299,7 +367,9 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, _ Target) (string, *c
 
 // resolveCloudAuth builds CloudConfig for Cloud targets (step 5).
 // If CloudToken is empty and this is a Cloud target, returns ErrNeedInput
-// unless Yes or agent mode is set (which allows skipping step 2).
+// unless Yes or agent mode is set (which allows skipping step 5: the CAP
+// token is optional — its absence just disables Cloud management features,
+// it does not block login).
 func resolveCloudAuth(opts Options, target Target) (*config.CloudConfig, error) {
 	if target != TargetCloud {
 		return nil, nil //nolint:nilnil // nil CloudConfig means "no Cloud auth"; caller checks for nil.

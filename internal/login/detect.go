@@ -2,7 +2,6 @@ package login
 
 import (
 	"context"
-	"encoding/json"
 	"net"
 	"net/http"
 	"net/url"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/grafana"
 )
 
 // DetectTarget classifies the Grafana server URL into a Target.
@@ -72,43 +72,29 @@ func isLocalHostname(host string) bool {
 // probeTarget calls /api/frontend/settings with a ≤3s timeout and checks for Cloud markers.
 // A valid response with no Cloud markers is definitively on-prem (FR-006c).
 // Any error, timeout, or non-200 status yields TargetUnknown.
-func probeTarget(ctx context.Context, server string, httpClient *http.Client) (Target, error) {
+//
+// httpClient is accepted for interface compatibility but unused; FetchAnonymousSettings
+// manages its own HTTP client via httputils.NewDefaultClient.
+func probeTarget(ctx context.Context, server string, _ *http.Client) (Target, error) {
 	probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
-	settingsURL := strings.TrimSuffix(server, "/") + "/api/frontend/settings"
-	req, err := http.NewRequestWithContext(probeCtx, http.MethodGet, settingsURL, nil)
+	settings, err := grafana.FetchAnonymousSettings(probeCtx, server)
 	if err != nil {
+		// Any error (network failure, timeout, non-200, decode failure) → TargetUnknown.
 		return TargetUnknown, nil
 	}
 
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return TargetUnknown, nil
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return TargetUnknown, nil
+	// Parse the grafanaUrl from buildInfo to extract a clean hostname for the Cloud check.
+	parsed, err := url.Parse(settings.BuildInfo.GrafanaURL)
+	if err != nil || parsed.Hostname() == "" {
+		// Unparseable or empty grafanaUrl — valid probe but no Cloud marker → OnPrem.
+		return TargetOnPrem, nil
 	}
 
-	var settings struct {
-		BuildInfo struct {
-			GrafanaURL string `json:"grafanaUrl"`
-		} `json:"buildInfo"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&settings); err != nil {
-		return TargetUnknown, nil
-	}
-
-	u := strings.ToLower(settings.BuildInfo.GrafanaURL)
-	for _, d := range []string{
-		".grafana.net", ".grafana-dev.net", ".grafana-ops.net", // real Cloud stack URLs
-		"grafana.com", "grafana-dev.com", "grafana-ops.com", // Cloud root domains
-	} {
-		if strings.Contains(u, d) {
-			return TargetCloud, nil
-		}
+	host := strings.ToLower(parsed.Hostname())
+	if config.IsGrafanaCloudHost(host) {
+		return TargetCloud, nil
 	}
 
 	// Valid probe, no Cloud markers → definitively on-prem

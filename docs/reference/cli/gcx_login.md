@@ -37,6 +37,8 @@ gcx login [CONTEXT_NAME] [flags]
       --config string          Path to the configuration file to use
       --context string         Name of the context to use
   -h, --help                   help for login
+      --json string            Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string          Output format. One of: json, text, yaml (default "text")
       --server string          Grafana server URL (e.g. https://my-stack.grafana.net)
       --token string           Grafana service account token
       --yes                    Non-interactive: skip optional prompts and use defaults

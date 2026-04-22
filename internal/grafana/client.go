@@ -87,6 +87,8 @@ func GetVersion(ctx context.Context, cfgCtx *config.Context) (*semver.Version, s
 	// Wire the CLI's HTTP client (which carries the --log-http-payload
 	// logging transport when enabled) so `gcx ... --log-http-payload` dumps
 	// the /api/health request/response alongside every other call.
+	// Swapping the HTTP client preserves the auth transport configured above (API key / basic / OrgID);
+	// WithHTTPClient only replaces the underlying transport, not the goapi auth settings.
 	gClient.WithHTTPClient(httputils.NewDefaultClient(ctx))
 
 	healthResponse, err := gClient.Health.GetHealth()

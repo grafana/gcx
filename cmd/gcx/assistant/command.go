@@ -324,7 +324,7 @@ func resolveAssistantClientOptions(ctx context.Context, configOpts *cmdconfig.Op
 
 	curCtx := cfg.Contexts[cfg.CurrentContext]
 	if curCtx == nil {
-		return assistant.ClientOptions{}, fmt.Errorf("no context %q found in config; run 'gcx config set-context'", cfg.CurrentContext)
+		return assistant.ClientOptions{}, fmt.Errorf("no context %q found in config; run 'gcx config use-context'", cfg.CurrentContext)
 	}
 
 	grafana := curCtx.Grafana

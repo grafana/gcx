@@ -67,15 +67,19 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 			name: "cloud_oauth_with_cap_token",
 			opts: func(dir string) login.Options {
 				return login.Options{
-					Server:       "https://mystack.grafana.net",
-					Target:       login.TargetCloud,
-					UseOAuth:     true,
-					CloudToken:   "cap-token",
-					ConfigSource: configSource(dir),
-					NewAuthFlow: func(_ string, _ auth.Options) login.AuthFlow {
-						return &stubAuthFlow{result: oauthResult}
+					Inputs: login.Inputs{
+						Server:     "https://mystack.grafana.net",
+						Target:     login.TargetCloud,
+						UseOAuth:   true,
+						CloudToken: "cap-token",
 					},
-					ValidateFn: noopValidate,
+					Hooks: login.Hooks{
+						ConfigSource: configSource(dir),
+						NewAuthFlow: func(_ string, _ auth.Options) login.AuthFlow {
+							return &stubAuthFlow{result: oauthResult}
+						},
+						ValidateFn: noopValidate,
+					},
 				}
 			},
 			checkResult: func(t *testing.T, r login.Result) {
@@ -100,15 +104,19 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 			name: "cloud_oauth_skip_cap",
 			opts: func(dir string) login.Options {
 				return login.Options{
-					Server:       "https://mystack.grafana.net",
-					Target:       login.TargetCloud,
-					UseOAuth:     true,
-					Yes:          true,
-					ConfigSource: configSource(dir),
-					NewAuthFlow: func(_ string, _ auth.Options) login.AuthFlow {
-						return &stubAuthFlow{result: oauthResult}
+					Inputs: login.Inputs{
+						Server:   "https://mystack.grafana.net",
+						Target:   login.TargetCloud,
+						UseOAuth: true,
+						Yes:      true,
 					},
-					ValidateFn: noopValidate,
+					Hooks: login.Hooks{
+						ConfigSource: configSource(dir),
+						NewAuthFlow: func(_ string, _ auth.Options) login.AuthFlow {
+							return &stubAuthFlow{result: oauthResult}
+						},
+						ValidateFn: noopValidate,
+					},
 				}
 			},
 			checkResult: func(t *testing.T, r login.Result) {
@@ -123,11 +131,15 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 			name: "onprem_sa_token",
 			opts: func(dir string) login.Options {
 				return login.Options{
-					Server:       "https://grafana.example.com",
-					Target:       login.TargetOnPrem,
-					GrafanaToken: "glsa_test",
-					ConfigSource: configSource(dir),
-					ValidateFn:   noopValidate,
+					Inputs: login.Inputs{
+						Server:       "https://grafana.example.com",
+						Target:       login.TargetOnPrem,
+						GrafanaToken: "glsa_test",
+					},
+					Hooks: login.Hooks{
+						ConfigSource: configSource(dir),
+						ValidateFn:   noopValidate,
+					},
 				}
 			},
 			checkResult: func(t *testing.T, r login.Result) {
@@ -141,6 +153,35 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 				require.NotNil(t, ctx)
 				assert.Equal(t, "glsa_test", ctx.Grafana.APIToken)
 				assert.Equal(t, "token", ctx.Grafana.AuthMethod)
+				assert.EqualValues(t, 1, ctx.Grafana.OrgID, "fresh on-prem login must default OrgID to 1")
+			},
+		},
+		{
+			// Cloud target must NOT default OrgID to 1; StackID discovery owns
+			// the Cloud namespace path so OrgID stays 0.
+			name: "cloud_target_does_not_set_orgid",
+			opts: func(dir string) login.Options {
+				return login.Options{
+					Inputs: login.Inputs{
+						Server:   "https://mystack.grafana.net",
+						Target:   login.TargetCloud,
+						UseOAuth: true,
+						Yes:      true,
+					},
+					Hooks: login.Hooks{
+						ConfigSource: configSource(dir),
+						NewAuthFlow: func(_ string, _ auth.Options) login.AuthFlow {
+							return &stubAuthFlow{result: oauthResult}
+						},
+						ValidateFn: noopValidate,
+					},
+				}
+			},
+			checkConfig: func(t *testing.T, cfg config.Config) {
+				t.Helper()
+				ctx := cfg.Contexts["mystack"]
+				require.NotNil(t, ctx)
+				assert.EqualValues(t, 0, ctx.Grafana.OrgID, "cloud login must not set OrgID")
 			},
 		},
 		{
@@ -148,12 +189,16 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 			name: "ambiguous_url_yes_defaults_onprem",
 			opts: func(dir string) login.Options {
 				return login.Options{
-					Server:       "https://grafana.example.com",
-					Yes:          true,
-					GrafanaToken: "sa-token",
-					ConfigSource: configSource(dir),
-					DetectFn:     fixedDetect(login.TargetUnknown),
-					ValidateFn:   noopValidate,
+					Inputs: login.Inputs{
+						Server:       "https://grafana.example.com",
+						Yes:          true,
+						GrafanaToken: "sa-token",
+					},
+					Hooks: login.Hooks{
+						ConfigSource: configSource(dir),
+						DetectFn:     fixedDetect(login.TargetUnknown),
+						ValidateFn:   noopValidate,
+					},
 				}
 			},
 			checkResult: func(t *testing.T, r login.Result) {
@@ -167,7 +212,9 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 			name: "missing_server_returns_err_need_input",
 			opts: func(dir string) login.Options {
 				return login.Options{
-					ConfigSource: configSource(dir),
+					Hooks: login.Hooks{
+						ConfigSource: configSource(dir),
+					},
 				}
 			},
 			wantErr: true,
@@ -186,12 +233,16 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 			name: "validation_failure_no_config_write",
 			opts: func(dir string) login.Options {
 				return login.Options{
-					Server:       "https://grafana.example.com",
-					Target:       login.TargetOnPrem,
-					GrafanaToken: "bad-token",
-					ConfigSource: configSource(dir),
-					ValidateFn: func(_ context.Context, _ login.Options, _ config.NamespacedRESTConfig) (string, error) {
-						return "", errors.New("health check failed: connection refused")
+					Inputs: login.Inputs{
+						Server:       "https://grafana.example.com",
+						Target:       login.TargetOnPrem,
+						GrafanaToken: "bad-token",
+					},
+					Hooks: login.Hooks{
+						ConfigSource: configSource(dir),
+						ValidateFn: func(_ context.Context, _ login.Options, _ config.NamespacedRESTConfig) (string, error) {
+							return "", errors.New("health check failed: connection refused")
+						},
 					},
 				}
 			},
@@ -207,11 +258,15 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 			name: "auth_method_roundtrip",
 			opts: func(dir string) login.Options {
 				return login.Options{
-					Server:       "https://grafana.example.com",
-					Target:       login.TargetOnPrem,
-					GrafanaToken: "new-token",
-					ConfigSource: configSource(dir),
-					ValidateFn:   noopValidate,
+					Inputs: login.Inputs{
+						Server:       "https://grafana.example.com",
+						Target:       login.TargetOnPrem,
+						GrafanaToken: "new-token",
+					},
+					Hooks: login.Hooks{
+						ConfigSource: configSource(dir),
+						ValidateFn:   noopValidate,
+					},
 				}
 			},
 			checkConfig: func(t *testing.T, cfg config.Config) {
@@ -245,11 +300,15 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 				require.NoError(t, config.Write(context.Background(), config.ExplicitConfigFile(path), legacyCfg))
 
 				return login.Options{
-					Server:       "https://grafana.example.com",
-					Target:       login.TargetOnPrem,
-					GrafanaToken: "rotated-token",
-					ConfigSource: src,
-					ValidateFn:   noopValidate,
+					Inputs: login.Inputs{
+						Server:       "https://grafana.example.com",
+						Target:       login.TargetOnPrem,
+						GrafanaToken: "rotated-token",
+					},
+					Hooks: login.Hooks{
+						ConfigSource: src,
+						ValidateFn:   noopValidate,
+					},
 				}
 			},
 			checkConfig: func(t *testing.T, cfg config.Config) {
@@ -271,7 +330,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 			opts := tc.opts(dir)
 			src := opts.ConfigSource
 
-			result, err := login.Run(context.Background(), opts)
+			result, err := login.Run(context.Background(), &opts)
 
 			if tc.wantErr {
 				require.Error(t, err)
@@ -310,8 +369,10 @@ func TestRunAgentModeMissingServer(t *testing.T) {
 		agent.ResetForTesting()
 	})
 
-	_, err := login.Run(context.Background(), login.Options{
-		ConfigSource: configSource(t.TempDir()),
+	_, err := login.Run(context.Background(), &login.Options{
+		Hooks: login.Hooks{
+			ConfigSource: configSource(t.TempDir()),
+		},
 	})
 
 	var e *login.ErrNeedInput
@@ -333,12 +394,16 @@ func TestRunAgentModeAmbiguousURL(t *testing.T) {
 	dir := t.TempDir()
 	src := configSource(dir)
 
-	result, err := login.Run(context.Background(), login.Options{
-		Server:       "https://grafana.example.com",
-		GrafanaToken: "sa-token",
-		ConfigSource: src,
-		DetectFn:     fixedDetect(login.TargetUnknown),
-		ValidateFn:   noopValidate,
+	result, err := login.Run(context.Background(), &login.Options{
+		Inputs: login.Inputs{
+			Server:       "https://grafana.example.com",
+			GrafanaToken: "sa-token",
+		},
+		Hooks: login.Hooks{
+			ConfigSource: src,
+			DetectFn:     fixedDetect(login.TargetUnknown),
+			ValidateFn:   noopValidate,
+		},
 	})
 
 	require.NoError(t, err)
@@ -373,21 +438,27 @@ func TestRun_OAuthRunsOnceAcrossRetries(t *testing.T) {
 	}
 
 	opts := login.Options{
-		Server:        "https://assistant.grafana.net",
-		UseOAuth:      true,
-		Target:        login.TargetCloud,
-		ConfigSource:  configSource(dir),
-		StagedContext: &config.Context{},
-		NewAuthFlow: func(_ string, _ auth.Options) login.AuthFlow {
-			return &countingAuthFlow{calls: &calls, res: authResult}
+		Inputs: login.Inputs{
+			Server:   "https://assistant.grafana.net",
+			UseOAuth: true,
+			Target:   login.TargetCloud,
 		},
-		ValidateFn: func(_ context.Context, _ login.Options, _ config.NamespacedRESTConfig) (string, error) {
-			return "12.0.0", nil
+		Hooks: login.Hooks{
+			ConfigSource: configSource(dir),
+			NewAuthFlow: func(_ string, _ auth.Options) login.AuthFlow {
+				return &countingAuthFlow{calls: &calls, res: authResult}
+			},
+			ValidateFn: func(_ context.Context, _ login.Options, _ config.NamespacedRESTConfig) (string, error) {
+				return "12.0.0", nil
+			},
+		},
+		RetryState: login.RetryState{
+			StagedContext: &config.Context{},
 		},
 	}
 
 	// First call: OAuth runs, step 5 returns ErrNeedInput for cloud-token.
-	_, err := login.Run(context.Background(), opts)
+	_, err := login.Run(context.Background(), &opts)
 	var needInput *login.ErrNeedInput
 	if !errors.As(err, &needInput) || len(needInput.Fields) == 0 || needInput.Fields[0] != "cloud-token" {
 		t.Fatalf("expected ErrNeedInput{cloud-token}, got %v", err)
@@ -397,7 +468,7 @@ func TestRun_OAuthRunsOnceAcrossRetries(t *testing.T) {
 	opts.Yes = true
 
 	// Second call: should reuse OAuth from StagedContext, not re-run.
-	if _, err := login.Run(context.Background(), opts); err != nil {
+	if _, err := login.Run(context.Background(), &opts); err != nil {
 		t.Fatalf("second Run failed: %v", err)
 	}
 
@@ -428,18 +499,24 @@ func TestPersist_ServerMismatch_EmitsClarification(t *testing.T) {
 	}
 
 	opts := login.Options{
-		Server:        "https://mystack.grafana-dev.net", // different server
-		ContextName:   "mystack",
-		Target:        login.TargetOnPrem,
-		GrafanaToken:  "new-token",
-		ConfigSource:  configSource(dir),
-		StagedContext: &config.Context{},
-		ValidateFn: func(_ context.Context, _ login.Options, _ config.NamespacedRESTConfig) (string, error) {
-			return "12.0.0", nil
+		Inputs: login.Inputs{
+			Server:       "https://mystack.grafana-dev.net", // different server
+			ContextName:  "mystack",
+			Target:       login.TargetOnPrem,
+			GrafanaToken: "new-token",
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(dir),
+			ValidateFn: func(_ context.Context, _ login.Options, _ config.NamespacedRESTConfig) (string, error) {
+				return "12.0.0", nil
+			},
+		},
+		RetryState: login.RetryState{
+			StagedContext: &config.Context{},
 		},
 	}
 
-	_, err := login.Run(context.Background(), opts)
+	_, err := login.Run(context.Background(), &opts)
 	var needClar *login.ErrNeedClarification
 	if !errors.As(err, &needClar) {
 		t.Fatalf("expected ErrNeedClarification, got %v", err)
@@ -480,19 +557,25 @@ func TestPersist_ServerMismatch_AllowOverrideBypasses(t *testing.T) {
 	}
 
 	opts := login.Options{
-		Server:        "https://mystack.grafana-dev.net",
-		ContextName:   "mystack",
-		Target:        login.TargetOnPrem,
-		GrafanaToken:  "new-token",
-		AllowOverride: true, // bypass
-		ConfigSource:  configSource(dir),
-		StagedContext: &config.Context{},
-		ValidateFn: func(_ context.Context, _ login.Options, _ config.NamespacedRESTConfig) (string, error) {
-			return "12.0.0", nil
+		Inputs: login.Inputs{
+			Server:       "https://mystack.grafana-dev.net",
+			ContextName:  "mystack",
+			Target:       login.TargetOnPrem,
+			GrafanaToken: "new-token",
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(dir),
+			ValidateFn: func(_ context.Context, _ login.Options, _ config.NamespacedRESTConfig) (string, error) {
+				return "12.0.0", nil
+			},
+		},
+		RetryState: login.RetryState{
+			AllowOverride: true, // bypass
+			StagedContext: &config.Context{},
 		},
 	}
 
-	if _, err := login.Run(context.Background(), opts); err != nil {
+	if _, err := login.Run(context.Background(), &opts); err != nil {
 		t.Fatalf("Run with AllowOverride: %v", err)
 	}
 
@@ -515,18 +598,24 @@ func TestRun_ValidationFailure_EmitsSaveUnvalidatedClarification(t *testing.T) {
 
 	dir := t.TempDir()
 	opts := login.Options{
-		Server:        "https://mystack.grafana.net",
-		ContextName:   "mystack",
-		Target:        login.TargetOnPrem,
-		GrafanaToken:  "glsa_test",
-		ConfigSource:  configSource(dir),
-		StagedContext: &config.Context{},
-		ValidateFn: func(_ context.Context, _ login.Options, _ config.NamespacedRESTConfig) (string, error) {
-			return "", errors.New("invalid semantic version")
+		Inputs: login.Inputs{
+			Server:       "https://mystack.grafana.net",
+			ContextName:  "mystack",
+			Target:       login.TargetOnPrem,
+			GrafanaToken: "glsa_test",
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(dir),
+			ValidateFn: func(_ context.Context, _ login.Options, _ config.NamespacedRESTConfig) (string, error) {
+				return "", errors.New("invalid semantic version")
+			},
+		},
+		RetryState: login.RetryState{
+			StagedContext: &config.Context{},
 		},
 	}
 
-	_, err := login.Run(context.Background(), opts)
+	_, err := login.Run(context.Background(), &opts)
 	var needClar *login.ErrNeedClarification
 	if !errors.As(err, &needClar) {
 		t.Fatalf("expected ErrNeedClarification, got %v", err)
@@ -545,20 +634,26 @@ func TestRun_ForceSave_BypassesValidation(t *testing.T) {
 	dir := t.TempDir()
 	validatorCalled := false
 	opts := login.Options{
-		Server:        "https://mystack.grafana.net",
-		ContextName:   "mystack",
-		Target:        login.TargetOnPrem,
-		GrafanaToken:  "glsa_test",
-		ForceSave:     true,
-		ConfigSource:  configSource(dir),
-		StagedContext: &config.Context{},
-		ValidateFn: func(_ context.Context, _ login.Options, _ config.NamespacedRESTConfig) (string, error) {
-			validatorCalled = true
-			return "", errors.New("must not be called")
+		Inputs: login.Inputs{
+			Server:       "https://mystack.grafana.net",
+			ContextName:  "mystack",
+			Target:       login.TargetOnPrem,
+			GrafanaToken: "glsa_test",
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(dir),
+			ValidateFn: func(_ context.Context, _ login.Options, _ config.NamespacedRESTConfig) (string, error) {
+				validatorCalled = true
+				return "", errors.New("must not be called")
+			},
+		},
+		RetryState: login.RetryState{
+			ForceSave:     true,
+			StagedContext: &config.Context{},
 		},
 	}
 
-	result, err := login.Run(context.Background(), opts)
+	result, err := login.Run(context.Background(), &opts)
 	if err != nil {
 		t.Fatalf("Run with ForceSave: %v", err)
 	}
@@ -581,19 +676,25 @@ func TestRun_ForceSave_BypassesValidation(t *testing.T) {
 func TestRun_ValidationFailure_YesFlagBypassesPrompt(t *testing.T) {
 	dir := t.TempDir()
 	opts := login.Options{
-		Server:        "https://mystack.grafana.net",
-		ContextName:   "mystack",
-		Target:        login.TargetOnPrem,
-		GrafanaToken:  "glsa_test",
-		Yes:           true,
-		ConfigSource:  configSource(dir),
-		StagedContext: &config.Context{},
-		ValidateFn: func(_ context.Context, _ login.Options, _ config.NamespacedRESTConfig) (string, error) {
-			return "", errors.New("validation failed")
+		Inputs: login.Inputs{
+			Server:       "https://mystack.grafana.net",
+			ContextName:  "mystack",
+			Target:       login.TargetOnPrem,
+			GrafanaToken: "glsa_test",
+			Yes:          true,
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(dir),
+			ValidateFn: func(_ context.Context, _ login.Options, _ config.NamespacedRESTConfig) (string, error) {
+				return "", errors.New("validation failed")
+			},
+		},
+		RetryState: login.RetryState{
+			StagedContext: &config.Context{},
 		},
 	}
 
-	_, err := login.Run(context.Background(), opts)
+	_, err := login.Run(context.Background(), &opts)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -606,21 +707,25 @@ func TestRun_ValidationFailure_YesFlagBypassesPrompt(t *testing.T) {
 func TestRun_NormalizesServerScheme(t *testing.T) {
 	dir := t.TempDir()
 	opts := login.Options{
-		Server:       "assistant.grafana-dev.net", // no scheme
-		GrafanaToken: "glsa_test",
-		Target:       login.TargetOnPrem,
-		Yes:          true,
-		ConfigSource: configSource(dir),
-		ValidateFn: func(_ context.Context, o login.Options, _ config.NamespacedRESTConfig) (string, error) {
-			// Assert that by the time Validate is called, Server has a scheme.
-			if !strings.HasPrefix(o.Server, "https://") {
-				t.Errorf("expected https:// prefix on Server, got %q", o.Server)
-			}
-			return "12.0.0", nil
+		Inputs: login.Inputs{
+			Server:       "assistant.grafana-dev.net", // no scheme
+			GrafanaToken: "glsa_test",
+			Target:       login.TargetOnPrem,
+			Yes:          true,
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(dir),
+			ValidateFn: func(_ context.Context, o login.Options, _ config.NamespacedRESTConfig) (string, error) {
+				// Assert that by the time Validate is called, Server has a scheme.
+				if !strings.HasPrefix(o.Server, "https://") {
+					t.Errorf("expected https:// prefix on Server, got %q", o.Server)
+				}
+				return "12.0.0", nil
+			},
 		},
 	}
 
-	result, err := login.Run(context.Background(), opts)
+	result, err := login.Run(context.Background(), &opts)
 	if err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}

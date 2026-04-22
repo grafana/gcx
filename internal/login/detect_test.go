@@ -93,7 +93,8 @@ func TestProbeTarget(t *testing.T) {
 	// AC-018: Cloud markers in probe response → Cloud
 	cloudSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var resp settingsResp
-		resp.BuildInfo.GrafanaURL = "https://grafana.com"
+		// Use a realistic Grafana Cloud stack URL so IsGrafanaCloudHost matches.
+		resp.BuildInfo.GrafanaURL = "https://mystack.grafana.net"
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp) //nolint:errcheck
 	}))

@@ -133,7 +133,7 @@ type Result struct {
 ### 3. `login.Run()` Logic
 
 ```
-login.Run(ctx, opts) -> Result
+login.Run(ctx, *opts) -> Result
 |
 +-- 1. Resolve server URL
 |   +-- From opts.Server (flag/env)
@@ -280,6 +280,8 @@ flag so internal devs can set it in a single command rather than a separate
   validation step.
 
 ### 6. `gcx auth` Deprecation Path
+
+> **Superseded:** This approach was replaced with a hard removal (pre-GA). See spec § Negative Constraints NC-008.
 
 ```go
 // In cmd/gcx/auth/command.go

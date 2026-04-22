@@ -67,7 +67,7 @@ func TestValidate(t *testing.T) {
 	}{
 		{
 			name:       "health check failure",
-			opts:       Options{Target: TargetOnPrem},
+			opts:       Options{Inputs: Inputs{Target: TargetOnPrem}},
 			grafana:    &stubGrafanaClient{err: errors.New("connection refused")},
 			discovery:  okDiscovery,
 			wantErr:    true,
@@ -75,7 +75,7 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			name:       "K8s discovery failure",
-			opts:       Options{Target: TargetOnPrem},
+			opts:       Options{Inputs: Inputs{Target: TargetOnPrem}},
 			grafana:    &stubGrafanaClient{version: v12},
 			discovery:  failDiscovery,
 			wantErr:    true,
@@ -83,7 +83,7 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			name:       "version below 12 returns named error",
-			opts:       Options{Target: TargetOnPrem},
+			opts:       Options{Inputs: Inputs{Target: TargetOnPrem}},
 			grafana:    &stubGrafanaClient{version: v11},
 			discovery:  okDiscovery,
 			wantErr:    true,
@@ -91,7 +91,7 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			name:        "GCOM check failure",
-			opts:        Options{Target: TargetCloud, CloudToken: "cap-token", Server: "https://mystack.grafana.net"},
+			opts:        Options{Inputs: Inputs{Target: TargetCloud, CloudToken: "cap-token", Server: "https://mystack.grafana.net"}},
 			grafana:     &stubGrafanaClient{version: v12},
 			discovery:   okDiscovery,
 			gcom:        &stubGCOMClient{err: errors.New("unauthorized")},
@@ -101,7 +101,7 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			name:        "Cloud + CAP token: GCOM GetStack is called",
-			opts:        Options{Target: TargetCloud, CloudToken: "cap-token", Server: "https://mystack.grafana.net"},
+			opts:        Options{Inputs: Inputs{Target: TargetCloud, CloudToken: "cap-token", Server: "https://mystack.grafana.net"}},
 			grafana:     &stubGrafanaClient{version: v12},
 			discovery:   okDiscovery,
 			gcom:        &stubGCOMClient{},
@@ -110,7 +110,7 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			name:        "Cloud without CAP token: GCOM skipped",
-			opts:        Options{Target: TargetCloud, CloudToken: ""},
+			opts:        Options{Inputs: Inputs{Target: TargetCloud, CloudToken: ""}},
 			grafana:     &stubGrafanaClient{version: v12},
 			discovery:   okDiscovery,
 			gcom:        &stubGCOMClient{},
@@ -119,7 +119,7 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			name:        "OnPrem: GCOM skipped entirely",
-			opts:        Options{Target: TargetOnPrem},
+			opts:        Options{Inputs: Inputs{Target: TargetOnPrem}},
 			grafana:     &stubGrafanaClient{version: v12},
 			discovery:   okDiscovery,
 			gcom:        &stubGCOMClient{},
@@ -128,7 +128,7 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			name:        "Cloud + custom domain: GCOM skipped (no slug)",
-			opts:        Options{Target: TargetCloud, CloudToken: "cap-token", Server: "https://grafana.example.com"},
+			opts:        Options{Inputs: Inputs{Target: TargetCloud, CloudToken: "cap-token", Server: "https://grafana.example.com"}},
 			grafana:     &stubGrafanaClient{version: v12},
 			discovery:   okDiscovery,
 			gcom:        &stubGCOMClient{},
@@ -137,21 +137,21 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			name:      "all checks pass on-prem",
-			opts:      Options{Target: TargetOnPrem},
+			opts:      Options{Inputs: Inputs{Target: TargetOnPrem}},
 			grafana:   &stubGrafanaClient{version: v12},
 			discovery: okDiscovery,
 			wantErr:   false,
 		},
 		{
 			name:      "empty version passes (Cloud anonymous health)",
-			opts:      Options{Target: TargetOnPrem},
+			opts:      Options{Inputs: Inputs{Target: TargetOnPrem}},
 			grafana:   &stubGrafanaClient{}, // nil version, empty raw, nil err
 			discovery: okDiscovery,
 			wantErr:   false,
 		},
 		{
 			name:      "unparseable version passes (quirky dev build string)",
-			opts:      Options{Target: TargetOnPrem},
+			opts:      Options{Inputs: Inputs{Target: TargetOnPrem}},
 			grafana:   &stubGrafanaClient{raw: "main-abc1234"},
 			discovery: okDiscovery,
 			wantErr:   false,

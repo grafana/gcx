@@ -150,7 +150,7 @@ Multiple auth mechanisms for different tiers.
 |-----------|---------|----------------|
 | **Service account token** | Grafana K8s API (`/apis`), plugin APIs | Bearer token in `rest.Config` |
 | **Cloud Access Policy token** | GCOM stack discovery, Cloud product APIs | `internal/cloud/` GCOM client |
-| **OAuth PKCE** | Browser-based login (`gcx auth login`) | `internal/auth/` — token refresh transport persists to config |
+| **OAuth PKCE** | Browser-based login (`gcx login`) | `internal/auth/` — token refresh transport persists to config |
 | **Basic auth** | Legacy Grafana instances | Username/password in `rest.Config` |
 | **Adaptive auth** | Signal provider adaptive telemetry APIs | `internal/auth/adaptive/` — GCOM-cached Basic auth shared across signal providers |
 
