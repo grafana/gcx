@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/providers"
+	_ "github.com/grafana/gcx/internal/providers/aio11y"   // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/alert"    // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/appo11y"  // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/faro"     // Provider registrations — blank imports trigger init() self-registration.
@@ -37,7 +38,6 @@ import (
 	_ "github.com/grafana/gcx/internal/providers/logs"     // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/metrics"  // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/profiles" // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/aio11y"   // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/slo"      // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/synth"    // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/traces"   // Provider registrations — blank imports trigger init() self-registration.

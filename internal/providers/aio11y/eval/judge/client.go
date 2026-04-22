@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/grafana/gcx/internal/providers/aio11y/eval"
 	"github.com/grafana/gcx/internal/providers/aio11y/aio11yhttp"
+	"github.com/grafana/gcx/internal/providers/aio11y/eval"
 )
 
 // Client is an HTTP client for AI Observability eval judge endpoints.

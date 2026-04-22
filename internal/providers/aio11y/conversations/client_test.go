@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
-	"github.com/grafana/gcx/internal/providers/aio11y/conversations"
 	"github.com/grafana/gcx/internal/providers/aio11y/aio11yhttp"
+	"github.com/grafana/gcx/internal/providers/aio11y/conversations"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"

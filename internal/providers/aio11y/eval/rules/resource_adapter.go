@@ -7,8 +7,8 @@ import (
 
 	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
-	"github.com/grafana/gcx/internal/providers/aio11y/eval"
 	"github.com/grafana/gcx/internal/providers/aio11y/aio11yhttp"
+	"github.com/grafana/gcx/internal/providers/aio11y/eval"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
