@@ -117,11 +117,51 @@ func (c *queryGraphCodec) Decode(io.Reader, any) error {
 	return errors.New("graph codec does not support decoding")
 }
 
+type queryJSONCodec struct {
+	inner *format.JSONCodec
+}
+
+func (c *queryJSONCodec) Format() format.Format {
+	return format.JSON
+}
+
+func (c *queryJSONCodec) Encode(w io.Writer, data any) error {
+	if resp, ok := data.(*influxdb.QueryResponse); ok {
+		return c.inner.Encode(w, influxdb.FormatQueryJSON(resp))
+	}
+	return c.inner.Encode(w, data)
+}
+
+func (c *queryJSONCodec) Decode(r io.Reader, v any) error {
+	return c.inner.Decode(r, v)
+}
+
+type queryYAMLCodec struct {
+	inner *format.YAMLCodec
+}
+
+func (c *queryYAMLCodec) Format() format.Format {
+	return format.YAML
+}
+
+func (c *queryYAMLCodec) Encode(w io.Writer, data any) error {
+	if resp, ok := data.(*influxdb.QueryResponse); ok {
+		return c.inner.Encode(w, influxdb.FormatQueryJSON(resp))
+	}
+	return c.inner.Encode(w, data)
+}
+
+func (c *queryYAMLCodec) Decode(r io.Reader, v any) error {
+	return c.inner.Decode(r, v)
+}
+
 // RegisterCodecs registers the table and wide codecs, plus graph when enabled,
 // on the given IO options.
 func RegisterCodecs(ioOpts *cmdio.Options, enableGraph bool) {
 	ioOpts.RegisterCustomCodec("table", &queryTableCodec{})
 	ioOpts.RegisterCustomCodec("wide", &queryWideCodec{})
+	ioOpts.RegisterCustomCodec("json", &queryJSONCodec{inner: format.NewJSONCodec()})
+	ioOpts.RegisterCustomCodec("yaml", &queryYAMLCodec{inner: format.NewYAMLCodec()})
 	if enableGraph {
 		ioOpts.RegisterCustomCodec("graph", &queryGraphCodec{})
 	}

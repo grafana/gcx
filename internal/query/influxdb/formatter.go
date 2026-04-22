@@ -60,6 +60,33 @@ func formatValue(v any) string {
 	return fmt.Sprintf("%v", v)
 }
 
+// JSONQueryResponse is the JSON-serializable version of QueryResponse with
+// time columns converted from millisecond-epoch integers to RFC3339 strings.
+type JSONQueryResponse struct {
+	Columns []string `json:"columns"`
+	Rows    [][]any  `json:"rows"`
+}
+
+// FormatQueryJSON returns a JSON-serializable copy of resp with time columns
+// converted from millisecond-epoch values to RFC3339 strings.
+func FormatQueryJSON(resp *QueryResponse) *JSONQueryResponse {
+	rows := make([][]any, len(resp.Rows))
+	for i, row := range resp.Rows {
+		newRow := make([]any, len(row))
+		copy(newRow, row)
+		for j := range newRow {
+			if resp.TimeColumns[j] {
+				newRow[j] = formatTimestampMs(newRow[j])
+			}
+		}
+		rows[i] = newRow
+	}
+	return &JSONQueryResponse{
+		Columns: resp.Columns,
+		Rows:    rows,
+	}
+}
+
 // FormatMeasurementsTable formats a MeasurementsResponse as a table.
 func FormatMeasurementsTable(w io.Writer, resp *MeasurementsResponse) error {
 	if len(resp.Measurements) == 0 {
