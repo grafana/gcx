@@ -355,7 +355,7 @@ func resolveAssistantClientOptions(ctx context.Context, configOpts *cmdconfig.Op
 		}, nil
 
 	default:
-		return assistant.ClientOptions{}, errors.New("no authentication configured; run 'gcx auth login' or set grafana.token in config")
+		return assistant.ClientOptions{}, errors.New("no authentication configured; run 'gcx login' or set grafana.token in config")
 	}
 }
 

@@ -156,7 +156,7 @@ func convertAuthErrors(err error) (*DetailedError, bool) {
 			Parent:  err,
 			Summary: "Session expired",
 			Suggestions: []string{
-				"Run `gcx auth login` to re-authenticate",
+				"Run `gcx login` to re-authenticate",
 			},
 		}, true
 	}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 func TestConfig_HasContext(t *testing.T) {
@@ -327,9 +328,14 @@ func TestContextNameFromServerURL(t *testing.T) {
 			expected: "mystack",
 		},
 		{
-			name:     "grafana-dev.net URL returns stack slug",
+			name:     "grafana-dev.net URL returns stack slug with -dev suffix",
 			url:      "https://mystack.grafana-dev.net",
-			expected: "mystack",
+			expected: "mystack-dev",
+		},
+		{
+			name:     "grafana-ops.net URL returns stack slug with -ops suffix",
+			url:      "https://mystack.grafana-ops.net",
+			expected: "mystack-ops",
 		},
 		{
 			name:     "regional grafana.net URL returns first component",
@@ -337,9 +343,9 @@ func TestContextNameFromServerURL(t *testing.T) {
 			expected: "mystack",
 		},
 		{
-			name:     "non-grafana URL returns hostname",
+			name:     "non-grafana URL returns hyphenated hostname",
 			url:      "https://grafana.mycompany.com",
-			expected: "grafana.mycompany.com",
+			expected: "grafana-mycompany-com",
 		},
 		{
 			name:     "localhost URL returns hostname",
@@ -362,6 +368,31 @@ func TestContextNameFromServerURL(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			req := require.New(t)
 			req.Equal(tc.expected, config.ContextNameFromServerURL(tc.url))
+		})
+	}
+}
+
+func TestContextNameFromServerURL_DotsToHyphens(t *testing.T) {
+	cases := []struct {
+		name string
+		url  string
+		want string
+	}{
+		{"cloud prod (unchanged)", "https://mystack.grafana.net", "mystack"},
+		{"cloud dev suffix", "https://mystack.grafana-dev.net", "mystack-dev"},
+		{"custom domain", "https://grafana.example.com", "grafana-example-com"},
+		{"deep custom", "https://grafana.internal.acme.corp", "grafana-internal-acme-corp"},
+		{"ipv4 address", "https://10.0.0.5", "10-0-0-5"},
+		{"localhost clean", "http://localhost:3000", "localhost"},
+		{"bare hostname no dots", "https://grafana", "grafana"},
+		{"invalid url returns default", ":not-a-url", config.DefaultContextName},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := config.ContextNameFromServerURL(tc.url)
+			if got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
 		})
 	}
 }
@@ -413,4 +444,138 @@ func TestContext_ResolveGCOMURL(t *testing.T) {
 			req.Equal(tc.expected, tc.ctx.ResolveGCOMURL())
 		})
 	}
+}
+
+func TestGrafanaConfig_InferredAuthMethod(t *testing.T) {
+	testCases := []struct {
+		name     string
+		cfg      config.GrafanaConfig
+		expected string
+	}{
+		{
+			name:     "stored AuthMethod returned verbatim",
+			cfg:      config.GrafanaConfig{AuthMethod: "oauth", OAuthToken: "gat_x"},
+			expected: "oauth",
+		},
+		{
+			name:     "OAuthToken set infers oauth",
+			cfg:      config.GrafanaConfig{OAuthToken: "gat_x"},
+			expected: "oauth",
+		},
+		{
+			name:     "APIToken set infers token",
+			cfg:      config.GrafanaConfig{APIToken: "glsa_x"},
+			expected: "token",
+		},
+		{
+			name:     "OAuthToken takes priority over APIToken",
+			cfg:      config.GrafanaConfig{OAuthToken: "gat_x", APIToken: "glsa_x"},
+			expected: "oauth",
+		},
+		{
+			name:     "User set infers basic",
+			cfg:      config.GrafanaConfig{User: "admin"},
+			expected: "basic",
+		},
+		{
+			name:     "Password set infers basic",
+			cfg:      config.GrafanaConfig{Password: "secret"},
+			expected: "basic",
+		},
+		{
+			name:     "no credentials returns unknown",
+			cfg:      config.GrafanaConfig{Server: "https://grafana.example.com"},
+			expected: "unknown",
+		},
+		{
+			name:     "empty config returns unknown",
+			cfg:      config.GrafanaConfig{},
+			expected: "unknown",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := require.New(t)
+			req.Equal(tc.expected, tc.cfg.InferredAuthMethod())
+		})
+	}
+}
+
+func TestStackSlugFromServerURL_AppendsEnvSuffix(t *testing.T) {
+	cases := []struct {
+		name     string
+		url      string
+		wantSlug string
+		wantOK   bool
+	}{
+		{"prod bare", "https://mystack.grafana.net", "mystack", true},
+		{"prod regional", "https://mystack.us.grafana.net", "mystack", true},
+		{"dev appends -dev", "https://mystack.grafana-dev.net", "mystack-dev", true},
+		{"ops appends -ops", "https://mystack.grafana-ops.net", "mystack-ops", true},
+		{"custom domain no match", "https://grafana.example.com", "", false},
+		{"empty slug rejected", "https://.grafana-dev.net", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			slug, ok := config.StackSlugFromServerURL(tc.url)
+			if slug != tc.wantSlug || ok != tc.wantOK {
+				t.Fatalf("got (%q, %v), want (%q, %v)", slug, ok, tc.wantSlug, tc.wantOK)
+			}
+		})
+	}
+}
+
+func TestGrafanaConfig_AuthMethod_Roundtrip(t *testing.T) {
+	t.Run("auth-method field serializes and deserializes via YAML", func(t *testing.T) {
+		req := require.New(t)
+
+		original := config.GrafanaConfig{
+			Server:     "https://mystack.grafana.net",
+			AuthMethod: "oauth",
+		}
+
+		data, err := yaml.Marshal(original)
+		req.NoError(err)
+		req.Contains(string(data), "auth-method: oauth")
+
+		var loaded config.GrafanaConfig
+		req.NoError(yaml.Unmarshal(data, &loaded))
+		req.Equal("oauth", loaded.AuthMethod)
+	})
+
+	t.Run("legacy YAML without auth-method deserializes with empty AuthMethod", func(t *testing.T) {
+		req := require.New(t)
+
+		legacyYAML := []byte("server: https://mystack.grafana.net\ntoken: glsa_abc\n")
+		var cfg config.GrafanaConfig
+		req.NoError(yaml.Unmarshal(legacyYAML, &cfg))
+		req.Empty(cfg.AuthMethod)
+	})
+
+	t.Run("omitempty keeps auth-method out of YAML when empty", func(t *testing.T) {
+		req := require.New(t)
+
+		cfg := config.GrafanaConfig{Server: "https://mystack.grafana.net"}
+		data, err := yaml.Marshal(cfg)
+		req.NoError(err)
+		req.NotContains(string(data), "auth-method")
+	})
+
+	t.Run("auth-method field serializes and deserializes via JSON", func(t *testing.T) {
+		req := require.New(t)
+
+		original := config.GrafanaConfig{
+			Server:     "https://mystack.grafana.net",
+			AuthMethod: "token",
+		}
+
+		data, err := json.Marshal(original)
+		req.NoError(err)
+		req.Contains(string(data), `"auth-method":"token"`)
+
+		var loaded config.GrafanaConfig
+		req.NoError(json.Unmarshal(data, &loaded))
+		req.Equal("token", loaded.AuthMethod)
+	})
 }

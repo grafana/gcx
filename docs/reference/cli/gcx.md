@@ -25,7 +25,6 @@ gcx is a unified CLI for managing Grafana resources, dashboards, datasources, al
 * [gcx api](gcx_api.md)	 - Make direct HTTP requests to the Grafana API
 * [gcx appo11y](gcx_appo11y.md)	 - Manage Grafana App Observability settings
 * [gcx assistant](gcx_assistant.md)	 - Interact with Grafana Assistant
-* [gcx auth](gcx_auth.md)	 - Manage authentication
 * [gcx commands](gcx_commands.md)	 - List all commands with rich metadata for agent consumption
 * [gcx completion](gcx_completion.md)	 - Generate the autocompletion script for the specified shell
 * [gcx config](gcx_config.md)	 - View or manipulate configuration settings
@@ -38,6 +37,7 @@ gcx is a unified CLI for managing Grafana resources, dashboards, datasources, al
 * [gcx irm](gcx_irm.md)	 - Manage Grafana IRM (OnCall + Incidents)
 * [gcx k6](gcx_k6.md)	 - Manage Grafana k6 Cloud projects, load tests, and schedules
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
+* [gcx login](gcx_login.md)	 - Log in to a Grafana instance
 * [gcx logs](gcx_logs.md)	 - Query Loki datasources and manage Adaptive Logs
 * [gcx metrics](gcx_metrics.md)	 - Query Prometheus datasources and manage Adaptive Metrics
 * [gcx profiles](gcx_profiles.md)	 - Query Pyroscope datasources and manage continuous profiling

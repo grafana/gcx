@@ -34,6 +34,9 @@ contexts:
       oauth-token-expires-at: string
       # OAuthRefreshExpiresAt is the OAuthRefreshToken expiration time in RFC3339 format.
       oauth-refresh-expires-at: string
+      # AuthMethod is the authentication method stored by gcx login: "oauth", "token", or "basic".
+      # Empty string is valid for legacy configs; readers should call InferredAuthMethod() in that case.
+      auth-method: string
       # OrgID specifies the organization targeted by this config.
       # Note: required when targeting an on-prem Grafana instance.
       # See StackID for Grafana Cloud instances.
