@@ -36,4 +36,5 @@ Manage Grafana Knowledge Graph rules, entities, and insights
 * [gcx kg search](gcx_kg_search.md)	 - Search Knowledge Graph entities or insights.
 * [gcx kg status](gcx_kg_status.md)	 - Show Knowledge Graph stack status.
 * [gcx kg suppressions](gcx_kg_suppressions.md)	 - Push suppressions to the Knowledge Graph.
+* [gcx kg traverse](gcx_kg_traverse.md)	 - Execute a Cypher query against the Knowledge Graph.
 

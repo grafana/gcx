@@ -221,6 +221,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg search example":          {Cost: "small"},
 	"gcx kg search insights":         {Cost: "medium", Hint: "--type <type> --since 1h"},
 	"gcx kg status":                  {Cost: "small"},
+	"gcx kg traverse":                {Cost: "medium", Hint: "\"MATCH (s:Service {name:'<name>'})-[r]->(d:Service) RETURN s, r, d\" [--env <env>] [--namespace <ns>] [--with-insights]"},
 	"gcx kg suppressions create":     {Cost: "small"},
 
 	// -----------------------------------------------------------------------

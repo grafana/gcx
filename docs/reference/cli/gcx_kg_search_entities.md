@@ -1,46 +1,52 @@
-## gcx kg search insights
+## gcx kg search entities
 
-Search for insights matching a query.
+Search Knowledge Graph entities by name.
+
+### Synopsis
+
+Search Knowledge Graph entities whose names contain the query string.
+
+Results are ranked by match quality: exact name matches first, then prefix
+matches, then substring matches. Use --type to restrict to one entity type.
+Scope flags (--env, --namespace, --site) are optional; omit them to search
+across all scopes.
+
+When no results are found, available scope values are printed as recovery hints.
 
 ```
-gcx kg search insights [flags]
+gcx kg search entities <query> [flags]
 ```
 
 ### Examples
 
 ```
-  # Search all Service insights
-  gcx kg search insights --type Service
+  # Search across all entity types
+  gcx kg search entities api-server
 
-  # Search insights for a named entity
-  gcx kg search insights --type Service --name api-server --env prod
+  # Narrow to a specific type
+  gcx kg search entities api-server --type Service
 
-  # Supply a full request as a YAML file
-  gcx kg search insights --file request.yaml
+  # Filter to a specific environment
+  gcx kg search entities api-server --env prod
 
-  # Example request.yaml:
-  #
-  #   filterCriteria:
-  #     - entityType: Service
-  #       havingAssertion: true
-  #   timeCriteria:
-  #     start: 1700000000
-  #     end:   1700003600
+  # JSON output for scripting
+  gcx kg search entities api-server --output json
 ```
 
 ### Options
 
 ```
       --env string         Environment scope
-  -f, --file string        Input file (YAML)
       --from string        Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-  -h, --help               help for insights
-      --name string        Entity name filter
+  -h, --help               help for entities
+      --json string        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int          Maximum results per entity type (default 20)
       --namespace string   Namespace scope
+  -o, --output string      Output format. One of: json, table, yaml (default "table")
       --since string       Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
       --site string        Site scope
       --to string          End time (RFC3339, Unix timestamp, or relative like 'now')
-      --type string        Entity type filter
+      --type string        Entity type (default: all types)
 ```
 
 ### Options inherited from parent commands
