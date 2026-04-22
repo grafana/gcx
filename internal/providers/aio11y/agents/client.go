@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strconv"
 
 	"github.com/grafana/gcx/internal/providers/aio11y/aio11yhttp"
 )
@@ -21,13 +20,9 @@ func NewClient(base *aio11yhttp.Client) *Client {
 	return &Client{base: base}
 }
 
-// List returns agents, limited to the given count. Pass 0 for no limit.
-func (c *Client) List(ctx context.Context, limit int) ([]Agent, error) {
-	query := url.Values{}
-	if limit > 0 {
-		query.Set("limit", strconv.Itoa(limit))
-	}
-	return aio11yhttp.ListAll[Agent](ctx, c.base, "/query/agents", query, limit)
+// List returns all agents.
+func (c *Client) List(ctx context.Context) ([]Agent, error) {
+	return aio11yhttp.ListAll[Agent](ctx, c.base, "/query/agents", nil)
 }
 
 // Lookup returns a single agent by name, optionally at a specific version.

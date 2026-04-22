@@ -3,7 +3,6 @@ package scores
 import (
 	"context"
 	"net/url"
-	"strconv"
 
 	"github.com/grafana/gcx/internal/providers/aio11y/aio11yhttp"
 )
@@ -18,11 +17,7 @@ func NewClient(base *aio11yhttp.Client) *Client {
 	return &Client{base: base}
 }
 
-// ListByGeneration returns scores for a generation, paginated.
-func (c *Client) ListByGeneration(ctx context.Context, generationID string, limit int) ([]Score, error) {
-	query := url.Values{}
-	if limit > 0 {
-		query.Set("limit", strconv.Itoa(limit))
-	}
-	return aio11yhttp.ListAll[Score](ctx, c.base, "/query/generations/"+url.PathEscape(generationID)+"/scores", query)
+// ListByGeneration returns scores for a generation.
+func (c *Client) ListByGeneration(ctx context.Context, generationID string) ([]Score, error) {
+	return aio11yhttp.ListAll[Score](ctx, c.base, "/query/generations/"+url.PathEscape(generationID)+"/scores", nil)
 }

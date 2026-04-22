@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/limit"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/shared"
@@ -26,7 +27,6 @@ import (
 
 type incidentListOpts struct {
 	IO       cmdio.Options
-	Limit    int
 	Labels   []string
 	DateFrom string
 	DateTo   string
@@ -37,7 +37,6 @@ func (o *incidentListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &IncidentTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of incidents to return")
 	flags.StringSliceVar(&o.Labels, "labels", nil, "Filter by labels (key:value format, may be repeated)")
 	flags.StringVar(&o.DateFrom, "from", "", "Start of time range (RFC3339, unix timestamp, or relative e.g. now-7d)")
 	flags.StringVar(&o.DateTo, "to", "", "End of time range (RFC3339, unix timestamp, or relative e.g. now)")
@@ -91,9 +90,10 @@ func NewListCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 
 			ctx := cmd.Context()
+			resolvedLimit := int(limit.Resolve(ctx, 50))
 
 			q := IncidentQuery{
-				Limit:          opts.Limit,
+				Limit:          resolvedLimit,
 				IncidentLabels: opts.Labels,
 			}
 			now := time.Now()
@@ -112,7 +112,7 @@ func NewListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx, int64(opts.Limit))
+			typedObjs, err := crud.List(ctx, int64(resolvedLimit))
 			if err != nil {
 				return err
 			}
@@ -449,15 +449,13 @@ func NewActivityCommand(loader GrafanaConfigLoader) *cobra.Command {
 }
 
 type activityListOpts struct {
-	IO    cmdio.Options
-	Limit int
+	IO cmdio.Options
 }
 
 func (o *activityListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &ActivityTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of activity items to return")
 }
 
 func newActivityListCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -472,6 +470,7 @@ func newActivityListCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 
 			ctx := cmd.Context()
+			resolvedLimit := int(limit.Resolve(ctx, 50))
 			incidentID := args[0]
 
 			restCfg, err := loader.LoadGrafanaConfig(ctx)
@@ -484,7 +483,7 @@ func newActivityListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			items, err := client.QueryActivity(ctx, incidentID, opts.Limit)
+			items, err := client.QueryActivity(ctx, incidentID, resolvedLimit)
 			if err != nil {
 				return err
 			}

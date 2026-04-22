@@ -17,6 +17,7 @@ Install the canonical portable gcx Agent Skills bundle for .agents-compatible ag
 ```
       --agent              Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
       --context string     Name of the context to use (overrides current-context in config)
+      --limit int          Maximum number of items to return from list operations (0 for all; defaults to 50 in agent mode)
       --log-http-payload   Log full HTTP request/response bodies (includes headers — may expose tokens)
       --no-color           Disable color output
       --no-truncate        Disable table column truncation (auto-enabled when stdout is piped)

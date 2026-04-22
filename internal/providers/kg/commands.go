@@ -16,7 +16,6 @@ import (
 	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
-	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/shared"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
@@ -379,7 +378,7 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			typedObjs, err := crud.List(ctx, rulesListOpts.Limit)
+			typedObjs, err := crud.List(ctx, 0)
 			if err != nil {
 				return err
 			}
@@ -493,15 +492,13 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 }
 
 type rulesListOpts struct {
-	IO    cmdio.Options
-	Limit int64
+	IO cmdio.Options
 }
 
 func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &RuleTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 type rulesGetOpts struct {
@@ -709,7 +706,6 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			results = adapter.TruncateSlice(results, ioOpts.Limit)
 			return ioOpts.IO.Encode(cmd.OutOrStdout(), results)
 		},
 	}
@@ -757,7 +753,6 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			results = adapter.TruncateSlice(results, listOpts.Limit)
 			return listOpts.IO.Encode(cmd.OutOrStdout(), results)
 		},
 	}
@@ -793,15 +788,13 @@ func showSingleEntity(cmd *cobra.Command, client *Client, entityType, name strin
 }
 
 type entitiesShowOpts struct {
-	IO    cmdio.Options
-	Limit int64
+	IO cmdio.Options
 }
 
 func (o *entitiesShowOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &EntityTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 // EntityTableCodec renders search results as a table.
@@ -869,14 +862,12 @@ func newScopesCommand(loader RESTConfigLoader) *cobra.Command {
 }
 
 type scopesListOpts struct {
-	IO    cmdio.Options
-	Limit int64
+	IO cmdio.Options
 }
 
 func (o *scopesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 // ---------------------------------------------------------------------------

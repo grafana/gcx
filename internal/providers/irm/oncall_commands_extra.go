@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/limit"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/irm/oncalltypes"
 	"github.com/grafana/gcx/internal/style"
@@ -85,6 +86,7 @@ func newAlertGroupListCommand(loader OnCallConfigLoader) *cobra.Command {
 				return err
 			}
 
+			ctx := cmd.Context()
 			var listOpts []oncalltypes.ListOption
 			if opts.MaxAge != "" {
 				dur, err := parseDuration(opts.MaxAge)
@@ -94,8 +96,12 @@ func newAlertGroupListCommand(loader OnCallConfigLoader) *cobra.Command {
 				cutoff := time.Now().UTC().Add(-dur)
 				listOpts = append(listOpts, oncalltypes.WithStartedAfter(cutoff))
 			}
+			// The internal API uses cursor-based pagination; collectN stops
+			// fetching pages once the limit is reached.
+			resolvedLimit := int(limit.Resolve(ctx, 50))
+			listOpts = append(listOpts, oncalltypes.WithLimit(resolvedLimit))
 
-			items, err := client.ListAlertGroups(cmd.Context(), listOpts...)
+			items, err := client.ListAlertGroups(ctx, listOpts...)
 			if err != nil {
 				return err
 			}
@@ -138,7 +144,9 @@ func newAlertGroupListAlertsCommand(loader OnCallConfigLoader) *cobra.Command {
 				return err
 			}
 
-			items, err := client.ListAlerts(cmd.Context(), args[0])
+			ctx := cmd.Context()
+			alertLimit := int(limit.Resolve(ctx, 50))
+			items, err := client.ListAlerts(ctx, args[0], oncalltypes.WithLimit(alertLimit))
 			if err != nil {
 				return err
 			}

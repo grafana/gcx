@@ -43,8 +43,7 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 // --- list ---
 
 type listOpts struct {
-	IO    cmdio.Options
-	Limit int
+	IO cmdio.Options
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
@@ -52,7 +51,6 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &TableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of conversations to return (0 for no limit)")
 }
 
 func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
@@ -68,7 +66,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			convs, err := client.List(cmd.Context(), opts.Limit)
+			convs, err := client.List(cmd.Context())
 			if err != nil {
 				return err
 			}

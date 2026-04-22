@@ -49,12 +49,10 @@ func (c *SourcemapTableCodec) Decode(_ io.Reader, _ any) error {
 // ---------------------------------------------------------------------------
 
 type showSourcemapsOpts struct {
-	Limit int
-	IO    cmdio.Options
+	IO cmdio.Options
 }
 
 func (o *showSourcemapsOpts) setup(flags *pflag.FlagSet) {
-	flags.IntVar(&o.Limit, "limit", 0, "Maximum number of sourcemaps to return (0 for all)")
 	o.IO.RegisterCustomCodec("text", &SourcemapTableCodec{})
 	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
@@ -67,9 +65,6 @@ func newShowSourcemapsCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Show sourcemaps for a Frontend Observability app.",
 		Example: `  # List all sourcemaps for an app.
   gcx frontend apps show-sourcemaps my-web-app-42
-
-  # List the first 10 sourcemaps.
-  gcx frontend apps show-sourcemaps my-web-app-42 --limit 10
 
   # Output as JSON.
   gcx frontend apps show-sourcemaps my-web-app-42 -o json`,
@@ -93,7 +88,7 @@ func newShowSourcemapsCommand(loader *providers.ConfigLoader) *cobra.Command {
 
 			appID := resolveAppID(args[0])
 
-			bundles, err := client.ListSourcemaps(ctx, appID, opts.Limit)
+			bundles, err := client.ListSourcemaps(ctx, appID, 0)
 			if err != nil {
 				return err
 			}

@@ -73,7 +73,6 @@ gcx resources get [RESOURCE_SELECTOR]... [flags]
 ```
   -h, --help              help for get
       --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int         Maximum number of items to fetch per resource type (0 for all) (default 50)
       --on-error string   How to handle errors during resource operations:
                             ignore — continue processing all resources and exit 0
                             fail   — continue processing all resources and exit 1 if any failed (default)
@@ -88,6 +87,7 @@ gcx resources get [RESOURCE_SELECTOR]... [flags]
       --agent              Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
       --config string      Path to the configuration file to use
       --context string     Name of the context to use
+      --limit int          Maximum number of items to return from list operations (0 for all; defaults to 50 in agent mode)
       --log-http-payload   Log full HTTP request/response bodies (includes headers — may expose tokens)
       --no-color           Disable color output
       --no-truncate        Disable table column truncation (auto-enabled when stdout is piped)

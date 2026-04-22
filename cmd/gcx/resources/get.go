@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/limit"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/discovery"
@@ -109,7 +110,6 @@ const defaultListLimit = 50
 type getOpts struct {
 	IO      cmdio.Options
 	OnError OnErrorMode
-	Limit   int64
 	Open    bool
 }
 
@@ -120,8 +120,6 @@ func (opts *getOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.RegisterCustomCodec("wide", &tableCodec{wide: true})
 	opts.IO.DefaultFormat("text")
 
-	flags.Int64Var(&opts.Limit, "limit", defaultListLimit, "Maximum number of items to fetch per resource type (0 for all)")
-
 	// Bind all the flags
 	opts.IO.BindFlags(flags)
 	flags.BoolVar(&opts.Open, "open", false, "Open the resource in the default browser")
@@ -130,10 +128,6 @@ func (opts *getOpts) setup(flags *pflag.FlagSet) {
 func (opts *getOpts) Validate() error {
 	if err := opts.IO.Validate(); err != nil {
 		return err
-	}
-
-	if opts.Limit < 0 {
-		return errors.New("--limit must be a non-negative integer")
 	}
 
 	return opts.OnError.Validate()
@@ -234,10 +228,11 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				// Fall through to sample-fetch approach.
 			}
 
+			resolvedLimit := limit.Resolve(ctx, defaultListLimit)
 			fetchReq := FetchRequest{
 				Config:      cfg,
 				StopOnError: opts.OnError.StopOnError(),
-				Limit:       opts.Limit,
+				Limit:       resolvedLimit,
 			}
 			// --json ? only needs one resource for field introspection; avoid
 			// a full list operation to satisfy NC-005.
@@ -310,7 +305,7 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			if res.PullSummary.IsTruncated() {
 				fmt.Fprintf(cmd.ErrOrStderr(),
 					"Showing first %d items per resource type. Use --limit=0 to fetch all.\n",
-					opts.Limit)
+					resolvedLimit)
 			}
 
 			if opts.OnError.FailOnErrors() && res.PullSummary.FailedCount() > 0 {

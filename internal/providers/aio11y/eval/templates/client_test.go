@@ -90,7 +90,7 @@ func TestClient_Get(t *testing.T) {
 	assert.Equal(t, "llm_judge", (*detail)["kind"])
 }
 
-func TestClient_List_WithLimit(t *testing.T) {
+func TestClient_List_AllItems(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, map[string]any{
 			"items": []eval.TemplateDefinition{
@@ -101,11 +101,12 @@ func TestClient_List_WithLimit(t *testing.T) {
 		})
 	}))
 
-	items, err := client.List(context.Background(), "", 2)
+	items, err := client.List(context.Background(), "")
 	require.NoError(t, err)
-	require.Len(t, items, 2)
+	require.Len(t, items, 3)
 	assert.Equal(t, "tpl-1", items[0].TemplateID)
 	assert.Equal(t, "tpl-2", items[1].TemplateID)
+	assert.Equal(t, "tpl-3", items[2].TemplateID)
 }
 
 func TestClient_ListVersions(t *testing.T) {

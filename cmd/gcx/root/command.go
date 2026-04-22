@@ -25,6 +25,7 @@ import (
 	internalconfig "github.com/grafana/gcx/internal/config"
 	_ "github.com/grafana/gcx/internal/datasources/providers" // DatasourceProvider registrations — blank imports trigger init() self-registration.
 	"github.com/grafana/gcx/internal/httputils"
+	"github.com/grafana/gcx/internal/limit"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/providers"
 	_ "github.com/grafana/gcx/internal/providers/aio11y"   // Provider registrations — blank imports trigger init() self-registration.
@@ -78,6 +79,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	verbosity := 0
 	contextName := ""
 	logHTTPPayload := false
+	var limitVal int64
 
 	rootCmd := &cobra.Command{
 		Use:           path.Base(os.Args[0]),
@@ -145,6 +147,14 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 				ctx = httputils.WithPayloadLogging(ctx, true)
 			}
 
+			// Thread --limit into context. Explicit CLI value always wins;
+			// agent mode gets a default cap to prevent unbounded scans.
+			if f := cmd.Root().PersistentFlags().Lookup("limit"); f != nil && f.Changed {
+				ctx = limit.WithLimit(ctx, limitVal, true)
+			} else if agent.IsAgentMode() {
+				ctx = limit.WithLimit(ctx, 50, false)
+			}
+
 			cmd.SetContext(ctx)
 		},
 		Annotations: map[string]string{
@@ -201,6 +211,8 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd.PersistentFlags().StringVar(&contextName, "context", "", "Name of the context to use (overrides current-context in config)")
 	rootCmd.PersistentFlags().BoolVar(&logHTTPPayload, "log-http-payload", false,
 		"Log full HTTP request/response bodies (includes headers — may expose tokens)")
+	rootCmd.PersistentFlags().Int64Var(&limitVal, "limit", 0,
+		"Maximum number of items to return from list operations (0 for all; defaults to 50 in agent mode)")
 
 	// Initialize Cobra's built-in help/completion commands here so any code
 	// traversing the command tree before ExecuteContext() sees the same shape
