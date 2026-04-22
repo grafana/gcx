@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/limit"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/aio11y/aio11yhttp"
@@ -61,7 +62,8 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			scores, err := client.ListByGeneration(cmd.Context(), args[0])
+			ctx := cmd.Context()
+			scores, err := client.ListByGeneration(ctx, args[0], int(limit.Resolve(ctx, 50)))
 			if err != nil {
 				return err
 			}
