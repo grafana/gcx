@@ -147,6 +147,8 @@ Env vars resolve at every command invocation, so you can run `gcx` commands dire
 
 **Verify:** `gcx config check`
 
+See the [login reference](docs/reference/login.md) for the full guide, including re-authentication, environment-variable setup, and troubleshooting for common errors.
+
 ### 3. See It in Action
 
 **Query production from your terminal:**
