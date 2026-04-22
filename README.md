@@ -307,7 +307,7 @@ gcx provides dedicated commands for each Grafana Cloud product:
 | **Knowledge Graph** | `gcx kg` | `kg status`, `kg search`, `kg entities show` |
 | **Frontend Observability** | `gcx frontend` | `frontend apps list`, `frontend apps get` |
 | **App Observability** | `gcx appo11y` | `appo11y overrides get`, `appo11y settings get` |
-| **Sigil (AI Observability)** | `gcx sigil` | `sigil conversations list`, `sigil agents list`, `sigil rules list` |
+| **AI Observability** | `gcx aio11y` | `aio11y conversations list`, `aio11y agents list`, `aio11y rules list` |
 | **Assistant** | `gcx assistant` | `assistant prompt`, `assistant investigations list`, `assistant investigations report` |
 | **Adaptive Metrics** | `gcx metrics adaptive` | `metrics adaptive recommendations show`, `metrics adaptive rules list` |
 | **Adaptive Logs** | `gcx logs adaptive` | `logs adaptive patterns show`, `logs adaptive drop-rules list` |

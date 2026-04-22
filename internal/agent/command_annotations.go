@@ -321,38 +321,38 @@ var commandAnnotations = map[string]annotation{
 	"gcx profiles query":         {Cost: "large", Hint: "'{service_name=\"frontend\"}' --profile-type cpu --since 1h -o json"},
 
 	// -----------------------------------------------------------------------
-	// Sigil provider
+	// AI Observability provider
 	// -----------------------------------------------------------------------
-	"gcx sigil agents get":      {Cost: "small"},
-	"gcx sigil agents list":     {Cost: "small"},
-	"gcx sigil agents versions": {Cost: "small"},
+	"gcx aio11y agents get":      {Cost: "small"},
+	"gcx aio11y agents list":     {Cost: "small"},
+	"gcx aio11y agents versions": {Cost: "small"},
 
-	"gcx sigil conversations get":    {Cost: "medium", Hint: "<conversation-id> -o json"},
-	"gcx sigil conversations list":   {Cost: "small"},
-	"gcx sigil conversations search": {Cost: "medium", Hint: "--from 2024-01-01 --to 2024-01-31 -o json"},
+	"gcx aio11y conversations get":    {Cost: "medium", Hint: "<conversation-id> -o json"},
+	"gcx aio11y conversations list":   {Cost: "small"},
+	"gcx aio11y conversations search": {Cost: "medium", Hint: "--from 2024-01-01 --to 2024-01-31 -o json"},
 
-	"gcx sigil evaluators create": {Cost: "small"},
-	"gcx sigil evaluators delete": {Cost: "small"},
-	"gcx sigil evaluators get":    {Cost: "small"},
-	"gcx sigil evaluators list":   {Cost: "small"},
-	"gcx sigil evaluators test":   {Cost: "medium", Hint: "<evaluator-id> -o json"},
+	"gcx aio11y evaluators create": {Cost: "small"},
+	"gcx aio11y evaluators delete": {Cost: "small"},
+	"gcx aio11y evaluators get":    {Cost: "small"},
+	"gcx aio11y evaluators list":   {Cost: "small"},
+	"gcx aio11y evaluators test":   {Cost: "medium", Hint: "<evaluator-id> -o json"},
 
-	"gcx sigil generations get": {Cost: "medium", Hint: "<generation-id> -o json"},
+	"gcx aio11y generations get": {Cost: "medium", Hint: "<generation-id> -o json"},
 
-	"gcx sigil judge models":    {Cost: "small"},
-	"gcx sigil judge providers": {Cost: "small"},
+	"gcx aio11y judge models":    {Cost: "small"},
+	"gcx aio11y judge providers": {Cost: "small"},
 
-	"gcx sigil rules create": {Cost: "small"},
-	"gcx sigil rules delete": {Cost: "small"},
-	"gcx sigil rules get":    {Cost: "small"},
-	"gcx sigil rules list":   {Cost: "small"},
-	"gcx sigil rules update": {Cost: "small"},
+	"gcx aio11y rules create": {Cost: "small"},
+	"gcx aio11y rules delete": {Cost: "small"},
+	"gcx aio11y rules get":    {Cost: "small"},
+	"gcx aio11y rules list":   {Cost: "small"},
+	"gcx aio11y rules update": {Cost: "small"},
 
-	"gcx sigil scores list": {Cost: "small"},
+	"gcx aio11y scores list": {Cost: "small"},
 
-	"gcx sigil templates get":      {Cost: "small"},
-	"gcx sigil templates list":     {Cost: "small"},
-	"gcx sigil templates versions": {Cost: "small"},
+	"gcx aio11y templates get":      {Cost: "small"},
+	"gcx aio11y templates list":     {Cost: "small"},
+	"gcx aio11y templates versions": {Cost: "small"},
 
 	// -----------------------------------------------------------------------
 	// SLO provider
