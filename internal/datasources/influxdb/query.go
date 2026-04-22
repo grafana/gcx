@@ -17,11 +17,12 @@ import (
 
 type queryOpts struct {
 	dsquery.SharedOpts
+
 	Datasource string
 }
 
 func (opts *queryOpts) setup(flags *pflag.FlagSet) {
-	opts.SharedOpts.Setup(flags, false)
+	opts.Setup(flags, false)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.influxdb is configured)")
 }
 
