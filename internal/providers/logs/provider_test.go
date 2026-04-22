@@ -1,13 +1,18 @@
 package logs_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/logs"
+	"github.com/grafana/gcx/internal/setup/framework"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// Compile-time assertion: Provider satisfies StatusDetectable.
+var _ framework.StatusDetectable = (*logs.Provider)(nil)
 
 func TestProviderRegistration(t *testing.T) {
 	p := &logs.Provider{}
@@ -68,5 +73,31 @@ func TestProviderRegistration(t *testing.T) {
 			}
 		}
 		assert.True(t, found, "logs provider not found in providers.All()")
+	})
+}
+
+func TestProvider_StatusDetectable(t *testing.T) {
+	p := &logs.Provider{}
+
+	t.Run("NotSetupable", func(t *testing.T) {
+		_, ok := any(p).(framework.Setupable)
+		assert.False(t, ok, "logs provider must not implement Setupable")
+	})
+
+	t.Run("ProductName", func(t *testing.T) {
+		assert.Equal(t, p.Name(), p.ProductName())
+	})
+
+	t.Run("Status", func(t *testing.T) {
+		status, err := p.Status(context.Background())
+		require.NoError(t, err)
+		require.NotNil(t, status)
+		validStates := map[framework.ProductState]bool{
+			framework.StateNotConfigured: true,
+			framework.StateConfigured:    true,
+			framework.StateActive:        true,
+			framework.StateError:         true,
+		}
+		assert.True(t, validStates[status.State], "unexpected state: %q", status.State)
 	})
 }

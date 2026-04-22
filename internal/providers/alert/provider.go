@@ -1,12 +1,16 @@
 package alert
 
 import (
+	"context"
+
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/setup/framework"
 	"github.com/spf13/cobra"
 )
 
 var _ providers.Provider = &AlertProvider{}
+var _ framework.StatusDetectable = &AlertProvider{}
 
 func init() { //nolint:gochecknoinits // Self-registration pattern (like database/sql drivers).
 	providers.Register(&AlertProvider{})
@@ -52,6 +56,20 @@ func (p *AlertProvider) Validate(cfg map[string]string) error {
 // ConfigKeys returns the configuration keys used by this provider.
 func (p *AlertProvider) ConfigKeys() []providers.ConfigKey {
 	return nil
+}
+
+// ProductName returns the human-readable product name.
+func (p *AlertProvider) ProductName() string { return p.Name() }
+
+// Status returns the current configuration state based on config key presence.
+// This is a v1 stub: it never probes any API. Config is loaded from the active
+// context; a missing or unreadable config is treated as StateNotConfigured.
+func (p *AlertProvider) Status(ctx context.Context) (*framework.ProductStatus, error) {
+	loader := &providers.ConfigLoader{}
+	// TODO: add proper error handling once provider setup is implemented
+	cfg, _, _ := loader.LoadProviderConfig(ctx, p.Name())
+	s := framework.ConfigKeysStatus(p, cfg)
+	return &s, nil
 }
 
 // TypedRegistrations returns adapter registrations for Alert resource types.

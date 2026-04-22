@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/synth/checks"
 	"github.com/grafana/gcx/internal/providers/synth/probes"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/setup/framework"
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/rest"
 )
@@ -114,8 +115,37 @@ func (p *SynthProvider) Commands() []*cobra.Command {
 
 	synthCmd.AddCommand(checks.Commands(loader))
 	synthCmd.AddCommand(probes.Commands(loader))
+	synthCmd.AddCommand(newSetupCommand(p))
 
 	return []*cobra.Command{synthCmd}
+}
+
+// ProductName implements framework.StatusDetectable.
+func (p *SynthProvider) ProductName() string { return p.Name() }
+
+// Status implements framework.StatusDetectable using a config-key heuristic.
+func (p *SynthProvider) Status(ctx context.Context) (*framework.ProductStatus, error) {
+	var loader providers.ConfigLoader
+	// TODO: add proper error handling once provider setup is implemented
+	cfg, _, _ := loader.LoadProviderConfig(ctx, p.Name())
+	status := framework.ConfigKeysStatus(p, cfg)
+	return &status, nil
+}
+
+// InfraCategories implements framework.Setupable.
+func (p *SynthProvider) InfraCategories() []framework.InfraCategory { return nil }
+
+// ResolveChoices implements framework.Setupable.
+func (p *SynthProvider) ResolveChoices(_ context.Context, _ string) ([]string, error) {
+	return nil, nil
+}
+
+// ValidateSetup implements framework.Setupable.
+func (p *SynthProvider) ValidateSetup(_ context.Context, _ map[string]string) error { return nil }
+
+// Setup implements framework.Setupable.
+func (p *SynthProvider) Setup(_ context.Context, _ map[string]string) error {
+	return framework.ErrSetupNotSupported
 }
 
 // Validate checks that the given provider configuration is valid.

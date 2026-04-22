@@ -12,9 +12,14 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/providers/fleet"
+	"github.com/grafana/gcx/internal/setup/framework"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// Compile-time assertion: FleetProvider implements framework.Setupable.
+var _ framework.Setupable = (*fleet.FleetProvider)(nil)
 
 // ---------------------------------------------------------------------------
 // Pipeline round-trip tests
@@ -356,4 +361,68 @@ func TestPipelineProtectionGuard(t *testing.T) {
 			}
 		})
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Setupable interface tests
+// ---------------------------------------------------------------------------
+
+func TestFleetProvider_ProductName(t *testing.T) {
+	p := &fleet.FleetProvider{}
+	assert.Equal(t, "fleet", p.ProductName())
+}
+
+func TestFleetProvider_Status(t *testing.T) {
+	p := &fleet.FleetProvider{}
+	status, err := p.Status(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, status)
+	assert.Equal(t, "fleet", status.Product)
+	// No config keys → StateActive.
+	assert.Equal(t, framework.StateActive, status.State)
+}
+
+func TestFleetProvider_InfraCategories(t *testing.T) {
+	p := &fleet.FleetProvider{}
+	assert.Nil(t, p.InfraCategories())
+}
+
+func TestFleetProvider_ResolveChoices(t *testing.T) {
+	p := &fleet.FleetProvider{}
+	choices, err := p.ResolveChoices(context.Background(), "any")
+	require.NoError(t, err)
+	assert.Nil(t, choices)
+}
+
+func TestFleetProvider_ValidateSetup(t *testing.T) {
+	p := &fleet.FleetProvider{}
+	assert.NoError(t, p.ValidateSetup(context.Background(), nil))
+}
+
+func TestFleetProvider_Setup(t *testing.T) {
+	p := &fleet.FleetProvider{}
+	err := p.Setup(context.Background(), nil)
+	require.ErrorIs(t, err, framework.ErrSetupNotSupported)
+}
+
+func TestFleetProvider_SetupCommand(t *testing.T) {
+	p := &fleet.FleetProvider{}
+	cmds := p.Commands()
+	require.Len(t, cmds, 1)
+
+	var setupCmd *cobra.Command
+	for _, sub := range cmds[0].Commands() {
+		if sub.Name() == "setup" {
+			setupCmd = sub
+			break
+		}
+	}
+	require.NotNil(t, setupCmd, "expected 'setup' subcommand")
+
+	stderr := &bytes.Buffer{}
+	setupCmd.SetErr(stderr)
+	err := setupCmd.RunE(setupCmd, nil)
+
+	require.ErrorIs(t, err, framework.ErrSetupNotSupported)
+	assert.NotEmpty(t, stderr.String())
 }

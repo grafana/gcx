@@ -34,6 +34,11 @@ func StdoutIsTerminal() bool {
 	return term.IsTerminal(int(os.Stdout.Fd()))
 }
 
+// StdinIsTerminal reports whether stdin is connected to a real terminal.
+func StdinIsTerminal() bool {
+	return term.IsTerminal(int(os.Stdin.Fd()))
+}
+
 // StdoutWidth returns the current stdout terminal width, or 0 when unknown.
 func StdoutWidth() int {
 	width, _, err := term.GetSize(int(os.Stdout.Fd()))

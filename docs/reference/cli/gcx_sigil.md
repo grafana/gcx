@@ -30,5 +30,6 @@ Manage Sigil AI observability resources
 * [gcx sigil judge](gcx_sigil_judge.md)	 - List LLM providers and models available for LLM-judge evaluators.
 * [gcx sigil rules](gcx_sigil_rules.md)	 - Manage rules that route generations to evaluators.
 * [gcx sigil scores](gcx_sigil_scores.md)	 - View evaluation scores for generations.
+* [gcx sigil setup](gcx_sigil_setup.md)	 - Set up sigil (not yet implemented).
 * [gcx sigil templates](gcx_sigil_templates.md)	 - Browse reusable evaluator blueprints (global and tenant-scoped).
 

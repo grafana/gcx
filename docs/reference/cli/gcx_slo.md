@@ -25,4 +25,5 @@ Manage Grafana SLO definitions and reports
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx slo definitions](gcx_slo_definitions.md)	 - Manage SLO definitions.
 * [gcx slo reports](gcx_slo_reports.md)	 - Manage SLO reports.
+* [gcx slo setup](gcx_slo_setup.md)	 - Set up slo (not yet implemented).
 

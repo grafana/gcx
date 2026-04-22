@@ -25,4 +25,5 @@ Manage Grafana IRM (OnCall + Incidents)
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx irm incidents](gcx_irm_incidents.md)	 - Manage incidents.
 * [gcx irm oncall](gcx_irm_oncall.md)	 - Manage Grafana OnCall resources.
+* [gcx irm setup](gcx_irm_setup.md)	 - Set up irm (not yet implemented).
 

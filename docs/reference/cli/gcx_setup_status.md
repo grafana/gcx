@@ -9,7 +9,9 @@ gcx setup status [flags]
 ### Options
 
 ```
-  -h, --help   help for status
+  -h, --help            help for status
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: json, text, wide, yaml (default "text")
 ```
 
 ### Options inherited from parent commands

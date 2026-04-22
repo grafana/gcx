@@ -60,4 +60,10 @@ Commands that produce non-data output are exempt from format switching:
 - `serve` — starts a long-running server
 - `push`, `pull` — output is status messages, not data
 
+**Interactive wizard commands** (TTY-guarded + agent-mode-blocked) are additionally
+exempt from the STDOUT=data rule. Their prompts, previews, and prose may go to stdout:
+- `gcx setup run` — interactive product setup orchestrator; refuses agent mode with
+  exit code 2 and refuses non-TTY stdin. Equivalent machine-readable output is
+  available via `gcx setup status` and per-product `gcx <product> setup` commands.
+
 See [environment-variables.md § Agent Mode Variables](environment-variables.md#agent-mode-variables) for the full variable reference.
