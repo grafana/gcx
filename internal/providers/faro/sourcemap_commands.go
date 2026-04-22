@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/limit"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -88,7 +89,7 @@ func newShowSourcemapsCommand(loader *providers.ConfigLoader) *cobra.Command {
 
 			appID := resolveAppID(args[0])
 
-			bundles, err := client.ListSourcemaps(ctx, appID, 0)
+			bundles, err := client.ListSourcemaps(ctx, appID, int(limit.Resolve(ctx, 50)))
 			if err != nil {
 				return err
 			}
