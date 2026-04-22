@@ -39,6 +39,7 @@ gcx/
 │   ├── graph/                # Terminal chart rendering (ntcharts + lipgloss)
 │   ├── httputils/            # REST client helpers, request/response utilities
 │   ├── retry/                # Retry transport (429/5xx/connection errors, exponential backoff, Retry-After)
+│   ├── limit/                # Global --limit flag context threading (WithLimit, FromContext, Resolve)
 │   ├── logs/                 # slog + k8s klog integration, verbosity
 │   ├── linter/               # OPA/Rego-based resource linter engine
 │   │   ├── bundle/           # Embedded Rego bundle with built-in rules

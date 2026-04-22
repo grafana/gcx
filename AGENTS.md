@@ -137,6 +137,7 @@ internal/
 ├── output/      Output codec registry (json, yaml, text, wide — field selection, discovery, k8s unstructured handling)
 ├── format/      JSON/YAML codecs with format auto-detection
 ├── retry/       Retry transport (429, 502/503/504, transient connection errors — wraps all HTTP tiers)
+├── limit/       Global --limit flag context threading (WithLimit, FromContext, Resolve)
 ├── httputils/   HTTP helpers (used by serve command's proxy)
 ├── version/     Global version string (Set once from main; provides UserAgent() for HTTP clients)
 ├── secrets/     Redactor for config view
