@@ -9,13 +9,15 @@ gcx alert instances list [flags]
 ### Options
 
 ```
-      --folder string   Filter by folder UID
-      --group string    Filter by group name
-  -h, --help            help for list
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
-      --rule string     Filter by rule UID
-      --state string    Filter by alert instance state (firing, pending, inactive)
+      --datasource string   Datasource UID to query (default: Grafana-managed rules)
+      --folder string       Filter by folder UID
+      --group string        Filter by group name
+  -h, --help                help for list
+      --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --name string         Filter by rule name (regex, e.g. 'Tempo.*')
+  -o, --output string       Output format. One of: json, table, wide, yaml (default "table")
+      --rule string         Filter by rule UID
+      --state string        Filter by alert instance state (firing, pending, inactive)
 ```
 
 ### Options inherited from parent commands
