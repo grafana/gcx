@@ -37,14 +37,15 @@ type LoginResult struct {
 }
 
 type loginOpts struct {
-	Config      configcmd.Options
-	IO          cmdio.Options
-	Server      string
-	Token       string
-	CloudToken  string
-	CloudAPIURL string
-	Cloud       bool
-	Yes         bool
+	Config              configcmd.Options
+	IO                  cmdio.Options
+	Server              string
+	Token               string
+	CloudToken          string
+	CloudAPIURL         string
+	Cloud               bool
+	Yes                 bool
+	AllowServerOverride bool
 }
 
 func (opts *loginOpts) setup(flags *pflag.FlagSet) {
@@ -62,6 +63,7 @@ func (opts *loginOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.CloudAPIURL, "cloud-api-url", "", "Override Grafana Cloud API URL")
 	flags.BoolVar(&opts.Cloud, "cloud", false, "Force Grafana Cloud target (skip auto-detection)")
 	flags.BoolVar(&opts.Yes, "yes", false, "Non-interactive: skip optional prompts and use defaults")
+	flags.BoolVar(&opts.AllowServerOverride, "allow-server-override", false, "Allow re-pointing an existing context at a different server URL")
 }
 
 // Validate checks opts and args for internal consistency before runLogin executes.
@@ -186,6 +188,9 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 
 	if flags.Cloud {
 		opts.Target = login.TargetCloud
+	}
+	if flags.AllowServerOverride {
+		opts.AllowOverride = true
 	}
 
 	for {
@@ -498,7 +503,7 @@ func structuredClarificationError(e *login.ErrNeedClarification) error {
 			Summary: "Login would overwrite an existing context",
 			Details: e.Question,
 			Suggestions: []string{
-				"Pass --yes to confirm the override non-interactively",
+				"Pass --allow-server-override to confirm the server change non-interactively",
 				"Pick a different positional context name to create a new one",
 			},
 		}
@@ -592,8 +597,9 @@ func printResult(cmd *cobra.Command, ioOpts *cmdio.Options, server string, resul
 	if result.IsCloud && !result.HasCloudToken {
 		ew := cmd.ErrOrStderr()
 		fmt.Fprintln(ew)
-		fmt.Fprintln(ew, "Note: Cloud API commands require a Cloud Access Policy token.")
-		fmt.Fprintf(ew, "Run 'gcx login --context %s' to add one.\n", result.ContextName)
+		fmt.Fprintln(ew, "Note: Cloud API commands require a Cloud Access Policy (CAP) token.")
+		fmt.Fprintln(ew, "See: https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/")
+		fmt.Fprintf(ew, "Run 'gcx login --context %s --cloud-token <token>' to add one.\n", result.ContextName)
 	}
 	return nil
 }

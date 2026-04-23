@@ -97,6 +97,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 				assert.Equal(t, "oauth", ctx.Grafana.AuthMethod)
 				require.NotNil(t, ctx.Cloud)
 				assert.Equal(t, "cap-token", ctx.Cloud.Token)
+				assert.Equal(t, "mystack", ctx.Cloud.Stack) // slug derived from *.grafana.net URL
 			},
 		},
 		{
@@ -589,6 +590,63 @@ func TestPersist_ServerMismatch_AllowOverrideBypasses(t *testing.T) {
 	}
 	if got.OrgID != 42 {
 		t.Errorf("OrgID = %d, want 42 (non-auth field preserved)", got.OrgID)
+	}
+}
+
+func TestPersist_ServerMismatch_YesDoesNotBypass(t *testing.T) {
+	dir := t.TempDir()
+
+	seed := config.Config{
+		CurrentContext: "mystack",
+		Contexts: map[string]*config.Context{
+			"mystack": {
+				Name: "mystack",
+				Grafana: &config.GrafanaConfig{
+					Server:     "https://mystack.grafana.net",
+					APIToken:   "old-token",
+					AuthMethod: "token",
+				},
+			},
+		},
+	}
+	if err := config.Write(context.Background(), configSource(dir), seed); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	opts := login.Options{
+		Inputs: login.Inputs{
+			Server:       "https://mystack.grafana-dev.net",
+			ContextName:  "mystack",
+			Target:       login.TargetOnPrem,
+			GrafanaToken: "new-token",
+			Yes:          true, // --yes alone must NOT bypass the server-identity guard
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(dir),
+			ValidateFn: func(_ context.Context, _ login.Options, _ config.NamespacedRESTConfig) (string, error) {
+				return "12.0.0", nil
+			},
+		},
+		RetryState: login.RetryState{
+			StagedContext: &config.Context{},
+		},
+	}
+
+	_, err := login.Run(context.Background(), &opts)
+	var needClar *login.ErrNeedClarification
+	if !errors.As(err, &needClar) {
+		t.Fatalf("expected ErrNeedClarification, got %v", err)
+	}
+	if needClar.Field != "allow-override" {
+		t.Errorf("expected Field='allow-override', got %q", needClar.Field)
+	}
+	// Config must be unchanged.
+	cfg, err := config.Load(context.Background(), configSource(dir))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.Contexts["mystack"].Grafana.Server != "https://mystack.grafana.net" {
+		t.Errorf("context was modified despite ErrNeedClarification")
 	}
 }
 

@@ -118,7 +118,7 @@ func TestStructuredClarificationError(t *testing.T) {
 			},
 			wantSummary:    "Login would overwrite an existing context",
 			wantDetailSubs: []string{"prod", "Overwrite"},
-			wantSuggestSub: []string{"--yes"},
+			wantSuggestSub: []string{"--allow-server-override"},
 		},
 		{
 			name: "save_unvalidated",
@@ -285,8 +285,9 @@ func TestPrintResult_TextCodec(t *testing.T) {
   Stack:       stack
 `,
 			wantStderrSubs: []string{
-				"Note: Cloud API commands require a Cloud Access Policy token.",
-				"gcx login --context stack",
+				"Note: Cloud API commands require a Cloud Access Policy (CAP) token.",
+				"grafana.com/docs/grafana-cloud/security-and-account-management",
+				"gcx login --context stack --cloud-token",
 			},
 		},
 		{

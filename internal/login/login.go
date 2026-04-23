@@ -87,8 +87,9 @@ type RetryState struct {
 
 	// AllowOverride, when true, bypasses the server-mismatch guard in
 	// persistContext. Set by the CLI after the user confirms via an
-	// ErrNeedClarification{Field: "allow-override"} prompt, or implicitly
-	// when opts.Yes is true.
+	// ErrNeedClarification{Field: "allow-override"} interactive prompt, or
+	// when the caller passes --allow-server-override. --yes alone does NOT
+	// set this; server-identity changes require an explicit opt-in.
 	AllowOverride bool
 
 	// ForceSave, when true, bypasses connectivity validation and persists
@@ -376,10 +377,14 @@ func resolveCloudAuth(opts Options, target Target) (*config.CloudConfig, error) 
 	}
 
 	if opts.CloudToken != "" {
-		return &config.CloudConfig{
+		cc := &config.CloudConfig{
 			Token:  opts.CloudToken,
 			APIUrl: opts.CloudAPIURL,
-		}, nil
+		}
+		if slug := resolveStackSlug(opts.Server); slug != "" {
+			cc.Stack = slug
+		}
+		return cc, nil
 	}
 
 	// Cloud target with no token: skip if Yes or agent mode (D9, D10)
@@ -415,13 +420,15 @@ func persistContext(ctx context.Context, opts Options, contextName string, tempC
 
 	// Server-mismatch guard: if the existing context points at a different
 	// server than the incoming one, require explicit confirmation before
-	// overwriting. Bypass when Yes (--yes) or AllowOverride (user confirmed
-	// via the ErrNeedClarification{Field:"allow-override"} sentinel).
+	// overwriting. Bypassed only when AllowOverride is set (user confirmed via
+	// the interactive ErrNeedClarification prompt or passed --allow-server-override).
+	// --yes alone does not bypass this guard; changing which server a context
+	// targets is a potentially destructive operation that requires an explicit signal.
 	if existing != nil && existing.Grafana != nil && tempCtx.Grafana != nil {
 		oldServer := existing.Grafana.Server
 		newServer := tempCtx.Grafana.Server
 		if oldServer != "" && newServer != "" && oldServer != newServer &&
-			!opts.Yes && !opts.AllowOverride {
+			!opts.AllowOverride {
 			return &ErrNeedClarification{
 				Field: "allow-override",
 				Question: fmt.Sprintf(
