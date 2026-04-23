@@ -63,6 +63,7 @@ func TestTLS_ResolveFiles(t *testing.T) {
 func TestTLS_ResolveFiles_MissingFile(t *testing.T) {
 	cfg := &config.TLS{
 		CertFile: "/nonexistent/cert.pem",
+		KeyFile:  "/nonexistent/key.pem",
 	}
 
 	err := cfg.ResolveFiles()
@@ -70,13 +71,26 @@ func TestTLS_ResolveFiles_MissingFile(t *testing.T) {
 	require.ErrorContains(t, err, "reading TLS client certificate")
 }
 
+func TestTLS_ResolveFiles_CertWithoutKey(t *testing.T) {
+	cfg := &config.TLS{
+		CertFile: "/some/cert.pem",
+	}
+
+	err := cfg.ResolveFiles()
+	require.Error(t, err)
+	require.ErrorContains(t, err, "both cert-file and key-file must be provided together")
+}
+
 func TestTLS_ResolveFiles_FileOverridesData(t *testing.T) {
 	dir := t.TempDir()
 	certPath := filepath.Join(dir, "cert.pem")
+	keyPath := filepath.Join(dir, "key.pem")
 	require.NoError(t, os.WriteFile(certPath, []byte(testCertPEM), 0600))
+	require.NoError(t, os.WriteFile(keyPath, []byte(testKeyPEM), 0600))
 
 	cfg := &config.TLS{
 		CertFile: certPath,
+		KeyFile:  keyPath,
 		CertData: []byte("old-data"),
 	}
 

@@ -114,7 +114,7 @@ func (context *Context) Validate() error {
 }
 
 // ToRESTConfig returns a REST config for the context.
-func (context *Context) ToRESTConfig(ctx context.Context) NamespacedRESTConfig {
+func (context *Context) ToRESTConfig(ctx context.Context) (NamespacedRESTConfig, error) {
 	return NewNamespacedRESTConfig(ctx, *context)
 }
 
@@ -413,11 +413,9 @@ type TLS struct {
 	ServerName string `json:"server-name,omitempty" yaml:"server-name,omitempty"`
 
 	// CertFile is the path to a PEM-encoded client certificate file.
-	// When set, KeyFile must also be provided.
 	// This enables mutual TLS (mTLS) authentication with the server.
 	CertFile string `env:"GRAFANA_TLS_CERT_FILE" json:"cert-file,omitempty" yaml:"cert-file,omitempty"`
 	// KeyFile is the path to a PEM-encoded client certificate key file.
-	// When set, CertFile must also be provided.
 	KeyFile string `datapolicy:"secret" env:"GRAFANA_TLS_KEY_FILE" json:"key-file,omitempty" yaml:"key-file,omitempty"`
 	// CAFile is the path to a PEM-encoded CA certificate bundle file.
 	// When set, this CA is used to verify the server's certificate.
@@ -447,6 +445,9 @@ type TLS struct {
 // the corresponding CertData, KeyData, and CAData fields. File-based fields
 // take precedence: if both CertFile and CertData are set, CertFile wins.
 func (cfg *TLS) ResolveFiles() error {
+	if (cfg.CertFile != "") != (cfg.KeyFile != "") {
+		return errors.New("both cert-file and key-file must be provided together")
+	}
 	if cfg.CertFile != "" {
 		data, err := os.ReadFile(cfg.CertFile)
 		if err != nil {
@@ -500,7 +501,7 @@ func (cfg *TLS) ToStdTLSConfig() (*tls.Config, error) {
 			pool = x509.NewCertPool()
 		}
 		if !pool.AppendCertsFromPEM(cfg.CAData) {
-			return nil, fmt.Errorf("failed to parse TLS CA certificate data")
+			return nil, errors.New("failed to parse TLS CA certificate data")
 		}
 		tlsCfg.RootCAs = pool
 	}

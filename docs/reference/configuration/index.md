@@ -55,6 +55,14 @@ contexts:
         # certificates against. If ServerName is empty, the hostname used to contact the
         # server is used.
         server-name: string
+        # CertFile is the path to a PEM-encoded client certificate file.
+        # This enables mutual TLS (mTLS) authentication with the server.
+        cert-file: string
+        # KeyFile is the path to a PEM-encoded client certificate key file.
+        key-file: string
+        # CAFile is the path to a PEM-encoded CA certificate bundle file.
+        # When set, this CA is used to verify the server's certificate.
+        ca-file: string
         # CertData holds PEM-encoded bytes (typically read from a client certificate file).
         # Note: this value is base64-encoded in the config file and will be
         # automatically decoded.
