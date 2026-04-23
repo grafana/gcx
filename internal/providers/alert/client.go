@@ -65,7 +65,7 @@ func (c *Client) List(ctx context.Context, opts ListOptions) (*RulesResponse, er
 
 	path := defaultBasePath
 	if opts.Datasource != "" {
-		path = "/api/prometheus/" + opts.Datasource + "/api/v1/rules"
+		path = "/api/prometheus/" + url.PathEscape(opts.Datasource) + "/api/v1/rules"
 	}
 	if len(params) > 0 {
 		path += "?" + params.Encode()
