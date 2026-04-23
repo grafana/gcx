@@ -283,7 +283,7 @@ func TestExtractFieldKeys_SkipsFramesWithFewerThanTwoColumns(t *testing.T) {
 	assert.Equal(t, "integer", got.Fields[0].FieldType)
 }
 
-func newTestClient(t *testing.T, handler http.HandlerFunc) (*influxdb.Client, *httptest.Server) {
+func newTestClient(t *testing.T, handler http.HandlerFunc) *influxdb.Client {
 	t.Helper()
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
@@ -293,11 +293,11 @@ func newTestClient(t *testing.T, handler http.HandlerFunc) (*influxdb.Client, *h
 	}
 	client, err := influxdb.NewClient(cfg)
 	require.NoError(t, err)
-	return client, server
+	return client
 }
 
 func TestQuery_ReturnsTypedAPIErrorForHTTPFailure(t *testing.T) {
-	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(`{"results":{"A":{"error":"error parsing query","errorSource":"downstream","status":400}}}`))
 	})
@@ -315,7 +315,7 @@ func TestQuery_ReturnsTypedAPIErrorForHTTPFailure(t *testing.T) {
 }
 
 func TestQuery_ReturnsTypedAPIErrorForQueryLevelError(t *testing.T) {
-	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"results":{"A":{"error":"retention policy not found","errorSource":"downstream","status":400,"frames":[]}}}`))
 	})
@@ -333,7 +333,7 @@ func TestQuery_ReturnsTypedAPIErrorForQueryLevelError(t *testing.T) {
 }
 
 func TestMeasurements_ReturnsTypedAPIErrorForQueryLevelError(t *testing.T) {
-	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"results":{"A":{"error":"database not found","errorSource":"downstream","status":404,"frames":[]}}}`))
 	})
@@ -350,7 +350,7 @@ func TestMeasurements_ReturnsTypedAPIErrorForQueryLevelError(t *testing.T) {
 }
 
 func TestFieldKeys_ReturnsTypedAPIErrorForQueryLevelError(t *testing.T) {
-	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"results":{"A":{"error":"measurement not found","errorSource":"downstream","status":404,"frames":[]}}}`))
 	})
@@ -367,7 +367,7 @@ func TestFieldKeys_ReturnsTypedAPIErrorForQueryLevelError(t *testing.T) {
 }
 
 func TestMeasurements_RejectsUnsupportedMode(t *testing.T) {
-	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		// should never be reached
 		w.WriteHeader(http.StatusOK)
 	})
@@ -379,7 +379,7 @@ func TestMeasurements_RejectsUnsupportedMode(t *testing.T) {
 }
 
 func TestQuery_ReturnsTypedAPIErrorWithBadRequestFallbackWhenStatusMissing(t *testing.T) {
-	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		// status field omitted — JSON unmarshals to 0
 		_, _ = w.Write([]byte(`{"results":{"A":{"error":"unknown field","errorSource":"downstream","frames":[]}}}`))
