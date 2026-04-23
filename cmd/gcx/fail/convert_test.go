@@ -158,7 +158,7 @@ func TestErrorToDetailedError_QueryAuthFailure(t *testing.T) {
 	assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
 	assert.Equal(t, []string{
 		"Review your Grafana credentials: gcx config view",
-		"Re-authenticate if needed: gcx auth login",
+		"Re-authenticate if needed: gcx login",
 	}, got.Suggestions)
 }
 

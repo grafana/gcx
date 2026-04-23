@@ -1,0 +1,207 @@
+name: Publish Homebrew Formula
+
+# Renders Casks-free gcx.rb from the template and opens a PR against
+# grafana/homebrew-grafana. Dispatch-only at first — once validated,
+# release.yaml adds `workflow_call` wiring (see Task 4).
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag to publish (e.g. v0.2.9)"
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (e.g. v0.2.9)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-homebrew-formula-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish formula PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read           # checkout gcx at the tag
+      id-token: write          # required by get-vault-secrets OIDC exchange
+
+    env:
+      TAG: ${{ inputs.tag }}
+      GH_REPO: ${{ github.repository }}
+
+    steps:
+      - name: Resolve tag and pre-release guard
+        id: tag
+        # Exit 0 for any SemVer pre-release (tag containing a hyphen, e.g.
+        # v1.2.3-rc.1). Homebrew users should only ever see stable
+        # releases in the tap.
+        run: |
+          set -euo pipefail
+          if [[ -z "${TAG}" ]]; then
+            echo "::warning::no tag provided; skipping"
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          if [[ "${TAG}" != v* ]]; then
+            echo "Input '${TAG}' is not a release tag; skipping"
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          if [[ "${TAG}" == *-* ]]; then
+            echo "Tag '${TAG}' is a pre-release (contains '-'); skipping tap publication"
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          VERSION="${TAG#v}"
+          {
+            echo "version=${VERSION}"
+            echo "branch=gcx-${VERSION}"
+            echo "skip=false"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Checkout gcx (for template)
+        if: steps.tag.outputs.skip != 'true'
+        # Checkout at the workflow's native ref — NOT at inputs.tag. The
+        # template lives in the gcx repo's main branch (added in PR #537);
+        # older release tags don't have it. When called via workflow_call
+        # from release.yaml, github.ref is the tag being released (which
+        # sits on main and includes the template). When dispatched
+        # manually against a past tag, github.ref is the dispatch branch,
+        # which also has the template. In both cases the default checkout
+        # gives us what we need; inputs.tag is only used to compute the
+        # source-tarball sha256 and the version string.
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Compute source tarball sha256
+        if: steps.tag.outputs.skip != 'true'
+        id: sha
+        run: |
+          set -euo pipefail
+          TARBALL_URL="https://github.com/${GH_REPO}/archive/refs/tags/${TAG}.tar.gz"
+          echo "Fetching: ${TARBALL_URL}"
+          curl -fsSL --retry 3 --retry-delay 5 -o source.tar.gz "${TARBALL_URL}"
+          SHA256="$(sha256sum source.tar.gz | awk '{print $1}')"
+          if [[ ! "${SHA256}" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::computed sha256 is not 64 hex chars: '${SHA256}'"
+            exit 1
+          fi
+          echo "Computed sha256=${SHA256}"
+          echo "sha256=${SHA256}" >> "${GITHUB_OUTPUT}"
+
+      - name: Render formula from template
+        if: steps.tag.outputs.skip != 'true'
+        id: render
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+          SHA256: ${{ steps.sha.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          TMPL=".github/homebrew/gcx.rb.tmpl"
+          if [[ ! -f "${TMPL}" ]]; then
+            echo "::error::template missing at ${TMPL}"
+            exit 1
+          fi
+          envsubst '$VERSION $SHA256' < "${TMPL}" > gcx.rb
+          # Sanity-check the rendered formula:
+          grep -q "^class Gcx < Formula" gcx.rb \
+            || { echo "::error::bad formula render (missing class header)"; exit 1; }
+          grep -q "sha256 \"${SHA256}\"" gcx.rb \
+            || { echo "::error::sha256 not substituted"; exit 1; }
+          grep -q "/archive/refs/tags/v${VERSION}.tar.gz" gcx.rb \
+            || { echo "::error::version not substituted into URL"; exit 1; }
+          echo "Rendered gcx.rb:"
+          echo "---"
+          cat gcx.rb
+          echo "---"
+          echo "rb_path=${GITHUB_WORKSPACE}/gcx.rb" >> "${GITHUB_OUTPUT}"
+
+      - name: Get App credentials from Vault
+        if: steps.tag.outputs.skip != 'true'
+        id: get-secrets
+        uses: grafana/shared-workflows/actions/get-vault-secrets@f1614b210386ac420af6807a997ac7f6d96e477a # get-vault-secrets/v1.3.1
+        with:
+          vault_instance: ops
+          export_env: false
+          # Secret path names are stored in repository Actions variables
+          # (Settings → Variables) so they can be updated without a code
+          # change when the App is swapped for a dedicated gcx-scoped App.
+          repo_secrets: |
+            GITHUB_APP_ID=${{ vars.VAULT_APP_ID_PATH }}
+            GITHUB_APP_PRIVATE_KEY=${{ vars.VAULT_APP_PRIVATE_KEY_PATH }}
+
+      - name: Mint App installation token
+        if: steps.tag.outputs.skip != 'true'
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        with:
+          app-id: ${{ fromJSON(steps.get-secrets.outputs.secrets).GITHUB_APP_ID }}
+          private-key: ${{ fromJSON(steps.get-secrets.outputs.secrets).GITHUB_APP_PRIVATE_KEY }}
+          owner: grafana
+          repositories: homebrew-grafana
+
+      - name: Open tap pull request
+        if: steps.tag.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RB_PATH: ${{ steps.render.outputs.rb_path }}
+          BRANCH: ${{ steps.tag.outputs.branch }}
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh auth setup-git
+
+          TAP_DIR="$(mktemp -d)"
+          gh repo clone grafana/homebrew-grafana "${TAP_DIR}" -- --depth 1
+          cd "${TAP_DIR}"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git checkout -B "${BRANCH}"
+
+          # Flat-layout tap: gcx.rb goes at the root, next to alloy.rb /
+          # grafana.rb — NOT under Casks/.
+          cp "${RB_PATH}" gcx.rb
+          git add gcx.rb
+
+          # Idempotency guard: byte-identical input → no staged diff → exit 0.
+          if git diff --cached --quiet; then
+            echo "No changes in gcx.rb for gcx ${VERSION}; exiting without opening a PR."
+            exit 0
+          fi
+
+          git commit -m "gcx ${VERSION}"
+          # Force-push so re-running on the same tag overwrites any prior
+          # attempt on this branch.
+          git push --force origin "${BRANCH}"
+
+          DEFAULT_BRANCH="$(gh repo view grafana/homebrew-grafana --json defaultBranchRef --jq '.defaultBranchRef.name')"
+
+          EXISTING_PR="$(gh pr list \
+              --repo grafana/homebrew-grafana \
+              --head "${BRANCH}" \
+              --state all \
+              --json number \
+              --jq '.[0].number // empty')"
+
+          if [[ -n "${EXISTING_PR}" ]]; then
+            echo "PR #${EXISTING_PR} already open for ${BRANCH}; updated branch in place."
+            exit 0
+          fi
+
+          gh pr create \
+            --repo grafana/homebrew-grafana \
+            --base "${DEFAULT_BRANCH}" \
+            --head "${BRANCH}" \
+            --title "gcx ${VERSION}" \
+            --body "Automated formula bump for [gcx ${VERSION}](https://github.com/grafana/gcx/releases/tag/v${VERSION}). Generated by the gcx release pipeline."

@@ -409,6 +409,19 @@ func checkContext(cmd *cobra.Command, cfg config.Config, gCtx *config.Context, s
 
 	cmdio.Success(stdout, "Configuration: %s", cmdio.Green("valid"))
 
+	authMethod := gCtx.Grafana.AuthMethod
+	if authMethod == "" {
+		authMethod = gCtx.Grafana.InferredAuthMethod() + " (inferred)"
+	}
+	cmdio.Info(stdout, "Auth method: %s", authMethod)
+
+	isCloud := gCtx.ResolveStackSlug() != ""
+	contextType := "On-prem"
+	if isCloud {
+		contextType = "Grafana Cloud"
+	}
+	cmdio.Info(stdout, "Context type: %s", contextType)
+
 	restCfg := gCtx.ToRESTConfig(cmd.Context())
 	restCfg.WireTokenPersistence(cmd.Context(), source, gCtx.Name, cfg.Sources)
 
@@ -421,17 +434,27 @@ func checkContext(cmd *cobra.Command, cfg config.Config, gCtx *config.Context, s
 
 	cmdio.Success(stdout, "Connectivity: %s", cmdio.Green("online"))
 
-	version, err := grafana.GetVersion(gCtx)
+	version, raw, err := grafana.GetVersion(cmd.Context(), gCtx)
 	if err != nil {
 		cmdio.Error(stdout, "Grafana version: %s", cmdio.Red(summarizeError(err))+"\n")
 		return nil
 	}
 
-	if version.Major() < 12 {
+	switch {
+	case version == nil && raw == "" && isCloud:
+		// Grafana Cloud (dev/ops) environments don't expose the version
+		// field via /api/health. Report the platform instead of a cryptic
+		// "hidden by server" line.
+		cmdio.Success(stdout, "Grafana version: %s", cmdio.Green("Grafana Cloud")+"\n")
+	case version == nil && raw == "":
+		cmdio.Warning(stdout, "Grafana version: %s\n", cmdio.Yellow("hidden by server (anonymous /api/health)"))
+	case version == nil:
+		cmdio.Warning(stdout, "Grafana version: %s\n", cmdio.Yellow("unparseable: "+raw))
+	case version.Major() < 12:
 		return &grafana.VersionIncompatibleError{Version: version}
+	default:
+		cmdio.Success(stdout, "Grafana version: %s", cmdio.Green(version.String())+"\n")
 	}
-
-	cmdio.Success(stdout, "Grafana version: %s", cmdio.Green(version.String())+"\n")
 
 	return nil
 }

@@ -33,7 +33,7 @@ Optional.
 ## `GRAFANA_PROXY_ENDPOINT`
 
 ProxyEndpoint is the assistant backend URL used as a reverse proxy for
-OAuth-authenticated requests. Set automatically by `auth login`.
+OAuth-authenticated requests. Set automatically by `gcx login`.
 This may differ from Server when cloud routing directs CLI traffic through
 a separate endpoint (e.g. the assistant app backend).
 

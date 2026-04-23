@@ -24,8 +24,7 @@ But there is a dangerous gap. Adoption of agentic coding tools like Cursor and C
 We built GCX to close that gap.
 
 > [!NOTE]
-> gcx supports Grafana Cloud, Enterprise, and OSS, see the [compatibility matrix](#compatibility) for details on what is and isn't supported across different Grafana products.
-> **Grafana 12 or above is required.** Older Grafana versions are not supported.
+> **gcx requires Grafana 12 or above.** Older Grafana versions are not supported.
 
 ## Quick Start
 
@@ -44,13 +43,15 @@ Downloads the latest release, verifies the SHA-256 checksum, and installs to
 curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | INSTALL_DIR=/usr/local/bin sh
 ```
 
-**Homebrew (macOS):**
-
-*COMING SOON*
+**Homebrew (macOS and Linux):**
 
 ```bash
-brew install --cask grafana/grafana/gcx
+brew install grafana/grafana/gcx
 ```
+
+Compiles from source on your machine (requires Homebrew's `go`, installed
+automatically as a build dependency). First install takes ~30–60 seconds
+while Go fetches dependencies; subsequent upgrades are faster.
 
 **Pre-built binary (Linux/macOS/Windows):**
 
@@ -63,16 +64,11 @@ tar xzf gcx_*.tar.gz
 chmod +x gcx && sudo mv gcx /usr/local/bin/
 ```
 
-> [!NOTE]
-> **macOS Gatekeeper**: gcx release binaries are not yet Apple-notarized, so
-> macOS may block the binary with *"Apple could not verify…"* or *"killed: 9"*.
-> The `curl | sh` installer above handles this automatically. For manual
-> downloads, remove the quarantine attribute and ad-hoc sign the binary:
->
-> ```sh
-> xattr -d com.apple.quarantine /usr/local/bin/gcx 2>/dev/null || true
-> codesign --sign - --force /usr/local/bin/gcx   # needed on Apple Silicon
-> ```
+On macOS, the manually-downloaded binary may be blocked on first run with
+*"Apple could not verify…"* or `killed: 9` — see
+[macOS Gatekeeper and killed: 9](docs/installation.md#macos-gatekeeper-and-killed-9)
+for the one-time workaround. The `curl | sh` installer above handles this
+automatically.
 
 **Go install:**
 
@@ -93,49 +89,47 @@ gcx completion fish > ~/.config/fish/completions/gcx.fish  # fish
 
 ### 2. Authenticate
 
-**Browser-based OAuth login (Experimental, Simple):**
+`gcx login` creates or re-authenticates a context. It auto-detects whether the server is Grafana Cloud (`*.grafana.net`) or on-premises and adjusts the prompt accordingly. Pick the path below that matches your setup.
+
+**Grafana Cloud, browser-based OAuth (interactive, recommended):**
 
 ```bash
-gcx auth login --server https://grafana.example.com
+gcx login my-stack --server https://my-stack.grafana.net
 ```
 
-This opens a browser and bootstraps the selected context without preconfiguring
-`grafana.server`. On success, gcx saves the server URL, OAuth access token,
-refresh token, and proxy endpoint to that context.
+Opens a browser for OAuth, then saves the access token, refresh token, and proxy endpoint to the `my-stack` context and makes it current. Best for day-to-day use on Cloud stacks. If OAuth doesn't suit your setup, pick "Service account token" at the prompt.
 
-If you want to save the login to a specific context:
+**Service account token (Cloud or on-premises, recommended for CI/automation):**
 
 ```bash
-gcx auth login --context my-grafana --server https://grafana.example.com
+gcx login my-grafana --server https://your-instance.grafana.net --token glsa_xxx --yes
 ```
 
-> [!NOTE]
-> Some plugin endpoints might not work reliably with this approach.
+Use a [Grafana service account token](https://grafana.com/docs/grafana/latest/administration/service-accounts/) with **Editor** or **Admin** role. Works for both Cloud and on-premises; this is the only auth method available for on-premises instances.
 
-**Grafana API access (service account token, recommended):**
+**Grafana Cloud product APIs (SLO, Synthetic Monitoring, IRM, etc.):**
+
+Cloud product commands require a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/) in addition to Grafana auth. Provide it at login:
 
 ```bash
-gcx config set contexts.my-grafana.grafana.server https://your-instance.grafana.net
-gcx config set contexts.my-grafana.grafana.token your-service-account-token
-gcx config use-context my-grafana
+gcx login my-stack --server https://my-stack.grafana.net --token glsa_xxx --cloud-token glc_xxx --yes
 ```
 
-Use a [Grafana service account token](https://grafana.com/docs/grafana/latest/administration/service-accounts/) with **Editor** or **Admin** role.
-
-**Grafana Cloud product APIs (SLO, Synth, IRM, etc.):**
-
-Grafana Cloud product commands require a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/):
+Or add it later by re-running `gcx login` against the same context:
 
 ```bash
-gcx config set contexts.my-grafana.cloud.token your-cloud-access-policy-token
+gcx login --context my-stack   # prompts for the Cloud Access Policy token; Enter to skip
+```
 
-# Optional: set this only if gcx cannot derive the stack slug from grafana.server.
-gcx config set contexts.my-grafana.cloud.stack your-stack-slug
+`gcx` derives the Cloud stack slug from `--server` when possible. Set it explicitly only for custom domains where gcx cannot derive it:
+
+```bash
+gcx config set contexts.my-stack.cloud.stack your-stack-slug
 ```
 
 You do not need to set `cloud.api-url` for `grafana.com`; gcx defaults to `https://grafana.com`. Set `cloud.api-url` only when you need a non-default Grafana Cloud API endpoint.
 
-**Environment variables (recommended for CI/CD and agents):**
+**Environment variables (CI/CD, agents):**
 
 ```bash
 export GRAFANA_SERVER="https://your-instance.grafana.net"
@@ -146,10 +140,11 @@ export GRAFANA_CLOUD_TOKEN="your-cloud-access-policy-token"
 export GRAFANA_CLOUD_STACK="your-stack-slug"
 ```
 
-> [!NOTE]
-> For automation, CI/CD, and other non-interactive usage, the token-based setup above remains the recommended approach.
+Env vars resolve at every command invocation, so you can run `gcx` commands directly without a prior `gcx login`.
 
 **Verify:** `gcx config check`
+
+See the [login reference](docs/reference/login.md) for the full guide, including re-authentication, environment-variable setup, and troubleshooting for common errors.
 
 ### 3. See It in Action
 
@@ -268,25 +263,6 @@ abc1  Checkout P95 latency breach               active     2m ago
 def2  Memory leak in payment-svc                resolved   1h ago
 ```
 
-## Compatibility
-
-gcx works across Grafana's product offerings. Feature availability depends on your deployment:
-
-| Feature | OSS (12+) | Enterprise (12+) | Cloud | BYOC |
-|---------|:---------:|:----------------:|:-----:|:----:|
-| Resource management (dashboards, folders) | ✓ | ✓ | ✓ | ✓ |
-| Alert rules | ✓ | ✓ | ✓ | ✓ |
-| Raw API passthrough (`gcx api`) | ✓ | ✓ | ✓ | ✓ |
-| Observability as Code (`gcx dev`) | ✓ | ✓ | ✓ | ✓ |
-| Signal queries (metrics, logs, traces, profiles) | ✓ † | ✓ † | ✓ | ✓ |
-| SLO, Synthetic Monitoring, IRM, k6, Fleet, etc. | ✗ | ✗ | ✓ | ◐ |
-| Adaptive Metrics / Logs / Traces | ✗ | ✗ | ✓ | ◐ |
-| Grafana Assistant | ✗ | ✗ | ✓ | ✗ |
-
-**† Self-hosted signal queries** — `gcx metrics query`, `gcx logs query`, `gcx traces query`, and `gcx profiles query` work against self-hosted datasources (Prometheus, Loki, Tempo, Pyroscope), but datasource endpoints must be configured manually. For Grafana Cloud, endpoints are auto-discovered from your stack.
-
-**◐ BYOC** — Bring Your Own Cloud runs the Grafana stack on your own infrastructure while connecting to the Grafana Cloud control plane. Core Grafana features (dashboards, alerts, signal queries) work in full. Cloud product availability (SLO, Synthetic Monitoring, IRM, etc.) depends on which plugins are installed and configured in your BYOC stack.
-
 ## Maturity
 
 > [!WARNING]
@@ -307,7 +283,7 @@ gcx provides dedicated commands for each Grafana Cloud product:
 | **Knowledge Graph** | `gcx kg` | `kg status`, `kg search`, `kg entities show` |
 | **Frontend Observability** | `gcx frontend` | `frontend apps list`, `frontend apps get` |
 | **App Observability** | `gcx appo11y` | `appo11y overrides get`, `appo11y settings get` |
-| **AI Observability** | `gcx aio11y` | `aio11y conversations list`, `aio11y agents list`, `aio11y rules list` |
+| **Sigil (AI Observability)** | `gcx sigil` | `sigil conversations list`, `sigil agents list`, `sigil rules list` |
 | **Assistant** | `gcx assistant` | `assistant prompt`, `assistant investigations list`, `assistant investigations report` |
 | **Adaptive Metrics** | `gcx metrics adaptive` | `metrics adaptive recommendations show`, `metrics adaptive rules list` |
 | **Adaptive Logs** | `gcx logs adaptive` | `logs adaptive patterns show`, `logs adaptive drop-rules list` |

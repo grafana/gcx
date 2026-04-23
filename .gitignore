@@ -4,6 +4,7 @@
 /.worktrees
 /build
 /bin
+/dist
 /gcx
 /vendor
 /localdata

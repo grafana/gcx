@@ -2,15 +2,15 @@
 
 **Created**: YYYY-MM-DD
 **Status**: proposed
-**Bead**: gcx-xxx (or "none")
 **Supersedes**: path/to/old.md (or "none")
 
 <!-- Status lifecycle: proposed -> accepted -> deprecated | superseded -->
 
 ## Context
 
-What problem? Why now? What forces are at play? Links to beads, research,
-prior ADRs.
+What problem? Why now? What forces are at play? Links to research documents
+and prior ADRs. Do not link to tracker IDs (beads, GitHub issues) — those
+reference the ADR, not the other way around.
 
 ## Decision
 

@@ -1,0 +1,3 @@
+# Review files may contain sensitive code snippets — commit selectively
+*.md
+!.gitignore

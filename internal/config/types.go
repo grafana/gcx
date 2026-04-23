@@ -129,44 +129,96 @@ func (context *Context) ResolveStackSlug() string {
 		return ""
 	}
 
-	slug, _ := stackSlugFromServerURL(context.Grafana.Server)
+	slug, _ := StackSlugFromServerURL(context.Grafana.Server)
 	return slug
 }
 
-// stackSlugFromServerURL attempts to extract a Grafana Cloud stack slug from
-// a server URL. It returns the slug and true for *.grafana.net and
-// *.grafana-dev.net URLs, or ("", false) for anything else.
-func stackSlugFromServerURL(serverURL string) (string, bool) {
+// grafanaCloudStackSuffixes lists the Grafana-run stack URL suffixes together
+// with the env tag appended to slugs for non-prod environments. This is the
+// single source of truth for stack-URL suffix classification. It intentionally
+// excludes the .com variants (grafana.com, grafana-dev.com, grafana-ops.com)
+// because those are GCOM root domains, not stack URLs — a host of the form
+// "something.grafana.com" is not a Grafana Cloud stack endpoint.
+//
+//nolint:gochecknoglobals // constant-like lookup table; no mutable state.
+var grafanaCloudStackSuffixes = []struct {
+	suffix string
+	envTag string // appended to the slug for non-prod Grafana-run environments
+}{
+	{".grafana.net", ""},
+	{".grafana-dev.net", "-dev"},
+	{".grafana-ops.net", "-ops"},
+}
+
+// grafanaCloudRootSuffixes are the Grafana-run root domains used by probes
+// (e.g. buildInfo.grafanaUrl pointing at grafana.com). These are NOT stack URL
+// suffixes but do indicate Cloud-hosted infrastructure.
+//
+//nolint:gochecknoglobals // constant-like lookup table; no mutable state.
+var grafanaCloudRootSuffixes = []string{
+	".grafana.com",
+	".grafana-dev.com",
+	".grafana-ops.com",
+}
+
+// IsGrafanaCloudHost reports whether the given host (lowercased, without port)
+// belongs to a Grafana-run Cloud domain. It matches *.grafana.net,
+// *.grafana-dev.net, *.grafana-ops.net (stack URLs) and *.grafana.com,
+// *.grafana-dev.com, *.grafana-ops.com (GCOM root domains used by probes).
+// The caller is responsible for lowercasing the host before calling this function.
+func IsGrafanaCloudHost(host string) bool {
+	for _, entry := range grafanaCloudStackSuffixes {
+		if strings.HasSuffix(host, entry.suffix) {
+			return true
+		}
+	}
+	for _, suffix := range grafanaCloudRootSuffixes {
+		if strings.HasSuffix(host, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+// StackSlugFromServerURL attempts to extract a Grafana Cloud stack slug from
+// a server URL. It returns the slug and true for *.grafana.net,
+// *.grafana-dev.net, and *.grafana-ops.net URLs, or ("", false) for anything else.
+// For non-prod Grafana-run environments, an env suffix is appended to the slug
+// to prevent context-name collisions: "-dev" for *.grafana-dev.net, "-ops" for
+// *.grafana-ops.net. *.grafana.net (prod) is returned unchanged.
+func StackSlugFromServerURL(serverURL string) (string, bool) {
 	parsed, err := url.Parse(serverURL)
 	if err != nil {
 		return "", false
 	}
 
 	host := parsed.Hostname()
-	for _, suffix := range []string{".grafana.net", ".grafana-dev.net"} {
-		if slug, ok := strings.CutSuffix(host, suffix); ok {
-			// For regional subdomains like "mystack.us.grafana.net",
-			// CutSuffix returns "mystack.us". Take only the first component.
-			if i := strings.Index(slug, "."); i >= 0 {
-				slug = slug[:i]
-			}
-			if slug == "" {
-				continue
-			}
-			return slug, true
+	for _, entry := range grafanaCloudStackSuffixes {
+		slug, ok := strings.CutSuffix(host, entry.suffix)
+		if !ok {
+			continue
 		}
+		// For regional subdomains like "mystack.us.grafana.net",
+		// CutSuffix returns "mystack.us". Take only the first component.
+		if i := strings.Index(slug, "."); i >= 0 {
+			slug = slug[:i]
+		}
+		if slug == "" {
+			continue
+		}
+		return slug + entry.envTag, true
 	}
 
 	return "", false
 }
 
 // ContextNameFromServerURL derives a context name from a Grafana server URL.
-// For Grafana Cloud URLs (*.grafana.net, *.grafana-dev.net), it returns the
-// stack slug (e.g. "mystack" from "https://mystack.grafana.net").
-// For other URLs, it returns the hostname.
-// Returns DefaultContextName if the URL cannot be parsed.
+// For Grafana Cloud URLs, it returns the stack slug (with env suffix for
+// -dev/-ops). For other URLs, dots in the hostname are replaced with hyphens
+// to keep the name shell-friendly. Returns DefaultContextName if the URL
+// cannot be parsed.
 func ContextNameFromServerURL(serverURL string) string {
-	if slug, ok := stackSlugFromServerURL(serverURL); ok {
+	if slug, ok := StackSlugFromServerURL(serverURL); ok {
 		return slug
 	}
 
@@ -175,7 +227,7 @@ func ContextNameFromServerURL(serverURL string) string {
 		return DefaultContextName
 	}
 
-	return parsed.Hostname()
+	return strings.ReplaceAll(parsed.Hostname(), ".", "-")
 }
 
 // ResolveGCOMURL returns the Grafana Cloud API (GCOM) base URL for this context.
@@ -215,12 +267,12 @@ type GrafanaConfig struct {
 	APIToken string `datapolicy:"secret" env:"GRAFANA_TOKEN" json:"token,omitempty" yaml:"token,omitempty"`
 
 	// ProxyEndpoint is the assistant backend URL used as a reverse proxy for
-	// OAuth-authenticated requests. Set automatically by `auth login`.
+	// OAuth-authenticated requests. Set automatically by `gcx login`.
 	// This may differ from Server when cloud routing directs CLI traffic through
 	// a separate endpoint (e.g. the assistant app backend).
 	ProxyEndpoint string `env:"GRAFANA_PROXY_ENDPOINT" json:"proxy-endpoint,omitempty" yaml:"proxy-endpoint,omitempty"`
 
-	// OAuthToken is the OAuth access token (gat_) obtained via `auth login`.
+	// OAuthToken is the OAuth access token (gat_) obtained via `gcx login`.
 	OAuthToken string `datapolicy:"secret" json:"oauth-token,omitempty" yaml:"oauth-token,omitempty"`
 
 	// OAuthRefreshToken is the refresh token (gar_) for renewing OAuthToken.
@@ -231,6 +283,10 @@ type GrafanaConfig struct {
 
 	// OAuthRefreshExpiresAt is the OAuthRefreshToken expiration time in RFC3339 format.
 	OAuthRefreshExpiresAt string `json:"oauth-refresh-expires-at,omitempty" yaml:"oauth-refresh-expires-at,omitempty"`
+
+	// AuthMethod is the authentication method stored by gcx login: "oauth", "token", or "basic".
+	// Empty string is valid for legacy configs; readers should call InferredAuthMethod() in that case.
+	AuthMethod string `json:"auth-method,omitempty" yaml:"auth-method,omitempty"`
 
 	// OrgID specifies the organization targeted by this config.
 	// Note: required when targeting an on-prem Grafana instance.
@@ -306,7 +362,7 @@ func (grafana GrafanaConfig) Validate(contextName string) error {
 			Path:    fmt.Sprintf("$.contexts.'%s'.grafana", contextName),
 			Message: "incomplete OAuth config: proxy-endpoint and oauth-token must both be set",
 			Suggestions: []string{
-				"Run `gcx auth login` to complete the OAuth flow",
+				"Run `gcx login` to complete the OAuth flow",
 				"Or remove partial OAuth fields from the config",
 			},
 		}
@@ -321,6 +377,26 @@ func (grafana GrafanaConfig) Validate(contextName string) error {
 
 func (grafana GrafanaConfig) IsEmpty() bool {
 	return grafana == GrafanaConfig{}
+}
+
+// InferredAuthMethod returns the effective authentication method for this config.
+// When AuthMethod is set, it is returned verbatim. Otherwise, the method is inferred
+// from populated credential fields: OAuthToken => "oauth"; APIToken => "token";
+// User or Password => "basic"; no credentials => "unknown".
+func (grafana GrafanaConfig) InferredAuthMethod() string {
+	if grafana.AuthMethod != "" {
+		return grafana.AuthMethod
+	}
+	if grafana.OAuthToken != "" {
+		return "oauth"
+	}
+	if grafana.APIToken != "" {
+		return "token"
+	}
+	if grafana.User != "" || grafana.Password != "" {
+		return "basic"
+	}
+	return "unknown"
 }
 
 // TLS contains settings to enable transport layer security.

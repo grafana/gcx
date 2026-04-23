@@ -10,13 +10,13 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/grafana/gcx/cmd/gcx/api"
 	assistantcmd "github.com/grafana/gcx/cmd/gcx/assistant"
-	authcmd "github.com/grafana/gcx/cmd/gcx/auth"
 	"github.com/grafana/gcx/cmd/gcx/commands"
 	"github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/cmd/gcx/dashboards"
 	"github.com/grafana/gcx/cmd/gcx/datasources"
 	"github.com/grafana/gcx/cmd/gcx/dev"
 	"github.com/grafana/gcx/cmd/gcx/helptree"
+	logincmd "github.com/grafana/gcx/cmd/gcx/login"
 	cmdproviders "github.com/grafana/gcx/cmd/gcx/providers"
 	"github.com/grafana/gcx/cmd/gcx/resources"
 	"github.com/grafana/gcx/cmd/gcx/setup"
@@ -161,7 +161,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 
 	rootCmd.AddCommand(api.Command())
 	rootCmd.AddCommand(assistantcmd.Command())
-	rootCmd.AddCommand(authcmd.Command())
+	rootCmd.AddCommand(logincmd.Command())
 	rootCmd.AddCommand(config.Command())
 	rootCmd.AddCommand(dashboards.Command())
 	rootCmd.AddCommand(dev.Command())

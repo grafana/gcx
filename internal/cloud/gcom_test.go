@@ -178,6 +178,62 @@ func TestGCOMClient_GetStack_TrailingSlash(t *testing.T) {
 	}
 }
 
+func TestNewGCOMClient_SchemeValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		baseURL string
+		wantErr bool
+	}{
+		{
+			name:    "http non-localhost rejected",
+			baseURL: "http://example.com",
+			wantErr: true,
+		},
+		{
+			name:    "https allowed",
+			baseURL: "https://example.com",
+			wantErr: false,
+		},
+		{
+			name:    "http localhost allowed",
+			baseURL: "http://localhost",
+			wantErr: false,
+		},
+		{
+			name:    "http localhost with port allowed",
+			baseURL: "http://localhost:8080",
+			wantErr: false,
+		},
+		{
+			name:    "http 127.0.0.1 allowed",
+			baseURL: "http://127.0.0.1",
+			wantErr: false,
+		},
+		{
+			name:    "http IPv6 loopback allowed",
+			baseURL: "http://[::1]",
+			wantErr: false,
+		},
+		{
+			name:    "http IPv6 loopback with port allowed",
+			baseURL: "http://[::1]:8080",
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := cloud.NewGCOMClient(tt.baseURL, "token")
+			if tt.wantErr && err == nil {
+				t.Errorf("expected error for URL %q, got nil", tt.baseURL)
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("unexpected error for URL %q: %v", tt.baseURL, err)
+			}
+		})
+	}
+}
+
 func TestGCOMClient_GetStack_NoRedirectToDifferentDomain(t *testing.T) {
 	// This server redirects to a different domain
 	redirectTarget := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
