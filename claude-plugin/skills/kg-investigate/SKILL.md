@@ -12,9 +12,11 @@ KG-first investigation: map topology and health before touching raw signals. For
 
 1. **Topology first** — use `gcx kg traverse` with `--with-insights` to map the blast radius before running metric or log queries. KG gives topology AND health in one call.
 2. **SAAFE insights are leads, not facts** — every insight requires raw signal confirmation before appearing in the conclusion.
-3. **New vs chronic** — only insights that started near the incident time are likely causes. Ignore chronic signals.
+3. **New vs chronic — verify onset before scoring** — before treating any finding as a causal hypothesis, verify its onset time using a 24h baseline window. An insight or error series whose first non-zero sample predates the alert by more than a few minutes is background noise, not a cause. Eliminate it from the hypothesis list.
 4. **Entity properties are your query labels** — `gcx kg traverse` returns entity properties (`job`, `workload`, `namespace`) and scope (`env`, `site`). Use these directly in metric/log queries. Never guess label values.
 5. **KG informs, evidence decides** — if raw signals contradict KG findings, follow the evidence.
+6. **Distinguish trigger from sustainer** — answer two separate questions: (a) what was new at the alert fire time that crossed the threshold? (b) what is currently keeping the alert active? These are often different signals.
+7. **Downstream symptoms are not causes** — if an anchor entity's insights are all consequences of a dependency failure, score the dependency as the hypothesis, not the anchor. High anchor scores from cascading effects inflate blast radius without adding causal signal.
 
 ---
 
@@ -99,7 +101,7 @@ If the first traverse returns zero relevant entities, adjust scope and try one m
 
 ### Score the blast radius
 
-After the topology calls, score entities by NEW insights only (started near incident time):
+After the topology calls, apply SAAFE scores as an initial triage — but treat them as provisional until chronicity is verified in Phase 2.5.
 
 | SAAFE category | Score |
 |---|---|
@@ -111,7 +113,37 @@ After the topology calls, score entities by NEW insights only (started near inci
 
 An Amend insight means "something changed" — never treat it as a confirmed cause without raw metric evidence of causation.
 
-Record the scored blast radius and your initial hypotheses before proceeding to raw signals.
+Record provisional scores and hypotheses, then proceed immediately to Phase 2.5 before touching raw signals.
+
+---
+
+## Phase 2.5: Chronicity Verification (mandatory)
+
+For every entity that scored > 0, verify whether its signals are new or pre-existing. Use a 24h window and compare samples before vs after the alert fire time.
+
+```bash
+# Check if a high-scoring dependency has been unstable for a long time
+bin/gcx metrics query -d <prom-uid> \
+  'up{job="<dep-job>",namespace="<ns>",cluster="<env>"}' \
+  --since 24h -o json
+
+# Check error ratios over 24h — classify by onset vs alert time
+bin/gcx metrics query -d <prom-uid> \
+  'asserts:error:ratio{asserts_env="<env>",namespace="<ns>",job="<job>"}' \
+  --since 24h -o json
+```
+
+For each non-zero series, note the timestamp of its **first non-zero sample**:
+
+| Classification | Rule | Action |
+|---|---|---|
+| **[NEW]** | First nonzero ≥ alert fire time | Valid causal hypothesis — keep |
+| **[PRE-EXISTING]** | First nonzero > 30 min before alert | Chronic background — eliminate from hypotheses |
+| **[MIXED]** | Nonzero samples both before and after | Possibly chronic; only the post-alert portion is relevant |
+
+> **Important:** Asserts metrics like `asserts:error:ratio` are often broken down by `asserts_customer` (tenant), producing many series per method. Scan all series — a method that looks clean in aggregate may have per-tenant errors that only appeared after the alert.
+
+After chronicity verification, revise your blast radius scores: eliminate or downgrade any entity whose findings are entirely [PRE-EXISTING]. Update your hypothesis list before proceeding.
 
 ---
 
@@ -132,39 +164,36 @@ gcx datasources list --type loki -o json
 
 These pre-computed gauges cover the standard SRE golden signals. Do NOT wrap in `rate()`.
 
-Use entity scope for environment filters and entity properties for service selectors:
+Use entity scope for environment filters and entity properties for service selectors. **Always use `--since 24h`** for error ratio and latency queries so you can distinguish pre-existing signals from new ones:
 
 ```bash
-# Request rate (req/s)
-gcx metrics query <prom-uid> \
-  'asserts:request:rate5m{asserts_env="<scope.env>",namespace="<scope.namespace>",job="<prop.job>"}' \
-  --since <window> -o json
-
-# Error ratio
-gcx metrics query <prom-uid> \
+# Error ratio — use 24h window to classify pre-existing vs new per-series
+gcx metrics query -d <prom-uid> \
   'asserts:error:ratio{asserts_env="<scope.env>",namespace="<scope.namespace>",job="<prop.job>"}' \
-  --since <window> -o json
+  --since 24h -o json
 
-# Average latency
-gcx metrics query <prom-uid> \
+# Average latency — 24h for before/after comparison
+gcx metrics query -d <prom-uid> \
   'asserts:latency:average{asserts_env="<scope.env>",namespace="<scope.namespace>",job="<prop.job>"}' \
-  --since <window> -o json
+  --since 24h -o json
+
+# Request rate (recent window is fine — looking for drops/spikes)
+gcx metrics query -d <prom-uid> \
+  'asserts:request:rate5m{asserts_env="<scope.env>",namespace="<scope.namespace>",job="<prop.job>"}' \
+  --since 1h -o json
 
 # P99 latency
-gcx metrics query <prom-uid> \
+gcx metrics query -d <prom-uid> \
   'asserts:latency:p99{asserts_env="<scope.env>",namespace="<scope.namespace>",job="<prop.job>"}' \
-  --since <window> -o json
+  --since 24h -o json
 
-# CPU usage
-gcx metrics query <prom-uid> \
+# CPU / memory usage
+gcx metrics query -d <prom-uid> \
   'asserts:resource{asserts_env="<scope.env>",namespace="<scope.namespace>",asserts_resource_type="cpu:usage",workload="<prop.workload>"}' \
-  --since <window> -o json
-
-# Memory usage
-gcx metrics query <prom-uid> \
-  'asserts:resource{asserts_env="<scope.env>",namespace="<scope.namespace>",asserts_resource_type="memory:usage",workload="<prop.workload>"}' \
-  --since <window> -o json
+  --since 1h -o json
 ```
+
+When analysing `asserts:error:ratio` results, apply the same [NEW] / [PRE-EXISTING] / [MIXED] classification from Phase 2.5 — note the first-nonzero timestamp for each series. Only [NEW] series are causal.
 
 **Amend insights** — when investigating a deploy or config change:
 
@@ -247,12 +276,18 @@ Once you can address all completion checklist items, conclude immediately.
 
 ### Completion checklist
 
-Before concluding, confirm you can answer:
+Before concluding, answer these two questions separately:
+
+**Q1 — What triggered the alert?** What signal was new at the alert fire time that crossed the breach threshold? (May differ from what is currently sustaining the alert.)
+
+**Q2 — What is sustaining the alert now?** What is currently firing and keeping the alert active? This is what needs to be fixed first.
+
+Then confirm you can answer:
 - **Timeline**: onset, trigger, and impact timestamps
-- **Blast radius**: confirmed affected entities, confirmed unaffected
+- **Blast radius**: confirmed affected entities (with [NEW] evidence), confirmed unaffected, confirmed [PRE-EXISTING] eliminated
 - **Ranked explanations**: leading explanation with raw signal evidence
 - **Propagation**: how it cascaded (if applicable)
-- **Ruled out**: hypotheses eliminated with evidence
+- **Ruled out**: hypotheses eliminated with evidence — explicitly call out pre-existing chronic conditions that were ruled out
 - **Unresolved**: gaps that limit confidence
 
 Use "leading explanation" not "root cause" unless fully evidenced by raw signals.
@@ -297,6 +332,8 @@ Next actions:
 - **Asserts recording rules return no data**: fall back to raw Prometheus metrics; use `gcx metrics metadata` to discover metric names.
 - **`gcx logs query` returns no data**: try alternate stream selector patterns from entity properties; check `gcx logs labels` for available labels.
 - **`gcx datasources list` returns no matching type**: the datasource may use a different type string — run without `--type` and scan the full list.
+- **High-scoring dependency looks like root cause but metrics are flat**: check a 24h window with `up{job="<dep-job>"}` — if the dependency has been unstable for hours before the alert, it is a pre-existing chronic condition and not the trigger. Eliminate it and look for what changed at the alert fire time specifically.
+- **`asserts:error:ratio` returns many series (>10)**: the metric is broken down per tenant (`asserts_customer` label). Scan all series for first-nonzero timestamps — the true new signal may only affect one or a few tenants.
 
 ## Reference
 
