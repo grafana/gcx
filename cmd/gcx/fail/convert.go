@@ -16,7 +16,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/datasources"
 	"github.com/grafana/gcx/internal/grafana"
-	"github.com/grafana/gcx/internal/linter"
+	"github.com/grafana/gcx/internal/linter/linterr"
 	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/grafana/gcx/internal/resources"
 	k8sapi "k8s.io/apimachinery/pkg/api/errors"
@@ -663,7 +663,7 @@ func convertFSErrors(err error) (*DetailedError, bool) {
 }
 
 func convertLinterErrors(err error) (*DetailedError, bool) {
-	if errors.Is(err, linter.ErrTestsFailed) {
+	if errors.Is(err, linterr.ErrTestsFailed) {
 		return nil, true
 	}
 
