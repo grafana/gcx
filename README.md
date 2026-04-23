@@ -19,7 +19,7 @@ Query production. Investigate alerts. Let the Assistant root-cause issues. Ship 
 
 GCX brings the full power of Grafana Cloud and Grafana Assistant to your command line. It bridges the gap between your local environment and key observability insights from Grafana Cloud.
 
-But there is a dangerous gap. Adoption of agentic coding tools like Cursor and Claude Code have exploded. You are building faster than ever before. Your agents see your code — but they are blind to your production environment. They don't see the latency spikes, the server load, or whether you're actually hitting your SLOs. They write code based on what could happen, not what is actually happening.
+Since the end of 2025, adoption of agentic coding tools like Cursor and Claude Code have exploded. You are coding faster than ever before. Your agents see your code — but they are blind to your production environment. They don't see the latency spikes, the server load, or whether you're actually hitting your SLOs. They write code based on what could happen, not what is actually happening. This is a dangerous gap.
 
 We built GCX to close that gap.
 
