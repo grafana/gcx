@@ -182,7 +182,15 @@ func envOverride(cfg *config.Config) error {
 // LoadGrafanaConfig loads the REST config from the config file, applying
 // env var overrides and context flags. It mirrors the logic in
 // cmd/gcx/config.Options.LoadGrafanaConfig.
+//
+// If a NamespacedRESTConfig was injected into context via
+// config.WithNamespacedRESTConfig, it is returned directly — bypassing
+// all file-based loading and env var resolution.
 func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error) {
+	if cfg, ok := config.NamespacedRESTConfigFromContext(ctx); ok {
+		return cfg, nil
+	}
+
 	ctxName := l.resolvedContextName(ctx)
 	overrides := []config.Override{
 		contextSelectionOverride(ctxName),
