@@ -44,17 +44,22 @@ curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh
 rm ~/.local/bin/gcx
 ```
 
-## Homebrew (macOS)
+## Homebrew (macOS and Linux)
 
 ```shell
-brew install --cask grafana/grafana/gcx
+brew install grafana/grafana/gcx
 ```
 
 To upgrade:
 
 ```shell
-brew upgrade --cask grafana/grafana/gcx
+brew upgrade grafana/grafana/gcx
 ```
+
+The formula compiles gcx from source on your machine (Homebrew pulls `go`
+as a build dependency). First install takes ~30–60 seconds; subsequent
+upgrades reuse the Homebrew download cache. This path sidesteps macOS
+Gatekeeper entirely — no notarisation workaround needed.
 
 ## Prebuilt binaries
 
@@ -66,6 +71,36 @@ Visit the [latest release](https://github.com/grafana/gcx/releases/latest) page,
 * Move the executable to the desired directory
 * Ensure this directory is included in the `PATH` environment variable
 * Verify that you have execute permission on the file
+
+On macOS, a manually-downloaded binary may be blocked by Gatekeeper — see
+[macOS Gatekeeper and killed: 9](#macos-gatekeeper-and-killed-9) below.
+
+## macOS Gatekeeper and killed: 9
+
+gcx release binaries are not yet Apple-notarised. On macOS, the OS may block
+manually-downloaded binaries the first time you run them, with one of two
+symptoms:
+
+- **Intel macOS**: a dialog reading *"Apple could not verify 'gcx' is free of
+  malware…"* and the binary refuses to run.
+- **Apple Silicon (M-series) macOS**: the binary exits immediately with
+  `killed: 9` and no visible dialog.
+
+Both symptoms come from the same underlying cause — the quarantine extended
+attribute that macOS attaches to any downloaded binary. The `curl | sh`
+installer above clears it automatically. **Homebrew users are not affected**
+— the formula compiles gcx from source on your machine, so no pre-built
+binary is downloaded and no xattr is set. For manual downloads, clear the
+xattr and ad-hoc sign the binary so Apple Silicon accepts it:
+
+```sh
+xattr -d com.apple.quarantine "$(command -v gcx)" 2>/dev/null || true
+codesign --sign - --force "$(command -v gcx)"   # required on Apple Silicon
+```
+
+Rerun `gcx --version` afterwards; subsequent invocations should succeed
+without the block. These steps will no longer be necessary once gcx release
+binaries are Apple-notarised (tracked in a separate signing/notarisation ADR).
 
 ## Build from source
 

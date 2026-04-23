@@ -53,19 +53,5 @@ checksum:
 release:
   header: "{{ .Env.RELEASE_NOTES }}"
 
-homebrew_casks:
-  - name: gcx
-    ids:
-      - gcx
-    binaries:
-      - gcx
-    homepage: "https://github.com/grafana/gcx"
-    description: "Grafana Cloud CLI"
-    directory: Casks
-    repository:
-      owner: grafana
-      name: homebrew-grafana
-      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-
 changelog:
   disable: true

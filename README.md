@@ -43,13 +43,15 @@ Downloads the latest release, verifies the SHA-256 checksum, and installs to
 curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | INSTALL_DIR=/usr/local/bin sh
 ```
 
-**Homebrew (macOS):**
-
-*COMING SOON*
+**Homebrew (macOS and Linux):**
 
 ```bash
-brew install --cask grafana/grafana/gcx
+brew install grafana/grafana/gcx
 ```
+
+Compiles from source on your machine (requires Homebrew's `go`, installed
+automatically as a build dependency). First install takes ~30–60 seconds
+while Go fetches dependencies; subsequent upgrades are faster.
 
 **Pre-built binary (Linux/macOS/Windows):**
 
@@ -62,16 +64,11 @@ tar xzf gcx_*.tar.gz
 chmod +x gcx && sudo mv gcx /usr/local/bin/
 ```
 
-> [!NOTE]
-> **macOS Gatekeeper**: gcx release binaries are not yet Apple-notarized, so
-> macOS may block the binary with *"Apple could not verify…"* or *"killed: 9"*.
-> The `curl | sh` installer above handles this automatically. For manual
-> downloads, remove the quarantine attribute and ad-hoc sign the binary:
->
-> ```sh
-> xattr -d com.apple.quarantine /usr/local/bin/gcx 2>/dev/null || true
-> codesign --sign - --force /usr/local/bin/gcx   # needed on Apple Silicon
-> ```
+On macOS, the manually-downloaded binary may be blocked on first run with
+*"Apple could not verify…"* or `killed: 9` — see
+[macOS Gatekeeper and killed: 9](docs/installation.md#macos-gatekeeper-and-killed-9)
+for the one-time workaround. The `curl | sh` installer above handles this
+automatically.
 
 **Go install:**
 
