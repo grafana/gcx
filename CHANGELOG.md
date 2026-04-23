@@ -1,3 +1,14 @@
+## v0.2.9 (2026-04-23)
+
+- Consolidated `gcx auth` and `gcx config` into a unified `gcx login` command
+- Renamed `gcx sigil` command and provider to `gcx aio11y` (AI Observability)
+- Fixed `gcx irm` to pass `--max-age` filter through to the OnCall backend
+- Added PyPI publishing to the release workflow
+- Bumped Claude plugin version automatically on release
+- Added Grafana Cloud API tiers architectural overview to the docs
+- Added compatibility matrix to the README
+
+
 ## v0.2.8 (2026-04-20)
 
 - Rename `gcx sigil` command and provider to `gcx aio11y` (AI Observability)
