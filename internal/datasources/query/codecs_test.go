@@ -6,6 +6,7 @@ import (
 
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/query/infinity"
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/grafana/gcx/internal/query/tempo"
 	"github.com/stretchr/testify/assert"
@@ -33,5 +34,12 @@ func TestGraphCodecRejectsUnsupportedResponseTypes(t *testing.T) {
 		err := newGraphIO().Encode(&out, &tempo.SearchResponse{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "graph output is not supported for trace search results")
+	})
+
+	t.Run("rejects infinity query responses", func(t *testing.T) {
+		var out bytes.Buffer
+		err := newGraphIO().Encode(&out, &infinity.QueryResponse{})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "Infinity")
 	})
 }
