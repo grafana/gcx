@@ -4,3 +4,8 @@ package influxdb
 func ConvertGrafanaResponse(resp *GrafanaQueryResponse) *QueryResponse {
 	return convertGrafanaResponse(resp)
 }
+
+// ExtractFieldKeys exposes extractFieldKeys for external tests.
+func ExtractFieldKeys(resp *GrafanaQueryResponse) *FieldKeysResponse {
+	return extractFieldKeys(resp)
+}

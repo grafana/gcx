@@ -11,6 +11,7 @@ import (
 	"strconv"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/queryerror"
 	"k8s.io/client-go/rest"
 )
 
@@ -54,7 +55,11 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 
 	if result, ok := grafanaResp.Results["A"]; ok {
 		if result.Error != "" {
-			return nil, fmt.Errorf("query error: %s", result.Error)
+			status := result.Status
+			if status == 0 {
+				status = http.StatusBadRequest
+			}
+			return nil, queryerror.New("influxdb", "query", status, result.Error, result.ErrorSource)
 		}
 	}
 
@@ -71,8 +76,10 @@ func (c *Client) Measurements(ctx context.Context, datasourceUID string, mode Mo
 			return nil, errors.New("--bucket is required for Flux mode measurements")
 		}
 		queryExpr = fmt.Sprintf("import \"influxdata/influxdb/schema\"\nschema.measurements(bucket: %q)", bucket)
-	default:
+	case ModeInfluxQL:
 		queryExpr = "SHOW MEASUREMENTS"
+	default:
+		return nil, fmt.Errorf("measurements listing is not supported for %s mode", mode)
 	}
 
 	req := QueryRequest{
@@ -97,7 +104,11 @@ func (c *Client) Measurements(ctx context.Context, datasourceUID string, mode Mo
 
 	if result, ok := grafanaResp.Results["A"]; ok {
 		if result.Error != "" {
-			return nil, fmt.Errorf("query error: %s", result.Error)
+			status := result.Status
+			if status == 0 {
+				status = http.StatusBadRequest
+			}
+			return nil, queryerror.New("influxdb", "measurements query", status, result.Error, result.ErrorSource)
 		}
 	}
 
@@ -133,7 +144,11 @@ func (c *Client) FieldKeys(ctx context.Context, datasourceUID string, measuremen
 
 	if result, ok := grafanaResp.Results["A"]; ok {
 		if result.Error != "" {
-			return nil, fmt.Errorf("query error: %s", result.Error)
+			status := result.Status
+			if status == 0 {
+				status = http.StatusBadRequest
+			}
+			return nil, queryerror.New("influxdb", "field keys query", status, result.Error, result.ErrorSource)
 		}
 	}
 
@@ -223,7 +238,7 @@ func (c *Client) executeQuery(ctx context.Context, body []byte) ([]byte, error) 
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("query failed with status %d: %s", resp.StatusCode, string(respBody))
+		return nil, queryerror.FromBody("influxdb", "query", resp.StatusCode, respBody)
 	}
 
 	return respBody, nil
@@ -312,28 +327,29 @@ func extractFieldKeys(grafanaResp *GrafanaQueryResponse) *FieldKeysResponse {
 		return result
 	}
 
-	frame := grafanaResult.Frames[0]
-	if len(frame.Data.Values) < 2 {
-		return result
-	}
+	for _, frame := range grafanaResult.Frames {
+		if len(frame.Data.Values) < 2 {
+			continue
+		}
 
-	rowCount := len(frame.Data.Values[0])
-	for i := range rowCount {
-		var fieldKey, fieldType string
-		if i < len(frame.Data.Values[0]) {
-			if s, ok := frame.Data.Values[0][i].(string); ok {
-				fieldKey = s
+		rowCount := len(frame.Data.Values[0])
+		for i := range rowCount {
+			var fieldKey, fieldType string
+			if i < len(frame.Data.Values[0]) {
+				if s, ok := frame.Data.Values[0][i].(string); ok {
+					fieldKey = s
+				}
 			}
-		}
-		if i < len(frame.Data.Values[1]) {
-			if s, ok := frame.Data.Values[1][i].(string); ok {
-				fieldType = s
+			if i < len(frame.Data.Values[1]) {
+				if s, ok := frame.Data.Values[1][i].(string); ok {
+					fieldType = s
+				}
 			}
+			result.Fields = append(result.Fields, FieldKey{
+				FieldKey:  fieldKey,
+				FieldType: fieldType,
+			})
 		}
-		result.Fields = append(result.Fields, FieldKey{
-			FieldKey:  fieldKey,
-			FieldType: fieldType,
-		})
 	}
 
 	return result
