@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -38,11 +39,13 @@ func instancesCommands(loader GrafanaConfigLoader) *cobra.Command {
 }
 
 type instancesListOpts struct {
-	IO        cmdio.Options
-	RuleUID   string
-	GroupName string
-	FolderUID string
-	State     string
+	IO         cmdio.Options
+	RuleUID    string
+	GroupName  string
+	FolderUID  string
+	State      string
+	Datasource string
+	Name       string
 }
 
 func (o *instancesListOpts) Validate() error {
@@ -61,6 +64,8 @@ func (o *instancesListOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.GroupName, "group", "", "Filter by group name")
 	flags.StringVar(&o.FolderUID, "folder", "", "Filter by folder UID")
 	flags.StringVar(&o.State, "state", "", "Filter by alert instance state (firing, pending, inactive)")
+	flags.StringVar(&o.Datasource, "datasource", "", "Datasource UID to query (default: Grafana-managed rules)")
+	flags.StringVar(&o.Name, "name", "", "Filter by rule name (regex, e.g. 'Tempo.*')")
 }
 
 func newInstancesListCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -85,16 +90,26 @@ func newInstancesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 
 			resp, err := client.List(ctx, ListOptions{
-				RuleUID:   opts.RuleUID,
-				GroupName: opts.GroupName,
-				FolderUID: opts.FolderUID,
-				State:     opts.State,
+				RuleUID:    opts.RuleUID,
+				GroupName:  opts.GroupName,
+				FolderUID:  opts.FolderUID,
+				State:      opts.State,
+				Datasource: opts.Datasource,
 			})
 			if err != nil {
 				return err
 			}
 
 			instances := collectAlertInstances(resp.Data.Groups)
+
+			if opts.Name != "" {
+				re, err := regexp.Compile("(?i)" + opts.Name)
+				if err != nil {
+					return fmt.Errorf("invalid --name regex %q: %w", opts.Name, err)
+				}
+				instances = filterInstancesByName(instances, re)
+			}
+
 			return opts.IO.Encode(cmd.OutOrStdout(), instances)
 		},
 	}
@@ -144,6 +159,16 @@ func (c *InstancesTableCodec) Encode(w io.Writer, v any) error {
 
 func (c *InstancesTableCodec) Decode(r io.Reader, v any) error {
 	return errors.New("table format does not support decoding")
+}
+
+func filterInstancesByName(instances []AlertInstanceRecord, re *regexp.Regexp) []AlertInstanceRecord {
+	filtered := make([]AlertInstanceRecord, 0, len(instances))
+	for _, inst := range instances {
+		if re.MatchString(inst.RuleName) {
+			filtered = append(filtered, inst)
+		}
+	}
+	return filtered
 }
 
 func collectAlertInstances(groups []RuleGroup) []AlertInstanceRecord {
