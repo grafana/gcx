@@ -3,6 +3,10 @@
 // Instead of shelling out to the gcx binary, callers can import this package
 // and call [Execute] with pre-configured auth. The injected [Config] bypasses
 // all file-based config loading — auth is provided via a custom HTTP transport.
+//
+// The embedded command tree excludes development-only commands (dev/lint) to
+// avoid pulling in heavy transitive dependencies (Loki, OPA) that may conflict
+// with the host application's dependency graph.
 package gcxlib
 
 import (
@@ -11,7 +15,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/grafana/gcx/cmd/gcx/root"
+	"github.com/grafana/gcx/gcxlib/internal/embed"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/version"
@@ -66,7 +70,7 @@ func Execute(ctx context.Context, args []string, cfg Config) (*Result, error) {
 
 	ctx = config.WithNamespacedRESTConfig(ctx, nrc)
 
-	cmd := root.Command("embedded")
+	cmd := embed.Command("embedded")
 
 	var stdout, stderr bytes.Buffer
 	cmd.SetOut(&stdout)
