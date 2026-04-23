@@ -132,6 +132,10 @@ func (opts *Options) LoadConfig(ctx context.Context) (config.Config, error) {
 // When OAuth proxy mode is active, it wires the OnRefresh callback to persist
 // refreshed tokens back to the config file.
 func (opts *Options) LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error) {
+	if cfg, ok := config.NamespacedRESTConfigFromContext(ctx); ok {
+		return cfg, nil
+	}
+
 	cfg, err := opts.LoadConfig(ctx)
 	if err != nil {
 		return config.NamespacedRESTConfig{}, err
