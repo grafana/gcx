@@ -477,7 +477,9 @@ func convertServiceAPIErrors(err error) (*DetailedError, bool) {
 		return nil, false
 	}
 
-	// Adaptive Logs scope errors — consistent format with traces/metrics handlers in convertCloudConfigErrors.
+	// Adaptive Logs scope errors — handled here (not in convertCloudConfigErrors with
+	// traces/metrics) because the logs client returns a typed APIError that this converter
+	// catches before convertCloudConfigErrors runs.
 	if apiErr.APIServiceName() == "Adaptive Logs" &&
 		strings.Contains(apiErr.APIUserMessage(), "invalid scope") &&
 		(apiErr.HTTPStatusCode() == http.StatusUnauthorized || apiErr.HTTPStatusCode() == http.StatusForbidden) {
