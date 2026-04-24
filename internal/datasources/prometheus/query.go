@@ -23,6 +23,7 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 // UID used when --datasource is not provided. Pass "" for no default.
 func QueryCmdWithDefault(loader *providers.ConfigLoader, defaultDS string) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
+	share := &dsquery.ExploreLinkOpts{}
 	var datasource string
 
 	cmd := &cobra.Command{
@@ -32,7 +33,9 @@ func QueryCmdWithDefault(loader *providers.ConfigLoader, defaultDS string) *cobr
 
 EXPR is the PromQL expression to evaluate, passed as a positional argument or
 via --expr (familiar to promtool users).
-Datasource is resolved from -d flag or datasources.prometheus in your context.`,
+Datasource is resolved from -d flag or datasources.prometheus in your context.
+Use --share-link to print the equivalent Grafana Explore URL, or --open to
+open it in your browser after the query succeeds.`,
 		Example: `
   # Instant query using configured default datasource
   gcx datasources prometheus query 'up{job="grafana"}'
@@ -42,6 +45,9 @@ Datasource is resolved from -d flag or datasources.prometheus in your context.`,
 
   # Query the last hour
   gcx datasources prometheus query 'up' --since 1h
+
+  # Print a Grafana Explore share link for the executed query
+  gcx datasources prometheus query 'up' --share-link
 
   # Output as JSON
   gcx datasources prometheus query -d UID 'up' -o json`,
@@ -113,7 +119,25 @@ Datasource is resolved from -d flag or datasources.prometheus in your context.`,
 				return fmt.Errorf("query failed: %w", err)
 			}
 
-			return shared.IO.Encode(cmd.OutOrStdout(), resp)
+			exploreURL := ExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
+				DatasourceUID:  datasourceUID,
+				DatasourceType: dsType,
+				Expr:           expr,
+				From:           shared.From,
+				To:             shared.To,
+				Instant:        !req.IsRange(),
+				Step:           step,
+				OrgID:          dsquery.OrgID(cfgCtx),
+			})
+			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("query")
+
+			return dsquery.EncodeAndHandleExplore(cmd, func() error {
+				return shared.IO.Encode(cmd.OutOrStdout(), resp)
+			}, *share, dsquery.ExploreLink{
+				URL:            exploreURL,
+				UnavailableMsg: unavailableMsg,
+				FailedOpenMsg:  failedOpenMsg,
+			})
 		},
 	}
 
@@ -124,6 +148,7 @@ Datasource is resolved from -d flag or datasources.prometheus in your context.`,
 
 	shared.Setup(cmd.Flags(), true)
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.prometheus is configured)")
+	share.Setup(cmd.Flags(), "executed query")
 
 	return cmd
 }

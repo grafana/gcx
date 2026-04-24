@@ -8,6 +8,9 @@ Search for traces using a TraceQL query against a Tempo datasource.
 
 TRACEQL is the TraceQL expression to evaluate.
 Datasource is resolved from -d flag or datasources.tempo in your context.
+Use --share-link to print the equivalent Grafana Explore URL, or --open to
+open it in your browser after the query succeeds. Share links require an
+explicit time range via --since or --from/--to.
 
 ```
 gcx datasources tempo query [TRACEQL] [flags]
@@ -22,6 +25,9 @@ gcx datasources tempo query [TRACEQL] [flags]
 
   # Search with explicit datasource UID and time range
   gcx datasources tempo query -d UID '{ span.http.status_code >= 500 }' --since 1h
+
+  # Print a Grafana Explore share link for the query
+  gcx datasources tempo query '{ span.http.status_code >= 500 }' --share-link
 
   # With custom limit
   gcx datasources tempo query -d UID '{ span.http.status_code >= 500 }' --since 1h --limit 50
@@ -39,7 +45,9 @@ gcx datasources tempo query [TRACEQL] [flags]
   -h, --help                help for query
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int           Maximum number of traces to return (0 means no limit) (default 20)
+      --open                Open the executed query in Grafana Explore
   -o, --output string       Output format. One of: json, table, wide, yaml (default "table")
+      --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to (or now if omitted); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
