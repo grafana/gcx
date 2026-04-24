@@ -2,6 +2,7 @@ package pyroscope
 
 import (
 	"io"
+	"maps"
 	"sort"
 	"strings"
 	"time"
@@ -233,7 +234,8 @@ func FormatSpanExemplarsTable(w io.Writer, result *SpanExemplarsResult, maxLabel
 	}
 	cols := TopCardinalityLabelNames(labelMaps, maxLabelCols)
 
-	headers := []string{"SPAN ID", "TIMESTAMP", "VALUE (" + strings.ToUpper(unit) + ")"}
+	headers := make([]string, 0, 3+len(cols))
+	headers = append(headers, "SPAN ID", "TIMESTAMP", "VALUE ("+strings.ToUpper(unit)+")")
 	for _, c := range cols {
 		headers = append(headers, strings.ToUpper(c))
 	}
@@ -274,9 +276,7 @@ func labelPairsToMap(lps []LabelPair) map[string]string {
 // internal __..__ labels. Allocates a new map so callers can't mutate shared state.
 func mergeLabels(seriesLabels map[string]string, extra []LabelPair) map[string]string {
 	out := make(map[string]string, len(seriesLabels)+len(extra))
-	for k, v := range seriesLabels {
-		out[k] = v
-	}
+	maps.Copy(out, seriesLabels)
 	for _, lp := range extra {
 		if !isInternalLabel(lp.Name) {
 			out[lp.Name] = lp.Value

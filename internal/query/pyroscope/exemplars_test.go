@@ -9,6 +9,7 @@ import (
 
 	"github.com/grafana/gcx/internal/query/pyroscope"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func num(i int64) json.Number { return json.Number(strconv.FormatInt(i, 10)) }
@@ -208,7 +209,7 @@ func TestFormatProfileExemplarsTable(t *testing.T) {
 		result := &pyroscope.ProfileExemplarsResult{
 			ProfileType: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
 		}
-		assert.NoError(t, pyroscope.FormatProfileExemplarsTable(&buf, result, 3))
+		require.NoError(t, pyroscope.FormatProfileExemplarsTable(&buf, result, 3))
 		assert.Contains(t, buf.String(), "(no exemplars)")
 	})
 
@@ -220,7 +221,7 @@ func TestFormatProfileExemplarsTable(t *testing.T) {
 				{ProfileID: "p-1", Timestamp: time.UnixMilli(1700000000000).UTC(), Value: 1000, SpanID: "span-1", Labels: map[string]string{"service_name": "frontend"}},
 			},
 		}
-		assert.NoError(t, pyroscope.FormatProfileExemplarsTable(&buf, result, 3))
+		require.NoError(t, pyroscope.FormatProfileExemplarsTable(&buf, result, 3))
 		out := buf.String()
 		assert.Contains(t, out, "p-1")
 		assert.Contains(t, out, "span-1")
@@ -234,7 +235,7 @@ func TestFormatSpanExemplarsTable(t *testing.T) {
 		result := &pyroscope.SpanExemplarsResult{
 			ProfileType: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
 		}
-		assert.NoError(t, pyroscope.FormatSpanExemplarsTable(&buf, result, 3))
+		require.NoError(t, pyroscope.FormatSpanExemplarsTable(&buf, result, 3))
 		assert.Contains(t, buf.String(), "(no span exemplars)")
 	})
 }
