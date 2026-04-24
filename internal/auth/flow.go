@@ -224,15 +224,16 @@ func (f *Flow) startCallbackServer(ctx context.Context, bindAddress string, port
 			}
 
 			instanceEndpoint := r.URL.Query().Get("instanceEndpoint")
-			if instanceEndpoint != "" {
-				// only check if explicitly specified
-				// a missing value is not critical if the user has manually specified the grafana url
-				_, err = url.Parse(instanceEndpoint)
-				if err != nil {
-					errCh <- fmt.Errorf("invalid endpoint url: %w", err)
-					renderErrorPage(w, "Invalid instance endpoint passed")
-					return
-				}
+			instanceEndpointUrl, err := url.Parse(instanceEndpoint)
+			if err != nil {
+				errCh <- fmt.Errorf("invalid endpoint url: %w", err)
+				renderErrorPage(w, "Invalid instance endpoint passed")
+				return
+			}
+			if instanceEndpointUrl.Scheme != "https" {
+				errCh <- fmt.Errorf("invalid endpoint scheme: expected 'https', got '%s'", instanceEndpointUrl.Scheme)
+				renderErrorPage(w, "Invalid instance endpoint: needs to be an HTTPS URL")
+				return
 			}
 
 			result := &Result{

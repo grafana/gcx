@@ -263,12 +263,16 @@ func askForInput(e *login.ErrNeedInput, opts *login.Options, sourceCtx *config.C
 	for _, field := range e.Fields {
 		switch field {
 		case "server":
+			description := "e.g. https://my-stack.grafana.net"
+			if opts.GrafanaToken == "" {
+				description += "\nLeave empty to select your Grafana Cloud instance interactively"
+			}
 			form := huh.NewForm(huh.NewGroup(
 				huh.NewInput().
 					Title("Grafana server URL").
-					Description("e.g. https://my-stack.grafana.net").
+					Description(description).
 					Validate(func(s string) error {
-						if s == "" {
+						if opts.GrafanaToken != "" && s == "" {
 							return errors.New("server URL is required")
 						}
 						return nil
@@ -277,6 +281,10 @@ func askForInput(e *login.ErrNeedInput, opts *login.Options, sourceCtx *config.C
 			))
 			if err := form.Run(); err != nil {
 				return err
+			}
+			if opts.Server == "" {
+				opts.UseCloudInstanceSelector = true
+				return nil
 			}
 
 		case "grafana-auth":

@@ -51,6 +51,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 		ExpiresAt:        "2030-01-01T00:00:00Z",
 		RefreshExpiresAt: "2030-06-01T00:00:00Z",
 		APIEndpoint:      "https://mystack.grafana.net/api",
+		InstanceEndpoint: "https://mystack.grafana.net",
 	}
 
 	tests := []struct {
@@ -319,6 +320,33 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 				assert.Equal(t, "rotated-token", ctx.Grafana.APIToken)
 				assert.Equal(t, "token", ctx.Grafana.AuthMethod)
 				assert.EqualValues(t, 42, ctx.Grafana.OrgID, "OrgID must be preserved in re-auth")
+			},
+		},
+		{
+			// AC-013: Redirect to grafana.com on empty server selection
+			name: "redirect_grafana_com_empty_server",
+			opts: func(dir string) login.Options {
+				return login.Options{
+					Inputs: login.Inputs{
+						UseCloudInstanceSelector: true,
+						Yes:                      true,
+					},
+					Hooks: login.Hooks{
+						ConfigSource: configSource(dir),
+						ValidateFn:   noopValidate,
+						NewAuthFlow: func(_ string, _ auth.Options) login.AuthFlow {
+							return &stubAuthFlow{result: oauthResult}
+						},
+					},
+				}
+			},
+			checkConfig: func(t *testing.T, cfg config.Config) {
+				t.Helper()
+				ctx := cfg.Contexts["mystack"]
+				require.NotNil(t, ctx)
+				assert.Equal(t, oauthResult.InstanceEndpoint, ctx.Grafana.Server)
+				assert.Equal(t, "gat_test", ctx.Grafana.OAuthToken)
+				assert.Equal(t, "oauth", ctx.Grafana.AuthMethod)
 			},
 		},
 	}

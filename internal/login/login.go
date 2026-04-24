@@ -36,6 +36,10 @@ type Inputs struct {
 	CloudAPIURL  string
 	UseOAuth     bool
 	Yes          bool
+	// UseCloudInstanceSelector is only used internally to mark the case in which
+	// a user explicitly left the server empty to be directed to the cloud
+	// instance selector
+	UseCloudInstanceSelector bool
 
 	// Writer receives human-facing OAuth progress output. When nil, the
 	// internal/login package discards writes (NC-001: the package is UI-free
@@ -166,9 +170,9 @@ type AuthFlow interface {
 // Run orchestrates the full login lifecycle:
 //
 //  1. Validate server is set
-//  2. Derive context name
-//  3. Detect target (Cloud vs OnPrem)
-//  4. Resolve Grafana auth (token or OAuth)
+//  2. Detect target (Cloud vs OnPrem)
+//  3. Resolve Grafana auth (token or OAuth)
+//  4. Derive context name
 //  5. Resolve Cloud API token (Cloud targets only)
 //  6. Build REST config and run connectivity validation
 //  7. Persist context to config
@@ -179,24 +183,22 @@ type AuthFlow interface {
 // the CLI sentinel-retry flow. Callers that retry after ErrNeedInput /
 // ErrNeedClarification should reuse the same Options value.
 func Run(ctx context.Context, opts *Options) (Result, error) {
-	// Step 1: server must be set
-	if opts.Server == "" {
+	// Step 1: check if the server is set
+	if opts.Server == "" && !opts.UseCloudInstanceSelector {
 		return Result{}, &ErrNeedInput{Fields: []string{"server"}}
+	}
+	if opts.UseCloudInstanceSelector {
+		opts.UseOAuth = true
+		opts.Target = TargetCloud
 	}
 
 	// Normalize: missing scheme → default to https. Users who meant http://
 	// must pass the full URL explicitly; defaulting to https is safer.
-	if !strings.HasPrefix(opts.Server, "http://") && !strings.HasPrefix(opts.Server, "https://") {
+	if opts.Server != "" && !strings.HasPrefix(opts.Server, "http://") && !strings.HasPrefix(opts.Server, "https://") {
 		opts.Server = "https://" + opts.Server
 	}
 
-	// Step 2: derive context name
-	contextName := opts.ContextName
-	if contextName == "" {
-		contextName = config.ContextNameFromServerURL(opts.Server)
-	}
-
-	// Step 3: detect target
+	// Step 2: detect target
 	target := opts.Target
 	if target == TargetUnknown {
 		detected, err := detectTarget(ctx, *opts)
@@ -224,10 +226,21 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 	// layer can branch on target (e.g. drop the OAuth option for on-prem).
 	opts.Target = target
 
-	// Step 4: Grafana auth
+	// Step 3: Grafana auth
 	authMethod, grafanaCfg, err := resolveGrafanaAuth(ctx, *opts, target)
 	if err != nil {
 		return Result{}, err
+	}
+
+	// set the server if the user used the interactive instance selector
+	if opts.Server == "" {
+		opts.Server = grafanaCfg.Server
+	}
+
+	// Step 4: derive context name
+	contextName := opts.ContextName
+	if contextName == "" {
+		contextName = config.ContextNameFromServerURL(opts.Server)
 	}
 
 	// Step 5: Cloud API token (Cloud targets only)
@@ -340,6 +353,9 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 		result, err := flow.Run(ctx)
 		if err != nil {
 			return "", nil, fmt.Errorf("OAuth flow failed: %w", err)
+		}
+		if grafanaCfg.Server == "" {
+			grafanaCfg.Server = result.InstanceEndpoint
 		}
 		grafanaCfg.OAuthToken = result.Token
 		grafanaCfg.OAuthRefreshToken = result.RefreshToken

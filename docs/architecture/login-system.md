@@ -46,6 +46,7 @@ classDiagram
         Target, GrafanaToken
         CloudToken, CloudAPIURL
         UseOAuth, Yes, Writer
+        UseCloudInstanceSelector
     }
     class Hooks {
         ConfigSource
@@ -109,8 +110,7 @@ flowchart TD
     Start([Run entry]) --> Server{Server set?}
     Server -->|no| SrvSentinel[Return ErrNeedInput&#123;server&#125;]
     Server -->|yes| Scheme[Normalize scheme:<br/>default https]
-    Scheme --> Ctx[Derive context name]
-    Ctx --> Detect[Detect target]
+    Scheme --> Detect[Detect target]
     Detect --> TgtKnown{Target resolved?}
     TgtKnown -->|no, interactive| TgtSentinel[Return ErrNeedClarification&#123;target&#125;]
     TgtKnown -->|no, --yes or agent| TgtOnPrem[Force TargetOnPrem]
@@ -118,7 +118,8 @@ flowchart TD
     TgtOnPrem --> Auth
     Auth --> AuthHave{Token or OAuth?}
     AuthHave -->|no| AuthSentinel[Return ErrNeedInput&#123;grafana-auth&#125;]
-    AuthHave -->|yes| Cloud[Resolve cloud auth]
+    AuthHave -->|yes| Ctx[Derive context name]
+    Ctx --> Cloud[Resolve cloud auth]
     Cloud --> CloudNeeded{Cloud target<br/>+ no token?}
     CloudNeeded -->|yes, interactive| CloudSentinel[Return ErrNeedInput&#123;cloud-token&#125;<br/>Optional=true]
     CloudNeeded -->|no or skip| Validate[Validation pipeline]
@@ -135,25 +136,25 @@ The pipeline reads top-to-bottom in `Run()` (login.go:180). Each step returns
 early on failure; sentinel branches unwind to the CLI for interactive
 resolution and re-entry:
 
-1. **Server check** (login.go:182). Missing server → `ErrNeedInput{server}`.
-2. **Scheme normalization** (login.go:188). A bare hostname is rewritten to
+1. **Server check** (login.go:184). Missing server → `ErrNeedInput{server}`.
+2. **Scheme normalization** (login.go:191). A bare hostname is rewritten to
    `https://<host>`. Callers that need `http://` must pass it explicitly.
-3. **Context-name derivation** (login.go:193). Falls back to
-   `config.ContextNameFromServerURL`, which returns the stack slug for known
-   Grafana Cloud URLs and a hyphenated hostname otherwise.
-4. **Target detection** (login.go:199). Delegates to `detectTarget`; see the
+3. **Target detection** (login.go:194). Delegates to `detectTarget`; see the
    next section. An unresolved target with `--yes` or agent mode falls
    through to `TargetOnPrem`; otherwise it yields
    `ErrNeedClarification{target}`.
-5. **Grafana auth resolution** (`resolveGrafanaAuth`, login.go:304). Picks
+4. **Grafana auth resolution** (`resolveGrafanaAuth`, login.go:223). Picks
    between explicit token and OAuth based on input flags. Missing auth
    yields `ErrNeedInput{grafana-auth}`.
-6. **Cloud auth resolution** (`resolveCloudAuth`, login.go:373). Only runs
+5. **Context-name derivation** (login.go:234). Falls back to
+   `config.ContextNameFromServerURL`, which returns the stack slug for known
+   Grafana Cloud URLs and a hyphenated hostname otherwise.
+6. **Cloud auth resolution** (`resolveCloudAuth`, login.go:383). Only runs
    for `TargetCloud`; a missing token yields an optional
    `ErrNeedInput{cloud-token}` that the CLI may skip.
-7. **Validation** (login.go:246). Delegated to `Validate` (see below); the
+7. **Validation** (login.go:245). Delegated to `Validate` (see below); the
    CLI offers an escape hatch for interactive users when validation fails.
-8. **Persistence** (`persistContext`, login.go:400). Writes only after all
+8. **Persistence** (`persistContext`, login.go:414). Writes only after all
    checks pass; may raise `ErrNeedClarification{allow-override}` when the
    context already targets a different server.
 
