@@ -45,7 +45,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("validated %s\n", root)
+	_, _ = fmt.Fprintf(os.Stdout, "validated %s\n", root)
 }
 
 func validateSkill(path string) error {
