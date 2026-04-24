@@ -13,6 +13,8 @@ Default table output is optimized for humans. Use -o raw for original line
 bodies or -o json for the full structured response.
 
 Default --limit is 50; use --limit 0 for no cap.
+Use --share-link to print the equivalent Grafana Explore URL, or --open to
+open it in your browser after the query succeeds.
 
 ```
 gcx datasources loki query [EXPR] [flags]
@@ -27,6 +29,9 @@ gcx datasources loki query [EXPR] [flags]
 
   # Query with explicit datasource UID
   gcx datasources loki query -d UID '{job="varlogs"} |= "error"'
+
+  # Print a Grafana Explore share link for the query
+  gcx datasources loki query '{job="varlogs"}' --share-link
 
   # Raw line bodies only
   gcx datasources loki query -d UID '{job="varlogs"}' -o raw
@@ -44,7 +49,9 @@ gcx datasources loki query [EXPR] [flags]
   -h, --help                help for query
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int           Maximum number of log lines to return (0 means no limit) (default 50)
+      --open                Open the executed query in Grafana Explore
   -o, --output string       Output format. One of: json, raw, table, wide, yaml (default "table")
+      --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to (or now if omitted); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')

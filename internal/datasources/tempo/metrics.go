@@ -20,6 +20,7 @@ const defaultTraceMetricsWindow = time.Hour
 // MetricsCmd returns the `metrics` subcommand for TraceQL metrics queries.
 func MetricsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
+	share := &dsquery.ExploreLinkOpts{}
 	var datasource string
 	var instant bool
 
@@ -34,13 +35,18 @@ Datasource is resolved from -d flag or datasources.tempo in your context.
 Instant vs range is deduced from time flags: no time flags = instant query,
 --since or --from/--to = range query. Use --instant to force an instant query
 even when a time range is provided. If no time flags are set, gcx queries the
-last hour by default.`,
+last hour by default.
+Use --share-link to print the equivalent Grafana Explore URL, or --open to
+open it in your browser after the query succeeds.`,
 		Example: `
   # Instant query over the last hour (default, no time flags)
   gcx datasources tempo metrics '{ } | rate()'
 
   # Range query with relative window
   gcx datasources tempo metrics -d tempo-001 '{ } | rate()' --since 1h
+
+  # Print a Grafana Explore share link for the query
+  gcx datasources tempo metrics '{ } | rate()' --share-link
 
   # Instant query with explicit time range
   gcx datasources tempo metrics '{ } | rate()' --instant --since 1h
@@ -111,7 +117,32 @@ last hour by default.`,
 				return fmt.Errorf("metrics query failed: %w", err)
 			}
 
-			return shared.IO.Encode(cmd.OutOrStdout(), resp)
+			from := shared.From
+			to := shared.To
+			if from == "" && !req.Start.IsZero() {
+				from = req.Start.Format(time.RFC3339)
+			}
+			if to == "" && !req.End.IsZero() {
+				to = req.End.Format(time.RFC3339)
+			}
+			exploreURL := MetricsExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
+				DatasourceUID:  datasourceUID,
+				DatasourceType: dsType,
+				Expr:           expr,
+				From:           from,
+				To:             to,
+				Instant:        req.Instant,
+				OrgID:          dsquery.OrgID(cfgCtx),
+			}, 20)
+			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("metrics query")
+
+			return dsquery.EncodeAndHandleExplore(cmd, func() error {
+				return shared.IO.Encode(cmd.OutOrStdout(), resp)
+			}, *share, dsquery.ExploreLink{
+				URL:            exploreURL,
+				UnavailableMsg: unavailableMsg,
+				FailedOpenMsg:  failedOpenMsg,
+			})
 		},
 	}
 
@@ -123,6 +154,7 @@ last hour by default.`,
 	shared.Setup(cmd.Flags(), true)
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.tempo is configured)")
 	cmd.Flags().BoolVar(&instant, "instant", false, "Run an instant query over the selected time range instead of a range query")
+	share.Setup(cmd.Flags(), "executed query")
 
 	return cmd
 }

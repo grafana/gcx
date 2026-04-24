@@ -8,6 +8,9 @@ Retrieve a single trace by its trace ID from a Tempo datasource.
 
 TRACE_ID is the hex-encoded trace identifier to retrieve.
 Datasource is resolved from -d flag or datasources.tempo in your context.
+Use --share-link to print a Grafana Explore URL for the trace, or --open to
+open it in your browser after retrieval succeeds. Share links require an
+explicit time range via --since or --from/--to.
 
 ```
 gcx traces get TRACE_ID [flags]
@@ -19,6 +22,9 @@ gcx traces get TRACE_ID [flags]
 
   # Fetch a trace by ID
   gcx traces get -d UID <trace-id>
+
+  # Print a Grafana Explore share link for the trace
+  gcx traces get -d UID <trace-id> --share-link
 
   # Output as JSON
   gcx traces get -d UID <trace-id> -o json
@@ -32,7 +38,9 @@ gcx traces get TRACE_ID [flags]
   -h, --help                help for get
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --llm                 Request LLM-friendly trace format
+      --open                Open the retrieved trace in Grafana Explore
   -o, --output string       Output format. One of: json, yaml (default "json")
+      --share-link          Print the Grafana Explore URL for the retrieved trace to stderr
       --since string        Duration before --to (or now if omitted); mutually exclusive with --from
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
 ```

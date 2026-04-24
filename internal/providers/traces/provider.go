@@ -48,6 +48,9 @@ func (p *Provider) Commands() []*cobra.Command {
   # Run a TraceQL query
   gcx traces query -d UID '{ span.http.status_code >= 500 }'
 
+  # Print a Grafana Explore share link for the query
+  gcx traces query '{ span.http.status_code >= 500 }' --share-link
+
   # Output as JSON
   gcx traces query -d UID '{ span.http.status_code >= 500 }' -o json`
 	cmd.AddCommand(qCmd)
@@ -60,6 +63,9 @@ func (p *Provider) Commands() []*cobra.Command {
 	gCmd.Example = `
   # Fetch a trace by ID
   gcx traces get -d UID <trace-id>
+
+  # Print a Grafana Explore share link for the trace
+  gcx traces get -d UID <trace-id> --share-link
 
   # Output as JSON
   gcx traces get -d UID <trace-id> -o json`
@@ -86,6 +92,9 @@ func (p *Provider) Commands() []*cobra.Command {
 	mCmd.Example = `
   # Run a TraceQL metrics query
   gcx traces metrics -d UID '{ } | rate()' --since 1h
+
+  # Print a Grafana Explore share link for the query
+  gcx traces metrics '{ } | rate()' --share-link
 
   # Output as JSON
   gcx traces metrics -d UID '{ } | rate()' --since 1h -o json`

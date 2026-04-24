@@ -14,6 +14,8 @@ time-series data with proper table, graph, and JSON formatters.
 
 Instant vs range is deduced from time flags: no time flags = instant query,
 --since or --from/--to = range query.
+Use --share-link to print the equivalent Grafana Explore URL, or --open to
+open it in your browser after the query succeeds.
 
 ```
 gcx datasources loki metrics [EXPR] [flags]
@@ -28,6 +30,9 @@ gcx datasources loki metrics [EXPR] [flags]
 
   # Count of error logs
   gcx datasources loki metrics 'count_over_time({job="varlogs"} |= "error" [5m])' --since 1h
+
+  # Print a Grafana Explore share link for the query
+  gcx datasources loki metrics 'rate({job="varlogs"}[5m])' --share-link
 
   # Line chart output
   gcx datasources loki metrics -d loki-001 'rate({job="varlogs"}[5m])' --since 1h -o graph
@@ -44,7 +49,9 @@ gcx datasources loki metrics [EXPR] [flags]
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for metrics
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --open                Open the executed query in Grafana Explore
   -o, --output string       Output format. One of: graph, json, table, wide, yaml (default "table")
+      --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to (or now if omitted); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')

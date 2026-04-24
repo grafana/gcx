@@ -18,6 +18,7 @@ import (
 // It also registers `search` as a non-deprecated alias.
 func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
+	share := &dsquery.ExploreLinkOpts{}
 	var limit int
 	var datasource string
 
@@ -28,13 +29,19 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Long: `Search for traces using a TraceQL query against a Tempo datasource.
 
 TRACEQL is the TraceQL expression to evaluate.
-Datasource is resolved from -d flag or datasources.tempo in your context.`,
+Datasource is resolved from -d flag or datasources.tempo in your context.
+Use --share-link to print the equivalent Grafana Explore URL, or --open to
+open it in your browser after the query succeeds. Share links require an
+explicit time range via --since or --from/--to.`,
 		Example: `
   # Search traces using configured default datasource
   gcx datasources tempo query '{ span.http.status_code >= 500 }'
 
   # Search with explicit datasource UID and time range
   gcx datasources tempo query -d UID '{ span.http.status_code >= 500 }' --since 1h
+
+  # Print a Grafana Explore share link for the query
+  gcx datasources tempo query '{ span.http.status_code >= 500 }' --share-link
 
   # With custom limit
   gcx datasources tempo query -d UID '{ span.http.status_code >= 500 }' --since 1h --limit 50
@@ -73,14 +80,6 @@ Datasource is resolved from -d flag or datasources.tempo in your context.`,
 				return err
 			}
 
-			dsType, err := dsquery.GetDatasourceType(ctx, cfg, datasourceUID)
-			if err != nil {
-				return err
-			}
-			if err := dsquery.ValidateDatasourceType(dsType, "tempo"); err != nil {
-				return err
-			}
-
 			now := time.Now()
 			start, end, _, err := shared.ParseTimes(now)
 			if err != nil {
@@ -104,7 +103,31 @@ Datasource is resolved from -d flag or datasources.tempo in your context.`,
 				return fmt.Errorf("search failed: %w", err)
 			}
 
-			return shared.IO.Encode(cmd.OutOrStdout(), resp)
+			exploreURL := ""
+			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("search")
+			switch {
+			case !shared.IsRange() && share.Enabled():
+				unavailableMsg = "search succeeded, but Grafana Explore links require --since or --from/--to for Tempo trace searches"
+			case limit == 0 && share.Enabled():
+				unavailableMsg = "search succeeded, but Grafana Explore links do not support --limit 0 for Tempo trace searches"
+			case shared.IsRange():
+				exploreURL = SearchExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
+					DatasourceUID:  datasourceUID,
+					DatasourceType: "tempo",
+					Expr:           expr,
+					From:           shared.From,
+					To:             shared.To,
+					OrgID:          dsquery.OrgID(cfgCtx),
+				}, limit)
+			}
+
+			return dsquery.EncodeAndHandleExplore(cmd, func() error {
+				return shared.IO.Encode(cmd.OutOrStdout(), resp)
+			}, *share, dsquery.ExploreLink{
+				URL:            exploreURL,
+				UnavailableMsg: unavailableMsg,
+				FailedOpenMsg:  failedOpenMsg,
+			})
 		},
 	}
 
@@ -116,6 +139,7 @@ Datasource is resolved from -d flag or datasources.tempo in your context.`,
 	shared.Setup(cmd.Flags(), false)
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.tempo is configured)")
 	cmd.Flags().IntVar(&limit, "limit", 20, "Maximum number of traces to return (0 means no limit)")
+	share.Setup(cmd.Flags(), "executed query")
 
 	return cmd
 }
