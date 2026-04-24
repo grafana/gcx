@@ -393,6 +393,10 @@ func queryErrorHelpCommand(apiErr *queryerror.APIError) string {
 			return "gcx profiles labels --help"
 		case "series query":
 			return "gcx profiles metrics --help"
+		case "profile exemplars query":
+			return "gcx profiles exemplars profile --help"
+		case "span exemplars query":
+			return "gcx profiles exemplars span --help"
 		}
 	case "tempo":
 		switch apiErr.Operation {

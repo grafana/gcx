@@ -25,5 +25,6 @@ func (p *pyroscopeDSProvider) ExtraCommands(loader *providers.ConfigLoader) []*c
 		pyroscope.LabelsCmd(loader),
 		pyroscope.ProfileTypesCmd(loader),
 		pyroscope.MetricsCmd(loader),
+		pyroscope.ExemplarsCmd(loader),
 	}
 }
