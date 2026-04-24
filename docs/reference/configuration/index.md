@@ -22,11 +22,11 @@ contexts:
       # Optional.
       token: string
       # ProxyEndpoint is the assistant backend URL used as a reverse proxy for
-      # OAuth-authenticated requests. Set automatically by `auth login`.
+      # OAuth-authenticated requests. Set automatically by `gcx login`.
       # This may differ from Server when cloud routing directs CLI traffic through
       # a separate endpoint (e.g. the assistant app backend).
       proxy-endpoint: string
-      # OAuthToken is the OAuth access token (gat_) obtained via `auth login`.
+      # OAuthToken is the OAuth access token (gat_) obtained via `gcx login`.
       oauth-token: string
       # OAuthRefreshToken is the refresh token (gar_) for renewing OAuthToken.
       oauth-refresh-token: string
@@ -34,6 +34,9 @@ contexts:
       oauth-token-expires-at: string
       # OAuthRefreshExpiresAt is the OAuthRefreshToken expiration time in RFC3339 format.
       oauth-refresh-expires-at: string
+      # AuthMethod is the authentication method stored by gcx login: "oauth", "token", or "basic".
+      # Empty string is valid for legacy configs; readers should call InferredAuthMethod() in that case.
+      auth-method: string
       # OrgID specifies the organization targeted by this config.
       # Note: required when targeting an on-prem Grafana instance.
       # See StackID for Grafana Cloud instances.

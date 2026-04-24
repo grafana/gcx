@@ -10,27 +10,27 @@ BUMP="${1:-}"
 # ── validate args ─────────────────────────────────────────────────────────────
 
 if [[ -z "$BUMP" ]]; then
-  echo "Usage: make tag BUMP=<major|minor|patch>" >&2
-  exit 1
+	echo "Usage: make tag BUMP=<major|minor|patch>" >&2
+	exit 1
 fi
 
 case "$BUMP" in
-  major|minor|patch) ;;
-  *)
-    echo "Error: invalid BUMP value '${BUMP}'. Must be major, minor, or patch." >&2
-    exit 1
-    ;;
+major | minor | patch) ;;
+*)
+	echo "Error: invalid BUMP value '${BUMP}'. Must be major, minor, or patch." >&2
+	exit 1
+	;;
 esac
 
 # ── check dependencies ────────────────────────────────────────────────────────
 
 for cmd in claude svu; do
-  if ! command -v "$cmd" >/dev/null 2>&1; then
-    echo "Error: '${cmd}' is required but not found." >&2
-    [[ "$cmd" == "claude" ]] && echo "Install from https://claude.ai/download" >&2
-    [[ "$cmd" == "svu" ]] && echo "Install with: go install github.com/caarlos0/svu/v3@latest" >&2
-    exit 1
-  fi
+	if ! command -v "$cmd" >/dev/null 2>&1; then
+		echo "Error: '${cmd}' is required but not found." >&2
+		[[ "$cmd" == "claude" ]] && echo "Install from https://claude.ai/download" >&2
+		[[ "$cmd" == "svu" ]] && echo "Install with: go install github.com/caarlos0/svu/v3@latest" >&2
+		exit 1
+	fi
 done
 
 # ── get latest tag ────────────────────────────────────────────────────────────
@@ -40,22 +40,22 @@ LAST_TAG=$(svu current 2>/dev/null || echo "v0.0.0")
 # ── check for new commits since last tag ─────────────────────────────────────
 
 if [[ "$LAST_TAG" == "v0.0.0" ]]; then
-  COMMIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "0")
+	COMMIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "0")
 else
-  COMMIT_COUNT=$(git rev-list --count "${LAST_TAG}..HEAD" 2>/dev/null || echo "0")
+	COMMIT_COUNT=$(git rev-list --count "${LAST_TAG}..HEAD" 2>/dev/null || echo "0")
 fi
 
 if [[ "$COMMIT_COUNT" -eq 0 ]]; then
-  echo "Error: no new commits since ${LAST_TAG}. Nothing to release." >&2
-  exit 1
+	echo "Error: no new commits since ${LAST_TAG}. Nothing to release." >&2
+	exit 1
 fi
 
 # ── bump version ──────────────────────────────────────────────────────────────
 
 case "$BUMP" in
-  major) NEW_TAG=$(svu major) ;;
-  minor) NEW_TAG=$(svu minor) ;;
-  patch) NEW_TAG=$(svu patch) ;;
+major) NEW_TAG=$(svu major) ;;
+minor) NEW_TAG=$(svu minor) ;;
+patch) NEW_TAG=$(svu patch) ;;
 esac
 
 TODAY=$(date -u +%Y-%m-%d)
@@ -67,20 +67,20 @@ echo "Bumping ${LAST_TAG} → ${NEW_TAG}"
 # Prints the "## vX.Y.Z (date)\n\n<bullets>\n" block, or nothing if no commits.
 
 generate_entry() {
-  local from_ref="$1" to_ref="$2" display_tag="$3" entry_date="$4"
-  local commits diffstat
+	local from_ref="$1" to_ref="$2" display_tag="$3" entry_date="$4"
+	local commits diffstat
 
-  if [[ "$from_ref" == "v0.0.0" ]]; then
-    commits=$(git log --oneline "$to_ref" 2>/dev/null || echo "")
-    diffstat=$(git diff --stat "$(git rev-list --max-parents=0 HEAD)" "$to_ref" 2>/dev/null || echo "")
-  else
-    commits=$(git log --oneline "${from_ref}..${to_ref}" 2>/dev/null || echo "")
-    diffstat=$(git diff --stat "${from_ref}" "${to_ref}" 2>/dev/null || echo "")
-  fi
+	if [[ "$from_ref" == "v0.0.0" ]]; then
+		commits=$(git log --oneline "$to_ref" 2>/dev/null || echo "")
+		diffstat=$(git diff --stat "$(git rev-list --max-parents=0 HEAD)" "$to_ref" 2>/dev/null || echo "")
+	else
+		commits=$(git log --oneline "${from_ref}..${to_ref}" 2>/dev/null || echo "")
+		diffstat=$(git diff --stat "${from_ref}" "${to_ref}" 2>/dev/null || echo "")
+	fi
 
-  [[ -z "$commits" ]] && return 0
+	[[ -z "$commits" ]] && return 0
 
-  local prompt="You are writing a CHANGELOG entry for a CLI tool called gcx (Grafana Cloud resource manager).
+	local prompt="You are writing a CHANGELOG entry for a CLI tool called gcx (Grafana Cloud resource manager).
 
 Summarize the following commits into a concise bullet-point list for version ${display_tag}.
 Group related changes. Use plain English. Keep each bullet under 80 chars.
@@ -92,36 +92,36 @@ ${commits}
 Diffstat:
 ${diffstat}"
 
-  local summary
-  echo "Generating changelog entry for ${display_tag} with Claude..." >&2
-  summary=$(echo "$prompt" | env -u CLAUDECODE claude -p 2>/dev/null)
+	local summary
+	echo "Generating changelog entry for ${display_tag} with Claude..." >&2
+	summary=$(echo "$prompt" | env -u CLAUDECODE claude -p 2>/dev/null)
 
-  printf '## %s (%s)\n\n%s\n' "$display_tag" "$entry_date" "$summary"
+	printf '## %s (%s)\n\n%s\n' "$display_tag" "$entry_date" "$summary"
 }
 
 # ── detect last documented version in CHANGELOG.md ───────────────────────────
 
 CHANGELOG="CHANGELOG.md"
-LAST_CHANGELOG_VERSION=$(grep -m1 '^## v' "$CHANGELOG" 2>/dev/null \
-  | sed 's/^## \(v[^ )]*\).*/\1/' || echo "v0.0.0")
+LAST_CHANGELOG_VERSION=$(grep -m1 '^## v' "$CHANGELOG" 2>/dev/null |
+	sed 's/^## \(v[^ )]*\).*/\1/' || echo "v0.0.0")
 
 # ── backfill any tags not yet documented ─────────────────────────────────────
 
 NEW_CONTENT=""
 
 if [[ "$LAST_CHANGELOG_VERSION" != "$LAST_TAG" ]]; then
-  PREV="$LAST_CHANGELOG_VERSION"
-  while IFS= read -r GAP_TAG; do
-    GAP_DATE=$(git log -1 --format="%as" "$GAP_TAG")
-    entry=$(generate_entry "$PREV" "$GAP_TAG" "$GAP_TAG" "$GAP_DATE")
-    if [[ -n "$entry" ]]; then
-      NEW_CONTENT="${NEW_CONTENT}${entry}
+	PREV="$LAST_CHANGELOG_VERSION"
+	while IFS= read -r GAP_TAG; do
+		GAP_DATE=$(git log -1 --format="%as" "$GAP_TAG")
+		entry=$(generate_entry "$PREV" "$GAP_TAG" "$GAP_TAG" "$GAP_DATE")
+		if [[ -n "$entry" ]]; then
+			NEW_CONTENT="${NEW_CONTENT}${entry}
 
 "
-    fi
-    PREV="$GAP_TAG"
-  done < <(git tag --sort=version:refname | awk -v start="$LAST_CHANGELOG_VERSION" \
-    '$0 == start { found=1; next } found { print }')
+		fi
+		PREV="$GAP_TAG"
+	done < <(git tag --sort=version:refname | awk -v start="$LAST_CHANGELOG_VERSION" \
+		'$0 == start { found=1; next } found { print }')
 fi
 
 # ── generate the new version entry ───────────────────────────────────────────
@@ -134,10 +134,10 @@ ${NEW_CONTENT}"
 # ── write changelog ───────────────────────────────────────────────────────────
 
 if [[ -f "$CHANGELOG" ]]; then
-  EXISTING=$(cat "$CHANGELOG")
-  printf '%s\n%s\n' "$NEW_CONTENT" "$EXISTING" > "$CHANGELOG"
+	EXISTING=$(cat "$CHANGELOG")
+	printf '%s\n%s\n' "$NEW_CONTENT" "$EXISTING" >"$CHANGELOG"
 else
-  printf '%s\n' "$NEW_CONTENT" > "$CHANGELOG"
+	printf '%s\n' "$NEW_CONTENT" >"$CHANGELOG"
 fi
 
 echo "Updated ${CHANGELOG}"
@@ -145,19 +145,34 @@ echo "Updated ${CHANGELOG}"
 # ── write release notes (used by GoReleaser for GitHub release body) ──────────
 # Strip the "## vX.Y.Z (date)" header line and the blank line after it.
 
-printf '%s\n' "$NEW_ENTRY" | tail -n +3 > .release-notes.md
+printf '%s\n' "$NEW_ENTRY" | tail -n +3 >.release-notes.md
 echo "Updated .release-notes.md"
+
+# ── bump Claude plugin version ──────────────────────────────────────────────
+
+SEMVER="${NEW_TAG#v}"
+PLUGIN_JSON="claude-plugin/.claude-plugin/plugin.json"
+MARKETPLACE_JSON=".claude-plugin/marketplace.json"
+
+for f in "$PLUGIN_JSON" "$MARKETPLACE_JSON"; do
+	if [[ -f "$f" ]]; then
+		sed -i.bak 's/"version": "[^"]*"/"version": "'"${SEMVER}"'"/' "$f" && rm -f "${f}.bak"
+		echo "Updated plugin version in ${f} → ${SEMVER}"
+	fi
+done
 
 # ── dry-run exits here ────────────────────────────────────────────────────────
 
 if [[ "${DRY_RUN:-0}" == "1" ]]; then
-  echo "[DRY_RUN] Would commit, tag ${NEW_TAG}, and push."
-  exit 0
+	echo "[DRY_RUN] Would commit, tag ${NEW_TAG}, and push."
+	exit 0
 fi
 
 # ── commit, tag, push ─────────────────────────────────────────────────────────
 
 git add "$CHANGELOG" .release-notes.md
+[[ -f "$PLUGIN_JSON" ]] && git add "$PLUGIN_JSON"
+[[ -f "$MARKETPLACE_JSON" ]] && git add "$MARKETPLACE_JSON"
 git commit -m "chore(release): ${NEW_TAG} changelog"
 git tag "$NEW_TAG"
 

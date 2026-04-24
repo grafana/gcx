@@ -8,6 +8,8 @@ Unset a single value in a configuration file.
 
 PROPERTY_NAME is a dot-delimited reference to the value to unset. It can either represent a field or a map entry.
 
+A bare path (e.g. "cloud.token") is resolved against the current context and is equivalent to "contexts.<current-context>.<path>". Use a fully qualified path (starting with "contexts.<name>.") to target a specific context.
+
 ```
 gcx config unset PROPERTY_NAME [flags]
 ```
@@ -18,6 +20,9 @@ gcx config unset PROPERTY_NAME [flags]
 
 	# Unset the "foo" context
 	gcx config unset contexts.foo
+
+	# Unset the "insecure-skip-tls-verify" flag in the current context
+	gcx config unset grafana.insecure-skip-tls-verify
 
 	# Unset the "insecure-skip-tls-verify" flag in the "dev-instance" context
 	gcx config unset contexts.dev-instance.grafana.insecure-skip-tls-verify

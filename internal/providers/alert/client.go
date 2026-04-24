@@ -17,7 +17,7 @@ import (
 // ErrNotFound is returned when a requested alert rule or group does not exist.
 var ErrNotFound = errors.New("alert rule not found")
 
-const basePath = "/api/prometheus/grafana/api/v1/rules"
+const defaultBasePath = "/api/prometheus/grafana/api/v1/rules"
 
 // Client fetches alert rules and groups from the Prometheus-compatible API.
 type Client struct {
@@ -41,6 +41,7 @@ type ListOptions struct {
 	FolderUID  string
 	State      string
 	GroupLimit int
+	Datasource string
 }
 
 // List returns rules matching the given options.
@@ -62,7 +63,10 @@ func (c *Client) List(ctx context.Context, opts ListOptions) (*RulesResponse, er
 		params.Set("group_limit", strconv.Itoa(opts.GroupLimit))
 	}
 
-	path := basePath
+	path := defaultBasePath
+	if opts.Datasource != "" {
+		path = "/api/prometheus/" + url.PathEscape(opts.Datasource) + "/api/v1/rules"
+	}
 	if len(params) > 0 {
 		path += "?" + params.Encode()
 	}

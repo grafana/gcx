@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/providers/irm"
 	"github.com/grafana/gcx/internal/providers/irm/oncalltypes"
@@ -228,6 +229,55 @@ func TestListAlertGroups_StopsEarlyWithLimit(t *testing.T) {
 	}
 	if pageHits > 1 {
 		t.Errorf("expected only 1 page fetch with limit=1, but fetched %d pages", pageHits)
+	}
+}
+
+func TestListAlertGroups_WithStartedAfter(t *testing.T) {
+	t.Parallel()
+
+	var gotStartedAt string
+	client := newTestOnCallClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotStartedAt = r.URL.Query().Get("started_at")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck
+			"results": []map[string]any{
+				{"pk": "ag1", "started_at": "2025-01-15T10:00:00Z"},
+			},
+		})
+	}))
+
+	cutoff := time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)
+	items, err := client.ListAlertGroups(context.Background(), oncalltypes.WithStartedAfter(cutoff))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(items))
+	}
+
+	if !strings.HasPrefix(gotStartedAt, "2025-01-15T00:00:00_") {
+		t.Errorf("started_at = %q, want prefix %q", gotStartedAt, "2025-01-15T00:00:00_")
+	}
+}
+
+func TestListAlertGroups_NoStartedAfterByDefault(t *testing.T) {
+	t.Parallel()
+
+	var gotRawQuery string
+	client := newTestOnCallClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotRawQuery = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck
+			"results": []map[string]any{{"pk": "ag1"}},
+		})
+	}))
+
+	_, err := client.ListAlertGroups(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotRawQuery != "" {
+		t.Errorf("expected no query params, got %q", gotRawQuery)
 	}
 }
 

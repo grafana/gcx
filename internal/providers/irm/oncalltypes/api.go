@@ -1,18 +1,27 @@
 package oncalltypes
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // ListOption configures list behaviour (e.g. early termination).
 type ListOption func(*ListConfig)
 
 // ListConfig holds resolved list options.
 type ListConfig struct {
-	Limit int
+	Limit        int
+	StartedAfter *time.Time
 }
 
 // WithLimit stops collecting after n items (0 = no limit).
 func WithLimit(n int) ListOption {
 	return func(c *ListConfig) { c.Limit = n }
+}
+
+// WithStartedAfter restricts results to items started at or after t.
+func WithStartedAfter(t time.Time) ListOption {
+	return func(c *ListConfig) { c.StartedAfter = &t }
 }
 
 // ApplyListOpts resolves a slice of ListOption into a ListConfig.

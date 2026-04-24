@@ -10,13 +10,13 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/grafana/gcx/cmd/gcx/api"
 	assistantcmd "github.com/grafana/gcx/cmd/gcx/assistant"
-	authcmd "github.com/grafana/gcx/cmd/gcx/auth"
 	"github.com/grafana/gcx/cmd/gcx/commands"
 	"github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/cmd/gcx/dashboards"
 	"github.com/grafana/gcx/cmd/gcx/datasources"
 	"github.com/grafana/gcx/cmd/gcx/dev"
 	"github.com/grafana/gcx/cmd/gcx/helptree"
+	logincmd "github.com/grafana/gcx/cmd/gcx/login"
 	cmdproviders "github.com/grafana/gcx/cmd/gcx/providers"
 	"github.com/grafana/gcx/cmd/gcx/resources"
 	"github.com/grafana/gcx/cmd/gcx/setup"
@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/providers"
+	_ "github.com/grafana/gcx/internal/providers/aio11y"   // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/alert"    // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/appo11y"  // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/faro"     // Provider registrations — blank imports trigger init() self-registration.
@@ -37,7 +38,6 @@ import (
 	_ "github.com/grafana/gcx/internal/providers/logs"     // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/metrics"  // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/profiles" // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/sigil"    // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/slo"      // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/synth"    // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/traces"   // Provider registrations — blank imports trigger init() self-registration.
@@ -161,7 +161,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 
 	rootCmd.AddCommand(api.Command())
 	rootCmd.AddCommand(assistantcmd.Command())
-	rootCmd.AddCommand(authcmd.Command())
+	rootCmd.AddCommand(logincmd.Command())
 	rootCmd.AddCommand(config.Command())
 	rootCmd.AddCommand(dashboards.Command())
 	rootCmd.AddCommand(dev.Command())

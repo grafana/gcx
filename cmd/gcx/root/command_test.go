@@ -98,16 +98,16 @@ func TestNewCommand_DefaultHelpAndCompletionRegistered(t *testing.T) {
 func TestValidateArgs_GroupCommandRejectsUnexpectedArgs(t *testing.T) {
 	agentsCmd := &cobra.Command{Use: "agents", Short: "Query agents.", RunE: func(_ *cobra.Command, _ []string) error { return nil }}
 	conversationsCmd := &cobra.Command{Use: "conversations", Short: "Query conversations.", RunE: func(_ *cobra.Command, _ []string) error { return nil }}
-	sigilCmd := &cobra.Command{Use: "sigil", Short: "Manage Sigil."}
-	sigilCmd.AddCommand(agentsCmd, conversationsCmd)
+	aio11yCmd := &cobra.Command{Use: "aio11y", Short: "Manage AI Observability."}
+	aio11yCmd.AddCommand(agentsCmd, conversationsCmd)
 
 	rootCmd := root.NewCommandForTest("v0.0.0-test", []providers.Provider{
-		&mockProvider{name: "sigil", commands: []*cobra.Command{sigilCmd}},
+		&mockProvider{name: "aio11y", commands: []*cobra.Command{aio11yCmd}},
 	})
 
-	err := root.ValidateArgs(rootCmd, []string{"sigil", "--context", "dev", "show"})
+	err := root.ValidateArgs(rootCmd, []string{"aio11y", "--context", "dev", "show"})
 	require.Error(t, err)
-	require.ErrorContains(t, err, `unknown command "show" for "gcx sigil"`)
+	require.ErrorContains(t, err, `unknown command "show" for "gcx aio11y"`)
 	require.ErrorContains(t, err, "Usage:")
 	require.ErrorContains(t, err, "Available Commands:")
 	require.ErrorContains(t, err, "agents")
@@ -116,16 +116,16 @@ func TestValidateArgs_GroupCommandRejectsUnexpectedArgs(t *testing.T) {
 
 func TestValidateArgs_GroupCommandRejectsUnexpectedArgsWithLeadingRootFlags(t *testing.T) {
 	agentsCmd := &cobra.Command{Use: "agents", Short: "Query agents.", RunE: func(_ *cobra.Command, _ []string) error { return nil }}
-	sigilCmd := &cobra.Command{Use: "sigil", Short: "Manage Sigil."}
-	sigilCmd.AddCommand(agentsCmd)
+	aio11yCmd := &cobra.Command{Use: "aio11y", Short: "Manage AI Observability."}
+	aio11yCmd.AddCommand(agentsCmd)
 
 	rootCmd := root.NewCommandForTest("v0.0.0-test", []providers.Provider{
-		&mockProvider{name: "sigil", commands: []*cobra.Command{sigilCmd}},
+		&mockProvider{name: "aio11y", commands: []*cobra.Command{aio11yCmd}},
 	})
 
-	err := root.ValidateArgs(rootCmd, []string{"--agent", "--context", "dev", "sigil", "show"})
+	err := root.ValidateArgs(rootCmd, []string{"--agent", "--context", "dev", "aio11y", "show"})
 	require.Error(t, err)
-	require.ErrorContains(t, err, `unknown command "show" for "gcx sigil"`)
+	require.ErrorContains(t, err, `unknown command "show" for "gcx aio11y"`)
 	require.ErrorContains(t, err, "Usage:")
 	require.ErrorContains(t, err, "Available Commands:")
 	require.ErrorContains(t, err, "agents")
@@ -138,16 +138,16 @@ func TestValidateArgs_NestedGroupRejectsUnexpectedArgs(t *testing.T) {
 	agentsCmd.PersistentFlags().Int("limit", 0, "Limit")
 	agentsCmd.AddCommand(showCmd, versionsCmd)
 
-	sigilCmd := &cobra.Command{Use: "sigil", Short: "Manage Sigil."}
-	sigilCmd.AddCommand(agentsCmd)
+	aio11yCmd := &cobra.Command{Use: "aio11y", Short: "Manage AI Observability."}
+	aio11yCmd.AddCommand(agentsCmd)
 
 	rootCmd := root.NewCommandForTest("v0.0.0-test", []providers.Provider{
-		&mockProvider{name: "sigil", commands: []*cobra.Command{sigilCmd}},
+		&mockProvider{name: "aio11y", commands: []*cobra.Command{aio11yCmd}},
 	})
 
-	err := root.ValidateArgs(rootCmd, []string{"sigil", "agents", "--limit", "10", "foo"})
+	err := root.ValidateArgs(rootCmd, []string{"aio11y", "agents", "--limit", "10", "foo"})
 	require.Error(t, err)
-	require.ErrorContains(t, err, `unknown command "foo" for "gcx sigil agents"`)
+	require.ErrorContains(t, err, `unknown command "foo" for "gcx aio11y agents"`)
 	require.ErrorContains(t, err, "Usage:")
 	require.ErrorContains(t, err, "Available Commands:")
 	require.ErrorContains(t, err, "show")
@@ -158,13 +158,13 @@ func TestValidateArgs_AllowsHelpAndCompletionCommands(t *testing.T) {
 	rootCmd := root.NewCommandForTest("v0.0.0-test", nil)
 
 	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"help"}))
-	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"help", "sigil"}))
+	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"help", "aio11y"}))
 	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"completion", "bash"}))
 
 	// Cobra's hidden shell helpers are registered lazily inside ExecuteC, so
 	// ValidateArgs must let them through to Cobra's normal dispatch.
 	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"__complete", ""}))
-	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"__complete", "sigil", ""}))
+	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"__complete", "aio11y", ""}))
 	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"__completeNoDesc", ""}))
 	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"--agent", "__complete", ""}))
 }
