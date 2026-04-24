@@ -820,16 +820,17 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 
 	// Adaptive Metrics scope errors.
 	if strings.Contains(msg, "metrics:") && strings.Contains(msg, "invalid scope") {
-		if scope := adaptiveMetricsScopeFromError(msg); scope != "" {
-			return &DetailedError{
-				Parent:  err,
-				Summary: "Adaptive Metrics: permission denied",
-				Suggestions: []string{
-					fmt.Sprintf("Ensure your access policy includes the %s scope", scope),
-				},
-				ExitCode: new(ExitAuthFailure),
-			}, true
+		scope := adaptiveMetricsScopeFromError(msg)
+		suggestion := fmt.Sprintf("Ensure your access policy includes the %s scope", scope)
+		if scope == "" {
+			suggestion = "Adaptive Metrics commands require an adaptive-metrics-* scope (the specific scope depends on the subcommand)"
 		}
+		return &DetailedError{
+			Parent:  err,
+			Summary: "Adaptive Metrics: permission denied",
+			Suggestions: []string{suggestion},
+			ExitCode: new(ExitAuthFailure),
+		}, true
 	}
 
 	// Fleet management not available.
