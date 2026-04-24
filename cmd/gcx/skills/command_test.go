@@ -188,6 +188,87 @@ func TestInstallCommand_NoArgsNoAllReturnsError(t *testing.T) {
 	require.ErrorContains(t, err, "provide at least one skill name or use --all")
 }
 
+func TestInstalledBundledSkillNames_ReturnsOnlyInstalledBundled(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Join(t.TempDir(), ".agents")
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "skills", "alpha"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "skills", "external"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "skills", "alpha", "SKILL.md"), []byte("alpha-skill"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "skills", "external", "SKILL.md"), []byte("external-skill"), 0o600))
+
+	names, err := installedBundledSkillNames(testSkillsFS(), root)
+	require.NoError(t, err)
+	require.Equal(t, []string{"alpha"}, names)
+}
+
+func TestUpdateCommand_UpdatesOnlyInstalledSkills(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	agent.ResetForTesting()
+	root := filepath.Join(t.TempDir(), ".agents")
+
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "skills", "alpha"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "skills", "alpha", "SKILL.md"), []byte("local-change"), 0o600))
+
+	cmd := newUpdateCommand(testSkillsFS())
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+	cmd.SetArgs([]string{"--dir", root})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+	require.Contains(t, stdout.String(), "Updated 1 skill(s)")
+
+	data, err := os.ReadFile(filepath.Join(root, "skills", "alpha", "SKILL.md"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("alpha-skill"), data)
+
+	_, err = os.Stat(filepath.Join(root, "skills", "beta"))
+	require.True(t, os.IsNotExist(err))
+}
+
+func TestUpdateCommand_NoInstalledSkillsNoOp(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	agent.ResetForTesting()
+	root := filepath.Join(t.TempDir(), ".agents")
+
+	cmd := newUpdateCommand(testSkillsFS())
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+	cmd.SetArgs([]string{"--dir", root})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+	require.Contains(t, stdout.String(), "Updated 0 skill(s)")
+
+	_, err = os.Stat(filepath.Join(root, "skills"))
+	require.True(t, os.IsNotExist(err))
+}
+
+func TestUpdateCommand_ExplicitSkillMustAlreadyBeInstalled(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	agent.ResetForTesting()
+	root := filepath.Join(t.TempDir(), ".agents")
+
+	cmd := newUpdateCommand(testSkillsFS())
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+	cmd.SetArgs([]string{"--dir", root, "alpha"})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	require.ErrorContains(t, err, `skill "alpha" is not installed`)
+
+	_, err = os.Stat(filepath.Join(root, "skills", "alpha", "SKILL.md"))
+	require.True(t, os.IsNotExist(err))
+}
+
 func TestListBundledSkills_ReturnsSourceSkills(t *testing.T) {
 	t.Parallel()
 

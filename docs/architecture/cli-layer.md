@@ -112,11 +112,17 @@ gcx (root)
 │           └── --dry-run    Preview changes without applying
 │
 ├── skills                   [cmd/gcx/skills/command.go]
-│   └── install             Install the canonical portable gcx Agent Skills bundle into a .agents root
-│       ├── --dir           .agents root directory (default: ~/.agents)
-│       ├── --force         Overwrite existing differing files
-│       ├── --dry-run       Preview installation without writing files
-│       └── --output / -o   text|json|yaml
+│   ├── install             Install the canonical portable gcx Agent Skills bundle into a .agents root
+│   │   ├── --dir           .agents root directory (default: ~/.agents)
+│   │   ├── --force         Overwrite existing differing files
+│   │   ├── --dry-run       Preview installation without writing files
+│   │   └── --output / -o   text|json|yaml
+│   ├── update              Update installed bundled gcx skills in a .agents root
+│   │   ├── --dir           .agents root directory (default: ~/.agents)
+│   │   ├── --dry-run       Preview updates without writing files
+│   │   └── --output / -o   text|json|yaml
+│   ├── list                List bundled gcx skills and install status
+│   └── uninstall           Remove gcx-managed skills from a .agents root
 │
 └── dev                      [cmd/gcx/dev/command.go]
     ├── generate [FILE_PATH]... Generate typed Go stubs for new resources

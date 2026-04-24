@@ -93,6 +93,7 @@ var commandAnnotations = map[string]annotation{
 	// skills
 	"gcx skills install":   {Cost: "small"},
 	"gcx skills list":      {Cost: "small"},
+	"gcx skills update":    {Cost: "small"},
 	"gcx skills uninstall": {Cost: "small"},
 
 	// -----------------------------------------------------------------------
