@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"crypto/tls"
 	"os"
 	"path/filepath"
 	"testing"
@@ -157,4 +158,32 @@ func TestTLS_ToStdTLSConfig_WithCertData(t *testing.T) {
 	tlsCfg, err := cfg.ToStdTLSConfig()
 	require.NoError(t, err)
 	require.Len(t, tlsCfg.Certificates, 1)
+}
+
+func TestTLS_ToStdTLSConfig_HalfConfiguredCertData(t *testing.T) {
+	cfg := &config.TLS{
+		CertData: []byte(testCertPEM),
+	}
+
+	_, err := cfg.ToStdTLSConfig()
+	require.Error(t, err)
+	require.ErrorContains(t, err, "both cert-data and key-data must be provided together")
+}
+
+func TestTLS_ToStdTLSConfig_PinsMinVersionTLS12(t *testing.T) {
+	cfg := &config.TLS{}
+
+	tlsCfg, err := cfg.ToStdTLSConfig()
+	require.NoError(t, err)
+	require.Equal(t, uint16(tls.VersionTLS12), tlsCfg.MinVersion)
+}
+
+func TestTLS_ToStdTLSConfig_CADataAddsToSystemRoots(t *testing.T) {
+	cfg := &config.TLS{
+		CAData: []byte(testCAPEM),
+	}
+
+	tlsCfg, err := cfg.ToStdTLSConfig()
+	require.NoError(t, err)
+	require.NotNil(t, tlsCfg.RootCAs)
 }

@@ -505,6 +505,7 @@ func (cfg *TLS) ToStdTLSConfig() (*tls.Config, error) {
 	tlsCfg := &tls.Config{
 		//nolint:gosec
 		InsecureSkipVerify: cfg.Insecure,
+		MinVersion:         tls.VersionTLS12,
 		ServerName:         cfg.ServerName,
 		NextProtos:         cfg.NextProtos,
 	}
@@ -525,7 +526,7 @@ func (cfg *TLS) ToStdTLSConfig() (*tls.Config, error) {
 	if len(cfg.CAData) > 0 {
 		pool, err := x509.SystemCertPool()
 		if err != nil {
-			pool = x509.NewCertPool()
+			return nil, fmt.Errorf("loading system certificate pool: %w", err)
 		}
 		if !pool.AppendCertsFromPEM(cfg.CAData) {
 			return nil, errors.New("failed to parse TLS CA certificate data")
