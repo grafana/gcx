@@ -53,7 +53,7 @@ func (opts *pyroscopeExemplarsOpts) setup(flags *pflag.FlagSet, tableCodec forma
 	flags.IntVar(&opts.MaxLabelColumns, "max-label-columns", 3, "Max label columns in table output (0 hides label columns)")
 }
 
-func (opts *pyroscopeExemplarsOpts) validate() error {
+func (opts *pyroscopeExemplarsOpts) Validate() error {
 	if err := opts.IO.Validate(); err != nil {
 		return err
 	}
@@ -125,7 +125,7 @@ EXPR is the label selector (e.g. '{service_name="frontend"}').`,
   gcx datasources pyroscope exemplars profile '{}' --since 30m -o json`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 			expr, err := opts.resolveExpr(args)
@@ -148,6 +148,14 @@ EXPR is the label selector (e.g. '{service_name="frontend"}').`,
 			}
 			datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "pyroscope")
 			if err != nil {
+				return err
+			}
+
+			dsType, err := dsquery.GetDatasourceType(ctx, cfg, datasourceUID)
+			if err != nil {
+				return err
+			}
+			if err := dsquery.ValidateDatasourceType(dsType, "pyroscope"); err != nil {
 				return err
 			}
 
@@ -209,7 +217,7 @@ EXPR is the label selector (e.g. '{service_name="frontend"}').`,
   gcx datasources pyroscope exemplars span '{}' --since 30m --max-label-columns 5 -o json`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 			expr, err := opts.resolveExpr(args)
@@ -232,6 +240,14 @@ EXPR is the label selector (e.g. '{service_name="frontend"}').`,
 			}
 			datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "pyroscope")
 			if err != nil {
+				return err
+			}
+
+			dsType, err := dsquery.GetDatasourceType(ctx, cfg, datasourceUID)
+			if err != nil {
+				return err
+			}
+			if err := dsquery.ValidateDatasourceType(dsType, "pyroscope"); err != nil {
 				return err
 			}
 
