@@ -70,7 +70,11 @@ func (s *Server) Start(ctx context.Context) error {
 
 	var tlsCfg *tls.Config
 	if s.context.Grafana != nil && s.context.Grafana.TLS != nil {
-		tlsCfg = s.context.Grafana.TLS.ToStdTLSConfig()
+		var err error
+		tlsCfg, err = s.context.Grafana.TLS.ToStdTLSConfig()
+		if err != nil {
+			return fmt.Errorf("TLS configuration: %w", err)
+		}
 	}
 	s.proxy = &httputil.ReverseProxy{
 		Transport: httputils.NewTransport(tlsCfg),

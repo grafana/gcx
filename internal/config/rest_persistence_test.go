@@ -157,7 +157,7 @@ contexts:
       oauth-token: gat_local
 `)
 
-	restCfg := config.NewNamespacedRESTConfig(t.Context(), config.Context{
+	restCfg, _ := config.NewNamespacedRESTConfig(t.Context(), config.Context{
 		Grafana: &config.GrafanaConfig{
 			Server:                srv.URL,
 			ProxyEndpoint:         srv.URL,
@@ -234,7 +234,7 @@ current-context: default
 `)
 
 	ctx, cancel := context.WithCancel(t.Context())
-	restCfg := config.NewNamespacedRESTConfig(ctx, config.Context{
+	restCfg, _ := config.NewNamespacedRESTConfig(ctx, config.Context{
 		Grafana: &config.GrafanaConfig{
 			Server:                "https://example.invalid",
 			ProxyEndpoint:         "https://example.invalid",
@@ -316,7 +316,7 @@ current-context: default
 	newTransport := func() *http.Client {
 		cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(file))
 		require.NoError(t, err)
-		rc := config.NewNamespacedRESTConfig(t.Context(), *cfg.Contexts["default"])
+		rc, _ := config.NewNamespacedRESTConfig(t.Context(), *cfg.Contexts["default"])
 		rc.WireTokenPersistence(
 			t.Context(),
 			config.ExplicitConfigFile(file),
@@ -405,7 +405,7 @@ current-context: default
 	runInvocation := func() {
 		cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(file))
 		require.NoError(t, err)
-		rc := config.NewNamespacedRESTConfig(t.Context(), *cfg.Contexts["default"])
+		rc, _ := config.NewNamespacedRESTConfig(t.Context(), *cfg.Contexts["default"])
 		rc.WireTokenPersistence(
 			t.Context(),
 			config.ExplicitConfigFile(file),

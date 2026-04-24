@@ -242,7 +242,10 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 		Grafana: grafanaCfg,
 		Cloud:   cloudCfg,
 	}
-	restCfg := config.NewNamespacedRESTConfig(ctx, tempCtx)
+	restCfg, err := config.NewNamespacedRESTConfig(ctx, tempCtx)
+	if err != nil {
+		return Result{}, fmt.Errorf("TLS configuration: %w", err)
+	}
 
 	var grafanaVersion string
 	if !opts.ForceSave {
