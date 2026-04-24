@@ -198,7 +198,10 @@ func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.Namespaced
 		return config.NamespacedRESTConfig{}, err
 	}
 
-	restCfg := loaded.GetCurrentContext().ToRESTConfig(ctx)
+	restCfg, err := loaded.GetCurrentContext().ToRESTConfig(ctx)
+	if err != nil {
+		return config.NamespacedRESTConfig{}, err
+	}
 	restCfg.WireTokenPersistence(ctx, l.configSource(), loaded.CurrentContext, loaded.Sources)
 
 	return restCfg, nil
@@ -248,7 +251,10 @@ func (l *ConfigLoader) LoadCloudConfig(ctx context.Context) (CloudRESTConfig, er
 	namespace := "default"
 	var restCfg *rest.Config
 	if curCtx.Grafana != nil && !curCtx.Grafana.IsEmpty() {
-		nrc := curCtx.ToRESTConfig(ctx)
+		nrc, err := curCtx.ToRESTConfig(ctx)
+		if err != nil {
+			return CloudRESTConfig{}, err
+		}
 		nrc.WireTokenPersistence(ctx, l.configSource(), loaded.CurrentContext, loaded.Sources)
 
 		namespace = nrc.Namespace
@@ -294,7 +300,10 @@ func (l *ConfigLoader) LoadProviderConfig(ctx context.Context, providerName stri
 	// Derive namespace from grafana config if available.
 	namespace := "default"
 	if curCtx.Grafana != nil && !curCtx.Grafana.IsEmpty() {
-		restCfg := curCtx.ToRESTConfig(ctx)
+		restCfg, err := curCtx.ToRESTConfig(ctx)
+		if err != nil {
+			return nil, "", err
+		}
 		namespace = restCfg.Namespace
 	}
 

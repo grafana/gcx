@@ -289,7 +289,7 @@ func TestDiscoverSMURL_OAuthProxyMode(t *testing.T) {
 			OAuthToken:    "gat_test",
 		},
 	}
-	restCfg := config.NewNamespacedRESTConfig(context.Background(), ctx)
+	restCfg, _ := config.NewNamespacedRESTConfig(context.Background(), ctx)
 	require.True(t, restCfg.IsOAuthProxy(), "config should be in OAuth proxy mode")
 
 	got, err := discoverSMURL(context.Background(), restCfg)

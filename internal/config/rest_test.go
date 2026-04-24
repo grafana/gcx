@@ -30,7 +30,7 @@ func TestNewNamespacedRESTConfig_UsesBootdataStack(t *testing.T) {
 		},
 	}
 
-	restCfg := config.NewNamespacedRESTConfig(t.Context(), ctx)
+	restCfg, _ := config.NewNamespacedRESTConfig(t.Context(), ctx)
 
 	if got, want := restCfg.Namespace, authlib.CloudNamespaceFormatter(98765); got != want {
 		t.Fatalf("expected namespace %s, got %s", want, got)
@@ -54,7 +54,7 @@ func TestNewNamespacedRESTConfig_FallsBackOnBootdataError(t *testing.T) {
 		},
 	}
 
-	restCfg := config.NewNamespacedRESTConfig(t.Context(), ctx)
+	restCfg, _ := config.NewNamespacedRESTConfig(t.Context(), ctx)
 
 	if got, want := restCfg.Namespace, authlib.CloudNamespaceFormatter(555); got != want {
 		t.Fatalf("expected namespace %s, got %s", want, got)
@@ -78,7 +78,7 @@ func TestNewNamespacedRESTConfig_FallsBackWhenBootdataNotStack(t *testing.T) {
 		},
 	}
 
-	restCfg := config.NewNamespacedRESTConfig(t.Context(), ctx)
+	restCfg, _ := config.NewNamespacedRESTConfig(t.Context(), ctx)
 
 	if got, want := restCfg.Namespace, authlib.CloudNamespaceFormatter(42); got != want {
 		t.Fatalf("expected namespace %s, got %s", want, got)
@@ -98,7 +98,7 @@ func TestNewNamespacedRESTConfig_TrimsTrailingSlash(t *testing.T) {
 		},
 	}
 
-	restCfg := config.NewNamespacedRESTConfig(t.Context(), ctx)
+	restCfg, _ := config.NewNamespacedRESTConfig(t.Context(), ctx)
 
 	if restCfg.Host != bootdataServer.URL {
 		t.Fatalf("expected trailing slash to be trimmed: got %q, want %q", restCfg.Host, bootdataServer.URL)
@@ -115,7 +115,7 @@ func TestNewNamespacedRESTConfig_OAuthProxyTrimsTrailingSlash(t *testing.T) {
 		},
 	}
 
-	restCfg := config.NewNamespacedRESTConfig(t.Context(), ctx)
+	restCfg, _ := config.NewNamespacedRESTConfig(t.Context(), ctx)
 
 	expectedHost := "https://mystack.grafana.net/a/grafana-assistant-app/api/cli/v1/proxy"
 	if restCfg.Host != expectedHost {
@@ -133,7 +133,7 @@ func TestNamespacedRESTConfig_IsOAuthProxy(t *testing.T) {
 				StackID:       123,
 			},
 		}
-		restCfg := config.NewNamespacedRESTConfig(t.Context(), ctx)
+		restCfg, _ := config.NewNamespacedRESTConfig(t.Context(), ctx)
 		if !restCfg.IsOAuthProxy() {
 			t.Fatal("expected IsOAuthProxy() to return true for OAuth config")
 		}
@@ -147,7 +147,7 @@ func TestNamespacedRESTConfig_IsOAuthProxy(t *testing.T) {
 				StackID:  123,
 			},
 		}
-		restCfg := config.NewNamespacedRESTConfig(t.Context(), ctx)
+		restCfg, _ := config.NewNamespacedRESTConfig(t.Context(), ctx)
 		if restCfg.IsOAuthProxy() {
 			t.Fatal("expected IsOAuthProxy() to return false for token auth config")
 		}
@@ -164,7 +164,7 @@ func TestNewNamespacedRESTConfig_OAuthProxySetsHost(t *testing.T) {
 		},
 	}
 
-	restCfg := config.NewNamespacedRESTConfig(t.Context(), ctx)
+	restCfg, _ := config.NewNamespacedRESTConfig(t.Context(), ctx)
 
 	expectedHost := "https://mystack.grafana.net/a/grafana-assistant-app/api/cli/v1/proxy"
 	if restCfg.Host != expectedHost {
@@ -200,7 +200,7 @@ func TestNamespacedRESTConfig_SetOnRefresh(t *testing.T) {
 		},
 	}
 
-	restCfg := config.NewNamespacedRESTConfig(t.Context(), ctx)
+	restCfg, _ := config.NewNamespacedRESTConfig(t.Context(), ctx)
 
 	var callbackCalled bool
 	restCfg.SetOnRefresh(func(token, refreshToken, expiresAt, refreshExpiresAt string) error {

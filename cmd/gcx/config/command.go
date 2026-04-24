@@ -56,9 +56,18 @@ func (opts *Options) LoadConfigTolerant(ctx context.Context, extraOverrides ...c
 			if curCtx.Grafana == nil {
 				curCtx.Grafana = &config.GrafanaConfig{}
 			}
+			if curCtx.Grafana.TLS == nil {
+				curCtx.Grafana.TLS = &config.TLS{}
+			}
 
 			if err := env.Parse(curCtx); err != nil {
 				return err
+			}
+
+			// If TLS was only initialized for env parsing and no fields were set,
+			// nil it back out so IsEmpty() and other checks work correctly.
+			if curCtx.Grafana.TLS.IsEmpty() {
+				curCtx.Grafana.TLS = nil
 			}
 
 			// Resolve GRAFANA_PROVIDER_{NAME}_{KEY} environment variables
@@ -137,7 +146,10 @@ func (opts *Options) LoadGrafanaConfig(ctx context.Context) (config.NamespacedRE
 		return config.NamespacedRESTConfig{}, err
 	}
 
-	restCfg := cfg.GetCurrentContext().ToRESTConfig(ctx)
+	restCfg, err := cfg.GetCurrentContext().ToRESTConfig(ctx)
+	if err != nil {
+		return config.NamespacedRESTConfig{}, err
+	}
 	restCfg.WireTokenPersistence(ctx, opts.ConfigSource(), cfg.CurrentContext, cfg.Sources)
 
 	return restCfg, nil
@@ -422,7 +434,11 @@ func checkContext(cmd *cobra.Command, cfg config.Config, gCtx *config.Context, s
 	}
 	cmdio.Info(stdout, "Context type: %s", contextType)
 
-	restCfg := gCtx.ToRESTConfig(cmd.Context())
+	restCfg, err := gCtx.ToRESTConfig(cmd.Context())
+	if err != nil {
+		cmdio.Error(stdout, "Configuration: %s", cmdio.Red(err.Error()))
+		return nil
+	}
 	restCfg.WireTokenPersistence(cmd.Context(), source, gCtx.Name, cfg.Sources)
 
 	if _, err := discovery.NewDefaultRegistry(cmd.Context(), restCfg); err != nil {

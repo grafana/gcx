@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -192,7 +193,7 @@ func parseRFC3339OrZero(s string) time.Time {
 }
 
 // NewNamespacedRESTConfig creates a new namespaced REST config.
-func NewNamespacedRESTConfig(ctx context.Context, cfg Context) NamespacedRESTConfig {
+func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTConfig, error) {
 	rcfg := rest.Config{
 		UserAgent:       version.UserAgent(),
 		Host:            strings.TrimSuffix(cfg.Grafana.Server, "/"),
@@ -204,6 +205,10 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) NamespacedRESTCon
 	}
 
 	if cfg.Grafana.TLS != nil {
+		// Resolve file paths to data before passing to the k8s REST client.
+		if err := cfg.Grafana.TLS.ResolveFiles(); err != nil {
+			return NamespacedRESTConfig{}, fmt.Errorf("TLS configuration: %w", err)
+		}
 		// Kubernetes really is wonderful, huh.
 		// tl;dr it has its own TLSClientConfig,
 		// and it's not compatible with the one from the "crypto/tls" package.
@@ -286,5 +291,5 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) NamespacedRESTCon
 		Namespace:      namespace,
 		GrafanaURL:     strings.TrimSuffix(cfg.Grafana.Server, "/"),
 		oauthTransport: oauthTransport,
-	}
+	}, nil
 }
