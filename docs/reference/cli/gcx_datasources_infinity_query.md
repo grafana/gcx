@@ -7,6 +7,8 @@ Fetch data from a URL or inline source via the Infinity datasource
 Fetch JSON, CSV, TSV, XML, GraphQL, or HTML data through a Grafana Infinity datasource.
 
 URL is the target endpoint passed as a positional argument.
+When the datasource has a base URL configured, the URL argument is optional — the
+query is sent to the configured base URL.
 Use --inline to provide data directly instead of fetching from a URL.
 Datasource is resolved from -d flag or datasources.infinity in your context.
 
@@ -35,6 +37,9 @@ gcx datasources infinity query [URL] [flags]
 
   # Output as JSON
   gcx datasources infinity query -d UID https://api.example.com/data -o json
+
+  # Query datasource base URL (no URL argument needed)
+  gcx datasources infinity query --type json --root '$.results'
 ```
 
 ### Options

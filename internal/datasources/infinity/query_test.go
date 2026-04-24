@@ -5,6 +5,7 @@ import (
 
 	"github.com/grafana/gcx/internal/datasources/infinity"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseHeaders(t *testing.T) {
@@ -125,7 +126,7 @@ func TestResolveSource(t *testing.T) {
 			if tt.wantErr != "" {
 				assert.EqualError(t, err, tt.wantErr)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.wantSrc, src)
 				assert.Equal(t, tt.wantURL, targetURL)
 			}
