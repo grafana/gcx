@@ -1,6 +1,13 @@
 ---
 name: debug-with-grafana
-description: Structured diagnostic workflow for debugging application issues using Grafana observability data. Use when the user reports errors, latency spikes, service degradation, HTTP 500s, or wants to investigate why a service is behaving unexpectedly. Triggers for: "my API is returning 500 errors", "latency is spiking", "service seems down", "help me debug using Grafana", "investigate why requests are failing", "something is wrong with my service".
+description: >
+  Structured diagnostic workflow for debugging application issues using
+  Grafana observability data. Use when the user reports errors, latency
+  spikes, service degradation, HTTP 500s, or wants to investigate why a
+  service is behaving unexpectedly. Triggers for: "my API is returning 500
+  errors", "latency is spiking", "service seems down", "help me debug
+  using Grafana", "investigate why requests are failing", "something is
+  wrong with my service".
 ---
 
 # Debug with Grafana

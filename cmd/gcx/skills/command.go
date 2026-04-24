@@ -32,6 +32,7 @@ func Command() *cobra.Command {
 	}
 
 	cmd.AddCommand(newInstallCommand(claudeplugin.SkillsFS()))
+	cmd.AddCommand(newUpdateCommand(claudeplugin.SkillsFS()))
 	cmd.AddCommand(newListCommand(claudeplugin.SkillsFS()))
 	cmd.AddCommand(newUninstallCommand(claudeplugin.SkillsFS()))
 
@@ -157,28 +158,28 @@ type installTextCodec struct{}
 
 func (c *installTextCodec) Format() format.Format { return "text" }
 
-func (c *installTextCodec) Encode(dst goio.Writer, value any) error {
-	var result installResult
+func decodeInstallResult(value any, op string) (installResult, error) {
 	switch v := value.(type) {
 	case installResult:
-		result = v
+		return v, nil
 	case *installResult:
 		if v == nil {
-			return errors.New("nil install result")
+			return installResult{}, fmt.Errorf("nil %s result", op)
 		}
-		result = *v
+		return *v, nil
 	default:
-		return fmt.Errorf("install text codec: unsupported value %T", value)
+		return installResult{}, fmt.Errorf("%s text codec: unsupported value %T", op, value)
 	}
+}
 
-	status := "Installed"
+func renderInstallResultText(dst goio.Writer, result installResult, status string, dryRunStatus string, preposition string) error {
 	writtenLabel := "WRITTEN"
 	if result.DryRun {
-		status = "Would install"
+		status = dryRunStatus
 		writtenLabel = "WOULD WRITE"
 	}
 
-	fmt.Fprintf(dst, "%s %d skill(s) to %s\n\n", status, result.SkillCount, result.SkillsDir)
+	fmt.Fprintf(dst, "%s %d skill(s) %s %s\n\n", status, result.SkillCount, preposition, result.SkillsDir)
 
 	t := style.NewTable("FIELD", "VALUE")
 	t.Row("ROOT", result.Root)
@@ -200,8 +201,139 @@ func (c *installTextCodec) Encode(dst goio.Writer, value any) error {
 	return nil
 }
 
+func (c *installTextCodec) Encode(dst goio.Writer, value any) error {
+	result, err := decodeInstallResult(value, "install")
+	if err != nil {
+		return err
+	}
+
+	return renderInstallResultText(dst, result, "Installed", "Would install", "to")
+}
+
 func (c *installTextCodec) Decode(_ goio.Reader, _ any) error {
 	return errors.New("install text codec does not support decoding")
+}
+
+type updateOpts struct {
+	Dir    string
+	DryRun bool
+	Source fs.FS
+	IO     cmdio.Options
+}
+
+func (o *updateOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("text")
+	o.IO.RegisterCustomCodec("text", &updateTextCodec{})
+	o.IO.BindFlags(flags)
+
+	flags.StringVar(&o.Dir, "dir", "~/.agents", "Root directory for the .agents installation")
+	flags.BoolVar(&o.DryRun, "dry-run", false, "Preview the update without writing files")
+}
+
+func (o *updateOpts) Validate() error {
+	if o.Source == nil {
+		return errors.New("skills source is not configured")
+	}
+
+	return o.IO.Validate()
+}
+
+func newUpdateCommand(source fs.FS) *cobra.Command {
+	opts := &updateOpts{Source: source}
+
+	cmd := &cobra.Command{
+		Use:   "update [SKILL]...",
+		Short: "Update installed gcx skills in ~/.agents/skills",
+		Long:  "Update gcx-managed skills in a user-level .agents skills directory. With no skill names, gcx updates only bundled skills that are already installed locally.",
+		Example: `  gcx skills update
+  gcx skills update --dry-run
+  gcx skills update setup-gcx explore-datasources`,
+		Args: cobra.ArbitraryArgs,
+		ValidArgsFunction: func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+			names, err := bundledSkillNames(source)
+			if err != nil {
+				return nil, cobra.ShellCompDirectiveError
+			}
+			return names, cobra.ShellCompDirectiveNoFileComp
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
+			root, err := resolveInstallRoot(opts.Dir)
+			if err != nil {
+				return err
+			}
+
+			installedTargets, err := installedBundledSkillNames(opts.Source, root)
+			if err != nil {
+				return err
+			}
+
+			targets := args
+			if len(targets) == 0 {
+				targets = installedTargets
+			} else {
+				bundledTargets, err := bundledSkillNames(opts.Source)
+				if err != nil {
+					return err
+				}
+
+				installedSet := make(map[string]struct{}, len(installedTargets))
+				for _, name := range installedTargets {
+					installedSet[name] = struct{}{}
+				}
+
+				bundledSet := make(map[string]struct{}, len(bundledTargets))
+				for _, name := range bundledTargets {
+					bundledSet[name] = struct{}{}
+				}
+
+				for _, name := range targets {
+					if _, ok := bundledSet[name]; !ok {
+						return fmt.Errorf("unknown skill %q (use 'gcx skills list' to see available skills)", name)
+					}
+					if _, ok := installedSet[name]; !ok {
+						return fmt.Errorf("skill %q is not installed; use 'gcx skills install %s' to install it first", name, name)
+					}
+				}
+			}
+
+			filter := make(map[string]struct{}, len(targets))
+			for _, name := range targets {
+				filter[name] = struct{}{}
+			}
+
+			result, err := installSkills(opts.Source, root, filter, true, opts.DryRun)
+			if err != nil {
+				return err
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
+		},
+	}
+
+	opts.setup(cmd.Flags())
+
+	return cmd
+}
+
+type updateTextCodec struct{}
+
+func (c *updateTextCodec) Format() format.Format { return "text" }
+
+func (c *updateTextCodec) Encode(dst goio.Writer, value any) error {
+	result, err := decodeInstallResult(value, "update")
+	if err != nil {
+		return err
+	}
+
+	return renderInstallResultText(dst, result, "Updated", "Would update", "in")
+}
+
+func (c *updateTextCodec) Decode(_ goio.Reader, _ any) error {
+	return errors.New("update text codec does not support decoding")
 }
 
 type listOpts struct {
@@ -351,6 +483,24 @@ func isSkillInstalled(skillsDir string, name string) bool {
 	return err == nil && !info.IsDir()
 }
 
+func installedBundledSkillNames(source fs.FS, root string) ([]string, error) {
+	bundled, err := bundledSkillNames(source)
+	if err != nil {
+		return nil, err
+	}
+
+	skillsDir := filepath.Join(root, "skills")
+	installed := make([]string, 0, len(bundled))
+	for _, name := range bundled {
+		if isSkillInstalled(skillsDir, name) {
+			installed = append(installed, name)
+		}
+	}
+
+	sort.Strings(installed)
+	return installed, nil
+}
+
 type skillFrontMatter struct {
 	Description string `yaml:"description"`
 }
@@ -439,10 +589,6 @@ func installSkills(source fs.FS, root string, filter map[string]struct{}, force 
 		SkillsDir: filepath.Join(root, "skills"),
 		DryRun:    dryRun,
 		Force:     force,
-	}
-
-	if err := ensureDirectory(result.SkillsDir, dryRun); err != nil {
-		return installResult{}, err
 	}
 
 	// Validate requested skill names exist in the bundle.

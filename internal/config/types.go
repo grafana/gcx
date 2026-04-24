@@ -3,10 +3,12 @@ package config
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
+	"os"
 	"strings"
 )
 
@@ -112,7 +114,7 @@ func (context *Context) Validate() error {
 }
 
 // ToRESTConfig returns a REST config for the context.
-func (context *Context) ToRESTConfig(ctx context.Context) NamespacedRESTConfig {
+func (context *Context) ToRESTConfig(ctx context.Context) (NamespacedRESTConfig, error) {
 	return NewNamespacedRESTConfig(ctx, *context)
 }
 
@@ -129,44 +131,96 @@ func (context *Context) ResolveStackSlug() string {
 		return ""
 	}
 
-	slug, _ := stackSlugFromServerURL(context.Grafana.Server)
+	slug, _ := StackSlugFromServerURL(context.Grafana.Server)
 	return slug
 }
 
-// stackSlugFromServerURL attempts to extract a Grafana Cloud stack slug from
-// a server URL. It returns the slug and true for *.grafana.net and
-// *.grafana-dev.net URLs, or ("", false) for anything else.
-func stackSlugFromServerURL(serverURL string) (string, bool) {
+// grafanaCloudStackSuffixes lists the Grafana-run stack URL suffixes together
+// with the env tag appended to slugs for non-prod environments. This is the
+// single source of truth for stack-URL suffix classification. It intentionally
+// excludes the .com variants (grafana.com, grafana-dev.com, grafana-ops.com)
+// because those are GCOM root domains, not stack URLs — a host of the form
+// "something.grafana.com" is not a Grafana Cloud stack endpoint.
+//
+//nolint:gochecknoglobals // constant-like lookup table; no mutable state.
+var grafanaCloudStackSuffixes = []struct {
+	suffix string
+	envTag string // appended to the slug for non-prod Grafana-run environments
+}{
+	{".grafana.net", ""},
+	{".grafana-dev.net", "-dev"},
+	{".grafana-ops.net", "-ops"},
+}
+
+// grafanaCloudRootSuffixes are the Grafana-run root domains used by probes
+// (e.g. buildInfo.grafanaUrl pointing at grafana.com). These are NOT stack URL
+// suffixes but do indicate Cloud-hosted infrastructure.
+//
+//nolint:gochecknoglobals // constant-like lookup table; no mutable state.
+var grafanaCloudRootSuffixes = []string{
+	".grafana.com",
+	".grafana-dev.com",
+	".grafana-ops.com",
+}
+
+// IsGrafanaCloudHost reports whether the given host (lowercased, without port)
+// belongs to a Grafana-run Cloud domain. It matches *.grafana.net,
+// *.grafana-dev.net, *.grafana-ops.net (stack URLs) and *.grafana.com,
+// *.grafana-dev.com, *.grafana-ops.com (GCOM root domains used by probes).
+// The caller is responsible for lowercasing the host before calling this function.
+func IsGrafanaCloudHost(host string) bool {
+	for _, entry := range grafanaCloudStackSuffixes {
+		if strings.HasSuffix(host, entry.suffix) {
+			return true
+		}
+	}
+	for _, suffix := range grafanaCloudRootSuffixes {
+		if strings.HasSuffix(host, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+// StackSlugFromServerURL attempts to extract a Grafana Cloud stack slug from
+// a server URL. It returns the slug and true for *.grafana.net,
+// *.grafana-dev.net, and *.grafana-ops.net URLs, or ("", false) for anything else.
+// For non-prod Grafana-run environments, an env suffix is appended to the slug
+// to prevent context-name collisions: "-dev" for *.grafana-dev.net, "-ops" for
+// *.grafana-ops.net. *.grafana.net (prod) is returned unchanged.
+func StackSlugFromServerURL(serverURL string) (string, bool) {
 	parsed, err := url.Parse(serverURL)
 	if err != nil {
 		return "", false
 	}
 
 	host := parsed.Hostname()
-	for _, suffix := range []string{".grafana.net", ".grafana-dev.net"} {
-		if slug, ok := strings.CutSuffix(host, suffix); ok {
-			// For regional subdomains like "mystack.us.grafana.net",
-			// CutSuffix returns "mystack.us". Take only the first component.
-			if i := strings.Index(slug, "."); i >= 0 {
-				slug = slug[:i]
-			}
-			if slug == "" {
-				continue
-			}
-			return slug, true
+	for _, entry := range grafanaCloudStackSuffixes {
+		slug, ok := strings.CutSuffix(host, entry.suffix)
+		if !ok {
+			continue
 		}
+		// For regional subdomains like "mystack.us.grafana.net",
+		// CutSuffix returns "mystack.us". Take only the first component.
+		if i := strings.Index(slug, "."); i >= 0 {
+			slug = slug[:i]
+		}
+		if slug == "" {
+			continue
+		}
+		return slug + entry.envTag, true
 	}
 
 	return "", false
 }
 
 // ContextNameFromServerURL derives a context name from a Grafana server URL.
-// For Grafana Cloud URLs (*.grafana.net, *.grafana-dev.net), it returns the
-// stack slug (e.g. "mystack" from "https://mystack.grafana.net").
-// For other URLs, it returns the hostname.
-// Returns DefaultContextName if the URL cannot be parsed.
+// For Grafana Cloud URLs, it returns the stack slug (with env suffix for
+// -dev/-ops). For other URLs, dots in the hostname are replaced with hyphens
+// to keep the name shell-friendly. Returns DefaultContextName if the URL
+// cannot be parsed.
 func ContextNameFromServerURL(serverURL string) string {
-	if slug, ok := stackSlugFromServerURL(serverURL); ok {
+	if slug, ok := StackSlugFromServerURL(serverURL); ok {
 		return slug
 	}
 
@@ -175,7 +229,7 @@ func ContextNameFromServerURL(serverURL string) string {
 		return DefaultContextName
 	}
 
-	return parsed.Hostname()
+	return strings.ReplaceAll(parsed.Hostname(), ".", "-")
 }
 
 // ResolveGCOMURL returns the Grafana Cloud API (GCOM) base URL for this context.
@@ -215,12 +269,12 @@ type GrafanaConfig struct {
 	APIToken string `datapolicy:"secret" env:"GRAFANA_TOKEN" json:"token,omitempty" yaml:"token,omitempty"`
 
 	// ProxyEndpoint is the assistant backend URL used as a reverse proxy for
-	// OAuth-authenticated requests. Set automatically by `auth login`.
+	// OAuth-authenticated requests. Set automatically by `gcx login`.
 	// This may differ from Server when cloud routing directs CLI traffic through
 	// a separate endpoint (e.g. the assistant app backend).
 	ProxyEndpoint string `env:"GRAFANA_PROXY_ENDPOINT" json:"proxy-endpoint,omitempty" yaml:"proxy-endpoint,omitempty"`
 
-	// OAuthToken is the OAuth access token (gat_) obtained via `auth login`.
+	// OAuthToken is the OAuth access token (gat_) obtained via `gcx login`.
 	OAuthToken string `datapolicy:"secret" json:"oauth-token,omitempty" yaml:"oauth-token,omitempty"`
 
 	// OAuthRefreshToken is the refresh token (gar_) for renewing OAuthToken.
@@ -231,6 +285,10 @@ type GrafanaConfig struct {
 
 	// OAuthRefreshExpiresAt is the OAuthRefreshToken expiration time in RFC3339 format.
 	OAuthRefreshExpiresAt string `json:"oauth-refresh-expires-at,omitempty" yaml:"oauth-refresh-expires-at,omitempty"`
+
+	// AuthMethod is the authentication method stored by gcx login: "oauth", "token", or "basic".
+	// Empty string is valid for legacy configs; readers should call InferredAuthMethod() in that case.
+	AuthMethod string `json:"auth-method,omitempty" yaml:"auth-method,omitempty"`
 
 	// OrgID specifies the organization targeted by this config.
 	// Note: required when targeting an on-prem Grafana instance.
@@ -306,7 +364,7 @@ func (grafana GrafanaConfig) Validate(contextName string) error {
 			Path:    fmt.Sprintf("$.contexts.'%s'.grafana", contextName),
 			Message: "incomplete OAuth config: proxy-endpoint and oauth-token must both be set",
 			Suggestions: []string{
-				"Run `gcx auth login` to complete the OAuth flow",
+				"Run `gcx login` to complete the OAuth flow",
 				"Or remove partial OAuth fields from the config",
 			},
 		}
@@ -323,6 +381,26 @@ func (grafana GrafanaConfig) IsEmpty() bool {
 	return grafana == GrafanaConfig{}
 }
 
+// InferredAuthMethod returns the effective authentication method for this config.
+// When AuthMethod is set, it is returned verbatim. Otherwise, the method is inferred
+// from populated credential fields: OAuthToken => "oauth"; APIToken => "token";
+// User or Password => "basic"; no credentials => "unknown".
+func (grafana GrafanaConfig) InferredAuthMethod() string {
+	if grafana.AuthMethod != "" {
+		return grafana.AuthMethod
+	}
+	if grafana.OAuthToken != "" {
+		return "oauth"
+	}
+	if grafana.APIToken != "" {
+		return "token"
+	}
+	if grafana.User != "" || grafana.Password != "" {
+		return "basic"
+	}
+	return "unknown"
+}
+
 // TLS contains settings to enable transport layer security.
 type TLS struct {
 	// InsecureSkipTLSVerify disables the validation of the server's SSL certificate.
@@ -333,6 +411,15 @@ type TLS struct {
 	// certificates against. If ServerName is empty, the hostname used to contact the
 	// server is used.
 	ServerName string `json:"server-name,omitempty" yaml:"server-name,omitempty"`
+
+	// CertFile is the path to a PEM-encoded client certificate file.
+	// This enables mutual TLS (mTLS) authentication with the server.
+	CertFile string `env:"GRAFANA_TLS_CERT_FILE" json:"cert-file,omitempty" yaml:"cert-file,omitempty"`
+	// KeyFile is the path to a PEM-encoded client certificate key file.
+	KeyFile string `datapolicy:"secret" env:"GRAFANA_TLS_KEY_FILE" json:"key-file,omitempty" yaml:"key-file,omitempty"`
+	// CAFile is the path to a PEM-encoded CA certificate bundle file.
+	// When set, this CA is used to verify the server's certificate.
+	CAFile string `env:"GRAFANA_TLS_CA_FILE" json:"ca-file,omitempty" yaml:"ca-file,omitempty"`
 
 	// CertData holds PEM-encoded bytes (typically read from a client certificate file).
 	// Note: this value is base64-encoded in the config file and will be
@@ -354,14 +441,100 @@ type TLS struct {
 	NextProtos []string `json:"next-protos,omitempty" yaml:"next-protos,omitempty"`
 }
 
-func (cfg *TLS) ToStdTLSConfig() *tls.Config {
-	// TODO: CertData, KeyData, CAData
-	return &tls.Config{
+// IsEmpty reports whether all TLS fields are at their zero values.
+func (cfg *TLS) IsEmpty() bool {
+	return !cfg.Insecure && cfg.ServerName == "" &&
+		cfg.CertFile == "" && cfg.KeyFile == "" && cfg.CAFile == "" &&
+		len(cfg.CertData) == 0 && len(cfg.KeyData) == 0 && len(cfg.CAData) == 0 &&
+		len(cfg.NextProtos) == 0
+}
+
+func tlsFileError(description, path string, err error) error {
+	if os.IsNotExist(err) {
+		return ValidationError{
+			Path:    path,
+			Message: fmt.Sprintf("TLS %s file not found", description),
+			Suggestions: []string{
+				"Your client certificates may have expired — renew them and try again",
+				"Verify the file path in your gcx config or GRAFANA_TLS_CERT_FILE / GRAFANA_TLS_KEY_FILE env vars",
+			},
+		}
+	}
+	return fmt.Errorf("reading TLS %s: %w", description, err)
+}
+
+// ResolveFiles reads CertFile, KeyFile, and CAFile from disk and populates
+// the corresponding CertData, KeyData, and CAData fields. File-based fields
+// take precedence: if both CertFile and CertData are set, CertFile wins.
+func (cfg *TLS) ResolveFiles() error {
+	if (cfg.CertFile != "") != (cfg.KeyFile != "") {
+		return errors.New("both cert-file and key-file must be provided together")
+	}
+	if cfg.CertFile != "" {
+		data, err := os.ReadFile(cfg.CertFile)
+		if err != nil {
+			return tlsFileError("client certificate", cfg.CertFile, err)
+		}
+		cfg.CertData = data
+	}
+	if cfg.KeyFile != "" {
+		data, err := os.ReadFile(cfg.KeyFile)
+		if err != nil {
+			return tlsFileError("client key", cfg.KeyFile, err)
+		}
+		cfg.KeyData = data
+	}
+	if cfg.CAFile != "" {
+		data, err := os.ReadFile(cfg.CAFile)
+		if err != nil {
+			return tlsFileError("CA certificate", cfg.CAFile, err)
+		}
+		cfg.CAData = data
+	}
+	return nil
+}
+
+// ToStdTLSConfig converts the TLS configuration into a standard crypto/tls
+// Config. It loads client certificates from CertData/KeyData and adds custom
+// CA certificates from CAData to the root CA pool.
+func (cfg *TLS) ToStdTLSConfig() (*tls.Config, error) {
+	if err := cfg.ResolveFiles(); err != nil {
+		return nil, err
+	}
+
+	tlsCfg := &tls.Config{
 		//nolint:gosec
 		InsecureSkipVerify: cfg.Insecure,
+		MinVersion:         tls.VersionTLS12,
 		ServerName:         cfg.ServerName,
 		NextProtos:         cfg.NextProtos,
 	}
+
+	hasCert := len(cfg.CertData) > 0
+	hasKey := len(cfg.KeyData) > 0
+	if hasCert != hasKey {
+		return nil, errors.New("both cert-data and key-data must be provided together")
+	}
+	if hasCert && hasKey {
+		cert, err := tls.X509KeyPair(cfg.CertData, cfg.KeyData)
+		if err != nil {
+			return nil, fmt.Errorf("loading TLS client certificate keypair: %w", err)
+		}
+		tlsCfg.Certificates = []tls.Certificate{cert}
+	}
+
+	if len(cfg.CAData) > 0 {
+		pool, err := x509.SystemCertPool()
+		if err != nil {
+			return nil, fmt.Errorf("loading system certificate pool: %w", err)
+		}
+		if !pool.AppendCertsFromPEM(cfg.CAData) {
+			return nil, errors.New("failed to parse TLS CA certificate data")
+		}
+		tlsCfg.RootCAs = pool
+	}
+
+	return tlsCfg, nil
 }
 
 // Minify returns a trimmed down version of the given configuration containing

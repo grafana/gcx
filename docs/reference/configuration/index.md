@@ -22,11 +22,11 @@ contexts:
       # Optional.
       token: string
       # ProxyEndpoint is the assistant backend URL used as a reverse proxy for
-      # OAuth-authenticated requests. Set automatically by `auth login`.
+      # OAuth-authenticated requests. Set automatically by `gcx login`.
       # This may differ from Server when cloud routing directs CLI traffic through
       # a separate endpoint (e.g. the assistant app backend).
       proxy-endpoint: string
-      # OAuthToken is the OAuth access token (gat_) obtained via `auth login`.
+      # OAuthToken is the OAuth access token (gat_) obtained via `gcx login`.
       oauth-token: string
       # OAuthRefreshToken is the refresh token (gar_) for renewing OAuthToken.
       oauth-refresh-token: string
@@ -34,6 +34,9 @@ contexts:
       oauth-token-expires-at: string
       # OAuthRefreshExpiresAt is the OAuthRefreshToken expiration time in RFC3339 format.
       oauth-refresh-expires-at: string
+      # AuthMethod is the authentication method stored by gcx login: "oauth", "token", or "basic".
+      # Empty string is valid for legacy configs; readers should call InferredAuthMethod() in that case.
+      auth-method: string
       # OrgID specifies the organization targeted by this config.
       # Note: required when targeting an on-prem Grafana instance.
       # See StackID for Grafana Cloud instances.
@@ -52,6 +55,14 @@ contexts:
         # certificates against. If ServerName is empty, the hostname used to contact the
         # server is used.
         server-name: string
+        # CertFile is the path to a PEM-encoded client certificate file.
+        # This enables mutual TLS (mTLS) authentication with the server.
+        cert-file: string
+        # KeyFile is the path to a PEM-encoded client certificate key file.
+        key-file: string
+        # CAFile is the path to a PEM-encoded CA certificate bundle file.
+        # When set, this CA is used to verify the server's certificate.
+        ca-file: string
         # CertData holds PEM-encoded bytes (typically read from a client certificate file).
         # Note: this value is base64-encoded in the config file and will be
         # automatically decoded.

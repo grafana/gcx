@@ -35,11 +35,15 @@ tag: ## Bumps version, generates changelog, tags, and pushes. Usage: make tag BU
 	@./scripts/tag.sh $(BUMP)
 
 .PHONY: all
-all: lint tests build docs ## Lints, tests, builds, and generates the documentation.
+all: validate-skills lint tests build docs ## Validates skills, lints, tests, builds, and generates the documentation.
 
 .PHONY: lint
 lint: check-binaries ## Lints the code base.
 	$(RUN_DEVBOX) golangci-lint run -c .golangci.yaml
+
+.PHONY: validate-skills
+validate-skills: check-binaries ## Validates bundled skill front matter.
+	$(RUN_DEVBOX) go run ./scripts/validate-skills
 
 .PHONY: tests
 tests: cli-tests linter-tests ## Runs the tests.

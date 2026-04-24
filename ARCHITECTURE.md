@@ -150,7 +150,7 @@ Multiple auth mechanisms for different tiers.
 |-----------|---------|----------------|
 | **Service account token** | Grafana K8s API (`/apis`), plugin APIs | Bearer token in `rest.Config` |
 | **Cloud Access Policy token** | GCOM stack discovery, Cloud product APIs | `internal/cloud/` GCOM client |
-| **OAuth PKCE** | Browser-based login (`gcx auth login`) | `internal/auth/` — token refresh transport persists to config |
+| **OAuth PKCE** | Browser-based login (`gcx login`) | `internal/auth/` — token refresh transport persists to config |
 | **Basic auth** | Legacy Grafana instances | Username/password in `rest.Config` |
 | **Adaptive auth** | Signal provider adaptive telemetry APIs | `internal/auth/adaptive/` — GCOM-cached Basic auth shared across signal providers |
 
@@ -187,13 +187,15 @@ Deep-dive docs live in [docs/architecture/](docs/architecture/). Each covers one
 | Document | Domain | When to Read |
 |----------|--------|--------------|
 | [architecture.md](docs/architecture/architecture.md) | Full system architecture with diagrams | First-time orientation |
-| [patterns.md](docs/architecture/patterns.md) | Recurring patterns catalog | Before implementing new features |
-| [resource-model.md](docs/architecture/resource-model.md) | Resource, Selector, Filter, Discovery | Modifying resource handling |
+| [auth-system.md](docs/architecture/auth-system.md) | OAuth PKCE, SA tokens, Cloud Access Policy tokens, RefreshTransport | Modifying or debugging auth |
 | [cli-layer.md](docs/architecture/cli-layer.md) | Command tree, Options pattern, lifecycle | Adding/modifying CLI commands |
 | [client-api-layer.md](docs/architecture/client-api-layer.md) | Dynamic client, auth, error translation | API communication changes |
 | [config-system.md](docs/architecture/config-system.md) | Contexts, env vars, TLS, namespace resolution | Config or auth changes |
 | [data-flows.md](docs/architecture/data-flows.md) | Push/Pull/Serve/Delete pipelines | Modifying resource sync |
+| [login-system.md](docs/architecture/login-system.md) | `gcx login` orchestration, sentinel-retry, validation pipeline | Modifying or debugging login |
+| [patterns.md](docs/architecture/patterns.md) | Recurring patterns catalog | Before implementing new features |
 | [project-structure.md](docs/architecture/project-structure.md) | Build system, CI/CD, dependencies | Build issues, adding deps |
+| [resource-model.md](docs/architecture/resource-model.md) | Resource, Selector, Filter, Discovery | Modifying resource handling |
 
 See also: [docs/design/](docs/design/) for UX implementation guides, [docs/reference/](docs/reference/) for provider guides and CLI reference.
 
@@ -203,7 +205,9 @@ See also: [docs/design/](docs/design/) for UX implementation guides, [docs/refer
 - **Fixing a bug**: Jump directly to the relevant domain doc
 - **Adding a CLI command**: Read `cli-layer.md` first, then `patterns.md`
 - **Understanding a data flow**: Read `data-flows.md`
-- **Adding config fields or auth**: Read `config-system.md`
+- **Adding config fields**: Read `config-system.md`
+- **Debugging or modifying login**: Read `login-system.md`
+- **Debugging or modifying auth**: Read `auth-system.md`
 - **Modifying resource handling**: Read `resource-model.md`
 - **API communication or errors**: Read `client-api-layer.md`
 - **Build issues or dependencies**: Read `project-structure.md`

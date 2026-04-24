@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -72,6 +73,10 @@ func NewGCOMClient(baseURL, token string) (*GCOMClient, error) {
 		return nil, fmt.Errorf("gcom client: invalid base URL %q: %w", baseURL, err)
 	}
 
+	if parsedBase.Scheme != "https" && !isLoopbackHost(parsedBase.Hostname()) {
+		return nil, fmt.Errorf("gcom client: base URL must use HTTPS (got %q)", parsedBase.Scheme)
+	}
+
 	httpClient := &http.Client{
 		Timeout:   30 * time.Second,
 		Transport: &httputils.UserAgentTransport{Base: &retry.Transport{}},
@@ -135,4 +140,24 @@ func (c *GCOMClient) GetStack(ctx context.Context, slug string) (StackInfo, erro
 	}
 
 	return info, nil
+}
+
+// isLoopbackHost reports whether host refers to the loopback interface.
+// It accepts bare hostnames (e.g. "localhost", "127.0.0.1", "::1") as
+// returned by url.URL.Hostname() — port stripping and IPv6 bracket removal
+// are already handled by that method.
+//
+// NOTE: a similar (broader) helper exists in internal/login.isLocalHostname.
+// The two packages cannot import each other (cycle), so this narrower copy
+// lives here. A refactor to a shared package is left as a follow-up.
+func isLoopbackHost(host string) bool {
+	switch host {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	}
+	if strings.HasSuffix(host, ".localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
