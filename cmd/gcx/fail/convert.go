@@ -794,6 +794,18 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 		}, true
 	}
 
+	// Adaptive Traces scope errors.
+	if strings.Contains(msg, "traces:") && strings.Contains(msg, "invalid scope") {
+		return &DetailedError{
+			Parent:  err,
+			Summary: "Adaptive Traces: permission denied",
+			Suggestions: []string{
+				"Ensure your access policy includes the adaptive-traces:admin scope",
+			},
+			ExitCode: new(ExitAuthFailure),
+		}, true
+	}
+
 	// Adaptive Metrics scope errors.
 	if strings.Contains(msg, "metrics:") && strings.Contains(msg, "invalid scope") {
 		if scope := adaptiveMetricsScopeFromError(msg); scope != "" {

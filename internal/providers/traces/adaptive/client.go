@@ -39,7 +39,7 @@ func (c *Client) ListPolicies(ctx context.Context) ([]Policy, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, fmt.Errorf("traces: list policies: %w", handleErrorResponse(resp))
 	}
 
 	var policies []Policy
@@ -63,7 +63,7 @@ func (c *Client) GetPolicy(ctx context.Context, id string) (*Policy, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, fmt.Errorf("traces: get policy: %w", handleErrorResponse(resp))
 	}
 
 	var policy Policy
@@ -88,7 +88,7 @@ func (c *Client) CreatePolicy(ctx context.Context, p *Policy) (*Policy, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return nil, handleErrorResponse(resp)
+		return nil, fmt.Errorf("traces: create policy: %w", handleErrorResponse(resp))
 	}
 
 	var created Policy
@@ -113,7 +113,7 @@ func (c *Client) UpdatePolicy(ctx context.Context, id string, p *Policy) (*Polic
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, fmt.Errorf("traces: update policy: %w", handleErrorResponse(resp))
 	}
 
 	var updated Policy
@@ -133,7 +133,7 @@ func (c *Client) DeletePolicy(ctx context.Context, id string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return handleErrorResponse(resp)
+		return fmt.Errorf("traces: delete policy: %w", handleErrorResponse(resp))
 	}
 
 	return nil
@@ -148,7 +148,7 @@ func (c *Client) ListRecommendations(ctx context.Context) ([]Recommendation, err
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, fmt.Errorf("traces: list recommendations: %w", handleErrorResponse(resp))
 	}
 
 	var recs []Recommendation
@@ -172,7 +172,7 @@ func (c *Client) ApplyRecommendation(ctx context.Context, id string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return handleErrorResponse(resp)
+		return fmt.Errorf("traces: apply recommendation: %w", handleErrorResponse(resp))
 	}
 
 	return nil
@@ -187,7 +187,7 @@ func (c *Client) DismissRecommendation(ctx context.Context, id string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return handleErrorResponse(resp)
+		return fmt.Errorf("traces: dismiss recommendation: %w", handleErrorResponse(resp))
 	}
 
 	return nil

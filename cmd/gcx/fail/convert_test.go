@@ -516,6 +516,32 @@ func TestErrorToDetailedError_AdaptiveMetricsScopeError(t *testing.T) {
 	}
 }
 
+func TestErrorToDetailedError_AdaptiveTracesScopeError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{"list policies", errors.New(`traces: list policies: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"get policy", errors.New(`traces: get policy: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"create policy", errors.New(`traces: create policy: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"update policy", errors.New(`traces: update policy: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"delete policy", errors.New(`traces: delete policy: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"list recommendations", errors.New(`traces: list recommendations: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"apply recommendation", errors.New(`traces: apply recommendation: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"dismiss recommendation", errors.New(`traces: dismiss recommendation: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tc.err)
+			assert.Equal(t, "Adaptive Traces: permission denied", got.Summary)
+			require.NotNil(t, got.ExitCode)
+			assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+			require.Len(t, got.Suggestions, 1)
+			assert.Contains(t, got.Suggestions[0], "adaptive-traces:admin")
+		})
+	}
+}
+
 func TestErrorToDetailedError_SMURLNotConfigured(t *testing.T) {
 	err := fmt.Errorf("failed to load SM config for checks: %w",
 		fmt.Errorf("SM URL not configured: %w", errors.New("no Grafana server configured: grafana config is required")))
