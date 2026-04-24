@@ -1,7 +1,6 @@
 package skills
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	goio "io"
@@ -17,6 +16,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	skillops "github.com/grafana/gcx/internal/skills"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -113,7 +113,7 @@ func newInstallCommand(source fs.FS) *cobra.Command {
 				}
 			}
 
-			result, err := installSkills(opts.Source, root, filter, opts.Force, opts.DryRun)
+			result, err := skillops.Install(opts.Source, root, filter, opts.Force, opts.DryRun)
 			if err != nil {
 				return err
 			}
@@ -128,31 +128,10 @@ func newInstallCommand(source fs.FS) *cobra.Command {
 }
 
 func bundledSkillNames(source fs.FS) ([]string, error) {
-	entries, err := fs.ReadDir(source, ".")
-	if err != nil {
-		return nil, err
-	}
-	names := make([]string, 0, len(entries))
-	for _, e := range entries {
-		if e.IsDir() {
-			names = append(names, e.Name())
-		}
-	}
-	return names, nil
+	return skillops.BundledSkillNames(source)
 }
 
-type installResult struct {
-	Root        string   `json:"root"`
-	SkillsDir   string   `json:"skills_dir"`
-	Skills      []string `json:"skills"`
-	SkillCount  int      `json:"skill_count"`
-	FileCount   int      `json:"file_count"`
-	Written     int      `json:"written"`
-	Overwritten int      `json:"overwritten"`
-	Unchanged   int      `json:"unchanged"`
-	DryRun      bool     `json:"dry_run"`
-	Force       bool     `json:"force"`
-}
+type installResult = skillops.InstallResult
 
 type installTextCodec struct{}
 
@@ -266,46 +245,7 @@ func newUpdateCommand(source fs.FS) *cobra.Command {
 				return err
 			}
 
-			installedTargets, err := installedBundledSkillNames(opts.Source, root)
-			if err != nil {
-				return err
-			}
-
-			targets := args
-			if len(targets) == 0 {
-				targets = installedTargets
-			} else {
-				bundledTargets, err := bundledSkillNames(opts.Source)
-				if err != nil {
-					return err
-				}
-
-				installedSet := make(map[string]struct{}, len(installedTargets))
-				for _, name := range installedTargets {
-					installedSet[name] = struct{}{}
-				}
-
-				bundledSet := make(map[string]struct{}, len(bundledTargets))
-				for _, name := range bundledTargets {
-					bundledSet[name] = struct{}{}
-				}
-
-				for _, name := range targets {
-					if _, ok := bundledSet[name]; !ok {
-						return fmt.Errorf("unknown skill %q (use 'gcx skills list' to see available skills)", name)
-					}
-					if _, ok := installedSet[name]; !ok {
-						return fmt.Errorf("skill %q is not installed; use 'gcx skills install %s' to install it first", name, name)
-					}
-				}
-			}
-
-			filter := make(map[string]struct{}, len(targets))
-			for _, name := range targets {
-				filter[name] = struct{}{}
-			}
-
-			result, err := installSkills(opts.Source, root, filter, true, opts.DryRun)
+			result, err := skillops.Update(opts.Source, root, args, opts.DryRun)
 			if err != nil {
 				return err
 			}
@@ -484,21 +424,7 @@ func isSkillInstalled(skillsDir string, name string) bool {
 }
 
 func installedBundledSkillNames(source fs.FS, root string) ([]string, error) {
-	bundled, err := bundledSkillNames(source)
-	if err != nil {
-		return nil, err
-	}
-
-	skillsDir := filepath.Join(root, "skills")
-	installed := make([]string, 0, len(bundled))
-	for _, name := range bundled {
-		if isSkillInstalled(skillsDir, name) {
-			installed = append(installed, name)
-		}
-	}
-
-	sort.Strings(installed)
-	return installed, nil
+	return skillops.InstalledBundledSkillNames(source, root)
 }
 
 type skillFrontMatter struct {
@@ -576,154 +502,8 @@ func renderSkillsTable(dst goio.Writer, skills []skillInfo) error {
 	return t.Render(dst)
 }
 
-// installSkills installs skills from source into root. When filter is nil all
-// skills are installed; otherwise only skills whose name is in the filter set.
 func installSkills(source fs.FS, root string, filter map[string]struct{}, force bool, dryRun bool) (installResult, error) {
-	if source == nil {
-		return installResult{}, errors.New("skills source is nil")
-	}
-
-	root = filepath.Clean(root)
-	result := installResult{
-		Root:      root,
-		SkillsDir: filepath.Join(root, "skills"),
-		DryRun:    dryRun,
-		Force:     force,
-	}
-
-	// Validate requested skill names exist in the bundle.
-	if filter != nil {
-		available, err := bundledSkillNames(source)
-		if err != nil {
-			return installResult{}, err
-		}
-		avail := make(map[string]struct{}, len(available))
-		for _, n := range available {
-			avail[n] = struct{}{}
-		}
-		for name := range filter {
-			if _, ok := avail[name]; !ok {
-				return installResult{}, fmt.Errorf("unknown skill %q (use 'gcx skills list' to see available skills)", name)
-			}
-		}
-	}
-
-	skillSet := make(map[string]struct{})
-
-	err := fs.WalkDir(source, ".", func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if path == "." {
-			return nil
-		}
-
-		parts := strings.Split(path, "/")
-		skillName := parts[0]
-
-		// Skip skills not in the filter.
-		if filter != nil {
-			if _, ok := filter[skillName]; !ok {
-				if d.IsDir() && len(parts) == 1 {
-					return fs.SkipDir
-				}
-				return nil
-			}
-		}
-
-		skillSet[skillName] = struct{}{}
-
-		targetPath := filepath.Join(result.SkillsDir, filepath.FromSlash(path))
-		if d.IsDir() {
-			return ensureDirectory(targetPath, dryRun)
-		}
-
-		result.FileCount++
-
-		if err := ensureDirectory(filepath.Dir(targetPath), dryRun); err != nil {
-			return err
-		}
-
-		changed, overwritten, err := syncFile(source, path, targetPath, force, dryRun)
-		if err != nil {
-			return err
-		}
-		if !changed {
-			result.Unchanged++
-			return nil
-		}
-		if overwritten {
-			result.Overwritten++
-			return nil
-		}
-		result.Written++
-		return nil
-	})
-	if err != nil {
-		return installResult{}, err
-	}
-
-	result.Skills = sortedKeys(skillSet)
-	result.SkillCount = len(result.Skills)
-
-	return result, nil
-}
-
-func syncFile(source fs.FS, sourcePath string, targetPath string, force bool, dryRun bool) (bool, bool, error) {
-	sourceData, err := fs.ReadFile(source, sourcePath)
-	if err != nil {
-		return false, false, err
-	}
-
-	existingData, err := os.ReadFile(targetPath)
-	switch {
-	case err == nil:
-		if bytes.Equal(existingData, sourceData) {
-			return false, false, nil
-		}
-		if !force {
-			return false, false, fmt.Errorf("destination file differs: %s (use --force to overwrite)", targetPath)
-		}
-		if dryRun {
-			return true, true, nil
-		}
-		return true, true, os.WriteFile(targetPath, sourceData, fileMode(source, sourcePath))
-	case errors.Is(err, os.ErrNotExist):
-		if dryRun {
-			return true, false, nil
-		}
-		return true, false, os.WriteFile(targetPath, sourceData, fileMode(source, sourcePath))
-	default:
-		return false, false, err
-	}
-}
-
-func ensureDirectory(path string, dryRun bool) error {
-	info, err := os.Stat(path)
-	if err == nil {
-		if !info.IsDir() {
-			return fmt.Errorf("destination path exists and is not a directory: %s", path)
-		}
-		return nil
-	}
-	if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	if dryRun {
-		return nil
-	}
-	return os.MkdirAll(path, 0o755)
-}
-
-func fileMode(source fs.FS, path string) fs.FileMode {
-	info, err := fs.Stat(source, path)
-	if err != nil {
-		return 0o644
-	}
-	if perm := info.Mode().Perm(); perm != 0 {
-		return perm
-	}
-	return 0o644
+	return skillops.Install(source, root, filter, force, dryRun)
 }
 
 type uninstallOpts struct {
@@ -969,48 +749,6 @@ func validateSkillName(name string) error {
 	return nil
 }
 
-func defaultAgentsRoot() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("determine home directory: %w", err)
-	}
-	return filepath.Join(home, ".agents"), nil
-}
-
 func resolveInstallRoot(root string) (string, error) {
-	if strings.TrimSpace(root) == "" {
-		defaultRoot, err := defaultAgentsRoot()
-		if err != nil {
-			return "", err
-		}
-		root = defaultRoot
-	}
-
-	if root == "~" || strings.HasPrefix(root, "~/") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("determine home directory: %w", err)
-		}
-		if root == "~" {
-			root = home
-		} else {
-			root = filepath.Join(home, root[2:])
-		}
-	}
-
-	absRoot, err := filepath.Abs(root)
-	if err != nil {
-		return "", fmt.Errorf("resolve install root %q: %w", root, err)
-	}
-
-	return filepath.Clean(absRoot), nil
-}
-
-func sortedKeys(values map[string]struct{}) []string {
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
+	return skillops.ResolveInstallRoot(root)
 }

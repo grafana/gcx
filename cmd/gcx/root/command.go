@@ -26,6 +26,7 @@ import (
 	_ "github.com/grafana/gcx/internal/datasources/providers" // DatasourceProvider registrations — blank imports trigger init() self-registration.
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/logs"
+	"github.com/grafana/gcx/internal/notifier"
 	"github.com/grafana/gcx/internal/providers"
 	_ "github.com/grafana/gcx/internal/providers/aio11y"   // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/alert"    // Provider registrations — blank imports trigger init() self-registration.
@@ -87,6 +88,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 		SilenceErrors: true, // We want to print errors ourselves
 		Version:       version,
 		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
+			jsonFlagActive.Store(false)
 			// Track whether --json was explicitly set on the resolved command.
 			// Only mark active when the command actually declares a --json flag,
 			// preventing false positives for subcommands that don't support it.
@@ -146,6 +148,15 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 			}
 
 			cmd.SetContext(ctx)
+		},
+		PersistentPostRun: func(cmd *cobra.Command, _ []string) {
+			if os.Getenv(notifier.DisableNotifierEnvVar) != "" {
+				return
+			}
+			if agent.IsAgentMode() || IsJSONFlagActive() || terminal.IsPiped() {
+				return
+			}
+			_ = notifier.MaybeNotifySkills(cmd.ErrOrStderr())
 		},
 		Annotations: map[string]string{
 			cobra.CommandDisplayNameAnnotation: "gcx",
