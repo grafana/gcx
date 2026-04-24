@@ -477,6 +477,20 @@ func convertServiceAPIErrors(err error) (*DetailedError, bool) {
 		return nil, false
 	}
 
+	// Adaptive Logs scope errors — consistent format with traces/metrics handlers in convertCloudConfigErrors.
+	if apiErr.APIServiceName() == "Adaptive Logs" &&
+		strings.Contains(apiErr.APIUserMessage(), "invalid scope") &&
+		(apiErr.HTTPStatusCode() == http.StatusUnauthorized || apiErr.HTTPStatusCode() == http.StatusForbidden) {
+		return &DetailedError{
+			Parent:  err,
+			Summary: "Adaptive Logs: permission denied",
+			Suggestions: []string{
+				"Ensure your access policy includes the adaptive-logs:admin scope",
+			},
+			ExitCode: new(ExitAuthFailure),
+		}, true
+	}
+
 	detailedErr := &DetailedError{
 		Summary:     serviceAPIErrorSummary(apiErr),
 		Details:     joinErrorDetails(wrappedTypedErrorContext(err, apiErr), strings.TrimSpace(apiErr.APIUserMessage())),
@@ -511,14 +525,10 @@ func serviceAPIErrorSummary(apiErr serviceAPIError) string {
 func serviceAPIErrorSuggestions(apiErr serviceAPIError) []string {
 	switch apiErr.HTTPStatusCode() {
 	case http.StatusUnauthorized, http.StatusForbidden:
-		suggestions := []string{
+		return []string{
 			"Review your Grafana credentials: gcx config view",
 			"Re-authenticate if needed: gcx auth login",
 		}
-		if apiErr.APIServiceName() == "Adaptive Logs" && strings.Contains(apiErr.APIUserMessage(), "invalid scope") {
-			suggestions = append(suggestions, "Ensure your access policy includes the adaptive-logs:admin scope")
-		}
-		return suggestions
 	default:
 		return nil
 	}

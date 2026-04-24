@@ -247,9 +247,11 @@ func TestErrorToDetailedError_AdaptiveLogsScopeSuggestion(t *testing.T) {
 	})
 
 	require.NotNil(t, got)
-	assert.Equal(t, "Authentication failed querying Adaptive Logs", got.Summary)
-	require.Len(t, got.Suggestions, 3)
-	assert.Contains(t, got.Suggestions[2], "adaptive-logs:admin")
+	assert.Equal(t, "Adaptive Logs: permission denied", got.Summary)
+	require.NotNil(t, got.ExitCode)
+	assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+	require.Len(t, got.Suggestions, 1)
+	assert.Contains(t, got.Suggestions[0], "adaptive-logs:admin")
 }
 
 func TestErrorToDetailedError_WrappedServiceAPIErrorPreservesOuterContext(t *testing.T) {
