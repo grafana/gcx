@@ -158,28 +158,28 @@ type installTextCodec struct{}
 
 func (c *installTextCodec) Format() format.Format { return "text" }
 
-func (c *installTextCodec) Encode(dst goio.Writer, value any) error {
-	var result installResult
+func decodeInstallResult(value any, op string) (installResult, error) {
 	switch v := value.(type) {
 	case installResult:
-		result = v
+		return v, nil
 	case *installResult:
 		if v == nil {
-			return errors.New("nil install result")
+			return installResult{}, fmt.Errorf("nil %s result", op)
 		}
-		result = *v
+		return *v, nil
 	default:
-		return fmt.Errorf("install text codec: unsupported value %T", value)
+		return installResult{}, fmt.Errorf("%s text codec: unsupported value %T", op, value)
 	}
+}
 
-	status := "Installed"
+func renderInstallResultText(dst goio.Writer, result installResult, status string, dryRunStatus string, preposition string) error {
 	writtenLabel := "WRITTEN"
 	if result.DryRun {
-		status = "Would install"
+		status = dryRunStatus
 		writtenLabel = "WOULD WRITE"
 	}
 
-	fmt.Fprintf(dst, "%s %d skill(s) to %s\n\n", status, result.SkillCount, result.SkillsDir)
+	fmt.Fprintf(dst, "%s %d skill(s) %s %s\n\n", status, result.SkillCount, preposition, result.SkillsDir)
 
 	t := style.NewTable("FIELD", "VALUE")
 	t.Row("ROOT", result.Root)
@@ -199,6 +199,15 @@ func (c *installTextCodec) Encode(dst goio.Writer, value any) error {
 	}
 
 	return nil
+}
+
+func (c *installTextCodec) Encode(dst goio.Writer, value any) error {
+	result, err := decodeInstallResult(value, "install")
+	if err != nil {
+		return err
+	}
+
+	return renderInstallResultText(dst, result, "Installed", "Would install", "to")
 }
 
 func (c *installTextCodec) Decode(_ goio.Reader, _ any) error {
@@ -315,46 +324,12 @@ type updateTextCodec struct{}
 func (c *updateTextCodec) Format() format.Format { return "text" }
 
 func (c *updateTextCodec) Encode(dst goio.Writer, value any) error {
-	var result installResult
-	switch v := value.(type) {
-	case installResult:
-		result = v
-	case *installResult:
-		if v == nil {
-			return errors.New("nil update result")
-		}
-		result = *v
-	default:
-		return fmt.Errorf("update text codec: unsupported value %T", value)
-	}
-
-	status := "Updated"
-	writtenLabel := "WRITTEN"
-	if result.DryRun {
-		status = "Would update"
-		writtenLabel = "WOULD WRITE"
-	}
-
-	fmt.Fprintf(dst, "%s %d skill(s) in %s\n\n", status, result.SkillCount, result.SkillsDir)
-
-	t := style.NewTable("FIELD", "VALUE")
-	t.Row("ROOT", result.Root)
-	t.Row("SKILLS DIR", result.SkillsDir)
-	t.Row("SKILLS", strconv.Itoa(result.SkillCount))
-	t.Row("FILES", strconv.Itoa(result.FileCount))
-	t.Row(writtenLabel, strconv.Itoa(result.Written))
-	t.Row("OVERWRITTEN", strconv.Itoa(result.Overwritten))
-	t.Row("UNCHANGED", strconv.Itoa(result.Unchanged))
-	if err := t.Render(dst); err != nil {
+	result, err := decodeInstallResult(value, "update")
+	if err != nil {
 		return err
 	}
 
-	if len(result.Skills) > 0 {
-		_, _ = fmt.Fprintln(dst)
-		fmt.Fprintf(dst, "Skill names: %s\n", strings.Join(result.Skills, ", "))
-	}
-
-	return nil
+	return renderInstallResultText(dst, result, "Updated", "Would update", "in")
 }
 
 func (c *updateTextCodec) Decode(_ goio.Reader, _ any) error {
