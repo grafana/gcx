@@ -794,6 +794,20 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 		}, true
 	}
 
+	// Adaptive Metrics scope errors.
+	if strings.Contains(msg, "metrics:") && strings.Contains(msg, "invalid scope") {
+		if scope := adaptiveMetricsScopeFromError(msg); scope != "" {
+			return &DetailedError{
+				Parent:  err,
+				Summary: "Adaptive Metrics: permission denied",
+				Suggestions: []string{
+					fmt.Sprintf("Ensure your access policy includes the %s scope", scope),
+				},
+				ExitCode: new(ExitAuthFailure),
+			}, true
+		}
+	}
+
 	// Fleet management not available.
 	if strings.Contains(msg, "fleet management endpoint is not available") ||
 		strings.Contains(msg, "fleet management instance ID is not available") {
@@ -810,13 +824,17 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 
 	// Stack info lookup forbidden — access policy missing stacks:read scope.
 	if strings.Contains(msg, "failed to get stack info for") && strings.Contains(msg, "status 403") {
+		suggestions := []string{
+			"Ensure your access policy includes the stacks:read scope",
+		}
+		if scope := adaptiveScopeFromSignalPrefix(msg); scope != "" {
+			suggestions = append(suggestions, fmt.Sprintf("Ensure your access policy includes the %s scope", scope))
+		}
 		return &DetailedError{
-			Parent:  err,
-			Summary: "Cloud stack lookup: permission denied",
-			Suggestions: []string{
-				"Ensure your access policy includes the stacks:read scope",
-			},
-			ExitCode: new(ExitAuthFailure),
+			Parent:      err,
+			Summary:     "Cloud stack lookup: permission denied",
+			Suggestions: suggestions,
+			ExitCode:    new(ExitAuthFailure),
 		}, true
 	}
 
@@ -832,6 +850,70 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 	}
 
 	return nil, false
+}
+
+// adaptiveScopeFromSignalPrefix extracts the signal from the "adaptive-<signal>:" error
+// prefix and returns the primary scope needed for that signal's commands.
+func adaptiveScopeFromSignalPrefix(msg string) string {
+	switch {
+	case strings.Contains(msg, "adaptive-logs:"):
+		return "adaptive-logs:admin"
+	case strings.Contains(msg, "adaptive-metrics:"):
+		return "adaptive-metrics-rules:read"
+	case strings.Contains(msg, "adaptive-traces:"):
+		return "adaptive-traces:admin"
+	default:
+		return ""
+	}
+}
+
+type adaptiveMetricsResource struct {
+	keyword   string
+	base      string
+	reads     []string
+	writes    []string
+	deleteKey string
+}
+
+// adaptiveMetricsResources maps error message keywords to scope prefixes.
+// Operation matches are checked in priority order: delete > write > read.
+var adaptiveMetricsResources = []adaptiveMetricsResource{
+	{"rule", "adaptive-metrics-rules",
+		[]string{"list rules", "get rule", "list recommended rules"},
+		[]string{"create rule", "update rule", "sync rules", "validate rules"},
+		"delete rule"},
+	{"recommendation", "adaptive-metrics-recommendations",
+		[]string{"list recommendations"}, nil, ""},
+	{"segment", "adaptive-metrics-segments",
+		[]string{"list segments"},
+		[]string{"create segment", "update segment"},
+		"delete segment"},
+	{"exemption", "adaptive-metrics-exemptions",
+		[]string{"list exemptions", "list segmented exemptions", "get exemption"},
+		[]string{"create exemption", "update exemption"},
+		"delete exemption"},
+}
+
+func adaptiveMetricsScopeFromError(msg string) string {
+	for _, r := range adaptiveMetricsResources {
+		if !strings.Contains(msg, r.keyword) {
+			continue
+		}
+		if r.deleteKey != "" && strings.Contains(msg, r.deleteKey) {
+			return r.base + ":delete"
+		}
+		for _, v := range r.writes {
+			if strings.Contains(msg, v) {
+				return r.base + ":write"
+			}
+		}
+		for _, v := range r.reads {
+			if strings.Contains(msg, v) {
+				return r.base + ":read"
+			}
+		}
+	}
+	return ""
 }
 
 func fallbackDetailedError(err error) *DetailedError {

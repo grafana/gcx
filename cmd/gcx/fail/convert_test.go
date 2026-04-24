@@ -446,6 +446,76 @@ func TestErrorToDetailedError_FleetScopeError(t *testing.T) {
 	}
 }
 
+func TestErrorToDetailedError_StacksReadAdaptiveContext(t *testing.T) {
+	tests := []struct {
+		name      string
+		err       error
+		wantScope string
+	}{
+		{
+			name:      "logs signal suggests adaptive-logs:admin",
+			err:       errors.New(`adaptive-logs: failed to load cloud config for token: failed to get stack info for "mystack": gcom client: unexpected status 403 Forbidden`),
+			wantScope: "adaptive-logs:admin",
+		},
+		{
+			name:      "metrics signal suggests adaptive-metrics-rules:read",
+			err:       errors.New(`adaptive-metrics: failed to load cloud config for token: failed to get stack info for "mystack": gcom client: unexpected status 403 Forbidden`),
+			wantScope: "adaptive-metrics-rules:read",
+		},
+		{
+			name:      "traces signal suggests adaptive-traces:admin",
+			err:       errors.New(`adaptive-traces: failed to load cloud config for token: failed to get stack info for "mystack": gcom client: unexpected status 403 Forbidden`),
+			wantScope: "adaptive-traces:admin",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tc.err)
+			require.NotNil(t, got)
+			assert.Equal(t, "Cloud stack lookup: permission denied", got.Summary)
+			require.Len(t, got.Suggestions, 2)
+			assert.Contains(t, got.Suggestions[0], "stacks:read")
+			assert.Contains(t, got.Suggestions[1], tc.wantScope)
+		})
+	}
+}
+
+func TestErrorToDetailedError_AdaptiveMetricsScopeError(t *testing.T) {
+	tests := []struct {
+		name      string
+		err       error
+		wantScope string
+	}{
+		{"list rules", errors.New(`metrics: list rules: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:read"},
+		{"get rule", errors.New(`metrics: get rule: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:read"},
+		{"list recommended rules", errors.New(`metrics: list recommended rules: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:read"},
+		{"create rule", errors.New(`metrics: create rule: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:write"},
+		{"update rule", errors.New(`metrics: update rule: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:write"},
+		{"sync rules", errors.New(`metrics: sync rules: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:write"},
+		{"validate rules", errors.New(`metrics: validate rules: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:write"},
+		{"delete rule", errors.New(`metrics: delete rule: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:delete"},
+		{"list recommendations", errors.New(`metrics: list recommendations: status 401: authentication error: invalid scope requested`), "adaptive-metrics-recommendations:read"},
+		{"list segments", errors.New(`metrics: list segments: status 401: authentication error: invalid scope requested`), "adaptive-metrics-segments:read"},
+		{"create segment", errors.New(`metrics: create segment: status 401: authentication error: invalid scope requested`), "adaptive-metrics-segments:write"},
+		{"delete segment", errors.New(`metrics: delete segment: status 401: authentication error: invalid scope requested`), "adaptive-metrics-segments:delete"},
+		{"list exemptions", errors.New(`metrics: list exemptions: status 401: authentication error: invalid scope requested`), "adaptive-metrics-exemptions:read"},
+		{"list segmented exemptions", errors.New(`metrics: list segmented exemptions: status 401: authentication error: invalid scope requested`), "adaptive-metrics-exemptions:read"},
+		{"get exemption", errors.New(`metrics: get exemption: status 401: authentication error: invalid scope requested`), "adaptive-metrics-exemptions:read"},
+		{"create exemption", errors.New(`metrics: create exemption: status 401: authentication error: invalid scope requested`), "adaptive-metrics-exemptions:write"},
+		{"delete exemption", errors.New(`metrics: delete exemption: status 401: authentication error: invalid scope requested`), "adaptive-metrics-exemptions:delete"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tc.err)
+			assert.Equal(t, "Adaptive Metrics: permission denied", got.Summary)
+			require.NotNil(t, got.ExitCode)
+			assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+			require.Len(t, got.Suggestions, 1)
+			assert.Contains(t, got.Suggestions[0], tc.wantScope)
+		})
+	}
+}
+
 func TestErrorToDetailedError_SMURLNotConfigured(t *testing.T) {
 	err := fmt.Errorf("failed to load SM config for checks: %w",
 		fmt.Errorf("SM URL not configured: %w", errors.New("no Grafana server configured: grafana config is required")))
