@@ -889,35 +889,32 @@ func adaptiveScopeSuggestionFromSignalPrefix(msg string) string {
 	}
 }
 
-type adaptiveMetricsResource struct {
-	keyword   string
-	base      string
-	reads     []string
-	writes    []string
-	deleteKey string
-}
-
-// adaptiveMetricsResources maps error message keywords to scope prefixes.
-// Operation matches are checked in priority order: delete > write > read.
-var adaptiveMetricsResources = []adaptiveMetricsResource{
-	{"rule", "adaptive-metrics-rules",
-		[]string{"list rules", "get rule", "list recommended rules"},
-		[]string{"create rule", "update rule", "sync rules", "validate rules"},
-		"delete rule"},
-	{"recommendation", "adaptive-metrics-recommendations",
-		[]string{"list recommendations"}, nil, ""},
-	{"segment", "adaptive-metrics-segments",
-		[]string{"list segments"},
-		[]string{"create segment", "update segment"},
-		"delete segment"},
-	{"exemption", "adaptive-metrics-exemptions",
-		[]string{"list exemptions", "list segmented exemptions", "get exemption"},
-		[]string{"create exemption", "update exemption"},
-		"delete exemption"},
-}
-
 func adaptiveMetricsScopeFromError(msg string) string {
-	for _, r := range adaptiveMetricsResources {
+	type resource struct {
+		keyword   string
+		base      string
+		reads     []string
+		writes    []string
+		deleteKey string
+	}
+	// Operation matches are checked in priority order: delete > write > read.
+	resources := []resource{
+		{"rule", "adaptive-metrics-rules",
+			[]string{"list rules", "get rule", "list recommended rules"},
+			[]string{"create rule", "update rule", "sync rules", "validate rules"},
+			"delete rule"},
+		{"recommendation", "adaptive-metrics-recommendations",
+			[]string{"list recommendations"}, nil, ""},
+		{"segment", "adaptive-metrics-segments",
+			[]string{"list segments"},
+			[]string{"create segment", "update segment"},
+			"delete segment"},
+		{"exemption", "adaptive-metrics-exemptions",
+			[]string{"list exemptions", "list segmented exemptions", "get exemption"},
+			[]string{"create exemption", "update exemption"},
+			"delete exemption"},
+	}
+	for _, r := range resources {
 		if !strings.Contains(msg, r.keyword) {
 			continue
 		}
