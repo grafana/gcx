@@ -826,10 +826,10 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 			suggestion = "Adaptive Metrics commands require an adaptive-metrics-* scope (the specific scope depends on the subcommand)"
 		}
 		return &DetailedError{
-			Parent:  err,
-			Summary: "Adaptive Metrics: permission denied",
+			Parent:      err,
+			Summary:     "Adaptive Metrics: permission denied",
 			Suggestions: []string{suggestion},
-			ExitCode: new(ExitAuthFailure),
+			ExitCode:    new(ExitAuthFailure),
 		}, true
 	}
 
