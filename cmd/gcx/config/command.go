@@ -56,9 +56,18 @@ func (opts *Options) LoadConfigTolerant(ctx context.Context, extraOverrides ...c
 			if curCtx.Grafana == nil {
 				curCtx.Grafana = &config.GrafanaConfig{}
 			}
+			if curCtx.Grafana.TLS == nil {
+				curCtx.Grafana.TLS = &config.TLS{}
+			}
 
 			if err := env.Parse(curCtx); err != nil {
 				return err
+			}
+
+			// If TLS was only initialized for env parsing and no fields were set,
+			// nil it back out so IsEmpty() and other checks work correctly.
+			if curCtx.Grafana.TLS.IsEmpty() {
+				curCtx.Grafana.TLS = nil
 			}
 
 			// Resolve GRAFANA_PROVIDER_{NAME}_{KEY} environment variables

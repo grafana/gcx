@@ -441,6 +441,28 @@ type TLS struct {
 	NextProtos []string `json:"next-protos,omitempty" yaml:"next-protos,omitempty"`
 }
 
+// IsEmpty reports whether all TLS fields are at their zero values.
+func (cfg *TLS) IsEmpty() bool {
+	return !cfg.Insecure && cfg.ServerName == "" &&
+		cfg.CertFile == "" && cfg.KeyFile == "" && cfg.CAFile == "" &&
+		len(cfg.CertData) == 0 && len(cfg.KeyData) == 0 && len(cfg.CAData) == 0 &&
+		len(cfg.NextProtos) == 0
+}
+
+func tlsFileError(description, path string, err error) error {
+	if os.IsNotExist(err) {
+		return ValidationError{
+			Path:    path,
+			Message: fmt.Sprintf("TLS %s file not found", description),
+			Suggestions: []string{
+				"Your client certificates may have expired — renew them and try again",
+				"Verify the file path in your gcx config or GRAFANA_TLS_CERT_FILE / GRAFANA_TLS_KEY_FILE env vars",
+			},
+		}
+	}
+	return fmt.Errorf("reading TLS %s: %w", description, err)
+}
+
 // ResolveFiles reads CertFile, KeyFile, and CAFile from disk and populates
 // the corresponding CertData, KeyData, and CAData fields. File-based fields
 // take precedence: if both CertFile and CertData are set, CertFile wins.
@@ -451,21 +473,21 @@ func (cfg *TLS) ResolveFiles() error {
 	if cfg.CertFile != "" {
 		data, err := os.ReadFile(cfg.CertFile)
 		if err != nil {
-			return fmt.Errorf("reading TLS client certificate: %w", err)
+			return tlsFileError("client certificate", cfg.CertFile, err)
 		}
 		cfg.CertData = data
 	}
 	if cfg.KeyFile != "" {
 		data, err := os.ReadFile(cfg.KeyFile)
 		if err != nil {
-			return fmt.Errorf("reading TLS client key: %w", err)
+			return tlsFileError("client key", cfg.KeyFile, err)
 		}
 		cfg.KeyData = data
 	}
 	if cfg.CAFile != "" {
 		data, err := os.ReadFile(cfg.CAFile)
 		if err != nil {
-			return fmt.Errorf("reading TLS CA certificate: %w", err)
+			return tlsFileError("CA certificate", cfg.CAFile, err)
 		}
 		cfg.CAData = data
 	}
@@ -487,7 +509,12 @@ func (cfg *TLS) ToStdTLSConfig() (*tls.Config, error) {
 		NextProtos:         cfg.NextProtos,
 	}
 
-	if len(cfg.CertData) > 0 && len(cfg.KeyData) > 0 {
+	hasCert := len(cfg.CertData) > 0
+	hasKey := len(cfg.KeyData) > 0
+	if hasCert != hasKey {
+		return nil, errors.New("both cert-data and key-data must be provided together")
+	}
+	if hasCert && hasKey {
 		cert, err := tls.X509KeyPair(cfg.CertData, cfg.KeyData)
 		if err != nil {
 			return nil, fmt.Errorf("loading TLS client certificate keypair: %w", err)

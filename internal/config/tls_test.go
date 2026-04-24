@@ -68,7 +68,7 @@ func TestTLS_ResolveFiles_MissingFile(t *testing.T) {
 
 	err := cfg.ResolveFiles()
 	require.Error(t, err)
-	require.ErrorContains(t, err, "reading TLS client certificate")
+	require.ErrorContains(t, err, "TLS client certificate file not found")
 }
 
 func TestTLS_ResolveFiles_CertWithoutKey(t *testing.T) {
