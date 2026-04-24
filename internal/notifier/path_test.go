@@ -1,4 +1,4 @@
-package notifier
+package notifier //nolint:testpackage
 
 import (
 	"path/filepath"
@@ -13,18 +13,14 @@ func TestStatePath_UsesXDGStateHomeWhenSet(t *testing.T) {
 	t.Cleanup(func() { xdg.Reload() })
 	xdg.Reload()
 
-	path, err := StatePath()
-	if err != nil {
-		t.Fatalf("StatePath() error = %v", err)
-	}
-
+	path := StatePath()
 	want := filepath.Join("/tmp/xdg-state", "gcx", "notifier.yml")
 	if path != want {
 		t.Fatalf("StatePath() = %q, want %q", path, want)
 	}
 }
 
-func TestLoadAndSaveDefaultState(t *testing.T) {
+func TestStatePath_RoundTripsStateViaLoadAndSave(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_STATE_HOME", filepath.Join(home, "state"))
@@ -36,13 +32,14 @@ func TestLoadAndSaveDefaultState(t *testing.T) {
 		"skills": {LastCheckedAt: now},
 	}}
 
-	if err := SaveDefaultState(state); err != nil {
-		t.Fatalf("SaveDefaultState() error = %v", err)
+	path := StatePath()
+	if err := SaveState(path, state); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
 	}
 
-	loaded, err := LoadDefaultState()
+	loaded, err := LoadState(path)
 	if err != nil {
-		t.Fatalf("LoadDefaultState() error = %v", err)
+		t.Fatalf("LoadState() error = %v", err)
 	}
 
 	got := loaded.Checks["skills"].LastCheckedAt

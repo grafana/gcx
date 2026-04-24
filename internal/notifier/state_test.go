@@ -1,4 +1,4 @@
-package notifier
+package notifier //nolint:testpackage
 
 import (
 	"os"
@@ -128,6 +128,7 @@ func TestShouldRun(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := ShouldRun(tt.state, tt.key, now, tt.interval); got != tt.want {
 				t.Fatalf("ShouldRun() = %v, want %v", got, tt.want)
 			}

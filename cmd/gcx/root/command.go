@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"os"
 	"path"
+	"strings"
 	"sync/atomic"
 
 	"github.com/fatih/color"
@@ -61,6 +62,55 @@ var jsonFlagActive atomic.Bool
 // on the command that was actually executed. Safe for concurrent use.
 func IsJSONFlagActive() bool {
 	return jsonFlagActive.Load()
+}
+
+func shouldNotifySkills(cmd *cobra.Command) bool {
+	if os.Getenv(notifier.DisableNotifierEnvVar) != "" {
+		return false
+	}
+	if agent.IsAgentMode() || IsJSONFlagActive() || terminal.IsPiped() {
+		return false
+	}
+	if cmd == nil {
+		return false
+	}
+	if isNonInteractiveCommand(cmd) {
+		return false
+	}
+	if !hasInteractiveTextOutput(cmd) {
+		return false
+	}
+	return true
+}
+
+func isNonInteractiveCommand(cmd *cobra.Command) bool {
+	switch cmd.Name() {
+	case "help", "completion", "__complete", "__completeNoDesc":
+		return true
+	}
+
+	if flag := cmd.Flags().Lookup("help"); flag != nil && flag.Changed && flag.Value.String() == "true" {
+		return true
+	}
+	if flag := cmd.Flags().Lookup("version"); flag != nil && flag.Changed && flag.Value.String() == "true" {
+		return true
+	}
+
+	return false
+}
+
+func hasInteractiveTextOutput(cmd *cobra.Command) bool {
+	flag := cmd.Flags().Lookup("output")
+	if flag == nil {
+		return true
+	}
+
+	switch strings.ToLower(flag.Value.String()) {
+	case "text", "table", "wide", "graph", "pretty", "compact":
+		return true
+	default:
+		return false
+	}
 }
 
 // Command builds the root cobra command for the given version using the
@@ -150,10 +200,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 			cmd.SetContext(ctx)
 		},
 		PersistentPostRun: func(cmd *cobra.Command, _ []string) {
-			if os.Getenv(notifier.DisableNotifierEnvVar) != "" {
-				return
-			}
-			if agent.IsAgentMode() || IsJSONFlagActive() || terminal.IsPiped() {
+			if !shouldNotifySkills(cmd) {
 				return
 			}
 			_ = notifier.MaybeNotifySkills(cmd.ErrOrStderr())

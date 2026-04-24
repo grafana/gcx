@@ -20,24 +20,20 @@ const (
 // to dst only when installed gcx skills can be updated. The check is throttled
 // via persisted state; repeated calls within the interval are silent.
 func MaybeNotifySkills(dst io.Writer) error {
-	statePath, err := StatePath()
-	if err != nil {
-		return err
-	}
 	root, err := skillops.ResolveInstallRoot("")
 	if err != nil {
 		return err
 	}
 
-	return maybeNotifySkillsAt(claudeplugin.SkillsFS(), dst, statePath, root, time.Now(), DefaultCheckInterval)
+	return maybeNotifySkillsAt(claudeplugin.SkillsFS(), dst, StatePath(), root, time.Now())
 }
 
-func maybeNotifySkillsAt(source fs.FS, dst io.Writer, statePath, root string, now time.Time, interval time.Duration) error {
+func maybeNotifySkillsAt(source fs.FS, dst io.Writer, statePath, root string, now time.Time) error {
 	state, err := LoadState(statePath)
 	if err != nil {
 		return err
 	}
-	if !ShouldRun(state, SkillsCheckKey, now, interval) {
+	if !ShouldRun(state, SkillsCheckKey, now, DefaultCheckInterval) {
 		return nil
 	}
 
