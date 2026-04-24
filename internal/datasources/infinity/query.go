@@ -35,6 +35,8 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Long: `Fetch JSON, CSV, TSV, XML, GraphQL, or HTML data through a Grafana Infinity datasource.
 
 URL is the target endpoint passed as a positional argument.
+When the datasource has a base URL configured, the URL argument is optional — the
+query is sent to the configured base URL.
 Use --inline to provide data directly instead of fetching from a URL.
 Datasource is resolved from -d flag or datasources.infinity in your context.`,
 		Example: `
@@ -54,24 +56,19 @@ Datasource is resolved from -d flag or datasources.infinity in your context.`,
   gcx datasources infinity query https://example.com/data.csv --type csv --header 'Authorization=Bearer token'
 
   # Output as JSON
-  gcx datasources infinity query -d UID https://api.example.com/data -o json`,
+  gcx datasources infinity query -d UID https://api.example.com/data -o json
+
+  # Query datasource base URL (no URL argument needed)
+  gcx datasources infinity query --type json --root '$.results'`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
 				return err
 			}
 
-			var targetURL, source string
-			switch {
-			case len(args) == 1 && inline != "":
-				return errors.New("provide either a URL argument or --inline, not both")
-			case len(args) == 1:
-				targetURL = args[0]
-				source = "url"
-			case inline != "":
-				source = "inline"
-			default:
-				return errors.New("URL argument or --inline is required")
+			source, targetURL, err := ResolveSource(args, inline)
+			if err != nil {
+				return err
 			}
 
 			ctx := cmd.Context()
@@ -153,6 +150,24 @@ Datasource is resolved from -d flag or datasources.infinity in your context.`,
 	cmd.Flags().StringArrayVar(&headers, "header", nil, "Custom header in key=value format (repeatable)")
 
 	return cmd
+}
+
+// ResolveSource determines the query source type and target URL from
+// positional args and the --inline flag value. When neither a URL nor
+// inline data is provided, source defaults to "url" with an empty
+// targetURL, allowing the Infinity datasource to use its configured
+// base URL.
+func ResolveSource(args []string, inline string) (string, string, error) {
+	switch {
+	case len(args) == 1 && inline != "":
+		return "", "", errors.New("provide either a URL argument or --inline, not both")
+	case len(args) == 1:
+		return "url", args[0], nil
+	case inline != "":
+		return "inline", "", nil
+	default:
+		return "url", "", nil
+	}
 }
 
 // ParseHeaders parses a slice of "key=value" strings into a map.
