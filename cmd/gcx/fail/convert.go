@@ -851,8 +851,8 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 		suggestions := []string{
 			"Ensure your access policy includes the stacks:read scope",
 		}
-		if scope := adaptiveScopeFromSignalPrefix(msg); scope != "" {
-			suggestions = append(suggestions, fmt.Sprintf("Ensure your access policy includes the %s scope", scope))
+		if suggestion := adaptiveScopeSuggestionFromSignalPrefix(msg); suggestion != "" {
+			suggestions = append(suggestions, suggestion)
 		}
 		return &DetailedError{
 			Parent:      err,
@@ -876,16 +876,14 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 	return nil, false
 }
 
-// adaptiveScopeFromSignalPrefix extracts the signal from the "adaptive-<signal>:" error
-// prefix and returns the primary scope needed for that signal's commands.
-func adaptiveScopeFromSignalPrefix(msg string) string {
+func adaptiveScopeSuggestionFromSignalPrefix(msg string) string {
 	switch {
 	case strings.Contains(msg, "adaptive-logs:"):
-		return "adaptive-logs:admin"
+		return "Ensure your access policy includes the adaptive-logs:admin scope"
 	case strings.Contains(msg, "adaptive-metrics:"):
-		return "adaptive-metrics-rules:read"
+		return "Adaptive Metrics commands also require an adaptive-metrics-* scope (the specific scope depends on the subcommand)"
 	case strings.Contains(msg, "adaptive-traces:"):
-		return "adaptive-traces:admin"
+		return "Ensure your access policy includes the adaptive-traces:admin scope"
 	default:
 		return ""
 	}

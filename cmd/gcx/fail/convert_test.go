@@ -450,24 +450,24 @@ func TestErrorToDetailedError_FleetScopeError(t *testing.T) {
 
 func TestErrorToDetailedError_StacksReadAdaptiveContext(t *testing.T) {
 	tests := []struct {
-		name      string
-		err       error
-		wantScope string
+		name           string
+		err            error
+		wantSuggestion string
 	}{
 		{
-			name:      "logs signal suggests adaptive-logs:admin",
-			err:       errors.New(`adaptive-logs: failed to load cloud config for token: failed to get stack info for "mystack": gcom client: unexpected status 403 Forbidden`),
-			wantScope: "adaptive-logs:admin",
+			name:           "logs signal suggests adaptive-logs:admin",
+			err:            errors.New(`adaptive-logs: failed to load cloud config for token: failed to get stack info for "mystack": gcom client: unexpected status 403 Forbidden`),
+			wantSuggestion: "adaptive-logs:admin",
 		},
 		{
-			name:      "metrics signal suggests adaptive-metrics-rules:read",
-			err:       errors.New(`adaptive-metrics: failed to load cloud config for token: failed to get stack info for "mystack": gcom client: unexpected status 403 Forbidden`),
-			wantScope: "adaptive-metrics-rules:read",
+			name:           "metrics signal mentions adaptive-metrics-* scope",
+			err:            errors.New(`adaptive-metrics: failed to load cloud config for token: failed to get stack info for "mystack": gcom client: unexpected status 403 Forbidden`),
+			wantSuggestion: "adaptive-metrics-*",
 		},
 		{
-			name:      "traces signal suggests adaptive-traces:admin",
-			err:       errors.New(`adaptive-traces: failed to load cloud config for token: failed to get stack info for "mystack": gcom client: unexpected status 403 Forbidden`),
-			wantScope: "adaptive-traces:admin",
+			name:           "traces signal suggests adaptive-traces:admin",
+			err:            errors.New(`adaptive-traces: failed to load cloud config for token: failed to get stack info for "mystack": gcom client: unexpected status 403 Forbidden`),
+			wantSuggestion: "adaptive-traces:admin",
 		},
 	}
 	for _, tc := range tests {
@@ -477,7 +477,7 @@ func TestErrorToDetailedError_StacksReadAdaptiveContext(t *testing.T) {
 			assert.Equal(t, "Cloud stack lookup: permission denied", got.Summary)
 			require.Len(t, got.Suggestions, 2)
 			assert.Contains(t, got.Suggestions[0], "stacks:read")
-			assert.Contains(t, got.Suggestions[1], tc.wantScope)
+			assert.Contains(t, got.Suggestions[1], tc.wantSuggestion)
 		})
 	}
 }
