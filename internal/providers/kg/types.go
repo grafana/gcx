@@ -422,6 +422,20 @@ type KGSchemaResult struct {
 	Relationships []string           `json:"relationships"`
 }
 
+// LLMSummaryRequest is the request body for POST /v1/assertions/llm-summary.
+type LLMSummaryRequest struct {
+	StartTime                                    int64       `json:"startTime"`
+	EndTime                                      int64       `json:"endTime"`
+	EntityKeys                                   []EntityKey `json:"entityKeys"`
+	SuggestionSrcEntities                        []EntityKey `json:"suggestionSrcEntities"`
+	GroupAssertions                              bool        `json:"groupAssertions"`
+	AlertCategories                              []string    `json:"alertCategories,omitempty"`
+	HideAssertionsOlderThanNHours               int         `json:"hideAssertionsOlderThanNHours"`
+	HideAssertionsPresentMoreThanPercentageOfTime int        `json:"hideAssertionsPresentMoreThanPercentageOfTime"`
+	IncludeSuggestions                          bool        `json:"includeSuggestions"`
+	IncludeRcaPatterns                          bool        `json:"includeRcaPatterns"`
+}
+
 // KGMetadataOutput is the structured output from gcx kg metadata.
 type KGMetadataOutput struct {
 	Schema   *KGSchemaResult          `json:"schema,omitempty"`

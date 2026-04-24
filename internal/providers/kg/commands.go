@@ -1587,7 +1587,23 @@ func newInspectCommand(loader RESTConfigLoader) *cobra.Command {
 				}
 			}
 
-			entityInfo, err := client.GetEntityInfo(cmd.Context(), entityType, name, scope, startMs, endMs)
+			llmReq := LLMSummaryRequest{
+				StartTime: startMs,
+				EndTime:   endMs,
+				EntityKeys: []EntityKey{{
+					Type:  entityType,
+					Name:  name,
+					Scope: toAnyMap(scope),
+				}},
+				SuggestionSrcEntities:                        []EntityKey{},
+				GroupAssertions:                              true,
+				AlertCategories:                              []string{"saturation", "amend", "anomaly", "failure", "error"},
+				HideAssertionsOlderThanNHours:                48,
+				HideAssertionsPresentMoreThanPercentageOfTime: 90,
+				IncludeSuggestions:                           true,
+				IncludeRcaPatterns:                           true,
+			}
+			result, err := client.LLMSummary(cmd.Context(), llmReq)
 			if err != nil {
 				var apiErr *APIError
 				if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
@@ -1596,27 +1612,6 @@ func newInspectCommand(loader RESTConfigLoader) *cobra.Command {
 					}
 				}
 				return err
-			}
-
-			scopeAny := toAnyMap(scope)
-			req := AssertionsRequest{
-				StartTime:  startMs,
-				EndTime:    endMs,
-				EntityKeys: []EntityKey{{Type: entityType, Name: name, Scope: scopeAny}},
-			}
-			assertions, err := client.QueryAssertions(cmd.Context(), req)
-			if err != nil {
-				return err
-			}
-			summary, err := client.AssertionsSummary(cmd.Context(), req)
-			if err != nil {
-				return err
-			}
-
-			result := map[string]any{
-				"entity":   entityInfo,
-				"insights": assertions,
-				"summary":  summary,
 			}
 			return ioOpts.IO.Encode(cmd.OutOrStdout(), result)
 		},

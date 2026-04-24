@@ -466,6 +466,15 @@ func (c *Client) FetchProfileConfigs(ctx context.Context) (ProfileConfigsRespons
 	return resp, nil
 }
 
+// LLMSummary fetches entity health data from the LLM summary endpoint.
+func (c *Client) LLMSummary(ctx context.Context, req LLMSummaryRequest) (map[string]any, error) {
+	var result map[string]any
+	if err := c.postJSON(ctx, assertionsPath+"/llm-summary", req, &result); err != nil {
+		return nil, fmt.Errorf("kg: llm summary: %w", err)
+	}
+	return result, nil
+}
+
 // ---------------------------------------------------------------------------
 // Rules operations
 // ---------------------------------------------------------------------------
