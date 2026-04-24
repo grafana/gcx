@@ -3,10 +3,12 @@ package config
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
+	"os"
 	"strings"
 )
 
@@ -112,7 +114,7 @@ func (context *Context) Validate() error {
 }
 
 // ToRESTConfig returns a REST config for the context.
-func (context *Context) ToRESTConfig(ctx context.Context) NamespacedRESTConfig {
+func (context *Context) ToRESTConfig(ctx context.Context) (NamespacedRESTConfig, error) {
 	return NewNamespacedRESTConfig(ctx, *context)
 }
 
@@ -410,6 +412,15 @@ type TLS struct {
 	// server is used.
 	ServerName string `json:"server-name,omitempty" yaml:"server-name,omitempty"`
 
+	// CertFile is the path to a PEM-encoded client certificate file.
+	// This enables mutual TLS (mTLS) authentication with the server.
+	CertFile string `env:"GRAFANA_TLS_CERT_FILE" json:"cert-file,omitempty" yaml:"cert-file,omitempty"`
+	// KeyFile is the path to a PEM-encoded client certificate key file.
+	KeyFile string `datapolicy:"secret" env:"GRAFANA_TLS_KEY_FILE" json:"key-file,omitempty" yaml:"key-file,omitempty"`
+	// CAFile is the path to a PEM-encoded CA certificate bundle file.
+	// When set, this CA is used to verify the server's certificate.
+	CAFile string `env:"GRAFANA_TLS_CA_FILE" json:"ca-file,omitempty" yaml:"ca-file,omitempty"`
+
 	// CertData holds PEM-encoded bytes (typically read from a client certificate file).
 	// Note: this value is base64-encoded in the config file and will be
 	// automatically decoded.
@@ -430,14 +441,100 @@ type TLS struct {
 	NextProtos []string `json:"next-protos,omitempty" yaml:"next-protos,omitempty"`
 }
 
-func (cfg *TLS) ToStdTLSConfig() *tls.Config {
-	// TODO: CertData, KeyData, CAData
-	return &tls.Config{
+// IsEmpty reports whether all TLS fields are at their zero values.
+func (cfg *TLS) IsEmpty() bool {
+	return !cfg.Insecure && cfg.ServerName == "" &&
+		cfg.CertFile == "" && cfg.KeyFile == "" && cfg.CAFile == "" &&
+		len(cfg.CertData) == 0 && len(cfg.KeyData) == 0 && len(cfg.CAData) == 0 &&
+		len(cfg.NextProtos) == 0
+}
+
+func tlsFileError(description, path string, err error) error {
+	if os.IsNotExist(err) {
+		return ValidationError{
+			Path:    path,
+			Message: fmt.Sprintf("TLS %s file not found", description),
+			Suggestions: []string{
+				"Your client certificates may have expired — renew them and try again",
+				"Verify the file path in your gcx config or GRAFANA_TLS_CERT_FILE / GRAFANA_TLS_KEY_FILE env vars",
+			},
+		}
+	}
+	return fmt.Errorf("reading TLS %s: %w", description, err)
+}
+
+// ResolveFiles reads CertFile, KeyFile, and CAFile from disk and populates
+// the corresponding CertData, KeyData, and CAData fields. File-based fields
+// take precedence: if both CertFile and CertData are set, CertFile wins.
+func (cfg *TLS) ResolveFiles() error {
+	if (cfg.CertFile != "") != (cfg.KeyFile != "") {
+		return errors.New("both cert-file and key-file must be provided together")
+	}
+	if cfg.CertFile != "" {
+		data, err := os.ReadFile(cfg.CertFile)
+		if err != nil {
+			return tlsFileError("client certificate", cfg.CertFile, err)
+		}
+		cfg.CertData = data
+	}
+	if cfg.KeyFile != "" {
+		data, err := os.ReadFile(cfg.KeyFile)
+		if err != nil {
+			return tlsFileError("client key", cfg.KeyFile, err)
+		}
+		cfg.KeyData = data
+	}
+	if cfg.CAFile != "" {
+		data, err := os.ReadFile(cfg.CAFile)
+		if err != nil {
+			return tlsFileError("CA certificate", cfg.CAFile, err)
+		}
+		cfg.CAData = data
+	}
+	return nil
+}
+
+// ToStdTLSConfig converts the TLS configuration into a standard crypto/tls
+// Config. It loads client certificates from CertData/KeyData and adds custom
+// CA certificates from CAData to the root CA pool.
+func (cfg *TLS) ToStdTLSConfig() (*tls.Config, error) {
+	if err := cfg.ResolveFiles(); err != nil {
+		return nil, err
+	}
+
+	tlsCfg := &tls.Config{
 		//nolint:gosec
 		InsecureSkipVerify: cfg.Insecure,
+		MinVersion:         tls.VersionTLS12,
 		ServerName:         cfg.ServerName,
 		NextProtos:         cfg.NextProtos,
 	}
+
+	hasCert := len(cfg.CertData) > 0
+	hasKey := len(cfg.KeyData) > 0
+	if hasCert != hasKey {
+		return nil, errors.New("both cert-data and key-data must be provided together")
+	}
+	if hasCert && hasKey {
+		cert, err := tls.X509KeyPair(cfg.CertData, cfg.KeyData)
+		if err != nil {
+			return nil, fmt.Errorf("loading TLS client certificate keypair: %w", err)
+		}
+		tlsCfg.Certificates = []tls.Certificate{cert}
+	}
+
+	if len(cfg.CAData) > 0 {
+		pool, err := x509.SystemCertPool()
+		if err != nil {
+			return nil, fmt.Errorf("loading system certificate pool: %w", err)
+		}
+		if !pool.AppendCertsFromPEM(cfg.CAData) {
+			return nil, errors.New("failed to parse TLS CA certificate data")
+		}
+		tlsCfg.RootCAs = pool
+	}
+
+	return tlsCfg, nil
 }
 
 // Minify returns a trimmed down version of the given configuration containing
