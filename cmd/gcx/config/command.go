@@ -537,13 +537,18 @@ func setCmd(configOpts *Options) *cobra.Command {
 
 PROPERTY_NAME is a dot-delimited reference to the value to set. It can either represent a field or a map entry.
 
+A bare path (e.g. "cloud.token") is resolved against the current context and is equivalent to "contexts.<current-context>.<path>". Use a fully qualified path (starting with "contexts.<name>.") to target a specific context.
+
 PROPERTY_VALUE is the new value to set.`,
 		Example: `
+	# Set the "server" field on the current context to "https://grafana-dev.example"
+	gcx config set grafana.server https://grafana-dev.example
+
 	# Set the "server" field on the "dev-instance" context to "https://grafana-dev.example"
 	gcx config set contexts.dev-instance.grafana.server https://grafana-dev.example
 
-	# Disable the validation of the server's SSL certificate in the "dev-instance" context
-	gcx config set contexts.dev-instance.grafana.insecure-skip-tls-verify true
+	# Disable the validation of the server's SSL certificate in the current context
+	gcx config set grafana.insecure-skip-tls-verify true
 
 	# Set a value in the local config layer
 	gcx config set --file local contexts.prod.cloud.token my-token`,
@@ -558,7 +563,12 @@ PROPERTY_VALUE is the new value to set.`,
 				return err
 			}
 
-			if err := config.SetValue(&cfg, args[0], args[1]); err != nil {
+			path, err := config.ResolveContextPath(cfg, args[0])
+			if err != nil {
+				return err
+			}
+
+			if err := config.SetValue(&cfg, path, args[1]); err != nil {
 				return err
 			}
 
@@ -580,10 +590,15 @@ func unsetCmd(configOpts *Options) *cobra.Command {
 		Short: "Unset a single value in a configuration file",
 		Long: `Unset a single value in a configuration file.
 
-PROPERTY_NAME is a dot-delimited reference to the value to unset. It can either represent a field or a map entry.`,
+PROPERTY_NAME is a dot-delimited reference to the value to unset. It can either represent a field or a map entry.
+
+A bare path (e.g. "cloud.token") is resolved against the current context and is equivalent to "contexts.<current-context>.<path>". Use a fully qualified path (starting with "contexts.<name>.") to target a specific context.`,
 		Example: `
 	# Unset the "foo" context
 	gcx config unset contexts.foo
+
+	# Unset the "insecure-skip-tls-verify" flag in the current context
+	gcx config unset grafana.insecure-skip-tls-verify
 
 	# Unset the "insecure-skip-tls-verify" flag in the "dev-instance" context
 	gcx config unset contexts.dev-instance.grafana.insecure-skip-tls-verify
@@ -601,7 +616,12 @@ PROPERTY_NAME is a dot-delimited reference to the value to unset. It can either 
 				return err
 			}
 
-			if err := config.UnsetValue(&cfg, args[0]); err != nil {
+			path, err := config.ResolveContextPath(cfg, args[0])
+			if err != nil {
+				return err
+			}
+
+			if err := config.UnsetValue(&cfg, path); err != nil {
 				return err
 			}
 

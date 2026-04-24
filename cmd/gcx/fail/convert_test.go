@@ -465,6 +465,30 @@ func TestErrorToDetailedError_SMTokenNotConfigured(t *testing.T) {
 	assert.Contains(t, got.Suggestions[3], "gcx config view")
 }
 
+func TestErrorToDetailedError_CloudTokenNotConfigured(t *testing.T) {
+	err := errors.New("cloud token is required: set cloud.token in config or GRAFANA_CLOUD_TOKEN env var")
+
+	got := fail.ErrorToDetailedError(err)
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Cloud credentials not configured", got.Summary)
+	require.Len(t, got.Suggestions, 2)
+	assert.Contains(t, got.Suggestions[0], "gcx config set cloud.token")
+	assert.Contains(t, got.Suggestions[1], "GRAFANA_CLOUD_TOKEN")
+}
+
+func TestErrorToDetailedError_CloudStackNotConfigured(t *testing.T) {
+	err := errors.New("cloud stack is not configured: set cloud.stack in config or GRAFANA_CLOUD_STACK env var")
+
+	got := fail.ErrorToDetailedError(err)
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Cloud stack not configured", got.Summary)
+	require.Len(t, got.Suggestions, 2)
+	assert.Contains(t, got.Suggestions[0], "gcx config set cloud.stack")
+	assert.Contains(t, got.Suggestions[1], "GRAFANA_CLOUD_STACK")
+}
+
 type fakeServiceAPIError struct {
 	statusCode int
 	service    string
