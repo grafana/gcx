@@ -36,6 +36,9 @@ jobs:
           enable-cache: 'true'
           devbox-version: ${{ env.DEVBOX_VERSION }}
 
+      - name: Validate bundled skills
+        run: devbox run -- make validate-skills
+
       - name: Run golangci-lint
         run: devbox run -- make lint
 
