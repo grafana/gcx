@@ -5,7 +5,7 @@ on:
     branches: [main] # so that we build a Go cache that can be re-used in PRs
 
 env:
-  DEVBOX_VERSION: 0.16.0
+  DEVBOX_VERSION: 0.17.2
 
 permissions:
   contents: read

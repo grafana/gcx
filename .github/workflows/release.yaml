@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 env:
-  DEVBOX_VERSION: 0.16.0
+  DEVBOX_VERSION: 0.17.2
 
 # Allow only one concurrent release, skipping runs queued between the run in-progress and latest queued.
 # However, do NOT cancel in-progress runs as we want to allow them to complete.
