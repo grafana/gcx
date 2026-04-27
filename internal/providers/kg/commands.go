@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -1819,6 +1820,9 @@ By default all sections are loaded. Use flags to request specific sections:
 			// If no flag was explicitly set, load everything.
 			none := !cmd.Flags().Changed("schema") && !cmd.Flags().Changed("scopes") &&
 				!cmd.Flags().Changed("logs") && !cmd.Flags().Changed("traces") && !cmd.Flags().Changed("profiles")
+			if none && agent.IsAgentMode() {
+				fmt.Fprintln(cmd.ErrOrStderr(), "hint: use --schema, --scopes, --logs, --traces, or --profiles to load specific sections only")
+			}
 			loadSchema := flagSchema || none
 			loadScopes := flagScopes || none
 			loadLogs := flagLogs || none
