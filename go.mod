@@ -15,19 +15,19 @@ require (
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-logfmt/logfmt v0.6.1
 	github.com/go-logr/logr v1.4.3
-	github.com/go-openapi/strfmt v0.25.0
+	github.com/go-openapi/strfmt v0.26.1
 	github.com/goccy/go-yaml v1.19.2
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
-	github.com/grafana/authlib/types v0.0.0-20260218111514-582136a04938
+	github.com/grafana/authlib/types 9c256e2dbcb2
 	github.com/grafana/grafana-app-sdk/logging v0.53.2
 	github.com/grafana/grafana-foundation-sdk/go v0.0.12
-	github.com/grafana/grafana-openapi-client-go v0.0.0-20251202103709-7ef691d4df1d
+	github.com/grafana/grafana-openapi-client-go 5b95bb183fae
 	github.com/grafana/grafana/apps/folder v0.0.0-20250724095330-d852bde2a5fb
 	github.com/grafana/grafana/pkg/apimachinery v0.0.0-20250903133002-4e28cba1c53a
 	github.com/grafana/loki/v3 v3.4.2 // pinned: v3.5+ requires loki/pkg/push pseudo-versions not on Go proxy; also pins prometheus+strfmt versions below
-	github.com/grafana/promql-builder/go v0.0.0-20250916111012-8fa9625b89a3
+	github.com/grafana/promql-builder/go v0.0.4
 	github.com/huandu/xstrings v1.5.0
 	github.com/invopop/jsonschema v0.14.0
 	github.com/olekukonko/tablewriter v1.1.4
