@@ -1,21 +1,123 @@
 package kg_test
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"sync/atomic"
 	"testing"
 
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/kg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/rest"
 )
+
+type testRESTConfigLoader struct {
+	cfg config.NamespacedRESTConfig
+}
+
+func (l testRESTConfigLoader) LoadGrafanaConfig(_ context.Context) (config.NamespacedRESTConfig, error) {
+	return l.cfg, nil
+}
 
 func scopesHandler(scopes map[string][]string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"scopeValues": scopes})
 	}
+}
+
+func TestSuppressionsCreate_DryRunShowsDiffWithoutUploading(t *testing.T) {
+	var postCalled atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Contains(t, r.URL.Path, "config/disabled-alerts")
+		switch r.Method {
+		case http.MethodGet:
+			writeJSON(w, map[string]any{
+				"disabledAlertConfigs": []map[string]any{{
+					"name":        "remote",
+					"matchLabels": map[string]string{"env": "prod"},
+				}},
+			})
+		case http.MethodPost:
+			postCalled.Store(true)
+			t.Fatalf("dry-run must not upload suppressions")
+		default:
+			t.Fatalf("unexpected method: %s", r.Method)
+		}
+	}))
+	defer server.Close()
+
+	file := writeTempYAML(t, "disabledAlertConfigs:\n- name: local\n  matchLabels:\n    env: prod\n")
+	cmd := kg.NewTestSuppressionsCommand(testRESTConfigLoader{
+		cfg: config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}},
+	})
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"create", "-f", file, "--dry-run"})
+
+	require.NoError(t, cmd.Execute())
+	assert.False(t, postCalled.Load())
+	assert.Contains(t, out.String(), "[dry-run] Suppressions YAML is valid")
+	assert.Contains(t, out.String(), "--- remote")
+	assert.Contains(t, out.String(), "+++ local")
+	assert.Contains(t, out.String(), "-      name: remote")
+	assert.Contains(t, out.String(), "+      name: local")
+}
+
+func TestSuppressionsCreate_DryRunNoChanges(t *testing.T) {
+	const configYAML = "disabledAlertConfigs:\n- name: same\n  matchLabels:\n    env: prod\n"
+	var postCalled atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Contains(t, r.URL.Path, "config/disabled-alerts")
+		_, _ = w.Write([]byte(configYAML))
+	}))
+	defer server.Close()
+
+	file := writeTempYAML(t, configYAML)
+	cmd := kg.NewTestSuppressionsCommand(testRESTConfigLoader{
+		cfg: config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}},
+	})
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"create", "-f", file, "--dry-run"})
+
+	require.NoError(t, cmd.Execute())
+	assert.False(t, postCalled.Load())
+	assert.Contains(t, out.String(), "no changes")
+	assert.NotContains(t, out.String(), "--- remote")
+}
+
+func TestSuppressionsCreate_DryRunRejectsInvalidYAML(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		t.Fatal("invalid YAML should fail before remote suppressions are fetched")
+	}))
+	defer server.Close()
+
+	file := writeTempYAML(t, "disabledAlerts:\n- name: [unterminated\n")
+	cmd := kg.NewTestSuppressionsCommand(testRESTConfigLoader{
+		cfg: config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}},
+	})
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"create", "-f", file, "--dry-run"})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid local suppressions YAML")
+}
+
+func writeTempYAML(t *testing.T, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "suppressions.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	return path
 }
 
 func TestScopeFlags_ValidateScopes(t *testing.T) {

@@ -26,6 +26,7 @@ const (
 	assertionsPath   = pluginResourcePath + "/asserts/api-server/v1/assertions"
 	searchPath       = pluginResourcePath + "/asserts/api-server/v1/search"
 	rulesPath        = pluginResourcePath + "/asserts/api-server/v1/config/prom-rules/"
+	suppressionsPath = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alerts/"
 	entityLookupPath = pluginResourcePath + "/asserts/api-server/v1/entity"
 )
 
@@ -61,6 +62,30 @@ func (c *Client) getJSON(ctx context.Context, path string, v any) error {
 		return readError(resp)
 	}
 	return json.NewDecoder(resp.Body).Decode(v)
+}
+
+// getRaw performs a GET request and returns the raw response body.
+func (c *Client) getRaw(ctx context.Context, path string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.host+path, nil)
+	if err != nil {
+		return "", fmt.Errorf("kg: create request: %w", err)
+	}
+	req.Header.Set("Accept", "application/x-yaml, application/yaml, text/yaml, application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("kg: execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return "", readError(resp)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("kg: read response body: %w", err)
+	}
+	return string(body), nil
 }
 
 // postJSON performs a POST request with a JSON body and decodes the response into v.
@@ -208,9 +233,14 @@ func (c *Client) UploadModelRules(ctx context.Context, yamlContent string) error
 	return c.doYAML(ctx, http.MethodPut, pluginResourcePath+"/asserts/api-server/v1/config/model-rules/", yamlContent)
 }
 
+// GetSuppressions retrieves the current alert suppression configuration.
+func (c *Client) GetSuppressions(ctx context.Context) (string, error) {
+	return c.getRaw(ctx, suppressionsPath)
+}
+
 // UploadSuppressions uploads alert suppression configuration.
 func (c *Client) UploadSuppressions(ctx context.Context, yamlContent string) error {
-	return c.doYAML(ctx, http.MethodPost, pluginResourcePath+"/asserts/api-server/v1/config/disabled-alerts/", yamlContent)
+	return c.doYAML(ctx, http.MethodPost, suppressionsPath, yamlContent)
 }
 
 // UploadRelabelRules uploads relabel rules configuration.

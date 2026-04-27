@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/shared"
 	"github.com/grafana/gcx/internal/style"
+	"github.com/pmezard/go-difflib/difflib"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
@@ -256,6 +257,31 @@ func readFileOrStdin(cmd *cobra.Command, path string) ([]byte, error) {
 		return io.ReadAll(cmd.InOrStdin())
 	}
 	return os.ReadFile(path)
+}
+
+func normalizeYAMLForDiff(name string, data []byte) (string, error) {
+	if strings.TrimSpace(string(data)) == "" {
+		return "", nil
+	}
+	var value any
+	if err := yaml.Unmarshal(data, &value); err != nil {
+		return "", fmt.Errorf("invalid %s YAML: %w", name, err)
+	}
+	normalized, err := yaml.Marshal(value)
+	if err != nil {
+		return "", fmt.Errorf("normalize %s YAML: %w", name, err)
+	}
+	return string(normalized), nil
+}
+
+func unifiedYAMLDiff(remote, local string) (string, error) {
+	return difflib.GetUnifiedDiffString(difflib.UnifiedDiff{
+		A:        difflib.SplitLines(remote),
+		B:        difflib.SplitLines(local),
+		FromFile: "remote",
+		ToFile:   "local",
+		Context:  3,
+	})
 }
 
 // searchByTypes fans out Search across multiple entity types and merges results.
@@ -585,12 +611,12 @@ func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
 		Use:   "suppressions",
 		Short: "Push suppressions to the Knowledge Graph.",
 	}
-	var fileFlag string
+	opts := &suppressionsCreateOpts{}
 	createCmd := &cobra.Command{
 		Use:   "create",
 		Short: "Upload suppressions from a YAML file.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			data, err := readFileOrStdin(cmd, fileFlag)
+			data, err := readFileOrStdin(cmd, opts.File)
 			if err != nil {
 				return fmt.Errorf("failed to read file: %w", err)
 			}
@@ -602,6 +628,9 @@ func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if opts.DryRun {
+				return runSuppressionsDryRun(cmd, client, data)
+			}
 			if err := client.UploadSuppressions(cmd.Context(), string(data)); err != nil {
 				return err
 			}
@@ -609,11 +638,47 @@ func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
 			return nil
 		},
 	}
-	createCmd.Flags().StringVarP(&fileFlag, "file", "f", "", "Input file (YAML)")
+	opts.setup(createCmd.Flags())
 	_ = createCmd.MarkFlagRequired("file")
 	cmd.AddCommand(createCmd)
 	//nolint:dupl
 	return cmd
+}
+
+type suppressionsCreateOpts struct {
+	File   string
+	DryRun bool
+}
+
+func (o *suppressionsCreateOpts) setup(flags *pflag.FlagSet) {
+	flags.StringVarP(&o.File, "file", "f", "", "Input file (YAML)")
+	flags.BoolVar(&o.DryRun, "dry-run", false, "Validate and show a diff without uploading")
+}
+
+func runSuppressionsDryRun(cmd *cobra.Command, client *Client, localData []byte) error {
+	local, err := normalizeYAMLForDiff("local suppressions", localData)
+	if err != nil {
+		return err
+	}
+	remoteData, err := client.GetSuppressions(cmd.Context())
+	if err != nil {
+		return err
+	}
+	remote, err := normalizeYAMLForDiff("remote suppressions", []byte(remoteData))
+	if err != nil {
+		return err
+	}
+	if remote == local {
+		cmdio.Info(cmd.OutOrStdout(), "[dry-run] Suppressions YAML is valid; no changes")
+		return nil
+	}
+	diff, err := unifiedYAMLDiff(remote, local)
+	if err != nil {
+		return fmt.Errorf("render suppressions diff: %w", err)
+	}
+	cmdio.Info(cmd.OutOrStdout(), "[dry-run] Suppressions YAML is valid; showing diff (remote -> local)")
+	_, err = fmt.Fprint(cmd.OutOrStdout(), diff)
+	return err
 }
 
 //nolint:dupl

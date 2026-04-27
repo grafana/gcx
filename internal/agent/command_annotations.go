@@ -215,7 +215,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg search insights":         {Cost: "medium", Hint: "--type <type> --since 1h"},
 	"gcx kg search sample":           {Cost: "small"},
 	"gcx kg status":                  {Cost: "small"},
-	"gcx kg suppressions create":     {Cost: "small"},
+	"gcx kg suppressions create":     {Cost: "small", Hint: "-f suppressions.yaml --dry-run"},
 
 	// -----------------------------------------------------------------------
 	// Logs provider
