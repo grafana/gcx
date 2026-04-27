@@ -1815,7 +1815,7 @@ Specify one or more section flags to load specific data:
 				!cmd.Flags().Changed("logs") && !cmd.Flags().Changed("traces") &&
 				!cmd.Flags().Changed("profiles") && !cmd.Flags().Changed("all")
 			if none {
-				return fmt.Errorf("no section specified\n\nUse a section flag to load specific data:\n" +
+				return errors.New("no section specified\n\nUse a section flag to load specific data:\n" +
 					"  --schema    entity types, properties, and relationships\n" +
 					"  --scopes    available env/site/namespace values\n" +
 					"  --logs      log drilldown configs (entity property → Loki label mappings)\n" +
