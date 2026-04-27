@@ -192,7 +192,7 @@ var commandAnnotations = map[string]annotation{
 	// -----------------------------------------------------------------------
 	// Knowledge Graph provider
 	// -----------------------------------------------------------------------
-	"gcx kg entities list":           {Cost: "medium", Hint: "--type <type> --since 1h -o json"},
+	"gcx kg entities list":           {Cost: "medium", Hint: "--type <type> [--env <env>] [--namespace <ns>] --since 1h -o json | run gcx kg describe --scopes first to discover valid env/namespace/site values"},
 	"gcx kg entities show":           {Cost: "medium", Hint: "<Type--Name> --type <type> -o json"},
 	"gcx kg health":                  {Cost: "medium", Hint: "--type <type> --since 1h -o json"},
 	"gcx kg insights active":         {Cost: "medium", Hint: "--type <type> --severity critical -o json"},
@@ -211,7 +211,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg rules get":               {Cost: "small"},
 	"gcx kg rules list":              {Cost: "small"},
 	"gcx kg scopes list":             {Cost: "small"},
-	"gcx kg describe":                {Cost: "medium", Hint: "--schema | --scopes | --logs | --traces | --profiles | --all — section flag required"},
+	"gcx kg describe":                {Cost: "medium", Hint: "section flag required: --scopes (all valid env/namespace/site filter values) | --schema (entity types + relationships) | --logs (Loki label mappings) | --traces (Tempo label mappings) | --profiles (Pyroscope label mappings) | --all"},
 	"gcx kg search example":          {Cost: "small"},
 	"gcx kg search insights":         {Cost: "medium", Hint: "--type <type> --since 1h"},
 	"gcx kg search sample":           {Cost: "small"},
