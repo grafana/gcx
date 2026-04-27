@@ -2,53 +2,10 @@
 
 Describe the Knowledge Graph: entity types, valid env/namespace/site values, and telemetry query configs.
 
-### Synopsis
-
-Describe the Knowledge Graph structure needed to formulate correct KG and telemetry queries.
-
-Specify one or more section flags to load specific data:
-  --schema    Entity types, properties, and relationships
-  --scopes    Available env/site/namespace values
-  --logs      Log drilldown configs (entity property → Loki label mappings)
-  --traces    Trace drilldown configs (entity property → Tempo label mappings)
-  --profiles  Profile drilldown configs (entity property → Pyroscope label mappings)
-  --all       Load all sections
-
-```
-gcx kg describe [flags]
-```
-
-### Examples
-
-```
-  # Entity types and scopes — useful before a gcx kg search or inspect call
-  gcx kg describe --schema --scopes
-
-  # Log configs only — use before building a Loki query from entity properties
-  gcx kg describe --logs
-
-  # All telemetry configs as JSON
-  gcx kg describe --logs --traces --profiles -o json
-
-  # Load everything
-  gcx kg describe --all
-```
-
 ### Options
 
 ```
-      --all             Load all sections
-      --from string     Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-  -h, --help            help for describe
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --logs            Load log drilldown configs (entity property → Loki label mappings)
-  -o, --output string   Output format. One of: json, text, yaml (default "text")
-      --profiles        Load profile drilldown configs (entity property → Pyroscope label mappings)
-      --schema          Load entity types, properties, and relationships
-      --scopes          Load available env/site/namespace values
-      --since string    Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
-      --to string       End time (RFC3339, Unix timestamp, or relative like 'now')
-      --traces          Load trace drilldown configs (entity property → Tempo label mappings)
+  -h, --help   help for describe
 ```
 
 ### Options inherited from parent commands
@@ -66,4 +23,10 @@ gcx kg describe [flags]
 ### SEE ALSO
 
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
+* [gcx kg describe all](gcx_kg_describe_all.md)	 - Load all sections: schema, scopes, logs, traces, and profiles.
+* [gcx kg describe logs](gcx_kg_describe_logs.md)	 - Show Loki label mappings for log drilldown.
+* [gcx kg describe profiles](gcx_kg_describe_profiles.md)	 - Show Pyroscope label mappings for profile drilldown.
+* [gcx kg describe schema](gcx_kg_describe_schema.md)	 - Show entity types, properties, and relationships.
+* [gcx kg describe scopes](gcx_kg_describe_scopes.md)	 - Show all valid env/namespace/site filter values.
+* [gcx kg describe traces](gcx_kg_describe_traces.md)	 - Show Tempo label mappings for trace drilldown.
 
