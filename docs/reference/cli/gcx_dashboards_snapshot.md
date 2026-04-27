@@ -7,7 +7,7 @@ Render dashboard snapshots as PNG images
 Render one or more Grafana dashboards or individual panels as PNG images using the Grafana Image Renderer.
 
 ```
-gcx dashboards snapshot <uid> [uid...] [flags]
+gcx dashboards snapshot <name> [name...] [flags]
 ```
 
 ### Examples
@@ -15,22 +15,22 @@ gcx dashboards snapshot <uid> [uid...] [flags]
 ```
 
   # Snapshot a full dashboard
-  gcx dashboards snapshot my-dashboard-uid
+  gcx dashboards snapshot my-dashboard-name
 
   # Snapshot a specific panel
-  gcx dashboards snapshot my-dashboard-uid --panel 42
+  gcx dashboards snapshot my-dashboard-name --panel 42
 
   # Snapshot with custom dimensions and time range
-  gcx dashboards snapshot my-dashboard-uid --width 1000 --height 500 --theme light --from now-1h --to now
+  gcx dashboards snapshot my-dashboard-name --width 1000 --height 500 --theme light --from now-1h --to now
 
   # Snapshot using a duration shorthand
-  gcx dashboards snapshot my-dashboard-uid --since 6h
+  gcx dashboards snapshot my-dashboard-name --since 6h
 
   # Snapshot multiple dashboards to a specific directory
-  gcx dashboards snapshot uid1 uid2 uid3 --output-dir ./snapshots
+  gcx dashboards snapshot name1 name2 name3 --output-dir ./snapshots
 
   # Snapshot with dashboard template variable overrides
-  gcx dashboards snapshot my-dashboard-uid --var cluster=prod --var datasource=prometheus
+  gcx dashboards snapshot my-dashboard-name --var cluster=prod --var datasource=prometheus
 ```
 
 ### Options
@@ -40,9 +40,9 @@ gcx dashboards snapshot <uid> [uid...] [flags]
       --from string          Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
       --height int           Height of the rendered image in pixels (default: -1/full-page for dashboard, 600 for panel)
   -h, --help                 help for snapshot
-      --org-id int           Grafana organization ID (default 1)
+      --org-id int           Grafana organization number (default 1)
       --output-dir string    Directory to write PNG files to (created if it does not exist) (default ".")
-      --panel int            Panel ID to render a single panel instead of the full dashboard
+      --panel int            Panel number to render a single panel instead of the full dashboard
       --since string         Duration before now (e.g. '1h', '7d'); expands to --from now-{since} --to now; mutually exclusive with --from/--to
       --theme string         Grafana theme (light or dark) (default "dark")
       --to string            End time (RFC3339, Unix timestamp, or relative like 'now')
@@ -65,5 +65,5 @@ gcx dashboards snapshot <uid> [uid...] [flags]
 
 ### SEE ALSO
 
-* [gcx dashboards](gcx_dashboards.md)	 - Render Grafana dashboard snapshots
+* [gcx dashboards](gcx_dashboards.md)	 - Manage Grafana dashboards
 

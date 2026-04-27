@@ -38,6 +38,7 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   typed methods (`List`, `Get`, `Create`, `Update`, `Delete`) for data access, not raw
   API clients. This ensures bug fixes to CRUD logic apply to both provider commands and
   the `resources` pipeline automatically.
+  > **Exception:** The dashboards commands-only provider (`internal/providers/dashboards/`) calls the K8s dynamic client directly. This is the one documented exception — see ADR 016 (`docs/adrs/dashboards-provider/001-dashboards-provider-design.md`) for rationale and scope.
 - **Schema/Example on Registration structs:** Every `adapter.Registration` struct (populated
   via `TypedRegistrations()`) must include a non-nil `Schema` field. These power the
   `schemas` command via the global `SchemaForGVK`/`ExampleForGVK` functions — `AsAdapter()`

@@ -28,7 +28,7 @@ gcx is a unified CLI for managing Grafana resources, dashboards, datasources, al
 * [gcx commands](gcx_commands.md)	 - List all commands with rich metadata for agent consumption
 * [gcx completion](gcx_completion.md)	 - Generate the autocompletion script for the specified shell
 * [gcx config](gcx_config.md)	 - View or manipulate configuration settings
-* [gcx dashboards](gcx_dashboards.md)	 - Render Grafana dashboard snapshots
+* [gcx dashboards](gcx_dashboards.md)	 - Manage Grafana dashboards
 * [gcx datasources](gcx_datasources.md)	 - Manage and query Grafana datasources
 * [gcx dev](gcx_dev.md)	 - Manage Grafana resources as code
 * [gcx fleet](gcx_fleet.md)	 - Manage Grafana Fleet Management pipelines and collectors
