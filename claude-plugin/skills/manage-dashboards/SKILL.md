@@ -1,23 +1,143 @@
 ---
 name: manage-dashboards
 description: >
-  Use this skill when the user wants to pull dashboards from Grafana to local
-  files, push local dashboard files to Grafana, create a new dashboard from
-  scratch, validate dashboard files against the Grafana API schema, promote
-  dashboards across environments (dev, staging, production), manage Grafana
-  folders and their associated dashboards, or capture visual snapshots
-  (screenshots/PNG images) of dashboards or individual panels. Also use this
-  skill when the user asks about editing, deleting, or diffing dashboards,
-  about the live development server for iterative dashboard authoring, or
-  wants to render/export a dashboard image.
+  Use this skill when the user wants to list, get, create, update, delete,
+  or search dashboards imperatively; inspect or restore a dashboard version;
+  pull dashboards from Grafana to local files, push local dashboard files to
+  Grafana, create a new dashboard from scratch, validate dashboard files
+  against the Grafana API schema, promote dashboards across environments
+  (dev, staging, production), manage Grafana folders and their associated
+  dashboards, or capture visual snapshots (screenshots/PNG images) of
+  dashboards or individual panels. Also use this skill when the user asks
+  about editing, deleting, or diffing dashboards, about the live development
+  server for iterative dashboard authoring, or wants to render/export a
+  dashboard image.
 ---
 
 # Manage Dashboards
 
-This skill guides agents through the full dashboard lifecycle using gcx:
-pulling from Grafana, pushing to Grafana, creating new dashboards, validating
-files, and promoting dashboards across environments. All operations work with
-Kubernetes-style resource files on disk.
+gcx exposes **two paths** for dashboard management:
+
+1. **Imperative commands** (`gcx dashboards …`) — CRUD, search, and version
+   history. Best for interactive work, scripting, and agent-driven operations.
+2. **Declarative resource pipeline** (`gcx resources push/pull …`) — bulk
+   GitOps-style synchronization of local files with Grafana. Best for
+   infrastructure-as-code and CI/CD promotion across environments.
+
+Both paths remain fully supported and use the same Kubernetes-compatible API.
+
+---
+
+## Workflow 0: Imperative CRUD, search, and version history
+
+Use the `gcx dashboards` subcommands when you want to inspect or modify a
+single dashboard without maintaining local files.
+
+### List and inspect dashboards
+
+```bash
+# List all dashboards (table view)
+gcx dashboards list
+
+# Wide view — adds PANELS and URL columns
+gcx dashboards list -o wide
+
+# Get a specific dashboard by name (metadata.name == legacy Dashboard UID)
+gcx dashboards get my-dashboard-name
+
+# Output as YAML or JSON
+gcx dashboards get my-dashboard-name -o yaml
+gcx dashboards get my-dashboard-name -o json
+```
+
+### Create and update dashboards
+
+```bash
+# Create a dashboard from a YAML/JSON manifest
+gcx dashboards create -f dashboard.yaml
+
+# Update an existing dashboard (name must match metadata.name)
+gcx dashboards update my-dashboard-name -f dashboard.yaml
+
+# Read manifest from stdin
+gcx dashboards create -f -
+```
+
+### Delete a dashboard
+
+```bash
+# Delete with confirmation prompt
+gcx dashboards delete my-dashboard-name
+
+# Skip confirmation
+gcx dashboards delete my-dashboard-name --yes
+gcx dashboards delete my-dashboard-name -y
+```
+
+### Search dashboards
+
+`gcx dashboards search` uses the Grafana full-text search API (pinned to
+`v0alpha1`). It supports filtering by title, tag, and folder.
+
+> **`list` vs `search --folder`**: `gcx dashboards list` does NOT support
+> a `--folder` flag because folder membership is stored as an annotation
+> (`grafana.app/folder`), not as a label selector the API can filter on.
+> To filter by folder, use `gcx dashboards search --folder <folder-name>`.
+
+```bash
+# Search by title keyword
+gcx dashboards search "my dashboard"
+
+# Filter by folder (use the folder's metadata.name)
+gcx dashboards search --folder my-folder-name
+
+# Multiple folders
+gcx dashboards search --folder folder-a --folder folder-b
+
+# Filter by tag
+gcx dashboards search --tag prod
+
+# Combine query + tag + folder
+gcx dashboards search "latency" --tag slo --folder platform
+
+# Limit results
+gcx dashboards search "metrics" --limit 10
+
+# Output as YAML or JSON (K8s DashboardSearchResultList envelope)
+gcx dashboards search "metrics" -o yaml
+
+# Include recently deleted dashboards
+gcx dashboards search "old-dashboard" --deleted
+```
+
+Search results are client-side filtered to `resource == "dashboards"` only
+(folder hits returned by the server are dropped automatically).
+
+### Version history and restore
+
+```bash
+# List version history for a dashboard
+gcx dashboards versions list my-dashboard-name
+
+# Limit to last 5 revisions
+gcx dashboards versions list my-dashboard-name --limit 5
+
+# Restore to a specific version (shows the VERSION column from versions list)
+gcx dashboards versions restore my-dashboard-name 3
+
+# Restore with a custom commit message
+gcx dashboards versions restore my-dashboard-name 3 --message "Revert accidental panel deletion"
+
+# Skip confirmation prompt
+gcx dashboards versions restore my-dashboard-name 3 --yes
+```
+
+Restore executes a compound LIST → GET → PUT sequence: it fetches the
+historical spec, carries the current `metadata.resourceVersion` forward
+(optimistic concurrency), and writes a `grafana.app/message` annotation on
+the new revision. A HTTP 409 conflict exits non-zero.
+
+---
 
 ## Prerequisites
 
@@ -29,8 +149,6 @@ your Grafana instance. If gcx is not configured, use the
 # Verify configuration and connectivity
 gcx config check
 ```
-
----
 
 ## Workflow 1: Pull Dashboards from Grafana
 

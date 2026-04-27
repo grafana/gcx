@@ -97,6 +97,18 @@ var commandAnnotations = map[string]annotation{
 	"gcx skills uninstall": {Cost: "small"},
 
 	// -----------------------------------------------------------------------
+	// Dashboards provider
+	// -----------------------------------------------------------------------
+	"gcx dashboards list":             {Cost: "medium", Hint: "-o json --api-version dashboard.grafana.app/v2"},
+	"gcx dashboards get":              {Cost: "small", Hint: "<name> -o json"},
+	"gcx dashboards create":           {Cost: "small", Hint: "-f <manifest.yaml>"},
+	"gcx dashboards update":           {Cost: "small", Hint: "<name> -f <manifest.yaml>"},
+	"gcx dashboards delete":           {Cost: "small"},
+	"gcx dashboards search":           {Cost: "medium", Hint: "<query> -o json"},
+	"gcx dashboards versions list":    {Cost: "small", Hint: "<name> -o json"},
+	"gcx dashboards versions restore": {Cost: "small"},
+
+	// -----------------------------------------------------------------------
 	// Alert provider
 	// -----------------------------------------------------------------------
 	"gcx alert groups get":     {Cost: "small"},
