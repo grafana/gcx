@@ -1886,7 +1886,9 @@ By default all sections are loaded. Use flags to request specific sections:
 	cmd.Flags().BoolVar(&flagLogs, "logs", false, "Load log drilldown configs (entity property → Loki label mappings)")
 	cmd.Flags().BoolVar(&flagTraces, "traces", false, "Load trace drilldown configs (entity property → Tempo label mappings)")
 	cmd.Flags().BoolVar(&flagProfiles, "profiles", false, "Load profile drilldown configs (entity property → Pyroscope label mappings)")
-	sf.register(cmd)
+	cmd.Flags().StringVar(&sf.from, "from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
+	cmd.Flags().StringVar(&sf.to, "to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
+	cmd.Flags().StringVar(&sf.since, "since", "", "Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)")
 	ioOpts.setup(cmd.Flags())
 	return cmd
 }
