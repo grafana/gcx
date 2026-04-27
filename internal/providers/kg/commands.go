@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -1779,6 +1778,7 @@ func newDescribeCommand(loader RESTConfigLoader) *cobra.Command {
 		flagLogs     bool
 		flagTraces   bool
 		flagProfiles bool
+		flagAll      bool
 		sf           scopeFlags
 	)
 	ioOpts := &describeOpts{}
@@ -1787,27 +1787,43 @@ func newDescribeCommand(loader RESTConfigLoader) *cobra.Command {
 		Short: "Describe the Knowledge Graph: entity types, scope values, and telemetry query configs.",
 		Long: `Describe the Knowledge Graph structure needed to formulate correct KG and telemetry queries.
 
-By default all sections are loaded. Use flags to request specific sections:
+Specify one or more section flags to load specific data:
   --schema    Entity types, properties, and relationships
   --scopes    Available env/site/namespace values
   --logs      Log drilldown configs (entity property → Loki label mappings)
   --traces    Trace drilldown configs (entity property → Tempo label mappings)
-  --profiles  Profile drilldown configs (entity property → Pyroscope label mappings)`,
-		Example: `  # Describe everything (default)
-  gcx kg describe
-
-  # Entity types and scopes only — useful before a gcx kg search or inspect call
+  --profiles  Profile drilldown configs (entity property → Pyroscope label mappings)
+  --all       Load all sections`,
+		Example: `  # Entity types and scopes — useful before a gcx kg search or inspect call
   gcx kg describe --schema --scopes
 
   # Log configs only — use before building a Loki query from entity properties
   gcx kg describe --logs
 
   # All telemetry configs as JSON
-  gcx kg describe --logs --traces --profiles -o json`,
+  gcx kg describe --logs --traces --profiles -o json
+
+  # Load everything
+  gcx kg describe --all`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := ioOpts.IO.Validate(); err != nil {
 				return err
 			}
+
+			// Require at least one section flag.
+			none := !cmd.Flags().Changed("schema") && !cmd.Flags().Changed("scopes") &&
+				!cmd.Flags().Changed("logs") && !cmd.Flags().Changed("traces") &&
+				!cmd.Flags().Changed("profiles") && !cmd.Flags().Changed("all")
+			if none {
+				return fmt.Errorf("no section specified\n\nUse a section flag to load specific data:\n" +
+					"  --schema    entity types, properties, and relationships\n" +
+					"  --scopes    available env/site/namespace values\n" +
+					"  --logs      log drilldown configs (entity property → Loki label mappings)\n" +
+					"  --traces    trace drilldown configs (entity property → Tempo label mappings)\n" +
+					"  --profiles  profile drilldown configs (entity property → Pyroscope label mappings)\n" +
+					"  --all       load all sections")
+			}
+
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
@@ -1817,17 +1833,11 @@ By default all sections are loaded. Use flags to request specific sections:
 				return err
 			}
 
-			// If no flag was explicitly set, load everything.
-			none := !cmd.Flags().Changed("schema") && !cmd.Flags().Changed("scopes") &&
-				!cmd.Flags().Changed("logs") && !cmd.Flags().Changed("traces") && !cmd.Flags().Changed("profiles")
-			if none && agent.IsAgentMode() {
-				fmt.Fprintln(cmd.ErrOrStderr(), "hint: use --schema, --scopes, --logs, --traces, or --profiles to load specific sections only")
-			}
-			loadSchema := flagSchema || none
-			loadScopes := flagScopes || none
-			loadLogs := flagLogs || none
-			loadTraces := flagTraces || none
-			loadProfiles := flagProfiles || none
+			loadSchema := flagSchema || flagAll
+			loadScopes := flagScopes || flagAll
+			loadLogs := flagLogs || flagAll
+			loadTraces := flagTraces || flagAll
+			loadProfiles := flagProfiles || flagAll
 
 			startMs, endMs, err := sf.resolveTime()
 			if err != nil {
@@ -1890,6 +1900,7 @@ By default all sections are loaded. Use flags to request specific sections:
 	cmd.Flags().BoolVar(&flagLogs, "logs", false, "Load log drilldown configs (entity property → Loki label mappings)")
 	cmd.Flags().BoolVar(&flagTraces, "traces", false, "Load trace drilldown configs (entity property → Tempo label mappings)")
 	cmd.Flags().BoolVar(&flagProfiles, "profiles", false, "Load profile drilldown configs (entity property → Pyroscope label mappings)")
+	cmd.Flags().BoolVar(&flagAll, "all", false, "Load all sections")
 	cmd.Flags().StringVar(&sf.from, "from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
 	cmd.Flags().StringVar(&sf.to, "to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
 	cmd.Flags().StringVar(&sf.since, "since", "", "Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)")

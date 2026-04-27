@@ -6,12 +6,13 @@ Describe the Knowledge Graph: entity types, scope values, and telemetry query co
 
 Describe the Knowledge Graph structure needed to formulate correct KG and telemetry queries.
 
-By default all sections are loaded. Use flags to request specific sections:
+Specify one or more section flags to load specific data:
   --schema    Entity types, properties, and relationships
   --scopes    Available env/site/namespace values
   --logs      Log drilldown configs (entity property → Loki label mappings)
   --traces    Trace drilldown configs (entity property → Tempo label mappings)
   --profiles  Profile drilldown configs (entity property → Pyroscope label mappings)
+  --all       Load all sections
 
 ```
 gcx kg describe [flags]
@@ -20,10 +21,7 @@ gcx kg describe [flags]
 ### Examples
 
 ```
-  # Describe everything (default)
-  gcx kg describe
-
-  # Entity types and scopes only — useful before a gcx kg search or inspect call
+  # Entity types and scopes — useful before a gcx kg search or inspect call
   gcx kg describe --schema --scopes
 
   # Log configs only — use before building a Loki query from entity properties
@@ -31,11 +29,15 @@ gcx kg describe [flags]
 
   # All telemetry configs as JSON
   gcx kg describe --logs --traces --profiles -o json
+
+  # Load everything
+  gcx kg describe --all
 ```
 
 ### Options
 
 ```
+      --all             Load all sections
       --from string     Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help            help for describe
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
