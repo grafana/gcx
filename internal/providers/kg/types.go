@@ -266,3 +266,114 @@ type Rule struct {
 	Labels      map[string]string `json:"labels,omitempty"`
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
+
+// ---------------------------------------------------------------------------
+// Schema types
+// ---------------------------------------------------------------------------
+
+// GraphSchemaEntity is a node returned by the schema search query.
+// Its Name field is the entity type name (e.g. "Service", "Pod"), not an instance name.
+type GraphSchemaEntity struct {
+	ID         *int64         `json:"id,omitempty"`
+	Name       string         `json:"name"`
+	Properties map[string]any `json:"properties,omitempty"`
+}
+
+// GraphSchemaEdge is a relationship between two entity type nodes in the schema response.
+type GraphSchemaEdge struct {
+	Source      int64  `json:"source"`
+	Destination int64  `json:"destination"`
+	Type        string `json:"type"`
+}
+
+// GraphSchemaResponse is the raw response from the schema search query (definitionId=6).
+type GraphSchemaResponse struct {
+	Data struct {
+		Entities []GraphSchemaEntity `json:"entities"`
+		Edges    []GraphSchemaEdge   `json:"edges"`
+	} `json:"data"`
+}
+
+// ---------------------------------------------------------------------------
+// Telemetry drilldown config types (v2 API)
+// ---------------------------------------------------------------------------
+
+// TelemetryConfigMatcher is a single match criterion in a drilldown config.
+type TelemetryConfigMatcher struct {
+	Property string   `json:"property"`
+	Op       string   `json:"op"`
+	Values   []string `json:"values,omitempty"`
+}
+
+// LogDrilldownConfig maps entity properties to Loki stream selector labels.
+type LogDrilldownConfig struct {
+	Name                            string                   `json:"name"`
+	Match                           []TelemetryConfigMatcher `json:"match"`
+	DefaultConfig                   bool                     `json:"defaultConfig"`
+	DataSourceUID                   string                   `json:"dataSourceUid"`
+	ErrorLabel                      string                   `json:"errorLabel,omitempty"`
+	EntityPropertyToLogLabelMapping map[string]string        `json:"entityPropertyToLogLabelMapping"`
+	FilterBySpanID                  bool                     `json:"filterBySpanId,omitempty"`
+	FilterByTraceID                 bool                     `json:"filterByTraceId,omitempty"`
+	Priority                        int                      `json:"priority"`
+}
+
+// TraceDrilldownConfig maps entity properties to Tempo trace query labels.
+type TraceDrilldownConfig struct {
+	Name                              string                   `json:"name"`
+	Match                             []TelemetryConfigMatcher `json:"match"`
+	DefaultConfig                     bool                     `json:"defaultConfig"`
+	DataSourceUID                     string                   `json:"dataSourceUid"`
+	EntityPropertyToTraceLabelMapping map[string]string        `json:"entityPropertyToTraceLabelMapping"`
+	Priority                          int                      `json:"priority"`
+}
+
+// ProfileDrilldownConfig maps entity properties to Pyroscope profile query labels.
+type ProfileDrilldownConfig struct {
+	Name                                string                   `json:"name"`
+	Match                               []TelemetryConfigMatcher `json:"match"`
+	DefaultConfig                       bool                     `json:"defaultConfig"`
+	DataSourceUID                       string                   `json:"dataSourceUid"`
+	EntityPropertyToProfileLabelMapping map[string]string        `json:"entityPropertyToProfileLabelMapping"`
+	Priority                            int                      `json:"priority"`
+}
+
+// LogConfigsResponse is the response from GET /v2/config/log.
+type LogConfigsResponse struct {
+	LogDrilldownConfigs []LogDrilldownConfig `json:"logDrilldownConfigs"`
+}
+
+// TraceConfigsResponse is the response from GET /v2/config/trace.
+type TraceConfigsResponse struct {
+	TraceDrilldownConfigs []TraceDrilldownConfig `json:"traceDrilldownConfigs"`
+}
+
+// ProfileConfigsResponse is the response from GET /v2/config/profile.
+type ProfileConfigsResponse struct {
+	ProfileDrilldownConfigs []ProfileDrilldownConfig `json:"profileDrilldownConfigs"`
+}
+
+// ---------------------------------------------------------------------------
+// Metadata output type
+// ---------------------------------------------------------------------------
+
+// EntityTypeSchema is one entity type entry in the formatted schema.
+type EntityTypeSchema struct {
+	Type       string   `json:"type"`
+	Properties []string `json:"properties"`
+}
+
+// KGSchemaResult is the processed schema (entity types + relationship strings).
+type KGSchemaResult struct {
+	EntityTypes   []EntityTypeSchema `json:"entityTypes"`
+	Relationships []string           `json:"relationships"`
+}
+
+// KGMetadataOutput is the structured output from gcx kg metadata.
+type KGMetadataOutput struct {
+	Schema   *KGSchemaResult          `json:"schema,omitempty"`
+	Scopes   map[string][]string      `json:"scopes,omitempty"`
+	Logs     []LogDrilldownConfig     `json:"logConfigs,omitempty"`
+	Traces   []TraceDrilldownConfig   `json:"traceConfigs,omitempty"`
+	Profiles []ProfileDrilldownConfig `json:"profileConfigs,omitempty"`
+}

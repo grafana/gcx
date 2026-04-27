@@ -1540,6 +1540,358 @@ func newOpenCommand(loader RESTConfigLoader) *cobra.Command {
 }
 
 // ---------------------------------------------------------------------------
+// Metadata command
+// ---------------------------------------------------------------------------
+
+// processGraphSchema converts a raw GraphSchemaResponse into a KGSchemaResult.
+func processGraphSchema(resp GraphSchemaResponse) KGSchemaResult {
+	ignoredTypes := map[string]bool{"Account": true, "Env": true}
+	ignoredProps := map[string]bool{"Discovered": true, "Updated": true, "labelsForName": true}
+
+	idToName := make(map[int64]string)
+	typeProps := make(map[string]map[string]bool)
+
+	for _, e := range resp.Data.Entities {
+		name := e.Name
+		if name == "" {
+			name = "Unknown"
+		}
+		if ignoredTypes[name] {
+			continue
+		}
+		if e.ID != nil {
+			idToName[*e.ID] = name
+		}
+		if _, ok := typeProps[name]; !ok {
+			typeProps[name] = map[string]bool{"name": true}
+		}
+		for prop := range e.Properties {
+			if ignoredProps[prop] || strings.HasPrefix(prop, "_") ||
+				strings.HasPrefix(prop, "scope_") || strings.HasPrefix(prop, "lookup_") {
+				continue
+			}
+			typeProps[name][prop] = true
+		}
+	}
+
+	types := make([]string, 0, len(typeProps))
+	for t := range typeProps {
+		types = append(types, t)
+	}
+	sort.Strings(types)
+
+	entityTypes := make([]EntityTypeSchema, 0, len(types))
+	for _, t := range types {
+		props := make([]string, 0, len(typeProps[t]))
+		for p := range typeProps[t] {
+			props = append(props, p)
+		}
+		sort.Strings(props)
+		entityTypes = append(entityTypes, EntityTypeSchema{Type: t, Properties: props})
+	}
+
+	relSet := make(map[string]bool)
+	for _, edge := range resp.Data.Edges {
+		rel := strings.TrimSpace(edge.Type)
+		if rel == "" {
+			continue
+		}
+		src := idToName[edge.Source]
+		if src == "" {
+			src = fmt.Sprintf("id:%d", edge.Source)
+		}
+		dst := idToName[edge.Destination]
+		if dst == "" {
+			dst = fmt.Sprintf("id:%d", edge.Destination)
+		}
+		relSet[fmt.Sprintf("%s --%s--> %s", src, rel, dst)] = true
+	}
+	rels := make([]string, 0, len(relSet))
+	for r := range relSet {
+		rels = append(rels, r)
+	}
+	sort.Strings(rels)
+
+	return KGSchemaResult{EntityTypes: entityTypes, Relationships: rels}
+}
+
+func formatMatchCriteria(matchers []TelemetryConfigMatcher) string {
+	if len(matchers) == 0 {
+		return "any entity"
+	}
+	parts := make([]string, 0, len(matchers))
+	for _, m := range matchers {
+		if len(m.Values) > 0 {
+			parts = append(parts, fmt.Sprintf("%s %s [%s]", m.Property, m.Op, strings.Join(m.Values, ", ")))
+		} else {
+			parts = append(parts, fmt.Sprintf("%s %s", m.Property, m.Op))
+		}
+	}
+	return strings.Join(parts, " AND ")
+}
+
+func formatLabelMapping(mapping map[string]string) string {
+	if len(mapping) == 0 {
+		return "(none)"
+	}
+	pairs := make([]string, 0, len(mapping))
+	for entityProp, label := range mapping {
+		pairs = append(pairs, entityProp+" → "+label)
+	}
+	sort.Strings(pairs)
+	return strings.Join(pairs, ", ")
+}
+
+func formatLogSection(cfgs []LogDrilldownConfig) string {
+	if len(cfgs) == 0 {
+		return ""
+	}
+	lines := make([]string, 0, len(cfgs))
+	for _, cfg := range cfgs {
+		l := fmt.Sprintf("  - %q (priority: %d, datasource: %s, default: %t)", cfg.Name, cfg.Priority, cfg.DataSourceUID, cfg.DefaultConfig)
+		l += "\n    match: " + formatMatchCriteria(cfg.Match)
+		l += "\n    entityProperty→logLabel: " + formatLabelMapping(cfg.EntityPropertyToLogLabelMapping)
+		if cfg.ErrorLabel != "" {
+			l += "\n    errorLabel: " + cfg.ErrorLabel
+		}
+		if cfg.FilterByTraceID {
+			l += "\n    filterByTraceId: true"
+		}
+		if cfg.FilterBySpanID {
+			l += "\n    filterBySpanId: true"
+		}
+		lines = append(lines, l)
+	}
+	return "Log configs:\n" + strings.Join(lines, "\n")
+}
+
+func formatTraceSection(cfgs []TraceDrilldownConfig) string {
+	if len(cfgs) == 0 {
+		return ""
+	}
+	lines := make([]string, 0, len(cfgs))
+	for _, cfg := range cfgs {
+		l := fmt.Sprintf("  - %q (priority: %d, datasource: %s, default: %t)", cfg.Name, cfg.Priority, cfg.DataSourceUID, cfg.DefaultConfig)
+		l += "\n    match: " + formatMatchCriteria(cfg.Match)
+		l += "\n    entityProperty→traceLabel: " + formatLabelMapping(cfg.EntityPropertyToTraceLabelMapping)
+		lines = append(lines, l)
+	}
+	return "Trace configs:\n" + strings.Join(lines, "\n")
+}
+
+func formatProfileSection(cfgs []ProfileDrilldownConfig) string {
+	if len(cfgs) == 0 {
+		return ""
+	}
+	lines := make([]string, 0, len(cfgs))
+	for _, cfg := range cfgs {
+		l := fmt.Sprintf("  - %q (priority: %d, datasource: %s, default: %t)", cfg.Name, cfg.Priority, cfg.DataSourceUID, cfg.DefaultConfig)
+		l += "\n    match: " + formatMatchCriteria(cfg.Match)
+		l += "\n    entityProperty→profileLabel: " + formatLabelMapping(cfg.EntityPropertyToProfileLabelMapping)
+		lines = append(lines, l)
+	}
+	return "Profile configs:\n" + strings.Join(lines, "\n")
+}
+
+type describeOpts struct {
+	IO cmdio.Options
+}
+
+func (o *describeOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("text", &DescribeTextCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+}
+
+// DescribeTextCodec renders KGMetadataOutput in the compact LLM-friendly text format
+// used by the lodestone load_knowledge_graph_metadata tool.
+type DescribeTextCodec struct{}
+
+func (c *DescribeTextCodec) Format() format.Format { return "text" }
+
+func (c *DescribeTextCodec) Encode(w io.Writer, v any) error {
+	out, ok := v.(KGMetadataOutput)
+	if !ok {
+		return errors.New("invalid data type for text codec: expected KGMetadataOutput")
+	}
+
+	var sections []string
+
+	if out.Schema != nil {
+		var lines []string
+		lines = append(lines, "Entity types and properties:")
+		for _, et := range out.Schema.EntityTypes {
+			lines = append(lines, fmt.Sprintf("  %s: %s", et.Type, strings.Join(et.Properties, ", ")))
+		}
+		if len(out.Schema.Relationships) > 0 {
+			lines = append(lines, "Relationships: "+strings.Join(out.Schema.Relationships, "; "))
+		}
+		sections = append(sections, strings.Join(lines, "\n"))
+	}
+
+	if len(out.Scopes) > 0 {
+		var parts []string
+		for _, dim := range []string{"env", "site", "namespace"} {
+			if vals := out.Scopes[dim]; len(vals) > 0 {
+				parts = append(parts, dim+": "+strings.Join(vals, ", "))
+			}
+		}
+		if len(parts) > 0 {
+			sections = append(sections, "Scope values (env, site, namespace):\n  "+strings.Join(parts, "\n  "))
+		}
+	}
+
+	hasTelemetry := len(out.Logs) > 0 || len(out.Traces) > 0 || len(out.Profiles) > 0
+	if hasTelemetry {
+		const telHeader = "Telemetry configs map entity properties to datasource labels for querying telemetry.\n" +
+			"To query telemetry for an entity: find the matching config (by match criteria and priority), " +
+			"then use entityProperty→label mappings to build filters from the entity's properties."
+		var telSections []string
+		if s := formatLogSection(out.Logs); s != "" {
+			telSections = append(telSections, s)
+		}
+		if s := formatTraceSection(out.Traces); s != "" {
+			telSections = append(telSections, s)
+		}
+		if s := formatProfileSection(out.Profiles); s != "" {
+			telSections = append(telSections, s)
+		}
+		sections = append(sections, telHeader+"\n\n"+strings.Join(telSections, "\n\n"))
+	}
+
+	if len(sections) == 0 {
+		fmt.Fprintln(w, "No metadata requested.")
+		return nil
+	}
+	_, err := fmt.Fprint(w, strings.Join(sections, "\n\n"))
+	return err
+}
+
+func (c *DescribeTextCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("text format does not support decoding")
+}
+
+func newDescribeCommand(loader RESTConfigLoader) *cobra.Command {
+	var (
+		flagSchema   bool
+		flagScopes   bool
+		flagLogs     bool
+		flagTraces   bool
+		flagProfiles bool
+		sf           scopeFlags
+	)
+	ioOpts := &describeOpts{}
+	cmd := &cobra.Command{
+		Use:   "describe",
+		Short: "Describe the Knowledge Graph: entity types, scope values, and telemetry query configs.",
+		Long: `Describe the Knowledge Graph structure needed to formulate correct KG and telemetry queries.
+
+By default all sections are loaded. Use flags to request specific sections:
+  --schema    Entity types, properties, and relationships
+  --scopes    Available env/site/namespace values
+  --logs      Log drilldown configs (entity property → Loki label mappings)
+  --traces    Trace drilldown configs (entity property → Tempo label mappings)
+  --profiles  Profile drilldown configs (entity property → Pyroscope label mappings)`,
+		Example: `  # Describe everything (default)
+  gcx kg describe
+
+  # Entity types and scopes only — useful before a gcx kg search or inspect call
+  gcx kg describe --schema --scopes
+
+  # Log configs only — use before building a Loki query from entity properties
+  gcx kg describe --logs
+
+  # All telemetry configs as JSON
+  gcx kg describe --logs --traces --profiles -o json`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := ioOpts.IO.Validate(); err != nil {
+				return err
+			}
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+
+			// If no flag was explicitly set, load everything.
+			none := !cmd.Flags().Changed("schema") && !cmd.Flags().Changed("scopes") &&
+				!cmd.Flags().Changed("logs") && !cmd.Flags().Changed("traces") && !cmd.Flags().Changed("profiles")
+			loadSchema := flagSchema || none
+			loadScopes := flagScopes || none
+			loadLogs := flagLogs || none
+			loadTraces := flagTraces || none
+			loadProfiles := flagProfiles || none
+
+			startMs, endMs, err := sf.resolveTime()
+			if err != nil {
+				return err
+			}
+
+			var out KGMetadataOutput
+
+			if loadSchema {
+				schemaResp, schemaErr := client.FetchGraphSchema(cmd.Context(), startMs, endMs)
+				if schemaErr != nil {
+					fmt.Fprintf(cmd.ErrOrStderr(), "warning: schema failed to load: %v\n", schemaErr)
+				} else {
+					result := processGraphSchema(schemaResp)
+					out.Schema = &result
+				}
+			}
+
+			if loadScopes {
+				scopes, scopeErr := client.ListEntityScopes(cmd.Context())
+				if scopeErr != nil {
+					fmt.Fprintf(cmd.ErrOrStderr(), "warning: scope values failed to load: %v\n", scopeErr)
+				} else {
+					out.Scopes = scopes
+				}
+			}
+
+			if loadLogs {
+				logResp, logErr := client.FetchLogConfigs(cmd.Context())
+				if logErr != nil {
+					fmt.Fprintf(cmd.ErrOrStderr(), "warning: log configs failed to load: %v\n", logErr)
+				} else {
+					out.Logs = logResp.LogDrilldownConfigs
+				}
+			}
+
+			if loadTraces {
+				traceResp, traceErr := client.FetchTraceConfigs(cmd.Context())
+				if traceErr != nil {
+					fmt.Fprintf(cmd.ErrOrStderr(), "warning: trace configs failed to load: %v\n", traceErr)
+				} else {
+					out.Traces = traceResp.TraceDrilldownConfigs
+				}
+			}
+
+			if loadProfiles {
+				profileResp, profileErr := client.FetchProfileConfigs(cmd.Context())
+				if profileErr != nil {
+					fmt.Fprintf(cmd.ErrOrStderr(), "warning: profile configs failed to load: %v\n", profileErr)
+				} else {
+					out.Profiles = profileResp.ProfileDrilldownConfigs
+				}
+			}
+
+			return ioOpts.IO.Encode(cmd.OutOrStdout(), out)
+		},
+	}
+	cmd.Flags().BoolVar(&flagSchema, "schema", false, "Load entity types, properties, and relationships")
+	cmd.Flags().BoolVar(&flagScopes, "scopes", false, "Load available env/site/namespace values")
+	cmd.Flags().BoolVar(&flagLogs, "logs", false, "Load log drilldown configs (entity property → Loki label mappings)")
+	cmd.Flags().BoolVar(&flagTraces, "traces", false, "Load trace drilldown configs (entity property → Tempo label mappings)")
+	cmd.Flags().BoolVar(&flagProfiles, "profiles", false, "Load profile drilldown configs (entity property → Pyroscope label mappings)")
+	sf.register(cmd)
+	ioOpts.setup(cmd.Flags())
+	return cmd
+}
+
+// ---------------------------------------------------------------------------
 // Example helpers
 // ---------------------------------------------------------------------------
 

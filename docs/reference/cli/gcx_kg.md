@@ -32,6 +32,7 @@ Manage Grafana Knowledge Graph rules, entities, and insights
 * [gcx kg relabel-rules](gcx_kg_relabel-rules.md)	 - Push relabel rules to the Knowledge Graph.
 * [gcx kg rules](gcx_kg_rules.md)	 - Manage Knowledge Graph prom rules.
 * [gcx kg scopes](gcx_kg_scopes.md)	 - Manage Knowledge Graph entity scopes.
+* [gcx kg schema](gcx_kg_schema.md)	 - Load Knowledge Graph entity types, scope values, and telemetry query configs.
 * [gcx kg search](gcx_kg_search.md)	 - Search Knowledge Graph entities or insights.
 * [gcx kg status](gcx_kg_status.md)	 - Show Knowledge Graph stack status.
 * [gcx kg suppressions](gcx_kg_suppressions.md)	 - Push suppressions to the Knowledge Graph.
