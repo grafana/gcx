@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/grafana/gcx/internal/deeplink"
@@ -21,6 +22,7 @@ import (
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"golang.org/x/sync/errgroup"
 	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -1694,13 +1696,47 @@ func formatProfileSection(cfgs []ProfileDrilldownConfig) string {
 }
 
 type describeOpts struct {
-	IO cmdio.Options
+	IO       cmdio.Options
+	Schema   bool
+	Scopes   bool
+	Logs     bool
+	Traces   bool
+	Profiles bool
+	All      bool
+	Time     scopeFlags
 }
 
 func (o *describeOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("text", &DescribeTextCodec{})
 	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
+	flags.BoolVar(&o.Schema, "schema", false, "Load entity types, properties, and relationships")
+	flags.BoolVar(&o.Scopes, "scopes", false, "Load available env/site/namespace values")
+	flags.BoolVar(&o.Logs, "logs", false, "Load log drilldown configs (entity property → Loki label mappings)")
+	flags.BoolVar(&o.Traces, "traces", false, "Load trace drilldown configs (entity property → Tempo label mappings)")
+	flags.BoolVar(&o.Profiles, "profiles", false, "Load profile drilldown configs (entity property → Pyroscope label mappings)")
+	flags.BoolVar(&o.All, "all", false, "Load all sections")
+	flags.StringVar(&o.Time.from, "from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
+	flags.StringVar(&o.Time.to, "to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
+	flags.StringVar(&o.Time.since, "since", "", "Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)")
+}
+
+func (o *describeOpts) Validate(flags *pflag.FlagSet) error {
+	if err := o.IO.Validate(); err != nil {
+		return err
+	}
+	if !flags.Changed("schema") && !flags.Changed("scopes") &&
+		!flags.Changed("logs") && !flags.Changed("traces") &&
+		!flags.Changed("profiles") && !flags.Changed("all") {
+		return errors.New("no section specified\n\nUse a section flag to load specific data:\n" +
+			"  --schema    entity types, properties, and relationships\n" +
+			"  --scopes    available env/site/namespace values\n" +
+			"  --logs      log drilldown configs (entity property → Loki label mappings)\n" +
+			"  --traces    trace drilldown configs (entity property → Tempo label mappings)\n" +
+			"  --profiles  profile drilldown configs (entity property → Pyroscope label mappings)\n" +
+			"  --all       load all sections")
+	}
+	return nil
 }
 
 // DescribeTextCodec renders KGMetadataOutput in the compact LLM-friendly text format
@@ -1772,16 +1808,7 @@ func (c *DescribeTextCodec) Decode(_ io.Reader, _ any) error {
 }
 
 func newDescribeCommand(loader RESTConfigLoader) *cobra.Command {
-	var (
-		flagSchema   bool
-		flagScopes   bool
-		flagLogs     bool
-		flagTraces   bool
-		flagProfiles bool
-		flagAll      bool
-		sf           scopeFlags
-	)
-	ioOpts := &describeOpts{}
+	opts := &describeOpts{}
 	cmd := &cobra.Command{
 		Use:   "describe",
 		Short: "Describe the Knowledge Graph: entity types, valid env/namespace/site values, and telemetry query configs.",
@@ -1806,24 +1833,9 @@ Specify one or more section flags to load specific data:
   # Load everything
   gcx kg describe --all`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := ioOpts.IO.Validate(); err != nil {
+			if err := opts.Validate(cmd.Flags()); err != nil {
 				return err
 			}
-
-			// Require at least one section flag.
-			none := !cmd.Flags().Changed("schema") && !cmd.Flags().Changed("scopes") &&
-				!cmd.Flags().Changed("logs") && !cmd.Flags().Changed("traces") &&
-				!cmd.Flags().Changed("profiles") && !cmd.Flags().Changed("all")
-			if none {
-				return errors.New("no section specified\n\nUse a section flag to load specific data:\n" +
-					"  --schema    entity types, properties, and relationships\n" +
-					"  --scopes    available env/site/namespace values\n" +
-					"  --logs      log drilldown configs (entity property → Loki label mappings)\n" +
-					"  --traces    trace drilldown configs (entity property → Tempo label mappings)\n" +
-					"  --profiles  profile drilldown configs (entity property → Pyroscope label mappings)\n" +
-					"  --all       load all sections")
-			}
-
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
@@ -1833,78 +1845,101 @@ Specify one or more section flags to load specific data:
 				return err
 			}
 
-			loadSchema := flagSchema || flagAll
-			loadScopes := flagScopes || flagAll
-			loadLogs := flagLogs || flagAll
-			loadTraces := flagTraces || flagAll
-			loadProfiles := flagProfiles || flagAll
-
-			startMs, endMs, err := sf.resolveTime()
+			startMs, endMs, err := opts.Time.resolveTime()
 			if err != nil {
 				return err
 			}
 
-			var out KGMetadataOutput
+			loadSchema := opts.Schema || opts.All
+			loadScopes := opts.Scopes || opts.All
+			loadLogs := opts.Logs || opts.All
+			loadTraces := opts.Traces || opts.All
+			loadProfiles := opts.Profiles || opts.All
+
+			var (
+				out     KGMetadataOutput
+				mu      sync.Mutex
+				g, gCtx = errgroup.WithContext(cmd.Context())
+			)
 
 			if loadSchema {
-				schemaResp, schemaErr := client.FetchGraphSchema(cmd.Context(), startMs, endMs)
-				if schemaErr != nil {
-					fmt.Fprintf(cmd.ErrOrStderr(), "warning: schema failed to load: %v\n", schemaErr)
-				} else {
+				g.Go(func() error {
+					schemaResp, schemaErr := client.FetchGraphSchema(gCtx, startMs, endMs)
+					if schemaErr != nil {
+						fmt.Fprintf(cmd.ErrOrStderr(), "warning: schema failed to load: %v\n", schemaErr)
+						return nil
+					}
 					result := processGraphSchema(schemaResp)
+					mu.Lock()
 					out.Schema = &result
-				}
+					mu.Unlock()
+					return nil
+				})
 			}
 
 			if loadScopes {
-				scopes, scopeErr := client.ListEntityScopes(cmd.Context())
-				if scopeErr != nil {
-					fmt.Fprintf(cmd.ErrOrStderr(), "warning: scope values failed to load: %v\n", scopeErr)
-				} else {
+				g.Go(func() error {
+					scopes, scopeErr := client.ListEntityScopes(gCtx)
+					if scopeErr != nil {
+						fmt.Fprintf(cmd.ErrOrStderr(), "warning: scope values failed to load: %v\n", scopeErr)
+						return nil
+					}
+					mu.Lock()
 					out.Scopes = scopes
-				}
+					mu.Unlock()
+					return nil
+				})
 			}
 
 			if loadLogs {
-				logResp, logErr := client.FetchLogConfigs(cmd.Context())
-				if logErr != nil {
-					fmt.Fprintf(cmd.ErrOrStderr(), "warning: log configs failed to load: %v\n", logErr)
-				} else {
+				g.Go(func() error {
+					logResp, logErr := client.FetchLogConfigs(gCtx)
+					if logErr != nil {
+						fmt.Fprintf(cmd.ErrOrStderr(), "warning: log configs failed to load: %v\n", logErr)
+						return nil
+					}
+					mu.Lock()
 					out.Logs = logResp.LogDrilldownConfigs
-				}
+					mu.Unlock()
+					return nil
+				})
 			}
 
 			if loadTraces {
-				traceResp, traceErr := client.FetchTraceConfigs(cmd.Context())
-				if traceErr != nil {
-					fmt.Fprintf(cmd.ErrOrStderr(), "warning: trace configs failed to load: %v\n", traceErr)
-				} else {
+				g.Go(func() error {
+					traceResp, traceErr := client.FetchTraceConfigs(gCtx)
+					if traceErr != nil {
+						fmt.Fprintf(cmd.ErrOrStderr(), "warning: trace configs failed to load: %v\n", traceErr)
+						return nil
+					}
+					mu.Lock()
 					out.Traces = traceResp.TraceDrilldownConfigs
-				}
+					mu.Unlock()
+					return nil
+				})
 			}
 
 			if loadProfiles {
-				profileResp, profileErr := client.FetchProfileConfigs(cmd.Context())
-				if profileErr != nil {
-					fmt.Fprintf(cmd.ErrOrStderr(), "warning: profile configs failed to load: %v\n", profileErr)
-				} else {
+				g.Go(func() error {
+					profileResp, profileErr := client.FetchProfileConfigs(gCtx)
+					if profileErr != nil {
+						fmt.Fprintf(cmd.ErrOrStderr(), "warning: profile configs failed to load: %v\n", profileErr)
+						return nil
+					}
+					mu.Lock()
 					out.Profiles = profileResp.ProfileDrilldownConfigs
-				}
+					mu.Unlock()
+					return nil
+				})
 			}
 
-			return ioOpts.IO.Encode(cmd.OutOrStdout(), out)
+			if err := g.Wait(); err != nil {
+				return err
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), out)
 		},
 	}
-	cmd.Flags().BoolVar(&flagSchema, "schema", false, "Load entity types, properties, and relationships")
-	cmd.Flags().BoolVar(&flagScopes, "scopes", false, "Load available env/site/namespace values")
-	cmd.Flags().BoolVar(&flagLogs, "logs", false, "Load log drilldown configs (entity property → Loki label mappings)")
-	cmd.Flags().BoolVar(&flagTraces, "traces", false, "Load trace drilldown configs (entity property → Tempo label mappings)")
-	cmd.Flags().BoolVar(&flagProfiles, "profiles", false, "Load profile drilldown configs (entity property → Pyroscope label mappings)")
-	cmd.Flags().BoolVar(&flagAll, "all", false, "Load all sections")
-	cmd.Flags().StringVar(&sf.from, "from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
-	cmd.Flags().StringVar(&sf.to, "to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
-	cmd.Flags().StringVar(&sf.since, "since", "", "Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)")
-	ioOpts.setup(cmd.Flags())
+	opts.setup(cmd.Flags())
 	return cmd
 }
 
