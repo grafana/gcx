@@ -732,6 +732,18 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List entities by type (omit --type to list all types).",
+		Long: `List Knowledge Graph entities, optionally filtered by type, scope, and time range.
+
+To discover valid --env, --namespace, and --site values before filtering, run:
+  gcx kg describe scopes`,
+		Example: `  # List all Service entities
+  gcx kg entities list --type Service
+
+  # Filter by namespace (run 'gcx kg describe scopes' to find valid values)
+  gcx kg entities list --type Service --namespace mimir-prod-01
+
+  # List entities with active insights
+  gcx kg entities list --type Service --assertions-only`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := listOpts.IO.Validate(); err != nil {
 				return err
