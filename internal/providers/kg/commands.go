@@ -1784,7 +1784,7 @@ func newDescribeCommand(loader RESTConfigLoader) *cobra.Command {
 	ioOpts := &describeOpts{}
 	cmd := &cobra.Command{
 		Use:   "describe",
-		Short: "Describe the Knowledge Graph: entity types, scope values, and telemetry query configs.",
+		Short: "Describe the Knowledge Graph: entity types, valid env/namespace/site values, and telemetry query configs.",
 		Long: `Describe the Knowledge Graph structure needed to formulate correct KG and telemetry queries.
 
 Specify one or more section flags to load specific data:

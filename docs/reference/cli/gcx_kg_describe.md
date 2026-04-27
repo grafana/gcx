@@ -1,6 +1,6 @@
 ## gcx kg describe
 
-Describe the Knowledge Graph: entity types, scope values, and telemetry query configs.
+Describe the Knowledge Graph: entity types, valid env/namespace/site values, and telemetry query configs.
 
 ### Synopsis
 
