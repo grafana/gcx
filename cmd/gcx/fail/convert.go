@@ -720,6 +720,22 @@ func convertSMConfigErrors(err error) (*DetailedError, bool) {
 		}, true
 	}
 
+	if strings.Contains(msg, "SM token not configured") && strings.Contains(msg, "register/install") &&
+		(strings.Contains(msg, "status 401") || strings.Contains(msg, "status 403") ||
+			(strings.Contains(msg, "status 400") && strings.Contains(msg, "permission"))) {
+		return &DetailedError{
+			Parent:  err,
+			Summary: "SM token auto-discovery: permission denied",
+			Details: msg,
+			Suggestions: []string{
+				"Ensure your cloud.token access policy includes these scopes: stacks:read, metrics:write, logs:write, traces:write",
+				"Or set the SM token directly: gcx config set providers.synth.sm-token <TOKEN>",
+				"Or use env var: export GRAFANA_PROVIDER_SYNTH_SM_TOKEN=<TOKEN>",
+			},
+			ExitCode: new(ExitAuthFailure),
+		}, true
+	}
+
 	if strings.Contains(msg, "SM token not configured") {
 		return &DetailedError{
 			Summary: "SM token not configured",
