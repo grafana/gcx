@@ -456,6 +456,58 @@ current-context: default
 	assert.Equal(t, wantToken, cfg.GetCurrentContext().Providers["synth"]["sm-token"])
 }
 
+func TestConfigLoader_LoadSMConfig_TokenAutoDiscoveryPermissionError(t *testing.T) {
+	smSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/register/install" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"error": "insufficient permissions",
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer smSrv.Close()
+
+	gcomSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": 12345, "slug": "teststack", "regionSlug": "eu",
+			"hmInstancePromId": 1, "hlInstanceId": 2,
+			"hmInstancePromUrl": "https://prom.example.com",
+			"hlInstanceUrl":     "https://loki.example.com",
+		})
+	}))
+	defer gcomSrv.Close()
+
+	cfgFile := writeConfigFile(t, `
+contexts:
+  default:
+    grafana:
+      server: https://teststack.grafana.net
+      token: test-token
+      stack-id: 12345
+    cloud:
+      token: cloud-token
+      stack: teststack
+      api-url: `+gcomSrv.URL+`
+    providers:
+      synth:
+        sm-url: `+smSrv.URL+`
+current-context: default
+`)
+
+	l := newTestLoader(t, cfgFile)
+
+	_, smToken, _, err := l.LoadSMConfig(context.Background())
+	require.Error(t, err)
+	assert.Empty(t, smToken)
+	assert.Contains(t, err.Error(), "SM token not configured")
+	assert.Contains(t, err.Error(), "insufficient permissions")
+	assert.Contains(t, err.Error(), "status 400")
+}
+
 // TestConfigLoader_SaveMetricsDatasourceUID_RoundTrip verifies AC-6: saving and
 // reloading sm-metrics-datasource-uid round-trips correctly.
 func TestConfigLoader_SaveMetricsDatasourceUID_RoundTrip(t *testing.T) {
