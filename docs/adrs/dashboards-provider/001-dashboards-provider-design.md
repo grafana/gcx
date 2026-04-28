@@ -296,11 +296,12 @@ gcx dashboards search <query> [--folder UID]... [--tag TAG]... [--limit N] [--so
 - `--limit N` — page size.
 - `--sort KEY` — sort key (e.g., `name_sort`, `-name_sort` for descending).
 - `--deleted` — include soft-deleted (trashed) dashboards.
-- The `type` query parameter was originally intended as a server-side
-  filter (`dash-db` for dashboards, `dash-folder` for folders). Live
-  probe confirmed the parameter is accepted but silently ignored —
-  folders are returned regardless. gcx therefore filters client-side
-  (see Response payload below) and does not bother sending `type`.
+- The `type` query parameter filters the result set server-side. The
+  legacy value `dash-db` is silently ignored by the server (live probe
+  confirmed — identical hit mix with and without it). The modern value
+  `dashboard` (no hyphen) IS honored: gcx sends `type=dashboard` and
+  the server excludes folders from the response. No client-side filter
+  is required.
 
 Response payload — **not** full Dashboard objects. The endpoint returns
 a flat JSON payload with no top-level `kind`/`apiVersion`:
@@ -327,10 +328,9 @@ not wire-format keys.
 
 **`type=dash-db` is silently ignored server-side** (confirmed by live
 probe — identical `totalHits` and hit mix with and without the
-parameter). gcx therefore **filters client-side**: only hits with
-`resource == "dashboards"` are surfaced by `gcx dashboards search`;
-folder-typed hits are dropped (folders have their own command surface
-outside this ADR).
+parameter). The modern form **`type=dashboard`** (no hyphen) IS
+honored: the server filters folders out of the response. gcx sends
+`type=dashboard` and does not apply a client-side `resource` filter.
 
 Default table columns: `NAME TITLE FOLDER TAGS AGE` (list codec minus PANELS).
 
@@ -342,7 +342,7 @@ and retry transport from the resources pipeline's already-built
 `-o json|yaml` envelope — because the response is not a full Dashboard,
 gcx wraps hits in a dashboards-specific envelope for Contract 2
 compliance. The envelope contains only dashboards-typed hits (folders
-are filtered out client-side):
+are excluded by the server via `type=dashboard`):
 
 ```yaml
 kind: DashboardSearchResultList
@@ -654,8 +654,9 @@ pre-merge.
    under v0alpha1; UI hardcodes the literal). Query params: `query`,
    `folder` (UID, repeatable), `tag` (AND semantics, repeatable),
    `limit`, `sort`, `deleted`. **`type=dash-db` accepted but silently
-   ignored** (live probe — identical results with and without it); gcx
-   filters folder-typed hits client-side. Response is a flat JSON
+   ignored** (live probe — identical results with and without it); the
+   modern `type=dashboard` value IS honored server-side. gcx sends
+   `type=dashboard`; no client-side filter is needed. Response is a flat JSON
    payload (no top-level `kind`/`apiVersion`); each hit carries
    `resource`, `name`, `title`, `folder`, and optional `tags`. gcx
    wraps hits in a `DashboardSearchResultList` envelope for Contract 2
@@ -715,11 +716,11 @@ the Decision section above.
 |-------|---------|--------|
 | 1 | `gcx api /apis/dashboard.grafana.app/ --context=<my-context>` | **PASS** — `preferredVersion: v2`; all six versions registered (`v0alpha1`, `v1`, `v1beta1`, `v2alpha1`, `v2beta1`, `v2`). |
 | 2 | `gcx api /apis/dashboard.grafana.app/v2/namespaces/stacks-<stack-id>/dashboards/<uid> --context=<my-context>` | **PASS** — full Dashboard envelope returned from the bare GET path (no `/dto` subresource required). |
-| 3 | `gcx api "/apis/dashboard.grafana.app/v0alpha1/namespaces/stacks-<stack-id>/search?query=dashboard&limit=20" --context=<my-context>` | **PASS with deltas** — (a) raw server response has no top-level `kind`/`apiVersion`; it is a flat `{hits, maxScore, queryCost, totalHits}` object (gcx wraps it in `DashboardSearchResultList` per Contract 2); (b) `type=dash-db` is silently ignored — dashboards **and** folders come back regardless (gcx filters client-side by `resource == "dashboards"`); (c) `resource` field values are plural (`"dashboards"` / `"folders"`), not singular; (d) hit shape `{resource, name, title, folder, tags?}` with `tags` omitted when empty. |
+| 3 | `gcx api "/apis/dashboard.grafana.app/v0alpha1/namespaces/stacks-<stack-id>/search?query=dashboard&limit=20" --context=<my-context>` | **PASS with deltas** — (a) raw server response has no top-level `kind`/`apiVersion`; it is a flat `{hits, maxScore, queryCost, totalHits}` object (gcx wraps it in `DashboardSearchResultList` per Contract 2); (b) `type=dash-db` is silently ignored — dashboards **and** folders come back regardless; the modern value `type=dashboard` IS honored by the server (folders excluded); gcx therefore sends `type=dashboard` with no client-side filter; (c) `resource` field values are plural (`"dashboards"` / `"folders"`), not singular; (d) hit shape `{resource, name, title, folder, tags?}` with `tags` omitted when empty. |
 | 4 | `gcx api "/apis/dashboard.grafana.app/v2/namespaces/stacks-<stack-id>/dashboards?labelSelector=grafana.app/get-history=true&fieldSelector=metadata.name=<uid>&limit=10" --context=<my-context>` | **PASS with delta** — 9 historical revisions returned for the sample dashboard (gen 1-9); `metadata.generation` encodes the version id as expected; but `metadata.creationTimestamp` is **identical** across all revisions (inherited from original create). Per-revision timestamp lives in the `grafana.app/updatedTimestamp` annotation — TIMESTAMP column source updated accordingly. `grafana.app/message` was empty on every revision of the sample (annotation was not written by the writer that created it). |
 
 Deltas folded back into the Decision section:
-- Search command: `type=dash-db` ignored server-side; client-side filter applied; raw response shape clarified.
+- Search command: `type=dash-db` ignored server-side; `type=dashboard` (modern form) IS honored — no client-side filter needed; raw response shape clarified.
 - Version history: TIMESTAMP column sources `grafana.app/updatedTimestamp` annotation, not `metadata.creationTimestamp`.
 
 None of the deltas invalidate the ADR's accepted decisions; all are

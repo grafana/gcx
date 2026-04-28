@@ -1,8 +1,8 @@
 // Package search implements the `gcx dashboards search` command.
 // The search endpoint is pinned to v0alpha1 of the dashboard.grafana.app API
-// group (ADR 001 §Search command). Client-side filtering on the "resource"
-// field is used to drop folders from the result set because the server silently
-// ignores the legacy type= query parameter.
+// group (ADR 001 §Search command). type=dashboard is sent as a server-side
+// filter to exclude folders; the legacy type=dash-db value is ignored by the
+// server but the modern type=dashboard value is honored.
 package search
 
 import (
