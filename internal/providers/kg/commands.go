@@ -667,14 +667,14 @@ func runSuppressionsDryRun(cmd *cobra.Command, client *Client, localData []byte)
 		return err
 	}
 	if remote == local {
-		cmdio.Info(cmd.OutOrStdout(), "[dry-run] Suppressions YAML is valid; no changes")
+		cmdio.Info(cmd.ErrOrStderr(), "[dry-run] Suppressions YAML is valid; no changes")
 		return nil
 	}
 	diff, err := unifiedYAMLDiff(remote, local)
 	if err != nil {
 		return fmt.Errorf("render suppressions diff: %w", err)
 	}
-	cmdio.Info(cmd.OutOrStdout(), "[dry-run] Suppressions YAML is valid; showing diff (remote -> local)")
+	cmdio.Info(cmd.ErrOrStderr(), "[dry-run] Suppressions YAML is valid; showing diff (remote -> local)")
 	_, err = fmt.Fprint(cmd.OutOrStdout(), diff)
 	return err
 }

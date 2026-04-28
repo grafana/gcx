@@ -59,12 +59,15 @@ func TestSuppressionsCreate_DryRunShowsDiffWithoutUploading(t *testing.T) {
 		cfg: config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}},
 	})
 	var out bytes.Buffer
+	var errOut bytes.Buffer
 	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
 	cmd.SetArgs([]string{"create", "-f", file, "--dry-run"})
 
 	require.NoError(t, cmd.Execute())
 	assert.False(t, postCalled.Load())
-	assert.Contains(t, out.String(), "[dry-run] Suppressions YAML is valid")
+	assert.Contains(t, errOut.String(), "[dry-run] Suppressions YAML is valid")
+	assert.NotContains(t, out.String(), "[dry-run] Suppressions YAML is valid")
 	assert.Contains(t, out.String(), "--- remote")
 	assert.Contains(t, out.String(), "+++ local")
 	assert.Contains(t, out.String(), "-      name: remote")
@@ -86,13 +89,15 @@ func TestSuppressionsCreate_DryRunNoChanges(t *testing.T) {
 		cfg: config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}},
 	})
 	var out bytes.Buffer
+	var errOut bytes.Buffer
 	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
 	cmd.SetArgs([]string{"create", "-f", file, "--dry-run"})
 
 	require.NoError(t, cmd.Execute())
 	assert.False(t, postCalled.Load())
-	assert.Contains(t, out.String(), "no changes")
-	assert.NotContains(t, out.String(), "--- remote")
+	assert.Empty(t, out.String())
+	assert.Contains(t, errOut.String(), "no changes")
 }
 
 func TestSuppressionsCreate_DryRunRejectsInvalidYAML(t *testing.T) {
