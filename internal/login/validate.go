@@ -2,9 +2,11 @@ package login
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/go-openapi/runtime"
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
 	intgrafana "github.com/grafana/gcx/internal/grafana"
@@ -49,19 +51,18 @@ func (v *validator) validate(ctx context.Context, opts Options, restCfg config.N
 	// here as a "health check failed" error.
 	version, rawVersion, err := v.grafana.GetVersion(ctx)
 	if err != nil {
-		return "", fmt.Errorf("connectivity validation: health check failed: %w", err)
+		return "", &HealthCheckError{Server: opts.Server, Status: extractGoAPIStatus(err), Cause: err}
 	}
 
 	// Step 2: K8s API availability via discovery /apis
 	if err := v.discovery(ctx, restCfg); err != nil {
-		return "", fmt.Errorf("connectivity validation: kubernetes API unavailable: %w", err)
+		return "", &K8sDiscoveryError{Server: opts.Server, Cause: err}
 	}
 
 	// Step 3: Grafana version must be >= 12 when we can parse it. Empty or
 	// unparseable versions bypass the check — see function comment.
 	if version != nil && version.Major() < 12 {
-		return "", fmt.Errorf("connectivity validation: version check failed: %w",
-			&intgrafana.VersionIncompatibleError{Version: version})
+		return "", &VersionCheckError{Cause: &intgrafana.VersionIncompatibleError{Version: version}}
 	}
 
 	// Step 4: GCOM stack check when Cloud target has a CAP token and a derivable slug
@@ -69,7 +70,7 @@ func (v *validator) validate(ctx context.Context, opts Options, restCfg config.N
 		slug := resolveStackSlug(opts.Server)
 		if slug != "" {
 			if _, err := v.gcom.GetStack(ctx, slug); err != nil {
-				return "", fmt.Errorf("connectivity validation: GCOM check failed: %w", err)
+				return "", &GCOMStackError{Slug: slug, Status: extractGCOMStatus(err), Cause: err}
 			}
 		}
 	}
@@ -82,6 +83,25 @@ func (v *validator) validate(ctx context.Context, opts Options, restCfg config.N
 	default:
 		return "unknown", nil
 	}
+}
+
+// extractGoAPIStatus returns the HTTP status from a grafana-openapi-client-go
+// runtime.APIError in the chain, or 0 for transport-level failures (dial, TLS,
+// timeout) where no HTTP response was received.
+func extractGoAPIStatus(err error) int {
+	var apiErr *runtime.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.Code
+	}
+	return 0
+}
+
+func extractGCOMStatus(err error) int {
+	var httpErr *cloud.GCOMHTTPError
+	if errors.As(err, &httpErr) {
+		return httpErr.Status
+	}
+	return 0
 }
 
 // resolveStackSlug derives the Grafana Cloud stack slug from a server URL.
