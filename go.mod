@@ -29,7 +29,7 @@ require (
 	github.com/grafana/loki/v3 v3.4.2 // pinned: v3.5+ requires loki/pkg/push pseudo-versions not on Go proxy; also pins prometheus+strfmt versions below
 	github.com/grafana/promql-builder/go v0.0.0-20250916111012-8fa9625b89a3
 	github.com/huandu/xstrings v1.5.0
-	github.com/invopop/jsonschema v0.13.0
+	github.com/invopop/jsonschema v0.14.0
 	github.com/olekukonko/tablewriter v1.1.4
 	github.com/open-policy-agent/opa v1.15.2
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
@@ -42,9 +42,9 @@ require (
 	golang.org/x/term v0.42.0
 	golang.org/x/tools v0.44.0
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/apimachinery v0.35.4
-	k8s.io/cli-runtime v0.35.4
-	k8s.io/client-go v0.35.4
+	k8s.io/apimachinery v0.36.0
+	k8s.io/cli-runtime v0.36.0
+	k8s.io/client-go v0.36.0
 	k8s.io/klog/v2 v2.140.0
 )
 
@@ -138,7 +138,6 @@ require (
 	github.com/grafana/otel-profiling-go v0.5.1 // indirect
 	github.com/grafana/pyroscope-go/godeltaprof v0.1.8 // indirect
 	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc // indirect
-	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
 	github.com/hashicorp/consul/api v1.31.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
@@ -199,6 +198,7 @@ require (
 	github.com/opentracing-contrib/go-grpc v0.1.1 // indirect
 	github.com/opentracing-contrib/go-stdlib v1.1.0 // indirect
 	github.com/opentracing/opentracing-go v1.2.1-0.20220228012449-10b1cf09e00b // indirect
+	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
 	github.com/pires/go-proxyproto v0.7.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
@@ -225,7 +225,6 @@ require (
 	github.com/uber/jaeger-lib v2.4.1+incompatible // indirect
 	github.com/valyala/fastjson v1.6.7 // indirect
 	github.com/vektah/gqlparser/v2 v2.5.32 // indirect
-	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190905194746-02993c407bfb // indirect
 	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
@@ -271,6 +270,7 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
+	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f // indirect
 	golang.org/x/crypto v0.50.0 // indirect
 	golang.org/x/exp v0.0.0-20241108190413-2d47ceb2692f // indirect
@@ -282,15 +282,15 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	google.golang.org/grpc v1.80.0 // indirect
-	google.golang.org/protobuf v1.36.11 // indirect
+	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	k8s.io/api v0.35.4 // indirect
-	k8s.io/kube-openapi v0.0.0-20250910181357-589584f1c912 // indirect
-	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4 // indirect
+	k8s.io/api v0.36.0 // indirect
+	k8s.io/kube-openapi v0.0.0-20260317180543-43fb72c5454a // indirect
+	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
-	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect
+	sigs.k8s.io/structured-merge-diff/v6 v6.3.2 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
