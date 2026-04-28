@@ -11,6 +11,9 @@ import (
 	"strings"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/resources/dynamic"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
 )
 
@@ -56,8 +59,8 @@ func newSearchClient(cfg config.NamespacedRESTConfig) (*searchClient, error) {
 //	{host}/apis/dashboard.grafana.app/v0alpha1/namespaces/{namespace}/search
 //
 // Query parameters: query, folder (repeatable), tag (repeatable), limit, sort, deleted.
-// Note: the "type" parameter is intentionally NOT sent — the server silently
-// ignores it and client-side filtering on the "resource" field is used instead.
+// type=dashboard is always sent so the server filters to dashboards only; without it
+// the server returns folders first and small --limit values can yield zero dashboard hits.
 func (c *searchClient) Search(ctx context.Context, params SearchParams) (*wireSearchResponse, error) {
 	u, err := url.Parse(fmt.Sprintf(
 		"%s/apis/%s/%s/namespaces/%s/search",
@@ -68,6 +71,7 @@ func (c *searchClient) Search(ctx context.Context, params SearchParams) (*wireSe
 	}
 
 	q := u.Query()
+	q.Set("type", "dashboard") // server-side filter: exclude folders from results
 	if params.Query != "" {
 		q.Set("query", params.Query)
 	}
@@ -101,6 +105,10 @@ func (c *searchClient) Search(ctx context.Context, params SearchParams) (*wireSe
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		var status metav1.Status
+		if json.Unmarshal(bodyBytes, &status) == nil && status.Message != "" {
+			return nil, dynamic.ParseStatusError(&apierrors.StatusError{ErrStatus: status})
+		}
 		return nil, fmt.Errorf("search request failed: %s: %s", resp.Status, strings.TrimSpace(string(bodyBytes)))
 	}
 

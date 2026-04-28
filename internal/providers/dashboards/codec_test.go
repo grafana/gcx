@@ -2,6 +2,7 @@ package dashboards_test
 
 import (
 	"bytes"
+	"fmt"
 	"maps"
 	"strings"
 	"testing"
@@ -62,6 +63,15 @@ func panels(n int) any {
 		result[i] = map[string]any{"id": float64(i)}
 	}
 	return result
+}
+
+// elements builds a v2-style spec.elements map with n entries (keyed by string id).
+func elements(n int) map[string]any {
+	m := make(map[string]any, n)
+	for i := range n {
+		m[fmt.Sprintf("elem-%d", i)] = map[string]any{"type": "panel"}
+	}
+	return m
 }
 
 func TestDashboardTableCodec_Encode_Default(t *testing.T) {
@@ -155,10 +165,10 @@ func TestDashboardTableCodec_Encode_Wide(t *testing.T) {
 			wantCols:   []string{"NAME", "TITLE", "FOLDER", "TAGS", "PANELS", "URL", "AGE", "5", "https://example.grafana.net/d/dash1"},
 		},
 		{
-			name: "v2 panels counted from spec.elements",
+			name: "v2 panels counted from spec.elements map",
 			items: []unstructured.Unstructured{
 				makeItem("dash2", "dashboard.grafana.app/v2", "Dash 2", "", nil, nil, map[string]any{
-					"elements": panels(3),
+					"elements": elements(3),
 				}),
 			},
 			grafanaURL: "https://example.grafana.net",

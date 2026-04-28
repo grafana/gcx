@@ -10,6 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/tools/pager"
 )
@@ -60,6 +61,11 @@ func (c *NamespacedClient) List(
 	res := unstructured.UnstructuredList{
 		Items: make([]unstructured.Unstructured, 0),
 	}
+	res.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   desc.GroupVersion.Group,
+		Version: desc.GroupVersion.Version,
+		Kind:    desc.Kind + "List",
+	})
 
 	if err := pager.EachListItemWithAlloc(ctx, opts, func(obj runtime.Object) error {
 		item, ok := obj.(*unstructured.Unstructured)

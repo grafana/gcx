@@ -144,16 +144,13 @@ filter is supplied.`,
 			}
 
 			// Build the K8s-style envelope.
-			// Client-side filter: keep only resource == "dashboards" (plural).
-			// The server returns folders too and silently ignores type= params.
+			// type=dashboard is sent to the server, so all hits are dashboards.
 			result := &DashboardSearchResultList{
 				Kind:       searchResultKind,
 				APIVersion: searchResultAPIVersion,
+				Items:      make([]DashboardHit, 0, len(wire.Hits)),
 			}
 			for _, hit := range wire.Hits {
-				if hit.Resource != "dashboards" {
-					continue
-				}
 				result.Items = append(result.Items, DashboardHit{
 					Kind:       searchHitKind,
 					APIVersion: searchResultAPIVersion,

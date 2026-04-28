@@ -84,18 +84,19 @@ func writeJSONResponse(w http.ResponseWriter, v any) {
 // Tests
 // ---------------------------------------------------------------------------
 
-// TestSearch_ClientSideFilter verifies that hits with resource != "dashboards"
-// are dropped from the output (FR-009.5).
-func TestSearch_ClientSideFilter(t *testing.T) {
+// TestSearch_ServerSideTypeFilter verifies that the client sends type=dashboard and
+// that all returned hits are rendered (server is responsible for filtering folders).
+func TestSearch_ServerSideTypeFilter(t *testing.T) {
+	var capturedQuery string
 	resp := testServerResponse{
 		Hits: []testServerHit{
 			{Resource: "dashboards", Name: "dash-1", Title: "My Dashboard", Folder: "", Tags: []string{"prod"}},
-			{Resource: "folders", Name: "folder-1", Title: "My Folder", Folder: "", Tags: nil},
 			{Resource: "dashboards", Name: "dash-2", Title: "Another Dashboard", Folder: "my-folder", Tags: nil},
 		},
 	}
 
 	srv, loader := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		capturedQuery = r.URL.RawQuery
 		writeJSONResponse(w, resp)
 	})
 	defer srv.Close()
@@ -106,17 +107,17 @@ func TestSearch_ClientSideFilter(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Dashboards must be present.
+	// type=dashboard must be sent to the server.
+	if !strings.Contains(capturedQuery, "type=dashboard") {
+		t.Errorf("expected 'type=dashboard' in query string, got: %s", capturedQuery)
+	}
+
+	// Both dashboard hits must be present.
 	if !strings.Contains(output, "dash-1") {
 		t.Errorf("expected 'dash-1' in output:\n%s", output)
 	}
 	if !strings.Contains(output, "dash-2") {
 		t.Errorf("expected 'dash-2' in output:\n%s", output)
-	}
-
-	// Folder must be absent.
-	if strings.Contains(output, "folder-1") {
-		t.Errorf("expected 'folder-1' to be filtered out:\n%s", output)
 	}
 }
 
@@ -126,7 +127,6 @@ func TestSearch_YAMLEnvelopeShape(t *testing.T) {
 	resp := testServerResponse{
 		Hits: []testServerHit{
 			{Resource: "dashboards", Name: "dash-uid", Title: "Envelope Test", Folder: "folder-uid", Tags: []string{"tag1"}},
-			{Resource: "folders", Name: "drop-me", Title: "Should be dropped"},
 		},
 	}
 
@@ -166,16 +166,11 @@ func TestSearch_YAMLEnvelopeShape(t *testing.T) {
 	if !strings.Contains(output, "tag1") {
 		t.Errorf("expected tags in spec:\n%s", output)
 	}
-
-	// Filtered folder must be absent.
-	if strings.Contains(output, "drop-me") {
-		t.Errorf("folder hit 'drop-me' must be filtered out:\n%s", output)
-	}
 }
 
-// TestSearch_NoTypeQueryParam verifies that the type= parameter is never sent
-// (FR-009.3, FR-009.4).
-func TestSearch_NoTypeQueryParam(t *testing.T) {
+// TestSearch_TypeDashboardQueryParam verifies that type=dashboard is always sent
+// so the server filters folders server-side (FR-009.3, FR-009.4).
+func TestSearch_TypeDashboardQueryParam(t *testing.T) {
 	var capturedQuery string
 
 	srv, loader := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -186,8 +181,8 @@ func TestSearch_NoTypeQueryParam(t *testing.T) {
 
 	_, _ = runSearchCommand(t, loader, "test")
 
-	if strings.Contains(capturedQuery, "type=") {
-		t.Errorf("query string must not contain 'type=', got: %s", capturedQuery)
+	if !strings.Contains(capturedQuery, "type=dashboard") {
+		t.Errorf("query string must contain 'type=dashboard', got: %s", capturedQuery)
 	}
 }
 
