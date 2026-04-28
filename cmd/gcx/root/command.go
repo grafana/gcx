@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"os"
 	"path"
+	"strings"
 	"sync/atomic"
 
 	"github.com/fatih/color"
@@ -26,6 +27,7 @@ import (
 	_ "github.com/grafana/gcx/internal/datasources/providers" // DatasourceProvider registrations — blank imports trigger init() self-registration.
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/logs"
+	"github.com/grafana/gcx/internal/notifier"
 	"github.com/grafana/gcx/internal/providers"
 	_ "github.com/grafana/gcx/internal/providers/aio11y"   // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/alert"    // Provider registrations — blank imports trigger init() self-registration.
@@ -62,6 +64,55 @@ func IsJSONFlagActive() bool {
 	return jsonFlagActive.Load()
 }
 
+func shouldNotifySkills(cmd *cobra.Command) bool {
+	if os.Getenv(notifier.DisableNotifierEnvVar) != "" {
+		return false
+	}
+	if agent.IsAgentMode() || IsJSONFlagActive() || terminal.IsPiped() {
+		return false
+	}
+	if cmd == nil {
+		return false
+	}
+	if isNonInteractiveCommand(cmd) {
+		return false
+	}
+	if !hasInteractiveTextOutput(cmd) {
+		return false
+	}
+	return true
+}
+
+func isNonInteractiveCommand(cmd *cobra.Command) bool {
+	switch cmd.Name() {
+	case "help", "completion", "__complete", "__completeNoDesc":
+		return true
+	}
+
+	if flag := cmd.Flags().Lookup("help"); flag != nil && flag.Changed && flag.Value.String() == "true" {
+		return true
+	}
+	if flag := cmd.Flags().Lookup("version"); flag != nil && flag.Changed && flag.Value.String() == "true" {
+		return true
+	}
+
+	return false
+}
+
+func hasInteractiveTextOutput(cmd *cobra.Command) bool {
+	flag := cmd.Flags().Lookup("output")
+	if flag == nil {
+		return true
+	}
+
+	switch strings.ToLower(flag.Value.String()) {
+	case "text", "table", "wide", "graph", "pretty", "compact":
+		return true
+	default:
+		return false
+	}
+}
+
 // Command builds the root cobra command for the given version using the
 // compile-time registered provider list.
 func Command(version string) *cobra.Command {
@@ -87,6 +138,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 		SilenceErrors: true, // We want to print errors ourselves
 		Version:       version,
 		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
+			jsonFlagActive.Store(false)
 			// Track whether --json was explicitly set on the resolved command.
 			// Only mark active when the command actually declares a --json flag,
 			// preventing false positives for subcommands that don't support it.
@@ -146,6 +198,12 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 			}
 
 			cmd.SetContext(ctx)
+		},
+		PersistentPostRun: func(cmd *cobra.Command, _ []string) {
+			if !shouldNotifySkills(cmd) {
+				return
+			}
+			_ = notifier.MaybeNotifySkills(cmd.ErrOrStderr())
 		},
 		Annotations: map[string]string{
 			cobra.CommandDisplayNameAnnotation: "gcx",

@@ -1,9 +1,17 @@
 package root_test
 
 import (
+	"bytes"
+	"encoding/json"
+	"io/fs"
+	"os"
+	"path"
+	"path/filepath"
 	"testing"
 
+	claudeplugin "github.com/grafana/gcx/claude-plugin"
 	"github.com/grafana/gcx/cmd/gcx/root"
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
@@ -167,4 +175,60 @@ func TestValidateArgs_AllowsHelpAndCompletionCommands(t *testing.T) {
 	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"__complete", "aio11y", ""}))
 	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"__completeNoDesc", ""}))
 	assert.NoError(t, root.ValidateArgs(rootCmd, []string{"--agent", "__complete", ""}))
+}
+
+func TestSkillsInstallUpdate_EndToEndThroughRootCommand(t *testing.T) {
+	t.Setenv("GCX_NO_UPDATE_NOTIFIER", "1")
+	t.Setenv("GCX_AGENT_MODE", "false")
+	agent.ResetForTesting()
+
+	installRoot := filepath.Join(t.TempDir(), ".agents")
+
+	stdout, stderr, err := executeRootCommandForTest("skills", "list", "-o", "json")
+	require.NoError(t, err, stderr)
+
+	var list struct {
+		Skills []struct {
+			Name string `json:"name"`
+		} `json:"skills"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &list))
+	require.NotEmpty(t, list.Skills)
+
+	skillName := list.Skills[0].Name
+	expected, err := fs.ReadFile(claudeplugin.SkillsFS(), path.Join(skillName, "SKILL.md"))
+	require.NoError(t, err)
+
+	stdout, stderr, err = executeRootCommandForTest("skills", "install", "--dir", installRoot, skillName)
+	require.NoError(t, err, stderr)
+	require.Contains(t, stdout, "Installed 1 skill(s)")
+
+	installedPath := filepath.Join(installRoot, "skills", skillName, "SKILL.md")
+	installed, err := os.ReadFile(installedPath)
+	require.NoError(t, err)
+	require.Equal(t, expected, installed)
+
+	// Installed files preserve bundled permissions, so make the test copy writable
+	// before simulating a local edit.
+	require.NoError(t, os.Chmod(installedPath, 0o600))
+	require.NoError(t, os.WriteFile(installedPath, []byte("local-change"), 0o600))
+
+	stdout, stderr, err = executeRootCommandForTest("skills", "update", "--dir", installRoot, skillName)
+	require.NoError(t, err, stderr)
+	require.Contains(t, stdout, "Updated 1 skill(s)")
+
+	updated, err := os.ReadFile(installedPath)
+	require.NoError(t, err)
+	require.Equal(t, expected, updated)
+}
+
+func executeRootCommandForTest(args ...string) (string, string, error) {
+	cmd := root.NewCommandForTest("v0.0.0-test", nil)
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+	cmd.SetArgs(args)
+	err := cmd.Execute()
+	return stdout.String(), stderr.String(), err
 }

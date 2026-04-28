@@ -241,6 +241,19 @@ Install the bundle into `~/.agents/skills` with:
 gcx skills install --all
 ```
 
+If your installed skills drift from the bundle shipped in your current `gcx`
+version, `gcx` may show an interactive reminder suggesting:
+
+```sh
+gcx skills update
+```
+
+To disable that reminder entirely, set:
+
+```sh
+export GCX_NO_UPDATE_NOTIFIER=1
+```
+
 ## The Agentic Workflow
 
 Here's what it looks like when your coding agent has access to production:
