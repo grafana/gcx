@@ -39,8 +39,9 @@ gcx metrics query -d grafanacloud-usage 'grafanacloud_org_metrics_billable_serie
 # check how busy your API routes are
 gcx metrics query 'sum by (handler)(rate(grafana_http_request_duration_seconds_count[5m]))' --since 1h
 
-# list all your dashboards
-gcx resources get dashboards
+# list and search your dashboards
+gcx dashboards list
+gcx dashboards search "node exporter"
 ```
 
 ## Installation
@@ -225,7 +226,8 @@ $ gcx metrics query  'sum by (handler)(rate(grafana_http_request_duration_second
 ```bash
 # Grafana resources
 gcx resources schemas                           # discover available resource types
-gcx resources get dashboards                    # list all dashboards
+gcx dashboards list                             # list all dashboards
+gcx dashboards search "node exporter"           # full-text search by title/tag/folder
 gcx resources get folders                       # list all folders
 gcx alert rules list                            # list alert rules
 

@@ -1,16 +1,16 @@
-package dashboards_test
+package snapshot_test
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/grafana/gcx/cmd/gcx/dashboards"
+	"github.com/grafana/gcx/internal/providers/dashboards/snapshot"
 )
 
 func TestSnapshotOpts_Validate(t *testing.T) {
 	tests := []struct {
 		name        string
-		opts        dashboards.SnapshotOptsForTest
+		opts        snapshot.SnapshotOptsForTest
 		wantErr     bool
 		errContains string
 		wantFrom    string
@@ -20,37 +20,37 @@ func TestSnapshotOpts_Validate(t *testing.T) {
 	}{
 		{
 			name:        "since with from is an error",
-			opts:        dashboards.SnapshotOptsForTest{Theme: "dark", Since: "6h", From: "now-2h"},
+			opts:        snapshot.SnapshotOptsForTest{Theme: "dark", Since: "6h", From: "now-2h"},
 			wantErr:     true,
 			errContains: "--since is mutually exclusive",
 		},
 		{
 			name:        "since with to is an error",
-			opts:        dashboards.SnapshotOptsForTest{Theme: "dark", Since: "6h", To: "now"},
+			opts:        snapshot.SnapshotOptsForTest{Theme: "dark", Since: "6h", To: "now"},
 			wantErr:     true,
 			errContains: "--since is mutually exclusive",
 		},
 		{
 			name:        "since with both from and to is an error",
-			opts:        dashboards.SnapshotOptsForTest{Theme: "dark", Since: "6h", From: "now-2h", To: "now"},
+			opts:        snapshot.SnapshotOptsForTest{Theme: "dark", Since: "6h", From: "now-2h", To: "now"},
 			wantErr:     true,
 			errContains: "--since is mutually exclusive",
 		},
 		{
 			name:        "invalid theme is an error",
-			opts:        dashboards.SnapshotOptsForTest{Theme: "purple"},
+			opts:        snapshot.SnapshotOptsForTest{Theme: "purple"},
 			wantErr:     true,
 			errContains: "--theme must be",
 		},
 		{
 			name:        "empty theme is an error",
-			opts:        dashboards.SnapshotOptsForTest{Theme: ""},
+			opts:        snapshot.SnapshotOptsForTest{Theme: ""},
 			wantErr:     true,
 			errContains: "--theme must be",
 		},
 		{
 			name:       "since alone expands to from/to",
-			opts:       dashboards.SnapshotOptsForTest{Theme: "dark", Since: "6h"},
+			opts:       snapshot.SnapshotOptsForTest{Theme: "dark", Since: "6h"},
 			wantErr:    false,
 			wantFrom:   "now-6h",
 			wantTo:     "now",
@@ -59,7 +59,7 @@ func TestSnapshotOpts_Validate(t *testing.T) {
 		},
 		{
 			name:       "since with different value",
-			opts:       dashboards.SnapshotOptsForTest{Theme: "dark", Since: "7d"},
+			opts:       snapshot.SnapshotOptsForTest{Theme: "dark", Since: "7d"},
 			wantErr:    false,
 			wantFrom:   "now-7d",
 			wantTo:     "now",
@@ -68,42 +68,42 @@ func TestSnapshotOpts_Validate(t *testing.T) {
 		},
 		{
 			name:       "no flags sets full dashboard defaults (dark theme)",
-			opts:       dashboards.SnapshotOptsForTest{Theme: "dark"},
+			opts:       snapshot.SnapshotOptsForTest{Theme: "dark"},
 			wantErr:    false,
 			wantWidth:  1920,
 			wantHeight: -1,
 		},
 		{
 			name:       "light theme is valid",
-			opts:       dashboards.SnapshotOptsForTest{Theme: "light"},
+			opts:       snapshot.SnapshotOptsForTest{Theme: "light"},
 			wantErr:    false,
 			wantWidth:  1920,
 			wantHeight: -1,
 		},
 		{
 			name:       "panel flag sets panel defaults",
-			opts:       dashboards.SnapshotOptsForTest{Theme: "dark", PanelID: 42},
+			opts:       snapshot.SnapshotOptsForTest{Theme: "dark", PanelID: 42},
 			wantErr:    false,
 			wantWidth:  800,
 			wantHeight: 600,
 		},
 		{
 			name:       "explicit width/height preserved for full dashboard",
-			opts:       dashboards.SnapshotOptsForTest{Theme: "dark", Width: 1000, Height: 500},
+			opts:       snapshot.SnapshotOptsForTest{Theme: "dark", Width: 1000, Height: 500},
 			wantErr:    false,
 			wantWidth:  1000,
 			wantHeight: 500,
 		},
 		{
 			name:       "explicit width/height preserved for panel",
-			opts:       dashboards.SnapshotOptsForTest{Theme: "dark", PanelID: 42, Width: 400, Height: 300},
+			opts:       snapshot.SnapshotOptsForTest{Theme: "dark", PanelID: 42, Width: 400, Height: 300},
 			wantErr:    false,
 			wantWidth:  400,
 			wantHeight: 300,
 		},
 		{
 			name:       "from and to without since is valid",
-			opts:       dashboards.SnapshotOptsForTest{Theme: "dark", From: "now-1h", To: "now"},
+			opts:       snapshot.SnapshotOptsForTest{Theme: "dark", From: "now-1h", To: "now"},
 			wantErr:    false,
 			wantFrom:   "now-1h",
 			wantTo:     "now",

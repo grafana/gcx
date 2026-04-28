@@ -1,6 +1,9 @@
-package dashboards
+// Package snapshot provides the `gcx dashboards snapshot` command, which renders
+// Grafana dashboards or individual panels as PNG images via the Image Renderer.
+package snapshot
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,14 +14,21 @@ import (
 	"strings"
 	"time"
 
-	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/dashboards"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
 )
+
+// GrafanaConfigLoader is the subset of the config loader used here.
+// Defined as a local interface so the command can be tested with a stub
+// (narrow coupling; the concrete *providers.ConfigLoader satisfies the interface).
+type GrafanaConfigLoader interface {
+	LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error)
+}
 
 type snapshotOpts struct {
 	Width       int
@@ -43,8 +53,8 @@ func (opts *snapshotOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.To, "to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
 	flags.StringVar(&opts.Since, "since", "", "Duration before now (e.g. '1h', '7d'); expands to --from now-{since} --to now; mutually exclusive with --from/--to")
 	flags.StringVar(&opts.Tz, "tz", "", "Timezone (e.g. 'UTC', 'America/New_York')")
-	flags.IntVar(&opts.PanelID, "panel", 0, "Panel ID to render a single panel instead of the full dashboard")
-	flags.IntVar(&opts.OrgID, "org-id", 1, "Grafana organization ID")
+	flags.IntVar(&opts.PanelID, "panel", 0, "Panel number to render a single panel instead of the full dashboard")
+	flags.IntVar(&opts.OrgID, "org-id", 1, "Grafana organization number")
 	flags.StringVar(&opts.OutputDir, "output-dir", ".", "Directory to write PNG files to (created if it does not exist)")
 	flags.IntVar(&opts.Concurrency, "concurrency", 10, "Maximum number of concurrent render requests")
 	flags.StringToStringVar(&opts.Vars, "var", nil, "Dashboard template variable overrides (e.g. --var cluster=prod --var datasource=prometheus)")
@@ -83,35 +93,36 @@ func (opts *snapshotOpts) Validate() error {
 	return nil
 }
 
-func snapshotCmd(configOpts *cmdconfig.Options) *cobra.Command {
+// Commands returns the snapshot cobra subcommand, wired to the given config loader.
+func Commands(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &snapshotOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "snapshot <uid> [uid...]",
+		Use:   "snapshot <name> [name...]",
 		Short: "Render dashboard snapshots as PNG images",
 		Long:  "Render one or more Grafana dashboards or individual panels as PNG images using the Grafana Image Renderer.",
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
-			agent.AnnotationLLMHint:   "my-dashboard-uid --width 1920",
+			agent.AnnotationLLMHint:   "my-dashboard-name --width 1920",
 		},
 		Example: `
   # Snapshot a full dashboard
-  gcx dashboards snapshot my-dashboard-uid
+  gcx dashboards snapshot my-dashboard-name
 
   # Snapshot a specific panel
-  gcx dashboards snapshot my-dashboard-uid --panel 42
+  gcx dashboards snapshot my-dashboard-name --panel 42
 
   # Snapshot with custom dimensions and time range
-  gcx dashboards snapshot my-dashboard-uid --width 1000 --height 500 --theme light --from now-1h --to now
+  gcx dashboards snapshot my-dashboard-name --width 1000 --height 500 --theme light --from now-1h --to now
 
   # Snapshot using a duration shorthand
-  gcx dashboards snapshot my-dashboard-uid --since 6h
+  gcx dashboards snapshot my-dashboard-name --since 6h
 
   # Snapshot multiple dashboards to a specific directory
-  gcx dashboards snapshot uid1 uid2 uid3 --output-dir ./snapshots
+  gcx dashboards snapshot name1 name2 name3 --output-dir ./snapshots
 
   # Snapshot with dashboard template variable overrides
-  gcx dashboards snapshot my-dashboard-uid --var cluster=prod --var datasource=prometheus`,
+  gcx dashboards snapshot my-dashboard-name --var cluster=prod --var datasource=prometheus`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -120,7 +131,7 @@ func snapshotCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			cfg, err := configOpts.LoadGrafanaConfig(ctx)
+			cfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
@@ -140,21 +151,21 @@ func snapshotCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			errs := make([]error, len(args))
 
 			// Use a plain errgroup (no derived context) so that a single render
-			// failure does not cancel in-flight renders for other UIDs.
+			// failure does not cancel in-flight renders for other names.
 			g := new(errgroup.Group)
 			g.SetLimit(opts.Concurrency)
 
-			for i, uid := range args {
+			for i, name := range args {
 				g.Go(func() error {
-					// Reject UIDs containing path separators to prevent directory traversal
+					// Reject names containing path separators to prevent directory traversal
 					// when constructing the output filename.
-					if strings.ContainsAny(uid, "/\\") || filepath.Base(uid) != uid {
-						errs[i] = fmt.Errorf("dashboard UID %q contains invalid path characters", uid)
+					if strings.ContainsAny(name, "/\\") || filepath.Base(name) != name {
+						errs[i] = fmt.Errorf("dashboard name %q contains invalid path characters", name)
 						return nil
 					}
 
 					req := dashboards.RenderRequest{
-						UID:     uid,
+						UID:     name,
 						PanelID: opts.PanelID,
 						OrgID:   opts.OrgID,
 						Width:   opts.Width,
@@ -168,15 +179,15 @@ func snapshotCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 					png, err := client.Render(ctx, req)
 					if err != nil {
-						errs[i] = fmt.Errorf("failed to render %q: %w", uid, err)
+						errs[i] = fmt.Errorf("failed to render %q: %w", name, err)
 						return nil
 					}
 
 					var filename string
 					if opts.PanelID != 0 {
-						filename = fmt.Sprintf("%s-panel-%d.png", uid, opts.PanelID)
+						filename = fmt.Sprintf("%s-panel-%d.png", name, opts.PanelID)
 					} else {
-						filename = uid + ".png"
+						filename = name + ".png"
 					}
 
 					filePath, err := filepath.Abs(filepath.Join(opts.OutputDir, filename))
@@ -201,7 +212,7 @@ func snapshotCmd(configOpts *cmdconfig.Options) *cobra.Command {
 					}
 
 					results[i] = dashboards.SnapshotResult{
-						UID:        uid,
+						UID:        name,
 						PanelID:    panelID,
 						FilePath:   filePath,
 						Width:      opts.Width,
@@ -248,7 +259,7 @@ func snapshotCmd(configOpts *cmdconfig.Options) *cobra.Command {
 }
 
 func renderSnapshotTable(w interface{ Write(b []byte) (int, error) }, results []dashboards.SnapshotResult) error {
-	t := style.NewTable("UID", "PANEL", "FILE", "SIZE")
+	t := style.NewTable("NAME", "PANEL", "FILE", "SIZE")
 
 	for _, r := range results {
 		panelStr := ""
