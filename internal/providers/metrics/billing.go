@@ -40,6 +40,9 @@ func billingQueryCmd(loader *providers.ConfigLoader) *cobra.Command {
   # Active series over the last hour
   gcx metrics billing query 'grafanacloud_instance_active_series' --since 1h --step 1m
 
+  # Print a Grafana Explore share link for the executed query
+  gcx metrics billing query 'grafanacloud_instance_active_series' --share-link
+
   # Output as JSON
   gcx metrics billing query 'grafanacloud_instance_active_series' -o json`
 	c.Annotations = map[string]string{

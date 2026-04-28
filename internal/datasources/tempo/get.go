@@ -20,6 +20,7 @@ type getOpts struct {
 	dsquery.TimeRangeOpts
 
 	IO         cmdio.Options
+	Share      dsquery.ExploreLinkOpts
 	Datasource string
 	LLM        bool
 }
@@ -30,6 +31,7 @@ func (opts *getOpts) setup(flags *pflag.FlagSet) {
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.tempo is configured)")
 	flags.BoolVar(&opts.LLM, "llm", false, "Request LLM-friendly trace format")
+	opts.Share.Setup(flags, "retrieved trace")
 	opts.SetupTimeFlags(flags)
 }
 
@@ -49,13 +51,19 @@ func GetCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Long: `Retrieve a single trace by its trace ID from a Tempo datasource.
 
 TRACE_ID is the hex-encoded trace identifier to retrieve.
-Datasource is resolved from -d flag or datasources.tempo in your context.`,
+Datasource is resolved from -d flag or datasources.tempo in your context.
+Use --share-link to print a Grafana Explore URL for the trace, or --open to
+open it in your browser after retrieval succeeds. Share links require an
+explicit time range via --since or --from/--to.`,
 		Example: `
   # Get a trace using configured default datasource
   gcx datasources tempo get abc123def456
 
   # Get a trace with explicit datasource UID
   gcx datasources tempo get -d tempo-001 abc123def456
+
+  # Print a Grafana Explore share link for the trace
+  gcx datasources tempo get abc123def456 --share-link
 
   # Get LLM-friendly output
   gcx datasources tempo get abc123def456 --llm
@@ -114,7 +122,27 @@ Datasource is resolved from -d flag or datasources.tempo in your context.`,
 				return fmt.Errorf("get trace failed: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			exploreURL := ""
+			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("trace retrieval")
+			if opts.IsRange() {
+				exploreURL = TraceExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
+					DatasourceUID:  datasourceUID,
+					DatasourceType: "tempo",
+					From:           opts.From,
+					To:             opts.To,
+					OrgID:          dsquery.OrgID(cfgCtx),
+				}, traceID)
+			} else if opts.Share.Enabled() {
+				unavailableMsg = "trace retrieval succeeded, but Grafana Explore links require --since or --from/--to for Tempo trace retrieval"
+			}
+
+			return dsquery.EncodeAndHandleExplore(cmd, func() error {
+				return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			}, opts.Share, dsquery.ExploreLink{
+				URL:            exploreURL,
+				UnavailableMsg: unavailableMsg,
+				FailedOpenMsg:  failedOpenMsg,
+			})
 		},
 	}
 
