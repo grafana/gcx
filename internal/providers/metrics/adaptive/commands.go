@@ -856,7 +856,7 @@ func (c *rulesTableCodec) Format() format.Format {
 func (c *rulesTableCodec) Encode(w io.Writer, v any) error {
 	rules, ok := v.([]MetricRule)
 	if !ok {
-		return fmt.Errorf("metrics: rules table codec: expected []MetricRule, got %T", v)
+		return fmt.Errorf("adaptive-metrics: rules table codec: expected []MetricRule, got %T", v)
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
@@ -947,7 +947,7 @@ func (c *recommendationsTableCodec) Format() format.Format {
 func (c *recommendationsTableCodec) Encode(w io.Writer, v any) error {
 	recs, ok := v.([]MetricRecommendation)
 	if !ok {
-		return fmt.Errorf("metrics: recommendations table codec: expected []MetricRecommendation, got %T", v)
+		return fmt.Errorf("adaptive-metrics: recommendations table codec: expected []MetricRecommendation, got %T", v)
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
@@ -996,7 +996,7 @@ func (c *recommendationsDiffTableCodec) Format() format.Format { return "table" 
 func (c *recommendationsDiffTableCodec) Encode(w io.Writer, v any) error {
 	entries, ok := v.([]diffEntry)
 	if !ok {
-		return fmt.Errorf("metrics: diff table codec: expected []diffEntry, got %T", v)
+		return fmt.Errorf("adaptive-metrics: diff table codec: expected []diffEntry, got %T", v)
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
@@ -1394,7 +1394,7 @@ func (c *segmentsTableCodec) Encode(w io.Writer, v any) error {
 		if s, ok2 := v.(*MetricSegment); ok2 {
 			segments = []MetricSegment{*s}
 		} else {
-			return fmt.Errorf("metrics: segments table codec: expected []MetricSegment, got %T", v)
+			return fmt.Errorf("adaptive-metrics: segments table codec: expected []MetricSegment, got %T", v)
 		}
 	}
 
@@ -1870,7 +1870,7 @@ func (c *exemptionsTableCodec) Encode(w io.Writer, v any) error {
 	case []ExemptionsBySegmentEntry:
 		return c.encodeSegmentedExemptions(w, data)
 	default:
-		return fmt.Errorf("metrics: exemptions table codec: expected []MetricExemption or []ExemptionsBySegmentEntry, got %T", v)
+		return fmt.Errorf("adaptive-metrics: exemptions table codec: expected []MetricExemption or []ExemptionsBySegmentEntry, got %T", v)
 	}
 }
 

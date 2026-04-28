@@ -488,23 +488,23 @@ func TestErrorToDetailedError_AdaptiveMetricsScopeError(t *testing.T) {
 		err       error
 		wantScope string
 	}{
-		{"list rules", errors.New(`metrics: list rules: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:read"},
-		{"get rule", errors.New(`metrics: get rule: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:read"},
-		{"list recommended rules", errors.New(`metrics: list recommended rules: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:read"},
-		{"create rule", errors.New(`metrics: create rule: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:write"},
-		{"update rule", errors.New(`metrics: update rule: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:write"},
-		{"sync rules", errors.New(`metrics: sync rules: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:write"},
-		{"validate rules", errors.New(`metrics: validate rules: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:write"},
-		{"delete rule", errors.New(`metrics: delete rule: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:delete"},
-		{"list recommendations", errors.New(`metrics: list recommendations: status 401: authentication error: invalid scope requested`), "adaptive-metrics-recommendations:read"},
-		{"list segments", errors.New(`metrics: list segments: status 401: authentication error: invalid scope requested`), "adaptive-metrics-segments:read"},
-		{"create segment", errors.New(`metrics: create segment: status 401: authentication error: invalid scope requested`), "adaptive-metrics-segments:write"},
-		{"delete segment", errors.New(`metrics: delete segment: status 401: authentication error: invalid scope requested`), "adaptive-metrics-segments:delete"},
-		{"list exemptions", errors.New(`metrics: list exemptions: status 401: authentication error: invalid scope requested`), "adaptive-metrics-exemptions:read"},
-		{"list segmented exemptions", errors.New(`metrics: list segmented exemptions: status 401: authentication error: invalid scope requested`), "adaptive-metrics-exemptions:read"},
-		{"get exemption", errors.New(`metrics: get exemption: status 401: authentication error: invalid scope requested`), "adaptive-metrics-exemptions:read"},
-		{"create exemption", errors.New(`metrics: create exemption: status 401: authentication error: invalid scope requested`), "adaptive-metrics-exemptions:write"},
-		{"delete exemption", errors.New(`metrics: delete exemption: status 401: authentication error: invalid scope requested`), "adaptive-metrics-exemptions:delete"},
+		{"list rules", errors.New(`adaptive-metrics: list rules: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:read"},
+		{"get rule", errors.New(`adaptive-metrics: get rule: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:read"},
+		{"list recommended rules", errors.New(`adaptive-metrics: list recommended rules: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:read"},
+		{"create rule", errors.New(`adaptive-metrics: create rule: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:write"},
+		{"update rule", errors.New(`adaptive-metrics: update rule: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:write"},
+		{"sync rules", errors.New(`adaptive-metrics: sync rules: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:write"},
+		{"validate rules", errors.New(`adaptive-metrics: validate rules: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:write"},
+		{"delete rule", errors.New(`adaptive-metrics: delete rule: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:delete"},
+		{"list recommendations", errors.New(`adaptive-metrics: list recommendations: status 401: authentication error: invalid scope requested`), "adaptive-metrics-recommendations:read"},
+		{"list segments", errors.New(`adaptive-metrics: list segments: status 401: authentication error: invalid scope requested`), "adaptive-metrics-segments:read"},
+		{"create segment", errors.New(`adaptive-metrics: create segment: status 401: authentication error: invalid scope requested`), "adaptive-metrics-segments:write"},
+		{"delete segment", errors.New(`adaptive-metrics: delete segment: status 401: authentication error: invalid scope requested`), "adaptive-metrics-segments:delete"},
+		{"list exemptions", errors.New(`adaptive-metrics: list exemptions: status 401: authentication error: invalid scope requested`), "adaptive-metrics-exemptions:read"},
+		{"list segmented exemptions", errors.New(`adaptive-metrics: list segmented exemptions: status 401: authentication error: invalid scope requested`), "adaptive-metrics-exemptions:read"},
+		{"get exemption", errors.New(`adaptive-metrics: get exemption: status 401: authentication error: invalid scope requested`), "adaptive-metrics-exemptions:read"},
+		{"create exemption", errors.New(`adaptive-metrics: create exemption: status 401: authentication error: invalid scope requested`), "adaptive-metrics-exemptions:write"},
+		{"delete exemption", errors.New(`adaptive-metrics: delete exemption: status 401: authentication error: invalid scope requested`), "adaptive-metrics-exemptions:delete"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -523,14 +523,14 @@ func TestErrorToDetailedError_AdaptiveTracesScopeError(t *testing.T) {
 		name string
 		err  error
 	}{
-		{"list policies", errors.New(`traces: list policies: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
-		{"get policy", errors.New(`traces: get policy: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
-		{"create policy", errors.New(`traces: create policy: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
-		{"update policy", errors.New(`traces: update policy: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
-		{"delete policy", errors.New(`traces: delete policy: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
-		{"list recommendations", errors.New(`traces: list recommendations: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
-		{"apply recommendation", errors.New(`traces: apply recommendation: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
-		{"dismiss recommendation", errors.New(`traces: dismiss recommendation: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"list policies", errors.New(`adaptive-traces: list policies: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"get policy", errors.New(`adaptive-traces: get policy: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"create policy", errors.New(`adaptive-traces: create policy: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"update policy", errors.New(`adaptive-traces: update policy: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"delete policy", errors.New(`adaptive-traces: delete policy: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"list recommendations", errors.New(`adaptive-traces: list recommendations: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"apply recommendation", errors.New(`adaptive-traces: apply recommendation: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"dismiss recommendation", errors.New(`adaptive-traces: dismiss recommendation: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

@@ -487,7 +487,7 @@ func convertServiceAPIErrors(err error) (*DetailedError, bool) {
 			Parent:  err,
 			Summary: "Adaptive Logs: permission denied",
 			Suggestions: []string{
-				"Ensure your access policy includes the adaptive-logs:admin scope",
+				"Ensure your Grafana Cloud access policy includes the adaptive-logs:admin scope",
 			},
 			ExitCode: new(ExitAuthFailure),
 		}, true
@@ -807,23 +807,23 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 	}
 
 	// Adaptive Traces scope errors.
-	if strings.Contains(msg, "traces:") && strings.Contains(msg, "invalid scope") {
+	if strings.Contains(msg, "adaptive-traces:") && strings.Contains(msg, "invalid scope") {
 		return &DetailedError{
 			Parent:  err,
 			Summary: "Adaptive Traces: permission denied",
 			Suggestions: []string{
-				"Ensure your access policy includes the adaptive-traces:admin scope",
+				"Ensure your Grafana Cloud access policy includes the adaptive-traces:admin scope",
 			},
 			ExitCode: new(ExitAuthFailure),
 		}, true
 	}
 
 	// Adaptive Metrics scope errors.
-	if strings.Contains(msg, "metrics:") && strings.Contains(msg, "invalid scope") {
+	if strings.Contains(msg, "adaptive-metrics:") && strings.Contains(msg, "invalid scope") {
 		scope := adaptiveMetricsScopeFromError(msg)
-		suggestion := fmt.Sprintf("Ensure your access policy includes the %s scope", scope)
+		suggestion := fmt.Sprintf("Ensure your Grafana Cloud access policy includes the %s scope", scope)
 		if scope == "" {
-			suggestion = "Adaptive Metrics commands require an adaptive-metrics-* scope (the specific scope depends on the subcommand)"
+			suggestion = "Adaptive Metrics commands require an adaptive-metrics-* scope on your Grafana Cloud access policy (the specific scope depends on the subcommand)"
 		}
 		return &DetailedError{
 			Parent:      err,
@@ -850,7 +850,7 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 	// Stack info lookup forbidden — access policy missing stacks:read scope.
 	if strings.Contains(msg, "failed to get stack info for") && strings.Contains(msg, "status 403") {
 		suggestions := []string{
-			"Ensure your access policy includes the stacks:read scope",
+			"Ensure your Grafana Cloud access policy includes the stacks:read scope",
 		}
 		if suggestion := adaptiveScopeSuggestionFromSignalPrefix(msg); suggestion != "" {
 			suggestions = append(suggestions, suggestion)
@@ -880,11 +880,11 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 func adaptiveScopeSuggestionFromSignalPrefix(msg string) string {
 	switch {
 	case strings.Contains(msg, "adaptive-logs:"):
-		return "Ensure your access policy includes the adaptive-logs:admin scope"
+		return "Ensure your Grafana Cloud access policy includes the adaptive-logs:admin scope"
 	case strings.Contains(msg, "adaptive-metrics:"):
-		return "Adaptive Metrics commands also require an adaptive-metrics-* scope (the specific scope depends on the subcommand)"
+		return "Adaptive Metrics commands also require an adaptive-metrics-* scope on your Grafana Cloud access policy (the specific scope depends on the subcommand)"
 	case strings.Contains(msg, "adaptive-traces:"):
-		return "Ensure your access policy includes the adaptive-traces:admin scope"
+		return "Ensure your Grafana Cloud access policy includes the adaptive-traces:admin scope"
 	default:
 		return ""
 	}
