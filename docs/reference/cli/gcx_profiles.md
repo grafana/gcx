@@ -24,6 +24,7 @@ Query Pyroscope datasources and manage continuous profiling
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx profiles adaptive](gcx_profiles_adaptive.md)	 - Manage Adaptive Profiles (not yet available)
+* [gcx profiles exemplars](gcx_profiles_exemplars.md)	 - Query profile or span exemplars from a Pyroscope datasource
 * [gcx profiles labels](gcx_profiles_labels.md)	 - List labels or label values
 * [gcx profiles metrics](gcx_profiles_metrics.md)	 - Query profile time-series data from a Pyroscope datasource
 * [gcx profiles profile-types](gcx_profiles_profile-types.md)	 - List available profile types

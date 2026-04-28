@@ -260,6 +260,9 @@ func (c *Client) SelectSeries(ctx context.Context, datasourceUID string, req Sel
 	if req.Limit > 0 {
 		bodyMap["limit"] = strconv.FormatInt(req.Limit, 10)
 	}
+	if req.ExemplarType != "" {
+		bodyMap["exemplarType"] = req.ExemplarType
+	}
 
 	body, err := json.Marshal(bodyMap)
 	if err != nil {
@@ -292,6 +295,67 @@ func (c *Client) SelectSeries(ctx context.Context, datasourceUID string, req Sel
 	dec := json.NewDecoder(bytes.NewReader(respBody))
 	// UseNumber preserves numeric precision: Pyroscope's connect-rpc encodes
 	// int64 timestamps as JSON strings ("1711800000000") and values as integers.
+	dec.UseNumber()
+	if err := dec.Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &result, nil
+}
+
+// SelectHeatmap executes a SelectHeatmap query, used for span exemplars.
+func (c *Client) SelectHeatmap(ctx context.Context, datasourceUID string, req SelectHeatmapRequest) (*SelectHeatmapResponse, error) {
+	apiPath := c.buildResourcePath(datasourceUID, "querier.v1.QuerierService/SelectHeatmap")
+
+	start, end := DefaultTimeRange(req.Start, req.End)
+
+	bodyMap := map[string]any{
+		"profileTypeID": req.ProfileTypeID,
+		"labelSelector": req.LabelSelector,
+		"start":         strconv.FormatInt(start.UnixMilli(), 10),
+		"end":           strconv.FormatInt(end.UnixMilli(), 10),
+	}
+	if req.Step > 0 {
+		bodyMap["step"] = req.Step
+	}
+	if req.QueryType != "" {
+		bodyMap["queryType"] = req.QueryType
+	}
+	if req.ExemplarType != "" {
+		bodyMap["exemplarType"] = req.ExemplarType
+	}
+	if req.Limit > 0 {
+		bodyMap["limit"] = strconv.FormatInt(req.Limit, 10)
+	}
+
+	body, err := json.Marshal(bodyMap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute heatmap query: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, queryerror.FromBody("pyroscope", "heatmap query", resp.StatusCode, respBody)
+	}
+
+	var result SelectHeatmapResponse
+	dec := json.NewDecoder(bytes.NewReader(respBody))
 	dec.UseNumber()
 	if err := dec.Decode(&result); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)

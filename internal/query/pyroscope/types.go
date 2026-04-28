@@ -102,6 +102,70 @@ type SelectSeriesRequest struct {
 	Step          float64 // resolution step in seconds
 	Aggregation   string  // "SUM" or "AVERAGE"
 	Limit         int64   // top-N series by total value
+	ExemplarType  string  // "EXEMPLAR_TYPE_INDIVIDUAL" or "EXEMPLAR_TYPE_SPAN"; empty = no exemplars
+}
+
+// ExemplarType constants mirror the pyroscope types.v1.ExemplarType enum.
+const (
+	ExemplarTypeIndividual = "EXEMPLAR_TYPE_INDIVIDUAL"
+	ExemplarTypeSpan       = "EXEMPLAR_TYPE_SPAN"
+)
+
+// HeatmapQueryType constants mirror the pyroscope querier.v1.HeatmapQueryType enum.
+const (
+	HeatmapQueryTypeSpan = "HEATMAP_QUERY_TYPE_SPAN"
+)
+
+// Exemplar is a single profile sample (optionally span-linked) attached to a
+// TimePoint (SelectSeries) or HeatmapSlot (SelectHeatmap).
+type Exemplar struct {
+	Timestamp json.Number `json:"timestamp"` // ms since epoch, encoded as string
+	ProfileID string      `json:"profileId,omitempty"`
+	SpanID    string      `json:"spanId,omitempty"`
+	Value     json.Number `json:"value"`
+	Labels    []LabelPair `json:"labels,omitempty"`
+}
+
+// TimestampMs returns the exemplar timestamp as milliseconds since epoch.
+func (e Exemplar) TimestampMs() int64 {
+	v, _ := e.Timestamp.Int64()
+	return v
+}
+
+// Int64Value returns the exemplar value as int64.
+func (e Exemplar) Int64Value() int64 {
+	v, _ := e.Value.Int64()
+	return v
+}
+
+// SelectHeatmapRequest represents a request to query a heatmap of profile data.
+// Used for span exemplars via QueryType=HEATMAP_QUERY_TYPE_SPAN + ExemplarType=EXEMPLAR_TYPE_SPAN.
+type SelectHeatmapRequest struct {
+	ProfileTypeID string
+	LabelSelector string
+	Start         time.Time
+	End           time.Time
+	Step          float64
+	QueryType     string // e.g. "HEATMAP_QUERY_TYPE_SPAN"
+	ExemplarType  string // e.g. "EXEMPLAR_TYPE_SPAN"
+	Limit         int64  // optional; max number of exemplars per slot
+}
+
+// SelectHeatmapResponse represents the response from a SelectHeatmap query.
+type SelectHeatmapResponse struct {
+	Series []HeatmapSeries `json:"series"`
+}
+
+// HeatmapSeries groups heatmap slots under a set of labels.
+type HeatmapSeries struct {
+	Labels []LabelPair   `json:"labels"`
+	Slots  []HeatmapSlot `json:"slots"`
+}
+
+// HeatmapSlot is a time×value bucket carrying sampled exemplars.
+type HeatmapSlot struct {
+	Timestamp json.Number `json:"timestamp"` // right edge of time bucket, ms since epoch
+	Exemplars []Exemplar  `json:"exemplars,omitempty"`
 }
 
 // SelectSeriesResponse represents the response from a SelectSeries query.
@@ -127,6 +191,7 @@ type TimePoint struct {
 	Value       json.Number  `json:"value"`
 	Timestamp   json.Number  `json:"timestamp"` // milliseconds since epoch, encoded as string
 	Annotations []Annotation `json:"annotations,omitempty"`
+	Exemplars   []Exemplar   `json:"exemplars,omitempty"`
 }
 
 // Annotation represents metadata attached to a time-series point.
