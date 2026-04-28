@@ -1311,7 +1311,7 @@ func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
 					}
 					matcher := EntityMatcher{EntityType: entityType}
 					if entityName != "" {
-						matcher.PropertyMatchers = []PropertyMatcher{{Name: "name", Op: "EQUALS", Value: entityName}}
+						matcher.PropertyMatchers = []PropertyMatcher{{Name: "name", Op: "=", Value: entityName}}
 					}
 					filterCriteria = []EntityMatcher{matcher}
 				}
