@@ -150,7 +150,8 @@ func dashboardPanelCount(item unstructured.Unstructured) string {
 	gv, err := schema.ParseGroupVersion(apiVersion)
 	isV2Family := err == nil && (gv.Version == "v2" || (strings.HasPrefix(gv.Version, "v2") && len(gv.Version) > 2 && !isDigit(gv.Version[2])))
 	if isV2Family {
-		elements, found, err := unstructured.NestedSlice(item.Object, "spec", "elements")
+		// v2 spec.elements is a map[id]→element, not a slice.
+		elements, found, err := unstructured.NestedMap(item.Object, "spec", "elements")
 		if err != nil || !found {
 			return ""
 		}

@@ -2,12 +2,10 @@ package search
 
 // wireSearchHit is the JSON representation of a single hit from the Grafana
 // dashboard search API (GET /apis/dashboard.grafana.app/v0alpha1/.../search).
-// The resource field distinguishes dashboards ("dashboards") from folders
-// ("folders"). Note: the server silently ignores any type= parameter, so
-// client-side filtering on this field is required.
+// The client always sends type=dashboard so resource is always "dashboards".
 type wireSearchHit struct {
-	Resource string   `json:"resource"` // "dashboards" or "folders"
-	Name     string   `json:"name"`     // dashboard UID (metadata.name)
+	Resource string   `json:"resource"`
+	Name     string   `json:"name"` // dashboard UID (metadata.name)
 	Title    string   `json:"title"`
 	Folder   string   `json:"folder"` // folder UID, empty for root
 	Tags     []string `json:"tags"`
