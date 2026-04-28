@@ -258,12 +258,8 @@ func scopeStr(scope map[string]string) string {
 //
 //	name=value   — exact match (EQUALS)
 //	name=~value  — substring match (CONTAINS); mirrors PromQL label-selector syntax
-//	name~=value  — same as =~
 func parsePropertyFlag(s string) (PropertyMatcher, error) {
 	if name, value, ok := strings.Cut(s, "=~"); ok && name != "" {
-		return PropertyMatcher{Name: name, Op: "CONTAINS", Value: value}, nil
-	}
-	if name, value, ok := strings.Cut(s, "~="); ok && name != "" {
 		return PropertyMatcher{Name: name, Op: "CONTAINS", Value: value}, nil
 	}
 	name, value, ok := strings.Cut(s, "=")
