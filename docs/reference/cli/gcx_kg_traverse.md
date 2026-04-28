@@ -19,14 +19,14 @@ gcx kg traverse <cypher-query> [flags]
 ### Examples
 
 ```
-  # Find services that call api-server
-  gcx kg traverse "MATCH (s:Service)-[:CALLS]->(d:Service {name:'api-server'}) RETURN s, d"
+  # Find all services routed to by api-server
+  gcx kg traverse "MATCH (s:Service {name:'api-server'})-[:ROUTES]->(d:Service) RETURN s, d" --env prod
 
-  # List all pods for a service in a specific env
-  gcx kg traverse "MATCH (s:Service {name:'checkout'})-[:hasInstance]->(p:Pod) RETURN s, p" --env prod
+  # Find any downstream dependencies (any relationship type)
+  gcx kg traverse "MATCH (s:Service {name:'api-server'})-[r]->(d:Service) RETURN s, r, d" --env prod
 
   # Include insight details on returned entities
-  gcx kg traverse "MATCH (s:Service)-[:CALLS]->(d:Service) RETURN s, d" --with-insights
+  gcx kg traverse "MATCH (s:Service {name:'api-server'})-[r]->(d:Service) RETURN s, r, d" --with-insights
 ```
 
 ### Options
