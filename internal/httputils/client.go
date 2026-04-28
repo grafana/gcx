@@ -60,12 +60,18 @@ func NewClient(opts ClientOpts) *http.Client {
 //   - PayloadLogging(ctx): when true, adds RequestResponseLoggingMiddleware for full
 //     request/response body dumps (includes headers — may expose tokens).
 func NewDefaultClient(ctx context.Context) *http.Client {
+	return NewDefaultClientWithTLS(ctx, nil)
+}
+
+// NewDefaultClientWithTLS is like NewDefaultClient but accepts an optional
+// *tls.Config for mTLS or custom CA scenarios. When tlsConfig is nil it
+// behaves identically to NewDefaultClient.
+func NewDefaultClientWithTLS(ctx context.Context, tlsConfig *tls.Config) *http.Client {
+	opts := ClientOpts{TLSConfig: tlsConfig}
 	if PayloadLogging(ctx) {
-		return NewClient(ClientOpts{
-			Middlewares: []Middleware{LoggingMiddleware, RequestResponseLoggingMiddleware},
-		})
+		opts.Middlewares = []Middleware{LoggingMiddleware, RequestResponseLoggingMiddleware}
 	}
-	return NewClient(ClientOpts{})
+	return NewClient(opts)
 }
 
 // NewTransport returns an *http.Transport with sensible defaults.

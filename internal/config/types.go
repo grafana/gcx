@@ -286,7 +286,7 @@ type GrafanaConfig struct {
 	// OAuthRefreshExpiresAt is the OAuthRefreshToken expiration time in RFC3339 format.
 	OAuthRefreshExpiresAt string `json:"oauth-refresh-expires-at,omitempty" yaml:"oauth-refresh-expires-at,omitempty"`
 
-	// AuthMethod is the authentication method stored by gcx login: "oauth", "token", or "basic".
+	// AuthMethod is the authentication method stored by gcx login: "oauth", "token", "basic", or "mtls".
 	// Empty string is valid for legacy configs; readers should call InferredAuthMethod() in that case.
 	AuthMethod string `json:"auth-method,omitempty" yaml:"auth-method,omitempty"`
 
@@ -384,7 +384,7 @@ func (grafana GrafanaConfig) IsEmpty() bool {
 // InferredAuthMethod returns the effective authentication method for this config.
 // When AuthMethod is set, it is returned verbatim. Otherwise, the method is inferred
 // from populated credential fields: OAuthToken => "oauth"; APIToken => "token";
-// User or Password => "basic"; no credentials => "unknown".
+// User or Password => "basic"; TLS with client cert => "mtls"; no credentials => "unknown".
 func (grafana GrafanaConfig) InferredAuthMethod() string {
 	if grafana.AuthMethod != "" {
 		return grafana.AuthMethod
@@ -397,6 +397,9 @@ func (grafana GrafanaConfig) InferredAuthMethod() string {
 	}
 	if grafana.User != "" || grafana.Password != "" {
 		return "basic"
+	}
+	if grafana.TLS != nil && (len(grafana.TLS.CertData) > 0 || grafana.TLS.CertFile != "") {
+		return "mtls"
 	}
 	return "unknown"
 }

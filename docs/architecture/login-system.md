@@ -47,6 +47,7 @@ classDiagram
         CloudToken, CloudAPIURL
         UseOAuth, Yes, Writer
         UseCloudInstanceSelector
+        TLS
     }
     class Hooks {
         ConfigSource
@@ -116,7 +117,7 @@ flowchart TD
     TgtKnown -->|no, --yes or agent| TgtOnPrem[Force TargetOnPrem]
     TgtKnown -->|yes| Auth[Resolve Grafana auth]
     TgtOnPrem --> Auth
-    Auth --> AuthHave{Token or OAuth?}
+    Auth --> AuthHave{Token, mTLS, or OAuth?}
     AuthHave -->|no| AuthSentinel[Return ErrNeedInput&#123;grafana-auth&#125;]
     AuthHave -->|yes| Ctx[Derive context name]
     Ctx --> Cloud[Resolve cloud auth]

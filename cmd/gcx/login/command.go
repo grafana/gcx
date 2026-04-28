@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/login"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/term"
@@ -165,6 +166,25 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 		!flags.Yes &&
 		!agent.IsAgentMode()
 
+	// Carry existing TLS settings into the login flow so that mTLS keeps
+	// working on re-auth without requiring the user to re-specify certs.
+	var existingTLS *config.TLS
+	if sourceCtx != nil && sourceCtx.Grafana != nil && sourceCtx.Grafana.TLS != nil &&
+		!sourceCtx.Grafana.TLS.IsEmpty() {
+		existingTLS = sourceCtx.Grafana.TLS
+		// Advisory: when --allow-server-override re-points the context at a
+		// different server, the existing TLS client cert will be presented to
+		// the new server. This is gated by explicit user opt-in.
+		if flags.AllowServerOverride && flags.Server != "" &&
+			sourceCtx.Grafana != nil && sourceCtx.Grafana.Server != "" &&
+			flags.Server != sourceCtx.Grafana.Server {
+			logging.FromContext(cmd.Context()).Warn("reusing existing TLS client certificate for a different server",
+				"previous_server", sourceCtx.Grafana.Server,
+				"new_server", flags.Server,
+			)
+		}
+	}
+
 	opts := login.Options{
 		Inputs: login.Inputs{
 			Server:       flags.Server,
@@ -174,6 +194,7 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 			CloudAPIURL:  flags.CloudAPIURL,
 			Yes:          flags.Yes,
 			Writer:       cmd.ErrOrStderr(),
+			TLS:          existingTLS,
 		},
 		Hooks: login.Hooks{
 			ConfigSource: flags.Config.ConfigSource(),
@@ -337,22 +358,44 @@ func askForInput(e *login.ErrNeedInput, opts *login.Options, sourceCtx *config.C
 //   - Unknown (target still ambiguous): both options are offered, token
 //     first to match the historical default.
 func askGrafanaAuth(opts *login.Options, existingToken string) error {
+	// When TLS client certs are configured, mTLS is a valid standalone auth
+	// method (e.g. Teleport proxy). Offer it as the default choice.
+	hasMTLS := opts.TLS != nil && !opts.TLS.IsEmpty() &&
+		(len(opts.TLS.CertData) > 0 || opts.TLS.CertFile != "")
+	if hasMTLS && opts.Yes {
+		// Non-interactive with certs configured: default to mTLS.
+		return nil // resolveGrafanaAuth will pick up the TLS case.
+	}
+
 	tokenOption := huh.NewOption("Service account token (requires permissions for managing service accounts)", "token")
 	oauthOption := huh.NewOption("OAuth (browser) — recommended for cloud stacks; experimental on some configurations, fall back to a service account token if you hit issues", "oauth")
+	mtlsOption := huh.NewOption("Client certificate (mTLS) — authenticate via TLS client cert (e.g. Teleport)", "mtls")
 
 	var options []huh.Option[string]
 	switch opts.Target {
 	case login.TargetOnPrem:
-		options = []huh.Option[string]{tokenOption}
+		if hasMTLS {
+			options = []huh.Option[string]{mtlsOption, tokenOption}
+		} else {
+			options = []huh.Option[string]{tokenOption}
+		}
 	case login.TargetCloud:
 		options = []huh.Option[string]{oauthOption, tokenOption}
 	default: // TargetUnknown
-		options = []huh.Option[string]{tokenOption, oauthOption}
+		if hasMTLS {
+			options = []huh.Option[string]{mtlsOption, tokenOption, oauthOption}
+		} else {
+			options = []huh.Option[string]{tokenOption, oauthOption}
+		}
 	}
 
+	// Default to the first option in the menu. For Cloud targets, mTLS is not
+	// offered so we must not default to it even when TLS certs are present.
 	authMethod := "token"
-	// On-prem has a single option; skip the one-item menu and fall through
-	// to the token-input prompt directly.
+	if hasMTLS && opts.Target != login.TargetCloud {
+		authMethod = "mtls"
+	}
+	// Single option: skip the menu and fall through directly.
 	if len(options) > 1 {
 		methodForm := huh.NewForm(huh.NewGroup(
 			huh.NewSelect[string]().
@@ -366,6 +409,10 @@ func askGrafanaAuth(opts *login.Options, existingToken string) error {
 	}
 	if authMethod == "oauth" {
 		opts.UseOAuth = true
+		return nil
+	}
+	if authMethod == "mtls" {
+		// mTLS needs no additional input — the certs are already in opts.TLS.
 		return nil
 	}
 
@@ -483,7 +530,7 @@ func structuredMissingFieldsError(e *login.ErrNeedInput) error {
 		case "server":
 			suggestions = append(suggestions, "Pass --server <url> or set GRAFANA_SERVER")
 		case "grafana-auth":
-			suggestions = append(suggestions, "Pass --token <token> for a service account token")
+			suggestions = append(suggestions, "Pass --token <token> for a service account token, or configure TLS client certs for mTLS auth (GRAFANA_TLS_CERT_FILE / GRAFANA_TLS_KEY_FILE env vars, or gcx config set contexts.<ctx>.grafana.tls.cert-file ...)")
 		case "cloud-token":
 			suggestions = append(suggestions, "Pass --cloud-token <token> to enable Cloud features, or --yes to skip")
 		default:

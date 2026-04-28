@@ -9,7 +9,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/caarlos0/env/v11"
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/httputils"
@@ -93,8 +92,10 @@ func cloudEnvOverride(cfg *config.Config) error {
 	if curCtx.Cloud == nil {
 		curCtx.Cloud = &config.CloudConfig{}
 	}
-
-	return env.Parse(curCtx)
+	if err := config.ParseEnvIntoContext(curCtx); err != nil {
+		return err
+	}
+	return nil
 }
 
 // contextMustExist is a config.Override that validates the current context exists.
@@ -137,11 +138,7 @@ func envOverride(cfg *config.Config) error {
 	}
 
 	curCtx := cfg.Contexts[cfg.CurrentContext]
-	if curCtx.Grafana == nil {
-		curCtx.Grafana = &config.GrafanaConfig{}
-	}
-
-	if err := env.Parse(curCtx); err != nil {
+	if err := config.ParseEnvIntoContext(curCtx); err != nil {
 		return err
 	}
 

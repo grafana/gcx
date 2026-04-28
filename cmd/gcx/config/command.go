@@ -7,7 +7,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/caarlos0/env/v11"
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
@@ -53,21 +52,8 @@ func (opts *Options) LoadConfigTolerant(ctx context.Context, extraOverrides ...c
 
 			curCtx := cfg.Contexts[cfg.CurrentContext]
 
-			if curCtx.Grafana == nil {
-				curCtx.Grafana = &config.GrafanaConfig{}
-			}
-			if curCtx.Grafana.TLS == nil {
-				curCtx.Grafana.TLS = &config.TLS{}
-			}
-
-			if err := env.Parse(curCtx); err != nil {
+			if err := config.ParseEnvIntoContext(curCtx); err != nil {
 				return err
-			}
-
-			// If TLS was only initialized for env parsing and no fields were set,
-			// nil it back out so IsEmpty() and other checks work correctly.
-			if curCtx.Grafana.TLS.IsEmpty() {
-				curCtx.Grafana.TLS = nil
 			}
 
 			// Resolve GRAFANA_PROVIDER_{NAME}_{KEY} environment variables

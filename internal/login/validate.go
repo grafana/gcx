@@ -113,6 +113,7 @@ func Validate(ctx context.Context, opts Options, restCfg config.NamespacedRESTCo
 		Grafana: &config.GrafanaConfig{
 			Server:   opts.Server,
 			APIToken: opts.GrafanaToken,
+			TLS:      opts.TLS,
 		},
 	}
 

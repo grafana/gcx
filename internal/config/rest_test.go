@@ -13,6 +13,84 @@ import (
 	"github.com/grafana/gcx/internal/retry"
 )
 
+func TestNewNamespacedRESTConfig_PropagatesTLSConfig(t *testing.T) {
+	bootdataServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer bootdataServer.Close()
+
+	certData := []byte("cert-pem-data")
+	keyData := []byte("key-pem-data")
+	caData := []byte("ca-pem-data")
+
+	ctx := config.Context{
+		Grafana: &config.GrafanaConfig{
+			Server:  bootdataServer.URL,
+			StackID: 1,
+			TLS: &config.TLS{
+				CertData:   certData,
+				KeyData:    keyData,
+				CAData:     caData,
+				Insecure:   true,
+				ServerName: "custom-sni.example.com",
+				NextProtos: []string{"http/1.1"},
+			},
+		},
+	}
+
+	restCfg, err := config.NewNamespacedRESTConfig(t.Context(), ctx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	tls := restCfg.TLSClientConfig
+	if string(tls.CertData) != string(certData) {
+		t.Fatalf("CertData not propagated: got %q", tls.CertData)
+	}
+	if string(tls.KeyData) != string(keyData) {
+		t.Fatalf("KeyData not propagated: got %q", tls.KeyData)
+	}
+	if string(tls.CAData) != string(caData) {
+		t.Fatalf("CAData not propagated: got %q", tls.CAData)
+	}
+	if !tls.Insecure {
+		t.Fatal("Insecure not propagated")
+	}
+	if tls.ServerName != "custom-sni.example.com" {
+		t.Fatalf("ServerName not propagated: got %q", tls.ServerName)
+	}
+	if len(tls.NextProtos) != 1 || tls.NextProtos[0] != "http/1.1" {
+		t.Fatalf("NextProtos not propagated: got %v", tls.NextProtos)
+	}
+}
+
+func TestNewNamespacedRESTConfig_NilTLSLeavesDefaults(t *testing.T) {
+	bootdataServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer bootdataServer.Close()
+
+	ctx := config.Context{
+		Grafana: &config.GrafanaConfig{
+			Server:  bootdataServer.URL,
+			StackID: 1,
+		},
+	}
+
+	restCfg, err := config.NewNamespacedRESTConfig(t.Context(), ctx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	tls := restCfg.TLSClientConfig
+	if len(tls.CertData) != 0 || len(tls.KeyData) != 0 || len(tls.CAData) != 0 {
+		t.Fatal("expected empty TLS data when no TLS config is set")
+	}
+	if tls.Insecure {
+		t.Fatal("expected Insecure to be false by default")
+	}
+}
+
 func TestNewNamespacedRESTConfig_UsesBootdataStack(t *testing.T) {
 	bootdataServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{

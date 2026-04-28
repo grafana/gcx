@@ -87,7 +87,7 @@ func TestFetchAnonymousSettings(t *testing.T) {
 				cancel() // cancel immediately before the call
 			}
 
-			got, err := grafana.FetchAnonymousSettings(ctx, srv.URL)
+			got, err := grafana.FetchAnonymousSettings(ctx, srv.URL, nil)
 			if tc.wantErr {
 				if err == nil {
 					t.Fatalf("expected error, got nil (settings=%+v)", got)

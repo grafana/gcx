@@ -2,6 +2,7 @@ package grafana
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net/url"
@@ -25,17 +26,24 @@ func (e *VersionIncompatibleError) Error() string {
 	return fmt.Sprintf("grafana version %s is not supported; gcx requires Grafana 12.0.0 or later", e.Version)
 }
 
-func ClientFromContext(ctx *config.Context) (*goapi.GrafanaHTTPAPI, error) {
+// clientResult bundles the goapi client with the resolved *tls.Config so
+// callers like GetVersion can reuse it without calling ToStdTLSConfig twice.
+type clientResult struct {
+	api       *goapi.GrafanaHTTPAPI
+	tlsConfig *tls.Config // nil when no TLS is configured
+}
+
+func clientFromContextWithTLS(ctx *config.Context) (clientResult, error) {
 	if ctx == nil {
-		return nil, errors.New("no context provided")
+		return clientResult{}, errors.New("no context provided")
 	}
 	if ctx.Grafana == nil {
-		return nil, errors.New("grafana not configured")
+		return clientResult{}, errors.New("grafana not configured")
 	}
 
 	grafanaURL, err := url.Parse(ctx.Grafana.Server)
 	if err != nil {
-		return nil, err
+		return clientResult{}, err
 	}
 
 	cfg := &goapi.TransportConfig{
@@ -47,12 +55,13 @@ func ClientFromContext(ctx *config.Context) (*goapi.GrafanaHTTPAPI, error) {
 		},
 	}
 
+	var stdTLS *tls.Config
 	if ctx.Grafana.TLS != nil {
-		tlsCfg, err := ctx.Grafana.TLS.ToStdTLSConfig()
+		stdTLS, err = ctx.Grafana.TLS.ToStdTLSConfig()
 		if err != nil {
-			return nil, fmt.Errorf("TLS configuration: %w", err)
+			return clientResult{}, fmt.Errorf("TLS configuration: %w", err)
 		}
-		cfg.TLSConfig = tlsCfg
+		cfg.TLSConfig = stdTLS
 	}
 
 	// Authentication
@@ -66,7 +75,33 @@ func ClientFromContext(ctx *config.Context) (*goapi.GrafanaHTTPAPI, error) {
 		cfg.OrgID = ctx.Grafana.OrgID
 	}
 
-	return goapi.NewHTTPClientWithConfig(strfmt.Default, cfg), nil
+	return clientResult{
+		api:       goapi.NewHTTPClientWithConfig(strfmt.Default, cfg),
+		tlsConfig: stdTLS,
+	}, nil
+}
+
+// ClientFromContext returns a goapi client configured from the given context.
+// The returned client's default transport does NOT include TLS configuration;
+// callers that need to wrap the client with middleware via WithHTTPClient
+// should use ClientFromContextWithTLS instead to avoid silently losing mTLS.
+func ClientFromContext(ctx *config.Context) (*goapi.GrafanaHTTPAPI, error) {
+	res, err := clientFromContextWithTLS(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return res.api, nil
+}
+
+// ClientFromContextWithTLS returns both the goapi client and the resolved
+// *tls.Config. Use this when wrapping the client with WithHTTPClient to
+// ensure TLS settings are preserved (see GetVersion for an example).
+func ClientFromContextWithTLS(ctx *config.Context) (*goapi.GrafanaHTTPAPI, *tls.Config, error) {
+	res, err := clientFromContextWithTLS(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	return res.api, res.tlsConfig, nil
 }
 
 // GetVersion returns the Grafana version reported by /api/health.
@@ -84,16 +119,17 @@ func ClientFromContext(ctx *config.Context) (*goapi.GrafanaHTTPAPI, error) {
 //   - err == nil, parsed != nil: fully parseable semver; raw is the
 //     original string.
 func GetVersion(ctx context.Context, cfgCtx *config.Context) (*semver.Version, string, error) {
-	gClient, err := ClientFromContext(cfgCtx)
+	res, err := clientFromContextWithTLS(cfgCtx)
 	if err != nil {
 		return nil, "", err
 	}
-	// Wire the CLI's HTTP client (which carries the --log-http-payload
-	// logging transport when enabled) so `gcx ... --log-http-payload` dumps
-	// the /api/health request/response alongside every other call.
-	// Swapping the HTTP client preserves the auth transport configured above (API key / basic / OrgID);
-	// WithHTTPClient only replaces the underlying transport, not the goapi auth settings.
-	gClient.WithHTTPClient(httputils.NewDefaultClient(ctx))
+	// Wire a CLI HTTP client that carries the --log-http-payload logging
+	// transport when enabled, reusing the TLS config already resolved by
+	// clientFromContextWithTLS to avoid redundant file reads.
+	// WithHTTPClient only replaces the underlying transport, not the
+	// goapi auth settings (API key / basic / OrgID).
+	gClient := res.api
+	gClient.WithHTTPClient(httputils.NewDefaultClientWithTLS(ctx, res.tlsConfig))
 
 	healthResponse, err := gClient.Health.GetHealth()
 	if err != nil {
