@@ -121,8 +121,7 @@ func TestSearch_ServerSideTypeFilter(t *testing.T) {
 	}
 }
 
-// TestSearch_YAMLEnvelopeShape verifies the K8s envelope structure in YAML output
-// (FR-009, FR-018, FR-019).
+// TestSearch_YAMLEnvelopeShape verifies the K8s envelope structure in YAML output.
 func TestSearch_YAMLEnvelopeShape(t *testing.T) {
 	resp := testServerResponse{
 		Hits: []testServerHit{
@@ -169,7 +168,7 @@ func TestSearch_YAMLEnvelopeShape(t *testing.T) {
 }
 
 // TestSearch_TypeDashboardQueryParam verifies that type=dashboard is always sent
-// so the server filters folders server-side (FR-009.3, FR-009.4).
+// so the server filters folders server-side.
 func TestSearch_TypeDashboardQueryParam(t *testing.T) {
 	var capturedQuery string
 
@@ -187,7 +186,7 @@ func TestSearch_TypeDashboardQueryParam(t *testing.T) {
 }
 
 // TestSearch_URLContainsV0Alpha1Path verifies the search path contains the
-// literal API path (FR-009.3).
+// literal API path.
 func TestSearch_URLContainsV0Alpha1Path(t *testing.T) {
 	var capturedPath string
 
@@ -245,7 +244,7 @@ func TestSearch_RepeatedFolderAndTagFlags(t *testing.T) {
 }
 
 // TestSearch_EmptyQueryWithFilter verifies that an empty positional query
-// combined with at least one filter does not cause a parse error (FR-009.1).
+// combined with at least one filter does not cause a parse error.
 func TestSearch_EmptyQueryWithFilter(t *testing.T) {
 	tests := []struct {
 		name string
@@ -297,7 +296,7 @@ func TestSearch_EmptyQueryNoFilter(t *testing.T) {
 }
 
 // TestSearch_APIVersionRejected verifies that --api-version is rejected with
-// a non-zero exit and a clear message (FR-026).
+// a non-zero exit and a clear message.
 func TestSearch_APIVersionRejected(t *testing.T) {
 	loader := &stubLoader{
 		cfg: config.NamespacedRESTConfig{

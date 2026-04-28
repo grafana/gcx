@@ -211,7 +211,7 @@ func newRestoreCommand(deps *commandDeps) *cobra.Command {
 
 			name := args[0]
 
-			// FR-011.1: Parse integer BEFORE any HTTP call.
+			// Parse version argument before any HTTP call.
 			targetGen, err := strconv.ParseInt(args[1], 10, 64)
 			if err != nil {
 				return fmt.Errorf("version must be an integer, got %q: %w", args[1], err)
@@ -288,7 +288,7 @@ func newRestoreCommand(deps *commandDeps) *cobra.Command {
 				return fmt.Errorf("failed to set spec on update object: %w", err)
 			}
 
-			// Set restore message annotation (FR-011.4).
+			// Set restore message annotation.
 			restoreMsg := opts.Message
 			if restoreMsg == "" {
 				restoreMsg = fmt.Sprintf("Restored from version %d", targetGen)

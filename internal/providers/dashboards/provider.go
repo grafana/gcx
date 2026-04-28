@@ -3,7 +3,6 @@ package dashboards
 // DashboardsProvider manages Grafana dashboard resources via the K8s dynamic API tier.
 // It is a commands-only provider: TypedRegistrations, Validate, and ConfigKeys all return nil
 // because dashboards are already served by the existing K8s dynamic path (gcx resources).
-// See ADR 001 for the decision to keep the K8s tier and provider tier separate.
 //
 // Self-registration follows the database/sql driver pattern: importing this package
 // as a blank import (e.g. in cmd/gcx/root/command.go) is sufficient to register

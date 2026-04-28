@@ -1,8 +1,8 @@
 // Package search implements the `gcx dashboards search` command.
 // The search endpoint is pinned to v0alpha1 of the dashboard.grafana.app API
-// group (ADR 001 §Search command). type=dashboard is sent as a server-side
-// filter to exclude folders; the legacy type=dash-db value is ignored by the
-// server but the modern type=dashboard value is honored.
+// group. type=dashboard is sent as a server-side filter to exclude folders;
+// the legacy type=dash-db value is ignored by the server but the modern
+// type=dashboard value is honored.
 package search
 
 import (
@@ -17,8 +17,7 @@ import (
 )
 
 const (
-	// searchResultAPIVersion is the pinned API version string used in the K8s
-	// envelope output. See ADR 001 §Search command.
+	// searchResultAPIVersion is the pinned API version string used in the K8s envelope output.
 	searchResultAPIVersion = "dashboard.grafana.app/v0alpha1"
 
 	searchResultKind = "DashboardSearchResultList"
@@ -40,7 +39,7 @@ type searchOpts struct {
 	Limit   int
 	Sort    string
 	Deleted bool
-	// --api-version is intentionally blocked at runtime (FR-026, ADR-001 §Search);
+	// --api-version is intentionally blocked at runtime;
 	// bound only to avoid "unknown flag" errors from cobra.
 	APIVersion string
 }
@@ -57,7 +56,7 @@ func (o *searchOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.Sort, "sort", "", "Sort key (e.g. name_sort)")
 	flags.BoolVar(&o.Deleted, "deleted", false, "Include recently deleted dashboards")
 	// --api-version is defined so cobra parses it without an "unknown flag" error,
-	// but RunE rejects it with a clear message. See FR-026.
+	// but RunE rejects it with a clear message.
 	flags.StringVar(&o.APIVersion, "api-version", "", "Not supported on search (search is pinned to v0alpha1)")
 	_ = flags.MarkHidden("api-version")
 }
@@ -96,7 +95,7 @@ filter is supplied.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Reject --api-version: the search endpoint is pinned to v0alpha1.
 			// The flag is defined so cobra parses it correctly (no "unknown flag"
-			// error), but it is always rejected here. See FR-026.
+			// error), but it is always rejected here.
 			if cmd.Flags().Changed("api-version") {
 				return fmt.Errorf(
 					"--api-version is not supported on 'search': the search endpoint is pinned to %s",
