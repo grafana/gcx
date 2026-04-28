@@ -47,6 +47,27 @@ func writeFile(t *testing.T, path, content string) {
 	require.NoError(t, os.WriteFile(path, []byte(strings.TrimSpace(content)+"\n"), 0o600))
 }
 
+func TestConfigLoader_LoadGrafanaConfig_InjectedContext(t *testing.T) {
+	injected := internalconfig.NamespacedRESTConfig{
+		Namespace:  "stacks-42",
+		GrafanaURL: "https://test.grafana.net",
+	}
+	injected.Host = "https://test.grafana.net"
+	injected.BearerToken = "injected-token"
+
+	ctx := internalconfig.WithNamespacedRESTConfig(context.Background(), injected)
+
+	// ConfigLoader has no config file and no context name — would fail without injection.
+	loader := &providers.ConfigLoader{}
+
+	got, err := loader.LoadGrafanaConfig(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "https://test.grafana.net", got.Host)
+	assert.Equal(t, "stacks-42", got.Namespace)
+	assert.Equal(t, "https://test.grafana.net", got.GrafanaURL)
+	assert.Equal(t, "injected-token", got.BearerToken)
+}
+
 func TestConfigLoader_LoadCloudConfig_MissingToken(t *testing.T) {
 	cfgFile := writeConfigFile(t, `
 contexts:

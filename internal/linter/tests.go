@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/linter/builtins"
+	"github.com/grafana/gcx/internal/linter/linterr"
 	"github.com/open-policy-agent/opa/v1/ast"
 	"github.com/open-policy-agent/opa/v1/bundle"
 	"github.com/open-policy-agent/opa/v1/cover"
@@ -20,7 +21,8 @@ import (
 	"github.com/open-policy-agent/opa/v1/topdown"
 )
 
-var ErrTestsFailed = errors.New("tests failed")
+// ErrTestsFailed is re-exported from linterr for backward compatibility.
+var ErrTestsFailed = linterr.ErrTestsFailed
 
 type TestsOptions struct {
 	OutputFormat string

@@ -22,3 +22,19 @@ func ContextNameFromCtx(ctx context.Context) string {
 	}
 	return ""
 }
+
+type namespacedRESTConfigKey struct{}
+
+// WithNamespacedRESTConfig injects a pre-built NamespacedRESTConfig into context.
+// When present, ConfigLoader.LoadGrafanaConfig will return this config directly,
+// bypassing all file-based loading and env var resolution.
+func WithNamespacedRESTConfig(ctx context.Context, cfg NamespacedRESTConfig) context.Context {
+	return context.WithValue(ctx, namespacedRESTConfigKey{}, cfg)
+}
+
+// NamespacedRESTConfigFromContext retrieves an injected NamespacedRESTConfig.
+// Returns false if no config was injected.
+func NamespacedRESTConfigFromContext(ctx context.Context) (NamespacedRESTConfig, bool) {
+	cfg, ok := ctx.Value(namespacedRESTConfigKey{}).(NamespacedRESTConfig)
+	return cfg, ok
+}
