@@ -592,6 +592,33 @@ func TestTypedCRUD_TypedDelete(t *testing.T) {
 	assert.Equal(t, "w-1", deleted)
 }
 
+func TestTypedCRUD_DeleteDryRun(t *testing.T) {
+	deleteCalled := false
+	crud := newWidgetCRUD(nil)
+	crud.DeleteFn = func(_ context.Context, _ string) error {
+		deleteCalled = true
+		return nil
+	}
+
+	a := crud.AsAdapter()
+
+	t.Run("skips DeleteFn when DryRun is flag is set", func(t *testing.T) {
+		deleteCalled = false
+		err := a.Delete(t.Context(), "w-1", metav1.DeleteOptions{
+			DryRun: []string{metav1.DryRunAll},
+		})
+		require.NoError(t, err)
+		assert.False(t, deleteCalled, "DeleteFn should not be called during dry run")
+	})
+
+	t.Run("calls DeleteFn without DryRun flag set", func(t *testing.T) {
+		deleteCalled = false
+		err := a.Delete(t.Context(), "w-1", metav1.DeleteOptions{})
+		require.NoError(t, err)
+		assert.True(t, deleteCalled, "DeleteFn should be called without dry run")
+	})
+}
+
 func TestTypedCRUD_ResourceIdentity(t *testing.T) {
 	// TypedCRUD should use GetResourceName() from the ResourceIdentity interface.
 	widgets := []TestWidget{

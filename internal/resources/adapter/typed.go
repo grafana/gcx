@@ -425,9 +425,13 @@ func (a *typedAdapter[T]) Update(ctx context.Context, obj *unstructured.Unstruct
 	return &u, nil
 }
 
-func (a *typedAdapter[T]) Delete(ctx context.Context, name string, _ metav1.DeleteOptions) error {
+func (a *typedAdapter[T]) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
 	if a.crud.DeleteFn == nil {
 		return errors.ErrUnsupported
+	}
+
+	if isDryRun(opts.DryRun) {
+		return nil
 	}
 
 	return a.crud.DeleteFn(ctx, name)
