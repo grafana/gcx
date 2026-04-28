@@ -48,7 +48,10 @@ require (
 	k8s.io/klog/v2 v2.140.0
 )
 
-require github.com/gofrs/flock v0.13.0
+require (
+	github.com/go-openapi/runtime v0.28.0
+	github.com/gofrs/flock v0.13.0
+)
 
 require (
 	dario.cat/mergo v1.0.2 // indirect
@@ -102,7 +105,6 @@ require (
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
 	github.com/go-openapi/loads v0.22.0 // indirect
-	github.com/go-openapi/runtime v0.28.0 // indirect
 	github.com/go-openapi/spec v0.21.0 // indirect
 	github.com/go-openapi/swag v0.24.1 // indirect
 	github.com/go-openapi/swag/cmdutils v0.24.0 // indirect

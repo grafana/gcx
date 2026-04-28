@@ -4,13 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/grafana/gcx/cmd/gcx/fail"
+	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/datasources"
 	"github.com/grafana/gcx/internal/grafana"
+	"github.com/grafana/gcx/internal/login"
 	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -547,6 +550,103 @@ func TestErrorToDetailedError_CloudStackNotConfigured(t *testing.T) {
 	require.Len(t, got.Suggestions, 2)
 	assert.Contains(t, got.Suggestions[0], "gcx config set cloud.stack")
 	assert.Contains(t, got.Suggestions[1], "GRAFANA_CLOUD_STACK")
+}
+
+func TestErrorToDetailedError_LoginGCOMStack403(t *testing.T) {
+	cause := &cloud.GCOMHTTPError{Status: 403, Body: "forbidden"}
+	err := &login.GCOMStackError{Slug: "mystack", Status: 403, Cause: cause}
+
+	got := fail.ErrorToDetailedError(err)
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Grafana Cloud stack lookup denied", got.Summary)
+	require.NotNil(t, got.ExitCode, "403 should map to ExitAuthFailure")
+	assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+
+	require.NotEmpty(t, got.Suggestions)
+	joined := strings.Join(got.Suggestions, "\n")
+	assert.Contains(t, joined, "stacks:read", "must mention the missing CAP scope")
+}
+
+func TestErrorToDetailedError_LoginGCOMStack401(t *testing.T) {
+	cause := &cloud.GCOMHTTPError{Status: 401, Body: "unauthorized"}
+	err := &login.GCOMStackError{Slug: "mystack", Status: 401, Cause: cause}
+
+	got := fail.ErrorToDetailedError(err)
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Grafana Cloud token rejected", got.Summary)
+	require.NotNil(t, got.ExitCode)
+	assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+}
+
+func TestErrorToDetailedError_LoginGCOMStack404(t *testing.T) {
+	cause := &cloud.GCOMHTTPError{Status: 404, Body: "not found"}
+	err := &login.GCOMStackError{Slug: "mystack", Status: 404, Cause: cause}
+
+	got := fail.ErrorToDetailedError(err)
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Grafana Cloud stack not found", got.Summary)
+	require.NotEmpty(t, got.Suggestions)
+	assert.Contains(t, strings.Join(got.Suggestions, "\n"), "mystack")
+}
+
+func TestErrorToDetailedError_LoginHealthCheckAuth(t *testing.T) {
+	for _, status := range []int{401, 403} {
+		t.Run(fmt.Sprintf("status %d", status), func(t *testing.T) {
+			err := &login.HealthCheckError{
+				Server: "https://example.grafana.net",
+				Status: status,
+				Cause:  errors.New("unauthorized"),
+			}
+
+			got := fail.ErrorToDetailedError(err)
+
+			require.NotNil(t, got)
+			assert.Equal(t, "Grafana token rejected", got.Summary)
+			require.NotNil(t, got.ExitCode)
+			assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+		})
+	}
+}
+
+func TestErrorToDetailedError_LoginHealthCheckUnreachable(t *testing.T) {
+	err := &login.HealthCheckError{
+		Server: "https://example.grafana.net",
+		Status: 0,
+		Cause:  errors.New("dial tcp: connection refused"),
+	}
+
+	got := fail.ErrorToDetailedError(err)
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Grafana server unreachable", got.Summary)
+	assert.Nil(t, got.ExitCode, "transport failures should not map to auth exit code")
+}
+
+func TestErrorToDetailedError_LoginK8sDiscovery(t *testing.T) {
+	err := &login.K8sDiscoveryError{
+		Server: "https://example.grafana.net",
+		Cause:  errors.New("the server could not find the requested resource"),
+	}
+
+	got := fail.ErrorToDetailedError(err)
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Kubernetes-style API unavailable", got.Summary)
+	require.NotEmpty(t, got.Suggestions)
+}
+
+func TestErrorToDetailedError_LoginVersionCheck(t *testing.T) {
+	v, _ := semver.NewVersion("11.5.0")
+	err := &login.VersionCheckError{Cause: &grafana.VersionIncompatibleError{Version: v}}
+
+	got := fail.ErrorToDetailedError(err)
+
+	require.NotNil(t, got)
+	require.NotNil(t, got.ExitCode)
+	assert.Equal(t, fail.ExitVersionIncompatible, *got.ExitCode)
 }
 
 type fakeServiceAPIError struct {

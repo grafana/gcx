@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/gcx/internal/datasources"
 	"github.com/grafana/gcx/internal/grafana"
 	"github.com/grafana/gcx/internal/linter"
+	"github.com/grafana/gcx/internal/login"
 	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/grafana/gcx/internal/resources"
 	k8sapi "k8s.io/apimachinery/pkg/api/errors"
@@ -35,21 +36,22 @@ func ErrorToDetailedError(err error) *DetailedError {
 	errorConverters := []func(err error) (*DetailedError, bool){
 		convertUsageErrors,
 		convertCobraUnknownCommandErrors,
-		convertContextCanceled,    // Context cancellation (must be first — cancellation can wrap other errors)
-		convertRequiredFlagErrors, // Cobra required-flag errors — must appear before generic checks
-		convertConfigErrors,       // Config-related
-		convertAuthErrors,         // Auth-related (expired tokens)
-		convertQueryErrors,        // Datasource query errors
-		convertDatasourceErrors,   // Grafana datasource REST API errors
-		convertServiceAPIErrors,   // Other structured HTTP API errors
-		convertFSErrors,           // FS-related
-		convertResourcesErrors,    // Resources-related
-		convertNetworkErrors,      // Network-related errors
-		convertAPIErrors,          // API-related errors
-		convertVersionErrors,      // Version incompatibility errors
-		convertLinterErrors,       // Linter-related errors
-		convertSMConfigErrors,     // Synthetic Monitoring config errors
-		convertCloudConfigErrors,  // Cloud config / fleet / setup errors
+		convertContextCanceled,       // Context cancellation (must be first — cancellation can wrap other errors)
+		convertRequiredFlagErrors,    // Cobra required-flag errors — must appear before generic checks
+		convertConfigErrors,          // Config-related
+		convertAuthErrors,            // Auth-related (expired tokens)
+		convertQueryErrors,           // Datasource query errors
+		convertDatasourceErrors,      // Grafana datasource REST API errors
+		convertServiceAPIErrors,      // Other structured HTTP API errors
+		convertFSErrors,              // FS-related
+		convertResourcesErrors,       // Resources-related
+		convertNetworkErrors,         // Network-related errors
+		convertAPIErrors,             // API-related errors
+		convertLoginValidationErrors, // Login connectivity validation (must precede generic version check)
+		convertVersionErrors,         // Version incompatibility errors
+		convertLinterErrors,          // Linter-related errors
+		convertSMConfigErrors,        // Synthetic Monitoring config errors
+		convertCloudConfigErrors,     // Cloud config / fleet / setup errors
 	}
 
 	for _, converter := range errorConverters {
@@ -668,6 +670,120 @@ func convertLinterErrors(err error) (*DetailedError, bool) {
 	}
 
 	return nil, false
+}
+
+func convertLoginValidationErrors(err error) (*DetailedError, bool) {
+	var gcomErr *login.GCOMStackError
+	if errors.As(err, &gcomErr) {
+		return convertGCOMStackError(gcomErr), true
+	}
+
+	var healthErr *login.HealthCheckError
+	if errors.As(err, &healthErr) {
+		return convertHealthCheckError(healthErr), true
+	}
+
+	var k8sErr *login.K8sDiscoveryError
+	if errors.As(err, &k8sErr) {
+		return &DetailedError{
+			Parent:  err,
+			Summary: "Kubernetes-style API unavailable",
+			Details: k8sErr.Cause.Error(),
+			Suggestions: []string{
+				"Confirm the Grafana stack is on version 12 or later",
+				"Confirm the Grafana token has the role required to call /apis (Admin or Editor)",
+				"Check network/proxy access to " + k8sErr.Server,
+			},
+		}, true
+	}
+
+	// Delegate VersionCheckError to convertVersionErrors so ExitCode and copy
+	// stay consistent with VersionIncompatibleError raised from other call sites.
+	var versionErr *login.VersionCheckError
+	if errors.As(err, &versionErr) {
+		if d, ok := convertVersionErrors(versionErr.Cause); ok {
+			d.Parent = err
+			return d, true
+		}
+	}
+
+	return nil, false
+}
+
+func convertGCOMStackError(err *login.GCOMStackError) *DetailedError {
+	switch err.Status {
+	case http.StatusForbidden:
+		return &DetailedError{
+			Parent:  err,
+			Summary: "Grafana Cloud stack lookup denied",
+			Details: fmt.Sprintf("GCOM returned 403 for stack %q.", err.Slug),
+			Suggestions: []string{
+				"Verify the Cloud Access Policy token has the stacks:read scope",
+				"Confirm the access policy is in the same org as the stack",
+				"Regenerate the CAP token if the policy was recently updated",
+			},
+			DocsLink: "https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/",
+			ExitCode: new(ExitAuthFailure),
+		}
+	case http.StatusUnauthorized:
+		return &DetailedError{
+			Parent:  err,
+			Summary: "Grafana Cloud token rejected",
+			Details: fmt.Sprintf("GCOM returned 401 for stack %q.", err.Slug),
+			Suggestions: []string{
+				"Generate a new Cloud Access Policy token at https://grafana.com",
+				"Confirm the token was copied without truncation",
+			},
+			ExitCode: new(ExitAuthFailure),
+		}
+	case http.StatusNotFound:
+		return &DetailedError{
+			Parent:  err,
+			Summary: "Grafana Cloud stack not found",
+			Details: fmt.Sprintf("GCOM has no stack with slug %q.", err.Slug),
+			Suggestions: []string{
+				fmt.Sprintf("Confirm the --server URL points at an existing stack (slug derived: %q)", err.Slug),
+				"List your stacks: gcx providers (or visit grafana.com/orgs/<org>)",
+			},
+		}
+	default:
+		return &DetailedError{
+			Parent:  err,
+			Summary: "Grafana Cloud stack lookup failed",
+			Details: err.Cause.Error(),
+			Suggestions: []string{
+				"Retry — GCOM may be temporarily unavailable",
+				"Check https://status.grafana.com for ongoing incidents",
+			},
+		}
+	}
+}
+
+func convertHealthCheckError(err *login.HealthCheckError) *DetailedError {
+	if err.Status == http.StatusUnauthorized || err.Status == http.StatusForbidden {
+		return &DetailedError{
+			Parent:  err,
+			Summary: "Grafana token rejected",
+			Details: fmt.Sprintf("/api/health returned %d for %s.", err.Status, err.Server),
+			Suggestions: []string{
+				"Confirm the Grafana service-account token belongs to the target stack",
+				"Confirm the token has not expired or been revoked",
+				"Confirm the service-account role grants Admin or Editor as required",
+				reauthSuggestion,
+			},
+			ExitCode: new(ExitAuthFailure),
+		}
+	}
+	return &DetailedError{
+		Parent:  err,
+		Summary: "Grafana server unreachable",
+		Details: err.Cause.Error(),
+		Suggestions: []string{
+			"Confirm --server points at the correct Grafana URL",
+			"Check network/proxy access from this machine",
+			"If using mTLS, verify --tls-cert-file and --tls-key-file paths are correct",
+		},
+	}
 }
 
 func convertVersionErrors(err error) (*DetailedError, bool) {

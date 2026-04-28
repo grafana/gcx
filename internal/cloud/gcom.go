@@ -53,6 +53,19 @@ type StackInfo struct {
 	AMInstanceURL string `json:"amInstanceUrl"`
 }
 
+// GCOMHTTPError is returned by GCOMClient when the GCOM API responds with a
+// non-200 status. Callers can use errors.As to inspect Status and dispatch on
+// 401/403/404 etc. without parsing the error message.
+type GCOMHTTPError struct {
+	Status int
+	Body   string
+}
+
+func (e *GCOMHTTPError) Error() string {
+	return fmt.Sprintf("gcom client: unexpected status %d %s: %s",
+		e.Status, http.StatusText(e.Status), e.Body)
+}
+
 // GCOMClient is an HTTP client for the Grafana Cloud API (GCOM).
 type GCOMClient struct {
 	baseURL string
@@ -130,8 +143,10 @@ func (c *GCOMClient) GetStack(ctx context.Context, slug string) (StackInfo, erro
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return StackInfo{}, fmt.Errorf("gcom client: unexpected status %d %s: %s",
-			resp.StatusCode, http.StatusText(resp.StatusCode), strings.TrimSpace(string(body)))
+		return StackInfo{}, &GCOMHTTPError{
+			Status: resp.StatusCode,
+			Body:   strings.TrimSpace(string(body)),
+		}
 	}
 
 	var info StackInfo
