@@ -99,12 +99,32 @@ var commandAnnotations = map[string]annotation{
 	// -----------------------------------------------------------------------
 	// Alert provider
 	// -----------------------------------------------------------------------
-	"gcx alert groups get":     {Cost: "small"},
-	"gcx alert groups list":    {Cost: "small"},
-	"gcx alert groups status":  {Cost: "medium", Hint: "<name> -o json"},
-	"gcx alert instances list": {Cost: "large", Hint: "--state firing --group <name> -o json"},
-	"gcx alert rules get":      {Cost: "small"},
-	"gcx alert rules list":     {Cost: "medium", Hint: "--folder <uid> --group <name> -o json"},
+	"gcx alert groups get":                   {Cost: "small"},
+	"gcx alert groups list":                  {Cost: "small"},
+	"gcx alert groups status":                {Cost: "medium", Hint: "<name> -o json"},
+	"gcx alert instances list":               {Cost: "large", Hint: "--state firing --group <name> -o json"},
+	"gcx alert rules get":                    {Cost: "small"},
+	"gcx alert rules list":                   {Cost: "medium", Hint: "--folder <uid> --group <name> -o json"},
+	"gcx alert contact-points list":          {Cost: "small"},
+	"gcx alert contact-points get":           {Cost: "small"},
+	"gcx alert contact-points create":        {Cost: "small"},
+	"gcx alert contact-points update":        {Cost: "small"},
+	"gcx alert contact-points delete":        {Cost: "small"},
+	"gcx alert contact-points export":        {Cost: "medium", Hint: "--format yaml"},
+	"gcx alert mute-timings list":            {Cost: "small"},
+	"gcx alert mute-timings get":             {Cost: "small"},
+	"gcx alert mute-timings create":          {Cost: "small"},
+	"gcx alert mute-timings update":          {Cost: "small"},
+	"gcx alert mute-timings delete":          {Cost: "small"},
+	"gcx alert mute-timings export":          {Cost: "medium", Hint: "--format yaml [--name <mute-timing>]"},
+	"gcx alert notification-policies get":    {Cost: "small"},
+	"gcx alert notification-policies set":    {Cost: "small"},
+	"gcx alert notification-policies reset":  {Cost: "small"},
+	"gcx alert notification-policies export": {Cost: "medium", Hint: "--format yaml"},
+	"gcx alert templates list":               {Cost: "small"},
+	"gcx alert templates get":                {Cost: "small"},
+	"gcx alert templates upsert":             {Cost: "small"},
+	"gcx alert templates delete":             {Cost: "small"},
 
 	// -----------------------------------------------------------------------
 	// App Observability provider
