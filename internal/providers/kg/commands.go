@@ -744,12 +744,12 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 
 	// list subcommand
 	var (
-		listType           string
-		listAssertOnly     bool
-		listScope          scopeFlags
-		listPage           int
-		listPropertyRaw    []string
-		listDetails        bool
+		listType        string
+		listAssertOnly  bool
+		listScope       scopeFlags
+		listPage        int
+		listPropertyRaw []string
+		listDetails     bool
 	)
 	listOpts := &entitiesShowOpts{}
 	listCmd := &cobra.Command{
@@ -2058,7 +2058,6 @@ func exampleAssertionsRequest() AssertionsRequest {
 		Severities:                 []string{"critical", "warning"},
 	}
 }
-
 
 // ---------------------------------------------------------------------------
 // Unused import guard for pflag
