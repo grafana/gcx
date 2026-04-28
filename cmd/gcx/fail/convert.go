@@ -479,6 +479,22 @@ func convertServiceAPIErrors(err error) (*DetailedError, bool) {
 		return nil, false
 	}
 
+	// Adaptive Logs scope errors — handled here (not in convertCloudConfigErrors with
+	// traces/metrics) because the logs client returns a typed APIError that this converter
+	// catches before convertCloudConfigErrors runs.
+	if apiErr.APIServiceName() == "Adaptive Logs" &&
+		strings.Contains(apiErr.APIUserMessage(), "invalid scope") &&
+		(apiErr.HTTPStatusCode() == http.StatusUnauthorized || apiErr.HTTPStatusCode() == http.StatusForbidden) {
+		return &DetailedError{
+			Parent:  err,
+			Summary: "Adaptive Logs: permission denied",
+			Suggestions: []string{
+				"Ensure your Grafana Cloud access policy includes the adaptive-logs:admin scope",
+			},
+			ExitCode: new(ExitAuthFailure),
+		}, true
+	}
+
 	detailedErr := &DetailedError{
 		Summary:     serviceAPIErrorSummary(apiErr),
 		Details:     joinErrorDetails(wrappedTypedErrorContext(err, apiErr), strings.TrimSpace(apiErr.APIUserMessage())),
@@ -808,6 +824,33 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 		}, true
 	}
 
+	// Adaptive Traces scope errors.
+	if strings.Contains(msg, "adaptive-traces:") && strings.Contains(msg, "invalid scope") {
+		return &DetailedError{
+			Parent:  err,
+			Summary: "Adaptive Traces: permission denied",
+			Suggestions: []string{
+				"Ensure your Grafana Cloud access policy includes the adaptive-traces:admin scope",
+			},
+			ExitCode: new(ExitAuthFailure),
+		}, true
+	}
+
+	// Adaptive Metrics scope errors.
+	if strings.Contains(msg, "adaptive-metrics:") && strings.Contains(msg, "invalid scope") {
+		scope := adaptiveMetricsScopeFromError(msg)
+		suggestion := fmt.Sprintf("Ensure your Grafana Cloud access policy includes the %s scope", scope)
+		if scope == "" {
+			suggestion = "Adaptive Metrics commands require an adaptive-metrics-* scope on your Grafana Cloud access policy (the specific scope depends on the subcommand)"
+		}
+		return &DetailedError{
+			Parent:      err,
+			Summary:     "Adaptive Metrics: permission denied",
+			Suggestions: []string{suggestion},
+			ExitCode:    new(ExitAuthFailure),
+		}, true
+	}
+
 	// Fleet management not available.
 	if strings.Contains(msg, "fleet management endpoint is not available") ||
 		strings.Contains(msg, "fleet management instance ID is not available") {
@@ -824,13 +867,17 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 
 	// Stack info lookup forbidden — access policy missing stacks:read scope.
 	if strings.Contains(msg, "failed to get stack info for") && strings.Contains(msg, "status 403") {
+		suggestions := []string{
+			"Ensure your Grafana Cloud access policy includes the stacks:read scope",
+		}
+		if suggestion := adaptiveScopeSuggestionFromSignalPrefix(msg); suggestion != "" {
+			suggestions = append(suggestions, suggestion)
+		}
 		return &DetailedError{
-			Parent:  err,
-			Summary: "Cloud stack lookup: permission denied",
-			Suggestions: []string{
-				"Ensure your access policy includes the stacks:read scope",
-			},
-			ExitCode: new(ExitAuthFailure),
+			Parent:      err,
+			Summary:     "Cloud stack lookup: permission denied",
+			Suggestions: suggestions,
+			ExitCode:    new(ExitAuthFailure),
 		}, true
 	}
 
@@ -846,6 +893,65 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 	}
 
 	return nil, false
+}
+
+func adaptiveScopeSuggestionFromSignalPrefix(msg string) string {
+	switch {
+	case strings.Contains(msg, "adaptive-logs:"):
+		return "Ensure your Grafana Cloud access policy includes the adaptive-logs:admin scope"
+	case strings.Contains(msg, "adaptive-metrics:"):
+		return "Adaptive Metrics commands also require an adaptive-metrics-* scope on your Grafana Cloud access policy (the specific scope depends on the subcommand)"
+	case strings.Contains(msg, "adaptive-traces:"):
+		return "Ensure your Grafana Cloud access policy includes the adaptive-traces:admin scope"
+	default:
+		return ""
+	}
+}
+
+func adaptiveMetricsScopeFromError(msg string) string {
+	type resource struct {
+		keyword   string
+		base      string
+		reads     []string
+		writes    []string
+		deleteKey string
+	}
+	// Operation matches are checked in priority order: delete > write > read.
+	resources := []resource{
+		{"rule", "adaptive-metrics-rules",
+			[]string{"list rules", "get rule", "list recommended rules"},
+			[]string{"create rule", "update rule", "sync rules", "validate rules"},
+			"delete rule"},
+		{"recommendation", "adaptive-metrics-recommendations",
+			[]string{"list recommendations"}, nil, ""},
+		{"segment", "adaptive-metrics-segments",
+			[]string{"list segments"},
+			[]string{"create segment", "update segment"},
+			"delete segment"},
+		{"exemption", "adaptive-metrics-exemptions",
+			[]string{"list exemptions", "list segmented exemptions", "get exemption"},
+			[]string{"create exemption", "update exemption"},
+			"delete exemption"},
+	}
+	for _, r := range resources {
+		if !strings.Contains(msg, r.keyword) {
+			continue
+		}
+		if r.deleteKey != "" && strings.Contains(msg, r.deleteKey) {
+			return r.base + ":delete"
+		}
+		for _, v := range r.writes {
+			if strings.Contains(msg, v) {
+				return r.base + ":write"
+			}
+		}
+		for _, v := range r.reads {
+			if strings.Contains(msg, v) {
+				return r.base + ":read"
+			}
+		}
+	}
+	return ""
 }
 
 func fallbackDetailedError(err error) *DetailedError {

@@ -56,7 +56,7 @@ func NewClient(ctx context.Context, baseURL string, tenantID int, apiToken strin
 func (c *Client) doRequest(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, body)
 	if err != nil {
-		return nil, fmt.Errorf("metrics: create request: %w", err)
+		return nil, fmt.Errorf("adaptive-metrics: create request: %w", err)
 	}
 	req.SetBasicAuth(strconv.Itoa(c.tenantID), c.apiToken)
 	if body != nil {
@@ -74,18 +74,18 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body io.Rea
 func (c *Client) ListSegments(ctx context.Context) ([]MetricSegment, error) {
 	resp, err := c.doRequest(ctx, http.MethodGet, "/aggregations/rules/segments", nil)
 	if err != nil {
-		return nil, fmt.Errorf("metrics: list segments: %w", err)
+		return nil, fmt.Errorf("adaptive-metrics: list segments: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("metrics: list segments: status %d: %s", resp.StatusCode, serverError(b))
+		return nil, fmt.Errorf("adaptive-metrics: list segments: status %d: %s", resp.StatusCode, serverError(b))
 	}
 
 	var segments []MetricSegment
 	if err := json.NewDecoder(resp.Body).Decode(&segments); err != nil {
-		return nil, fmt.Errorf("metrics: list segments: decode: %w", err)
+		return nil, fmt.Errorf("adaptive-metrics: list segments: decode: %w", err)
 	}
 
 	if segments == nil {
@@ -116,23 +116,23 @@ func (c *Client) GetSegment(ctx context.Context, id string) (*MetricSegment, err
 func (c *Client) CreateSegment(ctx context.Context, s *MetricSegment) (*MetricSegment, error) {
 	data, err := json.Marshal(s)
 	if err != nil {
-		return nil, fmt.Errorf("metrics: create segment: marshal: %w", err)
+		return nil, fmt.Errorf("adaptive-metrics: create segment: marshal: %w", err)
 	}
 
 	resp, err := c.doRequest(ctx, http.MethodPost, "/aggregations/rules/segments", bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("metrics: create segment: %w", err)
+		return nil, fmt.Errorf("adaptive-metrics: create segment: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("metrics: create segment: status %d: %s", resp.StatusCode, serverError(b))
+		return nil, fmt.Errorf("adaptive-metrics: create segment: status %d: %s", resp.StatusCode, serverError(b))
 	}
 
 	var created MetricSegment
 	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
-		return nil, fmt.Errorf("metrics: create segment: decode: %w", err)
+		return nil, fmt.Errorf("adaptive-metrics: create segment: decode: %w", err)
 	}
 
 	return &created, nil
@@ -143,13 +143,13 @@ func (c *Client) CreateSegment(ctx context.Context, s *MetricSegment) (*MetricSe
 func (c *Client) UpdateSegment(ctx context.Context, id string, s *MetricSegment) (*MetricSegment, error) {
 	data, err := json.Marshal(s)
 	if err != nil {
-		return nil, fmt.Errorf("metrics: update segment: marshal: %w", err)
+		return nil, fmt.Errorf("adaptive-metrics: update segment: marshal: %w", err)
 	}
 
 	path := "/aggregations/rules/segments?segment=" + url.QueryEscape(id)
 	resp, err := c.doRequest(ctx, http.MethodPut, path, bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("metrics: update segment: %w", err)
+		return nil, fmt.Errorf("adaptive-metrics: update segment: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -158,7 +158,7 @@ func (c *Client) UpdateSegment(ctx context.Context, id string, s *MetricSegment)
 	}
 	if resp.StatusCode >= 400 {
 		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("metrics: update segment: status %d: %s", resp.StatusCode, serverError(b))
+		return nil, fmt.Errorf("adaptive-metrics: update segment: status %d: %s", resp.StatusCode, serverError(b))
 	}
 
 	result := *s
@@ -171,17 +171,17 @@ func (c *Client) DeleteSegment(ctx context.Context, id string) error {
 	path := "/aggregations/rules/segments?segment=" + url.QueryEscape(id)
 	resp, err := c.doRequest(ctx, http.MethodDelete, path, nil)
 	if err != nil {
-		return fmt.Errorf("metrics: delete segment: %w", err)
+		return fmt.Errorf("adaptive-metrics: delete segment: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusConflict {
 		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("metrics: delete segment: segment has dependent rules or exemptions: %s", string(b))
+		return fmt.Errorf("adaptive-metrics: delete segment: segment has dependent rules or exemptions: %s", string(b))
 	}
 	if resp.StatusCode >= 400 {
 		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("metrics: delete segment: status %d: %s", resp.StatusCode, serverError(b))
+		return fmt.Errorf("adaptive-metrics: delete segment: status %d: %s", resp.StatusCode, serverError(b))
 	}
 
 	return nil
@@ -201,20 +201,20 @@ func (c *Client) ListExemptions(ctx context.Context, segment string) ([]MetricEx
 
 	resp, err := c.doRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
-		return nil, fmt.Errorf("metrics: list exemptions: %w", err)
+		return nil, fmt.Errorf("adaptive-metrics: list exemptions: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("metrics: list exemptions: status %d: %s", resp.StatusCode, serverError(b))
+		return nil, fmt.Errorf("adaptive-metrics: list exemptions: status %d: %s", resp.StatusCode, serverError(b))
 	}
 
 	var wrapper struct {
 		Result []MetricExemption `json:"result"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&wrapper); err != nil {
-		return nil, fmt.Errorf("metrics: list exemptions: decode: %w", err)
+		return nil, fmt.Errorf("adaptive-metrics: list exemptions: decode: %w", err)
 	}
 
 	if wrapper.Result == nil {
@@ -228,18 +228,18 @@ func (c *Client) ListExemptions(ctx context.Context, segment string) ([]MetricEx
 func (c *Client) ListSegmentedExemptions(ctx context.Context) ([]ExemptionsBySegmentEntry, error) {
 	resp, err := c.doRequest(ctx, http.MethodGet, "/v1/recommendations/segmented_exemptions", nil)
 	if err != nil {
-		return nil, fmt.Errorf("metrics: list segmented exemptions: %w", err)
+		return nil, fmt.Errorf("adaptive-metrics: list segmented exemptions: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("metrics: list segmented exemptions: status %d: %s", resp.StatusCode, serverError(b))
+		return nil, fmt.Errorf("adaptive-metrics: list segmented exemptions: status %d: %s", resp.StatusCode, serverError(b))
 	}
 
 	var entries []ExemptionsBySegmentEntry
 	if err := json.NewDecoder(resp.Body).Decode(&entries); err != nil {
-		return nil, fmt.Errorf("metrics: list segmented exemptions: decode: %w", err)
+		return nil, fmt.Errorf("adaptive-metrics: list segmented exemptions: decode: %w", err)
 	}
 
 	if entries == nil {
@@ -259,7 +259,7 @@ func (c *Client) GetExemption(ctx context.Context, id, segment string) (*MetricE
 
 	resp, err := c.doRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
-		return nil, fmt.Errorf("metrics: get exemption: %w", err)
+		return nil, fmt.Errorf("adaptive-metrics: get exemption: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -268,17 +268,17 @@ func (c *Client) GetExemption(ctx context.Context, id, segment string) (*MetricE
 	}
 	if resp.StatusCode >= 400 {
 		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("metrics: get exemption: status %d: %s", resp.StatusCode, serverError(b))
+		return nil, fmt.Errorf("adaptive-metrics: get exemption: status %d: %s", resp.StatusCode, serverError(b))
 	}
 
 	var wrapper struct {
 		Result *MetricExemption `json:"result"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&wrapper); err != nil {
-		return nil, fmt.Errorf("metrics: get exemption: decode: %w", err)
+		return nil, fmt.Errorf("adaptive-metrics: get exemption: decode: %w", err)
 	}
 	if wrapper.Result == nil {
-		return nil, errors.New("metrics: get exemption: empty result")
+		return nil, errors.New("adaptive-metrics: get exemption: empty result")
 	}
 
 	return wrapper.Result, nil
@@ -293,28 +293,28 @@ func (c *Client) CreateExemption(ctx context.Context, e *MetricExemption, segmen
 
 	data, err := json.Marshal(e)
 	if err != nil {
-		return nil, fmt.Errorf("metrics: create exemption: marshal: %w", err)
+		return nil, fmt.Errorf("adaptive-metrics: create exemption: marshal: %w", err)
 	}
 
 	resp, err := c.doRequest(ctx, http.MethodPost, path, bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("metrics: create exemption: %w", err)
+		return nil, fmt.Errorf("adaptive-metrics: create exemption: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("metrics: create exemption: status %d: %s", resp.StatusCode, serverError(b))
+		return nil, fmt.Errorf("adaptive-metrics: create exemption: status %d: %s", resp.StatusCode, serverError(b))
 	}
 
 	var wrapper struct {
 		Result *MetricExemption `json:"result"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&wrapper); err != nil {
-		return nil, fmt.Errorf("metrics: create exemption: decode: %w", err)
+		return nil, fmt.Errorf("adaptive-metrics: create exemption: decode: %w", err)
 	}
 	if wrapper.Result == nil {
-		return nil, errors.New("metrics: create exemption: empty result")
+		return nil, errors.New("adaptive-metrics: create exemption: empty result")
 	}
 
 	return wrapper.Result, nil
@@ -330,12 +330,12 @@ func (c *Client) UpdateExemption(ctx context.Context, id string, e *MetricExempt
 
 	data, err := json.Marshal(e)
 	if err != nil {
-		return nil, fmt.Errorf("metrics: update exemption: marshal: %w", err)
+		return nil, fmt.Errorf("adaptive-metrics: update exemption: marshal: %w", err)
 	}
 
 	resp, err := c.doRequest(ctx, http.MethodPut, path, bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("metrics: update exemption: %w", err)
+		return nil, fmt.Errorf("adaptive-metrics: update exemption: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -344,7 +344,7 @@ func (c *Client) UpdateExemption(ctx context.Context, id string, e *MetricExempt
 	}
 	if resp.StatusCode >= 400 {
 		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("metrics: update exemption: status %d: %s", resp.StatusCode, serverError(b))
+		return nil, fmt.Errorf("adaptive-metrics: update exemption: status %d: %s", resp.StatusCode, serverError(b))
 	}
 
 	result := *e
@@ -361,13 +361,13 @@ func (c *Client) DeleteExemption(ctx context.Context, id, segment string) error 
 
 	resp, err := c.doRequest(ctx, http.MethodDelete, path, nil)
 	if err != nil {
-		return fmt.Errorf("metrics: delete exemption: %w", err)
+		return fmt.Errorf("adaptive-metrics: delete exemption: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("metrics: delete exemption: status %d: %s", resp.StatusCode, serverError(b))
+		return fmt.Errorf("adaptive-metrics: delete exemption: status %d: %s", resp.StatusCode, serverError(b))
 	}
 
 	return nil
@@ -382,20 +382,20 @@ func (c *Client) ListRules(ctx context.Context, segment string) ([]MetricRule, s
 
 	resp, err := c.doRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
-		return nil, "", fmt.Errorf("metrics: list rules: %w", err)
+		return nil, "", fmt.Errorf("adaptive-metrics: list rules: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		b, _ := io.ReadAll(resp.Body)
-		return nil, "", fmt.Errorf("metrics: list rules: status %d: %s", resp.StatusCode, serverError(b))
+		return nil, "", fmt.Errorf("adaptive-metrics: list rules: status %d: %s", resp.StatusCode, serverError(b))
 	}
 
 	etag := resp.Header.Get("Etag")
 
 	var rules []MetricRule
 	if err := json.NewDecoder(resp.Body).Decode(&rules); err != nil {
-		return nil, "", fmt.Errorf("metrics: list rules: decode: %w", err)
+		return nil, "", fmt.Errorf("adaptive-metrics: list rules: decode: %w", err)
 	}
 
 	return rules, etag, nil
@@ -412,7 +412,7 @@ func (c *Client) GetRule(ctx context.Context, metric, segment string) (MetricRul
 
 	resp, err := c.doRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
-		return MetricRule{}, fmt.Errorf("metrics: get rule: %w", err)
+		return MetricRule{}, fmt.Errorf("adaptive-metrics: get rule: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -421,12 +421,12 @@ func (c *Client) GetRule(ctx context.Context, metric, segment string) (MetricRul
 	}
 	if resp.StatusCode >= 400 {
 		b, _ := io.ReadAll(resp.Body)
-		return MetricRule{}, fmt.Errorf("metrics: get rule: status %d: %s", resp.StatusCode, serverError(b))
+		return MetricRule{}, fmt.Errorf("adaptive-metrics: get rule: status %d: %s", resp.StatusCode, serverError(b))
 	}
 
 	var rule MetricRule
 	if err := json.NewDecoder(resp.Body).Decode(&rule); err != nil {
-		return MetricRule{}, fmt.Errorf("metrics: get rule: decode: %w", err)
+		return MetricRule{}, fmt.Errorf("adaptive-metrics: get rule: decode: %w", err)
 	}
 
 	return rule, nil
@@ -443,12 +443,12 @@ func (c *Client) CreateRule(ctx context.Context, rule MetricRule, etag, segment 
 
 	data, err := json.Marshal(rule)
 	if err != nil {
-		return "", fmt.Errorf("metrics: create rule: marshal: %w", err)
+		return "", fmt.Errorf("adaptive-metrics: create rule: marshal: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(data))
 	if err != nil {
-		return "", fmt.Errorf("metrics: create rule: create request: %w", err)
+		return "", fmt.Errorf("adaptive-metrics: create rule: create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if etag != "" {
@@ -458,7 +458,7 @@ func (c *Client) CreateRule(ctx context.Context, rule MetricRule, etag, segment 
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("metrics: create rule: %w", err)
+		return "", fmt.Errorf("adaptive-metrics: create rule: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -467,7 +467,7 @@ func (c *Client) CreateRule(ctx context.Context, rule MetricRule, etag, segment 
 	}
 	if resp.StatusCode >= 400 {
 		b, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("metrics: create rule: status %d: %s", resp.StatusCode, serverError(b))
+		return "", fmt.Errorf("adaptive-metrics: create rule: status %d: %s", resp.StatusCode, serverError(b))
 	}
 
 	return resp.Header.Get("Etag"), nil
@@ -483,12 +483,12 @@ func (c *Client) UpdateRule(ctx context.Context, rule MetricRule, etag, segment 
 
 	data, err := json.Marshal(rule)
 	if err != nil {
-		return "", fmt.Errorf("metrics: update rule: marshal: %w", err)
+		return "", fmt.Errorf("adaptive-metrics: update rule: marshal: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.baseURL+path, bytes.NewReader(data))
 	if err != nil {
-		return "", fmt.Errorf("metrics: update rule: create request: %w", err)
+		return "", fmt.Errorf("adaptive-metrics: update rule: create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("If-Match", etag)
@@ -496,7 +496,7 @@ func (c *Client) UpdateRule(ctx context.Context, rule MetricRule, etag, segment 
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("metrics: update rule: %w", err)
+		return "", fmt.Errorf("adaptive-metrics: update rule: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -505,7 +505,7 @@ func (c *Client) UpdateRule(ctx context.Context, rule MetricRule, etag, segment 
 	}
 	if resp.StatusCode >= 400 {
 		b, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("metrics: update rule: status %d: %s", resp.StatusCode, serverError(b))
+		return "", fmt.Errorf("adaptive-metrics: update rule: status %d: %s", resp.StatusCode, serverError(b))
 	}
 
 	return resp.Header.Get("Etag"), nil
@@ -521,14 +521,14 @@ func (c *Client) DeleteRule(ctx context.Context, metric, etag, segment string) e
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+path, nil)
 	if err != nil {
-		return fmt.Errorf("metrics: delete rule: create request: %w", err)
+		return fmt.Errorf("adaptive-metrics: delete rule: create request: %w", err)
 	}
 	req.Header.Set("If-Match", etag)
 	req.SetBasicAuth(strconv.Itoa(c.tenantID), c.apiToken)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("metrics: delete rule: %w", err)
+		return fmt.Errorf("adaptive-metrics: delete rule: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -537,7 +537,7 @@ func (c *Client) DeleteRule(ctx context.Context, metric, etag, segment string) e
 	}
 	if resp.StatusCode >= 400 {
 		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("metrics: delete rule: status %d: %s", resp.StatusCode, serverError(b))
+		return fmt.Errorf("adaptive-metrics: delete rule: status %d: %s", resp.StatusCode, serverError(b))
 	}
 
 	return nil
@@ -552,12 +552,12 @@ func (c *Client) SyncRules(ctx context.Context, rules []MetricRule, etag, segmen
 
 	data, err := json.Marshal(rules)
 	if err != nil {
-		return fmt.Errorf("metrics: sync rules: marshal: %w", err)
+		return fmt.Errorf("adaptive-metrics: sync rules: marshal: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(data))
 	if err != nil {
-		return fmt.Errorf("metrics: sync rules: create request: %w", err)
+		return fmt.Errorf("adaptive-metrics: sync rules: create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -566,7 +566,7 @@ func (c *Client) SyncRules(ctx context.Context, rules []MetricRule, etag, segmen
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("metrics: sync rules: %w", err)
+		return fmt.Errorf("adaptive-metrics: sync rules: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -575,7 +575,7 @@ func (c *Client) SyncRules(ctx context.Context, rules []MetricRule, etag, segmen
 	}
 	if resp.StatusCode >= 400 {
 		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("metrics: sync rules: status %d: %s", resp.StatusCode, serverError(b))
+		return fmt.Errorf("adaptive-metrics: sync rules: status %d: %s", resp.StatusCode, serverError(b))
 	}
 
 	return nil
@@ -591,19 +591,19 @@ func (c *Client) ValidateRules(ctx context.Context, rules []MetricRule, segment 
 
 	data, err := json.Marshal(rules)
 	if err != nil {
-		return nil, fmt.Errorf("metrics: validate rules: marshal: %w", err)
+		return nil, fmt.Errorf("adaptive-metrics: validate rules: marshal: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("metrics: validate rules: create request: %w", err)
+		return nil, fmt.Errorf("adaptive-metrics: validate rules: create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.SetBasicAuth(strconv.Itoa(c.tenantID), c.apiToken)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("metrics: validate rules: %w", err)
+		return nil, fmt.Errorf("adaptive-metrics: validate rules: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -611,12 +611,12 @@ func (c *Client) ValidateRules(ctx context.Context, rules []MetricRule, segment 
 	// Other non-2xx/400 statuses are genuine errors.
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusBadRequest {
 		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("metrics: validate rules: status %d: %s", resp.StatusCode, serverError(b))
+		return nil, fmt.Errorf("adaptive-metrics: validate rules: status %d: %s", resp.StatusCode, serverError(b))
 	}
 
 	var errs []string
 	if err := json.NewDecoder(resp.Body).Decode(&errs); err != nil {
-		return nil, fmt.Errorf("metrics: validate rules: decode: %w", err)
+		return nil, fmt.Errorf("adaptive-metrics: validate rules: decode: %w", err)
 	}
 
 	return errs, nil
@@ -635,18 +635,18 @@ func (c *Client) ListRecommendations(ctx context.Context, segment string, action
 
 	resp, err := c.doRequest(ctx, http.MethodGet, "/aggregations/recommendations?"+params.Encode(), nil)
 	if err != nil {
-		return nil, fmt.Errorf("metrics: list recommendations: %w", err)
+		return nil, fmt.Errorf("adaptive-metrics: list recommendations: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("metrics: list recommendations: status %d: %s", resp.StatusCode, serverError(b))
+		return nil, fmt.Errorf("adaptive-metrics: list recommendations: status %d: %s", resp.StatusCode, serverError(b))
 	}
 
 	var recs []MetricRecommendation
 	if err := json.NewDecoder(resp.Body).Decode(&recs); err != nil {
-		return nil, fmt.Errorf("metrics: list recommendations: decode: %w", err)
+		return nil, fmt.Errorf("adaptive-metrics: list recommendations: decode: %w", err)
 	}
 
 	return recs, nil
@@ -663,20 +663,20 @@ func (c *Client) ListRecommendedRules(ctx context.Context, segment string) ([]Me
 
 	resp, err := c.doRequest(ctx, http.MethodGet, "/aggregations/recommendations?"+params.Encode(), nil)
 	if err != nil {
-		return nil, "", fmt.Errorf("metrics: list recommended rules: %w", err)
+		return nil, "", fmt.Errorf("adaptive-metrics: list recommended rules: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		b, _ := io.ReadAll(resp.Body)
-		return nil, "", fmt.Errorf("metrics: list recommended rules: status %d: %s", resp.StatusCode, serverError(b))
+		return nil, "", fmt.Errorf("adaptive-metrics: list recommended rules: status %d: %s", resp.StatusCode, serverError(b))
 	}
 
 	rulesVersion := resp.Header.Get("Rules-Version")
 
 	var rules []MetricRule
 	if err := json.NewDecoder(resp.Body).Decode(&rules); err != nil {
-		return nil, "", fmt.Errorf("metrics: list recommended rules: decode: %w", err)
+		return nil, "", fmt.Errorf("adaptive-metrics: list recommended rules: decode: %w", err)
 	}
 
 	return rules, rulesVersion, nil

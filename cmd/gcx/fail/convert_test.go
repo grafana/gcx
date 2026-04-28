@@ -239,6 +239,21 @@ func TestErrorToDetailedError_GenericServiceAPIAuthFailure(t *testing.T) {
 	assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
 }
 
+func TestErrorToDetailedError_AdaptiveLogsScopeSuggestion(t *testing.T) {
+	got := fail.ErrorToDetailedError(fakeServiceAPIError{
+		statusCode: 401,
+		service:    "Adaptive Logs",
+		message:    "authentication error: invalid scope requested",
+	})
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Adaptive Logs: permission denied", got.Summary)
+	require.NotNil(t, got.ExitCode)
+	assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+	require.Len(t, got.Suggestions, 1)
+	assert.Contains(t, got.Suggestions[0], "adaptive-logs:admin")
+}
+
 func TestErrorToDetailedError_WrappedServiceAPIErrorPreservesOuterContext(t *testing.T) {
 	err := fmt.Errorf("kg: get rule %q: %w", "prod-errors", fakeServiceAPIError{
 		statusCode: 404,
@@ -429,6 +444,102 @@ func TestErrorToDetailedError_FleetScopeError(t *testing.T) {
 			assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
 			require.Len(t, got.Suggestions, 1)
 			assert.Contains(t, got.Suggestions[0], tc.wantScope)
+		})
+	}
+}
+
+func TestErrorToDetailedError_StacksReadAdaptiveContext(t *testing.T) {
+	tests := []struct {
+		name           string
+		err            error
+		wantSuggestion string
+	}{
+		{
+			name:           "logs signal suggests adaptive-logs:admin",
+			err:            errors.New(`adaptive-logs: failed to load cloud config for token: failed to get stack info for "mystack": gcom client: unexpected status 403 Forbidden`),
+			wantSuggestion: "adaptive-logs:admin",
+		},
+		{
+			name:           "metrics signal mentions adaptive-metrics-* scope",
+			err:            errors.New(`adaptive-metrics: failed to load cloud config for token: failed to get stack info for "mystack": gcom client: unexpected status 403 Forbidden`),
+			wantSuggestion: "adaptive-metrics-*",
+		},
+		{
+			name:           "traces signal suggests adaptive-traces:admin",
+			err:            errors.New(`adaptive-traces: failed to load cloud config for token: failed to get stack info for "mystack": gcom client: unexpected status 403 Forbidden`),
+			wantSuggestion: "adaptive-traces:admin",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tc.err)
+			require.NotNil(t, got)
+			assert.Equal(t, "Cloud stack lookup: permission denied", got.Summary)
+			require.Len(t, got.Suggestions, 2)
+			assert.Contains(t, got.Suggestions[0], "stacks:read")
+			assert.Contains(t, got.Suggestions[1], tc.wantSuggestion)
+		})
+	}
+}
+
+func TestErrorToDetailedError_AdaptiveMetricsScopeError(t *testing.T) {
+	tests := []struct {
+		name      string
+		err       error
+		wantScope string
+	}{
+		{"list rules", errors.New(`adaptive-metrics: list rules: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:read"},
+		{"get rule", errors.New(`adaptive-metrics: get rule: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:read"},
+		{"list recommended rules", errors.New(`adaptive-metrics: list recommended rules: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:read"},
+		{"create rule", errors.New(`adaptive-metrics: create rule: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:write"},
+		{"update rule", errors.New(`adaptive-metrics: update rule: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:write"},
+		{"sync rules", errors.New(`adaptive-metrics: sync rules: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:write"},
+		{"validate rules", errors.New(`adaptive-metrics: validate rules: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:write"},
+		{"delete rule", errors.New(`adaptive-metrics: delete rule: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:delete"},
+		{"list recommendations", errors.New(`adaptive-metrics: list recommendations: status 401: authentication error: invalid scope requested`), "adaptive-metrics-recommendations:read"},
+		{"list segments", errors.New(`adaptive-metrics: list segments: status 401: authentication error: invalid scope requested`), "adaptive-metrics-segments:read"},
+		{"create segment", errors.New(`adaptive-metrics: create segment: status 401: authentication error: invalid scope requested`), "adaptive-metrics-segments:write"},
+		{"delete segment", errors.New(`adaptive-metrics: delete segment: status 401: authentication error: invalid scope requested`), "adaptive-metrics-segments:delete"},
+		{"list exemptions", errors.New(`adaptive-metrics: list exemptions: status 401: authentication error: invalid scope requested`), "adaptive-metrics-exemptions:read"},
+		{"list segmented exemptions", errors.New(`adaptive-metrics: list segmented exemptions: status 401: authentication error: invalid scope requested`), "adaptive-metrics-exemptions:read"},
+		{"get exemption", errors.New(`adaptive-metrics: get exemption: status 401: authentication error: invalid scope requested`), "adaptive-metrics-exemptions:read"},
+		{"create exemption", errors.New(`adaptive-metrics: create exemption: status 401: authentication error: invalid scope requested`), "adaptive-metrics-exemptions:write"},
+		{"delete exemption", errors.New(`adaptive-metrics: delete exemption: status 401: authentication error: invalid scope requested`), "adaptive-metrics-exemptions:delete"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tc.err)
+			assert.Equal(t, "Adaptive Metrics: permission denied", got.Summary)
+			require.NotNil(t, got.ExitCode)
+			assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+			require.Len(t, got.Suggestions, 1)
+			assert.Contains(t, got.Suggestions[0], tc.wantScope)
+		})
+	}
+}
+
+func TestErrorToDetailedError_AdaptiveTracesScopeError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{"list policies", errors.New(`adaptive-traces: list policies: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"get policy", errors.New(`adaptive-traces: get policy: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"create policy", errors.New(`adaptive-traces: create policy: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"update policy", errors.New(`adaptive-traces: update policy: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"delete policy", errors.New(`adaptive-traces: delete policy: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"list recommendations", errors.New(`adaptive-traces: list recommendations: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"apply recommendation", errors.New(`adaptive-traces: apply recommendation: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"dismiss recommendation", errors.New(`adaptive-traces: dismiss recommendation: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tc.err)
+			assert.Equal(t, "Adaptive Traces: permission denied", got.Summary)
+			require.NotNil(t, got.ExitCode)
+			assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+			require.Len(t, got.Suggestions, 1)
+			assert.Contains(t, got.Suggestions[0], "adaptive-traces:admin")
 		})
 	}
 }
