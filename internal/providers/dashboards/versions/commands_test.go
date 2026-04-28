@@ -202,7 +202,7 @@ func updatedDashboard(newGeneration int64) *unstructured.Unstructured {
 // ---------------------------------------------------------------------------
 
 func TestVersionsList_Selectors(t *testing.T) {
-	// Scenario A: LIST must issue the exact magic selectors (FR-010.1).
+	// Scenario A: LIST must issue the exact magic selectors.
 	fc := &fakeVersionsClient{
 		historyItems: []unstructured.Unstructured{
 			historyItem(1, "2024-01-01T00:00:00Z", "alice", "initial", map[string]any{"title": "v1"}),
@@ -234,8 +234,7 @@ func TestVersionsList_Selectors_DifferentName(t *testing.T) {
 }
 
 func TestVersionsList_OutputColumns(t *testing.T) {
-	// Scenario: list renders VERSION TIMESTAMP AUTHOR MESSAGE columns in descending order
-	// (FR-010.2, FR-010.3).
+	// Scenario: list renders VERSION TIMESTAMP AUTHOR MESSAGE columns in descending order.
 	fc := &fakeVersionsClient{
 		historyItems: []unstructured.Unstructured{
 			// Return items in ascending order; list must sort descending.
@@ -246,7 +245,7 @@ func TestVersionsList_OutputColumns(t *testing.T) {
 	}
 
 	// Pass -o table explicitly: agent-mode env (CI/Claude Code) defaults to JSON,
-	// but this test is specifically verifying table rendering (FR-010.2, FR-010.3).
+	// but this test is specifically verifying table rendering.
 	out, _, err := runVersionsCmd(t, fc, []string{"list", "-o", "table", "foo"}, "")
 	require.NoError(t, err)
 
@@ -271,7 +270,7 @@ func TestVersionsList_OutputColumns(t *testing.T) {
 }
 
 func TestVersionsList_MissingAnnotationsRenderEmpty(t *testing.T) {
-	// Items with no annotations must render empty strings, not "<nil>" (FR-010.3).
+	// Items with no annotations must render empty strings, not "<nil>".
 	fc := &fakeVersionsClient{
 		historyItems: []unstructured.Unstructured{
 			// No annotations set.
@@ -287,7 +286,7 @@ func TestVersionsList_MissingAnnotationsRenderEmpty(t *testing.T) {
 }
 
 func TestVersionsList_TimestampNotFromCreationTimestamp(t *testing.T) {
-	// FR-010.4: TIMESTAMP must come from the annotation, not metadata.creationTimestamp.
+	// TIMESTAMP must come from the annotation, not metadata.creationTimestamp.
 	// We set creationTimestamp to a known value and the annotation to a different value.
 	item := historyItem(1, "2024-06-15T09:00:00Z", "alice", "check timestamp", map[string]any{})
 	// Set creationTimestamp to a distinctly different value.
@@ -318,7 +317,7 @@ func TestVersionsList_TimestampNotFromCreationTimestamp(t *testing.T) {
 
 func TestVersionsRestore_HappyPath(t *testing.T) {
 	// Scenario B: happy path — LIST + GET + PUT with correct spec, resourceVersion,
-	// and annotation (FR-011.3, FR-011.4, FR-011.7).
+	// and annotation.
 	historicalSpec := map[string]any{
 		"title": "Historical Title",
 		"panels": []any{
@@ -362,13 +361,13 @@ func TestVersionsRestore_HappyPath(t *testing.T) {
 	assert.Equal(t, "Restored from version 1", ann["grafana.app/message"],
 		"default restore message must be set")
 
-	// cmdio.Success must be written to stderr (FR-011.7).
+	// cmdio.Success must be written to stderr.
 	assert.Contains(t, errOut, "restored to version 1",
 		"cmdio.Success must appear on stderr")
 }
 
 func TestVersionsRestore_MessageOverride(t *testing.T) {
-	// Scenario C: --message MSG overrides the default annotation value (FR-011.4).
+	// Scenario C: --message MSG overrides the default annotation value.
 	fc := &fakeVersionsClient{
 		historyItems: []unstructured.Unstructured{
 			historyItem(1, "", "", "", map[string]any{"title": "v1"}),
@@ -390,7 +389,7 @@ func TestVersionsRestore_MessageOverride(t *testing.T) {
 }
 
 func TestVersionsRestore_409Conflict(t *testing.T) {
-	// Scenario D: 409 on PUT must surface as a non-zero exit (FR-011.5).
+	// Scenario D: 409 on PUT must surface as a non-zero exit.
 	conflictErr := apierrors.NewConflict(
 		schema.GroupResource{Group: "dashboard.grafana.app", Resource: "dashboards"},
 		"foo",
@@ -412,7 +411,7 @@ func TestVersionsRestore_409Conflict(t *testing.T) {
 }
 
 func TestVersionsRestore_NoOpWhenAlreadyAtTarget(t *testing.T) {
-	// Scenario E: target generation == current generation → exit 0 without PUT (FR-011.6).
+	// Scenario E: target generation == current generation → exit 0 without PUT.
 	fc := &fakeVersionsClient{
 		historyItems: []unstructured.Unstructured{
 			historyItem(3, "2024-01-03T00:00:00Z", "alice", "v3", map[string]any{"title": "v3"}),
@@ -447,8 +446,7 @@ func TestVersionsRestore_TargetNotFound(t *testing.T) {
 }
 
 func TestVersionsRestore_NonIntegerVersionFails(t *testing.T) {
-	// Scenario H: non-integer <version> must fail with parse error BEFORE any HTTP
-	// (FR-011.1).
+	// Scenario H: non-integer <version> must fail with parse error before any HTTP.
 	fc := &fakeVersionsClient{}
 
 	_, _, err := runVersionsCmd(t, fc, []string{"restore", "foo", "notaninteger", "--yes"}, "")
@@ -463,8 +461,7 @@ func TestVersionsRestore_NonIntegerVersionFails(t *testing.T) {
 }
 
 func TestVersionsRestore_NoLegacyRestoreEndpoint(t *testing.T) {
-	// Scenario G: the legacy POST /api/dashboards/uid/{uid}/restore must never be called
-	// (FR-011.8).
+	// Scenario G: the legacy POST /api/dashboards/uid/{uid}/restore must never be called.
 	//
 	// Our implementation routes through DashboardVersionsClient (the fakeVersionsClient
 	// here). Any call to the legacy REST endpoint would bypass this fake entirely,

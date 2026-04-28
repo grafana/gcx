@@ -20,7 +20,6 @@ import (
 // searchAPIVersion is pinned to v0alpha1 — the only Grafana API version that
 // exposes the full-text search endpoint. This is intentionally hardcoded;
 // there is no version-negotiation mechanism for this endpoint.
-// See ADR 001 §Search command for the v0alpha1 exception.
 const searchAPIVersion = "v0alpha1"
 
 // searchAPIGroup is the Grafana dashboard API group.
