@@ -200,6 +200,36 @@ func TestClient_UploadPromRules(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestClient_GetSuppressions(t *testing.T) {
+	const body = "disabledAlerts:\n- name: remote\n"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Contains(t, r.URL.Path, "config/disabled-alerts")
+		assert.Contains(t, r.Header.Get("Accept"), "application/x-yaml")
+		_, _ = w.Write([]byte(body))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	got, err := client.GetSuppressions(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, body, got)
+}
+
+func TestClient_UploadSuppressions(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Contains(t, r.URL.Path, "config/disabled-alerts")
+		assert.Equal(t, "application/x-yaml", r.Header.Get("Content-Type"))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	err := client.UploadSuppressions(t.Context(), "disabledAlerts:\n- name: test\n")
+	require.NoError(t, err)
+}
+
 func TestClient_Search(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
