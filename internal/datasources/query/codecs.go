@@ -7,6 +7,7 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/graph"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/query/infinity"
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/query/pyroscope"
@@ -33,6 +34,8 @@ func (c *queryTableCodec) Encode(w io.Writer, data any) error {
 		return tempo.FormatSearchTable(w, resp)
 	case *tempo.MetricsResponse:
 		return tempo.FormatMetricsTable(w, resp)
+	case *infinity.QueryResponse:
+		return infinity.FormatTable(w, resp)
 	default:
 		return errors.New("invalid data type for query table codec")
 	}
@@ -56,6 +59,8 @@ func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 		return loki.FormatQueryTableWide(w, resp)
 	case *tempo.SearchResponse:
 		return tempo.FormatSearchTable(w, resp)
+	case *infinity.QueryResponse:
+		return infinity.FormatTable(w, resp)
 	default:
 		return errors.New("invalid data type for query wide codec")
 	}
@@ -95,6 +100,8 @@ func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
 		}
 	case *tempo.SearchResponse:
 		return errors.New("graph output is not supported for trace search results; use -o table/json/yaml")
+	case *infinity.QueryResponse:
+		return errors.New("graph output is not supported for Infinity queries; use -o table/json/yaml")
 	case *tempo.MetricsResponse:
 		chartData, err = graph.FromTempoMetricsResponse(resp)
 		if err != nil {

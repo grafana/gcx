@@ -56,9 +56,10 @@ var commandAnnotations = map[string]annotation{
 	"gcx config view":            {Cost: "medium", Hint: "--minify -o json"},
 
 	// datasources
-	"gcx datasources get":   {Cost: "medium", Hint: "<uid> -o json"},
-	"gcx datasources list":  {Cost: "small"},
-	"gcx datasources query": {Cost: "large", Hint: "Run gcx help-tree metrics (or logs, traces, profiles) to discover signal commands. Prefer gcx metrics query for PromQL, gcx logs query for LogQL, gcx traces query for TraceQL, gcx profiles query for profiling. Example: <datasource-uid> 'up' --since 1h -o json"},
+	"gcx datasources get":            {Cost: "medium", Hint: "<uid> -o json"},
+	"gcx datasources list":           {Cost: "small"},
+	"gcx datasources infinity query": {Cost: "large", Hint: "-d UID https://api.example.com/data --type json --root '$.items' -o json"},
+	"gcx datasources query":          {Cost: "large", Hint: "Run gcx help-tree metrics (or logs, traces, profiles) to discover signal commands. Prefer gcx metrics query for PromQL, gcx logs query for LogQL, gcx traces query for TraceQL, gcx profiles query for profiling. Example: <datasource-uid> 'up' --since 1h -o json"},
 
 	// dev
 	"gcx dev generate":   {Cost: "small"},

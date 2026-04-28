@@ -27,6 +27,7 @@ List, inspect, and query Grafana datasources. Use top-level signal commands (met
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx datasources get](gcx_datasources_get.md)	 - Get details of a specific datasource
+* [gcx datasources infinity](gcx_datasources_infinity.md)	 - Query Infinity datasources (JSON, CSV, XML, GraphQL from any URL)
 * [gcx datasources list](gcx_datasources_list.md)	 - List all datasources
 * [gcx datasources loki](gcx_datasources_loki.md)	 - Query Loki datasources
 * [gcx datasources prometheus](gcx_datasources_prometheus.md)	 - Query Prometheus datasources
