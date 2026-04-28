@@ -40,21 +40,18 @@ gcx (root)
 │   ├── push   [SELECTOR]...
 │   └── validate [SELECTOR]...
 │
-├── dashboards               [cmd/gcx/dashboards/command.go]
+├── dashboards               [internal/providers/dashboards/ — mounted via provider self-registration]
 │   ├── --config             [persistent: inherited from config.Options]
 │   ├── --context            [persistent: inherited from config.Options]
+│   ├── list                 List dashboards
+│   ├── get   NAME           Get a dashboard by name
+│   ├── create               Create a dashboard from file/stdin
+│   ├── update NAME          Update an existing dashboard
+│   ├── delete NAME...       Delete one or more dashboards
+│   ├── search               Full-text search (title, tag, folder) via dashboard.grafana.app/search
+│   ├── versions NAME        List version history for a dashboard
+│   │   └── restore NAME     Restore a dashboard to a previous version
 │   └── snapshot UID...      Render dashboard/panel PNG snapshots via Image Renderer
-│       ├── --panel          Panel ID (single panel render via /render/d-solo/)
-│       ├── --width          Image width (default: 1920 dashboard, 800 panel)
-│       ├── --height         Image height (default: -1/full-page dashboard, 600 panel)
-│       ├── --theme          light|dark (default: dark)
-│       ├── --from/--to      Time range (RFC3339, Unix, or relative)
-│       ├── --since          Duration before now (mutually exclusive with --from/--to)
-│       ├── --tz             Timezone
-│       ├── --org-id         Grafana org ID (default: 1)
-│       ├── --output-dir     Output directory (default: .)
-│       ├── --concurrency    Max parallel renders (default: 10)
-│       └── --var            Dashboard template variable overrides (key=value)
 │
 ├── datasources              [cmd/gcx/datasources/command.go]
 │   ├── --config             [persistent: inherited from config.Options]
@@ -258,11 +255,6 @@ cmd/gcx/
 │   ├── fetch.go             SHARED: remote fetch helper used by get/edit/delete
 │   ├── onerror.go           SHARED: OnErrorMode type + --on-error flag binding
 │   └── editor.go            SHARED: interactive editor (EDITOR env var)
-├── dashboards/
-│   ├── command.go           dashboards group (wires configOpts to subcommands)
-│   ├── snapshot.go          dashboards snapshot — render PNG via Image Renderer API
-│   ├── snapshot_test.go     table-driven Validate() tests
-│   └── export_test.go       test package aliases for unexported types
 ├── datasources/
 │   ├── command.go           datasources group (list, get, query)
 │   ├── list.go              datasources list

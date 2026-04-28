@@ -11,7 +11,6 @@ gcx/
 │       ├── auth/             # OAuth login command (browser-based PKCE flow)
 │       ├── config/           # 'config' subcommand implementations
 │       ├── resources/        # 'resources' subcommand implementations
-│       ├── dashboards/       # 'dashboards' subcommand (snapshot via Image Renderer)
 │       ├── datasources/      # 'datasources' subcommand (list, get, query)
 │       │   └── query/        # Auto-detecting query command (GenericCmd only)
 │       ├── commands/         # 'commands' catalog (agent metadata, resource types, live validation)
@@ -56,6 +55,11 @@ gcx/
 │   │   │   ├── overrides/    # MetricsGeneratorConfig with ETag concurrency
 │   │   │   └── settings/     # PluginSettings
 │   │   ├── alert/            # Alert provider (rules and groups)
+│   │   ├── dashboards/       # Dashboards provider (CRUD, search, version history, snapshot) — CLI: `gcx dashboards`
+│   │   │   ├── descriptor/   # Descriptor helpers (GVK, preferred version resolution)
+│   │   │   ├── search/       # Full-text search via dashboard.grafana.app search endpoint
+│   │   │   ├── snapshot/     # Snapshot rendering via Dashboard Image Renderer API
+│   │   │   └── versions/     # Version history list + restore via dashboard.grafana.app
 │   │   ├── faro/             # Frontend Observability provider (apps CRUD, sourcemaps sub-resource) — CLI: `gcx frontend`
 │   │   ├── fleet/            # Fleet Management provider (pipeline and collector resources)
 │   │   ├── incidents/        # IRM Incidents provider
