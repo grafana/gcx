@@ -27,6 +27,7 @@ const (
 	searchPath       = pluginResourcePath + "/asserts/api-server/v1/search"
 	rulesPath        = pluginResourcePath + "/asserts/api-server/v1/config/prom-rules/"
 	entityLookupPath = pluginResourcePath + "/asserts/api-server/v1/entity"
+	v2ConfigPath     = pluginResourcePath + "/asserts/api-server/v2/config"
 )
 
 // Client is an HTTP client for the Knowledge Graph (Asserts) API.
@@ -405,6 +406,54 @@ func (c *Client) SearchSample(ctx context.Context, req SampleSearchRequest) ([]S
 		return []SearchResult{}, nil
 	}
 	return wrapper.Entities, nil
+}
+
+// FetchGraphSchema fetches the Knowledge Graph schema using the special schema search definition.
+// The response entities represent entity types (not instances); their Name is the type name.
+func (c *Client) FetchGraphSchema(ctx context.Context, startMs, endMs int64) (GraphSchemaResponse, error) {
+	body := map[string]any{
+		"definitionId": 6,
+		"bindings": map[string]any{
+			"boundTag": "Show customer schema",
+			"updated":  endMs,
+		},
+		"timeCriteria": map[string]any{
+			"start": startMs,
+			"end":   endMs,
+		},
+	}
+	var resp GraphSchemaResponse
+	if err := c.postJSON(ctx, searchPath, body, &resp); err != nil {
+		return GraphSchemaResponse{}, fmt.Errorf("kg: fetch schema: %w", err)
+	}
+	return resp, nil
+}
+
+// FetchLogConfigs fetches log drilldown configs from the v2 API.
+func (c *Client) FetchLogConfigs(ctx context.Context) (LogConfigsResponse, error) {
+	var resp LogConfigsResponse
+	if err := c.getJSON(ctx, v2ConfigPath+"/log", &resp); err != nil {
+		return LogConfigsResponse{}, fmt.Errorf("kg: fetch log configs: %w", err)
+	}
+	return resp, nil
+}
+
+// FetchTraceConfigs fetches trace drilldown configs from the v2 API.
+func (c *Client) FetchTraceConfigs(ctx context.Context) (TraceConfigsResponse, error) {
+	var resp TraceConfigsResponse
+	if err := c.getJSON(ctx, v2ConfigPath+"/trace", &resp); err != nil {
+		return TraceConfigsResponse{}, fmt.Errorf("kg: fetch trace configs: %w", err)
+	}
+	return resp, nil
+}
+
+// FetchProfileConfigs fetches profile drilldown configs from the v2 API.
+func (c *Client) FetchProfileConfigs(ctx context.Context) (ProfileConfigsResponse, error) {
+	var resp ProfileConfigsResponse
+	if err := c.getJSON(ctx, v2ConfigPath+"/profile", &resp); err != nil {
+		return ProfileConfigsResponse{}, fmt.Errorf("kg: fetch profile configs: %w", err)
+	}
+	return resp, nil
 }
 
 // ---------------------------------------------------------------------------
