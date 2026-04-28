@@ -465,6 +465,66 @@ func TestErrorToDetailedError_SMTokenNotConfigured(t *testing.T) {
 	assert.Contains(t, got.Suggestions[3], "gcx config view")
 }
 
+func TestErrorToDetailedError_SMTokenRegisterInstallPermissionDenied(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "HTTP 400 from register/install",
+			err: fmt.Errorf("failed to load SM config for checks: %w",
+				fmt.Errorf("SM token not configured: %w",
+					fmt.Errorf("register/install API failed: %w",
+						errors.New("SM register/install: request failed with status 400: insufficient permissions")))),
+		},
+		{
+			name: "HTTP 403 from register/install",
+			err: fmt.Errorf("failed to load SM config for checks: %w",
+				fmt.Errorf("SM token not configured: %w",
+					fmt.Errorf("register/install API failed: %w",
+						errors.New("SM register/install: request failed with status 403: forbidden")))),
+		},
+		{
+			name: "HTTP 401 from register/install",
+			err: fmt.Errorf("failed to load SM config for checks: %w",
+				fmt.Errorf("SM token not configured: %w",
+					fmt.Errorf("register/install API failed: %w",
+						errors.New("SM register/install: request failed with status 401: unauthorized")))),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tc.err)
+
+			require.NotNil(t, got)
+			assert.Equal(t, "SM token auto-discovery: permission denied", got.Summary)
+			assert.Contains(t, got.Details, "SM token not configured")
+			assert.Contains(t, got.Details, "register/install")
+			require.NotNil(t, got.ExitCode)
+			assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+			require.Len(t, got.Suggestions, 3)
+			assert.Contains(t, got.Suggestions[0], "stacks:read")
+			assert.Contains(t, got.Suggestions[0], "metrics:write")
+			assert.Contains(t, got.Suggestions[0], "logs:write")
+			assert.Contains(t, got.Suggestions[0], "traces:write")
+			assert.Contains(t, got.Suggestions[1], "gcx config set providers.synth.sm-token")
+		})
+	}
+}
+
+func TestErrorToDetailedError_SMTokenRegisterInstallGeneric400FallsThrough(t *testing.T) {
+	err := fmt.Errorf("failed to load SM config for checks: %w",
+		fmt.Errorf("SM token not configured: %w",
+			fmt.Errorf("register/install API failed: %w",
+				errors.New("SM register/install: request failed with status 400: bad request"))))
+
+	got := fail.ErrorToDetailedError(err)
+
+	require.NotNil(t, got)
+	assert.Equal(t, "SM token not configured", got.Summary)
+}
+
 func TestErrorToDetailedError_CloudTokenNotConfigured(t *testing.T) {
 	err := errors.New("cloud token is required: set cloud.token in config or GRAFANA_CLOUD_TOKEN env var")
 

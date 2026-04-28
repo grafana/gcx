@@ -192,7 +192,7 @@ var commandAnnotations = map[string]annotation{
 	// -----------------------------------------------------------------------
 	// Knowledge Graph provider
 	// -----------------------------------------------------------------------
-	"gcx kg entities list":           {Cost: "medium", Hint: "--type <type> --since 1h -o json"},
+	"gcx kg entities list":           {Cost: "medium", Hint: "--type <type> [--env <env>] [--namespace <ns>] --since 1h -o json | run gcx kg describe scopes first to discover valid env/namespace/site values"},
 	"gcx kg entities show":           {Cost: "medium", Hint: "<Type--Name> --type <type> -o json"},
 	"gcx kg health":                  {Cost: "medium", Hint: "--type <type> --since 1h -o json"},
 	"gcx kg insights active":         {Cost: "medium", Hint: "--type <type> --severity critical -o json"},
@@ -211,6 +211,12 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg rules get":               {Cost: "small"},
 	"gcx kg rules list":              {Cost: "small"},
 	"gcx kg scopes list":             {Cost: "small"},
+	"gcx kg describe schema":         {Cost: "medium", Hint: "entity types + relationships [--since 1h]"},
+	"gcx kg describe scopes":         {Cost: "small", Hint: "all valid env/namespace/site filter values — run before filtering entities"},
+	"gcx kg describe logs":           {Cost: "small", Hint: "Loki label mappings for log drilldown"},
+	"gcx kg describe traces":         {Cost: "small", Hint: "Tempo label mappings for trace drilldown"},
+	"gcx kg describe profiles":       {Cost: "small", Hint: "Pyroscope label mappings for profile drilldown"},
+	"gcx kg describe all":            {Cost: "medium", Hint: "load all sections at once [--since 1h]"},
 	"gcx kg search example":          {Cost: "small"},
 	"gcx kg search insights":         {Cost: "medium", Hint: "--type <type> --since 1h"},
 	"gcx kg search sample":           {Cost: "small"},

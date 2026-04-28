@@ -2,8 +2,28 @@
 
 List entities by type (omit --type to list all types).
 
+### Synopsis
+
+List Knowledge Graph entities, optionally filtered by type, scope, and time range.
+
+To discover valid --env, --namespace, and --site values before filtering, run:
+  gcx kg describe scopes
+
 ```
 gcx kg entities list [flags]
+```
+
+### Examples
+
+```
+  # List all Service entities
+  gcx kg entities list --type Service
+
+  # Filter by namespace (run 'gcx kg describe scopes' to find valid values)
+  gcx kg entities list --type Service --namespace mimir-prod-01
+
+  # List entities with active insights
+  gcx kg entities list --type Service --assertions-only
 ```
 
 ### Options
