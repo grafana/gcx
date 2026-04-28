@@ -119,9 +119,11 @@ internal/
 ├── deeplink/    Deep link URL template registry and browser opener
 ├── dashboards/  Dashboard Image Renderer client (PNG snapshots)
 ├── datasources/ Datasource HTTP client, DatasourceProvider interface + registry
+│   ├── influxdb/  InfluxDB datasource command layer (query, field-keys, measurements)
 │   └── query/   Shared query CLI utils (time parsing, codecs, opts, resolve helpers — used by signal providers and GenericCmd)
 ├── query/       Datasource query clients
 │   ├── prometheus/  Prometheus HTTP query client
+│   ├── influxdb/    InfluxDB HTTP query client
 │   └── loki/        Loki HTTP query client
 ├── queryerror/  Typed API error for datasource query failures (APIError type, New/FromBody constructors, IsParseError helper)
 ├── assistant/   Assistant client (A2A streaming, prompt, state management)
