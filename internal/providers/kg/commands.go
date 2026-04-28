@@ -116,7 +116,7 @@ func (f *scopeFlags) validateScopes(ctx context.Context, client *Client) error {
 	if err != nil {
 		return nil //nolint:nilerr // best-effort: scope validation is advisory
 	}
-	var errs []string
+	errs := make([]string, 0, len(active))
 	for _, c := range active {
 		known := scopes[c.dim]
 		if len(known) == 0 {
@@ -605,7 +605,6 @@ func newModelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	//nolint:dupl
 }
 
-//nolint:dupl
 func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "suppressions",
@@ -641,7 +640,6 @@ func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
 	opts.setup(createCmd.Flags())
 	_ = createCmd.MarkFlagRequired("file")
 	cmd.AddCommand(createCmd)
-	//nolint:dupl
 	return cmd
 }
 
