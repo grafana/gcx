@@ -57,7 +57,7 @@ For on-premises instances, gcx defaults the organization ID to 1 if you do not s
 
 ### Grafana Cloud product APIs
 
-Commands under `gcx synth`, `gcx k6`, `gcx irm`, `gcx slo`, `gcx fleet`, and other Cloud product surfaces require a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/) in addition to Grafana auth.
+Commands under `gcx synth`, `gcx k6`, `gcx fleet`, and `gcx setup instrumentation` require a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/) in addition to Grafana auth. (`gcx irm` and `gcx slo` go through Grafana's plugin-resources surface on the stack and need only the service-account token.)
 
 **Provide it at login:**
 
@@ -141,7 +141,7 @@ A short vocabulary so the troubleshooting entries below make sense. For the inte
 
 **Cloud vs on-premises.** gcx detects whether `--server` points at Grafana Cloud or an on-premises instance. The hostname is matched against known Cloud suffixes first (no network call); loopback and RFC1918 addresses are classified as on-premises; anything else is probed with a short HTTP request. The classification drives which auth methods appear in the prompt.
 
-**Three auth methods, three API surfaces.** OAuth (browser-based, Cloud only) and service account tokens both authenticate to the Grafana API — dashboards, folders, datasources, alerts, and the K8s-compatible `/apis` endpoints. Cloud Access Policy tokens are a separate credential used for GCOM (stack management) and Cloud product APIs (Synthetic Monitoring, k6, IRM, SLO, Fleet, etc.). A Cloud context typically holds two tokens: one for Grafana, one for Cloud. An on-premises context holds only a service account token.
+**Three auth methods, three API surfaces.** OAuth (browser-based, Cloud only) and service account tokens both authenticate to the Grafana API — dashboards, folders, datasources, alerts, plugin-hosted products (IRM, SLO, KG, App O11y), and the K8s-compatible `/apis` endpoints. Cloud Access Policy tokens are a separate credential used for GCOM (stack management) and the Cloud product APIs that bypass the stack — Synthetic Monitoring, k6, Fleet Management, and `gcx setup instrumentation`. A Cloud context typically holds two tokens: one for Grafana, one for Cloud. An on-premises context holds only a service account token.
 
 **Interactive, `--yes`, and env-var modes.** Interactive mode opens prompts for anything you did not pass as a flag. `--yes` disables optional prompts and makes `gcx login` fail loudly if a required field is missing — the mode to use in CI. Environment variables (`GRAFANA_SERVER`, `GRAFANA_TOKEN`, `GRAFANA_CLOUD_TOKEN`, `GRAFANA_CLOUD_STACK`) skip `gcx login` entirely and resolve on each command invocation.
 
