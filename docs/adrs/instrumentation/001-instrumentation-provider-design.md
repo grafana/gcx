@@ -1,7 +1,7 @@
 # Declarative Instrumentation Setup under `gcx setup`
 
 **Created**: 2026-03-30
-**Status**: proposed
+**Status**: superseded by [002-cli-redesign.md](002-cli-redesign.md)
 **Bead**: gcx-4r1g
 **Supersedes**: none
 
