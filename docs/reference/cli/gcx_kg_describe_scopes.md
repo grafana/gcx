@@ -1,15 +1,17 @@
-## gcx kg search example
+## gcx kg describe scopes
 
-Print an example search request YAML.
+Show all valid env/namespace/site filter values.
 
 ```
-gcx kg search example [flags]
+gcx kg describe scopes [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help   help for example
+  -h, --help            help for scopes
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: json, text, yaml (default "text")
 ```
 
 ### Options inherited from parent commands
@@ -26,5 +28,5 @@ gcx kg search example [flags]
 
 ### SEE ALSO
 
-* [gcx kg search](gcx_kg_search.md)	 - Search Knowledge Graph entities or insights.
+* [gcx kg describe](gcx_kg_describe.md)	 - Describe the Knowledge Graph: entity types, valid env/namespace/site values, and telemetry query configs.
 

@@ -12,6 +12,11 @@ type CLIOptions struct {
 	// AutoApprove automatically enables the --force flag on delete operations,
 	// enabling non-interactive operation in CI/CD pipelines.
 	AutoApprove bool `env:"GCX_AUTO_APPROVE"`
+
+	// DisableUpdateNotifier disables the periodic notifier that reminds users
+	// when their installed gcx skills can be updated. Any non-empty value
+	// disables the notifier (NO_COLOR convention).
+	DisableUpdateNotifier string `env:"GCX_NO_UPDATE_NOTIFIER"`
 }
 
 // LoadCLIOptions loads CLI options from environment variables.

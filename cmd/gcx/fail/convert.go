@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/gcx/internal/datasources"
 	"github.com/grafana/gcx/internal/grafana"
 	"github.com/grafana/gcx/internal/linter"
+	"github.com/grafana/gcx/internal/login"
 	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/grafana/gcx/internal/resources"
 	k8sapi "k8s.io/apimachinery/pkg/api/errors"
@@ -35,21 +36,22 @@ func ErrorToDetailedError(err error) *DetailedError {
 	errorConverters := []func(err error) (*DetailedError, bool){
 		convertUsageErrors,
 		convertCobraUnknownCommandErrors,
-		convertContextCanceled,    // Context cancellation (must be first — cancellation can wrap other errors)
-		convertRequiredFlagErrors, // Cobra required-flag errors — must appear before generic checks
-		convertConfigErrors,       // Config-related
-		convertAuthErrors,         // Auth-related (expired tokens)
-		convertQueryErrors,        // Datasource query errors
-		convertDatasourceErrors,   // Grafana datasource REST API errors
-		convertServiceAPIErrors,   // Other structured HTTP API errors
-		convertFSErrors,           // FS-related
-		convertResourcesErrors,    // Resources-related
-		convertNetworkErrors,      // Network-related errors
-		convertAPIErrors,          // API-related errors
-		convertVersionErrors,      // Version incompatibility errors
-		convertLinterErrors,       // Linter-related errors
-		convertSMConfigErrors,     // Synthetic Monitoring config errors
-		convertCloudConfigErrors,  // Cloud config / fleet / setup errors
+		convertContextCanceled,       // Context cancellation (must be first — cancellation can wrap other errors)
+		convertRequiredFlagErrors,    // Cobra required-flag errors — must appear before generic checks
+		convertConfigErrors,          // Config-related
+		convertAuthErrors,            // Auth-related (expired tokens)
+		convertQueryErrors,           // Datasource query errors
+		convertDatasourceErrors,      // Grafana datasource REST API errors
+		convertServiceAPIErrors,      // Other structured HTTP API errors
+		convertFSErrors,              // FS-related
+		convertResourcesErrors,       // Resources-related
+		convertNetworkErrors,         // Network-related errors
+		convertAPIErrors,             // API-related errors
+		convertLoginValidationErrors, // Login connectivity validation (must precede generic version check)
+		convertVersionErrors,         // Version incompatibility errors
+		convertLinterErrors,          // Linter-related errors
+		convertSMConfigErrors,        // Synthetic Monitoring config errors
+		convertCloudConfigErrors,     // Cloud config / fleet / setup errors
 	}
 
 	for _, converter := range errorConverters {
@@ -395,6 +397,10 @@ func queryErrorHelpCommand(apiErr *queryerror.APIError) string {
 			return "gcx profiles labels --help"
 		case "series query":
 			return "gcx profiles metrics --help"
+		case "profile exemplars query":
+			return "gcx profiles exemplars profile --help"
+		case "span exemplars query":
+			return "gcx profiles exemplars span --help"
 		}
 	case "tempo":
 		switch apiErr.Operation {
@@ -477,6 +483,22 @@ func convertServiceAPIErrors(err error) (*DetailedError, bool) {
 	var apiErr serviceAPIError
 	if !errors.As(err, &apiErr) {
 		return nil, false
+	}
+
+	// Adaptive Logs scope errors — handled here (not in convertCloudConfigErrors with
+	// traces/metrics) because the logs client returns a typed APIError that this converter
+	// catches before convertCloudConfigErrors runs.
+	if apiErr.APIServiceName() == "Adaptive Logs" &&
+		strings.Contains(apiErr.APIUserMessage(), "invalid scope") &&
+		(apiErr.HTTPStatusCode() == http.StatusUnauthorized || apiErr.HTTPStatusCode() == http.StatusForbidden) {
+		return &DetailedError{
+			Parent:  err,
+			Summary: "Adaptive Logs: permission denied",
+			Suggestions: []string{
+				"Ensure your Grafana Cloud access policy includes the adaptive-logs:admin scope",
+			},
+			ExitCode: new(ExitAuthFailure),
+		}, true
 	}
 
 	detailedErr := &DetailedError{
@@ -670,6 +692,120 @@ func convertLinterErrors(err error) (*DetailedError, bool) {
 	return nil, false
 }
 
+func convertLoginValidationErrors(err error) (*DetailedError, bool) {
+	var gcomErr *login.GCOMStackError
+	if errors.As(err, &gcomErr) {
+		return convertGCOMStackError(gcomErr), true
+	}
+
+	var healthErr *login.HealthCheckError
+	if errors.As(err, &healthErr) {
+		return convertHealthCheckError(healthErr), true
+	}
+
+	var k8sErr *login.K8sDiscoveryError
+	if errors.As(err, &k8sErr) {
+		return &DetailedError{
+			Parent:  err,
+			Summary: "Kubernetes-style API unavailable",
+			Details: k8sErr.Cause.Error(),
+			Suggestions: []string{
+				"Confirm the Grafana stack is on version 12 or later",
+				"Confirm the Grafana token has the role required to call /apis (Admin or Editor)",
+				"Check network/proxy access to " + k8sErr.Server,
+			},
+		}, true
+	}
+
+	// Delegate VersionCheckError to convertVersionErrors so ExitCode and copy
+	// stay consistent with VersionIncompatibleError raised from other call sites.
+	var versionErr *login.VersionCheckError
+	if errors.As(err, &versionErr) {
+		if d, ok := convertVersionErrors(versionErr.Cause); ok {
+			d.Parent = err
+			return d, true
+		}
+	}
+
+	return nil, false
+}
+
+func convertGCOMStackError(err *login.GCOMStackError) *DetailedError {
+	switch err.Status {
+	case http.StatusForbidden:
+		return &DetailedError{
+			Parent:  err,
+			Summary: "Grafana Cloud stack lookup denied",
+			Details: fmt.Sprintf("GCOM returned 403 for stack %q", err.Slug),
+			Suggestions: []string{
+				"Verify the Cloud Access Policy token has the stacks:read scope",
+				"Confirm the access policy is in the same org as the stack",
+				"Regenerate the CAP token if the policy was recently updated",
+			},
+			DocsLink: "https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/",
+			ExitCode: new(ExitAuthFailure),
+		}
+	case http.StatusUnauthorized:
+		return &DetailedError{
+			Parent:  err,
+			Summary: "Grafana Cloud token rejected",
+			Details: fmt.Sprintf("GCOM returned 401 for stack %q", err.Slug),
+			Suggestions: []string{
+				"Generate a new Cloud Access Policy token at https://grafana.com",
+				"Confirm the token was copied without truncation",
+			},
+			ExitCode: new(ExitAuthFailure),
+		}
+	case http.StatusNotFound:
+		return &DetailedError{
+			Parent:  err,
+			Summary: "Grafana Cloud stack not found",
+			Details: fmt.Sprintf("GCOM has no stack with slug %q", err.Slug),
+			Suggestions: []string{
+				fmt.Sprintf("Confirm the --server URL points at an existing stack (slug derived: %q)", err.Slug),
+				"List your stacks: gcx providers (or visit grafana.com/orgs/<org>)",
+			},
+		}
+	default:
+		return &DetailedError{
+			Parent:  err,
+			Summary: "Grafana Cloud stack lookup failed",
+			Details: err.Cause.Error(),
+			Suggestions: []string{
+				"Retry — GCOM may be temporarily unavailable",
+				"Check https://status.grafana.com for ongoing incidents",
+			},
+		}
+	}
+}
+
+func convertHealthCheckError(err *login.HealthCheckError) *DetailedError {
+	if err.Status == http.StatusUnauthorized || err.Status == http.StatusForbidden {
+		return &DetailedError{
+			Parent:  err,
+			Summary: "Grafana token rejected",
+			Details: fmt.Sprintf("/api/health returned %d for %s", err.Status, err.Server),
+			Suggestions: []string{
+				"Confirm the Grafana service-account token belongs to the target stack",
+				"Confirm the token has not expired or been revoked",
+				"Confirm the service-account role grants Admin or Editor as required",
+				reauthSuggestion,
+			},
+			ExitCode: new(ExitAuthFailure),
+		}
+	}
+	return &DetailedError{
+		Parent:  err,
+		Summary: "Grafana server unreachable",
+		Details: err.Cause.Error(),
+		Suggestions: []string{
+			"Confirm --server points at the correct Grafana URL",
+			"Check network/proxy access from this machine",
+			"If using mTLS, verify --tls-cert-file and --tls-key-file paths are correct",
+		},
+	}
+}
+
 func convertVersionErrors(err error) (*DetailedError, bool) {
 	vErr := &grafana.VersionIncompatibleError{}
 	if errors.As(err, &vErr) {
@@ -717,6 +853,22 @@ func convertSMConfigErrors(err error) (*DetailedError, bool) {
 				"Auto-discovery requires grafana.server in the current context",
 				"Check config: gcx config view",
 			},
+		}, true
+	}
+
+	if strings.Contains(msg, "SM token not configured") && strings.Contains(msg, "register/install") &&
+		(strings.Contains(msg, "status 401") || strings.Contains(msg, "status 403") ||
+			(strings.Contains(msg, "status 400") && strings.Contains(msg, "permission"))) {
+		return &DetailedError{
+			Parent:  err,
+			Summary: "SM token auto-discovery: permission denied",
+			Details: msg,
+			Suggestions: []string{
+				"Ensure your cloud.token access policy includes these scopes: stacks:read, metrics:write, logs:write, traces:write",
+				"Or set the SM token directly: gcx config set providers.synth.sm-token <TOKEN>",
+				"Or use env var: export GRAFANA_PROVIDER_SYNTH_SM_TOKEN=<TOKEN>",
+			},
+			ExitCode: new(ExitAuthFailure),
 		}, true
 	}
 
@@ -792,6 +944,33 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 		}, true
 	}
 
+	// Adaptive Traces scope errors.
+	if strings.Contains(msg, "adaptive-traces:") && strings.Contains(msg, "invalid scope") {
+		return &DetailedError{
+			Parent:  err,
+			Summary: "Adaptive Traces: permission denied",
+			Suggestions: []string{
+				"Ensure your Grafana Cloud access policy includes the adaptive-traces:admin scope",
+			},
+			ExitCode: new(ExitAuthFailure),
+		}, true
+	}
+
+	// Adaptive Metrics scope errors.
+	if strings.Contains(msg, "adaptive-metrics:") && strings.Contains(msg, "invalid scope") {
+		scope := adaptiveMetricsScopeFromError(msg)
+		suggestion := fmt.Sprintf("Ensure your Grafana Cloud access policy includes the %s scope", scope)
+		if scope == "" {
+			suggestion = "Adaptive Metrics commands require an adaptive-metrics-* scope on your Grafana Cloud access policy (the specific scope depends on the subcommand)"
+		}
+		return &DetailedError{
+			Parent:      err,
+			Summary:     "Adaptive Metrics: permission denied",
+			Suggestions: []string{suggestion},
+			ExitCode:    new(ExitAuthFailure),
+		}, true
+	}
+
 	// Fleet management not available.
 	if strings.Contains(msg, "fleet management endpoint is not available") ||
 		strings.Contains(msg, "fleet management instance ID is not available") {
@@ -808,13 +987,17 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 
 	// Stack info lookup forbidden — access policy missing stacks:read scope.
 	if strings.Contains(msg, "failed to get stack info for") && strings.Contains(msg, "status 403") {
+		suggestions := []string{
+			"Ensure your Grafana Cloud access policy includes the stacks:read scope",
+		}
+		if suggestion := adaptiveScopeSuggestionFromSignalPrefix(msg); suggestion != "" {
+			suggestions = append(suggestions, suggestion)
+		}
 		return &DetailedError{
-			Parent:  err,
-			Summary: "Cloud stack lookup: permission denied",
-			Suggestions: []string{
-				"Ensure your access policy includes the stacks:read scope",
-			},
-			ExitCode: new(ExitAuthFailure),
+			Parent:      err,
+			Summary:     "Cloud stack lookup: permission denied",
+			Suggestions: suggestions,
+			ExitCode:    new(ExitAuthFailure),
 		}, true
 	}
 
@@ -830,6 +1013,65 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 	}
 
 	return nil, false
+}
+
+func adaptiveScopeSuggestionFromSignalPrefix(msg string) string {
+	switch {
+	case strings.Contains(msg, "adaptive-logs:"):
+		return "Ensure your Grafana Cloud access policy includes the adaptive-logs:admin scope"
+	case strings.Contains(msg, "adaptive-metrics:"):
+		return "Adaptive Metrics commands also require an adaptive-metrics-* scope on your Grafana Cloud access policy (the specific scope depends on the subcommand)"
+	case strings.Contains(msg, "adaptive-traces:"):
+		return "Ensure your Grafana Cloud access policy includes the adaptive-traces:admin scope"
+	default:
+		return ""
+	}
+}
+
+func adaptiveMetricsScopeFromError(msg string) string {
+	type resource struct {
+		keyword   string
+		base      string
+		reads     []string
+		writes    []string
+		deleteKey string
+	}
+	// Operation matches are checked in priority order: delete > write > read.
+	resources := []resource{
+		{"rule", "adaptive-metrics-rules",
+			[]string{"list rules", "get rule", "list recommended rules"},
+			[]string{"create rule", "update rule", "sync rules", "validate rules"},
+			"delete rule"},
+		{"recommendation", "adaptive-metrics-recommendations",
+			[]string{"list recommendations"}, nil, ""},
+		{"segment", "adaptive-metrics-segments",
+			[]string{"list segments"},
+			[]string{"create segment", "update segment"},
+			"delete segment"},
+		{"exemption", "adaptive-metrics-exemptions",
+			[]string{"list exemptions", "list segmented exemptions", "get exemption"},
+			[]string{"create exemption", "update exemption"},
+			"delete exemption"},
+	}
+	for _, r := range resources {
+		if !strings.Contains(msg, r.keyword) {
+			continue
+		}
+		if r.deleteKey != "" && strings.Contains(msg, r.deleteKey) {
+			return r.base + ":delete"
+		}
+		for _, v := range r.writes {
+			if strings.Contains(msg, v) {
+				return r.base + ":write"
+			}
+		}
+		for _, v := range r.reads {
+			if strings.Contains(msg, v) {
+				return r.base + ":read"
+			}
+		}
+	}
+	return ""
 }
 
 func fallbackDetailedError(err error) *DetailedError {

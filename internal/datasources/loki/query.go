@@ -17,6 +17,7 @@ import (
 // QueryCmd returns the `query` subcommand for a Loki datasource parent.
 func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
+	share := &dsquery.ExploreLinkOpts{}
 	var limit int
 	var datasource string
 
@@ -31,13 +32,18 @@ Datasource is resolved from -d flag or datasources.loki in your context.
 Default table output is optimized for humans. Use -o raw for original line
 bodies or -o json for the full structured response.
 
-Default --limit is 50; use --limit 0 for no cap.`,
+Default --limit is 50; use --limit 0 for no cap.
+Use --share-link to print the equivalent Grafana Explore URL, or --open to
+open it in your browser after the query succeeds.`,
 		Example: `
   # Query logs using configured default datasource
   gcx datasources loki query '{job="varlogs"}'
 
   # Query with explicit datasource UID
   gcx datasources loki query -d UID '{job="varlogs"} |= "error"'
+
+  # Print a Grafana Explore share link for the query
+  gcx datasources loki query '{job="varlogs"}' --share-link
 
   # Raw line bodies only
   gcx datasources loki query -d UID '{job="varlogs"}' -o raw
@@ -108,7 +114,23 @@ Default --limit is 50; use --limit 0 for no cap.`,
 				return fmt.Errorf("query failed: %w", err)
 			}
 
-			return shared.IO.Encode(cmd.OutOrStdout(), resp)
+			exploreURL := LogsExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
+				DatasourceUID:  datasourceUID,
+				DatasourceType: dsType,
+				Expr:           expr,
+				From:           shared.From,
+				To:             shared.To,
+				OrgID:          dsquery.OrgID(cfgCtx),
+			})
+			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("query")
+
+			return dsquery.EncodeAndHandleExplore(cmd, func() error {
+				return shared.IO.Encode(cmd.OutOrStdout(), resp)
+			}, *share, dsquery.ExploreLink{
+				URL:            exploreURL,
+				UnavailableMsg: unavailableMsg,
+				FailedOpenMsg:  failedOpenMsg,
+			})
 		},
 	}
 
@@ -125,6 +147,7 @@ Default --limit is 50; use --limit 0 for no cap.`,
 	shared.SetupExprFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
 	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, "Maximum number of log lines to return (0 means no limit)")
+	share.Setup(cmd.Flags(), "executed query")
 
 	return cmd
 }

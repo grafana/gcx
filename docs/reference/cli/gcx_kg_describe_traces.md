@@ -1,22 +1,17 @@
-## gcx kg search sample
+## gcx kg describe traces
 
-Return a sample of entities by type.
+Show Tempo label mappings for trace drilldown.
 
 ```
-gcx kg search sample [flags]
+gcx kg describe traces [flags]
 ```
 
 ### Options
 
 ```
-      --env string         Environment scope
-      --from string        Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-  -h, --help               help for sample
-      --namespace string   Namespace scope
-      --since string       Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
-      --site string        Site scope
-      --to string          End time (RFC3339, Unix timestamp, or relative like 'now')
-      --type string        Entity type
+  -h, --help            help for traces
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: json, text, yaml (default "text")
 ```
 
 ### Options inherited from parent commands
@@ -33,5 +28,5 @@ gcx kg search sample [flags]
 
 ### SEE ALSO
 
-* [gcx kg search](gcx_kg_search.md)	 - Search Knowledge Graph entities or insights.
+* [gcx kg describe](gcx_kg_describe.md)	 - Describe the Knowledge Graph: entity types, valid env/namespace/site values, and telemetry query configs.
 

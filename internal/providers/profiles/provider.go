@@ -107,6 +107,24 @@ func (p *Provider) Commands() []*cobra.Command {
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --top -o json`
 	cmd.AddCommand(mCmd)
 
+	eCmd := dspyroscope.ExemplarsCmd(loader)
+	eCmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "small",
+		agent.AnnotationLLMHint:   "gcx profiles exemplars profile '{}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h -o json",
+	}
+	eCmd.Example = `
+  # Top individual profile exemplars (Profile ID + Span ID if span-aware)
+  gcx profiles exemplars profile '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
+
+  # Top span exemplars (profiles linked to trace spans; needs otelpyroscope)
+  gcx profiles exemplars span '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
+
+  # Output as JSON for scripting
+  gcx profiles exemplars profile '{}' --since 30m -o json`
+	cmd.AddCommand(eCmd)
+
 	// Adaptive Profiles stub.
 	cmd.AddCommand(adaptiveStubCmd())
 

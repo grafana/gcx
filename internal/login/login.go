@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 
@@ -36,6 +37,17 @@ type Inputs struct {
 	CloudAPIURL  string
 	UseOAuth     bool
 	Yes          bool
+	// UseCloudInstanceSelector is only used internally to mark the case in which
+	// a user explicitly left the server empty to be directed to the cloud
+	// instance selector
+	UseCloudInstanceSelector bool
+
+	// TLS carries client-side TLS settings (mTLS cert/key, custom CA).
+	// When non-nil, these settings are used for target detection, connectivity
+	// validation, and persisted into the new/updated context.
+	// On re-auth of an existing context, the CLI pre-populates this from the
+	// stored grafana.tls.* block so mTLS keeps working without re-specifying certs.
+	TLS *config.TLS
 
 	// Writer receives human-facing OAuth progress output. When nil, the
 	// internal/login package discards writes (NC-001: the package is UI-free
@@ -64,7 +76,8 @@ type Hooks struct {
 	ValidateFn func(ctx context.Context, opts Options, restCfg config.NamespacedRESTConfig) (string, error)
 
 	// DetectFn overrides target detection for testing. When nil,
-	// DetectTarget with httputils.NewDefaultClient(ctx) is used.
+	// DetectTarget is called with a TLS-aware HTTP client (built from
+	// opts.TLS) or a default client when no TLS is configured.
 	DetectFn func(ctx context.Context, server string) (Target, error)
 }
 
@@ -120,7 +133,7 @@ type Options struct {
 // render a post-login summary and persist auth-method metadata.
 type Result struct {
 	ContextName    string
-	AuthMethod     string // "oauth", "token", or "basic"
+	AuthMethod     string // "oauth", "token", "basic", or "mtls"
 	IsCloud        bool
 	HasCloudToken  bool
 	GrafanaVersion string
@@ -166,9 +179,9 @@ type AuthFlow interface {
 // Run orchestrates the full login lifecycle:
 //
 //  1. Validate server is set
-//  2. Derive context name
-//  3. Detect target (Cloud vs OnPrem)
-//  4. Resolve Grafana auth (token or OAuth)
+//  2. Detect target (Cloud vs OnPrem)
+//  3. Resolve Grafana auth (token or OAuth)
+//  4. Derive context name
 //  5. Resolve Cloud API token (Cloud targets only)
 //  6. Build REST config and run connectivity validation
 //  7. Persist context to config
@@ -179,24 +192,22 @@ type AuthFlow interface {
 // the CLI sentinel-retry flow. Callers that retry after ErrNeedInput /
 // ErrNeedClarification should reuse the same Options value.
 func Run(ctx context.Context, opts *Options) (Result, error) {
-	// Step 1: server must be set
-	if opts.Server == "" {
+	// Step 1: check if the server is set
+	if opts.Server == "" && !opts.UseCloudInstanceSelector {
 		return Result{}, &ErrNeedInput{Fields: []string{"server"}}
+	}
+	if opts.UseCloudInstanceSelector {
+		opts.UseOAuth = true
+		opts.Target = TargetCloud
 	}
 
 	// Normalize: missing scheme → default to https. Users who meant http://
 	// must pass the full URL explicitly; defaulting to https is safer.
-	if !strings.HasPrefix(opts.Server, "http://") && !strings.HasPrefix(opts.Server, "https://") {
+	if opts.Server != "" && !strings.HasPrefix(opts.Server, "http://") && !strings.HasPrefix(opts.Server, "https://") {
 		opts.Server = "https://" + opts.Server
 	}
 
-	// Step 2: derive context name
-	contextName := opts.ContextName
-	if contextName == "" {
-		contextName = config.ContextNameFromServerURL(opts.Server)
-	}
-
-	// Step 3: detect target
+	// Step 2: detect target (using TLS-aware client when mTLS is configured)
 	target := opts.Target
 	if target == TargetUnknown {
 		detected, err := detectTarget(ctx, *opts)
@@ -224,10 +235,21 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 	// layer can branch on target (e.g. drop the OAuth option for on-prem).
 	opts.Target = target
 
-	// Step 4: Grafana auth
+	// Step 3: Grafana auth
 	authMethod, grafanaCfg, err := resolveGrafanaAuth(ctx, *opts, target)
 	if err != nil {
 		return Result{}, err
+	}
+
+	// set the server if the user used the interactive instance selector
+	if opts.Server == "" {
+		opts.Server = grafanaCfg.Server
+	}
+
+	// Step 4: derive context name
+	contextName := opts.ContextName
+	if contextName == "" {
+		contextName = config.ContextNameFromServerURL(opts.Server)
 	}
 
 	// Step 5: Cloud API token (Cloud targets only)
@@ -290,11 +312,35 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 }
 
 // detectTarget calls DetectFn or falls back to the real DetectTarget.
+// When TLS settings are present, builds a TLS-aware HTTP client for the probe.
+//
+// Cert-load failures (e.g. malformed cert-file path) are returned as hard
+// errors rather than degrading to TargetUnknown. This is intentional: a broken
+// TLS config should fail fast here rather than producing a confusing
+// "auth rejected" error downstream during validation.
 func detectTarget(ctx context.Context, opts Options) (Target, error) {
 	if opts.DetectFn != nil {
 		return opts.DetectFn(ctx, opts.Server)
 	}
-	return DetectTarget(ctx, opts.Server, httputils.NewDefaultClient(ctx))
+	client, err := tlsAwareClient(ctx, opts.TLS)
+	if err != nil {
+		return TargetUnknown, fmt.Errorf("TLS configuration: %w", err)
+	}
+	return DetectTarget(ctx, opts.Server, client)
+}
+
+// tlsAwareClient returns a TLS-aware *http.Client when tlsCfg is non-nil and
+// non-empty, or a default client otherwise. Used by the login flow for target
+// detection and connectivity validation against mTLS servers.
+func tlsAwareClient(ctx context.Context, tlsCfg *config.TLS) (*http.Client, error) {
+	if tlsCfg == nil || tlsCfg.IsEmpty() {
+		return httputils.NewDefaultClient(ctx), nil
+	}
+	stdTLS, err := tlsCfg.ToStdTLSConfig()
+	if err != nil {
+		return nil, err
+	}
+	return httputils.NewDefaultClientWithTLS(ctx, stdTLS), nil
 }
 
 // resolveGrafanaAuth determines how to authenticate against Grafana (step 4).
@@ -314,6 +360,7 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 
 	grafanaCfg := &config.GrafanaConfig{
 		Server: opts.Server,
+		TLS:    opts.TLS,
 	}
 
 	var method string
@@ -322,6 +369,16 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 		grafanaCfg.APIToken = opts.GrafanaToken
 		grafanaCfg.AuthMethod = "token"
 		method = "token"
+
+	case opts.TLS != nil && (len(opts.TLS.CertData) > 0 || opts.TLS.CertFile != ""):
+		// mTLS-only auth: the client certificate authenticates at the transport
+		// layer (e.g. Teleport proxy). No Grafana token or OAuth needed.
+		// Note: we check only for cert presence here, not cert+key pairing.
+		// TLS.ResolveFiles() enforces "both cert-file and key-file must be
+		// provided together" downstream, producing a clear error if the key
+		// is missing.
+		grafanaCfg.AuthMethod = "mtls"
+		method = "mtls"
 
 	case opts.UseOAuth:
 		if opts.NewAuthFlow == nil {
@@ -340,6 +397,9 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 		result, err := flow.Run(ctx)
 		if err != nil {
 			return "", nil, fmt.Errorf("OAuth flow failed: %w", err)
+		}
+		if grafanaCfg.Server == "" {
+			grafanaCfg.Server = result.InstanceEndpoint
 		}
 		grafanaCfg.OAuthToken = result.Token
 		grafanaCfg.OAuthRefreshToken = result.RefreshToken
@@ -482,6 +542,11 @@ func mergeAuthIntoExisting(existing *config.Context, incoming config.Context) {
 	g.OAuthTokenExpiresAt = src.OAuthTokenExpiresAt
 	g.OAuthRefreshExpiresAt = src.OAuthRefreshExpiresAt
 	g.ProxyEndpoint = src.ProxyEndpoint
+
+	// Sync TLS settings so that re-auth with updated or cleared certs
+	// takes effect. Setting to src.TLS (which may be nil) handles both
+	// the "update certs" and "remove certs" cases.
+	g.TLS = src.TLS
 
 	// Update Cloud config if present in the incoming context.
 	if incoming.Cloud != nil {

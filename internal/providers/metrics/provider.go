@@ -54,6 +54,9 @@ func (p *Provider) Commands() []*cobra.Command {
   # Query the last hour
   gcx metrics query 'up' --since 1h
 
+  # Print a Grafana Explore share link for the executed query
+  gcx metrics query 'up' --share-link
+
   # Output as JSON
   gcx metrics query -d abc123 'up' -o json`
 	cmd.AddCommand(qCmd)
