@@ -2,6 +2,7 @@ package query
 
 import (
 	"encoding/json"
+	"maps"
 	"net/url"
 	"strconv"
 	"strings"
@@ -42,8 +43,12 @@ func ExploreRange(from, to string, instant bool) (string, string) {
 // ShortExploreRange normalizes the visible Explore time range using a short
 // default lookback window when no explicit range was provided.
 func ShortExploreRange(from, to string) (string, string) {
-	from, to = ExploreRange(from, to, false)
-	if strings.TrimSpace(from) == "now-1h" {
+	from = strings.TrimSpace(from)
+	to = strings.TrimSpace(to)
+	if to == "" {
+		to = "now"
+	}
+	if from == "" {
 		from = "now-1m"
 	}
 	return from, to
@@ -67,9 +72,7 @@ func SinglePane(datasourceUID string, queries []any, from, to string, extra map[
 			"to":   to,
 		},
 	}
-	for key, value := range extra {
-		pane[key] = value
-	}
+	maps.Copy(pane, extra)
 	return map[string]any{DefaultExplorePaneID: pane}
 }
 
@@ -77,6 +80,9 @@ func SinglePane(datasourceUID string, queries []any, from, to string, extra map[
 func BuildExploreURL(host string, orgID int64, panes map[string]any, extra map[string]string) string {
 	host = strings.TrimRight(strings.TrimSpace(host), "/")
 	if host == "" {
+		return ""
+	}
+	if !strings.HasPrefix(host, "http://") && !strings.HasPrefix(host, "https://") {
 		return ""
 	}
 

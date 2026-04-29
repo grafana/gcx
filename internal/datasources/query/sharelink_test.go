@@ -1,23 +1,24 @@
-package query
+package query_test
 
 import (
 	"bytes"
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
+	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestOrgID(t *testing.T) {
-	assert.Zero(t, OrgID(nil))
-	assert.Zero(t, OrgID(&config.Context{}))
-	assert.Equal(t, int64(42), OrgID(&config.Context{Grafana: &config.GrafanaConfig{OrgID: 42}}))
+	assert.Zero(t, dsquery.OrgID(nil))
+	assert.Zero(t, dsquery.OrgID(&config.Context{}))
+	assert.Equal(t, int64(42), dsquery.OrgID(&config.Context{Grafana: &config.GrafanaConfig{OrgID: 42}}))
 }
 
 func TestExploreMessages(t *testing.T) {
-	unavailable, failedOpen := ExploreMessages("query")
+	unavailable, failedOpen := dsquery.ExploreMessages("query")
 	assert.Equal(t, "query succeeded, but no Grafana Explore URL could be built", unavailable)
 	assert.Equal(t, "query succeeded, but could not open browser", failedOpen)
 }
@@ -31,11 +32,11 @@ func TestEncodeAndHandleExplore(t *testing.T) {
 		cmd.SetErr(&stderr)
 
 		called := false
-		err := EncodeAndHandleExplore(cmd, func() error {
+		err := dsquery.EncodeAndHandleExplore(cmd, func() error {
 			called = true
 			_, writeErr := stdout.WriteString("ok\n")
 			return writeErr
-		}, ExploreLinkOpts{ShareLink: true}, ExploreLink{
+		}, dsquery.ExploreLinkOpts{ShareLink: true}, dsquery.ExploreLink{
 			URL:            "https://example.grafana.net/explore?x=1",
 			UnavailableMsg: "unavailable",
 			FailedOpenMsg:  "failed",
@@ -51,7 +52,7 @@ func TestEncodeAndHandleExplore(t *testing.T) {
 		var stderr bytes.Buffer
 		cmd.SetErr(&stderr)
 
-		err := EncodeAndHandleExplore(cmd, func() error { return nil }, ExploreLinkOpts{ShareLink: true}, ExploreLink{
+		err := dsquery.EncodeAndHandleExplore(cmd, func() error { return nil }, dsquery.ExploreLinkOpts{ShareLink: true}, dsquery.ExploreLink{
 			UnavailableMsg: "no url",
 			FailedOpenMsg:  "failed",
 		})

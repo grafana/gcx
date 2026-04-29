@@ -6,8 +6,8 @@ import (
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 )
 
-// ExploreURL builds a Grafana Explore URL for a Prometheus query.
-func ExploreURL(host string, query dsquery.ExploreQuery) string {
+// QueryExploreURL builds a Grafana Explore URL for a Prometheus query.
+func QueryExploreURL(host string, query dsquery.ExploreQuery) string {
 	if strings.TrimSpace(host) == "" || query.DatasourceUID == "" || strings.TrimSpace(query.Expr) == "" {
 		return ""
 	}

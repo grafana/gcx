@@ -21,7 +21,7 @@ func (opts *ExploreLinkOpts) Setup(flags *pflag.FlagSet, subject string) {
 }
 
 // Enabled reports whether either share/open behavior was requested.
-func (opts ExploreLinkOpts) Enabled() bool {
+func (opts *ExploreLinkOpts) Enabled() bool {
 	return opts.ShareLink || opts.Open
 }
 

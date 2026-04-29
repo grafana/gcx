@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestExploreURL(t *testing.T) {
+func TestQueryExploreURL(t *testing.T) {
 	t.Run("builds instant explore link", func(t *testing.T) {
-		got := prometheus.ExploreURL("https://mystack.grafana.net/", dsquery.ExploreQuery{
+		got := prometheus.QueryExploreURL("https://mystack.grafana.net/", dsquery.ExploreQuery{
 			DatasourceUID:  "prom-uid",
 			DatasourceType: "prometheus",
 			Expr:           `up{job="grafana/server"}`,
@@ -34,7 +34,7 @@ func TestExploreURL(t *testing.T) {
 	})
 
 	t.Run("builds range explore link with explicit time bounds", func(t *testing.T) {
-		got := prometheus.ExploreURL("https://mystack.grafana.net", dsquery.ExploreQuery{
+		got := prometheus.QueryExploreURL("https://mystack.grafana.net", dsquery.ExploreQuery{
 			DatasourceUID:  "prom-uid",
 			DatasourceType: "prometheus",
 			Expr:           "rate(http_requests_total[5m])",
@@ -54,9 +54,9 @@ func TestExploreURL(t *testing.T) {
 	})
 
 	t.Run("returns empty for missing host or required query fields", func(t *testing.T) {
-		assert.Empty(t, prometheus.ExploreURL("", dsquery.ExploreQuery{DatasourceUID: "prom-uid", Expr: "up"}))
-		assert.Empty(t, prometheus.ExploreURL("https://mystack.grafana.net", dsquery.ExploreQuery{Expr: "up"}))
-		assert.Empty(t, prometheus.ExploreURL("https://mystack.grafana.net", dsquery.ExploreQuery{DatasourceUID: "prom-uid"}))
+		assert.Empty(t, prometheus.QueryExploreURL("", dsquery.ExploreQuery{DatasourceUID: "prom-uid", Expr: "up"}))
+		assert.Empty(t, prometheus.QueryExploreURL("https://mystack.grafana.net", dsquery.ExploreQuery{Expr: "up"}))
+		assert.Empty(t, prometheus.QueryExploreURL("https://mystack.grafana.net", dsquery.ExploreQuery{DatasourceUID: "prom-uid"}))
 	})
 }
 

@@ -119,7 +119,7 @@ open it in your browser after the query succeeds.`,
 				return fmt.Errorf("query failed: %w", err)
 			}
 
-			exploreURL := ExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
+			exploreURL := QueryExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
 				DatasourceUID:  datasourceUID,
 				DatasourceType: dsType,
 				Expr:           expr,

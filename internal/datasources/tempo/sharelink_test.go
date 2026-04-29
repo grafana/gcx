@@ -1,4 +1,4 @@
-package tempo
+package tempo_test
 
 import (
 	"bytes"
@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/grafana/gcx/internal/datasources/tempo"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -24,7 +25,7 @@ func TestGetCmd_ShareLinkRequiresExplicitTimeRange(t *testing.T) {
 			traceCalls++
 			w.Header().Set("Content-Type", "application/json")
 			_, err := w.Write([]byte(`{"trace":{"traceID":"trace-123"}}`))
-			require.NoError(t, err)
+			assert.NoError(t, err)
 		case "/api/datasources/uid/tempo-uid":
 			metadataCalls++
 			http.Error(w, `{"message":"unexpected datasource lookup"}`, http.StatusInternalServerError)
@@ -49,7 +50,7 @@ contexts:
 current-context: default
 `))
 
-	stdout, stderr, err := execTempoCmd(GetCmd(loader), []string{"get", "trace-123", "--share-link"})
+	stdout, stderr, err := execTempoCmd(tempo.GetCmd(loader), []string{"get", "trace-123", "--share-link"})
 	require.NoError(t, err)
 	assert.Equal(t, 1, traceCalls)
 	assert.Zero(t, metadataCalls)
@@ -70,7 +71,7 @@ func TestSearchCmd_ShareLinkRequiresExplicitTimeRange(t *testing.T) {
 			searchCalls++
 			w.Header().Set("Content-Type", "application/json")
 			_, err := w.Write([]byte(`{"traces":[{"traceID":"trace-123","rootServiceName":"svc","rootTraceName":"op","startTimeUnixNano":"1","durationMs":10}]}`))
-			require.NoError(t, err)
+			assert.NoError(t, err)
 		case "/api/datasources/uid/tempo-uid":
 			metadataCalls++
 			http.Error(w, `{"message":"unexpected datasource lookup"}`, http.StatusInternalServerError)
@@ -95,7 +96,7 @@ contexts:
 current-context: default
 `))
 
-	stdout, stderr, err := execTempoCmd(QueryCmd(loader), []string{"query", "--share-link", "-o", "json", `{ span.http.status_code >= 500 }`})
+	stdout, stderr, err := execTempoCmd(tempo.QueryCmd(loader), []string{"query", "--share-link", "-o", "json", `{ span.http.status_code >= 500 }`})
 	require.NoError(t, err)
 	assert.Equal(t, 1, searchCalls)
 	assert.Zero(t, metadataCalls)
@@ -116,7 +117,7 @@ func TestSearchCmd_ShareLinkRejectsUnlimitedResultLinks(t *testing.T) {
 			searchCalls++
 			w.Header().Set("Content-Type", "application/json")
 			_, err := w.Write([]byte(`{"traces":[{"traceID":"trace-123","rootServiceName":"svc","rootTraceName":"op","startTimeUnixNano":"1","durationMs":10}]}`))
-			require.NoError(t, err)
+			assert.NoError(t, err)
 		case "/api/datasources/uid/tempo-uid":
 			metadataCalls++
 			http.Error(w, `{"message":"unexpected datasource lookup"}`, http.StatusInternalServerError)
@@ -141,7 +142,7 @@ contexts:
 current-context: default
 `))
 
-	stdout, stderr, err := execTempoCmd(QueryCmd(loader), []string{"query", "--share-link", "--since", "1h", "--limit", "0", "-o", "json", `{ span.http.status_code >= 500 }`})
+	stdout, stderr, err := execTempoCmd(tempo.QueryCmd(loader), []string{"query", "--share-link", "--since", "1h", "--limit", "0", "-o", "json", `{ span.http.status_code >= 500 }`})
 	require.NoError(t, err)
 	assert.Equal(t, 1, searchCalls)
 	assert.Zero(t, metadataCalls)

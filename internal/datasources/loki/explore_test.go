@@ -3,6 +3,7 @@ package loki_test
 import (
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/datasources/loki"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
@@ -76,6 +77,44 @@ func TestMetricsExploreURL(t *testing.T) {
 		params := mustParseURL(t, got).Query()
 		assert.Contains(t, params.Get("panes"), `"instant":true`)
 		assert.Contains(t, params.Get("panes"), `"range":false`)
+	})
+
+	t.Run("includes orgId when present", func(t *testing.T) {
+		got := loki.MetricsExploreURL("https://ops.grafana-ops.net", dsquery.ExploreQuery{
+			DatasourceUID:  "grafanacloud-logs",
+			DatasourceType: "loki",
+			Expr:           `rate({name="ingress-nginx-controller"}[$__auto])`,
+			OrgID:          7,
+		})
+
+		require.NotEmpty(t, got)
+		params := mustParseURL(t, got).Query()
+		assert.Equal(t, "7", params.Get("orgId"))
+	})
+
+	t.Run("includes intervalMs when step is set", func(t *testing.T) {
+		got := loki.MetricsExploreURL("https://ops.grafana-ops.net", dsquery.ExploreQuery{
+			DatasourceUID:  "grafanacloud-logs",
+			DatasourceType: "loki",
+			Expr:           `rate({name="ingress-nginx-controller"}[$__auto])`,
+			Step:           time.Minute,
+		})
+
+		require.NotEmpty(t, got)
+		params := mustParseURL(t, got).Query()
+		assert.Contains(t, params.Get("panes"), `"intervalMs":60000`)
+	})
+
+	t.Run("omits intervalMs when step is zero", func(t *testing.T) {
+		got := loki.MetricsExploreURL("https://ops.grafana-ops.net", dsquery.ExploreQuery{
+			DatasourceUID:  "grafanacloud-logs",
+			DatasourceType: "loki",
+			Expr:           `rate({name="ingress-nginx-controller"}[$__auto])`,
+		})
+
+		require.NotEmpty(t, got)
+		params := mustParseURL(t, got).Query()
+		assert.NotContains(t, params.Get("panes"), `"intervalMs"`)
 	})
 
 	t.Run("returns empty for missing required fields", func(t *testing.T) {

@@ -120,6 +120,7 @@ open it in your browser after the query succeeds.`,
 				From:           shared.From,
 				To:             shared.To,
 				Instant:        !req.IsRange(),
+				Step:           step,
 				OrgID:          dsquery.OrgID(cfgCtx),
 			})
 			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("metric query")

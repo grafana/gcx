@@ -41,7 +41,7 @@ func MetricsExploreURL(host string, query dsquery.ExploreQuery) string {
 
 	from, to := dsquery.ShortExploreRange(query.From, query.To)
 
-	queries := []any{map[string]any{
+	q := map[string]any{
 		"refId":      "A",
 		"expr":       query.Expr,
 		"queryType":  "range",
@@ -50,9 +50,12 @@ func MetricsExploreURL(host string, query dsquery.ExploreQuery) string {
 		"editorMode": "code",
 		"direction":  "backward",
 		"datasource": dsquery.ExploreDatasource(query.DatasourceType, query.DatasourceUID),
-	}}
+	}
+	if query.Step > 0 {
+		q["intervalMs"] = query.Step.Milliseconds()
+	}
 
-	return dsquery.BuildExploreURL(host, query.OrgID, dsquery.SinglePane(query.DatasourceUID, queries, from, to, map[string]any{
+	return dsquery.BuildExploreURL(host, query.OrgID, dsquery.SinglePane(query.DatasourceUID, []any{q}, from, to, map[string]any{
 		"compact": false,
 	}), nil)
 }

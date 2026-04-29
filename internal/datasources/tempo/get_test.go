@@ -1,4 +1,4 @@
-package tempo
+package tempo_test
 
 import (
 	"bytes"
@@ -7,6 +7,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/grafana/gcx/internal/datasources/tempo"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -14,8 +15,6 @@ import (
 )
 
 func TestGetCmd_DoesNotLookupDatasourceTypeWithoutShareFlags(t *testing.T) {
-	t.Helper()
-
 	var traceCalls int
 	var metadataCalls int
 	var bootdataCalls int
@@ -29,7 +28,7 @@ func TestGetCmd_DoesNotLookupDatasourceTypeWithoutShareFlags(t *testing.T) {
 			traceCalls++
 			w.Header().Set("Content-Type", "application/json")
 			_, err := w.Write([]byte(`{"trace":{"traceID":"trace-123"}}`))
-			require.NoError(t, err)
+			assert.NoError(t, err)
 		case "/api/datasources/uid/tempo-uid":
 			metadataCalls++
 			http.Error(w, `{"message":"unexpected datasource lookup"}`, http.StatusInternalServerError)
@@ -56,7 +55,7 @@ current-context: default
 	loader := &providers.ConfigLoader{}
 	loader.SetConfigFile(cfgFile)
 
-	cmd := GetCmd(loader)
+	cmd := tempo.GetCmd(loader)
 	root := &cobra.Command{Use: "test"}
 	root.AddCommand(cmd)
 

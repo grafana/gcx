@@ -10,119 +10,305 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSearchExploreURL(t *testing.T) {
-	t.Run("builds traceql search explore link", func(t *testing.T) {
-		got := tempo.SearchExploreURL("https://ops.grafana-ops.net", dsquery.ExploreQuery{
-			DatasourceUID:  "grafanacloud-traces",
-			DatasourceType: "tempo",
-			Expr:           `{name != nil}`,
-		}, 20)
+// traceQLBuilder identifies which TraceQL URL builder a table case targets.
+type traceQLBuilder int
 
-		require.NotEmpty(t, got)
-		params := mustParseURL(t, got).Query()
-		assert.Equal(t, "1", params.Get("schemaVersion"))
-		assert.Contains(t, params.Get("panes"), `"datasource":"grafanacloud-traces"`)
-		assert.Contains(t, params.Get("panes"), `"queryType":"traceql"`)
-		assert.Contains(t, params.Get("panes"), `"limit":20`)
-		assert.Contains(t, params.Get("panes"), `"tableType":"traces"`)
-		assert.Contains(t, params.Get("panes"), `"metricsQueryType":"range"`)
-		assert.Contains(t, params.Get("panes"), `"serviceMapUseNativeHistograms":false`)
-		assert.Contains(t, params.Get("panes"), `"query":"{name != nil}"`)
-		assert.Contains(t, params.Get("panes"), `"from":"now-1m"`)
-		assert.Contains(t, params.Get("panes"), `"to":"now"`)
-		assert.Contains(t, params.Get("panes"), `"compact":false`)
-	})
+const (
+	builderSearch traceQLBuilder = iota
+	builderMetrics
+)
 
-	t.Run("returns empty for missing required fields", func(t *testing.T) {
-		assert.Empty(t, tempo.SearchExploreURL("", dsquery.ExploreQuery{DatasourceUID: "tempo-uid", Expr: "{}"}, 20))
-		assert.Empty(t, tempo.SearchExploreURL("https://ops.grafana-ops.net", dsquery.ExploreQuery{Expr: "{}"}, 20))
-		assert.Empty(t, tempo.SearchExploreURL("https://ops.grafana-ops.net", dsquery.ExploreQuery{DatasourceUID: "tempo-uid"}, 20))
-	})
+func TestTraceQLExploreURLs(t *testing.T) {
+	tests := []struct {
+		name         string
+		builder      traceQLBuilder
+		host         string
+		query        dsquery.ExploreQuery
+		limit        int
+		wantEmpty    bool
+		wantContains []string
+	}{
+		{
+			name:    "search builds traceql search explore link",
+			builder: builderSearch,
+			host:    "https://ops.grafana-ops.net",
+			query: dsquery.ExploreQuery{
+				DatasourceUID:  "grafanacloud-traces",
+				DatasourceType: "tempo",
+				Expr:           `{name != nil}`,
+			},
+			limit: 20,
+			wantContains: []string{
+				`"datasource":"grafanacloud-traces"`,
+				`"queryType":"traceql"`,
+				`"limit":20`,
+				`"tableType":"traces"`,
+				`"metricsQueryType":"range"`,
+				`"serviceMapUseNativeHistograms":false`,
+				`"query":"{name != nil}"`,
+				`"from":"now-1m"`,
+				`"to":"now"`,
+				`"compact":false`,
+			},
+		},
+		{
+			name:    "search preserves explicit relative from",
+			builder: builderSearch,
+			host:    "https://ops.grafana-ops.net",
+			query: dsquery.ExploreQuery{
+				DatasourceUID:  "grafanacloud-traces",
+				DatasourceType: "tempo",
+				Expr:           `{name != nil}`,
+				From:           "now-1h",
+			},
+			limit: 20,
+			wantContains: []string{
+				`"from":"now-1h"`,
+				`"to":"now"`,
+			},
+		},
+		{
+			name:      "search returns empty when host missing",
+			builder:   builderSearch,
+			host:      "",
+			query:     dsquery.ExploreQuery{DatasourceUID: "tempo-uid", Expr: "{}"},
+			limit:     20,
+			wantEmpty: true,
+		},
+		{
+			name:      "search returns empty when datasource UID missing",
+			builder:   builderSearch,
+			host:      "https://ops.grafana-ops.net",
+			query:     dsquery.ExploreQuery{Expr: "{}"},
+			limit:     20,
+			wantEmpty: true,
+		},
+		{
+			name:      "search returns empty when expr missing",
+			builder:   builderSearch,
+			host:      "https://ops.grafana-ops.net",
+			query:     dsquery.ExploreQuery{DatasourceUID: "tempo-uid"},
+			limit:     20,
+			wantEmpty: true,
+		},
+		{
+			name:    "search returns empty when limit is zero",
+			builder: builderSearch,
+			host:    "https://ops.grafana-ops.net",
+			query: dsquery.ExploreQuery{
+				DatasourceUID:  "grafanacloud-traces",
+				DatasourceType: "tempo",
+				Expr:           `{name != nil}`,
+			},
+			limit:     0,
+			wantEmpty: true,
+		},
+		{
+			name:    "metrics builds traceql metrics explore link",
+			builder: builderMetrics,
+			host:    "https://ops.grafana-ops.net",
+			query: dsquery.ExploreQuery{
+				DatasourceUID:  "grafanacloud-traces",
+				DatasourceType: "tempo",
+				Expr:           `{name != nil} | rate()`,
+			},
+			limit: 20,
+			wantContains: []string{
+				`"datasource":"grafanacloud-traces"`,
+				`"queryType":"traceql"`,
+				`"limit":20`,
+				`"tableType":"traces"`,
+				`"metricsQueryType":"range"`,
+				`"serviceMapUseNativeHistograms":false`,
+				`"query":"{name != nil} | rate()"`,
+				`"from":"now-1m"`,
+				`"to":"now"`,
+				`"compact":false`,
+			},
+		},
+		{
+			name:    "metrics preserves explicit relative from",
+			builder: builderMetrics,
+			host:    "https://ops.grafana-ops.net",
+			query: dsquery.ExploreQuery{
+				DatasourceUID:  "grafanacloud-traces",
+				DatasourceType: "tempo",
+				Expr:           `{name != nil} | rate()`,
+				From:           "now-1h",
+			},
+			limit: 20,
+			wantContains: []string{
+				`"from":"now-1h"`,
+				`"to":"now"`,
+			},
+		},
+		{
+			name:    "metrics uses instant query type for instant queries",
+			builder: builderMetrics,
+			host:    "https://ops.grafana-ops.net",
+			query: dsquery.ExploreQuery{
+				DatasourceUID:  "grafanacloud-traces",
+				DatasourceType: "tempo",
+				Expr:           `{name != nil} | rate()`,
+				Instant:        true,
+			},
+			limit: 20,
+			wantContains: []string{
+				`"metricsQueryType":"instant"`,
+			},
+		},
+		{
+			name:      "metrics returns empty when host missing",
+			builder:   builderMetrics,
+			host:      "",
+			query:     dsquery.ExploreQuery{DatasourceUID: "tempo-uid", Expr: "{ } | rate()"},
+			limit:     20,
+			wantEmpty: true,
+		},
+		{
+			name:      "metrics returns empty when datasource UID missing",
+			builder:   builderMetrics,
+			host:      "https://ops.grafana-ops.net",
+			query:     dsquery.ExploreQuery{Expr: "{ } | rate()"},
+			limit:     20,
+			wantEmpty: true,
+		},
+		{
+			name:      "metrics returns empty when expr missing",
+			builder:   builderMetrics,
+			host:      "https://ops.grafana-ops.net",
+			query:     dsquery.ExploreQuery{DatasourceUID: "tempo-uid"},
+			limit:     20,
+			wantEmpty: true,
+		},
+	}
 
-	t.Run("returns empty for unlimited result searches", func(t *testing.T) {
-		assert.Empty(t, tempo.SearchExploreURL("https://ops.grafana-ops.net", dsquery.ExploreQuery{
-			DatasourceUID:  "grafanacloud-traces",
-			DatasourceType: "tempo",
-			Expr:           `{name != nil}`,
-		}, 0))
-	})
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got string
+			switch tt.builder {
+			case builderSearch:
+				got = tempo.SearchExploreURL(tt.host, tt.query, tt.limit)
+			case builderMetrics:
+				got = tempo.MetricsExploreURL(tt.host, tt.query, tt.limit)
+			default:
+				t.Fatalf("unknown builder: %v", tt.builder)
+			}
 
-func TestMetricsExploreURL(t *testing.T) {
-	t.Run("builds traceql metrics explore link", func(t *testing.T) {
-		got := tempo.MetricsExploreURL("https://ops.grafana-ops.net", dsquery.ExploreQuery{
-			DatasourceUID:  "grafanacloud-traces",
-			DatasourceType: "tempo",
-			Expr:           `{name != nil} | rate()`,
-		}, 20)
+			if tt.wantEmpty {
+				assert.Empty(t, got)
+				return
+			}
 
-		require.NotEmpty(t, got)
-		params := mustParseURL(t, got).Query()
-		assert.Equal(t, "1", params.Get("schemaVersion"))
-		assert.Contains(t, params.Get("panes"), `"datasource":"grafanacloud-traces"`)
-		assert.Contains(t, params.Get("panes"), `"queryType":"traceql"`)
-		assert.Contains(t, params.Get("panes"), `"limit":20`)
-		assert.Contains(t, params.Get("panes"), `"tableType":"traces"`)
-		assert.Contains(t, params.Get("panes"), `"metricsQueryType":"range"`)
-		assert.Contains(t, params.Get("panes"), `"serviceMapUseNativeHistograms":false`)
-		assert.Contains(t, params.Get("panes"), `"query":"{name != nil} | rate()"`)
-		assert.Contains(t, params.Get("panes"), `"from":"now-1m"`)
-		assert.Contains(t, params.Get("panes"), `"to":"now"`)
-		assert.Contains(t, params.Get("panes"), `"compact":false`)
-	})
-
-	t.Run("uses instant metrics query type for instant queries", func(t *testing.T) {
-		got := tempo.MetricsExploreURL("https://ops.grafana-ops.net", dsquery.ExploreQuery{
-			DatasourceUID:  "grafanacloud-traces",
-			DatasourceType: "tempo",
-			Expr:           `{name != nil} | rate()`,
-			Instant:        true,
-		}, 20)
-
-		require.NotEmpty(t, got)
-		params := mustParseURL(t, got).Query()
-		assert.Contains(t, params.Get("panes"), `"metricsQueryType":"instant"`)
-	})
-
-	t.Run("returns empty for missing required fields", func(t *testing.T) {
-		assert.Empty(t, tempo.MetricsExploreURL("", dsquery.ExploreQuery{DatasourceUID: "tempo-uid", Expr: "{ } | rate()"}, 20))
-		assert.Empty(t, tempo.MetricsExploreURL("https://ops.grafana-ops.net", dsquery.ExploreQuery{Expr: "{ } | rate()"}, 20))
-		assert.Empty(t, tempo.MetricsExploreURL("https://ops.grafana-ops.net", dsquery.ExploreQuery{DatasourceUID: "tempo-uid"}, 20))
-	})
+			require.NotEmpty(t, got)
+			params := mustParseURL(t, got).Query()
+			assert.Equal(t, "1", params.Get("schemaVersion"))
+			panes := params.Get("panes")
+			for _, want := range tt.wantContains {
+				assert.Contains(t, panes, want)
+			}
+		})
+	}
 }
 
 func TestTraceExploreURL(t *testing.T) {
-	t.Run("builds trace explore link", func(t *testing.T) {
-		got := tempo.TraceExploreURL("https://mystack.grafana.net/", dsquery.ExploreQuery{
-			DatasourceUID:  "tempo-uid",
-			DatasourceType: "tempo",
-			From:           "2026-04-24T10:00:00Z",
-			To:             "2026-04-24T11:00:00Z",
-			OrgID:          9,
-		}, "287e20fb791cf30")
+	tests := []struct {
+		name         string
+		host         string
+		query        dsquery.ExploreQuery
+		traceID      string
+		wantEmpty    bool
+		wantOrgID    string
+		wantTraceID  string
+		wantContains []string
+	}{
+		{
+			name: "builds trace explore link",
+			host: "https://mystack.grafana.net/",
+			query: dsquery.ExploreQuery{
+				DatasourceUID:  "tempo-uid",
+				DatasourceType: "tempo",
+				From:           "2026-04-24T10:00:00Z",
+				To:             "2026-04-24T11:00:00Z",
+				OrgID:          9,
+			},
+			traceID:     "287e20fb791cf30",
+			wantOrgID:   "9",
+			wantTraceID: "287e20fb791cf30",
+			wantContains: []string{
+				`"datasource":"tempo-uid"`,
+				`"queryType":"traceql"`,
+				`"limit":20`,
+				`"tableType":"traces"`,
+				`"metricsQueryType":"range"`,
+				`"serviceMapUseNativeHistograms":false`,
+				`"query":"287e20fb791cf30"`,
+				`"from":"2026-04-24T10:00:00Z"`,
+				`"to":"2026-04-24T11:00:00Z"`,
+				`"compact":false`,
+			},
+		},
+		{
+			name: "preserves explicit relative from",
+			host: "https://mystack.grafana.net",
+			query: dsquery.ExploreQuery{
+				DatasourceUID:  "tempo-uid",
+				DatasourceType: "tempo",
+				From:           "now-1h",
+			},
+			traceID:     "287e20fb791cf30",
+			wantTraceID: "287e20fb791cf30",
+			wantContains: []string{
+				`"from":"now-1h"`,
+				`"to":"now"`,
+			},
+		},
+		{
+			name:      "returns empty when host missing",
+			host:      "",
+			query:     dsquery.ExploreQuery{DatasourceUID: "tempo-uid"},
+			traceID:   "abc",
+			wantEmpty: true,
+		},
+		{
+			name:      "returns empty when datasource UID missing",
+			host:      "https://mystack.grafana.net",
+			query:     dsquery.ExploreQuery{},
+			traceID:   "abc",
+			wantEmpty: true,
+		},
+		{
+			name:      "returns empty when trace ID missing",
+			host:      "https://mystack.grafana.net",
+			query:     dsquery.ExploreQuery{DatasourceUID: "tempo-uid"},
+			traceID:   "",
+			wantEmpty: true,
+		},
+	}
 
-		require.NotEmpty(t, got)
-		params := mustParseURL(t, got).Query()
-		assert.Equal(t, "1", params.Get("schemaVersion"))
-		assert.Equal(t, "9", params.Get("orgId"))
-		assert.Equal(t, "287e20fb791cf30", params.Get("traceId"))
-		assert.Contains(t, params.Get("panes"), `"datasource":"tempo-uid"`)
-		assert.Contains(t, params.Get("panes"), `"queryType":"traceql"`)
-		assert.Contains(t, params.Get("panes"), `"limit":20`)
-		assert.Contains(t, params.Get("panes"), `"tableType":"traces"`)
-		assert.Contains(t, params.Get("panes"), `"metricsQueryType":"range"`)
-		assert.Contains(t, params.Get("panes"), `"serviceMapUseNativeHistograms":false`)
-		assert.Contains(t, params.Get("panes"), `"query":"287e20fb791cf30"`)
-		assert.Contains(t, params.Get("panes"), `"from":"2026-04-24T10:00:00Z"`)
-		assert.Contains(t, params.Get("panes"), `"to":"2026-04-24T11:00:00Z"`)
-		assert.Contains(t, params.Get("panes"), `"compact":false`)
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tempo.TraceExploreURL(tt.host, tt.query, tt.traceID)
+			if tt.wantEmpty {
+				assert.Empty(t, got)
+				return
+			}
 
-	t.Run("returns empty for missing required fields", func(t *testing.T) {
-		assert.Empty(t, tempo.TraceExploreURL("", dsquery.ExploreQuery{DatasourceUID: "tempo-uid"}, "abc"))
-		assert.Empty(t, tempo.TraceExploreURL("https://mystack.grafana.net", dsquery.ExploreQuery{}, "abc"))
-		assert.Empty(t, tempo.TraceExploreURL("https://mystack.grafana.net", dsquery.ExploreQuery{DatasourceUID: "tempo-uid"}, ""))
-	})
+			require.NotEmpty(t, got)
+			params := mustParseURL(t, got).Query()
+			assert.Equal(t, "1", params.Get("schemaVersion"))
+			if tt.wantOrgID != "" {
+				assert.Equal(t, tt.wantOrgID, params.Get("orgId"))
+			}
+			if tt.wantTraceID != "" {
+				assert.Equal(t, tt.wantTraceID, params.Get("traceId"))
+			}
+			panes := params.Get("panes")
+			for _, want := range tt.wantContains {
+				assert.Contains(t, panes, want)
+			}
+		})
+	}
 }
 
 func mustParseURL(t *testing.T, raw string) *url.URL {
