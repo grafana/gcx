@@ -49,12 +49,12 @@ func getCachedSignalAuth(ctx context.Context, loader *providers.ConfigLoader, si
 
 	cloudCfg, cloudErr := loader.LoadCloudConfig(ctx)
 	if cloudErr != nil {
-		return SignalAuth{}, false, fmt.Errorf("adaptive: failed to load cloud config for token: %w", cloudErr)
+		return SignalAuth{}, false, fmt.Errorf("adaptive-%s: failed to load cloud config for token: %w", signal, cloudErr)
 	}
 
 	httpClient, httpErr := cloudCfg.HTTPClient(ctx)
 	if httpErr != nil {
-		return SignalAuth{}, false, fmt.Errorf("adaptive: failed to create HTTP client: %w", httpErr)
+		return SignalAuth{}, false, fmt.Errorf("adaptive-%s: failed to create HTTP client: %w", signal, httpErr)
 	}
 
 	return SignalAuth{
@@ -81,7 +81,7 @@ func ResolveSignalAuth(ctx context.Context, loader *providers.ConfigLoader, sign
 	// Cache miss — resolve via GCOM.
 	cloudCfg, err := loader.LoadCloudConfig(ctx)
 	if err != nil {
-		return SignalAuth{}, fmt.Errorf("adaptive: failed to load cloud config: %w", err)
+		return SignalAuth{}, fmt.Errorf("adaptive-%s: failed to load cloud config: %w", signal, err)
 	}
 
 	baseURL, tenantID, err := ExtractSignalInfo(cloudCfg.Stack, signal)
@@ -91,7 +91,7 @@ func ResolveSignalAuth(ctx context.Context, loader *providers.ConfigLoader, sign
 
 	httpClient, err := cloudCfg.HTTPClient(ctx)
 	if err != nil {
-		return SignalAuth{}, fmt.Errorf("adaptive: failed to create HTTP client: %w", err)
+		return SignalAuth{}, fmt.Errorf("adaptive-%s: failed to create HTTP client: %w", signal, err)
 	}
 
 	// Cache resolved values for subsequent calls.

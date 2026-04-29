@@ -24,13 +24,13 @@ type FrontendSettings struct {
 }
 
 // FetchAnonymousSettings performs an unauthenticated GET of /api/frontend/settings
-// against baseURL, used for pre-auth target detection. It uses httputils.NewDefaultClient
-// (so --log-http-payload is honoured) and respects the supplied context's deadline
-// and cancellation.
+// against baseURL, used for pre-auth target detection. When httpClient is nil it
+// falls back to httputils.NewDefaultClient (so --log-http-payload is honoured).
+// Respects the supplied context's deadline and cancellation.
 //
 // Errors are returned as-is; callers are responsible for deciding how to classify
 // them (e.g., mapping a non-200 status to TargetUnknown).
-func FetchAnonymousSettings(ctx context.Context, baseURL string) (*FrontendSettings, error) {
+func FetchAnonymousSettings(ctx context.Context, baseURL string, httpClient *http.Client) (*FrontendSettings, error) {
 	settingsURL := strings.TrimSuffix(baseURL, "/") + "/api/frontend/settings"
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, settingsURL, nil)
@@ -38,8 +38,10 @@ func FetchAnonymousSettings(ctx context.Context, baseURL string) (*FrontendSetti
 		return nil, fmt.Errorf("building request for %s: %w", settingsURL, err)
 	}
 
-	client := httputils.NewDefaultClient(ctx)
-	resp, err := client.Do(req)
+	if httpClient == nil {
+		httpClient = httputils.NewDefaultClient(ctx)
+	}
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("GET %s: %w", settingsURL, err)
 	}

@@ -9,7 +9,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/caarlos0/env/v11"
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/httputils"
@@ -93,8 +92,10 @@ func cloudEnvOverride(cfg *config.Config) error {
 	if curCtx.Cloud == nil {
 		curCtx.Cloud = &config.CloudConfig{}
 	}
-
-	return env.Parse(curCtx)
+	if err := config.ParseEnvIntoContext(curCtx); err != nil {
+		return err
+	}
+	return nil
 }
 
 // contextMustExist is a config.Override that validates the current context exists.
@@ -137,11 +138,7 @@ func envOverride(cfg *config.Config) error {
 	}
 
 	curCtx := cfg.Contexts[cfg.CurrentContext]
-	if curCtx.Grafana == nil {
-		curCtx.Grafana = &config.GrafanaConfig{}
-	}
-
-	if err := env.Parse(curCtx); err != nil {
+	if err := config.ParseEnvIntoContext(curCtx); err != nil {
 		return err
 	}
 
@@ -198,7 +195,10 @@ func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.Namespaced
 		return config.NamespacedRESTConfig{}, err
 	}
 
-	restCfg := loaded.GetCurrentContext().ToRESTConfig(ctx)
+	restCfg, err := loaded.GetCurrentContext().ToRESTConfig(ctx)
+	if err != nil {
+		return config.NamespacedRESTConfig{}, err
+	}
 	restCfg.WireTokenPersistence(ctx, l.configSource(), loaded.CurrentContext, loaded.Sources)
 
 	return restCfg, nil
@@ -248,7 +248,10 @@ func (l *ConfigLoader) LoadCloudConfig(ctx context.Context) (CloudRESTConfig, er
 	namespace := "default"
 	var restCfg *rest.Config
 	if curCtx.Grafana != nil && !curCtx.Grafana.IsEmpty() {
-		nrc := curCtx.ToRESTConfig(ctx)
+		nrc, err := curCtx.ToRESTConfig(ctx)
+		if err != nil {
+			return CloudRESTConfig{}, err
+		}
 		nrc.WireTokenPersistence(ctx, l.configSource(), loaded.CurrentContext, loaded.Sources)
 
 		namespace = nrc.Namespace
@@ -294,7 +297,10 @@ func (l *ConfigLoader) LoadProviderConfig(ctx context.Context, providerName stri
 	// Derive namespace from grafana config if available.
 	namespace := "default"
 	if curCtx.Grafana != nil && !curCtx.Grafana.IsEmpty() {
-		restCfg := curCtx.ToRESTConfig(ctx)
+		restCfg, err := curCtx.ToRESTConfig(ctx)
+		if err != nil {
+			return nil, "", err
+		}
 		namespace = restCfg.Namespace
 	}
 

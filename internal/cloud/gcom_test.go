@@ -3,6 +3,7 @@ package cloud_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -123,6 +124,45 @@ func TestGCOMClient_GetStack_NonSuccess(t *testing.T) {
 			if !strings.Contains(errStr, http.StatusText(tt.statusCode)) && !strings.Contains(errStr, "404") &&
 				!strings.Contains(errStr, "401") && !strings.Contains(errStr, "500") {
 				t.Errorf("error %q does not contain status code info", errStr)
+			}
+		})
+	}
+}
+
+func TestGCOMClient_GetStack_TypedHTTPError(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+	}{
+		{"403 forbidden", http.StatusForbidden},
+		{"401 unauthorized", http.StatusUnauthorized},
+		{"404 not found", http.StatusNotFound},
+		{"500 internal", http.StatusInternalServerError},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tt.statusCode)
+				_, _ = w.Write([]byte(`{"message":"denied"}`))
+			}))
+			defer srv.Close()
+
+			client, err := cloud.NewGCOMClient(srv.URL, "token")
+			if err != nil {
+				t.Fatalf("unexpected error creating client: %v", err)
+			}
+			_, err = client.GetStack(context.Background(), "mystack")
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+
+			var httpErr *cloud.GCOMHTTPError
+			if !errors.As(err, &httpErr) {
+				t.Fatalf("expected error to wrap *cloud.GCOMHTTPError, got %T: %v", err, err)
+			}
+			if httpErr.Status != tt.statusCode {
+				t.Errorf("Status: got %d, want %d", httpErr.Status, tt.statusCode)
 			}
 		})
 	}

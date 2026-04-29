@@ -2,18 +2,20 @@
 
 ## Overview
 
-gcx supports three authentication methods — browser-based OAuth (PKCE),
-Grafana service account tokens, and Grafana Cloud Access Policy tokens — and
-each targets a different API surface. The authentication subsystem spans
-package boundaries: OAuth mechanics live in `internal/auth/`, token storage
-lives in `internal/config/` as fields on `GrafanaConfig` and `CloudConfig`,
-and token attachment to HTTP clients happens in `internal/config/rest.go`.
-This document covers all three methods end to end.
+gcx supports four authentication methods — browser-based OAuth (PKCE),
+Grafana service account tokens, mTLS client certificates, and Grafana Cloud
+Access Policy tokens — and each targets a different API surface. The
+authentication subsystem spans package boundaries: OAuth mechanics live in
+`internal/auth/`, token storage lives in `internal/config/` as fields on
+`GrafanaConfig` and `CloudConfig`, TLS certificate settings live in
+`GrafanaConfig.TLS`, and token/cert attachment to HTTP clients happens in
+`internal/config/rest.go`. This document covers all four methods end to end.
 
 ```mermaid
 graph LR
     OAuth[OAuth PKCE<br/>gat_ + gar_ tokens]
     SA[Service account token<br/>glsa_...]
+    mTLS[mTLS client certificate<br/>cert + key files]
     CAP[Cloud Access Policy token<br/>glc_...]
 
     GrafanaAPI[Grafana API<br/>instance-scoped]
@@ -25,6 +27,8 @@ graph LR
     OAuth --> K8sAPI
     SA --> GrafanaAPI
     SA --> K8sAPI
+    mTLS --> GrafanaAPI
+    mTLS --> K8sAPI
     CAP --> GCOM
     CAP --> CloudProd
 ```
@@ -37,6 +41,7 @@ graph LR
 |---|---|---|---|---|---|
 | OAuth PKCE | Grafana API, K8s `/apis` | Browser flow via `gcx login` | `GrafanaConfig.OAuthToken`, `OAuthRefreshToken`, `OAuthTokenExpiresAt`, `OAuthRefreshExpiresAt`, `ProxyEndpoint` | Automatic via `RefreshTransport` | Transparent |
 | Service account token | Grafana API, K8s `/apis` | Grafana UI → Administration → Service accounts | `GrafanaConfig.APIToken` | None (static) | Manual (rotate in Grafana UI) |
+| mTLS client certificate | Grafana API, K8s `/apis` | Identity-aware proxy (e.g. Teleport) | `GrafanaConfig.TLS.CertFile`, `KeyFile`, `CAFile` (or `CertData`, `KeyData`, `CAData`) | External (proxy manages cert lifecycle) | External (e.g. `tsh apps login`) |
 | Cloud Access Policy token | GCOM, Cloud product APIs | Grafana Cloud UI → Security → Access policies | `CloudConfig.Token` | None (static) | Manual (rotate in Cloud UI) |
 
 ---
@@ -54,6 +59,50 @@ sets them as `rest.Config.BearerToken` when no OAuth credentials are present.
 
 Rotation is manual: rotate in the Grafana UI, then update the context with
 `gcx login --context X --token glsa_new_token`.
+
+---
+
+## mTLS client certificates
+
+mTLS (mutual TLS) authentication uses client certificates to authenticate at
+the transport layer. This is the standard method for Grafana instances behind
+identity-aware proxies like [Teleport](https://goteleport.com/), where the
+proxy terminates mTLS and authenticates the user based on the client
+certificate — no Grafana token is needed.
+
+gcx stores the certificate paths in `GrafanaConfig.TLS` (`CertFile`,
+`KeyFile`, optionally `CAFile`), or inline as `CertData`/`KeyData`/`CAData`.
+Environment variables `GRAFANA_TLS_CERT_FILE`, `GRAFANA_TLS_KEY_FILE`, and
+`GRAFANA_TLS_CA_FILE` are supported for CI/CD.
+
+### Configuration
+
+```bash
+# Via gcx config
+gcx config set contexts.myctx.grafana.server https://grafana.teleport.example.com
+gcx config set contexts.myctx.grafana.tls.cert-file "$(tsh apps config grafana -f cert)"
+gcx config set contexts.myctx.grafana.tls.key-file "$(tsh apps config grafana -f key)"
+
+# Login detects mTLS as the auth method
+gcx login --yes
+```
+
+### How it works
+
+The login flow detects mTLS as a standalone auth method when
+`GrafanaConfig.TLS` has a client certificate configured and no token or OAuth
+credentials are provided. The `AuthMethod` is stored as `"mtls"`. TLS
+settings are threaded through the entire login pipeline: target detection,
+connectivity validation, and health checks all use TLS-aware HTTP clients.
+
+On re-auth (`gcx login` against an existing context), the CLI carries
+existing TLS settings forward so the user does not need to re-specify
+certificate paths. `mergeAuthIntoExisting` syncs TLS alongside other auth
+fields.
+
+Certificate lifecycle is managed externally (e.g. `tsh apps login grafana`
+refreshes short-lived certs). gcx reads the files at connection time, so
+refreshed certs take effect on the next command.
 
 ---
 

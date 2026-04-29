@@ -31,7 +31,12 @@ func AuthenticateAndProxyHandler(cfg *config.Context) http.HandlerFunc {
 
 		var tlsCfg *tls.Config
 		if cfg.Grafana != nil && cfg.Grafana.TLS != nil {
-			tlsCfg = cfg.Grafana.TLS.ToStdTLSConfig()
+			var err error
+			tlsCfg, err = cfg.Grafana.TLS.ToStdTLSConfig()
+			if err != nil {
+				httputils.Error(r, w, "TLS configuration error", err, http.StatusInternalServerError)
+				return
+			}
 		}
 		middlewares := []httputils.Middleware{httputils.LoggingMiddleware}
 		if httputils.PayloadLogging(r.Context()) {

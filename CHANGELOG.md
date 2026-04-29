@@ -1,3 +1,24 @@
+## v0.2.11 (2026-04-29)
+
+- Add mTLS client certificate authentication for config and login (Teleport)
+- Add `kg describe` command for schema, scopes, and telemetry configs
+- Add `skills update` command to update existing installed skills
+- Fix metrics default view to be usable out of the box
+- Fix synthetic monitoring to surface required scopes on register/install failure
+- Fix grafana-com instance selector regression
+- Fix `config set/unset` to resolve bare paths against the current context
+- Fix front matter in the debug-with-grafana skill
+- Update README with sigil/aio11y rename and restored Compatibility section
+- Update Go dependencies, GitHub Actions, and MySQL Docker tag to v9.7
+- Remove PyPI publishing job from release CI
+
+## v0.2.10 (2026-04-23)
+
+- Replace Homebrew binary cask with source formula for Gatekeeper-free macOS installs
+- Add automated workflow to publish Homebrew formula on release
+- Update installation docs and README with new Homebrew instructions
+
+
 ## v0.2.9 (2026-04-23)
 
 - Consolidated `gcx auth` and `gcx config` into a unified `gcx login` command

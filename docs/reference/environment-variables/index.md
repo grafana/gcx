@@ -48,6 +48,20 @@ StackID specifies the Grafana Cloud stack targeted by this config.
 Note: required when targeting a Grafana Cloud instance.
 See OrgID for on-prem Grafana instances.
 
+## `GRAFANA_TLS_CA_FILE`
+
+CAFile is the path to a PEM-encoded CA certificate bundle file.
+When set, this CA is used to verify the server's certificate.
+
+## `GRAFANA_TLS_CERT_FILE`
+
+CertFile is the path to a PEM-encoded client certificate file.
+This enables mutual TLS (mTLS) authentication with the server.
+
+## `GRAFANA_TLS_KEY_FILE`
+
+KeyFile is the path to a PEM-encoded client certificate key file.
+
 ## `GRAFANA_TOKEN`
 
 APIToken is a service account token.

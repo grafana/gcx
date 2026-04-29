@@ -23,7 +23,10 @@ func DiscoverStackID(ctx context.Context, cfg GrafanaConfig) (int64, error) {
 		return 0, err
 	}
 
-	client := newBootdataHTTPClient(cfg)
+	client, err := newBootdataHTTPClient(cfg)
+	if err != nil {
+		return 0, err
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, bootdataURL.String(), nil)
 	if err != nil {
@@ -81,17 +84,21 @@ func buildBootdataURL(server string) (*url.URL, error) {
 	return parsed, nil
 }
 
-func newBootdataHTTPClient(cfg GrafanaConfig) *http.Client {
+func newBootdataHTTPClient(cfg GrafanaConfig) (*http.Client, error) {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 	}
 
 	if cfg.TLS != nil {
-		transport.TLSClientConfig = cfg.TLS.ToStdTLSConfig()
+		tlsCfg, err := cfg.TLS.ToStdTLSConfig()
+		if err != nil {
+			return nil, fmt.Errorf("TLS configuration: %w", err)
+		}
+		transport.TLSClientConfig = tlsCfg
 	}
 
 	return &http.Client{
 		Timeout:   5 * time.Second,
 		Transport: transport,
-	}
+	}, nil
 }

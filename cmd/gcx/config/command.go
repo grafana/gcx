@@ -7,7 +7,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/caarlos0/env/v11"
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
@@ -53,11 +52,7 @@ func (opts *Options) LoadConfigTolerant(ctx context.Context, extraOverrides ...c
 
 			curCtx := cfg.Contexts[cfg.CurrentContext]
 
-			if curCtx.Grafana == nil {
-				curCtx.Grafana = &config.GrafanaConfig{}
-			}
-
-			if err := env.Parse(curCtx); err != nil {
+			if err := config.ParseEnvIntoContext(curCtx); err != nil {
 				return err
 			}
 
@@ -137,7 +132,10 @@ func (opts *Options) LoadGrafanaConfig(ctx context.Context) (config.NamespacedRE
 		return config.NamespacedRESTConfig{}, err
 	}
 
-	restCfg := cfg.GetCurrentContext().ToRESTConfig(ctx)
+	restCfg, err := cfg.GetCurrentContext().ToRESTConfig(ctx)
+	if err != nil {
+		return config.NamespacedRESTConfig{}, err
+	}
 	restCfg.WireTokenPersistence(ctx, opts.ConfigSource(), cfg.CurrentContext, cfg.Sources)
 
 	return restCfg, nil
@@ -422,7 +420,11 @@ func checkContext(cmd *cobra.Command, cfg config.Config, gCtx *config.Context, s
 	}
 	cmdio.Info(stdout, "Context type: %s", contextType)
 
-	restCfg := gCtx.ToRESTConfig(cmd.Context())
+	restCfg, err := gCtx.ToRESTConfig(cmd.Context())
+	if err != nil {
+		cmdio.Error(stdout, "Configuration: %s", cmdio.Red(err.Error()))
+		return nil
+	}
 	restCfg.WireTokenPersistence(cmd.Context(), source, gCtx.Name, cfg.Sources)
 
 	if _, err := discovery.NewDefaultRegistry(cmd.Context(), restCfg); err != nil {

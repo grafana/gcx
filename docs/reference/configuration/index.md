@@ -34,7 +34,7 @@ contexts:
       oauth-token-expires-at: string
       # OAuthRefreshExpiresAt is the OAuthRefreshToken expiration time in RFC3339 format.
       oauth-refresh-expires-at: string
-      # AuthMethod is the authentication method stored by gcx login: "oauth", "token", or "basic".
+      # AuthMethod is the authentication method stored by gcx login: "oauth", "token", "basic", or "mtls".
       # Empty string is valid for legacy configs; readers should call InferredAuthMethod() in that case.
       auth-method: string
       # OrgID specifies the organization targeted by this config.
@@ -55,6 +55,14 @@ contexts:
         # certificates against. If ServerName is empty, the hostname used to contact the
         # server is used.
         server-name: string
+        # CertFile is the path to a PEM-encoded client certificate file.
+        # This enables mutual TLS (mTLS) authentication with the server.
+        cert-file: string
+        # KeyFile is the path to a PEM-encoded client certificate key file.
+        key-file: string
+        # CAFile is the path to a PEM-encoded CA certificate bundle file.
+        # When set, this CA is used to verify the server's certificate.
+        ca-file: string
         # CertData holds PEM-encoded bytes (typically read from a client certificate file).
         # Note: this value is base64-encoded in the config file and will be
         # automatically decoded.
