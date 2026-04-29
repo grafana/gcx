@@ -24,5 +24,4 @@ Manage Knowledge Graph entities.
 
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
 * [gcx kg entities list](gcx_kg_entities_list.md)	 - List Knowledge Graph entities for a given type.
-* [gcx kg entities show](gcx_kg_entities_show.md)	 - Show entities. Without a name, lists all; with a name, shows one.
 

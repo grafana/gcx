@@ -1,11 +1,11 @@
-## gcx kg search
+## gcx kg meta
 
-Search Knowledge Graph entities or insights.
+Show Knowledge Graph metadata: entity types, valid env/namespace/site values, and telemetry query configs.
 
 ### Options
 
 ```
-  -h, --help   help for search
+  -h, --help   help for meta
 ```
 
 ### Options inherited from parent commands
@@ -23,5 +23,10 @@ Search Knowledge Graph entities or insights.
 ### SEE ALSO
 
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
-* [gcx kg search insights](gcx_kg_search_insights.md)	 - Search for insights matching a query.
+* [gcx kg meta all](gcx_kg_meta_all.md)	 - Load all sections: schema, scopes, logs, traces, and profiles.
+* [gcx kg meta logs](gcx_kg_meta_logs.md)	 - Show Loki label mappings for log drilldown.
+* [gcx kg meta profiles](gcx_kg_meta_profiles.md)	 - Show Pyroscope label mappings for profile drilldown.
+* [gcx kg meta schema](gcx_kg_meta_schema.md)	 - Show entity types, properties, and relationships.
+* [gcx kg meta scopes](gcx_kg_meta_scopes.md)	 - Show all valid env/namespace/site filter values.
+* [gcx kg meta traces](gcx_kg_meta_traces.md)	 - Show Tempo label mappings for trace drilldown.
 

@@ -681,63 +681,6 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 		Short: "Manage Knowledge Graph entities.",
 	}
 
-	// show subcommand: no args = list all, with <name> = single entity
-	var (
-		showType       string
-		showScope      scopeFlags
-		assertionsOnly bool
-		page           int
-	)
-	ioOpts := &entitiesShowOpts{}
-	showCmd := &cobra.Command{
-		Use:   "show [name]",
-		Short: "Show entities. Without a name, lists all; with a name, shows one.",
-		Args:  cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := ioOpts.IO.Validate(); err != nil {
-				return err
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-
-			if err := showScope.validateScopes(cmd.Context(), client); err != nil {
-				return err
-			}
-			startMs, endMs, err := showScope.resolveTime()
-			if err != nil {
-				return err
-			}
-
-			// Single entity mode: name provided
-			if len(args) == 1 {
-				return showSingleEntity(cmd, client, showType, args[0], &showScope, startMs, endMs, &ioOpts.IO)
-			}
-
-			// List mode: no name
-			entityTypes, err := resolveEntityTypes(cmd, client, showType)
-			if err != nil {
-				return err
-			}
-			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, assertionsOnly, showScope.scopeCriteria(), startMs, endMs, page, nil)
-			if err != nil {
-				return err
-			}
-			results = adapter.TruncateSlice(results, ioOpts.Limit)
-			return ioOpts.IO.Encode(cmd.OutOrStdout(), results)
-		},
-	}
-	showCmd.Flags().StringVar(&showType, "type", "", "Entity type (required for single entity, optional for list)")
-	showCmd.Flags().BoolVar(&assertionsOnly, "insights-only", false, "Only return entities with active insights (list mode)")
-	showCmd.Flags().IntVar(&page, "page", 0, "Page number, 0-based (list mode)")
-	showScope.register(showCmd)
-	ioOpts.setup(showCmd.Flags())
-
 	// list subcommand
 	var (
 		listType        string
@@ -811,30 +754,10 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 	listOpts.setup(listCmd.Flags())
 	_ = listCmd.MarkFlagRequired("type")
 
-	cmd.AddCommand(showCmd, listCmd)
+	cmd.AddCommand(listCmd)
 	return cmd
 }
 
-func showSingleEntity(cmd *cobra.Command, client *Client, entityType, name string, scope *scopeFlags, startMs, endMs int64, io *cmdio.Options) error {
-	if entityType == "" {
-		return errors.New("--type is required when showing a single entity")
-	}
-	if sm := scope.scopeMap(); sm != nil {
-		info, err := client.GetEntityInfo(cmd.Context(), entityType, name, sm, startMs, endMs)
-		if err != nil {
-			return err
-		}
-		return io.Encode(cmd.OutOrStdout(), info)
-	}
-	entity, err := client.LookupEntity(cmd.Context(), entityType, name, nil, startMs, endMs)
-	if err != nil {
-		return err
-	}
-	if entity == nil {
-		return fmt.Errorf("entity %s/%s not found in the specified time window (it may exist with a specific --env/--namespace/--site scope)", entityType, name)
-	}
-	return io.Encode(cmd.OutOrStdout(), entity)
-}
 
 type entitiesShowOpts struct {
 	IO    cmdio.Options
@@ -1171,7 +1094,75 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(queryCmd, summaryCmd, graphCmd, activeCmd, entityMetricCmd, sourceMetricsCmd, exampleCmd)
+	// search subcommand
+	var searchAssertionsFile string
+	var searchAssertionsScope scopeFlags
+	searchCmd := &cobra.Command{
+		Use:   "search",
+		Short: "Search for insights matching a query.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			var req SearchRequest
+			//nolint:nestif
+			if searchAssertionsFile != "" {
+				data, err := readFileOrStdin(cmd, searchAssertionsFile)
+				if err != nil {
+					return fmt.Errorf("failed to read file: %w", err)
+				}
+				if err := yaml.Unmarshal(data, &req); err != nil {
+					return fmt.Errorf("invalid YAML: %w", err)
+				}
+			} else {
+				entityType, _ := cmd.Flags().GetString("type")
+				entityName, _ := cmd.Flags().GetString("name")
+				if err := searchAssertionsScope.validateScopes(cmd.Context(), client); err != nil {
+					return err
+				}
+				startMs, endMs, err := searchAssertionsScope.resolveTime()
+				if err != nil {
+					return err
+				}
+				var filterCriteria []EntityMatcher
+				if entityType != "" || entityName != "" {
+					if entityType == "" {
+						entityType = "Service"
+					}
+					matcher := EntityMatcher{EntityType: entityType}
+					if entityName != "" {
+						matcher.PropertyMatchers = []PropertyMatcher{{Name: "name", Op: "=", Value: entityName}}
+					}
+					filterCriteria = []EntityMatcher{matcher}
+				}
+				req = SearchRequest{
+					TimeCriteria:   &TimeCriteria{Start: startMs, End: endMs},
+					FilterCriteria: filterCriteria,
+					ScopeCriteria:  searchAssertionsScope.scopeCriteria(),
+				}
+			}
+			if req.DefinitionId == nil {
+				one := 1
+				req.DefinitionId = &one
+			}
+			result, err := client.SearchAssertions(cmd.Context(), req)
+			if err != nil {
+				return err
+			}
+			return (&cmdio.Options{OutputFormat: "json"}).Encode(cmd.OutOrStdout(), result)
+		},
+	}
+	searchCmd.Flags().StringVarP(&searchAssertionsFile, "file", "f", "", "Input file (YAML)")
+	searchCmd.Flags().String("type", "", "Entity type filter")
+	searchCmd.Flags().String("name", "", "Entity name filter")
+	searchAssertionsScope.register(searchCmd)
+
+	cmd.AddCommand(queryCmd, summaryCmd, graphCmd, activeCmd, entityMetricCmd, sourceMetricsCmd, exampleCmd, searchCmd)
 	return cmd
 }
 
@@ -1262,84 +1253,6 @@ func filterBySeverity(results []SearchResult, sev string) []SearchResult {
 // ---------------------------------------------------------------------------
 // Search commands
 // ---------------------------------------------------------------------------
-
-func newSearchCommand(loader RESTConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "search",
-		Short: "Search Knowledge Graph entities or insights.",
-	}
-
-	// search insights
-	var searchAssertionsFile string
-	var searchAssertionsScope scopeFlags
-	searchAssertionsCmd := &cobra.Command{
-		Use:   "insights",
-		Short: "Search for insights matching a query.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			var req SearchRequest
-			//nolint:nestif
-			if searchAssertionsFile != "" {
-				data, err := readFileOrStdin(cmd, searchAssertionsFile)
-				if err != nil {
-					return fmt.Errorf("failed to read file: %w", err)
-				}
-				if err := yaml.Unmarshal(data, &req); err != nil {
-					return fmt.Errorf("invalid YAML: %w", err)
-				}
-			} else {
-				entityType, _ := cmd.Flags().GetString("type")
-				entityName, _ := cmd.Flags().GetString("name")
-				if err := searchAssertionsScope.validateScopes(cmd.Context(), client); err != nil {
-					return err
-				}
-				startMs, endMs, err := searchAssertionsScope.resolveTime()
-				if err != nil {
-					return err
-				}
-				var filterCriteria []EntityMatcher
-				if entityType != "" || entityName != "" {
-					if entityType == "" {
-						entityType = "Service"
-					}
-					matcher := EntityMatcher{EntityType: entityType}
-					if entityName != "" {
-						matcher.PropertyMatchers = []PropertyMatcher{{Name: "name", Op: "=", Value: entityName}}
-					}
-					filterCriteria = []EntityMatcher{matcher}
-				}
-				req = SearchRequest{
-					TimeCriteria:   &TimeCriteria{Start: startMs, End: endMs},
-					FilterCriteria: filterCriteria,
-					ScopeCriteria:  searchAssertionsScope.scopeCriteria(),
-				}
-			}
-			if req.DefinitionId == nil {
-				one := 1
-				req.DefinitionId = &one
-			}
-			result, err := client.SearchAssertions(cmd.Context(), req)
-			if err != nil {
-				return err
-			}
-			return (&cmdio.Options{OutputFormat: "json"}).Encode(cmd.OutOrStdout(), result)
-		},
-	}
-	searchAssertionsCmd.Flags().StringVarP(&searchAssertionsFile, "file", "f", "", "Input file (YAML)")
-	searchAssertionsCmd.Flags().String("type", "", "Entity type filter")
-	searchAssertionsCmd.Flags().String("name", "", "Entity name filter")
-	searchAssertionsScope.register(searchAssertionsCmd)
-
-	cmd.AddCommand(searchAssertionsCmd)
-	return cmd
-}
 
 // ---------------------------------------------------------------------------
 // Inspect command
@@ -1774,8 +1687,8 @@ func (c *DescribeTextCodec) Decode(_ io.Reader, _ any) error {
 
 func newDescribeCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "describe",
-		Short: "Describe the Knowledge Graph: entity types, valid env/namespace/site values, and telemetry query configs.",
+		Use:   "meta",
+		Short: "Show Knowledge Graph metadata: entity types, valid env/namespace/site values, and telemetry query configs.",
 	}
 	cmd.AddCommand(
 		newDescribeSchemaCmd(loader),

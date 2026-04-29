@@ -1,17 +1,20 @@
-## gcx kg describe scopes
+## gcx kg meta all
 
-Show all valid env/namespace/site filter values.
+Load all sections: schema, scopes, logs, traces, and profiles.
 
 ```
-gcx kg describe scopes [flags]
+gcx kg meta all [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for scopes
+      --from string     Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
+  -h, --help            help for all
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: json, text, yaml (default "text")
+      --since string    Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
+      --to string       End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 
 ### Options inherited from parent commands
@@ -28,5 +31,5 @@ gcx kg describe scopes [flags]
 
 ### SEE ALSO
 
-* [gcx kg describe](gcx_kg_describe.md)	 - Describe the Knowledge Graph: entity types, valid env/namespace/site values, and telemetry query configs.
+* [gcx kg meta](gcx_kg_meta.md)	 - Show Knowledge Graph metadata: entity types, valid env/namespace/site values, and telemetry query configs.
 

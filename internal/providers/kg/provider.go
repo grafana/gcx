@@ -50,8 +50,6 @@ func (p *KGProvider) Commands() []*cobra.Command {
 		newScopesCommand(loader),
 		// Assertions
 		newAssertionsCommand(loader),
-		// Search
-		newSearchCommand(loader),
 		newDescribeCommand(loader),
 		// High-level
 		newInspectCommand(loader),

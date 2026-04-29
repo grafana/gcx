@@ -1,15 +1,15 @@
-## gcx kg describe profiles
+## gcx kg meta traces
 
-Show Pyroscope label mappings for profile drilldown.
+Show Tempo label mappings for trace drilldown.
 
 ```
-gcx kg describe profiles [flags]
+gcx kg meta traces [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for profiles
+  -h, --help            help for traces
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: json, text, yaml (default "text")
 ```
@@ -28,5 +28,5 @@ gcx kg describe profiles [flags]
 
 ### SEE ALSO
 
-* [gcx kg describe](gcx_kg_describe.md)	 - Describe the Knowledge Graph: entity types, valid env/namespace/site values, and telemetry query configs.
+* [gcx kg meta](gcx_kg_meta.md)	 - Show Knowledge Graph metadata: entity types, valid env/namespace/site values, and telemetry query configs.
 

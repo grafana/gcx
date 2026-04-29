@@ -1,9 +1,9 @@
-## gcx kg describe logs
+## gcx kg meta logs
 
 Show Loki label mappings for log drilldown.
 
 ```
-gcx kg describe logs [flags]
+gcx kg meta logs [flags]
 ```
 
 ### Options
@@ -28,5 +28,5 @@ gcx kg describe logs [flags]
 
 ### SEE ALSO
 
-* [gcx kg describe](gcx_kg_describe.md)	 - Describe the Knowledge Graph: entity types, valid env/namespace/site values, and telemetry query configs.
+* [gcx kg meta](gcx_kg_meta.md)	 - Show Knowledge Graph metadata: entity types, valid env/namespace/site values, and telemetry query configs.
 
