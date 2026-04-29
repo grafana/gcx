@@ -45,6 +45,7 @@ import (
 	_ "github.com/grafana/gcx/internal/providers/traces"   // Provider registrations — blank imports trigger init() self-registration.
 	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/gcx/internal/terminal"
+	appversion "github.com/grafana/gcx/internal/version"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
 	"k8s.io/klog/v2"
@@ -204,6 +205,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 				return
 			}
 			_ = notifier.MaybeNotifySkills(cmd.ErrOrStderr())
+			_ = notifier.MaybeNotifyVersion(cmd.ErrOrStderr(), appversion.Get())
 		},
 		Annotations: map[string]string{
 			cobra.CommandDisplayNameAnnotation: "gcx",

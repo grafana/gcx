@@ -142,7 +142,7 @@ internal/
 ├── version/     Global version string (Set once from main; provides UserAgent() for HTTP clients)
 ├── secrets/     Redactor for config view
 ├── logs/        slog/klog integration
-├── notifier/    Skills update notifier (XDG state, throttle, message rendering — wired into root PersistentPostRun)
+├── notifier/    Update notifications (skills + gcx version checks; XDG state, throttling, message rendering — wired into root PersistentPostRun)
 ├── skills/      Portable Agent Skills installer primitives (BundledSkillNames, Install, Update — extracted from cmd/gcx/skills)
 └── shared/      Shared utilities (date handling, duration, etc.) to be shared across integrations.
 ```
