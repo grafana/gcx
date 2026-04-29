@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/gcx/internal/resources/dynamic"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -269,7 +270,19 @@ func newUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update <name> -f <file>",
 		Short: "Update a dashboard from a manifest",
-		Args:  cobra.ExactArgs(1),
+		Long: `Update a Grafana dashboard from a JSON or YAML manifest.
+
+The manifest must include metadata.resourceVersion captured by a recent
+'gcx dashboards get'. The server uses it for optimistic concurrency: if
+the dashboard has been modified by another writer since the manifest was
+fetched, the update fails with a conflict error and the hint to re-fetch.
+
+Recommended workflow:
+
+  gcx dashboards get <name> -o yaml > dashboard.yaml
+  # edit dashboard.yaml
+  gcx dashboards update <name> -f dashboard.yaml`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -301,7 +314,7 @@ func newUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 			updated, err := client.Update(ctx, desc, obj, metav1.UpdateOptions{})
 			if err != nil {
-				return err
+				return wrapUpdateError(args[0], err)
 			}
 
 			cmdio.Success(cmd.OutOrStdout(), "dashboard %q updated", updated.GetName())
@@ -397,6 +410,24 @@ func confirmDelete(w io.Writer, r io.Reader, name string) bool {
 	}
 	answer := strings.TrimSpace(scanner.Text())
 	return strings.EqualFold(answer, "y") || strings.EqualFold(answer, "yes")
+}
+
+// wrapUpdateError augments an Update error with workflow guidance when the
+// server reports an optimistic-concurrency conflict, so users see the next
+// step (re-fetch) rather than a bare K8s status message.
+func wrapUpdateError(name string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if !apierrors.IsConflict(err) {
+		return err
+	}
+	return fmt.Errorf(
+		"%w\n\nthe dashboard was modified after you fetched it; re-run "+
+			"'gcx dashboards get %s -o yaml' to capture the latest "+
+			"metadata.resourceVersion, re-apply your edits, and update again",
+		err, name,
+	)
 }
 
 // readManifest reads an unstructured K8s object from the given file path

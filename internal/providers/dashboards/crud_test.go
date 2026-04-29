@@ -2,12 +2,16 @@ package dashboards_test
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/providers/dashboards"
+	"github.com/grafana/gcx/internal/resources/dynamic"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // ---------------------------------------------------------------------------
@@ -166,6 +170,85 @@ func TestReadManifest(t *testing.T) {
 			}
 			if tt.wantName != "" && obj.GetName() != tt.wantName {
 				t.Errorf("readManifest() GetName() = %q, want %q", obj.GetName(), tt.wantName)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// wrapUpdateError tests
+// ---------------------------------------------------------------------------
+
+func TestWrapUpdateError(t *testing.T) {
+	gr := schema.GroupResource{Group: "dashboard.grafana.app", Resource: "dashboards"}
+	conflictErr := apierrors.NewConflict(gr, "my-dash", errors.New("resource version mismatch"))
+	// dynamic.NamespacedClient wraps server errors with ParseStatusError before
+	// they reach the command layer, so verify the helper still recognises a
+	// conflict when it has been routed through that wrapper.
+	wrappedConflict := dynamic.ParseStatusError(conflictErr)
+
+	tests := []struct {
+		name        string
+		inputErr    error
+		want        error  // exact error to return when not conflict; nil for conflict path
+		wantHint    string // substring expected in conflict-wrapped message
+		wantUnwraps error  // expected base error returned by errors.Unwrap; nil when not applicable
+	}{
+		{
+			name:     "nil error → nil",
+			inputErr: nil,
+		},
+		{
+			name:     "non-conflict error returned unchanged",
+			inputErr: errors.New("network unreachable"),
+		},
+		{
+			name:        "raw apierrors conflict → wrapped with hint",
+			inputErr:    conflictErr,
+			wantHint:    "gcx dashboards get my-dash",
+			wantUnwraps: conflictErr,
+		},
+		{
+			name:        "ParseStatusError-wrapped conflict → wrapped with hint",
+			inputErr:    wrappedConflict,
+			wantHint:    "gcx dashboards get my-dash",
+			wantUnwraps: wrappedConflict,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := dashboards.WrapUpdateErrorForTest("my-dash", tt.inputErr)
+
+			if tt.inputErr == nil {
+				if got != nil {
+					t.Fatalf("wrapUpdateError(nil) = %v, want nil", got)
+				}
+				return
+			}
+
+			if tt.wantHint == "" {
+				// Non-conflict path: must return the same error untouched.
+				if got != tt.inputErr { //nolint:errorlint // identity check intentional
+					t.Fatalf("wrapUpdateError(non-conflict) = %v, want identity %v", got, tt.inputErr)
+				}
+				return
+			}
+
+			if got == nil {
+				t.Fatal("wrapUpdateError(conflict) returned nil, want wrapped error")
+			}
+			if !apierrors.IsConflict(got) {
+				t.Errorf("wrapUpdateError(conflict) lost the conflict reason: %v", got)
+			}
+			if !strings.Contains(got.Error(), tt.wantHint) {
+				t.Errorf("wrapUpdateError(conflict) message %q missing hint %q", got.Error(), tt.wantHint)
+			}
+			if !strings.Contains(got.Error(), "metadata.resourceVersion") {
+				t.Errorf("wrapUpdateError(conflict) message %q must reference metadata.resourceVersion", got.Error())
+			}
+			if !errors.Is(got, tt.wantUnwraps) {
+				t.Errorf("wrapUpdateError(conflict) does not unwrap to original conflict (errors.Is=false)")
 			}
 		})
 	}

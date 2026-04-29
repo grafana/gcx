@@ -29,3 +29,9 @@ var ReadManifestForTest = readManifest
 func ConfirmDeleteForTest(w io.Writer, r io.Reader, name string) bool {
 	return confirmDelete(w, r, name)
 }
+
+// WrapUpdateErrorForTest exposes the unexported wrapUpdateError function for
+// table-driven tests.
+//
+//nolint:gochecknoglobals // test-only export; required to expose unexported function to dashboards_test package.
+var WrapUpdateErrorForTest = wrapUpdateError

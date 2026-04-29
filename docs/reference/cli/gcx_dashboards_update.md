@@ -2,6 +2,21 @@
 
 Update a dashboard from a manifest
 
+### Synopsis
+
+Update a Grafana dashboard from a JSON or YAML manifest.
+
+The manifest must include metadata.resourceVersion captured by a recent
+'gcx dashboards get'. The server uses it for optimistic concurrency: if
+the dashboard has been modified by another writer since the manifest was
+fetched, the update fails with a conflict error and the hint to re-fetch.
+
+Recommended workflow:
+
+  gcx dashboards get <name> -o yaml > dashboard.yaml
+  # edit dashboard.yaml
+  gcx dashboards update <name> -f dashboard.yaml
+
 ```
 gcx dashboards update <name> -f <file> [flags]
 ```
