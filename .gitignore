@@ -1,5 +1,5 @@
 .DS_Store
-/.devbox
+/.mise.local.toml
 /.venv
 /.worktrees
 /build

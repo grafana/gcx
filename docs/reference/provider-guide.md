@@ -512,7 +512,7 @@ When implementing a new provider (see also [provider-checklist.md](../design/pro
 - [ ] Secret keys (`passwords`, `tokens`, `api_keys`) have `Secret: true`
 - [ ] `Validate` returns a helpful error message pointing to the `config set` command
 - [ ] Provider is added to `internal/providers/registry.go:All()`
-- [ ] `make build` succeeds
-- [ ] `make tests` passes
+- [ ] `mise run build` succeeds
+- [ ] `mise run tests` passes
 - [ ] `gcx providers` lists the new provider
 - [ ] `gcx config view` redacts secrets correctly

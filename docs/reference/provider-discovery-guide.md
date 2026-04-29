@@ -263,7 +263,7 @@ Common decomposition:
 3. **Status/monitoring commands** (if applicable), often requiring hybrid data sources
 4. **Advanced features** (graphing, validation, etc.)
 
-Each stage should produce a working `make build && make tests && make lint` result.
+Each stage should produce a working `mise run build && mise run tests && mise run lint` result.
 
 ---
 
