@@ -192,7 +192,7 @@ var commandAnnotations = map[string]annotation{
 	// -----------------------------------------------------------------------
 	// Knowledge Graph provider
 	// -----------------------------------------------------------------------
-	"gcx kg entities list":           {Cost: "medium", Hint: "--type <type> [--env <env>] [--namespace <ns>] --since 1h -o json | run gcx kg meta scopes first to discover valid env/namespace/site values"},
+	"gcx kg entities list":           {Cost: "medium", Hint: "--type <type> [--env <env>] [--namespace <ns>] --since 1h -o json | use --property name=<value> to fetch a single entity by name | run gcx kg meta scopes first to discover valid env/namespace/site values"},
 	"gcx kg health":                  {Cost: "medium", Hint: "--type <type> --since 1h -o json"},
 	"gcx kg insights active":         {Cost: "medium", Hint: "--type <type> --severity critical -o json"},
 	"gcx kg insights entity-metric":  {Cost: "medium", Hint: "<Type--Name> --insight-id <id>"},
