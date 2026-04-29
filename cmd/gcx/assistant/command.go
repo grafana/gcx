@@ -80,7 +80,7 @@ func Command() *cobra.Command {
 	// the loader picks up flag values resolved at execution time.
 	invLoader := &providers.ConfigLoader{}
 	invCmd := investigations.Commands(invLoader)
-	// Run the parent's hook (root setup + cloud guard), then wire the
+	// Run the parent's hook to get the self-hosted guard, then wire the
 	// resolved --config/--context flag values into the investigations loader.
 	invCmd.PersistentPreRunE = func(c *cobra.Command, args []string) error {
 		if err := cmd.PersistentPreRunE(c, args); err != nil {
