@@ -22,6 +22,12 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
+// cliOptionsLoader is satisfied by config.LoadCLIOptions.
+// Defined as a variable so tests can substitute a no-op.
+//
+//nolint:gochecknoglobals // test seam; package-level by design.
+var cliOptionsLoader = config.LoadCLIOptions
+
 // GrafanaConfigLoader is the subset of providers.ConfigLoader used by CRUD commands.
 // Defined as a local interface so commands can be tested with a stub.
 type GrafanaConfigLoader interface {
@@ -363,7 +369,12 @@ func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 			name := args[0]
 
-			if !opts.Yes {
+			cliOpts, err := cliOptionsLoader()
+			if err != nil {
+				return err
+			}
+
+			if !opts.Yes && !cliOpts.AutoApprove {
 				if !confirmDelete(cmd.OutOrStdout(), cmd.InOrStdin(), name) {
 					return nil
 				}
