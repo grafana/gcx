@@ -742,22 +742,21 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 			return listOpts.IO.Encode(cmd.OutOrStdout(), results)
 		},
 	}
-	listCmd.Flags().StringVar(&listType, "type", "", "Entity type to list (run 'gcx kg describe schema' to see available types)")
+	listCmd.Flags().StringVar(&listType, "type", "", "Entity type to list (run 'gcx kg meta schema' to see available types)")
 	listCmd.Flags().BoolVar(&listAssertOnly, "insights-only", false, "Only return entities with active insights")
 	listCmd.Flags().IntVar(&listPage, "page", 0, "Page number (0-based)")
-	listCmd.Flags().StringArrayVar(&listPropertyRaw, "property", nil, "Filter by property: name=value (exact) or name=~value (contains); repeatable (run 'gcx kg describe schema' to list property names)")
+	listCmd.Flags().StringArrayVar(&listPropertyRaw, "property", nil, "Filter by property: name=value (exact) or name=~value (contains); repeatable (run 'gcx kg meta schema' to list property names)")
 	listCmd.Flags().BoolVar(&listDetails, "details", false, "Include entity properties and insights in output")
 	listScope.register(listCmd)
-	listCmd.Flags().Lookup("env").Usage = "Environment scope (run 'gcx kg describe scopes' to see valid values)"
-	listCmd.Flags().Lookup("namespace").Usage = "Namespace scope (run 'gcx kg describe scopes' to see valid values)"
-	listCmd.Flags().Lookup("site").Usage = "Site scope (run 'gcx kg describe scopes' to see valid values)"
+	listCmd.Flags().Lookup("env").Usage = "Environment scope (run 'gcx kg meta scopes' to see valid values)"
+	listCmd.Flags().Lookup("namespace").Usage = "Namespace scope (run 'gcx kg meta scopes' to see valid values)"
+	listCmd.Flags().Lookup("site").Usage = "Site scope (run 'gcx kg meta scopes' to see valid values)"
 	listOpts.setup(listCmd.Flags())
 	_ = listCmd.MarkFlagRequired("type")
 
 	cmd.AddCommand(listCmd)
 	return cmd
 }
-
 
 type entitiesShowOpts struct {
 	IO    cmdio.Options
