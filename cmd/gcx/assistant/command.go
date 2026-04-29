@@ -48,6 +48,11 @@ func Command() *cobra.Command {
 		Short: "Interact with Grafana Assistant",
 		Long:  "Send prompts to Grafana Assistant and receive streaming responses via the A2A protocol.",
 	}
+	// Cobra doesn't chain PersistentPreRun hooks automatically — a child's hook
+	// shadows all ancestors. We manually call the root's hook (logging, terminal
+	// detection, --json tracking) then gate on Grafana Cloud before any subcommand
+	// runs. The root != cmd guard prevents self-recursion when the assistant
+	// command is the root (e.g. in tests).
 	cmd.PersistentPreRunE = func(c *cobra.Command, args []string) error {
 		if root := c.Root(); root != cmd {
 			if root.PersistentPreRunE != nil {
@@ -76,6 +81,8 @@ func Command() *cobra.Command {
 	// the loader picks up flag values resolved at execution time.
 	invLoader := &providers.ConfigLoader{}
 	invCmd := investigations.Commands(invLoader)
+	// Chain to the parent assistant command's PersistentPreRunE (root hook +
+	// cloud guard), then wire resolved --config/--context flags to the loader.
 	invCmd.PersistentPreRunE = func(c *cobra.Command, args []string) error {
 		if err := cmd.PersistentPreRunE(c, args); err != nil {
 			return err
