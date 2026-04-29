@@ -716,7 +716,7 @@ func convertGCOMStackError(err *login.GCOMStackError) *DetailedError {
 		return &DetailedError{
 			Parent:  err,
 			Summary: "Grafana Cloud stack lookup denied",
-			Details: fmt.Sprintf("GCOM returned 403 for stack %q.", err.Slug),
+			Details: fmt.Sprintf("GCOM returned 403 for stack %q", err.Slug),
 			Suggestions: []string{
 				"Verify the Cloud Access Policy token has the stacks:read scope",
 				"Confirm the access policy is in the same org as the stack",
@@ -729,7 +729,7 @@ func convertGCOMStackError(err *login.GCOMStackError) *DetailedError {
 		return &DetailedError{
 			Parent:  err,
 			Summary: "Grafana Cloud token rejected",
-			Details: fmt.Sprintf("GCOM returned 401 for stack %q.", err.Slug),
+			Details: fmt.Sprintf("GCOM returned 401 for stack %q", err.Slug),
 			Suggestions: []string{
 				"Generate a new Cloud Access Policy token at https://grafana.com",
 				"Confirm the token was copied without truncation",
@@ -740,7 +740,7 @@ func convertGCOMStackError(err *login.GCOMStackError) *DetailedError {
 		return &DetailedError{
 			Parent:  err,
 			Summary: "Grafana Cloud stack not found",
-			Details: fmt.Sprintf("GCOM has no stack with slug %q.", err.Slug),
+			Details: fmt.Sprintf("GCOM has no stack with slug %q", err.Slug),
 			Suggestions: []string{
 				fmt.Sprintf("Confirm the --server URL points at an existing stack (slug derived: %q)", err.Slug),
 				"List your stacks: gcx providers (or visit grafana.com/orgs/<org>)",
@@ -764,7 +764,7 @@ func convertHealthCheckError(err *login.HealthCheckError) *DetailedError {
 		return &DetailedError{
 			Parent:  err,
 			Summary: "Grafana token rejected",
-			Details: fmt.Sprintf("/api/health returned %d for %s.", err.Status, err.Server),
+			Details: fmt.Sprintf("/api/health returned %d for %s", err.Status, err.Server),
 			Suggestions: []string{
 				"Confirm the Grafana service-account token belongs to the target stack",
 				"Confirm the token has not expired or been revoked",
