@@ -47,19 +47,25 @@ func Command() *cobra.Command {
 		Use:   "assistant",
 		Short: "Interact with Grafana Assistant",
 		Long:  "Send prompts to Grafana Assistant and receive streaming responses via the A2A protocol.",
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			if root := cmd.Root(); root.PersistentPreRun != nil {
-				root.PersistentPreRun(cmd, args)
+	}
+	cmd.PersistentPreRunE = func(c *cobra.Command, args []string) error {
+		if root := c.Root(); root != cmd {
+			if root.PersistentPreRunE != nil {
+				if err := root.PersistentPreRunE(c, args); err != nil {
+					return err
+				}
+			} else if root.PersistentPreRun != nil {
+				root.PersistentPreRun(c, args)
 			}
-			cfg, err := configOpts.LoadConfigTolerant(cmd.Context())
-			if err != nil {
-				return err
-			}
-			if curCtx := cfg.Contexts[cfg.CurrentContext]; curCtx != nil {
-				return requireGrafanaCloud(curCtx)
-			}
-			return nil
-		},
+		}
+		cfg, err := configOpts.LoadConfigTolerant(c.Context())
+		if err != nil {
+			return err
+		}
+		if curCtx := cfg.Contexts[cfg.CurrentContext]; curCtx != nil {
+			return requireGrafanaCloud(curCtx)
+		}
+		return nil
 	}
 
 	configOpts.BindFlags(cmd.PersistentFlags())

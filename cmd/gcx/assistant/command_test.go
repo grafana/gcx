@@ -2,11 +2,13 @@ package assistant_test
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/assistant"
+	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -149,6 +151,10 @@ func TestRequireGrafanaCloud(t *testing.T) {
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")
+				}
+				var de fail.DetailedError
+				if !errors.As(err, &de) {
+					t.Fatalf("expected fail.DetailedError, got %T", err)
 				}
 			} else if err != nil {
 				t.Fatalf("unexpected error: %v", err)
