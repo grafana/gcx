@@ -48,8 +48,10 @@ func Command() *cobra.Command {
 		Short: "Interact with Grafana Assistant",
 		Long:  "Send prompts to Grafana Assistant and receive streaming responses via the A2A protocol.",
 	}
-	// Defining PersistentPreRunE here shadows the root command's PersistentPreRun,
-	// so we call it manually. The root != cmd guard avoids self-recursion in tests.
+	// We need a "before each run" hook to block assistant commands on self-hosted
+	// instances. Defining one here replaces the root command's hook (cobra doesn't
+	// stack them), so we call the root's hook manually first. The root != cmd
+	// guard avoids self-recursion when there's no parent (in tests).
 	cmd.PersistentPreRunE = func(c *cobra.Command, args []string) error {
 		if root := c.Root(); root != cmd {
 			if root.PersistentPreRunE != nil {
