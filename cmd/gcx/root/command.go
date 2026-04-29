@@ -65,7 +65,7 @@ func IsJSONFlagActive() bool {
 }
 
 func shouldNotifySkills(cmd *cobra.Command) bool {
-	if os.Getenv(notifier.DisableNotifierEnvVar) != "" {
+	if cliOpts, err := internalconfig.LoadCLIOptions(); err == nil && cliOpts.DisableUpdateNotifier != "" {
 		return false
 	}
 	if agent.IsAgentMode() || IsJSONFlagActive() || terminal.IsPiped() {

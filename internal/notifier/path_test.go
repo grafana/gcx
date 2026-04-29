@@ -1,4 +1,4 @@
-package notifier //nolint:testpackage
+package notifier //nolint:testpackage // Path tests rely on overriding xdg state via package-internal hooks.
 
 import (
 	"path/filepath"

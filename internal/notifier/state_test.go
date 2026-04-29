@@ -1,4 +1,4 @@
-package notifier //nolint:testpackage
+package notifier //nolint:testpackage // State tests need direct access to the unexported state struct fields.
 
 import (
 	"os"
@@ -56,6 +56,39 @@ func TestSaveState_RoundTrip(t *testing.T) {
 	}
 	if got := loaded.Checks["version"].LastCheckedAt; !got.Equal(now.Add(time.Hour)) {
 		t.Fatalf("loaded version timestamp = %v, want %v", got, now.Add(time.Hour))
+	}
+}
+
+func TestLoadState_CorruptYAMLSelfHeals(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "state.yml")
+	if err := os.WriteFile(path, []byte("not: valid: yaml: ::: ["), 0o600); err != nil {
+		t.Fatalf("seed corrupt state: %v", err)
+	}
+
+	state, err := LoadState(path)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v, want nil (self-heal)", err)
+	}
+	if state.Checks != nil {
+		t.Fatalf("LoadState() checks = %#v, want nil", state.Checks)
+	}
+}
+
+func TestSaveState_AtomicWriteCleansTmpFile(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.yml")
+	now := time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC)
+
+	if err := SaveState(path, State{Checks: map[string]CheckState{"skills": {LastCheckedAt: now}}}); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+
+	if _, err := os.Stat(path + ".tmp"); !os.IsNotExist(err) {
+		t.Fatalf("tmp file still present after SaveState: stat err = %v", err)
 	}
 }
 

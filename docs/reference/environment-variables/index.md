@@ -5,6 +5,12 @@
 AutoApprove automatically enables the --force flag on delete operations,
 enabling non-interactive operation in CI/CD pipelines.
 
+## `GCX_NO_UPDATE_NOTIFIER`
+
+DisableUpdateNotifier disables the periodic notifier that reminds users
+when their installed gcx skills can be updated. Any non-empty value
+disables the notifier (NO_COLOR convention).
+
 ## `GRAFANA_CLOUD_API_URL`
 
 APIUrl is the base URL of the Grafana Cloud API (GCOM).

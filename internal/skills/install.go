@@ -53,7 +53,7 @@ func InstalledBundledSkillNames(source fs.FS, root string) ([]string, error) {
 	skillsDir := filepath.Join(root, "skills")
 	installed := make([]string, 0, len(bundled))
 	for _, name := range bundled {
-		if isSkillInstalled(skillsDir, name) {
+		if IsSkillInstalled(skillsDir, name) {
 			installed = append(installed, name)
 		}
 	}
@@ -223,7 +223,9 @@ func ResolveInstallRoot(root string) (string, error) {
 	return filepath.Clean(absRoot), nil
 }
 
-func isSkillInstalled(skillsDir string, name string) bool {
+// IsSkillInstalled reports whether a bundled skill named name exists under
+// skillsDir as a regular SKILL.md file.
+func IsSkillInstalled(skillsDir string, name string) bool {
 	info, err := os.Stat(filepath.Join(skillsDir, name, "SKILL.md"))
 	return err == nil && !info.IsDir()
 }
@@ -246,12 +248,12 @@ func syncFile(source fs.FS, sourcePath string, targetPath string, force bool, dr
 		if dryRun {
 			return true, true, nil
 		}
-		return true, true, os.WriteFile(targetPath, sourceData, fileMode(source, sourcePath))
+		return true, true, os.WriteFile(targetPath, sourceData, installedFileMode)
 	case errors.Is(err, os.ErrNotExist):
 		if dryRun {
 			return true, false, nil
 		}
-		return true, false, os.WriteFile(targetPath, sourceData, fileMode(source, sourcePath))
+		return true, false, os.WriteFile(targetPath, sourceData, installedFileMode)
 	default:
 		return false, false, err
 	}
@@ -274,16 +276,10 @@ func ensureDirectory(path string, dryRun bool) error {
 	return os.MkdirAll(path, 0o755)
 }
 
-func fileMode(source fs.FS, path string) fs.FileMode {
-	info, err := fs.Stat(source, path)
-	if err != nil {
-		return 0o644
-	}
-	if perm := info.Mode().Perm(); perm != 0 {
-		return perm
-	}
-	return 0o644
-}
+// installedFileMode is the install permission applied to bundled skill files.
+// Skills are plain markdown, so a uniform 0o644 keeps installed copies
+// user-writable regardless of the more restrictive 0o444 that embed.FS reports.
+const installedFileMode fs.FileMode = 0o644
 
 func defaultAgentsRoot() (string, error) {
 	home, err := os.UserHomeDir()

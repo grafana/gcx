@@ -184,7 +184,7 @@ func TestSkillsInstallUpdate_EndToEndThroughRootCommand(t *testing.T) {
 
 	installRoot := filepath.Join(t.TempDir(), ".agents")
 
-	stdout, stderr, err := executeRootCommandForTest("skills", "list", "-o", "json")
+	stdout, stderr, err := executeRootCommandForTest("skills", "list", "--dir", installRoot, "-o", "json")
 	require.NoError(t, err, stderr)
 
 	var list struct {

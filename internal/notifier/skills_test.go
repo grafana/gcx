@@ -1,4 +1,4 @@
-package notifier //nolint:testpackage
+package notifier //nolint:testpackage // Tests share the package to fixture an in-memory bundled fs against the unexported helpers.
 
 import (
 	"os"

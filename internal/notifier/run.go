@@ -11,9 +11,8 @@ import (
 )
 
 const (
-	SkillsCheckKey        = "skills_update_notice"
-	DefaultCheckInterval  = 24 * time.Hour
-	DisableNotifierEnvVar = "GCX_NO_UPDATE_NOTIFIER"
+	SkillsCheckKey       = "skills_update_notice"
+	DefaultCheckInterval = 24 * time.Hour
 )
 
 // MaybeNotifySkills runs the default skills notifier check and writes a message

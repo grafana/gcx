@@ -1,4 +1,4 @@
-package root //nolint:testpackage
+package root //nolint:testpackage // Tests exercise unexported shouldNotifySkills and resetNotifierTestState helpers.
 
 import (
 	"testing"

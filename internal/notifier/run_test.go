@@ -1,4 +1,4 @@
-package notifier //nolint:testpackage
+package notifier //nolint:testpackage // Tests exercise the unexported maybeNotifySkillsAt entry point with a controllable clock.
 
 import (
 	"bytes"

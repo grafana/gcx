@@ -89,7 +89,7 @@ func newInstallCommand(source fs.FS) *cobra.Command {
   gcx skills install setup-gcx --force`,
 		Args: cobra.ArbitraryArgs,
 		ValidArgsFunction: func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-			names, err := bundledSkillNames(source)
+			names, err := skillops.BundledSkillNames(source)
 			if err != nil {
 				return nil, cobra.ShellCompDirectiveError
 			}
@@ -100,7 +100,7 @@ func newInstallCommand(source fs.FS) *cobra.Command {
 				return err
 			}
 
-			root, err := resolveInstallRoot(opts.Dir)
+			root, err := skillops.ResolveInstallRoot(opts.Dir)
 			if err != nil {
 				return err
 			}
@@ -125,10 +125,6 @@ func newInstallCommand(source fs.FS) *cobra.Command {
 	opts.setup(cmd.Flags())
 
 	return cmd
-}
-
-func bundledSkillNames(source fs.FS) ([]string, error) {
-	return skillops.BundledSkillNames(source)
 }
 
 type installResult = skillops.InstallResult
@@ -229,7 +225,7 @@ func newUpdateCommand(source fs.FS) *cobra.Command {
   gcx skills update setup-gcx explore-datasources`,
 		Args: cobra.ArbitraryArgs,
 		ValidArgsFunction: func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-			names, err := bundledSkillNames(source)
+			names, err := skillops.BundledSkillNames(source)
 			if err != nil {
 				return nil, cobra.ShellCompDirectiveError
 			}
@@ -240,7 +236,7 @@ func newUpdateCommand(source fs.FS) *cobra.Command {
 				return err
 			}
 
-			root, err := resolveInstallRoot(opts.Dir)
+			root, err := skillops.ResolveInstallRoot(opts.Dir)
 			if err != nil {
 				return err
 			}
@@ -313,7 +309,7 @@ func newListCommand(source fs.FS) *cobra.Command {
 				return err
 			}
 
-			root, err := resolveInstallRoot(opts.Dir)
+			root, err := skillops.ResolveInstallRoot(opts.Dir)
 			if err != nil {
 				return err
 			}
@@ -401,7 +397,7 @@ func listBundledSkills(source fs.FS, installRoot string) (listResult, error) {
 			return listResult{}, err
 		}
 
-		installed := isSkillInstalled(skillsDir, entry.Name())
+		installed := skillops.IsSkillInstalled(skillsDir, entry.Name())
 
 		result.Skills = append(result.Skills, skillInfo{
 			Name:             entry.Name(),
@@ -416,11 +412,6 @@ func listBundledSkills(source fs.FS, installRoot string) (listResult, error) {
 	result.SkillCount = len(result.Skills)
 
 	return result, nil
-}
-
-func isSkillInstalled(skillsDir string, name string) bool {
-	info, err := os.Stat(filepath.Join(skillsDir, name, "SKILL.md"))
-	return err == nil && !info.IsDir()
 }
 
 func installedBundledSkillNames(source fs.FS, root string) ([]string, error) {
@@ -552,7 +543,7 @@ func newUninstallCommand(source fs.FS) *cobra.Command {
   gcx skills uninstall --all --yes --dry-run`,
 		Args: cobra.ArbitraryArgs,
 		ValidArgsFunction: func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-			names, err := bundledSkillNames(source)
+			names, err := skillops.BundledSkillNames(source)
 			if err != nil {
 				return nil, cobra.ShellCompDirectiveError
 			}
@@ -572,12 +563,12 @@ func newUninstallCommand(source fs.FS) *cobra.Command {
 				return errors.New("refusing to uninstall all gcx skills without --yes (or GCX_AUTO_APPROVE=1)")
 			}
 
-			root, err := resolveInstallRoot(opts.Dir)
+			root, err := skillops.ResolveInstallRoot(opts.Dir)
 			if err != nil {
 				return err
 			}
 
-			bundled, err := bundledSkillNames(opts.Source)
+			bundled, err := skillops.BundledSkillNames(opts.Source)
 			if err != nil {
 				return err
 			}
@@ -747,8 +738,4 @@ func validateSkillName(name string) error {
 	}
 
 	return nil
-}
-
-func resolveInstallRoot(root string) (string, error) {
-	return skillops.ResolveInstallRoot(root)
 }
