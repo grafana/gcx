@@ -76,7 +76,9 @@ gcx/
 │   ├── query/                # Datasource query clients
 │   │   ├── prometheus/       # Prometheus HTTP client (instant + range queries)
 │   │   └── loki/             # Loki HTTP client (log + metric queries)
+│   ├── notifier/             # Skills update notifier (XDG state, throttle, message rendering)
 │   ├── secrets/              # Redaction of sensitive config fields
+│   ├── skills/               # Portable Agent Skills installer primitives (Install, Update, Bundled/InstalledBundledSkillNames)
 │   ├── terminal/             # TTY detection: IsPiped(), NoTruncate(), Detect()
 │   ├── testutils/            # Shared test helpers (not exposed externally)
 │   ├── resources/            # Core resource abstraction layer

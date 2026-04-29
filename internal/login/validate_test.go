@@ -63,6 +63,7 @@ func TestValidate(t *testing.T) {
 		gcom        gcomClient
 		wantErr     bool
 		wantErrSub  string
+		wantErrAs   any // pointer-to-pointer for errors.As; nil to skip
 		wantGCOMHit bool
 	}{
 		{
@@ -72,6 +73,7 @@ func TestValidate(t *testing.T) {
 			discovery:  okDiscovery,
 			wantErr:    true,
 			wantErrSub: "health check failed",
+			wantErrAs:  new(*HealthCheckError),
 		},
 		{
 			name:       "K8s discovery failure",
@@ -80,6 +82,7 @@ func TestValidate(t *testing.T) {
 			discovery:  failDiscovery,
 			wantErr:    true,
 			wantErrSub: "kubernetes API unavailable",
+			wantErrAs:  new(*K8sDiscoveryError),
 		},
 		{
 			name:       "version below 12 returns named error",
@@ -88,15 +91,17 @@ func TestValidate(t *testing.T) {
 			discovery:  okDiscovery,
 			wantErr:    true,
 			wantErrSub: "version check failed",
+			wantErrAs:  new(*VersionCheckError),
 		},
 		{
 			name:        "GCOM check failure",
 			opts:        Options{Inputs: Inputs{Target: TargetCloud, CloudToken: "cap-token", Server: "https://mystack.grafana.net"}},
 			grafana:     &stubGrafanaClient{version: v12},
 			discovery:   okDiscovery,
-			gcom:        &stubGCOMClient{err: errors.New("unauthorized")},
+			gcom:        &stubGCOMClient{err: &cloud.GCOMHTTPError{Status: 403, Body: "denied"}},
 			wantErr:     true,
 			wantErrSub:  "GCOM check failed",
+			wantErrAs:   new(*GCOMStackError),
 			wantGCOMHit: true,
 		},
 		{
@@ -183,6 +188,9 @@ func TestValidate(t *testing.T) {
 				}
 				if tt.wantErrSub != "" && !strings.Contains(err.Error(), tt.wantErrSub) {
 					t.Fatalf("expected error containing %q, got: %v", tt.wantErrSub, err)
+				}
+				if tt.wantErrAs != nil && !errors.As(err, tt.wantErrAs) {
+					t.Fatalf("expected errors.As to %T to succeed; got %T: %v", tt.wantErrAs, err, err)
 				}
 			} else if err != nil {
 				t.Fatalf("expected nil error, got: %v", err)

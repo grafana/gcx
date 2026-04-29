@@ -51,6 +51,9 @@ func (p *Provider) Commands() []*cobra.Command {
   # Query with explicit datasource UID
   gcx logs query -d abc123 '{job="varlogs"} |= "error"'
 
+  # Print a Grafana Explore share link for the query
+  gcx logs query '{job="varlogs"}' --share-link
+
   # Raw line bodies only
   gcx logs query -d abc123 '{job="varlogs"}' -o raw
 
@@ -66,6 +69,9 @@ func (p *Provider) Commands() []*cobra.Command {
 	mqCmd.Example = `
   # Run a metric query over logs
   gcx logs metrics -d UID 'rate({job="grafana"}[5m])' --since 1h
+
+  # Print a Grafana Explore share link for the query
+  gcx logs metrics 'rate({job="grafana"}[5m])' --share-link
 
   # Output as JSON
   gcx logs metrics -d UID 'rate({job="grafana"}[5m])' --since 1h -o json`

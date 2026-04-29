@@ -23,6 +23,7 @@ Query Pyroscope datasources
 ### SEE ALSO
 
 * [gcx datasources](gcx_datasources.md)	 - Manage and query Grafana datasources
+* [gcx datasources pyroscope exemplars](gcx_datasources_pyroscope_exemplars.md)	 - Query profile or span exemplars from a Pyroscope datasource
 * [gcx datasources pyroscope labels](gcx_datasources_pyroscope_labels.md)	 - List labels or label values
 * [gcx datasources pyroscope metrics](gcx_datasources_pyroscope_metrics.md)	 - Query profile time-series data from a Pyroscope datasource
 * [gcx datasources pyroscope profile-types](gcx_datasources_pyroscope_profile-types.md)	 - List available profile types

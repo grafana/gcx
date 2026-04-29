@@ -51,6 +51,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 		ExpiresAt:        "2030-01-01T00:00:00Z",
 		RefreshExpiresAt: "2030-06-01T00:00:00Z",
 		APIEndpoint:      "https://mystack.grafana.net/api",
+		InstanceEndpoint: "https://mystack.grafana.net",
 	}
 
 	tests := []struct {
@@ -319,6 +320,33 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 				assert.Equal(t, "rotated-token", ctx.Grafana.APIToken)
 				assert.Equal(t, "token", ctx.Grafana.AuthMethod)
 				assert.EqualValues(t, 42, ctx.Grafana.OrgID, "OrgID must be preserved in re-auth")
+			},
+		},
+		{
+			// AC-013: Redirect to grafana.com on empty server selection
+			name: "redirect_grafana_com_empty_server",
+			opts: func(dir string) login.Options {
+				return login.Options{
+					Inputs: login.Inputs{
+						UseCloudInstanceSelector: true,
+						Yes:                      true,
+					},
+					Hooks: login.Hooks{
+						ConfigSource: configSource(dir),
+						ValidateFn:   noopValidate,
+						NewAuthFlow: func(_ string, _ auth.Options) login.AuthFlow {
+							return &stubAuthFlow{result: oauthResult}
+						},
+					},
+				}
+			},
+			checkConfig: func(t *testing.T, cfg config.Config) {
+				t.Helper()
+				ctx := cfg.Contexts["mystack"]
+				require.NotNil(t, ctx)
+				assert.Equal(t, oauthResult.InstanceEndpoint, ctx.Grafana.Server)
+				assert.Equal(t, "gat_test", ctx.Grafana.OAuthToken)
+				assert.Equal(t, "oauth", ctx.Grafana.AuthMethod)
 			},
 		},
 	}
@@ -800,4 +828,191 @@ func TestRun_NormalizesServerScheme(t *testing.T) {
 	if got != "https://assistant.grafana-dev.net" {
 		t.Errorf("stored server = %q, want https://assistant.grafana-dev.net", got)
 	}
+}
+
+func TestRun_TLSPropagatedToContext(t *testing.T) {
+	dir := t.TempDir()
+
+	tlsCfg := &config.TLS{
+		CertData:   []byte("cert-pem"),
+		KeyData:    []byte("key-pem"),
+		CAData:     []byte("ca-pem"),
+		ServerName: "custom-sni.example.com",
+	}
+
+	opts := login.Options{
+		Inputs: login.Inputs{
+			Server:       "https://grafana.example.com",
+			Target:       login.TargetOnPrem,
+			GrafanaToken: "glsa_test",
+			TLS:          tlsCfg,
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(dir),
+			ValidateFn:   noopValidate,
+		},
+	}
+
+	_, err := login.Run(context.Background(), &opts)
+	require.NoError(t, err)
+
+	cfg, err := config.Load(context.Background(), configSource(dir))
+	require.NoError(t, err)
+
+	storedTLS := cfg.Contexts["grafana-example-com"].Grafana.TLS
+	require.NotNil(t, storedTLS, "TLS config must be persisted")
+	assert.Contains(t, string(storedTLS.CertData), "cert-pem")
+	assert.Contains(t, string(storedTLS.KeyData), "key-pem")
+	assert.Contains(t, string(storedTLS.CAData), "ca-pem")
+	assert.Equal(t, "custom-sni.example.com", storedTLS.ServerName)
+}
+
+func TestRun_ReauthPreservesTLS(t *testing.T) {
+	dir := t.TempDir()
+
+	// Seed config with TLS settings
+	seed := config.Config{
+		CurrentContext: "grafana-example-com",
+		Contexts: map[string]*config.Context{
+			"grafana-example-com": {
+				Grafana: &config.GrafanaConfig{
+					Server:   "https://grafana.example.com",
+					APIToken: "old-token",
+					OrgID:    42,
+					TLS: &config.TLS{
+						CertData:   []byte("cert-pem"),
+						KeyData:    []byte("key-pem"),
+						ServerName: "custom-sni.example.com",
+					},
+				},
+			},
+		},
+	}
+	require.NoError(t, config.Write(context.Background(), configSource(dir), seed))
+
+	// Re-auth with TLS carried through (simulating what the CLI does)
+	opts := login.Options{
+		Inputs: login.Inputs{
+			Server:       "https://grafana.example.com",
+			Target:       login.TargetOnPrem,
+			GrafanaToken: "new-token",
+			TLS: &config.TLS{
+				CertData:   []byte("cert-pem"),
+				KeyData:    []byte("key-pem"),
+				ServerName: "custom-sni.example.com",
+			},
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(dir),
+			ValidateFn:   noopValidate,
+		},
+	}
+
+	_, err := login.Run(context.Background(), &opts)
+	require.NoError(t, err)
+
+	cfg, err := config.Load(context.Background(), configSource(dir))
+	require.NoError(t, err)
+
+	grafanaCfg := cfg.Contexts["grafana-example-com"].Grafana
+	assert.Equal(t, "new-token", grafanaCfg.APIToken, "token must be updated")
+	assert.EqualValues(t, 42, grafanaCfg.OrgID, "OrgID must be preserved")
+	require.NotNil(t, grafanaCfg.TLS, "TLS must be preserved on re-auth")
+	assert.Equal(t, "custom-sni.example.com", grafanaCfg.TLS.ServerName)
+}
+
+func TestRun_TLSPassedToDetectFn(t *testing.T) {
+	dir := t.TempDir()
+
+	var detectCalled bool
+	tlsCfg := &config.TLS{
+		CertData: []byte("cert-pem"),
+		KeyData:  []byte("key-pem"),
+	}
+
+	opts := login.Options{
+		Inputs: login.Inputs{
+			Server:       "https://grafana.example.com",
+			GrafanaToken: "glsa_test",
+			TLS:          tlsCfg,
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(dir),
+			DetectFn: func(_ context.Context, _ string) (login.Target, error) {
+				detectCalled = true
+				return login.TargetOnPrem, nil
+			},
+			ValidateFn: noopValidate,
+		},
+	}
+
+	_, err := login.Run(context.Background(), &opts)
+	require.NoError(t, err)
+	assert.True(t, detectCalled, "DetectFn must be called")
+}
+
+func TestRun_TLSPassedToValidateFn(t *testing.T) {
+	dir := t.TempDir()
+
+	var validatedTLS *config.TLS
+	tlsCfg := &config.TLS{
+		CertData:   []byte("cert-pem"),
+		KeyData:    []byte("key-pem"),
+		ServerName: "validated-sni",
+	}
+
+	opts := login.Options{
+		Inputs: login.Inputs{
+			Server:       "https://grafana.example.com",
+			Target:       login.TargetOnPrem,
+			GrafanaToken: "glsa_test",
+			TLS:          tlsCfg,
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(dir),
+			ValidateFn: func(_ context.Context, o login.Options, _ config.NamespacedRESTConfig) (string, error) {
+				validatedTLS = o.TLS
+				return "12.0.0", nil
+			},
+		},
+	}
+
+	_, err := login.Run(context.Background(), &opts)
+	require.NoError(t, err)
+	require.NotNil(t, validatedTLS, "TLS must be passed to ValidateFn")
+	assert.Equal(t, "validated-sni", validatedTLS.ServerName)
+}
+
+func TestRun_MTLSOnlyAuth(t *testing.T) {
+	dir := t.TempDir()
+
+	tlsCfg := &config.TLS{
+		CertData: []byte("cert-pem"),
+		KeyData:  []byte("key-pem"),
+	}
+
+	opts := login.Options{
+		Inputs: login.Inputs{
+			Server: "https://grafana.example.com",
+			Target: login.TargetOnPrem,
+			TLS:    tlsCfg,
+			// No GrafanaToken, no UseOAuth — mTLS is the auth
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(dir),
+			ValidateFn:   noopValidate,
+		},
+	}
+
+	result, err := login.Run(context.Background(), &opts)
+	require.NoError(t, err)
+	assert.Equal(t, "mtls", result.AuthMethod)
+
+	cfg, err := config.Load(context.Background(), configSource(dir))
+	require.NoError(t, err)
+
+	grafanaCfg := cfg.Contexts["grafana-example-com"].Grafana
+	assert.Equal(t, "mtls", grafanaCfg.AuthMethod)
+	require.NotNil(t, grafanaCfg.TLS, "TLS must be persisted")
+	assert.Contains(t, string(grafanaCfg.TLS.CertData), "cert-pem")
 }

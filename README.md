@@ -1,4 +1,4 @@
-# gcx — Grafana Cloud CLI
+# gcx — Grafana CLI
 
 <p>
 <a href="https://github.com/grafana/gcx/actions/workflows/ci.yaml"><img src="https://github.com/grafana/gcx/actions/workflows/ci.yaml/badge.svg?branch=main" alt="CI"></a>
@@ -9,26 +9,41 @@
 
 ![gcx](./gcx.png)
 
-Grafana Cloud and the Grafana Assistant — in your terminal and your agentic coding environment.
+Grafana — in your terminal and your agentic coding environment. gcx works with **Grafana Cloud, Enterprise, and OSS** (Grafana 12+). See the [compatibility matrix](#compatibility) for details.
 
 Query production. Investigate alerts. Let the Assistant root-cause issues. Ship fixes with observability built in. Without leaving your editor.
 
 *"Don't guess. Check the actual production data."*
 
-## Why gcx
+## What is gcx?
 
-GCX brings the full power of Grafana Cloud and Grafana Assistant to your command line. It bridges the gap between your local environment and key observability insights from Grafana Cloud.
+gcx is a CLI for Grafana. It gives you and your AI coding agent structured access to your Grafana instance: dashboards, alerts, SLOs, metrics, logs, traces, and more.
 
-Since the end of 2025, adoption of agentic coding tools like Cursor and Claude Code have exploded. You are coding faster than ever before. Your agents see your code — but they are blind to your production environment. They don't see the latency spikes, the server load, or whether you're actually hitting your SLOs. They write code based on what could happen, not what is actually happening. This is a dangerous gap.
+gcx works with any agentic coding tool. It ships with a suite of agent skills for common workflows like alert investigation, dashboard GitOps, SLO management, and observability setup - ready to use out of the box.
 
-We built GCX to close that gap.
-
-> [!NOTE]
-> **gcx requires Grafana 12 or above.** Older Grafana versions are not supported.
+> [!WARNING]
+> **Public preview** — gcx is under active development. Bugs are handled by Engineering; on-call support and SLAs are not available. See [release life cycle](https://grafana.com/docs/release-life-cycle/).
 
 ## Quick Start
 
-### 1. Install
+```sh
+# For Grafana Cloud instances
+gcx login prod --server https://<your-cloud-instance>.grafana.net  # select oauth, then press Enter to skip cloud token selection
+
+# For self-hosted Grafana instances
+gcx login local --server http://localhost:3000 --token <token>
+
+# check your grafana cloud metrics usage in the last day
+gcx metrics query -d grafanacloud-usage 'grafanacloud_org_metrics_billable_series'  --since 24h  --step 1h
+
+# check how busy your API routes are
+gcx metrics query 'sum by (handler)(rate(grafana_http_request_duration_seconds_count[5m]))' --since 1h
+
+# list all your dashboards
+gcx resources get dashboards
+```
+
+## Installation
 
 **Quick install (Linux/macOS):**
 
@@ -87,7 +102,7 @@ gcx completion fish > ~/.config/fish/completions/gcx.fish  # fish
 **Verify:** `gcx --version`
 
 
-### 2. Authenticate
+## Authentication
 
 `gcx login` creates or re-authenticates a context. It auto-detects whether the server is Grafana Cloud (`*.grafana.net`) or on-premises and adjusts the prompt accordingly. Pick the path below that matches your setup.
 
@@ -146,44 +161,63 @@ Env vars resolve at every command invocation, so you can run `gcx` commands dire
 
 See the [login reference](docs/reference/login.md) for the full guide, including re-authentication, environment-variable setup, and troubleshooting for common errors.
 
-### 3. See It in Action
+## See It in Action
+
 
 **Query production from your terminal:**
 
 ```sh
-$ gcx metrics query 'rate(http_requests_total{service="checkout"}[5m])' --since 1h
-SERVICE     TIMESTAMP             VALUE
-checkout    2026-04-15 09:00:00   142.3
-checkout    2026-04-15 09:05:00   151.7
-checkout    2026-04-15 09:10:00   289.4
-checkout    2026-04-15 09:15:00   312.1
+$ gcx metrics query 'sum by (instance)(rate(grafana_http_request_duration_seconds_count[5m]))' --since 1h
+┌───────────────────────────────────────────┬───────────────────────────────────────────┬───────────────────────────────────────────┐
+│ INSTANCE                                  │ TIMESTAMP                                 │ VALUE                                     │
+├───────────────────────────────────────────┼───────────────────────────────────────────┼───────────────────────────────────────────┤
+│ localhost:3000                            │ 2026-04-28T11:59:00+01:00                 │ 0.0073020555555555556                     │
+│ localhost:3000                            │ 2026-04-28T12:00:00+01:00                 │ 0.11167158333333332                       │
+│ localhost:3000                            │ 2026-04-28T12:01:00+01:00                 │ 0.1024372962962963                        │
+│ localhost:3000                            │ 2026-04-28T12:02:00+01:00                 │ 0.09583333333333333                       │
+...
 ```
 
 **Check what's firing:**
 
 ```sh
 $ gcx alert rules list --state firing
-UID     NAME                            STATE    HEALTH   PAUSED
-abc1    Checkout P95 > SLO threshold    firing   ok       no
-def2    Disk usage > 85%                firing   ok       no
+┌──────────────────────────────────────┬─────────────────────────────────────────────────────────────────────┬──────────┬──────────┬──────────┐
+│ UID                                  │ NAME                                                                │ STATE    │ HEALTH   │ PAUSED   │
+├──────────────────────────────────────┼─────────────────────────────────────────────────────────────────────┼──────────┼──────────┼──────────┤
+│ e62566b8-da2d-45e0-853a-40abebc9f863 │ adaptive_traces_forecast_gme_distributor_alert                      │ firing   │ ok       │ no       │
+│ cfhcfnhd8xam9a                       │ GraphiteProxy: Reads (dev) Native - Error Budget Burn Rate is High  │ firing   │ ok       │ no       │
+│ affq1sffre0apd                       │ Unified Storage: HIGH_SLOW Latency - Error Budget Burn Rate is High │ firing   │ ok       │ no       │
+│ 16ddf4b0-7d8c-5dad-a71a-81f87a1e47a2 │ BillingSeriesAbsent                                                 │ firing   │ ok       │ no       │
+│ 09d44d08-b4cc-5d0e-8544-514e380f6bb3 │ k6CloudSecretsUsageReportingNoData                                  │ firing   │ ok       │ no       │
+│ eb62d01f-5f73-543b-947b-2c849890d5f6 │ MissingBackups                                                      │ firing   │ ok       │ no       │
+│ 5f9e01d4-0b2d-5b51-a787-26535ded4719 │ MissingBackups                                                      │ firing   │ ok       │ no       │
+│ e4646576-9c07-5dfd-b22c-1e5b4da761ef │ MissingBackups                                                      │ firing   │ ok       │ no       │
+│ b89d5170-d0bd-5869-ad22-7a0a944b3aae │ MissingBackups                                                      │ firing   │ ok       │ no       │
 ```
 
 **Review SLO status:**
 
 ```sh
 $ gcx slo definitions list
-UUID    NAME                        TARGET   WINDOW   STATUS
-uid1    Checkout Availability       99.90%   30d      ok
-uid2    API Latency P99 < 200ms     99.50%   30d      at_risk
-uid3    Payment Processing          99.95%   30d      breaching
+┌───────────────────────┬───────────────────────────────────────────────────────┬─────────────┬────────────┬────────────┐
+│ UUID                  │ NAME                                                  │ TARGET      │ WINDOW     │ STATUS     │
+├───────────────────────┼───────────────────────────────────────────────────────┼─────────────┼────────────┼────────────┤
+│ y5yc8cy86yqtmey930foh │ CB additional identifier                              │ 90.00%      │ 28d        │ created    │
+│ sgz23sbv2c19v0r32s8y1 │ Checkout App - p95 Latency                            │ 99.50%      │ 28d        │ updated    │
+│ nwd4dk7j38spanror727k │ GraphiteProxy: Reads (dev) Native                     │ 99.50%      │ 28d        │ created    │
+│ e1cteeyl2ukmilw1tqugw │ KG fusion test grafana-slo-app                        │ 99.50%      │ 28d        │ created    │
+│ bwyf5d8g1614ugri7u0w7 │ KG fusion test grafana-slo-stats-service              │ 99.50%      │ 28d        │ created    │
+│ tfkp5e0ronnl1ywpbv9b5 │ OTLPGateway: MetricWrites (dev) - Mimir               │ 99.90%      │ 28d        │ created    │
+│ wvgxovr2k60efxizv1y9f │ Unified Storage: HIGH_SLOW Latency                    │ 99.50%      │ 28d        │ updated    │
+└───────────────────────┴───────────────────────────────────────────────────────┴─────────────┴────────────┴────────────┘
 ```
 
 **Visualize metrics directly in your terminal:**
 
 ```sh
-$ gcx metrics query 'topk(6, sum by (container) (rate(container_cpu_usage_seconds_total{namespace="ditl-demo-prod", container!="", container!="POD"}[5m])))' --since 6h -o graph
+$ gcx metrics query  'sum by (handler)(rate(grafana_http_request_duration_seconds_count{}[5m]))' --since 1h -o graph
 ```
-
 ![Terminal graph output](./graph_example.png)
 
 **Explore more**
@@ -205,7 +239,7 @@ gcx logs query '{app="nginx"} |= "error"' --since 1h
 gcx traces query '{.cluster="dev-us-central-0"}' --since 1h
 ```
 
-### 4. Install Agent Skills
+## Install Agent Skills
 
 gcx ships a portable Agent Skills bundle for setup, dashboard GitOps,
 datasource exploration, alert investigation, structured debugging, SLO
@@ -240,6 +274,19 @@ Install the bundle into `~/.agents/skills` with:
 gcx skills install --all
 ```
 
+If your installed skills drift from the bundle shipped in your current `gcx`
+version, `gcx` may show an interactive reminder suggesting:
+
+```sh
+gcx skills update
+```
+
+To disable that reminder entirely, set:
+
+```sh
+export GCX_NO_UPDATE_NOTIFIER=1
+```
+
 ## The Agentic Workflow
 
 Here's what it looks like when your coding agent has access to production:
@@ -254,7 +301,7 @@ Here's what it looks like when your coding agent has access to production:
 
 **5. It ships** — Opens a PR, tests pass, deploys to production. The alert resolves.
 
-Investigation, fix, instrumentation, monitoring — without the developer ever leaving their editor. The Grafana Assistant provides the intelligence; gcx provides the interface. And because it all builds on everything you've already configured in Grafana Cloud — your dashboards, your alerts, your datasources — no other tool can give you this depth out of the box.
+Investigation, fix, instrumentation, monitoring — without the developer ever leaving their editor. The Grafana Assistant provides the intelligence; gcx provides the interface. And because it all builds on everything you've already configured in Grafana — your dashboards, your alerts, your datasources — no other tool can give you this depth out of the box.
 
 ```sh
 $ gcx assistant investigations list
@@ -263,10 +310,35 @@ abc1  Checkout P95 latency breach               active     2m ago
 def2  Memory leak in payment-svc                resolved   1h ago
 ```
 
-## Maturity
+### Beyond alert investigation
 
-> [!WARNING]
-> **Public preview** — gcx is under active development. Bugs are handled by Engineering; on-call support and SLAs are not available. See [release life cycle](https://grafana.com/docs/release-life-cycle/).
+The agentic workflow above is one example. gcx supports a wide range of workflows:
+
+- **Resource GitOps** — Pull resources to local files, let your agent edit them, push back to Grafana (`gcx resources pull` / `gcx resources push`)
+- **Explore your data** — Discover datasources, metrics, labels, and log streams before writing queries (`gcx datasources list`, `gcx metrics labels`)
+- **SLO management** — Create, monitor, and investigate SLOs from your terminal (`gcx slo definitions list`, `gcx slo reports list`)
+- **Onboarding & setup** — Instrument a Kubernetes cluster and configure Grafana Cloud products (`gcx setup instrumentation`)
+- **Observability as Code** — Scaffold a project, import existing dashboards as Go code, lint, and deploy (`gcx dev scaffold`, `gcx dev import`)
+
+## Compatibility
+
+gcx works across Grafana's product offerings. Feature availability depends on your deployment:
+
+| Feature | Commands | OSS (12+) | Enterprise (12+) | Cloud | BYOC |
+|---------|----------|:---------:|:----------------:|:-----:|:----:|
+| Resource management (dashboards, folders) | `resources` | ✓ | ✓ | ✓ | ✓ |
+| Alert rules | `alert` | ✓ | ✓ | ✓ | ✓ |
+| Raw API passthrough | `api` | ✓ | ✓ | ✓ | ✓ |
+| Observability as Code | `dev` | ✓ | ✓ | ✓ | ✓ |
+| Signal queries (metrics, logs, traces, profiles) | `metrics`, `logs`, `traces`, `profiles` | ✓ † | ✓ † | ✓ | ✓ |
+| SLO, Synthetic Monitoring, IRM, k6, Fleet, etc. | `slo`, `synth`, `irm`, `k6`, `fleet` | ✗ | ✗ | ✓ | ◐ |
+| Adaptive Metrics / Logs / Traces | `metrics adaptive`, `logs adaptive`, `traces adaptive` | ✗ | ✗ | ✓ | ◐ |
+| Grafana Assistant | `assistant` | ✗ | ✗ | ✓ | ✗ |
+
+**† Self-hosted signal queries** — `gcx metrics query`, `gcx logs query`, `gcx traces query`, and `gcx profiles query` work against self-hosted datasources (Prometheus, Loki, Tempo, Pyroscope), but datasource endpoints must be configured manually. For Grafana Cloud, endpoints are auto-discovered from your stack.
+
+**◐ BYOC** — Bring Your Own Cloud runs the Grafana stack on your own infrastructure while connecting to the Grafana Cloud control plane. Core Grafana features (dashboards, alerts, signal queries) work in full. Cloud product availability (SLO, Synthetic Monitoring, IRM, etc.) depends on which plugins are installed and configured in your BYOC stack.
+
 
 ## Grafana Cloud Products
 
@@ -283,7 +355,7 @@ gcx provides dedicated commands for each Grafana Cloud product:
 | **Knowledge Graph** | `gcx kg` | `kg status`, `kg search`, `kg entities show` |
 | **Frontend Observability** | `gcx frontend` | `frontend apps list`, `frontend apps get` |
 | **App Observability** | `gcx appo11y` | `appo11y overrides get`, `appo11y settings get` |
-| **Sigil (AI Observability)** | `gcx sigil` | `sigil conversations list`, `sigil agents list`, `sigil rules list` |
+| **AI Observability (Sigil)** | `gcx aio11y` | `aio11y conversations list`, `aio11y agents list`, `aio11y rules list` |
 | **Assistant** | `gcx assistant` | `assistant prompt`, `assistant investigations list`, `assistant investigations report` |
 | **Adaptive Metrics** | `gcx metrics adaptive` | `metrics adaptive recommendations show`, `metrics adaptive rules list` |
 | **Adaptive Logs** | `gcx logs adaptive` | `logs adaptive patterns show`, `logs adaptive drop-rules list` |
@@ -389,6 +461,8 @@ gcx resources push -p ./resources
 
 gcx push is idempotent — running it multiple times produces the same result. Folders are automatically pushed before dashboards to satisfy dependencies.
 
+> **gcx resources push/pull vs GitSync:** Grafana's [Git Sync](https://grafana.com/docs/grafana/latest/as-code/observability-as-code/git-sync/) provides bi-directional sync between a git repo and Grafana for dashboards. `gcx resources push/pull` enables users to create their own as-code resource synchronisation workflows. `gcx resources push/pull` also works with all resources available in `gcx resources get`, not just dashboards.
+
 ## CI/CD
 
 ```yaml
@@ -423,6 +497,7 @@ jobs:
 - `--dry-run` on `push` and `delete` to preview changes
 - `--on-error abort|fail|ignore` to control error behavior
 - `-o json` or `-o yaml` for machine-parseable output
+
 
 ## Documentation
 

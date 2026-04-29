@@ -13,6 +13,7 @@ import (
 	"time"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
+	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/assistant"
 	"github.com/grafana/gcx/internal/assistant/investigations"
@@ -24,6 +25,20 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func requireGrafanaCloud(ctx *config.Context) error {
+	if ctx.Grafana == nil || ctx.Grafana.Server == "" {
+		return nil
+	}
+	if ctx.ResolveStackSlug() == "" {
+		return fail.DetailedError{
+			Summary: "Unsupported command",
+			Details: "Due to technical limitations of how gcx interacts with Grafana Assistant, " +
+				"`gcx assistant` commands do not currently work with self-hosted Grafana instances.",
+		}
+	}
+	return nil
+}
+
 // Command returns the assistant command group.
 func Command() *cobra.Command {
 	configOpts := &cmdconfig.Options{}
@@ -33,18 +48,43 @@ func Command() *cobra.Command {
 		Short: "Interact with Grafana Assistant",
 		Long:  "Send prompts to Grafana Assistant and receive streaming responses via the A2A protocol.",
 	}
+	// We need a "before each run" hook to block assistant commands on self-hosted
+	// instances. Defining one here replaces the root command's hook (cobra doesn't
+	// stack them), so we call the root's hook manually first. The root != cmd
+	// guard avoids self-recursion when there's no parent (in tests).
+	cmd.PersistentPreRunE = func(c *cobra.Command, args []string) error {
+		if root := c.Root(); root != cmd {
+			if root.PersistentPreRunE != nil {
+				if err := root.PersistentPreRunE(c, args); err != nil {
+					return err
+				}
+			} else if root.PersistentPreRun != nil {
+				root.PersistentPreRun(c, args)
+			}
+		}
+		cfg, err := configOpts.LoadConfigTolerant(c.Context())
+		if err != nil {
+			return err
+		}
+		if curCtx := cfg.Contexts[cfg.CurrentContext]; curCtx != nil {
+			return requireGrafanaCloud(curCtx)
+		}
+		return nil
+	}
 
 	configOpts.BindFlags(cmd.PersistentFlags())
 	cmd.AddCommand(promptCommand(configOpts))
 
 	// Create a ConfigLoader for investigations that shares the same --config/--context
-	// flags already bound by configOpts. Wire the values via PersistentPreRun so that
+	// flags already bound by configOpts. Wire the values via PersistentPreRunE so that
 	// the loader picks up flag values resolved at execution time.
 	invLoader := &providers.ConfigLoader{}
 	invCmd := investigations.Commands(invLoader)
-	invCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
-		if root := cmd.Root(); root.PersistentPreRun != nil {
-			root.PersistentPreRun(cmd, args)
+	// Run the parent's hook to get the self-hosted guard, then wire the
+	// resolved --config/--context flag values into the investigations loader.
+	invCmd.PersistentPreRunE = func(c *cobra.Command, args []string) error {
+		if err := cmd.PersistentPreRunE(c, args); err != nil {
+			return err
 		}
 		if configOpts.ConfigFile != "" {
 			invLoader.SetConfigFile(configOpts.ConfigFile)
@@ -52,6 +92,7 @@ func Command() *cobra.Command {
 		if configOpts.Context != "" {
 			invLoader.SetContextName(configOpts.Context)
 		}
+		return nil
 	}
 	cmd.AddCommand(invCmd)
 	return cmd

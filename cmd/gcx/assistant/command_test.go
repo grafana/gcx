@@ -2,9 +2,14 @@ package assistant_test
 
 import (
 	"bytes"
+	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/assistant"
+	"github.com/grafana/gcx/cmd/gcx/fail"
+	"github.com/grafana/gcx/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -62,8 +67,18 @@ func TestConventions_ValidateExported(t *testing.T) {
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
 
-	// Set mutually exclusive flags — Validate should reject this.
-	cmd.SetArgs([]string{"prompt", "test", "--context-id", "abc", "--continue"})
+	// Write a minimal cloud config so PersistentPreRunE's cloud check passes,
+	// letting us exercise the flag validation logic.
+	cfgPath := filepath.Join(t.TempDir(), "config")
+	if err := os.WriteFile(cfgPath, []byte(`current-context: test
+contexts:
+  test:
+    grafana:
+      server: https://test.grafana.net
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd.SetArgs([]string{"prompt", "test", "--config", cfgPath, "--context-id", "abc", "--continue"})
 
 	err := cmd.Execute()
 	if err == nil {
@@ -92,5 +107,58 @@ func TestConventions_PromptAnnotations(t *testing.T) {
 
 	if _, ok := promptCmd.Annotations["agent.token_cost"]; !ok {
 		t.Fatal("expected prompt command to have agent.token_cost annotation")
+	}
+}
+
+func TestRequireGrafanaCloud(t *testing.T) {
+	tests := []struct {
+		name    string
+		ctx     *config.Context
+		wantErr bool
+	}{
+		{
+			name: "cloud instance via server URL",
+			ctx: &config.Context{
+				Grafana: &config.GrafanaConfig{Server: "https://mystack.grafana.net"},
+			},
+		},
+		{
+			name: "cloud instance via explicit stack slug",
+			ctx: &config.Context{
+				Cloud:   &config.CloudConfig{Stack: "mystack"},
+				Grafana: &config.GrafanaConfig{Server: "https://custom.example.com"},
+			},
+		},
+		{
+			name: "self-hosted instance",
+			ctx: &config.Context{
+				Grafana: &config.GrafanaConfig{Server: "https://grafana.example.com"},
+			},
+			wantErr: true,
+		},
+		{
+			name: "no grafana config skips check",
+			ctx:  &config.Context{},
+		},
+		{
+			name: "empty server skips check",
+			ctx:  &config.Context{Grafana: &config.GrafanaConfig{}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := assistant.RequireGrafanaCloud(tt.ctx)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				var de fail.DetailedError
+				if !errors.As(err, &de) {
+					t.Fatalf("expected fail.DetailedError, got %T", err)
+				}
+			} else if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
 	}
 }

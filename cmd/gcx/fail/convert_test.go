@@ -4,13 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/grafana/gcx/cmd/gcx/fail"
+	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/datasources"
 	"github.com/grafana/gcx/internal/grafana"
+	"github.com/grafana/gcx/internal/login"
 	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -239,6 +242,21 @@ func TestErrorToDetailedError_GenericServiceAPIAuthFailure(t *testing.T) {
 	assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
 }
 
+func TestErrorToDetailedError_AdaptiveLogsScopeSuggestion(t *testing.T) {
+	got := fail.ErrorToDetailedError(fakeServiceAPIError{
+		statusCode: 401,
+		service:    "Adaptive Logs",
+		message:    "authentication error: invalid scope requested",
+	})
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Adaptive Logs: permission denied", got.Summary)
+	require.NotNil(t, got.ExitCode)
+	assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+	require.Len(t, got.Suggestions, 1)
+	assert.Contains(t, got.Suggestions[0], "adaptive-logs:admin")
+}
+
 func TestErrorToDetailedError_WrappedServiceAPIErrorPreservesOuterContext(t *testing.T) {
 	err := fmt.Errorf("kg: get rule %q: %w", "prod-errors", fakeServiceAPIError{
 		statusCode: 404,
@@ -433,6 +451,102 @@ func TestErrorToDetailedError_FleetScopeError(t *testing.T) {
 	}
 }
 
+func TestErrorToDetailedError_StacksReadAdaptiveContext(t *testing.T) {
+	tests := []struct {
+		name           string
+		err            error
+		wantSuggestion string
+	}{
+		{
+			name:           "logs signal suggests adaptive-logs:admin",
+			err:            errors.New(`adaptive-logs: failed to load cloud config for token: failed to get stack info for "mystack": gcom client: unexpected status 403 Forbidden`),
+			wantSuggestion: "adaptive-logs:admin",
+		},
+		{
+			name:           "metrics signal mentions adaptive-metrics-* scope",
+			err:            errors.New(`adaptive-metrics: failed to load cloud config for token: failed to get stack info for "mystack": gcom client: unexpected status 403 Forbidden`),
+			wantSuggestion: "adaptive-metrics-*",
+		},
+		{
+			name:           "traces signal suggests adaptive-traces:admin",
+			err:            errors.New(`adaptive-traces: failed to load cloud config for token: failed to get stack info for "mystack": gcom client: unexpected status 403 Forbidden`),
+			wantSuggestion: "adaptive-traces:admin",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tc.err)
+			require.NotNil(t, got)
+			assert.Equal(t, "Cloud stack lookup: permission denied", got.Summary)
+			require.Len(t, got.Suggestions, 2)
+			assert.Contains(t, got.Suggestions[0], "stacks:read")
+			assert.Contains(t, got.Suggestions[1], tc.wantSuggestion)
+		})
+	}
+}
+
+func TestErrorToDetailedError_AdaptiveMetricsScopeError(t *testing.T) {
+	tests := []struct {
+		name      string
+		err       error
+		wantScope string
+	}{
+		{"list rules", errors.New(`adaptive-metrics: list rules: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:read"},
+		{"get rule", errors.New(`adaptive-metrics: get rule: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:read"},
+		{"list recommended rules", errors.New(`adaptive-metrics: list recommended rules: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:read"},
+		{"create rule", errors.New(`adaptive-metrics: create rule: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:write"},
+		{"update rule", errors.New(`adaptive-metrics: update rule: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:write"},
+		{"sync rules", errors.New(`adaptive-metrics: sync rules: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:write"},
+		{"validate rules", errors.New(`adaptive-metrics: validate rules: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:write"},
+		{"delete rule", errors.New(`adaptive-metrics: delete rule: status 401: authentication error: invalid scope requested`), "adaptive-metrics-rules:delete"},
+		{"list recommendations", errors.New(`adaptive-metrics: list recommendations: status 401: authentication error: invalid scope requested`), "adaptive-metrics-recommendations:read"},
+		{"list segments", errors.New(`adaptive-metrics: list segments: status 401: authentication error: invalid scope requested`), "adaptive-metrics-segments:read"},
+		{"create segment", errors.New(`adaptive-metrics: create segment: status 401: authentication error: invalid scope requested`), "adaptive-metrics-segments:write"},
+		{"delete segment", errors.New(`adaptive-metrics: delete segment: status 401: authentication error: invalid scope requested`), "adaptive-metrics-segments:delete"},
+		{"list exemptions", errors.New(`adaptive-metrics: list exemptions: status 401: authentication error: invalid scope requested`), "adaptive-metrics-exemptions:read"},
+		{"list segmented exemptions", errors.New(`adaptive-metrics: list segmented exemptions: status 401: authentication error: invalid scope requested`), "adaptive-metrics-exemptions:read"},
+		{"get exemption", errors.New(`adaptive-metrics: get exemption: status 401: authentication error: invalid scope requested`), "adaptive-metrics-exemptions:read"},
+		{"create exemption", errors.New(`adaptive-metrics: create exemption: status 401: authentication error: invalid scope requested`), "adaptive-metrics-exemptions:write"},
+		{"delete exemption", errors.New(`adaptive-metrics: delete exemption: status 401: authentication error: invalid scope requested`), "adaptive-metrics-exemptions:delete"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tc.err)
+			assert.Equal(t, "Adaptive Metrics: permission denied", got.Summary)
+			require.NotNil(t, got.ExitCode)
+			assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+			require.Len(t, got.Suggestions, 1)
+			assert.Contains(t, got.Suggestions[0], tc.wantScope)
+		})
+	}
+}
+
+func TestErrorToDetailedError_AdaptiveTracesScopeError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{"list policies", errors.New(`adaptive-traces: list policies: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"get policy", errors.New(`adaptive-traces: get policy: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"create policy", errors.New(`adaptive-traces: create policy: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"update policy", errors.New(`adaptive-traces: update policy: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"delete policy", errors.New(`adaptive-traces: delete policy: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"list recommendations", errors.New(`adaptive-traces: list recommendations: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"apply recommendation", errors.New(`adaptive-traces: apply recommendation: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+		{"dismiss recommendation", errors.New(`adaptive-traces: dismiss recommendation: unexpected status 401: {"status":"error","error":"authentication error: invalid scope requested"}`)},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tc.err)
+			assert.Equal(t, "Adaptive Traces: permission denied", got.Summary)
+			require.NotNil(t, got.ExitCode)
+			assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+			require.Len(t, got.Suggestions, 1)
+			assert.Contains(t, got.Suggestions[0], "adaptive-traces:admin")
+		})
+	}
+}
+
 func TestErrorToDetailedError_SMURLNotConfigured(t *testing.T) {
 	err := fmt.Errorf("failed to load SM config for checks: %w",
 		fmt.Errorf("SM URL not configured: %w", errors.New("no Grafana server configured: grafana config is required")))
@@ -465,6 +579,66 @@ func TestErrorToDetailedError_SMTokenNotConfigured(t *testing.T) {
 	assert.Contains(t, got.Suggestions[3], "gcx config view")
 }
 
+func TestErrorToDetailedError_SMTokenRegisterInstallPermissionDenied(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "HTTP 400 from register/install",
+			err: fmt.Errorf("failed to load SM config for checks: %w",
+				fmt.Errorf("SM token not configured: %w",
+					fmt.Errorf("register/install API failed: %w",
+						errors.New("SM register/install: request failed with status 400: insufficient permissions")))),
+		},
+		{
+			name: "HTTP 403 from register/install",
+			err: fmt.Errorf("failed to load SM config for checks: %w",
+				fmt.Errorf("SM token not configured: %w",
+					fmt.Errorf("register/install API failed: %w",
+						errors.New("SM register/install: request failed with status 403: forbidden")))),
+		},
+		{
+			name: "HTTP 401 from register/install",
+			err: fmt.Errorf("failed to load SM config for checks: %w",
+				fmt.Errorf("SM token not configured: %w",
+					fmt.Errorf("register/install API failed: %w",
+						errors.New("SM register/install: request failed with status 401: unauthorized")))),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tc.err)
+
+			require.NotNil(t, got)
+			assert.Equal(t, "SM token auto-discovery: permission denied", got.Summary)
+			assert.Contains(t, got.Details, "SM token not configured")
+			assert.Contains(t, got.Details, "register/install")
+			require.NotNil(t, got.ExitCode)
+			assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+			require.Len(t, got.Suggestions, 3)
+			assert.Contains(t, got.Suggestions[0], "stacks:read")
+			assert.Contains(t, got.Suggestions[0], "metrics:write")
+			assert.Contains(t, got.Suggestions[0], "logs:write")
+			assert.Contains(t, got.Suggestions[0], "traces:write")
+			assert.Contains(t, got.Suggestions[1], "gcx config set providers.synth.sm-token")
+		})
+	}
+}
+
+func TestErrorToDetailedError_SMTokenRegisterInstallGeneric400FallsThrough(t *testing.T) {
+	err := fmt.Errorf("failed to load SM config for checks: %w",
+		fmt.Errorf("SM token not configured: %w",
+			fmt.Errorf("register/install API failed: %w",
+				errors.New("SM register/install: request failed with status 400: bad request"))))
+
+	got := fail.ErrorToDetailedError(err)
+
+	require.NotNil(t, got)
+	assert.Equal(t, "SM token not configured", got.Summary)
+}
+
 func TestErrorToDetailedError_CloudTokenNotConfigured(t *testing.T) {
 	err := errors.New("cloud token is required: set cloud.token in config or GRAFANA_CLOUD_TOKEN env var")
 
@@ -487,6 +661,103 @@ func TestErrorToDetailedError_CloudStackNotConfigured(t *testing.T) {
 	require.Len(t, got.Suggestions, 2)
 	assert.Contains(t, got.Suggestions[0], "gcx config set cloud.stack")
 	assert.Contains(t, got.Suggestions[1], "GRAFANA_CLOUD_STACK")
+}
+
+func TestErrorToDetailedError_LoginGCOMStack403(t *testing.T) {
+	cause := &cloud.GCOMHTTPError{Status: 403, Body: "forbidden"}
+	err := &login.GCOMStackError{Slug: "mystack", Status: 403, Cause: cause}
+
+	got := fail.ErrorToDetailedError(err)
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Grafana Cloud stack lookup denied", got.Summary)
+	require.NotNil(t, got.ExitCode, "403 should map to ExitAuthFailure")
+	assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+
+	require.NotEmpty(t, got.Suggestions)
+	joined := strings.Join(got.Suggestions, "\n")
+	assert.Contains(t, joined, "stacks:read", "must mention the missing CAP scope")
+}
+
+func TestErrorToDetailedError_LoginGCOMStack401(t *testing.T) {
+	cause := &cloud.GCOMHTTPError{Status: 401, Body: "unauthorized"}
+	err := &login.GCOMStackError{Slug: "mystack", Status: 401, Cause: cause}
+
+	got := fail.ErrorToDetailedError(err)
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Grafana Cloud token rejected", got.Summary)
+	require.NotNil(t, got.ExitCode)
+	assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+}
+
+func TestErrorToDetailedError_LoginGCOMStack404(t *testing.T) {
+	cause := &cloud.GCOMHTTPError{Status: 404, Body: "not found"}
+	err := &login.GCOMStackError{Slug: "mystack", Status: 404, Cause: cause}
+
+	got := fail.ErrorToDetailedError(err)
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Grafana Cloud stack not found", got.Summary)
+	require.NotEmpty(t, got.Suggestions)
+	assert.Contains(t, strings.Join(got.Suggestions, "\n"), "mystack")
+}
+
+func TestErrorToDetailedError_LoginHealthCheckAuth(t *testing.T) {
+	for _, status := range []int{401, 403} {
+		t.Run(fmt.Sprintf("status %d", status), func(t *testing.T) {
+			err := &login.HealthCheckError{
+				Server: "https://example.grafana.net",
+				Status: status,
+				Cause:  errors.New("unauthorized"),
+			}
+
+			got := fail.ErrorToDetailedError(err)
+
+			require.NotNil(t, got)
+			assert.Equal(t, "Grafana token rejected", got.Summary)
+			require.NotNil(t, got.ExitCode)
+			assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+		})
+	}
+}
+
+func TestErrorToDetailedError_LoginHealthCheckUnreachable(t *testing.T) {
+	err := &login.HealthCheckError{
+		Server: "https://example.grafana.net",
+		Status: 0,
+		Cause:  errors.New("dial tcp: connection refused"),
+	}
+
+	got := fail.ErrorToDetailedError(err)
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Grafana server unreachable", got.Summary)
+	assert.Nil(t, got.ExitCode, "transport failures should not map to auth exit code")
+}
+
+func TestErrorToDetailedError_LoginK8sDiscovery(t *testing.T) {
+	err := &login.K8sDiscoveryError{
+		Server: "https://example.grafana.net",
+		Cause:  errors.New("the server could not find the requested resource"),
+	}
+
+	got := fail.ErrorToDetailedError(err)
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Kubernetes-style API unavailable", got.Summary)
+	require.NotEmpty(t, got.Suggestions)
+}
+
+func TestErrorToDetailedError_LoginVersionCheck(t *testing.T) {
+	v, _ := semver.NewVersion("11.5.0")
+	err := &login.VersionCheckError{Cause: &grafana.VersionIncompatibleError{Version: v}}
+
+	got := fail.ErrorToDetailedError(err)
+
+	require.NotNil(t, got)
+	require.NotNil(t, got.ExitCode)
+	assert.Equal(t, fail.ExitVersionIncompatible, *got.ExitCode)
 }
 
 type fakeServiceAPIError struct {
