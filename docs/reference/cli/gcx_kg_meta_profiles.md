@@ -1,11 +1,17 @@
-## gcx kg entities
+## gcx kg meta profiles
 
-Manage Knowledge Graph entities.
+Show Pyroscope label mappings for profile drilldown.
+
+```
+gcx kg meta profiles [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for entities
+  -h, --help            help for profiles
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: json, text, yaml (default "text")
 ```
 
 ### Options inherited from parent commands
@@ -22,7 +28,5 @@ Manage Knowledge Graph entities.
 
 ### SEE ALSO
 
-* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
-* [gcx kg entities inspect](gcx_kg_entities_inspect.md)	 - Show detailed info, insights, and summary for a single entity.
-* [gcx kg entities list](gcx_kg_entities_list.md)	 - List Knowledge Graph entities for a given type.
+* [gcx kg meta](gcx_kg_meta.md)	 - Show Knowledge Graph metadata: entity types, valid env/namespace/site values, and telemetry query configs.
 

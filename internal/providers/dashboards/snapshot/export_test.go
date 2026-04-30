@@ -1,4 +1,4 @@
-package dashboards
+package snapshot
 
 // Exported aliases for unexported types, available to external test packages only.
 

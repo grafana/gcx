@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/goccy/go-yaml"
+	sigsyaml "sigs.k8s.io/yaml"
 )
 
 type Format string
@@ -59,19 +60,32 @@ func (c *YAMLCodec) Format() Format {
 }
 
 func (c *YAMLCodec) Encode(dst io.Writer, value any) error {
+	// Use encoding/json → sigs.k8s.io/yaml for the JSON-marshal path.
+	// go-yaml's UseJSONMarshaler chokes on strings containing literal \r bytes
+	// (e.g. PromQL expressions with Windows line endings), whereas the
+	// JSON→YAML round-trip handles them correctly.
+	if !c.BytesAsBase64 {
+		jsonBytes, err := json.Marshal(value)
+		if err != nil {
+			return err
+		}
+		yamlBytes, err := sigsyaml.JSONToYAML(jsonBytes)
+		if err != nil {
+			return err
+		}
+		_, err = dst.Write(yamlBytes)
+		return err
+	}
+
 	opts := []yaml.EncodeOption{
 		yaml.Indent(2),
 		yaml.IndentSequence(true),
 		yaml.UseJSONMarshaler(),
-	}
-
-	if c.BytesAsBase64 {
-		opts = append(opts, yaml.CustomMarshaler(func(data []byte) ([]byte, error) {
-			dst := make([]byte, base64.StdEncoding.EncodedLen(len(data)))
-			base64.StdEncoding.Encode(dst, data)
-
-			return dst, nil
-		}))
+		yaml.CustomMarshaler(func(data []byte) ([]byte, error) {
+			out := make([]byte, base64.StdEncoding.EncodedLen(len(data)))
+			base64.StdEncoding.Encode(out, data)
+			return out, nil
+		}),
 	}
 
 	return yaml.NewEncoder(dst, opts...).Encode(value)

@@ -1,17 +1,17 @@
-## gcx kg describe scopes
+## gcx dashboards create
 
-Show all valid env/namespace/site filter values.
+Create a dashboard from a manifest
 
 ```
-gcx kg describe scopes [flags]
+gcx dashboards create -f <file> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for scopes
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: json, text, yaml (default "text")
+      --api-version string   API version to use (e.g. dashboard.grafana.app/v1); defaults to server preferred version
+  -f, --filename string      Path to JSON/YAML manifest file ('-' reads from stdin)
+  -h, --help                 help for create
 ```
 
 ### Options inherited from parent commands
@@ -28,5 +28,5 @@ gcx kg describe scopes [flags]
 
 ### SEE ALSO
 
-* [gcx kg describe](gcx_kg_describe.md)	 - Describe the Knowledge Graph: entity types, valid env/namespace/site values, and telemetry query configs.
+* [gcx dashboards](gcx_dashboards.md)	 - Manage Grafana dashboards
 

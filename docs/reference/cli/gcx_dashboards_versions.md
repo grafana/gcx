@@ -1,11 +1,11 @@
-## gcx kg entities
+## gcx dashboards versions
 
-Manage Knowledge Graph entities.
+Manage dashboard version history
 
 ### Options
 
 ```
-  -h, --help   help for entities
+  -h, --help   help for versions
 ```
 
 ### Options inherited from parent commands
@@ -22,7 +22,7 @@ Manage Knowledge Graph entities.
 
 ### SEE ALSO
 
-* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
-* [gcx kg entities inspect](gcx_kg_entities_inspect.md)	 - Show detailed info, insights, and summary for a single entity.
-* [gcx kg entities list](gcx_kg_entities_list.md)	 - List Knowledge Graph entities for a given type.
+* [gcx dashboards](gcx_dashboards.md)	 - Manage Grafana dashboards
+* [gcx dashboards versions list](gcx_dashboards_versions_list.md)	 - List dashboard version history
+* [gcx dashboards versions restore](gcx_dashboards_versions_restore.md)	 - Restore a dashboard to a previous version
 

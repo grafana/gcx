@@ -176,14 +176,14 @@ func collectLabelNames(samples []Sample) []string {
 func parseTimestamp(v any) string {
 	switch ts := v.(type) {
 	case float64:
-		t := time.Unix(int64(ts), int64((ts-float64(int64(ts)))*1e9))
+		t := time.Unix(int64(ts), int64((ts-float64(int64(ts)))*1e9)).UTC()
 		return t.Format(time.RFC3339)
 	case string:
 		f, err := strconv.ParseFloat(ts, 64)
 		if err != nil {
 			return ts
 		}
-		t := time.Unix(int64(f), int64((f-float64(int64(f)))*1e9))
+		t := time.Unix(int64(f), int64((f-float64(int64(f)))*1e9)).UTC()
 		return t.Format(time.RFC3339)
 	default:
 		return fmt.Sprintf("%v", v)

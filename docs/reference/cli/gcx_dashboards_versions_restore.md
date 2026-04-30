@@ -1,11 +1,18 @@
-## gcx kg entities
+## gcx dashboards versions restore
 
-Manage Knowledge Graph entities.
+Restore a dashboard to a previous version
+
+```
+gcx dashboards versions restore <name> <version> [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for entities
+      --api-version string   API version to use (e.g. dashboard.grafana.app/v1); defaults to server preferred version
+  -h, --help                 help for restore
+      --message string       Commit message for the restored revision (default: "Restored from version N")
+  -y, --yes                  Skip confirmation prompt
 ```
 
 ### Options inherited from parent commands
@@ -22,7 +29,5 @@ Manage Knowledge Graph entities.
 
 ### SEE ALSO
 
-* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
-* [gcx kg entities inspect](gcx_kg_entities_inspect.md)	 - Show detailed info, insights, and summary for a single entity.
-* [gcx kg entities list](gcx_kg_entities_list.md)	 - List Knowledge Graph entities for a given type.
+* [gcx dashboards versions](gcx_dashboards_versions.md)	 - Manage dashboard version history
 

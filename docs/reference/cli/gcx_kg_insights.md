@@ -28,6 +28,7 @@ Query Knowledge Graph insights.
 * [gcx kg insights example](gcx_kg_insights_example.md)	 - Print an example insights request YAML.
 * [gcx kg insights graph](gcx_kg_insights_graph.md)	 - Query insights with graph topology.
 * [gcx kg insights query](gcx_kg_insights_query.md)	 - Query insights for a time range.
+* [gcx kg insights search](gcx_kg_insights_search.md)	 - Search for insights matching a query.
 * [gcx kg insights source-metrics](gcx_kg_insights_source-metrics.md)	 - Get source metrics for a specific insight.
 * [gcx kg insights summary](gcx_kg_insights_summary.md)	 - Get insights summary for a time range.
 

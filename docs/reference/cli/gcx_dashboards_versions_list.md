@@ -1,11 +1,19 @@
-## gcx kg entities
+## gcx dashboards versions list
 
-Manage Knowledge Graph entities.
+List dashboard version history
+
+```
+gcx dashboards versions list <name> [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for entities
+      --api-version string   API version to use (e.g. dashboard.grafana.app/v1); defaults to server preferred version
+  -h, --help                 help for list
+      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int            Maximum number of revisions to return (0 = all)
+  -o, --output string        Output format. One of: json, table, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -22,7 +30,5 @@ Manage Knowledge Graph entities.
 
 ### SEE ALSO
 
-* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
-* [gcx kg entities inspect](gcx_kg_entities_inspect.md)	 - Show detailed info, insights, and summary for a single entity.
-* [gcx kg entities list](gcx_kg_entities_list.md)	 - List Knowledge Graph entities for a given type.
+* [gcx dashboards versions](gcx_dashboards_versions.md)	 - Manage dashboard version history
 

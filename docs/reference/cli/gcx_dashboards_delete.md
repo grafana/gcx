@@ -1,11 +1,17 @@
-## gcx kg entities
+## gcx dashboards delete
 
-Manage Knowledge Graph entities.
+Delete a dashboard
+
+```
+gcx dashboards delete <name> [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for entities
+      --api-version string   API version to use (e.g. dashboard.grafana.app/v1); defaults to server preferred version
+  -h, --help                 help for delete
+  -y, --yes                  Skip confirmation prompt
 ```
 
 ### Options inherited from parent commands
@@ -22,7 +28,5 @@ Manage Knowledge Graph entities.
 
 ### SEE ALSO
 
-* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
-* [gcx kg entities inspect](gcx_kg_entities_inspect.md)	 - Show detailed info, insights, and summary for a single entity.
-* [gcx kg entities list](gcx_kg_entities_list.md)	 - List Knowledge Graph entities for a given type.
+* [gcx dashboards](gcx_dashboards.md)	 - Manage Grafana dashboards
 

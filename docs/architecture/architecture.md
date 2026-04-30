@@ -824,8 +824,8 @@ Each LGTM signal has its own provider in `internal/providers/{signal}/` that reg
 |------|---------|
 | `internal/dashboards/renderer.go` | HTTP client for Grafana Image Renderer API (`/render/d/`, `/render/d-solo/`) |
 | `internal/dashboards/types.go` | `SnapshotResult` struct for JSON/table output |
-| `cmd/gcx/dashboards/command.go` | `dashboards` command group |
-| `cmd/gcx/dashboards/snapshot.go` | `dashboards snapshot` — renders PNG images with kiosk mode, template variable overrides |
+| `internal/providers/dashboards/provider.go` | `dashboards` provider — self-registers CRUD, search, versions, snapshot commands |
+| `internal/providers/dashboards/snapshot/snapshot.go` | `dashboards snapshot` — renders PNG images with kiosk mode, template variable overrides |
 
 ### Terminal Chart Rendering
 
