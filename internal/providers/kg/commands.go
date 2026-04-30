@@ -92,7 +92,6 @@ func (f *scopeFlags) scopeCriteria() *ScopeCriteria {
 	return &ScopeCriteria{NameAndValues: vals}
 }
 
-
 func (f *scopeFlags) scopeMap() map[string]string {
 	scope := map[string]string{}
 	if f.env != "" {
