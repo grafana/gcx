@@ -80,7 +80,7 @@ jobs:
         uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4
         with:
           install: true
-          cache: true
+          cache: false
 
       - name: Install python dependencies
         run: uv pip install --system -q -r requirements.txt
