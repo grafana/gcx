@@ -206,6 +206,136 @@ func TestConvertGrafanaResponse(t *testing.T) {
 				{float64(2000), float64(99.0)},
 			},
 		},
+		{
+			name: "multiple frames with labels adds label columns",
+			input: &influxdb.GrafanaQueryResponse{
+				Results: map[string]influxdb.GrafanaResult{
+					"A": {
+						Frames: []influxdb.DataFrame{
+							{
+								Schema: influxdb.DataFrameSchema{
+									Fields: []influxdb.Field{
+										{Name: "Time", Type: "time"},
+										{Name: "_value", Type: "number", Labels: map[string]string{"host": "server-a"}},
+									},
+								},
+								Data: influxdb.DataFrameData{
+									Values: [][]any{
+										{float64(1000), float64(2000)},
+										{float64(10.5), float64(20.3)},
+									},
+								},
+							},
+							{
+								Schema: influxdb.DataFrameSchema{
+									Fields: []influxdb.Field{
+										{Name: "Time", Type: "time"},
+										{Name: "_value", Type: "number", Labels: map[string]string{"host": "server-b"}},
+									},
+								},
+								Data: influxdb.DataFrameData{
+									Values: [][]any{
+										{float64(3000), float64(4000)},
+										{float64(30.1), float64(40.2)},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantColumns: []string{"Time", "_value", "host"},
+			wantRows: [][]any{
+				{float64(1000), float64(10.5), "server-a"},
+				{float64(2000), float64(20.3), "server-a"},
+				{float64(3000), float64(30.1), "server-b"},
+				{float64(4000), float64(40.2), "server-b"},
+			},
+		},
+		{
+			name: "frames with different label key sets uses union",
+			input: &influxdb.GrafanaQueryResponse{
+				Results: map[string]influxdb.GrafanaResult{
+					"A": {
+						Frames: []influxdb.DataFrame{
+							{
+								Schema: influxdb.DataFrameSchema{
+									Fields: []influxdb.Field{
+										{Name: "Time", Type: "time"},
+										{Name: "_value", Type: "number", Labels: map[string]string{"host": "server-a", "region": "us-east"}},
+									},
+								},
+								Data: influxdb.DataFrameData{
+									Values: [][]any{
+										{float64(1000)},
+										{float64(10.0)},
+									},
+								},
+							},
+							{
+								Schema: influxdb.DataFrameSchema{
+									Fields: []influxdb.Field{
+										{Name: "Time", Type: "time"},
+										{Name: "_value", Type: "number", Labels: map[string]string{"host": "server-b", "env": "prod"}},
+									},
+								},
+								Data: influxdb.DataFrameData{
+									Values: [][]any{
+										{float64(2000)},
+										{float64(20.0)},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantColumns: []string{"Time", "_value", "env", "host", "region"},
+			wantRows: [][]any{
+				{float64(1000), float64(10.0), "", "server-a", "us-east"},
+				{float64(2000), float64(20.0), "prod", "server-b", ""},
+			},
+		},
+		{
+			name: "empty frame with labels still contributes label columns",
+			input: &influxdb.GrafanaQueryResponse{
+				Results: map[string]influxdb.GrafanaResult{
+					"A": {
+						Frames: []influxdb.DataFrame{
+							{
+								Schema: influxdb.DataFrameSchema{
+									Fields: []influxdb.Field{
+										{Name: "Time", Type: "time"},
+										{Name: "_value", Type: "number", Labels: map[string]string{"host": "server-a"}},
+									},
+								},
+								Data: influxdb.DataFrameData{
+									Values: [][]any{{}, {}},
+								},
+							},
+							{
+								Schema: influxdb.DataFrameSchema{
+									Fields: []influxdb.Field{
+										{Name: "Time", Type: "time"},
+										{Name: "_value", Type: "number", Labels: map[string]string{"host": "server-b"}},
+									},
+								},
+								Data: influxdb.DataFrameData{
+									Values: [][]any{
+										{float64(3000)},
+										{float64(30.0)},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantColumns: []string{"Time", "_value", "host"},
+			wantRows: [][]any{
+				{float64(3000), float64(30.0), "server-b"},
+			},
+		},
 	}
 
 	for _, tt := range tests {

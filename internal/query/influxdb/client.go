@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
 
 	"github.com/grafana/gcx/internal/config"
@@ -257,34 +258,68 @@ func convertGrafanaResponse(grafanaResp *GrafanaQueryResponse) *QueryResponse {
 		return result
 	}
 
-	// Use the first frame to establish column names and detect time columns.
+	// Use the first frame to establish base column names and detect time columns.
 	firstFrame := grafanaResult.Frames[0]
-	numCols := len(firstFrame.Schema.Fields)
-	columns := make([]string, numCols)
+	numBaseCols := len(firstFrame.Schema.Fields)
+	baseColumns := make([]string, numBaseCols)
 	timeColumns := make(map[int]bool)
 	for i, field := range firstFrame.Schema.Fields {
-		columns[i] = field.Name
+		baseColumns[i] = field.Name
 		if field.Type == "time" {
 			timeColumns[i] = true
 		}
 	}
+
+	// Collect the union of all label keys across all frames and fields.
+	// Flux returns one frame per series; labels on fields identify the series (e.g. host, region).
+	labelKeySet := make(map[string]bool)
+	for _, frame := range grafanaResult.Frames {
+		for _, field := range frame.Schema.Fields {
+			for key := range field.Labels {
+				labelKeySet[key] = true
+			}
+		}
+	}
+	labelKeys := make([]string, 0, len(labelKeySet))
+	for key := range labelKeySet {
+		labelKeys = append(labelKeys, key)
+	}
+	sort.Strings(labelKeys)
+
+	// Build final column list: base columns + sorted label columns.
+	totalCols := numBaseCols + len(labelKeys)
+	columns := make([]string, totalCols)
+	copy(columns, baseColumns)
+	for i, key := range labelKeys {
+		columns[numBaseCols+i] = key
+	}
 	result.Columns = columns
 	result.TimeColumns = timeColumns
 
-	// Collect rows from all frames. Flux queries return one frame per series,
-	// so iterating all frames is required to return complete results.
+	// Collect rows from all frames, appending label values as extra columns.
 	for _, frame := range grafanaResult.Frames {
 		if len(frame.Data.Values) == 0 || len(frame.Data.Values[0]) == 0 {
 			continue
 		}
 
+		// Merge all field labels for this frame into a single lookup map.
+		frameLabelValues := make(map[string]string, len(labelKeys))
+		for _, field := range frame.Schema.Fields {
+			for k, v := range field.Labels {
+				frameLabelValues[k] = v
+			}
+		}
+
 		rowCount := len(frame.Data.Values[0])
 		for rowIdx := range rowCount {
-			row := make([]any, numCols)
-			for colIdx := range numCols {
+			row := make([]any, totalCols)
+			for colIdx := range numBaseCols {
 				if colIdx < len(frame.Data.Values) && rowIdx < len(frame.Data.Values[colIdx]) {
 					row[colIdx] = frame.Data.Values[colIdx][rowIdx]
 				}
+			}
+			for i, key := range labelKeys {
+				row[numBaseCols+i] = frameLabelValues[key]
 			}
 			result.Rows = append(result.Rows, row)
 		}
