@@ -277,7 +277,7 @@ func readFileOrStdin(cmd *cobra.Command, path string) ([]byte, error) {
 	if path == "" {
 		fi, err := os.Stdin.Stat()
 		if err != nil || (fi.Mode()&os.ModeCharDevice) != 0 {
-			return nil, errors.New("no input: use -f <file> or pipe YAML via stdin\n\n  echo 'disabledAlertConfigs:\n    - name: my-suppression\n      matchLabels:\n        alertname: ErrorRatioBreach\n        job: my-service' | gcx kg suppressions create")
+			return nil, errors.New("no input: use -f <file> or pipe YAML via stdin")
 		}
 		return io.ReadAll(cmd.InOrStdin())
 	}
@@ -651,7 +651,7 @@ func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			data, err := readFileOrStdin(cmd, fileFlag)
 			if err != nil {
-				return fmt.Errorf("failed to read file: %w", err)
+				return err
 			}
 			var suppressions Suppressions
 			if err := yaml.Unmarshal(data, &suppressions); err != nil {
