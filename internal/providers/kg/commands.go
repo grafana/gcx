@@ -50,7 +50,6 @@ func (f *scopeFlags) register(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&f.since, "since", "", "Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)")
 }
 
-
 func (f *scopeFlags) resolveTime() (int64, int64, error) {
 	if f.since != "" && (f.from != "" || f.to != "") {
 		return 0, 0, errors.New("--since is mutually exclusive with --from/--to")
