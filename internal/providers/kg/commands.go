@@ -1535,6 +1535,105 @@ func newOpenCommand(loader RESTConfigLoader) *cobra.Command {
 }
 
 // ---------------------------------------------------------------------------
+// Cypher command
+// ---------------------------------------------------------------------------
+
+func newCypherCommand(loader RESTConfigLoader) *cobra.Command {
+	var (
+		cypherScope  scopeFlags
+		cypherPage   int
+		withInsights bool
+	)
+	ioOpts := &cypherOpts{}
+	cmd := &cobra.Command{
+		Use:   "cypher <query>",
+		Short: "Run a read-only Cypher query against the Knowledge Graph.",
+		Example: `  gcx kg cypher "MATCH (s:Service) RETURN s LIMIT 10"
+  gcx kg cypher "MATCH (s:Service)-[:CALLS]->(d:Service) RETURN s, d" --since 1h
+  gcx kg cypher "MATCH (s:Service) RETURN s" --namespace prod --page 1`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := ioOpts.IO.Validate(); err != nil {
+				return err
+			}
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			if err := cypherScope.validateScopes(cmd.Context(), client); err != nil {
+				return err
+			}
+			startMs, endMs, err := cypherScope.resolveTime()
+			if err != nil {
+				return err
+			}
+			req := CypherSearchRequest{
+				CypherQuery:  args[0],
+				TimeCriteria: &TimeCriteria{Start: startMs, End: endMs},
+				PageNum:      cypherPage,
+				WithInsights: withInsights,
+			}
+			if sc := cypherScope.scopeCriteria(); sc != nil {
+				req.ScopeCriteria = sc
+			}
+			resp, err := client.CypherSearch(cmd.Context(), req)
+			if err != nil {
+				return err
+			}
+			return ioOpts.IO.Encode(cmd.OutOrStdout(), resp)
+		},
+	}
+	cypherScope.register(cmd)
+	cmd.Flags().Lookup("env").Usage = "Environment scope (run 'gcx kg meta scopes' to see valid values)"
+	cmd.Flags().Lookup("namespace").Usage = "Namespace scope (run 'gcx kg meta scopes' to see valid values)"
+	cmd.Flags().Lookup("site").Usage = "Site scope (run 'gcx kg meta scopes' to see valid values)"
+	cmd.Flags().IntVar(&cypherPage, "page", 0, "Page number (0-based)")
+	cmd.Flags().BoolVar(&withInsights, "insights-only", false, "Return only entities with active insights")
+	ioOpts.setup(cmd.Flags())
+	return cmd
+}
+
+type cypherOpts struct {
+	IO cmdio.Options
+}
+
+func (o *cypherOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("table", &CypherTableCodec{})
+	o.IO.DefaultFormat("json")
+	o.IO.BindFlags(flags)
+}
+
+// CypherTableCodec renders a CypherSearchResponse as a table of entities.
+type CypherTableCodec struct{}
+
+func (c *CypherTableCodec) Format() format.Format { return "table" }
+
+func (c *CypherTableCodec) Encode(w io.Writer, v any) error {
+	resp, ok := v.(*CypherSearchResponse)
+	if !ok {
+		return errors.New("invalid data type for table codec: expected *CypherSearchResponse")
+	}
+	t := style.NewTable("TYPE", "NAME", "SCOPE")
+	for _, e := range resp.Entities {
+		var parts []string
+		for k, val := range e.Scope {
+			parts = append(parts, fmt.Sprintf("%s=%v", k, val))
+		}
+		sort.Strings(parts)
+		t.Row(e.Type, e.Name, strings.Join(parts, ", "))
+	}
+	return t.Render(w)
+}
+
+func (c *CypherTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// ---------------------------------------------------------------------------
 // Metadata command
 // ---------------------------------------------------------------------------
 

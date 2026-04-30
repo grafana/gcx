@@ -456,6 +456,15 @@ func (c *Client) FetchProfileConfigs(ctx context.Context) (ProfileConfigsRespons
 	return resp, nil
 }
 
+// CypherSearch runs a read-only Cypher query against the Knowledge Graph.
+func (c *Client) CypherSearch(ctx context.Context, req CypherSearchRequest) (*CypherSearchResponse, error) {
+	var result CypherSearchResponse
+	if err := c.postJSON(ctx, searchPath+"/cypher", req, &result); err != nil {
+		return nil, fmt.Errorf("kg: cypher search: %w", err)
+	}
+	return &result, nil
+}
+
 // LLMSummary fetches entity health data from the LLM summary endpoint.
 func (c *Client) LLMSummary(ctx context.Context, req LLMSummaryRequest) (map[string]any, error) {
 	var result map[string]any
