@@ -1,6 +1,7 @@
 package kg
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -679,11 +681,26 @@ func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
 	}
 	createCmd.Flags().StringVarP(&fileFlag, "file", "f", "", "Input file (YAML), or '-' for stdin. Reads from stdin if omitted.")
 
+	var yes bool
 	deleteCmd := &cobra.Command{
 		Use:   "delete <name>",
 		Short: "Delete a suppression by name.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			if !yes {
+				cliOpts, err := config.LoadCLIOptions()
+				if err != nil {
+					return err
+				}
+				if !cliOpts.AutoApprove {
+					fmt.Fprintf(cmd.OutOrStdout(), "Delete suppression %q? [y/N] ", name)
+					scanner := bufio.NewScanner(cmd.InOrStdin())
+					if !scanner.Scan() || !strings.EqualFold(strings.TrimSpace(scanner.Text()), "y") {
+						return nil
+					}
+				}
+			}
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
@@ -692,13 +709,14 @@ func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := client.DeleteSuppression(cmd.Context(), args[0]); err != nil {
+			if err := client.DeleteSuppression(cmd.Context(), name); err != nil {
 				return err
 			}
-			cmdio.Success(cmd.OutOrStdout(), "Suppression %q deleted", args[0])
+			cmdio.Success(cmd.OutOrStdout(), "Suppression %q deleted", name)
 			return nil
 		},
 	}
+	deleteCmd.Flags().BoolVarP(&yes, "yes", "y", false, "Skip confirmation prompt")
 
 	cmd.AddCommand(listCmd, createCmd, deleteCmd)
 	return cmd

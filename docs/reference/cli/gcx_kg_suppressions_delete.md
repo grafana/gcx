@@ -10,6 +10,7 @@ gcx kg suppressions delete <name> [flags]
 
 ```
   -h, --help   help for delete
+  -y, --yes    Skip confirmation prompt
 ```
 
 ### Options inherited from parent commands
