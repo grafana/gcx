@@ -90,9 +90,9 @@ slog.Debug("oncall: auto-discovered URL", "url", onCallURL, "source", source)
 ## Build Commands
 
 ```bash
-GCX_AGENT_MODE=false make all    # REQUIRED — agent mode changes default
-                                         # output formats, producing wrong docs
-GCX_AGENT_MODE=false make lint   # after agent phases
+GCX_AGENT_MODE=false mise run all    # REQUIRED — agent mode changes default
+                                     # output formats, producing wrong docs
+GCX_AGENT_MODE=false mise run lint   # after agent phases
 ```
 
 ## Schema + Example Registration

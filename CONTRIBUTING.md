@@ -59,30 +59,29 @@ Issues are grouped into milestones representing release targets. Check the
 
 ## Development environment
 
-`gcx` relies on [`devbox`](https://www.jetify.com/devbox/docs/) to manage all
+`gcx` relies on [`mise`](https://mise.jdx.dev/) to manage all
 the tools required to work on it.
 
-A shell including all these tools is accessible via:
+Install mise and set up the project:
 
 ```console
-$ devbox shell
+$ brew install mise        # or: curl https://mise.run | sh
+$ mise trust               # trust the mise.toml configuration
+$ mise install             # install tools (Go, golangci-lint, etc.)
+$ mise run deps            # install Go and Python dependencies
 ```
 
-This shell can be exited like any other shell, with `exit` or `CTRL+D`.
-
-One-off commands can be executed within the devbox shell as well:
+All development commands use `mise run`:
 
 ```console
-$ devbox run go version
+$ mise run build           # build to bin/gcx
+$ mise run lint            # run golangci-lint
+$ mise run tests           # run all tests
+$ mise run all             # lint + tests + build + docs
+$ mise tasks               # list all available tasks
 ```
 
-Packages can be installed using:
-
-```console
-$ devbox add go@1.24
-```
-
-Available packages can be found on the [NixOS package repository](https://search.nixos.org/packages).
+See the [mise documentation](https://mise.jdx.dev/) for shell integration and further options.
 
 ## Testing against a real Grafana API
 
@@ -99,10 +98,10 @@ The repository includes a `docker-compose.yml` file that sets up a complete test
 
 ### Starting the test environment
 
-Start the services using the Make target:
+Start the services:
 
 ```console
-$ make test-env-up
+$ mise run test-env-up
 ```
 
 This will start both Grafana and MySQL, wait for them to be healthy, and display the connection information.
@@ -116,7 +115,7 @@ $ docker-compose up -d
 Check the status of the services:
 
 ```console
-$ make test-env-status
+$ mise run test-env-status
 ```
 
 Or manually:
@@ -142,13 +141,13 @@ The repository includes a pre-configured test config file at `testdata/integrati
 #### View the test configuration
 
 ```console
-$ devbox run go run ./cmd/gcx --config testdata/integration-test-config.yaml config view
+$ go run ./cmd/gcx --config testdata/integration-test-config.yaml config view
 ```
 
 #### List available resources
 
 ```console
-$ devbox run go run ./cmd/gcx --config testdata/integration-test-config.yaml resources schemas
+$ go run ./cmd/gcx --config testdata/integration-test-config.yaml resources schemas
 ```
 
 #### Create a test dashboard
@@ -156,10 +155,11 @@ $ devbox run go run ./cmd/gcx --config testdata/integration-test-config.yaml res
 1. Create a dashboard YAML file (e.g., `test-dashboard.yaml`):
 
 ```yaml
-apiVersion: v1alpha1
+apiVersion: dashboard.grafana.app/v1beta1
 kind: Dashboard
 metadata:
   name: test-dashboard
+  namespace: default
 spec:
   title: Test Dashboard
   tags: [test]
@@ -170,13 +170,13 @@ spec:
 2. Push it to Grafana:
 
 ```console
-$ devbox run go run ./cmd/gcx --config testdata/integration-test-config.yaml resources push test-dashboard.yaml
+$ go run ./cmd/gcx --config testdata/integration-test-config.yaml resources push -p test-dashboard.yaml
 ```
 
 3. Pull it back to verify:
 
 ```console
-$ devbox run go run ./cmd/gcx --config testdata/integration-test-config.yaml resources get dashboards/test-dashboard
+$ go run ./cmd/gcx --config testdata/integration-test-config.yaml resources get dashboards/test-dashboard
 ```
 
 #### Testing the serve command
@@ -184,7 +184,7 @@ $ devbox run go run ./cmd/gcx --config testdata/integration-test-config.yaml res
 The `serve` command allows you to develop dashboards locally with live reload:
 
 ```console
-$ devbox run go run ./cmd/gcx --config testdata/integration-test-config.yaml dev serve test-dashboard.yaml
+$ go run ./cmd/gcx --config testdata/integration-test-config.yaml dev serve test-dashboard.yaml
 ```
 
 Then open your browser to the URL shown in the output (typically `http://localhost:8080`).
@@ -194,7 +194,7 @@ Then open your browser to the URL shown in the output (typically `http://localho
 When you're done testing, stop the services:
 
 ```console
-$ make test-env-down
+$ mise run test-env-down
 ```
 
 Or manually:
@@ -206,7 +206,7 @@ $ docker-compose down
 To remove all data (including database volumes):
 
 ```console
-$ make test-env-clean
+$ mise run test-env-clean
 ```
 
 Or manually:
@@ -246,7 +246,7 @@ $ docker-compose up -d --force-recreate grafana
 To view logs from both services:
 
 ```console
-$ make test-env-logs
+$ mise run test-env-logs
 ```
 
 To view logs from a specific service:
@@ -313,10 +313,10 @@ $ docker-compose up -d
 
 ### Generating a changelog and tagging
 
-Releases are automated via `make tag`. It requires the `claude` CLI and [`svu`](https://github.com/caarlos0/svu).
+Releases are automated via `mise run tag`. It requires the `claude` CLI and [`svu`](https://github.com/caarlos0/svu).
 
 ```console
-$ make tag BUMP=patch   # or minor, major
+$ mise run tag -- patch   # or minor, major
 ```
 
 This generates a changelog entry (via Claude), updates `CHANGELOG.md` and `.release-notes.md`, commits, tags, and pushes. The tag push triggers GoReleaser.

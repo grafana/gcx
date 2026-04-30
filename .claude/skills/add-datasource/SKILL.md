@@ -30,7 +30,7 @@ research report     code per step      smoke tests
 | Stage | Deliverable | Gate |
 |-------|-------------|------|
 | 1. Discover | Research report | User approves findings |
-| 2. Implement | Code (one step at a time) | `make all` passes per step |
+| 2. Implement | Code (one step at a time) | `mise run all` passes per step |
 | 3. Verify | Smoke tests + annotation check | All checks green |
 
 ### Prerequisites
@@ -243,7 +243,7 @@ If the datasource also needs entries in `internal/agent/command_annotations.go`
 "gcx datasources {kind} labels": {Cost: "small"},
 ```
 
-### Gate: `make all` passes
+### Gate: `mise run all` passes
 
 ---
 
@@ -255,7 +255,7 @@ Only test the subcommands that were actually added:
 
 ```bash
 # Build
-make build
+mise run build
 
 # Verify the parent command and each subcommand exist
 bin/gcx datasources {kind} --help
@@ -270,7 +270,7 @@ bin/gcx datasources {kind} query '<expr>' --since 1h
 
 ```bash
 # Full quality gates
-make all
+mise run all
 
 # Agent annotation consistency
 go test ./internal/agent/...

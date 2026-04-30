@@ -152,6 +152,72 @@ test_dashboard_v1_with_no_title_description if {
     }})
 }
 
+test_dashboard_v1_with_panel_nested_in_collapsed_row_no_description if {
+	resource := {
+		"kind": "Dashboard",
+		"apiVersion": "dashboard.grafana.app/v1beta1",
+		"metadata": {"name": "test-dashboard"},
+		"spec": {"panels": [{
+			"id": 1,
+			"type": "row",
+			"collapsed": true,
+			"title": "Some row",
+			"panels": [_test_v1_panel("nested title", "")],
+		}]},
+	}
+
+	report := rule.report with input as resource
+
+	assert_reports_match(report, {{
+		"category": "idiomatic",
+		"description": "Panels should have a title and description.",
+		"details": "panel 4 has no description",
+		"related_resources": [{"description": "documentation", "ref": "https://github.com/grafana/gcx/blob/main/docs/reference/linter-rules/dashboard/panel-title-description.md"}],
+		"resource_type": "dashboard",
+		"rule": "panel-title-description",
+		"severity": "warning",
+	}})
+}
+
+test_dashboard_v1_with_panel_nested_in_collapsed_row_valid if {
+	resource := {
+		"kind": "Dashboard",
+		"apiVersion": "dashboard.grafana.app/v1beta1",
+		"metadata": {"name": "test-dashboard"},
+		"spec": {"panels": [{
+			"id": 1,
+			"type": "row",
+			"collapsed": true,
+			"title": "Some row",
+			"panels": [_test_v1_panel("nested title", "nested description")],
+		}]},
+	}
+
+	report := rule.report with input as resource
+
+	assert_reports_match(report, set())
+}
+
+test_dashboard_v1_with_only_a_row if {
+	# A row by itself (no nested panels, no top-level panels) must never produce
+	# a violation regardless of whether it has a title/description.
+	resource := {
+		"kind": "Dashboard",
+		"apiVersion": "dashboard.grafana.app/v1beta1",
+		"metadata": {"name": "test-dashboard"},
+		"spec": {"panels": [{
+			"id": 1,
+			"type": "row",
+			"collapsed": false,
+			"title": "",
+		}]},
+	}
+
+	report := rule.report with input as resource
+
+	assert_reports_match(report, set())
+}
+
 test_dashboard_v2_with_no_panels if {
 	resource := {
 		"kind": "Dashboard",

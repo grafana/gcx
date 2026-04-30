@@ -1,17 +1,24 @@
-## gcx kg describe profiles
+## gcx dashboards get
 
-Show Pyroscope label mappings for profile drilldown.
+Get a dashboard by name
+
+### Synopsis
+
+Get a Grafana dashboard by its Kubernetes resource name.
+
+The `name` argument equals the legacy Dashboard UID.
 
 ```
-gcx kg describe profiles [flags]
+gcx dashboards get <name> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for profiles
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: json, text, yaml (default "text")
+      --api-version string   API version to use (e.g. dashboard.grafana.app/v1); defaults to server preferred version
+  -h, --help                 help for get
+      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string        Output format. One of: json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -28,5 +35,5 @@ gcx kg describe profiles [flags]
 
 ### SEE ALSO
 
-* [gcx kg describe](gcx_kg_describe.md)	 - Describe the Knowledge Graph: entity types, valid env/namespace/site values, and telemetry query configs.
+* [gcx dashboards](gcx_dashboards.md)	 - Manage Grafana dashboards
 

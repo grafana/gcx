@@ -1,27 +1,24 @@
-## gcx kg entities show
+## gcx kg insights search
 
-Show entities. Without a name, lists all; with a name, shows one.
+Search for insights matching a query.
 
 ```
-gcx kg entities show [name] [flags]
+gcx kg insights search [flags]
 ```
 
 ### Options
 
 ```
       --env string         Environment scope
+  -f, --file string        Input file (YAML)
       --from string        Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-  -h, --help               help for show
-      --insights-only      Only return entities with active insights (list mode)
-      --json string        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int          Maximum number of items to return (0 for all) (default 50)
+  -h, --help               help for search
+      --name string        Entity name filter
       --namespace string   Namespace scope
-  -o, --output string      Output format. One of: json, table, yaml (default "table")
-      --page int           Page number, 0-based (list mode)
       --since string       Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
       --site string        Site scope
       --to string          End time (RFC3339, Unix timestamp, or relative like 'now')
-      --type string        Entity type (required for single entity, optional for list)
+      --type string        Entity type filter
 ```
 
 ### Options inherited from parent commands
@@ -38,5 +35,5 @@ gcx kg entities show [name] [flags]
 
 ### SEE ALSO
 
-* [gcx kg entities](gcx_kg_entities.md)	 - Manage Knowledge Graph entities.
+* [gcx kg insights](gcx_kg_insights.md)	 - Query Knowledge Graph insights.
 

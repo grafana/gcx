@@ -19,7 +19,7 @@ from the spec acceptance criteria and verification tasks below.
 
 ## Step 4A: Build Gate
 
-Run `GCX_AGENT_MODE=false make all` and confirm it exits 0 with no lint errors
+Run `GCX_AGENT_MODE=false mise run all` and confirm it exits 0 with no lint errors
 and all tests passing. If it fails, report the failure and STOP — do not
 proceed to smoke tests.
 

@@ -704,10 +704,10 @@ which manages its own transport.
 ### 5. CI Drift Check Coverage
 
 **Observed in:** Project Structure domain notes that the CI `docs` job only
-checks `cli-reference-drift`, not all three reference generators. The Makefile
-has `reference-drift` targeting all three.
+checks `cli-reference-drift`, not all three reference generators. `mise.toml`
+has `reference-drift` targeting all four.
 
-**Resolution:** The Makefile now has all three drift check targets
-(`cli-reference-drift`, `env-var-reference-drift`, `config-reference-drift`)
-plus a combined `reference-drift` target. The CI workflow may not invoke the
-combined target. This is a coverage gap in CI, not a code contradiction.
+**Resolution:** `mise.toml` has all four drift check tasks
+(`reference-drift:cli`, `reference-drift:env-var`, `reference-drift:config`,
+`reference-drift:linter-rules`) plus a combined `reference-drift` task. CI now
+invokes `mise run reference-drift` which runs all four.

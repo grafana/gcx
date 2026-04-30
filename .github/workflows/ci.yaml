@@ -4,9 +4,6 @@ on:
   push:
     branches: [main] # so that we build a Go cache that can be re-used in PRs
 
-env:
-  DEVBOX_VERSION: 0.16.0
-
 permissions:
   contents: read
 
@@ -30,17 +27,20 @@ jobs:
           restore-keys: |
             go-deps-${{ runner.os }}
 
-      - name: Install devbox
-        uses: jetify-com/devbox-install-action@8c6a66ed6273138b1915457069de78cb52fe3bd7 # v0.15.0
+      - name: Setup mise
+        uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4
         with:
-          enable-cache: 'true'
-          devbox-version: ${{ env.DEVBOX_VERSION }}
+          install: true
+          cache: true
+
+      - name: Install dependencies
+        run: mise run deps
 
       - name: Validate bundled skills
-        run: devbox run -- make validate-skills
+        run: mise run validate-skills
 
       - name: Run golangci-lint
-        run: devbox run -- make lint
+        run: mise run lint
 
   tests:
     name: Tests
@@ -61,14 +61,17 @@ jobs:
           restore-keys: |
             go-deps-${{ runner.os }}
 
-      - name: Install devbox
-        uses: jetify-com/devbox-install-action@8c6a66ed6273138b1915457069de78cb52fe3bd7 # v0.15.0
+      - name: Setup mise
+        uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4
         with:
-          enable-cache: 'true'
-          devbox-version: ${{ env.DEVBOX_VERSION }}
+          install: true
+          cache: true
+
+      - name: Install dependencies
+        run: mise run deps
 
       - name: Tests
-        run: devbox run -- make tests
+        run: mise run tests
 
   docs:
     name: Documentation
@@ -79,15 +82,29 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install devbox
-        uses: jetify-com/devbox-install-action@8c6a66ed6273138b1915457069de78cb52fe3bd7 # v0.15.0
+      # Reference generation runs `go run` — cache Go modules to avoid re-downloading
+      - name: Restore go module cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
-          enable-cache: 'true'
-          devbox-version: ${{ env.DEVBOX_VERSION }}
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-deps-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            go-deps-${{ runner.os }}
+
+      - name: Setup mise
+        uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4
+        with:
+          install: true
+          cache: true
+
+      - name: Install dependencies
+        run: mise run deps
 
       - name: Check for drift in the generated documentation references
-        run: devbox run -- make reference-drift
+        run: mise run reference-drift
         shell: bash
 
       - name: Build documentation
-        run: devbox run -- make docs
+        run: mise run docs

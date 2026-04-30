@@ -40,23 +40,23 @@ Two tiers: **K8s resource tier** (dashboards, folders via `/apis`) and **Cloud p
 ## Essential Commands
 
 ```bash
-make build       # Build to bin/gcx
-make tests       # Run all tests with race detection
-make lint        # Run golangci-lint
-make all         # lint + tests + build + docs
-make docs        # Generate + build all documentation
+mise run build       # Build to bin/gcx
+mise run tests       # Run all tests with race detection
+mise run lint        # Run golangci-lint
+mise run all         # lint + tests + build + docs
+mise run docs        # Generate + build all documentation
 ```
 
-**Without devbox**: replace `make` targets with direct Go commands — `go build -buildvcs=false -o bin/gcx ./cmd/gcx/` and `go test ./...`. Always build to `bin/gcx`.
+**Without mise**: replace with direct Go commands — `go build -buildvcs=false -o bin/gcx ./cmd/gcx/` and `go test ./...`. Always build to `bin/gcx`.
 
-> **Agent environments**: always prefix with `GCX_AGENT_MODE=false` — agent-mode auto-detection changes output defaults in `make docs`, producing wrong CLI reference docs.
+> **Agent environments**: always prefix with `GCX_AGENT_MODE=false` — agent-mode auto-detection changes output defaults in `mise run docs`, producing wrong CLI reference docs.
 
 ## Testing
 
 ```bash
 go test ./internal/providers/traces/...   # Run one package
 go test -run TestQueryCodec ./internal/... # Run matching tests across packages
-go test -race -count=1 ./...              # Full suite with race detection (same as make tests)
+go test -race -count=1 ./...              # Full suite with race detection (same as mise run tests)
 ```
 
 Prefer table-driven tests. See existing `_test.go` files for patterns.
@@ -71,7 +71,6 @@ cmd/gcx/
   login/        Unified login command (token + OAuth PKCE, interactive prompts)
   config/       Config management (set, use-context, view, check)
   resources/    Resource commands (get, schemas, push, pull, delete, edit, validate)
-  dashboards/   Dashboard snapshot (Image Renderer)
   datasources/  Datasource commands (list, get, query, per-type subcommands via DatasourceProvider)
   providers/    Provider list command
   assistant/    Assistant commands (AI-powered investigations)
@@ -103,6 +102,7 @@ internal/
 │   └── remote/     Pusher, Puller, Deleter, FolderHierarchy, Summary
 ├── providers/   Provider plugin system (interface, registry, self-registration)
 │   ├── alert/      Alert provider (rules, groups — read-only)
+│   ├── dashboards/ Dashboards provider (CRUD, search, versions, snapshot)
 │   ├── faro/       Frontend Observability provider (apps CRUD, sourcemaps sub-resource) — CLI: `gcx frontend`
 │   ├── fleet/      Fleet Management provider (pipeline and collector resources)
 │   ├── irm/        IRM provider (OnCall + Incidents — schedules, integrations, escalation chains, incidents)
@@ -144,7 +144,7 @@ internal/
 ├── version/     Global version string (Set once from main; provides UserAgent() for HTTP clients)
 ├── secrets/     Redactor for config view
 ├── logs/        slog/klog integration
-├── notifier/    Skills update notifier (XDG state, throttle, message rendering — wired into root PersistentPostRun)
+├── notifier/    Update notifications (skills + gcx version checks; XDG state, throttling, message rendering — wired into root PersistentPostRun)
 ├── skills/      Portable Agent Skills installer primitives (BundledSkillNames, Install, Update — extracted from cmd/gcx/skills)
 └── shared/      Shared utilities (date handling, duration, etc.) to be shared across integrations.
 ```
@@ -180,10 +180,10 @@ Check work against these docs during planning, design, and implementation — in
 
 ## Releasing
 
-Automated via `make tag`. Requires `claude` CLI and [`svu`](https://github.com/caarlos0/svu).
+Automated via `mise run tag`. Requires `claude` CLI and [`svu`](https://github.com/caarlos0/svu).
 
 ```bash
-make tag BUMP=patch   # or minor, major
+mise run tag -- patch   # or minor, major
 ```
 
 This generates a changelog entry (via Claude), updates `CHANGELOG.md` and `.release-notes.md`, commits, tags, and pushes. The tag push triggers the GoReleaser workflow.
@@ -207,9 +207,9 @@ Run when code has been modified, before pushing or creating a PR.
    ```bash
    git fetch origin main && git rebase origin/main
    ```
-3. **Quality gates pass** — `make docs` auto-detects agent mode from env vars (`CLAUDECODE`, `CLAUDE_CODE`) and flips output defaults, producing wrong docs. Always override:
+3. **Quality gates pass** — `mise run docs` auto-detects agent mode from env vars (`CLAUDECODE`, `CLAUDE_CODE`) and flips output defaults, producing wrong docs. Always override:
    ```bash
-   GCX_AGENT_MODE=false make all
+   GCX_AGENT_MODE=false mise run all
    ```
 4. **Doc maintenance gate** — run the structural checks in [docs/reference/doc-maintenance.md](docs/reference/doc-maintenance.md). Update `CLAUDE.md` (package map), `ARCHITECTURE.md` (ADR table), and relevant `docs/architecture/` files if any are stale.
 5. **Push**
@@ -234,9 +234,8 @@ Run this checklist **before every commit** (not only before PR/push):
    ```
 2. **Lint passes**
    ```bash
-   make lint
+   mise run lint
    ```
-   If `devbox` is unavailable, use the project-local binary/toolchain equivalent.
 3. **Targeted tests pass** for changed packages
    ```bash
    go test ./path/to/changed/package/...
@@ -245,16 +244,16 @@ Run this checklist **before every commit** (not only before PR/push):
    ```bash
    go test ./...
    ```
-5. **Reference docs regenerated** (CI runs `make reference-drift` which fails on any drift)
+5. **Reference docs regenerated** (CI runs `mise run reference-drift` which fails on any drift)
    ```bash
-   GCX_AGENT_MODE=false make reference
+   GCX_AGENT_MODE=false mise run reference
    ```
    This regenerates CLI reference, env-var reference, config reference, and linter-rules reference. Required when changes touch commands, flags, config fields, env vars, or linter rules.
-6. **Docs build succeeds** (CI runs `make docs` after the drift check)
+6. **Docs build succeeds** (CI runs `mise run docs` after the drift check)
    ```bash
-   make docs
+   mise run docs
    ```
-   If `devbox`/`mkdocs` is unavailable, skip — CI will catch build failures.
+   If `mise`/`mkdocs` is unavailable, skip — CI will catch build failures.
 7. **No unstaged surprises**
    ```bash
    git status

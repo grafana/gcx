@@ -423,21 +423,21 @@ Error propagation: `StopOnError=true` cancels the errgroup context on first erro
 
 ### Toolchain
 
-Devbox pins exact tool versions (`go@1.26`, `golangci-lint@2.9`, `goreleaser@2.13.3`,
-`python@3.12.12`). The Makefile uses a `$(RUN_DEVBOX)` prefix pattern so all
-commands work identically inside and outside `devbox shell`.
+Mise pins tool versions (`go@1.26`, `golangci-lint@2.9`, `goreleaser@2.13.3`,
+`python@3.12`) via `mise.toml`. Once `mise install` has been run, all tools are
+on PATH and `mise run` invokes them with the correct versions.
 
-### Key Makefile Targets
+### Key mise Tasks
 
-| Target | Purpose |
+| Task | Purpose |
 |--------|---------|
-| `make all` | Full gate: lint + tests + build + docs |
-| `make build` | Compile to `bin/gcx` with version injection |
-| `make tests` | Run all unit tests |
-| `make lint` | golangci-lint with project config |
-| `make docs` | Generate reference docs + build mkdocs site |
-| `make reference-drift` | Fail if generated docs are stale |
-| `make test-env-up` | Start Grafana 12 + MySQL 9 via docker-compose |
+| `mise run all` | Full gate: lint + tests + build + docs |
+| `mise run build` | Compile to `bin/gcx` with version injection |
+| `mise run tests` | Run all unit tests |
+| `mise run lint` | golangci-lint with project config |
+| `mise run docs` | Generate reference docs + build mkdocs site |
+| `mise run reference-drift` | Fail if generated docs are stale |
+| `mise run test-env-up` | Start Grafana 12 + MySQL 9 via docker-compose |
 
 ### CI/CD
 
@@ -477,7 +477,7 @@ and checked for drift in CI.
    resource transformation from I/O, making it easy to add new transformations
    without touching pipeline code.
 
-6. **Reproducible builds.** Vendored dependencies, devbox, and CI caching ensure
+6. **Reproducible builds.** Vendored dependencies, mise, and CI caching ensure
    identical builds across environments.
 
 7. **Serve command.** The local development server with live reload, reverse proxy,
@@ -521,7 +521,7 @@ and checked for drift in CI.
    overwhelm the HTTP transport despite QPS limiting.
 
 8. **CI drift check incomplete.** Only CLI reference drift is checked in CI; env-var
-   and config reference drift checks exist in the Makefile but may not be wired
+   and config reference drift checks exist in `mise.toml` but may not be wired
    into the CI workflow.
 
 ### Low Priority
@@ -824,8 +824,8 @@ Each LGTM signal has its own provider in `internal/providers/{signal}/` that reg
 |------|---------|
 | `internal/dashboards/renderer.go` | HTTP client for Grafana Image Renderer API (`/render/d/`, `/render/d-solo/`) |
 | `internal/dashboards/types.go` | `SnapshotResult` struct for JSON/table output |
-| `cmd/gcx/dashboards/command.go` | `dashboards` command group |
-| `cmd/gcx/dashboards/snapshot.go` | `dashboards snapshot` — renders PNG images with kiosk mode, template variable overrides |
+| `internal/providers/dashboards/provider.go` | `dashboards` provider — self-registers CRUD, search, versions, snapshot commands |
+| `internal/providers/dashboards/snapshot/snapshot.go` | `dashboards snapshot` — renders PNG images with kiosk mode, template variable overrides |
 
 ### Terminal Chart Rendering
 
@@ -847,8 +847,7 @@ Each LGTM signal has its own provider in `internal/providers/{signal}/` that reg
 
 | File | Purpose |
 |------|---------|
-| `Makefile` | Build, test, lint, docs, integration env orchestration |
-| `devbox.json` | Reproducible toolchain pins |
+| `mise.toml` | Reproducible toolchain pins + build/test/lint/docs task runner |
 | `.golangci.yaml` | Linter configuration (opt-out model) |
 | `.goreleaser.yaml` | Cross-platform release builds |
 | `docker-compose.yml` | Grafana 12 + MySQL 9 integration test env |
@@ -889,8 +888,8 @@ These invariants are enforced by convention. Violating them will cause subtle bu
 
 ### Getting Started
 
-1. Run `devbox shell` to get the full toolchain
-2. Run `make build` to verify the build works
+1. Run `mise install` to get the full toolchain
+2. Run `mise run build` to verify the build works
 3. Read `cmd/gcx/main.go` to see the entry point
 4. Read `cmd/gcx/resources/push.go` as the canonical command example
 5. Read `internal/resources/resources.go` to understand the central data type
@@ -932,7 +931,7 @@ add it to the processor slice in the relevant command's wiring (push.go or pull.
 `env`, and optionally `datapolicy:"secret"` tags. The reflection-based editor,
 env parser, and redactor pick it up automatically.
 
-**Running locally against a test Grafana:** `make test-env-up` starts Grafana 12
+**Running locally against a test Grafana:** `mise run test-env-up` starts Grafana 12
 + MySQL 9. Use `--config testdata/integration-test-config.yaml` to point
 gcx at it.
 
