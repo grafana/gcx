@@ -33,6 +33,8 @@ func (c *queryTableCodec) Encode(w io.Writer, data any) error {
 		return tempo.FormatSearchTable(w, resp)
 	case *tempo.MetricsResponse:
 		return tempo.FormatMetricsTable(w, resp)
+	case *tempo.GetTraceResponse:
+		return tempo.FormatTraceTable(w, resp)
 	default:
 		return errors.New("invalid data type for query table codec")
 	}
@@ -56,6 +58,8 @@ func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 		return loki.FormatQueryTableWide(w, resp)
 	case *tempo.SearchResponse:
 		return tempo.FormatSearchTable(w, resp)
+	case *tempo.GetTraceResponse:
+		return tempo.FormatTraceWide(w, resp)
 	default:
 		return errors.New("invalid data type for query wide codec")
 	}
@@ -95,6 +99,8 @@ func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
 		}
 	case *tempo.SearchResponse:
 		return errors.New("graph output is not supported for trace search results; use -o table/json/yaml")
+	case *tempo.GetTraceResponse:
+		return errors.New("graph output is not supported for individual traces; use -o table/wide/json")
 	case *tempo.MetricsResponse:
 		chartData, err = graph.FromTempoMetricsResponse(resp)
 		if err != nil {

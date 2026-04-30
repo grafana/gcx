@@ -26,7 +26,10 @@ type getOpts struct {
 }
 
 func (opts *getOpts) setup(flags *pflag.FlagSet) {
-	opts.IO.DefaultFormat("json")
+	dsquery.RegisterCodecs(&opts.IO, false)
+	// Non-agent TTY default is the human-readable tree table (FR-001).
+	// In agent mode, cmdio.Options.BindFlags overrides to JSON regardless.
+	opts.IO.DefaultFormat("table")
 	opts.IO.BindFlags(flags)
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.tempo is configured)")

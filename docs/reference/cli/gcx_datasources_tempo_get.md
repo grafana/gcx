@@ -45,7 +45,7 @@ gcx datasources tempo get TRACE_ID [flags]
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --llm                 Request LLM-friendly trace format
       --open                Open the retrieved trace in Grafana Explore
-  -o, --output string       Output format. One of: json, yaml (default "json")
+  -o, --output string       Output format. One of: json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the retrieved trace to stderr
       --since string        Duration before --to (or now if omitted); mutually exclusive with --from
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')

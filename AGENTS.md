@@ -196,9 +196,9 @@ This generates a changelog entry (via Claude), updates `CHANGELOG.md` and `.rele
    git push origin v0.X.Y
    ```
 
-## Pre-Flight Checklist
+## Pull Request Checklist
 
-Run when code has been modified, before pushing or creating a PR.
+Make sure you always run this checklist when creating a PR or updating an existing PR with new work (addressing PR reviews or fixing bugs).
 
 1. **Compliance check** — verify changes against the [compliance hierarchy](#compliance-hierarchy) above. CONSTITUTION and DESIGN violations must be fixed. VISION misalignment must be flagged. ARCHITECTURE deviations must be documented.
 2. **Sync with base branch**
