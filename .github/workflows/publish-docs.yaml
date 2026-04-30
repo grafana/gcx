@@ -31,8 +31,8 @@ jobs:
           install: true
           cache: true
 
-      - name: Install python dependencies
-        run: uv pip install --system -q -r requirements.txt
+      - name: Install dependencies
+        run: mise run deps
 
       - name: Build documentation
         run: mise run docs
