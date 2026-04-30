@@ -11,22 +11,19 @@ gcx kg cypher <query> [flags]
 ```
   gcx kg cypher "MATCH (s:Service) RETURN s LIMIT 10"
   gcx kg cypher "MATCH (s:Service)-[:CALLS]->(d:Service) RETURN s, d" --since 1h
-  gcx kg cypher "MATCH (s:Service) RETURN s" --namespace prod --page 1
+  gcx kg cypher "MATCH (s:Service {namespace: 'prod'}) RETURN s" --since 1h
 ```
 
 ### Options
 
 ```
-      --env string         Environment scope (run 'gcx kg meta scopes' to see valid values)
       --from string        Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help               help for cypher
       --insights-only      Return only entities with active insights
       --json string        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --namespace string   Namespace scope (run 'gcx kg meta scopes' to see valid values)
   -o, --output string      Output format. One of: json, table, yaml (default "json")
       --page int           Page number (0-based)
       --since string       Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
-      --site string        Site scope (run 'gcx kg meta scopes' to see valid values)
       --to string          End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 

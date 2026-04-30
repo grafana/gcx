@@ -8,7 +8,6 @@ import (
 	"maps"
 	"net/http"
 	"os"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -32,7 +31,7 @@ import (
 // Helpers
 // ---------------------------------------------------------------------------
 
-// scopeFlags holds the --env/--namespace/--site/--from/--to/--since flags.
+// scopeFlags holds the --env/--namespace/--site/--from/--to/--since flags used by entity search commands.
 type scopeFlags struct {
 	env       string
 	namespace string
@@ -50,6 +49,7 @@ func (f *scopeFlags) register(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&f.to, "to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
 	cmd.Flags().StringVar(&f.since, "since", "", "Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)")
 }
+
 
 func (f *scopeFlags) resolveTime() (int64, int64, error) {
 	if f.since != "" && (f.from != "" || f.to != "") {
@@ -93,69 +93,6 @@ func (f *scopeFlags) scopeCriteria() *ScopeCriteria {
 	return &ScopeCriteria{NameAndValues: vals}
 }
 
-// validateScopes checks that any set scope values exist in the KG scope registry.
-// If a value is not an exact match it fetches known values, finds candidates by
-// substring match, and returns an error with actionable hints so the caller
-// (human or LLM) can retry with the correct value. Validation is best-effort:
-// if the scopes API is unavailable the error is silently ignored.
-func (f *scopeFlags) validateScopes(ctx context.Context, client *Client) error {
-	type check struct{ flag, dim, value string }
-	checks := []check{
-		{"--env", "env", f.env},
-		{"--site", "site", f.site},
-		{"--namespace", "namespace", f.namespace},
-	}
-	var active []check
-	for _, c := range checks {
-		if c.value != "" {
-			active = append(active, c)
-		}
-	}
-	if len(active) == 0 {
-		return nil
-	}
-	scopes, err := client.ListEntityScopes(ctx)
-	if err != nil {
-		return nil //nolint:nilerr // best-effort: scope validation is advisory
-	}
-	var errs []string
-	for _, c := range active {
-		known := scopes[c.dim]
-		if len(known) == 0 {
-			continue
-		}
-		if slices.Contains(known, c.value) {
-			continue
-		}
-		lower := strings.ToLower(c.value)
-		var candidates []string
-		for _, v := range known {
-			if strings.Contains(strings.ToLower(v), lower) {
-				candidates = append(candidates, v)
-			}
-		}
-		sort.Strings(candidates)
-		var msg string
-		if len(candidates) > 0 {
-			msg = fmt.Sprintf("unknown %s value %q — did you mean one of: %s", c.flag, c.value, strings.Join(candidates, ", "))
-		} else {
-			all := append([]string(nil), known...)
-			sort.Strings(all)
-			shown := all
-			suffix := ""
-			if len(shown) > 10 {
-				shown = shown[:10]
-				suffix = fmt.Sprintf(" (and %d more — run gcx kg scopes list)", len(all)-10)
-			}
-			msg = fmt.Sprintf("unknown %s value %q — known %s values: %s%s", c.flag, c.value, c.dim, strings.Join(shown, ", "), suffix)
-		}
-		errs = append(errs, msg)
-	}
-	if len(errs) > 0 {
-		return errors.New(strings.Join(errs, "\n"))
-	}
-	return nil
-}
 
 func (f *scopeFlags) scopeMap() map[string]string {
 	scope := map[string]string{}
@@ -710,9 +647,6 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := listScope.validateScopes(cmd.Context(), client); err != nil {
-				return err
-			}
 			startMs, endMs, err := listScope.resolveTime()
 			if err != nil {
 				return err
@@ -941,9 +875,6 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := activeScope.validateScopes(cmd.Context(), client); err != nil {
-				return err
-			}
 			startMs, endMs, err := activeScope.resolveTime()
 			if err != nil {
 				return err
@@ -1001,9 +932,6 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 				assertionID, _ := cmd.Flags().GetString("insight-id")
 				if assertionID == "" {
 					return errors.New("--insight-id is required (or use --file)")
-				}
-				if err := entityMetricScope.validateScopes(cmd.Context(), client); err != nil {
-					return err
 				}
 				startMs, endMs, err := entityMetricScope.resolveTime()
 				if err != nil {
@@ -1122,9 +1050,6 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 			} else {
 				entityType, _ := cmd.Flags().GetString("type")
 				entityName, _ := cmd.Flags().GetString("name")
-				if err := searchAssertionsScope.validateScopes(cmd.Context(), client); err != nil {
-					return err
-				}
 				startMs, endMs, err := searchAssertionsScope.resolveTime()
 				if err != nil {
 					return err
@@ -1199,10 +1124,6 @@ func buildAssertionsRequestFromFlags(cmd *cobra.Command, args []string, client *
 	env, _ := cmd.Flags().GetString("env")
 	namespace, _ := cmd.Flags().GetString("namespace")
 	site, _ := cmd.Flags().GetString("site")
-	sf := scopeFlags{env: env, site: site, namespace: namespace}
-	if err := sf.validateScopes(cmd.Context(), client); err != nil {
-		return AssertionsRequest{}, err
-	}
 	startMs, endMs, err := resolveTimeFromFlags(cmd)
 	if err != nil {
 		return AssertionsRequest{}, err
@@ -1353,9 +1274,6 @@ func newEntitiesInspectCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := inspectScope.validateScopes(cmd.Context(), client); err != nil {
-				return err
-			}
 			startMs, endMs, err := inspectScope.resolveTime()
 			if err != nil {
 				return err
@@ -1456,9 +1374,6 @@ func newHealthCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := healthScope.validateScopes(cmd.Context(), client); err != nil {
-				return err
-			}
 			startMs, endMs, err := healthScope.resolveTime()
 			if err != nil {
 				return err
@@ -1550,7 +1465,7 @@ func newCypherCommand(loader RESTConfigLoader) *cobra.Command {
 		Short: "Run a read-only Cypher query against the Knowledge Graph.",
 		Example: `  gcx kg cypher "MATCH (s:Service) RETURN s LIMIT 10"
   gcx kg cypher "MATCH (s:Service)-[:CALLS]->(d:Service) RETURN s, d" --since 1h
-  gcx kg cypher "MATCH (s:Service) RETURN s" --namespace prod --page 1`,
+  gcx kg cypher "MATCH (s:Service {namespace: 'prod'}) RETURN s" --since 1h`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := ioOpts.IO.Validate(); err != nil {
@@ -1564,9 +1479,6 @@ func newCypherCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := cypherScope.validateScopes(cmd.Context(), client); err != nil {
-				return err
-			}
 			startMs, endMs, err := cypherScope.resolveTime()
 			if err != nil {
 				return err
@@ -1577,9 +1489,6 @@ func newCypherCommand(loader RESTConfigLoader) *cobra.Command {
 				PageNum:      cypherPage,
 				WithInsights: withInsights,
 			}
-			if sc := cypherScope.scopeCriteria(); sc != nil {
-				req.ScopeCriteria = sc
-			}
 			resp, err := client.CypherSearch(cmd.Context(), req)
 			if err != nil {
 				return err
@@ -1587,10 +1496,9 @@ func newCypherCommand(loader RESTConfigLoader) *cobra.Command {
 			return ioOpts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}
-	cypherScope.register(cmd)
-	cmd.Flags().Lookup("env").Usage = "Environment scope (run 'gcx kg meta scopes' to see valid values)"
-	cmd.Flags().Lookup("namespace").Usage = "Namespace scope (run 'gcx kg meta scopes' to see valid values)"
-	cmd.Flags().Lookup("site").Usage = "Site scope (run 'gcx kg meta scopes' to see valid values)"
+	cmd.Flags().StringVar(&cypherScope.from, "from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
+	cmd.Flags().StringVar(&cypherScope.to, "to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
+	cmd.Flags().StringVar(&cypherScope.since, "since", "", "Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)")
 	cmd.Flags().IntVar(&cypherPage, "page", 0, "Page number (0-based)")
 	cmd.Flags().BoolVar(&withInsights, "insights-only", false, "Return only entities with active insights")
 	ioOpts.setup(cmd.Flags())
