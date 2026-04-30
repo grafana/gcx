@@ -1509,7 +1509,7 @@ type cypherOpts struct {
 
 func (o *cypherOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &CypherTableCodec{})
-	o.IO.DefaultFormat("json")
+	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
 
