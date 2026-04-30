@@ -244,7 +244,7 @@ func TestClient_CypherSearch(t *testing.T) {
 				assert.Contains(t, r.URL.Path, "v1/search/cypher")
 
 				var body kg.CypherSearchRequest
-				require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+				assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
 				assert.Equal(t, "MATCH (s:Service) RETURN s LIMIT 10", body.CypherQuery)
 				assert.Equal(t, int64(1000), body.TimeCriteria.Start)
 				assert.Equal(t, int64(2000), body.TimeCriteria.End)
@@ -259,7 +259,8 @@ func TestClient_CypherSearch(t *testing.T) {
 				})
 			},
 			checkResult: func(t *testing.T, resp *kg.CypherSearchResponse) {
-				require.Len(t, resp.Entities, 2)
+				t.Helper()
+				assert.Len(t, resp.Entities, 2)
 				assert.Equal(t, "svc-1", resp.Entities[0].Name)
 				assert.Equal(t, "prod", resp.Entities[0].Scope["env"])
 				assert.True(t, resp.LastPage)
@@ -274,8 +275,8 @@ func TestClient_CypherSearch(t *testing.T) {
 			},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				var body kg.CypherSearchRequest
-				require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
-				require.NotNil(t, body.ScopeCriteria)
+				assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+				assert.NotNil(t, body.ScopeCriteria)
 				assert.Equal(t, []string{"prod-us-east-0"}, body.ScopeCriteria.NameAndValues["env"])
 				writeJSON(w, kg.CypherSearchResponse{})
 			},
@@ -289,7 +290,7 @@ func TestClient_CypherSearch(t *testing.T) {
 			},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				var body kg.CypherSearchRequest
-				require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+				assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
 				assert.True(t, body.WithInsights)
 				writeJSON(w, kg.CypherSearchResponse{})
 			},
@@ -301,6 +302,7 @@ func TestClient_CypherSearch(t *testing.T) {
 				writeJSON(w, kg.CypherSearchResponse{Entities: []kg.CypherEntity{}, Edges: []kg.CypherEdge{}, LastPage: true})
 			},
 			checkResult: func(t *testing.T, resp *kg.CypherSearchResponse) {
+				t.Helper()
 				assert.Empty(t, resp.Entities)
 				assert.Empty(t, resp.Edges)
 				assert.True(t, resp.LastPage)
@@ -321,7 +323,8 @@ func TestClient_CypherSearch(t *testing.T) {
 				})
 			},
 			checkResult: func(t *testing.T, resp *kg.CypherSearchResponse) {
-				require.Len(t, resp.Edges, 1)
+				t.Helper()
+				assert.Len(t, resp.Edges, 1)
 				assert.Equal(t, "CALLS", resp.Edges[0].Type)
 				assert.Equal(t, "caller", resp.Edges[0].SourceName)
 				assert.Equal(t, "callee", resp.Edges[0].DestinationName)
