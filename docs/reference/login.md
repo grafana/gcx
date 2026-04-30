@@ -175,7 +175,11 @@ Each entry pairs the error you see with what it means and how to fix it.
     - *Means:* gcx could not reach the server during the validation pipeline — typically a wrong URL, DNS/proxy issue, or TLS mismatch.
     - *Fix:* Verify the server URL is correct and reachable. Check any corporate proxies (`HTTPS_PROXY`) and TLS configuration (`--insecure-skip-verify` for development only).
 
-7. **Flag vs env-var precedence confusion**
+7. **`gcx assistant` commands fail with a service account token**
+    - *Means:* `gcx assistant` commands (prompt, investigations) require OAuth, which is only available when you log in via the browser-based OAuth flow. Service account tokens are not supported.
+    - *Fix:* Re-run `gcx login` and choose the OAuth (browser) option. If your environment cannot open a browser, `gcx assistant` is not available — use the Grafana UI instead.
+
+8. **Flag vs env-var precedence confusion**
     - *Means:* both a CLI flag and an environment variable are set for the same field, and gcx behaves unexpectedly.
     - *Fix:* Flags take precedence over env vars, which take precedence over config-file values. Run `gcx config view` to inspect the resolved config and spot the conflict.
 
