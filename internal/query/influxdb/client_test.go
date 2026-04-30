@@ -206,6 +206,34 @@ func TestConvertGrafanaResponse(t *testing.T) {
 				{float64(2000), float64(99.0)},
 			},
 		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := influxdb.ConvertGrafanaResponse(tt.input)
+			require.NotNil(t, got)
+
+			assert.Equal(t, tt.wantColumns, got.Columns)
+
+			if tt.wantRows == nil {
+				assert.Empty(t, got.Rows)
+			} else {
+				require.Len(t, got.Rows, len(tt.wantRows))
+				for i, wantRow := range tt.wantRows {
+					assert.Equal(t, wantRow, got.Rows[i], "row %d mismatch", i)
+				}
+			}
+		})
+	}
+}
+
+func TestConvertGrafanaResponse_Labels(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       *influxdb.GrafanaQueryResponse
+		wantColumns []string
+		wantRows    [][]any
+	}{
 		{
 			name: "multiple frames with labels adds label columns",
 			input: &influxdb.GrafanaQueryResponse{
@@ -345,13 +373,9 @@ func TestConvertGrafanaResponse(t *testing.T) {
 
 			assert.Equal(t, tt.wantColumns, got.Columns)
 
-			if tt.wantRows == nil {
-				assert.Empty(t, got.Rows)
-			} else {
-				require.Len(t, got.Rows, len(tt.wantRows))
-				for i, wantRow := range tt.wantRows {
-					assert.Equal(t, wantRow, got.Rows[i], "row %d mismatch", i)
-				}
+			require.Len(t, got.Rows, len(tt.wantRows))
+			for i, wantRow := range tt.wantRows {
+				assert.Equal(t, wantRow, got.Rows[i], "row %d mismatch", i)
 			}
 		})
 	}

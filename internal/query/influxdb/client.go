@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"sort"
 	"strconv"
@@ -305,9 +306,7 @@ func convertGrafanaResponse(grafanaResp *GrafanaQueryResponse) *QueryResponse {
 		// Merge all field labels for this frame into a single lookup map.
 		frameLabelValues := make(map[string]string, len(labelKeys))
 		for _, field := range frame.Schema.Fields {
-			for k, v := range field.Labels {
-				frameLabelValues[k] = v
-			}
+			maps.Copy(frameLabelValues, field.Labels)
 		}
 
 		rowCount := len(frame.Data.Values[0])
