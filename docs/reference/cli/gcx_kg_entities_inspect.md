@@ -1,24 +1,25 @@
-## gcx kg search insights
+## gcx kg entities inspect
 
-Search for insights matching a query.
+Show detailed info, insights, and summary for a single entity.
 
 ```
-gcx kg search insights [flags]
+gcx kg entities inspect [Type--Name] [flags]
 ```
 
 ### Options
 
 ```
-      --env string         Environment scope
-  -f, --file string        Input file (YAML)
+      --env string         Environment scope (run 'gcx kg meta scopes' to see valid values)
       --from string        Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-  -h, --help               help for insights
-      --name string        Entity name filter
-      --namespace string   Namespace scope
+  -h, --help               help for inspect
+      --json string        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --name string        Entity name
+      --namespace string   Namespace scope (run 'gcx kg meta scopes' to see valid values)
+  -o, --output string      Output format. One of: json, yaml (default "json")
       --since string       Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
-      --site string        Site scope
+      --site string        Site scope (run 'gcx kg meta scopes' to see valid values)
       --to string          End time (RFC3339, Unix timestamp, or relative like 'now')
-      --type string        Entity type filter
+      --type string        Entity type (run 'gcx kg meta schema' to see available types)
 ```
 
 ### Options inherited from parent commands
@@ -35,5 +36,5 @@ gcx kg search insights [flags]
 
 ### SEE ALSO
 
-* [gcx kg search](gcx_kg_search.md)	 - Search Knowledge Graph entities or insights.
+* [gcx kg entities](gcx_kg_entities.md)	 - Manage Knowledge Graph entities.
 

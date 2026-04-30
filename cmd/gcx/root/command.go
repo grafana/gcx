@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"os"
 	"path"
+	"strings"
 	"sync/atomic"
 
 	"github.com/fatih/color"
@@ -12,7 +13,6 @@ import (
 	assistantcmd "github.com/grafana/gcx/cmd/gcx/assistant"
 	"github.com/grafana/gcx/cmd/gcx/commands"
 	"github.com/grafana/gcx/cmd/gcx/config"
-	"github.com/grafana/gcx/cmd/gcx/dashboards"
 	"github.com/grafana/gcx/cmd/gcx/datasources"
 	"github.com/grafana/gcx/cmd/gcx/dev"
 	"github.com/grafana/gcx/cmd/gcx/helptree"
@@ -26,23 +26,26 @@ import (
 	_ "github.com/grafana/gcx/internal/datasources/providers" // DatasourceProvider registrations — blank imports trigger init() self-registration.
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/logs"
+	"github.com/grafana/gcx/internal/notifier"
 	"github.com/grafana/gcx/internal/providers"
-	_ "github.com/grafana/gcx/internal/providers/aio11y"   // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/alert"    // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/appo11y"  // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/faro"     // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/fleet"    // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/irm"      // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/k6"       // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/kg"       // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/logs"     // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/metrics"  // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/profiles" // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/slo"      // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/synth"    // Provider registrations — blank imports trigger init() self-registration.
-	_ "github.com/grafana/gcx/internal/providers/traces"   // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/aio11y"     // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/alert"      // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/appo11y"    // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/dashboards" // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/faro"       // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/fleet"      // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/irm"        // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/k6"         // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/kg"         // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/logs"       // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/metrics"    // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/profiles"   // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/slo"        // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/synth"      // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/traces"     // Provider registrations — blank imports trigger init() self-registration.
 	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/gcx/internal/terminal"
+	appversion "github.com/grafana/gcx/internal/version"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
 	"k8s.io/klog/v2"
@@ -60,6 +63,55 @@ var jsonFlagActive atomic.Bool
 // on the command that was actually executed. Safe for concurrent use.
 func IsJSONFlagActive() bool {
 	return jsonFlagActive.Load()
+}
+
+func shouldNotifySkills(cmd *cobra.Command) bool {
+	if cliOpts, err := internalconfig.LoadCLIOptions(); err == nil && cliOpts.DisableUpdateNotifier != "" {
+		return false
+	}
+	if agent.IsAgentMode() || IsJSONFlagActive() || terminal.IsPiped() {
+		return false
+	}
+	if cmd == nil {
+		return false
+	}
+	if isNonInteractiveCommand(cmd) {
+		return false
+	}
+	if !hasInteractiveTextOutput(cmd) {
+		return false
+	}
+	return true
+}
+
+func isNonInteractiveCommand(cmd *cobra.Command) bool {
+	switch cmd.Name() {
+	case "help", "completion", "__complete", "__completeNoDesc":
+		return true
+	}
+
+	if flag := cmd.Flags().Lookup("help"); flag != nil && flag.Changed && flag.Value.String() == "true" {
+		return true
+	}
+	if flag := cmd.Flags().Lookup("version"); flag != nil && flag.Changed && flag.Value.String() == "true" {
+		return true
+	}
+
+	return false
+}
+
+func hasInteractiveTextOutput(cmd *cobra.Command) bool {
+	flag := cmd.Flags().Lookup("output")
+	if flag == nil {
+		return true
+	}
+
+	switch strings.ToLower(flag.Value.String()) {
+	case "text", "table", "wide", "graph", "pretty", "compact":
+		return true
+	default:
+		return false
+	}
 }
 
 // Command builds the root cobra command for the given version using the
@@ -87,6 +139,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 		SilenceErrors: true, // We want to print errors ourselves
 		Version:       version,
 		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
+			jsonFlagActive.Store(false)
 			// Track whether --json was explicitly set on the resolved command.
 			// Only mark active when the command actually declares a --json flag,
 			// preventing false positives for subcommands that don't support it.
@@ -147,6 +200,13 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 
 			cmd.SetContext(ctx)
 		},
+		PersistentPostRun: func(cmd *cobra.Command, _ []string) {
+			if !shouldNotifySkills(cmd) {
+				return
+			}
+			_ = notifier.MaybeNotifySkills(cmd.ErrOrStderr())
+			_ = notifier.MaybeNotifyVersion(cmd.Context(), cmd.ErrOrStderr(), appversion.Get())
+		},
 		Annotations: map[string]string{
 			cobra.CommandDisplayNameAnnotation: "gcx",
 		},
@@ -163,7 +223,6 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd.AddCommand(assistantcmd.Command())
 	rootCmd.AddCommand(logincmd.Command())
 	rootCmd.AddCommand(config.Command())
-	rootCmd.AddCommand(dashboards.Command())
 	rootCmd.AddCommand(dev.Command())
 	rootCmd.AddCommand(setup.Command())
 	rootCmd.AddCommand(skillscmd.Command())

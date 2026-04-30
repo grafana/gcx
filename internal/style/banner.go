@@ -29,7 +29,7 @@ func RenderLogo() string {
 		lines = append(lines, Gradient(line, GradientAccentFrom, GradientBrandTo))
 	}
 
-	subtitle := lipgloss.NewStyle().Foreground(ColorMuted).Render("  Grafana Cloud CLI")
+	subtitle := lipgloss.NewStyle().Foreground(ColorMuted).Render("  Grafana CLI")
 
 	return strings.Join(lines, "\n") + "\n" + subtitle + "\n"
 }

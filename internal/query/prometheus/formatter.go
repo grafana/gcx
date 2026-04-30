@@ -11,7 +11,9 @@ import (
 	"github.com/grafana/gcx/internal/style"
 )
 
-// FormatTable formats a QueryResponse as a table.
+// FormatTable formats a QueryResponse as a compact, human-readable table.
+// Labels are collapsed into a single SERIES column by default. Use
+// FormatWideTable to explode labels into individual columns.
 func FormatTable(w io.Writer, resp *QueryResponse) error {
 	if len(resp.Data.Result) == 0 {
 		fmt.Fprintln(w, "No data")
@@ -30,7 +32,61 @@ func FormatTable(w io.Writer, resp *QueryResponse) error {
 	}
 }
 
+// FormatWideTable formats a QueryResponse as a wide table with one column per
+// label. This is useful for inspection but is too verbose for the default
+// human-readable view.
+func FormatWideTable(w io.Writer, resp *QueryResponse) error {
+	if len(resp.Data.Result) == 0 {
+		fmt.Fprintln(w, "No data")
+		return nil
+	}
+
+	switch resp.Data.ResultType {
+	case "vector":
+		return formatVectorWideTable(w, resp)
+	case "matrix":
+		return formatMatrixWideTable(w, resp)
+	case "scalar":
+		return formatScalarTable(w, resp)
+	default:
+		return fmt.Errorf("unsupported result type: %s", resp.Data.ResultType)
+	}
+}
+
 func formatVectorTable(w io.Writer, resp *QueryResponse) error {
+	t := style.NewTable("VALUE", "TIMESTAMP", "SERIES")
+
+	for _, sample := range resp.Data.Result {
+		if len(sample.Value) < 2 {
+			continue
+		}
+		val := parseValue(sample.Value[1])
+		ts := parseTimestamp(sample.Value[0])
+		t.Row(val, ts, formatSeriesSelector(sample.Metric))
+	}
+
+	return t.Render(w)
+}
+
+func formatMatrixTable(w io.Writer, resp *QueryResponse) error {
+	t := style.NewTable("VALUE", "TIMESTAMP", "SERIES")
+
+	for _, sample := range resp.Data.Result {
+		series := formatSeriesSelector(sample.Metric)
+		for _, point := range sample.Values {
+			if len(point) < 2 {
+				continue
+			}
+			val := parseValue(point[1])
+			ts := parseTimestamp(point[0])
+			t.Row(val, ts, series)
+		}
+	}
+
+	return t.Render(w)
+}
+
+func formatVectorWideTable(w io.Writer, resp *QueryResponse) error {
 	labelNames := collectLabelNames(resp.Data.Result)
 
 	header := make([]string, 0, len(labelNames)+2)
@@ -57,7 +113,7 @@ func formatVectorTable(w io.Writer, resp *QueryResponse) error {
 	return t.Render(w)
 }
 
-func formatMatrixTable(w io.Writer, resp *QueryResponse) error {
+func formatMatrixWideTable(w io.Writer, resp *QueryResponse) error {
 	labelNames := collectLabelNames(resp.Data.Result)
 
 	header := make([]string, 0, len(labelNames)+2)
@@ -120,14 +176,14 @@ func collectLabelNames(samples []Sample) []string {
 func parseTimestamp(v any) string {
 	switch ts := v.(type) {
 	case float64:
-		t := time.Unix(int64(ts), int64((ts-float64(int64(ts)))*1e9))
+		t := time.Unix(int64(ts), int64((ts-float64(int64(ts)))*1e9)).UTC()
 		return t.Format(time.RFC3339)
 	case string:
 		f, err := strconv.ParseFloat(ts, 64)
 		if err != nil {
 			return ts
 		}
-		t := time.Unix(int64(f), int64((f-float64(int64(f)))*1e9))
+		t := time.Unix(int64(f), int64((f-float64(int64(f)))*1e9)).UTC()
 		return t.Format(time.RFC3339)
 	default:
 		return fmt.Sprintf("%v", v)

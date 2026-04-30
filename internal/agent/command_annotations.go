@@ -97,6 +97,18 @@ var commandAnnotations = map[string]annotation{
 	"gcx skills uninstall": {Cost: "small"},
 
 	// -----------------------------------------------------------------------
+	// Dashboards provider
+	// -----------------------------------------------------------------------
+	"gcx dashboards list":             {Cost: "medium", Hint: "-o json --api-version dashboard.grafana.app/v2"},
+	"gcx dashboards get":              {Cost: "small", Hint: "<name> -o json"},
+	"gcx dashboards create":           {Cost: "small", Hint: "-f <manifest.yaml>"},
+	"gcx dashboards update":           {Cost: "small", Hint: "<name> -f <manifest.yaml>"},
+	"gcx dashboards delete":           {Cost: "small"},
+	"gcx dashboards search":           {Cost: "medium", Hint: "<query> -o json"},
+	"gcx dashboards versions list":    {Cost: "small", Hint: "<name> -o json"},
+	"gcx dashboards versions restore": {Cost: "small"},
+
+	// -----------------------------------------------------------------------
 	// Alert provider
 	// -----------------------------------------------------------------------
 	"gcx alert groups get":     {Cost: "small"},
@@ -192,17 +204,23 @@ var commandAnnotations = map[string]annotation{
 	// -----------------------------------------------------------------------
 	// Knowledge Graph provider
 	// -----------------------------------------------------------------------
-	"gcx kg entities list":           {Cost: "medium", Hint: "--type <type> --since 1h -o json"},
-	"gcx kg entities show":           {Cost: "medium", Hint: "<Type--Name> --type <type> -o json"},
+	"gcx kg entities list":           {Cost: "medium", Hint: "--type <type> [--env <env>] [--namespace <ns>] --since 1h -o json | use --property name=<value> to fetch a single entity by name | run gcx kg meta scopes first to discover valid env/namespace/site values"},
 	"gcx kg health":                  {Cost: "medium", Hint: "--type <type> --since 1h -o json"},
 	"gcx kg insights active":         {Cost: "medium", Hint: "--type <type> --severity critical -o json"},
 	"gcx kg insights entity-metric":  {Cost: "medium", Hint: "<Type--Name> --insight-id <id>"},
 	"gcx kg insights example":        {Cost: "small"},
 	"gcx kg insights graph":          {Cost: "medium", Hint: "<Type--Name> -o json"},
 	"gcx kg insights query":          {Cost: "medium", Hint: "<Type--Name> -o json"},
+	"gcx kg insights search":         {Cost: "medium", Hint: "--type <type> --since 1h"},
 	"gcx kg insights source-metrics": {Cost: "medium", Hint: "--insight-id <id> --since 1h"},
 	"gcx kg insights summary":        {Cost: "medium", Hint: "<Type--Name> -o json"},
-	"gcx kg inspect":                 {Cost: "medium", Hint: "<Type--Name> -o json"},
+	"gcx kg entities inspect":        {Cost: "medium", Hint: "--type <EntityType> --name <name> [--env <env>] [--namespace <ns>] | --type is required (run 'gcx kg meta schema' to list valid entity types); scope is auto-discovered if omitted; run 'gcx kg entities list --type <type> --property name=~<name>' first to confirm type and exact name"},
+	"gcx kg meta all":                {Cost: "medium", Hint: "load all sections at once [--since 1h]"},
+	"gcx kg meta logs":               {Cost: "small", Hint: "Loki label mappings for log drilldown"},
+	"gcx kg meta profiles":           {Cost: "small", Hint: "Pyroscope label mappings for profile drilldown"},
+	"gcx kg meta schema":             {Cost: "medium", Hint: "entity types + relationships [--since 1h]"},
+	"gcx kg meta scopes":             {Cost: "small", Hint: "all valid env/namespace/site filter values — run before filtering entities"},
+	"gcx kg meta traces":             {Cost: "small", Hint: "Tempo label mappings for trace drilldown"},
 	"gcx kg model-rules create":      {Cost: "small"},
 	"gcx kg open":                    {Cost: "small"},
 	"gcx kg relabel-rules create":    {Cost: "small"},
@@ -211,9 +229,6 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg rules get":               {Cost: "small"},
 	"gcx kg rules list":              {Cost: "small"},
 	"gcx kg scopes list":             {Cost: "small"},
-	"gcx kg search example":          {Cost: "small"},
-	"gcx kg search insights":         {Cost: "medium", Hint: "--type <type> --since 1h"},
-	"gcx kg search sample":           {Cost: "small"},
 	"gcx kg status":                  {Cost: "small"},
 	"gcx kg suppressions create":     {Cost: "small"},
 

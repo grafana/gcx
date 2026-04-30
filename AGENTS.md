@@ -71,7 +71,6 @@ cmd/gcx/
   login/        Unified login command (token + OAuth PKCE, interactive prompts)
   config/       Config management (set, use-context, view, check)
   resources/    Resource commands (get, schemas, push, pull, delete, edit, validate)
-  dashboards/   Dashboard snapshot (Image Renderer)
   datasources/  Datasource commands (list, get, query, per-type subcommands via DatasourceProvider)
   providers/    Provider list command
   assistant/    Assistant commands (AI-powered investigations)
@@ -103,6 +102,7 @@ internal/
 │   └── remote/     Pusher, Puller, Deleter, FolderHierarchy, Summary
 ├── providers/   Provider plugin system (interface, registry, self-registration)
 │   ├── alert/      Alert provider (rules, groups — read-only)
+│   ├── dashboards/ Dashboards provider (CRUD, search, versions, snapshot)
 │   ├── faro/       Frontend Observability provider (apps CRUD, sourcemaps sub-resource) — CLI: `gcx frontend`
 │   ├── fleet/      Fleet Management provider (pipeline and collector resources)
 │   ├── irm/        IRM provider (OnCall + Incidents — schedules, integrations, escalation chains, incidents)
@@ -141,7 +141,9 @@ internal/
 ├── httputils/   HTTP helpers (used by serve command's proxy)
 ├── version/     Global version string (Set once from main; provides UserAgent() for HTTP clients)
 ├── secrets/     Redactor for config view
-└── logs/        slog/klog integration
+├── logs/        slog/klog integration
+├── notifier/    Update notifications (skills + gcx version checks; XDG state, throttling, message rendering — wired into root PersistentPostRun)
+├── skills/      Portable Agent Skills installer primitives (BundledSkillNames, Install, Update — extracted from cmd/gcx/skills)
 └── shared/      Shared utilities (date handling, duration, etc.) to be shared across integrations.
 ```
 

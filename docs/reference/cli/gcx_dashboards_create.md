@@ -1,22 +1,17 @@
-## gcx kg search sample
+## gcx dashboards create
 
-Return a sample of entities by type.
+Create a dashboard from a manifest
 
 ```
-gcx kg search sample [flags]
+gcx dashboards create -f <file> [flags]
 ```
 
 ### Options
 
 ```
-      --env string         Environment scope
-      --from string        Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-  -h, --help               help for sample
-      --namespace string   Namespace scope
-      --since string       Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
-      --site string        Site scope
-      --to string          End time (RFC3339, Unix timestamp, or relative like 'now')
-      --type string        Entity type
+      --api-version string   API version to use (e.g. dashboard.grafana.app/v1); defaults to server preferred version
+  -f, --filename string      Path to JSON/YAML manifest file ('-' reads from stdin)
+  -h, --help                 help for create
 ```
 
 ### Options inherited from parent commands
@@ -33,5 +28,5 @@ gcx kg search sample [flags]
 
 ### SEE ALSO
 
-* [gcx kg search](gcx_kg_search.md)	 - Search Knowledge Graph entities or insights.
+* [gcx dashboards](gcx_dashboards.md)	 - Manage Grafana dashboards
 

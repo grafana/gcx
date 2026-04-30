@@ -51,7 +51,7 @@ func (c *queryWideCodec) Format() format.Format {
 func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 	switch resp := data.(type) {
 	case *prometheus.QueryResponse:
-		return prometheus.FormatTable(w, resp)
+		return prometheus.FormatWideTable(w, resp)
 	case *loki.QueryResponse:
 		return loki.FormatQueryTableWide(w, resp)
 	case *tempo.SearchResponse:

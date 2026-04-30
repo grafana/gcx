@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/synth/checks"
 	"github.com/grafana/gcx/internal/providers/synth/probes"
+	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/rest"
@@ -290,7 +291,7 @@ func registerSMInstall(ctx context.Context, smURL, cloudToken string, stack clou
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("SM register/install returned HTTP %d", resp.StatusCode)
+		return "", fmt.Errorf("SM register/install: %w", smcfg.HandleErrorResponse(resp))
 	}
 
 	var result struct {
