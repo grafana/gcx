@@ -202,7 +202,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg insights search":         {Cost: "medium", Hint: "--type <type> --since 1h"},
 	"gcx kg insights source-metrics": {Cost: "medium", Hint: "--insight-id <id> --since 1h"},
 	"gcx kg insights summary":        {Cost: "medium", Hint: "<Type--Name> -o json"},
-	"gcx kg inspect":                 {Cost: "medium", Hint: "<Type--Name> -o json"},
+	"gcx kg entities inspect":        {Cost: "medium", Hint: "--type <EntityType> --name <name> [--env <env>] [--namespace <ns>] | --type is required (run 'gcx kg meta schema' to list valid entity types); scope is auto-discovered if omitted; run 'gcx kg entities list --type <type> --property name=~<name>' first to confirm type and exact name"},
 	"gcx kg meta all":                {Cost: "medium", Hint: "load all sections at once [--since 1h]"},
 	"gcx kg meta logs":               {Cost: "small", Hint: "Loki label mappings for log drilldown"},
 	"gcx kg meta profiles":           {Cost: "small", Hint: "Pyroscope label mappings for profile drilldown"},

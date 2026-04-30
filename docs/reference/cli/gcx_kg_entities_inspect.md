@@ -1,25 +1,25 @@
-## gcx kg inspect
+## gcx kg entities inspect
 
-Inspect an entity: info, insights, and summary.
+Show detailed info, insights, and summary for a single entity.
 
 ```
-gcx kg inspect [Type--Name] [flags]
+gcx kg entities inspect [Type--Name] [flags]
 ```
 
 ### Options
 
 ```
-      --env string         Environment scope
+      --env string         Environment scope (run 'gcx kg meta scopes' to see valid values)
       --from string        Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help               help for inspect
       --json string        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --name string        Entity name
-      --namespace string   Namespace scope
+      --namespace string   Namespace scope (run 'gcx kg meta scopes' to see valid values)
   -o, --output string      Output format. One of: json, yaml (default "json")
       --since string       Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
-      --site string        Site scope
+      --site string        Site scope (run 'gcx kg meta scopes' to see valid values)
       --to string          End time (RFC3339, Unix timestamp, or relative like 'now')
-      --type string        Entity type
+      --type string        Entity type (run 'gcx kg meta schema' to see available types)
 ```
 
 ### Options inherited from parent commands
@@ -36,5 +36,5 @@ gcx kg inspect [Type--Name] [flags]
 
 ### SEE ALSO
 
-* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
+* [gcx kg entities](gcx_kg_entities.md)	 - Manage Knowledge Graph entities.
 
