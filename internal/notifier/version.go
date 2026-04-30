@@ -3,6 +3,7 @@ package notifier
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 const (
 	latestReleaseURL    = "https://api.github.com/repos/grafana/gcx/releases/latest"
 	releaseTagURLPrefix = "https://github.com/grafana/gcx/releases/tag/"
+	versionCheckTimeout = 2 * time.Second
 )
 
 type githubRelease struct {
@@ -25,13 +27,17 @@ type githubRelease struct {
 
 // VersionUpdateMessage fetches the latest released gcx version and returns a
 // notification message when it is newer than currentVersion.
-func VersionUpdateMessage(client *http.Client, url, currentVersion string) (string, error) {
+func VersionUpdateMessage(ctx context.Context, client *http.Client, url, currentVersion string) (string, error) {
+	if client == nil {
+		return "", errors.New("version update client is required")
+	}
+
 	current, ok := parseNotifyVersion(currentVersion)
 	if !ok {
 		return "", nil
 	}
 
-	release, err := fetchLatestRelease(client, url)
+	release, err := fetchLatestRelease(ctx, client, url)
 	if err != nil {
 		return "", err
 	}
@@ -51,12 +57,11 @@ func VersionUpdateMessage(client *http.Client, url, currentVersion string) (stri
 	return fmt.Sprintf("A new gcx version is available: %s (current: %s)\nUpgrade: %s", release.TagName, currentVersion, upgradeURL), nil
 }
 
-func fetchLatestRelease(client *http.Client, url string) (githubRelease, error) {
-	if client == nil {
-		client = &http.Client{Timeout: 2 * time.Second}
-	}
+func fetchLatestRelease(ctx context.Context, client *http.Client, url string) (githubRelease, error) {
+	ctx, cancel := context.WithTimeout(ctx, versionCheckTimeout)
+	defer cancel()
 
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return githubRelease{}, fmt.Errorf("create latest release request: %w", err)
 	}

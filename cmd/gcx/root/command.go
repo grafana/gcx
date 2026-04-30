@@ -205,7 +205,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 				return
 			}
 			_ = notifier.MaybeNotifySkills(cmd.ErrOrStderr())
-			_ = notifier.MaybeNotifyVersion(cmd.ErrOrStderr(), appversion.Get())
+			_ = notifier.MaybeNotifyVersion(cmd.Context(), cmd.ErrOrStderr(), appversion.Get())
 		},
 		Annotations: map[string]string{
 			cobra.CommandDisplayNameAnnotation: "gcx",

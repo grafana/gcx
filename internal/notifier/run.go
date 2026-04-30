@@ -1,6 +1,7 @@
 package notifier
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/fs"
@@ -31,9 +32,8 @@ func MaybeNotifySkills(dst io.Writer) error {
 
 // MaybeNotifyVersion runs the default gcx version update check. Network errors
 // are treated as silent misses so notification checks never affect CLI commands.
-func MaybeNotifyVersion(dst io.Writer, currentVersion string) error {
-	client := httpClientWithTimeout()
-	return maybeNotifyVersionAt(dst, StatePath(), currentVersion, time.Now(), client, latestReleaseURL)
+func MaybeNotifyVersion(ctx context.Context, dst io.Writer, currentVersion string) error {
+	return maybeNotifyVersionAt(ctx, dst, StatePath(), currentVersion, time.Now(), http.DefaultClient, latestReleaseURL)
 }
 
 func maybeNotifySkillsAt(source fs.FS, dst io.Writer, statePath, root string, now time.Time) error {
@@ -62,7 +62,7 @@ func maybeNotifySkillsAt(source fs.FS, dst io.Writer, statePath, root string, no
 	return err
 }
 
-func maybeNotifyVersionAt(dst io.Writer, statePath, currentVersion string, now time.Time, client *http.Client, url string) error {
+func maybeNotifyVersionAt(ctx context.Context, dst io.Writer, statePath, currentVersion string, now time.Time, client *http.Client, url string) error {
 	state, err := LoadState(statePath)
 	if err != nil {
 		return err
@@ -71,7 +71,7 @@ func maybeNotifyVersionAt(dst io.Writer, statePath, currentVersion string, now t
 		return nil
 	}
 
-	msg, err := VersionUpdateMessage(client, url, currentVersion)
+	msg, err := VersionUpdateMessage(ctx, client, url, currentVersion)
 	if err != nil {
 		return nil //nolint:nilerr // Version lookup is non-critical UX; do not fail CLI commands.
 	}
@@ -86,8 +86,4 @@ func maybeNotifyVersionAt(dst io.Writer, statePath, currentVersion string, now t
 
 	_, err = fmt.Fprintln(dst, msg)
 	return err
-}
-
-func httpClientWithTimeout() *http.Client {
-	return &http.Client{Timeout: 2 * time.Second}
 }

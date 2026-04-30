@@ -2,6 +2,7 @@ package notifier //nolint:testpackage // Tests exercise the unexported maybeNoti
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -127,7 +128,7 @@ func TestMaybeNotifyVersionAt_WritesMessageAndStateWhenDue(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	var out bytes.Buffer
-	if err := maybeNotifyVersionAt(&out, statePath, "v1.2.3", now, server.Client(), server.URL); err != nil {
+	if err := maybeNotifyVersionAt(context.Background(), &out, statePath, "v1.2.3", now, server.Client(), server.URL); err != nil {
 		t.Fatalf("maybeNotifyVersionAt() error = %v", err)
 	}
 	if !strings.Contains(out.String(), "A new gcx version is available: v1.2.4") {
@@ -163,7 +164,7 @@ func TestMaybeNotifyVersionAt_SkipsWhenNotDue(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	var out bytes.Buffer
-	if err := maybeNotifyVersionAt(&out, statePath, "v1.2.3", now, server.Client(), server.URL); err != nil {
+	if err := maybeNotifyVersionAt(context.Background(), &out, statePath, "v1.2.3", now, server.Client(), server.URL); err != nil {
 		t.Fatalf("maybeNotifyVersionAt() error = %v", err)
 	}
 	if out.Len() != 0 {
@@ -185,7 +186,7 @@ func TestMaybeNotifyVersionAt_FetchErrorIsSilentAndDoesNotMarkState(t *testing.T
 	t.Cleanup(server.Close)
 
 	var out bytes.Buffer
-	if err := maybeNotifyVersionAt(&out, statePath, "v1.2.3", now, server.Client(), server.URL); err != nil {
+	if err := maybeNotifyVersionAt(context.Background(), &out, statePath, "v1.2.3", now, server.Client(), server.URL); err != nil {
 		t.Fatalf("maybeNotifyVersionAt() error = %v", err)
 	}
 	if out.Len() != 0 {

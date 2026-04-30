@@ -1,6 +1,7 @@
 package notifier_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,7 +18,7 @@ func TestVersionUpdateMessage_NewerRelease(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	msg, err := notifier.VersionUpdateMessage(server.Client(), server.URL, "v1.2.3")
+	msg, err := notifier.VersionUpdateMessage(context.Background(), server.Client(), server.URL, "v1.2.3")
 	if err != nil {
 		t.Fatalf("VersionUpdateMessage() error = %v", err)
 	}
@@ -38,7 +39,7 @@ func TestVersionUpdateMessage_NoMessageForSameOlderOrInvalidVersions(t *testing.
 		t.Run(current, func(t *testing.T) {
 			t.Parallel()
 
-			msg, err := notifier.VersionUpdateMessage(server.Client(), server.URL, current)
+			msg, err := notifier.VersionUpdateMessage(context.Background(), server.Client(), server.URL, current)
 			if err != nil {
 				t.Fatalf("VersionUpdateMessage() error = %v", err)
 			}
@@ -57,7 +58,15 @@ func TestVersionUpdateMessage_PropagatesFetchError(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	if _, err := notifier.VersionUpdateMessage(server.Client(), server.URL, "v1.2.3"); err == nil {
+	if _, err := notifier.VersionUpdateMessage(context.Background(), server.Client(), server.URL, "v1.2.3"); err == nil {
+		t.Fatal("VersionUpdateMessage() error = nil, want error")
+	}
+}
+
+func TestVersionUpdateMessage_RequiresClient(t *testing.T) {
+	t.Parallel()
+
+	if _, err := notifier.VersionUpdateMessage(context.Background(), nil, "http://example.test", "v1.2.3"); err == nil {
 		t.Fatal("VersionUpdateMessage() error = nil, want error")
 	}
 }
