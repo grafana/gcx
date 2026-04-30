@@ -875,7 +875,7 @@ You can re-run the publisher for a past tag via the workflow's `workflow_dispatc
 - [ ] **Step 5: Build docs to confirm no broken references**
 
 ```bash
-GCX_AGENT_MODE=false make docs
+GCX_AGENT_MODE=false mise run docs
 ```
 
 Expected: docs build succeeds. If `mise`/`mkdocs` is unavailable locally, skip — CI will catch any break.
@@ -910,7 +910,7 @@ EOF
 - [ ] **Step 1: Run the full quality gate**
 
 ```bash
-GCX_AGENT_MODE=false make all
+GCX_AGENT_MODE=false mise run all
 ```
 
 This runs lint + tests + build + docs. Expected: all pass. Fix anything that fails.
@@ -921,7 +921,7 @@ If `mise` is unavailable, run the direct equivalents:
 go vet ./...
 go test -race -count=1 ./...
 go build -buildvcs=false -o bin/gcx ./cmd/gcx
-GCX_AGENT_MODE=false make docs   # or skip if mkdocs unavailable
+GCX_AGENT_MODE=false mise run docs   # or skip if mkdocs unavailable
 ```
 
 - [ ] **Step 2: Verify the branch has everything we expect**
