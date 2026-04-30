@@ -1354,15 +1354,6 @@ func newEntitiesInspectCommand(loader RESTConfigLoader) *cobra.Command {
 				return err
 			}
 			if err := inspectScope.validateScopes(cmd.Context(), client); err != nil {
-				name, _ := cmd.Flags().GetString("name")
-				if name == "" && len(args) > 0 {
-					if _, n, parseErr := parseEntityArg(args); parseErr == nil {
-						name = n
-					}
-				}
-				if name != "" {
-					return fmt.Errorf("%w\nRun 'gcx kg entities list --type <type> --property name=~%s' to find matching entities", err, name)
-				}
 				return err
 			}
 			startMs, endMs, err := inspectScope.resolveTime()
