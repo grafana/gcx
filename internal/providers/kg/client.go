@@ -462,6 +462,12 @@ func (c *Client) CypherSearch(ctx context.Context, req CypherSearchRequest) (*Cy
 	if err := c.postJSON(ctx, searchPath+"/cypher", req, &result); err != nil {
 		return nil, fmt.Errorf("kg: cypher search: %w", err)
 	}
+	if result.Entities == nil {
+		result.Entities = []CypherEntity{}
+	}
+	if result.Edges == nil {
+		result.Edges = []CypherEdge{}
+	}
 	return &result, nil
 }
 
