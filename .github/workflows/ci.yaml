@@ -93,6 +93,9 @@ jobs:
           install: true
           cache: true
 
+      - name: Install pythondependencies
+        run: uv pip install --system -q -r requirements.txt
+
       - name: Check for drift in the generated documentation references
         run: mise run reference-drift
         shell: bash
