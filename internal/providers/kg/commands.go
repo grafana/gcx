@@ -277,7 +277,7 @@ func readFileOrStdin(cmd *cobra.Command, path string) ([]byte, error) {
 	if path == "" {
 		fi, err := os.Stdin.Stat()
 		if err != nil || (fi.Mode()&os.ModeCharDevice) != 0 {
-			return nil, fmt.Errorf("no input: use -f <file> or pipe YAML via stdin\n\n  echo 'disabledAlertConfigs:\n    - name: my-suppression\n      matchLabels:\n        alertname: ErrorRatioBreach\n        job: my-service' | gcx kg suppressions create")
+			return nil, errors.New("no input: use -f <file> or pipe YAML via stdin\n\n  echo 'disabledAlertConfigs:\n    - name: my-suppression\n      matchLabels:\n        alertname: ErrorRatioBreach\n        job: my-service' | gcx kg suppressions create")
 		}
 		return io.ReadAll(cmd.InOrStdin())
 	}
@@ -658,7 +658,7 @@ func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to parse suppressions file: %w", err)
 			}
 			if len(suppressions.DisabledAlertConfigs) == 0 {
-				return fmt.Errorf("no suppressions found in file")
+				return errors.New("no suppressions found in file")
 			}
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
