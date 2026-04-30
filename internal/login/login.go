@@ -36,7 +36,11 @@ type Inputs struct {
 	CloudToken   string
 	CloudAPIURL  string
 	UseOAuth     bool
-	Yes          bool
+	// OAuthCallbackPort fixes the local port for the OAuth callback server.
+	// Zero means auto-pick from the default range. Useful when only specific
+	// ports are forwarded between a remote dev host and the user's browser.
+	OAuthCallbackPort int
+	Yes               bool
 	// UseCloudInstanceSelector is only used internally to mark the case in which
 	// a user explicitly left the server empty to be directed to the cloud
 	// instance selector
@@ -393,7 +397,7 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 		if w == nil {
 			w = io.Discard
 		}
-		flow := opts.NewAuthFlow(opts.Server, auth.Options{Writer: w})
+		flow := opts.NewAuthFlow(opts.Server, auth.Options{Writer: w, Port: opts.OAuthCallbackPort})
 		result, err := flow.Run(ctx)
 		if err != nil {
 			return "", nil, fmt.Errorf("OAuth flow failed: %w", err)

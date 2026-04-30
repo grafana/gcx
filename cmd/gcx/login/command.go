@@ -47,6 +47,7 @@ type loginOpts struct {
 	Cloud               bool
 	Yes                 bool
 	AllowServerOverride bool
+	OAuthCallbackPort   int
 }
 
 func (opts *loginOpts) setup(flags *pflag.FlagSet) {
@@ -65,6 +66,7 @@ func (opts *loginOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&opts.Cloud, "cloud", false, "Force Grafana Cloud target (skip auto-detection)")
 	flags.BoolVar(&opts.Yes, "yes", false, "Non-interactive: skip optional prompts and use defaults")
 	flags.BoolVar(&opts.AllowServerOverride, "allow-server-override", false, "Allow re-pointing an existing context at a different server URL")
+	flags.IntVar(&opts.OAuthCallbackPort, "oauth-callback-port", 0, "Fixed local port for the OAuth callback server (default: auto-pick from 54321-54399). Useful when only specific ports are forwarded between a remote host and your browser")
 }
 
 // Validate checks opts and args for internal consistency before runLogin executes.
@@ -86,6 +88,12 @@ func (opts *loginOpts) Validate(args []string) error {
 	}
 	if err := opts.IO.Validate(); err != nil {
 		return err
+	}
+	if opts.OAuthCallbackPort < 0 || opts.OAuthCallbackPort > 65535 {
+		return fail.DetailedError{
+			Summary: "invalid --oauth-callback-port",
+			Details: fmt.Sprintf("Port must be between 1 and 65535 (or 0 to auto-pick); got %d.", opts.OAuthCallbackPort),
+		}
 	}
 	return nil
 }
@@ -187,14 +195,15 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 
 	opts := login.Options{
 		Inputs: login.Inputs{
-			Server:       flags.Server,
-			ContextName:  contextName,
-			GrafanaToken: flags.Token,
-			CloudToken:   flags.CloudToken,
-			CloudAPIURL:  flags.CloudAPIURL,
-			Yes:          flags.Yes,
-			Writer:       cmd.ErrOrStderr(),
-			TLS:          existingTLS,
+			Server:            flags.Server,
+			ContextName:       contextName,
+			GrafanaToken:      flags.Token,
+			CloudToken:        flags.CloudToken,
+			CloudAPIURL:       flags.CloudAPIURL,
+			OAuthCallbackPort: flags.OAuthCallbackPort,
+			Yes:               flags.Yes,
+			Writer:            cmd.ErrOrStderr(),
+			TLS:               existingTLS,
 		},
 		Hooks: login.Hooks{
 			ConfigSource: flags.Config.ConfigSource(),
