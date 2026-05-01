@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/grafana/gcx/internal/auth"
+	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/datasources"
 	"github.com/grafana/gcx/internal/grafana"
@@ -52,6 +53,7 @@ func ErrorToDetailedError(err error) *DetailedError {
 		convertLinterErrors,          // Linter-related errors
 		convertSMConfigErrors,        // Synthetic Monitoring config errors
 		convertCloudConfigErrors,     // Cloud config / fleet / setup errors
+		convertStacksErrors,          // Stacks management GCOM errors
 	}
 
 	for _, converter := range errorConverters {
@@ -1155,6 +1157,75 @@ func humanizeSummary(summary string) string {
 	}
 
 	return summary
+}
+
+func convertStacksErrors(err error) (*DetailedError, bool) {
+	msg := err.Error()
+
+	// Only match stacks-related errors (from stacks provider commands).
+	if !strings.Contains(msg, "failed to list stacks") &&
+		!strings.Contains(msg, "failed to create stack") &&
+		!strings.Contains(msg, "failed to update stack") &&
+		!strings.Contains(msg, "failed to delete stack") &&
+		!strings.Contains(msg, "failed to get stack") &&
+		!strings.Contains(msg, "failed to list regions") {
+		return nil, false
+	}
+
+	var httpErr *cloud.GCOMHTTPError
+	if !errors.As(err, &httpErr) {
+		return nil, false
+	}
+
+	switch httpErr.Status {
+	case http.StatusConflict:
+		if strings.Contains(msg, "delete") {
+			return &DetailedError{
+				Summary: "Stack has delete protection enabled",
+				Details: msg,
+				Parent:  err,
+				Suggestions: []string{
+					"Disable delete protection first: gcx stacks update <slug> --no-delete-protection",
+					"Then retry: gcx stacks delete <slug>",
+				},
+			}, true
+		}
+		return &DetailedError{
+			Summary: "Stack slug already taken",
+			Details: msg,
+			Parent:  err,
+			Suggestions: []string{
+				"Choose a different slug with --slug",
+				"List existing stacks: gcx stacks list --org <org-slug>",
+			},
+		}, true
+	case http.StatusForbidden:
+		return &DetailedError{
+			Summary:  "Stacks: permission denied",
+			Details:  msg,
+			Parent:   err,
+			ExitCode: new(ExitAuthFailure),
+			Suggestions: []string{
+				"Ensure your Cloud Access Policy includes the required stacks scopes:",
+				"  stacks:read   — for list, get, regions",
+				"  stacks:write  — for create, update",
+				"  stacks:delete — for delete",
+			},
+		}, true
+	case http.StatusUnauthorized:
+		return &DetailedError{
+			Summary:  "Stacks: authentication failed",
+			Details:  msg,
+			Parent:   err,
+			ExitCode: new(ExitAuthFailure),
+			Suggestions: []string{
+				"Check your cloud.token is valid and not expired",
+				reauthSuggestion,
+			},
+		}, true
+	}
+
+	return nil, false
 }
 
 func convertContextCanceled(err error) (*DetailedError, bool) {
