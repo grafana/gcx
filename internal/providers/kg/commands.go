@@ -642,7 +642,7 @@ func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
 	var fileFlag string
 	createCmd := &cobra.Command{
 		Use:   "create",
-		Short: "Upload suppressions from a YAML file or stdin.",
+		Short: "Create or update one or more suppressions from a YAML file or stdin.",
 		Example: `  gcx kg suppressions create -f suppressions.yaml
 
   echo 'disabledAlertConfigs:
@@ -670,12 +670,13 @@ func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			for _, s := range suppressions.DisabledAlertConfigs {
+			total := len(suppressions.DisabledAlertConfigs)
+			for i, s := range suppressions.DisabledAlertConfigs {
 				if err := client.UpsertSuppression(cmd.Context(), s); err != nil {
-					return fmt.Errorf("failed to upsert suppression %q: %w", s.Name, err)
+					return fmt.Errorf("failed to upsert suppression %q (%d/%d succeeded): %w", s.Name, i, total, err)
 				}
 			}
-			cmdio.Success(cmd.OutOrStdout(), "%d suppression(s) upserted", len(suppressions.DisabledAlertConfigs))
+			cmdio.Success(cmd.OutOrStdout(), "%d suppression(s) upserted", total)
 			return nil
 		},
 	}

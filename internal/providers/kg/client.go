@@ -26,6 +26,8 @@ const (
 	assertionsPath   = pluginResourcePath + "/asserts/api-server/v1/assertions"
 	searchPath       = pluginResourcePath + "/asserts/api-server/v1/search"
 	rulesPath        = pluginResourcePath + "/asserts/api-server/v1/config/prom-rules/"
+	suppressionPath  = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alert"
+	suppressionsPath = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alerts"
 	entityLookupPath = pluginResourcePath + "/asserts/api-server/v1/entity"
 	v2ConfigPath     = pluginResourcePath + "/asserts/api-server/v2/config"
 )
@@ -224,13 +226,13 @@ type Suppressions struct {
 // UpsertSuppression creates or updates a single suppression without affecting others.
 // It uses the single-item endpoint so the backend performs a read-modify-write upsert.
 func (c *Client) UpsertSuppression(ctx context.Context, s Suppression) error {
-	return c.postJSON(ctx, pluginResourcePath+"/asserts/api-server/v1/config/disabled-alert", s, nil)
+	return c.postJSON(ctx, suppressionPath, s, nil)
 }
 
 // DeleteSuppression deletes a single suppression by name.
 func (c *Client) DeleteSuppression(ctx context.Context, name string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
-		c.host+pluginResourcePath+"/asserts/api-server/v1/config/disabled-alert/"+url.PathEscape(name), nil)
+		c.host+suppressionPath+"/"+url.PathEscape(name), nil)
 	if err != nil {
 		return fmt.Errorf("kg: create request: %w", err)
 	}
@@ -248,7 +250,7 @@ func (c *Client) DeleteSuppression(ctx context.Context, name string) error {
 // GetSuppressions retrieves all disabled-alert configurations for the tenant.
 func (c *Client) GetSuppressions(ctx context.Context) (*Suppressions, error) {
 	var result Suppressions
-	if err := c.getJSON(ctx, pluginResourcePath+"/asserts/api-server/v1/config/disabled-alerts", &result); err != nil {
+	if err := c.getJSON(ctx, suppressionsPath, &result); err != nil {
 		return nil, err
 	}
 	return &result, nil

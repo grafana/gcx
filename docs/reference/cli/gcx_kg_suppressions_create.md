@@ -1,6 +1,6 @@
 ## gcx kg suppressions create
 
-Upload suppressions from a YAML file or stdin.
+Create or update one or more suppressions from a YAML file or stdin.
 
 ```
 gcx kg suppressions create [flags]
