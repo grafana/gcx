@@ -372,6 +372,21 @@ var commandAnnotations = map[string]annotation{
 	"gcx aio11y templates list":     {Cost: "small"},
 	"gcx aio11y templates versions": {Cost: "small"},
 
+	"gcx aio11y saved-conversations list":        {Cost: "small"},
+	"gcx aio11y saved-conversations get":         {Cost: "medium", Hint: "<saved-id> -o json"},
+	"gcx aio11y saved-conversations save":        {Cost: "small"},
+	"gcx aio11y saved-conversations delete":      {Cost: "small"},
+	"gcx aio11y saved-conversations collections": {Cost: "small"},
+
+	"gcx aio11y collections list":                 {Cost: "small"},
+	"gcx aio11y collections get":                  {Cost: "small"},
+	"gcx aio11y collections create":               {Cost: "small"},
+	"gcx aio11y collections update":               {Cost: "small"},
+	"gcx aio11y collections delete":               {Cost: "small"},
+	"gcx aio11y collections conversations list":   {Cost: "small"},
+	"gcx aio11y collections conversations add":    {Cost: "small"},
+	"gcx aio11y collections conversations remove": {Cost: "small"},
+
 	// -----------------------------------------------------------------------
 	// SLO provider
 	// -----------------------------------------------------------------------

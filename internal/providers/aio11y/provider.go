@@ -5,9 +5,11 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/aio11y/agents"
 	"github.com/grafana/gcx/internal/providers/aio11y/conversations"
+	"github.com/grafana/gcx/internal/providers/aio11y/eval/collections"
 	"github.com/grafana/gcx/internal/providers/aio11y/eval/evaluators"
 	"github.com/grafana/gcx/internal/providers/aio11y/eval/judge"
 	"github.com/grafana/gcx/internal/providers/aio11y/eval/rules"
+	"github.com/grafana/gcx/internal/providers/aio11y/eval/savedconversations"
 	"github.com/grafana/gcx/internal/providers/aio11y/eval/templates"
 	"github.com/grafana/gcx/internal/providers/aio11y/generations"
 	"github.com/grafana/gcx/internal/providers/aio11y/scores"
@@ -94,7 +96,19 @@ func (p *AIO11yProvider) Commands() []*cobra.Command {
 		agent.AnnotationLLMHint:   `gcx aio11y judge providers -o json; gcx aio11y judge models --provider openai -o json`,
 	}
 
-	aio11yCmd.AddCommand(convsCmd, agentsCmd, evaluatorsCmd, rulesCmd, templatesCmd, generationsCmd, scoresCmd, judgeCmd)
+	savedConvsCmd := savedconversations.Commands(loader)
+	savedConvsCmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "medium",
+		agent.AnnotationLLMHint:   `gcx aio11y saved-conversations list -o json; gcx aio11y saved-conversations get <id> -o yaml; gcx aio11y saved-conversations save <conv-id> --name '...' -o json; gcx aio11y saved-conversations collections <saved-id> -o json`,
+	}
+
+	collectionsCmd := collections.Commands(loader)
+	collectionsCmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "low",
+		agent.AnnotationLLMHint:   `gcx aio11y collections list -o json; gcx aio11y collections get <id> -o yaml; gcx aio11y collections create --name '...' -o json; gcx aio11y collections update <id> --name '...' -o json; gcx aio11y collections delete <id> --force; gcx aio11y collections conversations list <id> -o json; gcx aio11y collections conversations add <id> <saved-id>; gcx aio11y collections conversations remove <id> <saved-id>`,
+	}
+
+	aio11yCmd.AddCommand(convsCmd, agentsCmd, evaluatorsCmd, rulesCmd, templatesCmd, generationsCmd, scoresCmd, judgeCmd, savedConvsCmd, collectionsCmd)
 
 	return []*cobra.Command{aio11yCmd}
 }
@@ -114,9 +128,14 @@ func (p *AIO11yProvider) ConfigKeys() []providers.ConfigKey {
 }
 
 // TypedRegistrations returns adapter registrations for AI Observability resource types.
+//
+// Saved-conversations are intentionally absent: `save` bookmarks a specific
+// live conversation (not an idempotent upsert) and the resource is shaped
+// like an event record rather than declarative config.
 func (p *AIO11yProvider) TypedRegistrations() []adapter.Registration {
 	evalDesc := evaluators.StaticDescriptor()
 	ruleDesc := rules.StaticDescriptor()
+	collectionDesc := collections.StaticDescriptor()
 
 	return []adapter.Registration{
 		{
@@ -132,6 +151,13 @@ func (p *AIO11yProvider) TypedRegistrations() []adapter.Registration {
 			GVK:         ruleDesc.GroupVersionKind(),
 			Schema:      rules.RuleSchema(),
 			URLTemplate: "/a/grafana-sigil-app/rules/{name}",
+		},
+		{
+			Factory:     collections.NewLazyFactory(),
+			Descriptor:  collectionDesc,
+			GVK:         collectionDesc.GroupVersionKind(),
+			Schema:      collections.CollectionSchema(),
+			URLTemplate: "/a/grafana-sigil-app/collections/{name}",
 		},
 	}
 }
