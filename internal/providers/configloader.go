@@ -208,65 +208,107 @@ func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.Namespaced
 	return restCfg, nil
 }
 
-// LoadCloudConfig loads Grafana Cloud configuration, applying env var overrides.
-// Unlike LoadGrafanaConfig it does not require grafana.server to be set.
-// It validates that cloud.token is present, resolves the stack slug and GCOM URL,
-// calls the GCOM API to discover stack info, and returns a CloudRESTConfig.
-func (l *ConfigLoader) LoadCloudConfig(ctx context.Context) (CloudRESTConfig, error) {
+// cloudBase holds the common pieces resolved by loadCloudBase.
+type cloudBase struct {
+	token  string
+	client *cloud.GCOMClient
+	loaded config.Config
+	curCtx *config.Context
+}
+
+// loadCloudBase loads config, validates cloud.token, resolves the GCOM URL,
+// and creates a GCOMClient. It is the shared preamble for both
+// LoadCloudConfig (which additionally needs a stack slug) and
+// LoadCloudTokenConfig (which does not).
+func (l *ConfigLoader) loadCloudBase(ctx context.Context) (cloudBase, error) {
 	ctxName := l.resolvedContextName(ctx)
 	overrides := []config.Override{contextSelectionOverride(ctxName), cloudEnvOverride}
 
 	loaded, err := config.LoadLayered(ctx, l.configFile, overrides...)
 	if err != nil {
-		return CloudRESTConfig{}, err
+		return cloudBase{}, err
 	}
 
 	curCtx := loaded.GetCurrentContext()
 
-	// Validate cloud token.
 	if curCtx.Cloud == nil || curCtx.Cloud.Token == "" {
-		return CloudRESTConfig{}, errors.New("cloud token is required: set cloud.token in config or GRAFANA_CLOUD_TOKEN env var")
+		return cloudBase{}, errors.New("cloud token is required: set cloud.token in config or GRAFANA_CLOUD_TOKEN env var")
 	}
 
 	token := curCtx.Cloud.Token
+	gcomURL := curCtx.ResolveGCOMURL()
+	client, err := cloud.NewGCOMClient(gcomURL, token)
+	if err != nil {
+		return cloudBase{}, fmt.Errorf("failed to create GCOM client: %w", err)
+	}
 
-	// Resolve stack slug.
-	slug := curCtx.ResolveStackSlug()
+	return cloudBase{
+		token:  token,
+		client: client,
+		loaded: loaded,
+		curCtx: curCtx,
+	}, nil
+}
+
+// CloudTokenConfig holds the minimal cloud credentials needed for
+// org-level GCOM operations that do not target a specific stack.
+type CloudTokenConfig struct {
+	Token  string
+	Client *cloud.GCOMClient
+}
+
+// LoadCloudTokenConfig loads Grafana Cloud configuration requiring only
+// cloud.token (or GRAFANA_CLOUD_TOKEN). Unlike LoadCloudConfig it does not
+// require a stack slug and does not call GetStack.
+func (l *ConfigLoader) LoadCloudTokenConfig(ctx context.Context) (CloudTokenConfig, error) {
+	base, err := l.loadCloudBase(ctx)
+	if err != nil {
+		return CloudTokenConfig{}, err
+	}
+	return CloudTokenConfig{
+		Token:  base.token,
+		Client: base.client,
+	}, nil
+}
+
+// LoadCloudConfig loads Grafana Cloud configuration, applying env var overrides.
+// Unlike LoadGrafanaConfig it does not require grafana.server to be set.
+// It validates that cloud.token is present, resolves the stack slug and GCOM URL,
+// calls the GCOM API to discover stack info, and returns a CloudRESTConfig.
+func (l *ConfigLoader) LoadCloudConfig(ctx context.Context) (CloudRESTConfig, error) {
+	base, err := l.loadCloudBase(ctx)
+	if err != nil {
+		return CloudRESTConfig{}, err
+	}
+
+	slug := base.curCtx.ResolveStackSlug()
 	if slug == "" {
 		return CloudRESTConfig{}, errors.New("cloud stack is not configured: set cloud.stack in config or GRAFANA_CLOUD_STACK env var")
 	}
 
-	// Resolve GCOM URL and fetch stack info.
-	gcomURL := curCtx.ResolveGCOMURL()
-	client, err := cloud.NewGCOMClient(gcomURL, token)
-	if err != nil {
-		return CloudRESTConfig{}, fmt.Errorf("failed to create GCOM client: %w", err)
-	}
-
-	stack, err := client.GetStack(ctx, slug)
+	stack, err := base.client.GetStack(ctx, slug)
 	if err != nil {
 		return CloudRESTConfig{}, fmt.Errorf("failed to get stack info for %q: %w", slug, err)
 	}
 
-	// Derive namespace and REST config from grafana config if available.
 	namespace := "default"
 	var restCfg *rest.Config
-	if curCtx.Grafana != nil && !curCtx.Grafana.IsEmpty() {
-		nrc, err := curCtx.ToRESTConfig(ctx)
+	if base.curCtx.Grafana != nil && !base.curCtx.Grafana.IsEmpty() {
+		nrc, err := base.curCtx.ToRESTConfig(ctx)
 		if err != nil {
 			return CloudRESTConfig{}, err
 		}
-		nrc.WireTokenPersistence(ctx, l.configSource(), loaded.CurrentContext, loaded.Sources)
+		nrc.WireTokenPersistence(ctx, l.configSource(), base.loaded.CurrentContext, base.loaded.Sources)
 
 		namespace = nrc.Namespace
 		restCfg = &nrc.Config
 	}
 
 	return CloudRESTConfig{
-		Token:           token,
+		Token:           base.token,
 		Stack:           stack,
 		Namespace:       namespace,
-		ProviderConfigs: curCtx.Providers,
+		ProviderConfigs: base.curCtx.Providers,
 		RESTConfig:      restCfg,
 	}, nil
 }
