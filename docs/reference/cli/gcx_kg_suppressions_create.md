@@ -9,6 +9,7 @@ gcx kg suppressions create [flags]
 ### Options
 
 ```
+      --dry-run       Validate and show a diff without uploading
   -f, --file string   Input file (YAML)
   -h, --help          help for create
 ```
