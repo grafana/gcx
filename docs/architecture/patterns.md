@@ -478,8 +478,10 @@ the issue for architectural discussion.
 
 ### Provider ConfigLoader
 
-All provider commands must use `providers.ConfigLoader` for flag binding
-(`--config`, `--context`) and config resolution (YAML + env var precedence).
+All provider commands must use `providers.ConfigLoader` for `--config` flag
+binding and config resolution (YAML + env var precedence). The `--context`
+flag is owned by the root command and threaded to providers via
+`context.Context` (see "Context threading" below).
 
 | Method | Purpose | Used by |
 |--------|---------|---------|
@@ -491,7 +493,7 @@ All provider commands must use `providers.ConfigLoader` for flag binding
 
 Do not:
 - Import `cmd/gcx/config` from provider code (import cycle)
-- Roll custom flag binding for `--config`/`--context`
+- Roll custom flag binding for `--config` (or re-bind `--context` — root owns it)
 - Construct HTTP clients or load credentials outside ConfigLoader
 - Hardcode env var names — ConfigLoader handles `GRAFANA_PROVIDER_*` resolution
 - Use `os.Getenv` for provider-specific env vars — use `LoadProviderConfig`

@@ -12,6 +12,7 @@ import (
 	claudeplugin "github.com/grafana/gcx/claude-plugin"
 	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/grafana/gcx/internal/agent"
+	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
@@ -231,4 +232,114 @@ func executeRootCommandForTest(args ...string) (string, string, error) {
 	cmd.SetArgs(args)
 	err := cmd.Execute()
 	return stdout.String(), stderr.String(), err
+}
+
+// buildContextFlagFixture wires a provider that mirrors the aio11y/appo11y
+// shape: a parent group that binds the standard provider config flags via
+// providers.ConfigLoader, plus a leaf subcommand that captures the resolved
+// context name from cmd.Context() through internalconfig.ContextNameFromCtx.
+//
+// The captured value is what the four buggy CRUD adapters
+// (aio11y rules, aio11y evaluators, appo11y settings, appo11y overrides)
+// rely on to resolve the active context. If a duplicate provider-level
+// `--context` flag silently swallows the root-level value, the captured
+// context name will be empty and these tests will fail.
+func buildContextFlagFixture(t *testing.T, captured *string) *cobra.Command {
+	t.Helper()
+
+	loader := &providers.ConfigLoader{}
+	leafCmd := &cobra.Command{
+		Use:   "list",
+		Short: "leaf",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			*captured = internalconfig.ContextNameFromCtx(cmd.Context())
+			return nil
+		},
+	}
+	rulesCmd := &cobra.Command{Use: "rules", Short: "rules group"}
+	rulesCmd.AddCommand(leafCmd)
+
+	parentCmd := &cobra.Command{
+		Use:   "aio11y",
+		Short: "aio11y group",
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			if r := cmd.Root(); r.PersistentPreRun != nil {
+				r.PersistentPreRun(cmd, args)
+			}
+		},
+	}
+	loader.BindFlags(parentCmd.PersistentFlags())
+	parentCmd.AddCommand(rulesCmd)
+
+	rootCmd := root.NewCommandForTest("v0.0.0-test", []providers.Provider{
+		&mockProvider{name: "aio11y", commands: []*cobra.Command{parentCmd}},
+	})
+	rootCmd.SilenceErrors = true
+	rootCmd.SilenceUsage = true
+	rootCmd.SetOut(&bytes.Buffer{})
+	rootCmd.SetErr(&bytes.Buffer{})
+	return rootCmd
+}
+
+// TestContextFlag_PropagatesAtAllPositions is a regression test for the bug
+// where a duplicate provider-level `--context` flag binding silently shadowed
+// the root-level flag. When the duplicate exists, the child's pflag binding
+// wins regardless of position on the command line, so root's `contextName`
+// stays empty and `ContextNameFromCtx` returns "". Removing the duplicate
+// (the fix) makes root's binding the single source of truth.
+func TestContextFlag_PropagatesAtAllPositions(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{
+			name: "before provider",
+			args: []string{"--context", "default", "aio11y", "rules", "list"},
+		},
+		{
+			name: "after provider",
+			args: []string{"aio11y", "--context", "default", "rules", "list"},
+		},
+		{
+			name: "after leaf",
+			args: []string{"aio11y", "rules", "list", "--context", "default"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var captured string
+			rootCmd := buildContextFlagFixture(t, &captured)
+			rootCmd.SetArgs(tc.args)
+			require.NoError(t, rootCmd.Execute())
+			assert.Equal(t, "default", captured,
+				"expected --context to propagate to leaf command's context.Context")
+		})
+	}
+}
+
+// TestContextFlag_ProviderDoesNotBindContextFlag verifies that when a provider
+// uses the standard providers.ConfigLoader.BindFlags pattern, the resulting
+// parent command does not register a provider-local `--context` flag. The flag
+// must remain root-only so its value flows through root's PersistentPreRun
+// into the Go context, where adapter factories pick it up.
+func TestContextFlag_ProviderDoesNotBindContextFlag(t *testing.T) {
+	loader := &providers.ConfigLoader{}
+	parentCmd := &cobra.Command{Use: "aio11y", Short: "aio11y group"}
+	loader.BindFlags(parentCmd.PersistentFlags())
+
+	assert.NotNil(t, parentCmd.PersistentFlags().Lookup("config"),
+		"provider parent must still bind --config")
+	assert.Nil(t, parentCmd.PersistentFlags().Lookup("context"),
+		"provider parent must NOT bind --context (root binds it as a global flag)")
+}
+
+// TestContextFlag_RootBindsContextAsPersistentGlobalFlag verifies the
+// help-output requirement: `--context` is a root-level persistent flag, so
+// `gcx <provider> --help` lists it under "Global Flags" and not under the
+// provider's local "Flags" section.
+func TestContextFlag_RootBindsContextAsPersistentGlobalFlag(t *testing.T) {
+	rootCmd := root.NewCommandForTest("v0.0.0-test", nil)
+	require.NotNil(t, rootCmd.PersistentFlags().Lookup("context"),
+		"root must bind --context as a persistent (global) flag")
 }

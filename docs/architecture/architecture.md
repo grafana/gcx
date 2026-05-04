@@ -661,7 +661,7 @@ Files most important for understanding the codebase. Organized by architectural 
 | `internal/providers/registry.go` | `All()` — compile-time provider registry |
 | `internal/providers/redact.go` | `RedactSecrets()` — secure-by-default secret redaction |
 | `cmd/gcx/providers/command.go` | `providers` command (list registered providers) |
-| `internal/providers/configloader.go` | Shared `ConfigLoader` — binds `--config`/`--context` flags and loads REST config for all providers |
+| `internal/providers/configloader.go` | Shared `ConfigLoader` — binds the `--config` flag and loads REST config for all providers (`--context` is owned by the root command and threaded via `context.Context`) |
 
 ### Signal Providers (Metrics, Logs, Traces, Profiles)
 

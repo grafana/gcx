@@ -106,10 +106,14 @@ func contextMustExist(cfg *config.Config) error {
 	return nil
 }
 
-// BindFlags registers --config and --context flags on the given flag set.
+// BindFlags registers the --config flag on the given flag set.
+//
+// --context is intentionally NOT bound here: it is owned by the root command
+// as a persistent global flag and threaded into context.Context via
+// PersistentPreRun. Re-binding it here would silently shadow the root binding,
+// causing --context to be ignored on subcommands depending on its position.
 func (l *ConfigLoader) BindFlags(flags *pflag.FlagSet) {
 	flags.StringVar(&l.configFile, "config", "", "Path to the configuration file to use")
-	flags.StringVar(&l.ctxName, "context", "", "Name of the context to use")
 }
 
 // SetContextName sets the config context name to use when loading config.

@@ -93,7 +93,7 @@ gcx (root)
 │
 ├── setup                    [cmd/gcx/setup/command.go]
 │   ├── --config             [persistent: inherited from providers.ConfigLoader]
-│   ├── --context            [persistent: inherited from providers.ConfigLoader]
+│   ├── --context            [persistent: inherited from root command]
 │   ├── status               Aggregated setup status across all products
 │   └── instrumentation      [cmd/gcx/setup/instrumentation/command.go]
 │       ├── status           Per-cluster instrumentation state + Beyla errors
@@ -163,7 +163,7 @@ operations plus optional product-specific commands.
 ```
 gcx {provider}           [contributed by Provider.Commands()]
 ├── --config                    [persistent: inherited via providers.ConfigLoader]
-├── --context                   [persistent: inherited via providers.ConfigLoader]
+├── --context                   [persistent: inherited from root command]
 │
 ├── {resource-type}             [one group per resource type]
 │   ├── list                    [always: list all resources]
@@ -212,13 +212,15 @@ gcx synthetic-monitoring [internal/providers/synth/provider.go]
 ### Config loading pattern
 
 Provider commands cannot import `cmd/gcx/config` (import cycle). Instead,
-they use a shared, exported `providers.ConfigLoader` that binds `--config` and `--context` flags
-independently. See `internal/providers/configloader.go` for the reference implementation.
+they use a shared, exported `providers.ConfigLoader` that binds the `--config`
+flag. The `--context` flag is owned by the root command and threaded into
+provider commands via `context.Context`. See `internal/providers/configloader.go`
+for the reference implementation.
 
 ```go
 // Shared across all providers — defined in internal/providers/configloader.go
 loader := &providers.ConfigLoader{}
-loader.BindFlags(sloCmd.PersistentFlags())  // --config, --context flags
+loader.BindFlags(sloCmd.PersistentFlags())  // --config flag (root owns --context)
 
 func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error) {
     // Applies env vars (GRAFANA_TOKEN, GRAFANA_PROVIDER_*), context flag,
