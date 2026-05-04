@@ -1529,7 +1529,15 @@ func newEntitiesInspectCommand(loader RESTConfigLoader) *cobra.Command {
 				return fmt.Errorf("%s/%s not found%s\nRun 'gcx kg entities list --type %s --property name=~%s' to find matching entities and their correct scope", entityType, name, scopeDesc, entityType, name)
 			}
 			if u := rcaWorkbenchURL(cfg.GrafanaURL, entityType, name, scope, startMs, endMs, inspectScope.since); u != "" {
-				result["rcaWorkbench"] = u
+				if ioOpts.ShareLink {
+					cmdio.Info(cmd.ErrOrStderr(), "RCA Workbench: %s", u)
+				}
+				if ioOpts.Open {
+					cmdio.Info(cmd.ErrOrStderr(), "Opening RCA Workbench for %s/%s", entityType, name)
+					if err := deeplink.Open(u); err != nil {
+						cmdio.Warning(cmd.ErrOrStderr(), "could not open browser: %v", err)
+					}
+				}
 			}
 			return ioOpts.IO.Encode(cmd.OutOrStdout(), result)
 		},
@@ -1545,12 +1553,16 @@ func newEntitiesInspectCommand(loader RESTConfigLoader) *cobra.Command {
 }
 
 type inspectOpts struct {
-	IO cmdio.Options
+	IO        cmdio.Options
+	ShareLink bool
+	Open      bool
 }
 
 func (o *inspectOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
+	flags.BoolVar(&o.ShareLink, "share-link", false, "Print the RCA Workbench URL for this entity to stderr")
+	flags.BoolVar(&o.Open, "open", false, "Open the entity in the RCA Workbench in your browser")
 }
 
 // rcaWorkbenchURL builds a deep link to the Asserts RCA Workbench for a single entity.

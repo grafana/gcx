@@ -15,7 +15,9 @@ gcx kg entities inspect [Type--Name] [flags]
       --json string        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --name string        Entity name
       --namespace string   Namespace scope (run 'gcx kg meta scopes' to see valid values)
+      --open               Open the entity in the RCA Workbench in your browser
   -o, --output string      Output format. One of: json, yaml (default "json")
+      --share-link         Print the RCA Workbench URL for this entity to stderr
       --since string       Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
       --site string        Site scope (run 'gcx kg meta scopes' to see valid values)
       --to string          End time (RFC3339, Unix timestamp, or relative like 'now')
