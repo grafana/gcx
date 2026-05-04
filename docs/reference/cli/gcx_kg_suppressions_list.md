@@ -1,11 +1,17 @@
-## gcx kg suppressions
+## gcx kg suppressions list
 
-Manage alert suppressions in the Knowledge Graph.
+List all alert suppressions.
+
+```
+gcx kg suppressions list [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for suppressions
+  -h, --help            help for list
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: json, table, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -22,8 +28,5 @@ Manage alert suppressions in the Knowledge Graph.
 
 ### SEE ALSO
 
-* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
-* [gcx kg suppressions create](gcx_kg_suppressions_create.md)	 - Create or update one or more suppressions from a YAML file or stdin.
-* [gcx kg suppressions delete](gcx_kg_suppressions_delete.md)	 - Delete a suppression by name.
-* [gcx kg suppressions list](gcx_kg_suppressions_list.md)	 - List all alert suppressions.
+* [gcx kg suppressions](gcx_kg_suppressions.md)	 - Manage alert suppressions in the Knowledge Graph.
 

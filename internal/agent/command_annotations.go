@@ -231,6 +231,8 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg scopes list":             {Cost: "small"},
 	"gcx kg status":                  {Cost: "small"},
 	"gcx kg suppressions create":     {Cost: "small"},
+	"gcx kg suppressions delete":     {Cost: "small"},
+	"gcx kg suppressions list":       {Cost: "small"},
 
 	// -----------------------------------------------------------------------
 	// Logs provider

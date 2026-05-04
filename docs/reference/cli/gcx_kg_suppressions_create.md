@@ -1,15 +1,27 @@
 ## gcx kg suppressions create
 
-Upload suppressions from a YAML file.
+Create or update one or more suppressions from a YAML file or stdin.
 
 ```
 gcx kg suppressions create [flags]
 ```
 
+### Examples
+
+```
+  gcx kg suppressions create -f suppressions.yaml
+
+  echo 'disabledAlertConfigs:
+    - name: my-suppression
+      matchLabels:
+        alertname: ErrorRatioBreach
+        job: my-service' | gcx kg suppressions create
+```
+
 ### Options
 
 ```
-  -f, --file string   Input file (YAML)
+  -f, --file string   Input file (YAML), or '-' for stdin. Reads from stdin if omitted.
   -h, --help          help for create
 ```
 
@@ -27,5 +39,5 @@ gcx kg suppressions create [flags]
 
 ### SEE ALSO
 
-* [gcx kg suppressions](gcx_kg_suppressions.md)	 - Push suppressions to the Knowledge Graph.
+* [gcx kg suppressions](gcx_kg_suppressions.md)	 - Manage alert suppressions in the Knowledge Graph.
 

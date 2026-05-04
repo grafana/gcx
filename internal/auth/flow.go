@@ -105,29 +105,30 @@ func NewFlow(endpoint string, opts Options) *Flow {
 
 // Run executes the authentication flow.
 func (f *Flow) Run(ctx context.Context) (*Result, error) {
-	port := f.opts.Port
-	if port == 0 {
-		var err error
-		port, err = findAvailablePort(ctx, f.opts.BindAddress)
-		if err != nil {
+	listener, port, err := listenOnCallbackPort(ctx, f.opts.BindAddress, f.opts.Port)
+	if err != nil {
+		if f.opts.Port == 0 {
 			return nil, fmt.Errorf("no available port: %w", err)
 		}
+		return nil, err
 	}
 
 	state, err := generateState()
 	if err != nil {
+		_ = listener.Close()
 		return nil, fmt.Errorf("failed to generate state: %w", err)
 	}
 
 	codeVerifier, err := generateCodeVerifier()
 	if err != nil {
+		_ = listener.Close()
 		return nil, fmt.Errorf("failed to generate PKCE code verifier: %w", err)
 	}
 	codeChallenge := generateCodeChallenge(codeVerifier)
 
 	resultCh := make(chan *Result, 1)
 	errCh := make(chan error, 1)
-	server := f.startCallbackServer(ctx, f.opts.BindAddress, port, state, codeVerifier, resultCh, errCh)
+	server := f.startCallbackServer(ctx, listener, state, codeVerifier, resultCh, errCh)
 
 	defer func() { //nolint:contextcheck // intentionally use Background for graceful shutdown after ctx cancellation
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -174,7 +175,7 @@ func (f *Flow) Run(ctx context.Context) (*Result, error) {
 	}
 }
 
-func (f *Flow) startCallbackServer(ctx context.Context, bindAddress string, port int, expectedState, codeVerifier string, resultCh chan<- *Result, errCh chan<- error) *http.Server {
+func (f *Flow) startCallbackServer(ctx context.Context, listener net.Listener, expectedState, codeVerifier string, resultCh chan<- *Result, errCh chan<- error) *http.Server {
 	var once sync.Once
 
 	mux := http.NewServeMux()
@@ -256,13 +257,13 @@ func (f *Flow) startCallbackServer(ctx context.Context, bindAddress string, port
 	})
 
 	server := &http.Server{
-		Addr:              fmt.Sprintf("%s:%d", bindAddress, port),
+		Addr:              listener.Addr().String(),
 		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	go func() {
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- fmt.Errorf("callback server error: %w", err)
 		}
 	}()
@@ -382,16 +383,23 @@ func exchangeCodeForToken(ctx context.Context, endpoint, code, codeVerifier stri
 	return &result, nil
 }
 
-func findAvailablePort(ctx context.Context, bindAddress string) (int, error) {
+func listenOnCallbackPort(ctx context.Context, bindAddress string, fixedPort int) (net.Listener, int, error) {
 	var lc net.ListenConfig
+	if fixedPort != 0 {
+		listener, err := lc.Listen(ctx, "tcp", fmt.Sprintf("%s:%d", bindAddress, fixedPort))
+		if err != nil {
+			return nil, 0, fmt.Errorf("callback port %d unavailable: %w", fixedPort, err)
+		}
+		return listener, fixedPort, nil
+	}
+
 	for port := 54321; port < 54400; port++ {
 		listener, err := lc.Listen(ctx, "tcp", fmt.Sprintf("%s:%d", bindAddress, port))
 		if err == nil {
-			_ = listener.Close()
-			return port, nil
+			return listener, port, nil
 		}
 	}
-	return 0, errors.New("no available port in range 54321-54399")
+	return nil, 0, errors.New("no available port in range 54321-54399")
 }
 
 func generateState() (string, error) {

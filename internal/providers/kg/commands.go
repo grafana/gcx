@@ -1,6 +1,7 @@
 package kg
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -272,6 +274,13 @@ func parsePropertyFlag(s string) (PropertyMatcher, error) {
 
 func readFileOrStdin(cmd *cobra.Command, path string) ([]byte, error) {
 	if path == "-" {
+		return io.ReadAll(cmd.InOrStdin())
+	}
+	if path == "" {
+		fi, err := os.Stdin.Stat()
+		if err != nil || (fi.Mode()&os.ModeCharDevice) != 0 {
+			return nil, errors.New("no input: use -f <file> or pipe YAML via stdin")
+		}
 		return io.ReadAll(cmd.InOrStdin())
 	}
 	return os.ReadFile(path)
@@ -599,20 +608,19 @@ func newModelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	//nolint:dupl
 }
 
-//nolint:dupl
 func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "suppressions",
-		Short: "Push suppressions to the Knowledge Graph.",
+		Short: "Manage alert suppressions in the Knowledge Graph.",
 	}
-	var fileFlag string
-	createCmd := &cobra.Command{
-		Use:   "create",
-		Short: "Upload suppressions from a YAML file.",
+
+	listOpts := &suppressionsListOpts{}
+	listCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List all alert suppressions.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			data, err := readFileOrStdin(cmd, fileFlag)
-			if err != nil {
-				return fmt.Errorf("failed to read file: %w", err)
+			if err := listOpts.IO.Validate(); err != nil {
+				return err
 			}
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
@@ -622,18 +630,128 @@ func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := client.UploadSuppressions(cmd.Context(), string(data)); err != nil {
+			suppressions, err := client.GetSuppressions(cmd.Context())
+			if err != nil {
 				return err
 			}
-			cmdio.Success(cmd.OutOrStdout(), "Suppressions uploaded")
+			return listOpts.IO.Encode(cmd.OutOrStdout(), suppressions.DisabledAlertConfigs)
+		},
+	}
+	listOpts.setup(listCmd.Flags())
+
+	var fileFlag string
+	createCmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create or update one or more suppressions from a YAML file or stdin.",
+		Example: `  gcx kg suppressions create -f suppressions.yaml
+
+  echo 'disabledAlertConfigs:
+    - name: my-suppression
+      matchLabels:
+        alertname: ErrorRatioBreach
+        job: my-service' | gcx kg suppressions create`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			data, err := readFileOrStdin(cmd, fileFlag)
+			if err != nil {
+				return err
+			}
+			var suppressions Suppressions
+			if err := yaml.Unmarshal(data, &suppressions); err != nil {
+				return fmt.Errorf("failed to parse suppressions file: %w", err)
+			}
+			if len(suppressions.DisabledAlertConfigs) == 0 {
+				return errors.New("no suppressions found in file")
+			}
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			total := len(suppressions.DisabledAlertConfigs)
+			for i, s := range suppressions.DisabledAlertConfigs {
+				if err := client.UpsertSuppression(cmd.Context(), s); err != nil {
+					return fmt.Errorf("failed to upsert suppression %q (%d/%d succeeded): %w", s.Name, i, total, err)
+				}
+			}
+			cmdio.Success(cmd.OutOrStdout(), "%d suppression(s) upserted", total)
 			return nil
 		},
 	}
-	createCmd.Flags().StringVarP(&fileFlag, "file", "f", "", "Input file (YAML)")
-	_ = createCmd.MarkFlagRequired("file")
-	cmd.AddCommand(createCmd)
-	//nolint:dupl
+	createCmd.Flags().StringVarP(&fileFlag, "file", "f", "", "Input file (YAML), or '-' for stdin. Reads from stdin if omitted.")
+
+	var yes bool
+	deleteCmd := &cobra.Command{
+		Use:   "delete <name>",
+		Short: "Delete a suppression by name.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			if !yes {
+				cliOpts, err := config.LoadCLIOptions()
+				if err != nil {
+					return err
+				}
+				if !cliOpts.AutoApprove {
+					fmt.Fprintf(cmd.OutOrStdout(), "Delete suppression %q? [y/N] ", name)
+					scanner := bufio.NewScanner(cmd.InOrStdin())
+					if !scanner.Scan() || !strings.EqualFold(strings.TrimSpace(scanner.Text()), "y") {
+						return nil
+					}
+				}
+			}
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			if err := client.DeleteSuppression(cmd.Context(), name); err != nil {
+				return err
+			}
+			cmdio.Success(cmd.OutOrStdout(), "Suppression %q deleted", name)
+			return nil
+		},
+	}
+	deleteCmd.Flags().BoolVarP(&yes, "yes", "y", false, "Skip confirmation prompt")
+
+	cmd.AddCommand(listCmd, createCmd, deleteCmd)
 	return cmd
+}
+
+type suppressionsListOpts struct {
+	IO cmdio.Options
+}
+
+func (o *suppressionsListOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("table", &SuppressionTableCodec{})
+	o.IO.DefaultFormat("table")
+	o.IO.BindFlags(flags)
+}
+
+// SuppressionTableCodec renders suppressions as a table.
+type SuppressionTableCodec struct{}
+
+func (c *SuppressionTableCodec) Format() format.Format { return "table" }
+
+func (c *SuppressionTableCodec) Encode(w io.Writer, v any) error {
+	suppressions, ok := v.([]Suppression)
+	if !ok {
+		return errors.New("invalid data type for table codec: expected []Suppression")
+	}
+	t := style.NewTable("NAME", "MATCH LABELS")
+	for _, s := range suppressions {
+		t.Row(s.Name, scopeStr(s.MatchLabels))
+	}
+	return t.Render(w)
+}
+
+func (c *SuppressionTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
 }
 
 //nolint:dupl

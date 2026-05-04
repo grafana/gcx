@@ -26,6 +26,8 @@ const (
 	assertionsPath   = pluginResourcePath + "/asserts/api-server/v1/assertions"
 	searchPath       = pluginResourcePath + "/asserts/api-server/v1/search"
 	rulesPath        = pluginResourcePath + "/asserts/api-server/v1/config/prom-rules/"
+	suppressionPath  = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alert"
+	suppressionsPath = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alerts"
 	entityLookupPath = pluginResourcePath + "/asserts/api-server/v1/entity"
 	v2ConfigPath     = pluginResourcePath + "/asserts/api-server/v2/config"
 )
@@ -209,9 +211,49 @@ func (c *Client) UploadModelRules(ctx context.Context, yamlContent string) error
 	return c.doYAML(ctx, http.MethodPut, pluginResourcePath+"/asserts/api-server/v1/config/model-rules/", yamlContent)
 }
 
-// UploadSuppressions uploads alert suppression configuration.
-func (c *Client) UploadSuppressions(ctx context.Context, yamlContent string) error {
-	return c.doYAML(ctx, http.MethodPost, pluginResourcePath+"/asserts/api-server/v1/config/disabled-alerts/", yamlContent)
+// Suppression represents a single disabled-alert configuration entry.
+type Suppression struct {
+	Name        string            `json:"name" yaml:"name"`
+	MatchLabels map[string]string `json:"matchLabels,omitempty" yaml:"matchLabels,omitempty"`
+	ManagedBy   string            `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
+}
+
+// Suppressions is the batch payload shape returned by GET /v1/config/disabled-alerts.
+type Suppressions struct {
+	DisabledAlertConfigs []Suppression `json:"disabledAlertConfigs" yaml:"disabledAlertConfigs"`
+}
+
+// UpsertSuppression creates or updates a single suppression without affecting others.
+// It uses the single-item endpoint so the backend performs a read-modify-write upsert.
+func (c *Client) UpsertSuppression(ctx context.Context, s Suppression) error {
+	return c.postJSON(ctx, suppressionPath, s, nil)
+}
+
+// DeleteSuppression deletes a single suppression by name.
+func (c *Client) DeleteSuppression(ctx context.Context, name string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
+		c.host+suppressionPath+"/"+url.PathEscape(name), nil)
+	if err != nil {
+		return fmt.Errorf("kg: create request: %w", err)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("kg: execute request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return readError(resp)
+	}
+	return nil
+}
+
+// GetSuppressions retrieves all disabled-alert configurations for the tenant.
+func (c *Client) GetSuppressions(ctx context.Context) (*Suppressions, error) {
+	var result Suppressions
+	if err := c.getJSON(ctx, suppressionsPath, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
 }
 
 // UploadRelabelRules uploads relabel rules configuration.

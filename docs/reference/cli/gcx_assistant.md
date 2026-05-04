@@ -6,6 +6,9 @@ Interact with Grafana Assistant
 
 Send prompts to Grafana Assistant and receive streaming responses via the A2A protocol.
 
+Requires Grafana Cloud with OAuth authentication (gcx login with browser flow).
+Service account tokens are not supported.
+
 ### Options
 
 ```

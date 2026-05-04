@@ -1,11 +1,16 @@
-## gcx kg suppressions
+## gcx kg suppressions delete
 
-Manage alert suppressions in the Knowledge Graph.
+Delete a suppression by name.
+
+```
+gcx kg suppressions delete <name> [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for suppressions
+  -h, --help   help for delete
+  -y, --yes    Skip confirmation prompt
 ```
 
 ### Options inherited from parent commands
@@ -22,8 +27,5 @@ Manage alert suppressions in the Knowledge Graph.
 
 ### SEE ALSO
 
-* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
-* [gcx kg suppressions create](gcx_kg_suppressions_create.md)	 - Create or update one or more suppressions from a YAML file or stdin.
-* [gcx kg suppressions delete](gcx_kg_suppressions_delete.md)	 - Delete a suppression by name.
-* [gcx kg suppressions list](gcx_kg_suppressions_list.md)	 - List all alert suppressions.
+* [gcx kg suppressions](gcx_kg_suppressions.md)	 - Manage alert suppressions in the Knowledge Graph.
 
