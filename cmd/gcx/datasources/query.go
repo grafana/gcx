@@ -1,6 +1,7 @@
 package datasources
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/query/pyroscope"
+	"github.com/grafana/gcx/internal/query/synth"
 	"github.com/spf13/cobra"
 )
 
@@ -154,8 +156,36 @@ that do not have a dedicated subcommand.`,
 
 				return shared.IO.Encode(cmd.OutOrStdout(), resp)
 
+			case "synth":
+				client, err := synth.NewClient(cfg)
+				if err != nil {
+					return fmt.Errorf("failed to create client: %w", err)
+				}
+
+				var result any
+				switch expr {
+				case "probes":
+					result, err = client.ListProbes(ctx, datasourceUID)
+				case "checks":
+					result, err = client.ListChecks(ctx, datasourceUID)
+				default:
+					return fmt.Errorf("unknown synthetic-monitoring resource %q: supported are probes, checks", expr)
+				}
+				if err != nil {
+					return fmt.Errorf("query failed: %w", err)
+				}
+
+				// The "table" and "wide" codecs registered for query commands are typed
+				// against prometheus/loki/etc. response shapes. Until an SM-specific
+				// formatter is wired in (Task #3 cleanup), fall back to JSON for those
+				// formats so the default render isn't a type-mismatch error.
+				if shared.IO.OutputFormat == "table" || shared.IO.OutputFormat == "wide" {
+					return json.NewEncoder(cmd.OutOrStdout()).Encode(result)
+				}
+				return shared.IO.Encode(cmd.OutOrStdout(), result)
+
 			default:
-				return fmt.Errorf("datasource type %q is not supported (supported: prometheus, loki, pyroscope)", dsType)
+				return fmt.Errorf("datasource type %q is not supported (supported: prometheus, loki, pyroscope, synth)", dsType)
 			}
 		},
 	}

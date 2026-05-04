@@ -117,6 +117,8 @@ func NormalizeKind(pluginID string) string {
 		return pluginID
 	case "grafana-pyroscope-datasource":
 		return "pyroscope"
+	case "synthetic-monitoring-datasource":
+		return "synth"
 	default:
 		return pluginID
 	}
