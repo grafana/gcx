@@ -13,6 +13,11 @@ import (
 	"k8s.io/client-go/rest"
 )
 
+const (
+	renderSoloPanelPathFmt = "/render/d-solo/%s/"
+	renderDashboardPathFmt = "/render/d/%s/"
+)
+
 // RenderRequest holds parameters for a dashboard render request.
 type RenderRequest struct {
 	// UID is the dashboard UID. Required.
@@ -103,9 +108,9 @@ func (c *Client) Render(ctx context.Context, req RenderRequest) ([]byte, error) 
 func (c *Client) buildRenderURL(req RenderRequest) (string, error) {
 	var path string
 	if req.PanelID != 0 {
-		path = fmt.Sprintf("/render/d-solo/%s/", url.PathEscape(req.UID))
+		path = fmt.Sprintf(renderSoloPanelPathFmt, url.PathEscape(req.UID))
 	} else {
-		path = fmt.Sprintf("/render/d/%s/", url.PathEscape(req.UID))
+		path = fmt.Sprintf(renderDashboardPathFmt, url.PathEscape(req.UID))
 	}
 
 	u, err := url.Parse(c.restConfig.Host + path)

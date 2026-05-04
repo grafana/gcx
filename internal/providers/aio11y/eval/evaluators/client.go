@@ -12,7 +12,10 @@ import (
 	"github.com/grafana/gcx/internal/providers/aio11y/eval"
 )
 
-const basePath = "/eval/evaluators"
+const (
+	basePath     = "/eval/evaluators"
+	evalTestPath = "/eval:test"
+)
 
 // Client is an HTTP client for AI Observability evaluator endpoints.
 type Client struct {
@@ -79,7 +82,7 @@ func (c *Client) RunTest(ctx context.Context, req *eval.EvalTestRequest) (*eval.
 		return nil, fmt.Errorf("failed to marshal test request: %w", err)
 	}
 
-	resp, err := c.base.DoRequest(ctx, http.MethodPost, "/eval:test", bytes.NewReader(body))
+	resp, err := c.base.DoRequest(ctx, http.MethodPost, evalTestPath, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to run eval test: %w", err)
 	}
