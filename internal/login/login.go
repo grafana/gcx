@@ -36,7 +36,11 @@ type Inputs struct {
 	CloudToken   string
 	CloudAPIURL  string
 	UseOAuth     bool
-	Yes          bool
+	// OAuthCallbackPort fixes the local port for the OAuth callback server.
+	// Zero means auto-pick from the default range. Useful when only specific
+	// ports are forwarded between a remote dev host and the user's browser.
+	OAuthCallbackPort int
+	Yes               bool
 	// UseCloudInstanceSelector is only used internally to mark the case in which
 	// a user explicitly left the server empty to be directed to the cloud
 	// instance selector
@@ -393,7 +397,7 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 		if w == nil {
 			w = io.Discard
 		}
-		flow := opts.NewAuthFlow(opts.Server, auth.Options{Writer: w})
+		flow := opts.NewAuthFlow(opts.Server, auth.Options{Writer: w, Port: opts.OAuthCallbackPort})
 		result, err := flow.Run(ctx)
 		if err != nil {
 			return "", nil, fmt.Errorf("OAuth flow failed: %w", err)
@@ -450,8 +454,13 @@ func resolveCloudAuth(opts Options, target Target) (*config.CloudConfig, error) 
 		return cc, nil
 	}
 
-	// Cloud target with no token: skip if Yes or agent mode (D9, D10)
+	// Cloud target with no token: skip if Yes or agent mode (D9, D10).
+	// Still persist the stack slug when derivable so datasource auto-discovery
+	// works on stacks with multiple signal datasources.
 	if opts.Yes || agent.IsAgentMode() {
+		if slug := resolveStackSlug(opts.Server); slug != "" {
+			return &config.CloudConfig{Stack: slug}, nil
+		}
 		return nil, nil //nolint:nilnil // nil CloudConfig means "Cloud auth skipped"; valid non-error state.
 	}
 
@@ -553,9 +562,14 @@ func mergeAuthIntoExisting(existing *config.Context, incoming config.Context) {
 		if existing.Cloud == nil {
 			existing.Cloud = &config.CloudConfig{}
 		}
-		existing.Cloud.Token = incoming.Cloud.Token
+		if incoming.Cloud.Token != "" {
+			existing.Cloud.Token = incoming.Cloud.Token
+		}
 		if incoming.Cloud.APIUrl != "" {
 			existing.Cloud.APIUrl = incoming.Cloud.APIUrl
+		}
+		if incoming.Cloud.Stack != "" {
+			existing.Cloud.Stack = incoming.Cloud.Stack
 		}
 	}
 }

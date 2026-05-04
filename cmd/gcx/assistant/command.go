@@ -46,7 +46,10 @@ func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "assistant",
 		Short: "Interact with Grafana Assistant",
-		Long:  "Send prompts to Grafana Assistant and receive streaming responses via the A2A protocol.",
+		Long: `Send prompts to Grafana Assistant and receive streaming responses via the A2A protocol.
+
+Requires Grafana Cloud with OAuth authentication (gcx login with browser flow).
+Service account tokens are not supported.`,
 	}
 	// We need a "before each run" hook to block assistant commands on self-hosted
 	// instances. Defining one here replaces the root command's hook (cobra doesn't

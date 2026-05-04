@@ -124,11 +124,10 @@ gcx/
 ├── bin/                      # Build output (gitignored)
 ├── build/                    # mkdocs output (gitignored)
 │
-├── Makefile                  # Unified build/test/lint/docs orchestration
 ├── go.mod / go.sum           # Go module definition (module: github.com/grafana/gcx)
 ├── .golangci.yaml            # Linter configuration (golangci-lint v2)
 ├── .goreleaser.yaml          # Release pipeline (cross-platform builds + GitHub Release)
-├── devbox.json               # Reproducible toolchain (Go, golangci-lint, goreleaser, Python)
+├── mise.toml                 # Reproducible toolchain (Go, golangci-lint, goreleaser, Python)
 ├── docker-compose.yml        # Integration test environment (Grafana 12 + MySQL 9)
 ├── mkdocs.yml                # Documentation site config (Material theme)
 └── requirements.txt          # Python packages for mkdocs
@@ -146,49 +145,43 @@ server) rather than technical concerns, making it easy to locate code by feature
 
 ---
 
-## 2. Build System (Makefile)
+## 2. Build System (mise)
 
-### Toolchain detection pattern
+### Toolchain
 
-```makefile
-ifneq "$(DEVBOX_CONFIG_DIR)" ""
-    RUN_DEVBOX:=          # already inside devbox shell
-else
-    RUN_DEVBOX:=devbox run  # prefix every command with devbox run
-endif
-```
+Tools are managed by [mise](https://mise.jdx.dev/) via `mise.toml`. Once
+`mise install` has been run, all tools (Go, golangci-lint, goreleaser, Python)
+are available. All development commands use `mise run`, which ensures the correct
+tool versions are used regardless of shell configuration.
 
-Every tool invocation is prefixed with `$(RUN_DEVBOX)`, so commands work
-identically whether run directly inside `devbox shell` or from outside it.
+### Key mise tasks
 
-### Key Makefile targets
-
-| Target | What it does |
+| Task | What it does |
 |---|---|
-| `make all` | Runs lint + tests + build + docs (the full gate) |
-| `make build` | Compiles `./cmd/gcx` into `bin/gcx` |
-| `make install` | Copies binary to `$GOPATH/bin` |
-| `make tests` | `go test -v ./...` (all packages, with race detection implied) |
-| `make lint` | Runs `golangci-lint run -c .golangci.yaml` |
-| `make deps` | `go mod vendor` + `pip install -r requirements.txt` |
-| `make docs` | Runs `reference` then `mkdocs build` → `build/documentation/` |
-| `make reference` | Runs all three doc-generation scripts |
-| `make reference-drift` | Re-generates docs, fails if `git diff` finds changes |
-| `make serve-docs` | `mkdocs serve` with live reload for doc development |
-| `make test-env-up` | `docker-compose up -d` + health-wait loop |
-| `make test-env-down` | `docker-compose down` |
-| `make test-env-clean` | `docker-compose down -v` (removes volumes) |
-| `make clean` | Removes `bin/`, `vendor/`, `.devbox/`, `.venv/` |
+| `mise run all` | Runs lint + tests + build + docs (the full gate) |
+| `mise run build` | Compiles `./cmd/gcx` into `bin/gcx` |
+| `mise run install` | Copies binary to `$GOPATH/bin` |
+| `mise run tests` | `go test -v ./...` (all packages, with race detection implied) |
+| `mise run lint` | Runs `golangci-lint run -c .golangci.yaml` |
+| `mise run deps` | `go mod vendor` + `uv pip install -r requirements.txt` |
+| `mise run docs` | Runs `reference` then `mkdocs build` → `build/documentation/` |
+| `mise run reference` | Runs all four doc-generation scripts |
+| `mise run reference-drift` | Re-generates docs, fails if `git diff` finds changes |
+| `mise run serve-docs` | `mkdocs serve` with live reload for doc development |
+| `mise run test-env-up` | `docker-compose up -d` + health-wait loop |
+| `mise run test-env-down` | `docker-compose down` |
+| `mise run test-env-clean` | `docker-compose down -v` (removes volumes) |
+| `mise run clean` | Removes `bin/`, `vendor/`, `.venv/` |
 
 ### Version injection
 
 Version info is injected at link time via `-ldflags`:
 
-```makefile
-GIT_REVISION  ?= $(shell git rev-parse --short HEAD)
-GIT_VERSION   ?= $(shell git describe --tags --exact-match 2>/dev/null || echo "")
-BUILD_DATE    ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-VERSION_FLAGS := -X main.version=${GIT_VERSION} -X main.commit=${GIT_REVISION} -X main.date=${BUILD_DATE}
+```bash
+GIT_REVISION="$(git rev-parse --short HEAD)"
+GIT_VERSION="$(git describe --tags --exact-match 2>/dev/null || echo "")"
+BUILD_DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+# passed via: -ldflags="-X main.version=... -X main.commit=... -X main.date=..."
 ```
 
 These set package-level `var` declarations in `cmd/gcx/main.go`:
@@ -206,31 +199,22 @@ substitutes `"SNAPSHOT"` at runtime, so development builds are clearly marked.
 
 ---
 
-## 3. Devbox (Reproducible Toolchain)
+## 3. Mise (Reproducible Toolchain)
 
-`devbox.json` pins the exact tool versions used across all environments:
+`mise.toml` pins the tool versions used across all environments:
 
-```json
-{
-  "packages": [
-    "go@1.26",
-    "golangci-lint@2.9",
-    "goreleaser@2.13.3",
-    "python312@3.12.12"
-  ],
-  "shell": {
-    "init_hook": [
-      "echo 'Entering Python venv' && . $VENV_DIR/bin/activate",
-      "echo 'Installing dependencies...' && make deps"
-    ]
-  }
-}
+```toml
+[tools]
+go = "1.26"
+golangci-lint = "2.9"
+goreleaser = "2.13.3"
+python = "3.12"
+uv = "latest"
 ```
 
-The `init_hook` activates a Python virtualenv and runs `make deps` automatically
-on `devbox shell`, so a new contributor gets a fully bootstrapped environment
-from a single command. CI uses `jetify-com/devbox-install-action` to replicate
-this exactly, pinned to `DEVBOX_VERSION: 0.16.0`.
+A new contributor runs `mise install` to get the full toolchain, then `mise run deps`
+to install Go vendors and Python packages. CI uses `jdx/mise-action` to replicate
+this.
 
 ---
 
@@ -246,20 +230,16 @@ Three parallel jobs:
 
 ```
 PR / push to main
-├── linters  → make lint
-├── tests    → make tests
-└── docs     → make cli-reference (drift check) + make docs (build check)
+├── linters  → mise run lint
+├── tests    → mise run tests
+└── docs     → mise run reference-drift + mise run docs
 ```
 
 All jobs:
 1. Checkout with `persist-credentials: false` (minimal permissions)
 2. Restore Go module cache keyed on `go.sum` hash
-3. Install devbox (cached)
-4. Run the Make target
-
-Note: The CI `docs` job only runs `make cli-reference` for the drift check,
-not all three reference generators. The env-var and config reference drift
-checks are not currently part of CI (only `cli-reference-drift` is checked).
+3. Install tools via mise (cached)
+4. Run the mise task
 
 ### release.yaml — Tag-Triggered Release
 
@@ -268,7 +248,7 @@ Triggered on: `v*` tag push.
 ```
 v* tag push
 ├── release           → goreleaser release --clean  (builds + GitHub Release)
-├── build_docs        → make docs → upload pages artifact
+├── build_docs        → mise run docs → upload pages artifact
 └── publish_docs      → deploy-pages action (needs: build_docs + release)
 ```
 
@@ -328,10 +308,11 @@ in code review.
 All three generators are standalone `main` packages run via `go run`:
 
 ```
-make reference
-    ├── make cli-reference       → go run scripts/cmd-reference/*.go <outputDir>
-    ├── make env-var-reference   → go run scripts/env-vars-reference/*.go <outputDir>
-    └── make config-reference    → go run scripts/config-reference/*.go <outputDir>
+mise run reference
+    ├── mise run reference:cli           → go run scripts/cmd-reference/*.go <outputDir>
+    ├── mise run reference:env-var       → go run scripts/env-vars-reference/*.go <outputDir>
+    ├── mise run reference:config        → go run scripts/config-reference/*.go <outputDir>
+    └── mise run reference:linter-rules  → go run scripts/linter-rules-reference/*.go <outputDir>
 ```
 
 ### CLI Reference (`scripts/cmd-reference/main.go`)
@@ -361,11 +342,11 @@ document to `docs/reference/environment-variables/index.md`.
 
 ### Drift Detection Pattern
 
-```makefile
-cli-reference-drift: cli-reference
-    @if ! git diff --exit-code --quiet HEAD ./docs/reference/cli/ ; then
-        echo "Drift detected..."
-        exit 1
+```bash
+# mise run reference-drift:cli runs reference:cli first, then:
+if ! git diff --exit-code --quiet HEAD ./docs/reference/cli/ ; then
+    echo "Drift detected..."
+    exit 1
     fi
 ```
 
@@ -431,9 +412,9 @@ config pointing at `localhost:3000` with `admin/admin` credentials and `org-id: 
 
 **Usage pattern for manual integration testing:**
 ```bash
-make test-env-up
+mise run test-env-up
 gcx --config testdata/integration-test-config.yaml resources schemas
-make test-env-down
+mise run test-env-down
 ```
 
 No automated integration tests currently exist — the docker-compose environment
@@ -450,7 +431,7 @@ is provided for manual developer testing only. This is identified as a gap
 - **Plugins**: `search` + `mkdocs-nav-weight` (controls page ordering in nav)
 - **Extensions**: `admonition`, `pymdownx.superfences` (code blocks),
   `pymdownx.tabbed` (tabbed content), `pymdownx.highlight` (syntax highlighting)
-- **Output**: `build/documentation/` (via `make docs`)
+- **Output**: `build/documentation/` (via `mise run docs`)
 
 Python dependencies pinned in `requirements.txt`:
 ```
@@ -460,8 +441,8 @@ mkdocs-material-extensions==1.3.1
 mkdocs-nav-weight==0.3.0
 ```
 
-These are installed via `pip install -r requirements.txt` into the devbox
-Python venv during `make deps`. The site is deployed to GitHub Pages on release.
+These are installed via `uv pip install -r requirements.txt` during `mise run deps`.
+The site is deployed to GitHub Pages on release.
 
 ---
 
@@ -469,31 +450,31 @@ Python venv during `make deps`. The site is deployed to GitHub Pages on release.
 
 ### Build
 ```bash
-make build                    # → bin/gcx
-make install                  # → $GOPATH/bin/gcx
+mise run build                # → bin/gcx
+mise run install              # → $GOPATH/bin/gcx
 ```
 
 ### Test and Lint
 ```bash
-make tests                    # all unit tests
-make lint                     # golangci-lint
-make all                      # lint + tests + build + docs (full gate)
+mise run tests                # all unit tests
+mise run lint                 # golangci-lint
+mise run all                  # lint + tests + build + docs (full gate)
 ```
 
 ### Generate and Check Documentation
 ```bash
-make reference                # regenerate all reference docs
-make reference-drift          # fail if generated docs are stale
-make docs                     # build full mkdocs site
-make serve-docs               # live-reload doc server at localhost:8000
+mise run reference            # regenerate all reference docs
+mise run reference-drift      # fail if generated docs are stale
+mise run docs                 # build full mkdocs site
+mise run serve-docs           # live-reload doc server at localhost:8000
 ```
 
 ### Integration Testing (manual)
 ```bash
-make test-env-up              # start Grafana + MySQL in Docker
+mise run test-env-up          # start Grafana + MySQL in Docker
 gcx --config testdata/integration-test-config.yaml <command>
-make test-env-down            # stop services
-make test-env-clean           # stop + delete volumes
+mise run test-env-down        # stop services
+mise run test-env-clean       # stop + delete volumes
 ```
 
 ### Release (automated via CI on v* tag)
@@ -505,6 +486,6 @@ git tag v1.2.3 && git push --tags
 ### Add a New Dependency
 ```bash
 go get github.com/some/package
-make deps                     # runs go mod vendor to vendor new dep
+mise run deps                 # runs go mod vendor to vendor new dep
 git add vendor/ go.mod go.sum
 ```

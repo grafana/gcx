@@ -180,8 +180,8 @@ agent mode detection, behavior changes, and opt-out mechanisms.
 ## Quality Standards
 
 - All non-trivial functions have unit tests.
-- `make all` (lint + tests + build + docs) must pass before merging.
-- `GCX_AGENT_MODE=false make all` when running from agent environments
+- `mise run all` (lint + tests + build + docs) must pass before merging.
+- `GCX_AGENT_MODE=false mise run all` when running from agent environments
   (prevents agent-mode detection from altering doc generation).
 - No linter suppressions without a comment explaining why.
 - CI must pass before merging.

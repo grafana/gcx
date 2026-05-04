@@ -159,21 +159,5 @@
         "/^k8s\\.io//"
       ]
     }
-  ],
-  "customManagers": [
-    {
-      "description": "Detect DEVBOX_VERSION environment variable in GitHub Actions workflows",
-      "customType": "regex",
-      "managerFilePatterns": [
-        "/^\\.github/workflows/.*\\.ya?ml$/"
-      ],
-      "matchStrings": [
-        "DEVBOX_VERSION:\\s*[\"']?(?<currentValue>[^\\s\"']+)[\"']?"
-      ],
-      "depNameTemplate": "devbox",
-      "datasourceTemplate": "github-releases",
-      "packageNameTemplate": "jetify-com/devbox",
-      "versioningTemplate": "semver"
-    }
   ]
 }

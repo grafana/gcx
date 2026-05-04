@@ -266,10 +266,10 @@ After Build-Core and Build-Commands are complete, the integration task MUST:
 2. **Add blank import** in `cmd/gcx/root/command.go`
 3. **Fix import cycles** introduced by subpackage references
 4. **Fix variable name collisions** from package aliasing
-5. **Run `make lint`** and fix all new issues
+5. **Run `mise run lint`** and fix all new issues
 
 ```bash
-GCX_AGENT_MODE=false make all    # MUST exit 0 — this is the Phase 3 gate
+GCX_AGENT_MODE=false mise run all    # MUST exit 0 — this is the Phase 3 gate
 gcx providers                    # new provider listed
 ```
 

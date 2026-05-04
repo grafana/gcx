@@ -5,9 +5,6 @@ on:
 permissions:
   contents: read
 
-env:
-  DEVBOX_VERSION: 0.16.0
-
 # Allow only one concurrent release, skipping runs queued between the run in-progress and latest queued.
 # However, do NOT cancel in-progress runs as we want to allow them to complete.
 concurrency:
@@ -28,14 +25,17 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - name: Install devbox
-        uses: jetify-com/devbox-install-action@8c6a66ed6273138b1915457069de78cb52fe3bd7 # v0.15.0
+      - name: Setup mise
+        uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4
         with:
-          enable-cache: "true"
-          devbox-version: ${{ env.DEVBOX_VERSION }}
+          install: true
+          cache: true
+
+      - name: Install dependencies
+        run: mise run deps
 
       - name: Build documentation
-        run: devbox run -- make docs
+        run: mise run docs
 
       - name: Upload pages artifact
         id: deployment

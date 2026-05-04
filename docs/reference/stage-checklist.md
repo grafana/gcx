@@ -13,9 +13,9 @@ Use this template when completing each implementation stage.
 
 - [ ] All code changes implemented per spec
 - [ ] Tests written and passing
-- [ ] `make build` passes
-- [ ] `make tests` passes
-- [ ] `make lint` passes
+- [ ] `mise run build` passes
+- [ ] `mise run tests` passes
+- [ ] `mise run lint` passes
 
 ## Documentation
 

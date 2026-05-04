@@ -71,9 +71,9 @@ Commands that are **exempt** from K8s wrapping:
 
 ### Build Verification
 
-- [ ] `make build` succeeds
-- [ ] `make tests` passes with no regressions
-- [ ] `make lint` passes
+- [ ] `mise run build` succeeds
+- [ ] `mise run tests` passes with no regressions
+- [ ] `mise run lint` passes
 - [ ] `gcx providers` lists the new provider
 - [ ] `gcx config view` redacts secrets correctly
 
