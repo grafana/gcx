@@ -40,6 +40,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Annotations: map[string]string{
 			agent.AnnotationRequiredScope: "stacks:read",
 			agent.AnnotationTokenCost:     "large",
+			agent.AnnotationLLMHint:       "List all stacks in the organisation. Use get to view details of a single stack.",
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if opts.Org == "" {
