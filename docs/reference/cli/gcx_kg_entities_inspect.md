@@ -1,6 +1,6 @@
 ## gcx kg entities inspect
 
-Show detailed info, insights, and summary for a single entity.
+Show detailed info, insights, and summary for a single entity, with a link to open it in the RCA Workbench.
 
 ```
 gcx kg entities inspect [Type--Name] [flags]

@@ -8,6 +8,7 @@ import (
 	"io"
 	"maps"
 	"net/http"
+	"net/url"
 	"os"
 	"slices"
 	"sort"
@@ -1457,7 +1458,7 @@ func newEntitiesInspectCommand(loader RESTConfigLoader) *cobra.Command {
 	ioOpts := &inspectOpts{}
 	cmd := &cobra.Command{
 		Use:   "inspect [Type--Name]",
-		Short: "Show detailed info, insights, and summary for a single entity.",
+		Short: "Show detailed info, insights, and summary for a single entity, with a link to open it in the RCA Workbench.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := ioOpts.IO.Validate(); err != nil {
@@ -1527,6 +1528,9 @@ func newEntitiesInspectCommand(loader RESTConfigLoader) *cobra.Command {
 				}
 				return fmt.Errorf("%s/%s not found%s\nRun 'gcx kg entities list --type %s --property name=~%s' to find matching entities and their correct scope", entityType, name, scopeDesc, entityType, name)
 			}
+			if u := rcaWorkbenchURL(cfg.GrafanaURL, entityType, name, scope, startMs, endMs, inspectScope.since); u != "" {
+				fmt.Fprintf(cmd.ErrOrStderr(), "link: View in RCA Workbench → %s\n", u)
+			}
 			return ioOpts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
@@ -1547,6 +1551,48 @@ type inspectOpts struct {
 func (o *inspectOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
+}
+
+// rcaWorkbenchURL builds a deep link to the Asserts RCA Workbench for a single entity.
+// start/end use the relative expression (e.g. "now-24h"/"now") when since is set,
+// otherwise fall back to millisecond epoch timestamps.
+func rcaWorkbenchURL(host, entityType, name string, scope map[string]string, startMs, endMs int64, since string) string {
+	if host == "" {
+		return ""
+	}
+	start, end := strconv.FormatInt(startMs, 10), strconv.FormatInt(endMs, 10)
+	if since != "" {
+		start, end = "now-"+since, "now"
+	}
+
+	q := url.Values{}
+	q.Set("start", start)
+	q.Set("end", end)
+	if v := scope["env"]; v != "" {
+		q.Set("env[0]", v)
+	}
+	if v := scope["namespace"]; v != "" {
+		q.Set("namespace[0]", v)
+	}
+	if v := scope["site"]; v != "" {
+		q.Set("site[0]", v)
+	}
+	q.Set("we[0][n]", name)
+	q.Set("we[0][tp]", entityType)
+	if v := scope["namespace"]; v != "" {
+		q.Set("we[0][sc][ns]", v)
+	}
+	if v := scope["env"]; v != "" {
+		q.Set("we[0][sc][env]", v)
+	}
+	if v := scope["site"]; v != "" {
+		q.Set("we[0][sc][site]", v)
+	}
+	q.Set("view", "BY_ENTITY")
+
+	// url.Values.Encode percent-encodes brackets; replace them back for readability.
+	encoded := strings.NewReplacer("%5B", "[", "%5D", "]").Replace(q.Encode())
+	return strings.TrimRight(host, "/") + "/a/grafana-asserts-app/assertions?" + encoded
 }
 
 // ---------------------------------------------------------------------------
