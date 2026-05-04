@@ -34,14 +34,14 @@ func ExportDryRunSummary(w io.Writer, method, endpoint string, body any) {
 
 // ExportStackTableCodec returns a stackTableCodec for external tests.
 func ExportStackTableCodec(wide bool) interface {
-	Encode(io.Writer, any) error
+	Encode(w io.Writer, v any) error
 } {
 	return &stackTableCodec{Wide: wide}
 }
 
 // ExportRegionTableCodec returns a regionTableCodec for external tests.
 func ExportRegionTableCodec() interface {
-	Encode(io.Writer, any) error
+	Encode(w io.Writer, v any) error
 } {
 	return &regionTableCodec{}
 }

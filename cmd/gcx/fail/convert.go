@@ -1179,7 +1179,7 @@ func convertStacksErrors(err error) (*DetailedError, bool) {
 
 	switch httpErr.Status {
 	case http.StatusConflict:
-		if strings.Contains(msg, "delete") {
+		if strings.Contains(msg, "failed to delete stack") {
 			return &DetailedError{
 				Summary: "Stack has delete protection enabled",
 				Details: msg,

@@ -9,6 +9,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/cloud"
+	"github.com/grafana/gcx/internal/config"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
@@ -79,6 +80,7 @@ type getOpts struct {
 
 func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &stackTableCodec{})
+	o.IO.RegisterCustomCodec("wide", &stackTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -313,8 +315,13 @@ changes with the user and prefer --dry-run first.`,
 // ---------------------------------------------------------------------------
 
 type deleteOpts struct {
-	Force  bool
+	Yes    bool
 	DryRun bool
+}
+
+func (o *deleteOpts) setup(flags *pflag.FlagSet) {
+	flags.BoolVarP(&o.Yes, "yes", "y", false, "Skip confirmation prompt")
+	flags.BoolVar(&o.DryRun, "dry-run", false, "Preview the operation without executing it")
 }
 
 func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
@@ -343,8 +350,13 @@ IRREVERSIBLE. Always confirm with the user by name before executing. Prefer
 				return nil
 			}
 
-			if !opts.Force {
-				fmt.Fprintf(cmd.ErrOrStderr(),
+			cliOpts, err := config.LoadCLIOptions()
+			if err != nil {
+				return err
+			}
+
+			if !opts.Yes && !cliOpts.AutoApprove {
+				fmt.Fprintf(cmd.OutOrStdout(),
 					"WARNING: This will permanently delete stack %q and ALL its data.\n"+
 						"Type the stack slug to confirm: ", slug)
 
@@ -366,12 +378,11 @@ IRREVERSIBLE. Always confirm with the user by name before executing. Prefer
 				return fmt.Errorf("failed to delete stack: %w", err)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Stack %q deleted successfully.\n", slug)
+			cmdio.Success(cmd.OutOrStdout(), "Stack %q deleted successfully.", slug)
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&opts.Force, "force", false, "Skip interactive confirmation")
-	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Preview the operation without executing it")
+	opts.setup(cmd.Flags())
 	return cmd
 }
 
