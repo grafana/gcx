@@ -181,6 +181,50 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 			},
 		},
 		{
+			// AC-002c: Re-auth via OAuth-only must not wipe a previously stored CAP token
+			name: "cloud_oauth_skip_cap_preserves_existing_token",
+			opts: func(dir string) login.Options {
+				src := configSource(dir)
+				path, _ := src()
+				seed := config.Config{
+					CurrentContext: "mystack",
+					Contexts: map[string]*config.Context{
+						"mystack": {
+							Grafana: &config.GrafanaConfig{
+								Server:     "https://mystack.grafana.net",
+								OAuthToken: "old-token",
+								AuthMethod: "oauth",
+							},
+							Cloud: &config.CloudConfig{Token: "existing-cap-token"},
+						},
+					},
+				}
+				require.NoError(t, config.Write(context.Background(), config.ExplicitConfigFile(path), seed))
+				return login.Options{
+					Inputs: login.Inputs{
+						Server:   "https://mystack.grafana.net",
+						Target:   login.TargetCloud,
+						UseOAuth: true,
+						Yes:      true,
+					},
+					Hooks: login.Hooks{
+						ConfigSource: src,
+						NewAuthFlow: func(_ string, _ auth.Options) login.AuthFlow {
+							return &stubAuthFlow{result: oauthResult}
+						},
+						ValidateFn: noopValidate,
+					},
+				}
+			},
+			checkConfig: func(t *testing.T, cfg config.Config) {
+				t.Helper()
+				ctx := cfg.Contexts["mystack"]
+				require.NotNil(t, ctx)
+				require.NotNil(t, ctx.Cloud)
+				assert.Equal(t, "existing-cap-token", ctx.Cloud.Token, "OAuth-only re-auth must not wipe a stored CAP token")
+			},
+		},
+		{
 			// AC-003: On-prem with SA token; OAuth not attempted
 			name: "onprem_sa_token",
 			opts: func(dir string) login.Options {

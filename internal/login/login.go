@@ -562,7 +562,9 @@ func mergeAuthIntoExisting(existing *config.Context, incoming config.Context) {
 		if existing.Cloud == nil {
 			existing.Cloud = &config.CloudConfig{}
 		}
-		existing.Cloud.Token = incoming.Cloud.Token
+		if incoming.Cloud.Token != "" {
+			existing.Cloud.Token = incoming.Cloud.Token
+		}
 		if incoming.Cloud.APIUrl != "" {
 			existing.Cloud.APIUrl = incoming.Cloud.APIUrl
 		}
