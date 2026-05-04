@@ -98,7 +98,7 @@ func dryRunSummary(w io.Writer, method, endpoint string, body any) {
 // labelsFromFlag parses a slice of "key=value" strings into a map.
 func labelsFromFlag(labels []string) (map[string]string, error) {
 	if len(labels) == 0 {
-		return nil, nil
+		return nil, nil //nolint:nilnil // nil signals "no labels specified" so omitempty omits the field.
 	}
 	m := make(map[string]string, len(labels))
 	for _, l := range labels {

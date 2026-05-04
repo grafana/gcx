@@ -2,6 +2,7 @@ package stacks
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -41,7 +42,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if opts.Org == "" {
-				return fmt.Errorf("--org is required")
+				return errors.New("--org is required")
 			}
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -154,11 +155,11 @@ and may incur costs. Always confirm the stack name, slug, and region with the
 user before executing. Prefer --dry-run first.`,
 		Annotations: map[string]string{
 			agent.AnnotationRequiredScope: "stacks:write",
-			agent.AnnotationLLMHint:      "This command creates a new Grafana Cloud stack, which provisions infrastructure and may incur costs. Always confirm the stack name, slug, and region with the user before executing. Prefer --dry-run first.",
+			agent.AnnotationLLMHint:       "This command creates a new Grafana Cloud stack, which provisions infrastructure and may incur costs. Always confirm the stack name, slug, and region with the user before executing. Prefer --dry-run first.",
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if opts.Name == "" || opts.Slug == "" {
-				return fmt.Errorf("--name and --slug are required")
+				return errors.New("--name and --slug are required")
 			}
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -246,14 +247,14 @@ changes with the user and prefer --dry-run first.`,
 		Args: cobra.ExactArgs(1),
 		Annotations: map[string]string{
 			agent.AnnotationRequiredScope: "stacks:write",
-			agent.AnnotationLLMHint:      "This command modifies a live Grafana Cloud stack. Changing the name or disabling delete protection can have downstream effects. Always confirm the intended changes with the user and prefer --dry-run first.",
+			agent.AnnotationLLMHint:       "This command modifies a live Grafana Cloud stack. Changing the name or disabling delete protection can have downstream effects. Always confirm the intended changes with the user and prefer --dry-run first.",
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
 			if opts.DeleteProtection && opts.NoDeleteProtection {
-				return fmt.Errorf("--delete-protection and --no-delete-protection are mutually exclusive")
+				return errors.New("--delete-protection and --no-delete-protection are mutually exclusive")
 			}
 
 			labels, err := labelsFromFlag(opts.Labels)
@@ -325,7 +326,7 @@ IRREVERSIBLE. Always confirm with the user by name before executing. Prefer
 		Args: cobra.ExactArgs(1),
 		Annotations: map[string]string{
 			agent.AnnotationRequiredScope: "stacks:delete",
-			agent.AnnotationLLMHint:      "This command permanently deletes a Grafana Cloud stack and all its data (dashboards, alerts, datasources, metrics, logs, traces). This action is irreversible. Always confirm with the user by name before executing. Prefer --dry-run first. Never run this command without explicit user confirmation.",
+			agent.AnnotationLLMHint:       "This command permanently deletes a Grafana Cloud stack and all its data (dashboards, alerts, datasources, metrics, logs, traces). This action is irreversible. Always confirm with the user by name before executing. Prefer --dry-run first. Never run this command without explicit user confirmation.",
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			slug := args[0]
