@@ -50,9 +50,8 @@ contexts:
 current-context: default
 `))
 
-	// Non-agent TTY default is now `table` (FR-001); the test's purpose is the
-	// share-link warning, not output formatting — `traceCalls == 1` confirms
-	// the trace was fetched and we don't assert on stdout content.
+	// The test's purpose is the share-link warning, not output formatting —
+	// traceCalls == 1 confirms the trace was fetched and we don't assert on stdout content.
 	_, stderr, err := execTempoCmd(tempo.GetCmd(loader), []string{"get", "trace-123", "--share-link"})
 	require.NoError(t, err)
 	assert.Equal(t, 1, traceCalls)

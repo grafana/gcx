@@ -304,8 +304,7 @@ func mkTrace(rss ...map[string]any) *tempo.GetTraceResponse {
 
 const traceID32 = "abcdef0123456789abcdef0123456789"
 
-// TestFormatDurationNanos covers FR-016: representative durations + the
-// non-positive sentinels.
+// TestFormatDurationNanos covers representative durations and the non-positive sentinels.
 func TestFormatDurationNanos(t *testing.T) {
 	// formatDurationNanos is package-private; we exercise it indirectly via
 	// FormatTraceWide's START column, which delegates to formatDurationNanos
@@ -342,9 +341,9 @@ func TestFormatDurationNanos(t *testing.T) {
 	}
 }
 
-// TestFormatTraceTable_TreeConnectors covers AC: 3-span trace root → child →
-// grandchild renders three rows in order with `└ ` for the only child and
-// `  └ ` for the grandchild (FR-010).
+// TestFormatTraceTable_TreeConnectors covers a 3-span trace root → child →
+// grandchild: three rows in order with `└ ` for the only child and
+// `  └ ` for the grandchild.
 func TestFormatTraceTable_TreeConnectors(t *testing.T) {
 	resp := mkTrace(mkResourceSpans("frontend",
 		mkSpan(t, "root", "0000000000000001", "", "SPAN_KIND_SERVER", "STATUS_CODE_OK", 0, 100_000_000),
@@ -373,8 +372,8 @@ func TestFormatTraceTable_TreeConnectors(t *testing.T) {
 	assert.Contains(t, out, "  └ grandchild", "grandchild should be a continuation under last ancestor")
 }
 
-// TestFormatTraceTable_DetachedSubtrees covers AC: orphan span renders below
-// the divider, divider count matches (FR-019).
+// TestFormatTraceTable_DetachedSubtrees covers: orphan span renders below
+// the divider and the divider count matches.
 func TestFormatTraceTable_DetachedSubtrees(t *testing.T) {
 	resp := mkTrace(mkResourceSpans("svc",
 		mkSpan(t, "attached-root", "0000000000000001", "", "", "STATUS_CODE_OK", 0, 100_000_000),
@@ -408,8 +407,8 @@ func TestFormatTraceTable_NoOrphansNoDivider(t *testing.T) {
 	assert.NotContains(t, buf.String(), "Detached subtrees")
 }
 
-// TestFormatTraceTable_AsyncTail covers AC: header is suffixed when latest
-// span end is >1s after the latest end of attached subtrees (FR-007).
+// TestFormatTraceTable_AsyncTail covers: header is suffixed when the latest
+// span end is >1s after the latest end of attached subtrees.
 func TestFormatTraceTable_AsyncTail(t *testing.T) {
 	// Attached subtree ends at 100ms. Orphan extends to 100ms + 2s — beyond
 	// the 1s threshold relative to the attached max end.
@@ -440,8 +439,8 @@ func TestFormatTraceTable_NoAsyncTailWhenAttachedExtends(t *testing.T) {
 	assert.NotContains(t, buf.String(), "async tail")
 }
 
-// TestFormatTraceTable_ErrorSpanPrefix covers AC: error span gets ⚠ prefix
-// (FR-021). Color rendering is exercised in style_test (env has no TTY).
+// TestFormatTraceTable_ErrorSpanPrefix covers: error span gets ⚠ prefix.
+// Color rendering is exercised in style_test (env has no TTY).
 func TestFormatTraceTable_ErrorSpanPrefix(t *testing.T) {
 	resp := mkTrace(mkResourceSpans("svc",
 		mkSpan(t, "ok-root", "0000000000000001", "", "", "STATUS_CODE_OK", 0, 100_000_000),
@@ -456,8 +455,7 @@ func TestFormatTraceTable_ErrorSpanPrefix(t *testing.T) {
 	assert.NotContains(t, out, "⚠ ok-root", "non-error spans should not be prefixed")
 }
 
-// TestFormatTraceTable_NilTrace covers AC + FR-023: nil Trace renders only
-// the header line, no body, no panic.
+// TestFormatTraceTable_NilTrace covers: nil Trace renders only the header line, no body, no panic.
 func TestFormatTraceTable_NilTrace(t *testing.T) {
 	t.Run("nil response", func(t *testing.T) {
 		var buf bytes.Buffer
@@ -486,8 +484,7 @@ func TestFormatTraceTable_NilTrace(t *testing.T) {
 	})
 }
 
-// TestFormatTraceTable_SingleSpan covers AC: one span renders one row with
-// no tree connectors (FR-024).
+// TestFormatTraceTable_SingleSpan covers: one span renders one row with no tree connectors.
 func TestFormatTraceTable_SingleSpan(t *testing.T) {
 	resp := mkTrace(mkResourceSpans("solo",
 		mkSpan(t, "only-root", "0000000000000001", "", "", "STATUS_CODE_OK", 0, 50_000_000),
@@ -503,8 +500,8 @@ func TestFormatTraceTable_SingleSpan(t *testing.T) {
 	assert.Contains(t, out, "spans: 1")
 }
 
-// TestFormatTraceTable_AllOrphans covers AC + FR-025: when every span is an
-// orphan, only the detached-subtrees section renders (no attached table).
+// TestFormatTraceTable_AllOrphans covers: when every span is an orphan,
+// only the detached-subtrees section renders (no attached table).
 func TestFormatTraceTable_AllOrphans(t *testing.T) {
 	resp := mkTrace(mkResourceSpans("svc",
 		// Every span has a parent that's not in the response.
@@ -522,7 +519,7 @@ func TestFormatTraceTable_AllOrphans(t *testing.T) {
 	assert.Contains(t, out, "spans: 2")
 }
 
-// TestFormatTraceWide_Columns covers AC: wide column order is SPAN, SERVICE,
+// TestFormatTraceWide_Columns covers: wide column order is SPAN, SERVICE,
 // KIND, SPAN_ID, START, DURATION, %; KIND prefix stripped; root START is +0.
 func TestFormatTraceWide_Columns(t *testing.T) {
 	resp := mkTrace(mkResourceSpans("api",
@@ -549,17 +546,17 @@ func TestFormatTraceWide_Columns(t *testing.T) {
 	require.True(t, spanIdx < serviceIdx && serviceIdx < kindIdx && kindIdx < spanIDIdx && spanIDIdx < startIdx && startIdx < durationIdx,
 		"unexpected column order: %s", out)
 
-	// KIND prefix stripped (FR-017). Spike lowercases — accept either case.
+	// KIND prefix stripped. Spike lowercases — accept either case.
 	assert.Regexp(t, "(?i)server", out)
 	assert.Regexp(t, "(?i)client", out)
 	assert.NotContains(t, out, "SPAN_KIND_", "SPAN_KIND_ prefix MUST be stripped")
 
-	// Root START is +0 (FR-018).
+	// Root START is +0.
 	assert.Contains(t, out, "+0", "root START offset must be +0")
 }
 
-// TestFormatTraceTable_InvalidDurationCells covers AC: span end <= start →
-// DURATION renders ?, % renders — (FR-014, FR-015).
+// TestFormatTraceTable_InvalidDurationCells covers: span end <= start →
+// DURATION renders ?, % renders —.
 func TestFormatTraceTable_InvalidDurationCells(t *testing.T) {
 	resp := mkTrace(mkResourceSpans("svc",
 		// Valid root sets up traceDur > 0.
@@ -608,9 +605,8 @@ func TestFormatTraceTable_ZeroTraceDuration(t *testing.T) {
 	assert.Equal(t, 2, rows, "expected 2 data rows")
 }
 
-// TestFormatTraceTable_ChildOrderingByStart covers AC: three children with
-// ascending start sort to t1, t2, t3, with t3 marked as last (└) and t1, t2
-// marked as non-last (├) (FR-011).
+// TestFormatTraceTable_ChildOrderingByStart covers: three children sort ascending
+// by start time — t3 is marked last (└), t1 and t2 are non-last (├).
 func TestFormatTraceTable_ChildOrderingByStart(t *testing.T) {
 	// Build with start times intentionally out of insertion order to exercise sort.
 	resp := mkTrace(mkResourceSpans("svc",
@@ -635,7 +631,7 @@ func TestFormatTraceTable_ChildOrderingByStart(t *testing.T) {
 	assert.Contains(t, out, "└ t3")
 }
 
-// TestFormatTraceTable_SpanIDIsLowercaseHex covers FR-013: SPAN_ID renders
+// TestFormatTraceTable_SpanIDIsLowercaseHex covers: SPAN_ID renders
 // as 16 lowercase hex chars after base64 decode.
 func TestFormatTraceTable_SpanIDIsLowercaseHex(t *testing.T) {
 	resp := mkTrace(mkResourceSpans("svc",
@@ -648,7 +644,7 @@ func TestFormatTraceTable_SpanIDIsLowercaseHex(t *testing.T) {
 	assert.NotContains(t, out, "ABCDEF", "SPAN_ID must be lowercase")
 }
 
-// TestFormatTraceTable_MissingServiceRendersDash covers FR-012: missing
+// TestFormatTraceTable_MissingServiceRendersDash covers: missing
 // service.name resource attribute renders as "-".
 func TestFormatTraceTable_MissingServiceRendersDash(t *testing.T) {
 	// Build a resourceSpans entry with no service.name attribute.

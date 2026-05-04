@@ -63,8 +63,7 @@ current-context: default
 	var stderr bytes.Buffer
 	root.SetOut(&stdout)
 	root.SetErr(&stderr)
-	// Non-agent TTY default is now `table` (FR-001); pass `-o json` so the
-	// JSON-payload assertion below holds regardless of the registered default.
+	// Pass `-o json` so the JSON-payload assertion below holds regardless of the registered default.
 	root.SetArgs([]string{"get", "-o", "json", "trace-123"})
 
 	err := root.Execute()

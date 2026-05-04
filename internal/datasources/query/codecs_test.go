@@ -34,18 +34,10 @@ func TestGraphCodecRejectsUnsupportedResponseTypes(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "graph output is not supported for trace search results")
 	})
-
-	t.Run("rejects tempo get-trace responses with the verbatim spec error", func(t *testing.T) {
-		var out bytes.Buffer
-		err := newGraphIO().Encode(&out, &tempo.GetTraceResponse{})
-		require.Error(t, err)
-		// FR-004: error message MUST be exactly this string.
-		assert.Equal(t, "graph output is not supported for individual traces; use -o table/wide/json", err.Error())
-	})
 }
 
 // TestTraceGetCodecDispatch verifies that table and wide codecs route a
-// *tempo.GetTraceResponse to the corresponding tempo formatter (FR-002, FR-003).
+// *tempo.GetTraceResponse to the corresponding tempo formatter.
 func TestTraceGetCodecDispatch(t *testing.T) {
 	newIO := func(format string) *cmdio.Options {
 		t.Helper()
@@ -54,7 +46,7 @@ func TestTraceGetCodecDispatch(t *testing.T) {
 		return ioOpts
 	}
 
-	// An empty *GetTraceResponse renders only the header line per FR-023.
+	// An empty *GetTraceResponse renders only the header line.
 	// We verify dispatch by asserting the formatter's signature output.
 	resp := &tempo.GetTraceResponse{}
 

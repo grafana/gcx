@@ -18,8 +18,8 @@ import (
 const asyncTailThreshold = time.Second
 
 // invalidPercentCell is rendered in the % column when the share cannot be
-// computed (zero trace duration or non-positive span duration). Per spec
-// FR-015, rows showing this MUST NOT participate in color thresholds.
+// computed (zero trace duration or non-positive span duration). Rows showing
+// this must not participate in color thresholds.
 const invalidPercentCell = "—"
 
 // FormatSearchTable formats a search response as a table.
@@ -215,7 +215,7 @@ func aggregateTotals(spans []traceSpan) traceTotals {
 	}
 	services := make(map[string]struct{})
 	for _, s := range spans {
-		if s.start > 0 && (t.start == 0 || s.start < t.start) {
+		if s.start < t.start {
 			t.start = s.start
 		}
 		if s.end > t.end {
@@ -264,7 +264,7 @@ func buildTraceTree(spans []traceSpan) traceTree {
 }
 
 // detectAsyncTail returns true when the latest span end exceeds the latest
-// end of attached subtrees by more than asyncTailThreshold (FR-007).
+// end of attached subtrees by more than asyncTailThreshold.
 func detectAsyncTail(tree traceTree, totals traceTotals) bool {
 	if len(tree.attached) == 0 {
 		return false
@@ -317,7 +317,7 @@ func rowCells(s *traceSpan, label string, totals traceTotals, wide bool) []strin
 	for i := range cells {
 		switch {
 		case i == pctIdx && !hasPct:
-			// Em-dash cell: no color thresholds (FR-015).
+			// Em-dash cell: no color thresholds.
 		case i == pctIdx:
 			cells[i] = style.ColorPercent(cells[i], pct, dim, isErr)
 		default:
@@ -346,7 +346,7 @@ func formatTrace(w io.Writer, resp *GetTraceResponse, wide bool) error {
 		spans = extractTraceSpans(resp.Trace)
 	}
 	if len(spans) == 0 {
-		// FR-023: empty/nil trace renders the header line only — no body, no panic.
+		// Empty/nil trace renders the header line only — no body, no panic.
 		fmt.Fprintf(w, "Trace -  duration: %s  spans: 0  services: 0\n", formatDurationNanos(0))
 		return nil
 	}
@@ -357,8 +357,18 @@ func formatTrace(w io.Writer, resp *GetTraceResponse, wide bool) error {
 	writeTraceHeader(w, totals, len(spans), asyncTail)
 
 	headers := []string{"SPAN", "SERVICE", "SPAN_ID", "DURATION", "%"}
+	// Fixed widths for columns with predictable max sizes: prevents lipgloss from
+	// shrinking them when the terminal is narrow, so only SPAN/SERVICE compress.
+	//   normal: SPAN_ID=18 (16 hex+2pad), DURATION=12, %=9
+	//   wide adds: KIND=14 (max "unspecified"+2pad), START=12, same DURATION/%%
+	colWidths := []int{0, 0, 18, 12, 9}
 	if wide {
 		headers = []string{"SPAN", "SERVICE", "KIND", "SPAN_ID", "START", "DURATION", "%"}
+		colWidths = []int{0, 0, 14, 18, 12, 12, 9}
+	}
+
+	newTable := func() *style.TableBuilder {
+		return style.NewTable(headers...).ColumnWidths(colWidths)
 	}
 
 	walk := func(tbl *style.TableBuilder, root *traceSpan) {
@@ -376,7 +386,7 @@ func formatTrace(w io.Writer, resp *GetTraceResponse, wide bool) error {
 	}
 
 	if len(tree.attached) > 0 {
-		tbl := style.NewTable(headers...)
+		tbl := newTable()
 		for _, root := range tree.attached {
 			walk(tbl, root)
 		}
@@ -388,7 +398,7 @@ func formatTrace(w io.Writer, resp *GetTraceResponse, wide bool) error {
 	if len(tree.orphans) > 0 {
 		divider := fmt.Sprintf("── Detached subtrees (%d) — parent span not in trace ──", len(tree.orphans))
 		fmt.Fprintf(w, "\n%s\n", style.ColorMutedText(divider))
-		tbl := style.NewTable(headers...)
+		tbl := newTable()
 		for _, root := range tree.orphans {
 			walk(tbl, root)
 		}
