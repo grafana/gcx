@@ -46,6 +46,7 @@ gcx is a unified CLI for managing Grafana resources, dashboards, datasources, al
 * [gcx setup](gcx_setup.md)	 - Onboard and configure Grafana Cloud products.
 * [gcx skills](gcx_skills.md)	 - Manage portable gcx Agent Skills
 * [gcx slo](gcx_slo.md)	 - Manage Grafana SLO definitions and reports
+* [gcx stacks](gcx_stacks.md)	 - Manage Grafana Cloud stacks (list, create, update, delete)
 * [gcx synthetic-monitoring](gcx_synthetic-monitoring.md)	 - Manage Grafana Synthetic Monitoring checks and probes
 * [gcx traces](gcx_traces.md)	 - Query Tempo datasources and manage Adaptive Traces
 
