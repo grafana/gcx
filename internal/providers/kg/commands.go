@@ -1458,7 +1458,7 @@ func newEntitiesInspectCommand(loader RESTConfigLoader) *cobra.Command {
 	ioOpts := &inspectOpts{}
 	cmd := &cobra.Command{
 		Use:   "inspect [Type--Name]",
-		Short: "Show detailed info, insights, and summary for a single entity, with a link to open it in the RCA Workbench.",
+		Short: "Show detailed info, insights, and summary for a single entity, including a link to the RCA Workbench.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := ioOpts.IO.Validate(); err != nil {
@@ -1529,7 +1529,7 @@ func newEntitiesInspectCommand(loader RESTConfigLoader) *cobra.Command {
 				return fmt.Errorf("%s/%s not found%s\nRun 'gcx kg entities list --type %s --property name=~%s' to find matching entities and their correct scope", entityType, name, scopeDesc, entityType, name)
 			}
 			if u := rcaWorkbenchURL(cfg.GrafanaURL, entityType, name, scope, startMs, endMs, inspectScope.since); u != "" {
-				fmt.Fprintf(cmd.ErrOrStderr(), "link: View in RCA Workbench → %s\n", u)
+				result["rcaWorkbench"] = u
 			}
 			return ioOpts.IO.Encode(cmd.OutOrStdout(), result)
 		},
