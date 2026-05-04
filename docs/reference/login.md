@@ -8,7 +8,7 @@ This page walks through the common login paths, the mental model behind them, an
 
 1. **Setting up Grafana Cloud interactively** → [Grafana Cloud (interactive OAuth)](#grafana-cloud-interactive-oauth)
 2. **Setting up on-premises Grafana** → [Service account token](#service-account-token)
-3. **Setting up CI, an agent, or any non-interactive environment** → [Environment variables (CI / agents)](#environment-variables-ci-agents)
+3. **Setting up CI, an agent, or any non-interactive environment** → [Environment variables (CI / agents)](#environment-variables-ci--agents)
 4. **Adding Grafana Cloud product API access to an existing context** → [Grafana Cloud product APIs](#grafana-cloud-product-apis)
 5. **Re-authenticating or switching between contexts** → [Re-authenticating and switching contexts](#re-authenticating-and-switching-contexts)
 
