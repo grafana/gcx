@@ -3,35 +3,35 @@ module github.com/grafana/gcx
 go 1.26.0
 
 require (
-	github.com/Masterminds/semver/v3 v3.4.0
+	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/NimbleMarkets/ntcharts v0.5.1
 	github.com/adrg/xdg v0.5.3
-	github.com/caarlos0/env/v11 v11.4.0
+	github.com/caarlos0/env/v11 v11.4.1
 	github.com/charmbracelet/glamour v1.0.0
 	github.com/charmbracelet/huh v1.0.0
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
 	github.com/fatih/color v1.19.0
-	github.com/fsnotify/fsnotify v1.9.0
+	github.com/fsnotify/fsnotify v1.10.0
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-logfmt/logfmt v0.6.1
 	github.com/go-logr/logr v1.4.3
-	github.com/go-openapi/strfmt v0.26.1
+	github.com/go-openapi/strfmt v0.26.2
 	github.com/goccy/go-yaml v1.19.2
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
-	github.com/grafana/authlib/types v0.0.0-20260427145542-9c256e2dbcb2
-	github.com/grafana/grafana-app-sdk/logging v0.53.2
+	github.com/grafana/authlib/types c21b3d474176
+	github.com/grafana/grafana-app-sdk/logging v0.54.0
 	github.com/grafana/grafana-foundation-sdk/go v0.0.12
-	github.com/grafana/grafana-openapi-client-go v0.0.0-20260414120814-5b95bb183fae
+	github.com/grafana/grafana-openapi-client-go 547a3b5a00a5
 	github.com/grafana/grafana/apps/folder v0.0.0-20250724095330-d852bde2a5fb
 	github.com/grafana/grafana/pkg/apimachinery v0.0.0-20250903133002-4e28cba1c53a
 	github.com/grafana/loki/v3 v3.4.2 // pinned: v3.5+ requires loki/pkg/push pseudo-versions not on Go proxy; also pins prometheus+strfmt versions below
-	github.com/grafana/promql-builder/go v0.0.0-20250916111012-8fa9625b89a3
+	github.com/grafana/promql-builder/go v0.0.4
 	github.com/huandu/xstrings v1.5.0
 	github.com/invopop/jsonschema v0.14.0
 	github.com/olekukonko/tablewriter v1.1.4
-	github.com/open-policy-agent/opa v1.15.2
+	github.com/open-policy-agent/opa v1.16.1
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/prometheus/prometheus v0.55.0 // pinned: loki v3.4.2 depends on v0.55.0 package layout (tsdb/errors, otlptranslator); upgrade requires loki upgrade first
 	github.com/spf13/cobra v1.10.2
@@ -49,7 +49,7 @@ require (
 )
 
 require (
-	github.com/go-openapi/runtime v0.28.0
+	github.com/go-openapi/runtime v0.29.4
 	github.com/gofrs/flock v0.13.0
 )
 
