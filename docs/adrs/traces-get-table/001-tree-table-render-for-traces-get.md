@@ -1,7 +1,7 @@
 # Tree-Table Rendering for `traces get`
 
 **Created**: 2026-04-30
-**Status**: proposed
+**Status**: accepted
 **Supersedes**: none
 
 <!-- Spec: docs/specs/2026-04-29-traces-get-table-design.md -->
@@ -50,9 +50,9 @@ the underlying client or response types.
 ## Decision
 
 We will render `gcx traces get` as a **tree-indented table with a duration
-% column and a separate detached-subtrees section**, opt-in via `-o table`
-and `-o wide`. JSON remains the format default for now; flipping the
-non-agent default to `table` is a follow-up tracked under "Consequences".
+% column and a separate detached-subtrees section**. The non-agent terminal
+default is flipped to `table` in this PR; agent mode and piped output
+continue to receive JSON via the `cmdio.Options` override.
 
 ### What ships
 
@@ -160,11 +160,11 @@ custom branching needed.
 
 #### Default format
 
-The spike keeps JSON as the format default and surfaces the new view via
-explicit `-o table`/`-o wide`. Flipping the non-agent default to
-`table` is intentionally deferred (see Consequences) so the new
-formatter can soak in production-ish use before changing the contract for
-existing pipelines.
+The non-agent terminal default is flipped to `table` in this PR via
+`opts.IO.DefaultFormat("table")` in `internal/datasources/tempo/get.go`.
+Agent mode and piped output continue to receive JSON — `cmdio.Options`
+overrides the registered default when `GCX_AGENT_MODE`/`CLAUDECODE`/
+`CLAUDE_CODE` are set or when stdout is not a TTY.
 
 ### Rejected alternatives
 
@@ -240,17 +240,16 @@ column. If users ask for it later, it's an additive flag.
 
 ### Neutral / follow-up
 
-- **Tests.** The spike intentionally lands without `formatter_test.go`
-  coverage. Production follow-up: table-driven tests for basic tree,
-  detached subtrees, async-tail, error span, empty trace, wide columns,
-  and `formatDurationNanos`. See the "Testing" section of the spec.
-- **Lint compliance.** Spike comments contain `SPIKE` markers and the
-  formatter has not been run through full `golangci-lint`. Production
-  follow-up before merge.
-- **Default flip.** Once the production version lands, flip the
-  non-agent default from JSON to `table`. The agent override stays in
-  place. This is the second piece of work — separable from the codec
-  registration itself.
+- **Tests.** Shipped in this PR — table-driven tests in
+  `internal/query/tempo/formatter_test.go` cover basic tree, detached
+  subtrees, async-tail, error span, nil trace, wide columns, and
+  `formatDurationNanos`. Codec dispatch tests in
+  `internal/datasources/query/codecs_test.go` cover the three
+  `*tempo.GetTraceResponse` codec cases.
+- **Lint compliance.** Shipped in this PR — `mise run lint` passes with 0
+  issues across all packages.
+- **Default flip.** Shipped in this PR — non-agent terminal default is
+  `table`. Agent and pipe overrides remain in place via `cmdio.Options`.
 - **`--llm` flag content-type bug.** `Accept: application/vnd.grafana.llm`
   causes the response to not be JSON, but the client unconditionally
   `json.Unmarshal`s. Out of scope here; tracked as a separate item.
