@@ -13,6 +13,7 @@ import (
 
 const (
 	basePath        = "/eval/templates"
+	templateByIDFmt = basePath + "/%s"
 	versionsPathFmt = basePath + "/%s/versions"
 )
 
@@ -38,7 +39,7 @@ func (c *Client) List(ctx context.Context, scope string, maxItems ...int) ([]eva
 
 // Get returns a single template by ID.
 func (c *Client) Get(ctx context.Context, id string) (*eval.TemplateDetail, error) {
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, basePath+"/"+url.PathEscape(id), nil)
+	resp, err := c.base.DoRequest(ctx, http.MethodGet, fmt.Sprintf(templateByIDFmt, url.PathEscape(id)), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template %s: %w", id, err)
 	}

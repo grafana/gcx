@@ -19,11 +19,11 @@ import (
 const (
 	segmentsPath           = "/aggregations/rules/segments"
 	rulesPath              = "/aggregations/rules"
-	rulePath               = "/aggregations/rule/"
+	ruleByMetricFmt        = "/aggregations/rule/%s"
 	checkRulesPath         = "/aggregations/check-rules"
 	recommendationsPath    = "/aggregations/recommendations"
 	exemptionsPath         = "/v1/recommendations/exemptions"
-	exemptionByIDPath      = "/v1/recommendations/exemptions/"
+	exemptionByIDFmt       = exemptionsPath + "/%s"
 	segmentedExemptionPath = "/v1/recommendations/segmented_exemptions"
 )
 
@@ -263,7 +263,7 @@ func (c *Client) ListSegmentedExemptions(ctx context.Context) ([]ExemptionsBySeg
 // GetExemption returns a single exemption by ID, optionally scoped to a segment.
 // Returns ErrExemptionNotFound on 404.
 func (c *Client) GetExemption(ctx context.Context, id, segment string) (*MetricExemption, error) {
-	path := exemptionByIDPath + url.PathEscape(id)
+	path := fmt.Sprintf(exemptionByIDFmt, url.PathEscape(id))
 	if segment != "" {
 		path += "?segment=" + url.QueryEscape(segment)
 	}
@@ -334,7 +334,7 @@ func (c *Client) CreateExemption(ctx context.Context, e *MetricExemption, segmen
 // UpdateExemption updates an existing exemption. The server returns an empty body on success,
 // so the input exemption (with ID set) is returned.
 func (c *Client) UpdateExemption(ctx context.Context, id string, e *MetricExemption, segment string) (*MetricExemption, error) {
-	path := exemptionByIDPath + url.PathEscape(id)
+	path := fmt.Sprintf(exemptionByIDFmt, url.PathEscape(id))
 	if segment != "" {
 		path += "?segment=" + url.QueryEscape(segment)
 	}
@@ -365,7 +365,7 @@ func (c *Client) UpdateExemption(ctx context.Context, id string, e *MetricExempt
 
 // DeleteExemption soft-deletes an exemption, optionally scoped to a segment.
 func (c *Client) DeleteExemption(ctx context.Context, id, segment string) error {
-	path := exemptionByIDPath + url.PathEscape(id)
+	path := fmt.Sprintf(exemptionByIDFmt, url.PathEscape(id))
 	if segment != "" {
 		path += "?segment=" + url.QueryEscape(segment)
 	}
@@ -416,7 +416,7 @@ func (c *Client) ListRules(ctx context.Context, segment string) ([]MetricRule, s
 // Returns ErrRuleNotFound if the rule does not exist.
 // Note: mutations require the global rules ETag from ListRules, not a per-rule ETag.
 func (c *Client) GetRule(ctx context.Context, metric, segment string) (MetricRule, error) {
-	path := rulePath + url.PathEscape(metric)
+	path := fmt.Sprintf(ruleByMetricFmt, url.PathEscape(metric))
 	if segment != "" {
 		path += "?segment=" + url.QueryEscape(segment)
 	}
@@ -447,7 +447,7 @@ func (c *Client) GetRule(ctx context.Context, metric, segment string) (MetricRul
 // The etag should be the current rules ETag from ListRules — the API requires
 // If-Match even for creates against the individual rule endpoint.
 func (c *Client) CreateRule(ctx context.Context, rule MetricRule, etag, segment string) (string, error) {
-	path := rulePath + url.PathEscape(rule.Metric)
+	path := fmt.Sprintf(ruleByMetricFmt, url.PathEscape(rule.Metric))
 	if segment != "" {
 		path += "?segment=" + url.QueryEscape(segment)
 	}
@@ -487,7 +487,7 @@ func (c *Client) CreateRule(ctx context.Context, rule MetricRule, etag, segment 
 // UpdateRule updates an existing aggregation rule using the provided ETag.
 // Returns ErrPreconditionFailed on a 412 conflict.
 func (c *Client) UpdateRule(ctx context.Context, rule MetricRule, etag, segment string) (string, error) {
-	path := rulePath + url.PathEscape(rule.Metric)
+	path := fmt.Sprintf(ruleByMetricFmt, url.PathEscape(rule.Metric))
 	if segment != "" {
 		path += "?segment=" + url.QueryEscape(segment)
 	}
@@ -525,7 +525,7 @@ func (c *Client) UpdateRule(ctx context.Context, rule MetricRule, etag, segment 
 // DeleteRule deletes an aggregation rule using the provided ETag.
 // Returns ErrPreconditionFailed on a 412 conflict.
 func (c *Client) DeleteRule(ctx context.Context, metric, etag, segment string) error {
-	path := rulePath + url.PathEscape(metric)
+	path := fmt.Sprintf(ruleByMetricFmt, url.PathEscape(metric))
 	if segment != "" {
 		path += "?segment=" + url.QueryEscape(segment)
 	}

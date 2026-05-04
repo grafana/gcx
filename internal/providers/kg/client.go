@@ -19,30 +19,32 @@ import (
 const pluginResourcePath = "/api/plugins/grafana-asserts-app/resources"
 
 const (
-	statusPath          = pluginResourcePath + "/asserts/api-server/v1/stack/status"
-	entitiesPath        = pluginResourcePath + "/asserts/api-server/v1/entity/info"
-	entityTypesPath     = pluginResourcePath + "/asserts/api-server/v1/entity_type"
-	entityCountPath     = entityTypesPath + "/count"
-	scopesPath          = pluginResourcePath + "/asserts/api-server/v1/entity_scope"
-	assertionsPath      = pluginResourcePath + "/asserts/api-server/v1/assertions"
-	assertSummPath      = assertionsPath + "/summary"
-	assertGraphPath     = assertionsPath + "/graph"
-	assertMetricPath    = assertionsPath + "/entity-metric"
-	assertLLMPath       = assertionsPath + "/llm-summary"
-	sourceMetricPath    = pluginResourcePath + "/asserts/api-server/v1/assertion/source-metrics"
-	searchPath          = pluginResourcePath + "/asserts/api-server/v1/search"
-	searchAssertPath    = searchPath + "/assertions"
-	searchSamplePath    = searchPath + "/sample"
-	rulesPath           = pluginResourcePath + "/asserts/api-server/v1/config/prom-rules/"
-	modelRulesPath      = pluginResourcePath + "/asserts/api-server/v1/config/model-rules/"
-	suppressionPath     = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alert"
-	suppressionsPath    = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alerts"
-	entityLookupPath    = pluginResourcePath + "/asserts/api-server/v1/entity"
-	v2ConfigPath        = pluginResourcePath + "/asserts/api-server/v2/config"
-	v2LogConfigPath     = v2ConfigPath + "/log"
-	v2TraceConfigPath   = v2ConfigPath + "/trace"
-	v2ProfileConfigPath = v2ConfigPath + "/profile"
-	v2RelabelRulesPath  = v2ConfigPath + "/relabel-rules/prologue"
+	statusPath           = pluginResourcePath + "/asserts/api-server/v1/stack/status"
+	entitiesPath         = pluginResourcePath + "/asserts/api-server/v1/entity/info"
+	entityTypesPath      = pluginResourcePath + "/asserts/api-server/v1/entity_type"
+	entityCountPath      = entityTypesPath + "/count"
+	scopesPath           = pluginResourcePath + "/asserts/api-server/v1/entity_scope"
+	assertionsPath       = pluginResourcePath + "/asserts/api-server/v1/assertions"
+	assertSummPath       = assertionsPath + "/summary"
+	assertGraphPath      = assertionsPath + "/graph"
+	assertMetricPath     = assertionsPath + "/entity-metric"
+	assertLLMPath        = assertionsPath + "/llm-summary"
+	sourceMetricPath     = pluginResourcePath + "/asserts/api-server/v1/assertion/source-metrics"
+	searchPath           = pluginResourcePath + "/asserts/api-server/v1/search"
+	searchAssertPath     = searchPath + "/assertions"
+	searchSamplePath     = searchPath + "/sample"
+	rulesPath            = pluginResourcePath + "/asserts/api-server/v1/config/prom-rules"
+	ruleByNameFmt        = rulesPath + "/%s"
+	modelRulesPath       = pluginResourcePath + "/asserts/api-server/v1/config/model-rules/"
+	suppressionPath      = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alert"
+	suppressionByNameFmt = suppressionPath + "/%s"
+	suppressionsPath     = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alerts"
+	entityLookupPath     = pluginResourcePath + "/asserts/api-server/v1/entity"
+	v2ConfigPath         = pluginResourcePath + "/asserts/api-server/v2/config"
+	v2LogConfigPath      = v2ConfigPath + "/log"
+	v2TraceConfigPath    = v2ConfigPath + "/trace"
+	v2ProfileConfigPath  = v2ConfigPath + "/profile"
+	v2RelabelRulesPath   = v2ConfigPath + "/relabel-rules/prologue"
 )
 
 // Client is an HTTP client for the Knowledge Graph (Asserts) API.
@@ -245,7 +247,7 @@ func (c *Client) UpsertSuppression(ctx context.Context, s Suppression) error {
 // DeleteSuppression deletes a single suppression by name.
 func (c *Client) DeleteSuppression(ctx context.Context, name string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
-		c.host+suppressionPath+"/"+url.PathEscape(name), nil)
+		c.host+fmt.Sprintf(suppressionByNameFmt, url.PathEscape(name)), nil)
 	if err != nil {
 		return fmt.Errorf("kg: create request: %w", err)
 	}
@@ -543,7 +545,7 @@ func (c *Client) GetRule(ctx context.Context, name string) (*Rule, error) {
 	var wrapper struct {
 		Rules []Rule `json:"rules"`
 	}
-	if err := c.getJSON(ctx, rulesPath+name, &wrapper); err != nil {
+	if err := c.getJSON(ctx, fmt.Sprintf(ruleByNameFmt, url.PathEscape(name)), &wrapper); err != nil {
 		return nil, fmt.Errorf("kg: get rule %q: %w", name, err)
 	}
 	if len(wrapper.Rules) == 0 {

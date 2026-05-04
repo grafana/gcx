@@ -16,7 +16,10 @@ import (
 // ErrNotFound is returned when a requested report does not exist (HTTP 404).
 var ErrNotFound = errors.New("report not found")
 
-const basePath = "/api/plugins/grafana-slo-app/resources/v1/report"
+const (
+	basePath        = "/api/plugins/grafana-slo-app/resources/v1/report"
+	reportByUUIDFmt = basePath + "/%s"
+)
 
 // Client is an HTTP client for the Grafana SLO Reports API.
 type Client struct {
@@ -63,7 +66,7 @@ func (c *Client) List(ctx context.Context) ([]Report, error) {
 
 // Get returns a single SLO report by UUID.
 func (c *Client) Get(ctx context.Context, uuid string) (*Report, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, basePath+"/"+uuid, nil)
+	resp, err := c.doRequest(ctx, http.MethodGet, fmt.Sprintf(reportByUUIDFmt, uuid), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get report %s: %w", uuid, err)
 	}
@@ -117,7 +120,7 @@ func (c *Client) Update(ctx context.Context, uuid string, report *Report) error 
 		return fmt.Errorf("failed to marshal report: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, http.MethodPut, basePath+"/"+uuid, bytes.NewReader(body))
+	resp, err := c.doRequest(ctx, http.MethodPut, fmt.Sprintf(reportByUUIDFmt, uuid), bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("failed to update report %s: %w", uuid, err)
 	}
@@ -132,7 +135,7 @@ func (c *Client) Update(ctx context.Context, uuid string, report *Report) error 
 
 // Delete deletes an SLO report by UUID.
 func (c *Client) Delete(ctx context.Context, uuid string) error {
-	resp, err := c.doRequest(ctx, http.MethodDelete, basePath+"/"+uuid, nil)
+	resp, err := c.doRequest(ctx, http.MethodDelete, fmt.Sprintf(reportByUUIDFmt, uuid), nil)
 	if err != nil {
 		return fmt.Errorf("failed to delete report %s: %w", uuid, err)
 	}

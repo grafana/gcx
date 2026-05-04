@@ -13,6 +13,7 @@ import (
 
 const (
 	conversationsPath      = "/query/conversations"
+	conversationByIDFmt    = conversationsPath + "/%s"
 	conversationSearchPath = conversationsPath + "/search"
 )
 
@@ -33,7 +34,7 @@ func (c *Client) List(ctx context.Context, limit int) ([]Conversation, error) {
 
 // Get returns a single conversation by ID with all its generations.
 func (c *Client) Get(ctx context.Context, id string) (*ConversationDetail, error) {
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, conversationsPath+"/"+url.PathEscape(id), nil)
+	resp, err := c.base.DoRequest(ctx, http.MethodGet, fmt.Sprintf(conversationByIDFmt, url.PathEscape(id)), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get conversation %s: %w", id, err)
 	}

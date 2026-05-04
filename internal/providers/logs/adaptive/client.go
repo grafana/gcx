@@ -36,10 +36,12 @@ func readDropRulesResponseBody(resp *http.Response) ([]byte, error) {
 
 const (
 	exemptionsPath      = "/adaptive-logs/exemptions"
+	exemptionByIDFmt    = exemptionsPath + "/%s"
 	recommendationsPath = "/adaptive-logs/recommendations"
 	segmentsPath        = "/adaptive-logs/segments"
 	segmentPath         = "/adaptive-logs/segment"
 	dropRulesPath       = "/adaptive-logs/drop-rules"
+	dropRuleByIDFmt     = dropRulesPath + "/%s"
 )
 
 // Client is an HTTP client for the Adaptive Logs API.
@@ -89,7 +91,7 @@ func (c *Client) ListExemptions(ctx context.Context) ([]Exemption, error) {
 
 // GetExemption returns a single exemption by ID.
 func (c *Client) GetExemption(ctx context.Context, id string) (*Exemption, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, exemptionsPath+"/"+url.PathEscape(id), nil)
+	resp, err := c.doRequest(ctx, http.MethodGet, fmt.Sprintf(exemptionByIDFmt, url.PathEscape(id)), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get exemption %s: %w", id, err)
 	}
@@ -140,7 +142,7 @@ func (c *Client) UpdateExemption(ctx context.Context, id string, e *Exemption) (
 		return nil, fmt.Errorf("failed to marshal exemption: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, http.MethodPut, exemptionsPath+"/"+url.PathEscape(id), bytes.NewReader(body))
+	resp, err := c.doRequest(ctx, http.MethodPut, fmt.Sprintf(exemptionByIDFmt, url.PathEscape(id)), bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to update exemption %s: %w", id, err)
 	}
@@ -160,7 +162,7 @@ func (c *Client) UpdateExemption(ctx context.Context, id string, e *Exemption) (
 
 // DeleteExemption deletes a log stream exemption by ID.
 func (c *Client) DeleteExemption(ctx context.Context, id string) error {
-	resp, err := c.doRequest(ctx, http.MethodDelete, exemptionsPath+"/"+url.PathEscape(id), nil)
+	resp, err := c.doRequest(ctx, http.MethodDelete, fmt.Sprintf(exemptionByIDFmt, url.PathEscape(id)), nil)
 	if err != nil {
 		return fmt.Errorf("failed to delete exemption %s: %w", id, err)
 	}
@@ -354,9 +356,7 @@ func (c *Client) ListDropRules(ctx context.Context, q DropRuleListQuery) ([]Drop
 
 // GetDropRule returns a single drop rule by ID.
 func (c *Client) GetDropRule(ctx context.Context, id string) (*DropRule, error) {
-	pathID := "/" + url.PathEscape(id)
-
-	resp, err := c.doRequest(ctx, http.MethodGet, dropRulesPath+pathID, nil)
+	resp, err := c.doRequest(ctx, http.MethodGet, fmt.Sprintf(dropRuleByIDFmt, url.PathEscape(id)), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get drop rule %s: %w", id, err)
 	}
@@ -417,9 +417,7 @@ func (c *Client) UpdateDropRule(ctx context.Context, id string, dr *DropRule) (*
 		return nil, fmt.Errorf("failed to marshal drop rule update payload: %w", err)
 	}
 
-	pathID := "/" + url.PathEscape(id)
-
-	resp, err := c.doRequest(ctx, http.MethodPut, dropRulesPath+pathID, bytes.NewReader(payload))
+	resp, err := c.doRequest(ctx, http.MethodPut, fmt.Sprintf(dropRuleByIDFmt, url.PathEscape(id)), bytes.NewReader(payload))
 	if err != nil {
 		return nil, fmt.Errorf("failed to update drop rule %s: %w", id, err)
 	}
@@ -444,9 +442,7 @@ func (c *Client) UpdateDropRule(ctx context.Context, id string, dr *DropRule) (*
 
 // DeleteDropRule deletes a drop rule by ID.
 func (c *Client) DeleteDropRule(ctx context.Context, id string) error {
-	pathID := "/" + url.PathEscape(id)
-
-	resp, err := c.doRequest(ctx, http.MethodDelete, dropRulesPath+pathID, nil)
+	resp, err := c.doRequest(ctx, http.MethodDelete, fmt.Sprintf(dropRuleByIDFmt, url.PathEscape(id)), nil)
 	if err != nil {
 		return fmt.Errorf("failed to delete drop rule %s: %w", id, err)
 	}
