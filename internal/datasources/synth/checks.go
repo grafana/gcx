@@ -9,6 +9,7 @@ import (
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/synth/checks"
 	"github.com/grafana/gcx/internal/query/synth"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
@@ -18,11 +19,13 @@ import (
 type checksOpts struct {
 	IO         cmdio.Options
 	Datasource string
+	WithAlerts bool
 }
 
 func (opts *checksOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.BindFlags(flags)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless default-synth-datasource is configured)")
+	flags.BoolVar(&opts.WithAlerts, "with-alerts", false, "Include each check's alert rules in the response (server-side composition via ?includeAlerts=true)")
 }
 
 func (opts *checksOpts) Validate() error {
@@ -40,6 +43,9 @@ func ChecksCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Example: `
   # List checks (use datasource UID, not name)
   gcx datasources synth checks -d UID
+
+  # List checks with their alert rules embedded (one server-side call)
+  gcx datasources synth checks -d UID --with-alerts
 
   # Output as JSON
   gcx datasources synth checks -d UID -o json`,
@@ -73,7 +79,12 @@ func ChecksCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to create client: %w", err)
 			}
 
-			result, err := client.ListChecks(ctx, datasourceUID)
+			var result []checks.Check
+			if opts.WithAlerts {
+				result, err = client.ListChecksWithAlerts(ctx, datasourceUID)
+			} else {
+				result, err = client.ListChecks(ctx, datasourceUID)
+			}
 			if err != nil {
 				return fmt.Errorf("query failed: %w", err)
 			}

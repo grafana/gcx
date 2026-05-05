@@ -26,6 +26,21 @@ type Check struct {
 	Channels         map[string]any `json:"channels,omitempty"`
 	Created          float64        `json:"created,omitempty"`
 	Modified         float64        `json:"modified,omitempty"`
+	Alerts           []CheckAlert   `json:"alerts,omitempty"`
+}
+
+// CheckAlert is a per-check alert rule as returned by the SM datasource when
+// /sm/check/list is queried with ?includeAlerts=true, or by /sm/check/{id}/alerts.
+// Mirrors CheckAlertPublished in the SM app's types.ts.
+type CheckAlert struct {
+	Name       string  `json:"name"`
+	Threshold  float64 `json:"threshold"`
+	Period     string  `json:"period,omitempty"`
+	RunbookURL string  `json:"runbookUrl,omitempty"`
+	Created    float64 `json:"created,omitempty"`
+	Modified   float64 `json:"modified,omitempty"`
+	Status     string  `json:"status,omitempty"`
+	Error      string  `json:"error,omitempty"`
 }
 
 // CheckSpec is the user-facing representation stored in YAML files.
