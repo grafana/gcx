@@ -731,3 +731,112 @@ func TestFormatMetricsLabels(t *testing.T) {
 		})
 	}
 }
+
+// TestFormatTraceTable_IDEncodings covers both OTLP/JSON ID encodings:
+// proto3 canonical base64 (Tempo's historical wire form) and the OTel JSON
+// spec's lowercase hex. Hex chars are a subset of the base64 alphabet — a
+// 32-char hex trace ID is also valid base64 — so the formatter must
+// disambiguate by length, not by trying base64 first.
+func TestFormatTraceTable_IDEncodings(t *testing.T) {
+	const (
+		traceHex  = "abcdef0123456789abcdef0123456789"
+		spanHex   = "1111111111111111"
+		parentHex = "2222222222222222"
+	)
+	rawTrace, err := hex.DecodeString(traceHex)
+	require.NoError(t, err)
+	traceB64 := base64.StdEncoding.EncodeToString(rawTrace)
+	rawSpan, err := hex.DecodeString(spanHex)
+	require.NoError(t, err)
+	spanB64 := base64.StdEncoding.EncodeToString(rawSpan)
+
+	tests := []struct {
+		name      string
+		traceID   string
+		spanID    string
+		parentID  string
+		wantTrace string // expected substring in the header
+		wantSpan  string // expected substring in the SPAN_ID column
+	}{
+		{
+			name:      "base64 inputs (legacy proto3 mapping)",
+			traceID:   traceB64,
+			spanID:    spanB64,
+			wantTrace: traceHex,
+			wantSpan:  spanHex,
+		},
+		{
+			name:      "hex inputs (OTel JSON spec)",
+			traceID:   traceHex,
+			spanID:    spanHex,
+			wantTrace: traceHex,
+			wantSpan:  spanHex,
+		},
+		{
+			name:      "uppercase hex normalized to lowercase",
+			traceID:   strings.ToUpper(traceHex),
+			spanID:    strings.ToUpper(spanHex),
+			wantTrace: traceHex,
+			wantSpan:  spanHex,
+		},
+		{
+			name:      "mixed: hex trace ID, base64 span ID",
+			traceID:   traceHex,
+			spanID:    spanB64,
+			wantTrace: traceHex,
+			wantSpan:  spanHex,
+		},
+		{
+			name:      "hex parent span ID is preserved",
+			traceID:   traceHex,
+			spanID:    spanHex,
+			parentID:  parentHex,
+			wantTrace: traceHex,
+			wantSpan:  spanHex,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			span := map[string]any{
+				"traceId":           tc.traceID,
+				"spanId":            tc.spanID,
+				"name":              "root",
+				"startTimeUnixNano": "0",
+				"endTimeUnixNano":   "100000000",
+				"status":            map[string]any{"code": "STATUS_CODE_OK"},
+			}
+			if tc.parentID != "" {
+				span["parentSpanId"] = tc.parentID
+			}
+			rs := map[string]any{
+				"resource": map[string]any{
+					"attributes": []any{
+						map[string]any{
+							"key":   "service.name",
+							"value": map[string]any{"stringValue": "svc"},
+						},
+					},
+				},
+				"scopeSpans": []any{
+					map[string]any{"spans": []any{span}},
+				},
+			}
+
+			resp := &tempo.GetTraceResponse{
+				Trace: map[string]any{"resourceSpans": []any{rs}},
+			}
+
+			var buf bytes.Buffer
+			require.NoError(t, tempo.FormatTraceTable(&buf, resp))
+			out := buf.String()
+
+			assert.Contains(t, out, "Trace "+tc.wantTrace, "trace ID header must show lowercase hex")
+			assert.Contains(t, out, tc.wantSpan, "SPAN_ID column must show lowercase hex")
+			// The 24-char base64-decoded-from-hex string would be 48 hex chars.
+			// If the formatter ever falls back to that path, the header would
+			// contain a 48-char string. Guard against regression.
+			assert.NotRegexp(t, `Trace [0-9a-f]{48}`, out, "must not double-decode hex IDs as base64")
+		})
+	}
+}

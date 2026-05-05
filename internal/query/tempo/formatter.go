@@ -447,9 +447,9 @@ func extractTraceSpans(trace map[string]any) []traceSpan {
 				if n, ok := span["name"].(string); ok {
 					ex.name = n
 				}
-				ex.traceID = decodeIDField(span["traceId"])
-				ex.spanID = decodeIDField(span["spanId"])
-				ex.parentID = decodeIDField(span["parentSpanId"])
+				ex.traceID = decodeIDField(span["traceId"], traceIDBytes)
+				ex.spanID = decodeIDField(span["spanId"], spanIDBytes)
+				ex.parentID = decodeIDField(span["parentSpanId"], spanIDBytes)
 				if v, ok := span["startTimeUnixNano"].(string); ok {
 					ex.start, _ = strconv.ParseInt(v, 10, 64)
 				}
@@ -491,12 +491,35 @@ func extractServiceName(rs map[string]any) string {
 	return "-"
 }
 
-func decodeIDField(v any) string {
+// OTLP/JSON trace and span ID byte lengths.
+const (
+	traceIDBytes = 16
+	spanIDBytes  = 8
+)
+
+// decodeIDField returns the lowercase-hex form of an OTLP/JSON trace or span
+// ID, accepting either of the two encodings emitters use in practice.
+//
+// The OTel JSON spec mandates lowercase hex strings for byte fields, but the
+// proto3 canonical JSON mapping (which Tempo's OTLP/JSON output historically
+// followed) emits base64. We accept both. The disambiguation is unambiguous
+// because hex is a strict subset of the base64 alphabet but uses a different
+// fixed length: a 32-char hex trace ID is also valid base64, but base64-decoding
+// it produces 24 bytes — not 16 — so the length check below sorts it out.
+//
+// expectedBytes is the wire-form decoded length (16 for trace IDs, 8 for span IDs).
+// Inputs that match neither encoding are returned unchanged.
+func decodeIDField(v any, expectedBytes int) string {
 	s, ok := v.(string)
 	if !ok || s == "" {
 		return ""
 	}
-	if b, err := base64.StdEncoding.DecodeString(s); err == nil {
+	if len(s) == expectedBytes*2 {
+		if _, err := hex.DecodeString(s); err == nil {
+			return strings.ToLower(s)
+		}
+	}
+	if b, err := base64.StdEncoding.DecodeString(s); err == nil && len(b) == expectedBytes {
 		return hex.EncodeToString(b)
 	}
 	return s
