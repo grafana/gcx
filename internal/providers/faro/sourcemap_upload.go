@@ -17,7 +17,10 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-const faroPluginSettingsPath = "/api/plugins/grafana-kowalski-app/settings"
+const (
+	faroPluginSettingsPath = "/api/plugins/grafana-kowalski-app/settings"
+	faroUploadPathFmt      = "%s/api/v1/app/%s/sourcemaps/%s"
+)
 
 // DiscoverFaroAPIURL queries the Grafana Faro plugin settings to discover
 // the direct Faro API endpoint URL (jsonData.api_endpoint).
@@ -69,7 +72,7 @@ func GenerateBundleID() string {
 // UploadSourcemap uploads a sourcemap file to the direct Faro API.
 // Auth uses Bearer {stackId}:{token} format per the faro-bundler-plugins convention.
 func UploadSourcemap(ctx context.Context, faroAPIURL string, stackID int, token string, appID string, bundleID string, reader io.Reader, contentType string) error {
-	endpoint := fmt.Sprintf("%s/api/v1/app/%s/sourcemaps/%s",
+	endpoint := fmt.Sprintf(faroUploadPathFmt,
 		strings.TrimRight(faroAPIURL, "/"), appID, bundleID)
 
 	log := logging.FromContext(ctx)

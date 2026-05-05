@@ -178,6 +178,7 @@ Multiple auth mechanisms for different tiers.
 | [014](docs/adrs/instrumentation/001-instrumentation-provider-design.md) | Declarative Instrumentation Setup under `gcx setup` | proposed |
 | [015](docs/adrs/faro-provider/001-faro-provider-design.md) | Faro provider: CLI UX, TypedCRUD adapter, sourcemaps as sub-resource verbs | proposed |
 | [016](docs/adrs/dashboards-provider/001-dashboards-provider-design.md) | Dashboards provider: CRUD shorthands, search, and version history | accepted |
+| [017](docs/adrs/traces-get-table/001-tree-table-render-for-traces-get.md) | Tree-table rendering for `traces get` | accepted |
 
 See [docs/adrs/](docs/adrs/) for all ADRs.
 

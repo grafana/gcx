@@ -34,8 +34,15 @@ func readDropRulesResponseBody(resp *http.Response) ([]byte, error) {
 	return body, nil
 }
 
-// dropRulesPath is the log-template-service route for adaptive log drop rules.
-const dropRulesPath = "/adaptive-logs/drop-rules"
+const (
+	exemptionsPath      = "/adaptive-logs/exemptions"
+	exemptionByIDFmt    = exemptionsPath + "/%s"
+	recommendationsPath = "/adaptive-logs/recommendations"
+	segmentsPath        = "/adaptive-logs/segments"
+	segmentPath         = "/adaptive-logs/segment"
+	dropRulesPath       = "/adaptive-logs/drop-rules"
+	dropRuleByIDFmt     = dropRulesPath + "/%s"
+)
 
 // Client is an HTTP client for the Adaptive Logs API.
 type Client struct {
@@ -58,7 +65,7 @@ func NewClient(baseURL string, tenantID int, apiToken string, httpClient *http.C
 // ListExemptions returns all log stream exemptions.
 // The API wraps the result in {"result": [...]}.
 func (c *Client) ListExemptions(ctx context.Context) ([]Exemption, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, "/adaptive-logs/exemptions", nil)
+	resp, err := c.doRequest(ctx, http.MethodGet, exemptionsPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list exemptions: %w", err)
 	}
@@ -84,7 +91,7 @@ func (c *Client) ListExemptions(ctx context.Context) ([]Exemption, error) {
 
 // GetExemption returns a single exemption by ID.
 func (c *Client) GetExemption(ctx context.Context, id string) (*Exemption, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, "/adaptive-logs/exemptions/"+url.PathEscape(id), nil)
+	resp, err := c.doRequest(ctx, http.MethodGet, fmt.Sprintf(exemptionByIDFmt, url.PathEscape(id)), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get exemption %s: %w", id, err)
 	}
@@ -109,7 +116,7 @@ func (c *Client) CreateExemption(ctx context.Context, e *Exemption) (*Exemption,
 		return nil, fmt.Errorf("failed to marshal exemption: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, http.MethodPost, "/adaptive-logs/exemptions", bytes.NewReader(body))
+	resp, err := c.doRequest(ctx, http.MethodPost, exemptionsPath, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create exemption: %w", err)
 	}
@@ -135,7 +142,7 @@ func (c *Client) UpdateExemption(ctx context.Context, id string, e *Exemption) (
 		return nil, fmt.Errorf("failed to marshal exemption: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, http.MethodPut, "/adaptive-logs/exemptions/"+url.PathEscape(id), bytes.NewReader(body))
+	resp, err := c.doRequest(ctx, http.MethodPut, fmt.Sprintf(exemptionByIDFmt, url.PathEscape(id)), bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to update exemption %s: %w", id, err)
 	}
@@ -155,7 +162,7 @@ func (c *Client) UpdateExemption(ctx context.Context, id string, e *Exemption) (
 
 // DeleteExemption deletes a log stream exemption by ID.
 func (c *Client) DeleteExemption(ctx context.Context, id string) error {
-	resp, err := c.doRequest(ctx, http.MethodDelete, "/adaptive-logs/exemptions/"+url.PathEscape(id), nil)
+	resp, err := c.doRequest(ctx, http.MethodDelete, fmt.Sprintf(exemptionByIDFmt, url.PathEscape(id)), nil)
 	if err != nil {
 		return fmt.Errorf("failed to delete exemption %s: %w", id, err)
 	}
@@ -171,7 +178,7 @@ func (c *Client) DeleteExemption(ctx context.Context, id string) error {
 // ListRecommendations returns all adaptive log pattern recommendations.
 // For each recommendation, the Pattern field is populated using Label() if empty.
 func (c *Client) ListRecommendations(ctx context.Context) ([]LogRecommendation, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, "/adaptive-logs/recommendations", nil)
+	resp, err := c.doRequest(ctx, http.MethodGet, recommendationsPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list recommendations: %w", err)
 	}
@@ -198,7 +205,7 @@ func (c *Client) ListRecommendations(ctx context.Context) ([]LogRecommendation, 
 // ListSegments returns all adaptive log segments.
 // The API returns a bare JSON array (no wrapper).
 func (c *Client) ListSegments(ctx context.Context) ([]LogSegment, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, "/adaptive-logs/segments", nil)
+	resp, err := c.doRequest(ctx, http.MethodGet, segmentsPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list segments: %w", err)
 	}
@@ -223,7 +230,7 @@ func (c *Client) ListSegments(ctx context.Context) ([]LogSegment, error) {
 // GetSegment returns a single segment by ID.
 // The API uses a query parameter: GET /adaptive-logs/segment?segment=<id>.
 func (c *Client) GetSegment(ctx context.Context, id string) (*LogSegment, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, "/adaptive-logs/segment?segment="+url.QueryEscape(id), nil)
+	resp, err := c.doRequest(ctx, http.MethodGet, segmentPath+"?segment="+url.QueryEscape(id), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get segment %s: %w", id, err)
 	}
@@ -248,7 +255,7 @@ func (c *Client) CreateSegment(ctx context.Context, s *LogSegment) (*LogSegment,
 		return nil, fmt.Errorf("failed to marshal segment: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, http.MethodPost, "/adaptive-logs/segment", bytes.NewReader(body))
+	resp, err := c.doRequest(ctx, http.MethodPost, segmentPath, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create segment: %w", err)
 	}
@@ -274,7 +281,7 @@ func (c *Client) UpdateSegment(ctx context.Context, id string, s *LogSegment) (*
 		return nil, fmt.Errorf("failed to marshal segment: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, http.MethodPut, "/adaptive-logs/segment?segment="+url.QueryEscape(id), bytes.NewReader(body))
+	resp, err := c.doRequest(ctx, http.MethodPut, segmentPath+"?segment="+url.QueryEscape(id), bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to update segment %s: %w", id, err)
 	}
@@ -295,7 +302,7 @@ func (c *Client) UpdateSegment(ctx context.Context, id string, s *LogSegment) (*
 // DeleteSegment deletes an adaptive log segment by ID.
 // The API uses a query parameter: DELETE /adaptive-logs/segment?segment=<id>.
 func (c *Client) DeleteSegment(ctx context.Context, id string) error {
-	resp, err := c.doRequest(ctx, http.MethodDelete, "/adaptive-logs/segment?segment="+url.QueryEscape(id), nil)
+	resp, err := c.doRequest(ctx, http.MethodDelete, segmentPath+"?segment="+url.QueryEscape(id), nil)
 	if err != nil {
 		return fmt.Errorf("failed to delete segment %s: %w", id, err)
 	}
@@ -349,9 +356,7 @@ func (c *Client) ListDropRules(ctx context.Context, q DropRuleListQuery) ([]Drop
 
 // GetDropRule returns a single drop rule by ID.
 func (c *Client) GetDropRule(ctx context.Context, id string) (*DropRule, error) {
-	pathID := "/" + url.PathEscape(id)
-
-	resp, err := c.doRequest(ctx, http.MethodGet, dropRulesPath+pathID, nil)
+	resp, err := c.doRequest(ctx, http.MethodGet, fmt.Sprintf(dropRuleByIDFmt, url.PathEscape(id)), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get drop rule %s: %w", id, err)
 	}
@@ -412,9 +417,7 @@ func (c *Client) UpdateDropRule(ctx context.Context, id string, dr *DropRule) (*
 		return nil, fmt.Errorf("failed to marshal drop rule update payload: %w", err)
 	}
 
-	pathID := "/" + url.PathEscape(id)
-
-	resp, err := c.doRequest(ctx, http.MethodPut, dropRulesPath+pathID, bytes.NewReader(payload))
+	resp, err := c.doRequest(ctx, http.MethodPut, fmt.Sprintf(dropRuleByIDFmt, url.PathEscape(id)), bytes.NewReader(payload))
 	if err != nil {
 		return nil, fmt.Errorf("failed to update drop rule %s: %w", id, err)
 	}
@@ -439,9 +442,7 @@ func (c *Client) UpdateDropRule(ctx context.Context, id string, dr *DropRule) (*
 
 // DeleteDropRule deletes a drop rule by ID.
 func (c *Client) DeleteDropRule(ctx context.Context, id string) error {
-	pathID := "/" + url.PathEscape(id)
-
-	resp, err := c.doRequest(ctx, http.MethodDelete, dropRulesPath+pathID, nil)
+	resp, err := c.doRequest(ctx, http.MethodDelete, fmt.Sprintf(dropRuleByIDFmt, url.PathEscape(id)), nil)
 	if err != nil {
 		return fmt.Errorf("failed to delete drop rule %s: %w", id, err)
 	}

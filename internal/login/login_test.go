@@ -127,6 +127,102 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 				assert.True(t, r.IsCloud)
 				assert.False(t, r.HasCloudToken)
 			},
+			checkConfig: func(t *testing.T, cfg config.Config) {
+				t.Helper()
+				ctx := cfg.Contexts["mystack"]
+				require.NotNil(t, ctx)
+				require.NotNil(t, ctx.Cloud)
+				assert.Equal(t, "mystack", ctx.Cloud.Stack, "stack slug must be persisted even without a CAP token")
+				assert.Empty(t, ctx.Cloud.Token, "no token was provided")
+			},
+		},
+		{
+			// AC-002b: Re-auth of existing Cloud context without CAP updates stack slug
+			name: "cloud_oauth_skip_cap_reauth_updates_stack",
+			opts: func(dir string) login.Options {
+				src := configSource(dir)
+				path, _ := src()
+				seed := config.Config{
+					CurrentContext: "mystack",
+					Contexts: map[string]*config.Context{
+						"mystack": {
+							Grafana: &config.GrafanaConfig{
+								Server:     "https://mystack.grafana.net",
+								OAuthToken: "old-token",
+								AuthMethod: "oauth",
+							},
+							Cloud: &config.CloudConfig{}, // no Stack set
+						},
+					},
+				}
+				require.NoError(t, config.Write(context.Background(), config.ExplicitConfigFile(path), seed))
+				return login.Options{
+					Inputs: login.Inputs{
+						Server:   "https://mystack.grafana.net",
+						Target:   login.TargetCloud,
+						UseOAuth: true,
+						Yes:      true,
+					},
+					Hooks: login.Hooks{
+						ConfigSource: src,
+						NewAuthFlow: func(_ string, _ auth.Options) login.AuthFlow {
+							return &stubAuthFlow{result: oauthResult}
+						},
+						ValidateFn: noopValidate,
+					},
+				}
+			},
+			checkConfig: func(t *testing.T, cfg config.Config) {
+				t.Helper()
+				ctx := cfg.Contexts["mystack"]
+				require.NotNil(t, ctx)
+				require.NotNil(t, ctx.Cloud)
+				assert.Equal(t, "mystack", ctx.Cloud.Stack, "re-auth must update stack slug")
+			},
+		},
+		{
+			// AC-002c: Re-auth via OAuth-only must not wipe a previously stored CAP token
+			name: "cloud_oauth_skip_cap_preserves_existing_token",
+			opts: func(dir string) login.Options {
+				src := configSource(dir)
+				path, _ := src()
+				seed := config.Config{
+					CurrentContext: "mystack",
+					Contexts: map[string]*config.Context{
+						"mystack": {
+							Grafana: &config.GrafanaConfig{
+								Server:     "https://mystack.grafana.net",
+								OAuthToken: "old-token",
+								AuthMethod: "oauth",
+							},
+							Cloud: &config.CloudConfig{Token: "existing-cap-token"},
+						},
+					},
+				}
+				require.NoError(t, config.Write(context.Background(), config.ExplicitConfigFile(path), seed))
+				return login.Options{
+					Inputs: login.Inputs{
+						Server:   "https://mystack.grafana.net",
+						Target:   login.TargetCloud,
+						UseOAuth: true,
+						Yes:      true,
+					},
+					Hooks: login.Hooks{
+						ConfigSource: src,
+						NewAuthFlow: func(_ string, _ auth.Options) login.AuthFlow {
+							return &stubAuthFlow{result: oauthResult}
+						},
+						ValidateFn: noopValidate,
+					},
+				}
+			},
+			checkConfig: func(t *testing.T, cfg config.Config) {
+				t.Helper()
+				ctx := cfg.Contexts["mystack"]
+				require.NotNil(t, ctx)
+				require.NotNil(t, ctx.Cloud)
+				assert.Equal(t, "existing-cap-token", ctx.Cloud.Token, "OAuth-only re-auth must not wipe a stored CAP token")
+			},
 		},
 		{
 			// AC-003: On-prem with SA token; OAuth not attempted

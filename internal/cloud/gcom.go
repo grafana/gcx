@@ -16,6 +16,8 @@ import (
 	"github.com/grafana/gcx/internal/retry"
 )
 
+const instancesPath = "/api/instances/"
+
 // StackInfo holds the information about a Grafana Cloud stack as returned by the GCOM API.
 type StackInfo struct {
 	ID         int    `json:"id"`
@@ -120,8 +122,8 @@ func (c *GCOMClient) GetStack(ctx context.Context, slug string) (StackInfo, erro
 		return StackInfo{}, fmt.Errorf("gcom client: parse base URL: %w", err)
 	}
 	endpoint := *base
-	endpoint.Path = base.Path + "/api/instances/" + slug
-	endpoint.RawPath = base.EscapedPath() + "/api/instances/" + url.PathEscape(slug)
+	endpoint.Path = base.Path + instancesPath + slug
+	endpoint.RawPath = base.EscapedPath() + instancesPath + url.PathEscape(slug)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
 	if err != nil {

@@ -11,6 +11,12 @@ import (
 	"github.com/grafana/gcx/internal/providers/aio11y/aio11yhttp"
 )
 
+const (
+	agentsPath        = "/query/agents"
+	agentLookupPath   = agentsPath + "/lookup"
+	agentVersionsPath = agentsPath + "/versions"
+)
+
 // Client is an HTTP client for AI Observability agent catalog endpoints.
 type Client struct {
 	base *aio11yhttp.Client
@@ -27,7 +33,7 @@ func (c *Client) List(ctx context.Context, limit int) ([]Agent, error) {
 	if limit > 0 {
 		query.Set("limit", strconv.Itoa(limit))
 	}
-	return aio11yhttp.ListAll[Agent](ctx, c.base, "/query/agents", query, limit)
+	return aio11yhttp.ListAll[Agent](ctx, c.base, agentsPath, query, limit)
 }
 
 // Lookup returns a single agent by name, optionally at a specific version.
@@ -37,7 +43,7 @@ func (c *Client) Lookup(ctx context.Context, name, version string) (*AgentDetail
 		query.Set("version", version)
 	}
 
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, "/query/agents/lookup?"+query.Encode(), nil)
+	resp, err := c.base.DoRequest(ctx, http.MethodGet, agentLookupPath+"?"+query.Encode(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to lookup agent %s: %w", name, err)
 	}
@@ -57,5 +63,5 @@ func (c *Client) Lookup(ctx context.Context, name, version string) (*AgentDetail
 // Versions returns the version history for an agent by name.
 func (c *Client) Versions(ctx context.Context, name string) ([]AgentVersion, error) {
 	query := url.Values{"name": {name}}
-	return aio11yhttp.ListAll[AgentVersion](ctx, c.base, "/query/agents/versions", query)
+	return aio11yhttp.ListAll[AgentVersion](ctx, c.base, agentVersionsPath, query)
 }

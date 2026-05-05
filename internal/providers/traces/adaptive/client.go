@@ -12,6 +12,14 @@ import (
 	"strings"
 )
 
+const (
+	policiesPath             = "/adaptive-traces/api/v1/policies"
+	policyByIDPathFmt        = policiesPath + "/%s"
+	recommendationsPath      = "/adaptive-traces/api/v1/recommendations"
+	recommendationApplyFmt   = recommendationsPath + "/%s/apply"
+	recommendationDismissFmt = recommendationsPath + "/%s/dismiss"
+)
+
 // Client is an HTTP client for the Adaptive Traces API.
 type Client struct {
 	baseURL    string
@@ -32,7 +40,7 @@ func NewClient(baseURL string, tenantID int, apiToken string, httpClient *http.C
 
 // ListPolicies returns all sampling policies.
 func (c *Client) ListPolicies(ctx context.Context) ([]Policy, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, "/adaptive-traces/api/v1/policies", nil)
+	resp, err := c.doRequest(ctx, http.MethodGet, policiesPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("listing policies: %w", err)
 	}
@@ -56,7 +64,7 @@ func (c *Client) ListPolicies(ctx context.Context) ([]Policy, error) {
 
 // GetPolicy returns a single policy by ID.
 func (c *Client) GetPolicy(ctx context.Context, id string) (*Policy, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, "/adaptive-traces/api/v1/policies/"+url.PathEscape(id), nil)
+	resp, err := c.doRequest(ctx, http.MethodGet, fmt.Sprintf(policyByIDPathFmt, url.PathEscape(id)), nil)
 	if err != nil {
 		return nil, fmt.Errorf("getting policy %q: %w", id, err)
 	}
@@ -81,7 +89,7 @@ func (c *Client) CreatePolicy(ctx context.Context, p *Policy) (*Policy, error) {
 		return nil, fmt.Errorf("marshalling policy: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, http.MethodPost, "/adaptive-traces/api/v1/policies", bytes.NewReader(body))
+	resp, err := c.doRequest(ctx, http.MethodPost, policiesPath, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("creating policy: %w", err)
 	}
@@ -106,7 +114,7 @@ func (c *Client) UpdatePolicy(ctx context.Context, id string, p *Policy) (*Polic
 		return nil, fmt.Errorf("marshalling policy: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, http.MethodPut, "/adaptive-traces/api/v1/policies/"+url.PathEscape(id), bytes.NewReader(body))
+	resp, err := c.doRequest(ctx, http.MethodPut, fmt.Sprintf(policyByIDPathFmt, url.PathEscape(id)), bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("updating policy %q: %w", id, err)
 	}
@@ -126,7 +134,7 @@ func (c *Client) UpdatePolicy(ctx context.Context, id string, p *Policy) (*Polic
 
 // DeletePolicy deletes a sampling policy by ID.
 func (c *Client) DeletePolicy(ctx context.Context, id string) error {
-	resp, err := c.doRequest(ctx, http.MethodDelete, "/adaptive-traces/api/v1/policies/"+url.PathEscape(id), nil)
+	resp, err := c.doRequest(ctx, http.MethodDelete, fmt.Sprintf(policyByIDPathFmt, url.PathEscape(id)), nil)
 	if err != nil {
 		return fmt.Errorf("deleting policy %q: %w", id, err)
 	}
@@ -141,7 +149,7 @@ func (c *Client) DeletePolicy(ctx context.Context, id string) error {
 
 // ListRecommendations returns all sampling recommendations.
 func (c *Client) ListRecommendations(ctx context.Context) ([]Recommendation, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, "/adaptive-traces/api/v1/recommendations", nil)
+	resp, err := c.doRequest(ctx, http.MethodGet, recommendationsPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("listing recommendations: %w", err)
 	}
@@ -165,7 +173,7 @@ func (c *Client) ListRecommendations(ctx context.Context) ([]Recommendation, err
 
 // ApplyRecommendation applies a recommendation by ID.
 func (c *Client) ApplyRecommendation(ctx context.Context, id string) error {
-	resp, err := c.doRequest(ctx, http.MethodPost, "/adaptive-traces/api/v1/recommendations/"+url.PathEscape(id)+"/apply", nil)
+	resp, err := c.doRequest(ctx, http.MethodPost, fmt.Sprintf(recommendationApplyFmt, url.PathEscape(id)), nil)
 	if err != nil {
 		return fmt.Errorf("applying recommendation %q: %w", id, err)
 	}
@@ -180,7 +188,7 @@ func (c *Client) ApplyRecommendation(ctx context.Context, id string) error {
 
 // DismissRecommendation dismisses a recommendation by ID.
 func (c *Client) DismissRecommendation(ctx context.Context, id string) error {
-	resp, err := c.doRequest(ctx, http.MethodPost, "/adaptive-traces/api/v1/recommendations/"+url.PathEscape(id)+"/dismiss", nil)
+	resp, err := c.doRequest(ctx, http.MethodPost, fmt.Sprintf(recommendationDismissFmt, url.PathEscape(id)), nil)
 	if err != nil {
 		return fmt.Errorf("dismissing recommendation %q: %w", id, err)
 	}

@@ -34,7 +34,7 @@ import (
 // Helpers
 // ---------------------------------------------------------------------------
 
-// scopeFlags holds the --env/--namespace/--site/--from/--to/--since flags.
+// scopeFlags holds the --env/--namespace/--site/--from/--to/--since flags used by entity search commands.
 type scopeFlags struct {
 	env       string
 	namespace string
@@ -828,11 +828,11 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := listScope.validateScopes(cmd.Context(), client); err != nil {
-				return err
-			}
 			startMs, endMs, err := listScope.resolveTime()
 			if err != nil {
+				return err
+			}
+			if err := listScope.validateScopes(cmd.Context(), client); err != nil {
 				return err
 			}
 			entityTypes, err := resolveEntityTypes(cmd, client, listType)
@@ -1059,11 +1059,11 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := activeScope.validateScopes(cmd.Context(), client); err != nil {
-				return err
-			}
 			startMs, endMs, err := activeScope.resolveTime()
 			if err != nil {
+				return err
+			}
+			if err := activeScope.validateScopes(cmd.Context(), client); err != nil {
 				return err
 			}
 			entityTypes, err := resolveEntityTypes(cmd, client, activeEntityType)
@@ -1120,11 +1120,11 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 				if assertionID == "" {
 					return errors.New("--insight-id is required (or use --file)")
 				}
-				if err := entityMetricScope.validateScopes(cmd.Context(), client); err != nil {
-					return err
-				}
 				startMs, endMs, err := entityMetricScope.resolveTime()
 				if err != nil {
+					return err
+				}
+				if err := entityMetricScope.validateScopes(cmd.Context(), client); err != nil {
 					return err
 				}
 				labels := map[string]string{
@@ -1240,11 +1240,11 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 			} else {
 				entityType, _ := cmd.Flags().GetString("type")
 				entityName, _ := cmd.Flags().GetString("name")
-				if err := searchAssertionsScope.validateScopes(cmd.Context(), client); err != nil {
-					return err
-				}
 				startMs, endMs, err := searchAssertionsScope.resolveTime()
 				if err != nil {
+					return err
+				}
+				if err := searchAssertionsScope.validateScopes(cmd.Context(), client); err != nil {
 					return err
 				}
 				var filterCriteria []EntityMatcher
@@ -1471,11 +1471,11 @@ func newEntitiesInspectCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := inspectScope.validateScopes(cmd.Context(), client); err != nil {
-				return err
-			}
 			startMs, endMs, err := inspectScope.resolveTime()
 			if err != nil {
+				return err
+			}
+			if err := inspectScope.validateScopes(cmd.Context(), client); err != nil {
 				return err
 			}
 			entityType, name, err := resolveEntityTypeAndName(cmd, args)
@@ -1574,11 +1574,11 @@ func newHealthCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := healthScope.validateScopes(cmd.Context(), client); err != nil {
-				return err
-			}
 			startMs, endMs, err := healthScope.resolveTime()
 			if err != nil {
+				return err
+			}
+			if err := healthScope.validateScopes(cmd.Context(), client); err != nil {
 				return err
 			}
 
@@ -1650,6 +1650,98 @@ func newOpenCommand(loader RESTConfigLoader) *cobra.Command {
 			return deeplink.Open(url)
 		},
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Cypher command
+// ---------------------------------------------------------------------------
+
+func newCypherCommand(loader RESTConfigLoader) *cobra.Command {
+	var (
+		cypherScope  scopeFlags
+		cypherPage   int
+		withInsights bool
+	)
+	ioOpts := &cypherOpts{}
+	cmd := &cobra.Command{
+		Use:   "cypher <query>",
+		Short: "Run a read-only Cypher query against the Knowledge Graph.",
+		Example: `  gcx kg cypher "MATCH (s:Service) RETURN s LIMIT 10"
+  gcx kg cypher "MATCH (s:Service)-[:CALLS]->(d:Service) RETURN s, d" --since 1h
+  gcx kg cypher "MATCH (s:Service {namespace: 'prod'}) RETURN s" --since 1h`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := ioOpts.IO.Validate(); err != nil {
+				return err
+			}
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			startMs, endMs, err := cypherScope.resolveTime()
+			if err != nil {
+				return err
+			}
+			req := CypherSearchRequest{
+				CypherQuery:  args[0],
+				TimeCriteria: &TimeCriteria{Start: startMs, End: endMs},
+				PageNum:      cypherPage,
+				WithInsights: withInsights,
+			}
+			resp, err := client.CypherSearch(cmd.Context(), req)
+			if err != nil {
+				return err
+			}
+			return ioOpts.IO.Encode(cmd.OutOrStdout(), resp)
+		},
+	}
+	cmd.Flags().StringVar(&cypherScope.from, "from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
+	cmd.Flags().StringVar(&cypherScope.to, "to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
+	cmd.Flags().StringVar(&cypherScope.since, "since", "", "Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)")
+	cmd.Flags().IntVar(&cypherPage, "page", 0, "Page number (0-based)")
+	cmd.Flags().BoolVar(&withInsights, "insights-only", false, "Return only entities with active insights")
+	ioOpts.setup(cmd.Flags())
+	return cmd
+}
+
+type cypherOpts struct {
+	IO cmdio.Options
+}
+
+func (o *cypherOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("table", &CypherTableCodec{})
+	o.IO.DefaultFormat("table")
+	o.IO.BindFlags(flags)
+}
+
+// CypherTableCodec renders a CypherSearchResponse as a table of entities.
+type CypherTableCodec struct{}
+
+func (c *CypherTableCodec) Format() format.Format { return "table" }
+
+func (c *CypherTableCodec) Encode(w io.Writer, v any) error {
+	resp, ok := v.(*CypherSearchResponse)
+	if !ok {
+		return errors.New("invalid data type for table codec: expected *CypherSearchResponse")
+	}
+	t := style.NewTable("TYPE", "NAME", "SCOPE")
+	for _, e := range resp.Entities {
+		var parts []string
+		for k, val := range e.Scope {
+			parts = append(parts, fmt.Sprintf("%s=%v", k, val))
+		}
+		sort.Strings(parts)
+		t.Row(e.Type, e.Name, strings.Join(parts, ", "))
+	}
+	return t.Render(w)
+}
+
+func (c *CypherTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
 }
 
 // ---------------------------------------------------------------------------

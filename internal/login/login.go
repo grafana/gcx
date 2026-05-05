@@ -454,8 +454,13 @@ func resolveCloudAuth(opts Options, target Target) (*config.CloudConfig, error) 
 		return cc, nil
 	}
 
-	// Cloud target with no token: skip if Yes or agent mode (D9, D10)
+	// Cloud target with no token: skip if Yes or agent mode (D9, D10).
+	// Still persist the stack slug when derivable so datasource auto-discovery
+	// works on stacks with multiple signal datasources.
 	if opts.Yes || agent.IsAgentMode() {
+		if slug := resolveStackSlug(opts.Server); slug != "" {
+			return &config.CloudConfig{Stack: slug}, nil
+		}
 		return nil, nil //nolint:nilnil // nil CloudConfig means "Cloud auth skipped"; valid non-error state.
 	}
 
@@ -557,9 +562,14 @@ func mergeAuthIntoExisting(existing *config.Context, incoming config.Context) {
 		if existing.Cloud == nil {
 			existing.Cloud = &config.CloudConfig{}
 		}
-		existing.Cloud.Token = incoming.Cloud.Token
+		if incoming.Cloud.Token != "" {
+			existing.Cloud.Token = incoming.Cloud.Token
+		}
 		if incoming.Cloud.APIUrl != "" {
 			existing.Cloud.APIUrl = incoming.Cloud.APIUrl
+		}
+		if incoming.Cloud.Stack != "" {
+			existing.Cloud.Stack = incoming.Cloud.Stack
 		}
 	}
 }

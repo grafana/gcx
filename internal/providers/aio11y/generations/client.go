@@ -10,6 +10,11 @@ import (
 	"github.com/grafana/gcx/internal/providers/aio11y/aio11yhttp"
 )
 
+const (
+	generationsPath   = "/query/generations"
+	generationByIDFmt = generationsPath + "/%s"
+)
+
 // Client is an HTTP client for AI Observability generation endpoints.
 type Client struct {
 	base *aio11yhttp.Client
@@ -22,7 +27,7 @@ func NewClient(base *aio11yhttp.Client) *Client {
 
 // Get returns a single generation by ID.
 func (c *Client) Get(ctx context.Context, id string) (map[string]any, error) {
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, "/query/generations/"+url.PathEscape(id), nil)
+	resp, err := c.base.DoRequest(ctx, http.MethodGet, fmt.Sprintf(generationByIDFmt, url.PathEscape(id)), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get generation %s: %w", id, err)
 	}

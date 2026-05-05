@@ -645,6 +645,54 @@ Unexported fields on domain types would be lost during marshal/unmarshal.
 - `internal/providers/appo11y/overrides/adapter.go`: ToResource preserves annotation
 - ADR: `docs/adrs/appo11y-provider/001-cli-ux-and-resource-adapter-design.md`
 
+### 21. API Path Constants (Adopt)
+
+Every HTTP API path used by a client must be declared as a named constant (or
+format-string constant for paths with dynamic segments) at the top of the file.
+Inline string concatenation of path segments is not recommended.
+
+**Rules:**
+
+1. Static paths → plain `const`:
+   ```go
+   const policiesPath = "/adaptive-traces/api/v1/policies"
+   ```
+2. Paths with a single dynamic segment → format constant + `fmt.Sprintf`:
+   ```go
+   const policyByIDPathFmt = policiesPath + "/%s"
+   // usage:
+   fmt.Sprintf(policyByIDPathFmt, url.PathEscape(id))
+   ```
+3. Paths with multiple dynamic segments or action suffixes → same pattern:
+   ```go
+   const recommendationApplyFmt = recommendationsPath + "/%s/apply"
+   ```
+4. Dynamic segments that represent user-supplied identifiers must be escaped
+   with `url.PathEscape` before interpolation.
+5. Query parameters are appended after the format call, not baked into the
+   constant.
+
+**Rationale:** Centralising path definitions makes API surface auditable at a
+glance, prevents typo drift across call sites, and ensures consistent use of
+`url.PathEscape` for dynamic segments.
+
+**Anti-patterns:**
+```go
+// Bad — inline concatenation
+c.doRequest(ctx, http.MethodGet, basePath+"/"+url.PathEscape(id), nil)
+
+// Bad — format string built ad-hoc
+c.doRequest(ctx, http.MethodPost, fmt.Sprintf("%s/%s/apply", recsPath, id), nil)
+```
+
+**Evidence:**
+- `internal/providers/traces/adaptive/client.go`: `policyByIDPathFmt`, `recommendationApplyFmt`, `recommendationDismissFmt`
+- `internal/providers/logs/adaptive/client.go`: `exemptionByIDFmt`, `dropRuleByIDFmt`
+- `internal/providers/metrics/adaptive/client.go`: `ruleByMetricFmt`, `exemptionByIDFmt`
+- `internal/providers/slo/definitions/client.go`: `sloByUUIDFmt`
+- `internal/providers/kg/client.go`: `ruleByNameFmt`, `suppressionByNameFmt`
+- `internal/providers/aio11y/*/client.go`: `conversationByIDFmt`, `generationByIDFmt`, `ruleByIDFmt`, `templateByIDFmt`, `evaluatorByIDFmt`
+
 ---
 
 ## Contradiction Resolutions

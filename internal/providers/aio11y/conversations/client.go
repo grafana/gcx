@@ -11,6 +11,12 @@ import (
 	"github.com/grafana/gcx/internal/providers/aio11y/aio11yhttp"
 )
 
+const (
+	conversationsPath      = "/query/conversations"
+	conversationByIDFmt    = conversationsPath + "/%s"
+	conversationSearchPath = conversationsPath + "/search"
+)
+
 // Client is an HTTP client for AI Observability conversation endpoints.
 type Client struct {
 	base *aio11yhttp.Client
@@ -23,12 +29,12 @@ func NewClient(base *aio11yhttp.Client) *Client {
 
 // List returns conversations, limited to the given count. Pass 0 for no limit.
 func (c *Client) List(ctx context.Context, limit int) ([]Conversation, error) {
-	return aio11yhttp.ListAll[Conversation](ctx, c.base, "/query/conversations", nil, limit)
+	return aio11yhttp.ListAll[Conversation](ctx, c.base, conversationsPath, nil, limit)
 }
 
 // Get returns a single conversation by ID with all its generations.
 func (c *Client) Get(ctx context.Context, id string) (*ConversationDetail, error) {
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, "/query/conversations/"+url.PathEscape(id), nil)
+	resp, err := c.base.DoRequest(ctx, http.MethodGet, fmt.Sprintf(conversationByIDFmt, url.PathEscape(id)), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get conversation %s: %w", id, err)
 	}
@@ -52,7 +58,7 @@ func (c *Client) Search(ctx context.Context, req SearchRequest) (*SearchResponse
 		return nil, fmt.Errorf("failed to marshal search request: %w", err)
 	}
 
-	resp, err := c.base.DoRequest(ctx, http.MethodPost, "/query/conversations/search", bytes.NewReader(body))
+	resp, err := c.base.DoRequest(ctx, http.MethodPost, conversationSearchPath, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to search conversations: %w", err)
 	}

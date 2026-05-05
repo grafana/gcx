@@ -11,6 +11,11 @@ import (
 	"github.com/grafana/gcx/internal/providers/aio11y/eval"
 )
 
+const (
+	judgeProvidersPath = "/eval/judge/providers"
+	judgeModelsPath    = "/eval/judge/models"
+)
+
 // Client is an HTTP client for AI Observability eval judge endpoints.
 type Client struct {
 	base *aio11yhttp.Client
@@ -23,7 +28,7 @@ func NewClient(base *aio11yhttp.Client) *Client {
 
 // ListProviders returns available judge providers.
 func (c *Client) ListProviders(ctx context.Context) ([]eval.JudgeProvider, error) {
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, "/eval/judge/providers", nil)
+	resp, err := c.base.DoRequest(ctx, http.MethodGet, judgeProvidersPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list judge providers: %w", err)
 	}
@@ -49,7 +54,7 @@ func (c *Client) ListModels(ctx context.Context, provider string) ([]eval.JudgeM
 		query.Set("provider", provider)
 	}
 
-	path := "/eval/judge/models"
+	path := judgeModelsPath
 	if encoded := query.Encode(); encoded != "" {
 		path += "?" + encoded
 	}

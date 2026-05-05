@@ -1,3 +1,24 @@
+## v0.2.12 (2026-05-04)
+
+- **Dashboards**: new CRUD, search, and version history provider
+- **Dashboards**: dev server syncs variable params to URL and restores on refresh
+- **Knowledge Graph**: add `suppressions list` and `suppressions delete` commands
+- **Knowledge Graph**: fix suppressions overwrite bug
+- **Knowledge Graph**: replace `kg inspect` with `entities inspect` (LLM summary)
+- **Knowledge Graph**: align all kg commands to `[noun] [verb]` format
+- **Knowledge Graph**: improve `entities list` usability
+- **Login**: support custom OAuth callback port via `--callback-port`
+- **Login**: bind OAuth callback port before opening browser to avoid race
+- **Login**: step-aware errors during connectivity validation
+- **Profiles**: add exemplars support (`exemplars profile` and `exemplars span`)
+- **Datasources**: add Grafana Explore share links for query results
+- **Notifications**: alert users when a new gcx version is available
+- **Skills**: notify users when installed skills have updates
+- **Assistant**: gracefully block commands on self-hosted Grafana instances
+- **Linter**: detect missing title/description on panels in collapsed rows
+- **Tooling**: replace devbox with mise for dev environment setup
+
+
 ## v0.2.11 (2026-04-29)
 
 - Add mTLS client certificate authentication for config and login (Teleport)

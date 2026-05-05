@@ -383,6 +383,51 @@ type LLMSummaryRequest struct {
 	IncludeRcaPatterns                            bool        `json:"includeRcaPatterns"`
 }
 
+// CypherInsight is a single insight on a Cypher search entity.
+type CypherInsight struct {
+	Name     string `json:"name"`
+	Severity string `json:"severity"`
+	Category string `json:"category"`
+}
+
+// CypherEntity is an entity returned by the Cypher search endpoint.
+type CypherEntity struct {
+	Type              string          `json:"type"`
+	Name              string          `json:"name"`
+	Scope             map[string]any  `json:"scope,omitempty"`
+	Properties        map[string]any  `json:"properties,omitempty"`
+	Insights          []CypherInsight `json:"insights,omitempty"`
+	ConnectedInsights []CypherInsight `json:"connectedInsights,omitempty"`
+}
+
+// CypherEdge is a relationship returned by the Cypher search endpoint.
+type CypherEdge struct {
+	Type             string         `json:"type"`
+	SourceName       string         `json:"sourceName"`
+	SourceType       string         `json:"sourceType"`
+	SourceScope      map[string]any `json:"sourceScope,omitempty"`
+	DestinationName  string         `json:"destinationName"`
+	DestinationType  string         `json:"destinationType"`
+	DestinationScope map[string]any `json:"destinationScope,omitempty"`
+}
+
+// CypherSearchRequest is the request body for POST /v1/search/cypher.
+type CypherSearchRequest struct {
+	CypherQuery   string         `json:"cypherQuery"`
+	TimeCriteria  *TimeCriteria  `json:"timeCriteria,omitempty"`
+	ScopeCriteria *ScopeCriteria `json:"scopeCriteria,omitempty"`
+	PageNum       int            `json:"pageNum,omitempty"`
+	WithInsights  bool           `json:"withInsights,omitempty"`
+}
+
+// CypherSearchResponse is the response from POST /v1/search/cypher.
+type CypherSearchResponse struct {
+	Entities []CypherEntity `json:"entities"`
+	Edges    []CypherEdge   `json:"edges"`
+	PageNum  int            `json:"pageNum"`
+	LastPage bool           `json:"lastPage"`
+}
+
 // KGMetadataOutput is the structured output from gcx kg metadata.
 type KGMetadataOutput struct {
 	Schema   *KGSchemaResult          `json:"schema,omitempty"`
