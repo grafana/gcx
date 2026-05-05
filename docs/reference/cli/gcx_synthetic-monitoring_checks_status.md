@@ -1,4 +1,4 @@
-## gcx synth checks status
+## gcx synthetic-monitoring checks status
 
 Show pass/fail status of Synthetic Monitoring checks.
 
@@ -11,29 +11,29 @@ number of probes reporting, and health status for each check.
 Requires a Prometheus datasource containing SM metrics.
 
 ```
-gcx synth checks status [ID] [flags]
+gcx synthetic-monitoring checks status [ID] [flags]
 ```
 
 ### Examples
 
 ```
   # Show status of all checks.
-  gcx synth checks status
+  gcx synthetic-monitoring checks status
 
   # Show status of a specific check by ID.
-  gcx synth checks status 42
+  gcx synthetic-monitoring checks status 42
 
   # Filter by job name glob.
-  gcx synth checks status --job 'shopk8s-*'
+  gcx synthetic-monitoring checks status --job 'shopk8s-*'
 
   # Filter by label and status.
-  gcx synth checks status --label env=prod --status FAILING
+  gcx synthetic-monitoring checks status --label env=prod --status FAILING
 
   # Specify the Prometheus datasource to query.
-  gcx synth checks status --datasource-uid my-prometheus
+  gcx synthetic-monitoring checks status --datasource-uid my-prometheus
 
   # Output as JSON for scripting.
-  gcx synth checks status -o json
+  gcx synthetic-monitoring checks status -o json
 ```
 
 ### Options
@@ -62,5 +62,5 @@ gcx synth checks status [ID] [flags]
 
 ### SEE ALSO
 
-* [gcx synth checks](gcx_synth_checks.md)	 - Manage Synthetic Monitoring checks.
+* [gcx synthetic-monitoring checks](gcx_synthetic-monitoring_checks.md)	 - Manage Synthetic Monitoring checks.
 

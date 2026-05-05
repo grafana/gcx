@@ -394,18 +394,18 @@ var commandAnnotations = map[string]annotation{
 	// -----------------------------------------------------------------------
 	// Synthetic Monitoring provider
 	// -----------------------------------------------------------------------
-	"gcx synth checks create":      {Cost: "small"},
-	"gcx synth checks delete":      {Cost: "small"},
-	"gcx synth checks get":         {Cost: "small"},
-	"gcx synth checks list":        {Cost: "small"},
-	"gcx synth checks status":      {Cost: "medium", Hint: "--job <name> -o json"},
-	"gcx synth checks timeline":    {Cost: "medium", Hint: "<id> --since 1h -o json"},
-	"gcx synth checks update":      {Cost: "small"},
-	"gcx synth probes create":      {Cost: "small"},
-	"gcx synth probes delete":      {Cost: "small"},
-	"gcx synth probes deploy":      {Cost: "small"},
-	"gcx synth probes list":        {Cost: "small"},
-	"gcx synth probes token-reset": {Cost: "small"},
+	"gcx synthetic-monitoring checks create":      {Cost: "small"},
+	"gcx synthetic-monitoring checks delete":      {Cost: "small"},
+	"gcx synthetic-monitoring checks get":         {Cost: "small"},
+	"gcx synthetic-monitoring checks list":        {Cost: "small"},
+	"gcx synthetic-monitoring checks status":      {Cost: "medium", Hint: "--job <name> -o json"},
+	"gcx synthetic-monitoring checks timeline":    {Cost: "medium", Hint: "<id> --since 1h -o json"},
+	"gcx synthetic-monitoring checks update":      {Cost: "small"},
+	"gcx synthetic-monitoring probes create":      {Cost: "small"},
+	"gcx synthetic-monitoring probes delete":      {Cost: "small"},
+	"gcx synthetic-monitoring probes deploy":      {Cost: "small"},
+	"gcx synthetic-monitoring probes list":        {Cost: "small"},
+	"gcx synthetic-monitoring probes token-reset": {Cost: "small"},
 
 	// -----------------------------------------------------------------------
 	// Traces provider

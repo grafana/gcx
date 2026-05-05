@@ -196,7 +196,7 @@ gcx slo                  [internal/providers/slo/provider.go]
     ├── delete <uuid...>
     └── status [uuid]
 
-gcx synth                [internal/providers/synth/provider.go]
+gcx synthetic-monitoring [internal/providers/synth/provider.go]
 ├── checks                      CRUD + status/timeline for Synthetic Monitoring checks
 │   ├── list
 │   ├── get    <id>

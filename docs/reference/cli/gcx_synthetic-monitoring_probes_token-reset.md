@@ -1,16 +1,15 @@
-## gcx synth checks delete
+## gcx synthetic-monitoring probes token-reset
 
-Delete Synthetic Monitoring checks.
+Reset the auth token of a Synthetic Monitoring probe.
 
 ```
-gcx synth checks delete NAME... [flags]
+gcx synthetic-monitoring probes token-reset ID [flags]
 ```
 
 ### Options
 
 ```
-  -f, --force   Skip confirmation prompt
-  -h, --help    help for delete
+  -h, --help   help for token-reset
 ```
 
 ### Options inherited from parent commands
@@ -27,5 +26,5 @@ gcx synth checks delete NAME... [flags]
 
 ### SEE ALSO
 
-* [gcx synth checks](gcx_synth_checks.md)	 - Manage Synthetic Monitoring checks.
+* [gcx synthetic-monitoring probes](gcx_synthetic-monitoring_probes.md)	 - Manage Synthetic Monitoring probes.
 

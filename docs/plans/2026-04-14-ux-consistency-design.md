@@ -219,7 +219,7 @@ $ gcx setup status
 
 PRODUCT              STATE            DETAILS                NEXT STEP
 Instrumentation      active           2 clusters, 14 apps   -
-Synthetic Monitoring not configured   -                      gcx synth setup --url <target>
+Synthetic Monitoring not configured   -                      gcx synthetic-monitoring setup --url <target>
 SLOs                 active           5 definitions          -
 OnCall               configured       1 integration          gcx oncall setup
 Alerting             active           12 rules               -
@@ -266,7 +266,7 @@ AI agents wielding gcx, not the CLI itself.
 Each provider owns its setup command:
 
 ```
-gcx synth setup --url https://example.com
+gcx synthetic-monitoring setup --url https://example.com
 gcx frontend setup --name my-app
 gcx oncall setup --integration-type alerting
 ```
@@ -292,7 +292,7 @@ type ProductStatus struct {
     Product   string       // "Synthetic Monitoring"
     State     ProductState // not_configured | configured | active | error
     Details   string       // "3 checks, 2 healthy"
-    SetupHint string       // "gcx synth setup --url <target>"
+    SetupHint string       // "gcx synthetic-monitoring setup --url <target>"
 }
 ```
 
@@ -305,7 +305,7 @@ Mapped to the command groups (D3), following the natural flow: collect
 
 | Provider | Setup command | Value |
 |----------|--------------|-------|
-| `synth` | `gcx synth setup --url <target>` | SM credential auto-config — biggest onboarding friction |
+| `synth` | `gcx synthetic-monitoring setup --url <target>` | SM credential auto-config — biggest onboarding friction |
 | `instrumentation` | `gcx instrumentation setup <cluster>` | K8s + app telemetry via Instrumentation Hub |
 | `frontend` | `gcx frontend setup --name <app>` | Create Faro app + output SDK snippet |
 
@@ -998,7 +998,7 @@ Depends on Area 2 (framework).
 
 | Provider | Setup command | What it does |
 |----------|-------------|-------------|
-| `synth` | `gcx synth setup --url <target>` | SM init + credential auto-config |
+| `synth` | `gcx synthetic-monitoring setup --url <target>` | SM init + credential auto-config |
 | `frontend` | `gcx frontend setup --name <app>` | Create Faro app + output SDK snippet |
 | `instrumentation` | `gcx instrumentation setup <cluster>` | Already exists, promoted from `setup instrumentation` |
 | `appo11y` | `gcx appo11y setup` | Enable App O11y + configure defaults |

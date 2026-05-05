@@ -1,19 +1,19 @@
-## gcx synth checks update
+## gcx synthetic-monitoring checks update
 
 Update a Synthetic Monitoring check from a file.
 
 ```
-gcx synth checks update <name> [flags]
+gcx synthetic-monitoring checks update <name> [flags]
 ```
 
 ### Examples
 
 ```
   # Update a check using its resource name.
-  gcx synth checks update web-check-1234 -f check.yaml
+  gcx synthetic-monitoring checks update web-check-1234 -f check.yaml
 
   # Update and show previous status.
-  gcx synth checks update web-check-1234 -f check.yaml --show-status
+  gcx synthetic-monitoring checks update web-check-1234 -f check.yaml --show-status
 ```
 
 ### Options
@@ -39,5 +39,5 @@ gcx synth checks update <name> [flags]
 
 ### SEE ALSO
 
-* [gcx synth checks](gcx_synth_checks.md)	 - Manage Synthetic Monitoring checks.
+* [gcx synthetic-monitoring checks](gcx_synthetic-monitoring_checks.md)	 - Manage Synthetic Monitoring checks.
 

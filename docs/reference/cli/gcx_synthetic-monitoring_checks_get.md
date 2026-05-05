@@ -1,22 +1,22 @@
-## gcx synth checks get
+## gcx synthetic-monitoring checks get
 
 Get a single Synthetic Monitoring check.
 
 ```
-gcx synth checks get NAME [flags]
+gcx synthetic-monitoring checks get NAME [flags]
 ```
 
 ### Examples
 
 ```
-  # Get check by resource name (from 'gcx synth checks list').
-  gcx synth checks get grafana-instance-health-5594
+  # Get check by resource name (from 'gcx synthetic-monitoring checks list').
+  gcx synthetic-monitoring checks get grafana-instance-health-5594
 
   # Get check by numeric ID.
-  gcx synth checks get 5594
+  gcx synthetic-monitoring checks get 5594
 
   # Get check with current execution status.
-  gcx synth checks get grafana-instance-health-5594 --show-status
+  gcx synthetic-monitoring checks get grafana-instance-health-5594 --show-status
 ```
 
 ### Options
@@ -42,5 +42,5 @@ gcx synth checks get NAME [flags]
 
 ### SEE ALSO
 
-* [gcx synth checks](gcx_synth_checks.md)	 - Manage Synthetic Monitoring checks.
+* [gcx synthetic-monitoring checks](gcx_synthetic-monitoring_checks.md)	 - Manage Synthetic Monitoring checks.
 

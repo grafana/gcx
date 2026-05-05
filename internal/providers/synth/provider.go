@@ -101,8 +101,9 @@ func (p *SynthProvider) Commands() []*cobra.Command {
 	loader := &configLoader{}
 
 	synthCmd := &cobra.Command{
-		Use:   "synth",
-		Short: p.ShortDesc(),
+		Use:     "synthetic-monitoring",
+		Aliases: []string{"sm", "synth"},
+		Short:   p.ShortDesc(),
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			if root := cmd.Root(); root.PersistentPreRun != nil {
 				root.PersistentPreRun(cmd, args)

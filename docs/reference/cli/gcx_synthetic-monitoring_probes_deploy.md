@@ -1,19 +1,19 @@
-## gcx synth probes deploy
+## gcx synthetic-monitoring probes deploy
 
 Generate Kubernetes manifests for deploying an SM agent.
 
 ```
-gcx synth probes deploy [flags]
+gcx synthetic-monitoring probes deploy [flags]
 ```
 
 ### Examples
 
 ```
   # Generate manifests for a probe deployment.
-  gcx synth probes deploy --probe-name my-probe --token <token> --api-server-url synthetic-monitoring-grpc.grafana.net:443
+  gcx synthetic-monitoring probes deploy --probe-name my-probe --token <token> --api-server-url synthetic-monitoring-grpc.grafana.net:443
 
   # Pipe directly into kubectl.
-  gcx synth probes deploy --probe-name my-probe --token <token> --api-server-url synthetic-monitoring-grpc.grafana.net:443 | kubectl apply -f -
+  gcx synthetic-monitoring probes deploy --probe-name my-probe --token <token> --api-server-url synthetic-monitoring-grpc.grafana.net:443 | kubectl apply -f -
 ```
 
 ### Options
@@ -41,5 +41,5 @@ gcx synth probes deploy [flags]
 
 ### SEE ALSO
 
-* [gcx synth probes](gcx_synth_probes.md)	 - Manage Synthetic Monitoring probes.
+* [gcx synthetic-monitoring probes](gcx_synthetic-monitoring_probes.md)	 - Manage Synthetic Monitoring probes.
 

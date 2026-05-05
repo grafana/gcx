@@ -14,7 +14,7 @@ Manage SM checks using gcx. Experienced operators — no hand-holding.
 2. Trust the user's expertise — no explanations of what SM or gcx is
 3. Use `-o json` for agent processing; default table format for user display
 4. Always dry-run before pushing: `--dry-run` first, actual push only on success
-5. Probe names are case-sensitive — always copy-paste from `gcx synth probes list`
+5. Probe names are case-sensitive — always copy-paste from `gcx synthetic-monitoring probes list`
 
 ## Workflow 1: Create New Check
 
@@ -35,7 +35,7 @@ If unsure, ask the user what they want to test (availability, DNS, port connecti
 ### Step 2: List and Select Probes
 
 ```bash
-gcx synth probes list
+gcx synthetic-monitoring probes list
 ```
 
 Recommend at least 3 geographically distributed probes. Copy names exactly as shown — case-sensitive. Suggest probes across different continents or regions to provide meaningful coverage (e.g., one each from North America, Europe, Asia-Pacific).
@@ -78,13 +78,13 @@ Configuration guidance:
 
 ```bash
 # Create from file
-gcx synth checks create -f <file.yaml>
+gcx synthetic-monitoring checks create -f <file.yaml>
 ```
 
 After creation, verify with:
 ```bash
-gcx synth checks list
-gcx synth checks status <ID>
+gcx synthetic-monitoring checks list
+gcx synthetic-monitoring checks status <ID>
 ```
 
 ## Workflow 2: Update Existing Check
@@ -94,7 +94,7 @@ gcx synth checks status <ID>
 Fetch the specific check:
 ```bash
 # Get single check as YAML (use ID from list output)
-gcx synth checks get <ID> -o yaml > check-<ID>.yaml
+gcx synthetic-monitoring checks get <ID> -o yaml > check-<ID>.yaml
 ```
 
 ### Step 2: Edit and Update
@@ -103,7 +103,7 @@ Edit the YAML file (the `metadata.name` will be the numeric ID). Modify only the
 
 ```bash
 # Update the check from file
-gcx synth checks update <ID> -f check-<ID>.yaml
+gcx synthetic-monitoring checks update <ID> -f check-<ID>.yaml
 ```
 
 ## Workflow 3: GitOps Sync (Pull/Push)
@@ -112,13 +112,13 @@ List all checks, export to files, edit in source control, then update to apply:
 
 ```bash
 # List all checks and export each to YAML
-gcx synth checks list -o yaml
+gcx synthetic-monitoring checks list -o yaml
 
 # Get a specific check as YAML
-gcx synth checks get <ID> -o yaml > ./sm-checks/check-<ID>.yaml
+gcx synthetic-monitoring checks get <ID> -o yaml > ./sm-checks/check-<ID>.yaml
 
 # Edit files as needed, then update each changed file
-gcx synth checks update <ID> -f ./sm-checks/check-<ID>.yaml
+gcx synthetic-monitoring checks update <ID> -f ./sm-checks/check-<ID>.yaml
 ```
 
 For bulk updates, update files individually to control which checks are changed.
@@ -127,19 +127,19 @@ For bulk updates, update files individually to control which checks are changed.
 
 ```bash
 # List checks to confirm IDs
-gcx synth checks list
+gcx synthetic-monitoring checks list
 
 # Delete one or more checks (by numeric ID)
-gcx synth checks delete <ID>
+gcx synthetic-monitoring checks delete <ID>
 
 # Skip confirmation prompt
-gcx synth checks delete <ID> -f
+gcx synthetic-monitoring checks delete <ID> -f
 
 # Delete multiple checks
-gcx synth checks delete <ID1> <ID2> <ID3>
+gcx synthetic-monitoring checks delete <ID1> <ID2> <ID3>
 ```
 
-Confirm the check identity (job name and target) before deleting — use `gcx synth checks get <ID>` to review.
+Confirm the check identity (job name and target) before deleting — use `gcx synthetic-monitoring checks get <ID>` to review.
 
 ## Output Format
 
@@ -152,7 +152,7 @@ Probes: <count> selected (<list>)
 Push: SUCCESS — ID: <assigned-id>
 
 Verify status:
-  gcx synth checks status <ID>
+  gcx synthetic-monitoring checks status <ID>
 ```
 
 After pull:
@@ -168,10 +168,10 @@ Deleted check <ID> (<job-name> -> <target>)
 
 ## Error Handling
 
-- **"probe not found"**: Probe names are case-sensitive. Run `gcx synth probes list` and copy names exactly.
+- **"probe not found"**: Probe names are case-sensitive. Run `gcx synthetic-monitoring probes list` and copy names exactly.
 - **"timeout must be less than frequency"**: Reduce `timeout` value or increase `frequency`.
 - **"invalid frequency"**: `frequency` must be between 10,000ms and 120,000ms (10s–2min).
 - **Dry-run fails with validation error**: Fix the YAML field indicated in the error before pushing.
-- **Push fails with "check already exists"**: The check job+target combination may already exist. Use `gcx synth checks list` to find it and update instead of create.
-- **No probes available**: Run `gcx synth probes list`; if empty, verify gcx context and SM API access.
-- **Complex check types (MultiHTTP, Browser, Scripted)**: Settings map is not fully documented. Pull an existing check of that type as a template: `gcx synth checks get <ID> -o yaml`.
+- **Push fails with "check already exists"**: The check job+target combination may already exist. Use `gcx synthetic-monitoring checks list` to find it and update instead of create.
+- **No probes available**: Run `gcx synthetic-monitoring probes list`; if empty, verify gcx context and SM API access.
+- **Complex check types (MultiHTTP, Browser, Scripted)**: Settings map is not fully documented. Pull an existing check of that type as a template: `gcx synthetic-monitoring checks get <ID> -o yaml`.

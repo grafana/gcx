@@ -25,12 +25,12 @@ gcx configured with an active context and appropriate permissions.
 ### Step 1: Get Check Status (with early exit)
 
 ```bash
-gcx synth checks status <ID>
+gcx synthetic-monitoring checks status <ID>
 ```
 
 If the user provided a name instead of ID, list first:
 ```bash
-gcx synth checks list -o json | jq -r '.[] | select(.job | test("<name>"; "i")) | [.id, .job, .target, .type] | @tsv'
+gcx synthetic-monitoring checks list -o json | jq -r '.[] | select(.job | test("<name>"; "i")) | [.id, .job, .target, .type] | @tsv'
 ```
 
 **Early exit — OK:** Check success rate >= 50% across all probes.
@@ -38,7 +38,7 @@ Report: "Check `<job>` is healthy. Success rate: <rate>%. <probe_count> probes u
 Stop unless the user asks for more.
 
 **Early exit — NODATA:** No Prometheus metrics available.
-1. Get check config to verify `enabled: true` (`gcx synth checks get <ID> -o json | jq .spec.enabled`)
+1. Get check config to verify `enabled: true` (`gcx synthetic-monitoring checks get <ID> -o json | jq .spec.enabled`)
 2. If disabled: report "Check is disabled — no metrics will appear until it is re-enabled."
 3. If enabled: report "No metrics found. Check datasource config or whether the SM stack is healthy."
 Stop after reporting.
@@ -46,7 +46,7 @@ Stop after reporting.
 ### Step 2: Get Check Configuration
 
 ```bash
-gcx synth checks get <ID> -o json
+gcx synthetic-monitoring checks get <ID> -o json
 ```
 
 Extract: job name, target, check type (http/ping/dns/tcp/traceroute), probe list, frequency, timeout, alertSensitivity, enabled flag.
@@ -56,7 +56,7 @@ For HTTP checks also note: any assertion settings, TLS config, expected status c
 ### Step 3: Timeline Triage
 
 ```bash
-gcx synth checks timeline <ID> --from now-1h --to now
+gcx synthetic-monitoring checks timeline <ID> --from now-1h --to now
 ```
 
 Show the graph output to the user. Then analyze the pattern:
@@ -71,14 +71,14 @@ Show the graph output to the user. Then analyze the pattern:
 
 Use a longer window if the failure started more than 1h ago:
 ```bash
-gcx synth checks timeline <ID> --from now-6h --to now
+gcx synthetic-monitoring checks timeline <ID> --from now-6h --to now
 ```
 
 ### Step 4: Classify Failure Scope and Map Probes
 
 Get the probe list for geographic mapping:
 ```bash
-gcx synth probes list -o json
+gcx synthetic-monitoring probes list -o json
 ```
 
 Cross-reference probe IDs from the check config against probe regions. Map failing probes to their regions.
@@ -208,8 +208,8 @@ Use minimal formatting. Avoid excessive bold text. Trust the user to prioritize.
 
 ## Error Handling
 
-- `gcx synth checks status` returns no rows: check ID may be wrong — list all checks and confirm
-- `gcx synth probes list` fails: skip geographic mapping; classify probes by name where possible
+- `gcx synthetic-monitoring checks status` returns no rows: check ID may be wrong — list all checks and confirm
+- `gcx synthetic-monitoring probes list` fails: skip geographic mapping; classify probes by name where possible
 - `gcx datasources {kind} query` fails with datasource error: note it, skip PromQL steps, classify using timeline data only
 - Multiple checks match the search name: list all with IDs and targets, ask which to investigate
 - Timeline returns no data for the window: widen to `--from now-6h --to now` before concluding NODATA

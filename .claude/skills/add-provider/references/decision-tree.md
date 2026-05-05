@@ -55,7 +55,7 @@ gcx resources pull slo -p ./   # replaces: gcx slo definitions pull
 gcx resources delete slo/<id>  # replaces: gcx slo definitions delete <id>
 ```
 
-The provider-specific top-level commands (`gcx slo`, `gcx synth`,
+The provider-specific top-level commands (`gcx slo`, `gcx synthetic-monitoring`,
 `gcx alert`) remain available for backward compatibility but print a
 deprecation warning to stderr. New providers should implement `ResourceAdapter`
 alongside the existing command tree from the start.

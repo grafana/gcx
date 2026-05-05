@@ -1,15 +1,18 @@
-## gcx synth probes token-reset
+## gcx synthetic-monitoring probes list
 
-Reset the auth token of a Synthetic Monitoring probe.
+List Synthetic Monitoring probes.
 
 ```
-gcx synth probes token-reset ID [flags]
+gcx synthetic-monitoring probes list [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help   help for token-reset
+  -h, --help            help for list
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int       Maximum number of items to return (0 for all) (default 50)
+  -o, --output string   Output format. One of: json, table, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -26,5 +29,5 @@ gcx synth probes token-reset ID [flags]
 
 ### SEE ALSO
 
-* [gcx synth probes](gcx_synth_probes.md)	 - Manage Synthetic Monitoring probes.
+* [gcx synthetic-monitoring probes](gcx_synthetic-monitoring_probes.md)	 - Manage Synthetic Monitoring probes.
 

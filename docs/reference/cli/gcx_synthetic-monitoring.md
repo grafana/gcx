@@ -1,24 +1,19 @@
-## gcx synth probes delete
+## gcx synthetic-monitoring
 
-Delete Synthetic Monitoring probes.
-
-```
-gcx synth probes delete ID... [flags]
-```
+Manage Grafana Synthetic Monitoring checks and probes
 
 ### Options
 
 ```
-  -f, --force   Skip confirmation prompt
-  -h, --help    help for delete
+      --config string    Path to the configuration file to use
+      --context string   Name of the context to use
+  -h, --help             help for synthetic-monitoring
 ```
 
 ### Options inherited from parent commands
 
 ```
       --agent              Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
-      --config string      Path to the configuration file to use
-      --context string     Name of the context to use
       --log-http-payload   Log full HTTP request/response bodies (includes headers — may expose tokens)
       --no-color           Disable color output
       --no-truncate        Disable table column truncation (auto-enabled when stdout is piped)
@@ -27,5 +22,7 @@ gcx synth probes delete ID... [flags]
 
 ### SEE ALSO
 
-* [gcx synth probes](gcx_synth_probes.md)	 - Manage Synthetic Monitoring probes.
+* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
+* [gcx synthetic-monitoring checks](gcx_synthetic-monitoring_checks.md)	 - Manage Synthetic Monitoring checks.
+* [gcx synthetic-monitoring probes](gcx_synthetic-monitoring_probes.md)	 - Manage Synthetic Monitoring probes.
 

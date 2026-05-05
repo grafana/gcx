@@ -1,22 +1,22 @@
-## gcx synth checks create
+## gcx synthetic-monitoring checks create
 
 Create a Synthetic Monitoring check from a file.
 
 ```
-gcx synth checks create [flags]
+gcx synthetic-monitoring checks create [flags]
 ```
 
 ### Examples
 
 ```
   # Create a check from a YAML file.
-  gcx synth checks create -f check.yaml
+  gcx synthetic-monitoring checks create -f check.yaml
 
   # Create and show resulting status.
-  gcx synth checks create -f check.yaml --show-status
+  gcx synthetic-monitoring checks create -f check.yaml --show-status
 
   # Validate HTTP target before creating.
-  gcx synth checks create -f check.yaml --validate-targets
+  gcx synthetic-monitoring checks create -f check.yaml --validate-targets
 ```
 
 ### Options
@@ -42,5 +42,5 @@ gcx synth checks create [flags]
 
 ### SEE ALSO
 
-* [gcx synth checks](gcx_synth_checks.md)	 - Manage Synthetic Monitoring checks.
+* [gcx synthetic-monitoring checks](gcx_synthetic-monitoring_checks.md)	 - Manage Synthetic Monitoring checks.
 

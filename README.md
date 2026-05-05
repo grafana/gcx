@@ -232,7 +232,7 @@ gcx resources get folders                       # list all folders
 gcx alert rules list                            # list alert rules
 
 # Grafana Cloud products
-gcx synth checks list                           # list synthetic monitoring checks
+gcx synthetic-monitoring checks list            # list synthetic monitoring checks
 gcx irm oncall schedules list                   # list on-call schedules
 gcx k6 load-tests list                          # list k6 load tests
 
@@ -333,7 +333,7 @@ gcx works across Grafana's product offerings. Feature availability depends on yo
 | Raw API passthrough | `api` | ✓ | ✓ | ✓ | ✓ |
 | Observability as Code | `dev` | ✓ | ✓ | ✓ | ✓ |
 | Signal queries (metrics, logs, traces, profiles) | `metrics`, `logs`, `traces`, `profiles` | ✓ † | ✓ † | ✓ | ✓ |
-| SLO, Synthetic Monitoring, IRM, k6, Fleet, etc. | `slo`, `synth`, `irm`, `k6`, `fleet` | ✗ | ✗ | ✓ | ◐ |
+| SLO, Synthetic Monitoring, IRM, k6, Fleet, etc. | `slo`, `synthetic-monitoring`, `irm`, `k6`, `fleet` | ✗ | ✗ | ✓ | ◐ |
 | Adaptive Metrics / Logs / Traces | `metrics adaptive`, `logs adaptive`, `traces adaptive` | ✗ | ✗ | ✓ | ◐ |
 | Grafana Assistant | `assistant` | ✗ | ✗ | ✓ | ✗ |
 
@@ -349,7 +349,7 @@ gcx provides dedicated commands for each Grafana Cloud product:
 | Product | Command | Examples |
 |---------|---------|----------|
 | **SLOs** | `gcx slo` | `slo definitions list`, `slo reports list` |
-| **Synthetic Monitoring** | `gcx synth` | `synth checks list`, `synth probes list` |
+| **Synthetic Monitoring** | `gcx synthetic-monitoring` | `synthetic-monitoring checks list`, `synthetic-monitoring probes list` |
 | **IRM** | `gcx irm` | `irm oncall schedules list`, `irm oncall integrations list`, `irm incidents list`, `irm incidents create -f incident.yaml` |
 | **Alerting** | `gcx alert` | `alert rules list`, `alert groups list` |
 | **k6 Cloud** | `gcx k6` | `k6 load-tests list`, `k6 runs list` |

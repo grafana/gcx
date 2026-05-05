@@ -1,22 +1,22 @@
-## gcx synth checks list
+## gcx synthetic-monitoring checks list
 
 List Synthetic Monitoring checks.
 
 ```
-gcx synth checks list [flags]
+gcx synthetic-monitoring checks list [flags]
 ```
 
 ### Examples
 
 ```
   # List all checks.
-  gcx synth checks list
+  gcx synthetic-monitoring checks list
 
   # Filter by job glob.
-  gcx synth checks list --job 'shopk8s-*'
+  gcx synthetic-monitoring checks list --job 'shopk8s-*'
 
   # Filter by label.
-  gcx synth checks list --label env=prod
+  gcx synthetic-monitoring checks list --label env=prod
 ```
 
 ### Options
@@ -44,5 +44,5 @@ gcx synth checks list [flags]
 
 ### SEE ALSO
 
-* [gcx synth checks](gcx_synth_checks.md)	 - Manage Synthetic Monitoring checks.
+* [gcx synthetic-monitoring checks](gcx_synthetic-monitoring_checks.md)	 - Manage Synthetic Monitoring checks.
 

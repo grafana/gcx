@@ -1,4 +1,4 @@
-## gcx synth checks timeline
+## gcx synthetic-monitoring checks timeline
 
 Render probe_success over time as a terminal line chart.
 
@@ -11,26 +11,26 @@ Each probe reporting for the check is rendered as a separate series.
 Requires a Prometheus datasource containing SM metrics.
 
 ```
-gcx synth checks timeline ID [flags]
+gcx synthetic-monitoring checks timeline ID [flags]
 ```
 
 ### Examples
 
 ```
   # Render timeline for a check over the past 6 hours (default).
-  gcx synth checks timeline 42
+  gcx synthetic-monitoring checks timeline 42
 
   # Custom duration.
-  gcx synth checks timeline 42 --since 24h
+  gcx synthetic-monitoring checks timeline 42 --since 24h
 
   # Explicit time range.
-  gcx synth checks timeline 42 --from now-24h --to now
+  gcx synthetic-monitoring checks timeline 42 --from now-24h --to now
 
   # Output timeline data as a table.
-  gcx synth checks timeline 42 -o table
+  gcx synthetic-monitoring checks timeline 42 -o table
 
   # Specify the Prometheus datasource.
-  gcx synth checks timeline 42 --datasource-uid my-prometheus
+  gcx synthetic-monitoring checks timeline 42 --datasource-uid my-prometheus
 ```
 
 ### Options
@@ -59,5 +59,5 @@ gcx synth checks timeline ID [flags]
 
 ### SEE ALSO
 
-* [gcx synth checks](gcx_synth_checks.md)	 - Manage Synthetic Monitoring checks.
+* [gcx synthetic-monitoring checks](gcx_synthetic-monitoring_checks.md)	 - Manage Synthetic Monitoring checks.
 
