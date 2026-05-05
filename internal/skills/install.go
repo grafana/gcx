@@ -248,6 +248,11 @@ func syncFile(source fs.FS, sourcePath string, targetPath string, force bool, dr
 		if dryRun {
 			return true, true, nil
 		}
+		// handle cases where existing skills files are read-only - WriteFile
+		// doesn't override permissions on existing files.
+		if err := os.Chmod(targetPath, installedFileMode); err != nil {
+			return false, false, err
+		}
 		return true, true, os.WriteFile(targetPath, sourceData, installedFileMode)
 	case errors.Is(err, os.ErrNotExist):
 		if dryRun {
