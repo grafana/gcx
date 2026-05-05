@@ -1,30 +1,16 @@
-## gcx synth probes create
+## gcx synthetic-monitoring checks delete
 
-Create a Synthetic Monitoring probe.
-
-```
-gcx synth probes create [flags]
-```
-
-### Examples
+Delete Synthetic Monitoring checks.
 
 ```
-  # Create a probe with a name and region.
-  gcx synth probes create --name my-probe --region eu
-
-  # Create a probe with labels and coordinates.
-  gcx synth probes create --name my-probe --region us --labels env=prod,team=sre --latitude 37.7749 --longitude -122.4194
+gcx synthetic-monitoring checks delete NAME... [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help              help for create
-      --labels strings    Labels in key=value format
-      --latitude float    Probe latitude
-      --longitude float   Probe longitude
-      --name string       Probe name (required)
-      --region string     Probe region
+  -f, --force   Skip confirmation prompt
+  -h, --help    help for delete
 ```
 
 ### Options inherited from parent commands
@@ -41,5 +27,5 @@ gcx synth probes create [flags]
 
 ### SEE ALSO
 
-* [gcx synth probes](gcx_synth_probes.md)	 - Manage Synthetic Monitoring probes.
+* [gcx synthetic-monitoring checks](gcx_synthetic-monitoring_checks.md)	 - Manage Synthetic Monitoring checks.
 

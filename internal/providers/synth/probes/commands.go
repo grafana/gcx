@@ -137,10 +137,10 @@ func newCreateCommand(loader smcfg.Loader) *cobra.Command {
 		Short: "Create a Synthetic Monitoring probe.",
 		Args:  cobra.NoArgs,
 		Example: `  # Create a probe with a name and region.
-  gcx synth probes create --name my-probe --region eu
+  gcx synthetic-monitoring probes create --name my-probe --region eu
 
   # Create a probe with labels and coordinates.
-  gcx synth probes create --name my-probe --region us --labels env=prod,team=sre --latitude 37.7749 --longitude -122.4194`,
+  gcx synthetic-monitoring probes create --name my-probe --region us --labels env=prod,team=sre --latitude 37.7749 --longitude -122.4194`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -342,10 +342,10 @@ func newDeployCommand() *cobra.Command {
 		Short: "Generate Kubernetes manifests for deploying an SM agent.",
 		Args:  cobra.NoArgs,
 		Example: `  # Generate manifests for a probe deployment.
-  gcx synth probes deploy --probe-name my-probe --token <token> --api-server-url synthetic-monitoring-grpc.grafana.net:443
+  gcx synthetic-monitoring probes deploy --probe-name my-probe --token <token> --api-server-url synthetic-monitoring-grpc.grafana.net:443
 
   # Pipe directly into kubectl.
-  gcx synth probes deploy --probe-name my-probe --token <token> --api-server-url synthetic-monitoring-grpc.grafana.net:443 | kubectl apply -f -`,
+  gcx synthetic-monitoring probes deploy --probe-name my-probe --token <token> --api-server-url synthetic-monitoring-grpc.grafana.net:443 | kubectl apply -f -`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err

@@ -159,7 +159,7 @@ Store all scripts and schedule YAMLs for Phase 6.
 
 **Step 3 — Create synthetic check definitions (one per endpoint, parallel):**
 
-For each critical endpoint, discover the synthetic monitoring checks command group (`gcx synth checks --help`) and check for an example subcommand. Customize it: target=real URL, frequency=30s for critical / 60s for standard, assertions: status=200 and latency < 500ms. Do NOT set basicMetricsOnly: true. Write to `check-<endpoint>.yaml`.
+For each critical endpoint, discover the synthetic monitoring checks command group (`gcx synthetic-monitoring checks --help`) and check for an example subcommand. Customize it: target=real URL, frequency=30s for critical / 60s for standard, assertions: status=200 and latency < 500ms. Do NOT set basicMetricsOnly: true. Write to `check-<endpoint>.yaml`.
 
 Store all `check-*.yaml` files for Phase 5.
 
@@ -237,9 +237,9 @@ Then wait for infrastructure signals to appear by polling `gcx setup instrumenta
   If the frontend uses sourcemaps, upload them: `gcx frontend apps apply-sourcemap <app-name> -f <sourcemap>`.
 
 - **Agent D** — Synthetic checks (early deployment for traffic seeding):
-  Deploy the `check-*.yaml` files from Phase 2 now, before instrumentation is fully verified. For each endpoint, check if the check already exists (`gcx synth checks list`); if not, create it: `gcx synth checks create -f check-<endpoint>.yaml`. List checks to confirm each is enabled with probes assigned.
+  Deploy the `check-*.yaml` files from Phase 2 now, before instrumentation is fully verified. For each endpoint, check if the check already exists (`gcx synthetic-monitoring checks list`); if not, create it: `gcx synthetic-monitoring checks create -f check-<endpoint>.yaml`. List checks to confirm each is enabled with probes assigned.
   > **Purpose:** SM checks start probing endpoints immediately, generating real HTTP traffic that flows through Alloy. This seeds the telemetry pipeline so Step 3's signal verification has live data.
-  > If endpoints are private, first list available probes (`gcx synth probes list`), identify private probes, and ensure they are online before creating checks.
+  > If endpoints are private, first list available probes (`gcx synthetic-monitoring probes list`), identify private probes, and ensure they are online before creating checks.
 
 Wait for all four agents. Report combined results.
 
@@ -324,11 +324,11 @@ Mark task in_progress.
 
 **Verify and complete check coverage — parallel, one agent per endpoint:**
 
-List all existing checks: `gcx synth checks list`.
+List all existing checks: `gcx synthetic-monitoring checks list`.
 
 For each endpoint, launch an agent that:
-- Gets the check by name/ID (`gcx synth checks get <name>`) to verify: target field matches the intended endpoint exactly (scheme, host, path), probes list is non-empty, and the check is enabled.
-- Checks status: `gcx synth checks status <id>` to confirm the check is producing recent results.
+- Gets the check by name/ID (`gcx synthetic-monitoring checks get <name>`) to verify: target field matches the intended endpoint exactly (scheme, host, path), probes list is non-empty, and the check is enabled.
+- Checks status: `gcx synthetic-monitoring checks status <id>` to confirm the check is producing recent results.
 - If the check is missing entirely (e.g. Phase 3 Agent C failed), create it now from `check-<endpoint>.yaml`.
 
 Ensure full check type coverage across all endpoints — not just HTTP. Add any missing check types in parallel:
@@ -522,7 +522,7 @@ Run `gcx setup instrumentation status` and `gcx setup status` for overall health
 
 - **Agent B** — k6 schedule verification: list all k6 schedules (`gcx k6 schedules list`) and cross-reference with k6 load tests (`gcx k6 load-tests list`). Flag any test without a schedule — schedules are required.
 
-- **Agent C** — synthetic check health: list all synthetic checks (`gcx synth checks list`) and check status for each (`gcx synth checks status <id>`). Confirm all are enabled and showing recent results.
+- **Agent C** — synthetic check health: list all synthetic checks (`gcx synthetic-monitoring checks list`) and check status for each (`gcx synthetic-monitoring checks status <id>`). Confirm all are enabled and showing recent results.
 
 Wait for all agents. Then synthesize a **prioritized recommendations list**:
 - k6 tests missing schedules -> add schedule immediately

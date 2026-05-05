@@ -103,7 +103,7 @@ avg by (probe) (probe_http_status_code{job="<job>",instance="<target>"})
 
 ## Useful Filters
 
-Filter by specific probe (use probe name from `gcx synth probes list`):
+Filter by specific probe (use probe name from `gcx synthetic-monitoring probes list`):
 ```promql
 probe_success{job="<job>",instance="<target>",probe="<probe-name>"}
 ```

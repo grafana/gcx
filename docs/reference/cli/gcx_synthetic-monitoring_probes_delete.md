@@ -1,18 +1,16 @@
-## gcx synth probes list
+## gcx synthetic-monitoring probes delete
 
-List Synthetic Monitoring probes.
+Delete Synthetic Monitoring probes.
 
 ```
-gcx synth probes list [flags]
+gcx synthetic-monitoring probes delete ID... [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for list
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int       Maximum number of items to return (0 for all) (default 50)
-  -o, --output string   Output format. One of: json, table, yaml (default "table")
+  -f, --force   Skip confirmation prompt
+  -h, --help    help for delete
 ```
 
 ### Options inherited from parent commands
@@ -29,5 +27,5 @@ gcx synth probes list [flags]
 
 ### SEE ALSO
 
-* [gcx synth probes](gcx_synth_probes.md)	 - Manage Synthetic Monitoring probes.
+* [gcx synthetic-monitoring probes](gcx_synthetic-monitoring_probes.md)	 - Manage Synthetic Monitoring probes.
 

@@ -70,13 +70,13 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 		Use:   "list",
 		Short: "List Synthetic Monitoring checks.",
 		Example: `  # List all checks.
-  gcx synth checks list
+  gcx synthetic-monitoring checks list
 
   # Filter by job glob.
-  gcx synth checks list --job 'shopk8s-*'
+  gcx synthetic-monitoring checks list --job 'shopk8s-*'
 
   # Filter by label.
-  gcx synth checks list --label env=prod`,
+  gcx synthetic-monitoring checks list --label env=prod`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -238,14 +238,14 @@ func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get NAME",
 		Short: "Get a single Synthetic Monitoring check.",
-		Example: `  # Get check by resource name (from 'gcx synth checks list').
-  gcx synth checks get grafana-instance-health-5594
+		Example: `  # Get check by resource name (from 'gcx synthetic-monitoring checks list').
+  gcx synthetic-monitoring checks get grafana-instance-health-5594
 
   # Get check by numeric ID.
-  gcx synth checks get 5594
+  gcx synthetic-monitoring checks get 5594
 
   # Get check with current execution status.
-  gcx synth checks get grafana-instance-health-5594 --show-status`,
+  gcx synthetic-monitoring checks get grafana-instance-health-5594 --show-status`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -349,13 +349,13 @@ func newCreateCommand(loader smcfg.StatusLoader) *cobra.Command {
 		Use:   "create",
 		Short: "Create a Synthetic Monitoring check from a file.",
 		Example: `  # Create a check from a YAML file.
-  gcx synth checks create -f check.yaml
+  gcx synthetic-monitoring checks create -f check.yaml
 
   # Create and show resulting status.
-  gcx synth checks create -f check.yaml --show-status
+  gcx synthetic-monitoring checks create -f check.yaml --show-status
 
   # Validate HTTP target before creating.
-  gcx synth checks create -f check.yaml --validate-targets`,
+  gcx synthetic-monitoring checks create -f check.yaml --validate-targets`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -461,10 +461,10 @@ func newUpdateCommand(loader smcfg.StatusLoader) *cobra.Command {
 		Use:   "update <name>",
 		Short: "Update a Synthetic Monitoring check from a file.",
 		Example: `  # Update a check using its resource name.
-  gcx synth checks update web-check-1234 -f check.yaml
+  gcx synthetic-monitoring checks update web-check-1234 -f check.yaml
 
   # Update and show previous status.
-  gcx synth checks update web-check-1234 -f check.yaml --show-status`,
+  gcx synthetic-monitoring checks update web-check-1234 -f check.yaml --show-status`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -477,7 +477,7 @@ func newUpdateCommand(loader smcfg.StatusLoader) *cobra.Command {
 			// Extract numeric ID from the resource name (e.g. "web-check-1234" → 1234).
 			checkID, ok := extractIDFromSlug(name)
 			if !ok || checkID == 0 {
-				return fmt.Errorf("could not extract numeric check ID from name %q — use the resource name from 'gcx synth checks list'", name)
+				return fmt.Errorf("could not extract numeric check ID from name %q — use the resource name from 'gcx synthetic-monitoring checks list'", name)
 			}
 
 			// Fetch probe info for validation and offline probe warning.

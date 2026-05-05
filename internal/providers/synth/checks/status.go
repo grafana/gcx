@@ -104,22 +104,22 @@ Displays current success rate, latency (from probe_duration_seconds),
 number of probes reporting, and health status for each check.
 Requires a Prometheus datasource containing SM metrics.`,
 		Example: `  # Show status of all checks.
-  gcx synth checks status
+  gcx synthetic-monitoring checks status
 
   # Show status of a specific check by ID.
-  gcx synth checks status 42
+  gcx synthetic-monitoring checks status 42
 
   # Filter by job name glob.
-  gcx synth checks status --job 'shopk8s-*'
+  gcx synthetic-monitoring checks status --job 'shopk8s-*'
 
   # Filter by label and status.
-  gcx synth checks status --label env=prod --status FAILING
+  gcx synthetic-monitoring checks status --label env=prod --status FAILING
 
   # Specify the Prometheus datasource to query.
-  gcx synth checks status --datasource-uid my-prometheus
+  gcx synthetic-monitoring checks status --datasource-uid my-prometheus
 
   # Output as JSON for scripting.
-  gcx synth checks status -o json`,
+  gcx synthetic-monitoring checks status -o json`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -318,19 +318,19 @@ query against the Prometheus datasource.
 Each probe reporting for the check is rendered as a separate series.
 Requires a Prometheus datasource containing SM metrics.`,
 		Example: `  # Render timeline for a check over the past 6 hours (default).
-  gcx synth checks timeline 42
+  gcx synthetic-monitoring checks timeline 42
 
   # Custom duration.
-  gcx synth checks timeline 42 --since 24h
+  gcx synthetic-monitoring checks timeline 42 --since 24h
 
   # Explicit time range.
-  gcx synth checks timeline 42 --from now-24h --to now
+  gcx synthetic-monitoring checks timeline 42 --from now-24h --to now
 
   # Output timeline data as a table.
-  gcx synth checks timeline 42 -o table
+  gcx synthetic-monitoring checks timeline 42 -o table
 
   # Specify the Prometheus datasource.
-  gcx synth checks timeline 42 --datasource-uid my-prometheus`,
+  gcx synthetic-monitoring checks timeline 42 --datasource-uid my-prometheus`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
