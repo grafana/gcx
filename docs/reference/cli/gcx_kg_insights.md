@@ -23,7 +23,6 @@ Query Knowledge Graph insights.
 ### SEE ALSO
 
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
-* [gcx kg insights active](gcx_kg_insights_active.md)	 - Show entities with active insights.
 * [gcx kg insights entity-metric](gcx_kg_insights_entity-metric.md)	 - Get metric data for a specific insight on an entity.
 * [gcx kg insights example](gcx_kg_insights_example.md)	 - Print an example insights request YAML.
 * [gcx kg insights graph](gcx_kg_insights_graph.md)	 - Query insights with graph topology.

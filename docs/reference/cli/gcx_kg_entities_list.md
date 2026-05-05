@@ -11,17 +11,17 @@ gcx kg entities list [flags]
 ```
   gcx kg entities list --type Service
   gcx kg entities list --type Service --namespace mimir-prod-01 --property name=model-builder
-  gcx kg entities list --type Service --property name=~builder --insights-only
+  gcx kg entities list --type Service --with-insights
+  gcx kg entities list --type Service --with-insights critical
 ```
 
 ### Options
 
 ```
-      --details                Include entity properties and insights in output
       --env string             Environment scope (run 'gcx kg meta scopes' to see valid values)
       --from string            Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
+      --full                   Include entity properties and insights in output
   -h, --help                   help for list
-      --insights-only          Only return entities with active insights
       --json string            Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int              Maximum number of items to return (0 for all) (default 50)
       --namespace string       Namespace scope (run 'gcx kg meta scopes' to see valid values)
@@ -32,6 +32,7 @@ gcx kg entities list [flags]
       --site string            Site scope (run 'gcx kg meta scopes' to see valid values)
       --to string              End time (RFC3339, Unix timestamp, or relative like 'now')
       --type string            Entity type to list (run 'gcx kg meta schema' to see available types)
+      --with-insights string   Filter to entities with active insights; narrow by severity: any, critical, warning, info
 ```
 
 ### Options inherited from parent commands

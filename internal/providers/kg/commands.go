@@ -803,12 +803,12 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 
 	// list subcommand
 	var (
-		listType        string
-		listAssertOnly  bool
-		listScope       scopeFlags
-		listPage        int
-		listPropertyRaw []string
-		listDetails     bool
+		listType         string
+		listWithInsights string
+		listDetails      bool
+		listScope        scopeFlags
+		listPage         int
+		listPropertyRaw  []string
 	)
 	listOpts := &entitiesShowOpts{}
 	listCmd := &cobra.Command{
@@ -816,7 +816,8 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 		Short: "List Knowledge Graph entities for a given type.",
 		Example: `  gcx kg entities list --type Service
   gcx kg entities list --type Service --namespace mimir-prod-01 --property name=model-builder
-  gcx kg entities list --type Service --property name=~builder --insights-only`,
+  gcx kg entities list --type Service --with-insights
+  gcx kg entities list --type Service --with-insights critical`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := listOpts.IO.Validate(); err != nil {
 				return err
@@ -848,12 +849,16 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 				}
 				propertyFilters = append(propertyFilters, pm)
 			}
-			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, listAssertOnly, listScope.scopeCriteria(), startMs, endMs, listPage, propertyFilters)
+			withInsights := cmd.Flags().Changed("with-insights")
+			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, withInsights, listScope.scopeCriteria(), startMs, endMs, listPage, propertyFilters)
 			if err != nil {
 				return err
 			}
+			if withInsights && listWithInsights != "any" {
+				results = filterBySeverity(results, listWithInsights)
+			}
 			results = adapter.TruncateSlice(results, listOpts.Limit)
-			if !listDetails {
+			if !withInsights && !listDetails {
 				for i := range results {
 					results[i].Properties = nil
 					results[i].Assertion = nil
@@ -863,10 +868,10 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 		},
 	}
 	listCmd.Flags().StringVar(&listType, "type", "", "Entity type to list (run 'gcx kg meta schema' to see available types)")
-	listCmd.Flags().BoolVar(&listAssertOnly, "insights-only", false, "Only return entities with active insights")
+	listCmd.Flags().StringVar(&listWithInsights, "with-insights", "", "Filter to entities with active insights; narrow by severity: any, critical, warning, info")
+	listCmd.Flags().BoolVar(&listDetails, "full", false, "Include entity properties and insights in output")
 	listCmd.Flags().IntVar(&listPage, "page", 0, "Page number (0-based)")
 	listCmd.Flags().StringArrayVar(&listPropertyRaw, "property", nil, "Filter by property: name=value (exact) or name=~value (contains); repeatable (run 'gcx kg meta schema' to list property names)")
-	listCmd.Flags().BoolVar(&listDetails, "details", false, "Include entity properties and insights in output")
 	listScope.register(listCmd)
 	listCmd.Flags().Lookup("env").Usage = "Environment scope (run 'gcx kg meta scopes' to see valid values)"
 	listCmd.Flags().Lookup("namespace").Usage = "Namespace scope (run 'gcx kg meta scopes' to see valid values)"
@@ -1036,56 +1041,6 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 		sub.Flags().String("to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
 		sub.Flags().String("since", "", "Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)")
 	}
-
-	// active subcommand
-	var (
-		activeScope      scopeFlags
-		activeEntityType string
-		activeSeverity   string
-		activePage       int
-	)
-	activeOpts := &assertionsActiveOpts{}
-	activeCmd := &cobra.Command{
-		Use:   "active",
-		Short: "Show entities with active insights.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := activeOpts.IO.Validate(); err != nil {
-				return err
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			startMs, endMs, err := activeScope.resolveTime()
-			if err != nil {
-				return err
-			}
-			if err := activeScope.validateScopes(cmd.Context(), client); err != nil {
-				return err
-			}
-			entityTypes, err := resolveEntityTypes(cmd, client, activeEntityType)
-			if err != nil {
-				return err
-			}
-			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, true, activeScope.scopeCriteria(), startMs, endMs, activePage, nil)
-			if err != nil {
-				return err
-			}
-			if activeSeverity != "" {
-				results = filterBySeverity(results, activeSeverity)
-			}
-			return activeOpts.IO.Encode(cmd.OutOrStdout(), results)
-		},
-	}
-	activeScope.register(activeCmd)
-	activeCmd.Flags().StringVar(&activeEntityType, "type", "", "Filter by entity type")
-	activeCmd.Flags().StringVar(&activeSeverity, "severity", "", "Filter by severity (e.g. CRITICAL, WARNING)")
-	activeCmd.Flags().IntVar(&activePage, "page", 0, "Page number (0-based)")
-	activeOpts.setup(activeCmd.Flags())
 
 	// entity-metric subcommand
 	var entityMetricScope scopeFlags
@@ -1281,17 +1236,8 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	searchCmd.Flags().String("name", "", "Entity name filter")
 	searchAssertionsScope.register(searchCmd)
 
-	cmd.AddCommand(queryCmd, summaryCmd, graphCmd, activeCmd, entityMetricCmd, sourceMetricsCmd, exampleCmd, searchCmd)
+	cmd.AddCommand(queryCmd, summaryCmd, graphCmd, entityMetricCmd, sourceMetricsCmd, exampleCmd, searchCmd)
 	return cmd
-}
-
-type assertionsActiveOpts struct {
-	IO cmdio.Options
-}
-
-func (o *assertionsActiveOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("json")
-	o.IO.BindFlags(flags)
 }
 
 func buildAssertionsRequestFromFlags(cmd *cobra.Command, args []string, client *Client) (AssertionsRequest, error) {
