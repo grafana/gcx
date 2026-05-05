@@ -805,7 +805,6 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 	var (
 		listType         string
 		listWithInsights string
-		listDetails      bool
 		listScope        scopeFlags
 		listPage         int
 		listPropertyRaw  []string
@@ -858,18 +857,11 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 				results = filterBySeverity(results, listWithInsights)
 			}
 			results = adapter.TruncateSlice(results, listOpts.Limit)
-			if !withInsights && !listDetails {
-				for i := range results {
-					results[i].Properties = nil
-					results[i].Assertion = nil
-				}
-			}
 			return listOpts.IO.Encode(cmd.OutOrStdout(), results)
 		},
 	}
 	listCmd.Flags().StringVar(&listType, "type", "", "Entity type to list (run 'gcx kg meta schema' to see available types)")
 	listCmd.Flags().StringVar(&listWithInsights, "with-insights", "", "Filter to entities with active insights; narrow by severity: any, critical, warning, info")
-	listCmd.Flags().BoolVar(&listDetails, "full", false, "Include entity properties and insights in output")
 	listCmd.Flags().IntVar(&listPage, "page", 0, "Page number (0-based)")
 	listCmd.Flags().StringArrayVar(&listPropertyRaw, "property", nil, "Filter by property: name=value (exact) or name=~value (contains); repeatable (run 'gcx kg meta schema' to list property names)")
 	listScope.register(listCmd)

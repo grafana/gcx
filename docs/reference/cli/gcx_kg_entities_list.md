@@ -20,7 +20,6 @@ gcx kg entities list [flags]
 ```
       --env string             Environment scope (run 'gcx kg meta scopes' to see valid values)
       --from string            Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-      --full                   Include entity properties and insights in output
   -h, --help                   help for list
       --json string            Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int              Maximum number of items to return (0 for all) (default 50)
