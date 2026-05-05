@@ -816,7 +816,8 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 		Example: `  gcx kg entities list --type Service
   gcx kg entities list --type Service --namespace mimir-prod-01 --property name=model-builder
   gcx kg entities list --type Service --with-insights any
-  gcx kg entities list --type Service --with-insights critical`,
+  gcx kg entities list --type Service --with-insights critical
+  gcx kg entities list --type Service --with-insights any --json name,scope`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := listOpts.IO.Validate(); err != nil {
 				return err
