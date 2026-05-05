@@ -17,6 +17,12 @@ import (
 	"github.com/grafana/gcx/internal/retry"
 )
 
+const (
+	instancesPath    = "/api/instances/"
+	stackRegionsPath = "/api/stack-regions"
+	orgsPath         = "/api/orgs/"
+)
+
 // StackInfo holds the information about a Grafana Cloud stack as returned by the GCOM API.
 type StackInfo struct {
 	ID         int    `json:"id"`
@@ -158,7 +164,7 @@ func NewGCOMClient(baseURL, token string) (*GCOMClient, error) {
 // GetStack calls GET /api/instances/{slug} on the GCOM API and returns the
 // corresponding StackInfo. It returns an error if the response status is not 200.
 func (c *GCOMClient) GetStack(ctx context.Context, slug string) (StackInfo, error) {
-	endpoint, err := c.buildURL("/api/instances/" + url.PathEscape(slug))
+	endpoint, err := c.buildURL(instancesPath + url.PathEscape(slug))
 	if err != nil {
 		return StackInfo{}, err
 	}
@@ -198,7 +204,7 @@ func (c *GCOMClient) GetStack(ctx context.Context, slug string) (StackInfo, erro
 // ListStacks calls GET /api/orgs/{orgSlug}/instances on the GCOM API and
 // returns the stacks belonging to the given organisation.
 func (c *GCOMClient) ListStacks(ctx context.Context, orgSlug string) ([]StackInfo, error) {
-	endpoint, err := c.buildURL("/api/orgs/" + url.PathEscape(orgSlug) + "/instances")
+	endpoint, err := c.buildURL(orgsPath + url.PathEscape(orgSlug) + "/instances")
 	if err != nil {
 		return nil, err
 	}
@@ -240,7 +246,7 @@ func (c *GCOMClient) CreateStack(ctx context.Context, r CreateStackRequest) (Sta
 		return StackInfo{}, fmt.Errorf("gcom client: marshal request: %w", err)
 	}
 
-	endpoint, err := c.buildURL("/api/instances")
+	endpoint, err := c.buildURL(instancesPath)
 	if err != nil {
 		return StackInfo{}, err
 	}
@@ -281,7 +287,7 @@ func (c *GCOMClient) UpdateStack(ctx context.Context, slug string, r UpdateStack
 		return StackInfo{}, fmt.Errorf("gcom client: marshal request: %w", err)
 	}
 
-	endpoint, err := c.buildURL("/api/instances/" + url.PathEscape(slug))
+	endpoint, err := c.buildURL(instancesPath + url.PathEscape(slug))
 	if err != nil {
 		return StackInfo{}, err
 	}
@@ -318,7 +324,7 @@ func (c *GCOMClient) UpdateStack(ctx context.Context, slug string, r UpdateStack
 // DeleteStack calls DELETE /api/instances/{slug} on the GCOM API.
 // Returns a GCOMHTTPError with Status 409 when delete protection is enabled.
 func (c *GCOMClient) DeleteStack(ctx context.Context, slug string) error {
-	endpoint, err := c.buildURL("/api/instances/" + url.PathEscape(slug))
+	endpoint, err := c.buildURL(instancesPath + url.PathEscape(slug))
 	if err != nil {
 		return err
 	}
@@ -349,7 +355,7 @@ func (c *GCOMClient) DeleteStack(ctx context.Context, slug string) error {
 // ListRegions calls GET /api/stack-regions on the GCOM API and returns
 // the available regions for stack creation.
 func (c *GCOMClient) ListRegions(ctx context.Context) ([]Region, error) {
-	endpoint, err := c.buildURL("/api/stack-regions")
+	endpoint, err := c.buildURL(stackRegionsPath)
 	if err != nil {
 		return nil, err
 	}

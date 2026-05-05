@@ -16,6 +16,8 @@ import (
 	"github.com/spf13/pflag"
 )
 
+const instancesPath = "/api/instances"
+
 // ---------------------------------------------------------------------------
 // list
 // ---------------------------------------------------------------------------
@@ -190,7 +192,7 @@ user before executing. Prefer --dry-run first.`,
 			}
 
 			if opts.DryRun {
-				dryRunSummary(cmd.OutOrStdout(), http.MethodPost, "/api/instances", req)
+				dryRunSummary(cmd.OutOrStdout(), http.MethodPost, instancesPath, req)
 				return nil
 			}
 
@@ -288,7 +290,7 @@ changes with the user and prefer --dry-run first.`,
 			slug := args[0]
 
 			if opts.DryRun {
-				dryRunSummary(cmd.OutOrStdout(), http.MethodPost, "/api/instances/"+slug, req)
+				dryRunSummary(cmd.OutOrStdout(), http.MethodPost, instancesPath+"/"+slug, req)
 				return nil
 			}
 
@@ -345,7 +347,7 @@ IRREVERSIBLE. Always confirm with the user by name before executing. Prefer
 			slug := args[0]
 
 			if opts.DryRun {
-				fmt.Fprintf(cmd.OutOrStdout(), "Dry run: DELETE /api/instances/%s\n", slug)
+				fmt.Fprintf(cmd.OutOrStdout(), "Dry run: DELETE %s/%s\n", instancesPath, slug)
 				fmt.Fprintf(cmd.OutOrStdout(), "\nStack %q would be permanently deleted. No changes were made.\n", slug)
 				return nil
 			}
