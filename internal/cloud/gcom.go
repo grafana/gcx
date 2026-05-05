@@ -17,8 +17,6 @@ import (
 	"github.com/grafana/gcx/internal/retry"
 )
 
-const instancesPath = "/api/instances/"
-
 // StackInfo holds the information about a Grafana Cloud stack as returned by the GCOM API.
 type StackInfo struct {
 	ID         int    `json:"id"`
