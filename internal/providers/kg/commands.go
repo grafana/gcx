@@ -816,7 +816,7 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 		Short: "List Knowledge Graph entities for a given type.",
 		Example: `  gcx kg entities list --type Service
   gcx kg entities list --type Service --namespace mimir-prod-01 --property name=model-builder
-  gcx kg entities list --type Service --with-insights
+  gcx kg entities list --type Service --with-insights any
   gcx kg entities list --type Service --with-insights critical`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := listOpts.IO.Validate(); err != nil {

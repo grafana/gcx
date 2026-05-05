@@ -11,7 +11,7 @@ gcx kg entities list [flags]
 ```
   gcx kg entities list --type Service
   gcx kg entities list --type Service --namespace mimir-prod-01 --property name=model-builder
-  gcx kg entities list --type Service --with-insights
+  gcx kg entities list --type Service --with-insights any
   gcx kg entities list --type Service --with-insights critical
 ```
 
