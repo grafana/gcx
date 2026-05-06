@@ -16,6 +16,8 @@ import (
 	"github.com/grafana/gcx/internal/agentlog"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	appversion "github.com/grafana/gcx/internal/version"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"golang.org/x/mod/module"
 )
 
@@ -36,16 +38,22 @@ func main() {
 	// root.Command() because io.Options.BindFlags() reads agent.IsAgentMode()
 	// during command construction to set the default output format.
 	preParseAgentFlag()
-	agentlog.Configure(loadDiagnosticsConfig())
+	if agent.IsAgentMode() {
+		agentlog.Configure(loadDiagnosticsConfig())
+	}
 
 	formattedVersion := formatVersion()
 	appversion.Set(version)
 	appversion.SetBuildInfo(commit, date)
-	if err := root.ValidateArgs(root.Command(formattedVersion), os.Args[1:]); err != nil {
-		handleError(err)
+
+	cmd := root.Command(formattedVersion)
+	boolFlags := collectBoolFlags(cmd)
+	subCmds := collectSubCmds(cmd)
+	if err := root.ValidateArgs(cmd, os.Args[1:]); err != nil {
+		handleError(err, boolFlags, subCmds)
 	}
 
-	handleError(root.Command(formattedVersion).ExecuteContext(ctx))
+	handleError(cmd.ExecuteContext(ctx), boolFlags, subCmds)
 }
 
 // preParseAgentFlag scans os.Args for --agent / --agent=true / --agent=false
@@ -69,7 +77,7 @@ func preParseAgentFlag() {
 	}
 }
 
-func handleError(err error) {
+func handleError(err error, boolFlags map[string]struct{}, subCmds map[string]bool) {
 	if err == nil {
 		return
 	}
@@ -95,9 +103,9 @@ func handleError(err error) {
 		_ = agentlog.Append(agentlog.Entry{
 			Timestamp: time.Now(),
 			Version:   appversion.Get(),
-			Args:      agentlog.StripArgValues(os.Args[1:]),
+			Args:      agentlog.StripArgValues(os.Args[1:], boolFlags, subCmds),
 			ErrorKind: agentlog.KindFromExitCode(exitCode),
-			Error:     detailedErr.Summary,
+			Error:     truncate(detailedErr.Summary, 200),
 			ExitCode:  exitCode,
 		})
 	}
@@ -116,28 +124,66 @@ func handleError(err error) {
 	os.Exit(exitCode)
 }
 
-// loadDiagnosticsConfig reads diagnostics settings from the gcx config file on
-// a best-effort basis. Any error (missing file, parse failure) returns a
-// disabled config so the caller is never affected by a config read failure.
-func loadDiagnosticsConfig() agentlog.Config {
-	// GCX_CONFIG bypasses discovery, mirroring LoadLayered behaviour.
-	if explicit := os.Getenv(internalconfig.ConfigFileEnvVar); explicit != "" {
-		return loadDiagnosticsFromFile(explicit)
+// collectBoolFlags walks the full command tree and returns a set of all boolean
+// flag names (and their shorthands) so StripArgValues can skip consuming the
+// next token for flags that take no value argument.
+func collectBoolFlags(cmd *cobra.Command) map[string]struct{} {
+	bools := make(map[string]struct{})
+	var visit func(c *cobra.Command)
+	visit = func(c *cobra.Command) {
+		addBools := func(f *pflag.Flag) {
+			if f.Value.Type() == "bool" || f.NoOptDefVal != "" {
+				bools[f.Name] = struct{}{}
+				if f.Shorthand != "" {
+					bools[f.Shorthand] = struct{}{}
+				}
+			}
+		}
+		c.Flags().VisitAll(addBools)
+		c.PersistentFlags().VisitAll(addBools)
+		for _, sub := range c.Commands() {
+			visit(sub)
+		}
 	}
-	sources, err := internalconfig.DiscoverSources()
-	if err != nil || len(sources) == 0 {
-		return agentlog.Config{}
-	}
-	// Use the highest-priority source (last in slice — local overrides user overrides system).
-	return loadDiagnosticsFromFile(sources[len(sources)-1].Path)
+	visit(cmd)
+	return bools
 }
 
-func loadDiagnosticsFromFile(path string) agentlog.Config {
-	cfg, err := internalconfig.Load(context.Background(), func() (string, error) { return path, nil })
+// collectSubCmds walks the full command tree and returns a set of all registered
+// subcommand names (and aliases). Positional args matching this set are safe to
+// log; all other positionals are treated as values and redacted.
+func collectSubCmds(cmd *cobra.Command) map[string]bool {
+	names := make(map[string]bool)
+	var walk func(*cobra.Command)
+	walk = func(c *cobra.Command) {
+		for _, sub := range c.Commands() {
+			names[sub.Name()] = true
+			for _, alias := range sub.Aliases {
+				names[alias] = true
+			}
+			walk(sub)
+		}
+	}
+	walk(cmd)
+	return names
+}
+
+// loadDiagnosticsConfig reads diagnostics settings from the layered gcx config.
+// Any error (missing file, parse failure) returns a disabled config so the
+// caller is never affected by a config read failure.
+func loadDiagnosticsConfig() agentlog.Config {
+	cfg, err := internalconfig.LoadLayered(context.Background(), "")
 	if err != nil || cfg.Diagnostics == nil || !cfg.Diagnostics.AgentInvocationLog {
 		return agentlog.Config{}
 	}
 	return agentlog.Config{Enabled: true, LogDir: cfg.Diagnostics.LogDir}
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
 }
 
 func formatVersion() string {

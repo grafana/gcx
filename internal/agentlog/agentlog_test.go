@@ -11,61 +11,138 @@ import (
 )
 
 func TestStripArgValues(t *testing.T) {
+	noBools := map[string]struct{}{}
+	bools := map[string]struct{}{"agent": {}, "json": {}, "v": {}}
+	// Subset of real gcx subcommand names used in tests below.
+	subCmds := map[string]bool{
+		"kg": true, "list": true, "get": true, "dashboards": true,
+		"config": true, "set": true, "run": true,
+	}
+
 	tests := []struct {
-		name string
-		in   []string
-		want []string
+		name      string
+		in        []string
+		boolFlags map[string]struct{}
+		subCmds   map[string]bool
+		want      []string
 	}{
 		{
-			name: "command only",
-			in:   []string{"kg", "list"},
-			want: []string{"kg", "list"},
+			name:      "command only",
+			in:        []string{"kg", "list"},
+			boolFlags: noBools,
+			subCmds:   subCmds,
+			want:      []string{"kg", "list"},
 		},
 		{
-			name: "long flag space separated",
-			in:   []string{"kg", "list", "--format", "json"},
-			want: []string{"kg", "list", "--format", "<value>"},
+			name:      "long flag space separated",
+			in:        []string{"kg", "list", "--format", "json"},
+			boolFlags: noBools,
+			subCmds:   subCmds,
+			want:      []string{"kg", "list", "--format", "<value>"},
 		},
 		{
-			name: "long flag equals form",
-			in:   []string{"kg", "list", "--format=json"},
-			want: []string{"kg", "list", "--format=<value>"},
+			name:      "long flag equals form",
+			in:        []string{"kg", "list", "--format=json"},
+			boolFlags: noBools,
+			subCmds:   subCmds,
+			want:      []string{"kg", "list", "--format=<value>"},
 		},
 		{
-			name: "short flag space separated",
-			in:   []string{"kg", "list", "-n", "myns"},
-			want: []string{"kg", "list", "-n", "<value>"},
+			name:      "short flag space separated",
+			in:        []string{"kg", "list", "-n", "myns"},
+			boolFlags: noBools,
+			subCmds:   subCmds,
+			want:      []string{"kg", "list", "-n", "<value>"},
 		},
 		{
-			name: "token flag value hidden",
-			in:   []string{"--token", "mysecrettoken"},
-			want: []string{"--token", "<value>"},
+			name:      "short flag equals form",
+			in:        []string{"-t=mysecrettoken"},
+			boolFlags: noBools,
+			subCmds:   nil,
+			want:      []string{"-t=<value>"},
 		},
 		{
-			name: "token flag equals value hidden",
-			in:   []string{"--token=mysecrettoken"},
-			want: []string{"--token=<value>"},
+			name:      "short flag attached value (POSIX)",
+			in:        []string{"-tmysecrettoken"},
+			boolFlags: noBools,
+			subCmds:   nil,
+			want:      []string{"-t<value>"},
 		},
 		{
-			name: "double dash stops processing",
-			in:   []string{"run", "--", "--format", "json"},
-			want: []string{"run"},
+			name:      "token flag value hidden",
+			in:        []string{"--token", "mysecrettoken"},
+			boolFlags: noBools,
+			subCmds:   nil,
+			want:      []string{"--token", "<value>"},
 		},
 		{
-			name: "no args",
-			in:   []string{},
-			want: []string{},
+			name:      "token flag equals value hidden",
+			in:        []string{"--token=mysecrettoken"},
+			boolFlags: noBools,
+			subCmds:   nil,
+			want:      []string{"--token=<value>"},
 		},
 		{
-			name: "flag at end with no value",
-			in:   []string{"list", "--json"},
-			want: []string{"list", "--json"},
+			name:      "double dash stops processing",
+			in:        []string{"run", "--", "--format", "json"},
+			boolFlags: noBools,
+			subCmds:   subCmds,
+			want:      []string{"run"},
+		},
+		{
+			name:      "no args",
+			in:        []string{},
+			boolFlags: noBools,
+			subCmds:   nil,
+			want:      []string{},
+		},
+		{
+			name:      "flag at end with no value",
+			in:        []string{"list", "--json"},
+			boolFlags: noBools,
+			subCmds:   subCmds,
+			want:      []string{"list", "--json"},
+		},
+		{
+			name:      "bool flag does not consume next positional",
+			in:        []string{"--agent", "get", "dashboards"},
+			boolFlags: bools,
+			subCmds:   subCmds,
+			want:      []string{"--agent", "get", "dashboards"},
+		},
+		{
+			name:      "bool flag at end",
+			in:        []string{"list", "--json"},
+			boolFlags: bools,
+			subCmds:   subCmds,
+			want:      []string{"list", "--json"},
+		},
+		{
+			name:      "short bool flag does not consume next positional",
+			in:        []string{"-v", "get", "dashboards"},
+			boolFlags: bools,
+			subCmds:   subCmds,
+			want:      []string{"-v", "get", "dashboards"},
+		},
+		{
+			name:      "positional value after subcommand chain is redacted",
+			in:        []string{"config", "set", "cloud.token", "glsa_MYTOKEN"},
+			boolFlags: noBools,
+			subCmds:   subCmds,
+			want:      []string{"config", "set", "<value>", "<value>"},
+		},
+		{
+			name:      "nil subCmds keeps all positionals (backward compat)",
+			in:        []string{"config", "set", "cloud.token", "glsa_MYTOKEN"},
+			boolFlags: noBools,
+			subCmds:   nil,
+			want:      []string{"config", "set", "cloud.token", "glsa_MYTOKEN"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := agentlog.StripArgValues(tt.in)
+			got := agentlog.StripArgValues(tt.in, tt.boolFlags, tt.subCmds)
 			if len(got) != len(tt.want) {
 				t.Fatalf("len(got)=%d, len(want)=%d: got=%v, want=%v", len(got), len(tt.want), got, tt.want)
 			}

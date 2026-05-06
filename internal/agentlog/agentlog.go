@@ -24,7 +24,7 @@ type Config struct {
 	LogDir  string
 }
 
-//nolint:gochecknoglobals
+//nolint:gochecknoglobals // set once from Configure() before any command runs; no concurrent access
 var cfg Config
 
 // Configure sets agentlog options. Called once from main() before command execution.
@@ -55,7 +55,7 @@ type Entry struct {
 // Append writes entry to the log file as a JSONL record and trims to maxEntries.
 func Append(entry Entry) error {
 	path := LogPath()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
 	data, err := json.Marshal(entry)
@@ -103,13 +103,21 @@ func trimLog(path string, limit int) error {
 // "<value>", keeping only command names and flag names. This prevents any
 // user-supplied data (including secrets) from reaching the log.
 //
+// boolFlags is the set of flag names (without leading dashes) that take no
+// value argument; these flags do not consume the following token.
+//
+// subCmds is the set of all registered subcommand names. Positional args that
+// match a known subcommand are kept verbatim; all other positionals (resource
+// names, key-value arguments, etc.) are replaced with "<value>". Passing nil
+// keeps all positionals (for callers without access to the command tree).
+//
 // Rules:
-//   - "--flag=value" becomes "--flag=<value>"
-//   - "--flag value" becomes "--flag", "<value>" (next token is the value)
-//   - "-f value" follows the same rule for single-char flags
+//   - "--flag=value" or "-f=value" becomes "--flag=<value>" / "-f=<value>"
+//   - "-fVALUE" (POSIX attached form) becomes "-f<value>"
+//   - "--flag value" or "-f value" becomes "--flag", "<value>" unless flag is in boolFlags
 //   - args after "--" are dropped entirely
-//   - standalone positional args (subcommand names, resource kinds) are kept
-func StripArgValues(args []string) []string {
+//   - positionals matching a known subcommand are kept; others become "<value>"
+func StripArgValues(args []string, boolFlags map[string]struct{}, subCmds map[string]bool) []string {
 	out := make([]string, 0, len(args))
 	consumeNext := false
 	for _, arg := range args {
@@ -122,17 +130,37 @@ func StripArgValues(args []string) []string {
 			continue
 		}
 		isLongFlag := strings.HasPrefix(arg, "--")
-		isShortFlag := len(arg) == 2 && arg[0] == '-' && arg[1] != '-'
-		if isLongFlag || isShortFlag {
-			if before, _, ok := strings.Cut(arg, "="); ok {
-				out = append(out, before+"=<value>")
-			} else {
+		isShortFlag := len(arg) >= 2 && arg[0] == '-' && arg[1] != '-'
+		if !isLongFlag && !isShortFlag {
+			// Positional: keep if it is a known subcommand name, redact otherwise.
+			if subCmds == nil || subCmds[arg] {
 				out = append(out, arg)
-				consumeNext = true
+			} else {
+				out = append(out, "<value>")
 			}
-		} else {
-			out = append(out, arg)
 			consumeNext = false
+			continue
+		}
+		if before, _, ok := strings.Cut(arg, "="); ok {
+			// --flag=value or -f=value
+			out = append(out, before+"=<value>")
+			continue
+		}
+		if isShortFlag && len(arg) > 2 {
+			// -fVALUE: value directly attached, no separator
+			out = append(out, "-"+string(arg[1])+"<value>")
+			continue
+		}
+		// Bare --flag or -f: consume the next token unless it is a boolean flag.
+		out = append(out, arg)
+		var name string
+		if isShortFlag {
+			name = string(arg[1]) // -f → "f"
+		} else {
+			name = strings.TrimPrefix(arg, "--") // --flag → "flag"
+		}
+		if _, isBool := boolFlags[name]; !isBool {
+			consumeNext = true
 		}
 	}
 	return out
