@@ -375,7 +375,6 @@ type LLMSummaryRequest struct {
 	EndTime                                       int64       `json:"endTime"`
 	EntityKeys                                    []EntityKey `json:"entityKeys"`
 	SuggestionSrcEntities                         []EntityKey `json:"suggestionSrcEntities"`
-	GroupAssertions                               bool        `json:"groupAssertions"`
 	AlertCategories                               []string    `json:"alertCategories,omitempty"`
 	HideAssertionsOlderThanNHours                 int         `json:"hideAssertionsOlderThanNHours"`
 	HideAssertionsPresentMoreThanPercentageOfTime int         `json:"hideAssertionsPresentMoreThanPercentageOfTime"`

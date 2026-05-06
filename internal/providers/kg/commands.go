@@ -1439,13 +1439,9 @@ func newEntitiesInspectCommand(loader RESTConfigLoader) *cobra.Command {
 					Name:  name,
 					Scope: toAnyMap(scope),
 				}},
-				SuggestionSrcEntities:                         []EntityKey{},
-				GroupAssertions:                               true,
-				AlertCategories:                               []string{"saturation", "amend", "anomaly", "failure", "error"},
-				HideAssertionsOlderThanNHours:                 48,
-				HideAssertionsPresentMoreThanPercentageOfTime: 90,
-				IncludeSuggestions:                            true,
-				IncludeRcaPatterns:                            false,
+				SuggestionSrcEntities: []EntityKey{},
+				IncludeSuggestions:    true,
+				IncludeRcaPatterns:    false,
 			}
 			result, err := client.LLMSummary(cmd.Context(), llmReq)
 			if err != nil {
