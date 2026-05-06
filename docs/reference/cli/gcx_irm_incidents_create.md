@@ -8,30 +8,28 @@ gcx irm incidents create [flags]
 
 ### Examples
 
-Create an incident from a YAML manifest:
+```
+  # Create an incident from a YAML manifest:
+  cat <<EOF | gcx irm incidents create -f -
+  apiVersion: incident.ext.grafana.app/v1alpha1
+  kind: Incident
+  metadata:
+    name: my-incident
+  spec:
+    title: "Service degradation in production"
+    status: active
+    isDrill: false
+    incidentType: internal
+    labels:
+      - key: team
+        label: platform
+      - key: env
+        label: production
+  EOF
 
-    cat <<EOF | gcx irm incidents create -f -
-    apiVersion: incident.ext.grafana.app/v1alpha1
-    kind: Incident
-    metadata:
-      name: my-incident
-    spec:
-      title: "Service degradation in production"
-      status: active
-      isDrill: false
-      incidentType: internal
-      labels:
-        - key: team
-          label: platform
-        - key: env
-          label: production
-    EOF
-
-Create from a file:
-
-    gcx irm incidents create -f incident.yaml
-
-Required fields: `apiVersion`, `kind`, `metadata.name`, `spec.title`, `spec.status`.
+  # Create from a file:
+  gcx irm incidents create -f incident.yaml
+```
 
 ### Options
 
