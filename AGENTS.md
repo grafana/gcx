@@ -184,17 +184,17 @@ Automated via `mise run tag`. Requires `claude` CLI and [`svu`](https://github.c
 mise run tag -- patch   # or minor, major
 ```
 
-This generates a changelog entry (via Claude), updates `CHANGELOG.md` and `.release-notes.md`, commits, tags, and pushes. The tag push triggers the GoReleaser workflow.
+This generates a changelog entry (via Claude), updates `CHANGELOG.md` and `.release-notes.md`, commits on a `release/vX.Y.Z` branch, and pushes the branch. Then:
 
-**With branch protection** (can't push directly to main): the script will fail at the push step. Instead:
-1. Create a branch, commit the changelog, open a PR
-2. Merge the PR
-3. Tag the merge commit on main and push the tag:
+1. Open a PR and merge it (the script prints the exact command)
+2. After merge, tag the commit on main and push the tag:
    ```bash
    git checkout main && git pull
    git tag v0.X.Y
    git push origin v0.X.Y
    ```
+
+The tag push triggers the GoReleaser workflow.
 
 ## Mandatory Pull Request Checklist
 
