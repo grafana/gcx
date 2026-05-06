@@ -381,7 +381,7 @@ func resolveAssistantClientOptions(ctx context.Context, configOpts *cmdconfig.Op
 	switch {
 	case grafana.ProxyEndpoint != "" && grafana.OAuthToken != "":
 		// OAuth path: direct API via ProxyEndpoint
-		refresher := buildTokenRefresher(ctx, configOpts, &cfg, cfg.CurrentContext, grafana)
+		refresher := buildTokenRefresher(ctx, configOpts, cfg.CurrentContext, grafana)
 		return assistant.ClientOptions{
 			GrafanaURL:     grafana.Server,
 			Token:          grafana.OAuthToken,
@@ -426,7 +426,7 @@ func newAssistantStreamingHTTPClient(ctx context.Context, streamTimeoutSeconds i
 const refreshThreshold = 5 * time.Minute
 
 // buildTokenRefresher creates a TokenRefresher that uses gcx's auth refresh mechanism.
-func buildTokenRefresher(ctx context.Context, configOpts *cmdconfig.Options, cfg *config.Config, ctxName string, grafana *config.GrafanaConfig) assistant.TokenRefresher {
+func buildTokenRefresher(ctx context.Context, configOpts *cmdconfig.Options, ctxName string, grafana *config.GrafanaConfig) assistant.TokenRefresher {
 	var mu sync.Mutex
 	token := grafana.OAuthToken
 	refreshToken := grafana.OAuthRefreshToken
@@ -467,14 +467,20 @@ func buildTokenRefresher(ctx context.Context, configOpts *cmdconfig.Options, cfg
 		}
 
 		// Persist to config
-		persistRefreshedTokens(ctx, configOpts, cfg, ctxName, rr.Token, rr.RefreshToken, rr.ExpiresAt, rr.RefreshExpiresAt)
+		persistRefreshedTokens(ctx, configOpts, ctxName, rr.Token, rr.RefreshToken, rr.ExpiresAt, rr.RefreshExpiresAt)
 
 		return token, nil
 	}
 }
 
-func persistRefreshedTokens(ctx context.Context, configOpts *cmdconfig.Options, cfg *config.Config, ctxName, token, refreshToken, expiresAt, refreshExpiresAt string) {
-	curCtx := cfg.Contexts[ctxName]
+func persistRefreshedTokens(ctx context.Context, configOpts *cmdconfig.Options, ctxName, token, refreshToken, expiresAt, refreshExpiresAt string) {
+	// Re-read from disk so env-sourced secrets (GRAFANA_TOKEN, etc.) are not persisted.
+	source := configOpts.ConfigSource()
+	raw, err := config.Load(ctx, source)
+	if err != nil {
+		return
+	}
+	curCtx := raw.Contexts[ctxName]
 	if curCtx == nil || curCtx.Grafana == nil {
 		return
 	}
@@ -484,7 +490,7 @@ func persistRefreshedTokens(ctx context.Context, configOpts *cmdconfig.Options, 
 	}
 	curCtx.Grafana.OAuthTokenExpiresAt = expiresAt
 	curCtx.Grafana.OAuthRefreshExpiresAt = refreshExpiresAt
-	_ = config.Write(ctx, configOpts.ConfigSource(), *cfg)
+	_ = config.Write(ctx, source, raw)
 }
 
 func parseRFC3339OrZero(s string) time.Time {

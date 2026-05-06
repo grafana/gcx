@@ -470,7 +470,8 @@ func useContextCmd(configOpts *Options) *cobra.Command {
 		Long:    "Set the current context and updates the configuration file.",
 		Example: "\n\tgcx config use-context dev-instance",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := configOpts.LoadConfigTolerant(cmd.Context())
+			// Load without env overrides so env-sourced secrets are never persisted.
+			cfg, err := config.LoadLayered(cmd.Context(), configOpts.ConfigFile)
 			if err != nil {
 				return err
 			}
