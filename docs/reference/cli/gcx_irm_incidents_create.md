@@ -6,6 +6,42 @@ Create a new incident from a file.
 gcx irm incidents create [flags]
 ```
 
+### Examples
+
+The incident manifest follows a Kubernetes-style format:
+
+```yaml
+# incident.yaml
+apiVersion: incident.ext.grafana.app/v1alpha1
+kind: Incident
+metadata:
+  name: my-incident
+spec:
+  title: "Service degradation in production"
+  status: active
+  isDrill: false
+  incidentType: internal
+  labels:
+    - key: team
+      label: platform
+    - key: env
+      label: production
+```
+
+Required fields: `apiVersion`, `kind`, `metadata`, `spec.title`, `spec.status`.
+
+Create an incident from a file:
+
+```
+gcx irm incidents create -f incident.yaml
+```
+
+Create an incident from stdin:
+
+```
+cat incident.yaml | gcx irm incidents create -f -
+```
+
 ### Options
 
 ```
