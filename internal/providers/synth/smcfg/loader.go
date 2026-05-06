@@ -7,9 +7,12 @@ import (
 	"github.com/grafana/gcx/internal/config"
 )
 
-// Loader can load SM credentials and the current namespace from config.
+// Loader resolves the Grafana REST config and SM datasource UID needed to
+// route SM API calls through the datasource proxy. The returned config carries
+// the caller's Grafana credentials; auth to the SM API is performed by the
+// proxy using the datasource's stored credentials.
 type Loader interface {
-	LoadSMConfig(ctx context.Context) (baseURL, token, namespace string, err error)
+	LoadSMConfig(ctx context.Context) (cfg config.NamespacedRESTConfig, datasourceUID, namespace string, err error)
 }
 
 // GrafanaConfigLoader can load a Grafana REST config for Prometheus queries.

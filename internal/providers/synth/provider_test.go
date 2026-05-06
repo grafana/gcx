@@ -19,39 +19,24 @@ func TestSynthProvider_Interface(t *testing.T) {
 func TestSynthProvider_ConfigKeys(t *testing.T) {
 	p := &synth.SynthProvider{}
 	keys := p.ConfigKeys()
-	require.Len(t, keys, 3)
+	require.Len(t, keys, 1)
 
-	keyMap := make(map[string]providers.ConfigKey)
-	for _, k := range keys {
-		keyMap[k.Name] = k
-	}
-
-	smURL, ok := keyMap["sm-url"]
-	require.True(t, ok)
-	assert.False(t, smURL.Secret)
-
-	smToken, ok := keyMap["sm-token"]
-	require.True(t, ok)
-	assert.True(t, smToken.Secret)
-
-	smDS, ok := keyMap["sm-metrics-datasource-uid"]
-	require.True(t, ok)
+	smDS := keys[0]
+	assert.Equal(t, "sm-metrics-datasource-uid", smDS.Name)
 	assert.False(t, smDS.Secret)
 }
 
 func TestSynthProvider_Validate(t *testing.T) {
 	p := &synth.SynthProvider{}
 
-	// Validate always returns nil because both sm-url and sm-token
-	// can be auto-discovered at runtime.
+	// Validate always returns nil — the SM datasource UID is resolved from
+	// the context's datasources.synth field rather than a provider key.
 	tests := []struct {
 		name string
 		cfg  map[string]string
 	}{
-		{name: "both keys set", cfg: map[string]string{"sm-url": "https://example.com", "sm-token": "tok"}},
-		{name: "only sm-url", cfg: map[string]string{"sm-url": "https://example.com"}},
-		{name: "only sm-token", cfg: map[string]string{"sm-token": "tok"}},
 		{name: "empty config", cfg: map[string]string{}},
+		{name: "irrelevant keys", cfg: map[string]string{"foo": "bar"}},
 	}
 
 	for _, tc := range tests {

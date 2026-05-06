@@ -20,7 +20,7 @@ type Check struct {
 	Enabled          bool           `json:"enabled"`
 	Labels           []Label        `json:"labels,omitempty"`
 	Settings         CheckSettings  `json:"settings"`
-	Probes           []int64        `json:"probes"` // probe IDs — only used in API requests
+	Probes           []int64        `json:"probes"`
 	BasicMetricsOnly bool           `json:"basicMetricsOnly,omitempty"`
 	AlertSensitivity string         `json:"alertSensitivity,omitempty"`
 	Channels         map[string]any `json:"channels,omitempty"`
@@ -30,8 +30,7 @@ type Check struct {
 }
 
 // CheckAlert is a per-check alert rule as returned by the SM datasource when
-// /sm/check/list is queried with ?includeAlerts=true, or by /sm/check/{id}/alerts.
-// Mirrors CheckAlertPublished in the SM app's types.ts.
+// /sm/check/list is queried with ?includeAlerts=true.
 type CheckAlert struct {
 	Name       string  `json:"name"`
 	Threshold  float64 `json:"threshold"`
@@ -54,7 +53,7 @@ type CheckSpec struct {
 	Enabled          bool          `json:"enabled"`
 	Labels           []Label       `json:"labels,omitempty"`
 	Settings         CheckSettings `json:"settings"`
-	Probes           []string      `json:"probes"` // probe NAMES in YAML files
+	Probes           []string      `json:"probes"`
 	BasicMetricsOnly bool          `json:"basicMetricsOnly,omitempty"`
 	AlertSensitivity string        `json:"alertSensitivity,omitempty"`
 }
@@ -65,10 +64,9 @@ type Label struct {
 	Value string `json:"value"`
 }
 
-// CheckSettings holds check-type-specific configuration.
-// Only one key is set per check (e.g. "http", "ping", "tcp").
-// Using map[string]any preserves all fields without requiring typed structs
-// for each of the 9 check type variants.
+// CheckSettings holds check-type-specific configuration. Only one key is set
+// per check (e.g. "http", "ping", "tcp"). Using map[string]any preserves all
+// fields without requiring typed structs for each of the 9 check type variants.
 type CheckSettings map[string]any
 
 // CheckType returns the check type name (e.g. "http", "ping").

@@ -2,13 +2,9 @@ package synth //nolint:testpackage // Tests need access to unexported configLoad
 
 import (
 	"context"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"testing"
 
-	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -42,270 +38,38 @@ func newTestLoader(t *testing.T, cfgFile string) *configLoader {
 	return l
 }
 
-// TestConfigLoader_LoadSMConfig_EnvVars verifies AC-5: LoadSMConfig resolves
-// GRAFANA_PROVIDER_SYNTH_SM_URL and GRAFANA_PROVIDER_SYNTH_SM_TOKEN env vars.
-func TestConfigLoader_LoadSMConfig_EnvVars(t *testing.T) {
+// TestConfigLoader_LoadSMConfig_FromContextDatasource verifies that
+// LoadSMConfig returns the SM datasource UID configured under datasources.synth
+// in the active context.
+func TestConfigLoader_LoadSMConfig_FromContextDatasource(t *testing.T) {
+	cfgFile := writeConfigFile(t, `
+contexts:
+  default:
+    grafana:
+      server: https://grafana.example.com
+      token: test-token
+      stack-id: 12345
+    datasources:
+      synth: sm-uid-from-config
+current-context: default
+`)
+
+	l := newTestLoader(t, cfgFile)
+
+	cfg, datasourceUID, namespace, err := l.LoadSMConfig(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "sm-uid-from-config", datasourceUID)
+	// The namespace is derived from the stack-id, not the context name.
+	assert.Equal(t, "stacks-12345", namespace)
+	assert.NotEmpty(t, cfg.Host, "REST config should carry the Grafana server host")
+}
+
+// TestConfigLoader_LoadSMConfig_NoGrafanaServer verifies that LoadSMConfig
+// fails clearly when no Grafana server is configured.
+func TestConfigLoader_LoadSMConfig_NoGrafanaServer(t *testing.T) {
 	cfgFile := writeConfigFile(t, `
 contexts:
   default: {}
-current-context: default
-`)
-	t.Setenv("GRAFANA_PROVIDER_SYNTH_SM_URL", "https://sm.example.com")
-	t.Setenv("GRAFANA_PROVIDER_SYNTH_SM_TOKEN", "tok-env")
-
-	l := newTestLoader(t, cfgFile)
-
-	smURL, smToken, namespace, err := l.LoadSMConfig(context.Background())
-	require.NoError(t, err)
-	assert.Equal(t, "https://sm.example.com", smURL)
-	assert.Equal(t, "tok-env", smToken)
-	assert.Equal(t, "default", namespace)
-}
-
-// TestConfigLoader_LoadSMConfig_ConfigFile verifies that sm-url/sm-token from
-// the config file are returned when no env vars are set.
-func TestConfigLoader_LoadSMConfig_ConfigFile(t *testing.T) {
-	cfgFile := writeConfigFile(t, `
-contexts:
-  default:
-    providers:
-      synth:
-        sm-url: https://file.sm
-        sm-token: tok-file
-current-context: default
-`)
-
-	l := newTestLoader(t, cfgFile)
-
-	smURL, smToken, namespace, err := l.LoadSMConfig(context.Background())
-	require.NoError(t, err)
-	assert.Equal(t, "https://file.sm", smURL)
-	assert.Equal(t, "tok-file", smToken)
-	assert.Equal(t, "default", namespace)
-}
-
-// TestConfigLoader_LoadSMConfig_EnvVarOverridesFile verifies that env vars take
-// precedence over config file values.
-func TestConfigLoader_LoadSMConfig_EnvVarOverridesFile(t *testing.T) {
-	cfgFile := writeConfigFile(t, `
-contexts:
-  default:
-    providers:
-      synth:
-        sm-url: https://file.sm
-        sm-token: tok-file
-current-context: default
-`)
-	t.Setenv("GRAFANA_PROVIDER_SYNTH_SM_URL", "https://env.sm")
-	t.Setenv("GRAFANA_PROVIDER_SYNTH_SM_TOKEN", "tok-env")
-
-	l := newTestLoader(t, cfgFile)
-
-	smURL, smToken, _, err := l.LoadSMConfig(context.Background())
-	require.NoError(t, err)
-	assert.Equal(t, "https://env.sm", smURL)
-	assert.Equal(t, "tok-env", smToken)
-}
-
-// TestConfigLoader_LoadSMConfig_MissingURL verifies that missing sm-url returns error.
-func TestConfigLoader_LoadSMConfig_MissingURL(t *testing.T) {
-	cfgFile := writeConfigFile(t, `
-contexts:
-  default:
-    providers:
-      synth:
-        sm-token: tok
-current-context: default
-`)
-
-	l := newTestLoader(t, cfgFile)
-
-	_, smToken, _, err := l.LoadSMConfig(context.Background())
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "SM URL not configured")
-	assert.Empty(t, smToken)
-}
-
-// TestConfigLoader_LoadSMConfig_MissingToken verifies that missing sm-token returns error.
-func TestConfigLoader_LoadSMConfig_MissingToken(t *testing.T) {
-	cfgFile := writeConfigFile(t, `
-contexts:
-  default:
-    providers:
-      synth:
-        sm-url: https://sm.example.com
-current-context: default
-`)
-
-	l := newTestLoader(t, cfgFile)
-
-	smURL, _, _, err := l.LoadSMConfig(context.Background())
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "SM token not configured")
-	assert.Empty(t, smURL)
-}
-
-// TestConfigLoader_LoadSMConfig_AutoDiscovery verifies that sm-url is auto-discovered
-// from plugin settings when not explicitly configured and a Grafana server is available.
-func TestConfigLoader_LoadSMConfig_AutoDiscovery(t *testing.T) {
-	const wantURL = "https://synthetic-monitoring-api-eu-west-2.grafana.net"
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/plugins/grafana-synthetic-monitoring-app/settings" {
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"jsonData": map[string]any{
-					"apiHost": wantURL,
-				},
-			})
-			return
-		}
-		http.NotFound(w, r)
-	}))
-	defer srv.Close()
-
-	cfgFile := writeConfigFile(t, `
-contexts:
-  default:
-    grafana:
-      server: `+srv.URL+`
-      token: test-token
-      stack-id: 12345
-    providers:
-      synth:
-        sm-token: tok-test
-current-context: default
-`)
-
-	l := newTestLoader(t, cfgFile)
-
-	smURL, smToken, _, err := l.LoadSMConfig(context.Background())
-	require.NoError(t, err)
-	assert.Equal(t, wantURL, smURL)
-	assert.Equal(t, "tok-test", smToken)
-}
-
-// TestConfigLoader_LoadSMConfig_AutoDiscoveryPersistsToConfig verifies that an
-// auto-discovered SM URL is saved to the config file for subsequent runs.
-func TestConfigLoader_LoadSMConfig_AutoDiscoveryPersistsToConfig(t *testing.T) {
-	const wantURL = "https://synthetic-monitoring-api-eu-west-2.grafana.net"
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/plugins/grafana-synthetic-monitoring-app/settings" {
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"jsonData": map[string]any{
-					"apiHost": wantURL,
-				},
-			})
-			return
-		}
-		http.NotFound(w, r)
-	}))
-	defer srv.Close()
-
-	cfgFile := writeConfigFile(t, `
-contexts:
-  default:
-    grafana:
-      server: `+srv.URL+`
-      token: test-token
-      stack-id: 12345
-    providers:
-      synth:
-        sm-token: tok-test
-current-context: default
-`)
-
-	l := newTestLoader(t, cfgFile)
-
-	// First call: auto-discovers and persists.
-	smURL, _, _, err := l.LoadSMConfig(context.Background())
-	require.NoError(t, err)
-	assert.Equal(t, wantURL, smURL)
-
-	// Verify persisted: reload config and check the value was saved.
-	cfg, err := l.LoadConfig(context.Background())
-	require.NoError(t, err)
-	assert.Equal(t, wantURL, cfg.GetCurrentContext().Providers["synth"]["sm-url"])
-}
-
-// TestDiscoverSMURL_DirectMode verifies that discoverSMURL uses GrafanaURL
-// in direct (non-proxy) mode.
-func TestDiscoverSMURL_DirectMode(t *testing.T) {
-	const wantURL = "https://synthetic-monitoring-api-eu-west-2.grafana.net"
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/plugins/grafana-synthetic-monitoring-app/settings" {
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"jsonData": map[string]any{"apiHost": wantURL},
-			})
-			return
-		}
-		http.NotFound(w, r)
-	}))
-	defer srv.Close()
-
-	cfg := config.NamespacedRESTConfig{
-		GrafanaURL: srv.URL,
-	}
-	cfg.Host = srv.URL
-
-	got, err := discoverSMURL(context.Background(), cfg)
-	require.NoError(t, err)
-	assert.Equal(t, wantURL, got)
-}
-
-// TestDiscoverSMURL_OAuthProxyMode verifies that discoverSMURL routes through
-// cfg.Host (the proxy) in OAuth proxy mode, not cfg.GrafanaURL (the direct server).
-func TestDiscoverSMURL_OAuthProxyMode(t *testing.T) {
-	const wantURL = "https://synthetic-monitoring-api-us-east-0.grafana.net"
-
-	// This server simulates the proxy. In OAuth proxy mode, cfg.Host is set to
-	// <proxy>/api/cli/v1/proxy, so the full request path becomes
-	// /api/cli/v1/proxy/api/plugins/grafana-synthetic-monitoring-app/settings.
-	const proxyPrefix = "/api/cli/v1/proxy"
-	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == proxyPrefix+"/api/plugins/grafana-synthetic-monitoring-app/settings" {
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"jsonData": map[string]any{"apiHost": wantURL},
-			})
-			return
-		}
-		http.NotFound(w, r)
-	}))
-	defer proxy.Close()
-
-	// Build a config that looks like OAuth proxy mode.
-	// IsOAuthProxy() returns true when the oauthTransport is set, which happens
-	// via NewNamespacedRESTConfig when proxy-endpoint + oauth-token are present.
-	ctx := config.Context{
-		Name: "test",
-		Grafana: &config.GrafanaConfig{
-			Server:        "https://grafana.example.com",
-			ProxyEndpoint: proxy.URL,
-			OAuthToken:    "gat_test",
-		},
-	}
-	restCfg, _ := config.NewNamespacedRESTConfig(context.Background(), ctx)
-	require.True(t, restCfg.IsOAuthProxy(), "config should be in OAuth proxy mode")
-
-	got, err := discoverSMURL(context.Background(), restCfg)
-	require.NoError(t, err)
-	assert.Equal(t, wantURL, got)
-}
-
-// TestConfigLoader_LoadSMConfig_AutoDiscoveryFallsBackToError verifies that
-// when auto-discovery fails (no Grafana server), a clear error is returned.
-func TestConfigLoader_LoadSMConfig_AutoDiscoveryFallsBackToError(t *testing.T) {
-	cfgFile := writeConfigFile(t, `
-contexts:
-  default:
-    providers:
-      synth:
-        sm-token: tok
 current-context: default
 `)
 
@@ -313,202 +77,9 @@ current-context: default
 
 	_, _, _, err := l.LoadSMConfig(context.Background()) //nolint:dogsled // Only testing error return.
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "SM URL not configured")
 }
 
-// TestConfigLoader_LoadSMConfig_ExplicitURLSkipsAutoDiscovery verifies that
-// auto-discovery is not attempted when sm-url is already configured.
-func TestConfigLoader_LoadSMConfig_ExplicitURLSkipsAutoDiscovery(t *testing.T) {
-	// Server that would fail if called — proves discovery was skipped.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		t.Error("auto-discovery should not be attempted when sm-url is configured")
-		http.Error(w, "should not be called", http.StatusInternalServerError)
-	}))
-	defer srv.Close()
-
-	cfgFile := writeConfigFile(t, `
-contexts:
-  default:
-    providers:
-      synth:
-        sm-url: https://explicit.sm
-        sm-token: tok-test
-current-context: default
-`)
-
-	l := newTestLoader(t, cfgFile)
-
-	smURL, _, _, err := l.LoadSMConfig(context.Background())
-	require.NoError(t, err)
-	assert.Equal(t, "https://explicit.sm", smURL)
-}
-
-// TestConfigLoader_LoadSMConfig_TokenAutoDiscovery verifies that sm-token is
-// auto-discovered via the SM register/install API when cloud config is available.
-func TestConfigLoader_LoadSMConfig_TokenAutoDiscovery(t *testing.T) {
-	const wantToken = "sm-access-token-abc123"
-
-	// Mock SM API server that handles both plugin settings and register/install.
-	smSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == "/api/v1/register/install" && r.Method == http.MethodPost {
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"accessToken": wantToken,
-			})
-			return
-		}
-		http.NotFound(w, r)
-	}))
-	defer smSrv.Close()
-
-	// Mock GCOM server that returns stack info.
-	gcomSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"id":                12345,
-			"slug":              "teststack",
-			"regionSlug":        "eu-west-2",
-			"hmInstancePromId":  67890,
-			"hlInstanceId":      11111,
-			"hmInstancePromUrl": "https://prom.example.com",
-			"hlInstanceUrl":     "https://loki.example.com",
-		})
-	}))
-	defer gcomSrv.Close()
-
-	cfgFile := writeConfigFile(t, `
-contexts:
-  default:
-    grafana:
-      server: https://teststack.grafana.net
-      token: test-token
-      stack-id: 12345
-    cloud:
-      token: cloud-token-xyz
-      stack: teststack
-      api-url: `+gcomSrv.URL+`
-    providers:
-      synth:
-        sm-url: `+smSrv.URL+`
-current-context: default
-`)
-
-	l := newTestLoader(t, cfgFile)
-
-	smURL, smToken, _, err := l.LoadSMConfig(context.Background())
-	require.NoError(t, err)
-	assert.Equal(t, smSrv.URL, smURL)
-	assert.Equal(t, wantToken, smToken)
-}
-
-// TestConfigLoader_LoadSMConfig_TokenPersistsToConfig verifies that an
-// auto-discovered SM token is saved to the config file for subsequent runs.
-func TestConfigLoader_LoadSMConfig_TokenPersistsToConfig(t *testing.T) {
-	const wantToken = "sm-access-token-persisted"
-
-	smSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == "/api/v1/register/install" {
-			_ = json.NewEncoder(w).Encode(map[string]any{"accessToken": wantToken})
-			return
-		}
-		http.NotFound(w, r)
-	}))
-	defer smSrv.Close()
-
-	gcomSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"id": 12345, "slug": "teststack", "regionSlug": "eu",
-			"hmInstancePromId": 1, "hlInstanceId": 2,
-			"hmInstancePromUrl": "https://prom.example.com",
-			"hlInstanceUrl":     "https://loki.example.com",
-		})
-	}))
-	defer gcomSrv.Close()
-
-	cfgFile := writeConfigFile(t, `
-contexts:
-  default:
-    grafana:
-      server: https://teststack.grafana.net
-      token: test-token
-      stack-id: 12345
-    cloud:
-      token: cloud-token
-      stack: teststack
-      api-url: `+gcomSrv.URL+`
-    providers:
-      synth:
-        sm-url: `+smSrv.URL+`
-current-context: default
-`)
-
-	l := newTestLoader(t, cfgFile)
-
-	_, smToken, _, err := l.LoadSMConfig(context.Background())
-	require.NoError(t, err)
-	assert.Equal(t, wantToken, smToken)
-
-	// Verify persisted.
-	cfg, err := l.LoadConfig(context.Background())
-	require.NoError(t, err)
-	assert.Equal(t, wantToken, cfg.GetCurrentContext().Providers["synth"]["sm-token"])
-}
-
-func TestConfigLoader_LoadSMConfig_TokenAutoDiscoveryPermissionError(t *testing.T) {
-	smSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/register/install" {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"error": "insufficient permissions",
-			})
-			return
-		}
-		http.NotFound(w, r)
-	}))
-	defer smSrv.Close()
-
-	gcomSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"id": 12345, "slug": "teststack", "regionSlug": "eu",
-			"hmInstancePromId": 1, "hlInstanceId": 2,
-			"hmInstancePromUrl": "https://prom.example.com",
-			"hlInstanceUrl":     "https://loki.example.com",
-		})
-	}))
-	defer gcomSrv.Close()
-
-	cfgFile := writeConfigFile(t, `
-contexts:
-  default:
-    grafana:
-      server: https://teststack.grafana.net
-      token: test-token
-      stack-id: 12345
-    cloud:
-      token: cloud-token
-      stack: teststack
-      api-url: `+gcomSrv.URL+`
-    providers:
-      synth:
-        sm-url: `+smSrv.URL+`
-current-context: default
-`)
-
-	l := newTestLoader(t, cfgFile)
-
-	_, smToken, _, err := l.LoadSMConfig(context.Background())
-	require.Error(t, err)
-	assert.Empty(t, smToken)
-	assert.Contains(t, err.Error(), "SM token not configured")
-	assert.Contains(t, err.Error(), "insufficient permissions")
-	assert.Contains(t, err.Error(), "status 400")
-}
-
-// TestConfigLoader_SaveMetricsDatasourceUID_RoundTrip verifies AC-6: saving and
+// TestConfigLoader_SaveMetricsDatasourceUID_RoundTrip verifies that saving and
 // reloading sm-metrics-datasource-uid round-trips correctly.
 func TestConfigLoader_SaveMetricsDatasourceUID_RoundTrip(t *testing.T) {
 	cfgFile := writeConfigFile(t, `
@@ -531,7 +102,7 @@ current-context: default
 	assert.Equal(t, "prom-123", curCtx.Providers["synth"]["sm-metrics-datasource-uid"])
 }
 
-// TestConfigLoader_LoadConfig_ReturnsConfig verifies AC-7: LoadConfig returns a
+// TestConfigLoader_LoadConfig_ReturnsConfig verifies that LoadConfig returns a
 // non-nil *config.Config via LoadFullConfig.
 func TestConfigLoader_LoadConfig_ReturnsConfig(t *testing.T) {
 	cfgFile := writeConfigFile(t, `

@@ -1,17 +1,19 @@
 // Package synth is a thin client for the Grafana Synthetic Monitoring
 // datasource proxy at /api/datasources/proxy/uid/<uid>/sm/<path>.
 //
-// Probe and Check types are reused from internal/providers/synth/{probes,checks}
-// rather than redefined here. Authentication follows whatever the underlying
-// NamespacedRESTConfig is wired with — a SAT bearer today, OAuth once the
-// assistant-proxy scope mapping is fixed (see
-// docs/research/2026-05-04-sm-datasource-oauth-gap.md).
+// The client exposes only byte-level primitives (ProxyGet, ProxyPost,
+// ProxyDelete). Typed marshaling lives in providers/synth/checks and
+// providers/synth/probes alongside the SM types — keeping this package
+// type-agnostic avoids an import cycle. Long-term, the SM types should
+// come from the synthetic-monitoring-agent protobuf definitions.
 //
-// Per-resource methods live in their own files (probes.go, checks.go) and
-// share this base client and proxyGet helper.
+// Authentication follows whatever the underlying NamespacedRESTConfig is
+// wired with — a SAT bearer today, OAuth once the assistant-proxy scope
+// mapping is fixed (see docs/research/2026-05-04-sm-datasource-oauth-gap.md).
 package synth
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -47,14 +49,38 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 	}, nil
 }
 
-// proxyGet performs a GET against the SM datasource proxy at
-// /api/datasources/proxy/uid/<uid>/<path> and returns the raw response body.
-// Per-resource methods unmarshal the body into their typed shape.
-func (c *Client) proxyGet(ctx context.Context, datasourceUID, path, op string) ([]byte, error) {
+// ProxyGet performs a GET against /api/datasources/proxy/uid/<uid>/<path>
+// and returns the raw response body. The op string is included in errors
+// for diagnostics (e.g. "list checks", "get tenant").
+func (c *Client) ProxyGet(ctx context.Context, datasourceUID, path, op string) ([]byte, error) {
+	return c.proxyDo(ctx, http.MethodGet, datasourceUID, path, nil, op)
+}
+
+// ProxyPost performs a POST with a JSON body. Accepts 200 OK and 201 Created
+// as success.
+func (c *Client) ProxyPost(ctx context.Context, datasourceUID, path string, body []byte, op string) ([]byte, error) {
+	return c.proxyDo(ctx, http.MethodPost, datasourceUID, path, body, op)
+}
+
+// ProxyDelete performs a DELETE. Accepts 200 OK and 204 No Content as success.
+func (c *Client) ProxyDelete(ctx context.Context, datasourceUID, path, op string) ([]byte, error) {
+	return c.proxyDo(ctx, http.MethodDelete, datasourceUID, path, nil, op)
+}
+
+func (c *Client) proxyDo(ctx context.Context, method, datasourceUID, path string, body []byte, op string) ([]byte, error) {
 	fullURL := c.host + "/api/datasources/proxy/uid/" + url.PathEscape(datasourceUID) + "/" + path
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
+
+	var reqBody io.Reader
+	if body != nil {
+		reqBody = bytes.NewReader(body)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, fullURL, reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
 
 	resp, err := c.httpClient.Do(req)
@@ -63,13 +89,24 @@ func (c *Client) proxyGet(ctx context.Context, datasourceUID, path, op string) (
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, queryerror.FromBody(datasourceKind, op, resp.StatusCode, body)
+	if !isSuccess(method, resp.StatusCode) {
+		return nil, queryerror.FromBody(datasourceKind, op, resp.StatusCode, respBody)
 	}
-	return body, nil
+	return respBody, nil
+}
+
+func isSuccess(method string, status int) bool {
+	switch method {
+	case http.MethodPost:
+		return status == http.StatusOK || status == http.StatusCreated
+	case http.MethodDelete:
+		return status == http.StatusOK || status == http.StatusNoContent
+	default:
+		return status == http.StatusOK
+	}
 }

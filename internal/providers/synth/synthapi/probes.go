@@ -1,13 +1,6 @@
-package probes
+package synthapi
 
 import "strconv"
-
-const (
-	// APIVersion is the Kubernetes API version for SM Probe resources.
-	APIVersion = "syntheticmonitoring.ext.grafana.app/v1alpha1"
-	// Kind is the Kubernetes resource kind for SM probes.
-	Kind = "Probe"
-)
 
 // Probe represents a Synthetic Monitoring probe node.
 //
@@ -48,9 +41,9 @@ type ProbeCapabilities struct {
 	DisableBrowserChecks  bool `json:"disableBrowserChecks"`
 }
 
-// CreateResponse is returned by POST /api/v1/probe/add. The token is returned
-// only on creation and cannot be retrieved later.
-type CreateResponse struct {
+// CreateProbeResponse is returned by POST /api/v1/probe/add. The token is
+// returned only on creation and cannot be retrieved later.
+type CreateProbeResponse struct {
 	Probe Probe  `json:"probe"`
 	Token string `json:"token"`
 }

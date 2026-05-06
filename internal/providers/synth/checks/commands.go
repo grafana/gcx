@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
+	querysynth "github.com/grafana/gcx/internal/query/synth"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
@@ -556,11 +557,15 @@ func newUpdateCommand(loader smcfg.StatusLoader) *cobra.Command {
 // "previous status" is evaluated against the old threshold, not the new spec's.
 // Falls back to fallback if the fetch fails for any reason.
 func existingSensitivity(ctx context.Context, loader smcfg.Loader, checkID int64, fallback string) string {
-	baseURL, token, _, err := loader.LoadSMConfig(ctx)
+	cfg, datasourceUID, _, err := loader.LoadSMConfig(ctx)
 	if err != nil {
 		return fallback
 	}
-	existing, err := NewClient(ctx, baseURL, token).Get(ctx, checkID)
+	smClient, err := querysynth.NewClient(cfg)
+	if err != nil {
+		return fallback
+	}
+	existing, err := GetCheck(ctx, smClient, datasourceUID, checkID)
 	if err != nil {
 		return fallback
 	}

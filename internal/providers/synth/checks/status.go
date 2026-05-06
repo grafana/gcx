@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/synth/probes"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 	"github.com/grafana/gcx/internal/query/prometheus"
+	querysynth "github.com/grafana/gcx/internal/query/synth"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/grafana/promql-builder/go/promql"
@@ -143,12 +144,15 @@ Requires a Prometheus datasource containing SM metrics.`,
 			}
 
 			// Load SM config — needed by all parallel branches below.
-			baseURL, token, _, err := loader.LoadSMConfig(ctx)
+			cfg, smDatasourceUID, _, err := loader.LoadSMConfig(ctx)
 			if err != nil {
 				return err
 			}
 
-			smClient := NewClient(ctx, baseURL, token)
+			smClient, err := querysynth.NewClient(cfg)
+			if err != nil {
+				return fmt.Errorf("creating SM client: %w", err)
+			}
 
 			// Parse optional check ID arg before launching goroutines.
 			var filterID int64
@@ -171,21 +175,21 @@ Requires a Prometheus datasource containing SM metrics.`,
 
 			initG.Go(func() error {
 				if filterID != 0 {
-					c, err := smClient.Get(initCtx, filterID)
+					c, err := GetCheck(initCtx, smClient, smDatasourceUID, filterID)
 					if err != nil {
 						return err
 					}
 					checkList = []Check{*c}
 				} else {
 					var listErr error
-					checkList, listErr = smClient.List(initCtx)
+					checkList, listErr = ListChecks(initCtx, smClient, smDatasourceUID)
 					return listErr
 				}
 				return nil
 			})
 
 			initG.Go(func() error {
-				probeList, err := probes.NewClient(initCtx, baseURL, token).List(initCtx)
+				probeList, err := probes.ListProbes(initCtx, smClient, smDatasourceUID)
 				if err == nil {
 					probeNameMap = buildProbeNameMap(probeList)
 				}
@@ -353,14 +357,17 @@ Requires a Prometheus datasource containing SM metrics.`,
 			}
 
 			// Load SM config and get the check.
-			baseURL, token, _, err := loader.LoadSMConfig(ctx)
+			cfg, smDatasourceUID, _, err := loader.LoadSMConfig(ctx)
 			if err != nil {
 				return err
 			}
 
-			client := NewClient(ctx, baseURL, token)
+			smClient, err := querysynth.NewClient(cfg)
+			if err != nil {
+				return fmt.Errorf("creating SM client: %w", err)
+			}
 
-			c, err := client.Get(ctx, id)
+			c, err := GetCheck(ctx, smClient, smDatasourceUID, id)
 			if err != nil {
 				return err
 			}

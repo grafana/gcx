@@ -81,9 +81,9 @@ func ChecksCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 			var result []checks.Check
 			if opts.WithAlerts {
-				result, err = client.ListChecksWithAlerts(ctx, datasourceUID)
+				result, err = checks.ListChecksWithAlerts(ctx, client, datasourceUID)
 			} else {
-				result, err = client.ListChecks(ctx, datasourceUID)
+				result, err = checks.ListChecks(ctx, client, datasourceUID)
 			}
 			if err != nil {
 				return fmt.Errorf("query failed: %w", err)

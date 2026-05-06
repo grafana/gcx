@@ -7,6 +7,7 @@ import (
 
 	"github.com/grafana/gcx/internal/providers/synth/probes"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
+	querysynth "github.com/grafana/gcx/internal/query/synth"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -61,22 +62,24 @@ func (cr *checkResource) SetResourceName(name string) {
 // NewTypedCRUD creates a TypedCRUD for SM checks.
 // It loads config via the provided Loader and returns both CRUD and config.
 func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[checkResource], string, error) {
-	baseURL, token, namespace, err := loader.LoadSMConfig(ctx)
+	cfg, datasourceUID, namespace, err := loader.LoadSMConfig(ctx)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to load SM config for checks: %w", err)
 	}
 
-	checksClient := NewClient(ctx, baseURL, token)
-	probesClient := probes.NewClient(ctx, baseURL, token)
+	smClient, err := querysynth.NewClient(cfg)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create SM client: %w", err)
+	}
 
 	crud := &adapter.TypedCRUD[checkResource]{
 		ListFn: func(ctx context.Context, limit int64) ([]checkResource, error) {
-			checkList, err := checksClient.List(ctx)
+			checkList, err := ListChecks(ctx, smClient, datasourceUID)
 			if err != nil {
 				return nil, fmt.Errorf("failed to list checks: %w", err)
 			}
 
-			nameMap, err := probeNameMap(ctx, probesClient)
+			nameMap, err := probeNameMap(ctx, smClient, datasourceUID)
 			if err != nil {
 				return nil, err
 			}
@@ -99,12 +102,12 @@ func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[
 				)
 			}
 
-			check, err := checksClient.Get(ctx, id)
+			check, err := GetCheck(ctx, smClient, datasourceUID, id)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get check %d: %w", id, err)
 			}
 
-			nameMap, err := probeNameMap(ctx, probesClient)
+			nameMap, err := probeNameMap(ctx, smClient, datasourceUID)
 			if err != nil {
 				return nil, err
 			}
@@ -114,12 +117,12 @@ func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[
 		},
 
 		CreateFn: func(ctx context.Context, item *checkResource) (*checkResource, error) {
-			tenant, err := checksClient.GetTenant(ctx)
+			tenant, err := GetTenant(ctx, smClient, datasourceUID)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get SM tenant: %w", err)
 			}
 
-			idMap, err := probeIDMap(ctx, probesClient)
+			idMap, err := probeIDMap(ctx, smClient, datasourceUID)
 			if err != nil {
 				return nil, err
 			}
@@ -131,7 +134,7 @@ func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[
 
 			check := SpecToCheck(&item.CheckSpec, 0, tenant.ID, probeIDs)
 
-			created, err := checksClient.Create(ctx, check)
+			created, err := CreateCheck(ctx, smClient, datasourceUID, check)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create check: %w", err)
 			}
@@ -142,12 +145,12 @@ func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[
 		},
 
 		UpdateFn: func(ctx context.Context, name string, item *checkResource) (*checkResource, error) {
-			tenant, err := checksClient.GetTenant(ctx)
+			tenant, err := GetTenant(ctx, smClient, datasourceUID)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get SM tenant: %w", err)
 			}
 
-			idMap, err := probeIDMap(ctx, probesClient)
+			idMap, err := probeIDMap(ctx, smClient, datasourceUID)
 			if err != nil {
 				return nil, err
 			}
@@ -159,7 +162,7 @@ func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[
 
 			check := SpecToCheck(&item.CheckSpec, item.checkID, tenant.ID, probeIDs)
 
-			updated, err := checksClient.Update(ctx, check)
+			updated, err := UpdateCheck(ctx, smClient, datasourceUID, check)
 			if err != nil {
 				return nil, fmt.Errorf("failed to update check %d: %w", item.checkID, err)
 			}
@@ -175,7 +178,7 @@ func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[
 				return fmt.Errorf("could not extract numeric check ID from name %q", name)
 			}
 
-			return checksClient.Delete(ctx, id)
+			return DeleteCheck(ctx, smClient, datasourceUID, id)
 		},
 
 		Namespace: namespace,
@@ -254,8 +257,8 @@ func checkToResource(check Check, probeNames map[int64]string) checkResource {
 }
 
 // probeNameMap fetches all probes and builds an ID->name map.
-func probeNameMap(ctx context.Context, probesClient *probes.Client) (map[int64]string, error) {
-	probeList, err := probesClient.List(ctx)
+func probeNameMap(ctx context.Context, smClient *querysynth.Client, datasourceUID string) (map[int64]string, error) {
+	probeList, err := probes.ListProbes(ctx, smClient, datasourceUID)
 	if err != nil {
 		return nil, fmt.Errorf("fetching probe list for name resolution: %w", err)
 	}
@@ -269,8 +272,8 @@ func probeNameMap(ctx context.Context, probesClient *probes.Client) (map[int64]s
 }
 
 // probeIDMap fetches all probes and builds a name->ID map.
-func probeIDMap(ctx context.Context, probesClient *probes.Client) (map[string]int64, error) {
-	probeList, err := probesClient.List(ctx)
+func probeIDMap(ctx context.Context, smClient *querysynth.Client, datasourceUID string) (map[string]int64, error) {
+	probeList, err := probes.ListProbes(ctx, smClient, datasourceUID)
 	if err != nil {
 		return nil, fmt.Errorf("fetching probe list for ID resolution: %w", err)
 	}
@@ -310,12 +313,17 @@ func invertIDMap(idMap map[string]int64) map[int64]string {
 //   - idMap: probe name → numeric ID (for resolving probe names to IDs on push/create)
 //   - onlineMap: probe name → online status (for offline probe warnings)
 func FetchProbeInfo(ctx context.Context, loader smcfg.Loader) (map[string]int64, map[string]bool, error) {
-	baseURL, token, _, err := loader.LoadSMConfig(ctx)
+	cfg, datasourceUID, _, err := loader.LoadSMConfig(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("loading SM config for probe fetch: %w", err)
 	}
 
-	probeList, err := probes.NewClient(ctx, baseURL, token).List(ctx)
+	smClient, err := querysynth.NewClient(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("creating SM client: %w", err)
+	}
+
+	probeList, err := probes.ListProbes(ctx, smClient, datasourceUID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("fetching probe list: %w", err)
 	}

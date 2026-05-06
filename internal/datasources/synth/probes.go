@@ -15,6 +15,7 @@ import (
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/synth/probes"
 	"github.com/grafana/gcx/internal/query/synth"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
@@ -79,7 +80,7 @@ func ProbesCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to create client: %w", err)
 			}
 
-			result, err := client.ListProbes(ctx, datasourceUID)
+			result, err := probes.ListProbes(ctx, client, datasourceUID)
 			if err != nil {
 				return fmt.Errorf("query failed: %w", err)
 			}

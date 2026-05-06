@@ -8,23 +8,27 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/synth/probes"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/client-go/rest"
 )
 
-// fakeProbeLoader implements smcfg.Loader using fixed values.
+const testProbeDatasourceUID = "test-sm-uid"
+
+// fakeProbeLoader implements smcfg.Loader using fixed values. The baseURL
+// points at a Grafana test server that serves the datasource-proxy paths.
 type fakeProbeLoader struct {
 	baseURL   string
-	token     string
 	namespace string
 }
 
-func (l *fakeProbeLoader) LoadSMConfig(_ context.Context) (string, string, string, error) {
-	return l.baseURL, l.token, l.namespace, nil
+func (l *fakeProbeLoader) LoadSMConfig(_ context.Context) (config.NamespacedRESTConfig, string, string, error) {
+	return config.NamespacedRESTConfig{Config: rest.Config{Host: l.baseURL}}, testProbeDatasourceUID, l.namespace, nil
 }
 
 var _ smcfg.Loader = &fakeProbeLoader{}
@@ -53,11 +57,12 @@ var stubProbes = []probes.Probe{
 func newProbeTestServer(t *testing.T, probeList []probes.Probe) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v1/probe/list", func(w http.ResponseWriter, r *http.Request) {
+	proxyPrefix := "/api/datasources/proxy/uid/" + testProbeDatasourceUID
+	mux.HandleFunc(proxyPrefix+"/sm/probe/list", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(probeList)
 	})
-	mux.HandleFunc("/api/v1/probe/add", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(proxyPrefix+"/sm/probe/add", func(w http.ResponseWriter, r *http.Request) {
 		var p probes.Probe
 		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -68,7 +73,7 @@ func newProbeTestServer(t *testing.T, probeList []probes.Probe) *httptest.Server
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 	})
-	mux.HandleFunc("/api/v1/probe/delete/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(proxyPrefix+"/sm/probe/delete/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"msg":"Probe deleted","probeID":1}`))
 	})
@@ -80,7 +85,7 @@ func newProbeTestServer(t *testing.T, probeList []probes.Probe) *httptest.Server
 func TestProbeResourceAdapter_List(t *testing.T) {
 	srv := newProbeTestServer(t, stubProbes)
 
-	loader := &fakeProbeLoader{baseURL: srv.URL, token: "test-token", namespace: "default"}
+	loader := &fakeProbeLoader{baseURL: srv.URL, namespace: "default"}
 	factory := probes.NewAdapterFactory(loader)
 
 	a, err := factory(context.Background())
@@ -109,7 +114,7 @@ func TestProbeResourceAdapter_List(t *testing.T) {
 func TestProbeResourceAdapter_Get(t *testing.T) {
 	srv := newProbeTestServer(t, stubProbes)
 
-	loader := &fakeProbeLoader{baseURL: srv.URL, token: "test-token", namespace: "default"}
+	loader := &fakeProbeLoader{baseURL: srv.URL, namespace: "default"}
 	factory := probes.NewAdapterFactory(loader)
 
 	a, err := factory(context.Background())
@@ -131,7 +136,7 @@ func TestProbeResourceAdapter_Get(t *testing.T) {
 func TestProbeResourceAdapter_Get_NotFound(t *testing.T) {
 	srv := newProbeTestServer(t, stubProbes)
 
-	loader := &fakeProbeLoader{baseURL: srv.URL, token: "test-token", namespace: "default"}
+	loader := &fakeProbeLoader{baseURL: srv.URL, namespace: "default"}
 	factory := probes.NewAdapterFactory(loader)
 
 	a, err := factory(context.Background())
@@ -143,7 +148,7 @@ func TestProbeResourceAdapter_Get_NotFound(t *testing.T) {
 }
 
 func TestProbeResourceAdapter_Get_NonNumericName(t *testing.T) {
-	loader := &fakeProbeLoader{baseURL: "http://unused", token: "t", namespace: "default"}
+	loader := &fakeProbeLoader{baseURL: "http://unused", namespace: "default"}
 	factory := probes.NewAdapterFactory(loader)
 
 	a, err := factory(context.Background())
@@ -157,7 +162,7 @@ func TestProbeResourceAdapter_Get_NonNumericName(t *testing.T) {
 func TestProbeResourceAdapter_Create(t *testing.T) {
 	srv := newProbeTestServer(t, stubProbes)
 
-	loader := &fakeProbeLoader{baseURL: srv.URL, token: "test-token", namespace: "default"}
+	loader := &fakeProbeLoader{baseURL: srv.URL, namespace: "default"}
 	factory := probes.NewAdapterFactory(loader)
 
 	a, err := factory(context.Background())
@@ -192,7 +197,7 @@ func TestProbeResourceAdapter_Create(t *testing.T) {
 }
 
 func TestProbeResourceAdapter_Update_ReadOnly(t *testing.T) {
-	loader := &fakeProbeLoader{baseURL: "http://unused", token: "t", namespace: "default"}
+	loader := &fakeProbeLoader{baseURL: "http://unused", namespace: "default"}
 	factory := probes.NewAdapterFactory(loader)
 
 	a, err := factory(context.Background())
@@ -205,7 +210,7 @@ func TestProbeResourceAdapter_Update_ReadOnly(t *testing.T) {
 func TestProbeResourceAdapter_Delete(t *testing.T) {
 	srv := newProbeTestServer(t, stubProbes)
 
-	loader := &fakeProbeLoader{baseURL: srv.URL, token: "test-token", namespace: "default"}
+	loader := &fakeProbeLoader{baseURL: srv.URL, namespace: "default"}
 	factory := probes.NewAdapterFactory(loader)
 
 	a, err := factory(context.Background())
@@ -216,7 +221,7 @@ func TestProbeResourceAdapter_Delete(t *testing.T) {
 }
 
 func TestProbeResourceAdapter_Delete_NonNumericName(t *testing.T) {
-	loader := &fakeProbeLoader{baseURL: "http://unused", token: "t", namespace: "default"}
+	loader := &fakeProbeLoader{baseURL: "http://unused", namespace: "default"}
 	factory := probes.NewAdapterFactory(loader)
 
 	a, err := factory(context.Background())
@@ -228,7 +233,7 @@ func TestProbeResourceAdapter_Delete_NonNumericName(t *testing.T) {
 }
 
 func TestProbeResourceAdapter_Descriptor(t *testing.T) {
-	loader := &fakeProbeLoader{baseURL: "http://unused", token: "t", namespace: "default"}
+	loader := &fakeProbeLoader{baseURL: "http://unused", namespace: "default"}
 	factory := probes.NewAdapterFactory(loader)
 
 	a, err := factory(context.Background())
@@ -241,7 +246,7 @@ func TestProbeResourceAdapter_Descriptor(t *testing.T) {
 }
 
 func TestProbeResourceAdapter_NoAliases(t *testing.T) {
-	loader := &fakeProbeLoader{baseURL: "http://unused", token: "t", namespace: "default"}
+	loader := &fakeProbeLoader{baseURL: "http://unused", namespace: "default"}
 	factory := probes.NewAdapterFactory(loader)
 
 	a, err := factory(context.Background())
@@ -262,7 +267,7 @@ type countingProbeLoader struct {
 	callCount *int
 }
 
-func (l *countingProbeLoader) LoadSMConfig(_ context.Context) (string, string, string, error) {
+func (l *countingProbeLoader) LoadSMConfig(_ context.Context) (config.NamespacedRESTConfig, string, string, error) {
 	*l.callCount++
-	return "http://unused", "t", "default", nil
+	return config.NamespacedRESTConfig{Config: rest.Config{Host: "http://unused"}}, testProbeDatasourceUID, "default", nil
 }

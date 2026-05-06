@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
+	querysynth "github.com/grafana/gcx/internal/query/synth"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -17,13 +18,6 @@ func init() { //nolint:gochecknoinits // Natural key registration for cross-stac
 		adapter.SpecFieldKey("name"),
 	)
 }
-
-const (
-	// APIVersion is the Kubernetes API version for SM Probe resources.
-	APIVersion = "syntheticmonitoring.ext.grafana.app/v1alpha1"
-	// Kind is the Kubernetes resource kind for SM probes.
-	Kind = "Probe"
-)
 
 // staticDescriptor is the resource descriptor for SM Probe resources.
 //
@@ -51,24 +45,38 @@ func StaticGVK() schema.GroupVersionKind {
 
 // NewTypedCRUD creates a TypedCRUD for SM probes (read-only).
 func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[Probe], string, error) {
-	baseURL, token, namespace, err := loader.LoadSMConfig(ctx)
+	cfg, datasourceUID, namespace, err := loader.LoadSMConfig(ctx)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to load SM config for probes: %w", err)
 	}
-	client := NewClient(ctx, baseURL, token)
+	smClient, err := querysynth.NewClient(cfg)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create SM client: %w", err)
+	}
 
 	crud := &adapter.TypedCRUD[Probe]{
-		ListFn: adapter.LimitedListFn(client.List),
+		ListFn: func(ctx context.Context, _ int64) ([]Probe, error) {
+			return ListProbes(ctx, smClient, datasourceUID)
+		},
 		GetFn: func(ctx context.Context, name string) (*Probe, error) {
 			id, err := strconv.ParseInt(name, 10, 64)
 			if err != nil {
 				return nil, fmt.Errorf("probe name must be a numeric ID, got %q: %w", name, err)
 			}
-			return client.Get(ctx, id)
+			probeList, err := ListProbes(ctx, smClient, datasourceUID)
+			if err != nil {
+				return nil, fmt.Errorf("listing probes for get %d: %w", id, err)
+			}
+			for i := range probeList {
+				if probeList[i].ID == id {
+					return &probeList[i], nil
+				}
+			}
+			return nil, fmt.Errorf("probe %d not found", id)
 		},
 		CreateFn: func(ctx context.Context, item *Probe) (*Probe, error) {
 			item.Public = false
-			resp, err := client.Create(ctx, *item)
+			resp, err := CreateProbe(ctx, smClient, datasourceUID, *item)
 			if err != nil {
 				return nil, err
 			}
@@ -79,7 +87,7 @@ func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[
 			if err != nil {
 				return fmt.Errorf("probe name must be a numeric ID, got %q: %w", name, err)
 			}
-			return client.Delete(ctx, id)
+			return DeleteProbe(ctx, smClient, datasourceUID, id)
 		},
 		// UpdateFn nil — not yet supported
 		Namespace:   namespace,

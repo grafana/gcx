@@ -8,6 +8,8 @@ import (
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	"github.com/grafana/gcx/internal/providers/synth/checks"
+	"github.com/grafana/gcx/internal/providers/synth/probes"
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/query/pyroscope"
@@ -165,9 +167,9 @@ that do not have a dedicated subcommand.`,
 				var result any
 				switch expr {
 				case "probes":
-					result, err = client.ListProbes(ctx, datasourceUID)
+					result, err = probes.ListProbes(ctx, client, datasourceUID)
 				case "checks":
-					result, err = client.ListChecks(ctx, datasourceUID)
+					result, err = checks.ListChecks(ctx, client, datasourceUID)
 				default:
 					return fmt.Errorf("unknown synthetic-monitoring resource %q: supported are probes, checks", expr)
 				}

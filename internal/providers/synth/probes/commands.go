@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
+	querysynth "github.com/grafana/gcx/internal/query/synth"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -149,11 +150,14 @@ func newCreateCommand(loader smcfg.Loader) *cobra.Command {
 			ctx := cmd.Context()
 			w := cmd.OutOrStdout()
 
-			baseURL, token, _, err := loader.LoadSMConfig(ctx)
+			cfg, datasourceUID, _, err := loader.LoadSMConfig(ctx)
 			if err != nil {
 				return err
 			}
-			client := NewClient(ctx, baseURL, token)
+			smClient, err := querysynth.NewClient(cfg)
+			if err != nil {
+				return fmt.Errorf("creating SM client: %w", err)
+			}
 
 			var labels []ProbeLabel
 			for _, l := range opts.Labels {
@@ -177,7 +181,7 @@ func newCreateCommand(loader smcfg.Loader) *cobra.Command {
 				},
 			}
 
-			resp, err := client.Create(ctx, probe)
+			resp, err := CreateProbe(ctx, smClient, datasourceUID, probe)
 			if err != nil {
 				return err
 			}
@@ -282,18 +286,31 @@ func newTokenResetCommand(loader smcfg.Loader) *cobra.Command {
 				return fmt.Errorf("invalid probe ID %q: %w", args[0], err)
 			}
 
-			baseURL, token, _, err := loader.LoadSMConfig(ctx)
+			cfg, datasourceUID, _, err := loader.LoadSMConfig(ctx)
 			if err != nil {
 				return err
 			}
-			client := NewClient(ctx, baseURL, token)
+			smClient, err := querysynth.NewClient(cfg)
+			if err != nil {
+				return fmt.Errorf("creating SM client: %w", err)
+			}
 
-			probe, err := client.Get(ctx, id)
+			probeList, err := ListProbes(ctx, smClient, datasourceUID)
 			if err != nil {
 				return err
 			}
+			var probe *Probe
+			for i := range probeList {
+				if probeList[i].ID == id {
+					probe = &probeList[i]
+					break
+				}
+			}
+			if probe == nil {
+				return fmt.Errorf("probe %d not found", id)
+			}
 
-			updated, err := client.ResetToken(ctx, *probe)
+			updated, err := ResetProbeToken(ctx, smClient, datasourceUID, *probe)
 			if err != nil {
 				return err
 			}

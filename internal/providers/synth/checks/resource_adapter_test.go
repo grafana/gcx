@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/synth/checks"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 	"github.com/stretchr/testify/assert"
@@ -14,17 +15,20 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/client-go/rest"
 )
 
-// fakeLoader implements smcfg.Loader using a fixed base URL and token.
+const testCheckDatasourceUID = "test-sm-uid"
+
+// fakeLoader implements smcfg.Loader. The baseURL points at a Grafana test
+// server that serves the datasource-proxy paths.
 type fakeLoader struct {
 	baseURL   string
-	token     string
 	namespace string
 }
 
-func (l *fakeLoader) LoadSMConfig(_ context.Context) (string, string, string, error) {
-	return l.baseURL, l.token, l.namespace, nil
+func (l *fakeLoader) LoadSMConfig(_ context.Context) (config.NamespacedRESTConfig, string, string, error) {
+	return config.NamespacedRESTConfig{Config: rest.Config{Host: l.baseURL}}, testCheckDatasourceUID, l.namespace, nil
 }
 
 // newTestServer creates an httptest.Server that serves the provided handler.
@@ -60,27 +64,29 @@ var stubProbeListData = []map[string]any{
 	{"id": float64(2), "name": "Spain"},
 }
 
-// buildTestMux creates a ServeMux with endpoints for checks and probes.
+// buildTestMux creates a ServeMux with endpoints for checks and probes via
+// the Grafana datasource-proxy path.
 func buildTestMux(t *testing.T) *http.ServeMux {
 	t.Helper()
 	mux := http.NewServeMux()
+	proxyPrefix := "/api/datasources/proxy/uid/" + testCheckDatasourceUID
 
-	mux.HandleFunc("/api/v1/check/list", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(proxyPrefix+"/sm/check/list", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(stubCheckList)
 	})
 
-	mux.HandleFunc("/api/v1/probe/list", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(proxyPrefix+"/sm/probe/list", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(stubProbeListData)
 	})
 
-	mux.HandleFunc("/api/v1/check/1001", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(proxyPrefix+"/sm/check/1001", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(stubCheckList[0])
 	})
 
-	mux.HandleFunc("/api/v1/tenant", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(proxyPrefix+"/sm/tenant", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(checks.Tenant{ID: 214})
 	})
@@ -92,7 +98,7 @@ func TestResourceAdapter_List(t *testing.T) {
 	mux := buildTestMux(t)
 	srv := newAdapterTestServer(t, mux)
 
-	loader := &fakeLoader{baseURL: srv.URL, token: "test-token", namespace: "default"}
+	loader := &fakeLoader{baseURL: srv.URL, namespace: "default"}
 	factory := checks.NewAdapterFactory(loader)
 
 	a, err := factory(context.Background())
@@ -126,7 +132,7 @@ func TestResourceAdapter_Get(t *testing.T) {
 	mux := buildTestMux(t)
 	srv := newAdapterTestServer(t, mux)
 
-	loader := &fakeLoader{baseURL: srv.URL, token: "test-token", namespace: "default"}
+	loader := &fakeLoader{baseURL: srv.URL, namespace: "default"}
 	factory := checks.NewAdapterFactory(loader)
 
 	a, err := factory(context.Background())
@@ -144,7 +150,7 @@ func TestResourceAdapter_Get(t *testing.T) {
 }
 
 func TestResourceAdapter_Get_NonNumericName(t *testing.T) {
-	loader := &fakeLoader{baseURL: "http://unused", token: "t", namespace: "default"}
+	loader := &fakeLoader{baseURL: "http://unused", namespace: "default"}
 	factory := checks.NewAdapterFactory(loader)
 
 	a, err := factory(context.Background())
@@ -156,7 +162,7 @@ func TestResourceAdapter_Get_NonNumericName(t *testing.T) {
 }
 
 func TestResourceAdapter_Delete_NonNumericName(t *testing.T) {
-	loader := &fakeLoader{baseURL: "http://unused", token: "t", namespace: "default"}
+	loader := &fakeLoader{baseURL: "http://unused", namespace: "default"}
 	factory := checks.NewAdapterFactory(loader)
 
 	a, err := factory(context.Background())
@@ -181,18 +187,19 @@ func TestResourceAdapter_Create(t *testing.T) {
 	}
 
 	mux := buildTestMux(t)
-	mux.HandleFunc("/api/v1/check/add", func(w http.ResponseWriter, r *http.Request) {
+	proxyPrefix := "/api/datasources/proxy/uid/" + testCheckDatasourceUID
+	mux.HandleFunc(proxyPrefix+"/sm/check/add", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(newCheck)
 	})
-	mux.HandleFunc("/api/v1/check/9999", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(proxyPrefix+"/sm/check/9999", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(newCheck)
 	})
 
 	srv := newAdapterTestServer(t, mux)
 
-	loader := &fakeLoader{baseURL: srv.URL, token: "test-token", namespace: "default"}
+	loader := &fakeLoader{baseURL: srv.URL, namespace: "default"}
 	factory := checks.NewAdapterFactory(loader)
 
 	a, err := factory(context.Background())
@@ -228,7 +235,7 @@ func TestResourceAdapter_Create_UnknownProbeName(t *testing.T) {
 	mux := buildTestMux(t)
 	srv := newAdapterTestServer(t, mux)
 
-	loader := &fakeLoader{baseURL: srv.URL, token: "test-token", namespace: "default"}
+	loader := &fakeLoader{baseURL: srv.URL, namespace: "default"}
 	factory := checks.NewAdapterFactory(loader)
 
 	a, err := factory(context.Background())
@@ -261,13 +268,13 @@ func TestResourceAdapter_Create_UnknownProbeName(t *testing.T) {
 
 func TestResourceAdapter_Update_UnknownProbeName(t *testing.T) {
 	mux := buildTestMux(t)
-	mux.HandleFunc("/api/v1/check/update", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/datasources/proxy/uid/"+testCheckDatasourceUID+"/sm/check/update", func(w http.ResponseWriter, r *http.Request) {
 		// Should not be reached; probe resolution must fail first.
 		w.WriteHeader(http.StatusOK)
 	})
 	srv := newAdapterTestServer(t, mux)
 
-	loader := &fakeLoader{baseURL: srv.URL, token: "test-token", namespace: "default"}
+	loader := &fakeLoader{baseURL: srv.URL, namespace: "default"}
 	factory := checks.NewAdapterFactory(loader)
 
 	a, err := factory(context.Background())
@@ -299,7 +306,7 @@ func TestResourceAdapter_Update_UnknownProbeName(t *testing.T) {
 }
 
 func TestResourceAdapter_Descriptor(t *testing.T) {
-	loader := &fakeLoader{baseURL: "http://unused", token: "t", namespace: "default"}
+	loader := &fakeLoader{baseURL: "http://unused", namespace: "default"}
 	factory := checks.NewAdapterFactory(loader)
 
 	a, err := factory(context.Background())
@@ -312,7 +319,7 @@ func TestResourceAdapter_Descriptor(t *testing.T) {
 }
 
 func TestResourceAdapter_NoAliases(t *testing.T) {
-	loader := &fakeLoader{baseURL: "http://unused", token: "t", namespace: "default"}
+	loader := &fakeLoader{baseURL: "http://unused", namespace: "default"}
 	factory := checks.NewAdapterFactory(loader)
 
 	a, err := factory(context.Background())
@@ -338,7 +345,7 @@ type countingLoader struct {
 	callCount *int
 }
 
-func (l *countingLoader) LoadSMConfig(_ context.Context) (string, string, string, error) {
+func (l *countingLoader) LoadSMConfig(_ context.Context) (config.NamespacedRESTConfig, string, string, error) {
 	*l.callCount++
-	return "http://unused", "t", "default", nil
+	return config.NamespacedRESTConfig{Config: rest.Config{Host: "http://unused"}}, testCheckDatasourceUID, "default", nil
 }
