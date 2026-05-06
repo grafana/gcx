@@ -4,7 +4,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 )
+
+// boxCharsReplacer replaces Unicode box-drawing characters with plain ASCII
+// equivalents. This is a defensive measure: the primary fix is the errors.As
+// correction in ErrorToDetailedError, but any box chars that arrive in Details
+// or Suggestions (e.g., from future code paths) are stripped here so they
+// never leak into agent-mode JSON output.
+var boxCharsReplacer = strings.NewReplacer( //nolint:gochecknoglobals
+	"│", "|", "├", "+", "─", "-", "└", "+",
+	"┌", "+", "┐", "+", "┘", "+", "▶", ">",
+	"◆", "*", "●", "*",
+)
+
+func stripBoxChars(s string) string {
+	return boxCharsReplacer.Replace(s)
+}
 
 // errorJSON is the JSON representation of a DetailedError.
 // Optional fields use pointers so they are omitted when empty.
@@ -25,13 +41,20 @@ type errorEnvelope struct {
 // The output shape is: {"error": {"summary": "...", "exitCode": N, ...}}
 // Optional fields (details, suggestions, docsLink) are omitted when empty.
 // The exitCode in JSON matches the process exit code derived from ExitCode.
+// Box-drawing characters in Details and Suggestions are replaced with plain
+// ASCII equivalents as a defensive measure against rendering artefacts in
+// agent-mode JSON output.
 func (e DetailedError) WriteJSON(w io.Writer, exitCode int) error {
+	sug := make([]string, len(e.Suggestions))
+	for i, s := range e.Suggestions {
+		sug[i] = stripBoxChars(s)
+	}
 	envelope := errorEnvelope{
 		Error: errorJSON{
 			Summary:     e.Summary,
 			ExitCode:    exitCode,
-			Details:     e.Details,
-			Suggestions: e.Suggestions,
+			Details:     stripBoxChars(e.Details),
+			Suggestions: sug,
 			DocsLink:    e.DocsLink,
 		},
 	}
@@ -46,7 +69,7 @@ func (e DetailedError) WriteJSON(w io.Writer, exitCode int) error {
 }
 
 // WriteJSONWithItems writes a combined {"items": [...], "error": {...}} envelope
-// to w. Used for partial failures (FR-012) where some results succeeded and
+// to w. Used for partial failures where some results succeeded and
 // others failed — a single JSON object carries both the partial results and
 // the error context.
 func (e DetailedError) WriteJSONWithItems(w io.Writer, exitCode int, items any) error {
@@ -55,13 +78,17 @@ func (e DetailedError) WriteJSONWithItems(w io.Writer, exitCode int, items any) 
 		Error errorJSON `json:"error"`
 	}
 
+	sug := make([]string, len(e.Suggestions))
+	for i, s := range e.Suggestions {
+		sug[i] = stripBoxChars(s)
+	}
 	env := combined{
 		Items: items,
 		Error: errorJSON{
 			Summary:     e.Summary,
 			ExitCode:    exitCode,
-			Details:     e.Details,
-			Suggestions: e.Suggestions,
+			Details:     stripBoxChars(e.Details),
+			Suggestions: sug,
 			DocsLink:    e.DocsLink,
 		},
 	}

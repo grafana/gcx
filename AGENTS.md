@@ -78,7 +78,8 @@ cmd/gcx/
   linter/       Linting (mounted under dev lint)
   commands/     Commands catalog (agent metadata)
   helptree/     Help tree for agent context
-  setup/        Onboarding + instrumentation
+  setup/        Onboarding command area (status + provider-config aggregation)
+  instrumentation/  Instrumentation Hub provider command tree (setup, status, clusters, services)
   skills/       Portable Agent Skills installer for .agents-compatible tools
   dev/          Developer tools (import, scaffold, generate, lint, serve)
   fail/         Structured error conversion
@@ -89,9 +90,7 @@ internal/
 ├── login/       Login orchestration (target detection, auth resolution, connectivity validation, sentinel-retry flow)
 ├── config/      Config types, loader, editor, rest.Config builder, stack-id discovery, context name helpers
 ├── cloud/       GCOM HTTP client for Grafana Cloud stack discovery
-├── fleet/       Shared fleet base client (HTTP, auth, config — used by fleet provider and setup/instrumentation)
-├── setup/
-│   └── instrumentation/  Manifest types, instrumentation client, optimistic lock comparison
+├── fleet/       Shared fleet base client (HTTP, auth, config — used by fleet provider and instrumentation provider)
 ├── resources/
 │   ├── *.go     Core types: Resource, Selector, Filter, Descriptor, Resources collection
 │   ├── adapter/    ResourceAdapter interface, Factory, ResourceClientRouter, self-registration, slug-ID helpers
@@ -105,6 +104,7 @@ internal/
 │   ├── dashboards/ Dashboards provider (CRUD, search, versions, snapshot)
 │   ├── faro/       Frontend Observability provider (apps CRUD, sourcemaps sub-resource) — CLI: `gcx frontend`
 │   ├── fleet/      Fleet Management provider (pipeline and collector resources)
+│   ├── instrumentation/  Instrumentation Hub provider (clusters, apps, services, setup wizard, status)
 │   ├── irm/        IRM provider (OnCall + Incidents — schedules, integrations, escalation chains, incidents)
 │   ├── k6/         k6 Cloud provider (projects, tests, runs, envvars)
 │   ├── kg/         Knowledge Graph (Asserts) provider

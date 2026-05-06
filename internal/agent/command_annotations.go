@@ -84,11 +84,36 @@ var commandAnnotations = map[string]annotation{
 	"gcx resources validate": {Cost: "medium", Hint: "-p ./dashboards"},
 
 	// setup
-	"gcx setup status":                   {Cost: "small"},
-	"gcx setup instrumentation apply":    {Cost: "small"},
-	"gcx setup instrumentation discover": {Cost: "medium", Hint: "--cluster <name> -o json"},
-	"gcx setup instrumentation show":     {Cost: "medium", Hint: "<cluster> -o json"},
-	"gcx setup instrumentation status":   {Cost: "small"},
+	"gcx setup status": {Cost: "small"},
+
+	// -----------------------------------------------------------------------
+	// Instrumentation provider (action-verb tree — ADR-018)
+	// -----------------------------------------------------------------------
+
+	// top-level single commands
+	"gcx instrumentation setup":  {Cost: "medium", Hint: "<cluster> --yes -o json"},
+	"gcx instrumentation status": {Cost: "medium", Hint: "-o json"},
+
+	// clusters verb group
+	"gcx instrumentation clusters list":      {Cost: "large", Hint: "-o json"},
+	"gcx instrumentation clusters get":       {Cost: "medium", Hint: "<cluster> -o json"},
+	"gcx instrumentation clusters configure": {Cost: "small"},
+	"gcx instrumentation clusters remove":    {Cost: "small"},
+	"gcx instrumentation clusters wait":      {Cost: "small"},
+
+	// clusters apps verb group
+	"gcx instrumentation clusters apps list":      {Cost: "medium", Hint: "<cluster> -o json"},
+	"gcx instrumentation clusters apps get":       {Cost: "medium", Hint: "<cluster> <namespace> -o json"},
+	"gcx instrumentation clusters apps configure": {Cost: "small"},
+	"gcx instrumentation clusters apps remove":    {Cost: "small"},
+	"gcx instrumentation clusters apps wait":      {Cost: "small"},
+
+	// services verb group
+	"gcx instrumentation services list":    {Cost: "large", Hint: "--cluster <name> --namespace <ns> -o json"},
+	"gcx instrumentation services get":     {Cost: "medium", Hint: "<cluster> <namespace> <service> -o json"},
+	"gcx instrumentation services include": {Cost: "small"},
+	"gcx instrumentation services exclude": {Cost: "small"},
+	"gcx instrumentation services clear":   {Cost: "small"},
 
 	// skills
 	"gcx skills install":   {Cost: "small"},

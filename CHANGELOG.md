@@ -1,5 +1,6 @@
 ## v0.2.12 (2026-05-04)
 
+- **Instrumentation**: `gcx instrumentation services get` and `services list` do not surface workload-level Selection / override state; query it via `gcx instrumentation clusters apps list --cluster=<cluster> --namespace=<namespace>`.
 - **Dashboards**: new CRUD, search, and version history provider
 - **Dashboards**: dev server syncs variable params to URL and restores on refresh
 - **Knowledge Graph**: add `suppressions list` and `suppressions delete` commands

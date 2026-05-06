@@ -2,13 +2,28 @@ package output
 
 import (
 	"encoding/json"
+	"fmt"
 	goio "io"
+	"reflect"
 	"sort"
 	"strings"
 
 	"github.com/grafana/gcx/internal/format"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
+
+// UnknownFieldSelectionError is returned by FieldSelectCodec when the caller
+// requests one or more fields that are not present in the value's field set.
+// The validator is optional — it is only invoked when wired by the caller
+// (e.g. instrumentation list commands via Options.SetJSONFieldValidator).
+type UnknownFieldSelectionError struct {
+	Fields []string // the offending field names
+}
+
+func (e UnknownFieldSelectionError) Error() string {
+	return fmt.Sprintf("unknown field(s) in --json: %s. Run --json list to enumerate valid fields.",
+		strings.Join(e.Fields, ", "))
+}
 
 // FieldSelectCodec wraps the JSON codec and emits only the requested fields
 // from each output object. It implements format.Codec.
@@ -17,13 +32,15 @@ import (
 // by walking nested maps.
 //
 // For a single object the output is a flat JSON object containing only the
-// selected fields. For a collection (printItems or
-// unstructured.UnstructuredList) the output is {"items": [...]}.
+// selected fields. For k8s unstructured collections (UnstructuredList) or
+// objects with an "items" field, the output is {"items": [...]}. For plain
+// Go slices, the output preserves the array shape ([...]).
 //
-// Missing fields produce a null value rather than being omitted (FR-008).
+// Missing fields produce a null value rather than being omitted.
 type FieldSelectCodec struct {
-	fields []string
-	json   *format.JSONCodec
+	fields    []string
+	json      *format.JSONCodec
+	validator func(fields []string) error // optional; if non-nil, Encode calls it before field extraction
 }
 
 // NewFieldSelectCodec creates a FieldSelectCodec for the given field paths.
@@ -34,12 +51,32 @@ func NewFieldSelectCodec(fields []string) *FieldSelectCodec {
 	}
 }
 
+// NewFieldSelectCodecWithValidator creates a FieldSelectCodec for the given
+// field paths, with an optional validator invoked before field extraction.
+// If the validator returns an error, Encode returns that error immediately.
+func NewFieldSelectCodecWithValidator(fields []string, validator func(fields []string) error) *FieldSelectCodec {
+	return &FieldSelectCodec{
+		fields:    fields,
+		json:      format.NewJSONCodec(),
+		validator: validator,
+	}
+}
+
 func (c *FieldSelectCodec) Format() format.Format {
 	return format.JSON
 }
 
 // Encode writes the selected fields to dst as JSON.
+// If a validator was configured (via NewFieldSelectCodecWithValidator), it is
+// invoked before any field extraction. If the validator returns an error,
+// Encode returns that error immediately.
 func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
+	if c.validator != nil {
+		if err := c.validator(c.fields); err != nil {
+			return err
+		}
+	}
+
 	switch v := value.(type) {
 	case unstructured.UnstructuredList:
 		items := make([]map[string]any, len(v.Items))
@@ -78,7 +115,8 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 			for i, item := range items {
 				extracted[i] = extractFields(item, c.fields)
 			}
-			return c.json.Encode(dst, map[string]any{"items": extracted})
+			// Preserve array shape: output [...] not {"items":[...]}
+			return c.json.Encode(dst, extracted)
 		}
 
 		// If the value serialized to an object with an "items" array treat it
@@ -181,6 +219,51 @@ func toSliceOfMaps(raw any) []map[string]any {
 		}
 	}
 	return result
+}
+
+// MakeFieldValidator builds a validator function from a sample value.
+// The returned function checks that all requested fields are present in the
+// discovered field set derived from the sample. Unknown fields cause the
+// validator to return UnknownFieldSelectionError listing the offending names.
+//
+// The sample should be an instance of the item type (zero or non-zero) — NOT
+// the list envelope — so that the validator sees item-level fields.
+//
+// Field discovery uses reflection to enumerate exported struct fields by their
+// JSON names. This correctly handles struct fields tagged `json:"...,omitempty"`
+// that would be absent from a zero-value JSON marshal. Fields tagged json:"-"
+// are excluded (they are not selectable).
+//
+// If the field set cannot be derived from the sample (e.g. the type is a
+// primitive, map, or interface), the function returns nil (fail open — no
+// validation). This prevents false positives for exotic types.
+func MakeFieldValidator(sample any) func(fields []string) error {
+	// Use reflection to enumerate JSON field names from the struct type.
+	// reflectFields (from format.go, same package) handles slices and pointers
+	// by unwrapping to the element type, and skips json:"-" fields.
+	structFields := reflectFields(reflect.TypeOf(sample))
+	if len(structFields) == 0 {
+		// Cannot determine the field set — fail open.
+		return nil
+	}
+
+	allowed := make(map[string]struct{}, len(structFields))
+	for _, f := range structFields {
+		allowed[f] = struct{}{}
+	}
+
+	return func(requested []string) error {
+		var unknown []string
+		for _, f := range requested {
+			if _, ok := allowed[f]; !ok {
+				unknown = append(unknown, f)
+			}
+		}
+		if len(unknown) > 0 {
+			return UnknownFieldSelectionError{Fields: unknown}
+		}
+		return nil
+	}
 }
 
 // DiscoverFields enumerates the available field paths from a sample object map.
