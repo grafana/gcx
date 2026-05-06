@@ -1,6 +1,7 @@
 package agentlog
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -10,7 +11,12 @@ import (
 	"github.com/adrg/xdg"
 )
 
-const logFileName = "agent-invocation-errors.jsonl"
+const (
+	logFileName = "agent-invocation-errors.jsonl"
+	// maxEntries is the maximum number of JSONL records kept in the log file.
+	// When exceeded, the oldest entries are dropped to stay at this limit.
+	maxEntries = 1000
+)
 
 // Config holds agentlog settings extracted from DiagnosticsConfig at startup.
 type Config struct {
@@ -46,7 +52,7 @@ type Entry struct {
 	ExitCode  int       `json:"exit_code"`
 }
 
-// Append writes entry to the log file as a JSONL record.
+// Append writes entry to the log file as a JSONL record and trims to maxEntries.
 func Append(entry Entry) error {
 	path := LogPath()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -61,9 +67,36 @@ func Append(entry Entry) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	_, err = f.Write(data)
-	return err
+	_, writeErr := f.Write(data)
+	f.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+	return trimLog(path, maxEntries)
+}
+
+// trimLog keeps only the last max entries in the JSONL file, dropping the oldest.
+// It is a no-op when the file has max or fewer entries.
+func trimLog(path string, limit int) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	count := bytes.Count(data, []byte("\n"))
+	if count <= limit {
+		return nil
+	}
+	drop := count - limit
+	for i := range data {
+		if data[i] == '\n' {
+			drop--
+			if drop == 0 {
+				data = data[i+1:]
+				break
+			}
+		}
+	}
+	return os.WriteFile(path, data, 0o600)
 }
 
 // StripArgValues returns a copy of args with all flag values replaced by
