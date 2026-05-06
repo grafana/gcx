@@ -53,10 +53,10 @@ right group:
 | Synthetic Monitoring checks | `synthetic-monitoring` | `gcx synthetic-monitoring checks list` |
 | IRM (OnCall + Incidents) | `irm` | `gcx irm oncall schedules list`, `gcx irm incidents list` |
 | k6 load tests, projects, runs | `k6` | `gcx k6 load-tests list` |
-| PromQL / Adaptive Metrics | `metrics` | `gcx metrics query 'up'` |
-| LogQL / Adaptive Logs | `logs` | `gcx logs query '{app="foo"}'` |
+| PromQL / Adaptive Metrics | `metrics` | `gcx metrics query -d <uid> 'up'` |
+| LogQL / Adaptive Logs | `logs` | `gcx logs query -d <uid> '{app="foo"}'` |
 | Profiling (Pyroscope) | `profiles` | `gcx profiles query` |
-| Tracing (Tempo) | `traces` | `gcx traces query` |
+| Tracing (Tempo) | `traces` | `gcx traces query -d <uid> '{ status = error }'` |
 | Datasource info and queries | `datasources` | `gcx datasources list` |
 | Fleet pipelines, collectors | `fleet` | `gcx fleet pipelines list` |
 | Knowledge Graph (Asserts) | `kg` | `gcx kg entities list` |

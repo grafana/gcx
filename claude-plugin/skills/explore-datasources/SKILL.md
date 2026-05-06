@@ -71,10 +71,10 @@ Once you've identified available data, verify with a test query.
 
 ```bash
 # For Prometheus - instant query
-gcx metrics query <datasource-uid> 'up'
+gcx metrics query -d <datasource-uid> 'up'
 
 # For Prometheus - range query
-gcx metrics query <datasource-uid> 'rate(http_requests_total[5m])' --from now-1h --to now
+gcx metrics query -d <datasource-uid> 'rate(http_requests_total[5m])' --from now-1h --to now
 ```
 
 **Expected output:** Table showing metric values with labels and timestamps.

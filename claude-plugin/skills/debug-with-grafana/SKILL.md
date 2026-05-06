@@ -80,7 +80,7 @@ gcx logs labels -d <loki-uid> -l job -o json
 gcx logs series -d <loki-uid> -M '{job="<service-name>"}' -o json
 
 # Spot-check: confirm uptime metrics are present for the service
-gcx metrics query <prom-uid> 'up{job="<service-name>"}' -o json
+gcx metrics query -d <prom-uid> 'up{job="<service-name>"}' -o json
 ```
 
 **Expected output shape:**
@@ -107,22 +107,22 @@ whether an error spike exists and when it began.
 
 ```bash
 # HTTP 5xx error rate (range query for trend)
-gcx metrics query <prom-uid> \
+gcx metrics query -d <prom-uid> \
   'rate(http_requests_total{job="<service-name>",status=~"5.."}[5m])' \
   --from now-1h --to now --step 1m -o json
 
 # Visualize the trend
-gcx metrics query <prom-uid> \
+gcx metrics query -d <prom-uid> \
   'rate(http_requests_total{job="<service-name>",status=~"5.."}[5m])' \
   --from now-1h --to now --step 1m -o graph
 
 # Error ratio (errors / total)
-gcx metrics query <prom-uid> \
+gcx metrics query -d <prom-uid> \
   'rate(http_requests_total{job="<service-name>",status=~"5.."}[5m]) / rate(http_requests_total{job="<service-name>"}[5m])' \
   --from now-1h --to now --step 1m -o json
 
 # Break down by status code to identify 500 vs 503 vs 504
-gcx metrics query <prom-uid> \
+gcx metrics query -d <prom-uid> \
   'sum by(status) (rate(http_requests_total{job="<service-name>"}[5m]))' \
   --from now-1h --to now --step 1m -o json
 ```
@@ -153,22 +153,22 @@ or failing fast (error issue). High latency often precedes error spikes.
 
 ```bash
 # P50/P95/P99 latency from histogram
-gcx metrics query <prom-uid> \
+gcx metrics query -d <prom-uid> \
   'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="<service-name>"}[5m]))' \
   --from now-1h --to now --step 1m -o json
 
 # Visualize P95 latency trend
-gcx metrics query <prom-uid> \
+gcx metrics query -d <prom-uid> \
   'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="<service-name>"}[5m]))' \
   --from now-1h --to now --step 1m -o graph
 
 # Average latency as a simpler signal if histograms are unavailable
-gcx metrics query <prom-uid> \
+gcx metrics query -d <prom-uid> \
   'rate(http_request_duration_seconds_sum{job="<service-name>"}[5m]) / rate(http_request_duration_seconds_count{job="<service-name>"}[5m])' \
   --from now-1h --to now --step 1m -o json
 
 # Latency by endpoint (if label available)
-gcx metrics query <prom-uid> \
+gcx metrics query -d <prom-uid> \
   'histogram_quantile(0.95, sum by(le, handler) (rate(http_request_duration_seconds_bucket{job="<service-name>"}[5m])))' \
   --from now-1h --to now --step 1m -o json
 ```
@@ -200,22 +200,22 @@ metrics cannot.
 
 ```bash
 # Error logs for the service in the incident window
-gcx logs query <loki-uid> \
+gcx logs query -d <loki-uid> \
   '{job="<service-name>"} |= "error"' \
   --from now-1h --to now -o json
 
 # JSON-parsed logs with level filter (if structured logging)
-gcx logs query <loki-uid> \
+gcx logs query -d <loki-uid> \
   '{job="<service-name>"} | json | level="error"' \
   --from now-1h --to now -o json
 
 # Error rate from logs (count over time)
-gcx logs query <loki-uid> \
+gcx logs query -d <loki-uid> \
   'count_over_time({job="<service-name>"} |= "error" [5m])' \
   --from now-1h --to now --step 1m -o json
 
 # Grep for specific error patterns
-gcx logs query <loki-uid> \
+gcx logs query -d <loki-uid> \
   '{job="<service-name>"} |~ "timeout|connection refused|OOM|panic"' \
   --from now-1h --to now -o json
 ```
@@ -353,25 +353,25 @@ gcx datasources list -t prometheus -o json
 gcx datasources list -t loki -o json
 
 # Step 2: Confirm service is being scraped
-gcx metrics query <prom-uid> 'up{job="api"}' -o json
+gcx metrics query -d <prom-uid> 'up{job="api"}' -o json
 
 # Step 3: Observe error rate over last 2 hours (wider window to see the spike start)
-gcx metrics query <prom-uid> \
+gcx metrics query -d <prom-uid> \
   'rate(http_requests_total{job="api",status=~"5.."}[5m])' \
   --from now-2h --to now --step 1m -o graph
 
 # Identify which status codes are elevated
-gcx metrics query <prom-uid> \
+gcx metrics query -d <prom-uid> \
   'sum by(status) (rate(http_requests_total{job="api"}[5m]))' \
   --from now-2h --to now --step 1m -o json
 
 # Step 4: Check if latency rose at the same time
-gcx metrics query <prom-uid> \
+gcx metrics query -d <prom-uid> \
   'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="api"}[5m]))' \
   --from now-2h --to now --step 1m -o graph
 
 # Step 5: Get error logs in the spike window
-gcx logs query <loki-uid> \
+gcx logs query -d <loki-uid> \
   '{job="api"} |= "error"' \
   --from now-2h --to now -o json
 
@@ -411,30 +411,30 @@ increasing from baseline. Match this to log timestamps in Step 5.
 gcx datasources list -t prometheus -o json
 
 # Step 2: Confirm service health (latency without errors suggests slow dependency)
-gcx metrics query <prom-uid> 'up{job="api"}' -o json
+gcx metrics query -d <prom-uid> 'up{job="api"}' -o json
 
 # Step 3: Error rate (confirm it's not elevated yet)
-gcx metrics query <prom-uid> \
+gcx metrics query -d <prom-uid> \
   'rate(http_requests_total{job="api",status=~"5.."}[5m])' \
   --from now-1h --to now --step 1m -o json
 
 # Step 4: P95 latency is the primary signal — visualize trend
-gcx metrics query <prom-uid> \
+gcx metrics query -d <prom-uid> \
   'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="api"}[5m]))' \
   --from now-2h --to now --step 1m -o graph
 
 # Break down by endpoint to isolate which routes are slow
-gcx metrics query <prom-uid> \
+gcx metrics query -d <prom-uid> \
   'histogram_quantile(0.95, sum by(le, handler) (rate(http_request_duration_seconds_bucket{job="api"}[5m])))' \
   --from now-1h --to now --step 1m -o json
 
 # Step 5: Check for timeout log patterns suggesting upstream dependency issue
-gcx logs query <loki-uid> \
+gcx logs query -d <loki-uid> \
   '{job="api"} |~ "timeout|slow|waiting"' \
   --from now-2h --to now -o json
 
 # Check database or downstream service latency if metrics available
-gcx metrics query <prom-uid> \
+gcx metrics query -d <prom-uid> \
   'rate(db_query_duration_seconds_sum{job="api"}[5m]) / rate(db_query_duration_seconds_count{job="api"}[5m])' \
   --from now-2h --to now --step 1m -o json
 ```
@@ -475,28 +475,28 @@ gcx datasources list -o json
 gcx metrics query -d <prom-uid> 'up{job="api"}' -o json
 
 # Confirm up metric — value "0" means scrape failure, absent means not scraped
-gcx metrics query <prom-uid> 'up{job="api"}' -o json
+gcx metrics query -d <prom-uid> 'up{job="api"}' -o json
 
 # Check if the job label exists at all (absence = service was never registered)
 gcx metrics labels -d <prom-uid> -l job -o json
 
 # Step 3: Without error rate data, check for recent data gaps
-gcx metrics query <prom-uid> \
+gcx metrics query -d <prom-uid> \
   'absent(up{job="api"})' \
   --from now-1h --to now --step 1m -o json
 
 # Step 4: Query latency from any recent data before the outage
-gcx metrics query <prom-uid> \
+gcx metrics query -d <prom-uid> \
   'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="api"}[5m]))' \
   --from now-3h --to now --step 5m -o graph
 
 # Step 5: Check Loki for last known logs before data disappeared
-gcx logs query <loki-uid> \
+gcx logs query -d <loki-uid> \
   '{job="api"}' \
   --from now-3h --to now -o json
 
 # Crash or OOM signals in logs
-gcx logs query <loki-uid> \
+gcx logs query -d <loki-uid> \
   '{job="api"} |~ "panic|OOM|killed|crashed|SIGTERM"' \
   --from now-3h --to now -o json
 
