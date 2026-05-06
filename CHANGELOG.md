@@ -1,3 +1,18 @@
+## v0.2.13 (2026-05-06)
+
+- Add `gcx stacks` commands: list, get, create, update, delete, regions
+- Rename `synth` provider to `synthetic-monitoring`
+- Render trace trees as a formatted table in `gcx traces get`
+- Add RCA Workbench deep link to `gcx kg entities inspect`
+- Consolidate Knowledge Graph insights filtering into `kg entities list`
+- Fix `--dry-run` not being honored in resource delete operations
+- Fix `--context` flag not applied across all CRUD adapter operations
+- Prevent env var secrets from being written to the config file
+- Handle read-only files gracefully during skill updates
+- Update agent skills to remove common usage errors
+- Bump Go module and GitHub Actions dependencies
+
+
 ## v0.2.12 (2026-05-04)
 
 - **Dashboards**: new CRUD, search, and version history provider
