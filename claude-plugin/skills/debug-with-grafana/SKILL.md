@@ -254,6 +254,55 @@ Look for:
 - Stack traces or panic messages that identify the root cause
 - Upstream service names in error messages (database, external APIs)
 
+### Step 5b: Correlate Traces (if Tempo is available)
+
+If a Tempo datasource exists, search for traces matching the incident window.
+Traces show individual request paths and identify slow or failing spans.
+
+```bash
+# Check for Tempo datasources
+gcx datasources list -t tempo -o json
+
+# Search for error traces in the incident window
+gcx traces query -d <tempo-uid> '{ status = error }' --from now-1h --to now
+
+# Search by service name
+gcx traces query -d <tempo-uid> '{ resource.service.name = "<service-name>" }' --from now-1h --to now
+
+# Search for slow traces (duration > 1s)
+gcx traces query -d <tempo-uid> \
+  '{ resource.service.name = "<service-name>" && duration > 1s }' \
+  --from now-1h --to now
+
+# Fetch a specific trace by ID (from search results or log trace IDs)
+gcx traces get -d <tempo-uid> <trace-id>
+
+# LLM-friendly trace output for analysis
+gcx traces get -d <tempo-uid> <trace-id> --llm
+```
+
+**TraceQL attribute scoping**: Tempo requires scoped attribute names. Use
+`resource.` for resource-level attributes and `span.` for span-level:
+- `resource.service.name` (not `service.name`)
+- `span.http.status_code` (not `http.status_code`)
+
+Use `name` (unscoped) for the span name, `duration` for span duration,
+and `status` for span status. Use `trace:rootService` and `trace:rootName`
+for root span attributes (not `rootServiceName` or `rootTraceName`).
+
+Discover available labels:
+```bash
+gcx traces labels -d <tempo-uid>
+gcx traces labels -d <tempo-uid> -l resource.service.name
+```
+
+> **Common mistake**: `gcx traces labels -l service.name` will fail — Tempo
+> parses the dot as an identifier boundary. Always fully qualify:
+> `-l resource.service.name`, not `-l service.name`.
+
+See [`references/traceql-patterns.md`](references/traceql-patterns.md) for full
+TraceQL syntax reference.
+
 ### Step 6: Check Related Dashboards and Resources
 
 Check whether relevant dashboards exist that give broader context, and inspect
@@ -560,3 +609,7 @@ gcx alert rules list -o json | jq '.[] | .rules[]? | select(.state == "firing")'
   query patterns for Prometheus and Loki datasources, including time range
   formats, aggregation patterns, Loki stream operators, and output format
   reference.
+
+- [`references/traceql-patterns.md`](references/traceql-patterns.md) — TraceQL
+  query patterns for Tempo trace search, attribute scoping rules, and the
+  distinction between `traces query` and `traces get`.

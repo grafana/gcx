@@ -557,3 +557,9 @@ gcx logs query -d <loki-uid> \
 gcx metrics query -d <uid> 'rate(requests[5m])' --from now-1h --to now -o json > now.json
 gcx metrics query -d <uid> 'rate(requests[5m])' --from now-25h --to now-24h -o json > yesterday.json
 ```
+
+## Tempo / TraceQL Patterns
+
+For TraceQL query syntax, `traces query` vs `traces get`, attribute scoping
+rules, and common trace search patterns, see
+[`traceql-patterns.md`](traceql-patterns.md).
