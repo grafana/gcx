@@ -17,7 +17,8 @@ gcx datasources list --type prometheus
 gcx datasources list --type loki
 
 # Get JSON for scripting
-DS_UID=$(gcx datasources list --type prometheus -o json | jq -r '.datasources[0].uid')
+DS_UID=$(gcx datasources list --type prometheus -o json 2>/dev/null | \
+  python3 -c "import json,sys; print(json.load(sys.stdin)['datasources'][0]['uid'])")
 ```
 
 ### Setting Default Datasource
@@ -369,18 +370,24 @@ JSON structure:
 gcx metrics query -d <uid> 'up' -o yaml
 ```
 
-### Piping to jq
+### Field Selection
+
+Use `--json` to select fields without external tools:
 
 ```bash
-# Extract specific fields
-gcx metrics query -d <uid> 'up' -o json | jq '.data.result[].metric.job'
+# Discover available fields
+gcx metrics query -d <uid> 'up' --json list
 
-# Filter results
-gcx metrics query -d <uid> 'up' -o json | jq '.data.result[] | select(.value[1] == "1")'
+# Select specific fields
+gcx metrics query -d <uid> 'up' --json metric,value
 
-# Count results
-gcx metrics query -d <uid> 'up' -o json | jq '.data.result | length'
+# For complex filtering, pipe to python3 (jq may not be installed)
+gcx metrics query -d <uid> 'up' -o json 2>/dev/null | \
+  python3 -c "import json,sys; data=json.load(sys.stdin); print(len(data['data']['result']))"
 ```
+
+> **Piping caution**: Never use `2>&1` when piping gcx JSON output — gcx writes
+> hints to stderr that break JSON parsers. Use `2>/dev/null` instead.
 
 ## Scripting Patterns
 
@@ -388,11 +395,12 @@ gcx metrics query -d <uid> 'up' -o json | jq '.data.result | length'
 
 ```bash
 #!/bin/bash
-DS_UID=$(gcx datasources list --type prometheus -o json | jq -r '.datasources[0].uid')
+DS_UID=$(gcx datasources list --type prometheus -o json 2>/dev/null | \
+  python3 -c "import json,sys; print(json.load(sys.stdin)['datasources'][0]['uid'])")
 
 # Check if service is up
-UP=$(gcx metrics query -d $DS_UID 'up{job="critical-service"}' -o json | \
-     jq -r '.data.result[0].value[1]')
+UP=$(gcx metrics query -d $DS_UID 'up{job="critical-service"}' -o json 2>/dev/null | \
+     python3 -c "import json,sys; print(json.load(sys.stdin)['data']['result'][0]['value'][1])")
 
 if [ "$UP" != "1" ]; then
   echo "ALERT: critical-service is down!"
@@ -425,9 +433,9 @@ done
 # Export query results to file
 gcx metrics query -d <uid> 'cpu_usage' --from now-24h --to now --step 1m -o json > cpu-data.json
 
-# Convert to CSV (using jq)
-gcx metrics query -d <uid> 'up' -o json | \
-  jq -r '.data.result[] | [.metric.job, .value[0], .value[1]] | @csv' > results.csv
+# Convert to CSV
+gcx metrics query -d <uid> 'up' -o json 2>/dev/null | \
+  python3 -c "import json,sys,csv; w=csv.writer(sys.stdout); data=json.load(sys.stdin); [w.writerow([r['metric'].get('job',''),r['value'][0],r['value'][1]]) for r in data['data']['result']]" > results.csv
 ```
 
 ## Performance Tips

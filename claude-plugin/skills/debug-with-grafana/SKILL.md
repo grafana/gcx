@@ -45,8 +45,10 @@ gcx datasources list -t prometheus -o json
 gcx datasources list -t loki -o json
 
 # Capture UIDs for use in subsequent steps
-PROM_UID=$(gcx datasources list -t prometheus -o json | jq -r '.datasources[0].uid')
-LOKI_UID=$(gcx datasources list -t loki -o json | jq -r '.datasources[0].uid')
+PROM_UID=$(gcx datasources list -t prometheus -o json 2>/dev/null | \
+  python3 -c "import json,sys; print(json.load(sys.stdin)['datasources'][0]['uid'])")
+LOKI_UID=$(gcx datasources list -t loki -o json 2>/dev/null | \
+  python3 -c "import json,sys; print(json.load(sys.stdin)['datasources'][0]['uid'])")
 ```
 
 **Expected output shape:**
@@ -62,6 +64,16 @@ LOKI_UID=$(gcx datasources list -t loki -o json | jq -r '.datasources[0].uid')
 If no datasources appear, confirm the context is pointing at the correct
 Grafana instance. See `references/error-recovery.md` for auth and
 datasource-not-found recovery patterns.
+
+> **JSON output piping**: When piping gcx output through external tools, never
+> use `2>&1` — gcx writes hints to stderr that break JSON parsers. Use
+> `2>/dev/null` to suppress stderr, or use `--json field1,field2` to select
+> fields directly without piping:
+> ```bash
+> gcx datasources list -t prometheus --json uid
+> gcx metrics query -d <prom-uid> 'up' --json metric,value
+> ```
+> Use `--json list` to discover available fields for any command.
 
 ### Step 2: Confirm Data Availability
 
