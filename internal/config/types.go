@@ -31,6 +31,21 @@ type Config struct {
 
 	// CurrentContext is the name of the context currently in use.
 	CurrentContext string `json:"current-context" yaml:"current-context"`
+
+	// Diagnostics holds optional local diagnostic settings. All features are off by default.
+	Diagnostics *DiagnosticsConfig `json:"diagnostics,omitempty" yaml:"diagnostics,omitempty"`
+}
+
+// DiagnosticsConfig controls optional local diagnostic features.
+type DiagnosticsConfig struct {
+	// AgentInvocationLog enables logging of failed agent-mode invocations to disk.
+	// Off by default. When enabled, errors from agent-driven gcx calls are written
+	// to LogDir (JSONL format) for capability-gap analysis.
+	AgentInvocationLog bool `json:"agent-invocation-log,omitempty" yaml:"agent-invocation-log,omitempty"`
+
+	// LogDir overrides the output directory for agent invocation log files.
+	// Default: $XDG_STATE_HOME/gcx/ (platform-specific).
+	LogDir string `json:"log-dir,omitempty" yaml:"log-dir,omitempty"`
 }
 
 func (config *Config) HasContext(name string) bool {

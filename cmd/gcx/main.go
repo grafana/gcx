@@ -13,6 +13,8 @@ import (
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/agentlog"
+	internalconfig "github.com/grafana/gcx/internal/config"
 	appversion "github.com/grafana/gcx/internal/version"
 	"golang.org/x/mod/module"
 )
@@ -34,6 +36,7 @@ func main() {
 	// root.Command() because io.Options.BindFlags() reads agent.IsAgentMode()
 	// during command construction to set the default output format.
 	preParseAgentFlag()
+	agentlog.Configure(loadDiagnosticsConfig())
 
 	formattedVersion := formatVersion()
 	appversion.Set(version)
@@ -88,6 +91,17 @@ func handleError(err error) {
 		exitCode = *detailedErr.ExitCode
 	}
 
+	if agent.IsAgentMode() && agentlog.IsEnabled() {
+		_ = agentlog.Append(agentlog.Entry{
+			Timestamp: time.Now(),
+			Version:   appversion.Get(),
+			Args:      agentlog.StripArgValues(os.Args[1:]),
+			ErrorKind: agentlog.KindFromExitCode(exitCode),
+			Error:     detailedErr.Summary,
+			ExitCode:  exitCode,
+		})
+	}
+
 	if agent.IsAgentMode() || root.IsJSONFlagActive() {
 		// Machine consumers get JSON on stdout only — the human-formatted
 		// stderr error is noise for agents and scripts.
@@ -100,6 +114,30 @@ func handleError(err error) {
 	}
 
 	os.Exit(exitCode)
+}
+
+// loadDiagnosticsConfig reads diagnostics settings from the gcx config file on
+// a best-effort basis. Any error (missing file, parse failure) returns a
+// disabled config so the caller is never affected by a config read failure.
+func loadDiagnosticsConfig() agentlog.Config {
+	// GCX_CONFIG bypasses discovery, mirroring LoadLayered behaviour.
+	if explicit := os.Getenv(internalconfig.ConfigFileEnvVar); explicit != "" {
+		return loadDiagnosticsFromFile(explicit)
+	}
+	sources, err := internalconfig.DiscoverSources()
+	if err != nil || len(sources) == 0 {
+		return agentlog.Config{}
+	}
+	// Use the highest-priority source (last in slice — local overrides user overrides system).
+	return loadDiagnosticsFromFile(sources[len(sources)-1].Path)
+}
+
+func loadDiagnosticsFromFile(path string) agentlog.Config {
+	cfg, err := internalconfig.Load(context.Background(), func() (string, error) { return path, nil })
+	if err != nil || cfg.Diagnostics == nil || !cfg.Diagnostics.AgentInvocationLog {
+		return agentlog.Config{}
+	}
+	return agentlog.Config{Enabled: true, LogDir: cfg.Diagnostics.LogDir}
 }
 
 func formatVersion() string {
