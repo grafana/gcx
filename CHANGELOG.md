@@ -1,11 +1,18 @@
 ## v0.2.13 (2026-05-06)
 
+**Note**: This release includes an important bugfix where the dry-run flag was not being honoured in delete operations. Update to this version to avoid unintended deletes on your Grafana Cloud stack.
+
+- Fix `--dry-run` not being honored in resource delete operations. [PR #643](https://github.com/grafana/gcx/pull/643).
+
+---
+
+Other changes in this release:
+
 - Add `gcx stacks` commands: list, get, create, update, delete, regions
 - Rename `synth` provider to `synthetic-monitoring`
 - Render trace trees as a formatted table in `gcx traces get`
 - Add RCA Workbench deep link to `gcx kg entities inspect`
 - Consolidate Knowledge Graph insights filtering into `kg entities list`
-- Fix `--dry-run` not being honored in resource delete operations
 - Fix `--context` flag not applied across all CRUD adapter operations
 - Prevent env var secrets from being written to the config file
 - Handle read-only files gracefully during skill updates
