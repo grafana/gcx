@@ -246,7 +246,7 @@ func (c *GCOMClient) CreateStack(ctx context.Context, r CreateStackRequest) (Sta
 		return StackInfo{}, fmt.Errorf("gcom client: marshal request: %w", err)
 	}
 
-	endpoint, err := c.buildURL(instancesPath)
+	endpoint, err := c.buildURL(strings.TrimRight(instancesPath, "/"))
 	if err != nil {
 		return StackInfo{}, err
 	}
