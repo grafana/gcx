@@ -289,6 +289,39 @@ Error: bad_data: invalid parameter "query": <details>
 
 ---
 
+## Failure Mode 6: "Accepts between 0 and 1 arg(s), received 2"
+
+### Error Message Pattern
+
+```
+Error: Accepts between 0 and 1 arg(s), received 2
+```
+
+### Likely Cause
+
+The datasource UID was passed as a positional argument instead of using the
+`-d` flag. Query commands accept at most one positional argument (the
+expression). The datasource must be specified with `-d <uid>`.
+
+### Corrective Action
+
+Move the datasource UID from a positional argument to the `-d` flag:
+
+```bash
+# Wrong — two positional args (UID + expression):
+gcx metrics query prometheus 'rate(http_requests_total[5m])' --from now-1h --to now
+
+# Correct — UID via -d flag:
+gcx metrics query -d prometheus 'rate(http_requests_total[5m])' --from now-1h --to now
+
+# Also correct — omit -d if a default datasource is configured:
+gcx metrics query 'rate(http_requests_total[5m])' --from now-1h --to now
+```
+
+The same pattern applies to `gcx logs query` and `gcx traces query`.
+
+---
+
 ## Quick Reference: Recovery Command Cheatsheet
 
 | Failure | First Diagnostic Command |
@@ -300,3 +333,4 @@ Error: bad_data: invalid parameter "query": <details>
 | Query timeout | Increase `--step`, reduce time range |
 | PromQL parse error | Check braces, quotes, and range windows |
 | Loki parse error | Check stream selector syntax and double-quoted labels |
+| "Accepts between 0 and 1 arg(s)" | Move datasource UID to `-d <uid>` flag |

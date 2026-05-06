@@ -89,6 +89,25 @@ gcx supports multiple time formats:
 --from 1709280000 --to 1709366400
 ```
 
+### Valid vs Invalid Time Expressions
+
+```bash
+# Valid relative expressions
+--from now-6h --to now
+--from now-1h --to now-30m
+--step 5m
+--step 300s
+
+# Valid absolute timestamp
+--from 2026-03-01T00:00:00Z
+
+# INVALID — cannot chain subtractions
+--from now-6h-1m     # Use now-361m instead
+
+# INVALID — step needs a unit suffix
+--step 300           # Use --step 300s or --step 5m
+```
+
 ### Step Interval
 
 Choose step based on time range:

@@ -248,6 +248,10 @@ gcx logs query -d <loki-uid> \
 }
 ```
 
+> **LogQL pitfall**: Loki requires at least one non-empty label matcher in the
+> stream selector. `{}` and `{} |~ "pattern"` will be rejected. Always include
+> at least one label, e.g., `{job=~".+"}` as a catch-all.
+
 Look for:
 - Repeated error messages pointing to a specific code path or dependency
 - Timestamps of first error matching the metric spike time from Step 3
