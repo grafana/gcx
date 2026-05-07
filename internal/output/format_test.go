@@ -78,6 +78,9 @@ func TestBindFlags_AgentModeOverridesDefaultFormat(t *testing.T) {
 }
 
 func TestJSONFlag_Parsing(t *testing.T) {
+	agent.SetFlag(false)
+	t.Cleanup(agent.ResetForTesting)
+
 	tests := []struct {
 		name              string
 		defaultFormat     string // empty = use package default ("json")
