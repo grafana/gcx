@@ -16,8 +16,8 @@ import (
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/datasources"
-	ifail "github.com/grafana/gcx/internal/fail"
 	"github.com/grafana/gcx/internal/fleet"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/grafana"
 	"github.com/grafana/gcx/internal/linter"
 	"github.com/grafana/gcx/internal/login"
@@ -31,19 +31,19 @@ import (
 
 const reauthSuggestion = "Re-authenticate if needed: gcx login"
 
-func ErrorToDetailedError(err error) *DetailedError {
+func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 	// errors.As requires a pointer-to-the-target-type. Since commands return
-	// *DetailedError (pointer type), the target must be **DetailedError so that
-	// errors.As can match the pointer. Using *DetailedError as the target only
-	// matches value-typed DetailedError, causing *DetailedError to fall through
+	// *gcxerrors.DetailedError (pointer type), the target must be **gcxerrors.DetailedError so that
+	// errors.As can match the pointer. Using *gcxerrors.DetailedError as the target only
+	// matches value-typed DetailedError, causing *gcxerrors.DetailedError to fall through
 	// to fallbackDetailedError which renders box chars via err.Error().
-	var ptr *DetailedError
+	var ptr *gcxerrors.DetailedError
 	if errors.As(err, &ptr) {
 		return ptr
 	}
 
 	// Try to convert the error for common error categories
-	errorConverters := []func(err error) (*DetailedError, bool){
+	errorConverters := []func(err error) (*gcxerrors.DetailedError, bool){
 		convertWaitTimeoutEmitted,          // Wait timeout already emitted fused envelope — suppress secondary output
 		convertUnknownFieldSelectionErrors, // --json unknown-field validation
 		convertPartialFailureErrors,
@@ -80,7 +80,7 @@ func ErrorToDetailedError(err error) *DetailedError {
 	return fallbackDetailedError(err)
 }
 
-func convertUsageErrors(err error) (*DetailedError, bool) {
+func convertUsageErrors(err error) (*gcxerrors.DetailedError, bool) {
 	usageErr := &UsageError{}
 	if !errors.As(err, &usageErr) {
 		return nil, false
@@ -91,24 +91,24 @@ func convertUsageErrors(err error) (*DetailedError, bool) {
 		details = fmt.Sprintf("%s\n\nExpected:\n  %s", details, usageErr.Expected)
 	}
 
-	return &DetailedError{
+	return &gcxerrors.DetailedError{
 		Summary:     "Invalid command usage",
 		Details:     details,
 		Suggestions: usageErr.Suggestions,
-		ExitCode:    new(ExitUsageError),
+		ExitCode:    new(gcxerrors.ExitUsageError),
 	}, true
 }
 
-func convertCobraUnknownCommandErrors(err error) (*DetailedError, bool) {
+func convertCobraUnknownCommandErrors(err error) (*gcxerrors.DetailedError, bool) {
 	msg := strings.TrimSpace(err.Error())
 	if !strings.HasPrefix(msg, "unknown command ") {
 		return nil, false
 	}
 
-	detailed := &DetailedError{
+	detailed := &gcxerrors.DetailedError{
 		Summary:  "Invalid command usage",
 		Details:  msg,
-		ExitCode: new(ExitUsageError),
+		ExitCode: new(gcxerrors.ExitUsageError),
 	}
 
 	const marker = ` for "`
@@ -128,7 +128,7 @@ func convertCobraUnknownCommandErrors(err error) (*DetailedError, bool) {
 	return detailed, true
 }
 
-func convertConfigErrors(err error) (*DetailedError, bool) {
+func convertConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 	validationErr := config.ValidationError{}
 	if errors.As(err, &validationErr) {
 		message := fmt.Sprintf("Invalid configuration found in '%s':\n%s", validationErr.File, validationErr.Message)
@@ -136,7 +136,7 @@ func convertConfigErrors(err error) (*DetailedError, bool) {
 			message += "\n\n" + validationErr.AnnotatedSource
 		}
 
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Summary: "Invalid configuration",
 			Details: message,
 			Suggestions: append([]string{
@@ -147,7 +147,7 @@ func convertConfigErrors(err error) (*DetailedError, bool) {
 
 	unmarshalErr := config.UnmarshalError{}
 	if errors.As(err, &unmarshalErr) {
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Summary: "Could not parse configuration",
 			Details: fmt.Sprintf("Invalid configuration found in '%s'.", unmarshalErr.File),
 			Parent:  unmarshalErr.Err,
@@ -159,7 +159,7 @@ func convertConfigErrors(err error) (*DetailedError, bool) {
 	}
 
 	if errors.Is(err, config.ErrContextNotFound) {
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Summary: "Invalid configuration",
 			Parent:  err,
 			Suggestions: []string{
@@ -172,9 +172,9 @@ func convertConfigErrors(err error) (*DetailedError, bool) {
 	return nil, false
 }
 
-func convertAuthErrors(err error) (*DetailedError, bool) {
+func convertAuthErrors(err error) (*gcxerrors.DetailedError, bool) {
 	if errors.Is(err, auth.ErrRefreshTokenExpired) {
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: "Session expired",
 			Suggestions: []string{
@@ -185,10 +185,10 @@ func convertAuthErrors(err error) (*DetailedError, bool) {
 	return nil, false
 }
 
-func convertNetworkErrors(err error) (*DetailedError, bool) {
+func convertNetworkErrors(err error) (*gcxerrors.DetailedError, bool) {
 	urlErr := &url.Error{}
 	if errors.As(err, &urlErr) {
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: "Network error",
 			Suggestions: []string{
@@ -201,7 +201,7 @@ func convertNetworkErrors(err error) (*DetailedError, bool) {
 	return nil, false
 }
 
-func convertAPIErrors(err error) (*DetailedError, bool) {
+func convertAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
 	statusErr := &k8sapi.StatusError{}
 	if !errors.As(err, &statusErr) {
 		return nil, false
@@ -213,17 +213,17 @@ func convertAPIErrors(err error) (*DetailedError, bool) {
 	switch {
 	case k8sapi.IsUnauthorized(statusErr),
 		k8sapi.IsForbidden(statusErr):
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: fmt.Sprintf("%s - code %d", reason, code),
 			Suggestions: []string{
 				"Make sure that the configured credentials are correct",
 				"Make sure that the configured credentials have enough permissions",
 			},
-			ExitCode: new(ExitAuthFailure),
+			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}, true
 	case k8sapi.IsNotFound(statusErr):
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: fmt.Sprintf("Resource not found - code %d", code),
 			Suggestions: []string{
@@ -232,29 +232,29 @@ func convertAPIErrors(err error) (*DetailedError, bool) {
 		}, true
 	}
 
-	return &DetailedError{
+	return &gcxerrors.DetailedError{
 		Parent:  err,
 		Summary: fmt.Sprintf("API error: %s - code %d", reason, code),
 	}, true
 }
 
-func convertQueryErrors(err error) (*DetailedError, bool) {
+func convertQueryErrors(err error) (*gcxerrors.DetailedError, bool) {
 	apiErr := &queryerror.APIError{}
 	if !errors.As(err, &apiErr) {
 		return nil, false
 	}
 
-	detailedErr := &DetailedError{
+	detailedErr := &gcxerrors.DetailedError{
 		Summary:     queryErrorSummary(apiErr),
 		Details:     joinErrorDetails(wrappedTypedErrorContext(err, apiErr), queryErrorDetails(apiErr)),
 		Suggestions: queryErrorSuggestions(apiErr),
 	}
-	if ifail.SameRenderedMessage(detailedErr.Details, detailedErr.Summary) {
+	if gcxerrors.SameRenderedMessage(detailedErr.Details, detailedErr.Summary) {
 		detailedErr.Details = ""
 	}
 
 	if apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden {
-		detailedErr.ExitCode = new(ExitAuthFailure)
+		detailedErr.ExitCode = new(gcxerrors.ExitAuthFailure)
 	}
 
 	return detailedErr, true
@@ -443,22 +443,22 @@ type serviceAPIError interface {
 	APIUserMessage() string
 }
 
-func convertDatasourceErrors(err error) (*DetailedError, bool) {
+func convertDatasourceErrors(err error) (*gcxerrors.DetailedError, bool) {
 	apiErr := &datasources.APIError{}
 	if !errors.As(err, &apiErr) {
 		return nil, false
 	}
 
-	detailedErr := &DetailedError{
+	detailedErr := &gcxerrors.DetailedError{
 		Summary:     datasourceErrorSummary(apiErr),
 		Details:     joinErrorDetails(wrappedTypedErrorContext(err, apiErr), strings.TrimSpace(apiErr.APIUserMessage())),
 		Suggestions: datasourceErrorSuggestions(apiErr),
 	}
-	if ifail.SameRenderedMessage(detailedErr.Details, detailedErr.Summary) {
+	if gcxerrors.SameRenderedMessage(detailedErr.Details, detailedErr.Summary) {
 		detailedErr.Details = ""
 	}
 	if apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden {
-		detailedErr.ExitCode = new(ExitAuthFailure)
+		detailedErr.ExitCode = new(gcxerrors.ExitAuthFailure)
 	}
 
 	return detailedErr, true
@@ -497,7 +497,7 @@ func datasourceErrorSuggestions(apiErr *datasources.APIError) []string {
 	}
 }
 
-func convertServiceAPIErrors(err error) (*DetailedError, bool) {
+func convertServiceAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
 	var apiErr serviceAPIError
 	if !errors.As(err, &apiErr) {
 		return nil, false
@@ -509,26 +509,26 @@ func convertServiceAPIErrors(err error) (*DetailedError, bool) {
 	if apiErr.APIServiceName() == "Adaptive Logs" &&
 		strings.Contains(apiErr.APIUserMessage(), "invalid scope") &&
 		(apiErr.HTTPStatusCode() == http.StatusUnauthorized || apiErr.HTTPStatusCode() == http.StatusForbidden) {
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: "Adaptive Logs: permission denied",
 			Suggestions: []string{
 				"Ensure your Grafana Cloud access policy includes the adaptive-logs:admin scope",
 			},
-			ExitCode: new(ExitAuthFailure),
+			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}, true
 	}
 
-	detailedErr := &DetailedError{
+	detailedErr := &gcxerrors.DetailedError{
 		Summary:     serviceAPIErrorSummary(apiErr),
 		Details:     joinErrorDetails(wrappedTypedErrorContext(err, apiErr), strings.TrimSpace(apiErr.APIUserMessage())),
 		Suggestions: serviceAPIErrorSuggestions(apiErr),
 	}
-	if ifail.SameRenderedMessage(detailedErr.Details, detailedErr.Summary) {
+	if gcxerrors.SameRenderedMessage(detailedErr.Details, detailedErr.Summary) {
 		detailedErr.Details = ""
 	}
 	if code := apiErr.HTTPStatusCode(); code == http.StatusUnauthorized || code == http.StatusForbidden {
-		detailedErr.ExitCode = new(ExitAuthFailure)
+		detailedErr.ExitCode = new(gcxerrors.ExitAuthFailure)
 	}
 
 	return detailedErr, true
@@ -638,7 +638,7 @@ func joinErrorDetails(parts ...string) string {
 		if part == "" {
 			continue
 		}
-		if len(joined) > 0 && ifail.SameRenderedMessage(joined[len(joined)-1], part) {
+		if len(joined) > 0 && gcxerrors.SameRenderedMessage(joined[len(joined)-1], part) {
 			continue
 		}
 		joined = append(joined, part)
@@ -647,10 +647,10 @@ func joinErrorDetails(parts ...string) string {
 	return strings.Join(joined, "\n\n")
 }
 
-func convertResourcesErrors(err error) (*DetailedError, bool) {
+func convertResourcesErrors(err error) (*gcxerrors.DetailedError, bool) {
 	invalidCommandErr := &resources.InvalidSelectorError{}
 	if err != nil && errors.As(err, invalidCommandErr) {
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: "Could not parse resource(s) selector",
 			Details: fmt.Sprintf("Failed to parse command '%s'", invalidCommandErr.Command),
@@ -663,11 +663,11 @@ func convertResourcesErrors(err error) (*DetailedError, bool) {
 	return nil, false
 }
 
-func convertFSErrors(err error) (*DetailedError, bool) {
+func convertFSErrors(err error) (*gcxerrors.DetailedError, bool) {
 	pathErr := &fs.PathError{}
 
 	if errors.Is(err, os.ErrNotExist) && errors.As(err, &pathErr) {
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Summary: "File not found",
 			Details: fmt.Sprintf("could not read '%s'", pathErr.Path),
 			Parent:  err,
@@ -678,7 +678,7 @@ func convertFSErrors(err error) (*DetailedError, bool) {
 	}
 
 	if errors.Is(err, os.ErrInvalid) && errors.As(err, &pathErr) {
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Summary: "Invalid path",
 			Details: fmt.Sprintf("path '%s' is not valid", pathErr.Path),
 			Parent:  err,
@@ -690,7 +690,7 @@ func convertFSErrors(err error) (*DetailedError, bool) {
 	}
 
 	if errors.Is(err, os.ErrPermission) && errors.As(err, &pathErr) {
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Summary: "Permission denied",
 			Parent:  err,
 			Suggestions: []string{
@@ -702,7 +702,7 @@ func convertFSErrors(err error) (*DetailedError, bool) {
 	return nil, false
 }
 
-func convertLinterErrors(err error) (*DetailedError, bool) {
+func convertLinterErrors(err error) (*gcxerrors.DetailedError, bool) {
 	if errors.Is(err, linter.ErrTestsFailed) {
 		return nil, true
 	}
@@ -714,14 +714,14 @@ func convertLinterErrors(err error) (*DetailedError, bool) {
 // when a wait command has already emitted a fused WaitResult (with Error populated)
 // to stdout. The secondary envelope would duplicate the error payload.
 // Returns (nil, true) so the caller exits 1 but writes no additional JSON.
-func convertWaitTimeoutEmitted(err error) (*DetailedError, bool) {
+func convertWaitTimeoutEmitted(err error) (*gcxerrors.DetailedError, bool) {
 	if errors.Is(err, instrumentation.ErrWaitTimeoutEmitted) {
 		return nil, true
 	}
 	return nil, false
 }
 
-func convertLoginValidationErrors(err error) (*DetailedError, bool) {
+func convertLoginValidationErrors(err error) (*gcxerrors.DetailedError, bool) {
 	var gcomErr *login.GCOMStackError
 	if errors.As(err, &gcomErr) {
 		return convertGCOMStackError(gcomErr), true
@@ -734,7 +734,7 @@ func convertLoginValidationErrors(err error) (*DetailedError, bool) {
 
 	var k8sErr *login.K8sDiscoveryError
 	if errors.As(err, &k8sErr) {
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: "Kubernetes-style API unavailable",
 			Details: k8sErr.Cause.Error(),
@@ -759,10 +759,10 @@ func convertLoginValidationErrors(err error) (*DetailedError, bool) {
 	return nil, false
 }
 
-func convertGCOMStackError(err *login.GCOMStackError) *DetailedError {
+func convertGCOMStackError(err *login.GCOMStackError) *gcxerrors.DetailedError {
 	switch err.Status {
 	case http.StatusForbidden:
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: "Grafana Cloud stack lookup denied",
 			Details: fmt.Sprintf("GCOM returned 403 for stack %q", err.Slug),
@@ -772,10 +772,10 @@ func convertGCOMStackError(err *login.GCOMStackError) *DetailedError {
 				"Regenerate the CAP token if the policy was recently updated",
 			},
 			DocsLink: "https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/",
-			ExitCode: new(ExitAuthFailure),
+			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}
 	case http.StatusUnauthorized:
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: "Grafana Cloud token rejected",
 			Details: fmt.Sprintf("GCOM returned 401 for stack %q", err.Slug),
@@ -783,10 +783,10 @@ func convertGCOMStackError(err *login.GCOMStackError) *DetailedError {
 				"Generate a new Cloud Access Policy token at https://grafana.com",
 				"Confirm the token was copied without truncation",
 			},
-			ExitCode: new(ExitAuthFailure),
+			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}
 	case http.StatusNotFound:
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: "Grafana Cloud stack not found",
 			Details: fmt.Sprintf("GCOM has no stack with slug %q", err.Slug),
@@ -796,7 +796,7 @@ func convertGCOMStackError(err *login.GCOMStackError) *DetailedError {
 			},
 		}
 	default:
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: "Grafana Cloud stack lookup failed",
 			Details: err.Cause.Error(),
@@ -808,9 +808,9 @@ func convertGCOMStackError(err *login.GCOMStackError) *DetailedError {
 	}
 }
 
-func convertHealthCheckError(err *login.HealthCheckError) *DetailedError {
+func convertHealthCheckError(err *login.HealthCheckError) *gcxerrors.DetailedError {
 	if err.Status == http.StatusUnauthorized || err.Status == http.StatusForbidden {
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: "Grafana token rejected",
 			Details: fmt.Sprintf("/api/health returned %d for %s", err.Status, err.Server),
@@ -820,10 +820,10 @@ func convertHealthCheckError(err *login.HealthCheckError) *DetailedError {
 				"Confirm the service-account role grants Admin or Editor as required",
 				reauthSuggestion,
 			},
-			ExitCode: new(ExitAuthFailure),
+			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}
 	}
-	return &DetailedError{
+	return &gcxerrors.DetailedError{
 		Parent:  err,
 		Summary: "Grafana server unreachable",
 		Details: err.Cause.Error(),
@@ -835,45 +835,45 @@ func convertHealthCheckError(err *login.HealthCheckError) *DetailedError {
 	}
 }
 
-func convertVersionErrors(err error) (*DetailedError, bool) {
+func convertVersionErrors(err error) (*gcxerrors.DetailedError, bool) {
 	vErr := &grafana.VersionIncompatibleError{}
 	if errors.As(err, &vErr) {
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: fmt.Sprintf("Grafana version %s is not supported", vErr.Version),
 			Details: "gcx requires Grafana 12.0.0 or later",
 			Suggestions: []string{
 				"Upgrade your Grafana instance to version 12.0.0 or later",
 			},
-			ExitCode: new(ExitVersionIncompatible),
+			ExitCode: new(gcxerrors.ExitVersionIncompatible),
 		}, true
 	}
 
 	return nil, false
 }
 
-func convertRequiredFlagErrors(err error) (*DetailedError, bool) {
+func convertRequiredFlagErrors(err error) (*gcxerrors.DetailedError, bool) {
 	// Cobra returns a plain error (not a typed error) for missing required flags.
 	// The message is always of the form: `required flag(s) "foo", "bar" not set`
 	msg := err.Error()
 	if strings.HasPrefix(msg, "required flag(s)") && strings.HasSuffix(msg, "not set") {
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Summary: "Missing required flags",
 			Parent:  err,
 			Suggestions: []string{
 				"Run the command with --help to see available flags and usage examples",
 			},
-			ExitCode: new(ExitUsageError),
+			ExitCode: new(gcxerrors.ExitUsageError),
 		}, true
 	}
 	return nil, false
 }
 
-func convertSMConfigErrors(err error) (*DetailedError, bool) {
+func convertSMConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 	msg := err.Error()
 
 	if strings.Contains(msg, "SM URL not configured") {
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Summary: "SM URL not configured",
 			Details: msg,
 			Parent:  err,
@@ -889,7 +889,7 @@ func convertSMConfigErrors(err error) (*DetailedError, bool) {
 	if strings.Contains(msg, "SM token not configured") && strings.Contains(msg, "register/install") &&
 		(strings.Contains(msg, "status 401") || strings.Contains(msg, "status 403") ||
 			(strings.Contains(msg, "status 400") && strings.Contains(msg, "permission"))) {
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: "SM token auto-discovery: permission denied",
 			Details: msg,
@@ -898,12 +898,12 @@ func convertSMConfigErrors(err error) (*DetailedError, bool) {
 				"Or set the SM token directly: gcx config set providers.synth.sm-token <TOKEN>",
 				"Or use env var: export GRAFANA_PROVIDER_SYNTH_SM_TOKEN=<TOKEN>",
 			},
-			ExitCode: new(ExitAuthFailure),
+			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}, true
 	}
 
 	if strings.Contains(msg, "SM token not configured") {
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Summary: "SM token not configured",
 			Details: msg,
 			Parent:  err,
@@ -919,12 +919,12 @@ func convertSMConfigErrors(err error) (*DetailedError, bool) {
 	return nil, false
 }
 
-func convertCloudConfigErrors(err error) (*DetailedError, bool) {
+func convertCloudConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 	msg := err.Error()
 
 	// Cloud token missing.
 	if strings.Contains(msg, "cloud token is required") {
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Summary: "Cloud credentials not configured",
 			Details: msg,
 			Parent:  err,
@@ -937,7 +937,7 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 
 	// Cloud stack not configured.
 	if strings.Contains(msg, "cloud stack is not configured") {
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Summary: "Cloud stack not configured",
 			Details: msg,
 			Parent:  err,
@@ -951,38 +951,38 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 	// Fleet API scope error on read operations.
 	if strings.Contains(msg, "fleet:") && strings.Contains(msg, "invalid scope") &&
 		(strings.Contains(msg, "list ") || strings.Contains(msg, "get ")) {
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: "Fleet Management: permission denied",
 			Suggestions: []string{
 				"Ensure your cloud.token access policy includes the fleet-management:read scope",
 			},
-			ExitCode: new(ExitAuthFailure),
+			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}, true
 	}
 
 	// Fleet API scope error on write operations.
 	if strings.Contains(msg, "fleet:") && strings.Contains(msg, "invalid scope") &&
 		(strings.Contains(msg, "create ") || strings.Contains(msg, "update ") || strings.Contains(msg, "delete ")) {
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: "Fleet Management: permission denied",
 			Suggestions: []string{
 				"Ensure your cloud.token access policy includes the fleet-management:write scope",
 			},
-			ExitCode: new(ExitAuthFailure),
+			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}, true
 	}
 
 	// Adaptive Traces scope errors.
 	if strings.Contains(msg, "adaptive-traces:") && strings.Contains(msg, "invalid scope") {
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: "Adaptive Traces: permission denied",
 			Suggestions: []string{
 				"Ensure your Grafana Cloud access policy includes the adaptive-traces:admin scope",
 			},
-			ExitCode: new(ExitAuthFailure),
+			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}, true
 	}
 
@@ -993,18 +993,18 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 		if scope == "" {
 			suggestion = "Adaptive Metrics commands require an adaptive-metrics-* scope on your Grafana Cloud access policy (the specific scope depends on the subcommand)"
 		}
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Parent:      err,
 			Summary:     "Adaptive Metrics: permission denied",
 			Suggestions: []string{suggestion},
-			ExitCode:    new(ExitAuthFailure),
+			ExitCode:    new(gcxerrors.ExitAuthFailure),
 		}, true
 	}
 
 	// Fleet management not available.
 	if strings.Contains(msg, "fleet management endpoint is not available") ||
 		strings.Contains(msg, "fleet management instance ID is not available") {
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Summary: "Fleet Management not available",
 			Details: msg,
 			Parent:  err,
@@ -1023,11 +1023,11 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 		if suggestion := adaptiveScopeSuggestionFromSignalPrefix(msg); suggestion != "" {
 			suggestions = append(suggestions, suggestion)
 		}
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Parent:      err,
 			Summary:     "Cloud stack lookup: permission denied",
 			Suggestions: suggestions,
-			ExitCode:    new(ExitAuthFailure),
+			ExitCode:    new(gcxerrors.ExitAuthFailure),
 		}, true
 	}
 
@@ -1037,7 +1037,7 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 // convertFleetHTTPErrors converts fleet.HTTPError values (non-2xx HTTP
 // responses from the Fleet Management API) into structured DetailedErrors with
 // actionable auth suggestions for 401 and 403 responses.
-func convertFleetHTTPErrors(err error) (*DetailedError, bool) {
+func convertFleetHTTPErrors(err error) (*gcxerrors.DetailedError, bool) {
 	var httpErr *fleet.HTTPError
 	if !errors.As(err, &httpErr) {
 		return nil, false
@@ -1045,7 +1045,7 @@ func convertFleetHTTPErrors(err error) (*DetailedError, bool) {
 
 	switch httpErr.Status {
 	case http.StatusUnauthorized:
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: "Authentication failed",
 			Details: "HTTP 401 from " + httpErr.Path,
@@ -1054,10 +1054,10 @@ func convertFleetHTTPErrors(err error) (*DetailedError, bool) {
 				"Verify the token has not expired: gcx config view",
 				reauthSuggestion,
 			},
-			ExitCode: new(ExitAuthFailure),
+			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}, true
 	case http.StatusForbidden:
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: "Authorization failed",
 			Details: "HTTP 403 from " + httpErr.Path,
@@ -1066,23 +1066,21 @@ func convertFleetHTTPErrors(err error) (*DetailedError, bool) {
 				"Ensure your Cloud Access Policy includes the fleet-management:write scope for mutation commands",
 				reauthSuggestion,
 			},
-			ExitCode: new(ExitAuthFailure),
+			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}, true
 	}
 
 	return nil, false
 }
 
-// convertInstrumentationMutualExclusiveErrors detects the
-// instrumentation.ErrMutuallyExclusiveFlags sentinel returned by command
-// Validate() when the user supplies mutually exclusive flag pairs (e.g.
-// --costmetrics and --no-costmetrics). Returns summary "Invalid command
-// usage" with the wrapped error's message as details.
-func convertInstrumentationMutualExclusiveErrors(err error) (*DetailedError, bool) {
+// convertInstrumentationMutualExclusiveErrors detects errors from setup's flag
+// Validate() when the user provides mutually exclusive flag pairs (e.g.
+// --costmetrics and --no-costmetrics). Returns summary "Invalid command usage".
+func convertInstrumentationMutualExclusiveErrors(err error) (*gcxerrors.DetailedError, bool) {
 	if !errors.Is(err, instrumentation.ErrMutuallyExclusiveFlags) {
 		return nil, false
 	}
-	return &DetailedError{
+	return &gcxerrors.DetailedError{
 		Summary: "Invalid command usage",
 		Details: err.Error(),
 	}, true
@@ -1092,13 +1090,13 @@ func convertInstrumentationMutualExclusiveErrors(err error) (*DetailedError, boo
 // instrumentation provider into structured DetailedErrors. This ensures that
 // concurrent-modification conflicts surface a readable summary and full diff
 // details under agent mode.
-func convertInstrumentationErrors(err error) (*DetailedError, bool) {
+func convertInstrumentationErrors(err error) (*gcxerrors.DetailedError, bool) {
 	var ce rmw.ConflictError
 	if !errors.As(err, &ce) {
 		return nil, false
 	}
 
-	return &DetailedError{
+	return &gcxerrors.DetailedError{
 		Summary: "Resource conflict",
 		Details: ce.Error(),
 		Parent:  err,
@@ -1167,14 +1165,14 @@ func adaptiveMetricsScopeFromError(msg string) string {
 // the --json field validator) into a structured DetailedError with exit code 2
 // (ExitUsageError). The suggestion directs users to run the command with
 // --json list to discover valid field names.
-func convertUnknownFieldSelectionErrors(err error) (*DetailedError, bool) {
+func convertUnknownFieldSelectionErrors(err error) (*gcxerrors.DetailedError, bool) {
 	var fieldErr cmdoutput.UnknownFieldSelectionError
 	if !errors.As(err, &fieldErr) {
 		return nil, false
 	}
 
-	exitCode := ExitUsageError
-	return &DetailedError{
+	exitCode := gcxerrors.ExitUsageError
+	return &gcxerrors.DetailedError{
 		Summary:  "Invalid command usage",
 		Details:  fieldErr.Error(),
 		ExitCode: &exitCode,
@@ -1184,9 +1182,9 @@ func convertUnknownFieldSelectionErrors(err error) (*DetailedError, bool) {
 	}, true
 }
 
-func fallbackDetailedError(err error) *DetailedError {
+func fallbackDetailedError(err error) *gcxerrors.DetailedError {
 	summary, details, parent := summarizeFallbackError(err)
-	return &DetailedError{
+	return &gcxerrors.DetailedError{
 		Summary: summary,
 		Details: details,
 		Parent:  parent,
@@ -1267,7 +1265,7 @@ func humanizeSummary(summary string) string {
 	return summary
 }
 
-func convertStacksErrors(err error) (*DetailedError, bool) {
+func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
 	msg := err.Error()
 
 	// Only match stacks-related errors (from stacks provider commands).
@@ -1288,7 +1286,7 @@ func convertStacksErrors(err error) (*DetailedError, bool) {
 	switch httpErr.Status {
 	case http.StatusConflict:
 		if strings.Contains(msg, "failed to delete stack") {
-			return &DetailedError{
+			return &gcxerrors.DetailedError{
 				Summary: "Stack has delete protection enabled",
 				Details: msg,
 				Parent:  err,
@@ -1298,7 +1296,7 @@ func convertStacksErrors(err error) (*DetailedError, bool) {
 				},
 			}, true
 		}
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Summary: "Stack slug already taken",
 			Details: msg,
 			Parent:  err,
@@ -1308,11 +1306,11 @@ func convertStacksErrors(err error) (*DetailedError, bool) {
 			},
 		}, true
 	case http.StatusForbidden:
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Summary:  "Stacks: permission denied",
 			Details:  msg,
 			Parent:   err,
-			ExitCode: new(ExitAuthFailure),
+			ExitCode: new(gcxerrors.ExitAuthFailure),
 			Suggestions: []string{
 				"Ensure your Cloud Access Policy includes the required stacks scopes:",
 				"  stacks:read   — for list, get, regions",
@@ -1321,11 +1319,11 @@ func convertStacksErrors(err error) (*DetailedError, bool) {
 			},
 		}, true
 	case http.StatusUnauthorized:
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Summary:  "Stacks: authentication failed",
 			Details:  msg,
 			Parent:   err,
-			ExitCode: new(ExitAuthFailure),
+			ExitCode: new(gcxerrors.ExitAuthFailure),
 			Suggestions: []string{
 				"Check your cloud.token is valid and not expired",
 				reauthSuggestion,
@@ -1336,25 +1334,25 @@ func convertStacksErrors(err error) (*DetailedError, bool) {
 	return nil, false
 }
 
-func convertPartialFailureErrors(err error) (*DetailedError, bool) {
-	partialErr := &PartialFailureError{}
+func convertPartialFailureErrors(err error) (*gcxerrors.DetailedError, bool) {
+	partialErr := &gcxerrors.PartialFailureError{}
 	if !errors.As(err, &partialErr) {
 		return nil, false
 	}
 
-	return &DetailedError{
+	return &gcxerrors.DetailedError{
 		Summary:  fmt.Sprintf("%d of %d resource(s) failed to %s", partialErr.Failed, partialErr.Total, partialErr.Op),
 		Parent:   err,
-		ExitCode: new(ExitPartialFailure),
+		ExitCode: new(gcxerrors.ExitPartialFailure),
 	}, true
 }
 
-func convertContextCanceled(err error) (*DetailedError, bool) {
+func convertContextCanceled(err error) (*gcxerrors.DetailedError, bool) {
 	if errors.Is(err, context.Canceled) {
-		return &DetailedError{
+		return &gcxerrors.DetailedError{
 			Summary:  "Operation cancelled",
 			Parent:   err,
-			ExitCode: new(ExitCancelled),
+			ExitCode: new(gcxerrors.ExitCancelled),
 		}, true
 	}
 

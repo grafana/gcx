@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/agentlog"
 	internalconfig "github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	appversion "github.com/grafana/gcx/internal/version"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -85,7 +86,7 @@ func handleError(err error, boolFlags map[string]struct{}, subCmds map[string]bo
 	// Fast-path: context cancellation (e.g., SIGINT).
 	// Skip detailed error formatting — exit cleanly and quickly.
 	if errors.Is(err, context.Canceled) {
-		os.Exit(fail.ExitCancelled)
+		os.Exit(gcxerrors.ExitCancelled)
 	}
 
 	detailedErr := fail.ErrorToDetailedError(err)

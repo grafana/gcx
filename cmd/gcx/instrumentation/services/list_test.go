@@ -9,9 +9,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/services"
 	"github.com/grafana/gcx/internal/fleet"
+	gcxerrors "github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
@@ -427,8 +427,8 @@ func TestValidateWorkloadExists_SuggestionFlagForm(t *testing.T) {
 	)
 	require.Error(t, err)
 
-	var de *fail.DetailedError
-	require.ErrorAs(t, err, &de, "error must be *fail.DetailedError")
+	var de *gcxerrors.DetailedError
+	require.ErrorAs(t, err, &de, "error must be *gcxerrors.DetailedError")
 	require.NotEmpty(t, de.Suggestions, "Suggestions must be non-empty")
 
 	// Every suggestion must use flag form, not positional form.

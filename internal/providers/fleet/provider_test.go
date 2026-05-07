@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/gcx/internal/fail"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers/fleet"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -362,8 +362,8 @@ func TestPipelineProtectionGuard(t *testing.T) {
 				require.NoError(t, guardErr)
 			}
 			if tt.wantDetailedError {
-				var de *fail.DetailedError
-				require.ErrorAs(t, guardErr, &de, "expected guardErr to be a *fail.DetailedError")
+				var de *gcxerrors.DetailedError
+				require.ErrorAs(t, guardErr, &de, "expected guardErr to be a *gcxerrors.DetailedError")
 				assert.NotEmpty(t, de.Summary, "Summary must not be empty")
 				assert.NotEmpty(t, de.Details, "Details must not be empty")
 				assert.NotEmpty(t, de.Suggestions, "Suggestions must contain at least one entry")

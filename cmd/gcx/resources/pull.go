@@ -4,7 +4,7 @@ import (
 	"errors"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
-	"github.com/grafana/gcx/cmd/gcx/fail"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/local"
 	"github.com/grafana/gcx/internal/resources/process"
@@ -161,7 +161,7 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 
 			if opts.OnError.FailOnErrors() && pullSummary.FailedCount() > 0 {
-				return fail.NewPartialFailureError("pull", pullSummary.SuccessCount()+pullSummary.FailedCount(), pullSummary.FailedCount())
+				return gcxerrors.NewPartialFailureError("pull", pullSummary.SuccessCount()+pullSummary.FailedCount(), pullSummary.FailedCount())
 			}
 
 			return nil
