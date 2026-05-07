@@ -162,7 +162,48 @@ to print a shareable URL.
 
 ---
 
-## Step 5: Alert Rules Deep Dive
+## Step 5: Assistant
+
+`gcx assistant` is the only command in the tour that takes natural language
+against the live stack. Show the commands; run live only if the stack is
+healthy, OAuth-authenticated, and the presenter has time — streaming LLM
+output has variable latency.
+
+Cloud-only. Requires `gcx login` (OAuth). No external LLM key.
+
+```bash
+# One-shot prompt — A2A SSE stream
+gcx assistant prompt "What alerts are firing right now and why?"
+
+# Continue the same conversation (stored context ID)
+gcx assistant prompt "Which service owns checkout-latency?" --continue
+
+# NDJSON event stream — pipes into agent tools and scripts
+gcx assistant prompt "Summarize CPU on prod" --json
+
+# Read-only views over autonomous multi-step investigations
+gcx assistant investigations list
+gcx assistant investigations get <id> --open
+gcx assistant investigations todos <id>
+gcx assistant investigations timeline <id>
+gcx assistant investigations report <id>
+```
+
+After output, narrate: `prompt` runs a single message against the Assistant,
+which already has context for this stack's dashboards, datasources, and alerts.
+`--continue` threads follow-ups; `--json` emits a structured event stream for
+use inside agent tools (Claude Code, Cursor) or scripts. Investigations are
+autonomous multi-step runs created from the Grafana UI or via
+`investigations create`; the read-only views show plan (`todos`), chronological
+activity (`timeline`), and final findings (`report`). `--open` deep-links from
+CLI into the UI.
+
+If `investigations list` is empty, note it and skip the per-investigation
+views. Do not create one during the demo.
+
+---
+
+## Step 6: Alert Rules Deep Dive
 
 ```bash
 gcx alert rules list --no-truncate
@@ -175,7 +216,7 @@ by folder, group, or state with flags.
 
 ---
 
-## Step 6: Cloud Provider Commands
+## Step 7: Cloud Provider Commands
 
 Run in parallel — these need cloud.token and cloud.stack to be configured.
 If they are not, skip gracefully and note it:
@@ -202,7 +243,7 @@ fully-configured context they work out of the box."
 
 ---
 
-## Step 7: Resource Schema Discovery
+## Step 8: Resource Schema Discovery
 
 ```bash
 gcx resources schemas
@@ -216,7 +257,7 @@ humans alike build resources without guessing at field names.
 
 ---
 
-## Step 8: Final Summary
+## Step 9: Final Summary
 
 Present a summary table like this (adapt counts to actual output):
 
@@ -238,6 +279,8 @@ Fleet Pipelines       gcx fleet pipelines list              N Alloy pipeline con
 Live Metrics          gcx metrics query '...'               PromQL against live Prometheus
 Live Logs             gcx logs query '...'                  LogQL against live Loki
 Live Traces           gcx traces query '{}'                 TraceQL against live Tempo
+Assistant Prompt      gcx assistant prompt "..."            NL query, A2A streaming
+Investigations        gcx assistant investigations list     Multi-step LLM investigations
 Resource Schemas      gcx resources schemas                 All K8s resource types + schemas
 ```
 
