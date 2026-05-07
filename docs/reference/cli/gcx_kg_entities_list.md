@@ -23,7 +23,7 @@ gcx kg entities list [flags]
       --from string            Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                   help for list
       --json string            Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int              Maximum number of items to return (0 for all) (default 50)
+      --limit int              Maximum number of items to return (0 for all; the backend may still page results — use --page to paginate) (default 50)
       --namespace string       Namespace scope (run 'gcx kg meta scopes' to see valid values)
   -o, --output string          Output format. One of: json, table, yaml (default "table")
       --page int               Page number (0-based)

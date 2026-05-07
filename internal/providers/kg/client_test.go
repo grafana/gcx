@@ -216,12 +216,12 @@ func TestClient_Search(t *testing.T) {
 	defer server.Close()
 
 	client := newTestClient(t, server)
-	results, err := client.Search(t.Context(), kg.SearchRequest{
+	page, err := client.Search(t.Context(), kg.SearchRequest{
 		FilterCriteria: []kg.EntityMatcher{{EntityType: "Service"}},
 	})
 	require.NoError(t, err)
-	assert.Len(t, results, 2)
-	assert.Equal(t, "svc-1", results[0].Name)
+	assert.Len(t, page.Entities, 2)
+	assert.Equal(t, "svc-1", page.Entities[0].Name)
 }
 
 func TestClient_CypherSearch(t *testing.T) {

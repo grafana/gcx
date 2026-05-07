@@ -423,20 +423,40 @@ func (c *Client) AssertionSourceMetrics(ctx context.Context, req SourceMetricsRe
 // Search operations
 // ---------------------------------------------------------------------------
 
+// SearchPage is one page of entity search results plus the backend's
+// pagination signals. LastPage is true when no further pages exist;
+// MaxLimitHit is true when the backend's per-page result cap was reached
+// (i.e. the page is truncated and a subsequent --page would return more).
+type SearchPage struct {
+	Entities    []SearchResult
+	PageNum     int
+	LastPage    bool
+	MaxLimitHit bool
+}
+
 // Search searches for entities matching the given request.
-func (c *Client) Search(ctx context.Context, req SearchRequest) ([]SearchResult, error) {
+func (c *Client) Search(ctx context.Context, req SearchRequest) (SearchPage, error) {
 	var wrapper struct {
 		Data struct {
-			Entities []SearchResult `json:"entities"`
+			Entities                 []SearchResult `json:"entities"`
+			PageNum                  int            `json:"pageNum"`
+			LastPage                 bool           `json:"lastPage"`
+			SearchResultsMaxLimitHit bool           `json:"searchResultsMaxLimitHit"`
 		} `json:"data"`
 	}
 	if err := c.postJSON(ctx, searchPath, req, &wrapper); err != nil {
-		return nil, fmt.Errorf("kg: search: %w", err)
+		return SearchPage{}, fmt.Errorf("kg: search: %w", err)
 	}
-	if wrapper.Data.Entities == nil {
-		return []SearchResult{}, nil
+	entities := wrapper.Data.Entities
+	if entities == nil {
+		entities = []SearchResult{}
 	}
-	return wrapper.Data.Entities, nil
+	return SearchPage{
+		Entities:    entities,
+		PageNum:     wrapper.Data.PageNum,
+		LastPage:    wrapper.Data.LastPage,
+		MaxLimitHit: wrapper.Data.SearchResultsMaxLimitHit,
+	}, nil
 }
 
 // SearchAssertions searches for assertion timelines matching the given query.

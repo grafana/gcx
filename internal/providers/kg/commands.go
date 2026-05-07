@@ -290,6 +290,8 @@ func readFileOrStdin(cmd *cobra.Command, path string) ([]byte, error) {
 // searchByTypes fans out Search across multiple entity types and merges results.
 // Server-side (5xx) failures for individual entity types are logged as warnings and skipped
 // so that a broken type does not abort results for all other types.
+// When the backend signals more pages (MaxLimitHit, or !LastPage) for a per-type
+// page, a hint is emitted to stderr suggesting --page to fetch further results.
 func searchByTypes(ctx context.Context, cmd *cobra.Command, client *Client, entityTypes []string, assertionsOnly bool, sc *ScopeCriteria, startMs, endMs int64, pageNum int, propertyFilters []PropertyMatcher) ([]SearchResult, error) {
 	if startMs == 0 && endMs == 0 {
 		now := time.Now().UnixMilli()
@@ -309,7 +311,7 @@ func searchByTypes(ctx context.Context, cmd *cobra.Command, client *Client, enti
 			ScopeCriteria: sc,
 			PageNum:       pageNum,
 		}
-		results, err := client.Search(ctx, req)
+		page, err := client.Search(ctx, req)
 		if err != nil {
 			var apiErr *APIError
 			if errors.As(err, &apiErr) && apiErr.IsServerError() {
@@ -318,7 +320,12 @@ func searchByTypes(ctx context.Context, cmd *cobra.Command, client *Client, enti
 			}
 			return nil, fmt.Errorf("search entity type %s: %w", et, err)
 		}
-		allResults = append(allResults, results...)
+		if page.MaxLimitHit || (!page.LastPage && len(page.Entities) > 0) {
+			fmt.Fprintf(cmd.ErrOrStderr(),
+				"hint: more results available for type %q (page %d returned %d) — use --page %d or narrow with --property/--namespace\n",
+				et, pageNum, len(page.Entities), pageNum+1)
+		}
+		allResults = append(allResults, page.Entities...)
 	}
 	if allResults == nil {
 		return []SearchResult{}, nil
@@ -809,7 +816,7 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 		listPage         int
 		listPropertyRaw  []string
 	)
-	listOpts := &entitiesShowOpts{}
+	listOpts := &entitiesListOpts{}
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List Knowledge Graph entities for a given type.",
@@ -858,6 +865,13 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 				results = filterBySeverity(results, listWithInsights)
 			}
 			results = adapter.TruncateSlice(results, listOpts.Limit)
+			if listOpts.Limit > 0 && int64(len(results)) >= listOpts.Limit {
+				w := listOpts.IO.ErrWriter
+				if w == nil {
+					w = os.Stderr
+				}
+				fmt.Fprintf(w, "hint: --limit of %d reached — results may be truncated; raise --limit or pass --limit 0 for all\n", listOpts.Limit)
+			}
 			return listOpts.IO.Encode(cmd.OutOrStdout(), results)
 		},
 	}
@@ -876,16 +890,16 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 	return cmd
 }
 
-type entitiesShowOpts struct {
+type entitiesListOpts struct {
 	IO    cmdio.Options
 	Limit int64
 }
 
-func (o *entitiesShowOpts) setup(flags *pflag.FlagSet) {
+func (o *entitiesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &EntityTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all; the backend may still page results — use --page to paginate)")
 }
 
 // EntityTableCodec renders search results as a table.
