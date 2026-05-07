@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -143,9 +144,9 @@ func ResolveTokenPersistenceSource(ctx context.Context, fallback Source, context
 	}
 
 	// No source has the context; default to user layer when available.
-	for i := len(sources) - 1; i >= 0; i-- {
-		if sources[i].Type == "user" {
-			return ExplicitConfigFile(sources[i].Path)
+	for _, src := range slices.Backward(sources) {
+		if src.Type == "user" {
+			return ExplicitConfigFile(src.Path)
 		}
 	}
 
@@ -154,13 +155,13 @@ func ResolveTokenPersistenceSource(ctx context.Context, fallback Source, context
 
 func pickHighestSourceForContext(ctx context.Context, sources []ConfigSource, contextName string, match func(*Context) bool) (ConfigSource, bool) {
 	// DiscoverSources returns low→high precedence, so scan in reverse.
-	for i := len(sources) - 1; i >= 0; i-- {
-		cfg, err := Load(ctx, ExplicitConfigFile(sources[i].Path))
+	for _, src := range slices.Backward(sources) {
+		cfg, err := Load(ctx, ExplicitConfigFile(src.Path))
 		if err != nil {
 			continue
 		}
 		if c := cfg.Contexts[contextName]; c != nil && match(c) {
-			return sources[i], true
+			return src, true
 		}
 	}
 	return ConfigSource{}, false
