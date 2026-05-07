@@ -77,6 +77,7 @@ Service account tokens are not supported.`,
 
 	configOpts.BindFlags(cmd.PersistentFlags())
 	cmd.AddCommand(promptCommand(configOpts))
+	cmd.AddCommand(dashboardCommand(configOpts))
 
 	// Create a ConfigLoader for investigations that shares the same --config/--context
 	// flags already bound by configOpts. Wire the values via PersistentPreRunE so that
@@ -111,13 +112,18 @@ type promptOpts struct {
 	agentID   string
 }
 
-func (o *promptOpts) setup(cmd *cobra.Command) {
+// setup binds the shared streaming flags. If exposeAgentID is true, the
+// --agent-id flag is also bound; subcommands that target a fixed agent (e.g.
+// `assistant dashboard`) pass false and pre-populate o.agentID instead.
+func (o *promptOpts) setup(cmd *cobra.Command, exposeAgentID bool) {
 	cmd.Flags().IntVar(&o.timeout, "timeout", 300, "Timeout in seconds when waiting for a response")
 	cmd.Flags().StringVar(&o.contextID, "context-id", "", "Context ID for conversation threading")
 	cmd.Flags().BoolVar(&o.cont, "continue", false, "Continue the previous chat session")
 	cmd.Flags().BoolVar(&o.jsonOut, "json", false, "Output as JSON (streams NDJSON events by default)")
 	cmd.Flags().BoolVar(&o.noStream, "no-stream", false, "With --json, emit a single JSON object instead of streaming events")
-	cmd.Flags().StringVar(&o.agentID, "agent-id", assistant.DefaultAgentID, "Agent ID to target")
+	if exposeAgentID {
+		cmd.Flags().StringVar(&o.agentID, "agent-id", assistant.DefaultAgentID, "Agent ID to target (e.g. grafana_assistant_cli, grafana_dashboarding)")
+	}
 }
 
 func (o *promptOpts) Validate() error {
@@ -149,23 +155,69 @@ func promptCommand(configOpts *cmdconfig.Options) *cobra.Command {
 		Long: `Send a single message to Grafana Assistant and receive the response.
 
 This is useful for scripting and automation. The response streams via
-the A2A (Agent-to-Agent) protocol over Server-Sent Events.`,
-		Args:    cobra.ExactArgs(1),
-		Example: "  gcx assistant prompt \"What alerts are firing?\"\n  gcx assistant prompt \"Show CPU usage\" --json\n  gcx assistant prompt \"Follow up\" --continue",
+the A2A (Agent-to-Agent) protocol over Server-Sent Events.
+
+Known agent IDs:
+  grafana_assistant_cli   General-purpose assistant (default)
+  grafana_dashboarding    Dashboard builder — queries live Prometheus to discover
+                          metrics and returns complete dashboard JSON ready for
+                          'gcx resources push'. See also: gcx assistant dashboard`,
+		Args: cobra.ExactArgs(1),
+		Example: `  gcx assistant prompt "What alerts are firing?"
+  gcx assistant prompt "Show CPU usage" --json
+  gcx assistant prompt "Follow up" --continue
+  gcx assistant prompt "Build a CPU dashboard" --agent-id grafana_dashboarding`,
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "large",
 			agent.AnnotationLLMHint:   "Prefer deterministic gcx commands (gcx metrics query, gcx slo definitions status, gcx alert instances list) for precise data retrieval. Use assistant prompt for reasoning: root cause analysis, holistic health questions, or when you don't know which metrics/labels exist — the Assistant's Infrastructure Memories know your stack topology. Example: \"Why is checkout-latency spiking?\" --json",
 		},
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.Validate(); err != nil {
-				return err
-			}
-			return runPrompt(cmd, args[0], opts, configOpts)
-		},
+		RunE: promptRunE(opts, configOpts),
 	}
 
-	opts.setup(cmd)
+	opts.setup(cmd, true)
 	return cmd
+}
+
+// dashboardCommand returns a subcommand that routes to the grafana_dashboarding
+// agent. It queries live Prometheus to discover metrics and returns complete
+// dashboard JSON ready for 'gcx resources push'.
+func dashboardCommand(configOpts *cmdconfig.Options) *cobra.Command {
+	opts := &promptOpts{agentID: "grafana_dashboarding"}
+
+	cmd := &cobra.Command{
+		Use:   "dashboard <message>",
+		Short: "Build a dashboard using the Grafana dashboarding agent",
+		Long: `Send a dashboard creation request to the Grafana dashboarding agent.
+
+The agent queries live Prometheus to discover available clusters and metric
+names, then returns complete dashboard JSON that can be pushed directly with
+'gcx resources push'.
+
+This is equivalent to:
+  gcx assistant prompt --agent-id grafana_dashboarding <message>`,
+		Args: cobra.ExactArgs(1),
+		Example: `  gcx assistant dashboard "Build a CPU usage dashboard across all clusters"
+  gcx assistant dashboard "Create a dashboard for HTTP error rates by service" --json`,
+		Annotations: map[string]string{
+			agent.AnnotationTokenCost: "large",
+			agent.AnnotationLLMHint:   "Use assistant dashboard to build Grafana dashboards from natural language. The agent discovers live Prometheus metrics and returns complete dashboard JSON. Pipe the result to 'gcx resources push' to publish it.",
+		},
+		RunE: promptRunE(opts, configOpts),
+	}
+
+	opts.setup(cmd, false)
+	return cmd
+}
+
+// promptRunE returns the RunE used by both `prompt` and `dashboard` — the only
+// per-command difference is the pre-populated agent ID on opts.
+func promptRunE(opts *promptOpts, configOpts *cmdconfig.Options) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		if err := opts.Validate(); err != nil {
+			return err
+		}
+		return runPrompt(cmd, args[0], opts, configOpts)
+	}
 }
 
 func runPrompt(cmd *cobra.Command, message string, opts *promptOpts, configOpts *cmdconfig.Options) error {
@@ -197,7 +249,7 @@ func runPrompt(cmd *cobra.Command, message string, opts *promptOpts, configOpts 
 		contextID = lastContextID
 	}
 
-	clientOpts, err := resolveAssistantClientOptions(ctx, configOpts, opts.timeout)
+	clientOpts, err := resolveAssistantClientOptions(ctx, configOpts, opts.timeout, opts.agentID)
 	if err != nil {
 		if opts.jsonOut {
 			return jsonError(err)
@@ -360,7 +412,7 @@ func handlePromptResult(cmd *cobra.Command, result assistant.StreamResult, opts 
 // resolveAssistantClientOptions loads the gcx config and returns assistant
 // ClientOptions for assistant prompt, including an HTTP client whose Timeout
 // matches streamTimeoutSeconds (see --timeout and SSE body reads).
-func resolveAssistantClientOptions(ctx context.Context, configOpts *cmdconfig.Options, streamTimeoutSeconds int) (assistant.ClientOptions, error) {
+func resolveAssistantClientOptions(ctx context.Context, configOpts *cmdconfig.Options, streamTimeoutSeconds int, agentID string) (assistant.ClientOptions, error) {
 	cfg, err := configOpts.LoadConfig(ctx)
 	if err != nil {
 		return assistant.ClientOptions{}, err
@@ -386,6 +438,7 @@ func resolveAssistantClientOptions(ctx context.Context, configOpts *cmdconfig.Op
 			GrafanaURL:     grafana.Server,
 			Token:          grafana.OAuthToken,
 			APIEndpoint:    grafana.ProxyEndpoint,
+			AgentID:        agentID,
 			TokenRefresher: refresher,
 			HTTPClient:     httpClient,
 		}, nil
@@ -395,6 +448,7 @@ func resolveAssistantClientOptions(ctx context.Context, configOpts *cmdconfig.Op
 		return assistant.ClientOptions{
 			GrafanaURL: grafana.Server,
 			Token:      grafana.APIToken,
+			AgentID:    agentID,
 			HTTPClient: httpClient,
 		}, nil
 

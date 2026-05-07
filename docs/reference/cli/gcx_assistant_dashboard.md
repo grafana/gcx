@@ -1,40 +1,35 @@
-## gcx assistant prompt
+## gcx assistant dashboard
 
-Send a single message to Grafana Assistant
+Build a dashboard using the Grafana dashboarding agent
 
 ### Synopsis
 
-Send a single message to Grafana Assistant and receive the response.
+Send a dashboard creation request to the Grafana dashboarding agent.
 
-This is useful for scripting and automation. The response streams via
-the A2A (Agent-to-Agent) protocol over Server-Sent Events.
+The agent queries live Prometheus to discover available clusters and metric
+names, then returns complete dashboard JSON that can be pushed directly with
+'gcx resources push'.
 
-Known agent IDs:
-  grafana_assistant_cli   General-purpose assistant (default)
-  grafana_dashboarding    Dashboard builder — queries live Prometheus to discover
-                          metrics and returns complete dashboard JSON ready for
-                          'gcx resources push'. See also: gcx assistant dashboard
+This is equivalent to:
+  gcx assistant prompt --agent-id grafana_dashboarding <message>
 
 ```
-gcx assistant prompt <message> [flags]
+gcx assistant dashboard <message> [flags]
 ```
 
 ### Examples
 
 ```
-  gcx assistant prompt "What alerts are firing?"
-  gcx assistant prompt "Show CPU usage" --json
-  gcx assistant prompt "Follow up" --continue
-  gcx assistant prompt "Build a CPU dashboard" --agent-id grafana_dashboarding
+  gcx assistant dashboard "Build a CPU usage dashboard across all clusters"
+  gcx assistant dashboard "Create a dashboard for HTTP error rates by service" --json
 ```
 
 ### Options
 
 ```
-      --agent-id string     Agent ID to target (e.g. grafana_assistant_cli, grafana_dashboarding) (default "grafana_assistant_cli")
       --context-id string   Context ID for conversation threading
       --continue            Continue the previous chat session
-  -h, --help                help for prompt
+  -h, --help                help for dashboard
       --json                Output as JSON (streams NDJSON events by default)
       --no-stream           With --json, emit a single JSON object instead of streaming events
       --timeout int         Timeout in seconds when waiting for a response (default 300)

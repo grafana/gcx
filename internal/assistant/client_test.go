@@ -186,3 +186,26 @@ func TestNew_BaseURL_DirectAPITrailingSlash(t *testing.T) {
 		t.Errorf("GetBaseURL() = %q, want %q", c.GetBaseURL(), want)
 	}
 }
+
+func TestNew_DefaultAgentID(t *testing.T) {
+	c := assistant.New(assistant.ClientOptions{
+		GrafanaURL: "https://test.grafana.net",
+		Token:      "test-token",
+	})
+
+	if c.GetAgentID() != assistant.DefaultAgentID {
+		t.Errorf("GetAgentID() = %q, want %q (default)", c.GetAgentID(), assistant.DefaultAgentID)
+	}
+}
+
+func TestNew_CustomAgentID(t *testing.T) {
+	c := assistant.New(assistant.ClientOptions{
+		GrafanaURL: "https://test.grafana.net",
+		Token:      "test-token",
+		AgentID:    "grafana_dashboarding",
+	})
+
+	if c.GetAgentID() != "grafana_dashboarding" {
+		t.Errorf("GetAgentID() = %q, want %q", c.GetAgentID(), "grafana_dashboarding")
+	}
+}
