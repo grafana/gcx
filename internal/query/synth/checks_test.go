@@ -2,7 +2,6 @@ package synth_test
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"net/url"
 	"testing"
@@ -55,14 +54,13 @@ func TestClient_ListChecksWithAlerts(t *testing.T) {
 	require.Len(t, list, 1)
 	require.Len(t, list[0].Alerts, 1)
 	assert.Equal(t, "ProbeFailedExecutionsTooHigh", list[0].Alerts[0].Name)
-	assert.Equal(t, float64(1), list[0].Alerts[0].Threshold)
+	assert.InEpsilon(t, float64(1), list[0].Alerts[0].Threshold, 1e-9)
 	assert.Equal(t, "5m", list[0].Alerts[0].Period)
 	assert.Equal(t, "OK", list[0].Alerts[0].Status)
 }
 
-func boolPtr(b bool) *bool { return &b }
-
 func TestClient_ListChecksFiltered_QueryString(t *testing.T) {
+	trueVal, falseVal := true, false
 	tests := []struct {
 		name string
 		opts synth.ListChecksOptions
@@ -80,12 +78,12 @@ func TestClient_ListChecksFiltered_QueryString(t *testing.T) {
 		},
 		{
 			name: "enabled true",
-			opts: synth.ListChecksOptions{Enabled: boolPtr(true)},
+			opts: synth.ListChecksOptions{Enabled: &trueVal},
 			want: url.Values{"enabled": []string{"true"}},
 		},
 		{
 			name: "enabled false",
-			opts: synth.ListChecksOptions{Enabled: boolPtr(false)},
+			opts: synth.ListChecksOptions{Enabled: &falseVal},
 			want: url.Values{"enabled": []string{"false"}},
 		},
 		{
@@ -103,7 +101,7 @@ func TestClient_ListChecksFiltered_QueryString(t *testing.T) {
 			name: "all filters combined",
 			opts: synth.ListChecksOptions{
 				Search:       "staging",
-				Enabled:      boolPtr(true),
+				Enabled:      &trueVal,
 				MinFrequency: time.Second,
 				MaxFrequency: time.Minute,
 			},
@@ -149,5 +147,5 @@ func TestClient_ListChecksFiltered_RejectsAlertsWithFilters(t *testing.T) {
 		WithAlerts: true,
 	})
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, synth.ErrFiltersWithAlerts), "expected ErrFiltersWithAlerts, got %v", err)
+	assert.ErrorIs(t, err, synth.ErrFiltersWithAlerts)
 }

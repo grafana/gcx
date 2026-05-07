@@ -2,6 +2,7 @@ package synth
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -44,7 +45,7 @@ func (opts *checksOpts) Validate() error {
 		return err
 	}
 	if opts.WithAlerts && (opts.Search != "" || opts.Enabled != nil || opts.MinFrequency > 0 || opts.MaxFrequency > 0) {
-		return fmt.Errorf("--with-alerts cannot be combined with --search/--enabled/--min-frequency/--max-frequency (synthetic-monitoring API limitation)")
+		return errors.New("--with-alerts cannot be combined with --search/--enabled/--min-frequency/--max-frequency (synthetic-monitoring API limitation)")
 	}
 	if opts.MinFrequency > 0 && opts.MaxFrequency > 0 && opts.MinFrequency > opts.MaxFrequency {
 		return fmt.Errorf("--min-frequency (%s) must be <= --max-frequency (%s)", opts.MinFrequency, opts.MaxFrequency)
