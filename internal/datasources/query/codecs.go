@@ -7,9 +7,12 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/graph"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers/synth/checks"
+	"github.com/grafana/gcx/internal/providers/synth/probes"
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/query/pyroscope"
+	"github.com/grafana/gcx/internal/query/synth"
 	"github.com/grafana/gcx/internal/query/tempo"
 )
 
@@ -35,6 +38,10 @@ func (c *queryTableCodec) Encode(w io.Writer, data any) error {
 		return tempo.FormatMetricsTable(w, resp)
 	case *tempo.GetTraceResponse:
 		return tempo.FormatTraceTable(w, resp)
+	case []probes.Probe:
+		return synth.FormatProbesTable(w, resp)
+	case []checks.Check:
+		return synth.FormatChecksTable(w, resp)
 	default:
 		return errors.New("invalid data type for query table codec")
 	}
@@ -60,6 +67,10 @@ func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 		return tempo.FormatSearchTable(w, resp)
 	case *tempo.GetTraceResponse:
 		return tempo.FormatTraceWide(w, resp)
+	case []probes.Probe:
+		return synth.FormatProbesTable(w, resp)
+	case []checks.Check:
+		return synth.FormatChecksWideTable(w, resp)
 	default:
 		return errors.New("invalid data type for query wide codec")
 	}

@@ -1,7 +1,6 @@
 package datasources
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -156,7 +155,7 @@ that do not have a dedicated subcommand.`,
 
 				return shared.IO.Encode(cmd.OutOrStdout(), resp)
 
-			case "synth":
+			case "synthetic-monitoring":
 				client, err := synth.NewClient(cfg)
 				if err != nil {
 					return fmt.Errorf("failed to create client: %w", err)
@@ -175,17 +174,10 @@ that do not have a dedicated subcommand.`,
 					return fmt.Errorf("query failed: %w", err)
 				}
 
-				// The "table" and "wide" codecs registered for query commands are typed
-				// against prometheus/loki/etc. response shapes. Until an SM-specific
-				// formatter is wired in (Task #3 cleanup), fall back to JSON for those
-				// formats so the default render isn't a type-mismatch error.
-				if shared.IO.OutputFormat == "table" || shared.IO.OutputFormat == "wide" {
-					return json.NewEncoder(cmd.OutOrStdout()).Encode(result)
-				}
 				return shared.IO.Encode(cmd.OutOrStdout(), result)
 
 			default:
-				return fmt.Errorf("datasource type %q is not supported (supported: prometheus, loki, pyroscope, synth)", dsType)
+				return fmt.Errorf("datasource type %q is not supported (supported: prometheus, loki, pyroscope, synthetic-monitoring)", dsType)
 			}
 		},
 	}

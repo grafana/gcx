@@ -8,14 +8,17 @@
 package synth
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 
 	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/synth/probes"
 	"github.com/grafana/gcx/internal/query/synth"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
@@ -28,6 +31,9 @@ type probesOpts struct {
 }
 
 func (opts *probesOpts) setup(flags *pflag.FlagSet) {
+	opts.IO.RegisterCustomCodec("table", &probesTableCodec{})
+	opts.IO.RegisterCustomCodec("wide", &probesTableCodec{})
+	opts.IO.DefaultFormat("table")
 	opts.IO.BindFlags(flags)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.synthetic-monitoring is configured)")
 }
@@ -52,47 +58,64 @@ func ProbesCmd(loader *providers.ConfigLoader) *cobra.Command {
   gcx datasources synthetic-monitoring probes -d UID -o json`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.Validate(); err != nil {
-				return err
-			}
-
-			ctx := cmd.Context()
-
-			cfg, err := loader.LoadGrafanaConfig(ctx)
-			if err != nil {
-				return err
-			}
-
-			var cfgCtx *internalconfig.Context
-			if fullCfg, err := loader.LoadFullConfig(ctx); err == nil {
-				cfgCtx = fullCfg.GetCurrentContext()
-			} else {
-				logging.FromContext(ctx).Warn("could not load config; falling back to auto-discovery", slog.String("error", err.Error()))
-			}
-
-			datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "synthetic-monitoring")
-			if err != nil {
-				return err
-			}
-
-			client, err := synth.NewClient(cfg)
-			if err != nil {
-				return fmt.Errorf("failed to create client: %w", err)
-			}
-
-			result, err := client.ListProbes(ctx, datasourceUID)
-			if err != nil {
-				return fmt.Errorf("query failed: %w", err)
-			}
-
-			// Until we register an SM-specific table codec, fall back to JSON for table/wide formats.
-			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
-				return json.NewEncoder(cmd.OutOrStdout()).Encode(result)
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return runProbes(cmd, loader, opts)
 		},
 	}
 
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// runProbes is the shared execution path for both `probes` and `query probes`.
+func runProbes(cmd *cobra.Command, loader *providers.ConfigLoader, opts *probesOpts) error {
+	if err := opts.Validate(); err != nil {
+		return err
+	}
+
+	ctx := cmd.Context()
+
+	cfg, err := loader.LoadGrafanaConfig(ctx)
+	if err != nil {
+		return err
+	}
+
+	var cfgCtx *internalconfig.Context
+	if fullCfg, err := loader.LoadFullConfig(ctx); err == nil {
+		cfgCtx = fullCfg.GetCurrentContext()
+	} else {
+		logging.FromContext(ctx).Warn("could not load config; falling back to auto-discovery", slog.String("error", err.Error()))
+	}
+
+	datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "synthetic-monitoring")
+	if err != nil {
+		return err
+	}
+
+	client, err := synth.NewClient(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create client: %w", err)
+	}
+
+	result, err := client.ListProbes(ctx, datasourceUID)
+	if err != nil {
+		return fmt.Errorf("query failed: %w", err)
+	}
+
+	return opts.IO.Encode(cmd.OutOrStdout(), result)
+}
+
+type probesTableCodec struct{}
+
+func (c *probesTableCodec) Format() format.Format { return "table" }
+
+func (c *probesTableCodec) Encode(w io.Writer, data any) error {
+	resp, ok := data.([]probes.Probe)
+	if !ok {
+		return errors.New("invalid data type for probes table codec")
+	}
+	return synth.FormatProbesTable(w, resp)
+}
+
+func (c *probesTableCodec) Decode(io.Reader, any) error {
+	return errors.New("probes table codec does not support decoding")
 }
