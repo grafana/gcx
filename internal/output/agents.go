@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"reflect"
+	"sort"
 	"strconv"
 
 	"github.com/grafana/gcx/internal/format"
@@ -107,12 +108,12 @@ func itemCount(value any) (int, bool) {
 }
 
 // previewOf returns the first spillPreviewItems elements for slices/lists,
-// or the value itself for scalar/map shapes.
+// the sorted top-level key names for map shapes, or nil for other shapes.
 func previewOf(value any) any {
 	v := reflect.ValueOf(value)
 	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
 		if v.IsNil() {
-			return value
+			return nil
 		}
 		v = v.Elem()
 	}
@@ -128,6 +129,16 @@ func previewOf(value any) any {
 		if items.IsValid() && (items.Kind() == reflect.Slice || items.Kind() == reflect.Array) {
 			return take(items)
 		}
+	case reflect.Map:
+		keys := v.MapKeys()
+		names := make([]string, 0, len(keys))
+		for _, k := range keys {
+			if k.Kind() == reflect.String {
+				names = append(names, k.String())
+			}
+		}
+		sort.Strings(names)
+		return names
 	}
-	return value
+	return nil
 }

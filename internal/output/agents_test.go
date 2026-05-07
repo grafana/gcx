@@ -88,6 +88,34 @@ func TestAgentsCodec_NonSlice_OmitsItems(t *testing.T) {
 	assert.Contains(t, summary, "spilled_to")
 }
 
+func TestAgentsCodec_NonSlice_PreviewIsKeyNames(t *testing.T) {
+	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
+	t.Setenv("TMPDIR", t.TempDir())
+
+	codec := cmdio.NewAgentsCodecForTesting()
+
+	// Large map that would be expensive to embed verbatim in the spill envelope.
+	data := map[string]any{
+		"name":    "alpha",
+		"payload": strings.Repeat("x", 10_000),
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, codec.Encode(&buf, data))
+
+	var summary map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &summary))
+
+	// stdout must be much smaller than the full payload — the preview must
+	// not embed the full map values.
+	assert.Less(t, buf.Len(), 500, "spill envelope must not embed the full payload")
+
+	// Preview should be the sorted top-level key names, not the full value.
+	preview, ok := summary["preview"].([]any)
+	require.True(t, ok, "preview for map should be key names as a slice")
+	assert.ElementsMatch(t, []any{"name", "payload"}, preview)
+}
+
 func TestAgentsCodec_StructWithItems_CountsItems(t *testing.T) {
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
 	t.Setenv("TMPDIR", t.TempDir())

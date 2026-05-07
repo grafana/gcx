@@ -120,7 +120,9 @@ func (opts *Options) applyJSONFlag() error {
 	// Only reject when -o is explicitly set to a non-JSON format.
 	// -o json (or omitted) is fine — --json implies JSON anyway.
 	outputFlag := opts.flags.Lookup("output")
-	if outputFlag != nil && outputFlag.Changed && outputFlag.Value.String() != "json" {
+	if outputFlag != nil && outputFlag.Changed &&
+		outputFlag.Value.String() != "json" &&
+		outputFlag.Value.String() != string(agentsFormat) {
 		return fmt.Errorf("--json requires JSON output, but -o %s was specified", outputFlag.Value.String())
 	}
 

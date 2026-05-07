@@ -45,7 +45,7 @@ spill threshold (default **100 KiB**), and spills to a temp file otherwise.
 | `spilled_to` | yes | Absolute path to the full-payload file |
 | `bytes` | yes | Byte size of the full payload |
 | `items` | only for lists | Element count |
-| `preview` | yes | First 3 items (or the whole value if not list-shaped) |
+| `preview` | yes | First 3 items for list shapes; sorted top-level key names for object/map shapes; `null` for other shapes |
 
 **Override:** `-o json` forces full compact JSON to stdout regardless of size.
 `-o text` renders the human table.
