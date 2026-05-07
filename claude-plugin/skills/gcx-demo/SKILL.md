@@ -14,275 +14,174 @@ allowed-tools: Bash, AskUserQuestion
 
 # gcx Demo Tour
 
-Deliver a narrated, read-only showcase of gcx across every Grafana Cloud
-product area. All commands are `list`, `get`, `query`, or `status` — nothing
-is created, modified, or deleted.
+Deliver a narrated, read-only showcase of gcx across Grafana Cloud product
+areas. All commands are `list`, `get`, `query`, or `status` — nothing is
+created, modified, or deleted.
 
 ## Principles
 
 - **Read-only only.** Never use `push`, `create`, `update`, `delete`, `edit`,
   or `pull` with local paths. If a command requires write scope, skip it and
   note why.
-- **Parallel by default.** Run independent queries in one message. Only
-  sequence when a later command needs a previous result.
-- **Adapt to the stack.** Discover datasource UIDs, available providers, and
-  what resources exist before presenting. Never hardcode UIDs.
-- **Narrate.** After each section, explain what was shown and why it matters
-  to a customer. Lead with value, not syntax.
-- **Graceful degradation.** If a command fails (missing cloud.token, missing
-  scope, empty result), note it briefly and continue.
+- **Discover before presenting.** Run exploratory commands first, then narrate
+  what's interesting. Let actual output guide emphasis — don't recite a script.
+- **Adapt to the stack.** The order, pacing, and which areas to highlight depend
+  on what's actually on the stack. Cover what's present; skip what isn't.
+- **Parallel by default.** Run independent commands in one message.
+- **Narrate what matters.** After each area, explain the value — not the syntax.
+- **Graceful degradation.** If a command fails, note it briefly and continue.
 
 ---
 
-## Step 0: Resolve Context
+## Start: Verify Context
 
-Check which stack the demo targets. If `$ARGUMENTS` contains `--context <name>`,
-use that context for all commands via the `--context` flag. Otherwise use the
-active context.
+Always run this first. If `$ARGUMENTS` contains `--context <name>`, use that
+context for all commands. Otherwise use the active context.
 
 ```bash
 gcx config current-context
 gcx config check
 ```
 
-Announce the target stack to the user before running anything else.
+Announce the target stack before running anything else. If `config check`
+fails, stop and ask the user to fix the context.
 
 ---
 
-## Step 1: Provider Landscape
+## Coverage Areas
 
-Show all registered providers in one command. This is the opening shot — it
-communicates breadth before anything else.
+Cover the following areas in an order that builds a coherent story. Run
+independent commands in parallel. Let what you find guide what you emphasize
+and how much time you spend on each area.
+
+### Provider Landscape
+
+Good opening — shows breadth at a glance.
 
 ```bash
 gcx providers list
 ```
 
-After output: narrate the count and highlight that each provider maps to a
-distinct Grafana Cloud product, with a consistent verb model across all of
-them.
-
----
-
-## Step 2: Parallel Discovery Wave
-
-Run all of the following in a single parallel message — they are independent:
+### K8s-native Resources
 
 ```bash
-# K8s-native resources
 gcx resources get dashboards -o wide --no-truncate
 gcx resources get folders --no-truncate
+gcx resources schemas
+```
 
-# Cloud provider resources
+Dashboards are K8s resources — listable, pushable, validateable. The `URL`
+column in `-o wide` gives a direct deep link for every dashboard. `gcx
+resources schemas` reveals the full type catalog including any plugin-installed
+types (e.g. Adaptive Logs `DropRule`). `gcx resources examples <Kind>` produces
+a ready-to-push template for any of them.
+
+### Datasources
+
+```bash
 gcx datasources list
-gcx slo definitions status
-gcx synth checks list
-gcx synth probes list
-gcx alert instances list --state firing
-gcx irm oncall schedules list
 ```
 
-After output, narrate each area:
+Every connected datasource — cloud, PDC-tunneled, third-party. All queryable
+from the CLI.
 
-**Dashboards & Folders**: gcx speaks Grafana's Kubernetes-compatible API
-natively. Every dashboard is a K8s resource — listable, pushable, pullable,
-validateable. The `AGE` and `URL` columns in `-o wide` make deep linking
-trivial. A GitOps pipeline using `gcx resources push` keeps dashboards as code.
+### Live Signals
 
-**Datasources**: A single `gcx datasources list` shows every connected
-datasource — cloud, PDC-tunneled, and third-party. All of them are queryable
-directly from the CLI.
-
-**SLOs**: Status, error budget remaining, SLI, and burn rate at a glance.
-Scriptable for release gates — fail a deploy if error budget is below a
-threshold.
-
-**Synthetic Monitoring**: Browser and HTTP checks running k6 scripts from a
-global network of probes. The same probes list shows coverage — regions,
-public/private, capabilities.
-
-**Firing Alerts**: Live alert instances filtered by state. Labels, annotations,
-and runbook URLs included — pipe to Slack, PagerDuty, or your own tooling.
-
-**OnCall Schedules**: Who's on-call right now, from which schedule. Useful in
-runbooks and automation ("page the current on-call").
-
----
-
-## Step 3: Discover Signal Datasources
-
-Before querying metrics, logs, and traces, resolve the correct datasource UIDs
-for this stack. Run in parallel:
+Discover datasource UIDs first (`gcx datasources list -o json`), then query
+whichever signal types are present — skip any that aren't on the stack.
 
 ```bash
-gcx datasources list -o json 2>/dev/null
-```
-
-From the output, extract the UID for:
-- The primary Prometheus datasource (type `prometheus`, name contains `prom` or
-  `grafanacloud-prom`; prefer the one with uid `grafanacloud-prom` if present)
-- The primary Loki datasource (type `loki`, name contains `logs` or
-  `grafanacloud-logs`; prefer uid `grafanacloud-logs` if present)
-- The primary Tempo datasource (type `tempo`, name contains `traces` or
-  `grafanacloud-traces`; prefer uid `grafanacloud-traces` if present)
-
-Store these as PROM_UID, LOKI_UID, TEMPO_UID. If a type is absent, skip that
-signal section and note it.
-
----
-
-## Step 4: Live Signal Queries
-
-Run the three signal queries in parallel (substitute actual UIDs from Step 3):
-
-```bash
-# Live PromQL — top 5 jobs by active targets
 gcx metrics query 'topk(5, count by (job) (up))' -d <PROM_UID>
-
-# Live LogQL — most recent log lines across all services
 gcx logs query '{service_name=~".+"}' --limit 5 -d <LOKI_UID>
-
-# Live TraceQL — most recent traces
 gcx traces query '{}' --limit 5 -d <TEMPO_UID>
 ```
 
-After output, narrate:
+Adapt the queries to what's interesting on this stack — pick label selectors,
+metric names, or trace filters that will return meaningful output. Mention
+`--open` (jump to Grafana Explore) and `--share-link` (shareable URL) as
+natural follow-ons.
 
-**Metrics (Prometheus)**: Any PromQL expression, against any Prometheus
-datasource on the stack, direct from the terminal. No browser needed. Useful
-for ad-hoc debugging, CI health checks, or scripted reporting.
+### Assistant
 
-**Logs (Loki)**: Live LogQL. The same queries you write in Explore — available
-in scripts, CI pipelines, and agent workflows. Pipe with `--json` for field
-selection without `jq`.
-
-**Traces (Tempo)**: Recent distributed traces — TraceQL from the CLI. Use
-`--open` to jump into Grafana Explore with the same query, or `--share-link`
-to print a shareable URL.
-
----
-
-## Step 5: Assistant
-
-`gcx assistant` is the only command in the tour that takes natural language
-against the live stack. Show the commands; run live only if the stack is
-healthy, OAuth-authenticated, and the presenter has time — streaming LLM
-output has variable latency.
-
-Cloud-only. Requires `gcx login` (OAuth). No external LLM key.
+Cloud-only. Requires `gcx login` (OAuth). Show the commands; run live only if
+the stack is healthy and the presenter has time — streaming output has variable
+latency.
 
 ```bash
-# One-shot prompt — A2A SSE stream
 gcx assistant prompt "What alerts are firing right now and why?"
-
-# Continue the same conversation (stored context ID)
 gcx assistant prompt "Which service owns checkout-latency?" --continue
-
-# NDJSON event stream — pipes into agent tools and scripts
 gcx assistant prompt "Summarize CPU on prod" --json
 
-# Read-only views over autonomous multi-step investigations
 gcx assistant investigations list
-gcx assistant investigations get <id> --open
 gcx assistant investigations todos <id>
 gcx assistant investigations timeline <id>
 gcx assistant investigations report <id>
 ```
 
-After output, narrate: `prompt` runs a single message against the Assistant,
-which already has context for this stack's dashboards, datasources, and alerts.
-`--continue` threads follow-ups; `--json` emits a structured event stream for
-use inside agent tools (Claude Code, Cursor) or scripts. Investigations are
-autonomous multi-step runs created from the Grafana UI or via
-`investigations create`; the read-only views show plan (`todos`), chronological
-activity (`timeline`), and final findings (`report`). `--open` deep-links from
-CLI into the UI.
+`prompt` runs natural language against the stack's live data — the Assistant
+already has context for dashboards, datasources, and alerts. `--continue`
+threads follow-ups via a stored context ID. `--json` emits a structured event
+stream for agent tools (Claude Code, Cursor) or scripts.
+
+Investigations are autonomous multi-step LLM runs. The read-only views show
+plan (`todos`), chronological activity (`timeline`), and final findings
+(`report`). `--open` on `investigations get` deep-links into the Grafana UI.
 
 If `investigations list` is empty, note it and skip the per-investigation
 views. Do not create one during the demo.
 
----
-
-## Step 6: Alert Rules Deep Dive
+### Reliability & Alerting
 
 ```bash
+gcx slo definitions status
+gcx alert instances list --state firing
 gcx alert rules list --no-truncate
 ```
 
-After output, narrate: Alert rules are rich objects — query, state, labels,
-annotations, runbook URL, last evaluation time. All of it queryable
-programmatically. A single command replaces navigating three UI pages. Filter
-by folder, group, or state with flags.
+SLOs return SLI, error budget, and burn rate in one command — scriptable for
+release gates. Firing alerts include labels, annotations, and runbook URLs.
+Alert rules expose full PromQL, evaluation timing, and datasource UIDs.
 
----
+### Synthetic Monitoring
 
-## Step 7: Cloud Provider Commands
+```bash
+gcx synth checks list
+gcx synth probes list
+```
 
-Run in parallel — these need cloud.token and cloud.stack to be configured.
-If they are not, skip gracefully and note it:
+HTTP and browser checks from a global probe network — probes list shows
+regions, coordinates, and capabilities.
+
+### IRM
+
+```bash
+gcx irm oncall schedules list
+```
+
+Who's on-call right now. Pipeable into runbooks and automation.
+
+### Cloud Provider Commands
+
+Require `cloud.token` and `cloud.stack`. Skip gracefully if not configured,
+and note what's needed.
 
 ```bash
 gcx k6 load-tests list --no-truncate
 gcx fleet pipelines list --no-truncate
 ```
 
-After output (if successful), narrate:
-
-**k6 Load Tests**: k6 Cloud load test catalog alongside your Grafana stack.
-Trigger runs, list recent results, and correlate load test timing with live
-metrics — all from one CLI.
-
-**Fleet Management**: Alloy collector pipelines defined as code, deployed to
-thousands of collectors via fleet matching rules. `gcx fleet pipelines list`
-shows the live pipeline configurations running on your collector fleet.
-
-If either command failed due to missing cloud credentials, note: "These
-commands require a cloud access policy token (`gcx config set cloud.token
-<TOKEN>`) and stack slug (`gcx config set cloud.stack <SLUG>`). On a
-fully-configured context they work out of the box."
+k6: load test catalog alongside the Grafana stack — correlate test timing with
+live metrics. Fleet: full Alloy HCL pipeline configs deployed to collectors via
+matcher rules.
 
 ---
 
-## Step 8: Resource Schema Discovery
+## Close
 
-```bash
-gcx resources schemas
-```
-
-After output, narrate: gcx knows the full schema of every K8s-native resource
-type on the connected stack — not just Grafana's built-in types, but any
-installed plugin that exposes K8s resources. `gcx resources examples <Kind>`
-produces a ready-to-push template for any of them. This is how agents and
-humans alike build resources without guessing at field names.
-
----
-
-## Step 9: Final Summary
-
-Present a summary table like this (adapt counts to actual output):
-
-```
-Area                  Command                               What you saw
-────────────────────────────────────────────────────────────────────────────
-Providers             gcx providers list                    N registered providers
-Dashboards            gcx resources get dashboards -o wide  N dashboards with deep links
-Folders               gcx resources get folders             N folders
-Datasources           gcx datasources list                  N datasources (N types)
-SLOs                  gcx slo definitions status            N SLOs — status + error budget
-Synthetic Monitoring  gcx synth checks list                 N checks across N probes
-Synthetic Probes      gcx synth probes list                 N global probe locations
-Firing Alerts         gcx alert instances list --state firing  N firing right now
-Alert Rules           gcx alert rules list                  Full rules with queries + labels
-OnCall Schedules      gcx irm oncall schedules list         N schedules — on-call now shown
-k6 Load Tests         gcx k6 load-tests list                N load tests
-Fleet Pipelines       gcx fleet pipelines list              N Alloy pipeline configs
-Live Metrics          gcx metrics query '...'               PromQL against live Prometheus
-Live Logs             gcx logs query '...'                  LogQL against live Loki
-Live Traces           gcx traces query '{}'                 TraceQL against live Tempo
-Assistant Prompt      gcx assistant prompt "..."            NL query, A2A streaming
-Investigations        gcx assistant investigations list     Multi-step LLM investigations
-Resource Schemas      gcx resources schemas                 All K8s resource types + schemas
-```
+Summarize what was actually shown — areas covered, notable findings (a
+specific alert, a latency signal in traces, an interesting datasource mix),
+and the commands used. Adapt the summary to what was interesting on this
+particular stack. Don't recite a fixed table.
 
 Close with: "One binary, one context, every Grafana Cloud product. All
 scriptable, all pipelineable — and with `--dry-run` on mutations for safe
@@ -294,12 +193,12 @@ GitOps workflows."
 
 | Situation | Action |
 |-----------|--------|
-| `config check` fails | Stop. Ask user to run `gcx config check` and fix the context before continuing. |
-| Signal datasource not found | Skip that signal section, note which type was missing. |
-| `cloud.token` / `cloud.stack` missing | Skip k6 and fleet sections, note what's needed. |
-| Auth scope missing (403) | Note the missing scope, skip that command, continue. |
+| `config check` fails | Stop. Ask user to fix the context before continuing. |
+| Signal datasource not found | Skip that signal type, note it. |
+| `cloud.token` / `cloud.stack` missing | Skip k6 and fleet, note what's needed. |
+| Assistant unavailable (self-hosted, OAuth missing, 403) | Skip assistant section, note Cloud + OAuth requirement. |
+| Auth scope missing (403) | Note the missing scope, skip, continue. |
 | Empty list (0 resources) | Report "none found" — not an error; continue. |
 | Any other command error | Print the error summary, skip the section, continue. |
 
-Never abort the demo for a single command failure. Collect all errors and
-surface them at the end.
+Never abort for a single failure. Surface errors at the end.
