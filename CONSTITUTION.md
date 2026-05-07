@@ -74,6 +74,7 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
 Every command serves both humans and agents. Agent mode switches defaults
 (JSON output, no color, no truncation) but does not change available
 functionality. Explicit flags always override agent mode defaults.
+Agent mode flips format and non-format defaults; explicit format flags override format choice; non-format defaults (no color, no truncation, plain-ASCII charset) apply uniformly across all formats.
 
 See [agent-mode.md](docs/design/agent-mode.md) for
 agent mode detection, behavior changes, and opt-out mechanisms.

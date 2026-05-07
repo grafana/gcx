@@ -77,6 +77,21 @@ func convertMyErrors(err error) (*DetailedError, bool) {
 Converters are tried in order — first match wins. Place more specific
 converters before more general ones.
 
+#### Fleet Management HTTP errors
+
+HTTP 401 and 403 responses from the fleet management API are handled by the
+`convertFleetHTTPErrors` converter in `cmd/gcx/fail/convert.go`. This converter
+is ordered before the generic fallback.
+
+- HTTP 401 → summary: `"Authentication failed"`
+- HTTP 403 → summary: `"Authorization failed"`
+
+Both produce `DetailedError` with `ExitAuthFailure` exit code and actionable suggestions
+pointing at `gcx config set cloud.token` and `gcx login`.
+
+The converter is enabled by `fleet.HTTPError` — a typed error returned by all non-2xx
+responses in `internal/providers/instrumentation/client.go`.
+
 ### 4.4 In-Band Error Reporting
 
 When agent mode is active and a command fails, a JSON error object is written
@@ -118,3 +133,25 @@ Invoked from `handleError` in `cmd/gcx/main.go` when `agent.IsAgentMode()` is tr
 
 See [agent-mode.md](agent-mode.md) for the full agent mode specification.
 See [exit-codes.md](exit-codes.md) for exit code values referenced in `exitCode` fields.
+
+---
+
+## Summary vocabulary
+
+Error summaries in `cmd/gcx/fail/` MUST be drawn from the following vocabulary.
+Adding a new summary requires a PR amending this list.
+
+| Summary | When to use |
+|---|---|
+| `Invalid command usage` | Wrong flags, conflicting flags, missing required args |
+| `Invalid configuration` | Bad config file, unresolvable context |
+| `Authentication failed` | Token expired or missing |
+| `Authorization failed` | Permission denied (403) |
+| `Resource not found` | 404 or client-side not-found detection |
+| `Resource conflict` | Optimistic lock / RMW conflict |
+| `Network error` | Connection refused, DNS failure |
+| `API error` | Non-404/403 HTTP error from backend |
+| `Unexpected error` | Catch-all — no typed converter matched |
+
+Converters in `cmd/gcx/fail/convert.go` MUST set `Summary` to a value from this table.
+The `fallbackDetailedError` path sets `Unexpected error` only when no typed converter matches.

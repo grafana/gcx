@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
-	"os"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -36,13 +36,21 @@ type Options struct {
 	// Populated from terminal.NoTruncate() during BindFlags.
 	NoTruncate bool
 
-	// ErrWriter is the writer for hints and diagnostics (defaults to os.Stderr).
-	ErrWriter io.Writer
+	customCodecs       map[string]format.Codec
+	defaultFormat      string
+	flags              *pflag.FlagSet
+	jsonFieldValidator func(fields []string) error // optional; invoked before field extraction when --json is used
+}
 
-	customCodecs   map[string]format.Codec
-	defaultFormat  string
-	flags          *pflag.FlagSet
-	agentHintShown bool
+// SetJSONFieldValidator registers an optional validator invoked before field
+// extraction when --json is used for field selection. The validator receives
+// the list of requested field names and may return UnknownFieldSelectionError
+// (or any error) to abort encoding with an error.
+//
+// The validator is NOT invoked for --json list (field discovery) — that path
+// enumerates available fields and returns them; selection is not performed.
+func (opts *Options) SetJSONFieldValidator(validator func(fields []string) error) {
+	opts.jsonFieldValidator = validator
 }
 
 func (opts *Options) RegisterCustomCodec(name string, codec format.Codec) {
@@ -114,6 +122,7 @@ func (opts *Options) applyJSONFlag() error {
 	jsonValue := jsonFlag.Value.String()
 	if jsonValue == jsonDiscoverySentinel || jsonValue == jsonDiscoveryListSentinel {
 		opts.JSONDiscovery = true
+		opts.OutputFormat = "json" // force JSON so Encode routes to encodeDiscovery for table-default commands
 		return nil
 	}
 
@@ -150,18 +159,6 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 		return err
 	}
 
-	// In agent mode, nudge toward --json field selection when the command
-	// outputs raw JSON without explicit --json usage. The hint is emitted
-	// once per command invocation to stderr so it doesn't pollute stdout.
-	if !opts.agentHintShown && agent.IsAgentMode() && codec.Format() == format.JSON && len(opts.JSONFields) == 0 && !opts.JSONDiscovery {
-		opts.agentHintShown = true
-		w := opts.ErrWriter
-		if w == nil {
-			w = os.Stderr
-		}
-		fmt.Fprintln(w, "hint: use --json list to discover fields, --json field1,field2 to select — no external parsing needed")
-	}
-
 	// Intercept JSON field discovery and field selection when the resolved
 	// codec is JSON. Commands that already check JSONFields/JSONDiscovery
 	// before calling Encode() will never reach here (they return early), so
@@ -171,7 +168,7 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 			return opts.encodeDiscovery(dst, value)
 		}
 		if len(opts.JSONFields) > 0 {
-			return NewFieldSelectCodec(opts.JSONFields).Encode(dst, value)
+			return NewFieldSelectCodecWithValidator(opts.JSONFields, opts.jsonFieldValidator).Encode(dst, value)
 		}
 	}
 
@@ -236,11 +233,58 @@ func marshalToSampleMap(value any) (map[string]any, error) {
 
 	// Try as array — use first element.
 	var arr []map[string]any
-	if err := json.Unmarshal(data, &arr); err == nil && len(arr) > 0 {
-		return arr[0], nil
+	if err := json.Unmarshal(data, &arr); err == nil {
+		if len(arr) > 0 {
+			return arr[0], nil
+		}
+		// Empty array: fall through to reflection-based field enumeration below.
+	}
+
+	// Reflection fallback: enumerate exported struct fields from the Go type.
+	// Handles empty typed slices where there is no data to sample.
+	if fields := reflectFields(reflect.TypeOf(value)); len(fields) > 0 {
+		result := make(map[string]any, len(fields))
+		for _, f := range fields {
+			result[f] = nil
+		}
+		return result, nil
 	}
 
 	return nil, fmt.Errorf("cannot discover fields from %T: not a JSON object or array", value)
+}
+
+// reflectFields enumerates the JSON field names of a Go struct type using
+// reflection. Handles slices and pointers by unwrapping to the element type.
+// Returns nil if the type is not a struct after unwrapping.
+// Fields tagged json:"-" are excluded. Fields with no json tag use the
+// struct field name.
+func reflectFields(t reflect.Type) []string {
+	if t == nil {
+		return nil
+	}
+	for t.Kind() == reflect.Pointer || t.Kind() == reflect.Slice {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct {
+		return nil
+	}
+
+	var fields []string
+	for f := range t.Fields() {
+		if !f.IsExported() {
+			continue
+		}
+		tag := f.Tag.Get("json")
+		if tag == "-" {
+			continue
+		}
+		name, _, _ := strings.Cut(tag, ",")
+		if name == "" {
+			name = f.Name
+		}
+		fields = append(fields, name)
+	}
+	return fields
 }
 
 // We have to return an interface here.

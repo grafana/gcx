@@ -3,6 +3,7 @@ package fail_test
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/fail"
@@ -146,6 +147,59 @@ func TestDetailedError_WriteJSON_NoExtraFields(t *testing.T) {
 		if _, exists := errorObj[field]; exists {
 			t.Errorf("expected field %q to be omitted when empty, but it was present", field)
 		}
+	}
+}
+
+// TestWriteJSON_NoBoxChars ensures that when a *DetailedError is passed through
+// ErrorToDetailedError and then WriteJSON, no box-drawing characters appear in
+// the JSON output. Prior to the errors.As fix, *DetailedError fell through to
+// fallbackDetailedError which called err.Error(), producing box chars in Details.
+func TestWriteJSON_NoBoxChars(t *testing.T) {
+	err := &fail.DetailedError{
+		Summary:     "cluster not found",
+		Details:     `cluster "x" has no config`,
+		Suggestions: []string{"Run: gcx instrumentation clusters list"},
+	}
+	converted := fail.ErrorToDetailedError(err)
+
+	var buf strings.Builder
+	_ = converted.WriteJSON(&buf, 1)
+	output := buf.String()
+
+	for _, ch := range []string{"│", "├", "─", "└", "┌", "┐", "┘"} {
+		if strings.Contains(output, ch) {
+			t.Errorf("WriteJSON output contains box character %q:\n%s", ch, output)
+		}
+	}
+	// Verify the actual content is preserved, not lost.
+	if !strings.Contains(output, "cluster not found") {
+		t.Errorf("WriteJSON output missing summary:\n%s", output)
+	}
+}
+
+// TestWriteJSON_StripBoxCharsDefensive ensures that box-drawing characters
+// already present in Details or Suggestions are stripped by WriteJSON.
+// This is the defensive layer — even if box chars arrive from some future path,
+// they must not appear in the JSON output.
+func TestWriteJSON_StripBoxCharsDefensive(t *testing.T) {
+	err := fail.DetailedError{
+		Summary:     "push failed",
+		Details:     "│ some detail with box chars ├─ end",
+		Suggestions: []string{"│ Try this suggestion └─"},
+	}
+
+	var buf strings.Builder
+	_ = err.WriteJSON(&buf, 1)
+	output := buf.String()
+
+	for _, ch := range []string{"│", "├", "└"} {
+		if strings.Contains(output, ch) {
+			t.Errorf("WriteJSON output contains box character %q after stripping:\n%s", ch, output)
+		}
+	}
+	// Content should still be present (just with replacements).
+	if !strings.Contains(output, "push failed") {
+		t.Errorf("WriteJSON output missing summary:\n%s", output)
 	}
 }
 
