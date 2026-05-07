@@ -636,9 +636,9 @@ func existingContextNames(cfg config.Config) []string {
 }
 
 // printResult converts the login.Result into a LoginResult and writes it to
-// stdout using the configured output codec. Advisory prose (the CAP token
-// note) is routed to stderr so that JSON/YAML consumers receive clean,
-// parseable output on stdout.
+// stdout using the configured output codec. Advisory prose (next-step and
+// CAP-token guidance) is routed to stderr so that JSON/YAML consumers receive
+// clean, parseable output on stdout.
 func printResult(cmd *cobra.Command, ioOpts *cmdio.Options, server string, result login.Result) error {
 	if server == "" {
 		server = result.ContextName
@@ -655,11 +655,16 @@ func printResult(cmd *cobra.Command, ioOpts *cmdio.Options, server string, resul
 	if err := ioOpts.Encode(cmd.OutOrStdout(), lr); err != nil {
 		return err
 	}
+
 	// Route advisory prose to stderr. This keeps stdout parseable for
-	// json/yaml consumers while still surfacing the CAP-token guidance
-	// to humans (terminals typically merge stderr into the visible stream).
+	// json/yaml consumers while still surfacing guidance to humans
+	// (terminals typically merge stderr into the visible stream).
+	ew := cmd.ErrOrStderr()
+	if ioOpts.OutputFormat == "text" {
+		fmt.Fprintln(ew)
+		fmt.Fprintln(ew, "Next: gcx config check")
+	}
 	if result.IsCloud && !result.HasCloudToken {
-		ew := cmd.ErrOrStderr()
 		fmt.Fprintln(ew)
 		fmt.Fprintln(ew, "Note: Cloud API commands require a Cloud Access Policy (CAP) token.")
 		fmt.Fprintln(ew, "See: https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/")
