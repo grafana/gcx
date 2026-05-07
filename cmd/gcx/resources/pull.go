@@ -2,9 +2,9 @@ package resources
 
 import (
 	"errors"
-	"fmt"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
+	"github.com/grafana/gcx/cmd/gcx/fail"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/local"
 	"github.com/grafana/gcx/internal/resources/process"
@@ -161,7 +161,7 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 
 			if opts.OnError.FailOnErrors() && pullSummary.FailedCount() > 0 {
-				return fmt.Errorf("%d resource(s) failed to pull", pullSummary.FailedCount())
+				return fail.NewPartialFailureError("pull", pullSummary.SuccessCount()+pullSummary.FailedCount(), pullSummary.FailedCount())
 			}
 
 			return nil

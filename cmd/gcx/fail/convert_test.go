@@ -926,3 +926,71 @@ func TestErrorToDetailedError_UnknownFieldSelectionError(t *testing.T) {
 		})
 	}
 }
+
+func TestErrorToDetailedError_UsageErrorExitCode(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "UsageError returns ExitUsageError",
+			err:  fail.NewCommandUsageError(nil, "bad input", nil),
+		},
+		{
+			name: "unknown command returns ExitUsageError",
+			err:  errors.New(`unknown command "foo" for "gcx"`),
+		},
+		{
+			name: "required flags returns ExitUsageError",
+			err:  errors.New(`required flag(s) "datasource" not set`),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tc.err)
+			require.NotNil(t, got)
+			require.NotNil(t, got.ExitCode, "ExitCode should be set for usage errors")
+			assert.Equal(t, fail.ExitUsageError, *got.ExitCode)
+		})
+	}
+}
+
+func TestErrorToDetailedError_PartialFailureExitCode(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "push partial failure",
+			err:  fail.NewPartialFailureError("push", 100, 10),
+		},
+		{
+			name: "pull partial failure",
+			err:  fail.NewPartialFailureError("pull", 50, 3),
+		},
+		{
+			name: "delete partial failure",
+			err:  fail.NewPartialFailureError("delete", 20, 5),
+		},
+		{
+			name: "validate partial failure",
+			err:  fail.NewPartialFailureError("validate", 30, 7),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tc.err)
+			require.NotNil(t, got)
+			require.NotNil(t, got.ExitCode, "ExitCode should be set for partial failures")
+			assert.Equal(t, fail.ExitPartialFailure, *got.ExitCode)
+			assert.Contains(t, got.Summary, "failed")
+		})
+	}
+}
+
+func TestPartialFailureError_Message(t *testing.T) {
+	err := fail.NewPartialFailureError("push", 100, 10)
+	assert.Equal(t, "10 resource(s) failed to push", err.Error())
+}

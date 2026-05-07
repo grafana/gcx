@@ -2,9 +2,9 @@ package resources
 
 import (
 	"errors"
-	"fmt"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
+	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
@@ -184,7 +184,7 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			printer(cmd.OutOrStdout(), "%d resources pushed, %d errors", summary.SuccessCount(), summary.FailedCount())
 
 			if opts.OnError.FailOnErrors() && summary.FailedCount() > 0 {
-				return fmt.Errorf("%d resource(s) failed to push", summary.FailedCount())
+				return fail.NewPartialFailureError("push", summary.SuccessCount()+summary.FailedCount(), summary.FailedCount())
 			}
 
 			return nil

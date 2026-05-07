@@ -46,6 +46,7 @@ func ErrorToDetailedError(err error) *DetailedError {
 	errorConverters := []func(err error) (*DetailedError, bool){
 		convertWaitTimeoutEmitted,          // Wait timeout already emitted fused envelope — suppress secondary output
 		convertUnknownFieldSelectionErrors, // --json unknown-field validation
+		convertPartialFailureErrors,
 		convertUsageErrors,
 		convertCobraUnknownCommandErrors,
 		convertContextCanceled,                      // Context cancellation (must be first — cancellation can wrap other errors)
@@ -94,6 +95,7 @@ func convertUsageErrors(err error) (*DetailedError, bool) {
 		Summary:     "Invalid command usage",
 		Details:     details,
 		Suggestions: usageErr.Suggestions,
+		ExitCode:    new(ExitUsageError),
 	}, true
 }
 
@@ -104,8 +106,9 @@ func convertCobraUnknownCommandErrors(err error) (*DetailedError, bool) {
 	}
 
 	detailed := &DetailedError{
-		Summary: "Invalid command usage",
-		Details: msg,
+		Summary:  "Invalid command usage",
+		Details:  msg,
+		ExitCode: new(ExitUsageError),
 	}
 
 	const marker = ` for "`
@@ -860,6 +863,7 @@ func convertRequiredFlagErrors(err error) (*DetailedError, bool) {
 			Suggestions: []string{
 				"Run the command with --help to see available flags and usage examples",
 			},
+			ExitCode: new(ExitUsageError),
 		}, true
 	}
 	return nil, false
@@ -1331,6 +1335,19 @@ func convertStacksErrors(err error) (*DetailedError, bool) {
 	}
 
 	return nil, false
+}
+
+func convertPartialFailureErrors(err error) (*DetailedError, bool) {
+	partialErr := &PartialFailureError{}
+	if !errors.As(err, &partialErr) {
+		return nil, false
+	}
+
+	return &DetailedError{
+		Summary:  fmt.Sprintf("%d of %d resource(s) failed to %s", partialErr.Failed, partialErr.Total, partialErr.Op),
+		Parent:   err,
+		ExitCode: new(ExitPartialFailure),
+	}, true
 }
 
 func convertContextCanceled(err error) (*DetailedError, bool) {
