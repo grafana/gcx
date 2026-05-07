@@ -19,12 +19,22 @@ const (
 	agentsSpillEnv                  = "GCX_AGENT_SPILL_BYTES"
 	defaultSpillBytes               = 100 * 1024 // 100 KiB
 	spillPreviewItems               = 3
-	spillFilePattern                = "gcx-results-*.json"
+
+	// SpillFilePattern is the glob pattern for agent spill files. Exported so
+	// companion commands (e.g. gcx agent prune) can locate them.
+	SpillFilePattern = "gcx-results-*.json"
 )
 
-type agentsCodec struct{}
+type agentsCodec struct {
+	errWriter io.Writer
+}
 
-func newAgentsCodec() *agentsCodec { return &agentsCodec{} }
+func newAgentsCodec(errWriter io.Writer) *agentsCodec {
+	if errWriter == nil {
+		errWriter = os.Stderr
+	}
+	return &agentsCodec{errWriter: errWriter}
+}
 
 func (c *agentsCodec) Format() format.Format { return agentsFormat }
 
@@ -49,7 +59,7 @@ func (c *agentsCodec) Encode(dst io.Writer, value any) error {
 }
 
 func (c *agentsCodec) spill(dst io.Writer, value any, payload []byte) error {
-	f, err := os.CreateTemp("", spillFilePattern)
+	f, err := os.CreateTemp("", SpillFilePattern)
 	if err != nil {
 		return fmt.Errorf("create spill file: %w", err)
 	}
@@ -62,14 +72,25 @@ func (c *agentsCodec) spill(dst io.Writer, value any, payload []byte) error {
 		return fmt.Errorf("close spill file: %w", err)
 	}
 
+	msg := fmt.Sprintf(
+		"Response too large for stdout (%d bytes). Full data written to %s. Read that file for complete results, or rerun with -o json to force inline output.",
+		len(payload), f.Name(),
+	)
+
 	summary := map[string]any{
 		"spilled_to": f.Name(),
 		"bytes":      len(payload),
 		"preview":    previewOf(value),
+		"message":    msg,
 	}
 	if n, ok := itemCount(value); ok {
 		summary["items"] = n
 	}
+
+	fmt.Fprintf(c.errWriter,
+		"hint: response too large for stdout (%d bytes) — read %s for full data, or use -o json to force inline\n",
+		len(payload), f.Name(),
+	)
 
 	out := json.NewEncoder(dst)
 	out.SetEscapeHTML(false)

@@ -318,10 +318,14 @@ func (opts *Options) codecFor(format string) format.Codec { //nolint:ireturn
 }
 
 func (opts *Options) builtinCodecs() map[string]format.Codec {
+	errWriter := opts.ErrWriter
+	if errWriter == nil {
+		errWriter = os.Stderr
+	}
 	return map[string]format.Codec{
 		"yaml":   format.NewYAMLCodec(),
 		"json":   format.NewJSONCodec(),
-		"agents": newAgentsCodec(),
+		"agents": newAgentsCodec(errWriter),
 	}
 }
 

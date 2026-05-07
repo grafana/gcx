@@ -163,6 +163,56 @@ func TestAgentsCodec_InvalidEnvVar_FallsBackToDefault(t *testing.T) {
 	assert.Equal(t, data, got)
 }
 
+func TestAgentsCodec_Spill_HasMessageField(t *testing.T) {
+	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
+	t.Setenv("TMPDIR", t.TempDir())
+
+	var errBuf bytes.Buffer
+	codec := cmdio.NewAgentsCodecWithErrWriter(&errBuf)
+
+	var buf bytes.Buffer
+	require.NoError(t, codec.Encode(&buf, map[string]any{"name": "alpha"}))
+
+	var summary map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &summary))
+
+	msg, ok := summary["message"].(string)
+	require.True(t, ok, "spill envelope must contain a string message field")
+	spillPath, _ := summary["spilled_to"].(string)
+	assert.Contains(t, msg, spillPath, "message must reference the spill file path")
+}
+
+func TestAgentsCodec_Spill_EmitsStderrHint(t *testing.T) {
+	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
+	t.Setenv("TMPDIR", t.TempDir())
+
+	var errBuf bytes.Buffer
+	codec := cmdio.NewAgentsCodecWithErrWriter(&errBuf)
+
+	var buf bytes.Buffer
+	require.NoError(t, codec.Encode(&buf, map[string]any{"name": "alpha"}))
+
+	hint := errBuf.String()
+	require.NotEmpty(t, hint, "spill must emit a hint to errWriter")
+
+	var summary map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &summary))
+	spillPath, _ := summary["spilled_to"].(string)
+	assert.Contains(t, hint, spillPath, "hint must reference the spill file path")
+}
+
+func TestAgentsCodec_NoSpill_NoStderrHint(t *testing.T) {
+	t.Setenv("GCX_AGENT_SPILL_BYTES", "1000000")
+
+	var errBuf bytes.Buffer
+	codec := cmdio.NewAgentsCodecWithErrWriter(&errBuf)
+
+	var buf bytes.Buffer
+	require.NoError(t, codec.Encode(&buf, map[string]any{"name": "alpha"}))
+
+	assert.Empty(t, errBuf.String(), "no spill means no stderr hint")
+}
+
 func TestAgentsCodec_Format(t *testing.T) {
 	codec := cmdio.NewAgentsCodecForTesting()
 	assert.Equal(t, "agents", string(codec.Format()))
