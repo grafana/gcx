@@ -224,6 +224,68 @@ func TestClient_Search(t *testing.T) {
 	assert.Equal(t, "svc-1", page.Entities[0].Name)
 }
 
+func TestClient_Search_Pagination(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req kg.SearchRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		switch req.PageNum {
+		case 0:
+			writeJSON(w, map[string]any{
+				"data": map[string]any{
+					"pageNum":                  0,
+					"lastPage":                 false,
+					"searchResultsMaxLimitHit": true,
+					"entities": []map[string]any{
+						{"name": "svc-1", "type": "Service"},
+						{"name": "svc-2", "type": "Service"},
+					},
+				},
+			})
+		case 1:
+			writeJSON(w, map[string]any{
+				"data": map[string]any{
+					"pageNum":                  1,
+					"lastPage":                 true,
+					"searchResultsMaxLimitHit": false,
+					"entities": []map[string]any{
+						{"name": "svc-3", "type": "Service"},
+					},
+				},
+			})
+		default:
+			t.Fatalf("unexpected pageNum: %d", req.PageNum)
+		}
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+
+	first, err := client.Search(t.Context(), kg.SearchRequest{
+		FilterCriteria: []kg.EntityMatcher{{EntityType: "Service"}},
+		PageNum:        0,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 0, first.PageNum)
+	assert.False(t, first.LastPage)
+	assert.True(t, first.MaxLimitHit)
+	assert.Len(t, first.Entities, 2)
+	assert.Equal(t, "svc-1", first.Entities[0].Name)
+
+	second, err := client.Search(t.Context(), kg.SearchRequest{
+		FilterCriteria: []kg.EntityMatcher{{EntityType: "Service"}},
+		PageNum:        1,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1, second.PageNum)
+	assert.True(t, second.LastPage)
+	assert.False(t, second.MaxLimitHit)
+	assert.Len(t, second.Entities, 1)
+	assert.Equal(t, "svc-3", second.Entities[0].Name)
+}
+
 func TestClient_CypherSearch(t *testing.T) {
 	tests := []struct {
 		name        string
