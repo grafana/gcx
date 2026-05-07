@@ -21,6 +21,7 @@ import (
 	cmdproviders "github.com/grafana/gcx/cmd/gcx/providers"
 	"github.com/grafana/gcx/cmd/gcx/resources"
 	"github.com/grafana/gcx/cmd/gcx/setup"
+	versioncmd "github.com/grafana/gcx/cmd/gcx/version"
 	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	_ "github.com/grafana/gcx/internal/datasources/providers" // DatasourceProvider registrations — blank imports trigger init() self-registration.
@@ -227,6 +228,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd.AddCommand(config.Command())
 	rootCmd.AddCommand(dev.Command())
 	rootCmd.AddCommand(setup.Command())
+	rootCmd.AddCommand(versioncmd.Command())
 	rootCmd.AddCommand(datasources.Command())
 	rootCmd.AddCommand(resources.Command())
 

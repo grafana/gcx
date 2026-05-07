@@ -37,6 +37,7 @@ func main() {
 
 	formattedVersion := formatVersion()
 	appversion.Set(version)
+	appversion.SetBuildInfo(commit, date)
 	if err := root.ValidateArgs(root.Command(formattedVersion), os.Args[1:]); err != nil {
 		handleError(err)
 	}
