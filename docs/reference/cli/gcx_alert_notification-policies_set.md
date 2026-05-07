@@ -10,6 +10,7 @@ gcx alert notification-policies set [flags]
 
 ```
   -f, --filename string   File containing the policy tree (JSON/YAML, use - for stdin)
+      --force             Skip confirmation prompt
   -h, --help              help for set
 ```
 

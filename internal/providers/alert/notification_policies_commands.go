@@ -61,7 +61,13 @@ func newNotificationPoliciesGetCommand(loader GrafanaConfigLoader) *cobra.Comman
 }
 
 type notificationPoliciesSetOpts struct {
-	File string
+	File  string
+	Force bool
+}
+
+func (o *notificationPoliciesSetOpts) setup(flags *pflag.FlagSet) {
+	flags.StringVarP(&o.File, "filename", "f", "", "File containing the policy tree (JSON/YAML, use - for stdin)")
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
 }
 
 func newNotificationPoliciesSetCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -73,6 +79,14 @@ func newNotificationPoliciesSetCommand(loader GrafanaConfigLoader) *cobra.Comman
 			var policy NotificationPolicy
 			if err := readProvisioningInput(opts.File, cmd.InOrStdin(), &policy); err != nil {
 				return err
+			}
+			ok, err := confirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
+				"Replace notification policy tree? This overwrites the entire existing tree.")
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return nil
 			}
 			ctx := cmd.Context()
 			restCfg, err := loader.LoadGrafanaConfig(ctx)
@@ -90,7 +104,7 @@ func newNotificationPoliciesSetCommand(loader GrafanaConfigLoader) *cobra.Comman
 			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&opts.File, "filename", "f", "", "File containing the policy tree (JSON/YAML, use - for stdin)")
+	opts.setup(cmd.Flags())
 	return cmd
 }
 
