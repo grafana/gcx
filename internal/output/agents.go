@@ -29,6 +29,14 @@ type agentsCodec struct {
 	errWriter io.Writer
 }
 
+type spillSummary struct {
+	SpilledTo     string `json:"spilled_to"`
+	Bytes         int    `json:"bytes"`
+	PreviewSample any    `json:"preview_sample"`
+	Message       string `json:"message"`
+	TotalItems    *int   `json:"total_items,omitempty"`
+}
+
 func newAgentsCodec(errWriter io.Writer) *agentsCodec {
 	if errWriter == nil {
 		errWriter = os.Stderr
@@ -77,14 +85,14 @@ func (c *agentsCodec) spill(dst io.Writer, value any, payload []byte) error {
 		len(payload), f.Name(),
 	)
 
-	summary := map[string]any{
-		"spilled_to":     f.Name(),
-		"bytes":          len(payload),
-		"preview_sample": previewOf(value),
-		"message":        msg,
+	s := spillSummary{
+		SpilledTo:     f.Name(),
+		Bytes:         len(payload),
+		PreviewSample: previewOf(value),
+		Message:       msg,
 	}
 	if n, ok := itemCount(value); ok {
-		summary["total_items"] = n
+		s.TotalItems = &n
 	}
 
 	fmt.Fprintf(c.errWriter,
@@ -94,7 +102,7 @@ func (c *agentsCodec) spill(dst io.Writer, value any, payload []byte) error {
 
 	out := json.NewEncoder(dst)
 	out.SetEscapeHTML(false)
-	return out.Encode(summary)
+	return out.Encode(s)
 }
 
 func spillThreshold() int {
