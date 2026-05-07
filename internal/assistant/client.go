@@ -100,7 +100,6 @@ func (c *Client) GetGrafanaURL() string {
 	return c.grafanaURL
 }
 
-// GetAgentID returns the agent ID used for A2A routing.
 func (c *Client) GetAgentID() string {
 	return c.agentID
 }
