@@ -5,23 +5,16 @@ Query a Synthetic Monitoring resource through the datasource
 ### Synopsis
 
 Query a Synthetic Monitoring resource through the datasource proxy.
-SM has no single query verb; pass "probes" or "checks" to target a resource type.
-For most use cases, the dedicated subcommands are friendlier:
+SM has no single query verb; use one of the resource-typed subcommands.
+For most use cases, the dedicated top-level subcommands are friendlier:
 
   gcx datasources synthetic-monitoring probes
   gcx datasources synthetic-monitoring checks
 
-```
-gcx datasources synthetic-monitoring query <probes|checks> [flags]
-```
-
 ### Options
 
 ```
-  -d, --datasource string   Datasource UID (required unless datasources.synthetic-monitoring is configured)
-  -h, --help                help for query
-      --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string       Output format. One of: json, yaml (default "json")
+  -h, --help   help for query
 ```
 
 ### Options inherited from parent commands
@@ -39,4 +32,6 @@ gcx datasources synthetic-monitoring query <probes|checks> [flags]
 ### SEE ALSO
 
 * [gcx datasources synthetic-monitoring](gcx_datasources_synthetic-monitoring.md)	 - Query Synthetic Monitoring datasources
+* [gcx datasources synthetic-monitoring query checks](gcx_datasources_synthetic-monitoring_query_checks.md)	 - List Synthetic Monitoring checks
+* [gcx datasources synthetic-monitoring query probes](gcx_datasources_synthetic-monitoring_query_probes.md)	 - List Synthetic Monitoring probes
 

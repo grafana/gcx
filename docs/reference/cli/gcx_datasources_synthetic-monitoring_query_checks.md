@@ -1,4 +1,4 @@
-## gcx datasources synthetic-monitoring checks
+## gcx datasources synthetic-monitoring query checks
 
 List Synthetic Monitoring checks
 
@@ -7,7 +7,7 @@ List Synthetic Monitoring checks
 List all checks accessible through the configured Synthetic Monitoring datasource.
 
 ```
-gcx datasources synthetic-monitoring checks [flags]
+gcx datasources synthetic-monitoring query checks [flags]
 ```
 
 ### Examples
@@ -64,5 +64,5 @@ gcx datasources synthetic-monitoring checks [flags]
 
 ### SEE ALSO
 
-* [gcx datasources synthetic-monitoring](gcx_datasources_synthetic-monitoring.md)	 - Query Synthetic Monitoring datasources
+* [gcx datasources synthetic-monitoring query](gcx_datasources_synthetic-monitoring_query.md)	 - Query a Synthetic Monitoring resource through the datasource
 

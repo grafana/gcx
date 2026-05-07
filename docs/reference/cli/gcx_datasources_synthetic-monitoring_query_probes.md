@@ -1,4 +1,4 @@
-## gcx datasources synthetic-monitoring probes
+## gcx datasources synthetic-monitoring query probes
 
 List Synthetic Monitoring probes
 
@@ -7,7 +7,7 @@ List Synthetic Monitoring probes
 List all probes accessible through the configured Synthetic Monitoring datasource.
 
 ```
-gcx datasources synthetic-monitoring probes [flags]
+gcx datasources synthetic-monitoring query probes [flags]
 ```
 
 ### Examples
@@ -44,5 +44,5 @@ gcx datasources synthetic-monitoring probes [flags]
 
 ### SEE ALSO
 
-* [gcx datasources synthetic-monitoring](gcx_datasources_synthetic-monitoring.md)	 - Query Synthetic Monitoring datasources
+* [gcx datasources synthetic-monitoring query](gcx_datasources_synthetic-monitoring_query.md)	 - Query a Synthetic Monitoring resource through the datasource
 
