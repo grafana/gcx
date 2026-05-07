@@ -1,17 +1,16 @@
-## gcx aio11y collections get
+## gcx alert notification-policies reset
 
-Get a single collection.
+Reset the notification policy tree to its default.
 
 ```
-gcx aio11y collections get <collection-id> [flags]
+gcx alert notification-policies reset [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: json, yaml (default "yaml")
+      --force   Skip confirmation prompt
+  -h, --help    help for reset
 ```
 
 ### Options inherited from parent commands
@@ -28,5 +27,5 @@ gcx aio11y collections get <collection-id> [flags]
 
 ### SEE ALSO
 
-* [gcx aio11y collections](gcx_aio11y_collections.md)	 - Manage named groups of saved conversations.
+* [gcx alert notification-policies](gcx_alert_notification-policies.md)	 - Manage the Grafana alerting notification policy tree.
 

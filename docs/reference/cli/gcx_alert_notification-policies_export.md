@@ -1,17 +1,16 @@
-## gcx aio11y collections get
+## gcx alert notification-policies export
 
-Get a single collection.
+Export the notification policy tree in provisioning format.
 
 ```
-gcx aio11y collections get <collection-id> [flags]
+gcx alert notification-policies export [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: json, yaml (default "yaml")
+      --format string   Export format: yaml, json, or hcl (default "yaml")
+  -h, --help            help for export
 ```
 
 ### Options inherited from parent commands
@@ -28,5 +27,5 @@ gcx aio11y collections get <collection-id> [flags]
 
 ### SEE ALSO
 
-* [gcx aio11y collections](gcx_aio11y_collections.md)	 - Manage named groups of saved conversations.
+* [gcx alert notification-policies](gcx_alert_notification-policies.md)	 - Manage the Grafana alerting notification policy tree.
 

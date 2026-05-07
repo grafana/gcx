@@ -1,17 +1,18 @@
-## gcx aio11y collections get
+## gcx alert contact-points update
 
-Get a single collection.
+Update an existing contact point by UID.
 
 ```
-gcx aio11y collections get <collection-id> [flags]
+gcx alert contact-points update UID [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: json, yaml (default "yaml")
+  -f, --filename string   File containing the contact point definition (JSON/YAML, use - for stdin)
+  -h, --help              help for update
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: json, yaml (default "json")
 ```
 
 ### Options inherited from parent commands
@@ -28,5 +29,5 @@ gcx aio11y collections get <collection-id> [flags]
 
 ### SEE ALSO
 
-* [gcx aio11y collections](gcx_aio11y_collections.md)	 - Manage named groups of saved conversations.
+* [gcx alert contact-points](gcx_alert_contact-points.md)	 - Manage Grafana alerting contact points.
 

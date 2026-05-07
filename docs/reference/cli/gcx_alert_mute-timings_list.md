@@ -1,17 +1,18 @@
-## gcx aio11y collections get
+## gcx alert mute-timings list
 
-Get a single collection.
+List mute timings.
 
 ```
-gcx aio11y collections get <collection-id> [flags]
+gcx alert mute-timings list [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
+  -h, --help            help for list
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: json, yaml (default "yaml")
+      --limit int       Maximum number of items to return (0 for unlimited) (default 50)
+  -o, --output string   Output format. One of: json, table, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -28,5 +29,5 @@ gcx aio11y collections get <collection-id> [flags]
 
 ### SEE ALSO
 
-* [gcx aio11y collections](gcx_aio11y_collections.md)	 - Manage named groups of saved conversations.
+* [gcx alert mute-timings](gcx_alert_mute-timings.md)	 - Manage Grafana alerting mute timings.
 

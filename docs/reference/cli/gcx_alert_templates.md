@@ -1,17 +1,11 @@
-## gcx aio11y collections get
+## gcx alert templates
 
-Get a single collection.
-
-```
-gcx aio11y collections get <collection-id> [flags]
-```
+Manage Grafana alerting notification templates.
 
 ### Options
 
 ```
-  -h, --help            help for get
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: json, yaml (default "yaml")
+  -h, --help   help for templates
 ```
 
 ### Options inherited from parent commands
@@ -28,5 +22,9 @@ gcx aio11y collections get <collection-id> [flags]
 
 ### SEE ALSO
 
-* [gcx aio11y collections](gcx_aio11y_collections.md)	 - Manage named groups of saved conversations.
+* [gcx alert](gcx_alert.md)	 - Manage Grafana alert rules and alert groups
+* [gcx alert templates delete](gcx_alert_templates_delete.md)	 - Delete a notification template by name.
+* [gcx alert templates get](gcx_alert_templates_get.md)	 - Get a notification template by name.
+* [gcx alert templates list](gcx_alert_templates_list.md)	 - List notification templates.
+* [gcx alert templates upsert](gcx_alert_templates_upsert.md)	 - Create or update a notification template.
 

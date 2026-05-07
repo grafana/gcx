@@ -1,17 +1,25 @@
-## gcx aio11y collections get
+## gcx alert templates upsert
 
-Get a single collection.
+Create or update a notification template.
+
+### Synopsis
+
+Create or update a notification template.
+
+The provisioning API uses a single PUT endpoint keyed by template name,
+so the same command handles both create and update.
 
 ```
-gcx aio11y collections get <collection-id> [flags]
+gcx alert templates upsert [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: json, yaml (default "yaml")
+  -f, --filename string   File containing the template definition (JSON/YAML, use - for stdin)
+  -h, --help              help for upsert
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: json, yaml (default "json")
 ```
 
 ### Options inherited from parent commands
@@ -28,5 +36,5 @@ gcx aio11y collections get <collection-id> [flags]
 
 ### SEE ALSO
 
-* [gcx aio11y collections](gcx_aio11y_collections.md)	 - Manage named groups of saved conversations.
+* [gcx alert templates](gcx_alert_templates.md)	 - Manage Grafana alerting notification templates.
 

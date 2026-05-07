@@ -1,17 +1,18 @@
-## gcx aio11y collections get
+## gcx alert mute-timings create
 
-Get a single collection.
+Create a new mute timing.
 
 ```
-gcx aio11y collections get <collection-id> [flags]
+gcx alert mute-timings create [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: json, yaml (default "yaml")
+  -f, --filename string   File containing the mute timing definition (JSON/YAML, use - for stdin)
+  -h, --help              help for create
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: json, yaml (default "json")
 ```
 
 ### Options inherited from parent commands
@@ -28,5 +29,5 @@ gcx aio11y collections get <collection-id> [flags]
 
 ### SEE ALSO
 
-* [gcx aio11y collections](gcx_aio11y_collections.md)	 - Manage named groups of saved conversations.
+* [gcx alert mute-timings](gcx_alert_mute-timings.md)	 - Manage Grafana alerting mute timings.
 

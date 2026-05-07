@@ -1,17 +1,11 @@
-## gcx aio11y collections get
+## gcx alert notification-policies
 
-Get a single collection.
-
-```
-gcx aio11y collections get <collection-id> [flags]
-```
+Manage the Grafana alerting notification policy tree.
 
 ### Options
 
 ```
-  -h, --help            help for get
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: json, yaml (default "yaml")
+  -h, --help   help for notification-policies
 ```
 
 ### Options inherited from parent commands
@@ -28,5 +22,9 @@ gcx aio11y collections get <collection-id> [flags]
 
 ### SEE ALSO
 
-* [gcx aio11y collections](gcx_aio11y_collections.md)	 - Manage named groups of saved conversations.
+* [gcx alert](gcx_alert.md)	 - Manage Grafana alert rules and alert groups
+* [gcx alert notification-policies export](gcx_alert_notification-policies_export.md)	 - Export the notification policy tree in provisioning format.
+* [gcx alert notification-policies get](gcx_alert_notification-policies_get.md)	 - Get the notification policy tree.
+* [gcx alert notification-policies reset](gcx_alert_notification-policies_reset.md)	 - Reset the notification policy tree to its default.
+* [gcx alert notification-policies set](gcx_alert_notification-policies_set.md)	 - Replace the entire notification policy tree.
 

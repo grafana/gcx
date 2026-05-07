@@ -1,17 +1,16 @@
-## gcx aio11y collections get
+## gcx alert templates delete
 
-Get a single collection.
+Delete a notification template by name.
 
 ```
-gcx aio11y collections get <collection-id> [flags]
+gcx alert templates delete NAME [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: json, yaml (default "yaml")
+      --force   Skip confirmation prompt
+  -h, --help    help for delete
 ```
 
 ### Options inherited from parent commands
@@ -28,5 +27,5 @@ gcx aio11y collections get <collection-id> [flags]
 
 ### SEE ALSO
 
-* [gcx aio11y collections](gcx_aio11y_collections.md)	 - Manage named groups of saved conversations.
+* [gcx alert templates](gcx_alert_templates.md)	 - Manage Grafana alerting notification templates.
 

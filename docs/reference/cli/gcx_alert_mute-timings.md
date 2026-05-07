@@ -1,17 +1,11 @@
-## gcx aio11y collections get
+## gcx alert mute-timings
 
-Get a single collection.
-
-```
-gcx aio11y collections get <collection-id> [flags]
-```
+Manage Grafana alerting mute timings.
 
 ### Options
 
 ```
-  -h, --help            help for get
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: json, yaml (default "yaml")
+  -h, --help   help for mute-timings
 ```
 
 ### Options inherited from parent commands
@@ -28,5 +22,11 @@ gcx aio11y collections get <collection-id> [flags]
 
 ### SEE ALSO
 
-* [gcx aio11y collections](gcx_aio11y_collections.md)	 - Manage named groups of saved conversations.
+* [gcx alert](gcx_alert.md)	 - Manage Grafana alert rules and alert groups
+* [gcx alert mute-timings create](gcx_alert_mute-timings_create.md)	 - Create a new mute timing.
+* [gcx alert mute-timings delete](gcx_alert_mute-timings_delete.md)	 - Delete a mute timing by name.
+* [gcx alert mute-timings export](gcx_alert_mute-timings_export.md)	 - Export mute timings in provisioning format.
+* [gcx alert mute-timings get](gcx_alert_mute-timings_get.md)	 - Get a mute timing by name.
+* [gcx alert mute-timings list](gcx_alert_mute-timings_list.md)	 - List mute timings.
+* [gcx alert mute-timings update](gcx_alert_mute-timings_update.md)	 - Update an existing mute timing by name.
 
