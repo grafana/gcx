@@ -43,6 +43,10 @@ func (c *orderedYAMLCodec) Encode(w io.Writer, v any) error {
 // Override with `--limit` (0 = no limit).
 const alertGroupsListAlertsCap = 100
 
+// alertGroupListDefaultLimit is the default `--limit` for `alert-groups list`.
+// Mirrors the synth/slo precedent of 50; bypass with `--limit 0`.
+const alertGroupListDefaultLimit = 50
+
 // alertGroupsListAlertsConcurrency bounds the N+1 retrieve fan-out.
 const alertGroupsListAlertsConcurrency = 10
 
@@ -54,6 +58,11 @@ type alertGroupListOpts struct {
 	listOpts
 
 	MaxAge string
+
+	// Limit caps the number of alert groups returned. Default
+	// alertGroupListDefaultLimit; pass 0 to disable (subject to client-side
+	// hardCap to avoid runaway memory).
+	Limit int
 
 	// Filter flags. See ADR 001 § 1 (alert-groups list defaults).
 	States             []string
@@ -73,6 +82,7 @@ func (o *alertGroupListOpts) setup(flags *pflag.FlagSet) {
 	// severity, state, ...) is preserved instead of alphabetized.
 	o.IO.RegisterCustomCodec("yaml", &orderedYAMLCodec{})
 	flags.StringVar(&o.MaxAge, "max-age", "", "Exclude groups older than this duration (e.g. 1h, 24h, 7d)")
+	flags.IntVar(&o.Limit, "limit", alertGroupListDefaultLimit, "Maximum number of alert groups to return (0 for all, capped by an internal safety limit)")
 	flags.StringSliceVar(&o.States, "state", nil, "Filter by state (firing|acknowledged|resolved|silenced; repeatable, comma-separated). Default: firing,acknowledged,silenced")
 	flags.StringSliceVar(&o.Teams, "team", nil, "Filter by team PK (repeatable, comma-separated)")
 	flags.StringSliceVar(&o.Integrations, "integration", nil, "Filter by integration PK (repeatable, comma-separated)")
@@ -235,7 +245,7 @@ func newAlertGroupListCommand(loader OnCallConfigLoader) *cobra.Command {
 				return listAlertGroupsLegacy(cmd, opts, filters, client, namespace)
 			}
 
-			rawItems, err := listAlertGroupsRaw(cmd.Context(), oc, filters)
+			rawItems, serverHasMore, err := listAlertGroupsRaw(cmd.Context(), oc, filters, opts.Limit)
 			if err != nil {
 				return err
 			}
@@ -255,11 +265,38 @@ func newAlertGroupListCommand(loader OnCallConfigLoader) *cobra.Command {
 				envs = append(envs, env)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), envs)
+			if err := opts.IO.Encode(cmd.OutOrStdout(), envs); err != nil {
+				return err
+			}
+
+			// Hint emission (locked shape, D2 round 14): only when the user
+			// accepted truncation (--limit > 0), the result hit the limit
+			// exactly, AND the server confirmed more pages exist. Otherwise
+			// silent.
+			if opts.Limit > 0 && len(envs) == opts.Limit && serverHasMore {
+				emitAlertGroupListLimitHint(cmd.ErrOrStderr(), opts.Limit)
+			}
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// emitAlertGroupListLimitHint surfaces the D2-round-14 truncation hint on
+// stderr when alert-groups list returns exactly `limit` rows AND the server
+// reported a non-empty `next` cursor. Format mirrors the locked shape:
+//
+//	TTY:    "hint: showing first N results — pass --limit M to fetch more or --limit 0 for all"
+//	agent:  {"class":"hint","summary":"<same>"}
+//
+// The "next limit" suggestion doubles the current limit (50→100, 5→10),
+// matching the locked shape's example and giving the user a sensible
+// next step without committing to a full --limit 0 fetch.
+func emitAlertGroupListLimitHint(stderr io.Writer, limit int) {
+	suggested := limit * 2
+	summary := fmt.Sprintf("showing first %d results — pass --limit %d to fetch more or --limit 0 for all", limit, suggested)
+	emitHint(stderr, summary, "")
 }
 
 // listAlertGroupsLegacy is the SA-token-mode fallback that goes through the
@@ -285,6 +322,9 @@ func listAlertGroupsLegacy(cmd *cobra.Command, opts *alertGroupListOpts, filters
 	}
 	if len(filters.Integrations) > 0 {
 		listOpts = append(listOpts, oncalltypes.WithIntegrations(filters.Integrations...))
+	}
+	if opts.Limit > 0 {
+		listOpts = append(listOpts, oncalltypes.WithLimit(opts.Limit))
 	}
 
 	// Surface unsupported-filter warnings once at the command edge — the
@@ -339,16 +379,35 @@ func listAlertGroupsLegacy(cmd *cobra.Command, opts *alertGroupListOpts, filters
 	return opts.IO.Encode(cmd.OutOrStdout(), envs)
 }
 
+// alertGroupListHardCap bounds the maximum number of items returned by
+// listAlertGroupsRaw when no caller-supplied limit applies. Prevents runaway
+// memory when --limit 0 is passed and the server has very many groups.
+const alertGroupListHardCap = 1000
+
+// alertGroupListPerPageMax bounds the per-page request size sent to the
+// internal API. Conservative — keeps individual round trips small while still
+// fitting the default limit (50) into a single request.
+const alertGroupListPerPageMax = 100
+
 // listAlertGroupsRaw issues the paginated GET against alertgroups/?... and
-// returns the per-item raw JSON for downstream rich conversion. Pagination is
-// followed in-order; the function applies an internal cap of 1000 items to
-// avoid runaway memory.
-func listAlertGroupsRaw(ctx context.Context, c *OnCallClient, filters alertGroupListFilters) ([]json.RawMessage, error) {
+// returns the per-item raw JSON for downstream rich conversion plus a
+// `hasMore` flag indicating whether the server reported additional pages
+// when we stopped early due to the caller-supplied cap.
+//
+// limit semantics:
+//   - limit > 0  → fetch up to `limit` items; perpage=min(limit, perPageMax).
+//   - limit == 0 → fetch up to alertGroupListHardCap items; perpage=perPageMax.
+//
+// hasMore is true only when the result was truncated by `limit` AND the page
+// that triggered the stop reported a non-empty `next` cursor. It stays false
+// when the server's pagination naturally ends or when only the hardCap kicks
+// in (the latter is silent — `--limit 0` callers opted into "give me all").
+func listAlertGroupsRaw(ctx context.Context, c *OnCallClient, filters alertGroupListFilters, limit int) ([]json.RawMessage, bool, error) {
 	params := url.Values{}
 	if filters.MaxAge != "" {
 		dur, err := parseDuration(filters.MaxAge)
 		if err != nil {
-			return nil, fmt.Errorf("invalid --max-age value %q: %w", filters.MaxAge, err)
+			return nil, false, fmt.Errorf("invalid --max-age value %q: %w", filters.MaxAge, err)
 		}
 		const layout = "2006-01-02T15:04:05"
 		start := time.Now().UTC().Add(-dur).Format(layout)
@@ -380,49 +439,75 @@ func listAlertGroupsRaw(ctx context.Context, c *OnCallClient, filters alertGroup
 	if filters.HasRelatedIncident {
 		params.Set("has_related_incident", "true")
 	}
-	path := alertGroupsPath
-	if len(params) > 0 {
-		path = path + "?" + params.Encode()
+
+	// perpage: the OnCall internal API uses `perpage` (NOT page_size, which is
+	// silently ignored). We set it only on the first request — the cursor URL
+	// echoed in `next` already encodes perpage for follow-up pages.
+	perPage := alertGroupListPerPageMax
+	if limit > 0 {
+		perPage = min(limit, alertGroupListPerPageMax)
+	}
+	params.Set("perpage", fmt.Sprintf("%d", perPage))
+
+	path := alertGroupsPath + "?" + params.Encode()
+
+	// effectiveCap: the upper bound on `out`. When the user passes --limit 0
+	// we still want a runaway guard, so fall back to alertGroupListHardCap.
+	effectiveCap := alertGroupListHardCap
+	if limit > 0 && limit < effectiveCap {
+		effectiveCap = limit
 	}
 
-	const hardCap = 1000
-	var out []json.RawMessage
-	next := path
+	var (
+		out           []json.RawMessage
+		next          = path
+		serverHasMore bool
+	)
 	for next != "" {
 		resp, err := c.DoRequest(ctx, http.MethodGet, next, nil)
 		if err != nil {
-			return nil, fmt.Errorf("irm: list alert groups: %w", err)
+			return nil, false, fmt.Errorf("irm: list alert groups: %w", err)
 		}
 		body, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("irm: list alert groups: HTTP %d: %s", resp.StatusCode, string(body))
+			return nil, false, fmt.Errorf("irm: list alert groups: HTTP %d: %s", resp.StatusCode, string(body))
 		}
 		var page struct {
 			Results []json.RawMessage `json:"results"`
 			Next    *string           `json:"next"`
 		}
 		if err := json.Unmarshal(body, &page); err != nil {
-			return nil, fmt.Errorf("irm: decode alert groups: %w", err)
+			return nil, false, fmt.Errorf("irm: decode alert groups: %w", err)
 		}
 		out = append(out, page.Results...)
-		if len(out) >= hardCap {
-			out = out[:hardCap]
+		pageNext := ""
+		if page.Next != nil {
+			pageNext = *page.Next
+		}
+		if len(out) >= effectiveCap {
+			out = out[:effectiveCap]
+			serverHasMore = pageNext != ""
 			break
 		}
-		if page.Next == nil || *page.Next == "" {
+		if pageNext == "" {
 			break
 		}
-		np, err := ExtractNextPath(*page.Next)
+		np, err := ExtractNextPath(pageNext)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		next = np
 	}
-	return out, nil
+
+	// serverHasMore is true only when the cap (caller-supplied or hardCap)
+	// truncated us AND the server reported a non-empty `next` cursor on the
+	// page we stopped on. The caller decides whether to surface a hint based
+	// on its own --limit semantics.
+	return out, serverHasMore, nil
 }
 
 func parseDuration(s string) (time.Duration, error) {

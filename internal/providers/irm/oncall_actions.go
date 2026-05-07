@@ -354,7 +354,9 @@ func resolveAcknowledgeTargets(ctx context.Context, client OnCallAPI, args []str
 		return nil, errors.New("bulk-by-filter requires the OAuth plugin proxy (this context uses an SA token)")
 	}
 
-	rawItems, err := listAlertGroupsRaw(ctx, oc, filters)
+	// Bulk action targets aren't UI-truncated — pass limit=0 so the existing
+	// hardCap is the only bound. The hint affordance is list-only.
+	rawItems, _, err := listAlertGroupsRaw(ctx, oc, filters, 0)
 	if err != nil {
 		return nil, err
 	}
