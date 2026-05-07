@@ -106,7 +106,9 @@ func (opts *Options) Validate() error {
 // applyJSONFlag processes the --json flag value. When -o/--output is explicitly
 // set to a non-JSON format, it returns an error because field selection only
 // works with JSON output. Combining -o json with --json is allowed since
-// there is no conflict.
+// there is no conflict. The agents format is intentionally excluded — in agent
+// mode the implicit default is agents, and users should pass only --json
+// (without an explicit -o) to combine field selection with the agents codec.
 func (opts *Options) applyJSONFlag() error {
 	if opts.flags == nil {
 		return nil
@@ -121,8 +123,7 @@ func (opts *Options) applyJSONFlag() error {
 	// -o json (or omitted) is fine — --json implies JSON anyway.
 	outputFlag := opts.flags.Lookup("output")
 	if outputFlag != nil && outputFlag.Changed &&
-		outputFlag.Value.String() != "json" &&
-		outputFlag.Value.String() != string(agentsFormat) {
+		outputFlag.Value.String() != "json" {
 		return fmt.Errorf("--json requires JSON output, but -o %s was specified", outputFlag.Value.String())
 	}
 

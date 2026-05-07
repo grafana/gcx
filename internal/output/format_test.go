@@ -151,11 +151,10 @@ func TestJSONFlag_Parsing(t *testing.T) {
 			wantOutputFormat: "json",
 		},
 		{
-			name:             "--json and -o agents is allowed",
-			jsonFlagValue:    "name",
-			outputFlagValue:  "agents",
-			wantJSONFields:   []string{"name"},
-			wantOutputFormat: "json",
+			name:            "--json and -o agents is rejected (use --json without -o in agent mode)",
+			jsonFlagValue:   "name",
+			outputFlagValue: "agents",
+			wantErr:         true,
 		},
 	}
 
