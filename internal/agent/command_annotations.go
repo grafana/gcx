@@ -90,6 +90,24 @@ var commandAnnotations = map[string]annotation{
 	"gcx setup instrumentation show":     {Cost: "medium", Hint: "<cluster> -o json"},
 	"gcx setup instrumentation status":   {Cost: "small"},
 
+	// -----------------------------------------------------------------------
+	// Instrumentation provider (action-verb tree — ADR-018)
+	// -----------------------------------------------------------------------
+
+	// clusters verb group
+	"gcx instrumentation clusters list":      {Cost: "large", Hint: "-o json"},
+	"gcx instrumentation clusters get":       {Cost: "medium", Hint: "<cluster> -o json"},
+	"gcx instrumentation clusters configure": {Cost: "small"},
+	"gcx instrumentation clusters remove":    {Cost: "small"},
+	"gcx instrumentation clusters wait":      {Cost: "small"},
+
+	// clusters apps verb group
+	"gcx instrumentation clusters apps list":      {Cost: "medium", Hint: "<cluster> -o json"},
+	"gcx instrumentation clusters apps get":       {Cost: "medium", Hint: "<cluster> <namespace> -o json"},
+	"gcx instrumentation clusters apps configure": {Cost: "small"},
+	"gcx instrumentation clusters apps remove":    {Cost: "small"},
+	"gcx instrumentation clusters apps wait":      {Cost: "small"},
+
 	// skills
 	"gcx agent skills install":   {Cost: "small"},
 	"gcx agent skills list":      {Cost: "small"},
