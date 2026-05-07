@@ -12,7 +12,7 @@ gcx dashboards list [flags]
       --api-version string   API version to use (e.g. dashboard.grafana.app/v1); defaults to server preferred version
   -h, --help                 help for list
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string        Output format. One of: json, table, wide, yaml (default "table")
+  -o, --output string        Output format. One of: agents, json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands

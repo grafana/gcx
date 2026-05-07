@@ -17,7 +17,7 @@ gcx metrics adaptive exemptions create [flags]
       --managed-by string         Manager identifier
       --match-type string         Match type: exact, prefix, or suffix (default "exact")
       --metric string             Metric name or pattern
-  -o, --output string             Output format. One of: json, yaml (default "json")
+  -o, --output string             Output format. One of: agents, json, yaml (default "json")
       --reason string             Reason for the exemption
       --segment string            Segment ID
 ```

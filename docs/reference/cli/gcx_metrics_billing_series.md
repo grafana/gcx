@@ -35,7 +35,7 @@ gcx metrics billing series [SELECTOR] [flags]
   -h, --help                help for series
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --match stringArray   Additional series selector(s); repeatable
-  -o, --output string       Output format. One of: json, table, yaml (default "table")
+  -o, --output string       Output format. One of: agents, json, table, yaml (default "table")
       --since string        Duration before --to (or now if omitted); mutually exclusive with --from
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
 ```

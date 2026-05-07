@@ -11,7 +11,7 @@ gcx metrics adaptive rules get <metric> [flags]
 ```
   -h, --help             help for get
       --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string    Output format. One of: json, yaml (default "json")
+  -o, --output string    Output format. One of: agents, json, yaml (default "json")
       --segment string   Segment ID
 ```
 

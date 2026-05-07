@@ -41,7 +41,7 @@ gcx dashboards search [query] [flags]
   -h, --help                 help for search
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int            Maximum number of results (0 for no limit) (default 50)
-  -o, --output string        Output format. One of: json, table, wide, yaml (default "table")
+  -o, --output string        Output format. One of: agents, json, table, wide, yaml (default "table")
       --sort string          Sort key (e.g. name_sort)
       --tag stringArray      Filter by tag (repeatable)
 ```

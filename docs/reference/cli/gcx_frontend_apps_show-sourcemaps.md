@@ -25,7 +25,7 @@ gcx frontend apps show-sourcemaps <app-name> [flags]
   -h, --help            help for show-sourcemaps
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int       Maximum number of sourcemaps to return (0 for all)
-  -o, --output string   Output format. One of: json, text, yaml (default "text")
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
 ```
 
 ### Options inherited from parent commands

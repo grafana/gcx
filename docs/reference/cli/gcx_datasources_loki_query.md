@@ -50,7 +50,7 @@ gcx datasources loki query [EXPR] [flags]
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int           Maximum number of log lines to return (0 means no limit) (default 50)
       --open                Open the executed query in Grafana Explore
-  -o, --output string       Output format. One of: json, raw, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, json, raw, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to (or now if omitted); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')

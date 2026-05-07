@@ -15,7 +15,7 @@ gcx alert instances list [flags]
   -h, --help                help for list
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --name string         Filter by rule name (regex, e.g. 'Tempo.*')
-  -o, --output string       Output format. One of: json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
       --rule string         Filter by rule UID
       --state string        Filter by alert instance state (firing, pending, inactive)
 ```

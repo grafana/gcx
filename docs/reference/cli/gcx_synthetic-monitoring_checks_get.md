@@ -24,7 +24,7 @@ gcx synthetic-monitoring checks get NAME [flags]
 ```
   -h, --help            help for get
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
+  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
       --show-status     Query and display the check's current execution status from Prometheus
 ```
 

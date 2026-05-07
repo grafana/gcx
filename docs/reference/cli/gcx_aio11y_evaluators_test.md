@@ -28,7 +28,7 @@ gcx aio11y evaluators test [flags]
   -g, --generation string        Generation ID to evaluate
   -h, --help                     help for test
       --json string              Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string            Output format. One of: json, table, yaml (default "table")
+  -o, --output string            Output format. One of: agents, json, table, yaml (default "table")
 ```
 
 ### Options inherited from parent commands

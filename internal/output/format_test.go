@@ -22,18 +22,18 @@ func TestBindFlags_AgentModeOverridesDefaultFormat(t *testing.T) {
 		wantFormat     string
 	}{
 		{
-			name:       "agent mode forces json when no command default set",
+			name:       "agent mode forces agents when no command default set",
 			agentMode:  true,
-			wantFormat: "json",
+			wantFormat: "agents",
 		},
 		{
-			name:          "agent mode forces json when command sets text default",
+			name:          "agent mode forces agents when command sets text default",
 			agentMode:     true,
 			defaultFormat: "text",
-			wantFormat:    "json",
+			wantFormat:    "agents",
 		},
 		{
-			name:           "explicit -o yaml overrides agent mode json default",
+			name:           "explicit -o yaml overrides agent mode agents default",
 			agentMode:      true,
 			defaultFormat:  "text",
 			explicitOutput: "yaml",

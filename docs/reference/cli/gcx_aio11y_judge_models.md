@@ -11,7 +11,7 @@ gcx aio11y judge models --provider <id> [flags]
 ```
   -h, --help              help for models
       --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string     Output format. One of: json, table, yaml (default "table")
+  -o, --output string     Output format. One of: agents, json, table, yaml (default "table")
       --provider string   Provider ID (required, see 'judge providers')
 ```
 

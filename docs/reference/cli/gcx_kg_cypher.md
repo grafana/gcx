@@ -21,7 +21,7 @@ gcx kg cypher <query> [flags]
   -h, --help            help for cypher
       --insights-only   Return only entities with active insights
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: json, table, yaml (default "table")
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
       --page int        Page number (0-based)
       --since string    Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
       --to string       End time (RFC3339, Unix timestamp, or relative like 'now')

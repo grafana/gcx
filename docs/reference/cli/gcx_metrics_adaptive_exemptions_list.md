@@ -13,7 +13,7 @@ gcx metrics adaptive exemptions list [flags]
   -h, --help             help for list
       --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int        Maximum number of exemptions to return (0 for no limit)
-  -o, --output string    Output format. One of: json, table, wide, yaml (default "table")
+  -o, --output string    Output format. One of: agents, json, table, wide, yaml (default "table")
       --segment string   Segment ID
 ```
 

@@ -11,7 +11,7 @@ gcx irm oncall alert-groups unacknowledge <id> [flags]
 ```
   -h, --help            help for unacknowledge
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: json, yaml (default "text")
+  -o, --output string   Output format. One of: agents, json, yaml (default "text")
 ```
 
 ### Options inherited from parent commands

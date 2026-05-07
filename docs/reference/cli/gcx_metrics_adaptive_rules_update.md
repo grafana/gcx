@@ -18,7 +18,7 @@ gcx metrics adaptive rules update <metric> [flags]
       --json string                   Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --keep-labels strings           Labels to keep (comma-separated)
       --match-type string             Match type: exact, prefix, or suffix
-  -o, --output string                 Output format. One of: json, yaml (default "json")
+  -o, --output string                 Output format. One of: agents, json, yaml (default "json")
       --segment string                Segment ID
 ```
 
