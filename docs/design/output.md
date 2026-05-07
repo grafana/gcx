@@ -35,8 +35,9 @@ spill threshold (default **100 KiB**), and spills to a temp file otherwise.
 {
   "spilled_to": "/tmp/gcx-results-3781234567.json",
   "bytes": 143200,
-  "items": 312,
-  "preview": [ { ... }, { ... }, { ... } ]
+  "total_items": 312,
+  "preview_sample": [ { ... }, { ... }, { ... } ],
+  "message": "Response too large for stdout (143200 bytes). Full data written to ..."
 }
 ```
 
@@ -44,8 +45,9 @@ spill threshold (default **100 KiB**), and spills to a temp file otherwise.
 |-------|---------------|-------------|
 | `spilled_to` | yes | Absolute path to the full-payload file |
 | `bytes` | yes | Byte size of the full payload |
-| `items` | only for lists | Element count |
-| `preview` | yes | First 3 items for list shapes; sorted top-level key names for object/map shapes; `null` for other shapes |
+| `total_items` | only for lists | Element count — named `total_items` (not `items`) to avoid collision with the k8s list `items` array shape |
+| `preview_sample` | yes | First 3 items for list shapes; sorted top-level key names for object/map shapes; `null` for other shapes. Named `preview_sample` (not `preview`) to signal it is never the complete dataset |
+| `message` | yes | Human-readable guidance: references `spilled_to` path and opt-outs |
 
 **Override:** `-o json` forces full compact JSON to stdout regardless of size.
 `-o text` renders the human table.

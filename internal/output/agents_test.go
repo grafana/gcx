@@ -62,10 +62,10 @@ func TestAgentsCodec_AboveThreshold_Spills(t *testing.T) {
 	assert.Equal(t, data, full)
 
 	assert.Contains(t, summary, "bytes")
-	assert.Contains(t, summary, "items")
-	assert.EqualValues(t, len(data), summary["items"])
+	assert.Contains(t, summary, "total_items")
+	assert.EqualValues(t, len(data), summary["total_items"])
 
-	preview, ok := summary["preview"].([]any)
+	preview, ok := summary["preview_sample"].([]any)
 	require.True(t, ok, "preview must be an array")
 	assert.LessOrEqual(t, len(preview), 3)
 }
@@ -84,7 +84,7 @@ func TestAgentsCodec_NonSlice_OmitsItems(t *testing.T) {
 	var summary map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &summary))
 
-	assert.NotContains(t, summary, "items", "non-slice value should not include items count")
+	assert.NotContains(t, summary, "total_items", "non-slice value should not include total_items count")
 	assert.Contains(t, summary, "spilled_to")
 }
 
@@ -111,7 +111,7 @@ func TestAgentsCodec_NonSlice_PreviewIsKeyNames(t *testing.T) {
 	assert.Less(t, buf.Len(), 500, "spill envelope must not embed the full payload")
 
 	// Preview should be the sorted top-level key names, not the full value.
-	preview, ok := summary["preview"].([]any)
+	preview, ok := summary["preview_sample"].([]any)
 	require.True(t, ok, "preview for map should be key names as a slice")
 	assert.ElementsMatch(t, []any{"name", "payload"}, preview)
 }
@@ -139,9 +139,9 @@ func TestAgentsCodec_StructWithItems_CountsItems(t *testing.T) {
 	var summary map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &summary))
 
-	assert.EqualValues(t, 4, summary["items"])
+	assert.EqualValues(t, 4, summary["total_items"])
 
-	preview, ok := summary["preview"].([]any)
+	preview, ok := summary["preview_sample"].([]any)
 	require.True(t, ok)
 	assert.LessOrEqual(t, len(preview), 3)
 }
@@ -161,6 +161,40 @@ func TestAgentsCodec_InvalidEnvVar_FallsBackToDefault(t *testing.T) {
 	var got map[string]string
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &got), "expected plain JSON, not spill summary")
 	assert.Equal(t, data, got)
+}
+
+func TestAgentsCodec_SpillEnvelope_UsesTotalItems(t *testing.T) {
+	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
+	t.Setenv("TMPDIR", t.TempDir())
+
+	codec := cmdio.NewAgentsCodecForTesting()
+	data := []map[string]any{{"name": "alpha"}, {"name": "beta"}}
+
+	var buf bytes.Buffer
+	require.NoError(t, codec.Encode(&buf, data))
+
+	var summary map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &summary))
+
+	assert.Contains(t, summary, "total_items", "envelope must use total_items (not items) to avoid k8s shape collision")
+	assert.NotContains(t, summary, "items", "envelope must not use items — collides with k8s list shape")
+}
+
+func TestAgentsCodec_SpillEnvelope_UsesPreviewSample(t *testing.T) {
+	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
+	t.Setenv("TMPDIR", t.TempDir())
+
+	codec := cmdio.NewAgentsCodecForTesting()
+	data := []map[string]any{{"name": "alpha"}, {"name": "beta"}}
+
+	var buf bytes.Buffer
+	require.NoError(t, codec.Encode(&buf, data))
+
+	var summary map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &summary))
+
+	assert.Contains(t, summary, "preview_sample", "envelope must use preview_sample (not preview) to avoid mistaking it for the full dataset")
+	assert.NotContains(t, summary, "preview", "envelope must not use preview — too easy to treat as complete data")
 }
 
 func TestAgentsCodec_Spill_HasMessageField(t *testing.T) {

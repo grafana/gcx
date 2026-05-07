@@ -78,13 +78,13 @@ func (c *agentsCodec) spill(dst io.Writer, value any, payload []byte) error {
 	)
 
 	summary := map[string]any{
-		"spilled_to": f.Name(),
-		"bytes":      len(payload),
-		"preview":    previewOf(value),
-		"message":    msg,
+		"spilled_to":     f.Name(),
+		"bytes":          len(payload),
+		"preview_sample": previewOf(value),
+		"message":        msg,
 	}
 	if n, ok := itemCount(value); ok {
-		summary["items"] = n
+		summary["total_items"] = n
 	}
 
 	fmt.Fprintf(c.errWriter,
