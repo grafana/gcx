@@ -516,7 +516,7 @@ func persistContext(ctx context.Context, opts Options, contextName string, tempC
 
 	// Re-auth mode: preserve existing context fields, update only auth.
 	if existing != nil {
-		mergeAuthIntoExisting(existing, tempCtx)
+		mergeAuthIntoExisting(existing, tempCtx, opts.OrgID)
 		cfg.CurrentContext = contextName // make current on success, same as new-context path
 	} else {
 		cfg.SetContext(contextName, true, tempCtx)
@@ -530,7 +530,7 @@ func persistContext(ctx context.Context, opts Options, contextName string, tempC
 
 // mergeAuthIntoExisting updates only auth-related fields on an existing context,
 // preserving all other user-configured fields (OrgID, Datasources, Providers, etc.).
-func mergeAuthIntoExisting(existing *config.Context, incoming config.Context) {
+func mergeAuthIntoExisting(existing *config.Context, incoming config.Context, explicitOrgID int) {
 	if existing.Grafana == nil {
 		existing.Grafana = &config.GrafanaConfig{}
 	}
@@ -553,6 +553,10 @@ func mergeAuthIntoExisting(existing *config.Context, incoming config.Context) {
 	g.OAuthTokenExpiresAt = src.OAuthTokenExpiresAt
 	g.OAuthRefreshExpiresAt = src.OAuthRefreshExpiresAt
 	g.ProxyEndpoint = src.ProxyEndpoint
+
+	if explicitOrgID != 0 {
+		g.OrgID = int64(explicitOrgID)
+	}
 
 	// Sync TLS settings so that re-auth with updated or cleared certs
 	// takes effect. Setting to src.TLS (which may be nil) handles both
