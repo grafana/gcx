@@ -180,7 +180,6 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 		fmt.Fprintln(w, "hint: use --json list to discover fields, --json field1,field2 to select — no external parsing needed")
 	}
 
-
 	// Intercept JSON field discovery and field selection when the resolved
 	// codec is JSON-like. Commands that already check JSONFields/JSONDiscovery
 	// before calling Encode() will never reach here (they return early), so
