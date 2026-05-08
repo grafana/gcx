@@ -15,18 +15,13 @@ body:
       description: Describe your idea for improving an existing feature. Try and include what happens today, what you'd like to change, and why it would be better.
       placeholder: |
         The `gcx resources push` command currently processes all resources sequentially.
-        When pushing 50+ dashboards, it takes several minutes to complete.
-        There's a --max-concurrent flag, but it doesn't seem to have much effect...
+        When pushing 100s of dashboards, it takes a long time to complete.
+        There's a --max-concurrent flag, but it doesn't seem to have much effect.
 
         The push command should better utilize concurrency. Maybe:
-        - Increase default --max-concurrent value
-        - Add progress indicators showing which resources are being processed
-        - Batch smaller resources together for more efficient uploads
-        - Add a --fast flag that optimizes for speed over caution
+        - Increase default --max-concurrent value, or have it configurable
+        - Add optional progress indicators showing which resources are being processed
 
-        This would reduce our CI/CD deployment time from 5 minutes to under 1 minute.
-        We're pushing 80 dashboards on every deploy, and the sequential processing
-        creates a bottleneck in our release pipeline. Faster deploys mean faster
-        iteration and quicker rollbacks when needed.
+        We could speed up our CD pipeline with this improvement.
     validations:
       required: true

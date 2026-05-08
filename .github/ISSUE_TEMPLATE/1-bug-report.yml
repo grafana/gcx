@@ -18,15 +18,8 @@ body:
         - Try the command with `--dry-run` if applicable
         - Look for similar issues: [Search existing issues](https://github.com/grafana/gcx/issues)
 
-  - type: input
-    id: gcx_version
-    attributes:
-      label: gcx Version
-      description: "Run `gcx --version` to get this information"
-      placeholder: "gcx version v0.1.0 (commit: abc123, built: 2025-01-15)"
-
   - type: textarea
-    id: Describe the bug
+    id: description
     attributes:
       label: Description
       description: What command did you run? Include all flags and arguments. What was the output?
@@ -38,7 +31,7 @@ body:
     attributes:
       label: What did you expect to happen?
       description: Help us understand the correct behavior
-      placeholder: The dashboards should have been successfully pushed to the production Grafana instance
+      placeholder: The dashboards should have been successfully pushed to Grafana
 
   - type: textarea
     id: steps_to_reproduce
@@ -54,6 +47,13 @@ body:
         1.
         2.
         3.
+
+  - type: input
+    id: gcx_version
+    attributes:
+      label: gcx Version
+      description: "Run `gcx --version` to get this information"
+      placeholder: "gcx version v0.1.0 (commit: abc123, built: 2025-01-15)"
 
   - type: input
     id: environment
