@@ -39,7 +39,7 @@ func TestMaybeNotifySkillsAt_WritesMessageAndStateWhenDue(t *testing.T) {
 	if err := maybeNotifySkillsAt(testRunSkillsFS(), &out, statePath, root, now); err != nil {
 		t.Fatalf("maybeNotifySkillsAt() error = %v", err)
 	}
-	if !strings.Contains(out.String(), "Run: gcx skills update") {
+	if !strings.Contains(out.String(), "Run: gcx agent skills update") {
 		t.Fatalf("output = %q, want skills update hint", out.String())
 	}
 

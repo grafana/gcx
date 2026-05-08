@@ -37,7 +37,7 @@ gcx slo reports status [UUID] [flags]
 ```
   -h, --help            help for status
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: graph, json, table, wide, yaml (default "table")
+  -o, --output string   Output format. One of: agents, graph, json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands

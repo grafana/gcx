@@ -1,31 +1,29 @@
-## gcx skills update
+## gcx agent skills list
 
-Update installed gcx skills in ~/.agents/skills
+List skills bundled with the gcx binary
 
 ### Synopsis
 
-Update gcx-managed skills in a user-level .agents skills directory. With no skill names, gcx updates only bundled skills that are already installed locally.
+List skills bundled with the gcx binary, including each skill's short description and install status.
 
 ```
-gcx skills update [SKILL]... [flags]
+gcx agent skills list [flags]
 ```
 
 ### Examples
 
 ```
-  gcx skills update
-  gcx skills update --dry-run
-  gcx skills update setup-gcx explore-datasources
+  gcx agent skills list
+  gcx agent skills list -o json
 ```
 
 ### Options
 
 ```
-      --dir string      Root directory for the .agents installation (default "~/.agents")
-      --dry-run         Preview the update without writing files
-  -h, --help            help for update
+      --dir string      Root directory for the .agents installation (used to check installed status) (default "~/.agents")
+  -h, --help            help for list
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: json, text, yaml (default "text")
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
 ```
 
 ### Options inherited from parent commands
@@ -41,5 +39,5 @@ gcx skills update [SKILL]... [flags]
 
 ### SEE ALSO
 
-* [gcx skills](gcx_skills.md)	 - Manage portable gcx Agent Skills
+* [gcx agent skills](gcx_agent_skills.md)	 - Manage portable gcx Agent Skills
 

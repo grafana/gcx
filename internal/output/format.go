@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"os"
 	"reflect"
 	"slices"
 	"sort"
@@ -36,10 +37,14 @@ type Options struct {
 	// Populated from terminal.NoTruncate() during BindFlags.
 	NoTruncate bool
 
+	// ErrWriter is the writer for hints and diagnostics (defaults to os.Stderr).
+	ErrWriter io.Writer
+
 	customCodecs       map[string]format.Codec
 	defaultFormat      string
 	flags              *pflag.FlagSet
 	jsonFieldValidator func(fields []string) error // optional; invoked before field extraction when --json is used
+	agentHintShown     bool
 }
 
 // SetJSONFieldValidator registers an optional validator invoked before field
@@ -71,10 +76,10 @@ func (opts *Options) BindFlags(flags *pflag.FlagSet) {
 		defaultFormat = opts.defaultFormat
 	}
 
-	// Agent mode: override any per-command default with JSON.
+	// Agent mode: override any per-command default with the agents codec.
 	// Explicit -o flag from user still takes precedence (via cobra flag parsing).
 	if agent.IsAgentMode() {
-		defaultFormat = "json"
+		defaultFormat = string(agentsFormat)
 	}
 
 	// Populate pipe/truncation state from package-level terminal detection.
@@ -101,7 +106,9 @@ func (opts *Options) Validate() error {
 // applyJSONFlag processes the --json flag value. When -o/--output is explicitly
 // set to a non-JSON format, it returns an error because field selection only
 // works with JSON output. Combining -o json with --json is allowed since
-// there is no conflict.
+// there is no conflict. The agents format is intentionally excluded — in agent
+// mode the implicit default is agents, and users should pass only --json
+// (without an explicit -o) to combine field selection with the agents codec.
 func (opts *Options) applyJSONFlag() error {
 	if opts.flags == nil {
 		return nil
@@ -115,7 +122,8 @@ func (opts *Options) applyJSONFlag() error {
 	// Only reject when -o is explicitly set to a non-JSON format.
 	// -o json (or omitted) is fine — --json implies JSON anyway.
 	outputFlag := opts.flags.Lookup("output")
-	if outputFlag != nil && outputFlag.Changed && outputFlag.Value.String() != "json" {
+	if outputFlag != nil && outputFlag.Changed &&
+		outputFlag.Value.String() != "json" {
 		return fmt.Errorf("--json requires JSON output, but -o %s was specified", outputFlag.Value.String())
 	}
 
@@ -159,11 +167,24 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 		return err
 	}
 
+	// In agent mode, nudge toward --json field selection when the command
+	// outputs JSON without explicit --json usage. The hint is emitted
+	// once per command invocation to stderr so it doesn't pollute stdout.
+	isJSONLike := codec.Format() == format.JSON || codec.Format() == agentsFormat
+	if !opts.agentHintShown && agent.IsAgentMode() && isJSONLike && len(opts.JSONFields) == 0 && !opts.JSONDiscovery {
+		opts.agentHintShown = true
+		w := opts.ErrWriter
+		if w == nil {
+			w = os.Stderr
+		}
+		fmt.Fprintln(w, "hint: use --json list to discover fields, --json field1,field2 to select — no external parsing needed")
+	}
+
 	// Intercept JSON field discovery and field selection when the resolved
-	// codec is JSON. Commands that already check JSONFields/JSONDiscovery
+	// codec is JSON-like. Commands that already check JSONFields/JSONDiscovery
 	// before calling Encode() will never reach here (they return early), so
 	// there is no double-application risk.
-	if codec.Format() == format.JSON {
+	if isJSONLike {
 		if opts.JSONDiscovery {
 			return opts.encodeDiscovery(dst, value)
 		}
@@ -297,9 +318,14 @@ func (opts *Options) codecFor(format string) format.Codec { //nolint:ireturn
 }
 
 func (opts *Options) builtinCodecs() map[string]format.Codec {
+	errWriter := opts.ErrWriter
+	if errWriter == nil {
+		errWriter = os.Stderr
+	}
 	return map[string]format.Codec{
-		"yaml": format.NewYAMLCodec(),
-		"json": format.NewJSONCodec(),
+		"yaml":   format.NewYAMLCodec(),
+		"json":   format.NewJSONCodec(),
+		"agents": newAgentsCodec(errWriter),
 	}
 }
 

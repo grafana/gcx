@@ -10,14 +10,56 @@ Reference alongside [cli-layer.md](../architecture/cli-layer.md) for command str
 
 ### 1.1 Built-in Codecs
 
-Every command gets `json` and `yaml` output for free via `io.Options`. These
-produce the full resource object as returned by the API — no envelope wrapping,
-no field filtering. This output is stable.
+Every command gets `json`, `yaml`, and `agents` output for free via `io.Options`.
+The `json` and `yaml` codecs produce the full resource object as returned by
+the API — no envelope wrapping, no field filtering. This output is stable.
+The `agents` codec is described in [§ 1.1.1](#111-agents-codec) below.
 
 ```go
 ioOpts := &io.Options{}
 ioOpts.BindFlags(cmd.Flags())
 ```
+
+#### 1.1.1 Agents Codec
+
+The `agents` codec is optimised for AI-agent contexts. It emits compact JSON
+(no indentation, no HTML escaping) when the serialised payload is within the
+spill threshold (default **100 KiB**), and spills to a temp file otherwise.
+
+**Below threshold** — output is compact JSON identical in content to `-o json`.
+
+**Above threshold** — the full payload is written to
+`$TMPDIR/gcx-results-<random>.json` and a short summary is printed to stdout:
+
+```json
+{
+  "spilled_to": "/tmp/gcx-results-3781234567.json",
+  "bytes": 143200,
+  "total_items": 312,
+  "preview_sample": [ { ... }, { ... }, { ... } ],
+  "message": "Response too large for stdout (143200 bytes). Full data written to ..."
+}
+```
+
+| Field | Always present | Description |
+|-------|---------------|-------------|
+| `spilled_to` | yes | Absolute path to the full-payload file |
+| `bytes` | yes | Byte size of the full payload |
+| `total_items` | only for lists | Element count — named `total_items` (not `items`) to avoid collision with the k8s list `items` array shape |
+| `preview_sample` | yes | First 3 items for list shapes; sorted top-level key names for object/map shapes; `null` for other shapes. Named `preview_sample` (not `preview`) to signal it is never the complete dataset |
+| `message` | yes | Human-readable guidance: references `spilled_to` path and opt-outs |
+
+**Override:** `-o json` forces full compact JSON to stdout regardless of size.
+`-o text` renders the human table.
+
+**Threshold configuration:** `GCX_AGENT_SPILL_BYTES` (int, bytes; default
+`102400`). Invalid or missing values fall back to the default.
+
+**Guidance for provider authors:** Do **not** pre-truncate output for agent
+mode. The codec handles oversized payloads. Pre-truncation defeats the spill
+mechanism because agents that need the full data can no longer retrieve it.
+
+**Implementation:** `internal/output/agents.go`
 
 ### 1.2 Custom Codecs
 
@@ -44,7 +86,7 @@ JSON/YAML to silently omit fields. See Pattern 13 in `patterns.md`.
 | `list`, `get` | `text` (with table codec) | Human-scannable |
 | `config view` | `yaml` | Config is YAML-native |
 | `push`, `pull`, `delete` | Status messages only | Operations, not data |
-| Agent mode ([agent-mode.md](agent-mode.md)) | `json` | Machine-parseable |
+| Agent mode ([agent-mode.md](agent-mode.md)) | `agents` | Token-efficient: compact JSON below 100 KiB, temp-file spill above (see [§ 1.1.1](#111-agents-codec)) |
 
 When building a new command: call `ioOpts.DefaultFormat("text")` for data
 display commands and register a table codec. Don't leave `json` as the default
@@ -119,7 +161,8 @@ resource object. `--json` is an independent mechanism (NC-002).
 
 All data-display and mutation commands must register a `text` table codec
 and call `DefaultFormat("text")`. The `text` codec is the human default;
-`json` becomes the default only in agent mode.
+`agents` becomes the default in agent mode (compact JSON with spill — see
+[§ 1.1.1](#111-agents-codec)).
 
 Codec registration happens in `setup(flags)`, not in `RunE`.
 

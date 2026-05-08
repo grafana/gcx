@@ -262,7 +262,7 @@ Use the dedicated [Claude Code plugin](claude-plugin/README.md):
 For example: OpenAI Codex, OpenCode, and Pi. View the skills shipped in the bundle with:
 
 ```sh
-gcx skills list
+gcx agent skills list
 18 skill(s) bundled with gcx
 
 SKILL                      INSTALLED    DESCRIPTION
@@ -273,14 +273,14 @@ gcx-observability          yes          (Experimental) End-to-end observability 
 
 Install the bundle into `~/.agents/skills` with:
 ```sh
-gcx skills install --all
+gcx agent skills install --all
 ```
 
 If your installed skills drift from the bundle shipped in your current `gcx`
 version, `gcx` may show an interactive reminder suggesting:
 
 ```sh
-gcx skills update
+gcx agent skills update
 ```
 
 To disable that reminder entirely, set:

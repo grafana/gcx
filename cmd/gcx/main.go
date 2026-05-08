@@ -13,7 +13,11 @@ import (
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/agentlog"
+	internalconfig "github.com/grafana/gcx/internal/config"
 	appversion "github.com/grafana/gcx/internal/version"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"golang.org/x/mod/module"
 )
 
@@ -34,14 +38,22 @@ func main() {
 	// root.Command() because io.Options.BindFlags() reads agent.IsAgentMode()
 	// during command construction to set the default output format.
 	preParseAgentFlag()
+	if agent.IsAgentMode() {
+		agentlog.Configure(loadDiagnosticsConfig())
+	}
 
 	formattedVersion := formatVersion()
 	appversion.Set(version)
-	if err := root.ValidateArgs(root.Command(formattedVersion), os.Args[1:]); err != nil {
-		handleError(err)
+	appversion.SetBuildInfo(commit, date)
+
+	cmd := root.Command(formattedVersion)
+	boolFlags := collectBoolFlags(cmd)
+	subCmds := collectSubCmds(cmd)
+	if err := root.ValidateArgs(cmd, os.Args[1:]); err != nil {
+		handleError(err, boolFlags, subCmds)
 	}
 
-	handleError(root.Command(formattedVersion).ExecuteContext(ctx))
+	handleError(cmd.ExecuteContext(ctx), boolFlags, subCmds)
 }
 
 // preParseAgentFlag scans os.Args for --agent / --agent=true / --agent=false
@@ -65,7 +77,7 @@ func preParseAgentFlag() {
 	}
 }
 
-func handleError(err error) {
+func handleError(err error, boolFlags map[string]struct{}, subCmds map[string]bool) {
 	if err == nil {
 		return
 	}
@@ -87,6 +99,17 @@ func handleError(err error) {
 		exitCode = *detailedErr.ExitCode
 	}
 
+	if agent.IsAgentMode() && agentlog.IsEnabled() {
+		_ = agentlog.Append(agentlog.Entry{
+			Timestamp: time.Now(),
+			Version:   appversion.Get(),
+			Args:      agentlog.StripArgValues(os.Args[1:], boolFlags, subCmds),
+			ErrorKind: agentlog.KindFromExitCode(exitCode),
+			Error:     truncate(detailedErr.Summary, 200),
+			ExitCode:  exitCode,
+		})
+	}
+
 	if agent.IsAgentMode() || root.IsJSONFlagActive() {
 		// Machine consumers get JSON on stdout only — the human-formatted
 		// stderr error is noise for agents and scripts.
@@ -99,6 +122,68 @@ func handleError(err error) {
 	}
 
 	os.Exit(exitCode)
+}
+
+// collectBoolFlags walks the full command tree and returns a set of all boolean
+// flag names (and their shorthands) so StripArgValues can skip consuming the
+// next token for flags that take no value argument.
+func collectBoolFlags(cmd *cobra.Command) map[string]struct{} {
+	bools := make(map[string]struct{})
+	var visit func(c *cobra.Command)
+	visit = func(c *cobra.Command) {
+		addBools := func(f *pflag.Flag) {
+			if f.Value.Type() == "bool" || f.NoOptDefVal != "" {
+				bools[f.Name] = struct{}{}
+				if f.Shorthand != "" {
+					bools[f.Shorthand] = struct{}{}
+				}
+			}
+		}
+		c.Flags().VisitAll(addBools)
+		c.PersistentFlags().VisitAll(addBools)
+		for _, sub := range c.Commands() {
+			visit(sub)
+		}
+	}
+	visit(cmd)
+	return bools
+}
+
+// collectSubCmds walks the full command tree and returns a set of all registered
+// subcommand names (and aliases). Positional args matching this set are safe to
+// log; all other positionals are treated as values and redacted.
+func collectSubCmds(cmd *cobra.Command) map[string]bool {
+	names := make(map[string]bool)
+	var walk func(*cobra.Command)
+	walk = func(c *cobra.Command) {
+		for _, sub := range c.Commands() {
+			names[sub.Name()] = true
+			for _, alias := range sub.Aliases {
+				names[alias] = true
+			}
+			walk(sub)
+		}
+	}
+	walk(cmd)
+	return names
+}
+
+// loadDiagnosticsConfig reads diagnostics settings from the layered gcx config.
+// Any error (missing file, parse failure) returns a disabled config so the
+// caller is never affected by a config read failure.
+func loadDiagnosticsConfig() agentlog.Config {
+	cfg, err := internalconfig.LoadLayered(context.Background(), "")
+	if err != nil || cfg.Diagnostics == nil || !cfg.Diagnostics.AgentInvocationLog {
+		return agentlog.Config{}
+	}
+	return agentlog.Config{Enabled: true, LogDir: cfg.Diagnostics.LogDir}
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
 }
 
 func formatVersion() string {

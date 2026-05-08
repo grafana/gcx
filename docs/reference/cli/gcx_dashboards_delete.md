@@ -10,8 +10,8 @@ gcx dashboards delete <name> [flags]
 
 ```
       --api-version string   API version to use (e.g. dashboard.grafana.app/v1); defaults to server preferred version
+      --force                Skip confirmation prompt
   -h, --help                 help for delete
-  -y, --yes                  Skip confirmation prompt
 ```
 
 ### Options inherited from parent commands

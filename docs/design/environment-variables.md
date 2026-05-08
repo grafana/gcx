@@ -50,6 +50,7 @@ Accepts: `1`, `true`, `0`, `false` (parsed by `caarlos0/env/v11`)
 | Variable | Source | Effect |
 |----------|--------|--------|
 | `GCX_AGENT_MODE` | Explicit opt-in/out | `1`/`true`/`yes` enables agent mode; `0`/`false`/`no` disables (overrides all others) |
+| `GCX_AGENT_SPILL_BYTES` | Output tuning | Spill threshold in bytes for the `agents` codec (default `102400` = 100 KiB). Payloads above this are written to a temp file; a summary is printed instead. Invalid values fall back to the default. See [output.md § Agents Codec](output.md#111-agents-codec) |
 | `CLAUDECODE` | Claude Code | Truthy value activates agent mode |
 | `CLAUDE_CODE` | Claude Code | Truthy value activates agent mode |
 | `CURSOR_AGENT` | Cursor | Truthy value activates agent mode |

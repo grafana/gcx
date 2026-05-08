@@ -20,12 +20,12 @@ Do NOT prompt for:
 ### 3.2 The `--force` Flag and `providers.ConfirmDestructive` `[IMPLEMENTED]`
 
 All destructive provider commands use the shared `providers.ConfirmDestructive()`
-helper. It applies a 4-layer bypass chain before falling through to an
+helper. It applies a 3-layer bypass chain before falling through to an
 interactive prompt:
 
 1. **`--force` flag** — explicit per-invocation bypass
-2. **Agent mode** — auto-approves when `agent.IsAgentMode()` is true (see [agent-mode.md](agent-mode.md))
-3. **`GCX_AUTO_APPROVE` env var** — enables non-interactive operation in CI/CD
+2. **`GCX_AUTO_APPROVE` env var** — enables non-interactive operation in CI/CD
+3. **Agent mode without `--force`** — fails with actionable error
 4. **Interactive prompt** — asks the user to confirm (`[y/N]`)
 
 If none of the bypass conditions are met and stdin is closed/empty, the prompt's
@@ -55,11 +55,13 @@ The `resources delete` command additionally supports `--yes` (`-y`) which
 auto-enables the `--force` flag. This is a legacy pattern specific to the
 resources layer; new provider commands should use `--force` directly.
 
-### 3.3 Agent Mode Auto-Approve `[IMPLEMENTED]`
+### 3.3 Agent Mode Requires Explicit `--force` `[IMPLEMENTED]`
 
 When agent mode is active ([agent-mode.md](agent-mode.md)), `providers.ConfirmDestructive`
-auto-approves without prompting. Agents cannot interact with TTY prompts, so
-blocking on stdin would hang the process indefinitely.
+**rejects** the operation with an actionable error unless `--force` is passed.
+This forces agents to deliberately acknowledge destructive operations rather
+than silently proceeding — creating an explicit audit trail and preventing
+rogue agents from accidentally deleting resources.
 
 ### 3.4 Dry-Run
 

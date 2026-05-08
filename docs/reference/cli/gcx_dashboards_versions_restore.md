@@ -10,9 +10,9 @@ gcx dashboards versions restore <name> <version> [flags]
 
 ```
       --api-version string   API version to use (e.g. dashboard.grafana.app/v1); defaults to server preferred version
+      --force                Skip confirmation prompt
   -h, --help                 help for restore
       --message string       Commit message for the restored revision (default: "Restored from version N")
-  -y, --yes                  Skip confirmation prompt
 ```
 
 ### Options inherited from parent commands

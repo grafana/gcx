@@ -17,9 +17,13 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/datasources"
 	ifail "github.com/grafana/gcx/internal/fail"
+	"github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/grafana"
 	"github.com/grafana/gcx/internal/linter"
 	"github.com/grafana/gcx/internal/login"
+	cmdoutput "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers/instrumentation"
+	"github.com/grafana/gcx/internal/providers/instrumentation/rmw"
 	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/grafana/gcx/internal/resources"
 	k8sapi "k8s.io/apimachinery/pkg/api/errors"
@@ -28,38 +32,47 @@ import (
 const reauthSuggestion = "Re-authenticate if needed: gcx login"
 
 func ErrorToDetailedError(err error) *DetailedError {
-	var converted bool
-	detailedErr := &DetailedError{}
-	if errors.As(err, detailedErr) {
-		return detailedErr
+	// errors.As requires a pointer-to-the-target-type. Since commands return
+	// *DetailedError (pointer type), the target must be **DetailedError so that
+	// errors.As can match the pointer. Using *DetailedError as the target only
+	// matches value-typed DetailedError, causing *DetailedError to fall through
+	// to fallbackDetailedError which renders box chars via err.Error().
+	var ptr *DetailedError
+	if errors.As(err, &ptr) {
+		return ptr
 	}
 
 	// Try to convert the error for common error categories
 	errorConverters := []func(err error) (*DetailedError, bool){
+		convertWaitTimeoutEmitted,          // Wait timeout already emitted fused envelope — suppress secondary output
+		convertUnknownFieldSelectionErrors, // --json unknown-field validation
+		convertPartialFailureErrors,
 		convertUsageErrors,
 		convertCobraUnknownCommandErrors,
-		convertContextCanceled,       // Context cancellation (must be first — cancellation can wrap other errors)
-		convertRequiredFlagErrors,    // Cobra required-flag errors — must appear before generic checks
-		convertConfigErrors,          // Config-related
-		convertAuthErrors,            // Auth-related (expired tokens)
-		convertQueryErrors,           // Datasource query errors
-		convertDatasourceErrors,      // Grafana datasource REST API errors
-		convertServiceAPIErrors,      // Other structured HTTP API errors
-		convertFSErrors,              // FS-related
-		convertResourcesErrors,       // Resources-related
-		convertNetworkErrors,         // Network-related errors
-		convertAPIErrors,             // API-related errors
-		convertLoginValidationErrors, // Login connectivity validation (must precede generic version check)
-		convertVersionErrors,         // Version incompatibility errors
-		convertLinterErrors,          // Linter-related errors
-		convertSMConfigErrors,        // Synthetic Monitoring config errors
-		convertCloudConfigErrors,     // Cloud config / fleet / setup errors
-		convertStacksErrors,          // Stacks management GCOM errors
+		convertContextCanceled,                      // Context cancellation (must be first — cancellation can wrap other errors)
+		convertRequiredFlagErrors,                   // Cobra required-flag errors — must appear before generic checks
+		convertConfigErrors,                         // Config-related
+		convertAuthErrors,                           // Auth-related (expired tokens)
+		convertQueryErrors,                          // Datasource query errors
+		convertDatasourceErrors,                     // Grafana datasource REST API errors
+		convertServiceAPIErrors,                     // Other structured HTTP API errors
+		convertFSErrors,                             // FS-related
+		convertResourcesErrors,                      // Resources-related
+		convertNetworkErrors,                        // Network-related errors
+		convertAPIErrors,                            // API-related errors
+		convertLoginValidationErrors,                // Login connectivity validation (must precede generic version check)
+		convertVersionErrors,                        // Version incompatibility errors
+		convertLinterErrors,                         // Linter-related errors
+		convertSMConfigErrors,                       // Synthetic Monitoring config errors
+		convertCloudConfigErrors,                    // Cloud config / fleet / setup errors
+		convertStacksErrors,                         // Stacks management GCOM errors
+		convertFleetHTTPErrors,                      // Fleet Management HTTP 401/403 typed errors
+		convertInstrumentationErrors,                // Instrumentation RMW conflict errors
+		convertInstrumentationMutualExclusiveErrors, // setup: mutually exclusive flag pairs
 	}
 
 	for _, converter := range errorConverters {
-		detailedErr, converted = converter(err)
-		if converted {
+		if detailedErr, converted := converter(err); converted {
 			return detailedErr
 		}
 	}
@@ -82,6 +95,7 @@ func convertUsageErrors(err error) (*DetailedError, bool) {
 		Summary:     "Invalid command usage",
 		Details:     details,
 		Suggestions: usageErr.Suggestions,
+		ExitCode:    new(ExitUsageError),
 	}, true
 }
 
@@ -92,8 +106,9 @@ func convertCobraUnknownCommandErrors(err error) (*DetailedError, bool) {
 	}
 
 	detailed := &DetailedError{
-		Summary: "Invalid command usage",
-		Details: msg,
+		Summary:  "Invalid command usage",
+		Details:  msg,
+		ExitCode: new(ExitUsageError),
 	}
 
 	const marker = ` for "`
@@ -695,6 +710,17 @@ func convertLinterErrors(err error) (*DetailedError, bool) {
 	return nil, false
 }
 
+// convertWaitTimeoutEmitted suppresses the secondary DetailedError JSON envelope
+// when a wait command has already emitted a fused WaitResult (with Error populated)
+// to stdout. The secondary envelope would duplicate the error payload.
+// Returns (nil, true) so the caller exits 1 but writes no additional JSON.
+func convertWaitTimeoutEmitted(err error) (*DetailedError, bool) {
+	if errors.Is(err, instrumentation.ErrWaitTimeoutEmitted) {
+		return nil, true
+	}
+	return nil, false
+}
+
 func convertLoginValidationErrors(err error) (*DetailedError, bool) {
 	var gcomErr *login.GCOMStackError
 	if errors.As(err, &gcomErr) {
@@ -837,6 +863,7 @@ func convertRequiredFlagErrors(err error) (*DetailedError, bool) {
 			Suggestions: []string{
 				"Run the command with --help to see available flags and usage examples",
 			},
+			ExitCode: new(ExitUsageError),
 		}, true
 	}
 	return nil, false
@@ -1004,18 +1031,78 @@ func convertCloudConfigErrors(err error) (*DetailedError, bool) {
 		}, true
 	}
 
-	// Setup/instrumentation prefixed errors — surface them directly instead of "Unexpected error".
-	if strings.HasPrefix(msg, "setup/instrumentation:") || strings.Contains(msg, "setup/instrumentation:") {
-		// Extract the message after the prefix for the summary.
-		summary := "Setup instrumentation error"
+	return nil, false
+}
+
+// convertFleetHTTPErrors converts fleet.HTTPError values (non-2xx HTTP
+// responses from the Fleet Management API) into structured DetailedErrors with
+// actionable auth suggestions for 401 and 403 responses.
+func convertFleetHTTPErrors(err error) (*DetailedError, bool) {
+	var httpErr *fleet.HTTPError
+	if !errors.As(err, &httpErr) {
+		return nil, false
+	}
+
+	switch httpErr.Status {
+	case http.StatusUnauthorized:
 		return &DetailedError{
-			Summary: summary,
-			Details: msg,
 			Parent:  err,
+			Summary: "Authentication failed",
+			Details: "HTTP 401 from " + httpErr.Path,
+			Suggestions: []string{
+				"Ensure cloud.token is set: gcx config set cloud.token <TOKEN>",
+				"Verify the token has not expired: gcx config view",
+				reauthSuggestion,
+			},
+			ExitCode: new(ExitAuthFailure),
+		}, true
+	case http.StatusForbidden:
+		return &DetailedError{
+			Parent:  err,
+			Summary: "Authorization failed",
+			Details: "HTTP 403 from " + httpErr.Path,
+			Suggestions: []string{
+				"Ensure your Cloud Access Policy includes the fleet-management:read scope",
+				"Ensure your Cloud Access Policy includes the fleet-management:write scope for mutation commands",
+				reauthSuggestion,
+			},
+			ExitCode: new(ExitAuthFailure),
 		}, true
 	}
 
 	return nil, false
+}
+
+// convertInstrumentationMutualExclusiveErrors detects the
+// instrumentation.ErrMutuallyExclusiveFlags sentinel returned by command
+// Validate() when the user supplies mutually exclusive flag pairs (e.g.
+// --costmetrics and --no-costmetrics). Returns summary "Invalid command
+// usage" with the wrapped error's message as details.
+func convertInstrumentationMutualExclusiveErrors(err error) (*DetailedError, bool) {
+	if !errors.Is(err, instrumentation.ErrMutuallyExclusiveFlags) {
+		return nil, false
+	}
+	return &DetailedError{
+		Summary: "Invalid command usage",
+		Details: err.Error(),
+	}, true
+}
+
+// convertInstrumentationErrors converts RMW ConflictErrors from the
+// instrumentation provider into structured DetailedErrors. This ensures that
+// concurrent-modification conflicts surface a readable summary and full diff
+// details under agent mode.
+func convertInstrumentationErrors(err error) (*DetailedError, bool) {
+	var ce rmw.ConflictError
+	if !errors.As(err, &ce) {
+		return nil, false
+	}
+
+	return &DetailedError{
+		Summary: "Resource conflict",
+		Details: ce.Error(),
+		Parent:  err,
+	}, true
 }
 
 func adaptiveScopeSuggestionFromSignalPrefix(msg string) string {
@@ -1075,6 +1162,27 @@ func adaptiveMetricsScopeFromError(msg string) string {
 		}
 	}
 	return ""
+}
+
+// convertUnknownFieldSelectionErrors converts UnknownFieldSelectionError (from
+// the --json field validator) into a structured DetailedError with exit code 2
+// (ExitUsageError). The suggestion directs users to run the command with
+// --json list to discover valid field names.
+func convertUnknownFieldSelectionErrors(err error) (*DetailedError, bool) {
+	var fieldErr cmdoutput.UnknownFieldSelectionError
+	if !errors.As(err, &fieldErr) {
+		return nil, false
+	}
+
+	exitCode := ExitUsageError
+	return &DetailedError{
+		Summary:  "Invalid command usage",
+		Details:  fieldErr.Error(),
+		ExitCode: &exitCode,
+		Suggestions: []string{
+			"Run the command with --json list to enumerate valid field names",
+		},
+	}, true
 }
 
 func fallbackDetailedError(err error) *DetailedError {
@@ -1227,6 +1335,19 @@ func convertStacksErrors(err error) (*DetailedError, bool) {
 	}
 
 	return nil, false
+}
+
+func convertPartialFailureErrors(err error) (*DetailedError, bool) {
+	partialErr := &PartialFailureError{}
+	if !errors.As(err, &partialErr) {
+		return nil, false
+	}
+
+	return &DetailedError{
+		Summary:  fmt.Sprintf("%d of %d resource(s) failed to %s", partialErr.Failed, partialErr.Total, partialErr.Op),
+		Parent:   err,
+		ExitCode: new(ExitPartialFailure),
+	}, true
 }
 
 func convertContextCanceled(err error) (*DetailedError, bool) {

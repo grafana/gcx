@@ -15,8 +15,12 @@ gcx/
 │       │   └── query/        # Auto-detecting query command (GenericCmd only)
 │       ├── commands/         # 'commands' catalog (agent metadata, resource types, live validation)
 │       ├── helptree/        # 'help-tree' compact text tree for agent context injection
-│       ├── setup/            # 'setup' command area (onboarding, product config)
-│       │   └── instrumentation/  # Instrumentation subcommands (status, discover, show, apply)
+│       ├── setup/            # 'setup' command area (cross-product onboarding helpers)
+│       ├── instrumentation/  # 'instrumentation' provider command tree (setup wizard, status, clusters, services)
+│       │   ├── clusters/     #   cluster-level subcommands (list, get, configure, remove, wait, apps subtree)
+│       │   ├── services/     #   workload-level subcommands (list, get, include, exclude, clear)
+│       │   ├── setup/        #   onboarding wizard (helm command + access-policy guidance)
+│       │   └── status/       #   cross-cutting observed view
 │       ├── skills/           # 'skills' subcommand (portable Agent Skills installer for .agents bundles)
 │       ├── dev/              # 'dev' subcommand (import, scaffold, generate, lint, serve)
 │       ├── providers/        # 'providers' subcommand implementation
@@ -24,12 +28,11 @@ gcx/
 │
 ├── internal/                 # All non-public packages (Go enforced)
 │   ├── agent/                # Agent-mode detection, command annotations, known-resource registry with operation hints
+│   ├── agentlog/             # Agent invocation failure logger (opt-in JSONL disk log, XDG state dir — wired into handleError in cmd/gcx/main.go)
 │   ├── auth/                 # OAuth PKCE flow, token refresh transport
 │   │   └── adaptive/         # Shared adaptive telemetry auth (GCOM caching, Basic auth)
 │   ├── cloud/                # Grafana Cloud stack discovery via GCOM API
-│   ├── fleet/                # Shared fleet base client (HTTP, auth, config — shared by fleet provider and setup/instrumentation)
-│   ├── setup/
-│   │   └── instrumentation/  # InstrumentationConfig manifest types, API client, optimistic lock comparison
+│   ├── fleet/                # Shared fleet base client (HTTP, auth, config — shared by fleet provider and instrumentation provider)
 │   ├── config/               # Config loading, context management, auth types
 │   │   └── testdata/         # YAML fixtures for config unit tests
 │   ├── format/               # JSON/YAML codec, format auto-detection
@@ -62,6 +65,11 @@ gcx/
 │   │   │   └── versions/     # Version history list + restore via dashboard.grafana.app
 │   │   ├── faro/             # Frontend Observability provider (apps CRUD, sourcemaps sub-resource) — CLI: `gcx frontend`
 │   │   ├── fleet/            # Fleet Management provider (pipeline and collector resources)
+│   │   ├── instrumentation/  # Instrumentation Hub provider (clusters, apps, services; helm formatter; RMW helper; output codecs; enumerate helper)
+│   │   │   ├── enumerate/    # Cluster enumeration helper (RunK8sMonitoring ⋃ ListPipelines merge)
+│   │   │   ├── helm/         # Helm command formatter for the setup wizard
+│   │   │   ├── output/       # View types and table/JSON codecs (clusters, apps, services; wait/mutation envelopes)
+│   │   │   └── rmw/          # Read-modify-write helper with optimistic-lock guard
 │   │   ├── incidents/        # IRM Incidents provider
 │   │   ├── k6/              # k6 Cloud provider (projects, tests, runs, envvars)
 │   │   ├── kg/               # Knowledge Graph (Asserts) provider

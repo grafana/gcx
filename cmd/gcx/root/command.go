@@ -9,6 +9,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/go-logr/logr"
+	agentcmd "github.com/grafana/gcx/cmd/gcx/agent"
 	"github.com/grafana/gcx/cmd/gcx/api"
 	assistantcmd "github.com/grafana/gcx/cmd/gcx/assistant"
 	"github.com/grafana/gcx/cmd/gcx/commands"
@@ -20,7 +21,7 @@ import (
 	cmdproviders "github.com/grafana/gcx/cmd/gcx/providers"
 	"github.com/grafana/gcx/cmd/gcx/resources"
 	"github.com/grafana/gcx/cmd/gcx/setup"
-	skillscmd "github.com/grafana/gcx/cmd/gcx/skills"
+	versioncmd "github.com/grafana/gcx/cmd/gcx/version"
 	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	_ "github.com/grafana/gcx/internal/datasources/providers" // DatasourceProvider registrations — blank imports trigger init() self-registration.
@@ -220,13 +221,14 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd.SetErr(os.Stderr)
 	rootCmd.SetIn(os.Stdin)
 
+	rootCmd.AddCommand(agentcmd.Command())
 	rootCmd.AddCommand(api.Command())
 	rootCmd.AddCommand(assistantcmd.Command())
 	rootCmd.AddCommand(logincmd.Command())
 	rootCmd.AddCommand(config.Command())
 	rootCmd.AddCommand(dev.Command())
 	rootCmd.AddCommand(setup.Command())
-	rootCmd.AddCommand(skillscmd.Command())
+	rootCmd.AddCommand(versioncmd.Command())
 	rootCmd.AddCommand(datasources.Command())
 	rootCmd.AddCommand(resources.Command())
 

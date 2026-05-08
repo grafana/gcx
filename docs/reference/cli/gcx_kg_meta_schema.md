@@ -12,7 +12,7 @@ gcx kg meta schema [flags]
       --from string     Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help            help for schema
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: json, text, yaml (default "text")
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
       --since string    Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
       --to string       End time (RFC3339, Unix timestamp, or relative like 'now')
 ```

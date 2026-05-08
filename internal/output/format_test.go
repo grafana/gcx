@@ -22,18 +22,18 @@ func TestBindFlags_AgentModeOverridesDefaultFormat(t *testing.T) {
 		wantFormat     string
 	}{
 		{
-			name:       "agent mode forces json when no command default set",
+			name:       "agent mode forces agents when no command default set",
 			agentMode:  true,
-			wantFormat: "json",
+			wantFormat: "agents",
 		},
 		{
-			name:          "agent mode forces json when command sets text default",
+			name:          "agent mode forces agents when command sets text default",
 			agentMode:     true,
 			defaultFormat: "text",
-			wantFormat:    "json",
+			wantFormat:    "agents",
 		},
 		{
-			name:           "explicit -o yaml overrides agent mode json default",
+			name:           "explicit -o yaml overrides agent mode agents default",
 			agentMode:      true,
 			defaultFormat:  "text",
 			explicitOutput: "yaml",
@@ -78,6 +78,9 @@ func TestBindFlags_AgentModeOverridesDefaultFormat(t *testing.T) {
 }
 
 func TestJSONFlag_Parsing(t *testing.T) {
+	agent.SetFlag(false)
+	t.Cleanup(agent.ResetForTesting)
+
 	tests := []struct {
 		name              string
 		defaultFormat     string // empty = use package default ("json")
@@ -146,6 +149,12 @@ func TestJSONFlag_Parsing(t *testing.T) {
 			outputFlagValue:  "json",
 			wantJSONFields:   []string{"name"},
 			wantOutputFormat: "json",
+		},
+		{
+			name:            "--json and -o agents is rejected (use --json without -o in agent mode)",
+			jsonFlagValue:   "name",
+			outputFlagValue: "agents",
+			wantErr:         true,
 		},
 	}
 

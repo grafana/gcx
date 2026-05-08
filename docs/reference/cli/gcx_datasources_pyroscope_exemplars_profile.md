@@ -37,7 +37,7 @@ gcx datasources pyroscope exemplars profile [EXPR] [flags]
   -h, --help                    help for profile
       --json string             Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --max-label-columns int   Max label columns in table output (0 hides label columns) (default 3)
-  -o, --output string           Output format. One of: json, table, yaml (default "table")
+  -o, --output string           Output format. One of: agents, json, table, yaml (default "table")
       --profile-type string     Profile type ID (default "process_cpu:cpu:nanoseconds:cpu:nanoseconds")
       --since string            Duration before --to (or now if omitted); mutually exclusive with --from
       --to string               End time (RFC3339, Unix timestamp, or relative like 'now')

@@ -13,7 +13,7 @@ gcx k6 load-tests create [flags]
   -h, --help              help for create
       --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --name string       Test name (required when --filename not used)
-  -o, --output string     Output format. One of: json, yaml (default "yaml")
+  -o, --output string     Output format. One of: agents, json, yaml (default "yaml")
       --project-id int    Project ID (required when --filename not used)
       --script string     Path to k6 script file (required when --filename not used)
 ```

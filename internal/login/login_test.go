@@ -283,6 +283,61 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 			},
 		},
 		{
+			// Explicit OrgID on a fresh on-prem login is persisted instead of
+			// being set to the OrgID=1 default.
+			name: "onprem_explicit_orgid_persisted",
+			opts: func(dir string) login.Options {
+				return login.Options{
+					Inputs: login.Inputs{
+						Server:       "https://grafana.example.com",
+						Target:       login.TargetOnPrem,
+						GrafanaToken: "glsa_test",
+						OrgID:        7,
+					},
+					Hooks: login.Hooks{
+						ConfigSource: configSource(dir),
+						ValidateFn:   noopValidate,
+					},
+				}
+			},
+			checkConfig: func(t *testing.T, cfg config.Config) {
+				t.Helper()
+				ctx := cfg.Contexts["grafana-example-com"]
+				require.NotNil(t, ctx)
+				assert.EqualValues(t, 7, ctx.Grafana.OrgID, "explicit OrgID must override the on-prem default")
+			},
+		},
+		{
+			// Explicit OrgID on a Cloud login is persisted (the on-prem
+			// default-to-1 guard does not apply, but a user-supplied value
+			// must still be respected).
+			name: "cloud_explicit_orgid_persisted",
+			opts: func(dir string) login.Options {
+				return login.Options{
+					Inputs: login.Inputs{
+						Server:   "https://mystack.grafana.net",
+						Target:   login.TargetCloud,
+						UseOAuth: true,
+						Yes:      true,
+						OrgID:    42,
+					},
+					Hooks: login.Hooks{
+						ConfigSource: configSource(dir),
+						NewAuthFlow: func(_ string, _ auth.Options) login.AuthFlow {
+							return &stubAuthFlow{result: oauthResult}
+						},
+						ValidateFn: noopValidate,
+					},
+				}
+			},
+			checkConfig: func(t *testing.T, cfg config.Config) {
+				t.Helper()
+				ctx := cfg.Contexts["mystack"]
+				require.NotNil(t, ctx)
+				assert.EqualValues(t, 42, ctx.Grafana.OrgID, "explicit OrgID must be persisted on Cloud login")
+			},
+		},
+		{
 			// AC-005: Ambiguous URL + --yes defaults to on-prem (D10)
 			name: "ambiguous_url_yes_defaults_onprem",
 			opts: func(dir string) login.Options {
@@ -416,6 +471,47 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 				assert.Equal(t, "rotated-token", ctx.Grafana.APIToken)
 				assert.Equal(t, "token", ctx.Grafana.AuthMethod)
 				assert.EqualValues(t, 42, ctx.Grafana.OrgID, "OrgID must be preserved in re-auth")
+			},
+		},
+		{
+			// Re-auth with explicit OrgID updates the existing context's OrgID.
+			name: "reauth_explicit_orgid_updates_existing",
+			opts: func(dir string) login.Options {
+				src := configSource(dir)
+				path, _ := src()
+				existingCfg := config.Config{
+					Contexts: map[string]*config.Context{
+						"grafana-example-com": {
+							Grafana: &config.GrafanaConfig{
+								Server:     "https://grafana.example.com",
+								APIToken:   "old-token",
+								AuthMethod: "token",
+								OrgID:      1,
+							},
+						},
+					},
+					CurrentContext: "grafana-example-com",
+				}
+				require.NoError(t, config.Write(context.Background(), config.ExplicitConfigFile(path), existingCfg))
+
+				return login.Options{
+					Inputs: login.Inputs{
+						Server:       "https://grafana.example.com",
+						Target:       login.TargetOnPrem,
+						GrafanaToken: "rotated-token",
+						OrgID:        5,
+					},
+					Hooks: login.Hooks{
+						ConfigSource: src,
+						ValidateFn:   noopValidate,
+					},
+				}
+			},
+			checkConfig: func(t *testing.T, cfg config.Config) {
+				t.Helper()
+				ctx := cfg.Contexts["grafana-example-com"]
+				require.NotNil(t, ctx)
+				assert.EqualValues(t, 5, ctx.Grafana.OrgID, "explicit OrgID on re-auth must update existing context")
 			},
 		},
 		{

@@ -34,7 +34,7 @@ gcx datasources loki series [flags]
   -h, --help                help for series
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -M, --match stringArray   LogQL stream selector (required, e.g., '{job="varlogs"}')
-  -o, --output string       Output format. One of: json, table, yaml (default "table")
+  -o, --output string       Output format. One of: agents, json, table, yaml (default "table")
 ```
 
 ### Options inherited from parent commands

@@ -28,7 +28,7 @@ gcx aio11y saved-conversations save <conversation-id> [flags]
   -h, --help              help for save
       --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --name string       Human-readable name for the bookmark (required)
-  -o, --output string     Output format. One of: json, yaml (default "json")
+  -o, --output string     Output format. One of: agents, json, yaml (default "json")
       --saved-id string   Bookmark ID; defaults to saved-<conversation-id>
       --tag stringArray   Tag in key=value form (repeatable)
 ```

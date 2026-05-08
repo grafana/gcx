@@ -1,29 +1,15 @@
-## gcx skills list
+## gcx agent skills
 
-List skills bundled with the gcx binary
+Manage portable gcx Agent Skills
 
 ### Synopsis
 
-List skills bundled with the gcx binary, including each skill's short description and install status.
-
-```
-gcx skills list [flags]
-```
-
-### Examples
-
-```
-  gcx skills list
-  gcx skills list -o json
-```
+Install the canonical portable gcx Agent Skills bundle for .agents-compatible agent harnesses.
 
 ### Options
 
 ```
-      --dir string      Root directory for the .agents installation (used to check installed status) (default "~/.agents")
-  -h, --help            help for list
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: json, text, yaml (default "text")
+  -h, --help   help for skills
 ```
 
 ### Options inherited from parent commands
@@ -39,5 +25,9 @@ gcx skills list [flags]
 
 ### SEE ALSO
 
-* [gcx skills](gcx_skills.md)	 - Manage portable gcx Agent Skills
+* [gcx agent](gcx_agent.md)	 - Agent mode utilities
+* [gcx agent skills install](gcx_agent_skills_install.md)	 - Install bundled gcx skills into ~/.agents/skills
+* [gcx agent skills list](gcx_agent_skills_list.md)	 - List skills bundled with the gcx binary
+* [gcx agent skills uninstall](gcx_agent_skills_uninstall.md)	 - Uninstall gcx-managed skills from ~/.agents/skills
+* [gcx agent skills update](gcx_agent_skills_update.md)	 - Update installed gcx skills in ~/.agents/skills
 

@@ -2,10 +2,10 @@ package resources
 
 import (
 	"errors"
-	"fmt"
 	"io"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
+	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
@@ -164,7 +164,7 @@ func validateCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 
 			if opts.OnError.FailOnErrors() && summary.FailedCount() > 0 {
-				return fmt.Errorf("%d resource(s) failed to validate", summary.FailedCount())
+				return fail.NewPartialFailureError("validate", summary.SuccessCount()+summary.FailedCount(), summary.FailedCount())
 			}
 
 			return nil

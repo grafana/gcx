@@ -1,7 +1,5 @@
 package dashboards
 
-import "io"
-
 // Exported aliases for unexported types and functions, available to external
 // test packages only (codec_test.go, provider_test.go, crud_test.go).
 
@@ -24,11 +22,6 @@ var DecodeManifestForTest = decodeManifest
 //
 //nolint:gochecknoglobals // test-only export; required to expose unexported function to dashboards_test package.
 var ReadManifestForTest = readManifest
-
-// ConfirmDeleteForTest exposes the unexported confirmDelete function for table-driven tests.
-func ConfirmDeleteForTest(w io.Writer, r io.Reader, name string) bool {
-	return confirmDelete(w, r, name)
-}
 
 // WrapUpdateErrorForTest exposes the unexported wrapUpdateError function for
 // table-driven tests.

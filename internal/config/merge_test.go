@@ -177,3 +177,33 @@ contexts:
 	// current-context: "prod" from system, not overridden (user/local don't set it).
 	assert.Equal(t, "prod", merged.CurrentContext)
 }
+
+func TestMergeConfigs_DiagnosticsLayering(t *testing.T) {
+	// User config enables the feature; local config omits the diagnostics block.
+	// The user-layer value must survive.
+	userCfg := config.Config{
+		Diagnostics: &config.DiagnosticsConfig{AgentInvocationLog: true},
+	}
+	localCfg := config.Config{} // no Diagnostics block
+
+	merged := config.MergeConfigs(userCfg, localCfg)
+
+	require.NotNil(t, merged.Diagnostics, "diagnostics from user layer must survive")
+	assert.True(t, merged.Diagnostics.AgentInvocationLog)
+}
+
+func TestMergeConfigs_DiagnosticsOverride(t *testing.T) {
+	// Local config can override individual diagnostics fields.
+	userCfg := config.Config{
+		Diagnostics: &config.DiagnosticsConfig{AgentInvocationLog: true, LogDir: "/user/logs"},
+	}
+	localCfg := config.Config{
+		Diagnostics: &config.DiagnosticsConfig{LogDir: "/local/logs"},
+	}
+
+	merged := config.MergeConfigs(userCfg, localCfg)
+
+	require.NotNil(t, merged.Diagnostics)
+	assert.True(t, merged.Diagnostics.AgentInvocationLog, "feature stays enabled from user layer")
+	assert.Equal(t, "/local/logs", merged.Diagnostics.LogDir, "local override wins for LogDir")
+}

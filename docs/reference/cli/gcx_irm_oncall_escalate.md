@@ -13,7 +13,7 @@ gcx irm oncall escalate [flags]
       --important          Mark as important
       --json string        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --message string     Message for the escalation
-  -o, --output string      Output format. One of: json, yaml (default "text")
+  -o, --output string      Output format. One of: agents, json, yaml (default "text")
       --team string        Team ID
       --title string       Title of the escalation (required)
       --user-ids strings   User IDs (comma-separated)

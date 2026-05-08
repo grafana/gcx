@@ -27,7 +27,7 @@ gcx synthetic-monitoring checks list [flags]
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --label stringArray   Filter by label key=value (repeatable, e.g. --label env=prod)
       --limit int           Maximum number of items to return (0 for all) (default 50)
-  -o, --output string       Output format. One of: json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands

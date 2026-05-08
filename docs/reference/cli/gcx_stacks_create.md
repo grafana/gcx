@@ -24,7 +24,7 @@ gcx stacks create [flags]
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --labels strings       Labels in key=value format (may be repeated)
       --name string          Stack name (required)
-  -o, --output string        Output format. One of: json, table, yaml (default "table")
+  -o, --output string        Output format. One of: agents, json, table, yaml (default "table")
       --region string        Region slug (e.g. us, eu). Use 'gcx stacks regions' to list.
       --slug string          Stack slug / subdomain (required)
       --url string           Custom domain URL

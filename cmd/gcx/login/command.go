@@ -48,6 +48,7 @@ type loginOpts struct {
 	Yes                 bool
 	AllowServerOverride bool
 	OAuthCallbackPort   int
+	OrgID               int
 }
 
 func (opts *loginOpts) setup(flags *pflag.FlagSet) {
@@ -67,6 +68,7 @@ func (opts *loginOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&opts.Yes, "yes", false, "Non-interactive: skip optional prompts and use defaults")
 	flags.BoolVar(&opts.AllowServerOverride, "allow-server-override", false, "Allow re-pointing an existing context at a different server URL")
 	flags.IntVar(&opts.OAuthCallbackPort, "oauth-callback-port", 0, "Fixed local port for the OAuth callback server (default: auto-pick from 54321-54399). Useful when only specific ports are forwarded between a remote host and your browser")
+	flags.IntVar(&opts.OrgID, "org-id", 0, "Grafana organization ID (defaults to 1 for on-prem)")
 }
 
 // Validate checks opts and args for internal consistency before runLogin executes.
@@ -202,6 +204,7 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 			CloudAPIURL:       flags.CloudAPIURL,
 			OAuthCallbackPort: flags.OAuthCallbackPort,
 			Yes:               flags.Yes,
+			OrgID:             flags.OrgID,
 			Writer:            cmd.ErrOrStderr(),
 			TLS:               existingTLS,
 		},

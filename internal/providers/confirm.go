@@ -2,6 +2,7 @@ package providers
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -12,15 +13,17 @@ import (
 )
 
 // ConfirmDestructive prompts the user to confirm a destructive operation.
-// It auto-approves when force is true, agent mode is active, stdin is not a
-// terminal, or the GCX_AUTO_APPROVE env var is truthy. Returns true if the
-// caller should proceed.
+//
+// Bypass chain:
+//  1. --force flag → proceed immediately
+//  2. GCX_AUTO_APPROVE env var → proceed (CI/CD pipelines)
+//  3. Agent mode detected without --force → fail with actionable error
+//  4. Otherwise → interactive prompt (returns false on EOF or "no")
+//
+// Agent mode requires explicit --force so that agents must deliberately
+// acknowledge destructive operations rather than silently proceeding.
 func ConfirmDestructive(in io.Reader, out io.Writer, force bool, prompt string) (bool, error) {
 	if force {
-		return true, nil
-	}
-
-	if agent.IsAgentMode() {
 		return true, nil
 	}
 
@@ -31,6 +34,10 @@ func ConfirmDestructive(in io.Reader, out io.Writer, force bool, prompt string) 
 
 	if cliOpts.AutoApprove {
 		return true, nil
+	}
+
+	if agent.IsAgentMode() {
+		return false, errors.New("destructive operation requires --force in agent mode")
 	}
 
 	fmt.Fprintf(out, "%s [y/N] ", prompt)

@@ -25,7 +25,7 @@ gcx stacks update <stack-slug> [flags]
       --labels strings         Labels in key=value format (replaces all labels)
       --name string            New stack name
       --no-delete-protection   Disable delete protection
-  -o, --output string          Output format. One of: json, table, yaml (default "table")
+  -o, --output string          Output format. One of: agents, json, table, yaml (default "table")
 ```
 
 ### Options inherited from parent commands

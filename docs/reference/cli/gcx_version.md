@@ -1,15 +1,34 @@
-## gcx skills
+## gcx version
 
-Manage portable gcx Agent Skills
+Print version information.
 
 ### Synopsis
 
-Install the canonical portable gcx Agent Skills bundle for .agents-compatible agent harnesses.
+Print version, commit, build date, Go version, OS, and architecture. Supports structured output via --output json/yaml.
+
+```
+gcx version [flags]
+```
+
+### Examples
+
+```
+  # Human-readable version
+  gcx version
+
+  # JSON output for automation
+  gcx version -o json
+
+  # Select specific fields
+  gcx version --json version,commit
+```
 
 ### Options
 
 ```
-  -h, --help   help for skills
+  -h, --help            help for version
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
 ```
 
 ### Options inherited from parent commands
@@ -26,8 +45,4 @@ Install the canonical portable gcx Agent Skills bundle for .agents-compatible ag
 ### SEE ALSO
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
-* [gcx skills install](gcx_skills_install.md)	 - Install bundled gcx skills into ~/.agents/skills
-* [gcx skills list](gcx_skills_list.md)	 - List skills bundled with the gcx binary
-* [gcx skills uninstall](gcx_skills_uninstall.md)	 - Uninstall gcx-managed skills from ~/.agents/skills
-* [gcx skills update](gcx_skills_update.md)	 - Update installed gcx skills in ~/.agents/skills
 

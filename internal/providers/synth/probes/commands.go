@@ -1,7 +1,6 @@
 package probes
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
@@ -200,7 +200,7 @@ type deleteOpts struct {
 }
 
 func (o *deleteOpts) setup(flags *pflag.FlagSet) {
-	flags.BoolVarP(&o.Force, "force", "f", false, "Skip confirmation prompt")
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
 }
 
 func (o *deleteOpts) Validate() error {
@@ -221,18 +221,13 @@ func newDeleteCommand(loader smcfg.Loader) *cobra.Command {
 			ctx := cmd.Context()
 			w := cmd.OutOrStdout()
 
-			if !opts.Force {
-				fmt.Fprintf(w, "Delete %d probe(s)? [y/N] ", len(args))
-				reader := bufio.NewReader(cmd.InOrStdin())
-				answer, err := reader.ReadString('\n')
-				if err != nil {
-					return fmt.Errorf("reading confirmation: %w", err)
-				}
-				answer = strings.TrimSpace(strings.ToLower(answer))
-				if answer != "y" && answer != "yes" {
-					cmdio.Info(w, "Aborted.")
-					return nil
-				}
+			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), w, opts.Force,
+				fmt.Sprintf("Delete %d probe(s)?", len(args)))
+			if err != nil {
+				return err
+			}
+			if !proceed {
+				return nil
 			}
 
 			crud, _, err := NewTypedCRUD(ctx, loader)

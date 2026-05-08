@@ -185,7 +185,7 @@ func TestSkillsInstallUpdate_EndToEndThroughRootCommand(t *testing.T) {
 
 	installRoot := filepath.Join(t.TempDir(), ".agents")
 
-	stdout, stderr, err := executeRootCommandForTest("skills", "list", "--dir", installRoot, "-o", "json")
+	stdout, stderr, err := executeRootCommandForTest("agent", "skills", "list", "--dir", installRoot, "-o", "json")
 	require.NoError(t, err, stderr)
 
 	var list struct {
@@ -200,7 +200,7 @@ func TestSkillsInstallUpdate_EndToEndThroughRootCommand(t *testing.T) {
 	expected, err := fs.ReadFile(claudeplugin.SkillsFS(), path.Join(skillName, "SKILL.md"))
 	require.NoError(t, err)
 
-	stdout, stderr, err = executeRootCommandForTest("skills", "install", "--dir", installRoot, skillName)
+	stdout, stderr, err = executeRootCommandForTest("agent", "skills", "install", "--dir", installRoot, skillName)
 	require.NoError(t, err, stderr)
 	require.Contains(t, stdout, "Installed 1 skill(s)")
 
@@ -214,7 +214,7 @@ func TestSkillsInstallUpdate_EndToEndThroughRootCommand(t *testing.T) {
 	require.NoError(t, os.Chmod(installedPath, 0o600))
 	require.NoError(t, os.WriteFile(installedPath, []byte("local-change"), 0o600))
 
-	stdout, stderr, err = executeRootCommandForTest("skills", "update", "--dir", installRoot, skillName)
+	stdout, stderr, err = executeRootCommandForTest("agent", "skills", "update", "--dir", installRoot, skillName)
 	require.NoError(t, err, stderr)
 	require.Contains(t, stdout, "Updated 1 skill(s)")
 
