@@ -283,6 +283,61 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 			},
 		},
 		{
+			// Explicit OrgID on a fresh on-prem login is persisted instead of
+			// being set to the OrgID=1 default.
+			name: "onprem_explicit_orgid_persisted",
+			opts: func(dir string) login.Options {
+				return login.Options{
+					Inputs: login.Inputs{
+						Server:       "https://grafana.example.com",
+						Target:       login.TargetOnPrem,
+						GrafanaToken: "glsa_test",
+						OrgID:        7,
+					},
+					Hooks: login.Hooks{
+						ConfigSource: configSource(dir),
+						ValidateFn:   noopValidate,
+					},
+				}
+			},
+			checkConfig: func(t *testing.T, cfg config.Config) {
+				t.Helper()
+				ctx := cfg.Contexts["grafana-example-com"]
+				require.NotNil(t, ctx)
+				assert.EqualValues(t, 7, ctx.Grafana.OrgID, "explicit OrgID must override the on-prem default")
+			},
+		},
+		{
+			// Explicit OrgID on a Cloud login is persisted (the on-prem
+			// default-to-1 guard does not apply, but a user-supplied value
+			// must still be respected).
+			name: "cloud_explicit_orgid_persisted",
+			opts: func(dir string) login.Options {
+				return login.Options{
+					Inputs: login.Inputs{
+						Server:   "https://mystack.grafana.net",
+						Target:   login.TargetCloud,
+						UseOAuth: true,
+						Yes:      true,
+						OrgID:    42,
+					},
+					Hooks: login.Hooks{
+						ConfigSource: configSource(dir),
+						NewAuthFlow: func(_ string, _ auth.Options) login.AuthFlow {
+							return &stubAuthFlow{result: oauthResult}
+						},
+						ValidateFn: noopValidate,
+					},
+				}
+			},
+			checkConfig: func(t *testing.T, cfg config.Config) {
+				t.Helper()
+				ctx := cfg.Contexts["mystack"]
+				require.NotNil(t, ctx)
+				assert.EqualValues(t, 42, ctx.Grafana.OrgID, "explicit OrgID must be persisted on Cloud login")
+			},
+		},
+		{
 			// AC-005: Ambiguous URL + --yes defaults to on-prem (D10)
 			name: "ambiguous_url_yes_defaults_onprem",
 			opts: func(dir string) login.Options {
