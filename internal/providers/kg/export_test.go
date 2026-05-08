@@ -1,6 +1,10 @@
 package kg
 
-import "context"
+import (
+	"context"
+
+	"github.com/grafana/gcx/internal/query/prometheus"
+)
 
 // ScopeFlags is an exported alias for scopeFlags, used only in tests.
 type ScopeFlags = scopeFlags
@@ -26,6 +30,7 @@ func FilterBySeverity(results []SearchResult, sev string) []SearchResult {
 var BuildInsightSearchRequest = buildInsightSearchRequest
 
 // RunDiagnose wraps the unexported runDiagnose function for testing.
-func RunDiagnose(ctx context.Context, client *Client, scope *ScopeFlags) DiagnoseResult {
-	return runDiagnose(ctx, client, scope)
+// Pass nil promClient and empty datasourceUID to skip metric checks.
+func RunDiagnose(ctx context.Context, client *Client, scope *ScopeFlags, promClient *prometheus.Client, datasourceUID string) DiagnoseResult {
+	return runDiagnose(ctx, client, scope, promClient, datasourceUID)
 }

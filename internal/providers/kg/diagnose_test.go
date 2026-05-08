@@ -7,10 +7,24 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/kg"
+	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/rest"
 )
+
+func newTestPromClient(t *testing.T, server *httptest.Server) *prometheus.Client {
+	t.Helper()
+	cfg := config.NamespacedRESTConfig{
+		Config:    rest.Config{Host: server.URL},
+		Namespace: "stack-123",
+	}
+	c, err := prometheus.NewClient(cfg)
+	require.NoError(t, err)
+	return c
+}
 
 func TestRunDiagnose_AllHealthy(t *testing.T) {
 	mux := http.NewServeMux()
@@ -47,7 +61,7 @@ func TestRunDiagnose_AllHealthy(t *testing.T) {
 
 	client := newTestClient(t, server)
 	scope := kg.NewTestScopeFlags("", "", "")
-	result := kg.RunDiagnose(t.Context(), client, &scope)
+	result := kg.RunDiagnose(t.Context(), client, &scope, nil, "")
 
 	assert.Equal(t, 7, result.Summary.Total)
 	assert.Equal(t, 7, result.Summary.Passed)
@@ -80,7 +94,7 @@ func TestRunDiagnose_StackDisabled(t *testing.T) {
 
 	client := newTestClient(t, server)
 	scope := kg.NewTestScopeFlags("", "", "")
-	result := kg.RunDiagnose(t.Context(), client, &scope)
+	result := kg.RunDiagnose(t.Context(), client, &scope, nil, "")
 
 	// Stack status should fail.
 	var stackCheck *kg.CheckResult
@@ -137,7 +151,7 @@ func TestRunDiagnose_SanityCheckBlocker(t *testing.T) {
 
 	client := newTestClient(t, server)
 	scope := kg.NewTestScopeFlags("", "", "")
-	result := kg.RunDiagnose(t.Context(), client, &scope)
+	result := kg.RunDiagnose(t.Context(), client, &scope, nil, "")
 
 	var sanityCheck *kg.CheckResult
 	for i := range result.Checks {
@@ -177,7 +191,7 @@ func TestRunDiagnose_NoEntities(t *testing.T) {
 
 	client := newTestClient(t, server)
 	scope := kg.NewTestScopeFlags("", "", "")
-	result := kg.RunDiagnose(t.Context(), client, &scope)
+	result := kg.RunDiagnose(t.Context(), client, &scope, nil, "")
 
 	var entityCheck *kg.CheckResult
 	for i := range result.Checks {
@@ -231,4 +245,175 @@ func TestDiagnoseResult_JSONRoundTrip(t *testing.T) {
 	require.NoError(t, json.Unmarshal(b, &decoded))
 	assert.Equal(t, result.Checks[0].Name, decoded.Checks[0].Name)
 	assert.Equal(t, result.Checks[0].Status, decoded.Checks[0].Status)
+}
+
+func TestRunDiagnose_MetricChecksPass(t *testing.T) {
+	// KG API mock — minimal healthy responses.
+	kgMux := http.NewServeMux()
+	kgMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/stack/status":
+			writeJSON(w, kg.Status{Status: "complete", Enabled: true})
+		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_type/count":
+			writeJSON(w, map[string]int64{"Service": 5})
+		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_scope":
+			writeJSON(w, map[string]any{"scopeValues": map[string][]string{"env": {"prod"}}})
+		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/log":
+			writeJSON(w, kg.LogConfigsResponse{LogDrilldownConfigs: []kg.LogDrilldownConfig{{Name: "loki"}}})
+		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/trace":
+			writeJSON(w, kg.TraceConfigsResponse{TraceDrilldownConfigs: []kg.TraceDrilldownConfig{{Name: "tempo"}}})
+		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/profile":
+			writeJSON(w, kg.ProfileConfigsResponse{})
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	kgServer := httptest.NewServer(kgMux)
+	defer kgServer.Close()
+
+	// Prometheus API mock — returns a Grafana datasource query response with data.
+	promMux := http.NewServeMux()
+	promMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// All metric queries return a single-value instant result.
+		writeJSON(w, map[string]any{
+			"results": map[string]any{
+				"A": map[string]any{
+					"frames": []map[string]any{
+						{
+							"schema": map[string]any{
+								"fields": []map[string]any{
+									{"name": "Time", "type": "time"},
+									{"name": "Value", "type": "number"},
+								},
+							},
+							"data": map[string]any{
+								"values": []any{
+									[]int64{1715100000000},
+									[]float64{42},
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+	})
+	promServer := httptest.NewServer(promMux)
+	defer promServer.Close()
+
+	kgClient := newTestClient(t, kgServer)
+	promClient := newTestPromClient(t, promServer)
+	scope := kg.NewTestScopeFlags("prod", "", "")
+	result := kg.RunDiagnose(t.Context(), kgClient, &scope, promClient, "test-prom-uid")
+
+	// Should have KG checks + 5 metric checks.
+	var metricChecks []kg.CheckResult
+	for _, c := range result.Checks {
+		if len(c.Name) > 7 && c.Name[:7] == "Metric:" {
+			metricChecks = append(metricChecks, c)
+		}
+	}
+	assert.Len(t, metricChecks, 5, "expected 5 metric checks")
+
+	// All metric checks should pass (mock returns data).
+	for _, c := range metricChecks {
+		assert.Equal(t, kg.CheckPass, c.Status, "metric check %q should pass", c.Name)
+		assert.Contains(t, c.Detail, "series", "metric check %q detail should mention series count", c.Name)
+	}
+
+	// Total checks = 6 KG + 5 metric = 11 (profile warns, so 10 pass + 1 warn).
+	assert.Equal(t, 11, result.Summary.Total)
+	assert.Equal(t, 10, result.Summary.Passed)
+	assert.Equal(t, 1, result.Summary.Warned) // profile config missing
+}
+
+func TestRunDiagnose_MetricChecksFail(t *testing.T) {
+	// KG API mock.
+	kgMux := http.NewServeMux()
+	kgMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/stack/status":
+			writeJSON(w, kg.Status{Status: "complete", Enabled: true})
+		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_type/count":
+			writeJSON(w, map[string]int64{"Service": 5})
+		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_scope":
+			writeJSON(w, map[string]any{"scopeValues": map[string][]string{"env": {"prod"}}})
+		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/log":
+			writeJSON(w, kg.LogConfigsResponse{LogDrilldownConfigs: []kg.LogDrilldownConfig{{Name: "loki"}}})
+		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/trace":
+			writeJSON(w, kg.TraceConfigsResponse{TraceDrilldownConfigs: []kg.TraceDrilldownConfig{{Name: "tempo"}}})
+		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/profile":
+			writeJSON(w, kg.ProfileConfigsResponse{})
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	kgServer := httptest.NewServer(kgMux)
+	defer kgServer.Close()
+
+	// Prometheus API mock — returns empty results (no data).
+	promMux := http.NewServeMux()
+	promMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{
+			"results": map[string]any{
+				"A": map[string]any{
+					"frames": []map[string]any{},
+				},
+			},
+		})
+	})
+	promServer := httptest.NewServer(promMux)
+	defer promServer.Close()
+
+	kgClient := newTestClient(t, kgServer)
+	promClient := newTestPromClient(t, promServer)
+	scope := kg.NewTestScopeFlags("", "", "")
+	result := kg.RunDiagnose(t.Context(), kgClient, &scope, promClient, "test-prom-uid")
+
+	// All 5 metric checks should fail.
+	var failedMetrics int
+	for _, c := range result.Checks {
+		if len(c.Name) > 7 && c.Name[:7] == "Metric:" {
+			if c.Status == kg.CheckFail {
+				failedMetrics++
+				assert.NotEmpty(t, c.Recommendation, "failed metric check %q should have a recommendation", c.Name)
+			}
+		}
+	}
+	assert.Equal(t, 5, failedMetrics, "all 5 metric checks should fail when Prometheus returns no data")
+}
+
+func TestRunDiagnose_NilPromClientSkipsMetrics(t *testing.T) {
+	// KG API mock.
+	kgMux := http.NewServeMux()
+	kgMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/stack/status":
+			writeJSON(w, kg.Status{Status: "complete", Enabled: true})
+		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_type/count":
+			writeJSON(w, map[string]int64{"Service": 5})
+		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_scope":
+			writeJSON(w, map[string]any{"scopeValues": map[string][]string{"env": {"prod"}}})
+		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/log":
+			writeJSON(w, kg.LogConfigsResponse{LogDrilldownConfigs: []kg.LogDrilldownConfig{{Name: "loki"}}})
+		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/trace":
+			writeJSON(w, kg.TraceConfigsResponse{TraceDrilldownConfigs: []kg.TraceDrilldownConfig{{Name: "tempo"}}})
+		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/profile":
+			writeJSON(w, kg.ProfileConfigsResponse{})
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	kgServer := httptest.NewServer(kgMux)
+	defer kgServer.Close()
+
+	kgClient := newTestClient(t, kgServer)
+	scope := kg.NewTestScopeFlags("", "", "")
+	result := kg.RunDiagnose(t.Context(), kgClient, &scope, nil, "")
+
+	// No metric checks should be present.
+	for _, c := range result.Checks {
+		assert.False(t, len(c.Name) > 7 && c.Name[:7] == "Metric:", "should have no metric checks when promClient is nil, got %q", c.Name)
+	}
+	assert.Equal(t, 6, result.Summary.Total, "should only have 6 KG checks")
 }

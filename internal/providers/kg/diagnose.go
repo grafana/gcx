@@ -5,14 +5,20 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/grafana/gcx/internal/config"
+	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/query/prometheus"
+	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -69,18 +75,12 @@ func (r *DiagnoseResult) computeSummary() {
 // ---------------------------------------------------------------------------
 
 type diagnoseOpts struct {
-	IO    cmdio.Options
-	Scope scopeFlags
+	IO         cmdio.Options
+	Scope      scopeFlags
+	Datasource string
 }
 
-func (o *diagnoseOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("text", &DiagnoseTextCodec{})
-	o.IO.DefaultFormat("text")
-	o.IO.BindFlags(flags)
-	o.Scope.register(&cobra.Command{}) // register creates flag vars; we re-bind below
-}
-
-func newDiagnoseCommand(loader RESTConfigLoader) *cobra.Command {
+func newDiagnoseCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &diagnoseOpts{}
 	cmd := &cobra.Command{
 		Use:   "diagnose",
@@ -88,16 +88,22 @@ func newDiagnoseCommand(loader RESTConfigLoader) *cobra.Command {
 		Long: `Run diagnostic checks to verify the Knowledge Graph is healthy.
 
 Checks stack status, sanity results, entity counts, scope values,
-and telemetry drilldown configuration. Use --env to scope checks
-to a specific environment.`,
+telemetry drilldown configuration, and recording rule metrics in
+Mimir. Use --env to scope checks to a specific environment.
+
+Metric checks require a Prometheus datasource. The datasource UID is
+resolved from --datasource, the datasources.prometheus config key, or
+auto-discovery. If unavailable, metric checks are skipped.`,
 		Example: `  gcx kg diagnose
   gcx kg diagnose --env production
-  gcx kg diagnose --env staging --output json`,
+  gcx kg diagnose --env staging --output json
+  gcx kg diagnose --datasource grafanacloud-prom`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			ctx := cmd.Context()
+			cfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
 			}
@@ -105,7 +111,11 @@ to a specific environment.`,
 			if err != nil {
 				return err
 			}
-			result := runDiagnose(cmd.Context(), client, &opts.Scope)
+
+			// Best-effort Prometheus client for metric checks.
+			promClient, datasourceUID := resolvePromClient(ctx, loader, cfg, opts.Datasource, cmd)
+
+			result := runDiagnose(ctx, client, &opts.Scope, promClient, datasourceUID)
 			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
@@ -114,6 +124,7 @@ to a specific environment.`,
 	cmd.Flags().StringVar(&opts.Scope.env, "env", "", "Environment scope")
 	cmd.Flags().StringVar(&opts.Scope.namespace, "namespace", "", "Namespace scope")
 	cmd.Flags().StringVar(&opts.Scope.site, "site", "", "Site scope")
+	cmd.Flags().StringVarP(&opts.Datasource, "datasource", "d", "", "Prometheus datasource UID (auto-discovered if omitted)")
 
 	// IO flags (--output).
 	opts.IO.RegisterCustomCodec("text", &DiagnoseTextCodec{})
@@ -123,11 +134,38 @@ to a specific environment.`,
 	return cmd
 }
 
+// resolvePromClient creates a Prometheus query client and resolves the
+// datasource UID. Returns nil client if resolution fails (metric checks
+// will be skipped gracefully).
+func resolvePromClient(ctx context.Context, loader *providers.ConfigLoader, cfg config.NamespacedRESTConfig, flagValue string, cmd *cobra.Command) (*prometheus.Client, string) {
+	var cfgCtx *config.Context
+	fullCfg, err := loader.LoadFullConfig(ctx)
+	if err != nil {
+		logging.FromContext(ctx).Warn("could not load full config for datasource resolution", slog.String("error", err.Error()))
+	} else {
+		cfgCtx = fullCfg.GetCurrentContext()
+	}
+
+	resolved, err := dsquery.ResolveDatasource(ctx, flagValue, cfgCtx, cfg, "prometheus")
+	if err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "  note: skipping metric checks (%v)\n", err)
+		return nil, ""
+	}
+
+	promClient, err := prometheus.NewClient(cfg)
+	if err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "  note: skipping metric checks (failed to create prometheus client: %v)\n", err)
+		return nil, ""
+	}
+
+	return promClient, resolved.UID
+}
+
 // ---------------------------------------------------------------------------
 // Check runner
 // ---------------------------------------------------------------------------
 
-func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags) DiagnoseResult {
+func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promClient *prometheus.Client, datasourceUID string) DiagnoseResult {
 	result := DiagnoseResult{Env: scope.env}
 
 	var (
@@ -170,6 +208,17 @@ func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags) Diagnos
 		return nil
 	})
 
+	// Check 5–9: Metric checks (skip if no Prometheus client).
+	if promClient != nil && datasourceUID != "" {
+		for _, mc := range metricChecks(scope.env) {
+			mc := mc // capture loop var
+			g.Go(func() error {
+				addCheck(checkMetric(ctx, promClient, datasourceUID, mc))
+				return nil
+			})
+		}
+	}
+
 	_ = g.Wait() // errors are captured in CheckResults, not returned
 
 	// Stable output order.
@@ -201,6 +250,9 @@ func checkOrder(name string) int {
 	}
 	if name == "Scope values" {
 		return 6
+	}
+	if strings.HasPrefix(name, "Metric:") {
+		return 7
 	}
 	return 50
 }
@@ -450,6 +502,106 @@ func checkTelemetryConfigs(ctx context.Context, client *Client) []CheckResult {
 
 	_ = g.Wait()
 	return results
+}
+
+// ---------------------------------------------------------------------------
+// Metric checks (Phase 2)
+// ---------------------------------------------------------------------------
+
+// metricCheckDef defines a single metric presence check.
+type metricCheckDef struct {
+	Name           string // display name, e.g. "Metric: asserts:relation:calls"
+	Query          string // PromQL count() query
+	Recommendation string // shown on failure
+}
+
+// metricChecks returns the metric check definitions, optionally scoped by env.
+func metricChecks(env string) []metricCheckDef {
+	envFilter := ""
+	if env != "" {
+		envFilter = fmt.Sprintf(`asserts_env="%s"`, env)
+	}
+
+	// Build label selectors — some metrics use asserts_env, raw Tempo metrics don't.
+	envSelector := ""
+	if envFilter != "" {
+		envSelector = "{" + envFilter + "}"
+	}
+
+	return []metricCheckDef{
+		{
+			Name:           "Metric: traces_target_info",
+			Query:          fmt.Sprintf("count(traces_target_info%s)", envSelector),
+			Recommendation: "Tempo server-side metrics generation may not be enabled, or no traced services are sending telemetry to this stack.",
+		},
+		{
+			Name:           "Metric: traces_service_graph_request_total",
+			Query:          fmt.Sprintf("count(traces_service_graph_request_total%s)", envSelector),
+			Recommendation: "Tempo service graph metrics are not being generated. Enable server-side metrics generation in Tempo, or verify that traced services make inter-service HTTP/gRPC calls.",
+		},
+		{
+			Name:           "Metric: asserts:mixin_workload_job",
+			Query:          fmt.Sprintf("count(asserts:mixin_workload_job%s)", envSelector),
+			Recommendation: "The entity discovery recording rule is not producing data. This metric is central to how services appear in Entity Graph. Verify that asserts_env is set (check deployment_environment in your OTel config) and that 3po recording rules are installed.",
+		},
+		{
+			Name:           "Metric: asserts:relation:calls",
+			Query:          fmt.Sprintf("count(asserts:relation:calls%s)", envSelector),
+			Recommendation: "No CALLS edge metrics found. This means Entity Graph will show services with no connections. Check that traces_service_graph_request_total exists and that the asserts_env relabeling pipeline is working.",
+		},
+		{
+			Name:           "Metric: asserts:request:rate5m",
+			Query:          fmt.Sprintf("count(asserts:request:rate5m%s)", envSelector),
+			Recommendation: "Request rate KPI recording rule is not producing data. Service KPIs (request rate, error ratio, latency) may not display correctly.",
+		},
+	}
+}
+
+// checkMetric runs a single PromQL instant query and returns a check result
+// based on whether the query returns any series.
+func checkMetric(ctx context.Context, client *prometheus.Client, datasourceUID string, def metricCheckDef) CheckResult {
+	resp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{
+		Query: def.Query,
+	})
+	if err != nil {
+		return CheckResult{
+			Name:           def.Name,
+			Status:         CheckWarn,
+			Detail:         fmt.Sprintf("query error: %v", err),
+			Recommendation: "Could not execute PromQL query. Check Prometheus datasource connectivity.",
+		}
+	}
+
+	if len(resp.Data.Result) == 0 {
+		return CheckResult{
+			Name:           def.Name,
+			Status:         CheckFail,
+			Detail:         "no data",
+			Recommendation: def.Recommendation,
+		}
+	}
+
+	// Extract the count value from the instant query result.
+	count := extractInstantValue(resp.Data.Result[0])
+	return CheckResult{
+		Name:   def.Name,
+		Status: CheckPass,
+		Detail: fmt.Sprintf("%s series", count),
+	}
+}
+
+// extractInstantValue pulls the scalar value from an instant query sample.
+func extractInstantValue(s prometheus.Sample) string {
+	if len(s.Value) >= 2 {
+		if v, ok := s.Value[1].(string); ok {
+			// Try to format as integer if it's a whole number.
+			if f, err := strconv.ParseFloat(v, 64); err == nil && f == float64(int64(f)) {
+				return strconv.FormatInt(int64(f), 10)
+			}
+			return v
+		}
+	}
+	return "?"
 }
 
 // ---------------------------------------------------------------------------
