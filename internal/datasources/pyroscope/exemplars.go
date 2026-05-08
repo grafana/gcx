@@ -146,16 +146,8 @@ EXPR is the label selector (e.g. '{service_name="frontend"}').`,
 			} else {
 				cfgCtx = fullCfg.GetCurrentContext()
 			}
-			datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "pyroscope")
+			datasourceUID, _, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "pyroscope")
 			if err != nil {
-				return err
-			}
-
-			dsType, err := dsquery.GetDatasourceType(ctx, cfg, datasourceUID)
-			if err != nil {
-				return err
-			}
-			if err := dsquery.ValidateDatasourceType(dsType, "pyroscope"); err != nil {
 				return err
 			}
 
@@ -238,16 +230,8 @@ EXPR is the label selector (e.g. '{service_name="frontend"}').`,
 			} else {
 				cfgCtx = fullCfg.GetCurrentContext()
 			}
-			datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "pyroscope")
+			datasourceUID, _, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "pyroscope")
 			if err != nil {
-				return err
-			}
-
-			dsType, err := dsquery.GetDatasourceType(ctx, cfg, datasourceUID)
-			if err != nil {
-				return err
-			}
-			if err := dsquery.ValidateDatasourceType(dsType, "pyroscope"); err != nil {
 				return err
 			}
 
