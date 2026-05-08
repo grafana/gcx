@@ -9,7 +9,6 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/cloud"
-	"github.com/grafana/gcx/internal/config"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
@@ -317,12 +316,12 @@ changes with the user and prefer --dry-run first.`,
 // ---------------------------------------------------------------------------
 
 type deleteOpts struct {
-	Yes    bool
+	Force  bool
 	DryRun bool
 }
 
 func (o *deleteOpts) setup(flags *pflag.FlagSet) {
-	flags.BoolVarP(&o.Yes, "yes", "y", false, "Skip confirmation prompt")
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Preview the operation without executing it")
 }
 
@@ -352,22 +351,8 @@ IRREVERSIBLE. Always confirm with the user by name before executing. Prefer
 				return nil
 			}
 
-			cliOpts, err := config.LoadCLIOptions()
-			if err != nil {
+			if err := confirmStackDelete(cmd, slug, opts.Force); err != nil {
 				return err
-			}
-
-			if !opts.Yes && !cliOpts.AutoApprove {
-				fmt.Fprintf(cmd.OutOrStdout(),
-					"WARNING: This will permanently delete stack %q and ALL its data.\n"+
-						"Type the stack slug to confirm: ", slug)
-
-				scanner := bufio.NewScanner(cmd.InOrStdin())
-				scanner.Scan()
-				confirmation := strings.TrimSpace(scanner.Text())
-				if confirmation != slug {
-					return fmt.Errorf("confirmation did not match: expected %q, got %q", slug, confirmation)
-				}
 			}
 
 			ctx := cmd.Context()
@@ -386,6 +371,37 @@ IRREVERSIBLE. Always confirm with the user by name before executing. Prefer
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// confirmStackDelete handles the slug-typing confirmation for stack deletion.
+// Unlike other destructive commands that use providers.ConfirmDestructive with
+// a simple y/N prompt, stack deletion requires typing the slug name because
+// the operation is irreversible and destroys all data.
+//
+// The bypass chain (--force, AutoApprove, agent mode guard) is delegated to
+// providers.CheckDestructiveBypass so it stays in sync with ConfirmDestructive.
+func confirmStackDelete(cmd *cobra.Command, slug string, force bool) error {
+	bypass, err := providers.CheckDestructiveBypass(force)
+	if err != nil {
+		return err
+	}
+	if bypass {
+		return nil
+	}
+
+	fmt.Fprintf(cmd.ErrOrStderr(),
+		"WARNING: This will permanently delete stack %q and ALL its data.\n"+
+			"Type the stack slug to confirm: ", slug)
+
+	scanner := bufio.NewScanner(cmd.InOrStdin())
+	scanner.Scan()
+
+	confirmation := strings.TrimSpace(scanner.Text())
+	if confirmation != slug {
+		return fmt.Errorf("confirmation did not match: expected %q, got %q", slug, confirmation)
+	}
+
+	return nil
 }
 
 // ---------------------------------------------------------------------------
