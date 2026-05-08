@@ -109,17 +109,26 @@ Observability-as-code workflows for managing Grafana resources as typed Go code 
 
 The linter engine is also used by `gcx resources validate` for pre-push validation. See [VISION.md § Observability as Code](VISION.md#observability-as-code) for the full workflow vision.
 
-### 5. Setup & Instrumentation (`gcx setup`)
+### 5. Setup (`gcx setup`)
 
-Onboarding and declarative product configuration. Not a provider — standalone command area.
+Cross-product onboarding helpers. Not a provider — standalone command area.
 
-- **`setup status`** — Check connection, auth, and product availability
-- **`setup instrumentation discover`** — Discover instrumentable workloads via Fleet Management
-- **`setup instrumentation show/apply`** — View and apply instrumentation configs with optimistic lock comparison
+- **`setup status`** — Aggregated connection, auth, and product-availability snapshot
 
-Uses `internal/fleet/` (shared fleet base client) and `internal/setup/instrumentation/` (manifest types, instrumentation client). The fleet base client is shared between the setup system and the fleet provider.
+The instrumentation onboarding wizard lives under the Instrumentation Hub provider (`gcx instrumentation setup`), not under `gcx setup`. See ADR-018 for the rationale.
 
-### 6. Configuration
+### 6. Instrumentation Hub (`gcx instrumentation`)
+
+Action-verb command tree for Grafana Cloud's Instrumentation Hub. Backed by fleet-management `Set/Get` + observed-state RPCs; registers no GVK and is not addressable through `gcx resources push/pull`.
+
+- **`instrumentation setup <cluster>`** — End-to-end onboarding wizard; calls `SetupK8sDiscovery`, applies declared K8s monitoring config, prints a parameterized helm command
+- **`instrumentation status`** — Cross-cutting observed view across cluster → namespace → service hierarchy
+- **`instrumentation clusters [list|get|configure|remove|wait]`** + nested **`apps`** — Declared-state read/write with tri-state flag semantics on `configure` and a per-namespace optimistic-lock guard
+- **`instrumentation services [list|get|include|exclude|clear]`** — Observed-state fleet sweep via `RunK8sDiscovery` with DWIM single-workload mutation
+
+Uses `internal/providers/instrumentation/` (provider, types, output codecs, RMW helper, helm formatter, enumeration helper) and `internal/fleet/` (shared base HTTP client, also used by the fleet provider). See ADR-018 for the design.
+
+### 7. Configuration
 
 kubectl-inspired context-based multi-environment configuration.
 
@@ -142,7 +151,7 @@ contexts:
 
 **Deep-dive:** [config-system.md](docs/architecture/config-system.md).
 
-### 7. Authentication
+### 8. Authentication
 
 Multiple auth mechanisms for different tiers.
 
@@ -175,10 +184,11 @@ Multiple auth mechanisms for different tiers.
 | [011](docs/adrs/adaptive-provider/001-cli-ux-and-resource-adapter-design.md) | Adaptive telemetry provider: CLI UX, adapter scope, verb naming | proposed |
 | [012](docs/adrs/migrate-provider-rewrite/002-five-phase-pipeline-redesign.md) | Five-phase pipeline redesign for /migrate-provider | accepted |
 | [013](docs/adrs/appo11y-provider/001-cli-ux-and-resource-adapter-design.md) | App O11y provider: singleton TypedCRUD, ETag-as-annotation, verb naming | accepted |
-| [014](docs/adrs/instrumentation/001-instrumentation-provider-design.md) | Declarative Instrumentation Setup under `gcx setup` | proposed |
+| [014](docs/adrs/instrumentation/001-instrumentation-provider-design.md) | Declarative Instrumentation Setup under `gcx setup` | superseded by [018] |
 | [015](docs/adrs/faro-provider/001-faro-provider-design.md) | Faro provider: CLI UX, TypedCRUD adapter, sourcemaps as sub-resource verbs | proposed |
 | [016](docs/adrs/dashboards-provider/001-dashboards-provider-design.md) | Dashboards provider: CRUD shorthands, search, and version history | accepted |
 | [017](docs/adrs/traces-get-table/001-tree-table-render-for-traces-get.md) | Tree-table rendering for `traces get` | accepted |
+| [018](docs/adrs/instrumentation/002-cli-redesign.md) | `gcx instrumentation` CLI redesign: action verbs over Set/Get + observed state | accepted |
 
 See [docs/adrs/](docs/adrs/) for all ADRs.
 
