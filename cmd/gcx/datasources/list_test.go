@@ -68,7 +68,7 @@ func TestListDefaultReturnsAllDatasources(t *testing.T) {
 	defer server.Close()
 
 	configFile := newConfigFileForServer(t, server.URL)
-	stdout, err := executeDatasourceCommand(t, []string{"datasources", "list", "--config", configFile, "-o", "json"})
+	stdout, err := executeDatasourceCommand(t, []string{"datasources", "list", "--config", configFile, "--limit", "0", "-o", "json"})
 	require.NoError(t, err)
 
 	var result struct {
