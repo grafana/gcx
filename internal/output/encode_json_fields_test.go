@@ -106,6 +106,7 @@ func TestEncode_JSONFields_UnstructuredList(t *testing.T) {
 
 func TestEncode_JSONFields_ArbitrarySlice(t *testing.T) {
 	// Simulates provider commands that pass []SomeStruct to Encode.
+	// Slices must be encoded as a JSON array [...], not {"items":[...]} (C.3b).
 	type item struct {
 		Name   string `json:"name"`
 		Status string `json:"status"`
@@ -122,20 +123,14 @@ func TestEncode_JSONFields_ArbitrarySlice(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, opts.Encode(&buf, value))
 
-	var got map[string]any
-	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
+	var got []map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &got),
+		"slice input should produce a JSON array [...], not {\"items\":[...]}; got: %s", buf.String())
+	require.Len(t, got, 2)
 
-	rawItems, ok := got["items"]
-	require.True(t, ok, "slice input should produce {\"items\": [...]}")
-	items, ok := rawItems.([]any)
-	require.True(t, ok)
-	require.Len(t, items, 2)
-
-	first, ok := items[0].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, "slo-1", first["name"])
-	assert.NotContains(t, first, "status")
-	assert.NotContains(t, first, "extra")
+	assert.Equal(t, "slo-1", got[0]["name"])
+	assert.NotContains(t, got[0], "status")
+	assert.NotContains(t, got[0], "extra")
 }
 
 func TestEncode_JSONDiscovery_PrintsFieldNames(t *testing.T) {
@@ -210,8 +205,8 @@ func TestEncode_NonJSONCodec_JSONFieldsIgnored(t *testing.T) {
 }
 
 func TestFieldSelectCodec_SliceOfUnstructured(t *testing.T) {
-	// Directly tests FieldSelectCodec.Encode with []unstructured.Unstructured
-	// (the secondary bug from the spec).
+	// Directly tests FieldSelectCodec.Encode with []unstructured.Unstructured.
+	// Plain Go slices must be encoded as a JSON array [...] not {"items":[...]} (C.3b).
 	codec := cmdio.NewFieldSelectCodec([]string{"name"})
 
 	value := []unstructured.Unstructured{
@@ -222,16 +217,10 @@ func TestFieldSelectCodec_SliceOfUnstructured(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, codec.Encode(&buf, value))
 
-	var got map[string]any
-	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
-
-	rawItems, ok := got["items"]
-	require.True(t, ok, "expected items wrapper for slice input")
-	items, ok := rawItems.([]any)
-	require.True(t, ok)
-	require.Len(t, items, 2)
-	firstItem, ok := items[0].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, "a", firstItem["name"])
-	assert.NotContains(t, firstItem, "kind")
+	var got []map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &got),
+		"slice input must produce a JSON array [...], not {\"items\":[...]}; got: %s", buf.String())
+	require.Len(t, got, 2)
+	assert.Equal(t, "a", got[0]["name"])
+	assert.NotContains(t, got[0], "kind")
 }

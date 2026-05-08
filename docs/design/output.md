@@ -174,7 +174,16 @@ Verbose opt-in (`-v` or `-o wide`) adds a `"succeeded"` array for audit.
 
 ---
 
-## 13. Pull Format Consistency
+## 13. Agent-Mode Output Contract
+
+When agent mode is active:
+1. No Unicode TUI box characters in any string field of JSON output.
+2. Non-format presentation properties (color, truncation, charset) suppressed across all formats.
+3. `--json ?` and `--json list` are both valid sentinels for field discovery; both force OutputFormat to `json` so the discovery path is reached even for table-default commands.
+
+---
+
+## 14. Pull Format Consistency
 
 `pull` accepts a `--format` flag (values: `yaml`, `json`; default: `yaml`)
 that enforces consistent file format on disk. All pulled files use the

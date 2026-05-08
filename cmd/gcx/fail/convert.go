@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/datasources"
+	ifail "github.com/grafana/gcx/internal/fail"
 	"github.com/grafana/gcx/internal/grafana"
 	"github.com/grafana/gcx/internal/linter"
 	"github.com/grafana/gcx/internal/login"
@@ -233,7 +234,7 @@ func convertQueryErrors(err error) (*DetailedError, bool) {
 		Details:     joinErrorDetails(wrappedTypedErrorContext(err, apiErr), queryErrorDetails(apiErr)),
 		Suggestions: queryErrorSuggestions(apiErr),
 	}
-	if sameRenderedMessage(detailedErr.Details, detailedErr.Summary) {
+	if ifail.SameRenderedMessage(detailedErr.Details, detailedErr.Summary) {
 		detailedErr.Details = ""
 	}
 
@@ -438,7 +439,7 @@ func convertDatasourceErrors(err error) (*DetailedError, bool) {
 		Details:     joinErrorDetails(wrappedTypedErrorContext(err, apiErr), strings.TrimSpace(apiErr.APIUserMessage())),
 		Suggestions: datasourceErrorSuggestions(apiErr),
 	}
-	if sameRenderedMessage(detailedErr.Details, detailedErr.Summary) {
+	if ifail.SameRenderedMessage(detailedErr.Details, detailedErr.Summary) {
 		detailedErr.Details = ""
 	}
 	if apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden {
@@ -508,7 +509,7 @@ func convertServiceAPIErrors(err error) (*DetailedError, bool) {
 		Details:     joinErrorDetails(wrappedTypedErrorContext(err, apiErr), strings.TrimSpace(apiErr.APIUserMessage())),
 		Suggestions: serviceAPIErrorSuggestions(apiErr),
 	}
-	if sameRenderedMessage(detailedErr.Details, detailedErr.Summary) {
+	if ifail.SameRenderedMessage(detailedErr.Details, detailedErr.Summary) {
 		detailedErr.Details = ""
 	}
 	if code := apiErr.HTTPStatusCode(); code == http.StatusUnauthorized || code == http.StatusForbidden {
@@ -622,7 +623,7 @@ func joinErrorDetails(parts ...string) string {
 		if part == "" {
 			continue
 		}
-		if len(joined) > 0 && sameRenderedMessage(joined[len(joined)-1], part) {
+		if len(joined) > 0 && ifail.SameRenderedMessage(joined[len(joined)-1], part) {
 			continue
 		}
 		joined = append(joined, part)

@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/grafana/gcx/internal/fail"
 	"github.com/grafana/gcx/internal/providers/fleet"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -296,18 +296,22 @@ func TestIsManagedPipeline(t *testing.T) {
 
 func TestPipelineProtectionGuard(t *testing.T) {
 	tests := []struct {
-		name            string
-		pipelineName    string
-		force           bool
-		wantErr         bool
-		wantErrContains string
+		name               string
+		pipelineName       string
+		force              bool
+		wantErr            bool
+		wantErrContains    string
+		wantErrNotContains string
+		wantDetailedError  bool
 	}{
 		{
-			name:            "blocks managed pipeline without force",
-			pipelineName:    "beyla_k8s_appo11y_prod-1",
-			force:           false,
-			wantErr:         true,
-			wantErrContains: "gcx setup instrumentation apply",
+			name:               "blocks managed pipeline without force",
+			pipelineName:       "beyla_k8s_appo11y_prod-1",
+			force:              false,
+			wantErr:            true,
+			wantErrContains:    "gcx instrumentation clusters apps remove",
+			wantErrNotContains: "apps clear",
+			wantDetailedError:  true,
 		},
 		{
 			name:         "allows managed pipeline with force",
@@ -344,15 +348,28 @@ func TestPipelineProtectionGuard(t *testing.T) {
 			// Apply the same guard logic as the commands.
 			var guardErr error
 			if !tt.force && fleet.IsManagedPipeline(pipeline.Name) {
-				guardErr = fmt.Errorf("pipeline %q is managed by Grafana Cloud instrumentation; use 'gcx setup instrumentation apply' to modify instrumentation config, or pass --force to override", pipeline.Name)
+				guardErr = fleet.ErrPipelineManagedByInstrumentationForTest(pipeline.Name)
 			}
 
 			if tt.wantErr {
 				require.Error(t, guardErr)
 				assert.Contains(t, guardErr.Error(), tt.wantErrContains)
 				assert.Contains(t, guardErr.Error(), pipeline.Name)
+				if tt.wantErrNotContains != "" {
+					assert.NotContains(t, guardErr.Error(), tt.wantErrNotContains)
+				}
 			} else {
 				require.NoError(t, guardErr)
+			}
+			if tt.wantDetailedError {
+				var de *fail.DetailedError
+				require.ErrorAs(t, guardErr, &de, "expected guardErr to be a *fail.DetailedError")
+				assert.NotEmpty(t, de.Summary, "Summary must not be empty")
+				assert.NotEmpty(t, de.Details, "Details must not be empty")
+				assert.NotEmpty(t, de.Suggestions, "Suggestions must contain at least one entry")
+				for _, s := range de.Suggestions {
+					assert.NotContains(t, s, "apps clear", "suggestion references non-existent 'apps clear' command")
+				}
 			}
 		})
 	}

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/fatih/color"
-	"github.com/grafana/gcx/cmd/gcx/fail"
+	"github.com/grafana/gcx/internal/fail"
 	"github.com/stretchr/testify/assert"
 )
 

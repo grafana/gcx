@@ -866,11 +866,7 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 			}
 			results = adapter.TruncateSlice(results, listOpts.Limit)
 			if listOpts.Limit > 0 && int64(len(results)) >= listOpts.Limit {
-				w := listOpts.IO.ErrWriter
-				if w == nil {
-					w = os.Stderr
-				}
-				fmt.Fprintf(w, "hint: --limit of %d reached — results may be truncated; raise --limit or pass --limit 0 for all\n", listOpts.Limit)
+				fmt.Fprintf(os.Stderr, "hint: --limit of %d reached — results may be truncated; raise --limit or pass --limit 0 for all\n", listOpts.Limit)
 			}
 			return listOpts.IO.Encode(cmd.OutOrStdout(), results)
 		},
