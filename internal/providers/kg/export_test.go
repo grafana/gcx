@@ -24,3 +24,8 @@ func FilterBySeverity(results []SearchResult, sev string) []SearchResult {
 //
 //nolint:gochecknoglobals // Test-only export alias.
 var BuildInsightSearchRequest = buildInsightSearchRequest
+
+// RunDiagnose wraps the unexported runDiagnose function for testing.
+func RunDiagnose(ctx context.Context, client *Client, scope *ScopeFlags) DiagnoseResult {
+	return runDiagnose(ctx, client, scope)
+}

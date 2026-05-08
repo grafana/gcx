@@ -52,6 +52,7 @@ func (p *KGProvider) Commands() []*cobra.Command {
 		newDescribeCommand(loader),
 		// High-level
 		newSummaryCommand(loader),
+		newDiagnoseCommand(loader),
 		newOpenCommand(loader),
 	)
 
