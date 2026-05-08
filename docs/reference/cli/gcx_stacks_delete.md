@@ -19,8 +19,8 @@ gcx stacks delete <stack-slug> [flags]
 
 ```
       --dry-run   Preview the operation without executing it
+      --force     Skip confirmation prompt
   -h, --help      help for delete
-  -y, --yes       Skip confirmation prompt
 ```
 
 ### Options inherited from parent commands
