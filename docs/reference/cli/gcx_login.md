@@ -40,6 +40,7 @@ gcx login [CONTEXT_NAME] [flags]
   -h, --help                      help for login
       --json string               Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --oauth-callback-port int   Fixed local port for the OAuth callback server (default: auto-pick from 54321-54399). Useful when only specific ports are forwarded between a remote host and your browser
+      --org-id int                Grafana organization ID (defaults to 1 for on-prem)
   -o, --output string             Output format. One of: agents, json, text, yaml (default "text")
       --server string             Grafana server URL (e.g. https://my-stack.grafana.net)
       --token string              Grafana service account token
