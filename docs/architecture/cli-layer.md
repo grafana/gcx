@@ -672,6 +672,10 @@ Commands can return a `DetailedError` directly from `RunE`. Business logic layer
 ErrorToDetailedError(err)
     │
     ├─ errors.As(err, &DetailedError{}) → return as-is if already detailed
+    ├─ convertWaitTimeoutEmitted → ErrWaitTimeoutEmitted sentinel (suppress secondary output)
+    ├─ convertUnknownFieldSelectionErrors → UnknownFieldSelectionError (--json unknown field)
+    ├─ convertPartialFailureErrors → PartialFailureError (exit 4)
+    ├─ convertUsageErrors    → UsageError (exit 2)
     ├─ convertConfigErrors   → ValidationError, UnmarshalError, ErrContextNotFound
     ├─ convertFSErrors       → fs.PathError (not exist, invalid, permission)
     ├─ convertResourcesErrors → InvalidSelectorError

@@ -12,9 +12,9 @@
 |------|----------|---------|------|
 | 0 | `ExitSuccess` | Success | Command completed without errors |
 | 1 | `ExitGeneralError` | General error | Unexpected error, business logic failure |
-| 2 | `ExitUsageError` | Usage error | Bad flags, invalid selectors, missing args `[RESERVED]` |
+| 2 | `ExitUsageError` | Usage error | Bad flags, invalid selectors, missing args |
 | 3 | `ExitAuthFailure` | Auth failure | 401/403, missing or invalid credentials |
-| 4 | `ExitPartialFailure` | Partial failure | Some resources succeeded, others failed `[RESERVED]` |
+| 4 | `ExitPartialFailure` | Partial failure | Some resources succeeded, others failed |
 | 5 | `ExitCancelled` | Cancelled | User pressed Ctrl+C (SIGINT) or `context.Canceled` |
 | 6 | `ExitVersionIncompatible` | Version incompatible | Grafana version < 12 detected |
 
