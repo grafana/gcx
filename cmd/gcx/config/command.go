@@ -413,7 +413,7 @@ func checkContext(cmd *cobra.Command, cfg config.Config, gCtx *config.Context, s
 	}
 	cmdio.Info(stdout, "Auth method: %s", authMethod)
 
-	isCloud := gCtx.ResolveStackSlug() != ""
+	isCloud := gCtx.IsCloud()
 	contextType := "On-prem"
 	if isCloud {
 		contextType = "Grafana Cloud"

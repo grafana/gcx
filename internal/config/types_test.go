@@ -316,6 +316,93 @@ func TestContext_ResolveStackSlug(t *testing.T) {
 	}
 }
 
+func TestContext_IsCloud(t *testing.T) {
+	cases := []struct {
+		name string
+		ctx  config.Context
+		want bool
+	}{
+		{
+			name: "explicit cloud.stack",
+			ctx:  config.Context{Cloud: &config.CloudConfig{Stack: "mystack"}},
+			want: true,
+		},
+		{
+			name: "grafana.stack-id non-zero",
+			ctx:  config.Context{Grafana: &config.GrafanaConfig{Server: "https://grafana.mycompany.com", StackID: 12345}},
+			want: true,
+		},
+		{
+			name: "grafana.net stack URL",
+			ctx:  config.Context{Grafana: &config.GrafanaConfig{Server: "https://mystack.grafana.net"}},
+			want: true,
+		},
+		{
+			name: "grafana-dev.net stack URL",
+			ctx:  config.Context{Grafana: &config.GrafanaConfig{Server: "https://mystack.grafana-dev.net"}},
+			want: true,
+		},
+		{
+			name: "grafana-ops.net stack URL",
+			ctx:  config.Context{Grafana: &config.GrafanaConfig{Server: "https://mystack.grafana-ops.net"}},
+			want: true,
+		},
+		{
+			name: "grafana.com host (demokit-style)",
+			ctx:  config.Context{Grafana: &config.GrafanaConfig{Server: "https://emea.cloud.demokit.grafana.com"}},
+			want: true,
+		},
+		{
+			name: "grafana-dev.com host",
+			ctx:  config.Context{Grafana: &config.GrafanaConfig{Server: "https://mystack.grafana-dev.com"}},
+			want: true,
+		},
+		{
+			name: "grafana-ops.com host",
+			ctx:  config.Context{Grafana: &config.GrafanaConfig{Server: "https://mystack.grafana-ops.com"}},
+			want: true,
+		},
+		{
+			name: "mixed-case grafana.com host",
+			ctx:  config.Context{Grafana: &config.GrafanaConfig{Server: "https://MyStack.Grafana.Com"}},
+			want: true,
+		},
+		{
+			name: "on-prem custom domain",
+			ctx:  config.Context{Grafana: &config.GrafanaConfig{Server: "https://grafana.mycompany.com"}},
+			want: false,
+		},
+		{
+			name: "bare grafana.com is not a subdomain",
+			ctx:  config.Context{Grafana: &config.GrafanaConfig{Server: "https://grafana.com"}},
+			want: false,
+		},
+		{
+			name: "no grafana config",
+			ctx:  config.Context{},
+			want: false,
+		},
+		{
+			name: "empty server URL",
+			ctx:  config.Context{Grafana: &config.GrafanaConfig{Server: ""}},
+			want: false,
+		},
+		{
+			name: "malformed server URL",
+			ctx:  config.Context{Grafana: &config.GrafanaConfig{Server: "://bad-url"}},
+			want: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.ctx.IsCloud(); got != tc.want {
+				t.Fatalf("IsCloud() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestContextNameFromServerURL(t *testing.T) {
 	testCases := []struct {
 		name     string

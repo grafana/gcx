@@ -118,6 +118,32 @@ func (context *Context) ToRESTConfig(ctx context.Context) (NamespacedRESTConfig,
 	return NewNamespacedRESTConfig(ctx, *context)
 }
 
+// IsCloud reports whether this context targets Grafana Cloud.
+// Any one of the following signals is sufficient:
+//   - Cloud.Stack is explicitly set
+//   - Grafana.StackID is non-zero
+//   - Grafana.Server hostname belongs to a Grafana-run Cloud domain
+//     (*.grafana.net, *.grafana.com, and their -dev/-ops variants)
+func (context *Context) IsCloud() bool {
+	if context.Cloud != nil && context.Cloud.Stack != "" {
+		return true
+	}
+	if context.Grafana == nil {
+		return false
+	}
+	if context.Grafana.StackID != 0 {
+		return true
+	}
+	if context.Grafana.Server == "" {
+		return false
+	}
+	parsed, err := url.Parse(context.Grafana.Server)
+	if err != nil {
+		return false
+	}
+	return IsGrafanaCloudHost(strings.ToLower(parsed.Hostname()))
+}
+
 // ResolveStackSlug returns the Grafana Cloud stack slug for this context.
 // It checks Cloud.Stack first; if not set, attempts to derive the slug from
 // Grafana.Server by extracting the subdomain from *.grafana.net or *.grafana-dev.net URLs.
