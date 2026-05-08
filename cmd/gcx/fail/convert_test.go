@@ -851,6 +851,28 @@ func TestErrorToDetailedError_WaitTimeoutEmittedBeforeOtherConverters(t *testing
 		"sentinel converter must fire before generic converters — expected nil, not %+v", got)
 }
 
+func TestErrorToDetailedError_MutuallyExclusiveFlagsSentinel(t *testing.T) {
+	// Wrapping the typed sentinel must produce the "Invalid command usage"
+	// envelope with the wrapped message as details. A bare error whose text
+	// happens to contain "mutually exclusive" must NOT match — only the typed
+	// sentinel triggers this converter.
+	wrapped := fmt.Errorf("--costmetrics and --no-costmetrics: %w", instrumentation.ErrMutuallyExclusiveFlags)
+
+	got := fail.ErrorToDetailedError(wrapped)
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Invalid command usage", got.Summary)
+	assert.Contains(t, got.Details, "--costmetrics and --no-costmetrics")
+
+	// Bare string must fall through to the generic fallback (no Suggestions,
+	// no typed-error semantics).
+	bare := errors.New("--foo and --bar are mutually exclusive")
+	bareGot := fail.ErrorToDetailedError(bare)
+	require.NotNil(t, bareGot)
+	assert.NotEqual(t, "Invalid command usage", bareGot.Summary,
+		"converter must only match the typed sentinel, not arbitrary strings")
+}
+
 // TestErrorToDetailedError_UnknownFieldSelectionError verifies that
 // UnknownFieldSelectionError is converted to a DetailedError with:
 //   - Summary: "Invalid command usage"

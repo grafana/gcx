@@ -1069,18 +1069,19 @@ func convertFleetHTTPErrors(err error) (*DetailedError, bool) {
 	return nil, false
 }
 
-// convertInstrumentationMutualExclusiveErrors detects errors from setup's flag
-// Validate() when the user provides mutually exclusive flag pairs (e.g.
-// --costmetrics and --no-costmetrics). Returns summary "Invalid command usage".
+// convertInstrumentationMutualExclusiveErrors detects the
+// instrumentation.ErrMutuallyExclusiveFlags sentinel returned by command
+// Validate() when the user supplies mutually exclusive flag pairs (e.g.
+// --costmetrics and --no-costmetrics). Returns summary "Invalid command
+// usage" with the wrapped error's message as details.
 func convertInstrumentationMutualExclusiveErrors(err error) (*DetailedError, bool) {
-	msg := err.Error()
-	if strings.Contains(msg, "mutually exclusive") {
-		return &DetailedError{
-			Summary: "Invalid command usage",
-			Details: msg,
-		}, true
+	if !errors.Is(err, instrumentation.ErrMutuallyExclusiveFlags) {
+		return nil, false
 	}
-	return nil, false
+	return &DetailedError{
+		Summary: "Invalid command usage",
+		Details: err.Error(),
+	}, true
 }
 
 // convertInstrumentationErrors converts RMW ConflictErrors from the
