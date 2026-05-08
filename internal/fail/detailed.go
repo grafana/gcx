@@ -76,7 +76,7 @@ func (e DetailedError) Error() string {
 	if e.Parent != nil {
 		// Will pretty-print YAML-related errors and leave the other ones as-is.
 		formattedParent = yaml.FormatError(e.Parent, !color.NoColor, true)
-		showParent = !sameRenderedMessage(e.Details, formattedParent)
+		showParent = !SameRenderedMessage(e.Details, formattedParent)
 	}
 
 	if showParent {
@@ -103,7 +103,9 @@ func (e DetailedError) Error() string {
 	return buffer.String()
 }
 
-func sameRenderedMessage(details string, parent string) bool {
+// SameRenderedMessage reports whether details and parent render the same
+// message, used to suppress redundant output in error formatting.
+func SameRenderedMessage(details string, parent string) bool {
 	normalize := func(s string) string {
 		s = strings.ReplaceAll(s, "\r\n", "\n")
 		return strings.TrimSpace(s)
