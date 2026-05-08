@@ -39,6 +39,12 @@ type configureOpts struct {
 	nodeLogs      bool
 }
 
+// Validate of the mutually-exclusive-mode and --yes-required-for-defaults rules
+// requires inspecting flags.Changed(), which depends on the *cobra.Command
+// instance. Those checks live in runConfigure where the command is in scope.
+// Keeping Validate as a no-op here satisfies the canonical opts pattern.
+func (o *configureOpts) Validate() error { return nil }
+
 func (o *configureOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.useDefaults, "use-defaults", false,
 		"Apply canonical defaults (costMetrics=true, clusterEvents=true, energyMetrics=false, nodeLogs=false). Requires --yes.")
@@ -82,6 +88,9 @@ Combining --use-defaults with any --<feat> flag is an error.`,
   # Disable node logs (RMW)
   gcx instrumentation clusters configure prod-eu --node-logs=false`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
 			ctx := cmd.Context()
 			clusterName := args[0]
 			r, err := fleet.LoadClientWithStack(ctx, loader)
