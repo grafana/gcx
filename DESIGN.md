@@ -134,7 +134,7 @@ See [docs/design/exit-codes.md](docs/design/exit-codes.md) for implementation wi
 
 - **Idempotent by default**: `push` is create-or-update. Safe to run repeatedly.
 - **Dry-run available**: `push` and `delete` accept `--dry-run`.
-- **Prompt before destructive ops**: `delete` prompts unless `--yes`/`-y` or `GCX_AUTO_APPROVE`.
+- **Prompt before destructive ops**: `delete` prompts unless `--force` or `GCX_AUTO_APPROVE`. Agent mode auto-approves.
 - **No prompt for reversible ops**: push, pull, config changes do not prompt.
 
 See [docs/design/safety.md](docs/design/safety.md) for implementation patterns and flag precedence.

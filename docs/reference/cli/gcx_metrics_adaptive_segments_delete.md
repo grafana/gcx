@@ -9,8 +9,8 @@ gcx metrics adaptive segments delete <id> [flags]
 ### Options
 
 ```
-  -h, --help   help for delete
-      --yes    Skip confirmation prompt
+      --force   Skip confirmation prompt
+  -h, --help    help for delete
 ```
 
 ### Options inherited from parent commands

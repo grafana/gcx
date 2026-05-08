@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
@@ -227,7 +228,7 @@ func newContactPointsDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			ok, err := confirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
+			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
 				"Delete contact point "+args[0]+"?")
 			if err != nil {
 				return err

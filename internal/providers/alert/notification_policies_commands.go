@@ -2,6 +2,7 @@ package alert
 
 import (
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -80,7 +81,7 @@ func newNotificationPoliciesSetCommand(loader GrafanaConfigLoader) *cobra.Comman
 			if err := readProvisioningInput(opts.File, cmd.InOrStdin(), &policy); err != nil {
 				return err
 			}
-			ok, err := confirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
+			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
 				"Replace notification policy tree? This overwrites the entire existing tree.")
 			if err != nil {
 				return err
@@ -123,7 +124,7 @@ func newNotificationPoliciesResetCommand(loader GrafanaConfigLoader) *cobra.Comm
 		Short: "Reset the notification policy tree to its default.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			ok, err := confirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
+			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
 				"Reset notification policy tree to default? This replaces the entire tree.")
 			if err != nil {
 				return err

@@ -9,9 +9,9 @@ gcx metrics adaptive exemptions delete <id> [flags]
 ### Options
 
 ```
+      --force            Skip confirmation prompt
   -h, --help             help for delete
       --segment string   Segment ID
-      --yes              Skip confirmation prompt
 ```
 
 ### Options inherited from parent commands
