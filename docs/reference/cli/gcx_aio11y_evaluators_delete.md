@@ -9,7 +9,7 @@ gcx aio11y evaluators delete ID... [flags]
 ### Options
 
 ```
-  -f, --force   Skip confirmation prompt
+      --force   Skip confirmation prompt
   -h, --help    help for delete
 ```
 

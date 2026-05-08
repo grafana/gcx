@@ -9,7 +9,7 @@ gcx synthetic-monitoring probes delete ID... [flags]
 ### Options
 
 ```
-  -f, --force   Skip confirmation prompt
+      --force   Skip confirmation prompt
   -h, --help    help for delete
 ```
 

@@ -1,7 +1,6 @@
 package collections
 
 import (
-	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -329,7 +328,7 @@ type deleteOpts struct {
 }
 
 func (o *deleteOpts) setup(flags *pflag.FlagSet) {
-	flags.BoolVarP(&o.Force, "force", "f", false, "Skip confirmation prompt")
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
 }
 
 func newDeleteCommand() *cobra.Command {
@@ -339,18 +338,13 @@ func newDeleteCommand() *cobra.Command {
 		Short: "Delete collections.",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if !opts.Force {
-				fmt.Fprintf(cmd.ErrOrStderr(), "Delete %d collection(s)? [y/N] ", len(args))
-				reader := bufio.NewReader(cmd.InOrStdin())
-				answer, err := reader.ReadString('\n')
-				if err != nil {
-					return fmt.Errorf("reading confirmation: %w", err)
-				}
-				answer = strings.TrimSpace(strings.ToLower(answer))
-				if answer != "y" && answer != "yes" {
-					cmdio.Info(cmd.ErrOrStderr(), "Aborted.")
-					return nil
-				}
+			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+				fmt.Sprintf("Delete %d collection(s)?", len(args)))
+			if err != nil {
+				return err
+			}
+			if !proceed {
+				return nil
 			}
 
 			ctx := cmd.Context()
