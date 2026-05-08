@@ -1399,6 +1399,12 @@ func discoverEntityScope(cmd *cobra.Command, client *Client, entityType, name st
 func newEntitiesInspectCommand(loader RESTConfigLoader) *cobra.Command {
 	var inspectScope scopeFlags
 	ioOpts := &inspectOpts{}
+	var (
+		insightCategories       []string
+		insightHideNoise        bool
+		insightHideOlderThan    time.Duration
+		insightHideChronicAbove int
+	)
 	cmd := &cobra.Command{
 		Use:   "inspect [Type--Name]",
 		Short: "Show detailed info, insights, and summary for a single entity, including a link to the RCA Workbench.",
@@ -1435,6 +1441,22 @@ func newEntitiesInspectCommand(loader RESTConfigLoader) *cobra.Command {
 				scope = discovered
 			}
 
+			hideOlderHours := 0
+			hideChronicPct := 0
+			if insightHideNoise {
+				hideOlderHours = 48
+				hideChronicPct = 90
+			}
+			if cmd.Flags().Changed("insight-hide-older-than") {
+				hideOlderHours = int(insightHideOlderThan.Hours())
+			}
+			if cmd.Flags().Changed("insight-hide-chronic-above") {
+				if insightHideChronicAbove < 0 || insightHideChronicAbove > 100 {
+					return fmt.Errorf("--insight-hide-chronic-above must be between 0 and 100, got %d", insightHideChronicAbove)
+				}
+				hideChronicPct = insightHideChronicAbove
+			}
+
 			llmReq := LLMSummaryRequest{
 				StartTime: startMs,
 				EndTime:   endMs,
@@ -1443,9 +1465,12 @@ func newEntitiesInspectCommand(loader RESTConfigLoader) *cobra.Command {
 					Name:  name,
 					Scope: toAnyMap(scope),
 				}},
-				SuggestionSrcEntities: []EntityKey{},
-				IncludeSuggestions:    true,
-				IncludeRcaPatterns:    false,
+				SuggestionSrcEntities:                         []EntityKey{},
+				AlertCategories:                               insightCategories,
+				HideAssertionsOlderThanNHours:                 hideOlderHours,
+				HideAssertionsPresentMoreThanPercentageOfTime: hideChronicPct,
+				IncludeSuggestions:                            true,
+				IncludeRcaPatterns:                            false,
 			}
 			result, err := client.LLMSummary(cmd.Context(), llmReq)
 			if err != nil {
@@ -1487,6 +1512,10 @@ func newEntitiesInspectCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd.Flags().Lookup("env").Usage = "Environment scope (run 'gcx kg meta scopes' to see valid values)"
 	cmd.Flags().Lookup("namespace").Usage = "Namespace scope (run 'gcx kg meta scopes' to see valid values)"
 	cmd.Flags().Lookup("site").Usage = "Site scope (run 'gcx kg meta scopes' to see valid values)"
+	cmd.Flags().StringSliceVar(&insightCategories, "insight-categories", nil, "Filter insights by category (comma-separated, e.g. saturation,anomaly,failure); empty = all categories")
+	cmd.Flags().BoolVar(&insightHideNoise, "insight-hide-noise", false, "Apply RCA Workbench noise filter: hide insights older than 48h or present >90% of the window")
+	cmd.Flags().DurationVar(&insightHideOlderThan, "insight-hide-older-than", 0, "Hide insights older than this duration (e.g. 24h); overrides --insight-hide-noise on this axis")
+	cmd.Flags().IntVar(&insightHideChronicAbove, "insight-hide-chronic-above", 0, "Hide insights present more than this percent of the window (0-100); overrides --insight-hide-noise on this axis")
 	ioOpts.setup(cmd.Flags())
 	return cmd
 }
