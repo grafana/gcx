@@ -190,6 +190,37 @@ func TestRequireGrafanaCloud(t *testing.T) {
 			},
 		},
 		{
+			name: "grafana.com host (demokit-style)",
+			ctx: &config.Context{
+				Grafana: &config.GrafanaConfig{Server: "https://emea.cloud.demokit.grafana.com"},
+			},
+		},
+		{
+			name: "grafana-dev.com host",
+			ctx: &config.Context{
+				Grafana: &config.GrafanaConfig{Server: "https://mystack.grafana-dev.com"},
+			},
+		},
+		{
+			name: "grafana-ops.com host",
+			ctx: &config.Context{
+				Grafana: &config.GrafanaConfig{Server: "https://mystack.grafana-ops.com"},
+			},
+		},
+		{
+			name: "grafana.stack-id non-zero with custom domain",
+			ctx: &config.Context{
+				Grafana: &config.GrafanaConfig{Server: "https://grafana.example.com", StackID: 12345},
+			},
+		},
+		{
+			name: "bare grafana.com is not a subdomain",
+			ctx: &config.Context{
+				Grafana: &config.GrafanaConfig{Server: "https://grafana.com"},
+			},
+			wantErr: true,
+		},
+		{
 			name: "self-hosted instance",
 			ctx: &config.Context{
 				Grafana: &config.GrafanaConfig{Server: "https://grafana.example.com"},

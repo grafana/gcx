@@ -29,7 +29,7 @@ func requireGrafanaCloud(ctx *config.Context) error {
 	if ctx.Grafana == nil || ctx.Grafana.Server == "" {
 		return nil
 	}
-	if ctx.ResolveStackSlug() == "" {
+	if !ctx.IsCloud() {
 		return fail.DetailedError{
 			Summary: "Unsupported command",
 			Details: "Due to technical limitations of how gcx interacts with Grafana Assistant, " +
