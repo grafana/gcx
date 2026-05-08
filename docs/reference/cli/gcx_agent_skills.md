@@ -1,4 +1,4 @@
-## gcx skills
+## gcx agent skills
 
 Manage portable gcx Agent Skills
 
@@ -25,9 +25,9 @@ Install the canonical portable gcx Agent Skills bundle for .agents-compatible ag
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
-* [gcx skills install](gcx_skills_install.md)	 - Install bundled gcx skills into ~/.agents/skills
-* [gcx skills list](gcx_skills_list.md)	 - List skills bundled with the gcx binary
-* [gcx skills uninstall](gcx_skills_uninstall.md)	 - Uninstall gcx-managed skills from ~/.agents/skills
-* [gcx skills update](gcx_skills_update.md)	 - Update installed gcx skills in ~/.agents/skills
+* [gcx agent](gcx_agent.md)	 - Agent mode utilities
+* [gcx agent skills install](gcx_agent_skills_install.md)	 - Install bundled gcx skills into ~/.agents/skills
+* [gcx agent skills list](gcx_agent_skills_list.md)	 - List skills bundled with the gcx binary
+* [gcx agent skills uninstall](gcx_agent_skills_uninstall.md)	 - Uninstall gcx-managed skills from ~/.agents/skills
+* [gcx agent skills update](gcx_agent_skills_update.md)	 - Update installed gcx skills in ~/.agents/skills
 

@@ -6,7 +6,7 @@ import (
 	skillops "github.com/grafana/gcx/internal/skills"
 )
 
-const skillsUpdateCommand = "gcx skills update"
+const skillsUpdateCommand = "gcx agent skills update"
 
 // SkillsUpdateMessage returns a human-facing notification message when the
 // installed skills differ from the bundled skills in the current gcx binary.

@@ -1,4 +1,4 @@
-## gcx skills update
+## gcx agent skills update
 
 Update installed gcx skills in ~/.agents/skills
 
@@ -7,15 +7,15 @@ Update installed gcx skills in ~/.agents/skills
 Update gcx-managed skills in a user-level .agents skills directory. With no skill names, gcx updates only bundled skills that are already installed locally.
 
 ```
-gcx skills update [SKILL]... [flags]
+gcx agent skills update [SKILL]... [flags]
 ```
 
 ### Examples
 
 ```
-  gcx skills update
-  gcx skills update --dry-run
-  gcx skills update setup-gcx explore-datasources
+  gcx agent skills update
+  gcx agent skills update --dry-run
+  gcx agent skills update setup-gcx explore-datasources
 ```
 
 ### Options
@@ -41,5 +41,5 @@ gcx skills update [SKILL]... [flags]
 
 ### SEE ALSO
 
-* [gcx skills](gcx_skills.md)	 - Manage portable gcx Agent Skills
+* [gcx agent skills](gcx_agent_skills.md)	 - Manage portable gcx Agent Skills
 

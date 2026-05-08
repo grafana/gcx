@@ -1,34 +1,29 @@
-## gcx skills uninstall
+## gcx agent skills list
 
-Uninstall gcx-managed skills from ~/.agents/skills
+List skills bundled with the gcx binary
 
 ### Synopsis
 
-Remove one or more gcx-managed skills from a user-level .agents skills directory. Only skills bundled with gcx can be uninstalled; non-gcx skills are never touched.
+List skills bundled with the gcx binary, including each skill's short description and install status.
 
 ```
-gcx skills uninstall [SKILL]... [flags]
+gcx agent skills list [flags]
 ```
 
 ### Examples
 
 ```
-  gcx skills uninstall setup-gcx
-  gcx skills uninstall setup-gcx debug-with-grafana
-  gcx skills uninstall --all --yes
-  gcx skills uninstall --all --yes --dry-run
+  gcx agent skills list
+  gcx agent skills list -o json
 ```
 
 ### Options
 
 ```
-      --all             Uninstall all gcx-managed skills
-      --dir string      Root directory for the .agents installation (default "~/.agents")
-      --dry-run         Preview the uninstall without removing files
-  -h, --help            help for uninstall
+      --dir string      Root directory for the .agents installation (used to check installed status) (default "~/.agents")
+  -h, --help            help for list
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
-  -y, --yes             Auto-approve uninstalling all skills
 ```
 
 ### Options inherited from parent commands
@@ -44,5 +39,5 @@ gcx skills uninstall [SKILL]... [flags]
 
 ### SEE ALSO
 
-* [gcx skills](gcx_skills.md)	 - Manage portable gcx Agent Skills
+* [gcx agent skills](gcx_agent_skills.md)	 - Manage portable gcx Agent Skills
 

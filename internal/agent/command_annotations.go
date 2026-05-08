@@ -91,10 +91,10 @@ var commandAnnotations = map[string]annotation{
 	"gcx setup instrumentation status":   {Cost: "small"},
 
 	// skills
-	"gcx skills install":   {Cost: "small"},
-	"gcx skills list":      {Cost: "small"},
-	"gcx skills update":    {Cost: "small"},
-	"gcx skills uninstall": {Cost: "small"},
+	"gcx agent skills install":   {Cost: "small"},
+	"gcx agent skills list":      {Cost: "small"},
+	"gcx agent skills update":    {Cost: "small"},
+	"gcx agent skills uninstall": {Cost: "small"},
 
 	// -----------------------------------------------------------------------
 	// Dashboards provider

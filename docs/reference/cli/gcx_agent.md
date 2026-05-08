@@ -4,7 +4,7 @@ Agent mode utilities
 
 ### Synopsis
 
-Utilities for gcx agent mode: manage spill files and other agent session housekeeping.
+Utilities for gcx agent mode: manage spill files, install and update Agent Skills, and other agent session housekeeping.
 
 ### Options
 
@@ -27,4 +27,5 @@ Utilities for gcx agent mode: manage spill files and other agent session houseke
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx agent prune](gcx_agent_prune.md)	 - Remove gcx agent spill files older than 30 minutes
+* [gcx agent skills](gcx_agent_skills.md)	 - Manage portable gcx Agent Skills
 

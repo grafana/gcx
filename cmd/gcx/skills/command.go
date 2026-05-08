@@ -82,11 +82,11 @@ func newInstallCommand(source fs.FS) *cobra.Command {
 		Use:   "install [SKILL]...",
 		Short: "Install bundled gcx skills into ~/.agents/skills",
 		Long:  "Install one or more bundled gcx Agent Skills into a user-level .agents directory for tools that follow the .agents skill convention. Use --all to install the entire bundle.",
-		Example: `  gcx skills install setup-gcx
-  gcx skills install setup-gcx debug-with-grafana explore-datasources
-  gcx skills install --all
-  gcx skills install --all --dry-run
-  gcx skills install setup-gcx --force`,
+		Example: `  gcx agent skills install setup-gcx
+  gcx agent skills install setup-gcx debug-with-grafana explore-datasources
+  gcx agent skills install --all
+  gcx agent skills install --all --dry-run
+  gcx agent skills install setup-gcx --force`,
 		Args: cobra.ArbitraryArgs,
 		ValidArgsFunction: func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 			names, err := skillops.BundledSkillNames(source)
@@ -220,9 +220,9 @@ func newUpdateCommand(source fs.FS) *cobra.Command {
 		Use:   "update [SKILL]...",
 		Short: "Update installed gcx skills in ~/.agents/skills",
 		Long:  "Update gcx-managed skills in a user-level .agents skills directory. With no skill names, gcx updates only bundled skills that are already installed locally.",
-		Example: `  gcx skills update
-  gcx skills update --dry-run
-  gcx skills update setup-gcx explore-datasources`,
+		Example: `  gcx agent skills update
+  gcx agent skills update --dry-run
+  gcx agent skills update setup-gcx explore-datasources`,
 		Args: cobra.ArbitraryArgs,
 		ValidArgsFunction: func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 			names, err := skillops.BundledSkillNames(source)
@@ -301,8 +301,8 @@ func newListCommand(source fs.FS) *cobra.Command {
 		Use:   "list",
 		Short: "List skills bundled with the gcx binary",
 		Long:  "List skills bundled with the gcx binary, including each skill's short description and install status.",
-		Example: `  gcx skills list
-  gcx skills list -o json`,
+		Example: `  gcx agent skills list
+  gcx agent skills list -o json`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
@@ -537,10 +537,10 @@ func newUninstallCommand(source fs.FS) *cobra.Command {
 		Use:   "uninstall [SKILL]...",
 		Short: "Uninstall gcx-managed skills from ~/.agents/skills",
 		Long:  "Remove one or more gcx-managed skills from a user-level .agents skills directory. Only skills bundled with gcx can be uninstalled; non-gcx skills are never touched.",
-		Example: `  gcx skills uninstall setup-gcx
-  gcx skills uninstall setup-gcx debug-with-grafana
-  gcx skills uninstall --all --yes
-  gcx skills uninstall --all --yes --dry-run`,
+		Example: `  gcx agent skills uninstall setup-gcx
+  gcx agent skills uninstall setup-gcx debug-with-grafana
+  gcx agent skills uninstall --all --yes
+  gcx agent skills uninstall --all --yes --dry-run`,
 		Args: cobra.ArbitraryArgs,
 		ValidArgsFunction: func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 			names, err := skillops.BundledSkillNames(source)
@@ -584,7 +584,7 @@ func newUninstallCommand(source fs.FS) *cobra.Command {
 			} else {
 				for _, name := range args {
 					if _, ok := bundledSet[name]; !ok {
-						return fmt.Errorf("unknown skill %q (use 'gcx skills list' to see gcx-managed skills)", name)
+						return fmt.Errorf("unknown skill %q (use 'gcx agent skills list' to see gcx-managed skills)", name)
 					}
 				}
 			}
