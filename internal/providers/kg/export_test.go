@@ -34,3 +34,8 @@ var BuildInsightSearchRequest = buildInsightSearchRequest
 func RunDiagnose(ctx context.Context, client *Client, scope *ScopeFlags, promClient *prometheus.Client, datasourceUID string) DiagnoseResult {
 	return runDiagnose(ctx, client, scope, promClient, datasourceUID)
 }
+
+// RunServiceDiagnose wraps the unexported runServiceDiagnose function for testing.
+func RunServiceDiagnose(ctx context.Context, client *Client, serviceName string, scope *ScopeFlags, promClient *prometheus.Client, datasourceUID string) ServiceDiagnoseResult {
+	return runServiceDiagnose(ctx, client, serviceName, scope, promClient, datasourceUID)
+}

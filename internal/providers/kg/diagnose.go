@@ -131,6 +131,54 @@ auto-discovery. If unavailable, metric checks are skipped.`,
 	opts.IO.DefaultFormat("text")
 	opts.IO.BindFlags(cmd.Flags())
 
+	// Subcommands.
+	cmd.AddCommand(newDiagnoseServiceCommand(loader))
+
+	return cmd
+}
+
+func newDiagnoseServiceCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &diagnoseOpts{}
+	cmd := &cobra.Command{
+		Use:   "service NAME",
+		Short: "Diagnose a specific service in the Knowledge Graph.",
+		Long: `Deep diagnosis for a specific service: entity lookup, relationship
+analysis, per-service recording rule checks, and interpreted diagnosis
+with suggested next steps.`,
+		Example: `  gcx kg diagnose service api-gateway
+  gcx kg diagnose service payment-service --env production
+  gcx kg diagnose service checkout --env production --namespace default -o json`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+			ctx := cmd.Context()
+			cfg, err := loader.LoadGrafanaConfig(ctx)
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+
+			promClient, datasourceUID := resolvePromClient(ctx, loader, cfg, opts.Datasource, cmd)
+
+			result := runServiceDiagnose(ctx, client, args[0], &opts.Scope, promClient, datasourceUID)
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
+		},
+	}
+
+	cmd.Flags().StringVar(&opts.Scope.env, "env", "", "Environment scope")
+	cmd.Flags().StringVar(&opts.Scope.namespace, "namespace", "", "Namespace scope")
+	cmd.Flags().StringVar(&opts.Scope.site, "site", "", "Site scope")
+	cmd.Flags().StringVarP(&opts.Datasource, "datasource", "d", "", "Prometheus datasource UID (auto-discovered if omitted)")
+
+	opts.IO.RegisterCustomCodec("text", &ServiceDiagnoseTextCodec{})
+	opts.IO.DefaultFormat("text")
+	opts.IO.BindFlags(cmd.Flags())
+
 	return cmd
 }
 

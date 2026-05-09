@@ -417,3 +417,167 @@ func TestRunDiagnose_NilPromClientSkipsMetrics(t *testing.T) {
 	}
 	assert.Equal(t, 6, result.Summary.Total, "should only have 6 KG checks")
 }
+
+// ---------------------------------------------------------------------------
+// Service diagnosis tests
+// ---------------------------------------------------------------------------
+
+// cypherHandler returns an HTTP handler that responds to Cypher search requests
+// with the given entities and edges.
+func cypherHandler(entities []kg.CypherEntity, edges []kg.CypherEdge) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		if entities == nil {
+			entities = []kg.CypherEntity{}
+		}
+		if edges == nil {
+			edges = []kg.CypherEdge{}
+		}
+		writeJSON(w, kg.CypherSearchResponse{
+			Entities: entities,
+			Edges:    edges,
+			LastPage: true,
+		})
+	}
+}
+
+func TestServiceDiagnose_HealthyService(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/search/cypher" {
+			cypherHandler(
+				[]kg.CypherEntity{
+					{Type: "Service", Name: "api-service", Scope: map[string]any{"env": "prod", "namespace": "default"}, Properties: map[string]any{"_entity_source_10": "target_info_k8s", "otel_service": "api-service", "service": "api-service", "job": "default/api-service"}},
+					{Type: "Service", Name: "checkout", Scope: map[string]any{"env": "prod"}},
+				},
+				[]kg.CypherEdge{
+					{Type: "CALLS", SourceName: "api-service", SourceType: "Service", DestinationName: "checkout", DestinationType: "Service"},
+				},
+			)(w, r)
+			return
+		}
+		http.NotFound(w, r)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	scope := kg.NewTestScopeFlags("prod", "", "")
+	result := kg.RunServiceDiagnose(t.Context(), client, "api-service", &scope, nil, "")
+
+	assert.NotNil(t, result.Entity)
+	assert.Equal(t, "api-service", result.Entity.Name)
+	assert.Equal(t, "target_info_k8s", result.Entity.Source)
+	assert.Len(t, result.Edges, 1)
+	assert.Equal(t, "checkout", result.Edges[0].PeerName)
+
+	// Entity lookup + Relationships + Insights should all pass.
+	entityCheck := findCheck(result.Checks, "Entity lookup")
+	require.NotNil(t, entityCheck)
+	assert.Equal(t, kg.CheckPass, entityCheck.Status)
+
+	relCheck := findCheck(result.Checks, "Relationships")
+	require.NotNil(t, relCheck)
+	assert.Equal(t, kg.CheckPass, relCheck.Status)
+
+	assert.Contains(t, result.Diagnosis[0], "looks healthy")
+}
+
+func TestServiceDiagnose_NotFound(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/search/cypher" {
+			cypherHandler(nil, nil)(w, r)
+			return
+		}
+		http.NotFound(w, r)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	scope := kg.NewTestScopeFlags("", "", "")
+	result := kg.RunServiceDiagnose(t.Context(), client, "nonexistent", &scope, nil, "")
+
+	assert.Nil(t, result.Entity)
+	entityCheck := findCheck(result.Checks, "Entity lookup")
+	require.NotNil(t, entityCheck)
+	assert.Equal(t, kg.CheckFail, entityCheck.Status)
+	assert.Contains(t, entityCheck.Detail, "not found")
+	assert.NotEmpty(t, result.Diagnosis)
+	assert.NotEmpty(t, result.NextSteps)
+}
+
+func TestServiceDiagnose_NoEdges(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/search/cypher" {
+			// First call (with relationships) returns nothing; second (simple) finds the entity.
+			cypherHandler(
+				[]kg.CypherEntity{
+					{Type: "Service", Name: "lonely-service", Scope: map[string]any{"env": "prod"}, Properties: map[string]any{"_entity_source_10": "target_info_k8s"}},
+				},
+				nil,
+			)(w, r)
+			return
+		}
+		http.NotFound(w, r)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	scope := kg.NewTestScopeFlags("", "", "")
+	result := kg.RunServiceDiagnose(t.Context(), client, "lonely-service", &scope, nil, "")
+
+	assert.NotNil(t, result.Entity)
+	relCheck := findCheck(result.Checks, "Relationships")
+	require.NotNil(t, relCheck)
+	assert.Equal(t, kg.CheckFail, relCheck.Status)
+	assert.Contains(t, relCheck.Detail, "no edges")
+}
+
+func TestServiceDiagnoseTextCodec(t *testing.T) {
+	result := kg.ServiceDiagnoseResult{
+		ServiceName: "api-service",
+		Env:         "production",
+		Entity: &kg.EntityInfo{
+			Type:   "Service",
+			Name:   "api-service",
+			Env:    "production",
+			Source: "target_info_k8s",
+		},
+		Edges: []kg.EdgeInfo{
+			{Direction: "outgoing", Type: "CALLS", PeerName: "checkout", PeerType: "Service"},
+		},
+		Checks: []kg.CheckResult{
+			{Name: "Entity lookup", Status: kg.CheckPass, Detail: "type=Service"},
+			{Name: "Relationships", Status: kg.CheckPass, Detail: "1 edges"},
+		},
+		Diagnosis: []string{"Service looks healthy."},
+	}
+	result.Summary.Total = 2
+	result.Summary.Passed = 2
+
+	codec := &kg.ServiceDiagnoseTextCodec{}
+	var buf bytes.Buffer
+	err := codec.Encode(&buf, result)
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "api-service")
+	assert.Contains(t, output, "production")
+	assert.Contains(t, output, "CALLS → checkout")
+	assert.Contains(t, output, "✓ PASS")
+	assert.Contains(t, output, "DIAGNOSIS")
+	assert.Contains(t, output, "2/2 checks passed")
+}
+
+// findCheck returns the first check with the given name, or nil.
+func findCheck(checks []kg.CheckResult, name string) *kg.CheckResult {
+	for i := range checks {
+		if checks[i].Name == name {
+			return &checks[i]
+		}
+	}
+	return nil
+}
