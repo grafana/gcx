@@ -1,3 +1,27 @@
+## v0.2.14 (2026-05-08)
+
+- **New**: Instrumentation Hub provider package with full CRUD, RMW, and
+  Helm formatter support
+- **New**: Alert provisioning CRUD — contact-points, mute-timings,
+  notification-policies, and templates
+- **New**: AI Observability saved-conversations and collections commands
+- **New**: `gcx version` structured subcommand with machine-readable output
+- **New**: `gcx assistant dashboard` subcommand; fix `--agent-id` flag
+- **New**: Login accepts `--org-id` to configure organization ID
+- Knowledge Graph entities list now supports pagination
+- Knowledge Graph inspect drops hardcoded filters for raw, agent-friendly output
+- Agents codec with temp-file spill for token-efficient agent output
+- Log failed agent invocations to disk for capability-gap analysis
+- Fix exit codes: usage errors emit 2, partial failures emit 4
+- `stacks delete`: rename `--yes` to `--force`; respect agent mode
+- Migrate all provider delete commands to consistent `ConfirmDestructive`
+- Fix non-interactive confirmation bypass for metrics adaptive and alert
+- Config check now classifies `.grafana.com` hosts and stack-id as Cloud
+- Login now suggests running `config check` after successful login
+- Fix IRM incident URL template to use correct OnCall plugin slug
+- Dev import: register v1 converters for Folder and Dashboard resources
+
+
 ## v0.2.13 (2026-05-06)
 
 **Note**: This release includes two important bugfixes 
