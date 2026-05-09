@@ -39,3 +39,8 @@ func RunDiagnose(ctx context.Context, client *Client, scope *ScopeFlags, promCli
 func RunServiceDiagnose(ctx context.Context, client *Client, serviceName string, scope *ScopeFlags, promClient *prometheus.Client, datasourceUID string) ServiceDiagnoseResult {
 	return runServiceDiagnose(ctx, client, serviceName, scope, promClient, datasourceUID)
 }
+
+// RunLabelsDiagnose wraps the unexported runLabelsDiagnose function for testing.
+func RunLabelsDiagnose(ctx context.Context, client *Client, promClient *prometheus.Client, datasourceUID string) LabelsDiagnoseResult {
+	return runLabelsDiagnose(ctx, client, promClient, datasourceUID)
+}

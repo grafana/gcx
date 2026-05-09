@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
@@ -580,4 +581,173 @@ func findCheck(checks []kg.CheckResult, name string) *kg.CheckResult {
 		}
 	}
 	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Labels diagnosis tests
+// ---------------------------------------------------------------------------
+
+// promGroupByHandler returns a handler that responds to all Prometheus queries
+// with a set of samples containing the given label values.
+func promGroupByHandler(labelName string, values []string) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		var frames []map[string]any
+		if len(values) > 0 {
+			var timeVals []int64
+			var numVals []float64
+			for range values {
+				timeVals = append(timeVals, 1715100000000)
+				numVals = append(numVals, 1)
+			}
+			// Build one frame per label value (Grafana query response format).
+			for _, v := range values {
+				frames = append(frames, map[string]any{
+					"schema": map[string]any{
+						"fields": []map[string]any{
+							{"name": "Time", "type": "time"},
+							{"name": "Value", "type": "number", "labels": map[string]string{labelName: v}},
+						},
+					},
+					"data": map[string]any{
+						"values": []any{
+							[]int64{1715100000000},
+							[]float64{1},
+						},
+					},
+				})
+			}
+		}
+		writeJSON(w, map[string]any{
+			"results": map[string]any{
+				"A": map[string]any{
+					"frames": frames,
+				},
+			},
+		})
+	}
+}
+
+// grafanaFramesForLabels builds a Grafana query response with one frame per
+// label value, matching the format that convertGrafanaResponse expects.
+func grafanaFramesForLabels(labelName string, values []string) map[string]any {
+	var frames []map[string]any
+	for _, v := range values {
+		frames = append(frames, map[string]any{
+			"schema": map[string]any{
+				"fields": []map[string]any{
+					{"name": "Time", "type": "time"},
+					{"name": "Value", "type": "number", "labels": map[string]string{labelName: v}},
+				},
+			},
+			"data": map[string]any{
+				"values": []any{
+					[]int64{1715100000000},
+					[]float64{1},
+				},
+			},
+		})
+	}
+	return map[string]any{
+		"results": map[string]any{
+			"A": map[string]any{"frames": frames},
+		},
+	}
+}
+
+func TestLabelsDiagnose_AllMapped(t *testing.T) {
+	kgMux := http.NewServeMux()
+	kgMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_scope" {
+			writeJSON(w, map[string]any{"scopeValues": map[string][]string{
+				"env": {"production", "staging"},
+			}})
+			return
+		}
+		if r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_type/count" {
+			writeJSON(w, map[string]int64{"Service": 10})
+			return
+		}
+		http.NotFound(w, r)
+	})
+	kgServer := httptest.NewServer(kgMux)
+	defer kgServer.Close()
+
+	// Prometheus mock: asserts_env and deployment_environment both return "production", "staging".
+	promMux := http.NewServeMux()
+	promMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Read the request body to determine which query was sent.
+		body := make([]byte, 4096)
+		n, _ := r.Body.Read(body)
+		bodyStr := string(body[:n])
+
+		if strings.Contains(bodyStr, "asserts_env") {
+			writeJSON(w, grafanaFramesForLabels("asserts_env", []string{"production", "staging"}))
+		} else if strings.Contains(bodyStr, "deployment_environment") {
+			writeJSON(w, grafanaFramesForLabels("deployment_environment", []string{"production", "staging"}))
+		} else {
+			writeJSON(w, grafanaFramesForLabels("", nil))
+		}
+	})
+	promServer := httptest.NewServer(promMux)
+	defer promServer.Close()
+
+	kgClient := newTestClient(t, kgServer)
+	promClient := newTestPromClient(t, promServer)
+	result := kg.RunLabelsDiagnose(t.Context(), kgClient, promClient, "test-uid")
+
+	// All checks should pass.
+	assert.True(t, result.Summary.Passed >= 3, "expected at least 3 passing checks, got %d", result.Summary.Passed)
+	assert.Equal(t, 0, result.Summary.Failed)
+
+	// Mappings should all be "mapped".
+	for _, m := range result.Mappings {
+		assert.Equal(t, "mapped", m.Status, "mapping for %q should be 'mapped'", m.DeploymentEnv)
+	}
+}
+
+func TestLabelsDiagnose_NilPromClient(t *testing.T) {
+	kgMux := http.NewServeMux()
+	kgMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
+	kgServer := httptest.NewServer(kgMux)
+	defer kgServer.Close()
+
+	kgClient := newTestClient(t, kgServer)
+	result := kg.RunLabelsDiagnose(t.Context(), kgClient, nil, "")
+
+	assert.Equal(t, 1, result.Summary.Total)
+	assert.Equal(t, 1, result.Summary.Failed)
+	promCheck := findCheck(result.Checks, "Prometheus connectivity")
+	require.NotNil(t, promCheck)
+	assert.Equal(t, kg.CheckFail, promCheck.Status)
+}
+
+func TestLabelsDiagnoseTextCodec(t *testing.T) {
+	result := kg.LabelsDiagnoseResult{
+		Mappings: []kg.LabelMapping{
+			{DeploymentEnv: "production", AssertsEnv: "production", Status: "mapped"},
+			{DeploymentEnv: "unknown-env", Status: "unmapped"},
+		},
+		Checks: []kg.CheckResult{
+			{Name: "asserts_env in recording rules", Status: kg.CheckPass, Detail: "1 value"},
+			{Name: "Label mapping consistency", Status: kg.CheckFail, Detail: "1 unmapped"},
+		},
+		Diagnosis: []string{"1 unmapped environment."},
+	}
+	result.Summary.Total = 2
+	result.Summary.Passed = 1
+	result.Summary.Failed = 1
+
+	codec := &kg.LabelsDiagnoseTextCodec{}
+	var buf bytes.Buffer
+	err := codec.Encode(&buf, result)
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "Label Pipeline")
+	assert.Contains(t, output, "production")
+	assert.Contains(t, output, "NOT MAPPED")
+	assert.Contains(t, output, "DIAGNOSIS")
+	assert.Contains(t, output, "1/2 checks passed")
 }

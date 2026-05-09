@@ -133,6 +133,7 @@ auto-discovery. If unavailable, metric checks are skipped.`,
 
 	// Subcommands.
 	cmd.AddCommand(newDiagnoseServiceCommand(loader))
+	cmd.AddCommand(newDiagnoseLabelsCommand(loader))
 
 	return cmd
 }
@@ -178,6 +179,48 @@ with suggested next steps.`,
 	opts.IO.RegisterCustomCodec("text", &ServiceDiagnoseTextCodec{})
 	opts.IO.DefaultFormat("text")
 	opts.IO.BindFlags(cmd.Flags())
+
+	return cmd
+}
+
+func newDiagnoseLabelsCommand(loader *providers.ConfigLoader) *cobra.Command {
+	var datasource string
+	ioOpts := cmdio.Options{}
+	cmd := &cobra.Command{
+		Use:   "labels",
+		Short: "Validate the deployment_environment → asserts_env label pipeline.",
+		Long: `Check that deployment_environment values in raw metrics are correctly
+mapped to asserts_env in recording rule outputs. Identifies unmapped
+environments (services that won't appear in Entity Graph) and orphaned
+asserts_env values with no deployment_environment source.`,
+		Example: `  gcx kg diagnose labels
+  gcx kg diagnose labels --datasource grafanacloud-prom
+  gcx kg diagnose labels -o json`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := ioOpts.Validate(); err != nil {
+				return err
+			}
+			ctx := cmd.Context()
+			cfg, err := loader.LoadGrafanaConfig(ctx)
+			if err != nil {
+				return err
+			}
+			kgClient, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+
+			promClient, dsUID := resolvePromClient(ctx, loader, cfg, datasource, cmd)
+
+			result := runLabelsDiagnose(ctx, kgClient, promClient, dsUID)
+			return ioOpts.Encode(cmd.OutOrStdout(), result)
+		},
+	}
+
+	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Prometheus datasource UID (auto-discovered if omitted)")
+	ioOpts.RegisterCustomCodec("text", &LabelsDiagnoseTextCodec{})
+	ioOpts.DefaultFormat("text")
+	ioOpts.BindFlags(cmd.Flags())
 
 	return cmd
 }
