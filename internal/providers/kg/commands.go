@@ -1536,7 +1536,9 @@ func (o *inspectOpts) Validate(flags *pflag.FlagSet) error {
 
 // resolveInsightFilters returns the hours and percent thresholds to send to the
 // LLM summary API, applying the --insight-hide-noise preset and per-axis overrides.
-func (o *inspectOpts) resolveInsightFilters(flags *pflag.FlagSet) (hideOlderHours, hideChronicPct int) {
+func (o *inspectOpts) resolveInsightFilters(flags *pflag.FlagSet) (int, int) {
+	hideOlderHours := 0
+	hideChronicPct := 0
 	if o.InsightHideNoise {
 		hideOlderHours = 48
 		hideChronicPct = 90
@@ -1547,7 +1549,7 @@ func (o *inspectOpts) resolveInsightFilters(flags *pflag.FlagSet) (hideOlderHour
 	if flags.Changed("insight-hide-chronic-above") {
 		hideChronicPct = o.InsightHideChronicAbove
 	}
-	return
+	return hideOlderHours, hideChronicPct
 }
 
 // rcaWorkbenchURL builds a deep link to the Asserts RCA Workbench for a single entity.
