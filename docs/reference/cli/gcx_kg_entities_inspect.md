@@ -15,7 +15,7 @@ gcx kg entities inspect [Type--Name] [flags]
       --insight-categories strings         Filter insights by category (comma-separated, e.g. saturation,anomaly,failure); empty = all categories
       --insight-hide-chronic-above int     Hide insights present more than this percent of the window (0-100); overrides --insight-hide-noise on this axis
       --insight-hide-noise                 Apply RCA Workbench noise filter: hide insights older than 48h or present >90% of the window
-      --insight-hide-older-than duration   Hide insights older than this duration (e.g. 24h); overrides --insight-hide-noise on this axis
+      --insight-hide-older-than duration   Hide insights older than a whole number of hours (e.g. 24h); overrides --insight-hide-noise on this axis
       --json string                        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --name string                        Entity name
       --namespace string                   Namespace scope (run 'gcx kg meta scopes' to see valid values)

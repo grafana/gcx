@@ -1399,18 +1399,12 @@ func discoverEntityScope(cmd *cobra.Command, client *Client, entityType, name st
 func newEntitiesInspectCommand(loader RESTConfigLoader) *cobra.Command {
 	var inspectScope scopeFlags
 	ioOpts := &inspectOpts{}
-	var (
-		insightCategories       []string
-		insightHideNoise        bool
-		insightHideOlderThan    time.Duration
-		insightHideChronicAbove int
-	)
 	cmd := &cobra.Command{
 		Use:   "inspect [Type--Name]",
 		Short: "Show detailed info, insights, and summary for a single entity, including a link to the RCA Workbench.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := ioOpts.IO.Validate(); err != nil {
+			if err := ioOpts.Validate(cmd.Flags()); err != nil {
 				return err
 			}
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
@@ -1441,21 +1435,7 @@ func newEntitiesInspectCommand(loader RESTConfigLoader) *cobra.Command {
 				scope = discovered
 			}
 
-			hideOlderHours := 0
-			hideChronicPct := 0
-			if insightHideNoise {
-				hideOlderHours = 48
-				hideChronicPct = 90
-			}
-			if cmd.Flags().Changed("insight-hide-older-than") {
-				hideOlderHours = int(insightHideOlderThan.Hours())
-			}
-			if cmd.Flags().Changed("insight-hide-chronic-above") {
-				if insightHideChronicAbove < 0 || insightHideChronicAbove > 100 {
-					return fmt.Errorf("--insight-hide-chronic-above must be between 0 and 100, got %d", insightHideChronicAbove)
-				}
-				hideChronicPct = insightHideChronicAbove
-			}
+			hideOlderHours, hideChronicPct := ioOpts.resolveInsightFilters(cmd.Flags())
 
 			llmReq := LLMSummaryRequest{
 				StartTime: startMs,
@@ -1466,7 +1446,7 @@ func newEntitiesInspectCommand(loader RESTConfigLoader) *cobra.Command {
 					Scope: toAnyMap(scope),
 				}},
 				SuggestionSrcEntities:                         []EntityKey{},
-				AlertCategories:                               insightCategories,
+				AlertCategories:                               ioOpts.InsightCategories,
 				HideAssertionsOlderThanNHours:                 hideOlderHours,
 				HideAssertionsPresentMoreThanPercentageOfTime: hideChronicPct,
 				IncludeSuggestions:                            true,
@@ -1512,18 +1492,18 @@ func newEntitiesInspectCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd.Flags().Lookup("env").Usage = "Environment scope (run 'gcx kg meta scopes' to see valid values)"
 	cmd.Flags().Lookup("namespace").Usage = "Namespace scope (run 'gcx kg meta scopes' to see valid values)"
 	cmd.Flags().Lookup("site").Usage = "Site scope (run 'gcx kg meta scopes' to see valid values)"
-	cmd.Flags().StringSliceVar(&insightCategories, "insight-categories", nil, "Filter insights by category (comma-separated, e.g. saturation,anomaly,failure); empty = all categories")
-	cmd.Flags().BoolVar(&insightHideNoise, "insight-hide-noise", false, "Apply RCA Workbench noise filter: hide insights older than 48h or present >90% of the window")
-	cmd.Flags().DurationVar(&insightHideOlderThan, "insight-hide-older-than", 0, "Hide insights older than this duration (e.g. 24h); overrides --insight-hide-noise on this axis")
-	cmd.Flags().IntVar(&insightHideChronicAbove, "insight-hide-chronic-above", 0, "Hide insights present more than this percent of the window (0-100); overrides --insight-hide-noise on this axis")
 	ioOpts.setup(cmd.Flags())
 	return cmd
 }
 
 type inspectOpts struct {
-	IO        cmdio.Options
-	ShareLink bool
-	Open      bool
+	IO                      cmdio.Options
+	ShareLink               bool
+	Open                    bool
+	InsightCategories       []string
+	InsightHideNoise        bool
+	InsightHideOlderThan    time.Duration
+	InsightHideChronicAbove int
 }
 
 func (o *inspectOpts) setup(flags *pflag.FlagSet) {
@@ -1531,6 +1511,43 @@ func (o *inspectOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 	flags.BoolVar(&o.ShareLink, "share-link", false, "Print the RCA Workbench URL for this entity to stderr")
 	flags.BoolVar(&o.Open, "open", false, "Open the entity in the RCA Workbench in your browser")
+	flags.StringSliceVar(&o.InsightCategories, "insight-categories", nil, "Filter insights by category (comma-separated, e.g. saturation,anomaly,failure); empty = all categories")
+	flags.BoolVar(&o.InsightHideNoise, "insight-hide-noise", false, "Apply RCA Workbench noise filter: hide insights older than 48h or present >90% of the window")
+	flags.DurationVar(&o.InsightHideOlderThan, "insight-hide-older-than", 0, "Hide insights older than a whole number of hours (e.g. 24h); overrides --insight-hide-noise on this axis")
+	flags.IntVar(&o.InsightHideChronicAbove, "insight-hide-chronic-above", 0, "Hide insights present more than this percent of the window (0-100); overrides --insight-hide-noise on this axis")
+}
+
+func (o *inspectOpts) Validate(flags *pflag.FlagSet) error {
+	if err := o.IO.Validate(); err != nil {
+		return err
+	}
+	if flags.Changed("insight-hide-older-than") {
+		if o.InsightHideOlderThan <= 0 || o.InsightHideOlderThan%time.Hour != 0 {
+			return fmt.Errorf("--insight-hide-older-than must be a positive whole number of hours (e.g. 24h), got %s", o.InsightHideOlderThan)
+		}
+	}
+	if flags.Changed("insight-hide-chronic-above") {
+		if o.InsightHideChronicAbove < 0 || o.InsightHideChronicAbove > 100 {
+			return fmt.Errorf("--insight-hide-chronic-above must be between 0 and 100, got %d", o.InsightHideChronicAbove)
+		}
+	}
+	return nil
+}
+
+// resolveInsightFilters returns the hours and percent thresholds to send to the
+// LLM summary API, applying the --insight-hide-noise preset and per-axis overrides.
+func (o *inspectOpts) resolveInsightFilters(flags *pflag.FlagSet) (hideOlderHours, hideChronicPct int) {
+	if o.InsightHideNoise {
+		hideOlderHours = 48
+		hideChronicPct = 90
+	}
+	if flags.Changed("insight-hide-older-than") {
+		hideOlderHours = int(o.InsightHideOlderThan.Hours())
+	}
+	if flags.Changed("insight-hide-chronic-above") {
+		hideChronicPct = o.InsightHideChronicAbove
+	}
+	return
 }
 
 // rcaWorkbenchURL builds a deep link to the Asserts RCA Workbench for a single entity.
