@@ -71,7 +71,6 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		newResumeCommand(loader),
 		newModeCommand(loader),
 		newShareCommand(loader),
-		newProfilesCommand(loader),
 		newRegenerateReportCommand(loader),
 		newRepairMermaidCommand(loader),
 		newUpdateMermaidCommand(loader),

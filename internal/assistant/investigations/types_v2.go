@@ -78,14 +78,6 @@ type ScopeResponse struct {
 	AddedTeamNames  []string `json:"addedTeamNames,omitempty"`
 }
 
-// Profile is one entry from GET /investigations/lodestone/profiles.
-type Profile struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	IsDefault   bool   `json:"isDefault,omitempty"`
-}
-
 // MermaidUpdateRequest is the body for the Mermaid persist endpoint.
 type MermaidUpdateRequest struct {
 	Content string `json:"content"`

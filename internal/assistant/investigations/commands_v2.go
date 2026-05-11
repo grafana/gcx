@@ -8,10 +8,8 @@ import (
 	"os"
 	"slices"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
@@ -222,41 +220,6 @@ func newShareCommand(loader *providers.ConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// --- profiles ---
-
-type profilesOpts struct{ IO cmdio.Options }
-
-func (o *profilesOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &ProfilesTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &ProfilesTableCodec{Wide: true})
-	o.IO.DefaultFormat("table")
-	o.IO.BindFlags(flags)
-}
-
-func newProfilesCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &profilesOpts{}
-	cmd := &cobra.Command{
-		Use:   "profiles",
-		Short: "List Lodestone runner profiles.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-			client, err := requireV2(cmd, loader)
-			if err != nil {
-				return err
-			}
-			profiles, err := client.Profiles(cmd.Context())
-			if err != nil {
-				return err
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), profiles)
-		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
-}
-
 // --- regenerate-report ---
 
 type regenReportOpts struct{ IO cmdio.Options }
@@ -448,51 +411,4 @@ func newStateCommand(loader *providers.ConfigLoader) *cobra.Command {
 	}
 	opts.setup(cmd.Flags())
 	return cmd
-}
-
-// --- profiles table codec ---
-
-// ProfilesTableCodec renders []Profile as a table.
-type ProfilesTableCodec struct {
-	Wide bool
-}
-
-func (c *ProfilesTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *ProfilesTableCodec) Encode(w io.Writer, v any) error {
-	profiles, ok := v.([]Profile)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Profile")
-	}
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	if c.Wide {
-		fmt.Fprintln(tw, "ID\tNAME\tDEFAULT\tDESCRIPTION")
-	} else {
-		fmt.Fprintln(tw, "ID\tNAME\tDEFAULT")
-	}
-	for _, p := range profiles {
-		def := "no"
-		if p.IsDefault {
-			def = "yes"
-		}
-		if c.Wide {
-			desc := p.Description
-			if desc == "" {
-				desc = "-"
-			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", p.ID, p.Name, def, desc)
-		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\n", p.ID, p.Name, def)
-		}
-	}
-	return tw.Flush()
-}
-
-func (c *ProfilesTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
 }

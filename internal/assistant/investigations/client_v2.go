@@ -23,7 +23,6 @@ const (
 	lodestoneResumeFmt        = "/investigations/lodestone/%s/resume"
 	lodestoneModeFmt          = "/investigations/lodestone/%s/mode"
 	lodestoneScopeFmt         = "/investigations/lodestone/%s/scope"
-	lodestoneProfilesPath     = "/investigations/lodestone/profiles"
 	lodestoneRegenReportFmt   = "/investigations/lodestone/%s/regenerate-report"
 	lodestoneMermaidUpdateFmt = "/investigations/lodestone/%s/report/elements/%s/mermaid"
 	lodestoneMermaidRepairFmt = "/investigations/lodestone/%s/report/elements/%s/mermaid/repair"
@@ -252,30 +251,6 @@ func (c *Client) Scope(ctx context.Context, investigationID string, teamNames []
 		return nil, fmt.Errorf("decode scope response: %w", err)
 	}
 	return &envelope.Data, nil
-}
-
-// Profiles lists the available Lodestone prompt/tool profiles.
-func (c *Client) Profiles(ctx context.Context) ([]Profile, error) {
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, lodestoneProfilesPath, nil)
-	if err != nil {
-		return nil, fmt.Errorf("list lodestone profiles: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, assistanthttp.HandleErrorResponse(resp)
-	}
-	var envelope struct {
-		Data struct {
-			Profiles []Profile `json:"profiles"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
-		return nil, fmt.Errorf("decode profiles response: %w", err)
-	}
-	if envelope.Data.Profiles == nil {
-		return []Profile{}, nil
-	}
-	return envelope.Data.Profiles, nil
 }
 
 // UpdateMermaid persists repaired Mermaid source for a report element.

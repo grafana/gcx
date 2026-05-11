@@ -212,23 +212,6 @@ func TestScope(t *testing.T) {
 	assert.Equal(t, []string{"ops"}, resp.AddedTeamNames)
 }
 
-func TestProfiles(t *testing.T) {
-	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Contains(t, r.URL.Path, "/investigations/lodestone/profiles")
-		writeJSON(w, map[string]any{
-			"data": map[string]any{
-				"profiles": []investigations.Profile{
-					{ID: "default", Name: "Default", Description: "Standard runner", IsDefault: true},
-				},
-			},
-		})
-	}))
-	profiles, err := client.Profiles(t.Context())
-	require.NoError(t, err)
-	require.Len(t, profiles, 1)
-	assert.True(t, profiles[0].IsDefault)
-}
-
 func TestUpdateMermaid(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPut, r.Method)
@@ -263,7 +246,7 @@ func TestLodestone_ServerError(t *testing.T) {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte("boom"))
 	}))
-	_, err := client.Profiles(t.Context())
+	_, _, err := client.ResolveByID(t.Context(), "inv-1")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "500")
 }

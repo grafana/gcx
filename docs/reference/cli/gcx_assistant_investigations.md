@@ -31,7 +31,6 @@ Manage Grafana Assistant investigations.
 * [gcx assistant investigations list](gcx_assistant_investigations_list.md)	 - List investigations.
 * [gcx assistant investigations mode](gcx_assistant_investigations_mode.md)	 - Change autonomy mode of a Lodestone investigation.
 * [gcx assistant investigations pause](gcx_assistant_investigations_pause.md)	 - Pause a running Lodestone investigation.
-* [gcx assistant investigations profiles](gcx_assistant_investigations_profiles.md)	 - List Lodestone runner profiles.
 * [gcx assistant investigations regenerate-report](gcx_assistant_investigations_regenerate-report.md)	 - Queue regeneration of a Lodestone investigation report.
 * [gcx assistant investigations repair-mermaid](gcx_assistant_investigations_repair-mermaid.md)	 - Ask the server to LLM-repair a broken Mermaid diagram.
 * [gcx assistant investigations report](gcx_assistant_investigations_report.md)	 - Show condensed report summary for an investigation.
