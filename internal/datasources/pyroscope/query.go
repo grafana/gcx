@@ -72,16 +72,8 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 				return err
 			}
 
-			datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, datasource, cfgCtx, cfg, "pyroscope")
+			datasourceUID, _, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, datasource, cfgCtx, cfg, "pyroscope")
 			if err != nil {
-				return err
-			}
-
-			dsType, err := dsquery.GetDatasourceType(ctx, cfg, datasourceUID)
-			if err != nil {
-				return err
-			}
-			if err := dsquery.ValidateDatasourceType(dsType, "pyroscope"); err != nil {
 				return err
 			}
 

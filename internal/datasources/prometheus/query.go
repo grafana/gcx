@@ -83,16 +83,8 @@ open it in your browser after the query succeeds.`,
 				effectiveDS = defaultDS
 			}
 
-			datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, effectiveDS, cfgCtx, cfg, "prometheus")
+			datasourceUID, dsType, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, effectiveDS, cfgCtx, cfg, "prometheus")
 			if err != nil {
-				return err
-			}
-
-			dsType, err := dsquery.GetDatasourceType(ctx, cfg, datasourceUID)
-			if err != nil {
-				return err
-			}
-			if err := dsquery.ValidateDatasourceType(dsType, "prometheus"); err != nil {
 				return err
 			}
 
