@@ -333,17 +333,13 @@ func (o *createOpts) captureSetFlags(flags *pflag.FlagSet) {
 }
 
 func (o *createOpts) validateForV1() error {
-	v2Only := []string{"instruction", "team", "profile-id"}
-	for _, name := range v2Only {
+	// --instruction is accepted on v1 (mapped to --description) but the two
+	// flags cannot be combined.
+	if o.setFlags["instruction"] && o.setFlags["description"] {
+		return errors.New("--instruction and --description are mutually exclusive")
+	}
+	for _, name := range []string{"team", "profile-id"} {
 		if o.setFlags[name] {
-			if name == "instruction" {
-				// Allow --instruction on a v1 stack only when --description
-				// is not also set; we map it to description.
-				if o.setFlags["description"] {
-					return errors.New("--instruction and --description are mutually exclusive")
-				}
-				continue
-			}
 			return fmt.Errorf("--%s is only supported on stacks with Lodestone (v2 investigations) enabled", name)
 		}
 	}

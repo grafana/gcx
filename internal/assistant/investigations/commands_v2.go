@@ -1,6 +1,7 @@
 package investigations
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -39,8 +40,8 @@ func requireV2(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, err
 }
 
 // resolveChatID maps an investigation ID (user-facing) to a chat ID (v2 key).
-func resolveChatID(cmd *cobra.Command, client *Client, investigationID string) (string, error) {
-	chatID, status, err := client.ResolveByID(cmd.Context(), investigationID)
+func resolveChatID(ctx context.Context, client *Client, investigationID string) (string, error) {
+	chatID, status, err := client.ResolveByID(ctx, investigationID)
 	if err != nil {
 		return "", err
 	}
@@ -74,7 +75,7 @@ func newPauseCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			chatID, err := resolveChatID(cmd, client, args[0])
+			chatID, err := resolveChatID(cmd.Context(), client, args[0])
 			if err != nil {
 				return err
 			}
@@ -98,6 +99,7 @@ func (o *resumeOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
+//nolint:dupl // sibling v2 commands share the same boilerplate by design
 func newResumeCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &resumeOpts{}
 	cmd := &cobra.Command{
@@ -112,7 +114,7 @@ func newResumeCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			chatID, err := resolveChatID(cmd, client, args[0])
+			chatID, err := resolveChatID(cmd.Context(), client, args[0])
 			if err != nil {
 				return err
 			}
@@ -156,7 +158,7 @@ func newModeCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			chatID, err := resolveChatID(cmd, client, args[0])
+			chatID, err := resolveChatID(cmd.Context(), client, args[0])
 			if err != nil {
 				return err
 			}
@@ -229,6 +231,7 @@ func (o *regenReportOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
+//nolint:dupl // sibling v2 commands share the same boilerplate by design
 func newRegenerateReportCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &regenReportOpts{}
 	cmd := &cobra.Command{
@@ -243,7 +246,7 @@ func newRegenerateReportCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			chatID, err := resolveChatID(cmd, client, args[0])
+			chatID, err := resolveChatID(cmd.Context(), client, args[0])
 			if err != nil {
 				return err
 			}
@@ -285,7 +288,7 @@ func newRepairMermaidCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			chatID, err := resolveChatID(cmd, client, args[0])
+			chatID, err := resolveChatID(cmd.Context(), client, args[0])
 			if err != nil {
 				return err
 			}
@@ -356,7 +359,7 @@ func newUpdateMermaidCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			chatID, err := resolveChatID(cmd, client, args[0])
+			chatID, err := resolveChatID(cmd.Context(), client, args[0])
 			if err != nil {
 				return err
 			}
@@ -384,6 +387,7 @@ func (o *stateOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
+//nolint:dupl // sibling v2 commands share the same boilerplate by design
 func newStateCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &stateOpts{}
 	cmd := &cobra.Command{
@@ -398,7 +402,7 @@ func newStateCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			chatID, err := resolveChatID(cmd, client, args[0])
+			chatID, err := resolveChatID(cmd.Context(), client, args[0])
 			if err != nil {
 				return err
 			}
