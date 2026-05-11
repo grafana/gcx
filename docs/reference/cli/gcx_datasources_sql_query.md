@@ -23,7 +23,7 @@ gcx datasources sql query [SQL] [flags]
 ```
 
   # Inline SQL with a relative time range
-  gcx datasources sql query 'SELECT * FROM `prometheus::UID`.`up` LIMIT 10' --from now-5m --to now
+  gcx datasources sql query 'SELECT timestamp, value, job FROM `prometheus::UID`.`up` LIMIT 10' --from now-5m --to now
 
   # Read SQL from a file
   gcx datasources sql query --query-file query.sql --since 1h
