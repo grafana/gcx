@@ -332,12 +332,16 @@ func (o *createOpts) captureSetFlags(flags *pflag.FlagSet) {
 	flags.Visit(func(f *pflag.Flag) { o.setFlags[f.Name] = true })
 }
 
-func (o *createOpts) validateForV1() error {
-	// --instruction is accepted on v1 (mapped to --description) but the two
-	// flags cannot be combined.
+// Validate runs checks shared by both v1 and v2 paths. Call before the
+// capability-conditional validateForV1 / validateForV2 helpers.
+func (o *createOpts) Validate() error {
 	if o.setFlags["instruction"] && o.setFlags["description"] {
 		return errors.New("--instruction and --description are mutually exclusive")
 	}
+	return nil
+}
+
+func (o *createOpts) validateForV1() error {
 	for _, name := range []string{"team", "profile-id"} {
 		if o.setFlags[name] {
 			return fmt.Errorf("--%s is only supported on stacks with Lodestone (v2 investigations) enabled", name)
@@ -350,9 +354,6 @@ func (o *createOpts) validateForV1() error {
 }
 
 func (o *createOpts) validateForV2() error {
-	if o.setFlags["instruction"] && o.setFlags["description"] {
-		return errors.New("--instruction and --description are mutually exclusive")
-	}
 	if o.Instruction == "" && o.Description == "" {
 		return errors.New("--instruction is required")
 	}
@@ -371,6 +372,9 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 			opts.captureSetFlags(cmd.Flags())
+			if err := opts.Validate(); err != nil {
+				return err
+			}
 			client, v2, err := loadClientAndCapability(cmd, loader)
 			if err != nil {
 				return err

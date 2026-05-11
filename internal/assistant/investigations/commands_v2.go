@@ -138,6 +138,19 @@ func (o *modeOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
+// Validate conforms modeOpts to the Options pattern. Mode is a positional arg,
+// so its enum check lives in validateMode and runs against args[1].
+func (o *modeOpts) Validate() error { return nil }
+
+func validateMode(raw string) (string, error) {
+	validModes := []string{"low", "medium", "high"}
+	mode := strings.ToLower(raw)
+	if !slices.Contains(validModes, mode) {
+		return "", fmt.Errorf("invalid mode %q: must be one of %s", raw, strings.Join(validModes, ", "))
+	}
+	return mode, nil
+}
+
 func newModeCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &modeOpts{}
 	cmd := &cobra.Command{
@@ -149,10 +162,12 @@ func newModeCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			validModes := []string{"low", "medium", "high"}
-			mode := strings.ToLower(args[1])
-			if !slices.Contains(validModes, mode) {
-				return fmt.Errorf("invalid mode %q: must be one of %s", args[1], strings.Join(validModes, ", "))
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+			mode, err := validateMode(args[1])
+			if err != nil {
+				return err
 			}
 			client, err := requireV2(cmd, loader)
 			if err != nil {
