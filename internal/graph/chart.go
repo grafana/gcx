@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/NimbleMarkets/ntcharts/barchart"
-	"github.com/NimbleMarkets/ntcharts/canvas/runes"
-	"github.com/NimbleMarkets/ntcharts/linechart/timeserieslinechart"
+	"github.com/NimbleMarkets/ntcharts/v2/barchart"
+	"github.com/NimbleMarkets/ntcharts/v2/canvas/runes"
+	"github.com/NimbleMarkets/ntcharts/v2/linechart/timeserieslinechart"
 	"github.com/charmbracelet/lipgloss"
 	"golang.org/x/term"
 )
