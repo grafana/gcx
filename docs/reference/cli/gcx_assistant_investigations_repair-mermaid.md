@@ -1,22 +1,18 @@
-## gcx assistant investigations get
+## gcx assistant investigations repair-mermaid
 
-Get investigation detail.
-
-### Synopsis
-
-Get investigation detail. On Lodestone-enabled stacks, returns the full session state when the ID is a Lodestone investigation, and falls back to legacy detail otherwise.
+Ask the server to LLM-repair a broken Mermaid diagram.
 
 ```
-gcx assistant investigations get <id> [flags]
+gcx assistant investigations repair-mermaid <id> <element-id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --open            Open the investigation in the default browser
-  -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
+  -h, --help             help for repair-mermaid
+      --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --message string   Original Mermaid parser error message to guide the repair
+  -o, --output string    Output format. One of: agents, json, yaml (default "yaml")
 ```
 
 ### Options inherited from parent commands

@@ -1,22 +1,22 @@
-## gcx assistant investigations get
+## gcx assistant investigations share
 
-Get investigation detail.
+Share a Lodestone investigation with additional teams.
 
 ### Synopsis
 
-Get investigation detail. On Lodestone-enabled stacks, returns the full session state when the ID is a Lodestone investigation, and falls back to legacy detail otherwise.
+Widen the visibility of a Lodestone investigation. Sharing is additive — teams cannot be removed.
 
 ```
-gcx assistant investigations get <id> [flags]
+gcx assistant investigations share <id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
+  -h, --help            help for share
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --open            Open the investigation in the default browser
   -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
+      --team strings    Team name to share with (repeatable)
 ```
 
 ### Options inherited from parent commands

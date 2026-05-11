@@ -1,21 +1,20 @@
-## gcx assistant investigations get
+## gcx assistant investigations mode
 
-Get investigation detail.
+Change autonomy mode of a Lodestone investigation.
 
 ### Synopsis
 
-Get investigation detail. On Lodestone-enabled stacks, returns the full session state when the ID is a Lodestone investigation, and falls back to legacy detail otherwise.
+Change the autonomy mode of a running Lodestone investigation. Valid modes: low, medium, high.
 
 ```
-gcx assistant investigations get <id> [flags]
+gcx assistant investigations mode <id> <mode> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
+  -h, --help            help for mode
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --open            Open the investigation in the default browser
   -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
 ```
 

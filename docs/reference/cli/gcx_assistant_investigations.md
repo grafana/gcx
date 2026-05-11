@@ -29,7 +29,16 @@ Manage Grafana Assistant investigations.
 * [gcx assistant investigations document](gcx_assistant_investigations_document.md)	 - Fetch a specific investigation document.
 * [gcx assistant investigations get](gcx_assistant_investigations_get.md)	 - Get investigation detail.
 * [gcx assistant investigations list](gcx_assistant_investigations_list.md)	 - List investigations.
+* [gcx assistant investigations mode](gcx_assistant_investigations_mode.md)	 - Change autonomy mode of a Lodestone investigation.
+* [gcx assistant investigations pause](gcx_assistant_investigations_pause.md)	 - Pause a running Lodestone investigation.
+* [gcx assistant investigations profiles](gcx_assistant_investigations_profiles.md)	 - List Lodestone runner profiles.
+* [gcx assistant investigations regenerate-report](gcx_assistant_investigations_regenerate-report.md)	 - Queue regeneration of a Lodestone investigation report.
+* [gcx assistant investigations repair-mermaid](gcx_assistant_investigations_repair-mermaid.md)	 - Ask the server to LLM-repair a broken Mermaid diagram.
 * [gcx assistant investigations report](gcx_assistant_investigations_report.md)	 - Show condensed report summary for an investigation.
+* [gcx assistant investigations resume](gcx_assistant_investigations_resume.md)	 - Resume a paused Lodestone investigation.
+* [gcx assistant investigations share](gcx_assistant_investigations_share.md)	 - Share a Lodestone investigation with additional teams.
+* [gcx assistant investigations state](gcx_assistant_investigations_state.md)	 - Show full Lodestone session state (plan, hypotheses, mode, report).
 * [gcx assistant investigations timeline](gcx_assistant_investigations_timeline.md)	 - Show activity timeline for an investigation.
 * [gcx assistant investigations todos](gcx_assistant_investigations_todos.md)	 - Show agent tasks for an investigation.
+* [gcx assistant investigations update-mermaid](gcx_assistant_investigations_update-mermaid.md)	 - Persist Mermaid source for a Lodestone report element.
 

@@ -4,6 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"slices"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
@@ -27,6 +30,24 @@ func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, err
 	return NewClient(base), nil
 }
 
+// loadClientAndCapability returns a client plus the detected v2 capability.
+// Used by the auto-dispatching commands (list, get, create).
+func loadClientAndCapability(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, bool, error) {
+	cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+	if err != nil {
+		return nil, false, err
+	}
+	base, err := assistanthttp.NewClient(cfg)
+	if err != nil {
+		return nil, false, err
+	}
+	c, err := DetectCapability(cmd.Context(), base, cfg.Host)
+	if err != nil {
+		return nil, false, err
+	}
+	return NewClient(base), c.V2, nil
+}
+
 // Commands returns the investigations command group.
 func Commands(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
@@ -44,6 +65,17 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		newReportCommand(loader),
 		newDocumentCommand(loader),
 		newApprovalsCommand(loader),
+		// v2-only (Lodestone) commands. Each probes capability at run time
+		// and returns a friendly error when run against a v1-only stack.
+		newPauseCommand(loader),
+		newResumeCommand(loader),
+		newModeCommand(loader),
+		newShareCommand(loader),
+		newProfilesCommand(loader),
+		newRegenerateReportCommand(loader),
+		newRepairMermaidCommand(loader),
+		newUpdateMermaidCommand(loader),
+		newStateCommand(loader),
 	)
 	return cmd
 }
@@ -55,6 +87,22 @@ type listOpts struct {
 	State  string
 	Limit  int
 	Offset int
+
+	// v2-only filters. Setting any of these on a v1 stack is rejected.
+	Scope         string
+	Team          string
+	Q             string
+	From          string
+	To            string
+	Sort          string
+	Order         string
+	View          string
+	Label         string
+	IncludeLegacy bool
+
+	// Flags actually present on the command line, used to detect v2-only
+	// filters set against a v1 stack so we can reject with a clear error.
+	setFlags map[string]bool
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
@@ -62,9 +110,58 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &ListTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.StringVar(&o.State, "state", "", "Filter by investigation state (e.g. running, completed, cancelled)")
+	flags.StringVar(&o.State, "state", "", "Filter by investigation state (comma-separated, or \"all\")")
 	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of investigations to return")
 	flags.IntVar(&o.Offset, "offset", 0, "Number of investigations to skip (for pagination)")
+	flags.StringVar(&o.Scope, "scope", "", "Visibility scope: all|mine|teams|system (Lodestone only)")
+	flags.StringVar(&o.Team, "team", "", "Filter to a specific team (Lodestone only)")
+	flags.StringVar(&o.Q, "q", "", "Search text across title, description, chat name (Lodestone only)")
+	flags.StringVar(&o.From, "from", "", "Lower bound on creation time, RFC3339 (Lodestone only)")
+	flags.StringVar(&o.To, "to", "", "Upper bound on creation time, RFC3339 (Lodestone only)")
+	flags.StringVar(&o.Sort, "sort", "", "Sort field: createdAt|updatedAt|title|state (Lodestone only)")
+	flags.StringVar(&o.Order, "order", "", "Sort order: asc|desc (Lodestone only)")
+	flags.StringVar(&o.View, "view", "", "Result detail level: full|lite (Lodestone only)")
+	flags.StringVar(&o.Label, "label", "", "Filter by label, key:value format (Lodestone only)")
+	flags.BoolVar(&o.IncludeLegacy, "include-legacy", true, "Include legacy (pre-Lodestone) investigations (Lodestone only)")
+}
+
+// captureSetFlags records which flags the user actually set, so v2-only flags
+// surfaced on a v1 stack can be rejected without flagging defaults.
+func (o *listOpts) captureSetFlags(flags *pflag.FlagSet) {
+	o.setFlags = map[string]bool{}
+	flags.Visit(func(f *pflag.Flag) { o.setFlags[f.Name] = true })
+}
+
+// validateForV1 errors out when the user set a v2-only filter on a v1 stack.
+func (o *listOpts) validateForV1() error {
+	v2Only := []string{"scope", "team", "q", "from", "to", "sort", "order", "view", "label"}
+	for _, name := range v2Only {
+		if o.setFlags[name] {
+			return fmt.Errorf("--%s is only supported on stacks with Lodestone (v2 investigations) enabled", name)
+		}
+	}
+	return nil
+}
+
+// validateForV2 errors out when v2 flag values don't match the allowed enum.
+func (o *listOpts) validateForV2() error {
+	validScopes := []string{"all", "mine", "teams", "system"}
+	validViews := []string{"full", "lite"}
+	validOrders := []string{"asc", "desc"}
+	validSorts := []string{"createdAt", "updatedAt", "title", "state"}
+	if o.Scope != "" && !slices.Contains(validScopes, o.Scope) {
+		return fmt.Errorf("invalid --scope %q: must be one of %s", o.Scope, strings.Join(validScopes, ", "))
+	}
+	if o.View != "" && !slices.Contains(validViews, o.View) {
+		return fmt.Errorf("invalid --view %q: must be one of %s", o.View, strings.Join(validViews, ", "))
+	}
+	if o.Order != "" && !slices.Contains(validOrders, o.Order) {
+		return fmt.Errorf("invalid --order %q: must be one of %s", o.Order, strings.Join(validOrders, ", "))
+	}
+	if o.Sort != "" && !slices.Contains(validSorts, o.Sort) {
+		return fmt.Errorf("invalid --sort %q: must be one of %s", o.Sort, strings.Join(validSorts, ", "))
+	}
+	return nil
 }
 
 func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
@@ -72,19 +169,47 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List investigations.",
-		Long:  "List investigations with optional state filter.",
+		Long:  "List investigations. Auto-detects whether the stack supports Lodestone (v2) and uses the richer endpoint when available.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			client, err := newClient(cmd, loader)
+			opts.captureSetFlags(cmd.Flags())
+			client, v2, err := loadClientAndCapability(cmd, loader)
 			if err != nil {
 				return err
 			}
-			summaries, err := client.List(cmd.Context(), ListOptions{
-				State:  opts.State,
-				Limit:  opts.Limit,
-				Offset: opts.Offset,
+			if !v2 {
+				if err := opts.validateForV1(); err != nil {
+					return err
+				}
+				summaries, err := client.List(cmd.Context(), ListOptions{
+					State:  opts.State,
+					Limit:  opts.Limit,
+					Offset: opts.Offset,
+				})
+				if err != nil {
+					return err
+				}
+				return opts.IO.Encode(cmd.OutOrStdout(), summaries)
+			}
+			if err := opts.validateForV2(); err != nil {
+				return err
+			}
+			summaries, err := client.ListLodestone(cmd.Context(), ListLodestoneOptions{
+				State:         opts.State,
+				Q:             opts.Q,
+				Scope:         opts.Scope,
+				TeamName:      opts.Team,
+				From:          opts.From,
+				To:            opts.To,
+				Sort:          opts.Sort,
+				Order:         opts.Order,
+				View:          opts.View,
+				Label:         opts.Label,
+				Limit:         opts.Limit,
+				Offset:        opts.Offset,
+				IncludeLegacy: opts.IncludeLegacy,
 			})
 			if err != nil {
 				return err
@@ -114,6 +239,7 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get <id>",
 		Short: "Get investigation detail.",
+		Long:  "Get investigation detail. On Lodestone-enabled stacks, returns the full session state when the ID is a Lodestone investigation, and falls back to legacy detail otherwise.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -131,9 +257,23 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 				cmdio.Info(cmd.ErrOrStderr(), "Opening %s", url)
 				return deeplink.Open(url)
 			}
-			client, err := newClient(cmd, loader)
+			client, v2, err := loadClientAndCapability(cmd, loader)
 			if err != nil {
 				return err
+			}
+			if v2 {
+				chatID, status, err := client.ResolveByID(cmd.Context(), args[0])
+				if err != nil {
+					return err
+				}
+				if status == http.StatusOK {
+					state, err := client.GetState(cmd.Context(), chatID)
+					if err != nil {
+						return err
+					}
+					return opts.IO.Encode(cmd.OutOrStdout(), state)
+				}
+				// 404 — not a Lodestone investigation; fall through to v1.
 			}
 			inv, err := client.Get(cmd.Context(), args[0])
 			if err != nil {
@@ -151,19 +291,56 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 type createOpts struct {
 	IO          cmdio.Options
 	Title       string
+	Instruction string
 	Description string
+	Teams       []string
+	ProfileID   string
+
+	setFlags map[string]bool
 }
 
 func (o *createOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("yaml")
 	o.IO.BindFlags(flags)
-	flags.StringVar(&o.Title, "title", "", "Investigation title (required)")
-	flags.StringVar(&o.Description, "description", "", "Investigation description")
+	flags.StringVar(&o.Title, "title", "", "Investigation title")
+	flags.StringVar(&o.Instruction, "instruction", "", "Investigation instruction (required on Lodestone stacks)")
+	flags.StringVar(&o.Description, "description", "", "Investigation description (legacy alias of --instruction)")
+	flags.StringSliceVar(&o.Teams, "team", nil, "Team name to scope the investigation to (repeatable, Lodestone only)")
+	flags.StringVar(&o.ProfileID, "profile-id", "", "Lodestone runner profile ID (Lodestone only)")
 }
 
-func (o *createOpts) Validate() error {
+func (o *createOpts) captureSetFlags(flags *pflag.FlagSet) {
+	o.setFlags = map[string]bool{}
+	flags.Visit(func(f *pflag.Flag) { o.setFlags[f.Name] = true })
+}
+
+func (o *createOpts) validateForV1() error {
+	v2Only := []string{"instruction", "team", "profile-id"}
+	for _, name := range v2Only {
+		if o.setFlags[name] {
+			if name == "instruction" {
+				// Allow --instruction on a v1 stack only when --description
+				// is not also set; we map it to description.
+				if o.setFlags["description"] {
+					return errors.New("--instruction and --description are mutually exclusive")
+				}
+				continue
+			}
+			return fmt.Errorf("--%s is only supported on stacks with Lodestone (v2 investigations) enabled", name)
+		}
+	}
 	if o.Title == "" {
 		return errors.New("--title is required")
+	}
+	return nil
+}
+
+func (o *createOpts) validateForV2() error {
+	if o.setFlags["instruction"] && o.setFlags["description"] {
+		return errors.New("--instruction and --description are mutually exclusive")
+	}
+	if o.Instruction == "" && o.Description == "" {
+		return errors.New("--instruction is required")
 	}
 	return nil
 }
@@ -173,22 +350,46 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "create",
 		Short:   "Create a new investigation.",
-		Long:    "Create a new investigation with a title and optional description.",
-		Example: `  gcx assistant investigations create --title="High CPU usage" --description="Investigating CPU spikes on prod"`,
+		Long:    "Create a new investigation. On Lodestone-enabled stacks, uses the v2 API with --instruction; falls back to legacy create otherwise.",
+		Example: `  gcx assistant investigations create --instruction="Debug API latency spike" --team=sre`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.Validate(); err != nil {
-				return err
-			}
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			client, err := newClient(cmd, loader)
+			opts.captureSetFlags(cmd.Flags())
+			client, v2, err := loadClientAndCapability(cmd, loader)
 			if err != nil {
 				return err
 			}
-			resp, err := client.Create(cmd.Context(), CreateRequest{
-				Title:       opts.Title,
-				Description: opts.Description,
+			if !v2 {
+				if err := opts.validateForV1(); err != nil {
+					return err
+				}
+				description := opts.Description
+				if description == "" {
+					description = opts.Instruction
+				}
+				resp, err := client.Create(cmd.Context(), CreateRequest{
+					Title:       opts.Title,
+					Description: description,
+				})
+				if err != nil {
+					return err
+				}
+				return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			}
+			if err := opts.validateForV2(); err != nil {
+				return err
+			}
+			instruction := opts.Instruction
+			if instruction == "" {
+				instruction = opts.Description
+			}
+			resp, err := client.CreateLodestone(cmd.Context(), CreateLodestoneRequest{
+				Instruction:    instruction,
+				Title:          opts.Title,
+				TeamNames:      opts.Teams,
+				AgentProfileID: opts.ProfileID,
 			})
 			if err != nil {
 				return err

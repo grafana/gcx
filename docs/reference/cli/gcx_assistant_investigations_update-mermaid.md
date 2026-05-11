@@ -1,22 +1,18 @@
-## gcx assistant investigations get
+## gcx assistant investigations update-mermaid
 
-Get investigation detail.
-
-### Synopsis
-
-Get investigation detail. On Lodestone-enabled stacks, returns the full session state when the ID is a Lodestone investigation, and falls back to legacy detail otherwise.
+Persist Mermaid source for a Lodestone report element.
 
 ```
-gcx assistant investigations get <id> [flags]
+gcx assistant investigations update-mermaid <id> <element-id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --open            Open the investigation in the default browser
-  -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
+      --content string   Mermaid source to persist. Path to a file, or "-" to read from stdin.
+  -h, --help             help for update-mermaid
+      --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string    Output format. One of: agents, json, yaml (default "yaml")
 ```
 
 ### Options inherited from parent commands

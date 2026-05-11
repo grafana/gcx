@@ -1,21 +1,16 @@
-## gcx assistant investigations get
+## gcx assistant investigations regenerate-report
 
-Get investigation detail.
-
-### Synopsis
-
-Get investigation detail. On Lodestone-enabled stacks, returns the full session state when the ID is a Lodestone investigation, and falls back to legacy detail otherwise.
+Queue regeneration of a Lodestone investigation report.
 
 ```
-gcx assistant investigations get <id> [flags]
+gcx assistant investigations regenerate-report <id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
+  -h, --help            help for regenerate-report
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --open            Open the investigation in the default browser
   -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
 ```
 
