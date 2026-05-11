@@ -76,9 +76,10 @@ type PropertyMatcher struct {
 
 // EntityMatcher filters entities by type and optional property matchers.
 type EntityMatcher struct {
-	EntityType       string            `json:"entityType" yaml:"entityType"`
-	PropertyMatchers []PropertyMatcher `json:"propertyMatchers,omitempty" yaml:"propertyMatchers,omitempty"`
-	HavingAssertion  bool              `json:"havingAssertion,omitempty" yaml:"havingAssertion,omitempty"`
+	EntityType                 string            `json:"entityType" yaml:"entityType"`
+	PropertyMatchers           []PropertyMatcher `json:"propertyMatchers,omitempty" yaml:"propertyMatchers,omitempty"`
+	HavingAssertion            bool              `json:"havingAssertion,omitempty" yaml:"havingAssertion,omitempty"`
+	HavingPropagatedAssertions bool              `json:"havingPropagatedAssertions,omitempty" yaml:"havingPropagatedAssertions,omitempty"`
 }
 
 // SearchRequest is the request body for POST /v1/search.
@@ -116,14 +117,15 @@ type AssertionSummary struct {
 
 // SearchResult is a single search result item.
 type SearchResult struct {
-	ID         int               `json:"id,omitempty"`
-	Name       string            `json:"name"`
-	Type       string            `json:"type"`
-	EntityType string            `json:"entityType,omitempty"`
-	Active     bool              `json:"active,omitempty"`
-	Scope      map[string]string `json:"scope,omitempty"`
-	Properties map[string]any    `json:"properties,omitempty"`
-	Assertion  map[string]any    `json:"assertion,omitempty"`
+	ID                 int               `json:"id,omitempty"`
+	Name               string            `json:"name"`
+	Type               string            `json:"type"`
+	EntityType         string            `json:"entityType,omitempty"`
+	Active             bool              `json:"active,omitempty"`
+	Scope              map[string]string `json:"scope,omitempty"`
+	Properties         map[string]any    `json:"properties,omitempty"`
+	Assertion          map[string]any    `json:"assertion,omitempty"`
+	ConnectedAssertion map[string]any    `json:"connectedAssertion,omitempty"`
 }
 
 // GraphEntity is the rich entity returned by entity get/lookup endpoints.

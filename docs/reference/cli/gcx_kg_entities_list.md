@@ -32,7 +32,7 @@ gcx kg entities list [flags]
       --site string            Site scope (run 'gcx kg meta scopes' to see valid values)
       --to string              End time (RFC3339, Unix timestamp, or relative like 'now')
       --type string            Entity type to list (run 'gcx kg meta schema' to see available types)
-      --with-insights string   Filter to entities with active insights; narrow by severity: any, critical, warning, info
+      --with-insights string   Filter to entities with active insights (self or propagated from connected downstream entities, e.g. Pod-level alerts on a Service); narrow by severity: any, critical, warning, info
 ```
 
 ### Options inherited from parent commands
