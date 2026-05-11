@@ -19,15 +19,34 @@ import (
 )
 
 func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, error) {
+	c, _, err := newClientWithHost(cmd, loader)
+	return c, err
+}
+
+// newClientWithHost is like newClient but also returns the REST host so callers
+// can consult the cached v2 capability without re-loading config.
+func newClientWithHost(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, string, error) {
 	cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	base, err := assistanthttp.NewClient(cfg)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return NewClient(base), nil
+	return NewClient(base), cfg.Host, nil
+}
+
+// printV2Hint writes a one-line v2-successor hint to stderr when the connected
+// stack is known to support Lodestone (read from cache only — no network). The
+// `hint:` prefix and stderr channel match the convention in internal/output
+// (Options.Encode): agents read these and adjust subsequent invocations, so we
+// emit unconditionally rather than suppressing in agent or piped modes.
+func printV2Hint(cmd *cobra.Command, host, message string) {
+	if !CachedV2(host) {
+		return
+	}
+	fmt.Fprintf(cmd.ErrOrStderr(), "hint: %s\n", message)
 }
 
 // loadClientAndCapability returns a client plus the detected v2 capability.
@@ -411,6 +430,7 @@ func (o *cancelOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
+//nolint:dupl // sibling v1 commands share the same boilerplate by design
 func newCancelCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &cancelOpts{}
 	cmd := &cobra.Command{
@@ -421,7 +441,7 @@ func newCancelCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			client, err := newClient(cmd, loader)
+			client, host, err := newClientWithHost(cmd, loader)
 			if err != nil {
 				return err
 			}
@@ -429,7 +449,11 @@ func newCancelCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			if err := opts.IO.Encode(cmd.OutOrStdout(), resp); err != nil {
+				return err
+			}
+			printV2Hint(cmd, host, fmt.Sprintf("Lodestone (v2) is enabled — consider `gcx assistant investigations pause %s` (resumable) instead of cancel", args[0]))
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -449,6 +473,7 @@ func (o *todosOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
+//nolint:dupl // sibling v1 commands share the same boilerplate by design
 func newTodosCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &todosOpts{}
 	cmd := &cobra.Command{
@@ -459,7 +484,7 @@ func newTodosCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			client, err := newClient(cmd, loader)
+			client, host, err := newClientWithHost(cmd, loader)
 			if err != nil {
 				return err
 			}
@@ -467,7 +492,11 @@ func newTodosCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), todos)
+			if err := opts.IO.Encode(cmd.OutOrStdout(), todos); err != nil {
+				return err
+			}
+			printV2Hint(cmd, host, fmt.Sprintf("Lodestone (v2) replaces multi-agent todos with hypotheses — try `gcx assistant investigations state %s`", args[0]))
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -487,6 +516,7 @@ func (o *timelineOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
+//nolint:dupl // sibling v1 commands share the same boilerplate by design
 func newTimelineCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &timelineOpts{}
 	cmd := &cobra.Command{
@@ -497,15 +527,19 @@ func newTimelineCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			client, err := newClient(cmd, loader)
+			client, host, err := newClientWithHost(cmd, loader)
 			if err != nil {
 				return err
 			}
-			agents, err := client.Timeline(cmd.Context(), args[0])
+			timelineAgents, err := client.Timeline(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), agents)
+			if err := opts.IO.Encode(cmd.OutOrStdout(), timelineAgents); err != nil {
+				return err
+			}
+			printV2Hint(cmd, host, fmt.Sprintf("Lodestone (v2) tracks single-agent progress via epoch + plan — try `gcx assistant investigations state %s`", args[0]))
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -523,6 +557,7 @@ func (o *reportOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
+//nolint:dupl // sibling v1 commands share the same boilerplate by design
 func newReportCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &reportOpts{}
 	cmd := &cobra.Command{
@@ -533,7 +568,7 @@ func newReportCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			client, err := newClient(cmd, loader)
+			client, host, err := newClientWithHost(cmd, loader)
 			if err != nil {
 				return err
 			}
@@ -541,7 +576,11 @@ func newReportCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), report)
+			if err := opts.IO.Encode(cmd.OutOrStdout(), report); err != nil {
+				return err
+			}
+			printV2Hint(cmd, host, fmt.Sprintf("Lodestone (v2) stores the report inline in session state — try `gcx assistant investigations state %s`", args[0]))
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())

@@ -152,3 +152,23 @@ func saveCapabilityCache(path string, c capabilityCache) error {
 // ErrV2NotSupported is returned by v2-only commands when the connected stack
 // does not advertise Lodestone.
 var ErrV2NotSupported = errors.New("lodestone (v2 investigations) is not available")
+
+// CachedV2 reports whether v2 is known to be supported for host based on the
+// on-disk cache. Returns false when there is no cached entry or the entry is
+// stale; it never probes the network. Honours GCX_ASSISTANT_API_VERSION.
+func CachedV2(host string) bool {
+	if v, ok := apiVersionFromEnv(); ok {
+		return v == "v2"
+	}
+	detectorMu.Lock()
+	defer detectorMu.Unlock()
+	cache := loadCapabilityCache(CapabilityCachePath())
+	entry, ok := cache.Entries[cacheKey(host)]
+	if !ok {
+		return false
+	}
+	if time.Since(entry.CheckedAt) >= capabilityCacheTTL {
+		return false
+	}
+	return entry.V2
+}
