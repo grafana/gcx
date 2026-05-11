@@ -33,6 +33,7 @@ const (
 	searchPath           = pluginResourcePath + "/asserts/api-server/v1/search"
 	searchAssertPath     = searchPath + "/assertions"
 	searchSamplePath     = searchPath + "/sample"
+	insightSearchPath    = pluginResourcePath + "/asserts/api-server/v1/assertions/search"
 	rulesPath            = pluginResourcePath + "/asserts/api-server/v1/config/prom-rules"
 	ruleByNameFmt        = rulesPath + "/%s"
 	modelRulesPath       = pluginResourcePath + "/asserts/api-server/v1/config/model-rules/"
@@ -467,6 +468,20 @@ func (c *Client) SearchAssertions(ctx context.Context, req SearchRequest) ([]Ass
 	}
 	if result == nil {
 		return []AssertionTimeline{}, nil
+	}
+	return result, nil
+}
+
+// SearchInsights finds entities with active assertions matching the given
+// label-matcher rules. Backed by POST /v1/assertions/search — the same endpoint
+// the Asserts UI's "Entities with Insights" panel uses.
+func (c *Client) SearchInsights(ctx context.Context, req InsightSearchRequest) ([]EntityKey, error) {
+	var result []EntityKey
+	if err := c.postJSON(ctx, insightSearchPath, req, &result); err != nil {
+		return nil, fmt.Errorf("kg: search insights: %w", err)
+	}
+	if result == nil {
+		return []EntityKey{}, nil
 	}
 	return result, nil
 }

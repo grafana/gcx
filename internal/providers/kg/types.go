@@ -92,6 +92,31 @@ type SearchRequest struct {
 	PageNum        int               `json:"pageNum" yaml:"pageNum"`
 }
 
+// LabelMatcher is one filter within an InsightSearchCriteria group. The backend
+// matches on assertion-rule labels such as asserts_assertion_name and
+// asserts_severity. Op uses MatcherOp values: "=", "<>", "CONTAINS",
+// "STARTS WITH", "ENDS WITH", "IS NULL", "IS NOT NULL", "<", ">", "<=", ">=",
+// "IN".
+type LabelMatcher struct {
+	Name  string `json:"name" yaml:"name"`
+	Op    string `json:"op" yaml:"op"`
+	Value string `json:"value" yaml:"value"`
+}
+
+// InsightSearchCriteria is one rule group. Label matchers within a group are
+// ANDed; multiple groups in an InsightSearchRequest are ORed.
+type InsightSearchCriteria struct {
+	LabelMatchers []LabelMatcher `json:"labelMatchers" yaml:"labelMatchers"`
+}
+
+// InsightSearchRequest is the request body for POST /v1/assertions/search.
+type InsightSearchRequest struct {
+	EntityType     string                  `json:"entityType" yaml:"entityType"`
+	SearchCriteria []InsightSearchCriteria `json:"searchCriteria" yaml:"searchCriteria"`
+	ScopeCriteria  *ScopeCriteria          `json:"scopeCriteria,omitempty" yaml:"scopeCriteria,omitempty"`
+	TimeCriteria   *TimeCriteria           `json:"timeCriteria,omitempty" yaml:"timeCriteria,omitempty"`
+}
+
 // SampleSearchRequest is the request body for POST /v1/search/sample.
 type SampleSearchRequest struct {
 	TimeCriteria   *TimeCriteria   `json:"timeCriteria,omitempty" yaml:"timeCriteria,omitempty"`

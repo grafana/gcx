@@ -228,7 +228,7 @@ func resolveEntityTypeAndName(cmd *cobra.Command, args []string) (string, string
 	name, _ := cmd.Flags().GetString("name")
 	entityType, _ := cmd.Flags().GetString("type")
 	if entityType == "" || name == "" {
-		return "", "", errors.New("entity type and name required: use positional arg (Type--Name) or --type/--name flags")
+		return "", "", errors.New("entity type and name required: use positional arg (Type--Name) or --type/--insight flags")
 	}
 	return entityType, name, nil
 }
@@ -972,7 +972,7 @@ func (o *scopesListOpts) setup(flags *pflag.FlagSet) {
 // Insights commands
 // ---------------------------------------------------------------------------
 
-//nolint:maintidx,gocyclo
+//nolint:maintidx
 func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "insights",
@@ -1167,11 +1167,24 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	}
 
 	// search subcommand
-	var searchAssertionsFile string
-	var searchAssertionsScope scopeFlags
+	var (
+		searchEntityType string
+		searchNames      []string
+		searchSeverities []string
+		searchScope      scopeFlags
+	)
 	searchCmd := &cobra.Command{
 		Use:   "search",
-		Short: "Search for insights matching a query.",
+		Short: "Find entities with active insights matching the given rules.",
+		Long: `Find entities with active insights matching the given rules.
+
+Backed by the same endpoint the Asserts UI's "Entities with Insights" panel uses.
+Each --insight flag is a separate rule (ORed together); severities are ANDed
+into every rule.`,
+		Example: `  gcx kg insights search --insight contains=Saturation
+  gcx kg insights search --insight equals=ErrorRatioBreach --severity critical
+  gcx kg insights search --severity critical,warning --namespace mimir-prod-01
+  gcx kg insights search --type Namespace --insight starts-with=Latency --since 1h`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
@@ -1181,61 +1194,99 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var req SearchRequest
-			//nolint:nestif
-			if searchAssertionsFile != "" {
-				data, err := readFileOrStdin(cmd, searchAssertionsFile)
-				if err != nil {
-					return fmt.Errorf("failed to read file: %w", err)
-				}
-				if err := yaml.Unmarshal(data, &req); err != nil {
-					return fmt.Errorf("invalid YAML: %w", err)
-				}
-			} else {
-				entityType, _ := cmd.Flags().GetString("type")
-				entityName, _ := cmd.Flags().GetString("name")
-				startMs, endMs, err := searchAssertionsScope.resolveTime()
-				if err != nil {
-					return err
-				}
-				if err := searchAssertionsScope.validateScopes(cmd.Context(), client); err != nil {
-					return err
-				}
-				var filterCriteria []EntityMatcher
-				if entityType != "" || entityName != "" {
-					if entityType == "" {
-						entityType = "Service"
-					}
-					matcher := EntityMatcher{EntityType: entityType}
-					if entityName != "" {
-						matcher.PropertyMatchers = []PropertyMatcher{{Name: "name", Op: "=", Value: entityName}}
-					}
-					filterCriteria = []EntityMatcher{matcher}
-				}
-				req = SearchRequest{
-					TimeCriteria:   &TimeCriteria{Start: startMs, End: endMs},
-					FilterCriteria: filterCriteria,
-					ScopeCriteria:  searchAssertionsScope.scopeCriteria(),
-				}
+			startMs, endMs, err := searchScope.resolveTime()
+			if err != nil {
+				return err
 			}
-			if req.DefinitionId == nil {
-				one := 1
-				req.DefinitionId = &one
+			if err := searchScope.validateScopes(cmd.Context(), client); err != nil {
+				return err
 			}
-			result, err := client.SearchAssertions(cmd.Context(), req)
+			req, err := buildInsightSearchRequest(searchEntityType, searchNames, searchSeverities, searchScope.scopeCriteria(), startMs, endMs)
+			if err != nil {
+				return err
+			}
+			result, err := client.SearchInsights(cmd.Context(), req)
 			if err != nil {
 				return err
 			}
 			return (&cmdio.Options{OutputFormat: "json"}).Encode(cmd.OutOrStdout(), result)
 		},
 	}
-	searchCmd.Flags().StringVarP(&searchAssertionsFile, "file", "f", "", "Input file (YAML)")
-	searchCmd.Flags().String("type", "", "Entity type filter")
-	searchCmd.Flags().String("name", "", "Entity name filter")
-	searchAssertionsScope.register(searchCmd)
+	searchCmd.Flags().StringVar(&searchEntityType, "type", "Service", "Root entity type (e.g. Service, Namespace, Node)")
+	searchCmd.Flags().StringArrayVar(&searchNames, "insight", nil, "Insight-name rule: op=value where op is contains, starts-with, or equals (repeatable; rules are ORed)")
+	searchCmd.Flags().StringSliceVar(&searchSeverities, "severity", nil, "Filter by insight severity: critical, warning, info (comma-separated)")
+	searchScope.register(searchCmd)
+	searchCmd.MarkFlagsOneRequired("insight", "severity")
 
 	cmd.AddCommand(queryCmd, summaryCmd, graphCmd, entityMetricCmd, sourceMetricsCmd, exampleCmd, searchCmd)
 	return cmd
+}
+
+// insightNameLabel and insightSeverityLabel are the backend label names that
+// drive the Assertion Search endpoint. The CLI surfaces "insight" as the
+// user-facing term; the wire labels use the legacy "asserts_" prefix.
+const (
+	insightNameLabel     = "asserts_assertion_name"
+	insightSeverityLabel = "asserts_severity"
+)
+
+// buildInsightSearchRequest assembles the request body for
+// POST /v1/assertions/search from CLI flags. Each --insight flag becomes
+// its own rule group; --insight-severity values are appended into every group
+// so they AND with the name filter (matching the UI's setSeverity behavior).
+// When only severities are given, an "IS NOT NULL" name matcher is seeded so
+// the severity matchers have somewhere to attach.
+func buildInsightSearchRequest(entityType string, insightNames, severities []string, scope *ScopeCriteria, startMs, endMs int64) (InsightSearchRequest, error) {
+	nameOps := map[string]string{
+		"contains":    "CONTAINS",
+		"starts-with": "STARTS WITH",
+		"equals":      "=",
+	}
+
+	severityMatchers := make([]LabelMatcher, 0, len(severities))
+	for _, sev := range severities {
+		sev = strings.TrimSpace(sev)
+		if sev == "" {
+			continue
+		}
+		severityMatchers = append(severityMatchers, LabelMatcher{
+			Name:  insightSeverityLabel,
+			Op:    "=",
+			Value: sev,
+		})
+	}
+
+	groups := make([]InsightSearchCriteria, 0, len(insightNames))
+	for _, raw := range insightNames {
+		op, value, ok := strings.Cut(raw, "=")
+		if !ok {
+			return InsightSearchRequest{}, fmt.Errorf("invalid --insight %q: expected op=value where op is one of contains, starts-with, equals", raw)
+		}
+		wireOp, ok := nameOps[strings.ToLower(strings.TrimSpace(op))]
+		if !ok {
+			return InsightSearchRequest{}, fmt.Errorf("invalid --insight op %q: must be one of contains, starts-with, equals", op)
+		}
+		matchers := make([]LabelMatcher, 0, 1+len(severityMatchers))
+		matchers = append(matchers, LabelMatcher{Name: insightNameLabel, Op: wireOp, Value: value})
+		matchers = append(matchers, severityMatchers...)
+		groups = append(groups, InsightSearchCriteria{LabelMatchers: matchers})
+	}
+
+	if len(groups) == 0 {
+		// Severity-only call — seed an "any name" matcher so severity has a group.
+		// The backend rejects CONTAINS "" so we use IS NOT NULL instead.
+		matchers := make([]LabelMatcher, 0, 1+len(severityMatchers))
+		matchers = append(matchers, LabelMatcher{Name: insightNameLabel, Op: "IS NOT NULL"})
+		matchers = append(matchers, severityMatchers...)
+		groups = []InsightSearchCriteria{{LabelMatchers: matchers}}
+	}
+
+	return InsightSearchRequest{
+		EntityType:     entityType,
+		SearchCriteria: groups,
+		ScopeCriteria:  scope,
+		TimeCriteria:   &TimeCriteria{Start: startMs, End: endMs},
+	}, nil
 }
 
 func buildAssertionsRequestFromFlags(cmd *cobra.Command, args []string, client *Client) (AssertionsRequest, error) {

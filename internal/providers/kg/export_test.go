@@ -19,3 +19,8 @@ func (f ScopeFlags) ValidateScopes(ctx context.Context, c *Client) error {
 func FilterBySeverity(results []SearchResult, sev string) []SearchResult {
 	return filterBySeverity(results, sev)
 }
+
+// BuildInsightSearchRequest exposes buildInsightSearchRequest for tests.
+//
+//nolint:gochecknoglobals // Test-only export alias.
+var BuildInsightSearchRequest = buildInsightSearchRequest

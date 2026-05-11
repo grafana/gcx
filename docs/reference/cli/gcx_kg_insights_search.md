@@ -1,24 +1,41 @@
 ## gcx kg insights search
 
-Search for insights matching a query.
+Find entities with active insights matching the given rules.
+
+### Synopsis
+
+Find entities with active insights matching the given rules.
+
+Backed by the same endpoint the Asserts UI's "Entities with Insights" panel uses.
+Each --insight flag is a separate rule (ORed together); severities are ANDed
+into every rule.
 
 ```
 gcx kg insights search [flags]
 ```
 
+### Examples
+
+```
+  gcx kg insights search --insight contains=Saturation
+  gcx kg insights search --insight equals=ErrorRatioBreach --severity critical
+  gcx kg insights search --severity critical,warning --namespace mimir-prod-01
+  gcx kg insights search --type Namespace --insight starts-with=Latency --since 1h
+```
+
 ### Options
 
 ```
-      --env string         Environment scope
-  -f, --file string        Input file (YAML)
-      --from string        Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-  -h, --help               help for search
-      --name string        Entity name filter
-      --namespace string   Namespace scope
-      --since string       Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
-      --site string        Site scope
-      --to string          End time (RFC3339, Unix timestamp, or relative like 'now')
-      --type string        Entity type filter
+      --env string            Environment scope
+      --from string           Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
+  -h, --help                  help for search
+      --insight stringArray   Insight-name rule: op=value where op is contains, starts-with, or equals (repeatable; rules are ORed)
+      --namespace string      Namespace scope
+      --severity strings      Filter by insight severity: critical, warning, info (comma-separated)
+      --since string          Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
+      --site string           Site scope
+      --to string             End time (RFC3339, Unix timestamp, or relative like 'now')
+      --type string           Root entity type (e.g. Service, Namespace, Node) (default "Service")
 ```
 
 ### Options inherited from parent commands
