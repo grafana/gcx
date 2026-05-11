@@ -228,7 +228,7 @@ func resolveEntityTypeAndName(cmd *cobra.Command, args []string) (string, string
 	name, _ := cmd.Flags().GetString("name")
 	entityType, _ := cmd.Flags().GetString("type")
 	if entityType == "" || name == "" {
-		return "", "", errors.New("entity type and name required: use positional arg (Type--Name) or --type/--insight flags")
+		return "", "", errors.New("entity type and name required: use positional arg (Type--Name) or --type/--name flags")
 	}
 	return entityType, name, nil
 }
@@ -1232,8 +1232,8 @@ const (
 
 // buildInsightSearchRequest assembles the request body for
 // POST /v1/assertions/search from CLI flags. Each --insight flag becomes
-// its own rule group; --insight-severity values are appended into every group
-// so they AND with the name filter (matching the UI's setSeverity behavior).
+// its own rule group; --severity values are appended into every group so they
+// AND with the name filter (matching the UI's setSeverity behavior).
 // When only severities are given, an "IS NOT NULL" name matcher is seeded so
 // the severity matchers have somewhere to attach.
 func buildInsightSearchRequest(entityType string, insightNames, severities []string, scope *ScopeCriteria, startMs, endMs int64) (InsightSearchRequest, error) {
