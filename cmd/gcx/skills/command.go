@@ -727,14 +727,10 @@ func uninstallSkills(root string, names []string, dryRun bool) (uninstallResult,
 }
 
 func validateSkillName(name string) error {
-	if name == "." || name == ".." {
-		return fmt.Errorf("invalid skill name %q", name)
-	}
-	if strings.Contains(name, "/") || strings.Contains(name, `\`) {
-		return fmt.Errorf("invalid skill name %q", name)
-	}
-	if filepath.Base(name) != name {
-		return fmt.Errorf("invalid skill name %q", name)
+	if name == "." || name == ".." ||
+		strings.Contains(name, "/") || strings.Contains(name, `\`) ||
+		filepath.Base(name) != name {
+		return fmt.Errorf("invalid skill name %q: must be a plain name without path separators (e.g. gcx, manage-dashboards)", name)
 	}
 
 	return nil
