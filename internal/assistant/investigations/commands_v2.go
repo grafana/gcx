@@ -34,7 +34,7 @@ func requireV2(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, err
 	}
 	if !c.V2 {
 		return nil, fmt.Errorf("%w on %s; use `gcx assistant investigations list` to see legacy investigations",
-			ErrV2NotSupported, cfg.Host)
+			errV2NotSupported, cfg.Host)
 	}
 	return NewClient(base), nil
 }

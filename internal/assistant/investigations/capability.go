@@ -149,9 +149,10 @@ func saveCapabilityCache(path string, c capabilityCache) error {
 	return nil
 }
 
-// ErrV2NotSupported is returned by v2-only commands when the connected stack
-// does not advertise Lodestone.
-var ErrV2NotSupported = errors.New("lodestone (v2 investigations) is not available")
+// errV2NotSupported is returned by v2-only commands when the connected stack
+// does not advertise Lodestone. Package-private — used by `requireV2` only;
+// CLI callers see it wrapped with the host as a formatted error message.
+var errV2NotSupported = errors.New("lodestone (v2 investigations) is not available")
 
 // CachedV2 reports whether v2 is known to be supported for host based on the
 // on-disk cache. Returns false when there is no cached entry or the entry is
