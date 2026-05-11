@@ -83,11 +83,12 @@ func detectCapabilityWith(ctx context.Context, base *assistanthttp.Client, host 
 	return entry, nil
 }
 
-// probeLodestone calls GET /investigations/lodestone/profiles — the cheapest
-// idempotent v2-only endpoint. 200 means v2 is supported; 404 means v1-only.
-// Any other transport-level error is returned to the caller.
+// probeLodestone calls GET /investigations/lodestone?limit=1 — the canonical
+// v2 list endpoint, kept minimal. 200 means Lodestone is supported; 404 means
+// v1-only. The profiles endpoint would be cheaper but isn't deployed on every
+// stack version, so it's unreliable as a capability signal.
 func probeLodestone(ctx context.Context, base *assistanthttp.Client) (bool, error) {
-	resp, err := base.DoRequest(ctx, http.MethodGet, lodestoneProfilesPath, nil)
+	resp, err := base.DoRequest(ctx, http.MethodGet, lodestoneListPath+"?limit=1", nil)
 	if err != nil {
 		return false, fmt.Errorf("probe lodestone capability: %w", err)
 	}
@@ -150,4 +151,4 @@ func saveCapabilityCache(path string, c capabilityCache) error {
 
 // ErrV2NotSupported is returned by v2-only commands when the connected stack
 // does not advertise Lodestone.
-var ErrV2NotSupported = errors.New("lodestone (v2 investigations) is not available on this stack")
+var ErrV2NotSupported = errors.New("lodestone (v2 investigations) is not available")

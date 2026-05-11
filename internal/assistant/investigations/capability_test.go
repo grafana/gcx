@@ -59,13 +59,14 @@ func TestDetectCapability_Probe(t *testing.T) {
 			var calls int
 			client, host := newCapabilityClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls++
-				assert.Contains(t, r.URL.Path, "/investigations/lodestone/profiles")
+				assert.Contains(t, r.URL.Path, "/investigations/lodestone")
+				assert.Equal(t, "1", r.URL.Query().Get("limit"))
 				if tt.status != http.StatusOK {
 					w.WriteHeader(tt.status)
 					return
 				}
 				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte(`{"data":{"profiles":[]}}`))
+				_, _ = w.Write([]byte(`{"data":{"investigations":[]}}`))
 			}))
 
 			c, err := investigations.DetectCapability(t.Context(), client, host)
