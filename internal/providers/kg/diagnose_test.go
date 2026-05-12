@@ -30,8 +30,8 @@ func newTestPromClient(t *testing.T, server *httptest.Server) *prometheus.Client
 func TestRunDiagnose_AllHealthy(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/stack/status":
+		switch r.URL.Path {
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/stack/status":
 			writeJSON(w, kg.Status{
 				Status:  "complete",
 				Enabled: true,
@@ -39,19 +39,19 @@ func TestRunDiagnose_AllHealthy(t *testing.T) {
 					{CheckName: "traces_service_graph", DataPresent: true},
 				},
 			})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_type/count":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_type/count":
 			writeJSON(w, map[string]int64{"Service": 10, "Pod": 20})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_scope":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_scope":
 			writeJSON(w, map[string]any{"scopeValues": map[string][]string{
 				"env":       {"production"},
 				"site":      {"us-east-1"},
 				"namespace": {"default"},
 			}})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/log":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/log":
 			writeJSON(w, kg.LogConfigsResponse{LogDrilldownConfigs: []kg.LogDrilldownConfig{{Name: "default-loki"}}})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/trace":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/trace":
 			writeJSON(w, kg.TraceConfigsResponse{TraceDrilldownConfigs: []kg.TraceDrilldownConfig{{Name: "default-tempo"}}})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/profile":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/profile":
 			writeJSON(w, kg.ProfileConfigsResponse{ProfileDrilldownConfigs: []kg.ProfileDrilldownConfig{{Name: "default-pyroscope"}}})
 		default:
 			http.NotFound(w, r)
@@ -73,18 +73,18 @@ func TestRunDiagnose_AllHealthy(t *testing.T) {
 func TestRunDiagnose_StackDisabled(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/stack/status":
+		switch r.URL.Path {
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/stack/status":
 			writeJSON(w, kg.Status{Status: "not_initialized", Enabled: false})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_type/count":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_type/count":
 			writeJSON(w, map[string]int64{})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_scope":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_scope":
 			writeJSON(w, map[string]any{"scopeValues": map[string][]string{}})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/log":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/log":
 			writeJSON(w, kg.LogConfigsResponse{})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/trace":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/trace":
 			writeJSON(w, kg.TraceConfigsResponse{})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/profile":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/profile":
 			writeJSON(w, kg.ProfileConfigsResponse{})
 		default:
 			http.NotFound(w, r)
@@ -114,8 +114,8 @@ func TestRunDiagnose_StackDisabled(t *testing.T) {
 func TestRunDiagnose_SanityCheckBlocker(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/stack/status":
+		switch r.URL.Path {
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/stack/status":
 			writeJSON(w, kg.Status{
 				Status:  "complete",
 				Enabled: true,
@@ -133,15 +133,15 @@ func TestRunDiagnose_SanityCheckBlocker(t *testing.T) {
 					},
 				},
 			})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_type/count":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_type/count":
 			writeJSON(w, map[string]int64{"Service": 5})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_scope":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_scope":
 			writeJSON(w, map[string]any{"scopeValues": map[string][]string{"env": {"prod"}}})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/log":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/log":
 			writeJSON(w, kg.LogConfigsResponse{})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/trace":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/trace":
 			writeJSON(w, kg.TraceConfigsResponse{})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/profile":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/profile":
 			writeJSON(w, kg.ProfileConfigsResponse{})
 		default:
 			http.NotFound(w, r)
@@ -170,18 +170,18 @@ func TestRunDiagnose_SanityCheckBlocker(t *testing.T) {
 func TestRunDiagnose_NoEntities(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/stack/status":
+		switch r.URL.Path {
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/stack/status":
 			writeJSON(w, kg.Status{Status: "complete", Enabled: true})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_type/count":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_type/count":
 			writeJSON(w, map[string]int64{})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_scope":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_scope":
 			writeJSON(w, map[string]any{"scopeValues": map[string][]string{"env": {"prod"}}})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/log":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/log":
 			writeJSON(w, kg.LogConfigsResponse{})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/trace":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/trace":
 			writeJSON(w, kg.TraceConfigsResponse{})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/profile":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/profile":
 			writeJSON(w, kg.ProfileConfigsResponse{})
 		default:
 			http.NotFound(w, r)
@@ -248,28 +248,32 @@ func TestDiagnoseResult_JSONRoundTrip(t *testing.T) {
 	assert.Equal(t, result.Checks[0].Status, decoded.Checks[0].Status)
 }
 
-func TestRunDiagnose_MetricChecksPass(t *testing.T) {
-	// KG API mock — minimal healthy responses.
-	kgMux := http.NewServeMux()
-	kgMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/stack/status":
+// minimalKGServer returns an httptest.Server with a minimal healthy KG mock.
+func minimalKGServer() *httptest.Server {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/stack/status":
 			writeJSON(w, kg.Status{Status: "complete", Enabled: true})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_type/count":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_type/count":
 			writeJSON(w, map[string]int64{"Service": 5})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_scope":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_scope":
 			writeJSON(w, map[string]any{"scopeValues": map[string][]string{"env": {"prod"}}})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/log":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/log":
 			writeJSON(w, kg.LogConfigsResponse{LogDrilldownConfigs: []kg.LogDrilldownConfig{{Name: "loki"}}})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/trace":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/trace":
 			writeJSON(w, kg.TraceConfigsResponse{TraceDrilldownConfigs: []kg.TraceDrilldownConfig{{Name: "tempo"}}})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/profile":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/profile":
 			writeJSON(w, kg.ProfileConfigsResponse{})
 		default:
 			http.NotFound(w, r)
 		}
 	})
-	kgServer := httptest.NewServer(kgMux)
+	return httptest.NewServer(mux)
+}
+
+func TestRunDiagnose_MetricChecksPass(t *testing.T) {
+	kgServer := minimalKGServer()
 	defer kgServer.Close()
 
 	// Prometheus API mock — returns a Grafana datasource query response with data.
@@ -332,18 +336,18 @@ func TestRunDiagnose_MetricChecksFail(t *testing.T) {
 	// KG API mock.
 	kgMux := http.NewServeMux()
 	kgMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/stack/status":
+		switch r.URL.Path {
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/stack/status":
 			writeJSON(w, kg.Status{Status: "complete", Enabled: true})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_type/count":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_type/count":
 			writeJSON(w, map[string]int64{"Service": 5})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_scope":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_scope":
 			writeJSON(w, map[string]any{"scopeValues": map[string][]string{"env": {"prod"}}})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/log":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/log":
 			writeJSON(w, kg.LogConfigsResponse{LogDrilldownConfigs: []kg.LogDrilldownConfig{{Name: "loki"}}})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/trace":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/trace":
 			writeJSON(w, kg.TraceConfigsResponse{TraceDrilldownConfigs: []kg.TraceDrilldownConfig{{Name: "tempo"}}})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/profile":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/profile":
 			writeJSON(w, kg.ProfileConfigsResponse{})
 		default:
 			http.NotFound(w, r)
@@ -388,18 +392,18 @@ func TestRunDiagnose_NilPromClientSkipsMetrics(t *testing.T) {
 	// KG API mock.
 	kgMux := http.NewServeMux()
 	kgMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/stack/status":
+		switch r.URL.Path {
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/stack/status":
 			writeJSON(w, kg.Status{Status: "complete", Enabled: true})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_type/count":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_type/count":
 			writeJSON(w, map[string]int64{"Service": 5})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_scope":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/entity_scope":
 			writeJSON(w, map[string]any{"scopeValues": map[string][]string{"env": {"prod"}}})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/log":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/log":
 			writeJSON(w, kg.LogConfigsResponse{LogDrilldownConfigs: []kg.LogDrilldownConfig{{Name: "loki"}}})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/trace":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/trace":
 			writeJSON(w, kg.TraceConfigsResponse{TraceDrilldownConfigs: []kg.TraceDrilldownConfig{{Name: "tempo"}}})
-		case r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/profile":
+		case "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/profile":
 			writeJSON(w, kg.ProfileConfigsResponse{})
 		default:
 			http.NotFound(w, r)
@@ -587,50 +591,10 @@ func findCheck(checks []kg.CheckResult, name string) *kg.CheckResult {
 // Labels diagnosis tests
 // ---------------------------------------------------------------------------
 
-// promGroupByHandler returns a handler that responds to all Prometheus queries
-// with a set of samples containing the given label values.
-func promGroupByHandler(labelName string, values []string) http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) {
-		var frames []map[string]any
-		if len(values) > 0 {
-			var timeVals []int64
-			var numVals []float64
-			for range values {
-				timeVals = append(timeVals, 1715100000000)
-				numVals = append(numVals, 1)
-			}
-			// Build one frame per label value (Grafana query response format).
-			for _, v := range values {
-				frames = append(frames, map[string]any{
-					"schema": map[string]any{
-						"fields": []map[string]any{
-							{"name": "Time", "type": "time"},
-							{"name": "Value", "type": "number", "labels": map[string]string{labelName: v}},
-						},
-					},
-					"data": map[string]any{
-						"values": []any{
-							[]int64{1715100000000},
-							[]float64{1},
-						},
-					},
-				})
-			}
-		}
-		writeJSON(w, map[string]any{
-			"results": map[string]any{
-				"A": map[string]any{
-					"frames": frames,
-				},
-			},
-		})
-	}
-}
-
 // grafanaFramesForLabels builds a Grafana query response with one frame per
 // label value, matching the format that convertGrafanaResponse expects.
 func grafanaFramesForLabels(labelName string, values []string) map[string]any {
-	var frames []map[string]any
+	frames := make([]map[string]any, 0, len(values))
 	for _, v := range values {
 		frames = append(frames, map[string]any{
 			"schema": map[string]any{
@@ -680,11 +644,12 @@ func TestLabelsDiagnose_AllMapped(t *testing.T) {
 		n, _ := r.Body.Read(body)
 		bodyStr := string(body[:n])
 
-		if strings.Contains(bodyStr, "asserts_env") {
+		switch {
+		case strings.Contains(bodyStr, "asserts_env"):
 			writeJSON(w, grafanaFramesForLabels("asserts_env", []string{"production", "staging"}))
-		} else if strings.Contains(bodyStr, "deployment_environment") {
+		case strings.Contains(bodyStr, "deployment_environment"):
 			writeJSON(w, grafanaFramesForLabels("deployment_environment", []string{"production", "staging"}))
-		} else {
+		default:
 			writeJSON(w, grafanaFramesForLabels("", nil))
 		}
 	})
@@ -696,7 +661,7 @@ func TestLabelsDiagnose_AllMapped(t *testing.T) {
 	result := kg.RunLabelsDiagnose(t.Context(), kgClient, promClient, "test-uid")
 
 	// All checks should pass.
-	assert.True(t, result.Summary.Passed >= 3, "expected at least 3 passing checks, got %d", result.Summary.Passed)
+	assert.GreaterOrEqual(t, result.Summary.Passed, 3, "expected at least 3 passing checks")
 	assert.Equal(t, 0, result.Summary.Failed)
 
 	// Mappings should all be "mapped".

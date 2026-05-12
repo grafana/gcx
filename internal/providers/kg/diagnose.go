@@ -244,7 +244,7 @@ func resolvePromClient(ctx context.Context, loader *providers.ConfigLoader, cfg 
 		cfgCtx = fullCfg.GetCurrentContext()
 	}
 
-	dsUID := ""
+	var dsUID string
 	resolved, err := dsquery.ResolveDatasource(ctx, flagValue, cfgCtx, cfg, "prometheus")
 	if err != nil {
 		// The KG always uses the default Prometheus datasource. Fall back to the
@@ -314,7 +314,6 @@ func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promCli
 	// Check 5–9: Metric checks (skip if no Prometheus client).
 	if promClient != nil && datasourceUID != "" {
 		for _, mc := range metricChecks(scope.env, scope.namespace) {
-			mc := mc // capture loop var
 			g.Go(func() error {
 				addCheck(checkMetric(ctx, promClient, datasourceUID, mc))
 				return nil
@@ -396,7 +395,7 @@ func checkStackStatus(ctx context.Context, client *Client) []CheckResult {
 	// Sanity check results from the status response.
 	for _, sc := range status.SanityCheckResults {
 		c := CheckResult{
-			Name: fmt.Sprintf("Sanity: %s", sc.CheckName),
+			Name: "Sanity: " + sc.CheckName,
 		}
 		if sc.DataPresent {
 			c.Status = CheckPass
@@ -531,15 +530,16 @@ func checkTelemetryConfigs(ctx context.Context, client *Client) []CheckResult {
 	g.Go(func() error {
 		resp, err := client.FetchLogConfigs(ctx)
 		c := CheckResult{Name: "Telemetry: log"}
-		if err != nil {
+		switch {
+		case err != nil:
 			c.Status = CheckWarn
 			c.Detail = fmt.Sprintf("API error: %v", err)
 			c.Recommendation = "Could not fetch log drilldown configs. Log drilldown from entities may not work."
-		} else if len(resp.LogDrilldownConfigs) == 0 {
+		case len(resp.LogDrilldownConfigs) == 0:
 			c.Status = CheckWarn
 			c.Detail = "no log drilldown configs"
 			c.Recommendation = "No log configs found. Configure a Loki datasource mapping in the Asserts app to enable log drilldown."
-		} else {
+		default:
 			c.Status = CheckPass
 			names := make([]string, 0, len(resp.LogDrilldownConfigs))
 			for _, cfg := range resp.LogDrilldownConfigs {
@@ -556,15 +556,16 @@ func checkTelemetryConfigs(ctx context.Context, client *Client) []CheckResult {
 	g.Go(func() error {
 		resp, err := client.FetchTraceConfigs(ctx)
 		c := CheckResult{Name: "Telemetry: trace"}
-		if err != nil {
+		switch {
+		case err != nil:
 			c.Status = CheckWarn
 			c.Detail = fmt.Sprintf("API error: %v", err)
 			c.Recommendation = "Could not fetch trace drilldown configs. Trace drilldown from entities may not work."
-		} else if len(resp.TraceDrilldownConfigs) == 0 {
+		case len(resp.TraceDrilldownConfigs) == 0:
 			c.Status = CheckWarn
 			c.Detail = "no trace drilldown configs"
 			c.Recommendation = "No trace configs found. Configure a Tempo datasource mapping in the Asserts app to enable trace drilldown."
-		} else {
+		default:
 			c.Status = CheckPass
 			names := make([]string, 0, len(resp.TraceDrilldownConfigs))
 			for _, cfg := range resp.TraceDrilldownConfigs {
@@ -581,15 +582,16 @@ func checkTelemetryConfigs(ctx context.Context, client *Client) []CheckResult {
 	g.Go(func() error {
 		resp, err := client.FetchProfileConfigs(ctx)
 		c := CheckResult{Name: "Telemetry: profile"}
-		if err != nil {
+		switch {
+		case err != nil:
 			c.Status = CheckWarn
 			c.Detail = fmt.Sprintf("API error: %v", err)
 			c.Recommendation = "Could not fetch profile drilldown configs."
-		} else if len(resp.ProfileDrilldownConfigs) == 0 {
+		case len(resp.ProfileDrilldownConfigs) == 0:
 			c.Status = CheckWarn
 			c.Detail = "no profile drilldown configs"
 			c.Recommendation = "No profile configs found. This is optional — configure Pyroscope if continuous profiling is available."
-		} else {
+		default:
 			c.Status = CheckPass
 			names := make([]string, 0, len(resp.ProfileDrilldownConfigs))
 			for _, cfg := range resp.ProfileDrilldownConfigs {
@@ -704,7 +706,7 @@ func checkMetric(ctx context.Context, client *prometheus.Client, datasourceUID s
 	return CheckResult{
 		Name:   def.Name,
 		Status: CheckPass,
-		Detail: fmt.Sprintf("%s series", count),
+		Detail: count + " series",
 	}
 }
 
@@ -739,7 +741,7 @@ func (c *DiagnoseTextCodec) Encode(w io.Writer, v any) error {
 
 	header := "Knowledge Graph Diagnostics"
 	if result.Env != "" {
-		header += fmt.Sprintf(" — env: %s", result.Env)
+		header += " — env: " + result.Env
 	}
 	fmt.Fprintln(w, header)
 	fmt.Fprintln(w)

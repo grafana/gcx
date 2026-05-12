@@ -142,7 +142,7 @@ func runServiceDiagnose(ctx context.Context, client *Client, serviceName string,
 		}
 		result.Diagnosis = append(result.Diagnosis, fmt.Sprintf("Service %q was not found in the Entity Graph.", serviceName))
 		result.NextSteps = append(result.NextSteps, fmt.Sprintf("gcx metrics query 'traces_target_info{service_name=\"%s\"}' --since 1h", serviceName))
-		result.NextSteps = append(result.NextSteps, fmt.Sprintf("gcx metrics query 'group by (service_name) (traces_target_info)' --since 1h"))
+		result.NextSteps = append(result.NextSteps, "gcx metrics query 'group by (service_name) (traces_target_info)' --since 1h")
 		result.computeSummary()
 		return result
 	}
@@ -267,7 +267,6 @@ func runServiceMetricChecks(ctx context.Context, promClient *prometheus.Client, 
 	)
 
 	for _, def := range checks {
-		def := def
 		g.Go(func() error {
 			c := checkMetric(ctx, promClient, datasourceUID, def)
 			mu.Lock()
@@ -327,7 +326,8 @@ func buildEdgeList(serviceName string, edges []CypherEdge) []EdgeInfo {
 
 	for _, e := range edges {
 		var ei EdgeInfo
-		if e.SourceName == serviceName {
+		switch {
+		case e.SourceName == serviceName:
 			ei = EdgeInfo{
 				Direction: "outgoing",
 				Type:      e.Type,
@@ -337,7 +337,7 @@ func buildEdgeList(serviceName string, edges []CypherEdge) []EdgeInfo {
 			if v, ok := e.DestinationScope["env"].(string); ok {
 				ei.PeerEnv = v
 			}
-		} else if e.DestinationName == serviceName {
+		case e.DestinationName == serviceName:
 			ei = EdgeInfo{
 				Direction: "incoming",
 				Type:      e.Type,
@@ -347,7 +347,7 @@ func buildEdgeList(serviceName string, edges []CypherEdge) []EdgeInfo {
 			if v, ok := e.SourceScope["env"].(string); ok {
 				ei.PeerEnv = v
 			}
-		} else {
+		default:
 			continue
 		}
 		key := fmt.Sprintf("%s-%s-%s-%s", ei.Direction, ei.Type, ei.PeerName, ei.PeerType)
@@ -361,7 +361,7 @@ func buildEdgeList(serviceName string, edges []CypherEdge) []EdgeInfo {
 
 // interpretServiceResults generates human-readable diagnosis and next steps
 // by looking at the pattern of pass/fail across checks.
-func interpretServiceResults(r *ServiceDiagnoseResult) (diagnosis []string, nextSteps []string) {
+func interpretServiceResults(r *ServiceDiagnoseResult) ([]string, []string) {
 	checkStatus := map[string]CheckStatus{}
 	for _, c := range r.Checks {
 		checkStatus[c.Name] = c.Status
@@ -374,35 +374,38 @@ func interpretServiceResults(r *ServiceDiagnoseResult) (diagnosis []string, next
 	clientMetric := checkStatus["Metric: traces_service_graph (client)"]
 	callsMetric := checkStatus["Metric: asserts:relation:calls"]
 
+	var diagnosis, nextSteps []string
+
 	if !entityFound {
 		diagnosis = append(diagnosis, fmt.Sprintf("Service %q was not found in the Entity Graph.", r.ServiceName))
 		if checkStatus["Metric: asserts:mixin_workload_job"] == CheckPass {
 			diagnosis = append(diagnosis, "However, the entity discovery metric (asserts:mixin_workload_job) exists in Mimir. The graph may need time to ingest the entity.")
 		}
 		nextSteps = append(nextSteps, fmt.Sprintf("gcx metrics query 'traces_target_info{service_name=\"%s\"}' --since 1h", r.ServiceName))
-		return
+		return diagnosis, nextSteps
 	}
 
 	if entityFound && !hasEdges {
 		diagnosis = append(diagnosis, fmt.Sprintf("Service %q exists in the graph but has no relationships.", r.ServiceName))
 
-		if serverMetric == CheckPass && callsMetric == CheckFail {
+		switch {
+		case serverMetric == CheckPass && callsMetric == CheckFail:
 			diagnosis = append(diagnosis, "Tempo sees inbound calls (server series exist) but the asserts:relation:calls recording rule produced no edges. The recording rule may not be matching this service's labels (check asserts_env and namespace).")
 			nextSteps = append(nextSteps, fmt.Sprintf("gcx metrics query 'traces_service_graph_request_total{server=\"%s\"}' --since 1h", r.ServiceName))
 			nextSteps = append(nextSteps, "gcx kg diagnose labels")
-		} else if serverMetric == CheckFail && clientMetric == CheckFail {
+		case serverMetric == CheckFail && clientMetric == CheckFail:
 			diagnosis = append(diagnosis, "Tempo is not generating any service graph metrics for this service. Either no traced HTTP/gRPC traffic exists, or trace context propagation is not working.")
-		} else if serverMetric == CheckPass && clientMetric == CheckFail {
+		case serverMetric == CheckPass && clientMetric == CheckFail:
 			diagnosis = append(diagnosis, "Tempo sees inbound calls but no outbound calls. The service may not propagate trace context on its own HTTP/gRPC requests, or it only consumes from queues (which don't generate service graph edges).")
 		}
-		return
+		return diagnosis, nextSteps
 	}
 
 	if entityFound && hasEdges {
 		diagnosis = append(diagnosis, fmt.Sprintf("Service %q looks healthy — found in graph with %d edge(s).", r.ServiceName, len(r.Edges)))
 	}
 
-	return
+	return diagnosis, nextSteps
 }
 
 // ---------------------------------------------------------------------------
@@ -417,15 +420,15 @@ func (c *ServiceDiagnoseTextCodec) Format() format.Format { return "text" }
 func (c *ServiceDiagnoseTextCodec) Encode(w io.Writer, v any) error {
 	r, ok := v.(ServiceDiagnoseResult)
 	if !ok {
-		return fmt.Errorf("invalid data type for text codec: expected ServiceDiagnoseResult")
+		return errors.New("invalid data type for text codec: expected ServiceDiagnoseResult")
 	}
 
 	// Header.
-	header := fmt.Sprintf("Service Diagnosis: %s", r.ServiceName)
+	header := "Service Diagnosis: " + r.ServiceName
 	if r.Env != "" {
-		header += fmt.Sprintf(" (env=%s", r.Env)
+		header += " (env=" + r.Env
 		if r.Namespace != "" {
-			header += fmt.Sprintf(", namespace=%s", r.Namespace)
+			header += ", namespace=" + r.Namespace
 		}
 		header += ")"
 	}

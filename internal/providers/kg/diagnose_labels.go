@@ -72,19 +72,17 @@ func runLabelsDiagnose(ctx context.Context, client *Client, promClient *promethe
 	}
 
 	var (
-		mu              sync.Mutex
-		g               errgroup.Group
-		assertsEnvs     []string
-		deploymentEnvs  []string
-		scopeEnvs       []string
-		entityCounts    map[string]int64
-		assertsErr      error
-		deploymentErr   error
-		scopeErr        error
-		entityCountsErr error
+		mu             sync.Mutex
+		g              errgroup.Group
+		assertsEnvs    []string
+		deploymentEnvs []string
+		scopeEnvs      []string
+		assertsErr     error
+		deploymentErr  error
+		scopeErr       error
 	)
 
-	// Fetch all four data sources in parallel.
+	// Fetch data sources in parallel.
 	g.Go(func() error {
 		vals, err := queryLabelValues(ctx, promClient, datasourceUID, `group by (asserts_env) (asserts:mixin_workload_job)`, "asserts_env")
 		mu.Lock()
@@ -114,33 +112,25 @@ func runLabelsDiagnose(ctx context.Context, client *Client, promClient *promethe
 		return nil
 	})
 
-	g.Go(func() error {
-		counts, err := client.CountEntityTypes(ctx)
-		mu.Lock()
-		entityCounts = counts
-		entityCountsErr = err
-		mu.Unlock()
-		return nil
-	})
-
 	_ = g.Wait()
 
 	// Check 1: asserts_env values exist.
-	if assertsErr != nil {
+	switch {
+	case assertsErr != nil:
 		result.Checks = append(result.Checks, CheckResult{
 			Name:           "asserts_env in recording rules",
 			Status:         CheckWarn,
 			Detail:         fmt.Sprintf("query error: %v", assertsErr),
 			Recommendation: "Could not query asserts_env values from asserts:mixin_workload_job.",
 		})
-	} else if len(assertsEnvs) == 0 {
+	case len(assertsEnvs) == 0:
 		result.Checks = append(result.Checks, CheckResult{
 			Name:           "asserts_env in recording rules",
 			Status:         CheckFail,
 			Detail:         "no asserts_env values found",
 			Recommendation: "Recording rules are not producing any asserts_env labels. Verify that deployment_environment is set in your OTel config and that Mimir relabeling rules map it to asserts_env.",
 		})
-	} else {
+	default:
 		result.Checks = append(result.Checks, CheckResult{
 			Name:   "asserts_env in recording rules",
 			Status: CheckPass,
@@ -149,21 +139,22 @@ func runLabelsDiagnose(ctx context.Context, client *Client, promClient *promethe
 	}
 
 	// Check 2: deployment_environment values exist.
-	if deploymentErr != nil {
+	switch {
+	case deploymentErr != nil:
 		result.Checks = append(result.Checks, CheckResult{
 			Name:           "deployment_environment in raw metrics",
 			Status:         CheckWarn,
 			Detail:         fmt.Sprintf("query error: %v", deploymentErr),
 			Recommendation: "Could not query deployment_environment values from traces_target_info.",
 		})
-	} else if len(deploymentEnvs) == 0 {
+	case len(deploymentEnvs) == 0:
 		result.Checks = append(result.Checks, CheckResult{
 			Name:           "deployment_environment in raw metrics",
 			Status:         CheckWarn,
 			Detail:         "no deployment_environment values found in traces_target_info",
 			Recommendation: "Services may not be setting deployment.environment in OTEL_RESOURCE_ATTRIBUTES.",
 		})
-	} else {
+	default:
 		result.Checks = append(result.Checks, CheckResult{
 			Name:   "deployment_environment in raw metrics",
 			Status: CheckPass,
@@ -172,20 +163,21 @@ func runLabelsDiagnose(ctx context.Context, client *Client, promClient *promethe
 	}
 
 	// Check 3: Scope env values in the graph.
-	if scopeErr != nil {
+	switch {
+	case scopeErr != nil:
 		result.Checks = append(result.Checks, CheckResult{
 			Name:   "env values in Entity Graph",
 			Status: CheckWarn,
 			Detail: fmt.Sprintf("API error: %v", scopeErr),
 		})
-	} else if len(scopeEnvs) == 0 {
+	case len(scopeEnvs) == 0:
 		result.Checks = append(result.Checks, CheckResult{
 			Name:           "env values in Entity Graph",
 			Status:         CheckFail,
 			Detail:         "no env scope values in the graph",
 			Recommendation: "No environments found in the Entity Graph. Entities may not have asserts_env labels.",
 		})
-	} else {
+	default:
 		result.Checks = append(result.Checks, CheckResult{
 			Name:   "env values in Entity Graph",
 			Status: CheckPass,
@@ -250,21 +242,22 @@ func runLabelsDiagnose(ctx context.Context, client *Client, promClient *promethe
 		}
 	}
 
-	if unmapped > 0 {
+	switch {
+	case unmapped > 0:
 		result.Checks = append(result.Checks, CheckResult{
 			Name:           "Label mapping consistency",
 			Status:         CheckFail,
 			Detail:         fmt.Sprintf("%d deployment_environment value(s) with no corresponding asserts_env", unmapped),
 			Recommendation: "These environments exist in raw traces_target_info but not in recording rule outputs. Check that Mimir relabeling rules are mapping deployment_environment to asserts_env for all environments.",
 		})
-	} else if orphaned > 0 {
+	case orphaned > 0:
 		result.Checks = append(result.Checks, CheckResult{
 			Name:           "Label mapping consistency",
 			Status:         CheckWarn,
 			Detail:         fmt.Sprintf("all deployment_environment values mapped; %d asserts_env value(s) have no corresponding deployment_environment", orphaned),
 			Recommendation: "Some asserts_env values don't match any deployment_environment in traces_target_info. These may come from non-OTel sources (Prometheus scrape, AWS CloudWatch, etc.).",
 		})
-	} else if len(deploymentEnvs) > 0 {
+	case len(deploymentEnvs) > 0:
 		result.Checks = append(result.Checks, CheckResult{
 			Name:   "Label mapping consistency",
 			Status: CheckPass,
@@ -273,7 +266,7 @@ func runLabelsDiagnose(ctx context.Context, client *Client, promClient *promethe
 	}
 
 	// Build diagnosis.
-	result.Diagnosis = interpretLabelsResults(&result, unmapped, orphaned, entityCounts, entityCountsErr)
+	result.Diagnosis = interpretLabelsResults(&result, unmapped, orphaned)
 
 	result.computeSummary()
 	return result
@@ -307,7 +300,7 @@ func toSet(vals []string) map[string]bool {
 	return s
 }
 
-func interpretLabelsResults(r *LabelsDiagnoseResult, unmapped, orphaned int, entityCounts map[string]int64, entityCountsErr error) []string {
+func interpretLabelsResults(r *LabelsDiagnoseResult, unmapped, orphaned int) []string {
 	var diagnosis []string
 
 	if unmapped > 0 {
