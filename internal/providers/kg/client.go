@@ -25,8 +25,6 @@ const (
 	entityCountPath      = entityTypesPath + "/count"
 	scopesPath           = pluginResourcePath + "/asserts/api-server/v1/entity_scope"
 	assertionsPath       = pluginResourcePath + "/asserts/api-server/v1/assertions"
-	assertSummPath       = assertionsPath + "/summary"
-	assertGraphPath      = assertionsPath + "/graph"
 	assertMetricPath     = assertionsPath + "/entity-metric"
 	assertLLMPath        = assertionsPath + "/llm-summary"
 	sourceMetricPath     = pluginResourcePath + "/asserts/api-server/v1/assertion/source-metrics"
@@ -371,36 +369,6 @@ func (c *Client) ListEntityScopes(ctx context.Context) (map[string][]string, err
 // ---------------------------------------------------------------------------
 // Assertions operations
 // ---------------------------------------------------------------------------
-
-// QueryAssertions queries assertions for a given time range and filters.
-func (c *Client) QueryAssertions(ctx context.Context, req AssertionsRequest) ([]AssertionTimeline, error) {
-	var result []AssertionTimeline
-	if err := c.postJSON(ctx, assertionsPath, req, &result); err != nil {
-		return nil, fmt.Errorf("kg: query assertions: %w", err)
-	}
-	if result == nil {
-		return []AssertionTimeline{}, nil
-	}
-	return result, nil
-}
-
-// AssertionsSummary returns a summary of assertions for a given time range and filters.
-func (c *Client) AssertionsSummary(ctx context.Context, req AssertionsRequest) (*AssertionSummary, error) {
-	var result AssertionSummary
-	if err := c.postJSON(ctx, assertSummPath, req, &result); err != nil {
-		return nil, fmt.Errorf("kg: assertions summary: %w", err)
-	}
-	return &result, nil
-}
-
-// AssertionsGraph queries assertions with graph topology.
-func (c *Client) AssertionsGraph(ctx context.Context, req AssertionsRequest) (*AssertionsGraphResponse, error) {
-	var result AssertionsGraphResponse
-	if err := c.postJSON(ctx, assertGraphPath, req, &result); err != nil {
-		return nil, fmt.Errorf("kg: assertions graph: %w", err)
-	}
-	return &result, nil
-}
 
 // AssertionEntityMetric retrieves metric data for a specific assertion on an entity.
 func (c *Client) AssertionEntityMetric(ctx context.Context, req EntityMetricRequest) (*EntityMetricResponse, error) {
