@@ -28,7 +28,7 @@ func requireV2(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, err
 	if err != nil {
 		return nil, err
 	}
-	c, err := DetectCapability(cmd.Context(), base, cfg.Host)
+	c, err := DetectCapability(cmd.Context(), loader, base)
 	if err != nil {
 		return nil, err
 	}

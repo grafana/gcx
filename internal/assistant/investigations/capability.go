@@ -2,71 +2,51 @@ package investigations
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
+	"strconv"
 	"strings"
-	"sync"
-	"time"
 
-	"github.com/adrg/xdg"
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
+	"github.com/grafana/gcx/internal/providers"
 )
 
 const (
-	capabilityCacheFileName = "lodestone-capability.json"
-	capabilityCacheTTL      = 24 * time.Hour
-	envAPIVersionOverride   = "GCX_ASSISTANT_API_VERSION"
+	// capabilityProviderName / capabilityCacheKey identify the per-context slot
+	// in gcx config where the Lodestone capability is persisted. Mirrors the
+	// SaveProviderConfig precedent used by adaptive, faro, and synth.
+	capabilityProviderName = "assistant"
+	capabilityCacheKey     = "lodestone-v2"
+	envAPIVersionOverride  = "GCX_ASSISTANT_API_VERSION"
 )
 
 // Capability reports which Assistant API versions a stack supports.
 type Capability struct {
-	V2        bool      `json:"v2"`
-	CheckedAt time.Time `json:"checkedAt"`
-}
-
-// capabilityCache is the on-disk persistence format.
-type capabilityCache struct {
-	Entries map[string]Capability `json:"entries"`
+	V2 bool
 }
 
 // capabilityProbe runs the network call that distinguishes v2 stacks from v1.
 type capabilityProbe func(ctx context.Context, base *assistanthttp.Client) (bool, error)
 
-// CapabilityCachePath returns the on-disk path used to cache probe results.
-func CapabilityCachePath() string {
-	return filepath.Join(xdg.StateHome, "gcx", capabilityCacheFileName)
-}
-
-// detectorMu serializes cache reads/writes so concurrent commands don't race
-// on the file.
-var detectorMu sync.Mutex //nolint:gochecknoglobals // process-wide cache lock
-
-// DetectCapability returns the v2 capability for the given REST host. Results
-// are cached at CapabilityCachePath() for capabilityCacheTTL.
+// DetectCapability returns the v2 capability for the current context. Results
+// are cached at contexts.<current>.providers.assistant.lodestone-v2 via
+// SaveProviderConfig and reused on subsequent invocations.
 //
 // Set GCX_ASSISTANT_API_VERSION to v1 or v2 to short-circuit the probe; this
 // is intended for tests and not exposed in CLI help.
-func DetectCapability(ctx context.Context, base *assistanthttp.Client, host string) (Capability, error) {
-	return detectCapabilityWith(ctx, base, host, probeLodestone, time.Now())
+func DetectCapability(ctx context.Context, loader *providers.ConfigLoader, base *assistanthttp.Client) (Capability, error) {
+	return detectCapabilityWith(ctx, loader, base, probeLodestone)
 }
 
-func detectCapabilityWith(ctx context.Context, base *assistanthttp.Client, host string, probe capabilityProbe, now time.Time) (Capability, error) {
+func detectCapabilityWith(ctx context.Context, loader *providers.ConfigLoader, base *assistanthttp.Client, probe capabilityProbe) (Capability, error) {
 	if v, ok := apiVersionFromEnv(); ok {
-		return Capability{V2: v == "v2", CheckedAt: now}, nil
+		return Capability{V2: v == "v2"}, nil
 	}
 
-	detectorMu.Lock()
-	defer detectorMu.Unlock()
-
-	path := CapabilityCachePath()
-	cache := loadCapabilityCache(path)
-	key := cacheKey(host)
-	if entry, ok := cache.Entries[key]; ok && now.Sub(entry.CheckedAt) < capabilityCacheTTL {
-		return entry, nil
+	if v, ok := loadCachedV2(ctx, loader); ok {
+		return Capability{V2: v}, nil
 	}
 
 	v2, err := probe(ctx, base)
@@ -74,13 +54,9 @@ func detectCapabilityWith(ctx context.Context, base *assistanthttp.Client, host 
 		return Capability{}, err
 	}
 
-	entry := Capability{V2: v2, CheckedAt: now}
-	if cache.Entries == nil {
-		cache.Entries = map[string]Capability{}
-	}
-	cache.Entries[key] = entry
-	_ = saveCapabilityCache(path, cache)
-	return entry, nil
+	// Best-effort persist; mirrors the synth/faro/adaptive precedent.
+	_ = loader.SaveProviderConfig(ctx, capabilityProviderName, capabilityCacheKey, strconv.FormatBool(v2))
+	return Capability{V2: v2}, nil
 }
 
 // probeLodestone calls GET /investigations/lodestone?limit=1 — the canonical
@@ -111,42 +87,23 @@ func apiVersionFromEnv() (string, bool) {
 	return "", false
 }
 
-func cacheKey(host string) string {
-	return strings.TrimRight(host, "/")
-}
-
-func loadCapabilityCache(path string) capabilityCache {
-	data, err := os.ReadFile(path)
+// loadCachedV2 reads providers.assistant.lodestone-v2 from the current context.
+// Returns (value, true) on a hit; (false, false) on miss or parse failure so
+// callers fall through to a fresh probe.
+func loadCachedV2(ctx context.Context, loader *providers.ConfigLoader) (bool, bool) {
+	cfg, _, err := loader.LoadProviderConfig(ctx, capabilityProviderName)
 	if err != nil {
-		return capabilityCache{Entries: map[string]Capability{}}
+		return false, false
 	}
-	var c capabilityCache
-	if err := json.Unmarshal(data, &c); err != nil {
-		return capabilityCache{Entries: map[string]Capability{}}
+	raw, ok := cfg[capabilityCacheKey]
+	if !ok {
+		return false, false
 	}
-	if c.Entries == nil {
-		c.Entries = map[string]Capability{}
-	}
-	return c
-}
-
-func saveCapabilityCache(path string, c capabilityCache) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	data, err := json.Marshal(c)
+	v, err := strconv.ParseBool(raw)
 	if err != nil {
-		return err
+		return false, false
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+	return v, true
 }
 
 // errV2NotSupported is returned by v2-only commands when the connected stack
@@ -154,22 +111,13 @@ func saveCapabilityCache(path string, c capabilityCache) error {
 // CLI callers see it wrapped with the host as a formatted error message.
 var errV2NotSupported = errors.New("lodestone (v2 investigations) is not available")
 
-// CachedV2 reports whether v2 is known to be supported for host based on the
-// on-disk cache. Returns false when there is no cached entry or the entry is
-// stale; it never probes the network. Honours GCX_ASSISTANT_API_VERSION.
-func CachedV2(host string) bool {
+// CachedV2 reports whether v2 is known to be supported for the current context
+// based on cached config. Returns false when there is no cached entry; never
+// probes the network. Honours GCX_ASSISTANT_API_VERSION.
+func CachedV2(ctx context.Context, loader *providers.ConfigLoader) bool {
 	if v, ok := apiVersionFromEnv(); ok {
 		return v == "v2"
 	}
-	detectorMu.Lock()
-	defer detectorMu.Unlock()
-	cache := loadCapabilityCache(CapabilityCachePath())
-	entry, ok := cache.Entries[cacheKey(host)]
-	if !ok {
-		return false
-	}
-	if time.Since(entry.CheckedAt) >= capabilityCacheTTL {
-		return false
-	}
-	return entry.V2
+	v, ok := loadCachedV2(ctx, loader)
+	return ok && v
 }

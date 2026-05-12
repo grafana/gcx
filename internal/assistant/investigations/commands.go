@@ -19,22 +19,15 @@ import (
 )
 
 func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, error) {
-	c, _, err := newClientWithHost(cmd, loader)
-	return c, err
-}
-
-// newClientWithHost is like newClient but also returns the REST host so callers
-// can consult the cached v2 capability without re-loading config.
-func newClientWithHost(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, string, error) {
 	cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	base, err := assistanthttp.NewClient(cfg)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
-	return NewClient(base), cfg.Host, nil
+	return NewClient(base), nil
 }
 
 // printV2Hint writes a one-line v2-successor hint to stderr when the connected
@@ -42,8 +35,8 @@ func newClientWithHost(cmd *cobra.Command, loader *providers.ConfigLoader) (*Cli
 // `hint:` prefix and stderr channel match the convention in internal/output
 // (Options.Encode): agents read these and adjust subsequent invocations, so we
 // emit unconditionally rather than suppressing in agent or piped modes.
-func printV2Hint(cmd *cobra.Command, host, message string) {
-	if !CachedV2(host) {
+func printV2Hint(cmd *cobra.Command, loader *providers.ConfigLoader, message string) {
+	if !CachedV2(cmd.Context(), loader) {
 		return
 	}
 	fmt.Fprintf(cmd.ErrOrStderr(), "hint: %s\n", message)
@@ -60,7 +53,7 @@ func loadClientAndCapability(cmd *cobra.Command, loader *providers.ConfigLoader)
 	if err != nil {
 		return nil, false, err
 	}
-	c, err := DetectCapability(cmd.Context(), base, cfg.Host)
+	c, err := DetectCapability(cmd.Context(), loader, base)
 	if err != nil {
 		return nil, false, err
 	}
@@ -441,7 +434,7 @@ func newCancelCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			client, host, err := newClientWithHost(cmd, loader)
+			client, err := newClient(cmd, loader)
 			if err != nil {
 				return err
 			}
@@ -452,7 +445,7 @@ func newCancelCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.IO.Encode(cmd.OutOrStdout(), resp); err != nil {
 				return err
 			}
-			printV2Hint(cmd, host, fmt.Sprintf("Lodestone (v2) is enabled — consider `gcx assistant investigations pause %s` (resumable) instead of cancel", args[0]))
+			printV2Hint(cmd, loader, fmt.Sprintf("Lodestone (v2) is enabled — consider `gcx assistant investigations pause %s` (resumable) instead of cancel", args[0]))
 			return nil
 		},
 	}
@@ -484,7 +477,7 @@ func newTodosCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			client, host, err := newClientWithHost(cmd, loader)
+			client, err := newClient(cmd, loader)
 			if err != nil {
 				return err
 			}
@@ -495,7 +488,7 @@ func newTodosCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.IO.Encode(cmd.OutOrStdout(), todos); err != nil {
 				return err
 			}
-			printV2Hint(cmd, host, fmt.Sprintf("Lodestone (v2) replaces multi-agent todos with hypotheses — try `gcx assistant investigations state %s`", args[0]))
+			printV2Hint(cmd, loader, fmt.Sprintf("Lodestone (v2) replaces multi-agent todos with hypotheses — try `gcx assistant investigations state %s`", args[0]))
 			return nil
 		},
 	}
@@ -527,7 +520,7 @@ func newTimelineCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			client, host, err := newClientWithHost(cmd, loader)
+			client, err := newClient(cmd, loader)
 			if err != nil {
 				return err
 			}
@@ -538,7 +531,7 @@ func newTimelineCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.IO.Encode(cmd.OutOrStdout(), timelineAgents); err != nil {
 				return err
 			}
-			printV2Hint(cmd, host, fmt.Sprintf("Lodestone (v2) tracks single-agent progress via epoch + plan — try `gcx assistant investigations state %s`", args[0]))
+			printV2Hint(cmd, loader, fmt.Sprintf("Lodestone (v2) tracks single-agent progress via epoch + plan — try `gcx assistant investigations state %s`", args[0]))
 			return nil
 		},
 	}
@@ -568,7 +561,7 @@ func newReportCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			client, host, err := newClientWithHost(cmd, loader)
+			client, err := newClient(cmd, loader)
 			if err != nil {
 				return err
 			}
@@ -579,7 +572,7 @@ func newReportCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.IO.Encode(cmd.OutOrStdout(), report); err != nil {
 				return err
 			}
-			printV2Hint(cmd, host, fmt.Sprintf("Lodestone (v2) stores the report inline in session state — try `gcx assistant investigations state %s`", args[0]))
+			printV2Hint(cmd, loader, fmt.Sprintf("Lodestone (v2) stores the report inline in session state — try `gcx assistant investigations state %s`", args[0]))
 			return nil
 		},
 	}
