@@ -301,7 +301,7 @@ func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promCli
 
 	// Check 5–9: Metric checks (skip if no Prometheus client).
 	if promClient != nil && datasourceUID != "" {
-		for _, mc := range metricChecks(scope.env) {
+		for _, mc := range metricChecks(scope.env, scope.namespace) {
 			mc := mc // capture loop var
 			g.Go(func() error {
 				addCheck(checkMetric(ctx, promClient, datasourceUID, mc))
@@ -606,43 +606,58 @@ type metricCheckDef struct {
 	Recommendation string // shown on failure
 }
 
-// metricChecks returns the metric check definitions, optionally scoped by env.
-func metricChecks(env string) []metricCheckDef {
-	envFilter := ""
+// metricChecks returns the metric check definitions, optionally scoped by env and namespace.
+func metricChecks(env, namespace string) []metricCheckDef {
+	// Build label filters for recording rule metrics (use asserts_env).
+	var rrParts []string
 	if env != "" {
-		envFilter = fmt.Sprintf(`asserts_env="%s"`, env)
+		rrParts = append(rrParts, fmt.Sprintf(`asserts_env="%s"`, env))
+	}
+	if namespace != "" {
+		rrParts = append(rrParts, fmt.Sprintf(`namespace="%s"`, namespace))
+	}
+	rrSelector := ""
+	if len(rrParts) > 0 {
+		rrSelector = "{" + strings.Join(rrParts, ", ") + "}"
 	}
 
-	// Build label selectors — some metrics use asserts_env, raw Tempo metrics don't.
-	envSelector := ""
-	if envFilter != "" {
-		envSelector = "{" + envFilter + "}"
+	// Build label filters for raw Tempo metrics (use deployment_environment, not asserts_env).
+	var rawParts []string
+	if env != "" {
+		rawParts = append(rawParts, fmt.Sprintf(`deployment_environment="%s"`, env))
+	}
+	if namespace != "" {
+		rawParts = append(rawParts, fmt.Sprintf(`namespace="%s"`, namespace))
+	}
+	rawSelector := ""
+	if len(rawParts) > 0 {
+		rawSelector = "{" + strings.Join(rawParts, ", ") + "}"
 	}
 
 	return []metricCheckDef{
 		{
 			Name:           "Metric: traces_target_info",
-			Query:          fmt.Sprintf("count(traces_target_info%s)", envSelector),
+			Query:          fmt.Sprintf("count(traces_target_info%s)", rawSelector),
 			Recommendation: "Tempo server-side metrics generation may not be enabled, or no traced services are sending telemetry to this stack.",
 		},
 		{
 			Name:           "Metric: traces_service_graph_request_total",
-			Query:          fmt.Sprintf("count(traces_service_graph_request_total%s)", envSelector),
+			Query:          fmt.Sprintf("count(traces_service_graph_request_total%s)", rawSelector),
 			Recommendation: "Tempo service graph metrics are not being generated. Enable server-side metrics generation in Tempo, or verify that traced services make inter-service HTTP/gRPC calls.",
 		},
 		{
 			Name:           "Metric: asserts:mixin_workload_job",
-			Query:          fmt.Sprintf("count(asserts:mixin_workload_job%s)", envSelector),
+			Query:          fmt.Sprintf("count(asserts:mixin_workload_job%s)", rrSelector),
 			Recommendation: "The entity discovery recording rule is not producing data. This metric is central to how services appear in Entity Graph. Verify that asserts_env is set (check deployment_environment in your OTel config) and that 3po recording rules are installed.",
 		},
 		{
 			Name:           "Metric: asserts:relation:calls",
-			Query:          fmt.Sprintf("count(asserts:relation:calls%s)", envSelector),
+			Query:          fmt.Sprintf("count(asserts:relation:calls%s)", rrSelector),
 			Recommendation: "No CALLS edge metrics found. This means Entity Graph will show services with no connections. Check that traces_service_graph_request_total exists and that the asserts_env relabeling pipeline is working.",
 		},
 		{
 			Name:           "Metric: asserts:request:rate5m",
-			Query:          fmt.Sprintf("count(asserts:request:rate5m%s)", envSelector),
+			Query:          fmt.Sprintf("count(asserts:request:rate5m%s)", rrSelector),
 			Recommendation: "Request rate KPI recording rule is not producing data. Service KPIs (request rate, error ratio, latency) may not display correctly.",
 		},
 	}
