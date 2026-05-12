@@ -1,0 +1,37 @@
+## gcx assistant investigations tools
+
+List tool calls made during a Lodestone investigation.
+
+### Synopsis
+
+List every tool call the agent made during a Lodestone investigation, paired with its result. Use --name to filter (e.g. search_skills, prometheus_query_handler).
+
+```
+gcx assistant investigations tools <id> [flags]
+```
+
+### Options
+
+```
+  -h, --help            help for tools
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --name string     Filter to tool calls with this name (e.g. search_skills, prometheus_query_handler)
+  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
+```
+
+### Options inherited from parent commands
+
+```
+      --agent              Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --config string      Path to the configuration file to use
+      --context string     Name of the context to use
+      --log-http-payload   Log full HTTP request/response bodies (includes headers — may expose tokens)
+      --no-color           Disable color output
+      --no-truncate        Disable table column truncation (auto-enabled when stdout is piped)
+  -v, --verbose count      Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
+```
+
+### SEE ALSO
+
+* [gcx assistant investigations](gcx_assistant_investigations.md)	 - Manage Grafana Assistant investigations.
+
