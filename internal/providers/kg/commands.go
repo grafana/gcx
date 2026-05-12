@@ -975,7 +975,7 @@ func (o *scopesListOpts) setup(flags *pflag.FlagSet) {
 func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "insights",
-		Short: "Query Knowledge Graph insights.",
+		Short: "Search insights and fetch their backing metrics.",
 	}
 
 	// entity-metric subcommand

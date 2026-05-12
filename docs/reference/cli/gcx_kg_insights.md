@@ -1,6 +1,6 @@
 ## gcx kg insights
 
-Query Knowledge Graph insights.
+Search insights and fetch their backing metrics.
 
 ### Options
 
