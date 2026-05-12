@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
+	"net/http"
 	"strings"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
@@ -80,13 +80,21 @@ func healthCmd() *cobra.Command {
 
 			host := strings.TrimRight(restCfg.Host, "/")
 
-			// Fetch datasource metadata — if not found, report in table.
-			ds, err := dsClient.GetByUID(ctx, uid)
-			if err != nil {
+			// Fetch datasource metadata — only treat 404 as "not found";
+			// propagate auth/transport errors so centralized error conversion
+			// can return the correct exit code and guidance.
+			ds, dsErr := dsClient.GetByUID(ctx, uid)
+			if dsErr != nil {
+				var apiErr *dsclient.APIError
+				if !errors.As(dsErr, &apiErr) || apiErr.StatusCode != http.StatusNotFound {
+					return fmt.Errorf("failed to get datasource: %w", dsErr)
+				}
 				info.Status = "ERROR"
 				info.Message = fmt.Sprintf("datasource %q not found", uid)
 				info.Actions = []string{"Run 'gcx datasources list' to see available datasources"}
-			} else {
+			}
+
+			if ds != nil {
 				info.Name = ds.Name
 				info.Type = ds.Type
 				info.URL = host + datasourceConfigPath + uid
@@ -102,18 +110,7 @@ func healthCmd() *cobra.Command {
 				}
 			}
 
-			if encErr := opts.IO.Encode(cmd.OutOrStdout(), info); encErr != nil {
-				return encErr
-			}
-
-			if info.Status != "OK" {
-				// The structured output on stdout is the complete result in all
-				// formats (table, json, yaml, agents). Exit non-zero for scripts/CI
-				// without adding redundant stderr output.
-				os.Exit(1)
-			}
-
-			return nil
+			return opts.IO.Encode(cmd.OutOrStdout(), info)
 		},
 	}
 
