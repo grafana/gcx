@@ -1,4 +1,4 @@
-package influxdb
+package influxdb //nolint:dupl
 
 import (
 	"errors"

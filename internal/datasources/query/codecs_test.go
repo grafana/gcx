@@ -166,9 +166,9 @@ func TestQueryYAMLCodecInfluxDBTimestamps(t *testing.T) {
 			}
 		}
 		assert.True(t, found, "expected server-a in YAML output")
-  })
+	})
 }
-    
+
 // TestTraceGetCodecDispatch verifies that table and wide codecs route a
 // *tempo.GetTraceResponse to the corresponding tempo formatter.
 func TestTraceGetCodecDispatch(t *testing.T) {

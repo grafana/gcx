@@ -1,7 +1,7 @@
 package graph
 
 import (
-	"fmt"
+	"errors"
 	"time"
 
 	"github.com/grafana/gcx/internal/query/influxdb"
@@ -23,7 +23,7 @@ func FromInfluxDBResponse(resp *influxdb.QueryResponse) (*ChartData, error) {
 		}
 	}
 	if timeColIdx < 0 {
-		return nil, fmt.Errorf("graph output requires a time column; use -o table for tabular results")
+		return nil, errors.New("graph output requires a time column; use -o table for tabular results")
 	}
 
 	data := &ChartData{

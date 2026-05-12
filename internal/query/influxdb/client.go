@@ -121,7 +121,7 @@ func (c *Client) Measurements(ctx context.Context, datasourceUID string, mode Mo
 }
 
 // FieldKeys returns field keys from the InfluxDB datasource. InfluxQL only.
-func (c *Client) FieldKeys(ctx context.Context, datasourceUID string, measurement string) (*FieldKeysResponse, error) {
+func (c *Client) FieldKeys(ctx context.Context, datasourceUID string, measurement string) (*FieldKeysResponse, error) { //nolint:dupl
 	queryExpr := "SHOW FIELD KEYS"
 	if measurement != "" {
 		queryExpr = fmt.Sprintf(`SHOW FIELD KEYS FROM %q`, measurement)
@@ -161,7 +161,7 @@ func (c *Client) FieldKeys(ctx context.Context, datasourceUID string, measuremen
 }
 
 // TagKeys returns tag keys from the InfluxDB datasource. InfluxQL only.
-func (c *Client) TagKeys(ctx context.Context, datasourceUID string, measurement string) (*TagKeysResponse, error) {
+func (c *Client) TagKeys(ctx context.Context, datasourceUID string, measurement string) (*TagKeysResponse, error) { //nolint:dupl
 	queryExpr := "SHOW TAG KEYS"
 	if measurement != "" {
 		queryExpr = fmt.Sprintf(`SHOW TAG KEYS FROM %q`, measurement)
@@ -375,7 +375,7 @@ func extractTagKeys(grafanaResp *GrafanaQueryResponse) *TagKeysResponse {
 	return result
 }
 
-func extractTagValues(grafanaResp *GrafanaQueryResponse) *TagValuesResponse {
+func extractTagValues(grafanaResp *GrafanaQueryResponse) *TagValuesResponse { //nolint:dupl
 	result := &TagValuesResponse{
 		Values: []TagValue{},
 	}
@@ -510,7 +510,7 @@ func extractMeasurements(grafanaResp *GrafanaQueryResponse) *MeasurementsRespons
 	return result
 }
 
-func extractFieldKeys(grafanaResp *GrafanaQueryResponse) *FieldKeysResponse {
+func extractFieldKeys(grafanaResp *GrafanaQueryResponse) *FieldKeysResponse { //nolint:dupl
 	result := &FieldKeysResponse{
 		Fields: []FieldKey{},
 	}
