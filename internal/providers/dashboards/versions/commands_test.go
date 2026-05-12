@@ -337,7 +337,7 @@ func TestVersionsRestore_HappyPath(t *testing.T) {
 		updatedItem: updatedDashboard(3),
 	}
 
-	_, errOut, err := runVersionsCmd(t, fc, []string{"restore", "foo", "1", "--yes"}, "")
+	_, errOut, err := runVersionsCmd(t, fc, []string{"restore", "foo", "1", "--force"}, "")
 	require.NoError(t, err, "restore to a valid version must succeed")
 
 	// Must have called LIST, GET, and UPDATE.
@@ -377,7 +377,7 @@ func TestVersionsRestore_MessageOverride(t *testing.T) {
 	}
 
 	_, _, err := runVersionsCmd(t, fc,
-		[]string{"restore", "foo", "1", "--yes", "--message", "rolling back last week's change"},
+		[]string{"restore", "foo", "1", "--force", "--message", "rolling back last week's change"},
 		"")
 	require.NoError(t, err)
 	require.True(t, fc.updateCalled)
@@ -404,7 +404,7 @@ func TestVersionsRestore_409Conflict(t *testing.T) {
 		updateErr:   conflictErr,
 	}
 
-	_, _, err := runVersionsCmd(t, fc, []string{"restore", "foo", "1", "--yes"}, "")
+	_, _, err := runVersionsCmd(t, fc, []string{"restore", "foo", "1", "--force"}, "")
 	require.Error(t, err, "409 conflict must result in a non-zero exit")
 
 	assert.True(t, fc.updateCalled, "Update must be called before the 409 is observed")
@@ -419,7 +419,7 @@ func TestVersionsRestore_NoOpWhenAlreadyAtTarget(t *testing.T) {
 		currentItem: currentDashboard(3, "rv-current", map[string]any{"title": "v3"}),
 	}
 
-	_, errOut, err := runVersionsCmd(t, fc, []string{"restore", "foo", "3", "--yes"}, "")
+	_, errOut, err := runVersionsCmd(t, fc, []string{"restore", "foo", "3", "--force"}, "")
 	require.NoError(t, err, "no-op restore must exit 0")
 
 	assert.False(t, fc.updateCalled, "no PUT must be issued when already at target version")
@@ -437,7 +437,7 @@ func TestVersionsRestore_TargetNotFound(t *testing.T) {
 		currentItem: currentDashboard(2, "rv-x", map[string]any{}),
 	}
 
-	_, _, err := runVersionsCmd(t, fc, []string{"restore", "foo", "99", "--yes"}, "")
+	_, _, err := runVersionsCmd(t, fc, []string{"restore", "foo", "99", "--force"}, "")
 	require.Error(t, err, "missing target version must be a non-zero exit")
 	assert.Contains(t, err.Error(), "99",
 		"error must mention the requested version number")
@@ -449,7 +449,7 @@ func TestVersionsRestore_NonIntegerVersionFails(t *testing.T) {
 	// Scenario H: non-integer <version> must fail with parse error before any HTTP.
 	fc := &fakeVersionsClient{}
 
-	_, _, err := runVersionsCmd(t, fc, []string{"restore", "foo", "notaninteger", "--yes"}, "")
+	_, _, err := runVersionsCmd(t, fc, []string{"restore", "foo", "notaninteger", "--force"}, "")
 	require.Error(t, err, "non-integer version must cause parse error")
 
 	assert.False(t, fc.listCalled,
@@ -475,7 +475,7 @@ func TestVersionsRestore_NoLegacyRestoreEndpoint(t *testing.T) {
 		updatedItem: updatedDashboard(4),
 	}
 
-	_, _, err := runVersionsCmd(t, fc, []string{"restore", "foo", "1", "--yes"}, "")
+	_, _, err := runVersionsCmd(t, fc, []string{"restore", "foo", "1", "--force"}, "")
 	require.NoError(t, err)
 
 	// The only update call must go through our fake's Update method.
@@ -493,7 +493,7 @@ func TestVersionsRestore_RestoreListSelectors(t *testing.T) {
 		updatedItem: updatedDashboard(4),
 	}
 
-	_, _, err := runVersionsCmd(t, fc, []string{"restore", "foo", "1", "--yes"}, "")
+	_, _, err := runVersionsCmd(t, fc, []string{"restore", "foo", "1", "--force"}, "")
 	require.NoError(t, err)
 
 	assert.Equal(t, "grafana.app/get-history=true", fc.capturedListOpts.LabelSelector,
@@ -503,7 +503,7 @@ func TestVersionsRestore_RestoreListSelectors(t *testing.T) {
 }
 
 func TestVersionsRestore_ConfirmPromptAbort(t *testing.T) {
-	// When --yes is NOT set, restore must prompt on stderr and abort on "n".
+	// When --force is NOT set, restore must prompt on stderr and abort on "n".
 	fc := &fakeVersionsClient{
 		historyItems: []unstructured.Unstructured{
 			historyItem(1, "", "", "", map[string]any{"title": "v1"}),
@@ -521,7 +521,7 @@ func TestVersionsRestore_ConfirmPromptAbort(t *testing.T) {
 }
 
 func TestVersionsRestore_ConfirmPromptProceed(t *testing.T) {
-	// When --yes is NOT set and user types "y", restore must proceed.
+	// When --force is NOT set and user types "y", restore must proceed.
 	fc := &fakeVersionsClient{
 		historyItems: []unstructured.Unstructured{
 			historyItem(1, "", "", "", map[string]any{"title": "v1"}),

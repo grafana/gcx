@@ -2,7 +2,7 @@ min_version = "2024.1.0"
 
 [tools]
 go = "1.26"
-golangci-lint = "2.9"
+golangci-lint = "2.12.1"
 goreleaser = "2.13.3"
 python = "3.12"
 uv = "latest"

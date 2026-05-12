@@ -11,7 +11,11 @@ import (
 	"github.com/grafana/gcx/internal/providers/aio11y/eval"
 )
 
-const basePath = "/eval/templates"
+const (
+	basePath        = "/eval/templates"
+	templateByIDFmt = basePath + "/%s"
+	versionsPathFmt = basePath + "/%s/versions"
+)
 
 // Client is an HTTP client for AI Observability eval template endpoints.
 type Client struct {
@@ -35,7 +39,7 @@ func (c *Client) List(ctx context.Context, scope string, maxItems ...int) ([]eva
 
 // Get returns a single template by ID.
 func (c *Client) Get(ctx context.Context, id string) (*eval.TemplateDetail, error) {
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, basePath+"/"+url.PathEscape(id), nil)
+	resp, err := c.base.DoRequest(ctx, http.MethodGet, fmt.Sprintf(templateByIDFmt, url.PathEscape(id)), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template %s: %w", id, err)
 	}
@@ -54,5 +58,5 @@ func (c *Client) Get(ctx context.Context, id string) (*eval.TemplateDetail, erro
 
 // ListVersions returns version history for a template.
 func (c *Client) ListVersions(ctx context.Context, id string) ([]eval.TemplateVersion, error) {
-	return aio11yhttp.ListAll[eval.TemplateVersion](ctx, c.base, basePath+"/"+url.PathEscape(id)+"/versions", nil)
+	return aio11yhttp.ListAll[eval.TemplateVersion](ctx, c.base, fmt.Sprintf(versionsPathFmt, url.PathEscape(id)), nil)
 }

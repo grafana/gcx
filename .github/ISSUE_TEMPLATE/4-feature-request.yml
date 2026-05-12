@@ -6,29 +6,19 @@ body:
   - type: markdown
     attributes:
       value: |
-        **Title tip:** Start with a verb, e.g. "Add CSV output format for resource listings"
-
-        Have an idea for something new? We'd love to hear it! Help us understand your vision.
+        Have an idea for something new? Tell us about it.
 
   - type: textarea
-    id: problem_to_solve
+    id: idea
     attributes:
-      label: What problem would this solve?
-      description: Describe the challenge or limitation you're facing
+      label: Your idea
+      description: Tell us about your feature idea. Try and describe what problem the feature would solve, and any examples of how you think the command or argument structure should look like.
       placeholder: |
         We need to manage datasources across multiple Grafana instances, but
         gcx doesn't currently support datasource resources. We have to
         manually configure datasources through the Grafana UI or use direct API
         calls, which makes it impossible to version-control our datasource configs.
-    validations:
-      required: true
 
-  - type: textarea
-    id: proposed_solution
-    attributes:
-      label: Describe your ideal solution
-      description: How would this work from your perspective as a user?
-      placeholder: |
         I'd like to be able to use gcx resources commands with datasources:
         - `gcx resources list datasources` - list all datasources
         - `gcx resources get datasource/<name>` - get a specific datasource
@@ -39,18 +29,6 @@ body:
         This would work just like it does for dashboards and folders today.
     validations:
       required: true
-
-  - type: textarea
-    id: user_story
-    attributes:
-      label: Who would benefit and how?
-      description: Help us understand the impact
-      placeholder: |
-        As a platform engineer, I want to manage datasources alongside dashboards
-        so that our entire Grafana configuration can be version-controlled.
-
-        This would help any team practicing GitOps or infrastructure-as-code.
-        DevOps teams managing multiple Grafana instances would especially benefit.
 
   - type: textarea
     id: alternatives_considered
@@ -71,17 +49,3 @@ body:
         - High - Significantly limiting what I can do
         - Medium - Would improve my workflow
         - Low - Nice to have someday
-    validations:
-      required: true
-
-  - type: textarea
-    id: success_criteria
-    attributes:
-      label: How would you know this is working well?
-      description: What would success look like?
-      placeholder: |
-        - Can list all datasources with `gcx resources list datasources`
-        - Can pull datasources to local files for version control
-        - Can push datasources from files to recreate them on new instances
-        - Commands work consistently with other resource types (dashboards, folders)
-        - Supports all Grafana datasource types (Prometheus, Loki, etc.)

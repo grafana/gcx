@@ -71,10 +71,10 @@ Once you've identified available data, verify with a test query.
 
 ```bash
 # For Prometheus - instant query
-gcx metrics query <datasource-uid> 'up'
+gcx metrics query -d <datasource-uid> 'up'
 
 # For Prometheus - range query
-gcx metrics query <datasource-uid> 'rate(http_requests_total[5m])' --from now-1h --to now
+gcx metrics query -d <datasource-uid> 'rate(http_requests_total[5m])' --from now-1h --to now
 ```
 
 **Expected output:** Table showing metric values with labels and timestamps.
@@ -102,7 +102,7 @@ After setting defaults, you can omit the `-d` flag in datasource commands.
 **Actions:**
 1. List Prometheus datasources: `gcx datasources list --type prometheus`
 2. Get datasource UID from output
-3. Search for HTTP metrics: `gcx metrics metadata -d <uid> -o json | jq '.data | to_entries[] | select(.key | contains("http"))'`
+3. Search for HTTP metrics: `gcx metrics metadata -d <uid> -o json 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin)['data']; [print(k,d[k][0]['type'],d[k][0]['help']) for k in sorted(d) if 'http' in k]"`
 4. Get details on specific metric: `gcx metrics metadata -d <uid> --metric http_requests_total`
 
 **Result:** Metric name, type (counter/gauge), and help text showing what the metric measures.
@@ -219,7 +219,7 @@ All commands support `-o json` or `-o yaml` for programmatic use:
 gcx metrics labels -d <uid> -o json
 
 # Example: Count total metrics
-gcx metrics metadata -d <uid> -o json | jq '.data | length'
+gcx metrics metadata -d <uid> -o json 2>/dev/null | python3 -c "import json,sys; print(len(json.load(sys.stdin)['data']))"
 ```
 
 Default output is `table` format for human readability.

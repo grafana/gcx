@@ -26,6 +26,27 @@ func MergeConfigs(base, over Config) Config {
 		}
 	}
 
+	// Diagnostics: propagate from any layer that enables it.
+	if over.Diagnostics != nil {
+		if result.Diagnostics == nil {
+			result.Diagnostics = over.Diagnostics
+		} else {
+			merged := mergeDiagnosticsConfig(result.Diagnostics, over.Diagnostics)
+			result.Diagnostics = &merged
+		}
+	}
+
+	return result
+}
+
+func mergeDiagnosticsConfig(base, over *DiagnosticsConfig) DiagnosticsConfig {
+	result := *base
+	if over.AgentInvocationLog {
+		result.AgentInvocationLog = true
+	}
+	if over.LogDir != "" {
+		result.LogDir = over.LogDir
+	}
 	return result
 }
 

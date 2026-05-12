@@ -54,12 +54,13 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   `gcx logs query`). Tooling commands (`dev`, `config`)
   may use `$AREA $VERB` when there is no meaningful noun — these operate on
   the project or CLI itself, not on Grafana resources. Bare top-level
-  verbs (single-token commands) are permitted only for foundational
-  bootstrapping that precedes any area or resource context:
-  `gcx login`, `gcx setup`, and Cobra-provided `help`/`completion`. This
-  is an explicit, closed enumeration — any new top-level command must
-  follow `$AREA $NOUN $VERB` or `$AREA $VERB`; it does not qualify as a
-  bare verb by analogy.
+  verbs (single-token commands) are permitted only for two narrow
+  categories: (1) foundational bootstrapping that precedes any area or
+  resource context — `gcx login`, `gcx setup`; and (2) CLI-meta commands
+  that report on the binary itself rather than on Grafana — `gcx version`
+  and Cobra-provided `help`/`completion`. This is an explicit, closed
+  enumeration — any new top-level command must follow `$AREA $NOUN $VERB`
+  or `$AREA $VERB`; it does not qualify as a bare verb by analogy.
 - **Extension commands nest under their resource type.** Domain-specific
   operations (`status`, `timeline`, `acknowledge`) live alongside CRUD verbs,
   never as top-level commands. Extensions must not duplicate CRUD semantics —
@@ -74,6 +75,7 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
 Every command serves both humans and agents. Agent mode switches defaults
 (JSON output, no color, no truncation) but does not change available
 functionality. Explicit flags always override agent mode defaults.
+Agent mode flips format and non-format defaults; explicit format flags override format choice; non-format defaults (no color, no truncation, plain-ASCII charset) apply uniformly across all formats.
 
 See [agent-mode.md](docs/design/agent-mode.md) for
 agent mode detection, behavior changes, and opt-out mechanisms.

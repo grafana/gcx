@@ -63,7 +63,7 @@ func updateValue(input reflect.Value, path []string, value string, unset bool) e
 				field.Set(newValue)
 			}
 
-			if field.Kind() == reflect.Ptr && field.IsNil() {
+			if field.Kind() == reflect.Pointer && field.IsNil() {
 				newValue := reflect.New(field.Type().Elem())
 				field.Set(newValue)
 			}
@@ -107,7 +107,7 @@ func updateValue(input reflect.Value, path []string, value string, unset bool) e
 			}
 			elemType := actualInput.Type().Elem()
 			switch elemType.Kind() {
-			case reflect.Ptr:
+			case reflect.Pointer:
 				currMapValue = reflect.New(elemType.Elem()).Elem().Addr()
 			case reflect.Map:
 				currMapValue = reflect.MakeMap(elemType)

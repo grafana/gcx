@@ -22,18 +22,18 @@ func TestBindFlags_AgentModeOverridesDefaultFormat(t *testing.T) {
 		wantFormat     string
 	}{
 		{
-			name:       "agent mode forces json when no command default set",
+			name:       "agent mode forces agents when no command default set",
 			agentMode:  true,
-			wantFormat: "json",
+			wantFormat: "agents",
 		},
 		{
-			name:          "agent mode forces json when command sets text default",
+			name:          "agent mode forces agents when command sets text default",
 			agentMode:     true,
 			defaultFormat: "text",
-			wantFormat:    "json",
+			wantFormat:    "agents",
 		},
 		{
-			name:           "explicit -o yaml overrides agent mode json default",
+			name:           "explicit -o yaml overrides agent mode agents default",
 			agentMode:      true,
 			defaultFormat:  "text",
 			explicitOutput: "yaml",
@@ -78,8 +78,12 @@ func TestBindFlags_AgentModeOverridesDefaultFormat(t *testing.T) {
 }
 
 func TestJSONFlag_Parsing(t *testing.T) {
+	agent.SetFlag(false)
+	t.Cleanup(agent.ResetForTesting)
+
 	tests := []struct {
 		name              string
+		defaultFormat     string // empty = use package default ("json")
 		jsonFlagValue     string // empty = flag not set
 		outputFlagValue   string // empty = flag not set
 		wantJSONFields    []string
@@ -112,6 +116,24 @@ func TestJSONFlag_Parsing(t *testing.T) {
 			wantOutputFormat:  "json",
 		},
 		{
+			// Regression: when command default is "table", --json ? must still
+			// force OutputFormat to "json" so Encode reaches encodeDiscovery.
+			name:              "--json ? with table-default command forces OutputFormat to json",
+			defaultFormat:     "table",
+			jsonFlagValue:     "?",
+			wantJSONDiscovery: true,
+			wantOutputFormat:  "json",
+		},
+		{
+			// Regression: when command default is "table", --json list must still
+			// force OutputFormat to "json" so Encode reaches encodeDiscovery.
+			name:              "--json list with table-default command forces OutputFormat to json",
+			defaultFormat:     "table",
+			jsonFlagValue:     "list",
+			wantJSONDiscovery: true,
+			wantOutputFormat:  "json",
+		},
+		{
 			name:             "--json not passed leaves JSONFields nil and JSONDiscovery false",
 			wantOutputFormat: "json",
 		},
@@ -128,6 +150,12 @@ func TestJSONFlag_Parsing(t *testing.T) {
 			wantJSONFields:   []string{"name"},
 			wantOutputFormat: "json",
 		},
+		{
+			name:            "--json and -o agents is rejected (use --json without -o in agent mode)",
+			jsonFlagValue:   "name",
+			outputFlagValue: "agents",
+			wantErr:         true,
+		},
 	}
 
 	for _, tc := range tests {
@@ -135,6 +163,11 @@ func TestJSONFlag_Parsing(t *testing.T) {
 			opts := &cmdio.Options{}
 			opts.RegisterCustomCodec("text", &dummyCodec{})
 			opts.RegisterCustomCodec("yaml", &dummyCodec{})
+			opts.RegisterCustomCodec("table", &dummyCodec{})
+
+			if tc.defaultFormat != "" {
+				opts.DefaultFormat(tc.defaultFormat)
+			}
 
 			flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
 			opts.BindFlags(flags)
@@ -164,6 +197,7 @@ func TestJSONFlag_Parsing(t *testing.T) {
 }
 
 func TestEncode_AgentModeHint(t *testing.T) {
+	// The agent-mode hint banner has been removed (C.3c). No mode should emit it.
 	tests := []struct {
 		name      string
 		agentMode bool
@@ -171,18 +205,12 @@ func TestEncode_AgentModeHint(t *testing.T) {
 		wantHint  bool
 	}{
 		{
-			name:      "agent mode without --json emits hint",
+			name:      "agent mode without --json: no hint",
 			agentMode: true,
-			wantHint:  true,
-		},
-		{
-			name:      "agent mode with --json fields suppresses hint",
-			agentMode: true,
-			jsonField: "name",
 			wantHint:  false,
 		},
 		{
-			name:      "non-agent mode does not emit hint",
+			name:      "non-agent mode: no hint",
 			agentMode: false,
 			wantHint:  false,
 		},
@@ -193,8 +221,7 @@ func TestEncode_AgentModeHint(t *testing.T) {
 			agent.SetFlag(tc.agentMode)
 			t.Cleanup(func() { agent.SetFlag(false) })
 
-			var errBuf bytes.Buffer
-			opts := &cmdio.Options{ErrWriter: &errBuf}
+			opts := &cmdio.Options{}
 			flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
 			opts.BindFlags(flags)
 
@@ -207,13 +234,35 @@ func TestEncode_AgentModeHint(t *testing.T) {
 			var buf bytes.Buffer
 			require.NoError(t, opts.Encode(&buf, map[string]any{"name": "test"}))
 
-			if tc.wantHint {
-				assert.Contains(t, errBuf.String(), "--json list")
-			} else {
-				assert.NotContains(t, errBuf.String(), "--json list")
-			}
+			// Encode writes to stdout (buf), not stderr. No hint should be emitted anywhere.
+			assert.NotContains(t, buf.String(), "--json list")
 		})
 	}
+}
+
+func TestEncodeDiscovery_EmptyTypedSlice(t *testing.T) {
+	type ClusterView struct {
+		Name                  string `json:"name"`
+		CostMetrics           *bool  `json:"costMetrics,omitempty"`
+		InstrumentationStatus string `json:"instrumentationStatus,omitempty"`
+		Selection             string `json:"-"` // excluded by json:"-"
+	}
+
+	opts := &cmdio.Options{}
+	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	opts.BindFlags(flags)
+	require.NoError(t, flags.Set("json", "list"))
+	require.NoError(t, opts.Validate())
+
+	var buf bytes.Buffer
+	err := opts.Encode(&buf, []ClusterView{})
+	require.NoError(t, err, "field discovery on empty typed slice must not error")
+
+	out := buf.String()
+	assert.Contains(t, out, "name", "field 'name' must appear in discovered fields")
+	assert.Contains(t, out, "costMetrics", "field 'costMetrics' must appear")
+	assert.Contains(t, out, "instrumentationStatus", "field 'instrumentationStatus' must appear")
+	assert.NotContains(t, out, "Selection", "json:\"-\" fields must be excluded")
 }
 
 // dummyCodec satisfies format.Codec for testing.

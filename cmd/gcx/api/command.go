@@ -44,9 +44,13 @@ func (opts *apiOpts) Validate() error {
 	}
 	if opts.Method != "" {
 		method := strings.ToUpper(opts.Method)
-		valid := map[string]bool{"GET": true, "POST": true, "PUT": true, "PATCH": true, "DELETE": true, "HEAD": true, "OPTIONS": true, "TRACE": true}
+		validMethods := []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE"}
+		valid := make(map[string]bool, len(validMethods))
+		for _, m := range validMethods {
+			valid[m] = true
+		}
 		if !valid[method] {
-			return fmt.Errorf("invalid method %q", opts.Method)
+			return fmt.Errorf("invalid method %q: must be one of %s", opts.Method, strings.Join(validMethods, ", "))
 		}
 	}
 	return nil
@@ -166,7 +170,7 @@ func doRequest(ctx context.Context, cfg config.NamespacedRESTConfig, method, pat
 	for _, h := range headers {
 		parts := strings.SplitN(h, ":", 2)
 		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid header format %q", h)
+			return nil, fmt.Errorf("invalid header format %q: expected key:value (e.g. Content-Type:application/json)", h)
 		}
 		req.Header.Set(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
 	}

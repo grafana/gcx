@@ -36,6 +36,8 @@ func (c *queryTableCodec) Encode(w io.Writer, data any) error {
 		return tempo.FormatMetricsTable(w, resp)
 	case *influxdb.QueryResponse:
 		return influxdb.FormatQueryTable(w, resp)
+	case *tempo.GetTraceResponse:
+		return tempo.FormatTraceTable(w, resp)
 	default:
 		return errors.New("invalid data type for query table codec")
 	}
@@ -59,6 +61,8 @@ func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 		return loki.FormatQueryTableWide(w, resp)
 	case *tempo.SearchResponse:
 		return tempo.FormatSearchTable(w, resp)
+	case *tempo.GetTraceResponse:
+		return tempo.FormatTraceWide(w, resp)
 	default:
 		return errors.New("invalid data type for query wide codec")
 	}

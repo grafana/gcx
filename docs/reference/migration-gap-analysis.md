@@ -221,7 +221,7 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 
 | Old Command | Description | Status in gcx |
 |-------------|-------------|---------------|
-| `gcx stacks list/get/create/update/delete/pause/resume` | Stack management | **Missing** |
+| `gcx stacks list/get/create/update/delete/pause/resume` | Stack management | **Exists** (`gcx stacks list\|get\|create\|update\|delete\|regions`; pause/resume not yet implemented) |
 | `gcx access-policies` CRUD | Cloud access policy management | **Missing** |
 | `gcx credentials` | Bootstrap telemetry credentials | **Missing** |
 | `gcx invites` CRUD | Org invite management | **Missing** |
@@ -234,7 +234,7 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 | `gcx scim` | SCIM resource CRUD | **Missing** |
 | `gcx securevalues` | Unified Storage secure values | **K8s tier** (SecureValue, Keeper resources: `gcx resources get securevalues\|keepers`) |
 | `gcx cloud-migrations` | Cloud migration CRUD | **Missing** |
-| `gcx stack-regions` | List available regions | **Missing** |
+| `gcx stack-regions` | List available regions | **Exists** (`gcx stacks regions`) |
 | `gcx labels` | GOPS labels CRUD | **Missing** |
 | `gcx assistant tunnel/auth/prompt/credentials/agents/rotate` | Assistant/AI management | **Partially exists** (`gcx assistant prompt` with streaming A2A; tunnel/auth/credentials/agents/rotate **missing**) |
 
@@ -490,7 +490,7 @@ Old CLI annotates every command with structured metadata:
 1. **`init` bootstrap flow** -- Users can't onboard without this
 2. **Global `--output` / `-o`** -- Consistent output formatting everywhere
 3. **`--dry-run --diff`** -- Essential for safe operations
-4. **`stacks` management** -- Can't manage stacks at all
+4. ~~**`stacks` management**~~ -- **DONE** (`gcx stacks list|get|create|update|delete|regions`; pause/resume pending)
 5. **`access-policies`** -- Can't manage IAM
 
 ### P1 -- High Priority (frequent user workflows)

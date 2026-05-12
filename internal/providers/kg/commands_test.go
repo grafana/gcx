@@ -122,3 +122,78 @@ func TestScopeFlags_ValidateScopes(t *testing.T) {
 		})
 	}
 }
+
+func TestFilterBySeverity(t *testing.T) {
+	critical := map[string]any{"severity": "CRITICAL"}
+	warning := map[string]any{"severity": "warning"}
+	info := map[string]any{"severity": "INFO"}
+
+	tests := []struct {
+		name     string
+		results  []kg.SearchResult
+		want     string
+		wantKeep []string
+	}{
+		{
+			name: "self assertion matches",
+			results: []kg.SearchResult{
+				{Name: "a", Assertion: critical},
+			},
+			want:     "critical",
+			wantKeep: []string{"a"},
+		},
+		{
+			name: "propagated assertion matches",
+			results: []kg.SearchResult{
+				{Name: "b", ConnectedAssertion: critical},
+			},
+			want:     "critical",
+			wantKeep: []string{"b"},
+		},
+		{
+			name: "both present and both match",
+			results: []kg.SearchResult{
+				{Name: "c", Assertion: critical, ConnectedAssertion: critical},
+			},
+			want:     "critical",
+			wantKeep: []string{"c"},
+		},
+		{
+			name: "neither matches requested severity",
+			results: []kg.SearchResult{
+				{Name: "d", Assertion: info, ConnectedAssertion: info},
+			},
+			want:     "critical",
+			wantKeep: nil,
+		},
+		{
+			name: "both nil",
+			results: []kg.SearchResult{
+				{Name: "e"},
+			},
+			want:     "critical",
+			wantKeep: nil,
+		},
+		{
+			name: "case-insensitive match across severities",
+			results: []kg.SearchResult{
+				{Name: "f", Assertion: warning},
+				{Name: "g", ConnectedAssertion: critical},
+				{Name: "h", Assertion: info},
+			},
+			want:     "WARNING",
+			wantKeep: []string{"f"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := kg.FilterBySeverity(tt.results, tt.want)
+			var names []string
+			for _, r := range got {
+				names = append(names, r.Name)
+			}
+			assert.Equal(t, tt.wantKeep, names)
+		})
+	}
+}

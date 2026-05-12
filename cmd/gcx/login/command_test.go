@@ -232,8 +232,8 @@ func TestLoginOptsValidate(t *testing.T) {
 
 // TestPrintResult_TextCodec is a golden comparison that confirms the text
 // codec produces the expected multi-line summary for representative
-// LoginResult fixtures, and that the CAP-token advisory goes to stderr
-// (never stdout) so JSON/YAML consumers receive a clean stream.
+// LoginResult fixtures, and that advisory guidance goes to stderr (never
+// stdout) so JSON/YAML consumers receive a clean stream.
 //
 // Intentionally not run with t.Parallel(): subtests mutate process-level env
 // vars via t.Setenv (to disable agent-mode detection that would otherwise
@@ -266,7 +266,9 @@ func TestPrintResult_TextCodec(t *testing.T) {
   Grafana Cloud: yes
   Stack:       mystack
 `,
-			noStderr: true,
+			wantStderrSubs: []string{
+				"Next: gcx config check",
+			},
 		},
 		{
 			name:   "cloud_without_cap_token_emits_advisory_on_stderr",
@@ -285,6 +287,7 @@ func TestPrintResult_TextCodec(t *testing.T) {
   Stack:       stack
 `,
 			wantStderrSubs: []string{
+				"Next: gcx config check",
 				"Note: Cloud API commands require a Cloud Access Policy (CAP) token.",
 				"grafana.com/docs/grafana-cloud/security-and-account-management",
 				"gcx login --context stack --cloud-token",
@@ -305,7 +308,9 @@ func TestPrintResult_TextCodec(t *testing.T) {
   Version:     11.5.0
   Grafana Cloud: no
 `,
-			noStderr: true,
+			wantStderrSubs: []string{
+				"Next: gcx config check",
+			},
 		},
 		{
 			name:   "empty_server_falls_back_to_context_name",
@@ -320,7 +325,9 @@ func TestPrintResult_TextCodec(t *testing.T) {
   Auth method: token
   Grafana Cloud: no
 `,
-			noStderr: true,
+			wantStderrSubs: []string{
+				"Next: gcx config check",
+			},
 		},
 	}
 

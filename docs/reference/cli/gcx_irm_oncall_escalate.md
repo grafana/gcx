@@ -13,7 +13,7 @@ gcx irm oncall escalate [flags]
       --important          Mark as important
       --json string        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --message string     Message for the escalation
-  -o, --output string      Output format. One of: json, yaml (default "text")
+  -o, --output string      Output format. One of: agents, json, yaml (default "text")
       --team string        Team ID
       --title string       Title of the escalation (required)
       --user-ids strings   User IDs (comma-separated)
@@ -24,7 +24,7 @@ gcx irm oncall escalate [flags]
 ```
       --agent              Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
       --config string      Path to the configuration file to use
-      --context string     Name of the context to use
+      --context string     Name of the context to use (overrides current-context in config)
       --log-http-payload   Log full HTTP request/response bodies (includes headers — may expose tokens)
       --no-color           Disable color output
       --no-truncate        Disable table column truncation (auto-enabled when stdout is piped)

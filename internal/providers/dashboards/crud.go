@@ -1,18 +1,17 @@
 package dashboards
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-	"strings"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/dashboards/descriptor"
 	"github.com/grafana/gcx/internal/resources/dynamic"
 	"github.com/spf13/cobra"
@@ -21,12 +20,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
-
-// cliOptionsLoader is satisfied by config.LoadCLIOptions.
-// Defined as a variable so tests can substitute a no-op.
-//
-//nolint:gochecknoglobals // test seam; package-level by design.
-var cliOptionsLoader = config.LoadCLIOptions
 
 // GrafanaConfigLoader is the subset of providers.ConfigLoader used by CRUD commands.
 // Defined as a local interface so commands can be tested with a stub.
@@ -340,11 +333,11 @@ Recommended workflow:
 
 type deleteOpts struct {
 	APIVersion string
-	Yes        bool
+	Force      bool
 }
 
 func (o *deleteOpts) setup(flags *pflag.FlagSet) {
-	flags.BoolVarP(&o.Yes, "yes", "y", false, "Skip confirmation prompt")
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
 	flags.StringVar(&o.APIVersion, "api-version", "", "API version to use (e.g. dashboard.grafana.app/v1); defaults to server preferred version")
 }
 
@@ -369,15 +362,13 @@ func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 			name := args[0]
 
-			cliOpts, err := cliOptionsLoader()
+			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
+				fmt.Sprintf("Delete dashboard %q?", name))
 			if err != nil {
 				return err
 			}
-
-			if !opts.Yes && !cliOpts.AutoApprove {
-				if !confirmDelete(cmd.OutOrStdout(), cmd.InOrStdin(), name) {
-					return nil
-				}
+			if !proceed {
+				return nil
 			}
 
 			ctx := cmd.Context()
@@ -408,19 +399,6 @@ func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts.setup(cmd.Flags())
 
 	return cmd
-}
-
-// confirmDelete asks the user to confirm a destructive operation.
-// Returns true if confirmed, false if the user aborted.
-func confirmDelete(w io.Writer, r io.Reader, name string) bool {
-	fmt.Fprintf(w, "Delete dashboard %q? [y/N] ", name)
-	scanner := bufio.NewScanner(r)
-	if !scanner.Scan() {
-		// EOF or scanner error is treated as "no" — correct behavior for non-interactive pipelines.
-		return false
-	}
-	answer := strings.TrimSpace(scanner.Text())
-	return strings.EqualFold(answer, "y") || strings.EqualFold(answer, "yes")
 }
 
 // wrapUpdateError augments an Update error with workflow guidance when the

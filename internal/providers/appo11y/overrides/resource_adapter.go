@@ -76,7 +76,6 @@ func OverridesExample() json.RawMessage {
 // ListFn, CreateFn, and DeleteFn are nil (singleton, no collection endpoint).
 func NewTypedCRUD(ctx context.Context) (*adapter.TypedCRUD[MetricsGeneratorConfig], internalconfig.NamespacedRESTConfig, error) {
 	var loader providers.ConfigLoader
-	loader.SetContextName(internalconfig.ContextNameFromCtx(ctx))
 
 	cfg, err := loader.LoadGrafanaConfig(ctx)
 	if err != nil {

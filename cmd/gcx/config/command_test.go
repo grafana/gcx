@@ -1,6 +1,8 @@
 package config_test
 
 import (
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/config"
@@ -57,6 +59,59 @@ contexts:
 		},
 	}
 	newConfigTest.Run(t)
+}
+
+func Test_UseContextCommand_doesNotPersistEnvSecrets(t *testing.T) {
+	cfg := `current-context: old
+contexts:
+  old: {}
+  new: {}`
+
+	for _, tc := range []struct {
+		name   string
+		env    map[string]string
+		secret string
+	}{
+		{
+			name:   "GRAFANA_TOKEN",
+			env:    map[string]string{"GRAFANA_TOKEN": "secret-from-env"},
+			secret: "secret-from-env",
+		},
+		{
+			name:   "GRAFANA_PASSWORD",
+			env:    map[string]string{"GRAFANA_PASSWORD": "pass-from-env"},
+			secret: "pass-from-env",
+		},
+		{
+			name:   "GRAFANA_PROVIDER_SLO_TOKEN",
+			env:    map[string]string{"GRAFANA_PROVIDER_SLO_TOKEN": "slo-secret-from-env"},
+			secret: "slo-secret-from-env",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			configFile := testutils.CreateTempFile(t, cfg)
+
+			testutils.CommandTestCase{
+				Cmd:     config.Command(),
+				Command: []string{"use-context", "--config", configFile, "new"},
+				Assertions: []testutils.CommandAssertion{
+					testutils.CommandSuccess(),
+				},
+				Env: tc.env,
+			}.Run(t)
+
+			contents, err := os.ReadFile(configFile)
+			if err != nil {
+				t.Fatalf("reading config file: %v", err)
+			}
+			if strings.Contains(string(contents), tc.secret) {
+				t.Errorf("env secret %q leaked into config file:\n%s", tc.secret, contents)
+			}
+			if !strings.Contains(string(contents), "current-context: new") {
+				t.Errorf("expected current-context to be updated; got:\n%s", contents)
+			}
+		})
+	}
 }
 
 func Test_UseContextCommand_withUnknownContext(t *testing.T) {

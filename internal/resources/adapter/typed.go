@@ -230,8 +230,9 @@ func (c *TypedCRUD[T]) AsAdapter() ResourceAdapter {
 	return &typedAdapter[T]{crud: c}
 }
 
-// toUnstructured converts a domain object T into an unstructured Kubernetes envelope.
-func (c *TypedCRUD[T]) toUnstructured(item T) (unstructured.Unstructured, error) {
+// ToUnstructured converts a domain object T into an unstructured Kubernetes envelope,
+// stripping the fields listed in StripFields and applying any MetadataFn.
+func (c *TypedCRUD[T]) ToUnstructured(item T) (unstructured.Unstructured, error) {
 	// T -> JSON -> map[string]any (this becomes the spec)
 	data, err := json.Marshal(item)
 	if err != nil {
@@ -339,7 +340,7 @@ func (a *typedAdapter[T]) List(ctx context.Context, opts metav1.ListOptions) (*u
 
 	result := &unstructured.UnstructuredList{}
 	for _, item := range items {
-		u, err := a.crud.toUnstructured(item)
+		u, err := a.crud.ToUnstructured(item)
 		if err != nil {
 			return nil, err
 		}
@@ -363,7 +364,7 @@ func (a *typedAdapter[T]) Get(ctx context.Context, name string, _ metav1.GetOpti
 		return nil, err
 	}
 
-	u, err := a.crud.toUnstructured(obj.Spec)
+	u, err := a.crud.ToUnstructured(obj.Spec)
 	if err != nil {
 		return nil, err
 	}
@@ -390,7 +391,7 @@ func (a *typedAdapter[T]) Create(ctx context.Context, obj *unstructured.Unstruct
 		return nil, err
 	}
 
-	u, err := a.crud.toUnstructured(*created)
+	u, err := a.crud.ToUnstructured(*created)
 	if err != nil {
 		return nil, err
 	}
@@ -417,7 +418,7 @@ func (a *typedAdapter[T]) Update(ctx context.Context, obj *unstructured.Unstruct
 		return nil, err
 	}
 
-	u, err := a.crud.toUnstructured(*updated)
+	u, err := a.crud.ToUnstructured(*updated)
 	if err != nil {
 		return nil, err
 	}
@@ -425,9 +426,13 @@ func (a *typedAdapter[T]) Update(ctx context.Context, obj *unstructured.Unstruct
 	return &u, nil
 }
 
-func (a *typedAdapter[T]) Delete(ctx context.Context, name string, _ metav1.DeleteOptions) error {
+func (a *typedAdapter[T]) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
 	if a.crud.DeleteFn == nil {
 		return errors.ErrUnsupported
+	}
+
+	if isDryRun(opts.DryRun) {
+		return nil
 	}
 
 	return a.crud.DeleteFn(ctx, name)
@@ -441,7 +446,7 @@ func (a *typedAdapter[T]) dryRunValidate(ctx context.Context, item *T) (*unstruc
 			return nil, err
 		}
 	}
-	u, err := a.crud.toUnstructured(*item)
+	u, err := a.crud.ToUnstructured(*item)
 	if err != nil {
 		return nil, err
 	}

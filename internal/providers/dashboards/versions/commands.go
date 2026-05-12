@@ -2,17 +2,14 @@
 package versions
 
 import (
-	"bufio"
 	"context"
 	"fmt"
-	"io"
-	"os"
 	"sort"
 	"strconv"
-	"strings"
 
 	"github.com/grafana/gcx/internal/config"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/dashboards/descriptor"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/dynamic"
@@ -172,13 +169,13 @@ func newListCommand(deps *commandDeps) *cobra.Command {
 // ---------------------------------------------------------------------------
 
 type versionsRestoreOpts struct {
-	Yes        bool
+	Force      bool
 	Message    string
 	APIVersion string
 }
 
 func (o *versionsRestoreOpts) setup(flags *pflag.FlagSet) {
-	flags.BoolVarP(&o.Yes, "yes", "y", false, "Skip confirmation prompt")
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
 	flags.StringVar(&o.Message, "message", "", `Commit message for the restored revision (default: "Restored from version N")`)
 	flags.StringVar(&o.APIVersion, "api-version", "", "API version to use (e.g. dashboard.grafana.app/v1); defaults to server preferred version")
 }
@@ -261,11 +258,14 @@ func newRestoreCommand(deps *commandDeps) *cobra.Command {
 				return nil
 			}
 
-			// Step 5: Prompt unless --yes.
-			if !opts.Yes {
-				if !confirmRestore(cmd.ErrOrStderr(), cmd.InOrStdin(), name, targetGen) {
-					return nil
-				}
+			// Step 5: Prompt unless --force.
+			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+				fmt.Sprintf("Restore dashboard %q to version %d?", name, targetGen))
+			if err != nil {
+				return err
+			}
+			if !proceed {
+				return nil
 			}
 
 			// Step 6: Construct update object.
@@ -318,19 +318,4 @@ func newRestoreCommand(deps *commandDeps) *cobra.Command {
 	opts.setup(cmd.Flags())
 
 	return cmd
-}
-
-// confirmRestore asks the user to confirm the restore operation.
-// Returns true if confirmed, false if the user aborted.
-func confirmRestore(w io.Writer, r io.Reader, name string, version int64) bool {
-	fmt.Fprintf(w, "Restore dashboard %q to version %d? [y/N] ", name, version)
-	scanner := bufio.NewScanner(r)
-	if !scanner.Scan() {
-		if err := scanner.Err(); err != nil {
-			fmt.Fprintf(os.Stderr, "error reading confirmation: %v\n", err)
-		}
-		return false
-	}
-	answer := strings.TrimSpace(scanner.Text())
-	return strings.EqualFold(answer, "y") || strings.EqualFold(answer, "yes")
 }

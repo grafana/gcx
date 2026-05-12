@@ -5,15 +5,15 @@ Manage Grafana Knowledge Graph rules, entities, and insights
 ### Options
 
 ```
-      --config string    Path to the configuration file to use
-      --context string   Name of the context to use
-  -h, --help             help for kg
+      --config string   Path to the configuration file to use
+  -h, --help            help for kg
 ```
 
 ### Options inherited from parent commands
 
 ```
       --agent              Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --context string     Name of the context to use (overrides current-context in config)
       --log-http-payload   Log full HTTP request/response bodies (includes headers — may expose tokens)
       --no-color           Disable color output
       --no-truncate        Disable table column truncation (auto-enabled when stdout is piped)
@@ -23,6 +23,7 @@ Manage Grafana Knowledge Graph rules, entities, and insights
 ### SEE ALSO
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
+* [gcx kg cypher](gcx_kg_cypher.md)	 - Run a read-only Cypher query against the Knowledge Graph.
 * [gcx kg entities](gcx_kg_entities.md)	 - Manage Knowledge Graph entities.
 * [gcx kg health](gcx_kg_health.md)	 - Show a health summary with active insight counts.
 * [gcx kg insights](gcx_kg_insights.md)	 - Query Knowledge Graph insights.
@@ -33,5 +34,5 @@ Manage Grafana Knowledge Graph rules, entities, and insights
 * [gcx kg rules](gcx_kg_rules.md)	 - Manage Knowledge Graph prom rules.
 * [gcx kg scopes](gcx_kg_scopes.md)	 - Manage Knowledge Graph entity scopes.
 * [gcx kg status](gcx_kg_status.md)	 - Show Knowledge Graph stack status.
-* [gcx kg suppressions](gcx_kg_suppressions.md)	 - Push suppressions to the Knowledge Graph.
+* [gcx kg suppressions](gcx_kg_suppressions.md)	 - Manage alert suppressions in the Knowledge Graph.
 

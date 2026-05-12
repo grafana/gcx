@@ -166,5 +166,36 @@ func TestQueryYAMLCodecInfluxDBTimestamps(t *testing.T) {
 			}
 		}
 		assert.True(t, found, "expected server-a in YAML output")
+  })
+}
+    
+// TestTraceGetCodecDispatch verifies that table and wide codecs route a
+// *tempo.GetTraceResponse to the corresponding tempo formatter.
+func TestTraceGetCodecDispatch(t *testing.T) {
+	newIO := func(format string) *cmdio.Options {
+		t.Helper()
+		ioOpts := &cmdio.Options{OutputFormat: format}
+		dsquery.RegisterCodecs(ioOpts, true)
+		return ioOpts
+	}
+
+	// An empty *GetTraceResponse renders only the header line.
+	// We verify dispatch by asserting the formatter's signature output.
+	resp := &tempo.GetTraceResponse{}
+
+	t.Run("table dispatches to FormatTraceTable", func(t *testing.T) {
+		var out bytes.Buffer
+		err := newIO("table").Encode(&out, resp)
+		require.NoError(t, err)
+		assert.Contains(t, out.String(), "spans: 0")
+		assert.Contains(t, out.String(), "services: 0")
+	})
+
+	t.Run("wide dispatches to FormatTraceWide", func(t *testing.T) {
+		var out bytes.Buffer
+		err := newIO("wide").Encode(&out, resp)
+		require.NoError(t, err)
+		assert.Contains(t, out.String(), "spans: 0")
+		assert.Contains(t, out.String(), "services: 0")
 	})
 }

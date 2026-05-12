@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/dashboards"
 	"github.com/grafana/gcx/internal/resources/dynamic"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -255,15 +256,16 @@ func TestWrapUpdateError(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// confirmDelete tests
+// ConfirmDestructive tests (via providers.ConfirmDestructive)
 // ---------------------------------------------------------------------------
 
-func TestConfirmDelete(t *testing.T) {
+func TestConfirmDestructive(t *testing.T) {
 	tests := []struct {
-		name  string
-		input string // text the "user" types; empty string simulates EOF
-		addNL bool   // whether to append "\n" (simulate line-terminated input)
-		want  bool
+		name    string
+		input   string // text the "user" types
+		addNL   bool   // whether to append "\n" (simulate line-terminated input)
+		want    bool
+		wantErr bool
 	}{
 		{name: "y lowercase", input: "y", addNL: true, want: true},
 		{name: "yes lowercase", input: "yes", addNL: true, want: true},
@@ -274,8 +276,10 @@ func TestConfirmDelete(t *testing.T) {
 		{name: "no lowercase", input: "no", addNL: true, want: false},
 		{name: "N uppercase", input: "N", addNL: true, want: false},
 		{name: "empty string", input: "", addNL: true, want: false},
-		// EOF: reader has no bytes at all — scanner returns false immediately.
-		{name: "EOF no input", input: "", addNL: false, want: false},
+		// EOF: reader has no bytes at all — ReadString returns io.EOF error.
+		{name: "EOF no input", input: "", addNL: false, want: false, wantErr: true},
+		// --force bypasses prompt entirely.
+		{name: "force flag", input: "", addNL: false, want: true},
 	}
 
 	for _, tt := range tests {
@@ -287,15 +291,26 @@ func TestConfirmDelete(t *testing.T) {
 			r := strings.NewReader(rawInput)
 
 			var w bytes.Buffer
-			got := dashboards.ConfirmDeleteForTest(&w, r, "my-dashboard")
+			force := tt.name == "force flag"
+			got, err := providers.ConfirmDestructive(r, &w, force, `Delete dashboard "my-dashboard"?`)
 
-			if got != tt.want {
-				t.Errorf("confirmDelete(%q) = %v, want %v", tt.input, got, tt.want)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("ConfirmDestructive(%q) expected error, got nil", tt.input)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ConfirmDestructive(%q) unexpected error: %v", tt.input, err)
 			}
 
-			// Prompt must always be written regardless of the answer.
-			if !strings.Contains(w.String(), "my-dashboard") {
-				t.Errorf("confirmDelete() output missing dashboard name: %q", w.String())
+			if got != tt.want {
+				t.Errorf("ConfirmDestructive(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+
+			// Prompt must be written for non-force cases.
+			if !force && !strings.Contains(w.String(), "my-dashboard") {
+				t.Errorf("ConfirmDestructive() output missing dashboard name: %q", w.String())
 			}
 		})
 	}

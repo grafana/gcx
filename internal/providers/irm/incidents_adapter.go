@@ -20,7 +20,7 @@ func buildIncidentRegistrations(loader *configLoader) []adapter.Registration {
 			GVK:         desc.GroupVersionKind(),
 			Schema:      IncidentSchema(),
 			Example:     IncidentExample(),
-			URLTemplate: "/a/grafana-incident-app/incidents/{name}",
+			URLTemplate: "/a/grafana-irm-app/incidents/{name}",
 		},
 	}
 }

@@ -168,16 +168,28 @@ if [[ "${DRY_RUN:-0}" == "1" ]]; then
 	exit 0
 fi
 
-# ── commit, tag, push ─────────────────────────────────────────────────────────
+# ── commit on release branch, push ───────────────────────────────────────────
+
+RELEASE_BRANCH="release/${NEW_TAG}"
+git checkout -b "$RELEASE_BRANCH"
 
 git add "$CHANGELOG" .release-notes.md
 [[ -f "$PLUGIN_JSON" ]] && git add "$PLUGIN_JSON"
 [[ -f "$MARKETPLACE_JSON" ]] && git add "$MARKETPLACE_JSON"
 git commit -m "chore(release): ${NEW_TAG} changelog"
-git tag "$NEW_TAG"
 
-echo "Pushing commit and tag ${NEW_TAG}..."
-git push
-git push origin "$NEW_TAG"
+echo "Pushing branch ${RELEASE_BRANCH}..."
+git push -u origin "$RELEASE_BRANCH"
 
-echo "Done. Tag ${NEW_TAG} pushed — GoReleaser will take it from here."
+echo ""
+echo "Branch ${RELEASE_BRANCH} pushed."
+echo ""
+echo "Next steps:"
+echo "  1. Open a PR and merge it:"
+echo "       gh pr create --title 'chore(release): ${NEW_TAG} changelog' --body 'Release ${NEW_TAG}'"
+echo "  2. After merge, tag the commit on main and push the tag:"
+echo "       git checkout main && git pull"
+echo "       git tag ${NEW_TAG}"
+echo "       git push origin ${NEW_TAG}"
+echo ""
+echo "The tag push triggers GoReleaser."

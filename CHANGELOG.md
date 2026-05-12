@@ -1,3 +1,73 @@
+## v0.2.14 (2026-05-08)
+
+- **New**: Instrumentation Hub provider package with full CRUD, RMW, and
+  Helm formatter support
+- **New**: Alert provisioning CRUD — contact-points, mute-timings,
+  notification-policies, and templates
+- **New**: AI Observability saved-conversations and collections commands
+- **New**: `gcx version` structured subcommand with machine-readable output
+- **New**: `gcx assistant dashboard` subcommand; fix `--agent-id` flag
+- **New**: Login accepts `--org-id` to configure organization ID
+- Knowledge Graph entities list now supports pagination
+- Knowledge Graph inspect drops hardcoded filters for raw, agent-friendly output
+- Agents codec with temp-file spill for token-efficient agent output
+- Log failed agent invocations to disk for capability-gap analysis
+- Fix exit codes: usage errors emit 2, partial failures emit 4
+- `stacks delete`: rename `--yes` to `--force`; respect agent mode
+- Migrate all provider delete commands to consistent `ConfirmDestructive`
+- Fix non-interactive confirmation bypass for metrics adaptive and alert
+- Config check now classifies `.grafana.com` hosts and stack-id as Cloud
+- Login now suggests running `config check` after successful login
+- Fix IRM incident URL template to use correct OnCall plugin slug
+- Dev import: register v1 converters for Folder and Dashboard resources
+
+
+## v0.2.13 (2026-05-06)
+
+**Note**: This release includes two important bugfixes 
+
+- Fix `--dry-run` not being honored in resource delete operations. [PR #643](https://github.com/grafana/gcx/pull/643).
+- Fix `--context` flag not applied across all CRUD adapter operations. [PR #625](https://github.com/grafana/gcx/pull/625).
+
+Update to this version to avoid unintended operations on your Grafana Cloud stack.
+
+---
+
+Other changes in this release:
+
+- Add `gcx stacks` commands: list, get, create, update, delete, regions
+- Rename `synth` provider to `synthetic-monitoring`
+- Render trace trees as a formatted table in `gcx traces get`
+- Add RCA Workbench deep link to `gcx kg entities inspect`
+- Consolidate Knowledge Graph insights filtering into `kg entities list`
+- Prevent env var secrets from being written to the config file
+- Handle read-only files gracefully during skill updates
+- Update agent skills to remove common usage errors
+- Bump Go module and GitHub Actions dependencies
+
+
+
+## v0.2.12 (2026-05-04)
+
+- **Dashboards**: new CRUD, search, and version history provider
+- **Dashboards**: dev server syncs variable params to URL and restores on refresh
+- **Knowledge Graph**: add `suppressions list` and `suppressions delete` commands
+- **Knowledge Graph**: fix suppressions overwrite bug
+- **Knowledge Graph**: replace `kg inspect` with `entities inspect` (LLM summary)
+- **Knowledge Graph**: align all kg commands to `[noun] [verb]` format
+- **Knowledge Graph**: improve `entities list` usability
+- **Login**: support custom OAuth callback port via `--callback-port`
+- **Login**: bind OAuth callback port before opening browser to avoid race
+- **Login**: step-aware errors during connectivity validation
+- **Profiles**: add exemplars support (`exemplars profile` and `exemplars span`)
+- **Datasources**: add Grafana Explore share links for query results
+- **Notifications**: alert users when a new gcx version is available
+- **Skills**: notify users when installed skills have updates
+- **Assistant**: gracefully block commands on self-hosted Grafana instances
+- **Linter**: detect missing title/description on panels in collapsed rows
+- **Tooling**: replace devbox with mise for dev environment setup
+
+
 ## v0.2.11 (2026-04-29)
 
 - Add mTLS client certificate authentication for config and login (Teleport)

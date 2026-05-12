@@ -12,7 +12,13 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-const maxResponseBytes = 10 << 20 // 10 MB
+const (
+	maxResponseBytes = 10 << 20 // 10 MB
+
+	datasourcesPath      = "/api/datasources"
+	datasourceByUIDPath  = "/api/datasources/uid/"
+	datasourceByNamePath = "/api/datasources/name/"
+)
 
 // Datasource holds the fields returned by the legacy Grafana datasource REST API.
 type Datasource struct {
@@ -52,7 +58,7 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 
 // List returns all datasources visible to the authenticated user.
 func (c *Client) List(ctx context.Context) ([]*Datasource, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.host+"/api/datasources", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.host+datasourcesPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -82,12 +88,12 @@ func (c *Client) List(ctx context.Context) ([]*Datasource, error) {
 
 // GetByUID returns the datasource with the given UID.
 func (c *Client) GetByUID(ctx context.Context, uid string) (*Datasource, error) {
-	return c.get(ctx, "/api/datasources/uid/"+url.PathEscape(uid), uid)
+	return c.get(ctx, datasourceByUIDPath+url.PathEscape(uid), uid)
 }
 
 // GetByName returns the datasource with the given display name.
 func (c *Client) GetByName(ctx context.Context, name string) (*Datasource, error) {
-	return c.get(ctx, "/api/datasources/name/"+url.PathEscape(name), name)
+	return c.get(ctx, datasourceByNamePath+url.PathEscape(name), name)
 }
 
 func (c *Client) get(ctx context.Context, path, identifier string) (*Datasource, error) {

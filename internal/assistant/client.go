@@ -18,6 +18,7 @@ type Client struct {
 	grafanaURL     string
 	baseURL        string
 	token          string
+	agentID        string
 	logger         Logger
 	tokenRefresher TokenRefresher
 	httpClient     *http.Client
@@ -37,10 +38,16 @@ func New(opts ClientOptions) *Client {
 		httpClient = httputils.NewDefaultClient(context.Background())
 	}
 
+	agentID := opts.AgentID
+	if agentID == "" {
+		agentID = DefaultAgentID
+	}
+
 	return &Client{
 		grafanaURL:     grafanaURL,
 		baseURL:        baseURL,
 		token:          opts.Token,
+		agentID:        agentID,
 		logger:         NopLogger{},
 		tokenRefresher: opts.TokenRefresher,
 		httpClient:     httpClient,
@@ -63,7 +70,7 @@ func (c *Client) ChatWithApproval(ctx context.Context, prompt string, opts Strea
 
 	promptWithContext := prompt + "\n" + FormatTimeContext()
 
-	return StreamChatWithApproval(ctx, c.baseURL, c.freshToken(), DefaultAgentID, promptWithContext, opts, c.logger, approvalHandler, c.httpClient)
+	return StreamChatWithApproval(ctx, c.baseURL, c.freshToken(), c.agentID, promptWithContext, opts, c.logger, approvalHandler, c.httpClient)
 }
 
 // GetChat fetches a single chat by ID.
@@ -91,6 +98,10 @@ func (c *Client) GetBaseURL() string {
 // GetGrafanaURL returns the Grafana instance URL.
 func (c *Client) GetGrafanaURL() string {
 	return c.grafanaURL
+}
+
+func (c *Client) GetAgentID() string {
+	return c.agentID
 }
 
 // GetToken returns the current authentication token.

@@ -1,7 +1,6 @@
 package checks
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -70,13 +70,13 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 		Use:   "list",
 		Short: "List Synthetic Monitoring checks.",
 		Example: `  # List all checks.
-  gcx synth checks list
+  gcx synthetic-monitoring checks list
 
   # Filter by job glob.
-  gcx synth checks list --job 'shopk8s-*'
+  gcx synthetic-monitoring checks list --job 'shopk8s-*'
 
   # Filter by label.
-  gcx synth checks list --label env=prod`,
+  gcx synthetic-monitoring checks list --label env=prod`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -238,14 +238,14 @@ func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get NAME",
 		Short: "Get a single Synthetic Monitoring check.",
-		Example: `  # Get check by resource name (from 'gcx synth checks list').
-  gcx synth checks get grafana-instance-health-5594
+		Example: `  # Get check by resource name (from 'gcx synthetic-monitoring checks list').
+  gcx synthetic-monitoring checks get grafana-instance-health-5594
 
   # Get check by numeric ID.
-  gcx synth checks get 5594
+  gcx synthetic-monitoring checks get 5594
 
   # Get check with current execution status.
-  gcx synth checks get grafana-instance-health-5594 --show-status`,
+  gcx synthetic-monitoring checks get grafana-instance-health-5594 --show-status`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -349,13 +349,13 @@ func newCreateCommand(loader smcfg.StatusLoader) *cobra.Command {
 		Use:   "create",
 		Short: "Create a Synthetic Monitoring check from a file.",
 		Example: `  # Create a check from a YAML file.
-  gcx synth checks create -f check.yaml
+  gcx synthetic-monitoring checks create -f check.yaml
 
   # Create and show resulting status.
-  gcx synth checks create -f check.yaml --show-status
+  gcx synthetic-monitoring checks create -f check.yaml --show-status
 
   # Validate HTTP target before creating.
-  gcx synth checks create -f check.yaml --validate-targets`,
+  gcx synthetic-monitoring checks create -f check.yaml --validate-targets`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -461,10 +461,10 @@ func newUpdateCommand(loader smcfg.StatusLoader) *cobra.Command {
 		Use:   "update <name>",
 		Short: "Update a Synthetic Monitoring check from a file.",
 		Example: `  # Update a check using its resource name.
-  gcx synth checks update web-check-1234 -f check.yaml
+  gcx synthetic-monitoring checks update web-check-1234 -f check.yaml
 
   # Update and show previous status.
-  gcx synth checks update web-check-1234 -f check.yaml --show-status`,
+  gcx synthetic-monitoring checks update web-check-1234 -f check.yaml --show-status`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -477,7 +477,7 @@ func newUpdateCommand(loader smcfg.StatusLoader) *cobra.Command {
 			// Extract numeric ID from the resource name (e.g. "web-check-1234" → 1234).
 			checkID, ok := extractIDFromSlug(name)
 			if !ok || checkID == 0 {
-				return fmt.Errorf("could not extract numeric check ID from name %q — use the resource name from 'gcx synth checks list'", name)
+				return fmt.Errorf("could not extract numeric check ID from name %q — use the resource name from 'gcx synthetic-monitoring checks list'", name)
 			}
 
 			// Fetch probe info for validation and offline probe warning.
@@ -576,7 +576,7 @@ type deleteOpts struct {
 }
 
 func (o *deleteOpts) setup(flags *pflag.FlagSet) {
-	flags.BoolVarP(&o.Force, "force", "f", false, "Skip confirmation prompt")
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
 }
 
 func newDeleteCommand(loader smcfg.Loader) *cobra.Command {
@@ -588,18 +588,13 @@ func newDeleteCommand(loader smcfg.Loader) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			if !opts.Force {
-				fmt.Fprintf(cmd.OutOrStdout(), "Delete %d check(s)? [y/N] ", len(args))
-				reader := bufio.NewReader(cmd.InOrStdin())
-				answer, err := reader.ReadString('\n')
-				if err != nil {
-					return fmt.Errorf("reading confirmation: %w", err)
-				}
-				answer = strings.TrimSpace(strings.ToLower(answer))
-				if answer != "y" && answer != "yes" {
-					cmdio.Info(cmd.OutOrStdout(), "Aborted.")
-					return nil
-				}
+			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
+				fmt.Sprintf("Delete %d check(s)?", len(args)))
+			if err != nil {
+				return err
+			}
+			if !proceed {
+				return nil
 			}
 
 			crud, _, err := NewTypedCRUD(ctx, loader)

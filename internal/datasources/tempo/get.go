@@ -26,7 +26,11 @@ type getOpts struct {
 }
 
 func (opts *getOpts) setup(flags *pflag.FlagSet) {
-	opts.IO.DefaultFormat("json")
+	dsquery.RegisterCodecs(&opts.IO, false)
+	// Default is the human-readable tree table for all non-agent sessions.
+	// Piped output renders the same table without ANSI styling (via IsStylingEnabled).
+	// Agent mode is the only path that overrides the default to JSON.
+	opts.IO.DefaultFormat("table")
 	opts.IO.BindFlags(flags)
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.tempo is configured)")

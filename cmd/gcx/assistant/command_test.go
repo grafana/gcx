@@ -110,6 +110,66 @@ func TestConventions_PromptAnnotations(t *testing.T) {
 	}
 }
 
+// TestConventions_DashboardSubcommandExists verifies that the assistant group
+// command exposes a 'dashboard' subcommand for discoverability of the
+// dashboarding agent.
+func TestConventions_DashboardSubcommandExists(t *testing.T) {
+	cmd := assistant.Command()
+
+	var dashCmd *cobra.Command
+	for _, sub := range cmd.Commands() {
+		if sub.Name() == "dashboard" {
+			dashCmd = sub
+			break
+		}
+	}
+	if dashCmd == nil {
+		t.Fatal("expected to find 'dashboard' subcommand under assistant")
+	}
+}
+
+// TestConventions_DashboardSubcommandHasAnnotations verifies that the dashboard
+// subcommand carries agent annotations matching the prompt subcommand.
+func TestConventions_DashboardSubcommandHasAnnotations(t *testing.T) {
+	cmd := assistant.Command()
+
+	var dashCmd *cobra.Command
+	for _, sub := range cmd.Commands() {
+		if sub.Name() == "dashboard" {
+			dashCmd = sub
+			break
+		}
+	}
+	if dashCmd == nil {
+		t.Fatal("expected to find 'dashboard' subcommand")
+	}
+
+	if _, ok := dashCmd.Annotations["agent.token_cost"]; !ok {
+		t.Fatal("expected dashboard command to have agent.token_cost annotation")
+	}
+}
+
+// TestConventions_DashboardSubcommandNoAgentIDFlag verifies that the dashboard
+// subcommand does NOT expose --agent-id, since its agent is fixed.
+func TestConventions_DashboardSubcommandNoAgentIDFlag(t *testing.T) {
+	cmd := assistant.Command()
+
+	var dashCmd *cobra.Command
+	for _, sub := range cmd.Commands() {
+		if sub.Name() == "dashboard" {
+			dashCmd = sub
+			break
+		}
+	}
+	if dashCmd == nil {
+		t.Fatal("expected to find 'dashboard' subcommand")
+	}
+
+	if dashCmd.Flags().Lookup("agent-id") != nil {
+		t.Fatal("dashboard subcommand should not expose --agent-id; the agent is fixed to grafana_dashboarding")
+	}
+}
+
 func TestRequireGrafanaCloud(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -128,6 +188,37 @@ func TestRequireGrafanaCloud(t *testing.T) {
 				Cloud:   &config.CloudConfig{Stack: "mystack"},
 				Grafana: &config.GrafanaConfig{Server: "https://custom.example.com"},
 			},
+		},
+		{
+			name: "grafana.com host (demokit-style)",
+			ctx: &config.Context{
+				Grafana: &config.GrafanaConfig{Server: "https://emea.cloud.demokit.grafana.com"},
+			},
+		},
+		{
+			name: "grafana-dev.com host",
+			ctx: &config.Context{
+				Grafana: &config.GrafanaConfig{Server: "https://mystack.grafana-dev.com"},
+			},
+		},
+		{
+			name: "grafana-ops.com host",
+			ctx: &config.Context{
+				Grafana: &config.GrafanaConfig{Server: "https://mystack.grafana-ops.com"},
+			},
+		},
+		{
+			name: "grafana.stack-id non-zero with custom domain",
+			ctx: &config.Context{
+				Grafana: &config.GrafanaConfig{Server: "https://grafana.example.com", StackID: 12345},
+			},
+		},
+		{
+			name: "bare grafana.com is not a subdomain",
+			ctx: &config.Context{
+				Grafana: &config.GrafanaConfig{Server: "https://grafana.com"},
+			},
+			wantErr: true,
 		},
 		{
 			name: "self-hosted instance",

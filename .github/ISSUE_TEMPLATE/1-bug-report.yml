@@ -18,69 +18,20 @@ body:
         - Try the command with `--dry-run` if applicable
         - Look for similar issues: [Search existing issues](https://github.com/grafana/gcx/issues)
 
-  - type: input
-    id: gcx_version
-    attributes:
-      label: gcx Version
-      description: "Run `gcx version` to get this information"
-      placeholder: "gcx version v0.1.0 (commit: abc123, built: 2025-01-15)"
-    validations:
-      required: true
-
-  - type: dropdown
-    id: affected_command
-    attributes:
-      label: Which command group is affected?
-      options:
-        - resources (get/list/push/pull/delete/edit/serve/validate)
-        - config (set/unset/use-context/list-contexts/current-context/view/check)
-        - General (installation, version, help)
-        - Other
-    validations:
-      required: true
-
   - type: textarea
-    id: command_executed
+    id: description
     attributes:
-      label: Command Executed
-      description: What command did you run? Include all flags and arguments
+      label: Description
+      description: What command did you run? Include all flags and arguments. What was the output?
       placeholder: "gcx resources push --context=prod --dry-run ./dashboards/"
       render: shell
-    validations:
-      required: true
-
-  - type: textarea
-    id: command_output
-    attributes:
-      label: Command Output
-      description: "Paste the full output. Run with -v, -vv, or -vvv for more details"
-      placeholder: |
-        Error: failed to push resource dashboard.v1alpha1.dashboard.grafana.app/my-dashboard
-        Caused by: 403 Forbidden: insufficient permissions
-      render: shell
-    validations:
-      required: true
-
-  - type: textarea
-    id: what_happened
-    attributes:
-      label: What happened?
-      description: Describe what went wrong in your own words
-      placeholder: |
-        I was trying to push dashboards to production using gcx resources push,
-        but the command failed with a permission error. I can push to staging fine
-        using the same dashboards.
-    validations:
-      required: true
 
   - type: textarea
     id: expected_behavior
     attributes:
       label: What did you expect to happen?
       description: Help us understand the correct behavior
-      placeholder: The dashboards should have been successfully pushed to the production Grafana instance
-    validations:
-      required: true
+      placeholder: The dashboards should have been successfully pushed to Grafana
 
   - type: textarea
     id: steps_to_reproduce
@@ -96,21 +47,13 @@ body:
         1.
         2.
         3.
-    validations:
-      required: true
 
-  - type: dropdown
-    id: frequency
+  - type: input
+    id: gcx_version
     attributes:
-      label: How often does this happen?
-      description: This helps us understand the severity
-      options:
-        - Every time
-        - Often (more than 50% of the time)
-        - Sometimes (less than 50% of the time)
-        - Only happened once or twice
-    validations:
-      required: true
+      label: gcx Version
+      description: "Run `gcx --version` to get this information"
+      placeholder: "gcx version v0.1.0 (commit: abc123, built: 2025-01-15)"
 
   - type: input
     id: environment
@@ -118,8 +61,6 @@ body:
       label: Environment Details
       description: "Operating system, shell, Grafana server version, Go version (if relevant)"
       placeholder: "macOS 14.1, zsh 5.9, Grafana Cloud (v12.0), Go 1.21"
-    validations:
-      required: true
 
   - type: checkboxes
     id: troubleshooting
