@@ -1,37 +1,37 @@
-## gcx datasources influxdb measurements
+## gcx datasources influxdb tag-keys
 
-List measurements
+List tag keys
 
 ### Synopsis
 
-List measurement names from an InfluxDB datasource.
+List tag keys from an InfluxDB datasource. Only supported in InfluxQL mode.
 
 ```
-gcx datasources influxdb measurements [flags]
+gcx datasources influxdb tag-keys [flags]
 ```
 
 ### Examples
 
 ```
 
-  # List all measurements (use datasource UID, not name)
-  gcx datasources influxdb measurements -d UID
+  # List all tag keys (use datasource UID, not name)
+  gcx datasources influxdb tag-keys -d UID
 
-  # List measurements with Flux mode (requires --bucket)
-  gcx datasources influxdb measurements -d UID --bucket my-bucket
+  # Filter by measurement
+  gcx datasources influxdb tag-keys -d UID --measurement cpu
 
   # Output as JSON
-  gcx datasources influxdb measurements -d UID -o json
+  gcx datasources influxdb tag-keys -d UID -o json
 ```
 
 ### Options
 
 ```
-      --bucket string       Bucket name for Flux mode (defaults to datasource defaultBucket)
-  -d, --datasource string   Datasource UID (required unless datasources.influxdb is configured)
-  -h, --help                help for measurements
-      --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string       Output format. One of: agents, json, table, yaml (default "table")
+  -d, --datasource string    Datasource UID (required unless datasources.influxdb is configured)
+  -h, --help                 help for tag-keys
+      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -m, --measurement string   Filter by measurement name
+  -o, --output string        Output format. One of: agents, json, table, yaml (default "table")
 ```
 
 ### Options inherited from parent commands

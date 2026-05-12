@@ -1,35 +1,36 @@
-## gcx datasources influxdb field-keys
+## gcx datasources influxdb tag-values
 
-List field keys
+List tag values
 
 ### Synopsis
 
-List field keys from an InfluxDB datasource. Only supported in InfluxQL mode.
+List tag values for a given key from an InfluxDB datasource. Only supported in InfluxQL mode.
 
 ```
-gcx datasources influxdb field-keys [flags]
+gcx datasources influxdb tag-values [flags]
 ```
 
 ### Examples
 
 ```
 
-  # List all field keys (use datasource UID, not name)
-  gcx datasources influxdb field-keys -d UID
+  # List values for a tag key (use datasource UID, not name)
+  gcx datasources influxdb tag-values -d UID --key host
 
   # Filter by measurement
-  gcx datasources influxdb field-keys -d UID --measurement cpu
+  gcx datasources influxdb tag-values -d UID --key host --measurement cpu
 
   # Output as JSON
-  gcx datasources influxdb field-keys -d UID -o json
+  gcx datasources influxdb tag-values -d UID --key host -o json
 ```
 
 ### Options
 
 ```
   -d, --datasource string    Datasource UID (required unless datasources.influxdb is configured)
-  -h, --help                 help for field-keys
+  -h, --help                 help for tag-values
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -k, --key string           Tag key to get values for (required)
   -m, --measurement string   Filter by measurement name
   -o, --output string        Output format. One of: agents, json, table, yaml (default "table")
 ```
