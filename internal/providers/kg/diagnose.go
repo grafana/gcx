@@ -225,9 +225,16 @@ asserts_env values with no deployment_environment source.`,
 	return cmd
 }
 
+// defaultPromDatasourceUID is the conventional datasource UID for the primary
+// Prometheus datasource on Grafana Cloud stacks. The Knowledge Graph always
+// uses this datasource, so we fall back to it when auto-discovery fails
+// (e.g., multiple Prometheus datasources exist and no stack slug is configured).
+const defaultPromDatasourceUID = "grafanacloud-prom"
+
 // resolvePromClient creates a Prometheus query client and resolves the
-// datasource UID. Returns nil client if resolution fails (metric checks
-// will be skipped gracefully).
+// datasource UID. Falls back to "grafanacloud-prom" (the default Grafana Cloud
+// Prometheus datasource) when auto-discovery fails, since the Knowledge Graph
+// always reads from the default Prometheus datasource.
 func resolvePromClient(ctx context.Context, loader *providers.ConfigLoader, cfg config.NamespacedRESTConfig, flagValue string, cmd *cobra.Command) (*prometheus.Client, string) {
 	var cfgCtx *config.Context
 	fullCfg, err := loader.LoadFullConfig(ctx)
@@ -237,10 +244,15 @@ func resolvePromClient(ctx context.Context, loader *providers.ConfigLoader, cfg 
 		cfgCtx = fullCfg.GetCurrentContext()
 	}
 
+	dsUID := ""
 	resolved, err := dsquery.ResolveDatasource(ctx, flagValue, cfgCtx, cfg, "prometheus")
 	if err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "  note: skipping metric checks (%v)\n", err)
-		return nil, ""
+		// The KG always uses the default Prometheus datasource. Fall back to the
+		// conventional Grafana Cloud UID rather than skipping metric checks entirely.
+		dsUID = defaultPromDatasourceUID
+		fmt.Fprintf(cmd.ErrOrStderr(), "  note: datasource auto-discovery failed, using %s (%v)\n", dsUID, err)
+	} else {
+		dsUID = resolved.UID
 	}
 
 	promClient, err := prometheus.NewClient(cfg)
@@ -249,7 +261,7 @@ func resolvePromClient(ctx context.Context, loader *providers.ConfigLoader, cfg 
 		return nil, ""
 	}
 
-	return promClient, resolved.UID
+	return promClient, dsUID
 }
 
 // ---------------------------------------------------------------------------
