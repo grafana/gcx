@@ -10,6 +10,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// The fixtures in this file mirror the real Grafana Assistant plugin
+// response from `/chats/{chatId}/all-messages` — captured live against a
+// Lodestone investigation. See the PR comment for the recorded shape.
+
 func TestGetChatThread(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
@@ -20,20 +24,28 @@ func TestGetChatThread(t *testing.T) {
 					{
 						"id":   "m1",
 						"role": "assistant",
+						"type": "message",
 						"content": []map[string]any{
 							{"type": "text", "text": "Looking at the API latency."},
-							{"type": "tool_use", "id": "tu_1", "name": "search_skills", "input": map[string]any{"query": "api latency"}},
+							{
+								"type":      "tool_use",
+								"toolId":    "tu_1",
+								"toolName":  "search_skills",
+								"toolInput": map[string]any{"queries": []map[string]any{{"keywords": "api latency", "query": "api latency runbook"}}},
+							},
 						},
 					},
 					{
 						"id":   "m2",
-						"role": "tool",
+						"role": "assistant",
+						"type": "message",
 						"content": []map[string]any{
 							{
-								"type":        "tool_result",
-								"tool_use_id": "tu_1",
-								"durationMs":  42,
-								"content":     json.RawMessage(`{"results":[{"id":"s1","name":"APILatency","score":0.91,"chunk":"check p99"}]}`),
+								"type":       "tool_result",
+								"toolUseId":  "tu_1",
+								"toolName":   "search_skills",
+								"durationMs": 42,
+								"toolResult": []map[string]any{{"type": "text", "text": "<results count=\"1\"><chunk skill_id=\"s1\" title=\"API latency runbook\">check p99</chunk></results>"}},
 							},
 						},
 					},
@@ -48,10 +60,14 @@ func TestGetChatThread(t *testing.T) {
 	assert.Equal(t, "assistant", messages[0].Role)
 	assert.Len(t, messages[0].Content, 2)
 	assert.Equal(t, "tool_use", messages[0].Content[1].Type)
-	assert.Equal(t, "search_skills", messages[0].Content[1].Name)
+	assert.Equal(t, "search_skills", messages[0].Content[1].ToolName)
+	assert.Equal(t, "tu_1", messages[0].Content[1].ToolID)
+	assert.NotEmpty(t, messages[0].Content[1].ToolInput)
 	assert.Equal(t, "tool_result", messages[1].Content[0].Type)
 	assert.Equal(t, "tu_1", messages[1].Content[0].ToolUseID)
 	assert.Equal(t, int64(42), messages[1].Content[0].DurationMs)
+	require.Len(t, messages[1].Content[0].ToolResult, 1)
+	assert.Equal(t, "text", messages[1].Content[0].ToolResult[0].Type)
 }
 
 func TestGetChatThread_EmptyMessages(t *testing.T) {
@@ -78,7 +94,8 @@ func TestNarrative(t *testing.T) {
 		{Role: "user", Content: []investigations.ChatContentBlock{{Type: "text", Text: "what's wrong?"}}},
 		{Role: "assistant", Content: []investigations.ChatContentBlock{
 			{Type: "text", Text: "<context>internal</context>p99 spiked at 14:02"},
-			{Type: "tool_use", Name: "prometheus_query_handler"},
+			{Type: "thinking", Thinking: "let me check metrics"},
+			{Type: "tool_use", ToolName: "prometheus_query_handler"},
 		}},
 		{Role: "assistant", Hidden: true, Content: []investigations.ChatContentBlock{{Type: "text", Text: "hidden note"}}},
 		{Role: "assistant", Content: []investigations.ChatContentBlock{{Type: "text", Text: "Likely a slow downstream."}}},
@@ -90,26 +107,29 @@ func TestNarrative(t *testing.T) {
 func TestExtractToolCalls(t *testing.T) {
 	messages := []investigations.ChatThreadMessage{
 		{Role: "assistant", Content: []investigations.ChatContentBlock{
-			{Type: "tool_use", ID: "tu_1", Name: "search_skills", Input: json.RawMessage(`{"query":"q"}`)},
-			{Type: "tool_use", ID: "tu_2", Name: "prometheus_query_handler"},
+			{Type: "tool_use", ToolID: "tu_1", ToolName: "search_skills", ToolInput: json.RawMessage(`{"queries":[{"query":"q"}]}`)},
+			{Type: "tool_use", ToolID: "tu_2", ToolName: "prometheus_query_handler"},
 		}},
-		{Role: "tool", Content: []investigations.ChatContentBlock{
-			{Type: "tool_result", ToolUseID: "tu_1", DurationMs: 12, ToolResult: json.RawMessage(`{"ok":true}`)},
-			{Type: "tool_result", ToolUseID: "tu_2", IsError: true, ToolResult: json.RawMessage(`{"error":"x"}`)},
+		{Role: "assistant", Content: []investigations.ChatContentBlock{
+			{Type: "tool_result", ToolUseID: "tu_1", ToolName: "search_skills", DurationMs: 12, ToolResult: []investigations.ToolResultPart{{Type: "text", Text: "<results count=\"0\"/>"}}},
+			{Type: "tool_result", ToolUseID: "tu_2", ToolName: "prometheus_query_handler", IsError: true, ToolResult: []investigations.ToolResultPart{{Type: "text", Text: "boom"}}},
 		}},
 	}
 	calls := investigations.ExtractToolCalls(messages)
 	require.Len(t, calls, 2)
 	assert.Equal(t, "search_skills", calls[0].Name)
+	assert.Equal(t, "tu_1", calls[0].ID)
+	assert.NotEmpty(t, calls[0].Input)
 	assert.Equal(t, int64(12), calls[0].DurationMs)
 	assert.False(t, calls[0].IsError)
+	require.Len(t, calls[0].Result, 1)
 	assert.True(t, calls[1].IsError)
 }
 
 func TestExtractToolCalls_PendingResult(t *testing.T) {
 	messages := []investigations.ChatThreadMessage{
 		{Role: "assistant", Content: []investigations.ChatContentBlock{
-			{Type: "tool_use", ID: "tu_1", Name: "loki_query_handler_investigator"},
+			{Type: "tool_use", ToolID: "tu_1", ToolName: "loki_query_handler_investigator"},
 		}},
 	}
 	calls := investigations.ExtractToolCalls(messages)
@@ -118,53 +138,74 @@ func TestExtractToolCalls_PendingResult(t *testing.T) {
 	assert.Zero(t, calls[0].DurationMs)
 }
 
-func TestExtractSkillMatches_FlatObject(t *testing.T) {
+func TestExtractSkillMatches(t *testing.T) {
+	// Real server payload: queries[].query input, XML chunk envelope in toolResult.
+	xmlResult := `<results count="2">
+<chunk skill_id="78ffce9d-8911-4f8b-8a16-6b42f646ca2d" offset="0" length="294" title="Investigate payment error spikes">Investigate payment error spikes
+
+Confirm symptom, quantify blast radius, inspect logs and traces.</chunk>
+<chunk skill_id="78ffce9d-8911-4f8b-8a16-6b42f646ca2d" offset="294" length="200" title="Investigate payment error spikes">Correlate with recent changes &#34;deploy generation&#34;.</chunk>
+</results>`
+
 	messages := []investigations.ChatThreadMessage{
 		{Role: "assistant", Content: []investigations.ChatContentBlock{
-			{Type: "tool_use", ID: "tu_1", Name: "search_skills", Input: json.RawMessage(`{"query":"api latency"}`)},
+			{
+				Type:      "tool_use",
+				ToolID:    "tu_1",
+				ToolName:  "search_skills",
+				ToolInput: json.RawMessage(`{"queries":[{"keywords":"payment error rate","query":"payment error rate high investigation runbook"}]}`),
+			},
 		}},
-		{Role: "tool", Content: []investigations.ChatContentBlock{
+		{Role: "assistant", Content: []investigations.ChatContentBlock{
 			{
 				Type:       "tool_result",
 				ToolUseID:  "tu_1",
-				ToolResult: json.RawMessage(`{"results":[{"id":"s1","name":"APILatency","score":0.9,"chunk":"check p99"},{"id":"s2","name":"DBSlow","score":0.7,"chunk":"see DB stats"}]}`),
+				ToolName:   "search_skills",
+				ToolResult: []investigations.ToolResultPart{{Type: "text", Text: xmlResult}},
 			},
 		}},
 	}
+
 	matches := investigations.ExtractSkillMatches(messages)
 	require.Len(t, matches, 2)
-	assert.Equal(t, "APILatency", matches[0].SkillName)
-	assert.Equal(t, "api latency", matches[0].Query)
-	assert.InDelta(t, 0.9, matches[0].Score, 0.001)
-	assert.Equal(t, "check p99", matches[0].Chunk)
+
+	assert.Equal(t, "78ffce9d-8911-4f8b-8a16-6b42f646ca2d", matches[0].SkillID)
+	assert.Equal(t, "Investigate payment error spikes", matches[0].Title)
+	assert.Equal(t, "payment error rate high investigation runbook", matches[0].Query)
+	assert.Contains(t, matches[0].Chunk, "Confirm symptom")
+	assert.Contains(t, matches[1].Chunk, `"deploy generation"`) // HTML entity decoded
 }
 
-func TestExtractSkillMatches_AnthropicNested(t *testing.T) {
+func TestExtractSkillMatches_MultipleQueries(t *testing.T) {
 	messages := []investigations.ChatThreadMessage{
 		{Role: "assistant", Content: []investigations.ChatContentBlock{
-			{Type: "tool_use", ID: "tu_1", Name: "search_skills", Input: json.RawMessage(`{"query":"latency"}`)},
+			{
+				Type:      "tool_use",
+				ToolID:    "tu_1",
+				ToolName:  "search_skills",
+				ToolInput: json.RawMessage(`{"queries":[{"query":"first"},{"query":"second"}]}`),
+			},
 		}},
-		{Role: "tool", Content: []investigations.ChatContentBlock{
+		{Role: "assistant", Content: []investigations.ChatContentBlock{
 			{
 				Type:       "tool_result",
 				ToolUseID:  "tu_1",
-				ToolResult: json.RawMessage(`[{"type":"text","text":"{\"results\":[{\"id\":\"s1\",\"name\":\"APILatency\",\"score\":0.85,\"chunk\":\"hot path\"}]}"}]`),
+				ToolResult: []investigations.ToolResultPart{{Type: "text", Text: `<results count="1"><chunk skill_id="s1" title="t">body</chunk></results>`}},
 			},
 		}},
 	}
 	matches := investigations.ExtractSkillMatches(messages)
 	require.Len(t, matches, 1)
-	assert.Equal(t, "APILatency", matches[0].SkillName)
-	assert.Equal(t, "hot path", matches[0].Chunk)
+	assert.Equal(t, "first; second", matches[0].Query)
 }
 
 func TestExtractSkillMatches_IgnoresOtherTools(t *testing.T) {
 	messages := []investigations.ChatThreadMessage{
 		{Role: "assistant", Content: []investigations.ChatContentBlock{
-			{Type: "tool_use", ID: "tu_1", Name: "prometheus_query_handler"},
+			{Type: "tool_use", ToolID: "tu_1", ToolName: "prometheus_query_handler"},
 		}},
-		{Role: "tool", Content: []investigations.ChatContentBlock{
-			{Type: "tool_result", ToolUseID: "tu_1", ToolResult: json.RawMessage(`{"results":[{"name":"x"}]}`)},
+		{Role: "assistant", Content: []investigations.ChatContentBlock{
+			{Type: "tool_result", ToolUseID: "tu_1", ToolResult: []investigations.ToolResultPart{{Type: "text", Text: `<results count="1"><chunk skill_id="s1" title="t">x</chunk></results>`}}},
 		}},
 	}
 	assert.Empty(t, investigations.ExtractSkillMatches(messages))

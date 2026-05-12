@@ -17,14 +17,29 @@ func TestChatThreadTextCodec_Encode(t *testing.T) {
 			Role: "assistant",
 			Content: []investigations.ChatContentBlock{
 				{Type: "text", Text: "p99 latency spiked."},
-				{Type: "tool_use", ID: "tu_1", Name: "search_skills", Input: json.RawMessage(`{"query":"api latency"}`)},
+				{Type: "thinking", Thinking: "let me check the database"},
+				{Type: "tool_use", ToolID: "tu_1", ToolName: "search_skills", ToolInput: json.RawMessage(`{"queries":[{"query":"latency"}]}`)},
 			},
 		},
 		{
 			ID:   "m2",
-			Role: "tool",
+			Role: "assistant",
 			Content: []investigations.ChatContentBlock{
-				{Type: "tool_result", ToolUseID: "tu_1", DurationMs: 42, ToolResult: json.RawMessage(`{"ok":true}`)},
+				{
+					Type:       "tool_result",
+					ToolUseID:  "tu_1",
+					ToolName:   "search_skills",
+					DurationMs: 42,
+					ToolResult: []investigations.ToolResultPart{{Type: "text", Text: "result text"}},
+				},
+			},
+		},
+		{
+			ID:   "m3",
+			Role: "internal",
+			Type: "artifact",
+			Content: []investigations.ChatContentBlock{
+				{Type: "artifact", ArtifactType: "panel", Panel: json.RawMessage(`[{"panelId":"p5"},{"panelId":"p7"}]`)},
 			},
 		},
 	}
@@ -35,10 +50,16 @@ func TestChatThreadTextCodec_Encode(t *testing.T) {
 		require.NoError(t, codec.Encode(&buf, messages))
 		out := buf.String()
 		assert.Contains(t, out, "[assistant]")
+		assert.Contains(t, out, "[internal]")
 		assert.Contains(t, out, "p99 latency spiked.")
+		assert.Contains(t, out, "~ let me check the database")
 		assert.Contains(t, out, "tool_use search_skills")
 		assert.Contains(t, out, "tool_result")
+		assert.Contains(t, out, "search_skills")
 		assert.Contains(t, out, "durationMs=42")
+		assert.Contains(t, out, "result text")
+		assert.Contains(t, out, "◆ artifact panel")
+		assert.Contains(t, out, "p5,p7")
 	})
 
 	t.Run("wide includes IDs", func(t *testing.T) {
@@ -48,6 +69,7 @@ func TestChatThreadTextCodec_Encode(t *testing.T) {
 		out := buf.String()
 		assert.Contains(t, out, "id=m1")
 		assert.Contains(t, out, "for=tu_1")
+		assert.Contains(t, out, "id=tu_1")
 	})
 
 	t.Run("wrong type", func(t *testing.T) {
@@ -58,8 +80,13 @@ func TestChatThreadTextCodec_Encode(t *testing.T) {
 
 func TestChatThreadTextCodec_ErrorMarker(t *testing.T) {
 	messages := []investigations.ChatThreadMessage{
-		{Role: "tool", Content: []investigations.ChatContentBlock{
-			{Type: "tool_result", ToolUseID: "tu_1", IsError: true, ToolResult: json.RawMessage(`{"error":"boom"}`)},
+		{Role: "assistant", Content: []investigations.ChatContentBlock{
+			{
+				Type:       "tool_result",
+				ToolUseID:  "tu_1",
+				IsError:    true,
+				ToolResult: []investigations.ToolResultPart{{Type: "text", Text: "boom"}},
+			},
 		}},
 	}
 	var buf bytes.Buffer
@@ -81,10 +108,26 @@ func TestNarrativeCodec_EmptyString(t *testing.T) {
 	assert.Empty(t, buf.String())
 }
 
+func TestNarrativeCodec_Format(t *testing.T) {
+	assert.Equal(t, "table", string(investigations.NarrativeCodec{}.Format()))
+	assert.Equal(t, "agents", string(investigations.NarrativeCodec{Format_: "agents"}.Format()))
+}
+
 func TestToolsTableCodec_Encode(t *testing.T) {
 	calls := []investigations.ToolCall{
-		{ID: "tu_1", Name: "search_skills", DurationMs: 42, Input: json.RawMessage(`{"query":"q"}`), Result: json.RawMessage(`{"ok":true}`)},
-		{ID: "tu_2", Name: "prometheus_query_handler", IsError: true, Result: json.RawMessage(`{"error":"x"}`)},
+		{
+			ID:         "tu_1",
+			Name:       "search_skills",
+			DurationMs: 42,
+			Input:      json.RawMessage(`{"queries":[{"query":"q"}]}`),
+			Result:     []investigations.ToolResultPart{{Type: "text", Text: "ok"}},
+		},
+		{
+			ID:      "tu_2",
+			Name:    "prometheus_query_handler",
+			IsError: true,
+			Result:  []investigations.ToolResultPart{{Type: "text", Text: "x"}},
+		},
 		{ID: "tu_3", Name: "loki_query_handler_investigator"},
 	}
 
@@ -114,25 +157,24 @@ func TestToolsTableCodec_Encode(t *testing.T) {
 
 func TestSkillsTableCodec_Encode(t *testing.T) {
 	matches := []investigations.SkillMatch{
-		{ToolUseID: "tu_1", Query: "api latency", SkillID: "s1", SkillName: "APILatency", Score: 0.913, Chunk: "check p99\nlatency", Source: "skills/api.md"},
-		{ToolUseID: "tu_1", Query: "api latency", SkillID: "s2", SkillName: "", Score: 0, Chunk: ""},
+		{ToolUseID: "tu_1", Query: "api latency", SkillID: "78ffce9d-8911", Title: "Investigate payment error spikes", Chunk: "check p99\nlatency"},
+		{ToolUseID: "tu_1", Query: "api latency", SkillID: "s2", Title: "", Chunk: ""},
 	}
 
 	t.Run("table", func(t *testing.T) {
 		var buf bytes.Buffer
 		require.NoError(t, (&investigations.SkillsTableCodec{}).Encode(&buf, matches))
 		out := buf.String()
-		assert.Contains(t, out, "APILatency")
-		assert.Contains(t, out, "0.913")
+		assert.Contains(t, out, "Investigate payment error spikes")
 		assert.Contains(t, out, "check p99 latency")
-		assert.Contains(t, out, "s2") // empty name falls back to ID
+		assert.NotContains(t, out, "SKILL_ID") // narrow form omits SKILL_ID col
 	})
 
-	t.Run("wide adds source column", func(t *testing.T) {
+	t.Run("wide adds skill_id column", func(t *testing.T) {
 		var buf bytes.Buffer
 		require.NoError(t, (&investigations.SkillsTableCodec{Wide: true}).Encode(&buf, matches))
 		out := buf.String()
-		assert.Contains(t, out, "SOURCE")
-		assert.Contains(t, out, "skills/api.md")
+		assert.Contains(t, out, "SKILL_ID")
+		assert.Contains(t, out, "78ffce9d-8911")
 	})
 }

@@ -92,6 +92,10 @@ type narrativeOpts struct{ IO cmdio.Options }
 func (o *narrativeOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &NarrativeCodec{})
 	o.IO.RegisterCustomCodec("wide", &NarrativeCodec{})
+	// In agent mode the default flips to "agents", which would JSON-quote the
+	// string. Override with the raw-markdown codec so coding agents and pagers
+	// see the prose directly.
+	o.IO.RegisterCustomCodec("agents", &NarrativeCodec{Format_: "agents"})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -275,13 +279,18 @@ func renderChatBlock(w io.Writer, b ChatContentBlock, wide bool) {
 			return
 		}
 		fmt.Fprintln(w, text)
-	case "tool_use":
-		fmt.Fprintf(w, "  → tool_use %s", b.Name)
-		if wide && b.ID != "" {
-			fmt.Fprintf(w, " id=%s", b.ID)
+	case "thinking":
+		if b.Thinking == "" {
+			return
 		}
-		if len(b.Input) > 0 {
-			fmt.Fprintf(w, " input=%s", compactJSON(b.Input, wide))
+		fmt.Fprintf(w, "  ~ %s\n", b.Thinking)
+	case "tool_use":
+		fmt.Fprintf(w, "  → tool_use %s", b.ToolName)
+		if wide && b.ToolID != "" {
+			fmt.Fprintf(w, " id=%s", b.ToolID)
+		}
+		if len(b.ToolInput) > 0 {
+			fmt.Fprintf(w, " input=%s", compactJSON(b.ToolInput, wide))
 		}
 		fmt.Fprintln(w)
 	case "tool_result":
@@ -290,19 +299,75 @@ func renderChatBlock(w io.Writer, b ChatContentBlock, wide bool) {
 			marker = "✗"
 		}
 		fmt.Fprintf(w, "  ← tool_result %s", marker)
+		if b.ToolName != "" {
+			fmt.Fprintf(w, " %s", b.ToolName)
+		}
 		if wide && b.ToolUseID != "" {
 			fmt.Fprintf(w, " for=%s", b.ToolUseID)
 		}
 		if b.DurationMs > 0 {
 			fmt.Fprintf(w, " durationMs=%d", b.DurationMs)
 		}
-		if len(b.ToolResult) > 0 {
-			fmt.Fprintf(w, " result=%s", compactJSON(b.ToolResult, wide))
+		text := joinToolResultText(b.ToolResult)
+		if text != "" {
+			limit := 120
+			if wide {
+				limit = 320
+			}
+			text = strings.ReplaceAll(text, "\n", " ")
+			if len(text) > limit {
+				text = text[:limit-3] + "..."
+			}
+			fmt.Fprintf(w, " result=%s", text)
+		}
+		fmt.Fprintln(w)
+	case "artifact":
+		fmt.Fprintf(w, "  ◆ artifact %s", b.ArtifactType)
+		if ids := panelIDs(b.Panel); len(ids) > 0 {
+			fmt.Fprintf(w, " panels=%s", strings.Join(ids, ","))
 		}
 		fmt.Fprintln(w)
 	default:
 		fmt.Fprintf(w, "  · %s\n", b.Type)
 	}
+}
+
+// joinToolResultText concatenates all text parts of a tool_result with
+// blank-line separators. Non-text parts are ignored.
+func joinToolResultText(parts []ToolResultPart) string {
+	var sb strings.Builder
+	for _, p := range parts {
+		if p.Type != "text" || p.Text == "" {
+			continue
+		}
+		if sb.Len() > 0 {
+			sb.WriteString("\n\n")
+		}
+		sb.WriteString(p.Text)
+	}
+	return sb.String()
+}
+
+// panelIDs extracts the panelId values from an artifact's panel payload.
+// The shape is [{"panelId":"p5",...},{"panelId":"p7",...}]; missing or
+// malformed payloads return nil.
+func panelIDs(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var panels []struct {
+		PanelID string `json:"panelId"`
+	}
+	if err := json.Unmarshal(raw, &panels); err != nil {
+		return nil
+	}
+	out := make([]string, 0, len(panels))
+	for _, p := range panels {
+		if p.PanelID != "" {
+			out = append(out, p.PanelID)
+		}
+	}
+	return out
 }
 
 func compactJSON(raw json.RawMessage, wide bool) string {
@@ -325,12 +390,20 @@ func compactJSON(raw json.RawMessage, wide bool) string {
 	return s
 }
 
-// NarrativeCodec renders the narrative string with a trailing newline. The
-// JSON/YAML codecs handle the string natively; this codec is the default
-// "table" view for terminal-friendly reading.
-type NarrativeCodec struct{}
+// NarrativeCodec renders the narrative string raw, with a trailing newline.
+// JSON/YAML codecs handle the string natively; this codec is registered under
+// "table"/"wide" for terminal use and under "agents" so coding agents see raw
+// markdown instead of a JSON-quoted blob.
+type NarrativeCodec struct {
+	Format_ format.Format
+}
 
-func (NarrativeCodec) Format() format.Format { return "table" }
+func (c NarrativeCodec) Format() format.Format {
+	if c.Format_ != "" {
+		return c.Format_
+	}
+	return "table"
+}
 
 func (NarrativeCodec) Encode(w io.Writer, v any) error {
 	s, ok := v.(string)
@@ -421,32 +494,25 @@ func (c *SkillsTableCodec) Encode(w io.Writer, v any) error {
 	}
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	if c.Wide {
-		fmt.Fprintln(tw, "SKILL\tSCORE\tQUERY\tSOURCE\tCHUNK")
+		fmt.Fprintln(tw, "TITLE\tSKILL_ID\tQUERY\tCHUNK")
 	} else {
-		fmt.Fprintln(tw, "SKILL\tSCORE\tQUERY\tCHUNK")
+		fmt.Fprintln(tw, "TITLE\tQUERY\tCHUNK")
 	}
 	for _, m := range matches {
-		name := m.SkillName
-		if name == "" {
-			name = m.SkillID
-		}
-		if name == "" {
-			name = "-"
-		}
-		score := "-"
-		if m.Score != 0 {
-			score = fmt.Sprintf("%.3f", m.Score)
+		title := m.Title
+		if title == "" {
+			title = "-"
 		}
 		query := truncate(m.Query, 30)
 		chunk := truncate(strings.ReplaceAll(m.Chunk, "\n", " "), chunkPreviewLen(c.Wide))
 		if c.Wide {
-			source := m.Source
-			if source == "" {
-				source = "-"
+			skillID := m.SkillID
+			if skillID == "" {
+				skillID = "-"
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", name, score, query, source, chunk)
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", title, skillID, query, chunk)
 		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", name, score, query, chunk)
+			fmt.Fprintf(tw, "%s\t%s\t%s\n", title, query, chunk)
 		}
 	}
 	return tw.Flush()

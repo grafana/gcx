@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
@@ -14,35 +16,49 @@ import (
 const chatAllMessagesFmt = "/chats/%s/all-messages"
 
 // ChatThreadMessage is one message in a Lodestone chat thread. The thread
-// interleaves user prompts, assistant prose, tool invocations, and tool
-// results — all the substantive content lives here, not in the legacy
-// timeline/todos/report endpoints (which return empty stubs for Lodestone).
+// interleaves user prompts, assistant prose, tool invocations, tool results,
+// and panel artifacts — all the substantive content lives here, not in the
+// legacy timeline/todos/report endpoints (which return empty stubs for
+// Lodestone).
 type ChatThreadMessage struct {
 	ID        string             `json:"id"`
 	Role      string             `json:"role"`
 	Type      string             `json:"type,omitempty"`
 	Hidden    bool               `json:"hidden,omitempty"`
 	CreatedAt string             `json:"created,omitempty"`
+	Audience  string             `json:"audience,omitempty"`
 	Content   []ChatContentBlock `json:"content"`
 }
 
-// ChatContentBlock is one entry in a message's content array. Tool calls and
-// tool results are first-class — they're how Lodestone exposes what the
-// agent did (search_skills match, prometheus_query, etc.).
+// ChatContentBlock is one entry in a message's content array. Field tags
+// follow the actual Grafana Assistant plugin shape (toolName/toolInput/
+// toolUseId/toolResult — camelCase), not the Anthropic content-block
+// convention. Tool calls and tool results are first-class because they're
+// how Lodestone exposes what the agent did.
 type ChatContentBlock struct {
-	Type       string          `json:"type"`
-	Text       string          `json:"text,omitempty"`
-	ID         string          `json:"id,omitempty"`
-	Name       string          `json:"name,omitempty"`
-	Input      json.RawMessage `json:"input,omitempty"`
-	ToolUseID  string          `json:"tool_use_id,omitempty"`
-	ToolResult json.RawMessage `json:"content,omitempty"`
-	IsError    bool            `json:"is_error,omitempty"`
-	DurationMs int64           `json:"durationMs,omitempty"`
+	Type         string           `json:"type"`
+	Text         string           `json:"text,omitempty"`
+	Thinking     string           `json:"thinking,omitempty"`
+	ToolID       string           `json:"toolId,omitempty"`
+	ToolName     string           `json:"toolName,omitempty"`
+	ToolInput    json.RawMessage  `json:"toolInput,omitempty"`
+	ToolUseID    string           `json:"toolUseId,omitempty"`
+	ToolResult   []ToolResultPart `json:"toolResult,omitempty"`
+	IsError      bool             `json:"isError,omitempty"`
+	DurationMs   int64            `json:"durationMs,omitempty"`
+	ArtifactType string           `json:"artifactType,omitempty"`
+	Panel        json.RawMessage  `json:"panel,omitempty"`
+}
+
+// ToolResultPart is one entry in the tool_result envelope. The server may
+// emit multiple parts (e.g. one text block per query in a multi-query call).
+type ToolResultPart struct {
+	Type string `json:"type"`
+	Text string `json:"text,omitempty"`
 }
 
 // GetChatThread fetches the full message list for a Lodestone chat. Messages
-// are returned in server order (typically chronological).
+// are returned in server order (chronological by `sequence`).
 func (c *Client) GetChatThread(ctx context.Context, chatID string) ([]ChatThreadMessage, error) {
 	path := fmt.Sprintf(chatAllMessagesFmt, url.PathEscape(chatID))
 	resp, err := c.base.DoRequest(ctx, http.MethodGet, path, nil)
@@ -67,9 +83,10 @@ func (c *Client) GetChatThread(ctx context.Context, chatID string) ([]ChatThread
 	return envelope.Data.Messages, nil
 }
 
-// Narrative returns the assistant-authored prose from a chat thread,
-// stripped of <context>...</context> tags. This is the text a human would
-// see in the workspace, without tool plumbing.
+// Narrative returns the assistant-authored prose from a chat thread —
+// text-type content blocks only, with <context>...</context> tags stripped.
+// Thinking blocks and tool plumbing are excluded; this is the workspace
+// reader's view.
 func Narrative(messages []ChatThreadMessage) string {
 	var sb strings.Builder
 	for _, m := range messages {
@@ -93,20 +110,21 @@ func Narrative(messages []ChatThreadMessage) string {
 	return sb.String()
 }
 
-// ToolCall summarises a single tool_use block paired with its matching
-// tool_result (matched by ToolUseID). Used by the `tools` subcommand.
+// ToolCall is a single tool_use block paired with its matching tool_result.
+// Used by the `tools` subcommand. Result keeps the original part list so
+// `-o json` is lossless; the table codec joins parts for display.
 type ToolCall struct {
-	ID         string          `json:"id"`
-	Name       string          `json:"name"`
-	Input      json.RawMessage `json:"input,omitempty"`
-	Result     json.RawMessage `json:"result,omitempty"`
-	IsError    bool            `json:"isError,omitempty"`
-	DurationMs int64           `json:"durationMs,omitempty"`
+	ID         string           `json:"id"`
+	Name       string           `json:"name"`
+	Input      json.RawMessage  `json:"input,omitempty"`
+	Result     []ToolResultPart `json:"result,omitempty"`
+	IsError    bool             `json:"isError,omitempty"`
+	DurationMs int64            `json:"durationMs,omitempty"`
 }
 
 // ExtractToolCalls walks the chat thread and pairs every tool_use with its
-// tool_result. Tool uses with no matching result (e.g. still running) are
-// returned with an empty Result.
+// tool_result (via toolUseId == toolId). Tool uses with no matching result
+// (e.g. still running) come back with an empty Result.
 func ExtractToolCalls(messages []ChatThreadMessage) []ToolCall {
 	results := map[string]ChatContentBlock{}
 	for _, m := range messages {
@@ -124,11 +142,11 @@ func ExtractToolCalls(messages []ChatThreadMessage) []ToolCall {
 				continue
 			}
 			call := ToolCall{
-				ID:    b.ID,
-				Name:  b.Name,
-				Input: b.Input,
+				ID:    b.ToolID,
+				Name:  b.ToolName,
+				Input: b.ToolInput,
 			}
-			if r, ok := results[b.ID]; ok {
+			if r, ok := results[b.ToolID]; ok {
 				call.Result = r.ToolResult
 				call.IsError = r.IsError
 				call.DurationMs = r.DurationMs
@@ -139,36 +157,34 @@ func ExtractToolCalls(messages []ChatThreadMessage) []ToolCall {
 	return calls
 }
 
-// SkillMatch is one chunk returned by a search_skills tool call. The
-// upstream payload nests results inside the tool_result content blocks; this
-// type flattens them for terminal-friendly display.
+// SkillMatch is one chunk returned by a search_skills tool call.
 type SkillMatch struct {
-	ToolUseID string  `json:"toolUseId"`
-	Query     string  `json:"query,omitempty"`
-	SkillID   string  `json:"skillId,omitempty"`
-	SkillName string  `json:"skillName,omitempty"`
-	Score     float64 `json:"score,omitempty"`
-	Chunk     string  `json:"chunk,omitempty"`
-	Source    string  `json:"source,omitempty"`
+	ToolUseID string `json:"toolUseId"`
+	Query     string `json:"query,omitempty"`
+	SkillID   string `json:"skillId,omitempty"`
+	Title     string `json:"title,omitempty"`
+	Chunk     string `json:"chunk,omitempty"`
 }
 
 // ExtractSkillMatches pulls structured skill-search results out of every
-// search_skills tool call in the thread. The payload shape varies across
-// stacks, so this is best-effort: unknown shapes are skipped rather than
-// erroring (use `-o json` on the `tools` command for the raw payload).
+// search_skills tool call in the thread. The server emits
+// toolResult[*].text as a loose XML envelope:
+//
+//	<results count="N">
+//	  <chunk skill_id="..." offset="N" length="N" title="...">body</chunk>
+//	  ...
+//	</results>
+//
+// We parse the chunk tags with a regex (the format has HTML entities and
+// embedded newlines that make encoding/xml awkward).
 func ExtractSkillMatches(messages []ChatThreadMessage) []SkillMatch {
-	type searchInput struct {
-		Query string `json:"query"`
-	}
 	queries := map[string]string{}
 	for _, m := range messages {
 		for _, b := range m.Content {
-			if b.Type != "tool_use" || b.Name != "search_skills" || len(b.Input) == 0 {
+			if b.Type != "tool_use" || b.ToolName != "search_skills" || len(b.ToolInput) == 0 {
 				continue
 			}
-			var in searchInput
-			_ = json.Unmarshal(b.Input, &in)
-			queries[b.ID] = in.Query
+			queries[b.ToolID] = parseSearchSkillsQueries(b.ToolInput)
 		}
 	}
 
@@ -178,106 +194,75 @@ func ExtractSkillMatches(messages []ChatThreadMessage) []SkillMatch {
 			if b.Type != "tool_result" || b.ToolUseID == "" || len(b.ToolResult) == 0 {
 				continue
 			}
-			if _, ok := queries[b.ToolUseID]; !ok {
+			query, ok := queries[b.ToolUseID]
+			if !ok {
 				continue
 			}
-			matches = append(matches, parseSkillResult(b.ToolUseID, queries[b.ToolUseID], b.ToolResult)...)
+			for _, part := range b.ToolResult {
+				if part.Type != "text" || part.Text == "" {
+					continue
+				}
+				matches = append(matches, parseSkillResultXML(b.ToolUseID, query, part.Text)...)
+			}
 		}
 	}
 	return matches
 }
 
-// parseSkillResult handles the two payload shapes observed: (1) a JSON
-// object/array directly on tool_result.content; (2) an Anthropic-style
-// array of {type:"text", text:"<json-string>"} blocks where the JSON is
-// embedded as a string. Both are tolerated.
-func parseSkillResult(toolUseID, query string, raw json.RawMessage) []SkillMatch {
-	type rawChunk struct {
-		ID    string  `json:"id,omitempty"`
-		Name  string  `json:"name,omitempty"`
-		Title string  `json:"title,omitempty"`
-		Score float64 `json:"score,omitempty"`
-		Text  string  `json:"text,omitempty"`
-		Chunk string  `json:"chunk,omitempty"`
-		Body  string  `json:"body,omitempty"`
-		Path  string  `json:"path,omitempty"`
+// parseSearchSkillsQueries reads `{"queries":[{"keywords":"...","query":"..."}]}`
+// and returns a "; "-joined list of the .query strings.
+func parseSearchSkillsQueries(input json.RawMessage) string {
+	var in struct {
+		Queries []struct {
+			Keywords string `json:"keywords"`
+			Query    string `json:"query"`
+		} `json:"queries"`
 	}
-	type rawResult struct {
-		Results []rawChunk `json:"results,omitempty"`
-		Skills  []rawChunk `json:"skills,omitempty"`
-		Matches []rawChunk `json:"matches,omitempty"`
+	if err := json.Unmarshal(input, &in); err != nil {
+		return ""
 	}
+	parts := make([]string, 0, len(in.Queries))
+	for _, q := range in.Queries {
+		switch {
+		case q.Query != "":
+			parts = append(parts, q.Query)
+		case q.Keywords != "":
+			parts = append(parts, q.Keywords)
+		}
+	}
+	return strings.Join(parts, "; ")
+}
 
-	tryDecode := func(b []byte) []rawChunk {
-		var r rawResult
-		if err := json.Unmarshal(b, &r); err == nil {
-			switch {
-			case len(r.Results) > 0:
-				return r.Results
-			case len(r.Skills) > 0:
-				return r.Skills
-			case len(r.Matches) > 0:
-				return r.Matches
-			}
-		}
-		var arr []rawChunk
-		if err := json.Unmarshal(b, &arr); err == nil {
-			return arr
-		}
-		return nil
-	}
+// chunkPattern matches one `<chunk skill_id="..." title="...">body</chunk>`
+// entry. The `(?s)` flag makes `.` span newlines, which the bodies contain.
+var chunkPattern = regexp.MustCompile(`(?s)<chunk\s+([^>]*)>(.*?)</chunk>`)
 
-	// Anthropic-style nested text blocks come as [{"type":"text","text":"<json>"}].
-	// Check for that envelope first — a naive []rawChunk decode would otherwise
-	// silently consume it and yield bogus entries with text=<json>.
-	var textBlocks []struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	}
-	var chunks []rawChunk
-	if err := json.Unmarshal(raw, &textBlocks); err == nil && len(textBlocks) > 0 && textBlocks[0].Type == "text" {
-		for _, tb := range textBlocks {
-			if tb.Type != "text" || tb.Text == "" {
-				continue
-			}
-			if c := tryDecode([]byte(tb.Text)); len(c) > 0 {
-				chunks = append(chunks, c...)
-			}
-		}
-	}
-	if len(chunks) == 0 {
-		chunks = tryDecode(raw)
-	}
+// attrPattern extracts key="value" pairs from the chunk attributes. Values
+// don't contain quotes in the observed payload, so a simple regex is enough.
+var attrPattern = regexp.MustCompile(`(\w+)="([^"]*)"`)
 
-	out := make([]SkillMatch, 0, len(chunks))
-	for _, c := range chunks {
-		name := c.Name
-		if name == "" {
-			name = c.Title
+func parseSkillResultXML(toolUseID, query, raw string) []SkillMatch {
+	found := chunkPattern.FindAllStringSubmatch(raw, -1)
+	matches := make([]SkillMatch, 0, len(found))
+	for _, m := range found {
+		attrs := map[string]string{}
+		for _, a := range attrPattern.FindAllStringSubmatch(m[1], -1) {
+			attrs[a[1]] = html.UnescapeString(a[2])
 		}
-		body := c.Chunk
-		if body == "" {
-			body = c.Text
-		}
-		if body == "" {
-			body = c.Body
-		}
-		out = append(out, SkillMatch{
+		matches = append(matches, SkillMatch{
 			ToolUseID: toolUseID,
 			Query:     query,
-			SkillID:   c.ID,
-			SkillName: name,
-			Score:     c.Score,
-			Chunk:     body,
-			Source:    c.Path,
+			SkillID:   attrs["skill_id"],
+			Title:     attrs["title"],
+			Chunk:     html.UnescapeString(strings.TrimSpace(m[2])),
 		})
 	}
-	return out
+	return matches
 }
 
 // stripContextTags removes <context>...</context> blocks injected by the
-// server. Duplicates the helper in internal/assistant/types.go to keep this
-// package free of cross-package dependencies on the legacy assistant types.
+// server. Duplicates the helper in internal/assistant/types.go (unexported
+// there) to keep this package free of cross-package dependencies.
 func stripContextTags(text string) string {
 	for {
 		start := strings.Index(text, "<context>")
