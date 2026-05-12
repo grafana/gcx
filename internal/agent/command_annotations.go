@@ -108,6 +108,17 @@ var commandAnnotations = map[string]annotation{
 	"gcx instrumentation clusters apps remove":    {Cost: "small"},
 	"gcx instrumentation clusters apps wait":      {Cost: "small"},
 
+	// top-level single commands
+	"gcx instrumentation setup":  {Cost: "medium", Hint: "<cluster> --yes -o json"},
+	"gcx instrumentation status": {Cost: "medium", Hint: "-o json"},
+
+	// services verb group
+	"gcx instrumentation services list":    {Cost: "large", Hint: "--cluster <name> --namespace <ns> -o json"},
+	"gcx instrumentation services get":     {Cost: "medium", Hint: "<cluster> <namespace> <service> -o json"},
+	"gcx instrumentation services include": {Cost: "small"},
+	"gcx instrumentation services exclude": {Cost: "small"},
+	"gcx instrumentation services clear":   {Cost: "small"},
+
 	// skills
 	"gcx agent skills install":   {Cost: "small"},
 	"gcx agent skills list":      {Cost: "small"},

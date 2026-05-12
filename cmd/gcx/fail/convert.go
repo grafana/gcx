@@ -1104,7 +1104,6 @@ func convertInstrumentationErrors(err error) (*DetailedError, bool) {
 		Parent:  err,
 	}, true
 }
-
 func adaptiveScopeSuggestionFromSignalPrefix(msg string) string {
 	switch {
 	case strings.Contains(msg, "adaptive-logs:"):

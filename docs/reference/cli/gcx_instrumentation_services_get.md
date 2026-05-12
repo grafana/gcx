@@ -1,0 +1,45 @@
+## gcx instrumentation services get
+
+Get a single discovered workload by (cluster, namespace, service)
+
+### Synopsis
+
+Get a single workload discovered by the Beyla survey collector.
+
+Calls RunK8sDiscovery() (fleet-wide RPC) and filters to the requested workload.
+Returns an error if the workload is not found.
+
+Examples:
+  gcx instrumentation services get prod-1 checkout frontend
+  gcx instrumentation services get prod-1 checkout frontend -o json
+
+Workload-level Selection / override state is not surfaced on this command. To inspect a workload's override, run "gcx instrumentation clusters apps list --cluster=<cluster> --namespace=<namespace>".
+
+```
+gcx instrumentation services get <cluster> <namespace> <service> [flags]
+```
+
+### Options
+
+```
+  -h, --help            help for get
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, text, wide, yaml (default "text")
+```
+
+### Options inherited from parent commands
+
+```
+      --agent              Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --config string      Path to the configuration file to use
+      --context string     Name of the context to use (overrides current-context in config)
+      --log-http-payload   Log full HTTP request/response bodies (includes headers — may expose tokens)
+      --no-color           Disable color output
+      --no-truncate        Disable table column truncation (auto-enabled when stdout is piped)
+  -v, --verbose count      Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
+```
+
+### SEE ALSO
+
+* [gcx instrumentation services](gcx_instrumentation_services.md)	 - Manage workload-level instrumentation across the fleet
+

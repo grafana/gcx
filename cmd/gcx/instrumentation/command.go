@@ -17,6 +17,9 @@ package instrumentation
 
 import (
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/clusters"
+	"github.com/grafana/gcx/cmd/gcx/instrumentation/services"
+	"github.com/grafana/gcx/cmd/gcx/instrumentation/setup"
+	"github.com/grafana/gcx/cmd/gcx/instrumentation/status"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
 )
@@ -34,16 +37,28 @@ func Command() *cobra.Command {
 
 The instrumentation command tree provides:
 
+  setup      Guided onboarding wizard: configures a cluster end-to-end and
+             prints a runnable helm install command.
+
+  status     Cross-cutting observed state for clusters and namespaces
+             (RunK8sMonitoring + ListPipelines merge).
+
   clusters   Declared and observed state per K8s cluster:
              list, get, configure, remove, wait.
-             Sub-group "apps" manages namespace-level Beyla configuration.`,
+             Sub-group "apps" manages namespace-level Beyla configuration.
+
+  services   Workload-level observed state and per-workload inclusion
+             overrides across the fleet: list, get, include, exclude, clear.`,
 	}
 
 	// Bind --context and --config persistently so all subcommands inherit them.
 	loader.BindFlags(cmd.PersistentFlags())
 
 	cmd.AddCommand(
+		setup.Command(loader),
+		status.Command(loader),
 		clusters.Command(loader),
+		services.Command(loader),
 	)
 
 	return cmd

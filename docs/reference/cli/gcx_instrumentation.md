@@ -8,9 +8,18 @@ Manage Grafana Instrumentation Hub using action-verb commands.
 
 The instrumentation command tree provides:
 
+  setup      Guided onboarding wizard: configures a cluster end-to-end and
+             prints a runnable helm install command.
+
+  status     Cross-cutting observed state for clusters and namespaces
+             (RunK8sMonitoring + ListPipelines merge).
+
   clusters   Declared and observed state per K8s cluster:
              list, get, configure, remove, wait.
              Sub-group "apps" manages namespace-level Beyla configuration.
+
+  services   Workload-level observed state and per-workload inclusion
+             overrides across the fleet: list, get, include, exclude, clear.
 
 ### Options
 
@@ -34,4 +43,7 @@ The instrumentation command tree provides:
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx instrumentation clusters](gcx_instrumentation_clusters.md)	 - Manage K8s monitoring configuration for clusters
+* [gcx instrumentation services](gcx_instrumentation_services.md)	 - Manage workload-level instrumentation across the fleet
+* [gcx instrumentation setup](gcx_instrumentation_setup.md)	 - Onboard a Kubernetes cluster for Grafana Instrumentation Hub
+* [gcx instrumentation status](gcx_instrumentation_status.md)	 - Show observed instrumentation state for clusters and namespaces.
 
