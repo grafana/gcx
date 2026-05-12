@@ -102,6 +102,36 @@ func FormatMeasurementsTable(w io.Writer, resp *MeasurementsResponse) error {
 	return t.Render(w)
 }
 
+// FormatTagKeysTable formats a TagKeysResponse as a table.
+func FormatTagKeysTable(w io.Writer, resp *TagKeysResponse) error {
+	if len(resp.TagKeys) == 0 {
+		fmt.Fprintln(w, "No tag keys found")
+		return nil
+	}
+
+	t := style.NewTable("TAG KEY")
+	for _, k := range resp.TagKeys {
+		t.Row(k)
+	}
+
+	return t.Render(w)
+}
+
+// FormatTagValuesTable formats a TagValuesResponse as a table.
+func FormatTagValuesTable(w io.Writer, resp *TagValuesResponse) error {
+	if len(resp.Values) == 0 {
+		fmt.Fprintln(w, "No tag values found")
+		return nil
+	}
+
+	t := style.NewTable("KEY", "VALUE")
+	for _, v := range resp.Values {
+		t.Row(v.Key, v.Value)
+	}
+
+	return t.Render(w)
+}
+
 // FormatFieldKeysTable formats a FieldKeysResponse as a table.
 func FormatFieldKeysTable(w io.Writer, resp *FieldKeysResponse) error {
 	if len(resp.Fields) == 0 {

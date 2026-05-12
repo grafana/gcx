@@ -17,6 +17,9 @@ import (
 	"k8s.io/client-go/rest"
 )
 
+// maxResponseBytes caps the response body read from Grafana. If a response
+// exceeds this limit, executeQuery returns a clear error rather than silently
+// truncating the body (which would cause a confusing JSON parse failure).
 const maxResponseBytes = 50 << 20 // 50 MB
 
 // Client is a client for executing InfluxDB queries via Grafana's datasource API.
@@ -157,6 +160,86 @@ func (c *Client) FieldKeys(ctx context.Context, datasourceUID string, measuremen
 	return extractFieldKeys(&grafanaResp), nil
 }
 
+// TagKeys returns tag keys from the InfluxDB datasource. InfluxQL only.
+func (c *Client) TagKeys(ctx context.Context, datasourceUID string, measurement string) (*TagKeysResponse, error) {
+	queryExpr := "SHOW TAG KEYS"
+	if measurement != "" {
+		queryExpr = fmt.Sprintf(`SHOW TAG KEYS FROM %q`, measurement)
+	}
+
+	req := QueryRequest{
+		Query: queryExpr,
+		Mode:  ModeInfluxQL,
+	}
+
+	body, err := c.buildQueryBody(datasourceUID, req)
+	if err != nil {
+		return nil, err
+	}
+
+	respBody, err := c.executeQuery(ctx, body)
+	if err != nil {
+		return nil, err
+	}
+
+	var grafanaResp GrafanaQueryResponse
+	if err := json.Unmarshal(respBody, &grafanaResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if result, ok := grafanaResp.Results["A"]; ok {
+		if result.Error != "" {
+			status := result.Status
+			if status == 0 {
+				status = http.StatusBadRequest
+			}
+			return nil, queryerror.New("influxdb", "tag keys query", status, result.Error, result.ErrorSource)
+		}
+	}
+
+	return extractTagKeys(&grafanaResp), nil
+}
+
+// TagValues returns tag values for a given key from the InfluxDB datasource. InfluxQL only.
+func (c *Client) TagValues(ctx context.Context, datasourceUID string, key string, measurement string) (*TagValuesResponse, error) {
+	queryExpr := fmt.Sprintf(`SHOW TAG VALUES WITH KEY = %q`, key)
+	if measurement != "" {
+		queryExpr = fmt.Sprintf(`SHOW TAG VALUES FROM %q WITH KEY = %q`, measurement, key)
+	}
+
+	req := QueryRequest{
+		Query: queryExpr,
+		Mode:  ModeInfluxQL,
+	}
+
+	body, err := c.buildQueryBody(datasourceUID, req)
+	if err != nil {
+		return nil, err
+	}
+
+	respBody, err := c.executeQuery(ctx, body)
+	if err != nil {
+		return nil, err
+	}
+
+	var grafanaResp GrafanaQueryResponse
+	if err := json.Unmarshal(respBody, &grafanaResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if result, ok := grafanaResp.Results["A"]; ok {
+		if result.Error != "" {
+			status := result.Status
+			if status == 0 {
+				status = http.StatusBadRequest
+			}
+			return nil, queryerror.New("influxdb", "tag values query", status, result.Error, result.ErrorSource)
+		}
+	}
+
+	return extractTagValues(&grafanaResp), nil
+}
+
 func (c *Client) buildQueryBody(datasourceUID string, req QueryRequest) ([]byte, error) {
 	query := map[string]any{
 		"refId": "A",
@@ -214,9 +297,9 @@ func (c *Client) executeQuery(ctx context.Context, body []byte) ([]byte, error) 
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	respBody, err := readLimited(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
+		return nil, err
 	}
 
 	// Fall back to legacy /api/ds/query if K8s query API doesn't exist.
@@ -233,9 +316,9 @@ func (c *Client) executeQuery(ctx context.Context, body []byte) ([]byte, error) 
 			return nil, fmt.Errorf("failed to execute query: %w", err)
 		}
 		defer resp.Body.Close()
-		respBody, err = io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+		respBody, err = readLimited(resp.Body)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read response: %w", err)
+			return nil, err
 		}
 	}
 
@@ -249,6 +332,82 @@ func (c *Client) executeQuery(ctx context.Context, body []byte) ([]byte, error) 
 func (c *Client) buildQueryPath() string {
 	return fmt.Sprintf("/apis/query.grafana.app/v0alpha1/namespaces/%s/query",
 		c.restConfig.Namespace)
+}
+
+// readLimited reads up to maxResponseBytes from r and returns a clear error if
+// the limit is exceeded, preventing a silent truncation that would cause a
+// confusing JSON parse failure downstream.
+func readLimited(r io.Reader) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, maxResponseBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+	if int64(len(data)) > maxResponseBytes {
+		return nil, fmt.Errorf("response body exceeds %d MB limit; use a narrower time range or add filters to reduce data volume", maxResponseBytes>>20)
+	}
+	return data, nil
+}
+
+func extractTagKeys(grafanaResp *GrafanaQueryResponse) *TagKeysResponse {
+	result := &TagKeysResponse{
+		TagKeys: []string{},
+	}
+
+	grafanaResult, ok := grafanaResp.Results["A"]
+	if !ok || len(grafanaResult.Frames) == 0 {
+		return result
+	}
+
+	// SHOW TAG KEYS returns one frame per measurement; deduplicate across frames.
+	seen := make(map[string]bool)
+	for _, frame := range grafanaResult.Frames {
+		if len(frame.Data.Values) == 0 || len(frame.Data.Values[0]) == 0 {
+			continue
+		}
+		for _, v := range frame.Data.Values[0] {
+			if s, ok := v.(string); ok && !seen[s] {
+				seen[s] = true
+				result.TagKeys = append(result.TagKeys, s)
+			}
+		}
+	}
+
+	return result
+}
+
+func extractTagValues(grafanaResp *GrafanaQueryResponse) *TagValuesResponse {
+	result := &TagValuesResponse{
+		Values: []TagValue{},
+	}
+
+	grafanaResult, ok := grafanaResp.Results["A"]
+	if !ok || len(grafanaResult.Frames) == 0 {
+		return result
+	}
+
+	// SHOW TAG VALUES returns two columns: tag key and tag value.
+	for _, frame := range grafanaResult.Frames {
+		if len(frame.Data.Values) < 2 {
+			continue
+		}
+		rowCount := len(frame.Data.Values[0])
+		for i := range rowCount {
+			var key, value string
+			if i < len(frame.Data.Values[0]) {
+				if s, ok := frame.Data.Values[0][i].(string); ok {
+					key = s
+				}
+			}
+			if i < len(frame.Data.Values[1]) {
+				if s, ok := frame.Data.Values[1][i].(string); ok {
+					value = s
+				}
+			}
+			result.Values = append(result.Values, TagValue{Key: key, Value: value})
+		}
+	}
+
+	return result
 }
 
 func convertGrafanaResponse(grafanaResp *GrafanaQueryResponse) *QueryResponse {

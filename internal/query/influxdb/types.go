@@ -48,6 +48,22 @@ type FieldKey struct {
 	FieldType string `json:"fieldType"`
 }
 
+// TagKeysResponse represents the response from a SHOW TAG KEYS query.
+type TagKeysResponse struct {
+	TagKeys []string `json:"tagKeys"`
+}
+
+// TagValuesResponse represents the response from a SHOW TAG VALUES query.
+type TagValuesResponse struct {
+	Values []TagValue `json:"values"`
+}
+
+// TagValue represents a single tag key-value pair.
+type TagValue struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
 // GrafanaQueryResponse represents the response from Grafana's datasource query API.
 type GrafanaQueryResponse struct {
 	Results map[string]GrafanaResult `json:"results"`

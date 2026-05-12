@@ -520,6 +520,140 @@ func TestFieldKeys_ReturnsTypedAPIErrorForQueryLevelError(t *testing.T) {
 	assert.Equal(t, "measurement not found", apiErr.Message)
 }
 
+func TestExtractTagKeys_AggregatesAllFrames(t *testing.T) {
+	// SHOW TAG KEYS without --measurement returns one frame per measurement.
+	resp := &influxdb.GrafanaQueryResponse{
+		Results: map[string]influxdb.GrafanaResult{
+			"A": {
+				Frames: []influxdb.DataFrame{
+					{
+						Schema: influxdb.DataFrameSchema{Fields: []influxdb.Field{{Name: "tagKey"}}},
+						Data:   influxdb.DataFrameData{Values: [][]any{{"host", "region"}}},
+					},
+					{
+						Schema: influxdb.DataFrameSchema{Fields: []influxdb.Field{{Name: "tagKey"}}},
+						Data:   influxdb.DataFrameData{Values: [][]any{{"host", "env"}}},
+					},
+				},
+			},
+		},
+	}
+
+	got := influxdb.ExtractTagKeys(resp)
+	require.NotNil(t, got)
+	// "host" appears in both frames but should be deduplicated.
+	require.Len(t, got.TagKeys, 3)
+	assert.Equal(t, "host", got.TagKeys[0])
+	assert.Equal(t, "region", got.TagKeys[1])
+	assert.Equal(t, "env", got.TagKeys[2])
+}
+
+func TestExtractTagKeys_DeduplicatesAcrossFrames(t *testing.T) {
+	resp := &influxdb.GrafanaQueryResponse{
+		Results: map[string]influxdb.GrafanaResult{
+			"A": {
+				Frames: []influxdb.DataFrame{
+					{Data: influxdb.DataFrameData{Values: [][]any{{"host"}}}},
+					{Data: influxdb.DataFrameData{Values: [][]any{{"host"}}}},
+				},
+			},
+		},
+	}
+
+	got := influxdb.ExtractTagKeys(resp)
+	require.NotNil(t, got)
+	require.Len(t, got.TagKeys, 1)
+	assert.Equal(t, "host", got.TagKeys[0])
+}
+
+func TestExtractTagKeys_EmptyResults(t *testing.T) {
+	resp := &influxdb.GrafanaQueryResponse{
+		Results: map[string]influxdb.GrafanaResult{},
+	}
+
+	got := influxdb.ExtractTagKeys(resp)
+	require.NotNil(t, got)
+	assert.Empty(t, got.TagKeys)
+}
+
+func TestExtractTagValues_AggregatesAllFrames(t *testing.T) {
+	resp := &influxdb.GrafanaQueryResponse{
+		Results: map[string]influxdb.GrafanaResult{
+			"A": {
+				Frames: []influxdb.DataFrame{
+					{
+						Schema: influxdb.DataFrameSchema{Fields: []influxdb.Field{{Name: "key"}, {Name: "value"}}},
+						Data:   influxdb.DataFrameData{Values: [][]any{{"host", "host"}, {"server-a", "server-b"}}},
+					},
+					{
+						Schema: influxdb.DataFrameSchema{Fields: []influxdb.Field{{Name: "key"}, {Name: "value"}}},
+						Data:   influxdb.DataFrameData{Values: [][]any{{"host"}, {"server-c"}}},
+					},
+				},
+			},
+		},
+	}
+
+	got := influxdb.ExtractTagValues(resp)
+	require.NotNil(t, got)
+	require.Len(t, got.Values, 3)
+	assert.Equal(t, influxdb.TagValue{Key: "host", Value: "server-a"}, got.Values[0])
+	assert.Equal(t, influxdb.TagValue{Key: "host", Value: "server-b"}, got.Values[1])
+	assert.Equal(t, influxdb.TagValue{Key: "host", Value: "server-c"}, got.Values[2])
+}
+
+func TestExtractTagValues_SkipsFramesWithFewerThanTwoColumns(t *testing.T) {
+	resp := &influxdb.GrafanaQueryResponse{
+		Results: map[string]influxdb.GrafanaResult{
+			"A": {
+				Frames: []influxdb.DataFrame{
+					{Data: influxdb.DataFrameData{Values: [][]any{{"host"}}}},
+					{Data: influxdb.DataFrameData{Values: [][]any{{"host"}, {"server-a"}}}},
+				},
+			},
+		},
+	}
+
+	got := influxdb.ExtractTagValues(resp)
+	require.NotNil(t, got)
+	require.Len(t, got.Values, 1)
+	assert.Equal(t, influxdb.TagValue{Key: "host", Value: "server-a"}, got.Values[0])
+}
+
+func TestTagKeys_ReturnsTypedAPIErrorForQueryLevelError(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"results":{"A":{"error":"database not found","errorSource":"downstream","status":404,"frames":[]}}}`))
+	})
+
+	_, err := client.TagKeys(context.Background(), "influxdb-uid", "")
+	require.Error(t, err)
+
+	var apiErr *queryerror.APIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.Equal(t, "influxdb", apiErr.Datasource)
+	assert.Equal(t, "tag keys query", apiErr.Operation)
+	assert.Equal(t, http.StatusNotFound, apiErr.StatusCode)
+	assert.Equal(t, "database not found", apiErr.Message)
+}
+
+func TestTagValues_ReturnsTypedAPIErrorForQueryLevelError(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"results":{"A":{"error":"database not found","errorSource":"downstream","status":404,"frames":[]}}}`))
+	})
+
+	_, err := client.TagValues(context.Background(), "influxdb-uid", "host", "")
+	require.Error(t, err)
+
+	var apiErr *queryerror.APIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.Equal(t, "influxdb", apiErr.Datasource)
+	assert.Equal(t, "tag values query", apiErr.Operation)
+	assert.Equal(t, http.StatusNotFound, apiErr.StatusCode)
+	assert.Equal(t, "database not found", apiErr.Message)
+}
+
 func TestMeasurements_RejectsUnsupportedMode(t *testing.T) {
 	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		// should never be reached

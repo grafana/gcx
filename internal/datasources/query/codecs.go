@@ -59,8 +59,6 @@ func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 		return loki.FormatQueryTableWide(w, resp)
 	case *tempo.SearchResponse:
 		return tempo.FormatSearchTable(w, resp)
-	case *influxdb.QueryResponse:
-		return influxdb.FormatQueryTable(w, resp)
 	default:
 		return errors.New("invalid data type for query wide codec")
 	}
@@ -105,6 +103,11 @@ func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
 		if err != nil {
 			return err
 		}
+	case *influxdb.QueryResponse:
+		chartData, err = graph.FromInfluxDBResponse(resp)
+		if err != nil {
+			return err
+		}
 	default:
 		return errors.New("invalid data type for graph codec")
 	}
@@ -126,6 +129,9 @@ func (c *queryJSONCodec) Format() format.Format {
 }
 
 func (c *queryJSONCodec) Encode(w io.Writer, data any) error {
+	// InfluxDB responses carry millisecond-epoch timestamps in time columns.
+	// FormatQueryJSON converts those to RFC3339 strings so the JSON output
+	// matches what users expect rather than raw numeric epoch values.
 	if resp, ok := data.(*influxdb.QueryResponse); ok {
 		return c.inner.Encode(w, influxdb.FormatQueryJSON(resp))
 	}
@@ -145,6 +151,8 @@ func (c *queryYAMLCodec) Format() format.Format {
 }
 
 func (c *queryYAMLCodec) Encode(w io.Writer, data any) error {
+	// Same as the JSON codec: convert millisecond-epoch time columns to
+	// RFC3339 strings before serializing so the output is human-readable.
 	if resp, ok := data.(*influxdb.QueryResponse); ok {
 		return c.inner.Encode(w, influxdb.FormatQueryJSON(resp))
 	}

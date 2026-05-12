@@ -9,3 +9,13 @@ func ConvertGrafanaResponse(resp *GrafanaQueryResponse) *QueryResponse {
 func ExtractFieldKeys(resp *GrafanaQueryResponse) *FieldKeysResponse {
 	return extractFieldKeys(resp)
 }
+
+// ExtractTagKeys exposes extractTagKeys for external tests.
+func ExtractTagKeys(resp *GrafanaQueryResponse) *TagKeysResponse {
+	return extractTagKeys(resp)
+}
+
+// ExtractTagValues exposes extractTagValues for external tests.
+func ExtractTagValues(resp *GrafanaQueryResponse) *TagValuesResponse {
+	return extractTagValues(resp)
+}

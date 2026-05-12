@@ -18,42 +18,47 @@ import (
 	"github.com/spf13/pflag"
 )
 
-type fieldKeysOpts struct {
+type tagValuesOpts struct {
 	IO          cmdio.Options
 	Datasource  string
+	Key         string
 	Measurement string
 }
 
-func (opts *fieldKeysOpts) setup(flags *pflag.FlagSet) {
-	opts.IO.RegisterCustomCodec("table", &fieldKeysTableCodec{})
+func (opts *tagValuesOpts) setup(flags *pflag.FlagSet) {
+	opts.IO.RegisterCustomCodec("table", &tagValuesTableCodec{})
 	opts.IO.DefaultFormat("table")
 	opts.IO.BindFlags(flags)
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.influxdb is configured)")
+	flags.StringVarP(&opts.Key, "key", "k", "", "Tag key to get values for (required)")
 	flags.StringVarP(&opts.Measurement, "measurement", "m", "", "Filter by measurement name")
 }
 
-func (opts *fieldKeysOpts) Validate() error {
+func (opts *tagValuesOpts) Validate() error {
+	if opts.Key == "" {
+		return errors.New("--key is required")
+	}
 	return opts.IO.Validate()
 }
 
-// FieldKeysCmd returns the `field-keys` subcommand.
-func FieldKeysCmd(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &fieldKeysOpts{}
+// TagValuesCmd returns the `tag-values` subcommand.
+func TagValuesCmd(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &tagValuesOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "field-keys",
-		Short: "List field keys",
-		Long:  "List field keys from an InfluxDB datasource. Only supported in InfluxQL mode.",
+		Use:   "tag-values",
+		Short: "List tag values",
+		Long:  "List tag values for a given key from an InfluxDB datasource. Only supported in InfluxQL mode.",
 		Example: `
-  # List all field keys (use datasource UID, not name)
-  gcx datasources influxdb field-keys -d UID
+  # List values for a tag key (use datasource UID, not name)
+  gcx datasources influxdb tag-values -d UID --key host
 
   # Filter by measurement
-  gcx datasources influxdb field-keys -d UID --measurement cpu
+  gcx datasources influxdb tag-values -d UID --key host --measurement cpu
 
   # Output as JSON
-  gcx datasources influxdb field-keys -d UID -o json`,
+  gcx datasources influxdb tag-values -d UID --key host -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -85,7 +90,7 @@ func FieldKeysCmd(loader *providers.ConfigLoader) *cobra.Command {
 			}
 
 			if modeStr != "InfluxQL" {
-				return fmt.Errorf("field-keys is only supported in InfluxQL mode (datasource is configured for %s mode)\n\nTo get fields from a Flux datasource, query directly:\n\n  from(bucket: \"<bucket>\") |> range(start: -5m) |> filter(fn: (r) => r._measurement == \"<measurement>\") |> keep(columns: [\"_field\"]) |> distinct(column: \"_field\")", modeStr)
+				return fmt.Errorf("tag-values is only supported in InfluxQL mode (datasource is configured for %s mode)", modeStr)
 			}
 
 			client, err := influxdb.NewClient(cfg)
@@ -93,9 +98,9 @@ func FieldKeysCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to create client: %w", err)
 			}
 
-			resp, err := client.FieldKeys(ctx, datasourceUID, opts.Measurement)
+			resp, err := client.TagValues(ctx, datasourceUID, opts.Key, opts.Measurement)
 			if err != nil {
-				return fmt.Errorf("failed to get field keys: %w", err)
+				return fmt.Errorf("failed to get tag values: %w", err)
 			}
 
 			return opts.IO.Encode(cmd.OutOrStdout(), resp)
@@ -104,7 +109,7 @@ func FieldKeysCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx datasources influxdb field-keys -d UID",
+		agent.AnnotationLLMHint:   "gcx datasources influxdb tag-values -d UID --key host",
 	}
 
 	opts.setup(cmd.Flags())
@@ -112,21 +117,21 @@ func FieldKeysCmd(loader *providers.ConfigLoader) *cobra.Command {
 	return cmd
 }
 
-type fieldKeysTableCodec struct{}
+type tagValuesTableCodec struct{}
 
-func (c *fieldKeysTableCodec) Format() format.Format {
+func (c *tagValuesTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *fieldKeysTableCodec) Encode(w io.Writer, data any) error {
-	resp, ok := data.(*influxdb.FieldKeysResponse)
+func (c *tagValuesTableCodec) Encode(w io.Writer, data any) error {
+	resp, ok := data.(*influxdb.TagValuesResponse)
 	if !ok {
-		return errors.New("invalid data type for field keys table codec")
+		return errors.New("invalid data type for tag values table codec")
 	}
 
-	return influxdb.FormatFieldKeysTable(w, resp)
+	return influxdb.FormatTagValuesTable(w, resp)
 }
 
-func (c *fieldKeysTableCodec) Decode(io.Reader, any) error {
-	return errors.New("field keys table codec does not support decoding")
+func (c *tagValuesTableCodec) Decode(io.Reader, any) error {
+	return errors.New("tag values table codec does not support decoding")
 }

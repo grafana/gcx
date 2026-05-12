@@ -24,5 +24,7 @@ func (p *influxdbDSProvider) ExtraCommands(loader *providers.ConfigLoader) []*co
 	return []*cobra.Command{
 		influxdb.MeasurementsCmd(loader),
 		influxdb.FieldKeysCmd(loader),
+		influxdb.TagKeysCmd(loader),
+		influxdb.TagValuesCmd(loader),
 	}
 }
