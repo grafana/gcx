@@ -8,17 +8,17 @@
 
 ## Documentation Map
 
-| File                                     | Purpose                                                                          |
-| ---------------------------------------- | -------------------------------------------------------------------------------- |
-| [VISION.md](VISION.md)                   | Goals, product surface, roadmap themes, release timeline                         |
-| [CONSTITUTION.md](CONSTITUTION.md)       | Invariants — things that cannot change without explicit human approval           |
-| [ARCHITECTURE.md](ARCHITECTURE.md)       | System overview (all 7 subsystems), pipeline diagrams, ADR index                 |
-| [DESIGN.md](DESIGN.md)                   | CLI UX design: command grammar, output model, exit codes                         |
-| [CONTRIBUTING.md](CONTRIBUTING.md)       | Dev setup, testing environment, contribution workflow                            |
+| File | Purpose |
+|------|---------|
+| [VISION.md](VISION.md) | Goals, product surface, roadmap themes, release timeline |
+| [CONSTITUTION.md](CONSTITUTION.md) | Invariants — things that cannot change without explicit human approval |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System overview (all 7 subsystems), pipeline diagrams, ADR index |
+| [DESIGN.md](DESIGN.md) | CLI UX design: command grammar, output model, exit codes |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, testing environment, contribution workflow |
 | [docs/architecture/](docs/architecture/) | Deep-dive architecture docs (patterns, resource model, CLI layer, data flows, …) |
-| [docs/design/](docs/design/)             | Prescriptive UX implementation rules (output, errors, agent mode, naming, …)     |
-| [docs/reference/](docs/reference/)       | Provider guides, CLI reference, migration analysis                               |
-| [docs/\_templates/](docs/_templates/)    | Spec and planning templates (feature, bugfix, refactor, ADR, research)           |
+| [docs/design/](docs/design/) | Prescriptive UX implementation rules (output, errors, agent mode, naming, …) |
+| [docs/reference/](docs/reference/) | Provider guides, CLI reference, migration analysis |
+| [docs/_templates/](docs/_templates/) | Spec and planning templates (feature, bugfix, refactor, ADR, research) |
 
 ## Architecture at a Glance
 
@@ -155,30 +155,29 @@ internal/
 
 ## What to Read Before You Start
 
-| Task                                 | Read first                                                                                                       | Then                                                                                                                                                     |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Adding a new command**             | [DESIGN.md](DESIGN.md) (grammar, output model)                                                                   | [docs/design/](docs/design/) for implementation rules, [ARCHITECTURE.md](ARCHITECTURE.md) § CLI layer                                                    |
-| **Adding a new provider**            | [ARCHITECTURE.md](ARCHITECTURE.md) § Provider System                                                             | [docs/reference/provider-guide.md](docs/reference/provider-guide.md), [docs/design/provider-checklist.md](docs/design/provider-checklist.md)             |
-| **Adding a signal provider command** | [ARCHITECTURE.md](ARCHITECTURE.md) § Signal Providers                                                            | Existing signal provider code for the SharedOpts pattern                                                                                                 |
-| **Modifying resource handling**      | [ARCHITECTURE.md](ARCHITECTURE.md) § Resources Pipeline                                                          | [docs/architecture/resource-model.md](docs/architecture/resource-model.md), [docs/architecture/data-flows.md](docs/architecture/data-flows.md)           |
-| **Changing config or auth**          | [ARCHITECTURE.md](ARCHITECTURE.md) § Configuration + § Auth                                                      | [docs/architecture/config-system.md](docs/architecture/config-system.md), [docs/architecture/client-api-layer.md](docs/architecture/client-api-layer.md) |
-| **Fixing a bug**                     | [ARCHITECTURE.md](ARCHITECTURE.md) for the relevant subsystem                                                    | Jump directly to the deep-dive doc for that domain                                                                                                       |
-| **Planning a new feature**           | [VISION.md](VISION.md) (does it belong?), [CONSTITUTION.md](CONSTITUTION.md) (can we build it within the rules?) | [DESIGN.md](DESIGN.md) for UX, [ARCHITECTURE.md](ARCHITECTURE.md) for structure                                                                          |
-| **Reviewing a PR**                   | [Compliance Hierarchy](#compliance-hierarchy) below                                                              | Check all 4 levels in order                                                                                                                              |
+| Task | Read first | Then |
+|------|-----------|------|
+| **Adding a new command** | [DESIGN.md](DESIGN.md) (grammar, output model) | [docs/design/](docs/design/) for implementation rules, [ARCHITECTURE.md](ARCHITECTURE.md) § CLI layer |
+| **Adding a new provider** | [ARCHITECTURE.md](ARCHITECTURE.md) § Provider System | [docs/reference/provider-guide.md](docs/reference/provider-guide.md), [docs/design/provider-checklist.md](docs/design/provider-checklist.md) |
+| **Adding a signal provider command** | [ARCHITECTURE.md](ARCHITECTURE.md) § Signal Providers | Existing signal provider code for the SharedOpts pattern |
+| **Modifying resource handling** | [ARCHITECTURE.md](ARCHITECTURE.md) § Resources Pipeline | [docs/architecture/resource-model.md](docs/architecture/resource-model.md), [docs/architecture/data-flows.md](docs/architecture/data-flows.md) |
+| **Changing config or auth** | [ARCHITECTURE.md](ARCHITECTURE.md) § Configuration + § Auth | [docs/architecture/config-system.md](docs/architecture/config-system.md), [docs/architecture/client-api-layer.md](docs/architecture/client-api-layer.md) |
+| **Fixing a bug** | [ARCHITECTURE.md](ARCHITECTURE.md) for the relevant subsystem | Jump directly to the deep-dive doc for that domain |
+| **Planning a new feature** | [VISION.md](VISION.md) (does it belong?), [CONSTITUTION.md](CONSTITUTION.md) (can we build it within the rules?) | [DESIGN.md](DESIGN.md) for UX, [ARCHITECTURE.md](ARCHITECTURE.md) for structure |
+| **Reviewing a PR** | [Compliance Hierarchy](#compliance-hierarchy) below | Check all 4 levels in order |
 
 ## Compliance Hierarchy
 
 Check work against these docs during planning, design, and implementation — in order of strictness.
 
-| #   | Doc                                | Strictness                                         | What to check                                                                                              | If violated                                                                            |
-| --- | ---------------------------------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| 1   | [CONSTITUTION.md](CONSTITUTION.md) | **Hard invariant** — violation is a bug            | Architecture invariants, dependency rules, provider registration, CLI grammar, typed resource requirements | Stop. Fix before proceeding. Violation requires explicit human approval to waive.      |
-| 2   | [VISION.md](VISION.md)             | **Strategic alignment** — violation is wasted work | Does this belong in gcx? Does it align with dual-purpose design, core beliefs, product surface?            | Pause. Confirm direction with a human before investing more effort.                    |
-| 3   | [DESIGN.md](DESIGN.md)             | **UX rules** — violation is a UX defect            | Output model, exit codes, safety patterns, taste rules in [docs/design/](docs/design/)                     | Fix. New code must comply.                                                             |
-| 4   | [ARCHITECTURE.md](ARCHITECTURE.md) | **Structural guidance** — violation is tech debt   | Pipeline placement, package boundaries, patterns in [docs/architecture/](docs/architecture/README.md)      | Prefer compliance. Deviation is acceptable with rationale (document in commit or ADR). |
+| # | Doc | Strictness | What to check | If violated |
+|---|-----|-----------|---------------|-------------|
+| 1 | [CONSTITUTION.md](CONSTITUTION.md) | **Hard invariant** — violation is a bug | Architecture invariants, dependency rules, provider registration, CLI grammar, typed resource requirements | Stop. Fix before proceeding. Violation requires explicit human approval to waive. |
+| 2 | [VISION.md](VISION.md) | **Strategic alignment** — violation is wasted work | Does this belong in gcx? Does it align with dual-purpose design, core beliefs, product surface? | Pause. Confirm direction with a human before investing more effort. |
+| 3 | [DESIGN.md](DESIGN.md) | **UX rules** — violation is a UX defect | Output model, exit codes, safety patterns, taste rules in [docs/design/](docs/design/) | Fix. New code must comply. |
+| 4 | [ARCHITECTURE.md](ARCHITECTURE.md) | **Structural guidance** — violation is tech debt | Pipeline placement, package boundaries, patterns in [docs/architecture/](docs/architecture/README.md) | Prefer compliance. Deviation is acceptable with rationale (document in commit or ADR). |
 
 **When to check:**
-
 - **Planning/design**: Check VISION (2) and CONSTITUTION (1) — are we building the right thing, and can we build it within the rules?
 - **Implementation**: Check DESIGN (3) and ARCHITECTURE (4) — does the code follow UX rules and structural patterns?
 - **Pre-flight** (below): Final sweep across all four before pushing.
