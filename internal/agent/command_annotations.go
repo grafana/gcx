@@ -109,7 +109,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx instrumentation clusters apps wait":      {Cost: "small"},
 
 	// top-level single commands
-	"gcx instrumentation setup":  {Cost: "medium", Hint: "<cluster> --yes -o json"},
+	"gcx instrumentation setup":  {Cost: "medium", Hint: "<cluster> --use-defaults -o json"},
 	"gcx instrumentation status": {Cost: "medium", Hint: "-o json"},
 
 	// services verb group

@@ -39,6 +39,12 @@ type configureOpts struct {
 	nodeLogs      bool
 }
 
+// Validate of the mutually-exclusive-mode and --yes-required-for-defaults rules
+// requires inspecting flags.Changed(), which depends on the *cobra.Command
+// instance. Those checks live in runConfigure where the command is in scope.
+// Keeping Validate as a no-op here satisfies the canonical opts pattern.
+func (o *configureOpts) Validate() error { return nil }
+
 func (o *configureOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.useDefaults, "use-defaults", false,
 		"Apply canonical defaults (costMetrics=true, clusterEvents=true, energyMetrics=false, nodeLogs=false). Requires --yes.")

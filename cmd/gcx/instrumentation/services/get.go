@@ -11,14 +11,27 @@ import (
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	instrumout "github.com/grafana/gcx/internal/providers/instrumentation/output"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
+type getOpts struct {
+	IO cmdio.Options
+}
+
+func (o *getOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("text")
+	o.IO.RegisterCustomCodec("text", &instrumout.ServiceTableCodec{Wide: false})
+	o.IO.RegisterCustomCodec("wide", &instrumout.ServiceTableCodec{Wide: true})
+	o.IO.SetJSONFieldValidator(cmdio.MakeFieldValidator(instrumout.ServiceView{}))
+	o.IO.BindFlags(flags)
+}
+
+func (o *getOpts) Validate() error {
+	return o.IO.Validate()
+}
+
 func newGetCommand(loader fleet.ConfigLoader) *cobra.Command {
-	outOpts := &cmdio.Options{}
-	outOpts.DefaultFormat("text")
-	outOpts.RegisterCustomCodec("text", &instrumout.ServiceTableCodec{Wide: false})
-	outOpts.RegisterCustomCodec("wide", &instrumout.ServiceTableCodec{Wide: true})
-	outOpts.SetJSONFieldValidator(cmdio.MakeFieldValidator(instrumout.ServiceView{}))
+	opts := &getOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "get <cluster> <namespace> <service>",
@@ -35,7 +48,7 @@ Examples:
 Workload-level Selection / override state is not surfaced on this command. To inspect a workload's override, run "gcx instrumentation clusters apps list --cluster=<cluster> --namespace=<namespace>".`,
 		Args: cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := outOpts.Validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 			ctx := cmd.Context()
@@ -45,11 +58,11 @@ Workload-level Selection / override state is not surfaced on this command. To in
 			}
 			client := instrumentation.NewClient(r.Client)
 			promHeaders := instrumentation.PromHeadersFromStack(r.Stack)
-			return runGet(ctx, outOpts, client, args[0], args[1], args[2], promHeaders, cmd.OutOrStdout())
+			return runGet(ctx, &opts.IO, client, args[0], args[1], args[2], promHeaders, cmd.OutOrStdout())
 		},
 	}
 
-	outOpts.BindFlags(cmd.Flags())
+	opts.setup(cmd.Flags())
 	return cmd
 }
 

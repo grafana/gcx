@@ -43,7 +43,7 @@ type runner struct {
 	stdout  io.Writer
 	stderr  io.Writer
 	// isTTY reports whether stdin is an interactive terminal. When true and
-	// --yes is not set, setup prompts for each K8s flag interactively.
+	// --use-defaults is not set, setup prompts for each K8s flag interactively.
 	isTTY bool
 	// promptFn is called once per K8s flag in interactive mode. name is the
 	// human-readable flag name (e.g. "costMetrics"); current is its declared
@@ -59,8 +59,8 @@ type runner struct {
 //     calls are made (structural guarantee).
 //  2. SetupK8sDiscovery (idempotent server-side).
 //  3. GetK8SInstrumentation to capture current declared state.
-//  4. Resolve desired flag values: interactive prompts when TTY && !--yes,
-//     or defaults + per-flag overrides under --yes.
+//  4. Resolve desired flag values: interactive prompts when TTY && !--use-defaults,
+//     or defaults + per-flag overrides under --use-defaults.
 //  5. SetK8SInstrumentation only when at least one flag differs.
 //  6. Emit mutation summary to stderr.
 //  7. Print helm command to stdout.
@@ -164,7 +164,7 @@ func resolveDesired(o *opts, r *runner, current instrumentation.Cluster) (instru
 		return resolveInteractive(r, current)
 	default:
 		return instrumentation.Cluster{}, errors.New(
-			"setup: stdin is not a TTY; use --yes for non-interactive mode")
+			"setup: stdin is not a TTY; use --use-defaults for non-interactive mode")
 	}
 }
 
