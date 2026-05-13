@@ -64,12 +64,6 @@ type TestRunStatus struct {
 	ReferenceID  string `json:"reference_id,omitempty"`
 }
 
-// authResponse is the response from k6 authentication.
-type authResponse struct {
-	OrgID          string `json:"organization_id"`
-	V3GrafanaToken string `json:"v3_grafana_token"`
-}
-
 // projectsResponse is the response from listing projects.
 type projectsResponse struct {
 	Value []Project `json:"value"`

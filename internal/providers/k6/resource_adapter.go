@@ -3,14 +3,16 @@ package k6
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 
-	"github.com/grafana/gcx/internal/httputils"
-	"github.com/grafana/gcx/internal/providers"
+	authlib "github.com/grafana/authlib/types"
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/rest"
 )
 
 // resourceDef defines a single k6 sub-resource type for adapter registration.
@@ -56,39 +58,27 @@ func allResources() []resourceDef {
 	}
 }
 
-// CloudConfigLoader can load Grafana Cloud config (token + stack info via GCOM)
-// and provider-specific config for the k6 provider.
 type CloudConfigLoader interface {
-	LoadCloudConfig(ctx context.Context) (providers.CloudRESTConfig, error)
-	LoadProviderConfig(ctx context.Context, providerName string) (map[string]string, string, error)
+	LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error)
 }
 
-// authenticatedClient loads cloud config, resolves the k6 API domain from provider config,
-// performs k6 token exchange, and returns an authenticated client.
 func authenticatedClient(ctx context.Context, loader CloudConfigLoader) (*Client, string, error) {
-	cfg, err := loader.LoadCloudConfig(ctx)
+	restCfg, err := loader.LoadGrafanaConfig(ctx)
 	if err != nil {
-		return nil, "", fmt.Errorf("k6: load cloud config: %w", err)
+		return nil, "", err
+	}
+	if !restCfg.IsOAuthProxy() {
+		return nil, "", errors.New("k6 provider requires OAuth authentication -- run `gcx login` and select OAuth mode")
 	}
 
-	domain := DefaultAPIDomain
-	if providerCfg, _, err := loader.LoadProviderConfig(ctx, "k6"); err == nil {
-		if d := providerCfg["api-domain"]; d != "" {
-			domain = d
-		}
+	authClient, err := rest.HTTPClientFor(&restCfg.Config)
+	if err != nil {
+		return nil, "", err
 	}
-
-	// k6 API uses its own auth (X-Grafana-Key token exchange), not the Grafana
-	// bearer token. Using rest.HTTPClientFor() would inject the Grafana bearer
-	// token via the k8s transport round-tripper, causing 401 from the k6 API.
-	httpClient := httputils.NewDefaultClient(ctx)
-
-	client := NewClient(ctx, domain, httpClient)
-	if err := client.Authenticate(ctx, cfg.Token, cfg.Stack.ID); err != nil {
-		return nil, "", fmt.Errorf("k6 auth failed (PUT %s): %w -- ensure your token has k6 scopes", authPath, err)
+	if _, err := authlib.ParseNamespace(restCfg.Namespace); err != nil {
+		return nil, "", err
 	}
-
-	return client, cfg.Namespace, nil
+	return NewClient(ctx, restCfg.Host, authClient), restCfg.Namespace, nil
 }
 
 // newSubResourceFactory returns a lazy adapter.Factory for a specific k6 resource.

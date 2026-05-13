@@ -1212,10 +1212,16 @@ func newTokenCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			token, err := client.Token(ctx)
+			if err != nil {
+				return err
+			}
+
 			if !terminal.IsPiped() {
 				fmt.Fprintln(cmd.ErrOrStderr(), "Warning: printing API token to terminal. Use `gcx k6 auth print-token | ...` in scripts.")
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), client.Token())
+			fmt.Fprintln(cmd.OutOrStdout(), token)
 			return nil
 		},
 	}
