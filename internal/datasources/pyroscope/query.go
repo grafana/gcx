@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
@@ -21,6 +22,8 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	var profileType string
 	var maxNodes int64
 	var datasource string
+	var profileIDs []string
+	var stacktraceSelector []string
 
 	cmd := &cobra.Command{
 		Use:   "query [EXPR]",
@@ -40,7 +43,12 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 
   # Output as JSON
   gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
-    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o json`,
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o json
+
+  # Drill into a specific profile found via exemplars
+  gcx datasources pyroscope query '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
+    --since 1h --profile-id <profile-uuid>`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
@@ -49,6 +57,12 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 
 			if profileType == "" {
 				return errors.New("--profile-type is required for pyroscope queries")
+			}
+
+			for _, id := range profileIDs {
+				if _, err := uuid.Parse(id); err != nil {
+					return fmt.Errorf("--profile-id must be a valid UUID (got %q)", id)
+				}
 			}
 
 			expr, err := shared.ResolveExpr(args, 0)
@@ -88,12 +102,23 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 				return fmt.Errorf("failed to create client: %w", err)
 			}
 
+			var sts *pyroscope.StackTraceSelector
+			if len(stacktraceSelector) > 0 {
+				locs := make([]pyroscope.Location, len(stacktraceSelector))
+				for i, n := range stacktraceSelector {
+					locs[i] = pyroscope.Location{Name: n}
+				}
+				sts = &pyroscope.StackTraceSelector{CallSite: locs}
+			}
+
 			req := pyroscope.QueryRequest{
-				LabelSelector: expr,
-				ProfileTypeID: profileType,
-				Start:         start,
-				End:           end,
-				MaxNodes:      maxNodes,
+				LabelSelector:      expr,
+				ProfileTypeID:      profileType,
+				Start:              start,
+				End:                end,
+				MaxNodes:           maxNodes,
+				ProfileIDs:         profileIDs,
+				StackTraceSelector: sts,
 			}
 
 			resp, err := client.Query(ctx, datasourceUID, req)
@@ -118,6 +143,8 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pyroscope is configured)")
 	cmd.Flags().StringVar(&profileType, "profile-type", "", "Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds') (required)")
 	cmd.Flags().Int64Var(&maxNodes, "max-nodes", 1024, "Maximum nodes in flame graph")
+	cmd.Flags().StringSliceVar(&profileIDs, "profile-id", nil, "Drill down to specific profile UUIDs from exemplar queries (repeatable)")
+	cmd.Flags().StringSliceVar(&stacktraceSelector, "stacktrace-selector", nil, "Only query locations with these function names, starting from the root (repeatable)")
 
 	return cmd
 }

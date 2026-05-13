@@ -28,22 +28,29 @@ gcx datasources pyroscope query [EXPR] [flags]
   # Output as JSON
   gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o json
+
+  # Drill into a specific profile found via exemplars
+  gcx datasources pyroscope query '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
+    --since 1h --profile-id <profile-uuid>
 ```
 
 ### Options
 
 ```
-  -d, --datasource string     Datasource UID (required unless datasources.pyroscope is configured)
-      --expr string           Query expression (alternative to positional argument)
-      --from string           Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-  -h, --help                  help for query
-      --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --max-nodes int         Maximum nodes in flame graph (default 1024)
-  -o, --output string         Output format. One of: agents, graph, json, table, wide, yaml (default "table")
-      --profile-type string   Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds') (required)
-      --since string          Duration before --to (or now if omitted); mutually exclusive with --from
-      --step string           Query step (e.g., '15s', '1m')
-      --to string             End time (RFC3339, Unix timestamp, or relative like 'now')
+  -d, --datasource string             Datasource UID (required unless datasources.pyroscope is configured)
+      --expr string                   Query expression (alternative to positional argument)
+      --from string                   Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
+  -h, --help                          help for query
+      --json string                   Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --max-nodes int                 Maximum nodes in flame graph (default 1024)
+  -o, --output string                 Output format. One of: agents, graph, json, table, wide, yaml (default "table")
+      --profile-id strings            Drill down to specific profile UUIDs from exemplar queries (repeatable)
+      --profile-type string           Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds') (required)
+      --since string                  Duration before --to (or now if omitted); mutually exclusive with --from
+      --stacktrace-selector strings   Only query locations with these function names, starting from the root (repeatable)
+      --step string                   Query step (e.g., '15s', '1m')
+      --to string                     End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 
 ### Options inherited from parent commands

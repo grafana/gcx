@@ -7,12 +7,27 @@ import (
 )
 
 // QueryRequest represents a Pyroscope profile query request.
+// Field names mirror querier.v1.SelectMergeStacktracesRequest.
 type QueryRequest struct {
-	LabelSelector string
-	ProfileTypeID string
-	Start         time.Time
-	End           time.Time
-	MaxNodes      int64
+	LabelSelector      string
+	ProfileTypeID      string
+	Start              time.Time
+	End                time.Time
+	MaxNodes           int64
+	ProfileIDs         []string
+	StackTraceSelector *StackTraceSelector
+}
+
+// StackTraceSelector mirrors querier.v1.StackTraceSelector. Only the CallSite
+// variant is supported on the SelectMergeStacktraces RPC; GoPGO selection
+// lives on the SelectMergeProfile (pprof export) path.
+type StackTraceSelector struct {
+	CallSite []Location `json:"callSite,omitempty"`
+}
+
+// Location mirrors querier.v1.Location.
+type Location struct {
+	Name string `json:"name"`
 }
 
 // IsRange returns true if this is a range query with explicit time bounds.

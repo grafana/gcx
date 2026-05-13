@@ -211,6 +211,80 @@ func TestClient_SelectSeries(t *testing.T) {
 	}
 }
 
+func TestClient_Query_RequestFields(t *testing.T) {
+	emptyFlamegraph := `{"flamegraph":{"names":[],"levels":[],"total":"0","maxSelf":"0"}}`
+
+	tests := []struct {
+		name   string
+		req    pyroscope.QueryRequest
+		assert func(t *testing.T, body map[string]any)
+	}{
+		{
+			name: "optional fields omitted when unset",
+			req: pyroscope.QueryRequest{
+				ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+				LabelSelector: `{}`,
+			},
+			assert: func(t *testing.T, body map[string]any) {
+				for _, k := range []string{"profileIdSelector", "stackTraceSelector", "maxNodes"} {
+					_, present := body[k]
+					assert.False(t, present, "%s should be omitted when unset", k)
+				}
+			},
+		},
+		{
+			name: "profileIdSelector forwarded as JSON array",
+			req: pyroscope.QueryRequest{
+				ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+				LabelSelector: `{}`,
+				ProfileIDs:    []string{"550e8400-e29b-41d4-a716-446655440000"},
+			},
+			assert: func(t *testing.T, body map[string]any) {
+				assert.Equal(t, []any{"550e8400-e29b-41d4-a716-446655440000"}, body["profileIdSelector"])
+				_, present := body["spanSelector"]
+				assert.False(t, present, "spanSelector should not be sent on SelectMergeStacktraces (server drops it)")
+			},
+		},
+		{
+			name: "stackTraceSelector callSite forwarded",
+			req: pyroscope.QueryRequest{
+				ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+				LabelSelector: `{}`,
+				StackTraceSelector: &pyroscope.StackTraceSelector{
+					CallSite: []pyroscope.Location{{Name: "main.run"}, {Name: "main.handler"}},
+				},
+			},
+			assert: func(t *testing.T, body map[string]any) {
+				sts, ok := body["stackTraceSelector"].(map[string]any)
+				require.True(t, ok, "stackTraceSelector should be an object")
+				cs, ok := sts["callSite"].([]any)
+				require.True(t, ok, "callSite should be an array")
+				require.Len(t, cs, 2)
+				assert.Equal(t, "main.run", cs[0].(map[string]any)["name"])
+				assert.Equal(t, "main.handler", cs[1].(map[string]any)["name"])
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Contains(t, r.URL.Path, "querier.v1.QuerierService/SelectMergeStacktraces")
+				var body map[string]any
+				require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+				tt.assert(t, body)
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(emptyFlamegraph))
+			}))
+			defer server.Close()
+
+			client := newTestClient(t, server)
+			_, err := client.Query(context.Background(), "test-uid", tt.req)
+			require.NoError(t, err)
+		})
+	}
+}
+
 func TestClient_SelectHeatmap(t *testing.T) {
 	tests := []struct {
 		name      string

@@ -54,6 +54,12 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 	if req.MaxNodes > 0 {
 		bodyMap["maxNodes"] = strconv.FormatInt(req.MaxNodes, 10)
 	}
+	if len(req.ProfileIDs) > 0 {
+		bodyMap["profileIdSelector"] = req.ProfileIDs
+	}
+	if req.StackTraceSelector != nil {
+		bodyMap["stackTraceSelector"] = req.StackTraceSelector
+	}
 
 	body, err := json.Marshal(bodyMap)
 	if err != nil {

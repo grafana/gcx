@@ -56,7 +56,12 @@ func (p *Provider) Commands() []*cobra.Command {
 
   # Output as JSON
   gcx profiles query -d abc123 '{service_name="frontend"}' \
-    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o json`
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o json
+
+  # Drill into a specific profile found via 'gcx profiles exemplars'
+  gcx profiles query '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
+    --since 1h --profile-id <profile-uuid>`
 	cmd.AddCommand(qCmd)
 
 	lCmd := dspyroscope.LabelsCmd(loader)
