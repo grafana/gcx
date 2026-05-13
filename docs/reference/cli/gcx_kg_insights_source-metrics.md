@@ -31,5 +31,5 @@ gcx kg insights source-metrics [flags]
 
 ### SEE ALSO
 
-* [gcx kg insights](gcx_kg_insights.md)	 - Search insights and fetch their backing metrics.
+* [gcx kg insights](gcx_kg_insights.md)	 - Fetch metrics backing active insights.
 

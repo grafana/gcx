@@ -878,7 +878,61 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 	listOpts.setup(listCmd.Flags())
 	_ = listCmd.MarkFlagRequired("type")
 
-	cmd.AddCommand(listCmd, newEntitiesInspectCommand(loader))
+	cmd.AddCommand(listCmd, newEntitiesInspectCommand(loader), newEntitiesFindByInsightCommand(loader))
+	return cmd
+}
+
+func newEntitiesFindByInsightCommand(loader RESTConfigLoader) *cobra.Command {
+	var (
+		searchEntityType string
+		searchNames      []string
+		searchSeverities []string
+		searchScope      scopeFlags
+	)
+	cmd := &cobra.Command{
+		Use:   "find-by-insight",
+		Short: "Find entities with active insights matching the given rules.",
+		Long: `Find entities with active insights matching the given rules.
+
+Backed by the same endpoint the Asserts UI's "Entities with Insights" panel uses.
+Each --insight flag is a separate rule (ORed together); severities are ANDed
+into every rule.`,
+		Example: `  gcx kg entities find-by-insight --insight contains=Saturation
+  gcx kg entities find-by-insight --insight equals=ErrorRatioBreach --severity critical
+  gcx kg entities find-by-insight --severity critical,warning --namespace mimir-prod-01
+  gcx kg entities find-by-insight --type Namespace --insight starts-with=Latency --since 1h`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			startMs, endMs, err := searchScope.resolveTime()
+			if err != nil {
+				return err
+			}
+			if err := searchScope.validateScopes(cmd.Context(), client); err != nil {
+				return err
+			}
+			req, err := buildInsightSearchRequest(searchEntityType, searchNames, searchSeverities, searchScope.scopeCriteria(), startMs, endMs)
+			if err != nil {
+				return err
+			}
+			result, err := client.SearchInsights(cmd.Context(), req)
+			if err != nil {
+				return err
+			}
+			return (&cmdio.Options{OutputFormat: "json"}).Encode(cmd.OutOrStdout(), result)
+		},
+	}
+	cmd.Flags().StringVar(&searchEntityType, "type", "Service", "Root entity type (e.g. Service, Namespace, Node)")
+	cmd.Flags().StringArrayVar(&searchNames, "insight", nil, "Insight-name rule: op=value where op is contains, starts-with, or equals (repeatable; rules are ORed)")
+	cmd.Flags().StringSliceVar(&searchSeverities, "severity", nil, "Filter by insight severity: critical, warning, info (comma-separated)")
+	searchScope.register(cmd)
+	cmd.MarkFlagsOneRequired("insight", "severity")
 	return cmd
 }
 
@@ -976,7 +1030,7 @@ func (o *scopesListOpts) setup(flags *pflag.FlagSet) {
 func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "insights",
-		Short: "Search insights and fetch their backing metrics.",
+		Short: "Fetch metrics backing active insights.",
 	}
 
 	// entity-metric subcommand
@@ -1097,59 +1151,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	sourceMetricsCmd.Flags().String("to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
 	sourceMetricsCmd.Flags().String("since", "", "Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)")
 
-	// search subcommand
-	var (
-		searchEntityType string
-		searchNames      []string
-		searchSeverities []string
-		searchScope      scopeFlags
-	)
-	searchCmd := &cobra.Command{
-		Use:   "search",
-		Short: "Find entities with active insights matching the given rules.",
-		Long: `Find entities with active insights matching the given rules.
-
-Backed by the same endpoint the Asserts UI's "Entities with Insights" panel uses.
-Each --insight flag is a separate rule (ORed together); severities are ANDed
-into every rule.`,
-		Example: `  gcx kg insights search --insight contains=Saturation
-  gcx kg insights search --insight equals=ErrorRatioBreach --severity critical
-  gcx kg insights search --severity critical,warning --namespace mimir-prod-01
-  gcx kg insights search --type Namespace --insight starts-with=Latency --since 1h`,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			startMs, endMs, err := searchScope.resolveTime()
-			if err != nil {
-				return err
-			}
-			if err := searchScope.validateScopes(cmd.Context(), client); err != nil {
-				return err
-			}
-			req, err := buildInsightSearchRequest(searchEntityType, searchNames, searchSeverities, searchScope.scopeCriteria(), startMs, endMs)
-			if err != nil {
-				return err
-			}
-			result, err := client.SearchInsights(cmd.Context(), req)
-			if err != nil {
-				return err
-			}
-			return (&cmdio.Options{OutputFormat: "json"}).Encode(cmd.OutOrStdout(), result)
-		},
-	}
-	searchCmd.Flags().StringVar(&searchEntityType, "type", "Service", "Root entity type (e.g. Service, Namespace, Node)")
-	searchCmd.Flags().StringArrayVar(&searchNames, "insight", nil, "Insight-name rule: op=value where op is contains, starts-with, or equals (repeatable; rules are ORed)")
-	searchCmd.Flags().StringSliceVar(&searchSeverities, "severity", nil, "Filter by insight severity: critical, warning, info (comma-separated)")
-	searchScope.register(searchCmd)
-	searchCmd.MarkFlagsOneRequired("insight", "severity")
-
-	cmd.AddCommand(entityMetricCmd, sourceMetricsCmd, searchCmd)
+	cmd.AddCommand(entityMetricCmd, sourceMetricsCmd)
 	return cmd
 }
 

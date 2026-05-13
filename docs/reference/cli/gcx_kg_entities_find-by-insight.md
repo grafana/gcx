@@ -1,4 +1,4 @@
-## gcx kg insights search
+## gcx kg entities find-by-insight
 
 Find entities with active insights matching the given rules.
 
@@ -11,16 +11,16 @@ Each --insight flag is a separate rule (ORed together); severities are ANDed
 into every rule.
 
 ```
-gcx kg insights search [flags]
+gcx kg entities find-by-insight [flags]
 ```
 
 ### Examples
 
 ```
-  gcx kg insights search --insight contains=Saturation
-  gcx kg insights search --insight equals=ErrorRatioBreach --severity critical
-  gcx kg insights search --severity critical,warning --namespace mimir-prod-01
-  gcx kg insights search --type Namespace --insight starts-with=Latency --since 1h
+  gcx kg entities find-by-insight --insight contains=Saturation
+  gcx kg entities find-by-insight --insight equals=ErrorRatioBreach --severity critical
+  gcx kg entities find-by-insight --severity critical,warning --namespace mimir-prod-01
+  gcx kg entities find-by-insight --type Namespace --insight starts-with=Latency --since 1h
 ```
 
 ### Options
@@ -28,7 +28,7 @@ gcx kg insights search [flags]
 ```
       --env string            Environment scope
       --from string           Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-  -h, --help                  help for search
+  -h, --help                  help for find-by-insight
       --insight stringArray   Insight-name rule: op=value where op is contains, starts-with, or equals (repeatable; rules are ORed)
       --namespace string      Namespace scope
       --severity strings      Filter by insight severity: critical, warning, info (comma-separated)
@@ -52,5 +52,5 @@ gcx kg insights search [flags]
 
 ### SEE ALSO
 
-* [gcx kg insights](gcx_kg_insights.md)	 - Search insights and fetch their backing metrics.
+* [gcx kg entities](gcx_kg_entities.md)	 - Manage Knowledge Graph entities.
 
