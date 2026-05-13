@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/grafana/gcx/internal/httputils"
 )
@@ -36,6 +37,7 @@ type Client struct {
 	proxyBase  string
 	http       *http.Client
 
+	mu          sync.Mutex
 	cachedToken string // memoized result of /v3/account/me
 	cachedOrgID int    // memoized result of /organization, used only by env var methods
 }
@@ -60,6 +62,8 @@ func NewClient(ctx context.Context, grafanaURL string, authClient *http.Client) 
 // orgID hits /organization on the plugin to discover the k6 organization ID
 // for legacy APIs. The result is memoised for the life of the client.
 func (c *Client) orgID(ctx context.Context) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.cachedOrgID != 0 {
 		return c.cachedOrgID, nil
 	}
@@ -94,6 +98,8 @@ func (c *Client) orgID(ctx context.Context) (int, error) {
 // Token returns the user's k6 Personal API token. It is fetched on demand from
 // /v3/account/me through the proxy and memoised for the life of the client.
 func (c *Client) Token(ctx context.Context) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.cachedToken != "" {
 		return c.cachedToken, nil
 	}
