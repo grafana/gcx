@@ -38,9 +38,10 @@ gcx profiles query [EXPR] [flags]
       --from string           Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                  help for query
       --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --max-nodes int         Maximum nodes in flame graph (default 1024)
+      --max-nodes int         Maximum nodes in flame graph (default 0/unlimited for pprof output, 50000 for all other formats)
   -o, --output string         Output format. One of: agents, graph, json, table, wide, yaml (default "table")
-      --profile-type string   Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles profile-types' to list available (required)
+      --overwrite-pprof       Overwrite the output file if it already exists (only applies to -o pprof=<path>)
+      --profile-type string   Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds') (required)
       --since string          Duration before --to (or now if omitted); mutually exclusive with --from
       --step string           Query step (e.g., '15s', '1m')
       --to string             End time (RFC3339, Unix timestamp, or relative like 'now')

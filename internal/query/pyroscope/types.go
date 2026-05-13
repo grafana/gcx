@@ -212,6 +212,15 @@ func (p TimePoint) FloatValue() float64 {
 	return v
 }
 
+// PprofRequest represents a request to fetch a profile in pprof binary format.
+type PprofRequest struct {
+	ProfileTypeID string
+	LabelSelector string
+	Start         time.Time
+	End           time.Time
+	MaxNodes      int64
+}
+
 // TopSeriesResponse represents an aggregated, ranked view of series data.
 type TopSeriesResponse struct {
 	ProfileType string           `json:"profileType"`

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
@@ -15,12 +17,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const defaultMaxNodes int64 = 50000
+
 // QueryCmd returns the `query` subcommand for a Pyroscope datasource parent.
 func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
 	var profileType string
 	var maxNodes int64
 	var datasource string
+	var overwritePprof bool
 
 	cmd := &cobra.Command{
 		Use:   "query [EXPR]",
@@ -40,9 +45,30 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 
   # Output as JSON
   gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
-    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o json`,
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o json
+
+  # Download as pprof binary (for use with go tool pprof)
+  gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o pprof=./profile.pb.gz`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Parse pprof=<path> before validation; the format is not a codec.
+			var (
+				pprofPath string
+				ok        bool
+			)
+			if pprofPath, ok = strings.CutPrefix(shared.IO.OutputFormat, "pprof="); ok {
+				if pprofPath == "" {
+					return errors.New("pprof output requires a file path: use -o pprof=./profile.pb.gz")
+				}
+				if _, err := os.Stat(pprofPath); err == nil && !overwritePprof {
+					return fmt.Errorf("%s already exists; use --overwrite-pprof to overwrite", pprofPath)
+				}
+				shared.IO.OutputFormat = "json" // satisfy codec validation
+			} else if shared.IO.OutputFormat == "pprof" {
+				return errors.New("pprof output requires a file path: use -o pprof=./profile.pb.gz")
+			}
+
 			if err := shared.Validate(); err != nil {
 				return err
 			}
@@ -88,12 +114,34 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 				return fmt.Errorf("failed to create client: %w", err)
 			}
 
+			if pprofPath != "" {
+				data, err := client.Pprof(ctx, datasourceUID, pyroscope.PprofRequest{
+					LabelSelector: expr,
+					ProfileTypeID: profileType,
+					Start:         start,
+					End:           end,
+					MaxNodes:      maxNodes, // 0 = unlimited by default
+				})
+				if err != nil {
+					return fmt.Errorf("pprof fetch failed: %w", err)
+				}
+				if err := os.WriteFile(pprofPath, data, 0o600); err != nil {
+					return fmt.Errorf("writing pprof profile: %w", err)
+				}
+				fmt.Fprintf(cmd.ErrOrStderr(), "profile written to %s\n", pprofPath)
+				return nil
+			}
+
+			resolvedMaxNodes := maxNodes
+			if !cmd.Flags().Changed("max-nodes") {
+				resolvedMaxNodes = defaultMaxNodes
+			}
 			req := pyroscope.QueryRequest{
 				LabelSelector: expr,
 				ProfileTypeID: profileType,
 				Start:         start,
 				End:           end,
-				MaxNodes:      maxNodes,
+				MaxNodes:      resolvedMaxNodes,
 			}
 
 			resp, err := client.Query(ctx, datasourceUID, req)
@@ -117,7 +165,8 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 	shared.Setup(cmd.Flags(), true)
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pyroscope is configured)")
 	cmd.Flags().StringVar(&profileType, "profile-type", "", "Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles profile-types' to list available (required)")
-	cmd.Flags().Int64Var(&maxNodes, "max-nodes", 1024, "Maximum nodes in flame graph")
+	cmd.Flags().Int64Var(&maxNodes, "max-nodes", 0, fmt.Sprintf("Maximum nodes in flame graph (default 0/unlimited for pprof output, %d for all other formats)", defaultMaxNodes))
+	cmd.Flags().BoolVar(&overwritePprof, "overwrite-pprof", false, "Overwrite the output file if it already exists (only applies to -o pprof=<path>)")
 
 	return cmd
 }

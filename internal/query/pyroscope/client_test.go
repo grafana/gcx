@@ -1,8 +1,11 @@
 package pyroscope_test
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,6 +14,7 @@ import (
 	"github.com/grafana/gcx/internal/query/pyroscope"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protowire"
 	"k8s.io/client-go/rest"
 )
 
@@ -206,6 +210,136 @@ func TestClient_SelectSeries(t *testing.T) {
 				assert.Equal(t, "span-1", ex.SpanID)
 				assert.Equal(t, int64(1100), ex.TimestampMs())
 				assert.Equal(t, int64(5000), ex.Int64Value())
+			}
+		})
+	}
+}
+
+func TestClient_Pprof(t *testing.T) {
+	// fakeProfileProto is a minimal valid binary protobuf that stands in for a
+	// google.pprof.Profile; it carries one string-table entry (field 6 = "cpu").
+	fakeProfileProto := func() []byte {
+		var b []byte
+		b = protowire.AppendTag(b, 6, protowire.BytesType)
+		b = protowire.AppendString(b, "cpu")
+		return b
+	}()
+
+	tests := []struct {
+		name     string
+		req      pyroscope.PprofRequest
+		handler  http.HandlerFunc
+		wantGzip bool
+		wantErr  bool
+	}{
+		{
+			name: "returns gzip-compressed profile proto",
+			req: pyroscope.PprofRequest{
+				ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+				LabelSelector: `{service_name="frontend"}`,
+			},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodPost, r.Method)
+				assert.Contains(t, r.URL.Path, "querier.v1.QuerierService/SelectMergeProfile")
+				assert.Equal(t, "application/proto", r.Header.Get("Content-Type"))
+
+				// Decode the request proto and verify key fields.
+				body, _ := io.ReadAll(r.Body)
+				b := body
+				for len(b) > 0 {
+					num, typ, n := protowire.ConsumeTag(b)
+					b = b[n:]
+					switch {
+					case num == 1 && typ == protowire.BytesType:
+						v, n := protowire.ConsumeString(b)
+						b = b[n:]
+						assert.Equal(t, "process_cpu:cpu:nanoseconds:cpu:nanoseconds", v)
+					case num == 2 && typ == protowire.BytesType:
+						v, n := protowire.ConsumeString(b)
+						b = b[n:]
+						assert.Equal(t, `{service_name="frontend"}`, v)
+					default:
+						n := protowire.ConsumeFieldValue(num, typ, b)
+						if n < 0 {
+							break
+						}
+						b = b[n:]
+					}
+				}
+
+				w.Header().Set("Content-Type", "application/proto")
+				_, _ = w.Write(fakeProfileProto)
+			},
+			wantGzip: true,
+		},
+		{
+			name: "max_nodes field encoded when set",
+			req: pyroscope.PprofRequest{
+				ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+				LabelSelector: `{}`,
+				MaxNodes:      512,
+			},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				body, _ := io.ReadAll(r.Body)
+				b := body
+				foundMaxNodes := false
+				for len(b) > 0 {
+					num, typ, n := protowire.ConsumeTag(b)
+					b = b[n:]
+					if num == 5 && typ == protowire.VarintType {
+						v, n := protowire.ConsumeVarint(b)
+						b = b[n:]
+						assert.Equal(t, uint64(512), v)
+						foundMaxNodes = true
+					} else {
+						n := protowire.ConsumeFieldValue(num, typ, b)
+						if n < 0 {
+							break
+						}
+						b = b[n:]
+					}
+				}
+				assert.True(t, foundMaxNodes, "max_nodes field (5) should be present")
+				w.Header().Set("Content-Type", "application/proto")
+				_, _ = w.Write(fakeProfileProto)
+			},
+			wantGzip: true,
+		},
+		{
+			name: "server error is surfaced",
+			req: pyroscope.PprofRequest{
+				ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+				LabelSelector: `{}`,
+			},
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`internal error`))
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(tt.handler)
+			defer server.Close()
+
+			client := newTestClient(t, server)
+			got, err := client.Pprof(context.Background(), "test-uid", tt.req)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+
+			if tt.wantGzip {
+				// Verify the response is gzip-compressed and decompresses to our proto.
+				gz, err := gzip.NewReader(bytes.NewReader(got))
+				require.NoError(t, err, "response should be gzip-compressed")
+				decompressed, err := io.ReadAll(gz)
+				require.NoError(t, err)
+				assert.Equal(t, fakeProfileProto, decompressed)
 			}
 		})
 	}
