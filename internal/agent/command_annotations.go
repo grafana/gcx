@@ -84,11 +84,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx resources validate": {Cost: "medium", Hint: "-p ./dashboards"},
 
 	// setup
-	"gcx setup status":                   {Cost: "small"},
-	"gcx setup instrumentation apply":    {Cost: "small"},
-	"gcx setup instrumentation discover": {Cost: "medium", Hint: "--cluster <name> -o json"},
-	"gcx setup instrumentation show":     {Cost: "medium", Hint: "<cluster> -o json"},
-	"gcx setup instrumentation status":   {Cost: "small"},
+	"gcx setup status": {Cost: "small"},
 
 	// -----------------------------------------------------------------------
 	// Instrumentation provider (action-verb tree — ADR-018)
