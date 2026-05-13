@@ -8,10 +8,14 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/gofrs/flock"
+	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/httputils"
+	"github.com/grafana/gcx/internal/retry"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/rest"
@@ -237,7 +241,13 @@ func (l *ConfigLoader) loadCloudBase(ctx context.Context) (cloudBase, error) {
 
 	token := curCtx.Cloud.Token
 	gcomURL := curCtx.ResolveGCOMURL()
-	client, err := cloud.NewGCOMClient(gcomURL, token)
+
+	var transport http.RoundTripper
+	if curCtx.Cloud.RefreshToken != "" {
+		transport = l.buildCloudRefreshTransport(ctx, curCtx, gcomURL, loaded.CurrentContext, loaded.Sources)
+	}
+
+	client, err := cloud.NewGCOMClientWithTransport(gcomURL, token, transport)
 	if err != nil {
 		return cloudBase{}, fmt.Errorf("failed to create GCOM client: %w", err)
 	}
@@ -248,6 +258,87 @@ func (l *ConfigLoader) loadCloudBase(ctx context.Context) (cloudBase, error) {
 		loaded: loaded,
 		curCtx: curCtx,
 	}, nil
+}
+
+func (l *ConfigLoader) buildCloudRefreshTransport(ctx context.Context, curCtx *config.Context, gcomURL, contextName string, sources []config.ConfigSource) http.RoundTripper {
+	rt := auth.NewCloudRefreshTransport(auth.CloudRefreshTransportConfig{
+		Base:             &httputils.UserAgentTransport{Base: &retry.Transport{}},
+		GCOMURL:          gcomURL,
+		ClientID:         "gcx",
+		Token:            curCtx.Cloud.Token,
+		RefreshToken:     curCtx.Cloud.RefreshToken,
+		ExpiresAt:        parseRFC3339OrZero(curCtx.Cloud.TokenExpiresAt),
+		RefreshExpiresAt: parseRFC3339OrZero(curCtx.Cloud.RefreshExpiresAt),
+	})
+
+	persistSource := config.ResolveTokenPersistenceSource(ctx, l.configSource(), contextName, sources)
+	persistCtx := context.WithoutCancel(ctx)
+
+	rt.Lock = func(reqCtx context.Context) (func(), error) {
+		path, err := persistSource()
+		if err != nil {
+			return nil, err
+		}
+		lock := flock.New(path + ".lock")
+		lockCtx, cancel := context.WithTimeout(context.WithoutCancel(reqCtx), 30*time.Second)
+		defer cancel()
+		if ok, err := lock.TryLockContext(lockCtx, 100*time.Millisecond); err != nil || !ok {
+			return nil, err
+		}
+		return func() { _ = lock.Unlock() }, nil
+	}
+
+	rt.Reload = func() (auth.StoredTokens, bool, error) {
+		fresh, err := config.Load(persistCtx, persistSource)
+		if err != nil {
+			return auth.StoredTokens{}, false, err
+		}
+		c := fresh.Contexts[contextName]
+		if c == nil || c.Cloud == nil || c.Cloud.RefreshToken == "" {
+			return auth.StoredTokens{}, false, nil
+		}
+		return auth.StoredTokens{
+			Token:            c.Cloud.Token,
+			RefreshToken:     c.Cloud.RefreshToken,
+			ExpiresAt:        parseRFC3339OrZero(c.Cloud.TokenExpiresAt),
+			RefreshExpiresAt: parseRFC3339OrZero(c.Cloud.RefreshExpiresAt),
+		}, true, nil
+	}
+
+	rt.OnRefresh = func(token, refreshToken, expiresAt, refreshExpiresAt string) error {
+		fresh, err := config.Load(persistCtx, persistSource)
+		if err != nil {
+			return err
+		}
+
+		c := fresh.Contexts[contextName]
+		if c == nil {
+			c = &config.Context{}
+			if fresh.Contexts == nil {
+				fresh.Contexts = make(map[string]*config.Context)
+			}
+			fresh.Contexts[contextName] = c
+		}
+		if c.Cloud == nil {
+			c.Cloud = &config.CloudConfig{}
+		}
+
+		c.Cloud.Token = token
+		c.Cloud.RefreshToken = refreshToken
+		c.Cloud.TokenExpiresAt = expiresAt
+		c.Cloud.RefreshExpiresAt = refreshExpiresAt
+		return config.Write(persistCtx, persistSource, fresh)
+	}
+
+	return rt
+}
+
+func parseRFC3339OrZero(s string) time.Time {
+	if s == "" {
+		return time.Time{}
+	}
+	t, _ := time.Parse(time.RFC3339, s)
+	return t
 }
 
 // CloudTokenConfig holds the minimal cloud credentials needed for
@@ -461,6 +552,22 @@ func (l *ConfigLoader) SaveProviderConfig(ctx context.Context, providerName, key
 
 // LoadFullConfig loads the full config from the config file, applying env var
 // overrides and context flags. Returns a pointer to the resolved Config.
+// CloudOrgSlug returns the cloud.org value from the current context config,
+// or "" if not set. This is used as the default org for cloud commands.
+func (l *ConfigLoader) CloudOrgSlug() string {
+	cfg, err := config.LoadLayered(context.Background(), l.configFile,
+		contextSelectionOverride(l.ctxName),
+	)
+	if err != nil {
+		return ""
+	}
+	curCtx := cfg.GetCurrentContext()
+	if curCtx == nil || curCtx.Cloud == nil {
+		return ""
+	}
+	return curCtx.Cloud.Org
+}
+
 func (l *ConfigLoader) LoadFullConfig(ctx context.Context) (*config.Config, error) {
 	ctxName := l.resolvedContextName(ctx)
 	overrides := []config.Override{
