@@ -182,3 +182,75 @@ func TestFormatQueryRaw_EmptyIsSilent(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, buf.String())
 }
+
+func TestFormatPatternsTable_SortedByCountDescending(t *testing.T) {
+	resp := &loki.PatternsResponse{
+		Status: "success",
+		Data: []loki.PatternEntry{
+			{
+				Pattern: "<_> level=error <_>",
+				Samples: [][]int64{{1711839260, 3}, {1711839270, 1}},
+			},
+			{
+				Pattern: "<_> level=info <_>",
+				Samples: [][]int64{{1711839260, 105}, {1711839270, 222}},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	err := loki.FormatPatternsTable(&buf, resp)
+	require.NoError(t, err)
+
+	out := buf.String()
+	assert.Contains(t, out, "PATTERN")
+	assert.Contains(t, out, "COUNT")
+	assert.Contains(t, out, "<_> level=info <_>")
+	assert.Contains(t, out, "327")
+	assert.Contains(t, out, "<_> level=error <_>")
+	assert.Contains(t, out, "4")
+
+	// info (327) should appear before error (4)
+	infoIdx := strings.Index(out, "<_> level=info <_>")
+	errorIdx := strings.Index(out, "<_> level=error <_>")
+	assert.Less(t, infoIdx, errorIdx, "higher-count pattern should appear first")
+}
+
+func TestFormatPatternsTable_Empty(t *testing.T) {
+	resp := &loki.PatternsResponse{Status: "success", Data: []loki.PatternEntry{}}
+
+	var buf bytes.Buffer
+	err := loki.FormatPatternsTable(&buf, resp)
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "No patterns found")
+}
+
+func TestPatternEntry_TotalCount(t *testing.T) {
+	tests := []struct {
+		name    string
+		entry   loki.PatternEntry
+		want    int64
+	}{
+		{
+			name:  "multiple samples",
+			entry: loki.PatternEntry{Samples: [][]int64{{1, 10}, {2, 20}, {3, 30}}},
+			want:  60,
+		},
+		{
+			name:  "empty samples",
+			entry: loki.PatternEntry{Samples: [][]int64{}},
+			want:  0,
+		},
+		{
+			name:  "single sample",
+			entry: loki.PatternEntry{Samples: [][]int64{{1, 42}}},
+			want:  42,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.entry.TotalCount())
+		})
+	}
+}

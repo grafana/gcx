@@ -86,6 +86,37 @@ type MetricQuerySample struct {
 	Values [][]any           `json:"values,omitempty"` // [[timestamp, value], ...] for range queries
 }
 
+// PatternsRequest represents a request to the Loki patterns detection endpoint.
+type PatternsRequest struct {
+	Query string
+	Start time.Time
+	End   time.Time
+	Step  time.Duration
+}
+
+// PatternsResponse represents the response from the Loki patterns API.
+type PatternsResponse struct {
+	Status string         `json:"status"`
+	Data   []PatternEntry `json:"data"`
+}
+
+// PatternEntry represents a single detected log pattern with sample counts.
+type PatternEntry struct {
+	Pattern string    `json:"pattern"`
+	Samples [][]int64 `json:"samples"` // [[timestamp_sec, count], ...]
+}
+
+// TotalCount returns the sum of all sample counts for this pattern.
+func (p PatternEntry) TotalCount() int64 {
+	var total int64
+	for _, s := range p.Samples {
+		if len(s) >= 2 {
+			total += s[1]
+		}
+	}
+	return total
+}
+
 // GrafanaQueryResponse represents the response from Grafana's datasource query API.
 type GrafanaQueryResponse struct {
 	Results map[string]GrafanaResult `json:"results"`

@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/query/loki"
@@ -28,6 +29,7 @@ func TestBuildPathsEscapeDatasourceUID(t *testing.T) {
 		{"labels", c.BuildLabelsPath(uid)},
 		{"labelValues", c.BuildLabelValuesPath(uid, "job")},
 		{"series", c.BuildSeriesPath(uid)},
+		{"patterns", c.BuildPatternsPath(uid)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -39,6 +41,62 @@ func TestBuildPathsEscapeDatasourceUID(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPatterns_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Contains(t, r.URL.Path, "/api/datasources/uid/loki-uid/resources/patterns")
+		assert.Equal(t, `{job="varlogs"}`, r.URL.Query().Get("query"))
+		assert.NotEmpty(t, r.URL.Query().Get("start"))
+		assert.NotEmpty(t, r.URL.Query().Get("end"))
+
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":[{"pattern":"<_> level=info <_>","samples":[[1711839260,105],[1711839270,222]]}]}`))
+	}))
+	defer server.Close()
+
+	cfg := config.NamespacedRESTConfig{
+		Config:    rest.Config{Host: server.URL},
+		Namespace: "default",
+	}
+	client, err := loki.NewClient(cfg)
+	require.NoError(t, err)
+
+	now := time.Now()
+	resp, err := client.Patterns(context.Background(), "loki-uid", loki.PatternsRequest{
+		Query: `{job="varlogs"}`,
+		Start: now.Add(-1 * time.Hour),
+		End:   now,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "success", resp.Status)
+	require.Len(t, resp.Data, 1)
+	assert.Equal(t, "<_> level=info <_>", resp.Data[0].Pattern)
+	assert.Len(t, resp.Data[0].Samples, 2)
+}
+
+func TestPatterns_HTTPError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"status":"error","error":"parse error"}`))
+	}))
+	defer server.Close()
+
+	cfg := config.NamespacedRESTConfig{
+		Config:    rest.Config{Host: server.URL},
+		Namespace: "default",
+	}
+	client, err := loki.NewClient(cfg)
+	require.NoError(t, err)
+
+	now := time.Now()
+	_, err = client.Patterns(context.Background(), "loki-uid", loki.PatternsRequest{
+		Query: `{job="bad"}`,
+		Start: now.Add(-1 * time.Hour),
+		End:   now,
+	})
+	require.Error(t, err)
 }
 
 func TestQuery_ReturnsTypedAPIErrorForGrafanaEnvelope(t *testing.T) {

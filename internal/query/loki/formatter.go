@@ -175,6 +175,31 @@ func FormatLabelsTable(w io.Writer, resp *LabelsResponse) error {
 	return t.Render(w)
 }
 
+// FormatPatternsTable formats a PatternsResponse as a table sorted by total count descending.
+func FormatPatternsTable(w io.Writer, resp *PatternsResponse) error {
+	if len(resp.Data) == 0 {
+		fmt.Fprintln(w, "No patterns found")
+		return nil
+	}
+
+	type ranked struct {
+		pattern string
+		count   int64
+	}
+
+	rows := make([]ranked, 0, len(resp.Data))
+	for _, entry := range resp.Data {
+		rows = append(rows, ranked{pattern: entry.Pattern, count: entry.TotalCount()})
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].count > rows[j].count })
+
+	t := style.NewTable("PATTERN", "COUNT")
+	for _, r := range rows {
+		t.Row(r.pattern, strconv.FormatInt(r.count, 10))
+	}
+	return t.Render(w)
+}
+
 func FormatSeriesTable(w io.Writer, resp *SeriesResponse) error {
 	if len(resp.Data) == 0 {
 		fmt.Fprintln(w, "No series found")

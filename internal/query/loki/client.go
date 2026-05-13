@@ -335,6 +335,46 @@ func (c *Client) Series(ctx context.Context, datasourceUID string, matchers []st
 	return &result, nil
 }
 
+func (c *Client) Patterns(ctx context.Context, datasourceUID string, req PatternsRequest) (*PatternsResponse, error) {
+	apiPath := c.buildPatternsPath(datasourceUID)
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.restConfig.Host+apiPath, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	q := httpReq.URL.Query()
+	q.Set("query", req.Query)
+	q.Set("start", strconv.FormatInt(req.Start.Unix(), 10))
+	q.Set("end", strconv.FormatInt(req.End.Unix(), 10))
+	if req.Step > 0 {
+		q.Set("step", strconv.FormatInt(int64(req.Step.Seconds()), 10))
+	}
+	httpReq.URL.RawQuery = q.Encode()
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get patterns: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, queryerror.FromBody("loki", "patterns query", resp.StatusCode, respBody)
+	}
+
+	var result PatternsResponse
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &result, nil
+}
+
 func (c *Client) buildQueryPath() string {
 	return fmt.Sprintf("/apis/query.grafana.app/v0alpha1/namespaces/%s/query",
 		c.restConfig.Namespace)
@@ -351,6 +391,10 @@ func (c *Client) buildLabelValuesPath(datasourceUID, labelName string) string {
 
 func (c *Client) buildSeriesPath(datasourceUID string) string {
 	return fmt.Sprintf("/api/datasources/uid/%s/resources/series", url.PathEscape(datasourceUID))
+}
+
+func (c *Client) buildPatternsPath(datasourceUID string) string {
+	return fmt.Sprintf("/api/datasources/uid/%s/resources/patterns", url.PathEscape(datasourceUID))
 }
 
 func convertGrafanaResponse(grafanaResp *GrafanaQueryResponse) *QueryResponse {

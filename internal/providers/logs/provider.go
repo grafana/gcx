@@ -109,6 +109,22 @@ func (p *Provider) Commands() []*cobra.Command {
   gcx logs series -d UID --match '{job="varlogs"}' -o json`
 	cmd.AddCommand(sCmd)
 
+	pCmd := dsloki.PatternsCmd(loader)
+	pCmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "medium",
+		agent.AnnotationLLMHint:   `gcx logs patterns -d abc123 '{job="grafana"}' --since 1h -o json`,
+	}
+	pCmd.Example = `
+  # Detect patterns in logs over the last hour
+  gcx logs patterns '{job="varlogs"}'
+
+  # Patterns with explicit time range
+  gcx logs patterns '{job="varlogs"}' --from 2024-01-01T00:00:00Z --to 2024-01-01T01:00:00Z
+
+  # Output as JSON (includes per-timestamp sample counts)
+  gcx logs patterns '{job="varlogs"}' --since 1h -o json`
+	cmd.AddCommand(pCmd)
+
 	// Adaptive Logs subcommands — rename Use from "logs" to "adaptive".
 	adaptiveCmd := adaptivelogs.Commands(loader)
 	adaptiveCmd.Use = "adaptive"
