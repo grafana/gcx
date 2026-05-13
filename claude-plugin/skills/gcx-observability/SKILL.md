@@ -172,7 +172,7 @@ Show a summary of all test definitions created. Mark task completed.
 Mark task in_progress.
 
 **Pre-check — skip if already deployed:**
-Run `gcx setup instrumentation status` to check current signal status. Also check whether Alloy pods are already running in the monitoring namespace using kubectl (list pods filtered by alloy labels). If Alloy is running and infrastructure signals are healthy, skip Step 1. If app signals are also healthy, skip the rest and mark the phase completed.
+Run `gcx instrumentation status` to check current signal status. Also check whether Alloy pods are already running in the monitoring namespace using kubectl (list pods filtered by alloy labels). If Alloy is running and infrastructure signals are healthy, skip Step 1. If app signals are also healthy, skip the rest and mark the phase completed.
 
 **Pre-check — application must be running in Kubernetes first.**
 
@@ -209,18 +209,18 @@ gcx fleet pipelines create -f pipeline.yaml
 gcx fleet pipelines update <name> -f pipeline.yaml
 ```
 
-Then wait for infrastructure signals to appear by polling `gcx setup instrumentation status` (timeout 5 minutes). If this times out, debug the Alloy deployment before continuing.
+Then wait for infrastructure signals to appear by polling `gcx instrumentation status` (timeout 5 minutes). If this times out, debug the Alloy deployment before continuing.
 
 ---
 
 **Step 2 — Parallel wave — launch all four agents simultaneously in one message:**
 
-- **Agent A** — Instrumentation discovery + apply:
-  Run `gcx setup instrumentation discover --cluster <cluster>` to find instrumentable workloads.
-  Then `gcx setup instrumentation show <cluster>` to get the current config as a manifest.
-  Enable full observability for discovered workloads in the manifest: tracing, logging, profiling.
-  Apply the updated config: `gcx setup instrumentation apply -f config.yaml --dry-run` then `gcx setup instrumentation apply -f config.yaml`.
-  Verify with `gcx setup instrumentation status`.
+- **Agent A** — Instrumentation setup:
+  Run `gcx instrumentation clusters list` to see all clusters and their current status.
+  Run `gcx instrumentation clusters get <cluster>` to review the cluster's current config.
+  Run `gcx instrumentation setup <cluster> --use-defaults` to configure K8s monitoring and print the helm install command to connect the cluster to Grafana Cloud via Fleet Management. (`--use-defaults` is required when stdin is not a TTY, which is always the case for agents.)
+  To adjust individual feature flags after initial setup (RMW): `gcx instrumentation clusters configure <cluster> --cost-metrics --cluster-events`.
+  Verify with `gcx instrumentation status`.
 
 - **Agent B** — Fleet pipelines verification:
   List pipelines (`gcx fleet pipelines list`) to confirm pipeline exists and is receiving data.
@@ -248,11 +248,11 @@ Wait for all four agents. Report combined results.
 ---
 
 **Step 3 — Verify app signals are flowing after instrumentation:**
-Poll `gcx setup instrumentation status` (timeout 5 minutes). SM checks deployed in Step 2 should already be generating traffic, making this verification reliable. If this times out, check that instrumentation was applied correctly and that SM checks are active and targeting the correct endpoints.
+Poll `gcx instrumentation status` (timeout 5 minutes). SM checks deployed in Step 2 should already be generating traffic, making this verification reliable. If this times out, check that instrumentation was applied correctly and that SM checks are active and targeting the correct endpoints.
 
 Mark task completed.
 
-After Wave A (Phases 4–6, 8–9) completes, do a final signal check using `gcx setup instrumentation status`. If signals are unhealthy, check that app deployments have OTEL instrumentation and are sending to Alloy.
+After Wave A (Phases 4–6, 8–9) completes, do a final signal check using `gcx instrumentation status`. If signals are unhealthy, check that app deployments have OTEL instrumentation and are sending to Alloy.
 
 ---
 
@@ -514,7 +514,7 @@ Mark task completed.
 Mark task in_progress.
 
 **Step 1 — comprehensive signal health check:**
-Run `gcx setup instrumentation status` and `gcx setup status` for overall health. Report all signal statuses. If any signal is unhealthy, investigate before continuing.
+Run `gcx instrumentation status` and `gcx setup status` for overall health. Report all signal statuses. If any signal is unhealthy, investigate before continuing.
 
 **Step 2 — Validate test definitions against actual signals — parallel:**
 
