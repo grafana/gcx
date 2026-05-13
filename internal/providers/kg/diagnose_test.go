@@ -223,9 +223,9 @@ func TestDiagnoseTextCodec_Encode(t *testing.T) {
 	require.NoError(t, err)
 
 	output := buf.String()
-	assert.Contains(t, output, "env: production")
-	assert.Contains(t, output, "✓ PASS")
-	assert.Contains(t, output, "✗ FAIL")
+	assert.Contains(t, output, "CHECK")
+	assert.Contains(t, output, "PASS")
+	assert.Contains(t, output, "FAIL")
 	assert.Contains(t, output, "Check recording rules.")
 	assert.Contains(t, output, "1/2 checks passed")
 }
@@ -572,8 +572,8 @@ func TestServiceDiagnoseTextCodec(t *testing.T) {
 	assert.Contains(t, output, "api-service")
 	assert.Contains(t, output, "production")
 	assert.Contains(t, output, "CALLS → checkout")
-	assert.Contains(t, output, "✓ PASS")
-	assert.Contains(t, output, "DIAGNOSIS")
+	assert.Contains(t, output, "PASS")
+	assert.Contains(t, output, "Diagnosis")
 	assert.Contains(t, output, "2/2 checks passed")
 }
 
@@ -710,9 +710,9 @@ func TestLabelsDiagnoseTextCodec(t *testing.T) {
 	require.NoError(t, err)
 
 	output := buf.String()
-	assert.Contains(t, output, "Label Pipeline")
+	assert.Contains(t, output, "Checks:")
 	assert.Contains(t, output, "production")
-	assert.Contains(t, output, "NOT MAPPED")
-	assert.Contains(t, output, "DIAGNOSIS")
+	assert.Contains(t, output, "not mapped")
+	assert.Contains(t, output, "Diagnosis")
 	assert.Contains(t, output, "1/2 checks passed")
 }

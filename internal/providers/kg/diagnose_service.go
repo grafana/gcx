@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"text/tabwriter"
 	"time"
 
 	"github.com/grafana/gcx/internal/format"
@@ -473,44 +474,51 @@ func (c *ServiceDiagnoseTextCodec) Encode(w io.Writer, v any) error {
 		fmt.Fprintln(w)
 	}
 
-	// Checks.
-	fmt.Fprintln(w, "  CHECKS")
-	maxName := 0
-	for _, c := range r.Checks {
-		if len(c.Name) > maxName {
-			maxName = len(c.Name)
-		}
-	}
+	// Checks table.
+	fmt.Fprintln(w, "Checks:")
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "CHECK\tSTATUS\tDETAIL")
 	for _, check := range r.Checks {
-		icon := statusIcon(check.Status)
-		status := strings.ToUpper(string(check.Status))
-		fmt.Fprintf(w, "  %-*s  %s %-4s  %s\n", maxName, check.Name, icon, status, check.Detail)
+		fmt.Fprintf(tw, "%s\t%s\t%s\n", check.Name, strings.ToUpper(string(check.Status)), check.Detail)
+	}
+	_ = tw.Flush()
+
+	// Recommendations.
+	var recs []string
+	for _, check := range r.Checks {
 		if check.Recommendation != "" && check.Status != CheckPass {
-			fmt.Fprintf(w, "  %-*s         %s\n", maxName, "", check.Recommendation)
+			recs = append(recs, fmt.Sprintf("  %s: %s", check.Name, check.Recommendation))
 		}
 	}
-	fmt.Fprintln(w)
+	if len(recs) > 0 {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "Recommendations:")
+		for _, rec := range recs {
+			fmt.Fprintln(w, rec)
+		}
+	}
 
 	// Diagnosis.
 	if len(r.Diagnosis) > 0 {
-		fmt.Fprintln(w, "  DIAGNOSIS")
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "Diagnosis:")
 		for _, d := range r.Diagnosis {
 			fmt.Fprintf(w, "  %s\n", d)
 		}
-		fmt.Fprintln(w)
 	}
 
 	// Next steps.
 	if len(r.NextSteps) > 0 {
-		fmt.Fprintln(w, "  SUGGESTED NEXT STEPS")
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "Suggested next steps:")
 		for i, s := range r.NextSteps {
 			fmt.Fprintf(w, "  %d. %s\n", i+1, s)
 		}
-		fmt.Fprintln(w)
 	}
 
 	// Summary.
-	fmt.Fprintf(w, "  %d/%d checks passed", r.Summary.Passed, r.Summary.Total)
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "%d/%d checks passed", r.Summary.Passed, r.Summary.Total)
 	if r.Summary.Failed > 0 {
 		fmt.Fprintf(w, ", %d failed", r.Summary.Failed)
 	}

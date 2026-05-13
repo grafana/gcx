@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"text/tabwriter"
 
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/query/prometheus"
@@ -350,54 +351,61 @@ func (c *LabelsDiagnoseTextCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for text codec: expected LabelsDiagnoseResult")
 	}
 
-	fmt.Fprintln(w, "Label Pipeline Diagnostics")
-	fmt.Fprintln(w)
-
-	// Checks.
-	maxName := 0
-	for _, c := range r.Checks {
-		if len(c.Name) > maxName {
-			maxName = len(c.Name)
-		}
-	}
+	// Checks table.
+	fmt.Fprintln(w, "Checks:")
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "CHECK\tSTATUS\tDETAIL")
 	for _, check := range r.Checks {
-		icon := statusIcon(check.Status)
-		status := strings.ToUpper(string(check.Status))
-		fmt.Fprintf(w, "  %-*s  %s %-4s  %s\n", maxName, check.Name, icon, status, check.Detail)
+		fmt.Fprintf(tw, "%s\t%s\t%s\n", check.Name, strings.ToUpper(string(check.Status)), check.Detail)
+	}
+	_ = tw.Flush()
+
+	// Recommendations.
+	var recs []string
+	for _, check := range r.Checks {
 		if check.Recommendation != "" && check.Status != CheckPass {
-			fmt.Fprintf(w, "  %-*s         %s\n", maxName, "", check.Recommendation)
+			recs = append(recs, fmt.Sprintf("  %s: %s", check.Name, check.Recommendation))
 		}
 	}
-	fmt.Fprintln(w)
+	if len(recs) > 0 {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "Recommendations:")
+		for _, rec := range recs {
+			fmt.Fprintln(w, rec)
+		}
+	}
 
 	// Mapping table.
 	if len(r.Mappings) > 0 {
-		fmt.Fprintln(w, "  LABEL MAPPING")
-		fmt.Fprintln(w, "  deployment_environment → asserts_env")
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "Label mapping (deployment_environment → asserts_env):")
+		mtw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+		fmt.Fprintln(mtw, "DEPLOYMENT_ENVIRONMENT\tASSERTS_ENV\tSTATUS")
 		for _, m := range r.Mappings {
 			switch m.Status {
 			case "mapped":
-				fmt.Fprintf(w, "    %-30s → %-30s  ✓ mapped\n", m.DeploymentEnv, m.AssertsEnv)
+				fmt.Fprintf(mtw, "%s\t%s\tmapped\n", m.DeploymentEnv, m.AssertsEnv)
 			case "unmapped":
-				fmt.Fprintf(w, "    %-30s → %-30s  ✗ NOT MAPPED — check relabeling rules\n", m.DeploymentEnv, "(missing)")
+				fmt.Fprintf(mtw, "%s\t(missing)\tnot mapped — check relabeling rules\n", m.DeploymentEnv)
 			case "orphaned":
-				fmt.Fprintf(w, "    %-30s → %-30s  ! orphaned (no deployment_environment source)\n", "(unknown source)", m.AssertsEnv)
+				fmt.Fprintf(mtw, "(unknown source)\t%s\torphaned (no deployment_environment source)\n", m.AssertsEnv)
 			}
 		}
-		fmt.Fprintln(w)
+		_ = mtw.Flush()
 	}
 
 	// Diagnosis.
 	if len(r.Diagnosis) > 0 {
-		fmt.Fprintln(w, "  DIAGNOSIS")
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "Diagnosis:")
 		for _, d := range r.Diagnosis {
 			fmt.Fprintf(w, "  %s\n", d)
 		}
-		fmt.Fprintln(w)
 	}
 
 	// Summary.
-	fmt.Fprintf(w, "  %d/%d checks passed", r.Summary.Passed, r.Summary.Total)
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "%d/%d checks passed", r.Summary.Passed, r.Summary.Total)
 	if r.Summary.Failed > 0 {
 		fmt.Fprintf(w, ", %d failed", r.Summary.Failed)
 	}

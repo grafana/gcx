@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"text/tabwriter"
 
 	"github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
@@ -247,10 +248,9 @@ func resolvePromClient(ctx context.Context, loader *providers.ConfigLoader, cfg 
 	var dsUID string
 	resolved, err := dsquery.ResolveDatasource(ctx, flagValue, cfgCtx, cfg, "prometheus")
 	if err != nil {
-		// The KG always uses the default Prometheus datasource. Fall back to the
-		// conventional Grafana Cloud UID rather than skipping metric checks entirely.
+		// The KG always uses the default Prometheus datasource. Silently fall back
+		// to the conventional Grafana Cloud UID rather than skipping metric checks.
 		dsUID = defaultPromDatasourceUID
-		fmt.Fprintf(cmd.ErrOrStderr(), "  note: datasource auto-discovery failed, using %s (%v)\n", dsUID, err)
 	} else {
 		dsUID = resolved.UID
 	}
@@ -739,32 +739,32 @@ func (c *DiagnoseTextCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for text codec: expected DiagnoseResult")
 	}
 
-	header := "Knowledge Graph Diagnostics"
-	if result.Env != "" {
-		header += " — env: " + result.Env
-	}
-	fmt.Fprintln(w, header)
-	fmt.Fprintln(w)
-
-	// Find max name width for alignment.
-	maxName := 0
-	for _, c := range result.Checks {
-		if len(c.Name) > maxName {
-			maxName = len(c.Name)
-		}
-	}
-
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "CHECK\tSTATUS\tDETAIL")
 	for _, check := range result.Checks {
-		icon := statusIcon(check.Status)
-		status := strings.ToUpper(string(check.Status))
-		fmt.Fprintf(w, "  %-*s  %s %-4s  %s\n", maxName, check.Name, icon, status, check.Detail)
+		fmt.Fprintf(tw, "%s\t%s\t%s\n", check.Name, strings.ToUpper(string(check.Status)), check.Detail)
+	}
+	if err := tw.Flush(); err != nil {
+		return err
+	}
+
+	// Print recommendations for failed/warned checks below the table.
+	var recs []string
+	for _, check := range result.Checks {
 		if check.Recommendation != "" && check.Status != CheckPass {
-			fmt.Fprintf(w, "  %-*s         %s\n", maxName, "", check.Recommendation)
+			recs = append(recs, fmt.Sprintf("  %s: %s", check.Name, check.Recommendation))
+		}
+	}
+	if len(recs) > 0 {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "Recommendations:")
+		for _, r := range recs {
+			fmt.Fprintln(w, r)
 		}
 	}
 
 	fmt.Fprintln(w)
-	fmt.Fprintf(w, "  %d/%d checks passed", result.Summary.Passed, result.Summary.Total)
+	fmt.Fprintf(w, "%d/%d checks passed", result.Summary.Passed, result.Summary.Total)
 	if result.Summary.Failed > 0 {
 		fmt.Fprintf(w, ", %d failed", result.Summary.Failed)
 	}
@@ -778,19 +778,4 @@ func (c *DiagnoseTextCodec) Encode(w io.Writer, v any) error {
 
 func (c *DiagnoseTextCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("text format does not support decoding")
-}
-
-func statusIcon(s CheckStatus) string {
-	switch s {
-	case CheckPass:
-		return "✓"
-	case CheckFail:
-		return "✗"
-	case CheckWarn:
-		return "!"
-	case CheckSkip:
-		return "-"
-	default:
-		return "?"
-	}
 }
