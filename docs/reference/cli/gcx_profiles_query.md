@@ -42,7 +42,7 @@ gcx profiles query [EXPR] [flags]
   -o, --output string         Output format. One of: agents, graph, json, table, wide, yaml (default "table")
       --overwrite-pprof       Overwrite the output file if it already exists (only applies to --pprof-output)
       --pprof-output string   Write profile as gzip-compressed pprof binary to this path instead of querying flame graph data
-      --profile-type string   Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds') (required)
+      --profile-type string   Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles profile-types' to list available (required)
       --since string          Duration before --to (or now if omitted); mutually exclusive with --from
       --step string           Query step (e.g., '15s', '1m')
       --to string             End time (RFC3339, Unix timestamp, or relative like 'now')
