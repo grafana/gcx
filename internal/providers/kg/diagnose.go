@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"text/tabwriter"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
@@ -428,7 +429,8 @@ func checkStackStatus(ctx context.Context, client *Client) []CheckResult {
 }
 
 func checkEntityCounts(ctx context.Context, client *Client) CheckResult {
-	counts, err := client.CountEntityTypes(ctx)
+	now := time.Now()
+	counts, err := client.CountEntityTypes(ctx, now.Add(-1*time.Hour).UnixMilli(), now.UnixMilli(), nil)
 	if err != nil {
 		return CheckResult{
 			Name:           "Entity counts",
