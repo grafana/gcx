@@ -203,6 +203,70 @@ func TestActivityTableCodec_LongBodyTruncated(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
+// IncidentContextTableCodec tests
+// ---------------------------------------------------------------------------
+
+func TestIncidentContextTableCodec_Encode(t *testing.T) {
+	alertGroup := "ag-99"
+	contexts := []irm.IncidentContext{
+		{
+			// Alert-group links come back as genericURL contexts with
+			// alertGroupID set — there is no dedicated alertGroup type
+			// in the IRM API.
+			ContextID:    "ctx-001",
+			IncidentID:   "inc-123",
+			Type:         "genericURL",
+			Status:       "attached",
+			Title:        "Alert Group",
+			AlertGroupID: &alertGroup,
+			CreatedTime:  "2024-06-15T10:30:00Z",
+		},
+		{
+			ContextID:  "ctx-002",
+			IncidentID: "inc-123",
+			Type:       "grafana.dashboard",
+		},
+	}
+
+	tests := []struct {
+		name        string
+		wide        bool
+		wantColumns []string
+		wantInRows  []string
+	}{
+		{
+			name:        "table format shows standard columns",
+			wide:        false,
+			wantColumns: []string{"CONTEXTID", "TYPE", "STATUS", "ALERTGROUPID", "TITLE"},
+			wantInRows:  []string{"ctx-001", "genericURL", "attached", "ag-99", "Alert Group", "ctx-002", "grafana.dashboard"},
+		},
+		{
+			name:        "wide format includes CREATED column",
+			wide:        true,
+			wantColumns: []string{"CONTEXTID", "TYPE", "STATUS", "ALERTGROUPID", "TITLE", "CREATED"},
+			wantInRows:  []string{"2024-06-15T10:30"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			codec := &irm.IncidentContextTableCodec{Wide: tt.wide}
+			var buf bytes.Buffer
+			err := codec.Encode(&buf, contexts)
+			require.NoError(t, err)
+
+			out := buf.String()
+			for _, col := range tt.wantColumns {
+				assert.Contains(t, out, col)
+			}
+			for _, want := range tt.wantInRows {
+				assert.Contains(t, out, want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // label validation tests
 // ---------------------------------------------------------------------------
 

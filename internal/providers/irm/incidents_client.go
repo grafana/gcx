@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,6 +28,7 @@ const (
 	actQueryPath      = incidentBasePath + "/ActivityService.QueryActivity"
 	actAddPath        = incidentBasePath + "/ActivityService.AddActivity"
 	sevGetPath        = incidentBasePath + "/SeveritiesService.GetOrgSeverities"
+	ctxQueryPath      = incidentBasePath + "/IncidentContextService.QueryIncidentContext"
 )
 
 // Client is an HTTP client for the Grafana IRM Incidents API.
@@ -239,6 +241,37 @@ func (c *IncidentClient) AddActivity(ctx context.Context, incidentID, body strin
 	}
 
 	return nil
+}
+
+// QueryIncidentContext returns the contexts (alert groups, dashboards, …)
+// attached to an incident. Additional fields on query — Type, Status,
+// AlertGroupID, etc. — narrow the result; only IncidentID is required.
+func (c *IncidentClient) QueryIncidentContext(ctx context.Context, query IncidentContextQuery) ([]IncidentContext, error) {
+	if query.IncidentID == "" {
+		return nil, errors.New("incidents: QueryIncidentContext: incidentID is required")
+	}
+
+	body, err := json.Marshal(queryIncidentContextRequest{Query: query})
+	if err != nil {
+		return nil, fmt.Errorf("incidents: marshal context query: %w", err)
+	}
+
+	resp, err := c.doRequest(ctx, ctxQueryPath, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("incidents: query context for %s: %w", query.IncidentID, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, handleIncidentErrorResponse(resp)
+	}
+
+	var result queryIncidentContextResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("incidents: decode context response: %w", err)
+	}
+
+	return result.IncidentContexts, nil
 }
 
 // GetSeverities retrieves the organization's severity levels.
