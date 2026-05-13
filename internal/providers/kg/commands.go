@@ -334,7 +334,8 @@ func searchByTypes(ctx context.Context, cmd *cobra.Command, client *Client, enti
 }
 
 func collectEntityTypes(cmd *cobra.Command, client *Client) ([]string, error) {
-	counts, err := client.CountEntityTypes(cmd.Context())
+	now := time.Now()
+	counts, err := client.CountEntityTypes(cmd.Context(), now.Add(-1*time.Hour).UnixMilli(), now.UnixMilli(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get entity types: %w", err)
 	}
@@ -1520,18 +1521,18 @@ func rcaWorkbenchURL(host, entityType, name string, scope map[string]string, sta
 }
 
 // ---------------------------------------------------------------------------
-// Health command
+// Summary command
 // ---------------------------------------------------------------------------
 
-func newHealthCommand(loader RESTConfigLoader) *cobra.Command {
+func newSummaryCommand(loader RESTConfigLoader) *cobra.Command {
 	var (
-		healthScope      scopeFlags
-		healthEntityType string
+		summaryScope      scopeFlags
+		summaryEntityType string
 	)
-	ioOpts := &healthOpts{}
+	ioOpts := &summaryOpts{}
 	cmd := &cobra.Command{
-		Use:   "health",
-		Short: "Show a health summary with active insight counts.",
+		Use:   "summary",
+		Short: "Show a summary of entities and active insights, broken down by type, severity, and insight name.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := ioOpts.IO.Validate(); err != nil {
 				return err
@@ -1544,59 +1545,88 @@ func newHealthCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			startMs, endMs, err := healthScope.resolveTime()
+			startMs, endMs, err := summaryScope.resolveTime()
 			if err != nil {
 				return err
 			}
-			if err := healthScope.validateScopes(cmd.Context(), client); err != nil {
+			if err := summaryScope.validateScopes(cmd.Context(), client); err != nil {
 				return err
 			}
 
-			counts, err := client.CountEntityTypes(cmd.Context())
+			counts, err := client.CountEntityTypes(cmd.Context(), startMs, endMs, summaryScope.scopeCriteria())
 			if err != nil {
 				return err
 			}
+			typeCounts := map[string]int64{}
 			var entityTypes []string
-			var totalEntities int
+			var totalEntities int64
 			for t, cnt := range counts {
-				totalEntities += int(cnt)
+				totalEntities += cnt
 				if cnt > 0 {
+					typeCounts[t] = cnt
 					entityTypes = append(entityTypes, t)
 				}
 			}
-			if healthEntityType != "" {
-				entityTypes = []string{healthEntityType}
+			if summaryEntityType != "" {
+				entityTypes = []string{summaryEntityType}
 			}
-			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, true, false, healthScope.scopeCriteria(), startMs, endMs, 0, nil)
+			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, true, false, summaryScope.scopeCriteria(), startMs, endMs, 0, nil)
 			if err != nil {
 				return err
 			}
 			sevCounts := map[string]int{}
+			nameCounts := map[string]int{}
+			totalInsights := 0
 			for _, r := range results {
-				if s, ok := r.Assertion["severity"].(string); ok {
-					sevCounts[strings.ToUpper(s)]++
-				} else {
-					sevCounts["UNKNOWN"]++
+				assertions, _ := r.Assertion["assertions"].([]any)
+				for _, a := range assertions {
+					m, ok := a.(map[string]any)
+					if !ok {
+						continue
+					}
+					totalInsights++
+					name, _ := m["assertionName"].(string)
+					if name == "" {
+						name = "UNKNOWN"
+					}
+					nameCounts[name]++
+					sev, _ := m["severity"].(string)
+					if sev == "" {
+						sevCounts["UNKNOWN"]++
+					} else {
+						sevCounts[strings.ToUpper(sev)]++
+					}
 				}
 			}
-			return ioOpts.IO.Encode(cmd.OutOrStdout(), map[string]any{
-				"severityCounts": sevCounts,
-				"totalEntities":  totalEntities,
-				"totalInsights":  len(results),
+			type entitiesSummary struct {
+				Total  int64            `json:"total" yaml:"total"`
+				ByType map[string]int64 `json:"byType" yaml:"byType"`
+			}
+			type insightsSummary struct {
+				Total      int            `json:"total" yaml:"total"`
+				BySeverity map[string]int `json:"bySeverity" yaml:"bySeverity"`
+				ByName     map[string]int `json:"byName" yaml:"byName"`
+			}
+			return ioOpts.IO.Encode(cmd.OutOrStdout(), struct {
+				Entities entitiesSummary `json:"entities" yaml:"entities"`
+				Insights insightsSummary `json:"insights" yaml:"insights"`
+			}{
+				Entities: entitiesSummary{Total: totalEntities, ByType: typeCounts},
+				Insights: insightsSummary{Total: totalInsights, BySeverity: sevCounts, ByName: nameCounts},
 			})
 		},
 	}
-	healthScope.register(cmd)
-	cmd.Flags().StringVar(&healthEntityType, "type", "", "Limit to a specific entity type")
+	summaryScope.register(cmd)
+	cmd.Flags().StringVar(&summaryEntityType, "type", "", "Limit to a specific entity type")
 	ioOpts.setup(cmd.Flags())
 	return cmd
 }
 
-type healthOpts struct {
+type summaryOpts struct {
 	IO cmdio.Options
 }
 
-func (o *healthOpts) setup(flags *pflag.FlagSet) {
+func (o *summaryOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
 }

@@ -339,14 +339,11 @@ func (c *Client) LookupEntity(ctx context.Context, entityType, name string, scop
 	return &result, nil
 }
 
-// CountEntityTypes retrieves entity type counts for the last hour.
-func (c *Client) CountEntityTypes(ctx context.Context) (map[string]int64, error) {
-	now := time.Now()
+// CountEntityTypes retrieves entity type counts for the given time window and scope.
+func (c *Client) CountEntityTypes(ctx context.Context, startMs, endMs int64, sc *ScopeCriteria) (map[string]int64, error) {
 	body := EntityCountRequest{
-		TimeCriteria: &TimeCriteria{
-			Start: now.Add(-1 * time.Hour).UnixMilli(),
-			End:   now.UnixMilli(),
-		},
+		TimeCriteria:  &TimeCriteria{Start: startMs, End: endMs},
+		ScopeCriteria: sc,
 	}
 	var result map[string]int64
 	if err := c.postJSON(ctx, entityCountPath, body, &result); err != nil {
