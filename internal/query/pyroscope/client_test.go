@@ -226,6 +226,7 @@ func TestClient_Query_RequestFields(t *testing.T) {
 				LabelSelector: `{}`,
 			},
 			assert: func(t *testing.T, body map[string]any) {
+				t.Helper()
 				for _, k := range []string{"profileIdSelector", "stackTraceSelector", "maxNodes"} {
 					_, present := body[k]
 					assert.False(t, present, "%s should be omitted when unset", k)
@@ -240,6 +241,7 @@ func TestClient_Query_RequestFields(t *testing.T) {
 				ProfileIDs:    []string{"550e8400-e29b-41d4-a716-446655440000"},
 			},
 			assert: func(t *testing.T, body map[string]any) {
+				t.Helper()
 				assert.Equal(t, []any{"550e8400-e29b-41d4-a716-446655440000"}, body["profileIdSelector"])
 				_, present := body["spanSelector"]
 				assert.False(t, present, "spanSelector should not be sent on SelectMergeStacktraces (server drops it)")
@@ -255,13 +257,24 @@ func TestClient_Query_RequestFields(t *testing.T) {
 				},
 			},
 			assert: func(t *testing.T, body map[string]any) {
+				t.Helper()
 				sts, ok := body["stackTraceSelector"].(map[string]any)
-				require.True(t, ok, "stackTraceSelector should be an object")
+				if !assert.True(t, ok, "stackTraceSelector should be an object") {
+					return
+				}
 				cs, ok := sts["callSite"].([]any)
-				require.True(t, ok, "callSite should be an array")
-				require.Len(t, cs, 2)
-				assert.Equal(t, "main.run", cs[0].(map[string]any)["name"])
-				assert.Equal(t, "main.handler", cs[1].(map[string]any)["name"])
+				if !assert.True(t, ok, "callSite should be an array") {
+					return
+				}
+				if !assert.Len(t, cs, 2) {
+					return
+				}
+				loc0, ok := cs[0].(map[string]any)
+				assert.True(t, ok, "callSite[0] should be an object")
+				assert.Equal(t, "main.run", loc0["name"])
+				loc1, ok := cs[1].(map[string]any)
+				assert.True(t, ok, "callSite[1] should be an object")
+				assert.Equal(t, "main.handler", loc1["name"])
 			},
 		},
 	}
@@ -271,7 +284,9 @@ func TestClient_Query_RequestFields(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.Contains(t, r.URL.Path, "querier.v1.QuerierService/SelectMergeStacktraces")
 				var body map[string]any
-				require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+				if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) {
+					return
+				}
 				tt.assert(t, body)
 				w.Header().Set("Content-Type", "application/json")
 				_, _ = w.Write([]byte(emptyFlamegraph))
