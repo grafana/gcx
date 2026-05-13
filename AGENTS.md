@@ -78,8 +78,8 @@ cmd/gcx/
   linter/       Linting (mounted under dev lint)
   commands/     Commands catalog (agent metadata)
   helptree/     Help tree for agent context
-  setup/        Onboarding + instrumentation
-  instrumentation/  Instrumentation Hub commands (clusters list/get/configure/remove/wait; clusters apps subtree)
+  setup/        Onboarding (gcx setup status)
+  instrumentation/  Instrumentation Hub commands (clusters, services, setup wizard, status)
   skills/       Portable Agent Skills installer for .agents-compatible tools
   dev/          Developer tools (import, scaffold, generate, lint, serve)
   fail/         Structured error conversion
@@ -90,9 +90,7 @@ internal/
 ├── login/       Login orchestration (target detection, auth resolution, connectivity validation, sentinel-retry flow)
 ├── config/      Config types, loader, editor, rest.Config builder, stack-id discovery, context name helpers
 ├── cloud/       GCOM HTTP client for Grafana Cloud stack discovery
-├── fleet/       Shared fleet base client (HTTP, auth, config — used by fleet provider and setup/instrumentation)
-├── setup/
-│   └── instrumentation/  Manifest types, instrumentation client, optimistic lock comparison
+├── fleet/       Shared fleet base client (HTTP, auth, config — used by fleet provider and instrumentation provider)
 ├── resources/
 │   ├── *.go     Core types: Resource, Selector, Filter, Descriptor, Resources collection
 │   ├── adapter/    ResourceAdapter interface, Factory, ResourceClientRouter, self-registration, slug-ID helpers
