@@ -221,6 +221,11 @@ type PprofRequest struct {
 	MaxNodes      int64
 }
 
+// PprofWriteResult is the structured output emitted after writing a pprof binary to disk.
+type PprofWriteResult struct {
+	Path string `json:"path"`
+}
+
 // TopSeriesResponse represents an aggregated, ranked view of series data.
 type TopSeriesResponse struct {
 	ProfileType string           `json:"profileType"`

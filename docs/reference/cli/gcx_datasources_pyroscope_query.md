@@ -31,7 +31,7 @@ gcx datasources pyroscope query [EXPR] [flags]
 
   # Download as pprof binary (for use with go tool pprof)
   gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
-    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o pprof=./profile.pb.gz
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --pprof-output ./profile.pb.gz
 ```
 
 ### Options
@@ -44,7 +44,8 @@ gcx datasources pyroscope query [EXPR] [flags]
       --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --max-nodes int         Maximum nodes in flame graph (default 0/unlimited for pprof output, 50000 for all other formats)
   -o, --output string         Output format. One of: agents, graph, json, table, wide, yaml (default "table")
-      --overwrite-pprof       Overwrite the output file if it already exists (only applies to -o pprof=<path>)
+      --overwrite-pprof       Overwrite the output file if it already exists (only applies to --pprof-output)
+      --pprof-output string   Write profile as gzip-compressed pprof binary to this path instead of querying flame graph data
       --profile-type string   Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds') (required)
       --since string          Duration before --to (or now if omitted); mutually exclusive with --from
       --step string           Query step (e.g., '15s', '1m')
