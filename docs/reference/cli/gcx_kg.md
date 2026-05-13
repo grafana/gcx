@@ -23,6 +23,7 @@ Manage Grafana Knowledge Graph rules, entities, and insights
 ### SEE ALSO
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
+* [gcx kg diagnose](gcx_kg_diagnose.md)	 - Run diagnostic checks on the Knowledge Graph pipeline.
 * [gcx kg entities](gcx_kg_entities.md)	 - Manage Knowledge Graph entities.
 * [gcx kg insights](gcx_kg_insights.md)	 - Search insights and fetch their backing metrics.
 * [gcx kg meta](gcx_kg_meta.md)	 - Show Knowledge Graph metadata: entity types, valid env/namespace/site values, and telemetry query configs.
