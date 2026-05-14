@@ -51,6 +51,7 @@ require (
 require (
 	github.com/go-openapi/runtime v0.29.5
 	github.com/gofrs/flock v0.13.0
+	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
 	sigs.k8s.io/yaml v1.6.0
 )
 
@@ -283,7 +284,6 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	google.golang.org/grpc v1.80.0 // indirect
-	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect

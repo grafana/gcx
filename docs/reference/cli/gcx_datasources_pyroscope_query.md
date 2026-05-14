@@ -33,6 +33,14 @@ gcx datasources pyroscope query [EXPR] [flags]
   gcx datasources pyroscope query '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
     --since 1h --profile-id <profile-uuid>
+
+  # Download as pprof binary (for use with go tool pprof)
+  gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o pprof
+
+  # Download as pprof binary to a specific path
+  gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o pprof --pprof-path ./cpu.pb.gz
 ```
 
 ### Options
@@ -43,8 +51,10 @@ gcx datasources pyroscope query [EXPR] [flags]
       --from string                   Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                          help for query
       --json string                   Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --max-nodes int                 Maximum nodes in flame graph (default 1024)
-  -o, --output string                 Output format. One of: agents, graph, json, table, wide, yaml (default "table")
+      --max-nodes int                 Maximum nodes in flame graph (default 0/unlimited for pprof output, 50000 for all other formats)
+  -o, --output string                 Output format. One of: agents, graph, json, pprof, table, wide, yaml (default "table")
+      --pprof-overwrite               Overwrite the output file if it already exists (only with -o pprof)
+      --pprof-path string             Destination path for pprof binary output (only with -o pprof; default: profile-YYYY-MM-DD-HHMMSS.pb.gz)
       --profile-id strings            Drill down to specific profile UUIDs from exemplar queries (repeatable)
       --profile-type string           Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles profile-types' to list available (required)
       --since string                  Duration before --to (or now if omitted); mutually exclusive with --from
