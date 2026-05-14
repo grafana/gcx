@@ -8,10 +8,6 @@ on:
       - closed
     paths:
       - "docs/sources/**"
-      - "docs/Makefile"
-      - "docs/docs.mk"
-      - "docs/make-docs"
-      - "docs/variables.mk"
 
 permissions: {}
 
