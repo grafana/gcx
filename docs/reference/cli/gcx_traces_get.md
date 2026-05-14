@@ -42,6 +42,7 @@ gcx traces get TRACE_ID [flags]
   -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the retrieved trace to stderr
       --since string        Duration before --to (or now if omitted); mutually exclusive with --from
+      --time string         Evaluation time for an instant query (RFC3339, Unix timestamp, or relative like 'now-5m'); mutually exclusive with --from/--to/--since
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 
