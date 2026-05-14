@@ -320,6 +320,17 @@ func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promCli
 				return nil
 			})
 		}
+		// Check 10+: Edge source gap detection — find metrics that exist but
+		// are missing asserts_env (silently dropped by recording rules).
+		for _, esc := range edgeSourceGapChecks(scope.namespace) {
+			g.Go(func() error {
+				c := checkEdgeSourceGap(ctx, promClient, datasourceUID, esc)
+				if c != nil {
+					addCheck(*c)
+				}
+				return nil
+			})
+		}
 	}
 
 	_ = g.Wait() // errors are captured in CheckResults, not returned
@@ -356,6 +367,9 @@ func checkOrder(name string) int {
 	}
 	if strings.HasPrefix(name, "Metric:") {
 		return 7
+	}
+	if strings.HasPrefix(name, "Edge source:") {
+		return 8
 	}
 	return 50
 }
@@ -676,6 +690,80 @@ func metricChecks(env, namespace string) []metricCheckDef {
 			Query:          fmt.Sprintf("count(asserts:request:rate5m%s)", rrSelector),
 			Recommendation: "Request rate KPI recording rule is not producing data. Service KPIs (request rate, error ratio, latency) may not display correctly.",
 		},
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Edge source gap detection
+// ---------------------------------------------------------------------------
+
+// edgeSourceGapDef defines a metric to check for the asserts_env gap pattern:
+// metric exists but has no asserts_env label, so recording rules silently drop it.
+type edgeSourceGapDef struct {
+	Name       string // display name
+	Metric     string // metric name to check
+	SourceType string // human description of the source
+}
+
+// edgeSourceGapChecks returns the edge source gap check definitions.
+func edgeSourceGapChecks(namespace string) []edgeSourceGapDef {
+	nsFilter := ""
+	if namespace != "" {
+		nsFilter = fmt.Sprintf(`, namespace="%s"`, namespace)
+	}
+	_ = nsFilter // used in Metric field below via closure
+
+	return []edgeSourceGapDef{
+		{Name: "istio_requests_total", Metric: "istio_requests_total", SourceType: "Istio service mesh"},
+		{Name: "http_server_requests_seconds_count", Metric: "http_server_requests_seconds_count", SourceType: "Spring Boot Actuator"},
+		{Name: "nginx_ingress_controller_requests", Metric: "nginx_ingress_controller_requests", SourceType: "nginx ingress"},
+		{Name: "kafka_server_brokertopicmetrics_messagesin_total", Metric: "kafka_server_brokertopicmetrics_messagesin_total", SourceType: "Kafka (JMX)"},
+		{Name: "redis_commands_total", Metric: "redis_commands_total", SourceType: "Redis exporter"},
+		{Name: "pg_stat_activity_count", Metric: "pg_stat_activity_count", SourceType: "PostgreSQL exporter"},
+		{Name: "mysql_global_status_queries", Metric: "mysql_global_status_queries", SourceType: "MySQL exporter"},
+		{Name: "rabbitmq_queue_messages", Metric: "rabbitmq_queue_messages", SourceType: "RabbitMQ"},
+		{Name: "elasticsearch_indices_docs", Metric: "elasticsearch_indices_docs", SourceType: "Elasticsearch exporter"},
+	}
+}
+
+// checkEdgeSourceGap checks if a metric exists but is missing asserts_env.
+// Returns nil if the metric doesn't exist at all (nothing to report).
+// Returns a CheckResult only when data exists but asserts_env is missing.
+func checkEdgeSourceGap(ctx context.Context, client *prometheus.Client, datasourceUID string, def edgeSourceGapDef) *CheckResult {
+	// First: does the metric exist at all?
+	existsResp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{
+		Query: fmt.Sprintf("count(%s)", def.Metric),
+	})
+	if err != nil || len(existsResp.Data.Result) == 0 {
+		return nil // metric doesn't exist — nothing to check
+	}
+
+	// Second: does it have asserts_env?
+	withEnvResp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{
+		Query: fmt.Sprintf(`count(%s{asserts_env!=""})`, def.Metric),
+	})
+	if err != nil {
+		return nil
+	}
+
+	existsCount := extractInstantValue(existsResp.Data.Result[0])
+
+	if len(withEnvResp.Data.Result) > 0 {
+		// Has asserts_env — no gap
+		return nil
+	}
+
+	// Gap found: metric exists but has no asserts_env
+	return &CheckResult{
+		Name:   "Edge source: " + def.SourceType,
+		Status: CheckWarn,
+		Detail: fmt.Sprintf("%s has %s series but none with asserts_env — recording rules will ignore this data", def.Name, existsCount),
+		Recommendation: fmt.Sprintf(
+			"%s metrics are present in Mimir but missing the asserts_env label. "+
+				"The Mimir relabeling rules don't cover this metric source, so the recording rules "+
+				"(which filter on asserts_env!=\"\") silently drop all %s data. "+
+				"Add a relabeling rule to map namespace or another label to asserts_env for this metric.",
+			def.SourceType, def.SourceType),
 	}
 }
 

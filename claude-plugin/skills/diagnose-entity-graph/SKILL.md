@@ -128,14 +128,31 @@ gcx metrics query 'count(nginx_ingress_controller_requests{namespace="NS"})' --s
 gcx metrics query 'count(istio_requests_total{namespace="NS"})' --since 1h
 ```
 
+**Critical: Check for the asserts_env gap.** If a source metric exists but has
+no `asserts_env` label, the recording rules silently drop it. This is the most
+common reason for "metrics present but no edges":
+
+```bash
+# For each source that returned data above, check if it has asserts_env:
+gcx metrics query 'count(istio_requests_total{asserts_env!=""})' --since 1h
+gcx metrics query 'count(http_server_requests_seconds_count{asserts_env!=""})' --since 1h
+gcx metrics query 'count(nginx_ingress_controller_requests{asserts_env!=""})' --since 1h
+```
+
+If the metric exists but the `asserts_env!=""` query returns "No data", the
+Mimir relabeling rules don't cover this source. The fix is to add a relabeling
+rule that maps `namespace` or another label to `asserts_env` for this metric.
+
 **Interpret:**
 - No edge sources for this environment → edges are expected to be missing.
   Services need tracing or one of the Prometheus-based sources above.
+- Edge source exists but missing `asserts_env` → relabeling gap. Recording
+  rules require `asserts_env!=""` and will silently ignore this data.
 - If services are discovered via JMX (`job` contains `jmx`) → JMX alone
   cannot produce edges. Spring Boot Actuator or OTel tracing is needed.
 
-**Shortcut:** `gcx kg diagnose service NAME` checks client/server metrics and
-edge sources per service.
+**Shortcut:** `gcx kg diagnose` now detects this gap automatically and warns
+when edge source metrics exist but lack `asserts_env`.
 
 ## Step 6: Label Pipeline
 
