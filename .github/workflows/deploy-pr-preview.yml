@@ -33,7 +33,15 @@ jobs:
         [
           {
             "index_file": null,
-            "relative_prefix": "/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/",
+            "relative_prefix": "/docs/grafana/next/as-code/observability-as-code/grafana-cli/gcx/",
+            "repo": "grafana",
+            "source_directory": "docs/sources",
+            "website_directory": "content/docs/grafana/next",
+            "ref": "main"
+          },
+          {
+            "index_file": null,
+            "relative_prefix": "/docs/grafana/next/as-code/observability-as-code/grafana-cli/gcx/",
             "repo": "gcx",
             "source_directory": "docs/sources",
             "website_directory": "content/docs/grafana/next/as-code/observability-as-code/grafana-cli/gcx"
