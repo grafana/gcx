@@ -1,9 +1,9 @@
-## gcx kg health
+## gcx kg summary
 
-Show a health summary with active insight counts.
+Show a summary of entities and active insights, broken down by type, severity, and insight name.
 
 ```
-gcx kg health [flags]
+gcx kg summary [flags]
 ```
 
 ### Options
@@ -11,7 +11,7 @@ gcx kg health [flags]
 ```
       --env string         Environment scope
       --from string        Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-  -h, --help               help for health
+  -h, --help               help for summary
       --json string        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --namespace string   Namespace scope
   -o, --output string      Output format. One of: agents, json, yaml (default "json")
