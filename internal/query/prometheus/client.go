@@ -60,10 +60,16 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 			query["intervalMs"] = req.Step.Milliseconds()
 		}
 	} else {
-		// For instant queries, use a small time window
-		from = "now-1m"
-		to = "now"
 		query["instant"] = true
+		if !req.Start.IsZero() {
+			// Instant query at a specific time
+			ts := strconv.FormatInt(req.Start.UnixMilli(), 10)
+			from = ts
+			to = ts
+		} else {
+			from = "now-1m"
+			to = "now"
+		}
 	}
 
 	// Build request body
