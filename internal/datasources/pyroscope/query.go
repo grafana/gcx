@@ -67,10 +67,18 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
   gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o json
 
-  # Drill into a specific profile found via exemplars
+  # Drill into one or more specific profiles found via exemplars
+  # (--profile-id is repeatable; pass it once per UUID)
   gcx datasources pyroscope query '{service_name="frontend"}' \
-    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
-    --since 1h --profile-id <profile-uuid>
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h \
+    --profile-id 550e8400-e29b-41d4-a716-446655440000 \
+    --profile-id 7c9e6679-7425-40de-944b-e07fc1f90ae7
+
+  # Restrict the flamegraph to stacks rooted at a specific call site
+  # (--stacktrace-selector is repeatable; pass it once per frame, root first)
+  gcx datasources pyroscope query '{service_name="my-go-service"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h \
+    --stacktrace-selector 'github.com/prometheus/client_golang/prometheus.(*Registry).Gather.func1'
 
   # Download as pprof binary (for use with go tool pprof)
   gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
