@@ -651,28 +651,32 @@ func metricChecks(env, namespace string) []metricCheckDef {
 		rrSelector = "{" + strings.Join(rrParts, ", ") + "}"
 	}
 
-	// Build label filters for raw Tempo metrics (use deployment_environment, not asserts_env).
-	var rawParts []string
-	if env != "" {
-		rawParts = append(rawParts, fmt.Sprintf(`deployment_environment="%s"`, env))
-	}
-	if namespace != "" {
-		rawParts = append(rawParts, fmt.Sprintf(`namespace="%s"`, namespace))
-	}
-	rawSelector := ""
-	if len(rawParts) > 0 {
-		rawSelector = "{" + strings.Join(rawParts, ", ") + "}"
+	// Build label filters for raw Tempo metrics. Each metric uses different label names:
+	// - traces_target_info: deployment_environment (no reliable namespace label)
+	// - traces_service_graph_request_total: client_deployment_environment, client_service_namespace
+	buildRawSelector := func(envLabel, nsLabel string) string {
+		var parts []string
+		if env != "" {
+			parts = append(parts, fmt.Sprintf(`%s="%s"`, envLabel, env))
+		}
+		if nsLabel != "" && namespace != "" {
+			parts = append(parts, fmt.Sprintf(`%s="%s"`, nsLabel, namespace))
+		}
+		if len(parts) == 0 {
+			return ""
+		}
+		return "{" + strings.Join(parts, ", ") + "}"
 	}
 
 	return []metricCheckDef{
 		{
 			Name:           "Metric: traces_target_info",
-			Query:          fmt.Sprintf("count(traces_target_info%s)", rawSelector),
+			Query:          fmt.Sprintf("count(traces_target_info%s)", buildRawSelector("deployment_environment", "")),
 			Recommendation: "Tempo server-side metrics generation may not be enabled, or no traced services are sending telemetry to this stack.",
 		},
 		{
 			Name:           "Metric: traces_service_graph_request_total",
-			Query:          fmt.Sprintf("count(traces_service_graph_request_total%s)", rawSelector),
+			Query:          fmt.Sprintf("count(traces_service_graph_request_total%s)", buildRawSelector("client_deployment_environment", "client_service_namespace")),
 			Recommendation: "Tempo service graph metrics are not being generated. Enable server-side metrics generation in Tempo, or verify that traced services make inter-service HTTP/gRPC calls.",
 		},
 		{

@@ -154,6 +154,17 @@ rule that maps `namespace` or another label to `asserts_env` for this metric.
 **Shortcut:** `gcx kg diagnose` now detects this gap automatically and warns
 when edge source metrics exist but lack `asserts_env`.
 
+**Known gap (asserts-adi#5872):** The Mimir relabeling rules only set
+`asserts_env` on `target_info`. For Prometheus-scraped sources like Istio,
+Spring Boot Actuator, and nginx, `asserts_env` is never set on the raw metric
+even when `deployment_environment` is present. The OTel trace path works
+because Tempo generates `traces_service_graph_request_total` server-side with
+`asserts_env` already populated.
+
+**Workaround for customers blocked by this gap:** Enable OTel tracing to get
+edges via `traces_service_graph_request_total` instead of relying on
+Prometheus-scraped edge sources.
+
 ## Step 6: Label Pipeline
 
 The most common issue: `deployment_environment` isn't mapped to `asserts_env`.
