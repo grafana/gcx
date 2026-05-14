@@ -36,7 +36,7 @@ jobs:
             "relative_prefix": "/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/",
             "repo": "gcx",
             "source_directory": "docs/sources",
-            "website_directory": "content/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx"
+            "website_directory": "content/docs/grafana/next/as-code/observability-as-code/grafana-cli/gcx"
           }
         ]
       title: ${{ github.event.pull_request.title }}

@@ -13,7 +13,7 @@ To build the Grafana.com-style docs locally:
 
 1. Change to the `docs/` directory.
 2. Run `make docs`.
-3. Open `http://localhost:3002/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/`.
+3. Open `http://localhost:3002/docs/grafana/next/as-code/observability-as-code/grafana-cli/gcx/`.
 
 ## For Contributors & Agents
 
