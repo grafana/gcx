@@ -2,8 +2,8 @@
 
 ## For Users
 
-- **[Installation](installation.md)** — Install gcx via Homebrew or binary download
-- **[Configuration](configuration.md)** — Set up contexts, authentication, and environments
+- **[Installation](sources/installation.md)** — Install gcx via Homebrew or binary download
+- **[Configuration](sources/configuration.md)** — Set up contexts, authentication, and environments
 - **[Guides](guides/index.md)** — How-to guides for common workflows
 - **[CLI Reference](reference/cli/)** — Auto-generated command reference
 
