@@ -154,16 +154,23 @@ rule that maps `namespace` or another label to `asserts_env` for this metric.
 **Shortcut:** `gcx kg diagnose` now detects this gap automatically and warns
 when edge source metrics exist but lack `asserts_env`.
 
-**Known gap (asserts-adi#5872):** The Mimir relabeling rules only set
-`asserts_env` on `target_info`. For Prometheus-scraped sources like Istio,
-Spring Boot Actuator, and nginx, `asserts_env` is never set on the raw metric
-even when `deployment_environment` is present. The OTel trace path works
-because Tempo generates `traces_service_graph_request_total` server-side with
-`asserts_env` already populated.
+**Most common fix:** If metrics have `deployment_environment` but not
+`asserts_env`, the Asserts environment mapping is misconfigured. Go to
+**Asserts app → Configuration → Connect Environment → Prometheus** and set
+the environment label to `deployment_environment`. This tells the Mimir
+relabeling pipeline to derive `asserts_env` from `deployment_environment`
+on **all** incoming metrics — not just `target_info`.
 
-**Workaround for customers blocked by this gap:** Enable OTel tracing to get
-edges via `traces_service_graph_request_total` instead of relying on
-Prometheus-scraped edge sources.
+**If metrics lack both `deployment_environment` AND `asserts_env`:** The
+scrape pipeline needs to add `deployment_environment` first. In Alloy, use
+`prometheus.relabel` to copy `namespace` (or another label) to
+`deployment_environment` before `remote_write`. Then configure the Connect
+Environment page as above.
+
+**Alternative path:** Enable OTel tracing to get edges via
+`traces_service_graph_request_total` instead. Tempo generates this metric
+server-side with `asserts_env` already populated, bypassing the Mimir
+relabeling pipeline entirely.
 
 ## Step 6: Label Pipeline
 

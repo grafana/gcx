@@ -733,6 +733,9 @@ func edgeSourceGapChecks(namespace string) []edgeSourceGapDef {
 // checkEdgeSourceGap checks if a metric exists but is missing asserts_env.
 // Returns nil if the metric doesn't exist at all (nothing to report).
 // Returns a CheckResult only when data exists but asserts_env is missing.
+// When deployment_environment IS present but asserts_env isn't, the
+// recommendation points to the Asserts onboarding UI rather than suggesting
+// custom relabeling rules.
 func checkEdgeSourceGap(ctx context.Context, client *prometheus.Client, datasourceUID string, def edgeSourceGapDef) *CheckResult {
 	// First: does the metric exist at all?
 	existsResp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{
@@ -757,17 +760,46 @@ func checkEdgeSourceGap(ctx context.Context, client *prometheus.Client, datasour
 		return nil
 	}
 
-	// Gap found: metric exists but has no asserts_env
+	// Gap found: metric exists but has no asserts_env.
+	// Check if deployment_environment is present — this changes the recommendation.
+	hasDepEnv := false
+	depEnvResp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{
+		Query: fmt.Sprintf(`count(%s{deployment_environment!=""})`, def.Metric),
+	})
+	if err == nil && len(depEnvResp.Data.Result) > 0 {
+		hasDepEnv = true
+	}
+
+	var recommendation string
+	if hasDepEnv {
+		recommendation = fmt.Sprintf(
+			"%s metrics have deployment_environment but not asserts_env. "+
+				"The Mimir relabeling rules are not mapping deployment_environment to asserts_env for this metric. "+
+				"Go to the Asserts app → Configuration → Connect Environment → Prometheus and set the environment "+
+				"label to deployment_environment. This tells the relabeling pipeline to derive asserts_env from "+
+				"deployment_environment on all incoming metrics.",
+			def.SourceType)
+	} else {
+		recommendation = fmt.Sprintf(
+			"%s metrics are present in Mimir but missing both asserts_env and deployment_environment. "+
+				"Ensure your scrape pipeline adds deployment_environment to these metrics (e.g. via "+
+				"prometheus.relabel in Alloy), then verify that the Asserts app → Configuration → Connect "+
+				"Environment → Prometheus is set to deployment_environment.",
+			def.SourceType)
+	}
+
+	detail := fmt.Sprintf("%s has %s series but none with asserts_env", def.Name, existsCount)
+	if hasDepEnv {
+		detail += " (deployment_environment IS present — onboarding config may need updating)"
+	} else {
+		detail += " — recording rules will ignore this data"
+	}
+
 	return &CheckResult{
-		Name:   "Edge source: " + def.SourceType,
-		Status: CheckWarn,
-		Detail: fmt.Sprintf("%s has %s series but none with asserts_env — recording rules will ignore this data", def.Name, existsCount),
-		Recommendation: fmt.Sprintf(
-			"%s metrics are present in Mimir but missing the asserts_env label. "+
-				"The Mimir relabeling rules don't cover this metric source, so the recording rules "+
-				"(which filter on asserts_env!=\"\") silently drop all %s data. "+
-				"Add a relabeling rule to map namespace or another label to asserts_env for this metric.",
-			def.SourceType, def.SourceType),
+		Name:           "Edge source: " + def.SourceType,
+		Status:         CheckWarn,
+		Detail:         detail,
+		Recommendation: recommendation,
 	}
 }
 
