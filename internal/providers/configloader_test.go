@@ -14,9 +14,24 @@ import (
 	"github.com/grafana/gcx/internal/cloud"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestConfigLoader_BindFlags_OnlyBindsConfig is a regression test for the
+// duplicate `--context` flag binding that silently overrode the root command's
+// `--context` value at the provider level. BindFlags must register only
+// `--config`; `--context` is owned by the root command and threaded into
+// context.Context via PersistentPreRun.
+func TestConfigLoader_BindFlags_OnlyBindsConfig(t *testing.T) {
+	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	loader := &providers.ConfigLoader{}
+	loader.BindFlags(flags)
+
+	require.NotNil(t, flags.Lookup("config"), "BindFlags must bind --config")
+	assert.Nil(t, flags.Lookup("context"), "BindFlags must NOT bind --context (it is a root-level global flag)")
+}
 
 // newMockGCOMServer returns an httptest.Server that responds to any request
 // with the given StackInfo encoded as JSON.

@@ -17,7 +17,7 @@ gcx assistant investigations list [flags]
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int       Maximum number of investigations to return (default 50)
       --offset int      Number of investigations to skip (for pagination)
-  -o, --output string   Output format. One of: json, table, wide, yaml (default "table")
+  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
       --state string    Filter by investigation state (e.g. running, completed, cancelled)
 ```
 

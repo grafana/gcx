@@ -125,4 +125,14 @@ contexts:
           string
 # CurrentContext is the name of the context currently in use.
 current-context: string
+# Diagnostics holds optional local diagnostic settings. All features are off by default.
+diagnostics: 
+  # DiagnosticsConfig controls optional local diagnostic features.
+  # AgentInvocationLog enables logging of failed agent-mode invocations to disk.
+  # Off by default. When enabled, errors from agent-driven gcx calls are written
+  # to LogDir (JSONL format) for capability-gap analysis.
+  agent-invocation-log: bool
+  # LogDir overrides the output directory for agent invocation log files.
+  # Default: $XDG_STATE_HOME/gcx/ (platform-specific).
+  log-dir: string
 ```

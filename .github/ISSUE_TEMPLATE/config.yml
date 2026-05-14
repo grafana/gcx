@@ -1,13 +1,7 @@
 blank_issues_enabled: false
 contact_links:
-  - name: ❓ Questions & Answers
-    url: https://github.com/grafana/gcx/discussions/categories/q-a
-    about: Ask questions and get answers from the community
-  - name: 💬 Discussions
-    url: https://github.com/grafana/gcx/discussions
-    about: Discuss ideas and share your thoughts with the community
   - name: 📚 Documentation
-    url: https://grafana.github.io/gcx/
+    url: https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/
     about: Read the documentation for setup guides and command reference
   - name: 🔒 Security Issue
     url: https://github.com/grafana/gcx/security/policy

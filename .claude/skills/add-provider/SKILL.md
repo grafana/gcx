@@ -33,7 +33,7 @@ research report    ADRs + spec       code per stage     smoke tests
 |-------|-------------|------|
 | 1. Discover | `docs/research/` report | User approves findings |
 | 2. Design | ADRs + spec + smoke test plan | User approves design |
-| 3. Implement | Code (one stage at a time) | `make all` passes per stage |
+| 3. Implement | Code (one stage at a time) | `mise run all` passes per stage |
 | 4. Verify | Smoke tests + architecture doc updates | All checks green |
 
 ### Prerequisites
@@ -187,7 +187,7 @@ Summary of the key steps:
 
 ### Gate: Stage Complete
 
-Per stage: `make all` passes, no regressions.
+Per stage: `mise run all` passes, no regressions.
 
 ---
 
@@ -209,7 +209,7 @@ complete, secrets marked, Validate returns actionable errors, blank import added
 no `os.Exit()`, cmdio status messages, help text standards, push idempotent,
 format-agnostic data fetching, promql-builder for PromQL.
 
-**Build**: `make all`, `gcx providers` lists it, `config view` redacts.
+**Build**: `mise run all`, `gcx providers` lists it, `config view` redacts.
 
 ### 4c. Update Architecture Docs
 

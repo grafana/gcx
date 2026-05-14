@@ -34,6 +34,13 @@ func FormatQueryTable(w io.Writer, resp *QueryResponse) error {
 	return t.Render(w)
 }
 
+// FormatPprofWriteTable formats the result of writing a pprof binary as a single-row table.
+func FormatPprofWriteTable(w io.Writer, result *PprofWriteResult) error {
+	t := style.NewTable("PATH")
+	t.Row(result.Path)
+	return t.Render(w)
+}
+
 // FormatProfileTypesTable formats profile types as a table.
 func FormatProfileTypesTable(w io.Writer, resp *ProfileTypesResponse) error {
 	t := style.NewTable("ID", "NAME", "SAMPLE_TYPE", "SAMPLE_UNIT")

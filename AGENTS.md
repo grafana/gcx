@@ -40,23 +40,23 @@ Two tiers: **K8s resource tier** (dashboards, folders via `/apis`) and **Cloud p
 ## Essential Commands
 
 ```bash
-make build       # Build to bin/gcx
-make tests       # Run all tests with race detection
-make lint        # Run golangci-lint
-make all         # lint + tests + build + docs
-make docs        # Generate + build all documentation
+mise run build       # Build to bin/gcx
+mise run tests       # Run all tests with race detection
+mise run lint        # Run golangci-lint
+mise run all         # lint + tests + build + docs
+mise run docs        # Generate + build all documentation
 ```
 
-**Without devbox**: replace `make` targets with direct Go commands — `go build -buildvcs=false -o bin/gcx ./cmd/gcx/` and `go test ./...`. Always build to `bin/gcx`.
+**Without mise**: replace with direct Go commands — `go build -buildvcs=false -o bin/gcx ./cmd/gcx/` and `go test ./...`. Always build to `bin/gcx`.
 
-> **Agent environments**: always prefix with `GCX_AGENT_MODE=false` — agent-mode auto-detection changes output defaults in `make docs`, producing wrong CLI reference docs.
+> **Agent environments**: always prefix with `GCX_AGENT_MODE=false` — agent-mode auto-detection changes output defaults in `mise run docs`, producing wrong CLI reference docs.
 
 ## Testing
 
 ```bash
 go test ./internal/providers/traces/...   # Run one package
 go test -run TestQueryCodec ./internal/... # Run matching tests across packages
-go test -race -count=1 ./...              # Full suite with race detection (same as make tests)
+go test -race -count=1 ./...              # Full suite with race detection (same as mise run tests)
 ```
 
 Prefer table-driven tests. See existing `_test.go` files for patterns.
@@ -71,7 +71,6 @@ cmd/gcx/
   login/        Unified login command (token + OAuth PKCE, interactive prompts)
   config/       Config management (set, use-context, view, check)
   resources/    Resource commands (get, schemas, push, pull, delete, edit, validate)
-  dashboards/   Dashboard snapshot (Image Renderer)
   datasources/  Datasource commands (list, get, query, per-type subcommands via DatasourceProvider)
   providers/    Provider list command
   assistant/    Assistant commands (AI-powered investigations)
@@ -79,7 +78,8 @@ cmd/gcx/
   linter/       Linting (mounted under dev lint)
   commands/     Commands catalog (agent metadata)
   helptree/     Help tree for agent context
-  setup/        Onboarding + instrumentation
+  setup/        Onboarding (gcx setup status)
+  instrumentation/  Instrumentation Hub commands (clusters, services, setup wizard, status)
   skills/       Portable Agent Skills installer for .agents-compatible tools
   dev/          Developer tools (import, scaffold, generate, lint, serve)
   fail/         Structured error conversion
@@ -90,9 +90,7 @@ internal/
 ├── login/       Login orchestration (target detection, auth resolution, connectivity validation, sentinel-retry flow)
 ├── config/      Config types, loader, editor, rest.Config builder, stack-id discovery, context name helpers
 ├── cloud/       GCOM HTTP client for Grafana Cloud stack discovery
-├── fleet/       Shared fleet base client (HTTP, auth, config — used by fleet provider and setup/instrumentation)
-├── setup/
-│   └── instrumentation/  Manifest types, instrumentation client, optimistic lock comparison
+├── fleet/       Shared fleet base client (HTTP, auth, config — used by fleet provider and instrumentation provider)
 ├── resources/
 │   ├── *.go     Core types: Resource, Selector, Filter, Descriptor, Resources collection
 │   ├── adapter/    ResourceAdapter interface, Factory, ResourceClientRouter, self-registration, slug-ID helpers
@@ -103,8 +101,14 @@ internal/
 │   └── remote/     Pusher, Puller, Deleter, FolderHierarchy, Summary
 ├── providers/   Provider plugin system (interface, registry, self-registration)
 │   ├── alert/      Alert provider (rules, groups — read-only)
+│   ├── dashboards/ Dashboards provider (CRUD, search, versions, snapshot)
 │   ├── faro/       Frontend Observability provider (apps CRUD, sourcemaps sub-resource) — CLI: `gcx frontend`
 │   ├── fleet/      Fleet Management provider (pipeline and collector resources)
+│   ├── instrumentation/  Instrumentation Hub provider (typed connect-go client, RMW with optimistic-lock, output codecs, helm formatter, enumerate helper)
+│   │   ├── enumerate/  Cluster enumeration helper (RunK8sMonitoring ⋃ ListPipelines merge)
+│   │   ├── helm/       Helm command formatter for the setup wizard
+│   │   ├── output/     View types and codecs (clusters, apps, services; wait/mutation envelopes)
+│   │   └── rmw/        Read-modify-write helper with optimistic-lock guard (ConflictError)
 │   ├── irm/        IRM provider (OnCall + Incidents — schedules, integrations, escalation chains, incidents)
 │   ├── k6/         k6 Cloud provider (projects, tests, runs, envvars)
 │   ├── kg/         Knowledge Graph (Asserts) provider
@@ -112,7 +116,7 @@ internal/
 │   ├── metrics/    Metrics signal provider (Prometheus queries + Adaptive Metrics commands)
 │   ├── appo11y/    App Observability provider (overrides, settings — singleton resources)
 │   ├── profiles/   Profiles signal provider (Pyroscope queries + adaptive stub)
-│   ├── aio11y/     AI Observability provider (conversations, agents, generations, evaluators, rules, templates, scores, judge — via grafana-sigil-app plugin API)
+│   ├── aio11y/     AI Observability provider (conversations, agents, generations, evaluators, rules, templates, scores, judge, saved-conversations, collections — via grafana-sigil-app plugin API)
 │   ├── slo/        SLO provider (definitions, reports)
 │   ├── synth/      Synthetic Monitoring provider (checks, probes)
 │   └── traces/     Traces signal provider (Tempo queries + Adaptive Traces commands)
@@ -128,6 +132,7 @@ internal/
 │   ├── assistanthttp/  Base HTTP client for grafana-assistant-app plugin API
 │   └── investigations/ Investigation CRUD commands, table codecs, API client
 ├── agent/       Agent mode detection, command annotations, known-resource registry with operation hints
+├── agentlog/    Agent invocation failure logger (opt-in JSONL disk log, XDG state dir — wired into handleError in cmd/gcx/main.go)
 ├── style/       Terminal styling (Grafana Neon Dark theme, TableBuilder, ASCII banner, glamour help)
 ├── terminal/    TTY/pipe detection (IsPiped, NoTruncate, Detect) for output suppression
 ├── linter/      Linting engine (Rego rules, report aggregation, PromQL/LogQL validators)
@@ -135,14 +140,14 @@ internal/
 ├── testutils/   Shared test utilities
 ├── server/      Live dev server (Chi router, reverse proxy, websocket reload)
 ├── grafana/     OpenAPI client (health checks, version detection)
-├── output/      Output codec registry (json, yaml, text, wide — field selection, discovery, k8s unstructured handling)
+├── output/      Output codec registry (json, yaml, text, wide, agents — field selection, discovery, k8s unstructured handling, temp-file spill)
 ├── format/      JSON/YAML codecs with format auto-detection
 ├── retry/       Retry transport (429, 502/503/504, transient connection errors — wraps all HTTP tiers)
 ├── httputils/   HTTP helpers (used by serve command's proxy)
 ├── version/     Global version string (Set once from main; provides UserAgent() for HTTP clients)
 ├── secrets/     Redactor for config view
 ├── logs/        slog/klog integration
-├── notifier/    Skills update notifier (XDG state, throttle, message rendering — wired into root PersistentPostRun)
+├── notifier/    Update notifications (skills + gcx version checks; XDG state, throttling, message rendering — wired into root PersistentPostRun)
 ├── skills/      Portable Agent Skills installer primitives (BundledSkillNames, Install, Update — extracted from cmd/gcx/skills)
 └── shared/      Shared utilities (date handling, duration, etc.) to be shared across integrations.
 ```
@@ -178,36 +183,36 @@ Check work against these docs during planning, design, and implementation — in
 
 ## Releasing
 
-Automated via `make tag`. Requires `claude` CLI and [`svu`](https://github.com/caarlos0/svu).
+Automated via `mise run tag`. Requires `claude` CLI and [`svu`](https://github.com/caarlos0/svu).
 
 ```bash
-make tag BUMP=patch   # or minor, major
+mise run tag -- patch   # or minor, major
 ```
 
-This generates a changelog entry (via Claude), updates `CHANGELOG.md` and `.release-notes.md`, commits, tags, and pushes. The tag push triggers the GoReleaser workflow.
+This generates a changelog entry (via Claude), updates `CHANGELOG.md` and `.release-notes.md`, commits on a `release/vX.Y.Z` branch, and pushes the branch. Then:
 
-**With branch protection** (can't push directly to main): the script will fail at the push step. Instead:
-1. Create a branch, commit the changelog, open a PR
-2. Merge the PR
-3. Tag the merge commit on main and push the tag:
+1. Open a PR and merge it (the script prints the exact command)
+2. After merge, tag the commit on main and push the tag:
    ```bash
    git checkout main && git pull
    git tag v0.X.Y
    git push origin v0.X.Y
    ```
 
-## Pre-Flight Checklist
+The tag push triggers the GoReleaser workflow.
 
-Run when code has been modified, before pushing or creating a PR.
+## Mandatory Pull Request Checklist
+
+You MUST run this checklist when creating a PR or updating an existing PR with new work (addressing PR reviews or fixing bugs). This is distinct from the Mandatory Pre-Commit Checklist below — `mise run all` in step 3 subsumes the individual pre-commit steps; do not substitute the pre-commit checklist here.
 
 1. **Compliance check** — verify changes against the [compliance hierarchy](#compliance-hierarchy) above. CONSTITUTION and DESIGN violations must be fixed. VISION misalignment must be flagged. ARCHITECTURE deviations must be documented.
 2. **Sync with base branch**
    ```bash
    git fetch origin main && git rebase origin/main
    ```
-3. **Quality gates pass** — `make docs` auto-detects agent mode from env vars (`CLAUDECODE`, `CLAUDE_CODE`) and flips output defaults, producing wrong docs. Always override:
+3. **Quality gates pass** — `mise run docs` auto-detects agent mode from env vars (`CLAUDECODE`, `CLAUDE_CODE`) and flips output defaults, producing wrong docs. Always override:
    ```bash
-   GCX_AGENT_MODE=false make all
+   GCX_AGENT_MODE=false mise run all
    ```
 4. **Doc maintenance gate** — run the structural checks in [docs/reference/doc-maintenance.md](docs/reference/doc-maintenance.md). Update `CLAUDE.md` (package map), `ARCHITECTURE.md` (ADR table), and relevant `docs/architecture/` files if any are stale.
 5. **Push**
@@ -232,9 +237,8 @@ Run this checklist **before every commit** (not only before PR/push):
    ```
 2. **Lint passes**
    ```bash
-   make lint
+   mise run lint
    ```
-   If `devbox` is unavailable, use the project-local binary/toolchain equivalent.
 3. **Targeted tests pass** for changed packages
    ```bash
    go test ./path/to/changed/package/...
@@ -243,16 +247,16 @@ Run this checklist **before every commit** (not only before PR/push):
    ```bash
    go test ./...
    ```
-5. **Reference docs regenerated** (CI runs `make reference-drift` which fails on any drift)
+5. **Reference docs regenerated** (CI runs `mise run reference-drift` which fails on any drift)
    ```bash
-   GCX_AGENT_MODE=false make reference
+   GCX_AGENT_MODE=false mise run reference
    ```
    This regenerates CLI reference, env-var reference, config reference, and linter-rules reference. Required when changes touch commands, flags, config fields, env vars, or linter rules.
-6. **Docs build succeeds** (CI runs `make docs` after the drift check)
+6. **Docs build succeeds** (CI runs `mise run docs` after the drift check)
    ```bash
-   make docs
+   mise run docs
    ```
-   If `devbox`/`mkdocs` is unavailable, skip — CI will catch build failures.
+   If `mise`/`mkdocs` is unavailable, skip — CI will catch build failures.
 7. **No unstaged surprises**
    ```bash
    git status

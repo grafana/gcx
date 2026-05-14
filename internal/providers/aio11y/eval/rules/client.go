@@ -12,7 +12,10 @@ import (
 	"github.com/grafana/gcx/internal/providers/aio11y/eval"
 )
 
-const basePath = "/eval/rules"
+const (
+	basePath    = "/eval/rules"
+	ruleByIDFmt = basePath + "/%s"
+)
 
 // Client is an HTTP client for AI Observability rule endpoints.
 type Client struct {
@@ -31,7 +34,7 @@ func (c *Client) List(ctx context.Context) ([]eval.RuleDefinition, error) {
 
 // Get returns a single rule by ID.
 func (c *Client) Get(ctx context.Context, id string) (*eval.RuleDefinition, error) {
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, basePath+"/"+url.PathEscape(id), nil)
+	resp, err := c.base.DoRequest(ctx, http.MethodGet, fmt.Sprintf(ruleByIDFmt, url.PathEscape(id)), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rule %s: %w", id, err)
 	}
@@ -79,7 +82,7 @@ func (c *Client) Update(ctx context.Context, id string, rule *eval.RuleDefinitio
 		return nil, fmt.Errorf("failed to marshal rule: %w", err)
 	}
 
-	resp, err := c.base.DoRequest(ctx, http.MethodPatch, basePath+"/"+url.PathEscape(id), bytes.NewReader(body))
+	resp, err := c.base.DoRequest(ctx, http.MethodPatch, fmt.Sprintf(ruleByIDFmt, url.PathEscape(id)), bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to update rule: %w", err)
 	}
@@ -98,7 +101,7 @@ func (c *Client) Update(ctx context.Context, id string, rule *eval.RuleDefinitio
 
 // Delete deletes a rule by ID.
 func (c *Client) Delete(ctx context.Context, id string) error {
-	resp, err := c.base.DoRequest(ctx, http.MethodDelete, basePath+"/"+url.PathEscape(id), nil)
+	resp, err := c.base.DoRequest(ctx, http.MethodDelete, fmt.Sprintf(ruleByIDFmt, url.PathEscape(id)), nil)
 	if err != nil {
 		return fmt.Errorf("failed to delete rule %s: %w", id, err)
 	}

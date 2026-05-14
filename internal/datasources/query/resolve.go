@@ -36,6 +36,7 @@ func ResolveDatasourceFlag(flagValue string, cfgCtx *config.Context, kind string
 // DatasourceResolution describes the outcome of datasource resolution.
 type DatasourceResolution struct {
 	UID     string
+	Type    string // populated when discovery already fetched the datasource object
 	Persist bool
 }
 
@@ -84,6 +85,44 @@ func ResolveAndSaveDatasource(ctx context.Context, saver DatasourceSaver, flagVa
 	}
 
 	return resolved.UID, nil
+}
+
+// ResolveValidateAndSaveDatasource resolves a datasource UID, validates its type matches
+// the expected kind, and best-effort persists it to config. When auto-discovery already
+// fetched the datasource object (including its type), the validation is performed inline
+// without an additional API call to GET /api/datasources/uid/{uid}.
+// It returns the UID and the raw datasource plugin type (e.g. "prometheus",
+// "grafana-pyroscope-datasource") for use in explore URLs.
+func ResolveValidateAndSaveDatasource(ctx context.Context, saver DatasourceSaver, flagValue string, cfgCtx *config.Context, restCfg config.NamespacedRESTConfig, kind string) (string, string, error) {
+	resolved, err := ResolveDatasource(ctx, flagValue, cfgCtx, restCfg, kind)
+	if err != nil {
+		return "", "", err
+	}
+
+	dsType := resolved.Type
+	if dsType == "" {
+		dsType, err = GetDatasourceType(ctx, restCfg, resolved.UID)
+		if err != nil {
+			return "", "", err
+		}
+	}
+
+	if err := ValidateDatasourceType(dsType, kind); err != nil {
+		return "", "", err
+	}
+
+	if resolved.Persist && saver != nil {
+		if saveErr := saver.SaveDatasourceUID(ctx, kind, resolved.UID); saveErr != nil {
+			logging.FromContext(ctx).Warn(
+				"could not save discovered datasource UID to config",
+				slog.String("datasource_kind", kind),
+				slog.String("uid", resolved.UID),
+				slog.String("error", saveErr.Error()),
+			)
+		}
+	}
+
+	return resolved.UID, dsType, nil
 }
 
 // ResolveTypedArgs parses positional args for typed subcommands.
@@ -163,7 +202,7 @@ func discoverDatasourceUID(ctx context.Context, restCfg config.NamespacedRESTCon
 	case 0:
 		return DatasourceResolution{}, fmt.Errorf("no %s datasource found in Grafana: use -d flag or set datasources.%s in config", kind, kind)
 	case 1:
-		return DatasourceResolution{UID: matches[0].UID}, nil
+		return DatasourceResolution{UID: matches[0].UID, Type: matches[0].Type}, nil
 	}
 
 	if stackSlug == "" {
@@ -171,7 +210,7 @@ func discoverDatasourceUID(ctx context.Context, restCfg config.NamespacedRESTCon
 	}
 
 	if canonical := canonicalCloudDatasource(matches, kind, stackSlug); canonical != nil {
-		return DatasourceResolution{UID: canonical.UID, Persist: true}, nil
+		return DatasourceResolution{UID: canonical.UID, Type: canonical.Type, Persist: true}, nil
 	}
 
 	return DatasourceResolution{}, fmt.Errorf("multiple %s datasources found (%s): use -d flag or set datasources.%s in config", kind, formatDatasourceChoices(matches), kind)

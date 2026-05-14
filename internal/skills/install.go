@@ -88,7 +88,7 @@ func Install(source fs.FS, root string, filter map[string]struct{}, force bool, 
 		}
 		for name := range filter {
 			if _, ok := avail[name]; !ok {
-				return InstallResult{}, fmt.Errorf("unknown skill %q (use 'gcx skills list' to see available skills)", name)
+				return InstallResult{}, fmt.Errorf("unknown skill %q (use 'gcx agent skills list' to see available skills)", name)
 			}
 		}
 	}
@@ -148,7 +148,7 @@ func Install(source fs.FS, root string, filter map[string]struct{}, force bool, 
 	return result, nil
 }
 
-// Update applies the same targeting semantics as `gcx skills update`.
+// Update applies the same targeting semantics as `gcx agent skills update`.
 // With no targets, only already-installed bundled skills are updated.
 func Update(source fs.FS, root string, targets []string, dryRun bool) (InstallResult, error) {
 	installedTargets, err := InstalledBundledSkillNames(source, root)
@@ -177,10 +177,10 @@ func Update(source fs.FS, root string, targets []string, dryRun bool) (InstallRe
 
 		for _, name := range resolvedTargets {
 			if _, ok := bundledSet[name]; !ok {
-				return InstallResult{}, fmt.Errorf("unknown skill %q (use 'gcx skills list' to see available skills)", name)
+				return InstallResult{}, fmt.Errorf("unknown skill %q (use 'gcx agent skills list' to see available skills)", name)
 			}
 			if _, ok := installedSet[name]; !ok {
-				return InstallResult{}, fmt.Errorf("skill %q is not installed; use 'gcx skills install %s' to install it first", name, name)
+				return InstallResult{}, fmt.Errorf("skill %q is not installed; use 'gcx agent skills install %s' to install it first", name, name)
 			}
 		}
 	}
@@ -247,6 +247,11 @@ func syncFile(source fs.FS, sourcePath string, targetPath string, force bool, dr
 		}
 		if dryRun {
 			return true, true, nil
+		}
+		// handle cases where existing skills files are read-only - WriteFile
+		// doesn't override permissions on existing files.
+		if err := os.Chmod(targetPath, installedFileMode); err != nil {
+			return false, false, err
 		}
 		return true, true, os.WriteFile(targetPath, sourceData, installedFileMode)
 	case errors.Is(err, os.ErrNotExist):

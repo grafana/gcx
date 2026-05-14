@@ -19,7 +19,7 @@ gcx config view [flags]
   -h, --help            help for view
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --minify          Remove all information not used by current-context from the output
-  -o, --output string   Output format. One of: json, yaml (default "yaml")
+  -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
       --raw             Display sensitive information
 ```
 

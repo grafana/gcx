@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/aio11y/aio11yhttp"
 	"github.com/grafana/gcx/internal/providers/aio11y/eval"
@@ -44,7 +43,6 @@ func evalStripFields() []string {
 // NewTypedCRUD creates a TypedCRUD for AI Observability evaluators.
 func NewTypedCRUD(ctx context.Context) (*adapter.TypedCRUD[eval.EvaluatorDefinition], string, error) {
 	var loader providers.ConfigLoader
-	loader.SetContextName(internalconfig.ContextNameFromCtx(ctx))
 
 	cfg, err := loader.LoadGrafanaConfig(ctx)
 	if err != nil {

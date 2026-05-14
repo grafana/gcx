@@ -16,7 +16,10 @@ import (
 // ErrNotFound is returned when a requested SLO does not exist (HTTP 404).
 var ErrNotFound = errors.New("SLO not found")
 
-const basePath = "/api/plugins/grafana-slo-app/resources/v1/slo"
+const (
+	basePath     = "/api/plugins/grafana-slo-app/resources/v1/slo"
+	sloByUUIDFmt = basePath + "/%s"
+)
 
 // Client is an HTTP client for the Grafana SLO API.
 type Client struct {
@@ -63,7 +66,7 @@ func (c *Client) List(ctx context.Context) ([]Slo, error) {
 
 // Get returns a single SLO definition by UUID.
 func (c *Client) Get(ctx context.Context, uuid string) (*Slo, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, basePath+"/"+uuid, nil)
+	resp, err := c.doRequest(ctx, http.MethodGet, fmt.Sprintf(sloByUUIDFmt, uuid), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get SLO %s: %w", uuid, err)
 	}
@@ -117,7 +120,7 @@ func (c *Client) Update(ctx context.Context, uuid string, slo *Slo) error {
 		return fmt.Errorf("failed to marshal SLO: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, http.MethodPut, basePath+"/"+uuid, bytes.NewReader(body))
+	resp, err := c.doRequest(ctx, http.MethodPut, fmt.Sprintf(sloByUUIDFmt, uuid), bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("failed to update SLO %s: %w", uuid, err)
 	}
@@ -132,7 +135,7 @@ func (c *Client) Update(ctx context.Context, uuid string, slo *Slo) error {
 
 // Delete deletes an SLO definition by UUID.
 func (c *Client) Delete(ctx context.Context, uuid string) error {
-	resp, err := c.doRequest(ctx, http.MethodDelete, basePath+"/"+uuid, nil)
+	resp, err := c.doRequest(ctx, http.MethodDelete, fmt.Sprintf(sloByUUIDFmt, uuid), nil)
 	if err != nil {
 		return fmt.Errorf("failed to delete SLO %s: %w", uuid, err)
 	}

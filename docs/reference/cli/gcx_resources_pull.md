@@ -69,7 +69,7 @@ gcx resources pull [RESOURCE_SELECTOR]... [flags]
                             ignore — continue processing all resources and exit 0
                             fail   — continue processing all resources and exit 1 if any failed (default)
                             abort  — stop on the first error and exit 1 (default "fail")
-  -o, --output string     Output format. One of: json, yaml (default "json")
+  -o, --output string     Output format. One of: agents, json, yaml (default "json")
   -p, --path string       Path on disk in which the resources will be written (default "./resources")
 ```
 

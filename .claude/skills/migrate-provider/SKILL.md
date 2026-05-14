@@ -51,9 +51,9 @@ Phase 2: Spec Planning
 Phase 3: Build
   → agent team (Core + Commands)
   → code files
-      ↓ [make all gate]
+      ↓ [mise run all gate]
 Phase 4: Verification (4A–4E)
-  → make all + smoke tests + adapter smoke
+  → mise run all + smoke tests + adapter smoke
   → comparison report + recipe update
       ↓ [user approval gate]
 ```
@@ -63,7 +63,7 @@ Phase 4: Verification (4A–4E)
 | 0: Requirements | Lead (autonomous) | gcx source + compliance docs | Context bundle | None (feeds Phase 1) |
 | 1: Design | Lead (interactive) | Context bundle | ADR | User approves ADR |
 | 2: Spec Planning | Lead (or `/plan-spec`) | ADR + context bundle | spec.md, plan.md, tasks.md | User approves spec package |
-| 3: Build | Agent team (Core + Commands) or `/build-spec` | Spec package | Provider code | `GCX_AGENT_MODE=false make all` passes |
+| 3: Build | Agent team (Core + Commands) or `/build-spec` | Spec package | Provider code | `GCX_AGENT_MODE=false mise run all` passes |
 | 4: Verify | Subagent | Comparison report template + spec ACs | Comparison report + recipe update | User approves report |
 
 Phases are **strictly sequential**. Each phase is separated by a gate that
@@ -230,7 +230,7 @@ not available, Phase 2 MUST produce the same document format manually.
 
 ## Phase 3: Build
 
-Phase 3 executes tasks.md waves in order, with `make lint` as a checkpoint
+Phase 3 executes tasks.md waves in order, with `mise run lint` as a checkpoint
 between each task.
 
 ### Builder Agent Rules
@@ -274,7 +274,7 @@ The integration task MUST explicitly include:
 2. Add blank import in `cmd/gcx/root/command.go`
 3. Fix import cycles introduced by subpackage references
 4. Fix variable name collisions from package aliasing
-5. Run `make lint` and fix all new issues
+5. Run `mise run lint` and fix all new issues
 
 ### Optional: /build-spec Integration
 
@@ -286,7 +286,7 @@ not available, Phase 3 MUST use the agent team orchestration described above.
 
 > **STOP.** Do not begin Phase 4 until:
 >
-> `GCX_AGENT_MODE=false make all` exits 0 with no lint errors and all tests
+> `GCX_AGENT_MODE=false mise run all` exits 0 with no lint errors and all tests
 > passing.
 >
 > Run this command after both Build teammates complete. If it fails, fix the
@@ -300,7 +300,7 @@ Phase 4 MUST execute in this exact order. No step may be skipped.
 
 ### Step 4A: Build Gate
 
-Run `GCX_AGENT_MODE=false make all` and confirm exit 0.
+Run `GCX_AGENT_MODE=false mise run all` and confirm exit 0.
 
 ### Step 4B: Smoke Tests (MANDATORY)
 

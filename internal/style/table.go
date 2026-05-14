@@ -13,8 +13,9 @@ import (
 // TableBuilder constructs styled tables that degrade gracefully to plain
 // tabwriter output when styling is disabled (piped, agent mode, --no-color).
 type TableBuilder struct {
-	headers []string
-	rows    [][]string
+	headers   []string
+	rows      [][]string
+	colWidths []int // per-column fixed widths (0 = auto); only applied in renderStyled
 }
 
 // NewTable creates a new table with the given column headers.
@@ -22,6 +23,15 @@ func NewTable(headers ...string) *TableBuilder {
 	return &TableBuilder{
 		headers: headers,
 	}
+}
+
+// ColumnWidths sets per-column fixed widths for the styled renderer. A value
+// of 0 means auto-size; a positive value locks that column and prevents
+// lipgloss from shrinking it when the table is wider than the terminal.
+// The slice may be shorter than the column count; trailing columns default to 0.
+func (tb *TableBuilder) ColumnWidths(widths []int) *TableBuilder {
+	tb.colWidths = widths
+	return tb
 }
 
 // Row appends a data row. The number of values should match the header count.
@@ -87,13 +97,19 @@ func (tb *TableBuilder) renderStyled(w io.Writer) error {
 		Rows(rows...).
 		Width(width).
 		StyleFunc(func(row, col int) lipgloss.Style {
-			if row == table.HeaderRow {
-				return headerStyle
+			var s lipgloss.Style
+			switch {
+			case row == table.HeaderRow:
+				s = headerStyle
+			case row%2 == 0:
+				s = evenRowStyle
+			default:
+				s = oddRowStyle
 			}
-			if row%2 == 0 {
-				return evenRowStyle
+			if col < len(tb.colWidths) && tb.colWidths[col] > 0 {
+				s = s.Width(tb.colWidths[col])
 			}
-			return oddRowStyle
+			return s
 		})
 
 	_, err := fmt.Fprintln(w, t)

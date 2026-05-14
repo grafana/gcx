@@ -48,14 +48,13 @@ func (p *KGProvider) Commands() []*cobra.Command {
 		// Entities
 		newEntitiesCommand(loader),
 		newScopesCommand(loader),
+		// Cypher
+		newCypherCommand(loader),
 		// Assertions
 		newAssertionsCommand(loader),
-		// Search
-		newSearchCommand(loader),
 		newDescribeCommand(loader),
 		// High-level
-		newInspectCommand(loader),
-		newHealthCommand(loader),
+		newSummaryCommand(loader),
 		newOpenCommand(loader),
 	)
 

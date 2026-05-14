@@ -63,7 +63,8 @@ current-context: default
 	var stderr bytes.Buffer
 	root.SetOut(&stdout)
 	root.SetErr(&stderr)
-	root.SetArgs([]string{"get", "trace-123"})
+	// Pass `-o json` so the JSON-payload assertion below holds regardless of the registered default.
+	root.SetArgs([]string{"get", "-o", "json", "trace-123"})
 
 	err := root.Execute()
 	require.NoError(t, err)

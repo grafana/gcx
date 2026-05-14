@@ -77,16 +77,8 @@ open it in your browser after the query succeeds.`,
 				return err
 			}
 
-			datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, datasource, cfgCtx, cfg, "loki")
+			datasourceUID, dsType, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, datasource, cfgCtx, cfg, "loki")
 			if err != nil {
-				return err
-			}
-
-			dsType, err := dsquery.GetDatasourceType(ctx, cfg, datasourceUID)
-			if err != nil {
-				return err
-			}
-			if err := dsquery.ValidateDatasourceType(dsType, "loki"); err != nil {
 				return err
 			}
 

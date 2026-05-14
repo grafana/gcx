@@ -478,8 +478,10 @@ the issue for architectural discussion.
 
 ### Provider ConfigLoader
 
-All provider commands must use `providers.ConfigLoader` for flag binding
-(`--config`, `--context`) and config resolution (YAML + env var precedence).
+All provider commands must use `providers.ConfigLoader` for `--config` flag
+binding and config resolution (YAML + env var precedence). The `--context`
+flag is owned by the root command and threaded to providers via
+`context.Context` (see "Context threading" below).
 
 | Method | Purpose | Used by |
 |--------|---------|---------|
@@ -491,7 +493,7 @@ All provider commands must use `providers.ConfigLoader` for flag binding
 
 Do not:
 - Import `cmd/gcx/config` from provider code (import cycle)
-- Roll custom flag binding for `--config`/`--context`
+- Roll custom flag binding for `--config` (or re-bind `--context` — root owns it)
 - Construct HTTP clients or load credentials outside ConfigLoader
 - Hardcode env var names — ConfigLoader handles `GRAFANA_PROVIDER_*` resolution
 - Use `os.Getenv` for provider-specific env vars — use `LoadProviderConfig`
@@ -549,7 +551,7 @@ return opts.IO.Encode(cmd.OutOrStdout(), objs)
 
 | Category | Examples | Rationale |
 |----------|----------|-----------|
-| Query/search results | `insights query`, `search entities` | Time-series and aggregation results, not storable resources |
+| Query/search results | `insights search`, `entities list` | Time-series and aggregation results, not storable resources |
 | Operational views | `status`, `health`, `inspect` | Composite or derived data, not individual resources |
 | Read-only reference data | `kg scopes list` | Discoverable metadata, not user-managed resources |
 | Singleton config | `env get` | Single config objects, not collections of resources |
@@ -645,6 +647,54 @@ Unexported fields on domain types would be lost during marshal/unmarshal.
 - `internal/providers/appo11y/overrides/adapter.go`: ToResource preserves annotation
 - ADR: `docs/adrs/appo11y-provider/001-cli-ux-and-resource-adapter-design.md`
 
+### 21. API Path Constants (Adopt)
+
+Every HTTP API path used by a client must be declared as a named constant (or
+format-string constant for paths with dynamic segments) at the top of the file.
+Inline string concatenation of path segments is not recommended.
+
+**Rules:**
+
+1. Static paths → plain `const`:
+   ```go
+   const policiesPath = "/adaptive-traces/api/v1/policies"
+   ```
+2. Paths with a single dynamic segment → format constant + `fmt.Sprintf`:
+   ```go
+   const policyByIDPathFmt = policiesPath + "/%s"
+   // usage:
+   fmt.Sprintf(policyByIDPathFmt, url.PathEscape(id))
+   ```
+3. Paths with multiple dynamic segments or action suffixes → same pattern:
+   ```go
+   const recommendationApplyFmt = recommendationsPath + "/%s/apply"
+   ```
+4. Dynamic segments that represent user-supplied identifiers must be escaped
+   with `url.PathEscape` before interpolation.
+5. Query parameters are appended after the format call, not baked into the
+   constant.
+
+**Rationale:** Centralising path definitions makes API surface auditable at a
+glance, prevents typo drift across call sites, and ensures consistent use of
+`url.PathEscape` for dynamic segments.
+
+**Anti-patterns:**
+```go
+// Bad — inline concatenation
+c.doRequest(ctx, http.MethodGet, basePath+"/"+url.PathEscape(id), nil)
+
+// Bad — format string built ad-hoc
+c.doRequest(ctx, http.MethodPost, fmt.Sprintf("%s/%s/apply", recsPath, id), nil)
+```
+
+**Evidence:**
+- `internal/providers/traces/adaptive/client.go`: `policyByIDPathFmt`, `recommendationApplyFmt`, `recommendationDismissFmt`
+- `internal/providers/logs/adaptive/client.go`: `exemptionByIDFmt`, `dropRuleByIDFmt`
+- `internal/providers/metrics/adaptive/client.go`: `ruleByMetricFmt`, `exemptionByIDFmt`
+- `internal/providers/slo/definitions/client.go`: `sloByUUIDFmt`
+- `internal/providers/kg/client.go`: `ruleByNameFmt`, `suppressionByNameFmt`
+- `internal/providers/aio11y/*/client.go`: `conversationByIDFmt`, `generationByIDFmt`, `ruleByIDFmt`, `templateByIDFmt`, `evaluatorByIDFmt`
+
 ---
 
 ## Contradiction Resolutions
@@ -704,10 +754,10 @@ which manages its own transport.
 ### 5. CI Drift Check Coverage
 
 **Observed in:** Project Structure domain notes that the CI `docs` job only
-checks `cli-reference-drift`, not all three reference generators. The Makefile
-has `reference-drift` targeting all three.
+checks `cli-reference-drift`, not all three reference generators. `mise.toml`
+has `reference-drift` targeting all four.
 
-**Resolution:** The Makefile now has all three drift check targets
-(`cli-reference-drift`, `env-var-reference-drift`, `config-reference-drift`)
-plus a combined `reference-drift` target. The CI workflow may not invoke the
-combined target. This is a coverage gap in CI, not a code contradiction.
+**Resolution:** `mise.toml` has all four drift check tasks
+(`reference-drift:cli`, `reference-drift:env-var`, `reference-drift:config`,
+`reference-drift:linter-rules`) plus a combined `reference-drift` task. CI now
+invokes `mise run reference-drift` which runs all four.

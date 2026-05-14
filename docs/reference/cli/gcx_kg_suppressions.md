@@ -1,6 +1,6 @@
 ## gcx kg suppressions
 
-Push suppressions to the Knowledge Graph.
+Manage alert suppressions in the Knowledge Graph.
 
 ### Options
 
@@ -13,7 +13,7 @@ Push suppressions to the Knowledge Graph.
 ```
       --agent              Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
       --config string      Path to the configuration file to use
-      --context string     Name of the context to use
+      --context string     Name of the context to use (overrides current-context in config)
       --log-http-payload   Log full HTTP request/response bodies (includes headers — may expose tokens)
       --no-color           Disable color output
       --no-truncate        Disable table column truncation (auto-enabled when stdout is piped)
@@ -23,5 +23,7 @@ Push suppressions to the Knowledge Graph.
 ### SEE ALSO
 
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
-* [gcx kg suppressions create](gcx_kg_suppressions_create.md)	 - Upload suppressions from a YAML file.
+* [gcx kg suppressions create](gcx_kg_suppressions_create.md)	 - Create or update one or more suppressions from a YAML file or stdin.
+* [gcx kg suppressions delete](gcx_kg_suppressions_delete.md)	 - Delete a suppression by name.
+* [gcx kg suppressions list](gcx_kg_suppressions_list.md)	 - List all alert suppressions.
 

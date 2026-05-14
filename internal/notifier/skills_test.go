@@ -70,7 +70,7 @@ func TestSkillsUpdateMessage_InstalledSkillDiffersFromBundle(t *testing.T) {
 	if msg == "" {
 		t.Fatal("SkillsUpdateMessage() = empty, want message")
 	}
-	if want := "Run: gcx skills update"; !strings.HasSuffix(msg, want) {
+	if want := "Run: gcx agent skills update"; !strings.HasSuffix(msg, want) {
 		t.Fatalf("SkillsUpdateMessage() = %q, want suffix %q", msg, want)
 	}
 }

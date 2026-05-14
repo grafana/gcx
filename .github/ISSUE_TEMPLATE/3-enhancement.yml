@@ -6,85 +6,22 @@ body:
   - type: markdown
     attributes:
       value: |
-        **Title tip:** Start with a verb, e.g. "Improve cold-start latency for help command"
-
-        Found a way to make something better? We're all ears! Tell us about your improvement idea.
+        Found a way to make something better? Tell us about your idea.
 
   - type: textarea
-    id: current_behavior
+    id: idea
     attributes:
-      label: What exists today?
-      description: Describe the current CLI functionality you'd like to improve
+      label: Your idea
+      description: Describe your idea for improving an existing feature. Try and include what happens today, what you'd like to change, and why it would be better.
       placeholder: |
         The `gcx resources push` command currently processes all resources sequentially.
-        When pushing 50+ dashboards, it takes several minutes to complete.
-        There's a --max-concurrent flag, but it doesn't seem to have much effect...
-    validations:
-      required: true
+        When pushing 100s of dashboards, it takes a long time to complete.
+        There's a --max-concurrent flag, but it doesn't seem to have much effect.
 
-  - type: textarea
-    id: suggested_improvement
-    attributes:
-      label: How could this be better?
-      description: Describe your suggested improvement
-      placeholder: |
         The push command should better utilize concurrency. Maybe:
-        - Increase default --max-concurrent value
-        - Add progress indicators showing which resources are being processed
-        - Batch smaller resources together for more efficient uploads
-        - Add a --fast flag that optimizes for speed over caution
+        - Increase default --max-concurrent value, or have it configurable
+        - Add optional progress indicators showing which resources are being processed
+
+        We could speed up our CD pipeline with this improvement.
     validations:
       required: true
-
-  - type: textarea
-    id: benefit
-    attributes:
-      label: Why would this be an improvement?
-      description: Help us understand the value of this change
-      placeholder: |
-        This would reduce our CI/CD deployment time from 5 minutes to under 1 minute.
-        We're pushing 80 dashboards on every deploy, and the sequential processing
-        creates a bottleneck in our release pipeline. Faster deploys mean faster
-        iteration and quicker rollbacks when needed.
-    validations:
-      required: true
-
-  - type: dropdown
-    id: improvement_type
-    attributes:
-      label: What kind of improvement is this?
-      options:
-        - Makes it easier to use
-        - Makes it faster/more efficient
-        - Makes it more reliable
-        - Reduces errors or confusion
-        - Adds flexibility/options
-        - Better output/feedback
-        - Other
-    validations:
-      required: true
-
-  - type: textarea
-    id: examples
-    attributes:
-      label: Can you give specific examples?
-      description: Real scenarios or commands help us understand your needs better
-      placeholder: |
-        Example command that's slow:
-        $ gcx resources push ./dashboards/ --context=prod
-
-        Current behavior: Takes ~5 minutes for 80 dashboards
-        Desired behavior: Should complete in under 1 minute
-
-        Similar tools like kubectl can push hundreds of resources quickly.
-
-  - type: dropdown
-    id: backwards_compatibility
-    attributes:
-      label: Would this change affect existing behavior?
-      description: Should the old way still work?
-      options:
-        - No, it's purely additive (new flag/option)
-        - Yes, but the old way should still work (default behavior change)
-        - Yes, and I think that's okay (breaking change)
-        - I'm not sure

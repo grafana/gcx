@@ -184,7 +184,7 @@ func ComputeStatus(s Slo, sli *float64, objective float64) string {
 	if s.ReadOnly != nil && s.ReadOnly.Status != nil {
 		switch strings.ToLower(s.ReadOnly.Status.Type) {
 		case "creating", "updating", "deleting", "error":
-			return strings.Title(s.ReadOnly.Status.Type) //nolint:staticcheck
+			return strings.Title(s.ReadOnly.Status.Type) //nolint:staticcheck // deprecated but no x/text dep here
 		}
 	}
 

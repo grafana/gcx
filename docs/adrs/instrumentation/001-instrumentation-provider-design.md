@@ -1,7 +1,7 @@
 # Declarative Instrumentation Setup under `gcx setup`
 
 **Created**: 2026-03-30
-**Status**: proposed
+**Status**: superseded by [002-cli-redesign.md](002-cli-redesign.md)
 **Bead**: gcx-4r1g
 **Supersedes**: none
 
@@ -230,3 +230,32 @@ Stage 2 as `add`.
 - Add pipeline protection guard to fleet provider
 - Update CONSTITUTION.md, architecture docs, migration-gap-analysis.md
 - Stage 2: `add` verb for imperative flag-based configuration
+
+## Architecture notes
+
+### Beyla is embedded in Alloy, not a standalone DaemonSet
+
+The `grafana-cloud-onboarding` chart sets `beyla.enabled: false` intentionally:
+
+```yaml
+beyla:
+  # As we're using the Beyla embedded into Alloy (via the beyla.ebpf
+  # component), we set this to false.
+  enabled: false
+```
+
+Beyla runs as a `beyla.ebpf` component **inside the alloy-daemon pod**. The alloy-daemon pod
+appears as `2/2 Running` (Alloy plus its config-reload sidecar). The chart deploys alloy-daemon
+with the eBPF prerequisites (`privileged: true`, `hostPID: true`, `cgroup` mount). When
+`apps configure` declares a namespace, Fleet Management creates a
+`beyla_k8s_appo11y_<cluster>` pipeline and pushes it to alloy-daemon at the 30-second poll
+interval. alloy-daemon then loads the `beyla.ebpf` component for the declared workloads.
+
+The absence of a standalone Beyla DaemonSet in `kubectl -n monitoring get pods` is **intentional
+and correct** — not a bug. The iteration-2 smoke test's "Beyla daemon still missing" finding
+(B-597-it2-04) was a misdiagnosis resolved by reading the chart values directly.
+
+**Verification:** After `apps configure <cluster> <namespace>` and ~30s delay, run
+`kubectl -n monitoring logs -l app.kubernetes.io/name=alloy-daemon | grep beyla` to confirm
+the `beyla.ebpf` component is active. Also run `gcx fleet pipelines list` and filter for
+`beyla_k8s_appo11y_<cluster>` to confirm FM has pushed the pipeline.

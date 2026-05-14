@@ -42,7 +42,7 @@ the new client MUST do the same — never wrap in a struct unless the source doe
 
 ## Completion
 
-When all files are implemented and `make lint` passes on your files:
+When all files are implemented and `mise run lint` passes on your files:
 1. Mark the Build-Core task complete.
 2. Send a message to the lead confirming completion and listing the files you created.
 ```
@@ -95,6 +95,6 @@ the new client MUST do the same — never wrap in a struct unless the source doe
 
 ## Completion
 
-When all files are implemented and `make lint` passes on your files:
+When all files are implemented and `mise run lint` passes on your files:
 1. Send a message to the lead confirming completion and listing the files you created.
 ```

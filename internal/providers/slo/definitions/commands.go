@@ -1,7 +1,6 @@
 package definitions
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -13,6 +12,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
@@ -408,7 +408,7 @@ type deleteOpts struct {
 }
 
 func (o *deleteOpts) setup(flags *pflag.FlagSet) {
-	flags.BoolVarP(&o.Force, "force", "f", false, "Skip confirmation prompt")
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
 }
 
 func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -420,19 +420,13 @@ func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			if !opts.Force {
-				fmt.Fprintf(cmd.OutOrStdout(), "Delete %d SLO definition(s)? [y/N] ", len(args))
-				reader := bufio.NewReader(cmd.InOrStdin())
-				answer, err := reader.ReadString('\n')
-				if err != nil {
-					return fmt.Errorf("failed to read confirmation: %w", err)
-				}
-
-				answer = strings.TrimSpace(strings.ToLower(answer))
-				if answer != "y" && answer != "yes" {
-					cmdio.Info(cmd.OutOrStdout(), "Aborted.")
-					return nil
-				}
+			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
+				fmt.Sprintf("Delete %d SLO definition(s)?", len(args)))
+			if err != nil {
+				return err
+			}
+			if !proceed {
+				return nil
 			}
 
 			crud, _, err := NewTypedCRUD(ctx, loader)

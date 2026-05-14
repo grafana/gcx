@@ -94,7 +94,7 @@ func buildCommentsMap(typesInputDir string) (map[string]typeComments, error) {
 
 func docs(typeDef reflect.Type, typesCommentsMap map[string]typeComments) string {
 	switch typeDef.Kind() {
-	case reflect.Ptr:
+	case reflect.Pointer:
 		return docs(typeDef.Elem(), typesCommentsMap)
 	case reflect.Bool:
 		return "bool"
@@ -118,7 +118,7 @@ func docs(typeDef reflect.Type, typesCommentsMap map[string]typeComments) string
 
 		valueType := typeDef.Elem()
 		valueKind := valueType.Kind()
-		if valueType.Kind() == reflect.Ptr {
+		if valueType.Kind() == reflect.Pointer {
 			valueKind = valueType.Elem().Kind()
 		}
 
@@ -171,7 +171,7 @@ func docs(typeDef reflect.Type, typesCommentsMap map[string]typeComments) string
 			}
 			buffer.WriteString(yamlName + ": ")
 
-			if field.Type.Kind() == reflect.Ptr {
+			if field.Type.Kind() == reflect.Pointer {
 				fieldKind = field.Type.Elem().Kind()
 			}
 

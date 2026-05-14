@@ -17,7 +17,7 @@
 | `ARCHITECTURE.md` | Yes — if architectural decisions changed |
 | `README.md` | Yes — if user-visible behavior changed |
 | `docs/architecture/` | Yes — run structural checks below |
-| `docs/reference/cli/` | Automatic — `make docs` regenerates CLI reference |
+| `docs/reference/cli/` | Automatic — `mise run docs` regenerates CLI reference |
 
 ### Adding a New ADR
 
@@ -46,7 +46,7 @@
 | Document | Update Required? |
 |----------|-----------------|
 | `README.md` | Yes — update CLI flags or usage section |
-| `docs/reference/cli/` | Automatic — `make docs` regenerates |
+| `docs/reference/cli/` | Automatic — `mise run docs` regenerates |
 | `docs/design/` | If UX conventions changed |
 
 ## General Rules
@@ -56,7 +56,7 @@
 3. **CLAUDE.md (= AGENTS.md) is the agent entry point** — keep it as a short TOC with a package map; put details in `docs/`.
 4. **Don't duplicate** — cross-link between docs instead of copying content.
 5. **docs/ is the system of record** — organize by content type, not audience.
-6. **Run `make docs`** after any CLI changes — regenerates reference docs.
+6. **Run `mise run docs`** after any CLI changes — regenerates reference docs.
 7. **Don't hardcode volatile values** — avoid exact counts ("18 patterns", "10 ADRs"), specific dates ("Generated: 2026-03-02", "Last updated: ..."), confidence percentages, or domain counts in docs. These go stale immediately, create merge conflicts, and add no value over `git log`. Use descriptive labels instead ("recurring patterns", "high confidence"). The only exception is dates in ADR status fields, which are inherently historical.
 
 ---

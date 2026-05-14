@@ -125,7 +125,6 @@ func NewTypedCRUD(ctx context.Context, loader GrafanaConfigLoader) (*adapter.Typ
 func NewLazyFactory() adapter.Factory {
 	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
 		var loader providers.ConfigLoader
-		loader.SetContextName(internalconfig.ContextNameFromCtx(ctx))
 		crud, _, err := NewTypedCRUD(ctx, &loader)
 		if err != nil {
 			return nil, err

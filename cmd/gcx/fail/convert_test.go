@@ -12,8 +12,11 @@ import (
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/datasources"
+	"github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/grafana"
 	"github.com/grafana/gcx/internal/login"
+	cmdoutput "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -760,6 +763,46 @@ func TestErrorToDetailedError_LoginVersionCheck(t *testing.T) {
 	assert.Equal(t, fail.ExitVersionIncompatible, *got.ExitCode)
 }
 
+func TestConvertFleetHTTPErrors(t *testing.T) {
+	tests := []struct {
+		name         string
+		err          error
+		wantSummary  string
+		wantAuthExit bool
+	}{
+		{
+			name:         "401 from fleet management",
+			err:          fmt.Errorf("clusters list: %w", &fleet.HTTPError{Status: 401, Path: "/instrumentation.v1.InstrumentationService/GetK8SInstrumentation"}),
+			wantSummary:  "Authentication failed",
+			wantAuthExit: true,
+		},
+		{
+			name:         "403 from fleet management",
+			err:          fmt.Errorf("clusters list: %w", &fleet.HTTPError{Status: 403, Path: "/instrumentation.v1.InstrumentationService/GetK8SInstrumentation"}),
+			wantSummary:  "Authorization failed",
+			wantAuthExit: true,
+		},
+		{
+			name: "404 not handled by this converter",
+			err:  &fleet.HTTPError{Status: 404, Path: "/foo"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			de := fail.ErrorToDetailedError(tc.err)
+			if tc.wantSummary == "" {
+				return // just verify no panic
+			}
+			assert.Equal(t, tc.wantSummary, de.Summary)
+			if tc.wantAuthExit {
+				require.NotNil(t, de.ExitCode)
+				// ExitAuthFailure should be non-zero
+				assert.NotZero(t, *de.ExitCode)
+			}
+		})
+	}
+}
+
 type fakeServiceAPIError struct {
 	statusCode int
 	service    string
@@ -780,4 +823,174 @@ func (e fakeServiceAPIError) APIServiceName() string {
 
 func (e fakeServiceAPIError) APIUserMessage() string {
 	return e.message
+}
+
+func TestErrorToDetailedError_WaitTimeoutEmittedSuppressesEnvelope(t *testing.T) {
+	// ErrWaitTimeoutEmitted must be recognised FIRST in the converter
+	// chain and suppress the secondary DetailedError JSON envelope.
+	// ErrorToDetailedError must return nil so that main.go exits 1 without
+	// writing a second JSON document to stdout.
+	err := fmt.Errorf("clusters wait: %w", instrumentation.ErrWaitTimeoutEmitted)
+
+	got := fail.ErrorToDetailedError(err)
+
+	// nil means "already handled; suppress secondary output" — matches
+	// the convertLinterErrors(ErrTestsFailed) precedent.
+	assert.Nil(t, got, "ErrWaitTimeoutEmitted must suppress the DetailedError envelope (return nil)")
+}
+
+func TestErrorToDetailedError_WaitTimeoutEmittedBeforeOtherConverters(t *testing.T) {
+	// Verify that the sentinel converter runs BEFORE other converters that might
+	// also match. Wrap ErrWaitTimeoutEmitted alongside a usage error; the
+	// sentinel must win and return nil, not the usage error's DetailedError.
+	sentinelErr := fmt.Errorf("apps wait: %w", instrumentation.ErrWaitTimeoutEmitted)
+
+	got := fail.ErrorToDetailedError(sentinelErr)
+
+	assert.Nil(t, got,
+		"sentinel converter must fire before generic converters — expected nil, not %+v", got)
+}
+
+func TestErrorToDetailedError_MutuallyExclusiveFlagsSentinel(t *testing.T) {
+	// Wrapping the typed sentinel must produce the "Invalid command usage"
+	// envelope with the wrapped message as details. A bare error whose text
+	// happens to contain "mutually exclusive" must NOT match — only the typed
+	// sentinel triggers this converter.
+	wrapped := fmt.Errorf("--costmetrics and --no-costmetrics: %w", instrumentation.ErrMutuallyExclusiveFlags)
+
+	got := fail.ErrorToDetailedError(wrapped)
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Invalid command usage", got.Summary)
+	assert.Contains(t, got.Details, "--costmetrics and --no-costmetrics")
+
+	// Bare string must fall through to the generic fallback (no Suggestions,
+	// no typed-error semantics).
+	bare := errors.New("--foo and --bar are mutually exclusive")
+	bareGot := fail.ErrorToDetailedError(bare)
+	require.NotNil(t, bareGot)
+	assert.NotEqual(t, "Invalid command usage", bareGot.Summary,
+		"converter must only match the typed sentinel, not arbitrary strings")
+}
+
+// TestErrorToDetailedError_UnknownFieldSelectionError verifies that
+// UnknownFieldSelectionError is converted to a DetailedError with:
+//   - Summary: "Invalid command usage"
+//   - ExitCode: 2 (ExitUsageError)
+//   - Details containing the offending field names
+//   - A suggestion to run --json list
+func TestErrorToDetailedError_UnknownFieldSelectionError(t *testing.T) {
+	tests := []struct {
+		name           string
+		fields         []string
+		wantInDetails  string
+		wantExitCode   int
+		wantSuggestion string
+	}{
+		{
+			name:           "single unknown field",
+			fields:         []string{"bogus"},
+			wantInDetails:  "bogus",
+			wantExitCode:   fail.ExitUsageError,
+			wantSuggestion: "--json list",
+		},
+		{
+			name:          "multiple unknown fields",
+			fields:        []string{"foo", "bar"},
+			wantInDetails: "foo",
+			wantExitCode:  fail.ExitUsageError,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := cmdoutput.UnknownFieldSelectionError{Fields: tc.fields}
+
+			got := fail.ErrorToDetailedError(err)
+
+			require.NotNil(t, got)
+			assert.Equal(t, "Invalid command usage", got.Summary)
+			require.NotNil(t, got.ExitCode)
+			assert.Equal(t, tc.wantExitCode, *got.ExitCode)
+			assert.Contains(t, got.Details, tc.wantInDetails)
+			if tc.wantSuggestion != "" {
+				found := false
+				for _, s := range got.Suggestions {
+					if strings.Contains(s, tc.wantSuggestion) {
+						found = true
+						break
+					}
+				}
+				assert.True(t, found, "expected suggestion containing %q in %v", tc.wantSuggestion, got.Suggestions)
+			}
+		})
+	}
+}
+
+func TestErrorToDetailedError_UsageErrorExitCode(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "UsageError returns ExitUsageError",
+			err:  fail.NewCommandUsageError(nil, "bad input", nil),
+		},
+		{
+			name: "unknown command returns ExitUsageError",
+			err:  errors.New(`unknown command "foo" for "gcx"`),
+		},
+		{
+			name: "required flags returns ExitUsageError",
+			err:  errors.New(`required flag(s) "datasource" not set`),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tc.err)
+			require.NotNil(t, got)
+			require.NotNil(t, got.ExitCode, "ExitCode should be set for usage errors")
+			assert.Equal(t, fail.ExitUsageError, *got.ExitCode)
+		})
+	}
+}
+
+func TestErrorToDetailedError_PartialFailureExitCode(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "push partial failure",
+			err:  fail.NewPartialFailureError("push", 100, 10),
+		},
+		{
+			name: "pull partial failure",
+			err:  fail.NewPartialFailureError("pull", 50, 3),
+		},
+		{
+			name: "delete partial failure",
+			err:  fail.NewPartialFailureError("delete", 20, 5),
+		},
+		{
+			name: "validate partial failure",
+			err:  fail.NewPartialFailureError("validate", 30, 7),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tc.err)
+			require.NotNil(t, got)
+			require.NotNil(t, got.ExitCode, "ExitCode should be set for partial failures")
+			assert.Equal(t, fail.ExitPartialFailure, *got.ExitCode)
+			assert.Contains(t, got.Summary, "failed")
+		})
+	}
+}
+
+func TestPartialFailureError_Message(t *testing.T) {
+	err := fail.NewPartialFailureError("push", 100, 10)
+	assert.Equal(t, "10 resource(s) failed to push", err.Error())
 }

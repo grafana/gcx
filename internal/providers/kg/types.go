@@ -42,17 +42,6 @@ type EntityCountRequest struct {
 	PropertyMatchers []PropertyMatcher `json:"propertyMatchers,omitempty"`
 }
 
-// AssertionsRequest is the request body for POST /v1/assertions.
-type AssertionsRequest struct {
-	StartTime                     int64       `json:"startTime" yaml:"startTime"`
-	EndTime                       int64       `json:"endTime" yaml:"endTime"`
-	EntityKeys                    []EntityKey `json:"entityKeys" yaml:"entityKeys"`
-	IncludeConnectedAssertions    bool        `json:"includeConnectedAssertions,omitempty" yaml:"includeConnectedAssertions,omitempty"`
-	AlertCategories               []string    `json:"alertCategories,omitempty" yaml:"alertCategories,omitempty"`
-	Severities                    []string    `json:"severities,omitempty" yaml:"severities,omitempty"`
-	HideAssertionsOlderThanNHours int         `json:"hideAssertionsOlderThanNHours,omitempty" yaml:"hideAssertionsOlderThanNHours,omitempty"`
-}
-
 // TimeCriteria defines a time range for search queries.
 type TimeCriteria struct {
 	Instant int64 `json:"instant,omitempty" yaml:"instant,omitempty"`
@@ -76,9 +65,10 @@ type PropertyMatcher struct {
 
 // EntityMatcher filters entities by type and optional property matchers.
 type EntityMatcher struct {
-	EntityType       string            `json:"entityType" yaml:"entityType"`
-	PropertyMatchers []PropertyMatcher `json:"propertyMatchers,omitempty" yaml:"propertyMatchers,omitempty"`
-	HavingAssertion  bool              `json:"havingAssertion,omitempty" yaml:"havingAssertion,omitempty"`
+	EntityType                 string            `json:"entityType" yaml:"entityType"`
+	PropertyMatchers           []PropertyMatcher `json:"propertyMatchers,omitempty" yaml:"propertyMatchers,omitempty"`
+	HavingAssertion            bool              `json:"havingAssertion,omitempty" yaml:"havingAssertion,omitempty"`
+	HavingPropagatedAssertions bool              `json:"havingPropagatedAssertions,omitempty" yaml:"havingPropagatedAssertions,omitempty"`
 }
 
 // SearchRequest is the request body for POST /v1/search.
@@ -91,6 +81,31 @@ type SearchRequest struct {
 	PageNum        int               `json:"pageNum" yaml:"pageNum"`
 }
 
+// LabelMatcher is one filter within an InsightSearchCriteria group. The backend
+// matches on assertion-rule labels such as asserts_assertion_name and
+// asserts_severity. Op uses MatcherOp values: "=", "<>", "CONTAINS",
+// "STARTS WITH", "ENDS WITH", "IS NULL", "IS NOT NULL", "<", ">", "<=", ">=",
+// "IN".
+type LabelMatcher struct {
+	Name  string `json:"name" yaml:"name"`
+	Op    string `json:"op" yaml:"op"`
+	Value string `json:"value" yaml:"value"`
+}
+
+// InsightSearchCriteria is one rule group. Label matchers within a group are
+// ANDed; multiple groups in an InsightSearchRequest are ORed.
+type InsightSearchCriteria struct {
+	LabelMatchers []LabelMatcher `json:"labelMatchers" yaml:"labelMatchers"`
+}
+
+// InsightSearchRequest is the request body for POST /v1/assertions/search.
+type InsightSearchRequest struct {
+	EntityType     string                  `json:"entityType" yaml:"entityType"`
+	SearchCriteria []InsightSearchCriteria `json:"searchCriteria" yaml:"searchCriteria"`
+	ScopeCriteria  *ScopeCriteria          `json:"scopeCriteria,omitempty" yaml:"scopeCriteria,omitempty"`
+	TimeCriteria   *TimeCriteria           `json:"timeCriteria,omitempty" yaml:"timeCriteria,omitempty"`
+}
+
 // SampleSearchRequest is the request body for POST /v1/search/sample.
 type SampleSearchRequest struct {
 	TimeCriteria   *TimeCriteria   `json:"timeCriteria,omitempty" yaml:"timeCriteria,omitempty"`
@@ -99,31 +114,17 @@ type SampleSearchRequest struct {
 	SampleSize     int             `json:"sampleSize" yaml:"sampleSize"`
 }
 
-// AssertionScores contains assertion score data from the summary response.
-type AssertionScores struct {
-	TotalScore              float64            `json:"totalScore"`
-	Metrics                 []any              `json:"metrics,omitempty"`
-	SeverityWiseTotalScores map[string]float64 `json:"severityWiseTotalScores,omitempty"`
-}
-
-// AssertionSummary is the response from POST /v1/assertions/summary.
-type AssertionSummary struct {
-	Summaries                []any           `json:"summaries,omitempty"`
-	TimeWindow               *TimeCriteria   `json:"timeWindow,omitempty"`
-	TimeStepIntervalMs       int64           `json:"timeStepIntervalMs,omitempty"`
-	AggregateAssertionScores AssertionScores `json:"aggregateAssertionScores"`
-}
-
 // SearchResult is a single search result item.
 type SearchResult struct {
-	ID         int               `json:"id,omitempty"`
-	Name       string            `json:"name"`
-	Type       string            `json:"type"`
-	EntityType string            `json:"entityType,omitempty"`
-	Active     bool              `json:"active,omitempty"`
-	Scope      map[string]string `json:"scope,omitempty"`
-	Properties map[string]any    `json:"properties,omitempty"`
-	Assertion  map[string]any    `json:"assertion,omitempty"`
+	ID                 int               `json:"id,omitempty"`
+	Name               string            `json:"name"`
+	Type               string            `json:"type"`
+	EntityType         string            `json:"entityType,omitempty"`
+	Active             bool              `json:"active,omitempty"`
+	Scope              map[string]string `json:"scope,omitempty"`
+	Properties         map[string]any    `json:"properties,omitempty"`
+	Assertion          map[string]any    `json:"assertion,omitempty"`
+	ConnectedAssertion map[string]any    `json:"connectedAssertion,omitempty"`
 }
 
 // GraphEntity is the rich entity returned by entity get/lookup endpoints.
@@ -165,23 +166,6 @@ type AssertionTimeline struct {
 	TimeWindow                  *TimeCriteria     `json:"timeWindow,omitempty"`
 	AllAssertions               []any             `json:"allAssertions,omitempty"`
 	InboundClientErrorsBreached bool              `json:"inboundClientErrorsBreached,omitempty"`
-}
-
-// AssertionsGraphData is the nested data object in AssertionsGraphResponse.
-type AssertionsGraphData struct {
-	PageNum                  int            `json:"pageNum"`
-	LastPage                 bool           `json:"lastPage"`
-	SearchResultsMaxLimitHit bool           `json:"searchResultsMaxLimitHit"`
-	Entities                 []any          `json:"entities"`
-	Edges                    []any          `json:"edges"`
-	Table                    map[string]any `json:"table,omitempty"`
-}
-
-// AssertionsGraphResponse is the response from POST /v1/assertions/graph.
-type AssertionsGraphResponse struct {
-	Type         string              `json:"type,omitempty"`
-	TimeCriteria *TimeCriteria       `json:"timeCriteria,omitempty"`
-	Data         AssertionsGraphData `json:"data"`
 }
 
 // EntityMetricValue is a single data point in an entity metric series.
@@ -367,6 +351,64 @@ type EntityTypeSchema struct {
 type KGSchemaResult struct {
 	EntityTypes   []EntityTypeSchema `json:"entityTypes"`
 	Relationships []string           `json:"relationships"`
+}
+
+// LLMSummaryRequest is the request body for POST /v1/assertions/llm-summary.
+type LLMSummaryRequest struct {
+	StartTime                                     int64       `json:"startTime"`
+	EndTime                                       int64       `json:"endTime"`
+	EntityKeys                                    []EntityKey `json:"entityKeys"`
+	SuggestionSrcEntities                         []EntityKey `json:"suggestionSrcEntities"`
+	AlertCategories                               []string    `json:"alertCategories,omitempty"`
+	HideAssertionsOlderThanNHours                 int         `json:"hideAssertionsOlderThanNHours"`
+	HideAssertionsPresentMoreThanPercentageOfTime int         `json:"hideAssertionsPresentMoreThanPercentageOfTime"`
+	IncludeSuggestions                            bool        `json:"includeSuggestions"`
+	IncludeRcaPatterns                            bool        `json:"includeRcaPatterns"`
+}
+
+// CypherInsight is a single insight on a Cypher search entity.
+type CypherInsight struct {
+	Name     string `json:"name"`
+	Severity string `json:"severity"`
+	Category string `json:"category"`
+}
+
+// CypherEntity is an entity returned by the Cypher search endpoint.
+type CypherEntity struct {
+	Type              string          `json:"type"`
+	Name              string          `json:"name"`
+	Scope             map[string]any  `json:"scope,omitempty"`
+	Properties        map[string]any  `json:"properties,omitempty"`
+	Insights          []CypherInsight `json:"insights,omitempty"`
+	ConnectedInsights []CypherInsight `json:"connectedInsights,omitempty"`
+}
+
+// CypherEdge is a relationship returned by the Cypher search endpoint.
+type CypherEdge struct {
+	Type             string         `json:"type"`
+	SourceName       string         `json:"sourceName"`
+	SourceType       string         `json:"sourceType"`
+	SourceScope      map[string]any `json:"sourceScope,omitempty"`
+	DestinationName  string         `json:"destinationName"`
+	DestinationType  string         `json:"destinationType"`
+	DestinationScope map[string]any `json:"destinationScope,omitempty"`
+}
+
+// CypherSearchRequest is the request body for POST /v1/search/cypher.
+type CypherSearchRequest struct {
+	CypherQuery   string         `json:"cypherQuery"`
+	TimeCriteria  *TimeCriteria  `json:"timeCriteria,omitempty"`
+	ScopeCriteria *ScopeCriteria `json:"scopeCriteria,omitempty"`
+	PageNum       int            `json:"pageNum,omitempty"`
+	WithInsights  bool           `json:"withInsights,omitempty"`
+}
+
+// CypherSearchResponse is the response from POST /v1/search/cypher.
+type CypherSearchResponse struct {
+	Entities []CypherEntity `json:"entities"`
+	Edges    []CypherEdge   `json:"edges"`
+	PageNum  int            `json:"pageNum"`
+	LastPage bool           `json:"lastPage"`
 }
 
 // KGMetadataOutput is the structured output from gcx kg metadata.

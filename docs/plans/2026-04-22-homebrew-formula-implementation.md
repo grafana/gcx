@@ -629,18 +629,18 @@ changelog:
 - [ ] **Step 3: Validate the goreleaser config**
 
 ```bash
-# Requires goreleaser installed. In this repo, devbox provides it.
-devbox run goreleaser check
+# Requires goreleaser installed. In this repo, mise provides it.
+goreleaser check
 ```
 
 Expected: `config is valid`.
 
-If devbox is not available, use `go run github.com/goreleaser/goreleaser/v2@latest check` or skip this step and rely on CI.
+If mise is not available, use `go run github.com/goreleaser/goreleaser/v2@latest check` or skip this step and rely on CI.
 
 - [ ] **Step 4: Dry-run a snapshot release to confirm no Homebrew output**
 
 ```bash
-devbox run goreleaser release --snapshot --skip=publish --clean
+goreleaser release --snapshot --skip=publish --clean
 ls dist/
 ```
 
@@ -875,10 +875,10 @@ You can re-run the publisher for a past tag via the workflow's `workflow_dispatc
 - [ ] **Step 5: Build docs to confirm no broken references**
 
 ```bash
-GCX_AGENT_MODE=false make docs
+GCX_AGENT_MODE=false mise run docs
 ```
 
-Expected: docs build succeeds. If `devbox`/`mkdocs` is unavailable locally, skip — CI will catch any break.
+Expected: docs build succeeds. If `mise`/`mkdocs` is unavailable locally, skip — CI will catch any break.
 
 - [ ] **Step 6: Commit**
 
@@ -910,18 +910,18 @@ EOF
 - [ ] **Step 1: Run the full quality gate**
 
 ```bash
-GCX_AGENT_MODE=false make all
+GCX_AGENT_MODE=false mise run all
 ```
 
 This runs lint + tests + build + docs. Expected: all pass. Fix anything that fails.
 
-If `devbox` is unavailable, run the direct equivalents:
+If `mise` is unavailable, run the direct equivalents:
 
 ```bash
 go vet ./...
 go test -race -count=1 ./...
 go build -buildvcs=false -o bin/gcx ./cmd/gcx
-GCX_AGENT_MODE=false make docs   # or skip if mkdocs unavailable
+GCX_AGENT_MODE=false mise run docs   # or skip if mkdocs unavailable
 ```
 
 - [ ] **Step 2: Verify the branch has everything we expect**

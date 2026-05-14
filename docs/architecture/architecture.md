@@ -49,13 +49,13 @@
          |            |   redaction    |  |   (no k8s      |
          |            +----------------+  |    machinery)  |  +------------------+
          |                               +----------------+  | Setup Layer      |
-         |                                                    | (cmd/gcx/setup/, |
-         |            +----------------+                      |  internal/setup/)|
-         |            | Shared Fleet   |                      | - Instrumentation|
-         |            | (internal/     |<---------------------+   config & apply |
-         |            |  fleet/)       |                      | - Declarative    |
-         |            | - Base HTTP    |                      |   manifests      |
-         |            |   client       |                      +------------------+
+         |                                                    | (cmd/gcx/setup/) |
+         |            +----------------+                      | - Aggregated     |
+         |            | Shared Fleet   |                      |   product status |
+         |            | (internal/     |<---------------------+                  |
+         |            |  fleet/)       |                      +------------------+
+         |            | - Base HTTP    |
+         |            |   client       |
          |            | - Auth/config  |
          |            +----------------+
          |                               +----------------+  | Linter Layer     |
@@ -362,8 +362,15 @@ gcx
   |     (single command: list registered providers)
   +-- setup                (--config, --context as persistent flags)
   |     +-- status         (aggregated product status)
-  |     +-- instrumentation
-  |           +-- status, discover, show, apply
+  +-- instrumentation      (--config, --context as persistent flags)
+  |     +-- setup <cluster>      (onboarding wizard; helm command + access-policy guidance)
+  |     +-- status               (cross-cutting observed view)
+  |     +-- clusters
+  |     |     +-- list, get, configure, remove, wait
+  |     |     +-- apps
+  |     |           +-- list, get, configure, remove, wait
+  |     +-- services
+  |           +-- list, get, include, exclude, clear
   +-- dev
         (import, scaffold, generate, lint, serve subcommands for code scaffolding/dev workflows)
 ```
@@ -423,21 +430,21 @@ Error propagation: `StopOnError=true` cancels the errgroup context on first erro
 
 ### Toolchain
 
-Devbox pins exact tool versions (`go@1.26`, `golangci-lint@2.9`, `goreleaser@2.13.3`,
-`python@3.12.12`). The Makefile uses a `$(RUN_DEVBOX)` prefix pattern so all
-commands work identically inside and outside `devbox shell`.
+Mise pins tool versions (`go@1.26`, `golangci-lint@2.9`, `goreleaser@2.13.3`,
+`python@3.12`) via `mise.toml`. Once `mise install` has been run, all tools are
+on PATH and `mise run` invokes them with the correct versions.
 
-### Key Makefile Targets
+### Key mise Tasks
 
-| Target | Purpose |
+| Task | Purpose |
 |--------|---------|
-| `make all` | Full gate: lint + tests + build + docs |
-| `make build` | Compile to `bin/gcx` with version injection |
-| `make tests` | Run all unit tests |
-| `make lint` | golangci-lint with project config |
-| `make docs` | Generate reference docs + build mkdocs site |
-| `make reference-drift` | Fail if generated docs are stale |
-| `make test-env-up` | Start Grafana 12 + MySQL 9 via docker-compose |
+| `mise run all` | Full gate: lint + tests + build + docs |
+| `mise run build` | Compile to `bin/gcx` with version injection |
+| `mise run tests` | Run all unit tests |
+| `mise run lint` | golangci-lint with project config |
+| `mise run docs` | Generate reference docs + build mkdocs site |
+| `mise run reference-drift` | Fail if generated docs are stale |
+| `mise run test-env-up` | Start Grafana 12 + MySQL 9 via docker-compose |
 
 ### CI/CD
 
@@ -477,7 +484,7 @@ and checked for drift in CI.
    resource transformation from I/O, making it easy to add new transformations
    without touching pipeline code.
 
-6. **Reproducible builds.** Vendored dependencies, devbox, and CI caching ensure
+6. **Reproducible builds.** Vendored dependencies, mise, and CI caching ensure
    identical builds across environments.
 
 7. **Serve command.** The local development server with live reload, reverse proxy,
@@ -521,7 +528,7 @@ and checked for drift in CI.
    overwhelm the HTTP transport despite QPS limiting.
 
 8. **CI drift check incomplete.** Only CLI reference drift is checked in CI; env-var
-   and config reference drift checks exist in the Makefile but may not be wired
+   and config reference drift checks exist in `mise.toml` but may not be wired
    into the CI workflow.
 
 ### Low Priority
@@ -661,7 +668,7 @@ Files most important for understanding the codebase. Organized by architectural 
 | `internal/providers/registry.go` | `All()` — compile-time provider registry |
 | `internal/providers/redact.go` | `RedactSecrets()` — secure-by-default secret redaction |
 | `cmd/gcx/providers/command.go` | `providers` command (list registered providers) |
-| `internal/providers/configloader.go` | Shared `ConfigLoader` — binds `--config`/`--context` flags and loads REST config for all providers |
+| `internal/providers/configloader.go` | Shared `ConfigLoader` — binds the `--config` flag and loads REST config for all providers (`--context` is owned by the root command and threaded via `context.Context`) |
 
 ### Signal Providers (Metrics, Logs, Traces, Profiles)
 
@@ -723,23 +730,36 @@ Each LGTM signal has its own provider in `internal/providers/{signal}/` that reg
 
 | File | Purpose |
 |------|---------|
-| `internal/fleet/client.go` | Shared fleet base HTTP client (used by fleet provider and setup/instrumentation) |
+| `internal/fleet/client.go` | Shared fleet base HTTP client (used by fleet provider and instrumentation provider) |
 | `internal/fleet/config.go` | Config loading, `LoadClientWithStack` helper |
 | `internal/fleet/errors.go` | Fleet API error types |
 
-### Setup / Instrumentation
+### Setup
 
 | File | Purpose |
 |------|---------|
-| `cmd/gcx/setup/command.go` | Setup command area: aggregated status, wires instrumentation subcommands |
-| `cmd/gcx/setup/instrumentation/command.go` | Instrumentation subcommand group |
-| `cmd/gcx/setup/instrumentation/apply.go` | Apply InstrumentationConfig manifest with optimistic lock |
-| `cmd/gcx/setup/instrumentation/show.go` | Export current remote config as portable manifest |
-| `cmd/gcx/setup/instrumentation/discover.go` | Discover instrumentable workloads |
-| `cmd/gcx/setup/instrumentation/status.go` | Per-cluster instrumentation status with Beyla error query |
-| `internal/setup/instrumentation/types.go` | InstrumentationConfig manifest types |
-| `internal/setup/instrumentation/client.go` | Instrumentation API client (GET/SET app/k8s, discovery, monitoring) |
-| `internal/setup/instrumentation/compare.go` | Optimistic lock diff comparison logic |
+| `cmd/gcx/setup/command.go` | Setup command area: aggregated cross-product `status` |
+
+### Instrumentation Hub Provider
+
+Provider command tree backed by fleet-management `Set/Get` + observed-state RPCs. Registers no GVK; not addressable through `gcx resources`. See ADR-018 for the design.
+
+| File | Purpose |
+|------|---------|
+| `cmd/gcx/instrumentation/command.go` | Top-level `gcx instrumentation` group |
+| `cmd/gcx/instrumentation/setup/` | Onboarding wizard (`SetupK8sDiscovery` + helm command print) |
+| `cmd/gcx/instrumentation/status/` | Cross-cutting observed view (cluster → namespace → service) |
+| `cmd/gcx/instrumentation/clusters/` | Cluster-level commands (list, get, configure, remove, wait) |
+| `cmd/gcx/instrumentation/clusters/apps/` | Namespace-level Beyla commands under a cluster (list, get, configure, remove, wait) |
+| `cmd/gcx/instrumentation/services/` | Workload-level commands (list, get, include, exclude, clear) |
+| `internal/providers/instrumentation/provider.go` | Provider registration; `TypedRegistrations()` returns nil (no GVK) |
+| `internal/providers/instrumentation/client.go` | Instrumentation, discovery, and pipeline RPC client over fleet-management Connect endpoints |
+| `internal/providers/instrumentation/types.go` | Domain types: `Cluster`, `App`, `AppOverride`, observed-state structs |
+| `internal/providers/instrumentation/wait.go` | `WaitOutcome` classifier for proto enum status strings |
+| `internal/providers/instrumentation/enumerate/` | Cluster enumeration helper (`RunK8sMonitoring` ⋃ `ListPipelines` merge) |
+| `internal/providers/instrumentation/helm/` | Helm command formatter for the setup wizard |
+| `internal/providers/instrumentation/output/` | View types, table/JSON codecs, wait/mutation envelopes |
+| `internal/providers/instrumentation/rmw/` | Read-modify-write helper with client-side optimistic-lock guard |
 
 ### k6 Cloud Provider
 
@@ -824,8 +844,8 @@ Each LGTM signal has its own provider in `internal/providers/{signal}/` that reg
 |------|---------|
 | `internal/dashboards/renderer.go` | HTTP client for Grafana Image Renderer API (`/render/d/`, `/render/d-solo/`) |
 | `internal/dashboards/types.go` | `SnapshotResult` struct for JSON/table output |
-| `cmd/gcx/dashboards/command.go` | `dashboards` command group |
-| `cmd/gcx/dashboards/snapshot.go` | `dashboards snapshot` — renders PNG images with kiosk mode, template variable overrides |
+| `internal/providers/dashboards/provider.go` | `dashboards` provider — self-registers CRUD, search, versions, snapshot commands |
+| `internal/providers/dashboards/snapshot/snapshot.go` | `dashboards snapshot` — renders PNG images with kiosk mode, template variable overrides |
 
 ### Terminal Chart Rendering
 
@@ -847,8 +867,7 @@ Each LGTM signal has its own provider in `internal/providers/{signal}/` that reg
 
 | File | Purpose |
 |------|---------|
-| `Makefile` | Build, test, lint, docs, integration env orchestration |
-| `devbox.json` | Reproducible toolchain pins |
+| `mise.toml` | Reproducible toolchain pins + build/test/lint/docs task runner |
 | `.golangci.yaml` | Linter configuration (opt-out model) |
 | `.goreleaser.yaml` | Cross-platform release builds |
 | `docker-compose.yml` | Grafana 12 + MySQL 9 integration test env |
@@ -889,8 +908,8 @@ These invariants are enforced by convention. Violating them will cause subtle bu
 
 ### Getting Started
 
-1. Run `devbox shell` to get the full toolchain
-2. Run `make build` to verify the build works
+1. Run `mise install` to get the full toolchain
+2. Run `mise run build` to verify the build works
 3. Read `cmd/gcx/main.go` to see the entry point
 4. Read `cmd/gcx/resources/push.go` as the canonical command example
 5. Read `internal/resources/resources.go` to understand the central data type
@@ -932,7 +951,7 @@ add it to the processor slice in the relevant command's wiring (push.go or pull.
 `env`, and optionally `datapolicy:"secret"` tags. The reflection-based editor,
 env parser, and redactor pick it up automatically.
 
-**Running locally against a test Grafana:** `make test-env-up` starts Grafana 12
+**Running locally against a test Grafana:** `mise run test-env-up` starts Grafana 12
 + MySQL 9. Use `--config testdata/integration-test-config.yaml` to point
 gcx at it.
 

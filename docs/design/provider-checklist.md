@@ -64,16 +64,16 @@ Commands that are **exempt** from K8s wrapping:
 
 | Category | Examples | Rationale |
 |----------|----------|-----------|
-| Query/search results | `insights query`, `search entities` | Time-series and aggregation results, not storable resources |
+| Query/search results | `insights search`, `entities list` | Time-series and aggregation results, not storable resources |
 | Operational views | `status`, `health`, `inspect` | Composite or derived data, not individual resources |
 | Read-only reference data | `kg scopes list` | Discoverable metadata, not user-managed resources |
 | Singleton config | `env get` | Single config objects, not collections of resources |
 
 ### Build Verification
 
-- [ ] `make build` succeeds
-- [ ] `make tests` passes with no regressions
-- [ ] `make lint` passes
+- [ ] `mise run build` succeeds
+- [ ] `mise run tests` passes with no regressions
+- [ ] `mise run lint` passes
 - [ ] `gcx providers` lists the new provider
 - [ ] `gcx config view` redacts secrets correctly
 
