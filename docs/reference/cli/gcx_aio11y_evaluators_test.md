@@ -27,6 +27,7 @@ gcx aio11y evaluators test [flags]
   -f, --filename string          File with full eval:test request body (use - for stdin)
   -g, --generation string        Generation ID to evaluate
   -h, --help                     help for test
+      --jq string                jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string              Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string            Output format. One of: agents, json, table, yaml (default "table")
 ```

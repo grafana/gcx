@@ -20,6 +20,7 @@ gcx cloud stacks update <stack-slug> [flags]
       --description string     New description
       --dry-run                Preview the request without executing it
   -h, --help                   help for update
+      --jq string              jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string            Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --labels strings         Labels in key=value format (replaces all labels)
       --name string            New stack name

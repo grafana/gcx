@@ -149,6 +149,52 @@ resource object. `--json` is an independent mechanism (NC-002).
 `DiscoverFields`). Flag parsing and mutual-exclusion enforcement in
 `internal/output/format.go` (`applyJSONFlag`).
 
+### 1.6 JQ Transformation
+
+The `--jq` flag applies a [jq](https://jqlang.github.io/jq/) expression to the
+command's JSON output before it reaches stdout. This eliminates the need to
+pipe gcx output into external scripts for grouping, reducing, or filtering — a
+common pain point when agents drive investigations and resort to generated
+Python.
+
+```bash
+# Count items
+gcx resources get dashboards --jq '.items | length'
+
+# Extract names
+gcx resources get dashboards --jq '.items[] | .metadata.name'
+
+# Reshape into a custom collection
+gcx resources get dashboards --jq '[.items[] | {name: .metadata.name, title: .spec.title}]'
+```
+
+**Flag semantics:**
+
+| Value | Behavior |
+|-------|----------|
+| `--jq '<expr>'` | Run the jq expression against the full JSON output |
+| `--jq` + `-o json` (or `-o` unset) | Allowed; auto-flips to JSON when `-o` is unset |
+| `--jq` + `-o <non-json>` | Usage error — jq operates on JSON input |
+| `--jq` + `--json ...` | Usage error — jq supersedes field selection |
+| Invalid jq expression | Validation error (syntax fails fast at flag parse time) |
+
+**Output shape:** Real-jq-compatible NDJSON. Each yielded value is
+pretty-printed JSON on its own line, so filters like `.items[]` stream one
+object per line — matching what users intuit from real `jq`. Empty result sets
+emit nothing.
+
+**Relationship to `--json`:** `--jq` strictly subsumes `--json` field
+selection. Combining the two is rejected to keep the model simple — anything
+`--json field1,field2` does, `{field1: .field1, field2: .field2}` does in jq.
+
+**Agents codec:** `--jq` bypasses the agents codec's spill-to-tempfile
+behavior. A caller using `--jq` wants the transformed results in-stream, not a
+"spilled to /tmp" summary.
+
+**Implementation:** `internal/output/jq.go` (`JQCodec`). Flag parsing and
+mutual-exclusion enforcement in `internal/output/format.go` (`applyJQFlag`).
+Library: [`github.com/itchyny/gojq`](https://github.com/itchyny/gojq).
+
 ---
 
 ## 11. Codec Requirements by Command Type

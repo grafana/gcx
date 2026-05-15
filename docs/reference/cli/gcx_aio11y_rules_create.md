@@ -24,6 +24,7 @@ gcx aio11y rules create [flags]
 ```
   -f, --filename string   File containing the rule definition (use - for stdin)
   -h, --help              help for create
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string     Output format. One of: agents, json, yaml (default "json")
 ```

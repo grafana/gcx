@@ -30,6 +30,7 @@ gcx irm oncall alert-groups delete [<id>] [flags]
       --force                 Skip the count-confirmation prompt and proceed without interactive confirmation
   -h, --help                  help for delete
       --integration strings   Filter: integration PK (repeatable)
+      --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --max-age string        Filter: alert groups started within this duration (e.g. 1h, 24h, 7d)
       --mine                  Filter: limit to alert groups for the authenticated user

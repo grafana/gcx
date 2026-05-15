@@ -24,6 +24,7 @@ gcx synthetic-monitoring checks list [flags]
 ```
   -h, --help                help for list
       --job string          Filter by job name glob pattern (e.g. --job 'shopk8s-*')
+      --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --label stringArray   Filter by label key=value (repeatable, e.g. --label env=prod)
       --limit int           Maximum number of items to return (0 for all) (default 50)

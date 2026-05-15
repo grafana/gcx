@@ -11,6 +11,7 @@ gcx metrics adaptive recommendations show [flags]
 ```
       --action stringArray   Filter by action: add, update, remove, keep (repeatable)
   -h, --help                 help for show
+      --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string        Output format. One of: agents, json, table, wide, yaml (default "table")
       --reverse              Reverse the default sort order

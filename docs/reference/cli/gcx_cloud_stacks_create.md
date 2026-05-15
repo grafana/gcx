@@ -21,6 +21,7 @@ gcx cloud stacks create [flags]
       --description string   Short description
       --dry-run              Preview the request without executing it
   -h, --help                 help for create
+      --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --labels strings       Labels in key=value format (may be repeated)
       --name string          Stack name (required)

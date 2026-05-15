@@ -29,6 +29,7 @@ gcx datasources influxdb tag-values [flags]
 ```
   -d, --datasource string    Datasource UID (required unless datasources.influxdb is configured)
   -h, --help                 help for tag-values
+      --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -k, --key string           Tag key to get values for (required)
   -m, --measurement string   Filter by measurement name

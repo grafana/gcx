@@ -10,6 +10,7 @@ gcx cloud stacks list [flags]
 
 ```
   -h, --help            help for list
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --org string      Organisation slug (required)
   -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
