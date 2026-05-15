@@ -1,6 +1,12 @@
 ## gcx kg entities query
 
-Run a read-only Cypher query against the Knowledge Graph.
+Query entities by running a read-only Cypher query against the Knowledge Graph.
+
+### Synopsis
+
+Query entities by running a read-only Cypher query against the Knowledge Graph.
+
+Run 'gcx kg meta schema' to discover valid entity types, property names, and relationship names.
 
 ```
 gcx kg entities query <cypher-query> [flags]

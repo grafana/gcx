@@ -1,6 +1,6 @@
 ## gcx kg entities list
 
-List Knowledge Graph entities for a given type.
+List Knowledge Graph entities for a given type, env, site, namespace.
 
 ```
 gcx kg entities list [flags]

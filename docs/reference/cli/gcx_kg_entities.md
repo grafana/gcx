@@ -24,6 +24,6 @@ Manage Knowledge Graph entities.
 
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
 * [gcx kg entities inspect](gcx_kg_entities_inspect.md)	 - Show detailed info, insights, and summary for a single entity, including a link to the RCA Workbench.
-* [gcx kg entities list](gcx_kg_entities_list.md)	 - List Knowledge Graph entities for a given type.
-* [gcx kg entities query](gcx_kg_entities_query.md)	 - Run a read-only Cypher query against the Knowledge Graph.
+* [gcx kg entities list](gcx_kg_entities_list.md)	 - List Knowledge Graph entities for a given type, env, site, namespace.
+* [gcx kg entities query](gcx_kg_entities_query.md)	 - Query entities by running a read-only Cypher query against the Knowledge Graph.
 
