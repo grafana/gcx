@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"text/tabwriter"
+	"github.com/grafana/gcx/internal/style"
 
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/query/prometheus"
@@ -353,12 +353,11 @@ func (c *LabelsDiagnoseTextCodec) Encode(w io.Writer, v any) error {
 
 	// Checks table.
 	fmt.Fprintln(w, "Checks:")
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "CHECK\tSTATUS\tDETAIL")
+	t := style.NewTable("CHECK", "STATUS", "DETAIL")
 	for _, check := range r.Checks {
-		fmt.Fprintf(tw, "%s\t%s\t%s\n", check.Name, strings.ToUpper(string(check.Status)), check.Detail)
+		t.Row(check.Name, strings.ToUpper(string(check.Status)), check.Detail)
 	}
-	_ = tw.Flush()
+	_ = t.Render(w)
 
 	// Recommendations.
 	var recs []string
@@ -379,19 +378,18 @@ func (c *LabelsDiagnoseTextCodec) Encode(w io.Writer, v any) error {
 	if len(r.Mappings) > 0 {
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "Label mapping (deployment_environment → asserts_env):")
-		mtw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-		fmt.Fprintln(mtw, "DEPLOYMENT_ENVIRONMENT\tASSERTS_ENV\tSTATUS")
+		mt := style.NewTable("DEPLOYMENT_ENVIRONMENT", "ASSERTS_ENV", "STATUS")
 		for _, m := range r.Mappings {
 			switch m.Status {
 			case "mapped":
-				fmt.Fprintf(mtw, "%s\t%s\tmapped\n", m.DeploymentEnv, m.AssertsEnv)
+				mt.Row(m.DeploymentEnv, m.AssertsEnv, "mapped")
 			case "unmapped":
-				fmt.Fprintf(mtw, "%s\t(missing)\tnot mapped — check relabeling rules\n", m.DeploymentEnv)
+				mt.Row(m.DeploymentEnv, "(missing)", "not mapped — check relabeling rules")
 			case "orphaned":
-				fmt.Fprintf(mtw, "(unknown source)\t%s\torphaned (no deployment_environment source)\n", m.AssertsEnv)
+				mt.Row("(unknown source)", m.AssertsEnv, "orphaned (no deployment_environment source)")
 			}
 		}
-		_ = mtw.Flush()
+		_ = mt.Render(w)
 	}
 
 	// Diagnosis.

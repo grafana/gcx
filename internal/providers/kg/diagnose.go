@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"text/tabwriter"
+	"github.com/grafana/gcx/internal/style"
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
@@ -865,12 +865,11 @@ func (c *DiagnoseTextCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for text codec: expected DiagnoseResult")
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "CHECK\tSTATUS\tDETAIL")
+	t := style.NewTable("CHECK", "STATUS", "DETAIL")
 	for _, check := range result.Checks {
-		fmt.Fprintf(tw, "%s\t%s\t%s\n", check.Name, strings.ToUpper(string(check.Status)), check.Detail)
+		t.Row(check.Name, strings.ToUpper(string(check.Status)), check.Detail)
 	}
-	if err := tw.Flush(); err != nil {
+	if err := t.Render(w); err != nil {
 		return err
 	}
 

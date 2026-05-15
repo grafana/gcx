@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"text/tabwriter"
+	"github.com/grafana/gcx/internal/style"
 	"time"
 
 	"github.com/grafana/gcx/internal/format"
@@ -476,12 +476,11 @@ func (c *ServiceDiagnoseTextCodec) Encode(w io.Writer, v any) error {
 
 	// Checks table.
 	fmt.Fprintln(w, "Checks:")
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "CHECK\tSTATUS\tDETAIL")
+	t := style.NewTable("CHECK", "STATUS", "DETAIL")
 	for _, check := range r.Checks {
-		fmt.Fprintf(tw, "%s\t%s\t%s\n", check.Name, strings.ToUpper(string(check.Status)), check.Detail)
+		t.Row(check.Name, strings.ToUpper(string(check.Status)), check.Detail)
 	}
-	_ = tw.Flush()
+	_ = t.Render(w)
 
 	// Recommendations.
 	var recs []string
