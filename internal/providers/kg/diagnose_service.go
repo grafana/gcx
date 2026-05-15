@@ -8,11 +8,11 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"github.com/grafana/gcx/internal/style"
 	"time"
 
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/query/prometheus"
+	"github.com/grafana/gcx/internal/style"
 	"golang.org/x/sync/errgroup"
 )
 

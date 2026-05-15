@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"github.com/grafana/gcx/internal/style"
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
@@ -19,6 +18,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
@@ -322,9 +322,9 @@ func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promCli
 		}
 		// Check 10+: Edge source gap detection — find metrics that exist but
 		// are missing asserts_env (silently dropped by recording rules).
-		for _, esc := range edgeSourceGapChecks(scope.namespace) {
+		for _, esc := range edgeSourceGapChecks() {
 			g.Go(func() error {
-				c := checkEdgeSourceGap(ctx, promClient, datasourceUID, esc)
+				c := checkEdgeSourceGap(ctx, promClient, datasourceUID, scope.namespace, esc)
 				if c != nil {
 					addCheck(*c)
 				}
@@ -710,13 +710,8 @@ type edgeSourceGapDef struct {
 }
 
 // edgeSourceGapChecks returns the edge source gap check definitions.
-func edgeSourceGapChecks(namespace string) []edgeSourceGapDef {
-	nsFilter := ""
-	if namespace != "" {
-		nsFilter = fmt.Sprintf(`, namespace="%s"`, namespace)
-	}
-	_ = nsFilter // used in Metric field below via closure
-
+// Namespace scoping happens in checkEdgeSourceGap where the PromQL is built.
+func edgeSourceGapChecks() []edgeSourceGapDef {
 	return []edgeSourceGapDef{
 		{Name: "istio_requests_total", Metric: "istio_requests_total", SourceType: "Istio service mesh"},
 		{Name: "http_server_requests_seconds_count", Metric: "http_server_requests_seconds_count", SourceType: "Spring Boot Actuator"},
@@ -736,10 +731,29 @@ func edgeSourceGapChecks(namespace string) []edgeSourceGapDef {
 // When deployment_environment IS present but asserts_env isn't, the
 // recommendation points to the Asserts onboarding UI rather than suggesting
 // custom relabeling rules.
-func checkEdgeSourceGap(ctx context.Context, client *prometheus.Client, datasourceUID string, def edgeSourceGapDef) *CheckResult {
+func checkEdgeSourceGap(ctx context.Context, client *prometheus.Client, datasourceUID, namespace string, def edgeSourceGapDef) *CheckResult {
+	// Build an optional namespace selector applied to every probe query.
+	nsSelector := ""
+	if namespace != "" {
+		nsSelector = fmt.Sprintf(`namespace="%s"`, namespace)
+	}
+	// joinSelectors builds {sel1,sel2,...}, dropping empty parts.
+	joinSelectors := func(parts ...string) string {
+		nonEmpty := parts[:0]
+		for _, p := range parts {
+			if p != "" {
+				nonEmpty = append(nonEmpty, p)
+			}
+		}
+		if len(nonEmpty) == 0 {
+			return ""
+		}
+		return "{" + strings.Join(nonEmpty, ",") + "}"
+	}
+
 	// First: does the metric exist at all?
 	existsResp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{
-		Query: fmt.Sprintf("count(%s)", def.Metric),
+		Query: fmt.Sprintf("count(%s%s)", def.Metric, joinSelectors(nsSelector)),
 	})
 	if err != nil || len(existsResp.Data.Result) == 0 {
 		return nil // metric doesn't exist — nothing to check
@@ -747,7 +761,7 @@ func checkEdgeSourceGap(ctx context.Context, client *prometheus.Client, datasour
 
 	// Second: does it have asserts_env?
 	withEnvResp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{
-		Query: fmt.Sprintf(`count(%s{asserts_env!=""})`, def.Metric),
+		Query: fmt.Sprintf(`count(%s%s)`, def.Metric, joinSelectors(`asserts_env!=""`, nsSelector)),
 	})
 	if err != nil {
 		return nil
@@ -764,7 +778,7 @@ func checkEdgeSourceGap(ctx context.Context, client *prometheus.Client, datasour
 	// Check if deployment_environment is present — this changes the recommendation.
 	hasDepEnv := false
 	depEnvResp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{
-		Query: fmt.Sprintf(`count(%s{deployment_environment!=""})`, def.Metric),
+		Query: fmt.Sprintf(`count(%s%s)`, def.Metric, joinSelectors(`deployment_environment!=""`, nsSelector)),
 	})
 	if err == nil && len(depEnvResp.Data.Result) > 0 {
 		hasDepEnv = true
