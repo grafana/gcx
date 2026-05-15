@@ -269,7 +269,6 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg rules delete":            {Cost: "small"},
 	"gcx kg rules get":               {Cost: "small"},
 	"gcx kg rules list":              {Cost: "small"},
-	"gcx kg scopes list":             {Cost: "small"},
 	"gcx kg status":                  {Cost: "small"},
 	"gcx kg suppressions create":     {Cost: "small"},
 	"gcx kg suppressions delete":     {Cost: "small"},
