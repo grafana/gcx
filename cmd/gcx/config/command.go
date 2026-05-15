@@ -2,10 +2,13 @@ package config
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
+	"github.com/charmbracelet/huh"
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
@@ -16,6 +19,7 @@ import (
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/gcx/internal/secrets"
 	"github.com/grafana/gcx/internal/style"
+	"github.com/grafana/gcx/internal/terminal"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -464,40 +468,63 @@ func useContextCmd(configOpts *Options) *cobra.Command {
 	var fileType string
 
 	cmd := &cobra.Command{
-		Use:     "use-context CONTEXT_NAME",
-		Args:    cobra.ExactArgs(1),
+		Use:     "use-context [CONTEXT_NAME]",
+		Args:    cobra.MaximumNArgs(1),
 		Aliases: []string{"use"},
 		Short:   "Set the current context",
-		Long: `Set the current context and updates the configuration file.
+		Long: `Set the current context and update the configuration file.
+
+Run without arguments to pick a context interactively, or pass "-" to switch
+back to the previously active context.
 
 When multiple config files are loaded (e.g. a local .gcx.yaml alongside the
 user config), use --file to choose which layer to update.`,
 		Example: `
 	gcx config use-context dev-instance
+	gcx config use                 # interactive picker
+	gcx config use -               # previous context
 
 	# Update the local .gcx.yaml when both user and local configs exist
 	gcx config use-context --file local dev-instance`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Cross-layer existence check: a context defined only in the user
-			// layer is still a valid target when --file local is specified.
+			// Cross-layer load: a context defined only in the user layer is
+			// still a valid target when --file local is specified, and the
+			// interactive picker needs the merged view.
 			layered, err := config.LoadLayered(cmd.Context(), configOpts.ConfigFile)
 			if err != nil {
 				return err
 			}
-			if !layered.HasContext(args[0]) {
-				return config.ContextNotFound(args[0])
-			}
 
-			// Load only the target layer so we don't write cross-layer entries.
-			cfg, target, err := config.LoadForWrite(cmd.Context(), configOpts.ConfigFile, fileType)
+			target, err := resolveUseContextTarget(layered, args)
 			if err != nil {
 				return err
 			}
 
-			cfg.CurrentContext = args[0]
+			if !layered.HasContext(target) {
+				return config.ContextNotFound(target)
+			}
 
-			if err := config.Write(cmd.Context(), target, cfg); err != nil {
+			// Load only the target layer so we don't write cross-layer entries.
+			cfg, src, err := config.LoadForWrite(cmd.Context(), configOpts.ConfigFile, fileType)
+			if err != nil {
 				return err
+			}
+
+			prev := cfg.CurrentContext
+			if prev == target {
+				cmdio.Success(cmd.OutOrStdout(), "Context already set to \"%s\"", target)
+				return nil
+			}
+
+			cfg.CurrentContext = target
+			if err := config.Write(cmd.Context(), src, cfg); err != nil {
+				return err
+			}
+
+			if prev != "" {
+				if err := config.WritePreviousContext(prev); err != nil {
+					fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not record previous context: %v\n", err)
+				}
 			}
 
 			cmdio.Success(cmd.OutOrStdout(), "Context set to \"%s\"", cfg.CurrentContext)
@@ -508,6 +535,65 @@ user config), use --file to choose which layer to update.`,
 	cmd.Flags().StringVar(&fileType, "file", "", "Config layer to write to (system, user, local)")
 
 	return cmd
+}
+
+func resolveUseContextTarget(cfg config.Config, args []string) (string, error) {
+	if len(args) == 0 {
+		return pickContextInteractively(cfg)
+	}
+	name := args[0]
+	if name == "-" {
+		prev, err := config.ReadPreviousContext()
+		if err != nil {
+			return "", err
+		}
+		if prev == "" {
+			return "", errors.New("no previous context recorded")
+		}
+		return prev, nil
+	}
+	return name, nil
+}
+
+func pickContextInteractively(cfg config.Config) (string, error) {
+	if agent.IsAgentMode() || !terminal.StdoutIsTerminal() {
+		return "", errors.New("interactive picker requires a TTY; pass a context name")
+	}
+	if len(cfg.Contexts) == 0 {
+		return "", errors.New("no contexts defined")
+	}
+
+	names := make([]string, 0, len(cfg.Contexts))
+	for name := range cfg.Contexts {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	options := make([]huh.Option[string], 0, len(names))
+	for _, name := range names {
+		label := name
+		if cfg.CurrentContext == name {
+			label = name + " (current)"
+		}
+		options = append(options, huh.NewOption(label, name))
+	}
+
+	title := "Select a context"
+	if cfg.CurrentContext != "" {
+		title = fmt.Sprintf("Select a context (current: %s)", cfg.CurrentContext)
+	}
+
+	var selected string
+	form := huh.NewForm(huh.NewGroup(
+		huh.NewSelect[string]().
+			Title(title).
+			Options(options...).
+			Value(&selected),
+	))
+	if err := form.Run(); err != nil {
+		return "", err
+	}
+	return selected, nil
 }
 
 func setCmd(configOpts *Options) *cobra.Command {
