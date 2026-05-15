@@ -281,6 +281,26 @@ func NewCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new incident from a file.",
+		Example: `  # Create an incident from a YAML manifest:
+  cat <<EOF | gcx irm incidents create -f -
+  apiVersion: incident.ext.grafana.app/v1alpha1
+  kind: Incident
+  metadata:
+    name: my-incident
+  spec:
+    title: "Service degradation in production"
+    status: active
+    isDrill: false
+    incidentType: internal
+    labels:
+      - key: team
+        label: platform
+      - key: env
+        label: production
+  EOF
+
+  # Create from a file:
+  gcx irm incidents create -f incident.yaml`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
