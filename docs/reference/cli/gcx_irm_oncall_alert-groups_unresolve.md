@@ -9,7 +9,9 @@ gcx irm oncall alert-groups unresolve <id> [flags]
 ### Options
 
 ```
-  -h, --help   help for unresolve
+  -h, --help            help for unresolve
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, yaml (default "json")
 ```
 
 ### Options inherited from parent commands
