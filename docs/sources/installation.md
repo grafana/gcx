@@ -1,5 +1,5 @@
 ---
-title: Installation
+title: Install `gcx`
 weight: -1
 ---
 
