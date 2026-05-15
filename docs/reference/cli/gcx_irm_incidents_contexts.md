@@ -1,17 +1,11 @@
-## gcx setup instrumentation show
+## gcx irm incidents contexts
 
-Show current instrumentation config as a portable manifest.
-
-```
-gcx setup instrumentation show <cluster> [flags]
-```
+Manage incident contexts (linked alert groups, dashboards, etc.).
 
 ### Options
 
 ```
-  -h, --help            help for show
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
+  -h, --help   help for contexts
 ```
 
 ### Options inherited from parent commands
@@ -28,5 +22,6 @@ gcx setup instrumentation show <cluster> [flags]
 
 ### SEE ALSO
 
-* [gcx setup instrumentation](gcx_setup_instrumentation.md)	 - Manage observability instrumentation for Kubernetes clusters.
+* [gcx irm incidents](gcx_irm_incidents.md)	 - Manage incidents.
+* [gcx irm incidents contexts list](gcx_irm_incidents_contexts_list.md)	 - List contexts attached to an incident.
 

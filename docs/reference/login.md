@@ -8,7 +8,7 @@ This page walks through the common login paths, the mental model behind them, an
 
 1. **Setting up Grafana Cloud interactively** → [Grafana Cloud (interactive OAuth)](#grafana-cloud-interactive-oauth)
 2. **Setting up on-premises Grafana** → [Service account token](#service-account-token)
-3. **Setting up CI, an agent, or any non-interactive environment** → [Environment variables (CI / agents)](#environment-variables-ci-agents)
+3. **Setting up CI, an agent, or any non-interactive environment** → [Environment variables for CI and agents](#environment-variables-for-ci-and-agents)
 4. **Adding Grafana Cloud product API access to an existing context** → [Grafana Cloud product APIs](#grafana-cloud-product-apis)
 5. **Re-authenticating or switching between contexts** → [Re-authenticating and switching contexts](#re-authenticating-and-switching-contexts)
 
@@ -85,7 +85,7 @@ gcx config set contexts.my-stack.cloud.stack your-stack-slug
 
 You do not need to set `cloud.api-url` for `grafana.com`; gcx defaults to `https://grafana.com`. Set it only when you need a non-default Grafana Cloud API endpoint.
 
-### Environment variables (CI / agents)
+### Environment variables for CI and agents
 
 For pipelines, agents, and other non-interactive environments, skip `gcx login` entirely and provide credentials via environment variables. gcx resolves them on every command invocation.
 

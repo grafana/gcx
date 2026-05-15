@@ -36,5 +36,5 @@ gcx kg insights entity-metric [Type--Name] [flags]
 
 ### SEE ALSO
 
-* [gcx kg insights](gcx_kg_insights.md)	 - Query Knowledge Graph insights.
+* [gcx kg insights](gcx_kg_insights.md)	 - Search insights and fetch their backing metrics.
 

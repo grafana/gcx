@@ -1,6 +1,6 @@
 ## gcx kg insights
 
-Query Knowledge Graph insights.
+Search insights and fetch their backing metrics.
 
 ### Options
 
@@ -24,10 +24,6 @@ Query Knowledge Graph insights.
 
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
 * [gcx kg insights entity-metric](gcx_kg_insights_entity-metric.md)	 - Get metric data for a specific insight on an entity.
-* [gcx kg insights example](gcx_kg_insights_example.md)	 - Print an example insights request YAML.
-* [gcx kg insights graph](gcx_kg_insights_graph.md)	 - Query insights with graph topology.
-* [gcx kg insights query](gcx_kg_insights_query.md)	 - Query insights for a time range.
 * [gcx kg insights search](gcx_kg_insights_search.md)	 - Find entities with active insights matching the given rules.
 * [gcx kg insights source-metrics](gcx_kg_insights_source-metrics.md)	 - Get source metrics for a specific insight.
-* [gcx kg insights summary](gcx_kg_insights_summary.md)	 - Get insights summary for a time range.
 

@@ -42,17 +42,6 @@ type EntityCountRequest struct {
 	PropertyMatchers []PropertyMatcher `json:"propertyMatchers,omitempty"`
 }
 
-// AssertionsRequest is the request body for POST /v1/assertions.
-type AssertionsRequest struct {
-	StartTime                     int64       `json:"startTime" yaml:"startTime"`
-	EndTime                       int64       `json:"endTime" yaml:"endTime"`
-	EntityKeys                    []EntityKey `json:"entityKeys" yaml:"entityKeys"`
-	IncludeConnectedAssertions    bool        `json:"includeConnectedAssertions,omitempty" yaml:"includeConnectedAssertions,omitempty"`
-	AlertCategories               []string    `json:"alertCategories,omitempty" yaml:"alertCategories,omitempty"`
-	Severities                    []string    `json:"severities,omitempty" yaml:"severities,omitempty"`
-	HideAssertionsOlderThanNHours int         `json:"hideAssertionsOlderThanNHours,omitempty" yaml:"hideAssertionsOlderThanNHours,omitempty"`
-}
-
 // TimeCriteria defines a time range for search queries.
 type TimeCriteria struct {
 	Instant int64 `json:"instant,omitempty" yaml:"instant,omitempty"`
@@ -125,21 +114,6 @@ type SampleSearchRequest struct {
 	SampleSize     int             `json:"sampleSize" yaml:"sampleSize"`
 }
 
-// AssertionScores contains assertion score data from the summary response.
-type AssertionScores struct {
-	TotalScore              float64            `json:"totalScore"`
-	Metrics                 []any              `json:"metrics,omitempty"`
-	SeverityWiseTotalScores map[string]float64 `json:"severityWiseTotalScores,omitempty"`
-}
-
-// AssertionSummary is the response from POST /v1/assertions/summary.
-type AssertionSummary struct {
-	Summaries                []any           `json:"summaries,omitempty"`
-	TimeWindow               *TimeCriteria   `json:"timeWindow,omitempty"`
-	TimeStepIntervalMs       int64           `json:"timeStepIntervalMs,omitempty"`
-	AggregateAssertionScores AssertionScores `json:"aggregateAssertionScores"`
-}
-
 // SearchResult is a single search result item.
 type SearchResult struct {
 	ID                 int               `json:"id,omitempty"`
@@ -192,23 +166,6 @@ type AssertionTimeline struct {
 	TimeWindow                  *TimeCriteria     `json:"timeWindow,omitempty"`
 	AllAssertions               []any             `json:"allAssertions,omitempty"`
 	InboundClientErrorsBreached bool              `json:"inboundClientErrorsBreached,omitempty"`
-}
-
-// AssertionsGraphData is the nested data object in AssertionsGraphResponse.
-type AssertionsGraphData struct {
-	PageNum                  int            `json:"pageNum"`
-	LastPage                 bool           `json:"lastPage"`
-	SearchResultsMaxLimitHit bool           `json:"searchResultsMaxLimitHit"`
-	Entities                 []any          `json:"entities"`
-	Edges                    []any          `json:"edges"`
-	Table                    map[string]any `json:"table,omitempty"`
-}
-
-// AssertionsGraphResponse is the response from POST /v1/assertions/graph.
-type AssertionsGraphResponse struct {
-	Type         string              `json:"type,omitempty"`
-	TimeCriteria *TimeCriteria       `json:"timeCriteria,omitempty"`
-	Data         AssertionsGraphData `json:"data"`
 }
 
 // EntityMetricValue is a single data point in an entity metric series.

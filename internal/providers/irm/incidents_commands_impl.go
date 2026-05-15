@@ -281,6 +281,26 @@ func NewCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new incident from a file.",
+		Example: `  # Create an incident from a YAML manifest:
+  cat <<EOF | gcx irm incidents create -f -
+  apiVersion: incident.ext.grafana.app/v1alpha1
+  kind: Incident
+  metadata:
+    name: my-incident
+  spec:
+    title: "Service degradation in production"
+    status: active
+    isDrill: false
+    incidentType: internal
+    labels:
+      - key: team
+        label: platform
+      - key: env
+        label: production
+  EOF
+
+  # Create from a file:
+  gcx irm incidents create -f incident.yaml`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -667,5 +687,149 @@ func (c *SeverityTableCodec) Encode(w io.Writer, v any) error {
 }
 
 func (c *SeverityTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+// ---------------------------------------------------------------------------
+// contexts commands
+// ---------------------------------------------------------------------------
+
+func NewContextsCommand(loader GrafanaConfigLoader) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "contexts",
+		Short:   "Manage incident contexts (linked alert groups, dashboards, etc.).",
+		Aliases: []string{"context", "ctx"},
+	}
+	cmd.AddCommand(newContextsListCommand(loader))
+	return cmd
+}
+
+type contextsListOpts struct {
+	IO           cmdio.Options
+	Limit        int
+	Type         string
+	Status       string
+	AlertGroupID string
+}
+
+func (o *contextsListOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("table", &IncidentContextTableCodec{})
+	o.IO.RegisterCustomCodec("wide", &IncidentContextTableCodec{Wide: true})
+	o.IO.DefaultFormat("table")
+	o.IO.BindFlags(flags)
+	flags.IntVar(&o.Limit, "limit", 0, "Maximum number of contexts to return (0 = server default)")
+	flags.StringVar(&o.Type, "type", "", "Filter by context type (e.g. genericURL, grafana.dashboard, code.github.pr). Note: alert-group links are encoded as genericURL contexts with alertGroupID set — use --alert-group-id to filter those.")
+	flags.StringVar(&o.Status, "status", "", "Filter by context status")
+	flags.StringVar(&o.AlertGroupID, "alert-group-id", "", "Filter by linked alert group ID")
+}
+
+func newContextsListCommand(loader GrafanaConfigLoader) *cobra.Command {
+	opts := &contextsListOpts{}
+	cmd := &cobra.Command{
+		Use:   "list <incident-id>",
+		Short: "List contexts attached to an incident.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			incidentID := args[0]
+
+			restCfg, err := loader.LoadGrafanaConfig(ctx)
+			if err != nil {
+				return err
+			}
+
+			client, err := NewIncidentClient(restCfg)
+			if err != nil {
+				return err
+			}
+
+			contexts, err := client.QueryIncidentContext(ctx, IncidentContextQuery{
+				IncidentID:   incidentID,
+				Limit:        opts.Limit,
+				Type:         opts.Type,
+				Status:       opts.Status,
+				AlertGroupID: opts.AlertGroupID,
+			})
+			if err != nil {
+				return err
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), contexts)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+// IncidentContextTableCodec renders incident contexts as a table.
+type IncidentContextTableCodec struct {
+	Wide bool
+}
+
+func (c *IncidentContextTableCodec) Format() format.Format {
+	if c.Wide {
+		return "wide"
+	}
+	return "table"
+}
+
+func (c *IncidentContextTableCodec) Encode(w io.Writer, v any) error {
+	contexts, ok := v.([]IncidentContext)
+	if !ok {
+		return errors.New("invalid data type for table codec: expected []IncidentContext")
+	}
+
+	var tbl *style.TableBuilder
+	if c.Wide {
+		tbl = style.NewTable("CONTEXTID", "TYPE", "STATUS", "ALERTGROUPID", "TITLE", "CREATED")
+	} else {
+		tbl = style.NewTable("CONTEXTID", "TYPE", "STATUS", "ALERTGROUPID", "TITLE")
+	}
+
+	for _, ctx := range contexts {
+		alertGroup := "-"
+		if ctx.AlertGroupID != nil && *ctx.AlertGroupID != "" {
+			alertGroup = *ctx.AlertGroupID
+		}
+
+		title := ctx.Title
+		if title == "" {
+			title = "-"
+		}
+		if !c.Wide && len(title) > 50 {
+			title = title[:47] + "..."
+		}
+
+		ctxType := ctx.Type
+		if ctxType == "" {
+			ctxType = "-"
+		}
+
+		status := ctx.Status
+		if status == "" {
+			status = "-"
+		}
+
+		if c.Wide {
+			created := ctx.CreatedTime
+			if created == "" {
+				created = "-"
+			} else if len(created) > 16 {
+				created = created[:16]
+			}
+			tbl.Row(ctx.ContextID, ctxType, status, alertGroup, title, created)
+		} else {
+			tbl.Row(ctx.ContextID, ctxType, status, alertGroup, title)
+		}
+	}
+
+	return tbl.Render(w)
+}
+
+func (c *IncidentContextTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
