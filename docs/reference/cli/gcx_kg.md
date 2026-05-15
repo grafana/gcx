@@ -23,7 +23,6 @@ Manage Grafana Knowledge Graph rules, entities, and insights
 ### SEE ALSO
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
-* [gcx kg cypher](gcx_kg_cypher.md)	 - Run a read-only Cypher query against the Knowledge Graph.
 * [gcx kg entities](gcx_kg_entities.md)	 - Manage Knowledge Graph entities.
 * [gcx kg insights](gcx_kg_insights.md)	 - Search insights and fetch their backing metrics.
 * [gcx kg meta](gcx_kg_meta.md)	 - Show Knowledge Graph metadata: entity types, valid env/namespace/site values, and telemetry query configs.

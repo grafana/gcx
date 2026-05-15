@@ -1,17 +1,17 @@
-## gcx kg cypher
+## gcx kg entities cypher
 
 Run a read-only Cypher query against the Knowledge Graph.
 
 ```
-gcx kg cypher <query> [flags]
+gcx kg entities cypher <query> [flags]
 ```
 
 ### Examples
 
 ```
-  gcx kg cypher "MATCH (s:Service) RETURN s LIMIT 10"
-  gcx kg cypher "MATCH (s:Service)-[:CALLS]->(d:Service) RETURN s, d" --since 1h
-  gcx kg cypher "MATCH (s:Service {namespace: 'prod'}) RETURN s" --since 1h
+  gcx kg entities cypher "MATCH (s:Service) RETURN s LIMIT 10"
+  gcx kg entities cypher "MATCH (s:Service)-[:CALLS]->(d:Service) RETURN s, d" --since 1h
+  gcx kg entities cypher "MATCH (s:Service {namespace: 'prod'}) RETURN s" --since 1h
 ```
 
 ### Options
@@ -41,5 +41,5 @@ gcx kg cypher <query> [flags]
 
 ### SEE ALSO
 
-* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
+* [gcx kg entities](gcx_kg_entities.md)	 - Manage Knowledge Graph entities.
 
