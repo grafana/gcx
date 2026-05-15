@@ -66,7 +66,7 @@ To upgrade an existing installation:
 brew upgrade grafana/grafana/gcx
 ```
 
-Homebrew builds `gcx` from source on your machine, as it pulls `go` as a uild dependency.
+Homebrew builds `gcx` from source on your machine, as it pulls `go` as a build dependency.
 The first install usually takes 30 to 60 seconds, and later upgrades reuse the Homebrew download cache.
 
 This option avoids macOS Gatekeeper because it doesn't download a prebuilt binary. You
@@ -107,7 +107,7 @@ macOS quarantines any downloaded binary by default. Since `gcx` release binaries
 - **Intel macOS**: A dialog says, *"Apple could not verify 'gcx' is free of malware…"*, and the binary doesn't run.
 - **Apple Silicon (M-series) macOS**: The binary exits immediately with `killed: 9` and no visible dialog.
 
-**Homebrew users are not affected**, since it compiles `gcx` from source on your machine, so no pre-built binary is downloaded and no `xattr` is set.
+**Homebrew users are not affected**. Since it compiles `gcx` from source on your machine, no pre-built binary is downloaded and no `xattr` is set.
 
 ### Bypass the macOS gatekeeper
 
