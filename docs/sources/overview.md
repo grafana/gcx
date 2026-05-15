@@ -1,6 +1,6 @@
 ---
 Title: Introduction to gcx
-weight: 0
+weight: 1
 ---
 
 # Overview of the `gcx` CLI

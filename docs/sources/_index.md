@@ -9,7 +9,7 @@ weight: 1
 cards:
   items:
     - title: Overview
-      description: Overview of the gcx CLI.
+      description: Overview of the `gcx` CLI.
       href: overview/
       height: 24
     - title: Installation

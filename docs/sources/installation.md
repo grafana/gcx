@@ -1,6 +1,6 @@
 ---
 title: Install gcx
-weight: 1
+weight: 2
 ---
 
 # Install `gcx`
