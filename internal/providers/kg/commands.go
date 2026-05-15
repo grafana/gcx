@@ -1618,7 +1618,16 @@ func newCypherCommand(loader RESTConfigLoader) *cobra.Command {
 		Short: "Query entities by running a read-only Cypher query against the Knowledge Graph.",
 		Long: `Query entities by running a read-only Cypher query against the Knowledge Graph.
 
-Run 'gcx kg meta schema' to discover valid entity types, property names, and relationship names.`,
+Run 'gcx kg meta schema' to discover valid entity types, property names, and relationship names.
+
+Tips:
+  - Prefer whole-entity projections like 'RETURN s, d' over scalar projections
+    like 'RETURN d.name'. Whole entities round-trip cleanly through the output
+    codecs; scalar rows are harder to address downstream.
+  - The --json flag filters top-level response envelope keys
+    (entities, edges, pageNum, lastPage) — it does NOT filter properties inside
+    entities. Run with '--json list' to see available top-level keys, then use
+    e.g. '--json entities' and pipe to jq/python for per-entity shaping.`,
 		Example: `  gcx kg entities query "MATCH (s:Service) RETURN s LIMIT 10"
   gcx kg entities query "MATCH (s:Service)-[:CALLS]->(d:Service) RETURN s, d" --since 1h
   gcx kg entities query "MATCH (s:Service {namespace: 'prod'}) RETURN s" --since 1h`,

@@ -8,6 +8,15 @@ Query entities by running a read-only Cypher query against the Knowledge Graph.
 
 Run 'gcx kg meta schema' to discover valid entity types, property names, and relationship names.
 
+Tips:
+  - Prefer whole-entity projections like 'RETURN s, d' over scalar projections
+    like 'RETURN d.name'. Whole entities round-trip cleanly through the output
+    codecs; scalar rows are harder to address downstream.
+  - The --json flag filters top-level response envelope keys
+    (entities, edges, pageNum, lastPage) — it does NOT filter properties inside
+    entities. Run with '--json list' to see available top-level keys, then use
+    e.g. '--json entities' and pipe to jq/python for per-entity shaping.
+
 ```
 gcx kg entities query <cypher-query> [flags]
 ```
