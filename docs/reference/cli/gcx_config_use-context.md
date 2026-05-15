@@ -4,13 +4,16 @@ Set the current context
 
 ### Synopsis
 
-Set the current context and updates the configuration file.
+Set the current context and update the configuration file.
+
+Run without arguments to pick a context interactively, or pass "-" to switch
+back to the previously active context.
 
 When multiple config files are loaded (e.g. a local .gcx.yaml alongside the
 user config), use --file to choose which layer to update.
 
 ```
-gcx config use-context CONTEXT_NAME [flags]
+gcx config use-context [CONTEXT_NAME] [flags]
 ```
 
 ### Examples
@@ -18,6 +21,8 @@ gcx config use-context CONTEXT_NAME [flags]
 ```
 
 	gcx config use-context dev-instance
+	gcx config use                 # interactive picker
+	gcx config use -               # previous context
 
 	# Update the local .gcx.yaml when both user and local configs exist
 	gcx config use-context --file local dev-instance
