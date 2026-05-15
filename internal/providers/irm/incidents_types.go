@@ -256,3 +256,66 @@ type ActivityUser struct {
 	UserID string `json:"userID"`
 	Name   string `json:"name"`
 }
+
+// IncidentContextUser is a user reference returned on an incident context.
+type IncidentContextUser struct {
+	UserID       string `json:"userID"`
+	Name         string `json:"name"`
+	Email        string `json:"email,omitempty"`
+	GrafanaLogin string `json:"grafanaLogin,omitempty"`
+	PhotoURL     string `json:"photoURL,omitempty"`
+}
+
+// IncidentContextField is a key/value entry in an incident context's metadata.
+type IncidentContextField struct {
+	Key         string `json:"key"`
+	Type        string `json:"type,omitempty"`
+	Description string `json:"description,omitempty"`
+	Value       string `json:"value"`
+	Secret      bool   `json:"secret,omitempty"`
+	Checked     bool   `json:"checked,omitempty"`
+	Hidden      bool   `json:"hidden,omitempty"`
+}
+
+// IncidentContext is a single context entry attached to an incident — for
+// example a linked alert group, dashboard, or other reference surface.
+type IncidentContext struct {
+	IncidentID    string                 `json:"incidentID"`
+	ContextID     string                 `json:"contextID"`
+	CreatedByUser IncidentContextUser    `json:"createdByUser"`
+	CreatedTime   string                 `json:"createdTime,omitempty"`
+	ModifiedTime  string                 `json:"modifiedTime,omitempty"`
+	LastRun       string                 `json:"lastRun,omitempty"`
+	Title         string                 `json:"title,omitempty"`
+	Description   string                 `json:"description,omitempty"`
+	Type          string                 `json:"type,omitempty"`
+	Payload       string                 `json:"payload,omitempty"`
+	Metadata      []IncidentContextField `json:"metadata,omitempty"`
+	Status        string                 `json:"status,omitempty"`
+	ProcessStatus string                 `json:"processStatus,omitempty"`
+	ProcessError  string                 `json:"processError,omitempty"`
+	ProcessorInfo string                 `json:"processorInfo,omitempty"`
+	AlertGroupID  *string                `json:"alertGroupID,omitempty"`
+}
+
+// IncidentContextQuery represents the filters accepted by the
+// IncidentContextService.QueryIncidentContext endpoint.
+type IncidentContextQuery struct {
+	IncidentID     string `json:"incidentID"`
+	Limit          int    `json:"limit,omitempty"`
+	Status         string `json:"status,omitempty"`
+	Type           string `json:"type,omitempty"`
+	AlertGroupID   string `json:"alertGroupID,omitempty"`
+	OrderField     string `json:"orderField,omitempty"`
+	OrderDirection string `json:"orderDirection,omitempty"`
+}
+
+// queryIncidentContextRequest is the request body for QueryIncidentContext.
+type queryIncidentContextRequest struct {
+	Query IncidentContextQuery `json:"query"`
+}
+
+// queryIncidentContextResponse wraps the response from QueryIncidentContext.
+type queryIncidentContextResponse struct {
+	IncidentContexts []IncidentContext `json:"incidentContexts"`
+}
