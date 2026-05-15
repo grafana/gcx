@@ -28,23 +28,48 @@ gcx datasources pyroscope query [EXPR] [flags]
   # Output as JSON
   gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o json
+
+  # Drill into one or more specific profiles found via exemplars
+  # (--profile-id is repeatable; pass it once per UUID)
+  gcx datasources pyroscope query '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h \
+    --profile-id 550e8400-e29b-41d4-a716-446655440000 \
+    --profile-id 7c9e6679-7425-40de-944b-e07fc1f90ae7
+
+  # Restrict the flamegraph to stacks rooted at a specific call site
+  # (--stacktrace-selector is repeatable; pass it once per frame, root first)
+  gcx datasources pyroscope query '{service_name="my-go-service"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h \
+    --stacktrace-selector 'github.com/prometheus/client_golang/prometheus.(*Registry).Gather.func1'
+
+  # Download as pprof binary (for use with go tool pprof)
+  gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o pprof
+
+  # Download as pprof binary to a specific path
+  gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o pprof --pprof-path ./cpu.pb.gz
 ```
 
 ### Options
 
 ```
-  -d, --datasource string     Datasource UID (required unless datasources.pyroscope is configured)
-      --expr string           Query expression (alternative to positional argument)
-      --from string           Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-  -h, --help                  help for query
-      --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --max-nodes int         Maximum nodes in flame graph (default 1024)
-  -o, --output string         Output format. One of: agents, graph, json, table, wide, yaml (default "table")
-      --profile-type string   Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles profile-types' to list available (required)
-      --since string          Duration before --to (or now if omitted); mutually exclusive with --from
-      --step string           Query step (e.g., '15s', '1m')
-      --time string           Evaluation time for an instant query (RFC3339, Unix timestamp, or relative like 'now-5m'); mutually exclusive with --from/--to/--since
-      --to string             End time (RFC3339, Unix timestamp, or relative like 'now')
+  -d, --datasource string             Datasource UID (required unless datasources.pyroscope is configured)
+      --expr string                   Query expression (alternative to positional argument)
+      --from string                   Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
+  -h, --help                          help for query
+      --json string                   Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --max-nodes int                 Maximum nodes in flame graph (default 0/unlimited for pprof output, 50000 for all other formats)
+  -o, --output string                 Output format. One of: agents, graph, json, pprof, table, wide, yaml (default "table")
+      --pprof-overwrite               Overwrite the output file if it already exists (only with -o pprof)
+      --pprof-path string             Destination path for pprof binary output (only with -o pprof; default: profile-YYYY-MM-DD-HHMMSS.pb.gz)
+      --profile-id strings            Drill down to specific profile UUIDs from exemplar queries (repeatable)
+      --profile-type string           Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles profile-types' to list available (required)
+      --since string                  Duration before --to (or now if omitted); mutually exclusive with --from
+      --stacktrace-selector strings   Only query locations with these function names, starting from the root (repeatable)
+      --step string                   Query step (e.g., '15s', '1m')
+      --time string                   Evaluation time for an instant query (RFC3339, Unix timestamp, or relative like 'now-5m'); mutually exclusive with --from/--to/--since
+      --to string                     End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 
 ### Options inherited from parent commands
