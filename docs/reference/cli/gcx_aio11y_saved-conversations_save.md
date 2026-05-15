@@ -26,6 +26,7 @@ gcx aio11y saved-conversations save <conversation-id> [flags]
 
 ```
   -h, --help              help for save
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --name string       Human-readable name for the bookmark (required)
   -o, --output string     Output format. One of: agents, json, yaml (default "json")

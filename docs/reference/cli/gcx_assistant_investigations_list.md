@@ -14,6 +14,7 @@ gcx assistant investigations list [flags]
 
 ```
   -h, --help            help for list
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int       Maximum number of investigations to return (default 50)
       --offset int      Number of investigations to skip (for pagination)

@@ -24,6 +24,7 @@ gcx agent skills update [SKILL]... [flags]
       --dir string      Root directory for the .agents installation (default "~/.agents")
       --dry-run         Preview the update without writing files
   -h, --help            help for update
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
 ```

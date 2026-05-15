@@ -13,6 +13,7 @@ gcx alert instances list [flags]
       --folder string       Filter by folder UID
       --group string        Filter by group name
   -h, --help                help for list
+      --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --name string         Filter by rule name (regex, e.g. 'Tempo.*')
   -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")

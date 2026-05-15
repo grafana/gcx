@@ -51,6 +51,7 @@ require (
 require (
 	github.com/go-openapi/runtime v0.29.5
 	github.com/gofrs/flock v0.13.0
+	github.com/itchyny/gojq v0.12.19
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
 	sigs.k8s.io/yaml v1.6.0
 )
@@ -158,6 +159,7 @@ require (
 	github.com/hashicorp/memberlist v0.5.2 // indirect
 	github.com/hashicorp/serf v0.10.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/itchyny/timefmt-go v0.1.8 // indirect
 	github.com/jaegertracing/jaeger-idl v0.5.0 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect

@@ -72,6 +72,7 @@ gcx resources get [RESOURCE_SELECTOR]... [flags]
 
 ```
   -h, --help              help for get
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int         Maximum number of items to fetch per resource type (0 for all) (default 50)
       --on-error string   How to handle errors during resource operations:
