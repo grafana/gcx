@@ -130,12 +130,15 @@ func NewSourceAdapterFactory(loader RESTConfigLoader) adapter.Factory {
 			return nil, fmt.Errorf("vulnobs: failed to create client: %w", err)
 		}
 		crud := &adapter.TypedCRUD[Source]{
+			// Paginate through `sources` instead of capping at a fixed page —
+			// stacks can have more sources than any single page returns, and
+			// silently truncating the typed-resource inventory would mislead
+			// `gcx resources list/get`.
 			ListFn: adapter.LimitedListFn(func(ctx context.Context) ([]Source, error) {
-				sources, _, err := client.Projects(ctx, ProjectsOptions{
+				return client.AllProjects(ctx, ProjectsOptions{
 					ShowArchived: true,
-					First:        1000,
+					First:        200,
 				})
-				return sources, err
 			}),
 			Namespace:  cfg.Namespace,
 			Descriptor: sourceDescriptor,

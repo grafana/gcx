@@ -51,16 +51,11 @@ type gqlResponse[T any] struct {
 }
 
 // gqlMessage is one entry in the `errors[]` array of a GraphQL response.
-// Decoded only; never sent on the wire, so no omitempty is needed.
+// Only `message` is decoded — `path` (which the GraphQL spec types as
+// `[String | Int]`, mixed) and `extensions` would need bespoke decoders, and
+// nothing currently consumes them.
 type gqlMessage struct {
-	Message    string         `json:"message"`
-	Path       []string       `json:"path"`
-	Extensions gqlMessageMeta `json:"extensions"`
-}
-
-// gqlMessageMeta is the `extensions` block on a GraphQL error.
-type gqlMessageMeta struct {
-	Code string `json:"code"`
+	Message string `json:"message"`
 }
 
 // do posts a GraphQL document and decodes `data` into out.
@@ -234,6 +229,31 @@ func (c *Client) Projects(ctx context.Context, opts ProjectsOptions) ([]Source, 
 	return d.Sources.Response, d.Sources.Metadata.TotalCount, nil
 }
 
+// AllProjects fetches every Source matching opts by paginating through the
+// `sources` query until totalCount is reached (or a page comes back short).
+// opts.First sets the page size (default 200); opts.After is ignored.
+func (c *Client) AllProjects(ctx context.Context, opts ProjectsOptions) ([]Source, error) {
+	pageSize := opts.First
+	if pageSize <= 0 {
+		pageSize = 200
+	}
+	opts.First = pageSize
+	opts.After = 0
+
+	var all []Source
+	for {
+		page, total, err := c.Projects(ctx, opts)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, page...)
+		if len(page) < pageSize || len(all) >= total {
+			return all, nil
+		}
+		opts.After = len(all)
+	}
+}
+
 // Issues returns CVE findings for a single Version.
 func (c *Client) Issues(ctx context.Context, versionID string) ([]Issue, error) {
 	if versionID == "" {
@@ -296,15 +316,16 @@ func (c *Client) ResolveVersion(ctx context.Context, repo, tag string) (string, 
 			return strconv.Itoa(v.ID), nil
 		}
 	}
-	// Fallback: most-recent by publish date.
+	// Tag didn't match — surface available tags instead of silently
+	// substituting a different version (which would cause `--tag <typo>` to
+	// return findings for the wrong release).
 	if len(match.Versions) == 0 {
 		return "", fmt.Errorf("vulnobs: repo %q has no versions", repo)
 	}
-	latest := match.Versions[0]
-	for _, v := range match.Versions[1:] {
-		if v.PublishDate > latest.PublishDate {
-			latest = v
-		}
+	tags := make([]string, 0, len(match.Versions))
+	for _, v := range match.Versions {
+		tags = append(tags, v.Tag)
 	}
-	return strconv.Itoa(latest.ID), nil
+	return "", fmt.Errorf("vulnobs: tag %q not found for %q (available: %s)",
+		tag, repo, strings.Join(tags, ", "))
 }

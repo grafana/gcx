@@ -3,6 +3,7 @@ package vulnobs_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -227,4 +228,67 @@ func TestClient_ResolveVersion(t *testing.T) {
 	got, err = c.ResolveVersion(ctx, "faro-web-sdk", "main")
 	require.NoError(t, err, "suffix match should work")
 	assert.Equal(t, "10354", got)
+}
+
+func TestClient_ResolveVersion_UnknownTag_ListsAvailable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeData(t, w, map[string]any{
+			"sources": map[string]any{
+				"metadata": map[string]any{"totalCount": 1},
+				"response": []map[string]any{
+					{
+						"id":   1064,
+						"name": "grafana/faro-web-sdk",
+						"versions": []map[string]any{
+							{"id": 10354, "tag": "main", "publishDate": "2026-05-15"},
+							{"id": 6297262, "tag": "v2.6.3", "publishDate": "2026-05-11"},
+						},
+					},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	_, err := newTestClient(t, srv).ResolveVersion(context.Background(), "grafana/faro-web-sdk", "v9.9.9")
+	require.Error(t, err, "explicit unknown tag must error, not silently fall back")
+	assert.Contains(t, err.Error(), `tag "v9.9.9" not found`)
+	// Available tags must be listed so the user can correct the typo.
+	assert.Contains(t, err.Error(), "main")
+	assert.Contains(t, err.Error(), "v2.6.3")
+}
+
+func TestClient_AllProjects_PaginatesUntilTotalCount(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		_, _, vars := requestBody(t, r)
+		after, _ := vars["after"].(float64)
+		first, _ := vars["first"].(float64)
+
+		// Three pages total (3 sources × 2 + 1 = 7 sources, page size 3).
+		const total = 7
+		pageSize := int(first)
+		start := int(after)
+		end := min(start+pageSize, total)
+		var page []map[string]any
+		for i := start; i < end; i++ {
+			page = append(page, map[string]any{
+				"id":   1000 + i,
+				"name": fmt.Sprintf("owner/repo-%d", i),
+			})
+		}
+		writeData(t, w, map[string]any{
+			"sources": map[string]any{
+				"metadata": map[string]any{"totalCount": total},
+				"response": page,
+			},
+		})
+	}))
+	defer srv.Close()
+
+	all, err := newTestClient(t, srv).AllProjects(context.Background(), vulnobs.ProjectsOptions{First: 3})
+	require.NoError(t, err)
+	require.Len(t, all, 7, "should accumulate every source across pages")
+	assert.Equal(t, 3, calls, "should issue ceil(7/3)=3 paged calls")
 }

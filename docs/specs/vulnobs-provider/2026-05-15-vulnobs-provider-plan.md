@@ -13,9 +13,10 @@ groups, projects (sources), and CVE findings (issues) from the
 `grafana-vulnerabilityobs-app` plugin via the Grafana instance plugin
 proxy.
 
-Single-stage scope. The provider has no typed resource registrations, no
-push/pull/edit, no new config keys — so it can ship as one PR without
-phasing.
+Single-stage scope. The provider registers `Source` as a read-only typed
+resource (no Create/Update/Delete); `Issue` stays as a sub-resource under
+`projects` per CONSTITUTION line 130–135. No push/pull/edit, no new config
+keys — so it can ship as one PR without phasing.
 
 ## Pipeline Architecture
 
@@ -23,7 +24,8 @@ phasing.
 cmd/gcx/root (Cobra root)
   └─ providers.Register() init()
        └─ vulnobs.VulnobsProvider (NEW)
-            ├─ Commands(): "vulnobs groups list" | "vulnobs projects list" | "vulnobs issues list"
+            ├─ Commands(): "vulnobs groups list" | "vulnobs projects list" | "vulnobs projects list-issues"
+            ├─ TypedRegistrations(): Source (read-only) → sources.vulnobs.grafana.app
             └─ Client (NEW)
                  → POST /api/plugin-proxy/grafana-vulnerabilityobs-app/api-proxy/graphql/query
                     (auth: rest.HTTPClientFor(cfg.Config) — same Grafana token)
