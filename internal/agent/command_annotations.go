@@ -251,6 +251,9 @@ var commandAnnotations = map[string]annotation{
 	// Knowledge Graph provider
 	// -----------------------------------------------------------------------
 	"gcx kg entities query":          {Cost: "medium", Hint: "\"MATCH (s:Service) RETURN s LIMIT 10\" [--since 1h] | read-only Cypher query; always include LIMIT for targeted lookups; omit for broad discovery"},
+	"gcx kg diagnose":                {Cost: "medium", Hint: "[--env <env>] | run diagnostic checks on the Knowledge Graph pipeline: stack status, sanity checks, entity counts, scopes, telemetry configs, recording rule metrics"},
+	"gcx kg diagnose service":        {Cost: "medium", Hint: "<service-name> [--env <env>] | deep diagnosis for a specific service: entity lookup, relationships, per-service metrics, interpreted diagnosis with next steps"},
+	"gcx kg diagnose labels":         {Cost: "medium", Hint: "validate the deployment_environment → asserts_env label mapping pipeline | identifies unmapped environments and orphaned asserts_env values"},
 	"gcx kg entities list":           {Cost: "medium", Hint: "--type <type> [--env <env>] [--namespace <ns>] --since 1h -o json | use --property name=<value> to fetch a single entity by name | use --with-insights [any|critical|warning|info] to filter to entities with active insights | use --json type,name,scope when only entity identity is needed to reduce output size | run gcx kg meta scopes first to discover valid env/namespace/site values"},
 	"gcx kg summary":                 {Cost: "medium", Hint: "--type <type> --since 1h -o json"},
 	"gcx kg insights entity-metric":  {Cost: "medium", Hint: "<Type--Name> --insight-id <id>"},
