@@ -462,13 +462,22 @@ func checkContext(cmd *cobra.Command, cfg config.Config, gCtx *config.Context, s
 }
 
 func useContextCmd(configOpts *Options) *cobra.Command {
+	var fileType string
+
 	cmd := &cobra.Command{
 		Use:     "use-context CONTEXT_NAME",
 		Args:    cobra.ExactArgs(1),
 		Aliases: []string{"use"},
 		Short:   "Set the current context",
-		Long:    "Set the current context and updates the configuration file.",
-		Example: "\n\tgcx config use-context dev-instance",
+		Long: `Set the current context and updates the configuration file.
+
+When multiple config files are loaded (e.g. a local .gcx.yaml alongside the
+user config), use --file to choose which layer to update.`,
+		Example: `
+	gcx config use-context dev-instance
+
+	# Update the local .gcx.yaml when both user and local configs exist
+	gcx config use-context --file local dev-instance`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Load without env overrides so env-sourced secrets are never persisted.
 			cfg, err := config.LoadLayered(cmd.Context(), configOpts.ConfigFile)
@@ -482,7 +491,12 @@ func useContextCmd(configOpts *Options) *cobra.Command {
 
 			cfg.CurrentContext = args[0]
 
-			if err := config.Write(cmd.Context(), configOpts.ConfigSource(), cfg); err != nil {
+			targetSource, err := resolveWriteTarget(configOpts, fileType, cmd.Context())
+			if err != nil {
+				return err
+			}
+
+			if err := config.Write(cmd.Context(), targetSource, cfg); err != nil {
 				return err
 			}
 
@@ -490,6 +504,8 @@ func useContextCmd(configOpts *Options) *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVar(&fileType, "file", "", "Config layer to write to (system, user, local)")
 
 	return cmd
 }
@@ -516,17 +532,21 @@ func resolveWriteTarget(configOpts *Options, fileType string, ctx context.Contex
 		return nil, fmt.Errorf("no %s config file found", fileType)
 	}
 
-	// No flags — check if ambiguous.
+	// No flags — pick the unambiguous target.
 	layered, err := config.LoadLayered(ctx, "")
 	if err != nil {
 		return nil, err
 	}
-	if len(layered.Sources) > 1 {
-		return nil, errors.New("multiple config files loaded; specify which to edit with --file (system, user, local)")
+	switch len(layered.Sources) {
+	case 0:
+		// No discovered files — let StandardLocation create the default user config.
+		return configOpts.ConfigSource(), nil
+	case 1:
+		// Exactly one source — write to it.
+		return config.ExplicitConfigFile(layered.Sources[0].Path), nil
+	default:
+		return nil, errors.New("multiple config files loaded; specify which to update with --file (system, user, local)")
 	}
-
-	// Single source or no sources — use existing behavior.
-	return configOpts.ConfigSource(), nil
 }
 
 func setCmd(configOpts *Options) *cobra.Command {

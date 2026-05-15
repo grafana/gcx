@@ -6,6 +6,9 @@ Set the current context
 
 Set the current context and updates the configuration file.
 
+When multiple config files are loaded (e.g. a local .gcx.yaml alongside the
+user config), use --file to choose which layer to update.
+
 ```
 gcx config use-context CONTEXT_NAME [flags]
 ```
@@ -15,12 +18,16 @@ gcx config use-context CONTEXT_NAME [flags]
 ```
 
 	gcx config use-context dev-instance
+
+	# Update the local .gcx.yaml when both user and local configs exist
+	gcx config use-context --file local dev-instance
 ```
 
 ### Options
 
 ```
-  -h, --help   help for use-context
+      --file string   Config layer to write to (system, user, local)
+  -h, --help          help for use-context
 ```
 
 ### Options inherited from parent commands
