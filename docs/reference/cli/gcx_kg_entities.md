@@ -26,4 +26,5 @@ Manage Knowledge Graph entities.
 * [gcx kg entities find-by-insight](gcx_kg_entities_find-by-insight.md)	 - Find entities with active insights matching the given rules.
 * [gcx kg entities inspect](gcx_kg_entities_inspect.md)	 - Show detailed info, insights, and summary for a single entity, including a link to the RCA Workbench.
 * [gcx kg entities list](gcx_kg_entities_list.md)	 - List Knowledge Graph entities for a given type.
+* [gcx kg entities query](gcx_kg_entities_query.md)	 - Run a read-only Cypher query against the Knowledge Graph.
 
