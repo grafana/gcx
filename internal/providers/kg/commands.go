@@ -815,7 +815,7 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 	listOpts := &entitiesListOpts{}
 	listCmd := &cobra.Command{
 		Use:   "list",
-		Short: "List Knowledge Graph entities for a given type.",
+		Short: "List Knowledge Graph entities for a given type, env, site, namespace.",
 		Example: `  gcx kg entities list --type Service
   gcx kg entities list --type Service --namespace mimir-prod-01 --property name=model-builder
   gcx kg entities list --type Service --with-insights any
@@ -1616,7 +1616,30 @@ func newCypherCommand(loader RESTConfigLoader) *cobra.Command {
 	ioOpts := &cypherOpts{}
 	cmd := &cobra.Command{
 		Use:   "query <cypher-query>",
-		Short: "Run a read-only Cypher query against the Knowledge Graph.",
+		Short: "Query entities by running a read-only Cypher query against the Knowledge Graph.",
+		Long: `Query entities by running a read-only Cypher query against the Knowledge Graph.
+
+Run 'gcx kg meta schema' to discover valid entity types, property names, and relationship names.
+
+Response shape (not raw Cypher rows — results are aggregated into this envelope):
+
+  {
+    "entities": [ { "type", "name", "scope", "properties", "insights" }, ... ],
+    "edges":    [ { "type", "sourceName", "sourceType", "sourceScope",
+                    "destinationName", "destinationType", "destinationScope" }, ... ],
+    "pageNum":  <int>,
+    "lastPage": <bool>
+  }
+
+Tips:
+  - Prefer whole-entity projections like 'RETURN s, d' over scalar projections
+    like 'RETURN d.name'. Whole entities populate the 'entities' array with
+    full type/name/scope/properties; scalar projections do not round-trip
+    through this envelope.
+  - The --json flag selects keys from the envelope above (entities, edges,
+    pageNum, lastPage) — it does NOT filter properties inside each entity.
+    Use '--json list' to see the envelope keys, then '--json entities' and
+    pipe to jq/python for per-entity field shaping.`,
 		Example: `  gcx kg entities query "MATCH (s:Service) RETURN s LIMIT 10"
   gcx kg entities query "MATCH (s:Service)-[:CALLS]->(d:Service) RETURN s, d" --since 1h
   gcx kg entities query "MATCH (s:Service {namespace: 'prod'}) RETURN s" --since 1h`,
@@ -1721,9 +1744,20 @@ func processGraphSchema(resp GraphSchemaResponse) KGSchemaResult {
 		if _, ok := typeProps[name]; !ok {
 			typeProps[name] = map[string]bool{"name": true}
 		}
+		scopeRename := map[string]string{
+			"scope_env":       "env",
+			"scope_site":      "site",
+			"scope_namespace": "namespace",
+		}
 		for prop := range e.Properties {
-			if ignoredProps[prop] || strings.HasPrefix(prop, "_") ||
-				strings.HasPrefix(prop, "scope_") || strings.HasPrefix(prop, "lookup_") {
+			if ignoredProps[prop] || strings.HasPrefix(prop, "_") || strings.HasPrefix(prop, "lookup_") {
+				continue
+			}
+			if renamed, ok := scopeRename[prop]; ok {
+				typeProps[name][renamed] = true
+				continue
+			}
+			if strings.HasPrefix(prop, "scope_") {
 				continue
 			}
 			typeProps[name][prop] = true
