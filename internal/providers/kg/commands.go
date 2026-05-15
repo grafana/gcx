@@ -147,7 +147,7 @@ func (f *scopeFlags) validateScopes(ctx context.Context, client *Client) error {
 			suffix := ""
 			if len(shown) > 10 {
 				shown = shown[:10]
-				suffix = fmt.Sprintf(" (and %d more — run gcx kg scopes list)", len(all)-10)
+				suffix = fmt.Sprintf(" (and %d more — run gcx kg meta scopes)", len(all)-10)
 			}
 			msg = fmt.Sprintf("unknown %s value %q — known %s values: %s%s", c.flag, c.value, c.dim, strings.Join(shown, ", "), suffix)
 		}
@@ -917,56 +917,6 @@ func (c *EntityTableCodec) Encode(w io.Writer, v any) error {
 
 func (c *EntityTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
-}
-
-// ---------------------------------------------------------------------------
-// Scopes command
-// ---------------------------------------------------------------------------
-
-func newScopesCommand(loader RESTConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "scopes",
-		Short: "Manage Knowledge Graph entity scopes.",
-	}
-
-	ioOpts := &scopesListOpts{}
-	listCmd := &cobra.Command{
-		Use:   "list",
-		Short: "List entity scopes.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := ioOpts.IO.Validate(); err != nil {
-				return err
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			scopes, err := client.ListEntityScopes(cmd.Context())
-			if err != nil {
-				return err
-			}
-			return ioOpts.IO.Encode(cmd.OutOrStdout(), scopes)
-		},
-	}
-	ioOpts.setup(listCmd.Flags())
-
-	cmd.AddCommand(listCmd)
-	return cmd
-}
-
-type scopesListOpts struct {
-	IO    cmdio.Options
-	Limit int64
-}
-
-func (o *scopesListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("json")
-	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
 // ---------------------------------------------------------------------------

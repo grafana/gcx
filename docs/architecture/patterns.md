@@ -553,7 +553,7 @@ return opts.IO.Encode(cmd.OutOrStdout(), objs)
 |----------|----------|-----------|
 | Query/search results | `insights search`, `entities list` | Time-series and aggregation results, not storable resources |
 | Operational views | `status`, `health`, `inspect` | Composite or derived data, not individual resources |
-| Read-only reference data | `kg scopes list` | Discoverable metadata, not user-managed resources |
+| Read-only reference data | `kg meta scopes` | Discoverable metadata, not user-managed resources |
 | Singleton config | `env get` | Single config objects, not collections of resources |
 
 **Evidence:**
