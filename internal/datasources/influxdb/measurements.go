@@ -105,7 +105,7 @@ func MeasurementsCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx datasources influxdb measurements -d UID -o json",
+		agent.AnnotationLLMHint:   "gcx datasources influxdb measurements -d UID",
 	}
 
 	opts.setup(cmd.Flags())

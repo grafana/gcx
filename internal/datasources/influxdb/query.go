@@ -125,7 +125,7 @@ Datasource is resolved from -d flag or datasources.influxdb in your context.`,
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx datasources influxdb query -d UID 'SELECT mean("value") FROM "cpu" WHERE time > now() - 1h' -o json`,
+		agent.AnnotationLLMHint:   `gcx datasources influxdb query -d UID 'SELECT mean("value") FROM "cpu" WHERE time > now() - 1h'`,
 	}
 
 	opts.setup(cmd.Flags())
