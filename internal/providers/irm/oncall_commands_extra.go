@@ -155,26 +155,12 @@ func newAlertGroupListAlertsCommand(loader OnCallConfigLoader) *cobra.Command {
 	return cmd
 }
 
-type alertGroupActionOpts struct {
-	IO cmdio.Options
-}
-
-func (o *alertGroupActionOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("json")
-	o.IO.BindFlags(flags)
-}
-
 func newAlertGroupActionCommand(loader OnCallConfigLoader, name, short string, actionFn func(OnCallAPI, *cobra.Command, string) error) *cobra.Command {
-	opts := &alertGroupActionOpts{}
-	cmd := &cobra.Command{
+	return &cobra.Command{
 		Use:   name + " <id>",
 		Short: short,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-
 			client, _, err := loader.LoadOnCallClient(cmd.Context())
 			if err != nil {
 				return err
@@ -189,22 +175,15 @@ func newAlertGroupActionCommand(loader OnCallConfigLoader, name, short string, a
 			return nil
 		},
 	}
-	opts.setup(cmd.Flags())
-	return cmd
 }
 
 func newAlertGroupSilenceCommand(loader OnCallConfigLoader) *cobra.Command {
-	opts := &alertGroupActionOpts{}
 	var duration int
 	cmd := &cobra.Command{
 		Use:   "silence <id>",
 		Short: "Silence an alert group for a specified duration.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-
 			client, _, err := loader.LoadOnCallClient(cmd.Context())
 			if err != nil {
 				return err
@@ -219,7 +198,6 @@ func newAlertGroupSilenceCommand(loader OnCallConfigLoader) *cobra.Command {
 			return nil
 		},
 	}
-	opts.setup(cmd.Flags())
 	cmd.Flags().IntVar(&duration, "duration", 3600, "Duration to silence in seconds")
 	return cmd
 }
@@ -370,7 +348,6 @@ func newUsersCurrentCommand(loader OnCallConfigLoader) *cobra.Command {
 // ---------------------------------------------------------------------------
 
 type escalateOpts struct {
-	IO        cmdio.Options
 	Title     string
 	Message   string
 	Team      string
@@ -379,8 +356,6 @@ type escalateOpts struct {
 }
 
 func (o *escalateOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("json")
-	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Title, "title", "", "Title of the escalation (required)")
 	flags.StringVar(&o.Message, "message", "", "Message for the escalation")
 	flags.StringVar(&o.Team, "team", "", "Team ID")
@@ -401,9 +376,6 @@ func newEscalateCommand(loader OnCallConfigLoader) *cobra.Command {
 		Use:   "escalate",
 		Short: "Create a direct escalation.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
 			if err := opts.Validate(); err != nil {
 				return err
 			}

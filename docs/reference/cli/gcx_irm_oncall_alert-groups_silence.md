@@ -9,10 +9,8 @@ gcx irm oncall alert-groups silence <id> [flags]
 ### Options
 
 ```
-      --duration int    Duration to silence in seconds (default 3600)
-  -h, --help            help for silence
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: agents, json, yaml (default "json")
+      --duration int   Duration to silence in seconds (default 3600)
+  -h, --help           help for silence
 ```
 
 ### Options inherited from parent commands

@@ -9,9 +9,7 @@ gcx irm oncall alert-groups acknowledge <id> [flags]
 ### Options
 
 ```
-  -h, --help            help for acknowledge
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: agents, json, yaml (default "json")
+  -h, --help   help for acknowledge
 ```
 
 ### Options inherited from parent commands
