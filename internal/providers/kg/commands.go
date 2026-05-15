@@ -1603,7 +1603,7 @@ func newOpenCommand(loader RESTConfigLoader) *cobra.Command {
 }
 
 // ---------------------------------------------------------------------------
-// Cypher command
+// Cypher query command
 // ---------------------------------------------------------------------------
 
 func newCypherCommand(loader RESTConfigLoader) *cobra.Command {
@@ -1614,11 +1614,11 @@ func newCypherCommand(loader RESTConfigLoader) *cobra.Command {
 	)
 	ioOpts := &cypherOpts{}
 	cmd := &cobra.Command{
-		Use:   "cypher <query>",
+		Use:   "query <cypher-query>",
 		Short: "Run a read-only Cypher query against the Knowledge Graph.",
-		Example: `  gcx kg entities cypher "MATCH (s:Service) RETURN s LIMIT 10"
-  gcx kg entities cypher "MATCH (s:Service)-[:CALLS]->(d:Service) RETURN s, d" --since 1h
-  gcx kg entities cypher "MATCH (s:Service {namespace: 'prod'}) RETURN s" --since 1h`,
+		Example: `  gcx kg entities query "MATCH (s:Service) RETURN s LIMIT 10"
+  gcx kg entities query "MATCH (s:Service)-[:CALLS]->(d:Service) RETURN s, d" --since 1h
+  gcx kg entities query "MATCH (s:Service {namespace: 'prod'}) RETURN s" --since 1h`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := ioOpts.IO.Validate(); err != nil {

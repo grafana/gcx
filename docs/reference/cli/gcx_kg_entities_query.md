@@ -1,24 +1,24 @@
-## gcx kg entities cypher
+## gcx kg entities query
 
 Run a read-only Cypher query against the Knowledge Graph.
 
 ```
-gcx kg entities cypher <query> [flags]
+gcx kg entities query <cypher-query> [flags]
 ```
 
 ### Examples
 
 ```
-  gcx kg entities cypher "MATCH (s:Service) RETURN s LIMIT 10"
-  gcx kg entities cypher "MATCH (s:Service)-[:CALLS]->(d:Service) RETURN s, d" --since 1h
-  gcx kg entities cypher "MATCH (s:Service {namespace: 'prod'}) RETURN s" --since 1h
+  gcx kg entities query "MATCH (s:Service) RETURN s LIMIT 10"
+  gcx kg entities query "MATCH (s:Service)-[:CALLS]->(d:Service) RETURN s, d" --since 1h
+  gcx kg entities query "MATCH (s:Service {namespace: 'prod'}) RETURN s" --since 1h
 ```
 
 ### Options
 
 ```
       --from string     Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-  -h, --help            help for cypher
+  -h, --help            help for query
       --insights-only   Return only entities with active insights
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
