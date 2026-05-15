@@ -59,6 +59,13 @@ use it in all subsequent queries.
 Check whether the raw telemetry that feeds Entity Graph exists. Raw Tempo
 metrics use `deployment_environment`, not `asserts_env`.
 
+Note the label shape difference between the two metrics: `traces_target_info`
+describes a single service so it has one `deployment_environment` label;
+`traces_service_graph_request_total` describes an edge between two services
+and exposes the env on both sides as `client_deployment_environment` and
+`server_deployment_environment` — there is no unified `deployment_environment`
+label.
+
 ```bash
 # Service identity (OTel traces)
 gcx metrics query 'count(traces_target_info)' --since 1h
@@ -66,7 +73,8 @@ gcx metrics query 'count(traces_target_info{deployment_environment="ENV"})' --si
 
 # Call data (inter-service HTTP/gRPC)
 gcx metrics query 'count(traces_service_graph_request_total)' --since 1h
-gcx metrics query 'count(traces_service_graph_request_total{deployment_environment="ENV"})' --since 1h
+# Filter on server side (use client_deployment_environment for outbound view):
+gcx metrics query 'count(traces_service_graph_request_total{server_deployment_environment="ENV"})' --since 1h
 ```
 
 **Interpret:**
