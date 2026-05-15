@@ -148,28 +148,12 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 		contextName = flags.Config.Context
 	}
 
-	// Pre-populate Server from the correct source context:
-	//   contextName set + context exists   -> use named context (re-auth)
-	//   contextName set + context absent   -> leave Server empty (new context)
-	//   contextName empty + current exists -> use current context (re-auth current)
-	//   contextName empty + no current     -> leave Server empty (first-time setup)
 	cfg, _ := flags.Config.LoadConfigTolerant(ctx) // tolerate missing file
-	var sourceCtx *config.Context
-	if contextName != "" {
-		if existing, ok := cfg.Contexts[contextName]; ok {
-			sourceCtx = existing
-		}
-	} else {
-		sourceCtx = cfg.GetCurrentContext()
-	}
+	sourceCtx, contextName := resolveSourceContext(cfg, contextName, flags.Server)
 	if flags.Server == "" && sourceCtx != nil && sourceCtx.Grafana != nil {
 		flags.Server = sourceCtx.Grafana.Server
 	}
 
-	// Print mode header so the user can confirm which context they're targeting.
-	// sourceCtx != nil implies re-auth (existing context).
-	// sourceCtx == nil with contextName set implies new-context creation.
-	// sourceCtx == nil with contextName empty implies first-time setup.
 	printModeHeader(cmd, cfg, contextName, sourceCtx)
 
 	isInteractive := term.IsTerminal(int(os.Stdin.Fd())) &&
@@ -592,6 +576,25 @@ func structuredClarificationError(e *login.ErrNeedClarification) error {
 				"Pass --yes to default to on-premises",
 			},
 		}
+	}
+}
+
+// resolveSourceContext picks which context this login targets, returning it
+// alongside its (possibly-derived) name. A nil context signals new-context
+// creation to downstream code.
+//
+// When no name is given, the name is derived from --server so that
+// `gcx login --server <new>` doesn't clobber the unrelated current context.
+// With neither name nor server, falls back to the current context.
+func resolveSourceContext(cfg config.Config, contextName, server string) (*config.Context, string) {
+	switch {
+	case contextName != "":
+		return cfg.Contexts[contextName], contextName
+	case server != "":
+		name := config.ContextNameFromServerURL(server)
+		return cfg.Contexts[name], name
+	default:
+		return cfg.GetCurrentContext(), cfg.CurrentContext
 	}
 }
 
