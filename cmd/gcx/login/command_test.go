@@ -374,20 +374,20 @@ func TestPrintResult_TextCodec(t *testing.T) {
 func TestResolveSourceContext(t *testing.T) {
 	t.Parallel()
 
-	dev := &config.Context{
-		Name:    "dev-dev",
-		Grafana: &config.GrafanaConfig{Server: "https://dev.grafana-dev.net/"},
+	current := &config.Context{
+		Name:    "alpha-dev",
+		Grafana: &config.GrafanaConfig{Server: "https://alpha.grafana-dev.net/"},
 	}
-	ops := &config.Context{
-		Name:    "ops-ops",
-		Grafana: &config.GrafanaConfig{Server: "https://ops.grafana-ops.net/"},
+	other := &config.Context{
+		Name:    "beta-ops",
+		Grafana: &config.GrafanaConfig{Server: "https://beta.grafana-ops.net/"},
 	}
 	cfg := config.Config{
 		Contexts: map[string]*config.Context{
-			"dev-dev": dev,
-			"ops-ops": ops,
+			"alpha-dev": current,
+			"beta-ops":  other,
 		},
-		CurrentContext: "dev-dev",
+		CurrentContext: "alpha-dev",
 	}
 	empty := config.Config{}
 
@@ -402,44 +402,44 @@ func TestResolveSourceContext(t *testing.T) {
 		{
 			name:       "no_name_no_server_uses_current",
 			cfg:        cfg,
-			wantSource: dev,
-			wantName:   "dev-dev",
+			wantSource: current,
+			wantName:   "alpha-dev",
 		},
 		{
 			name:       "no_name_server_matches_existing_refreshes_it",
 			cfg:        cfg,
-			server:     "https://ops.grafana-ops.net/",
-			wantSource: ops,
-			wantName:   "ops-ops",
+			server:     "https://beta.grafana-ops.net/",
+			wantSource: other,
+			wantName:   "beta-ops",
 		},
 		{
 			name:       "no_name_server_differs_from_current_creates_new",
 			cfg:        cfg,
-			server:     "https://new.grafana-staging.net/",
+			server:     "https://example.test.local/",
 			wantSource: nil,
-			wantName:   "new-grafana-staging-net",
+			wantName:   "example-test-local",
 		},
 		{
 			name:        "named_existing_refreshes_named",
 			cfg:         cfg,
-			contextName: "ops-ops",
-			wantSource:  ops,
-			wantName:    "ops-ops",
+			contextName: "beta-ops",
+			wantSource:  other,
+			wantName:    "beta-ops",
 		},
 		{
 			name:        "named_missing_creates_new",
 			cfg:         cfg,
-			contextName: "prod",
+			contextName: "gamma",
 			wantSource:  nil,
-			wantName:    "prod",
+			wantName:    "gamma",
 		},
 		{
 			name:        "named_takes_precedence_over_server",
 			cfg:         cfg,
-			contextName: "ops-ops",
-			server:      "https://elsewhere.grafana.net/",
-			wantSource:  ops,
-			wantName:    "ops-ops",
+			contextName: "beta-ops",
+			server:      "https://different.example.test/",
+			wantSource:  other,
+			wantName:    "beta-ops",
 		},
 		{
 			name:       "empty_config_no_inputs_first_time_setup",
@@ -450,9 +450,9 @@ func TestResolveSourceContext(t *testing.T) {
 		{
 			name:       "empty_config_with_server_derives_name",
 			cfg:        empty,
-			server:     "https://my-stack.grafana.net/",
+			server:     "https://example.grafana.net/",
 			wantSource: nil,
-			wantName:   "my-stack",
+			wantName:   "example",
 		},
 	}
 
