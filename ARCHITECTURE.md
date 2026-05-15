@@ -189,6 +189,9 @@ Multiple auth mechanisms for different tiers.
 | [016](docs/adrs/dashboards-provider/001-dashboards-provider-design.md) | Dashboards provider: CRUD shorthands, search, and version history | accepted |
 | [017](docs/adrs/traces-get-table/001-tree-table-render-for-traces-get.md) | Tree-table rendering for `traces get` | accepted |
 | [018](docs/adrs/instrumentation/002-cli-redesign.md) | `gcx instrumentation` CLI redesign: action verbs over Set/Get + observed state | accepted |
+| [019a](docs/adrs/vulnobs-provider/001-auth-strategy.md) | Vulnobs provider: reuse Grafana token via NamespacedRESTConfig | proposed |
+| [019b](docs/adrs/vulnobs-provider/002-graphql-client.md) | Vulnobs provider: hand-rolled GraphQL POSTer (no codegen, no persisted hashes) | proposed |
+| [019c](docs/adrs/vulnobs-provider/003-command-shape-and-no-typed-resources.md) | Vulnobs provider: Source typed-registered (read-only); Issue as sub-resource per CONSTITUTION L130–135 | proposed |
 
 See [docs/adrs/](docs/adrs/) for all ADRs.
 

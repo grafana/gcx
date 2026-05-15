@@ -119,7 +119,8 @@ internal/
 │   ├── aio11y/     AI Observability provider (conversations, agents, generations, evaluators, rules, templates, scores, judge, saved-conversations, collections — via grafana-sigil-app plugin API)
 │   ├── slo/        SLO provider (definitions, reports)
 │   ├── synth/      Synthetic Monitoring provider (checks, probes)
-│   └── traces/     Traces signal provider (Tempo queries + Adaptive Traces commands)
+│   ├── traces/     Traces signal provider (Tempo queries + Adaptive Traces commands)
+│   └── vulnobs/    Vulnerability Observability provider (read-only: groups, sources/projects, issues sub-resource) via grafana-vulnerabilityobs-app plugin proxy GraphQL
 ├── deeplink/    Deep link URL template registry and browser opener
 ├── dashboards/  Dashboard Image Renderer client (PNG snapshots)
 ├── datasources/ Datasource HTTP client, DatasourceProvider interface + registry
