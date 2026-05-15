@@ -160,23 +160,22 @@
       ]
     },
     {
-      "description": "Pinned: loki v3 module chain is held at v3.4.2 in go.mod; an upgrade cascades to prometheus and strfmt and is out of scope here. Revisit when the loki v3 chain is upgraded together.",
+      "description": "promql-builder/go has no subdirectory-prefixed (go/vX.Y.Z) tags in the upstream repo, so vX.Y.Z versions are unimportable via the Go proxy. Track digests only until upstream fixes its tagging.",
       "matchPackageNames": [
-        "/^github\\.com/grafana/loki(/|$)/"
+        "github.com/grafana/promql-builder/go"
+      ],
+      "matchUpdateTypes": [
+        "major",
+        "minor",
+        "patch"
       ],
       "enabled": false
     },
     {
-      "description": "Pinned: tied to loki v3.4.2's expected prometheus v0.55.0 package layout (tsdb/errors, otlptranslator). Must move in lockstep with a loki upgrade.",
+      "description": "memberlist is replaced to grafana/memberlist fork to match loki/dskit; track via loki upgrades, not independently.",
       "matchPackageNames": [
-        "github.com/prometheus/prometheus"
-      ],
-      "enabled": false
-    },
-    {
-      "description": "Pinned: strfmt v0.26+ has caused missing go-openapi/testify/v2/assert/yaml errors during go mod tidy in this dep chain. Revisit alongside the loki/prometheus upgrade.",
-      "matchPackageNames": [
-        "github.com/go-openapi/strfmt"
+        "github.com/hashicorp/memberlist",
+        "github.com/grafana/memberlist"
       ],
       "enabled": false
     }
