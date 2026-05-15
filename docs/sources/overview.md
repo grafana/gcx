@@ -1,5 +1,5 @@
 ---
-Title: Introduction to gcx
+title: Introduction to gcx
 weight: 1
 ---
 
