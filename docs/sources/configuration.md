@@ -1,5 +1,6 @@
 ---
 title: Configure gcx
+weight: 2
 ---
 
 # Configure `gcx`

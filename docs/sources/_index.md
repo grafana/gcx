@@ -8,12 +8,16 @@ keywords:
 weight: 1
 cards:
   items:
+    - title: Overview
+      description: Overview of the gcx CLI.
+      href: overview/
+      height: 24
     - title: Installation
-      description: Install gcx with the quick installer, Homebrew, or a prebuilt binary.
+      description: Install `gcx` with the quick installer, Homebrew, or a prebuilt binary.
       href: installation/
       height: 24
     - title: Configuration
-      description: Configure authentication, contexts, and environment variables for gcx.
+      description: Configure `gcx` with the configuration file or using environment variables.
       href: configuration/
       height: 24
   title_class: pt-0 lh-1
@@ -28,10 +32,12 @@ hero:
 
 ## Overview
 
-gcx is the Grafana CLI for working with Grafana Cloud, Grafana Enterprise, and Grafana OSS from your terminal.
-It is designed for interactive use, scripting, and agentic workflows.
+`gcx` is the Grafana CLI that allows you and your AI coding agent to work with Grafana Cloud, Grafana Enterprise, and Grafana OSS. 
 
-Use gcx to authenticate against Grafana, query telemetry, inspect and manage resources, and automate observability workflows as code.
+`gcx` is designed to be used in common scenarios such as authentication against Grafana, query telemetry, inspect and manage resources, and automate observability workflows as code. 
+
+It's also integrated with Grafana Assistant, combining the previously fragmented user experience into one single tool.
+
 
 ## Get started
 
