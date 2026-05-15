@@ -1,10 +1,10 @@
 ## gcx assistant investigations mode
 
-Change autonomy mode of a Lodestone investigation.
+Change autonomy mode of a v2 investigation.
 
 ### Synopsis
 
-Change the autonomy mode of a running Lodestone investigation. Valid modes: low, medium, high.
+Change the autonomy mode of a running v2 investigation. Valid modes: low, medium, high.
 
 ```
 gcx assistant investigations mode <id> <mode> [flags]

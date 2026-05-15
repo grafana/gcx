@@ -1,6 +1,6 @@
 ## gcx assistant investigations state
 
-Show full Lodestone session state (plan, hypotheses, mode, report).
+Show full v2 investigation session state (plan, hypotheses, mode, report).
 
 ```
 gcx assistant investigations state <id> [flags]

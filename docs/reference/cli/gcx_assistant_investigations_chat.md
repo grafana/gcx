@@ -1,10 +1,10 @@
 ## gcx assistant investigations chat
 
-Show the chat thread for a Lodestone investigation.
+Show the chat thread for a v2 investigation.
 
 ### Synopsis
 
-Stream the chat thread that backs a Lodestone investigation: assistant prose, tool calls (search_skills, prometheus_query_handler, loki_query_handler_investigator, tempo_query_handler, ...), and tool results. The legacy report/timeline/todos endpoints return empty stubs for Lodestone — this command is the substantive view.
+Stream the chat thread that backs a v2 investigation: assistant prose, tool calls (search_skills, prometheus_query_handler, loki_query_handler_investigator, tempo_query_handler, ...), and tool results. The legacy report/timeline/todos endpoints return empty stubs on v2 — this command is the substantive view.
 
 ```
 gcx assistant investigations chat <id> [flags]

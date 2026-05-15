@@ -11,7 +11,11 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-const pluginBasePath = "/api/plugins/grafana-assistant-app/resources/api/v1"
+// pluginBasePath is the Grafana plugin proxy prefix. Callers pass paths that
+// include the API-version segment (e.g. "/api/v1/investigations" or
+// "/api/v2/investigations/{id}/snapshot") so a single client can talk to both
+// the v1 and v2 surfaces.
+const pluginBasePath = "/api/plugins/grafana-assistant-app/resources"
 
 // Client is a base HTTP client for the Grafana Assistant plugin API.
 type Client struct {

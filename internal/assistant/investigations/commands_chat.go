@@ -37,12 +37,12 @@ func newChatCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &chatOpts{}
 	cmd := &cobra.Command{
 		Use:   "chat <id>",
-		Short: "Show the chat thread for a Lodestone investigation.",
-		Long: "Stream the chat thread that backs a Lodestone investigation: " +
+		Short: "Show the chat thread for a v2 investigation.",
+		Long: "Stream the chat thread that backs a v2 investigation: " +
 			"assistant prose, tool calls (search_skills, prometheus_query_handler, " +
 			"loki_query_handler_investigator, tempo_query_handler, ...), and tool " +
 			"results. The legacy report/timeline/todos endpoints return empty stubs " +
-			"for Lodestone — this command is the substantive view.",
+			"on v2 — this command is the substantive view.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -105,8 +105,8 @@ func newNarrativeCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &narrativeOpts{}
 	cmd := &cobra.Command{
 		Use:   "narrative <id>",
-		Short: "Show the assistant-authored prose for a Lodestone investigation.",
-		Long:  "Show just the assistant-authored prose from a Lodestone investigation's chat thread — the text a human would read in the workspace, with tool plumbing stripped.",
+		Short: "Show the assistant-authored prose for a v2 investigation.",
+		Long:  "Show just the assistant-authored prose from a v2 investigation's chat thread — the text a human would read in the workspace, with tool plumbing stripped.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -150,8 +150,8 @@ func newToolsCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &toolsOpts{}
 	cmd := &cobra.Command{
 		Use:   "tools <id>",
-		Short: "List tool calls made during a Lodestone investigation.",
-		Long:  "List every tool call the agent made during a Lodestone investigation, paired with its result. Use --name to filter (e.g. search_skills, prometheus_query_handler).",
+		Short: "List tool calls made during a v2 investigation.",
+		Long:  "List every tool call the agent made during a v2 investigation, paired with its result. Use --name to filter (e.g. search_skills, prometheus_query_handler).",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -202,8 +202,8 @@ func newSkillsCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &skillsOpts{}
 	cmd := &cobra.Command{
 		Use:   "skills <id>",
-		Short: "Show Skill matches from a Lodestone investigation.",
-		Long:  "Extract the search_skills tool results from a Lodestone investigation's chat thread: which Skills semantically matched and the chunks returned. The substantive piece for the Skills GA story.",
+		Short: "Show Skill matches from a v2 investigation.",
+		Long:  "Extract the search_skills tool results from a v2 investigation's chat thread: which Skills semantically matched and the chunks returned. The substantive piece for the Skills GA story.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {

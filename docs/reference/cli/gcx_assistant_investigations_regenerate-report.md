@@ -1,6 +1,6 @@
 ## gcx assistant investigations regenerate-report
 
-Queue regeneration of a Lodestone investigation report.
+Queue regeneration of a v2 investigation report.
 
 ```
 gcx assistant investigations regenerate-report <id> [flags]

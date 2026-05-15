@@ -1,10 +1,10 @@
 ## gcx assistant investigations share
 
-Share a Lodestone investigation with additional teams.
+Share a v2 investigation with additional teams.
 
 ### Synopsis
 
-Widen the visibility of a Lodestone investigation. Sharing is additive — teams cannot be removed.
+Widen the visibility of a v2 investigation. Sharing is additive — teams cannot be removed.
 
 ```
 gcx assistant investigations share <id> [flags]

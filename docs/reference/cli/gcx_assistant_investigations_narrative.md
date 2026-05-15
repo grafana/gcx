@@ -1,10 +1,10 @@
 ## gcx assistant investigations narrative
 
-Show the assistant-authored prose for a Lodestone investigation.
+Show the assistant-authored prose for a v2 investigation.
 
 ### Synopsis
 
-Show just the assistant-authored prose from a Lodestone investigation's chat thread — the text a human would read in the workspace, with tool plumbing stripped.
+Show just the assistant-authored prose from a v2 investigation's chat thread — the text a human would read in the workspace, with tool plumbing stripped.
 
 ```
 gcx assistant investigations narrative <id> [flags]

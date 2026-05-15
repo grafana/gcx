@@ -1,10 +1,10 @@
 ## gcx assistant investigations pause
 
-Pause a running Lodestone investigation.
+Pause a running v2 investigation.
 
 ### Synopsis
 
-Pause a Lodestone (v2) investigation. Unlike cancel, paused investigations can be resumed.
+Pause a v2 investigation. Unlike cancel, paused investigations can be resumed.
 
 ```
 gcx assistant investigations pause <id> [flags]

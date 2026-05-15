@@ -1,10 +1,10 @@
 ## gcx assistant investigations tools
 
-List tool calls made during a Lodestone investigation.
+List tool calls made during a v2 investigation.
 
 ### Synopsis
 
-List every tool call the agent made during a Lodestone investigation, paired with its result. Use --name to filter (e.g. search_skills, prometheus_query_handler).
+List every tool call the agent made during a v2 investigation, paired with its result. Use --name to filter (e.g. search_skills, prometheus_query_handler).
 
 ```
 gcx assistant investigations tools <id> [flags]

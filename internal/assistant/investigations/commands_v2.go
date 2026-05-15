@@ -17,8 +17,8 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// requireV2 probes the connected stack and returns a friendly error when
-// Lodestone is not available.
+// requireV2 probes the connected stack and returns a friendly error when the
+// /api/v2 investigations surface is not available.
 func requireV2(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, error) {
 	cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 	if err != nil {
@@ -28,27 +28,43 @@ func requireV2(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, err
 	if err != nil {
 		return nil, err
 	}
-	c, err := DetectCapability(cmd.Context(), loader, base)
+	mode, err := DetectAPIMode(cmd.Context(), loader, base)
 	if err != nil {
 		return nil, err
 	}
-	if !c.V2 {
+	if !mode.SupportsV2() {
 		return nil, fmt.Errorf("%w on %s; use `gcx assistant investigations list` to see legacy investigations",
 			errV2NotSupported, cfg.Host)
 	}
 	return NewClient(base), nil
 }
 
-// resolveChatID maps an investigation ID (user-facing) to a chat ID (v2 key).
-func resolveChatID(ctx context.Context, client *Client, investigationID string) (string, error) {
-	chatID, status, err := client.ResolveByID(ctx, investigationID)
+// resolveID maps a user-supplied investigation identifier to the canonical
+// investigationId expected by /api/v2 endpoints.
+func resolveID(ctx context.Context, client *Client, id string) (string, error) {
+	resp, status, err := client.ResolveByID(ctx, id)
 	if err != nil {
 		return "", err
 	}
 	if status == http.StatusNotFound {
-		return "", fmt.Errorf("lodestone investigation %q not found", investigationID)
+		return "", fmt.Errorf("investigation %q not found", id)
 	}
-	return chatID, nil
+	return resp.InvestigationID, nil
+}
+
+// resolveChatID maps a user-supplied investigation identifier to the chatId
+// regardless of API mode. Used by chat-thread commands, which read from the
+// v1 /chats/{chatId}/all-messages endpoint that's outside the investigations
+// surface and not affected by the v2 rollout.
+func resolveChatID(ctx context.Context, client *Client, id string) (string, error) {
+	resp, status, err := client.ResolveByID(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	if status == http.StatusNotFound {
+		return "", fmt.Errorf("investigation %q not found", id)
+	}
+	return resp.ChatID, nil
 }
 
 // --- pause ---
@@ -64,8 +80,8 @@ func newPauseCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &pauseOpts{}
 	cmd := &cobra.Command{
 		Use:   "pause <id>",
-		Short: "Pause a running Lodestone investigation.",
-		Long:  "Pause a Lodestone (v2) investigation. Unlike cancel, paused investigations can be resumed.",
+		Short: "Pause a running v2 investigation.",
+		Long:  "Pause a v2 investigation. Unlike cancel, paused investigations can be resumed.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -75,7 +91,7 @@ func newPauseCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			chatID, err := resolveChatID(cmd.Context(), client, args[0])
+			chatID, err := resolveID(cmd.Context(), client, args[0])
 			if err != nil {
 				return err
 			}
@@ -104,7 +120,7 @@ func newResumeCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &resumeOpts{}
 	cmd := &cobra.Command{
 		Use:   "resume <id>",
-		Short: "Resume a paused Lodestone investigation.",
+		Short: "Resume a paused v2 investigation.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -114,7 +130,7 @@ func newResumeCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			chatID, err := resolveChatID(cmd.Context(), client, args[0])
+			chatID, err := resolveID(cmd.Context(), client, args[0])
 			if err != nil {
 				return err
 			}
@@ -155,8 +171,8 @@ func newModeCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &modeOpts{}
 	cmd := &cobra.Command{
 		Use:   "mode <id> <mode>",
-		Short: "Change autonomy mode of a Lodestone investigation.",
-		Long:  "Change the autonomy mode of a running Lodestone investigation. Valid modes: low, medium, high.",
+		Short: "Change autonomy mode of a v2 investigation.",
+		Long:  "Change the autonomy mode of a running v2 investigation. Valid modes: low, medium, high.",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -173,7 +189,7 @@ func newModeCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			chatID, err := resolveChatID(cmd.Context(), client, args[0])
+			chatID, err := resolveID(cmd.Context(), client, args[0])
 			if err != nil {
 				return err
 			}
@@ -212,8 +228,8 @@ func newShareCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &shareOpts{}
 	cmd := &cobra.Command{
 		Use:   "share <id>",
-		Short: "Share a Lodestone investigation with additional teams.",
-		Long:  "Widen the visibility of a Lodestone investigation. Sharing is additive — teams cannot be removed.",
+		Short: "Share a v2 investigation with additional teams.",
+		Long:  "Widen the visibility of a v2 investigation. Sharing is additive — teams cannot be removed.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -251,7 +267,7 @@ func newRegenerateReportCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &regenReportOpts{}
 	cmd := &cobra.Command{
 		Use:   "regenerate-report <id>",
-		Short: "Queue regeneration of a Lodestone investigation report.",
+		Short: "Queue regeneration of a v2 investigation report.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -261,7 +277,7 @@ func newRegenerateReportCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			chatID, err := resolveChatID(cmd.Context(), client, args[0])
+			chatID, err := resolveID(cmd.Context(), client, args[0])
 			if err != nil {
 				return err
 			}
@@ -303,7 +319,7 @@ func newRepairMermaidCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			chatID, err := resolveChatID(cmd.Context(), client, args[0])
+			chatID, err := resolveID(cmd.Context(), client, args[0])
 			if err != nil {
 				return err
 			}
@@ -357,7 +373,7 @@ func newUpdateMermaidCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &updateMermaidOpts{}
 	cmd := &cobra.Command{
 		Use:   "update-mermaid <id> <element-id>",
-		Short: "Persist Mermaid source for a Lodestone report element.",
+		Short: "Persist Mermaid source for a v2 investigation report element.",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -374,7 +390,7 @@ func newUpdateMermaidCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			chatID, err := resolveChatID(cmd.Context(), client, args[0])
+			chatID, err := resolveID(cmd.Context(), client, args[0])
 			if err != nil {
 				return err
 			}
@@ -407,7 +423,7 @@ func newStateCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &stateOpts{}
 	cmd := &cobra.Command{
 		Use:   "state <id>",
-		Short: "Show full Lodestone session state (plan, hypotheses, mode, report).",
+		Short: "Show full v2 investigation session state (plan, hypotheses, mode, report).",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -417,7 +433,7 @@ func newStateCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			chatID, err := resolveChatID(cmd.Context(), client, args[0])
+			chatID, err := resolveID(cmd.Context(), client, args[0])
 			if err != nil {
 				return err
 			}

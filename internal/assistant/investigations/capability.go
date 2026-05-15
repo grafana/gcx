@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
@@ -15,58 +14,81 @@ import (
 
 const (
 	// capabilityProviderName / capabilityCacheKey identify the per-context slot
-	// in gcx config where the Lodestone capability is persisted. Mirrors the
-	// SaveProviderConfig precedent used by adaptive, faro, and synth.
+	// in gcx config where the Assistant investigations API mode is persisted.
+	// Mirrors the SaveProviderConfig precedent used by adaptive, faro, and synth.
 	capabilityProviderName = "assistant"
-	capabilityCacheKey     = "lodestone-v2"
+	capabilityCacheKey     = "api-mode"
 	envAPIVersionOverride  = "GCX_ASSISTANT_API_VERSION"
 )
 
-// Capability reports which Assistant API versions a stack supports.
-type Capability struct {
-	V2 bool
+// APIMode names which Assistant investigations API surface a stack exposes.
+// Values are written verbatim to the gcx config cache, so they must remain
+// stable strings.
+type APIMode string
+
+const (
+	// APIModeLegacy is the original /api/v1 surface (no /api/v2).
+	APIModeLegacy APIMode = "v1"
+	// APIModeV2Standard is the /api/v2/investigations/* surface introduced by
+	// grafana-assistant-app#6645. Preferred when available.
+	APIModeV2Standard APIMode = "v2"
+)
+
+// SupportsV2 reports whether the mode exposes the v2 investigations feature
+// set (pause/resume/mode/share/snapshot/...).
+func (m APIMode) SupportsV2() bool {
+	return m == APIModeV2Standard
 }
 
-// capabilityProbe runs the network call that distinguishes v2 stacks from v1.
-type capabilityProbe func(ctx context.Context, base *assistanthttp.Client) (bool, error)
+// capabilityProbe runs the network calls that pick a mode. Split out for tests.
+type capabilityProbe func(ctx context.Context, base *assistanthttp.Client) (APIMode, error)
 
-// DetectCapability returns the v2 capability for the current context. Results
-// are cached at contexts.<current>.providers.assistant.lodestone-v2 via
+// DetectAPIMode returns the API mode for the current context. Results are
+// cached at contexts.<current>.providers.assistant.api-mode via
 // SaveProviderConfig and reused on subsequent invocations.
 //
-// Set GCX_ASSISTANT_API_VERSION to v1 or v2 to short-circuit the probe; this
-// is intended for tests and not exposed in CLI help.
-func DetectCapability(ctx context.Context, loader *providers.ConfigLoader, base *assistanthttp.Client) (Capability, error) {
-	return detectCapabilityWith(ctx, loader, base, probeLodestone)
+// Set GCX_ASSISTANT_API_VERSION to v1 or v2 to short-circuit the probe;
+// intended for tests and not exposed in CLI help.
+func DetectAPIMode(ctx context.Context, loader *providers.ConfigLoader, base *assistanthttp.Client) (APIMode, error) {
+	return detectAPIModeWith(ctx, loader, base, probeAPIMode)
 }
 
-func detectCapabilityWith(ctx context.Context, loader *providers.ConfigLoader, base *assistanthttp.Client, probe capabilityProbe) (Capability, error) {
-	if v, ok := apiVersionFromEnv(); ok {
-		return Capability{V2: v == "v2"}, nil
+func detectAPIModeWith(ctx context.Context, loader *providers.ConfigLoader, base *assistanthttp.Client, probe capabilityProbe) (APIMode, error) {
+	if m, ok := apiModeFromEnv(); ok {
+		return m, nil
 	}
 
-	if v, ok := loadCachedV2(ctx, loader); ok {
-		return Capability{V2: v}, nil
+	if m, ok := loadCachedMode(ctx, loader); ok {
+		return m, nil
 	}
 
-	v2, err := probe(ctx, base)
+	mode, err := probe(ctx, base)
 	if err != nil {
-		return Capability{}, err
+		return "", err
 	}
 
 	// Best-effort persist; mirrors the synth/faro/adaptive precedent.
-	_ = loader.SaveProviderConfig(ctx, capabilityProviderName, capabilityCacheKey, strconv.FormatBool(v2))
-	return Capability{V2: v2}, nil
+	_ = loader.SaveProviderConfig(ctx, capabilityProviderName, capabilityCacheKey, string(mode))
+	return mode, nil
 }
 
-// probeLodestone calls GET /investigations/lodestone?limit=1 — the canonical
-// v2 list endpoint, kept minimal. 200 means Lodestone is supported; 404 means
-// v1-only. The profiles endpoint would be cheaper but isn't deployed on every
-// stack version, so it's unreliable as a capability signal.
-func probeLodestone(ctx context.Context, base *assistanthttp.Client) (bool, error) {
-	resp, err := base.DoRequest(ctx, http.MethodGet, lodestoneListPath+"?limit=1", nil)
+// probeAPIMode prefers /api/v2; falls back to legacy v1. A minimal list call
+// with limit=1 keeps the probe cheap.
+func probeAPIMode(ctx context.Context, base *assistanthttp.Client) (APIMode, error) {
+	if ok, err := probeOK(ctx, base, v2ListPath+"?limit=1"); err != nil {
+		return "", fmt.Errorf("probe v2 investigations: %w", err)
+	} else if ok {
+		return APIModeV2Standard, nil
+	}
+	return APIModeLegacy, nil
+}
+
+// probeOK returns (true, nil) on HTTP 200, (false, nil) on HTTP 404, and a
+// wrapped error for any other status or transport failure.
+func probeOK(ctx context.Context, base *assistanthttp.Client, path string) (bool, error) {
+	resp, err := base.DoRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
-		return false, fmt.Errorf("probe lodestone capability: %w", err)
+		return false, err
 	}
 	defer resp.Body.Close()
 	switch resp.StatusCode {
@@ -79,45 +101,51 @@ func probeLodestone(ctx context.Context, base *assistanthttp.Client) (bool, erro
 	}
 }
 
-func apiVersionFromEnv() (string, bool) {
+func apiModeFromEnv() (APIMode, bool) {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv(envAPIVersionOverride)))
-	if v == "v1" || v == "v2" {
-		return v, true
+	switch v {
+	case "v1":
+		return APIModeLegacy, true
+	case "v2":
+		return APIModeV2Standard, true
 	}
 	return "", false
 }
 
-// loadCachedV2 reads providers.assistant.lodestone-v2 from the current context.
-// Returns (value, true) on a hit; (false, false) on miss or parse failure so
-// callers fall through to a fresh probe.
-func loadCachedV2(ctx context.Context, loader *providers.ConfigLoader) (bool, bool) {
+// loadCachedMode reads providers.assistant.api-mode from the current context.
+// Returns (mode, true) on a hit; ("", false) on miss or unparseable value so
+// callers fall through to a fresh probe. Stale "lodestone" values from older
+// gcx versions fall through the switch and trigger a re-probe.
+func loadCachedMode(ctx context.Context, loader *providers.ConfigLoader) (APIMode, bool) {
 	cfg, _, err := loader.LoadProviderConfig(ctx, capabilityProviderName)
 	if err != nil {
-		return false, false
+		return "", false
 	}
 	raw, ok := cfg[capabilityCacheKey]
 	if !ok {
-		return false, false
+		return "", false
 	}
-	v, err := strconv.ParseBool(raw)
-	if err != nil {
-		return false, false
+	switch APIMode(raw) {
+	case APIModeLegacy, APIModeV2Standard:
+		return APIMode(raw), true
 	}
-	return v, true
+	return "", false
 }
 
 // errV2NotSupported is returned by v2-only commands when the connected stack
-// does not advertise Lodestone. Package-private — used by `requireV2` only;
-// CLI callers see it wrapped with the host as a formatted error message.
-var errV2NotSupported = errors.New("lodestone (v2 investigations) is not available")
+// does not advertise /api/v2. Package-private — used by requireV2 only; CLI
+// callers see it wrapped with the host as a formatted error message.
+var errV2NotSupported = errors.New("the v2 investigations API is not available")
 
-// CachedV2 reports whether v2 is known to be supported for the current context
-// based on cached config. Returns false when there is no cached entry; never
-// probes the network. Honours GCX_ASSISTANT_API_VERSION.
-func CachedV2(ctx context.Context, loader *providers.ConfigLoader) bool {
-	if v, ok := apiVersionFromEnv(); ok {
-		return v == "v2"
+// CachedAPIMode reports the API mode persisted for the current context.
+// Returns APIModeLegacy (the zero functional value) when there is no cached
+// entry; never probes the network. Honours GCX_ASSISTANT_API_VERSION.
+func CachedAPIMode(ctx context.Context, loader *providers.ConfigLoader) APIMode {
+	if m, ok := apiModeFromEnv(); ok {
+		return m
 	}
-	v, ok := loadCachedV2(ctx, loader)
-	return ok && v
+	if m, ok := loadCachedMode(ctx, loader); ok {
+		return m
+	}
+	return APIModeLegacy
 }

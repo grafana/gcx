@@ -1,10 +1,10 @@
 ## gcx assistant investigations skills
 
-Show Skill matches from a Lodestone investigation.
+Show Skill matches from a v2 investigation.
 
 ### Synopsis
 
-Extract the search_skills tool results from a Lodestone investigation's chat thread: which Skills semantically matched and the chunks returned. The substantive piece for the Skills GA story.
+Extract the search_skills tool results from a v2 investigation's chat thread: which Skills semantically matched and the chunks returned. The substantive piece for the Skills GA story.
 
 ```
 gcx assistant investigations skills <id> [flags]

@@ -13,7 +13,9 @@ import (
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
 )
 
-const chatAllMessagesFmt = "/chats/%s/all-messages"
+// Chat endpoints live on the v1 surface; not affected by the v2 investigations
+// rollout (grafana-assistant-app#6645).
+const chatAllMessagesFmt = "/api/v1/chats/%s/all-messages"
 
 // ChatThreadMessage is one message in a Lodestone chat thread. The thread
 // interleaves user prompts, assistant prose, tool invocations, tool results,

@@ -11,10 +11,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const v2InvestigationsPath = "/api/plugins/grafana-assistant-app/resources/api/v2/investigations"
+
 func TestCreateLodestone(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Contains(t, r.URL.Path, "/investigations/lodestone")
+		assert.Equal(t, v2InvestigationsPath, r.URL.Path)
 		body, _ := io.ReadAll(r.Body)
 		var req investigations.CreateLodestoneRequest
 		assert.NoError(t, json.Unmarshal(body, &req))
@@ -81,7 +83,7 @@ func TestListLodestone(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodGet, r.Method)
-				assert.Contains(t, r.URL.Path, "/investigations/lodestone")
+				assert.Equal(t, v2InvestigationsPath, r.URL.Path)
 				tt.assertReq(t, r)
 				writeJSON(w, map[string]any{
 					"data": map[string]any{
@@ -101,14 +103,15 @@ func TestListLodestone(t *testing.T) {
 func TestResolveByID(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			assert.Contains(t, r.URL.Path, "/investigations/lodestone/by-id/inv-1")
+			assert.Equal(t, v2InvestigationsPath+"/inv-1", r.URL.Path)
 			writeJSON(w, map[string]any{
 				"data": investigations.ResolveByIDResponse{InvestigationID: "inv-1", ChatID: "chat-1"},
 			})
 		}))
-		chatID, status, err := client.ResolveByID(t.Context(), "inv-1")
+		resp, status, err := client.ResolveByID(t.Context(), "inv-1")
 		require.NoError(t, err)
-		assert.Equal(t, "chat-1", chatID)
+		assert.Equal(t, "chat-1", resp.ChatID)
+		assert.Equal(t, "inv-1", resp.InvestigationID)
 		assert.Equal(t, http.StatusOK, status)
 	})
 
@@ -116,21 +119,21 @@ func TestResolveByID(t *testing.T) {
 		client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
 		}))
-		chatID, status, err := client.ResolveByID(t.Context(), "inv-1")
+		resp, status, err := client.ResolveByID(t.Context(), "inv-1")
 		require.NoError(t, err)
-		assert.Empty(t, chatID)
+		assert.Empty(t, resp.ChatID)
 		assert.Equal(t, http.StatusNotFound, status)
 	})
 }
 
 func TestGetState(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Contains(t, r.URL.Path, "/investigations/lodestone/chat-1/state")
+		assert.Equal(t, v2InvestigationsPath+"/inv-1/snapshot", r.URL.Path)
 		writeJSON(w, map[string]any{
 			"data": investigations.LodestoneState{"sessionStatus": "active", "mode": "medium", "epoch": 3},
 		})
 	}))
-	state, err := client.GetState(t.Context(), "chat-1")
+	state, err := client.GetState(t.Context(), "inv-1")
 	require.NoError(t, err)
 	assert.Equal(t, "active", state["sessionStatus"])
 	assert.Equal(t, "medium", state["mode"])
@@ -144,21 +147,21 @@ func TestPauseResumeRegenerate(t *testing.T) {
 	}{
 		{
 			name:     "pause",
-			expected: "/investigations/lodestone/chat-1/pause",
-			call:     func(c *investigations.Client) (*investigations.Message, error) { return c.Pause(t.Context(), "chat-1") },
+			expected: v2InvestigationsPath + "/inv-1/pause",
+			call:     func(c *investigations.Client) (*investigations.Message, error) { return c.Pause(t.Context(), "inv-1") },
 		},
 		{
 			name:     "resume",
-			expected: "/investigations/lodestone/chat-1/resume",
+			expected: v2InvestigationsPath + "/inv-1/resume",
 			call: func(c *investigations.Client) (*investigations.Message, error) {
-				return c.Resume(t.Context(), "chat-1")
+				return c.Resume(t.Context(), "inv-1")
 			},
 		},
 		{
 			name:     "regenerate-report",
-			expected: "/investigations/lodestone/chat-1/regenerate-report",
+			expected: v2InvestigationsPath + "/inv-1/report/regenerate",
 			call: func(c *investigations.Client) (*investigations.Message, error) {
-				return c.RegenerateReport(t.Context(), "chat-1")
+				return c.RegenerateReport(t.Context(), "inv-1")
 			},
 		},
 	}
@@ -166,7 +169,7 @@ func TestPauseResumeRegenerate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodPost, r.Method)
-				assert.Contains(t, r.URL.Path, tt.expected)
+				assert.Equal(t, tt.expected, r.URL.Path)
 				writeJSON(w, map[string]any{"data": investigations.Message{Message: tt.name + " ok"}})
 			}))
 			msg, err := tt.call(client)
@@ -179,7 +182,7 @@ func TestPauseResumeRegenerate(t *testing.T) {
 func TestSetMode(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPut, r.Method)
-		assert.Contains(t, r.URL.Path, "/investigations/lodestone/chat-1/mode")
+		assert.Equal(t, v2InvestigationsPath+"/inv-1/mode", r.URL.Path)
 		body, _ := io.ReadAll(r.Body)
 		var req investigations.ModeRequest
 		assert.NoError(t, json.Unmarshal(body, &req))
@@ -188,7 +191,7 @@ func TestSetMode(t *testing.T) {
 			"data": investigations.ModeResponse{Message: "Mode updated.", Mode: "high"},
 		})
 	}))
-	resp, err := client.SetMode(t.Context(), "chat-1", "high")
+	resp, err := client.SetMode(t.Context(), "inv-1", "high")
 	require.NoError(t, err)
 	assert.Equal(t, "high", resp.Mode)
 }
@@ -196,7 +199,7 @@ func TestSetMode(t *testing.T) {
 func TestScope(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Contains(t, r.URL.Path, "/investigations/lodestone/inv-1/scope")
+		assert.Equal(t, v2InvestigationsPath+"/inv-1/share", r.URL.Path)
 		body, _ := io.ReadAll(r.Body)
 		var req investigations.ScopeRequest
 		assert.NoError(t, json.Unmarshal(body, &req))
@@ -215,14 +218,14 @@ func TestScope(t *testing.T) {
 func TestUpdateMermaid(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPut, r.Method)
-		assert.Contains(t, r.URL.Path, "/investigations/lodestone/chat-1/report/elements/el-1/mermaid")
+		assert.Equal(t, v2InvestigationsPath+"/inv-1/report/elements/el-1/mermaid", r.URL.Path)
 		body, _ := io.ReadAll(r.Body)
 		var req investigations.MermaidUpdateRequest
 		assert.NoError(t, json.Unmarshal(body, &req))
 		assert.Equal(t, "graph TD; A-->B", req.Content)
 		writeJSON(w, map[string]any{"data": investigations.UpdatedResponse{Updated: true}})
 	}))
-	resp, err := client.UpdateMermaid(t.Context(), "chat-1", "el-1", "graph TD; A-->B")
+	resp, err := client.UpdateMermaid(t.Context(), "inv-1", "el-1", "graph TD; A-->B")
 	require.NoError(t, err)
 	assert.True(t, resp.Updated)
 }
@@ -230,18 +233,18 @@ func TestUpdateMermaid(t *testing.T) {
 func TestRepairMermaid(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Contains(t, r.URL.Path, "/investigations/lodestone/chat-1/report/elements/el-1/mermaid/repair")
+		assert.Equal(t, v2InvestigationsPath+"/inv-1/report/elements/el-1/mermaid/repair", r.URL.Path)
 		writeJSON(w, map[string]any{
 			"data": investigations.RepairResponse{Fixed: true, Content: "graph TD; A-->B"},
 		})
 	}))
-	resp, err := client.RepairMermaid(t.Context(), "chat-1", "el-1", "syntax error")
+	resp, err := client.RepairMermaid(t.Context(), "inv-1", "el-1", "syntax error")
 	require.NoError(t, err)
 	assert.True(t, resp.Fixed)
 	assert.NotEmpty(t, resp.Content)
 }
 
-func TestLodestone_ServerError(t *testing.T) {
+func TestV2_ServerError(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte("boom"))

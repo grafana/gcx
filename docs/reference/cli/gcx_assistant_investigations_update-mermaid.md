@@ -1,6 +1,6 @@
 ## gcx assistant investigations update-mermaid
 
-Persist Mermaid source for a Lodestone report element.
+Persist Mermaid source for a v2 investigation report element.
 
 ```
 gcx assistant investigations update-mermaid <id> <element-id> [flags]

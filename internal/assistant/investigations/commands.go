@@ -31,33 +31,34 @@ func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, err
 }
 
 // printV2Hint writes a one-line v2-successor hint to stderr when the connected
-// stack is known to support Lodestone (read from cache only — no network). The
-// `hint:` prefix and stderr channel match the convention in internal/output
-// (Options.Encode): agents read these and adjust subsequent invocations, so we
-// emit unconditionally rather than suppressing in agent or piped modes.
+// stack is known to support the /api/v2 investigations surface. Reads from
+// cache only — no network. The `hint:` prefix and stderr channel match the
+// convention in internal/output (Options.Encode): agents read these and adjust
+// subsequent invocations, so we emit unconditionally rather than suppressing
+// in agent or piped modes.
 func printV2Hint(cmd *cobra.Command, loader *providers.ConfigLoader, message string) {
-	if !CachedV2(cmd.Context(), loader) {
+	if !CachedAPIMode(cmd.Context(), loader).SupportsV2() {
 		return
 	}
 	fmt.Fprintf(cmd.ErrOrStderr(), "hint: %s\n", message)
 }
 
-// loadClientAndCapability returns a client plus the detected v2 capability.
+// loadClientAndAPIMode returns a client configured for the detected API mode.
 // Used by the auto-dispatching commands (list, get, create).
-func loadClientAndCapability(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, bool, error) {
+func loadClientAndAPIMode(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, APIMode, error) {
 	cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 	if err != nil {
-		return nil, false, err
+		return nil, "", err
 	}
 	base, err := assistanthttp.NewClient(cfg)
 	if err != nil {
-		return nil, false, err
+		return nil, "", err
 	}
-	c, err := DetectCapability(cmd.Context(), loader, base)
+	mode, err := DetectAPIMode(cmd.Context(), loader, base)
 	if err != nil {
-		return nil, false, err
+		return nil, "", err
 	}
-	return NewClient(base), c.V2, nil
+	return NewClient(base), mode, nil
 }
 
 // Commands returns the investigations command group.
@@ -77,8 +78,8 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		newReportCommand(loader),
 		newDocumentCommand(loader),
 		newApprovalsCommand(loader),
-		// v2-only (Lodestone) commands. Each probes capability at run time
-		// and returns a friendly error when run against a v1-only stack.
+		// v2-only commands. Each probes capability at run time and returns
+		// a friendly error when run against a v1-only stack.
 		newPauseCommand(loader),
 		newResumeCommand(loader),
 		newModeCommand(loader),
@@ -128,16 +129,16 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.State, "state", "", "Filter by investigation state (comma-separated, or \"all\")")
 	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of investigations to return")
 	flags.IntVar(&o.Offset, "offset", 0, "Number of investigations to skip (for pagination)")
-	flags.StringVar(&o.Scope, "scope", "", "Visibility scope: all|mine|teams|system (Lodestone only)")
-	flags.StringVar(&o.Team, "team", "", "Filter to a specific team (Lodestone only)")
-	flags.StringVar(&o.Q, "q", "", "Search text across title, description, chat name (Lodestone only)")
-	flags.StringVar(&o.From, "from", "", "Lower bound on creation time, RFC3339 (Lodestone only)")
-	flags.StringVar(&o.To, "to", "", "Upper bound on creation time, RFC3339 (Lodestone only)")
-	flags.StringVar(&o.Sort, "sort", "", "Sort field: createdAt|updatedAt|title|state (Lodestone only)")
-	flags.StringVar(&o.Order, "order", "", "Sort order: asc|desc (Lodestone only)")
-	flags.StringVar(&o.View, "view", "", "Result detail level: full|lite (Lodestone only)")
-	flags.StringVar(&o.Label, "label", "", "Filter by label, key:value format (Lodestone only)")
-	flags.BoolVar(&o.IncludeLegacy, "include-legacy", true, "Include legacy (pre-Lodestone) investigations (Lodestone only)")
+	flags.StringVar(&o.Scope, "scope", "", "Visibility scope: all|mine|teams|system (v2 only)")
+	flags.StringVar(&o.Team, "team", "", "Filter to a specific team (v2 only)")
+	flags.StringVar(&o.Q, "q", "", "Search text across title, description, chat name (v2 only)")
+	flags.StringVar(&o.From, "from", "", "Lower bound on creation time, RFC3339 (v2 only)")
+	flags.StringVar(&o.To, "to", "", "Upper bound on creation time, RFC3339 (v2 only)")
+	flags.StringVar(&o.Sort, "sort", "", "Sort field: createdAt|updatedAt|title|state (v2 only)")
+	flags.StringVar(&o.Order, "order", "", "Sort order: asc|desc (v2 only)")
+	flags.StringVar(&o.View, "view", "", "Result detail level: full|lite (v2 only)")
+	flags.StringVar(&o.Label, "label", "", "Filter by label, key:value format (v2 only)")
+	flags.BoolVar(&o.IncludeLegacy, "include-legacy", true, "Include legacy (pre-v2) investigations (v2 only)")
 }
 
 // captureSetFlags records which flags the user actually set, so v2-only flags
@@ -152,7 +153,7 @@ func (o *listOpts) validateForV1() error {
 	v2Only := []string{"scope", "team", "q", "from", "to", "sort", "order", "view", "label"}
 	for _, name := range v2Only {
 		if o.setFlags[name] {
-			return fmt.Errorf("--%s is only supported on stacks with Lodestone (v2 investigations) enabled", name)
+			return fmt.Errorf("--%s is only supported on stacks with the v2 investigations API enabled", name)
 		}
 	}
 	return nil
@@ -184,17 +185,17 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List investigations.",
-		Long:  "List investigations. Auto-detects whether the stack supports Lodestone (v2) and uses the richer endpoint when available.",
+		Long:  "List investigations. Auto-detects whether the stack supports the v2 investigations API and uses the richer endpoint when available.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
 			opts.captureSetFlags(cmd.Flags())
-			client, v2, err := loadClientAndCapability(cmd, loader)
+			client, mode, err := loadClientAndAPIMode(cmd, loader)
 			if err != nil {
 				return err
 			}
-			if !v2 {
+			if !mode.SupportsV2() {
 				if err := opts.validateForV1(); err != nil {
 					return err
 				}
@@ -254,7 +255,7 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get <id>",
 		Short: "Get investigation detail.",
-		Long:  "Get investigation detail. On Lodestone-enabled stacks, returns the full session state when the ID is a Lodestone investigation, and falls back to legacy detail otherwise.",
+		Long:  "Get investigation detail. On v2-enabled stacks, returns the full session state when the ID is a v2 investigation, and falls back to legacy detail otherwise.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -272,23 +273,23 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 				cmdio.Info(cmd.ErrOrStderr(), "Opening %s", url)
 				return deeplink.Open(url)
 			}
-			client, v2, err := loadClientAndCapability(cmd, loader)
+			client, mode, err := loadClientAndAPIMode(cmd, loader)
 			if err != nil {
 				return err
 			}
-			if v2 {
-				chatID, status, err := client.ResolveByID(cmd.Context(), args[0])
+			if mode.SupportsV2() {
+				resp, status, err := client.ResolveByID(cmd.Context(), args[0])
 				if err != nil {
 					return err
 				}
 				if status == http.StatusOK {
-					state, err := client.GetState(cmd.Context(), chatID)
+					state, err := client.GetState(cmd.Context(), resp.InvestigationID)
 					if err != nil {
 						return err
 					}
 					return opts.IO.Encode(cmd.OutOrStdout(), state)
 				}
-				// 404 — not a Lodestone investigation; fall through to v1.
+				// 404 — not a v2 investigation; fall through to legacy detail.
 			}
 			inv, err := client.Get(cmd.Context(), args[0])
 			if err != nil {
@@ -318,10 +319,10 @@ func (o *createOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("yaml")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Title, "title", "", "Investigation title")
-	flags.StringVar(&o.Instruction, "instruction", "", "Investigation instruction (required on Lodestone stacks)")
+	flags.StringVar(&o.Instruction, "instruction", "", "Investigation instruction (required on v2-enabled stacks)")
 	flags.StringVar(&o.Description, "description", "", "Investigation description (legacy alias of --instruction)")
-	flags.StringSliceVar(&o.Teams, "team", nil, "Team name to scope the investigation to (repeatable, Lodestone only)")
-	flags.StringVar(&o.ProfileID, "profile-id", "", "Lodestone runner profile ID (Lodestone only)")
+	flags.StringSliceVar(&o.Teams, "team", nil, "Team name to scope the investigation to (repeatable, v2 only)")
+	flags.StringVar(&o.ProfileID, "profile-id", "", "Runner profile ID (v2 only)")
 }
 
 func (o *createOpts) captureSetFlags(flags *pflag.FlagSet) {
@@ -341,7 +342,7 @@ func (o *createOpts) Validate() error {
 func (o *createOpts) validateForV1() error {
 	for _, name := range []string{"team", "profile-id"} {
 		if o.setFlags[name] {
-			return fmt.Errorf("--%s is only supported on stacks with Lodestone (v2 investigations) enabled", name)
+			return fmt.Errorf("--%s is only supported on stacks with the v2 investigations API enabled", name)
 		}
 	}
 	if o.Title == "" {
@@ -362,7 +363,7 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "create",
 		Short:   "Create a new investigation.",
-		Long:    "Create a new investigation. On Lodestone-enabled stacks, uses the v2 API with --instruction; falls back to legacy create otherwise.",
+		Long:    "Create a new investigation. On v2-enabled stacks, uses the v2 API with --instruction; falls back to legacy create otherwise.",
 		Example: `  gcx assistant investigations create --instruction="Debug API latency spike" --team=sre`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -372,11 +373,11 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.Validate(); err != nil {
 				return err
 			}
-			client, v2, err := loadClientAndCapability(cmd, loader)
+			client, mode, err := loadClientAndAPIMode(cmd, loader)
 			if err != nil {
 				return err
 			}
-			if !v2 {
+			if !mode.SupportsV2() {
 				if err := opts.validateForV1(); err != nil {
 					return err
 				}
@@ -449,7 +450,7 @@ func newCancelCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.IO.Encode(cmd.OutOrStdout(), resp); err != nil {
 				return err
 			}
-			printV2Hint(cmd, loader, fmt.Sprintf("Lodestone (v2) is enabled — consider `gcx assistant investigations pause %s` (resumable) instead of cancel", args[0]))
+			printV2Hint(cmd, loader, fmt.Sprintf("v2 investigations API is enabled — consider `gcx assistant investigations pause %s` (resumable) instead of cancel", args[0]))
 			return nil
 		},
 	}
@@ -492,7 +493,7 @@ func newTodosCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.IO.Encode(cmd.OutOrStdout(), todos); err != nil {
 				return err
 			}
-			printV2Hint(cmd, loader, fmt.Sprintf("Lodestone (v2) replaces multi-agent todos with hypotheses — try `gcx assistant investigations state %s`", args[0]))
+			printV2Hint(cmd, loader, fmt.Sprintf("v2 investigations API replaces multi-agent todos with hypotheses — try `gcx assistant investigations state %s`", args[0]))
 			return nil
 		},
 	}
@@ -535,7 +536,7 @@ func newTimelineCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.IO.Encode(cmd.OutOrStdout(), timelineAgents); err != nil {
 				return err
 			}
-			printV2Hint(cmd, loader, fmt.Sprintf("Lodestone (v2) tracks single-agent progress via epoch + plan — try `gcx assistant investigations state %s`", args[0]))
+			printV2Hint(cmd, loader, fmt.Sprintf("v2 investigations API tracks single-agent progress via epoch + plan — try `gcx assistant investigations state %s`", args[0]))
 			return nil
 		},
 	}
@@ -576,7 +577,7 @@ func newReportCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.IO.Encode(cmd.OutOrStdout(), report); err != nil {
 				return err
 			}
-			printV2Hint(cmd, loader, fmt.Sprintf("Lodestone (v2) stores the report inline in session state — try `gcx assistant investigations state %s`", args[0]))
+			printV2Hint(cmd, loader, fmt.Sprintf("v2 investigations API stores the report inline in session state — try `gcx assistant investigations state %s`", args[0]))
 			return nil
 		},
 	}

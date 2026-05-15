@@ -11,8 +11,8 @@ import (
 )
 
 // The fixtures in this file mirror the real Grafana Assistant plugin
-// response from `/chats/{chatId}/all-messages` — captured live against a
-// Lodestone investigation. See the PR comment for the recorded shape.
+// response from `/chats/{chatId}/all-messages` — captured live against a v2
+// investigation. See the PR comment for the recorded shape.
 
 func TestGetChatThread(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

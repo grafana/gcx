@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
@@ -38,71 +39,87 @@ func newCapabilityClient(t *testing.T, handler http.Handler) *assistanthttp.Clie
 	return c
 }
 
-func TestDetectCapability_Probe(t *testing.T) {
+// modeProbeHandler simulates a stack that returns 200 only for the paths
+// listed in `okPaths`. Used to fake each rung of the probe.
+func modeProbeHandler(okPaths ...string) (http.Handler, *int) {
+	calls := 0
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if slices.Contains(okPaths, r.URL.Path) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"data":{"investigations":[]}}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}), &calls
+}
+
+func TestDetectAPIMode_Probe(t *testing.T) {
 	tests := []struct {
-		name    string
-		status  int
-		wantV2  bool
-		wantErr bool
+		name     string
+		okPaths  []string
+		wantMode investigations.APIMode
+		wantHits int
 	}{
-		{name: "v2 stack returns 200", status: http.StatusOK, wantV2: true},
-		{name: "v1 stack returns 404", status: http.StatusNotFound, wantV2: false},
-		{name: "transport error", status: http.StatusInternalServerError, wantErr: true},
+		{
+			name:     "v2-standard stack",
+			okPaths:  []string{"/api/plugins/grafana-assistant-app/resources/api/v2/investigations"},
+			wantMode: investigations.APIModeV2Standard,
+			wantHits: 1,
+		},
+		{
+			name:     "legacy v1 only",
+			okPaths:  nil,
+			wantMode: investigations.APIModeLegacy,
+			wantHits: 1,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("GCX_ASSISTANT_API_VERSION", "")
 
-			var calls int
-			client := newCapabilityClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				calls++
-				assert.Contains(t, r.URL.Path, "/investigations/lodestone")
-				assert.Equal(t, "1", r.URL.Query().Get("limit"))
-				if tt.status != http.StatusOK {
-					w.WriteHeader(tt.status)
-					return
-				}
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte(`{"data":{"investigations":[]}}`))
-			}))
-
+			handler, calls := modeProbeHandler(tt.okPaths...)
+			client := newCapabilityClient(t, handler)
 			loader := newCapabilityLoader(t)
-			c, err := investigations.DetectCapability(context.Background(), loader, client)
-			if tt.wantErr {
-				require.Error(t, err)
-				return
-			}
+
+			mode, err := investigations.DetectAPIMode(context.Background(), loader, client)
 			require.NoError(t, err)
-			assert.Equal(t, tt.wantV2, c.V2)
-			assert.Equal(t, 1, calls, "expected exactly one probe call")
+			assert.Equal(t, tt.wantMode, mode)
+			assert.Equal(t, tt.wantHits, *calls)
 		})
 	}
 }
 
-func TestDetectCapability_Cached(t *testing.T) {
+func TestDetectAPIMode_ProbeTransportError(t *testing.T) {
 	t.Setenv("GCX_ASSISTANT_API_VERSION", "")
-
-	var calls int
 	client := newCapabilityClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		calls++
-		w.WriteHeader(http.StatusOK)
+		w.WriteHeader(http.StatusInternalServerError)
 	}))
-
 	loader := newCapabilityLoader(t)
-
-	first, err := investigations.DetectCapability(context.Background(), loader, client)
-	require.NoError(t, err)
-	require.True(t, first.V2)
-
-	second, err := investigations.DetectCapability(context.Background(), loader, client)
-	require.NoError(t, err)
-	require.True(t, second.V2)
-
-	assert.Equal(t, 1, calls, "second call should hit the cache")
+	_, err := investigations.DetectAPIMode(context.Background(), loader, client)
+	require.Error(t, err)
 }
 
-func TestDetectCapability_EnvOverride(t *testing.T) {
+func TestDetectAPIMode_Cached(t *testing.T) {
+	t.Setenv("GCX_ASSISTANT_API_VERSION", "")
+
+	handler, calls := modeProbeHandler("/api/plugins/grafana-assistant-app/resources/api/v2/investigations")
+	client := newCapabilityClient(t, handler)
+	loader := newCapabilityLoader(t)
+
+	first, err := investigations.DetectAPIMode(context.Background(), loader, client)
+	require.NoError(t, err)
+	require.Equal(t, investigations.APIModeV2Standard, first)
+
+	second, err := investigations.DetectAPIMode(context.Background(), loader, client)
+	require.NoError(t, err)
+	require.Equal(t, investigations.APIModeV2Standard, second)
+
+	assert.Equal(t, 1, *calls, "second call should hit the cache")
+}
+
+func TestDetectAPIMode_EnvOverride(t *testing.T) {
 	calls := 0
 	client := newCapabilityClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls++
@@ -110,33 +127,76 @@ func TestDetectCapability_EnvOverride(t *testing.T) {
 	}))
 	loader := newCapabilityLoader(t)
 
-	t.Setenv("GCX_ASSISTANT_API_VERSION", "v2")
-	c, err := investigations.DetectCapability(context.Background(), loader, client)
-	require.NoError(t, err)
-	assert.True(t, c.V2)
-
-	t.Setenv("GCX_ASSISTANT_API_VERSION", "v1")
-	c, err = investigations.DetectCapability(context.Background(), loader, client)
-	require.NoError(t, err)
-	assert.False(t, c.V2)
-
+	cases := []struct {
+		env  string
+		want investigations.APIMode
+	}{
+		{"v2", investigations.APIModeV2Standard},
+		{"v1", investigations.APIModeLegacy},
+	}
+	for _, tc := range cases {
+		t.Run(tc.env, func(t *testing.T) {
+			t.Setenv("GCX_ASSISTANT_API_VERSION", tc.env)
+			m, err := investigations.DetectAPIMode(context.Background(), loader, client)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, m)
+		})
+	}
 	assert.Equal(t, 0, calls, "env override should bypass the probe")
 }
 
-// TestCachedV2_HonoursPersistedConfig verifies CachedV2 reads back the value
-// that DetectCapability persisted via SaveProviderConfig.
-func TestCachedV2_HonoursPersistedConfig(t *testing.T) {
+// TestCachedAPIMode_HonoursPersistedConfig verifies CachedAPIMode reads back
+// the value that DetectAPIMode persisted via SaveProviderConfig.
+func TestCachedAPIMode_HonoursPersistedConfig(t *testing.T) {
 	t.Setenv("GCX_ASSISTANT_API_VERSION", "")
 
-	client := newCapabilityClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
+	handler, _ := modeProbeHandler("/api/plugins/grafana-assistant-app/resources/api/v2/investigations")
+	client := newCapabilityClient(t, handler)
 	loader := newCapabilityLoader(t)
 
-	assert.False(t, investigations.CachedV2(context.Background(), loader), "no cache yet → false")
+	assert.Equal(t, investigations.APIModeLegacy, investigations.CachedAPIMode(context.Background(), loader),
+		"no cache yet → legacy default")
 
-	_, err := investigations.DetectCapability(context.Background(), loader, client)
+	_, err := investigations.DetectAPIMode(context.Background(), loader, client)
 	require.NoError(t, err)
 
-	assert.True(t, investigations.CachedV2(context.Background(), loader), "cache populated → true")
+	assert.Equal(t, investigations.APIModeV2Standard, investigations.CachedAPIMode(context.Background(), loader),
+		"cache populated → v2-standard")
+}
+
+func TestAPIMode_SupportsV2(t *testing.T) {
+	assert.False(t, investigations.APIModeLegacy.SupportsV2())
+	assert.True(t, investigations.APIModeV2Standard.SupportsV2())
+}
+
+// TestDetectAPIMode_StaleLodestoneCache verifies that an api-mode of
+// "lodestone" persisted by an older gcx version is treated as a cache miss,
+// triggering a fresh probe that converges on v2.
+func TestDetectAPIMode_StaleLodestoneCache(t *testing.T) {
+	t.Setenv("GCX_ASSISTANT_API_VERSION", "")
+
+	cfgFile := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(cfgFile, []byte(
+		"contexts:\n"+
+			"  default:\n"+
+			"    providers:\n"+
+			"      assistant:\n"+
+			"        api-mode: lodestone\n"+
+			"current-context: default\n",
+	), 0o600))
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgFile)
+
+	handler, calls := modeProbeHandler("/api/plugins/grafana-assistant-app/resources/api/v2/investigations")
+	client := newCapabilityClient(t, handler)
+
+	mode, err := investigations.DetectAPIMode(context.Background(), loader, client)
+	require.NoError(t, err)
+	assert.Equal(t, investigations.APIModeV2Standard, mode)
+	assert.Equal(t, 1, *calls, "stale lodestone cache should trigger a re-probe")
+
+	mode2, err := investigations.DetectAPIMode(context.Background(), loader, client)
+	require.NoError(t, err)
+	assert.Equal(t, investigations.APIModeV2Standard, mode2)
+	assert.Equal(t, 1, *calls, "second call should hit the rewritten cache")
 }

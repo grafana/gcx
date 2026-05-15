@@ -4,7 +4,7 @@ Get investigation detail.
 
 ### Synopsis
 
-Get investigation detail. On Lodestone-enabled stacks, returns the full session state when the ID is a Lodestone investigation, and falls back to legacy detail otherwise.
+Get investigation detail. On v2-enabled stacks, returns the full session state when the ID is a v2 investigation, and falls back to legacy detail otherwise.
 
 ```
 gcx assistant investigations get <id> [flags]

@@ -1,6 +1,6 @@
 ## gcx assistant investigations resume
 
-Resume a paused Lodestone investigation.
+Resume a paused v2 investigation.
 
 ```
 gcx assistant investigations resume <id> [flags]
