@@ -17,6 +17,16 @@ import (
 // ErrNotFound is returned when a requested check does not exist (HTTP 404).
 var ErrNotFound = errors.New("check not found")
 
+const (
+	checkListPath      = "/check/list"
+	checkAddPath       = "/check/add"
+	checkUpdatePath    = "/check/update"
+	checkByIDPathFmt   = "/check/%d"
+	checkDeletePathFmt = "/check/delete/%d"
+	tenantPath         = "/tenant"
+	probeListPath      = "/probe/list"
+)
+
 // Client is an HTTP client for the Synthetic Monitoring checks API.
 type Client struct {
 	baseURL    string
@@ -36,7 +46,7 @@ func NewClient(ctx context.Context, baseURL, token string) *Client {
 
 // List returns all checks for the authenticated tenant.
 func (c *Client) List(ctx context.Context) ([]Check, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, "/check/list", nil)
+	resp, err := c.doRequest(ctx, http.MethodGet, checkListPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("listing checks: %w", err)
 	}
@@ -60,7 +70,7 @@ func (c *Client) List(ctx context.Context) ([]Check, error) {
 
 // Get returns a single check by ID.
 func (c *Client) Get(ctx context.Context, id int64) (*Check, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, fmt.Sprintf("/check/%d", id), nil)
+	resp, err := c.doRequest(ctx, http.MethodGet, fmt.Sprintf(checkByIDPathFmt, id), nil)
 	if err != nil {
 		return nil, fmt.Errorf("getting check %d: %w", id, err)
 	}
@@ -89,7 +99,7 @@ func (c *Client) Create(ctx context.Context, check Check) (*Check, error) {
 		return nil, fmt.Errorf("marshalling check: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, http.MethodPost, "/check/add", bytes.NewReader(body))
+	resp, err := c.doRequest(ctx, http.MethodPost, checkAddPath, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("creating check: %w", err)
 	}
@@ -114,7 +124,7 @@ func (c *Client) Update(ctx context.Context, check Check) (*Check, error) {
 		return nil, fmt.Errorf("marshalling check: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, http.MethodPost, "/check/update", bytes.NewReader(body))
+	resp, err := c.doRequest(ctx, http.MethodPost, checkUpdatePath, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("updating check %d: %w", check.ID, err)
 	}
@@ -134,7 +144,7 @@ func (c *Client) Update(ctx context.Context, check Check) (*Check, error) {
 
 // Delete deletes a check by ID.
 func (c *Client) Delete(ctx context.Context, id int64) error {
-	resp, err := c.doRequest(ctx, http.MethodDelete, fmt.Sprintf("/check/delete/%d", id), nil)
+	resp, err := c.doRequest(ctx, http.MethodDelete, fmt.Sprintf(checkDeletePathFmt, id), nil)
 	if err != nil {
 		return fmt.Errorf("deleting check %d: %w", id, err)
 	}
@@ -149,7 +159,7 @@ func (c *Client) Delete(ctx context.Context, id int64) error {
 
 // GetTenant returns the SM tenant info (used to obtain tenantId for push).
 func (c *Client) GetTenant(ctx context.Context) (*Tenant, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, "/tenant", nil)
+	resp, err := c.doRequest(ctx, http.MethodGet, tenantPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("getting tenant: %w", err)
 	}
@@ -169,7 +179,7 @@ func (c *Client) GetTenant(ctx context.Context) (*Tenant, error) {
 
 // ListProbes returns a minimal list of probes for name/ID resolution.
 func (c *Client) ListProbes(ctx context.Context) ([]ProbeRef, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, "/probe/list", nil)
+	resp, err := c.doRequest(ctx, http.MethodGet, probeListPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("listing probes: %w", err)
 	}

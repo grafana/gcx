@@ -31,6 +31,21 @@ type Config struct {
 
 	// CurrentContext is the name of the context currently in use.
 	CurrentContext string `json:"current-context" yaml:"current-context"`
+
+	// Diagnostics holds optional local diagnostic settings. All features are off by default.
+	Diagnostics *DiagnosticsConfig `json:"diagnostics,omitempty" yaml:"diagnostics,omitempty"`
+}
+
+// DiagnosticsConfig controls optional local diagnostic features.
+type DiagnosticsConfig struct {
+	// AgentInvocationLog enables logging of failed agent-mode invocations to disk.
+	// Off by default. When enabled, errors from agent-driven gcx calls are written
+	// to LogDir (JSONL format) for capability-gap analysis.
+	AgentInvocationLog bool `json:"agent-invocation-log,omitempty" yaml:"agent-invocation-log,omitempty"`
+
+	// LogDir overrides the output directory for agent invocation log files.
+	// Default: $XDG_STATE_HOME/gcx/ (platform-specific).
+	LogDir string `json:"log-dir,omitempty" yaml:"log-dir,omitempty"`
 }
 
 func (config *Config) HasContext(name string) bool {
@@ -116,6 +131,32 @@ func (context *Context) Validate() error {
 // ToRESTConfig returns a REST config for the context.
 func (context *Context) ToRESTConfig(ctx context.Context) (NamespacedRESTConfig, error) {
 	return NewNamespacedRESTConfig(ctx, *context)
+}
+
+// IsCloud reports whether this context targets Grafana Cloud.
+// Any one of the following signals is sufficient:
+//   - Cloud.Stack is explicitly set
+//   - Grafana.StackID is non-zero
+//   - Grafana.Server hostname belongs to a Grafana-run Cloud domain
+//     (*.grafana.net, *.grafana.com, and their -dev/-ops variants)
+func (context *Context) IsCloud() bool {
+	if context.Cloud != nil && context.Cloud.Stack != "" {
+		return true
+	}
+	if context.Grafana == nil {
+		return false
+	}
+	if context.Grafana.StackID != 0 {
+		return true
+	}
+	if context.Grafana.Server == "" {
+		return false
+	}
+	parsed, err := url.Parse(context.Grafana.Server)
+	if err != nil {
+		return false
+	}
+	return IsGrafanaCloudHost(strings.ToLower(parsed.Hostname()))
 }
 
 // ResolveStackSlug returns the Grafana Cloud stack slug for this context.

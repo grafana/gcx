@@ -57,9 +57,10 @@ linters:
       # that intentionally handle user-controlled paths and URLs.
       - linters: [gosec]
         text: "G702|G703|G704"
-      # Test data containing "token"/"credential" keys is not a real secret.
+      # Test data containing "token"/"credential" keys is not a real secret,
+      # and marshaling test fixtures that include secret-pattern fields is fine.
       - linters: [gosec]
-        text: "G101"
+        text: "G101|G117"
         path: "_test\\.go$"
       # uintptr→int for term.GetSize / term.IsTerminal is the standard Go pattern.
       - linters: [gosec]

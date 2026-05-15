@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,7 +18,18 @@ import (
 // not-found and fall through to Create during push upsert.
 var ErrNotFound = fmt.Errorf("incident: %w", adapter.ErrNotFound)
 
-const incidentBasePath = "/api/plugins/grafana-irm-app/resources/api"
+const (
+	incidentBasePath = "/api/plugins/grafana-irm-app/resources/api"
+
+	incGetPath        = incidentBasePath + "/IncidentsService.GetIncident"
+	incCreatePath     = incidentBasePath + "/IncidentsService.CreateIncident"
+	incUpdateStatPath = incidentBasePath + "/IncidentsService.UpdateStatus"
+	incQueryPath      = incidentBasePath + "/IncidentsService.QueryIncidents"
+	actQueryPath      = incidentBasePath + "/ActivityService.QueryActivity"
+	actAddPath        = incidentBasePath + "/ActivityService.AddActivity"
+	sevGetPath        = incidentBasePath + "/SeveritiesService.GetOrgSeverities"
+	ctxQueryPath      = incidentBasePath + "/IncidentContextService.QueryIncidentContext"
+)
 
 // Client is an HTTP client for the Grafana IRM Incidents API.
 type IncidentClient struct {
@@ -72,7 +84,7 @@ func (c *IncidentClient) Get(ctx context.Context, id string) (*Incident, error) 
 		return nil, fmt.Errorf("incidents: marshal get request: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, incidentBasePath+"/IncidentsService.GetIncident", bytes.NewReader(body))
+	resp, err := c.doRequest(ctx, incGetPath, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("incidents: get %s: %w", id, err)
 	}
@@ -122,7 +134,7 @@ func (c *IncidentClient) Create(ctx context.Context, inc *Incident) (*Incident, 
 		return nil, fmt.Errorf("incidents: marshal create request: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, incidentBasePath+"/IncidentsService.CreateIncident", bytes.NewReader(body))
+	resp, err := c.doRequest(ctx, incCreatePath, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("incidents: create: %w", err)
 	}
@@ -152,7 +164,7 @@ func (c *IncidentClient) UpdateStatus(ctx context.Context, id, status string) (*
 		return nil, fmt.Errorf("incidents: marshal update request: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, incidentBasePath+"/IncidentsService.UpdateStatus", bytes.NewReader(body))
+	resp, err := c.doRequest(ctx, incUpdateStatPath, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("incidents: update status %s: %w", id, err)
 	}
@@ -187,7 +199,7 @@ func (c *IncidentClient) QueryActivity(ctx context.Context, incidentID string, l
 		return nil, fmt.Errorf("incidents: marshal activity request: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, incidentBasePath+"/ActivityService.QueryActivity", bytes.NewReader(body))
+	resp, err := c.doRequest(ctx, actQueryPath, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("incidents: query activity for %s: %w", incidentID, err)
 	}
@@ -218,7 +230,7 @@ func (c *IncidentClient) AddActivity(ctx context.Context, incidentID, body strin
 		return fmt.Errorf("incidents: marshal add activity request: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, incidentBasePath+"/ActivityService.AddActivity", bytes.NewReader(reqBody))
+	resp, err := c.doRequest(ctx, actAddPath, bytes.NewReader(reqBody))
 	if err != nil {
 		return fmt.Errorf("incidents: add activity to %s: %w", incidentID, err)
 	}
@@ -231,6 +243,37 @@ func (c *IncidentClient) AddActivity(ctx context.Context, incidentID, body strin
 	return nil
 }
 
+// QueryIncidentContext returns the contexts (alert groups, dashboards, …)
+// attached to an incident. Additional fields on query — Type, Status,
+// AlertGroupID, etc. — narrow the result; only IncidentID is required.
+func (c *IncidentClient) QueryIncidentContext(ctx context.Context, query IncidentContextQuery) ([]IncidentContext, error) {
+	if query.IncidentID == "" {
+		return nil, errors.New("incidents: QueryIncidentContext: incidentID is required")
+	}
+
+	body, err := json.Marshal(queryIncidentContextRequest{Query: query})
+	if err != nil {
+		return nil, fmt.Errorf("incidents: marshal context query: %w", err)
+	}
+
+	resp, err := c.doRequest(ctx, ctxQueryPath, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("incidents: query context for %s: %w", query.IncidentID, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, handleIncidentErrorResponse(resp)
+	}
+
+	var result queryIncidentContextResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("incidents: decode context response: %w", err)
+	}
+
+	return result.IncidentContexts, nil
+}
+
 // GetSeverities retrieves the organization's severity levels.
 func (c *IncidentClient) GetSeverities(ctx context.Context) ([]Severity, error) {
 	body, err := json.Marshal(map[string]any{})
@@ -238,7 +281,7 @@ func (c *IncidentClient) GetSeverities(ctx context.Context) ([]Severity, error) 
 		return nil, fmt.Errorf("incidents: marshal severities request: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, incidentBasePath+"/SeveritiesService.GetOrgSeverities", bytes.NewReader(body))
+	resp, err := c.doRequest(ctx, sevGetPath, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("incidents: get severities: %w", err)
 	}
@@ -265,7 +308,7 @@ func (c *IncidentClient) queryIncidents(ctx context.Context, query IncidentQuery
 		return nil, fmt.Errorf("incidents: marshal query request: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, incidentBasePath+"/IncidentsService.QueryIncidents", bytes.NewReader(body))
+	resp, err := c.doRequest(ctx, incQueryPath, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("incidents: query: %w", err)
 	}

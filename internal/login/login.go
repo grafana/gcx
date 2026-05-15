@@ -35,6 +35,7 @@ type Inputs struct {
 	GrafanaToken string
 	CloudToken   string
 	CloudAPIURL  string
+	OrgID        int
 	UseOAuth     bool
 	// OAuthCallbackPort fixes the local port for the OAuth callback server.
 	// Zero means auto-pick from the default range. Useful when only specific
@@ -364,6 +365,7 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 
 	grafanaCfg := &config.GrafanaConfig{
 		Server: opts.Server,
+		OrgID:  int64(opts.OrgID),
 		TLS:    opts.TLS,
 	}
 
@@ -454,8 +456,13 @@ func resolveCloudAuth(opts Options, target Target) (*config.CloudConfig, error) 
 		return cc, nil
 	}
 
-	// Cloud target with no token: skip if Yes or agent mode (D9, D10)
+	// Cloud target with no token: skip if Yes or agent mode (D9, D10).
+	// Still persist the stack slug when derivable so datasource auto-discovery
+	// works on stacks with multiple signal datasources.
 	if opts.Yes || agent.IsAgentMode() {
+		if slug := resolveStackSlug(opts.Server); slug != "" {
+			return &config.CloudConfig{Stack: slug}, nil
+		}
 		return nil, nil //nolint:nilnil // nil CloudConfig means "Cloud auth skipped"; valid non-error state.
 	}
 
@@ -509,7 +516,7 @@ func persistContext(ctx context.Context, opts Options, contextName string, tempC
 
 	// Re-auth mode: preserve existing context fields, update only auth.
 	if existing != nil {
-		mergeAuthIntoExisting(existing, tempCtx)
+		mergeAuthIntoExisting(existing, tempCtx, opts.OrgID)
 		cfg.CurrentContext = contextName // make current on success, same as new-context path
 	} else {
 		cfg.SetContext(contextName, true, tempCtx)
@@ -523,7 +530,7 @@ func persistContext(ctx context.Context, opts Options, contextName string, tempC
 
 // mergeAuthIntoExisting updates only auth-related fields on an existing context,
 // preserving all other user-configured fields (OrgID, Datasources, Providers, etc.).
-func mergeAuthIntoExisting(existing *config.Context, incoming config.Context) {
+func mergeAuthIntoExisting(existing *config.Context, incoming config.Context, explicitOrgID int) {
 	if existing.Grafana == nil {
 		existing.Grafana = &config.GrafanaConfig{}
 	}
@@ -547,6 +554,10 @@ func mergeAuthIntoExisting(existing *config.Context, incoming config.Context) {
 	g.OAuthRefreshExpiresAt = src.OAuthRefreshExpiresAt
 	g.ProxyEndpoint = src.ProxyEndpoint
 
+	if explicitOrgID != 0 {
+		g.OrgID = int64(explicitOrgID)
+	}
+
 	// Sync TLS settings so that re-auth with updated or cleared certs
 	// takes effect. Setting to src.TLS (which may be nil) handles both
 	// the "update certs" and "remove certs" cases.
@@ -557,9 +568,14 @@ func mergeAuthIntoExisting(existing *config.Context, incoming config.Context) {
 		if existing.Cloud == nil {
 			existing.Cloud = &config.CloudConfig{}
 		}
-		existing.Cloud.Token = incoming.Cloud.Token
+		if incoming.Cloud.Token != "" {
+			existing.Cloud.Token = incoming.Cloud.Token
+		}
 		if incoming.Cloud.APIUrl != "" {
 			existing.Cloud.APIUrl = incoming.Cloud.APIUrl
+		}
+		if incoming.Cloud.Stack != "" {
+			existing.Cloud.Stack = incoming.Cloud.Stack
 		}
 	}
 }

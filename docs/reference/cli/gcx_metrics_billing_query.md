@@ -42,7 +42,7 @@ gcx metrics billing query [EXPR] [flags]
   -h, --help                help for query
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --open                Open the executed query in Grafana Explore
-  -o, --output string       Output format. One of: graph, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, graph, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to (or now if omitted); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
@@ -54,7 +54,7 @@ gcx metrics billing query [EXPR] [flags]
 ```
       --agent              Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
       --config string      Path to the configuration file to use
-      --context string     Name of the context to use
+      --context string     Name of the context to use (overrides current-context in config)
       --log-http-payload   Log full HTTP request/response bodies (includes headers — may expose tokens)
       --no-color           Disable color output
       --no-truncate        Disable table column truncation (auto-enabled when stdout is piped)

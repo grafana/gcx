@@ -71,7 +71,7 @@ gcx dev lint run PATH... [flags]
   -h, --help                           help for run
       --json string                    Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --max-concurrent int             Maximum number of concurrent operations (default 10)
-  -o, --output string                  Output format. One of: compact, json, pretty, yaml (default "pretty")
+  -o, --output string                  Output format. One of: agents, compact, json, pretty, yaml (default "pretty")
   -r, --rules stringArray              Path to custom rules
 ```
 

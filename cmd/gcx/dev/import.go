@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/grafana-foundation-sdk/go/cog/plugins"
 	"github.com/grafana/grafana-foundation-sdk/go/dashboard"
 	"github.com/grafana/grafana-foundation-sdk/go/dashboardv2beta1"
+	"github.com/grafana/grafana-foundation-sdk/go/folderv1beta1"
 	"github.com/huandu/xstrings"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -24,8 +25,10 @@ import (
 //nolint:gochecknoglobals
 var convertersMap = map[string]resourceConverter{
 	"Dashboard.dashboard.grafana.app/v0alpha1": dashboardv1Converter,
+	"Dashboard.dashboard.grafana.app/v1":       dashboardv1Converter,
 	"Dashboard.dashboard.grafana.app/v1beta1":  dashboardv1Converter,
 	"Dashboard.dashboard.grafana.app/v2beta1":  dashboardv2Converter,
+	"Folder.folder.grafana.app/v1":             folderConverter,
 }
 
 type importOpts struct {
@@ -189,4 +192,23 @@ func dashboardv2Converter(resource *model.Resource) (string, string, error) {
 	}
 
 	return dashboardv2beta1.DashboardConverter(object), "dashboardv2beta1", nil
+}
+
+func folderConverter(resource *model.Resource) (string, string, error) {
+	spec, err := resource.Spec()
+	if err != nil {
+		return "", "", err
+	}
+
+	marshalled, err := json.Marshal(spec)
+	if err != nil {
+		return "", "", err
+	}
+
+	object := folderv1beta1.Folder{}
+	if err = json.Unmarshal(marshalled, &object); err != nil {
+		return "", "", err
+	}
+
+	return folderv1beta1.FolderConverter(object), "folderv1beta1", nil
 }

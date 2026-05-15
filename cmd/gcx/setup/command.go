@@ -4,10 +4,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/grafana/gcx/cmd/gcx/setup/instrumentation"
 	fleetbase "github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/providers"
-	instrum "github.com/grafana/gcx/internal/setup/instrumentation"
+	instrum "github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -30,7 +29,6 @@ func Command() *cobra.Command {
 	loader := &providers.ConfigLoader{}
 	loader.BindFlags(cmd.PersistentFlags())
 
-	cmd.AddCommand(instrumentation.Command(loader))
 	cmd.AddCommand(newStatusCommand(loader))
 
 	return cmd

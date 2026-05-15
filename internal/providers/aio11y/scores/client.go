@@ -2,11 +2,14 @@ package scores
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"strconv"
 
 	"github.com/grafana/gcx/internal/providers/aio11y/aio11yhttp"
 )
+
+const generationScoresPathFmt = "/query/generations/%s/scores"
 
 // Client is an HTTP client for AI Observability generation score endpoints.
 type Client struct {
@@ -24,5 +27,5 @@ func (c *Client) ListByGeneration(ctx context.Context, generationID string, limi
 	if limit > 0 {
 		query.Set("limit", strconv.Itoa(limit))
 	}
-	return aio11yhttp.ListAll[Score](ctx, c.base, "/query/generations/"+url.PathEscape(generationID)+"/scores", query)
+	return aio11yhttp.ListAll[Score](ctx, c.base, fmt.Sprintf(generationScoresPathFmt, url.PathEscape(generationID)), query)
 }

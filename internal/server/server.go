@@ -281,8 +281,15 @@ func (s *Server) iframeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	iframeURL := s.subpath + handler.ProxyURL(name)
+
+	// Sync URL params for dashboard variables down to the iframe URL
+	if r.URL.RawQuery != "" {
+		iframeURL += "?" + r.URL.RawQuery
+	}
+
 	templateVars := map[string]any{
-		"IframeURL":      s.subpath + handler.ProxyURL(name),
+		"IframeURL":      iframeURL,
 		"CurrentContext": s.context,
 		"Port":           s.config.Port,
 	}

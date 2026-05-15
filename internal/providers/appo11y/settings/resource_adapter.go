@@ -148,7 +148,6 @@ func checkSettingsStatus(resp *http.Response) error {
 // It loads config via ConfigLoader (same pattern as the adapter factory).
 func NewTypedCRUD(ctx context.Context) (*adapter.TypedCRUD[PluginSettings], internalconfig.NamespacedRESTConfig, error) {
 	var loader providers.ConfigLoader
-	loader.SetContextName(internalconfig.ContextNameFromCtx(ctx))
 
 	cfg, err := loader.LoadGrafanaConfig(ctx)
 	if err != nil {

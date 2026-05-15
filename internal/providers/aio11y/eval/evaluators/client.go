@@ -12,7 +12,11 @@ import (
 	"github.com/grafana/gcx/internal/providers/aio11y/eval"
 )
 
-const basePath = "/eval/evaluators"
+const (
+	basePath         = "/eval/evaluators"
+	evaluatorByIDFmt = basePath + "/%s"
+	evalTestPath     = "/eval:test"
+)
 
 // Client is an HTTP client for AI Observability evaluator endpoints.
 type Client struct {
@@ -31,7 +35,7 @@ func (c *Client) List(ctx context.Context) ([]eval.EvaluatorDefinition, error) {
 
 // Get returns a single evaluator by ID.
 func (c *Client) Get(ctx context.Context, id string) (*eval.EvaluatorDefinition, error) {
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, basePath+"/"+url.PathEscape(id), nil)
+	resp, err := c.base.DoRequest(ctx, http.MethodGet, fmt.Sprintf(evaluatorByIDFmt, url.PathEscape(id)), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get evaluator %s: %w", id, err)
 	}
@@ -79,7 +83,7 @@ func (c *Client) RunTest(ctx context.Context, req *eval.EvalTestRequest) (*eval.
 		return nil, fmt.Errorf("failed to marshal test request: %w", err)
 	}
 
-	resp, err := c.base.DoRequest(ctx, http.MethodPost, "/eval:test", bytes.NewReader(body))
+	resp, err := c.base.DoRequest(ctx, http.MethodPost, evalTestPath, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to run eval test: %w", err)
 	}
@@ -98,7 +102,7 @@ func (c *Client) RunTest(ctx context.Context, req *eval.EvalTestRequest) (*eval.
 
 // Delete soft-deletes an evaluator by ID.
 func (c *Client) Delete(ctx context.Context, id string) error {
-	resp, err := c.base.DoRequest(ctx, http.MethodDelete, basePath+"/"+url.PathEscape(id), nil)
+	resp, err := c.base.DoRequest(ctx, http.MethodDelete, fmt.Sprintf(evaluatorByIDFmt, url.PathEscape(id)), nil)
 	if err != nil {
 		return fmt.Errorf("failed to delete evaluator %s: %w", id, err)
 	}

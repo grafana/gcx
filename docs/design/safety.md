@@ -1,6 +1,6 @@
 # Confirmation and Safety
 
-> Covers when to prompt users before destructive operations, the --yes/GCX_AUTO_APPROVE pattern, dry-run support, and push idempotency.
+> Covers when to prompt users before destructive operations, the --force/GCX_AUTO_APPROVE pattern, dry-run support, and push idempotency.
 
 ---
 
@@ -17,39 +17,51 @@ Do NOT prompt for:
 - Pull (local write) — easily reversible via git
 - Config changes — low-risk, undoable
 
-### 3.2 The `--yes` / `-y` Pattern `[IMPLEMENTED]`
+### 3.2 The `--force` Flag and `providers.ConfirmDestructive` `[IMPLEMENTED]`
 
-The `--yes`/`-y` flag and `GCX_AUTO_APPROVE` environment variable enable
-non-interactive operation for destructive commands. Currently implemented for:
+All destructive provider commands use the shared `providers.ConfirmDestructive()`
+helper. It applies a 3-layer bypass chain before falling through to an
+interactive prompt:
 
-- **delete command**: Auto-enables `--force` flag (required to delete all resources of a type)
+1. **`--force` flag** — explicit per-invocation bypass
+2. **`GCX_AUTO_APPROVE` env var** — enables non-interactive operation in CI/CD
+3. **Agent mode without `--force`** — fails with actionable error
+4. **Interactive prompt** — asks the user to confirm (`[y/N]`)
+
+If none of the bypass conditions are met and stdin is closed/empty, the prompt's
+`ReadString` returns EOF, surfacing a clear error.
+
+```go
+proceed, err := providers.ConfirmDestructive(
+    cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+    fmt.Sprintf("Delete %d resource(s)?", count))
+if err != nil {
+    return err
+}
+if !proceed {
+    return nil
+}
+```
+
+**Convention:** Use `--force` (long flag only, no `-f` shorthand per
+[naming.md](naming.md) § 9.4). Do not use `--yes`, `--skip-confirmations`,
+or other variants.
 
 **Note:** Auto-approval does NOT enable `--include-managed` to protect resources
 managed by external tools (Terraform, GitSync, etc.). Users must explicitly pass
 `--include-managed` if needed.
 
-Pattern (as implemented in `cmd/gcx/resources/delete.go`):
+The `resources delete` command additionally supports `--yes` (`-y`) which
+auto-enables the `--force` flag. This is a legacy pattern specific to the
+resources layer; new provider commands should use `--force` directly.
 
-```go
-// Load CLI options from environment
-cliOpts, err := config.LoadCLIOptions()
-if err != nil {
-    return err
-}
+### 3.3 Agent Mode Requires Explicit `--force` `[IMPLEMENTED]`
 
-// Apply auto-approval logic
-if (opts.Yes || cliOpts.AutoApprove) && !opts.Force {
-    cmdio.Info(cmd.OutOrStdout(), "Auto-approval enabled: automatically setting --force")
-    opts.Force = true
-}
-```
-
-**Flag precedence:** Explicit flag value > --yes flag > env var > default
-
-### 3.3 Agent Mode Auto-Approve
-
-When agent mode is active ([agent-mode.md](agent-mode.md)), prompts are auto-approved. Agents
-cannot interact with TTY prompts.
+When agent mode is active ([agent-mode.md](agent-mode.md)), `providers.ConfirmDestructive`
+**rejects** the operation with an actionable error unless `--force` is passed.
+This forces agents to deliberately acknowledge destructive operations rather
+than silently proceeding — creating an explicit audit trail and preventing
+rogue agents from accidentally deleting resources.
 
 ### 3.4 Dry-Run
 

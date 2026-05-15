@@ -1,7 +1,6 @@
 package traces
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -16,7 +15,6 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
-	"github.com/grafana/gcx/internal/terminal"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -536,21 +534,13 @@ func (h *tracesHelper) policiesDeleteCommand() *cobra.Command {
 		Short: "Delete one or more Adaptive Traces sampling policies.",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if !opts.Force {
-				if terminal.IsPiped() {
-					return errors.New("stdin is not a terminal, use --force to skip confirmation")
-				}
-				fmt.Fprintf(cmd.ErrOrStderr(), "Delete %d policy(ies)? [y/N] ", len(args))
-				reader := bufio.NewReader(cmd.InOrStdin())
-				answer, err := reader.ReadString('\n')
-				if err != nil {
-					return fmt.Errorf("reading confirmation: %w", err)
-				}
-				answer = strings.TrimSpace(strings.ToLower(answer))
-				if answer != "y" && answer != "yes" {
-					cmdio.Info(cmd.ErrOrStderr(), "Aborted.")
-					return nil
-				}
+			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+				fmt.Sprintf("Delete %d policy(ies)?", len(args)))
+			if err != nil {
+				return err
+			}
+			if !proceed {
+				return nil
 			}
 
 			ctx := cmd.Context()

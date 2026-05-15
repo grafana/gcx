@@ -14,3 +14,13 @@ func NewTestScopeFlags(env, site, namespace string) ScopeFlags {
 func (f ScopeFlags) ValidateScopes(ctx context.Context, c *Client) error {
 	return f.validateScopes(ctx, c)
 }
+
+// FilterBySeverity wraps the unexported filterBySeverity for testing.
+func FilterBySeverity(results []SearchResult, sev string) []SearchResult {
+	return filterBySeverity(results, sev)
+}
+
+// BuildInsightSearchRequest exposes buildInsightSearchRequest for tests.
+//
+//nolint:gochecknoglobals // Test-only export alias.
+var BuildInsightSearchRequest = buildInsightSearchRequest

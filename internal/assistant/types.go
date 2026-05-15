@@ -203,9 +203,11 @@ type TokenRefresher func() (string, error)
 
 // ClientOptions represents options for creating a Client.
 type ClientOptions struct {
-	GrafanaURL     string
-	Token          string
-	APIEndpoint    string
+	GrafanaURL  string
+	Token       string
+	APIEndpoint string
+	// AgentID is the A2A agent to route requests to. Defaults to DefaultAgentID if empty.
+	AgentID        string
 	TokenRefresher TokenRefresher
 	// HTTPClient is an optional custom HTTP client. If nil, httputils.NewDefaultClient(context.Background()) is used.
 	// Callers that need context-aware behaviour (e.g. --log-http-payload) should set this field explicitly

@@ -29,7 +29,7 @@ gcx resources examples [RESOURCE_SELECTOR] [flags]
 ```
   -h, --help            help for examples
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: json, text, wide, yaml (default "text")
+  -o, --output string   Output format. One of: agents, json, text, wide, yaml (default "text")
 ```
 
 ### Options inherited from parent commands

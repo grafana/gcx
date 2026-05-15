@@ -3,7 +3,6 @@ package resources
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/cmd/gcx/fail"
@@ -183,7 +182,7 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			printer(cmd.OutOrStdout(), "%d resources deleted, %d errors", summary.SuccessCount(), summary.FailedCount())
 
 			if opts.OnError.FailOnErrors() && summary.FailedCount() > 0 {
-				return fmt.Errorf("%d resource(s) failed to delete", summary.FailedCount())
+				return fail.NewPartialFailureError("delete", summary.SuccessCount()+summary.FailedCount(), summary.FailedCount())
 			}
 
 			return nil

@@ -229,6 +229,36 @@ func TestUpdateCommand_UpdatesOnlyInstalledSkills(t *testing.T) {
 	require.True(t, os.IsNotExist(err))
 }
 
+func TestUpdateCommand_UpdatesReadOnlyFiles(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	agent.ResetForTesting()
+	root := filepath.Join(t.TempDir(), ".agents")
+
+	skillPath := filepath.Join(root, "skills", "alpha", "SKILL.md")
+	require.NoError(t, os.MkdirAll(filepath.Dir(skillPath), 0o755))
+	require.NoError(t, os.WriteFile(skillPath, []byte("old-content"), 0o600))
+	require.NoError(t, os.Chmod(skillPath, 0o444))
+
+	cmd := newUpdateCommand(testSkillsFS())
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+	cmd.SetArgs([]string{"--dir", root})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+	require.Contains(t, stdout.String(), "Updated 1 skill(s)")
+
+	data, err := os.ReadFile(skillPath)
+	require.NoError(t, err)
+	require.Equal(t, []byte("alpha-skill"), data)
+
+	info, err := os.Stat(skillPath)
+	require.NoError(t, err)
+	require.Equal(t, fs.FileMode(0o644), info.Mode().Perm())
+}
+
 func TestUpdateCommand_NoInstalledSkillsNoOp(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
 	agent.ResetForTesting()

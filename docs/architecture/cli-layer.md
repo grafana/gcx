@@ -82,7 +82,7 @@ gcx (root)
 │   └── adaptive             Adaptive Traces (policies, recommendations)
 │
 ├── profiles                 [internal/providers/profiles/provider.go] (registered via providers.Register)
-│   ├── query                [DATASOURCE_UID] EXPR --profile-type TYPE [--from] [--to] [--since] [--max-nodes] [-o]
+│   ├── query                [DATASOURCE_UID] EXPR --profile-type TYPE [--from] [--to] [--since] [--max-nodes] [--profile-id UUID]... [--stacktrace-selector FN]... [-o]
 │   ├── labels               [--datasource/-d UID] [--label/-l NAME]
 │   ├── profile-types        [--datasource/-d UID]
 │   ├── series               [DATASOURCE_UID] EXPR --profile-type TYPE [--top] [--group-by] [--limit]
@@ -93,20 +93,35 @@ gcx (root)
 │
 ├── setup                    [cmd/gcx/setup/command.go]
 │   ├── --config             [persistent: inherited from providers.ConfigLoader]
-│   ├── --context            [persistent: inherited from providers.ConfigLoader]
-│   ├── status               Aggregated setup status across all products
-│   └── instrumentation      [cmd/gcx/setup/instrumentation/command.go]
-│       ├── status           Per-cluster instrumentation state + Beyla errors
-│       │   ├── --cluster    Filter by cluster name
-│       │   └── --output / -o  table|wide|json|yaml
-│       ├── discover         Find instrumentable workloads in a cluster
-│       │   ├── --cluster    Cluster name (required)
-│       │   └── --output / -o  table|wide|json|yaml
-│       ├── show <CLUSTER>   Export current config as portable InstrumentationConfig manifest
-│       │   └── --output / -o  yaml|json
-│       └── apply            Apply an InstrumentationConfig manifest
-│           ├── --filename / -f  Path to manifest file (required)
-│           └── --dry-run    Preview changes without applying
+│   ├── --context            [persistent: inherited from root command]
+│   └── status               Aggregated setup status across all products
+│
+├── instrumentation          [cmd/gcx/instrumentation/command.go]
+│   ├── status               Workload-level instrumentation status (observed state)
+│   │   └── --output / -o    table|wide|json|yaml
+│   ├── setup <CLUSTER>      Generate helm install command + access-policy guidance
+│   │   ├── --use-defaults   Apply FR-040 defaults without prompting
+│   │   ├── --cost-metrics[=true|false]  Override costMetrics default
+│   │   ├── --print-helm-only  Print helm command and exit
+│   │   └── --output / -o    table|wide|json|yaml
+│   ├── clusters             Cluster-level instrumentation management
+│   │   ├── list             List all configured clusters
+│   │   ├── get <CLUSTER>    Get cluster instrumentation config
+│   │   ├── configure <CLUSTER>  Configure cluster instrumentation
+│   │   ├── remove <CLUSTER> Remove cluster instrumentation config
+│   │   ├── wait <CLUSTER>   Wait for cluster to reach INSTRUMENTED status
+│   │   └── apps             Namespace-level Beyla app instrumentation
+│   │       ├── list <CLUSTER>           List namespace entries
+│   │       ├── get <CLUSTER> <NS>       Get namespace instrumentation
+│   │       ├── configure <CLUSTER> <NS> Configure namespace instrumentation
+│   │       ├── remove <CLUSTER> <NS>    Remove namespace instrumentation
+│   │       └── wait <CLUSTER> <NS>      Wait for namespace to be instrumented
+│   └── services             Service-level workload inclusion/exclusion
+│       ├── list             List workloads with inclusion state
+│       ├── get              Get workload inclusion state
+│       ├── include          Include a workload
+│       ├── exclude          Exclude a workload
+│       └── clear            Clear workload inclusion override
 │
 ├── skills                   [cmd/gcx/skills/command.go]
 │   ├── install             Install the canonical portable gcx Agent Skills bundle into a .agents root
@@ -163,7 +178,7 @@ operations plus optional product-specific commands.
 ```
 gcx {provider}           [contributed by Provider.Commands()]
 ├── --config                    [persistent: inherited via providers.ConfigLoader]
-├── --context                   [persistent: inherited via providers.ConfigLoader]
+├── --context                   [persistent: inherited from root command]
 │
 ├── {resource-type}             [one group per resource type]
 │   ├── list                    [always: list all resources]
@@ -196,7 +211,7 @@ gcx slo                  [internal/providers/slo/provider.go]
     ├── delete <uuid...>
     └── status [uuid]
 
-gcx synth                [internal/providers/synth/provider.go]
+gcx synthetic-monitoring [internal/providers/synth/provider.go]
 ├── checks                      CRUD + status/timeline for Synthetic Monitoring checks
 │   ├── list
 │   ├── get    <id>
@@ -212,13 +227,15 @@ gcx synth                [internal/providers/synth/provider.go]
 ### Config loading pattern
 
 Provider commands cannot import `cmd/gcx/config` (import cycle). Instead,
-they use a shared, exported `providers.ConfigLoader` that binds `--config` and `--context` flags
-independently. See `internal/providers/configloader.go` for the reference implementation.
+they use a shared, exported `providers.ConfigLoader` that binds the `--config`
+flag. The `--context` flag is owned by the root command and threaded into
+provider commands via `context.Context`. See `internal/providers/configloader.go`
+for the reference implementation.
 
 ```go
 // Shared across all providers — defined in internal/providers/configloader.go
 loader := &providers.ConfigLoader{}
-loader.BindFlags(sloCmd.PersistentFlags())  // --config, --context flags
+loader.BindFlags(sloCmd.PersistentFlags())  // --config flag (root owns --context)
 
 func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error) {
     // Applies env vars (GRAFANA_TOKEN, GRAFANA_PROVIDER_*), context flag,
@@ -264,14 +281,14 @@ cmd/gcx/
 ├── providers/
 │   └── command.go           providers command — lists registered providers
 ├── setup/
-│   ├── command.go           setup group + aggregated status (wires providers.ConfigLoader)
-│   └── instrumentation/
-│       ├── command.go       instrumentation group (wires status, discover, show, apply)
-│       ├── status.go        instrumentation status — Beyla errors via promql-builder
-│       ├── discover.go      instrumentation discover — K8s workload discovery
-│       ├── show.go          instrumentation show — export InstrumentationConfig manifest
-│       ├── apply.go         instrumentation apply — apply manifest with optimistic lock
-│       └── export_test.go   test package aliases for unexported types
+│   └── command.go           setup group + aggregated status (wires providers.ConfigLoader)
+├── instrumentation/
+│   ├── command.go           instrumentation group (wires all subcommands)
+│   ├── status/              instrumentation status — workload-level observed state
+│   ├── setup/               instrumentation setup — helm command + access-policy guidance
+│   ├── clusters/            cluster-level instrumentation (list, get, configure, remove, wait)
+│   │   └── apps/            namespace-level Beyla app instrumentation (list, get, configure, remove, wait)
+│   └── services/            service-level workload inclusion/exclusion (list, get, include, exclude, clear)
 ├── linter/
 │   ├── command.go           lint subgroup (run, new, rules, test subcommands; mounted under dev lint)
 │   ├── lint.go              dev lint run — lint resources against configured rules  [Use: "run"]
@@ -655,6 +672,10 @@ Commands can return a `DetailedError` directly from `RunE`. Business logic layer
 ErrorToDetailedError(err)
     │
     ├─ errors.As(err, &DetailedError{}) → return as-is if already detailed
+    ├─ convertWaitTimeoutEmitted → ErrWaitTimeoutEmitted sentinel (suppress secondary output)
+    ├─ convertUnknownFieldSelectionErrors → UnknownFieldSelectionError (--json unknown field)
+    ├─ convertPartialFailureErrors → PartialFailureError (exit 4)
+    ├─ convertUsageErrors    → UsageError (exit 2)
     ├─ convertConfigErrors   → ValidationError, UnmarshalError, ErrContextNotFound
     ├─ convertFSErrors       → fs.PathError (not exist, invalid, permission)
     ├─ convertResourcesErrors → InvalidSelectorError

@@ -17,7 +17,8 @@ gcx datasources list --type prometheus
 gcx datasources list --type loki
 
 # Get JSON for scripting
-DS_UID=$(gcx datasources list --type prometheus -o json | jq -r '.datasources[0].uid')
+DS_UID=$(gcx datasources list --type prometheus -o json 2>/dev/null | \
+  python3 -c "import json,sys; print(json.load(sys.stdin)['datasources'][0]['uid'])")
 ```
 
 ### Setting Default Datasource
@@ -44,13 +45,13 @@ Query current values:
 
 ```bash
 # Current uptime for all targets
-gcx metrics query <uid> 'up'
+gcx metrics query -d <uid> 'up'
 
 # CPU usage by job
-gcx metrics query <uid> 'avg by(job) (rate(cpu_usage_seconds[5m]))'
+gcx metrics query -d <uid> 'avg by(job) (rate(cpu_usage_seconds[5m]))'
 
 # Memory usage with threshold
-gcx metrics query <uid> 'node_memory_MemAvailable_bytes < 1000000000'
+gcx metrics query -d <uid> 'node_memory_MemAvailable_bytes < 1000000000'
 ```
 
 ### Range Queries
@@ -59,15 +60,15 @@ Query over time periods:
 
 ```bash
 # HTTP request rate over last hour
-gcx metrics query <uid> 'rate(http_requests_total[5m])' \
+gcx metrics query -d <uid> 'rate(http_requests_total[5m])' \
   --from now-1h --to now --step 1m
 
 # CPU usage for specific time period
-gcx metrics query <uid> 'avg(cpu_usage)' \
+gcx metrics query -d <uid> 'avg(cpu_usage)' \
   --from 2026-03-01T00:00:00Z --to 2026-03-01T12:00:00Z --step 5m
 
 # Disk usage over last 24 hours
-gcx metrics query <uid> 'disk_used_percent' \
+gcx metrics query -d <uid> 'disk_used_percent' \
   --from now-24h --to now --step 15m
 ```
 
@@ -88,21 +89,40 @@ gcx supports multiple time formats:
 --from 1709280000 --to 1709366400
 ```
 
+### Valid vs Invalid Time Expressions
+
+```bash
+# Valid relative expressions
+--from now-6h --to now
+--from now-1h --to now-30m
+--step 5m
+--step 300s
+
+# Valid absolute timestamp
+--from 2026-03-01T00:00:00Z
+
+# INVALID — cannot chain subtractions
+--from now-6h-1m     # Use now-361m instead
+
+# INVALID — step needs a unit suffix
+--step 300           # Use --step 300s or --step 5m
+```
+
 ### Step Interval
 
 Choose step based on time range:
 
 ```bash
 # Short ranges: 1-5 second steps
-gcx metrics query <uid> 'rate(requests[1m])' \
+gcx metrics query -d <uid> 'rate(requests[1m])' \
   --from now-5m --to now --step 1s
 
 # Medium ranges: 1-5 minute steps
-gcx metrics query <uid> 'rate(requests[5m])' \
+gcx metrics query -d <uid> 'rate(requests[5m])' \
   --from now-6h --to now --step 1m
 
 # Long ranges: 15-60 minute steps
-gcx metrics query <uid> 'rate(requests[1h])' \
+gcx metrics query -d <uid> 'rate(requests[1h])' \
   --from now-7d --to now --step 1h
 ```
 
@@ -112,30 +132,30 @@ gcx metrics query <uid> 'rate(requests[1h])' \
 
 ```bash
 # Sum across all instances
-gcx metrics query <uid> 'sum(http_requests_total)'
+gcx metrics query -d <uid> 'sum(http_requests_total)'
 
 # Average by label
-gcx metrics query <uid> 'avg by(job) (cpu_usage)'
+gcx metrics query -d <uid> 'avg by(job) (cpu_usage)'
 
 # Top 5 by value
-gcx metrics query <uid> 'topk(5, http_requests_total)'
+gcx metrics query -d <uid> 'topk(5, http_requests_total)'
 
 # 95th percentile
-gcx metrics query <uid> 'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))'
+gcx metrics query -d <uid> 'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))'
 ```
 
 ### Combining with Graph
 
 ```bash
 # Line chart (default) — pass -o graph directly to the query command
-gcx metrics query <uid> 'rate(http_requests_total[5m])' \
+gcx metrics query -d <uid> 'rate(http_requests_total[5m])' \
   --from now-1h --to now --step 1m -o graph
 
 # Instant query as graph
-gcx metrics query <uid> 'up' -o graph
+gcx metrics query -d <uid> 'up' -o graph
 
 # Range query as graph
-gcx metrics query <uid> 'cpu_usage' --from now-6h --to now --step 5m -o graph
+gcx metrics query -d <uid> 'cpu_usage' --from now-6h --to now --step 5m -o graph
 ```
 
 ## Loki Query Patterns
@@ -146,32 +166,32 @@ Basic log filtering:
 
 ```bash
 # All logs from a job
-gcx logs query <loki-uid> '{job="varlogs"}'
+gcx logs query -d <loki-uid> '{job="varlogs"}'
 
 # Multiple labels (AND)
-gcx logs query <loki-uid> '{job="varlogs",level="error"}'
+gcx logs query -d <loki-uid> '{job="varlogs",level="error"}'
 
 # Regex matching
-gcx logs query <loki-uid> '{job=~"mysql.*",level!="debug"}'
+gcx logs query -d <loki-uid> '{job=~"mysql.*",level!="debug"}'
 
 # Exclude specific values
-gcx logs query <loki-uid> '{namespace="production",pod!~"test.*"}'
+gcx logs query -d <loki-uid> '{namespace="production",pod!~"test.*"}'
 ```
 
 ### Log Stream Operators
 
 ```bash
 # Contains text
-gcx logs query <loki-uid> '{job="varlogs"} |= "error"'
+gcx logs query -d <loki-uid> '{job="varlogs"} |= "error"'
 
 # Doesn't contain text
-gcx logs query <loki-uid> '{job="varlogs"} != "debug"'
+gcx logs query -d <loki-uid> '{job="varlogs"} != "debug"'
 
 # Regex match in log line
-gcx logs query <loki-uid> '{job="varlogs"} |~ "error|exception"'
+gcx logs query -d <loki-uid> '{job="varlogs"} |~ "error|exception"'
 
 # JSON parsing
-gcx logs query <loki-uid> '{job="varlogs"} | json | level="error"'
+gcx logs query -d <loki-uid> '{job="varlogs"} | json | level="error"'
 ```
 
 ### Log Range Queries
@@ -180,11 +200,11 @@ Query logs over time:
 
 ```bash
 # Last hour of logs
-gcx logs query <loki-uid> '{job="varlogs"}' \
+gcx logs query -d <loki-uid> '{job="varlogs"}' \
   --from now-1h --to now
 
 # Specific time range
-gcx logs query <loki-uid> '{namespace="prod"}' \
+gcx logs query -d <loki-uid> '{namespace="prod"}' \
   --from 2026-03-01T00:00:00Z --to 2026-03-01T12:00:00Z
 ```
 
@@ -194,17 +214,17 @@ Calculate metrics from logs:
 
 ```bash
 # Log rate per second
-gcx logs query <loki-uid> \
+gcx logs query -d <loki-uid> \
   'rate({job="varlogs"}[5m])' \
   --from now-1h --to now --step 1m
 
 # Sum of log rates
-gcx logs query <loki-uid> \
+gcx logs query -d <loki-uid> \
   'sum(rate({namespace="production"}[5m]))' \
   --from now-6h --to now --step 5m
 
 # Count by level
-gcx logs query <loki-uid> \
+gcx logs query -d <loki-uid> \
   'sum by(level) (rate({job="varlogs"} | json [5m]))' \
   --from now-1h --to now --step 1m
 ```
@@ -213,12 +233,12 @@ gcx logs query <loki-uid> \
 
 ```bash
 # Visualize log volume
-gcx logs query <loki-uid> \
+gcx logs query -d <loki-uid> \
   'sum(rate({job="varlogs"}[5m]))' \
   --from now-6h --to now --step 5m -o graph
 
 # Error rate over time
-gcx logs query <loki-uid> \
+gcx logs query -d <loki-uid> \
   'sum(rate({job="app"} |= "error" [5m]))' \
   --from now-24h --to now --step 15m -o graph
 ```
@@ -257,7 +277,7 @@ gcx metrics labels -d <uid> --label job
 
 3. Query specific job:
 ```bash
-gcx metrics query <uid> 'up{job="prometheus"}'
+gcx metrics query -d <uid> 'up{job="prometheus"}'
 ```
 
 4. Explore available metrics for that job:
@@ -302,7 +322,7 @@ gcx logs series -d <loki-uid> -M '{job="varlogs"}'
 
 4. Query specific stream:
 ```bash
-gcx logs query <loki-uid> '{job="varlogs",namespace="prod"}'
+gcx logs query -d <loki-uid> '{job="varlogs",namespace="prod"}'
 ```
 
 ## Output Formats
@@ -312,7 +332,7 @@ gcx logs query <loki-uid> '{job="varlogs",namespace="prod"}'
 For Prometheus queries, shows metric values in a table:
 
 ```bash
-gcx metrics query <uid> 'up'
+gcx metrics query -d <uid> 'up'
 # Output:
 # METRIC    VALUE  TIMESTAMP
 # up{...}   1      2026-03-03T12:00:00Z
@@ -321,7 +341,7 @@ gcx metrics query <uid> 'up'
 For Loki queries, shows raw log lines:
 
 ```bash
-gcx logs query <loki-uid> '{job="varlogs"}' --from now-5m --to now
+gcx logs query -d <loki-uid> '{job="varlogs"}' --from now-5m --to now
 # Output:
 # ts=2026-03-06T10:30:00Z level=info msg="request completed" status=200
 # ts=2026-03-06T10:30:01Z level=error msg="connection refused"
@@ -332,7 +352,7 @@ gcx logs query <loki-uid> '{job="varlogs"}' --from now-5m --to now
 Shows all labels plus the log line:
 
 ```bash
-gcx logs query <loki-uid> '{job="varlogs"}' --from now-5m --to now -o wide
+gcx logs query -d <loki-uid> '{job="varlogs"}' --from now-5m --to now -o wide
 # Output:
 # CLUSTER        DETECTED_LEVEL  JOB       NAMESPACE  POD          LINE
 # dev-eu-west-2  info            varlogs   prod       app-abc123   ts=2026-03-06T10:30:00Z...
@@ -344,7 +364,7 @@ gcx logs query <loki-uid> '{job="varlogs"}' --from now-5m --to now -o wide
 Machine-readable for scripting:
 
 ```bash
-gcx metrics query <uid> 'up' -o json
+gcx metrics query -d <uid> 'up' -o json
 ```
 
 JSON structure:
@@ -366,21 +386,27 @@ JSON structure:
 ### YAML Format
 
 ```bash
-gcx metrics query <uid> 'up' -o yaml
+gcx metrics query -d <uid> 'up' -o yaml
 ```
 
-### Piping to jq
+### Field Selection
+
+Use `--json` to select fields without external tools:
 
 ```bash
-# Extract specific fields
-gcx metrics query <uid> 'up' -o json | jq '.data.result[].metric.job'
+# Discover available fields
+gcx metrics query -d <uid> 'up' --json list
 
-# Filter results
-gcx metrics query <uid> 'up' -o json | jq '.data.result[] | select(.value[1] == "1")'
+# Select specific fields
+gcx metrics query -d <uid> 'up' --json metric,value
 
-# Count results
-gcx metrics query <uid> 'up' -o json | jq '.data.result | length'
+# For complex filtering, pipe to python3 (jq may not be installed)
+gcx metrics query -d <uid> 'up' -o json 2>/dev/null | \
+  python3 -c "import json,sys; data=json.load(sys.stdin); print(len(data['data']['result']))"
 ```
+
+> **Piping caution**: Never use `2>&1` when piping gcx JSON output — gcx writes
+> hints to stderr that break JSON parsers. Use `2>/dev/null` instead.
 
 ## Scripting Patterns
 
@@ -388,11 +414,12 @@ gcx metrics query <uid> 'up' -o json | jq '.data.result | length'
 
 ```bash
 #!/bin/bash
-DS_UID=$(gcx datasources list --type prometheus -o json | jq -r '.datasources[0].uid')
+DS_UID=$(gcx datasources list --type prometheus -o json 2>/dev/null | \
+  python3 -c "import json,sys; print(json.load(sys.stdin)['datasources'][0]['uid'])")
 
 # Check if service is up
-UP=$(gcx metrics query $DS_UID 'up{job="critical-service"}' -o json | \
-     jq -r '.data.result[0].value[1]')
+UP=$(gcx metrics query -d $DS_UID 'up{job="critical-service"}' -o json 2>/dev/null | \
+     python3 -c "import json,sys; print(json.load(sys.stdin)['data']['result'][0]['value'][1])")
 
 if [ "$UP" != "1" ]; then
   echo "ALERT: critical-service is down!"
@@ -414,7 +441,7 @@ QUERIES=(
 
 for query in "${QUERIES[@]}"; do
   echo "Query: $query"
-  gcx metrics query $DS_UID "$query" --from now-5m --to now -o graph
+  gcx metrics query -d $DS_UID "$query" --from now-5m --to now -o graph
   echo "---"
 done
 ```
@@ -423,11 +450,11 @@ done
 
 ```bash
 # Export query results to file
-gcx metrics query <uid> 'cpu_usage' --from now-24h --to now --step 1m -o json > cpu-data.json
+gcx metrics query -d <uid> 'cpu_usage' --from now-24h --to now --step 1m -o json > cpu-data.json
 
-# Convert to CSV (using jq)
-gcx metrics query <uid> 'up' -o json | \
-  jq -r '.data.result[] | [.metric.job, .value[0], .value[1]] | @csv' > results.csv
+# Convert to CSV
+gcx metrics query -d <uid> 'up' -o json 2>/dev/null | \
+  python3 -c "import json,sys,csv; w=csv.writer(sys.stdout); data=json.load(sys.stdin); [w.writerow([r['metric'].get('job',''),r['value'][0],r['value'][1]]) for r in data['data']['result']]" > results.csv
 ```
 
 ## Performance Tips
@@ -437,27 +464,27 @@ gcx metrics query <uid> 'up' -o json | \
 1. **Use specific label filters**: More specific = faster queries
 ```bash
 # Slow
-gcx metrics query <uid> 'http_requests_total'
+gcx metrics query -d <uid> 'http_requests_total'
 
 # Fast
-gcx metrics query <uid> 'http_requests_total{job="api",status="200"}'
+gcx metrics query -d <uid> 'http_requests_total{job="api",status="200"}'
 ```
 
 2. **Choose appropriate range selectors**:
 ```bash
 # For rate queries, match range to step
-gcx metrics query <uid> 'rate(requests[5m])' --step 5m
+gcx metrics query -d <uid> 'rate(requests[5m])' --step 5m
 
 # Don't use huge ranges for instant queries
-gcx metrics query <uid> 'rate(requests[5m])'  # Good
-gcx metrics query <uid> 'rate(requests[1h])'  # Usually unnecessary
+gcx metrics query -d <uid> 'rate(requests[5m])'  # Good
+gcx metrics query -d <uid> 'rate(requests[1h])'  # Usually unnecessary
 ```
 
 3. **Limit time ranges**:
 ```bash
 # Query only what you need
-gcx metrics query <uid> 'up' --from now-1h --to now  # Good
-gcx metrics query <uid> 'up' --from now-30d --to now  # Slow
+gcx metrics query -d <uid> 'up' --from now-1h --to now  # Good
+gcx metrics query -d <uid> 'up' --from now-30d --to now  # Slow
 ```
 
 ### Loki Performance
@@ -465,17 +492,17 @@ gcx metrics query <uid> 'up' --from now-30d --to now  # Slow
 1. **Use indexed labels for filtering**:
 ```bash
 # Fast (uses indexed labels)
-gcx logs query <loki-uid> '{job="varlogs",namespace="prod"}'
+gcx logs query -d <loki-uid> '{job="varlogs",namespace="prod"}'
 
 # Slow (line filter, not indexed)
-gcx logs query <loki-uid> '{job="varlogs"} |= "namespace:prod"'
+gcx logs query -d <loki-uid> '{job="varlogs"} |= "namespace:prod"'
 ```
 
 2. **Limit log queries**:
 ```bash
 # The default limit is 1000 lines
 # For production, consider increasing or narrowing time range
-gcx logs query <loki-uid> '{job="varlogs"}' --from now-5m --to now
+gcx logs query -d <loki-uid> '{job="varlogs"}' --from now-5m --to now
 ```
 
 ### Querying at Scale
@@ -484,12 +511,12 @@ Loki metric queries (`rate()`, `count_over_time()`, etc.) produce one series per
 
 ```bash
 # BAD — one series per pod/namespace/level/... combination
-gcx logs query <loki-uid> 'count_over_time({job="app"} [5m])'
+gcx logs query -d <loki-uid> 'count_over_time({job="app"} [5m])'
 
 # GOOD — aggregate down to what you need
-gcx logs query <loki-uid> 'sum(count_over_time({job="app"} [5m]))'
-gcx logs query <loki-uid> 'sum by(level) (count_over_time({job="app"} | json [5m]))'
-gcx logs query <loki-uid> 'topk(10, sum by(pod) (rate({job="app"} [5m])))'
+gcx logs query -d <loki-uid> 'sum(count_over_time({job="app"} [5m]))'
+gcx logs query -d <loki-uid> 'sum by(level) (count_over_time({job="app"} | json [5m]))'
+gcx logs query -d <loki-uid> 'topk(10, sum by(pod) (rate({job="app"} [5m])))'
 ```
 
 Rule of thumb: if your query uses `rate()`, `count_over_time()`, or `bytes_over_time()`, wrap it with `sum()`, `sum by(label)`, or `topk()`.
@@ -516,14 +543,14 @@ Common mistakes:
 
 ```bash
 # Check if services are up
-gcx metrics query <uid> 'up{job="critical-service"}' | grep "1"
+gcx metrics query -d <uid> 'up{job="critical-service"}' | grep "1"
 ```
 
 ### Error Rate
 
 ```bash
 # HTTP error rate
-gcx metrics query <uid> 'rate(http_requests_total{status=~"5.."}[5m])' \
+gcx metrics query -d <uid> 'rate(http_requests_total{status=~"5.."}[5m])' \
   --from now-1h --to now --step 1m -o graph
 ```
 
@@ -531,14 +558,14 @@ gcx metrics query <uid> 'rate(http_requests_total{status=~"5.."}[5m])' \
 
 ```bash
 # Memory usage by pod
-gcx metrics query <uid> 'container_memory_usage_bytes{namespace="production"}' -o graph
+gcx metrics query -d <uid> 'container_memory_usage_bytes{namespace="production"}' -o graph
 ```
 
 ### Log Analysis
 
 ```bash
 # Count errors in last hour
-gcx logs query <loki-uid> \
+gcx logs query -d <loki-uid> \
   'count_over_time({job="app"} |= "error" [1h])'
 ```
 
@@ -546,6 +573,12 @@ gcx logs query <loki-uid> \
 
 ```bash
 # Compare current vs 24h ago
-gcx metrics query <uid> 'rate(requests[5m])' --from now-1h --to now -o json > now.json
-gcx metrics query <uid> 'rate(requests[5m])' --from now-25h --to now-24h -o json > yesterday.json
+gcx metrics query -d <uid> 'rate(requests[5m])' --from now-1h --to now -o json > now.json
+gcx metrics query -d <uid> 'rate(requests[5m])' --from now-25h --to now-24h -o json > yesterday.json
 ```
+
+## Tempo / TraceQL Patterns
+
+For TraceQL query syntax, `traces query` vs `traces get`, attribute scoping
+rules, and common trace search patterns, see
+[`traceql-patterns.md`](traceql-patterns.md).

@@ -23,6 +23,8 @@ type FrontendSettings struct {
 	BuildInfo BuildInfo `json:"buildInfo"`
 }
 
+const frontendSettingsPath = "/api/frontend/settings"
+
 // FetchAnonymousSettings performs an unauthenticated GET of /api/frontend/settings
 // against baseURL, used for pre-auth target detection. When httpClient is nil it
 // falls back to httputils.NewDefaultClient (so --log-http-payload is honoured).
@@ -31,7 +33,7 @@ type FrontendSettings struct {
 // Errors are returned as-is; callers are responsible for deciding how to classify
 // them (e.g., mapping a non-200 status to TargetUnknown).
 func FetchAnonymousSettings(ctx context.Context, baseURL string, httpClient *http.Client) (*FrontendSettings, error) {
-	settingsURL := strings.TrimSuffix(baseURL, "/") + "/api/frontend/settings"
+	settingsURL := strings.TrimSuffix(baseURL, "/") + frontendSettingsPath
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, settingsURL, nil)
 	if err != nil {
@@ -53,7 +55,7 @@ func FetchAnonymousSettings(ctx context.Context, baseURL string, httpClient *htt
 
 	var settings FrontendSettings
 	if err := json.NewDecoder(resp.Body).Decode(&settings); err != nil {
-		return nil, fmt.Errorf("decoding /api/frontend/settings response: %w", err)
+		return nil, fmt.Errorf("decoding %s response: %w", frontendSettingsPath, err)
 	}
 
 	return &settings, nil

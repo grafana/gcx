@@ -113,7 +113,7 @@ func buildCommentsMap(typesInputDir string) (map[string]typeComments, error) {
 
 func discoverEnvVars(typeDef reflect.Type, typesCommentsMap map[string]typeComments, envVarMap map[string]string) {
 	switch typeDef.Kind() {
-	case reflect.Ptr:
+	case reflect.Pointer:
 		discoverEnvVars(typeDef.Elem(), typesCommentsMap, envVarMap)
 	case reflect.Slice:
 		discoverEnvVars(typeDef.Elem(), typesCommentsMap, envVarMap)
@@ -130,7 +130,7 @@ func discoverEnvVars(typeDef reflect.Type, typesCommentsMap map[string]typeComme
 				envVarMap[envName] = comments.Fields[field.Name]
 			}
 
-			if fieldKind == reflect.Ptr {
+			if fieldKind == reflect.Pointer {
 				fieldKind = field.Type.Elem().Kind()
 			}
 

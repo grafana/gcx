@@ -697,6 +697,33 @@ func TestTypedCRUD_UpdateDryRun(t *testing.T) {
 	})
 }
 
+func TestTypedCRUD_DeleteDryRun(t *testing.T) {
+	deleteCalled := false
+	crud := newWidgetCRUD(nil)
+	crud.DeleteFn = func(_ context.Context, _ string) error {
+		deleteCalled = true
+		return nil
+	}
+
+	a := crud.AsAdapter()
+
+	t.Run("skips DeleteFn when DryRun is set", func(t *testing.T) {
+		deleteCalled = false
+		err := a.Delete(t.Context(), "w-target", metav1.DeleteOptions{
+			DryRun: []string{metav1.DryRunAll},
+		})
+		require.NoError(t, err)
+		assert.False(t, deleteCalled, "DeleteFn must not be called during dry run")
+	})
+
+	t.Run("calls DeleteFn without DryRun", func(t *testing.T) {
+		deleteCalled = false
+		err := a.Delete(t.Context(), "w-target", metav1.DeleteOptions{})
+		require.NoError(t, err)
+		assert.True(t, deleteCalled, "DeleteFn must be called without dry run")
+	})
+}
+
 func TestTypedCRUD_DryRunWithValidateFn(t *testing.T) {
 	t.Run("calls ValidateFn on Create dry run", func(t *testing.T) {
 		validateCalled := false

@@ -16,6 +16,17 @@ import (
 	"github.com/grafana/gcx/internal/resources/adapter"
 )
 
+const (
+	segmentsPath           = "/aggregations/rules/segments"
+	rulesPath              = "/aggregations/rules"
+	ruleByMetricFmt        = "/aggregations/rule/%s"
+	checkRulesPath         = "/aggregations/check-rules"
+	recommendationsPath    = "/aggregations/recommendations"
+	exemptionsPath         = "/v1/recommendations/exemptions"
+	exemptionByIDFmt       = exemptionsPath + "/%s"
+	segmentedExemptionPath = "/v1/recommendations/segmented_exemptions"
+)
+
 // serverError trims trailing whitespace from server response bodies so that
 // error messages don't contain stray newlines in formatted output.
 func serverError(b []byte) string {
@@ -72,7 +83,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body io.Rea
 
 // ListSegments returns all Adaptive Metrics segments.
 func (c *Client) ListSegments(ctx context.Context) ([]MetricSegment, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, "/aggregations/rules/segments", nil)
+	resp, err := c.doRequest(ctx, http.MethodGet, segmentsPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("adaptive-metrics: list segments: %w", err)
 	}
@@ -119,7 +130,7 @@ func (c *Client) CreateSegment(ctx context.Context, s *MetricSegment) (*MetricSe
 		return nil, fmt.Errorf("adaptive-metrics: create segment: marshal: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, http.MethodPost, "/aggregations/rules/segments", bytes.NewReader(data))
+	resp, err := c.doRequest(ctx, http.MethodPost, segmentsPath, bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("adaptive-metrics: create segment: %w", err)
 	}
@@ -146,7 +157,7 @@ func (c *Client) UpdateSegment(ctx context.Context, id string, s *MetricSegment)
 		return nil, fmt.Errorf("adaptive-metrics: update segment: marshal: %w", err)
 	}
 
-	path := "/aggregations/rules/segments?segment=" + url.QueryEscape(id)
+	path := segmentsPath + "?segment=" + url.QueryEscape(id)
 	resp, err := c.doRequest(ctx, http.MethodPut, path, bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("adaptive-metrics: update segment: %w", err)
@@ -168,7 +179,7 @@ func (c *Client) UpdateSegment(ctx context.Context, id string, s *MetricSegment)
 
 // DeleteSegment deletes a segment by ID. Returns 409 if the segment has dependent data.
 func (c *Client) DeleteSegment(ctx context.Context, id string) error {
-	path := "/aggregations/rules/segments?segment=" + url.QueryEscape(id)
+	path := segmentsPath + "?segment=" + url.QueryEscape(id)
 	resp, err := c.doRequest(ctx, http.MethodDelete, path, nil)
 	if err != nil {
 		return fmt.Errorf("adaptive-metrics: delete segment: %w", err)
@@ -194,7 +205,7 @@ func (c *Client) DeleteSegment(ctx context.Context, id string) error {
 // ListExemptions returns all exemptions, optionally scoped to a segment.
 // The API wraps results in {"result": [...]}.
 func (c *Client) ListExemptions(ctx context.Context, segment string) ([]MetricExemption, error) {
-	path := "/v1/recommendations/exemptions"
+	path := exemptionsPath
 	if segment != "" {
 		path += "?segment=" + url.QueryEscape(segment)
 	}
@@ -226,7 +237,7 @@ func (c *Client) ListExemptions(ctx context.Context, segment string) ([]MetricEx
 
 // ListSegmentedExemptions returns all exemptions grouped by segment.
 func (c *Client) ListSegmentedExemptions(ctx context.Context) ([]ExemptionsBySegmentEntry, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, "/v1/recommendations/segmented_exemptions", nil)
+	resp, err := c.doRequest(ctx, http.MethodGet, segmentedExemptionPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("adaptive-metrics: list segmented exemptions: %w", err)
 	}
@@ -252,7 +263,7 @@ func (c *Client) ListSegmentedExemptions(ctx context.Context) ([]ExemptionsBySeg
 // GetExemption returns a single exemption by ID, optionally scoped to a segment.
 // Returns ErrExemptionNotFound on 404.
 func (c *Client) GetExemption(ctx context.Context, id, segment string) (*MetricExemption, error) {
-	path := "/v1/recommendations/exemptions/" + url.PathEscape(id)
+	path := fmt.Sprintf(exemptionByIDFmt, url.PathEscape(id))
 	if segment != "" {
 		path += "?segment=" + url.QueryEscape(segment)
 	}
@@ -286,7 +297,7 @@ func (c *Client) GetExemption(ctx context.Context, id, segment string) (*MetricE
 
 // CreateExemption creates a new exemption, optionally scoped to a segment.
 func (c *Client) CreateExemption(ctx context.Context, e *MetricExemption, segment string) (*MetricExemption, error) {
-	path := "/v1/recommendations/exemptions"
+	path := exemptionsPath
 	if segment != "" {
 		path += "?segment=" + url.QueryEscape(segment)
 	}
@@ -323,7 +334,7 @@ func (c *Client) CreateExemption(ctx context.Context, e *MetricExemption, segmen
 // UpdateExemption updates an existing exemption. The server returns an empty body on success,
 // so the input exemption (with ID set) is returned.
 func (c *Client) UpdateExemption(ctx context.Context, id string, e *MetricExemption, segment string) (*MetricExemption, error) {
-	path := "/v1/recommendations/exemptions/" + url.PathEscape(id)
+	path := fmt.Sprintf(exemptionByIDFmt, url.PathEscape(id))
 	if segment != "" {
 		path += "?segment=" + url.QueryEscape(segment)
 	}
@@ -354,7 +365,7 @@ func (c *Client) UpdateExemption(ctx context.Context, id string, e *MetricExempt
 
 // DeleteExemption soft-deletes an exemption, optionally scoped to a segment.
 func (c *Client) DeleteExemption(ctx context.Context, id, segment string) error {
-	path := "/v1/recommendations/exemptions/" + url.PathEscape(id)
+	path := fmt.Sprintf(exemptionByIDFmt, url.PathEscape(id))
 	if segment != "" {
 		path += "?segment=" + url.QueryEscape(segment)
 	}
@@ -375,7 +386,7 @@ func (c *Client) DeleteExemption(ctx context.Context, id, segment string) error 
 
 // ListRules returns all aggregation rules and the current ETag.
 func (c *Client) ListRules(ctx context.Context, segment string) ([]MetricRule, string, error) {
-	path := "/aggregations/rules"
+	path := rulesPath
 	if segment != "" {
 		path += "?segment=" + url.QueryEscape(segment)
 	}
@@ -405,7 +416,7 @@ func (c *Client) ListRules(ctx context.Context, segment string) ([]MetricRule, s
 // Returns ErrRuleNotFound if the rule does not exist.
 // Note: mutations require the global rules ETag from ListRules, not a per-rule ETag.
 func (c *Client) GetRule(ctx context.Context, metric, segment string) (MetricRule, error) {
-	path := "/aggregations/rule/" + url.PathEscape(metric)
+	path := fmt.Sprintf(ruleByMetricFmt, url.PathEscape(metric))
 	if segment != "" {
 		path += "?segment=" + url.QueryEscape(segment)
 	}
@@ -436,7 +447,7 @@ func (c *Client) GetRule(ctx context.Context, metric, segment string) (MetricRul
 // The etag should be the current rules ETag from ListRules — the API requires
 // If-Match even for creates against the individual rule endpoint.
 func (c *Client) CreateRule(ctx context.Context, rule MetricRule, etag, segment string) (string, error) {
-	path := "/aggregations/rule/" + url.PathEscape(rule.Metric)
+	path := fmt.Sprintf(ruleByMetricFmt, url.PathEscape(rule.Metric))
 	if segment != "" {
 		path += "?segment=" + url.QueryEscape(segment)
 	}
@@ -476,7 +487,7 @@ func (c *Client) CreateRule(ctx context.Context, rule MetricRule, etag, segment 
 // UpdateRule updates an existing aggregation rule using the provided ETag.
 // Returns ErrPreconditionFailed on a 412 conflict.
 func (c *Client) UpdateRule(ctx context.Context, rule MetricRule, etag, segment string) (string, error) {
-	path := "/aggregations/rule/" + url.PathEscape(rule.Metric)
+	path := fmt.Sprintf(ruleByMetricFmt, url.PathEscape(rule.Metric))
 	if segment != "" {
 		path += "?segment=" + url.QueryEscape(segment)
 	}
@@ -514,7 +525,7 @@ func (c *Client) UpdateRule(ctx context.Context, rule MetricRule, etag, segment 
 // DeleteRule deletes an aggregation rule using the provided ETag.
 // Returns ErrPreconditionFailed on a 412 conflict.
 func (c *Client) DeleteRule(ctx context.Context, metric, etag, segment string) error {
-	path := "/aggregations/rule/" + url.PathEscape(metric)
+	path := fmt.Sprintf(ruleByMetricFmt, url.PathEscape(metric))
 	if segment != "" {
 		path += "?segment=" + url.QueryEscape(segment)
 	}
@@ -545,7 +556,7 @@ func (c *Client) DeleteRule(ctx context.Context, metric, etag, segment string) e
 
 // SyncRules replaces all aggregation rules using the given ETag for optimistic concurrency.
 func (c *Client) SyncRules(ctx context.Context, rules []MetricRule, etag, segment string) error {
-	path := "/aggregations/rules"
+	path := rulesPath
 	if segment != "" {
 		path += "?segment=" + url.QueryEscape(segment)
 	}
@@ -584,7 +595,7 @@ func (c *Client) SyncRules(ctx context.Context, rules []MetricRule, etag, segmen
 // ValidateRules validates a set of rules against the API.
 // Returns a list of validation error strings on failure.
 func (c *Client) ValidateRules(ctx context.Context, rules []MetricRule, segment string) ([]string, error) {
-	path := "/aggregations/check-rules"
+	path := checkRulesPath
 	if segment != "" {
 		path += "?segment=" + url.QueryEscape(segment)
 	}
@@ -633,7 +644,7 @@ func (c *Client) ListRecommendations(ctx context.Context, segment string, action
 		params.Add("action", a)
 	}
 
-	resp, err := c.doRequest(ctx, http.MethodGet, "/aggregations/recommendations?"+params.Encode(), nil)
+	resp, err := c.doRequest(ctx, http.MethodGet, recommendationsPath+"?"+params.Encode(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("adaptive-metrics: list recommendations: %w", err)
 	}
@@ -661,7 +672,7 @@ func (c *Client) ListRecommendedRules(ctx context.Context, segment string) ([]Me
 		params.Set("segment", segment)
 	}
 
-	resp, err := c.doRequest(ctx, http.MethodGet, "/aggregations/recommendations?"+params.Encode(), nil)
+	resp, err := c.doRequest(ctx, http.MethodGet, recommendationsPath+"?"+params.Encode(), nil)
 	if err != nil {
 		return nil, "", fmt.Errorf("adaptive-metrics: list recommended rules: %w", err)
 	}

@@ -32,7 +32,7 @@ Every command works identically for humans and agents. Agent mode changes defaul
 
 | Aspect | Human mode | Agent mode |
 |--------|-----------|------------|
-| Default output | `text` (table) | `json` |
+| Default output | `text` (table) | `agents` (compact JSON with spill) |
 | Colors | On (TTY) | Off |
 | Truncation | On (TTY) | Off |
 | Prompts | Interactive | Auto-approved |
@@ -58,7 +58,7 @@ Default formats by command type:
 | `list`, `get` | `text` (table) | Human-scannable |
 | `config view` | `yaml` | Config is YAML-native |
 | `push`, `pull`, `delete` | Status messages | Operations, not data |
-| Agent mode | `json` | Machine-parseable |
+| Agent mode | `agents` | Compact JSON with temp-file spill |
 
 The `--json field1,field2` flag selects specific fields. `--json ?` discovers available field paths.
 
@@ -134,7 +134,7 @@ See [docs/design/exit-codes.md](docs/design/exit-codes.md) for implementation wi
 
 - **Idempotent by default**: `push` is create-or-update. Safe to run repeatedly.
 - **Dry-run available**: `push` and `delete` accept `--dry-run`.
-- **Prompt before destructive ops**: `delete` prompts unless `--yes`/`-y` or `GCX_AUTO_APPROVE`.
+- **Prompt before destructive ops**: `delete` prompts unless `--force` or `GCX_AUTO_APPROVE`. Agent mode auto-approves.
 - **No prompt for reversible ops**: push, pull, config changes do not prompt.
 
 See [docs/design/safety.md](docs/design/safety.md) for implementation patterns and flag precedence.

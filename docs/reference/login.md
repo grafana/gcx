@@ -57,7 +57,7 @@ For on-premises instances, gcx defaults the organization ID to 1 if you do not s
 
 ### Grafana Cloud product APIs
 
-Commands under `gcx synth`, `gcx k6`, `gcx irm`, `gcx slo`, `gcx fleet`, and other Cloud product surfaces require a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/) in addition to Grafana auth.
+Commands under `gcx sm`, `gcx k6`, `gcx irm`, `gcx slo`, `gcx fleet`, and other Cloud product surfaces require a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/) in addition to Grafana auth.
 
 **Provide it at login:**
 

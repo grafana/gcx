@@ -19,17 +19,31 @@ import (
 const pluginResourcePath = "/api/plugins/grafana-asserts-app/resources"
 
 const (
-	statusPath       = pluginResourcePath + "/asserts/api-server/v1/stack/status"
-	entitiesPath     = pluginResourcePath + "/asserts/api-server/v1/entity/info"
-	entityTypesPath  = pluginResourcePath + "/asserts/api-server/v1/entity_type"
-	scopesPath       = pluginResourcePath + "/asserts/api-server/v1/entity_scope"
-	assertionsPath   = pluginResourcePath + "/asserts/api-server/v1/assertions"
-	searchPath       = pluginResourcePath + "/asserts/api-server/v1/search"
-	rulesPath        = pluginResourcePath + "/asserts/api-server/v1/config/prom-rules/"
-	suppressionPath  = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alert"
-	suppressionsPath = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alerts"
-	entityLookupPath = pluginResourcePath + "/asserts/api-server/v1/entity"
-	v2ConfigPath     = pluginResourcePath + "/asserts/api-server/v2/config"
+	statusPath           = pluginResourcePath + "/asserts/api-server/v1/stack/status"
+	entitiesPath         = pluginResourcePath + "/asserts/api-server/v1/entity/info"
+	entityTypesPath      = pluginResourcePath + "/asserts/api-server/v1/entity_type"
+	entityCountPath      = entityTypesPath + "/count"
+	scopesPath           = pluginResourcePath + "/asserts/api-server/v1/entity_scope"
+	assertionsPath       = pluginResourcePath + "/asserts/api-server/v1/assertions"
+	assertMetricPath     = assertionsPath + "/entity-metric"
+	assertLLMPath        = assertionsPath + "/llm-summary"
+	sourceMetricPath     = pluginResourcePath + "/asserts/api-server/v1/assertion/source-metrics"
+	searchPath           = pluginResourcePath + "/asserts/api-server/v1/search"
+	searchAssertPath     = searchPath + "/assertions"
+	searchSamplePath     = searchPath + "/sample"
+	insightSearchPath    = pluginResourcePath + "/asserts/api-server/v1/assertions/search"
+	rulesPath            = pluginResourcePath + "/asserts/api-server/v1/config/prom-rules"
+	ruleByNameFmt        = rulesPath + "/%s"
+	modelRulesPath       = pluginResourcePath + "/asserts/api-server/v1/config/model-rules/"
+	suppressionPath      = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alert"
+	suppressionByNameFmt = suppressionPath + "/%s"
+	suppressionsPath     = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alerts"
+	entityLookupPath     = pluginResourcePath + "/asserts/api-server/v1/entity"
+	v2ConfigPath         = pluginResourcePath + "/asserts/api-server/v2/config"
+	v2LogConfigPath      = v2ConfigPath + "/log"
+	v2TraceConfigPath    = v2ConfigPath + "/trace"
+	v2ProfileConfigPath  = v2ConfigPath + "/profile"
+	v2RelabelRulesPath   = v2ConfigPath + "/relabel-rules/prologue"
 )
 
 // Client is an HTTP client for the Knowledge Graph (Asserts) API.
@@ -208,7 +222,7 @@ func (c *Client) UploadPromRules(ctx context.Context, yamlContent string) error 
 
 // UploadModelRules uploads model rules configuration.
 func (c *Client) UploadModelRules(ctx context.Context, yamlContent string) error {
-	return c.doYAML(ctx, http.MethodPut, pluginResourcePath+"/asserts/api-server/v1/config/model-rules/", yamlContent)
+	return c.doYAML(ctx, http.MethodPut, modelRulesPath, yamlContent)
 }
 
 // Suppression represents a single disabled-alert configuration entry.
@@ -232,7 +246,7 @@ func (c *Client) UpsertSuppression(ctx context.Context, s Suppression) error {
 // DeleteSuppression deletes a single suppression by name.
 func (c *Client) DeleteSuppression(ctx context.Context, name string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
-		c.host+suppressionPath+"/"+url.PathEscape(name), nil)
+		c.host+fmt.Sprintf(suppressionByNameFmt, url.PathEscape(name)), nil)
 	if err != nil {
 		return fmt.Errorf("kg: create request: %w", err)
 	}
@@ -258,7 +272,7 @@ func (c *Client) GetSuppressions(ctx context.Context) (*Suppressions, error) {
 
 // UploadRelabelRules uploads relabel rules configuration.
 func (c *Client) UploadRelabelRules(ctx context.Context, yamlContent string) error {
-	return c.doYAML(ctx, http.MethodPut, pluginResourcePath+"/asserts/api-server/v2/config/relabel-rules/prologue", yamlContent)
+	return c.doYAML(ctx, http.MethodPut, v2RelabelRulesPath, yamlContent)
 }
 
 // ---------------------------------------------------------------------------
@@ -325,17 +339,14 @@ func (c *Client) LookupEntity(ctx context.Context, entityType, name string, scop
 	return &result, nil
 }
 
-// CountEntityTypes retrieves entity type counts for the last hour.
-func (c *Client) CountEntityTypes(ctx context.Context) (map[string]int64, error) {
-	now := time.Now()
+// CountEntityTypes retrieves entity type counts for the given time window and scope.
+func (c *Client) CountEntityTypes(ctx context.Context, startMs, endMs int64, sc *ScopeCriteria) (map[string]int64, error) {
 	body := EntityCountRequest{
-		TimeCriteria: &TimeCriteria{
-			Start: now.Add(-1 * time.Hour).UnixMilli(),
-			End:   now.UnixMilli(),
-		},
+		TimeCriteria:  &TimeCriteria{Start: startMs, End: endMs},
+		ScopeCriteria: sc,
 	}
 	var result map[string]int64
-	if err := c.postJSON(ctx, entityTypesPath+"/count", body, &result); err != nil {
+	if err := c.postJSON(ctx, entityCountPath, body, &result); err != nil {
 		return nil, fmt.Errorf("kg: count entity types: %w", err)
 	}
 	return result, nil
@@ -356,40 +367,10 @@ func (c *Client) ListEntityScopes(ctx context.Context) (map[string][]string, err
 // Assertions operations
 // ---------------------------------------------------------------------------
 
-// QueryAssertions queries assertions for a given time range and filters.
-func (c *Client) QueryAssertions(ctx context.Context, req AssertionsRequest) ([]AssertionTimeline, error) {
-	var result []AssertionTimeline
-	if err := c.postJSON(ctx, assertionsPath, req, &result); err != nil {
-		return nil, fmt.Errorf("kg: query assertions: %w", err)
-	}
-	if result == nil {
-		return []AssertionTimeline{}, nil
-	}
-	return result, nil
-}
-
-// AssertionsSummary returns a summary of assertions for a given time range and filters.
-func (c *Client) AssertionsSummary(ctx context.Context, req AssertionsRequest) (*AssertionSummary, error) {
-	var result AssertionSummary
-	if err := c.postJSON(ctx, assertionsPath+"/summary", req, &result); err != nil {
-		return nil, fmt.Errorf("kg: assertions summary: %w", err)
-	}
-	return &result, nil
-}
-
-// AssertionsGraph queries assertions with graph topology.
-func (c *Client) AssertionsGraph(ctx context.Context, req AssertionsRequest) (*AssertionsGraphResponse, error) {
-	var result AssertionsGraphResponse
-	if err := c.postJSON(ctx, assertionsPath+"/graph", req, &result); err != nil {
-		return nil, fmt.Errorf("kg: assertions graph: %w", err)
-	}
-	return &result, nil
-}
-
 // AssertionEntityMetric retrieves metric data for a specific assertion on an entity.
 func (c *Client) AssertionEntityMetric(ctx context.Context, req EntityMetricRequest) (*EntityMetricResponse, error) {
 	var result EntityMetricResponse
-	if err := c.postJSON(ctx, assertionsPath+"/entity-metric", req, &result); err != nil {
+	if err := c.postJSON(ctx, assertMetricPath, req, &result); err != nil {
 		return nil, fmt.Errorf("kg: assertion entity metric: %w", err)
 	}
 	return &result, nil
@@ -398,7 +379,7 @@ func (c *Client) AssertionEntityMetric(ctx context.Context, req EntityMetricRequ
 // AssertionSourceMetrics retrieves source metrics for a specific assertion.
 func (c *Client) AssertionSourceMetrics(ctx context.Context, req SourceMetricsRequest) ([]SourceMetricsResponse, error) {
 	var result []SourceMetricsResponse
-	if err := c.postJSON(ctx, pluginResourcePath+"/asserts/api-server/v1/assertion/source-metrics", req, &result); err != nil {
+	if err := c.postJSON(ctx, sourceMetricPath, req, &result); err != nil {
 		return nil, fmt.Errorf("kg: assertion source metrics: %w", err)
 	}
 	return result, nil
@@ -408,30 +389,64 @@ func (c *Client) AssertionSourceMetrics(ctx context.Context, req SourceMetricsRe
 // Search operations
 // ---------------------------------------------------------------------------
 
+// SearchPage is one page of entity search results plus the backend's
+// pagination signals. LastPage is true when no further pages exist;
+// MaxLimitHit is true when the backend's per-page result cap was reached
+// (i.e. the page is truncated and a subsequent --page would return more).
+type SearchPage struct {
+	Entities    []SearchResult
+	PageNum     int
+	LastPage    bool
+	MaxLimitHit bool
+}
+
 // Search searches for entities matching the given request.
-func (c *Client) Search(ctx context.Context, req SearchRequest) ([]SearchResult, error) {
+func (c *Client) Search(ctx context.Context, req SearchRequest) (SearchPage, error) {
 	var wrapper struct {
 		Data struct {
-			Entities []SearchResult `json:"entities"`
+			Entities                 []SearchResult `json:"entities"`
+			PageNum                  int            `json:"pageNum"`
+			LastPage                 bool           `json:"lastPage"`
+			SearchResultsMaxLimitHit bool           `json:"searchResultsMaxLimitHit"`
 		} `json:"data"`
 	}
 	if err := c.postJSON(ctx, searchPath, req, &wrapper); err != nil {
-		return nil, fmt.Errorf("kg: search: %w", err)
+		return SearchPage{}, fmt.Errorf("kg: search: %w", err)
 	}
-	if wrapper.Data.Entities == nil {
-		return []SearchResult{}, nil
+	entities := wrapper.Data.Entities
+	if entities == nil {
+		entities = []SearchResult{}
 	}
-	return wrapper.Data.Entities, nil
+	return SearchPage{
+		Entities:    entities,
+		PageNum:     wrapper.Data.PageNum,
+		LastPage:    wrapper.Data.LastPage,
+		MaxLimitHit: wrapper.Data.SearchResultsMaxLimitHit,
+	}, nil
 }
 
 // SearchAssertions searches for assertion timelines matching the given query.
 func (c *Client) SearchAssertions(ctx context.Context, req SearchRequest) ([]AssertionTimeline, error) {
 	var result []AssertionTimeline
-	if err := c.postJSON(ctx, searchPath+"/assertions", req, &result); err != nil {
+	if err := c.postJSON(ctx, searchAssertPath, req, &result); err != nil {
 		return nil, fmt.Errorf("kg: search assertions: %w", err)
 	}
 	if result == nil {
 		return []AssertionTimeline{}, nil
+	}
+	return result, nil
+}
+
+// SearchInsights finds entities with active assertions matching the given
+// label-matcher rules. Backed by POST /v1/assertions/search — the same endpoint
+// the Asserts UI's "Entities with Insights" panel uses.
+func (c *Client) SearchInsights(ctx context.Context, req InsightSearchRequest) ([]EntityKey, error) {
+	var result []EntityKey
+	if err := c.postJSON(ctx, insightSearchPath, req, &result); err != nil {
+		return nil, fmt.Errorf("kg: search insights: %w", err)
+	}
+	if result == nil {
+		return []EntityKey{}, nil
 	}
 	return result, nil
 }
@@ -441,7 +456,7 @@ func (c *Client) SearchSample(ctx context.Context, req SampleSearchRequest) ([]S
 	var wrapper struct {
 		Entities []SearchResult `json:"entities"`
 	}
-	if err := c.postJSON(ctx, searchPath+"/sample", req, &wrapper); err != nil {
+	if err := c.postJSON(ctx, searchSamplePath, req, &wrapper); err != nil {
 		return nil, fmt.Errorf("kg: search sample: %w", err)
 	}
 	if wrapper.Entities == nil {
@@ -474,7 +489,7 @@ func (c *Client) FetchGraphSchema(ctx context.Context, startMs, endMs int64) (Gr
 // FetchLogConfigs fetches log drilldown configs from the v2 API.
 func (c *Client) FetchLogConfigs(ctx context.Context) (LogConfigsResponse, error) {
 	var resp LogConfigsResponse
-	if err := c.getJSON(ctx, v2ConfigPath+"/log", &resp); err != nil {
+	if err := c.getJSON(ctx, v2LogConfigPath, &resp); err != nil {
 		return LogConfigsResponse{}, fmt.Errorf("kg: fetch log configs: %w", err)
 	}
 	return resp, nil
@@ -483,7 +498,7 @@ func (c *Client) FetchLogConfigs(ctx context.Context) (LogConfigsResponse, error
 // FetchTraceConfigs fetches trace drilldown configs from the v2 API.
 func (c *Client) FetchTraceConfigs(ctx context.Context) (TraceConfigsResponse, error) {
 	var resp TraceConfigsResponse
-	if err := c.getJSON(ctx, v2ConfigPath+"/trace", &resp); err != nil {
+	if err := c.getJSON(ctx, v2TraceConfigPath, &resp); err != nil {
 		return TraceConfigsResponse{}, fmt.Errorf("kg: fetch trace configs: %w", err)
 	}
 	return resp, nil
@@ -492,16 +507,31 @@ func (c *Client) FetchTraceConfigs(ctx context.Context) (TraceConfigsResponse, e
 // FetchProfileConfigs fetches profile drilldown configs from the v2 API.
 func (c *Client) FetchProfileConfigs(ctx context.Context) (ProfileConfigsResponse, error) {
 	var resp ProfileConfigsResponse
-	if err := c.getJSON(ctx, v2ConfigPath+"/profile", &resp); err != nil {
+	if err := c.getJSON(ctx, v2ProfileConfigPath, &resp); err != nil {
 		return ProfileConfigsResponse{}, fmt.Errorf("kg: fetch profile configs: %w", err)
 	}
 	return resp, nil
 }
 
+// CypherSearch runs a read-only Cypher query against the Knowledge Graph.
+func (c *Client) CypherSearch(ctx context.Context, req CypherSearchRequest) (*CypherSearchResponse, error) {
+	var result CypherSearchResponse
+	if err := c.postJSON(ctx, searchPath+"/cypher", req, &result); err != nil {
+		return nil, fmt.Errorf("kg: cypher search: %w", err)
+	}
+	if result.Entities == nil {
+		result.Entities = []CypherEntity{}
+	}
+	if result.Edges == nil {
+		result.Edges = []CypherEdge{}
+	}
+	return &result, nil
+}
+
 // LLMSummary fetches entity health data from the LLM summary endpoint.
 func (c *Client) LLMSummary(ctx context.Context, req LLMSummaryRequest) (map[string]any, error) {
 	var result map[string]any
-	if err := c.postJSON(ctx, assertionsPath+"/llm-summary", req, &result); err != nil {
+	if err := c.postJSON(ctx, assertLLMPath, req, &result); err != nil {
 		return nil, fmt.Errorf("kg: llm summary: %w", err)
 	}
 	return result, nil
@@ -530,7 +560,7 @@ func (c *Client) GetRule(ctx context.Context, name string) (*Rule, error) {
 	var wrapper struct {
 		Rules []Rule `json:"rules"`
 	}
-	if err := c.getJSON(ctx, rulesPath+name, &wrapper); err != nil {
+	if err := c.getJSON(ctx, fmt.Sprintf(ruleByNameFmt, url.PathEscape(name)), &wrapper); err != nil {
 		return nil, fmt.Errorf("kg: get rule %q: %w", name, err)
 	}
 	if len(wrapper.Rules) == 0 {

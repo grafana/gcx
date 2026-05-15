@@ -13,6 +13,13 @@ import (
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 )
 
+const (
+	probeListPath      = "/probe/list"
+	probeAddPath       = "/probe/add"
+	probeUpdatePath    = "/probe/update"
+	probeDeletePathFmt = "/probe/delete/%d"
+)
+
 // Client is an HTTP client for the Synthetic Monitoring probes API.
 type Client struct {
 	baseURL    string
@@ -44,7 +51,7 @@ type updateResponse struct {
 
 // List returns all probes visible to the authenticated tenant.
 func (c *Client) List(ctx context.Context) ([]Probe, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, "/probe/list", nil)
+	resp, err := c.doRequest(ctx, http.MethodGet, probeListPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("listing probes: %w", err)
 	}
@@ -74,7 +81,7 @@ func (c *Client) Create(ctx context.Context, probe Probe) (*CreateResponse, erro
 		return nil, fmt.Errorf("marshalling probe: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, http.MethodPost, "/probe/add", bytes.NewReader(body))
+	resp, err := c.doRequest(ctx, http.MethodPost, probeAddPath, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("creating probe: %w", err)
 	}
@@ -130,7 +137,7 @@ func (c *Client) ResetToken(ctx context.Context, probe Probe) (*Probe, error) {
 		return nil, fmt.Errorf("marshalling update request: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, http.MethodPost, "/probe/update", bytes.NewReader(body))
+	resp, err := c.doRequest(ctx, http.MethodPost, probeUpdatePath, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("resetting probe token %d: %w", probe.ID, err)
 	}
@@ -150,7 +157,7 @@ func (c *Client) ResetToken(ctx context.Context, probe Probe) (*Probe, error) {
 
 // Delete deletes a probe by ID.
 func (c *Client) Delete(ctx context.Context, id int64) error {
-	resp, err := c.doRequest(ctx, http.MethodDelete, fmt.Sprintf("/probe/delete/%d", id), nil)
+	resp, err := c.doRequest(ctx, http.MethodDelete, fmt.Sprintf(probeDeletePathFmt, id), nil)
 	if err != nil {
 		return fmt.Errorf("deleting probe %d: %w", id, err)
 	}

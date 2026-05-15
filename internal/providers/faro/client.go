@@ -17,7 +17,10 @@ import (
 )
 
 const (
-	basePath = "/api/plugin-proxy/grafana-kowalski-app/api-proxy/api/v1/app"
+	basePath               = "/api/plugin-proxy/grafana-kowalski-app/api-proxy/api/v1/app"
+	appByIDPathFmt         = basePath + "/%s"
+	sourcemapsPathFmt      = basePath + "/%s/sourcemaps"
+	sourcemapsBatchPathFmt = basePath + "/%s/sourcemaps/batch/%s"
 )
 
 // SourcemapBundle represents a sourcemap bundle from the Faro API.
@@ -79,7 +82,7 @@ func (c *Client) List(ctx context.Context) ([]FaroApp, error) {
 
 // Get retrieves a Faro app by ID.
 func (c *Client) Get(ctx context.Context, id string) (*FaroApp, error) {
-	path := fmt.Sprintf("%s/%s", basePath, url.PathEscape(id))
+	path := fmt.Sprintf(appByIDPathFmt, url.PathEscape(id))
 
 	log := logging.FromContext(ctx)
 	log.Debug("Getting Faro app", "id", id, "path", path)
@@ -178,7 +181,7 @@ func (c *Client) Create(ctx context.Context, app *FaroApp) (*FaroApp, error) {
 // Settings are stripped from the update payload due to Faro API constraints.
 // The ID is included in both URL path and body.
 func (c *Client) Update(ctx context.Context, id string, app *FaroApp) (*FaroApp, error) {
-	path := fmt.Sprintf("%s/%s", basePath, url.PathEscape(id))
+	path := fmt.Sprintf(appByIDPathFmt, url.PathEscape(id))
 
 	log := logging.FromContext(ctx)
 	log.Info("Updating Faro app", "id", id, "name", app.Name)
@@ -211,7 +214,7 @@ func (c *Client) Update(ctx context.Context, id string, app *FaroApp) (*FaroApp,
 func (c *Client) Delete(ctx context.Context, id string) error {
 	log := logging.FromContext(ctx)
 	log.Info("Deleting Faro app", "id", id)
-	path := fmt.Sprintf("%s/%s", basePath, url.PathEscape(id))
+	path := fmt.Sprintf(appByIDPathFmt, url.PathEscape(id))
 
 	_, statusCode, err := c.doRequest(ctx, http.MethodDelete, path, nil)
 	if err != nil {
@@ -241,7 +244,7 @@ func (c *Client) ListSourcemaps(ctx context.Context, appID string, limit int) ([
 	nextPage := ""
 
 	for {
-		path := fmt.Sprintf("%s/%s/sourcemaps", basePath, url.PathEscape(appID))
+		path := fmt.Sprintf(sourcemapsPathFmt, url.PathEscape(appID))
 
 		q := url.Values{}
 		q.Set("limit", strconv.Itoa(limit))
@@ -279,7 +282,7 @@ func (c *Client) ListSourcemaps(ctx context.Context, appID string, limit int) ([
 
 // DeleteSourcemaps deletes sourcemap bundles for a Faro app.
 func (c *Client) DeleteSourcemaps(ctx context.Context, appID string, bundleIDs []string) error {
-	path := fmt.Sprintf("%s/%s/sourcemaps/batch/%s", basePath, url.PathEscape(appID), strings.Join(bundleIDs, ","))
+	path := fmt.Sprintf(sourcemapsBatchPathFmt, url.PathEscape(appID), strings.Join(bundleIDs, ","))
 
 	log := logging.FromContext(ctx)
 	log.Info("Deleting sourcemap bundles", "app_id", appID, "bundle_count", len(bundleIDs))

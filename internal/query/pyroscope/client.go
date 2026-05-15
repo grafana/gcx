@@ -2,6 +2,7 @@ package pyroscope
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/queryerror"
+	"google.golang.org/protobuf/encoding/protowire"
 	"k8s.io/client-go/rest"
 )
 
@@ -53,6 +55,12 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 
 	if req.MaxNodes > 0 {
 		bodyMap["maxNodes"] = strconv.FormatInt(req.MaxNodes, 10)
+	}
+	if len(req.ProfileIDs) > 0 {
+		bodyMap["profileIdSelector"] = req.ProfileIDs
+	}
+	if req.StackTraceSelector != nil {
+		bodyMap["stackTraceSelector"] = req.StackTraceSelector
 	}
 
 	body, err := json.Marshal(bodyMap)
@@ -362,6 +370,71 @@ func (c *Client) SelectHeatmap(ctx context.Context, datasourceUID string, req Se
 	}
 
 	return &result, nil
+}
+
+// Pprof fetches a merged profile via SelectMergeProfile and returns it as a
+// gzip-compressed pprof binary, compatible with go tool pprof.
+func (c *Client) Pprof(ctx context.Context, datasourceUID string, req PprofRequest) ([]byte, error) {
+	start, end := DefaultTimeRange(req.Start, req.End)
+
+	// Encode the SelectMergeProfileRequest as binary protobuf.
+	// Field numbers from querier.v1.QuerierService/SelectMergeProfile:
+	//   1: profile_type_id (string)
+	//   2: label_selector (string)
+	//   3: start (int64, ms since epoch)
+	//   4: end (int64, ms since epoch)
+	//   5: max_nodes (int64, optional)
+	var msg []byte
+	msg = protowire.AppendTag(msg, 1, protowire.BytesType)
+	msg = protowire.AppendString(msg, req.ProfileTypeID)
+	msg = protowire.AppendTag(msg, 2, protowire.BytesType)
+	msg = protowire.AppendString(msg, req.LabelSelector)
+	msg = protowire.AppendTag(msg, 3, protowire.VarintType)
+	msg = protowire.AppendVarint(msg, uint64(start.UnixMilli()))
+	msg = protowire.AppendTag(msg, 4, protowire.VarintType)
+	msg = protowire.AppendVarint(msg, uint64(end.UnixMilli()))
+	if req.MaxNodes > 0 {
+		msg = protowire.AppendTag(msg, 5, protowire.VarintType)
+		msg = protowire.AppendVarint(msg, uint64(req.MaxNodes))
+	}
+
+	apiPath := c.buildResourcePath(datasourceUID, "querier.v1.QuerierService/SelectMergeProfile")
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewReader(msg))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/proto")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch profile: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Read one byte beyond the limit to detect truncation before gzipping.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+	if int64(len(body)) > maxResponseBytes {
+		return nil, fmt.Errorf("pprof response exceeds %d bytes", maxResponseBytes)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, queryerror.FromBody("pyroscope", "pprof", resp.StatusCode, body)
+	}
+
+	// Gzip-compress the binary proto to produce a valid pprof file.
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(body); err != nil {
+		return nil, fmt.Errorf("failed to compress profile: %w", err)
+	}
+	if err := gz.Close(); err != nil {
+		return nil, fmt.Errorf("failed to finalize profile: %w", err)
+	}
+	return buf.Bytes(), nil
 }
 
 func (c *Client) buildResourcePath(datasourceUID, resourcePath string) string {

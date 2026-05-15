@@ -100,7 +100,7 @@ Error: failed to query datasource: 404 Not Found
 4. Retry the query using the correct UID from the listing output:
 
    ```bash
-   gcx metrics query <correct-uid> '<expr>' --from now-1h --to now --step 1m -o json
+   gcx metrics query -d <correct-uid> '<expr>' --from now-1h --to now --step 1m -o json
    ```
 
 ---
@@ -153,7 +153,7 @@ Or for a range query:
 4. Broaden the time range to confirm whether data exists at all:
 
    ```bash
-   gcx metrics query <uid> '<metric>' --from now-24h --to now --step 5m -o json
+   gcx metrics query -d <uid> '<metric>' --from now-24h --to now --step 5m -o json
    ```
 
 5. Simplify the query to remove label filters and verify the base metric returns data:
@@ -161,7 +161,7 @@ Or for a range query:
    ```bash
    # Before: http_requests_total{job="api",code="500"}
    # After (simplified):
-   gcx metrics query <uid> 'http_requests_total' --from now-1h --to now --step 1m -o json
+   gcx metrics query -d <uid> 'http_requests_total' --from now-1h --to now --step 1m -o json
    ```
 
 ---
@@ -189,13 +189,13 @@ Error: failed to execute query: upstream timeout
 1. Reduce the time range to limit the number of data points:
 
    ```bash
-   gcx metrics query <uid> '<expr>' --from now-30m --to now --step 1m -o json
+   gcx metrics query -d <uid> '<expr>' --from now-30m --to now --step 1m -o json
    ```
 
 2. Increase the step interval to reduce the resolution and query load:
 
    ```bash
-   gcx metrics query <uid> '<expr>' --from now-1h --to now --step 5m -o json
+   gcx metrics query -d <uid> '<expr>' --from now-1h --to now --step 5m -o json
    ```
 
 3. Add label filters to reduce cardinality:
@@ -203,7 +203,7 @@ Error: failed to execute query: upstream timeout
    ```bash
    # Before: rate(http_requests_total[5m])
    # After (scoped):
-   gcx metrics query <uid> 'rate(http_requests_total{job="api"}[5m])' --from now-1h --to now --step 5m -o json
+   gcx metrics query -d <uid> 'rate(http_requests_total{job="api"}[5m])' --from now-1h --to now --step 5m -o json
    ```
 
 4. Check Prometheus scrape targets to confirm the datasource is healthy:
@@ -252,7 +252,7 @@ Error: bad_data: invalid parameter "query": <details>
    ```bash
    # Broken: rate(http_requests_total{job="api"[5m])
    # Fixed:
-   gcx metrics query <uid> 'rate(http_requests_total{job="api"}[5m])' --from now-1h --to now --step 1m -o json
+   gcx metrics query -d <uid> 'rate(http_requests_total{job="api"}[5m])' --from now-1h --to now --step 1m -o json
    ```
 
 2. Confirm the datasource type matches the query language. List datasources and check the `type` field:
@@ -269,7 +269,7 @@ Error: bad_data: invalid parameter "query": <details>
    # Wrong: {job='api'}
    # Wrong: {job=api}
    # Correct:
-   gcx logs query <uid> '{job="api"} |= "error"' --from now-1h --to now -o json
+   gcx logs query -d <uid> '{job="api"} |= "error"' --from now-1h --to now -o json
    ```
 
 4. For rate and increase functions, always specify the range window:
@@ -277,7 +277,7 @@ Error: bad_data: invalid parameter "query": <details>
    ```bash
    # Wrong: rate(http_requests_total{code="500"})
    # Correct:
-   gcx metrics query <uid> 'rate(http_requests_total{code="500"}[5m])' --from now-1h --to now --step 1m -o json
+   gcx metrics query -d <uid> 'rate(http_requests_total{code="500"}[5m])' --from now-1h --to now --step 1m -o json
    ```
 
 5. Use the Prometheus labels command to confirm label names and valid values before building complex queries:
@@ -286,6 +286,39 @@ Error: bad_data: invalid parameter "query": <details>
    gcx metrics labels -d <uid> -o json
    gcx metrics labels -d <uid> -l code -o json
    ```
+
+---
+
+## Failure Mode 6: "Accepts between 0 and 1 arg(s), received 2"
+
+### Error Message Pattern
+
+```
+Error: Accepts between 0 and 1 arg(s), received 2
+```
+
+### Likely Cause
+
+The datasource UID was passed as a positional argument instead of using the
+`-d` flag. Query commands accept at most one positional argument (the
+expression). The datasource must be specified with `-d <uid>`.
+
+### Corrective Action
+
+Move the datasource UID from a positional argument to the `-d` flag:
+
+```bash
+# Wrong — two positional args (UID + expression):
+gcx metrics query prometheus 'rate(http_requests_total[5m])' --from now-1h --to now
+
+# Correct — UID via -d flag:
+gcx metrics query -d prometheus 'rate(http_requests_total[5m])' --from now-1h --to now
+
+# Also correct — omit -d if a default datasource is configured:
+gcx metrics query 'rate(http_requests_total[5m])' --from now-1h --to now
+```
+
+The same pattern applies to `gcx logs query` and `gcx traces query`.
 
 ---
 
@@ -300,3 +333,4 @@ Error: bad_data: invalid parameter "query": <details>
 | Query timeout | Increase `--step`, reduce time range |
 | PromQL parse error | Check braces, quotes, and range windows |
 | Loki parse error | Check stream selector syntax and double-quoted labels |
+| "Accepts between 0 and 1 arg(s)" | Move datasource UID to `-d <uid>` flag |

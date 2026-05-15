@@ -13,7 +13,7 @@ Manage Knowledge Graph entities.
 ```
       --agent              Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
       --config string      Path to the configuration file to use
-      --context string     Name of the context to use
+      --context string     Name of the context to use (overrides current-context in config)
       --log-http-payload   Log full HTTP request/response bodies (includes headers — may expose tokens)
       --no-color           Disable color output
       --no-truncate        Disable table column truncation (auto-enabled when stdout is piped)
@@ -23,6 +23,6 @@ Manage Knowledge Graph entities.
 ### SEE ALSO
 
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
-* [gcx kg entities inspect](gcx_kg_entities_inspect.md)	 - Show detailed info, insights, and summary for a single entity.
+* [gcx kg entities inspect](gcx_kg_entities_inspect.md)	 - Show detailed info, insights, and summary for a single entity, including a link to the RCA Workbench.
 * [gcx kg entities list](gcx_kg_entities_list.md)	 - List Knowledge Graph entities for a given type.
 

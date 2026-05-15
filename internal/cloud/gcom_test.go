@@ -274,6 +274,252 @@ func TestNewGCOMClient_SchemeValidation(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// ListStacks
+// ---------------------------------------------------------------------------
+
+func TestGCOMClient_ListStacks_Success(t *testing.T) {
+	want := []cloud.StackInfo{
+		{ID: 1, Slug: "stack-a", Name: "Stack A", Status: "active", OrgSlug: "myorg"},
+		{ID: 2, Slug: "stack-b", Name: "Stack B", Status: "active", OrgSlug: "myorg"},
+	}
+
+	var capturedPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": want})
+	}))
+	defer srv.Close()
+
+	client, err := cloud.NewGCOMClient(srv.URL, "test-token")
+	if err != nil {
+		t.Fatalf("unexpected error creating client: %v", err)
+	}
+	got, err := client.ListStacks(context.Background(), "myorg")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if capturedPath != "/api/orgs/myorg/instances" {
+		t.Errorf("expected path /api/orgs/myorg/instances, got %q", capturedPath)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 stacks, got %d", len(got))
+	}
+	if got[0].Slug != "stack-a" {
+		t.Errorf("Slug[0]: got %q, want %q", got[0].Slug, "stack-a")
+	}
+}
+
+func TestGCOMClient_ListStacks_Error(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"message":"forbidden"}`))
+	}))
+	defer srv.Close()
+
+	client, err := cloud.NewGCOMClient(srv.URL, "token")
+	if err != nil {
+		t.Fatalf("unexpected error creating client: %v", err)
+	}
+	_, err = client.ListStacks(context.Background(), "myorg")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	var httpErr *cloud.GCOMHTTPError
+	if !errors.As(err, &httpErr) {
+		t.Fatalf("expected *GCOMHTTPError, got %T", err)
+	}
+	if httpErr.Status != http.StatusForbidden {
+		t.Errorf("Status: got %d, want %d", httpErr.Status, http.StatusForbidden)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// CreateStack
+// ---------------------------------------------------------------------------
+
+func TestGCOMClient_CreateStack_Success(t *testing.T) {
+	var capturedBody map[string]any
+	var capturedMethod string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedMethod = r.Method
+		_ = json.NewDecoder(r.Body).Decode(&capturedBody)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(cloud.StackInfo{
+			ID: 42, Slug: "newstack", Name: "newstack", Status: "active", RegionSlug: "us",
+		})
+	}))
+	defer srv.Close()
+
+	client, err := cloud.NewGCOMClient(srv.URL, "token")
+	if err != nil {
+		t.Fatalf("unexpected error creating client: %v", err)
+	}
+	got, err := client.CreateStack(context.Background(), cloud.CreateStackRequest{
+		Name:   "newstack",
+		Slug:   "newstack",
+		Region: "us",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if capturedMethod != http.MethodPost {
+		t.Errorf("expected POST, got %q", capturedMethod)
+	}
+	if got.Slug != "newstack" {
+		t.Errorf("Slug: got %q, want %q", got.Slug, "newstack")
+	}
+	if capturedBody["slug"] != "newstack" {
+		t.Errorf("request body slug: got %v", capturedBody["slug"])
+	}
+}
+
+func TestGCOMClient_CreateStack_Conflict(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"message":"slug already taken"}`))
+	}))
+	defer srv.Close()
+
+	client, err := cloud.NewGCOMClient(srv.URL, "token")
+	if err != nil {
+		t.Fatalf("unexpected error creating client: %v", err)
+	}
+	_, err = client.CreateStack(context.Background(), cloud.CreateStackRequest{
+		Name: "dup", Slug: "dup",
+	})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	var httpErr *cloud.GCOMHTTPError
+	if !errors.As(err, &httpErr) || httpErr.Status != http.StatusConflict {
+		t.Errorf("expected 409 GCOMHTTPError, got %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// UpdateStack
+// ---------------------------------------------------------------------------
+
+func TestGCOMClient_UpdateStack_Success(t *testing.T) {
+	var capturedPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(cloud.StackInfo{
+			ID: 42, Slug: "mystack", Description: "updated",
+		})
+	}))
+	defer srv.Close()
+
+	client, err := cloud.NewGCOMClient(srv.URL, "token")
+	if err != nil {
+		t.Fatalf("unexpected error creating client: %v", err)
+	}
+	desc := "updated"
+	got, err := client.UpdateStack(context.Background(), "mystack", cloud.UpdateStackRequest{
+		Description: &desc,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if capturedPath != "/api/instances/mystack" {
+		t.Errorf("expected path /api/instances/mystack, got %q", capturedPath)
+	}
+	if got.Description != "updated" {
+		t.Errorf("Description: got %q, want %q", got.Description, "updated")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// DeleteStack
+// ---------------------------------------------------------------------------
+
+func TestGCOMClient_DeleteStack_Success(t *testing.T) {
+	var capturedMethod string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedMethod = r.Method
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	client, err := cloud.NewGCOMClient(srv.URL, "token")
+	if err != nil {
+		t.Fatalf("unexpected error creating client: %v", err)
+	}
+	err = client.DeleteStack(context.Background(), "mystack")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if capturedMethod != http.MethodDelete {
+		t.Errorf("expected DELETE, got %q", capturedMethod)
+	}
+}
+
+func TestGCOMClient_DeleteStack_DeleteProtection(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"message":"delete protection is enabled"}`))
+	}))
+	defer srv.Close()
+
+	client, err := cloud.NewGCOMClient(srv.URL, "token")
+	if err != nil {
+		t.Fatalf("unexpected error creating client: %v", err)
+	}
+	err = client.DeleteStack(context.Background(), "mystack")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	var httpErr *cloud.GCOMHTTPError
+	if !errors.As(err, &httpErr) || httpErr.Status != http.StatusConflict {
+		t.Errorf("expected 409 GCOMHTTPError, got %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ListRegions
+// ---------------------------------------------------------------------------
+
+func TestGCOMClient_ListRegions_Success(t *testing.T) {
+	want := []cloud.Region{
+		{ID: 1, Slug: "us", Name: "GCP US Central", Description: "United States", Provider: "gcp", Status: "active"},
+		{ID: 2, Slug: "eu", Name: "GCP Belgium", Description: "Europe", Provider: "gcp", Status: "active"},
+	}
+
+	var capturedPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": want})
+	}))
+	defer srv.Close()
+
+	client, err := cloud.NewGCOMClient(srv.URL, "token")
+	if err != nil {
+		t.Fatalf("unexpected error creating client: %v", err)
+	}
+	got, err := client.ListRegions(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if capturedPath != "/api/stack-regions" {
+		t.Errorf("expected path /api/stack-regions, got %q", capturedPath)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 regions, got %d", len(got))
+	}
+	if got[0].Slug != "us" {
+		t.Errorf("Slug[0]: got %q, want %q", got[0].Slug, "us")
+	}
+	if got[1].Provider != "gcp" {
+		t.Errorf("Provider[1]: got %q, want %q", got[1].Provider, "gcp")
+	}
+}
+
 func TestGCOMClient_GetStack_NoRedirectToDifferentDomain(t *testing.T) {
 	// This server redirects to a different domain
 	redirectTarget := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -1,7 +1,6 @@
 package metrics
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -244,14 +243,14 @@ func (h *metricsHelper) recommendationsDiffCommand() *cobra.Command {
 type recommendationsApplyOpts struct {
 	All     bool
 	DryRun  bool
-	Yes     bool
+	Force   bool
 	Segment string
 }
 
 func (o *recommendationsApplyOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.All, "all", false, "Apply all recommendations (bulk)")
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Preview without applying")
-	flags.BoolVar(&o.Yes, "yes", false, "Skip confirmation prompt")
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
 	flags.StringVar(&o.Segment, "segment", "", "Segment ID")
 }
 
@@ -322,18 +321,13 @@ func applyAllRecommendations(cmd *cobra.Command, client *Client, opts *recommend
 		return nil
 	}
 
-	if !opts.Yes {
-		fmt.Fprintf(stderr, "Apply all recommendations (%d rules)? [y/N] ", len(rules))
-		reader := bufio.NewReader(cmd.InOrStdin())
-		answer, err := reader.ReadString('\n')
-		if err != nil {
-			return fmt.Errorf("read confirmation: %w", err)
-		}
-		answer = strings.TrimSpace(strings.ToLower(answer))
-		if answer != "y" && answer != "yes" {
-			cmdio.Info(stderr, "Aborted.")
-			return nil
-		}
+	proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), stderr, opts.Force,
+		fmt.Sprintf("Apply all recommendations (%d rules)?", len(rules)))
+	if err != nil {
+		return err
+	}
+	if !proceed {
+		return nil
 	}
 
 	// Use rulesVersion if available, otherwise fall back to currentEtag.
@@ -417,16 +411,13 @@ func applySelectiveRecommendations(cmd *cobra.Command, client *Client, opts *rec
 		return nil
 	}
 
-	if !opts.Yes && actionCount > 0 {
-		fmt.Fprintf(stderr, "Apply %d recommendation(s)? [y/N] ", actionCount)
-		reader := bufio.NewReader(cmd.InOrStdin())
-		answer, err := reader.ReadString('\n')
+	if actionCount > 0 {
+		proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), stderr, opts.Force,
+			fmt.Sprintf("Apply %d recommendation(s)?", actionCount))
 		if err != nil {
-			return fmt.Errorf("read confirmation: %w", err)
+			return err
 		}
-		answer = strings.TrimSpace(strings.ToLower(answer))
-		if answer != "y" && answer != "yes" {
-			cmdio.Info(stderr, "Aborted.")
+		if !proceed {
 			return nil
 		}
 	}
@@ -784,12 +775,12 @@ func (h *metricsHelper) rulesUpdateCommand() *cobra.Command {
 
 type rulesDeleteOpts struct {
 	Segment string
-	Yes     bool
+	Force   bool
 }
 
 func (o *rulesDeleteOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.Segment, "segment", "", "Segment ID")
-	flags.BoolVar(&o.Yes, "yes", false, "Skip confirmation prompt")
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
 }
 
 func (h *metricsHelper) rulesDeleteCommand() *cobra.Command {
@@ -802,18 +793,13 @@ func (h *metricsHelper) rulesDeleteCommand() *cobra.Command {
 			metric := args[0]
 			stderr := cmd.ErrOrStderr()
 
-			if !opts.Yes {
-				fmt.Fprintf(stderr, "Delete rule for %s? [y/N] ", metric)
-				reader := bufio.NewReader(cmd.InOrStdin())
-				answer, err := reader.ReadString('\n')
-				if err != nil {
-					return fmt.Errorf("read confirmation: %w", err)
-				}
-				answer = strings.TrimSpace(strings.ToLower(answer))
-				if answer != "y" && answer != "yes" {
-					cmdio.Info(stderr, "Aborted.")
-					return nil
-				}
+			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), stderr, opts.Force,
+				fmt.Sprintf("Delete rule for %s?", metric))
+			if err != nil {
+				return err
+			}
+			if !proceed {
+				return nil
 			}
 
 			ctx := cmd.Context()
@@ -1323,11 +1309,11 @@ func (h *metricsHelper) segmentsUpdateCommand() *cobra.Command {
 // segments delete
 
 type segmentsDeleteOpts struct {
-	Yes bool
+	Force bool
 }
 
 func (o *segmentsDeleteOpts) setup(flags *pflag.FlagSet) {
-	flags.BoolVar(&o.Yes, "yes", false, "Skip confirmation prompt")
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
 }
 
 func (h *metricsHelper) segmentsDeleteCommand() *cobra.Command {
@@ -1340,18 +1326,13 @@ func (h *metricsHelper) segmentsDeleteCommand() *cobra.Command {
 			id := args[0]
 			stderr := cmd.ErrOrStderr()
 
-			if !opts.Yes {
-				fmt.Fprintf(stderr, "Delete segment %s? [y/N] ", id)
-				reader := bufio.NewReader(cmd.InOrStdin())
-				answer, err := reader.ReadString('\n')
-				if err != nil {
-					return fmt.Errorf("read confirmation: %w", err)
-				}
-				answer = strings.TrimSpace(strings.ToLower(answer))
-				if answer != "y" && answer != "yes" {
-					cmdio.Info(stderr, "Aborted.")
-					return nil
-				}
+			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), stderr, opts.Force,
+				fmt.Sprintf("Delete segment %s?", id))
+			if err != nil {
+				return err
+			}
+			if !proceed {
+				return nil
 			}
 
 			ctx := cmd.Context()
@@ -1791,12 +1772,12 @@ func (h *metricsHelper) exemptionsUpdateCommand() *cobra.Command {
 
 type exemptionsDeleteOpts struct {
 	Segment string
-	Yes     bool
+	Force   bool
 }
 
 func (o *exemptionsDeleteOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.Segment, "segment", "", "Segment ID")
-	flags.BoolVar(&o.Yes, "yes", false, "Skip confirmation prompt")
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
 }
 
 func (h *metricsHelper) exemptionsDeleteCommand() *cobra.Command {
@@ -1809,18 +1790,13 @@ func (h *metricsHelper) exemptionsDeleteCommand() *cobra.Command {
 			id := args[0]
 			stderr := cmd.ErrOrStderr()
 
-			if !opts.Yes {
-				fmt.Fprintf(stderr, "Delete exemption %s? [y/N] ", id)
-				reader := bufio.NewReader(cmd.InOrStdin())
-				answer, err := reader.ReadString('\n')
-				if err != nil {
-					return fmt.Errorf("read confirmation: %w", err)
-				}
-				answer = strings.TrimSpace(strings.ToLower(answer))
-				if answer != "y" && answer != "yes" {
-					cmdio.Info(stderr, "Aborted.")
-					return nil
-				}
+			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), stderr, opts.Force,
+				fmt.Sprintf("Delete exemption %s?", id))
+			if err != nil {
+				return err
+			}
+			if !proceed {
+				return nil
 			}
 
 			ctx := cmd.Context()

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/grafana/gcx/internal/fail"
 	fleetbase "github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -179,6 +180,24 @@ func (h *fleetHelper) loadClient(ctx context.Context) (*Client, string, error) {
 // ---------------------------------------------------------------------------
 // Pipeline commands
 // ---------------------------------------------------------------------------
+
+// errPipelineManagedByInstrumentation returns a canonical *fail.DetailedError for
+// pipelines that are owned by the gcx instrumentation provider. Callers should
+// check IsManagedPipeline before invoking this helper.
+func errPipelineManagedByInstrumentation(name string) error {
+	exitCode := fail.ExitGeneralError
+	return &fail.DetailedError{
+		Summary: fmt.Sprintf("Pipeline %q is managed by gcx instrumentation", name),
+		Details: "This pipeline is owned by the gcx instrumentation provider. Direct mutation through 'gcx fleet pipelines create/update/delete' is blocked to keep declared state in sync. Pass --force to override (advanced; may cause drift).",
+		Suggestions: []string{
+			"To modify cluster-level monitoring flags: gcx instrumentation clusters configure <cluster> [--cost-metrics=...|--cluster-events=...|...]",
+			"To modify namespace-level Beyla flags: gcx instrumentation clusters apps configure <cluster> <namespace> [--tracing|--logging|...]",
+			"To unmanage a namespace: gcx instrumentation clusters apps remove <cluster> <namespace>",
+			"To unmanage the whole cluster: gcx instrumentation clusters remove <cluster>",
+		},
+		ExitCode: &exitCode,
+	}
+}
 
 func (h *fleetHelper) pipelinesCommand() *cobra.Command {
 	cmd := &cobra.Command{
@@ -368,7 +387,7 @@ func (h *fleetHelper) newPipelineCreateCommand() *cobra.Command {
 			}
 
 			if !opts.Force && IsManagedPipeline(pipeline.Name) {
-				return fmt.Errorf("pipeline %q is managed by Grafana Cloud instrumentation; use 'gcx setup instrumentation apply' to modify instrumentation config, or pass --force to override", pipeline.Name)
+				return errPipelineManagedByInstrumentation(pipeline.Name)
 			}
 
 			created, err := client.CreatePipeline(ctx, *pipeline)
@@ -406,7 +425,7 @@ func (h *fleetHelper) newPipelineUpdateCommand() *cobra.Command {
 				return err
 			}
 			if !opts.Force && IsManagedPipeline(existing.Name) {
-				return fmt.Errorf("pipeline %q is managed by Grafana Cloud instrumentation; use 'gcx setup instrumentation apply' to modify instrumentation config, or pass --force to override", existing.Name)
+				return errPipelineManagedByInstrumentation(existing.Name)
 			}
 
 			pipeline, err := readPipelineFromFile(opts.File, cmd.InOrStdin())
@@ -448,7 +467,7 @@ func (h *fleetHelper) newPipelineDeleteCommand() *cobra.Command {
 				return err
 			}
 			if !opts.Force && IsManagedPipeline(existing.Name) {
-				return fmt.Errorf("pipeline %q is managed by Grafana Cloud instrumentation; use 'gcx setup instrumentation apply' to modify instrumentation config, or pass --force to override", existing.Name)
+				return errPipelineManagedByInstrumentation(existing.Name)
 			}
 
 			if err := client.DeletePipeline(ctx, existing.ID); err != nil {
@@ -490,8 +509,8 @@ func (o *pipelineWriteOpts) Validate() error {
 	return nil
 }
 
-// managedPipelinePrefix is the name prefix used by Grafana Cloud instrumentation
-// for Beyla pipelines created via gcx setup instrumentation apply.
+// managedPipelinePrefix is the name prefix used by gcx instrumentation
+// for Beyla pipelines created via gcx instrumentation clusters apps configure.
 const managedPipelinePrefix = "beyla_k8s_appo11y_"
 
 // IsManagedPipeline reports whether a pipeline name is managed by Grafana Cloud
