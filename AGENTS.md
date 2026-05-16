@@ -71,7 +71,7 @@ cmd/gcx/
   login/        Unified login command (token + OAuth PKCE, interactive prompts)
   config/       Config management (set, use-context, view, check)
   resources/    Resource commands (get, schemas, push, pull, delete, edit, validate)
-  datasources/  Datasource commands (list, get, query, per-type subcommands via DatasourceProvider)
+  datasources/  Datasource commands (list, get, health, query, per-type subcommands via DatasourceProvider)
   providers/    Provider list command
   assistant/    Assistant commands (AI-powered investigations)
   api/          Raw API passthrough

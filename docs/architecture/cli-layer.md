@@ -58,6 +58,7 @@ gcx (root)
 │   ├── --context            [persistent: inherited from config.Options]
 │   ├── list
 │   ├── get    NAME
+│   ├── health UID           Check datasource health [-o]
 │   └── query                DATASOURCE_UID EXPR (auto-detect type) [--from] [--to] [--step] [--since] [--limit] [--profile-type] [--max-nodes] [-o]
 │
 ├── metrics                  [internal/providers/metrics/provider.go] (registered via providers.Register)
@@ -273,9 +274,10 @@ cmd/gcx/
 │   ├── onerror.go           SHARED: OnErrorMode type + --on-error flag binding
 │   └── editor.go            SHARED: interactive editor (EDITOR env var)
 ├── datasources/
-│   ├── command.go           datasources group (list, get, query)
+│   ├── command.go           datasources group (list, get, health, query)
 │   ├── list.go              datasources list
 │   ├── get.go               datasources get
+│   ├── health.go            datasources health
 │   └── query/
 │       └── generic.go       GenericCmd() — auto-detecting query (imports shared infra from internal/datasources/query/)
 ├── providers/

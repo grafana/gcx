@@ -18,6 +18,7 @@ const (
 	datasourcesPath      = "/api/datasources"
 	datasourceByUIDPath  = "/api/datasources/uid/"
 	datasourceByNamePath = "/api/datasources/name/"
+	datasourceHealthPath = "/api/datasources/uid/%s/health"
 )
 
 // Datasource holds the fields returned by the legacy Grafana datasource REST API.
@@ -94,6 +95,47 @@ func (c *Client) GetByUID(ctx context.Context, uid string) (*Datasource, error) 
 // GetByName returns the datasource with the given display name.
 func (c *Client) GetByName(ctx context.Context, name string) (*Datasource, error) {
 	return c.get(ctx, datasourceByNamePath+url.PathEscape(name), name)
+}
+
+// HealthResult holds the response from the Grafana datasource health check endpoint.
+type HealthResult struct {
+	Status  string `json:"status"`
+	Message string `json:"message"`
+}
+
+// Health checks the health of a datasource by UID.
+func (c *Client) Health(ctx context.Context, uid string) (*HealthResult, error) {
+	endpoint := c.host + fmt.Sprintf(datasourceHealthPath, url.PathEscape(uid))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check datasource health: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	// Try parsing as a health result first — the endpoint returns a valid
+	// status/message body even on non-200 codes for unhealthy datasources.
+	var result HealthResult
+	if err := json.Unmarshal(body, &result); err == nil && result.Status != "" {
+		return &result, nil
+	}
+
+	// Not a health result — return a typed API error.
+	if resp.StatusCode != http.StatusOK {
+		return nil, NewAPIError("health check datasource", uid, resp.StatusCode, body)
+	}
+
+	return nil, fmt.Errorf("failed to parse health response for datasource %q", uid)
 }
 
 func (c *Client) get(ctx context.Context, path, identifier string) (*Datasource, error) {

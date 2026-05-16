@@ -16,6 +16,7 @@ func Command() *cobra.Command {
 
 	cmd.AddCommand(listCmd())
 	cmd.AddCommand(getCmd())
+	cmd.AddCommand(healthCmd())
 	cmd.AddCommand(QueryCmd())
 
 	for _, dp := range datasources.AllProviders() {
