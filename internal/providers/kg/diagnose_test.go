@@ -3,6 +3,7 @@ package kg_test
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -715,4 +716,187 @@ func TestLabelsDiagnoseTextCodec(t *testing.T) {
 	assert.Contains(t, output, "not mapped")
 	assert.Contains(t, output, "Diagnosis")
 	assert.Contains(t, output, "1/2 checks passed")
+}
+
+// ---------------------------------------------------------------------------
+// Trace context propagation check
+// ---------------------------------------------------------------------------
+
+// promResponseHasData returns a Grafana datasource-query response with one
+// instant-value frame (count > 0). Mirrors the shape `prometheus.Client.Query`
+// expects so that `len(resp.Data.Result) > 0` evaluates to true.
+func promResponseHasData() map[string]any {
+	return map[string]any{
+		"results": map[string]any{
+			"A": map[string]any{
+				"frames": []map[string]any{
+					{
+						"schema": map[string]any{
+							"fields": []map[string]any{
+								{"name": "Time", "type": "time"},
+								{"name": "Value", "type": "number"},
+							},
+						},
+						"data": map[string]any{
+							"values": []any{
+								[]int64{1715100000000},
+								[]float64{1},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// promResponseEmpty returns a Grafana datasource-query response with no
+// frames — the shape `prometheus.Client.Query` returns when a count query
+// matches nothing.
+func promResponseEmpty() map[string]any {
+	return map[string]any{
+		"results": map[string]any{
+			"A": map[string]any{
+				"frames": []map[string]any{},
+			},
+		},
+	}
+}
+
+// promHandlerByExpr returns an httptest handler that routes the Prometheus
+// datasource POST body to one of three responses based on substrings in the
+// `expr` field. The propagation check submits three distinct queries that
+// are unambiguous by their selector — this lets us simulate the three
+// gates independently.
+func promHandlerByExpr(targetInfo, realEdges, phantomEdges map[string]any) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		expr := string(body)
+		switch {
+		case strings.Contains(expr, "traces_target_info"):
+			writeJSON(w, targetInfo)
+		case strings.Contains(expr, `client!=\"user\"`):
+			writeJSON(w, realEdges)
+		case strings.Contains(expr, `client=\"user\"`):
+			writeJSON(w, phantomEdges)
+		default:
+			// All other metric queries the diagnose pipeline issues
+			// (asserts:*, raw metric existence, edge-source gap probes,
+			// etc.) — return empty so they don't pass and clutter the
+			// result. The cases we care about are the three above.
+			writeJSON(w, promResponseEmpty())
+		}
+	}
+}
+
+// findCheckByName locates a check by exact Name match.
+func findCheckByName(checks []kg.CheckResult, name string) *kg.CheckResult {
+	for i := range checks {
+		if checks[i].Name == name {
+			return &checks[i]
+		}
+	}
+	return nil
+}
+
+func TestRunDiagnose_TracePropagationBroken(t *testing.T) {
+	kgServer := minimalKGServer()
+	defer kgServer.Close()
+
+	// Telemetry signature of broken propagation:
+	//   target_info > 0 ; real edges empty ; phantom edges > 0
+	promMux := http.NewServeMux()
+	promMux.HandleFunc("/", promHandlerByExpr(
+		promResponseHasData(), // traces_target_info
+		promResponseEmpty(),   // client!="user"
+		promResponseHasData(), // client="user"
+	))
+	promServer := httptest.NewServer(promMux)
+	defer promServer.Close()
+
+	kgClient := newTestClient(t, kgServer)
+	promClient := newTestPromClient(t, promServer)
+	scope := kg.NewTestScopeFlags("prod", "", "")
+	result := kg.RunDiagnose(t.Context(), kgClient, &scope, promClient, "test-prom-uid")
+
+	check := findCheckByName(result.Checks, "Trace context propagation")
+	require.NotNil(t, check, "expected Trace context propagation check to be present")
+	assert.Equal(t, kg.CheckFail, check.Status)
+	assert.Contains(t, check.Detail, "phantom")
+	assert.Contains(t, check.Recommendation, "traceparent")
+	assert.Contains(t, check.Recommendation, "OTEL_PYTHON_DISABLED_INSTRUMENTATIONS")
+}
+
+func TestRunDiagnose_TracePropagationHealthy(t *testing.T) {
+	kgServer := minimalKGServer()
+	defer kgServer.Close()
+
+	// Telemetry signature of healthy propagation:
+	//   target_info > 0 ; real edges > 0 ; phantom edges irrelevant
+	promMux := http.NewServeMux()
+	promMux.HandleFunc("/", promHandlerByExpr(
+		promResponseHasData(), // traces_target_info
+		promResponseHasData(), // client!="user"  — real edges present
+		promResponseEmpty(),   // client="user"   — irrelevant when real edges exist
+	))
+	promServer := httptest.NewServer(promMux)
+	defer promServer.Close()
+
+	kgClient := newTestClient(t, kgServer)
+	promClient := newTestPromClient(t, promServer)
+	scope := kg.NewTestScopeFlags("prod", "", "")
+	result := kg.RunDiagnose(t.Context(), kgClient, &scope, promClient, "test-prom-uid")
+
+	check := findCheckByName(result.Checks, "Trace context propagation")
+	assert.Nil(t, check, "Trace context propagation check should NOT appear when real edges exist")
+}
+
+func TestRunDiagnose_TracePropagationNoTelemetry(t *testing.T) {
+	kgServer := minimalKGServer()
+	defer kgServer.Close()
+
+	// No telemetry at all — earlier metric checks will surface this.
+	// The propagation check should remain silent (would otherwise
+	// double-flag the user with a misleading message).
+	promMux := http.NewServeMux()
+	promMux.HandleFunc("/", promHandlerByExpr(
+		promResponseEmpty(), // traces_target_info empty
+		promResponseEmpty(),
+		promResponseEmpty(),
+	))
+	promServer := httptest.NewServer(promMux)
+	defer promServer.Close()
+
+	kgClient := newTestClient(t, kgServer)
+	promClient := newTestPromClient(t, promServer)
+	scope := kg.NewTestScopeFlags("prod", "", "")
+	result := kg.RunDiagnose(t.Context(), kgClient, &scope, promClient, "test-prom-uid")
+
+	check := findCheckByName(result.Checks, "Trace context propagation")
+	assert.Nil(t, check, "Trace context propagation check should NOT appear when there's no telemetry at all")
+}
+
+func TestRunDiagnose_TracePropagationNoEnvSkipped(t *testing.T) {
+	kgServer := minimalKGServer()
+	defer kgServer.Close()
+
+	// Even with telemetry that would otherwise look like broken propagation,
+	// the check should skip itself when no --env scope was provided (the
+	// PromQL is per-env, so a global query would be meaningless).
+	promMux := http.NewServeMux()
+	promMux.HandleFunc("/", promHandlerByExpr(
+		promResponseHasData(),
+		promResponseEmpty(),
+		promResponseHasData(),
+	))
+	promServer := httptest.NewServer(promMux)
+	defer promServer.Close()
+
+	kgClient := newTestClient(t, kgServer)
+	promClient := newTestPromClient(t, promServer)
+	scope := kg.NewTestScopeFlags("", "", "") // no env
+	result := kg.RunDiagnose(t.Context(), kgClient, &scope, promClient, "test-prom-uid")
+
+	check := findCheckByName(result.Checks, "Trace context propagation")
+	assert.Nil(t, check, "Trace context propagation check should NOT run without an env scope")
 }
