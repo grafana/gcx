@@ -8,34 +8,39 @@ import (
 	"time"
 )
 
-// grafanaQueryResponse is the top-level wire format returned by the Grafana
+// GrafanaQueryResponse is the top-level wire format returned by the Grafana
 // datasource query API (/apis/query.grafana.app or /api/ds/query).
-type grafanaQueryResponse struct {
-	Results map[string]grafanaResult `json:"results"`
+type GrafanaQueryResponse struct {
+	Results map[string]GrafanaResult `json:"results"`
 }
 
-type grafanaResult struct {
-	Frames      []dataFrame `json:"frames"`
+// GrafanaResult represents a single result from a Grafana query.
+type GrafanaResult struct {
+	Frames      []DataFrame `json:"frames"`
 	Error       string      `json:"error,omitempty"`
 	ErrorSource string      `json:"errorSource,omitempty"`
 	Status      int         `json:"status,omitempty"`
 }
 
-type dataFrame struct {
-	Schema dataFrameSchema `json:"schema"`
-	Data   dataFrameData   `json:"data"`
+// DataFrame represents a Grafana data frame.
+type DataFrame struct {
+	Schema DataFrameSchema `json:"schema"`
+	Data   DataFrameData   `json:"data"`
 }
 
-type dataFrameSchema struct {
-	Fields []dataFrameField `json:"fields"`
+// DataFrameSchema describes the structure of a data frame.
+type DataFrameSchema struct {
+	Fields []DataFrameField `json:"fields"`
 }
 
-type dataFrameField struct {
+// DataFrameField describes a field in a data frame.
+type DataFrameField struct {
 	Name string `json:"name"`
 	Type string `json:"type"`
 }
 
-type dataFrameData struct {
+// DataFrameData contains the actual data values.
+type DataFrameData struct {
 	Values [][]any `json:"values"`
 }
 

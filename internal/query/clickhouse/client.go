@@ -117,7 +117,7 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 }
 
 func parseResponse(respBody []byte) (*QueryResponse, error) {
-	var raw grafanaQueryResponse
+	var raw GrafanaQueryResponse
 	if err := json.Unmarshal(respBody, &raw); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}

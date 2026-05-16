@@ -84,10 +84,12 @@ gcx/
 │   ├── deeplink/             # Deep link URL template registry and browser opener
 │   ├── dashboards/           # Dashboard Image Renderer client (PNG snapshots)
 │   ├── datasources/          # Datasource HTTP client (legacy REST API)
+│   │   ├── clickhouse/       # ClickHouse datasource commands (query, list-tables, describe-table, explore)
 │   │   └── query/            # Shared query CLI utils (time parsing, codecs, opts, resolve helpers)
 │   ├── query/                # Datasource query clients
 │   │   ├── prometheus/       # Prometheus HTTP client (instant + range queries)
-│   │   └── loki/             # Loki HTTP client (log + metric queries)
+│   │   ├── loki/             # Loki HTTP client (log + metric queries)
+│   │   └── clickhouse/       # ClickHouse HTTP client (SQL queries via Grafana datasource API)
 │   ├── signals/              # Shared signal command and datasource-provider mounting (metrics/logs/traces/profiles)
 │   ├── notifier/             # Skills update notifier (XDG state, throttle, message rendering)
 │   ├── secrets/              # Redaction of sensitive config fields
