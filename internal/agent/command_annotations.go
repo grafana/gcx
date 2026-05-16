@@ -60,6 +60,11 @@ var commandAnnotations = map[string]annotation{
 	"gcx datasources list":  {Cost: "small"},
 	"gcx datasources query": {Cost: "large", Hint: "Run gcx help-tree metrics (or logs, traces, profiles) to discover signal commands. Prefer gcx metrics query for PromQL, gcx logs query for LogQL, gcx traces query for TraceQL, gcx profiles query for profiling. Example: <datasource-uid> 'up' --since 1h -o json"},
 
+	// datasources clickhouse
+	"gcx datasources clickhouse query":          {Cost: "medium", Hint: "-d UID 'SELECT count() FROM events' -o json"},
+	"gcx datasources clickhouse list-tables":    {Cost: "small"},
+	"gcx datasources clickhouse describe-table": {Cost: "small", Hint: "TABLE -d UID --database default -o json"},
+
 	// dev
 	"gcx dev generate":   {Cost: "small"},
 	"gcx dev import":     {Cost: "medium", Hint: "dashboards -p ./dashboards"},
