@@ -32,5 +32,6 @@ List, inspect, and query Grafana datasources. Use top-level signal commands (met
 * [gcx datasources prometheus](gcx_datasources_prometheus.md)	 - Query Prometheus datasources
 * [gcx datasources pyroscope](gcx_datasources_pyroscope.md)	 - Query Pyroscope datasources
 * [gcx datasources query](gcx_datasources_query.md)	 - Execute a query against any datasource (auto-detects type)
+* [gcx datasources sql](gcx_datasources_sql.md)	 - Cross-datasource SQL via the dsabstraction.grafana.app API
 * [gcx datasources tempo](gcx_datasources_tempo.md)	 - Query Tempo datasources
 

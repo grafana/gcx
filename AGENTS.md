@@ -71,7 +71,7 @@ cmd/gcx/
   login/        Unified login command (token + OAuth PKCE, interactive prompts)
   config/       Config management (set, use-context, view, check)
   resources/    Resource commands (get, schemas, push, pull, delete, edit, validate)
-  datasources/  Datasource commands (list, get, query, per-type subcommands via DatasourceProvider)
+  datasources/  Datasource commands (list, get, query, per-type subcommands via DatasourceProvider; `sql` group: `sql query` for dsabstraction.grafana.app SQL, `sql schema` for abstractionSchema introspection)
   providers/    Provider list command
   assistant/    Assistant commands (AI-powered investigations)
   api/          Raw API passthrough
@@ -125,8 +125,10 @@ internal/
 ├── datasources/ Datasource HTTP client, DatasourceProvider interface + registry
 │   └── query/   Shared query CLI utils (time parsing, codecs, opts, resolve helpers — used by signal providers and GenericCmd)
 ├── query/       Datasource query clients
-│   ├── prometheus/  Prometheus HTTP query client
-│   └── loki/        Loki HTTP query client
+│   ├── prometheus/    Prometheus HTTP query client
+│   ├── loki/          Loki HTTP query client
+│   └── dsabstraction/ dsabstraction.grafana.app SQL query client (POST /apis/dsabstraction.grafana.app/v1alpha1/namespaces/{ns}/query; pushdown plan, optional cookie auth)
+├── schemads/    Schemads (abstractionSchema) protocol client for datasource plugins — FullSchema + Columns endpoints, Metadata types (Description/Unit/Custom)
 ├── queryerror/  Typed API error for datasource query failures (APIError type, New/FromBody constructors, IsParseError helper)
 ├── assistant/   Assistant client (A2A streaming, prompt, state management)
 │   ├── assistanthttp/  Base HTTP client for grafana-assistant-app plugin API

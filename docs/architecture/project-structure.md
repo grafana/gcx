@@ -87,7 +87,9 @@ gcx/
 │   │   └── query/            # Shared query CLI utils (time parsing, codecs, opts, resolve helpers)
 │   ├── query/                # Datasource query clients
 │   │   ├── prometheus/       # Prometheus HTTP client (instant + range queries)
-│   │   └── loki/             # Loki HTTP client (log + metric queries)
+│   │   ├── loki/             # Loki HTTP client (log + metric queries)
+│   │   └── dsabstraction/    # dsabstraction.grafana.app SQL query client (POST .../v1alpha1/namespaces/{ns}/query; pushdown plan, optional cookie auth)
+│   ├── schemads/             # Schemads (abstractionSchema) protocol client for datasource plugins — FullSchema + Columns endpoints, Metadata types (Description/Unit/Custom)
 │   ├── notifier/             # Skills update notifier (XDG state, throttle, message rendering)
 │   ├── secrets/              # Redaction of sensitive config fields
 │   ├── skills/               # Portable Agent Skills installer primitives (Install, Update, Bundled/InstalledBundledSkillNames)
