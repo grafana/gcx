@@ -60,6 +60,14 @@ var commandAnnotations = map[string]annotation{
 	"gcx datasources list":  {Cost: "small"},
 	"gcx datasources query": {Cost: "large", Hint: "Run gcx help-tree metrics (or logs, traces, profiles) to discover signal commands. Prefer gcx metrics query for PromQL, gcx logs query for LogQL, gcx traces query for TraceQL, gcx profiles query for profiling. Example: <datasource-uid> 'up' --since 1h -o json"},
 
+	// datasources cloudwatch
+	"gcx datasources cloudwatch query":           {Cost: "medium", Hint: "-d UID --region us-east-1 --namespace AWS/EC2 --metric CPUUtilization --since 1h -o json"},
+	"gcx datasources cloudwatch list-namespaces": {Cost: "small", Hint: "-d UID --region us-east-1 -o json"},
+	"gcx datasources cloudwatch list-metrics":    {Cost: "small", Hint: "-d UID --region us-east-1 --namespace AWS/EC2 -o json"},
+	"gcx datasources cloudwatch list-dimensions": {Cost: "small", Hint: "-d UID --region us-east-1 --namespace AWS/EC2 --metric CPUUtilization -o json"},
+	"gcx datasources cloudwatch list-regions":    {Cost: "small", Hint: "-d UID -o json"},
+	"gcx datasources cloudwatch list-accounts":   {Cost: "small", Hint: "-d UID --region us-east-1 -o json"},
+
 	// dev
 	"gcx dev generate":   {Cost: "small"},
 	"gcx dev import":     {Cost: "medium", Hint: "dashboards -p ./dashboards"},

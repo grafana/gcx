@@ -26,6 +26,7 @@ List, inspect, and query Grafana datasources. Use top-level signal commands (met
 ### SEE ALSO
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
+* [gcx datasources cloudwatch](gcx_datasources_cloudwatch.md)	 - Query AWS CloudWatch datasources
 * [gcx datasources get](gcx_datasources_get.md)	 - Get details of a specific datasource
 * [gcx datasources list](gcx_datasources_list.md)	 - List all datasources
 * [gcx datasources loki](gcx_datasources_loki.md)	 - Query Loki datasources

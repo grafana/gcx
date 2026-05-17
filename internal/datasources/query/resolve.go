@@ -157,6 +157,8 @@ func NormalizeKind(pluginID string) string {
 		return pluginID
 	case "grafana-pyroscope-datasource":
 		return "pyroscope"
+	case "cloudwatch":
+		return "cloudwatch"
 	default:
 		if isPromFlavor(pluginID) {
 			return "prometheus"

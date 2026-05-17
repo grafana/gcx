@@ -44,17 +44,20 @@ that do not have a dedicated subcommand.`,
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --from now-1h --to now`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// 1. Validate flags first (no HTTP, no EXPR needed).
 			if err := shared.Validate(); err != nil {
 				return err
 			}
 
-			ctx := cmd.Context()
-			datasourceUID := args[0]
-			expr, err := shared.ResolveExpr(args, 1)
-			if err != nil {
-				return err
+			// Reject "both positional and --expr" before any HTTP call.
+			if len(args) > 1 && shared.Expr != "" {
+				return errors.New("provide the expression as a positional argument or via --expr, not both")
 			}
 
+			ctx := cmd.Context()
+			datasourceUID := args[0]
+
+			// 2. Load config and detect datasource type.
 			cfg, err := configOpts.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return err
@@ -65,6 +68,19 @@ that do not have a dedicated subcommand.`,
 				return err
 			}
 			dsType := dsquery.NormalizeKind(rawType)
+
+			// 3. Short-circuit datasources that require structured subcommands.
+			if dsType == "cloudwatch" {
+				return errors.New("CloudWatch queries are structured (namespace, metric, dimensions, region, statistic, period); " +
+					"the generic `gcx datasources query <uid> <expr>` form can't carry them — " +
+					"use `gcx datasources cloudwatch query --namespace ... --metric ... --region ...` instead")
+			}
+
+			// 4. For all other types, EXPR is required — resolve after type check.
+			expr, err := shared.ResolveExpr(args, 1)
+			if err != nil {
+				return err
+			}
 
 			now := time.Now()
 			start, end, step, err := shared.ParseTimes(now)
@@ -155,7 +171,8 @@ that do not have a dedicated subcommand.`,
 				return shared.IO.Encode(cmd.OutOrStdout(), resp)
 
 			default:
-				return fmt.Errorf("datasource type %q is not supported (supported: prometheus, loki, pyroscope)", dsType)
+				return fmt.Errorf("datasource type %q is not supported by the generic query command (supported: prometheus, loki, pyroscope) — "+
+					"CloudWatch is supported via the structured `gcx datasources cloudwatch query --namespace ... --metric ...` subcommand", dsType)
 			}
 		},
 	}
