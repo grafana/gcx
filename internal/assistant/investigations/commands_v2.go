@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
-	"os"
 	"slices"
 	"strings"
 
@@ -286,119 +284,6 @@ func newRegenerateReportCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), msg)
-		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
-}
-
-// --- repair-mermaid ---
-
-type repairMermaidOpts struct {
-	IO      cmdio.Options
-	Message string
-}
-
-func (o *repairMermaidOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("yaml")
-	o.IO.BindFlags(flags)
-	flags.StringVar(&o.Message, "message", "", "Original Mermaid parser error message to guide the repair")
-}
-
-func newRepairMermaidCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &repairMermaidOpts{}
-	cmd := &cobra.Command{
-		Use:   "repair-mermaid <id> <element-id>",
-		Short: "Ask the server to LLM-repair a broken Mermaid diagram.",
-		Args:  cobra.ExactArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-			client, err := requireV2(cmd, loader)
-			if err != nil {
-				return err
-			}
-			chatID, err := resolveID(cmd.Context(), client, args[0])
-			if err != nil {
-				return err
-			}
-			resp, err := client.RepairMermaid(cmd.Context(), chatID, args[1], opts.Message)
-			if err != nil {
-				return err
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
-		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
-}
-
-// --- update-mermaid ---
-
-type updateMermaidOpts struct {
-	IO      cmdio.Options
-	Content string
-}
-
-func (o *updateMermaidOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("yaml")
-	o.IO.BindFlags(flags)
-	flags.StringVar(&o.Content, "content", "", `Mermaid source to persist. Path to a file, or "-" to read from stdin.`)
-}
-
-func (o *updateMermaidOpts) Validate() error {
-	if o.Content == "" {
-		return errors.New("--content is required (path to a file or \"-\" for stdin)")
-	}
-	return nil
-}
-
-func (o *updateMermaidOpts) readContent(stdin io.Reader) (string, error) {
-	if o.Content == "-" {
-		data, err := io.ReadAll(stdin)
-		if err != nil {
-			return "", fmt.Errorf("read content from stdin: %w", err)
-		}
-		return string(data), nil
-	}
-	data, err := os.ReadFile(o.Content)
-	if err != nil {
-		return "", fmt.Errorf("read content from %s: %w", o.Content, err)
-	}
-	return string(data), nil
-}
-
-func newUpdateMermaidCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &updateMermaidOpts{}
-	cmd := &cobra.Command{
-		Use:   "update-mermaid <id> <element-id>",
-		Short: "Persist Mermaid source for a v2 investigation report element.",
-		Args:  cobra.ExactArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.Validate(); err != nil {
-				return err
-			}
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-			content, err := opts.readContent(cmd.InOrStdin())
-			if err != nil {
-				return err
-			}
-			client, err := requireV2(cmd, loader)
-			if err != nil {
-				return err
-			}
-			chatID, err := resolveID(cmd.Context(), client, args[0])
-			if err != nil {
-				return err
-			}
-			resp, err := client.UpdateMermaid(cmd.Context(), chatID, args[1], content)
-			if err != nil {
-				return err
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}
 	opts.setup(cmd.Flags())

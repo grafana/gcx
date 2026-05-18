@@ -100,7 +100,6 @@ func (o *narrativeOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-//nolint:dupl // sibling chat-thread commands share the same boilerplate by design
 func newNarrativeCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &narrativeOpts{}
 	cmd := &cobra.Command{
@@ -180,48 +179,6 @@ func newToolsCommand(loader *providers.ConfigLoader) *cobra.Command {
 				calls = filtered
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), calls)
-		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
-}
-
-// --- skills ---
-
-type skillsOpts struct{ IO cmdio.Options }
-
-func (o *skillsOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &SkillsTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &SkillsTableCodec{Wide: true})
-	o.IO.DefaultFormat("table")
-	o.IO.BindFlags(flags)
-}
-
-//nolint:dupl // sibling chat-thread commands share the same boilerplate by design
-func newSkillsCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &skillsOpts{}
-	cmd := &cobra.Command{
-		Use:   "skills <id>",
-		Short: "Show Skill matches from a v2 investigation.",
-		Long:  "Extract the search_skills tool results from a v2 investigation's chat thread: which Skills semantically matched and the chunks returned. The substantive piece for the Skills GA story.",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-			client, err := requireV2(cmd, loader)
-			if err != nil {
-				return err
-			}
-			chatID, err := resolveChatID(cmd.Context(), client, args[0])
-			if err != nil {
-				return err
-			}
-			messages, err := client.GetChatThread(cmd.Context(), chatID)
-			if err != nil {
-				return err
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), ExtractSkillMatches(messages))
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -475,56 +432,4 @@ func (c *ToolsTableCodec) Encode(w io.Writer, v any) error {
 
 func (c *ToolsTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
-}
-
-// SkillsTableCodec renders []SkillMatch as a table.
-type SkillsTableCodec struct{ Wide bool }
-
-func (c *SkillsTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *SkillsTableCodec) Encode(w io.Writer, v any) error {
-	matches, ok := v.([]SkillMatch)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []SkillMatch")
-	}
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	if c.Wide {
-		fmt.Fprintln(tw, "TITLE\tSKILL_ID\tQUERY\tCHUNK")
-	} else {
-		fmt.Fprintln(tw, "TITLE\tQUERY\tCHUNK")
-	}
-	for _, m := range matches {
-		title := m.Title
-		if title == "" {
-			title = "-"
-		}
-		query := truncate(m.Query, 30)
-		chunk := truncate(strings.ReplaceAll(m.Chunk, "\n", " "), chunkPreviewLen(c.Wide))
-		if c.Wide {
-			skillID := m.SkillID
-			if skillID == "" {
-				skillID = "-"
-			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", title, skillID, query, chunk)
-		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\n", title, query, chunk)
-		}
-	}
-	return tw.Flush()
-}
-
-func (c *SkillsTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
-func chunkPreviewLen(wide bool) int {
-	if wide {
-		return 200
-	}
-	return 80
 }

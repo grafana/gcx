@@ -215,35 +215,6 @@ func TestScope(t *testing.T) {
 	assert.Equal(t, []string{"ops"}, resp.AddedTeamNames)
 }
 
-func TestUpdateMermaid(t *testing.T) {
-	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodPut, r.Method)
-		assert.Equal(t, v2InvestigationsPath+"/inv-1/report/elements/el-1/mermaid", r.URL.Path)
-		body, _ := io.ReadAll(r.Body)
-		var req investigations.MermaidUpdateRequest
-		assert.NoError(t, json.Unmarshal(body, &req))
-		assert.Equal(t, "graph TD; A-->B", req.Content)
-		writeJSON(w, map[string]any{"data": investigations.UpdatedResponse{Updated: true}})
-	}))
-	resp, err := client.UpdateMermaid(t.Context(), "inv-1", "el-1", "graph TD; A-->B")
-	require.NoError(t, err)
-	assert.True(t, resp.Updated)
-}
-
-func TestRepairMermaid(t *testing.T) {
-	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, v2InvestigationsPath+"/inv-1/report/elements/el-1/mermaid/repair", r.URL.Path)
-		writeJSON(w, map[string]any{
-			"data": investigations.RepairResponse{Fixed: true, Content: "graph TD; A-->B"},
-		})
-	}))
-	resp, err := client.RepairMermaid(t.Context(), "inv-1", "el-1", "syntax error")
-	require.NoError(t, err)
-	assert.True(t, resp.Fixed)
-	assert.NotEmpty(t, resp.Content)
-}
-
 func TestV2_ServerError(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)

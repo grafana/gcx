@@ -77,25 +77,3 @@ type ScopeResponse struct {
 	TeamNames       []string `json:"teamNames,omitempty"`
 	AddedTeamNames  []string `json:"addedTeamNames,omitempty"`
 }
-
-// MermaidUpdateRequest is the body for the Mermaid persist endpoint.
-type MermaidUpdateRequest struct {
-	Content string `json:"content"`
-}
-
-// UpdatedResponse is the response from the Mermaid persist endpoint.
-type UpdatedResponse struct {
-	Updated bool `json:"updated"`
-}
-
-// MermaidRepairRequest is the body for the Mermaid repair endpoint.
-type MermaidRepairRequest struct {
-	ErrorMessage string `json:"errorMessage,omitempty"`
-}
-
-// RepairResponse is the response from the Mermaid repair endpoint.
-type RepairResponse struct {
-	Fixed   bool   `json:"fixed"`
-	Content string `json:"content,omitempty"`
-	Error   string `json:"error,omitempty"`
-}

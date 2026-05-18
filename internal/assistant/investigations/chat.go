@@ -4,10 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"html"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
@@ -157,109 +155,6 @@ func ExtractToolCalls(messages []ChatThreadMessage) []ToolCall {
 		}
 	}
 	return calls
-}
-
-// SkillMatch is one chunk returned by a search_skills tool call.
-type SkillMatch struct {
-	ToolUseID string `json:"toolUseId"`
-	Query     string `json:"query,omitempty"`
-	SkillID   string `json:"skillId,omitempty"`
-	Title     string `json:"title,omitempty"`
-	Chunk     string `json:"chunk,omitempty"`
-}
-
-// ExtractSkillMatches pulls structured skill-search results out of every
-// search_skills tool call in the thread. The server emits
-// toolResult[*].text as a loose XML envelope:
-//
-//	<results count="N">
-//	  <chunk skill_id="..." offset="N" length="N" title="...">body</chunk>
-//	  ...
-//	</results>
-//
-// We parse the chunk tags with a regex (the format has HTML entities and
-// embedded newlines that make encoding/xml awkward).
-func ExtractSkillMatches(messages []ChatThreadMessage) []SkillMatch {
-	queries := map[string]string{}
-	for _, m := range messages {
-		for _, b := range m.Content {
-			if b.Type != "tool_use" || b.ToolName != "search_skills" || len(b.ToolInput) == 0 {
-				continue
-			}
-			queries[b.ToolID] = parseSearchSkillsQueries(b.ToolInput)
-		}
-	}
-
-	var matches []SkillMatch
-	for _, m := range messages {
-		for _, b := range m.Content {
-			if b.Type != "tool_result" || b.ToolUseID == "" || len(b.ToolResult) == 0 {
-				continue
-			}
-			query, ok := queries[b.ToolUseID]
-			if !ok {
-				continue
-			}
-			for _, part := range b.ToolResult {
-				if part.Type != "text" || part.Text == "" {
-					continue
-				}
-				matches = append(matches, parseSkillResultXML(b.ToolUseID, query, part.Text)...)
-			}
-		}
-	}
-	return matches
-}
-
-// parseSearchSkillsQueries reads `{"queries":[{"keywords":"...","query":"..."}]}`
-// and returns a "; "-joined list of the .query strings.
-func parseSearchSkillsQueries(input json.RawMessage) string {
-	var in struct {
-		Queries []struct {
-			Keywords string `json:"keywords"`
-			Query    string `json:"query"`
-		} `json:"queries"`
-	}
-	if err := json.Unmarshal(input, &in); err != nil {
-		return ""
-	}
-	parts := make([]string, 0, len(in.Queries))
-	for _, q := range in.Queries {
-		switch {
-		case q.Query != "":
-			parts = append(parts, q.Query)
-		case q.Keywords != "":
-			parts = append(parts, q.Keywords)
-		}
-	}
-	return strings.Join(parts, "; ")
-}
-
-// chunkPattern matches one `<chunk skill_id="..." title="...">body</chunk>`
-// entry. The `(?s)` flag makes `.` span newlines, which the bodies contain.
-var chunkPattern = regexp.MustCompile(`(?s)<chunk\s+([^>]*)>(.*?)</chunk>`)
-
-// attrPattern extracts key="value" pairs from the chunk attributes. Values
-// don't contain quotes in the observed payload, so a simple regex is enough.
-var attrPattern = regexp.MustCompile(`(\w+)="([^"]*)"`)
-
-func parseSkillResultXML(toolUseID, query, raw string) []SkillMatch {
-	found := chunkPattern.FindAllStringSubmatch(raw, -1)
-	matches := make([]SkillMatch, 0, len(found))
-	for _, m := range found {
-		attrs := map[string]string{}
-		for _, a := range attrPattern.FindAllStringSubmatch(m[1], -1) {
-			attrs[a[1]] = html.UnescapeString(a[2])
-		}
-		matches = append(matches, SkillMatch{
-			ToolUseID: toolUseID,
-			Query:     query,
-			SkillID:   attrs["skill_id"],
-			Title:     attrs["title"],
-			Chunk:     html.UnescapeString(strings.TrimSpace(m[2])),
-		})
-	}
-	return matches
 }
 
 // stripContextTags removes <context>...</context> blocks injected by the

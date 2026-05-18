@@ -154,27 +154,3 @@ func TestToolsTableCodec_Encode(t *testing.T) {
 		require.Error(t, (&investigations.ToolsTableCodec{}).Encode(&bytes.Buffer{}, "wrong"))
 	})
 }
-
-func TestSkillsTableCodec_Encode(t *testing.T) {
-	matches := []investigations.SkillMatch{
-		{ToolUseID: "tu_1", Query: "api latency", SkillID: "78ffce9d-8911", Title: "Investigate payment error spikes", Chunk: "check p99\nlatency"},
-		{ToolUseID: "tu_1", Query: "api latency", SkillID: "s2", Title: "", Chunk: ""},
-	}
-
-	t.Run("table", func(t *testing.T) {
-		var buf bytes.Buffer
-		require.NoError(t, (&investigations.SkillsTableCodec{}).Encode(&buf, matches))
-		out := buf.String()
-		assert.Contains(t, out, "Investigate payment error spikes")
-		assert.Contains(t, out, "check p99 latency")
-		assert.NotContains(t, out, "SKILL_ID") // narrow form omits SKILL_ID col
-	})
-
-	t.Run("wide adds skill_id column", func(t *testing.T) {
-		var buf bytes.Buffer
-		require.NoError(t, (&investigations.SkillsTableCodec{Wide: true}).Encode(&buf, matches))
-		out := buf.String()
-		assert.Contains(t, out, "SKILL_ID")
-		assert.Contains(t, out, "78ffce9d-8911")
-	})
-}

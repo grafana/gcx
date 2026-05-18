@@ -34,14 +34,11 @@ Manage Grafana Assistant investigations.
 * [gcx assistant investigations narrative](gcx_assistant_investigations_narrative.md)	 - Show the assistant-authored prose for a v2 investigation.
 * [gcx assistant investigations pause](gcx_assistant_investigations_pause.md)	 - Pause a running v2 investigation.
 * [gcx assistant investigations regenerate-report](gcx_assistant_investigations_regenerate-report.md)	 - Queue regeneration of a v2 investigation report.
-* [gcx assistant investigations repair-mermaid](gcx_assistant_investigations_repair-mermaid.md)	 - Ask the server to LLM-repair a broken Mermaid diagram.
 * [gcx assistant investigations report](gcx_assistant_investigations_report.md)	 - Show condensed report summary for an investigation.
 * [gcx assistant investigations resume](gcx_assistant_investigations_resume.md)	 - Resume a paused v2 investigation.
 * [gcx assistant investigations share](gcx_assistant_investigations_share.md)	 - Share a v2 investigation with additional teams.
-* [gcx assistant investigations skills](gcx_assistant_investigations_skills.md)	 - Show Skill matches from a v2 investigation.
 * [gcx assistant investigations state](gcx_assistant_investigations_state.md)	 - Show full v2 investigation session state (plan, hypotheses, mode, report).
 * [gcx assistant investigations timeline](gcx_assistant_investigations_timeline.md)	 - Show activity timeline for an investigation.
 * [gcx assistant investigations todos](gcx_assistant_investigations_todos.md)	 - Show agent tasks for an investigation.
 * [gcx assistant investigations tools](gcx_assistant_investigations_tools.md)	 - List tool calls made during a v2 investigation.
-* [gcx assistant investigations update-mermaid](gcx_assistant_investigations_update-mermaid.md)	 - Persist Mermaid source for a v2 investigation report element.
 

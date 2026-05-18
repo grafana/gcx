@@ -85,13 +85,10 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		newModeCommand(loader),
 		newShareCommand(loader),
 		newRegenerateReportCommand(loader),
-		newRepairMermaidCommand(loader),
-		newUpdateMermaidCommand(loader),
 		newStateCommand(loader),
 		newChatCommand(loader),
 		newNarrativeCommand(loader),
 		newToolsCommand(loader),
-		newSkillsCommand(loader),
 	)
 	return cmd
 }
