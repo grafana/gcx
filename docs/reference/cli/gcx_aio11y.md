@@ -27,6 +27,7 @@ Manage Grafana AI Observability resources
 * [gcx aio11y collections](gcx_aio11y_collections.md)	 - Manage named groups of saved conversations.
 * [gcx aio11y conversations](gcx_aio11y_conversations.md)	 - Query AI Observability conversations.
 * [gcx aio11y evaluators](gcx_aio11y_evaluators.md)	 - Manage evaluator definitions (LLM judge, regex, heuristic).
+* [gcx aio11y experiments](gcx_aio11y_experiments.md)	 - Manage eval experiment runs.
 * [gcx aio11y generations](gcx_aio11y_generations.md)	 - Inspect individual LLM generations.
 * [gcx aio11y judge](gcx_aio11y_judge.md)	 - List LLM providers and models available for LLM-judge evaluators.
 * [gcx aio11y rules](gcx_aio11y_rules.md)	 - Manage rules that route generations to evaluators.

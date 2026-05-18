@@ -430,6 +430,14 @@ var commandAnnotations = map[string]annotation{
 	"gcx aio11y collections conversations add":    {Cost: "small"},
 	"gcx aio11y collections conversations remove": {Cost: "small"},
 
+	"gcx aio11y experiments list":   {Cost: "small"},
+	"gcx aio11y experiments get":    {Cost: "small"},
+	"gcx aio11y experiments create": {Cost: "small"},
+	"gcx aio11y experiments update": {Cost: "small"},
+	"gcx aio11y experiments cancel": {Cost: "small"},
+	"gcx aio11y experiments scores": {Cost: "medium", Hint: "<run-id> --limit 50 -o json"},
+	"gcx aio11y experiments report": {Cost: "medium", Hint: "<run-id> -o json"},
+
 	// -----------------------------------------------------------------------
 	// SLO provider
 	// -----------------------------------------------------------------------
