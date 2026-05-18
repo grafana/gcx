@@ -19,15 +19,19 @@ func (f ScopeFlags) ValidateScopes(ctx context.Context, c *Client) error {
 	return f.validateScopes(ctx, c)
 }
 
-// FilterBySeverity wraps the unexported filterBySeverity for testing.
-func FilterBySeverity(results []SearchResult, sev string) []SearchResult {
-	return filterBySeverity(results, sev)
+// InsightMatcher is an exported alias for the unexported insightMatcher type,
+// used by tests.
+type InsightMatcher = insightMatcher
+
+// ParseInsightFlag wraps the unexported parseInsightFlag for testing.
+func ParseInsightFlag(s string) (InsightMatcher, error) {
+	return parseInsightFlag(s)
 }
 
-// BuildInsightSearchRequest exposes buildInsightSearchRequest for tests.
-//
-//nolint:gochecknoglobals // Test-only export alias.
-var BuildInsightSearchRequest = buildInsightSearchRequest
+// FilterByInsightMatchers wraps the unexported filterByInsightMatchers for testing.
+func FilterByInsightMatchers(results []SearchResult, matchers []InsightMatcher) []SearchResult {
+	return filterByInsightMatchers(results, matchers)
+}
 
 // RunDiagnose wraps the unexported runDiagnose function for testing.
 // Pass nil promClient and empty datasourceUID to skip metric checks.
