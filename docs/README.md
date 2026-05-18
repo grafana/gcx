@@ -2,10 +2,18 @@
 
 ## For Users
 
-- **[Installation](installation.md)** — Install gcx via Homebrew or binary download
-- **[Configuration](configuration.md)** — Set up contexts, authentication, and environments
+- **[Installation](sources/installation.md)** — Install gcx via Homebrew or binary download
+- **[Configuration](sources/configuration.md)** — Set up contexts, authentication, and environments
 - **[Guides](guides/index.md)** — How-to guides for common workflows
 - **[CLI Reference](reference/cli/)** — Auto-generated command reference
+
+## Local preview
+
+To build the Grafana.com-style docs locally:
+
+1. Change to the `docs/` directory.
+2. Run `make docs`.
+3. Open `http://localhost:3002/docs/grafana/next/as-code/observability-as-code/grafana-cli/gcx/`.
 
 ## For Contributors & Agents
 
@@ -22,6 +30,7 @@
 docs/
 ├── architecture/     # Per-domain codebase analysis
 ├── adrs/             # Architecture Decision Records
+├── sources/          # Grafana.com-mounted user-facing docs
 ├── reference/        # Evergreen tool/API docs, auto-generated CLI reference
 ├── guides/           # User-facing how-to guides
 ├── research/         # Point-in-time research reports

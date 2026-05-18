@@ -24,6 +24,5 @@ Search insights and fetch their backing metrics.
 
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
 * [gcx kg insights entity-metric](gcx_kg_insights_entity-metric.md)	 - Get metric data for a specific insight on an entity.
-* [gcx kg insights search](gcx_kg_insights_search.md)	 - Find entities with active insights matching the given rules.
 * [gcx kg insights source-metrics](gcx_kg_insights_source-metrics.md)	 - Get source metrics for a specific insight.
 

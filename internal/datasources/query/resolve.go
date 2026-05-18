@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -152,13 +153,22 @@ func ResolveTypedArgs(args []string, defaultUID string, kind string) (string, st
 // If the plugin ID is not recognized, it is returned as-is.
 func NormalizeKind(pluginID string) string {
 	switch pluginID {
-	case "prometheus", "loki", "tempo":
+	case "prometheus", "loki", "tempo", "influxdb":
 		return pluginID
 	case "grafana-pyroscope-datasource":
 		return "pyroscope"
 	default:
+		if isPromFlavor(pluginID) {
+			return "prometheus"
+		}
 		return pluginID
 	}
+}
+
+var promFlavorRe = regexp.MustCompile(`^grafana-[0-9a-z]+prometheus-datasource$`)
+
+func isPromFlavor(pluginID string) bool {
+	return pluginID == "prometheus" || promFlavorRe.MatchString(pluginID)
 }
 
 // ValidateDatasourceType checks that the datasource's actual type matches the expected kind.

@@ -7,6 +7,7 @@ import (
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	"github.com/grafana/gcx/internal/query/influxdb"
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/query/pyroscope"
@@ -154,8 +155,34 @@ that do not have a dedicated subcommand.`,
 
 				return shared.IO.Encode(cmd.OutOrStdout(), resp)
 
+			case "influxdb":
+				influxClient, err := influxdb.NewClient(cfg)
+				if err != nil {
+					return fmt.Errorf("failed to create client: %w", err)
+				}
+
+				modeStr, err := dsquery.GetInfluxDBMode(ctx, cfg, datasourceUID)
+				if err != nil {
+					return fmt.Errorf("failed to detect influxdb mode: %w", err)
+				}
+
+				req := influxdb.QueryRequest{
+					Query: expr,
+					Start: start,
+					End:   end,
+					Step:  step,
+					Mode:  influxdb.Mode(modeStr),
+				}
+
+				resp, err := influxClient.Query(ctx, datasourceUID, req)
+				if err != nil {
+					return fmt.Errorf("query failed: %w", err)
+				}
+
+				return shared.IO.Encode(cmd.OutOrStdout(), resp)
+
 			default:
-				return fmt.Errorf("datasource type %q is not supported (supported: prometheus, loki, pyroscope)", dsType)
+				return fmt.Errorf("datasource type %q is not supported (supported: prometheus, loki, pyroscope, influxdb)", dsType)
 			}
 		},
 	}
