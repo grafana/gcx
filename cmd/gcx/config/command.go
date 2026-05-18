@@ -2,7 +2,6 @@ package config
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -479,24 +478,25 @@ user config), use --file to choose which layer to update.`,
 	# Update the local .gcx.yaml when both user and local configs exist
 	gcx config use-context --file local dev-instance`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Load without env overrides so env-sourced secrets are never persisted.
-			cfg, err := config.LoadLayered(cmd.Context(), configOpts.ConfigFile)
+			// Cross-layer existence check: a context defined only in the user
+			// layer is still a valid target when --file local is specified.
+			layered, err := config.LoadLayered(cmd.Context(), configOpts.ConfigFile)
 			if err != nil {
 				return err
 			}
-
-			if !cfg.HasContext(args[0]) {
+			if !layered.HasContext(args[0]) {
 				return config.ContextNotFound(args[0])
+			}
+
+			// Load only the target layer so we don't write cross-layer entries.
+			cfg, target, err := config.LoadForWrite(cmd.Context(), configOpts.ConfigFile, fileType)
+			if err != nil {
+				return err
 			}
 
 			cfg.CurrentContext = args[0]
 
-			targetSource, err := resolveWriteTarget(configOpts, fileType, cmd.Context())
-			if err != nil {
-				return err
-			}
-
-			if err := config.Write(cmd.Context(), targetSource, cfg); err != nil {
+			if err := config.Write(cmd.Context(), target, cfg); err != nil {
 				return err
 			}
 
@@ -508,45 +508,6 @@ user config), use --file to choose which layer to update.`,
 	cmd.Flags().StringVar(&fileType, "file", "", "Config layer to write to (system, user, local)")
 
 	return cmd
-}
-
-// resolveWriteTarget determines which config file to write to based on --config flag,
-// --file flag, and the number of discovered sources.
-func resolveWriteTarget(configOpts *Options, fileType string, ctx context.Context) (config.Source, error) {
-	// --config flag always wins.
-	if configOpts.ConfigFile != "" {
-		return config.ExplicitConfigFile(configOpts.ConfigFile), nil
-	}
-
-	// --file flag targets a specific layer.
-	if fileType != "" {
-		layered, err := config.LoadLayered(ctx, "")
-		if err != nil {
-			return nil, err
-		}
-		for _, s := range layered.Sources {
-			if s.Type == fileType {
-				return config.ExplicitConfigFile(s.Path), nil
-			}
-		}
-		return nil, fmt.Errorf("no %s config file found", fileType)
-	}
-
-	// No flags — pick the unambiguous target.
-	layered, err := config.LoadLayered(ctx, "")
-	if err != nil {
-		return nil, err
-	}
-	switch len(layered.Sources) {
-	case 0:
-		// No discovered files — let StandardLocation create the default user config.
-		return configOpts.ConfigSource(), nil
-	case 1:
-		// Exactly one source — write to it.
-		return config.ExplicitConfigFile(layered.Sources[0].Path), nil
-	default:
-		return nil, errors.New("multiple config files loaded; specify which to update with --file (system, user, local)")
-	}
 }
 
 func setCmd(configOpts *Options) *cobra.Command {
@@ -576,12 +537,7 @@ PROPERTY_VALUE is the new value to set.`,
 	# Set a value in the local config layer
 	gcx config set --file local contexts.prod.cloud.token my-token`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			targetSource, err := resolveWriteTarget(configOpts, fileType, cmd.Context())
-			if err != nil {
-				return err
-			}
-
-			cfg, err := config.Load(cmd.Context(), targetSource)
+			cfg, target, err := config.LoadForWrite(cmd.Context(), configOpts.ConfigFile, fileType)
 			if err != nil {
 				return err
 			}
@@ -595,7 +551,7 @@ PROPERTY_VALUE is the new value to set.`,
 				return err
 			}
 
-			return config.Write(cmd.Context(), targetSource, cfg)
+			return config.Write(cmd.Context(), target, cfg)
 		},
 	}
 
@@ -629,12 +585,7 @@ A bare path (e.g. "cloud.token") is resolved against the current context and is 
 	# Unset a value in the local config layer
 	gcx config unset --file local contexts.prod.cloud.token`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			targetSource, err := resolveWriteTarget(configOpts, fileType, cmd.Context())
-			if err != nil {
-				return err
-			}
-
-			cfg, err := config.Load(cmd.Context(), targetSource)
+			cfg, target, err := config.LoadForWrite(cmd.Context(), configOpts.ConfigFile, fileType)
 			if err != nil {
 				return err
 			}
@@ -648,7 +599,7 @@ A bare path (e.g. "cloud.token") is resolved against the current context and is 
 				return err
 			}
 
-			return config.Write(cmd.Context(), targetSource, cfg)
+			return config.Write(cmd.Context(), target, cfg)
 		},
 	}
 

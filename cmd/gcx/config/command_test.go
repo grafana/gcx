@@ -665,11 +665,15 @@ contexts:
 	localContents, err := os.ReadFile(localPath)
 	require.NoError(t, err)
 	require.Contains(t, string(localContents), "current-context: new")
+	require.NotContains(t, string(localContents), "user-ctx",
+		"local config must not absorb user-layer contexts")
 
 	userContents, err := os.ReadFile(userPath)
 	require.NoError(t, err)
 	require.Contains(t, string(userContents), "current-context: user-ctx",
 		"user config must be untouched when --file local is given")
+	require.NotContains(t, string(userContents), "local-ctx",
+		"user config must not absorb local-layer contexts")
 }
 
 // Regression test for the same latent bug in `gcx config set`: with only a

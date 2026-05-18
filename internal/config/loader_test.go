@@ -341,6 +341,87 @@ func TestCheckDuplicateUserConfig_BothExist(t *testing.T) {
 	assert.Equal(t, xdgFile, dup.Ignored)
 }
 
+// isolatedLoaderEnv isolates HOME and XDG_CONFIG_HOME so source discovery only
+// sees files the test creates. Returns the user-config dir and working dir.
+func isolatedLoaderEnv(t *testing.T) (string, string) {
+	t.Helper()
+	userDir := t.TempDir()
+	workDir := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", userDir)
+	t.Setenv("GCX_CONFIG", "")
+	xdg.Reload()
+	t.Chdir(workDir)
+	return userDir, workDir
+}
+
+func writeLoaderConfig(t *testing.T, path, content string) {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+}
+
+func TestLoadForWrite_explicitFile(t *testing.T) {
+	userDir, _ := isolatedLoaderEnv(t)
+	userPath := filepath.Join(userDir, "gcx", "config.yaml")
+	writeLoaderConfig(t, userPath, "current-context: dev\ncontexts:\n  dev: {}\n")
+
+	cfg, src, err := config.LoadForWrite(t.Context(), userPath, "")
+	require.NoError(t, err)
+	require.Equal(t, "dev", cfg.CurrentContext)
+
+	filename, err := src()
+	require.NoError(t, err)
+	require.Equal(t, userPath, filename)
+}
+
+func TestLoadForWrite_fileType_targetsNamedLayer(t *testing.T) {
+	userDir, workDir := isolatedLoaderEnv(t)
+	writeLoaderConfig(t, filepath.Join(userDir, "gcx", "config.yaml"),
+		"contexts:\n  user-ctx: {}\ncurrent-context: user-ctx\n")
+	writeLoaderConfig(t, filepath.Join(workDir, ".gcx.yaml"),
+		"contexts:\n  local-ctx: {}\ncurrent-context: local-ctx\n")
+
+	cfg, _, err := config.LoadForWrite(t.Context(), "", "local")
+	require.NoError(t, err)
+	require.Equal(t, "local-ctx", cfg.CurrentContext)
+	require.Contains(t, cfg.Contexts, "local-ctx")
+	require.NotContains(t, cfg.Contexts, "user-ctx",
+		"LoadForWrite must not merge other layers into the result")
+}
+
+func TestLoadForWrite_fileType_notFound_errors(t *testing.T) {
+	userDir, _ := isolatedLoaderEnv(t)
+	writeLoaderConfig(t, filepath.Join(userDir, "gcx", "config.yaml"),
+		"current-context: dev\ncontexts:\n  dev: {}\n")
+
+	_, _, err := config.LoadForWrite(t.Context(), "", "local")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no local config file found")
+}
+
+func TestLoadForWrite_singleSource_autoDetects(t *testing.T) {
+	userDir, _ := isolatedLoaderEnv(t)
+	writeLoaderConfig(t, filepath.Join(userDir, "gcx", "config.yaml"),
+		"current-context: dev\ncontexts:\n  dev: {}\n")
+
+	cfg, _, err := config.LoadForWrite(t.Context(), "", "")
+	require.NoError(t, err)
+	require.Equal(t, "dev", cfg.CurrentContext)
+}
+
+func TestLoadForWrite_multipleSources_errors(t *testing.T) {
+	userDir, workDir := isolatedLoaderEnv(t)
+	writeLoaderConfig(t, filepath.Join(userDir, "gcx", "config.yaml"),
+		"current-context: dev\ncontexts:\n  dev: {}\n")
+	writeLoaderConfig(t, filepath.Join(workDir, ".gcx.yaml"),
+		"current-context: local\ncontexts:\n  local: {}\n")
+
+	_, _, err := config.LoadForWrite(t.Context(), "", "")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "--file")
+}
+
 func TestCheckDuplicateUserConfig_NoDuplicate(t *testing.T) {
 	homeDir := t.TempDir()
 	xdgDir := t.TempDir()
