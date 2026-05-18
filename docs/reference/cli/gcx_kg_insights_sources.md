@@ -1,20 +1,26 @@
-## gcx kg insights source-metrics
+## gcx kg insights sources
 
-Get source metrics for a specific insight.
+List the underlying metrics (name + label matchers) that source a specific insight.
 
 ```
-gcx kg insights source-metrics [flags]
+gcx kg insights sources [Type--Name] [flags]
 ```
 
 ### Options
 
 ```
+      --env string          Environment scope
   -f, --file string         Input file (YAML)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-  -h, --help                help for source-metrics
-      --insight-id string   Insight ID
+  -h, --help                help for sources
+      --insight string      Insight name (e.g. LatencyAverageBreach, ResourceRateAnomaly) — sets the 'alertname' label
+      --label stringArray   Assertion label as key=value (repeatable; typically copied from 'kg entities inspect' timeLines[].labels)
+      --name string         Entity name
+      --namespace string    Namespace scope
       --since string        Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
+      --site string         Site scope
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
+      --type string         Entity type
 ```
 
 ### Options inherited from parent commands

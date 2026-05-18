@@ -175,17 +175,29 @@ type EntityMetricResponse struct {
 }
 
 // SourceMetricsRequest is the request body for POST /v1/assertion/source-metrics.
+// Labels selects the assertion to fetch source metrics for and typically contains
+// at minimum "alertname" (the insight ID), "asserts_entity_type" and
+// "asserts_entity_name", plus any scope labels (env/namespace/site).
 type SourceMetricsRequest struct {
-	AssertionID string `json:"assertionId" yaml:"assertionId"`
-	StartTime   int64  `json:"startTime" yaml:"startTime"`
-	EndTime     int64  `json:"endTime" yaml:"endTime"`
+	StartTime int64             `json:"startTime" yaml:"startTime"`
+	EndTime   int64             `json:"endTime" yaml:"endTime"`
+	Labels    map[string]string `json:"labels" yaml:"labels"`
 }
 
-// SourceMetricsResponse is the response from POST /v1/assertion/source-metrics.
+// SourceMetricMatcher is a single PromQL label matcher returned by the
+// source-metrics endpoint (e.g. {label:"job", op:"=", value:"asserts/model-builder"}).
+type SourceMetricMatcher struct {
+	Label string `json:"label"`
+	Op    string `json:"op"`
+	Value string `json:"value"`
+}
+
+// SourceMetricsResponse is one entry from POST /v1/assertion/source-metrics:
+// the metric name and the label matchers that together identify the underlying
+// PromQL series sourcing the assertion.
 type SourceMetricsResponse struct {
-	PromQLQuery   string            `json:"promqlQuery"`
-	Labels        map[string]string `json:"labels,omitempty"`
-	DataSourceUID string            `json:"dataSourceUid,omitempty"`
+	MetricName string                `json:"metricName"`
+	Labels     []SourceMetricMatcher `json:"labels"`
 }
 
 // GetResourceName returns the composite "Type--Name" identity for the entity.

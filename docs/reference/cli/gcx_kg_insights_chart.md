@@ -1,9 +1,9 @@
-## gcx kg insights entity-metric
+## gcx kg insights chart
 
-Get metric data for a specific insight on an entity.
+Get chart data (series + thresholds) for a specific insight on an entity.
 
 ```
-gcx kg insights entity-metric [Type--Name] [flags]
+gcx kg insights chart [Type--Name] [flags]
 ```
 
 ### Options
@@ -12,8 +12,9 @@ gcx kg insights entity-metric [Type--Name] [flags]
       --env string          Environment scope
   -f, --file string         Input file (YAML)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-  -h, --help                help for entity-metric
-      --insight-id string   Insight ID
+  -h, --help                help for chart
+      --insight string      Insight name (e.g. LatencyAverageBreach, ResourceRateAnomaly) — sets the 'alertname' label
+      --label stringArray   Extra assertion label as key=value (repeatable; e.g. asserts_resource_type=jvm:live_threads to narrow ResourceRateAnomaly to a specific resource)
       --name string         Entity name
       --namespace string    Namespace scope
       --since string        Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)

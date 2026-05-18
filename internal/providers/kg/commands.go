@@ -200,15 +200,6 @@ func resolveTimeEpochMs(since string) (int64, int64, error) {
 	return now - d.Milliseconds(), now, nil
 }
 
-// resolveTimeFromFlags reads --from/--to/--since from a command and resolves them to epoch ms.
-func resolveTimeFromFlags(cmd *cobra.Command) (int64, int64, error) {
-	from, _ := cmd.Flags().GetString("from")
-	to, _ := cmd.Flags().GetString("to")
-	since, _ := cmd.Flags().GetString("since")
-	sf := scopeFlags{from: from, to: to, since: since}
-	return sf.resolveTime()
-}
-
 func parseEntityArg(args []string) (string, string, error) {
 	if len(args) == 0 {
 		return "", "", errors.New("entity argument required (e.g. Service--my-service)")
@@ -993,11 +984,12 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 		Short: "Search insights and fetch their backing metrics.",
 	}
 
-	// entity-metric subcommand
+	// chart subcommand
 	var entityMetricScope scopeFlags
+	var entityMetricLabels []string
 	entityMetricCmd := &cobra.Command{
-		Use:   "entity-metric [Type--Name]",
-		Short: "Get metric data for a specific insight on an entity.",
+		Use:   "chart [Type--Name]",
+		Short: "Get chart data (series + thresholds) for a specific insight on an entity.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
@@ -1023,9 +1015,9 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				assertionID, _ := cmd.Flags().GetString("insight-id")
+				assertionID, _ := cmd.Flags().GetString("insight")
 				if assertionID == "" {
-					return errors.New("--insight-id is required (or use --file)")
+					return errors.New("--insight is required (or use --file)")
 				}
 				startMs, endMs, err := entityMetricScope.resolveTime()
 				if err != nil {
@@ -1040,6 +1032,13 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 					"asserts_entity_name": name,
 				}
 				maps.Copy(labels, entityMetricScope.scopeMap())
+				for _, kv := range entityMetricLabels {
+					k, v, ok := strings.Cut(kv, "=")
+					if !ok || k == "" {
+						return fmt.Errorf("invalid --label %q: expected key=value", kv)
+					}
+					labels[k] = v
+				}
 				req = EntityMetricRequest{
 					StartTime: startMs,
 					EndTime:   endMs,
@@ -1056,14 +1055,29 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	entityMetricCmd.Flags().StringP("file", "f", "", "Input file (YAML)")
 	entityMetricCmd.Flags().String("name", "", "Entity name")
 	entityMetricCmd.Flags().String("type", "", "Entity type")
-	entityMetricCmd.Flags().String("insight-id", "", "Insight ID")
+	entityMetricCmd.Flags().String("insight", "", "Insight name (e.g. LatencyAverageBreach, ResourceRateAnomaly) — sets the 'alertname' label")
+	entityMetricCmd.Flags().StringArrayVar(&entityMetricLabels, "label", nil, "Extra assertion label as key=value (repeatable; e.g. asserts_resource_type=jvm:live_threads to narrow ResourceRateAnomaly to a specific resource)")
 	entityMetricScope.register(entityMetricCmd)
 
-	// source-metrics subcommand
+	// sources subcommand. The server matches on the assertion's full label set
+	// (alertname + request_context + request_type + job + ...), so the user
+	// typically pastes the labels block from `kg entities inspect`
+	// timeLines[].labels (which includes alertname). --insight is sugar
+	// for --label alertname=<value>.
+	var sourceMetricsScope scopeFlags
+	var sourceMetricsLabels []string
 	sourceMetricsCmd := &cobra.Command{
-		Use:   "source-metrics",
-		Short: "Get source metrics for a specific insight.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		Use:   "sources [Type--Name]",
+		Short: "List the underlying metrics (name + label matchers) that source a specific insight.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
 			var req SourceMetricsRequest
 			//nolint:nestif
 			if cmd.Flags().Changed("file") {
@@ -1076,27 +1090,37 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 					return fmt.Errorf("invalid YAML: %w", err)
 				}
 			} else {
-				assertionID, _ := cmd.Flags().GetString("insight-id")
-				if assertionID == "" {
-					return errors.New("--insight-id is required (or use --file)")
-				}
-				startMs, endMs, err := resolveTimeFromFlags(cmd)
+				entityType, name, err := resolveEntityTypeAndName(cmd, args)
 				if err != nil {
 					return err
 				}
-				req = SourceMetricsRequest{
-					AssertionID: assertionID,
-					StartTime:   startMs,
-					EndTime:     endMs,
+				startMs, endMs, err := sourceMetricsScope.resolveTime()
+				if err != nil {
+					return err
 				}
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
+				if err := sourceMetricsScope.validateScopes(cmd.Context(), client); err != nil {
+					return err
+				}
+				labels := map[string]string{
+					"asserts_entity_type": entityType,
+					"asserts_entity_name": name,
+				}
+				if id, _ := cmd.Flags().GetString("insight"); id != "" {
+					labels["alertname"] = id
+				}
+				maps.Copy(labels, sourceMetricsScope.scopeMap())
+				for _, kv := range sourceMetricsLabels {
+					k, v, ok := strings.Cut(kv, "=")
+					if !ok || k == "" {
+						return fmt.Errorf("invalid --label %q: expected key=value", kv)
+					}
+					labels[k] = v
+				}
+				req = SourceMetricsRequest{
+					StartTime: startMs,
+					EndTime:   endMs,
+					Labels:    labels,
+				}
 			}
 			results, err := client.AssertionSourceMetrics(cmd.Context(), req)
 			if err != nil {
@@ -1106,10 +1130,11 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 		},
 	}
 	sourceMetricsCmd.Flags().StringP("file", "f", "", "Input file (YAML)")
-	sourceMetricsCmd.Flags().String("insight-id", "", "Insight ID")
-	sourceMetricsCmd.Flags().String("from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
-	sourceMetricsCmd.Flags().String("to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
-	sourceMetricsCmd.Flags().String("since", "", "Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)")
+	sourceMetricsCmd.Flags().String("name", "", "Entity name")
+	sourceMetricsCmd.Flags().String("type", "", "Entity type")
+	sourceMetricsCmd.Flags().String("insight", "", "Insight name (e.g. LatencyAverageBreach, ResourceRateAnomaly) — sets the 'alertname' label")
+	sourceMetricsCmd.Flags().StringArrayVar(&sourceMetricsLabels, "label", nil, "Assertion label as key=value (repeatable; typically copied from 'kg entities inspect' timeLines[].labels)")
+	sourceMetricsScope.register(sourceMetricsCmd)
 
 	cmd.AddCommand(entityMetricCmd, sourceMetricsCmd)
 	return cmd
