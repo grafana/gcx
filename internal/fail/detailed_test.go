@@ -1,6 +1,7 @@
 package fail_test
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -9,6 +10,15 @@ import (
 	"github.com/grafana/gcx/internal/fail"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestDetailedError_Unwrap_ExposesCanceledContext(t *testing.T) {
+	err := &fail.DetailedError{
+		Summary: "Authentication failed",
+		Parent:  context.Canceled,
+	}
+
+	assert.ErrorIs(t, err, context.Canceled)
+}
 
 func TestDetailedError_Error_OmitsDuplicateParentDetails(t *testing.T) {
 	oldNoColor := color.NoColor
