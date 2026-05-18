@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestDetailedError_Unwrap_ExposesCanceledContext(t *testing.T) {
+func TestDetailedError_Unwrap(t *testing.T) {
 	err := &fail.DetailedError{
 		Summary: "Authentication failed",
 		Parent:  context.Canceled,

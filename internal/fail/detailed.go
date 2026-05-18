@@ -55,8 +55,8 @@ type DetailedError struct {
 	ExitCode *int
 }
 
-// Unwrap returns the parent error, enabling errors.Is/As to traverse through
-// DetailedError wrappers (e.g. detecting context.Canceled for clean SIGINT exit).
+// Unwrap lets errors.Is/As traverse through DetailedError to detect wrapped
+// sentinels (e.g. context.Canceled for clean SIGINT exit).
 func (e DetailedError) Unwrap() error {
 	return e.Parent
 }
