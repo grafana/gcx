@@ -3,6 +3,7 @@ package style
 import (
 	"fmt"
 	"io"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/charmbracelet/lipgloss"
@@ -13,9 +14,10 @@ import (
 // TableBuilder constructs styled tables that degrade gracefully to plain
 // tabwriter output when styling is disabled (piped, agent mode, --no-color).
 type TableBuilder struct {
-	headers   []string
-	rows      [][]string
-	colWidths []int // per-column fixed widths (0 = auto); only applied in renderStyled
+	headers       []string
+	rows          [][]string
+	colWidths     []int // per-column fixed widths (0 = auto); only applied in renderStyled
+	multilineCell bool  // when true, plain-renderer flattens \n in cells to ", "
 }
 
 // NewTable creates a new table with the given column headers.
@@ -31,6 +33,17 @@ func NewTable(headers ...string) *TableBuilder {
 // The slice may be shorter than the column count; trailing columns default to 0.
 func (tb *TableBuilder) ColumnWidths(widths []int) *TableBuilder {
 	tb.colWidths = widths
+	return tb
+}
+
+// MultilineCells declares that this table intentionally embeds `\n` in cells
+// to render multi-line content (e.g., one `key=value` per line). In styled
+// mode lipgloss/table renders these natively as taller rows; in plain
+// (tabwriter) mode the cells get flattened to comma-separated values so a
+// row stays on one tabwriter line. Default false: cell newlines are
+// preserved as-is in plain mode (the legacy behaviour).
+func (tb *TableBuilder) MultilineCells(enabled bool) *TableBuilder {
+	tb.multilineCell = enabled
 	return tb
 }
 
@@ -65,6 +78,13 @@ func (tb *TableBuilder) renderPlain(w io.Writer) error {
 		for i, v := range row {
 			if i > 0 {
 				fmt.Fprint(tw, "\t")
+			}
+			// When the caller declared multi-line cells (see
+			// MultilineCells), flatten embedded newlines so a single row
+			// stays on one tabwriter line in piped / agent-mode output.
+			// Default behaviour: newlines pass through unchanged.
+			if tb.multilineCell && strings.ContainsRune(v, '\n') {
+				v = strings.ReplaceAll(v, "\n", ", ")
 			}
 			fmt.Fprint(tw, v)
 		}

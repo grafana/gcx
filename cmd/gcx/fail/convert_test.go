@@ -995,3 +995,38 @@ func TestPartialFailureError_Message(t *testing.T) {
 	err := gcxerrors.NewPartialFailureError("push", 100, 10)
 	assert.Equal(t, "10 resource(s) failed to push", err.Error())
 }
+
+func TestErrorToDetailedError_ValueTypedPreservesExitCode(t *testing.T) {
+	two := 2
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "bare value-typed DetailedError preserves ExitCode",
+			err:  gcxerrors.DetailedError{ExitCode: &two, Summary: "test"},
+		},
+		{
+			name: "bare pointer-typed DetailedError preserves ExitCode",
+			err:  &gcxerrors.DetailedError{ExitCode: &two, Summary: "test"},
+		},
+		{
+			name: "value-typed DetailedError wrapped via fmt.Errorf preserves ExitCode",
+			err:  fmt.Errorf("context: %w", gcxerrors.DetailedError{ExitCode: &two, Summary: "test"}),
+		},
+		{
+			name: "pointer-typed DetailedError wrapped via fmt.Errorf preserves ExitCode",
+			err:  fmt.Errorf("context: %w", &gcxerrors.DetailedError{ExitCode: &two, Summary: "test"}),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tc.err)
+
+			require.NotNil(t, got)
+			require.NotNil(t, got.ExitCode, "ExitCode must not be nil — value-typed DetailedError must propagate ExitCode")
+			assert.Equal(t, 2, *got.ExitCode, "ExitCode must equal the original value, not nil or 1")
+		})
+	}
+}
