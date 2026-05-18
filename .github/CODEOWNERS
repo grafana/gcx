@@ -1,7 +1,12 @@
-# Last matching pattern wins. grafana-gcx owns the entire codebase;
-# product teams co-own their provider directories.
+# Last matching pattern wins, so add @grafana/grafana-gcx to every rule that 
+# also takes another team. We want grafana-gcx to be a required reviewer for 
+# all changes.
 
+# Default / fallback rule
 * @grafana/grafana-gcx
+
+/cmd/gcx/instrumentation/ @grafana/grafana-gcx @grafana/o11y-ingest
+/cmd/gcx/assistant/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
 
 # Providers
 /internal/providers/slo/ @grafana/grafana-gcx @grafana/slo-squad
@@ -12,30 +17,24 @@
 /internal/providers/fleet/ @grafana/grafana-gcx @grafana/fleet-management-backend
 /internal/fleet/ @grafana/grafana-gcx @grafana/fleet-management-backend
 /internal/providers/instrumentation/ @grafana/grafana-gcx @grafana/o11y-ingest
-/cmd/gcx/instrumentation/ @grafana/grafana-gcx @grafana/o11y-ingest
 /internal/providers/kg/ @grafana/grafana-gcx @grafana/asserts-team
 /internal/providers/appo11y/ @grafana/grafana-gcx @grafana/app-o11y-visualizations
 /internal/providers/aio11y/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
-
-# Signal providers (provider + datasource + query layers)
 /internal/providers/logs/ @grafana/grafana-gcx @grafana/loki-team
-/internal/datasources/loki/ @grafana/grafana-gcx @grafana/loki-team
-/internal/query/loki/ @grafana/grafana-gcx @grafana/loki-team
-
 /internal/providers/metrics/ @grafana/grafana-gcx @grafana/cortex-team
-/internal/datasources/prometheus/ @grafana/grafana-gcx @grafana/cortex-team
-/internal/query/prometheus/ @grafana/grafana-gcx @grafana/cortex-team
-
+/internal/providers/profiles/ @grafana/grafana-gcx @grafana/pyroscope-team
 /internal/providers/traces/ @grafana/grafana-gcx @grafana/tempo
+
+/internal/datasources/loki/ @grafana/grafana-gcx @grafana/loki-team
+/internal/datasources/prometheus/ @grafana/grafana-gcx @grafana/cortex-team
+/internal/datasources/pyroscope/ @grafana/grafana-gcx @grafana/pyroscope-team
 /internal/datasources/tempo/ @grafana/grafana-gcx @grafana/tempo
+
+/internal/query/loki/ @grafana/grafana-gcx @grafana/loki-team
+/internal/query/prometheus/ @grafana/grafana-gcx @grafana/cortex-team
+/internal/query/pyroscope/ @grafana/grafana-gcx @grafana/pyroscope-team
 /internal/query/tempo/ @grafana/grafana-gcx @grafana/tempo
 
-/internal/providers/profiles/ @grafana/grafana-gcx @grafana/pyroscope-team
-/internal/datasources/pyroscope/ @grafana/grafana-gcx @grafana/pyroscope-team
-/internal/query/pyroscope/ @grafana/grafana-gcx @grafana/pyroscope-team
+/internal/assistant/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
 
 /internal/auth/adaptive/ @grafana/grafana-gcx @grafana/adaptive-telemetry
-
-# Assistant / AI
-/internal/assistant/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
-/cmd/gcx/assistant/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
