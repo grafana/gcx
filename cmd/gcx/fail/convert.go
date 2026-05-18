@@ -32,11 +32,12 @@ import (
 const reauthSuggestion = "Re-authenticate if needed: gcx login"
 
 func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
-	// errors.As requires a pointer-to-the-target-type. Since commands return
-	// *gcxerrors.DetailedError (pointer type), the target must be **gcxerrors.DetailedError so that
-	// errors.As can match the pointer. Using *gcxerrors.DetailedError as the target only
-	// matches value-typed DetailedError, causing *gcxerrors.DetailedError to fall through
-	// to fallbackDetailedError which renders box chars via err.Error().
+	// Match value-typed DetailedError returns (e.g. `return gcxerrors.DetailedError{...}`).
+	var val gcxerrors.DetailedError
+	if errors.As(err, &val) {
+		return &val
+	}
+	// Match pointer-typed DetailedError returns (e.g. `return &gcxerrors.DetailedError{...}`).
 	var ptr *gcxerrors.DetailedError
 	if errors.As(err, &ptr) {
 		return ptr

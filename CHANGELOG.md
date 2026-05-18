@@ -66,6 +66,7 @@
 - Login now suggests running `config check` after successful login
 - Fix IRM incident URL template to use correct OnCall plugin slug
 - Dev import: register v1 converters for Folder and Dashboard resources
+- `--json list` field discovery now returns all nested paths recursively (previously limited to top-level + one level of `spec.*`). Users relying on `gcx resources get --json list` or `gcx resources schemas --json list` will see a larger field set.
 
 
 ## v0.2.13 (2026-05-06)

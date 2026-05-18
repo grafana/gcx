@@ -23,6 +23,17 @@ type ListOption func(*ListConfig)
 type ListConfig struct {
 	Limit        int
 	StartedAfter *time.Time
+
+	// AlertGroup-specific filters (ignored by callers that don't apply them).
+	// Statuses are integer-encoded per the OnCall internal API:
+	//   0=firing/new, 1=acknowledged, 2=resolved, 3=silenced.
+	Statuses           []int
+	IsRoot             *bool
+	Teams              []string
+	Integrations       []string
+	Mine               bool
+	WithResolutionNote bool
+	HasRelatedIncident bool
 }
 
 // WithLimit stops collecting after n items (0 = no limit).
@@ -33,6 +44,59 @@ func WithLimit(n int) ListOption {
 // WithStartedAfter restricts results to items started at or after t.
 func WithStartedAfter(t time.Time) ListOption {
 	return func(c *ListConfig) { c.StartedAfter = &t }
+}
+
+// WithStatuses filters alert groups by status (integer wire encoding).
+func WithStatuses(statuses ...int) ListOption {
+	return func(c *ListConfig) {
+		if len(statuses) == 0 {
+			return
+		}
+		c.Statuses = append(c.Statuses, statuses...)
+	}
+}
+
+// WithIsRoot sets the is_root filter. Pass &true to limit to root groups,
+// &false to limit to child groups; nil leaves the filter unset.
+func WithIsRoot(v *bool) ListOption {
+	return func(c *ListConfig) { c.IsRoot = v }
+}
+
+// WithTeams filters by team PK (repeatable).
+func WithTeams(teams ...string) ListOption {
+	return func(c *ListConfig) {
+		for _, t := range teams {
+			if t != "" {
+				c.Teams = append(c.Teams, t)
+			}
+		}
+	}
+}
+
+// WithIntegrations filters by integration PK (repeatable).
+func WithIntegrations(integrations ...string) ListOption {
+	return func(c *ListConfig) {
+		for _, i := range integrations {
+			if i != "" {
+				c.Integrations = append(c.Integrations, i)
+			}
+		}
+	}
+}
+
+// WithMine narrows results to the authenticated user's groups.
+func WithMine(v bool) ListOption {
+	return func(c *ListConfig) { c.Mine = v }
+}
+
+// WithWithResolutionNote filters to groups that have a resolution note.
+func WithWithResolutionNote(v bool) ListOption {
+	return func(c *ListConfig) { c.WithResolutionNote = v }
+}
+
+// WithHasRelatedIncident filters to groups linked to an incident.
+func WithHasRelatedIncident(v bool) ListOption {
+	return func(c *ListConfig) { c.HasRelatedIncident = v }
 }
 
 // ApplyListOpts resolves a slice of ListOption into a ListConfig.

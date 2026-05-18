@@ -40,11 +40,11 @@ type Options struct {
 	// ErrWriter is the writer for hints and diagnostics (defaults to os.Stderr).
 	ErrWriter io.Writer
 
-	customCodecs       map[string]format.Codec
-	defaultFormat      string
-	flags              *pflag.FlagSet
-	jsonFieldValidator func(fields []string) error // optional; invoked before field extraction when --json is used
-	agentHintShown     bool
+	customCodecs        map[string]format.Codec
+	defaultFormat       string
+	flags               *pflag.FlagSet
+	jsonFieldValidator  func(fields []string) error // optional; invoked before field extraction when --json is used
+	jsonFieldsHintShown bool
 }
 
 // SetJSONFieldValidator registers an optional validator invoked before field
@@ -167,17 +167,23 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 		return err
 	}
 
-	// In agent mode, nudge toward --json field selection when the command
-	// outputs JSON without explicit --json usage. The hint is emitted
-	// once per command invocation to stderr so it doesn't pollute stdout.
+	// Nudge toward --json field selection whenever the resolved codec is
+	// JSON-like (json or agents format) and the caller has not already
+	// requested field selection/discovery. Emitted once per invocation to
+	// stderr (never pollutes stdout). TTY: plain "hint:" line. Agent mode:
+	// JSONL {"class":"hint",...} — routed through emitHint/EmitHint so the
+	// hints framework handles codec & agent-mode compliance (FR-104).
 	isJSONLike := codec.Format() == format.JSON || codec.Format() == agentsFormat
-	if !opts.agentHintShown && agent.IsAgentMode() && isJSONLike && len(opts.JSONFields) == 0 && !opts.JSONDiscovery {
-		opts.agentHintShown = true
+	if !opts.jsonFieldsHintShown && isJSONLike && len(opts.JSONFields) == 0 && !opts.JSONDiscovery {
+		opts.jsonFieldsHintShown = true
 		w := opts.ErrWriter
 		if w == nil {
 			w = os.Stderr
 		}
-		fmt.Fprintln(w, "hint: use --json list to discover fields, --json field1,field2 to select — no external parsing needed")
+		emitHint(w,
+			"use --json list to discover fields, --json field1,field2 to select — no external parsing needed",
+			"",
+		)
 	}
 
 	// Intercept JSON field discovery and field selection when the resolved
@@ -344,4 +350,64 @@ func (opts *Options) allowedCodecs() []string {
 	sort.Strings(allowedCodecs)
 
 	return allowedCodecs
+}
+
+// EmitHint writes a hint diagnostic to w. In agent mode the record is JSONL
+// with class:"hint" to match the FR-104 typed-class schema used by provider
+// commands. In TTY mode the line is "hint: <summary>" (with ": <command>"
+// appended when command is non-empty). command may be empty.
+func EmitHint(w io.Writer, summary, command string) {
+	if agent.IsAgentMode() {
+		type hintEvent struct {
+			Class   string `json:"class"`
+			Summary string `json:"summary"`
+			Command string `json:"command,omitempty"`
+		}
+		b, _ := json.Marshal(hintEvent{Class: "hint", Summary: summary, Command: command}) //nolint:errchkjson
+		fmt.Fprintln(w, string(b))
+		return
+	}
+	if command != "" {
+		fmt.Fprintf(w, "hint: %s: %s\n", summary, command)
+		return
+	}
+	fmt.Fprintf(w, "hint: %s\n", summary)
+}
+
+// emitHint is the package-private call-through to EmitHint for backward
+// compatibility with callers within this package.
+func emitHint(w io.Writer, summary, command string) {
+	EmitHint(w, summary, command)
+}
+
+// EmitWarn writes a warn-class diagnostic to w. In agent mode the record is
+// JSONL with class:"warning" to match the FR-104 typed-class schema used by
+// provider commands. In TTY mode the line is "warn: <summary>".
+func EmitWarn(w io.Writer, summary string) {
+	if agent.IsAgentMode() {
+		type warnEvent struct {
+			Class   string `json:"class"`
+			Summary string `json:"summary"`
+		}
+		b, _ := json.Marshal(warnEvent{Class: "warning", Summary: summary}) //nolint:errchkjson
+		fmt.Fprintln(w, string(b))
+		return
+	}
+	fmt.Fprintf(w, "warn: %s\n", summary)
+}
+
+// EmitNote writes a note-class diagnostic to w. In agent mode the record is
+// JSONL with class:"note" to match the FR-104 typed-class schema used by
+// provider commands. In TTY mode the line is "note: <summary>".
+func EmitNote(w io.Writer, summary string) {
+	if agent.IsAgentMode() {
+		type noteEvent struct {
+			Class   string `json:"class"`
+			Summary string `json:"summary"`
+		}
+		b, _ := json.Marshal(noteEvent{Class: "note", Summary: summary}) //nolint:errchkjson
+		fmt.Fprintln(w, string(b))
+		return
+	}
+	fmt.Fprintf(w, "note: %s\n", summary)
 }
