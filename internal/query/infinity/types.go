@@ -8,16 +8,9 @@ import (
 
 // QueryRequest represents an Infinity datasource query request.
 type QueryRequest struct {
-	Type         string            // json, csv, tsv, xml, graphql, html
-	Source       string            // "url" or "inline"
-	URL          string            // target URL (when Source == "url")
-	Data         string            // inline data (when Source == "inline")
-	RootSelector string            // JSONPath/XPath root selector
-	Method       string            // HTTP method: GET or POST
-	Headers      map[string]string // custom request headers
-	GraphQL      string            // GraphQL query string (when Type == "graphql")
-	Start        time.Time
-	End          time.Time
+	Expr  string // optional root selector (JSONPath for JSON, XPath for XML/HTML)
+	Start time.Time
+	End   time.Time
 }
 
 // IsRange returns true if both Start and End are set.

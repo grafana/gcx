@@ -38,41 +38,20 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryRequest) (*QueryResponse, error) {
 	apiPath := c.buildQueryPath()
 
-	urlOptions := map[string]any{
-		"method":                 req.Method,
-		"params":                 []any{},
-		"headers":                buildHeaders(req.Headers),
-		"data":                   "",
-		"body_type":              "",
-		"body_content_type":      "",
-		"body_graphql_query":     "",
-		"body_graphql_variables": "{}",
-	}
-
-	if req.Type == "graphql" && req.GraphQL != "" {
-		urlOptions["method"] = "POST"
-		urlOptions["body_type"] = "graphql"
-		urlOptions["body_content_type"] = "application/json"
-		urlOptions["body_graphql_query"] = req.GraphQL
-	}
-
 	query := map[string]any{
 		"refId": "A",
 		"datasource": map[string]any{
 			"type": "yesoreyeram-infinity-datasource",
 			"uid":  datasourceUID,
 		},
-		"type":             req.Type,
-		"source":           req.Source,
+		"source":           "url",
 		"format":           "table",
-		"url":              req.URL,
-		"url_options":      urlOptions,
+		"url":              "",
 		"parser":           "backend",
-		"root_selector":    req.RootSelector,
+		"root_selector":    req.Expr,
 		"columns":          []any{},
 		"filters":          []any{},
 		"computed_columns": []any{},
-		"data":             req.Data,
 		"filterExpression": "",
 		"uql":              "",
 		"groq":             "",
@@ -158,15 +137,4 @@ func (c *Client) doQuery(ctx context.Context, path string, body []byte) (int, []
 func (c *Client) buildQueryPath() string {
 	return fmt.Sprintf("/apis/query.grafana.app/v0alpha1/namespaces/%s/query",
 		c.restConfig.Namespace)
-}
-
-func buildHeaders(headers map[string]string) []any {
-	if len(headers) == 0 {
-		return []any{}
-	}
-	result := make([]any, 0, len(headers))
-	for k, v := range headers {
-		result = append(result, map[string]string{"key": k, "value": v})
-	}
-	return result
 }

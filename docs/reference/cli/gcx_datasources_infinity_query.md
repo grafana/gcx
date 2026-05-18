@@ -1,63 +1,48 @@
 ## gcx datasources infinity query
 
-Fetch data from a URL or inline source via the Infinity datasource
+Query a pre-configured Infinity datasource
 
 ### Synopsis
 
-Fetch JSON, CSV, TSV, XML, GraphQL, or HTML data through a Grafana Infinity datasource.
+Query a Grafana Infinity datasource using its saved configuration.
 
-URL is the target endpoint passed as a positional argument.
-When the datasource has a base URL configured, the URL argument is optional — the
-query is sent to the configured base URL.
-Use --inline to provide data directly instead of fetching from a URL.
+The datasource's URL, type, method, and headers are read from its saved configuration.
+EXPR is an optional root selector expression (JSONPath for JSON, XPath for XML/HTML)
+that narrows the returned data.
+
 Datasource is resolved from -d flag or datasources.infinity in your context.
 
 ```
-gcx datasources infinity query [URL] [flags]
+gcx datasources infinity query [EXPR] [flags]
 ```
 
 ### Examples
 
 ```
 
-  # Fetch JSON from a URL
-  gcx datasources infinity query https://api.example.com/users --type json
+  # Query using datasource UID
+  gcx datasources infinity query -d UID
 
-  # Fetch with a JSONPath root selector
-  gcx datasources infinity query https://api.example.com/data --type json --root '$.items'
-
-  # Inline JSON data
-  gcx datasources infinity query --inline '[{"name":"alice"},{"name":"bob"}]' --type json
-
-  # GraphQL query
-  gcx datasources infinity query https://api.example.com/graphql --type graphql --graphql 'query { users { id name } }'
-
-  # CSV with custom headers
-  gcx datasources infinity query https://example.com/data.csv --type csv --header 'Authorization=Bearer token'
+  # Narrow results with a JSONPath expression
+  gcx datasources infinity query -d UID '$.items'
 
   # Output as JSON
-  gcx datasources infinity query -d UID https://api.example.com/data -o json
+  gcx datasources infinity query -d UID '$.results' -o json
 
-  # Query datasource base URL (no URL argument needed)
-  gcx datasources infinity query --type json --root '$.results'
+  # Query with a time range
+  gcx datasources infinity query -d UID --from 2024-01-01 --to 2024-01-02
 ```
 
 ### Options
 
 ```
-  -d, --datasource string    Datasource UID (required unless datasources.infinity is configured)
-      --from string          Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-      --graphql string       GraphQL query string
-      --header stringArray   Custom header in key=value format (repeatable)
-  -h, --help                 help for query
-      --inline string        Inline data string (replaces URL)
-      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --method string        HTTP method: GET or POST (default "GET")
-  -o, --output string        Output format. One of: json, table, wide, yaml (default "table")
-      --root string          Root selector (JSONPath for JSON, XPath for XML/HTML)
-      --since string         Duration before --to (or now if omitted); mutually exclusive with --from
-      --to string            End time (RFC3339, Unix timestamp, or relative like 'now')
-      --type string          Data type: json, csv, tsv, xml, graphql, html (default "json")
+  -d, --datasource string   Datasource UID (required unless datasources.infinity is configured)
+      --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
+  -h, --help                help for query
+      --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+      --since string        Duration before --to (or now if omitted); mutually exclusive with --from
+      --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 
 ### Options inherited from parent commands
@@ -65,7 +50,7 @@ gcx datasources infinity query [URL] [flags]
 ```
       --agent              Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
       --config string      Path to the configuration file to use
-      --context string     Name of the context to use
+      --context string     Name of the context to use (overrides current-context in config)
       --log-http-payload   Log full HTTP request/response bodies (includes headers — may expose tokens)
       --no-color           Disable color output
       --no-truncate        Disable table column truncation (auto-enabled when stdout is piped)

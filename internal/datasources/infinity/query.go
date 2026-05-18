@@ -1,10 +1,8 @@
 package infinity
 
 import (
-	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
@@ -19,56 +17,39 @@ import (
 // QueryCmd returns the `query` subcommand for an Infinity datasource parent.
 func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
-	var (
-		datasource   string
-		queryType    string
-		rootSelector string
-		method       string
-		inline       string
-		graphqlQuery string
-		headers      []string
-	)
+	var datasource string
 
 	cmd := &cobra.Command{
-		Use:   "query [URL]",
-		Short: "Fetch data from a URL or inline source via the Infinity datasource",
-		Long: `Fetch JSON, CSV, TSV, XML, GraphQL, or HTML data through a Grafana Infinity datasource.
+		Use:   "query [EXPR]",
+		Short: "Query a pre-configured Infinity datasource",
+		Long: `Query a Grafana Infinity datasource using its saved configuration.
 
-URL is the target endpoint passed as a positional argument.
-When the datasource has a base URL configured, the URL argument is optional — the
-query is sent to the configured base URL.
-Use --inline to provide data directly instead of fetching from a URL.
+The datasource's URL, type, method, and headers are read from its saved configuration.
+EXPR is an optional root selector expression (JSONPath for JSON, XPath for XML/HTML)
+that narrows the returned data.
+
 Datasource is resolved from -d flag or datasources.infinity in your context.`,
 		Example: `
-  # Fetch JSON from a URL
-  gcx datasources infinity query https://api.example.com/users --type json
+  # Query using datasource UID
+  gcx datasources infinity query -d UID
 
-  # Fetch with a JSONPath root selector
-  gcx datasources infinity query https://api.example.com/data --type json --root '$.items'
-
-  # Inline JSON data
-  gcx datasources infinity query --inline '[{"name":"alice"},{"name":"bob"}]' --type json
-
-  # GraphQL query
-  gcx datasources infinity query https://api.example.com/graphql --type graphql --graphql 'query { users { id name } }'
-
-  # CSV with custom headers
-  gcx datasources infinity query https://example.com/data.csv --type csv --header 'Authorization=Bearer token'
+  # Narrow results with a JSONPath expression
+  gcx datasources infinity query -d UID '$.items'
 
   # Output as JSON
-  gcx datasources infinity query -d UID https://api.example.com/data -o json
+  gcx datasources infinity query -d UID '$.results' -o json
 
-  # Query datasource base URL (no URL argument needed)
-  gcx datasources infinity query --type json --root '$.results'`,
+  # Query with a time range
+  gcx datasources infinity query -d UID --from 2024-01-01 --to 2024-01-02`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
 				return err
 			}
 
-			source, targetURL, err := ResolveSource(args, inline)
-			if err != nil {
-				return err
+			var expr string
+			if len(args) == 1 {
+				expr = args[0]
 			}
 
 			ctx := cmd.Context()
@@ -111,16 +92,9 @@ Datasource is resolved from -d flag or datasources.infinity in your context.`,
 			}
 
 			req := infinity.QueryRequest{
-				Type:         queryType,
-				Source:       source,
-				URL:          targetURL,
-				Data:         inline,
-				RootSelector: rootSelector,
-				Method:       method,
-				Headers:      ParseHeaders(headers),
-				GraphQL:      graphqlQuery,
-				Start:        start,
-				End:          end,
+				Expr:  expr,
+				Start: start,
+				End:   end,
 			}
 
 			resp, err := client.Query(ctx, datasourceUID, req)
@@ -134,7 +108,7 @@ Datasource is resolved from -d flag or datasources.infinity in your context.`,
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "large",
-		agent.AnnotationLLMHint:   `gcx datasources infinity query -d UID https://api.example.com/data --type json --root '$.items' -o json`,
+		agent.AnnotationLLMHint:   `gcx datasources infinity query -d UID '$.items' -o json`,
 	}
 
 	dsquery.RegisterCodecs(&shared.IO, false)
@@ -142,50 +116,6 @@ Datasource is resolved from -d flag or datasources.infinity in your context.`,
 	shared.SetupTimeFlags(cmd.Flags())
 
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.infinity is configured)")
-	cmd.Flags().StringVar(&queryType, "type", "json", "Data type: json, csv, tsv, xml, graphql, html")
-	cmd.Flags().StringVar(&rootSelector, "root", "", "Root selector (JSONPath for JSON, XPath for XML/HTML)")
-	cmd.Flags().StringVar(&method, "method", "GET", "HTTP method: GET or POST")
-	cmd.Flags().StringVar(&inline, "inline", "", "Inline data string (replaces URL)")
-	cmd.Flags().StringVar(&graphqlQuery, "graphql", "", "GraphQL query string")
-	cmd.Flags().StringArrayVar(&headers, "header", nil, "Custom header in key=value format (repeatable)")
 
 	return cmd
-}
-
-// ResolveSource determines the query source type and target URL from
-// positional args and the --inline flag value. When neither a URL nor
-// inline data is provided, source defaults to "url" with an empty
-// targetURL, allowing the Infinity datasource to use its configured
-// base URL.
-func ResolveSource(args []string, inline string) (string, string, error) {
-	switch {
-	case len(args) == 1 && inline != "":
-		return "", "", errors.New("provide either a URL argument or --inline, not both")
-	case len(args) == 1:
-		return "url", args[0], nil
-	case inline != "":
-		return "inline", "", nil
-	default:
-		return "url", "", nil
-	}
-}
-
-// ParseHeaders parses a slice of "key=value" strings into a map.
-// Invalid entries (without '=') are skipped. Returns nil if the input is
-// empty or no valid entries are found.
-func ParseHeaders(headers []string) map[string]string {
-	if len(headers) == 0 {
-		return nil
-	}
-	var result map[string]string
-	for _, h := range headers {
-		parts := strings.SplitN(h, "=", 2)
-		if len(parts) == 2 {
-			if result == nil {
-				result = make(map[string]string, len(headers))
-			}
-			result[parts[0]] = parts[1]
-		}
-	}
-	return result
 }

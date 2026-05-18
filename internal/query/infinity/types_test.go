@@ -3,11 +3,57 @@ package infinity_test
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/query/infinity"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestQueryRequest_IsRange(t *testing.T) {
+	now := time.Now()
+	tests := []struct {
+		name  string
+		start time.Time
+		end   time.Time
+		want  bool
+	}{
+		{
+			name:  "both zero returns false",
+			start: time.Time{},
+			end:   time.Time{},
+			want:  false,
+		},
+		{
+			name:  "only start set returns false",
+			start: now.Add(-time.Hour),
+			end:   time.Time{},
+			want:  false,
+		},
+		{
+			name:  "only end set returns false",
+			start: time.Time{},
+			end:   now,
+			want:  false,
+		},
+		{
+			name:  "both set returns true",
+			start: now.Add(-time.Hour),
+			end:   now,
+			want:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := infinity.QueryRequest{
+				Start: tt.start,
+				End:   tt.end,
+			}
+			assert.Equal(t, tt.want, req.IsRange())
+		})
+	}
+}
 
 func TestConvertGrafanaResponse(t *testing.T) {
 	tests := []struct {
