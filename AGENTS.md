@@ -123,9 +123,11 @@ internal/
 ├── deeplink/    Deep link URL template registry and browser opener
 ├── dashboards/  Dashboard Image Renderer client (PNG snapshots)
 ├── datasources/ Datasource HTTP client, DatasourceProvider interface + registry
+│   ├── cloudwatch/  CloudWatch CLI commands (query, list-namespaces, list-metrics, list-dimensions, list-regions, list-accounts)
 │   ├── influxdb/  InfluxDB datasource command layer (query, field-keys, measurements)
 │   └── query/   Shared query CLI utils (time parsing, codecs, opts, resolve helpers — used by signal providers and GenericCmd)
 ├── query/       Datasource query clients
+│   ├── cloudwatch/  CloudWatch HTTP query client (metric queries, resource listing)
 │   ├── prometheus/  Prometheus HTTP query client
 │   ├── influxdb/    InfluxDB HTTP query client
 │   └── loki/        Loki HTTP query client

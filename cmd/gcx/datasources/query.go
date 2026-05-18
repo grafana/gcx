@@ -49,12 +49,13 @@ that do not have a dedicated subcommand.`,
 				return err
 			}
 
+			// Reject "both positional and --expr" before any HTTP call.
+			if len(args) > 1 && shared.Expr != "" {
+				return errors.New("provide the expression as a positional argument or via --expr, not both")
+			}
+
 			ctx := cmd.Context()
 			datasourceUID := args[0]
-			expr, err := shared.ResolveExpr(args, 1)
-			if err != nil {
-				return err
-			}
 
 			cfg, err := configOpts.LoadGrafanaConfig(ctx)
 			if err != nil {
@@ -66,6 +67,17 @@ that do not have a dedicated subcommand.`,
 				return err
 			}
 			dsType := dsquery.NormalizeKind(rawType)
+
+			if dsType == "cloudwatch" {
+				return errors.New("CloudWatch queries are structured (namespace, metric, dimensions, region, statistic, period); " +
+					"the generic `gcx datasources query <uid> <expr>` form can't carry them — " +
+					"use `gcx datasources cloudwatch query --namespace ... --metric ... --region ...` instead")
+			}
+
+			expr, err := shared.ResolveExpr(args, 1)
+			if err != nil {
+				return err
+			}
 
 			now := time.Now()
 			start, end, step, err := shared.ParseTimes(now)
