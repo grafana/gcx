@@ -34,7 +34,7 @@ gcx irm oncall alert-groups acknowledge [<id>] [flags]
       --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --max-age string        Filter: alert groups started within this duration (e.g. 1h, 24h, 7d)
       --mine                  Filter: limit to alert groups for the authenticated user
-  -o, --output string         Output format. One of: agents, json, text, yaml (default "json")
+  -o, --output string         Output format. One of: agents, json, text, yaml (default "text")
       --state strings         Filter: state (firing|acknowledged|resolved|silenced; repeatable)
       --team strings          Filter: team PK (repeatable)
 ```

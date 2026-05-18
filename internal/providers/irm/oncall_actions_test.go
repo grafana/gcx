@@ -64,9 +64,8 @@ func runAck(t *testing.T, args []string, opts *alertGroupActionVerbOpts, fake *f
 	cmd.SetContext(context.Background())
 
 	// Tests bypass RunE/setup/BindFlags, so the IO codec system is not
-	// initialised by Cobra. Seed it with JSON output (the locked default for
-	// MutationResult on stdout) and route hint diagnostics to the captured
-	// stderr buffer so they don't escape to os.Stderr.
+	// initialised by Cobra. Seed it with JSON output for structured assertion
+	// in tests, and route hint diagnostics to the captured stderr buffer.
 	opts.IO.OutputFormat = "json"
 	opts.IO.ErrWriter = stderr
 

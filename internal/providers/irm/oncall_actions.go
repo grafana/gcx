@@ -239,13 +239,15 @@ func (o *alertGroupActionVerbOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.Mine, "mine", false, "Filter: limit to alert groups for the authenticated user")
 	flags.BoolVar(&o.All, "all", false, "Bypass the default status and is_root filters")
 
-	// Wire the codec system. JSON is the default to preserve the locked
-	// MutationResult contract (a single JSON document on stdout); yaml uses
-	// the stable-key-order codec; text is a one-line human-readable summary
-	// covering both single- and bulk-shape envelopes via a type switch.
+	// Wire the codec system. Text is the default for human/TTY mode; agent
+	// mode overrides to "agents" inside BindFlags so the locked MutationResult
+	// contract (a single structured document on stdout) is preserved for
+	// parsers. yaml uses the stable-key-order codec; text is a one-line
+	// human-readable summary covering both single- and bulk-shape envelopes
+	// via a type switch.
 	o.IO.RegisterCustomCodec("text", &mutationTextCodec{})
 	o.IO.RegisterCustomCodec("yaml", format.NewOrderedYAMLCodec())
-	o.IO.DefaultFormat("json")
+	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
 }
 
