@@ -1,10 +1,10 @@
-package irm
+package irm_test
 
 import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/agent"
-	"github.com/spf13/pflag"
+	"github.com/grafana/gcx/internal/providers/irm"
 )
 
 // Regression: alert-group action commands and escalate set a DefaultFormat
@@ -20,17 +20,13 @@ func TestActionOptsDefaultFormatIsValid(t *testing.T) {
 	t.Cleanup(agent.ResetForTesting)
 
 	t.Run("alertGroupActionOpts", func(t *testing.T) {
-		o := &alertGroupActionOpts{}
-		o.setup(pflag.NewFlagSet("test", pflag.ContinueOnError))
-		if err := o.IO.Validate(); err != nil {
+		if err := irm.ValidateAlertGroupActionDefaultIO(); err != nil {
 			t.Fatalf("default IO.Validate() returned error: %v", err)
 		}
 	})
 
 	t.Run("escalateOpts", func(t *testing.T) {
-		o := &escalateOpts{}
-		o.setup(pflag.NewFlagSet("test", pflag.ContinueOnError))
-		if err := o.IO.Validate(); err != nil {
+		if err := irm.ValidateEscalateDefaultIO(); err != nil {
 			t.Fatalf("default IO.Validate() returned error: %v", err)
 		}
 	})
