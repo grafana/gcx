@@ -1,11 +1,11 @@
-## gcx kg scopes
+## gcx irm incidents contexts
 
-Manage Knowledge Graph entity scopes.
+Manage incident contexts (linked alert groups, dashboards, etc.).
 
 ### Options
 
 ```
-  -h, --help   help for scopes
+  -h, --help   help for contexts
 ```
 
 ### Options inherited from parent commands
@@ -22,6 +22,6 @@ Manage Knowledge Graph entity scopes.
 
 ### SEE ALSO
 
-* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
-* [gcx kg scopes list](gcx_kg_scopes_list.md)	 - List entity scopes.
+* [gcx irm incidents](gcx_irm_incidents.md)	 - Manage incidents.
+* [gcx irm incidents contexts list](gcx_irm_incidents_contexts_list.md)	 - List contexts attached to an incident.
 

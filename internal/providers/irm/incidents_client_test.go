@@ -263,6 +263,87 @@ func TestClient_QueryActivity(t *testing.T) {
 	}
 }
 
+func TestClient_QueryIncidentContext(t *testing.T) {
+	alertGroupID := "ag-42"
+
+	tests := []struct {
+		name    string
+		query   irm.IncidentContextQuery
+		handler http.HandlerFunc
+		wantLen int
+		wantErr string
+	}{
+		{
+			name: "returns contexts and forwards filters",
+			query: irm.IncidentContextQuery{
+				IncidentID:   "inc-123",
+				Type:         "genericURL",
+				Status:       "active",
+				AlertGroupID: alertGroupID,
+			},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Contains(t, r.URL.Path, "IncidentContextService.QueryIncidentContext")
+				var body map[string]any
+				_ = json.NewDecoder(r.Body).Decode(&body)
+				query, _ := body["query"].(map[string]any)
+				assert.Equal(t, "inc-123", query["incidentID"])
+				assert.Equal(t, "genericURL", query["type"])
+				assert.Equal(t, "active", query["status"])
+				assert.Equal(t, alertGroupID, query["alertGroupID"])
+				writeJSON(w, map[string]any{
+					"incidentContexts": []map[string]any{
+						{"contextID": "ctx-1", "incidentID": "inc-123", "type": "genericURL", "alertGroupID": alertGroupID},
+						{"contextID": "ctx-2", "incidentID": "inc-123", "type": "grafana.dashboard"},
+					},
+				})
+			},
+			wantLen: 2,
+		},
+		{
+			name:  "returns empty list",
+			query: irm.IncidentContextQuery{IncidentID: "inc-empty"},
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				writeJSON(w, map[string]any{"incidentContexts": []map[string]any{}})
+			},
+			wantLen: 0,
+		},
+		{
+			name:    "missing incident ID is rejected client-side",
+			query:   irm.IncidentContextQuery{},
+			handler: func(_ http.ResponseWriter, _ *http.Request) { t.Fatal("server should not be hit") },
+			wantErr: "incidentID is required",
+		},
+		{
+			name:  "propagates server error",
+			query: irm.IncidentContextQuery{IncidentID: "inc-err"},
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+				writeJSON(w, map[string]string{"error": "internal error"})
+			},
+			wantErr: "internal error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(tt.handler)
+			defer server.Close()
+
+			c := newTestClient(t, server)
+			contexts, err := c.QueryIncidentContext(t.Context(), tt.query)
+
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Len(t, contexts, tt.wantLen)
+		})
+	}
+}
+
 func TestClient_AddActivity(t *testing.T) {
 	tests := []struct {
 		name    string

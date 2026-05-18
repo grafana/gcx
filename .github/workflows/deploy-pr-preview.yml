@@ -1,0 +1,46 @@
+name: Deploy pr preview
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - closed
+    paths:
+      - "docs/sources/**"
+
+permissions: {}
+
+jobs:
+  deploy-pr-preview:
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+      statuses: write
+    if: "!github.event.pull_request.head.repo.fork"
+    uses: grafana/writers-toolkit/.github/workflows/deploy-preview.yml@jdb/deploy-preview # zizmor: ignore[unpinned-uses]
+    with:
+      branch: ${{ github.head_ref }}
+      event_number: ${{ github.event.number }}
+      repo: gcx
+      sha: ${{ github.event.pull_request.head.sha }}
+      sources: |
+        [
+          {
+            "index_file": null,
+            "relative_prefix": "/docs/grafana/next/as-code/observability-as-code/grafana-cli/gcx/",
+            "repo": "grafana",
+            "source_directory": "docs/sources",
+            "website_directory": "content/docs/grafana/next",
+            "ref": "main"
+          },
+          {
+            "index_file": null,
+            "relative_prefix": "/docs/grafana/next/as-code/observability-as-code/grafana-cli/gcx/",
+            "repo": "gcx",
+            "source_directory": "docs/sources",
+            "website_directory": "content/docs/grafana/next/as-code/observability-as-code/grafana-cli/gcx"
+          }
+        ]
+      title: ${{ github.event.pull_request.title }}

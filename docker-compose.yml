@@ -61,10 +61,28 @@ services:
     networks:
       - grafana
 
+  influxdb:
+    image: influxdb:1.11
+    container_name: gcx-influxdb
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    environment:
+      INFLUXDB_DB: testdb
+      INFLUXDB_ADMIN_USER: admin
+      INFLUXDB_ADMIN_PASSWORD: adminpassword
+      INFLUXDB_HTTP_AUTH_ENABLED: "false"
+    volumes:
+      - influxdb_data:/var/lib/influxdb
+    networks:
+      - grafana
+
 volumes:
   mysql_data:
     driver: local
   grafana_data:
+    driver: local
+  influxdb_data:
     driver: local
 
 networks:

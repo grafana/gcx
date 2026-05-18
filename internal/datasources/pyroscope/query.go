@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/gcx/internal/query/pyroscope"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 const defaultMaxNodes int64 = 50000
@@ -33,19 +34,76 @@ func (c *pprofCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("pprof codec does not support decoding")
 }
 
+type pyroscopeQueryOpts struct {
+	shared             dsquery.SharedOpts
+	Datasource         string
+	ProfileType        string
+	MaxNodes           int64
+	ProfileIDs         []string
+	StacktraceSelector []string
+	PprofPath          string
+	PprofOverwrite     bool
+}
+
+func (opts *pyroscopeQueryOpts) setup(flags *pflag.FlagSet) {
+	// Register pprof before shared.Setup so it appears in the -o help string.
+	opts.shared.IO.RegisterCustomCodec("pprof", &pprofCodec{})
+	opts.shared.Setup(flags, true)
+
+	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pyroscope is configured)")
+	flags.StringVar(&opts.ProfileType, "profile-type", "", "Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles profile-types' to list available (required)")
+	flags.Int64Var(&opts.MaxNodes, "max-nodes", 0, fmt.Sprintf("Maximum nodes in flame graph (default 0/unlimited for pprof output, %d for all other formats)", defaultMaxNodes))
+	flags.StringSliceVar(&opts.ProfileIDs, "profile-id", nil, "Drill down to specific profile UUIDs from exemplar queries (repeatable)")
+	flags.StringSliceVar(&opts.StacktraceSelector, "stacktrace-selector", nil, "Only query locations with these function names, starting from the root (repeatable)")
+	flags.StringVar(&opts.PprofPath, "pprof-path", "", "Destination path for pprof binary output (only with -o pprof; default: profile-YYYY-MM-DD-HHMMSS.pb.gz)")
+	flags.BoolVar(&opts.PprofOverwrite, "pprof-overwrite", false, "Overwrite the output file if it already exists (only with -o pprof)")
+}
+
+func (opts *pyroscopeQueryOpts) Validate(flags *pflag.FlagSet) error {
+	if flags.Changed("pprof-path") || flags.Changed("pprof-overwrite") {
+		if opts.shared.IO.OutputFormat != "pprof" {
+			return errors.New("--pprof-path and --pprof-overwrite require -o pprof")
+		}
+	}
+	if err := opts.shared.Validate(); err != nil {
+		return err
+	}
+	if opts.ProfileType == "" {
+		return errors.New("--profile-type is required for pyroscope queries")
+	}
+	for _, id := range opts.ProfileIDs {
+		if _, err := uuid.Parse(id); err != nil {
+			return fmt.Errorf("--profile-id must be a valid UUID (got %q)", id)
+		}
+	}
+	return nil
+}
+
+// stackTraceSelector builds the StackTraceSelector message from the
+// --stacktrace-selector flag values. Returns nil when no values are set.
+func (opts *pyroscopeQueryOpts) stackTraceSelector() *pyroscope.StackTraceSelector {
+	if len(opts.StacktraceSelector) == 0 {
+		return nil
+	}
+	locs := make([]pyroscope.Location, len(opts.StacktraceSelector))
+	for i, n := range opts.StacktraceSelector {
+		locs[i] = pyroscope.Location{Name: n}
+	}
+	return &pyroscope.StackTraceSelector{CallSite: locs}
+}
+
+// resolveMaxNodes returns the effective MaxNodes for non-pprof formats.
+// pprof output is left at MaxNodes=0 (server default / unlimited).
+func (opts *pyroscopeQueryOpts) resolveMaxNodes(flags *pflag.FlagSet) int64 {
+	if flags.Changed("max-nodes") {
+		return opts.MaxNodes
+	}
+	return defaultMaxNodes
+}
+
 // QueryCmd returns the `query` subcommand for a Pyroscope datasource parent.
 func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
-	shared := &dsquery.SharedOpts{}
-	// Register pprof before BindFlags so it appears in the -o help string.
-	shared.IO.RegisterCustomCodec("pprof", &pprofCodec{})
-
-	var profileType string
-	var maxNodes int64
-	var datasource string
-	var profileIDs []string
-	var stacktraceSelector []string
-	var pprofPath string
-	var pprofOverwrite bool
+	opts := &pyroscopeQueryOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "query [EXPR]",
@@ -89,26 +147,11 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o pprof --pprof-path ./cpu.pb.gz`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			pprofFlagsChanged := cmd.Flags().Changed("pprof-path") || cmd.Flags().Changed("pprof-overwrite")
-			if pprofFlagsChanged && shared.IO.OutputFormat != "pprof" {
-				return errors.New("--pprof-path and --pprof-overwrite require -o pprof")
-			}
-
-			if err := shared.Validate(); err != nil {
+			if err := opts.Validate(cmd.Flags()); err != nil {
 				return err
 			}
 
-			if profileType == "" {
-				return errors.New("--profile-type is required for pyroscope queries")
-			}
-
-			for _, id := range profileIDs {
-				if _, err := uuid.Parse(id); err != nil {
-					return fmt.Errorf("--profile-id must be a valid UUID (got %q)", id)
-				}
-			}
-
-			expr, err := shared.ResolveExpr(args, 0)
+			expr, err := opts.shared.ResolveExpr(args, 0)
 			if err != nil {
 				return err
 			}
@@ -129,13 +172,13 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 				return err
 			}
 
-			datasourceUID, _, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, datasource, cfgCtx, cfg, "pyroscope")
+			datasourceUID, _, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "pyroscope")
 			if err != nil {
 				return err
 			}
 
 			now := time.Now()
-			start, end, _, err := shared.ParseTimes(now)
+			start, end, _, err := opts.shared.ParseTimes(now)
 			if err != nil {
 				return err
 			}
@@ -145,20 +188,20 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 				return fmt.Errorf("failed to create client: %w", err)
 			}
 
-			if shared.IO.OutputFormat == "pprof" {
-				dest := pprofPath
+			if opts.shared.IO.OutputFormat == "pprof" {
+				dest := opts.PprofPath
 				if dest == "" {
 					dest = now.Format("profile-2006-01-02-150405.pb.gz")
 				}
-				if _, err := os.Stat(dest); err == nil && !pprofOverwrite {
+				if _, err := os.Stat(dest); err == nil && !opts.PprofOverwrite {
 					return fmt.Errorf("%s already exists; use --pprof-overwrite to overwrite", dest)
 				}
 				data, err := client.Pprof(ctx, datasourceUID, pyroscope.PprofRequest{
 					LabelSelector: expr,
-					ProfileTypeID: profileType,
+					ProfileTypeID: opts.ProfileType,
 					Start:         start,
 					End:           end,
-					MaxNodes:      maxNodes,
+					MaxNodes:      opts.MaxNodes,
 				})
 				if err != nil {
 					return fmt.Errorf("pprof fetch failed: %w", err)
@@ -170,27 +213,14 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 				return pyroscope.FormatPprofWriteTable(cmd.OutOrStdout(), result)
 			}
 
-			var sts *pyroscope.StackTraceSelector
-			if len(stacktraceSelector) > 0 {
-				locs := make([]pyroscope.Location, len(stacktraceSelector))
-				for i, n := range stacktraceSelector {
-					locs[i] = pyroscope.Location{Name: n}
-				}
-				sts = &pyroscope.StackTraceSelector{CallSite: locs}
-			}
-
-			resolvedMaxNodes := maxNodes
-			if !cmd.Flags().Changed("max-nodes") {
-				resolvedMaxNodes = defaultMaxNodes
-			}
 			req := pyroscope.QueryRequest{
 				LabelSelector:      expr,
-				ProfileTypeID:      profileType,
+				ProfileTypeID:      opts.ProfileType,
 				Start:              start,
 				End:                end,
-				MaxNodes:           resolvedMaxNodes,
-				ProfileIDs:         profileIDs,
-				StackTraceSelector: sts,
+				MaxNodes:           opts.resolveMaxNodes(cmd.Flags()),
+				ProfileIDs:         opts.ProfileIDs,
+				StackTraceSelector: opts.stackTraceSelector(),
 			}
 
 			resp, err := client.Query(ctx, datasourceUID, req)
@@ -198,11 +228,11 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 				return fmt.Errorf("query failed: %w", err)
 			}
 
-			if shared.IO.OutputFormat == "table" {
+			if opts.shared.IO.OutputFormat == "table" {
 				return pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
 			}
 
-			return shared.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.shared.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}
 
@@ -211,14 +241,7 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 		agent.AnnotationLLMHint:   `gcx datasources pyroscope query -d UID '{service_name="frontend"}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h -o json`,
 	}
 
-	shared.Setup(cmd.Flags(), true)
-	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pyroscope is configured)")
-	cmd.Flags().StringVar(&profileType, "profile-type", "", "Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles profile-types' to list available (required)")
-	cmd.Flags().Int64Var(&maxNodes, "max-nodes", 0, fmt.Sprintf("Maximum nodes in flame graph (default 0/unlimited for pprof output, %d for all other formats)", defaultMaxNodes))
-	cmd.Flags().StringSliceVar(&profileIDs, "profile-id", nil, "Drill down to specific profile UUIDs from exemplar queries (repeatable)")
-	cmd.Flags().StringSliceVar(&stacktraceSelector, "stacktrace-selector", nil, "Only query locations with these function names, starting from the root (repeatable)")
-	cmd.Flags().StringVar(&pprofPath, "pprof-path", "", "Destination path for pprof binary output (only with -o pprof; default: profile-YYYY-MM-DD-HHMMSS.pb.gz)")
-	cmd.Flags().BoolVar(&pprofOverwrite, "pprof-overwrite", false, "Overwrite the output file if it already exists (only with -o pprof)")
+	opts.setup(cmd.Flags())
 
 	return cmd
 }
