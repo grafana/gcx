@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/grafana/gcx/cmd/gcx/fail"
+	gcxerrors "github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	instoutput "github.com/grafana/gcx/internal/providers/instrumentation/output"
 )
@@ -86,7 +86,7 @@ func TestGetCmd_Discovered(t *testing.T) {
 			args:           []string{"-o", "json", "c1", "grotshop"},
 			namespaces:     nil,
 			discoverItems:  nil,
-			wantExitCode:   intptr(fail.ExitGeneralError),
+			wantExitCode:   intptr(gcxerrors.ExitGeneralError),
 			wantErrSummary: "Resource not found",
 		},
 	}
@@ -110,9 +110,9 @@ func TestGetCmd_Discovered(t *testing.T) {
 				if err == nil {
 					t.Fatalf("expected error, got nil")
 				}
-				var de *fail.DetailedError
+				var de *gcxerrors.DetailedError
 				if !errors.As(err, &de) {
-					t.Fatalf("expected *fail.DetailedError, got %T: %v", err, err)
+					t.Fatalf("expected *gcxerrors.DetailedError, got %T: %v", err, err)
 				}
 				if de.Summary != tc.wantErrSummary {
 					t.Errorf("expected summary %q, got %q", tc.wantErrSummary, de.Summary)

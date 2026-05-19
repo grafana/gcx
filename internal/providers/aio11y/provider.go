@@ -8,6 +8,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/aio11y/eval/collections"
 	"github.com/grafana/gcx/internal/providers/aio11y/eval/evaluators"
 	"github.com/grafana/gcx/internal/providers/aio11y/eval/experiments"
+	"github.com/grafana/gcx/internal/providers/aio11y/eval/guards"
 	"github.com/grafana/gcx/internal/providers/aio11y/eval/judge"
 	"github.com/grafana/gcx/internal/providers/aio11y/eval/rules"
 	"github.com/grafana/gcx/internal/providers/aio11y/eval/savedconversations"
@@ -73,6 +74,12 @@ func (p *AIO11yProvider) Commands() []*cobra.Command {
 		agent.AnnotationLLMHint:   `gcx aio11y rules list -o json; gcx aio11y rules get <id> -o yaml; gcx aio11y rules create -f rule.yaml -o json; gcx aio11y rules update <id> -f patch.yaml -o json; gcx aio11y rules delete <id> --force`,
 	}
 
+	guardsCmd := guards.Commands()
+	guardsCmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "low",
+		agent.AnnotationLLMHint:   `gcx aio11y guards list -o json; gcx aio11y guards get <id> -o yaml; gcx aio11y guards create -f guard.yaml -o json; gcx aio11y guards update <id> -f guard.yaml -o json; gcx aio11y guards delete <id> --force`,
+	}
+
 	templatesCmd := templates.Commands(loader)
 	templatesCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "low",
@@ -115,7 +122,7 @@ func (p *AIO11yProvider) Commands() []*cobra.Command {
 		agent.AnnotationLLMHint:   `gcx aio11y experiments list -o json; gcx aio11y experiments get <run-id> -o yaml; gcx aio11y experiments scores <run-id> -o json; gcx aio11y experiments report <run-id> -o json`,
 	}
 
-	aio11yCmd.AddCommand(convsCmd, agentsCmd, evaluatorsCmd, rulesCmd, templatesCmd, generationsCmd, scoresCmd, judgeCmd, savedConvsCmd, collectionsCmd, experimentsCmd)
+	aio11yCmd.AddCommand(convsCmd, agentsCmd, evaluatorsCmd, rulesCmd, guardsCmd, templatesCmd, generationsCmd, scoresCmd, judgeCmd, savedConvsCmd, collectionsCmd, experimentsCmd)
 
 	return []*cobra.Command{aio11yCmd}
 }
@@ -145,6 +152,7 @@ func (p *AIO11yProvider) ConfigKeys() []providers.ConfigKey {
 func (p *AIO11yProvider) TypedRegistrations() []adapter.Registration {
 	evalDesc := evaluators.StaticDescriptor()
 	ruleDesc := rules.StaticDescriptor()
+	guardDesc := guards.StaticDescriptor()
 	collectionDesc := collections.StaticDescriptor()
 
 	return []adapter.Registration{
@@ -161,6 +169,13 @@ func (p *AIO11yProvider) TypedRegistrations() []adapter.Registration {
 			GVK:         ruleDesc.GroupVersionKind(),
 			Schema:      rules.RuleSchema(),
 			URLTemplate: "/a/grafana-sigil-app/rules/{name}",
+		},
+		{
+			Factory:     guards.NewLazyFactory(),
+			Descriptor:  guardDesc,
+			GVK:         guardDesc.GroupVersionKind(),
+			Schema:      guards.HookRuleSchema(),
+			URLTemplate: "/a/grafana-sigil-app/guards/{name}",
 		},
 		{
 			Factory:     collections.NewLazyFactory(),

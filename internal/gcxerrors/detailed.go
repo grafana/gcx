@@ -1,4 +1,4 @@
-package fail
+package gcxerrors
 
 import (
 	"fmt"

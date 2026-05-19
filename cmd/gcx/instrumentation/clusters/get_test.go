@@ -6,7 +6,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/grafana/gcx/cmd/gcx/fail"
+	gcxerrors "github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	instrOutput "github.com/grafana/gcx/internal/providers/instrumentation/output"
 	"github.com/stretchr/testify/assert"
@@ -143,8 +143,8 @@ func TestRunGet(t *testing.T) {
 			if tt.wantErr {
 				require.Error(t, err)
 				if tt.wantDetailedErr {
-					var de *fail.DetailedError
-					require.ErrorAs(t, err, &de, "expected *fail.DetailedError, got %T: %v", err, err)
+					var de *gcxerrors.DetailedError
+					require.ErrorAs(t, err, &de, "expected *gcxerrors.DetailedError, got %T: %v", err, err)
 					assert.Equal(t, tt.wantErrSummary, de.Summary)
 					if tt.wantExitCode != nil {
 						require.NotNil(t, de.ExitCode, "expected non-nil ExitCode")

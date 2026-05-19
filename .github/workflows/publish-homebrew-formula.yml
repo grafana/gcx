@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read           # checkout gcx at the tag
-      id-token: write          # required by get-vault-secrets OIDC exchange
+      id-token: write          # required by create-github-app-token broker OIDC exchange
 
     env:
       TAG: ${{ inputs.tag }}
@@ -125,29 +125,12 @@ jobs:
           echo "---"
           echo "rb_path=${GITHUB_WORKSPACE}/gcx.rb" >> "${GITHUB_OUTPUT}"
 
-      - name: Get App credentials from Vault
-        if: steps.tag.outputs.skip != 'true'
-        id: get-secrets
-        uses: grafana/shared-workflows/actions/get-vault-secrets@a53fc80bc30b0a16a262520465db899fa3af08b7 # get-vault-secrets/v1.3.2
-        with:
-          vault_instance: ops
-          export_env: false
-          # Secret path names are stored in repository Actions variables
-          # (Settings → Variables) so they can be updated without a code
-          # change when the App is swapped for a dedicated gcx-scoped App.
-          repo_secrets: |
-            GITHUB_APP_ID=${{ vars.VAULT_APP_ID_PATH }}
-            GITHUB_APP_PRIVATE_KEY=${{ vars.VAULT_APP_PRIVATE_KEY_PATH }}
-
       - name: Mint App installation token
         if: steps.tag.outputs.skip != 'true'
         id: app-token
-        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        uses: grafana/shared-workflows/actions/create-github-app-token@ae92934a14a48b94494dbc06d74a81d47fe08a40 # create-github-app-token/v0.2.2
         with:
-          app-id: ${{ fromJSON(steps.get-secrets.outputs.secrets).GITHUB_APP_ID }}
-          private-key: ${{ fromJSON(steps.get-secrets.outputs.secrets).GITHUB_APP_PRIVATE_KEY }}
-          owner: grafana
-          repositories: homebrew-grafana
+          github_app: ${{ vars.PUBLISHER_APP_NAME }}
 
       - name: Open tap pull request
         if: steps.tag.outputs.skip != 'true'

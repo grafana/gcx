@@ -116,7 +116,7 @@ internal/
 │   ├── metrics/    Metrics signal provider (Prometheus queries + Adaptive Metrics commands)
 │   ├── appo11y/    App Observability provider (overrides, settings — singleton resources)
 │   ├── profiles/   Profiles signal provider (Pyroscope queries + adaptive stub)
-│   ├── aio11y/     AI Observability provider (conversations, agents, generations, evaluators, rules, templates, scores, judge, saved-conversations, collections, experiments — via grafana-sigil-app plugin API)
+│   ├── aio11y/     AI Observability provider (conversations, agents, generations, evaluators, rules, hook-rules (guards), templates, scores, judge, saved-conversations, collections, experiments — via grafana-sigil-app plugin API)
 │   ├── slo/        SLO provider (definitions, reports)
 │   ├── synth/      Synthetic Monitoring provider (checks, probes)
 │   └── traces/     Traces signal provider (Tempo queries + Adaptive Traces commands)

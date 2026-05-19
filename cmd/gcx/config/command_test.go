@@ -1,13 +1,66 @@
 package config_test
 
 import (
+	"bytes"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/adrg/xdg"
 	"github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/testutils"
+	"github.com/stretchr/testify/require"
 )
+
+// isolatedConfigEnv points HOME and XDG_CONFIG_HOME at empty temp dirs and
+// chdirs into a working directory, so layered config discovery only sees what
+// the test writes. Returns the user-config directory and the working directory.
+func isolatedConfigEnv(t *testing.T) (string, string) {
+	t.Helper()
+	userDir := t.TempDir()
+	workDir := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", userDir)
+	t.Setenv("GCX_CONFIG", "")
+	xdg.Reload()
+	t.Chdir(workDir)
+	return userDir, workDir
+}
+
+// writeLocalConfig creates a `.gcx.yaml` in workDir with the given content and
+// returns its path.
+func writeLocalConfig(t *testing.T, workDir, content string) string {
+	t.Helper()
+	path := filepath.Join(workDir, ".gcx.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	return path
+}
+
+// writeUserConfig creates the user config file (XDG_CONFIG_HOME/gcx/config.yaml)
+// with the given content and returns its path.
+func writeUserConfig(t *testing.T, userDir, content string) string {
+	t.Helper()
+	path := filepath.Join(userDir, "gcx", "config.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	return path
+}
+
+// runConfigCmd executes a `gcx config ...` invocation against a fresh command
+// tree and returns the combined stdout/stderr plus error.
+func runConfigCmd(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+	cmd := config.Command()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	buf := &bytes.Buffer{}
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs(args)
+	err := cmd.Execute()
+	return buf.String(), err
+}
 
 func Test_CurrentContextCommand(t *testing.T) {
 	testCase := testutils.CommandTestCase{
@@ -539,4 +592,108 @@ current-context: default
 	}
 
 	testCase.Run(t)
+}
+
+// Regression test for #564: when only a local .gcx.yaml exists, use-context
+// must update that file instead of silently creating/writing the user config.
+func Test_UseContextCommand_writesToLocalConfigWhenOnlySource(t *testing.T) {
+	_, workDir := isolatedConfigEnv(t)
+	localPath := writeLocalConfig(t, workDir, `current-context: old
+contexts:
+  old: {}
+  new: {}
+`)
+
+	out, err := runConfigCmd(t, "use-context", "new")
+	require.NoError(t, err, out)
+	require.Contains(t, out, `Context set to "new"`)
+
+	contents, err := os.ReadFile(localPath)
+	require.NoError(t, err)
+	require.Contains(t, string(contents), "current-context: new")
+
+	userPath := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "gcx", "config.yaml")
+	_, statErr := os.Stat(userPath)
+	require.True(t, os.IsNotExist(statErr), "user config must not be created, got: %v", statErr)
+}
+
+// When both user and local configs exist, use-context cannot guess which to
+// update, so it errors with guidance pointing at --file. This matches the
+// behaviour of `gcx config set` / `unset`.
+func Test_UseContextCommand_multipleSourcesRequiresFileFlag(t *testing.T) {
+	userDir, workDir := isolatedConfigEnv(t)
+	userPath := writeUserConfig(t, userDir, `current-context: user-ctx
+contexts:
+  user-ctx: {}
+  new: {}
+`)
+	localPath := writeLocalConfig(t, workDir, `current-context: local-ctx
+contexts:
+  local-ctx: {}
+  new: {}
+`)
+
+	out, err := runConfigCmd(t, "use-context", "new")
+	require.Error(t, err, out)
+	require.Contains(t, err.Error(), "--file")
+
+	for _, p := range []string{userPath, localPath} {
+		contents, readErr := os.ReadFile(p)
+		require.NoError(t, readErr)
+		require.NotContains(t, string(contents), "current-context: new",
+			"file %s must not be modified", p)
+	}
+}
+
+// --file selects the target layer explicitly when multiple sources exist.
+func Test_UseContextCommand_fileFlagSelectsLayer(t *testing.T) {
+	userDir, workDir := isolatedConfigEnv(t)
+	userPath := writeUserConfig(t, userDir, `current-context: user-ctx
+contexts:
+  user-ctx: {}
+  new: {}
+`)
+	localPath := writeLocalConfig(t, workDir, `current-context: local-ctx
+contexts:
+  local-ctx: {}
+  new: {}
+`)
+
+	out, err := runConfigCmd(t, "use-context", "--file", "local", "new")
+	require.NoError(t, err, out)
+
+	localContents, err := os.ReadFile(localPath)
+	require.NoError(t, err)
+	require.Contains(t, string(localContents), "current-context: new")
+	require.NotContains(t, string(localContents), "user-ctx",
+		"local config must not absorb user-layer contexts")
+
+	userContents, err := os.ReadFile(userPath)
+	require.NoError(t, err)
+	require.Contains(t, string(userContents), "current-context: user-ctx",
+		"user config must be untouched when --file local is given")
+	require.NotContains(t, string(userContents), "local-ctx",
+		"user config must not absorb local-layer contexts")
+}
+
+// Regression test for the same latent bug in `gcx config set`: with only a
+// local .gcx.yaml, set must write to that file rather than fabricating a user
+// config.
+func Test_SetCommand_writesToLocalConfigWhenOnlySource(t *testing.T) {
+	_, workDir := isolatedConfigEnv(t)
+	localPath := writeLocalConfig(t, workDir, `current-context: dev
+contexts:
+  dev: {}
+`)
+
+	_, err := runConfigCmd(t, "set", "contexts.dev.grafana.server", "https://example.test")
+	require.NoError(t, err)
+
+	contents, err := os.ReadFile(localPath)
+	require.NoError(t, err)
+	require.Contains(t, string(contents), "server: https://example.test")
+
+	userPath := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "gcx", "config.yaml")
+	_, statErr := os.Stat(userPath)
+	require.True(t, os.IsNotExist(statErr), "user config must not be created, got: %v", statErr)
 }
