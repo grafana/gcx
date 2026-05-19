@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/kg"
 	"github.com/grafana/gcx/internal/query/prometheus"
+	"github.com/grafana/gcx/internal/query/tempo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
@@ -715,4 +716,125 @@ func TestLabelsDiagnoseTextCodec(t *testing.T) {
 	assert.Contains(t, output, "not mapped")
 	assert.Contains(t, output, "Diagnosis")
 	assert.Contains(t, output, "1/2 checks passed")
+}
+
+// ---------------------------------------------------------------------------
+// A.4: db.* span instrumentation coverage check (Tempo Tags API)
+// ---------------------------------------------------------------------------
+//
+// checkDBInstrumentation probes Tempo's Tags API for any span attribute
+// in the OpenTelemetry "db.*" family. When none exist, no service emits
+// database-client telemetry → no trace-derived Service→Database edge can
+// ever form. The check is best-effort: if the Tempo client is nil or
+// errors, no check is emitted.
+
+// tempoTagsHandler returns an httptest handler that responds to Tempo's
+// /api/v2/search/tags with a fixed list of tags grouped under the "span"
+// scope. Use this to drive checkDBInstrumentation in tests.
+func tempoTagsHandler(spanTags []string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Only respond to the tags endpoint; everything else 404s so
+		// stray requests are obvious.
+		if !strings.Contains(r.URL.Path, "/api/v2/search/tags") {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, map[string]any{
+			"scopes": []map[string]any{
+				{"name": "span", "tags": spanTags},
+			},
+		})
+	}
+}
+
+func newTestTempoClient(t *testing.T, server *httptest.Server) *tempo.Client {
+	t.Helper()
+	cfg := config.NamespacedRESTConfig{
+		Config:    rest.Config{Host: server.URL},
+		Namespace: "stack-123",
+	}
+	c, err := tempo.NewClient(cfg)
+	require.NoError(t, err)
+	return c
+}
+
+func TestRunDiagnose_DBInstrumentationPresent(t *testing.T) {
+	kgServer := minimalKGServer()
+	defer kgServer.Close()
+
+	// Tempo returns several db.* tags alongside other span tags.
+	tempoServer := httptest.NewServer(tempoTagsHandler([]string{
+		"http.method",
+		"db.system",
+		"db.statement",
+		"net.peer.name",
+	}))
+	defer tempoServer.Close()
+
+	kgClient := newTestClient(t, kgServer)
+	tempoClient := newTestTempoClient(t, tempoServer)
+	scope := kg.NewTestScopeFlags("", "", "")
+	result := kg.RunDiagnoseWithTempo(t.Context(), kgClient, &scope, nil, "", tempoClient, "test-tempo-uid")
+
+	check := findCheckByName(result.Checks, "DB instrumentation")
+	require.NotNil(t, check, "expected DB instrumentation check to be present")
+	assert.Equal(t, kg.CheckPass, check.Status)
+	assert.Contains(t, check.Detail, "db.system")
+	assert.Contains(t, check.Detail, "db.statement")
+}
+
+func TestRunDiagnose_DBInstrumentationAbsent(t *testing.T) {
+	kgServer := minimalKGServer()
+	defer kgServer.Close()
+
+	// Tempo returns tags but none in the db.* family — simulates a
+	// stack with HTTP auto-instrumentation but no DB instrumentation
+	// library installed.
+	tempoServer := httptest.NewServer(tempoTagsHandler([]string{
+		"http.method",
+		"http.route",
+		"http.status_code",
+		"net.peer.name",
+		"net.peer.port",
+	}))
+	defer tempoServer.Close()
+
+	kgClient := newTestClient(t, kgServer)
+	tempoClient := newTestTempoClient(t, tempoServer)
+	scope := kg.NewTestScopeFlags("", "", "")
+	result := kg.RunDiagnoseWithTempo(t.Context(), kgClient, &scope, nil, "", tempoClient, "test-tempo-uid")
+
+	check := findCheckByName(result.Checks, "DB instrumentation")
+	require.NotNil(t, check, "expected DB instrumentation check to be present")
+	assert.Equal(t, kg.CheckWarn, check.Status)
+	assert.Contains(t, check.Detail, "no db.* span attributes")
+	assert.Contains(t, check.Recommendation, "db.system",
+		"recommendation should name the canonical db.* attributes")
+	assert.Contains(t, check.Recommendation, "Beyla",
+		"recommendation should mention the alternative ROUTES path")
+}
+
+func TestRunDiagnose_DBInstrumentationSkippedWhenNoTempoClient(t *testing.T) {
+	kgServer := minimalKGServer()
+	defer kgServer.Close()
+
+	kgClient := newTestClient(t, kgServer)
+	scope := kg.NewTestScopeFlags("", "", "")
+	// nil tempo client — check should be skipped silently.
+	result := kg.RunDiagnose(t.Context(), kgClient, &scope, nil, "")
+
+	check := findCheckByName(result.Checks, "DB instrumentation")
+	assert.Nil(t, check,
+		"DB instrumentation check should be omitted when no Tempo client is provided")
+}
+
+// findCheckByName returns the first check with the given name, or nil.
+// Local helper for tests in this group (shared file-scope name avoidance).
+func findCheckByName(checks []kg.CheckResult, name string) *kg.CheckResult {
+	for i := range checks {
+		if checks[i].Name == name {
+			return &checks[i]
+		}
+	}
+	return nil
 }

@@ -18,6 +18,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
+	"github.com/grafana/gcx/internal/query/tempo"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
@@ -116,8 +117,10 @@ auto-discovery. If unavailable, metric checks are skipped.`,
 
 			// Best-effort Prometheus client for metric checks.
 			promClient, datasourceUID := resolvePromClient(ctx, loader, cfg, opts.Datasource, cmd)
+			// Best-effort Tempo client for trace-side checks (e.g. db.* span coverage).
+			tempoClient, tempoDsUID := resolveTempoClient(ctx, loader, cfg, cmd)
 
-			result := runDiagnose(ctx, client, &opts.Scope, promClient, datasourceUID)
+			result := runDiagnose(ctx, client, &opts.Scope, promClient, datasourceUID, tempoClient, tempoDsUID)
 			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
@@ -233,6 +236,11 @@ asserts_env values with no deployment_environment source.`,
 // (e.g., multiple Prometheus datasources exist and no stack slug is configured).
 const defaultPromDatasourceUID = "grafanacloud-prom"
 
+// defaultTempoDatasourceUID is the conventional datasource UID for the primary
+// Tempo datasource on Grafana Cloud stacks. Used for opportunistic trace-side
+// checks in `kg diagnose` (e.g. probing for db.* span attribute coverage).
+const defaultTempoDatasourceUID = "grafanacloud-traces"
+
 // resolvePromClient creates a Prometheus query client and resolves the
 // datasource UID. Falls back to "grafanacloud-prom" (the default Grafana Cloud
 // Prometheus datasource) when auto-discovery fails, since the Knowledge Graph
@@ -265,11 +273,45 @@ func resolvePromClient(ctx context.Context, loader *providers.ConfigLoader, cfg 
 	return promClient, dsUID
 }
 
+// resolveTempoClient creates a Tempo query client and resolves the
+// datasource UID. Falls back to "grafanacloud-traces" (the default Grafana
+// Cloud Tempo datasource) when auto-discovery fails. Returns (nil, "") when
+// no Tempo client can be constructed, so callers should treat any check
+// using this as best-effort and silently skip when unavailable.
+func resolveTempoClient(ctx context.Context, loader *providers.ConfigLoader, cfg config.NamespacedRESTConfig, cmd *cobra.Command) (*tempo.Client, string) {
+	var cfgCtx *config.Context
+	fullCfg, err := loader.LoadFullConfig(ctx)
+	if err != nil {
+		logging.FromContext(ctx).Warn("could not load full config for tempo datasource resolution", slog.String("error", err.Error()))
+	} else {
+		cfgCtx = fullCfg.GetCurrentContext()
+	}
+
+	var dsUID string
+	resolved, err := dsquery.ResolveDatasource(ctx, "", cfgCtx, cfg, "tempo")
+	if err != nil {
+		// Fall back to the conventional Grafana Cloud UID. If the stack isn't
+		// Grafana Cloud or uses a non-default Tempo, the check will simply
+		// error at query time and be classified as best-effort skipped.
+		dsUID = defaultTempoDatasourceUID
+	} else {
+		dsUID = resolved.UID
+	}
+
+	tempoClient, err := tempo.NewClient(cfg)
+	if err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "  note: skipping trace checks (failed to create tempo client: %v)\n", err)
+		return nil, ""
+	}
+
+	return tempoClient, dsUID
+}
+
 // ---------------------------------------------------------------------------
 // Check runner
 // ---------------------------------------------------------------------------
 
-func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promClient *prometheus.Client, datasourceUID string) DiagnoseResult {
+func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promClient *prometheus.Client, datasourceUID string, tempoClient *tempo.Client, tempoDatasourceUID string) DiagnoseResult {
 	result := DiagnoseResult{Env: scope.env}
 
 	var (
@@ -333,6 +375,18 @@ func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promCli
 		}
 	}
 
+	// Trace-side coverage check (skip if no Tempo client). Detects whether
+	// any spans on the stack carry db.* attributes — a prerequisite for
+	// trace-derived Service→Database CALLS edges.
+	if tempoClient != nil && tempoDatasourceUID != "" {
+		g.Go(func() error {
+			if c := checkDBInstrumentation(ctx, tempoClient, tempoDatasourceUID); c != nil {
+				addCheck(*c)
+			}
+			return nil
+		})
+	}
+
 	_ = g.Wait() // errors are captured in CheckResults, not returned
 
 	// Stable output order.
@@ -370,6 +424,9 @@ func checkOrder(name string) int {
 	}
 	if strings.HasPrefix(name, "Edge source:") {
 		return 8
+	}
+	if name == "DB instrumentation" {
+		return 9
 	}
 	return 50
 }
@@ -815,6 +872,79 @@ func checkEdgeSourceGap(ctx context.Context, client *prometheus.Client, datasour
 		Detail:         detail,
 		Recommendation: recommendation,
 	}
+}
+
+// checkDBInstrumentation probes Tempo for any span attributes in the
+// OpenTelemetry "db.*" family. When none exist, no service in the stack
+// has installed a DB client instrumentation library, which guarantees that
+// trace-derived Service→Database CALLS edges cannot form. Best-effort: any
+// transport-layer error returns nil so the check is silently skipped.
+//
+// Detects the "Service→Database edge is missing even though both
+// entities exist and the recording-rule pipeline is healthy" failure
+// mode: there is simply no span for the recording rule to consume.
+func checkDBInstrumentation(ctx context.Context, client *tempo.Client, datasourceUID string) *CheckResult {
+	resp, err := client.Tags(ctx, datasourceUID, tempo.TagsRequest{Scope: "span"})
+	if err != nil {
+		// Tempo unreachable or auth failure — skip silently.
+		return nil
+	}
+
+	dbTags := dbSpanAttributes(resp)
+	if len(dbTags) > 0 {
+		return &CheckResult{
+			Name:   "DB instrumentation",
+			Status: CheckPass,
+			Detail: fmt.Sprintf("%d db.* span attribute(s) present (%s)", len(dbTags), joinFirstN(dbTags, 5)),
+		}
+	}
+
+	return &CheckResult{
+		Name:   "DB instrumentation",
+		Status: CheckWarn,
+		Detail: "no db.* span attributes found in any span scope",
+		Recommendation: "No service on this stack is emitting OpenTelemetry database-client spans. " +
+			"Service→Database CALLS edges in Entity Graph rely on the OTel SDK reporting db.system / " +
+			"db.statement / db.operation on outbound database calls. " +
+			"Install the OTel database-client instrumentation appropriate to your language and driver: " +
+			"Python (opentelemetry-instrumentation-{psycopg2,pymysql,...}), " +
+			"Node.js (@opentelemetry/instrumentation-{pg,mysql2,mongodb,...}), " +
+			"Go (otelsql wrapping the driver, or the OpenTelemetry Go contrib instrumentation), " +
+			"Java (the JVM auto-instrumentation agent picks up JDBC drivers automatically when attached). " +
+			"Alternative (no code change): enable Beyla in your k8s-monitoring chart to derive ROUTES " +
+			"edges from eBPF network flows.",
+	}
+}
+
+// dbSpanAttributes returns all tag names from a Tempo Tags response that
+// belong to the db.* attribute family. Searches the "span" scope (and the
+// "" / unspecified scope as a fallback for older Tempo versions that don't
+// scope tag responses).
+func dbSpanAttributes(resp *tempo.TagsResponse) []string {
+	if resp == nil {
+		return nil
+	}
+	var matches []string
+	for _, scope := range resp.Scopes {
+		if scope.Name != "" && scope.Name != "span" {
+			continue
+		}
+		for _, tag := range scope.Tags {
+			if strings.HasPrefix(tag, "db.") {
+				matches = append(matches, tag)
+			}
+		}
+	}
+	return matches
+}
+
+// joinFirstN returns a comma-separated string of up to n items from s.
+// When len(s) > n, appends ", …" to indicate truncation.
+func joinFirstN(s []string, n int) string {
+	if len(s) <= n {
+		return strings.Join(s, ", ")
+	}
+	return strings.Join(s[:n], ", ") + ", …"
 }
 
 // checkMetric runs a single PromQL instant query and returns a check result

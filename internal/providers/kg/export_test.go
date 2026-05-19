@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/grafana/gcx/internal/query/prometheus"
+	"github.com/grafana/gcx/internal/query/tempo"
 )
 
 // ScopeFlags is an exported alias for scopeFlags, used only in tests.
@@ -35,8 +36,16 @@ func FilterByInsightMatchers(results []SearchResult, matchers []InsightMatcher) 
 
 // RunDiagnose wraps the unexported runDiagnose function for testing.
 // Pass nil promClient and empty datasourceUID to skip metric checks.
+// Trace-side checks are skipped (nil tempo client); use RunDiagnoseWithTempo
+// to exercise those.
 func RunDiagnose(ctx context.Context, client *Client, scope *ScopeFlags, promClient *prometheus.Client, datasourceUID string) DiagnoseResult {
-	return runDiagnose(ctx, client, scope, promClient, datasourceUID)
+	return runDiagnose(ctx, client, scope, promClient, datasourceUID, nil, "")
+}
+
+// RunDiagnoseWithTempo wraps runDiagnose with full client wiring for tests
+// that exercise both metric and trace-side checks.
+func RunDiagnoseWithTempo(ctx context.Context, client *Client, scope *ScopeFlags, promClient *prometheus.Client, datasourceUID string, tempoClient *tempo.Client, tempoDatasourceUID string) DiagnoseResult {
+	return runDiagnose(ctx, client, scope, promClient, datasourceUID, tempoClient, tempoDatasourceUID)
 }
 
 // RunServiceDiagnose wraps the unexported runServiceDiagnose function for testing.

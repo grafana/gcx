@@ -180,8 +180,20 @@ Environment page as above.
 server-side with `asserts_env` already populated, bypassing the Mimir
 relabeling pipeline entirely.
 
-## Step 6: Label Pipeline
+### Service→Database edges: a special case
 
+Service→Database CALLS edges require the calling service to emit
+OpenTelemetry database-client spans (so Tempo's service graph
+processor can see `db.system` / `db.statement` / `db.operation` on
+outbound calls). HTTP auto-instrumentation alone is not enough —
+the language-specific DB instrumentation library must be installed
+and registered too.
+
+When `gcx kg diagnose` emits a **`DB instrumentation: WARN`** check
+(present when a Tempo datasource is available), no service on the
+stack is emitting DB-client spans. The check's `Recommendation`
+field names the relevant library per language and the Beyla
+ROUTES alternative; read it as the primary playbook.
 The most common issue: `deployment_environment` isn't mapped to `asserts_env`.
 
 ```bash
