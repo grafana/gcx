@@ -2,6 +2,14 @@
 
 Delete an Assistant MCP server.
 
+### Synopsis
+
+Delete an Assistant MCP server integration.
+
+The command prompts for confirmation by default. Use --force to bypass the
+prompt. GCX_AUTO_APPROVE also bypasses the prompt for non-interactive workflows,
+while agent mode still requires explicit --force for destructive operations.
+
 ```
 gcx assistant mcp-servers delete <id-or-name> [flags]
 ```

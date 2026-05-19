@@ -53,7 +53,6 @@ Recognized authentication headers include:
 | `X-Auth-Token` |
 | `X-Grafana-API-Key` |
 | `X-CH-Auth-API-Token` |
-| `X-CH-Auth-Email` |
 
 Header values are sent to Grafana during create or update, but stored values are not returned by the API. Existing tenant-scoped servers can be updated without re-supplying hidden header values:
 
@@ -95,7 +94,7 @@ gcx assistant mcp-servers create --file server.yaml --if-not-exists
 
 ## Output formats
 
-`list` defaults to table output:
+`list` defaults to text table output:
 
 ```sh
 gcx assistant mcp-servers list
@@ -104,16 +103,18 @@ gcx assistant mcp-servers list
 Use `wide` to include scope and applications, or use structured output for automation:
 
 ```sh
+gcx assistant mcp-servers list --output text
+gcx assistant mcp-servers list --output table
 gcx assistant mcp-servers list --output wide
 gcx assistant mcp-servers list --output json
 gcx assistant mcp-servers get GitHub --output yaml
 ```
 
-Supported list formats are `table`, `wide`, `json`, `yaml`, and `agents`.
+Supported list formats are `text`, `table`, `wide`, `json`, `yaml`, and `agents`.
 
 ## Delete
 
-Deletion requires `--force` outside agent mode:
+Delete prompts for confirmation by default. `--force` bypasses the prompt, `GCX_AUTO_APPROVE=1` auto-approves in non-interactive workflows, and agent mode still requires explicit `--force`.
 
 ```sh
 gcx assistant mcp-servers delete GitHub --force

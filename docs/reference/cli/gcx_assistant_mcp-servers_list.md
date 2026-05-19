@@ -6,8 +6,9 @@ List Assistant MCP servers.
 
 List Assistant MCP server integrations.
 
-The default output format is a table. Use --output wide to include scope and
-applications, or --output json, yaml, or agents for machine-readable output.
+The default output format is text table output. Use --output wide to include
+scope and applications, --output table for the legacy table alias, or --output
+json, yaml, or agents for machine-readable output.
 
 ```
 gcx assistant mcp-servers list [flags]
@@ -17,6 +18,7 @@ gcx assistant mcp-servers list [flags]
 
 ```
   gcx assistant mcp-servers list
+  gcx assistant mcp-servers list --output text
   gcx assistant mcp-servers list --output wide
   gcx assistant mcp-servers list --output json
 ```
@@ -28,7 +30,7 @@ gcx assistant mcp-servers list [flags]
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int       Maximum number of integrations to request (default 50)
       --offset int      Number of integrations to skip
-  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string   Output format. One of: agents, json, table, text, wide, yaml (default "text")
 ```
 
 ### Options inherited from parent commands

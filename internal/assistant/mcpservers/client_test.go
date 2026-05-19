@@ -99,6 +99,31 @@ func TestGetFallsBackToListForNames(t *testing.T) {
 	assert.Equal(t, "mcp-1", server.ID)
 }
 
+func TestGetErrorsOnAmbiguousName(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/plugins/grafana-assistant-app/resources/api/v1/integrations/Remote MCP":
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"message":"invalid integration ID"}`))
+		case "/api/plugins/grafana-assistant-app/resources/api/v1/integrations":
+			writeJSON(w, map[string]any{
+				"data": map[string]any{
+					"integrations": []map[string]any{
+						{"id": "mcp-user", "name": "Remote MCP", "type": "mcp", "enabled": true, "scope": "user"},
+						{"id": "mcp-tenant", "name": "remote mcp", "type": "mcp", "enabled": true, "scope": "tenant"},
+					},
+				},
+			})
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+
+	_, err := client.Get(t.Context(), "Remote MCP")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ambiguous MCP server name")
+}
+
 func TestCreatePostsMCPIntegration(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
@@ -231,7 +256,9 @@ func TestUpdateMergesCurrentServerBeforePut(t *testing.T) {
 						"assistant",
 					},
 					"configuration": map[string]any{
-						"url": "https://mcp.example.com/mcp",
+						"url":       "https://mcp.example.com/mcp",
+						"builtinId": "builtin-1",
+						"opaque":    "keep-me",
 					},
 				},
 			})
@@ -248,6 +275,8 @@ func TestUpdateMergesCurrentServerBeforePut(t *testing.T) {
 				return
 			}
 			assert.Equal(t, "https://mcp.example.com/mcp", cfg["url"])
+			assert.Equal(t, "builtin-1", cfg["builtinId"])
+			assert.Equal(t, "keep-me", cfg["opaque"])
 
 			writeJSON(w, map[string]any{
 				"data": map[string]any{
@@ -343,6 +372,35 @@ func TestUpdateUserToTenantRequiresAuthHeaderValue(t *testing.T) {
 	}))
 
 	_, err := client.Update(t.Context(), "mcp-1", mcpservers.ServerInput{Scope: "tenant"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--scope tenant requires at least one authentication --header with a value")
+}
+
+func TestUpdateUserToTenantRejectsEmailHeaderOnly(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/plugins/grafana-assistant-app/resources/api/v1/integrations/mcp-1":
+			writeJSON(w, map[string]any{
+				"data": map[string]any{
+					"id":      "mcp-1",
+					"name":    "Remote MCP",
+					"type":    "mcp",
+					"enabled": true,
+					"scope":   "user",
+					"configuration": map[string]any{
+						"url": "https://mcp.example.com/mcp",
+					},
+				},
+			})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+
+	_, err := client.Update(t.Context(), "mcp-1", mcpservers.ServerInput{
+		Scope:   "tenant",
+		Headers: []mcpservers.Header{{Name: "X-CH-Auth-Email", Value: "user@example.com"}},
+	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--scope tenant requires at least one authentication --header with a value")
 }

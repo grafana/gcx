@@ -17,6 +17,15 @@ const (
 
 var ErrNotFound = errors.New("MCP server not found")
 
+type AmbiguousReferenceError struct {
+	Ref     string
+	Matches []Server
+}
+
+func (e AmbiguousReferenceError) Error() string {
+	return fmt.Sprintf("ambiguous MCP server name %q matches %d servers; use the server ID", e.Ref, len(e.Matches))
+}
+
 type ListOptions struct {
 	Limit  int
 	Offset int
@@ -76,6 +85,12 @@ func (in ServerInput) Validate(requireName bool) error {
 	if parsed.Scheme == "" {
 		return errors.New("--url must include a URL scheme")
 	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return errors.New("--url scheme must be http or https")
+	}
+	if parsed.Host == "" {
+		return errors.New("--url must include a host")
+	}
 	if in.Scope != "" && in.Scope != "user" && in.Scope != "tenant" {
 		return errors.New("--scope must be one of: user, tenant")
 	}
@@ -100,7 +115,7 @@ func ValidateTenantAuthHeaders(headers []Header) error {
 func isAuthenticationHeader(name string) bool {
 	switch name {
 	case "api-key", "authorization", "x-api-key", "x-auth-token",
-		"x-ch-auth-api-token", "x-ch-auth-email", "x-grafana-api-key":
+		"x-ch-auth-api-token", "x-grafana-api-key":
 		return true
 	default:
 		return false
