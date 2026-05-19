@@ -1100,3 +1100,133 @@ func TestCheckResourceFamilyCoverage_NoSeriesReturnsNil(t *testing.T) {
 
 	assert.Nil(t, c, "check should be nil when asserts:resource has no series at all for the scope")
 }
+
+// ---------------------------------------------------------------------------
+// Split-identity entity detection
+// ---------------------------------------------------------------------------
+//
+// `checkSplitIdentity` detects the case where one physical workload is
+// discovered as two distinct Service entities because OTel `service.name`
+// disagrees with the k8s workload name. The signal is a single `job`
+// label mapping to multiple distinct `service` values in
+// `asserts:mixin_workload_job`.
+
+// promHandlerJobServicePairs returns an httptest handler that responds
+// to a `group by (job, service) (...)` query with one frame per
+// supplied (job, service) pair. Used to drive checkSplitIdentity tests.
+func promHandlerJobServicePairs(pairs [][2]string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		frames := []map[string]any{}
+		for _, p := range pairs {
+			frames = append(frames, map[string]any{
+				"schema": map[string]any{
+					"fields": []map[string]any{
+						{"name": "Time", "type": "time"},
+						{"name": "Value", "type": "number", "labels": map[string]any{
+							"job":     p[0],
+							"service": p[1],
+						}},
+					},
+				},
+				"data": map[string]any{
+					"values": []any{
+						[]int64{1715100000000},
+						[]float64{1},
+					},
+				},
+			})
+		}
+		writeJSON(w, map[string]any{
+			"results": map[string]any{
+				"A": map[string]any{"frames": frames},
+			},
+		})
+	}
+}
+
+func TestCheckSplitIdentity_NoCollisionsReturnsNil(t *testing.T) {
+	// Each job maps to exactly one service — healthy stack.
+	promMux := http.NewServeMux()
+	promMux.HandleFunc("/", promHandlerJobServicePairs([][2]string{
+		{"platform/api-service", "api-service"},
+		{"platform/auth-service", "auth-service"},
+		{"platform/db", "db"},
+	}))
+	promServer := httptest.NewServer(promMux)
+	defer promServer.Close()
+
+	promClient := newTestPromClient(t, promServer)
+	c := kg.CheckSplitIdentity(t.Context(), promClient, "test-prom-uid", "production", "platform")
+
+	assert.Nil(t, c, "check should be nil when every job maps to one service")
+}
+
+func TestCheckSplitIdentity_DetectsCollision(t *testing.T) {
+	// One job maps to two distinct service names — the classic
+	// `OTEL_SERVICE_NAME` disagrees with k8s workload name signature.
+	promMux := http.NewServeMux()
+	promMux.HandleFunc("/", promHandlerJobServicePairs([][2]string{
+		{"platform/api-service", "api-service"},
+		// `recommender` deployment but its OTel service.name is `wines`:
+		{"platform/recommender", "recommender"},
+		{"platform/recommender", "wines"},
+		{"platform/db", "db"},
+	}))
+	promServer := httptest.NewServer(promMux)
+	defer promServer.Close()
+
+	promClient := newTestPromClient(t, promServer)
+	c := kg.CheckSplitIdentity(t.Context(), promClient, "test-prom-uid", "production", "platform")
+
+	require.NotNil(t, c, "expected a WARN when one job maps to multiple services")
+	assert.Equal(t, kg.CheckWarn, c.Status)
+	assert.Contains(t, c.Detail, "platform/recommender", "detail should name the colliding job")
+	// Both service names should appear, in sorted order.
+	assert.Contains(t, c.Detail, "recommender, wines",
+		"detail should list both colliding service names in sorted order")
+	assert.Contains(t, c.Recommendation, "OTEL_SERVICE_NAME",
+		"recommendation should name the typical fix path")
+}
+
+func TestCheckSplitIdentity_MultipleCollisions(t *testing.T) {
+	// Two distinct jobs each have collisions — both should appear in detail.
+	promMux := http.NewServeMux()
+	promMux.HandleFunc("/", promHandlerJobServicePairs([][2]string{
+		{"platform/svc-a", "svc-a"},
+		{"platform/svc-a", "svc-a-otel-named"},
+		{"platform/svc-b", "svc-b"},
+		{"platform/svc-b", "alt-name"},
+	}))
+	promServer := httptest.NewServer(promMux)
+	defer promServer.Close()
+
+	promClient := newTestPromClient(t, promServer)
+	c := kg.CheckSplitIdentity(t.Context(), promClient, "test-prom-uid", "production", "platform")
+
+	require.NotNil(t, c)
+	assert.Equal(t, kg.CheckWarn, c.Status)
+	assert.Contains(t, c.Detail, "2 workload(s)",
+		"detail should report the collision count")
+	assert.Contains(t, c.Detail, "platform/svc-a")
+	assert.Contains(t, c.Detail, "platform/svc-b")
+}
+
+func TestCheckSplitIdentity_NoSeriesReturnsNil(t *testing.T) {
+	// No `asserts:mixin_workload_job` series at all for the scope —
+	// earlier checks cover this case, stay silent.
+	promMux := http.NewServeMux()
+	promMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{
+			"results": map[string]any{
+				"A": map[string]any{"frames": []map[string]any{}},
+			},
+		})
+	})
+	promServer := httptest.NewServer(promMux)
+	defer promServer.Close()
+
+	promClient := newTestPromClient(t, promServer)
+	c := kg.CheckSplitIdentity(t.Context(), promClient, "test-prom-uid", "production", "platform")
+
+	assert.Nil(t, c, "check should be nil when no workload-job series exist for the scope")
+}

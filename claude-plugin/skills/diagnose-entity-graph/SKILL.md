@@ -194,6 +194,9 @@ When `gcx kg diagnose` emits a **`DB instrumentation: WARN`** check
 stack is emitting DB-client spans. The check's `Recommendation`
 field names the relevant library per language and the Beyla
 ROUTES alternative; read it as the primary playbook.
+
+## Step 6: Label Pipeline
+
 The most common issue: `deployment_environment` isn't mapped to `asserts_env`.
 
 ```bash
@@ -260,6 +263,16 @@ gcx metrics query 'count(asserts:mixin_workload_job{service="SERVICE"})' --since
 
 **Shortcut:** `gcx kg diagnose service SERVICE --env ENV` runs all checks and
 produces an interpreted diagnosis with suggested next steps.
+
+### Split-identity entities
+
+When `gcx kg diagnose` emits a **`Split identity: WARN`** check,
+one physical workload has been discovered as two distinct Service
+entities — the OTel `service.name` and the k8s workload name
+disagree. The OTel-named entity has no k8s metadata; the k8s-named
+entity has no trace data. The check's `Recommendation` names the
+fix path (align `OTEL_SERVICE_NAME` with the k8s deployment, or
+configure Asserts relabel rules to reconcile).
 
 ## Producing a Report
 

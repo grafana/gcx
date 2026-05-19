@@ -68,6 +68,11 @@ func CheckResourceFamilyCoverage(ctx context.Context, client *prometheus.Client,
 	return checkResourceFamilyCoverage(ctx, client, datasourceUID, env, namespace)
 }
 
+// CheckSplitIdentity wraps the unexported check for testing.
+func CheckSplitIdentity(ctx context.Context, client *prometheus.Client, datasourceUID, env, namespace string) *CheckResult {
+	return checkSplitIdentity(ctx, client, datasourceUID, env, namespace)
+}
+
 // ExpectedResourceTypes exposes the canonical asserts_resource_type set
 // for assertion in tests.
 func ExpectedResourceTypes() []string {

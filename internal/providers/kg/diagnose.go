@@ -398,6 +398,20 @@ func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promCli
 			}
 			return nil
 		})
+
+		// Split-identity detection. The same physical workload can be
+		// discovered as two Service entities when OTel `service.name`
+		// disagrees with the k8s workload name — typically because the
+		// container env sets `OTEL_SERVICE_NAME` to something other
+		// than the deployment name. KG can't merge them; the
+		// OTel-named entity has no k8s metadata and the k8s-named
+		// entity has no trace data.
+		g.Go(func() error {
+			if c := checkSplitIdentity(ctx, promClient, datasourceUID, scope.env, scope.namespace); c != nil {
+				addCheck(*c)
+			}
+			return nil
+		})
 	}
 
 	// Trace-side coverage check (skip if no Tempo client). Detects whether
@@ -458,6 +472,9 @@ func checkOrder(name string) int {
 	}
 	if name == "Resource coverage" {
 		return 11
+	}
+	if name == "Split identity" {
+		return 12
 	}
 	return 50
 }
@@ -1162,6 +1179,114 @@ func checkResourceFamilyCoverage(ctx context.Context, client *prometheus.Client,
 			"For other missing types, verify the upstream raw metrics flow " +
 			"(container_cpu_*, container_memory_*, kubelet_volume_stats_*) and that the relabeling " +
 			"pipeline produces non-empty `asserts_env` for them.",
+	}
+}
+
+// checkSplitIdentity detects the case where one physical workload is
+// discovered as two distinct Service entities because OTel `service.name`
+// disagrees with the k8s workload name. KG can't merge them: the
+// OTel-named entity has no k8s metadata (`workload`, `cluster`,
+// `workload_type`), and the k8s-named entity has no trace data.
+//
+// Detection signal: `asserts:mixin_workload_job` is grouped by both
+// `job` (always the k8s `namespace/workload`) and `service` (always
+// the OTel `service.name`). When a single `job` maps to multiple
+// distinct `service` values, that's a collision.
+//
+// Returns nil when no collisions are detected, when the scope has no
+// `asserts:mixin_workload_job` series at all, or on transport error
+// (best-effort; earlier checks cover the empty case).
+func checkSplitIdentity(ctx context.Context, client *prometheus.Client, datasourceUID, env, namespace string) *CheckResult {
+	var parts []string
+	if env != "" {
+		parts = append(parts, fmt.Sprintf(`asserts_env="%s"`, env))
+	}
+	if namespace != "" {
+		parts = append(parts, fmt.Sprintf(`namespace="%s"`, namespace))
+	}
+	selector := ""
+	if len(parts) > 0 {
+		selector = "{" + strings.Join(parts, ", ") + "}"
+	}
+
+	query := fmt.Sprintf(
+		`group by (job, service) (asserts:mixin_workload_job%s)`, selector)
+	resp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{Query: query})
+	if err != nil || len(resp.Data.Result) == 0 {
+		// No data → either no workloads in scope or earlier checks
+		// flagged the pipeline. Stay silent.
+		return nil
+	}
+
+	// Aggregate: for each `job`, collect the set of `service` values.
+	jobToServices := map[string]map[string]struct{}{}
+	for _, sample := range resp.Data.Result {
+		job := sample.Metric["job"]
+		svc := sample.Metric["service"]
+		if job == "" || svc == "" {
+			continue
+		}
+		if _, ok := jobToServices[job]; !ok {
+			jobToServices[job] = map[string]struct{}{}
+		}
+		jobToServices[job][svc] = struct{}{}
+	}
+
+	// Find jobs with more than one distinct service name.
+	type collision struct {
+		job      string
+		services []string
+	}
+	var collisions []collision
+	for job, services := range jobToServices {
+		if len(services) < 2 {
+			continue
+		}
+		names := make([]string, 0, len(services))
+		for s := range services {
+			names = append(names, s)
+		}
+		sort.Strings(names)
+		collisions = append(collisions, collision{job: job, services: names})
+	}
+
+	if len(collisions) == 0 {
+		return nil
+	}
+
+	// Stable output order for deterministic detail rendering.
+	sort.Slice(collisions, func(i, j int) bool {
+		return collisions[i].job < collisions[j].job
+	})
+
+	var bullets []string
+	for _, c := range collisions {
+		bullets = append(bullets, fmt.Sprintf("%s → %s", c.job, strings.Join(c.services, ", ")))
+	}
+
+	scopeLabel := "this stack"
+	switch {
+	case namespace != "" && env != "":
+		scopeLabel = fmt.Sprintf("namespace=%q (env=%q)", namespace, env)
+	case namespace != "":
+		scopeLabel = fmt.Sprintf("namespace=%q", namespace)
+	case env != "":
+		scopeLabel = fmt.Sprintf("env=%q", env)
+	}
+
+	return &CheckResult{
+		Name:   "Split identity",
+		Status: CheckWarn,
+		Detail: fmt.Sprintf(
+			"%d workload(s) in %s map to multiple Service entities: %s",
+			len(collisions), scopeLabel, strings.Join(bullets, "; ")),
+		Recommendation: "One physical workload is being discovered as two distinct Service entities " +
+			"because OTel `service.name` disagrees with the k8s workload name. The OTel-named entity " +
+			"has no k8s metadata and the k8s-named entity has no trace data — neither is fully usable. " +
+			"Usual cause: the container env sets `OTEL_SERVICE_NAME` (or `service.name` via " +
+			"`OTEL_RESOURCE_ATTRIBUTES`) to a value other than the deployment name. " +
+			"Fix: set `OTEL_SERVICE_NAME` to match the k8s workload, rename the workload to match, " +
+			"or configure Asserts relabel rules to reconcile the two.",
 	}
 }
 
