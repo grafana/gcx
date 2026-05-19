@@ -1,11 +1,11 @@
 package logs
 
 import (
-	"github.com/grafana/gcx/internal/agent"
 	dsloki "github.com/grafana/gcx/internal/datasources/loki"
 	"github.com/grafana/gcx/internal/providers"
 	adaptivelogs "github.com/grafana/gcx/internal/providers/logs/adaptive"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/signals"
 	"github.com/spf13/cobra"
 )
 
@@ -16,35 +16,16 @@ func init() { //nolint:gochecknoinits // Self-registration pattern (like databas
 // Provider manages Loki datasource queries and Adaptive Logs.
 type Provider struct{}
 
-func (p *Provider) Name() string { return "logs" }
-
-func (p *Provider) ShortDesc() string {
-	return "Query Loki datasources and manage Adaptive Logs"
-}
-
-func (p *Provider) Commands() []*cobra.Command {
-	loader := &providers.ConfigLoader{}
-
-	cmd := &cobra.Command{
-		Use:   "logs",
+func (p *Provider) descriptor() signals.Descriptor {
+	return signals.Descriptor{
+		Name:  "logs",
 		Short: p.ShortDesc(),
-		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			if root := cmd.Root(); root.PersistentPreRun != nil {
-				root.PersistentPreRun(cmd, args)
-			}
-		},
-	}
-
-	loader.BindFlags(cmd.PersistentFlags())
-
-	// Grab the commands from the datasources package, and override the examples
-	// and annotations to be suitable for the top-level commands.
-	qCmd := dsloki.QueryCmd(loader)
-	qCmd.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx logs query -d abc123 '{job="grafana"}' -o json`,
-	}
-	qCmd.Example = `
+		Commands: []signals.CommandSpec{
+			{
+				Build:     dsloki.QueryCmd,
+				TokenCost: "medium",
+				LLMHint:   `gcx logs query -d abc123 '{job="grafana"}' -o json`,
+				Example: `
   # Query logs using configured default datasource
   gcx logs query '{job="varlogs"}'
 
@@ -58,15 +39,13 @@ func (p *Provider) Commands() []*cobra.Command {
   gcx logs query -d abc123 '{job="varlogs"}' -o raw
 
   # Output as JSON
-  gcx logs query -d abc123 '{job="varlogs"}' -o json`
-	cmd.AddCommand(qCmd)
-
-	mqCmd := dsloki.MetricsCmd(loader)
-	mqCmd.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx logs metrics -d abc123 'rate({job="grafana"}[5m])' --since 1h -o json`,
-	}
-	mqCmd.Example = `
+  gcx logs query -d abc123 '{job="varlogs"}' -o json`,
+			},
+			{
+				Build:     dsloki.MetricsCmd,
+				TokenCost: "medium",
+				LLMHint:   `gcx logs metrics -d abc123 'rate({job="grafana"}[5m])' --since 1h -o json`,
+				Example: `
   # Run a metric query over logs
   gcx logs metrics -d UID 'rate({job="grafana"}[5m])' --since 1h
 
@@ -74,15 +53,13 @@ func (p *Provider) Commands() []*cobra.Command {
   gcx logs metrics 'rate({job="grafana"}[5m])' --share-link
 
   # Output as JSON
-  gcx logs metrics -d UID 'rate({job="grafana"}[5m])' --since 1h -o json`
-	cmd.AddCommand(mqCmd)
-
-	lCmd := dsloki.LabelsCmd(loader)
-	lCmd.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx logs labels -d abc123 -o json",
-	}
-	lCmd.Example = `
+  gcx logs metrics -d UID 'rate({job="grafana"}[5m])' --since 1h -o json`,
+			},
+			{
+				Build:     dsloki.LabelsCmd,
+				TokenCost: "small",
+				LLMHint:   "gcx logs labels -d abc123 -o json",
+				Example: `
   # List all labels (use datasource UID, not name)
   gcx logs labels -d UID
 
@@ -90,15 +67,13 @@ func (p *Provider) Commands() []*cobra.Command {
   gcx logs labels -d UID --label job
 
   # Output as JSON
-  gcx logs labels -d UID -o json`
-	cmd.AddCommand(lCmd)
-
-	sCmd := dsloki.SeriesCmd(loader)
-	sCmd.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   `gcx logs series -d abc123 --match '{job="varlogs"}' -o json`,
-	}
-	sCmd.Example = `
+  gcx logs labels -d UID -o json`,
+			},
+			{
+				Build:     dsloki.SeriesCmd,
+				TokenCost: "small",
+				LLMHint:   `gcx logs series -d abc123 --match '{job="varlogs"}' -o json`,
+				Example: `
   # List series matching a selector (use datasource UID, not name)
   gcx logs series -d UID --match '{job="varlogs"}'
 
@@ -106,16 +81,54 @@ func (p *Provider) Commands() []*cobra.Command {
   gcx logs series -d UID --match '{job="varlogs"}' --match '{namespace="default"}'
 
   # Output as JSON
-  gcx logs series -d UID --match '{job="varlogs"}' -o json`
-	cmd.AddCommand(sCmd)
+  gcx logs series -d UID --match '{job="varlogs"}' -o json`,
+			},
+		},
+		Adaptive: &signals.AdaptiveSpec{
+			Build: adaptivelogs.Commands,
+			Use:   "adaptive",
+			Short: "Manage Adaptive Logs resources",
+		},
+		ConfigKeys: []providers.ConfigKey{
+			{Name: "logs-tenant-id", Secret: false},
+			{Name: "logs-tenant-url", Secret: false},
+		},
+		Registrations: func(loader *providers.ConfigLoader) []adapter.Registration {
+			return []adapter.Registration{
+				{
+					Factory:    adaptivelogs.NewExemptionAdapterFactory(loader),
+					Descriptor: adaptivelogs.ExemptionDescriptor(),
+					GVK:        adaptivelogs.ExemptionDescriptor().GroupVersionKind(),
+					Schema:     adaptivelogs.ExemptionSchema(),
+					Example:    adaptivelogs.ExemptionExample(),
+				},
+				{
+					Factory:    adaptivelogs.NewSegmentAdapterFactory(loader),
+					Descriptor: adaptivelogs.SegmentDescriptor(),
+					GVK:        adaptivelogs.SegmentDescriptor().GroupVersionKind(),
+					Schema:     adaptivelogs.SegmentSchema(),
+					Example:    adaptivelogs.SegmentExample(),
+				},
+				{
+					Factory:    adaptivelogs.NewDropRuleAdapterFactory(loader),
+					Descriptor: adaptivelogs.DropRuleDescriptor(),
+					GVK:        adaptivelogs.DropRuleDescriptor().GroupVersionKind(),
+					Schema:     adaptivelogs.DropRuleSchema(),
+					Example:    adaptivelogs.DropRuleExample(),
+				},
+			}
+		},
+	}
+}
 
-	// Adaptive Logs subcommands — rename Use from "logs" to "adaptive".
-	adaptiveCmd := adaptivelogs.Commands(loader)
-	adaptiveCmd.Use = "adaptive"
-	adaptiveCmd.Short = "Manage Adaptive Logs resources"
-	cmd.AddCommand(adaptiveCmd)
+func (p *Provider) Name() string { return "logs" }
 
-	return []*cobra.Command{cmd}
+func (p *Provider) ShortDesc() string {
+	return "Query Loki datasources and manage Adaptive Logs"
+}
+
+func (p *Provider) Commands() []*cobra.Command {
+	return []*cobra.Command{signals.Command(p.descriptor())}
 }
 
 // queryCmd and metricsCmd are thin wrappers used by expr_test.go.
@@ -125,35 +138,9 @@ func metricsCmd(loader *providers.ConfigLoader) *cobra.Command { return dsloki.M
 func (p *Provider) Validate(_ map[string]string) error { return nil }
 
 func (p *Provider) ConfigKeys() []providers.ConfigKey {
-	return []providers.ConfigKey{
-		{Name: "logs-tenant-id", Secret: false},
-		{Name: "logs-tenant-url", Secret: false},
-	}
+	return p.descriptor().ConfigKeys
 }
 
 func (p *Provider) TypedRegistrations() []adapter.Registration {
-	loader := &providers.ConfigLoader{}
-	return []adapter.Registration{
-		{
-			Factory:    adaptivelogs.NewExemptionAdapterFactory(loader),
-			Descriptor: adaptivelogs.ExemptionDescriptor(),
-			GVK:        adaptivelogs.ExemptionDescriptor().GroupVersionKind(),
-			Schema:     adaptivelogs.ExemptionSchema(),
-			Example:    adaptivelogs.ExemptionExample(),
-		},
-		{
-			Factory:    adaptivelogs.NewSegmentAdapterFactory(loader),
-			Descriptor: adaptivelogs.SegmentDescriptor(),
-			GVK:        adaptivelogs.SegmentDescriptor().GroupVersionKind(),
-			Schema:     adaptivelogs.SegmentSchema(),
-			Example:    adaptivelogs.SegmentExample(),
-		},
-		{
-			Factory:    adaptivelogs.NewDropRuleAdapterFactory(loader),
-			Descriptor: adaptivelogs.DropRuleDescriptor(),
-			GVK:        adaptivelogs.DropRuleDescriptor().GroupVersionKind(),
-			Schema:     adaptivelogs.DropRuleSchema(),
-			Example:    adaptivelogs.DropRuleExample(),
-		},
-	}
+	return p.descriptor().TypedRegistrations()
 }
