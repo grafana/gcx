@@ -1,13 +1,17 @@
 ---
 name: diagnose-entity-graph
 description: >
-  Diagnose Entity Graph problems: missing entities, missing edges, disconnected
-  clusters, or filtering issues. Use when the user reports that Entity Graph
-  doesn't look right, services are missing, edges aren't appearing, or
-  environments can't be filtered. Triggers for: "entity graph is empty",
-  "services missing from entity graph", "no edges in entity graph",
+  Diagnose Entity Graph and Asserts UI problems: missing entities, missing
+  edges, disconnected clusters, filtering issues, and empty UI tabs
+  (Kubernetes, CPU, Memory). Use when the user reports that Entity Graph
+  doesn't look right, services are missing, edges aren't appearing,
+  environments can't be filtered, or specific Asserts panels are blank
+  despite the integration being installed. Triggers for: "entity graph is
+  empty", "services missing from entity graph", "no edges in entity graph",
   "disconnected services", "can't filter entity graph", "entity graph not
-  working", "diagnose entity graph", "debug knowledge graph".
+  working", "diagnose entity graph", "debug knowledge graph",
+  "Kubernetes tab is empty", "no CPU/memory data in Asserts",
+  "Memory tab shows nothing", "saturation chart is blank".
 ---
 
 # Diagnose Entity Graph
