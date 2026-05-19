@@ -420,6 +420,53 @@ func LoadLayered(ctx context.Context, explicitFile string, overrides ...Override
 	return merged, nil
 }
 
+// LoadForWrite resolves the target config layer, loads only that layer, and
+// returns both the Config and its Source. Callers should mutate the Config
+// and pass the Source to Write, preserving layer separation when multiple
+// config files are present.
+//
+// explicitFile is the value of the --config flag; fileType is the value of
+// the --file flag. Both may be empty.
+func LoadForWrite(ctx context.Context, explicitFile, fileType string) (Config, Source, error) {
+	if explicitFile != "" {
+		src := ExplicitConfigFile(explicitFile)
+		cfg, err := Load(ctx, src)
+		return cfg, src, err
+	}
+
+	if fileType != "" {
+		layered, err := LoadLayered(ctx, "")
+		if err != nil {
+			return Config{}, nil, err
+		}
+		for _, s := range layered.Sources {
+			if s.Type == fileType {
+				src := ExplicitConfigFile(s.Path)
+				cfg, err := Load(ctx, src)
+				return cfg, src, err
+			}
+		}
+		return Config{}, nil, fmt.Errorf("no %s config file found", fileType)
+	}
+
+	layered, err := LoadLayered(ctx, "")
+	if err != nil {
+		return Config{}, nil, err
+	}
+	switch len(layered.Sources) {
+	case 0:
+		src := StandardLocation()
+		cfg, err := Load(ctx, src)
+		return cfg, src, err
+	case 1:
+		src := ExplicitConfigFile(layered.Sources[0].Path)
+		cfg, err := Load(ctx, src)
+		return cfg, src, err
+	default:
+		return Config{}, nil, errors.New("multiple config files loaded; specify which to update with --file (system, user, local)")
+	}
+}
+
 // loadExplicit loads a single explicit config file, bypassing layered discovery.
 func loadExplicit(ctx context.Context, path string, overrides ...Override) (Config, error) {
 	cfg, err := Load(ctx, ExplicitConfigFile(path), overrides...)

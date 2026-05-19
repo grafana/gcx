@@ -123,77 +123,137 @@ func TestScopeFlags_ValidateScopes(t *testing.T) {
 	}
 }
 
-func TestFilterBySeverity(t *testing.T) {
-	critical := map[string]any{"severity": "CRITICAL"}
-	warning := map[string]any{"severity": "warning"}
-	info := map[string]any{"severity": "INFO"}
+func TestParseInsightFlag(t *testing.T) {
+	tests := []struct {
+		in      string
+		want    kg.InsightMatcher
+		wantErr string
+	}{
+		{in: "any", want: kg.InsightMatcher{}},
+		{in: "ANY", want: kg.InsightMatcher{}},
+		{in: " any ", want: kg.InsightMatcher{}},
+		{in: "name=Saturation", want: kg.InsightMatcher{Key: "name", Op: "=", Value: "Saturation"}},
+		{in: "name=~Sat", want: kg.InsightMatcher{Key: "name", Op: "CONTAINS", Value: "Sat"}},
+		{in: "severity=critical", want: kg.InsightMatcher{Key: "severity", Op: "=", Value: "critical"}},
+		{in: "Name=Foo", want: kg.InsightMatcher{Key: "name", Op: "=", Value: "Foo"}},
+		{in: "severity=~crit", wantErr: "substring match"},
+		{in: "scope=foo", wantErr: "unsupported key"},
+		{in: "no-equals", wantErr: "expected 'any'"},
+		{in: "=value", wantErr: "expected 'any'"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			got, err := kg.ParseInsightFlag(tt.in)
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestFilterByInsightMatchers(t *testing.T) {
+	assertion := func(name, sev string) map[string]any {
+		return map[string]any{"assertionName": name, "severity": sev}
+	}
+	group := func(items ...map[string]any) map[string]any {
+		arr := make([]any, len(items))
+		for i, it := range items {
+			arr[i] = it
+		}
+		return map[string]any{"assertions": arr}
+	}
+
+	results := []kg.SearchResult{
+		{Name: "a", Assertion: group(assertion("Saturation", "critical"))},
+		{Name: "b", Assertion: group(assertion("ErrorRatioBreach", "critical"))},
+		{Name: "c", ConnectedAssertion: group(assertion("Saturation", "warning"))},
+		{Name: "d", Assertion: group(assertion("Saturation", "info"), assertion("Other", "critical"))},
+		{Name: "e"},
+	}
 
 	tests := []struct {
 		name     string
-		results  []kg.SearchResult
-		want     string
-		wantKeep []string
+		matchers []kg.InsightMatcher
+		want     []string
 	}{
 		{
-			name: "self assertion matches",
-			results: []kg.SearchResult{
-				{Name: "a", Assertion: critical},
-			},
-			want:     "critical",
-			wantKeep: []string{"a"},
+			name:     "no matchers returns all",
+			matchers: nil,
+			want:     []string{"a", "b", "c", "d", "e"},
 		},
 		{
-			name: "propagated assertion matches",
-			results: []kg.SearchResult{
-				{Name: "b", ConnectedAssertion: critical},
-			},
-			want:     "critical",
-			wantKeep: []string{"b"},
+			name:     "name filter matches self and connected",
+			matchers: []kg.InsightMatcher{{Key: "name", Op: "=", Value: "Saturation"}},
+			want:     []string{"a", "c", "d"},
 		},
 		{
-			name: "both present and both match",
-			results: []kg.SearchResult{
-				{Name: "c", Assertion: critical, ConnectedAssertion: critical},
-			},
-			want:     "critical",
-			wantKeep: []string{"c"},
+			name:     "name CONTAINS",
+			matchers: []kg.InsightMatcher{{Key: "name", Op: "CONTAINS", Value: "sat"}},
+			want:     []string{"a", "c", "d"},
 		},
 		{
-			name: "neither matches requested severity",
-			results: []kg.SearchResult{
-				{Name: "d", Assertion: info, ConnectedAssertion: info},
+			name: "name AND severity must match on same assertion",
+			matchers: []kg.InsightMatcher{
+				{Key: "name", Op: "=", Value: "Saturation"},
+				{Key: "severity", Op: "=", Value: "critical"},
 			},
-			want:     "critical",
-			wantKeep: nil,
+			// d has Saturation/info and Other/critical — neither assertion
+			// satisfies both predicates simultaneously, so d is excluded.
+			want: []string{"a"},
 		},
 		{
-			name: "both nil",
-			results: []kg.SearchResult{
-				{Name: "e"},
-			},
-			want:     "critical",
-			wantKeep: nil,
+			name:     "severity only",
+			matchers: []kg.InsightMatcher{{Key: "severity", Op: "=", Value: "critical"}},
+			want:     []string{"a", "b", "d"},
 		},
 		{
-			name: "case-insensitive match across severities",
-			results: []kg.SearchResult{
-				{Name: "f", Assertion: warning},
-				{Name: "g", ConnectedAssertion: critical},
-				{Name: "h", Assertion: info},
+			name:     "no matches",
+			matchers: []kg.InsightMatcher{{Key: "name", Op: "=", Value: "Nope"}},
+			want:     nil,
+		},
+		{
+			name:     "wildcard matches anything with at least one assertion",
+			matchers: []kg.InsightMatcher{{}},
+			// e has no Assertion/ConnectedAssertion, so it's excluded; the rest all have assertions.
+			want: []string{"a", "b", "c", "d"},
+		},
+		{
+			name: "wildcard combined with a predicate is a no-op (predicate still applies)",
+			matchers: []kg.InsightMatcher{
+				{},
+				{Key: "name", Op: "=", Value: "ErrorRatioBreach"},
 			},
-			want:     "WARNING",
-			wantKeep: []string{"f"},
+			want: []string{"b"},
 		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := kg.FilterBySeverity(tt.results, tt.want)
+			got := kg.FilterByInsightMatchers(results, tt.matchers)
 			var names []string
 			for _, r := range got {
 				names = append(names, r.Name)
 			}
-			assert.Equal(t, tt.wantKeep, names)
+			assert.Equal(t, tt.want, names)
 		})
+	}
+}
+
+// TestKgInsightsSearchRemoved guards against re-introducing the legacy
+// `kg insights search` subcommand. It was replaced by `kg entities list --insight`.
+func TestKgInsightsSearchRemoved(t *testing.T) {
+	cmds := (&kg.KGProvider{}).Commands()
+	require.Len(t, cmds, 1)
+	for _, c := range cmds[0].Commands() {
+		if c.Name() != "insights" {
+			continue
+		}
+		for _, sub := range c.Commands() {
+			assert.NotEqual(t, "search", sub.Name(),
+				"kg insights search was removed; use kg entities list --insight instead")
+		}
 	}
 }
