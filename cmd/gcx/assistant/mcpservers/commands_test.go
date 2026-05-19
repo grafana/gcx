@@ -1,8 +1,14 @@
 package mcpservers //nolint:testpackage
 
 import (
+	"bytes"
+	"errors"
+	"strings"
 	"testing"
 
+	assistantmcp "github.com/grafana/gcx/internal/assistant/mcpservers"
+	"github.com/grafana/gcx/internal/providers"
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,6 +23,38 @@ func TestCreateOptsValidateRequiresNameAndURL(t *testing.T) {
 	err = opts.Validate()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--url is required")
+}
+
+func TestListOptsDefaultFormatAndAliases(t *testing.T) {
+	opts := &listOpts{}
+	flags := pflag.NewFlagSet("list", pflag.ContinueOnError)
+	opts.setup(flags)
+
+	assert.Equal(t, "text", opts.IO.OutputFormat)
+	require.NoError(t, opts.IO.Validate())
+
+	require.NoError(t, flags.Set("output", "table"))
+	require.NoError(t, opts.IO.Validate())
+
+	require.NoError(t, flags.Set("output", "wide"))
+	require.NoError(t, opts.IO.Validate())
+}
+
+func TestListOptsValidateRejectsNegativePagination(t *testing.T) {
+	opts := &listOpts{Limit: -1}
+	err := opts.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--limit must be non-negative")
+
+	opts = &listOpts{Offset: -1}
+	err = opts.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--offset must be non-negative")
+}
+
+func TestListAndCreateRejectPositionalArgs(t *testing.T) {
+	require.Error(t, newListCommand(nil).Args(newListCommand(nil), []string{"extra"}))
+	require.Error(t, newCreateCommand(nil).Args(newCreateCommand(nil), []string{"extra"}))
 }
 
 func TestCreateOptsBuildInputMergesHeaders(t *testing.T) {
@@ -45,6 +83,26 @@ func TestCreateOptsValidateRejectsInvalidScope(t *testing.T) {
 	err := opts.Validate()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--scope must be one of: user, tenant")
+}
+
+func TestCreateOptsValidateRejectsInvalidURL(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+	}{
+		{name: "non-http scheme", raw: "ftp://mcp.example.com/mcp"},
+		{name: "hostless", raw: "https:///mcp"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := &createOpts{Name: "Remote MCP", URL: tt.raw}
+
+			err := opts.Validate()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "--url")
+		})
+	}
 }
 
 func TestCreateOptsValidateRequiresHeadersForTenantScope(t *testing.T) {
@@ -94,4 +152,58 @@ func TestCreateOptsValidateAcceptsAuthHeaderForTenantScope(t *testing.T) {
 	}
 
 	require.NoError(t, opts.Validate())
+}
+
+func TestCreateOptsValidateRejectsTenantScopeWithEmailHeaderOnly(t *testing.T) {
+	opts := &createOpts{
+		Name:    "Remote MCP",
+		URL:     "https://mcp.example.com/mcp",
+		Scope:   "tenant",
+		Headers: []string{"X-CH-Auth-Email=user@example.com"},
+	}
+
+	err := opts.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--scope tenant requires at least one authentication --header with a value")
+}
+
+func TestCreateOptsValidateAcceptsClickHouseTokenHeaderForTenantScope(t *testing.T) {
+	opts := &createOpts{
+		Name:    "Remote MCP",
+		URL:     "https://mcp.example.com/mcp",
+		Scope:   "tenant",
+		Headers: []string{"X-CH-Auth-Email=user@example.com", "X-CH-Auth-API-Token=token"},
+	}
+
+	require.NoError(t, opts.Validate())
+}
+
+func TestDeletePromptsAndAbortsWithoutConfigLoad(t *testing.T) {
+	cmd := newDeleteCommand(&providers.ConfigLoader{})
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetIn(strings.NewReader("n\n"))
+	cmd.SetArgs([]string{"GitHub"})
+
+	require.NoError(t, cmd.Execute())
+	assert.Contains(t, out.String(), `Delete MCP server "GitHub"?`)
+	assert.Contains(t, out.String(), "Aborted.")
+}
+
+func TestMaybeOpenAuthURLWarnsWhenBrowserOpenFails(t *testing.T) {
+	origOpenURL := openURL
+	openURL = func(string) error {
+		return errors.New("browser unavailable")
+	}
+	t.Cleanup(func() { openURL = origOpenURL })
+
+	cmd := newCreateCommand(nil)
+	var stderr bytes.Buffer
+	cmd.SetErr(&stderr)
+	result := &assistantmcp.MutationResult{AuthURL: "https://example.com/oauth"}
+
+	maybeOpenAuthURL(cmd, result)
+	assert.Contains(t, stderr.String(), "Open the OAuth authorization URL manually")
+	assert.Contains(t, stderr.String(), "https://example.com/oauth")
+	assert.Contains(t, stderr.String(), "browser unavailable")
 }

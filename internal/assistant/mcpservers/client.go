@@ -95,12 +95,23 @@ func (c *Client) Get(ctx context.Context, ref string) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	nameMatches := []Server{}
 	for _, server := range servers {
-		if server.ID == ref || strings.EqualFold(server.Name, ref) {
+		if server.ID == ref {
 			return &server, nil
 		}
+		if strings.EqualFold(server.Name, ref) {
+			nameMatches = append(nameMatches, server)
+		}
 	}
-	return nil, fmt.Errorf("%w: %s", ErrNotFound, ref)
+	switch len(nameMatches) {
+	case 0:
+		return nil, fmt.Errorf("%w: %s", ErrNotFound, ref)
+	case 1:
+		return &nameMatches[0], nil
+	default:
+		return nil, AmbiguousReferenceError{Ref: ref, Matches: nameMatches}
+	}
 }
 
 func (c *Client) Create(ctx context.Context, input ServerInput) (*MutationResult, error) {
@@ -157,6 +168,9 @@ func (c *Client) Update(ctx context.Context, ref string, input ServerInput) (*Mu
 	}
 	if input.URL == "" {
 		input.URL = current.URL
+	}
+	if len(input.Config) == 0 {
+		input.Config = current.Configuration
 	}
 	if input.Scope == "" {
 		input.Scope = current.Scope

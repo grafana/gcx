@@ -6,8 +6,8 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 
-	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
 	assistantmcp "github.com/grafana/gcx/internal/assistant/mcpservers"
 	"github.com/grafana/gcx/internal/deeplink"
@@ -19,6 +19,8 @@ import (
 	"github.com/spf13/pflag"
 	"sigs.k8s.io/yaml"
 )
+
+var openURL = deeplink.Open //nolint:gochecknoglobals // Test seam for browser-open failure handling.
 
 func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*assistantmcp.Client, error) {
 	cfg, err := loader.LoadGrafanaConfig(cmd.Context())
@@ -47,7 +49,7 @@ authentication header such as Authorization, X-API-Key, or X-Grafana-API-Key.
 OAuth-based MCP servers, such as GitHub Copilot, are user-scoped. When Grafana
 reports that OAuth is required after create or update, gcx initiates the
 Assistant OAuth flow and opens the authorization URL in a browser.`,
-		Example: `  # List configured MCP servers as a table
+		Example: `  # List configured MCP servers as text table output
   gcx assistant mcp-servers list
 
   # Add a user-scoped OAuth MCP server and open the authorization URL
@@ -74,12 +76,23 @@ type listOpts struct {
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &ListTableCodec{})
+	o.IO.RegisterCustomCodec("text", &ListTableCodec{})
+	o.IO.RegisterCustomCodec("table", &ListTableCodec{FormatName: "table"})
 	o.IO.RegisterCustomCodec("wide", &ListTableCodec{Wide: true})
-	o.IO.DefaultFormat("table")
+	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of integrations to request")
 	flags.IntVar(&o.Offset, "offset", 0, "Number of integrations to skip")
+}
+
+func (o *listOpts) Validate() error {
+	if o.Limit < 0 {
+		return errors.New("--limit must be non-negative")
+	}
+	if o.Offset < 0 {
+		return errors.New("--offset must be non-negative")
+	}
+	return o.IO.Validate()
 }
 
 func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
@@ -89,13 +102,16 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "List Assistant MCP servers.",
 		Long: `List Assistant MCP server integrations.
 
-The default output format is a table. Use --output wide to include scope and
-applications, or --output json, yaml, or agents for machine-readable output.`,
+The default output format is text table output. Use --output wide to include
+scope and applications, --output table for the legacy table alias, or --output
+json, yaml, or agents for machine-readable output.`,
 		Example: `  gcx assistant mcp-servers list
+  gcx assistant mcp-servers list --output text
   gcx assistant mcp-servers list --output wide
   gcx assistant mcp-servers list --output json`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.IO.Validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 			client, err := newClient(cmd, loader)
@@ -214,21 +230,17 @@ reports that OAuth is required.`,
     --scope tenant --header "Authorization=Bearer <token>"
 
   gcx assistant mcp-servers create --file server.yaml --if-not-exists`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 			input, err := opts.buildInput()
 			if err != nil {
 				return err
-			}
-			if err := input.Validate(true); err != nil {
-				return err
-			}
-			if input.Scope == "tenant" {
-				if err := assistantmcp.ValidateTenantAuthHeaders(input.Headers); err != nil {
-					return err
-				}
 			}
 			client, err := newClient(cmd, loader)
 			if err != nil {
@@ -250,9 +262,7 @@ reports that OAuth is required.`,
 			if err := maybeAttachAuthURL(cmd, client, result); err != nil {
 				return err
 			}
-			if err := maybeOpenAuthURL(cmd, result); err != nil {
-				return err
-			}
+			maybeOpenAuthURL(cmd, result)
 			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
@@ -327,9 +337,7 @@ authentication header.`,
 			if err := maybeAttachAuthURL(cmd, client, result); err != nil {
 				return err
 			}
-			if err := maybeOpenAuthURL(cmd, result); err != nil {
-				return err
-			}
+			maybeOpenAuthURL(cmd, result)
 			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
@@ -353,13 +361,23 @@ func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <id-or-name>",
 		Short: "Delete an Assistant MCP server.",
-		Args:  cobra.ExactArgs(1),
+		Long: `Delete an Assistant MCP server integration.
+
+The command prompts for confirmation by default. Use --force to bypass the
+prompt. GCX_AUTO_APPROVE also bypasses the prompt for non-interactive workflows,
+while agent mode still requires explicit --force for destructive operations.`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			if !opts.Force && !agent.IsAgentMode() {
-				return errors.New("delete requires --force")
+			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), opts.Force,
+				fmt.Sprintf("Delete MCP server %q?", args[0]))
+			if err != nil {
+				return err
+			}
+			if !proceed {
+				return nil
 			}
 			client, err := newClient(cmd, loader)
 			if err != nil {
@@ -460,12 +478,15 @@ func loadInputFile(path string) (assistantmcp.ServerInput, error) {
 	return input, nil
 }
 
-func maybeOpenAuthURL(cmd *cobra.Command, result *assistantmcp.MutationResult) error {
+func maybeOpenAuthURL(cmd *cobra.Command, result *assistantmcp.MutationResult) {
 	if result == nil || result.AuthURL == "" {
-		return nil
+		return
 	}
 	cmdio.Info(cmd.ErrOrStderr(), "Opening OAuth authorization URL: %s", result.AuthURL)
-	return deeplink.Open(result.AuthURL)
+	if err := openURL(result.AuthURL); err != nil {
+		cmdio.Warning(cmd.ErrOrStderr(), "Could not open browser: %v", err)
+		cmdio.Info(cmd.ErrOrStderr(), "Open the OAuth authorization URL manually: %s", result.AuthURL)
+	}
 }
 
 func maybeAttachAuthURL(cmd *cobra.Command, client *assistantmcp.Client, result *assistantmcp.MutationResult) error {
@@ -500,21 +521,23 @@ func existingResult(cmd *cobra.Command, client *assistantmcp.Client, name string
 	if err := maybeAttachAuthURL(cmd, client, result); err != nil {
 		return nil, false, err
 	}
-	if err := maybeOpenAuthURL(cmd, result); err != nil {
-		return nil, false, err
-	}
+	maybeOpenAuthURL(cmd, result)
 	return result, true, nil
 }
 
 type ListTableCodec struct {
-	Wide bool
+	Wide       bool
+	FormatName format.Format
 }
 
 func (c *ListTableCodec) Format() format.Format {
 	if c.Wide {
 		return "wide"
 	}
-	return "table"
+	if c.FormatName != "" {
+		return c.FormatName
+	}
+	return "text"
 }
 
 func (c *ListTableCodec) Encode(dst io.Writer, value any) error {
@@ -530,7 +553,7 @@ func (c *ListTableCodec) Encode(dst io.Writer, value any) error {
 	for _, server := range servers {
 		row := []string{server.ID, server.Name, strconv.FormatBool(server.Enabled), server.URL}
 		if c.Wide {
-			row = append(row, server.Scope, fmt.Sprintf("%v", server.Applications))
+			row = append(row, server.Scope, strings.Join(server.Applications, ", "))
 		}
 		table.Row(row...)
 	}

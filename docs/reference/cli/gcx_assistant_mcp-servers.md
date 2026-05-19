@@ -18,7 +18,7 @@ Assistant OAuth flow and opens the authorization URL in a browser.
 ### Examples
 
 ```
-  # List configured MCP servers as a table
+  # List configured MCP servers as text table output
   gcx assistant mcp-servers list
 
   # Add a user-scoped OAuth MCP server and open the authorization URL
