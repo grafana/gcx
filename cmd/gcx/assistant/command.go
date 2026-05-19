@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	mcpserverscmd "github.com/grafana/gcx/cmd/gcx/assistant/mcpservers"
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
@@ -99,6 +100,22 @@ Service account tokens are not supported.`,
 		return nil
 	}
 	cmd.AddCommand(invCmd)
+
+	mcpLoader := &providers.ConfigLoader{}
+	mcpCmd := mcpserverscmd.Commands(mcpLoader)
+	mcpCmd.PersistentPreRunE = func(c *cobra.Command, args []string) error {
+		if err := cmd.PersistentPreRunE(c, args); err != nil {
+			return err
+		}
+		if configOpts.ConfigFile != "" {
+			mcpLoader.SetConfigFile(configOpts.ConfigFile)
+		}
+		if configOpts.Context != "" {
+			mcpLoader.SetContextName(configOpts.Context)
+		}
+		return nil
+	}
+	cmd.AddCommand(mcpCmd)
 	return cmd
 }
 

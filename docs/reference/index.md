@@ -6,6 +6,8 @@ title: Reference
 
 - :material-console:{ .lg .middle } __[CLI](./cli/gcx.md)__
 
+- :material-robot-outline:{ .lg .middle } __[Assistant MCP servers](./assistant-mcp-servers.md)__
+
 - :material-cog-outline:{ .lg .middle } __[Configuration](./configuration/index.md)__
 
 - :material-application-variable-outline:{ .lg .middle } __[Environment variables](./environment-variables/index.md)__

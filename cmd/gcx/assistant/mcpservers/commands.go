@@ -1,0 +1,542 @@
+package mcpservers
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
+
+	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/assistant/assistanthttp"
+	assistantmcp "github.com/grafana/gcx/internal/assistant/mcpservers"
+	"github.com/grafana/gcx/internal/deeplink"
+	"github.com/grafana/gcx/internal/format"
+	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/style"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+	"sigs.k8s.io/yaml"
+)
+
+func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*assistantmcp.Client, error) {
+	cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+	if err != nil {
+		return nil, err
+	}
+	base, err := assistanthttp.NewClient(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return assistantmcp.NewClient(base), nil
+}
+
+func Commands(loader *providers.ConfigLoader) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "mcp-servers",
+		Aliases: []string{"mcp-server"},
+		Short:   "Manage Assistant MCP server integrations.",
+		Long: `Manage remote MCP server integrations in the current Grafana stack's Assistant settings.
+
+MCP servers can be scoped to the current user ("user", shown as "Just me" in
+Grafana) or to the stack tenant ("tenant", shown as "Everybody" in Grafana).
+Tenant-scoped servers are shared and must be configured with a non-empty
+authentication header such as Authorization, X-API-Key, or X-Grafana-API-Key.
+
+OAuth-based MCP servers, such as GitHub Copilot, are user-scoped. When Grafana
+reports that OAuth is required after create or update, gcx initiates the
+Assistant OAuth flow and opens the authorization URL in a browser.`,
+		Example: `  # List configured MCP servers as a table
+  gcx assistant mcp-servers list
+
+  # Add a user-scoped OAuth MCP server and open the authorization URL
+  gcx assistant mcp-servers create --name GitHub --url https://api.githubcopilot.com/mcp
+
+  # Add a tenant-scoped header-auth MCP server
+  gcx assistant mcp-servers create --name SharedTools --url https://mcp.example.com/mcp \
+    --scope tenant --header "Authorization=Bearer <token>"`,
+	}
+	cmd.AddCommand(
+		newListCommand(loader),
+		newGetCommand(loader),
+		newCreateCommand(loader),
+		newUpdateCommand(loader),
+		newDeleteCommand(loader),
+	)
+	return cmd
+}
+
+type listOpts struct {
+	IO     cmdio.Options
+	Limit  int
+	Offset int
+}
+
+func (o *listOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("table", &ListTableCodec{})
+	o.IO.RegisterCustomCodec("wide", &ListTableCodec{Wide: true})
+	o.IO.DefaultFormat("table")
+	o.IO.BindFlags(flags)
+	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of integrations to request")
+	flags.IntVar(&o.Offset, "offset", 0, "Number of integrations to skip")
+}
+
+func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &listOpts{}
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List Assistant MCP servers.",
+		Long: `List Assistant MCP server integrations.
+
+The default output format is a table. Use --output wide to include scope and
+applications, or --output json, yaml, or agents for machine-readable output.`,
+		Example: `  gcx assistant mcp-servers list
+  gcx assistant mcp-servers list --output wide
+  gcx assistant mcp-servers list --output json`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+			client, err := newClient(cmd, loader)
+			if err != nil {
+				return err
+			}
+			servers, err := client.List(cmd.Context(), assistantmcp.ListOptions{Limit: opts.Limit, Offset: opts.Offset})
+			if err != nil {
+				return err
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), servers)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+type getOpts struct {
+	IO cmdio.Options
+}
+
+func (o *getOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("yaml")
+	o.IO.BindFlags(flags)
+}
+
+func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &getOpts{}
+	cmd := &cobra.Command{
+		Use:   "get <id-or-name>",
+		Short: "Get an Assistant MCP server.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+			client, err := newClient(cmd, loader)
+			if err != nil {
+				return err
+			}
+			server, err := client.Get(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), server)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+type createOpts struct {
+	IO           cmdio.Options
+	File         string
+	Name         string
+	Description  string
+	URL          string
+	Enabled      bool
+	Disabled     bool
+	Scope        string
+	Headers      []string
+	Applications []string
+	IfNotExists  bool
+}
+
+func (o *createOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("yaml")
+	o.IO.BindFlags(flags)
+	bindInputFlags(flags, &o.File, &o.Name, &o.Description, &o.URL, &o.Enabled, &o.Disabled, &o.Scope, &o.Headers, &o.Applications)
+	flags.BoolVar(&o.IfNotExists, "if-not-exists", false, "Return an existing server with the same name instead of failing")
+}
+
+func (o *createOpts) Validate() error {
+	input, err := o.buildInput()
+	if err != nil {
+		return err
+	}
+	if err := input.Validate(true); err != nil {
+		return err
+	}
+	if input.Scope == "tenant" {
+		return assistantmcp.ValidateTenantAuthHeaders(input.Headers)
+	}
+	return nil
+}
+
+func (o *createOpts) buildInput() (assistantmcp.ServerInput, error) {
+	return buildInput(inputOptions{
+		File:         o.File,
+		Name:         o.Name,
+		Description:  o.Description,
+		URL:          o.URL,
+		Enabled:      o.Enabled,
+		Disabled:     o.Disabled,
+		Scope:        o.Scope,
+		Headers:      o.Headers,
+		Applications: o.Applications,
+	})
+}
+
+func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &createOpts{}
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create an Assistant MCP server.",
+		Long: `Create an Assistant MCP server integration.
+
+By default, servers are user-scoped. Use --scope tenant for a shared server.
+Tenant-scoped servers require at least one non-empty authentication header, such
+as Authorization, X-API-Key, or X-Grafana-API-Key. OAuth-based servers should be
+created with user scope; gcx opens the OAuth authorization URL when Grafana
+reports that OAuth is required.`,
+		Example: `  gcx assistant mcp-servers create --name GitHub --url https://api.githubcopilot.com/mcp
+
+  gcx assistant mcp-servers create --name SharedTools --url https://mcp.example.com/mcp \
+    --scope tenant --header "Authorization=Bearer <token>"
+
+  gcx assistant mcp-servers create --file server.yaml --if-not-exists`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+			input, err := opts.buildInput()
+			if err != nil {
+				return err
+			}
+			if err := input.Validate(true); err != nil {
+				return err
+			}
+			if input.Scope == "tenant" {
+				if err := assistantmcp.ValidateTenantAuthHeaders(input.Headers); err != nil {
+					return err
+				}
+			}
+			client, err := newClient(cmd, loader)
+			if err != nil {
+				return err
+			}
+			if opts.IfNotExists {
+				result, found, err := existingResult(cmd, client, input.Name)
+				if err != nil {
+					return err
+				}
+				if found {
+					return opts.IO.Encode(cmd.OutOrStdout(), result)
+				}
+			}
+			result, err := client.Create(cmd.Context(), input)
+			if err != nil {
+				return err
+			}
+			if err := maybeAttachAuthURL(cmd, client, result); err != nil {
+				return err
+			}
+			if err := maybeOpenAuthURL(cmd, result); err != nil {
+				return err
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+type updateOpts struct {
+	IO           cmdio.Options
+	File         string
+	Name         string
+	Description  string
+	URL          string
+	Enabled      bool
+	Disabled     bool
+	Scope        string
+	Headers      []string
+	Applications []string
+}
+
+func (o *updateOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("yaml")
+	o.IO.BindFlags(flags)
+	bindInputFlags(flags, &o.File, &o.Name, &o.Description, &o.URL, &o.Enabled, &o.Disabled, &o.Scope, &o.Headers, &o.Applications)
+}
+
+func (o *updateOpts) buildInput() (assistantmcp.ServerInput, error) {
+	return buildInput(inputOptions{
+		File:         o.File,
+		Name:         o.Name,
+		Description:  o.Description,
+		URL:          o.URL,
+		Enabled:      o.Enabled,
+		Disabled:     o.Disabled,
+		Scope:        o.Scope,
+		Headers:      o.Headers,
+		Applications: o.Applications,
+	})
+}
+
+func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &updateOpts{}
+	cmd := &cobra.Command{
+		Use:   "update <id-or-name>",
+		Short: "Update an Assistant MCP server.",
+		Long: `Update an Assistant MCP server integration.
+
+Partial updates are merged with the current server before saving. Existing
+tenant-scoped servers can be updated without re-supplying hidden header values.
+Changing a user-scoped server to tenant scope requires a non-empty
+authentication header.`,
+		Example: `  gcx assistant mcp-servers update GitHub --disabled
+  gcx assistant mcp-servers update SharedTools --description "Shared internal MCP tools"
+  gcx assistant mcp-servers update LocalTools --scope tenant --header "X-API-Key=<token>"`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+			input, err := opts.buildInput()
+			if err != nil {
+				return err
+			}
+			client, err := newClient(cmd, loader)
+			if err != nil {
+				return err
+			}
+			result, err := client.Update(cmd.Context(), args[0], input)
+			if err != nil {
+				return err
+			}
+			if err := maybeAttachAuthURL(cmd, client, result); err != nil {
+				return err
+			}
+			if err := maybeOpenAuthURL(cmd, result); err != nil {
+				return err
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+type deleteOpts struct {
+	IO    cmdio.Options
+	Force bool
+}
+
+func (o *deleteOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("yaml")
+	o.IO.BindFlags(flags)
+	flags.BoolVar(&o.Force, "force", false, "Delete without confirmation")
+}
+
+func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &deleteOpts{}
+	cmd := &cobra.Command{
+		Use:   "delete <id-or-name>",
+		Short: "Delete an Assistant MCP server.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+			if !opts.Force && !agent.IsAgentMode() {
+				return errors.New("delete requires --force")
+			}
+			client, err := newClient(cmd, loader)
+			if err != nil {
+				return err
+			}
+			result, err := client.Delete(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+type inputOptions struct {
+	File         string
+	Name         string
+	Description  string
+	URL          string
+	Enabled      bool
+	Disabled     bool
+	Scope        string
+	Headers      []string
+	Applications []string
+}
+
+func buildInput(opts inputOptions) (assistantmcp.ServerInput, error) {
+	input := assistantmcp.ServerInput{}
+	if opts.Enabled && opts.Disabled {
+		return input, errors.New("cannot use both --enabled and --disabled")
+	}
+	if opts.File != "" {
+		loaded, err := loadInputFile(opts.File)
+		if err != nil {
+			return input, err
+		}
+		input = loaded
+	}
+	if opts.Name != "" {
+		input.Name = opts.Name
+	}
+	if opts.Description != "" {
+		input.Description = opts.Description
+	}
+	if opts.URL != "" {
+		input.URL = opts.URL
+	}
+	if opts.Scope != "" {
+		input.Scope = opts.Scope
+	}
+	if len(opts.Applications) > 0 {
+		input.Applications = opts.Applications
+	}
+	if opts.Disabled {
+		enabled := false
+		input.Enabled = &enabled
+	} else if opts.Enabled {
+		enabled := true
+		input.Enabled = &enabled
+	}
+	if len(opts.Headers) > 0 {
+		headers := make([]assistantmcp.Header, 0, len(opts.Headers))
+		for _, raw := range opts.Headers {
+			header, err := assistantmcp.ParseHeader(raw)
+			if err != nil {
+				return input, err
+			}
+			headers = append(headers, header)
+		}
+		input.Headers = headers
+	}
+	return input, nil
+}
+
+func bindInputFlags(flags *pflag.FlagSet, file, name, description, serverURL *string, enabled, disabled *bool, scope *string, headers, applications *[]string) {
+	flags.StringVarP(file, "file", "f", "", "Read MCP server input from a YAML or JSON file")
+	flags.StringVar(name, "name", "", "MCP server display name")
+	flags.StringVar(description, "description", "", "MCP server description")
+	flags.StringVar(serverURL, "url", "", "Remote MCP server URL")
+	flags.BoolVar(enabled, "enabled", false, "Enable the MCP server")
+	flags.BoolVar(disabled, "disabled", false, "Disable the MCP server")
+	flags.StringVar(scope, "scope", "", "MCP server scope: user or tenant")
+	flags.StringArrayVar(headers, "header", nil, "Custom header as NAME=VALUE (repeatable; tenant scope requires an auth header)")
+	flags.StringArrayVar(applications, "application", nil, "Assistant application allowed to use this server (repeatable)")
+}
+
+func loadInputFile(path string) (assistantmcp.ServerInput, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return assistantmcp.ServerInput{}, fmt.Errorf("failed to read %s: %w", path, err)
+	}
+	var input assistantmcp.ServerInput
+	if err := yaml.Unmarshal(data, &input); err != nil {
+		return assistantmcp.ServerInput{}, fmt.Errorf("failed to parse %s: %w", path, err)
+	}
+	return input, nil
+}
+
+func maybeOpenAuthURL(cmd *cobra.Command, result *assistantmcp.MutationResult) error {
+	if result == nil || result.AuthURL == "" {
+		return nil
+	}
+	cmdio.Info(cmd.ErrOrStderr(), "Opening OAuth authorization URL: %s", result.AuthURL)
+	return deeplink.Open(result.AuthURL)
+}
+
+func maybeAttachAuthURL(cmd *cobra.Command, client *assistantmcp.Client, result *assistantmcp.MutationResult) error {
+	if result == nil || result.Server == nil || result.AuthURL != "" {
+		return nil
+	}
+	validation, err := client.Validate(cmd.Context(), result.Server.ID)
+	if err != nil {
+		return err
+	}
+	if validation.Status != assistantmcp.ValidationStatusOAuthRequired {
+		return nil
+	}
+	oauth, err := client.InitiateOAuth(cmd.Context(), result.Server.ID)
+	if err != nil {
+		return err
+	}
+	result.AuthURL = oauth.AuthURL
+	return nil
+}
+
+func existingResult(cmd *cobra.Command, client *assistantmcp.Client, name string) (*assistantmcp.MutationResult, bool, error) {
+	existing, err := client.Get(cmd.Context(), name)
+	if err != nil {
+		if errors.Is(err, assistantmcp.ErrNotFound) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+
+	result := &assistantmcp.MutationResult{Operation: "unchanged", Server: existing}
+	if err := maybeAttachAuthURL(cmd, client, result); err != nil {
+		return nil, false, err
+	}
+	if err := maybeOpenAuthURL(cmd, result); err != nil {
+		return nil, false, err
+	}
+	return result, true, nil
+}
+
+type ListTableCodec struct {
+	Wide bool
+}
+
+func (c *ListTableCodec) Format() format.Format {
+	if c.Wide {
+		return "wide"
+	}
+	return "table"
+}
+
+func (c *ListTableCodec) Encode(dst io.Writer, value any) error {
+	servers, ok := value.([]assistantmcp.Server)
+	if !ok {
+		return fmt.Errorf("expected []mcpservers.Server, got %T", value)
+	}
+	headers := []string{"ID", "NAME", "ENABLED", "URL"}
+	if c.Wide {
+		headers = append(headers, "SCOPE", "APPLICATIONS")
+	}
+	table := style.NewTable(headers...)
+	for _, server := range servers {
+		row := []string{server.ID, server.Name, strconv.FormatBool(server.Enabled), server.URL}
+		if c.Wide {
+			row = append(row, server.Scope, fmt.Sprintf("%v", server.Applications))
+		}
+		table.Row(row...)
+	}
+	return table.Render(dst)
+}
+
+func (c *ListTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
