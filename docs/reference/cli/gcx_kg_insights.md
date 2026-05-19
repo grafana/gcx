@@ -1,6 +1,6 @@
 ## gcx kg insights
 
-Search insights and fetch their backing metrics.
+Fetch chart data and source metrics for an active insight.
 
 ### Options
 

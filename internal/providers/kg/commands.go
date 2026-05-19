@@ -981,7 +981,7 @@ func (c *EntityTableCodec) Decode(_ io.Reader, _ any) error {
 func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "insights",
-		Short: "Search insights and fetch their backing metrics.",
+		Short: "Fetch chart data and source metrics for an active insight.",
 	}
 
 	// chart subcommand

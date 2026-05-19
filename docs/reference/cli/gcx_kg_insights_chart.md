@@ -37,5 +37,5 @@ gcx kg insights chart [Type--Name] [flags]
 
 ### SEE ALSO
 
-* [gcx kg insights](gcx_kg_insights.md)	 - Search insights and fetch their backing metrics.
+* [gcx kg insights](gcx_kg_insights.md)	 - Fetch chart data and source metrics for an active insight.
 
