@@ -128,7 +128,7 @@ jobs:
       - name: Mint App installation token
         if: steps.tag.outputs.skip != 'true'
         id: app-token
-        uses: grafana/shared-workflows/actions/create-github-app-token@ae92934a14a48b94494dbc06d74a81d47fe08a40 # create-github-app-token/v0.2.2
+        uses: grafana/shared-workflows/actions/create-github-app-token@a53fc80bc30b0a16a262520465db899fa3af08b7 # create-github-app-token/v1.3.2
         with:
           github_app: ${{ vars.PUBLISHER_APP_NAME }}
 
