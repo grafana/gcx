@@ -44,6 +44,16 @@ func RunServiceDiagnose(ctx context.Context, client *Client, serviceName string,
 	return runServiceDiagnose(ctx, client, serviceName, scope, promClient, datasourceUID)
 }
 
+// InterpretServiceResults wraps the unexported interpretServiceResults function for testing.
+func InterpretServiceResults(r *ServiceDiagnoseResult) ([]string, []string) {
+	return interpretServiceResults(r)
+}
+
+// ComputeServiceSummary wraps ServiceDiagnoseResult.computeSummary for testing.
+func ComputeServiceSummary(r *ServiceDiagnoseResult) {
+	r.computeSummary()
+}
+
 // RunLabelsDiagnose wraps the unexported runLabelsDiagnose function for testing.
 func RunLabelsDiagnose(ctx context.Context, client *Client, promClient *prometheus.Client, datasourceUID string) LabelsDiagnoseResult {
 	return runLabelsDiagnose(ctx, client, promClient, datasourceUID)
