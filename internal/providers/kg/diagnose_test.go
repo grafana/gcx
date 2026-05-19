@@ -716,3 +716,95 @@ func TestLabelsDiagnoseTextCodec(t *testing.T) {
 	assert.Contains(t, output, "Diagnosis")
 	assert.Contains(t, output, "1/2 checks passed")
 }
+
+// ---------------------------------------------------------------------------
+// "Looks healthy" verdict logic
+// ---------------------------------------------------------------------------
+//
+// Regression coverage for the case where entity+edges exist but other
+// checks fail. Previously the diagnosis branch unconditionally said
+// "Service X looks healthy" whenever edges were present, producing
+// internally contradictory output (e.g. "4/8 checks passed, 4 failed"
+// + "Service looks healthy"). The fix derives the verdict from
+// Summary.Failed instead.
+
+func TestInterpretServiceResults_AllChecksPassSaysHealthy(t *testing.T) {
+	r := &kg.ServiceDiagnoseResult{
+		ServiceName: "api-service",
+		Edges:       []kg.EdgeInfo{{Direction: "outgoing", Type: "CALLS", PeerName: "checkout"}},
+		Checks: []kg.CheckResult{
+			{Name: "Entity lookup", Status: kg.CheckPass},
+			{Name: "Relationships", Status: kg.CheckPass},
+			{Name: "Insights", Status: kg.CheckPass},
+		},
+	}
+	kg.ComputeServiceSummary(r)
+	diagnosis, _ := kg.InterpretServiceResults(r)
+
+	require.NotEmpty(t, diagnosis)
+	assert.Contains(t, diagnosis[0], "looks healthy")
+}
+
+func TestInterpretServiceResults_FailedChecksSuppressesHealthyVerdict(t *testing.T) {
+	// Mirrors the canonical wineshop case: entity exists, has edges,
+	// but multiple metric checks fail. Previously this produced the
+	// contradictory "looks healthy" line; now it must report the
+	// failure count and name the failed checks.
+	r := &kg.ServiceDiagnoseResult{
+		ServiceName: "mysql",
+		Edges: []kg.EdgeInfo{
+			{Direction: "outgoing", Type: "CONTROLS", PeerName: "mysql-0"},
+			{Direction: "outgoing", Type: "CONTROLS", PeerName: "mysql:winecellar"},
+			{Direction: "incoming", Type: "CONTROLS", PeerName: "grots-tasting-room"},
+		},
+		Checks: []kg.CheckResult{
+			{Name: "Entity lookup", Status: kg.CheckPass},
+			{Name: "Relationships", Status: kg.CheckPass},
+			{Name: "Insights", Status: kg.CheckPass},
+			{Name: "Metric: asserts:mixin_workload_job", Status: kg.CheckFail, Detail: "no data"},
+			{Name: "Metric: traces_service_graph (server)", Status: kg.CheckFail, Detail: "no data"},
+			{Name: "Metric: asserts:relation:calls", Status: kg.CheckFail, Detail: "no data"},
+			{Name: "Metric: traces_service_graph (client)", Status: kg.CheckFail, Detail: "no data"},
+			{Name: "Metric: asserts:request:rate5m", Status: kg.CheckPass},
+		},
+	}
+	kg.ComputeServiceSummary(r)
+	diagnosis, _ := kg.InterpretServiceResults(r)
+
+	require.NotEmpty(t, diagnosis)
+	joined := strings.Join(diagnosis, " ")
+	assert.NotContains(t, joined, "looks healthy",
+		"diagnosis must not declare service healthy when checks fail")
+	assert.Contains(t, joined, "4 check(s) failed",
+		"diagnosis should report the failure count")
+	// Names of the failed checks should appear so the user can act.
+	assert.Contains(t, joined, "Metric: asserts:mixin_workload_job")
+	assert.Contains(t, joined, "Metric: asserts:relation:calls")
+}
+
+func TestInterpretServiceResults_SingleCheckFailureIsReported(t *testing.T) {
+	// One-failure boundary case — exercises the same branch with a
+	// minimal failure set to confirm the count is rendered correctly.
+	r := &kg.ServiceDiagnoseResult{
+		ServiceName: "orders-service",
+		Edges:       []kg.EdgeInfo{{Direction: "outgoing", Type: "CALLS", PeerName: "wine-recommendation"}},
+		Checks: []kg.CheckResult{
+			{Name: "Entity lookup", Status: kg.CheckPass},
+			{Name: "Relationships", Status: kg.CheckPass},
+			{Name: "Insights", Status: kg.CheckPass},
+			{Name: "Metric: asserts:mixin_workload_job", Status: kg.CheckPass},
+			{Name: "Metric: traces_service_graph (server)", Status: kg.CheckFail, Detail: "no data"},
+			{Name: "Metric: traces_service_graph (client)", Status: kg.CheckPass},
+			{Name: "Metric: asserts:relation:calls", Status: kg.CheckPass},
+			{Name: "Metric: asserts:request:rate5m", Status: kg.CheckPass},
+		},
+	}
+	kg.ComputeServiceSummary(r)
+	diagnosis, _ := kg.InterpretServiceResults(r)
+
+	require.NotEmpty(t, diagnosis)
+	joined := strings.Join(diagnosis, " ")
+	assert.NotContains(t, joined, "looks healthy")
+	assert.Contains(t, joined, "1 check(s) failed")
+	assert.Contains(t, joined, "Metric: traces_service_graph (server)")
+}
