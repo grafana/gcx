@@ -9,11 +9,11 @@ gcx kg entities list [flags]
 ### Examples
 
 ```
-  gcx kg entities list --type Service
-  gcx kg entities list --type Service --namespace mimir-prod-01 --property name=model-builder
-  gcx kg entities list --type Service --with-insights any
-  gcx kg entities list --type Service --with-insights critical
-  gcx kg entities list --type Service --with-insights any --json name,scope
+  gcx kg entities list --type Service --env <env> --namespace <namespace> --property name=<service-name>
+  gcx kg entities list --type Service --env <env> --insight any
+  gcx kg entities list --type Service --env <env> --insight name=Saturation --insight severity=critical
+  gcx kg entities list --type Service --env <env> --property name=~api --insight severity=critical
+  gcx kg entities list --type Service --env <env> --insight severity=critical --json name,scope
 ```
 
 ### Options
@@ -22,6 +22,7 @@ gcx kg entities list [flags]
       --env string             Environment scope (run 'gcx kg meta scopes' to see valid values)
       --from string            Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                   help for list
+      --insight stringArray    Filter to entities with an active insight: 'any' (has any insight) or key=value (key=~value for substring; name only); valid keys: name, severity (critical|warning|info); repeatable — multiple predicates must match the same assertion
       --json string            Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int              Maximum number of items to return (0 for all; the backend may still page results — use --page to paginate) (default 50)
       --namespace string       Namespace scope (run 'gcx kg meta scopes' to see valid values)
@@ -32,7 +33,6 @@ gcx kg entities list [flags]
       --site string            Site scope (run 'gcx kg meta scopes' to see valid values)
       --to string              End time (RFC3339, Unix timestamp, or relative like 'now')
       --type string            Entity type to list (run 'gcx kg meta schema' to see available types)
-      --with-insights string   Filter to entities with active insights (self or propagated from connected downstream entities, e.g. Pod-level alerts on a Service); narrow by severity: any, critical, warning, info
 ```
 
 ### Options inherited from parent commands

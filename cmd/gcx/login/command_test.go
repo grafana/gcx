@@ -14,6 +14,7 @@ import (
 	configcmd "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/config"
 	internallogin "github.com/grafana/gcx/internal/login"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/cobra"
@@ -362,6 +363,105 @@ func TestPrintResult_TextCodec(t *testing.T) {
 					assert.Contains(t, stderr.String(), sub, "stderr should contain %q", sub)
 				}
 			}
+		})
+	}
+}
+
+// TestResolveSourceContext covers every branch of the context-selection
+// switch. The regression case is "no context name + --server pointing at a
+// different server than the current context" — that must NOT refresh the
+// current context.
+func TestResolveSourceContext(t *testing.T) {
+	t.Parallel()
+
+	current := &config.Context{
+		Name:    "alpha-dev",
+		Grafana: &config.GrafanaConfig{Server: "https://alpha.grafana-dev.net/"},
+	}
+	other := &config.Context{
+		Name:    "beta-ops",
+		Grafana: &config.GrafanaConfig{Server: "https://beta.grafana-ops.net/"},
+	}
+	cfg := config.Config{
+		Contexts: map[string]*config.Context{
+			"alpha-dev": current,
+			"beta-ops":  other,
+		},
+		CurrentContext: "alpha-dev",
+	}
+	empty := config.Config{}
+
+	tests := []struct {
+		name        string
+		cfg         config.Config
+		contextName string
+		server      string
+		wantSource  *config.Context
+		wantName    string
+	}{
+		{
+			name:       "no_name_no_server_uses_current",
+			cfg:        cfg,
+			wantSource: current,
+			wantName:   "alpha-dev",
+		},
+		{
+			name:       "no_name_server_matches_existing_refreshes_it",
+			cfg:        cfg,
+			server:     "https://beta.grafana-ops.net/",
+			wantSource: other,
+			wantName:   "beta-ops",
+		},
+		{
+			name:       "no_name_server_differs_from_current_creates_new",
+			cfg:        cfg,
+			server:     "https://example.test.local/",
+			wantSource: nil,
+			wantName:   "example-test-local",
+		},
+		{
+			name:        "named_existing_refreshes_named",
+			cfg:         cfg,
+			contextName: "beta-ops",
+			wantSource:  other,
+			wantName:    "beta-ops",
+		},
+		{
+			name:        "named_missing_creates_new",
+			cfg:         cfg,
+			contextName: "gamma",
+			wantSource:  nil,
+			wantName:    "gamma",
+		},
+		{
+			name:        "named_takes_precedence_over_server",
+			cfg:         cfg,
+			contextName: "beta-ops",
+			server:      "https://different.example.test/",
+			wantSource:  other,
+			wantName:    "beta-ops",
+		},
+		{
+			name:       "empty_config_no_inputs_first_time_setup",
+			cfg:        empty,
+			wantSource: nil,
+			wantName:   "",
+		},
+		{
+			name:       "empty_config_with_server_derives_name",
+			cfg:        empty,
+			server:     "https://example.grafana.net/",
+			wantSource: nil,
+			wantName:   "example",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			gotSource, gotName := resolveSourceContext(tt.cfg, tt.contextName, tt.server)
+			assert.Same(t, tt.wantSource, gotSource, "sourceCtx mismatch")
+			assert.Equal(t, tt.wantName, gotName, "contextName mismatch")
 		})
 	}
 }
