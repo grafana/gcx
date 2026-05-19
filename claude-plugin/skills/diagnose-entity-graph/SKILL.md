@@ -236,7 +236,22 @@ drift, or another label-pipeline issue).
 
 ## Step 7: Per-Service Investigation
 
-For a specific missing or edge-less service:
+Before investigating *why* a service is broken, confirm it exists.
+If a user names an entity that doesn't appear in the graph at all,
+that is itself the finding — report it directly, don't fabricate a
+diagnosis. Cross-type search if the type is uncertain:
+
+```bash
+gcx kg entities list --property name=~SERVICE
+```
+
+If `entities list` returns no results across any type and
+`traces_target_info{service_name="SERVICE"}` is also empty, the
+entity is not on this stack. State that conclusion plainly; the
+correct next question is whether the user meant a different stack,
+env, or spelling.
+
+For a service that *does* exist but appears missing or edge-less:
 
 ```bash
 # Find in graph
