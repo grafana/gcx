@@ -61,9 +61,22 @@ Do not add distributable gcx skills under repo-local `.agents/skills/`. Tools
 that follow the `.agents` convention treat that path as repo-context guidance
 for working on this repository, not as a globally installable skill bundle.
 
-Skills are triggered automatically when you describe what you want. You do not
-need to invoke them by name. The table below is the current inventory of the
-canonical portable skill bundle.
+### How skills get invoked
+
+You do not name skills. Describe the symptom or task in plain English and the
+agent matches your request against each skill's `description` frontmatter — the
+matching SKILL.md is loaded into context automatically.
+
+For example, saying *"my entity graph looks empty"* or *"no edges in entity
+graph"* matches the `diagnose-entity-graph` skill's trigger phrases and pulls
+in its full diagnostic workflow without you having to know the skill's name.
+
+If auto-trigger misses, you can always name a skill explicitly:
+*"use the diagnose-entity-graph skill"*. In Claude Code, skills packaged
+as plugins are also exposed as slash commands (e.g. `/setup-gcx`).
+
+The table below is the current inventory of the canonical portable skill
+bundle.
 
 | Skill | Purpose |
 |-------|---------|
@@ -76,6 +89,7 @@ canonical portable skill bundle.
 | `explore-datasources` | Discover datasources, metrics, labels, and log streams |
 | `investigate-alert` | Investigate why a Grafana alert is firing and what it impacts |
 | `debug-with-grafana` | Run a structured diagnostic workflow across metrics, logs, and dashboards |
+| `diagnose-entity-graph` | Diagnose Knowledge Graph problems: missing entities, missing edges, broken trace context propagation, service-name collisions |
 | `slo-check-status` | Check SLO health and summarize current status |
 | `slo-investigate` | Diagnose why a specific SLO is breaching or alerting |
 | `slo-manage` | Create, update, pull, push, and delete SLO definitions |
