@@ -400,6 +400,12 @@ var commandAnnotations = map[string]annotation{
 
 	"gcx aio11y generations get": {Cost: "medium", Hint: "<generation-id> -o json"},
 
+	"gcx aio11y guards create": {Cost: "small"},
+	"gcx aio11y guards delete": {Cost: "small"},
+	"gcx aio11y guards get":    {Cost: "small"},
+	"gcx aio11y guards list":   {Cost: "small"},
+	"gcx aio11y guards update": {Cost: "small"},
+
 	"gcx aio11y judge models":    {Cost: "small"},
 	"gcx aio11y judge providers": {Cost: "small"},
 
