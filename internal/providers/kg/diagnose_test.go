@@ -3,6 +3,7 @@ package kg_test
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -746,16 +747,15 @@ func TestInterpretServiceResults_AllChecksPassSaysHealthy(t *testing.T) {
 }
 
 func TestInterpretServiceResults_FailedChecksSuppressesHealthyVerdict(t *testing.T) {
-	// Mirrors the canonical wineshop case: entity exists, has edges,
-	// but multiple metric checks fail. Previously this produced the
-	// contradictory "looks healthy" line; now it must report the
-	// failure count and name the failed checks.
+	// Entity exists with edges but multiple metric checks fail.
+	// Previously this produced the contradictory "looks healthy" line;
+	// now it must report the failure count and name the failed checks.
 	r := &kg.ServiceDiagnoseResult{
-		ServiceName: "mysql",
+		ServiceName: "db",
 		Edges: []kg.EdgeInfo{
-			{Direction: "outgoing", Type: "CONTROLS", PeerName: "mysql-0"},
-			{Direction: "outgoing", Type: "CONTROLS", PeerName: "mysql:winecellar"},
-			{Direction: "incoming", Type: "CONTROLS", PeerName: "grots-tasting-room"},
+			{Direction: "outgoing", Type: "CONTROLS", PeerName: "db-0"},
+			{Direction: "outgoing", Type: "CONTROLS", PeerName: "db:schema"},
+			{Direction: "incoming", Type: "CONTROLS", PeerName: "default"},
 		},
 		Checks: []kg.CheckResult{
 			{Name: "Entity lookup", Status: kg.CheckPass},
@@ -786,8 +786,8 @@ func TestInterpretServiceResults_SingleCheckFailureIsReported(t *testing.T) {
 	// One-failure boundary case — exercises the same branch with a
 	// minimal failure set to confirm the count is rendered correctly.
 	r := &kg.ServiceDiagnoseResult{
-		ServiceName: "orders-service",
-		Edges:       []kg.EdgeInfo{{Direction: "outgoing", Type: "CALLS", PeerName: "wine-recommendation"}},
+		ServiceName: "api-service",
+		Edges:       []kg.EdgeInfo{{Direction: "outgoing", Type: "CALLS", PeerName: "checkout"}},
 		Checks: []kg.CheckResult{
 			{Name: "Entity lookup", Status: kg.CheckPass},
 			{Name: "Relationships", Status: kg.CheckPass},
@@ -807,4 +807,145 @@ func TestInterpretServiceResults_SingleCheckFailureIsReported(t *testing.T) {
 	assert.NotContains(t, joined, "looks healthy")
 	assert.Contains(t, joined, "1 check(s) failed")
 	assert.Contains(t, joined, "Metric: traces_service_graph (server)")
+}
+
+// ---------------------------------------------------------------------------
+// A.2: Probe without env filter when a metric check returns "no data".
+// ---------------------------------------------------------------------------
+//
+// When a scoped metric check returns zero series, checkMetric now re-probes
+// the metric without the env/namespace filter. If the unscoped probe finds
+// data, the result is reclassified from FAIL to WARN with a label-pipeline
+// hint, instead of silently telling the user "no data" when the data is
+// in fact flowing under a different env label value.
+
+// promHandlerScopedEmptyUnscopedFull is an httptest handler whose response
+// depends on whether the PromQL expression includes a label filter:
+//
+//   - Any query that includes a label filter (selectors like {asserts_env=…},
+//     {deployment_environment=…}, {client_deployment_environment=…}) returns
+//     an empty frame array (simulating "no series match the scope").
+//   - A bare `count(<metric>)` with no selector returns a single series with
+//     value 42 (simulating "the metric exists outside this scope").
+//
+// This dispatch lets one handler answer all 5 metric checks plus all 5
+// fallback probes for the diagnose pipeline.
+func promHandlerScopedEmptyUnscopedFull() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		expr := string(body)
+		// A scoped query contains an `=` inside `{}` — match the JSON-escaped
+		// `=\"` that the Grafana datasource POST body carries.
+		if strings.Contains(expr, `=\"`) {
+			writeJSON(w, map[string]any{
+				"results": map[string]any{
+					"A": map[string]any{
+						"frames": []map[string]any{},
+					},
+				},
+			})
+			return
+		}
+		// Unscoped (no selector): return data.
+		writeJSON(w, map[string]any{
+			"results": map[string]any{
+				"A": map[string]any{
+					"frames": []map[string]any{
+						{
+							"schema": map[string]any{
+								"fields": []map[string]any{
+									{"name": "Time", "type": "time"},
+									{"name": "Value", "type": "number"},
+								},
+							},
+							"data": map[string]any{
+								"values": []any{
+									[]int64{1715100000000},
+									[]float64{42},
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+	}
+}
+
+func TestCheckMetric_ReclassifiesNoDataAsLabelMismatchWhenUnscopedHasData(t *testing.T) {
+	kgServer := minimalKGServer()
+	defer kgServer.Close()
+
+	promMux := http.NewServeMux()
+	promMux.HandleFunc("/", promHandlerScopedEmptyUnscopedFull())
+	promServer := httptest.NewServer(promMux)
+	defer promServer.Close()
+
+	kgClient := newTestClient(t, kgServer)
+	promClient := newTestPromClient(t, promServer)
+	// Env scope triggers the fallback path.
+	scope := kg.NewTestScopeFlags("production", "", "")
+	result := kg.RunDiagnose(t.Context(), kgClient, &scope, promClient, "test-prom-uid")
+
+	// Every metric check should be WARN (label-mismatch), not FAIL.
+	var warned, failed int
+	for _, c := range result.Checks {
+		if !strings.HasPrefix(c.Name, "Metric:") {
+			continue
+		}
+		switch c.Status {
+		case kg.CheckWarn:
+			warned++
+			assert.Contains(t, c.Detail, "metric exists",
+				"check %q WARN detail should mention the metric exists outside the scope", c.Name)
+			assert.Contains(t, c.Recommendation, "asserts_env",
+				"check %q WARN recommendation should mention asserts_env label mapping", c.Name)
+		case kg.CheckFail:
+			failed++
+		}
+	}
+	assert.Equal(t, 5, warned, "all 5 metric checks should be reclassified as WARN when scoped is empty but unscoped has data")
+	assert.Equal(t, 0, failed, "no metric check should FAIL when unscoped probe finds data")
+}
+
+func TestCheckMetric_NoFallbackWhenScopeUnset(t *testing.T) {
+	// Regression check: when no env/namespace is set, scoped and unscoped
+	// queries are identical, so no fallback should fire. Empty results
+	// should remain FAIL.
+	kgServer := minimalKGServer()
+	defer kgServer.Close()
+
+	promMux := http.NewServeMux()
+	promMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Always return empty.
+		writeJSON(w, map[string]any{
+			"results": map[string]any{
+				"A": map[string]any{
+					"frames": []map[string]any{},
+				},
+			},
+		})
+	})
+	promServer := httptest.NewServer(promMux)
+	defer promServer.Close()
+
+	kgClient := newTestClient(t, kgServer)
+	promClient := newTestPromClient(t, promServer)
+	scope := kg.NewTestScopeFlags("", "", "")
+	result := kg.RunDiagnose(t.Context(), kgClient, &scope, promClient, "test-prom-uid")
+
+	var warned, failed int
+	for _, c := range result.Checks {
+		if !strings.HasPrefix(c.Name, "Metric:") {
+			continue
+		}
+		switch c.Status {
+		case kg.CheckWarn:
+			warned++
+		case kg.CheckFail:
+			failed++
+		}
+	}
+	assert.Equal(t, 0, warned, "without scope, no reclassification should occur")
+	assert.Equal(t, 5, failed, "all 5 metric checks should FAIL when both scoped and unscoped find nothing")
 }
