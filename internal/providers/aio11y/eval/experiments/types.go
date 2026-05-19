@@ -37,14 +37,22 @@ type ExperimentEvaluator struct {
 
 // UpdateRequest is the partial-PATCH body for the update endpoint. Pointer
 // fields let callers send only the fields they want to change.
+//
+// Only user-editable fields are exposed. Status and error are
+// server-managed lifecycle fields — clients drive status transitions
+// via Cancel, and the server owns the error message. Metadata is not
+// patchable through the CLI yet; add a field here when wiring it up.
 type UpdateRequest struct {
-	Name     *string        `json:"name,omitempty"`
-	Status   *string        `json:"status,omitempty"`
-	Metadata map[string]any `json:"metadata,omitempty"`
-	Error    *string        `json:"error,omitempty"`
+	Name *string `json:"name,omitempty"`
 }
 
 // ScoreItem is one score record produced by an evaluator during an experiment.
+//
+// This is intentionally separate from scores.Score: the experiments scores
+// endpoint returns more fields (tenant, evaluator description, ingestion
+// time, agent/version metadata) and emits a flat source_kind/source_id pair
+// rather than the nested {source: {kind, id}} envelope used by scores.Score.
+// Keep the two in sync when adding fields that exist on both endpoints.
 type ScoreItem struct {
 	TenantID             string         `json:"tenant_id"`
 	ScoreID              string         `json:"score_id"`

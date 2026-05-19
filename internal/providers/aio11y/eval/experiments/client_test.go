@@ -153,20 +153,16 @@ func TestClient_Update_PATCH(t *testing.T) {
 		body, _ := io.ReadAll(r.Body)
 		var raw map[string]any
 		assert.NoError(t, json.Unmarshal(body, &raw))
-		assert.Equal(t, "succeeded", raw["status"])
-		_, hasName := raw["name"]
-		assert.False(t, hasName, "name must be omitted when not set")
-		_, hasError := raw["error"]
-		assert.False(t, hasError, "error must be omitted when not set")
+		assert.Equal(t, "renamed", raw["name"])
 
 		w.WriteHeader(http.StatusOK)
-		writeJSON(w, experiments.Experiment{RunID: "r-1", Status: "succeeded"})
+		writeJSON(w, experiments.Experiment{RunID: "r-1", Name: "renamed"})
 	}))
 
-	status := "succeeded"
-	exp, err := client.Update(context.Background(), "r-1", &experiments.UpdateRequest{Status: &status})
+	name := "renamed"
+	exp, err := client.Update(context.Background(), "r-1", &experiments.UpdateRequest{Name: &name})
 	require.NoError(t, err)
-	assert.Equal(t, "succeeded", exp.Status)
+	assert.Equal(t, "renamed", exp.Name)
 }
 
 func TestClient_Update_NotFound(t *testing.T) {
@@ -174,8 +170,8 @@ func TestClient_Update_NotFound(t *testing.T) {
 		http.Error(w, "not found", http.StatusNotFound)
 	}))
 
-	status := "succeeded"
-	_, err := client.Update(context.Background(), "missing", &experiments.UpdateRequest{Status: &status})
+	name := "renamed"
+	_, err := client.Update(context.Background(), "missing", &experiments.UpdateRequest{Name: &name})
 	require.Error(t, err)
 	require.ErrorIs(t, err, experiments.ErrNotFound)
 }
@@ -185,8 +181,8 @@ func TestClient_Update_TransportError(t *testing.T) {
 		http.Error(w, "boom", http.StatusInternalServerError)
 	}))
 
-	status := "succeeded"
-	_, err := client.Update(context.Background(), "r-1", &experiments.UpdateRequest{Status: &status})
+	name := "renamed"
+	_, err := client.Update(context.Background(), "r-1", &experiments.UpdateRequest{Name: &name})
 	require.Error(t, err)
 }
 
@@ -198,6 +194,19 @@ func TestClient_Cancel(t *testing.T) {
 	}))
 
 	require.NoError(t, client.Cancel(context.Background(), "r-1"))
+}
+
+func TestClient_Cancel_EscapesColonInRunID(t *testing.T) {
+	// A literal `:` in a runID must be escaped so the `:cancel` suffix match
+	// stays unambiguous. r.URL.Path is the decoded form, so we check RawPath
+	// to see the wire bytes.
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/api/plugins/grafana-sigil-app/resources/eval/experiments/r%3Afoo:cancel", r.URL.EscapedPath())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	require.NoError(t, client.Cancel(context.Background(), "r:foo"))
 }
 
 func TestClient_Cancel_NotFound(t *testing.T) {

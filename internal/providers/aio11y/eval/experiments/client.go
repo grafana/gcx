@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/grafana/gcx/internal/providers/aio11y/aio11yhttp"
 )
@@ -110,9 +111,13 @@ func (c *Client) Update(ctx context.Context, runID string, req *UpdateRequest) (
 // Cancel transitions a running experiment to a canceled state.
 //
 // The plugin proxy matches the `:cancel` suffix on the run ID segment
-// (single-segment path), not `/cancel`.
+// (single-segment path), not `/cancel`. url.PathEscape does not escape
+// `:` (it's an allowed sub-delim in path segments), which would make the
+// route ambiguous if a runID ever contained a literal colon, so we escape
+// it manually before appending the action suffix.
 func (c *Client) Cancel(ctx context.Context, runID string) error {
-	resp, err := c.base.DoRequest(ctx, http.MethodPost, basePath+"/"+url.PathEscape(runID)+":cancel", nil)
+	escaped := strings.ReplaceAll(url.PathEscape(runID), ":", "%3A")
+	resp, err := c.base.DoRequest(ctx, http.MethodPost, basePath+"/"+escaped+":cancel", nil)
 	if err != nil {
 		return fmt.Errorf("failed to cancel experiment %s: %w", runID, err)
 	}

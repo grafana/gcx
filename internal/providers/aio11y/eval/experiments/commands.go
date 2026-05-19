@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -142,8 +143,11 @@ func (o *createOpts) Validate() error {
 	return o.IO.Validate()
 }
 
-// readExperimentFile reads an Experiment from a JSON or YAML file, trying
-// JSON first and falling back to YAML.
+// readExperimentFile reads an Experiment from a JSON or YAML file. The
+// format is picked from the file extension when known (.json, .yaml, .yml)
+// so that a typo in a JSON file surfaces a JSON error rather than a
+// confusing YAML one. For stdin or unknown extensions, JSON is tried first
+// and YAML is used as a fallback.
 func readExperimentFile(path string, stdin io.Reader) (*Experiment, error) {
 	var data []byte
 	var err error
@@ -157,12 +161,24 @@ func readExperimentFile(path string, stdin io.Reader) (*Experiment, error) {
 	}
 
 	var exp Experiment
-	if err := json.Unmarshal(data, &exp); err != nil {
-		var yamlExp Experiment
-		if yamlErr := yaml.Unmarshal(data, &yamlExp); yamlErr != nil {
-			return nil, fmt.Errorf("parsing %s: %w", path, yamlErr)
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".json":
+		if err := json.Unmarshal(data, &exp); err != nil {
+			return nil, fmt.Errorf("parsing %s: %w", path, err)
 		}
-		exp = yamlExp
+	case ".yaml", ".yml":
+		if err := yaml.Unmarshal(data, &exp); err != nil {
+			return nil, fmt.Errorf("parsing %s: %w", path, err)
+		}
+	default:
+		jsonErr := json.Unmarshal(data, &exp)
+		if jsonErr != nil {
+			var yamlExp Experiment
+			if yamlErr := yaml.Unmarshal(data, &yamlExp); yamlErr != nil {
+				return nil, fmt.Errorf("parsing %s as JSON or YAML: %w", path, errors.Join(jsonErr, yamlErr))
+			}
+			exp = yamlExp
+		}
 	}
 	if strings.TrimSpace(exp.Name) == "" {
 		return nil, fmt.Errorf("parsing %s: name is required", path)
@@ -210,23 +226,21 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 // --- update ---
 
 type updateOpts struct {
-	IO     cmdio.Options
-	Name   string
-	Status string
-	Error  string
+	IO   cmdio.Options
+	Name string
 }
 
 func (o *updateOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Name, "name", "", "New experiment name")
-	flags.StringVar(&o.Status, "status", "", "New experiment status")
-	flags.StringVar(&o.Error, "error", "", "Experiment error message")
 }
 
 // newUpdateCommand sends a true partial PATCH using pointer fields gated by
 // cmd.Flags().Changed(...). Only fields the user explicitly sets are sent on
-// the wire.
+// the wire. Status and error are intentionally not exposed — they are
+// server-managed lifecycle fields; use `cancel` for the one user-driven
+// transition.
 func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &updateOpts{}
 	cmd := &cobra.Command{
@@ -243,16 +257,8 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 				name := opts.Name
 				req.Name = &name
 			}
-			if cmd.Flags().Changed("status") {
-				status := opts.Status
-				req.Status = &status
-			}
-			if cmd.Flags().Changed("error") {
-				errMsg := opts.Error
-				req.Error = &errMsg
-			}
-			if req.Name == nil && req.Status == nil && req.Error == nil {
-				return errors.New("at least one of --name, --status, or --error is required")
+			if req.Name == nil {
+				return errors.New("--name is required")
 			}
 
 			client, err := newClient(cmd, loader)
@@ -394,7 +400,7 @@ func (c *TableCodec) Encode(w io.Writer, v any) error {
 
 	var t *style.TableBuilder
 	if c.Wide {
-		t = style.NewTable("RUN-ID", "NAME", "STATUS", "SOURCE", "COLLECTION", "SCORES", "CREATED", "ERROR", "COMPLETED")
+		t = style.NewTable("RUN-ID", "NAME", "STATUS", "SOURCE", "COLLECTION", "SCORES", "CREATED", "COMPLETED", "ERROR")
 	} else {
 		t = style.NewTable("RUN-ID", "NAME", "STATUS", "SOURCE", "COLLECTION", "SCORES", "CREATED")
 	}
@@ -418,7 +424,7 @@ func (c *TableCodec) Encode(w io.Writer, v any) error {
 			if exp.CompletedAt != nil {
 				completed = aio11yhttp.FormatTime(*exp.CompletedAt)
 			}
-			t.Row(exp.RunID, exp.Name, status, source, collection, scores, aio11yhttp.FormatTime(exp.CreatedAt), aio11yhttp.Truncate(exp.Error, 40), completed)
+			t.Row(exp.RunID, exp.Name, status, source, collection, scores, aio11yhttp.FormatTime(exp.CreatedAt), completed, aio11yhttp.Truncate(exp.Error, 40))
 		} else {
 			t.Row(exp.RunID, exp.Name, status, source, collection, scores, aio11yhttp.FormatTime(exp.CreatedAt))
 		}
@@ -512,28 +518,29 @@ func (c *ReportTextCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for report text codec: expected *ExperimentReport")
 	}
 
+	const labelFmt = "%-15s %s\n"
 	if r.Run.RunID != "" {
-		fmt.Fprintf(w, "Run:    %s\n", r.Run.RunID)
+		fmt.Fprintf(w, labelFmt, "Run:", r.Run.RunID)
 	}
 	if r.Run.Name != "" {
-		fmt.Fprintf(w, "Name:   %s\n", r.Run.Name)
+		fmt.Fprintf(w, labelFmt, "Name:", r.Run.Name)
 	}
 	if r.Run.Status != "" {
-		fmt.Fprintf(w, "Status: %s\n", r.Run.Status)
+		fmt.Fprintf(w, labelFmt, "Status:", r.Run.Status)
 	}
 	s := r.Summary
-	fmt.Fprintf(w, "Scores: %d\n", s.NScores)
-	fmt.Fprintf(w, "Conversations: %d\n", s.NConversations)
-	fmt.Fprintf(w, "Generations: %d\n", s.NGenerations)
+	fmt.Fprintf(w, labelFmt, "Scores:", strconv.Itoa(s.NScores))
+	fmt.Fprintf(w, labelFmt, "Conversations:", strconv.Itoa(s.NConversations))
+	fmt.Fprintf(w, labelFmt, "Generations:", strconv.Itoa(s.NGenerations))
 	if s.NScores > 0 {
-		fmt.Fprintf(w, "Pass rate: %.2f%%\n", s.PassRate*100)
-		fmt.Fprintf(w, "Mean score: %g\n", s.MeanScore)
+		fmt.Fprintf(w, labelFmt, "Pass rate:", fmt.Sprintf("%.2f%%", s.PassRate*100))
+		fmt.Fprintf(w, labelFmt, "Mean score:", fmt.Sprintf("%g", s.MeanScore))
 	}
 	if s.TotalCostUSD > 0 {
-		fmt.Fprintf(w, "Cost:   $%.4f\n", s.TotalCostUSD)
+		fmt.Fprintf(w, labelFmt, "Cost:", fmt.Sprintf("$%.4f", s.TotalCostUSD))
 	}
 	if s.TotalTokens > 0 {
-		fmt.Fprintf(w, "Tokens: %d\n", s.TotalTokens)
+		fmt.Fprintf(w, labelFmt, "Tokens:", strconv.FormatInt(s.TotalTokens, 10))
 	}
 
 	breakdowns := reportBreakdownRows(r.Breakdowns)

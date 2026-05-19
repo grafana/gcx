@@ -35,7 +35,7 @@ func TestCreateCommand_RequiresFilename(t *testing.T) {
 	assert.Contains(t, err.Error(), "--filename/-f is required")
 }
 
-func TestUpdateCommand_RequiresAtLeastOneFlag(t *testing.T) {
+func TestUpdateCommand_RequiresName(t *testing.T) {
 	cmd := experiments.Commands(nil)
 	cmd.SetArgs([]string{"update", "r-1"})
 
@@ -45,7 +45,26 @@ func TestUpdateCommand_RequiresAtLeastOneFlag(t *testing.T) {
 
 	err := cmd.Execute()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "at least one of --name, --status, or --error")
+	assert.Contains(t, err.Error(), "--name is required")
+}
+
+func TestUpdateCommand_RejectsRemovedStatusAndErrorFlags(t *testing.T) {
+	// --status and --error were intentionally removed: they're server-managed
+	// lifecycle fields; users should drive transitions via `cancel`.
+	for _, flag := range []string{"--status", "--error"} {
+		t.Run(flag, func(t *testing.T) {
+			cmd := experiments.Commands(nil)
+			cmd.SetArgs([]string{"update", "r-1", flag, "x"})
+
+			var stdout, stderr bytes.Buffer
+			cmd.SetOut(&stdout)
+			cmd.SetErr(&stderr)
+
+			err := cmd.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "unknown flag")
+		})
+	}
 }
 
 func TestGetCommand_RequiresArg(t *testing.T) {
