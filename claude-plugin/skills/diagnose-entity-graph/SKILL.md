@@ -16,6 +16,28 @@ Systematic diagnosis of Entity Graph problems using gcx commands. Follow the
 steps in order — each step narrows the cause. Be direct and report findings
 concisely.
 
+## Reading Diagnose Output
+
+Treat `gcx kg diagnose`'s verdicts as authoritative for the queries it
+ran. Two non-obvious classifications:
+
+- **`WARN — metric exists … but no series match the requested
+  env/namespace scope`** means the metric is flowing on the stack but
+  doesn't carry the scoped label value. This is a label-mapping issue
+  (asserts_env vs. deployment_environment, etc.), not a missing-data
+  issue. Investigate the label pipeline (Step 6) before suggesting the
+  user enable new telemetry.
+- **`FAIL — no data` (without the WARN above)** means the metric was
+  not found, even unscoped — the integration / recording rule is
+  genuinely absent.
+
+For ad-hoc PromQL outside `kg diagnose`, apply the same discipline:
+re-run the query without the env / namespace filter before concluding
+the data is missing.
+
+If a user reports an entity by name, see Step 7's entity-existence
+workflow before assuming it exists on this stack.
+
 ## Prerequisites
 
 gcx must be installed (v0.2.14+) and configured with a valid context. If
