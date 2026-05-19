@@ -62,3 +62,16 @@ func RunLabelsDiagnose(ctx context.Context, client *Client, promClient *promethe
 func CheckContainerImageLabelDrift(ctx context.Context, client *prometheus.Client, datasourceUID, namespace string) *CheckResult {
 	return checkContainerImageLabelDrift(ctx, client, datasourceUID, namespace)
 }
+
+// CheckResourceFamilyCoverage wraps the unexported check for testing.
+func CheckResourceFamilyCoverage(ctx context.Context, client *prometheus.Client, datasourceUID, env, namespace string) *CheckResult {
+	return checkResourceFamilyCoverage(ctx, client, datasourceUID, env, namespace)
+}
+
+// ExpectedResourceTypes exposes the canonical asserts_resource_type set
+// for assertion in tests.
+func ExpectedResourceTypes() []string {
+	out := make([]string, len(expectedResourceTypes))
+	copy(out, expectedResourceTypes)
+	return out
+}

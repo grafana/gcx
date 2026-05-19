@@ -223,6 +223,14 @@ the typical source (an Alloy `extraMetricProcessingRules` block
 with `labeldrop regex = "image.*"`, often added for cardinality
 reduction) and the fix.
 
+A complementary `Resource coverage` check runs alongside it: when
+the `asserts:resource` recording rule produces some types but is
+missing expected ones (e.g. has `cpu:throttle` but no `cpu:usage`),
+the K8s tab's CPU panel will be empty even though the underlying
+rule is partially working. The two checks together tell the user
+which UI tab is broken (Resource coverage) and why (Container label
+drift, or another label-pipeline issue).
+
 ## Step 7: Per-Service Investigation
 
 For a specific missing or edge-less service:

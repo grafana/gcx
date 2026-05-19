@@ -328,10 +328,14 @@ func TestRunDiagnose_MetricChecksPass(t *testing.T) {
 		assert.Contains(t, c.Detail, "series", "metric check %q detail should mention series count", c.Name)
 	}
 
-	// Total checks = 6 KG + 5 metric = 11 (profile warns, so 10 pass + 1 warn).
-	assert.Equal(t, 11, result.Summary.Total)
+	// Total checks = 6 KG + 5 metric + 1 resource coverage = 12.
+	// Profile config missing → 1 warn from KG; the resource coverage
+	// check WARNs because the prom mock returns a single unlabeled
+	// frame, so no expected resource types are reported as present
+	// (a realistic stack would have all five, suppressing this check).
+	assert.Equal(t, 12, result.Summary.Total)
 	assert.Equal(t, 10, result.Summary.Passed)
-	assert.Equal(t, 1, result.Summary.Warned) // profile config missing
+	assert.Equal(t, 2, result.Summary.Warned)
 }
 
 func TestRunDiagnose_MetricChecksFail(t *testing.T) {
@@ -921,11 +925,11 @@ func TestCheckContainerImageLabelDrift_NamespaceScoped(t *testing.T) {
 	defer promServer.Close()
 
 	promClient := newTestPromClient(t, promServer)
-	c := kg.CheckContainerImageLabelDrift(t.Context(), promClient, "test-prom-uid", "grots-tasting-room")
+	c := kg.CheckContainerImageLabelDrift(t.Context(), promClient, "test-prom-uid", "workloads")
 
 	require.NotNil(t, c, "expected a WARN check when scoped namespace has drift")
 	assert.Equal(t, kg.CheckWarn, c.Status)
-	assert.Contains(t, c.Detail, "grots-tasting-room",
+	assert.Contains(t, c.Detail, "workloads",
 		"namespace should appear in the detail when scoped")
 	assert.Contains(t, c.Detail, "23",
 		"count should appear in the detail")
@@ -955,13 +959,13 @@ func TestCheckContainerImageLabelDrift_NoDriftReturnsNil(t *testing.T) {
 }
 
 func TestCheckContainerImageLabelDrift_BreakdownExcludesKubeSystem(t *testing.T) {
-	// Mirror the canonical wineshop case: a real workload namespace
-	// shows up with image="" series, plus kube-system shows up but
-	// should be filtered out as a legitimate pause-container case.
+	// A real workload namespace shows up with image="" series, plus
+	// kube-system shows up but should be filtered out as a legitimate
+	// pause-container case.
 	promMux := http.NewServeMux()
 	promMux.HandleFunc("/", promHandlerImageDrift(24, map[string]float64{
-		"grots-tasting-room": 23,
-		"kube-system":        1,
+		"workloads":   23,
+		"kube-system": 1,
 	}))
 	promServer := httptest.NewServer(promMux)
 	defer promServer.Close()
@@ -971,7 +975,7 @@ func TestCheckContainerImageLabelDrift_BreakdownExcludesKubeSystem(t *testing.T)
 	c := kg.CheckContainerImageLabelDrift(t.Context(), promClient, "test-prom-uid", "")
 
 	require.NotNil(t, c, "expected a WARN check when at least one non-kube-system namespace has drift")
-	assert.Contains(t, c.Detail, "grots-tasting-room=23",
+	assert.Contains(t, c.Detail, "workloads=23",
 		"affected namespace should appear in the breakdown")
 	assert.NotContains(t, c.Detail, "kube-system",
 		"kube-system should be excluded from the breakdown")
@@ -990,4 +994,109 @@ func TestCheckContainerImageLabelDrift_OnlyKubeSystemReturnsNil(t *testing.T) {
 	c := kg.CheckContainerImageLabelDrift(t.Context(), promClient, "test-prom-uid", "")
 
 	assert.Nil(t, c, "check should be nil when only kube-system has image=\"\" series")
+}
+
+// ---------------------------------------------------------------------------
+// A.7: asserts:resource family coverage check.
+// ---------------------------------------------------------------------------
+//
+// Probes which `asserts_resource_type` values appear in `asserts:resource`
+// for the scoped env/namespace. Each missing expected type corresponds
+// to an empty panel in the Asserts UI's K8s / CPU / Memory / Disk tabs.
+
+// promHandlerResourceTypes returns an httptest handler that responds to a
+// `group by (asserts_resource_type) (asserts:resource...)` query with a
+// frame per provided resource type. Used to simulate partial / full
+// recording-rule output in the asserts:resource family.
+func promHandlerResourceTypes(present []string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		frames := []map[string]any{}
+		for _, rt := range present {
+			frames = append(frames, map[string]any{
+				"schema": map[string]any{
+					"fields": []map[string]any{
+						{"name": "Time", "type": "time"},
+						{"name": "Value", "type": "number", "labels": map[string]any{
+							"asserts_resource_type": rt,
+						}},
+					},
+				},
+				"data": map[string]any{
+					"values": []any{
+						[]int64{1715100000000},
+						[]float64{1},
+					},
+				},
+			})
+		}
+		writeJSON(w, map[string]any{
+			"results": map[string]any{
+				"A": map[string]any{"frames": frames},
+			},
+		})
+	}
+}
+
+func TestCheckResourceFamilyCoverage_AllTypesPresent(t *testing.T) {
+	promMux := http.NewServeMux()
+	promMux.HandleFunc("/", promHandlerResourceTypes(kg.ExpectedResourceTypes()))
+	promServer := httptest.NewServer(promMux)
+	defer promServer.Close()
+
+	promClient := newTestPromClient(t, promServer)
+	c := kg.CheckResourceFamilyCoverage(t.Context(), promClient, "test-prom-uid", "production", "workloads")
+
+	assert.Nil(t, c, "check should be nil when all expected resource types are present")
+}
+
+func TestCheckResourceFamilyCoverage_MissingTypes(t *testing.T) {
+	// Partial coverage: cpu:throttle and disk:* are present but
+	// cpu:usage / memory:usage are missing — the signature when the
+	// image label is dropped from cAdvisor metrics (see
+	// `Container label drift` check).
+	promMux := http.NewServeMux()
+	promMux.HandleFunc("/", promHandlerResourceTypes([]string{
+		"cpu:throttle",
+		"disk:usage",
+		"disk:inode_usage",
+	}))
+	promServer := httptest.NewServer(promMux)
+	defer promServer.Close()
+
+	promClient := newTestPromClient(t, promServer)
+	c := kg.CheckResourceFamilyCoverage(t.Context(), promClient, "test-prom-uid", "production", "workloads")
+
+	require.NotNil(t, c, "expected a WARN check when expected resource types are missing")
+	assert.Equal(t, kg.CheckWarn, c.Status)
+	assert.Contains(t, c.Detail, "cpu:usage",
+		"missing cpu:usage should appear in the detail")
+	assert.Contains(t, c.Detail, "memory:usage",
+		"missing memory:usage should appear in the detail")
+	assert.Contains(t, c.Detail, "workloads",
+		"scoped namespace should appear in the detail")
+	assert.Contains(t, c.Recommendation, "Container label drift",
+		"recommendation should point at the A.5 check for the most common cause")
+}
+
+func TestCheckResourceFamilyCoverage_NoSeriesReturnsNil(t *testing.T) {
+	// Empty frames simulate "the asserts:resource recording rule produces
+	// nothing for this scope" — earlier diagnose checks cover that case,
+	// so this one stays silent.
+	promMux := http.NewServeMux()
+	promMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{
+			"results": map[string]any{
+				"A": map[string]any{
+					"frames": []map[string]any{},
+				},
+			},
+		})
+	})
+	promServer := httptest.NewServer(promMux)
+	defer promServer.Close()
+
+	promClient := newTestPromClient(t, promServer)
+	c := kg.CheckResourceFamilyCoverage(t.Context(), promClient, "test-prom-uid", "production", "any-namespace")
+
+	assert.Nil(t, c, "check should be nil when asserts:resource has no series at all for the scope")
 }

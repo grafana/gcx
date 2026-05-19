@@ -386,6 +386,18 @@ func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promCli
 			}
 			return nil
 		})
+
+		// Resource recording rule coverage. Checks which
+		// asserts_resource_type values are populated in asserts:resource
+		// for the scoped env/namespace and flags any that are missing
+		// from the canonical expected set. Powers the K8s tab's CPU /
+		// Memory / Disk panels.
+		g.Go(func() error {
+			if c := checkResourceFamilyCoverage(ctx, promClient, datasourceUID, scope.env, scope.namespace); c != nil {
+				addCheck(*c)
+			}
+			return nil
+		})
 	}
 
 	// Trace-side coverage check (skip if no Tempo client). Detects whether
@@ -443,6 +455,9 @@ func checkOrder(name string) int {
 	}
 	if strings.HasPrefix(name, "Container label drift") {
 		return 10
+	}
+	if name == "Resource coverage" {
+		return 11
 	}
 	return 50
 }
@@ -1052,6 +1067,101 @@ func checkContainerImageLabelDrift(ctx context.Context, client *prometheus.Clien
 			"extraMetricProcessingRules` (or equivalent kubelet / kube-state-metrics block) " +
 			"matching `image.*`. Remove the drop rule and re-apply the chart; tabs populate " +
 			"after one recording-rule cycle (~5 min).",
+	}
+}
+
+// expectedResourceTypes is the canonical set of asserts_resource_type
+// values that should be populated for a healthy stack. Powers the
+// Asserts UI's Kubernetes / CPU / Memory / Disk tabs. Pulled from
+// observed values on Grafana Cloud reference stacks.
+var expectedResourceTypes = []string{
+	"cpu:usage",
+	"cpu:throttle",
+	"memory:usage",
+	"disk:usage",
+	"disk:inode_usage",
+}
+
+// checkResourceFamilyCoverage probes which `asserts_resource_type` values
+// are populated in `asserts:resource` for the scoped env/namespace and
+// flags any expected types that are missing. Each missing type
+// corresponds to an empty panel in the Asserts UI's resource-family
+// tabs (CPU, Memory, Disk).
+//
+// Returns nil when all expected types are present (no surface noise on
+// a healthy stack) or when no resource metrics flow at all (Asserts
+// app may not yet be onboarded — earlier checks cover that case).
+func checkResourceFamilyCoverage(ctx context.Context, client *prometheus.Client, datasourceUID, env, namespace string) *CheckResult {
+	var parts []string
+	if env != "" {
+		parts = append(parts, fmt.Sprintf(`asserts_env="%s"`, env))
+	}
+	if namespace != "" {
+		parts = append(parts, fmt.Sprintf(`namespace="%s"`, namespace))
+	}
+	selector := ""
+	if len(parts) > 0 {
+		selector = "{" + strings.Join(parts, ", ") + "}"
+	}
+
+	query := fmt.Sprintf(
+		`group by (asserts_resource_type)(asserts:resource%s)`, selector)
+	resp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{Query: query})
+	if err != nil {
+		return nil
+	}
+
+	if len(resp.Data.Result) == 0 {
+		// No asserts:resource series at all for this scope. Either the
+		// scope has no workloads or earlier checks flagged the Asserts
+		// pipeline as broken — either way, this check has nothing useful
+		// to add. Stay silent.
+		return nil
+	}
+
+	present := make(map[string]bool, len(resp.Data.Result))
+	for _, sample := range resp.Data.Result {
+		if rt := sample.Metric["asserts_resource_type"]; rt != "" {
+			present[rt] = true
+		}
+	}
+
+	var missing []string
+	for _, want := range expectedResourceTypes {
+		if !present[want] {
+			missing = append(missing, want)
+		}
+	}
+
+	if len(missing) == 0 {
+		// All expected types present — quiet success.
+		return nil
+	}
+
+	scopeLabel := "this stack"
+	switch {
+	case namespace != "" && env != "":
+		scopeLabel = fmt.Sprintf("namespace=%q (env=%q)", namespace, env)
+	case namespace != "":
+		scopeLabel = fmt.Sprintf("namespace=%q", namespace)
+	case env != "":
+		scopeLabel = fmt.Sprintf("env=%q", env)
+	}
+
+	return &CheckResult{
+		Name:   "Resource coverage",
+		Status: CheckWarn,
+		Detail: fmt.Sprintf(
+			"asserts:resource for %s is missing %d of %d expected asserts_resource_type values: %s",
+			scopeLabel, len(missing), len(expectedResourceTypes), strings.Join(missing, ", ")),
+		Recommendation: "The Asserts UI's Kubernetes / CPU / Memory / Disk tabs each read a specific " +
+			"asserts_resource_type from asserts:resource. A missing type means the corresponding tab " +
+			"panel will be empty for the affected scope. " +
+			"For missing cpu:usage / memory:usage, see the `Container label drift` check (above) " +
+			"and the Step 6 `image` label callout in the diagnose-entity-graph skill. " +
+			"For other missing types, verify the upstream raw metrics flow " +
+			"(container_cpu_*, container_memory_*, kubelet_volume_stats_*) and that the relabeling " +
+			"pipeline produces non-empty `asserts_env` for them.",
 	}
 }
 
