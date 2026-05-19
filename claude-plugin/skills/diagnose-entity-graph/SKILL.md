@@ -210,6 +210,19 @@ Extra `asserts_env` values (like AWS account IDs) that don't match any
 
 **Shortcut:** `gcx kg diagnose labels` automates this cross-reference.
 
+### The `image` label is also load-bearing
+
+When `gcx kg diagnose` emits a **`Container label drift: WARN`**
+check, cAdvisor `container_*` metrics in the named namespace are
+arriving with `image=""`. The downstream `asserts:resource`
+recording rule for `cpu:usage` and `memory:usage` filters on
+`image!=""` to exclude pause containers, so dropping the `image`
+label silently empties the Asserts UI's Kubernetes / CPU / Memory
+tabs for that namespace. The check's `Recommendation` field names
+the typical source (an Alloy `extraMetricProcessingRules` block
+with `labeldrop regex = "image.*"`, often added for cardinality
+reduction) and the fix.
+
 ## Step 7: Per-Service Investigation
 
 For a specific missing or edge-less service:

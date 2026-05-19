@@ -373,6 +373,19 @@ func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promCli
 				return nil
 			})
 		}
+
+		// Container-metric image-label drift detection. The Asserts UI's
+		// Kubernetes / CPU / Memory tabs read asserts:resource, whose
+		// recording rule filters on image!="" to exclude pause containers.
+		// If the customer's Alloy config drops the image label (often via
+		// a labeldrop rule added for cardinality reduction), every series
+		// looks like a pause container and the tab silently empties.
+		g.Go(func() error {
+			if c := checkContainerImageLabelDrift(ctx, promClient, datasourceUID, scope.namespace); c != nil {
+				addCheck(*c)
+			}
+			return nil
+		})
 	}
 
 	// Trace-side coverage check (skip if no Tempo client). Detects whether
@@ -427,6 +440,9 @@ func checkOrder(name string) int {
 	}
 	if name == "DB instrumentation" {
 		return 9
+	}
+	if strings.HasPrefix(name, "Container label drift") {
+		return 10
 	}
 	return 50
 }
@@ -945,6 +961,98 @@ func joinFirstN(s []string, n int) string {
 		return strings.Join(s, ", ")
 	}
 	return strings.Join(s[:n], ", ") + ", …"
+}
+
+// checkContainerImageLabelDrift detects cAdvisor container metrics that
+// arrive without an `image` label. The downstream `asserts:resource`
+// recording rules for `cpu:usage` and `memory:usage` filter on
+// `image!=""` to exclude pause/sandbox containers; when the label is
+// dropped (commonly via a `labeldrop` rule in Alloy added for
+// cardinality reduction), every series looks like a pause container
+// and the Asserts UI's Kubernetes / CPU / Memory tabs silently empty.
+//
+// Detection is one PromQL count. When namespace is provided, scope the
+// probe to that namespace. Best-effort: any query error returns nil so
+// the check is silently skipped.
+//
+// Returns nil when no drift is detected.
+func checkContainerImageLabelDrift(ctx context.Context, client *prometheus.Client, datasourceUID, namespace string) *CheckResult {
+	// Always scope away from kube-system / pause containers: filter on
+	// container!="" to count only real workload containers. The "image=''"
+	// signature on a real workload container is the bug we're looking for.
+	var nsSelector string
+	if namespace != "" {
+		nsSelector = fmt.Sprintf(`,namespace="%s"`, namespace)
+	}
+	query := fmt.Sprintf(
+		`count(container_cpu_usage_seconds_total{container!="",image=""%s})`,
+		nsSelector)
+
+	resp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{Query: query})
+	if err != nil {
+		// Best-effort: skip on transport / query errors.
+		return nil
+	}
+
+	if len(resp.Data.Result) == 0 {
+		// No drift detected. Don't emit a passing check — the check is
+		// only interesting when something is wrong.
+		return nil
+	}
+
+	count := extractInstantValue(resp.Data.Result[0])
+
+	// Render a per-namespace breakdown when no namespace scope is set
+	// so the user can see which namespace(s) are affected.
+	var detail string
+	if namespace != "" {
+		detail = fmt.Sprintf(
+			"%s container series in namespace=%q have image=\"\"",
+			count, namespace)
+	} else {
+		// Probe per-namespace breakdown.
+		byNsResp, byNsErr := client.Query(ctx, datasourceUID, prometheus.QueryRequest{
+			Query: `count by (namespace)(container_cpu_usage_seconds_total{container!="",image=""})`,
+		})
+		if byNsErr == nil && len(byNsResp.Data.Result) > 0 {
+			var affected []string
+			for _, sample := range byNsResp.Data.Result {
+				ns := sample.Metric["namespace"]
+				if ns == "" || ns == "kube-system" {
+					// Pause containers in kube-system legitimately have no
+					// image label on every cluster — don't surface those.
+					continue
+				}
+				cnt := extractInstantValue(sample)
+				affected = append(affected, fmt.Sprintf("%s=%s", ns, cnt))
+			}
+			if len(affected) == 0 {
+				// Only kube-system showed up — that's expected.
+				return nil
+			}
+			detail = fmt.Sprintf(
+				"container series with image=\"\" in %d namespace(s): %s",
+				len(affected), joinFirstN(affected, 8))
+		} else {
+			detail = fmt.Sprintf(
+				"%s container series have image=\"\" outside kube-system",
+				count)
+		}
+	}
+
+	return &CheckResult{
+		Name:   "Container label drift",
+		Status: CheckWarn,
+		Detail: detail,
+		Recommendation: "The Asserts recording rules for cpu:usage and memory:usage filter on " +
+			"image!=\"\" to exclude pause/sandbox containers. When the image label is dropped " +
+			"from cAdvisor metrics, those rules produce nothing and the Kubernetes / CPU / " +
+			"Memory tabs in the Asserts UI silently empty for that namespace. " +
+			"Most common cause: a `labeldrop` rule in your Alloy `clusterMetrics.cadvisor." +
+			"extraMetricProcessingRules` (or equivalent kubelet / kube-state-metrics block) " +
+			"matching `image.*`. Remove the drop rule and re-apply the chart; tabs populate " +
+			"after one recording-rule cycle (~5 min).",
+	}
 }
 
 // checkMetric runs a single PromQL instant query and returns a check result

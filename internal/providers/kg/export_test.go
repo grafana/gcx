@@ -57,3 +57,8 @@ func RunServiceDiagnose(ctx context.Context, client *Client, serviceName string,
 func RunLabelsDiagnose(ctx context.Context, client *Client, promClient *prometheus.Client, datasourceUID string) LabelsDiagnoseResult {
 	return runLabelsDiagnose(ctx, client, promClient, datasourceUID)
 }
+
+// CheckContainerImageLabelDrift wraps the unexported check for testing.
+func CheckContainerImageLabelDrift(ctx context.Context, client *prometheus.Client, datasourceUID, namespace string) *CheckResult {
+	return checkContainerImageLabelDrift(ctx, client, datasourceUID, namespace)
+}

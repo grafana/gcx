@@ -3,6 +3,7 @@ package kg_test
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -837,4 +838,156 @@ func findCheckByName(checks []kg.CheckResult, name string) *kg.CheckResult {
 		}
 	}
 	return nil
+}
+
+// ---------------------------------------------------------------------------
+// A.5: container_*{image=""} label drift detection.
+// ---------------------------------------------------------------------------
+//
+// The Asserts UI's K8s / CPU / Memory tabs read asserts:resource, whose
+// recording rule filters on image!="" to exclude pause containers. When
+// the image label is dropped from cAdvisor metrics, every series looks
+// like a pause container and the tabs silently empty. The check probes
+// for this drift with a single PromQL count.
+
+// promHandlerImageDrift returns an httptest handler that simulates an
+// Alloy scrape configuration that has dropped the image label on cAdvisor
+// metrics. The first matching query (the scoped count) returns a numeric
+// value; the second (the per-namespace breakdown) returns a fixed set of
+// namespace labels with non-zero counts.
+func promHandlerImageDrift(scopedCount float64, byNamespace map[string]float64) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		expr := string(body)
+
+		// Per-namespace breakdown query.
+		if strings.Contains(expr, "count by (namespace)") {
+			frames := []map[string]any{}
+			for ns, count := range byNamespace {
+				frames = append(frames, map[string]any{
+					"schema": map[string]any{
+						"name": "",
+						"fields": []map[string]any{
+							{"name": "Time", "type": "time"},
+							{"name": "Value", "type": "number", "labels": map[string]any{"namespace": ns}},
+						},
+					},
+					"data": map[string]any{
+						"values": []any{
+							[]int64{1715100000000},
+							[]float64{count},
+						},
+					},
+				})
+			}
+			writeJSON(w, map[string]any{
+				"results": map[string]any{
+					"A": map[string]any{"frames": frames},
+				},
+			})
+			return
+		}
+
+		// Scoped count: return the scoped count value.
+		writeJSON(w, map[string]any{
+			"results": map[string]any{
+				"A": map[string]any{
+					"frames": []map[string]any{
+						{
+							"schema": map[string]any{
+								"fields": []map[string]any{
+									{"name": "Time", "type": "time"},
+									{"name": "Value", "type": "number"},
+								},
+							},
+							"data": map[string]any{
+								"values": []any{
+									[]int64{1715100000000},
+									[]float64{scopedCount},
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+	}
+}
+
+func TestCheckContainerImageLabelDrift_NamespaceScoped(t *testing.T) {
+	promMux := http.NewServeMux()
+	promMux.HandleFunc("/", promHandlerImageDrift(23, nil))
+	promServer := httptest.NewServer(promMux)
+	defer promServer.Close()
+
+	promClient := newTestPromClient(t, promServer)
+	c := kg.CheckContainerImageLabelDrift(t.Context(), promClient, "test-prom-uid", "grots-tasting-room")
+
+	require.NotNil(t, c, "expected a WARN check when scoped namespace has drift")
+	assert.Equal(t, kg.CheckWarn, c.Status)
+	assert.Contains(t, c.Detail, "grots-tasting-room",
+		"namespace should appear in the detail when scoped")
+	assert.Contains(t, c.Detail, "23",
+		"count should appear in the detail")
+	assert.Contains(t, c.Recommendation, "labeldrop",
+		"recommendation should mention the Alloy labeldrop foot-gun")
+}
+
+func TestCheckContainerImageLabelDrift_NoDriftReturnsNil(t *testing.T) {
+	// Empty result frames simulate "no series with image='' exist."
+	promMux := http.NewServeMux()
+	promMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{
+			"results": map[string]any{
+				"A": map[string]any{
+					"frames": []map[string]any{},
+				},
+			},
+		})
+	})
+	promServer := httptest.NewServer(promMux)
+	defer promServer.Close()
+
+	promClient := newTestPromClient(t, promServer)
+	c := kg.CheckContainerImageLabelDrift(t.Context(), promClient, "test-prom-uid", "any-namespace")
+
+	assert.Nil(t, c, "check should be nil when no drift is detected")
+}
+
+func TestCheckContainerImageLabelDrift_BreakdownExcludesKubeSystem(t *testing.T) {
+	// Mirror the canonical wineshop case: a real workload namespace
+	// shows up with image="" series, plus kube-system shows up but
+	// should be filtered out as a legitimate pause-container case.
+	promMux := http.NewServeMux()
+	promMux.HandleFunc("/", promHandlerImageDrift(24, map[string]float64{
+		"grots-tasting-room": 23,
+		"kube-system":        1,
+	}))
+	promServer := httptest.NewServer(promMux)
+	defer promServer.Close()
+
+	promClient := newTestPromClient(t, promServer)
+	// No namespace scope → exercise the per-namespace breakdown path.
+	c := kg.CheckContainerImageLabelDrift(t.Context(), promClient, "test-prom-uid", "")
+
+	require.NotNil(t, c, "expected a WARN check when at least one non-kube-system namespace has drift")
+	assert.Contains(t, c.Detail, "grots-tasting-room=23",
+		"affected namespace should appear in the breakdown")
+	assert.NotContains(t, c.Detail, "kube-system",
+		"kube-system should be excluded from the breakdown")
+}
+
+func TestCheckContainerImageLabelDrift_OnlyKubeSystemReturnsNil(t *testing.T) {
+	// Stacks where ONLY kube-system shows image="" should not flag.
+	promMux := http.NewServeMux()
+	promMux.HandleFunc("/", promHandlerImageDrift(1, map[string]float64{
+		"kube-system": 1,
+	}))
+	promServer := httptest.NewServer(promMux)
+	defer promServer.Close()
+
+	promClient := newTestPromClient(t, promServer)
+	c := kg.CheckContainerImageLabelDrift(t.Context(), promClient, "test-prom-uid", "")
+
+	assert.Nil(t, c, "check should be nil when only kube-system has image=\"\" series")
 }
