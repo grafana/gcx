@@ -1,9 +1,9 @@
 ## gcx kg rules delete
 
-Delete all Knowledge Graph rules (upload empty).
+Delete a Knowledge Graph prom rule by name.
 
 ```
-gcx kg rules delete [flags]
+gcx kg rules delete <name> [flags]
 ```
 
 ### Options

@@ -478,23 +478,23 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 			}
 
 			// Extract rules from TypedObject
-			rules := make([]Rule, len(typedObjs))
+			files := make([]Rule, len(typedObjs))
 			for i := range typedObjs {
-				rules[i] = typedObjs[i].Spec
+				files[i] = typedObjs[i].Spec
 			}
 
 			// Table codec operates on raw []Rule for direct field access.
 			// Other formats (yaml/json) convert to K8s envelope Resources
 			// for consistency with get and round-trip support.
 			if rulesListOpts.IO.OutputFormat == "table" {
-				return rulesListOpts.IO.Encode(cmd.OutOrStdout(), rules)
+				return rulesListOpts.IO.Encode(cmd.OutOrStdout(), files)
 			}
 
 			var objs []unstructured.Unstructured
-			for _, rule := range rules {
-				res, err := RuleToResource(rule, cfg.Namespace)
+			for _, f := range files {
+				res, err := RuleToResource(f, cfg.Namespace)
 				if err != nil {
-					return fmt.Errorf("failed to convert rule %s to resource: %w", rule.Name, err)
+					return fmt.Errorf("failed to convert rule %s to resource: %w", f.Name, err)
 				}
 				objs = append(objs, res.ToUnstructured())
 			}
@@ -562,9 +562,11 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	_ = createCmd.MarkFlagRequired("file")
 
 	deleteCmd := &cobra.Command{
-		Use:   "delete",
-		Short: "Delete all Knowledge Graph rules (upload empty).",
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		Use:   "delete <name>",
+		Short: "Delete a Knowledge Graph prom rule by name.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
@@ -573,10 +575,10 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := client.UploadPromRules(cmd.Context(), ""); err != nil {
+			if err := client.DeleteRule(cmd.Context(), name); err != nil {
 				return err
 			}
-			cmdio.Success(cmd.OutOrStdout(), "Knowledge Graph rules cleared")
+			cmdio.Success(cmd.OutOrStdout(), "Knowledge Graph rule %q deleted", name)
 			return nil
 		},
 	}
@@ -612,17 +614,13 @@ type RuleTableCodec struct{}
 func (c *RuleTableCodec) Format() format.Format { return "table" }
 
 func (c *RuleTableCodec) Encode(w io.Writer, v any) error {
-	rules, ok := v.([]Rule)
+	files, ok := v.([]Rule)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected []Rule")
 	}
-	t := style.NewTable("NAME", "RECORD", "ALERT", "EXPR")
-	for _, r := range rules {
-		expr := r.Expr
-		if len(expr) > 60 {
-			expr = expr[:57] + "..."
-		}
-		t.Row(r.Name, r.Record, r.Alert, expr)
+	t := style.NewTable("NAME")
+	for _, f := range files {
+		t.Row(f.Name)
 	}
 	return t.Render(w)
 }

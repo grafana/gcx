@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
@@ -71,101 +72,109 @@ func TestClient_GetStatus(t *testing.T) {
 	}
 }
 
-func TestClient_ListRules(t *testing.T) {
-	tests := []struct {
-		name    string
-		handler http.HandlerFunc
-		wantLen int
-		wantErr bool
-	}{
-		{
-			name: "returns rules",
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, http.MethodGet, r.Method)
-				assert.Contains(t, r.URL.Path, "config/prom-rules")
-				writeJSON(w, map[string]any{
-					"rules": []map[string]any{
-						{"name": "rule-1", "expr": "sum(rate(x[5m]))"},
-						{"name": "rule-2", "record": "metric:name"},
-					},
-				})
+func TestClient_ListRuleNames(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Contains(t, r.URL.Path, "config/prom-rules")
+		writeJSON(w, map[string]any{
+			"ruleNames": []string{"rule-1", "rule-2"},
+		})
+	}))
+	defer server.Close()
+	client := newTestClient(t, server)
+	names, err := client.ListRuleNames(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, []string{"rule-1", "rule-2"}, names)
+}
+
+// ruleFilesFanOutHandler serves both the list-names endpoint and per-name GETs,
+// returning a minimal PrometheusRulesDto for each named rule.
+func ruleFilesFanOutHandler(names []string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		const prefix = "/prom-rules/"
+		if strings.HasSuffix(r.URL.Path, "/config/prom-rules") {
+			writeJSON(w, map[string]any{"ruleNames": names})
+			return
+		}
+		idx := strings.LastIndex(r.URL.Path, prefix)
+		name := r.URL.Path[idx+len(prefix):]
+		writeJSON(w, map[string]any{
+			"name": name,
+			"groups": []map[string]any{
+				{"name": "g1", "rules": []map[string]any{{"record": name, "expr": "1"}}},
 			},
-			wantLen: 2,
-		},
-		{
-			name: "returns empty on nil rules",
-			handler: func(w http.ResponseWriter, _ *http.Request) {
-				writeJSON(w, map[string]any{"rules": nil})
-			},
-			wantLen: 0,
-		},
-		{
-			name: "handles error",
-			handler: func(w http.ResponseWriter, _ *http.Request) {
-				w.WriteHeader(http.StatusInternalServerError)
-				_, _ = w.Write([]byte("error"))
-			},
-			wantErr: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(tt.handler)
-			defer server.Close()
-			client := newTestClient(t, server)
-			rules, err := client.ListRules(t.Context())
-			if tt.wantErr {
-				require.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
-			assert.Len(t, rules, tt.wantLen)
 		})
 	}
 }
 
+func TestClient_ListRules_FanOut(t *testing.T) {
+	server := httptest.NewServer(ruleFilesFanOutHandler([]string{"rule-a", "rule-b"}))
+	defer server.Close()
+	client := newTestClient(t, server)
+	files, err := client.ListRules(t.Context())
+	require.NoError(t, err)
+	require.Len(t, files, 2)
+	// Order is preserved from the names list.
+	assert.Equal(t, "rule-a", files[0].Name)
+	assert.Equal(t, "rule-b", files[1].Name)
+	require.Len(t, files[0].Groups, 1)
+	assert.Equal(t, "g1", files[0].Groups[0].Name)
+}
+
+func TestClient_ListRules_Empty(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]any{"ruleNames": nil})
+	}))
+	defer server.Close()
+	client := newTestClient(t, server)
+	files, err := client.ListRules(t.Context())
+	require.NoError(t, err)
+	assert.Empty(t, files)
+}
+
+func TestClient_ListRules_ListError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("error"))
+	}))
+	defer server.Close()
+	client := newTestClient(t, server)
+	_, err := client.ListRules(t.Context())
+	require.Error(t, err)
+}
+
 func TestClient_GetRule(t *testing.T) {
-	tests := []struct {
-		name     string
-		ruleName string
-		handler  http.HandlerFunc
-		wantErr  bool
-	}{
-		{
-			name:     "returns rule",
-			ruleName: "my-rule",
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				assert.Contains(t, r.URL.Path, "prom-rules/my-rule")
-				writeJSON(w, map[string]any{
-					"rules": []map[string]any{
-						{"name": "my-rule", "expr": "sum(rate(x[5m]))"},
-					},
-				})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Contains(t, r.URL.Path, "prom-rules/my-rule")
+		writeJSON(w, map[string]any{
+			"name": "my-rule",
+			"groups": []map[string]any{
+				{"name": "g", "rules": []map[string]any{{"record": "x", "expr": "1"}}},
 			},
-		},
-		{
-			name:     "rule not found",
-			ruleName: "missing",
-			handler: func(w http.ResponseWriter, _ *http.Request) {
-				writeJSON(w, map[string]any{"rules": []any{}})
-			},
-			wantErr: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(tt.handler)
-			defer server.Close()
-			client := newTestClient(t, server)
-			rule, err := client.GetRule(t.Context(), tt.ruleName)
-			if tt.wantErr {
-				require.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
-			assert.Equal(t, "my-rule", rule.Name)
 		})
-	}
+	}))
+	defer server.Close()
+	client := newTestClient(t, server)
+	f, err := client.GetRule(t.Context(), "my-rule")
+	require.NoError(t, err)
+	assert.Equal(t, "my-rule", f.Name)
+	require.Len(t, f.Groups, 1)
+	assert.Equal(t, "g", f.Groups[0].Name)
+	require.Len(t, f.Groups[0].Rules, 1)
+	assert.Equal(t, "1", f.Groups[0].Rules[0].Expr)
+}
+
+// Some backend versions reply 200 with an empty body for a missing rule
+// instead of 404. GetRule must surface this as not-found.
+func TestClient_GetRule_NotFound_EmptyBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]any{})
+	}))
+	defer server.Close()
+	client := newTestClient(t, server)
+	_, err := client.GetRule(t.Context(), "missing")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
 }
 
 func TestClient_CountEntityTypes(t *testing.T) {
