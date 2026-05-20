@@ -70,12 +70,17 @@ gcx logs series -d <datasource-uid> -M '{job="varlogs"}'
 Once you've identified available data, verify with a test query.
 
 ```bash
-# For Prometheus - instant query
+# For Prometheus - instant query (current value)
 gcx metrics query -d <datasource-uid> 'up'
 
-# For Prometheus - range query
+# For Prometheus - instant query at a specific point in time
+gcx metrics query -d <datasource-uid> 'rate(http_requests_total[5m])' --time 2026-05-14T12:00:00Z
+
+# For Prometheus - range query (time series over a window)
 gcx metrics query -d <datasource-uid> 'rate(http_requests_total[5m])' --from now-1h --to now
 ```
+
+**Choosing instant vs range:** Use `--time` for instant queries when you need a snapshot at a specific moment — e.g. "what is the current rate?" or "what was the rate an hour ago?". Use `--from`/`--to` for range queries when you need a time series. For point-in-time comparisons (e.g. "has traffic changed vs an hour ago?"), run two instant queries with different `--time` values rather than a single range query.
 
 **Expected output:** Table showing metric values with labels and timestamps.
 

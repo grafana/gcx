@@ -3,8 +3,8 @@ package resources
 import (
 	"context"
 
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/gcx/internal/resources/remote"
@@ -35,7 +35,7 @@ func FetchResources(ctx context.Context, opts FetchRequest, args []string) (*Fet
 	}
 
 	if opts.ExpectSingleTarget && !sels.IsSingleTarget() {
-		return nil, fail.DetailedError{
+		return nil, gcxerrors.DetailedError{
 			Summary: "Invalid resource selector",
 			Details: "Expected a resource selector targeting a single resource. Example: dashboard/some-dashboard",
 		}

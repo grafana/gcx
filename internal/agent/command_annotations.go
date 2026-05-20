@@ -204,6 +204,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx irm incidents activity add":    {Cost: "small"},
 	"gcx irm incidents activity list":   {Cost: "small"},
 	"gcx irm incidents close":           {Cost: "small"},
+	"gcx irm incidents contexts list":   {Cost: "small"},
 	"gcx irm incidents create":          {Cost: "small"},
 	"gcx irm incidents get":             {Cost: "small"},
 	"gcx irm incidents list":            {Cost: "small"},
@@ -249,31 +250,32 @@ var commandAnnotations = map[string]annotation{
 	// -----------------------------------------------------------------------
 	// Knowledge Graph provider
 	// -----------------------------------------------------------------------
-	"gcx kg cypher":                  {Cost: "medium", Hint: "\"MATCH (s:Service) RETURN s LIMIT 10\" [--since 1h] | read-only Cypher query; always include LIMIT for targeted lookups; omit for broad discovery"},
-	"gcx kg entities list":           {Cost: "medium", Hint: "--type <type> [--env <env>] [--namespace <ns>] --since 1h -o json | use --property name=<value> to fetch a single entity by name | use --with-insights [any|critical|warning|info] to filter to entities with active insights | use --json type,name,scope when only entity identity is needed to reduce output size | run gcx kg meta scopes first to discover valid env/namespace/site values"},
-	"gcx kg health":                  {Cost: "medium", Hint: "--type <type> --since 1h -o json"},
-	"gcx kg insights entity-metric":  {Cost: "medium", Hint: "<Type--Name> --insight-id <id>"},
-	"gcx kg insights search":         {Cost: "medium", Hint: "--type <type> --since 1h"},
-	"gcx kg insights source-metrics": {Cost: "medium", Hint: "--insight-id <id> --since 1h"},
-	"gcx kg entities inspect":        {Cost: "medium", Hint: "--type <EntityType> --name <name> [--env <env>] [--namespace <ns>] | --type is required (run 'gcx kg meta schema' to list valid entity types); scope is auto-discovered if omitted; run 'gcx kg entities list --type <type> --property name=~<name>' first to confirm type and exact name"},
-	"gcx kg meta all":                {Cost: "medium", Hint: "load all sections at once [--since 1h]"},
-	"gcx kg meta logs":               {Cost: "small", Hint: "Loki label mappings for log drilldown"},
-	"gcx kg meta profiles":           {Cost: "small", Hint: "Pyroscope label mappings for profile drilldown"},
-	"gcx kg meta schema":             {Cost: "medium", Hint: "entity types + relationships [--since 1h]"},
-	"gcx kg meta scopes":             {Cost: "small", Hint: "all valid env/namespace/site filter values — run before filtering entities"},
-	"gcx kg meta traces":             {Cost: "small", Hint: "Tempo label mappings for trace drilldown"},
-	"gcx kg model-rules create":      {Cost: "small"},
-	"gcx kg open":                    {Cost: "small"},
-	"gcx kg relabel-rules create":    {Cost: "small"},
-	"gcx kg rules create":            {Cost: "small"},
-	"gcx kg rules delete":            {Cost: "small"},
-	"gcx kg rules get":               {Cost: "small"},
-	"gcx kg rules list":              {Cost: "small"},
-	"gcx kg scopes list":             {Cost: "small"},
-	"gcx kg status":                  {Cost: "small"},
-	"gcx kg suppressions create":     {Cost: "small"},
-	"gcx kg suppressions delete":     {Cost: "small"},
-	"gcx kg suppressions list":       {Cost: "small"},
+	"gcx kg entities query":       {Cost: "medium", Hint: "\"MATCH (s:Service) RETURN s LIMIT 10\" [--since 1h] | read-only Cypher query; always include LIMIT for targeted lookups; omit for broad discovery"},
+	"gcx kg diagnose":             {Cost: "medium", Hint: "[--env <env>] | run diagnostic checks on the Knowledge Graph pipeline: stack status, sanity checks, entity counts, scopes, telemetry configs, recording rule metrics"},
+	"gcx kg diagnose service":     {Cost: "medium", Hint: "<service-name> [--env <env>] | deep diagnosis for a specific service: entity lookup, relationships, per-service metrics, interpreted diagnosis with next steps"},
+	"gcx kg diagnose labels":      {Cost: "medium", Hint: "validate the deployment_environment → asserts_env label mapping pipeline | identifies unmapped environments and orphaned asserts_env values"},
+	"gcx kg entities list":        {Cost: "medium", Hint: "--type <type> [--env <env>] [--namespace <ns>] --since 1h -o json | use --property name=<value> to fetch a single entity by name | use --insight severity=critical|warning|info or --insight name=<assertion> to filter to entities with active insights (repeatable; matchers AND on the same assertion) | use --json type,name,scope when only entity identity is needed to reduce output size | run gcx kg meta scopes first to discover valid env/namespace/site values"},
+	"gcx kg summary":              {Cost: "medium", Hint: "--type <type> --since 1h -o json"},
+	"gcx kg insights chart":       {Cost: "medium", Hint: "<Type--Name> --insight <name> [--label k=v ...] | returns time series + thresholds backing the insight chart"},
+	"gcx kg insights sources":     {Cost: "medium", Hint: "<Type--Name> --insight <name> [--label k=v ...] --since 1h | returns the underlying PromQL metric names and label matchers sourcing the insight"},
+	"gcx kg entities inspect":     {Cost: "medium", Hint: "--type <EntityType> --name <name> [--env <env>] [--namespace <ns>] | --type is required (run 'gcx kg meta schema' to list valid entity types); scope is auto-discovered if omitted; run 'gcx kg entities list --type <type> --property name=~<name>' first to confirm type and exact name"},
+	"gcx kg meta all":             {Cost: "medium", Hint: "load all sections at once [--since 1h]"},
+	"gcx kg meta logs":            {Cost: "small", Hint: "Loki label mappings for log drilldown"},
+	"gcx kg meta profiles":        {Cost: "small", Hint: "Pyroscope label mappings for profile drilldown"},
+	"gcx kg meta schema":          {Cost: "medium", Hint: "entity types + relationships [--since 1h]"},
+	"gcx kg meta scopes":          {Cost: "small", Hint: "all valid env/namespace/site filter values — run before filtering entities"},
+	"gcx kg meta traces":          {Cost: "small", Hint: "Tempo label mappings for trace drilldown"},
+	"gcx kg model-rules create":   {Cost: "small"},
+	"gcx kg open":                 {Cost: "small"},
+	"gcx kg relabel-rules create": {Cost: "small"},
+	"gcx kg rules create":         {Cost: "small"},
+	"gcx kg rules delete":         {Cost: "small"},
+	"gcx kg rules get":            {Cost: "small"},
+	"gcx kg rules list":           {Cost: "small"},
+	"gcx kg status":               {Cost: "small"},
+	"gcx kg suppressions create":  {Cost: "small"},
+	"gcx kg suppressions delete":  {Cost: "small"},
+	"gcx kg suppressions list":    {Cost: "small"},
 
 	// -----------------------------------------------------------------------
 	// Logs provider
@@ -398,6 +400,12 @@ var commandAnnotations = map[string]annotation{
 
 	"gcx aio11y generations get": {Cost: "medium", Hint: "<generation-id> -o json"},
 
+	"gcx aio11y guards create": {Cost: "small"},
+	"gcx aio11y guards delete": {Cost: "small"},
+	"gcx aio11y guards get":    {Cost: "small"},
+	"gcx aio11y guards list":   {Cost: "small"},
+	"gcx aio11y guards update": {Cost: "small"},
+
 	"gcx aio11y judge models":    {Cost: "small"},
 	"gcx aio11y judge providers": {Cost: "small"},
 
@@ -427,6 +435,14 @@ var commandAnnotations = map[string]annotation{
 	"gcx aio11y collections conversations list":   {Cost: "small"},
 	"gcx aio11y collections conversations add":    {Cost: "small"},
 	"gcx aio11y collections conversations remove": {Cost: "small"},
+
+	"gcx aio11y experiments list":   {Cost: "small"},
+	"gcx aio11y experiments get":    {Cost: "small"},
+	"gcx aio11y experiments create": {Cost: "small"},
+	"gcx aio11y experiments update": {Cost: "small"},
+	"gcx aio11y experiments cancel": {Cost: "small"},
+	"gcx aio11y experiments scores": {Cost: "medium", Hint: "<run-id> --limit 50 -o json"},
+	"gcx aio11y experiments report": {Cost: "medium", Hint: "<run-id> -o json"},
 
 	// -----------------------------------------------------------------------
 	// SLO provider

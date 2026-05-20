@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/fail"
+	gcxerrors "github.com/grafana/gcx/internal/gcxerrors"
 )
 
 func intPtr(i int) *int {
@@ -18,7 +19,7 @@ func intPtr(i int) *int {
 // the JSON output. Prior to the errors.As fix, *DetailedError fell through to
 // fallbackDetailedError which called err.Error(), producing box chars in Details.
 func TestWriteJSON_NoBoxChars(t *testing.T) {
-	err := &fail.DetailedError{
+	err := &gcxerrors.DetailedError{
 		Summary:     "cluster not found",
 		Details:     `cluster "x" has no config`,
 		Suggestions: []string{"Run: gcx instrumentation clusters list"},

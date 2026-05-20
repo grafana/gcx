@@ -1,6 +1,6 @@
 ## gcx kg insights
 
-Search insights and fetch their backing metrics.
+Fetch chart data and source metrics for an active insight.
 
 ### Options
 
@@ -23,7 +23,6 @@ Search insights and fetch their backing metrics.
 ### SEE ALSO
 
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
-* [gcx kg insights entity-metric](gcx_kg_insights_entity-metric.md)	 - Get metric data for a specific insight on an entity.
-* [gcx kg insights search](gcx_kg_insights_search.md)	 - Find entities with active insights matching the given rules.
-* [gcx kg insights source-metrics](gcx_kg_insights_source-metrics.md)	 - Get source metrics for a specific insight.
+* [gcx kg insights chart](gcx_kg_insights_chart.md)	 - Get chart data (series + thresholds) for a specific insight on an entity.
+* [gcx kg insights sources](gcx_kg_insights_sources.md)	 - List the underlying metrics (name + label matchers) that source a specific insight.
 

@@ -180,7 +180,7 @@ func TestClient_CountEntityTypes(t *testing.T) {
 	defer server.Close()
 
 	client := newTestClient(t, server)
-	counts, err := client.CountEntityTypes(t.Context())
+	counts, err := client.CountEntityTypes(t.Context(), 0, 0, nil)
 	require.NoError(t, err)
 	assert.Equal(t, int64(42), counts["Service"])
 	assert.Equal(t, int64(5), counts["Namespace"])

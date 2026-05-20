@@ -147,7 +147,7 @@ func (f *scopeFlags) validateScopes(ctx context.Context, client *Client) error {
 			suffix := ""
 			if len(shown) > 10 {
 				shown = shown[:10]
-				suffix = fmt.Sprintf(" (and %d more — run gcx kg scopes list)", len(all)-10)
+				suffix = fmt.Sprintf(" (and %d more — run gcx kg meta scopes)", len(all)-10)
 			}
 			msg = fmt.Sprintf("unknown %s value %q — known %s values: %s%s", c.flag, c.value, c.dim, strings.Join(shown, ", "), suffix)
 		}
@@ -198,15 +198,6 @@ func resolveTimeEpochMs(since string) (int64, int64, error) {
 		}
 	}
 	return now - d.Milliseconds(), now, nil
-}
-
-// resolveTimeFromFlags reads --from/--to/--since from a command and resolves them to epoch ms.
-func resolveTimeFromFlags(cmd *cobra.Command) (int64, int64, error) {
-	from, _ := cmd.Flags().GetString("from")
-	to, _ := cmd.Flags().GetString("to")
-	since, _ := cmd.Flags().GetString("since")
-	sf := scopeFlags{from: from, to: to, since: since}
-	return sf.resolveTime()
 }
 
 func parseEntityArg(args []string) (string, string, error) {
@@ -272,6 +263,61 @@ func parsePropertyFlag(s string) (PropertyMatcher, error) {
 	return PropertyMatcher{Name: name, Op: "=", Value: value}, nil
 }
 
+// insightMatcher is one predicate from --insight, applied client-side against
+// the per-assertion entries inlined in SearchResult.Assertion and
+// SearchResult.ConnectedAssertion when the request sets withInsights=true.
+//
+// The bare value "any" is represented as Key="" (wildcard) — it filters to
+// entities that have at least one assertion but applies no predicate.
+type insightMatcher struct {
+	Key   string // "name", "severity", or "" for wildcard ("any")
+	Op    string // "=" or "CONTAINS"; "" for wildcard
+	Value string
+}
+
+// parseInsightFlag parses a --insight predicate.
+//
+//	any         — match any assertion (entity must have at least one)
+//	key=value   — exact match
+//	key=~value  — substring match (CONTAINS), allowed for name only
+//
+// Valid keys: name, severity.
+func parseInsightFlag(s string) (insightMatcher, error) {
+	if strings.EqualFold(strings.TrimSpace(s), "any") {
+		return insightMatcher{}, nil
+	}
+	if name, value, ok := strings.Cut(s, "=~"); ok && name != "" {
+		m := insightMatcher{Key: strings.ToLower(name), Op: "CONTAINS", Value: value}
+		if err := validateInsightMatcher(m); err != nil {
+			return insightMatcher{}, err
+		}
+		return m, nil
+	}
+	name, value, ok := strings.Cut(s, "=")
+	if !ok || name == "" {
+		return insightMatcher{}, fmt.Errorf("--insight %q: expected 'any' or format key=value / key=~value", s)
+	}
+	m := insightMatcher{Key: strings.ToLower(name), Op: "=", Value: value}
+	if err := validateInsightMatcher(m); err != nil {
+		return insightMatcher{}, err
+	}
+	return m, nil
+}
+
+func validateInsightMatcher(m insightMatcher) error {
+	switch m.Key {
+	case "name":
+		return nil
+	case "severity":
+		if m.Op == "CONTAINS" {
+			return errors.New("--insight severity: substring match (=~) is not supported; use severity=critical|warning|info")
+		}
+		return nil
+	default:
+		return fmt.Errorf("--insight %q: unsupported key (valid keys: name, severity)", m.Key)
+	}
+}
+
 func readFileOrStdin(cmd *cobra.Command, path string) ([]byte, error) {
 	if path == "-" {
 		return io.ReadAll(cmd.InOrStdin())
@@ -334,7 +380,8 @@ func searchByTypes(ctx context.Context, cmd *cobra.Command, client *Client, enti
 }
 
 func collectEntityTypes(cmd *cobra.Command, client *Client) ([]string, error) {
-	counts, err := client.CountEntityTypes(cmd.Context())
+	now := time.Now()
+	counts, err := client.CountEntityTypes(cmd.Context(), now.Add(-1*time.Hour).UnixMilli(), now.UnixMilli(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get entity types: %w", err)
 	}
@@ -805,21 +852,21 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 
 	// list subcommand
 	var (
-		listType         string
-		listWithInsights string
-		listScope        scopeFlags
-		listPage         int
-		listPropertyRaw  []string
+		listType        string
+		listScope       scopeFlags
+		listPage        int
+		listPropertyRaw []string
+		listInsightRaw  []string
 	)
 	listOpts := &entitiesListOpts{}
 	listCmd := &cobra.Command{
 		Use:   "list",
-		Short: "List Knowledge Graph entities for a given type.",
-		Example: `  gcx kg entities list --type Service
-  gcx kg entities list --type Service --namespace mimir-prod-01 --property name=model-builder
-  gcx kg entities list --type Service --with-insights any
-  gcx kg entities list --type Service --with-insights critical
-  gcx kg entities list --type Service --with-insights any --json name,scope`,
+		Short: "List Knowledge Graph entities for a given type, env, site, namespace.",
+		Example: `  gcx kg entities list --type Service --env <env> --namespace <namespace> --property name=<service-name>
+  gcx kg entities list --type Service --env <env> --insight any
+  gcx kg entities list --type Service --env <env> --insight name=Saturation --insight severity=critical
+  gcx kg entities list --type Service --env <env> --property name=~api --insight severity=critical
+  gcx kg entities list --type Service --env <env> --insight severity=critical --json name,scope`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := listOpts.IO.Validate(); err != nil {
 				return err
@@ -851,13 +898,22 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 				}
 				propertyFilters = append(propertyFilters, pm)
 			}
-			withInsights := cmd.Flags().Changed("with-insights")
-			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, withInsights, true, listScope.scopeCriteria(), startMs, endMs, listPage, propertyFilters)
+			var insightMatchers []insightMatcher
+			for _, raw := range listInsightRaw {
+				im, err := parseInsightFlag(raw)
+				if err != nil {
+					return err
+				}
+				insightMatchers = append(insightMatchers, im)
+			}
+			// --insight requests inlined assertion data so we can filter client-side.
+			fetchInsights := len(insightMatchers) > 0
+			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, fetchInsights, true, listScope.scopeCriteria(), startMs, endMs, listPage, propertyFilters)
 			if err != nil {
 				return err
 			}
-			if withInsights && listWithInsights != "any" {
-				results = filterBySeverity(results, listWithInsights)
+			if len(insightMatchers) > 0 {
+				results = filterByInsightMatchers(results, insightMatchers)
 			}
 			results = adapter.TruncateSlice(results, listOpts.Limit)
 			if listOpts.Limit > 0 && int64(len(results)) >= listOpts.Limit {
@@ -867,9 +923,9 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 		},
 	}
 	listCmd.Flags().StringVar(&listType, "type", "", "Entity type to list (run 'gcx kg meta schema' to see available types)")
-	listCmd.Flags().StringVar(&listWithInsights, "with-insights", "", "Filter to entities with active insights (self or propagated from connected downstream entities, e.g. Pod-level alerts on a Service); narrow by severity: any, critical, warning, info")
 	listCmd.Flags().IntVar(&listPage, "page", 0, "Page number (0-based)")
 	listCmd.Flags().StringArrayVar(&listPropertyRaw, "property", nil, "Filter by property: name=value (exact) or name=~value (contains); repeatable (run 'gcx kg meta schema' to list property names)")
+	listCmd.Flags().StringArrayVar(&listInsightRaw, "insight", nil, "Filter to entities with an active insight: 'any' (has any insight) or key=value (key=~value for substring; name only); valid keys: name, severity (critical|warning|info); repeatable — multiple predicates must match the same assertion")
 	listScope.register(listCmd)
 	listCmd.Flags().Lookup("env").Usage = "Environment scope (run 'gcx kg meta scopes' to see valid values)"
 	listCmd.Flags().Lookup("namespace").Usage = "Namespace scope (run 'gcx kg meta scopes' to see valid values)"
@@ -877,7 +933,7 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 	listOpts.setup(listCmd.Flags())
 	_ = listCmd.MarkFlagRequired("type")
 
-	cmd.AddCommand(listCmd, newEntitiesInspectCommand(loader))
+	cmd.AddCommand(listCmd, newEntitiesInspectCommand(loader), newCypherCommand(loader))
 	return cmd
 }
 
@@ -919,70 +975,21 @@ func (c *EntityTableCodec) Decode(_ io.Reader, _ any) error {
 }
 
 // ---------------------------------------------------------------------------
-// Scopes command
-// ---------------------------------------------------------------------------
-
-func newScopesCommand(loader RESTConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "scopes",
-		Short: "Manage Knowledge Graph entity scopes.",
-	}
-
-	ioOpts := &scopesListOpts{}
-	listCmd := &cobra.Command{
-		Use:   "list",
-		Short: "List entity scopes.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := ioOpts.IO.Validate(); err != nil {
-				return err
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			scopes, err := client.ListEntityScopes(cmd.Context())
-			if err != nil {
-				return err
-			}
-			return ioOpts.IO.Encode(cmd.OutOrStdout(), scopes)
-		},
-	}
-	ioOpts.setup(listCmd.Flags())
-
-	cmd.AddCommand(listCmd)
-	return cmd
-}
-
-type scopesListOpts struct {
-	IO    cmdio.Options
-	Limit int64
-}
-
-func (o *scopesListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("json")
-	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
-}
-
-// ---------------------------------------------------------------------------
 // Insights commands
 // ---------------------------------------------------------------------------
 
 func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "insights",
-		Short: "Search insights and fetch their backing metrics.",
+		Short: "Fetch chart data and source metrics for an active insight.",
 	}
 
-	// entity-metric subcommand
+	// chart subcommand
 	var entityMetricScope scopeFlags
+	var entityMetricLabels []string
 	entityMetricCmd := &cobra.Command{
-		Use:   "entity-metric [Type--Name]",
-		Short: "Get metric data for a specific insight on an entity.",
+		Use:   "chart [Type--Name]",
+		Short: "Get chart data (series + thresholds) for a specific insight on an entity.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
@@ -1008,9 +1015,9 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				assertionID, _ := cmd.Flags().GetString("insight-id")
+				assertionID, _ := cmd.Flags().GetString("insight")
 				if assertionID == "" {
-					return errors.New("--insight-id is required (or use --file)")
+					return errors.New("--insight is required (or use --file)")
 				}
 				startMs, endMs, err := entityMetricScope.resolveTime()
 				if err != nil {
@@ -1025,6 +1032,13 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 					"asserts_entity_name": name,
 				}
 				maps.Copy(labels, entityMetricScope.scopeMap())
+				for _, kv := range entityMetricLabels {
+					k, v, ok := strings.Cut(kv, "=")
+					if !ok || k == "" {
+						return fmt.Errorf("invalid --label %q: expected key=value", kv)
+					}
+					labels[k] = v
+				}
 				req = EntityMetricRequest{
 					StartTime: startMs,
 					EndTime:   endMs,
@@ -1041,14 +1055,29 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	entityMetricCmd.Flags().StringP("file", "f", "", "Input file (YAML)")
 	entityMetricCmd.Flags().String("name", "", "Entity name")
 	entityMetricCmd.Flags().String("type", "", "Entity type")
-	entityMetricCmd.Flags().String("insight-id", "", "Insight ID")
+	entityMetricCmd.Flags().String("insight", "", "Insight name (e.g. LatencyAverageBreach, ResourceRateAnomaly) — sets the 'alertname' label")
+	entityMetricCmd.Flags().StringArrayVar(&entityMetricLabels, "label", nil, "Extra assertion label as key=value (repeatable; e.g. asserts_resource_type=jvm:live_threads to narrow ResourceRateAnomaly to a specific resource)")
 	entityMetricScope.register(entityMetricCmd)
 
-	// source-metrics subcommand
+	// sources subcommand. The server matches on the assertion's full label set
+	// (alertname + request_context + request_type + job + ...), so the user
+	// typically pastes the labels block from `kg entities inspect`
+	// timeLines[].labels (which includes alertname). --insight is sugar
+	// for --label alertname=<value>.
+	var sourceMetricsScope scopeFlags
+	var sourceMetricsLabels []string
 	sourceMetricsCmd := &cobra.Command{
-		Use:   "source-metrics",
-		Short: "Get source metrics for a specific insight.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		Use:   "sources [Type--Name]",
+		Short: "List the underlying metrics (name + label matchers) that source a specific insight.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
 			var req SourceMetricsRequest
 			//nolint:nestif
 			if cmd.Flags().Changed("file") {
@@ -1061,27 +1090,37 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 					return fmt.Errorf("invalid YAML: %w", err)
 				}
 			} else {
-				assertionID, _ := cmd.Flags().GetString("insight-id")
-				if assertionID == "" {
-					return errors.New("--insight-id is required (or use --file)")
-				}
-				startMs, endMs, err := resolveTimeFromFlags(cmd)
+				entityType, name, err := resolveEntityTypeAndName(cmd, args)
 				if err != nil {
 					return err
 				}
-				req = SourceMetricsRequest{
-					AssertionID: assertionID,
-					StartTime:   startMs,
-					EndTime:     endMs,
+				startMs, endMs, err := sourceMetricsScope.resolveTime()
+				if err != nil {
+					return err
 				}
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
+				if err := sourceMetricsScope.validateScopes(cmd.Context(), client); err != nil {
+					return err
+				}
+				labels := map[string]string{
+					"asserts_entity_type": entityType,
+					"asserts_entity_name": name,
+				}
+				if id, _ := cmd.Flags().GetString("insight"); id != "" {
+					labels["alertname"] = id
+				}
+				maps.Copy(labels, sourceMetricsScope.scopeMap())
+				for _, kv := range sourceMetricsLabels {
+					k, v, ok := strings.Cut(kv, "=")
+					if !ok || k == "" {
+						return fmt.Errorf("invalid --label %q: expected key=value", kv)
+					}
+					labels[k] = v
+				}
+				req = SourceMetricsRequest{
+					StartTime: startMs,
+					EndTime:   endMs,
+					Labels:    labels,
+				}
 			}
 			results, err := client.AssertionSourceMetrics(cmd.Context(), req)
 			if err != nil {
@@ -1091,155 +1130,83 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 		},
 	}
 	sourceMetricsCmd.Flags().StringP("file", "f", "", "Input file (YAML)")
-	sourceMetricsCmd.Flags().String("insight-id", "", "Insight ID")
-	sourceMetricsCmd.Flags().String("from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
-	sourceMetricsCmd.Flags().String("to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
-	sourceMetricsCmd.Flags().String("since", "", "Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)")
+	sourceMetricsCmd.Flags().String("name", "", "Entity name")
+	sourceMetricsCmd.Flags().String("type", "", "Entity type")
+	sourceMetricsCmd.Flags().String("insight", "", "Insight name (e.g. LatencyAverageBreach, ResourceRateAnomaly) — sets the 'alertname' label")
+	sourceMetricsCmd.Flags().StringArrayVar(&sourceMetricsLabels, "label", nil, "Assertion label as key=value (repeatable; typically copied from 'kg entities inspect' timeLines[].labels)")
+	sourceMetricsScope.register(sourceMetricsCmd)
 
-	// search subcommand
-	var (
-		searchEntityType string
-		searchNames      []string
-		searchSeverities []string
-		searchScope      scopeFlags
-	)
-	searchCmd := &cobra.Command{
-		Use:   "search",
-		Short: "Find entities with active insights matching the given rules.",
-		Long: `Find entities with active insights matching the given rules.
-
-Backed by the same endpoint the Asserts UI's "Entities with Insights" panel uses.
-Each --insight flag is a separate rule (ORed together); severities are ANDed
-into every rule.`,
-		Example: `  gcx kg insights search --insight contains=Saturation
-  gcx kg insights search --insight equals=ErrorRatioBreach --severity critical
-  gcx kg insights search --severity critical,warning --namespace mimir-prod-01
-  gcx kg insights search --type Namespace --insight starts-with=Latency --since 1h`,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			startMs, endMs, err := searchScope.resolveTime()
-			if err != nil {
-				return err
-			}
-			if err := searchScope.validateScopes(cmd.Context(), client); err != nil {
-				return err
-			}
-			req, err := buildInsightSearchRequest(searchEntityType, searchNames, searchSeverities, searchScope.scopeCriteria(), startMs, endMs)
-			if err != nil {
-				return err
-			}
-			result, err := client.SearchInsights(cmd.Context(), req)
-			if err != nil {
-				return err
-			}
-			return (&cmdio.Options{OutputFormat: "json"}).Encode(cmd.OutOrStdout(), result)
-		},
-	}
-	searchCmd.Flags().StringVar(&searchEntityType, "type", "Service", "Root entity type (e.g. Service, Namespace, Node)")
-	searchCmd.Flags().StringArrayVar(&searchNames, "insight", nil, "Insight-name rule: op=value where op is contains, starts-with, or equals (repeatable; rules are ORed)")
-	searchCmd.Flags().StringSliceVar(&searchSeverities, "severity", nil, "Filter by insight severity: critical, warning, info (comma-separated)")
-	searchScope.register(searchCmd)
-	searchCmd.MarkFlagsOneRequired("insight", "severity")
-
-	cmd.AddCommand(entityMetricCmd, sourceMetricsCmd, searchCmd)
+	cmd.AddCommand(entityMetricCmd, sourceMetricsCmd)
 	return cmd
 }
 
-// insightNameLabel and insightSeverityLabel are the backend label names that
-// drive the Assertion Search endpoint. The CLI surfaces "insight" as the
-// user-facing term; the wire labels use the legacy "asserts_" prefix.
-const (
-	insightNameLabel     = "asserts_assertion_name"
-	insightSeverityLabel = "asserts_severity"
-)
-
-// buildInsightSearchRequest assembles the request body for
-// POST /v1/assertions/search from CLI flags. Each --insight flag becomes
-// its own rule group; --severity values are appended into every group so they
-// AND with the name filter (matching the UI's setSeverity behavior).
-// When only severities are given, an "IS NOT NULL" name matcher is seeded so
-// the severity matchers have somewhere to attach.
-func buildInsightSearchRequest(entityType string, insightNames, severities []string, scope *ScopeCriteria, startMs, endMs int64) (InsightSearchRequest, error) {
-	nameOps := map[string]string{
-		"contains":    "CONTAINS",
-		"starts-with": "STARTS WITH",
-		"equals":      "=",
+// filterByInsightMatchers filters results to those whose inlined assertions
+// satisfy all matchers. An entity matches when at least one assertion in
+// SearchResult.Assertion.assertions or SearchResult.ConnectedAssertion.assertions
+// satisfies every matcher (matchers AND on the same assertion).
+func filterByInsightMatchers(results []SearchResult, matchers []insightMatcher) []SearchResult {
+	if len(matchers) == 0 {
+		return results
 	}
-
-	severityMatchers := make([]LabelMatcher, 0, len(severities))
-	for _, sev := range severities {
-		sev = strings.TrimSpace(sev)
-		if sev == "" {
-			continue
-		}
-		severityMatchers = append(severityMatchers, LabelMatcher{
-			Name:  insightSeverityLabel,
-			Op:    "=",
-			Value: sev,
-		})
-	}
-
-	groups := make([]InsightSearchCriteria, 0, len(insightNames))
-	for _, raw := range insightNames {
-		op, value, ok := strings.Cut(raw, "=")
-		if !ok {
-			return InsightSearchRequest{}, fmt.Errorf("invalid --insight %q: expected op=value where op is one of contains, starts-with, equals", raw)
-		}
-		wireOp, ok := nameOps[strings.ToLower(strings.TrimSpace(op))]
-		if !ok {
-			return InsightSearchRequest{}, fmt.Errorf("invalid --insight op %q: must be one of contains, starts-with, equals", op)
-		}
-		matchers := make([]LabelMatcher, 0, 1+len(severityMatchers))
-		matchers = append(matchers, LabelMatcher{Name: insightNameLabel, Op: wireOp, Value: value})
-		matchers = append(matchers, severityMatchers...)
-		groups = append(groups, InsightSearchCriteria{LabelMatchers: matchers})
-	}
-
-	if len(groups) == 0 {
-		// Severity-only call — seed an "any name" matcher so severity has a group.
-		// The backend rejects CONTAINS "" so we use IS NOT NULL instead.
-		matchers := make([]LabelMatcher, 0, 1+len(severityMatchers))
-		matchers = append(matchers, LabelMatcher{Name: insightNameLabel, Op: "IS NOT NULL"})
-		matchers = append(matchers, severityMatchers...)
-		groups = []InsightSearchCriteria{{LabelMatchers: matchers}}
-	}
-
-	return InsightSearchRequest{
-		EntityType:     entityType,
-		SearchCriteria: groups,
-		ScopeCriteria:  scope,
-		TimeCriteria:   &TimeCriteria{Start: startMs, End: endMs},
-	}, nil
-}
-
-func filterBySeverity(results []SearchResult, sev string) []SearchResult {
-	want := strings.ToUpper(sev)
-	matches := func(a map[string]any) bool {
-		s, ok := a["severity"].(string)
-		return ok && strings.ToUpper(s) == want
-	}
-	var out []SearchResult
+	out := make([]SearchResult, 0, len(results))
 	for _, r := range results {
-		if matches(r.Assertion) || matches(r.ConnectedAssertion) {
+		if anyAssertionMatches(r.Assertion, matchers) || anyAssertionMatches(r.ConnectedAssertion, matchers) {
 			out = append(out, r)
 		}
-	}
-	if out == nil {
-		return []SearchResult{}
 	}
 	return out
 }
 
-// ---------------------------------------------------------------------------
-// Search commands
-// ---------------------------------------------------------------------------
+func anyAssertionMatches(group map[string]any, matchers []insightMatcher) bool {
+	if group == nil {
+		return false
+	}
+	arr, ok := group["assertions"].([]any)
+	if !ok {
+		return false
+	}
+	for _, a := range arr {
+		m, ok := a.(map[string]any)
+		if !ok {
+			continue
+		}
+		if assertionMatchesAll(m, matchers) {
+			return true
+		}
+	}
+	return false
+}
+
+func assertionMatchesAll(a map[string]any, matchers []insightMatcher) bool {
+	for _, m := range matchers {
+		var field string
+		switch m.Key {
+		case "":
+			// Wildcard ("any") — predicate is a no-op; the surrounding
+			// anyAssertionMatches already enforces that an assertion exists.
+			continue
+		case "name":
+			field, _ = a["assertionName"].(string)
+		case "severity":
+			field, _ = a["severity"].(string)
+		default:
+			return false
+		}
+		switch m.Op {
+		case "=":
+			if !strings.EqualFold(field, m.Value) {
+				return false
+			}
+		case "CONTAINS":
+			if !strings.Contains(strings.ToLower(field), strings.ToLower(m.Value)) {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}
 
 // ---------------------------------------------------------------------------
 // Entities describe command
@@ -1520,18 +1487,18 @@ func rcaWorkbenchURL(host, entityType, name string, scope map[string]string, sta
 }
 
 // ---------------------------------------------------------------------------
-// Health command
+// Summary command
 // ---------------------------------------------------------------------------
 
-func newHealthCommand(loader RESTConfigLoader) *cobra.Command {
+func newSummaryCommand(loader RESTConfigLoader) *cobra.Command {
 	var (
-		healthScope      scopeFlags
-		healthEntityType string
+		summaryScope      scopeFlags
+		summaryEntityType string
 	)
-	ioOpts := &healthOpts{}
+	ioOpts := &summaryOpts{}
 	cmd := &cobra.Command{
-		Use:   "health",
-		Short: "Show a health summary with active insight counts.",
+		Use:   "summary",
+		Short: "Show a summary of entities and active insights, broken down by type, severity, and insight name.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := ioOpts.IO.Validate(); err != nil {
 				return err
@@ -1544,59 +1511,88 @@ func newHealthCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			startMs, endMs, err := healthScope.resolveTime()
+			startMs, endMs, err := summaryScope.resolveTime()
 			if err != nil {
 				return err
 			}
-			if err := healthScope.validateScopes(cmd.Context(), client); err != nil {
+			if err := summaryScope.validateScopes(cmd.Context(), client); err != nil {
 				return err
 			}
 
-			counts, err := client.CountEntityTypes(cmd.Context())
+			counts, err := client.CountEntityTypes(cmd.Context(), startMs, endMs, summaryScope.scopeCriteria())
 			if err != nil {
 				return err
 			}
+			typeCounts := map[string]int64{}
 			var entityTypes []string
-			var totalEntities int
+			var totalEntities int64
 			for t, cnt := range counts {
-				totalEntities += int(cnt)
+				totalEntities += cnt
 				if cnt > 0 {
+					typeCounts[t] = cnt
 					entityTypes = append(entityTypes, t)
 				}
 			}
-			if healthEntityType != "" {
-				entityTypes = []string{healthEntityType}
+			if summaryEntityType != "" {
+				entityTypes = []string{summaryEntityType}
 			}
-			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, true, false, healthScope.scopeCriteria(), startMs, endMs, 0, nil)
+			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, true, false, summaryScope.scopeCriteria(), startMs, endMs, 0, nil)
 			if err != nil {
 				return err
 			}
 			sevCounts := map[string]int{}
+			nameCounts := map[string]int{}
+			totalInsights := 0
 			for _, r := range results {
-				if s, ok := r.Assertion["severity"].(string); ok {
-					sevCounts[strings.ToUpper(s)]++
-				} else {
-					sevCounts["UNKNOWN"]++
+				assertions, _ := r.Assertion["assertions"].([]any)
+				for _, a := range assertions {
+					m, ok := a.(map[string]any)
+					if !ok {
+						continue
+					}
+					totalInsights++
+					name, _ := m["assertionName"].(string)
+					if name == "" {
+						name = "UNKNOWN"
+					}
+					nameCounts[name]++
+					sev, _ := m["severity"].(string)
+					if sev == "" {
+						sevCounts["UNKNOWN"]++
+					} else {
+						sevCounts[strings.ToUpper(sev)]++
+					}
 				}
 			}
-			return ioOpts.IO.Encode(cmd.OutOrStdout(), map[string]any{
-				"severityCounts": sevCounts,
-				"totalEntities":  totalEntities,
-				"totalInsights":  len(results),
+			type entitiesSummary struct {
+				Total  int64            `json:"total" yaml:"total"`
+				ByType map[string]int64 `json:"byType" yaml:"byType"`
+			}
+			type insightsSummary struct {
+				Total      int            `json:"total" yaml:"total"`
+				BySeverity map[string]int `json:"bySeverity" yaml:"bySeverity"`
+				ByName     map[string]int `json:"byName" yaml:"byName"`
+			}
+			return ioOpts.IO.Encode(cmd.OutOrStdout(), struct {
+				Entities entitiesSummary `json:"entities" yaml:"entities"`
+				Insights insightsSummary `json:"insights" yaml:"insights"`
+			}{
+				Entities: entitiesSummary{Total: totalEntities, ByType: typeCounts},
+				Insights: insightsSummary{Total: totalInsights, BySeverity: sevCounts, ByName: nameCounts},
 			})
 		},
 	}
-	healthScope.register(cmd)
-	cmd.Flags().StringVar(&healthEntityType, "type", "", "Limit to a specific entity type")
+	summaryScope.register(cmd)
+	cmd.Flags().StringVar(&summaryEntityType, "type", "", "Limit to a specific entity type")
 	ioOpts.setup(cmd.Flags())
 	return cmd
 }
 
-type healthOpts struct {
+type summaryOpts struct {
 	IO cmdio.Options
 }
 
-func (o *healthOpts) setup(flags *pflag.FlagSet) {
+func (o *summaryOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
 }
@@ -1623,7 +1619,7 @@ func newOpenCommand(loader RESTConfigLoader) *cobra.Command {
 }
 
 // ---------------------------------------------------------------------------
-// Cypher command
+// Cypher query command
 // ---------------------------------------------------------------------------
 
 func newCypherCommand(loader RESTConfigLoader) *cobra.Command {
@@ -1634,11 +1630,34 @@ func newCypherCommand(loader RESTConfigLoader) *cobra.Command {
 	)
 	ioOpts := &cypherOpts{}
 	cmd := &cobra.Command{
-		Use:   "cypher <query>",
-		Short: "Run a read-only Cypher query against the Knowledge Graph.",
-		Example: `  gcx kg cypher "MATCH (s:Service) RETURN s LIMIT 10"
-  gcx kg cypher "MATCH (s:Service)-[:CALLS]->(d:Service) RETURN s, d" --since 1h
-  gcx kg cypher "MATCH (s:Service {namespace: 'prod'}) RETURN s" --since 1h`,
+		Use:   "query <cypher-query>",
+		Short: "Query entities by running a read-only Cypher query against the Knowledge Graph.",
+		Long: `Query entities by running a read-only Cypher query against the Knowledge Graph.
+
+Run 'gcx kg meta schema' to discover valid entity types, property names, and relationship names.
+
+Response shape (not raw Cypher rows — results are aggregated into this envelope):
+
+  {
+    "entities": [ { "type", "name", "scope", "properties", "insights" }, ... ],
+    "edges":    [ { "type", "sourceName", "sourceType", "sourceScope",
+                    "destinationName", "destinationType", "destinationScope" }, ... ],
+    "pageNum":  <int>,
+    "lastPage": <bool>
+  }
+
+Tips:
+  - Prefer whole-entity projections like 'RETURN s, d' over scalar projections
+    like 'RETURN d.name'. Whole entities populate the 'entities' array with
+    full type/name/scope/properties; scalar projections do not round-trip
+    through this envelope.
+  - The --json flag selects keys from the envelope above (entities, edges,
+    pageNum, lastPage) — it does NOT filter properties inside each entity.
+    Use '--json list' to see the envelope keys, then '--json entities' and
+    pipe to jq/python for per-entity field shaping.`,
+		Example: `  gcx kg entities query "MATCH (s:Service) RETURN s LIMIT 10"
+  gcx kg entities query "MATCH (s:Service)-[:CALLS]->(d:Service) RETURN s, d" --since 1h
+  gcx kg entities query "MATCH (s:Service {namespace: 'prod'}) RETURN s" --since 1h`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := ioOpts.IO.Validate(); err != nil {
@@ -1740,9 +1759,20 @@ func processGraphSchema(resp GraphSchemaResponse) KGSchemaResult {
 		if _, ok := typeProps[name]; !ok {
 			typeProps[name] = map[string]bool{"name": true}
 		}
+		scopeRename := map[string]string{
+			"scope_env":       "env",
+			"scope_site":      "site",
+			"scope_namespace": "namespace",
+		}
 		for prop := range e.Properties {
-			if ignoredProps[prop] || strings.HasPrefix(prop, "_") ||
-				strings.HasPrefix(prop, "scope_") || strings.HasPrefix(prop, "lookup_") {
+			if ignoredProps[prop] || strings.HasPrefix(prop, "_") || strings.HasPrefix(prop, "lookup_") {
+				continue
+			}
+			if renamed, ok := scopeRename[prop]; ok {
+				typeProps[name][renamed] = true
+				continue
+			}
+			if strings.HasPrefix(prop, "scope_") {
 				continue
 			}
 			typeProps[name][prop] = true

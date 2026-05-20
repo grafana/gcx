@@ -10,9 +10,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/grafana/gcx/internal/fail"
 	fleetbase "github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources"
@@ -185,8 +185,8 @@ func (h *fleetHelper) loadClient(ctx context.Context) (*Client, string, error) {
 // pipelines that are owned by the gcx instrumentation provider. Callers should
 // check IsManagedPipeline before invoking this helper.
 func errPipelineManagedByInstrumentation(name string) error {
-	exitCode := fail.ExitGeneralError
-	return &fail.DetailedError{
+	exitCode := gcxerrors.ExitGeneralError
+	return &gcxerrors.DetailedError{
 		Summary: fmt.Sprintf("Pipeline %q is managed by gcx instrumentation", name),
 		Details: "This pipeline is owned by the gcx instrumentation provider. Direct mutation through 'gcx fleet pipelines create/update/delete' is blocked to keep declared state in sync. Pass --force to override (advanced; may cause drift).",
 		Suggestions: []string{

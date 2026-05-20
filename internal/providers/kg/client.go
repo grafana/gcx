@@ -31,7 +31,6 @@ const (
 	searchPath           = pluginResourcePath + "/asserts/api-server/v1/search"
 	searchAssertPath     = searchPath + "/assertions"
 	searchSamplePath     = searchPath + "/sample"
-	insightSearchPath    = pluginResourcePath + "/asserts/api-server/v1/assertions/search"
 	rulesPath            = pluginResourcePath + "/asserts/api-server/v1/config/prom-rules"
 	ruleByNameFmt        = rulesPath + "/%s"
 	modelRulesPath       = pluginResourcePath + "/asserts/api-server/v1/config/model-rules/"
@@ -339,14 +338,11 @@ func (c *Client) LookupEntity(ctx context.Context, entityType, name string, scop
 	return &result, nil
 }
 
-// CountEntityTypes retrieves entity type counts for the last hour.
-func (c *Client) CountEntityTypes(ctx context.Context) (map[string]int64, error) {
-	now := time.Now()
+// CountEntityTypes retrieves entity type counts for the given time window and scope.
+func (c *Client) CountEntityTypes(ctx context.Context, startMs, endMs int64, sc *ScopeCriteria) (map[string]int64, error) {
 	body := EntityCountRequest{
-		TimeCriteria: &TimeCriteria{
-			Start: now.Add(-1 * time.Hour).UnixMilli(),
-			End:   now.UnixMilli(),
-		},
+		TimeCriteria:  &TimeCriteria{Start: startMs, End: endMs},
+		ScopeCriteria: sc,
 	}
 	var result map[string]int64
 	if err := c.postJSON(ctx, entityCountPath, body, &result); err != nil {
@@ -436,20 +432,6 @@ func (c *Client) SearchAssertions(ctx context.Context, req SearchRequest) ([]Ass
 	}
 	if result == nil {
 		return []AssertionTimeline{}, nil
-	}
-	return result, nil
-}
-
-// SearchInsights finds entities with active assertions matching the given
-// label-matcher rules. Backed by POST /v1/assertions/search — the same endpoint
-// the Asserts UI's "Entities with Insights" panel uses.
-func (c *Client) SearchInsights(ctx context.Context, req InsightSearchRequest) ([]EntityKey, error) {
-	var result []EntityKey
-	if err := c.postJSON(ctx, insightSearchPath, req, &result); err != nil {
-		return nil, fmt.Errorf("kg: search insights: %w", err)
-	}
-	if result == nil {
-		return []EntityKey{}, nil
 	}
 	return result, nil
 }

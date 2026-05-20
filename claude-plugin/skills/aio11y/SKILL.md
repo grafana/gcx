@@ -32,6 +32,7 @@ All commands live under `gcx aio11y`. Use `gcx aio11y <subcommand> --help` for f
 | `templates` | List, get built-in evaluator templates |
 | `scores` | List scores for a generation |
 | `judge` | List judge providers and models |
+| `experiments` | List, get, create, update, cancel runs; inspect scores and reports |
 
 Delete commands (`evaluators delete`, `rules delete`) require `-f` to skip confirmation in agent mode. List first to confirm the target ID:
 

@@ -10,11 +10,11 @@ import (
 
 	"github.com/charmbracelet/huh"
 	configcmd "github.com/grafana/gcx/cmd/gcx/config"
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	internalauth "github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/login"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/grafana-app-sdk/logging"
@@ -77,7 +77,7 @@ func (opts *loginOpts) setup(flags *pflag.FlagSet) {
 // Also validates the output codec options (format name, --json flag shape).
 func (opts *loginOpts) Validate(args []string) error {
 	if len(args) == 1 && opts.Config.Context != "" {
-		return fail.DetailedError{
+		return gcxerrors.DetailedError{
 			Summary: "conflicting context specification",
 			Details: fmt.Sprintf(
 				"Positional argument %q and --context=%q both specified. Use one.",
@@ -92,7 +92,7 @@ func (opts *loginOpts) Validate(args []string) error {
 		return err
 	}
 	if opts.OAuthCallbackPort < 0 || opts.OAuthCallbackPort > 65535 {
-		return fail.DetailedError{
+		return gcxerrors.DetailedError{
 			Summary: "invalid --oauth-callback-port",
 			Details: fmt.Sprintf("Port must be between 1 and 65535 (or 0 to auto-pick); got %d.", opts.OAuthCallbackPort),
 		}
@@ -148,28 +148,12 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 		contextName = flags.Config.Context
 	}
 
-	// Pre-populate Server from the correct source context:
-	//   contextName set + context exists   -> use named context (re-auth)
-	//   contextName set + context absent   -> leave Server empty (new context)
-	//   contextName empty + current exists -> use current context (re-auth current)
-	//   contextName empty + no current     -> leave Server empty (first-time setup)
 	cfg, _ := flags.Config.LoadConfigTolerant(ctx) // tolerate missing file
-	var sourceCtx *config.Context
-	if contextName != "" {
-		if existing, ok := cfg.Contexts[contextName]; ok {
-			sourceCtx = existing
-		}
-	} else {
-		sourceCtx = cfg.GetCurrentContext()
-	}
+	sourceCtx, contextName := resolveSourceContext(cfg, contextName, flags.Server)
 	if flags.Server == "" && sourceCtx != nil && sourceCtx.Grafana != nil {
 		flags.Server = sourceCtx.Grafana.Server
 	}
 
-	// Print mode header so the user can confirm which context they're targeting.
-	// sourceCtx != nil implies re-auth (existing context).
-	// sourceCtx == nil with contextName set implies new-context creation.
-	// sourceCtx == nil with contextName empty implies first-time setup.
 	printModeHeader(cmd, cfg, contextName, sourceCtx)
 
 	isInteractive := term.IsTerminal(int(os.Stdin.Fd())) &&
@@ -534,7 +518,7 @@ func askForClarification(e *login.ErrNeedClarification, opts *login.Options) err
 	return nil
 }
 
-// structuredMissingFieldsError converts ErrNeedInput to a fail.DetailedError for non-interactive callers.
+// structuredMissingFieldsError converts ErrNeedInput to a gcxerrors.DetailedError for non-interactive callers.
 func structuredMissingFieldsError(e *login.ErrNeedInput) error {
 	suggestions := make([]string, 0, len(e.Fields))
 	for _, f := range e.Fields {
@@ -555,18 +539,18 @@ func structuredMissingFieldsError(e *login.ErrNeedInput) error {
 		details += "\n" + e.Hint
 	}
 
-	return fail.DetailedError{
+	return gcxerrors.DetailedError{
 		Summary:     "Login requires additional input",
 		Details:     details,
 		Suggestions: suggestions,
 	}
 }
 
-// structuredClarificationError converts ErrNeedClarification to a fail.DetailedError.
+// structuredClarificationError converts ErrNeedClarification to a gcxerrors.DetailedError.
 func structuredClarificationError(e *login.ErrNeedClarification) error {
 	switch e.Field {
 	case "allow-override":
-		return fail.DetailedError{
+		return gcxerrors.DetailedError{
 			Summary: "Login would overwrite an existing context",
 			Details: e.Question,
 			Suggestions: []string{
@@ -575,7 +559,7 @@ func structuredClarificationError(e *login.ErrNeedClarification) error {
 			},
 		}
 	case "save-unvalidated":
-		return fail.DetailedError{
+		return gcxerrors.DetailedError{
 			Summary: "Connectivity validation failed",
 			Details: e.Question,
 			Suggestions: []string{
@@ -584,7 +568,7 @@ func structuredClarificationError(e *login.ErrNeedClarification) error {
 			},
 		}
 	default:
-		return fail.DetailedError{
+		return gcxerrors.DetailedError{
 			Summary: "Login requires clarification",
 			Details: fmt.Sprintf("%s\nChoices: %s", e.Question, strings.Join(e.Choices, ", ")),
 			Suggestions: []string{
@@ -592,6 +576,25 @@ func structuredClarificationError(e *login.ErrNeedClarification) error {
 				"Pass --yes to default to on-premises",
 			},
 		}
+	}
+}
+
+// resolveSourceContext picks which context this login targets, returning it
+// alongside its (possibly-derived) name. A nil context signals new-context
+// creation to downstream code.
+//
+// When no name is given, the name is derived from --server so that
+// `gcx login --server <new>` doesn't clobber the unrelated current context.
+// With neither name nor server, falls back to the current context.
+func resolveSourceContext(cfg config.Config, contextName, server string) (*config.Context, string) {
+	switch {
+	case contextName != "":
+		return cfg.Contexts[contextName], contextName
+	case server != "":
+		name := config.ContextNameFromServerURL(server)
+		return cfg.Contexts[name], name
+	default:
+		return cfg.GetCurrentContext(), cfg.CurrentContext
 	}
 }
 

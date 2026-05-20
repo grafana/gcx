@@ -274,6 +274,28 @@ func TestResolveValidateAndSaveDatasource(t *testing.T) {
 	})
 }
 
+func TestNormalizeKind(t *testing.T) {
+	tests := []struct {
+		pluginID string
+		want     string
+	}{
+		{"prometheus", "prometheus"},
+		{"loki", "loki"},
+		{"tempo", "tempo"},
+		{"grafana-pyroscope-datasource", "pyroscope"},
+		{"grafana-amazonprometheus-datasource", "prometheus"},
+		{"grafana-azureprometheus-datasource", "prometheus"},
+		{"unknown-datasource", "unknown-datasource"},
+		{"", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.pluginID, func(t *testing.T) {
+			assert.Equal(t, tt.want, dsquery.NormalizeKind(tt.pluginID))
+		})
+	}
+}
+
 func testDatasourceRESTConfig(t *testing.T, payload any) config.NamespacedRESTConfig {
 	t.Helper()
 

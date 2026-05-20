@@ -82,7 +82,7 @@ gcx (root)
 │   └── adaptive             Adaptive Traces (policies, recommendations)
 │
 ├── profiles                 [internal/providers/profiles/provider.go] (registered via providers.Register)
-│   ├── query                [DATASOURCE_UID] EXPR --profile-type TYPE [--from] [--to] [--since] [--max-nodes] [-o]
+│   ├── query                [DATASOURCE_UID] EXPR --profile-type TYPE [--from] [--to] [--since] [--max-nodes] [--profile-id UUID]... [--stacktrace-selector FN]... [-o]
 │   ├── labels               [--datasource/-d UID] [--label/-l NAME]
 │   ├── profile-types        [--datasource/-d UID]
 │   ├── series               [DATASOURCE_UID] EXPR --profile-type TYPE [--top] [--group-by] [--limit]
