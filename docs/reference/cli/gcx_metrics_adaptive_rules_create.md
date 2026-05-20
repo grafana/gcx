@@ -15,6 +15,7 @@ gcx metrics adaptive rules create [flags]
       --drop                          Drop the metric entirely
       --drop-labels strings           Labels to drop (comma-separated)
   -h, --help                          help for create
+      --jq string                     jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string                   Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --keep-labels strings           Labels to keep (comma-separated)
       --match-type string             Match type: exact, prefix, or suffix (default "exact")

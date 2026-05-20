@@ -47,6 +47,7 @@ gcx datasources loki query [EXPR] [flags]
       --expr string         Query expression (alternative to positional argument)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for query
+      --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int           Maximum number of log lines to return (0 means no limit) (default 50)
       --open                Open the executed query in Grafana Explore

@@ -12,6 +12,7 @@ gcx metrics adaptive exemptions create [flags]
       --active-interval string    Active interval (e.g. 30d, 1h) (default "30d")
       --disable-recommendations   Disable all recommendations for matched metrics
   -h, --help                      help for create
+      --jq string                 jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string               Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --keep-labels strings       Labels to keep (comma-separated)
       --managed-by string         Manager identifier

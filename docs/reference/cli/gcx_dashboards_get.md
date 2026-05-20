@@ -17,6 +17,7 @@ gcx dashboards get <name> [flags]
 ```
       --api-version string   API version to use (e.g. dashboard.grafana.app/v1); defaults to server preferred version
   -h, --help                 help for get
+      --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string        Output format. One of: agents, json, table, wide, yaml (default "table")
 ```

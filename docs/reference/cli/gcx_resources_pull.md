@@ -64,6 +64,7 @@ gcx resources pull [RESOURCE_SELECTOR]... [flags]
 ```
   -h, --help              help for pull
       --include-managed   Include resources managed by tools other than gcx
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --on-error string   How to handle errors during resource operations:
                             ignore — continue processing all resources and exit 0
