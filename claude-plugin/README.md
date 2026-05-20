@@ -72,7 +72,8 @@ canonical portable skill bundle.
 | `scaffold-project` | Scaffold a new gcx resources-as-code project |
 | `generate-resource-stubs` | Generate typed Grafana resource stubs as Go code |
 | `import-dashboards` | Import existing Grafana dashboards into Go builder code |
-| `manage-dashboards` | Pull, validate, create, push, and promote dashboards |
+| `create-dashboard` | Design and create dashboards with datasource discovery and snapshot-based visual iteration |
+| `manage-dashboards` | Operate existing dashboards: list, search, pull, push, validate, promote, restore, delete, and snapshot |
 | `explore-datasources` | Discover datasources, metrics, labels, and log streams |
 | `investigate-alert` | Investigate why a Grafana alert is firing and what it impacts |
 | `debug-with-grafana` | Run a structured diagnostic workflow across metrics, logs, and dashboards |
@@ -119,6 +120,14 @@ claude-plugin/
 Claude will invoke `grafana-debugger`, run the `debug-with-grafana` skill,
 query Prometheus for latency metrics, correlate with Loki error logs, and
 return a root-cause analysis with the exact query commands used.
+
+**Dashboard creation workflow:**
+> "Create a checkout service triage dashboard in the SRE folder."
+
+Claude will invoke `create-dashboard`, verify the target context/folder,
+discover datasources and metric labels, author the dashboard, push it, render a
+PNG with `gcx dashboards snapshot`, inspect the image, and iterate on layout or
+queries before reporting the result.
 
 **Dashboard GitOps workflow:**
 > "Pull all dashboards from staging, validate them, and push to production."
