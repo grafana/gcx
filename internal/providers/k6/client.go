@@ -18,7 +18,7 @@ import (
 
 const (
 	// pluginProxy forwards requests to api.k6.io with
-	// stack-scoped credentials injected by the GCk6 plugin.
+	// stack-scoped credentials injected by the Grafana Cloud k6 plugin.
 	pluginProxyBasePath         = "/api/plugins/k6-app/resources/cloud"
 	pluginProxyOrganizationPath = "/api/plugins/k6-app/resources/organization"
 
@@ -33,9 +33,9 @@ const (
 // Client is an HTTP client for the k6 Cloud API.
 // It routes every k6 API call through the grafana-k6-app plugin proxy.
 type Client struct {
-	grafanaURL string
-	proxyBase  string
-	http       *http.Client
+	host      string
+	proxyBase string
+	http      *http.Client
 
 	mu          sync.Mutex
 	cachedToken string // memoized result of /v3/account/me
@@ -43,19 +43,19 @@ type Client struct {
 }
 
 // NewClient creates a Client that routes every k6 API call through the
-// grafana-k6-app plugin proxy on grafanaURL. authClient must carry the
+// grafana-k6-app plugin proxy on host. authClient must carry the
 // Grafana auth — typically a client built from a rest.Config wrapped with
 // RefreshTransport, so the OAuth bearer is injected (and refreshed before
 // expiry) on every request.
-func NewClient(ctx context.Context, grafanaURL string, authClient *http.Client) *Client {
+func NewClient(ctx context.Context, host string, authClient *http.Client) *Client {
 	if authClient == nil {
 		authClient = httputils.NewDefaultClient(ctx)
 	}
-	base := strings.TrimRight(grafanaURL, "/")
+	base := strings.TrimRight(host, "/")
 	return &Client{
-		grafanaURL: base,
-		proxyBase:  base + pluginProxyBasePath,
-		http:       authClient,
+		host:      base,
+		proxyBase: base + pluginProxyBasePath,
+		http:      authClient,
 	}
 }
 
@@ -68,7 +68,7 @@ func (c *Client) orgID(ctx context.Context) (int, error) {
 		return c.cachedOrgID, nil
 	}
 
-	url := c.grafanaURL + pluginProxyOrganizationPath
+	url := c.host + pluginProxyOrganizationPath
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return 0, fmt.Errorf("k6: create org id request: %w", err)
