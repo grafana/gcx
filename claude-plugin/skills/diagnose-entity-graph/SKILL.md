@@ -243,13 +243,15 @@ drift, or another label-pipeline issue).
 Before investigating *why* a service is broken, confirm it exists.
 If a user names an entity that doesn't appear in the graph at all,
 that is itself the finding — report it directly, don't fabricate a
-diagnosis. Cross-type search if the type is uncertain:
+diagnosis. When the type is uncertain, use a cross-type Cypher
+query so the limit is enforced server-side rather than after a
+client-side fan-out:
 
 ```bash
-gcx kg entities list --property name=~SERVICE
+gcx kg entities query "MATCH (n) WHERE n.name CONTAINS 'SERVICE' RETURN n LIMIT 10" --since 1h
 ```
 
-If `entities list` returns no results across any type and
+If that query returns no results and
 `traces_target_info{service_name="SERVICE"}` is also empty, the
 entity is not on this stack. State that conclusion plainly; the
 correct next question is whether the user meant a different stack,
@@ -259,10 +261,10 @@ For a service that *does* exist but appears missing or edge-less:
 
 ```bash
 # Find in graph
-gcx kg cypher "MATCH (s:Service {name: \"SERVICE\"}) RETURN s" --since 1h
+gcx kg entities query "MATCH (s:Service {name: \"SERVICE\"}) RETURN s" --since 1h
 
 # Check relationships
-gcx kg cypher "MATCH (s:Service {name: \"SERVICE\"})-[r]-(other) RETURN s, r, other" --since 1h
+gcx kg entities query "MATCH (s:Service {name: \"SERVICE\"})-[r]-(other) RETURN s, r, other" --since 1h
 
 # Source metrics
 gcx metrics query 'count(traces_service_graph_request_total{client="SERVICE"})' --since 1h
