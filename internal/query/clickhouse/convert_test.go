@@ -48,7 +48,7 @@ func TestParseResponse_SingleFrame(t *testing.T) {
 	assert.Equal(t, "bob", resp.Rows[1][1])
 }
 
-func TestParseResponse_MultipleFramesMerged(t *testing.T) {
+func TestParseResponse_UsesOnlyFirstFrame(t *testing.T) {
 	raw := clickhouse.GrafanaQueryResponse{
 		Results: map[string]clickhouse.GrafanaResult{
 			"A": {
@@ -81,8 +81,9 @@ func TestParseResponse_MultipleFramesMerged(t *testing.T) {
 	resp, err := clickhouse.ParseResponse(body)
 	require.NoError(t, err)
 
-	require.Len(t, resp.Rows, 3)
-	assert.InDelta(t, 3, resp.Rows[2][0], 0)
+	require.Len(t, resp.Rows, 2)
+	assert.InDelta(t, 1, resp.Rows[0][0], 0)
+	assert.InDelta(t, 2, resp.Rows[1][0], 0)
 }
 
 func TestParseResponse_MismatchedFrameSkipped(t *testing.T) {

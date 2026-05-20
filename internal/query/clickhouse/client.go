@@ -135,40 +135,32 @@ func parseResponse(respBody []byte) (*QueryResponse, error) {
 	}
 
 	resp := &QueryResponse{}
-	for i, frame := range result.Frames {
-		if i == 0 {
-			for _, f := range frame.Schema.Fields {
-				resp.Columns = append(resp.Columns, Column(f))
-			}
-		} else {
-			if len(frame.Schema.Fields) != len(resp.Columns) {
-				continue
-			}
-			mismatch := false
-			for j, f := range frame.Schema.Fields {
-				if f.Name != resp.Columns[j].Name || f.Type != resp.Columns[j].Type {
-					mismatch = true
-					break
-				}
-			}
-			if mismatch {
-				continue
-			}
-		}
 
-		if len(frame.Data.Values) == 0 || len(frame.Data.Values[0]) == 0 {
-			continue
-		}
-		numRows := len(frame.Data.Values[0])
-		for rowIdx := range numRows {
-			row := make([]any, len(frame.Data.Values))
-			for colIdx := range frame.Data.Values {
-				if rowIdx < len(frame.Data.Values[colIdx]) {
-					row[colIdx] = frame.Data.Values[colIdx][rowIdx]
-				}
+	// ClickHouse with FormatOptionTable (format=1) produces exactly one frame per
+	// result set. Only the first frame is used.
+	// See: github.com/grafana/clickhouse-datasource/blob/c56e3af64308ffc4cf304c8f4dd9ce545d6b2063/pkg/plugin/driver.go#L448-L453
+	// Ref: github.com/grafana/mcp-grafana/blob/9517bc0fc86b4d4f8a5978f28498bf376dc51d65/tools/clickhouse.go#L326-L349
+	if len(result.Frames) == 0 {
+		return resp, nil
+	}
+	frame := result.Frames[0]
+
+	for _, f := range frame.Schema.Fields {
+		resp.Columns = append(resp.Columns, Column(f))
+	}
+
+	if len(frame.Data.Values) == 0 || len(frame.Data.Values[0]) == 0 {
+		return resp, nil
+	}
+	numRows := len(frame.Data.Values[0])
+	for rowIdx := range numRows {
+		row := make([]any, len(frame.Data.Values))
+		for colIdx := range frame.Data.Values {
+			if rowIdx < len(frame.Data.Values[colIdx]) {
+				row[colIdx] = frame.Data.Values[colIdx][rowIdx]
 			}
-			resp.Rows = append(resp.Rows, row)
 		}
+		resp.Rows = append(resp.Rows, row)
 	}
 	return resp, nil
 }
