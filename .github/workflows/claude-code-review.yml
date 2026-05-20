@@ -11,7 +11,7 @@ jobs:
   claude-review:
     # Run on opened/ready_for_review (if not draft), or on unlabeled only if
     # the removed label is 'claude-reviewed' (manual re-review trigger).
-    # Skip all bot PRs (Dependabot, Renovate, etc.) — user.type is 'Bot' for
+    # Skip all bot PRs (Renovate, etc.) — user.type is 'Bot' for
     # GitHub App accounts, 'User' for humans.
     if: |
       github.event.pull_request.user.type != 'Bot' &&

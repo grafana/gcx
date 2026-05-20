@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/grafana/gcx/cmd/gcx/fail"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	instoutput "github.com/grafana/gcx/internal/providers/instrumentation/output"
@@ -84,8 +84,8 @@ namespace has no declared configuration.`,
 
 			// Namespace is neither declared nor discovered — exit 1.
 			if !discovered {
-				exitCode := fail.ExitGeneralError
-				return &fail.DetailedError{
+				exitCode := gcxerrors.ExitGeneralError
+				return &gcxerrors.DetailedError{
 					Summary: "Resource not found",
 					Details: fmt.Sprintf("namespace %q not found in cluster %q", namespace, cluster),
 					Suggestions: []string{

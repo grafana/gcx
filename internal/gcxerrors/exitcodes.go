@@ -1,4 +1,4 @@
-package fail
+package gcxerrors
 
 // Exit code taxonomy for gcx.
 //

@@ -28,7 +28,7 @@ func TestAIO11yProvider_Commands(t *testing.T) {
 	assert.Equal(t, "aio11y", aio11yCmd.Use)
 
 	subNames := commandNames(aio11yCmd)
-	for _, exp := range []string{"conversations", "agents", "evaluators", "rules"} {
+	for _, exp := range []string{"conversations", "agents", "evaluators", "rules", "guards"} {
 		assert.Contains(t, subNames, exp)
 	}
 

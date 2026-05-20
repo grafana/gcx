@@ -7,9 +7,9 @@ import (
 	"io"
 	"time"
 
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/fleet"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/grafana/gcx/internal/providers/instrumentation/enumerate"
 	instrOutput "github.com/grafana/gcx/internal/providers/instrumentation/output"
@@ -122,7 +122,7 @@ func runWait(
 		return fmt.Errorf("clusters wait: pre-flight: %w", err)
 	}
 	if resp.Cluster.Name == "" {
-		return &fail.DetailedError{
+		return &gcxerrors.DetailedError{
 			Summary: "cluster is not declared",
 			Details: fmt.Sprintf("cluster %q has no K8s monitoring configuration", clusterName),
 			Suggestions: []string{

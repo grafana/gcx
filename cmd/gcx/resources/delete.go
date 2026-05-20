@@ -5,9 +5,9 @@ import (
 	"errors"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/discovery"
@@ -115,7 +115,7 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 
 			if !opts.Force && !sels.HasNamedSelectorsOnly() {
-				return fail.DetailedError{
+				return gcxerrors.DetailedError{
 					Summary: "Invalid resource selector",
 					Details: "Expected a resource selector targeting named resources only. Example: dashboard/some-dashboard",
 					Suggestions: []string{
@@ -182,7 +182,7 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			printer(cmd.OutOrStdout(), "%d resources deleted, %d errors", summary.SuccessCount(), summary.FailedCount())
 
 			if opts.OnError.FailOnErrors() && summary.FailedCount() > 0 {
-				return fail.NewPartialFailureError("delete", summary.SuccessCount()+summary.FailedCount(), summary.FailedCount())
+				return gcxerrors.NewPartialFailureError("delete", summary.SuccessCount()+summary.FailedCount(), summary.FailedCount())
 			}
 
 			return nil

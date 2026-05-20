@@ -1,4 +1,4 @@
-package fail_test
+package gcxerrors_test
 
 import (
 	"bytes"
@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/grafana/gcx/internal/fail"
+	"github.com/grafana/gcx/internal/gcxerrors"
 )
 
 func intPtr(i int) *int {
@@ -18,13 +18,13 @@ func intPtr(i int) *int {
 func TestDetailedError_WriteJSON(t *testing.T) {
 	tests := []struct {
 		name     string
-		err      fail.DetailedError
+		err      gcxerrors.DetailedError
 		exitCode int
 		wantJSON map[string]any
 	}{
 		{
 			name: "minimal error with summary and exitCode only",
-			err: fail.DetailedError{
+			err: gcxerrors.DetailedError{
 				Summary: "something went wrong",
 			},
 			exitCode: 1,
@@ -37,11 +37,11 @@ func TestDetailedError_WriteJSON(t *testing.T) {
 		},
 		{
 			name: "auth failure with exit code 3",
-			err: fail.DetailedError{
+			err: gcxerrors.DetailedError{
 				Summary:  "authentication failed",
-				ExitCode: intPtr(fail.ExitAuthFailure),
+				ExitCode: intPtr(gcxerrors.ExitAuthFailure),
 			},
-			exitCode: fail.ExitAuthFailure,
+			exitCode: gcxerrors.ExitAuthFailure,
 			wantJSON: map[string]any{
 				"error": map[string]any{
 					"summary":  "authentication failed",
@@ -51,7 +51,7 @@ func TestDetailedError_WriteJSON(t *testing.T) {
 		},
 		{
 			name: "error with details",
-			err: fail.DetailedError{
+			err: gcxerrors.DetailedError{
 				Summary: "resource not found",
 				Details: "no dashboard with that name exists",
 			},
@@ -66,7 +66,7 @@ func TestDetailedError_WriteJSON(t *testing.T) {
 		},
 		{
 			name: "error with suggestions and docsLink",
-			err: fail.DetailedError{
+			err: gcxerrors.DetailedError{
 				Summary:     "invalid configuration",
 				Suggestions: []string{"check your kubeconfig", "verify the server URL"},
 				DocsLink:    "https://example.com/docs",
@@ -83,14 +83,14 @@ func TestDetailedError_WriteJSON(t *testing.T) {
 		},
 		{
 			name: "full error with all fields",
-			err: fail.DetailedError{
+			err: gcxerrors.DetailedError{
 				Summary:     "push failed",
 				Details:     "could not reach the server",
 				Suggestions: []string{"check network", "verify credentials"},
 				DocsLink:    "https://example.com/docs/push",
-				ExitCode:    intPtr(fail.ExitPartialFailure),
+				ExitCode:    intPtr(gcxerrors.ExitPartialFailure),
 			},
-			exitCode: fail.ExitPartialFailure,
+			exitCode: gcxerrors.ExitPartialFailure,
 			wantJSON: map[string]any{
 				"error": map[string]any{
 					"summary":     "push failed",
@@ -123,7 +123,7 @@ func TestDetailedError_WriteJSON(t *testing.T) {
 
 func TestDetailedError_WriteJSON_NoExtraFields(t *testing.T) {
 	// Verify that empty optional fields are omitted from JSON output
-	err := fail.DetailedError{
+	err := gcxerrors.DetailedError{
 		Summary: "minimal error",
 	}
 
@@ -155,7 +155,7 @@ func TestDetailedError_WriteJSON_NoExtraFields(t *testing.T) {
 // This is the defensive layer — even if box chars arrive from some future path,
 // they must not appear in the JSON output.
 func TestWriteJSON_StripBoxCharsDefensive(t *testing.T) {
-	err := fail.DetailedError{
+	err := gcxerrors.DetailedError{
 		Summary:     "push failed",
 		Details:     "│ some detail with box chars ├─ end",
 		Suggestions: []string{"│ Try this suggestion └─"},

@@ -1,20 +1,18 @@
-## gcx kg insights source-metrics
+## gcx aio11y experiments update
 
-Get source metrics for a specific insight.
+Patch an experiment's mutable fields.
 
 ```
-gcx kg insights source-metrics [flags]
+gcx aio11y experiments update <run-id> [flags]
 ```
 
 ### Options
 
 ```
-  -f, --file string         Input file (YAML)
-      --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-  -h, --help                help for source-metrics
-      --insight-id string   Insight ID
-      --since string        Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
-      --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
+  -h, --help            help for update
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --name string     New experiment name
+  -o, --output string   Output format. One of: agents, json, yaml (default "json")
 ```
 
 ### Options inherited from parent commands
@@ -31,5 +29,5 @@ gcx kg insights source-metrics [flags]
 
 ### SEE ALSO
 
-* [gcx kg insights](gcx_kg_insights.md)	 - Search insights and fetch their backing metrics.
+* [gcx aio11y experiments](gcx_aio11y_experiments.md)	 - Manage eval experiment runs.
 

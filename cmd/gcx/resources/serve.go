@@ -11,8 +11,8 @@ import (
 	"slices"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/logs"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
@@ -226,7 +226,7 @@ func executeWatchScript(ctx context.Context, command string) ([]byte, error) {
 		details := stderr.String()
 		stderr.Reset()
 
-		return nil, fail.DetailedError{
+		return nil, gcxerrors.DetailedError{
 			Summary: "Script failed",
 			Details: details,
 			Parent:  err,

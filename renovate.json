@@ -13,7 +13,7 @@
     "before 3am on Monday"
   ],
   "labels": [
-    "dependencies"
+    "action/dependency"
   ],
   "reviewers": [],
   "assignees": [],
@@ -93,7 +93,7 @@
       "groupName": null,
       "groupSlug": null,
       "labels": [
-        "dependencies",
+        "action/dependency",
         "major-update"
       ],
       "semanticCommitType": "build",
@@ -158,6 +158,26 @@
       "matchPackageNames": [
         "/^k8s\\.io//"
       ]
+    },
+    {
+      "description": "promql-builder/go has no subdirectory-prefixed (go/vX.Y.Z) tags in the upstream repo, so vX.Y.Z versions are unimportable via the Go proxy. Track digests only until upstream fixes its tagging.",
+      "matchPackageNames": [
+        "github.com/grafana/promql-builder/go"
+      ],
+      "matchUpdateTypes": [
+        "major",
+        "minor",
+        "patch"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "memberlist is replaced to grafana/memberlist fork to match loki/dskit; track via loki upgrades, not independently.",
+      "matchPackageNames": [
+        "github.com/hashicorp/memberlist",
+        "github.com/grafana/memberlist"
+      ],
+      "enabled": false
     }
   ]
 }

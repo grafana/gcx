@@ -30,6 +30,13 @@ func TestResourceIdentity(t *testing.T) {
 			initial:  "rule-1",
 			updated:  "rule-2",
 		},
+		{
+			name:     "HookRuleDefinition",
+			namer:    eval.HookRuleDefinition{RuleID: "hook-1"},
+			identity: &eval.HookRuleDefinition{RuleID: "hook-1"},
+			initial:  "hook-1",
+			updated:  "hook-2",
+		},
 	}
 
 	for _, tc := range tests {

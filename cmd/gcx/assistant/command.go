@@ -13,12 +13,12 @@ import (
 	"time"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/assistant"
 	"github.com/grafana/gcx/internal/assistant/investigations"
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/httputils"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
@@ -30,7 +30,7 @@ func requireGrafanaCloud(ctx *config.Context) error {
 		return nil
 	}
 	if !ctx.IsCloud() {
-		return fail.DetailedError{
+		return gcxerrors.DetailedError{
 			Summary: "Unsupported command",
 			Details: "Due to technical limitations of how gcx interacts with Grafana Assistant, " +
 				"`gcx assistant` commands do not currently work with self-hosted Grafana instances.",
