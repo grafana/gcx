@@ -126,7 +126,14 @@ func (c *Client) doQuery(ctx context.Context, path string, body []byte) (int, []
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
+if err != nil {
+    return 0, nil, fmt.Errorf("failed to read response: %w", err)
+}
+
+if int64(len(respBody)) > maxResponseBytes {
+    return 0, nil, fmt.Errorf("response body exceeds %d MB limit; use a narrower time range or add filters", maxResponseBytes>>20)
+}
 	if err != nil {
 		return 0, nil, fmt.Errorf("failed to read response: %w", err)
 	}
