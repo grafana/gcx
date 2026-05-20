@@ -1,22 +1,21 @@
-## gcx assistant investigations get
+## gcx assistant investigations narrative
 
-Get investigation detail.
+Show the assistant-authored prose for a v2 investigation.
 
 ### Synopsis
 
-Get investigation detail. On v2-enabled stacks, returns the full session state when the ID is a v2 investigation, and falls back to legacy detail otherwise.
+Show just the assistant-authored prose from a v2 investigation's chat thread — the text a human would read in the workspace, with tool plumbing stripped.
 
 ```
-gcx assistant investigations get <id> [flags]
+gcx assistant investigations narrative <id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
+  -h, --help            help for narrative
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --open            Open the investigation in the default browser
-  -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
+  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands

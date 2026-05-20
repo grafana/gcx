@@ -1,21 +1,20 @@
-## gcx assistant investigations get
+## gcx assistant investigations pause
 
-Get investigation detail.
+Pause a running v2 investigation.
 
 ### Synopsis
 
-Get investigation detail. On v2-enabled stacks, returns the full session state when the ID is a v2 investigation, and falls back to legacy detail otherwise.
+Pause a v2 investigation. Unlike cancel, paused investigations can be resumed.
 
 ```
-gcx assistant investigations get <id> [flags]
+gcx assistant investigations pause <id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
+  -h, --help            help for pause
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --open            Open the investigation in the default browser
   -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
 ```
 

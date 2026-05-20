@@ -1,22 +1,22 @@
-## gcx assistant investigations get
+## gcx assistant investigations tools
 
-Get investigation detail.
+List tool calls made during a v2 investigation.
 
 ### Synopsis
 
-Get investigation detail. On v2-enabled stacks, returns the full session state when the ID is a v2 investigation, and falls back to legacy detail otherwise.
+List every tool call the agent made during a v2 investigation, paired with its result. Use --name to filter (e.g. search_skills, prometheus_query_handler).
 
 ```
-gcx assistant investigations get <id> [flags]
+gcx assistant investigations tools <id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
+  -h, --help            help for tools
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --open            Open the investigation in the default browser
-  -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
+      --name string     Filter to tool calls with this name (e.g. search_skills, prometheus_query_handler)
+  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands

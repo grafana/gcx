@@ -37,11 +37,11 @@ func TestDoRequest_PrependsPluginBasePath(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	resp, err := client.DoRequest(context.Background(), http.MethodGet, "/investigations/summary", nil)
+	resp, err := client.DoRequest(context.Background(), http.MethodGet, "/api/v1/investigations/summary", nil)
 	require.NoError(t, err)
 	resp.Body.Close()
 
-	assert.Contains(t, gotPath, "/api/plugins/grafana-assistant-app/resources/api/v1/investigations/summary")
+	assert.Equal(t, "/api/plugins/grafana-assistant-app/resources/api/v1/investigations/summary", gotPath)
 }
 
 func TestDoRequest_SetsContentTypeForPOST(t *testing.T) {

@@ -4,7 +4,7 @@ Create a new investigation.
 
 ### Synopsis
 
-Create a new investigation with a title and optional description.
+Create a new investigation. On v2-enabled stacks, uses the v2 API with --instruction; falls back to legacy create otherwise.
 
 ```
 gcx assistant investigations create [flags]
@@ -13,17 +13,20 @@ gcx assistant investigations create [flags]
 ### Examples
 
 ```
-  gcx assistant investigations create --title="High CPU usage" --description="Investigating CPU spikes on prod"
+  gcx assistant investigations create --instruction="Debug API latency spike" --team=sre
 ```
 
 ### Options
 
 ```
-      --description string   Investigation description
+      --description string   Investigation description (legacy alias of --instruction)
   -h, --help                 help for create
+      --instruction string   Investigation instruction (required on v2-enabled stacks)
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string        Output format. One of: agents, json, yaml (default "yaml")
-      --title string         Investigation title (required)
+      --profile-id string    Runner profile ID (v2 only)
+      --team strings         Team name to scope the investigation to (repeatable, v2 only)
+      --title string         Investigation title
 ```
 
 ### Options inherited from parent commands

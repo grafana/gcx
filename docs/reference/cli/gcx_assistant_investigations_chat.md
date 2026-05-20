@@ -1,22 +1,23 @@
-## gcx assistant investigations get
+## gcx assistant investigations chat
 
-Get investigation detail.
+Show the chat thread for a v2 investigation.
 
 ### Synopsis
 
-Get investigation detail. On v2-enabled stacks, returns the full session state when the ID is a v2 investigation, and falls back to legacy detail otherwise.
+Stream the chat thread that backs a v2 investigation: assistant prose, tool calls (search_skills, prometheus_query_handler, loki_query_handler_investigator, tempo_query_handler, ...), and tool results. The legacy report/timeline/todos endpoints return empty stubs on v2 — this command is the substantive view.
 
 ```
-gcx assistant investigations get <id> [flags]
+gcx assistant investigations chat <id> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --open            Open the investigation in the default browser
-  -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
+  -h, --help             help for chat
+      --include-hidden   Include hidden system messages
+      --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string    Output format. One of: agents, json, table, wide, yaml (default "table")
+      --role string      Filter messages by role (user|assistant|tool)
 ```
 
 ### Options inherited from parent commands
