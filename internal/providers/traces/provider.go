@@ -1,11 +1,11 @@
 package traces
 
 import (
-	"github.com/grafana/gcx/internal/agent"
 	dstempo "github.com/grafana/gcx/internal/datasources/tempo"
 	"github.com/grafana/gcx/internal/providers"
 	adaptivetraces "github.com/grafana/gcx/internal/providers/traces/adaptive"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/signals"
 	"github.com/spf13/cobra"
 )
 
@@ -16,35 +16,16 @@ func init() { //nolint:gochecknoinits // Self-registration pattern (like databas
 // Provider manages Tempo datasource queries and Adaptive Traces.
 type Provider struct{}
 
-func (p *Provider) Name() string { return "traces" }
-
-func (p *Provider) ShortDesc() string {
-	return "Query Tempo datasources and manage Adaptive Traces"
-}
-
-func (p *Provider) Commands() []*cobra.Command {
-	loader := &providers.ConfigLoader{}
-
-	cmd := &cobra.Command{
-		Use:   "traces",
+func (p *Provider) descriptor() signals.Descriptor {
+	return signals.Descriptor{
+		Name:  "traces",
 		Short: p.ShortDesc(),
-		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			if root := cmd.Root(); root.PersistentPreRun != nil {
-				root.PersistentPreRun(cmd, args)
-			}
-		},
-	}
-
-	loader.BindFlags(cmd.PersistentFlags())
-
-	// Grab the commands from the datasources package, and override the examples
-	// and annotations to be suitable for the top-level commands.
-	qCmd := dstempo.QueryCmd(loader)
-	qCmd.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx traces query -d abc123 '{ span.http.status_code >= 500 }' -o json`,
-	}
-	qCmd.Example = `
+		Commands: []signals.CommandSpec{
+			{
+				Build:     dstempo.QueryCmd,
+				TokenCost: "medium",
+				LLMHint:   `gcx traces query -d abc123 '{ span.http.status_code >= 500 }' -o json`,
+				Example: `
   # Run a TraceQL query
   gcx traces query -d UID '{ span.http.status_code >= 500 }'
 
@@ -52,15 +33,13 @@ func (p *Provider) Commands() []*cobra.Command {
   gcx traces query '{ span.http.status_code >= 500 }' --share-link
 
   # Output as JSON
-  gcx traces query -d UID '{ span.http.status_code >= 500 }' -o json`
-	cmd.AddCommand(qCmd)
-
-	gCmd := dstempo.GetCmd(loader)
-	gCmd.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   "gcx traces get -d abc123 <trace-id> -o json",
-	}
-	gCmd.Example = `
+  gcx traces query -d UID '{ span.http.status_code >= 500 }' -o json`,
+			},
+			{
+				Build:     dstempo.GetCmd,
+				TokenCost: "medium",
+				LLMHint:   "gcx traces get -d abc123 <trace-id> -o json",
+				Example: `
   # Fetch a trace by ID
   gcx traces get -d UID <trace-id>
 
@@ -68,28 +47,24 @@ func (p *Provider) Commands() []*cobra.Command {
   gcx traces get -d UID <trace-id> --share-link
 
   # Output as JSON
-  gcx traces get -d UID <trace-id> -o json`
-	cmd.AddCommand(gCmd)
-
-	lCmd := dstempo.LabelsCmd(loader)
-	lCmd.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx traces labels -d abc123 -o json",
-	}
-	lCmd.Example = `
+  gcx traces get -d UID <trace-id> -o json`,
+			},
+			{
+				Build:     dstempo.LabelsCmd,
+				TokenCost: "small",
+				LLMHint:   "gcx traces labels -d abc123 -o json",
+				Example: `
   # List all labels
   gcx traces labels -d UID
 
   # Output as JSON
-  gcx traces labels -d UID -o json`
-	cmd.AddCommand(lCmd)
-
-	mCmd := dstempo.MetricsCmd(loader)
-	mCmd.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx traces metrics -d abc123 '{ } | rate()' --since 1h -o json`,
-	}
-	mCmd.Example = `
+  gcx traces labels -d UID -o json`,
+			},
+			{
+				Build:     dstempo.MetricsCmd,
+				TokenCost: "medium",
+				LLMHint:   `gcx traces metrics -d abc123 '{ } | rate()' --since 1h -o json`,
+				Example: `
   # Run a TraceQL metrics query
   gcx traces metrics -d UID '{ } | rate()' --since 1h
 
@@ -97,16 +72,40 @@ func (p *Provider) Commands() []*cobra.Command {
   gcx traces metrics '{ } | rate()' --share-link
 
   # Output as JSON
-  gcx traces metrics -d UID '{ } | rate()' --since 1h -o json`
-	cmd.AddCommand(mCmd)
+  gcx traces metrics -d UID '{ } | rate()' --since 1h -o json`,
+			},
+		},
+		Adaptive: &signals.AdaptiveSpec{
+			Build: adaptivetraces.Commands,
+			Use:   "adaptive",
+			Short: "Manage Adaptive Traces resources",
+		},
+		ConfigKeys: []providers.ConfigKey{
+			{Name: "traces-tenant-id", Secret: false},
+			{Name: "traces-tenant-url", Secret: false},
+		},
+		Registrations: func(loader *providers.ConfigLoader) []adapter.Registration {
+			return []adapter.Registration{
+				{
+					Factory:    adaptivetraces.NewPolicyAdapterFactory(loader),
+					Descriptor: adaptivetraces.PolicyDescriptor(),
+					GVK:        adaptivetraces.PolicyDescriptor().GroupVersionKind(),
+					Schema:     adaptivetraces.PolicySchema(),
+					Example:    adaptivetraces.PolicyExample(),
+				},
+			}
+		},
+	}
+}
 
-	// Adaptive Traces subcommands — rename Use from "traces" to "adaptive".
-	adaptiveCmd := adaptivetraces.Commands(loader)
-	adaptiveCmd.Use = "adaptive"
-	adaptiveCmd.Short = "Manage Adaptive Traces resources"
-	cmd.AddCommand(adaptiveCmd)
+func (p *Provider) Name() string { return "traces" }
 
-	return []*cobra.Command{cmd}
+func (p *Provider) ShortDesc() string {
+	return "Query Tempo datasources and manage Adaptive Traces"
+}
+
+func (p *Provider) Commands() []*cobra.Command {
+	return []*cobra.Command{signals.Command(p.descriptor())}
 }
 
 // queryCmd and metricsCmd are thin wrappers used by expr_test.go.
@@ -116,21 +115,9 @@ func metricsCmd(loader *providers.ConfigLoader) *cobra.Command { return dstempo.
 func (p *Provider) Validate(_ map[string]string) error { return nil }
 
 func (p *Provider) ConfigKeys() []providers.ConfigKey {
-	return []providers.ConfigKey{
-		{Name: "traces-tenant-id", Secret: false},
-		{Name: "traces-tenant-url", Secret: false},
-	}
+	return p.descriptor().ConfigKeys
 }
 
 func (p *Provider) TypedRegistrations() []adapter.Registration {
-	loader := &providers.ConfigLoader{}
-	return []adapter.Registration{
-		{
-			Factory:    adaptivetraces.NewPolicyAdapterFactory(loader),
-			Descriptor: adaptivetraces.PolicyDescriptor(),
-			GVK:        adaptivetraces.PolicyDescriptor().GroupVersionKind(),
-			Schema:     adaptivetraces.PolicySchema(),
-			Example:    adaptivetraces.PolicyExample(),
-		},
-	}
+	return p.descriptor().TypedRegistrations()
 }

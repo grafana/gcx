@@ -129,6 +129,7 @@ internal/
 │   ├── prometheus/  Prometheus HTTP query client
 │   ├── influxdb/    InfluxDB HTTP query client
 │   └── loki/        Loki HTTP query client
+├── signals/     Shared signal command and datasource-provider mounting (metrics/logs/traces/profiles)
 ├── queryerror/  Typed API error for datasource query failures (APIError type, New/FromBody constructors, IsParseError helper)
 ├── assistant/   Assistant client (A2A streaming, prompt, state management)
 │   ├── assistanthttp/  Base HTTP client for grafana-assistant-app plugin API
