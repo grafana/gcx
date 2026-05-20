@@ -49,6 +49,18 @@ func TestQueryExploreURL(t *testing.T) {
 		assert.Contains(t, panes, `"uid":"cw-uid"`)
 	})
 
+	t.Run("period encoded as JSON string", func(t *testing.T) {
+		// Cloudwatch plugin's dataquery schema declares period as a string.
+		q := baseCloudWatchQuery()
+		q.Period = 300
+
+		got := cloudwatch.QueryExploreURL("https://test.grafana.net", baseQuery("cw-uid"), q)
+		require.NotEmpty(t, got)
+		panes := mustParseURL(t, got).Query().Get("panes")
+		assert.Contains(t, panes, `"period":"300"`)
+		assert.NotContains(t, panes, `"period":300`)
+	})
+
 	t.Run("matchExact false when no dimensions", func(t *testing.T) {
 		q := baseCloudWatchQuery()
 		q.Dimensions = nil
