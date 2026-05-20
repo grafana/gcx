@@ -92,6 +92,33 @@ func TestSharedOptsValidate(t *testing.T) {
 			},
 		},
 		{
+			name: "time flag is valid (instant at specific time)",
+			setup: func(opts *dsquery.SharedOpts) {
+				opts.Time = "2026-01-01T12:00:00Z"
+			},
+			assert: func(t *testing.T, opts *dsquery.SharedOpts) {
+				t.Helper()
+				assert.False(t, opts.IsRange())
+			},
+		},
+		{
+			name: "time and from are mutually exclusive",
+			setup: func(opts *dsquery.SharedOpts) {
+				opts.Time = "2026-01-01T12:00:00Z"
+				opts.From = "now-1h"
+				opts.To = "now"
+			},
+			wantErr: "--time is mutually exclusive with --from/--to",
+		},
+		{
+			name: "time and since are mutually exclusive",
+			setup: func(opts *dsquery.SharedOpts) {
+				opts.Time = "2026-01-01T12:00:00Z"
+				opts.Since = "1h"
+			},
+			wantErr: "--time is mutually exclusive with --since",
+		},
+		{
 			name: "since and from are mutually exclusive",
 			setup: func(opts *dsquery.SharedOpts) {
 				opts.Since = "1h"

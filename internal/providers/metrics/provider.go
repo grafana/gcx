@@ -29,6 +29,9 @@ func (p *Provider) descriptor() signals.Descriptor {
   # Instant query using configured default datasource
   gcx metrics query 'up{job="grafana"}'
 
+  # Instant query at a specific time
+  gcx metrics query 'rate(http_requests_total[5m])' --time 2026-01-15T10:30:00Z
+
   # Range query with explicit datasource UID
   gcx metrics query -d abc123 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m
 

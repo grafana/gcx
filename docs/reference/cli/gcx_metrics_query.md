@@ -23,6 +23,9 @@ gcx metrics query [EXPR] [flags]
   # Instant query using configured default datasource
   gcx metrics query 'up{job="grafana"}'
 
+  # Instant query at a specific time
+  gcx metrics query 'rate(http_requests_total[5m])' --time 2026-01-15T10:30:00Z
+
   # Range query with explicit datasource UID
   gcx metrics query -d abc123 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m
 
@@ -49,6 +52,7 @@ gcx metrics query [EXPR] [flags]
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to (or now if omitted); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
+      --time string         Evaluation time for an instant query (RFC3339, Unix timestamp, or relative like 'now-5m'); mutually exclusive with --from/--to/--since
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 
