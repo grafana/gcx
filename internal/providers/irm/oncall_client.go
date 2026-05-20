@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
-	"github.com/grafana/gcx/internal/providers/irm/oncalltypes"
 	"k8s.io/client-go/rest"
 )
 
@@ -43,6 +42,8 @@ const (
 	shiftSwapsPath         = "shift_swaps/"
 	directPagingPath       = "direct_paging"
 )
+
+var _ OnCallAPI = (*OnCallClient)(nil)
 
 // OnCallClient is an HTTP client for the OnCall internal API via the IRM plugin proxy.
 type OnCallClient struct {
@@ -491,8 +492,8 @@ func (c *OnCallClient) DeleteWebhook(ctx context.Context, id string) error {
 
 // --- Alert Groups ---
 
-func (c *OnCallClient) ListAlertGroups(ctx context.Context, opts ...oncalltypes.ListOption) ([]AlertGroup, error) {
-	cfg := oncalltypes.ApplyListOpts(opts)
+func (c *OnCallClient) ListAlertGroups(ctx context.Context, opts ...ListOption) ([]AlertGroup, error) {
+	cfg := ApplyListOpts(opts)
 	params := url.Values{}
 	if cfg.StartedAfter != nil {
 		const layout = "2006-01-02T15:04:05"
@@ -609,12 +610,12 @@ func (c *OnCallClient) ListSlackChannels(ctx context.Context) ([]SlackChannel, e
 
 // --- Alerts ---
 
-func (c *OnCallClient) ListAlerts(ctx context.Context, alertGroupID string, opts ...oncalltypes.ListOption) ([]Alert, error) {
+func (c *OnCallClient) ListAlerts(ctx context.Context, alertGroupID string, opts ...ListOption) ([]Alert, error) {
 	params := url.Values{}
 	if alertGroupID != "" {
 		params.Set("alert_group_id", alertGroupID)
 	}
-	cfg := oncalltypes.ApplyListOpts(opts)
+	cfg := ApplyListOpts(opts)
 	return collectN(iterResources[Alert](ctx, c, pathWithParams(alertsPath, params), "alert"), cfg.Limit)
 }
 
