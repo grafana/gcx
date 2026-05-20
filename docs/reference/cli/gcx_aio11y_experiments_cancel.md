@@ -9,7 +9,8 @@ gcx aio11y experiments cancel <run-id> [flags]
 ### Options
 
 ```
-  -h, --help   help for cancel
+      --force   Skip confirmation prompt
+  -h, --help    help for cancel
 ```
 
 ### Options inherited from parent commands
