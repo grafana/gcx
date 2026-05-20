@@ -12,12 +12,29 @@ import (
 	"github.com/grafana/gcx/internal/query/infinity"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
+
+type queryOpts struct {
+	dsquery.SharedOpts
+
+	Datasource string
+}
+
+func (opts *queryOpts) setup(flags *pflag.FlagSet) {
+	dsquery.RegisterCodecs(&opts.IO, false)
+	opts.IO.BindFlags(flags)
+	opts.SetupTimeFlags(flags)
+	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.infinity is configured)")
+}
+
+func (opts *queryOpts) Validate() error {
+	return opts.SharedOpts.Validate()
+}
 
 // QueryCmd returns the `query` subcommand for an Infinity datasource parent.
 func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
-	shared := &dsquery.SharedOpts{}
-	var datasource string
+	opts := &queryOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "query [EXPR]",
@@ -40,10 +57,10 @@ Datasource is resolved from -d flag or datasources.infinity in your context.`,
   gcx datasources infinity query -d UID '$.results' -o json
 
   # Query with a time range
-gcx datasources infinity query -d UID --from now-24h --to now
+  gcx datasources infinity query -d UID --from now-24h --to now`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := shared.Validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 
@@ -67,7 +84,7 @@ gcx datasources infinity query -d UID --from now-24h --to now
 				return err
 			}
 
-			datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, datasource, cfgCtx, cfg, "infinity")
+			datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "infinity")
 			if err != nil {
 				return err
 			}
@@ -81,7 +98,7 @@ gcx datasources infinity query -d UID --from now-24h --to now
 			}
 
 			now := time.Now()
-			start, end, _, err := shared.ParseTimes(now)
+			start, end, err := opts.ParseTimeRange(now)
 			if err != nil {
 				return err
 			}
@@ -102,7 +119,7 @@ gcx datasources infinity query -d UID --from now-24h --to now
 				return fmt.Errorf("query failed: %w", err)
 			}
 
-			return shared.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}
 
@@ -111,11 +128,7 @@ gcx datasources infinity query -d UID --from now-24h --to now
 		agent.AnnotationLLMHint:   `gcx datasources infinity query -d UID '$.items' -o json`,
 	}
 
-	dsquery.RegisterCodecs(&shared.IO, false)
-	shared.IO.BindFlags(cmd.Flags())
-	shared.SetupTimeFlags(cmd.Flags())
-
-	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.infinity is configured)")
+	opts.setup(cmd.Flags())
 
 	return cmd
 }
