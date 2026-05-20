@@ -789,8 +789,12 @@ func promHandlerByExpr(targetInfo, realEdges, phantomEdges map[string]any) http.
 	}
 }
 
-// findCheckByName locates a check by exact Name match.
-func findCheckByName(checks []kg.CheckResult, name string) *kg.CheckResult {
+// findCheckByName locates the Trace context propagation check in a result.
+// The helper is single-purpose (only one check name has multiple call sites
+// that need this lookup pattern); inlining the name avoids the unparam lint
+// warning that fires when a parameter only ever takes one value.
+func findCheckByName(checks []kg.CheckResult) *kg.CheckResult {
+	const name = "Trace context propagation"
 	for i := range checks {
 		if checks[i].Name == name {
 			return &checks[i]
@@ -819,7 +823,7 @@ func TestRunDiagnose_TracePropagationBroken(t *testing.T) {
 	scope := kg.NewTestScopeFlags("prod", "", "")
 	result := kg.RunDiagnose(t.Context(), kgClient, &scope, promClient, "test-prom-uid")
 
-	check := findCheckByName(result.Checks, "Trace context propagation")
+	check := findCheckByName(result.Checks)
 	require.NotNil(t, check, "expected Trace context propagation check to be present")
 	assert.Equal(t, kg.CheckFail, check.Status)
 	assert.Contains(t, check.Detail, "phantom")
@@ -847,7 +851,7 @@ func TestRunDiagnose_TracePropagationHealthy(t *testing.T) {
 	scope := kg.NewTestScopeFlags("prod", "", "")
 	result := kg.RunDiagnose(t.Context(), kgClient, &scope, promClient, "test-prom-uid")
 
-	check := findCheckByName(result.Checks, "Trace context propagation")
+	check := findCheckByName(result.Checks)
 	assert.Nil(t, check, "Trace context propagation check should NOT appear when real edges exist")
 }
 
@@ -872,7 +876,7 @@ func TestRunDiagnose_TracePropagationNoTelemetry(t *testing.T) {
 	scope := kg.NewTestScopeFlags("prod", "", "")
 	result := kg.RunDiagnose(t.Context(), kgClient, &scope, promClient, "test-prom-uid")
 
-	check := findCheckByName(result.Checks, "Trace context propagation")
+	check := findCheckByName(result.Checks)
 	assert.Nil(t, check, "Trace context propagation check should NOT appear when there's no telemetry at all")
 }
 
@@ -897,6 +901,6 @@ func TestRunDiagnose_TracePropagationNoEnvSkipped(t *testing.T) {
 	scope := kg.NewTestScopeFlags("", "", "") // no env
 	result := kg.RunDiagnose(t.Context(), kgClient, &scope, promClient, "test-prom-uid")
 
-	check := findCheckByName(result.Checks, "Trace context propagation")
+	check := findCheckByName(result.Checks)
 	assert.Nil(t, check, "Trace context propagation check should NOT run without an env scope")
 }
