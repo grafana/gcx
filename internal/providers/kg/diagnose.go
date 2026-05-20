@@ -18,6 +18,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
+	"github.com/grafana/gcx/internal/query/tempo"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
@@ -116,8 +117,10 @@ auto-discovery. If unavailable, metric checks are skipped.`,
 
 			// Best-effort Prometheus client for metric checks.
 			promClient, datasourceUID := resolvePromClient(ctx, loader, cfg, opts.Datasource, cmd)
+			// Best-effort Tempo client for trace-side checks (e.g. db.* span coverage).
+			tempoClient, tempoDsUID := resolveTempoClient(ctx, loader, cfg, cmd)
 
-			result := runDiagnose(ctx, client, &opts.Scope, promClient, datasourceUID)
+			result := runDiagnose(ctx, client, &opts.Scope, promClient, datasourceUID, tempoClient, tempoDsUID)
 			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
@@ -233,6 +236,11 @@ asserts_env values with no deployment_environment source.`,
 // (e.g., multiple Prometheus datasources exist and no stack slug is configured).
 const defaultPromDatasourceUID = "grafanacloud-prom"
 
+// defaultTempoDatasourceUID is the conventional datasource UID for the primary
+// Tempo datasource on Grafana Cloud stacks. Used for opportunistic trace-side
+// checks in `kg diagnose` (e.g. probing for db.* span attribute coverage).
+const defaultTempoDatasourceUID = "grafanacloud-traces"
+
 // resolvePromClient creates a Prometheus query client and resolves the
 // datasource UID. Falls back to "grafanacloud-prom" (the default Grafana Cloud
 // Prometheus datasource) when auto-discovery fails, since the Knowledge Graph
@@ -265,11 +273,45 @@ func resolvePromClient(ctx context.Context, loader *providers.ConfigLoader, cfg 
 	return promClient, dsUID
 }
 
+// resolveTempoClient creates a Tempo query client and resolves the
+// datasource UID. Falls back to "grafanacloud-traces" (the default Grafana
+// Cloud Tempo datasource) when auto-discovery fails. Returns (nil, "") when
+// no Tempo client can be constructed, so callers should treat any check
+// using this as best-effort and silently skip when unavailable.
+func resolveTempoClient(ctx context.Context, loader *providers.ConfigLoader, cfg config.NamespacedRESTConfig, cmd *cobra.Command) (*tempo.Client, string) {
+	var cfgCtx *config.Context
+	fullCfg, err := loader.LoadFullConfig(ctx)
+	if err != nil {
+		logging.FromContext(ctx).Warn("could not load full config for tempo datasource resolution", slog.String("error", err.Error()))
+	} else {
+		cfgCtx = fullCfg.GetCurrentContext()
+	}
+
+	var dsUID string
+	resolved, err := dsquery.ResolveDatasource(ctx, "", cfgCtx, cfg, "tempo")
+	if err != nil {
+		// Fall back to the conventional Grafana Cloud UID. If the stack isn't
+		// Grafana Cloud or uses a non-default Tempo, the check will simply
+		// error at query time and be classified as best-effort skipped.
+		dsUID = defaultTempoDatasourceUID
+	} else {
+		dsUID = resolved.UID
+	}
+
+	tempoClient, err := tempo.NewClient(cfg)
+	if err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "  note: skipping trace checks (failed to create tempo client: %v)\n", err)
+		return nil, ""
+	}
+
+	return tempoClient, dsUID
+}
+
 // ---------------------------------------------------------------------------
 // Check runner
 // ---------------------------------------------------------------------------
 
-func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promClient *prometheus.Client, datasourceUID string) DiagnoseResult {
+func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promClient *prometheus.Client, datasourceUID string, tempoClient *tempo.Client, tempoDatasourceUID string) DiagnoseResult {
 	result := DiagnoseResult{Env: scope.env}
 
 	var (
@@ -331,6 +373,57 @@ func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promCli
 				return nil
 			})
 		}
+
+		// Container-metric image-label drift detection. The Asserts UI's
+		// Kubernetes / CPU / Memory tabs read asserts:resource, whose
+		// recording rule filters on image!="" to exclude pause containers.
+		// If the customer's Alloy config drops the image label (often via
+		// a labeldrop rule added for cardinality reduction), every series
+		// looks like a pause container and the tab silently empties.
+		g.Go(func() error {
+			if c := checkContainerImageLabelDrift(ctx, promClient, datasourceUID, scope.namespace); c != nil {
+				addCheck(*c)
+			}
+			return nil
+		})
+
+		// Resource recording rule coverage. Checks which
+		// asserts_resource_type values are populated in asserts:resource
+		// for the scoped env/namespace and flags any that are missing
+		// from the canonical expected set. Powers the K8s tab's CPU /
+		// Memory / Disk panels.
+		g.Go(func() error {
+			if c := checkResourceFamilyCoverage(ctx, promClient, datasourceUID, scope.env, scope.namespace); c != nil {
+				addCheck(*c)
+			}
+			return nil
+		})
+
+		// Split-identity detection. The same physical workload can be
+		// discovered as two Service entities when OTel `service.name`
+		// disagrees with the k8s workload name — typically because the
+		// container env sets `OTEL_SERVICE_NAME` to something other
+		// than the deployment name. KG can't merge them; the
+		// OTel-named entity has no k8s metadata and the k8s-named
+		// entity has no trace data.
+		g.Go(func() error {
+			if c := checkSplitIdentity(ctx, promClient, datasourceUID, scope.env, scope.namespace); c != nil {
+				addCheck(*c)
+			}
+			return nil
+		})
+	}
+
+	// Trace-side coverage check (skip if no Tempo client). Detects whether
+	// any spans on the stack carry db.* attributes — a prerequisite for
+	// trace-derived Service→Database CALLS edges.
+	if tempoClient != nil && tempoDatasourceUID != "" {
+		g.Go(func() error {
+			if c := checkDBInstrumentation(ctx, tempoClient, tempoDatasourceUID); c != nil {
+				addCheck(*c)
+			}
+			return nil
+		})
 	}
 
 	_ = g.Wait() // errors are captured in CheckResults, not returned
@@ -370,6 +463,18 @@ func checkOrder(name string) int {
 	}
 	if strings.HasPrefix(name, "Edge source:") {
 		return 8
+	}
+	if name == "DB instrumentation" {
+		return 9
+	}
+	if strings.HasPrefix(name, "Container label drift") {
+		return 10
+	}
+	if name == "Resource coverage" {
+		return 11
+	}
+	if name == "Split identity" {
+		return 12
 	}
 	return 50
 }
@@ -814,6 +919,374 @@ func checkEdgeSourceGap(ctx context.Context, client *prometheus.Client, datasour
 		Status:         CheckWarn,
 		Detail:         detail,
 		Recommendation: recommendation,
+	}
+}
+
+// checkDBInstrumentation probes Tempo for any span attributes in the
+// OpenTelemetry "db.*" family. When none exist, no service in the stack
+// has installed a DB client instrumentation library, which guarantees that
+// trace-derived Service→Database CALLS edges cannot form. Best-effort: any
+// transport-layer error returns nil so the check is silently skipped.
+//
+// Detects the "Service→Database edge is missing even though both
+// entities exist and the recording-rule pipeline is healthy" failure
+// mode: there is simply no span for the recording rule to consume.
+func checkDBInstrumentation(ctx context.Context, client *tempo.Client, datasourceUID string) *CheckResult {
+	resp, err := client.Tags(ctx, datasourceUID, tempo.TagsRequest{Scope: "span"})
+	if err != nil {
+		// Tempo unreachable or auth failure — skip silently.
+		return nil
+	}
+
+	dbTags := dbSpanAttributes(resp)
+	if len(dbTags) > 0 {
+		return &CheckResult{
+			Name:   "DB instrumentation",
+			Status: CheckPass,
+			Detail: fmt.Sprintf("%d db.* span attribute(s) present (%s)", len(dbTags), joinFirstN(dbTags, 5)),
+		}
+	}
+
+	return &CheckResult{
+		Name:   "DB instrumentation",
+		Status: CheckWarn,
+		Detail: "no db.* span attributes found in any span scope",
+		Recommendation: "No service on this stack is emitting OpenTelemetry database-client spans. " +
+			"Service→Database CALLS edges in Entity Graph rely on the OTel SDK reporting db.system / " +
+			"db.statement / db.operation on outbound database calls. " +
+			"Install the OTel database-client instrumentation appropriate to your language and driver: " +
+			"Python (opentelemetry-instrumentation-{psycopg2,pymysql,...}), " +
+			"Node.js (@opentelemetry/instrumentation-{pg,mysql2,mongodb,...}), " +
+			"Go (otelsql wrapping the driver, or the OpenTelemetry Go contrib instrumentation), " +
+			"Java (the JVM auto-instrumentation agent picks up JDBC drivers automatically when attached). " +
+			"Alternative (no code change): enable Beyla in your k8s-monitoring chart to derive ROUTES " +
+			"edges from eBPF network flows.",
+	}
+}
+
+// dbSpanAttributes returns all tag names from a Tempo Tags response that
+// belong to the db.* attribute family. Searches the "span" scope (and the
+// "" / unspecified scope as a fallback for older Tempo versions that don't
+// scope tag responses).
+func dbSpanAttributes(resp *tempo.TagsResponse) []string {
+	if resp == nil {
+		return nil
+	}
+	var matches []string
+	for _, scope := range resp.Scopes {
+		if scope.Name != "" && scope.Name != "span" {
+			continue
+		}
+		for _, tag := range scope.Tags {
+			if strings.HasPrefix(tag, "db.") {
+				matches = append(matches, tag)
+			}
+		}
+	}
+	return matches
+}
+
+// joinFirstN returns a comma-separated string of up to n items from s.
+// When len(s) > n, appends ", …" to indicate truncation.
+func joinFirstN(s []string, n int) string {
+	if len(s) <= n {
+		return strings.Join(s, ", ")
+	}
+	return strings.Join(s[:n], ", ") + ", …"
+}
+
+// checkContainerImageLabelDrift detects cAdvisor container metrics that
+// arrive without an `image` label. The downstream `asserts:resource`
+// recording rules for `cpu:usage` and `memory:usage` filter on
+// `image!=""` to exclude pause/sandbox containers; when the label is
+// dropped (commonly via a `labeldrop` rule in Alloy added for
+// cardinality reduction), every series looks like a pause container
+// and the Asserts UI's Kubernetes / CPU / Memory tabs silently empty.
+//
+// Detection is one PromQL count. When namespace is provided, scope the
+// probe to that namespace. Best-effort: any query error returns nil so
+// the check is silently skipped.
+//
+// Returns nil when no drift is detected.
+func checkContainerImageLabelDrift(ctx context.Context, client *prometheus.Client, datasourceUID, namespace string) *CheckResult {
+	// Always scope away from kube-system / pause containers: filter on
+	// container!="" to count only real workload containers. The "image=''"
+	// signature on a real workload container is the bug we're looking for.
+	var nsSelector string
+	if namespace != "" {
+		nsSelector = fmt.Sprintf(`,namespace="%s"`, namespace)
+	}
+	query := fmt.Sprintf(
+		`count(container_cpu_usage_seconds_total{container!="",image=""%s})`,
+		nsSelector)
+
+	resp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{Query: query})
+	if err != nil {
+		// Best-effort: skip on transport / query errors.
+		return nil
+	}
+
+	if len(resp.Data.Result) == 0 {
+		// No drift detected. Don't emit a passing check — the check is
+		// only interesting when something is wrong.
+		return nil
+	}
+
+	count := extractInstantValue(resp.Data.Result[0])
+
+	// Render a per-namespace breakdown when no namespace scope is set
+	// so the user can see which namespace(s) are affected.
+	var detail string
+	if namespace != "" {
+		detail = fmt.Sprintf(
+			"%s container series in namespace=%q have image=\"\"",
+			count, namespace)
+	} else {
+		// Probe per-namespace breakdown.
+		byNsResp, byNsErr := client.Query(ctx, datasourceUID, prometheus.QueryRequest{
+			Query: `count by (namespace)(container_cpu_usage_seconds_total{container!="",image=""})`,
+		})
+		if byNsErr == nil && len(byNsResp.Data.Result) > 0 {
+			var affected []string
+			for _, sample := range byNsResp.Data.Result {
+				ns := sample.Metric["namespace"]
+				if ns == "" || ns == "kube-system" {
+					// Pause containers in kube-system legitimately have no
+					// image label on every cluster — don't surface those.
+					continue
+				}
+				cnt := extractInstantValue(sample)
+				affected = append(affected, fmt.Sprintf("%s=%s", ns, cnt))
+			}
+			if len(affected) == 0 {
+				// Only kube-system showed up — that's expected.
+				return nil
+			}
+			detail = fmt.Sprintf(
+				"container series with image=\"\" in %d namespace(s): %s",
+				len(affected), joinFirstN(affected, 8))
+		} else {
+			detail = fmt.Sprintf(
+				"%s container series have image=\"\" outside kube-system",
+				count)
+		}
+	}
+
+	return &CheckResult{
+		Name:   "Container label drift",
+		Status: CheckWarn,
+		Detail: detail,
+		Recommendation: "The Asserts recording rules for cpu:usage and memory:usage filter on " +
+			"image!=\"\" to exclude pause/sandbox containers. When the image label is dropped " +
+			"from cAdvisor metrics, those rules produce nothing and the Kubernetes / CPU / " +
+			"Memory tabs in the Asserts UI silently empty for that namespace. " +
+			"Most common cause: a `labeldrop` rule in your Alloy `clusterMetrics.cadvisor." +
+			"extraMetricProcessingRules` (or equivalent kubelet / kube-state-metrics block) " +
+			"matching `image.*`. Remove the drop rule and re-apply the chart; tabs populate " +
+			"after one recording-rule cycle (~5 min).",
+	}
+}
+
+// expectedResourceTypes is the canonical set of asserts_resource_type
+// values that should be populated for a healthy stack. Powers the
+// Asserts UI's Kubernetes / CPU / Memory / Disk tabs. Pulled from
+// observed values on Grafana Cloud reference stacks.
+var expectedResourceTypes = []string{
+	"cpu:usage",
+	"cpu:throttle",
+	"memory:usage",
+	"disk:usage",
+	"disk:inode_usage",
+}
+
+// checkResourceFamilyCoverage probes which `asserts_resource_type` values
+// are populated in `asserts:resource` for the scoped env/namespace and
+// flags any expected types that are missing. Each missing type
+// corresponds to an empty panel in the Asserts UI's resource-family
+// tabs (CPU, Memory, Disk).
+//
+// Returns nil when all expected types are present (no surface noise on
+// a healthy stack) or when no resource metrics flow at all (Asserts
+// app may not yet be onboarded — earlier checks cover that case).
+func checkResourceFamilyCoverage(ctx context.Context, client *prometheus.Client, datasourceUID, env, namespace string) *CheckResult {
+	var parts []string
+	if env != "" {
+		parts = append(parts, fmt.Sprintf(`asserts_env="%s"`, env))
+	}
+	if namespace != "" {
+		parts = append(parts, fmt.Sprintf(`namespace="%s"`, namespace))
+	}
+	selector := ""
+	if len(parts) > 0 {
+		selector = "{" + strings.Join(parts, ", ") + "}"
+	}
+
+	query := fmt.Sprintf(
+		`group by (asserts_resource_type)(asserts:resource%s)`, selector)
+	resp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{Query: query})
+	if err != nil {
+		return nil
+	}
+
+	if len(resp.Data.Result) == 0 {
+		// No asserts:resource series at all for this scope. Either the
+		// scope has no workloads or earlier checks flagged the Asserts
+		// pipeline as broken — either way, this check has nothing useful
+		// to add. Stay silent.
+		return nil
+	}
+
+	present := make(map[string]bool, len(resp.Data.Result))
+	for _, sample := range resp.Data.Result {
+		if rt := sample.Metric["asserts_resource_type"]; rt != "" {
+			present[rt] = true
+		}
+	}
+
+	var missing []string
+	for _, want := range expectedResourceTypes {
+		if !present[want] {
+			missing = append(missing, want)
+		}
+	}
+
+	if len(missing) == 0 {
+		// All expected types present — quiet success.
+		return nil
+	}
+
+	scopeLabel := "this stack"
+	switch {
+	case namespace != "" && env != "":
+		scopeLabel = fmt.Sprintf("namespace=%q (env=%q)", namespace, env)
+	case namespace != "":
+		scopeLabel = fmt.Sprintf("namespace=%q", namespace)
+	case env != "":
+		scopeLabel = fmt.Sprintf("env=%q", env)
+	}
+
+	return &CheckResult{
+		Name:   "Resource coverage",
+		Status: CheckWarn,
+		Detail: fmt.Sprintf(
+			"asserts:resource for %s is missing %d of %d expected asserts_resource_type values: %s",
+			scopeLabel, len(missing), len(expectedResourceTypes), strings.Join(missing, ", ")),
+		Recommendation: "The Asserts UI's Kubernetes / CPU / Memory / Disk tabs each read a specific " +
+			"asserts_resource_type from asserts:resource. A missing type means the corresponding tab " +
+			"panel will be empty for the affected scope. " +
+			"For missing cpu:usage / memory:usage, see the `Container label drift` check (above) " +
+			"and the Step 6 `image` label callout in the diagnose-entity-graph skill. " +
+			"For other missing types, verify the upstream raw metrics flow " +
+			"(container_cpu_*, container_memory_*, kubelet_volume_stats_*) and that the relabeling " +
+			"pipeline produces non-empty `asserts_env` for them.",
+	}
+}
+
+// checkSplitIdentity detects the case where one physical workload is
+// discovered as two distinct Service entities because OTel `service.name`
+// disagrees with the k8s workload name. KG can't merge them: the
+// OTel-named entity has no k8s metadata (`workload`, `cluster`,
+// `workload_type`), and the k8s-named entity has no trace data.
+//
+// Detection signal: `asserts:mixin_workload_job` is grouped by both
+// `job` (always the k8s `namespace/workload`) and `service` (always
+// the OTel `service.name`). When a single `job` maps to multiple
+// distinct `service` values, that's a collision.
+//
+// Returns nil when no collisions are detected, when the scope has no
+// `asserts:mixin_workload_job` series at all, or on transport error
+// (best-effort; earlier checks cover the empty case).
+func checkSplitIdentity(ctx context.Context, client *prometheus.Client, datasourceUID, env, namespace string) *CheckResult {
+	var parts []string
+	if env != "" {
+		parts = append(parts, fmt.Sprintf(`asserts_env="%s"`, env))
+	}
+	if namespace != "" {
+		parts = append(parts, fmt.Sprintf(`namespace="%s"`, namespace))
+	}
+	selector := ""
+	if len(parts) > 0 {
+		selector = "{" + strings.Join(parts, ", ") + "}"
+	}
+
+	query := fmt.Sprintf(
+		`group by (job, service) (asserts:mixin_workload_job%s)`, selector)
+	resp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{Query: query})
+	if err != nil || len(resp.Data.Result) == 0 {
+		// No data → either no workloads in scope or earlier checks
+		// flagged the pipeline. Stay silent.
+		return nil
+	}
+
+	// Aggregate: for each `job`, collect the set of `service` values.
+	jobToServices := map[string]map[string]struct{}{}
+	for _, sample := range resp.Data.Result {
+		job := sample.Metric["job"]
+		svc := sample.Metric["service"]
+		if job == "" || svc == "" {
+			continue
+		}
+		if _, ok := jobToServices[job]; !ok {
+			jobToServices[job] = map[string]struct{}{}
+		}
+		jobToServices[job][svc] = struct{}{}
+	}
+
+	// Find jobs with more than one distinct service name.
+	type collision struct {
+		job      string
+		services []string
+	}
+	var collisions []collision
+	for job, services := range jobToServices {
+		if len(services) < 2 {
+			continue
+		}
+		names := make([]string, 0, len(services))
+		for s := range services {
+			names = append(names, s)
+		}
+		sort.Strings(names)
+		collisions = append(collisions, collision{job: job, services: names})
+	}
+
+	if len(collisions) == 0 {
+		return nil
+	}
+
+	// Stable output order for deterministic detail rendering.
+	sort.Slice(collisions, func(i, j int) bool {
+		return collisions[i].job < collisions[j].job
+	})
+
+	var bullets []string
+	for _, c := range collisions {
+		bullets = append(bullets, fmt.Sprintf("%s → %s", c.job, strings.Join(c.services, ", ")))
+	}
+
+	scopeLabel := "this stack"
+	switch {
+	case namespace != "" && env != "":
+		scopeLabel = fmt.Sprintf("namespace=%q (env=%q)", namespace, env)
+	case namespace != "":
+		scopeLabel = fmt.Sprintf("namespace=%q", namespace)
+	case env != "":
+		scopeLabel = fmt.Sprintf("env=%q", env)
+	}
+
+	return &CheckResult{
+		Name:   "Split identity",
+		Status: CheckWarn,
+		Detail: fmt.Sprintf(
+			"%d workload(s) in %s map to multiple Service entities: %s",
+			len(collisions), scopeLabel, strings.Join(bullets, "; ")),
+		Recommendation: "One physical workload is being discovered as two distinct Service entities " +
+			"because OTel `service.name` disagrees with the k8s workload name. The OTel-named entity " +
+			"has no k8s metadata and the k8s-named entity has no trace data — neither is fully usable. " +
+			"Usual cause: the container env sets `OTEL_SERVICE_NAME` (or `service.name` via " +
+			"`OTEL_RESOURCE_ATTRIBUTES`) to a value other than the deployment name. " +
+			"Fix: set `OTEL_SERVICE_NAME` to match the k8s workload, rename the workload to match, " +
+			"or configure Asserts relabel rules to reconcile the two.",
 	}
 }
 

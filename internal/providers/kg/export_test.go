@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/grafana/gcx/internal/query/prometheus"
+	"github.com/grafana/gcx/internal/query/tempo"
 )
 
 // ScopeFlags is an exported alias for scopeFlags, used only in tests.
@@ -35,8 +36,16 @@ func FilterByInsightMatchers(results []SearchResult, matchers []InsightMatcher) 
 
 // RunDiagnose wraps the unexported runDiagnose function for testing.
 // Pass nil promClient and empty datasourceUID to skip metric checks.
+// Trace-side checks are skipped (nil tempo client); use RunDiagnoseWithTempo
+// to exercise those.
 func RunDiagnose(ctx context.Context, client *Client, scope *ScopeFlags, promClient *prometheus.Client, datasourceUID string) DiagnoseResult {
-	return runDiagnose(ctx, client, scope, promClient, datasourceUID)
+	return runDiagnose(ctx, client, scope, promClient, datasourceUID, nil, "")
+}
+
+// RunDiagnoseWithTempo wraps runDiagnose with full client wiring for tests
+// that exercise both metric and trace-side checks.
+func RunDiagnoseWithTempo(ctx context.Context, client *Client, scope *ScopeFlags, promClient *prometheus.Client, datasourceUID string, tempoClient *tempo.Client, tempoDatasourceUID string) DiagnoseResult {
+	return runDiagnose(ctx, client, scope, promClient, datasourceUID, tempoClient, tempoDatasourceUID)
 }
 
 // RunServiceDiagnose wraps the unexported runServiceDiagnose function for testing.
@@ -47,4 +56,27 @@ func RunServiceDiagnose(ctx context.Context, client *Client, serviceName string,
 // RunLabelsDiagnose wraps the unexported runLabelsDiagnose function for testing.
 func RunLabelsDiagnose(ctx context.Context, client *Client, promClient *prometheus.Client, datasourceUID string) LabelsDiagnoseResult {
 	return runLabelsDiagnose(ctx, client, promClient, datasourceUID)
+}
+
+// CheckContainerImageLabelDrift wraps the unexported check for testing.
+func CheckContainerImageLabelDrift(ctx context.Context, client *prometheus.Client, datasourceUID, namespace string) *CheckResult {
+	return checkContainerImageLabelDrift(ctx, client, datasourceUID, namespace)
+}
+
+// CheckResourceFamilyCoverage wraps the unexported check for testing.
+func CheckResourceFamilyCoverage(ctx context.Context, client *prometheus.Client, datasourceUID, env, namespace string) *CheckResult {
+	return checkResourceFamilyCoverage(ctx, client, datasourceUID, env, namespace)
+}
+
+// CheckSplitIdentity wraps the unexported check for testing.
+func CheckSplitIdentity(ctx context.Context, client *prometheus.Client, datasourceUID, env, namespace string) *CheckResult {
+	return checkSplitIdentity(ctx, client, datasourceUID, env, namespace)
+}
+
+// ExpectedResourceTypes exposes the canonical asserts_resource_type set
+// for assertion in tests.
+func ExpectedResourceTypes() []string {
+	out := make([]string, len(expectedResourceTypes))
+	copy(out, expectedResourceTypes)
+	return out
 }

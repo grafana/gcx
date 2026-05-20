@@ -1,13 +1,17 @@
 ---
 name: diagnose-entity-graph
 description: >
-  Diagnose Entity Graph problems: missing entities, missing edges, disconnected
-  clusters, or filtering issues. Use when the user reports that Entity Graph
-  doesn't look right, services are missing, edges aren't appearing, or
-  environments can't be filtered. Triggers for: "entity graph is empty",
-  "services missing from entity graph", "no edges in entity graph",
+  Diagnose Entity Graph and Asserts UI problems: missing entities, missing
+  edges, disconnected clusters, filtering issues, and empty UI tabs
+  (Kubernetes, CPU, Memory). Use when the user reports that Entity Graph
+  doesn't look right, services are missing, edges aren't appearing,
+  environments can't be filtered, or specific Asserts panels are blank
+  despite the integration being installed. Triggers for: "entity graph is
+  empty", "services missing from entity graph", "no edges in entity graph",
   "disconnected services", "can't filter entity graph", "entity graph not
-  working", "diagnose entity graph", "debug knowledge graph".
+  working", "diagnose entity graph", "debug knowledge graph",
+  "Kubernetes tab is empty", "no CPU/memory data in Asserts",
+  "Memory tab shows nothing", "saturation chart is blank".
 ---
 
 # Diagnose Entity Graph
@@ -180,6 +184,21 @@ Environment page as above.
 server-side with `asserts_env` already populated, bypassing the Mimir
 relabeling pipeline entirely.
 
+### Service→Database edges: a special case
+
+Service→Database CALLS edges require the calling service to emit
+OpenTelemetry database-client spans (so Tempo's service graph
+processor can see `db.system` / `db.statement` / `db.operation` on
+outbound calls). HTTP auto-instrumentation alone is not enough —
+the language-specific DB instrumentation library must be installed
+and registered too.
+
+When `gcx kg diagnose` emits a **`DB instrumentation: WARN`** check
+(present when a Tempo datasource is available), no service on the
+stack is emitting DB-client spans. The check's `Recommendation`
+field names the relevant library per language and the Beyla
+ROUTES alternative; read it as the primary playbook.
+
 ## Step 6: Label Pipeline
 
 The most common issue: `deployment_environment` isn't mapped to `asserts_env`.
@@ -198,16 +217,54 @@ Extra `asserts_env` values (like AWS account IDs) that don't match any
 
 **Shortcut:** `gcx kg diagnose labels` automates this cross-reference.
 
+### The `image` label is also load-bearing
+
+When `gcx kg diagnose` emits a **`Container label drift: WARN`**
+check, cAdvisor `container_*` metrics in the named namespace are
+arriving with `image=""`. The downstream `asserts:resource`
+recording rule for `cpu:usage` and `memory:usage` filters on
+`image!=""` to exclude pause containers, so dropping the `image`
+label silently empties the Asserts UI's Kubernetes / CPU / Memory
+tabs for that namespace. The check's `Recommendation` field names
+the typical source (an Alloy `extraMetricProcessingRules` block
+with `labeldrop regex = "image.*"`, often added for cardinality
+reduction) and the fix.
+
+A complementary `Resource coverage` check runs alongside it: when
+the `asserts:resource` recording rule produces some types but is
+missing expected ones (e.g. has `cpu:throttle` but no `cpu:usage`),
+the K8s tab's CPU panel will be empty even though the underlying
+rule is partially working. The two checks together tell the user
+which UI tab is broken (Resource coverage) and why (Container label
+drift, or another label-pipeline issue).
+
 ## Step 7: Per-Service Investigation
 
-For a specific missing or edge-less service:
+Before investigating *why* a service is broken, confirm it exists.
+If a user names an entity that doesn't appear in the graph at all,
+that is itself the finding — report it directly, don't fabricate a
+diagnosis. When the type is uncertain, use a cross-type Cypher
+query so the limit is enforced server-side rather than after a
+client-side fan-out:
+
+```bash
+gcx kg entities query "MATCH (n) WHERE n.name CONTAINS 'SERVICE' RETURN n LIMIT 10" --since 1h
+```
+
+If that query returns no results and
+`traces_target_info{service_name="SERVICE"}` is also empty, the
+entity is not on this stack. State that conclusion plainly; the
+correct next question is whether the user meant a different stack,
+env, or spelling.
+
+For a service that *does* exist but appears missing or edge-less:
 
 ```bash
 # Find in graph
-gcx kg cypher "MATCH (s:Service {name: \"SERVICE\"}) RETURN s" --since 1h
+gcx kg entities query "MATCH (s:Service {name: \"SERVICE\"}) RETURN s" --since 1h
 
 # Check relationships
-gcx kg cypher "MATCH (s:Service {name: \"SERVICE\"})-[r]-(other) RETURN s, r, other" --since 1h
+gcx kg entities query "MATCH (s:Service {name: \"SERVICE\"})-[r]-(other) RETURN s, r, other" --since 1h
 
 # Source metrics
 gcx metrics query 'count(traces_service_graph_request_total{client="SERVICE"})' --since 1h
@@ -227,6 +284,16 @@ gcx metrics query 'count(asserts:mixin_workload_job{service="SERVICE"})' --since
 
 **Shortcut:** `gcx kg diagnose service SERVICE --env ENV` runs all checks and
 produces an interpreted diagnosis with suggested next steps.
+
+### Split-identity entities
+
+When `gcx kg diagnose` emits a **`Split identity: WARN`** check,
+one physical workload has been discovered as two distinct Service
+entities — the OTel `service.name` and the k8s workload name
+disagree. The OTel-named entity has no k8s metadata; the k8s-named
+entity has no trace data. The check's `Recommendation` names the
+fix path (align `OTEL_SERVICE_NAME` with the k8s deployment, or
+configure Asserts relabel rules to reconcile).
 
 ## Producing a Report
 
