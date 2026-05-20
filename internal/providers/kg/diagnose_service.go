@@ -217,9 +217,11 @@ func runServiceDiagnose(ctx context.Context, client *Client, serviceName string,
 	}
 
 	// Step 5: Interpret results.
+	// computeSummary runs before interpretServiceResults so the diagnosis
+	// can derive its verdict from the actual pass/fail counts.
+	result.computeSummary()
 	result.Diagnosis, result.NextSteps = interpretServiceResults(&result)
 
-	result.computeSummary()
 	return result
 }
 
@@ -403,7 +405,24 @@ func interpretServiceResults(r *ServiceDiagnoseResult) ([]string, []string) {
 	}
 
 	if entityFound && hasEdges {
-		diagnosis = append(diagnosis, fmt.Sprintf("Service %q looks healthy — found in graph with %d edge(s).", r.ServiceName, len(r.Edges)))
+		// Only declare "looks healthy" when every check actually passed.
+		// Previously this branch fired any time the entity existed with
+		// edges, regardless of other check failures — producing
+		// internally contradictory output like "4/8 checks passed, 4
+		// failed" followed by "Service looks healthy".
+		if r.Summary.Failed == 0 {
+			diagnosis = append(diagnosis, fmt.Sprintf("Service %q looks healthy — found in graph with %d edge(s).", r.ServiceName, len(r.Edges)))
+		} else {
+			var failedNames []string
+			for _, c := range r.Checks {
+				if c.Status == CheckFail {
+					failedNames = append(failedNames, c.Name)
+				}
+			}
+			diagnosis = append(diagnosis,
+				fmt.Sprintf("Service %q is in the graph with %d edge(s), but %d check(s) failed: %s. See Recommendations above for details.",
+					r.ServiceName, len(r.Edges), r.Summary.Failed, strings.Join(failedNames, ", ")))
+		}
 	}
 
 	return diagnosis, nextSteps
