@@ -245,8 +245,12 @@ gcx traces query '{.cluster="dev-us-central-0"}' --since 1h
 
 gcx ships a portable Agent Skills bundle for setup, dashboard GitOps,
 datasource exploration, alert investigation, structured debugging, SLO
-management, Synthetic Monitoring workflows, project scaffolding, resource
-generation and import, and end-to-end observability rollout.
+management, Synthetic Monitoring workflows, Knowledge Graph diagnosis,
+project scaffolding, resource generation and import, and end-to-end
+observability rollout.
+
+See the [full skill inventory](claude-plugin/README.md#skills) in the Claude
+plugin README.
 
 **For Claude Code**
 
@@ -263,9 +267,10 @@ For example: OpenAI Codex, OpenCode, and Pi. View the skills shipped in the bund
 
 ```sh
 gcx agent skills list
-18 skill(s) bundled with gcx
+20 skill(s) bundled with gcx
 
 SKILL                      INSTALLED    DESCRIPTION
+diagnose-entity-graph      no           Diagnose Knowledge Graph problems: missing entities, missing edges, ...
 explore-datasources        yes          Discover what datasources, metrics, labels, and log streams are available in a Grafana instance.
 gcx-observability          yes          (Experimental) End-to-end observability setup for Grafana Cloud.
 ....
@@ -274,6 +279,12 @@ gcx-observability          yes          (Experimental) End-to-end observability 
 Install the bundle into `~/.agents/skills` with:
 ```sh
 gcx agent skills install --all
+```
+
+Or install a single skill by name:
+
+```sh
+gcx agent skills install diagnose-entity-graph
 ```
 
 If your installed skills drift from the bundle shipped in your current `gcx`
@@ -288,6 +299,19 @@ To disable that reminder entirely, set:
 ```sh
 export GCX_NO_UPDATE_NOTIFIER=1
 ```
+
+### How to use a skill
+
+You do not name skills. Once installed, your agent loads each skill's
+`description` frontmatter at the start of a conversation and auto-invokes
+the matching SKILL.md when your phrasing matches its trigger words.
+
+For example, saying *"my entity graph looks empty"* or *"diagnose knowledge
+graph"* matches `diagnose-entity-graph` and pulls in its full step-by-step
+workflow — no need to know the skill name.
+
+If a skill doesn't trigger automatically, name it explicitly:
+*"use the diagnose-entity-graph skill"*.
 
 ## The Agentic Workflow
 
