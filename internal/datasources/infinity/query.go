@@ -40,7 +40,7 @@ Datasource is resolved from -d flag or datasources.infinity in your context.`,
   gcx datasources infinity query -d UID '$.results' -o json
 
   # Query with a time range
-  gcx datasources infinity query -d UID --from 2024-01-01 --to 2024-01-02`,
+gcx datasources infinity query -d UID --from now-24h --to now
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
