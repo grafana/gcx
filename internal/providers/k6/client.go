@@ -10,17 +10,18 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/grafana/gcx/internal/httputils"
 )
 
 const (
-	// DefaultAPIDomain is the default k6 Cloud API domain.
-	DefaultAPIDomain = "https://api.k6.io"
+	// pluginProxy forwards requests to api.k6.io with
+	// stack-scoped credentials injected by the Grafana Cloud k6 plugin.
+	pluginProxyBasePath         = "/api/plugins/k6-app/resources/cloud"
+	pluginProxyOrganizationPath = "/api/plugins/k6-app/resources/organization"
 
-	authPath       = "/v3/account/grafana-app/start"
 	envVarsPathFmt = "/v3/organizations/%d/envvars"
 	projectsPath   = "/cloud/v6/projects"
 	loadTestsPath  = "/cloud/v6/load_tests"
@@ -30,82 +31,104 @@ const (
 )
 
 // Client is an HTTP client for the k6 Cloud API.
-// It must be authenticated before use by calling Authenticate.
+// It routes every k6 API call through the grafana-k6-app plugin proxy.
 type Client struct {
-	apiDomain string
-	orgID     int
-	stackID   int
-	token     string
+	host      string
+	proxyBase string
 	http      *http.Client
+
+	mu          sync.Mutex
+	cachedToken string // memoized result of /v3/account/me
+	cachedOrgID int    // memoized result of /organization, used only by env var methods
 }
 
-// NewClient creates a new k6 Cloud client with the given API domain.
-// If httpClient is nil, a default client with a 60-second timeout is used.
-func NewClient(ctx context.Context, apiDomain string, httpClient *http.Client) *Client {
-	if apiDomain == "" {
-		apiDomain = DefaultAPIDomain
+// NewClient creates a Client that routes every k6 API call through the
+// grafana-k6-app plugin proxy on host. authClient must carry the
+// Grafana auth — typically a client built from a rest.Config wrapped with
+// RefreshTransport, so the OAuth bearer is injected (and refreshed before
+// expiry) on every request.
+func NewClient(ctx context.Context, host string, authClient *http.Client) *Client {
+	if authClient == nil {
+		authClient = httputils.NewDefaultClient(ctx)
 	}
-	if httpClient == nil {
-		httpClient = httputils.NewDefaultClient(ctx)
-	}
+	base := strings.TrimRight(host, "/")
 	return &Client{
-		apiDomain: strings.TrimRight(apiDomain, "/"),
-		http:      httpClient,
+		host:      base,
+		proxyBase: base + pluginProxyBasePath,
+		http:      authClient,
 	}
 }
 
-// Authenticate exchanges a Grafana Cloud AP token for a k6 API token.
-// The grafanaUser is typically "admin" for service account tokens.
-func (c *Client) Authenticate(ctx context.Context, apToken string, stackID int) error {
-	stackStr := strconv.Itoa(stackID)
-
-	body, err := json.Marshal(struct{}{})
-	if err != nil {
-		return fmt.Errorf("k6: marshal auth request: %w", err)
+// orgID hits /organization on the plugin to discover the k6 organization ID
+// for legacy APIs. The result is memoised for the life of the client.
+func (c *Client) orgID(ctx context.Context) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.cachedOrgID != 0 {
+		return c.cachedOrgID, nil
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.apiDomain+authPath, bytes.NewReader(body))
+	url := c.host + pluginProxyOrganizationPath
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return fmt.Errorf("k6: create auth request: %w", err)
+		return 0, fmt.Errorf("k6: create org id request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Grafana-Key", apToken)
-	req.Header.Set("X-Stack-Id", stackStr)
-	req.Header.Set("X-Grafana-User", "admin")
-	req.Header.Set("X-Grafana-Service-Token", apToken)
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("k6: auth request: %w", err)
+		return 0, fmt.Errorf("k6: fetch org id: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("k6: token exchange failed (PUT %s, status %d): %s", authPath, resp.StatusCode, string(respBody))
+		return 0, fmt.Errorf("k6: identity discovery failed (GET %s, status %d): %s", url, resp.StatusCode, string(respBody))
 	}
 
-	var authResp authResponse
-	if err := json.NewDecoder(resp.Body).Decode(&authResp); err != nil {
-		return fmt.Errorf("k6: decode auth response: %w", err)
+	var orgResp struct {
+		OrganizationID int `json:"organization_id"`
 	}
-
-	orgID, err := strconv.Atoi(authResp.OrgID)
-	if err != nil {
-		return fmt.Errorf("k6: parse organization_id %q: %w", authResp.OrgID, err)
+	if err := json.NewDecoder(resp.Body).Decode(&orgResp); err != nil {
+		return 0, fmt.Errorf("k6: decode organization response: %w", err)
 	}
-
-	c.orgID = orgID
-	c.stackID = stackID
-	c.token = authResp.V3GrafanaToken
-	return nil
+	c.cachedOrgID = orgResp.OrganizationID
+	return c.cachedOrgID, nil
 }
 
-// OrgID returns the k6 organization ID after authentication.
-func (c *Client) OrgID() int { return c.orgID }
+// Token returns the user's k6 Personal API token. It is fetched on demand from
+// /v3/account/me through the proxy and memoised for the life of the client.
+func (c *Client) Token(ctx context.Context) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.cachedToken != "" {
+		return c.cachedToken, nil
+	}
 
-// Token returns the authenticated k6 v3 token.
-func (c *Client) Token() string { return c.token }
+	resp, err := c.doJSON(ctx, http.MethodGet, "/v3/account/me", nil)
+	if err != nil {
+		return "", fmt.Errorf("k6: fetch account: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("k6: fetch account: status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var me struct {
+		Token struct {
+			Key string `json:"key"`
+		} `json:"token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&me); err != nil {
+		return "", fmt.Errorf("k6: decode /v3/account/me: %w", err)
+	}
+	if me.Token.Key == "" {
+		return "", errors.New("k6: /v3/account/me returned empty token.key")
+	}
+	c.cachedToken = me.Token.Key
+	return c.cachedToken, nil
+}
 
 // ---------------------------------------------------------------------------
 // HTTP helpers
@@ -120,15 +143,11 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body any) (*ht
 		}
 		bodyReader = bytes.NewReader(b)
 	}
-
-	req, err := http.NewRequestWithContext(ctx, method, c.apiDomain+path, bodyReader)
+	req, err := http.NewRequestWithContext(ctx, method, c.proxyBase+path, bodyReader)
 	if err != nil {
 		return nil, fmt.Errorf("k6: create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("X-Stack-Id", strconv.Itoa(c.stackID))
-
 	return c.http.Do(req)
 }
 
@@ -148,18 +167,16 @@ func readErrorBody(resp *http.Response) string {
 	return string(b)
 }
 
-// doRaw performs a raw HTTP request with Bearer + X-Stack-Id headers.
+// doRaw performs a raw HTTP request through the plugin proxy.
 // Used for multipart/form-data and application/octet-stream requests.
 func (c *Client) doRaw(ctx context.Context, method, path, contentType string, body io.Reader) (int, []byte, error) {
-	req, err := http.NewRequestWithContext(ctx, method, c.apiDomain+path, body)
+	req, err := http.NewRequestWithContext(ctx, method, c.proxyBase+path, body)
 	if err != nil {
 		return 0, nil, fmt.Errorf("k6: create raw request: %w", err)
 	}
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("X-Stack-Id", strconv.Itoa(c.stackID))
 
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -521,11 +538,12 @@ func (c *Client) ListTestRuns(ctx context.Context, loadTestID int) ([]TestRunSta
 
 // ListEnvVars retrieves all environment variables for the organization.
 func (c *Client) ListEnvVars(ctx context.Context) ([]EnvVar, error) {
-	if c.orgID == 0 {
-		return nil, errors.New("k6: client not authenticated (no org ID)")
+	id, err := c.orgID(ctx)
+	if err != nil {
+		return nil, err
 	}
 
-	path := fmt.Sprintf(envVarsPathFmt, c.orgID)
+	path := fmt.Sprintf(envVarsPathFmt, id)
 	resp, err := c.doJSON(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("k6: list env vars: %w", err)
@@ -545,11 +563,12 @@ func (c *Client) ListEnvVars(ctx context.Context) ([]EnvVar, error) {
 
 // CreateEnvVar creates a new environment variable.
 func (c *Client) CreateEnvVar(ctx context.Context, name, value, description string) (*EnvVar, error) {
-	if c.orgID == 0 {
-		return nil, errors.New("k6: client not authenticated (no org ID)")
+	id, err := c.orgID(ctx)
+	if err != nil {
+		return nil, err
 	}
 
-	path := fmt.Sprintf(envVarsPathFmt, c.orgID)
+	path := fmt.Sprintf(envVarsPathFmt, id)
 	resp, err := c.doJSON(ctx, http.MethodPost, path, envVarRequest{Name: name, Value: value, Description: description})
 	if err != nil {
 		return nil, fmt.Errorf("k6: create env var: %w", err)
@@ -569,11 +588,12 @@ func (c *Client) CreateEnvVar(ctx context.Context, name, value, description stri
 
 // UpdateEnvVar updates an existing environment variable.
 func (c *Client) UpdateEnvVar(ctx context.Context, id int, name, value, description string) error {
-	if c.orgID == 0 {
-		return errors.New("k6: client not authenticated (no org ID)")
+	orgID, err := c.orgID(ctx)
+	if err != nil {
+		return err
 	}
 
-	path := fmt.Sprintf(envVarsPathFmt+"/%d", c.orgID, id)
+	path := fmt.Sprintf(envVarsPathFmt+"/%d", orgID, id)
 	resp, err := c.doJSON(ctx, http.MethodPatch, path, envVarRequest{Name: name, Value: value, Description: description})
 	if err != nil {
 		return fmt.Errorf("k6: update env var: %w", err)
@@ -588,11 +608,12 @@ func (c *Client) UpdateEnvVar(ctx context.Context, id int, name, value, descript
 
 // DeleteEnvVar deletes an environment variable by ID.
 func (c *Client) DeleteEnvVar(ctx context.Context, id int) error {
-	if c.orgID == 0 {
-		return errors.New("k6: client not authenticated (no org ID)")
+	orgID, err := c.orgID(ctx)
+	if err != nil {
+		return err
 	}
 
-	path := fmt.Sprintf(envVarsPathFmt+"/%d", c.orgID, id)
+	path := fmt.Sprintf(envVarsPathFmt+"/%d", orgID, id)
 	resp, err := c.doJSON(ctx, http.MethodDelete, path, nil)
 	if err != nil {
 		return fmt.Errorf("k6: delete env var: %w", err)
