@@ -929,5 +929,11 @@ func (c *Client) CreateDirectPaging(ctx context.Context, input oncalltypes.Direc
 	return &oncalltypes.DirectPagingResult{AlertGroupID: p.AlertGroupID}, nil
 }
 
+// ListEscalationStepOptions is not exposed on the OnCall public API. Use the
+// plugin-proxy client (default in gcx) for escalation step discovery.
+func (c *Client) ListEscalationStepOptions(_ context.Context) ([]oncalltypes.EscalationStepOption, error) {
+	return nil, errors.New("irm: ListEscalationStepOptions is only available via the IRM plugin proxy, not the OnCall public API")
+}
+
 // Compile-time check.
 var _ oncalltypes.OnCallAPI = (*Client)(nil)

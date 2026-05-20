@@ -321,3 +321,37 @@ type FilterEventsResponse struct {
 	Type   any               `json:"type"`
 	Events []FinalShiftEvent `json:"events"`
 }
+
+// EscalationStepOption describes one allowed value of an escalation policy's
+// `step` field. Returned by GET /escalation_policies/escalation_options/.
+type EscalationStepOption struct {
+	Value                    int    `json:"value"`
+	CreateDisplayName        string `json:"create_display_name"`
+	DisplayName              string `json:"display_name"`
+	SlackIntegrationRequired bool   `json:"slack_integration_required,omitempty"`
+}
+
+// WebhookTriggerOption describes one allowed value of a webhook's
+// `trigger_type` field. Sourced from a static catalog (no public API
+// endpoint surfaces this enum at present).
+type WebhookTriggerOption struct {
+	Value       int    `json:"value"`
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+}
+
+// WebhookPresetOption describes one allowed value of a webhook's `preset`
+// field. Sourced from a static catalog.
+type WebhookPresetOption struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+
+// RouteFilterType describes one allowed value of a route's
+// `filtering_term_type` field.
+type RouteFilterType struct {
+	Value       int    `json:"value"`
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+}

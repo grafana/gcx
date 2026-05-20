@@ -113,6 +113,33 @@ func TestGetIntegration(t *testing.T) {
 	}
 }
 
+func TestListEscalationStepOptions(t *testing.T) {
+	t.Parallel()
+
+	client := newTestOnCallClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		wantPath := irm.BasePath + "/escalation_policies/escalation_options/"
+		if r.URL.Path != wantPath {
+			t.Errorf("got path %q, want %q", r.URL.Path, wantPath)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]map[string]any{ //nolint:errcheck
+			{"value": 0, "create_display_name": "Wait", "display_name": "Wait"},
+			{"value": 19, "create_display_name": "Declare Incident", "display_name": "Declare Incident"},
+		})
+	}))
+
+	items, err := client.ListEscalationStepOptions(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 options, got %d", len(items))
+	}
+	if items[1].Value != 19 || items[1].CreateDisplayName != "Declare Incident" {
+		t.Errorf("unexpected second option: %+v", items[1])
+	}
+}
+
 func TestPaginationExtractsPathFromBackendURL(t *testing.T) {
 	t.Parallel()
 

@@ -21,3 +21,27 @@ func NewTestListCommand(labels []string, dateFrom, dateTo string) *cobra.Command
 	opts.setup(cmd.Flags())
 	return cmd
 }
+
+// NewTestOnCallNounCmds returns the OnCall noun command builders for
+// structural conformance testing. Construction is safe with a nil loader
+// because the loader is only invoked inside RunE.
+func NewTestOnCallNounCmds() []*cobra.Command {
+	return []*cobra.Command{
+		newIntegrationsCmd(nil),
+		newEscalationChainsCmd(nil),
+		newEscalationPoliciesCmd(nil),
+		newSchedulesCmd(nil),
+		newShiftsCmd(nil),
+		newRoutesCmd(nil),
+		newWebhooksCmd(nil),
+		newAlertGroupsCommand(nil),
+		newUsersCommand(nil),
+		newTeamsCmd(nil),
+		newUserGroupsCmd(nil),
+		newSlackChannelsCmd(nil),
+		newAlertsCmd(nil),
+		newOrganizationsCmd(nil),
+		newResolutionNotesCmd(nil),
+		newShiftSwapsCmd(nil),
+	}
+}

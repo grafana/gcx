@@ -1,11 +1,18 @@
-## gcx irm oncall shift-swaps
+## gcx irm oncall integrations update
 
-Manage shift swaps.
+Update an integration by ID.
+
+```
+gcx irm oncall integrations update <id> [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for shift-swaps
+  -f, --filename string   File containing the resource definition (JSON/YAML, use - for stdin)
+  -h, --help              help for update
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, yaml (default "yaml")
 ```
 
 ### Options inherited from parent commands
@@ -22,10 +29,5 @@ Manage shift swaps.
 
 ### SEE ALSO
 
-* [gcx irm oncall](gcx_irm_oncall.md)	 - Manage Grafana OnCall resources.
-* [gcx irm oncall shift-swaps create](gcx_irm_oncall_shift-swaps_create.md)	 - Create a shift swap.
-* [gcx irm oncall shift-swaps delete](gcx_irm_oncall_shift-swaps_delete.md)	 - Delete a shift swap by ID.
-* [gcx irm oncall shift-swaps get](gcx_irm_oncall_shift-swaps_get.md)	 - Get a shift swap by ID.
-* [gcx irm oncall shift-swaps list](gcx_irm_oncall_shift-swaps_list.md)	 - List shift swaps.
-* [gcx irm oncall shift-swaps update](gcx_irm_oncall_shift-swaps_update.md)	 - Update a shift swap by ID.
+* [gcx irm oncall integrations](gcx_irm_oncall_integrations.md)	 - Manage OnCall integrations.
 

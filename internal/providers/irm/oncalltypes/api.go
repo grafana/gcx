@@ -123,4 +123,8 @@ type OnCallAPI interface {
 	TakeShiftSwap(ctx context.Context, id string, input TakeShiftSwapInput) (*ShiftSwap, error)
 
 	CreateDirectPaging(ctx context.Context, input DirectPagingInput) (*DirectPagingResult, error)
+
+	// ListEscalationStepOptions returns the catalog of allowed `step` values
+	// for escalation policies, as reported by the IRM backend.
+	ListEscalationStepOptions(ctx context.Context) ([]EscalationStepOption, error)
 }

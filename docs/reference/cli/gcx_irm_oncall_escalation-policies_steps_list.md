@@ -1,11 +1,17 @@
-## gcx irm oncall escalation-policies
+## gcx irm oncall escalation-policies steps list
 
-Manage escalation policies.
+List allowed values for an escalation policy's step field.
+
+```
+gcx irm oncall escalation-policies steps list [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for escalation-policies
+  -h, --help            help for list
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -22,11 +28,5 @@ Manage escalation policies.
 
 ### SEE ALSO
 
-* [gcx irm oncall](gcx_irm_oncall.md)	 - Manage Grafana OnCall resources.
-* [gcx irm oncall escalation-policies create](gcx_irm_oncall_escalation-policies_create.md)	 - Create an escalation policy.
-* [gcx irm oncall escalation-policies delete](gcx_irm_oncall_escalation-policies_delete.md)	 - Delete an escalation policy by ID.
-* [gcx irm oncall escalation-policies get](gcx_irm_oncall_escalation-policies_get.md)	 - Get an escalation policy by ID.
-* [gcx irm oncall escalation-policies list](gcx_irm_oncall_escalation-policies_list.md)	 - List escalation policies.
 * [gcx irm oncall escalation-policies steps](gcx_irm_oncall_escalation-policies_steps.md)	 - Discover allowed escalation policy step types.
-* [gcx irm oncall escalation-policies update](gcx_irm_oncall_escalation-policies_update.md)	 - Update an escalation policy by ID.
 

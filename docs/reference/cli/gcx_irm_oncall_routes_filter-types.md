@@ -1,11 +1,11 @@
-## gcx irm oncall shift-swaps
+## gcx irm oncall routes filter-types
 
-Manage shift swaps.
+Discover route filtering term types.
 
 ### Options
 
 ```
-  -h, --help   help for shift-swaps
+  -h, --help   help for filter-types
 ```
 
 ### Options inherited from parent commands
@@ -22,10 +22,6 @@ Manage shift swaps.
 
 ### SEE ALSO
 
-* [gcx irm oncall](gcx_irm_oncall.md)	 - Manage Grafana OnCall resources.
-* [gcx irm oncall shift-swaps create](gcx_irm_oncall_shift-swaps_create.md)	 - Create a shift swap.
-* [gcx irm oncall shift-swaps delete](gcx_irm_oncall_shift-swaps_delete.md)	 - Delete a shift swap by ID.
-* [gcx irm oncall shift-swaps get](gcx_irm_oncall_shift-swaps_get.md)	 - Get a shift swap by ID.
-* [gcx irm oncall shift-swaps list](gcx_irm_oncall_shift-swaps_list.md)	 - List shift swaps.
-* [gcx irm oncall shift-swaps update](gcx_irm_oncall_shift-swaps_update.md)	 - Update a shift swap by ID.
+* [gcx irm oncall routes](gcx_irm_oncall_routes.md)	 - Manage OnCall routes.
+* [gcx irm oncall routes filter-types list](gcx_irm_oncall_routes_filter-types_list.md)	 - List allowed values for a route's filtering_term_type field.
 

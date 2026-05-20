@@ -9,6 +9,7 @@ import (
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
@@ -82,6 +83,25 @@ type getOpts struct {
 func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("yaml")
 	o.IO.BindFlags(flags)
+}
+
+type mutateOpts struct {
+	IO   cmdio.Options
+	File string
+}
+
+func (o *mutateOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("yaml")
+	o.IO.BindFlags(flags)
+	flags.StringVarP(&o.File, "filename", "f", "", "File containing the resource definition (JSON/YAML, use - for stdin)")
+}
+
+type deleteOpts struct {
+	Force bool
+}
+
+func (o *deleteOpts) setup(flags *pflag.FlagSet) {
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
 }
 
 // newListSubcommand creates a "list" subcommand using TypedCRUD.
@@ -160,6 +180,133 @@ func newGetSubcommand[T adapter.ResourceNamer](
 	return cmd
 }
 
+// newCreateSubcommand creates a "create" subcommand. Reads a bare object from
+// -f/--filename (or stdin when "-"), dispatches via TypedCRUD.Create, and
+// emits the result.
+func newCreateSubcommand[T adapter.ResourceNamer](
+	loader OnCallConfigLoader, short string,
+	createFn func(ctx context.Context, c OnCallAPI, item *T) (*T, error),
+) *cobra.Command {
+	mo := &mutateOpts{}
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: short,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := mo.IO.Validate(); err != nil {
+				return err
+			}
+
+			var item T
+			if err := providers.ReadFileOrStdin(mo.File, cmd.InOrStdin(), &item); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			crud, _, err := newTypedCRUD(ctx, loader,
+				func(_ context.Context, _ OnCallAPI) ([]T, error) { return nil, nil },
+				nil,
+				withCreate(createFn))
+			if err != nil {
+				return err
+			}
+
+			result, err := crud.Create(ctx, &adapter.TypedObject[T]{Spec: item})
+			if err != nil {
+				return err
+			}
+
+			return mo.IO.Encode(cmd.OutOrStdout(), result.Spec)
+		},
+	}
+	mo.setup(cmd.Flags())
+	return cmd
+}
+
+// newUpdateSubcommand creates an "update <id>" subcommand.
+func newUpdateSubcommand[T adapter.ResourceNamer](
+	loader OnCallConfigLoader, short string,
+	updateFn func(ctx context.Context, c OnCallAPI, id string, item *T) (*T, error),
+) *cobra.Command {
+	mo := &mutateOpts{}
+	cmd := &cobra.Command{
+		Use:   "update <id>",
+		Short: short,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := mo.IO.Validate(); err != nil {
+				return err
+			}
+
+			var item T
+			if err := providers.ReadFileOrStdin(mo.File, cmd.InOrStdin(), &item); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			crud, _, err := newTypedCRUD(ctx, loader,
+				func(_ context.Context, _ OnCallAPI) ([]T, error) { return nil, nil },
+				nil,
+				withUpdate(updateFn))
+			if err != nil {
+				return err
+			}
+
+			result, err := crud.Update(ctx, args[0], &adapter.TypedObject[T]{Spec: item})
+			if err != nil {
+				return err
+			}
+
+			return mo.IO.Encode(cmd.OutOrStdout(), result.Spec)
+		},
+	}
+	mo.setup(cmd.Flags())
+	return cmd
+}
+
+// newDeleteSubcommand creates a "delete <id>" subcommand with a confirmation
+// prompt unless --force is set.
+func newDeleteSubcommand[T adapter.ResourceNamer](
+	loader OnCallConfigLoader, short, label string,
+	deleteFn func(ctx context.Context, c OnCallAPI, id string) error,
+) *cobra.Command {
+	do := &deleteOpts{}
+	cmd := &cobra.Command{
+		Use:   "delete <id>",
+		Short: short,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			id := args[0]
+
+			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), do.Force,
+				fmt.Sprintf("Delete %s %s?", label, id))
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return nil
+			}
+
+			crud, _, err := newTypedCRUD(ctx, loader,
+				func(_ context.Context, _ OnCallAPI) ([]T, error) { return nil, nil },
+				nil,
+				withDelete[T](deleteFn))
+			if err != nil {
+				return err
+			}
+
+			if err := crud.Delete(ctx, id); err != nil {
+				return err
+			}
+
+			cmdio.Success(cmd.OutOrStdout(), "Deleted %s %s", label, id)
+			return nil
+		},
+	}
+	do.setup(cmd.Flags())
+	return cmd
+}
+
 // crudOption configures optional CRUD operations on a TypedCRUD instance.
 type crudOption[T adapter.ResourceNamer] func(client OnCallAPI, crud *adapter.TypedCRUD[T])
 
@@ -198,6 +345,7 @@ func newTypedCRUD[T adapter.ResourceNamer](
 // Per-resource group commands: oncall <resource> list|get|...
 // ---------------------------------------------------------------------------
 
+//nolint:dupl // Each noun builder follows the same CRUD wiring pattern; structural duplication is intentional.
 func newIntegrationsCmd(loader OnCallConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "integrations",
@@ -214,10 +362,23 @@ func newIntegrationsCmd(loader OnCallConfigLoader) *cobra.Command {
 			func(ctx context.Context, c OnCallAPI, name string) (*Integration, error) {
 				return c.GetIntegration(ctx, name)
 			}),
+		newCreateSubcommand(loader, "Create an integration.",
+			func(ctx context.Context, c OnCallAPI, item *Integration) (*Integration, error) {
+				return c.CreateIntegration(ctx, *item)
+			}),
+		newUpdateSubcommand(loader, "Update an integration by ID.",
+			func(ctx context.Context, c OnCallAPI, id string, item *Integration) (*Integration, error) {
+				return c.UpdateIntegration(ctx, id, *item)
+			}),
+		newDeleteSubcommand[Integration](loader, "Delete an integration by ID.", "integration",
+			func(ctx context.Context, c OnCallAPI, id string) error {
+				return c.DeleteIntegration(ctx, id)
+			}),
 	)
 	return cmd
 }
 
+//nolint:dupl // Each noun builder follows the same CRUD wiring pattern; structural duplication is intentional.
 func newEscalationChainsCmd(loader OnCallConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "escalation-chains",
@@ -235,6 +396,18 @@ func newEscalationChainsCmd(loader OnCallConfigLoader) *cobra.Command {
 		newGetSubcommand(loader, "Get an escalation chain by ID.",
 			func(ctx context.Context, c OnCallAPI, name string) (*EscalationChain, error) {
 				return c.GetEscalationChain(ctx, name)
+			}),
+		newCreateSubcommand(loader, "Create an escalation chain.",
+			func(ctx context.Context, c OnCallAPI, item *EscalationChain) (*EscalationChain, error) {
+				return c.CreateEscalationChain(ctx, *item)
+			}),
+		newUpdateSubcommand(loader, "Update an escalation chain by ID.",
+			func(ctx context.Context, c OnCallAPI, id string, item *EscalationChain) (*EscalationChain, error) {
+				return c.UpdateEscalationChain(ctx, id, *item)
+			}),
+		newDeleteSubcommand[EscalationChain](loader, "Delete an escalation chain by ID.", "escalation chain",
+			func(ctx context.Context, c OnCallAPI, id string) error {
+				return c.DeleteEscalationChain(ctx, id)
 			}),
 	)
 	return cmd
@@ -258,6 +431,19 @@ func newEscalationPoliciesCmd(loader OnCallConfigLoader) *cobra.Command {
 			func(ctx context.Context, c OnCallAPI, name string) (*EscalationPolicy, error) {
 				return c.GetEscalationPolicy(ctx, name)
 			}),
+		newCreateSubcommand(loader, "Create an escalation policy.",
+			func(ctx context.Context, c OnCallAPI, item *EscalationPolicy) (*EscalationPolicy, error) {
+				return c.CreateEscalationPolicy(ctx, *item)
+			}),
+		newUpdateSubcommand(loader, "Update an escalation policy by ID.",
+			func(ctx context.Context, c OnCallAPI, id string, item *EscalationPolicy) (*EscalationPolicy, error) {
+				return c.UpdateEscalationPolicy(ctx, id, *item)
+			}),
+		newDeleteSubcommand[EscalationPolicy](loader, "Delete an escalation policy by ID.", "escalation policy",
+			func(ctx context.Context, c OnCallAPI, id string) error {
+				return c.DeleteEscalationPolicy(ctx, id)
+			}),
+		newEscalationStepsCmd(loader),
 	)
 	return cmd
 }
@@ -278,6 +464,18 @@ func newSchedulesCmd(loader OnCallConfigLoader) *cobra.Command {
 			func(ctx context.Context, c OnCallAPI, name string) (*Schedule, error) {
 				return c.GetSchedule(ctx, name)
 			}),
+		newCreateSubcommand(loader, "Create a schedule.",
+			func(ctx context.Context, c OnCallAPI, item *Schedule) (*Schedule, error) {
+				return c.CreateSchedule(ctx, *item)
+			}),
+		newUpdateSubcommand(loader, "Update a schedule by ID.",
+			func(ctx context.Context, c OnCallAPI, id string, item *Schedule) (*Schedule, error) {
+				return c.UpdateSchedule(ctx, id, *item)
+			}),
+		newDeleteSubcommand[Schedule](loader, "Delete a schedule by ID.", "schedule",
+			func(ctx context.Context, c OnCallAPI, id string) error {
+				return c.DeleteSchedule(ctx, id)
+			}),
 		newScheduleFinalShiftsCommand(loader),
 	)
 	return cmd
@@ -295,6 +493,18 @@ func newShiftsCmd(loader OnCallConfigLoader) *cobra.Command {
 			func(ctx context.Context, c OnCallAPI, name string) (*Shift, error) { return c.GetShift(ctx, name) }),
 		newGetSubcommand(loader, "Get a shift by ID.",
 			func(ctx context.Context, c OnCallAPI, name string) (*Shift, error) { return c.GetShift(ctx, name) }),
+		newCreateSubcommand(loader, "Create a shift.",
+			func(ctx context.Context, c OnCallAPI, item *Shift) (*Shift, error) {
+				return c.CreateShift(ctx, shiftToRequest(item))
+			}),
+		newUpdateSubcommand(loader, "Update a shift by ID.",
+			func(ctx context.Context, c OnCallAPI, id string, item *Shift) (*Shift, error) {
+				return c.UpdateShift(ctx, id, shiftToRequest(item))
+			}),
+		newDeleteSubcommand[Shift](loader, "Delete a shift by ID.", "shift",
+			func(ctx context.Context, c OnCallAPI, id string) error {
+				return c.DeleteShift(ctx, id)
+			}),
 	)
 	return cmd
 }
@@ -311,6 +521,19 @@ func newRoutesCmd(loader OnCallConfigLoader) *cobra.Command {
 			func(ctx context.Context, c OnCallAPI, name string) (*Route, error) { return c.GetRoute(ctx, name) }),
 		newGetSubcommand(loader, "Get a route by ID.",
 			func(ctx context.Context, c OnCallAPI, name string) (*Route, error) { return c.GetRoute(ctx, name) }),
+		newCreateSubcommand(loader, "Create a route.",
+			func(ctx context.Context, c OnCallAPI, item *Route) (*Route, error) {
+				return c.CreateRoute(ctx, *item)
+			}),
+		newUpdateSubcommand(loader, "Update a route by ID.",
+			func(ctx context.Context, c OnCallAPI, id string, item *Route) (*Route, error) {
+				return c.UpdateRoute(ctx, id, *item)
+			}),
+		newDeleteSubcommand[Route](loader, "Delete a route by ID.", "route",
+			func(ctx context.Context, c OnCallAPI, id string) error {
+				return c.DeleteRoute(ctx, id)
+			}),
+		newRouteFilterTypesCmd(),
 	)
 	return cmd
 }
@@ -331,6 +554,20 @@ func newWebhooksCmd(loader OnCallConfigLoader) *cobra.Command {
 			func(ctx context.Context, c OnCallAPI, name string) (*Webhook, error) {
 				return c.GetWebhook(ctx, name)
 			}),
+		newCreateSubcommand(loader, "Create an outgoing webhook.",
+			func(ctx context.Context, c OnCallAPI, item *Webhook) (*Webhook, error) {
+				return c.CreateWebhook(ctx, *item)
+			}),
+		newUpdateSubcommand(loader, "Update an outgoing webhook by ID.",
+			func(ctx context.Context, c OnCallAPI, id string, item *Webhook) (*Webhook, error) {
+				return c.UpdateWebhook(ctx, id, *item)
+			}),
+		newDeleteSubcommand[Webhook](loader, "Delete an outgoing webhook by ID.", "webhook",
+			func(ctx context.Context, c OnCallAPI, id string) error {
+				return c.DeleteWebhook(ctx, id)
+			}),
+		newWebhookTriggersCmd(),
+		newWebhookPresetsCmd(),
 	)
 	return cmd
 }
@@ -441,6 +678,23 @@ func newResolutionNotesCmd(loader OnCallConfigLoader) *cobra.Command {
 			func(ctx context.Context, c OnCallAPI, name string) (*ResolutionNote, error) {
 				return c.GetResolutionNote(ctx, name)
 			}),
+		newCreateSubcommand(loader, "Create a resolution note.",
+			func(ctx context.Context, c OnCallAPI, item *ResolutionNote) (*ResolutionNote, error) {
+				return c.CreateResolutionNote(ctx, CreateResolutionNoteInput{
+					AlertGroup: item.AlertGroup,
+					Text:       item.Text,
+				})
+			}),
+		newUpdateSubcommand(loader, "Update a resolution note by ID.",
+			func(ctx context.Context, c OnCallAPI, id string, item *ResolutionNote) (*ResolutionNote, error) {
+				return c.UpdateResolutionNote(ctx, id, UpdateResolutionNoteInput{
+					Text: item.Text,
+				})
+			}),
+		newDeleteSubcommand[ResolutionNote](loader, "Delete a resolution note by ID.", "resolution note",
+			func(ctx context.Context, c OnCallAPI, id string) error {
+				return c.DeleteResolutionNote(ctx, id)
+			}),
 	)
 	return cmd
 }
@@ -460,6 +714,26 @@ func newShiftSwapsCmd(loader OnCallConfigLoader) *cobra.Command {
 		newGetSubcommand(loader, "Get a shift swap by ID.",
 			func(ctx context.Context, c OnCallAPI, name string) (*ShiftSwap, error) {
 				return c.GetShiftSwap(ctx, name)
+			}),
+		newCreateSubcommand(loader, "Create a shift swap.",
+			func(ctx context.Context, c OnCallAPI, item *ShiftSwap) (*ShiftSwap, error) {
+				return c.CreateShiftSwap(ctx, CreateShiftSwapInput{
+					Schedule:    item.Schedule,
+					SwapStart:   item.SwapStart,
+					SwapEnd:     item.SwapEnd,
+					Beneficiary: item.Beneficiary,
+				})
+			}),
+		newUpdateSubcommand(loader, "Update a shift swap by ID.",
+			func(ctx context.Context, c OnCallAPI, id string, item *ShiftSwap) (*ShiftSwap, error) {
+				return c.UpdateShiftSwap(ctx, id, UpdateShiftSwapInput{
+					SwapStart: item.SwapStart,
+					SwapEnd:   item.SwapEnd,
+				})
+			}),
+		newDeleteSubcommand[ShiftSwap](loader, "Delete a shift swap by ID.", "shift swap",
+			func(ctx context.Context, c OnCallAPI, id string) error {
+				return c.DeleteShiftSwap(ctx, id)
 			}),
 	)
 	return cmd

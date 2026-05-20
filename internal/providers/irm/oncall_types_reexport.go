@@ -36,6 +36,10 @@ type (
 	DirectPagingInput         = oncalltypes.DirectPagingInput
 	DirectPagingResult        = oncalltypes.DirectPagingResult
 	ShiftRequest              = oncalltypes.ShiftRequest
+	EscalationStepOption      = oncalltypes.EscalationStepOption
+	WebhookTriggerOption      = oncalltypes.WebhookTriggerOption
+	WebhookPresetOption       = oncalltypes.WebhookPresetOption
+	RouteFilterType           = oncalltypes.RouteFilterType
 )
 
 const (

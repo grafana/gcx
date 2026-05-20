@@ -371,6 +371,26 @@ func (c *OnCallClient) DeleteEscalationPolicy(ctx context.Context, id string) er
 	return deleteResource(ctx, c, escalationPoliciesPath, id, "escalation policy")
 }
 
+// ListEscalationStepOptions fetches the catalog of allowed `step` values from
+// GET /escalation_policies/escalation_options/.
+func (c *OnCallClient) ListEscalationStepOptions(ctx context.Context) ([]EscalationStepOption, error) {
+	resp, err := c.DoRequest(ctx, http.MethodGet, escalationPoliciesPath+"escalation_options/", nil)
+	if err != nil {
+		return nil, fmt.Errorf("irm: list escalation step options: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, handleErrorResponse(resp)
+	}
+
+	var result []EscalationStepOption
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("irm: decode escalation step options: %w", err)
+	}
+	return result, nil
+}
+
 // --- Schedules ---
 
 func (c *OnCallClient) ListSchedules(ctx context.Context) ([]Schedule, error) {

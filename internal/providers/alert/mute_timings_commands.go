@@ -168,7 +168,7 @@ func newMuteTimingsCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 			var mt MuteTiming
-			if err := readProvisioningInput(opts.File, cmd.InOrStdin(), &mt); err != nil {
+			if err := providers.ReadFileOrStdin(opts.File, cmd.InOrStdin(), &mt); err != nil {
 				return err
 			}
 			ctx := cmd.Context()
@@ -202,7 +202,7 @@ func newMuteTimingsUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 			var mt MuteTiming
-			if err := readProvisioningInput(opts.File, cmd.InOrStdin(), &mt); err != nil {
+			if err := providers.ReadFileOrStdin(opts.File, cmd.InOrStdin(), &mt); err != nil {
 				return err
 			}
 			ctx := cmd.Context()

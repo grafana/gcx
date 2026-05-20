@@ -1,11 +1,17 @@
-## gcx irm oncall webhooks
+## gcx irm oncall webhooks triggers list
 
-Manage outgoing webhooks.
+List allowed values for a webhook's trigger_type field.
+
+```
+gcx irm oncall webhooks triggers list [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for webhooks
+  -h, --help            help for list
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -22,12 +28,5 @@ Manage outgoing webhooks.
 
 ### SEE ALSO
 
-* [gcx irm oncall](gcx_irm_oncall.md)	 - Manage Grafana OnCall resources.
-* [gcx irm oncall webhooks create](gcx_irm_oncall_webhooks_create.md)	 - Create an outgoing webhook.
-* [gcx irm oncall webhooks delete](gcx_irm_oncall_webhooks_delete.md)	 - Delete an outgoing webhook by ID.
-* [gcx irm oncall webhooks get](gcx_irm_oncall_webhooks_get.md)	 - Get an outgoing webhook by ID.
-* [gcx irm oncall webhooks list](gcx_irm_oncall_webhooks_list.md)	 - List outgoing webhooks.
-* [gcx irm oncall webhooks presets](gcx_irm_oncall_webhooks_presets.md)	 - Discover webhook configuration presets.
 * [gcx irm oncall webhooks triggers](gcx_irm_oncall_webhooks_triggers.md)	 - Discover allowed webhook trigger types.
-* [gcx irm oncall webhooks update](gcx_irm_oncall_webhooks_update.md)	 - Update an outgoing webhook by ID.
 
