@@ -65,7 +65,7 @@ func ValidateIdentifier(name, field string) error {
 
 var (
 	limitClauseRe = regexp.MustCompile(`(?i)\bLIMIT\s+(\d+)\s*$`)
-	limitBailRe   = regexp.MustCompile(`(?i)(\bLIMIT\s+\d+\s+BY\b|\bLIMIT\s+\d+\s+OFFSET\b|\bLIMIT\s+\d+\s*,|\bFORMAT\b|\bSETTINGS\b)`)
+	limitBailRe   = regexp.MustCompile(`(?im)(\bLIMIT\s+\d+\s+BY\b|\bLIMIT\s+\d+\s+OFFSET\b|\bLIMIT\s+\d+\s*,|\bFORMAT\b|\bSETTINGS\b|^\s*EXPLAIN\b|^\s*DESC(RIBE)?\b|^\s*SHOW\s+CREATE\b|^\s*EXISTS\b|^\s*CHECK\b)`)
 )
 
 // EnforceLimit ensures the SQL has a LIMIT clause within bounds.
