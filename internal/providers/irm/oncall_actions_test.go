@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/agent"
-	"github.com/grafana/gcx/internal/fail"
+	fail "github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/spf13/cobra"
 )
 
