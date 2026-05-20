@@ -5,8 +5,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/dashboards"
@@ -75,7 +77,7 @@ func TestRender_URLConstruction(t *testing.T) {
 			},
 		},
 		{
-			name: "optional time range params",
+			name: "optional relative time range params are preserved",
 			req: dashboards.RenderRequest{
 				UID:    "abc",
 				Width:  1920,
@@ -178,6 +180,115 @@ func TestRender_URLConstruction(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestRender_TimeRangeURLConstruction(t *testing.T) {
+	pngBytes := []byte("\x89PNG\r\n\x1a\n")
+	epochMillis := func(value string) string {
+		t.Helper()
+		tm, err := time.Parse(time.RFC3339Nano, value)
+		if err != nil {
+			t.Fatalf("parse fixture time: %v", err)
+		}
+		return strconv.FormatInt(tm.UnixMilli(), 10)
+	}
+
+	tests := []struct {
+		name     string
+		from     string
+		to       string
+		wantFrom string
+		wantTo   string
+	}{
+		{
+			name:     "RFC3339 params are normalized to epoch milliseconds",
+			from:     "2024-01-15T10:30:00Z",
+			to:       "2024-01-15T11:30:00Z",
+			wantFrom: epochMillis("2024-01-15T10:30:00Z"),
+			wantTo:   epochMillis("2024-01-15T11:30:00Z"),
+		},
+		{
+			name:     "Unix seconds params are normalized to epoch milliseconds",
+			from:     "1705315800",
+			to:       "1705319400",
+			wantFrom: "1705315800000",
+			wantTo:   "1705319400000",
+		},
+		{
+			name:     "Unix milliseconds params are preserved",
+			from:     "1705315800123",
+			to:       "1705319400456",
+			wantFrom: "1705315800123",
+			wantTo:   "1705319400456",
+		},
+		{
+			name:     "historical Unix milliseconds params are preserved",
+			from:     "10000000000",
+			to:       "10000060000",
+			wantFrom: "10000000000",
+			wantTo:   "10000060000",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var capturedReq *http.Request
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				capturedReq = r
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write(pngBytes)
+			}))
+			defer server.Close()
+
+			client := newTestClient(t, server)
+			_, err := client.Render(context.Background(), dashboards.RenderRequest{
+				UID:    "abc",
+				Width:  1920,
+				Height: 1080,
+				From:   tt.from,
+				To:     tt.to,
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if capturedReq == nil {
+				t.Fatal("no request captured")
+			}
+			q := capturedReq.URL.Query()
+			if got := q.Get("from"); got != tt.wantFrom {
+				t.Errorf("from = %q, want %q", got, tt.wantFrom)
+			}
+			if got := q.Get("to"); got != tt.wantTo {
+				t.Errorf("to = %q, want %q", got, tt.wantTo)
+			}
+		})
+	}
+}
+
+func TestRender_InvalidTimeRange(t *testing.T) {
+	called := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("\x89PNG\r\n\x1a\n"))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	_, err := client.Render(context.Background(), dashboards.RenderRequest{
+		UID:  "abc",
+		From: "2024-01-15",
+		To:   "now",
+	})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid from time") {
+		t.Errorf("error %q does not contain invalid from time", err.Error())
+	}
+	if called {
+		t.Error("server was called despite invalid time range")
 	}
 }
 

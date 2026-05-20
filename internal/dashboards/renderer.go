@@ -5,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"k8s.io/client-go/rest"
@@ -36,7 +39,10 @@ type RenderRequest struct {
 	// Theme is "light" or "dark".
 	Theme string
 
-	// From and To define the time range (RFC3339, Unix timestamp, or relative like "now-1h").
+	// From and To define the time range. Relative values beginning with "now"
+	// are passed through. RFC3339 and Unix-second values are converted to
+	// Grafana URL timestamps (Unix milliseconds); Unix-millisecond values are
+	// preserved.
 	From string
 	To   string
 
@@ -136,11 +142,19 @@ func (c *Client) buildRenderURL(req RenderRequest) (string, error) {
 	if req.Height != 0 {
 		q.Set("height", strconv.Itoa(req.Height))
 	}
-	if req.From != "" {
-		q.Set("from", req.From)
+	from, err := normalizeRenderTime("from", req.From)
+	if err != nil {
+		return "", err
 	}
-	if req.To != "" {
-		q.Set("to", req.To)
+	if from != "" {
+		q.Set("from", from)
+	}
+	to, err := normalizeRenderTime("to", req.To)
+	if err != nil {
+		return "", err
+	}
+	if to != "" {
+		q.Set("to", to)
 	}
 	if req.Tz != "" {
 		q.Set("tz", req.Tz)
@@ -161,4 +175,44 @@ func (c *Client) buildRenderURL(req RenderRequest) (string, error) {
 
 	u.RawQuery = q.Encode()
 	return u.String(), nil
+}
+
+func normalizeRenderTime(name, value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
+
+	// Grafana dashboard URLs natively support relative browser time expressions
+	// (now, now-1h, now/d, etc.). Keep those as-is.
+	if strings.HasPrefix(value, "now") {
+		return value, nil
+	}
+
+	if t, err := time.Parse(time.RFC3339Nano, value); err == nil {
+		return strconv.FormatInt(t.UnixMilli(), 10), nil
+	}
+
+	if ts, err := strconv.ParseInt(value, 10, 64); err == nil {
+		// Grafana render URLs expect absolute timestamps in epoch milliseconds.
+		// Treat values beyond plausible Unix seconds as milliseconds, matching
+		// common CLI input and avoiding accidental 1970 ranges.
+		if ts >= 10_000_000_000 || ts <= -10_000_000_000 {
+			return strconv.FormatInt(ts, 10), nil
+		}
+		if ts > math.MaxInt64/1000 || ts < math.MinInt64/1000 {
+			return "", fmt.Errorf("invalid %s time %q: Unix seconds value overflows milliseconds", name, value)
+		}
+		return strconv.FormatInt(ts*1000, 10), nil
+	}
+
+	if ts, err := strconv.ParseFloat(value, 64); err == nil {
+		ms := ts * 1000
+		if ms > math.MaxInt64 || ms < math.MinInt64 {
+			return "", fmt.Errorf("invalid %s time %q: Unix seconds value overflows milliseconds", name, value)
+		}
+		return strconv.FormatInt(int64(ms), 10), nil
+	}
+
+	return "", fmt.Errorf("invalid %s time %q (use relative time like now-1h, RFC3339, Unix seconds, or Unix milliseconds)", name, value)
 }
