@@ -3,7 +3,6 @@ package infinity_test
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -20,7 +19,7 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-func newTestClient(t *testing.T, handler http.HandlerFunc) (*infinity.Client, *httptest.Server) {
+func newTestClient(t *testing.T, handler http.HandlerFunc) *infinity.Client {
 	t.Helper()
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
@@ -30,16 +29,15 @@ func newTestClient(t *testing.T, handler http.HandlerFunc) (*infinity.Client, *h
 	}
 	client, err := infinity.NewClient(cfg)
 	require.NoError(t, err)
-	return client, server
+	return client
 }
-
 
 func TestQuery_SuccessfulQuery(t *testing.T) {
 	var capturedMethod string
 	var capturedPath string
 	var capturedContentType string
 
-	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		capturedMethod = r.Method
 		capturedPath = r.URL.Path
 		capturedContentType = r.Header.Get("Content-Type")
@@ -71,9 +69,9 @@ func TestQuery_SuccessfulQuery(t *testing.T) {
 func TestQuery_RequestBodyShape(t *testing.T) {
 	var capturedBody map[string]any
 
-	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		err := json.NewDecoder(r.Body).Decode(&capturedBody)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"x","type":"string"}]},"data":{"values":[["v"]]}}]}}}`))
@@ -131,9 +129,9 @@ func TestQuery_TimeRange(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var capturedBody map[string]any
 
-			client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 				err := json.NewDecoder(r.Body).Decode(&capturedBody)
-				require.NoError(t, err)
+				assert.NoError(t, err)
 
 				w.Header().Set("Content-Type", "application/json")
 				_, _ = w.Write([]byte(`{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"x","type":"string"}]},"data":{"values":[["v"]]}}]}}}`))
@@ -160,7 +158,7 @@ func TestQuery_TimeRange(t *testing.T) {
 }
 
 func TestQuery_GrafanaEnvelopeError(t *testing.T) {
-	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"results":{"A":{"error":"invalid expression","errorSource":"downstream","status":400}}}`))
 	})
@@ -169,7 +167,7 @@ func TestQuery_GrafanaEnvelopeError(t *testing.T) {
 	require.Error(t, err)
 
 	var apiErr *queryerror.APIError
-	require.True(t, errors.As(err, &apiErr))
+	require.ErrorAs(t, err, &apiErr)
 	assert.Equal(t, "infinity", apiErr.Datasource)
 	assert.Equal(t, "query", apiErr.Operation)
 	assert.Equal(t, 400, apiErr.StatusCode)
@@ -177,7 +175,7 @@ func TestQuery_GrafanaEnvelopeError(t *testing.T) {
 }
 
 func TestQuery_GrafanaEnvelopeErrorStatusZeroFallback(t *testing.T) {
-	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"results":{"A":{"error":"unknown field","errorSource":"downstream"}}}`))
 	})
@@ -186,7 +184,7 @@ func TestQuery_GrafanaEnvelopeErrorStatusZeroFallback(t *testing.T) {
 	require.Error(t, err)
 
 	var apiErr *queryerror.APIError
-	require.True(t, errors.As(err, &apiErr))
+	require.ErrorAs(t, err, &apiErr)
 	assert.Equal(t, 400, apiErr.StatusCode, "status should fall back to 400 when envelope status is 0")
 }
 
@@ -201,7 +199,7 @@ func TestQuery_HTTPErrorReturnsAPIError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(tt.statusCode)
 				_, _ = w.Write([]byte(`{"message":"error text"}`))
 			})
@@ -210,7 +208,7 @@ func TestQuery_HTTPErrorReturnsAPIError(t *testing.T) {
 			require.Error(t, err)
 
 			var apiErr *queryerror.APIError
-			require.True(t, errors.As(err, &apiErr))
+			require.ErrorAs(t, err, &apiErr)
 			assert.Equal(t, "infinity", apiErr.Datasource)
 			assert.Equal(t, tt.statusCode, apiErr.StatusCode)
 		})
@@ -222,7 +220,7 @@ func TestQuery_FallbackOn404(t *testing.T) {
 	var mu sync.Mutex
 	var paths []string
 
-	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		n := callCount.Add(1)
 
 		mu.Lock()
@@ -261,7 +259,7 @@ func TestQuery_FallbackOn404(t *testing.T) {
 func TestQuery_FallbackOn404BothFail(t *testing.T) {
 	var callCount atomic.Int32
 
-	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		callCount.Add(1)
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte(`{"message":"Not Found"}`))
@@ -273,15 +271,15 @@ func TestQuery_FallbackOn404BothFail(t *testing.T) {
 	assert.Equal(t, int32(2), callCount.Load(), "expected exactly 2 requests (primary + fallback)")
 
 	var apiErr *queryerror.APIError
-	require.True(t, errors.As(err, &apiErr))
+	require.ErrorAs(t, err, &apiErr)
 	assert.Equal(t, http.StatusNotFound, apiErr.StatusCode)
 }
 
 func TestQuery_ResponseBodyTooLarge(t *testing.T) {
-	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/octet-stream")
 		chunk := make([]byte, 1024*1024) // 1 MB
-		for i := 0; i < 51; i++ {
+		for range 51 {
 			_, _ = w.Write(chunk)
 		}
 	})
@@ -291,5 +289,5 @@ func TestQuery_ResponseBodyTooLarge(t *testing.T) {
 	assert.Contains(t, err.Error(), "50 MB")
 
 	var apiErr *queryerror.APIError
-	assert.False(t, errors.As(err, &apiErr), "oversized response error should not be an APIError")
+	assert.NotErrorAs(t, err, &apiErr)
 }
