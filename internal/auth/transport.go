@@ -39,6 +39,10 @@ type StoredTokens struct {
 // persisted tokens are available.
 type TokenReloader func() (StoredTokens, bool, error)
 
+// Refresher performs the network refresh call and returns new token credentials.
+// When nil, RefreshTransport uses its built-in proxy refresh endpoint.
+type Refresher func(ctx context.Context, refreshToken string) (RefreshResult, error)
+
 // RefreshTransport wraps an http.RoundTripper and transparently refreshes
 // the gat_ access token when it is close to expiry.
 type RefreshTransport struct {
@@ -58,6 +62,10 @@ type RefreshTransport struct {
 	// refresh. If another process has already refreshed, its tokens are
 	// adopted and the network refresh is skipped.
 	Reload TokenReloader
+
+	// DoRefresh, if set, replaces the built-in proxy refresh with a custom
+	// implementation (e.g. GCOM OAuth2 token refresh).
+	DoRefresh Refresher
 
 	mu         sync.Mutex
 	cond       *sync.Cond
@@ -180,7 +188,13 @@ func (t *RefreshTransport) maybeRefresh(req *http.Request) error {
 	defer cancel()
 
 	// Network call happens outside the in-process mutex.
-	result, err := t.doRefresh(refreshCtx, refreshToken)
+	var result RefreshResult
+	var err error
+	if t.DoRefresh != nil {
+		result, err = t.DoRefresh(refreshCtx, refreshToken)
+	} else {
+		result, err = t.doProxyRefresh(refreshCtx, refreshToken)
+	}
 	if err != nil {
 		return err
 	}
@@ -189,13 +203,13 @@ func (t *RefreshTransport) maybeRefresh(req *http.Request) error {
 	// already consumed the old refresh token and rotated it, so discarding
 	// the response would leave the client with an invalid refresh token.
 	t.mu.Lock()
-	t.Token = result.Data.Token
-	if result.Data.RefreshToken != "" {
-		t.RefreshToken = result.Data.RefreshToken
+	t.Token = result.Token
+	if result.RefreshToken != "" {
+		t.RefreshToken = result.RefreshToken
 	}
 	// Unparseable expiry falls back to zero time so the next request re-refreshes.
-	t.ExpiresAt, _ = time.Parse(time.RFC3339, result.Data.ExpiresAt)
-	if rp, err := time.Parse(time.RFC3339, result.Data.RefreshExpiresAt); err == nil {
+	t.ExpiresAt, _ = time.Parse(time.RFC3339, result.ExpiresAt)
+	if rp, err := time.Parse(time.RFC3339, result.RefreshExpiresAt); err == nil {
 		t.RefreshExpiresAt = rp
 	}
 	storedRefresh := t.RefreshToken
@@ -204,10 +218,10 @@ func (t *RefreshTransport) maybeRefresh(req *http.Request) error {
 
 	if onRefresh != nil {
 		if err := onRefresh(
-			result.Data.Token,
+			result.Token,
 			storedRefresh,
-			result.Data.ExpiresAt,
-			result.Data.RefreshExpiresAt,
+			result.ExpiresAt,
+			result.RefreshExpiresAt,
 		); err != nil {
 			return fmt.Errorf("failed to persist refreshed tokens: %w", err)
 		}
@@ -216,7 +230,7 @@ func (t *RefreshTransport) maybeRefresh(req *http.Request) error {
 	return nil
 }
 
-type refreshResponse struct {
+type proxyRefreshResponse struct {
 	Data struct {
 		Token            string `json:"token"`
 		ExpiresAt        string `json:"expires_at"`
@@ -225,24 +239,24 @@ type refreshResponse struct {
 	} `json:"data"`
 }
 
-func (t *RefreshTransport) doRefresh(ctx context.Context, refreshToken string) (*refreshResponse, error) {
+func (t *RefreshTransport) doProxyRefresh(ctx context.Context, refreshToken string) (RefreshResult, error) {
 	body, err := json.Marshal(map[string]string{
 		"refresh_token": refreshToken,
 	})
 	if err != nil {
-		return nil, err
+		return RefreshResult{}, err
 	}
 
 	refreshURL := t.ProxyEndpoint + "/api/cli/v1/auth/refresh"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, refreshURL, bytes.NewReader(body))
 	if err != nil {
-		return nil, fmt.Errorf("failed to build refresh request: %w", err)
+		return RefreshResult{}, fmt.Errorf("failed to build refresh request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := t.base().RoundTrip(req)
 	if err != nil {
-		return nil, fmt.Errorf("refresh request failed: %w", err)
+		return RefreshResult{}, fmt.Errorf("refresh request failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -250,19 +264,24 @@ func (t *RefreshTransport) doRefresh(ctx context.Context, refreshToken string) (
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		respBody, _ := io.ReadAll(limitedBody)
-		return nil, fmt.Errorf("refresh returned status %d: %s: %w", resp.StatusCode, string(respBody), ErrRefreshTokenExpired)
+		return RefreshResult{}, fmt.Errorf("refresh returned status %d: %s: %w", resp.StatusCode, string(respBody), ErrRefreshTokenExpired)
 	}
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(limitedBody)
-		return nil, fmt.Errorf("refresh returned status %d: %s", resp.StatusCode, string(respBody))
+		return RefreshResult{}, fmt.Errorf("refresh returned status %d: %s", resp.StatusCode, string(respBody))
 	}
 
-	var result refreshResponse
+	var result proxyRefreshResponse
 	if err := json.NewDecoder(limitedBody).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to parse refresh response: %w", err)
+		return RefreshResult{}, fmt.Errorf("failed to parse refresh response: %w", err)
 	}
 
-	return &result, nil
+	return RefreshResult{
+		Token:            result.Data.Token,
+		RefreshToken:     result.Data.RefreshToken,
+		ExpiresAt:        result.Data.ExpiresAt,
+		RefreshExpiresAt: result.Data.RefreshExpiresAt,
+	}, nil
 }
 
 // RefreshResult holds the token credentials returned by a successful refresh.
@@ -273,19 +292,10 @@ type RefreshResult struct {
 	RefreshExpiresAt string
 }
 
-// DoRefresh calls the proxy refresh endpoint and returns new token credentials.
+// ProxyRefresh calls the proxy refresh endpoint and returns new token credentials.
 // This is used by the assistant command's token refresher, which needs to refresh
 // tokens outside of an HTTP round-trip context.
-func DoRefresh(ctx context.Context, proxyEndpoint, refreshTok string) (RefreshResult, error) {
+func ProxyRefresh(ctx context.Context, proxyEndpoint, refreshTok string) (RefreshResult, error) {
 	t := &RefreshTransport{ProxyEndpoint: proxyEndpoint}
-	result, err := t.doRefresh(ctx, refreshTok)
-	if err != nil {
-		return RefreshResult{}, err
-	}
-	return RefreshResult{
-		Token:            result.Data.Token,
-		RefreshToken:     result.Data.RefreshToken,
-		ExpiresAt:        result.Data.ExpiresAt,
-		RefreshExpiresAt: result.Data.RefreshExpiresAt,
-	}, nil
+	return t.doProxyRefresh(ctx, refreshTok)
 }
