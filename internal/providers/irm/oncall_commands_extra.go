@@ -160,7 +160,7 @@ type alertGroupActionOpts struct {
 }
 
 func (o *alertGroupActionOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("text")
+	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
 }
 
@@ -379,7 +379,7 @@ type escalateOpts struct {
 }
 
 func (o *escalateOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("text")
+	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Title, "title", "", "Title of the escalation (required)")
 	flags.StringVar(&o.Message, "message", "", "Message for the escalation")
