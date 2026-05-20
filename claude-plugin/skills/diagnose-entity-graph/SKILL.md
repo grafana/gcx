@@ -66,21 +66,6 @@ and exposes the env on both sides as `client_deployment_environment` and
 `server_deployment_environment` — there is no unified `deployment_environment`
 label.
 
-**Filter out phantom edges.** When Tempo's metrics generator sees a SERVER-kind
-span with no incoming `traceparent`, it synthesizes a placeholder edge
-with `client="user"` and `connection_type="virtual_node"`. These represent
-"some external caller" — they are not real service-to-service edges. When
-counting inter-service edges for diagnosis, filter them out:
-
-```promql
-traces_service_graph_request_total{client!="user"}
-# or equivalently
-traces_service_graph_request_total{connection_type!="virtual_node"}
-```
-
-If the *only* edges in the env have `client="user"`, treat this as a strong
-signal that outgoing trace propagation is broken — see Step 4.
-
 ```bash
 # Service identity (OTel traces)
 gcx metrics query 'count(traces_target_info)' --since 1h
@@ -93,53 +78,17 @@ gcx metrics query 'count(traces_service_graph_request_total{server_deployment_en
 ```
 
 **Interpret:**
-- Both have data → traces are flowing. Continue to Step 5.
-- `traces_target_info` exists but `traces_service_graph_request_total` doesn't
-  (with `client!="user"` filter applied) → either Tempo server-side metrics
-  generation isn't enabled, or outgoing trace context isn't being propagated
-  by your services. Go to Step 4.
-- Service-graph contains only `client="user"` edges → broken trace context
-  propagation. Go to Step 4.
-- Service-graph shows self-loop edges (`client == server`) for a service
-  that shouldn't be calling itself → strong indicator of `service.name`
-  collision across multiple workloads. Inspect the colliding service in
-  Step 8.
+- Both have data → traces are flowing. Continue to Step 4.
 - Both empty → no OTel traces for this environment. Entities may still exist
-  via Prometheus scraping. Continue to Step 5.
+  via Prometheus scraping. Continue to Step 4.
 
-**Shortcut:** `gcx kg diagnose --env ENV` checks all five metrics automatically.
+For more specific verdicts on this metric pair (Tempo metrics generation
+disabled, broken trace context propagation, service-name collision via
+self-loop edges), run `gcx kg diagnose --env ENV` and read the check
+results — the command encodes the detection logic and emits a targeted
+recommendation per case.
 
-## Step 4: Trace Context Propagation
-
-When `gcx kg diagnose --env <env>` emits a
-**`Trace context propagation: FAIL`** check, services are emitting
-spans but the calls between them aren't carrying `traceparent`
-headers — so Tempo's metrics generator can't link the spans into
-edges. Only phantom `client="user"` edges (Tempo's synthetic
-"external caller") form.
-
-The diagnose check's `Recommendation` already names the common
-causes and per-language remediation hints — read it as the
-primary playbook. Supplementary notes for less-common cases:
-
-### When propagation looks broken but auto-instrumentation IS installed
-
-- The application bypasses the instrumented HTTP client (raw socket
-  calls, a third-party SDK using its own transport, a non-standard
-  client library). Audit outbound network calls in the upstream
-  service's code path.
-- No `TracerProvider` was registered, so context isn't tracked at
-  all. Confirm via `gcx traces query` that spans on the *receiving*
-  service have a parent SpanID.
-
-### Convergence after a fix
-
-After the propagation fix lands, expect
-`traces_service_graph_request_total{client!="user"}` to populate
-within 1–2 minutes; recording-rule output in Step 5 follows ~5–10
-minutes after that.
-
-## Step 5: Recording Rules
+## Step 4: Recording Rules
 
 Recording rules convert raw metrics into the `asserts:*` metrics that Entity
 Graph consumes. These use `asserts_env`, not `deployment_environment`.
@@ -157,11 +106,11 @@ gcx metrics query 'count(asserts:request:rate5m{asserts_env="ENV"})' --since 1h
 
 **Interpret:**
 - `asserts:mixin_workload_job` has data but `asserts:relation:calls` doesn't →
-  entities are discovered but no edges exist. Continue to Step 6.
-- All empty → recording rules aren't producing output. Check Step 7 (labels).
-- All have data → pipeline is healthy. For a specific missing service, go to Step 8.
+  entities are discovered but no edges exist. Continue to Step 5.
+- All empty → recording rules aren't producing output. Check Step 6 (labels).
+- All have data → pipeline is healthy. For a specific missing service, go to Step 7.
 
-## Step 6: Edge Source Analysis
+## Step 5: Edge Source Analysis
 
 CALLS edges can come from 11 sources, not just OTel traces:
 
@@ -233,7 +182,7 @@ Environment page as above.
 server-side with `asserts_env` already populated, bypassing the Mimir
 relabeling pipeline entirely.
 
-## Step 7: Label Pipeline
+## Step 6: Label Pipeline
 
 The most common issue: `deployment_environment` isn't mapped to `asserts_env`.
 
@@ -251,7 +200,7 @@ Extra `asserts_env` values (like AWS account IDs) that don't match any
 
 **Shortcut:** `gcx kg diagnose labels` automates this cross-reference.
 
-## Step 8: Per-Service Investigation
+## Step 7: Per-Service Investigation
 
 For a specific missing or edge-less service:
 
@@ -279,44 +228,15 @@ gcx metrics query 'count(asserts:mixin_workload_job{service="SERVICE"})' --since
 - Leaf services (queue consumers, processors) correctly have no outgoing edges.
 
 **Shortcut:** `gcx kg diagnose service SERVICE --env ENV` runs all checks and
-produces an interpreted diagnosis with suggested next steps.
+produces an interpreted diagnosis with suggested next steps. It also
+detects two common patterns that present as "missing entities":
 
-### "I expected N services but I see fewer" — service-name collision
+- **Service-name collision** (multiple workloads share one `service.name`,
+  collapsing into one entity).
+- **Env-scope split** (workloads in the same namespace disagree on
+  `deployment.environment`, so cross-env calls don't render as edges).
 
-When the user reports fewer entities than expected, suspect that
-multiple workloads share one `service.name`:
-
-```bash
-gcx metrics query 'count by (service_name) (traces_target_info{deployment_environment="ENV"})' --since 1h
-```
-
-Fewer rows than expected workloads = collision. The self-loop signal
-from Step 3 reinforces it: a `{client="X", server="X"}` entry in
-`traces_service_graph_request_total` for a service with no reason to
-call itself is cross-service traffic between same-named workloads
-collapsing into a self-loop on the merged entity.
-
-**Fix:** set distinct `OTEL_SERVICE_NAME` (or `service.name` via
-`OTEL_RESOURCE_ATTRIBUTES`) per workload. Usual culprit is a default
-Helm chart value that wasn't templated per release.
-
-### "My graph is split into disconnected clusters" — env-scope split
-
-When the user expects a connected service graph but sees disconnected
-clusters, different workloads likely disagree on
-`deployment.environment`. Entity Graph scopes by env, so a call from
-a service in env A to one in env B doesn't render as a connection.
-
-```bash
-gcx kg cypher "MATCH (s:Service {namespace: \"NAMESPACE\"}) RETURN s LIMIT 50" --since 1h
-```
-
-If two services in the same k8s namespace have different `scope.env`
-values, that's the split.
-
-**Fix:** align `deployment.environment` (via `OTEL_RESOURCE_ATTRIBUTES`)
-across all workloads. Old data with the wrong env will age out over
-the next 5–15 minutes.
+Read the diagnose check's `Recommendation` for the specific fix.
 
 ## Producing a Report
 
