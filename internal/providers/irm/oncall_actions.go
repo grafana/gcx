@@ -54,8 +54,8 @@ import (
 	"strings"
 
 	"github.com/grafana/gcx/internal/agent"
-	"github.com/grafana/gcx/internal/fail"
 	"github.com/grafana/gcx/internal/format"
+	fail "github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
