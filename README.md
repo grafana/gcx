@@ -281,12 +281,6 @@ Install the bundle into `~/.agents/skills` with:
 gcx agent skills install --all
 ```
 
-Or install a single skill by name:
-
-```sh
-gcx agent skills install diagnose-entity-graph
-```
-
 If your installed skills drift from the bundle shipped in your current `gcx`
 version, `gcx` may show an interactive reminder suggesting:
 
@@ -299,19 +293,6 @@ To disable that reminder entirely, set:
 ```sh
 export GCX_NO_UPDATE_NOTIFIER=1
 ```
-
-### How to use a skill
-
-You do not name skills. Once installed, your agent loads each skill's
-`description` frontmatter at the start of a conversation and auto-invokes
-the matching SKILL.md when your phrasing matches its trigger words.
-
-For example, saying *"my entity graph looks empty"* or *"diagnose knowledge
-graph"* matches `diagnose-entity-graph` and pulls in its full step-by-step
-workflow — no need to know the skill name.
-
-If a skill doesn't trigger automatically, name it explicitly:
-*"use the diagnose-entity-graph skill"*.
 
 ## The Agentic Workflow
 
