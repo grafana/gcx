@@ -189,6 +189,7 @@ Multiple auth mechanisms for different tiers.
 | [016](docs/adrs/dashboards-provider/001-dashboards-provider-design.md) | Dashboards provider: CRUD shorthands, search, and version history | accepted |
 | [017](docs/adrs/traces-get-table/001-tree-table-render-for-traces-get.md) | Tree-table rendering for `traces get` | accepted |
 | [018](docs/adrs/instrumentation/002-cli-redesign.md) | `gcx instrumentation` CLI redesign: action verbs over Set/Get + observed state | accepted |
+| [019](docs/adrs/oncall-alert-group-rich-shape/001-rich-shape-and-list-defaults.md) | Rich `AlertGroup` shape and actionable `alert-groups list` defaults | implemented |
 
 See [docs/adrs/](docs/adrs/) for all ADRs.
 

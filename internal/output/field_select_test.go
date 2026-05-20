@@ -260,6 +260,14 @@ func TestDiscoverFields(t *testing.T) {
 			obj:        map[string]any{},
 			wantFields: []string{},
 		},
+		{
+			name: "nested non-spec fields expanded recursively",
+			obj: map[string]any{
+				"metadata": map[string]any{"name": "foo"},
+				"spec":     map[string]any{"x": 1},
+			},
+			wantFields: []string{"metadata", "metadata.name", "spec", "spec.x"},
+		},
 	}
 
 	for _, tc := range tests {

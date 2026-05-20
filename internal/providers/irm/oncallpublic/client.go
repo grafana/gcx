@@ -632,11 +632,43 @@ func (c *Client) ListAlertGroups(ctx context.Context, opts ...oncalltypes.ListOp
 		end := time.Now().UTC().Format(layout)
 		params.Set("started_at", start+"_"+end)
 	}
+	// Best-effort filter passthrough for the public API. The public endpoint
+	// uses `state` (string), `team_id`, `integration_id`. It does not support
+	// `mine`, `with_resolution_note`, `has_related_incident`, or `is_root`;
+	// callers that set those filters in SA-token mode will see them silently
+	// ignored. The CLI surfaces a `note:` warning at the command edge.
+	for _, s := range cfg.Statuses {
+		if name, ok := publicStateName(s); ok {
+			params.Add("state", name)
+		}
+	}
+	for _, t := range cfg.Teams {
+		params.Add("team_id", t)
+	}
+	for _, i := range cfg.Integrations {
+		params.Add("integration_id", i)
+	}
 	items, err := collectN(iterResources[alertGroup](ctx, c, pathWithParams(alertGroupsPath, params), "alert group"), cfg.Limit)
 	if err != nil {
 		return nil, err
 	}
 	return adaptSlice(items, adaptAlertGroup), nil
+}
+
+// publicStateName converts an internal-API status integer into the public
+// API's string state. Returns false for unknown values.
+func publicStateName(s int) (string, bool) {
+	switch s {
+	case 0:
+		return "firing", true
+	case 1:
+		return "acknowledged", true
+	case 2:
+		return "resolved", true
+	case 3:
+		return "silenced", true
+	}
+	return "", false
 }
 
 func (c *Client) GetAlertGroup(ctx context.Context, id string) (*oncalltypes.AlertGroup, error) {
