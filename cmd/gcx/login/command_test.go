@@ -12,9 +12,9 @@ import (
 	"testing"
 
 	configcmd "github.com/grafana/gcx/cmd/gcx/config"
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
+	gcxerrors "github.com/grafana/gcx/internal/gcxerrors"
 	internallogin "github.com/grafana/gcx/internal/login"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/cobra"
@@ -83,8 +83,8 @@ func TestStructuredMissingFieldsError(t *testing.T) {
 			err := structuredMissingFieldsError(tt.err)
 			require.Error(t, err)
 
-			var det fail.DetailedError
-			require.ErrorAs(t, err, &det, "expected fail.DetailedError, got %T", err)
+			var det gcxerrors.DetailedError
+			require.ErrorAs(t, err, &det, "expected gcxerrors.DetailedError, got %T", err)
 
 			assert.Equal(t, tt.wantSummary, det.Summary)
 			for _, sub := range tt.wantDetailSubs {
@@ -151,8 +151,8 @@ func TestStructuredClarificationError(t *testing.T) {
 			err := structuredClarificationError(tt.err)
 			require.Error(t, err)
 
-			var det fail.DetailedError
-			require.ErrorAs(t, err, &det, "expected fail.DetailedError, got %T", err)
+			var det gcxerrors.DetailedError
+			require.ErrorAs(t, err, &det, "expected gcxerrors.DetailedError, got %T", err)
 
 			assert.Equal(t, tt.wantSummary, det.Summary)
 			for _, sub := range tt.wantDetailSubs {

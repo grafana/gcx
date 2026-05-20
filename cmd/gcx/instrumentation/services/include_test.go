@@ -9,9 +9,9 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/services"
 	"github.com/grafana/gcx/internal/fleet"
+	gcxerrors "github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -255,7 +255,7 @@ func TestRunInclude_WorkloadNotFound(t *testing.T) {
 }
 
 // TestRunInclude_WorkloadNotFound_ExitCode1 verifies validateWorkloadExists
-// returns a fail.DetailedError with ExitCode 1 (ExitGeneralError) when the workload
+// returns a gcxerrors.DetailedError with ExitCode 1 (ExitGeneralError) when the workload
 // is absent from RunK8sDiscovery. This confirms the explicit ExitCode introduced in
 // services/helpers.go (was implicit default 1; now explicit).
 func TestRunInclude_WorkloadNotFound_ExitCode1(t *testing.T) {
@@ -278,8 +278,8 @@ func TestRunInclude_WorkloadNotFound_ExitCode1(t *testing.T) {
 		instrumentation.BackendURLs{}, instrumentation.PromHeaders{}, &out)
 	require.Error(t, err)
 
-	var de *fail.DetailedError
-	require.ErrorAs(t, err, &de, "expected *fail.DetailedError, got %T: %v", err, err)
+	var de *gcxerrors.DetailedError
+	require.ErrorAs(t, err, &de, "expected *gcxerrors.DetailedError, got %T: %v", err, err)
 	assert.Equal(t, "Resource not found", de.Summary)
 	require.NotNil(t, de.ExitCode, "ExitCode must be set explicitly")
 	assert.Equal(t, 1, *de.ExitCode, "ExitCode must be 1 (ExitGeneralError)")

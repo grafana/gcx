@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/fleet"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	instrumout "github.com/grafana/gcx/internal/providers/instrumentation/output"
@@ -104,8 +104,8 @@ func runGet(
 		}
 	}
 
-	exitCode := fail.ExitGeneralError
-	return &fail.DetailedError{
+	exitCode := gcxerrors.ExitGeneralError
+	return &gcxerrors.DetailedError{
 		Summary: "Resource not found",
 		Details: fmt.Sprintf("workload %q not found in namespace %q (cluster %q)", service, namespace, cluster),
 		Suggestions: []string{

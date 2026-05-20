@@ -1,4 +1,4 @@
-package fail_test
+package gcxerrors_test
 
 import (
 	"errors"
@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/fatih/color"
-	"github.com/grafana/gcx/internal/fail"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -15,7 +15,7 @@ func TestDetailedError_Error_OmitsDuplicateParentDetails(t *testing.T) {
 	color.NoColor = true
 	t.Cleanup(func() { color.NoColor = oldNoColor })
 
-	err := fail.DetailedError{
+	err := gcxerrors.DetailedError{
 		Summary: "Unexpected error",
 		Details: "grafana.server is not configured in context \"default\"",
 		Parent:  errors.New("grafana.server is not configured in context \"default\""),
@@ -32,7 +32,7 @@ func TestDetailedError_Error_KeepsDistinctParentDetails(t *testing.T) {
 	color.NoColor = true
 	t.Cleanup(func() { color.NoColor = oldNoColor })
 
-	err := fail.DetailedError{
+	err := gcxerrors.DetailedError{
 		Summary: "File not found",
 		Details: "could not read './foo.yaml'",
 		Parent:  errors.New("open ./foo.yaml: no such file or directory"),

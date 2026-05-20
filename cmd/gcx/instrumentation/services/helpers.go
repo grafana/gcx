@@ -6,13 +6,13 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/grafana/gcx/cmd/gcx/fail"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/grafana/gcx/internal/providers/instrumentation/rmw"
 )
 
 // validateWorkloadExists checks whether the given (cluster, namespace, service)
-// tuple appears in RunK8sDiscovery results. Returns a fail.DetailedError if not
+// tuple appears in RunK8sDiscovery results. Returns a gcxerrors.DetailedError if not
 // found, nil if found.
 func validateWorkloadExists(
 	ctx context.Context,
@@ -29,8 +29,8 @@ func validateWorkloadExists(
 			return nil
 		}
 	}
-	exitCode := fail.ExitGeneralError
-	return &fail.DetailedError{
+	exitCode := gcxerrors.ExitGeneralError
+	return &gcxerrors.DetailedError{
 		Summary: "Resource not found",
 		Details: fmt.Sprintf("workload %q not found in namespace %q (cluster %q) via RunK8sDiscovery", service, namespace, cluster),
 		Suggestions: []string{

@@ -20,7 +20,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/grafana/gcx/cmd/gcx/fail"
+	gcxerrors "github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -34,14 +34,14 @@ import (
 //	WHEN a command fails with an auth error (HTTP 401)
 //	THEN stdout contains {"error": {"summary": "...", "exitCode": 3, ...}}
 func TestErrorIntegration_AuthError(t *testing.T) {
-	authErr := fail.DetailedError{
+	authErr := gcxerrors.DetailedError{
 		Summary:  "authentication failed: HTTP 401 Unauthorized",
 		Details:  "The server rejected the request due to missing or invalid credentials",
-		ExitCode: intPtr(fail.ExitAuthFailure),
+		ExitCode: intPtr(gcxerrors.ExitAuthFailure),
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, authErr.WriteJSON(&buf, fail.ExitAuthFailure))
+	require.NoError(t, authErr.WriteJSON(&buf, gcxerrors.ExitAuthFailure))
 
 	// Output must be valid JSON.
 	var got map[string]any
@@ -56,7 +56,7 @@ func TestErrorIntegration_AuthError(t *testing.T) {
 	assert.Equal(t, "authentication failed: HTTP 401 Unauthorized", errObj["summary"])
 	exitCodeVal, ok2 := errObj["exitCode"].(float64)
 	require.True(t, ok2, "exitCode must be a number")
-	assert.Equal(t, fail.ExitAuthFailure, int(exitCodeVal), "exitCode must be 3 for auth failures")
+	assert.Equal(t, gcxerrors.ExitAuthFailure, int(exitCodeVal), "exitCode must be 3 for auth failures")
 	assert.Equal(t, "The server rejected the request due to missing or invalid credentials", errObj["details"])
 }
 
@@ -65,27 +65,27 @@ func TestErrorIntegration_AuthError(t *testing.T) {
 func TestErrorIntegration_ExitCodeMatchesProcessExitCode(t *testing.T) {
 	tests := []struct {
 		name         string
-		err          fail.DetailedError
+		err          gcxerrors.DetailedError
 		exitCode     int
 		wantExitCode int
 	}{
 		{
 			name:         "general error: exitCode 1",
-			err:          fail.DetailedError{Summary: "something went wrong"},
-			exitCode:     fail.ExitGeneralError,
-			wantExitCode: fail.ExitGeneralError,
+			err:          gcxerrors.DetailedError{Summary: "something went wrong"},
+			exitCode:     gcxerrors.ExitGeneralError,
+			wantExitCode: gcxerrors.ExitGeneralError,
 		},
 		{
 			name:         "auth failure: exitCode 3",
-			err:          fail.DetailedError{Summary: "authentication failed"},
-			exitCode:     fail.ExitAuthFailure,
-			wantExitCode: fail.ExitAuthFailure,
+			err:          gcxerrors.DetailedError{Summary: "authentication failed"},
+			exitCode:     gcxerrors.ExitAuthFailure,
+			wantExitCode: gcxerrors.ExitAuthFailure,
 		},
 		{
 			name:         "partial failure: exitCode 4",
-			err:          fail.DetailedError{Summary: "push partially failed"},
-			exitCode:     fail.ExitPartialFailure,
-			wantExitCode: fail.ExitPartialFailure,
+			err:          gcxerrors.DetailedError{Summary: "push partially failed"},
+			exitCode:     gcxerrors.ExitPartialFailure,
+			wantExitCode: gcxerrors.ExitPartialFailure,
 		},
 	}
 
@@ -112,7 +112,7 @@ func TestErrorIntegration_ExitCodeMatchesProcessExitCode(t *testing.T) {
 // optional fields (details, suggestions, docsLink) are included when
 // set on the DetailedError (FR-011a).
 func TestErrorIntegration_OptionalFieldsIncludedWhenPresent(t *testing.T) {
-	err := fail.DetailedError{
+	err := gcxerrors.DetailedError{
 		Summary:     "invalid configuration",
 		Details:     "the server URL is malformed",
 		Suggestions: []string{"check --server flag", "verify kubeconfig context"},
@@ -120,7 +120,7 @@ func TestErrorIntegration_OptionalFieldsIncludedWhenPresent(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, err.WriteJSON(&buf, fail.ExitGeneralError))
+	require.NoError(t, err.WriteJSON(&buf, gcxerrors.ExitGeneralError))
 
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
@@ -147,12 +147,12 @@ func TestErrorIntegration_OptionalFieldsIncludedWhenPresent(t *testing.T) {
 //	Optional fields MUST be omitted when not set — they must not pollute the
 //	output with empty values that could confuse downstream JSON parsers.
 func TestErrorIntegration_OptionalFieldsOmittedWhenEmpty(t *testing.T) {
-	err := fail.DetailedError{
+	err := gcxerrors.DetailedError{
 		Summary: "minimal error",
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, err.WriteJSON(&buf, fail.ExitGeneralError))
+	require.NoError(t, err.WriteJSON(&buf, gcxerrors.ExitGeneralError))
 
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
@@ -170,7 +170,7 @@ func TestErrorIntegration_OptionalFieldsOmittedWhenEmpty(t *testing.T) {
 //
 // This guards against partial writes or color codes corrupting the JSON stream.
 func TestErrorIntegration_OutputIsAlwaysValidJSON(t *testing.T) {
-	cases := []fail.DetailedError{
+	cases := []gcxerrors.DetailedError{
 		{Summary: "simple error"},
 		{Summary: "error with newlines in details", Details: "line one\nline two\nline three"},
 		{Summary: `error with "quotes"`, Details: `field: "value"`},
@@ -181,7 +181,7 @@ func TestErrorIntegration_OutputIsAlwaysValidJSON(t *testing.T) {
 	for _, err := range cases {
 		t.Run(err.Summary, func(t *testing.T) {
 			var buf bytes.Buffer
-			require.NoError(t, err.WriteJSON(&buf, fail.ExitGeneralError))
+			require.NoError(t, err.WriteJSON(&buf, gcxerrors.ExitGeneralError))
 
 			var got any
 			require.NoError(t, json.Unmarshal(buf.Bytes(), &got),
@@ -193,7 +193,7 @@ func TestErrorIntegration_OutputIsAlwaysValidJSON(t *testing.T) {
 // TestErrorIntegration_JSONContainsRequiredFields verifies the minimum
 // required fields are always present in the error JSON (FR-011).
 func TestErrorIntegration_JSONContainsRequiredFields(t *testing.T) {
-	err := fail.DetailedError{
+	err := gcxerrors.DetailedError{
 		Summary:  "something failed",
 		ExitCode: intPtr(3),
 	}
@@ -240,7 +240,7 @@ func TestErrorIntegration_WriteJSONIsForErrorsOnly(t *testing.T) {
 	// WriteJSON always writes an error envelope — it is only called on failure.
 	// On success, handleError() in main.go simply does not call WriteJSON.
 	// Verify that a call to WriteJSON always produces the error key.
-	err := fail.DetailedError{Summary: "unexpected failure"}
+	err := gcxerrors.DetailedError{Summary: "unexpected failure"}
 
 	var buf bytes.Buffer
 	require.NoError(t, err.WriteJSON(&buf, 1))

@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/aio11y/conversations"
 	"github.com/grafana/gcx/internal/providers/aio11y/eval"
 	"github.com/grafana/gcx/internal/providers/aio11y/eval/evaluators"
+	"github.com/grafana/gcx/internal/providers/aio11y/eval/guards"
 	"github.com/grafana/gcx/internal/providers/aio11y/eval/rules"
 	"github.com/grafana/gcx/internal/providers/aio11y/eval/templates"
 	"github.com/stretchr/testify/assert"
@@ -137,6 +138,29 @@ func fakePluginMux() *http.ServeMux {
 				"items": []map[string]any{
 					{"rule_id": "rule-1", "enabled": true, "selector": "user_visible_turn",
 						"sample_rate": 1.0, "evaluator_ids": []string{"eval-1"}},
+				},
+			})
+		})
+
+	hookRulesCalls := 0
+	mux.HandleFunc("/api/plugins/grafana-sigil-app/resources/eval/hook-rules",
+		func(w http.ResponseWriter, _ *http.Request) {
+			hookRulesCalls++
+			if hookRulesCalls == 1 {
+				writeJSON(w, map[string]any{
+					"items": []map[string]any{
+						{"rule_id": "guard-1", "enabled": true, "phase": "preflight",
+							"priority": 10, "selector": "all", "action_on_fail": "deny",
+							"short_circuit": true, "evaluator_ids": []string{"eval-1"}},
+					},
+					"next_cursor": "next",
+				})
+				return
+			}
+			writeJSON(w, map[string]any{
+				"items": []map[string]any{
+					{"rule_id": "guard-2", "enabled": false, "phase": "postflight",
+						"selector": "user_visible_turn", "action_on_fail": "warn"},
 				},
 			})
 		})
@@ -321,6 +345,33 @@ func TestIntegration_RulesListToTable(t *testing.T) {
 	assert.Contains(t, output, "rule-1")
 	assert.Contains(t, output, "user_visible_turn")
 	assert.Contains(t, output, "eval-1")
+}
+
+func TestIntegration_GuardsListToTable(t *testing.T) {
+	base := newBase(t, fakePluginMux())
+	client := guards.NewClient(base)
+
+	items, err := client.List(context.Background())
+	require.NoError(t, err)
+	require.Len(t, items, 2, "pagination should pull both pages of hook rules")
+	assert.Equal(t, "guard-1", items[0].RuleID)
+	assert.Equal(t, "guard-2", items[1].RuleID)
+
+	var buf bytes.Buffer
+	codec := &guards.TableCodec{}
+	require.NoError(t, codec.Encode(&buf, items))
+
+	output := buf.String()
+	assert.Contains(t, output, "ID")
+	assert.Contains(t, output, "PHASE")
+	assert.Contains(t, output, "PRIORITY")
+	assert.Contains(t, output, "SELECTOR")
+	assert.Contains(t, output, "ACTION")
+	assert.Contains(t, output, "guard-1")
+	assert.Contains(t, output, "preflight")
+	assert.Contains(t, output, "deny")
+	assert.Contains(t, output, "guard-2")
+	assert.Contains(t, output, "warn")
 }
 
 func TestIntegration_EvalTestRunTest(t *testing.T) {

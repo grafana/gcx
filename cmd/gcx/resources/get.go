@@ -10,11 +10,11 @@ import (
 	"time"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/discovery"
@@ -341,8 +341,8 @@ func writeFieldSelect(out io.Writer, opts *getOpts, res *FetchResponse, output u
 			itemMaps[i] = cmdio.ExtractFields(item.Object, codec.Fields())
 		}
 		errSummary := fmt.Sprintf("%d resource(s) failed to get", res.PullSummary.FailedCount())
-		detErr := fail.DetailedError{Summary: errSummary}
-		return detErr.WriteJSONWithItems(out, fail.ExitPartialFailure, itemMaps)
+		detErr := gcxerrors.DetailedError{Summary: errSummary}
+		return detErr.WriteJSONWithItems(out, gcxerrors.ExitPartialFailure, itemMaps)
 	}
 
 	var encodeErr error

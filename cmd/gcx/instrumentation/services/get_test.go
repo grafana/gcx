@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/services"
+	gcxerrors "github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/spf13/pflag"
@@ -58,7 +58,7 @@ func TestRunGet_HappyPath(t *testing.T) {
 	assert.NotContains(t, output, "payment")
 }
 
-// TestRunGet_NotFound verifies that runGet returns a canonical *fail.DetailedError
+// TestRunGet_NotFound verifies that runGet returns a canonical *gcxerrors.DetailedError
 // when the workload is not present in the discovery response.
 func TestRunGet_NotFound(t *testing.T) {
 	ts := &discoveryTestServer{
@@ -91,9 +91,9 @@ func TestRunGet_NotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "missing-svc")
 	assert.Contains(t, err.Error(), "not found")
 
-	// Field-level assertions on the canonical *fail.DetailedError shape (AC-F1-2).
-	var detailed *fail.DetailedError
-	require.ErrorAs(t, err, &detailed, "error must be a *fail.DetailedError, got: %T", err)
+	// Field-level assertions on the canonical *gcxerrors.DetailedError shape (AC-F1-2).
+	var detailed *gcxerrors.DetailedError
+	require.ErrorAs(t, err, &detailed, "error must be a *gcxerrors.DetailedError, got: %T", err)
 	assert.Equal(t, "Resource not found", detailed.Summary)
 	assert.Contains(t, detailed.Details, "missing-svc")
 	assert.Contains(t, detailed.Details, "checkout")
@@ -101,7 +101,7 @@ func TestRunGet_NotFound(t *testing.T) {
 	require.Len(t, detailed.Suggestions, 1)
 	assert.Equal(t, "Run: gcx instrumentation services list --cluster=prod-1 --namespace=checkout", detailed.Suggestions[0])
 	require.NotNil(t, detailed.ExitCode)
-	assert.Equal(t, fail.ExitGeneralError, *detailed.ExitCode)
+	assert.Equal(t, gcxerrors.ExitGeneralError, *detailed.ExitCode)
 }
 
 // TestRunGet_WrongCluster verifies that runGet returns not-found when the cluster
