@@ -37,6 +37,11 @@ var commandAnnotations = map[string]annotation{
 	"gcx assistant investigations report":    {Cost: "medium", Hint: "<id> -o json"},
 	"gcx assistant investigations timeline":  {Cost: "medium", Hint: "<id> -o json"},
 	"gcx assistant investigations todos":     {Cost: "medium", Hint: "<id> -o json"},
+	"gcx assistant mcp-servers create":       {Cost: "small"},
+	"gcx assistant mcp-servers delete":       {Cost: "small"},
+	"gcx assistant mcp-servers get":          {Cost: "small"},
+	"gcx assistant mcp-servers list":         {Cost: "small"},
+	"gcx assistant mcp-servers update":       {Cost: "small"},
 
 	// login
 	"gcx login": {Cost: "small"},

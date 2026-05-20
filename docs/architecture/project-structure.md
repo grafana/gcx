@@ -29,6 +29,7 @@ gcx/
 ├── internal/                 # All non-public packages (Go enforced)
 │   ├── agent/                # Agent-mode detection, command annotations, known-resource registry with operation hints
 │   ├── agentlog/             # Agent invocation failure logger (opt-in JSONL disk log, XDG state dir — wired into handleError in cmd/gcx/main.go)
+│   ├── assistant/            # Assistant client packages (prompt state, investigations, MCP server integrations)
 │   ├── auth/                 # OAuth PKCE flow, token refresh transport
 │   │   └── adaptive/         # Shared adaptive telemetry auth (GCOM caching, Basic auth)
 │   ├── cloud/                # Grafana Cloud stack discovery via GCOM API

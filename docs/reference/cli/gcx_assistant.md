@@ -32,5 +32,6 @@ Service account tokens are not supported.
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx assistant dashboard](gcx_assistant_dashboard.md)	 - Build a dashboard using the Grafana dashboarding agent
 * [gcx assistant investigations](gcx_assistant_investigations.md)	 - Manage Grafana Assistant investigations.
+* [gcx assistant mcp-servers](gcx_assistant_mcp-servers.md)	 - Manage Assistant MCP server integrations.
 * [gcx assistant prompt](gcx_assistant_prompt.md)	 - Send a single message to Grafana Assistant
 

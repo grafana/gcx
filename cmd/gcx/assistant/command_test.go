@@ -170,6 +170,27 @@ func TestConventions_DashboardSubcommandNoAgentIDFlag(t *testing.T) {
 	}
 }
 
+func TestConventions_MCPServersCommandMounted(t *testing.T) {
+	cmd := assistant.Command()
+
+	var mcpCmd *cobra.Command
+	for _, sub := range cmd.Commands() {
+		if sub.Name() == "mcp-servers" {
+			mcpCmd = sub
+			break
+		}
+	}
+	if mcpCmd == nil {
+		t.Fatal("expected to find 'mcp-servers' subcommand")
+	}
+
+	for _, name := range []string{"list", "get", "create", "update", "delete"} {
+		if sub, _, err := mcpCmd.Find([]string{name}); err != nil || sub.Name() != name {
+			t.Fatalf("expected mcp-servers %s command to be mounted", name)
+		}
+	}
+}
+
 func TestRequireGrafanaCloud(t *testing.T) {
 	tests := []struct {
 		name    string
