@@ -187,6 +187,7 @@ func NewTypedCRUD(ctx context.Context, loader RESTConfigLoader) (*adapter.TypedC
 		GetFn: func(ctx context.Context, name string) (*Rule, error) {
 			return client.GetRule(ctx, name)
 		},
+		DeleteFn:   client.DeleteRule,
 		Namespace:  cfg.Namespace,
 		Descriptor: staticDescriptor,
 	}
