@@ -1363,18 +1363,18 @@ type k8sMetadata struct {
 // fields in a meaningful order — used in place of unstructured.Unstructured
 // where ordered YAML/JSON output matters (i.e., the get-style commands).
 type alertGroupEnvelope struct {
-	APIVersion string                       `json:"apiVersion" yaml:"apiVersion"`
-	Kind       string                       `json:"kind" yaml:"kind"`
-	Metadata   k8sMetadata                  `json:"metadata" yaml:"metadata"`
+	APIVersion string           `json:"apiVersion" yaml:"apiVersion"`
+	Kind       string           `json:"kind" yaml:"kind"`
+	Metadata   k8sMetadata      `json:"metadata" yaml:"metadata"`
 	Spec       AlertGroupSpec   `json:"spec" yaml:"spec"`
 	Status     AlertGroupStatus `json:"status" yaml:"status"`
 }
 
 // alertEnvelope is the K8s-style envelope for a single Alert with explicit field order.
 type alertEnvelope struct {
-	APIVersion string                  `json:"apiVersion" yaml:"apiVersion"`
-	Kind       string                  `json:"kind" yaml:"kind"`
-	Metadata   k8sMetadata             `json:"metadata" yaml:"metadata"`
+	APIVersion string      `json:"apiVersion" yaml:"apiVersion"`
+	Kind       string      `json:"kind" yaml:"kind"`
+	Metadata   k8sMetadata `json:"metadata" yaml:"metadata"`
 	Spec       AlertSpec   `json:"spec" yaml:"spec"`
 	Status     AlertStatus `json:"status" yaml:"status"`
 }

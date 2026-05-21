@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-
 )
 
 // TestStripTitleTargetSuffix asserts that OnCall's render_for_web titles —

@@ -109,8 +109,7 @@ internal/
 │   │   ├── helm/       Helm command formatter for the setup wizard
 │   │   ├── output/     View types and codecs (clusters, apps, services; wait/mutation envelopes)
 │   │   └── rmw/        Read-modify-write helper with optimistic-lock guard (ConflictError)
-│   ├── irm/        IRM provider (OnCall + Incidents — schedules, integrations, escalation chains, incidents)
-│   │   └── oncalltypes/  Rich K8s-envelope types for OnCall resources (AlertGroup/Alert spec/status shape, ADR-019)
+│   ├── irm/        IRM provider (OnCall + Incidents — schedules, integrations, escalation chains, incidents; rich K8s-envelope types for AlertGroup/Alert in rich.go, ADR-019)
 │   ├── k6/         k6 Cloud provider (projects, tests, runs, envvars)
 │   ├── kg/         Knowledge Graph (Asserts) provider
 │   ├── logs/       Logs signal provider (Loki queries + Adaptive Logs commands)

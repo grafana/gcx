@@ -3,7 +3,6 @@ package irm
 import (
 	"context"
 	"encoding/json"
-
 )
 
 // RichAlertGroupReader is the read-side interface for the rich alert-group

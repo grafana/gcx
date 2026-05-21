@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-
 )
 
 // alertGroupAPI is the partially-parsed API shape returned by

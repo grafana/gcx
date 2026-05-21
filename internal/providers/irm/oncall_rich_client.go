@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"strconv"
 	"sync"
-
 )
 
 // teamsCache is a per-OnCallClient lazy cache of team-id → team-name.
