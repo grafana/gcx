@@ -697,7 +697,10 @@ func (h *tracesHelper) configSetCommand() *cobra.Command {
 		Short: "Replace the Adaptive Traces tenant configuration.",
 		Long: "Replace the Adaptive Traces tenant configuration with the contents of the " +
 			"supplied file. The API does not support partial patches — the entire payload is " +
-			"required and the existing document is overwritten.",
+			"required and the existing document is overwritten.\n\n" +
+			"To avoid clobbering fields you did not intend to change, run `gcx traces adaptive " +
+			"config show` first, edit the returned document, and pass the full result back to " +
+			"`set`. Any field omitted from the payload is dropped, not preserved.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {

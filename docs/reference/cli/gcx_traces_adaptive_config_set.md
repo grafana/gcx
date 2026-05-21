@@ -6,6 +6,8 @@ Replace the Adaptive Traces tenant configuration.
 
 Replace the Adaptive Traces tenant configuration with the contents of the supplied file. The API does not support partial patches — the entire payload is required and the existing document is overwritten.
 
+To avoid clobbering fields you did not intend to change, run `gcx traces adaptive config show` first, edit the returned document, and pass the full result back to `set`. Any field omitted from the payload is dropped, not preserved.
+
 ```
 gcx traces adaptive config set [flags]
 ```
