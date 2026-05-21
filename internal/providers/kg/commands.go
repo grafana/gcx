@@ -477,24 +477,14 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 				return err
 			}
 
-			// Extract rules from TypedObject
-			files := make([]Rule, len(typedObjs))
+			// Convert to K8s envelope unstructured once; all codecs (table,
+			// wide, yaml, json) consume the same shape.
+			objs := make([]unstructured.Unstructured, 0, len(typedObjs))
 			for i := range typedObjs {
-				files[i] = typedObjs[i].Spec
-			}
-
-			// Table codec operates on raw []Rule for direct field access.
-			// Other formats (yaml/json) convert to K8s envelope Resources
-			// for consistency with get and round-trip support.
-			if rulesListOpts.IO.OutputFormat == "table" {
-				return rulesListOpts.IO.Encode(cmd.OutOrStdout(), files)
-			}
-
-			var objs []unstructured.Unstructured
-			for _, f := range files {
-				res, err := RuleToResource(f, cfg.Namespace)
+				rule := typedObjs[i].Spec
+				res, err := RuleToResource(rule, cfg.Namespace)
 				if err != nil {
-					return fmt.Errorf("failed to convert rule %s to resource: %w", f.Name, err)
+					return fmt.Errorf("failed to convert rule %s to resource: %w", rule.Name, err)
 				}
 				objs = append(objs, res.ToUnstructured())
 			}
@@ -594,6 +584,7 @@ type rulesListOpts struct {
 
 func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &RuleTableCodec{})
+	o.IO.RegisterCustomCodec("wide", &RuleWideTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
@@ -608,25 +599,89 @@ func (o *rulesGetOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-// RuleTableCodec renders rules as a table.
+// ruleStats holds counts derived from a rule file spec.
+type ruleStats struct {
+	groups, rules, alerts, recording int
+}
+
+// ruleSpecStats walks the rule file spec and returns counts.
+func ruleSpecStats(obj unstructured.Unstructured) ruleStats {
+	var s ruleStats
+	spec, ok := obj.Object["spec"].(map[string]any)
+	if !ok {
+		return s
+	}
+	groupList, _ := spec["groups"].([]any)
+	s.groups = len(groupList)
+	for _, g := range groupList {
+		gMap, ok := g.(map[string]any)
+		if !ok {
+			continue
+		}
+		ruleList, _ := gMap["rules"].([]any)
+		s.rules += len(ruleList)
+		for _, r := range ruleList {
+			rMap, ok := r.(map[string]any)
+			if !ok {
+				continue
+			}
+			if alert, _ := rMap["alert"].(string); alert != "" {
+				s.alerts++
+			}
+			if record, _ := rMap["record"].(string); record != "" {
+				s.recording++
+			}
+		}
+	}
+	return s
+}
+
+// RuleTableCodec renders rule files as a compact table: name + group/rule counts.
 type RuleTableCodec struct{}
 
 func (c *RuleTableCodec) Format() format.Format { return "table" }
 
 func (c *RuleTableCodec) Encode(w io.Writer, v any) error {
-	files, ok := v.([]Rule)
+	objs, ok := v.([]unstructured.Unstructured)
 	if !ok {
-		return errors.New("invalid data type for table codec: expected []Rule")
+		return errors.New("invalid data type for table codec: expected []unstructured.Unstructured")
 	}
-	t := style.NewTable("NAME")
-	for _, f := range files {
-		t.Row(f.Name)
+	t := style.NewTable("NAME", "GROUPS", "RULES")
+	for _, obj := range objs {
+		s := ruleSpecStats(obj)
+		t.Row(obj.GetName(), strconv.Itoa(s.groups), strconv.Itoa(s.rules))
 	}
 	return t.Render(w)
 }
 
 func (c *RuleTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
+}
+
+// RuleWideTableCodec adds alert/recording breakdowns to the basic table view.
+type RuleWideTableCodec struct{}
+
+func (c *RuleWideTableCodec) Format() format.Format { return "wide" }
+
+func (c *RuleWideTableCodec) Encode(w io.Writer, v any) error {
+	objs, ok := v.([]unstructured.Unstructured)
+	if !ok {
+		return errors.New("invalid data type for wide codec: expected []unstructured.Unstructured")
+	}
+	t := style.NewTable("NAME", "GROUPS", "RULES", "ALERTS", "RECORDING")
+	for _, obj := range objs {
+		s := ruleSpecStats(obj)
+		t.Row(obj.GetName(),
+			strconv.Itoa(s.groups),
+			strconv.Itoa(s.rules),
+			strconv.Itoa(s.alerts),
+			strconv.Itoa(s.recording))
+	}
+	return t.Render(w)
+}
+
+func (c *RuleWideTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("wide format does not support decoding")
 }
 
 // ---------------------------------------------------------------------------
