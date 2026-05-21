@@ -162,6 +162,7 @@ func NewAdapterFactory(loader RESTConfigLoader) adapter.Factory {
 			GetFn: func(ctx context.Context, name string) (*Rule, error) {
 				return client.GetRule(ctx, name)
 			},
+			DeleteFn:   client.DeleteRule,
 			Namespace:  cfg.Namespace,
 			Descriptor: staticDescriptor,
 		}

@@ -557,15 +557,12 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			ctx := cmd.Context()
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			if err := client.DeleteRule(cmd.Context(), name); err != nil {
+			if err := crud.Delete(ctx, name); err != nil {
 				return err
 			}
 			cmdio.Success(cmd.OutOrStdout(), "Knowledge Graph rule %q deleted", name)
