@@ -282,20 +282,21 @@ func TestGetCommand_RequiresArg(t *testing.T) {
 // provider registration
 // ---------------------------------------------------------------------------
 
-func TestStacksProvider_Commands(t *testing.T) {
+func TestStacksProvider_Commands_ReturnsNil(t *testing.T) {
 	p := &stacks.StacksProvider{}
 
 	assert.Equal(t, "stacks", p.Name())
 	assert.NotEmpty(t, p.ShortDesc())
+	assert.Nil(t, p.Commands(), "Commands() should return nil — stacks is wired via cmd/gcx/cloud")
+}
 
-	cmds := p.Commands()
-	require.Len(t, cmds, 1, "should return one top-level 'stacks' command")
+func TestNewCommand(t *testing.T) {
+	cmd := stacks.NewCommand()
 
-	stacksCmd := cmds[0]
-	assert.Equal(t, "stacks", stacksCmd.Use)
+	assert.Equal(t, "stacks", cmd.Use)
 
-	subNames := make([]string, 0, len(stacksCmd.Commands()))
-	for _, sub := range stacksCmd.Commands() {
+	subNames := make([]string, 0, len(cmd.Commands()))
+	for _, sub := range cmd.Commands() {
 		subNames = append(subNames, sub.Name())
 	}
 	assert.ElementsMatch(t, []string{"list", "get", "create", "update", "delete", "regions"}, subNames)

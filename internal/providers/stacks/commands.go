@@ -141,7 +141,7 @@ func (o *createOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Name, "name", "", "Stack name (required)")
 	flags.StringVar(&o.Slug, "slug", "", "Stack slug / subdomain (required)")
-	flags.StringVar(&o.Region, "region", "", "Region slug (e.g. us, eu). Use 'gcx stacks regions' to list.")
+	flags.StringVar(&o.Region, "region", "", "Region slug (e.g. us, eu). Use 'gcx cloud stacks regions' to list.")
 	flags.StringVar(&o.Description, "description", "", "Short description")
 	flags.StringSliceVar(&o.Labels, "labels", nil, "Labels in key=value format (may be repeated)")
 	flags.StringVar(&o.URL, "url", "", "Custom domain URL")
@@ -156,9 +156,9 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Create a new Grafana Cloud stack.",
 		Long: `Create a new Grafana Cloud stack.
 
-This command creates a new Grafana Cloud stack, which provisions infrastructure
-and may incur costs. Always confirm the stack name, slug, and region with the
-user before executing. Prefer --dry-run first.`,
+This provisions new infrastructure and may incur costs. The stack name, slug,
+and region cannot be changed after creation - double-check before running.
+Use --dry-run to preview the request first.`,
 		Annotations: map[string]string{
 			agent.AnnotationRequiredScope: "stacks:write",
 			agent.AnnotationTokenCost:     "small",
@@ -248,9 +248,8 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Update a Grafana Cloud stack.",
 		Long: `Update a Grafana Cloud stack.
 
-This command modifies a live Grafana Cloud stack. Changing the name or disabling
-delete protection can have downstream effects. Always confirm the intended
-changes with the user and prefer --dry-run first.`,
+This modifies a live stack. Note that the slug and region cannot be changed.
+Use --dry-run to preview the request first.`,
 		Args: cobra.ExactArgs(1),
 		Annotations: map[string]string{
 			agent.AnnotationRequiredScope: "stacks:write",
@@ -332,10 +331,9 @@ func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Delete a Grafana Cloud stack.",
 		Long: `Delete a Grafana Cloud stack.
 
-This command permanently deletes a Grafana Cloud stack and ALL its data
-(dashboards, alerts, datasources, metrics, logs, traces). This action is
-IRREVERSIBLE. Always confirm with the user by name before executing. Prefer
---dry-run first. Never run this command without explicit user confirmation.`,
+This permanently deletes a stack and all its data (dashboards, alerts,
+datasources, metrics, logs, traces). This cannot be undone.
+Use --dry-run to preview the operation first.`,
 		Args: cobra.ExactArgs(1),
 		Annotations: map[string]string{
 			agent.AnnotationRequiredScope: "stacks:delete",
