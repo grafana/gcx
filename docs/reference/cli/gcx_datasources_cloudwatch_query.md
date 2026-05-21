@@ -55,7 +55,7 @@ gcx datasources cloudwatch query [flags]
       --namespace string            CloudWatch namespace, e.g. AWS/EC2 (required)
       --open                        Open the executed query in Grafana Explore
   -o, --output string               Output format. One of: agents, graph, json, table, wide, yaml (default "table")
-      --period int                  Period in seconds (must be > 0) (default 300)
+      --period string               Period in seconds (e.g. 60, 300) or "auto" to let CloudWatch pick a period that fits the time range (default "auto")
       --region string               AWS region, e.g. us-east-1 (required)
       --share-link                  Print the Grafana Explore URL for the executed query to stderr
       --since string                Duration before --to (or now if omitted); mutually exclusive with --from

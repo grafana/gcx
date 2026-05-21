@@ -54,7 +54,7 @@ func (c *Client) Query(ctx context.Context, dsUID string, req QueryRequest) (*Qu
 		// with intervalMs (numeric, set below) reflects the upstream
 		// contract, not a gcx choice; do not "fix" without re-verifying
 		// against the plugin.
-		"period":          strconv.Itoa(req.Period),
+		"period":          req.Period,
 		"dimensions":      orEmptyDimensions(req.Dimensions),
 		"expression":      "",
 		"metricQueryType": 0,
@@ -65,7 +65,14 @@ func (c *Client) Query(ctx context.Context, dsUID string, req QueryRequest) (*Qu
 
 	intervalMs := req.IntervalMs
 	if intervalMs == 0 {
-		intervalMs = int64(req.Period) * 1000
+		// Period may be "auto"; only derive intervalMs from a numeric period.
+		// Otherwise default to 60s so the field stays a JSON number — the
+		// plugin re-derives the actual step from the time range anyway.
+		if p, err := strconv.Atoi(req.Period); err == nil && p > 0 {
+			intervalMs = int64(p) * 1000
+		} else {
+			intervalMs = 60_000
+		}
 	}
 	query["intervalMs"] = intervalMs
 

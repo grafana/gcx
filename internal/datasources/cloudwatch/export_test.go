@@ -15,3 +15,8 @@ func AllFramesEmpty(resp *cwclient.QueryResponse) bool {
 func MaybeEmitCrossAccountHint(w io.Writer, dimensions map[string]string, accountID string, resp *cwclient.QueryResponse) {
 	maybeEmitCrossAccountHint(w, dimensions, accountID, resp)
 }
+
+// ValidatePeriod exposes validatePeriod for testing.
+func ValidatePeriod(p string) error {
+	return validatePeriod(p)
+}

@@ -1,7 +1,6 @@
 package cloudwatch
 
 import (
-	"strconv"
 	"strings"
 
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
@@ -34,8 +33,8 @@ func QueryExploreURL(host string, base dsquery.ExploreQuery, req cwclient.QueryR
 		"matchExact": req.MatchExact,
 		"dimensions": dimensions,
 	}
-	if req.Period > 0 {
-		query["period"] = strconv.Itoa(req.Period)
+	if req.Period != "" {
+		query["period"] = req.Period
 	}
 	if req.AccountID != "" {
 		query["accountId"] = req.AccountID

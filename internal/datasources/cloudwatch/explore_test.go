@@ -31,7 +31,7 @@ func baseCloudWatchQuery() cwclient.QueryRequest {
 		MetricName: "CPUUtilization",
 		Region:     "us-east-1",
 		Statistic:  "Average",
-		Period:     300,
+		Period:     "300",
 	}
 }
 
@@ -52,13 +52,22 @@ func TestQueryExploreURL(t *testing.T) {
 	t.Run("period encoded as JSON string", func(t *testing.T) {
 		// Cloudwatch plugin's dataquery schema declares period as a string.
 		q := baseCloudWatchQuery()
-		q.Period = 300
+		q.Period = "300"
 
 		got := cloudwatch.QueryExploreURL("https://test.grafana.net", baseQuery("cw-uid"), q)
 		require.NotEmpty(t, got)
 		panes := mustParseURL(t, got).Query().Get("panes")
 		assert.Contains(t, panes, `"period":"300"`)
 		assert.NotContains(t, panes, `"period":300`)
+	})
+
+	t.Run("period 'auto' propagates verbatim", func(t *testing.T) {
+		q := baseCloudWatchQuery()
+		q.Period = "auto"
+
+		got := cloudwatch.QueryExploreURL("https://test.grafana.net", baseQuery("cw-uid"), q)
+		require.NotEmpty(t, got)
+		assert.Contains(t, mustParseURL(t, got).Query().Get("panes"), `"period":"auto"`)
 	})
 
 	t.Run("matchExact false when no dimensions", func(t *testing.T) {

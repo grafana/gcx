@@ -91,7 +91,7 @@ func testQueryReq() cloudwatch.QueryRequest {
 		MetricName: "CPUUtilization",
 		Region:     "us-east-1",
 		Statistic:  "Average",
-		Period:     300,
+		Period:     "300",
 		Start:      time.Date(2026, 5, 17, 0, 0, 0, 0, time.UTC),
 		End:        time.Date(2026, 5, 17, 1, 0, 0, 0, time.UTC),
 	}
@@ -135,7 +135,7 @@ func TestClient_Query(t *testing.T) {
 		assert.Equal(t, "i-b", resp.Frames[1].Labels["InstanceId"])
 	})
 
-	t.Run("empty values", func(t *testing.T) {
+	t.Run("empty values placeholder frame is dropped", func(t *testing.T) {
 		client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write(queryResultBody(t, testResultEntry{
@@ -145,8 +145,7 @@ func TestClient_Query(t *testing.T) {
 
 		resp, err := client.Query(context.Background(), "test-uid", testQueryReq())
 		require.NoError(t, err)
-		require.Len(t, resp.Frames, 1)
-		assert.Empty(t, resp.Frames[0].Timestamps)
+		assert.Empty(t, resp.Frames)
 	})
 
 	t.Run("error envelope", func(t *testing.T) {
@@ -278,27 +277,6 @@ func TestClient_Query(t *testing.T) {
 	// Pins the conditional branches in the query payload: accountId is added
 	// only when non-empty, and intervalMs honors an explicit override.
 	t.Run("conditional fields", func(t *testing.T) {
-		captureQuery := func(t *testing.T, req cloudwatch.QueryRequest) map[string]any {
-			t.Helper()
-			var (
-				captured   map[string]any
-				decodedErr error
-			)
-			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				decodedErr = json.NewDecoder(r.Body).Decode(&captured)
-				_, _ = w.Write(queryResultBody(t, testResultEntry{Frames: []testFrame{}}))
-			}))
-			_, err := client.Query(context.Background(), "test-uid", req)
-			require.NoError(t, err)
-			require.NoError(t, decodedErr)
-			queries, ok := captured["queries"].([]any)
-			require.True(t, ok)
-			require.Len(t, queries, 1)
-			q, ok := queries[0].(map[string]any)
-			require.True(t, ok)
-			return q
-		}
-
 		t.Run("accountId='all' propagates", func(t *testing.T) {
 			req := testQueryReq()
 			req.AccountID = "all"
@@ -314,6 +292,59 @@ func TestClient_Query(t *testing.T) {
 			require.True(t, ok)
 			assert.InDelta(t, 60_000, intervalMs, 0.5)
 		})
+	})
+}
+
+func captureQuery(t *testing.T, req cloudwatch.QueryRequest) map[string]any {
+	t.Helper()
+	var (
+		captured   map[string]any
+		decodedErr error
+	)
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		decodedErr = json.NewDecoder(r.Body).Decode(&captured)
+		_, _ = w.Write(queryResultBody(t, testResultEntry{Frames: []testFrame{}}))
+	}))
+	_, err := client.Query(context.Background(), "test-uid", req)
+	require.NoError(t, err)
+	require.NoError(t, decodedErr)
+	queries, ok := captured["queries"].([]any)
+	require.True(t, ok)
+	require.Len(t, queries, 1)
+	q, ok := queries[0].(map[string]any)
+	require.True(t, ok)
+	return q
+}
+
+func TestClient_Query_PeriodWireShape(t *testing.T) {
+	t.Run("period='auto' forwarded literally", func(t *testing.T) {
+		req := testQueryReq()
+		req.Period = "auto"
+		q := captureQuery(t, req)
+		period, ok := q["period"].(string)
+		require.True(t, ok, "period must be a JSON string, got %T", q["period"])
+		assert.Equal(t, "auto", period)
+	})
+
+	t.Run("numeric period forwarded as string", func(t *testing.T) {
+		req := testQueryReq()
+		req.Period = "60"
+		q := captureQuery(t, req)
+		period, ok := q["period"].(string)
+		require.True(t, ok)
+		assert.Equal(t, "60", period)
+		intervalMs, ok := q["intervalMs"].(float64)
+		require.True(t, ok)
+		assert.InDelta(t, 60_000, intervalMs, 0.5)
+	})
+
+	t.Run("period='auto' uses default intervalMs", func(t *testing.T) {
+		req := testQueryReq()
+		req.Period = "auto"
+		q := captureQuery(t, req)
+		intervalMs, ok := q["intervalMs"].(float64)
+		require.True(t, ok, "intervalMs must be a JSON number, got %T", q["intervalMs"])
+		assert.InDelta(t, 60_000, intervalMs, 0.5)
 	})
 }
 

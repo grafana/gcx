@@ -24,7 +24,7 @@ type QueryRequest struct {
 	AccountID  string
 	Dimensions map[string][]string
 	MatchExact bool
-	Period     int
+	Period     string
 	Start      time.Time
 	End        time.Time
 	IntervalMs int64
@@ -194,6 +194,11 @@ func parseDataFrame(df dataFrame) (Frame, bool, error) {
 			continue
 		}
 		values = append(values, &v)
+	}
+
+	if len(timestamps) == 0 {
+		// Drop empty/all-unparseable frames so callers see "no data" rather than a phantom series.
+		return Frame{}, false, nil
 	}
 
 	return Frame{

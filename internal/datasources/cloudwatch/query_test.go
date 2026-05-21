@@ -36,9 +36,9 @@ func TestQueryCmd_ValidationErrors(t *testing.T) {
 			wantErr: "--statistic must not be empty",
 		},
 		{
-			name:    "period zero",
-			args:    []string{"--region", "us-east-1", "--namespace", "AWS/EC2", "--metric", "CPUUtilization", "--period", "0"},
-			wantErr: "--period must be > 0",
+			name:    "period non-numeric non-auto non-duration",
+			args:    []string{"--region", "us-east-1", "--namespace", "AWS/EC2", "--metric", "CPUUtilization", "--period", "fast"},
+			wantErr: `--period must be "auto", an integer (seconds), or a Go duration like "5m", "1h"`,
 		},
 		{
 			name:    "since and from mutex",
@@ -57,4 +57,27 @@ func TestQueryCmd_ValidationErrors(t *testing.T) {
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})
 	}
+}
+
+func TestValidatePeriod(t *testing.T) {
+	// Zero/negative values are accepted because the upstream plugin tolerates them.
+	t.Run("accepts", func(t *testing.T) {
+		cases := []string{"auto", "AUTO", "Auto", "", "60", "300", "3600", "1m", "5m", "1h", "1h30m", "500ms", "0", "-30", "-1h"}
+		for _, p := range cases {
+			t.Run(p, func(t *testing.T) {
+				assert.NoError(t, cloudwatch.ValidatePeriod(p))
+			})
+		}
+	})
+
+	t.Run("rejects", func(t *testing.T) {
+		want := `--period must be "auto", an integer (seconds), or a Go duration like "5m", "1h"`
+		for _, p := range []string{"fast", "5x", "abc"} {
+			t.Run(p, func(t *testing.T) {
+				err := cloudwatch.ValidatePeriod(p)
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), want)
+			})
+		}
+	})
 }

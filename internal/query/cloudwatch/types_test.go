@@ -39,13 +39,12 @@ func TestParseQueryResponse(t *testing.T) {
 			},
 		},
 		{
-			name: "empty values",
+			name: "empty values placeholder frame is dropped",
 			body: []byte(`{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"time","type":"time"},{"name":"v","type":"number"}]},"data":{"values":[[],[]]}}]}}}`),
 			assert: func(t *testing.T, resp *cloudwatch.QueryResponse, err error) {
 				t.Helper()
 				require.NoError(t, err)
-				require.Len(t, resp.Frames, 1)
-				assert.Empty(t, resp.Frames[0].Timestamps)
+				assert.Empty(t, resp.Frames)
 			},
 		},
 		{

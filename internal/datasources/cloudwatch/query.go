@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
@@ -27,7 +29,7 @@ type queryOpts struct {
 	Metric     string
 	Region     string
 	Statistic  string
-	Period     int
+	Period     string
 	Dimensions map[string]string
 	AccountID  string
 }
@@ -42,7 +44,7 @@ func (opts *queryOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.Metric, "metric", "", "CloudWatch metric name, e.g. CPUUtilization (required)")
 	flags.StringVar(&opts.Region, "region", "", "AWS region, e.g. us-east-1 (required)")
 	flags.StringVar(&opts.Statistic, "statistic", "Average", "Statistic: Average, Sum, Maximum, Minimum, SampleCount, or a percentile/trimmed-mean (e.g. p95, p99, tm99)")
-	flags.IntVar(&opts.Period, "period", 300, "Period in seconds (must be > 0)")
+	flags.StringVar(&opts.Period, "period", "auto", `Period in seconds (e.g. 60, 300) or "auto" to let CloudWatch pick a period that fits the time range`)
 	flags.StringToStringVar(&opts.Dimensions, "dimensions", nil, "Dimension key=value pairs (repeatable, e.g. --dimensions InstanceId=i-abc)")
 	flags.StringVar(&opts.AccountID, "account-id", "", "AWS account ID for cross-account monitoring; pass 'all' to query all linked accounts, or a specific ID from list-accounts. Required to surface dimensions from source accounts on monitoring datasources.")
 }
@@ -66,10 +68,28 @@ func (opts *queryOpts) Validate() error {
 	if opts.Statistic == "" {
 		return errors.New("--statistic must not be empty")
 	}
-	if opts.Period <= 0 {
-		return errors.New("--period must be > 0")
+	if err := validatePeriod(opts.Period); err != nil {
+		return err
 	}
 	return nil
+}
+
+// validatePeriod mirrors the Grafana CloudWatch plugin's getPeriod logic in
+// pkg/cloudwatch/models/cloudwatch_query.go: "auto" (or empty) means the
+// plugin picks a period from CloudWatch's retention ladder, an integer is
+// taken as seconds, otherwise the value must parse as a Go duration
+// (e.g. "5m", "1h").
+func validatePeriod(p string) error {
+	if p == "" || strings.EqualFold(p, "auto") {
+		return nil
+	}
+	if _, err := strconv.Atoi(p); err == nil {
+		return nil
+	}
+	if _, err := time.ParseDuration(p); err == nil {
+		return nil
+	}
+	return errors.New(`--period must be "auto", an integer (seconds), or a Go duration like "5m", "1h"`)
 }
 
 // QueryCmd returns the `query` subcommand for a CloudWatch datasource.
@@ -145,10 +165,14 @@ accounts, pass --account-id <id> (run list-accounts to discover IDs) or
 			}
 
 			// Translate the CLI's single-valued --dimensions flag map into
-			// the multi-valued shape Grafana expects on the wire.
-			dimensions := make(map[string][]string, len(opts.Dimensions))
-			for k, v := range opts.Dimensions {
-				dimensions[k] = []string{v}
+			// the multi-valued shape Grafana expects on the wire. Leave nil
+			// when empty; the wire-level helper substitutes an empty map.
+			var dimensions map[string][]string
+			if len(opts.Dimensions) > 0 {
+				dimensions = make(map[string][]string, len(opts.Dimensions))
+				for k, v := range opts.Dimensions {
+					dimensions[k] = []string{v}
+				}
 			}
 			matchExact := len(dimensions) > 0
 
@@ -197,7 +221,7 @@ accounts, pass --account-id <id> (run list-accounts to discover IDs) or
 	}
 
 	cmd.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "medium",
+		agent.AnnotationTokenCost: "large",
 		agent.AnnotationLLMHint:   "gcx datasources cloudwatch query -d UID --region us-east-1 --namespace AWS/EC2 --metric CPUUtilization --since 1h -o json",
 	}
 
@@ -224,5 +248,5 @@ func maybeEmitCrossAccountHint(w io.Writer, dimensions map[string]string, accoun
 		return
 	}
 	fmt.Fprintln(w,
-		"Hint: no data returned with the supplied dimensions. If this is a cross-account monitoring datasource, try --account-id all to query all linked accounts, or target a specific account (use `list-accounts` to discover them).")
+		"Hint: no data returned. If this is a cross-account monitoring datasource and you intended to query a linked account, try --account-id all (or pass a specific ID; use `list-accounts` to discover them).")
 }

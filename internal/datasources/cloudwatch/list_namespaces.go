@@ -77,7 +77,7 @@ func ListNamespacesCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
-			datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "cloudwatch")
+			datasourceUID, _, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "cloudwatch")
 			if err != nil {
 				return err
 			}
