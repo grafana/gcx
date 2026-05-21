@@ -10,7 +10,6 @@ import (
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
-	"github.com/grafana/gcx/internal/providers/irm/oncalltypes"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -85,14 +84,14 @@ func newAlertGroupListCommand(loader OnCallConfigLoader) *cobra.Command {
 				return err
 			}
 
-			var listOpts []oncalltypes.ListOption
+			var listOpts []ListOption
 			if opts.MaxAge != "" {
 				dur, err := parseDuration(opts.MaxAge)
 				if err != nil {
 					return fmt.Errorf("invalid --max-age value %q: %w", opts.MaxAge, err)
 				}
 				cutoff := time.Now().UTC().Add(-dur)
-				listOpts = append(listOpts, oncalltypes.WithStartedAfter(cutoff))
+				listOpts = append(listOpts, WithStartedAfter(cutoff))
 			}
 
 			items, err := client.ListAlertGroups(cmd.Context(), listOpts...)
@@ -226,7 +225,6 @@ func newAlertGroupSilenceCommand(loader OnCallConfigLoader) *cobra.Command {
 
 // ---------------------------------------------------------------------------
 // final-shifts command (mounted under schedules)
-// Uses the internal API filter_events endpoint instead of the public final_shifts endpoint.
 // ---------------------------------------------------------------------------
 
 type finalShiftsOpts struct {

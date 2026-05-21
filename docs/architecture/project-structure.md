@@ -70,10 +70,8 @@ gcx/
 │   │   │   ├── helm/         # Helm command formatter for the setup wizard
 │   │   │   ├── output/       # View types and table/JSON codecs (clusters, apps, services; wait/mutation envelopes)
 │   │   │   └── rmw/          # Read-modify-write helper with optimistic-lock guard
-│   │   ├── incidents/        # IRM Incidents provider
 │   │   ├── k6/              # k6 Cloud provider (projects, tests, runs, envvars)
 │   │   ├── kg/               # Knowledge Graph (Asserts) provider
-│   │   ├── oncall/           # OnCall provider (schedules, integrations, escalation chains)
 │   │   ├── slo/              # SLO provider implementation
 │   │   │   ├── definitions/  # SLO definitions and status queries
 │   │   │   └── reports/      # SLO reports

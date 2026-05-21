@@ -2,6 +2,7 @@ package experiments_test
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 	"time"
 
@@ -91,6 +92,26 @@ func TestCancelCommand_RequiresArg(t *testing.T) {
 	err := cmd.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "accepts 1 arg")
+}
+
+func TestCancelCommand_AbortsWithoutForce(t *testing.T) {
+	// Without --force, the confirmation gate must run before any client call,
+	// so an unconfigured loader (nil) never trips a network/auth path. A "n"
+	// on stdin aborts; non-TTY stdin without --force errors with "use --force".
+	cmd := experiments.Commands(nil)
+	cmd.SetArgs([]string{"cancel", "r-1"})
+
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SetIn(strings.NewReader("n\n"))
+
+	err := cmd.Execute()
+	if err != nil {
+		assert.Contains(t, err.Error(), "use --force")
+	} else {
+		assert.Contains(t, stderr.String(), "Aborted")
+	}
 }
 
 func TestScoresCommand_RequiresArg(t *testing.T) {

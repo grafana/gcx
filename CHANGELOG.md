@@ -1,3 +1,17 @@
+## v0.2.16 (2026-05-20)
+
+- Add `aio11y experiments` command group for managing evaluation experiments
+- Add `aio11y guards` subcommand for managing hook rules
+- Fix `kg insights` chart and sources request/response schemas
+- Fix `k6` token piping warning to reference the correct command
+- Centralize signal command wiring across metrics, logs, traces, and profiles
+- Consolidate error types into `internal/gcxerrors`, removing `fail` shims
+- Surface `diagnose-entity-graph` and document how skills get invoked
+- Mint Homebrew tap App token via broker in release workflow
+- Replace Dependabot with Renovate for dependency updates
+- Update Go module dependencies
+
+
 ## v0.2.15 (2026-05-18)
 
 - **New**: `gcx instrumentation` command tree — clusters, services, setup, status

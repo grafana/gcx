@@ -1,23 +1,18 @@
-## gcx aio11y experiments cancel
+## gcx datasources infinity
 
-Cancel a running experiment.
-
-```
-gcx aio11y experiments cancel <run-id> [flags]
-```
+Query Infinity datasources (JSON, CSV, XML, GraphQL from any URL)
 
 ### Options
 
 ```
-      --force   Skip confirmation prompt
-  -h, --help    help for cancel
+      --config string   Path to the configuration file to use
+  -h, --help            help for infinity
 ```
 
 ### Options inherited from parent commands
 
 ```
       --agent              Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
-      --config string      Path to the configuration file to use
       --context string     Name of the context to use (overrides current-context in config)
       --log-http-payload   Log full HTTP request/response bodies (includes headers — may expose tokens)
       --no-color           Disable color output
@@ -27,5 +22,6 @@ gcx aio11y experiments cancel <run-id> [flags]
 
 ### SEE ALSO
 
-* [gcx aio11y experiments](gcx_aio11y_experiments.md)	 - Manage eval experiment runs.
+* [gcx datasources](gcx_datasources.md)	 - Manage and query Grafana datasources
+* [gcx datasources infinity query](gcx_datasources_infinity_query.md)	 - Query a pre-configured Infinity datasource
 
