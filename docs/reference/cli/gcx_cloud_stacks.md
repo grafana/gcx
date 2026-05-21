@@ -1,25 +1,18 @@
-## gcx stacks list
+## gcx cloud stacks
 
-List stacks in an organisation.
-
-```
-gcx stacks list [flags]
-```
+Manage Grafana Cloud stacks (list, create, update, delete)
 
 ### Options
 
 ```
-  -h, --help            help for list
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --org string      Organisation slug (required)
-  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
+      --config string   Path to the configuration file to use
+  -h, --help            help for stacks
 ```
 
 ### Options inherited from parent commands
 
 ```
       --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
-      --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
       --no-color                    Disable color output
@@ -29,5 +22,11 @@ gcx stacks list [flags]
 
 ### SEE ALSO
 
-* [gcx stacks](gcx_stacks.md)	 - Manage Grafana Cloud stacks (list, create, update, delete)
+* [gcx cloud](gcx_cloud.md)	 - Manage your Grafana Cloud resources
+* [gcx cloud stacks create](gcx_cloud_stacks_create.md)	 - Create a new Grafana Cloud stack.
+* [gcx cloud stacks delete](gcx_cloud_stacks_delete.md)	 - Delete a Grafana Cloud stack.
+* [gcx cloud stacks get](gcx_cloud_stacks_get.md)	 - Get details of a single stack.
+* [gcx cloud stacks list](gcx_cloud_stacks_list.md)	 - List stacks in an organisation.
+* [gcx cloud stacks regions](gcx_cloud_stacks_regions.md)	 - List available regions for stack creation.
+* [gcx cloud stacks update](gcx_cloud_stacks_update.md)	 - Update a Grafana Cloud stack.
 

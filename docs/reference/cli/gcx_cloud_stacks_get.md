@@ -1,18 +1,24 @@
-## gcx stacks
+## gcx cloud stacks get
 
-Manage Grafana Cloud stacks (list, create, update, delete)
+Get details of a single stack.
+
+```
+gcx cloud stacks get <stack-slug> [flags]
+```
 
 ### Options
 
 ```
-      --config string   Path to the configuration file to use
-  -h, --help            help for stacks
+  -h, --help            help for get
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
 
 ```
       --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
       --no-color                    Disable color output
@@ -22,11 +28,5 @@ Manage Grafana Cloud stacks (list, create, update, delete)
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
-* [gcx stacks create](gcx_stacks_create.md)	 - Create a new Grafana Cloud stack.
-* [gcx stacks delete](gcx_stacks_delete.md)	 - Delete a Grafana Cloud stack.
-* [gcx stacks get](gcx_stacks_get.md)	 - Get details of a single stack.
-* [gcx stacks list](gcx_stacks_list.md)	 - List stacks in an organisation.
-* [gcx stacks regions](gcx_stacks_regions.md)	 - List available regions for stack creation.
-* [gcx stacks update](gcx_stacks_update.md)	 - Update a Grafana Cloud stack.
+* [gcx cloud stacks](gcx_cloud_stacks.md)	 - Manage Grafana Cloud stacks (list, create, update, delete)
 

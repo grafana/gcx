@@ -1,4 +1,4 @@
-## gcx stacks update
+## gcx cloud stacks update
 
 Update a Grafana Cloud stack.
 
@@ -6,12 +6,11 @@ Update a Grafana Cloud stack.
 
 Update a Grafana Cloud stack.
 
-This command modifies a live Grafana Cloud stack. Changing the name or disabling
-delete protection can have downstream effects. Always confirm the intended
-changes with the user and prefer --dry-run first.
+This modifies a live stack. Note that the slug and region cannot be changed.
+Use --dry-run to preview the request first.
 
 ```
-gcx stacks update <stack-slug> [flags]
+gcx cloud stacks update <stack-slug> [flags]
 ```
 
 ### Options
@@ -42,5 +41,5 @@ gcx stacks update <stack-slug> [flags]
 
 ### SEE ALSO
 
-* [gcx stacks](gcx_stacks.md)	 - Manage Grafana Cloud stacks (list, create, update, delete)
+* [gcx cloud stacks](gcx_cloud_stacks.md)	 - Manage Grafana Cloud stacks (list, create, update, delete)
 
