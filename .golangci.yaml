@@ -44,6 +44,9 @@ linters:
           deny:
             - pkg: "github.com/davecgh/go-spew"
               desc: debug statements should be removed
+    gomoddirectives:
+      replace-allow-list:
+        - github.com/hashicorp/memberlist
 
   exclusions:
     generated: lax

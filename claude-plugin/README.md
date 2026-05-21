@@ -76,6 +76,7 @@ canonical portable skill bundle.
 | `explore-datasources` | Discover datasources, metrics, labels, and log streams |
 | `investigate-alert` | Investigate why a Grafana alert is firing and what it impacts |
 | `debug-with-grafana` | Run a structured diagnostic workflow across metrics, logs, and dashboards |
+| `diagnose-entity-graph` | Diagnose Knowledge Graph problems: missing entities, missing edges, broken trace context propagation, service-name collisions |
 | `slo-check-status` | Check SLO health and summarize current status |
 | `slo-investigate` | Diagnose why a specific SLO is breaching or alerting |
 | `slo-manage` | Create, update, pull, push, and delete SLO definitions |
