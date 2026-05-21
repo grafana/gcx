@@ -245,8 +245,12 @@ gcx traces query '{.cluster="dev-us-central-0"}' --since 1h
 
 gcx ships a portable Agent Skills bundle for setup, dashboard GitOps,
 datasource exploration, alert investigation, structured debugging, SLO
-management, Synthetic Monitoring workflows, project scaffolding, resource
-generation and import, and end-to-end observability rollout.
+management, Synthetic Monitoring workflows, Knowledge Graph diagnosis,
+project scaffolding, resource generation and import, and end-to-end
+observability rollout.
+
+See the [full skill inventory](claude-plugin/README.md#skills) in the Claude
+plugin README.
 
 **For Claude Code**
 
@@ -263,9 +267,10 @@ For example: OpenAI Codex, OpenCode, and Pi. View the skills shipped in the bund
 
 ```sh
 gcx agent skills list
-18 skill(s) bundled with gcx
+20 skill(s) bundled with gcx
 
 SKILL                      INSTALLED    DESCRIPTION
+diagnose-entity-graph      no           Diagnose Knowledge Graph problems: missing entities, missing edges, ...
 explore-datasources        yes          Discover what datasources, metrics, labels, and log streams are available in a Grafana instance.
 gcx-observability          yes          (Experimental) End-to-end observability setup for Grafana Cloud.
 ....

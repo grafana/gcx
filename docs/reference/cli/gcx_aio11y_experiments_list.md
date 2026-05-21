@@ -1,11 +1,18 @@
-## gcx kg insights
+## gcx aio11y experiments list
 
-Fetch chart data and source metrics for an active insight.
+List experiments.
+
+```
+gcx aio11y experiments list [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for insights
+  -h, --help            help for list
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int       Maximum number of experiments to return (0 for no limit) (default 50)
+  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -22,7 +29,5 @@ Fetch chart data and source metrics for an active insight.
 
 ### SEE ALSO
 
-* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
-* [gcx kg insights chart](gcx_kg_insights_chart.md)	 - Get chart data (series + thresholds) for a specific insight on an entity.
-* [gcx kg insights sources](gcx_kg_insights_sources.md)	 - List the underlying metrics (name + label matchers) that source a specific insight.
+* [gcx aio11y experiments](gcx_aio11y_experiments.md)	 - Manage eval experiment runs.
 

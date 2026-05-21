@@ -1,11 +1,28 @@
-## gcx kg insights
+## gcx aio11y experiments create
 
-Fetch chart data and source metrics for an active insight.
+Create a new experiment from a JSON or YAML file.
+
+```
+gcx aio11y experiments create [flags]
+```
+
+### Examples
+
+```
+  # Create from a YAML file.
+  gcx aio11y experiments create -f experiment.yaml
+
+  # Create from stdin.
+  cat experiment.json | gcx aio11y experiments create -f -
+```
 
 ### Options
 
 ```
-  -h, --help   help for insights
+  -f, --filename string   File containing the experiment create payload (use - for stdin)
+  -h, --help              help for create
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, yaml (default "json")
 ```
 
 ### Options inherited from parent commands
@@ -22,7 +39,5 @@ Fetch chart data and source metrics for an active insight.
 
 ### SEE ALSO
 
-* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
-* [gcx kg insights chart](gcx_kg_insights_chart.md)	 - Get chart data (series + thresholds) for a specific insight on an entity.
-* [gcx kg insights sources](gcx_kg_insights_sources.md)	 - List the underlying metrics (name + label matchers) that source a specific insight.
+* [gcx aio11y experiments](gcx_aio11y_experiments.md)	 - Manage eval experiment runs.
 

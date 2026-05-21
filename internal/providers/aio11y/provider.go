@@ -7,6 +7,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/aio11y/conversations"
 	"github.com/grafana/gcx/internal/providers/aio11y/eval/collections"
 	"github.com/grafana/gcx/internal/providers/aio11y/eval/evaluators"
+	"github.com/grafana/gcx/internal/providers/aio11y/eval/experiments"
 	"github.com/grafana/gcx/internal/providers/aio11y/eval/guards"
 	"github.com/grafana/gcx/internal/providers/aio11y/eval/judge"
 	"github.com/grafana/gcx/internal/providers/aio11y/eval/rules"
@@ -115,7 +116,13 @@ func (p *AIO11yProvider) Commands() []*cobra.Command {
 		agent.AnnotationLLMHint:   `gcx aio11y collections list -o json; gcx aio11y collections get <id> -o yaml; gcx aio11y collections create --name '...' -o json; gcx aio11y collections update <id> --name '...' -o json; gcx aio11y collections delete <id> --force; gcx aio11y collections conversations list <id> -o json; gcx aio11y collections conversations add <id> <saved-id>; gcx aio11y collections conversations remove <id> <saved-id>`,
 	}
 
-	aio11yCmd.AddCommand(convsCmd, agentsCmd, evaluatorsCmd, rulesCmd, guardsCmd, templatesCmd, generationsCmd, scoresCmd, judgeCmd, savedConvsCmd, collectionsCmd)
+	experimentsCmd := experiments.Commands(loader)
+	experimentsCmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "medium",
+		agent.AnnotationLLMHint:   `gcx aio11y experiments list -o json; gcx aio11y experiments get <run-id> -o yaml; gcx aio11y experiments scores <run-id> -o json; gcx aio11y experiments report <run-id> -o json`,
+	}
+
+	aio11yCmd.AddCommand(convsCmd, agentsCmd, evaluatorsCmd, rulesCmd, guardsCmd, templatesCmd, generationsCmd, scoresCmd, judgeCmd, savedConvsCmd, collectionsCmd, experimentsCmd)
 
 	return []*cobra.Command{aio11yCmd}
 }
@@ -139,6 +146,9 @@ func (p *AIO11yProvider) ConfigKeys() []providers.ConfigKey {
 // Saved-conversations are intentionally absent: `save` bookmarks a specific
 // live conversation (not an idempotent upsert) and the resource is shaped
 // like an event record rather than declarative config.
+//
+// Experiments are also absent: they are runs (cancel, status, terminal states)
+// — operational records, not declarative configuration.
 func (p *AIO11yProvider) TypedRegistrations() []adapter.Registration {
 	evalDesc := evaluators.StaticDescriptor()
 	ruleDesc := rules.StaticDescriptor()

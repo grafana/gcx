@@ -3,10 +3,10 @@ package profiles
 import (
 	"fmt"
 
-	"github.com/grafana/gcx/internal/agent"
 	dspyroscope "github.com/grafana/gcx/internal/datasources/pyroscope"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/signals"
 	"github.com/spf13/cobra"
 )
 
@@ -17,35 +17,16 @@ func init() { //nolint:gochecknoinits // Self-registration pattern (like databas
 // Provider manages Pyroscope datasource queries and continuous profiling.
 type Provider struct{}
 
-func (p *Provider) Name() string { return "profiles" }
-
-func (p *Provider) ShortDesc() string {
-	return "Query Pyroscope datasources and manage continuous profiling"
-}
-
-func (p *Provider) Commands() []*cobra.Command {
-	loader := &providers.ConfigLoader{}
-
-	cmd := &cobra.Command{
-		Use:   "profiles",
+func (p *Provider) descriptor() signals.Descriptor {
+	return signals.Descriptor{
+		Name:  "profiles",
 		Short: p.ShortDesc(),
-		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			if root := cmd.Root(); root.PersistentPreRun != nil {
-				root.PersistentPreRun(cmd, args)
-			}
-		},
-	}
-
-	loader.BindFlags(cmd.PersistentFlags())
-
-	// Grab the commands from the datasources package, and override the examples
-	// and annotations to be suitable for the top-level commands.
-	qCmd := dspyroscope.QueryCmd(loader)
-	qCmd.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx profiles query -d abc123 '{service_name="frontend"}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h -o json`,
-	}
-	qCmd.Example = `
+		Commands: []signals.CommandSpec{
+			{
+				Build:     dspyroscope.QueryCmd,
+				TokenCost: "medium",
+				LLMHint:   `gcx profiles query -d abc123 '{service_name="frontend"}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h -o json`,
+				Example: `
   # Profile query with explicit datasource UID
   gcx profiles query -d abc123 '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
@@ -69,15 +50,13 @@ func (p *Provider) Commands() []*cobra.Command {
   # (--stacktrace-selector is repeatable; pass it once per frame, root first)
   gcx profiles query '{service_name="my-go-service"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h \
-    --stacktrace-selector 'github.com/prometheus/client_golang/prometheus.(*Registry).Gather.func1'`
-	cmd.AddCommand(qCmd)
-
-	lCmd := dspyroscope.LabelsCmd(loader)
-	lCmd.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx profiles labels -d abc123 -o json",
-	}
-	lCmd.Example = `
+    --stacktrace-selector 'github.com/prometheus/client_golang/prometheus.(*Registry).Gather.func1'`,
+			},
+			{
+				Build:     dspyroscope.LabelsCmd,
+				TokenCost: "small",
+				LLMHint:   "gcx profiles labels -d abc123 -o json",
+				Example: `
   # List all labels (use datasource UID, not name)
   gcx profiles labels -d UID
 
@@ -85,28 +64,24 @@ func (p *Provider) Commands() []*cobra.Command {
   gcx profiles labels -d UID --label service_name
 
   # Output as JSON
-  gcx profiles labels -d UID -o json`
-	cmd.AddCommand(lCmd)
-
-	ptCmd := dspyroscope.ProfileTypesCmd(loader)
-	ptCmd.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx profiles profile-types -d abc123 -o json",
-	}
-	ptCmd.Example = `
+  gcx profiles labels -d UID -o json`,
+			},
+			{
+				Build:     dspyroscope.ProfileTypesCmd,
+				TokenCost: "small",
+				LLMHint:   "gcx profiles profile-types -d abc123 -o json",
+				Example: `
   # List profile types (use datasource UID, not name)
   gcx profiles profile-types -d UID
 
   # Output as JSON
-  gcx profiles profile-types -d UID -o json`
-	cmd.AddCommand(ptCmd)
-
-	mCmd := dspyroscope.MetricsCmd(loader)
-	mCmd.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx profiles metrics '{}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --top -o json",
-	}
-	mCmd.Example = `
+  gcx profiles profile-types -d UID -o json`,
+			},
+			{
+				Build:     dspyroscope.MetricsCmd,
+				TokenCost: "small",
+				LLMHint:   "gcx profiles metrics '{}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --top -o json",
+				Example: `
   # Top services by CPU usage (ranked leaderboard)
   gcx profiles metrics '{}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --top
@@ -117,15 +92,13 @@ func (p *Provider) Commands() []*cobra.Command {
 
   # Output as JSON
   gcx profiles metrics -d abc123 '{}' \
-    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --top -o json`
-	cmd.AddCommand(mCmd)
-
-	eCmd := dspyroscope.ExemplarsCmd(loader)
-	eCmd.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx profiles exemplars profile '{}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h -o json",
-	}
-	eCmd.Example = `
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --top -o json`,
+			},
+			{
+				Build:     dspyroscope.ExemplarsCmd,
+				TokenCost: "small",
+				LLMHint:   "gcx profiles exemplars profile '{}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h -o json",
+				Example: `
   # Top individual profile exemplars (Profile ID + Span ID if span-aware)
   gcx profiles exemplars profile '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
@@ -135,13 +108,27 @@ func (p *Provider) Commands() []*cobra.Command {
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
 
   # Output as JSON for scripting
-  gcx profiles exemplars profile '{}' --since 30m -o json`
-	cmd.AddCommand(eCmd)
+  gcx profiles exemplars profile '{}' --since 30m -o json`,
+			},
+		},
+		ExtraCommands: []signals.CommandBuilder{func(*providers.ConfigLoader) *cobra.Command {
+			return adaptiveStubCmd()
+		}},
+		ConfigKeys: []providers.ConfigKey{
+			{Name: "profiles-tenant-id", Secret: false},
+			{Name: "profiles-tenant-url", Secret: false},
+		},
+	}
+}
 
-	// Adaptive Profiles stub.
-	cmd.AddCommand(adaptiveStubCmd())
+func (p *Provider) Name() string { return "profiles" }
 
-	return []*cobra.Command{cmd}
+func (p *Provider) ShortDesc() string {
+	return "Query Pyroscope datasources and manage continuous profiling"
+}
+
+func (p *Provider) Commands() []*cobra.Command {
+	return []*cobra.Command{signals.Command(p.descriptor())}
 }
 
 func adaptiveStubCmd() *cobra.Command {
@@ -162,10 +149,7 @@ func metricsCmd(loader *providers.ConfigLoader) *cobra.Command { return dspyrosc
 func (p *Provider) Validate(_ map[string]string) error { return nil }
 
 func (p *Provider) ConfigKeys() []providers.ConfigKey {
-	return []providers.ConfigKey{
-		{Name: "profiles-tenant-id", Secret: false},
-		{Name: "profiles-tenant-url", Secret: false},
-	}
+	return p.descriptor().ConfigKeys
 }
 
 func (p *Provider) TypedRegistrations() []adapter.Registration { return nil }

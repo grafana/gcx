@@ -1,9 +1,9 @@
-## gcx kg insights entity-metric
+## gcx kg insights sources
 
-Get metric data for a specific insight on an entity.
+List the underlying metrics (name + label matchers) that source a specific insight.
 
 ```
-gcx kg insights entity-metric [Type--Name] [flags]
+gcx kg insights sources [Type--Name] [flags]
 ```
 
 ### Options
@@ -12,8 +12,9 @@ gcx kg insights entity-metric [Type--Name] [flags]
       --env string          Environment scope
   -f, --file string         Input file (YAML)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-  -h, --help                help for entity-metric
-      --insight-id string   Insight ID
+  -h, --help                help for sources
+      --insight string      Insight name (e.g. LatencyAverageBreach, ResourceRateAnomaly) — sets the 'alertname' label
+      --label stringArray   Assertion label as key=value (repeatable; typically copied from 'kg entities inspect' timeLines[].labels)
       --name string         Entity name
       --namespace string    Namespace scope
       --since string        Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
@@ -36,5 +37,5 @@ gcx kg insights entity-metric [Type--Name] [flags]
 
 ### SEE ALSO
 
-* [gcx kg insights](gcx_kg_insights.md)	 - Search insights and fetch their backing metrics.
+* [gcx kg insights](gcx_kg_insights.md)	 - Fetch chart data and source metrics for an active insight.
 

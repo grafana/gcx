@@ -1,11 +1,11 @@
 package metrics
 
 import (
-	"github.com/grafana/gcx/internal/agent"
 	dsprometheus "github.com/grafana/gcx/internal/datasources/prometheus"
 	"github.com/grafana/gcx/internal/providers"
 	adaptivemetrics "github.com/grafana/gcx/internal/providers/metrics/adaptive"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/signals"
 	"github.com/spf13/cobra"
 )
 
@@ -16,35 +16,16 @@ func init() { //nolint:gochecknoinits // Self-registration pattern (like databas
 // Provider manages Prometheus datasource queries and Adaptive Metrics.
 type Provider struct{}
 
-func (p *Provider) Name() string { return "metrics" }
-
-func (p *Provider) ShortDesc() string {
-	return "Query Prometheus datasources and manage Adaptive Metrics"
-}
-
-func (p *Provider) Commands() []*cobra.Command {
-	loader := &providers.ConfigLoader{}
-
-	cmd := &cobra.Command{
-		Use:   "metrics",
+func (p *Provider) descriptor() signals.Descriptor {
+	return signals.Descriptor{
+		Name:  "metrics",
 		Short: p.ShortDesc(),
-		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			if root := cmd.Root(); root.PersistentPreRun != nil {
-				root.PersistentPreRun(cmd, args)
-			}
-		},
-	}
-
-	loader.BindFlags(cmd.PersistentFlags())
-
-	// Grab the commands from the datasources package, and override the examples
-	// and annotations to be suitable for the top-level commands.
-	qCmd := dsprometheus.QueryCmd(loader)
-	qCmd.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx metrics query -d abc123 'up{job="grafana"}' -o json`,
-	}
-	qCmd.Example = `
+		Commands: []signals.CommandSpec{
+			{
+				Build:     dsprometheus.QueryCmd,
+				TokenCost: "medium",
+				LLMHint:   `gcx metrics query -d abc123 'up{job="grafana"}' -o json`,
+				Example: `
   # Instant query using configured default datasource
   gcx metrics query 'up{job="grafana"}'
 
@@ -58,15 +39,13 @@ func (p *Provider) Commands() []*cobra.Command {
   gcx metrics query 'up' --share-link
 
   # Output as JSON
-  gcx metrics query -d abc123 'up' -o json`
-	cmd.AddCommand(qCmd)
-
-	lCmd := dsprometheus.LabelsCmd(loader)
-	lCmd.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx metrics labels -d abc123 -o json",
-	}
-	lCmd.Example = `
+  gcx metrics query -d abc123 'up' -o json`,
+			},
+			{
+				Build:     dsprometheus.LabelsCmd,
+				TokenCost: "small",
+				LLMHint:   "gcx metrics labels -d abc123 -o json",
+				Example: `
   # List all labels (use datasource UID, not name)
   gcx metrics labels -d UID
 
@@ -74,15 +53,13 @@ func (p *Provider) Commands() []*cobra.Command {
   gcx metrics labels -d UID --label job
 
   # Output as JSON
-  gcx metrics labels -d UID -o json`
-	cmd.AddCommand(lCmd)
-
-	mCmd := dsprometheus.MetadataCmd(loader)
-	mCmd.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx metrics metadata -d abc123 -o json",
-	}
-	mCmd.Example = `
+  gcx metrics labels -d UID -o json`,
+			},
+			{
+				Build:     dsprometheus.MetadataCmd,
+				TokenCost: "small",
+				LLMHint:   "gcx metrics metadata -d abc123 -o json",
+				Example: `
   # Get all metric metadata (use datasource UID, not name)
   gcx metrics metadata -d UID
 
@@ -90,25 +67,60 @@ func (p *Provider) Commands() []*cobra.Command {
   gcx metrics metadata -d UID --metric http_requests_total
 
   # Output as JSON
-  gcx metrics metadata -d UID -o json`
-	cmd.AddCommand(mCmd)
-
-	sCmd := seriesCmd(loader)
-	sCmd.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx metrics series -d abc123 '{__name__="up"}' --since 1h -o json`,
+  gcx metrics metadata -d UID -o json`,
+			},
+			{
+				Build:     seriesCmd,
+				TokenCost: "medium",
+				LLMHint:   `gcx metrics series -d abc123 '{__name__="up"}' --since 1h -o json`,
+			},
+		},
+		ExtraCommands: []signals.CommandBuilder{BillingCommands},
+		Adaptive: &signals.AdaptiveSpec{
+			Build: adaptivemetrics.Commands,
+			Use:   "adaptive",
+			Short: "Manage Adaptive Metrics resources",
+		},
+		ConfigKeys: []providers.ConfigKey{
+			{Name: "metrics-tenant-id", Secret: false},
+			{Name: "metrics-tenant-url", Secret: false},
+		},
+		Registrations: func(loader *providers.ConfigLoader) []adapter.Registration {
+			return []adapter.Registration{
+				{
+					Factory:    adaptivemetrics.NewRuleAdapterFactory(loader),
+					Descriptor: adaptivemetrics.RuleDescriptor(),
+					GVK:        adaptivemetrics.RuleDescriptor().GroupVersionKind(),
+					Schema:     adaptivemetrics.RuleSchema(),
+					Example:    adaptivemetrics.RuleExample(),
+				},
+				{
+					Factory:    adaptivemetrics.NewSegmentAdapterFactory(loader),
+					Descriptor: adaptivemetrics.SegmentDescriptor(),
+					GVK:        adaptivemetrics.SegmentDescriptor().GroupVersionKind(),
+					Schema:     adaptivemetrics.SegmentSchema(),
+					Example:    adaptivemetrics.SegmentExample(),
+				},
+				{
+					Factory:    adaptivemetrics.NewExemptionAdapterFactory(loader),
+					Descriptor: adaptivemetrics.ExemptionDescriptor(),
+					GVK:        adaptivemetrics.ExemptionDescriptor().GroupVersionKind(),
+					Schema:     adaptivemetrics.ExemptionSchema(),
+					Example:    adaptivemetrics.ExemptionExample(),
+				},
+			}
+		},
 	}
-	cmd.AddCommand(sCmd)
+}
 
-	cmd.AddCommand(BillingCommands(loader))
+func (p *Provider) Name() string { return "metrics" }
 
-	// Adaptive Metrics subcommands — rename Use from "metrics" to "adaptive".
-	adaptiveCmd := adaptivemetrics.Commands(loader)
-	adaptiveCmd.Use = "adaptive"
-	adaptiveCmd.Short = "Manage Adaptive Metrics resources"
-	cmd.AddCommand(adaptiveCmd)
+func (p *Provider) ShortDesc() string {
+	return "Query Prometheus datasources and manage Adaptive Metrics"
+}
 
-	return []*cobra.Command{cmd}
+func (p *Provider) Commands() []*cobra.Command {
+	return []*cobra.Command{signals.Command(p.descriptor())}
 }
 
 // queryCmd is a thin wrapper used by expr_test.go.
@@ -117,35 +129,9 @@ func queryCmd(loader *providers.ConfigLoader) *cobra.Command { return dspromethe
 func (p *Provider) Validate(_ map[string]string) error { return nil }
 
 func (p *Provider) ConfigKeys() []providers.ConfigKey {
-	return []providers.ConfigKey{
-		{Name: "metrics-tenant-id", Secret: false},
-		{Name: "metrics-tenant-url", Secret: false},
-	}
+	return p.descriptor().ConfigKeys
 }
 
 func (p *Provider) TypedRegistrations() []adapter.Registration {
-	loader := &providers.ConfigLoader{}
-	return []adapter.Registration{
-		{
-			Factory:    adaptivemetrics.NewRuleAdapterFactory(loader),
-			Descriptor: adaptivemetrics.RuleDescriptor(),
-			GVK:        adaptivemetrics.RuleDescriptor().GroupVersionKind(),
-			Schema:     adaptivemetrics.RuleSchema(),
-			Example:    adaptivemetrics.RuleExample(),
-		},
-		{
-			Factory:    adaptivemetrics.NewSegmentAdapterFactory(loader),
-			Descriptor: adaptivemetrics.SegmentDescriptor(),
-			GVK:        adaptivemetrics.SegmentDescriptor().GroupVersionKind(),
-			Schema:     adaptivemetrics.SegmentSchema(),
-			Example:    adaptivemetrics.SegmentExample(),
-		},
-		{
-			Factory:    adaptivemetrics.NewExemptionAdapterFactory(loader),
-			Descriptor: adaptivemetrics.ExemptionDescriptor(),
-			GVK:        adaptivemetrics.ExemptionDescriptor().GroupVersionKind(),
-			Schema:     adaptivemetrics.ExemptionSchema(),
-			Example:    adaptivemetrics.ExemptionExample(),
-		},
-	}
+	return p.descriptor().TypedRegistrations()
 }
