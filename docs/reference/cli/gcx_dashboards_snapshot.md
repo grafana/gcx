@@ -37,7 +37,7 @@ gcx dashboards snapshot <name> [name...] [flags]
 
 ```
       --concurrency int      Maximum number of concurrent render requests (default 10)
-      --from string          Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
+      --from string          Start time (relative like 'now-1h', RFC3339, Unix seconds, or Unix milliseconds)
       --height int           Height of the rendered image in pixels (default: -1/full-page for dashboard, 600 for panel)
   -h, --help                 help for snapshot
       --org-id int           Grafana organization number (default 1)
@@ -45,7 +45,7 @@ gcx dashboards snapshot <name> [name...] [flags]
       --panel int            Panel number to render a single panel instead of the full dashboard
       --since string         Duration before now (e.g. '1h', '7d'); expands to --from now-{since} --to now; mutually exclusive with --from/--to
       --theme string         Grafana theme (light or dark) (default "dark")
-      --to string            End time (RFC3339, Unix timestamp, or relative like 'now')
+      --to string            End time (relative like 'now', RFC3339, Unix seconds, or Unix milliseconds)
       --tz string            Timezone (e.g. 'UTC', 'America/New_York')
       --var stringToString   Dashboard template variable overrides (e.g. --var cluster=prod --var datasource=prometheus) (default [])
       --width int            Width of the rendered image in pixels (default: 1920 for dashboard, 800 for panel)

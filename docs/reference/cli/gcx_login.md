@@ -14,6 +14,14 @@ Pass CONTEXT_NAME to target a specific context:
 Without CONTEXT_NAME, re-authenticates the current context, or starts a
 first-time setup if no current context is configured.
 
+Token sources (for non-interactive use):
+  --token        Grafana service-account token (created inside the Grafana
+                 instance). See:
+                 https://grafana.com/docs/grafana/latest/administration/service-accounts.md
+  --cloud-token  Grafana Cloud access-policy token (created at grafana.com).
+                 See:
+                 https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies.md
+
 ```
 gcx login [CONTEXT_NAME] [flags]
 ```
