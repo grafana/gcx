@@ -132,7 +132,7 @@ internal/
 │   ├── prometheus/  Prometheus HTTP query client
 │   ├── influxdb/    InfluxDB HTTP query client
 │   ├── loki/        Loki HTTP query client
-│   └── clickhouse/  ClickHouse HTTP query client (SQL queries via Grafana datasource API)
+│   └── clickhouse/  ClickHouse HTTP query client
 ├── signals/     Shared signal command and datasource-provider mounting (metrics/logs/traces/profiles)
 ├── queryerror/  Typed API error for datasource query failures (APIError type, New/FromBody constructors, IsParseError helper)
 ├── assistant/   Assistant client (A2A streaming, prompt, state management)
