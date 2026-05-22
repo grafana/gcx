@@ -89,7 +89,7 @@ gcx/
 │   │   ├── cloudwatch/       # CloudWatch HTTP client (metric queries, resource listing)
 │   │   ├── prometheus/       # Prometheus HTTP client (instant + range queries)
 │   │   ├── loki/             # Loki HTTP client (log + metric queries)
-│   │   └── clickhouse/       # ClickHouse HTTP client (SQL queries via Grafana datasource API)
+│   │   └── clickhouse/       # ClickHouse HTTP client
 │   ├── signals/              # Shared signal command and datasource-provider mounting (metrics/logs/traces/profiles)
 │   ├── notifier/             # Skills update notifier (XDG state, throttle, message rendering)
 │   ├── secrets/              # Redaction of sensitive config fields
