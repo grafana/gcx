@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/grafana-app-sdk/logging"
+	"github.com/grafana/promql-builder/go/promql"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 )
@@ -129,8 +130,8 @@ auto-discovery. If unavailable, metric checks are skipped.`,
 	cmd.Flags().StringVarP(&opts.Datasource, "datasource", "d", "", "Prometheus datasource UID (auto-discovered if omitted)")
 
 	// IO flags (--output).
-	opts.IO.RegisterCustomCodec("text", &DiagnoseTextCodec{})
-	opts.IO.DefaultFormat("text")
+	opts.IO.RegisterCustomCodec("table", &DiagnoseTableCodec{})
+	opts.IO.DefaultFormat("table")
 	opts.IO.BindFlags(cmd.Flags())
 
 	// Subcommands.
@@ -178,8 +179,8 @@ with suggested next steps.`,
 	cmd.Flags().StringVar(&opts.Scope.site, "site", "", "Site scope")
 	cmd.Flags().StringVarP(&opts.Datasource, "datasource", "d", "", "Prometheus datasource UID (auto-discovered if omitted)")
 
-	opts.IO.RegisterCustomCodec("text", &ServiceDiagnoseTextCodec{})
-	opts.IO.DefaultFormat("text")
+	opts.IO.RegisterCustomCodec("table", &ServiceDiagnoseTableCodec{})
+	opts.IO.DefaultFormat("table")
 	opts.IO.BindFlags(cmd.Flags())
 
 	return cmd
@@ -220,8 +221,8 @@ asserts_env values with no deployment_environment source.`,
 	}
 
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Prometheus datasource UID (auto-discovered if omitted)")
-	ioOpts.RegisterCustomCodec("text", &LabelsDiagnoseTextCodec{})
-	ioOpts.DefaultFormat("text")
+	ioOpts.RegisterCustomCodec("table", &LabelsDiagnoseTableCodec{})
+	ioOpts.DefaultFormat("table")
 	ioOpts.BindFlags(cmd.Flags())
 
 	return cmd
@@ -669,18 +670,22 @@ func metricChecks(env, namespace string) []metricCheckDef {
 		return "{" + strings.Join(parts, ", ") + "}"
 	}
 
-	// unscoped returns the bare count() query (no env/namespace filter).
-	// Used as the re-probe target so that when a scoped query returns
-	// "no data", checkMetric can distinguish "metric is genuinely absent"
-	// from "metric exists but doesn't match the scoped filter".
-	//
-	// Only attach an unscoped fallback when a filter was actually applied —
-	// otherwise the scoped and unscoped queries are identical and the
-	// reclassification logic in checkMetric would be a no-op.
-	envOrNs := env != "" || namespace != ""
-	withFallback := func(d metricCheckDef, metric string) metricCheckDef {
-		if envOrNs {
-			d.UnscopedQuery = fmt.Sprintf("count(%s)", metric)
+	// Per-check selectors so that `withFallback` can gate the unscoped
+	// re-probe on whether *this specific check* actually applies a filter.
+	// Without this, e.g. `traces_target_info` (which only ever uses an `env`
+	// label) would attach a no-op fallback whenever `--namespace` is set but
+	// `--env` is empty: the scoped and unscoped queries would be identical
+	// and the reclassification logic in checkMetric would be a no-op
+	// round-trip. (See PR #746 review feedback.)
+	rawTargetInfoSel := buildRawSelector("deployment_environment", "")
+	rawServiceGraphSel := buildRawSelector("client_deployment_environment", "client_service_namespace")
+
+	// withFallback attaches an unscoped fallback only if the scoped query
+	// for this check actually carries a label filter. Otherwise the unscoped
+	// fallback equals the scoped query and reclassification would never fire.
+	withFallback := func(d metricCheckDef, metric, scopedSelector string) metricCheckDef {
+		if scopedSelector != "" {
+			d.UnscopedQuery = promql.Count(promql.Vector(metric)).String()
 		}
 		return d
 	}
@@ -688,29 +693,29 @@ func metricChecks(env, namespace string) []metricCheckDef {
 	return []metricCheckDef{
 		withFallback(metricCheckDef{
 			Name:           "Metric: traces_target_info",
-			Query:          fmt.Sprintf("count(traces_target_info%s)", buildRawSelector("deployment_environment", "")),
+			Query:          fmt.Sprintf("count(traces_target_info%s)", rawTargetInfoSel),
 			Recommendation: "Tempo server-side metrics generation may not be enabled, or no traced services are sending telemetry to this stack.",
-		}, "traces_target_info"),
+		}, "traces_target_info", rawTargetInfoSel),
 		withFallback(metricCheckDef{
 			Name:           "Metric: traces_service_graph_request_total",
-			Query:          fmt.Sprintf("count(traces_service_graph_request_total%s)", buildRawSelector("client_deployment_environment", "client_service_namespace")),
+			Query:          fmt.Sprintf("count(traces_service_graph_request_total%s)", rawServiceGraphSel),
 			Recommendation: "Tempo service graph metrics are not being generated. Enable server-side metrics generation in Tempo, or verify that traced services make inter-service HTTP/gRPC calls.",
-		}, "traces_service_graph_request_total"),
+		}, "traces_service_graph_request_total", rawServiceGraphSel),
 		withFallback(metricCheckDef{
 			Name:           "Metric: asserts:mixin_workload_job",
 			Query:          fmt.Sprintf("count(asserts:mixin_workload_job%s)", rrSelector),
 			Recommendation: "The entity discovery recording rule is not producing data. This metric is central to how services appear in Entity Graph. Verify that asserts_env is set (check deployment_environment in your OTel config) and that 3po recording rules are installed.",
-		}, "asserts:mixin_workload_job"),
+		}, "asserts:mixin_workload_job", rrSelector),
 		withFallback(metricCheckDef{
 			Name:           "Metric: asserts:relation:calls",
 			Query:          fmt.Sprintf("count(asserts:relation:calls%s)", rrSelector),
 			Recommendation: "No CALLS edge metrics found. This means Entity Graph will show services with no connections. Check that traces_service_graph_request_total exists and that the asserts_env relabeling pipeline is working.",
-		}, "asserts:relation:calls"),
+		}, "asserts:relation:calls", rrSelector),
 		withFallback(metricCheckDef{
 			Name:           "Metric: asserts:request:rate5m",
 			Query:          fmt.Sprintf("count(asserts:request:rate5m%s)", rrSelector),
 			Recommendation: "Request rate KPI recording rule is not producing data. Service KPIs (request rate, error ratio, latency) may not display correctly.",
-		}, "asserts:request:rate5m"),
+		}, "asserts:request:rate5m", rrSelector),
 	}
 }
 
@@ -919,12 +924,12 @@ func extractInstantValue(s prometheus.Sample) string {
 // Text codec for human-readable output
 // ---------------------------------------------------------------------------
 
-// DiagnoseTextCodec renders DiagnoseResult as a human-readable table.
-type DiagnoseTextCodec struct{}
+// DiagnoseTableCodec renders DiagnoseResult as a human-readable table.
+type DiagnoseTableCodec struct{}
 
-func (c *DiagnoseTextCodec) Format() format.Format { return "text" }
+func (c *DiagnoseTableCodec) Format() format.Format { return "table" }
 
-func (c *DiagnoseTextCodec) Encode(w io.Writer, v any) error {
+func (c *DiagnoseTableCodec) Encode(w io.Writer, v any) error {
 	result, ok := v.(DiagnoseResult)
 	if !ok {
 		return errors.New("invalid data type for text codec: expected DiagnoseResult")
@@ -966,6 +971,6 @@ func (c *DiagnoseTextCodec) Encode(w io.Writer, v any) error {
 	return nil
 }
 
-func (c *DiagnoseTextCodec) Decode(_ io.Reader, _ any) error {
+func (c *DiagnoseTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("text format does not support decoding")
 }

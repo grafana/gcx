@@ -340,12 +340,12 @@ func interpretLabelsResults(r *LabelsDiagnoseResult, unmapped, orphaned int) []s
 // Labels diagnosis text codec
 // ---------------------------------------------------------------------------
 
-// LabelsDiagnoseTextCodec renders LabelsDiagnoseResult as human-readable text.
-type LabelsDiagnoseTextCodec struct{}
+// LabelsDiagnoseTableCodec renders LabelsDiagnoseResult as a human-readable table.
+type LabelsDiagnoseTableCodec struct{}
 
-func (c *LabelsDiagnoseTextCodec) Format() format.Format { return "text" }
+func (c *LabelsDiagnoseTableCodec) Format() format.Format { return "table" }
 
-func (c *LabelsDiagnoseTextCodec) Encode(w io.Writer, v any) error {
+func (c *LabelsDiagnoseTableCodec) Encode(w io.Writer, v any) error {
 	r, ok := v.(LabelsDiagnoseResult)
 	if !ok {
 		return errors.New("invalid data type for text codec: expected LabelsDiagnoseResult")
@@ -415,6 +415,6 @@ func (c *LabelsDiagnoseTextCodec) Encode(w io.Writer, v any) error {
 	return nil
 }
 
-func (c *LabelsDiagnoseTextCodec) Decode(_ io.Reader, _ any) error {
+func (c *LabelsDiagnoseTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("text format does not support decoding")
 }
