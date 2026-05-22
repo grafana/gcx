@@ -55,6 +55,12 @@ type DetailedError struct {
 	ExitCode *int
 }
 
+// Unwrap lets errors.Is/As traverse through DetailedError to detect wrapped
+// sentinels (e.g. context.Canceled for clean SIGINT exit).
+func (e DetailedError) Unwrap() error {
+	return e.Parent
+}
+
 func (e DetailedError) Error() string {
 	buffer := strings.Builder{}
 
