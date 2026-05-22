@@ -226,16 +226,32 @@ func (r Rule) GetResourceName() string { return r.Name }
 // SetResourceName restores the rule name.
 func (r *Rule) SetResourceName(name string) { r.Name = name }
 
-// Rule represents a Knowledge Graph prom rule.
+// Rule represents a Knowledge Graph prom rule (matches
+// PrometheusRulesDto on the backend). A rule is a named container of
+// rule groups, each holding alert and/or recording rules.
 //
 //nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type Rule struct {
-	Name        string            `json:"name"`
-	Expr        string            `json:"expr,omitempty"`
-	Record      string            `json:"record,omitempty"`
-	Alert       string            `json:"alert,omitempty"`
-	Labels      map[string]string `json:"labels,omitempty"`
-	Annotations map[string]string `json:"annotations,omitempty"`
+	Name   string      `json:"name"`
+	Groups []RuleGroup `json:"groups,omitempty"`
+}
+
+// RuleGroup is a group of related Prometheus rules within a Rule file.
+type RuleGroup struct {
+	Name     string     `json:"name"`
+	Interval string     `json:"interval,omitempty"`
+	Rules    []PromRule `json:"rules,omitempty"`
+}
+
+// PromRule is a single alert or recording rule within a RuleGroup.
+type PromRule struct {
+	Record          string            `json:"record,omitempty"`
+	Alert           string            `json:"alert,omitempty"`
+	Expr            string            `json:"expr,omitempty"`
+	Duration        string            `json:"for,omitempty"`
+	Annotations     map[string]string `json:"annotations,omitempty"`
+	Labels          map[string]string `json:"labels,omitempty"`
+	DisableInGroups []string          `json:"disableInGroups,omitempty"`
 }
 
 // ---------------------------------------------------------------------------
