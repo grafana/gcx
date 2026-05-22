@@ -93,10 +93,6 @@ that do not have a dedicated subcommand.`,
 					return fmt.Errorf("query failed: %w", err)
 				}
 
-				if shared.IO.OutputFormat == "table" {
-					return prometheus.FormatTable(cmd.OutOrStdout(), resp)
-				}
-
 				return shared.IO.Encode(cmd.OutOrStdout(), resp)
 
 			case "loki":
@@ -118,14 +114,7 @@ that do not have a dedicated subcommand.`,
 					return fmt.Errorf("query failed: %w", err)
 				}
 
-				switch shared.IO.OutputFormat {
-				case "table":
-					return loki.FormatQueryTable(cmd.OutOrStdout(), resp)
-				case "wide":
-					return loki.FormatQueryTableWide(cmd.OutOrStdout(), resp)
-				default:
-					return shared.IO.Encode(cmd.OutOrStdout(), resp)
-				}
+				return shared.IO.Encode(cmd.OutOrStdout(), resp)
 
 			case "pyroscope":
 				if profileType == "" {
@@ -148,10 +137,6 @@ that do not have a dedicated subcommand.`,
 				resp, err := client.Query(ctx, datasourceUID, req)
 				if err != nil {
 					return fmt.Errorf("query failed: %w", err)
-				}
-
-				if shared.IO.OutputFormat == "table" {
-					return pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
 				}
 
 				return shared.IO.Encode(cmd.OutOrStdout(), resp)
@@ -202,9 +187,6 @@ that do not have a dedicated subcommand.`,
 					return fmt.Errorf("query failed: %w", err)
 				}
 
-				if shared.IO.OutputFormat == "table" {
-					return clickhouse.FormatTable(cmd.OutOrStdout(), resp)
-				}
 				return shared.IO.Encode(cmd.OutOrStdout(), resp)
 
 			default:
