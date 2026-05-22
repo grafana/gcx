@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 
 	authlib "github.com/grafana/authlib/types"
@@ -94,7 +95,10 @@ func authenticatedClient(ctx context.Context, loader CloudConfigLoader) (API, st
 	if err != nil {
 		return nil, "", fmt.Errorf("k6: load cloud config: %w", err)
 	}
-	providerCfg, _, _ := loader.LoadProviderConfig(ctx, "k6")
+	providerCfg, _, providerCfgErr := loader.LoadProviderConfig(ctx, "k6")
+	if providerCfgErr != nil {
+		slog.DebugContext(ctx, "k6: could not load provider config, proceeding without cache", "error", providerCfgErr)
+	}
 	domain := DefaultAPIDomain
 	if d := providerCfg["api-domain"]; d != "" {
 		domain = d
@@ -110,7 +114,7 @@ func authenticatedClient(ctx context.Context, loader CloudConfigLoader) (API, st
 			return "", 0, errors.New("k6: grafana.token is required (must be a glsa_* service-account token)")
 		}
 		if err := client.Authenticate(ctx, grafanaCfg.BearerToken, cloudCfg.Stack.ID); err != nil {
-			return "", 0, fmt.Errorf("k6 auth failed (PUT %s): %w -- ensure your token has k6 scopes", authPath, err)
+			return "", 0, fmt.Errorf("k6: auth failed (PUT %s): %w -- ensure your token has k6 scopes", authPath, err)
 		}
 		tok, _ := client.Token(ctx)
 		persistCache(ctx, loader, tok, client.orgIDValue(), cloudCfg.Stack.ID)
