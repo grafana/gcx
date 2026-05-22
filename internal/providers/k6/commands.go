@@ -27,7 +27,7 @@ import (
 // ---------------------------------------------------------------------------
 
 // resolveProject resolves a <id-or-name> argument to a project ID.
-func resolveProject(cmd *cobra.Command, client *Client, arg string) (int, error) {
+func resolveProject(cmd *cobra.Command, client *ProxyClient, arg string) (int, error) {
 	id, err := strconv.Atoi(arg)
 	if err == nil {
 		return id, nil
@@ -41,7 +41,7 @@ func resolveProject(cmd *cobra.Command, client *Client, arg string) (int, error)
 }
 
 // resolveLoadTest resolves a load test by ID flag or by name+project-id.
-func resolveLoadTest(cmd *cobra.Command, client *Client, idFlag, projectID int, nameArg string) (*LoadTest, error) {
+func resolveLoadTest(cmd *cobra.Command, client *ProxyClient, idFlag, projectID int, nameArg string) (*LoadTest, error) {
 	ctx := cmd.Context()
 	if idFlag != 0 {
 		return client.GetLoadTest(ctx, idFlag)
@@ -66,7 +66,7 @@ func resolveLoadTest(cmd *cobra.Command, client *Client, idFlag, projectID int, 
 }
 
 // resolveLoadTestArg resolves a <id-or-name> argument to a LoadTest.
-func resolveLoadTestArg(cmd *cobra.Command, client *Client, arg string, projectID int) (*LoadTest, error) {
+func resolveLoadTestArg(cmd *cobra.Command, client *ProxyClient, arg string, projectID int) (*LoadTest, error) {
 	id, err := strconv.Atoi(arg)
 	if err == nil {
 		return client.GetLoadTest(cmd.Context(), id)

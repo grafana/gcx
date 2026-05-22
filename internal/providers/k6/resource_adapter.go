@@ -62,7 +62,7 @@ type CloudConfigLoader interface {
 	LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error)
 }
 
-func authenticatedClient(ctx context.Context, loader CloudConfigLoader) (*Client, string, error) {
+func authenticatedClient(ctx context.Context, loader CloudConfigLoader) (*ProxyClient, string, error) {
 	restCfg, err := loader.LoadGrafanaConfig(ctx)
 	if err != nil {
 		return nil, "", err
@@ -78,7 +78,7 @@ func authenticatedClient(ctx context.Context, loader CloudConfigLoader) (*Client
 	if _, err := authlib.ParseNamespace(restCfg.Namespace); err != nil {
 		return nil, "", err
 	}
-	return NewClient(ctx, restCfg.Host, authClient), restCfg.Namespace, nil
+	return NewProxyClient(ctx, restCfg.Host, authClient), restCfg.Namespace, nil
 }
 
 // newSubResourceFactory returns a lazy adapter.Factory for a specific k6 resource.
@@ -120,7 +120,7 @@ func newSubResourceFactory(loader CloudConfigLoader, rd resourceDef) adapter.Fac
 // TypedCRUD constructors
 // ---------------------------------------------------------------------------
 
-func newProjectCRUD(c *Client, ns string, desc resources.Descriptor) adapter.ResourceAdapter {
+func newProjectCRUD(c *ProxyClient, ns string, desc resources.Descriptor) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[Project]{
 		ListFn: adapter.LimitedListFn(c.ListProjects),
 		GetFn: func(ctx context.Context, name string) (*Project, error) {
@@ -157,7 +157,7 @@ func newProjectCRUD(c *Client, ns string, desc resources.Descriptor) adapter.Res
 	return crud.AsAdapter()
 }
 
-func newLoadTestCRUD(c *Client, ns string, desc resources.Descriptor) adapter.ResourceAdapter {
+func newLoadTestCRUD(c *ProxyClient, ns string, desc resources.Descriptor) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[LoadTest]{
 		ListFn: adapter.LimitedListFn(c.ListLoadTests),
 		GetFn: func(ctx context.Context, name string) (*LoadTest, error) {
@@ -194,7 +194,7 @@ func newLoadTestCRUD(c *Client, ns string, desc resources.Descriptor) adapter.Re
 	return crud.AsAdapter()
 }
 
-func newScheduleCRUD(c *Client, ns string, desc resources.Descriptor) adapter.ResourceAdapter {
+func newScheduleCRUD(c *ProxyClient, ns string, desc resources.Descriptor) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[Schedule]{
 		ListFn: adapter.LimitedListFn(c.ListSchedules),
 		GetFn: func(ctx context.Context, name string) (*Schedule, error) {
@@ -241,7 +241,7 @@ func newScheduleCRUD(c *Client, ns string, desc resources.Descriptor) adapter.Re
 	return crud.AsAdapter()
 }
 
-func newEnvVarCRUD(c *Client, ns string, desc resources.Descriptor) adapter.ResourceAdapter {
+func newEnvVarCRUD(c *ProxyClient, ns string, desc resources.Descriptor) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[EnvVar]{
 		ListFn: adapter.LimitedListFn(c.ListEnvVars),
 		GetFn: func(ctx context.Context, name string) (*EnvVar, error) {
@@ -298,7 +298,7 @@ func newEnvVarCRUD(c *Client, ns string, desc resources.Descriptor) adapter.Reso
 	return crud.AsAdapter()
 }
 
-func newLoadZoneCRUD(c *Client, ns string, desc resources.Descriptor) adapter.ResourceAdapter {
+func newLoadZoneCRUD(c *ProxyClient, ns string, desc resources.Descriptor) adapter.ResourceAdapter {
 	crud := &adapter.TypedCRUD[LoadZone]{
 		ListFn: adapter.LimitedListFn(c.ListLoadZones),
 		GetFn: func(ctx context.Context, name string) (*LoadZone, error) {

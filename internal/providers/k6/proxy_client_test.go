@@ -17,7 +17,7 @@ import (
 // The server responds to the plugin /organization endpoint with orgID=42
 // (lazily fetched by env var methods) and forwards cloud calls under the
 // plugin /cloud prefix to the supplied handler.
-func newAuthenticatedClient(t *testing.T, handler http.Handler) *k6.Client {
+func newAuthenticatedClient(t *testing.T, handler http.Handler) *k6.ProxyClient {
 	t.Helper()
 
 	const proxyPrefix = "/api/plugins/k6-app/resources/cloud"
@@ -47,7 +47,7 @@ func newAuthenticatedClient(t *testing.T, handler http.Handler) *k6.Client {
 	t.Cleanup(srv.Close)
 
 	authClient := &http.Client{Transport: &bearerInjector{token: "test-k6-token"}}
-	return k6.NewClient(context.Background(), srv.URL, authClient)
+	return k6.NewProxyClient(context.Background(), srv.URL, authClient)
 }
 
 // bearerInjector is a RoundTripper that injects a Bearer Authorization
@@ -85,7 +85,7 @@ func TestClient_Token_FetchesFromAccountMe(t *testing.T) {
 	defer srv.Close()
 
 	authClient := &http.Client{Transport: &bearerInjector{token: "gat_test-oauth-token"}}
-	client := k6.NewClient(context.Background(), srv.URL, authClient)
+	client := k6.NewProxyClient(context.Background(), srv.URL, authClient)
 	token, err := client.Token(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, "k6-v3-from-me", token)
@@ -102,7 +102,7 @@ func TestClient_Token_Memoised(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := k6.NewClient(context.Background(), srv.URL, &http.Client{Transport: &bearerInjector{token: "tok"}})
+	client := k6.NewProxyClient(context.Background(), srv.URL, &http.Client{Transport: &bearerInjector{token: "tok"}})
 	for range 3 {
 		_, err := client.Token(t.Context())
 		require.NoError(t, err)
@@ -120,7 +120,7 @@ func TestClient_Token_EmptyKey(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := k6.NewClient(context.Background(), srv.URL, &http.Client{Transport: &bearerInjector{token: "tok"}})
+	client := k6.NewProxyClient(context.Background(), srv.URL, &http.Client{Transport: &bearerInjector{token: "tok"}})
 	_, err := client.Token(t.Context())
 	require.Error(t, err)
 }
@@ -152,7 +152,7 @@ func TestClient_RoutesResourceCallsThroughProxy(t *testing.T) {
 	defer srv.Close()
 
 	authClient := &http.Client{Transport: &bearerInjector{token: "gat_test-oauth-token"}}
-	client := k6.NewClient(context.Background(), srv.URL, authClient)
+	client := k6.NewProxyClient(context.Background(), srv.URL, authClient)
 
 	projects, err := client.ListProjects(t.Context())
 	require.NoError(t, err)
