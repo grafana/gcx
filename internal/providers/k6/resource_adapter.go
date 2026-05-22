@@ -9,6 +9,8 @@ import (
 
 	authlib "github.com/grafana/authlib/types"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/httputils"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -58,8 +60,16 @@ func allResources() []resourceDef {
 	}
 }
 
+// CloudConfigLoader is the subset of providers.ConfigLoader the k6 provider
+// consumes. The methods needed depend on the auth mode:
+//   - OAuth (plugin proxy): LoadGrafanaConfig only.
+//   - SA token (direct API): all four (LoadCloudConfig for stack ID,
+//     LoadProviderConfig + SaveProviderConfig for the cache).
 type CloudConfigLoader interface {
 	LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error)
+	LoadCloudConfig(ctx context.Context) (providers.CloudRESTConfig, error)
+	LoadProviderConfig(ctx context.Context, providerName string) (map[string]string, string, error)
+	SaveProviderConfig(ctx context.Context, providerName, key, value string) error
 }
 
 func authenticatedClient(ctx context.Context, loader CloudConfigLoader) (API, string, error) {
@@ -67,18 +77,60 @@ func authenticatedClient(ctx context.Context, loader CloudConfigLoader) (API, st
 	if err != nil {
 		return nil, "", err
 	}
-	if !restCfg.IsOAuthProxy() {
-		return nil, "", errors.New("k6 provider requires OAuth authentication -- run `gcx login` and select OAuth mode")
+
+	if restCfg.IsOAuthProxy() {
+		authClient, err := rest.HTTPClientFor(&restCfg.Config)
+		if err != nil {
+			return nil, "", err
+		}
+		if _, err := authlib.ParseNamespace(restCfg.Namespace); err != nil {
+			return nil, "", err
+		}
+		return NewProxyClient(ctx, restCfg.Host, authClient), restCfg.Namespace, nil
 	}
 
-	authClient, err := rest.HTTPClientFor(&restCfg.Config)
+	// SA-token path: direct api.k6.io with /start exchange + cross-invocation cache.
+	cloudCfg, err := loader.LoadCloudConfig(ctx)
 	if err != nil {
+		return nil, "", fmt.Errorf("k6: load cloud config: %w", err)
+	}
+	providerCfg, _, _ := loader.LoadProviderConfig(ctx, "k6")
+	domain := DefaultAPIDomain
+	if d := providerCfg["api-domain"]; d != "" {
+		domain = d
+	}
+	client := NewDirectClient(ctx, domain, httputils.NewDefaultClient(ctx))
+
+	exchange := func(ctx context.Context) (string, int, error) {
+		grafanaCfg, err := loader.LoadGrafanaConfig(ctx)
+		if err != nil {
+			return "", 0, fmt.Errorf("k6: load grafana config: %w", err)
+		}
+		if grafanaCfg.BearerToken == "" {
+			return "", 0, errors.New("k6: grafana.token is required (must be a glsa_* service-account token)")
+		}
+		if err := client.Authenticate(ctx, grafanaCfg.BearerToken, cloudCfg.Stack.ID); err != nil {
+			return "", 0, fmt.Errorf("k6 auth failed (PUT %s): %w -- ensure your token has k6 scopes", authPath, err)
+		}
+		tok, _ := client.Token(ctx)
+		persistCache(ctx, loader, tok, client.orgIDValue(), cloudCfg.Stack.ID)
+		return tok, client.orgIDValue(), nil
+	}
+
+	client.SetReauth(func(ctx context.Context) (string, int, error) {
+		clearCache(ctx, loader)
+		return exchange(ctx)
+	})
+
+	if cachedTok, cachedOrg, ok := loadCache(providerCfg, cloudCfg.Stack.ID); ok {
+		client.SetCachedAuth(cachedTok, cachedOrg, cloudCfg.Stack.ID)
+		return client, cloudCfg.Namespace, nil
+	}
+
+	if _, _, err := exchange(ctx); err != nil {
 		return nil, "", err
 	}
-	if _, err := authlib.ParseNamespace(restCfg.Namespace); err != nil {
-		return nil, "", err
-	}
-	return NewProxyClient(ctx, restCfg.Host, authClient), restCfg.Namespace, nil
+	return client, cloudCfg.Namespace, nil
 }
 
 // newSubResourceFactory returns a lazy adapter.Factory for a specific k6 resource.
