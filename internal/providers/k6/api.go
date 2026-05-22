@@ -7,9 +7,9 @@ import "context"
 //   - ProxyClient: routes through the grafana-k6-app plugin proxy (OAuth).
 //   - DirectClient: talks to api.k6.io directly with an SA-token-exchanged v3 token.
 //
-//nolint:interfacebloat // single source of truth for both client implementations;
-// the alternative is two parallel call sites everywhere.
-type API interface {
+// The interface is intentionally broad — it is the single source of truth for
+// both client implementations; the alternative is two parallel call sites everywhere.
+type API interface { //nolint:interfacebloat
 	// Identity
 	Token(ctx context.Context) (string, error)
 
