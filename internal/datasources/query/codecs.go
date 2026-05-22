@@ -7,6 +7,7 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/graph"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/query/clickhouse"
 	"github.com/grafana/gcx/internal/query/cloudwatch"
 	"github.com/grafana/gcx/internal/query/infinity"
 	"github.com/grafana/gcx/internal/query/influxdb"
@@ -42,6 +43,12 @@ func (c *queryTableCodec) Encode(w io.Writer, data any) error {
 		return influxdb.FormatQueryTable(w, resp)
 	case *tempo.GetTraceResponse:
 		return tempo.FormatTraceTable(w, resp)
+	case *clickhouse.QueryResponse:
+		return clickhouse.FormatTable(w, resp)
+	case []clickhouse.TableInfo:
+		return clickhouse.FormatListTablesTable(w, resp)
+	case []clickhouse.ColumnInfo:
+		return clickhouse.FormatDescribeTableTable(w, resp)
 	case *cloudwatch.QueryResponse:
 		return cloudwatch.FormatTable(w, resp)
 	default:
@@ -71,6 +78,8 @@ func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 		return infinity.FormatTable(w, resp)
 	case *tempo.GetTraceResponse:
 		return tempo.FormatTraceWide(w, resp)
+	case *clickhouse.QueryResponse:
+		return clickhouse.FormatWideTable(w, resp)
 	case *cloudwatch.QueryResponse:
 		return cloudwatch.FormatWide(w, resp)
 	default:
@@ -129,6 +138,12 @@ func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
 		if err != nil {
 			return err
 		}
+	case *clickhouse.QueryResponse:
+		return errors.New("graph output is not supported for ClickHouse queries; use -o table/json/yaml")
+	case []clickhouse.TableInfo:
+		return errors.New("graph output is not supported for ClickHouse list-tables; use -o table/json/yaml")
+	case []clickhouse.ColumnInfo:
+		return errors.New("graph output is not supported for ClickHouse describe-table; use -o table/json/yaml")
 	default:
 		return errors.New("invalid data type for graph codec")
 	}

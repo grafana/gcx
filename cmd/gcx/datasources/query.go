@@ -7,6 +7,7 @@ import (
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	"github.com/grafana/gcx/internal/query/clickhouse"
 	"github.com/grafana/gcx/internal/query/influxdb"
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/grafana/gcx/internal/query/prometheus"
@@ -104,10 +105,6 @@ that do not have a dedicated subcommand.`,
 					return fmt.Errorf("query failed: %w", err)
 				}
 
-				if shared.IO.OutputFormat == "table" {
-					return prometheus.FormatTable(cmd.OutOrStdout(), resp)
-				}
-
 				return shared.IO.Encode(cmd.OutOrStdout(), resp)
 
 			case "loki":
@@ -129,14 +126,7 @@ that do not have a dedicated subcommand.`,
 					return fmt.Errorf("query failed: %w", err)
 				}
 
-				switch shared.IO.OutputFormat {
-				case "table":
-					return loki.FormatQueryTable(cmd.OutOrStdout(), resp)
-				case "wide":
-					return loki.FormatQueryTableWide(cmd.OutOrStdout(), resp)
-				default:
-					return shared.IO.Encode(cmd.OutOrStdout(), resp)
-				}
+				return shared.IO.Encode(cmd.OutOrStdout(), resp)
 
 			case "pyroscope":
 				if profileType == "" {
@@ -159,10 +149,6 @@ that do not have a dedicated subcommand.`,
 				resp, err := client.Query(ctx, datasourceUID, req)
 				if err != nil {
 					return fmt.Errorf("query failed: %w", err)
-				}
-
-				if shared.IO.OutputFormat == "table" {
-					return pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
 				}
 
 				return shared.IO.Encode(cmd.OutOrStdout(), resp)
@@ -193,8 +179,30 @@ that do not have a dedicated subcommand.`,
 
 				return shared.IO.Encode(cmd.OutOrStdout(), resp)
 
+			case "clickhouse":
+				client, err := clickhouse.NewClient(cfg)
+				if err != nil {
+					return fmt.Errorf("failed to create client: %w", err)
+				}
+
+				req := clickhouse.QueryRequest{
+					RawSQL: clickhouse.EnforceLimit(expr, 100, 1000),
+					Start:  start,
+					End:    end,
+				}
+				if step > 0 {
+					req.IntervalMs = step.Milliseconds()
+				}
+
+				resp, err := client.Query(ctx, datasourceUID, req)
+				if err != nil {
+					return fmt.Errorf("query failed: %w", err)
+				}
+
+				return shared.IO.Encode(cmd.OutOrStdout(), resp)
+
 			default:
-				return fmt.Errorf("datasource type %q is not supported (supported: prometheus, loki, pyroscope, influxdb)", dsType)
+				return fmt.Errorf("datasource type %q is not supported (supported: prometheus, loki, pyroscope, influxdb, clickhouse)", dsType)
 			}
 		},
 	}

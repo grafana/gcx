@@ -283,6 +283,7 @@ func TestNormalizeKind(t *testing.T) {
 		{"loki", "loki"},
 		{"tempo", "tempo"},
 		{"grafana-pyroscope-datasource", "pyroscope"},
+		{"grafana-clickhouse-datasource", "clickhouse"},
 		{"grafana-amazonprometheus-datasource", "prometheus"},
 		{"grafana-azureprometheus-datasource", "prometheus"},
 		{"cloudwatch", "cloudwatch"},
