@@ -49,6 +49,7 @@ var _ OnCallAPI = (*OnCallClient)(nil)
 type OnCallClient struct {
 	HTTPClient *http.Client
 	Host       string
+	teamsCache teamsCache
 }
 
 // NewOnCallClient creates a new OnCall client from the given REST config.
@@ -494,6 +495,17 @@ func (c *OnCallClient) DeleteWebhook(ctx context.Context, id string) error {
 
 func (c *OnCallClient) ListAlertGroups(ctx context.Context, opts ...ListOption) ([]AlertGroup, error) {
 	cfg := ApplyListOpts(opts)
+	params := buildAlertGroupListParams(cfg)
+	return collectN(iterResources[AlertGroup](ctx, c, pathWithParams(alertGroupsPath, params), "alert group"), cfg.Limit)
+}
+
+// buildAlertGroupListParams translates a resolved ListConfig into the OnCall
+// internal API query params. Status is integer-encoded (0=firing, 1=ack,
+// 2=resolved, 3=silenced); is_root is a boolean filter; teams/integrations
+// are repeatable PKs; mine/with_resolution_note/has_related_incident are
+// scalar booleans. started_at is a `<from>_<to>` window with `<from>` being
+// the StartedAfter time and `<to>` being now.
+func buildAlertGroupListParams(cfg ListConfig) url.Values {
 	params := url.Values{}
 	if cfg.StartedAfter != nil {
 		const layout = "2006-01-02T15:04:05"
@@ -501,7 +513,32 @@ func (c *OnCallClient) ListAlertGroups(ctx context.Context, opts ...ListOption) 
 		end := time.Now().UTC().Format(layout)
 		params.Set("started_at", start+"_"+end)
 	}
-	return collectN(iterResources[AlertGroup](ctx, c, pathWithParams(alertGroupsPath, params), "alert group"), cfg.Limit)
+	for _, s := range cfg.Statuses {
+		params.Add("status", strconv.Itoa(s))
+	}
+	if cfg.IsRoot != nil {
+		if *cfg.IsRoot {
+			params.Set("is_root", "true")
+		} else {
+			params.Set("is_root", "false")
+		}
+	}
+	for _, t := range cfg.Teams {
+		params.Add("team", t)
+	}
+	for _, i := range cfg.Integrations {
+		params.Add("integration", i)
+	}
+	if cfg.Mine {
+		params.Set("mine", "true")
+	}
+	if cfg.WithResolutionNote {
+		params.Set("with_resolution_note", "true")
+	}
+	if cfg.HasRelatedIncident {
+		params.Set("has_related_incident", "true")
+	}
+	return params
 }
 
 func (c *OnCallClient) GetAlertGroup(ctx context.Context, id string) (*AlertGroup, error) {

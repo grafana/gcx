@@ -24,7 +24,6 @@ Manage Grafana OnCall resources.
 
 * [gcx irm](gcx_irm.md)	 - Manage Grafana IRM (OnCall + Incidents)
 * [gcx irm oncall alert-groups](gcx_irm_oncall_alert-groups.md)	 - Manage alert groups.
-* [gcx irm oncall alerts](gcx_irm_oncall_alerts.md)	 - View individual alerts.
 * [gcx irm oncall escalate](gcx_irm_oncall_escalate.md)	 - Create a direct escalation.
 * [gcx irm oncall escalation-chains](gcx_irm_oncall_escalation-chains.md)	 - Manage escalation chains.
 * [gcx irm oncall escalation-policies](gcx_irm_oncall_escalation-policies.md)	 - Manage escalation policies.

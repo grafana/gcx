@@ -47,7 +47,6 @@ func (p *IRMProvider) Commands() []*cobra.Command {
 		newTeamsCmd(loader),
 		newUserGroupsCmd(loader),
 		newSlackChannelsCmd(loader),
-		newAlertsCmd(loader),
 		newOrganizationsCmd(loader),
 		newResolutionNotesCmd(loader),
 		newShiftSwapsCmd(loader),

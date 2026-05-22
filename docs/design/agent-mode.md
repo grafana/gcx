@@ -48,9 +48,11 @@ The following are **not yet implemented**:
    contract via `IsPiped` is in place for when they are added)
 6. Confirmation prompts auto-approved ([safety.md § Agent Mode Auto-Approve](safety.md#33-agent-mode-auto-approve))
 
-**Note:** The `--json list` hint banner has been removed and is no longer emitted in any mode
-(agent or non-agent). Previously the banner was only emitted in agent mode; it has been
-deleted entirely.
+**Note:** The `--json list` field-discovery hint fires whenever the resolved output codec
+is JSON-like (`-o json` or the `agents` default) and the caller has not already used
+`--json list` (field discovery) or `--json field1,field2` (field selection). In agent mode
+the hint is emitted as JSONL `{"class":"hint","summary":"..."}` on stderr. In TTY mode it is emitted as `hint: ...` text on stderr. The
+hint is emitted at most once per invocation.
 
 ### 6.2a Format choice vs non-format presentation properties
 

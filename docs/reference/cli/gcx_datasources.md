@@ -27,6 +27,7 @@ List, inspect, and query Grafana datasources. Use top-level signal commands (met
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx datasources clickhouse](gcx_datasources_clickhouse.md)	 - Query ClickHouse datasources
+* [gcx datasources cloudwatch](gcx_datasources_cloudwatch.md)	 - Query AWS CloudWatch datasources
 * [gcx datasources get](gcx_datasources_get.md)	 - Get details of a specific datasource
 * [gcx datasources infinity](gcx_datasources_infinity.md)	 - Query Infinity datasources (JSON, CSV, XML, GraphQL from any URL)
 * [gcx datasources influxdb](gcx_datasources_influxdb.md)	 - Query InfluxDB datasources

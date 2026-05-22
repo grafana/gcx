@@ -1,665 +1,194 @@
 ---
 name: manage-dashboards
 description: >
-  Use this skill when the user wants to list, get, create, update, delete,
-  or search dashboards imperatively; inspect or restore a dashboard version;
-  pull dashboards from Grafana to local files, push local dashboard files to
-  Grafana, create a new dashboard from scratch, validate dashboard files
-  against the Grafana API schema, promote dashboards across environments
-  (dev, staging, production), manage Grafana folders and their associated
-  dashboards, or capture visual snapshots (screenshots/PNG images) of
-  dashboards or individual panels. Also use this skill when the user asks
-  about editing, deleting, or diffing dashboards, about the live development
-  server for iterative dashboard authoring, or wants to render/export a
-  dashboard image.
+  Use for operational management of existing Grafana dashboards: list, get,
+  search, create or update from an already-authored manifest, delete, inspect
+  and restore versions, pull/push/validate/promote dashboard resource files,
+  manage dashboard folders, or render PNG snapshots. For designing or creating
+  a new dashboard, or for material visual/dashboard UX changes, use the
+  create-dashboard skill instead.
 ---
 
 # Manage Dashboards
 
-gcx exposes **two paths** for dashboard management:
+This skill is for dashboard operations, not dashboard design. If the user wants
+an agent to design a new dashboard, choose queries, arrange panels, or iterate
+visually, use `create-dashboard`.
 
-1. **Imperative commands** (`gcx dashboards …`) — CRUD, search, and version
-   history. Best for interactive work, scripting, and agent-driven operations.
-2. **Declarative resource pipeline** (`gcx resources push/pull …`) — bulk
-   GitOps-style synchronization of local files with Grafana. Best for
-   infrastructure-as-code and CI/CD promotion across environments.
+Use `gcx` dedicated commands first. Only use `gcx api` when a dedicated command
+cannot perform the requested operation.
 
-Both paths remain fully supported and use the same Kubernetes-compatible API.
+## Routing
 
----
+| User intent | Use |
+|-------------|-----|
+| Build a new dashboard from an idea, service, SLO, incident, or set of metrics | `create-dashboard` |
+| Redesign layout, choose panels/queries, or visually iterate dashboard quality | `create-dashboard` |
+| Generate a Go builder skeleton only | `generate-resource-stubs` |
+| Convert an existing live dashboard to Go code | `import-dashboards` |
+| List, search, inspect, delete, restore, pull, push, validate, promote, or snapshot existing dashboards | this skill |
+| Configure gcx/auth first | `setup-gcx` |
 
-## Workflow 0: Imperative CRUD, search, and version history
+## Preflight for Mutations
 
-Use the `gcx dashboards` subcommands when you want to inspect or modify a
-single dashboard without maintaining local files.
-
-### List and inspect dashboards
-
-```bash
-# List all dashboards (table view)
-gcx dashboards list
-
-# Wide view — adds PANELS and URL columns
-gcx dashboards list -o wide
-
-# Get a specific dashboard by name (metadata.name == legacy Dashboard UID)
-gcx dashboards get my-dashboard-name
-
-# Output as YAML or JSON
-gcx dashboards get my-dashboard-name -o yaml
-gcx dashboards get my-dashboard-name -o json
-```
-
-### Create and update dashboards
+Before any create/update/delete/push/restore operation:
 
 ```bash
-# Create a dashboard from a YAML/JSON manifest
-gcx dashboards create -f dashboard.yaml
-
-# Update an existing dashboard (name must match metadata.name)
-gcx dashboards update my-dashboard-name -f dashboard.yaml
-
-# Read manifest from stdin
-gcx dashboards create -f -
-```
-
-### Delete a dashboard
-
-```bash
-# Delete with confirmation prompt
-gcx dashboards delete my-dashboard-name
-
-# Skip confirmation
-gcx dashboards delete my-dashboard-name --yes
-gcx dashboards delete my-dashboard-name -y
-```
-
-### Search dashboards
-
-`gcx dashboards search` uses the Grafana full-text search API (pinned to
-`v0alpha1`). It supports filtering by title, tag, and folder.
-
-> **`list` vs `search --folder`**: `gcx dashboards list` does NOT support
-> a `--folder` flag because folder membership is stored as an annotation
-> (`grafana.app/folder`), not as a label selector the API can filter on.
-> To filter by folder, use `gcx dashboards search --folder <folder-name>`.
-
-```bash
-# Search by title keyword
-gcx dashboards search "my dashboard"
-
-# Filter by folder (use the folder's metadata.name)
-gcx dashboards search --folder my-folder-name
-
-# Multiple folders
-gcx dashboards search --folder folder-a --folder folder-b
-
-# Filter by tag
-gcx dashboards search --tag prod
-
-# Combine query + tag + folder
-gcx dashboards search "latency" --tag slo --folder platform
-
-# Limit results
-gcx dashboards search "metrics" --limit 10
-
-# Output as YAML or JSON (K8s DashboardSearchResultList envelope)
-gcx dashboards search "metrics" -o yaml
-
-# Include recently deleted dashboards
-gcx dashboards search "old-dashboard" --deleted
-```
-
-Search results are client-side filtered to `resource == "dashboards"` only
-(folder hits returned by the server are dropped automatically).
-
-### Version history and restore
-
-```bash
-# List version history for a dashboard
-gcx dashboards versions list my-dashboard-name
-
-# Limit to last 5 revisions
-gcx dashboards versions list my-dashboard-name --limit 5
-
-# Restore to a specific version (shows the VERSION column from versions list)
-gcx dashboards versions restore my-dashboard-name 3
-
-# Restore with a custom commit message
-gcx dashboards versions restore my-dashboard-name 3 --message "Revert accidental panel deletion"
-
-# Skip confirmation prompt
-gcx dashboards versions restore my-dashboard-name 3 --yes
-```
-
-Restore executes a compound LIST → GET → PUT sequence: it fetches the
-historical spec, carries the current `metadata.resourceVersion` forward
-(optimistic concurrency), and writes a `grafana.app/message` annotation on
-the new revision. A HTTP 409 conflict exits non-zero.
-
----
-
-## Prerequisites
-
-gcx must be installed and configured with a working context pointing to
-your Grafana instance. If gcx is not configured, use the
-`setup-gcx` skill first.
-
-```bash
-# Verify configuration and connectivity
+gcx config current-context
 gcx config check
 ```
 
-## Workflow 1: Pull Dashboards from Grafana
+Use `--context <name>` when the user named a target environment. Do not switch
+the global context unless the user asked for it.
 
-Pull downloads resources from Grafana and writes them as local JSON or YAML
-files. Use pull to create a local working copy, back up dashboards, or
-bootstrap a GitOps repository.
-
-### Pull all dashboards
+For writes, read current state first and preserve folder/manager intent:
 
 ```bash
-# Pull all dashboards into ./resources (JSON, default)
-gcx resources pull dashboards
-
-# Pull as YAML
-gcx resources pull dashboards -o yaml
-
-# Pull to a custom directory
-gcx resources pull dashboards -p ./my-dashboards
+gcx dashboards get <dashboard-name> -o json
+gcx resources get folders -o json
 ```
 
-### Pull folders and dashboards together
+Manager boundary: gcx protects resources managed by another tool. If a push
+fails because of `grafana.app/managed-by`, stop and ask/confirm before using
+`--include-managed`.
 
-Pulling folders alongside dashboards preserves the folder hierarchy on disk.
-Always pull both when you intend to push them to another environment later.
+## Fast Operation Map
+
+Use JSON/YAML for programmatic work and table/wide output for human summaries.
+
+| Operation | Command pattern |
+|-----------|-----------------|
+| List dashboards | `gcx dashboards list -o wide` |
+| Search by text/tag/folder | `gcx dashboards search "<query>" --tag <tag> --folder <folder-name> -o json` |
+| Get one dashboard | `gcx dashboards get <dashboard-name> -o json` |
+| Create from finished file | `gcx dashboards create -f <dashboard.yaml>` |
+| Update from finished file | `gcx dashboards update <dashboard-name> -f <dashboard.yaml>` |
+| Delete with confirmation | `gcx dashboards delete <dashboard-name>` |
+| Delete non-interactively | `gcx dashboards delete <dashboard-name> --yes` |
+| Version history | `gcx dashboards versions list <dashboard-name>` |
+| Restore version | `gcx dashboards versions restore <dashboard-name> <version> --message "<why>"` |
+| Pull dashboards/folders | `gcx resources pull dashboards folders -p <dir> -o yaml` |
+| Pull one dashboard | `gcx resources pull dashboards/<dashboard-name> -p <dir> -o yaml` |
+| Validate local files | `gcx resources validate -p <path> -o json` |
+| Preview push | `gcx resources push -p <path> --dry-run` |
+| Push local files | `gcx resources push -p <path>` |
+| Delete by selector | `gcx resources delete dashboards/<dashboard-name>` |
+| Edit in `$EDITOR` | `gcx resources edit dashboards/<dashboard-name> -o yaml` |
+| List resource kinds | `gcx resources schemas` |
+
+`<dashboard-name>` is the dashboard resource name (`metadata.name`), which is
+also the value accepted by `gcx dashboards snapshot`.
+
+## GitOps Pull/Push Workflow
+
+Use this for backups, local edits, and promotion across environments.
 
 ```bash
-gcx resources pull dashboards folders
-gcx resources pull dashboards folders -p ./resources -o yaml
+# Pull source state. Include folders when folder placement matters.
+gcx resources pull --context <source> dashboards folders -p ./dashboards-work -o yaml
+
+# Validate locally before any write.
+gcx resources validate -p ./dashboards-work -o json
+
+# Preview target changes.
+gcx resources push --context <target> -p ./dashboards-work --dry-run
+
+# Apply after review.
+gcx resources push --context <target> -p ./dashboards-work
 ```
 
-### Pull a specific dashboard
+Notes:
+
+- Pull output directories may include API version/group in their path. Use the
+  paths printed by gcx; do not assume a fixed `dashboards/` directory shape.
+- When a directory contains folders and dashboards, gcx pushes folders first.
+- Use `--on-error abort` when later resources depend on earlier ones and partial
+  progress would be confusing.
+- Dry-run before writing to production unless the user explicitly opts out.
+
+## Folder-Specific Work
+
+Folder membership is stored on dashboard resources; listing dashboards is not a
+folder filter. Use search for folder-filtered dashboard discovery:
 
 ```bash
-# Pull by UID
-gcx resources pull dashboards/my-dashboard-uid
-
-# Pull multiple specific dashboards
-gcx resources pull dashboards/uid-a dashboards/uid-b
-
-# Pull dashboards matching a glob pattern
-gcx resources pull dashboards/prod-*
+gcx dashboards search --folder <folder-name> -o json
 ```
 
-### Pull dashboards managed by other tools
-
-By default, pull only fetches dashboards managed by gcx. To include
-dashboards created via the UI, Terraform, or other tools:
+When authoring or reviewing files, look for folder references in the dashboard
+spec and verify the folder exists:
 
 ```bash
-gcx resources pull dashboards --include-managed
+gcx resources get folders/<folder-name> -o json
+gcx resources get dashboards/<dashboard-name> -o json
 ```
 
-### Inspect pulled resources
+## Snapshots for Existing Dashboards
 
-After pulling, files appear in the target directory structured by kind:
-
-```
-./resources/
-  dashboards/
-    my-dashboard.json
-    another-dashboard.yaml
-  folders/
-    my-folder.json
-```
-
-Use `gcx resources get` to inspect resources without writing files:
+Use snapshots to inspect an existing dashboard or confirm a finished change. For
+new dashboard creation, hand off to `create-dashboard`, which includes the full
+visual iteration loop.
 
 ```bash
-gcx resources get dashboards -o json
-gcx resources get dashboards/my-uid -o yaml
+# Full dashboard PNG. Force agent-mode JSON so file_path is machine-readable.
+GCX_AGENT_MODE=true gcx dashboards snapshot <dashboard-name> --output-dir ./snapshots --since 6h
+
+# With variables.
+GCX_AGENT_MODE=true gcx dashboards snapshot <dashboard-name> --output-dir ./snapshots \
+  --since 6h --var cluster=prod --var datasource=grafanacloud-prom
+
+# One panel.
+GCX_AGENT_MODE=true gcx dashboards snapshot <dashboard-name> --panel <panel-id> \
+  --output-dir ./snapshots --width 1200 --height 700
 ```
 
----
+If the user needs visual assessment, read/open the PNG from the returned
+`file_path` and summarize what you see. Do not just paste the snapshot path.
 
-## Workflow 2: Push Dashboards to Grafana
+Troubleshooting:
 
-Push reads local resource files and writes them to Grafana. gcx handles
-folder ordering automatically and protects resources managed by other tools.
+- `plugin not found` / renderer 500: Grafana Image Renderer is unavailable.
+- Wrong data: inspect template variables and rerun with `--var` overrides.
+- Cropped image: increase `--height`, `--width`, or render individual panels.
+- Auth/RBAC errors: check `gcx config check` and dashboard/folder permissions.
 
-### Topological sort: folders are pushed before dashboards
-
-When pushing a directory that contains both folders and dashboards, gcx
-automatically pushes folders first (level by level) before pushing dashboards.
-Dashboards reference their parent folder via `spec.folderUID`; the folder must
-exist before the dashboard can be created or updated. **You do not need to
-split the push into two separate commands** — gcx's topological sort
-handles ordering automatically.
+Inspect variables before rendering:
 
 ```bash
-# Push everything under ./resources — folders created before dashboards
-gcx resources push
-
-# Push from a specific directory
-gcx resources push -p ./my-resources
-
-# Explicitly include both kinds (still sorted automatically)
-gcx resources push dashboards folders
+gcx resources get dashboards/<dashboard-name> -o json \
+  | jq '.spec.templating.list[]? | {name, type, current: .current.value}'
 ```
 
-### Manager metadata
+## Version Restore Safety
 
-When gcx pushes a resource, it sets this annotation automatically:
-
-```yaml
-metadata:
-  annotations:
-    grafana.app/managed-by: gcx
-```
-
-Resources that carry a **different** `grafana.app/managed-by` value (set by
-the Grafana UI, Terraform, or another tool) are **protected by default**.
-gcx refuses to overwrite them unless you pass `--include-managed`.
+Restore performs a read of historical content and writes a new current revision.
+Always include a message and verify afterwards:
 
 ```bash
-# Override protection — only when you deliberately want to take ownership
-gcx resources push --include-managed
+gcx dashboards versions list <dashboard-name> --limit 10
+gcx dashboards versions restore <dashboard-name> <version> \
+  --message "Restore known-good dashboard after <reason>"
+gcx dashboards get <dashboard-name> -o json
 ```
 
-### Dry run before pushing to production
-
-Always dry-run before pushing to production environments to preview what will
-change:
-
-```bash
-gcx resources push --dry-run
-gcx resources push -p ./my-resources --dry-run
-```
-
-### Push specific kinds or UIDs
-
-```bash
-# Push only dashboards (folders must already exist in Grafana)
-gcx resources push dashboards
-
-# Push a single dashboard file
-gcx resources push -p ./resources/dashboards/my-dashboard.json
-```
-
-### Error handling during push
-
-```bash
-# Stop on first error (useful when later resources depend on earlier ones)
-gcx resources push --on-error abort
-
-# Continue past errors, report all failures at the end (default)
-gcx resources push --on-error fail
-
-# Ignore per-resource errors entirely (CI pipelines with partial success)
-gcx resources push --on-error ignore
-```
-
----
-
-## Workflow 3: Create a New Dashboard
-
-Creating a new dashboard with gcx involves authoring a resource file
-locally and then pushing it to Grafana.
-
-### Step 1: Get an existing dashboard as a template
-
-Pull a similar dashboard to use as a starting point:
-
-```bash
-gcx resources pull dashboards/existing-uid -p ./templates -o yaml
-```
-
-Or list available dashboards to find a suitable one:
-
-```bash
-gcx resources get dashboards -o wide
-```
-
-### Step 2: Author the resource file
-
-Create a new YAML or JSON file. Set `metadata.name` to a human-readable name;
-leave `metadata.uid` empty (gcx assigns a UID on first push) or set it
-explicitly to a value you choose.
-
-Minimal dashboard resource structure:
-
-```yaml
-apiVersion: dashboard.grafana.app/v1alpha1
-kind: Dashboard
-metadata:
-  name: my-new-dashboard
-  # uid: leave empty for auto-assignment, or set explicitly
-spec:
-  title: "My New Dashboard"
-  tags: []
-  panels: []
-  # Optional: place in a folder
-  # folderUID: <folder-uid>
-```
-
-### Step 3: Validate before pushing
-
-```bash
-# Validate the file against Grafana's API schema
-gcx resources validate -p ./my-new-dashboard.yaml
-```
-
-Resolve any validation errors before proceeding.
-
-### Step 4: Push the new dashboard
-
-```bash
-gcx resources push -p ./my-new-dashboard.yaml
-```
-
-gcx assigns a UID and sets `grafana.app/managed-by: gcx`
-automatically. Pull the dashboard after pushing to capture the assigned UID:
-
-```bash
-gcx resources pull dashboards/<assigned-uid>
-```
-
-### Step 5: Iterate with the live dev server
-
-For iterative panel authoring, use `serve` to get instant browser previews on
-every file save:
-
-```bash
-gcx dev serve ./dashboards
-```
-
-See the `serve` command reference in
-[`references/resource-operations.md`](references/resource-operations.md) for
-full flag details and the hot-reload workflow.
-
----
-
-## Workflow 4: Validate Dashboard Files
-
-Validate checks local resource files against the Grafana API schema without
-writing anything to Grafana. Use this in CI/CD pipelines and before pushing to
-production.
-
-### Validate default directory
-
-```bash
-gcx resources validate
-```
-
-### Validate a specific path
-
-```bash
-gcx resources validate -p ./dashboards
-gcx resources validate -p ./resources/dashboards/my-dashboard.yaml
-```
-
-### Validate multiple directories
-
-```bash
-gcx resources validate -p ./dashboards -p ./folders
-```
-
-### Validate and output as JSON (CI/CD)
-
-```bash
-gcx resources validate -o json
-```
-
-Expected output structure (field names, not fabricated values):
-
-```json
-{
-  "results": [
-    {
-      "file": "<path>",
-      "kind": "Dashboard",
-      "name": "<name>",
-      "uid": "<uid>",
-      "valid": true,
-      "errors": []
-    }
-  ],
-  "summary": {
-    "total": "<count>",
-    "valid": "<count>",
-    "invalid": "<count>"
-  }
-}
-```
-
-A non-zero exit code indicates at least one resource failed validation.
-
----
-
-## Workflow 5: Promote Dashboards Across Environments
-
-Promoting dashboards means pulling them from a source environment (e.g.,
-staging) and pushing them to a target environment (e.g., production). This
-uses gcx's multi-context support.
-
-### Prerequisites: one context per environment
-
-Each environment needs a named context in your gcx configuration. If
-you have not set up multi-context configuration, use the `setup-gcx`
-skill to create contexts for staging and production.
-
-```bash
-# Verify your contexts
-gcx config view
-
-# Example: switch active context
-gcx config use-context staging
-gcx config use-context production
-```
-
-### Option A: use --context flag (no active-context switch)
-
-The `--context` flag targets a specific context for a single command without
-changing the active context globally. This is the safest pattern for promotion
-scripts.
-
-```bash
-# Step 1: Pull dashboards from staging
-gcx resources pull --context staging dashboards folders -p ./promote
-
-# Step 2: Review what was pulled
-gcx resources validate -p ./promote
-
-# Step 3: Dry-run push to production
-gcx resources push --context production -p ./promote --dry-run
-
-# Step 4: Push to production
-gcx resources push --context production -p ./promote
-```
-
-### Option B: switch active context with use-context
-
-```bash
-# Pull from staging
-gcx config use-context staging
-gcx resources pull dashboards folders -p ./promote
-
-# Push to production
-gcx config use-context production
-gcx resources push -p ./promote
-```
-
-### Folder ordering during promotion
-
-Because the promote directory contains both folders and dashboards, gcx
-automatically pushes folders before dashboards in the target environment. You
-do not need to run separate commands for folders and dashboards.
-
-### Handling manager metadata during promotion
-
-Dashboards pulled from staging carry `grafana.app/managed-by: gcx`.
-When you push them to production, gcx recognizes the annotation and
-allows the push without `--include-managed`. If the production environment
-already has dashboards managed by another tool (UI, Terraform), add
-`--include-managed` to take ownership:
-
-```bash
-gcx resources push --context production -p ./promote --include-managed
-```
-
-### Full promotion script pattern
-
-```bash
-#!/bin/bash
-set -e
-SOURCE_CTX=staging
-TARGET_CTX=production
-WORK_DIR=$(mktemp -d)
-
-# Pull from source
-gcx resources pull --context "$SOURCE_CTX" dashboards folders -p "$WORK_DIR"
-
-# Validate
-gcx resources validate -p "$WORK_DIR"
-
-# Dry run on target
-gcx resources push --context "$TARGET_CTX" -p "$WORK_DIR" --dry-run
-
-# Apply
-gcx resources push --context "$TARGET_CTX" -p "$WORK_DIR"
-```
-
----
-
-## Workflow 6: Capture Dashboard Snapshots
-
-Render a Grafana dashboard or individual panel to a PNG image using the Grafana
-Image Renderer. Requires the `grafana-image-renderer` plugin on the Grafana
-instance.
-
-> **If stuck**, run `gcx dashboards snapshot --help` for the full flag
-> reference, or `gcx dashboards --help` to see available subcommands.
-
-### Step 1: Find the dashboard UID
-
-```bash
-# List all dashboards to find UIDs
-gcx resources get dashboards
-
-# Get a specific dashboard by name substring (use -ojson for programmatic access)
-gcx resources get dashboards -ojson | jq '.items[] | {uid: .metadata.name, title: .spec.title}'
-```
-
-### Step 2: Discover template variables (if the dashboard uses them)
-
-Most dashboards have template variables (cluster, datasource, job, etc.) that
-control what data is displayed. To render a meaningful snapshot, you should set
-these to the values relevant to the user's context.
-
-```bash
-# Inspect the dashboard's template variables
-gcx resources get dashboards/<uid> -ojson | jq '.spec.templating.list[] | {name, type, current: .current.value}'
-```
-
-This shows each variable's name and its current default value. Use `--var` to
-override any of these during rendering.
-
-### Step 3: Render the snapshot
-
-```bash
-# Basic: full dashboard, current directory
-gcx dashboards snapshot <uid>
-
-# With output directory
-gcx dashboards snapshot <uid> --output-dir ./snapshots
-
-# With template variable overrides (match the dashboard's variable names)
-gcx dashboards snapshot <uid> --var cluster=prod --var datasource=grafanacloud-prom
-
-# With time range
-gcx dashboards snapshot <uid> --since 6h --var cluster=prod
-gcx dashboards snapshot <uid> --from now-1h --to now --tz UTC
-
-# Single panel (find panel IDs from the dashboard JSON: .spec.panels[].id)
-gcx dashboards snapshot <uid> --panel 42
-
-# Custom dimensions and theme
-gcx dashboards snapshot <uid> --width 1280 --height 720 --theme light
-
-# Multiple dashboards concurrently
-gcx dashboards snapshot uid-a uid-b uid-c --output-dir ./snapshots
-```
-
-### Output
-
-**Agent mode** (auto-detected): JSON array to stdout with file paths and metadata:
-
-```json
-[{"uid": "<uid>", "panel_id": null, "file_path": "/abs/path/<uid>.png", "width": 1920, "height": -1, "theme": "dark", "rendered_at": "<RFC3339>"}]
-```
-
-**Human mode**: table with columns UID, Panel, File, Size.
-
-Files are named `{uid}.png` (full dashboard) or `{uid}-panel-{panelId}.png` (single panel).
-
-### Troubleshooting
-
-```bash
-# If rendering fails with 500 or "plugin not found":
-# → The grafana-image-renderer plugin is likely not installed on the Grafana instance
-
-# If the snapshot shows default/wrong variable values:
-# → Inspect variables and pass the right ones with --var
-gcx resources get dashboards/<uid> -ojson | jq '.spec.templating.list[] | {name, current: .current.value}'
-
-# If the snapshot is cut off or too small:
-# → Default height is -1 (full page). Override with --height if needed.
-# → For panels, default is 800x600. Override with --width/--height.
-
-# Full flag reference:
-gcx dashboards snapshot --help
-```
-
----
-
-## Common Operations
-
-### Delete a dashboard
-
-```bash
-# Delete a specific dashboard
-gcx resources delete dashboards/my-uid
-
-# Dry-run before bulk delete
-gcx resources delete dashboards/temp-* --dry-run
-gcx resources delete dashboards/temp-* -y
-```
-
-### Edit a dashboard in-place
-
-Opens the resource in `$EDITOR`, then pushes the updated version:
-
-```bash
-gcx resources edit dashboards/my-uid
-gcx resources edit dashboards/my-uid -o yaml
-```
-
-### List available resource kinds
-
-```bash
-gcx resources schemas
-```
-
----
+A conflict or 409 means someone changed the dashboard concurrently. Re-fetch,
+review the newest version, and retry only if the restore is still correct.
+
+## Common Failure Handling
+
+| Symptom | Action |
+|---------|--------|
+| `gcx config check` fails | Use `setup-gcx` before dashboard operations |
+| Dashboard not found | Search first; confirm `metadata.name`, not just title |
+| Folder filter does not work with list | Use `gcx dashboards search --folder <folder-name>` |
+| Push blocked by manager metadata | Ask before `--include-managed` |
+| Validation fails | Fix local file; do not push invalid resources |
+| Snapshot returns wrong variables | Inspect templating and pass `--var name=value` |
+| Snapshot unavailable | Report renderer/auth blocker; do not claim visual review |
 
 ## References
 
 - [`references/resource-operations.md`](references/resource-operations.md) —
-  Full flag reference for all `gcx resources` subcommands, selector
-  syntax, and `serve` workflow details.
-
-- [`references/resource-model.md`](references/resource-model.md) —
-  Kubernetes-style resource structure, manager metadata behavior, dependency
-  rules (folders before dashboards), push ordering phases, and resource
-  lifecycle (create, read, update, delete).
+  selector syntax, pull/push/validate flags, and `gcx dev serve` details.
+- [`references/resource-model.md`](references/resource-model.md) — resource
+  structure, manager metadata, folder ordering, and lifecycle behavior.

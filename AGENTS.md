@@ -109,7 +109,7 @@ internal/
 │   │   ├── helm/       Helm command formatter for the setup wizard
 │   │   ├── output/     View types and codecs (clusters, apps, services; wait/mutation envelopes)
 │   │   └── rmw/        Read-modify-write helper with optimistic-lock guard (ConflictError)
-│   ├── irm/        IRM provider (OnCall + Incidents — schedules, integrations, escalation chains, incidents)
+│   ├── irm/        IRM provider (OnCall + Incidents — schedules, integrations, escalation chains, incidents; rich K8s-envelope types for AlertGroup/Alert in rich.go, ADR-019)
 │   ├── k6/         k6 Cloud provider (projects, tests, runs, envvars)
 │   ├── kg/         Knowledge Graph (Asserts) provider
 │   ├── logs/       Logs signal provider (Loki queries + Adaptive Logs commands)
@@ -124,9 +124,11 @@ internal/
 ├── dashboards/  Dashboard Image Renderer client (PNG snapshots)
 ├── datasources/ Datasource HTTP client, DatasourceProvider interface + registry
 │   ├── clickhouse/  ClickHouse datasource commands (query, list-tables, describe-table, explore)
+│   ├── cloudwatch/  CloudWatch CLI commands (query, list-namespaces, list-metrics, list-dimensions, list-regions, list-accounts)
 │   ├── influxdb/  InfluxDB datasource command layer (query, field-keys, measurements)
 │   └── query/   Shared query CLI utils (time parsing, codecs, opts, resolve helpers — used by signal providers and GenericCmd)
 ├── query/       Datasource query clients
+│   ├── cloudwatch/  CloudWatch HTTP query client (metric queries, resource listing)
 │   ├── prometheus/  Prometheus HTTP query client
 │   ├── influxdb/    InfluxDB HTTP query client
 │   ├── loki/        Loki HTTP query client

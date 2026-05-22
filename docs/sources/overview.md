@@ -17,7 +17,7 @@ The Grafana CLI `gcx` is available in [public preview](https://grafana.com/docs/
 
 `gcx` is a single CLI that allows you and your AI coding agent structured access to both Grafana (dashboards, folders, alert rules, data sources) and Grafana Cloud products such as Synthetic Monitoring, K6, Fleet Management, Incidents, or Adaptive Telemetry.
 
-`gcx` ships with a suite of agent skills for common workflows like alert investigation, root-cause analysis, dashboard GitOps, SLO management, and observability setup. It natively supports agentic workflows and it's integrated with Grafana Assistant, combining the previously fragmented user experience into one single tool.
+`gcx` ships with a suite of agent skills for common workflows like alert investigation, root-cause analysis, dashboard creation and GitOps, SLO management, and observability setup. It natively supports agentic workflows and it's integrated with Grafana Assistant, combining the previously fragmented user experience into one single tool.
 
 ## Benefits of `gcx`
 

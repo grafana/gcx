@@ -234,3 +234,111 @@ func TestExprFlagSmoke_DatasourcesQuery(t *testing.T) {
 		})
 	}
 }
+
+// newDatasourceTypeOnlyServer answers /api/datasources/uid/uid with the given
+// type and rejects any other request, so tests can't accidentally exercise the
+// query path.
+func newDatasourceTypeOnlyServer(t *testing.T, datasourceType string) *httptest.Server {
+	t.Helper()
+
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/bootdata":
+			http.NotFound(w, r)
+			return
+		case r.Method == http.MethodGet && r.URL.Path == "/api/datasources/uid/uid":
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(map[string]any{
+				"id":   1,
+				"uid":  "uid",
+				"name": "test",
+				"type": datasourceType,
+			}); err != nil {
+				t.Errorf("encode datasource response: %v", err)
+			}
+			return
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+}
+
+// Pins the RunE order: GetDatasourceType must run before ResolveExpr so the
+// cloudwatch branch is reachable.
+func TestGenericQueryCloudWatchShortCircuit(t *testing.T) {
+	tests := []struct {
+		name string
+		args func(configFile string) []string
+	}{
+		{
+			name: "no expr returns structured-subcommand error, not 'expression is required'",
+			args: func(c string) []string {
+				return []string{"query", "uid", "--config", c}
+			},
+		},
+		{
+			name: "stray expr returns structured-subcommand error",
+			args: func(c string) []string {
+				return []string{"query", "uid", "ignored-expr", "--config", c}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := newDatasourceTypeOnlyServer(t, "cloudwatch")
+			defer server.Close()
+			configFile := newConfigFileForServer(t, server.URL)
+
+			err := executeQueryCommand(t, datasources.QueryCmd(), tt.args(configFile))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "CloudWatch queries are structured")
+			assert.Contains(t, err.Error(), "gcx datasources cloudwatch query")
+			assert.NotContains(t, err.Error(), "expression is required")
+		})
+	}
+}
+
+// Pins shared.Validate() running before any HTTP or short-circuit branch.
+func TestGenericQueryFlagValidationPrecedence(t *testing.T) {
+	tests := []struct {
+		name      string
+		args      []string
+		expectErr string
+	}{
+		{
+			name:      "invalid output format errors before HTTP",
+			args:      []string{"query", "uid", "--output", "nonsense"},
+			expectErr: "unknown output format",
+		},
+		{
+			name:      "since+from mutex errors before HTTP",
+			args:      []string{"query", "uid", "--since", "1h", "--from", "now-2h"},
+			expectErr: "--since is mutually exclusive with --from",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// No httptest server: if validation runs before HTTP (as required),
+			// these tests pass without any network reachable. If the order
+			// regresses, the test will dial a non-existent server and fail
+			// with a network error — caught either way.
+			err := executeQueryCommand(t, datasources.QueryCmd(), tt.args)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.expectErr)
+			assert.NotContains(t, err.Error(), "CloudWatch queries are structured")
+		})
+	}
+}
+
+// Guards against the RunE reorder regressing the existing prom error path.
+func TestGenericQueryPrometheusStillRequiresExpr(t *testing.T) {
+	server := newDatasourceTypeOnlyServer(t, "prometheus")
+	defer server.Close()
+	configFile := newConfigFileForServer(t, server.URL)
+
+	err := executeQueryCommand(t, datasources.QueryCmd(), []string{"query", "uid", "--config", configFile})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expression is required")
+}
