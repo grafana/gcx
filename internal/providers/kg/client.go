@@ -13,8 +13,12 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
+	"golang.org/x/sync/errgroup"
 	"k8s.io/client-go/rest"
 )
+
+// ruleFetchConcurrency caps parallel GetRule calls during ListRules fan-out.
+const ruleFetchConcurrency = 10
 
 const pluginResourcePath = "/api/plugins/grafana-asserts-app/resources"
 
@@ -526,30 +530,79 @@ func (c *Client) LLMSummary(ctx context.Context, req LLMSummaryRequest) (map[str
 // Rules operations
 // ---------------------------------------------------------------------------
 
-// ListRules retrieves all Asserts prom rules.
-func (c *Client) ListRules(ctx context.Context) ([]Rule, error) {
+// ListRuleNames retrieves the names of all Asserts prom rules.
+//
+// Backend: GET /v1/config/prom-rules → {"ruleNames": [...]}.
+func (c *Client) ListRuleNames(ctx context.Context) ([]string, error) {
 	var wrapper struct {
-		Rules []Rule `json:"rules"`
+		RuleNames []string `json:"ruleNames"`
 	}
 	if err := c.getJSON(ctx, rulesPath, &wrapper); err != nil {
+		return nil, fmt.Errorf("kg: list rule names: %w", err)
+	}
+	return wrapper.RuleNames, nil
+}
+
+// ListRules retrieves all Asserts prom rules.
+//
+// The backend list endpoint only returns names, so this performs an N+1
+// fan-out: one call to list names, then bounded-parallel GetRule per name.
+func (c *Client) ListRules(ctx context.Context) ([]Rule, error) {
+	names, err := c.ListRuleNames(ctx)
+	if err != nil {
+		return nil, err
+	}
+	files := make([]Rule, len(names))
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(ruleFetchConcurrency)
+	for i, name := range names {
+		g.Go(func() error {
+			f, err := c.GetRule(gCtx, name)
+			if err != nil {
+				return err
+			}
+			files[i] = *f
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
 		return nil, fmt.Errorf("kg: list rules: %w", err)
 	}
-	if wrapper.Rules == nil {
-		return []Rule{}, nil
+	return files, nil
+}
+
+// DeleteRule deletes a single Asserts prom rule by name.
+//
+// Backend: DELETE /v1/config/prom-rules/{name}.
+func (c *Client) DeleteRule(ctx context.Context, name string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
+		c.host+fmt.Sprintf(ruleByNameFmt, url.PathEscape(name)), nil)
+	if err != nil {
+		return fmt.Errorf("kg: create request: %w", err)
 	}
-	return wrapper.Rules, nil
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("kg: execute request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return readError(resp)
+	}
+	return nil
 }
 
 // GetRule retrieves a specific Asserts prom rule by name.
+//
+// Backend: GET /v1/config/prom-rules/{name} → PrometheusRulesDto (no wrapper).
+// Some backend versions reply 200 with an empty payload for a missing rule
+// instead of 404, so we treat an empty body as not-found.
 func (c *Client) GetRule(ctx context.Context, name string) (*Rule, error) {
-	var wrapper struct {
-		Rules []Rule `json:"rules"`
-	}
-	if err := c.getJSON(ctx, fmt.Sprintf(ruleByNameFmt, url.PathEscape(name)), &wrapper); err != nil {
+	var f Rule
+	if err := c.getJSON(ctx, fmt.Sprintf(ruleByNameFmt, url.PathEscape(name)), &f); err != nil {
 		return nil, fmt.Errorf("kg: get rule %q: %w", name, err)
 	}
-	if len(wrapper.Rules) == 0 {
+	if f.Name == "" && len(f.Groups) == 0 {
 		return nil, fmt.Errorf("kg: rule %q not found", name)
 	}
-	return &wrapper.Rules[0], nil
+	return &f, nil
 }

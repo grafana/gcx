@@ -1,6 +1,7 @@
 package kg_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/kg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 func scopesHandler(scopes map[string][]string) http.HandlerFunc {
@@ -256,4 +258,65 @@ func TestKgInsightsSearchRemoved(t *testing.T) {
 				"kg insights search was removed; use kg entities list --insight instead")
 		}
 	}
+}
+
+func ruleObj(name string, groups []map[string]any) unstructured.Unstructured {
+	spec := map[string]any{"name": name}
+	if groups != nil {
+		spec["groups"] = groups
+	}
+	return unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "kg.ext.grafana.app/v1alpha1",
+		"kind":       "Rule",
+		"metadata":   map[string]any{"name": name, "namespace": "stack-1"},
+		"spec":       spec,
+	}}
+}
+
+func TestRuleTableCodec_Encode(t *testing.T) {
+	objs := []unstructured.Unstructured{
+		ruleObj("file-a", []map[string]any{
+			{"name": "g1", "rules": []any{
+				map[string]any{"alert": "X", "expr": "1"},
+				map[string]any{"record": "y", "expr": "1"},
+			}},
+			{"name": "g2", "rules": []any{
+				map[string]any{"record": "z", "expr": "1"},
+			}},
+		}),
+		ruleObj("file-empty", nil),
+	}
+	var buf bytes.Buffer
+	require.NoError(t, (&kg.RuleTableCodec{}).Encode(&buf, objs))
+	out := buf.String()
+	assert.Contains(t, out, "NAME")
+	assert.Contains(t, out, "GROUPS")
+	assert.Contains(t, out, "RULES")
+	assert.Contains(t, out, "file-a")
+	assert.Contains(t, out, "file-empty")
+}
+
+func TestRuleWideTableCodec_Encode(t *testing.T) {
+	objs := []unstructured.Unstructured{
+		ruleObj("file-a", []map[string]any{
+			{"name": "g1", "rules": []any{
+				map[string]any{"alert": "X", "expr": "1"},
+				map[string]any{"alert": "Y", "expr": "1"},
+				map[string]any{"record": "z", "expr": "1"},
+			}},
+		}),
+	}
+	var buf bytes.Buffer
+	require.NoError(t, (&kg.RuleWideTableCodec{}).Encode(&buf, objs))
+	out := buf.String()
+	for _, want := range []string{"NAME", "GROUPS", "RULES", "ALERTS", "RECORDING", "file-a"} {
+		assert.Contains(t, out, want)
+	}
+}
+
+func TestRuleTableCodec_RejectsWrongType(t *testing.T) {
+	err := (&kg.RuleTableCodec{}).Encode(&bytes.Buffer{}, []string{"nope"})
+	require.Error(t, err)
+	err = (&kg.RuleWideTableCodec{}).Encode(&bytes.Buffer{}, []string{"nope"})
+	require.Error(t, err)
 }

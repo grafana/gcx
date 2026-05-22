@@ -40,8 +40,8 @@ func TestRuleAdapter_List(t *testing.T) {
 		Descriptor: kg.RuleDescriptor(),
 		ListFn: func(_ context.Context, _ int64) ([]kg.Rule, error) {
 			return []kg.Rule{
-				{Name: "service:http_requests:rate5m", Expr: "sum(rate(http_requests_total[5m])) by (service)", Record: "service:http_requests:rate5m"},
-				{Name: "high-error-rate", Alert: "HighErrorRate", Expr: "rate(http_errors_total[5m]) > 0.1"},
+				{Name: "service:http_requests:rate5m"},
+				{Name: "high-error-rate"},
 			}, nil
 		},
 	}

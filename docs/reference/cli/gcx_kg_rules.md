@@ -24,7 +24,7 @@ Manage Knowledge Graph prom rules.
 
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
 * [gcx kg rules create](gcx_kg_rules_create.md)	 - Upload Knowledge Graph prom rules from a YAML file.
-* [gcx kg rules delete](gcx_kg_rules_delete.md)	 - Delete all Knowledge Graph rules (upload empty).
+* [gcx kg rules delete](gcx_kg_rules_delete.md)	 - Delete a Knowledge Graph prom rule by name.
 * [gcx kg rules get](gcx_kg_rules_get.md)	 - Get a Knowledge Graph prom rule by name.
 * [gcx kg rules list](gcx_kg_rules_list.md)	 - List Knowledge Graph prom rules.
 
