@@ -57,9 +57,7 @@ func (p *K6Provider) Validate(cfg map[string]string) error {
 
 // ConfigKeys returns the configuration keys used by this provider.
 func (p *K6Provider) ConfigKeys() []providers.ConfigKey {
-	return []providers.ConfigKey{
-		{Name: "api-domain"},
-	}
+	return nil
 }
 
 // TypedRegistrations returns adapter registrations for k6 resource types.

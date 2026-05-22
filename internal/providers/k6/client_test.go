@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/providers/k6"
@@ -12,82 +13,155 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// newAuthenticatedClient creates a k6 client pointed at a test server,
-// pre-authenticated with orgID=42 and stackID=999.
+// newAuthenticatedClient creates a k6 client pointed at a test server.
+// The server responds to the plugin /organization endpoint with orgID=42
+// (lazily fetched by env var methods) and forwards cloud calls under the
+// plugin /cloud prefix to the supplied handler.
 func newAuthenticatedClient(t *testing.T, handler http.Handler) *k6.Client {
 	t.Helper()
 
+	const proxyPrefix = "/api/plugins/k6-app/resources/cloud"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Handle auth endpoint.
-		if r.Method == http.MethodPut && r.URL.Path == "/v3/account/grafana-app/start" {
+		// Handle plugin /organization endpoint (used lazily by env var methods).
+		if r.Method == http.MethodGet && r.URL.Path == "/api/plugins/k6-app/resources/organization" {
 			w.Header().Set("Content-Type", "application/json")
-			writeJSON(t, w, map[string]any{
-				"organization_id":  "42",
-				"v3_grafana_token": "test-k6-token",
-			})
+			writeJSON(t, w, map[string]any{"organization_id": 42})
 			return
 		}
-		// Forward to test handler.
-		handler.ServeHTTP(w, r)
+		// Handle plugin /v3/account/me Token() endpoint.
+		if r.Method == http.MethodGet && r.URL.Path == proxyPrefix+"/v3/account/me" {
+			w.Header().Set("Content-Type", "application/json")
+			writeJSON(t, w, map[string]any{"token": map[string]any{"key": "test-k6-token"}})
+			return
+		}
+		// Strip the plugin /cloud prefix so handlers can match on the
+		// underlying k6 API path (e.g. /cloud/v6/projects).
+		if strings.HasPrefix(r.URL.Path, proxyPrefix) {
+			r2 := r.Clone(r.Context())
+			r2.URL.Path = strings.TrimPrefix(r.URL.Path, proxyPrefix)
+			handler.ServeHTTP(w, r2)
+			return
+		}
+		t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 	}))
 	t.Cleanup(srv.Close)
 
-	client := k6.NewClient(context.Background(), srv.URL, nil)
-	err := client.Authenticate(t.Context(), "test-ap-token", 999)
-	require.NoError(t, err)
-	assert.Equal(t, 42, client.OrgID())
-	assert.Equal(t, "test-k6-token", client.Token())
-	return client
+	authClient := &http.Client{Transport: &bearerInjector{token: "test-k6-token"}}
+	return k6.NewClient(context.Background(), srv.URL, authClient)
 }
 
-func TestClient_Authenticate(t *testing.T) {
-	tests := []struct {
-		name    string
-		handler http.HandlerFunc
-		wantErr bool
-	}{
-		{
-			name: "successful auth",
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, http.MethodPut, r.Method)
-				assert.Equal(t, "/v3/account/grafana-app/start", r.URL.Path)
-				assert.Equal(t, "test-token", r.Header.Get("X-Grafana-Key"))
-				assert.Equal(t, "999", r.Header.Get("X-Stack-Id"))
-				w.Header().Set("Content-Type", "application/json")
-				writeJSON(t, w, map[string]any{
-					"organization_id":  "42",
-					"v3_grafana_token": "k6-token-abc",
-				})
-			},
-		},
-		{
-			name: "auth failure",
-			handler: func(w http.ResponseWriter, _ *http.Request) {
-				w.WriteHeader(http.StatusForbidden)
-				writeJSON(t, w, map[string]string{"message": "forbidden"})
-			},
-			wantErr: true,
-		},
+// bearerInjector is a RoundTripper that injects a Bearer Authorization
+// header on every request, mimicking a refresh-aware transport.
+type bearerInjector struct {
+	token string
+	base  http.RoundTripper
+}
+
+func (b *bearerInjector) RoundTrip(req *http.Request) (*http.Response, error) {
+	clone := req.Clone(req.Context())
+	clone.Header.Set("Authorization", "Bearer "+b.token)
+	base := b.base
+	if base == nil {
+		base = http.DefaultTransport
 	}
+	return base.RoundTrip(clone)
+}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			srv := httptest.NewServer(tt.handler)
-			defer srv.Close()
-
-			client := k6.NewClient(context.Background(), srv.URL, nil)
-			err := client.Authenticate(t.Context(), "test-token", 999)
-
-			if tt.wantErr {
-				require.Error(t, err)
-				return
-			}
-
-			require.NoError(t, err)
-			assert.Equal(t, 42, client.OrgID())
-			assert.Equal(t, "k6-token-abc", client.Token())
+// TestClient_Token_FetchesFromAccountMe verifies that Token in OAuth
+// proxy mode resolves to /v3/account/me .token.key, routing the call through
+// the plugin proxy without Bearer / X-Stack-Id headers (the auth client's
+// transport injects auth, the plugin resolves the stack).
+func TestClient_Token_FetchesFromAccountMe(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/api/plugins/k6-app/resources/cloud/v3/account/me", r.URL.Path)
+		assert.Equal(t, "Bearer gat_test-oauth-token", r.Header.Get("Authorization"))
+		assert.Empty(t, r.Header.Get("X-Stack-Id"))
+		w.Header().Set("Content-Type", "application/json")
+		writeJSON(t, w, map[string]any{
+			"token": map[string]any{"key": "k6-v3-from-me"},
 		})
+	}))
+	defer srv.Close()
+
+	authClient := &http.Client{Transport: &bearerInjector{token: "gat_test-oauth-token"}}
+	client := k6.NewClient(context.Background(), srv.URL, authClient)
+	token, err := client.Token(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, "k6-v3-from-me", token)
+}
+
+// TestClient_Token_Memoised confirms that repeated Token calls in proxy
+// mode hit /v3/account/me only once.
+func TestClient_Token_Memoised(t *testing.T) {
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		writeJSON(t, w, map[string]any{"token": map[string]any{"key": "k6-v3"}})
+	}))
+	defer srv.Close()
+
+	client := k6.NewClient(context.Background(), srv.URL, &http.Client{Transport: &bearerInjector{token: "tok"}})
+	for range 3 {
+		_, err := client.Token(t.Context())
+		require.NoError(t, err)
 	}
+	assert.Equal(t, 1, calls, "expected /v3/account/me to be called once, got %d", calls)
+}
+
+// TestClient_Token_EmptyKey surfaces an error when /v3/account/me
+// returns a successful response with no token.key, rather than letting
+// callers print an empty token.
+func TestClient_Token_EmptyKey(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		writeJSON(t, w, map[string]any{"token": map[string]any{"key": ""}})
+	}))
+	defer srv.Close()
+
+	client := k6.NewClient(context.Background(), srv.URL, &http.Client{Transport: &bearerInjector{token: "tok"}})
+	_, err := client.Token(t.Context())
+	require.Error(t, err)
+}
+
+// TestClient_RoutesResourceCallsThroughProxy verifies that regular API
+// calls hit the plugin proxy path (not api.k6.io) and omit Bearer +
+// X-Stack-Id — relying entirely on the auth client's transport for
+// credential injection.
+func TestClient_RoutesResourceCallsThroughProxy(t *testing.T) {
+	var listRecorded struct {
+		path string
+		auth string
+		stk  string
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/plugins/k6-app/resources/cloud/cloud/v6/projects":
+			listRecorded.path = r.URL.Path
+			listRecorded.auth = r.Header.Get("Authorization")
+			listRecorded.stk = r.Header.Get("X-Stack-Id")
+			writeJSON(t, w, map[string]any{
+				"value": []map[string]any{{"id": 1, "name": "p"}},
+			})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	authClient := &http.Client{Transport: &bearerInjector{token: "gat_test-oauth-token"}}
+	client := k6.NewClient(context.Background(), srv.URL, authClient)
+
+	projects, err := client.ListProjects(t.Context())
+	require.NoError(t, err)
+	require.Len(t, projects, 1)
+
+	assert.Equal(t, "/api/plugins/k6-app/resources/cloud/cloud/v6/projects", listRecorded.path)
+	// Bearer must come from the auth client's transport, not from a v3 token.
+	assert.Equal(t, "Bearer gat_test-oauth-token", listRecorded.auth)
+	assert.Empty(t, listRecorded.stk, "X-Stack-Id must be omitted in proxy mode")
 }
 
 func TestClient_ListProjects(t *testing.T) {
