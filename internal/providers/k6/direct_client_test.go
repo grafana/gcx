@@ -17,6 +17,7 @@ func TestDirectClient_AuthenticateAndToken(t *testing.T) {
 		if r.Method == http.MethodPut && r.URL.Path == "/v3/account/grafana-app/start" {
 			assert.Equal(t, "glsa_test", r.Header.Get("X-Grafana-Service-Token"))
 			assert.Equal(t, "999", r.Header.Get("X-Stack-Id"))
+			assert.Equal(t, "admin", r.Header.Get("X-Grafana-User"))
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]string{
 				"organization_id":  "42",

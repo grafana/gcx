@@ -1,7 +1,6 @@
 package k6
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -64,11 +63,7 @@ func NewDirectClient(ctx context.Context, apiDomain string, httpClient *http.Cli
 func (c *DirectClient) Authenticate(ctx context.Context, saToken string, stackID int) error {
 	stackStr := strconv.Itoa(stackID)
 
-	body, err := json.Marshal(struct{}{})
-	if err != nil {
-		return fmt.Errorf("k6: marshal auth request: %w", err)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.apiDomain+authPath, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.apiDomain+authPath, http.NoBody)
 	if err != nil {
 		return fmt.Errorf("k6: create auth request: %w", err)
 	}
