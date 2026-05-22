@@ -521,6 +521,46 @@ gcx logs query -d <loki-uid> 'topk(10, sum by(pod) (rate({job="app"} [5m])))'
 
 Rule of thumb: if your query uses `rate()`, `count_over_time()`, or `bytes_over_time()`, wrap it with `sum()`, `sum by(label)`, or `topk()`.
 
+### Counting requests across distributed services
+
+A single HTTP request typically produces one log line at *every* service it
+traverses (gateway, upstream, backend). Using a label selector that matches
+all of them double- or triple-counts the same request.
+
+**Symptom**: counts look ~2-3x what the rest of the evidence (dashboards,
+metrics, traces) suggests.
+
+**Wrong** (counts every hop):
+```bash
+gcx logs query -d <loki-uid> \
+  'sum(count_over_time({job=~".+"} | json | path="/api/<endpoint>" | status >= 500 [6h]))'
+```
+
+**Right** — scope the label selector to the *backend services that own the
+request*, not the gateway / proxy / load balancer:
+```bash
+gcx logs query -d <loki-uid> \
+  'sum(count_over_time({job=~"<backend-svc-a>|<backend-svc-b>"} | json | __error__="" | path="/api/<endpoint>" | status >= 500 [6h]))'
+```
+
+How to identify the backend services for a path:
+- Look at a representative trace with `gcx traces get <id> --llm` and pick the
+  service where the actual error (`status: error`) originates, plus its
+  immediate caller.
+- Or use `gcx logs labels -d <uid> -l job` to enumerate jobs, then exclude
+  obvious gateway/proxy names (anything that just forwards — e.g. `webapp`,
+  `api-gateway`, `envoy`, `nginx`).
+
+Alternative: deduplicate by `trace_id` if the logs contain it:
+```bash
+gcx logs query -d <loki-uid> \
+  'count(count by (trace_id) (rate({job=~".+"} | json | path="/api/<endpoint>" | status >= 500 [6h])))'
+```
+
+Always include `| __error__=""` after `| json` to drop lines that failed to
+parse, otherwise the parser stage silently keeps them and they pollute the
+count.
+
 ### Stream Labels vs Extracted Labels
 
 Loki has two kinds of labels — confusing them causes silent failures:
