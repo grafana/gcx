@@ -12,7 +12,7 @@ import (
 )
 
 func TestDetailedError_Unwrap(t *testing.T) {
-	err := &fail.DetailedError{
+	err := gcxerrors.DetailedError{
 		Summary: "Authentication failed",
 		Parent:  context.Canceled,
 	}
