@@ -415,6 +415,8 @@ func (c *ProxyClient) DeleteLoadTest(ctx context.Context, id int) error {
 }
 
 // CreateLoadTest creates a new load test via multipart/form-data upload.
+//
+//nolint:dupl // identical multipart construction; ProxyClient and DirectClient are parallel implementations
 func (c *ProxyClient) CreateLoadTest(ctx context.Context, name string, projectID int, script string) (*LoadTest, error) {
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
