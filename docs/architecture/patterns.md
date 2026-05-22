@@ -609,7 +609,7 @@ eliminates per-type boilerplate while keeping each registration self-documenting
 - Special-case type conversions (e.g., Shift→ShiftRequest) are closures in the option, not if/else branches
 
 **Evidence:**
-- `internal/providers/oncall/resource_adapter.go`: `registerOnCallResource[T]`, 17 registrations
+- `internal/providers/irm/oncall_adapter.go`: `registerOnCallResource[T]`, 17 registrations
 - ADR: `docs/adrs/oncall-typed-crud/001-table-driven-typedcrud.md`
 
 ### 19. Singleton Adapter Pattern (Adopt)

@@ -279,12 +279,30 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 
 // --- cancel ---
 
+type cancelOpts struct {
+	Force bool
+}
+
+func (o *cancelOpts) setup(flags *pflag.FlagSet) {
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
+}
+
 func newCancelCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &cancelOpts{}
 	cmd := &cobra.Command{
 		Use:   "cancel <run-id>",
 		Short: "Cancel a running experiment.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+				fmt.Sprintf("Cancel experiment %s?", args[0]))
+			if err != nil {
+				return err
+			}
+			if !proceed {
+				return nil
+			}
+
 			client, err := newClient(cmd, loader)
 			if err != nil {
 				return err
@@ -296,6 +314,7 @@ func newCancelCommand(loader *providers.ConfigLoader) *cobra.Command {
 			return nil
 		},
 	}
+	opts.setup(cmd.Flags())
 	return cmd
 }
 

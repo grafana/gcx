@@ -159,6 +159,8 @@ func NormalizeKind(pluginID string) string {
 		return "pyroscope"
 	case "grafana-clickhouse-datasource":
 		return "clickhouse"
+	case "yesoreyeram-infinity-datasource":
+		return "infinity"
 	default:
 		if isPromFlavor(pluginID) {
 			return "prometheus"
