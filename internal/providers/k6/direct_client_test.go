@@ -64,3 +64,24 @@ func TestDirectClient_AuthenticateAndToken(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "fresh-v3-token", tok)
 }
+
+func TestDirectClient_EnvVars_RequireAuth(t *testing.T) {
+	// Fresh client, never authenticated.
+	client := k6.NewDirectClient(context.Background(), "http://unused", nil)
+
+	_, err := client.ListEnvVars(t.Context())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not authenticated")
+
+	_, err = client.CreateEnvVar(t.Context(), "X", "y", "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not authenticated")
+
+	err = client.UpdateEnvVar(t.Context(), 1, "X", "y", "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not authenticated")
+
+	err = client.DeleteEnvVar(t.Context(), 1)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not authenticated")
+}

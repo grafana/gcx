@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/grafana/gcx/internal/httputils"
 )
@@ -38,6 +39,7 @@ type DirectClient struct {
 	token     string
 	http      *http.Client
 	reauth    ReauthFunc
+	mu        sync.Mutex // guards token, orgID, stackID across reauth races
 }
 
 // NewDirectClient creates a DirectClient. If apiDomain is empty, DefaultAPIDomain
@@ -95,9 +97,11 @@ func (c *DirectClient) Authenticate(ctx context.Context, saToken string, stackID
 		return fmt.Errorf("k6: parse organization_id %q: %w", ar.OrgID, err)
 	}
 
+	c.mu.Lock()
 	c.orgID = orgID
 	c.stackID = stackID
 	c.token = ar.V3GrafanaToken
+	c.mu.Unlock()
 	return nil
 }
 
@@ -107,15 +111,22 @@ func (c *DirectClient) Authenticate(ctx context.Context, saToken string, stackID
 // in practice but returns errors.New(...) if the client has not been
 // authenticated yet, to give callers a clear failure mode.
 func (c *DirectClient) Token(_ context.Context) (string, error) {
-	if c.token == "" {
+	c.mu.Lock()
+	tok := c.token
+	c.mu.Unlock()
+	if tok == "" {
 		return "", errors.New("k6: DirectClient not authenticated (call Authenticate or SetCachedAuth first)")
 	}
-	return c.token, nil
+	return tok, nil
 }
 
 // orgIDValue returns the cached organization ID, used internally by EnvVar methods.
 // The plural form (orgID()) is reserved for ProxyClient's lazy variant.
-func (c *DirectClient) orgIDValue() int { return c.orgID }
+func (c *DirectClient) orgIDValue() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.orgID
+}
 
 // authResponse is the JSON body returned by PUT /v3/account/grafana-app/start.
 type authResponse struct {
@@ -138,6 +149,8 @@ func (c *DirectClient) SetReauth(fn ReauthFunc) { c.reauth = fn }
 // responsible for wiring SetReauth to refresh on 401 if these credentials
 // turn out to be stale.
 func (c *DirectClient) SetCachedAuth(token string, orgID, stackID int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.token = token
 	c.orgID = orgID
 	c.stackID = stackID
@@ -160,6 +173,10 @@ func (c *DirectClient) doJSON(ctx context.Context, method, path string, body any
 		bodyBytes = b
 	}
 	build := func() (*http.Request, error) {
+		c.mu.Lock()
+		token := c.token
+		stackID := c.stackID
+		c.mu.Unlock()
 		var br io.Reader
 		if bodyBytes != nil {
 			br = bytes.NewReader(bodyBytes)
@@ -169,8 +186,8 @@ func (c *DirectClient) doJSON(ctx context.Context, method, path string, body any
 			return nil, fmt.Errorf("k6: create request: %w", err)
 		}
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+c.token)
-		req.Header.Set("X-Stack-Id", strconv.Itoa(c.stackID))
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("X-Stack-Id", strconv.Itoa(stackID))
 		return req, nil
 	}
 	return c.doWithReauth(ctx, build)
@@ -188,6 +205,10 @@ func (c *DirectClient) doRaw(ctx context.Context, method, path, contentType stri
 		bodyBytes = buf
 	}
 	build := func() (*http.Request, error) {
+		c.mu.Lock()
+		token := c.token
+		stackID := c.stackID
+		c.mu.Unlock()
 		var br io.Reader
 		if bodyBytes != nil {
 			br = bytes.NewReader(bodyBytes)
@@ -199,8 +220,8 @@ func (c *DirectClient) doRaw(ctx context.Context, method, path, contentType stri
 		if contentType != "" {
 			req.Header.Set("Content-Type", contentType)
 		}
-		req.Header.Set("Authorization", "Bearer "+c.token)
-		req.Header.Set("X-Stack-Id", strconv.Itoa(c.stackID))
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("X-Stack-Id", strconv.Itoa(stackID))
 		return req, nil
 	}
 	resp, err := c.doWithReauth(ctx, build)
@@ -235,8 +256,10 @@ func (c *DirectClient) doWithReauth(ctx context.Context, build func() (*http.Req
 	if err != nil {
 		return nil, fmt.Errorf("k6: reauth after 401: %w", err)
 	}
+	c.mu.Lock()
 	c.token = token
 	c.orgID = orgID
+	c.mu.Unlock()
 
 	req2, err := build()
 	if err != nil {
@@ -594,6 +617,9 @@ func (c *DirectClient) ListTestRuns(ctx context.Context, loadTestID int) ([]Test
 // ListEnvVars retrieves all environment variables for the organization.
 func (c *DirectClient) ListEnvVars(ctx context.Context) ([]EnvVar, error) {
 	id := c.orgIDValue()
+	if id == 0 {
+		return nil, errors.New("k6: DirectClient not authenticated (call Authenticate or SetCachedAuth first)")
+	}
 
 	path := fmt.Sprintf(envVarsPathFmt, id)
 	resp, err := c.doJSON(ctx, http.MethodGet, path, nil)
@@ -616,6 +642,9 @@ func (c *DirectClient) ListEnvVars(ctx context.Context) ([]EnvVar, error) {
 // CreateEnvVar creates a new environment variable.
 func (c *DirectClient) CreateEnvVar(ctx context.Context, name, value, description string) (*EnvVar, error) {
 	id := c.orgIDValue()
+	if id == 0 {
+		return nil, errors.New("k6: DirectClient not authenticated (call Authenticate or SetCachedAuth first)")
+	}
 
 	path := fmt.Sprintf(envVarsPathFmt, id)
 	resp, err := c.doJSON(ctx, http.MethodPost, path, envVarRequest{Name: name, Value: value, Description: description})
@@ -638,6 +667,9 @@ func (c *DirectClient) CreateEnvVar(ctx context.Context, name, value, descriptio
 // UpdateEnvVar updates an existing environment variable.
 func (c *DirectClient) UpdateEnvVar(ctx context.Context, id int, name, value, description string) error {
 	orgID := c.orgIDValue()
+	if orgID == 0 {
+		return errors.New("k6: DirectClient not authenticated (call Authenticate or SetCachedAuth first)")
+	}
 
 	path := fmt.Sprintf(envVarsPathFmt+"/%d", orgID, id)
 	resp, err := c.doJSON(ctx, http.MethodPatch, path, envVarRequest{Name: name, Value: value, Description: description})
@@ -655,6 +687,9 @@ func (c *DirectClient) UpdateEnvVar(ctx context.Context, id int, name, value, de
 // DeleteEnvVar deletes an environment variable by ID.
 func (c *DirectClient) DeleteEnvVar(ctx context.Context, id int) error {
 	orgID := c.orgIDValue()
+	if orgID == 0 {
+		return errors.New("k6: DirectClient not authenticated (call Authenticate or SetCachedAuth first)")
+	}
 
 	path := fmt.Sprintf(envVarsPathFmt+"/%d", orgID, id)
 	resp, err := c.doJSON(ctx, http.MethodDelete, path, nil)
