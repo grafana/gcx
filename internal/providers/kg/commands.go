@@ -676,7 +676,6 @@ func (c *RuleWideTableCodec) Decode(_ io.Reader, _ any) error {
 // Model rules, suppressions, relabel rules commands
 // ---------------------------------------------------------------------------
 
-//nolint:dupl
 func newModelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "model-rules",
@@ -710,7 +709,6 @@ func newModelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	_ = createCmd.MarkFlagRequired("file")
 	cmd.AddCommand(createCmd)
 	return cmd
-	//nolint:dupl
 }
 
 func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
@@ -854,20 +852,28 @@ func (c *SuppressionTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
 
-//nolint:dupl
 func newRelabelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "relabel-rules",
-		Short: "Push relabel rules to the Knowledge Graph.",
+		Short: "Inspect Mimir relabel rules used by the Knowledge Graph.",
 	}
-	var fileFlag string
-	createCmd := &cobra.Command{
-		Use:   "create",
-		Short: "Upload relabel rules from a YAML file.",
+
+	var (
+		ruleType string
+		io       cmdio.Options
+	)
+	io.DefaultFormat("yaml")
+
+	getCmd := &cobra.Command{
+		Use:   "get",
+		Short: "Fetch a relabel rule group (prologue, epilogue, or generated).",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			data, err := readFileOrStdin(cmd, fileFlag)
-			if err != nil {
-				return fmt.Errorf("failed to read file: %w", err)
+			t := RelabelRuleType(ruleType)
+			if !t.IsValid() {
+				return fmt.Errorf("invalid --type %q: must be one of prologue, epilogue, generated", ruleType)
+			}
+			if err := io.Validate(); err != nil {
+				return err
 			}
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
@@ -877,16 +883,22 @@ func newRelabelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := client.UploadRelabelRules(cmd.Context(), string(data)); err != nil {
+			rules, err := client.GetRelabelRules(cmd.Context(), t)
+			if err != nil {
 				return err
 			}
-			cmdio.Success(cmd.OutOrStdout(), "Relabel rules uploaded")
-			return nil
+			if rules == nil {
+				cmdio.Info(cmd.ErrOrStderr(), "No %s relabel rules configured.", t)
+				return nil
+			}
+			return io.Encode(cmd.OutOrStdout(), rules)
 		},
 	}
-	createCmd.Flags().StringVarP(&fileFlag, "file", "f", "", "Input file (YAML)")
-	_ = createCmd.MarkFlagRequired("file")
-	cmd.AddCommand(createCmd)
+	getCmd.Flags().StringVar(&ruleType, "type", string(RelabelRuleTypeGenerated),
+		"Rule group to fetch: prologue, epilogue, or generated")
+	io.BindFlags(getCmd.Flags())
+
+	cmd.AddCommand(getCmd)
 	return cmd
 }
 

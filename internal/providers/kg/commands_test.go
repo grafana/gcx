@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/providers/kg"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -257,6 +258,51 @@ func TestKgInsightsSearchRemoved(t *testing.T) {
 			assert.NotEqual(t, "search", sub.Name(),
 				"kg insights search was removed; use kg entities list --insight instead")
 		}
+	}
+}
+
+// TestKgRelabelRulesCommand asserts the relabel-rules command exposes only
+// a `get` subcommand with a `--type` flag defaulting to "generated", and
+// that the legacy `create` subcommand has been removed.
+func TestKgRelabelRulesCommand(t *testing.T) {
+	root := (&kg.KGProvider{}).Commands()
+	require.Len(t, root, 1)
+
+	var relabel *cobra.Command
+	for _, c := range root[0].Commands() {
+		if c.Name() == "relabel-rules" {
+			relabel = c
+			break
+		}
+	}
+	require.NotNil(t, relabel, "relabel-rules command should be registered under kg")
+
+	subNames := make(map[string]*cobra.Command, len(relabel.Commands()))
+	for _, sub := range relabel.Commands() {
+		subNames[sub.Name()] = sub
+	}
+	assert.NotContains(t, subNames, "create",
+		"`kg relabel-rules create` was dropped — write path stays disabled until the UI feature flag ships")
+
+	getCmd, ok := subNames["get"]
+	require.True(t, ok, "`kg relabel-rules get` should be registered")
+
+	typeFlag := getCmd.Flags().Lookup("type")
+	require.NotNil(t, typeFlag, "--type flag should exist on `get`")
+	assert.Equal(t, "generated", typeFlag.DefValue,
+		"--type should default to generated (read-only, safe for users without the UI flag)")
+}
+
+func TestRelabelRuleType_IsValid(t *testing.T) {
+	for _, valid := range []kg.RelabelRuleType{
+		kg.RelabelRuleTypePrologue,
+		kg.RelabelRuleTypeEpilogue,
+		kg.RelabelRuleTypeGenerated,
+	} {
+		assert.True(t, valid.IsValid(), "%q should be valid", valid)
+	}
+	for _, bad := range []kg.RelabelRuleType{"", "PROLOGUE", "default", "bogus"} {
+		assert.False(t, bad.IsValid(), "%q should not be valid", bad)
 	}
 }
 

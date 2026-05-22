@@ -46,8 +46,26 @@ const (
 	v2LogConfigPath      = v2ConfigPath + "/log"
 	v2TraceConfigPath    = v2ConfigPath + "/trace"
 	v2ProfileConfigPath  = v2ConfigPath + "/profile"
-	v2RelabelRulesPath   = v2ConfigPath + "/relabel-rules/prologue"
+	v2RelabelRulesPath   = v2ConfigPath + "/relabel-rules"
 )
+
+// RelabelRuleType identifies which Mimir relabel rule group to operate on.
+type RelabelRuleType string
+
+const (
+	RelabelRuleTypePrologue  RelabelRuleType = "prologue"
+	RelabelRuleTypeEpilogue  RelabelRuleType = "epilogue"
+	RelabelRuleTypeGenerated RelabelRuleType = "generated"
+)
+
+// IsValid reports whether t is one of the known relabel rule types.
+func (t RelabelRuleType) IsValid() bool {
+	switch t {
+	case RelabelRuleTypePrologue, RelabelRuleTypeEpilogue, RelabelRuleTypeGenerated:
+		return true
+	}
+	return false
+}
 
 // Client is an HTTP client for the Knowledge Graph (Asserts) API.
 type Client struct {
@@ -273,9 +291,36 @@ func (c *Client) GetSuppressions(ctx context.Context) (*Suppressions, error) {
 	return &result, nil
 }
 
-// UploadRelabelRules uploads relabel rules configuration.
-func (c *Client) UploadRelabelRules(ctx context.Context, yamlContent string) error {
-	return c.doYAML(ctx, http.MethodPut, v2RelabelRulesPath, yamlContent)
+// GetRelabelRules fetches the relabel rule group of the given type.
+// Returns nil, nil when the backend responds with 204 No Content (no rules configured).
+func (c *Client) GetRelabelRules(ctx context.Context, t RelabelRuleType) (map[string]any, error) {
+	if !t.IsValid() {
+		return nil, fmt.Errorf("kg: invalid relabel rule type %q", t)
+	}
+	path := v2RelabelRulesPath + "/" + string(t)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.host+path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("kg: create request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("kg: execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNoContent {
+		return nil, nil //nolint:nilnil
+	}
+	if resp.StatusCode >= 400 {
+		return nil, readError(resp)
+	}
+	var result map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("kg: decode relabel rules: %w", err)
+	}
+	return result, nil
 }
 
 // ---------------------------------------------------------------------------
