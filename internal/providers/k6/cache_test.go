@@ -9,17 +9,19 @@ import (
 )
 
 type fakeStore struct {
-	saved   map[string]string
-	saveErr error
+	saved    map[string]string
+	provider string
+	saveErr  error
 }
 
-func (f *fakeStore) SaveProviderConfig(_ context.Context, _, key, value string) error {
+func (f *fakeStore) SaveProviderConfig(_ context.Context, providerName, key, value string) error {
 	if f.saveErr != nil {
 		return f.saveErr
 	}
 	if f.saved == nil {
 		f.saved = make(map[string]string)
 	}
+	f.provider = providerName
 	f.saved[key] = value
 	return nil
 }
@@ -88,6 +90,7 @@ func TestPersistCache_SavesAllThreeKeys(t *testing.T) {
 	assert.Equal(t, "tok-xyz", store.saved[keyCachedToken])
 	assert.Equal(t, "42", store.saved[keyCachedOrgID])
 	assert.Equal(t, "999", store.saved[keyCachedStackID])
+	assert.Equal(t, "k6", store.provider)
 }
 
 func TestPersistCache_SaveErrorIsNonFatal(t *testing.T) {
@@ -100,7 +103,9 @@ func TestPersistCache_SaveErrorIsNonFatal(t *testing.T) {
 func TestClearCache_ClearsAllThreeKeys(t *testing.T) {
 	store := &fakeStore{}
 	clearCache(context.Background(), store)
+	assert.Len(t, store.saved, 3)
 	assert.Empty(t, store.saved[keyCachedToken])
 	assert.Empty(t, store.saved[keyCachedOrgID])
 	assert.Empty(t, store.saved[keyCachedStackID])
+	assert.Equal(t, "k6", store.provider)
 }
