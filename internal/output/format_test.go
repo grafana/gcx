@@ -197,22 +197,18 @@ func TestJSONFlag_Parsing(t *testing.T) {
 }
 
 func TestEncode_AgentModeHint(t *testing.T) {
-	// The agent-mode hint banner has been removed (C.3c). No mode should emit it.
 	tests := []struct {
 		name      string
 		agentMode bool
 		jsonField string // if set, pass --json flag
-		wantHint  bool
 	}{
 		{
 			name:      "agent mode without --json: no hint",
 			agentMode: true,
-			wantHint:  false,
 		},
 		{
 			name:      "non-agent mode: no hint",
 			agentMode: false,
-			wantHint:  false,
 		},
 	}
 
@@ -221,7 +217,8 @@ func TestEncode_AgentModeHint(t *testing.T) {
 			agent.SetFlag(tc.agentMode)
 			t.Cleanup(func() { agent.SetFlag(false) })
 
-			opts := &cmdio.Options{}
+			var stderr bytes.Buffer
+			opts := &cmdio.Options{ErrWriter: &stderr}
 			flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
 			opts.BindFlags(flags)
 
@@ -231,11 +228,11 @@ func TestEncode_AgentModeHint(t *testing.T) {
 
 			require.NoError(t, opts.Validate())
 
-			var buf bytes.Buffer
-			require.NoError(t, opts.Encode(&buf, map[string]any{"name": "test"}))
+			var stdout bytes.Buffer
+			require.NoError(t, opts.Encode(&stdout, map[string]any{"name": "test"}))
 
-			// Encode writes to stdout (buf), not stderr. No hint should be emitted anywhere.
-			assert.NotContains(t, buf.String(), "--json list")
+			assert.NotContains(t, stdout.String(), "hint:", "hint must not appear on stdout")
+			assert.NotContains(t, stderr.String(), "hint:", "hint must not appear on stderr")
 		})
 	}
 }

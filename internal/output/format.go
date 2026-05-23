@@ -40,11 +40,10 @@ type Options struct {
 	// ErrWriter is the writer for hints and diagnostics (defaults to os.Stderr).
 	ErrWriter io.Writer
 
-	customCodecs        map[string]format.Codec
-	defaultFormat       string
-	flags               *pflag.FlagSet
-	jsonFieldValidator  func(fields []string) error // optional; invoked before field extraction when --json is used
-	jsonFieldsHintShown bool
+	customCodecs       map[string]format.Codec
+	defaultFormat      string
+	flags              *pflag.FlagSet
+	jsonFieldValidator func(fields []string) error // optional; invoked before field extraction when --json is used
 }
 
 // SetJSONFieldValidator registers an optional validator invoked before field
@@ -167,29 +166,11 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 		return err
 	}
 
-	// Nudge toward --json field selection whenever the resolved codec is
-	// JSON-like (json or agents format) and the caller has not already
-	// requested field selection/discovery. Emitted once per invocation to
-	// stderr (never pollutes stdout). TTY: plain "hint:" line. Agent mode:
-	// JSONL {"class":"hint",...} — routed through emitHint/EmitHint so the
-	// hints framework handles codec & agent-mode compliance (FR-104).
-	isJSONLike := codec.Format() == format.JSON || codec.Format() == agentsFormat
-	if !opts.jsonFieldsHintShown && isJSONLike && len(opts.JSONFields) == 0 && !opts.JSONDiscovery {
-		opts.jsonFieldsHintShown = true
-		w := opts.ErrWriter
-		if w == nil {
-			w = os.Stderr
-		}
-		emitHint(w,
-			"use --json list to discover fields, --json field1,field2 to select — no external parsing needed",
-			"",
-		)
-	}
-
 	// Intercept JSON field discovery and field selection when the resolved
 	// codec is JSON-like. Commands that already check JSONFields/JSONDiscovery
 	// before calling Encode() will never reach here (they return early), so
 	// there is no double-application risk.
+	isJSONLike := codec.Format() == format.JSON || codec.Format() == agentsFormat
 	if isJSONLike {
 		if opts.JSONDiscovery {
 			return opts.encodeDiscovery(dst, value)
