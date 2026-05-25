@@ -7,6 +7,7 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/graph"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/query/athena"
 	"github.com/grafana/gcx/internal/query/clickhouse"
 	"github.com/grafana/gcx/internal/query/cloudwatch"
 	"github.com/grafana/gcx/internal/query/infinity"
@@ -49,6 +50,10 @@ func (c *queryTableCodec) Encode(w io.Writer, data any) error {
 		return clickhouse.FormatListTablesTable(w, resp)
 	case []clickhouse.ColumnInfo:
 		return clickhouse.FormatDescribeTableTable(w, resp)
+	case *athena.QueryResponse:
+		return athena.FormatTable(w, resp)
+	case athena.StringList:
+		return athena.FormatStringList(w, resp.Items, resp.Header)
 	case *cloudwatch.QueryResponse:
 		return cloudwatch.FormatTable(w, resp)
 	default:
@@ -80,6 +85,10 @@ func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 		return tempo.FormatTraceWide(w, resp)
 	case *clickhouse.QueryResponse:
 		return clickhouse.FormatWideTable(w, resp)
+	case *athena.QueryResponse:
+		return athena.FormatWideTable(w, resp)
+	case athena.StringList:
+		return athena.FormatStringList(w, resp.Items, resp.Header)
 	case *cloudwatch.QueryResponse:
 		return cloudwatch.FormatWide(w, resp)
 	default:
@@ -144,6 +153,10 @@ func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
 		return errors.New("graph output is not supported for ClickHouse list-tables; use -o table/json/yaml")
 	case []clickhouse.ColumnInfo:
 		return errors.New("graph output is not supported for ClickHouse describe-table; use -o table/json/yaml")
+	case *athena.QueryResponse:
+		return errors.New("graph output is not supported for Athena queries; use -o table/json/yaml")
+	case athena.StringList:
+		return errors.New("graph output is not supported for Athena discovery; use -o table/json/yaml")
 	default:
 		return errors.New("invalid data type for graph codec")
 	}
