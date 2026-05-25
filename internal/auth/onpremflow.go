@@ -18,38 +18,6 @@ import (
 	"time"
 )
 
-// OnPremResult contains the result of a successful authentication flow.
-type OnPremResult struct {
-	// Token is the per-user glsa_ service account token that the on-prem auth
-	// plugin minted for the signed-in user.
-	Token string
-
-	// Login is the user's login name.
-	Login string
-
-	// DeviceName is the device name (if provided).
-	DeviceName string
-
-	// APIEndpoint is the proxy base URL for forwarding requests.
-	APIEndpoint string
-
-	// OrgID and OrgName identify the organization the service account and token
-	// was created in.
-	OrgID   int64
-	OrgName string
-
-	// TokenName is the name attached to the SA token in Grafana so users
-	// can find/revoke it from the UI.
-	TokenName string
-
-	// ServiceAccountName is the name of the SA the plugin used or created
-	// for this user.
-	ServiceAccountName string
-
-	// ExpiresAt is the token expiration time in RFC3339 format.
-	ExpiresAt string
-}
-
 // OnPremFlowOptions configures the on-prem browser login.
 type OnPremFlowOptions struct {
 	// Port specifies a fixed port for the callback server.
@@ -92,7 +60,7 @@ func NewOnPremFlow(endpoint string, opts OnPremFlowOptions) *OnPremFlow {
 }
 
 // Run executes the flow and returns the captured token.
-func (f *OnPremFlow) Run(ctx context.Context) (*OnPremResult, error) {
+func (f *OnPremFlow) Run(ctx context.Context) (*Result, error) {
 	if f.endpoint == "" {
 		return nil, errors.New("server URL is required")
 	}
@@ -111,7 +79,7 @@ func (f *OnPremFlow) Run(ctx context.Context) (*OnPremResult, error) {
 		return nil, fmt.Errorf("failed to generate nonce: %w", err)
 	}
 
-	resultCh := make(chan *OnPremResult, 1)
+	resultCh := make(chan *Result, 1)
 	errCh := make(chan error, 1)
 	server := f.startCallbackServer(listener, nonce, resultCh, errCh)
 
@@ -156,7 +124,7 @@ func (f *OnPremFlow) Run(ctx context.Context) (*OnPremResult, error) {
 	}
 }
 
-func (f *OnPremFlow) startCallbackServer(listener net.Listener, nonce string, resultCh chan<- *OnPremResult, errCh chan<- error) *http.Server {
+func (f *OnPremFlow) startCallbackServer(listener net.Listener, nonce string, resultCh chan<- *Result, errCh chan<- error) *http.Server {
 	var once sync.Once
 
 	mux := http.NewServeMux()
@@ -176,7 +144,7 @@ func (f *OnPremFlow) startCallbackServer(listener net.Listener, nonce string, re
 				return
 			}
 
-			result := &OnPremResult{
+			result := &Result{
 				Token: r.FormValue("token"),
 			}
 

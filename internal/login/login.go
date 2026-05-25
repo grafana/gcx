@@ -192,7 +192,7 @@ type AuthFlow interface {
 // carries a service-account token (stored as APIToken) plus user/org
 // metadata rather than a cloud OAuth bearer.
 type OnPremAuthFlow interface {
-	Run(ctx context.Context) (*auth.OnPremResult, error)
+	Run(ctx context.Context) (*auth.Result, error)
 }
 
 // Run orchestrates the full login lifecycle:
@@ -430,9 +430,6 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 			}
 			grafanaCfg.APIToken = result.Token
 			grafanaCfg.AuthMethod = "oauth"
-			if grafanaCfg.OrgID == 0 && result.OrgID > 0 {
-				grafanaCfg.OrgID = result.OrgID
-			}
 		} else {
 			// Cloud OAuth flow (gat_ bearer via assistant-app).
 			if opts.NewAuthFlow == nil {
