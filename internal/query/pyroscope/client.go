@@ -6,19 +6,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/queryerror"
 	"google.golang.org/protobuf/encoding/protowire"
 	"k8s.io/client-go/rest"
 )
-
-const maxResponseBytes = 50 << 20 // 50 MB
 
 // Client is a client for executing Pyroscope queries via Grafana's datasource API.
 type Client struct {
@@ -81,7 +79,7 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -127,7 +125,7 @@ func (c *Client) ProfileTypes(ctx context.Context, datasourceUID string, req Pro
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -176,7 +174,7 @@ func (c *Client) LabelNames(ctx context.Context, datasourceUID string, req Label
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -226,7 +224,7 @@ func (c *Client) LabelValues(ctx context.Context, datasourceUID string, req Labe
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -290,7 +288,7 @@ func (c *Client) SelectSeries(ctx context.Context, datasourceUID string, req Sel
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -353,7 +351,7 @@ func (c *Client) SelectHeatmap(ctx context.Context, datasourceUID string, req Se
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -412,13 +410,9 @@ func (c *Client) Pprof(ctx context.Context, datasourceUID string, req PprofReque
 	}
 	defer resp.Body.Close()
 
-	// Read one byte beyond the limit to detect truncation before gzipping.
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
+	body, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-	if int64(len(body)) > maxResponseBytes {
-		return nil, fmt.Errorf("pprof response exceeds %d bytes", maxResponseBytes)
 	}
 
 	if resp.StatusCode != http.StatusOK {
