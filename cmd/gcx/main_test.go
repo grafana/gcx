@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestParsePseudoVersion(t *testing.T) {
 	tests := []struct {
@@ -55,7 +58,12 @@ func TestParsePseudoVersion(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotCommit, gotDate := parsePseudoVersion(tt.version)
+			pv := parsePseudoVersion(tt.version)
+			var gotCommit, gotDate string
+			if pv != nil {
+				gotCommit = pv.ShortCommit()
+				gotDate = pv.Timestamp.Format(time.RFC3339)
+			}
 			if gotCommit != tt.wantCommit {
 				t.Errorf("commit = %q, want %q", gotCommit, tt.wantCommit)
 			}

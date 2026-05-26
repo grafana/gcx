@@ -229,41 +229,43 @@ func vcsInfo() (string, string, string) {
 	}
 	// For go install builds, VCS settings are absent but the pseudo-version
 	// contains the commit and timestamp: vX.Y.Z-0.YYYYMMDDHHMMSS-abcdef123456
-	if c == "" || d == "" {
-		pc, pd := parsePseudoVersion(v)
-		if c == "" {
-			c = pc
-		}
-		if d == "" {
-			d = pd
-		}
+	pv := parsePseudoVersion(v)
+	if c == "" && pv != nil {
+		c = pv.ShortCommit()
+	}
+	if d == "" && pv != nil {
+		d = pv.Timestamp.Format(time.RFC3339)
 	}
 	return v, c, d
 }
 
-// pseudoVersionRe matches Go pseudo-version strings and captures the
-// timestamp (group 1) and commit hash (group 2).
+// pseudoVersion holds the commit and timestamp embedded in a Go pseudo-version
+// string like v0.1.1-0.20260401105553-2fbda4a2dd27.
+type pseudoVersion struct {
+	Commit    string // full hex commit hash
+	Timestamp time.Time
+}
+
 var pseudoVersionRe = regexp.MustCompile(`^v\d+\.\d+\.\d+-(?:\d+\.)?(\d{14})-([0-9a-f]+)`)
 
-// parsePseudoVersion extracts the short commit hash and timestamp from a Go
-// pseudo-version string (e.g. v0.1.1-0.20260401105553-2fbda4a2dd27).
-// Returns empty strings for non-pseudo versions.
-func parsePseudoVersion(v string) (string, string) {
+// parsePseudoVersion extracts commit and timestamp from a Go pseudo-version.
+// Returns nil for non-pseudo versions.
+func parsePseudoVersion(v string) *pseudoVersion {
 	// Strip +dirty or other non-standard build metadata.
 	if i := strings.LastIndex(v, "+"); i > 0 {
 		v = v[:i]
 	}
 	m := pseudoVersionRe.FindStringSubmatch(v)
 	if m == nil {
-		return "", ""
+		return nil
 	}
-	var c, d string
-	rev := m[2]
-	if rev != "" {
-		c = rev[:min(7, len(rev))]
-	}
+	pv := &pseudoVersion{Commit: m[2]}
 	if t, err := time.Parse("20060102150405", m[1]); err == nil {
-		d = t.UTC().Format(time.RFC3339)
+		pv.Timestamp = t.UTC()
 	}
-	return c, d
+	return pv
+}
+
+func (pv *pseudoVersion) ShortCommit() string {
+	return pv.Commit[:min(7, len(pv.Commit))]
 }
