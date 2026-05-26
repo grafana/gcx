@@ -904,8 +904,8 @@ func newRelabelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 }
 
 // RelabelRuleTableCodec renders a relabel rule group as a compact table.
-// Only selector and target_label are shown — use `-o yaml` or `-o json`
-// for the other fields (join_labels, transform_*, ranked_choice, etc.).
+// Shows the commonly-inspected fields — use `-o yaml` or `-o json` for
+// the remaining ones (transform_*, ranked_choice, join_separator).
 type RelabelRuleTableCodec struct{}
 
 func (c *RelabelRuleTableCodec) Format() format.Format { return "table" }
@@ -916,13 +916,19 @@ func (c *RelabelRuleTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected map[string]any")
 	}
 	rawRules, _ := group["rules"].([]any)
-	t := style.NewTable("SELECTOR", "TARGET LABEL")
+	t := style.NewTable("SELECTOR", "TARGET LABEL", "JOIN LABELS", "REPLACEMENT", "DROP")
 	for _, r := range rawRules {
 		rule, _ := r.(map[string]any)
 		if rule == nil {
 			continue
 		}
-		t.Row(stringField(rule["selector"]), stringField(rule["target_label"]))
+		t.Row(
+			stringField(rule["selector"]),
+			stringField(rule["target_label"]),
+			joinStringSlice(rule["join_labels"]),
+			stringField(rule["replacement"]),
+			boolField(rule["drop"]),
+		)
 	}
 	return t.Render(w)
 }
@@ -937,6 +943,28 @@ func stringField(v any) string {
 	}
 	s, _ := v.(string)
 	return s
+}
+
+func boolField(v any) string {
+	b, ok := v.(bool)
+	if !ok || !b {
+		return ""
+	}
+	return "true"
+}
+
+func joinStringSlice(v any) string {
+	arr, ok := v.([]any)
+	if !ok {
+		return ""
+	}
+	parts := make([]string, 0, len(arr))
+	for _, item := range arr {
+		if s, ok := item.(string); ok {
+			parts = append(parts, s)
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 // ---------------------------------------------------------------------------

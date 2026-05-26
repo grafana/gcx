@@ -310,6 +310,11 @@ func TestRelabelRuleTableCodec_Encode(t *testing.T) {
 			map[string]any{
 				"selector":     `{k8s_namespace_name!=""}`,
 				"target_label": "asserts_site",
+				"join_labels":  []any{"k8s_namespace_name", "service_name"},
+			},
+			map[string]any{
+				"selector": `{noise="true"}`,
+				"drop":     true,
 			},
 		},
 	}
@@ -317,9 +322,10 @@ func TestRelabelRuleTableCodec_Encode(t *testing.T) {
 	require.NoError(t, (&kg.RelabelRuleTableCodec{}).Encode(&buf, group))
 	out := buf.String()
 	for _, want := range []string{
-		"SELECTOR", "TARGET LABEL",
-		`{deployment_environment!=""}`, "asserts_env",
-		`{k8s_namespace_name!=""}`, "asserts_site",
+		"SELECTOR", "TARGET LABEL", "JOIN LABELS", "REPLACEMENT", "DROP",
+		`{deployment_environment!=""}`, "asserts_env", "$1",
+		`{k8s_namespace_name!=""}`, "asserts_site", "k8s_namespace_name, service_name",
+		`{noise="true"}`, "true",
 	} {
 		assert.Contains(t, out, want)
 	}
