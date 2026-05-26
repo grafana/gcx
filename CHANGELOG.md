@@ -1,3 +1,20 @@
+## v0.3.0 (2026-05-26)
+
+- Added ClickHouse, CloudWatch, and Infinity datasource providers.
+- Added richer IRM OnCall alert groups and SRE triage tooling.
+- Added a create-dashboard skill and dashboard list --limit flag.
+- Improved KG diagnosis for trace propagation and split environments.
+- Fixed KG rule list/get/delete calls to match the backend API.
+- Added dual k6 client support for OAuth and service-account tokens.
+- Fixed k6 provider support for OAuth login.
+- Made aio11y experiment cancellation require confirmation.
+- Warn when API responses return HTML instead of JSON.
+- Exit cleanly on Ctrl+C without noisy errors.
+- Normalized dashboard snapshot time ranges.
+- Removed target-valid-logql rule to restore go install compatibility.
+- Updated login help and Homebrew publishing.
+
+
 ## v0.2.16 (2026-05-20)
 
 - Add `aio11y experiments` command group for managing evaluation experiments
