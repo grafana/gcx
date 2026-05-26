@@ -18,7 +18,7 @@ require (
 	github.com/go-openapi/strfmt v0.26.2
 	github.com/goccy/go-yaml v1.19.2
 	github.com/google/go-cmp v0.7.0
-	github.com/google/uuid v1.6.0
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/grafana/authlib/types v0.0.0-20260427145542-9c256e2dbcb2
 	github.com/grafana/grafana-app-sdk/logging v0.55.0
