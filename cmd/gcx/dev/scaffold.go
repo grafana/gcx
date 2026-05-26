@@ -12,7 +12,7 @@ import (
 
 	"github.com/charmbracelet/huh"
 	cmdio "github.com/grafana/gcx/internal/output"
-	"github.com/huandu/xstrings"
+	"github.com/grafana/gcx/internal/strcase"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -52,7 +52,7 @@ func scaffoldCmd() *cobra.Command {
 				return err
 			}
 
-			destinationRoot := xstrings.ToKebabCase(opts.ProjectName)
+			destinationRoot := strcase.ToKebabCase(opts.ProjectName)
 			if err := scaffoldProject(destinationRoot, opts); err != nil {
 				return err
 			}
