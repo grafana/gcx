@@ -19,7 +19,7 @@ import (
 	appversion "github.com/grafana/gcx/internal/version"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"golang.org/x/mod/module"
+	"regexp"
 )
 
 // Version variables which are set at build time.
@@ -241,20 +241,28 @@ func vcsInfo() (string, string, string) {
 	return v, c, d
 }
 
+// pseudoVersionRe matches Go pseudo-version strings and captures the
+// timestamp (group 1) and commit hash (group 2).
+var pseudoVersionRe = regexp.MustCompile(`^v\d+\.\d+\.\d+-(?:\d+\.)?(\d{14})-([0-9a-f]+)`)
+
 // parsePseudoVersion extracts the short commit hash and timestamp from a Go
 // pseudo-version string (e.g. v0.1.1-0.20260401105553-2fbda4a2dd27).
 // Returns empty strings for non-pseudo versions.
 func parsePseudoVersion(v string) (string, string) {
-	// Strip +dirty or other non-standard build metadata that Go embeds
-	// for local builds, as it is not valid semver and rejected by the module package.
+	// Strip +dirty or other non-standard build metadata.
 	if i := strings.LastIndex(v, "+"); i > 0 {
 		v = v[:i]
 	}
+	m := pseudoVersionRe.FindStringSubmatch(v)
+	if m == nil {
+		return "", ""
+	}
 	var c, d string
-	if rev, err := module.PseudoVersionRev(v); err == nil && rev != "" {
+	rev := m[2]
+	if rev != "" {
 		c = rev[:min(7, len(rev))]
 	}
-	if t, err := module.PseudoVersionTime(v); err == nil {
+	if t, err := time.Parse("20060102150405", m[1]); err == nil {
 		d = t.UTC().Format(time.RFC3339)
 	}
 	return c, d
