@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/adrg/xdg"
 	"github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/testutils"
 	"github.com/stretchr/testify/require"
@@ -23,7 +22,6 @@ func isolatedConfigEnv(t *testing.T) (string, string) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", userDir)
 	t.Setenv("GCX_CONFIG", "")
-	xdg.Reload()
 	t.Chdir(workDir)
 	return userDir, workDir
 }
