@@ -1,8 +1,9 @@
-package strcase
+package strcase_test
 
 import (
 	"testing"
 
+	"github.com/grafana/gcx/internal/strcase"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -22,7 +23,7 @@ func TestToSnakeCase(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			assert.Equal(t, tt.want, ToSnakeCase(tt.input))
+			assert.Equal(t, tt.want, strcase.ToSnakeCase(tt.input))
 		})
 	}
 }
@@ -40,7 +41,7 @@ func TestToKebabCase(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			assert.Equal(t, tt.want, ToKebabCase(tt.input))
+			assert.Equal(t, tt.want, strcase.ToKebabCase(tt.input))
 		})
 	}
 }
@@ -58,7 +59,7 @@ func TestToPascalCase(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			assert.Equal(t, tt.want, ToPascalCase(tt.input))
+			assert.Equal(t, tt.want, strcase.ToPascalCase(tt.input))
 		})
 	}
 }

@@ -15,7 +15,7 @@ func isTerminal(fd int) bool {
 }
 
 // getSize returns the dimensions of the terminal connected to fd.
-func getSize(fd int) (width, height int, err error) {
+func getSize(fd int) (int, int, error) {
 	var ws struct {
 		Row    uint16
 		Col    uint16

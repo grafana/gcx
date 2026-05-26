@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"regexp"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -19,7 +20,6 @@ import (
 	appversion "github.com/grafana/gcx/internal/version"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"regexp"
 )
 
 // Version variables which are set at build time.

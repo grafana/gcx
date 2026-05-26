@@ -49,7 +49,7 @@ func ParseEnvIntoContext(ctx *Context) error {
 // Supported field types: string, bool, int64.
 func parseEnvTags(v any) error {
 	rv := reflect.ValueOf(v)
-	if rv.Kind() != reflect.Ptr || rv.Elem().Kind() != reflect.Struct {
+	if rv.Kind() != reflect.Pointer || rv.Elem().Kind() != reflect.Struct {
 		return fmt.Errorf("parseEnvTags: expected pointer to struct, got %T", v)
 	}
 	return walkStruct(rv.Elem())
@@ -62,7 +62,7 @@ func walkStruct(sv reflect.Value) error {
 		fv := sv.Field(i)
 
 		// Follow non-nil struct pointers into nested structs.
-		if field.Type.Kind() == reflect.Ptr && field.Type.Elem().Kind() == reflect.Struct {
+		if field.Type.Kind() == reflect.Pointer && field.Type.Elem().Kind() == reflect.Struct {
 			if !fv.IsNil() {
 				if err := walkStruct(fv.Elem()); err != nil {
 					return err
