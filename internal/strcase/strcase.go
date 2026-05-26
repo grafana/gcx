@@ -1,3 +1,6 @@
+// Package strcase provides string case conversion (snake_case, kebab-case,
+// PascalCase). It replaces the github.com/huandu/xstrings dependency, covering
+// the three conversion functions used by the dev scaffold/import/generate commands.
 package strcase
 
 import (
