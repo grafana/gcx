@@ -9,6 +9,8 @@ package terminal
 import (
 	"os"
 	"sync/atomic"
+
+	"golang.org/x/term"
 )
 
 var (
@@ -27,32 +29,18 @@ func Detect() {
 	}
 }
 
-// IsTerminal reports whether the given file descriptor is connected to a terminal.
-func IsTerminal(fd int) bool {
-	return isTerminal(fd)
-}
-
 // StdoutIsTerminal reports whether stdout is connected to a real terminal.
 func StdoutIsTerminal() bool {
-	return isTerminal(int(os.Stdout.Fd()))
+	return term.IsTerminal(int(os.Stdout.Fd()))
 }
 
 // StdoutWidth returns the current stdout terminal width, or 0 when unknown.
 func StdoutWidth() int {
-	width, _, err := getSize(int(os.Stdout.Fd()))
+	width, _, err := term.GetSize(int(os.Stdout.Fd()))
 	if err != nil || width <= 0 {
 		return 0
 	}
 	return width
-}
-
-// StdoutSize returns the current stdout terminal width and height, or (0,0) when unknown.
-func StdoutSize() (int, int) {
-	width, height, err := getSize(int(os.Stdout.Fd()))
-	if err != nil || width <= 0 {
-		return 0, 0
-	}
-	return width, height
 }
 
 // IsPiped reports whether stdout is not connected to a terminal.

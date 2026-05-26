@@ -8,9 +8,9 @@ import (
 
 	"github.com/grafana/gcx/internal/fleet"
 	instrum "github.com/grafana/gcx/internal/providers/instrumentation"
-	"github.com/grafana/gcx/internal/terminal"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"golang.org/x/term"
 )
 
 // accessPolicyTokenPlaceholder is substituted into the helm command output.
@@ -127,7 +127,7 @@ Cloud Access Policy token scoped to metrics:read and set:alloy-data-write.`,
 				orgSlug:  r.Stack.OrgSlug,
 				stdout:   cmd.OutOrStdout(),
 				stderr:   cmd.ErrOrStderr(),
-				isTTY:    terminal.IsTerminal(int(os.Stdin.Fd())),
+				isTTY:    term.IsTerminal(int(os.Stdin.Fd())),
 				promptFn: defaultPromptFn(cmd.InOrStdin(), cmd.ErrOrStderr()),
 			}
 
