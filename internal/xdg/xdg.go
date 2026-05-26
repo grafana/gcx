@@ -1,7 +1,6 @@
 // Package xdg implements the subset of the XDG Base Directory Specification
 // used by gcx (config home, state home, system config dirs). It replaces the
-// github.com/adrg/xdg dependency with direct env var reads on each call,
-// avoiding cached state that required explicit reloading in tests.
+// github.com/adrg/xdg dependency.
 package xdg
 
 import (
