@@ -48,11 +48,21 @@ The following are **not yet implemented**:
    contract via `IsPiped` is in place for when they are added)
 6. Confirmation prompts auto-approved ([safety.md § Agent Mode Auto-Approve](safety.md#33-agent-mode-auto-approve))
 
-**Note:** The `--json list` field-discovery hint fires whenever the resolved output codec
-is JSON-like (`-o json` or the `agents` default) and the caller has not already used
-`--json list` (field discovery) or `--json field1,field2` (field selection). In agent mode
-the hint is emitted as JSONL `{"class":"hint","summary":"..."}` on stderr. In TTY mode it is emitted as `hint: ...` text on stderr. The
-hint is emitted at most once per invocation.
+**Note:** The transformation/field-discovery hint fires whenever the resolved
+output codec is JSON-like (`-o json` or the `agents` default) and the caller
+has not already used `--json list` (field discovery), `--json field1,field2`
+(field selection), or `--jq '<expr>'` (transformation). In agent mode the hint
+is emitted as JSONL `{"class":"hint","summary":"..."}` on stderr. In TTY mode
+it is emitted as `hint: ...` text on stderr. The hint is emitted at most once
+per invocation (`jsonFieldsHintShown` guard in `internal/output/format.go`),
+and the text nudges callers toward built-in transformation:
+
+```
+hint: use --json list / --json field1,field2 for field selection, or --jq '<expr>' for transformation (group_by, filter, count) — no external parsing needed
+```
+
+The goal is to steer agents away from `| python -c "..."` aggregation
+pipelines toward built-in transformation.
 
 ### 6.2a Format choice vs non-format presentation properties
 
