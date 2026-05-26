@@ -13,11 +13,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// newAuthenticatedClient creates a k6 client pointed at a test server.
+// newAuthenticatedProxyClient creates a k6 client pointed at a test server.
 // The server responds to the plugin /organization endpoint with orgID=42
 // (lazily fetched by env var methods) and forwards cloud calls under the
 // plugin /cloud prefix to the supplied handler.
-func newAuthenticatedClient(t *testing.T, handler http.Handler) *k6.Client {
+func newAuthenticatedProxyClient(t *testing.T, handler http.Handler) *k6.ProxyClient {
 	t.Helper()
 
 	const proxyPrefix = "/api/plugins/k6-app/resources/cloud"
@@ -47,7 +47,7 @@ func newAuthenticatedClient(t *testing.T, handler http.Handler) *k6.Client {
 	t.Cleanup(srv.Close)
 
 	authClient := &http.Client{Transport: &bearerInjector{token: "test-k6-token"}}
-	return k6.NewClient(context.Background(), srv.URL, authClient)
+	return k6.NewProxyClient(context.Background(), srv.URL, authClient)
 }
 
 // bearerInjector is a RoundTripper that injects a Bearer Authorization
@@ -67,11 +67,11 @@ func (b *bearerInjector) RoundTrip(req *http.Request) (*http.Response, error) {
 	return base.RoundTrip(clone)
 }
 
-// TestClient_Token_FetchesFromAccountMe verifies that Token in OAuth
+// TestProxyClient_Token_FetchesFromAccountMe verifies that Token in OAuth
 // proxy mode resolves to /v3/account/me .token.key, routing the call through
 // the plugin proxy without Bearer / X-Stack-Id headers (the auth client's
 // transport injects auth, the plugin resolves the stack).
-func TestClient_Token_FetchesFromAccountMe(t *testing.T) {
+func TestProxyClient_Token_FetchesFromAccountMe(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Equal(t, "/api/plugins/k6-app/resources/cloud/v3/account/me", r.URL.Path)
@@ -85,15 +85,15 @@ func TestClient_Token_FetchesFromAccountMe(t *testing.T) {
 	defer srv.Close()
 
 	authClient := &http.Client{Transport: &bearerInjector{token: "gat_test-oauth-token"}}
-	client := k6.NewClient(context.Background(), srv.URL, authClient)
+	client := k6.NewProxyClient(context.Background(), srv.URL, authClient)
 	token, err := client.Token(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, "k6-v3-from-me", token)
 }
 
-// TestClient_Token_Memoised confirms that repeated Token calls in proxy
+// TestProxyClient_Token_Memoised confirms that repeated Token calls in proxy
 // mode hit /v3/account/me only once.
-func TestClient_Token_Memoised(t *testing.T) {
+func TestProxyClient_Token_Memoised(t *testing.T) {
 	var calls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls++
@@ -102,7 +102,7 @@ func TestClient_Token_Memoised(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := k6.NewClient(context.Background(), srv.URL, &http.Client{Transport: &bearerInjector{token: "tok"}})
+	client := k6.NewProxyClient(context.Background(), srv.URL, &http.Client{Transport: &bearerInjector{token: "tok"}})
 	for range 3 {
 		_, err := client.Token(t.Context())
 		require.NoError(t, err)
@@ -110,26 +110,26 @@ func TestClient_Token_Memoised(t *testing.T) {
 	assert.Equal(t, 1, calls, "expected /v3/account/me to be called once, got %d", calls)
 }
 
-// TestClient_Token_EmptyKey surfaces an error when /v3/account/me
+// TestProxyClient_Token_EmptyKey surfaces an error when /v3/account/me
 // returns a successful response with no token.key, rather than letting
 // callers print an empty token.
-func TestClient_Token_EmptyKey(t *testing.T) {
+func TestProxyClient_Token_EmptyKey(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		writeJSON(t, w, map[string]any{"token": map[string]any{"key": ""}})
 	}))
 	defer srv.Close()
 
-	client := k6.NewClient(context.Background(), srv.URL, &http.Client{Transport: &bearerInjector{token: "tok"}})
+	client := k6.NewProxyClient(context.Background(), srv.URL, &http.Client{Transport: &bearerInjector{token: "tok"}})
 	_, err := client.Token(t.Context())
 	require.Error(t, err)
 }
 
-// TestClient_RoutesResourceCallsThroughProxy verifies that regular API
+// TestProxyClient_RoutesResourceCallsThroughProxy verifies that regular API
 // calls hit the plugin proxy path (not api.k6.io) and omit Bearer +
 // X-Stack-Id — relying entirely on the auth client's transport for
 // credential injection.
-func TestClient_RoutesResourceCallsThroughProxy(t *testing.T) {
+func TestProxyClient_RoutesResourceCallsThroughProxy(t *testing.T) {
 	var listRecorded struct {
 		path string
 		auth string
@@ -152,7 +152,7 @@ func TestClient_RoutesResourceCallsThroughProxy(t *testing.T) {
 	defer srv.Close()
 
 	authClient := &http.Client{Transport: &bearerInjector{token: "gat_test-oauth-token"}}
-	client := k6.NewClient(context.Background(), srv.URL, authClient)
+	client := k6.NewProxyClient(context.Background(), srv.URL, authClient)
 
 	projects, err := client.ListProjects(t.Context())
 	require.NoError(t, err)
@@ -164,7 +164,7 @@ func TestClient_RoutesResourceCallsThroughProxy(t *testing.T) {
 	assert.Empty(t, listRecorded.stk, "X-Stack-Id must be omitted in proxy mode")
 }
 
-func TestClient_ListProjects(t *testing.T) {
+func TestProxyClient_ListProjects(t *testing.T) {
 	tests := []struct {
 		name    string
 		handler http.HandlerFunc
@@ -207,7 +207,7 @@ func TestClient_ListProjects(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := newAuthenticatedClient(t, tt.handler)
+			client := newAuthenticatedProxyClient(t, tt.handler)
 			projects, err := client.ListProjects(t.Context())
 
 			if tt.wantErr {
@@ -221,7 +221,7 @@ func TestClient_ListProjects(t *testing.T) {
 	}
 }
 
-func TestClient_GetProject(t *testing.T) {
+func TestProxyClient_GetProject(t *testing.T) {
 	tests := []struct {
 		name     string
 		id       int
@@ -252,7 +252,7 @@ func TestClient_GetProject(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := newAuthenticatedClient(t, tt.handler)
+			client := newAuthenticatedProxyClient(t, tt.handler)
 			p, err := client.GetProject(t.Context(), tt.id)
 
 			if tt.wantErr {
@@ -266,7 +266,7 @@ func TestClient_GetProject(t *testing.T) {
 	}
 }
 
-func TestClient_CreateProject(t *testing.T) {
+func TestProxyClient_CreateProject(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "/cloud/v6/projects", r.URL.Path)
@@ -278,26 +278,26 @@ func TestClient_CreateProject(t *testing.T) {
 		writeJSON(t, w, map[string]any{"id": 10, "name": "New Project"})
 	})
 
-	client := newAuthenticatedClient(t, handler)
+	client := newAuthenticatedProxyClient(t, handler)
 	p, err := client.CreateProject(t.Context(), "New Project")
 	require.NoError(t, err)
 	assert.Equal(t, 10, p.ID)
 	assert.Equal(t, "New Project", p.Name)
 }
 
-func TestClient_DeleteProject(t *testing.T) {
+func TestProxyClient_DeleteProject(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodDelete, r.Method)
 		assert.Equal(t, "/cloud/v6/projects/10", r.URL.Path)
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	client := newAuthenticatedClient(t, handler)
+	client := newAuthenticatedProxyClient(t, handler)
 	err := client.DeleteProject(t.Context(), 10)
 	require.NoError(t, err)
 }
 
-func TestClient_ListLoadTests(t *testing.T) {
+func TestProxyClient_ListLoadTests(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Equal(t, "/cloud/v6/load_tests", r.URL.Path)
@@ -310,14 +310,14 @@ func TestClient_ListLoadTests(t *testing.T) {
 		})
 	})
 
-	client := newAuthenticatedClient(t, handler)
+	client := newAuthenticatedProxyClient(t, handler)
 	tests, err := client.ListLoadTests(t.Context())
 	require.NoError(t, err)
 	assert.Len(t, tests, 2)
 	assert.Equal(t, "My Test", tests[0].Name)
 }
 
-func TestClient_ListLoadTests_WithLimit(t *testing.T) {
+func TestProxyClient_ListLoadTests_WithLimit(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		// When limit=5 is passed, $top should be 5 instead of the default 100
@@ -332,13 +332,13 @@ func TestClient_ListLoadTests_WithLimit(t *testing.T) {
 		})
 	})
 
-	client := newAuthenticatedClient(t, handler)
+	client := newAuthenticatedProxyClient(t, handler)
 	tests, err := client.ListLoadTestsWithLimit(t.Context(), 5)
 	require.NoError(t, err)
 	assert.Len(t, tests, 2)
 }
 
-func TestClient_GetLoadTest(t *testing.T) {
+func TestProxyClient_GetLoadTest(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Equal(t, "/cloud/v6/load_tests/6", r.URL.Path)
@@ -346,14 +346,14 @@ func TestClient_GetLoadTest(t *testing.T) {
 		writeJSON(t, w, map[string]any{"id": 6, "name": "my-load-test", "project_id": 1})
 	})
 
-	client := newAuthenticatedClient(t, handler)
+	client := newAuthenticatedProxyClient(t, handler)
 	test, err := client.GetLoadTest(t.Context(), 6)
 	require.NoError(t, err)
 	assert.Equal(t, "my-load-test", test.Name)
 	assert.Equal(t, 1, test.ProjectID)
 }
 
-func TestClient_ListTestRuns(t *testing.T) {
+func TestProxyClient_ListTestRuns(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Equal(t, "/cloud/v6/load_tests/6/test_runs", r.URL.Path)
@@ -365,7 +365,7 @@ func TestClient_ListTestRuns(t *testing.T) {
 		})
 	})
 
-	client := newAuthenticatedClient(t, handler)
+	client := newAuthenticatedProxyClient(t, handler)
 	runs, err := client.ListTestRuns(t.Context(), 6)
 	require.NoError(t, err)
 	assert.Len(t, runs, 1)
@@ -373,7 +373,7 @@ func TestClient_ListTestRuns(t *testing.T) {
 	assert.Equal(t, 1, runs[0].ResultStatus)
 }
 
-func TestClient_ListEnvVars(t *testing.T) {
+func TestProxyClient_ListEnvVars(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Equal(t, "/v3/organizations/42/envvars", r.URL.Path)
@@ -385,14 +385,14 @@ func TestClient_ListEnvVars(t *testing.T) {
 		})
 	})
 
-	client := newAuthenticatedClient(t, handler)
+	client := newAuthenticatedProxyClient(t, handler)
 	envVars, err := client.ListEnvVars(t.Context())
 	require.NoError(t, err)
 	assert.Len(t, envVars, 1)
 	assert.Equal(t, "MY_VAR", envVars[0].Name)
 }
 
-func TestClient_CreateEnvVar(t *testing.T) {
+func TestProxyClient_CreateEnvVar(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "/v3/organizations/42/envvars", r.URL.Path)
@@ -407,38 +407,38 @@ func TestClient_CreateEnvVar(t *testing.T) {
 		})
 	})
 
-	client := newAuthenticatedClient(t, handler)
+	client := newAuthenticatedProxyClient(t, handler)
 	ev, err := client.CreateEnvVar(t.Context(), "NEW_VAR", "world", "")
 	require.NoError(t, err)
 	assert.Equal(t, 4, ev.ID)
 	assert.Equal(t, "NEW_VAR", ev.Name)
 }
 
-func TestClient_UpdateEnvVar(t *testing.T) {
+func TestProxyClient_UpdateEnvVar(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPatch, r.Method)
 		assert.Equal(t, "/v3/organizations/42/envvars/3", r.URL.Path)
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	client := newAuthenticatedClient(t, handler)
+	client := newAuthenticatedProxyClient(t, handler)
 	err := client.UpdateEnvVar(t.Context(), 3, "MY_VAR", "updated", "")
 	require.NoError(t, err)
 }
 
-func TestClient_DeleteEnvVar(t *testing.T) {
+func TestProxyClient_DeleteEnvVar(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodDelete, r.Method)
 		assert.Equal(t, "/v3/organizations/42/envvars/3", r.URL.Path)
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	client := newAuthenticatedClient(t, handler)
+	client := newAuthenticatedProxyClient(t, handler)
 	err := client.DeleteEnvVar(t.Context(), 3)
 	require.NoError(t, err)
 }
 
-func TestClient_GetProjectByName(t *testing.T) {
+func TestProxyClient_GetProjectByName(t *testing.T) {
 	projectListHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		writeJSON(t, w, map[string]any{
@@ -449,7 +449,7 @@ func TestClient_GetProjectByName(t *testing.T) {
 		})
 	})
 
-	client := newAuthenticatedClient(t, projectListHandler)
+	client := newAuthenticatedProxyClient(t, projectListHandler)
 
 	// Found by name.
 	p, err := client.GetProjectByName(t.Context(), "My Project")
@@ -463,7 +463,7 @@ func TestClient_GetProjectByName(t *testing.T) {
 	assert.Contains(t, err.Error(), "not found")
 }
 
-func TestClient_ListLoadTestsByProject(t *testing.T) {
+func TestProxyClient_ListLoadTestsByProject(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify server-side filtering is requested
 		assert.Equal(t, "1", r.URL.Query().Get("project_id"))
@@ -477,7 +477,7 @@ func TestClient_ListLoadTestsByProject(t *testing.T) {
 		})
 	})
 
-	client := newAuthenticatedClient(t, handler)
+	client := newAuthenticatedProxyClient(t, handler)
 	tests, err := client.ListLoadTestsByProject(t.Context(), 1)
 	require.NoError(t, err)
 	assert.Len(t, tests, 2)
@@ -485,7 +485,7 @@ func TestClient_ListLoadTestsByProject(t *testing.T) {
 	assert.Equal(t, "Test C", tests[1].Name)
 }
 
-func TestClient_CreateLoadTest(t *testing.T) {
+func TestProxyClient_CreateLoadTest(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "/cloud/v6/projects/1/load_tests", r.URL.Path)
@@ -494,14 +494,14 @@ func TestClient_CreateLoadTest(t *testing.T) {
 		writeJSON(t, w, map[string]any{"id": 10, "name": "New Test", "project_id": 1})
 	})
 
-	client := newAuthenticatedClient(t, handler)
+	client := newAuthenticatedProxyClient(t, handler)
 	lt, err := client.CreateLoadTest(t.Context(), "New Test", 1, "export default function() {}")
 	require.NoError(t, err)
 	assert.Equal(t, 10, lt.ID)
 	assert.Equal(t, "New Test", lt.Name)
 }
 
-func TestClient_UpdateLoadTest(t *testing.T) {
+func TestProxyClient_UpdateLoadTest(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPatch {
 			assert.Equal(t, "/cloud/v6/load_tests/5", r.URL.Path)
@@ -511,12 +511,12 @@ func TestClient_UpdateLoadTest(t *testing.T) {
 		t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 	})
 
-	client := newAuthenticatedClient(t, handler)
+	client := newAuthenticatedProxyClient(t, handler)
 	err := client.UpdateLoadTest(t.Context(), 5, "Updated Name", "")
 	require.NoError(t, err)
 }
 
-func TestClient_UpdateLoadTestScript(t *testing.T) {
+func TestProxyClient_UpdateLoadTestScript(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPut, r.Method)
 		assert.Equal(t, "/cloud/v6/load_tests/5/script", r.URL.Path)
@@ -524,12 +524,12 @@ func TestClient_UpdateLoadTestScript(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	client := newAuthenticatedClient(t, handler)
+	client := newAuthenticatedProxyClient(t, handler)
 	err := client.UpdateLoadTestScript(t.Context(), 5, "export default function() { console.log('hi'); }")
 	require.NoError(t, err)
 }
 
-func TestClient_GetLoadTestScript(t *testing.T) {
+func TestProxyClient_GetLoadTestScript(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Equal(t, "/cloud/v6/load_tests/5/script", r.URL.Path)
@@ -537,13 +537,13 @@ func TestClient_GetLoadTestScript(t *testing.T) {
 		_, _ = w.Write([]byte("export default function() {}"))
 	})
 
-	client := newAuthenticatedClient(t, handler)
+	client := newAuthenticatedProxyClient(t, handler)
 	script, err := client.GetLoadTestScript(t.Context(), 5)
 	require.NoError(t, err)
 	assert.Equal(t, "export default function() {}", script)
 }
 
-func TestClient_GetLoadTestByName(t *testing.T) {
+func TestProxyClient_GetLoadTestByName(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		writeJSON(t, w, map[string]any{
@@ -554,7 +554,7 @@ func TestClient_GetLoadTestByName(t *testing.T) {
 		})
 	})
 
-	client := newAuthenticatedClient(t, handler)
+	client := newAuthenticatedProxyClient(t, handler)
 
 	lt, err := client.GetLoadTestByName(t.Context(), 1, "beta")
 	require.NoError(t, err)
@@ -566,7 +566,7 @@ func TestClient_GetLoadTestByName(t *testing.T) {
 	assert.Contains(t, err.Error(), "not found")
 }
 
-func TestClient_ListSchedules(t *testing.T) {
+func TestProxyClient_ListSchedules(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Equal(t, "/cloud/v6/schedules", r.URL.Path)
@@ -578,7 +578,7 @@ func TestClient_ListSchedules(t *testing.T) {
 		})
 	})
 
-	client := newAuthenticatedClient(t, handler)
+	client := newAuthenticatedProxyClient(t, handler)
 	schedules, err := client.ListSchedules(t.Context())
 	require.NoError(t, err)
 	assert.Len(t, schedules, 1)
@@ -586,7 +586,7 @@ func TestClient_ListSchedules(t *testing.T) {
 	assert.Equal(t, 5, schedules[0].LoadTestID)
 }
 
-func TestClient_GetSchedule(t *testing.T) {
+func TestProxyClient_GetSchedule(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Equal(t, "/cloud/v6/schedules/10", r.URL.Path)
@@ -596,13 +596,13 @@ func TestClient_GetSchedule(t *testing.T) {
 		})
 	})
 
-	client := newAuthenticatedClient(t, handler)
+	client := newAuthenticatedProxyClient(t, handler)
 	s, err := client.GetSchedule(t.Context(), 10)
 	require.NoError(t, err)
 	assert.Equal(t, 10, s.ID)
 }
 
-func TestClient_CreateSchedule(t *testing.T) {
+func TestProxyClient_CreateSchedule(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "/cloud/v6/load_tests/5/schedule", r.URL.Path)
@@ -612,7 +612,7 @@ func TestClient_CreateSchedule(t *testing.T) {
 		})
 	})
 
-	client := newAuthenticatedClient(t, handler)
+	client := newAuthenticatedProxyClient(t, handler)
 	s, err := client.CreateSchedule(t.Context(), 5, k6.ScheduleRequest{
 		Starts: "2026-06-01T10:00:00Z",
 	})
@@ -620,7 +620,7 @@ func TestClient_CreateSchedule(t *testing.T) {
 	assert.Equal(t, 10, s.ID)
 }
 
-func TestClient_UpdateScheduleByID(t *testing.T) {
+func TestProxyClient_UpdateScheduleByID(t *testing.T) {
 	t.Run("200 OK with body", func(t *testing.T) {
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, http.MethodPut, r.Method)
@@ -630,7 +630,7 @@ func TestClient_UpdateScheduleByID(t *testing.T) {
 			})
 		})
 
-		client := newAuthenticatedClient(t, handler)
+		client := newAuthenticatedProxyClient(t, handler)
 		s, err := client.UpdateScheduleByID(t.Context(), 10, k6.ScheduleRequest{
 			Starts: "2026-07-01T12:00:00Z",
 		})
@@ -655,7 +655,7 @@ func TestClient_UpdateScheduleByID(t *testing.T) {
 			})
 		})
 
-		client := newAuthenticatedClient(t, handler)
+		client := newAuthenticatedProxyClient(t, handler)
 		s, err := client.UpdateScheduleByID(t.Context(), 10, k6.ScheduleRequest{
 			Starts: "2026-07-01T12:00:00Z",
 		})
@@ -666,19 +666,19 @@ func TestClient_UpdateScheduleByID(t *testing.T) {
 	})
 }
 
-func TestClient_DeleteScheduleByLoadTest(t *testing.T) {
+func TestProxyClient_DeleteScheduleByLoadTest(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodDelete, r.Method)
 		assert.Equal(t, "/cloud/v6/load_tests/5/schedule", r.URL.Path)
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	client := newAuthenticatedClient(t, handler)
+	client := newAuthenticatedProxyClient(t, handler)
 	err := client.DeleteScheduleByLoadTest(t.Context(), 5)
 	require.NoError(t, err)
 }
 
-func TestClient_ListLoadZones(t *testing.T) {
+func TestProxyClient_ListLoadZones(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Equal(t, "/cloud/v6/load_zones", r.URL.Path)
@@ -690,14 +690,14 @@ func TestClient_ListLoadZones(t *testing.T) {
 		})
 	})
 
-	client := newAuthenticatedClient(t, handler)
+	client := newAuthenticatedProxyClient(t, handler)
 	zones, err := client.ListLoadZones(t.Context())
 	require.NoError(t, err)
 	assert.Len(t, zones, 1)
 	assert.Equal(t, "my-plz", zones[0].Name)
 }
 
-func TestClient_CreateLoadZone(t *testing.T) {
+func TestProxyClient_CreateLoadZone(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "/cloud-resources/v1/load-zones", r.URL.Path)
@@ -707,7 +707,7 @@ func TestClient_CreateLoadZone(t *testing.T) {
 		})
 	})
 
-	client := newAuthenticatedClient(t, handler)
+	client := newAuthenticatedProxyClient(t, handler)
 	resp, err := client.CreateLoadZone(t.Context(), k6.PLZCreateRequest{
 		K6LoadZoneID: "k6-plz-123",
 		ProviderID:   "aws",
@@ -717,19 +717,19 @@ func TestClient_CreateLoadZone(t *testing.T) {
 	assert.Equal(t, "my-plz", resp.Name)
 }
 
-func TestClient_DeleteLoadZone(t *testing.T) {
+func TestProxyClient_DeleteLoadZone(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodDelete, r.Method)
 		assert.Equal(t, "/cloud-resources/v1/load-zones/my-plz", r.URL.Path)
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	client := newAuthenticatedClient(t, handler)
+	client := newAuthenticatedProxyClient(t, handler)
 	err := client.DeleteLoadZone(t.Context(), "my-plz")
 	require.NoError(t, err)
 }
 
-func TestClient_ListAllowedProjects(t *testing.T) {
+func TestProxyClient_ListAllowedProjects(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Equal(t, "/cloud/v6/load_zones/1/allowed_projects", r.URL.Path)
@@ -739,14 +739,14 @@ func TestClient_ListAllowedProjects(t *testing.T) {
 		})
 	})
 
-	client := newAuthenticatedClient(t, handler)
+	client := newAuthenticatedProxyClient(t, handler)
 	projects, err := client.ListAllowedProjects(t.Context(), 1)
 	require.NoError(t, err)
 	assert.Len(t, projects, 1)
 	assert.Equal(t, 10, projects[0].ID)
 }
 
-func TestClient_UpdateAllowedProjects(t *testing.T) {
+func TestProxyClient_UpdateAllowedProjects(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPut, r.Method)
 		assert.Equal(t, "/cloud/v6/load_zones/1/allowed_projects", r.URL.Path)
@@ -756,12 +756,12 @@ func TestClient_UpdateAllowedProjects(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	client := newAuthenticatedClient(t, handler)
+	client := newAuthenticatedProxyClient(t, handler)
 	err := client.UpdateAllowedProjects(t.Context(), 1, []int{10, 20})
 	require.NoError(t, err)
 }
 
-func TestClient_ListAllowedLoadZones(t *testing.T) {
+func TestProxyClient_ListAllowedLoadZones(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Equal(t, "/cloud/v6/projects/1/allowed_load_zones", r.URL.Path)
@@ -771,14 +771,14 @@ func TestClient_ListAllowedLoadZones(t *testing.T) {
 		})
 	})
 
-	client := newAuthenticatedClient(t, handler)
+	client := newAuthenticatedProxyClient(t, handler)
 	zones, err := client.ListAllowedLoadZones(t.Context(), 1)
 	require.NoError(t, err)
 	assert.Len(t, zones, 1)
 	assert.Equal(t, 100, zones[0].ID)
 }
 
-func TestClient_UpdateAllowedLoadZones(t *testing.T) {
+func TestProxyClient_UpdateAllowedLoadZones(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPut, r.Method)
 		assert.Equal(t, "/cloud/v6/projects/1/allowed_load_zones", r.URL.Path)
@@ -788,7 +788,7 @@ func TestClient_UpdateAllowedLoadZones(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	client := newAuthenticatedClient(t, handler)
+	client := newAuthenticatedProxyClient(t, handler)
 	err := client.UpdateAllowedLoadZones(t.Context(), 1, []int{100, 200})
 	require.NoError(t, err)
 }

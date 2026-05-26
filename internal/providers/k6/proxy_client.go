@@ -30,9 +30,9 @@ const (
 	plzPath        = "/cloud-resources/v1/load-zones"
 )
 
-// Client is an HTTP client for the k6 Cloud API.
+// ProxyClient is an HTTP client for the k6 Cloud API.
 // It routes every k6 API call through the grafana-k6-app plugin proxy.
-type Client struct {
+type ProxyClient struct {
 	host      string
 	proxyBase string
 	http      *http.Client
@@ -42,17 +42,17 @@ type Client struct {
 	cachedOrgID int    // memoized result of /organization, used only by env var methods
 }
 
-// NewClient creates a Client that routes every k6 API call through the
+// NewProxyClient creates a ProxyClient that routes every k6 API call through the
 // grafana-k6-app plugin proxy on host. authClient must carry the
 // Grafana auth — typically a client built from a rest.Config wrapped with
 // RefreshTransport, so the OAuth bearer is injected (and refreshed before
 // expiry) on every request.
-func NewClient(ctx context.Context, host string, authClient *http.Client) *Client {
+func NewProxyClient(ctx context.Context, host string, authClient *http.Client) *ProxyClient {
 	if authClient == nil {
 		authClient = httputils.NewDefaultClient(ctx)
 	}
 	base := strings.TrimRight(host, "/")
-	return &Client{
+	return &ProxyClient{
 		host:      base,
 		proxyBase: base + pluginProxyBasePath,
 		http:      authClient,
@@ -61,7 +61,7 @@ func NewClient(ctx context.Context, host string, authClient *http.Client) *Clien
 
 // orgID hits /organization on the plugin to discover the k6 organization ID
 // for legacy APIs. The result is memoised for the life of the client.
-func (c *Client) orgID(ctx context.Context) (int, error) {
+func (c *ProxyClient) orgID(ctx context.Context) (int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.cachedOrgID != 0 {
@@ -97,7 +97,7 @@ func (c *Client) orgID(ctx context.Context) (int, error) {
 
 // Token returns the user's k6 Personal API token. It is fetched on demand from
 // /v3/account/me through the proxy and memoised for the life of the client.
-func (c *Client) Token(ctx context.Context) (string, error) {
+func (c *ProxyClient) Token(ctx context.Context) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.cachedToken != "" {
@@ -134,7 +134,7 @@ func (c *Client) Token(ctx context.Context) (string, error) {
 // HTTP helpers
 // ---------------------------------------------------------------------------
 
-func (c *Client) doJSON(ctx context.Context, method, path string, body any) (*http.Response, error) {
+func (c *ProxyClient) doJSON(ctx context.Context, method, path string, body any) (*http.Response, error) {
 	var bodyReader io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -169,7 +169,7 @@ func readErrorBody(resp *http.Response) string {
 
 // doRaw performs a raw HTTP request through the plugin proxy.
 // Used for multipart/form-data and application/octet-stream requests.
-func (c *Client) doRaw(ctx context.Context, method, path, contentType string, body io.Reader) (int, []byte, error) {
+func (c *ProxyClient) doRaw(ctx context.Context, method, path, contentType string, body io.Reader) (int, []byte, error) {
 	req, err := http.NewRequestWithContext(ctx, method, c.proxyBase+path, body)
 	if err != nil {
 		return 0, nil, fmt.Errorf("k6: create raw request: %w", err)
@@ -197,7 +197,7 @@ func (c *Client) doRaw(ctx context.Context, method, path, contentType string, bo
 // ---------------------------------------------------------------------------
 
 // ListProjects retrieves all projects for the stack.
-func (c *Client) ListProjects(ctx context.Context) ([]Project, error) {
+func (c *ProxyClient) ListProjects(ctx context.Context) ([]Project, error) {
 	resp, err := c.doJSON(ctx, http.MethodGet, projectsPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("k6: list projects: %w", err)
@@ -216,7 +216,7 @@ func (c *Client) ListProjects(ctx context.Context) ([]Project, error) {
 }
 
 // GetProject retrieves a single project by ID.
-func (c *Client) GetProject(ctx context.Context, id int) (*Project, error) {
+func (c *ProxyClient) GetProject(ctx context.Context, id int) (*Project, error) {
 	resp, err := c.doJSON(ctx, http.MethodGet, fmt.Sprintf(projectsPath+"/%d", id), nil)
 	if err != nil {
 		return nil, fmt.Errorf("k6: get project: %w", err)
@@ -238,7 +238,7 @@ func (c *Client) GetProject(ctx context.Context, id int) (*Project, error) {
 }
 
 // CreateProject creates a new project.
-func (c *Client) CreateProject(ctx context.Context, name string) (*Project, error) {
+func (c *ProxyClient) CreateProject(ctx context.Context, name string) (*Project, error) {
 	resp, err := c.doJSON(ctx, http.MethodPost, projectsPath, struct {
 		Name string `json:"name"`
 	}{Name: name})
@@ -259,7 +259,7 @@ func (c *Client) CreateProject(ctx context.Context, name string) (*Project, erro
 }
 
 // UpdateProject updates an existing project's name.
-func (c *Client) UpdateProject(ctx context.Context, id int, name string) error {
+func (c *ProxyClient) UpdateProject(ctx context.Context, id int, name string) error {
 	resp, err := c.doJSON(ctx, http.MethodPatch, fmt.Sprintf(projectsPath+"/%d", id), struct {
 		Name string `json:"name"`
 	}{Name: name})
@@ -275,7 +275,7 @@ func (c *Client) UpdateProject(ctx context.Context, id int, name string) error {
 }
 
 // DeleteProject deletes a project by ID.
-func (c *Client) DeleteProject(ctx context.Context, id int) error {
+func (c *ProxyClient) DeleteProject(ctx context.Context, id int) error {
 	resp, err := c.doJSON(ctx, http.MethodDelete, fmt.Sprintf(projectsPath+"/%d", id), nil)
 	if err != nil {
 		return fmt.Errorf("k6: delete project: %w", err)
@@ -289,7 +289,7 @@ func (c *Client) DeleteProject(ctx context.Context, id int) error {
 }
 
 // GetProjectByName finds a project by name.
-func (c *Client) GetProjectByName(ctx context.Context, name string) (*Project, error) {
+func (c *ProxyClient) GetProjectByName(ctx context.Context, name string) (*Project, error) {
 	projects, err := c.ListProjects(ctx)
 	if err != nil {
 		return nil, err
@@ -308,26 +308,26 @@ func (c *Client) GetProjectByName(ctx context.Context, name string) (*Project, e
 
 // ListLoadTestsByProject retrieves load tests filtered by project ID.
 // Uses the server-side project_id query parameter to avoid fetching all tests.
-func (c *Client) ListLoadTestsByProject(ctx context.Context, projectID int) ([]LoadTest, error) {
+func (c *ProxyClient) ListLoadTestsByProject(ctx context.Context, projectID int) ([]LoadTest, error) {
 	path := fmt.Sprintf(loadTestsPath+"?project_id=%d", projectID)
 	return c.listLoadTests(ctx, path, 0)
 }
 
 // ListLoadTests retrieves all load tests across all projects, handling pagination.
-func (c *Client) ListLoadTests(ctx context.Context) ([]LoadTest, error) {
+func (c *ProxyClient) ListLoadTests(ctx context.Context) ([]LoadTest, error) {
 	return c.listLoadTests(ctx, loadTestsPath, 0)
 }
 
 // ListLoadTestsWithLimit retrieves load tests with a server-side limit on the
 // number of results. Pass 0 for no limit (fetches all).
-func (c *Client) ListLoadTestsWithLimit(ctx context.Context, limit int) ([]LoadTest, error) {
+func (c *ProxyClient) ListLoadTestsWithLimit(ctx context.Context, limit int) ([]LoadTest, error) {
 	return c.listLoadTests(ctx, loadTestsPath, limit)
 }
 
 // listLoadTests fetches load tests from the given path, paginating through all pages.
 // The k6 v6 API uses OData-style pagination with $skip/$top parameters and @count.
 // If limit > 0, at most limit items are fetched by setting $top accordingly.
-func (c *Client) listLoadTests(ctx context.Context, path string, limit int) ([]LoadTest, error) {
+func (c *ProxyClient) listLoadTests(ctx context.Context, path string, limit int) ([]LoadTest, error) {
 	const defaultPageSize = 100
 	var all []LoadTest
 
@@ -379,7 +379,7 @@ func (c *Client) listLoadTests(ctx context.Context, path string, limit int) ([]L
 }
 
 // GetLoadTest retrieves a single load test by ID.
-func (c *Client) GetLoadTest(ctx context.Context, id int) (*LoadTest, error) {
+func (c *ProxyClient) GetLoadTest(ctx context.Context, id int) (*LoadTest, error) {
 	resp, err := c.doJSON(ctx, http.MethodGet, fmt.Sprintf(loadTestsPath+"/%d", id), nil)
 	if err != nil {
 		return nil, fmt.Errorf("k6: get load test: %w", err)
@@ -401,7 +401,7 @@ func (c *Client) GetLoadTest(ctx context.Context, id int) (*LoadTest, error) {
 }
 
 // DeleteLoadTest deletes a load test by ID.
-func (c *Client) DeleteLoadTest(ctx context.Context, id int) error {
+func (c *ProxyClient) DeleteLoadTest(ctx context.Context, id int) error {
 	resp, err := c.doJSON(ctx, http.MethodDelete, fmt.Sprintf(loadTestsPath+"/%d", id), nil)
 	if err != nil {
 		return fmt.Errorf("k6: delete load test: %w", err)
@@ -415,7 +415,9 @@ func (c *Client) DeleteLoadTest(ctx context.Context, id int) error {
 }
 
 // CreateLoadTest creates a new load test via multipart/form-data upload.
-func (c *Client) CreateLoadTest(ctx context.Context, name string, projectID int, script string) (*LoadTest, error) {
+//
+//nolint:dupl // identical multipart construction; ProxyClient and DirectClient are parallel implementations
+func (c *ProxyClient) CreateLoadTest(ctx context.Context, name string, projectID int, script string) (*LoadTest, error) {
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 	if err := writer.WriteField("name", name); err != nil {
@@ -449,7 +451,7 @@ func (c *Client) CreateLoadTest(ctx context.Context, name string, projectID int,
 }
 
 // UpdateLoadTest updates an existing load test's metadata and optionally its script.
-func (c *Client) UpdateLoadTest(ctx context.Context, id int, name, script string) error {
+func (c *ProxyClient) UpdateLoadTest(ctx context.Context, id int, name, script string) error {
 	resp, err := c.doJSON(ctx, http.MethodPatch, fmt.Sprintf(loadTestsPath+"/%d", id), struct {
 		Name string `json:"name,omitempty"`
 	}{Name: name})
@@ -469,7 +471,7 @@ func (c *Client) UpdateLoadTest(ctx context.Context, id int, name, script string
 }
 
 // UpdateLoadTestScript updates only the script of a load test.
-func (c *Client) UpdateLoadTestScript(ctx context.Context, id int, script string) error {
+func (c *ProxyClient) UpdateLoadTestScript(ctx context.Context, id int, script string) error {
 	path := fmt.Sprintf(loadTestsPath+"/%d/script", id)
 	status, respBody, err := c.doRaw(ctx, http.MethodPut, path, "application/octet-stream", strings.NewReader(script))
 	if err != nil {
@@ -482,7 +484,7 @@ func (c *Client) UpdateLoadTestScript(ctx context.Context, id int, script string
 }
 
 // GetLoadTestScript fetches the script content of a load test.
-func (c *Client) GetLoadTestScript(ctx context.Context, id int) (string, error) {
+func (c *ProxyClient) GetLoadTestScript(ctx context.Context, id int) (string, error) {
 	path := fmt.Sprintf(loadTestsPath+"/%d/script", id)
 	status, body, err := c.doRaw(ctx, http.MethodGet, path, "", nil)
 	if err != nil {
@@ -495,7 +497,7 @@ func (c *Client) GetLoadTestScript(ctx context.Context, id int) (string, error) 
 }
 
 // GetLoadTestByName finds a load test by name within a project.
-func (c *Client) GetLoadTestByName(ctx context.Context, projectID int, name string) (*LoadTest, error) {
+func (c *ProxyClient) GetLoadTestByName(ctx context.Context, projectID int, name string) (*LoadTest, error) {
 	tests, err := c.ListLoadTestsByProject(ctx, projectID)
 	if err != nil {
 		return nil, err
@@ -513,7 +515,7 @@ func (c *Client) GetLoadTestByName(ctx context.Context, projectID int, name stri
 // ---------------------------------------------------------------------------
 
 // ListTestRuns retrieves all test runs for a load test.
-func (c *Client) ListTestRuns(ctx context.Context, loadTestID int) ([]TestRunStatus, error) {
+func (c *ProxyClient) ListTestRuns(ctx context.Context, loadTestID int) ([]TestRunStatus, error) {
 	path := fmt.Sprintf(loadTestsPath+"/%d/test_runs", loadTestID)
 	resp, err := c.doJSON(ctx, http.MethodGet, path, nil)
 	if err != nil {
@@ -537,7 +539,7 @@ func (c *Client) ListTestRuns(ctx context.Context, loadTestID int) ([]TestRunSta
 // ---------------------------------------------------------------------------
 
 // ListEnvVars retrieves all environment variables for the organization.
-func (c *Client) ListEnvVars(ctx context.Context) ([]EnvVar, error) {
+func (c *ProxyClient) ListEnvVars(ctx context.Context) ([]EnvVar, error) {
 	id, err := c.orgID(ctx)
 	if err != nil {
 		return nil, err
@@ -562,7 +564,7 @@ func (c *Client) ListEnvVars(ctx context.Context) ([]EnvVar, error) {
 }
 
 // CreateEnvVar creates a new environment variable.
-func (c *Client) CreateEnvVar(ctx context.Context, name, value, description string) (*EnvVar, error) {
+func (c *ProxyClient) CreateEnvVar(ctx context.Context, name, value, description string) (*EnvVar, error) {
 	id, err := c.orgID(ctx)
 	if err != nil {
 		return nil, err
@@ -587,7 +589,7 @@ func (c *Client) CreateEnvVar(ctx context.Context, name, value, description stri
 }
 
 // UpdateEnvVar updates an existing environment variable.
-func (c *Client) UpdateEnvVar(ctx context.Context, id int, name, value, description string) error {
+func (c *ProxyClient) UpdateEnvVar(ctx context.Context, id int, name, value, description string) error {
 	orgID, err := c.orgID(ctx)
 	if err != nil {
 		return err
@@ -607,7 +609,7 @@ func (c *Client) UpdateEnvVar(ctx context.Context, id int, name, value, descript
 }
 
 // DeleteEnvVar deletes an environment variable by ID.
-func (c *Client) DeleteEnvVar(ctx context.Context, id int) error {
+func (c *ProxyClient) DeleteEnvVar(ctx context.Context, id int) error {
 	orgID, err := c.orgID(ctx)
 	if err != nil {
 		return err
@@ -631,7 +633,7 @@ func (c *Client) DeleteEnvVar(ctx context.Context, id int) error {
 // ---------------------------------------------------------------------------
 
 // ListSchedules retrieves all schedules.
-func (c *Client) ListSchedules(ctx context.Context) ([]Schedule, error) {
+func (c *ProxyClient) ListSchedules(ctx context.Context) ([]Schedule, error) {
 	resp, err := c.doJSON(ctx, http.MethodGet, schedulesPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("k6: list schedules: %w", err)
@@ -650,7 +652,7 @@ func (c *Client) ListSchedules(ctx context.Context) ([]Schedule, error) {
 }
 
 // GetSchedule retrieves a schedule by ID.
-func (c *Client) GetSchedule(ctx context.Context, id int) (*Schedule, error) {
+func (c *ProxyClient) GetSchedule(ctx context.Context, id int) (*Schedule, error) {
 	resp, err := c.doJSON(ctx, http.MethodGet, fmt.Sprintf(schedulesPath+"/%d", id), nil)
 	if err != nil {
 		return nil, fmt.Errorf("k6: get schedule: %w", err)
@@ -672,7 +674,7 @@ func (c *Client) GetSchedule(ctx context.Context, id int) (*Schedule, error) {
 }
 
 // CreateSchedule creates a schedule for a load test.
-func (c *Client) CreateSchedule(ctx context.Context, loadTestID int, req ScheduleRequest) (*Schedule, error) {
+func (c *ProxyClient) CreateSchedule(ctx context.Context, loadTestID int, req ScheduleRequest) (*Schedule, error) {
 	path := fmt.Sprintf(loadTestsPath+"/%d/schedule", loadTestID)
 	resp, err := c.doJSON(ctx, http.MethodPost, path, req)
 	if err != nil {
@@ -692,7 +694,7 @@ func (c *Client) CreateSchedule(ctx context.Context, loadTestID int, req Schedul
 }
 
 // UpdateScheduleByID updates a schedule by its ID.
-func (c *Client) UpdateScheduleByID(ctx context.Context, id int, req ScheduleRequest) (*Schedule, error) {
+func (c *ProxyClient) UpdateScheduleByID(ctx context.Context, id int, req ScheduleRequest) (*Schedule, error) {
 	resp, err := c.doJSON(ctx, http.MethodPut, fmt.Sprintf(schedulesPath+"/%d", id), req)
 	if err != nil {
 		return nil, fmt.Errorf("k6: update schedule: %w", err)
@@ -715,7 +717,7 @@ func (c *Client) UpdateScheduleByID(ctx context.Context, id int, req ScheduleReq
 }
 
 // DeleteScheduleByLoadTest deletes the schedule for a load test.
-func (c *Client) DeleteScheduleByLoadTest(ctx context.Context, loadTestID int) error {
+func (c *ProxyClient) DeleteScheduleByLoadTest(ctx context.Context, loadTestID int) error {
 	path := fmt.Sprintf(loadTestsPath+"/%d/schedule", loadTestID)
 	resp, err := c.doJSON(ctx, http.MethodDelete, path, nil)
 	if err != nil {
@@ -734,7 +736,7 @@ func (c *Client) DeleteScheduleByLoadTest(ctx context.Context, loadTestID int) e
 // ---------------------------------------------------------------------------
 
 // ListLoadZones retrieves all load zones for the stack.
-func (c *Client) ListLoadZones(ctx context.Context) ([]LoadZone, error) {
+func (c *ProxyClient) ListLoadZones(ctx context.Context) ([]LoadZone, error) {
 	resp, err := c.doJSON(ctx, http.MethodGet, loadZonesPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("k6: list load zones: %w", err)
@@ -753,7 +755,7 @@ func (c *Client) ListLoadZones(ctx context.Context) ([]LoadZone, error) {
 }
 
 // CreateLoadZone registers a Private Load Zone.
-func (c *Client) CreateLoadZone(ctx context.Context, req PLZCreateRequest) (*PLZCreateResponse, error) {
+func (c *ProxyClient) CreateLoadZone(ctx context.Context, req PLZCreateRequest) (*PLZCreateResponse, error) {
 	resp, err := c.doJSON(ctx, http.MethodPost, plzPath, req)
 	if err != nil {
 		return nil, fmt.Errorf("k6: create load zone: %w", err)
@@ -772,7 +774,7 @@ func (c *Client) CreateLoadZone(ctx context.Context, req PLZCreateRequest) (*PLZ
 }
 
 // DeleteLoadZone deregisters a Private Load Zone by name.
-func (c *Client) DeleteLoadZone(ctx context.Context, name string) error {
+func (c *ProxyClient) DeleteLoadZone(ctx context.Context, name string) error {
 	resp, err := c.doJSON(ctx, http.MethodDelete, plzPath+"/"+url.PathEscape(name), nil)
 	if err != nil {
 		return fmt.Errorf("k6: delete load zone: %w", err)
@@ -790,7 +792,7 @@ func (c *Client) DeleteLoadZone(ctx context.Context, name string) error {
 // ---------------------------------------------------------------------------
 
 // ListAllowedProjects lists the projects allowed to use a load zone.
-func (c *Client) ListAllowedProjects(ctx context.Context, loadZoneID int) ([]AllowedProject, error) {
+func (c *ProxyClient) ListAllowedProjects(ctx context.Context, loadZoneID int) ([]AllowedProject, error) {
 	path := fmt.Sprintf(loadZonesPath+"/%d/allowed_projects", loadZoneID)
 	resp, err := c.doJSON(ctx, http.MethodGet, path, nil)
 	if err != nil {
@@ -810,7 +812,7 @@ func (c *Client) ListAllowedProjects(ctx context.Context, loadZoneID int) ([]All
 }
 
 // UpdateAllowedProjects sets the projects allowed to use a load zone.
-func (c *Client) UpdateAllowedProjects(ctx context.Context, loadZoneID int, projectIDs []int) error {
+func (c *ProxyClient) UpdateAllowedProjects(ctx context.Context, loadZoneID int, projectIDs []int) error {
 	path := fmt.Sprintf(loadZonesPath+"/%d/allowed_projects", loadZoneID)
 	body := struct {
 		ProjectIDs []int `json:"project_ids"`
@@ -828,7 +830,7 @@ func (c *Client) UpdateAllowedProjects(ctx context.Context, loadZoneID int, proj
 }
 
 // ListAllowedLoadZones lists the load zones allowed for a project.
-func (c *Client) ListAllowedLoadZones(ctx context.Context, projectID int) ([]AllowedLoadZone, error) {
+func (c *ProxyClient) ListAllowedLoadZones(ctx context.Context, projectID int) ([]AllowedLoadZone, error) {
 	path := fmt.Sprintf(projectsPath+"/%d/allowed_load_zones", projectID)
 	resp, err := c.doJSON(ctx, http.MethodGet, path, nil)
 	if err != nil {
@@ -848,7 +850,7 @@ func (c *Client) ListAllowedLoadZones(ctx context.Context, projectID int) ([]All
 }
 
 // UpdateAllowedLoadZones sets the load zones allowed for a project.
-func (c *Client) UpdateAllowedLoadZones(ctx context.Context, projectID int, loadZoneIDs []int) error {
+func (c *ProxyClient) UpdateAllowedLoadZones(ctx context.Context, projectID int, loadZoneIDs []int) error {
 	path := fmt.Sprintf(projectsPath+"/%d/allowed_load_zones", projectID)
 	body := struct {
 		LoadZoneIDs []int `json:"load_zone_ids"`
@@ -864,3 +866,6 @@ func (c *Client) UpdateAllowedLoadZones(ctx context.Context, projectID int, load
 	}
 	return nil
 }
+
+// Compile-time assertion: ProxyClient must implement API.
+var _ API = (*ProxyClient)(nil)
