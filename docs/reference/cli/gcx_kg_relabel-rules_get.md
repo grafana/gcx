@@ -11,7 +11,7 @@ gcx kg relabel-rules get [flags]
 ```
   -h, --help            help for get
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
       --type string     Rule group to fetch: prologue, epilogue, or generated (default "generated")
 ```
 

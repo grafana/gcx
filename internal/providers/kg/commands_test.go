@@ -291,6 +291,46 @@ func TestKgRelabelRulesCommand(t *testing.T) {
 	require.NotNil(t, typeFlag, "--type flag should exist on `get`")
 	assert.Equal(t, "generated", typeFlag.DefValue,
 		"--type should default to generated (read-only, safe for users without the UI flag)")
+
+	outputFlag := getCmd.Flags().Lookup("output")
+	require.NotNil(t, outputFlag, "--output flag should exist on `get`")
+	assert.Equal(t, "table", outputFlag.DefValue,
+		"--output should default to table (agent-mode auto-flips to agents)")
+}
+
+func TestRelabelRuleTableCodec_Encode(t *testing.T) {
+	group := map[string]any{
+		"name": "prologue",
+		"rules": []any{
+			map[string]any{
+				"sourceLabels": []any{"deployment_environment"},
+				"targetLabel":  "asserts_env",
+				"action":       "replace",
+				"regex":        "(.+)",
+				"replacement":  "$1",
+			},
+			map[string]any{
+				"sourceLabels": []any{"k8s_namespace_name", "service_name"},
+				"targetLabel":  "asserts_site",
+				"action":       "replace",
+			},
+		},
+	}
+	var buf bytes.Buffer
+	require.NoError(t, (&kg.RelabelRuleTableCodec{}).Encode(&buf, group))
+	out := buf.String()
+	for _, want := range []string{
+		"SOURCE LABELS", "TARGET LABEL", "ACTION", "REGEX", "REPLACEMENT",
+		"deployment_environment", "asserts_env", "replace",
+		"k8s_namespace_name, service_name", "asserts_site",
+	} {
+		assert.Contains(t, out, want)
+	}
+}
+
+func TestRelabelRuleTableCodec_RejectsWrongType(t *testing.T) {
+	err := (&kg.RelabelRuleTableCodec{}).Encode(&bytes.Buffer{}, "nope")
+	require.Error(t, err)
 }
 
 func TestRelabelRuleType_IsValid(t *testing.T) {
