@@ -8,7 +8,8 @@ import (
 	"time"
 )
 
-// fileLock is a simple file-based lock using flock(2).
+// fileLock provides exclusive file locking via syscall.Flock with a
+// polling retry loop for cross-process synchronisation.
 type fileLock struct {
 	path string
 	f    *os.File
