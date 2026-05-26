@@ -6,7 +6,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/pkg/browser"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -85,5 +84,5 @@ func Open(rawURL string) error {
 	if !strings.HasPrefix(rawURL, "https://") && !strings.HasPrefix(rawURL, "http://") {
 		return fmt.Errorf("refusing to open non-http URL: %s", rawURL)
 	}
-	return browser.OpenURL(rawURL)
+	return openURL(rawURL)
 }
