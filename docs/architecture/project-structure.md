@@ -94,6 +94,7 @@ gcx/
 │   ├── notifier/             # Skills update notifier (XDG state, throttle, message rendering)
 │   ├── secrets/              # Redaction of sensitive config fields
 │   ├── skills/               # Portable Agent Skills installer primitives (Install, Update, Bundled/InstalledBundledSkillNames)
+│   ├── strcase/              # String case conversion (snake_case, kebab-case, PascalCase)
 │   ├── terminal/             # TTY detection: IsPiped(), NoTruncate(), Detect()
 │   ├── testutils/            # Shared test helpers (not exposed externally)
 │   ├── resources/            # Core resource abstraction layer
@@ -109,6 +110,7 @@ gcx/
 │       ├── handlers/         # Chi HTTP handler implementations
 │       ├── livereload/       # WebSocket live reload broadcaster
 │       └── watch/            # fsnotify file watcher integration
+│   ├── xdg/                  # XDG Base Directory paths (config home, state home, config dirs)
 │   ├── shared/               # Shared utilities (date handling, duration, etc.) to be shared across integrations.
 │
 ├── scripts/                  # Standalone Go programs for code generation
@@ -303,7 +305,7 @@ in code review.
 | Grafana libraries | `grafana/grafana-openapi-client-go`, `grafana/grafana/pkg/apimachinery`, `grafana/grafana-app-sdk/logging`, `grafana/authlib` | Generated Grafana API client, K8s extensions, structured logging |
 | CLI framework | `spf13/cobra`, `spf13/pflag` | Subcommand tree, flag parsing |
 | HTTP server | `go-chi/chi/v5`, `gorilla/websocket` | Serve command router, live reload WebSocket |
-| Config / env | `caarlos0/env/v11`, `adrg/xdg` | Struct-based env-var parsing, XDG path resolution |
+| Config / env | `internal/xdg`, `internal/config` (envparse) | XDG path resolution, env-var parsing |
 | Concurrency | `golang.org/x/sync` | `errgroup` for bounded parallel operations |
 | YAML / JSON | `goccy/go-yaml`, `go-openapi/strfmt` | YAML codec, OpenAPI format types |
 | File watching | `fsnotify/fsnotify` | Live reload file watcher |
