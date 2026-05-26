@@ -17,10 +17,10 @@ import (
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/login"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/terminal"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"golang.org/x/term"
 )
 
 // LoginResult is the structured post-login summary that the output codecs
@@ -164,7 +164,7 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 
 	printModeHeader(cmd, cfg, contextName, sourceCtx)
 
-	isInteractive := term.IsTerminal(int(os.Stdin.Fd())) &&
+	isInteractive := terminal.IsTerminal(int(os.Stdin.Fd())) &&
 		!flags.Yes &&
 		!agent.IsAgentMode()
 
