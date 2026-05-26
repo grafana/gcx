@@ -220,15 +220,15 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 		return err
 	}
 
-	// Nudge toward --json field selection / --jq transformation whenever the
-	// resolved codec is JSON-like (json or agents format) and the caller has
-	// not already requested field selection/discovery or supplied --jq.
-	// Emitted once per invocation to stderr (never pollutes stdout).
-	// TTY: plain "hint:" line. Agent mode: JSONL {"class":"hint",...} —
-	// routed through emitHint/EmitHint so the hints framework handles codec
-	// & agent-mode compliance (FR-104).
+	// In agent mode, nudge toward --json field selection / --jq transformation
+	// whenever the resolved codec is JSON-like (json or agents format) and the
+	// caller has not already requested field selection/discovery or supplied
+	// --jq. Emitted once per invocation to stderr (never pollutes stdout) as
+	// JSONL {"class":"hint",...} via emitHint/EmitHint so the hints framework
+	// handles codec & agent-mode compliance (FR-104). Suppressed outside agent
+	// mode to avoid noise on interactive TTYs.
 	isJSONLike := codec.Format() == format.JSON || codec.Format() == agentsFormat
-	if !opts.jsonFieldsHintShown && isJSONLike && len(opts.JSONFields) == 0 && !opts.JSONDiscovery && opts.jqQuery == nil {
+	if !opts.jsonFieldsHintShown && agent.IsAgentMode() && isJSONLike && len(opts.JSONFields) == 0 && !opts.JSONDiscovery && opts.jqQuery == nil {
 		opts.jsonFieldsHintShown = true
 		w := opts.ErrWriter
 		if w == nil {
