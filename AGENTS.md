@@ -142,7 +142,7 @@ internal/
 ├── agentlog/    Agent invocation failure logger (opt-in JSONL disk log, XDG state dir — wired into handleError in cmd/gcx/main.go)
 ├── style/       Terminal styling (Grafana Neon Dark theme, TableBuilder, ASCII banner, glamour help)
 ├── terminal/    TTY/pipe detection (IsPiped, NoTruncate, Detect) for output suppression
-├── linter/      Linting engine (Rego rules, report aggregation, PromQL/LogQL validators)
+├── linter/      Linting engine (Rego rules, report aggregation, PromQL validator)
 ├── graph/       Terminal chart rendering (ntcharts + lipgloss)
 ├── testutils/   Shared test utilities
 ├── server/      Live dev server (Chi router, reverse proxy, websocket reload)
