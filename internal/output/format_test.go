@@ -214,9 +214,15 @@ func TestEncode_AgentModeHint(t *testing.T) {
 			wantHint:  true,
 		},
 		{
-			name:      "agent mode + --json field selection: hint suppressed",
+			name:      "agent mode + --json field selection: hint still fires (nudges toward --jq)",
 			agentMode: true,
 			jsonField: "name",
+			wantHint:  true,
+		},
+		{
+			name:      "agent mode + --json list (discovery): hint suppressed",
+			agentMode: true,
+			jsonField: "list",
 			wantHint:  false,
 		},
 		{

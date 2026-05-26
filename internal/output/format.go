@@ -221,14 +221,16 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 	}
 
 	// In agent mode, nudge toward --json field selection / --jq transformation
-	// whenever the resolved codec is JSON-like (json or agents format) and the
-	// caller has not already requested field selection/discovery or supplied
-	// --jq. Emitted once per invocation to stderr (never pollutes stdout) as
-	// JSONL {"class":"hint",...} via emitHint/EmitHint so the hints framework
-	// handles codec & agent-mode compliance (FR-104). Suppressed outside agent
-	// mode to avoid noise on interactive TTYs.
+	// whenever the resolved codec is JSON-like (json or agents format). The
+	// hint still fires when --json field1,field2 is in use — the caller may
+	// not realize --jq exists for transformation (group_by, filter, count).
+	// Suppressed when --jq is already in use (caller already has the more
+	// powerful tool) or when --json list is requested (discovery output is
+	// not a transformation target). Emitted once per invocation to stderr
+	// (never pollutes stdout) as JSONL {"class":"hint",...} via emitHint
+	// (FR-104). Suppressed outside agent mode to avoid noise on TTYs.
 	isJSONLike := codec.Format() == format.JSON || codec.Format() == agentsFormat
-	if !opts.jsonFieldsHintShown && agent.IsAgentMode() && isJSONLike && len(opts.JSONFields) == 0 && !opts.JSONDiscovery && opts.jqQuery == nil {
+	if !opts.jsonFieldsHintShown && agent.IsAgentMode() && isJSONLike && !opts.JSONDiscovery && opts.jqQuery == nil {
 		opts.jsonFieldsHintShown = true
 		w := opts.ErrWriter
 		if w == nil {
