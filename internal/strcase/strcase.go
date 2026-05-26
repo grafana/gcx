@@ -49,25 +49,19 @@ func splitWords(s string) []string {
 	return words
 }
 
-// ToSnakeCase converts s to snake_case.
-func ToSnakeCase(s string) string {
+func toLowerDelimited(s, sep string) string {
 	words := splitWords(s)
 	for i, w := range words {
 		words[i] = strings.ToLower(w)
 	}
-
-	return strings.Join(words, "_")
+	return strings.Join(words, sep)
 }
+
+// ToSnakeCase converts s to snake_case.
+func ToSnakeCase(s string) string { return toLowerDelimited(s, "_") }
 
 // ToKebabCase converts s to kebab-case.
-func ToKebabCase(s string) string {
-	words := splitWords(s)
-	for i, w := range words {
-		words[i] = strings.ToLower(w)
-	}
-
-	return strings.Join(words, "-")
-}
+func ToKebabCase(s string) string { return toLowerDelimited(s, "-") }
 
 // ToPascalCase converts s to PascalCase.
 func ToPascalCase(s string) string {

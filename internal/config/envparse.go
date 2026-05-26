@@ -82,7 +82,7 @@ func walkStruct(sv reflect.Value) error {
 		}
 
 		val, ok := os.LookupEnv(envKey)
-		if !ok || val == "" {
+		if !ok {
 			continue
 		}
 
@@ -98,12 +98,18 @@ func setField(fv reflect.Value, val, envKey string) error {
 	case reflect.String:
 		fv.SetString(val)
 	case reflect.Bool:
+		if val == "" {
+			return nil
+		}
 		b, err := strconv.ParseBool(val)
 		if err != nil {
 			return fmt.Errorf("env %s: %w", envKey, err)
 		}
 		fv.SetBool(b)
 	case reflect.Int64:
+		if val == "" {
+			return nil
+		}
 		n, err := strconv.ParseInt(val, 10, 64)
 		if err != nil {
 			return fmt.Errorf("env %s: %w", envKey, err)

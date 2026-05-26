@@ -23,17 +23,26 @@ func (fl *fileLock) tryLockContext(ctx context.Context, interval time.Duration) 
 	}
 	fl.f = f
 
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
 	for {
 		err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
 		if err == nil {
 			return nil
+		}
+		// Only retry on EWOULDBLOCK/EAGAIN (lock held by another process).
+		if err != syscall.EWOULDBLOCK && err != syscall.EAGAIN {
+			_ = f.Close()
+			fl.f = nil
+			return fmt.Errorf("flock: %w", err)
 		}
 		select {
 		case <-ctx.Done():
 			_ = f.Close()
 			fl.f = nil
 			return ctx.Err()
-		case <-time.After(interval):
+		case <-ticker.C:
 		}
 	}
 }
