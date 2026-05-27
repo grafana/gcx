@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/stacks"
+	"github.com/grafana/gcx/internal/testutils"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -301,21 +301,17 @@ func TestGetCommand_DefaultFormat_YAML(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	cfgFile, err := os.CreateTemp(t.TempDir(), "gcx-config-*.yaml")
-	require.NoError(t, err)
-	_, err = cfgFile.WriteString(`
+	cfgPath := testutils.CreateTempFile(t, `
 contexts:
   default:
     cloud:
       token: "test-token"
-      api-url: "` + srv.URL + `"
+      api-url: "`+srv.URL+`"
 current-context: default
 `)
-	require.NoError(t, err)
-	require.NoError(t, cfgFile.Close())
 
 	loader := &providers.ConfigLoader{}
-	loader.SetConfigFile(cfgFile.Name())
+	loader.SetConfigFile(cfgPath)
 
 	out, err := runCmd(t, stacks.NewTestGetCommandWithLoader(loader), []string{"get", "mystack"}, "")
 	require.NoError(t, err)
