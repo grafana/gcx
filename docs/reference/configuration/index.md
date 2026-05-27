@@ -135,4 +135,5 @@ diagnostics:
   # LogDir overrides the output directory for agent invocation log files.
   # Default: $XDG_STATE_HOME/gcx/ (platform-specific).
   log-dir: string
+
 ```

@@ -34,6 +34,12 @@ type Config struct {
 
 	// Diagnostics holds optional local diagnostic settings. All features are off by default.
 	Diagnostics *DiagnosticsConfig `json:"diagnostics,omitempty" yaml:"diagnostics,omitempty"`
+
+	// keychainFields tracks which (context, field) pairs were loaded from the
+	// OS keychain via a sentinel in the YAML. Populated by the loader; used by
+	// Write to round-trip sentinels back to disk. Not part of the on-disk
+	// schema.
+	keychainFields keychainBacked `json:"-" yaml:"-"`
 }
 
 // DiagnosticsConfig controls optional local diagnostic features.
