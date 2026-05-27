@@ -1,16 +1,18 @@
-## gcx kg rules create
+## gcx kg prom-rules list
 
-Upload Knowledge Graph prom rules from a YAML file.
+List Knowledge Graph Custom Prometheus rules.
 
 ```
-gcx kg rules create [flags]
+gcx kg prom-rules list [flags]
 ```
 
 ### Options
 
 ```
-  -f, --file string   Input file (YAML)
-  -h, --help          help for create
+  -h, --help            help for list
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int       Maximum number of items to return (0 for all) (default 50)
+  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -27,5 +29,5 @@ gcx kg rules create [flags]
 
 ### SEE ALSO
 
-* [gcx kg rules](gcx_kg_rules.md)	 - Manage Knowledge Graph prom rules.
+* [gcx kg prom-rules](gcx_kg_prom-rules.md)	 - Manage Knowledge Graph Custom Prometheus rules.
 

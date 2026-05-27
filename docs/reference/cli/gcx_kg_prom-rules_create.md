@@ -1,17 +1,16 @@
-## gcx kg rules get
+## gcx kg prom-rules create
 
-Get a Knowledge Graph prom rule by name.
+Upload Knowledge Graph Custom Prometheus rules from a YAML file.
 
 ```
-gcx kg rules get <name> [flags]
+gcx kg prom-rules create [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
+  -f, --file string   Input file (YAML)
+  -h, --help          help for create
 ```
 
 ### Options inherited from parent commands
@@ -28,5 +27,5 @@ gcx kg rules get <name> [flags]
 
 ### SEE ALSO
 
-* [gcx kg rules](gcx_kg_rules.md)	 - Manage Knowledge Graph prom rules.
+* [gcx kg prom-rules](gcx_kg_prom-rules.md)	 - Manage Knowledge Graph Custom Prometheus rules.
 

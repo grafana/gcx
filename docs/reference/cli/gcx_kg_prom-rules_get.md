@@ -1,15 +1,17 @@
-## gcx kg rules delete
+## gcx kg prom-rules get
 
-Delete a Knowledge Graph prom rule by name.
+Get a Knowledge Graph Custom Prometheus rule by name.
 
 ```
-gcx kg rules delete <name> [flags]
+gcx kg prom-rules get <name> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help   help for delete
+  -h, --help            help for get
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
 ```
 
 ### Options inherited from parent commands
@@ -26,5 +28,5 @@ gcx kg rules delete <name> [flags]
 
 ### SEE ALSO
 
-* [gcx kg rules](gcx_kg_rules.md)	 - Manage Knowledge Graph prom rules.
+* [gcx kg prom-rules](gcx_kg_prom-rules.md)	 - Manage Knowledge Graph Custom Prometheus rules.
 

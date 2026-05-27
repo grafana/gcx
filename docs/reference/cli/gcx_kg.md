@@ -29,8 +29,8 @@ Manage Grafana Knowledge Graph rules, entities, and insights
 * [gcx kg meta](gcx_kg_meta.md)	 - Show Knowledge Graph metadata: entity types, valid env/namespace/site values, and telemetry query configs.
 * [gcx kg model-rules](gcx_kg_model-rules.md)	 - Push model rules to the Knowledge Graph.
 * [gcx kg open](gcx_kg_open.md)	 - Open the Knowledge Graph app in the browser.
+* [gcx kg prom-rules](gcx_kg_prom-rules.md)	 - Manage Knowledge Graph Custom Prometheus rules.
 * [gcx kg relabel-rules](gcx_kg_relabel-rules.md)	 - Push relabel rules to the Knowledge Graph.
-* [gcx kg rules](gcx_kg_rules.md)	 - Manage Knowledge Graph prom rules.
 * [gcx kg status](gcx_kg_status.md)	 - Show Knowledge Graph stack status.
 * [gcx kg summary](gcx_kg_summary.md)	 - Show a summary of entities and active insights, broken down by type, severity, and insight name.
 * [gcx kg suppressions](gcx_kg_suppressions.md)	 - Manage alert suppressions in the Knowledge Graph.
