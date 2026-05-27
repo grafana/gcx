@@ -144,6 +144,9 @@ agent mode detection, behavior changes, and opt-out mechanisms.
 
 ## Dependency Rules
 
+- **Prefer stdlib over small dependencies.** Don't add a new `go.mod` dependency
+  when the used API surface is small enough to reimplement (~100 LOC or less).
+  See [docs/research/2026-05-26-dependency-audit.md](docs/research/2026-05-26-dependency-audit.md) for examples.
 - `cmd/` may import `internal/`; `internal/` may not import `cmd/`.
 - No circular dependencies between packages.
 - Provider implementations (`internal/providers/*/`) may import core resource types but not
