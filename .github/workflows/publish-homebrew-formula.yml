@@ -1,11 +1,10 @@
 name: Publish Homebrew Formula
 
-# Triggers automatically when GoReleaser publishes a GitHub Release,
-# or manually via workflow_dispatch for re-runs / backfills.
+# Triggered manually for re-runs / backfills, and programmatically by
+# release.yaml after GoReleaser publishes a GitHub Release. Keep this workflow
+# top-level: the App-token broker validates the top-level workflow_ref.
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       tag:
@@ -17,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: publish-homebrew-formula-${{ github.event.release.tag_name || inputs.tag }}
+  group: publish-homebrew-formula-${{ inputs.tag }}
   cancel-in-progress: false
 
 jobs:
@@ -25,11 +24,11 @@ jobs:
     name: Publish formula PR
     runs-on: ubuntu-latest
     permissions:
-      contents: read           # checkout gcx at the tag
+      contents: read           # checkout gcx for the formula template
       id-token: write          # required by create-github-app-token broker OIDC exchange
 
     env:
-      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      TAG: ${{ inputs.tag }}
       GH_REPO: ${{ github.repository }}
 
     steps:
@@ -64,12 +63,25 @@ jobs:
 
       - name: Checkout gcx (for template)
         if: steps.tag.outputs.skip != 'true'
-        # On release events, github.ref is the tag — checkout gets the
-        # template at that ref. On workflow_dispatch, github.ref is the
-        # dispatch branch (typically main), which also has the template.
+        # Use the workflow's native ref for the formula template. Release
+        # automation dispatches this workflow on main; TAG only selects the
+        # source archive to publish.
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+
+      - name: Verify GitHub Release is published
+        if: steps.tag.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          release_json="$(gh release view "${TAG}" --repo "${GH_REPO}" --json isDraft,publishedAt)"
+          if [[ "$(jq -r '.isDraft' <<< "${release_json}")" != "false" ]]; then
+            echo "::error::release ${TAG} exists but is still a draft"
+            exit 1
+          fi
+          echo "Release published at $(jq -r '.publishedAt' <<< "${release_json}")"
 
       - name: Compute source tarball sha256
         if: steps.tag.outputs.skip != 'true'
