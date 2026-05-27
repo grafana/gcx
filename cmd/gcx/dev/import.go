@@ -12,11 +12,11 @@ import (
 	"github.com/grafana/gcx/cmd/gcx/resources"
 	cmdio "github.com/grafana/gcx/internal/output"
 	model "github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/strcase"
 	"github.com/grafana/grafana-foundation-sdk/go/cog/plugins"
 	"github.com/grafana/grafana-foundation-sdk/go/dashboard"
 	"github.com/grafana/grafana-foundation-sdk/go/dashboardv2beta1"
 	"github.com/grafana/grafana-foundation-sdk/go/folderv1beta1"
-	"github.com/huandu/xstrings"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/tools/imports"
@@ -127,7 +127,7 @@ func convertResource(destinationRoot string, resource *model.Resource) error {
 		return err
 	}
 
-	convertedFile := filepath.Join(destinationRoot, xstrings.ToSnakeCase(resource.Name())) + ".go"
+	convertedFile := filepath.Join(destinationRoot, strcase.ToSnakeCase(resource.Name())) + ".go"
 
 	if err := ensureDirectory(filepath.Dir(convertedFile)); err != nil {
 		return err
@@ -140,7 +140,7 @@ func convertResource(destinationRoot string, resource *model.Resource) error {
 		"Kind":             resource.Kind(),
 		"Name":             resource.Name(),
 		"SDKPackage":       sdkPkg,
-		"FuncName":         xstrings.ToPascalCase(resource.Name()),
+		"FuncName":         strcase.ToPascalCase(resource.Name()),
 		"ConvertedBuilder": converted,
 	})
 	if err != nil {

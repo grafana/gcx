@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/adrg/xdg"
+	"github.com/grafana/gcx/internal/xdg"
 )
 
 const (
@@ -37,7 +37,7 @@ func IsEnabled() bool { return cfg.Enabled }
 func LogPath() string {
 	dir := cfg.LogDir
 	if dir == "" {
-		dir = filepath.Join(xdg.StateHome, "gcx")
+		dir = filepath.Join(xdg.StateHome(), "gcx")
 	}
 	return filepath.Join(dir, logFileName)
 }

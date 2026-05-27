@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/caarlos0/env/v11"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/datasources"
 	"github.com/grafana/grafana-app-sdk/logging"
@@ -238,7 +237,7 @@ func configuredCloudStack(cfgCtx *config.Context) string {
 	var fallback config.Context
 	fallback.Cloud = &config.CloudConfig{}
 	fallback.Grafana = &config.GrafanaConfig{}
-	_ = env.Parse(&fallback)
+	_ = config.ParseEnvIntoContext(&fallback)
 	return strings.TrimSpace(fallback.ResolveStackSlug())
 }
 

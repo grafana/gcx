@@ -5,8 +5,6 @@ go 1.26.2
 require (
 	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/NimbleMarkets/ntcharts v0.5.1
-	github.com/adrg/xdg v0.5.3
-	github.com/caarlos0/env/v11 v11.4.1
 	github.com/charmbracelet/glamour v1.0.0
 	github.com/charmbracelet/huh v1.0.0
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
@@ -18,7 +16,6 @@ require (
 	github.com/go-openapi/strfmt v0.26.2
 	github.com/goccy/go-yaml v1.19.2
 	github.com/google/go-cmp v0.7.0
-	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/grafana/authlib/types v0.0.0-20260427145542-9c256e2dbcb2
 	github.com/grafana/grafana-app-sdk/logging v0.55.0
@@ -27,11 +24,9 @@ require (
 	github.com/grafana/grafana/apps/folder v0.0.0-20250724095330-d852bde2a5fb
 	github.com/grafana/grafana/pkg/apimachinery v0.0.0-20250903133002-4e28cba1c53a
 	github.com/grafana/promql-builder/go v0.0.0-20250916111012-8fa9625b89a3
-	github.com/huandu/xstrings v1.5.0
 	github.com/invopop/jsonschema v0.14.0
 	github.com/olekukonko/tablewriter v1.1.4
 	github.com/open-policy-agent/opa v1.16.2
-	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/prometheus/prometheus v0.311.3
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
@@ -49,7 +44,6 @@ require (
 
 require (
 	github.com/go-openapi/runtime v0.29.5
-	github.com/gofrs/flock v0.13.0
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
 	sigs.k8s.io/yaml v1.6.0
 )
@@ -110,6 +104,7 @@ require (
 	github.com/goccy/go-json v0.10.6 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/gnostic-models v0.7.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
 	github.com/grafana/grafana-app-sdk v0.40.0 // indirect
 	github.com/grafana/regexp v0.0.0-20250905093917-f7b3be9d1853 // indirect
