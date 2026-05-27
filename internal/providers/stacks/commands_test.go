@@ -3,9 +3,14 @@ package stacks_test
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/cloud"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/stacks"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -276,6 +281,48 @@ func TestGetCommand_RequiresArg(t *testing.T) {
 	_, err := runCmd(t, stacks.NewTestGetCommand(), []string{"get"}, "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "accepts 1 arg")
+}
+
+func TestGetCommand_DefaultFormat_YAML(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+
+	want := cloud.StackInfo{
+		ID:   42,
+		Slug: "mystack",
+		Name: "My Stack",
+		URL:  "https://mystack.grafana.net",
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(want); err != nil {
+			t.Errorf("mock server: encode: %v", err)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	cfgFile, err := os.CreateTemp(t.TempDir(), "gcx-config-*.yaml")
+	require.NoError(t, err)
+	_, err = cfgFile.WriteString(`
+contexts:
+  default:
+    cloud:
+      token: "test-token"
+      api-url: "` + srv.URL + `"
+current-context: default
+`)
+	require.NoError(t, err)
+	require.NoError(t, cfgFile.Close())
+
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgFile.Name())
+
+	out, err := runCmd(t, stacks.NewTestGetCommandWithLoader(loader), []string{"get", "mystack"}, "")
+	require.NoError(t, err)
+
+	// Default format for a singular get should be YAML, not a table.
+	assert.Contains(t, out, "slug: mystack")
+	assert.NotContains(t, out, "SLUG", "table header should not appear in default yaml output")
 }
 
 // ---------------------------------------------------------------------------

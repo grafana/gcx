@@ -82,7 +82,7 @@ type getOpts struct {
 func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &stackTableCodec{})
 	o.IO.RegisterCustomCodec("wide", &stackTableCodec{Wide: true})
-	o.IO.DefaultFormat("table")
+	o.IO.DefaultFormat("yaml")
 	o.IO.BindFlags(flags)
 }
 
