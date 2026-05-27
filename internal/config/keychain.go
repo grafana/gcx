@@ -101,6 +101,9 @@ func migratePlaintextSecrets(cfg *Config, store credentials.Store, log logging.L
 			if ptr == nil || *ptr == "" || credentials.IsSentinel(*ptr) {
 				continue
 			}
+			if cfg.keychainFields[ctxName][field] {
+				continue
+			}
 			if err := store.Set(credentials.AccountKey(ctxName, field), *ptr); err != nil {
 				if errors.Is(err, credentials.ErrUnavailable) {
 					credentials.WarnUnavailableOnce(func() {

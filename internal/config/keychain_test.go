@@ -16,8 +16,9 @@ import (
 // The default store under `go test` is a no-op that returns ErrUnavailable;
 // tests that exercise the keychain path install a fakeStore via withFakeStore.
 type fakeStore struct {
-	mu      sync.Mutex
-	entries map[string]string
+	mu       sync.Mutex
+	entries  map[string]string
+	setCalls int
 }
 
 func newFakeStore() *fakeStore {
@@ -38,7 +39,14 @@ func (s *fakeStore) Set(key, value string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.entries[key] = value
+	s.setCalls++
 	return nil
+}
+
+func (s *fakeStore) sets() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.setCalls
 }
 
 func (s *fakeStore) Delete(key string) error {
@@ -137,6 +145,7 @@ current-context: default
 func TestLoad_IdempotentWithSentinels(t *testing.T) {
 	store := withFakeStore(t)
 	require.NoError(t, store.Set(credentials.AccountKey("default", credentials.FieldOAuthToken), "gat_resolved"))
+	seedSets := store.sets()
 
 	path := writeYAML(t, `
 contexts:
@@ -151,14 +160,22 @@ current-context: default
 	require.NoError(t, err)
 	first, err := os.ReadFile(path)
 	require.NoError(t, err)
+	firstStat, err := os.Stat(path)
+	require.NoError(t, err)
+	setsAfterFirstLoad := store.sets()
 
 	_, err = config.Load(t.Context(), config.ExplicitConfigFile(path))
 	require.NoError(t, err)
 	second, err := os.ReadFile(path)
 	require.NoError(t, err)
+	secondStat, err := os.Stat(path)
+	require.NoError(t, err)
 
 	assert.Equal(t, string(first), string(second))
 	assert.Equal(t, 1, store.len())
+	assert.Equal(t, seedSets, setsAfterFirstLoad, "first Load of a sentinel-backed config must not call store.Set")
+	assert.Equal(t, setsAfterFirstLoad, store.sets(), "second Load must not re-migrate resolved sentinels into the store")
+	assert.Equal(t, firstStat.ModTime(), secondStat.ModTime(), "second Load must not rewrite the config file")
 }
 
 func TestWrite_RoundTripsThroughSentinels(t *testing.T) {
