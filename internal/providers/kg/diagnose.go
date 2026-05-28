@@ -932,7 +932,7 @@ func (c *DiagnoseTableCodec) Format() format.Format { return "table" }
 func (c *DiagnoseTableCodec) Encode(w io.Writer, v any) error {
 	result, ok := v.(DiagnoseResult)
 	if !ok {
-		return errors.New("invalid data type for text codec: expected DiagnoseResult")
+		return errors.New("invalid data type for table codec: expected DiagnoseResult")
 	}
 
 	t := style.NewTable("CHECK", "STATUS", "DETAIL")
@@ -972,5 +972,5 @@ func (c *DiagnoseTableCodec) Encode(w io.Writer, v any) error {
 }
 
 func (c *DiagnoseTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("text format does not support decoding")
+	return errors.New("table format does not support decoding")
 }

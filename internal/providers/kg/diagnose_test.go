@@ -1121,7 +1121,8 @@ func TestCheckMetric_NoFallbackProbeWhenSelectorEmpty(t *testing.T) {
 	promClient := newTestPromClient(t, promServer)
 	// Only namespace set. traces_target_info doesn't use namespace, so its
 	// scoped selector is empty and no fallback should attach.
-	scope := kg.NewTestScopeFlags("", "demo-ns", "")
+	// NewTestScopeFlags(env, site, namespace) — namespace is the third arg.
+	scope := kg.NewTestScopeFlags("", "", "demo-ns")
 	_ = kg.RunDiagnose(t.Context(), kgClient, &scope, promClient, "test-prom-uid")
 
 	mu.Lock()
