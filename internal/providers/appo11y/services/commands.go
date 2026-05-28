@@ -31,16 +31,24 @@ func Commands() *cobra.Command {
 	return cmd
 }
 
+const (
+	instrAll            = "all"
+	instrInstrumented   = "instrumented"
+	instrUninstrumented = "uninstrumented"
+)
+
 type listOpts struct {
-	IO         cmdio.Options
-	Datasource string
-	Metric     string
-	Filters    []string
-	Language   string
-	Env        string
-	Columns    []string
-	Limit      int
-	Count      bool
+	IO              cmdio.Options
+	Datasource      string
+	Metric          string
+	ServiceGraph    string
+	Filters         []string
+	Language        string
+	Env             string
+	Columns         []string
+	Limit           int
+	Count           bool
+	Instrumentation string
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
@@ -51,7 +59,9 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 
 	flags.StringVarP(&o.Datasource, "datasource", "d", "", "Prometheus datasource UID (defaults to datasources.prometheus in config or auto-discovery)")
 	flags.StringVar(&o.Metric, "target-info-metric", defaultTargetInfoMetric, "Override the inventory metric (advanced; mirrors the plugin's metricName:targetInfo variable)")
-	flags.StringArrayVar(&o.Filters, "filter", nil, "Restrict to services matching a label matcher, e.g. --filter k8s_namespace_name=prod (repeatable)")
+	flags.StringVar(&o.ServiceGraph, "service-graph-metric", defaultServiceGraphMetric, "Override the service-graph metric used to find uninstrumented services (advanced)")
+	flags.StringVar(&o.Instrumentation, "instrumentation", instrAll, "Which services to list: all, instrumented (target_info only), or uninstrumented (service-graph minus target_info)")
+	flags.StringArrayVar(&o.Filters, "filter", nil, "Restrict to services matching a label matcher, e.g. --filter k8s_namespace_name=prod (repeatable; applies to target_info only)")
 	flags.StringVar(&o.Language, "language", "", "Restrict to a single telemetry_sdk_language (e.g. go, java, nodejs)")
 	flags.StringVar(&o.Env, "env", "", "Restrict to a single deployment_environment (e.g. production)")
 	flags.StringSliceVar(&o.Columns, "columns", nil, "Extra target_info labels to surface as table columns (comma-separated)")
@@ -69,7 +79,20 @@ func (o *listOpts) Validate() error {
 	if o.Limit < 0 {
 		return errors.New("--limit must be zero or positive")
 	}
+	switch o.Instrumentation {
+	case instrAll, instrInstrumented, instrUninstrumented:
+	default:
+		return fmt.Errorf("--instrumentation must be one of %s, %s, or %s", instrAll, instrInstrumented, instrUninstrumented)
+	}
 	return nil
+}
+
+func (o *listOpts) wantsInstrumented() bool {
+	return o.Instrumentation == instrAll || o.Instrumentation == instrInstrumented
+}
+
+func (o *listOpts) wantsServiceGraph() bool {
+	return o.Instrumentation == instrAll || o.Instrumentation == instrUninstrumented
 }
 
 func (o *listOpts) buildFilters() ([]Matcher, error) {
@@ -157,25 +180,43 @@ func runList(opts *listOpts) func(*cobra.Command, []string) error {
 		if err != nil {
 			return err
 		}
-		expr, err := buildServicesQuery(opts.Metric, filters, opts.Columns)
-		if err != nil {
-			return fmt.Errorf("failed to build services discovery query: %w", err)
-		}
 
 		client, err := prometheus.NewClient(cfg)
 		if err != nil {
 			return fmt.Errorf("failed to create prometheus client: %w", err)
 		}
 
-		resp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{Query: expr})
-		if err != nil {
-			return fmt.Errorf("services discovery query failed: %w", err)
+		var instrumented, graph []Service
+		if opts.wantsInstrumented() {
+			expr, err := buildServicesQuery(opts.Metric, filters, opts.Columns)
+			if err != nil {
+				return fmt.Errorf("failed to build services discovery query: %w", err)
+			}
+			resp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{Query: expr})
+			if err != nil {
+				return fmt.Errorf("services discovery query failed: %w", err)
+			}
+			instrumented, err = parseServicesResponse(resp)
+			if err != nil {
+				return fmt.Errorf("failed to parse services response: %w", err)
+			}
+		}
+		if opts.wantsServiceGraph() {
+			expr, err := buildServiceGraphQuery(opts.ServiceGraph)
+			if err != nil {
+				return fmt.Errorf("failed to build service-graph query: %w", err)
+			}
+			resp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{Query: expr})
+			if err != nil {
+				return fmt.Errorf("service-graph query failed: %w", err)
+			}
+			graph, err = parseServiceGraphResponse(resp)
+			if err != nil {
+				return fmt.Errorf("failed to parse service-graph response: %w", err)
+			}
 		}
 
-		items, err := parseServicesResponse(resp)
-		if err != nil {
-			return fmt.Errorf("failed to parse services response: %w", err)
-		}
+		items := resolveItems(opts.Instrumentation, instrumented, graph)
 
 		if opts.Limit > 0 && len(items) > opts.Limit {
 			items = items[:opts.Limit]
@@ -185,6 +226,28 @@ func runList(opts *listOpts) func(*cobra.Command, []string) error {
 			return opts.IO.Encode(cmd.OutOrStdout(), summarizeByLanguage(items))
 		}
 		return opts.IO.Encode(cmd.OutOrStdout(), &ServicesResponse{Items: items})
+	}
+}
+
+// resolveItems applies the --instrumentation filter to the (instrumented, graph)
+// result pair. The merge prefers target_info data, then drops or keeps rows
+// based on the filter.
+func resolveItems(filter string, instrumented, graph []Service) []Service {
+	switch filter {
+	case instrInstrumented:
+		return instrumented
+	case instrUninstrumented:
+		idx := instrumentedIndex(instrumented)
+		out := make([]Service, 0, len(graph))
+		for _, s := range graph {
+			if _, has := idx[s.Name]; has {
+				continue
+			}
+			out = append(out, s)
+		}
+		return out
+	default:
+		return mergeServiceSets(instrumented, graph)
 	}
 }
 
@@ -208,15 +271,35 @@ func (c *servicesTableCodec) Decode(io.Reader, any) error {
 	return errors.New("services table codec does not support decoding")
 }
 
-// wideLabels are the resource-attribute labels we surface in --output wide,
-// in display order. Picked from the plugin's RELEVANT_METADATA_PREFIXES set.
-func wideLabels() []string {
+// defaultLabels are the resource-attribute labels surfaced in the default
+// table view. They name the *what* of a service (its OTel namespace) and the
+// *where* (its deployment environment) — context the plugin's UI also leads
+// with. Both deployment_environment variants are pulled so newer SDKs
+// (deployment.environment.name) and older ones (deployment.environment) both
+// land somewhere.
+func defaultLabels() []string {
 	return []string{
 		"service_namespace",
+		"deployment_environment_name",
+		"deployment_environment",
+	}
+}
+
+// wideLabels add infrastructure-flavored context on top of the defaults; only
+// shown when --output wide is set. Picked from the plugin's
+// RELEVANT_METADATA_PREFIXES set.
+func wideLabels() []string {
+	return []string{
 		"k8s_namespace_name",
 		"k8s_cluster_name",
 		"cloud_region",
 	}
+}
+
+// allTargetInfoLabels returns the union projection used by the discovery
+// query so we can fill any default/wide column without a follow-up request.
+func allTargetInfoLabels() []string {
+	return append(defaultLabels(), wideLabels()...)
 }
 
 func (c *servicesTableCodec) Encode(w io.Writer, v any) error {
@@ -237,28 +320,49 @@ func (c *servicesTableCodec) encodeServicesTable(w io.Writer, resp *ServicesResp
 	}
 
 	extra := c.extraColumns()
-	if !c.Wide && len(extra) == 0 {
-		t := style.NewTable("NAME", "LANGUAGE")
-		for _, s := range resp.Items {
-			t.Row(s.Name, fallback(s.Language, "-"))
-		}
-		return t.Render(w)
+	wideCols := []string{}
+	if c.Wide {
+		wideCols = wideLabels()
 	}
 
-	labels := extra
-	if c.Wide {
-		labels = append(wideLabels(), extra...)
-	}
-	headers := append([]string{"NAME", "LANGUAGE"}, upperHeaders(labels)...)
+	headers := append([]string{"NAME", "NAMESPACE", "ENVIRONMENT", "LANGUAGE", "STATUS"}, upperHeaders(wideCols)...)
+	headers = append(headers, upperHeaders(extra)...)
+
 	t := style.NewTable(headers...)
 	for _, s := range resp.Items {
-		row := []string{s.Name, fallback(s.Language, "-")}
-		for _, lbl := range labels {
-			row = append(row, fallback(s.Labels[lbl], "-"))
+		row := []string{
+			s.Name,
+			orDash(s.Labels["service_namespace"]),
+			orDash(environmentValue(s.Labels)),
+			orDash(s.Language),
+			instrumentationStatus(s.Instrumented),
+		}
+		for _, lbl := range wideCols {
+			row = append(row, orDash(s.Labels[lbl]))
+		}
+		for _, lbl := range extra {
+			row = append(row, orDash(s.Labels[lbl]))
 		}
 		t.Row(row...)
 	}
 	return t.Render(w)
+}
+
+// environmentValue prefers the modern deployment.environment.name attribute
+// and falls back to the legacy deployment.environment when only the old one
+// is set. Either may be empty.
+func environmentValue(labels map[string]string) string {
+	if v := labels["deployment_environment_name"]; v != "" {
+		return v
+	}
+	return labels["deployment_environment"]
+}
+
+func instrumentationStatus(instrumented bool) string {
+	if instrumented {
+		return "instrumented"
+	}
+	return "uninstrumented"
 }
 
 func (c *servicesTableCodec) extraColumns() []string {
@@ -281,9 +385,9 @@ func encodeCountTable(w io.Writer, s *CountSummary) error {
 	return t.Render(w)
 }
 
-func fallback(v, def string) string {
+func orDash(v string) string {
 	if v == "" {
-		return def
+		return "-"
 	}
 	return v
 }

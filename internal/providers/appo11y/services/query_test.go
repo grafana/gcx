@@ -7,7 +7,7 @@ import (
 )
 
 func TestBuildServicesQuery(t *testing.T) {
-	wantGroup := "group by (telemetry_sdk_language, job, service_namespace, k8s_namespace_name, k8s_cluster_name, cloud_region)"
+	wantGroup := "group by (telemetry_sdk_language, job, service_namespace, deployment_environment_name, deployment_environment, k8s_namespace_name, k8s_cluster_name, cloud_region)"
 
 	tests := []struct {
 		name     string
@@ -51,12 +51,12 @@ func TestBuildServicesQuery(t *testing.T) {
 		{
 			name:  "extra columns appended once",
 			extra: []string{"service_version", "k8s_pod_name", "service_namespace"},
-			want:  "group by (telemetry_sdk_language, job, service_namespace, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version, k8s_pod_name) (target_info)",
+			want:  "group by (telemetry_sdk_language, job, service_namespace, deployment_environment_name, deployment_environment, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version, k8s_pod_name) (target_info)",
 		},
 		{
 			name:  "extra columns with empty string ignored",
 			extra: []string{"", "service_version"},
-			want:  "group by (telemetry_sdk_language, job, service_namespace, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version) (target_info)",
+			want:  "group by (telemetry_sdk_language, job, service_namespace, deployment_environment_name, deployment_environment, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version) (target_info)",
 		},
 	}
 	for _, tt := range tests {
@@ -105,6 +105,78 @@ func TestSummarizeByLanguage_Empty(t *testing.T) {
 	got := summarizeByLanguage(nil)
 	if got.Total != 0 || len(got.ByLanguage) != 0 {
 		t.Errorf("expected empty summary, got %+v", got)
+	}
+}
+
+func TestBuildServiceGraphQuery(t *testing.T) {
+	got, err := buildServiceGraphQuery("")
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	want := "group by (server) (traces_service_graph_request_total)"
+	if got != want {
+		t.Errorf("buildServiceGraphQuery() =\n  %q\nwant\n  %q", got, want)
+	}
+
+	got, err = buildServiceGraphQuery("traces_spanmetrics_calls_total")
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	want = "group by (server) (traces_spanmetrics_calls_total)"
+	if got != want {
+		t.Errorf("override =\n  %q\nwant\n  %q", got, want)
+	}
+}
+
+func TestParseServiceGraphResponse(t *testing.T) {
+	resp := &prometheus.QueryResponse{
+		Data: prometheus.ResultData{
+			Result: []prometheus.Sample{
+				{Metric: map[string]string{"server": "payments"}},
+				{Metric: map[string]string{"server": "checkout"}},
+				{Metric: map[string]string{"server": "payments"}}, // duplicate
+				{Metric: map[string]string{"server": ""}},         // dropped
+				{Metric: map[string]string{}},                     // dropped
+			},
+		},
+	}
+	got, err := parseServiceGraphResponse(resp)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if len(got) != 2 || got[0].Name != "checkout" || got[1].Name != "payments" {
+		t.Fatalf("unexpected services: %+v", got)
+	}
+	for _, s := range got {
+		if s.Instrumented {
+			t.Errorf("%q should be marked uninstrumented", s.Name)
+		}
+	}
+}
+
+func TestMergeServiceSets(t *testing.T) {
+	instrumented := []Service{
+		{Name: "checkout", Language: "go", Instrumented: true},
+		{Name: "payments", Language: "java", Instrumented: true},
+	}
+	graph := []Service{
+		{Name: "payments"}, // already known — should be discarded
+		{Name: "legacy-billing"},
+	}
+	got := mergeServiceSets(instrumented, graph)
+	if len(got) != 3 {
+		t.Fatalf("len = %d, want 3: %+v", len(got), got)
+	}
+	if got[0].Name != "checkout" || got[1].Name != "legacy-billing" || got[2].Name != "payments" {
+		t.Errorf("merge not sorted by name: %+v", got)
+	}
+	// payments must retain its instrumented attrs.
+	if !got[2].Instrumented || got[2].Language != "java" {
+		t.Errorf("payments instrumented metadata lost: %+v", got[2])
+	}
+	// legacy-billing must stay uninstrumented.
+	if got[1].Instrumented {
+		t.Errorf("legacy-billing should be uninstrumented: %+v", got[1])
 	}
 }
 

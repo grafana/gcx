@@ -37,17 +37,19 @@ gcx appo11y services list [flags]
 ### Options
 
 ```
-      --columns strings             Extra target_info labels to surface as table columns (comma-separated)
-      --count                       Print a per-language summary instead of the full list
-  -d, --datasource string           Prometheus datasource UID (defaults to datasources.prometheus in config or auto-discovery)
-      --env string                  Restrict to a single deployment_environment (e.g. production)
-      --filter stringArray          Restrict to services matching a label matcher, e.g. --filter k8s_namespace_name=prod (repeatable)
-  -h, --help                        help for list
-      --json string                 Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --language string             Restrict to a single telemetry_sdk_language (e.g. go, java, nodejs)
-      --limit int                   Limit the number of services returned (0 = unlimited; applied after sorting)
-  -o, --output string               Output format. One of: agents, json, table, wide, yaml (default "table")
-      --target-info-metric string   Override the inventory metric (advanced; mirrors the plugin's metricName:targetInfo variable) (default "target_info")
+      --columns strings               Extra target_info labels to surface as table columns (comma-separated)
+      --count                         Print a per-language summary instead of the full list
+  -d, --datasource string             Prometheus datasource UID (defaults to datasources.prometheus in config or auto-discovery)
+      --env string                    Restrict to a single deployment_environment (e.g. production)
+      --filter stringArray            Restrict to services matching a label matcher, e.g. --filter k8s_namespace_name=prod (repeatable; applies to target_info only)
+  -h, --help                          help for list
+      --instrumentation string        Which services to list: all, instrumented (target_info only), or uninstrumented (service-graph minus target_info) (default "all")
+      --json string                   Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --language string               Restrict to a single telemetry_sdk_language (e.g. go, java, nodejs)
+      --limit int                     Limit the number of services returned (0 = unlimited; applied after sorting)
+  -o, --output string                 Output format. One of: agents, json, table, wide, yaml (default "table")
+      --service-graph-metric string   Override the service-graph metric used to find uninstrumented services (advanced) (default "traces_service_graph_request_total")
+      --target-info-metric string     Override the inventory metric (advanced; mirrors the plugin's metricName:targetInfo variable) (default "target_info")
 ```
 
 ### Options inherited from parent commands

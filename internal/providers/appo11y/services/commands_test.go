@@ -63,6 +63,9 @@ func TestListOptsValidate(t *testing.T) {
 	// services-specific Validate checks without standing up the full codec setup.
 	mk := func(o listOpts) listOpts {
 		o.IO.OutputFormat = "json"
+		if o.Instrumentation == "" {
+			o.Instrumentation = instrAll
+		}
 		return o
 	}
 	tests := []struct {
@@ -74,6 +77,9 @@ func TestListOptsValidate(t *testing.T) {
 		{name: "blank metric rejected", opts: mk(listOpts{Metric: "   "}), wantErr: true},
 		{name: "negative limit rejected", opts: mk(listOpts{Metric: defaultTargetInfoMetric, Limit: -1}), wantErr: true},
 		{name: "zero limit ok (unlimited)", opts: mk(listOpts{Metric: defaultTargetInfoMetric, Limit: 0})},
+		{name: "instrumented ok", opts: mk(listOpts{Metric: defaultTargetInfoMetric, Instrumentation: instrInstrumented})},
+		{name: "uninstrumented ok", opts: mk(listOpts{Metric: defaultTargetInfoMetric, Instrumentation: instrUninstrumented})},
+		{name: "bogus instrumentation rejected", opts: mk(listOpts{Metric: defaultTargetInfoMetric, Instrumentation: "partial"}), wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -83,4 +89,50 @@ func TestListOptsValidate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestResolveItems(t *testing.T) {
+	instrumented := []Service{
+		{Name: "checkout", Language: "go", Instrumented: true},
+		{Name: "payments", Language: "java", Instrumented: true},
+	}
+	graph := []Service{
+		{Name: "payments"}, // overlaps with instrumented
+		{Name: "legacy-billing"},
+		{Name: "third-party"},
+	}
+
+	t.Run("all merges both", func(t *testing.T) {
+		got := resolveItems(instrAll, instrumented, graph)
+		if len(got) != 4 {
+			t.Fatalf("got %d, want 4: %+v", len(got), got)
+		}
+	})
+
+	t.Run("instrumented returns target_info only", func(t *testing.T) {
+		got := resolveItems(instrInstrumented, instrumented, graph)
+		if len(got) != 2 {
+			t.Fatalf("got %d, want 2: %+v", len(got), got)
+		}
+		for _, s := range got {
+			if !s.Instrumented {
+				t.Errorf("%q should be instrumented", s.Name)
+			}
+		}
+	})
+
+	t.Run("uninstrumented drops names known to target_info", func(t *testing.T) {
+		got := resolveItems(instrUninstrumented, instrumented, graph)
+		if len(got) != 2 {
+			t.Fatalf("got %d, want 2: %+v", len(got), got)
+		}
+		for _, s := range got {
+			if s.Instrumented {
+				t.Errorf("%q should be uninstrumented", s.Name)
+			}
+			if s.Name == "payments" {
+				t.Errorf("payments leaked into uninstrumented set")
+			}
+		}
+	})
 }

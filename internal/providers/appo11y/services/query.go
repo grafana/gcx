@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/promql-builder/go/promql"
@@ -20,20 +21,26 @@ import (
 // to support alternative metric modes; for now gcx hardcodes the default.
 const defaultTargetInfoMetric = "target_info"
 
+// defaultServiceGraphMetric is the Tempo-emitted service-graph total. Services
+// that appear as `server` here but never in target_info are "uninstrumented" —
+// other services trace calls to them, but they don't emit OTel telemetry of
+// their own.
+const defaultServiceGraphMetric = "traces_service_graph_request_total"
+
 // matcherPattern accepts <label><op><value> where op is one of = != =~ !~.
 // Value may be quoted or bare (bare means we'll quote it).
 var matcherPattern = regexp.MustCompile(`^([a-zA-Z_][a-zA-Z0-9_]*)(=~|!~|!=|=)(.*)$`)
 
 // groupByLabels is the projection every services discovery query uses.
 // `job` and `telemetry_sdk_language` mirror the plugin discovery query; the
-// remaining labels are surfaced in `--output wide`. Including them in the
-// group-by keeps discovery to a single round-trip — labels missing on a given
-// series simply render as empty strings, which the codec maps to "-".
+// remaining labels are surfaced by the table codec (default and wide tiers).
+// Including them in the group-by keeps discovery to a single round-trip —
+// labels missing on a given series simply render as empty strings.
 //
 // extra is appended (deduplicated) so `--columns` can pull in additional
 // target_info labels without a second query.
 func groupByLabels(extra []string) []string {
-	base := append([]string{"telemetry_sdk_language", "job"}, wideLabels()...)
+	base := append([]string{"telemetry_sdk_language", "job"}, allTargetInfoLabels()...)
 	seen := make(map[string]struct{}, len(base)+len(extra))
 	for _, l := range base {
 		seen[l] = struct{}{}
@@ -112,9 +119,10 @@ func parseFilter(raw string) (Matcher, error) {
 
 // Service is a single row in the services inventory.
 type Service struct {
-	Name     string            `json:"name" yaml:"name"`
-	Language string            `json:"language,omitempty" yaml:"language,omitempty"`
-	Labels   map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
+	Name         string            `json:"name" yaml:"name"`
+	Language     string            `json:"language,omitempty" yaml:"language,omitempty"`
+	Instrumented bool              `json:"instrumented" yaml:"instrumented"`
+	Labels       map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
 }
 
 // ServicesResponse is the top-level shape returned by the list command. Wrapping
@@ -180,7 +188,7 @@ func parseServicesResponse(resp *prometheus.QueryResponse) ([]Service, error) {
 		k := key{name: job, language: sample.Metric["telemetry_sdk_language"]}
 		svc, ok := byKey[k]
 		if !ok {
-			svc = &Service{Name: job, Language: k.language}
+			svc = &Service{Name: job, Language: k.language, Instrumented: true}
 			byKey[k] = svc
 		}
 		for lk, lv := range sample.Metric {
@@ -206,4 +214,85 @@ func parseServicesResponse(resp *prometheus.QueryResponse) ([]Service, error) {
 		return out[i].Language < out[j].Language
 	})
 	return out, nil
+}
+
+// buildServiceGraphQuery returns a PromQL expression that lists every service
+// observed as a `server` in the Tempo service-graph metric. These are the
+// candidates for "uninstrumented" status: something is tracing calls to them,
+// but they may not be emitting target_info themselves. metric defaults to
+// "traces_service_graph_request_total".
+func buildServiceGraphQuery(metric string) (string, error) {
+	if metric == "" {
+		metric = defaultServiceGraphMetric
+	}
+	expr, err := promql.Group(promql.Vector(metric)).By([]string{"server"}).Build()
+	if err != nil {
+		return "", err
+	}
+	return expr.String(), nil
+}
+
+// parseServiceGraphResponse returns one Service per distinct `server`. The
+// resulting Services are marked `Instrumented: false` — the caller is expected
+// to flip the flag when it merges these with results from a target_info query.
+func parseServiceGraphResponse(resp *prometheus.QueryResponse) ([]Service, error) {
+	if resp == nil {
+		return nil, errors.New("nil query response")
+	}
+	seen := make(map[string]struct{})
+	out := make([]Service, 0, len(resp.Data.Result))
+	for _, sample := range resp.Data.Result {
+		name := sample.Metric["server"]
+		if name == "" {
+			continue
+		}
+		if _, dup := seen[name]; dup {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, Service{Name: name, Instrumented: false})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+// nameSuffix returns the portion of name after the last `/`, or name itself
+// if there's no slash. Some stacks emit `target_info{job="<ns>/<svc>"}` while
+// service-graph metrics use `server="<svc>"` (no namespace prefix), so we use
+// the suffix to recognize that they're the same logical service.
+func nameSuffix(name string) string {
+	if idx := strings.LastIndex(name, "/"); idx >= 0 && idx < len(name)-1 {
+		return name[idx+1:]
+	}
+	return name
+}
+
+// instrumentedIndex returns a lookup of every name an instrumented service is
+// known by — the full job (`oteldemo01/checkout`) and its tail (`checkout`).
+// Service-graph entries matching either are folded into the instrumented set.
+func instrumentedIndex(instrumented []Service) map[string]struct{} {
+	idx := make(map[string]struct{}, len(instrumented)*2)
+	for _, s := range instrumented {
+		idx[s.Name] = struct{}{}
+		idx[nameSuffix(s.Name)] = struct{}{}
+	}
+	return idx
+}
+
+// mergeServiceSets joins target_info-derived services with service-graph
+// servers. target_info results win whenever a name appears in both (richer
+// metadata, known language), and the caller controls which side(s) get fed in.
+// The result is sorted by name. Matching is suffix-aware (see nameSuffix).
+func mergeServiceSets(instrumented, graph []Service) []Service {
+	idx := instrumentedIndex(instrumented)
+	out := make([]Service, 0, len(instrumented)+len(graph))
+	out = append(out, instrumented...)
+	for _, s := range graph {
+		if _, has := idx[s.Name]; has {
+			continue
+		}
+		out = append(out, s)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
 }
