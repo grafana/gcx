@@ -1,16 +1,16 @@
-## gcx kg model-rules create
+## gcx kg model-rules delete
 
-Upload model rules from a YAML file.
+Delete a custom model rules configuration by name.
 
 ```
-gcx kg model-rules create [flags]
+gcx kg model-rules delete <name> [flags]
 ```
 
 ### Options
 
 ```
-  -f, --file string   Input file (YAML)
-  -h, --help          help for create
+      --force   Skip confirmation prompt
+  -h, --help    help for delete
 ```
 
 ### Options inherited from parent commands

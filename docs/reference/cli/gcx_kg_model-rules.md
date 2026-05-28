@@ -1,6 +1,6 @@
 ## gcx kg model-rules
 
-Push model rules to the Knowledge Graph.
+Manage model rules in the Knowledge Graph.
 
 ### Options
 
@@ -24,4 +24,7 @@ Push model rules to the Knowledge Graph.
 
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
 * [gcx kg model-rules create](gcx_kg_model-rules_create.md)	 - Upload model rules from a YAML file.
+* [gcx kg model-rules delete](gcx_kg_model-rules_delete.md)	 - Delete a custom model rules configuration by name.
+* [gcx kg model-rules get](gcx_kg_model-rules_get.md)	 - Get a custom model rules configuration by name.
+* [gcx kg model-rules list](gcx_kg_model-rules_list.md)	 - List all custom model rules configurations.
 

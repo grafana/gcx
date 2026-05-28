@@ -1,16 +1,17 @@
-## gcx kg model-rules create
+## gcx kg model-rules list
 
-Upload model rules from a YAML file.
+List all custom model rules configurations.
 
 ```
-gcx kg model-rules create [flags]
+gcx kg model-rules list [flags]
 ```
 
 ### Options
 
 ```
-  -f, --file string   Input file (YAML)
-  -h, --help          help for create
+  -h, --help            help for list
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
 ```
 
 ### Options inherited from parent commands

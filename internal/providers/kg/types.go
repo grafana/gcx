@@ -1,6 +1,8 @@
 // Package kg provides a client for the Grafana Knowledge Graph (Asserts) API.
 package kg
 
+import "encoding/json"
+
 // Status represents the Knowledge Graph stack status.
 type Status struct {
 	Status                  string              `json:"status"`
@@ -421,4 +423,19 @@ type KGMetadataOutput struct {
 	Logs     []LogDrilldownConfig     `json:"logConfigs,omitempty"`
 	Traces   []TraceDrilldownConfig   `json:"traceConfigs,omitempty"`
 	Profiles []ProfileDrilldownConfig `json:"profileConfigs,omitempty"`
+}
+
+// ModelRuleNames is the response shape for GET /v1/config/model-rules (ModelRuleNamesDto).
+type ModelRuleNames struct {
+	RuleNames []string `json:"ruleNames" yaml:"ruleNames"`
+}
+
+// ModelRules is a single custom model rules configuration (ModelRulesDto).
+// Entities and Relations are kept as raw JSON to preserve fidelity without
+// coupling this CLI to the full nested DTO tree.
+type ModelRules struct {
+	Name      string          `json:"name" yaml:"name"`
+	Entities  json.RawMessage `json:"entities,omitempty" yaml:"entities,omitempty"`
+	Relations json.RawMessage `json:"relations,omitempty" yaml:"relations,omitempty"`
+	ManagedBy string          `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
 }

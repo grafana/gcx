@@ -679,8 +679,9 @@ func (c *RuleWideTableCodec) Decode(_ io.Reader, _ any) error {
 func newModelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "model-rules",
-		Short: "Push model rules to the Knowledge Graph.",
+		Short: "Manage model rules in the Knowledge Graph.",
 	}
+
 	var fileFlag string
 	createCmd := &cobra.Command{
 		Use:   "create",
@@ -707,8 +708,132 @@ func newModelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	}
 	createCmd.Flags().StringVarP(&fileFlag, "file", "f", "", "Input file (YAML)")
 	_ = createCmd.MarkFlagRequired("file")
-	cmd.AddCommand(createCmd)
+
+	listOpts := &modelRulesListOpts{}
+	listCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List all custom model rules configurations.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := listOpts.IO.Validate(); err != nil {
+				return err
+			}
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			names, err := client.ListModelRules(cmd.Context())
+			if err != nil {
+				return err
+			}
+			return listOpts.IO.Encode(cmd.OutOrStdout(), names)
+		},
+	}
+	listOpts.setup(listCmd.Flags())
+
+	getOpts := &modelRulesGetOpts{}
+	getCmd := &cobra.Command{
+		Use:   "get <name>",
+		Short: "Get a custom model rules configuration by name.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := getOpts.IO.Validate(); err != nil {
+				return err
+			}
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			rules, err := client.GetModelRules(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			return getOpts.IO.Encode(cmd.OutOrStdout(), rules)
+		},
+	}
+	getOpts.setup(getCmd.Flags())
+
+	var force bool
+	deleteCmd := &cobra.Command{
+		Use:   "delete <name>",
+		Short: "Delete a custom model rules configuration by name.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), force,
+				fmt.Sprintf("Delete model rules %q?", name))
+			if err != nil {
+				return err
+			}
+			if !proceed {
+				return nil
+			}
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			if err := client.DeleteModelRules(cmd.Context(), name); err != nil {
+				return err
+			}
+			cmdio.Success(cmd.OutOrStdout(), "Model rules %q deleted", name)
+			return nil
+		},
+	}
+	deleteCmd.Flags().BoolVar(&force, "force", false, "Skip confirmation prompt")
+
+	cmd.AddCommand(createCmd, listCmd, getCmd, deleteCmd)
 	return cmd
+}
+
+type modelRulesListOpts struct {
+	IO cmdio.Options
+}
+
+func (o *modelRulesListOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("table", &ModelRulesNameTableCodec{})
+	o.IO.DefaultFormat("table")
+	o.IO.BindFlags(flags)
+}
+
+type modelRulesGetOpts struct {
+	IO cmdio.Options
+}
+
+func (o *modelRulesGetOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("yaml")
+	o.IO.BindFlags(flags)
+}
+
+// ModelRulesNameTableCodec renders model rule names as a single-column table.
+type ModelRulesNameTableCodec struct{}
+
+func (c *ModelRulesNameTableCodec) Format() format.Format { return "table" }
+
+func (c *ModelRulesNameTableCodec) Encode(w io.Writer, v any) error {
+	names, ok := v.([]string)
+	if !ok {
+		return errors.New("invalid data type for table codec: expected []string")
+	}
+	t := style.NewTable("NAME")
+	for _, n := range names {
+		t.Row(n)
+	}
+	return t.Render(w)
+}
+
+func (c *ModelRulesNameTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
 }
 
 func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {

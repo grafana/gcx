@@ -37,7 +37,8 @@ const (
 	searchSamplePath     = searchPath + "/sample"
 	rulesPath            = pluginResourcePath + "/asserts/api-server/v1/config/prom-rules"
 	ruleByNameFmt        = rulesPath + "/%s"
-	modelRulesPath       = pluginResourcePath + "/asserts/api-server/v1/config/model-rules/"
+	modelRulesPath       = pluginResourcePath + "/asserts/api-server/v1/config/model-rules"
+	modelRulesByNameFmt  = modelRulesPath + "/%s"
 	suppressionPath      = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alert"
 	suppressionByNameFmt = suppressionPath + "/%s"
 	suppressionsPath     = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alerts"
@@ -244,6 +245,43 @@ func (c *Client) UploadPromRules(ctx context.Context, yamlContent string) error 
 // UploadModelRules uploads model rules configuration.
 func (c *Client) UploadModelRules(ctx context.Context, yamlContent string) error {
 	return c.doYAML(ctx, http.MethodPut, modelRulesPath, yamlContent)
+}
+
+// ListModelRules returns the names of all custom model rule configurations for the tenant.
+func (c *Client) ListModelRules(ctx context.Context) ([]string, error) {
+	var result ModelRuleNames
+	if err := c.getJSON(ctx, modelRulesPath, &result); err != nil {
+		return nil, fmt.Errorf("kg: list model rules: %w", err)
+	}
+	return result.RuleNames, nil
+}
+
+// GetModelRules retrieves a single custom model rules configuration by name.
+func (c *Client) GetModelRules(ctx context.Context, name string) (*ModelRules, error) {
+	var result ModelRules
+	path := fmt.Sprintf(modelRulesByNameFmt, url.PathEscape(name))
+	if err := c.getJSON(ctx, path, &result); err != nil {
+		return nil, fmt.Errorf("kg: get model rules %q: %w", name, err)
+	}
+	return &result, nil
+}
+
+// DeleteModelRules deletes a custom model rules configuration by name.
+func (c *Client) DeleteModelRules(ctx context.Context, name string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
+		c.host+fmt.Sprintf(modelRulesByNameFmt, url.PathEscape(name)), nil)
+	if err != nil {
+		return fmt.Errorf("kg: create request: %w", err)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("kg: execute request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return readError(resp)
+	}
+	return nil
 }
 
 // Suppression represents a single disabled-alert configuration entry.

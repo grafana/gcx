@@ -27,7 +27,7 @@ Manage Grafana Knowledge Graph rules, entities, and insights
 * [gcx kg entities](gcx_kg_entities.md)	 - Manage Knowledge Graph entities.
 * [gcx kg insights](gcx_kg_insights.md)	 - Fetch chart data and source metrics for an active insight.
 * [gcx kg meta](gcx_kg_meta.md)	 - Show Knowledge Graph metadata: entity types, valid env/namespace/site values, and telemetry query configs.
-* [gcx kg model-rules](gcx_kg_model-rules.md)	 - Push model rules to the Knowledge Graph.
+* [gcx kg model-rules](gcx_kg_model-rules.md)	 - Manage model rules in the Knowledge Graph.
 * [gcx kg open](gcx_kg_open.md)	 - Open the Knowledge Graph app in the browser.
 * [gcx kg prom-rules](gcx_kg_prom-rules.md)	 - Manage Knowledge Graph Custom Prometheus rules.
 * [gcx kg relabel-rules](gcx_kg_relabel-rules.md)	 - Inspect Mimir relabel rules used by the Knowledge Graph.

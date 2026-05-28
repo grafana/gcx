@@ -1,16 +1,17 @@
-## gcx kg model-rules create
+## gcx kg model-rules get
 
-Upload model rules from a YAML file.
+Get a custom model rules configuration by name.
 
 ```
-gcx kg model-rules create [flags]
+gcx kg model-rules get <name> [flags]
 ```
 
 ### Options
 
 ```
-  -f, --file string   Input file (YAML)
-  -h, --help          help for create
+  -h, --help            help for get
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
 ```
 
 ### Options inherited from parent commands
