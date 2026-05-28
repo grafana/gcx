@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strconv"
 	"strings"
 
 	internalconfig "github.com/grafana/gcx/internal/config"
@@ -35,11 +36,15 @@ type listOpts struct {
 	Metric     string
 	Filters    []string
 	Language   string
+	Env        string
+	Columns    []string
+	Limit      int
+	Count      bool
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &servicesTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &servicesTableCodec{Wide: true})
+	o.IO.RegisterCustomCodec("table", &servicesTableCodec{opts: o})
+	o.IO.RegisterCustomCodec("wide", &servicesTableCodec{opts: o, Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 
@@ -47,6 +52,10 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.Metric, "target-info-metric", defaultTargetInfoMetric, "Override the inventory metric (advanced; mirrors the plugin's metricName:targetInfo variable)")
 	flags.StringArrayVar(&o.Filters, "filter", nil, "Restrict to services matching a label matcher, e.g. --filter k8s_namespace_name=prod (repeatable)")
 	flags.StringVar(&o.Language, "language", "", "Restrict to a single telemetry_sdk_language (e.g. go, java, nodejs)")
+	flags.StringVar(&o.Env, "env", "", "Restrict to a single deployment_environment (e.g. production)")
+	flags.StringSliceVar(&o.Columns, "columns", nil, "Extra target_info labels to surface as table columns (comma-separated)")
+	flags.IntVar(&o.Limit, "limit", 0, "Limit the number of services returned (0 = unlimited; applied after sorting)")
+	flags.BoolVar(&o.Count, "count", false, "Print a per-language summary instead of the full list")
 }
 
 func (o *listOpts) Validate() error {
@@ -56,11 +65,14 @@ func (o *listOpts) Validate() error {
 	if strings.TrimSpace(o.Metric) == "" {
 		return errors.New("--target-info-metric must not be empty")
 	}
+	if o.Limit < 0 {
+		return errors.New("--limit must be zero or positive")
+	}
 	return nil
 }
 
 func (o *listOpts) buildFilters() ([]string, error) {
-	out := make([]string, 0, len(o.Filters)+1)
+	out := make([]string, 0, len(o.Filters)+2)
 	for _, f := range o.Filters {
 		parsed, err := parseFilter(f)
 		if err != nil {
@@ -70,6 +82,13 @@ func (o *listOpts) buildFilters() ([]string, error) {
 	}
 	if o.Language != "" {
 		parsed, err := parseFilter("telemetry_sdk_language=" + o.Language)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, parsed)
+	}
+	if o.Env != "" {
+		parsed, err := parseFilter("deployment_environment=" + o.Env)
 		if err != nil {
 			return nil, err
 		}
@@ -92,8 +111,14 @@ Each result row is one service.`,
   # List all services in the current stack
   gcx appo11y services list
 
-  # Filter to Go services in a Kubernetes namespace
-  gcx appo11y services list --language go --filter k8s_namespace_name=production
+  # Filter to Go services running in production
+  gcx appo11y services list --language go --env production
+
+  # Show the top 20 services with extra target_info labels
+  gcx appo11y services list --limit 20 --columns service_version,k8s_pod_name
+
+  # Per-language summary instead of the full list
+  gcx appo11y services list --count
 
   # Pin a datasource and output JSON
   gcx appo11y services list -d grafanacloud-prom -o json`,
@@ -135,7 +160,7 @@ func runList(opts *listOpts) func(*cobra.Command, []string) error {
 		if err != nil {
 			return err
 		}
-		expr := buildServicesQuery(opts.Metric, filters)
+		expr := buildServicesQuery(opts.Metric, filters, opts.Columns)
 
 		client, err := prometheus.NewClient(cfg)
 		if err != nil {
@@ -152,14 +177,23 @@ func runList(opts *listOpts) func(*cobra.Command, []string) error {
 			return fmt.Errorf("failed to parse services response: %w", err)
 		}
 
+		if opts.Limit > 0 && len(items) > opts.Limit {
+			items = items[:opts.Limit]
+		}
+
+		if opts.Count {
+			return opts.IO.Encode(cmd.OutOrStdout(), summarizeByLanguage(items))
+		}
 		return opts.IO.Encode(cmd.OutOrStdout(), &ServicesResponse{Items: items})
 	}
 }
 
-// servicesTableCodec renders a ServicesResponse as a tabular view. Default
-// columns: NAME, LANGUAGE. Wide adds the most useful resource-attribute
-// labels surfaced in target_info.
+// servicesTableCodec renders services data as a tabular view. It type-switches
+// on the encoded value: `*ServicesResponse` → rows; `*CountSummary` → counts.
+// opts is a back-reference so the codec sees flag values that are populated
+// after BindFlags but before Encode (e.g. --columns, --count).
 type servicesTableCodec struct {
+	opts *listOpts
 	Wide bool
 }
 
@@ -186,17 +220,24 @@ func wideLabels() []string {
 }
 
 func (c *servicesTableCodec) Encode(w io.Writer, v any) error {
-	resp, ok := v.(*ServicesResponse)
-	if !ok {
+	switch data := v.(type) {
+	case *CountSummary:
+		return encodeCountTable(w, data)
+	case *ServicesResponse:
+		return c.encodeServicesTable(w, data)
+	default:
 		return fmt.Errorf("invalid data type for services table codec: %T", v)
 	}
+}
 
+func (c *servicesTableCodec) encodeServicesTable(w io.Writer, resp *ServicesResponse) error {
 	if len(resp.Items) == 0 {
 		_, err := fmt.Fprintln(w, "No services discovered. Verify your stack is receiving OTel target_info telemetry.")
 		return err
 	}
 
-	if !c.Wide {
+	extra := c.extraColumns()
+	if !c.Wide && len(extra) == 0 {
 		t := style.NewTable("NAME", "LANGUAGE")
 		for _, s := range resp.Items {
 			t.Row(s.Name, fallback(s.Language, "-"))
@@ -204,7 +245,10 @@ func (c *servicesTableCodec) Encode(w io.Writer, v any) error {
 		return t.Render(w)
 	}
 
-	labels := wideLabels()
+	labels := extra
+	if c.Wide {
+		labels = append(wideLabels(), extra...)
+	}
 	headers := append([]string{"NAME", "LANGUAGE"}, upperHeaders(labels)...)
 	t := style.NewTable(headers...)
 	for _, s := range resp.Items {
@@ -214,6 +258,26 @@ func (c *servicesTableCodec) Encode(w io.Writer, v any) error {
 		}
 		t.Row(row...)
 	}
+	return t.Render(w)
+}
+
+func (c *servicesTableCodec) extraColumns() []string {
+	if c.opts == nil {
+		return nil
+	}
+	return c.opts.Columns
+}
+
+func encodeCountTable(w io.Writer, s *CountSummary) error {
+	if s == nil || s.Total == 0 {
+		_, err := fmt.Fprintln(w, "No services discovered. Verify your stack is receiving OTel target_info telemetry.")
+		return err
+	}
+	t := style.NewTable("LANGUAGE", "COUNT")
+	for _, row := range s.ByLanguage {
+		t.Row(row.Language, strconv.Itoa(row.Count))
+	}
+	t.Row("TOTAL", strconv.Itoa(s.Total))
 	return t.Render(w)
 }
 

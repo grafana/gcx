@@ -13,6 +13,7 @@ func TestBuildServicesQuery(t *testing.T) {
 		name    string
 		metric  string
 		filters []string
+		extra   []string
 		want    string
 	}{
 		{
@@ -34,14 +35,60 @@ func TestBuildServicesQuery(t *testing.T) {
 			filters: []string{`k8s_namespace_name="prod"`, `telemetry_sdk_language="go"`},
 			want:    wantGroup + ` (target_info{k8s_namespace_name="prod", telemetry_sdk_language="go"})`,
 		},
+		{
+			name:  "extra columns appended once",
+			extra: []string{"service_version", "k8s_pod_name", "service_namespace"},
+			want:  "group by (telemetry_sdk_language, job, service_namespace, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version, k8s_pod_name) (target_info)",
+		},
+		{
+			name:  "extra columns with empty string ignored",
+			extra: []string{"", "service_version"},
+			want:  "group by (telemetry_sdk_language, job, service_namespace, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version) (target_info)",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildServicesQuery(tt.metric, tt.filters)
+			got := buildServicesQuery(tt.metric, tt.filters, tt.extra)
 			if got != tt.want {
 				t.Errorf("buildServicesQuery() =\n  %q\nwant\n  %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestSummarizeByLanguage(t *testing.T) {
+	items := []Service{
+		{Name: "a", Language: "go"},
+		{Name: "b", Language: "go"},
+		{Name: "c", Language: "java"},
+		{Name: "d", Language: "java"},
+		{Name: "e", Language: "java"},
+		{Name: "f", Language: ""},
+	}
+	got := summarizeByLanguage(items)
+	if got.Total != 6 {
+		t.Fatalf("Total = %d, want 6", got.Total)
+	}
+	if len(got.ByLanguage) != 3 {
+		t.Fatalf("ByLanguage len = %d, want 3", len(got.ByLanguage))
+	}
+	// Sorted by count desc, then language asc.
+	want := []LanguageCount{
+		{Language: "java", Count: 3},
+		{Language: "go", Count: 2},
+		{Language: "(unknown)", Count: 1},
+	}
+	for i, w := range want {
+		if got.ByLanguage[i] != w {
+			t.Errorf("ByLanguage[%d] = %+v, want %+v", i, got.ByLanguage[i], w)
+		}
+	}
+}
+
+func TestSummarizeByLanguage_Empty(t *testing.T) {
+	got := summarizeByLanguage(nil)
+	if got.Total != 0 || len(got.ByLanguage) != 0 {
+		t.Errorf("expected empty summary, got %+v", got)
 	}
 }
 

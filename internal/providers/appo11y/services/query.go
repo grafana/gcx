@@ -24,13 +24,31 @@ const defaultTargetInfoMetric = "target_info"
 // Value may be quoted or bare (bare means we'll quote it).
 var matcherPattern = regexp.MustCompile(`^([a-zA-Z_][a-zA-Z0-9_]*)(=~|!~|!=|=)(.*)$`)
 
-// groupByLabels is the projection that every services discovery query uses.
+// groupByLabels is the projection every services discovery query uses.
 // `job` and `telemetry_sdk_language` mirror the plugin discovery query; the
 // remaining labels are surfaced in `--output wide`. Including them in the
 // group-by keeps discovery to a single round-trip — labels missing on a given
 // series simply render as empty strings, which the codec maps to "-".
-func groupByLabels() []string {
-	return append([]string{"telemetry_sdk_language", "job"}, wideLabels()...)
+//
+// extra is appended (deduplicated) so `--columns` can pull in additional
+// target_info labels without a second query.
+func groupByLabels(extra []string) []string {
+	base := append([]string{"telemetry_sdk_language", "job"}, wideLabels()...)
+	seen := make(map[string]struct{}, len(base)+len(extra))
+	for _, l := range base {
+		seen[l] = struct{}{}
+	}
+	for _, l := range extra {
+		if l == "" {
+			continue
+		}
+		if _, ok := seen[l]; ok {
+			continue
+		}
+		seen[l] = struct{}{}
+		base = append(base, l)
+	}
+	return base
 }
 
 // buildServicesQuery returns a PromQL expression that groups the target_info
@@ -39,8 +57,9 @@ func groupByLabels() []string {
 // also project the metadata labels the plugin enriches in a second query.
 //
 // filters are PromQL matcher fragments already validated by parseFilter.
-// metric defaults to "target_info".
-func buildServicesQuery(metric string, filters []string) string {
+// metric defaults to "target_info". extraLabels are appended to the group-by
+// projection for `--columns`.
+func buildServicesQuery(metric string, filters []string, extraLabels []string) string {
 	if metric == "" {
 		metric = defaultTargetInfoMetric
 	}
@@ -48,7 +67,7 @@ func buildServicesQuery(metric string, filters []string) string {
 	if len(filters) > 0 {
 		selector = fmt.Sprintf("%s{%s}", metric, strings.Join(filters, ", "))
 	}
-	return fmt.Sprintf("group by (%s) (%s)", strings.Join(groupByLabels(), ", "), selector)
+	return fmt.Sprintf("group by (%s) (%s)", strings.Join(groupByLabels(extraLabels), ", "), selector)
 }
 
 // parseFilter validates a single `label<op>value` filter and returns a PromQL
@@ -81,6 +100,43 @@ type Service struct {
 // truncation flags) without changing the JSON contract.
 type ServicesResponse struct {
 	Items []Service `json:"items" yaml:"items"`
+}
+
+// LanguageCount is one row of a per-language summary.
+type LanguageCount struct {
+	Language string `json:"language" yaml:"language"`
+	Count    int    `json:"count" yaml:"count"`
+}
+
+// CountSummary is the alternate response shape emitted in `--count` mode.
+type CountSummary struct {
+	Total      int             `json:"total" yaml:"total"`
+	ByLanguage []LanguageCount `json:"by_language" yaml:"by_language"`
+}
+
+// summarizeByLanguage rolls services into a CountSummary, sorted by count desc
+// then language asc. An empty language becomes "(unknown)" so the row never
+// disappears in the table view.
+func summarizeByLanguage(items []Service) *CountSummary {
+	counts := map[string]int{}
+	for _, s := range items {
+		lang := s.Language
+		if lang == "" {
+			lang = "(unknown)"
+		}
+		counts[lang]++
+	}
+	rows := make([]LanguageCount, 0, len(counts))
+	for lang, n := range counts {
+		rows = append(rows, LanguageCount{Language: lang, Count: n})
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Count != rows[j].Count {
+			return rows[i].Count > rows[j].Count
+		}
+		return rows[i].Language < rows[j].Language
+	})
+	return &CountSummary{Total: len(items), ByLanguage: rows}
 }
 
 // parseServicesResponse converts a Prometheus instant-query result into a
