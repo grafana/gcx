@@ -272,16 +272,16 @@ func (c *servicesTableCodec) Decode(io.Reader, any) error {
 }
 
 // defaultLabels are the resource-attribute labels surfaced in the default
-// table view. They name the *what* of a service (its OTel namespace) and the
-// *where* (its deployment environment) — context the plugin's UI also leads
-// with. Both deployment_environment variants are pulled so newer SDKs
-// (deployment.environment.name) and older ones (deployment.environment) both
-// land somewhere.
+// table view. service_namespace is the plugin's NAMESPACE column. Both
+// deployment_environment variants are pulled so we can resolve the
+// environment column via environmentValue — older stacks emit
+// deployment.environment (the plugin's default), newer SDKs emit
+// deployment.environment.name.
 func defaultLabels() []string {
 	return []string{
 		"service_namespace",
-		"deployment_environment_name",
 		"deployment_environment",
+		"deployment_environment_name",
 	}
 }
 
@@ -348,14 +348,16 @@ func (c *servicesTableCodec) encodeServicesTable(w io.Writer, resp *ServicesResp
 	return t.Render(w)
 }
 
-// environmentValue prefers the modern deployment.environment.name attribute
-// and falls back to the legacy deployment.environment when only the old one
-// is set. Either may be empty.
+// environmentValue mirrors the plugin's environment-attribute logic: prefer the
+// legacy deployment.environment (the plugin's DEFAULT_ENVIRONMENT_ATTRIBUTE in
+// plugin/src/constants/semantics.ts), and fall back to the current-semconv
+// deployment.environment.name so stacks on the newer OTel SDK still surface a
+// value. Either may be empty.
 func environmentValue(labels map[string]string) string {
-	if v := labels["deployment_environment_name"]; v != "" {
+	if v := labels["deployment_environment"]; v != "" {
 		return v
 	}
-	return labels["deployment_environment"]
+	return labels["deployment_environment_name"]
 }
 
 func instrumentationStatus(instrumented bool) string {

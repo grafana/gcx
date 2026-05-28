@@ -7,7 +7,7 @@ import (
 )
 
 func TestBuildServicesQuery(t *testing.T) {
-	wantGroup := "group by (telemetry_sdk_language, job, service_namespace, deployment_environment_name, deployment_environment, k8s_namespace_name, k8s_cluster_name, cloud_region)"
+	wantGroup := "group by (telemetry_sdk_language, job, service_namespace, deployment_environment, deployment_environment_name, k8s_namespace_name, k8s_cluster_name, cloud_region)"
 
 	tests := []struct {
 		name     string
@@ -51,12 +51,12 @@ func TestBuildServicesQuery(t *testing.T) {
 		{
 			name:  "extra columns appended once",
 			extra: []string{"service_version", "k8s_pod_name", "service_namespace"},
-			want:  "group by (telemetry_sdk_language, job, service_namespace, deployment_environment_name, deployment_environment, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version, k8s_pod_name) (target_info)",
+			want:  "group by (telemetry_sdk_language, job, service_namespace, deployment_environment, deployment_environment_name, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version, k8s_pod_name) (target_info)",
 		},
 		{
 			name:  "extra columns with empty string ignored",
 			extra: []string{"", "service_version"},
-			want:  "group by (telemetry_sdk_language, job, service_namespace, deployment_environment_name, deployment_environment, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version) (target_info)",
+			want:  "group by (telemetry_sdk_language, job, service_namespace, deployment_environment, deployment_environment_name, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version) (target_info)",
 		},
 	}
 	for _, tt := range tests {
