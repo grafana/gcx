@@ -3,6 +3,7 @@ package appo11y
 import (
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/appo11y/overrides"
+	"github.com/grafana/gcx/internal/providers/appo11y/services"
 	"github.com/grafana/gcx/internal/providers/appo11y/settings"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
@@ -49,6 +50,7 @@ func (p *AppO11yProvider) Commands() []*cobra.Command {
 	loader.BindFlags(cmd.PersistentFlags())
 
 	cmd.AddCommand(overrides.Commands())
+	cmd.AddCommand(services.Commands())
 	cmd.AddCommand(settings.Commands())
 	return []*cobra.Command{cmd}
 }

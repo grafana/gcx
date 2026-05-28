@@ -114,7 +114,7 @@ internal/
 │   ├── kg/         Knowledge Graph (Asserts) provider
 │   ├── logs/       Logs signal provider (Loki queries + Adaptive Logs commands)
 │   ├── metrics/    Metrics signal provider (Prometheus queries + Adaptive Metrics commands)
-│   ├── appo11y/    App Observability provider (overrides, settings — singleton resources)
+│   ├── appo11y/    App Observability provider (overrides, settings — singleton resources; services discovery via target_info)
 │   ├── profiles/   Profiles signal provider (Pyroscope queries + adaptive stub)
 │   ├── aio11y/     AI Observability provider (conversations, agents, generations, evaluators, rules, hook-rules (guards), templates, scores, judge, saved-conversations, collections, experiments — via grafana-sigil-app plugin API)
 │   ├── slo/        SLO provider (definitions, reports)
