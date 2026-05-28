@@ -10,30 +10,43 @@ func TestBuildServicesQuery(t *testing.T) {
 	wantGroup := "group by (telemetry_sdk_language, job, service_namespace, k8s_namespace_name, k8s_cluster_name, cloud_region)"
 
 	tests := []struct {
-		name    string
-		metric  string
-		filters []string
-		extra   []string
-		want    string
+		name     string
+		metric   string
+		matchers []Matcher
+		extra    []string
+		want     string
 	}{
 		{
-			name: "default metric, no filters",
+			name: "default metric, no matchers",
 			want: wantGroup + ` (target_info)`,
 		},
 		{
-			name:   "explicit metric, no filters",
+			name:   "explicit metric, no matchers",
 			metric: "otel_target_info",
 			want:   wantGroup + ` (otel_target_info)`,
 		},
 		{
-			name:    "default metric with single filter",
-			filters: []string{`k8s_namespace_name="prod"`},
-			want:    wantGroup + ` (target_info{k8s_namespace_name="prod"})`,
+			name:     "default metric with single matcher",
+			matchers: []Matcher{{Label: "k8s_namespace_name", Op: "=", Value: "prod"}},
+			want:     wantGroup + ` (target_info{k8s_namespace_name="prod"})`,
 		},
 		{
-			name:    "default metric with multiple filters",
-			filters: []string{`k8s_namespace_name="prod"`, `telemetry_sdk_language="go"`},
-			want:    wantGroup + ` (target_info{k8s_namespace_name="prod", telemetry_sdk_language="go"})`,
+			name: "default metric with multiple matchers",
+			matchers: []Matcher{
+				{Label: "k8s_namespace_name", Op: "=", Value: "prod"},
+				{Label: "telemetry_sdk_language", Op: "=", Value: "go"},
+			},
+			want: wantGroup + ` (target_info{k8s_namespace_name="prod",telemetry_sdk_language="go"})`,
+		},
+		{
+			name: "all matcher operators",
+			matchers: []Matcher{
+				{Label: "a", Op: "=", Value: "x"},
+				{Label: "b", Op: "!=", Value: "y"},
+				{Label: "c", Op: "=~", Value: "z.*"},
+				{Label: "d", Op: "!~", Value: "w.*"},
+			},
+			want: wantGroup + ` (target_info{a="x",b!="y",c=~"z.*",d!~"w.*"})`,
 		},
 		{
 			name:  "extra columns appended once",
@@ -48,7 +61,10 @@ func TestBuildServicesQuery(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildServicesQuery(tt.metric, tt.filters, tt.extra)
+			got, err := buildServicesQuery(tt.metric, tt.matchers, tt.extra)
+			if err != nil {
+				t.Fatalf("buildServicesQuery() err = %v", err)
+			}
 			if got != tt.want {
 				t.Errorf("buildServicesQuery() =\n  %q\nwant\n  %q", got, tt.want)
 			}
@@ -96,15 +112,15 @@ func TestParseFilter(t *testing.T) {
 	tests := []struct {
 		name    string
 		in      string
-		want    string
+		want    Matcher
 		wantErr bool
 	}{
-		{name: "bare equals", in: "k8s_namespace_name=prod", want: `k8s_namespace_name="prod"`},
-		{name: "quoted equals", in: `k8s_namespace_name="prod"`, want: `k8s_namespace_name="prod"`},
-		{name: "regex match", in: "service_namespace=~payments.*", want: `service_namespace=~"payments.*"`},
-		{name: "negative match", in: "telemetry_sdk_language!=java", want: `telemetry_sdk_language!="java"`},
-		{name: "negative regex", in: "job!~test_.*", want: `job!~"test_.*"`},
-		{name: "value with quote escaped", in: `cloud_region=eu"west`, want: `cloud_region="eu\"west"`},
+		{name: "bare equals", in: "k8s_namespace_name=prod", want: Matcher{Label: "k8s_namespace_name", Op: "=", Value: "prod"}},
+		{name: "quoted equals", in: `k8s_namespace_name="prod"`, want: Matcher{Label: "k8s_namespace_name", Op: "=", Value: "prod"}},
+		{name: "regex match", in: "service_namespace=~payments.*", want: Matcher{Label: "service_namespace", Op: "=~", Value: "payments.*"}},
+		{name: "negative match", in: "telemetry_sdk_language!=java", want: Matcher{Label: "telemetry_sdk_language", Op: "!=", Value: "java"}},
+		{name: "negative regex", in: "job!~test_.*", want: Matcher{Label: "job", Op: "!~", Value: "test_.*"}},
+		{name: "value with embedded quote", in: `cloud_region=eu"west`, want: Matcher{Label: "cloud_region", Op: "=", Value: `eu"west`}},
 		{name: "invalid: missing operator", in: "k8s_namespace_name", wantErr: true},
 		{name: "invalid: bad label", in: "1foo=bar", wantErr: true},
 	}
@@ -115,7 +131,7 @@ func TestParseFilter(t *testing.T) {
 				t.Fatalf("parseFilter() err = %v, wantErr %v", err, tt.wantErr)
 			}
 			if !tt.wantErr && got != tt.want {
-				t.Errorf("parseFilter() = %q, want %q", got, tt.want)
+				t.Errorf("parseFilter() = %+v, want %+v", got, tt.want)
 			}
 		})
 	}

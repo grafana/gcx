@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
@@ -71,8 +72,8 @@ func (o *listOpts) Validate() error {
 	return nil
 }
 
-func (o *listOpts) buildFilters() ([]string, error) {
-	out := make([]string, 0, len(o.Filters)+2)
+func (o *listOpts) buildFilters() ([]Matcher, error) {
+	out := make([]Matcher, 0, len(o.Filters)+2)
 	for _, f := range o.Filters {
 		parsed, err := parseFilter(f)
 		if err != nil {
@@ -81,18 +82,10 @@ func (o *listOpts) buildFilters() ([]string, error) {
 		out = append(out, parsed)
 	}
 	if o.Language != "" {
-		parsed, err := parseFilter("telemetry_sdk_language=" + o.Language)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, parsed)
+		out = append(out, Matcher{Label: "telemetry_sdk_language", Op: "=", Value: o.Language})
 	}
 	if o.Env != "" {
-		parsed, err := parseFilter("deployment_environment=" + o.Env)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, parsed)
+		out = append(out, Matcher{Label: "deployment_environment", Op: "=", Value: o.Env})
 	}
 	return out, nil
 }
@@ -124,6 +117,10 @@ Each result row is one service.`,
   gcx appo11y services list -d grafanacloud-prom -o json`,
 		Args: cobra.NoArgs,
 		RunE: runList(opts),
+		Annotations: map[string]string{
+			agent.AnnotationTokenCost: "small",
+			agent.AnnotationLLMHint:   `gcx appo11y services list -o json; gcx appo11y services list --count -o json; gcx appo11y services list --env production --language go -o json`,
+		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
@@ -160,7 +157,10 @@ func runList(opts *listOpts) func(*cobra.Command, []string) error {
 		if err != nil {
 			return err
 		}
-		expr := buildServicesQuery(opts.Metric, filters, opts.Columns)
+		expr, err := buildServicesQuery(opts.Metric, filters, opts.Columns)
+		if err != nil {
+			return fmt.Errorf("failed to build services discovery query: %w", err)
+		}
 
 		client, err := prometheus.NewClient(cfg)
 		if err != nil {

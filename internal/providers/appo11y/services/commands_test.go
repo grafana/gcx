@@ -8,7 +8,7 @@ func TestBuildFilters(t *testing.T) {
 	tests := []struct {
 		name string
 		opts listOpts
-		want []string
+		want []Matcher
 	}{
 		{
 			name: "empty",
@@ -18,12 +18,12 @@ func TestBuildFilters(t *testing.T) {
 		{
 			name: "language only",
 			opts: listOpts{Metric: defaultTargetInfoMetric, Language: "go"},
-			want: []string{`telemetry_sdk_language="go"`},
+			want: []Matcher{{Label: "telemetry_sdk_language", Op: "=", Value: "go"}},
 		},
 		{
 			name: "env only",
 			opts: listOpts{Metric: defaultTargetInfoMetric, Env: "production"},
-			want: []string{`deployment_environment="production"`},
+			want: []Matcher{{Label: "deployment_environment", Op: "=", Value: "production"}},
 		},
 		{
 			name: "language and env combined with raw filter",
@@ -33,10 +33,10 @@ func TestBuildFilters(t *testing.T) {
 				Language: "go",
 				Env:      "production",
 			},
-			want: []string{
-				`k8s_namespace_name="prod"`,
-				`telemetry_sdk_language="go"`,
-				`deployment_environment="production"`,
+			want: []Matcher{
+				{Label: "k8s_namespace_name", Op: "=", Value: "prod"},
+				{Label: "telemetry_sdk_language", Op: "=", Value: "go"},
+				{Label: "deployment_environment", Op: "=", Value: "production"},
 			},
 		},
 	}
@@ -47,11 +47,11 @@ func TestBuildFilters(t *testing.T) {
 				t.Fatalf("buildFilters() err = %v", err)
 			}
 			if len(got) != len(tt.want) {
-				t.Fatalf("got %d filters, want %d: %v", len(got), len(tt.want), got)
+				t.Fatalf("got %d matchers, want %d: %+v", len(got), len(tt.want), got)
 			}
 			for i := range got {
 				if got[i] != tt.want[i] {
-					t.Errorf("filter[%d] = %q, want %q", i, got[i], tt.want[i])
+					t.Errorf("matcher[%d] = %+v, want %+v", i, got[i], tt.want[i])
 				}
 			}
 		})

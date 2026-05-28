@@ -10,9 +10,9 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
-	"strings"
 
 	"github.com/grafana/gcx/internal/query/prometheus"
+	"github.com/grafana/promql-builder/go/promql"
 )
 
 // defaultTargetInfoMetric is the canonical OpenTelemetry target_info metric.
@@ -51,41 +51,63 @@ func groupByLabels(extra []string) []string {
 	return base
 }
 
+// Matcher is a parsed `--filter` triple. Quoting and escaping happen in the
+// promql-builder, so Value is held as a raw unquoted string.
+type Matcher struct {
+	Label string
+	Op    string // "=", "!=", "=~", "!~"
+	Value string
+}
+
+func (m Matcher) apply(v *promql.VectorExprBuilder) *promql.VectorExprBuilder {
+	switch m.Op {
+	case "!=":
+		return v.LabelNeq(m.Label, m.Value)
+	case "=~":
+		return v.LabelMatchRegexp(m.Label, m.Value)
+	case "!~":
+		return v.LabelNotMatchRegexp(m.Label, m.Value)
+	default: // "="
+		return v.Label(m.Label, m.Value)
+	}
+}
+
 // buildServicesQuery returns a PromQL expression that groups the target_info
 // inventory. It mirrors the plugin query at
 // plugin/src/modules/services/utils/servicesQueryBuilder.ts, expanded to
 // also project the metadata labels the plugin enriches in a second query.
 //
-// filters are PromQL matcher fragments already validated by parseFilter.
-// metric defaults to "target_info". extraLabels are appended to the group-by
-// projection for `--columns`.
-func buildServicesQuery(metric string, filters []string, extraLabels []string) string {
+// matchers are already-validated label filters; metric defaults to
+// "target_info"; extraLabels are appended to the group-by projection for
+// `--columns`.
+func buildServicesQuery(metric string, matchers []Matcher, extraLabels []string) (string, error) {
 	if metric == "" {
 		metric = defaultTargetInfoMetric
 	}
-	selector := metric
-	if len(filters) > 0 {
-		selector = fmt.Sprintf("%s{%s}", metric, strings.Join(filters, ", "))
+	v := promql.Vector(metric)
+	for _, m := range matchers {
+		v = m.apply(v)
 	}
-	return fmt.Sprintf("group by (%s) (%s)", strings.Join(groupByLabels(extraLabels), ", "), selector)
+	expr, err := promql.Group(v).By(groupByLabels(extraLabels)).Build()
+	if err != nil {
+		return "", err
+	}
+	return expr.String(), nil
 }
 
-// parseFilter validates a single `label<op>value` filter and returns a PromQL
-// matcher fragment ready to drop into a selector. Bare values are wrapped in
-// double quotes.
-func parseFilter(raw string) (string, error) {
+// parseFilter validates a single `label<op>value` filter and returns it as a
+// Matcher. Values may be wrapped in double quotes (e.g. `service_namespace="payments"`);
+// quotes are stripped so the builder can re-escape consistently.
+func parseFilter(raw string) (Matcher, error) {
 	m := matcherPattern.FindStringSubmatch(raw)
 	if m == nil {
-		return "", fmt.Errorf("invalid --filter %q: expected <label><op><value> where op is = != =~ !~", raw)
+		return Matcher{}, fmt.Errorf("invalid --filter %q: expected <label><op><value> where op is = != =~ !~", raw)
 	}
 	label, op, val := m[1], m[2], m[3]
-	val = strings.TrimSpace(val)
 	if len(val) >= 2 && val[0] == '"' && val[len(val)-1] == '"' {
-		return label + op + val, nil
+		val = val[1 : len(val)-1]
 	}
-	val = strings.ReplaceAll(val, `\`, `\\`)
-	val = strings.ReplaceAll(val, `"`, `\"`)
-	return fmt.Sprintf(`%s%s"%s"`, label, op, val), nil
+	return Matcher{Label: label, Op: op, Value: val}, nil
 }
 
 // Service is a single row in the services inventory.
