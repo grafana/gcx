@@ -64,6 +64,16 @@ Use JSON/YAML for programmatic work and table/wide output for human summaries.
 | Operation | Command pattern |
 |-----------|-----------------|
 | List datasources | `gcx datasources list -o json` |
+| Prometheus metric names | `gcx datasources prometheus labels -d <uid> --label __name__` |
+| Prometheus label values | `gcx datasources prometheus labels -d <uid> --label <label>` |
+| Prometheus metric metadata | `gcx datasources prometheus metadata -d <uid>` |
+| Loki label names | `gcx datasources loki labels -d <uid>` |
+| Loki label values | `gcx datasources loki labels -d <uid> --label <label>` |
+| Tempo attribute names | `gcx datasources tempo labels -d <uid>` |
+| Tempo attribute values | `gcx datasources tempo labels -d <uid> -l service.name` |
+| Pyroscope profile types | `gcx datasources pyroscope profile-types -d <uid>` |
+| Pyroscope label values | `gcx datasources pyroscope labels -d <uid> --label service_name` |
+| Other datasource types | Check `gcx datasources <type> --help` for dedicated subcommands before using `gcx api` |
 | List dashboards | `gcx dashboards list -o wide` |
 | Search by text/tag/folder | `gcx dashboards search "<query>" --tag <tag> --folder <folder-name> -o json` |
 | Get one dashboard | `gcx dashboards get <dashboard-name> -o json` |

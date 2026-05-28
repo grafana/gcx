@@ -115,13 +115,18 @@ unclear. Minimum discovery for Prometheus/Loki dashboards:
 
 ```bash
 gcx datasources list -o json
-
-# Prometheus: prove metric and label availability over the intended scope.
-gcx datasources prometheus query -d <prom_uid> '<promql>' --since 5m -o json
-
-# Loki: sample log streams and parsed fields before adding log panels.
-gcx datasources loki query -d <loki_uid> '<logql>' --since 1h -o raw
 ```
+
+| Type | List names | Values for a specific name |
+|------|-----------|---------------------------|
+| Prometheus | `gcx datasources prometheus labels -d <uid> --label __name__` | `gcx datasources prometheus labels -d <uid> --label <label>` |
+| Loki | `gcx datasources loki labels -d <uid>` | `gcx datasources loki labels -d <uid> --label <label>` |
+| Tempo | `gcx datasources tempo labels -d <uid>` | `gcx datasources tempo labels -d <uid> -l <attr> [--scope span\|resource] [-q '<traceql>']` |
+| Pyroscope | `gcx datasources pyroscope profile-types -d <uid>` then `labels -d <uid>` | `gcx datasources pyroscope labels -d <uid> --label <label>` |
+
+Prometheus also has `gcx datasources prometheus metadata -d <uid>` for metric type and help text.
+For Prometheus scoped label lookups, fall back to `gcx api "/api/datasources/proxy/<id>/api/v1/label/<label>/values?match[]=<selector>"`.
+Other datasource types may have their own discovery subcommands — check `gcx datasources <type> --help` before using `gcx api`.
 
 Check units, histogram buckets, status labels, route/operation labels, cluster
 or namespace labels, and cardinality. Prefer `topk()` or aggregations for high
