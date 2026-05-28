@@ -7,7 +7,7 @@ import (
 )
 
 func TestBuildServicesQuery(t *testing.T) {
-	wantGroup := "group by (telemetry_sdk_language, job, service_namespace, deployment_environment, deployment_environment_name, k8s_namespace_name, k8s_cluster_name, cloud_region)"
+	wantGroup := "group by (telemetry_sdk_language, job, deployment_environment, deployment_environment_name, k8s_namespace_name, k8s_cluster_name, cloud_region)"
 
 	tests := []struct {
 		name     string
@@ -49,14 +49,14 @@ func TestBuildServicesQuery(t *testing.T) {
 			want: wantGroup + ` (target_info{a="x",b!="y",c=~"z.*",d!~"w.*"})`,
 		},
 		{
-			name:  "extra columns appended once",
+			name:  "extra columns appended once (incl. label that's not in defaults)",
 			extra: []string{"service_version", "k8s_pod_name", "service_namespace"},
-			want:  "group by (telemetry_sdk_language, job, service_namespace, deployment_environment, deployment_environment_name, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version, k8s_pod_name) (target_info)",
+			want:  "group by (telemetry_sdk_language, job, deployment_environment, deployment_environment_name, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version, k8s_pod_name, service_namespace) (target_info)",
 		},
 		{
 			name:  "extra columns with empty string ignored",
 			extra: []string{"", "service_version"},
-			want:  "group by (telemetry_sdk_language, job, service_namespace, deployment_environment, deployment_environment_name, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version) (target_info)",
+			want:  "group by (telemetry_sdk_language, job, deployment_environment, deployment_environment_name, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version) (target_info)",
 		},
 	}
 	for _, tt := range tests {
@@ -113,7 +113,7 @@ func TestBuildServiceGraphQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
-	want := "group by (server) (traces_service_graph_request_total)"
+	want := "group by (server, server_service_namespace) (traces_service_graph_request_total)"
 	if got != want {
 		t.Errorf("buildServiceGraphQuery() =\n  %q\nwant\n  %q", got, want)
 	}
@@ -122,7 +122,7 @@ func TestBuildServiceGraphQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
-	want = "group by (server) (traces_spanmetrics_calls_total)"
+	want = "group by (server, server_service_namespace) (traces_spanmetrics_calls_total)"
 	if got != want {
 		t.Errorf("override =\n  %q\nwant\n  %q", got, want)
 	}
@@ -133,10 +133,11 @@ func TestParseServiceGraphResponse(t *testing.T) {
 		Data: prometheus.ResultData{
 			Result: []prometheus.Sample{
 				{Metric: map[string]string{"server": "payments"}},
-				{Metric: map[string]string{"server": "checkout"}},
-				{Metric: map[string]string{"server": "payments"}}, // duplicate
-				{Metric: map[string]string{"server": ""}},         // dropped
-				{Metric: map[string]string{}},                     // dropped
+				{Metric: map[string]string{"server": "checkout", "server_service_namespace": "billing"}},
+				{Metric: map[string]string{"server": "payments"}}, // exact duplicate
+				{Metric: map[string]string{"server": "payments", "server_service_namespace": "legacy"}},
+				{Metric: map[string]string{"server": ""}}, // dropped
+				{Metric: map[string]string{}},             // dropped
 			},
 		},
 	}
@@ -144,8 +145,18 @@ func TestParseServiceGraphResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
-	if len(got) != 2 || got[0].Name != "checkout" || got[1].Name != "payments" {
-		t.Fatalf("unexpected services: %+v", got)
+	// 3 distinct (namespace, name) pairs survive; sort puts no-namespace ahead.
+	if len(got) != 3 {
+		t.Fatalf("len = %d, want 3: %+v", len(got), got)
+	}
+	if got[0].Namespace != "" || got[0].Name != "payments" {
+		t.Errorf("got[0] = %+v, want {Namespace:'' Name:payments}", got[0])
+	}
+	if got[1].Namespace != "billing" || got[1].Name != "checkout" {
+		t.Errorf("got[1] = %+v, want {Namespace:billing Name:checkout}", got[1])
+	}
+	if got[2].Namespace != "legacy" || got[2].Name != "payments" {
+		t.Errorf("got[2] = %+v, want {Namespace:legacy Name:payments}", got[2])
 	}
 	for _, s := range got {
 		if s.Instrumented {
@@ -156,27 +167,33 @@ func TestParseServiceGraphResponse(t *testing.T) {
 
 func TestMergeServiceSets(t *testing.T) {
 	instrumented := []Service{
-		{Name: "checkout", Language: "go", Instrumented: true},
-		{Name: "payments", Language: "java", Instrumented: true},
+		{Name: "checkout", Namespace: "oteldemo01", Language: "go", Instrumented: true},
+		{Name: "payments", Namespace: "oteldemo01", Language: "java", Instrumented: true},
 	}
 	graph := []Service{
-		{Name: "payments"}, // already known — should be discarded
+		// Service-graph "payments" with no namespace — folded into the
+		// instrumented oteldemo01/payments via the bare-name fallback.
+		{Name: "payments"},
+		// Brand-new service not in target_info.
 		{Name: "legacy-billing"},
 	}
 	got := mergeServiceSets(instrumented, graph)
 	if len(got) != 3 {
 		t.Fatalf("len = %d, want 3: %+v", len(got), got)
 	}
-	if got[0].Name != "checkout" || got[1].Name != "legacy-billing" || got[2].Name != "payments" {
-		t.Errorf("merge not sorted by name: %+v", got)
+	// Sort = (namespace, name): "" < "oteldemo01".
+	if got[0].Name != "legacy-billing" || got[1].Name != "checkout" || got[2].Name != "payments" {
+		t.Errorf("merge not sorted by (namespace,name): %+v", got)
 	}
-	// payments must retain its instrumented attrs.
-	if !got[2].Instrumented || got[2].Language != "java" {
-		t.Errorf("payments instrumented metadata lost: %+v", got[2])
+	byName := map[string]Service{}
+	for _, s := range got {
+		byName[s.Name] = s
 	}
-	// legacy-billing must stay uninstrumented.
-	if got[1].Instrumented {
-		t.Errorf("legacy-billing should be uninstrumented: %+v", got[1])
+	if pay := byName["payments"]; !pay.Instrumented || pay.Language != "java" {
+		t.Errorf("payments instrumented metadata lost: %+v", pay)
+	}
+	if leg := byName["legacy-billing"]; leg.Instrumented {
+		t.Errorf("legacy-billing should be uninstrumented: %+v", leg)
 	}
 }
 
@@ -213,10 +230,10 @@ func TestParseServicesResponse(t *testing.T) {
 	resp := &prometheus.QueryResponse{
 		Data: prometheus.ResultData{
 			Result: []prometheus.Sample{
-				{Metric: map[string]string{"job": "checkout", "telemetry_sdk_language": "go", "k8s_namespace_name": "prod"}},
-				{Metric: map[string]string{"job": "payments", "telemetry_sdk_language": "java"}},
+				{Metric: map[string]string{"job": "billing/checkout", "telemetry_sdk_language": "go", "k8s_namespace_name": "prod"}},
+				{Metric: map[string]string{"job": "billing/payments", "telemetry_sdk_language": "java"}},
 				{Metric: map[string]string{"job": "", "telemetry_sdk_language": "go"}}, // dropped
-				{Metric: map[string]string{"job": "auth", "__name__": "target_info"}},
+				{Metric: map[string]string{"job": "auth", "__name__": "target_info"}},  // no namespace
 			},
 		},
 	}
@@ -227,8 +244,15 @@ func TestParseServicesResponse(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("got %d services, want 3", len(got))
 	}
-	if got[0].Name != "auth" || got[1].Name != "checkout" || got[2].Name != "payments" {
-		t.Errorf("services not sorted by name: %+v", got)
+	// Sort = (namespace, name): "" < "billing".
+	if got[0].Namespace != "" || got[0].Name != "auth" {
+		t.Errorf("got[0] = %+v, want {Namespace:'' Name:auth}", got[0])
+	}
+	if got[1].Namespace != "billing" || got[1].Name != "checkout" {
+		t.Errorf("got[1] = %+v, want {Namespace:billing Name:checkout}", got[1])
+	}
+	if got[2].Namespace != "billing" || got[2].Name != "payments" {
+		t.Errorf("got[2] = %+v, want {Namespace:billing Name:payments}", got[2])
 	}
 	if got[0].Language != "" {
 		t.Errorf("auth language = %q, want empty", got[0].Language)
@@ -251,9 +275,9 @@ func TestParseServicesResponse_MergesByNameLanguage(t *testing.T) {
 	resp := &prometheus.QueryResponse{
 		Data: prometheus.ResultData{
 			Result: []prometheus.Sample{
-				{Metric: map[string]string{"job": "checkout", "telemetry_sdk_language": "go", "k8s_namespace_name": "prod", "cloud_region": ""}},
-				{Metric: map[string]string{"job": "checkout", "telemetry_sdk_language": "go", "k8s_namespace_name": "prod", "cloud_region": "us-east"}},
-				{Metric: map[string]string{"job": "checkout", "telemetry_sdk_language": "go", "k8s_namespace_name": "staging"}},
+				{Metric: map[string]string{"job": "billing/checkout", "telemetry_sdk_language": "go", "k8s_namespace_name": "prod", "cloud_region": ""}},
+				{Metric: map[string]string{"job": "billing/checkout", "telemetry_sdk_language": "go", "k8s_namespace_name": "prod", "cloud_region": "us-east"}},
+				{Metric: map[string]string{"job": "billing/checkout", "telemetry_sdk_language": "go", "k8s_namespace_name": "staging"}},
 			},
 		},
 	}
@@ -264,11 +288,36 @@ func TestParseServicesResponse_MergesByNameLanguage(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("expected 1 merged service, got %d: %+v", len(got), got)
 	}
+	if got[0].Namespace != "billing" || got[0].Name != "checkout" {
+		t.Errorf("got = %+v, want {Namespace:billing Name:checkout}", got[0])
+	}
 	if got[0].Labels["cloud_region"] != "us-east" {
 		t.Errorf("cloud_region not picked up across samples: %v", got[0].Labels)
 	}
-	// First non-empty namespace wins (prod, seen first).
+	// First non-empty k8s namespace wins (prod, seen first).
 	if got[0].Labels["k8s_namespace_name"] != "prod" {
 		t.Errorf("k8s_namespace_name = %q, want prod", got[0].Labels["k8s_namespace_name"])
+	}
+}
+
+func TestParseJob(t *testing.T) {
+	tests := []struct {
+		in            string
+		wantNamespace string
+		wantName      string
+	}{
+		{"oteldemo01/checkoutservice", "oteldemo01", "checkoutservice"},
+		{"flagd", "", "flagd"},
+		{"oteldemo01/foo/bar", "oteldemo01", "foo/bar"}, // first slash only
+		{"/leading-slash", "", "leading-slash"},
+		{"", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			ns, n := parseJob(tt.in)
+			if ns != tt.wantNamespace || n != tt.wantName {
+				t.Errorf("parseJob(%q) = (%q, %q), want (%q, %q)", tt.in, ns, n, tt.wantNamespace, tt.wantName)
+			}
+		})
 	}
 }

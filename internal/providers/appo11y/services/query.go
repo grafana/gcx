@@ -118,11 +118,29 @@ func parseFilter(raw string) (Matcher, error) {
 }
 
 // Service is a single row in the services inventory.
+//
+// Name is the bare service name (no namespace prefix). Namespace is parsed
+// from the `job` label using the plugin's `<namespace>/<service>` convention
+// — see parseJob and plugin/src/utils/services.ts in app-observability-plugin.
 type Service struct {
 	Name         string            `json:"name" yaml:"name"`
+	Namespace    string            `json:"namespace,omitempty" yaml:"namespace,omitempty"`
 	Language     string            `json:"language,omitempty" yaml:"language,omitempty"`
 	Instrumented bool              `json:"instrumented" yaml:"instrumented"`
 	Labels       map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
+}
+
+// parseJob splits a target_info `job` label using the plugin's convention:
+// jobs shaped `<namespace>/<service>` yield (namespace, service); jobs with no
+// slash become (empty, job). The plugin's parseJob (plugin/src/utils/services.ts)
+// uses the first slash as the split point — anything after the first slash is
+// preserved in the service name.
+func parseJob(job string) (string, string) {
+	ns, name, found := strings.Cut(job, "/")
+	if !found {
+		return "", job
+	}
+	return ns, name
 }
 
 // ServicesResponse is the top-level shape returned by the list command. Wrapping
@@ -170,25 +188,25 @@ func summarizeByLanguage(items []Service) *CountSummary {
 }
 
 // parseServicesResponse converts a Prometheus instant-query result into a
-// deduplicated, sorted slice of Services. Multiple samples can share the same
-// (job, language) when a service has varying resource attributes (e.g. running
-// in two Kubernetes namespaces); we merge them, keeping the first non-empty
-// value seen for each metadata label.
+// deduplicated, sorted slice of Services. Each sample's `job` is split via
+// parseJob into (namespace, name); samples sharing (namespace, name, language)
+// are merged, keeping the first non-empty value seen for each metadata label.
 func parseServicesResponse(resp *prometheus.QueryResponse) ([]Service, error) {
 	if resp == nil {
 		return nil, errors.New("nil query response")
 	}
-	type key struct{ name, language string }
+	type key struct{ namespace, name, language string }
 	byKey := make(map[key]*Service)
 	for _, sample := range resp.Data.Result {
 		job := sample.Metric["job"]
 		if job == "" {
 			continue
 		}
-		k := key{name: job, language: sample.Metric["telemetry_sdk_language"]}
+		ns, svcName := parseJob(job)
+		k := key{namespace: ns, name: svcName, language: sample.Metric["telemetry_sdk_language"]}
 		svc, ok := byKey[k]
 		if !ok {
-			svc = &Service{Name: job, Language: k.language, Instrumented: true}
+			svc = &Service{Name: svcName, Namespace: ns, Language: k.language, Instrumented: true}
 			byKey[k] = svc
 		}
 		for lk, lv := range sample.Metric {
@@ -207,92 +225,104 @@ func parseServicesResponse(resp *prometheus.QueryResponse) ([]Service, error) {
 	for _, svc := range byKey {
 		out = append(out, *svc)
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Name != out[j].Name {
-			return out[i].Name < out[j].Name
-		}
-		return out[i].Language < out[j].Language
-	})
+	sortServices(out)
 	return out, nil
 }
 
+// sortServices orders by (namespace, name, language) so the table groups
+// services under their namespace.
+func sortServices(s []Service) {
+	sort.Slice(s, func(i, j int) bool {
+		if s[i].Namespace != s[j].Namespace {
+			return s[i].Namespace < s[j].Namespace
+		}
+		if s[i].Name != s[j].Name {
+			return s[i].Name < s[j].Name
+		}
+		return s[i].Language < s[j].Language
+	})
+}
+
 // buildServiceGraphQuery returns a PromQL expression that lists every service
-// observed as a `server` in the Tempo service-graph metric. These are the
-// candidates for "uninstrumented" status: something is tracing calls to them,
-// but they may not be emitting target_info themselves. metric defaults to
-// "traces_service_graph_request_total".
+// observed as a `server` in the Tempo service-graph metric, projecting
+// server_service_namespace when present (the plugin uses this label as the
+// uninstrumented-side namespace — see ServicesScene.tsx:622-648 fallback).
+// metric defaults to "traces_service_graph_request_total".
 func buildServiceGraphQuery(metric string) (string, error) {
 	if metric == "" {
 		metric = defaultServiceGraphMetric
 	}
-	expr, err := promql.Group(promql.Vector(metric)).By([]string{"server"}).Build()
+	expr, err := promql.Group(promql.Vector(metric)).By([]string{"server", "server_service_namespace"}).Build()
 	if err != nil {
 		return "", err
 	}
 	return expr.String(), nil
 }
 
-// parseServiceGraphResponse returns one Service per distinct `server`. The
-// resulting Services are marked `Instrumented: false` — the caller is expected
-// to flip the flag when it merges these with results from a target_info query.
+// parseServiceGraphResponse returns one Service per distinct (server,
+// server_service_namespace). Results are marked `Instrumented: false`; the
+// caller is expected to keep that flag when merging.
 func parseServiceGraphResponse(resp *prometheus.QueryResponse) ([]Service, error) {
 	if resp == nil {
 		return nil, errors.New("nil query response")
 	}
-	seen := make(map[string]struct{})
+	type key struct{ namespace, name string }
+	seen := make(map[key]struct{})
 	out := make([]Service, 0, len(resp.Data.Result))
 	for _, sample := range resp.Data.Result {
 		name := sample.Metric["server"]
 		if name == "" {
 			continue
 		}
-		if _, dup := seen[name]; dup {
+		ns := sample.Metric["server_service_namespace"]
+		k := key{namespace: ns, name: name}
+		if _, dup := seen[k]; dup {
 			continue
 		}
-		seen[name] = struct{}{}
-		out = append(out, Service{Name: name, Instrumented: false})
+		seen[k] = struct{}{}
+		out = append(out, Service{Name: name, Namespace: ns, Instrumented: false})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sortServices(out)
 	return out, nil
 }
 
-// nameSuffix returns the portion of name after the last `/`, or name itself
-// if there's no slash. Some stacks emit `target_info{job="<ns>/<svc>"}` while
-// service-graph metrics use `server="<svc>"` (no namespace prefix), so we use
-// the suffix to recognize that they're the same logical service.
-func nameSuffix(name string) string {
-	if idx := strings.LastIndex(name, "/"); idx >= 0 && idx < len(name)-1 {
-		return name[idx+1:]
-	}
-	return name
+// instrumentedKey identifies a service by (namespace, name) so the merge can
+// tell a target_info-known service from a service-graph entry with the same
+// bare name in a different namespace. Names without a namespace also get a
+// bare-name entry, so a service-graph "checkout" with no namespace still
+// matches a target_info "oteldemo01/checkout" when the stack hasn't set
+// server_service_namespace.
+type instrumentedKey struct {
+	namespace, name string
 }
 
-// instrumentedIndex returns a lookup of every name an instrumented service is
-// known by — the full job (`oteldemo01/checkout`) and its tail (`checkout`).
-// Service-graph entries matching either are folded into the instrumented set.
-func instrumentedIndex(instrumented []Service) map[string]struct{} {
-	idx := make(map[string]struct{}, len(instrumented)*2)
+func instrumentedIndex(instrumented []Service) map[instrumentedKey]struct{} {
+	idx := make(map[instrumentedKey]struct{}, len(instrumented)*2)
 	for _, s := range instrumented {
-		idx[s.Name] = struct{}{}
-		idx[nameSuffix(s.Name)] = struct{}{}
+		idx[instrumentedKey{namespace: s.Namespace, name: s.Name}] = struct{}{}
+		// Service-graph entries often lack server_service_namespace; recognise
+		// them by bare name too.
+		idx[instrumentedKey{name: s.Name}] = struct{}{}
 	}
 	return idx
 }
 
 // mergeServiceSets joins target_info-derived services with service-graph
-// servers. target_info results win whenever a name appears in both (richer
-// metadata, known language), and the caller controls which side(s) get fed in.
-// The result is sorted by name. Matching is suffix-aware (see nameSuffix).
+// servers. target_info results win whenever a (namespace, name) appears in
+// both. The caller controls which side(s) get fed in; the result is sorted.
 func mergeServiceSets(instrumented, graph []Service) []Service {
 	idx := instrumentedIndex(instrumented)
 	out := make([]Service, 0, len(instrumented)+len(graph))
 	out = append(out, instrumented...)
 	for _, s := range graph {
-		if _, has := idx[s.Name]; has {
+		if _, has := idx[instrumentedKey{namespace: s.Namespace, name: s.Name}]; has {
+			continue
+		}
+		if _, has := idx[instrumentedKey{name: s.Name}]; has {
 			continue
 		}
 		out = append(out, s)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sortServices(out)
 	return out
 }

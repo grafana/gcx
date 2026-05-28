@@ -240,7 +240,10 @@ func resolveItems(filter string, instrumented, graph []Service) []Service {
 		idx := instrumentedIndex(instrumented)
 		out := make([]Service, 0, len(graph))
 		for _, s := range graph {
-			if _, has := idx[s.Name]; has {
+			if _, has := idx[instrumentedKey{namespace: s.Namespace, name: s.Name}]; has {
+				continue
+			}
+			if _, has := idx[instrumentedKey{name: s.Name}]; has {
 				continue
 			}
 			out = append(out, s)
@@ -271,15 +274,13 @@ func (c *servicesTableCodec) Decode(io.Reader, any) error {
 	return errors.New("services table codec does not support decoding")
 }
 
-// defaultLabels are the resource-attribute labels surfaced in the default
-// table view. service_namespace is the plugin's NAMESPACE column. Both
-// deployment_environment variants are pulled so we can resolve the
-// environment column via environmentValue — older stacks emit
-// deployment.environment (the plugin's default), newer SDKs emit
-// deployment.environment.name.
+// defaultLabels are the resource-attribute labels we pull from target_info
+// so the default table view can fill the ENVIRONMENT column via
+// environmentValue. Older stacks emit deployment.environment (the plugin's
+// default); newer SDKs emit deployment.environment.name. Namespace is parsed
+// from the `job` label itself (see parseJob), not from a label.
 func defaultLabels() []string {
 	return []string{
-		"service_namespace",
 		"deployment_environment",
 		"deployment_environment_name",
 	}
@@ -332,7 +333,7 @@ func (c *servicesTableCodec) encodeServicesTable(w io.Writer, resp *ServicesResp
 	for _, s := range resp.Items {
 		row := []string{
 			s.Name,
-			orDash(s.Labels["service_namespace"]),
+			orDash(s.Namespace),
 			orDash(environmentValue(s.Labels)),
 			orDash(s.Language),
 			instrumentationStatus(s.Instrumented),
