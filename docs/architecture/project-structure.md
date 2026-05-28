@@ -70,10 +70,8 @@ gcx/
 │   │   │   ├── helm/         # Helm command formatter for the setup wizard
 │   │   │   ├── output/       # View types and table/JSON codecs (clusters, apps, services; wait/mutation envelopes)
 │   │   │   └── rmw/          # Read-modify-write helper with optimistic-lock guard
-│   │   ├── incidents/        # IRM Incidents provider
 │   │   ├── k6/              # k6 Cloud provider (projects, tests, runs, envvars)
 │   │   ├── kg/               # Knowledge Graph (Asserts) provider
-│   │   ├── oncall/           # OnCall provider (schedules, integrations, escalation chains)
 │   │   ├── slo/              # SLO provider implementation
 │   │   │   ├── definitions/  # SLO definitions and status queries
 │   │   │   └── reports/      # SLO reports
@@ -84,13 +82,19 @@ gcx/
 │   ├── deeplink/             # Deep link URL template registry and browser opener
 │   ├── dashboards/           # Dashboard Image Renderer client (PNG snapshots)
 │   ├── datasources/          # Datasource HTTP client (legacy REST API)
+│   │   ├── clickhouse/       # ClickHouse datasource commands (query, list-tables, describe-table, explore)
+│   │   ├── cloudwatch/       # CloudWatch CLI commands (query, list-namespaces/metrics/dimensions/regions/accounts)
 │   │   └── query/            # Shared query CLI utils (time parsing, codecs, opts, resolve helpers)
 │   ├── query/                # Datasource query clients
+│   │   ├── cloudwatch/       # CloudWatch HTTP client (metric queries, resource listing)
 │   │   ├── prometheus/       # Prometheus HTTP client (instant + range queries)
-│   │   └── loki/             # Loki HTTP client (log + metric queries)
+│   │   ├── loki/             # Loki HTTP client (log + metric queries)
+│   │   └── clickhouse/       # ClickHouse HTTP client
+│   ├── signals/              # Shared signal command and datasource-provider mounting (metrics/logs/traces/profiles)
 │   ├── notifier/             # Skills update notifier (XDG state, throttle, message rendering)
 │   ├── secrets/              # Redaction of sensitive config fields
 │   ├── skills/               # Portable Agent Skills installer primitives (Install, Update, Bundled/InstalledBundledSkillNames)
+│   ├── strcase/              # String case conversion (snake_case, kebab-case, PascalCase)
 │   ├── terminal/             # TTY detection: IsPiped(), NoTruncate(), Detect()
 │   ├── testutils/            # Shared test helpers (not exposed externally)
 │   ├── resources/            # Core resource abstraction layer
@@ -106,6 +110,7 @@ gcx/
 │       ├── handlers/         # Chi HTTP handler implementations
 │       ├── livereload/       # WebSocket live reload broadcaster
 │       └── watch/            # fsnotify file watcher integration
+│   ├── xdg/                  # XDG Base Directory paths (config home, state home, config dirs)
 │   ├── shared/               # Shared utilities (date handling, duration, etc.) to be shared across integrations.
 │
 ├── scripts/                  # Standalone Go programs for code generation
@@ -300,7 +305,7 @@ in code review.
 | Grafana libraries | `grafana/grafana-openapi-client-go`, `grafana/grafana/pkg/apimachinery`, `grafana/grafana-app-sdk/logging`, `grafana/authlib` | Generated Grafana API client, K8s extensions, structured logging |
 | CLI framework | `spf13/cobra`, `spf13/pflag` | Subcommand tree, flag parsing |
 | HTTP server | `go-chi/chi/v5`, `gorilla/websocket` | Serve command router, live reload WebSocket |
-| Config / env | `caarlos0/env/v11`, `adrg/xdg` | Struct-based env-var parsing, XDG path resolution |
+| Config / env | `internal/xdg`, `internal/config` (envparse) | XDG path resolution, env-var parsing |
 | Concurrency | `golang.org/x/sync` | `errgroup` for bounded parallel operations |
 | YAML / JSON | `goccy/go-yaml`, `go-openapi/strfmt` | YAML codec, OpenAPI format types |
 | File watching | `fsnotify/fsnotify` | Live reload file watcher |

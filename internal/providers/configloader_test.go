@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/adrg/xdg"
 	"github.com/grafana/gcx/internal/cloud"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
@@ -319,10 +318,8 @@ func TestConfigLoader_SaveDatasourceUID_SkipsWhenNoConfigExists(t *testing.T) {
 
 	t.Chdir(workDir)
 
-	t.Cleanup(func() { xdg.Reload() })
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", xdgDir)
-	xdg.Reload()
 
 	loader := &providers.ConfigLoader{}
 	err := loader.SaveDatasourceUID(context.Background(), "tempo", "tempo-123")
@@ -352,10 +349,8 @@ func TestConfigLoader_SaveDatasourceUID_ErrorsWithMultipleConfigSources(t *testi
 
 	t.Chdir(workDir)
 
-	t.Cleanup(func() { xdg.Reload() })
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", xdgDir)
-	xdg.Reload()
 
 	loader := &providers.ConfigLoader{}
 	err := loader.SaveDatasourceUID(context.Background(), "tempo", "tempo-123")
@@ -529,7 +524,7 @@ func TestLoadGrafanaConfig_PersistsRefreshToLocalOAuthLayer(t *testing.T) {
 
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", xdgDir)
-	xdg.Reload()
+
 	t.Chdir(workDir)
 
 	userFile := filepath.Join(homeDir, ".config", "gcx", "config.yaml")
@@ -614,7 +609,7 @@ func TestLoadGrafanaConfig_PersistsRefreshToHighestContextLayer(t *testing.T) {
 
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", xdgDir)
-	xdg.Reload()
+
 	t.Chdir(workDir)
 
 	userFile := filepath.Join(homeDir, ".config", "gcx", "config.yaml")

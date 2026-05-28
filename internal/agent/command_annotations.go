@@ -39,7 +39,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx assistant investigations todos":     {Cost: "medium", Hint: "<id> -o json"},
 
 	// login
-	"gcx login": {Cost: "small"},
+	"gcx login": {Cost: "small", Hint: "Non-interactive: gcx login <ctx> --yes --server <url> --token <grafana-sa-token> [--cloud-token <cap-token>]. Service-account tokens (--token) are created inside the Grafana instance — see https://grafana.com/docs/grafana/latest/administration/service-accounts.md. Cloud access-policy tokens (--cloud-token) are created at grafana.com — see https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies.md. Append .md to any grafana.com/docs URL to fetch markdown. Do not guess token URLs."},
 
 	// commands
 	"gcx commands": {Cost: "medium", Hint: "--flat -o json"},
@@ -59,6 +59,19 @@ var commandAnnotations = map[string]annotation{
 	"gcx datasources get":   {Cost: "medium", Hint: "<uid> -o json"},
 	"gcx datasources list":  {Cost: "small"},
 	"gcx datasources query": {Cost: "large", Hint: "Run gcx help-tree metrics (or logs, traces, profiles) to discover signal commands. Prefer gcx metrics query for PromQL, gcx logs query for LogQL, gcx traces query for TraceQL, gcx profiles query for profiling. Example: <datasource-uid> 'up' --since 1h -o json"},
+
+	// datasources clickhouse
+	"gcx datasources clickhouse query":          {Cost: "medium", Hint: "-d UID 'SELECT count() FROM events' -o json"},
+	"gcx datasources clickhouse list-tables":    {Cost: "small"},
+	"gcx datasources clickhouse describe-table": {Cost: "small", Hint: "TABLE -d UID --database default -o json"},
+
+	// datasources cloudwatch
+	"gcx datasources cloudwatch query":           {Cost: "large", Hint: "gcx datasources cloudwatch query -d UID --region us-east-1 --namespace AWS/EC2 --metric CPUUtilization --since 1h -o json"},
+	"gcx datasources cloudwatch list-namespaces": {Cost: "small", Hint: "gcx datasources cloudwatch list-namespaces -d UID --region us-east-1 -o json"},
+	"gcx datasources cloudwatch list-metrics":    {Cost: "small", Hint: "gcx datasources cloudwatch list-metrics -d UID --region us-east-1 --namespace AWS/EC2 -o json"},
+	"gcx datasources cloudwatch list-dimensions": {Cost: "small", Hint: "gcx datasources cloudwatch list-dimensions -d UID --region us-east-1 --namespace AWS/EC2 --metric CPUUtilization -o json"},
+	"gcx datasources cloudwatch list-regions":    {Cost: "small", Hint: "gcx datasources cloudwatch list-regions -d UID -o json"},
+	"gcx datasources cloudwatch list-accounts":   {Cost: "small", Hint: "gcx datasources cloudwatch list-accounts -d UID --region us-east-1 -o json"},
 
 	// dev
 	"gcx dev generate":   {Cost: "small"},
@@ -250,32 +263,32 @@ var commandAnnotations = map[string]annotation{
 	// -----------------------------------------------------------------------
 	// Knowledge Graph provider
 	// -----------------------------------------------------------------------
-	"gcx kg entities query":          {Cost: "medium", Hint: "\"MATCH (s:Service) RETURN s LIMIT 10\" [--since 1h] | read-only Cypher query; always include LIMIT for targeted lookups; omit for broad discovery"},
-	"gcx kg diagnose":                {Cost: "medium", Hint: "[--env <env>] | run diagnostic checks on the Knowledge Graph pipeline: stack status, sanity checks, entity counts, scopes, telemetry configs, recording rule metrics"},
-	"gcx kg diagnose service":        {Cost: "medium", Hint: "<service-name> [--env <env>] | deep diagnosis for a specific service: entity lookup, relationships, per-service metrics, interpreted diagnosis with next steps"},
-	"gcx kg diagnose labels":         {Cost: "medium", Hint: "validate the deployment_environment → asserts_env label mapping pipeline | identifies unmapped environments and orphaned asserts_env values"},
-	"gcx kg entities list":           {Cost: "medium", Hint: "--type <type> [--env <env>] [--namespace <ns>] --since 1h -o json | use --property name=<value> to fetch a single entity by name | use --insight severity=critical|warning|info or --insight name=<assertion> to filter to entities with active insights (repeatable; matchers AND on the same assertion) | use --json type,name,scope when only entity identity is needed to reduce output size | run gcx kg meta scopes first to discover valid env/namespace/site values"},
-	"gcx kg summary":                 {Cost: "medium", Hint: "--type <type> --since 1h -o json"},
-	"gcx kg insights entity-metric":  {Cost: "medium", Hint: "<Type--Name> --insight-id <id>"},
-	"gcx kg insights source-metrics": {Cost: "medium", Hint: "--insight-id <id> --since 1h"},
-	"gcx kg entities inspect":        {Cost: "medium", Hint: "--type <EntityType> --name <name> [--env <env>] [--namespace <ns>] | --type is required (run 'gcx kg meta schema' to list valid entity types); scope is auto-discovered if omitted; run 'gcx kg entities list --type <type> --property name=~<name>' first to confirm type and exact name"},
-	"gcx kg meta all":                {Cost: "medium", Hint: "load all sections at once [--since 1h]"},
-	"gcx kg meta logs":               {Cost: "small", Hint: "Loki label mappings for log drilldown"},
-	"gcx kg meta profiles":           {Cost: "small", Hint: "Pyroscope label mappings for profile drilldown"},
-	"gcx kg meta schema":             {Cost: "medium", Hint: "entity types + relationships [--since 1h]"},
-	"gcx kg meta scopes":             {Cost: "small", Hint: "all valid env/namespace/site filter values — run before filtering entities"},
-	"gcx kg meta traces":             {Cost: "small", Hint: "Tempo label mappings for trace drilldown"},
-	"gcx kg model-rules create":      {Cost: "small"},
-	"gcx kg open":                    {Cost: "small"},
-	"gcx kg relabel-rules create":    {Cost: "small"},
-	"gcx kg rules create":            {Cost: "small"},
-	"gcx kg rules delete":            {Cost: "small"},
-	"gcx kg rules get":               {Cost: "small"},
-	"gcx kg rules list":              {Cost: "small"},
-	"gcx kg status":                  {Cost: "small"},
-	"gcx kg suppressions create":     {Cost: "small"},
-	"gcx kg suppressions delete":     {Cost: "small"},
-	"gcx kg suppressions list":       {Cost: "small"},
+	"gcx kg entities query":       {Cost: "medium", Hint: "\"MATCH (s:Service) RETURN s LIMIT 10\" [--since 1h] | read-only Cypher query; always include LIMIT for targeted lookups; omit for broad discovery"},
+	"gcx kg diagnose":             {Cost: "medium", Hint: "[--env <env>] | run diagnostic checks on the Knowledge Graph pipeline: stack status, sanity checks, entity counts, scopes, telemetry configs, recording rule metrics"},
+	"gcx kg diagnose service":     {Cost: "medium", Hint: "<service-name> [--env <env>] | deep diagnosis for a specific service: entity lookup, relationships, per-service metrics, interpreted diagnosis with next steps"},
+	"gcx kg diagnose labels":      {Cost: "medium", Hint: "validate the deployment_environment → asserts_env label mapping pipeline | identifies unmapped environments and orphaned asserts_env values"},
+	"gcx kg entities list":        {Cost: "medium", Hint: "--type <type> [--env <env>] [--namespace <ns>] --since 1h -o json | use --property name=<value> to fetch a single entity by name | use --insight severity=critical|warning|info or --insight name=<assertion> to filter to entities with active insights (repeatable; matchers AND on the same assertion) | use --json type,name,scope when only entity identity is needed to reduce output size | run gcx kg meta scopes first to discover valid env/namespace/site values"},
+	"gcx kg summary":              {Cost: "medium", Hint: "--type <type> --since 1h -o json"},
+	"gcx kg insights chart":       {Cost: "medium", Hint: "<Type--Name> --insight <name> [--label k=v ...] | returns time series + thresholds backing the insight chart"},
+	"gcx kg insights sources":     {Cost: "medium", Hint: "<Type--Name> --insight <name> [--label k=v ...] --since 1h | returns the underlying PromQL metric names and label matchers sourcing the insight"},
+	"gcx kg entities inspect":     {Cost: "medium", Hint: "--type <EntityType> --name <name> [--env <env>] [--namespace <ns>] | --type is required (run 'gcx kg meta schema' to list valid entity types); scope is auto-discovered if omitted; run 'gcx kg entities list --type <type> --property name=~<name>' first to confirm type and exact name"},
+	"gcx kg meta all":             {Cost: "medium", Hint: "load all sections at once [--since 1h]"},
+	"gcx kg meta logs":            {Cost: "small", Hint: "Loki label mappings for log drilldown"},
+	"gcx kg meta profiles":        {Cost: "small", Hint: "Pyroscope label mappings for profile drilldown"},
+	"gcx kg meta schema":          {Cost: "medium", Hint: "entity types + relationships [--since 1h]"},
+	"gcx kg meta scopes":          {Cost: "small", Hint: "all valid env/namespace/site filter values — run before filtering entities"},
+	"gcx kg meta traces":          {Cost: "small", Hint: "Tempo label mappings for trace drilldown"},
+	"gcx kg model-rules create":   {Cost: "small"},
+	"gcx kg open":                 {Cost: "small"},
+	"gcx kg relabel-rules create": {Cost: "small"},
+	"gcx kg rules create":         {Cost: "small"},
+	"gcx kg rules delete":         {Cost: "small"},
+	"gcx kg rules get":            {Cost: "small"},
+	"gcx kg rules list":           {Cost: "small"},
+	"gcx kg status":               {Cost: "small"},
+	"gcx kg suppressions create":  {Cost: "small"},
+	"gcx kg suppressions delete":  {Cost: "small"},
+	"gcx kg suppressions list":    {Cost: "small"},
 
 	// -----------------------------------------------------------------------
 	// Logs provider
@@ -332,45 +345,79 @@ var commandAnnotations = map[string]annotation{
 	// -----------------------------------------------------------------------
 	// IRM OnCall
 	// -----------------------------------------------------------------------
-	"gcx irm oncall alert-groups acknowledge":   {Cost: "small"},
-	"gcx irm oncall alert-groups delete":        {Cost: "small"},
-	"gcx irm oncall alert-groups get":           {Cost: "small"},
-	"gcx irm oncall alert-groups list":          {Cost: "small"},
-	"gcx irm oncall alert-groups list-alerts":   {Cost: "small"},
-	"gcx irm oncall alert-groups resolve":       {Cost: "small"},
-	"gcx irm oncall alert-groups silence":       {Cost: "small"},
-	"gcx irm oncall alert-groups unacknowledge": {Cost: "small"},
-	"gcx irm oncall alert-groups unresolve":     {Cost: "small"},
-	"gcx irm oncall alert-groups unsilence":     {Cost: "small"},
-	"gcx irm oncall alerts get":                 {Cost: "small"},
-	"gcx irm oncall escalate":                   {Cost: "small", Hint: "--title \"title\" --user-ids id1,id2"},
-	"gcx irm oncall escalation-chains get":      {Cost: "small"},
-	"gcx irm oncall escalation-chains list":     {Cost: "small"},
-	"gcx irm oncall escalation-policies get":    {Cost: "small"},
-	"gcx irm oncall escalation-policies list":   {Cost: "small"},
-	"gcx irm oncall integrations get":           {Cost: "small"},
-	"gcx irm oncall integrations list":          {Cost: "small"},
-	"gcx irm oncall organizations get":          {Cost: "small"},
-	"gcx irm oncall resolution-notes get":       {Cost: "small"},
-	"gcx irm oncall resolution-notes list":      {Cost: "small"},
-	"gcx irm oncall routes get":                 {Cost: "small"},
-	"gcx irm oncall routes list":                {Cost: "small"},
-	"gcx irm oncall schedules final-shifts":     {Cost: "medium", Hint: "<schedule-id> --start 2024-01-01 --end 2024-01-31 -o json"},
-	"gcx irm oncall schedules get":              {Cost: "small"},
-	"gcx irm oncall schedules list":             {Cost: "small"},
-	"gcx irm oncall shift-swaps get":            {Cost: "small"},
-	"gcx irm oncall shift-swaps list":           {Cost: "small"},
-	"gcx irm oncall shifts get":                 {Cost: "small"},
-	"gcx irm oncall shifts list":                {Cost: "small"},
-	"gcx irm oncall slack-channels list":        {Cost: "small"},
-	"gcx irm oncall teams get":                  {Cost: "small"},
-	"gcx irm oncall teams list":                 {Cost: "small"},
-	"gcx irm oncall user-groups list":           {Cost: "small"},
-	"gcx irm oncall users current":              {Cost: "small"},
-	"gcx irm oncall users get":                  {Cost: "small"},
-	"gcx irm oncall users list":                 {Cost: "small"},
-	"gcx irm oncall webhooks get":               {Cost: "small"},
-	"gcx irm oncall webhooks list":              {Cost: "small"},
+	// alert-groups discovery: cost annotations
+	// reflect the cap/filter shape; hints surface the rich-shape pivots and
+	// the opt-out flags so the agent picks the right verb on the first try.
+	"gcx irm oncall alert-groups list": {
+		Cost: "small (large with --all)",
+		Hint: "Defaults to firing+acknowledged+silenced root groups (matches OnCall UI). Use --all to include resolved + child groups (much larger). Filter with --state, --team, --integration, --max-age, --mine. Example: --state firing --team prod-sre.",
+	},
+	"gcx irm oncall alert-groups get": {
+		Cost: "small",
+		Hint: "Returns the rich K8s envelope with status.links.alert.rule.uid (pivot to `gcx alert instances list --rule <uid>`), status.links.dashboard.uid (pivot to `gcx resources get dashboards/<uid>`), and status.subject.labels (denylist-filtered commonLabels). list-alerts is unnecessary for typical drilldowns — get already carries the cross-provider pivots.",
+	},
+	"gcx irm oncall alert-groups list-alerts": {
+		Cost: "medium (small with --slim)",
+		Hint: "Rich-by-default: N+1 per-alert retrieves under bounded concurrency populate status.links.alert.rule.uid and status.links.dashboard.uid for each alert. Pass --slim to skip the N+1 and return slim envelopes (no links, no dimensions). Pass --history to opt out of collapse-by-label-set. 100-alert cap; --limit 0 removes it.",
+	},
+	// alert-groups action verbs: bulk-by-filter composes with the
+	// same flag set as `list`; agent mode requires --yes when count > 1.
+	"gcx irm oncall alert-groups acknowledge": {
+		Cost: "small (medium with broad filter)",
+		Hint: "Single-target: pass <id>. Bulk-by-filter: pass --team / --state / --integration / --max-age / --mine (same names as `alert-groups list`). Agent mode requires --yes when the matched count > 1 (no auto-confirm of destructive bulk operations). Idempotent: re-running on an already-acked group reports changed:false.",
+	},
+	"gcx irm oncall alert-groups unacknowledge": {
+		Cost: "small (medium with broad filter)",
+		Hint: "Reverts acknowledge → firing. Filters mirror `alert-groups list`. Agent mode requires --yes when count > 1. Idempotent: already-firing groups report changed:false.",
+	},
+	"gcx irm oncall alert-groups resolve": {
+		Cost: "small (medium with broad filter)",
+		Hint: "Closes the alert group (firing → resolved). Filters mirror `alert-groups list`. Agent mode requires --yes when count > 1. Idempotent: already-resolved groups report changed:false.",
+	},
+	"gcx irm oncall alert-groups unresolve": {
+		Cost: "small (medium with broad filter)",
+		Hint: "Reverts resolve → firing. Filters mirror `alert-groups list`. Agent mode requires --yes when count > 1. Idempotent: already-firing groups report changed:false.",
+	},
+	"gcx irm oncall alert-groups silence": {
+		Cost: "small (medium with broad filter)",
+		Hint: "Mutes the group for --duration seconds (default 3600). Filters mirror `alert-groups list`. Agent mode requires --yes when count > 1. Idempotent: already-silenced groups report changed:false.",
+	},
+	"gcx irm oncall alert-groups unsilence": {
+		Cost: "small (medium with broad filter)",
+		Hint: "Reverts silence → firing. Filters mirror `alert-groups list`. Agent mode requires --yes when count > 1. Idempotent: already-firing groups report changed:false.",
+	},
+	"gcx irm oncall alert-groups delete": {
+		Cost: "small (medium with broad filter)",
+		Hint: "Destructive: removes the alert group entirely (no idempotent skip). Filters mirror `alert-groups list`. Agent mode requires --yes when count > 1.",
+	},
+	"gcx irm oncall escalate":                 {Cost: "small", Hint: "--title \"title\" --user-ids id1,id2"},
+	"gcx irm oncall escalation-chains get":    {Cost: "small"},
+	"gcx irm oncall escalation-chains list":   {Cost: "small"},
+	"gcx irm oncall escalation-policies get":  {Cost: "small"},
+	"gcx irm oncall escalation-policies list": {Cost: "small"},
+	"gcx irm oncall integrations get":         {Cost: "small"},
+	"gcx irm oncall integrations list":        {Cost: "small"},
+	"gcx irm oncall organizations get":        {Cost: "small"},
+	"gcx irm oncall resolution-notes get":     {Cost: "small"},
+	"gcx irm oncall resolution-notes list":    {Cost: "small"},
+	"gcx irm oncall routes get":               {Cost: "small"},
+	"gcx irm oncall routes list":              {Cost: "small"},
+	"gcx irm oncall schedules final-shifts":   {Cost: "medium", Hint: "<schedule-id> --start 2024-01-01 --end 2024-01-31 -o json"},
+	"gcx irm oncall schedules get":            {Cost: "small"},
+	"gcx irm oncall schedules list":           {Cost: "small"},
+	"gcx irm oncall shift-swaps get":          {Cost: "small"},
+	"gcx irm oncall shift-swaps list":         {Cost: "small"},
+	"gcx irm oncall shifts get":               {Cost: "small"},
+	"gcx irm oncall shifts list":              {Cost: "small"},
+	"gcx irm oncall slack-channels list":      {Cost: "small"},
+	"gcx irm oncall teams get":                {Cost: "small"},
+	"gcx irm oncall teams list":               {Cost: "small"},
+	"gcx irm oncall user-groups list":         {Cost: "small"},
+	"gcx irm oncall users current":            {Cost: "small"},
+	"gcx irm oncall users get":                {Cost: "small"},
+	"gcx irm oncall users list":               {Cost: "small"},
+	"gcx irm oncall webhooks get":             {Cost: "small"},
+	"gcx irm oncall webhooks list":            {Cost: "small"},
 
 	// -----------------------------------------------------------------------
 	// Profiles provider
@@ -399,6 +446,12 @@ var commandAnnotations = map[string]annotation{
 	"gcx aio11y evaluators test":   {Cost: "medium", Hint: "<evaluator-id> -o json"},
 
 	"gcx aio11y generations get": {Cost: "medium", Hint: "<generation-id> -o json"},
+
+	"gcx aio11y guards create": {Cost: "small"},
+	"gcx aio11y guards delete": {Cost: "small"},
+	"gcx aio11y guards get":    {Cost: "small"},
+	"gcx aio11y guards list":   {Cost: "small"},
+	"gcx aio11y guards update": {Cost: "small"},
 
 	"gcx aio11y judge models":    {Cost: "small"},
 	"gcx aio11y judge providers": {Cost: "small"},
@@ -429,6 +482,14 @@ var commandAnnotations = map[string]annotation{
 	"gcx aio11y collections conversations list":   {Cost: "small"},
 	"gcx aio11y collections conversations add":    {Cost: "small"},
 	"gcx aio11y collections conversations remove": {Cost: "small"},
+
+	"gcx aio11y experiments list":   {Cost: "small"},
+	"gcx aio11y experiments get":    {Cost: "small"},
+	"gcx aio11y experiments create": {Cost: "small"},
+	"gcx aio11y experiments update": {Cost: "small"},
+	"gcx aio11y experiments cancel": {Cost: "small"},
+	"gcx aio11y experiments scores": {Cost: "medium", Hint: "<run-id> --limit 50 -o json"},
+	"gcx aio11y experiments report": {Cost: "medium", Hint: "<run-id> -o json"},
 
 	// -----------------------------------------------------------------------
 	// SLO provider

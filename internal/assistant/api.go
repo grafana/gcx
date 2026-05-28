@@ -7,8 +7,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-
-	"github.com/google/uuid"
 )
 
 // A2AEndpoints holds the A2A API endpoints for a Grafana instance.
@@ -138,7 +136,7 @@ func CreateMessageStreamRequest(prompt, contextID string) ([]byte, error) {
 		Message: A2AMessage{
 			Kind:      "message",
 			Role:      "user",
-			MessageID: uuid.New().String(),
+			MessageID: newUUID(),
 			Parts: []A2APart{
 				{
 					Kind: "text",
@@ -156,7 +154,7 @@ func CreateMessageStreamRequest(prompt, contextID string) ([]byte, error) {
 
 	req := JSONRPCRequest{
 		JSONRPC: "2.0",
-		ID:      uuid.New().String(),
+		ID:      newUUID(),
 		Method:  "message/stream",
 		Params:  paramsJSON,
 	}

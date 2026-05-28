@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/assistant"
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/config"
+	gcxerrors "github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/spf13/cobra"
 )
 
@@ -243,9 +243,9 @@ func TestRequireGrafanaCloud(t *testing.T) {
 				if err == nil {
 					t.Fatal("expected error, got nil")
 				}
-				var de fail.DetailedError
+				var de gcxerrors.DetailedError
 				if !errors.As(err, &de) {
-					t.Fatalf("expected fail.DetailedError, got %T", err)
+					t.Fatalf("expected gcxerrors.DetailedError, got %T", err)
 				}
 			} else if err != nil {
 				t.Fatalf("unexpected error: %v", err)

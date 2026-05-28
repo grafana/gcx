@@ -1,16 +1,11 @@
 name: Publish Homebrew Formula
 
-# Renders Casks-free gcx.rb from the template and opens a PR against
-# grafana/homebrew-grafana. Dispatch-only at first — once validated,
-# release.yaml adds `workflow_call` wiring (see Task 4).
+# Triggers automatically when GoReleaser publishes a GitHub Release,
+# or manually via workflow_dispatch for re-runs / backfills.
 
 on:
-  workflow_call:
-    inputs:
-      tag:
-        description: "Release tag to publish (e.g. v0.2.9)"
-        required: true
-        type: string
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       tag:
@@ -22,7 +17,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: publish-homebrew-formula-${{ inputs.tag }}
+  group: publish-homebrew-formula-${{ github.event.release.tag_name || inputs.tag }}
   cancel-in-progress: false
 
 jobs:
@@ -34,7 +29,7 @@ jobs:
       id-token: write          # required by create-github-app-token broker OIDC exchange
 
     env:
-      TAG: ${{ inputs.tag }}
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
       GH_REPO: ${{ github.repository }}
 
     steps:
@@ -69,15 +64,9 @@ jobs:
 
       - name: Checkout gcx (for template)
         if: steps.tag.outputs.skip != 'true'
-        # Checkout at the workflow's native ref — NOT at inputs.tag. The
-        # template lives in the gcx repo's main branch (added in PR #537);
-        # older release tags don't have it. When called via workflow_call
-        # from release.yaml, github.ref is the tag being released (which
-        # sits on main and includes the template). When dispatched
-        # manually against a past tag, github.ref is the dispatch branch,
-        # which also has the template. In both cases the default checkout
-        # gives us what we need; inputs.tag is only used to compute the
-        # source-tarball sha256 and the version string.
+        # On release events, github.ref is the tag — checkout gets the
+        # template at that ref. On workflow_dispatch, github.ref is the
+        # dispatch branch (typically main), which also has the template.
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false

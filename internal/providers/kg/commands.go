@@ -200,15 +200,6 @@ func resolveTimeEpochMs(since string) (int64, int64, error) {
 	return now - d.Milliseconds(), now, nil
 }
 
-// resolveTimeFromFlags reads --from/--to/--since from a command and resolves them to epoch ms.
-func resolveTimeFromFlags(cmd *cobra.Command) (int64, int64, error) {
-	from, _ := cmd.Flags().GetString("from")
-	to, _ := cmd.Flags().GetString("to")
-	since, _ := cmd.Flags().GetString("since")
-	sf := scopeFlags{from: from, to: to, since: since}
-	return sf.resolveTime()
-}
-
 func parseEntityArg(args []string) (string, string, error) {
 	if len(args) == 0 {
 		return "", "", errors.New("entity argument required (e.g. Service--my-service)")
@@ -477,21 +468,11 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 				return err
 			}
 
-			// Extract rules from TypedObject
-			rules := make([]Rule, len(typedObjs))
+			// Convert to K8s envelope unstructured once; all codecs (table,
+			// wide, yaml, json) consume the same shape.
+			objs := make([]unstructured.Unstructured, 0, len(typedObjs))
 			for i := range typedObjs {
-				rules[i] = typedObjs[i].Spec
-			}
-
-			// Table codec operates on raw []Rule for direct field access.
-			// Other formats (yaml/json) convert to K8s envelope Resources
-			// for consistency with get and round-trip support.
-			if rulesListOpts.IO.OutputFormat == "table" {
-				return rulesListOpts.IO.Encode(cmd.OutOrStdout(), rules)
-			}
-
-			var objs []unstructured.Unstructured
-			for _, rule := range rules {
+				rule := typedObjs[i].Spec
 				res, err := RuleToResource(rule, cfg.Namespace)
 				if err != nil {
 					return fmt.Errorf("failed to convert rule %s to resource: %w", rule.Name, err)
@@ -562,21 +543,20 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	_ = createCmd.MarkFlagRequired("file")
 
 	deleteCmd := &cobra.Command{
-		Use:   "delete",
-		Short: "Delete all Knowledge Graph rules (upload empty).",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+		Use:   "delete <name>",
+		Short: "Delete a Knowledge Graph prom rule by name.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			ctx := cmd.Context()
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
-			client, err := NewClient(cfg)
-			if err != nil {
+			if err := crud.Delete(ctx, name); err != nil {
 				return err
 			}
-			if err := client.UploadPromRules(cmd.Context(), ""); err != nil {
-				return err
-			}
-			cmdio.Success(cmd.OutOrStdout(), "Knowledge Graph rules cleared")
+			cmdio.Success(cmd.OutOrStdout(), "Knowledge Graph rule %q deleted", name)
 			return nil
 		},
 	}
@@ -592,6 +572,7 @@ type rulesListOpts struct {
 
 func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &RuleTableCodec{})
+	o.IO.RegisterCustomCodec("wide", &RuleWideTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
@@ -606,29 +587,89 @@ func (o *rulesGetOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-// RuleTableCodec renders rules as a table.
+// ruleStats holds counts derived from a rule file spec.
+type ruleStats struct {
+	groups, rules, alerts, recording int
+}
+
+// ruleSpecStats walks the rule file spec and returns counts.
+func ruleSpecStats(obj unstructured.Unstructured) ruleStats {
+	var s ruleStats
+	spec, ok := obj.Object["spec"].(map[string]any)
+	if !ok {
+		return s
+	}
+	groupList, _ := spec["groups"].([]any)
+	s.groups = len(groupList)
+	for _, g := range groupList {
+		gMap, ok := g.(map[string]any)
+		if !ok {
+			continue
+		}
+		ruleList, _ := gMap["rules"].([]any)
+		s.rules += len(ruleList)
+		for _, r := range ruleList {
+			rMap, ok := r.(map[string]any)
+			if !ok {
+				continue
+			}
+			if alert, _ := rMap["alert"].(string); alert != "" {
+				s.alerts++
+			}
+			if record, _ := rMap["record"].(string); record != "" {
+				s.recording++
+			}
+		}
+	}
+	return s
+}
+
+// RuleTableCodec renders rule files as a compact table: name + group/rule counts.
 type RuleTableCodec struct{}
 
 func (c *RuleTableCodec) Format() format.Format { return "table" }
 
 func (c *RuleTableCodec) Encode(w io.Writer, v any) error {
-	rules, ok := v.([]Rule)
+	objs, ok := v.([]unstructured.Unstructured)
 	if !ok {
-		return errors.New("invalid data type for table codec: expected []Rule")
+		return errors.New("invalid data type for table codec: expected []unstructured.Unstructured")
 	}
-	t := style.NewTable("NAME", "RECORD", "ALERT", "EXPR")
-	for _, r := range rules {
-		expr := r.Expr
-		if len(expr) > 60 {
-			expr = expr[:57] + "..."
-		}
-		t.Row(r.Name, r.Record, r.Alert, expr)
+	t := style.NewTable("NAME", "GROUPS", "RULES")
+	for _, obj := range objs {
+		s := ruleSpecStats(obj)
+		t.Row(obj.GetName(), strconv.Itoa(s.groups), strconv.Itoa(s.rules))
 	}
 	return t.Render(w)
 }
 
 func (c *RuleTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
+}
+
+// RuleWideTableCodec adds alert/recording breakdowns to the basic table view.
+type RuleWideTableCodec struct{}
+
+func (c *RuleWideTableCodec) Format() format.Format { return "wide" }
+
+func (c *RuleWideTableCodec) Encode(w io.Writer, v any) error {
+	objs, ok := v.([]unstructured.Unstructured)
+	if !ok {
+		return errors.New("invalid data type for wide codec: expected []unstructured.Unstructured")
+	}
+	t := style.NewTable("NAME", "GROUPS", "RULES", "ALERTS", "RECORDING")
+	for _, obj := range objs {
+		s := ruleSpecStats(obj)
+		t.Row(obj.GetName(),
+			strconv.Itoa(s.groups),
+			strconv.Itoa(s.rules),
+			strconv.Itoa(s.alerts),
+			strconv.Itoa(s.recording))
+	}
+	return t.Render(w)
+}
+
+func (c *RuleWideTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("wide format does not support decoding")
 }
 
 // ---------------------------------------------------------------------------
@@ -990,14 +1031,15 @@ func (c *EntityTableCodec) Decode(_ io.Reader, _ any) error {
 func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "insights",
-		Short: "Search insights and fetch their backing metrics.",
+		Short: "Fetch chart data and source metrics for an active insight.",
 	}
 
-	// entity-metric subcommand
+	// chart subcommand
 	var entityMetricScope scopeFlags
+	var entityMetricLabels []string
 	entityMetricCmd := &cobra.Command{
-		Use:   "entity-metric [Type--Name]",
-		Short: "Get metric data for a specific insight on an entity.",
+		Use:   "chart [Type--Name]",
+		Short: "Get chart data (series + thresholds) for a specific insight on an entity.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
@@ -1023,9 +1065,9 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				assertionID, _ := cmd.Flags().GetString("insight-id")
+				assertionID, _ := cmd.Flags().GetString("insight")
 				if assertionID == "" {
-					return errors.New("--insight-id is required (or use --file)")
+					return errors.New("--insight is required (or use --file)")
 				}
 				startMs, endMs, err := entityMetricScope.resolveTime()
 				if err != nil {
@@ -1040,6 +1082,13 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 					"asserts_entity_name": name,
 				}
 				maps.Copy(labels, entityMetricScope.scopeMap())
+				for _, kv := range entityMetricLabels {
+					k, v, ok := strings.Cut(kv, "=")
+					if !ok || k == "" {
+						return fmt.Errorf("invalid --label %q: expected key=value", kv)
+					}
+					labels[k] = v
+				}
 				req = EntityMetricRequest{
 					StartTime: startMs,
 					EndTime:   endMs,
@@ -1056,14 +1105,29 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	entityMetricCmd.Flags().StringP("file", "f", "", "Input file (YAML)")
 	entityMetricCmd.Flags().String("name", "", "Entity name")
 	entityMetricCmd.Flags().String("type", "", "Entity type")
-	entityMetricCmd.Flags().String("insight-id", "", "Insight ID")
+	entityMetricCmd.Flags().String("insight", "", "Insight name (e.g. LatencyAverageBreach, ResourceRateAnomaly) — sets the 'alertname' label")
+	entityMetricCmd.Flags().StringArrayVar(&entityMetricLabels, "label", nil, "Extra assertion label as key=value (repeatable; e.g. asserts_resource_type=jvm:live_threads to narrow ResourceRateAnomaly to a specific resource)")
 	entityMetricScope.register(entityMetricCmd)
 
-	// source-metrics subcommand
+	// sources subcommand. The server matches on the assertion's full label set
+	// (alertname + request_context + request_type + job + ...), so the user
+	// typically pastes the labels block from `kg entities inspect`
+	// timeLines[].labels (which includes alertname). --insight is sugar
+	// for --label alertname=<value>.
+	var sourceMetricsScope scopeFlags
+	var sourceMetricsLabels []string
 	sourceMetricsCmd := &cobra.Command{
-		Use:   "source-metrics",
-		Short: "Get source metrics for a specific insight.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		Use:   "sources [Type--Name]",
+		Short: "List the underlying metrics (name + label matchers) that source a specific insight.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
 			var req SourceMetricsRequest
 			//nolint:nestif
 			if cmd.Flags().Changed("file") {
@@ -1076,27 +1140,37 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 					return fmt.Errorf("invalid YAML: %w", err)
 				}
 			} else {
-				assertionID, _ := cmd.Flags().GetString("insight-id")
-				if assertionID == "" {
-					return errors.New("--insight-id is required (or use --file)")
-				}
-				startMs, endMs, err := resolveTimeFromFlags(cmd)
+				entityType, name, err := resolveEntityTypeAndName(cmd, args)
 				if err != nil {
 					return err
 				}
-				req = SourceMetricsRequest{
-					AssertionID: assertionID,
-					StartTime:   startMs,
-					EndTime:     endMs,
+				startMs, endMs, err := sourceMetricsScope.resolveTime()
+				if err != nil {
+					return err
 				}
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
+				if err := sourceMetricsScope.validateScopes(cmd.Context(), client); err != nil {
+					return err
+				}
+				labels := map[string]string{
+					"asserts_entity_type": entityType,
+					"asserts_entity_name": name,
+				}
+				if id, _ := cmd.Flags().GetString("insight"); id != "" {
+					labels["alertname"] = id
+				}
+				maps.Copy(labels, sourceMetricsScope.scopeMap())
+				for _, kv := range sourceMetricsLabels {
+					k, v, ok := strings.Cut(kv, "=")
+					if !ok || k == "" {
+						return fmt.Errorf("invalid --label %q: expected key=value", kv)
+					}
+					labels[k] = v
+				}
+				req = SourceMetricsRequest{
+					StartTime: startMs,
+					EndTime:   endMs,
+					Labels:    labels,
+				}
 			}
 			results, err := client.AssertionSourceMetrics(cmd.Context(), req)
 			if err != nil {
@@ -1106,10 +1180,11 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 		},
 	}
 	sourceMetricsCmd.Flags().StringP("file", "f", "", "Input file (YAML)")
-	sourceMetricsCmd.Flags().String("insight-id", "", "Insight ID")
-	sourceMetricsCmd.Flags().String("from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
-	sourceMetricsCmd.Flags().String("to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
-	sourceMetricsCmd.Flags().String("since", "", "Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)")
+	sourceMetricsCmd.Flags().String("name", "", "Entity name")
+	sourceMetricsCmd.Flags().String("type", "", "Entity type")
+	sourceMetricsCmd.Flags().String("insight", "", "Insight name (e.g. LatencyAverageBreach, ResourceRateAnomaly) — sets the 'alertname' label")
+	sourceMetricsCmd.Flags().StringArrayVar(&sourceMetricsLabels, "label", nil, "Assertion label as key=value (repeatable; typically copied from 'kg entities inspect' timeLines[].labels)")
+	sourceMetricsScope.register(sourceMetricsCmd)
 
 	cmd.AddCommand(entityMetricCmd, sourceMetricsCmd)
 	return cmd

@@ -1,6 +1,7 @@
 package root_test
 
 import (
+	"regexp"
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/root"
@@ -19,6 +20,15 @@ var validTokenCosts = map[string]bool{
 	"medium": true,
 	"large":  true,
 }
+
+// validTokenCostQualified matches the qualified form some commands use to
+// describe their flag-dependent cost surface (per the OnCall alert-groups
+// spec FR-111 through FR-114): a bare enum value optionally followed by a
+// parenthesised qualifier, e.g. `small (large with --all)` or
+// `medium (small with --slim)`. The qualifier carries actionable guidance
+// for an LLM reading the annotation; the bare enum prefix preserves the
+// underlying classification.
+var validTokenCostQualified = regexp.MustCompile(`^(small|medium|large) \(.+\)$`) // permissive qualifier to allow future phrasings beyond "X with --flag" form
 
 //nolint:gochecknoglobals // constant-like skip list for test validation
 var skipTokenCost = map[string]bool{
@@ -50,8 +60,8 @@ func TestConsistency_AllLeafCommandsHaveTokenCost(t *testing.T) {
 				t.Errorf("missing %s annotation", agent.AnnotationTokenCost)
 				return
 			}
-			if !validTokenCosts[cost] {
-				t.Errorf("invalid token cost %q (want small, medium, or large)", cost)
+			if !validTokenCosts[cost] && !validTokenCostQualified.MatchString(cost) {
+				t.Errorf("invalid token cost %q (want small, medium, or large; or `<level> (<qualifier>)`)", cost)
 			}
 		})
 	})

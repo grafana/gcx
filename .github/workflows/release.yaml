@@ -51,16 +51,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_NOTES: ${{ env.RELEASE_NOTES }}
 
-  publish_homebrew_formula:
-    name: Publish Homebrew formula
-    needs: release
-    permissions:
-      contents: read
-      id-token: write
-    uses: ./.github/workflows/publish-homebrew-formula.yml
-    with:
-      tag: ${{ github.ref_name }}
-
   build_docs:
     name: Build documentation
     runs-on: ubuntu-latest

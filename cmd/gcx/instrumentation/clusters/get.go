@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/fleet"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	instrOutput "github.com/grafana/gcx/internal/providers/instrumentation/output"
@@ -91,8 +91,8 @@ func runGet(
 	// for not-found — exit 4 is reserved for ExitPartialFailure per
 	// docs/design/exit-codes.md.
 	if instrumentation.IsEmptyDefaultCluster(cl) {
-		exitCode := fail.ExitGeneralError
-		return &fail.DetailedError{
+		exitCode := gcxerrors.ExitGeneralError
+		return &gcxerrors.DetailedError{
 			Summary: "Resource not found",
 			Details: fmt.Sprintf("cluster %q has no K8s monitoring configuration", clusterName),
 			Suggestions: []string{

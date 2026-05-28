@@ -101,12 +101,14 @@ gcx metrics query 'count(traces_service_graph_request_total{server_deployment_en
 
 **Interpret:**
 - Both have data → traces are flowing. Continue to Step 4.
-- `traces_target_info` exists but `traces_service_graph_request_total` doesn't →
-  Tempo server-side metrics generation may not be enabled.
 - Both empty → no OTel traces for this environment. Entities may still exist
   via Prometheus scraping. Continue to Step 4.
 
-**Shortcut:** `gcx kg diagnose --env ENV` checks all five metrics automatically.
+For more specific verdicts on this metric pair (Tempo metrics generation
+disabled, broken trace context propagation, service-name collision via
+self-loop edges), run `gcx kg diagnose --env ENV` and read the check
+results — the command encodes the detection logic and emits a targeted
+recommendation per case.
 
 ## Step 4: Recording Rules
 
@@ -248,7 +250,15 @@ gcx metrics query 'count(asserts:mixin_workload_job{service="SERVICE"})' --since
 - Leaf services (queue consumers, processors) correctly have no outgoing edges.
 
 **Shortcut:** `gcx kg diagnose service SERVICE --env ENV` runs all checks and
-produces an interpreted diagnosis with suggested next steps.
+produces an interpreted diagnosis with suggested next steps. It also
+detects two common patterns that present as "missing entities":
+
+- **Service-name collision** (multiple workloads share one `service.name`,
+  collapsing into one entity).
+- **Env-scope split** (workloads in the same namespace disagree on
+  `deployment.environment`, so cross-env calls don't render as edges).
+
+Read the diagnose check's `Recommendation` for the specific fix.
 
 ## Producing a Report
 
@@ -263,3 +273,10 @@ Summarize findings as:
 7. **Label mapping** — `deployment_environment` correctly mapped to `asserts_env`?
 8. **Conclusion** — expected state or configuration issue?
 9. **Recommendations** — what would fix it?
+
+When recommending a fix, set expectations on convergence time. The metrics
+the Knowledge Graph reads from (`asserts:*` recording rules, and the
+`traces_*` series Tempo generates) are time-series with a query lookback
+window — old data with the broken state will keep appearing in queries
+for at least 5–15 minutes after the fix is applied. The Entity Graph UI
+should fully stabilize on the corrected state within that window.

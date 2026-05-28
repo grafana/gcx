@@ -47,7 +47,6 @@ func (p *IRMProvider) Commands() []*cobra.Command {
 		newTeamsCmd(loader),
 		newUserGroupsCmd(loader),
 		newSlackChannelsCmd(loader),
-		newAlertsCmd(loader),
 		newOrganizationsCmd(loader),
 		newResolutionNotesCmd(loader),
 		newShiftSwapsCmd(loader),
@@ -61,11 +60,7 @@ func (p *IRMProvider) Commands() []*cobra.Command {
 }
 
 func (p *IRMProvider) Validate(_ map[string]string) error { return nil }
-func (p *IRMProvider) ConfigKeys() []providers.ConfigKey {
-	return []providers.ConfigKey{
-		{Name: "oncall-url"},
-	}
-}
+func (p *IRMProvider) ConfigKeys() []providers.ConfigKey  { return nil }
 func (p *IRMProvider) TypedRegistrations() []adapter.Registration {
 	loader := &configLoader{}
 	regs := buildOnCallRegistrations(loader)

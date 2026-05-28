@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/adrg/xdg"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/testutils"
 	"github.com/stretchr/testify/assert"
@@ -41,9 +40,6 @@ func TestLoad_standardLocation_noExistingConfig(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", fakeConfigDir)
 
-	// make sure the xdg library uses the new-fake env var we just set
-	xdg.Reload()
-
 	cfg, err := config.Load(t.Context(), config.StandardLocation())
 	req.NoError(err)
 
@@ -71,9 +67,6 @@ func TestLoad_standardLocation_withExistingConfig(t *testing.T) {
 		0600,
 	)
 	req.NoError(err)
-
-	// make sure the xdg library uses the new-fake env var we just set
-	xdg.Reload()
 
 	cfg, err := config.Load(t.Context(), config.StandardLocation())
 	req.NoError(err)
@@ -117,9 +110,6 @@ func TestLoad_standardLocation_envVarTakesPrecedence(t *testing.T) {
 
 	// Set the environment variable to point to a different config
 	t.Setenv(config.ConfigFileEnvVar, "./testdata/config.yaml")
-
-	// make sure the xdg library uses the new-fake env var we just set
-	xdg.Reload()
 
 	cfg, err := config.Load(t.Context(), config.StandardLocation())
 	req.NoError(err)
@@ -280,7 +270,6 @@ func TestDiscoverSources_DotConfigPreferredOverXDG(t *testing.T) {
 
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", xdgDir) // empty, no config
-	xdg.Reload()
 
 	sources, err := config.DiscoverSources(
 		config.WithSystemDir(t.TempDir()),
@@ -305,7 +294,6 @@ func TestDiscoverSources_FallsBackToXDGWhenDotConfigMissing(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", xdgDir)
-	xdg.Reload()
 
 	sources, err := config.DiscoverSources(
 		config.WithSystemDir(t.TempDir()),
@@ -333,7 +321,6 @@ func TestCheckDuplicateUserConfig_BothExist(t *testing.T) {
 
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", xdgDir)
-	xdg.Reload()
 
 	dup := config.CheckDuplicateUserConfig()
 	require.NotNil(t, dup)
@@ -350,7 +337,7 @@ func isolatedLoaderEnv(t *testing.T) (string, string) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", userDir)
 	t.Setenv("GCX_CONFIG", "")
-	xdg.Reload()
+
 	t.Chdir(workDir)
 	return userDir, workDir
 }
@@ -433,7 +420,6 @@ func TestCheckDuplicateUserConfig_NoDuplicate(t *testing.T) {
 
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", xdgDir) // empty, no config
-	xdg.Reload()
 
 	dup := config.CheckDuplicateUserConfig()
 	assert.Nil(t, dup)

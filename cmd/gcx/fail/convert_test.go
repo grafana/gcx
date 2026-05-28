@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/datasources"
 	"github.com/grafana/gcx/internal/fleet"
+	gcxerrors "github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/grafana"
 	"github.com/grafana/gcx/internal/login"
 	cmdoutput "github.com/grafana/gcx/internal/output"
@@ -34,12 +35,12 @@ func TestErrorToDetailedError_ContextCanceled(t *testing.T) {
 		{
 			name:         "bare context.Canceled returns ExitCancelled",
 			err:          context.Canceled,
-			wantExitCode: fail.ExitCancelled,
+			wantExitCode: gcxerrors.ExitCancelled,
 		},
 		{
 			name:         "wrapped context.Canceled returns ExitCancelled",
 			err:          fmt.Errorf("operation failed: %w", context.Canceled),
-			wantExitCode: fail.ExitCancelled,
+			wantExitCode: gcxerrors.ExitCancelled,
 		},
 	}
 
@@ -97,7 +98,7 @@ func TestErrorToDetailedError_AuthExitCode(t *testing.T) {
 					Message: "Unauthorized",
 				},
 			},
-			wantExitCode: fail.ExitAuthFailure,
+			wantExitCode: gcxerrors.ExitAuthFailure,
 		},
 		{
 			name: "403 Forbidden returns ExitAuthFailure",
@@ -109,7 +110,7 @@ func TestErrorToDetailedError_AuthExitCode(t *testing.T) {
 					Message: "Forbidden",
 				},
 			},
-			wantExitCode: fail.ExitAuthFailure,
+			wantExitCode: gcxerrors.ExitAuthFailure,
 		},
 	}
 
@@ -132,7 +133,7 @@ func TestErrorToDetailedError_VersionIncompatible(t *testing.T) {
 
 	require.NotNil(t, got)
 	require.NotNil(t, got.ExitCode, "ExitCode should be set for version incompatibility")
-	assert.Equal(t, fail.ExitVersionIncompatible, *got.ExitCode)
+	assert.Equal(t, gcxerrors.ExitVersionIncompatible, *got.ExitCode)
 }
 
 func TestErrorToDetailedError_QueryParseError(t *testing.T) {
@@ -161,7 +162,7 @@ func TestErrorToDetailedError_QueryAuthFailure(t *testing.T) {
 	require.NotNil(t, got)
 	assert.Equal(t, "Authentication failed querying Prometheus", got.Summary)
 	require.NotNil(t, got.ExitCode)
-	assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+	assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
 	assert.Equal(t, []string{
 		"Review your Grafana credentials: gcx config view",
 		"Re-authenticate if needed: gcx login",
@@ -242,7 +243,7 @@ func TestErrorToDetailedError_GenericServiceAPIAuthFailure(t *testing.T) {
 	assert.Equal(t, "Authentication failed querying Adaptive Logs", got.Summary)
 	assert.Equal(t, "invalid API token", got.Details)
 	require.NotNil(t, got.ExitCode)
-	assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+	assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
 }
 
 func TestErrorToDetailedError_AdaptiveLogsScopeSuggestion(t *testing.T) {
@@ -255,7 +256,7 @@ func TestErrorToDetailedError_AdaptiveLogsScopeSuggestion(t *testing.T) {
 	require.NotNil(t, got)
 	assert.Equal(t, "Adaptive Logs: permission denied", got.Summary)
 	require.NotNil(t, got.ExitCode)
-	assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+	assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
 	require.Len(t, got.Suggestions, 1)
 	assert.Contains(t, got.Suggestions[0], "adaptive-logs:admin")
 }
@@ -293,7 +294,7 @@ func TestErrorToDetailedError_ConverterOrdering(t *testing.T) {
 
 	require.NotNil(t, got)
 	require.NotNil(t, got.ExitCode, "ExitCode should be set")
-	assert.Equal(t, fail.ExitCancelled, *got.ExitCode, "context.Canceled should take precedence over auth errors")
+	assert.Equal(t, gcxerrors.ExitCancelled, *got.ExitCode, "context.Canceled should take precedence over auth errors")
 }
 
 func TestErrorToDetailedError_UsageErrorIncludesExpectedSyntax(t *testing.T) {
@@ -381,7 +382,7 @@ func TestErrorToDetailedError_CloudStackLookupForbidden(t *testing.T) {
 
 			assert.Equal(t, tc.wantSummary, got.Summary)
 			require.NotNil(t, got.ExitCode)
-			assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+			assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
 			require.Len(t, got.Suggestions, 1)
 			assert.Contains(t, got.Suggestions[0], "stacks:read")
 		})
@@ -447,7 +448,7 @@ func TestErrorToDetailedError_FleetScopeError(t *testing.T) {
 
 			assert.Equal(t, "Fleet Management: permission denied", got.Summary)
 			require.NotNil(t, got.ExitCode)
-			assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+			assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
 			require.Len(t, got.Suggestions, 1)
 			assert.Contains(t, got.Suggestions[0], tc.wantScope)
 		})
@@ -517,7 +518,7 @@ func TestErrorToDetailedError_AdaptiveMetricsScopeError(t *testing.T) {
 			got := fail.ErrorToDetailedError(tc.err)
 			assert.Equal(t, "Adaptive Metrics: permission denied", got.Summary)
 			require.NotNil(t, got.ExitCode)
-			assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+			assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
 			require.Len(t, got.Suggestions, 1)
 			assert.Contains(t, got.Suggestions[0], tc.wantScope)
 		})
@@ -543,7 +544,7 @@ func TestErrorToDetailedError_AdaptiveTracesScopeError(t *testing.T) {
 			got := fail.ErrorToDetailedError(tc.err)
 			assert.Equal(t, "Adaptive Traces: permission denied", got.Summary)
 			require.NotNil(t, got.ExitCode)
-			assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+			assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
 			require.Len(t, got.Suggestions, 1)
 			assert.Contains(t, got.Suggestions[0], "adaptive-traces:admin")
 		})
@@ -619,7 +620,7 @@ func TestErrorToDetailedError_SMTokenRegisterInstallPermissionDenied(t *testing.
 			assert.Contains(t, got.Details, "SM token not configured")
 			assert.Contains(t, got.Details, "register/install")
 			require.NotNil(t, got.ExitCode)
-			assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+			assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
 			require.Len(t, got.Suggestions, 3)
 			assert.Contains(t, got.Suggestions[0], "stacks:read")
 			assert.Contains(t, got.Suggestions[0], "metrics:write")
@@ -675,7 +676,7 @@ func TestErrorToDetailedError_LoginGCOMStack403(t *testing.T) {
 	require.NotNil(t, got)
 	assert.Equal(t, "Grafana Cloud stack lookup denied", got.Summary)
 	require.NotNil(t, got.ExitCode, "403 should map to ExitAuthFailure")
-	assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+	assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
 
 	require.NotEmpty(t, got.Suggestions)
 	joined := strings.Join(got.Suggestions, "\n")
@@ -691,7 +692,7 @@ func TestErrorToDetailedError_LoginGCOMStack401(t *testing.T) {
 	require.NotNil(t, got)
 	assert.Equal(t, "Grafana Cloud token rejected", got.Summary)
 	require.NotNil(t, got.ExitCode)
-	assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+	assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
 }
 
 func TestErrorToDetailedError_LoginGCOMStack404(t *testing.T) {
@@ -720,7 +721,7 @@ func TestErrorToDetailedError_LoginHealthCheckAuth(t *testing.T) {
 			require.NotNil(t, got)
 			assert.Equal(t, "Grafana token rejected", got.Summary)
 			require.NotNil(t, got.ExitCode)
-			assert.Equal(t, fail.ExitAuthFailure, *got.ExitCode)
+			assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
 		})
 	}
 }
@@ -760,7 +761,7 @@ func TestErrorToDetailedError_LoginVersionCheck(t *testing.T) {
 
 	require.NotNil(t, got)
 	require.NotNil(t, got.ExitCode)
-	assert.Equal(t, fail.ExitVersionIncompatible, *got.ExitCode)
+	assert.Equal(t, gcxerrors.ExitVersionIncompatible, *got.ExitCode)
 }
 
 func TestConvertFleetHTTPErrors(t *testing.T) {
@@ -891,14 +892,14 @@ func TestErrorToDetailedError_UnknownFieldSelectionError(t *testing.T) {
 			name:           "single unknown field",
 			fields:         []string{"bogus"},
 			wantInDetails:  "bogus",
-			wantExitCode:   fail.ExitUsageError,
+			wantExitCode:   gcxerrors.ExitUsageError,
 			wantSuggestion: "--json list",
 		},
 		{
 			name:          "multiple unknown fields",
 			fields:        []string{"foo", "bar"},
 			wantInDetails: "foo",
-			wantExitCode:  fail.ExitUsageError,
+			wantExitCode:  gcxerrors.ExitUsageError,
 		},
 	}
 
@@ -951,7 +952,7 @@ func TestErrorToDetailedError_UsageErrorExitCode(t *testing.T) {
 			got := fail.ErrorToDetailedError(tc.err)
 			require.NotNil(t, got)
 			require.NotNil(t, got.ExitCode, "ExitCode should be set for usage errors")
-			assert.Equal(t, fail.ExitUsageError, *got.ExitCode)
+			assert.Equal(t, gcxerrors.ExitUsageError, *got.ExitCode)
 		})
 	}
 }
@@ -963,19 +964,19 @@ func TestErrorToDetailedError_PartialFailureExitCode(t *testing.T) {
 	}{
 		{
 			name: "push partial failure",
-			err:  fail.NewPartialFailureError("push", 100, 10),
+			err:  gcxerrors.NewPartialFailureError("push", 100, 10),
 		},
 		{
 			name: "pull partial failure",
-			err:  fail.NewPartialFailureError("pull", 50, 3),
+			err:  gcxerrors.NewPartialFailureError("pull", 50, 3),
 		},
 		{
 			name: "delete partial failure",
-			err:  fail.NewPartialFailureError("delete", 20, 5),
+			err:  gcxerrors.NewPartialFailureError("delete", 20, 5),
 		},
 		{
 			name: "validate partial failure",
-			err:  fail.NewPartialFailureError("validate", 30, 7),
+			err:  gcxerrors.NewPartialFailureError("validate", 30, 7),
 		},
 	}
 
@@ -984,13 +985,48 @@ func TestErrorToDetailedError_PartialFailureExitCode(t *testing.T) {
 			got := fail.ErrorToDetailedError(tc.err)
 			require.NotNil(t, got)
 			require.NotNil(t, got.ExitCode, "ExitCode should be set for partial failures")
-			assert.Equal(t, fail.ExitPartialFailure, *got.ExitCode)
+			assert.Equal(t, gcxerrors.ExitPartialFailure, *got.ExitCode)
 			assert.Contains(t, got.Summary, "failed")
 		})
 	}
 }
 
 func TestPartialFailureError_Message(t *testing.T) {
-	err := fail.NewPartialFailureError("push", 100, 10)
+	err := gcxerrors.NewPartialFailureError("push", 100, 10)
 	assert.Equal(t, "10 resource(s) failed to push", err.Error())
+}
+
+func TestErrorToDetailedError_ValueTypedPreservesExitCode(t *testing.T) {
+	two := 2
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "bare value-typed DetailedError preserves ExitCode",
+			err:  gcxerrors.DetailedError{ExitCode: &two, Summary: "test"},
+		},
+		{
+			name: "bare pointer-typed DetailedError preserves ExitCode",
+			err:  &gcxerrors.DetailedError{ExitCode: &two, Summary: "test"},
+		},
+		{
+			name: "value-typed DetailedError wrapped via fmt.Errorf preserves ExitCode",
+			err:  fmt.Errorf("context: %w", gcxerrors.DetailedError{ExitCode: &two, Summary: "test"}),
+		},
+		{
+			name: "pointer-typed DetailedError wrapped via fmt.Errorf preserves ExitCode",
+			err:  fmt.Errorf("context: %w", &gcxerrors.DetailedError{ExitCode: &two, Summary: "test"}),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tc.err)
+
+			require.NotNil(t, got)
+			require.NotNil(t, got.ExitCode, "ExitCode must not be nil — value-typed DetailedError must propagate ExitCode")
+			assert.Equal(t, 2, *got.ExitCode, "ExitCode must equal the original value, not nil or 1")
+		})
+	}
 }

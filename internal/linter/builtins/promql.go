@@ -132,7 +132,7 @@ func ValidatePromql() func(*rego.Rego) {
 				return nil, fmt.Errorf("could not expand variables: %w", err)
 			}
 
-			if _, err = promql.ParseExpr(exprStr); err != nil {
+			if _, err = promql.NewParser(promql.Options{}).ParseExpr(exprStr); err != nil {
 				return ast.StringTerm(err.Error()), nil
 			}
 

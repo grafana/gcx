@@ -8,7 +8,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
@@ -72,7 +71,7 @@ func (opts *pyroscopeQueryOpts) Validate(flags *pflag.FlagSet) error {
 		return errors.New("--profile-type is required for pyroscope queries")
 	}
 	for _, id := range opts.ProfileIDs {
-		if _, err := uuid.Parse(id); err != nil {
+		if !isUUID(id) {
 			return fmt.Errorf("--profile-id must be a valid UUID (got %q)", id)
 		}
 	}
@@ -244,4 +243,21 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 	opts.setup(cmd.Flags())
 
 	return cmd
+}
+
+// isUUID checks whether s is a valid UUID (8-4-4-4-12 hex format).
+func isUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i, c := range s {
+		if i == 8 || i == 13 || i == 18 || i == 23 {
+			if c != '-' {
+				return false
+			}
+		} else if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
+			return false
+		}
+	}
+	return true
 }

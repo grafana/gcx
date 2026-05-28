@@ -191,6 +191,22 @@ func outputResponse(cmd *cobra.Command, opts *apiOpts, resp *http.Response) erro
 		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
 	}
 
+	// HTML means we hit the Grafana frontend SPA, not an API endpoint.
+	if isHTMLResponse(resp) {
+		finalURL := ""
+		if resp.Request != nil && resp.Request.URL != nil {
+			finalURL = resp.Request.URL.String()
+		}
+		if finalURL != "" {
+			cmdio.Warning(cmd.ErrOrStderr(),
+				"Response is not JSON. Ensure the API path is valid (requested: %s).",
+				finalURL)
+		} else {
+			cmdio.Warning(cmd.ErrOrStderr(),
+				"Response is not JSON. Ensure the API path is valid.")
+		}
+	}
+
 	// Try to parse as JSON for structured output
 	var data any
 	if err := json.Unmarshal(respBody, &data); err != nil {
@@ -200,4 +216,17 @@ func outputResponse(cmd *cobra.Command, opts *apiOpts, resp *http.Response) erro
 	}
 
 	return opts.IO.Encode(cmd.OutOrStdout(), data)
+}
+
+// isHTMLResponse reports whether the response Content-Type indicates HTML.
+func isHTMLResponse(resp *http.Response) bool {
+	ct := resp.Header.Get("Content-Type")
+	if ct == "" {
+		return false
+	}
+	// Strip parameters like `; charset=utf-8`.
+	if i := strings.IndexByte(ct, ';'); i >= 0 {
+		ct = ct[:i]
+	}
+	return strings.EqualFold(strings.TrimSpace(ct), "text/html")
 }

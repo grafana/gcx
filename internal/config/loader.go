@@ -10,10 +10,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/adrg/xdg"
 	"github.com/goccy/go-yaml"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/xdg"
 	"github.com/grafana/grafana-app-sdk/logging"
 )
 
@@ -237,15 +237,15 @@ func dotConfigDir() string {
 
 // xdgSystemConfigDir returns the first XDG system config directory.
 func xdgSystemConfigDir() string {
-	if len(xdg.ConfigDirs) > 0 {
-		return xdg.ConfigDirs[0]
+	if dirs := xdg.ConfigDirs(); len(dirs) > 0 {
+		return dirs[0]
 	}
 	return ""
 }
 
 // xdgUserConfigDir returns the XDG user config directory.
 func xdgUserConfigDir() string {
-	return xdg.ConfigHome
+	return xdg.ConfigHome()
 }
 
 type Override func(cfg *Config) error
@@ -289,7 +289,7 @@ func createDefaultConfig() (string, error) {
 		return file, nil
 	}
 
-	// Last resort: platform XDG (xdg.ConfigFile creates parent dirs).
+	// Last resort: platform XDG (ConfigFile creates parent dirs).
 	configSubpath := filepath.Join(StandardConfigFolder, StandardConfigFileName)
 	file, err := xdg.ConfigFile(configSubpath)
 	if err != nil {

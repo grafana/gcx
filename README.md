@@ -19,7 +19,7 @@ Query production. Investigate alerts. Let the Assistant root-cause issues. Ship 
 
 gcx is a CLI for Grafana. It gives you and your AI coding agent structured access to your Grafana instance: dashboards, alerts, SLOs, metrics, logs, traces, and more.
 
-gcx works with any agentic coding tool. It ships with a suite of agent skills for common workflows like alert investigation, dashboard GitOps, SLO management, and observability setup - ready to use out of the box.
+gcx works with any agentic coding tool. It ships with a suite of agent skills for common workflows like alert investigation, dashboard creation and GitOps, SLO management, and observability setup - ready to use out of the box.
 
 > [!WARNING]
 > **Public preview** — gcx is under active development. Bugs are handled by Engineering; on-call support and SLAs are not available. See [release life cycle](https://grafana.com/docs/release-life-cycle/).
@@ -243,10 +243,14 @@ gcx traces query '{.cluster="dev-us-central-0"}' --since 1h
 
 ## Install Agent Skills
 
-gcx ships a portable Agent Skills bundle for setup, dashboard GitOps,
-datasource exploration, alert investigation, structured debugging, SLO
-management, Synthetic Monitoring workflows, project scaffolding, resource
-generation and import, and end-to-end observability rollout.
+gcx ships a portable Agent Skills bundle for setup, dashboard creation and
+GitOps, datasource exploration, alert investigation, structured debugging, SLO
+management, Synthetic Monitoring workflows, Knowledge Graph diagnosis,
+project scaffolding, resource generation and import, and end-to-end
+observability rollout.
+
+See the [full skill inventory](claude-plugin/README.md#skills) in the Claude
+plugin README.
 
 **For Claude Code**
 
@@ -263,11 +267,11 @@ For example: OpenAI Codex, OpenCode, and Pi. View the skills shipped in the bund
 
 ```sh
 gcx agent skills list
-18 skill(s) bundled with gcx
+22 skill(s) bundled with gcx
 
 SKILL                      INSTALLED    DESCRIPTION
+create-dashboard           yes          Design and create dashboards with datasource discovery and snapshot-based visual iteration.
 explore-datasources        yes          Discover what datasources, metrics, labels, and log streams are available in a Grafana instance.
-gcx-observability          yes          (Experimental) End-to-end observability setup for Grafana Cloud.
 ....
 ```
 

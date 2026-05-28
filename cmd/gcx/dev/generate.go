@@ -9,7 +9,7 @@ import (
 	"text/template"
 
 	cmdio "github.com/grafana/gcx/internal/output"
-	"github.com/huandu/xstrings"
+	"github.com/grafana/gcx/internal/strcase"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -120,7 +120,7 @@ func processGenerateArg(cmd *cobra.Command, tmpl *template.Template, opts *gener
 	}
 
 	// Normalize output path: snake_case filename with .go extension.
-	outputFile := filepath.Join(dir, xstrings.ToSnakeCase(name)+".go")
+	outputFile := filepath.Join(dir, strcase.ToSnakeCase(name)+".go")
 
 	// Check if file already exists.
 	if _, err := os.Stat(outputFile); err == nil {
@@ -139,7 +139,7 @@ func processGenerateArg(cmd *cobra.Command, tmpl *template.Template, opts *gener
 	templateName := typeToTemplate[resourceType]
 	data := map[string]any{
 		"Package":  packageName,
-		"FuncName": xstrings.ToPascalCase(name),
+		"FuncName": strcase.ToPascalCase(name),
 		"Name":     name,
 	}
 

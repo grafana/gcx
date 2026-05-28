@@ -332,6 +332,15 @@ func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promCli
 				return nil
 			})
 		}
+		// Check N: Trace context propagation — detect the "entities exist
+		// but no edges" failure mode where outgoing OTel SDKs aren't
+		// injecting traceparent on cross-service calls.
+		g.Go(func() error {
+			if c := checkTracePropagation(ctx, promClient, datasourceUID, scope.env); c != nil {
+				addCheck(*c)
+			}
+			return nil
+		})
 	}
 
 	_ = g.Wait() // errors are captured in CheckResults, not returned
@@ -371,6 +380,9 @@ func checkOrder(name string) int {
 	}
 	if strings.HasPrefix(name, "Edge source:") {
 		return 8
+	}
+	if name == "Trace context propagation" {
+		return 9
 	}
 	return 50
 }
@@ -918,6 +930,89 @@ func extractInstantValue(s prometheus.Sample) string {
 		}
 	}
 	return "?"
+}
+
+// ---------------------------------------------------------------------------
+// Trace context propagation detection
+// ---------------------------------------------------------------------------
+
+// checkTracePropagation detects the "entities exist but no edges" failure
+// mode (canonical Entity Graph problem #3). The telemetry signature is:
+//
+//   - traces_target_info{deployment_environment=ENV} > 0   (services exist)
+//   - traces_service_graph_request_total{server_deployment_environment=ENV,
+//     client!="user"} == 0                                  (no real edges)
+//   - traces_service_graph_request_total{server_deployment_environment=ENV,
+//     client="user"} > 0                                    (only phantom edges)
+//
+// Tempo's metrics generator synthesizes client="user" edges for SERVER spans
+// that arrive with no incoming traceparent header — the unambiguous fingerprint
+// of broken outgoing trace context propagation on the upstream service.
+//
+// Returns nil when env is unset (the check is scoped per-env), when target
+// info is empty (telemetry isn't flowing yet — let earlier checks flag that),
+// or when real edges exist (no problem to report).
+func checkTracePropagation(ctx context.Context, client *prometheus.Client, datasourceUID, env string) *CheckResult {
+	if env == "" {
+		return nil
+	}
+
+	// Gate 1: services must be emitting telemetry for this env.
+	targetResp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{
+		Query: fmt.Sprintf(`count(traces_target_info{deployment_environment="%s"})`, env),
+	})
+	if err != nil || len(targetResp.Data.Result) == 0 {
+		// No telemetry flowing — earlier checks (or the absence of any check
+		// passing) will surface this. We don't claim "propagation is broken"
+		// when there's no telemetry to propagate.
+		return nil
+	}
+
+	// Gate 2: are there any real (non-phantom) service-to-service edges?
+	realEdgesResp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{
+		Query: fmt.Sprintf(
+			`count(traces_service_graph_request_total{server_deployment_environment="%s",client!="user"})`,
+			env),
+	})
+	if err != nil {
+		return nil
+	}
+	if len(realEdgesResp.Data.Result) > 0 {
+		// Real edges exist — propagation is fine for this env.
+		return nil
+	}
+
+	// Gate 3: are there phantom edges? Their presence confirms data is flowing
+	// to the metrics generator but lacks incoming context.
+	phantomResp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{
+		Query: fmt.Sprintf(
+			`count(traces_service_graph_request_total{server_deployment_environment="%s",client="user"})`,
+			env),
+	})
+	if err != nil || len(phantomResp.Data.Result) == 0 {
+		// No phantom edges either. This is a different failure mode (e.g. no
+		// SERVER spans at all yet). Don't report a propagation issue here.
+		return nil
+	}
+
+	return &CheckResult{
+		Name:   "Trace context propagation",
+		Status: CheckFail,
+		Detail: fmt.Sprintf(
+			"services emit telemetry for env %q but only phantom client=\"user\" edges exist — no real inter-service edges",
+			env),
+		Recommendation: "Outgoing HTTP calls aren't carrying traceparent headers, so the metrics generator can't link the spans into edges. " +
+			"Check the OTel SDK config on your services. Common causes: " +
+			"(1) HTTP-client auto-instrumentation is disabled or not installed — " +
+			"Python: `OTEL_PYTHON_DISABLED_INSTRUMENTATIONS` is a common culprit, or the relevant `opentelemetry-instrumentation-*` package " +
+			"(urllib, urllib3, requests) isn't installed; " +
+			"Node.js: the `@opentelemetry/instrumentation-*` registration is missing; " +
+			"Go: outgoing calls must be wired through `otelhttp.Transport` (auto-instrumentation does not apply). " +
+			"(2) The application bypasses the instrumented HTTP client (raw socket calls, a third-party SDK using its own transport). " +
+			"(3) No `TracerProvider` was registered, so no context is tracked at all — verify with `gcx traces query` that received spans have a parent. " +
+			"Once outgoing propagation is fixed, expect `traces_service_graph_request_total{client!=\"user\"}` to populate within 1–2 minutes " +
+			"and `asserts:relation:calls` to follow ~5–10 minutes after that.",
+	}
 }
 
 // ---------------------------------------------------------------------------

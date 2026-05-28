@@ -1,3 +1,34 @@
+## v0.3.0 (2026-05-26)
+
+- Added ClickHouse, CloudWatch, and Infinity datasource providers.
+- Added richer IRM OnCall alert groups and SRE triage tooling.
+- Added a create-dashboard skill and dashboard list --limit flag.
+- Improved KG diagnosis for trace propagation and split environments.
+- Fixed KG rule list/get/delete calls to match the backend API.
+- Added dual k6 client support for OAuth and service-account tokens.
+- Fixed k6 provider support for OAuth login.
+- Made aio11y experiment cancellation require confirmation.
+- Warn when API responses return HTML instead of JSON.
+- Exit cleanly on Ctrl+C without noisy errors.
+- Normalized dashboard snapshot time ranges.
+- Removed target-valid-logql rule to restore go install compatibility.
+- Updated login help and Homebrew publishing.
+
+
+## v0.2.16 (2026-05-20)
+
+- Add `aio11y experiments` command group for managing evaluation experiments
+- Add `aio11y guards` subcommand for managing hook rules
+- Fix `kg insights` chart and sources request/response schemas
+- Fix `k6` token piping warning to reference the correct command
+- Centralize signal command wiring across metrics, logs, traces, and profiles
+- Consolidate error types into `internal/gcxerrors`, removing `fail` shims
+- Surface `diagnose-entity-graph` and document how skills get invoked
+- Mint Homebrew tap App token via broker in release workflow
+- Replace Dependabot with Renovate for dependency updates
+- Update Go module dependencies
+
+
 ## v0.2.15 (2026-05-18)
 
 - **New**: `gcx instrumentation` command tree — clusters, services, setup, status
@@ -52,6 +83,7 @@
 - Login now suggests running `config check` after successful login
 - Fix IRM incident URL template to use correct OnCall plugin slug
 - Dev import: register v1 converters for Folder and Dashboard resources
+- `--json list` field discovery now returns all nested paths recursively (previously limited to top-level + one level of `spec.*`). Users relying on `gcx resources get --json list` or `gcx resources schemas --json list` will see a larger field set.
 
 
 ## v0.2.13 (2026-05-06)

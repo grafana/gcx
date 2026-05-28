@@ -10,11 +10,11 @@ import (
 
 	"github.com/charmbracelet/huh"
 	configcmd "github.com/grafana/gcx/cmd/gcx/config"
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	internalauth "github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/login"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/grafana-app-sdk/logging"
@@ -77,7 +77,7 @@ func (opts *loginOpts) setup(flags *pflag.FlagSet) {
 // Also validates the output codec options (format name, --json flag shape).
 func (opts *loginOpts) Validate(args []string) error {
 	if len(args) == 1 && opts.Config.Context != "" {
-		return fail.DetailedError{
+		return gcxerrors.DetailedError{
 			Summary: "conflicting context specification",
 			Details: fmt.Sprintf(
 				"Positional argument %q and --context=%q both specified. Use one.",
@@ -92,7 +92,7 @@ func (opts *loginOpts) Validate(args []string) error {
 		return err
 	}
 	if opts.OAuthCallbackPort < 0 || opts.OAuthCallbackPort > 65535 {
-		return fail.DetailedError{
+		return gcxerrors.DetailedError{
 			Summary: "invalid --oauth-callback-port",
 			Details: fmt.Sprintf("Port must be between 1 and 65535 (or 0 to auto-pick); got %d.", opts.OAuthCallbackPort),
 		}
@@ -116,7 +116,15 @@ Pass CONTEXT_NAME to target a specific context:
   - If it does not exist, create a new context with that name.
 
 Without CONTEXT_NAME, re-authenticates the current context, or starts a
-first-time setup if no current context is configured.`,
+first-time setup if no current context is configured.
+
+Token sources (for non-interactive use):
+  --token        Grafana service-account token (created inside the Grafana
+                 instance). See:
+                 https://grafana.com/docs/grafana/latest/administration/service-accounts.md
+  --cloud-token  Grafana Cloud access-policy token (created at grafana.com).
+                 See:
+                 https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies.md`,
 		Example: `  gcx login
   gcx login prod
   gcx login prod --server https://prod.grafana.net
@@ -518,7 +526,7 @@ func askForClarification(e *login.ErrNeedClarification, opts *login.Options) err
 	return nil
 }
 
-// structuredMissingFieldsError converts ErrNeedInput to a fail.DetailedError for non-interactive callers.
+// structuredMissingFieldsError converts ErrNeedInput to a gcxerrors.DetailedError for non-interactive callers.
 func structuredMissingFieldsError(e *login.ErrNeedInput) error {
 	suggestions := make([]string, 0, len(e.Fields))
 	for _, f := range e.Fields {
@@ -539,18 +547,18 @@ func structuredMissingFieldsError(e *login.ErrNeedInput) error {
 		details += "\n" + e.Hint
 	}
 
-	return fail.DetailedError{
+	return gcxerrors.DetailedError{
 		Summary:     "Login requires additional input",
 		Details:     details,
 		Suggestions: suggestions,
 	}
 }
 
-// structuredClarificationError converts ErrNeedClarification to a fail.DetailedError.
+// structuredClarificationError converts ErrNeedClarification to a gcxerrors.DetailedError.
 func structuredClarificationError(e *login.ErrNeedClarification) error {
 	switch e.Field {
 	case "allow-override":
-		return fail.DetailedError{
+		return gcxerrors.DetailedError{
 			Summary: "Login would overwrite an existing context",
 			Details: e.Question,
 			Suggestions: []string{
@@ -559,7 +567,7 @@ func structuredClarificationError(e *login.ErrNeedClarification) error {
 			},
 		}
 	case "save-unvalidated":
-		return fail.DetailedError{
+		return gcxerrors.DetailedError{
 			Summary: "Connectivity validation failed",
 			Details: e.Question,
 			Suggestions: []string{
@@ -568,7 +576,7 @@ func structuredClarificationError(e *login.ErrNeedClarification) error {
 			},
 		}
 	default:
-		return fail.DetailedError{
+		return gcxerrors.DetailedError{
 			Summary: "Login requires clarification",
 			Details: fmt.Sprintf("%s\nChoices: %s", e.Question, strings.Join(e.Choices, ", ")),
 			Suggestions: []string{

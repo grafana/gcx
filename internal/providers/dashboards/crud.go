@@ -34,6 +34,7 @@ type GrafanaConfigLoader interface {
 type listOpts struct {
 	IO         cmdio.Options
 	APIVersion string
+	Limit      int64
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
@@ -43,9 +44,13 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 
 	flags.StringVar(&o.APIVersion, "api-version", "", "API version to use (e.g. dashboard.grafana.app/v1); defaults to server preferred version")
+	flags.Int64Var(&o.Limit, "limit", 0, "Maximum number of dashboards to return in a single request (0 for no limit)")
 }
 
 func (o *listOpts) Validate() error {
+	if o.Limit < 0 {
+		return fmt.Errorf("--limit must be >= 0, got %d", o.Limit)
+	}
 	return o.IO.Validate()
 }
 
@@ -78,7 +83,7 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			list, err := client.List(ctx, desc, metav1.ListOptions{})
+			list, err := client.List(ctx, desc, metav1.ListOptions{Limit: opts.Limit})
 			if err != nil {
 				return err
 			}

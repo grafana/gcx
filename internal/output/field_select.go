@@ -266,27 +266,33 @@ func MakeFieldValidator(sample any) func(fields []string) error {
 	}
 }
 
-// DiscoverFields enumerates the available field paths from a sample object map.
-// It returns top-level keys and one level of spec.* sub-keys, sorted.
+// DiscoverFields enumerates all dot-notation field paths reachable from a
+// sample object map by recursively expanding nested objects. Top-level keys
+// are always included; nested objects are expanded to their full depth so
+// that deep paths such as "status.links.alert.rule.uid" are discoverable.
 func DiscoverFields(obj map[string]any) []string {
 	seen := make(map[string]struct{})
-
-	for key, val := range obj {
-		seen[key] = struct{}{}
-		// Expand spec.* sub-fields one level deep.
-		if key == "spec" {
-			if nested, ok := val.(map[string]any); ok {
-				for subKey := range nested {
-					seen["spec."+subKey] = struct{}{}
-				}
-			}
-		}
-	}
-
+	collectFields(obj, "", seen)
 	paths := make([]string, 0, len(seen))
 	for k := range seen {
 		paths = append(paths, k)
 	}
 	sort.Strings(paths)
 	return paths
+}
+
+// collectFields recursively walks a nested map and records every dot-notation
+// path into seen. Both leaf paths (e.g. "status.state") and intermediate paths
+// (e.g. "status.links") are recorded so callers can select at any depth.
+func collectFields(obj map[string]any, prefix string, seen map[string]struct{}) {
+	for key, val := range obj {
+		full := key
+		if prefix != "" {
+			full = prefix + "." + key
+		}
+		seen[full] = struct{}{}
+		if nested, ok := val.(map[string]any); ok {
+			collectFields(nested, full, seen)
+		}
+	}
 }

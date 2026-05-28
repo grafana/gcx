@@ -89,7 +89,7 @@ Codec Pipeline               table (default) | graph (terminal chart) | json | y
 
 **Standardized verbs**: `query` (execute queries), `labels` (list label names/values), `series`/`metrics` (list series or compute metric queries), `metadata` (metric metadata). All four signal providers share these verbs with identical flag semantics.
 
-**Dual command mounting**: Datasource commands are accessible via two paths — top-level signal commands (`gcx metrics query`) and the `datasources` subgroup (`gcx datasources prometheus query`). Both paths call the same exported command constructors in `internal/datasources/{kind}/`. The signal-path mount lives in the signal provider's `Commands()` (e.g. `internal/providers/metrics/provider.go`). The `datasources`-path mount is driven by the `DatasourceProvider` interface (`internal/datasources/provider.go`) and its registry (`internal/datasources/registry.go`); built-in `DatasourceProvider` implementations self-register via `init()` in `internal/datasources/providers/` (blank-imported from `cmd/gcx/root/command.go`).
+**Dual command mounting**: Datasource commands are accessible via two paths — top-level signal commands (`gcx metrics query`) and the `datasources` subgroup (`gcx datasources prometheus query`). Both paths call the same exported command constructors in `internal/datasources/{kind}/`. Signal command shape (shared config flags, root hook chaining, command metadata, adaptive subtree mounting) and signal-backed datasource provider wiring are centralized in `internal/signals/`. Top-level signal providers use `signals.Command(...)`; built-in datasource providers use `signals.DatasourceProvider(...)` and self-register via `init()` in `internal/datasources/providers/` (blank-imported from `cmd/gcx/root/command.go`).
 
 **Adaptive telemetry** nests under each signal provider (`metrics adaptive`, `logs adaptive`, `traces adaptive`) with its own CRUD resources (rules, policies, exemptions, segments) and operational views (recommendations, patterns). Uses `internal/auth/adaptive/` for shared GCOM-cached Basic auth.
 
@@ -163,7 +163,7 @@ Multiple auth mechanisms for different tiers.
 | **Basic auth** | Legacy Grafana instances | Username/password in `rest.Config` |
 | **Adaptive auth** | Signal provider adaptive telemetry APIs | `internal/auth/adaptive/` — GCOM-cached Basic auth shared across signal providers |
 
-**Precedence:** Token > OAuth > user/password. Explicit flags override env vars override config file. `httputils.NewDefaultClient(ctx)` must be used for APIs outside the Grafana server (k6 Cloud, OnCall, Synth, Fleet) — the k8s transport injects the Grafana bearer token on every request, which conflicts with product-specific auth.
+**Precedence:** Token > OAuth > user/password. Explicit flags override env vars override config file. `httputils.NewDefaultClient(ctx)` must be used for APIs outside the Grafana server (k6 Cloud, Synth, Fleet) — the k8s transport injects the Grafana bearer token on every request, which conflicts with product-specific auth.
 
 **Deep-dive:** [client-api-layer.md](docs/architecture/client-api-layer.md), [config-system.md](docs/architecture/config-system.md).
 
@@ -189,6 +189,7 @@ Multiple auth mechanisms for different tiers.
 | [016](docs/adrs/dashboards-provider/001-dashboards-provider-design.md) | Dashboards provider: CRUD shorthands, search, and version history | accepted |
 | [017](docs/adrs/traces-get-table/001-tree-table-render-for-traces-get.md) | Tree-table rendering for `traces get` | accepted |
 | [018](docs/adrs/instrumentation/002-cli-redesign.md) | `gcx instrumentation` CLI redesign: action verbs over Set/Get + observed state | accepted |
+| [019](docs/adrs/oncall-alert-group-rich-shape/001-rich-shape-and-list-defaults.md) | Rich `AlertGroup` shape and actionable `alert-groups list` defaults | implemented |
 
 See [docs/adrs/](docs/adrs/) for all ADRs.
 

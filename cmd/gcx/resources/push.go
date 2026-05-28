@@ -4,8 +4,8 @@ import (
 	"errors"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/discovery"
@@ -184,7 +184,7 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			printer(cmd.OutOrStdout(), "%d resources pushed, %d errors", summary.SuccessCount(), summary.FailedCount())
 
 			if opts.OnError.FailOnErrors() && summary.FailedCount() > 0 {
-				return fail.NewPartialFailureError("push", summary.SuccessCount()+summary.FailedCount(), summary.FailedCount())
+				return gcxerrors.NewPartialFailureError("push", summary.SuccessCount()+summary.FailedCount(), summary.FailedCount())
 			}
 
 			return nil

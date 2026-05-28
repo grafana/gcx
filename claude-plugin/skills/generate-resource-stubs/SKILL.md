@@ -1,11 +1,13 @@
 ---
 name: generate-resource-stubs
 description: >
-  Use when the user wants to create new Grafana dashboard or alert rule Go
-  files from scratch, generate typed stubs, add a new dashboard to a project,
-  or write grafana-foundation-sdk builder code. Triggers on "new dashboard",
-  "generate dashboard", "add dashboard", "create alert rule", "generate stub",
-  "foundation-sdk builder", "dashboard as code from scratch".
+  Use when the user explicitly wants typed Go stub files, generated resource
+  skeletons, or grafana-foundation-sdk builder boilerplate for dashboards or
+  alert rules. This is scaffolding only; for designing or creating a usable
+  dashboard with datasource discovery and snapshot iteration, use the
+  create-dashboard skill instead. Triggers on "generate stub", "dashboard
+  stub", "create alert rule stub", "foundation-sdk builder", or "builder
+  boilerplate".
 ---
 
 # Generate Typed Resource Stubs
@@ -13,6 +15,10 @@ description: >
 Generate ready-to-edit Go files for dashboards and alert rules using
 `gcx dev generate`. The generated code uses the grafana-foundation-sdk
 builder pattern and compiles without modification.
+
+This skill stops at scaffolding. If the task is to decide which dashboard
+panels, variables, queries, and layout should exist, use `create-dashboard`
+after generating the stub.
 
 ## Quick Start
 

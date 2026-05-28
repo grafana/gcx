@@ -10,10 +10,20 @@ import (
 
 func TestRuleToResource_RoundTrip(t *testing.T) {
 	original := kg.Rule{
-		Name:   "my-rule",
-		Expr:   "sum(rate(http_requests_total[5m])) by (service)",
-		Record: "service:http_requests:rate5m",
-		Labels: map[string]string{"team": "platform"},
+		Name: "my-rule",
+		Groups: []kg.RuleGroup{
+			{
+				Name:     "primary",
+				Interval: "30s",
+				Rules: []kg.PromRule{
+					{
+						Record: "service:http_requests:rate5m",
+						Expr:   "sum(rate(http_requests_total[5m])) by (service)",
+						Labels: map[string]string{"team": "platform"},
+					},
+				},
+			},
+		},
 	}
 
 	res, err := kg.RuleToResource(original, "stack-123")
@@ -28,18 +38,29 @@ func TestRuleToResource_RoundTrip(t *testing.T) {
 	rule, err := kg.RuleFromResource(res)
 	require.NoError(t, err)
 	assert.Equal(t, original.Name, rule.Name)
-	assert.Equal(t, original.Expr, rule.Expr)
-	assert.Equal(t, original.Record, rule.Record)
-	assert.Equal(t, original.Labels, rule.Labels)
+	require.Len(t, rule.Groups, 1)
+	assert.Equal(t, original.Groups[0].Name, rule.Groups[0].Name)
+	assert.Equal(t, original.Groups[0].Rules[0].Expr, rule.Groups[0].Rules[0].Expr)
+	assert.Equal(t, original.Groups[0].Rules[0].Record, rule.Groups[0].Rules[0].Record)
+	assert.Equal(t, original.Groups[0].Rules[0].Labels, rule.Groups[0].Rules[0].Labels)
 }
 
 func TestRuleToResource_AlertRule(t *testing.T) {
 	original := kg.Rule{
-		Name:        "alert-rule",
-		Alert:       "HighErrorRate",
-		Expr:        "error_rate > 0.5",
-		Labels:      map[string]string{"severity": "critical"},
-		Annotations: map[string]string{"summary": "High error rate detected"},
+		Name: "alert-rule",
+		Groups: []kg.RuleGroup{
+			{
+				Name: "alerts",
+				Rules: []kg.PromRule{
+					{
+						Alert:       "HighErrorRate",
+						Expr:        "error_rate > 0.5",
+						Labels:      map[string]string{"severity": "critical"},
+						Annotations: map[string]string{"summary": "High error rate detected"},
+					},
+				},
+			},
+		},
 	}
 
 	res, err := kg.RuleToResource(original, "stack-456")
@@ -48,6 +69,8 @@ func TestRuleToResource_AlertRule(t *testing.T) {
 	rule, err := kg.RuleFromResource(res)
 	require.NoError(t, err)
 	assert.Equal(t, "alert-rule", rule.Name)
-	assert.Equal(t, "HighErrorRate", rule.Alert)
-	assert.Equal(t, original.Annotations, rule.Annotations)
+	require.Len(t, rule.Groups, 1)
+	require.Len(t, rule.Groups[0].Rules, 1)
+	assert.Equal(t, "HighErrorRate", rule.Groups[0].Rules[0].Alert)
+	assert.Equal(t, original.Groups[0].Rules[0].Annotations, rule.Groups[0].Rules[0].Annotations)
 }

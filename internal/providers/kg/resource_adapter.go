@@ -65,12 +65,33 @@ func RuleSchema() json.RawMessage {
 			"spec": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"name":        map[string]any{"type": "string"},
-					"expr":        map[string]any{"type": "string"},
-					"record":      map[string]any{"type": "string"},
-					"alert":       map[string]any{"type": "string"},
-					"labels":      map[string]any{"type": "object"},
-					"annotations": map[string]any{"type": "object"},
+					"name": map[string]any{"type": "string"},
+					"groups": map[string]any{
+						"type": "array",
+						"items": map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"name":     map[string]any{"type": "string"},
+								"interval": map[string]any{"type": "string"},
+								"rules": map[string]any{
+									"type": "array",
+									"items": map[string]any{
+										"type": "object",
+										"properties": map[string]any{
+											"record":          map[string]any{"type": "string"},
+											"alert":           map[string]any{"type": "string"},
+											"expr":            map[string]any{"type": "string"},
+											"for":             map[string]any{"type": "string"},
+											"labels":          map[string]any{"type": "object"},
+											"annotations":     map[string]any{"type": "object"},
+											"disableInGroups": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+										},
+									},
+								},
+							},
+							"required": []string{"name"},
+						},
+					},
 				},
 				"required": []string{"name"},
 			},
@@ -93,11 +114,21 @@ func RuleExample() json.RawMessage {
 			"name": "my-custom-rule",
 		},
 		"spec": map[string]any{
-			"name":   "my-custom-rule",
-			"expr":   "sum(rate(http_requests_total[5m])) by (service)",
-			"record": "service:http_requests:rate5m",
-			"labels": map[string]any{
-				"team": "platform",
+			"name": "my-custom-rule",
+			"groups": []map[string]any{
+				{
+					"name":     "my-group",
+					"interval": "30s",
+					"rules": []map[string]any{
+						{
+							"record": "service:http_requests:rate5m",
+							"expr":   "sum(rate(http_requests_total[5m])) by (service)",
+							"labels": map[string]any{
+								"team": "platform",
+							},
+						},
+					},
+				},
 			},
 		},
 	}
@@ -131,6 +162,7 @@ func NewAdapterFactory(loader RESTConfigLoader) adapter.Factory {
 			GetFn: func(ctx context.Context, name string) (*Rule, error) {
 				return client.GetRule(ctx, name)
 			},
+			DeleteFn:   client.DeleteRule,
 			Namespace:  cfg.Namespace,
 			Descriptor: staticDescriptor,
 		}
@@ -155,6 +187,7 @@ func NewTypedCRUD(ctx context.Context, loader RESTConfigLoader) (*adapter.TypedC
 		GetFn: func(ctx context.Context, name string) (*Rule, error) {
 			return client.GetRule(ctx, name)
 		},
+		DeleteFn:   client.DeleteRule,
 		Namespace:  cfg.Namespace,
 		Descriptor: staticDescriptor,
 	}
@@ -162,8 +195,8 @@ func NewTypedCRUD(ctx context.Context, loader RESTConfigLoader) (*adapter.TypedC
 }
 
 // RuleToResource converts a KG Rule to a gcx Resource.
-func RuleToResource(rule Rule, namespace string) (*resources.Resource, error) {
-	data, err := json.Marshal(rule)
+func RuleToResource(rf Rule, namespace string) (*resources.Resource, error) {
+	data, err := json.Marshal(rf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal rule: %w", err)
 	}
@@ -177,7 +210,7 @@ func RuleToResource(rule Rule, namespace string) (*resources.Resource, error) {
 		"apiVersion": APIVersion,
 		"kind":       Kind,
 		"metadata": map[string]any{
-			"name":      rule.Name,
+			"name":      rf.Name,
 			"namespace": namespace,
 		},
 		"spec": specMap,
@@ -297,14 +330,14 @@ func RuleFromResource(res *resources.Resource) (*Rule, error) {
 		return nil, fmt.Errorf("failed to marshal spec: %w", err)
 	}
 
-	var rule Rule
-	if err := json.Unmarshal(data, &rule); err != nil {
+	var rf Rule
+	if err := json.Unmarshal(data, &rf); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal spec to rule: %w", err)
 	}
 
-	if rule.Name == "" {
-		rule.Name = res.Raw.GetName()
+	if rf.Name == "" {
+		rf.Name = res.Raw.GetName()
 	}
 
-	return &rule, nil
+	return &rf, nil
 }

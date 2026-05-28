@@ -109,26 +109,31 @@ internal/
 │   │   ├── helm/       Helm command formatter for the setup wizard
 │   │   ├── output/     View types and codecs (clusters, apps, services; wait/mutation envelopes)
 │   │   └── rmw/        Read-modify-write helper with optimistic-lock guard (ConflictError)
-│   ├── irm/        IRM provider (OnCall + Incidents — schedules, integrations, escalation chains, incidents)
+│   ├── irm/        IRM provider (OnCall + Incidents — schedules, integrations, escalation chains, incidents; rich K8s-envelope types for AlertGroup/Alert in rich.go, ADR-019)
 │   ├── k6/         k6 Cloud provider (projects, tests, runs, envvars)
 │   ├── kg/         Knowledge Graph (Asserts) provider
 │   ├── logs/       Logs signal provider (Loki queries + Adaptive Logs commands)
 │   ├── metrics/    Metrics signal provider (Prometheus queries + Adaptive Metrics commands)
 │   ├── appo11y/    App Observability provider (overrides, settings — singleton resources)
 │   ├── profiles/   Profiles signal provider (Pyroscope queries + adaptive stub)
-│   ├── aio11y/     AI Observability provider (conversations, agents, generations, evaluators, rules, templates, scores, judge, saved-conversations, collections — via grafana-sigil-app plugin API)
+│   ├── aio11y/     AI Observability provider (conversations, agents, generations, evaluators, rules, hook-rules (guards), templates, scores, judge, saved-conversations, collections, experiments — via grafana-sigil-app plugin API)
 │   ├── slo/        SLO provider (definitions, reports)
 │   ├── synth/      Synthetic Monitoring provider (checks, probes)
 │   └── traces/     Traces signal provider (Tempo queries + Adaptive Traces commands)
 ├── deeplink/    Deep link URL template registry and browser opener
 ├── dashboards/  Dashboard Image Renderer client (PNG snapshots)
 ├── datasources/ Datasource HTTP client, DatasourceProvider interface + registry
+│   ├── clickhouse/  ClickHouse datasource commands (query, list-tables, describe-table, explore)
+│   ├── cloudwatch/  CloudWatch CLI commands (query, list-namespaces, list-metrics, list-dimensions, list-regions, list-accounts)
 │   ├── influxdb/  InfluxDB datasource command layer (query, field-keys, measurements)
 │   └── query/   Shared query CLI utils (time parsing, codecs, opts, resolve helpers — used by signal providers and GenericCmd)
 ├── query/       Datasource query clients
+│   ├── cloudwatch/  CloudWatch HTTP query client (metric queries, resource listing)
 │   ├── prometheus/  Prometheus HTTP query client
 │   ├── influxdb/    InfluxDB HTTP query client
-│   └── loki/        Loki HTTP query client
+│   ├── loki/        Loki HTTP query client
+│   └── clickhouse/  ClickHouse HTTP query client
+├── signals/     Shared signal command and datasource-provider mounting (metrics/logs/traces/profiles)
 ├── queryerror/  Typed API error for datasource query failures (APIError type, New/FromBody constructors, IsParseError helper)
 ├── assistant/   Assistant client (A2A streaming, prompt, state management)
 │   ├── assistanthttp/  Base HTTP client for grafana-assistant-app plugin API
@@ -137,7 +142,7 @@ internal/
 ├── agentlog/    Agent invocation failure logger (opt-in JSONL disk log, XDG state dir — wired into handleError in cmd/gcx/main.go)
 ├── style/       Terminal styling (Grafana Neon Dark theme, TableBuilder, ASCII banner, glamour help)
 ├── terminal/    TTY/pipe detection (IsPiped, NoTruncate, Detect) for output suppression
-├── linter/      Linting engine (Rego rules, report aggregation, PromQL/LogQL validators)
+├── linter/      Linting engine (Rego rules, report aggregation, PromQL validator)
 ├── graph/       Terminal chart rendering (ntcharts + lipgloss)
 ├── testutils/   Shared test utilities
 ├── server/      Live dev server (Chi router, reverse proxy, websocket reload)
@@ -151,6 +156,8 @@ internal/
 ├── logs/        slog/klog integration
 ├── notifier/    Update notifications (skills + gcx version checks; XDG state, throttling, message rendering — wired into root PersistentPostRun)
 ├── skills/      Portable Agent Skills installer primitives (BundledSkillNames, Install, Update — extracted from cmd/gcx/skills)
+├── strcase/     String case conversion (snake_case, kebab-case, PascalCase)
+├── xdg/         XDG Base Directory paths (config home, state home, config dirs)
 └── shared/      Shared utilities (date handling, duration, etc.) to be shared across integrations.
 ```
 

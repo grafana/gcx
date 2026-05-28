@@ -672,10 +672,11 @@ Files most important for understanding the codebase. Organized by architectural 
 
 ### Signal Providers (Metrics, Logs, Traces, Profiles)
 
-Each LGTM signal has its own provider in `internal/providers/{signal}/` that registers as a top-level command (`gcx metrics`, `gcx logs`, etc.). Each provider owns its datasource-origin commands (query, labels, metadata, series) and its adaptive subtree.
+Each LGTM signal has its own provider in `internal/providers/{signal}/` that registers as a top-level command (`gcx metrics`, `gcx logs`, etc.). Shared signal command and datasource-provider mounting lives in `internal/signals/`; each provider owns signal-specific command metadata, adaptive subtrees, and adapter registrations.
 
 | Package | Purpose |
 |---------|---------|
+| `internal/signals/` | Shared signal command wiring and datasource-provider mounting for metrics/logs/traces/profiles |
 | `internal/providers/metrics/` | Prometheus queries + Adaptive Metrics (rules, recommendations) |
 | `internal/providers/logs/` | Loki queries + Adaptive Logs (patterns, exemptions, segments) |
 | `internal/providers/traces/` | Tempo queries (stub) + Adaptive Traces (policies, recommendations) |

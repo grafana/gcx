@@ -72,6 +72,53 @@ func (r RuleDefinition) GetResourceName() string { return r.RuleID }
 // SetResourceName implements adapter.ResourceIdentity.
 func (r *RuleDefinition) SetResourceName(name string) { r.RuleID = name }
 
+//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
+type HookRuleDefinition struct {
+	// User-provided fields (spec)
+	RuleID       string            `json:"rule_id"`
+	Enabled      bool              `json:"enabled"`
+	Phase        string            `json:"phase"` // preflight | postflight
+	Priority     int               `json:"priority"`
+	Selector     string            `json:"selector"` // user_visible_turn | all_assistant_generations | tool_call_steps | errored_generations | all
+	Match        map[string]any    `json:"match,omitempty"`
+	EvaluatorIDs []string          `json:"evaluator_ids,omitempty"`
+	ActionOnFail string            `json:"action_on_fail"` // deny | warn
+	ShortCircuit bool              `json:"short_circuit"`
+	ToolFilter   *ToolFilterConfig `json:"tool_filter,omitempty"`
+	Transform    *TransformConfig  `json:"transform,omitempty"`
+
+	// Server-generated fields (stripped on push)
+	TenantID  string     `json:"tenant_id,omitempty"`
+	CreatedBy string     `json:"created_by,omitempty"`
+	UpdatedBy string     `json:"updated_by,omitempty"`
+	DeletedAt *time.Time `json:"deleted_at,omitempty"`
+	CreatedAt time.Time  `json:"created_at,omitzero"`
+	UpdatedAt time.Time  `json:"updated_at,omitzero"`
+}
+
+// GetResourceName implements adapter.ResourceNamer.
+func (r HookRuleDefinition) GetResourceName() string { return r.RuleID }
+
+// SetResourceName implements adapter.ResourceIdentity.
+func (r *HookRuleDefinition) SetResourceName(name string) { r.RuleID = name }
+
+// ToolFilterConfig blocks named tool calls from reaching the model.
+type ToolFilterConfig struct {
+	BlockedNames []string `json:"blocked_names"`
+}
+
+// TransformConfig rewrites generation content with regex-based patterns.
+type TransformConfig struct {
+	Patterns []TransformPattern `json:"patterns"`
+}
+
+// TransformPattern is a single regex/replacement pair applied by a transform.
+type TransformPattern struct {
+	ID          string `json:"id,omitempty"`
+	Regex       string `json:"regex"`
+	Replacement string `json:"replacement,omitempty"`
+}
+
 // TemplateDefinition is a list item from GET /eval/templates.
 type TemplateDefinition struct {
 	TemplateID    string     `json:"template_id"`

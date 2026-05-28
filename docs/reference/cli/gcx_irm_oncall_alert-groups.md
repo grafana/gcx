@@ -23,14 +23,14 @@ Manage alert groups.
 ### SEE ALSO
 
 * [gcx irm oncall](gcx_irm_oncall.md)	 - Manage Grafana OnCall resources.
-* [gcx irm oncall alert-groups acknowledge](gcx_irm_oncall_alert-groups_acknowledge.md)	 - Acknowledge an alert group.
-* [gcx irm oncall alert-groups delete](gcx_irm_oncall_alert-groups_delete.md)	 - Delete an alert group.
+* [gcx irm oncall alert-groups acknowledge](gcx_irm_oncall_alert-groups_acknowledge.md)	 - Acknowledge alert groups (single by ID, or bulk by filter).
+* [gcx irm oncall alert-groups delete](gcx_irm_oncall_alert-groups_delete.md)	 - Delete alert groups (single by ID, or bulk by filter).
 * [gcx irm oncall alert-groups get](gcx_irm_oncall_alert-groups_get.md)	 - Get an alert group by ID.
 * [gcx irm oncall alert-groups list](gcx_irm_oncall_alert-groups_list.md)	 - List alert groups.
 * [gcx irm oncall alert-groups list-alerts](gcx_irm_oncall_alert-groups_list-alerts.md)	 - List individual alerts for an alert group.
-* [gcx irm oncall alert-groups resolve](gcx_irm_oncall_alert-groups_resolve.md)	 - Resolve an alert group.
-* [gcx irm oncall alert-groups silence](gcx_irm_oncall_alert-groups_silence.md)	 - Silence an alert group for a specified duration.
-* [gcx irm oncall alert-groups unacknowledge](gcx_irm_oncall_alert-groups_unacknowledge.md)	 - Unacknowledge an alert group.
-* [gcx irm oncall alert-groups unresolve](gcx_irm_oncall_alert-groups_unresolve.md)	 - Unresolve an alert group.
-* [gcx irm oncall alert-groups unsilence](gcx_irm_oncall_alert-groups_unsilence.md)	 - Unsilence an alert group.
+* [gcx irm oncall alert-groups resolve](gcx_irm_oncall_alert-groups_resolve.md)	 - Resolve alert groups (single by ID, or bulk by filter).
+* [gcx irm oncall alert-groups silence](gcx_irm_oncall_alert-groups_silence.md)	 - Silence alert groups (single by ID, or bulk by filter).
+* [gcx irm oncall alert-groups unacknowledge](gcx_irm_oncall_alert-groups_unacknowledge.md)	 - Unacknowledge alert groups (single by ID, or bulk by filter).
+* [gcx irm oncall alert-groups unresolve](gcx_irm_oncall_alert-groups_unresolve.md)	 - Unresolve alert groups (single by ID, or bulk by filter).
+* [gcx irm oncall alert-groups unsilence](gcx_irm_oncall_alert-groups_unsilence.md)	 - Unsilence alert groups (single by ID, or bulk by filter).
 

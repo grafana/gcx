@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -120,9 +121,10 @@ func TestOutputResponse_NonJSONRawOutput(t *testing.T) {
 		Body:       io.NopCloser(strings.NewReader(htmlData)),
 	}
 
-	var output bytes.Buffer
+	var output, errOut bytes.Buffer
 	cmd := &cobra.Command{}
 	cmd.SetOut(&output)
+	cmd.SetErr(&errOut)
 
 	opts := &apiOpts{}
 	opts.IO.DefaultFormat("json")
@@ -130,6 +132,89 @@ func TestOutputResponse_NonJSONRawOutput(t *testing.T) {
 	err := outputResponse(cmd, opts, resp)
 	require.NoError(t, err)
 	assert.Equal(t, htmlData, output.String())
+	// No Content-Type set: must not emit a warning.
+	assert.Empty(t, errOut.String())
+}
+
+func TestOutputResponse_HTMLContentTypeWarns(t *testing.T) {
+	htmlData := `<!DOCTYPE html><html><body>Grafana SPA</body></html>`
+	reqURL, err := url.Parse("https://example.grafana.net/dashboards")
+	require.NoError(t, err)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/html; charset=utf-8"}},
+		Body:       io.NopCloser(strings.NewReader(htmlData)),
+		Request:    &http.Request{URL: reqURL},
+	}
+
+	var output, errOut bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&output)
+	cmd.SetErr(&errOut)
+
+	opts := &apiOpts{}
+	opts.IO.DefaultFormat("json")
+
+	err = outputResponse(cmd, opts, resp)
+	require.NoError(t, err)
+
+	// Body still written to stdout verbatim (no behavior change for pipes).
+	assert.Equal(t, htmlData, output.String())
+
+	// Warning written to stderr, includes the requested URL.
+	warn := errOut.String()
+	assert.Contains(t, warn, "Response is not JSON")
+	assert.Contains(t, warn, "https://example.grafana.net/dashboards")
+}
+
+func TestOutputResponse_HTMLContentTypeNoRequest(t *testing.T) {
+	// Defensive: a bare http.Response with no Request should still warn,
+	// just without the final URL.
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/html"}},
+		Body:       io.NopCloser(strings.NewReader("<html></html>")),
+	}
+
+	var output, errOut bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&output)
+	cmd.SetErr(&errOut)
+
+	opts := &apiOpts{}
+	opts.IO.DefaultFormat("json")
+
+	err := outputResponse(cmd, opts, resp)
+	require.NoError(t, err)
+	assert.Contains(t, errOut.String(), "Response is not JSON")
+	assert.NotContains(t, errOut.String(), "requested:")
+}
+
+func TestIsHTMLResponse(t *testing.T) {
+	tests := []struct {
+		name        string
+		contentType string
+		want        bool
+	}{
+		{name: "empty", contentType: "", want: false},
+		{name: "plain text/html", contentType: "text/html", want: true},
+		{name: "with charset", contentType: "text/html; charset=utf-8", want: true},
+		{name: "uppercase", contentType: "TEXT/HTML", want: true},
+		{name: "json", contentType: "application/json", want: false},
+		{name: "json with charset", contentType: "application/json; charset=utf-8", want: false},
+		{name: "plain text", contentType: "text/plain", want: false},
+		{name: "prometheus exposition", contentType: "text/plain; version=0.0.4", want: false},
+		{name: "protobuf", contentType: "application/x-protobuf", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := &http.Response{Header: http.Header{}}
+			if tt.contentType != "" {
+				resp.Header.Set("Content-Type", tt.contentType)
+			}
+			assert.Equal(t, tt.want, isHTMLResponse(resp))
+		})
+	}
 }
 
 func TestOutputResponse_ErrorWithBody(t *testing.T) {
