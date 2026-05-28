@@ -1,12 +1,13 @@
 ---
 name: create-dashboard
 description: >
-  Use when the user wants to create a new Grafana dashboard, design dashboard
-  panels, variables, queries, or layout, or make a material visual redesign of
-  an existing dashboard. This skill uses gcx plus `gcx dashboards snapshot` as
+  Use when the user wants to create a new Grafana dashboard, add panels,
+  variables, or annotations to an existing dashboard, design dashboard panels,
+  variables, queries, or layout, or make a material visual redesign of an
+  existing dashboard. This skill uses gcx plus `gcx dashboards snapshot` as
   a visual feedback loop. Triggers on "create dashboard", "new dashboard",
-  "build dashboard", "dashboard for <service>", "improve this dashboard", or
-  "iterate on a dashboard".
+  "build dashboard", "dashboard for <service>", "add panels", "add variable",
+  "add annotation", "improve this dashboard", or "iterate on a dashboard".
 ---
 
 # Create Dashboard
