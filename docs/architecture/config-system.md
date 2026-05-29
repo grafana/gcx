@@ -155,7 +155,7 @@ Loading steps (in `Load`):
 3. YAML-decode with `BytesAsBase64: true` (so `[]byte` fields are stored as base64 in YAML)
 4. Post-process: populate `ctx.Name` from the map key for each context
 5. **Resolve keychain sentinels**: walk every context and replace `keychain:gcx:<context>:<field>` sentinels with the plaintext value from the OS keychain (via `internal/credentials`). The set of resolved (context, field) pairs is tracked on `Config.keychainFields` so `Write` can round-trip back to sentinels. Failed lookups clear the field and log a warning. Under `go test`, the default store is a no-op that returns `ErrUnavailable`, so test binaries never prompt the OS keychain.
-6. **Migrate plaintext token-shaped secrets**: any plaintext value in a tracked field (`cloud.token`, `grafana.token`, `grafana.password`, `grafana.oauth-token`, `grafana.oauth-refresh-token`) that is not already keychain-backed is pushed to the store and marked. If at least one field migrated, `Load` calls `Write` so the on-disk YAML is rewritten with sentinels. When the keychain is unavailable, a one-time warning fires and plaintext stays on disk.
+6. **Migrate plaintext token-shaped secrets**: any plaintext value in a tracked field (`cloud.token`, `grafana.token`, `grafana.password`, `grafana.oauth-token`, `grafana.oauth-refresh-token`, `providers.synth.sm-token`) that is not already keychain-backed is pushed to the store and marked. If at least one field migrated, `Load` calls `Write` so the on-disk YAML is rewritten with sentinels. When the keychain is unavailable, a one-time warning fires and plaintext stays on disk.
 7. Apply each `Override` function in order
 8. On `ValidationError`, call `annotateErrorWithSource` to embed a YAML-path-aware source annotation
 

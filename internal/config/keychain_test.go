@@ -119,6 +119,38 @@ current-context: default
 	assert.Equal(t, "plain-svc-token", got)
 }
 
+func TestLoad_MigratesProviderSMToken(t *testing.T) {
+	store := withFakeStore(t)
+	path := writeYAML(t, `
+contexts:
+  default:
+    grafana:
+      server: https://example.invalid
+    providers:
+      synth:
+        sm-url: https://sm.example.invalid
+        sm-token: plain-sm-token
+current-context: default
+`)
+
+	cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
+	require.NoError(t, err)
+
+	def := cfg.Contexts["default"]
+	assert.Equal(t, "plain-sm-token", def.Providers["synth"]["sm-token"], "in-memory value should be plaintext")
+	assert.Equal(t, "https://sm.example.invalid", def.Providers["synth"]["sm-url"], "non-secret keys are untouched")
+
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	disk := string(raw)
+	assert.Contains(t, disk, "keychain:gcx:default:sm-token")
+	assert.NotContains(t, disk, "plain-sm-token")
+
+	got, err := store.Get(credentials.AccountKey("default", credentials.FieldSMToken))
+	require.NoError(t, err)
+	assert.Equal(t, "plain-sm-token", got)
+}
+
 func TestLoad_ResolvesSentinelsToPlaintext(t *testing.T) {
 	store := withFakeStore(t)
 	require.NoError(t, store.Set(credentials.AccountKey("default", credentials.FieldOAuthToken), "gat_resolved"))

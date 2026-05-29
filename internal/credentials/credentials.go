@@ -23,9 +23,9 @@ const service = "gcx"
 // sentinelPrefix marks a config value as a reference to a keychain entry.
 const sentinelPrefix = "keychain:" + service + ":"
 
-// Field identifies one of the five token-shaped secret fields stored per
-// context. The string values are also the per-context account suffix used in
-// the keychain entry name.
+// Field identifies one of the token-shaped secret fields stored per context.
+// The string values are also the per-context account suffix used in the
+// keychain entry name.
 type Field string
 
 const (
@@ -36,6 +36,7 @@ const (
 	FieldOAuthToken Field = "oauth-token"
 	//nolint:gosec // field identifier, not a credential.
 	FieldOAuthRefreshToken Field = "oauth-refresh-token"
+	FieldSMToken           Field = "sm-token"
 )
 
 // AllFields lists every secret field handled by this package.
@@ -47,6 +48,7 @@ var AllFields = []Field{
 	FieldGrafanaPassword,
 	FieldOAuthToken,
 	FieldOAuthRefreshToken,
+	FieldSMToken,
 }
 
 // ErrNotFound is returned by Store.Get when no entry exists for the given key.
