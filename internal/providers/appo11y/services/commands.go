@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"golang.org/x/sync/errgroup"
 )
 
 // Commands returns the `services` command group, rooted under `gcx appo11y`.
@@ -87,8 +88,11 @@ func (o *listOpts) Validate() error {
 	return nil
 }
 
+// wantsInstrumented controls whether to issue the target_info query.
+// Even in --instrumentation uninstrumented mode we need this set so the
+// service-graph results can be diffed against it.
 func (o *listOpts) wantsInstrumented() bool {
-	return o.Instrumentation == instrAll || o.Instrumentation == instrInstrumented
+	return true
 }
 
 func (o *listOpts) wantsServiceGraph() bool {
@@ -187,33 +191,45 @@ func runList(opts *listOpts) func(*cobra.Command, []string) error {
 		}
 
 		var instrumented, graph []Service
+		eg, egCtx := errgroup.WithContext(ctx)
 		if opts.wantsInstrumented() {
-			expr, err := buildServicesQuery(opts.Metric, filters, opts.Columns)
-			if err != nil {
-				return fmt.Errorf("failed to build services discovery query: %w", err)
-			}
-			resp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{Query: expr})
-			if err != nil {
-				return fmt.Errorf("services discovery query failed: %w", err)
-			}
-			instrumented, err = parseServicesResponse(resp)
-			if err != nil {
-				return fmt.Errorf("failed to parse services response: %w", err)
-			}
+			eg.Go(func() error {
+				expr, err := buildServicesQuery(opts.Metric, filters, opts.Columns)
+				if err != nil {
+					return fmt.Errorf("failed to build services discovery query: %w", err)
+				}
+				resp, err := client.Query(egCtx, datasourceUID, prometheus.QueryRequest{Query: expr})
+				if err != nil {
+					return fmt.Errorf("services discovery query failed: %w", err)
+				}
+				items, err := parseServicesResponse(resp)
+				if err != nil {
+					return fmt.Errorf("failed to parse services response: %w", err)
+				}
+				instrumented = items
+				return nil
+			})
 		}
 		if opts.wantsServiceGraph() {
-			expr, err := buildServiceGraphQuery(opts.ServiceGraph)
-			if err != nil {
-				return fmt.Errorf("failed to build service-graph query: %w", err)
-			}
-			resp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{Query: expr})
-			if err != nil {
-				return fmt.Errorf("service-graph query failed: %w", err)
-			}
-			graph, err = parseServiceGraphResponse(resp)
-			if err != nil {
-				return fmt.Errorf("failed to parse service-graph response: %w", err)
-			}
+			eg.Go(func() error {
+				expr, err := buildServiceGraphQuery(opts.ServiceGraph)
+				if err != nil {
+					return fmt.Errorf("failed to build service-graph query: %w", err)
+				}
+				resp, err := client.Query(egCtx, datasourceUID, prometheus.QueryRequest{Query: expr})
+				if err != nil {
+					return fmt.Errorf("service-graph query failed: %w", err)
+				}
+				items, err := parseServiceGraphResponse(resp)
+				if err != nil {
+					return fmt.Errorf("failed to parse service-graph response: %w", err)
+				}
+				graph = items
+				return nil
+			})
+		}
+		if err := eg.Wait(); err != nil {
+			return err
 		}
 
 		items := resolveItems(opts.Instrumentation, instrumented, graph)
@@ -349,11 +365,10 @@ func (c *servicesTableCodec) encodeServicesTable(w io.Writer, resp *ServicesResp
 	return t.Render(w)
 }
 
-// environmentValue mirrors the plugin's environment-attribute logic: prefer the
-// legacy deployment.environment (the plugin's DEFAULT_ENVIRONMENT_ATTRIBUTE in
-// plugin/src/constants/semantics.ts), and fall back to the current-semconv
-// deployment.environment.name so stacks on the newer OTel SDK still surface a
-// value. Either may be empty.
+// environmentValue prefers the legacy deployment.environment attribute (the
+// long-standing OTel semconv value that App Observability stacks emit by
+// default) and falls back to the current-semconv deployment.environment.name
+// so stacks on the newer OTel SDK still surface a value. Either may be empty.
 func environmentValue(labels map[string]string) string {
 	if v := labels["deployment_environment"]; v != "" {
 		return v

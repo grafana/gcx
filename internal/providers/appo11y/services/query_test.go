@@ -113,7 +113,7 @@ func TestBuildServiceGraphQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
-	want := "group by (server, server_service_namespace) (traces_service_graph_request_total)"
+	want := `group by (server, server_service_namespace) (traces_service_graph_request_total{connection_type!=""})`
 	if got != want {
 		t.Errorf("buildServiceGraphQuery() =\n  %q\nwant\n  %q", got, want)
 	}
@@ -122,7 +122,7 @@ func TestBuildServiceGraphQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
-	want = "group by (server, server_service_namespace) (traces_spanmetrics_calls_total)"
+	want = `group by (server, server_service_namespace) (traces_spanmetrics_calls_total{connection_type!=""})`
 	if got != want {
 		t.Errorf("override =\n  %q\nwant\n  %q", got, want)
 	}

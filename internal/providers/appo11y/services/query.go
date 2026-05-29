@@ -80,9 +80,9 @@ func (m Matcher) apply(v *promql.VectorExprBuilder) *promql.VectorExprBuilder {
 }
 
 // buildServicesQuery returns a PromQL expression that groups the target_info
-// inventory. It mirrors the plugin query at
-// plugin/src/modules/services/utils/servicesQueryBuilder.ts, expanded to
-// also project the metadata labels the plugin enriches in a second query.
+// inventory by the discovery key (telemetry_sdk_language, job) and projects
+// the metadata labels the table view needs, so a single round-trip fills
+// both default and wide columns.
 //
 // matchers are already-validated label filters; metric defaults to
 // "target_info"; extraLabels are appended to the group-by projection for
@@ -120,8 +120,8 @@ func parseFilter(raw string) (Matcher, error) {
 // Service is a single row in the services inventory.
 //
 // Name is the bare service name (no namespace prefix). Namespace is parsed
-// from the `job` label using the plugin's `<namespace>/<service>` convention
-// — see parseJob and plugin/src/utils/services.ts in app-observability-plugin.
+// from the `job` label using the `<namespace>/<service>` convention — see
+// parseJob.
 type Service struct {
 	Name         string            `json:"name" yaml:"name"`
 	Namespace    string            `json:"namespace,omitempty" yaml:"namespace,omitempty"`
@@ -130,11 +130,10 @@ type Service struct {
 	Labels       map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
 }
 
-// parseJob splits a target_info `job` label using the plugin's convention:
-// jobs shaped `<namespace>/<service>` yield (namespace, service); jobs with no
-// slash become (empty, job). The plugin's parseJob (plugin/src/utils/services.ts)
-// uses the first slash as the split point — anything after the first slash is
-// preserved in the service name.
+// parseJob splits a target_info `job` label on the first slash, treating
+// `<namespace>/<service>` as the canonical encoding. Jobs without a slash
+// become (empty, job); anything after the first slash is preserved in the
+// service name.
 func parseJob(job string) (string, string) {
 	ns, name, found := strings.Cut(job, "/")
 	if !found {
@@ -245,14 +244,17 @@ func sortServices(s []Service) {
 
 // buildServiceGraphQuery returns a PromQL expression that lists every service
 // observed as a `server` in the Tempo service-graph metric, projecting
-// server_service_namespace when present (the plugin uses this label as the
-// uninstrumented-side namespace — see ServicesScene.tsx:622-648 fallback).
-// metric defaults to "traces_service_graph_request_total".
+// server_service_namespace alongside so uninstrumented services with that
+// label show up under the right namespace. `connection_type!=""` keeps only
+// edges where Tempo actually classified the call (database, messaging, etc.) —
+// without it, partial series with empty edge metadata leak in and inflate
+// the uninstrumented set. metric defaults to "traces_service_graph_request_total".
 func buildServiceGraphQuery(metric string) (string, error) {
 	if metric == "" {
 		metric = defaultServiceGraphMetric
 	}
-	expr, err := promql.Group(promql.Vector(metric)).By([]string{"server", "server_service_namespace"}).Build()
+	v := promql.Vector(metric).LabelNeq("connection_type", "")
+	expr, err := promql.Group(v).By([]string{"server", "server_service_namespace"}).Build()
 	if err != nil {
 		return "", err
 	}
