@@ -360,7 +360,7 @@ func Load(ctx context.Context, source Source, overrides ...Override) (Config, er
 
 	log := logging.FromContext(ctx)
 	store := keychainStoreFn()
-	config.keychainFields = resolveSentinels(&config, store, log)
+	config.keychainFields, config.keychainPreserve = resolveSentinels(&config, store, log)
 	if migrated := migratePlaintextSecrets(&config, store, log); migrated > 0 {
 		log.Info("migrated plaintext credentials into OS keychain",
 			"count", migrated,
@@ -390,8 +390,8 @@ func Write(ctx context.Context, source Source, cfg Config) error {
 	log := logging.FromContext(ctx)
 	log.Debug("Writing config", slog.String("filename", filename))
 
-	if len(cfg.keychainFields) > 0 {
-		restore := substituteSentinels(&cfg, keychainStoreFn(), log)
+	if cfg.hasSecretsToReconcile() {
+		restore := reconcileKeychain(&cfg, keychainStoreFn(), log)
 		defer restore()
 	}
 

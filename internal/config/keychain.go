@@ -9,7 +9,7 @@ import (
 
 // keychainBacked tracks which (context, field) pairs were stored in the
 // keychain at load time. The map lives on Config as an unexported field; it is
-// populated by resolveSentinels during Load and consumed by substituteSentinels
+// populated by resolveSentinels during Load and consumed by reconcileKeychain
 // during Write to round-trip sentinel values to disk.
 type keychainBacked map[string]map[credentials.Field]bool
 
@@ -104,13 +104,16 @@ func providerFieldRef(ctx *Context, provider, key string) (secretRef, bool) {
 }
 
 // resolveSentinels walks every context and replaces keychain sentinels with
-// their plaintext values from the store. The map of resolved (context, field)
-// pairs is returned so the writer can re-substitute sentinels on Write. Fields
-// whose store lookup fails are cleared to an empty string and logged; the
-// command will surface this as an auth failure rather than silently sending a
-// sentinel as a credential.
-func resolveSentinels(cfg *Config, store credentials.Store, log logging.Logger) keychainBacked {
-	backed := keychainBacked{}
+// their plaintext values from the store. It returns two maps: backed lists the
+// (context, field) pairs that resolved successfully (so Write can re-substitute
+// sentinels), and preserve lists pairs whose lookup failed because the keychain
+// was unavailable. In both failure cases the in-memory value is cleared so the
+// command surfaces a missing credential rather than sending a sentinel string
+// as one. The distinction matters on Write: a malformed or genuinely-absent
+// reference is dropped, but an unresolvable-because-unavailable one is
+// round-tripped back to disk verbatim so a transient outage never destroys it.
+func resolveSentinels(cfg *Config, store credentials.Store, log logging.Logger) (keychainBacked, keychainBacked) {
+	backed, preserve := keychainBacked{}, keychainBacked{}
 	for ctxName, ctx := range cfg.Contexts {
 		if ctx == nil {
 			continue
@@ -135,18 +138,28 @@ func resolveSentinels(cfg *Config, store credentials.Store, log logging.Logger) 
 			}
 			value, err := store.Get(credentials.AccountKey(ctxName, field))
 			if err != nil {
-				log.Warn("could not resolve keychain entry",
+				ref.set("")
+				if errors.Is(err, credentials.ErrNotFound) {
+					// The entry is genuinely gone; drop the dangling reference.
+					log.Warn("keychain entry not found; dropping dangling reference",
+						"context", ctxName,
+						"field", string(field))
+					continue
+				}
+				// Keychain unavailable or another transient error: keep the
+				// on-disk sentinel intact by preserving it for Write.
+				log.Warn("could not resolve keychain entry; leaving reference in place",
 					"context", ctxName,
 					"field", string(field),
 					"error", err.Error())
-				ref.set("")
+				preserve.mark(ctxName, field)
 				continue
 			}
 			ref.set(value)
 			backed.mark(ctxName, field)
 		}
 	}
-	return backed
+	return backed, preserve
 }
 
 // migratePlaintextSecrets pushes any plaintext secret values into the store
@@ -194,37 +207,109 @@ func migratePlaintextSecrets(cfg *Config, store credentials.Store, log logging.L
 	return migrated
 }
 
-// substituteSentinels temporarily replaces keychain-backed fields with their
-// sentinel forms (after pushing the current plaintext value to the store) and
-// returns a restore function that reverts the in-memory values. Intended to
-// wrap a single YAML encode operation.
-func substituteSentinels(cfg *Config, store credentials.Store, log logging.Logger) func() {
+// hasSecretsToReconcile reports whether Write needs to touch the keychain at
+// all. It is true when any secret field holds a value (so it must be written
+// through), or when a field is known to be keychain-backed or preserved (so it
+// may need a sentinel round-trip or a stale-entry delete). When false, Write
+// skips opening the keychain entirely, so secret-less config writes never probe
+// the OS backend.
+func (cfg *Config) hasSecretsToReconcile() bool {
+	if len(cfg.keychainFields) > 0 || len(cfg.keychainPreserve) > 0 {
+		return true
+	}
+	for _, ctx := range cfg.Contexts {
+		if ctx == nil {
+			continue
+		}
+		for _, field := range credentials.AllFields {
+			if ref, ok := fieldRef(ctx, field); ok && ref.get() != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// reconcileKeychain walks every secret field and brings the keychain and the
+// in-memory config into agreement for a single YAML encode, returning a restore
+// function that reverts the in-memory swaps afterwards. For each field it:
+//
+//   - preserves an unresolvable sentinel (keychain was unavailable at load) by
+//     writing it back verbatim, never touching the store;
+//   - deletes the keychain entry for a field that was backed but is now empty
+//     (gcx config unset, or an auth-method switch that drops the credential);
+//   - writes any plaintext secret through to the keychain and substitutes a
+//     sentinel for the on-disk value, covering both migration and freshly
+//     written secrets from gcx login / gcx config set.
+//
+// If the keychain is unavailable, plaintext secrets are left in place with a
+// one-time warning so gcx still works on headless or locked boxes.
+func reconcileKeychain(cfg *Config, store credentials.Store, log logging.Logger) func() {
+	if cfg.keychainFields == nil {
+		cfg.keychainFields = keychainBacked{}
+	}
 	type swap struct {
 		ref       secretRef
 		plaintext string
 	}
 	var swaps []swap
-	for ctxName, fields := range cfg.keychainFields {
-		ctx := cfg.Contexts[ctxName]
+	for ctxName, ctx := range cfg.Contexts {
 		if ctx == nil {
 			continue
 		}
-		for field := range fields {
+		for _, field := range credentials.AllFields {
 			ref, ok := fieldRef(ctx, field)
 			if !ok {
 				continue
 			}
-			plaintext := ref.get()
-			if plaintext != "" && !credentials.IsSentinel(plaintext) {
-				if err := store.Set(credentials.AccountKey(ctxName, field), plaintext); err != nil {
-					log.Warn("could not update keychain entry",
-						"context", ctxName,
-						"field", string(field),
-						"error", err.Error())
+			key := credentials.AccountKey(ctxName, field)
+
+			// Unresolvable at load: round-trip the sentinel verbatim.
+			if cfg.keychainPreserve[ctxName][field] {
+				swaps = append(swaps, swap{ref: ref, plaintext: ref.get()})
+				ref.set(credentials.FormatSentinel(ctxName, field))
+				continue
+			}
+
+			cur := ref.get()
+
+			if cur == "" {
+				// Field cleared. If it was keychain-backed, remove the now-stale
+				// entry instead of orphaning it.
+				if cfg.keychainFields[ctxName][field] {
+					if err := store.Delete(key); err != nil && !errors.Is(err, credentials.ErrUnavailable) {
+						log.Warn("could not remove stale keychain entry",
+							"context", ctxName,
+							"field", string(field),
+							"error", err.Error())
+					}
+					delete(cfg.keychainFields[ctxName], field)
+				}
+				continue
+			}
+
+			if credentials.IsSentinel(cur) {
+				continue
+			}
+
+			// Plaintext secret: write it through to the keychain and substitute
+			// a sentinel for the on-disk value.
+			if err := store.Set(key, cur); err != nil {
+				if errors.Is(err, credentials.ErrUnavailable) {
+					credentials.WarnUnavailableOnce(func() {
+						log.Warn("keychain unavailable; credentials remain in plaintext on disk",
+							"hint", "install or unlock your OS keychain to enable encrypted credential storage")
+					})
 					continue
 				}
+				log.Warn("could not write keychain entry",
+					"context", ctxName,
+					"field", string(field),
+					"error", err.Error())
+				continue
 			}
-			swaps = append(swaps, swap{ref: ref, plaintext: plaintext})
+			cfg.keychainFields.mark(ctxName, field)
+			swaps = append(swaps, swap{ref: ref, plaintext: cur})
 			ref.set(credentials.FormatSentinel(ctxName, field))
 		}
 	}

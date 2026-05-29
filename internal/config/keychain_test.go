@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 
@@ -19,6 +20,11 @@ type fakeStore struct {
 	mu       sync.Mutex
 	entries  map[string]string
 	setCalls int
+	deletes  []string
+	// getErr, when non-nil, is returned by every Get to simulate a keychain
+	// that is reachable for writes but cannot resolve reads (e.g. a locked
+	// session). Tests set it to credentials.ErrUnavailable.
+	getErr error
 }
 
 func newFakeStore() *fakeStore {
@@ -28,11 +34,20 @@ func newFakeStore() *fakeStore {
 func (s *fakeStore) Get(key string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.getErr != nil {
+		return "", s.getErr
+	}
 	v, ok := s.entries[key]
 	if !ok {
 		return "", credentials.ErrNotFound
 	}
 	return v, nil
+}
+
+func (s *fakeStore) setGetErr(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.getErr = err
 }
 
 func (s *fakeStore) Set(key, value string) error {
@@ -52,8 +67,15 @@ func (s *fakeStore) sets() int {
 func (s *fakeStore) Delete(key string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.deletes = append(s.deletes, key)
 	delete(s.entries, key)
 	return nil
+}
+
+func (s *fakeStore) deleted(key string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Contains(s.deletes, key)
 }
 
 func (s *fakeStore) len() int {
@@ -261,6 +283,106 @@ current-context: default
 	require.NoError(t, err)
 	assert.Contains(t, string(raw), "gat_plain", "plaintext should remain on disk when keychain is unavailable")
 	assert.NotContains(t, string(raw), "keychain:", "no sentinel should be written when keychain is unavailable")
+}
+
+// Finding 1: a temporarily unavailable keychain must not cause an unrelated
+// config write to permanently erase the sentinel reference from the YAML.
+func TestWrite_PreservesSentinelWhenKeychainUnavailableAtLoad(t *testing.T) {
+	store := withFakeStore(t)
+	key := credentials.AccountKey("default", credentials.FieldOAuthToken)
+	require.NoError(t, store.Set(key, "gat_real"))
+	// Reads now fail as if the backend went away (locked session, missing DBus).
+	store.setGetErr(credentials.ErrUnavailable)
+
+	path := writeYAML(t, `
+contexts:
+  default:
+    grafana:
+      server: https://example.invalid
+      oauth-token: keychain:gcx:default:oauth-token
+current-context: default
+`)
+
+	cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
+	require.NoError(t, err)
+
+	// The in-memory value is cleared so the command surfaces a missing
+	// credential rather than sending the sentinel string as a token.
+	assert.Empty(t, cfg.Contexts["default"].Grafana.OAuthToken)
+
+	// An unrelated config write must round-trip the sentinel back to disk.
+	require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), cfg))
+
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), "keychain:gcx:default:oauth-token",
+		"sentinel must survive a write while the keychain is unavailable")
+	assert.False(t, store.deleted(key),
+		"an unresolvable entry must not be deleted from the keychain")
+}
+
+// Finding 2: clearing a keychain-backed field (gcx config unset, or an
+// auth-method switch that drops the old credential) must remove the stale
+// keychain entry instead of orphaning it.
+func TestWrite_UnsettingBackedFieldRemovesKeychainEntry(t *testing.T) {
+	store := withFakeStore(t)
+	key := credentials.AccountKey("default", credentials.FieldOAuthToken)
+	require.NoError(t, store.Set(key, "gat_old"))
+
+	path := writeYAML(t, `
+contexts:
+  default:
+    grafana:
+      server: https://example.invalid
+      oauth-token: keychain:gcx:default:oauth-token
+current-context: default
+`)
+
+	cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
+	require.NoError(t, err)
+	require.Equal(t, "gat_old", cfg.Contexts["default"].Grafana.OAuthToken)
+
+	cfg.Contexts["default"].Grafana.OAuthToken = ""
+	require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), cfg))
+
+	_, err = store.Get(key)
+	require.ErrorIs(t, err, credentials.ErrNotFound,
+		"stale keychain entry must be deleted when its field is unset")
+
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), "keychain:gcx:default:oauth-token")
+}
+
+// Finding 3: secrets written by gcx login / gcx config set (no prior
+// keychain-backed load) must be written through to the keychain, never left as
+// plaintext on disk.
+func TestWrite_NewPlaintextSecretIsWrittenThrough(t *testing.T) {
+	store := withFakeStore(t)
+	path := filepath.Join(t.TempDir(), "config.yaml")
+
+	cfg := config.Config{
+		CurrentContext: "default",
+		Contexts: map[string]*config.Context{
+			"default": {
+				Grafana: &config.GrafanaConfig{
+					Server:   "https://example.invalid",
+					APIToken: "plain-new-token",
+				},
+			},
+		},
+	}
+	require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), cfg))
+
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), "keychain:gcx:default:grafana-token",
+		"a freshly written plaintext secret must be replaced by a sentinel")
+	assert.NotContains(t, string(raw), "plain-new-token")
+
+	got, err := store.Get(credentials.AccountKey("default", credentials.FieldGrafanaToken))
+	require.NoError(t, err)
+	assert.Equal(t, "plain-new-token", got)
 }
 
 func TestLoad_MalformedSentinelClearsField(t *testing.T) {
