@@ -8,6 +8,7 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/terminal"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -196,22 +197,35 @@ func TestJSONFlag_Parsing(t *testing.T) {
 	}
 }
 
-func TestEncode_AgentModeHint(t *testing.T) {
-	// The agent-mode hint banner has been removed (C.3c). No mode should emit it.
+func TestEncode_JSONFieldsHint(t *testing.T) {
+	// The --json field-selection hint is pipe-aware: it is emitted to stderr
+	// only on an interactive TTY. When stdout is piped or agent mode is active
+	// it is suppressed, so it never contaminates a tool's merged stdout+stderr
+	// capture. See docs/design/agent-mode.md.
 	tests := []struct {
 		name      string
 		agentMode bool
+		piped     bool   // simulates non-TTY stdout
 		jsonField string // if set, pass --json flag
 		wantHint  bool
 	}{
 		{
-			name:      "agent mode without --json: no hint",
+			name:     "interactive TTY without --json: hint emitted",
+			wantHint: true,
+		},
+		{
+			name:     "piped stdout: no hint",
+			piped:    true,
+			wantHint: false,
+		},
+		{
+			name:      "agent mode: no hint",
 			agentMode: true,
 			wantHint:  false,
 		},
 		{
-			name:      "non-agent mode: no hint",
-			agentMode: false,
+			name:      "interactive TTY with --json field selection: no hint",
+			jsonField: "name",
 			wantHint:  false,
 		},
 	}
@@ -219,11 +233,18 @@ func TestEncode_AgentModeHint(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			agent.SetFlag(tc.agentMode)
-			t.Cleanup(func() { agent.SetFlag(false) })
+			terminal.SetPiped(tc.piped)
+			t.Cleanup(func() {
+				agent.SetFlag(false)
+				terminal.ResetForTesting()
+			})
 
 			opts := &cmdio.Options{}
 			flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
 			opts.BindFlags(flags)
+
+			var errBuf bytes.Buffer
+			opts.ErrWriter = &errBuf
 
 			if tc.jsonField != "" {
 				require.NoError(t, flags.Set("json", tc.jsonField))
@@ -234,8 +255,16 @@ func TestEncode_AgentModeHint(t *testing.T) {
 			var buf bytes.Buffer
 			require.NoError(t, opts.Encode(&buf, map[string]any{"name": "test"}))
 
-			// Encode writes to stdout (buf), not stderr. No hint should be emitted anywhere.
+			// The hint must never reach stdout regardless of mode.
 			assert.NotContains(t, buf.String(), "--json list")
+
+			if tc.wantHint {
+				assert.Contains(t, errBuf.String(), "--json list",
+					"interactive TTY should emit the field-selection hint to stderr")
+			} else {
+				assert.NotContains(t, errBuf.String(), "--json list",
+					"hint must be suppressed when piped, in agent mode, or when --json is already used")
+			}
 		})
 	}
 }

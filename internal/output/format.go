@@ -170,11 +170,20 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 	// Nudge toward --json field selection whenever the resolved codec is
 	// JSON-like (json or agents format) and the caller has not already
 	// requested field selection/discovery. Emitted once per invocation to
-	// stderr (never pollutes stdout). TTY: plain "hint:" line. Agent mode:
-	// JSONL {"class":"hint",...} — routed through emitHint/EmitHint so the
-	// hints framework handles codec & agent-mode compliance (FR-104).
+	// stderr as a plain "hint:" line.
+	//
+	// Pipe-aware (FR-005a): the hint is only emitted on an interactive TTY.
+	// When stdout is piped or agent mode is active, it is suppressed — those
+	// are exactly the programmatic cases where the field-selection convention
+	// is already covered by the gcx agent skill, and where a stderr line that
+	// merges into a tool's combined stdout+stderr capture causes the consumer
+	// to mistake it for response data. See docs/design/agent-mode.md.
+	// Read the live pipe state (set by terminal.Detect in PersistentPreRun)
+	// rather than opts.IsPiped, which is captured at BindFlags time — before
+	// detection runs — and is therefore stale here.
 	isJSONLike := codec.Format() == format.JSON || codec.Format() == agentsFormat
-	if !opts.jsonFieldsHintShown && isJSONLike && len(opts.JSONFields) == 0 && !opts.JSONDiscovery {
+	if !opts.jsonFieldsHintShown && isJSONLike && len(opts.JSONFields) == 0 && !opts.JSONDiscovery &&
+		!terminal.IsPiped() && !agent.IsAgentMode() {
 		opts.jsonFieldsHintShown = true
 		w := opts.ErrWriter
 		if w == nil {

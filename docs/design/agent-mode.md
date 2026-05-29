@@ -48,11 +48,19 @@ The following are **not yet implemented**:
    contract via `IsPiped` is in place for when they are added)
 6. Confirmation prompts auto-approved ([safety.md § Agent Mode Auto-Approve](safety.md#33-agent-mode-auto-approve))
 
-**Note:** The `--json list` field-discovery hint fires whenever the resolved output codec
-is JSON-like (`-o json` or the `agents` default) and the caller has not already used
-`--json list` (field discovery) or `--json field1,field2` (field selection). In agent mode
-the hint is emitted as JSONL `{"class":"hint","summary":"..."}` on stderr. In TTY mode it is emitted as `hint: ...` text on stderr. The
-hint is emitted at most once per invocation.
+**Note:** The `--json list` field-discovery hint is **pipe-aware** — it is emitted only on
+an interactive TTY (stdout is a terminal) when the resolved output codec is JSON-like
+(`-o json`) and the caller has not already used `--json list` (field discovery) or
+`--json field1,field2` (field selection). On a TTY it is emitted as `hint: ...` text on
+stderr, at most once per invocation.
+
+When stdout is piped or **agent mode** is active, the hint is **suppressed entirely**.
+Those are exactly the programmatic cases where the field-selection convention is already
+documented in the gcx agent skill, and where a stderr line that merges into a tool's
+combined stdout+stderr capture would be mistaken for response data. (This replaces the
+earlier behavior of emitting a JSONL `{"class":"hint",...}` record on stderr in agent
+mode, which polluted combined-stream tool captures and caused agents to waste turns
+stripping it before parsing.)
 
 ### 6.2a Format choice vs non-format presentation properties
 
