@@ -247,13 +247,41 @@ func (c *Client) UploadModelRules(ctx context.Context, yamlContent string) error
 	return c.doYAML(ctx, http.MethodPut, modelRulesPath, yamlContent)
 }
 
-// ListModelRules returns the names of all custom model rule configurations for the tenant.
-func (c *Client) ListModelRules(ctx context.Context) ([]string, error) {
+// ListModelRuleNames returns the names of all custom model rule configurations for the tenant.
+func (c *Client) ListModelRuleNames(ctx context.Context) ([]string, error) {
 	var result ModelRuleNames
 	if err := c.getJSON(ctx, modelRulesPath, &result); err != nil {
 		return nil, fmt.Errorf("kg: list model rules: %w", err)
 	}
 	return result.RuleNames, nil
+}
+
+// ListModelRules retrieves all custom model rule configurations for the tenant.
+//
+// The backend list endpoint only returns names, so this performs an N+1
+// fan-out: one call to list names, then bounded-parallel GetModelRules per name.
+func (c *Client) ListModelRules(ctx context.Context) ([]ModelRules, error) {
+	names, err := c.ListModelRuleNames(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ModelRules, len(names))
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(ruleFetchConcurrency)
+	for i, name := range names {
+		g.Go(func() error {
+			m, err := c.GetModelRules(gCtx, name)
+			if err != nil {
+				return err
+			}
+			out[i] = *m
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, fmt.Errorf("kg: list model rules: %w", err)
+	}
+	return out, nil
 }
 
 // GetModelRules retrieves a single custom model rules configuration by name.

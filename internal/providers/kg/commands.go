@@ -725,7 +725,7 @@ func newModelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			names, err := client.ListModelRules(cmd.Context())
+			names, err := client.ListModelRuleNames(cmd.Context())
 			if err != nil {
 				return err
 			}

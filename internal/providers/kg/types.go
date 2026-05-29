@@ -433,9 +433,17 @@ type ModelRuleNames struct {
 // ModelRules is a single custom model rules configuration (ModelRulesDto).
 // Entities and Relations are kept as raw JSON to preserve fidelity without
 // coupling this CLI to the full nested DTO tree.
+//
+//nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type ModelRules struct {
 	Name      string          `json:"name" yaml:"name"`
 	Entities  json.RawMessage `json:"entities,omitempty" yaml:"entities,omitempty"`
 	Relations json.RawMessage `json:"relations,omitempty" yaml:"relations,omitempty"`
 	ManagedBy string          `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
 }
+
+// GetResourceName returns the model rules configuration name.
+func (m ModelRules) GetResourceName() string { return m.Name }
+
+// SetResourceName sets the model rules configuration name.
+func (m *ModelRules) SetResourceName(name string) { m.Name = name }

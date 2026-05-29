@@ -36,6 +36,13 @@ var (
 		Singular:     "scope",
 		Plural:       "scopes",
 	}
+
+	modelRulesDescriptor = resources.Descriptor{
+		GroupVersion: kgGroupVersion,
+		Kind:         "ModelRules",
+		Singular:     "modelrules",
+		Plural:       "modelrules",
+	}
 )
 
 // Descriptor accessors for use in tests and registration.
@@ -45,6 +52,9 @@ func RuleDescriptor() resources.Descriptor { return staticDescriptor }
 
 // ScopeDescriptor returns the resource descriptor for KG scopes.
 func ScopeDescriptor() resources.Descriptor { return scopeDescriptor }
+
+// ModelRulesDescriptor returns the resource descriptor for KG model rules.
+func ModelRulesDescriptor() resources.Descriptor { return modelRulesDescriptor }
 
 // RuleSchema returns a JSON Schema for the KG Rule resource type.
 func RuleSchema() json.RawMessage {
@@ -251,6 +261,97 @@ func NewScopeAdapterFactory(loader RESTConfigLoader) adapter.Factory {
 			}
 			return result, nil
 		})
+}
+
+// ---------------------------------------------------------------------------
+// ModelRules adapter
+// ---------------------------------------------------------------------------
+
+// ModelRulesSchema returns a JSON Schema for the KG ModelRules resource type.
+func ModelRulesSchema() json.RawMessage {
+	return mustSchema("KGModelRules", "ModelRules", map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"name":      map[string]any{"type": "string"},
+			"entities":  map[string]any{"type": "array"},
+			"relations": map[string]any{"type": "array"},
+			"managedBy": map[string]any{"type": "string"},
+		},
+		"required": []string{"name"},
+	})
+}
+
+// NewModelRulesAdapterFactory returns a lazy adapter.Factory for KG model rules.
+// PutFn is intentionally omitted until typed apply lands; `gcx resources push`
+// will not work for model rules yet.
+func NewModelRulesAdapterFactory(loader RESTConfigLoader) adapter.Factory {
+	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
+		cfg, err := loader.LoadGrafanaConfig(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("kg: failed to load REST config: %w", err)
+		}
+		client, err := NewClient(cfg)
+		if err != nil {
+			return nil, fmt.Errorf("kg: failed to create client: %w", err)
+		}
+		crud := &adapter.TypedCRUD[ModelRules]{
+			ListFn: adapter.LimitedListFn(client.ListModelRules),
+			GetFn: func(ctx context.Context, name string) (*ModelRules, error) {
+				return client.GetModelRules(ctx, name)
+			},
+			DeleteFn:   client.DeleteModelRules,
+			Namespace:  cfg.Namespace,
+			Descriptor: modelRulesDescriptor,
+		}
+		return crud.AsAdapter(), nil
+	}
+}
+
+// ModelRulesToResource converts a KG ModelRules to a gcx Resource.
+func ModelRulesToResource(m ModelRules, namespace string) (*resources.Resource, error) {
+	data, err := json.Marshal(m)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal model rules: %w", err)
+	}
+	var specMap map[string]any
+	if err := json.Unmarshal(data, &specMap); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal model rules to map: %w", err)
+	}
+	obj := map[string]any{
+		"apiVersion": APIVersion,
+		"kind":       "ModelRules",
+		"metadata": map[string]any{
+			"name":      m.Name,
+			"namespace": namespace,
+		},
+		"spec": specMap,
+	}
+	return resources.MustFromObject(obj, resources.SourceInfo{}), nil
+}
+
+// ModelRulesFromResource converts a gcx Resource back to a KG ModelRules.
+func ModelRulesFromResource(res *resources.Resource) (*ModelRules, error) {
+	obj := res.Object.Object
+	specRaw, ok := obj["spec"]
+	if !ok {
+		return nil, errors.New("resource has no spec field")
+	}
+	specMap, ok := specRaw.(map[string]any)
+	if !ok {
+		return nil, errors.New("resource spec is not a map")
+	}
+	data, err := json.Marshal(specMap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal spec: %w", err)
+	}
+	var m ModelRules
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal spec to model rules: %w", err)
+	}
+	if m.Name == "" {
+		m.Name = res.Raw.GetName()
+	}
+	return &m, nil
 }
 
 // ---------------------------------------------------------------------------

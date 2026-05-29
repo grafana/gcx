@@ -546,7 +546,7 @@ func TestClient_LookupEntity_NotFound(t *testing.T) {
 	assert.Nil(t, entity)
 }
 
-func TestClient_ListModelRules(t *testing.T) {
+func TestClient_ListModelRuleNames(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.True(t, strings.HasSuffix(r.URL.Path, "/v1/config/model-rules"),
@@ -556,9 +556,34 @@ func TestClient_ListModelRules(t *testing.T) {
 	defer server.Close()
 
 	client := newTestClient(t, server)
-	names, err := client.ListModelRules(t.Context())
+	names, err := client.ListModelRuleNames(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, []string{"alpha", "beta"}, names)
+}
+
+func TestClient_ListModelRules_FansOut(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		path := r.URL.EscapedPath()
+		switch {
+		case strings.HasSuffix(path, "/v1/config/model-rules"):
+			writeJSON(w, kg.ModelRuleNames{RuleNames: []string{"alpha", "beta"}})
+		case strings.HasSuffix(path, "/v1/config/model-rules/alpha"):
+			writeJSON(w, map[string]any{"name": "alpha"})
+		case strings.HasSuffix(path, "/v1/config/model-rules/beta"):
+			writeJSON(w, map[string]any{"name": "beta"})
+		default:
+			t.Fatalf("unexpected path: %s", path)
+		}
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	rules, err := client.ListModelRules(t.Context())
+	require.NoError(t, err)
+	require.Len(t, rules, 2)
+	names := []string{rules[0].Name, rules[1].Name}
+	assert.ElementsMatch(t, []string{"alpha", "beta"}, names)
 }
 
 func TestClient_GetModelRules(t *testing.T) {

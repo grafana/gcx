@@ -12,6 +12,7 @@ var (
 	_ adapter.ResourceIdentity = &kg.Rule{}
 	_ adapter.ResourceIdentity = &kg.GraphEntity{}
 	_ adapter.ResourceIdentity = &kg.Scope{}
+	_ adapter.ResourceIdentity = &kg.ModelRules{}
 )
 
 func TestRule_ResourceIdentity(t *testing.T) {
@@ -35,6 +36,7 @@ func TestAllTypes_ResourceIdentity(t *testing.T) {
 		// GraphEntity has composite identity: Type--Name. SetResourceName only sets Name.
 		{"GraphEntity", &kg.GraphEntity{Type: "Service", Name: "frontend"}, "Service--frontend", "Service--new-name"},
 		{"Scope", &kg.Scope{Name: "env", Values: []string{"prod"}}, "env", "new-name"},
+		{"ModelRules", &kg.ModelRules{Name: "service-rules"}, "service-rules", "new-name"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
