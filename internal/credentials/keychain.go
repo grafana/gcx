@@ -2,80 +2,53 @@ package credentials
 
 import (
 	"errors"
-	"runtime"
 	"sync"
 
-	"github.com/99designs/keyring"
+	keyring "github.com/zalando/go-keyring"
 )
 
-// keychainStore wraps a 99designs/keyring opened against the OS-native backend.
-type keychainStore struct {
-	ring keyring.Keyring
-}
+// probeAccount is a never-stored account name used by Open to detect whether a
+// working keychain backend is reachable.
+const probeAccount = "__gcx_probe__"
 
-// Open returns a Store backed by the OS keychain. If the keychain cannot be
-// opened (headless box, missing DBus, locked session), it returns a Store that
-// reports ErrUnavailable on every operation so callers can fall back to
-// plaintext.
+// keychainStore is a Store backed by the OS-native keychain via
+// github.com/zalando/go-keyring: macOS Keychain (/usr/bin/security), Windows
+// Credential Manager, and the Linux/BSD Secret Service DBus interface (GNOME
+// Keyring, or KWallet when it exposes org.freedesktop.secrets).
+type keychainStore struct{}
+
+// Open returns a Store backed by the OS keychain. If no working backend is
+// reachable (unsupported platform, headless box, missing DBus, locked
+// session), it returns a Store that reports ErrUnavailable on every operation
+// so callers can fall back to plaintext.
 func Open() Store {
-	ring, err := keyring.Open(keyring.Config{
-		ServiceName:     service,
-		AllowedBackends: nativeBackends(),
-
-		// macOS: reuse the gcx keychain item across processes.
-		KeychainTrustApplication: true,
-
-		// Linux Secret Service collection — "login" is the default unlocked
-		// collection on GNOME Keyring / KWallet.
-		LibSecretCollectionName: "login",
-	})
-	if err != nil {
+	// Probe with a read for an account we never write. A working backend
+	// returns ErrNotFound; an unreachable one returns a transport/platform
+	// error, which means we should fall back to plaintext.
+	if _, err := keyring.Get(service, probeAccount); err != nil && !errors.Is(err, keyring.ErrNotFound) {
 		return unavailableStore{}
 	}
-	return &keychainStore{ring: ring}
+	return keychainStore{}
 }
 
-// nativeBackends returns the keyring backends gcx will use for the current OS.
-// We intentionally exclude FileBackend — when the OS keychain is unavailable
-// we prefer plaintext-with-warning over a passphrase-prompted encrypted file.
-func nativeBackends() []keyring.BackendType {
-	switch runtime.GOOS {
-	case "darwin":
-		return []keyring.BackendType{keyring.KeychainBackend}
-	case "windows":
-		return []keyring.BackendType{keyring.WinCredBackend}
-	case "linux":
-		return []keyring.BackendType{
-			keyring.SecretServiceBackend,
-			keyring.KWalletBackend,
-		}
-	default:
-		return nil
-	}
-}
-
-func (s *keychainStore) Get(key string) (string, error) {
-	item, err := s.ring.Get(key)
-	if errors.Is(err, keyring.ErrKeyNotFound) {
+func (keychainStore) Get(key string) (string, error) {
+	value, err := keyring.Get(service, key)
+	if errors.Is(err, keyring.ErrNotFound) {
 		return "", ErrNotFound
 	}
 	if err != nil {
 		return "", err
 	}
-	return string(item.Data), nil
+	return value, nil
 }
 
-func (s *keychainStore) Set(key, value string) error {
-	return s.ring.Set(keyring.Item{
-		Key:   key,
-		Data:  []byte(value),
-		Label: "gcx: " + key,
-	})
+func (keychainStore) Set(key, value string) error {
+	return keyring.Set(service, key, value)
 }
 
-func (s *keychainStore) Delete(key string) error {
-	err := s.ring.Remove(key)
-	if errors.Is(err, keyring.ErrKeyNotFound) {
+func (keychainStore) Delete(key string) error {
+	err := keyring.Delete(service, key)
+	if errors.Is(err, keyring.ErrNotFound) {
 		return nil
 	}
 	return err

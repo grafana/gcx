@@ -35,7 +35,7 @@ gcx/
 │   ├── fleet/                # Shared fleet base client (HTTP, auth, config — shared by fleet provider and instrumentation provider)
 │   ├── config/               # Config loading, context management, auth types (auto-migrates plaintext token-shaped secrets into the OS keychain via internal/credentials)
 │   │   └── testdata/         # YAML fixtures for config unit tests
-│   ├── credentials/          # OS-keychain backend (99designs/keyring) for token-shaped secrets; sentinel format + Store interface; auto-disabled under `go test`
+│   ├── credentials/          # OS-keychain backend (zalando/go-keyring) for token-shaped secrets; sentinel format + Store interface; auto-disabled under `go test`
 │   ├── format/               # JSON/YAML codec, format auto-detection
 │   ├── output/               # Output codec registry (json, yaml, text, wide), field selection, user-facing messages
 │   ├── grafana/              # Thin wrapper over grafana-openapi-client-go
