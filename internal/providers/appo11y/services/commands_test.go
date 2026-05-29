@@ -12,23 +12,22 @@ func TestBuildFilters(t *testing.T) {
 	}{
 		{
 			name: "empty",
-			opts: listOpts{Metric: defaultTargetInfoMetric},
+			opts: listOpts{},
 			want: nil,
 		},
 		{
 			name: "language only",
-			opts: listOpts{Metric: defaultTargetInfoMetric, Language: "go"},
+			opts: listOpts{Language: "go"},
 			want: []Matcher{{Label: "telemetry_sdk_language", Op: "=", Value: "go"}},
 		},
 		{
 			name: "env only",
-			opts: listOpts{Metric: defaultTargetInfoMetric, Env: "production"},
+			opts: listOpts{Env: "production"},
 			want: []Matcher{{Label: "deployment_environment", Op: "=", Value: "production"}},
 		},
 		{
 			name: "language and env combined with raw filter",
 			opts: listOpts{
-				Metric:   defaultTargetInfoMetric,
 				Filters:  []string{`k8s_namespace_name="prod"`},
 				Language: "go",
 				Env:      "production",
@@ -73,13 +72,12 @@ func TestListOptsValidate(t *testing.T) {
 		opts    listOpts
 		wantErr bool
 	}{
-		{name: "ok", opts: mk(listOpts{Metric: defaultTargetInfoMetric})},
-		{name: "blank metric rejected", opts: mk(listOpts{Metric: "   "}), wantErr: true},
-		{name: "negative limit rejected", opts: mk(listOpts{Metric: defaultTargetInfoMetric, Limit: -1}), wantErr: true},
-		{name: "zero limit ok (unlimited)", opts: mk(listOpts{Metric: defaultTargetInfoMetric, Limit: 0})},
-		{name: "instrumented ok", opts: mk(listOpts{Metric: defaultTargetInfoMetric, Instrumentation: instrInstrumented})},
-		{name: "uninstrumented ok", opts: mk(listOpts{Metric: defaultTargetInfoMetric, Instrumentation: instrUninstrumented})},
-		{name: "bogus instrumentation rejected", opts: mk(listOpts{Metric: defaultTargetInfoMetric, Instrumentation: "partial"}), wantErr: true},
+		{name: "ok", opts: mk(listOpts{})},
+		{name: "negative limit rejected", opts: mk(listOpts{Limit: -1}), wantErr: true},
+		{name: "zero limit ok (unlimited)", opts: mk(listOpts{Limit: 0})},
+		{name: "instrumented ok", opts: mk(listOpts{Instrumentation: instrInstrumented})},
+		{name: "uninstrumented ok", opts: mk(listOpts{Instrumentation: instrUninstrumented})},
+		{name: "bogus instrumentation rejected", opts: mk(listOpts{Instrumentation: "partial"}), wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

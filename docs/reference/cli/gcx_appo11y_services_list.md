@@ -49,7 +49,6 @@ gcx appo11y services list [flags]
       --limit int                     Limit the number of services returned (0 = unlimited; applied after sorting)
   -o, --output string                 Output format. One of: agents, json, table, wide, yaml (default "table")
       --service-graph-metric string   Override the service-graph metric used to find uninstrumented services (advanced) (default "traces_service_graph_request_total")
-      --target-info-metric string     Override the inventory metric (advanced; mirrors the plugin's metricName:targetInfo variable) (default "target_info")
 ```
 
 ### Options inherited from parent commands

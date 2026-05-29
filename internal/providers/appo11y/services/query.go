@@ -16,10 +16,13 @@ import (
 	"github.com/grafana/promql-builder/go/promql"
 )
 
-// defaultTargetInfoMetric is the canonical OpenTelemetry target_info metric.
-// The app-observability-app plugin abstracts this behind `${metricName:targetInfo}`
-// to support alternative metric modes; for now gcx hardcodes the default.
-const defaultTargetInfoMetric = "target_info"
+// targetInfoMetrics are the two inventory sources we always union over:
+// `target_info` is what OTel SDKs emit alongside other metrics; `traces_target_info`
+// is what Tempo derives from trace exports. Stacks vary in which they carry,
+// and some services appear in only one — so the discovery view queries both.
+func targetInfoMetrics() []string {
+	return []string{"target_info", "traces_target_info"}
+}
 
 // defaultServiceGraphMetric is the Tempo-emitted service-graph total. Services
 // that appear as `server` here but never in target_info are "uninstrumented" —
@@ -79,18 +82,14 @@ func (m Matcher) apply(v *promql.VectorExprBuilder) *promql.VectorExprBuilder {
 	}
 }
 
-// buildServicesQuery returns a PromQL expression that groups the target_info
-// inventory by the discovery key (telemetry_sdk_language, job) and projects
-// the metadata labels the table view needs, so a single round-trip fills
-// both default and wide columns.
+// buildServicesQuery returns a PromQL expression that groups the named
+// target-info-shaped metric by the discovery key (telemetry_sdk_language, job)
+// and projects the metadata labels the table view needs, so a single
+// round-trip fills both default and wide columns.
 //
-// matchers are already-validated label filters; metric defaults to
-// "target_info"; extraLabels are appended to the group-by projection for
-// `--columns`.
+// matchers are already-validated label filters; extraLabels are appended to
+// the group-by projection for `--columns`.
 func buildServicesQuery(metric string, matchers []Matcher, extraLabels []string) (string, error) {
-	if metric == "" {
-		metric = defaultTargetInfoMetric
-	}
 	v := promql.Vector(metric)
 	for _, m := range matchers {
 		v = m.apply(v)
@@ -186,6 +185,21 @@ func summarizeByLanguage(items []Service) *CountSummary {
 	return &CountSummary{Total: len(items), ByLanguage: rows}
 }
 
+// parseServicesResponses unions multiple target-info-style query responses
+// into a single, deduplicated Service slice. Each response is appended into a
+// combined sample set, then handed to parseServicesResponse which already
+// merges by (namespace, name, language).
+func parseServicesResponses(responses []*prometheus.QueryResponse) ([]Service, error) {
+	combined := &prometheus.QueryResponse{}
+	for _, r := range responses {
+		if r == nil {
+			continue
+		}
+		combined.Data.Result = append(combined.Data.Result, r.Data.Result...)
+	}
+	return parseServicesResponse(combined)
+}
+
 // parseServicesResponse converts a Prometheus instant-query result into a
 // deduplicated, sorted slice of Services. Each sample's `job` is split via
 // parseJob into (namespace, name); samples sharing (namespace, name, language)
@@ -250,9 +264,6 @@ func sortServices(s []Service) {
 // without it, partial series with empty edge metadata leak in and inflate
 // the uninstrumented set. metric defaults to "traces_service_graph_request_total".
 func buildServiceGraphQuery(metric string) (string, error) {
-	if metric == "" {
-		metric = defaultServiceGraphMetric
-	}
 	v := promql.Vector(metric).LabelNeq("connection_type", "")
 	expr, err := promql.Group(v).By([]string{"server", "server_service_namespace"}).Build()
 	if err != nil {

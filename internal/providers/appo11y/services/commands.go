@@ -41,7 +41,6 @@ const (
 type listOpts struct {
 	IO              cmdio.Options
 	Datasource      string
-	Metric          string
 	ServiceGraph    string
 	Filters         []string
 	Language        string
@@ -59,7 +58,6 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 
 	flags.StringVarP(&o.Datasource, "datasource", "d", "", "Prometheus datasource UID (defaults to datasources.prometheus in config or auto-discovery)")
-	flags.StringVar(&o.Metric, "target-info-metric", defaultTargetInfoMetric, "Override the inventory metric (advanced; mirrors the plugin's metricName:targetInfo variable)")
 	flags.StringVar(&o.ServiceGraph, "service-graph-metric", defaultServiceGraphMetric, "Override the service-graph metric used to find uninstrumented services (advanced)")
 	flags.StringVar(&o.Instrumentation, "instrumentation", instrAll, "Which services to list: all, instrumented (target_info only), or uninstrumented (service-graph minus target_info)")
 	flags.StringArrayVar(&o.Filters, "filter", nil, "Restrict to services matching a label matcher, e.g. --filter k8s_namespace_name=prod (repeatable; applies to target_info only)")
@@ -74,9 +72,6 @@ func (o *listOpts) Validate() error {
 	if err := o.IO.Validate(); err != nil {
 		return err
 	}
-	if strings.TrimSpace(o.Metric) == "" {
-		return errors.New("--target-info-metric must not be empty")
-	}
 	if o.Limit < 0 {
 		return errors.New("--limit must be zero or positive")
 	}
@@ -88,13 +83,9 @@ func (o *listOpts) Validate() error {
 	return nil
 }
 
-// wantsInstrumented controls whether to issue the target_info query.
-// Even in --instrumentation uninstrumented mode we need this set so the
-// service-graph results can be diffed against it.
-func (o *listOpts) wantsInstrumented() bool {
-	return true
-}
-
+// wantsServiceGraph reports whether the service-graph query should run.
+// The target-info queries always run — even in uninstrumented mode the
+// instrumented set is needed to diff service-graph results against it.
 func (o *listOpts) wantsServiceGraph() bool {
 	return o.Instrumentation == instrAll || o.Instrumentation == instrUninstrumented
 }
@@ -190,23 +181,21 @@ func runList(opts *listOpts) func(*cobra.Command, []string) error {
 			return fmt.Errorf("failed to create prometheus client: %w", err)
 		}
 
-		var instrumented, graph []Service
+		var graph []Service
+		metrics := targetInfoMetrics()
+		instrumentedResponses := make([]*prometheus.QueryResponse, len(metrics))
 		eg, egCtx := errgroup.WithContext(ctx)
-		if opts.wantsInstrumented() {
+		for i, metric := range metrics {
 			eg.Go(func() error {
-				expr, err := buildServicesQuery(opts.Metric, filters, opts.Columns)
+				expr, err := buildServicesQuery(metric, filters, opts.Columns)
 				if err != nil {
-					return fmt.Errorf("failed to build services discovery query: %w", err)
+					return fmt.Errorf("failed to build %s query: %w", metric, err)
 				}
 				resp, err := client.Query(egCtx, datasourceUID, prometheus.QueryRequest{Query: expr})
 				if err != nil {
-					return fmt.Errorf("services discovery query failed: %w", err)
+					return fmt.Errorf("%s query failed: %w", metric, err)
 				}
-				items, err := parseServicesResponse(resp)
-				if err != nil {
-					return fmt.Errorf("failed to parse services response: %w", err)
-				}
-				instrumented = items
+				instrumentedResponses[i] = resp
 				return nil
 			})
 		}
@@ -230,6 +219,11 @@ func runList(opts *listOpts) func(*cobra.Command, []string) error {
 		}
 		if err := eg.Wait(); err != nil {
 			return err
+		}
+
+		instrumented, err := parseServicesResponses(instrumentedResponses)
+		if err != nil {
+			return fmt.Errorf("failed to parse services response: %w", err)
 		}
 
 		items := resolveItems(opts.Instrumentation, instrumented, graph)

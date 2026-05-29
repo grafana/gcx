@@ -17,21 +17,24 @@ func TestBuildServicesQuery(t *testing.T) {
 		want     string
 	}{
 		{
-			name: "default metric, no matchers",
-			want: wantGroup + ` (target_info)`,
+			name:   "target_info, no matchers",
+			metric: "target_info",
+			want:   wantGroup + ` (target_info)`,
 		},
 		{
-			name:   "explicit metric, no matchers",
-			metric: "otel_target_info",
-			want:   wantGroup + ` (otel_target_info)`,
+			name:   "traces_target_info, no matchers",
+			metric: "traces_target_info",
+			want:   wantGroup + ` (traces_target_info)`,
 		},
 		{
-			name:     "default metric with single matcher",
+			name:     "single matcher",
+			metric:   "target_info",
 			matchers: []Matcher{{Label: "k8s_namespace_name", Op: "=", Value: "prod"}},
 			want:     wantGroup + ` (target_info{k8s_namespace_name="prod"})`,
 		},
 		{
-			name: "default metric with multiple matchers",
+			name:   "multiple matchers",
+			metric: "target_info",
 			matchers: []Matcher{
 				{Label: "k8s_namespace_name", Op: "=", Value: "prod"},
 				{Label: "telemetry_sdk_language", Op: "=", Value: "go"},
@@ -39,7 +42,8 @@ func TestBuildServicesQuery(t *testing.T) {
 			want: wantGroup + ` (target_info{k8s_namespace_name="prod",telemetry_sdk_language="go"})`,
 		},
 		{
-			name: "all matcher operators",
+			name:   "all matcher operators",
+			metric: "target_info",
 			matchers: []Matcher{
 				{Label: "a", Op: "=", Value: "x"},
 				{Label: "b", Op: "!=", Value: "y"},
@@ -49,14 +53,16 @@ func TestBuildServicesQuery(t *testing.T) {
 			want: wantGroup + ` (target_info{a="x",b!="y",c=~"z.*",d!~"w.*"})`,
 		},
 		{
-			name:  "extra columns appended once (incl. label that's not in defaults)",
-			extra: []string{"service_version", "k8s_pod_name", "service_namespace"},
-			want:  "group by (telemetry_sdk_language, job, deployment_environment, deployment_environment_name, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version, k8s_pod_name, service_namespace) (target_info)",
+			name:   "extra columns appended once (incl. label that's not in defaults)",
+			metric: "target_info",
+			extra:  []string{"service_version", "k8s_pod_name", "service_namespace"},
+			want:   "group by (telemetry_sdk_language, job, deployment_environment, deployment_environment_name, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version, k8s_pod_name, service_namespace) (target_info)",
 		},
 		{
-			name:  "extra columns with empty string ignored",
-			extra: []string{"", "service_version"},
-			want:  "group by (telemetry_sdk_language, job, deployment_environment, deployment_environment_name, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version) (target_info)",
+			name:   "extra columns with empty string ignored",
+			metric: "target_info",
+			extra:  []string{"", "service_version"},
+			want:   "group by (telemetry_sdk_language, job, deployment_environment, deployment_environment_name, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version) (target_info)",
 		},
 	}
 	for _, tt := range tests {
@@ -109,7 +115,7 @@ func TestSummarizeByLanguage_Empty(t *testing.T) {
 }
 
 func TestBuildServiceGraphQuery(t *testing.T) {
-	got, err := buildServiceGraphQuery("")
+	got, err := buildServiceGraphQuery(defaultServiceGraphMetric)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
