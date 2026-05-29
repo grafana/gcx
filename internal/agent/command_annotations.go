@@ -284,6 +284,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg model-rules delete":  {Cost: "small"},
 	"gcx kg model-rules get":     {Cost: "small"},
 	"gcx kg model-rules list":    {Cost: "small"},
+	"gcx kg model-rules schema":  {Cost: "medium", Hint: "live JSON Schema for ModelRules from backend — pipe to file for editor autocomplete"},
 	"gcx kg open":                {Cost: "small"},
 	"gcx kg relabel-rules get":   {Cost: "small", Hint: "fetch prologue, epilogue, or generated Mimir relabel rules [--type generated]"},
 	"gcx kg prom-rules create":   {Cost: "small"},

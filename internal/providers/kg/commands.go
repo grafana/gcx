@@ -792,8 +792,45 @@ func newModelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	}
 	deleteCmd.Flags().BoolVar(&force, "force", false, "Skip confirmation prompt")
 
-	cmd.AddCommand(createCmd, listCmd, getCmd, deleteCmd)
+	schemaOpts := &modelRulesSchemaOpts{}
+	schemaCmd := &cobra.Command{
+		Use:   "schema",
+		Short: "Fetch the live JSON Schema for ModelRules from the backend.",
+		Long: `Fetches the JSON Schema (Draft 2020-12) that describes the ModelRules configuration shape,
+derived from the backend DTO tree. Pipe to a file and point your editor at it for autocomplete and
+deep validation when authoring model rules manifests.`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := schemaOpts.IO.Validate(); err != nil {
+				return err
+			}
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			schema, err := client.GetModelRulesSchema(cmd.Context())
+			if err != nil {
+				return err
+			}
+			return schemaOpts.IO.Encode(cmd.OutOrStdout(), schema)
+		},
+	}
+	schemaOpts.setup(schemaCmd.Flags())
+
+	cmd.AddCommand(createCmd, listCmd, getCmd, deleteCmd, schemaCmd)
 	return cmd
+}
+
+type modelRulesSchemaOpts struct {
+	IO cmdio.Options
+}
+
+func (o *modelRulesSchemaOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("json")
+	o.IO.BindFlags(flags)
 }
 
 type modelRulesListOpts struct {

@@ -39,6 +39,7 @@ const (
 	ruleByNameFmt        = rulesPath + "/%s"
 	modelRulesPath       = pluginResourcePath + "/asserts/api-server/v1/config/model-rules"
 	modelRulesByNameFmt  = modelRulesPath + "/%s"
+	modelRulesSchemaPath = modelRulesPath + "/schema"
 	suppressionPath      = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alert"
 	suppressionByNameFmt = suppressionPath + "/%s"
 	suppressionsPath     = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alerts"
@@ -292,6 +293,19 @@ func (c *Client) GetModelRules(ctx context.Context, name string) (*ModelRules, e
 		return nil, fmt.Errorf("kg: get model rules %q: %w", name, err)
 	}
 	return &result, nil
+}
+
+// GetModelRulesSchema fetches the live JSON Schema for the ModelRulesDto from the backend.
+//
+// Backend caches this for 1h. The schema is derived from the Java DTO tree, so it
+// reflects the full nested shape (entities, relations, enrichment, etc.) — much
+// deeper than the shallow schema embedded in the gcx binary.
+func (c *Client) GetModelRulesSchema(ctx context.Context) (map[string]any, error) {
+	var result map[string]any
+	if err := c.getJSON(ctx, modelRulesSchemaPath, &result); err != nil {
+		return nil, fmt.Errorf("kg: get model rules schema: %w", err)
+	}
+	return result, nil
 }
 
 // DeleteModelRules deletes a custom model rules configuration by name.

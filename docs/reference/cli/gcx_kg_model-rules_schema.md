@@ -1,11 +1,23 @@
-## gcx kg model-rules
+## gcx kg model-rules schema
 
-Manage model rules in the Knowledge Graph.
+Fetch the live JSON Schema for ModelRules from the backend.
+
+### Synopsis
+
+Fetches the JSON Schema (Draft 2020-12) that describes the ModelRules configuration shape,
+derived from the backend DTO tree. Pipe to a file and point your editor at it for autocomplete and
+deep validation when authoring model rules manifests.
+
+```
+gcx kg model-rules schema [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for model-rules
+  -h, --help            help for schema
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, yaml (default "json")
 ```
 
 ### Options inherited from parent commands
@@ -22,10 +34,5 @@ Manage model rules in the Knowledge Graph.
 
 ### SEE ALSO
 
-* [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
-* [gcx kg model-rules create](gcx_kg_model-rules_create.md)	 - Upload model rules from a YAML file.
-* [gcx kg model-rules delete](gcx_kg_model-rules_delete.md)	 - Delete a custom model rules configuration by name.
-* [gcx kg model-rules get](gcx_kg_model-rules_get.md)	 - Get a custom model rules configuration by name.
-* [gcx kg model-rules list](gcx_kg_model-rules_list.md)	 - List all custom model rules configurations.
-* [gcx kg model-rules schema](gcx_kg_model-rules_schema.md)	 - Fetch the live JSON Schema for ModelRules from the backend.
+* [gcx kg model-rules](gcx_kg_model-rules.md)	 - Manage model rules in the Knowledge Graph.
 

@@ -617,6 +617,27 @@ func TestClient_GetModelRules_NotFound(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestClient_GetModelRulesSchema(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.True(t, strings.HasSuffix(r.URL.Path, "/v1/config/model-rules/schema"),
+			"unexpected path %q", r.URL.Path)
+		writeJSON(w, map[string]any{
+			"$schema": "https://json-schema.org/draft/2020-12/schema",
+			"type":    "object",
+			"properties": map[string]any{
+				"name": map[string]any{"type": "string"},
+			},
+		})
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	schema, err := client.GetModelRulesSchema(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, "object", schema["type"])
+}
+
 func TestClient_DeleteModelRules(t *testing.T) {
 	called := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
