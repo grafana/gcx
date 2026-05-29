@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
@@ -206,7 +207,7 @@ func TestRunDiagnose_NoEntities(t *testing.T) {
 	assert.Equal(t, kg.CheckFail, entityCheck.Status)
 }
 
-func TestDiagnoseTextCodec_Encode(t *testing.T) {
+func TestDiagnoseTableCodec_Encode(t *testing.T) {
 	result := kg.DiagnoseResult{
 		Env: "production",
 		Checks: []kg.CheckResult{
@@ -218,7 +219,7 @@ func TestDiagnoseTextCodec_Encode(t *testing.T) {
 	result.Summary.Passed = 1
 	result.Summary.Failed = 1
 
-	codec := &kg.DiagnoseTextCodec{}
+	codec := &kg.DiagnoseTableCodec{}
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, result)
 	require.NoError(t, err)
@@ -542,7 +543,137 @@ func TestServiceDiagnose_NoEdges(t *testing.T) {
 	assert.Contains(t, relCheck.Detail, "no edges")
 }
 
-func TestServiceDiagnoseTextCodec(t *testing.T) {
+// TestServiceDiagnose_ReclassifiesLabelMismatch verifies that the per-service
+// metric checks (in diagnose_service.go) also reclassify FAIL → WARN when the
+// scoped query returns nothing but the unscoped probe finds data for the same
+// service. Without this, `gcx kg diagnose service NAME --env <env>` would
+// report FAIL for every metric when the env value doesn't match what's in the
+// label pipeline — masking the actual label-mismatch as a data-missing problem.
+//
+// This is a regression test for the bug PR #746 was supposed to fix but missed
+// in the per-service path; see PR #746 review feedback from radiohead.
+func TestServiceDiagnose_ReclassifiesLabelMismatch(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/search/cypher" {
+			cypherHandler(
+				[]kg.CypherEntity{
+					{Type: "Service", Name: "api-service", Scope: map[string]any{"env": "actual-env"}, Properties: map[string]any{"_entity_source_10": "target_info_k8s", "service": "api-service"}},
+				},
+				nil,
+			)(w, r)
+			return
+		}
+		http.NotFound(w, r)
+	})
+	kgServer := httptest.NewServer(mux)
+	defer kgServer.Close()
+
+	// Prom mock: scoped queries (containing asserts_env=) return empty;
+	// unscoped queries return data. Simulates a label-mismatch where the
+	// env scope mask doesn't match what flows in the metric.
+	promMux := http.NewServeMux()
+	promMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if strings.Contains(string(body), `asserts_env=`) {
+			writeJSON(w, map[string]any{
+				"results": map[string]any{
+					"A": map[string]any{"frames": []map[string]any{}},
+				},
+			})
+			return
+		}
+		writeJSON(w, map[string]any{
+			"results": map[string]any{
+				"A": map[string]any{
+					"frames": []map[string]any{
+						{
+							"schema": map[string]any{"fields": []map[string]any{{"name": "Time", "type": "time"}, {"name": "Value", "type": "number"}}},
+							"data":   map[string]any{"values": []any{[]int64{1715100000000}, []float64{7}}},
+						},
+					},
+				},
+			},
+		})
+	})
+	promServer := httptest.NewServer(promMux)
+	defer promServer.Close()
+
+	kgClient := newTestClient(t, kgServer)
+	promClient := newTestPromClient(t, promServer)
+	scope := kg.NewTestScopeFlags("wrong-env", "", "")
+	result := kg.RunServiceDiagnose(t.Context(), kgClient, "api-service", &scope, promClient, "test-prom-uid")
+
+	var warned, failed int
+	for _, c := range result.Checks {
+		if !strings.HasPrefix(c.Name, "Metric:") {
+			continue
+		}
+		switch c.Status {
+		case kg.CheckWarn:
+			warned++
+			assert.Contains(t, c.Detail, "metric exists",
+				"check %q WARN detail should mention the metric exists outside the scope", c.Name)
+			assert.Contains(t, c.Recommendation, "asserts_env",
+				"check %q WARN recommendation should mention asserts_env label mapping", c.Name)
+		case kg.CheckFail:
+			failed++
+		}
+	}
+	assert.Equal(t, 5, warned, "all 5 per-service metric checks should reclassify to WARN when env scope masks real data")
+	assert.Equal(t, 0, failed, "no per-service metric check should FAIL when unscoped probe finds data")
+}
+
+// TestServiceDiagnose_NoFallbackWhenEnvUnset verifies the per-service path
+// does not attach a no-op fallback when --env is empty (scoped == unscoped).
+func TestServiceDiagnose_NoFallbackWhenEnvUnset(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/search/cypher" {
+			cypherHandler(
+				[]kg.CypherEntity{
+					{Type: "Service", Name: "api-service", Scope: map[string]any{"env": "any"}, Properties: map[string]any{"_entity_source_10": "target_info_k8s"}},
+				},
+				nil,
+			)(w, r)
+			return
+		}
+		http.NotFound(w, r)
+	})
+	kgServer := httptest.NewServer(mux)
+	defer kgServer.Close()
+
+	var (
+		mu    sync.Mutex
+		count int
+	)
+	promMux := http.NewServeMux()
+	promMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		// Service-scoped per-metric checks all reference a label key (client/server/service).
+		if strings.Contains(string(body), `service=`) || strings.Contains(string(body), `client=`) || strings.Contains(string(body), `server=`) {
+			count++
+		}
+		mu.Unlock()
+		writeJSON(w, map[string]any{
+			"results": map[string]any{"A": map[string]any{"frames": []map[string]any{}}},
+		})
+	})
+	promServer := httptest.NewServer(promMux)
+	defer promServer.Close()
+
+	kgClient := newTestClient(t, kgServer)
+	promClient := newTestPromClient(t, promServer)
+	scope := kg.NewTestScopeFlags("", "", "") // no env
+	_ = kg.RunServiceDiagnose(t.Context(), kgClient, "api-service", &scope, promClient, "test-prom-uid")
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, 5, count, "expected exactly 5 service-metric queries (no fallback when env unset)")
+}
+
+func TestServiceDiagnoseTableCodec(t *testing.T) {
 	result := kg.ServiceDiagnoseResult{
 		ServiceName: "api-service",
 		Env:         "production",
@@ -564,7 +695,7 @@ func TestServiceDiagnoseTextCodec(t *testing.T) {
 	result.Summary.Total = 2
 	result.Summary.Passed = 2
 
-	codec := &kg.ServiceDiagnoseTextCodec{}
+	codec := &kg.ServiceDiagnoseTableCodec{}
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, result)
 	require.NoError(t, err)
@@ -689,7 +820,7 @@ func TestLabelsDiagnose_NilPromClient(t *testing.T) {
 	assert.Equal(t, kg.CheckFail, promCheck.Status)
 }
 
-func TestLabelsDiagnoseTextCodec(t *testing.T) {
+func TestLabelsDiagnoseTableCodec(t *testing.T) {
 	result := kg.LabelsDiagnoseResult{
 		Mappings: []kg.LabelMapping{
 			{DeploymentEnv: "production", AssertsEnv: "production", Status: "mapped"},
@@ -705,7 +836,7 @@ func TestLabelsDiagnoseTextCodec(t *testing.T) {
 	result.Summary.Passed = 1
 	result.Summary.Failed = 1
 
-	codec := &kg.LabelsDiagnoseTextCodec{}
+	codec := &kg.LabelsDiagnoseTableCodec{}
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, result)
 	require.NoError(t, err)
@@ -716,6 +847,298 @@ func TestLabelsDiagnoseTextCodec(t *testing.T) {
 	assert.Contains(t, output, "not mapped")
 	assert.Contains(t, output, "Diagnosis")
 	assert.Contains(t, output, "1/2 checks passed")
+}
+
+// ---------------------------------------------------------------------------
+// "Looks healthy" verdict logic
+// ---------------------------------------------------------------------------
+//
+// Regression coverage for the case where entity+edges exist but other
+// checks fail. Previously the diagnosis branch unconditionally said
+// "Service X looks healthy" whenever edges were present, producing
+// internally contradictory output (e.g. "4/8 checks passed, 4 failed"
+// + "Service looks healthy"). The fix derives the verdict from
+// Summary.Failed instead.
+
+func TestInterpretServiceResults_AllChecksPassSaysHealthy(t *testing.T) {
+	r := &kg.ServiceDiagnoseResult{
+		ServiceName: "api-service",
+		Edges:       []kg.EdgeInfo{{Direction: "outgoing", Type: "CALLS", PeerName: "checkout"}},
+		Checks: []kg.CheckResult{
+			{Name: "Entity lookup", Status: kg.CheckPass},
+			{Name: "Relationships", Status: kg.CheckPass},
+			{Name: "Insights", Status: kg.CheckPass},
+		},
+	}
+	kg.ComputeServiceSummary(r)
+	diagnosis, _ := kg.InterpretServiceResults(r)
+
+	require.NotEmpty(t, diagnosis)
+	assert.Contains(t, diagnosis[0], "looks healthy")
+}
+
+func TestInterpretServiceResults_FailedChecksSuppressesHealthyVerdict(t *testing.T) {
+	// Entity exists with edges but multiple metric checks fail.
+	// Previously this produced the contradictory "looks healthy" line;
+	// now it must report the failure count and name the failed checks.
+	r := &kg.ServiceDiagnoseResult{
+		ServiceName: "db",
+		Edges: []kg.EdgeInfo{
+			{Direction: "outgoing", Type: "CONTROLS", PeerName: "db-0"},
+			{Direction: "outgoing", Type: "CONTROLS", PeerName: "db:schema"},
+			{Direction: "incoming", Type: "CONTROLS", PeerName: "default"},
+		},
+		Checks: []kg.CheckResult{
+			{Name: "Entity lookup", Status: kg.CheckPass},
+			{Name: "Relationships", Status: kg.CheckPass},
+			{Name: "Insights", Status: kg.CheckPass},
+			{Name: "Metric: asserts:mixin_workload_job", Status: kg.CheckFail, Detail: "no data"},
+			{Name: "Metric: traces_service_graph (server)", Status: kg.CheckFail, Detail: "no data"},
+			{Name: "Metric: asserts:relation:calls", Status: kg.CheckFail, Detail: "no data"},
+			{Name: "Metric: traces_service_graph (client)", Status: kg.CheckFail, Detail: "no data"},
+			{Name: "Metric: asserts:request:rate5m", Status: kg.CheckPass},
+		},
+	}
+	kg.ComputeServiceSummary(r)
+	diagnosis, _ := kg.InterpretServiceResults(r)
+
+	require.NotEmpty(t, diagnosis)
+	joined := strings.Join(diagnosis, " ")
+	assert.NotContains(t, joined, "looks healthy",
+		"diagnosis must not declare service healthy when checks fail")
+	assert.Contains(t, joined, "4 check(s) failed",
+		"diagnosis should report the failure count")
+	// Names of the failed checks should appear so the user can act.
+	assert.Contains(t, joined, "Metric: asserts:mixin_workload_job")
+	assert.Contains(t, joined, "Metric: asserts:relation:calls")
+}
+
+func TestInterpretServiceResults_SingleCheckFailureIsReported(t *testing.T) {
+	// One-failure boundary case — exercises the same branch with a
+	// minimal failure set to confirm the count is rendered correctly.
+	r := &kg.ServiceDiagnoseResult{
+		ServiceName: "api-service",
+		Edges:       []kg.EdgeInfo{{Direction: "outgoing", Type: "CALLS", PeerName: "checkout"}},
+		Checks: []kg.CheckResult{
+			{Name: "Entity lookup", Status: kg.CheckPass},
+			{Name: "Relationships", Status: kg.CheckPass},
+			{Name: "Insights", Status: kg.CheckPass},
+			{Name: "Metric: asserts:mixin_workload_job", Status: kg.CheckPass},
+			{Name: "Metric: traces_service_graph (server)", Status: kg.CheckFail, Detail: "no data"},
+			{Name: "Metric: traces_service_graph (client)", Status: kg.CheckPass},
+			{Name: "Metric: asserts:relation:calls", Status: kg.CheckPass},
+			{Name: "Metric: asserts:request:rate5m", Status: kg.CheckPass},
+		},
+	}
+	kg.ComputeServiceSummary(r)
+	diagnosis, _ := kg.InterpretServiceResults(r)
+
+	require.NotEmpty(t, diagnosis)
+	joined := strings.Join(diagnosis, " ")
+	assert.NotContains(t, joined, "looks healthy")
+	assert.Contains(t, joined, "1 check(s) failed")
+	assert.Contains(t, joined, "Metric: traces_service_graph (server)")
+}
+
+// ---------------------------------------------------------------------------
+// A.2: Probe without env filter when a metric check returns "no data".
+// ---------------------------------------------------------------------------
+//
+// When a scoped metric check returns zero series, checkMetric now re-probes
+// the metric without the env/namespace filter. If the unscoped probe finds
+// data, the result is reclassified from FAIL to WARN with a label-pipeline
+// hint, instead of silently telling the user "no data" when the data is
+// in fact flowing under a different env label value.
+
+// promHandlerScopedEmptyUnscopedFull is an httptest handler whose response
+// depends on whether the PromQL expression includes a label filter:
+//
+//   - Any query that includes a label filter (selectors like {asserts_env=…},
+//     {deployment_environment=…}, {client_deployment_environment=…}) returns
+//     an empty frame array (simulating "no series match the scope").
+//   - A bare `count(<metric>)` with no selector returns a single series with
+//     value 42 (simulating "the metric exists outside this scope").
+//
+// This dispatch lets one handler answer all 5 metric checks plus all 5
+// fallback probes for the diagnose pipeline.
+func promHandlerScopedEmptyUnscopedFull() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		expr := string(body)
+		// A scoped query contains an `=` inside `{}` — match the JSON-escaped
+		// `=\"` that the Grafana datasource POST body carries.
+		if strings.Contains(expr, `=\"`) {
+			writeJSON(w, map[string]any{
+				"results": map[string]any{
+					"A": map[string]any{
+						"frames": []map[string]any{},
+					},
+				},
+			})
+			return
+		}
+		// Unscoped (no selector): return data.
+		writeJSON(w, map[string]any{
+			"results": map[string]any{
+				"A": map[string]any{
+					"frames": []map[string]any{
+						{
+							"schema": map[string]any{
+								"fields": []map[string]any{
+									{"name": "Time", "type": "time"},
+									{"name": "Value", "type": "number"},
+								},
+							},
+							"data": map[string]any{
+								"values": []any{
+									[]int64{1715100000000},
+									[]float64{42},
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+	}
+}
+
+func TestCheckMetric_ReclassifiesNoDataAsLabelMismatchWhenUnscopedHasData(t *testing.T) {
+	kgServer := minimalKGServer()
+	defer kgServer.Close()
+
+	promMux := http.NewServeMux()
+	promMux.HandleFunc("/", promHandlerScopedEmptyUnscopedFull())
+	promServer := httptest.NewServer(promMux)
+	defer promServer.Close()
+
+	kgClient := newTestClient(t, kgServer)
+	promClient := newTestPromClient(t, promServer)
+	// Env scope triggers the fallback path.
+	scope := kg.NewTestScopeFlags("production", "", "")
+	result := kg.RunDiagnose(t.Context(), kgClient, &scope, promClient, "test-prom-uid")
+
+	// Every metric check should be WARN (label-mismatch), not FAIL.
+	var warned, failed int
+	for _, c := range result.Checks {
+		if !strings.HasPrefix(c.Name, "Metric:") {
+			continue
+		}
+		switch c.Status {
+		case kg.CheckWarn:
+			warned++
+			assert.Contains(t, c.Detail, "metric exists",
+				"check %q WARN detail should mention the metric exists outside the scope", c.Name)
+			assert.Contains(t, c.Recommendation, "asserts_env",
+				"check %q WARN recommendation should mention asserts_env label mapping", c.Name)
+		case kg.CheckFail:
+			failed++
+		}
+	}
+	assert.Equal(t, 5, warned, "all 5 metric checks should be reclassified as WARN when scoped is empty but unscoped has data")
+	assert.Equal(t, 0, failed, "no metric check should FAIL when unscoped probe finds data")
+}
+
+func TestCheckMetric_NoFallbackWhenScopeUnset(t *testing.T) {
+	// Regression check: when no env/namespace is set, scoped and unscoped
+	// queries are identical, so no fallback should fire. Empty results
+	// should remain FAIL.
+	kgServer := minimalKGServer()
+	defer kgServer.Close()
+
+	promMux := http.NewServeMux()
+	promMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Always return empty.
+		writeJSON(w, map[string]any{
+			"results": map[string]any{
+				"A": map[string]any{
+					"frames": []map[string]any{},
+				},
+			},
+		})
+	})
+	promServer := httptest.NewServer(promMux)
+	defer promServer.Close()
+
+	kgClient := newTestClient(t, kgServer)
+	promClient := newTestPromClient(t, promServer)
+	scope := kg.NewTestScopeFlags("", "", "")
+	result := kg.RunDiagnose(t.Context(), kgClient, &scope, promClient, "test-prom-uid")
+
+	var warned, failed int
+	for _, c := range result.Checks {
+		if !strings.HasPrefix(c.Name, "Metric:") {
+			continue
+		}
+		switch c.Status {
+		case kg.CheckWarn:
+			warned++
+		case kg.CheckFail:
+			failed++
+		}
+	}
+	assert.Equal(t, 0, warned, "without scope, no reclassification should occur")
+	assert.Equal(t, 5, failed, "all 5 metric checks should FAIL when both scoped and unscoped find nothing")
+}
+
+// TestCheckMetric_NoFallbackProbeWhenSelectorEmpty verifies that a check whose
+// scoped query happens to carry no label filter (because its scoped selector
+// resolves empty under the current env/namespace combination) does not issue
+// a no-op unscoped fallback query.
+//
+// Concretely: when only --namespace is set, traces_target_info has no
+// namespace label, so its scoped selector is empty, and its scoped query
+// equals the unscoped query. The fallback should not fire.
+//
+// See PR #746 review feedback: gating used to be a single envOrNs boolean
+// shared across all checks; it's now per-check.
+func TestCheckMetric_NoFallbackProbeWhenSelectorEmpty(t *testing.T) {
+	kgServer := minimalKGServer()
+	defer kgServer.Close()
+
+	// Track queries received so we can assert "traces_target_info ran exactly once".
+	var (
+		mu      sync.Mutex
+		queries []string
+	)
+	promMux := http.NewServeMux()
+	promMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		queries = append(queries, string(body))
+		mu.Unlock()
+		// Always return empty (mimic "no data" so the fallback path would fire if attached).
+		writeJSON(w, map[string]any{
+			"results": map[string]any{
+				"A": map[string]any{"frames": []map[string]any{}},
+			},
+		})
+	})
+	promServer := httptest.NewServer(promMux)
+	defer promServer.Close()
+
+	kgClient := newTestClient(t, kgServer)
+	promClient := newTestPromClient(t, promServer)
+	// Only namespace set. traces_target_info doesn't use namespace, so its
+	// scoped selector is empty and no fallback should attach.
+	// NewTestScopeFlags(env, site, namespace) — namespace is the third arg.
+	scope := kg.NewTestScopeFlags("", "", "demo-ns")
+	_ = kg.RunDiagnose(t.Context(), kgClient, &scope, promClient, "test-prom-uid")
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	// Count requests that mention traces_target_info.
+	var ttiRequests int
+	for _, q := range queries {
+		if strings.Contains(q, "traces_target_info") {
+			ttiRequests++
+		}
+	}
+	// Exactly one: the scoped query. No fallback no-op round-trip.
+	assert.Equal(t, 1, ttiRequests,
+		"traces_target_info should be queried exactly once when its selector is empty "+
+			"(no fallback no-op when scoped == unscoped)")
 }
 
 // ---------------------------------------------------------------------------

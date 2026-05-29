@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/style"
+	"github.com/grafana/promql-builder/go/promql"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -217,9 +218,11 @@ func runServiceDiagnose(ctx context.Context, client *Client, serviceName string,
 	}
 
 	// Step 5: Interpret results.
+	// computeSummary runs before interpretServiceResults so the diagnosis
+	// can derive its verdict from the actual pass/fail counts.
+	result.computeSummary()
 	result.Diagnosis, result.NextSteps = interpretServiceResults(&result)
 
-	result.computeSummary()
 	return result
 }
 
@@ -233,32 +236,47 @@ func runServiceMetricChecks(ctx context.Context, promClient *prometheus.Client, 
 		envFilter = fmt.Sprintf(`, asserts_env="%s"`, env)
 	}
 
+	// withServiceFallback attaches an unscoped (no asserts_env filter, but
+	// service= still applied) probe so that when a scoped query returns
+	// "no data" because the env doesn't match, checkMetric reclassifies the
+	// FAIL to WARN with the label-mismatch hint. Only attached when the
+	// caller passed an explicit env — if env is empty the scoped query is
+	// already unscoped and the fallback would be a no-op round-trip.
+	withServiceFallback := func(d metricCheckDef, metric, labelKey string) metricCheckDef {
+		if env != "" {
+			d.UnscopedQuery = promql.Count(
+				promql.Vector(metric).Label(labelKey, serviceName),
+			).String()
+		}
+		return d
+	}
+
 	checks := []metricCheckDef{
-		{
+		withServiceFallback(metricCheckDef{
 			Name:           "Metric: traces_service_graph (client)",
 			Query:          fmt.Sprintf(`count(traces_service_graph_request_total{client="%s"%s})`, serviceName, envFilter),
 			Recommendation: fmt.Sprintf("Tempo sees no outbound calls FROM %s. Check that trace context propagation is enabled on outgoing HTTP/gRPC requests.", serviceName),
-		},
-		{
+		}, "traces_service_graph_request_total", "client"),
+		withServiceFallback(metricCheckDef{
 			Name:           "Metric: traces_service_graph (server)",
 			Query:          fmt.Sprintf(`count(traces_service_graph_request_total{server="%s"%s})`, serviceName, envFilter),
 			Recommendation: fmt.Sprintf("Tempo sees no inbound calls TO %s. Verify the service is receiving traced requests.", serviceName),
-		},
-		{
+		}, "traces_service_graph_request_total", "server"),
+		withServiceFallback(metricCheckDef{
 			Name:           "Metric: asserts:relation:calls",
 			Query:          fmt.Sprintf(`count(asserts:relation:calls{service="%s"%s})`, serviceName, envFilter),
 			Recommendation: "No CALLS edge metrics for this service. The recording rule may not be matching its labels.",
-		},
-		{
+		}, "asserts:relation:calls", "service"),
+		withServiceFallback(metricCheckDef{
 			Name:           "Metric: asserts:mixin_workload_job",
 			Query:          fmt.Sprintf(`count(asserts:mixin_workload_job{service="%s"%s})`, serviceName, envFilter),
 			Recommendation: "Entity discovery metric missing for this service. Check asserts_env label and recording rule configuration.",
-		},
-		{
+		}, "asserts:mixin_workload_job", "service"),
+		withServiceFallback(metricCheckDef{
 			Name:           "Metric: asserts:request:rate5m",
 			Query:          fmt.Sprintf(`count(asserts:request:rate5m{service="%s"%s})`, serviceName, envFilter),
 			Recommendation: "Request rate KPI missing. Service KPIs may not display correctly.",
-		},
+		}, "asserts:request:rate5m", "service"),
 	}
 
 	var (
@@ -403,7 +421,24 @@ func interpretServiceResults(r *ServiceDiagnoseResult) ([]string, []string) {
 	}
 
 	if entityFound && hasEdges {
-		diagnosis = append(diagnosis, fmt.Sprintf("Service %q looks healthy — found in graph with %d edge(s).", r.ServiceName, len(r.Edges)))
+		// Only declare "looks healthy" when every check actually passed.
+		// Previously this branch fired any time the entity existed with
+		// edges, regardless of other check failures — producing
+		// internally contradictory output like "4/8 checks passed, 4
+		// failed" followed by "Service looks healthy".
+		if r.Summary.Failed == 0 {
+			diagnosis = append(diagnosis, fmt.Sprintf("Service %q looks healthy — found in graph with %d edge(s).", r.ServiceName, len(r.Edges)))
+		} else {
+			var failedNames []string
+			for _, c := range r.Checks {
+				if c.Status == CheckFail {
+					failedNames = append(failedNames, c.Name)
+				}
+			}
+			diagnosis = append(diagnosis,
+				fmt.Sprintf("Service %q is in the graph with %d edge(s), but %d check(s) failed: %s. See Recommendations above for details.",
+					r.ServiceName, len(r.Edges), r.Summary.Failed, strings.Join(failedNames, ", ")))
+		}
 	}
 
 	return diagnosis, nextSteps
@@ -413,15 +448,15 @@ func interpretServiceResults(r *ServiceDiagnoseResult) ([]string, []string) {
 // Service diagnosis text codec
 // ---------------------------------------------------------------------------
 
-// ServiceDiagnoseTextCodec renders ServiceDiagnoseResult as human-readable text.
-type ServiceDiagnoseTextCodec struct{}
+// ServiceDiagnoseTableCodec renders ServiceDiagnoseResult as a human-readable table.
+type ServiceDiagnoseTableCodec struct{}
 
-func (c *ServiceDiagnoseTextCodec) Format() format.Format { return "text" }
+func (c *ServiceDiagnoseTableCodec) Format() format.Format { return "table" }
 
-func (c *ServiceDiagnoseTextCodec) Encode(w io.Writer, v any) error {
+func (c *ServiceDiagnoseTableCodec) Encode(w io.Writer, v any) error {
 	r, ok := v.(ServiceDiagnoseResult)
 	if !ok {
-		return errors.New("invalid data type for text codec: expected ServiceDiagnoseResult")
+		return errors.New("invalid data type for table codec: expected ServiceDiagnoseResult")
 	}
 
 	// Header.
@@ -529,6 +564,6 @@ func (c *ServiceDiagnoseTextCodec) Encode(w io.Writer, v any) error {
 	return nil
 }
 
-func (c *ServiceDiagnoseTextCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("text format does not support decoding")
+func (c *ServiceDiagnoseTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
 }

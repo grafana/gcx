@@ -446,14 +446,14 @@ func (o *statusOpts) setup(flags *pflag.FlagSet) {
 
 func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "rules",
-		Short: "Manage Knowledge Graph prom rules.",
+		Use:   "prom-rules",
+		Short: "Manage Knowledge Graph Custom Prometheus rules.",
 	}
 
 	rulesListOpts := &rulesListOpts{}
 	listCmd := &cobra.Command{
 		Use:   "list",
-		Short: "List Knowledge Graph prom rules.",
+		Short: "List Knowledge Graph Custom Prometheus rules.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := rulesListOpts.IO.Validate(); err != nil {
 				return err
@@ -488,7 +488,7 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	getOpts := &rulesGetOpts{}
 	getCmd := &cobra.Command{
 		Use:   "get <name>",
-		Short: "Get a Knowledge Graph prom rule by name.",
+		Short: "Get a Knowledge Graph Custom Prometheus rule by name.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := getOpts.IO.Validate(); err != nil {
@@ -518,7 +518,7 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	var createFile string
 	createCmd := &cobra.Command{
 		Use:   "create",
-		Short: "Upload Knowledge Graph prom rules from a YAML file.",
+		Short: "Upload Knowledge Graph Custom Prometheus rules from a YAML file.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			data, err := readFileOrStdin(cmd, createFile)
 			if err != nil {
@@ -544,7 +544,7 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 
 	deleteCmd := &cobra.Command{
 		Use:   "delete <name>",
-		Short: "Delete a Knowledge Graph prom rule by name.",
+		Short: "Delete a Knowledge Graph Custom Prometheus rule by name.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
