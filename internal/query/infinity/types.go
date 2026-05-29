@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+
+	"github.com/grafana/gcx/internal/query/dataframe"
 )
 
 // QueryRequest represents an Infinity datasource query request.
@@ -30,41 +32,23 @@ type Column struct {
 	Type string `json:"type"`
 }
 
-// GrafanaQueryResponse is the raw response from Grafana's datasource query API.
-type GrafanaQueryResponse struct {
-	Results map[string]GrafanaResult `json:"results"`
-}
+// GrafanaQueryResponse is the top-level Grafana datasource query response.
+type GrafanaQueryResponse = dataframe.Response
 
-// GrafanaResult is a single result entry.
-type GrafanaResult struct {
-	Frames      []DataFrame `json:"frames,omitempty"`
-	Error       string      `json:"error,omitempty"`
-	ErrorSource string      `json:"errorSource,omitempty"`
-	Status      int         `json:"status,omitempty"`
-}
+// GrafanaResult represents a single Grafana datasource query result.
+type GrafanaResult = dataframe.Result
 
-// DataFrame is a Grafana data frame.
-type DataFrame struct {
-	Schema DataFrameSchema `json:"schema"`
-	Data   DataFrameData   `json:"data"`
-}
+// DataFrame represents a Grafana data frame.
+type DataFrame = dataframe.Frame
 
-// DataFrameSchema describes the frame structure.
-type DataFrameSchema struct {
-	Name   string  `json:"name,omitempty"`
-	Fields []Field `json:"fields,omitempty"`
-}
+// DataFrameSchema describes the structure of a Grafana data frame.
+type DataFrameSchema = dataframe.Schema
 
-// Field describes one field/column in a data frame.
-type Field struct {
-	Name string `json:"name,omitempty"`
-	Type string `json:"type,omitempty"`
-}
+// Field describes a field in a Grafana data frame.
+type Field = dataframe.Field
 
-// DataFrameData holds column-oriented data values.
-type DataFrameData struct {
-	Values [][]any `json:"values,omitempty"`
-}
+// DataFrameData contains column-oriented Grafana data frame values.
+type DataFrameData = dataframe.Data
 
 // ConvertGrafanaResponse converts a Grafana data frame response into a flat
 // QueryResponse with columns and rows suitable for table rendering.
@@ -85,7 +69,7 @@ func ConvertGrafanaResponse(grafanaResp *GrafanaQueryResponse) *QueryResponse {
 		}
 
 		for _, field := range frame.Schema.Fields {
-			result.Columns = append(result.Columns, Column(field))
+			result.Columns = append(result.Columns, Column{Name: field.Name, Type: field.Type})
 		}
 
 		if len(frame.Data.Values) == 0 {

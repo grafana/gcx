@@ -1,44 +1,33 @@
 package influxdb
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"maps"
 	"net/http"
 	"sort"
 	"strconv"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/query/grafanaquery"
 	"github.com/grafana/gcx/internal/queryerror"
-	"k8s.io/client-go/rest"
 )
-
-// maxResponseBytes caps the response body read from Grafana. If a response
-// exceeds this limit, executeQuery returns a clear error rather than silently
-// truncating the body (which would cause a confusing JSON parse failure).
-const maxResponseBytes = 50 << 20 // 50 MB
 
 // Client is a client for executing InfluxDB queries via Grafana's datasource API.
 type Client struct {
-	restConfig config.NamespacedRESTConfig
-	httpClient *http.Client
+	queryClient *grafanaquery.Client
 }
 
 // NewClient creates a new InfluxDB query client.
 func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
-	httpClient, err := rest.HTTPClientFor(&cfg.Config)
+	queryClient, err := grafanaquery.NewClient(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
+		return nil, err
 	}
 
-	return &Client{
-		restConfig: cfg,
-		httpClient: httpClient,
-	}, nil
+	return &Client{queryClient: queryClient}, nil
 }
 
 // Query executes an InfluxDB query via Grafana's datasource API.
@@ -283,69 +272,7 @@ func (c *Client) buildQueryBody(datasourceUID string, req QueryRequest) ([]byte,
 }
 
 func (c *Client) executeQuery(ctx context.Context, body []byte) ([]byte, error) {
-	apiPath := c.buildQueryPath()
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewBuffer(body))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute query: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := readLimited(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	// Fall back to legacy /api/ds/query if K8s query API doesn't exist.
-	if resp.StatusCode == http.StatusNotFound {
-		resp.Body.Close()
-		apiPath = "/api/ds/query"
-		httpReq, err = http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewBuffer(body))
-		if err != nil {
-			return nil, fmt.Errorf("failed to create request: %w", err)
-		}
-		httpReq.Header.Set("Content-Type", "application/json")
-		resp, err = c.httpClient.Do(httpReq)
-		if err != nil {
-			return nil, fmt.Errorf("failed to execute query: %w", err)
-		}
-		defer resp.Body.Close()
-		respBody, err = readLimited(resp.Body)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, queryerror.FromBody("influxdb", "query", resp.StatusCode, respBody)
-	}
-
-	return respBody, nil
-}
-
-func (c *Client) buildQueryPath() string {
-	return fmt.Sprintf("/apis/query.grafana.app/v0alpha1/namespaces/%s/query",
-		c.restConfig.Namespace)
-}
-
-// readLimited reads up to maxResponseBytes from r and returns a clear error if
-// the limit is exceeded, preventing a silent truncation that would cause a
-// confusing JSON parse failure downstream.
-func readLimited(r io.Reader) ([]byte, error) {
-	data, err := io.ReadAll(io.LimitReader(r, maxResponseBytes+1))
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-	if int64(len(data)) > maxResponseBytes {
-		return nil, fmt.Errorf("response body exceeds %d MB limit; use a narrower time range or add filters to reduce data volume", maxResponseBytes>>20)
-	}
-	return data, nil
+	return c.queryClient.Execute(ctx, body, "influxdb", "query")
 }
 
 func extractTagKeys(grafanaResp *GrafanaQueryResponse) *TagKeysResponse {

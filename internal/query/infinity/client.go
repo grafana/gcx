@@ -1,43 +1,33 @@
 package infinity
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/query/grafanaquery"
 	"github.com/grafana/gcx/internal/queryerror"
-	"k8s.io/client-go/rest"
 )
-
-const maxResponseBytes = 50 << 20 // 50 MB
 
 // Client executes Infinity queries via Grafana's datasource query API.
 type Client struct {
-	restConfig config.NamespacedRESTConfig
-	httpClient *http.Client
+	queryClient *grafanaquery.Client
 }
 
 // NewClient creates a new Infinity query client.
 func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
-	httpClient, err := rest.HTTPClientFor(&cfg.Config)
+	queryClient, err := grafanaquery.NewClient(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
+		return nil, err
 	}
-	return &Client{
-		restConfig: cfg,
-		httpClient: httpClient,
-	}, nil
+	return &Client{queryClient: queryClient}, nil
 }
 
 // Query executes an Infinity query against the specified datasource.
 func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryRequest) (*QueryResponse, error) {
-	apiPath := c.buildQueryPath()
-
 	query := map[string]any{
 		"refId": "A",
 		"datasource": map[string]any{
@@ -77,21 +67,9 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	statusCode, respBody, err := c.doQuery(ctx, apiPath, body)
+	respBody, err := c.queryClient.Execute(ctx, body, "infinity", "query")
 	if err != nil {
 		return nil, err
-	}
-
-	// Fall back to legacy API path on 404.
-	if statusCode == http.StatusNotFound {
-		statusCode, respBody, err = c.doQuery(ctx, "/api/ds/query", body)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	if statusCode != http.StatusOK {
-		return nil, queryerror.FromBody("infinity", "query", statusCode, respBody)
 	}
 
 	var grafanaResp GrafanaQueryResponse
@@ -110,35 +88,4 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 	}
 
 	return ConvertGrafanaResponse(&grafanaResp), nil
-}
-
-// doQuery sends a POST request to the given path and returns the HTTP status code and body.
-func (c *Client) doQuery(ctx context.Context, path string, body []byte) (int, []byte, error) {
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+path, bytes.NewBuffer(body))
-	if err != nil {
-		return 0, nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return 0, nil, fmt.Errorf("failed to execute query: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
-	if err != nil {
-		return 0, nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if int64(len(respBody)) > maxResponseBytes {
-		return 0, nil, fmt.Errorf("response body exceeds %d MB limit; use a narrower time range or add filters", maxResponseBytes>>20)
-	}
-
-	return resp.StatusCode, respBody, nil
-}
-
-func (c *Client) buildQueryPath() string {
-	return fmt.Sprintf("/apis/query.grafana.app/v0alpha1/namespaces/%s/query",
-		c.restConfig.Namespace)
 }

@@ -81,7 +81,7 @@ SharedOpts                   Shared flags: -d/--datasource, --from, --to, --sinc
 Datasource Resolution        Resolves -d flag to datasource UID (by name, UID, or config default)
     |
     v
-Query Client                 internal/query/prometheus/ or internal/query/loki/ (direct HTTP)
+Query Client                 internal/query/{kind}/ (direct HTTP; unified-query clients reuse internal/query/grafanaquery + internal/query/dataframe)
     |
     v
 Codec Pipeline               table (default) | graph (terminal chart) | json | yaml

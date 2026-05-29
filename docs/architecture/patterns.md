@@ -278,6 +278,8 @@ terminal charts (`internal/graph`). The `query` command registers custom codecs
 (`queryTableCodec`, `queryGraphCodec`) into the `io.Options` codec registry.
 
 **Evidence:**
+- `internal/query/grafanaquery/client.go`: shared POST transport for clients using Grafana's unified datasource query API, including `/api/ds/query` fallback and response-size limiting
+- `internal/query/dataframe/types.go`: shared Grafana data frame wire envelope for unified query responses
 - `internal/query/prometheus/client.go`: `NewClient` calls `rest.HTTPClientFor`
 - `internal/query/loki/client.go`: same pattern
 - `cmd/gcx/datasources/query/codecs.go`: `queryTableCodec`, `queryGraphCodec` registration — shared by all per-kind query subcommands
