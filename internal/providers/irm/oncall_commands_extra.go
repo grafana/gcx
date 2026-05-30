@@ -306,7 +306,7 @@ func newAlertGroupListCommand(loader OnCallConfigLoader) *cobra.Command {
 // is a sensible next step that avoids committing to --limit 0):
 //
 //	TTY:    "hint: showing first N results: gcx irm oncall alert-groups list --limit M"
-//	agent:  {"class":"hint","summary":"showing first N results","command":"gcx irm oncall alert-groups list --limit M"}
+//	agent:  {"kind":"hint","summary":"showing first N results","command":"gcx irm oncall alert-groups list --limit M"}
 func emitAlertGroupListLimitHint(stderr io.Writer, limit int) {
 	suggested := limit * 2
 	emitHint(stderr,
@@ -394,7 +394,7 @@ func alertGroupListHasExplicitFilter(opts *alertGroupListOpts) bool {
 // line MUST contain a runnable gcx command):
 //
 //	TTY:    "hint: listing alert groups with filter <stringified>: gcx irm oncall alert-groups list --all"
-//	agent:  {"class":"hint","summary":"listing alert groups with filter <stringified>","command":"gcx irm oncall alert-groups list --all"}
+//	agent:  {"kind":"hint","summary":"listing alert groups with filter <stringified>","command":"gcx irm oncall alert-groups list --all"}
 //
 // Both TTY and agent-mode emissions go through the centralised emitHint
 // helper so the channel split is uniform across every
@@ -515,8 +515,8 @@ func listAlertGroupsLegacy(cmd *cobra.Command, opts *alertGroupListOpts, filters
 	}
 	if len(unsupported) > 0 {
 		// Centralised note emission. Agent mode renders
-		// JSONL with typed `class`; TTY renders dim plain text. Direct
-		// fmt.Fprintf is forbidden because it would bypass the class split.
+		// JSONL with typed `kind`; TTY renders dim plain text. Direct
+		// fmt.Fprintf is forbidden because it would bypass the kind split.
 		emitNote(cmd.ErrOrStderr(),
 			"SA-token mode uses the OnCall public API which does not honor: "+strings.Join(unsupported, ", "))
 	}
@@ -962,7 +962,7 @@ func newAlertGroupListAlertsCommand(loader OnCallConfigLoader) *cobra.Command {
 			}
 			if limit > 0 && total > len(ids) {
 				// Warn class on stderr; agent mode renders
-				// JSONL with typed `class`, TTY renders dim plain text.
+				// JSONL with typed `kind`, TTY renders dim plain text.
 				emitWarn(stderr,
 					fmt.Sprintf("retrieved %d of %d alerts; pass `--limit 0` to fetch all", len(ids), total))
 			}

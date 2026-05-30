@@ -30,6 +30,7 @@ type agentsCodec struct {
 }
 
 type spillSummary struct {
+	Kind          string `json:"kind"`
 	SpilledTo     string `json:"spilled_to"`
 	Bytes         int    `json:"bytes"`
 	PreviewSample any    `json:"preview_sample"`
@@ -67,42 +68,63 @@ func (c *agentsCodec) Encode(dst io.Writer, value any) error {
 }
 
 func (c *agentsCodec) spill(dst io.Writer, value any, payload []byte) error {
+	s, err := spillPayload(c.errWriter, value, payload)
+	if err != nil {
+		return err
+	}
+
+	out := json.NewEncoder(dst)
+	out.SetEscapeHTML(false)
+	return out.Encode(s)
+}
+
+// writeSpillFile writes payload to a temp file matching SpillFilePattern and
+// returns its path. Shared by the agents and ndjson codecs.
+func writeSpillFile(payload []byte) (string, error) {
 	f, err := os.CreateTemp("", SpillFilePattern)
 	if err != nil {
-		return fmt.Errorf("create spill file: %w", err)
+		return "", fmt.Errorf("create spill file: %w", err)
 	}
 	if _, err := f.Write(payload); err != nil {
 		f.Close()
 		os.Remove(f.Name())
-		return fmt.Errorf("write spill file: %w", err)
+		return "", fmt.Errorf("write spill file: %w", err)
 	}
 	if err := f.Close(); err != nil {
-		return fmt.Errorf("close spill file: %w", err)
+		return "", fmt.Errorf("close spill file: %w", err)
+	}
+	return f.Name(), nil
+}
+
+// spillPayload writes the full payload to a temp file, emits an oversized-output
+// hint to errWriter, and returns the summary describing the spill. Shared by the
+// agents and ndjson codecs so both produce identical spill files and summaries.
+func spillPayload(errWriter io.Writer, value any, payload []byte) (spillSummary, error) {
+	path, err := writeSpillFile(payload)
+	if err != nil {
+		return spillSummary{}, err
 	}
 
-	msg := fmt.Sprintf(
-		"Response too large for stdout (%d bytes). Full data written to %s. Read that file for complete results, or rerun with -o json to force inline output.",
-		len(payload), f.Name(),
-	)
-
 	s := spillSummary{
-		SpilledTo:     f.Name(),
+		Kind:          "spill",
+		SpilledTo:     path,
 		Bytes:         len(payload),
 		PreviewSample: previewOf(value),
-		Message:       msg,
+		Message: fmt.Sprintf(
+			"Response too large for stdout (%d bytes). Full data written to %s. Read that file for complete results, or rerun with -o json to force inline output.",
+			len(payload), path,
+		),
 	}
 	if n, ok := itemCount(value); ok {
 		s.TotalItems = &n
 	}
 
-	fmt.Fprintf(c.errWriter,
+	fmt.Fprintf(errWriter,
 		"hint: response too large for stdout (%d bytes) — read %s for full data, or use -o json to force inline\n",
-		len(payload), f.Name(),
+		len(payload), path,
 	)
 
-	out := json.NewEncoder(dst)
-	out.SetEscapeHTML(false)
-	return out.Encode(s)
+	return s, nil
 }
 
 func spillThreshold() int {
@@ -114,24 +136,36 @@ func spillThreshold() int {
 	return defaultSpillBytes
 }
 
-// itemCount returns the length of slice/array values and a true bool.
-// Also handles structs with an Items slice field (e.g. unstructured.UnstructuredList).
-func itemCount(value any) (int, bool) {
+// listValue resolves value to its list-shaped reflect.Value: the value itself
+// for slices/arrays, or its Items field for structs that have a slice/array Items
+// field (e.g. unstructured.UnstructuredList). The second return is false for any
+// other shape (including nil pointers/interfaces). Shared by itemCount, previewOf
+// (agents codec), and collectionElements (ndjson codec).
+func listValue(value any) (reflect.Value, bool) {
 	v := reflect.ValueOf(value)
 	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
 		if v.IsNil() {
-			return 0, false
+			return reflect.Value{}, false
 		}
 		v = v.Elem()
 	}
 	switch v.Kind() {
 	case reflect.Slice, reflect.Array:
-		return v.Len(), true
+		return v, true
 	case reflect.Struct:
 		items := v.FieldByName("Items")
 		if items.IsValid() && (items.Kind() == reflect.Slice || items.Kind() == reflect.Array) {
-			return items.Len(), true
+			return items, true
 		}
+	}
+	return reflect.Value{}, false
+}
+
+// itemCount returns the element count of list-shaped values (see listValue) and
+// a true bool, or 0/false for other shapes.
+func itemCount(value any) (int, bool) {
+	if list, ok := listValue(value); ok {
+		return list.Len(), true
 	}
 	return 0, false
 }
@@ -139,6 +173,11 @@ func itemCount(value any) (int, bool) {
 // previewOf returns the first spillPreviewItems elements for slices/lists,
 // the sorted top-level key names for map shapes, or nil for other shapes.
 func previewOf(value any) any {
+	if list, ok := listValue(value); ok {
+		n := min(list.Len(), spillPreviewItems)
+		return list.Slice(0, n).Interface()
+	}
+
 	v := reflect.ValueOf(value)
 	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
 		if v.IsNil() {
@@ -146,19 +185,7 @@ func previewOf(value any) any {
 		}
 		v = v.Elem()
 	}
-	take := func(slice reflect.Value) any {
-		n := min(slice.Len(), spillPreviewItems)
-		return slice.Slice(0, n).Interface()
-	}
-	switch v.Kind() {
-	case reflect.Slice, reflect.Array:
-		return take(v)
-	case reflect.Struct:
-		items := v.FieldByName("Items")
-		if items.IsValid() && (items.Kind() == reflect.Slice || items.Kind() == reflect.Array) {
-			return take(items)
-		}
-	case reflect.Map:
+	if v.Kind() == reflect.Map {
 		keys := v.MapKeys()
 		names := make([]string, 0, len(keys))
 		for _, k := range keys {

@@ -76,11 +76,10 @@ func (opts *Options) BindFlags(flags *pflag.FlagSet) {
 		defaultFormat = opts.defaultFormat
 	}
 
-	// Agent mode: override any per-command default with the agents codec.
-	// Explicit -o flag from user still takes precedence (via cobra flag parsing).
-	if agent.IsAgentMode() {
-		defaultFormat = string(agentsFormat)
-	}
+	// The non-TTY default (NDJSON) cannot be resolved here: BindFlags runs at
+	// command-construction time, before root PersistentPreRun calls
+	// terminal.Detect(), so terminal.IsPiped() is not yet populated. It is
+	// resolved in Validate() instead, which runs inside RunE.
 
 	// Populate pipe/truncation state from package-level terminal detection.
 	// These are set by root PersistentPreRun via terminal.Detect() and
@@ -95,6 +94,18 @@ func (opts *Options) BindFlags(flags *pflag.FlagSet) {
 }
 
 func (opts *Options) Validate() error {
+	// Resolve the implicit non-TTY default now that terminal.Detect() and
+	// agent-mode pipe forcing (root PersistentPreRun) have run. When stdout is
+	// not a TTY (any pipe/redirect, which agent mode also forces) and the user
+	// did not explicitly pass -o, default to NDJSON so a 2>&1-merged stream
+	// stays uniformly parseable line-by-line. Explicit -o always wins.
+	if opts.flags != nil {
+		out := opts.flags.Lookup("output")
+		if (out == nil || !out.Changed) && terminal.IsPiped() {
+			opts.OutputFormat = string(ndjsonFormat)
+		}
+	}
+
 	codec := opts.codecFor(opts.OutputFormat)
 	if codec == nil {
 		return fmt.Errorf("unknown output format '%s'. Valid formats are: %s", opts.OutputFormat, strings.Join(opts.allowedCodecs(), ", "))
@@ -105,10 +116,10 @@ func (opts *Options) Validate() error {
 
 // applyJSONFlag processes the --json flag value. When -o/--output is explicitly
 // set to a non-JSON format, it returns an error because field selection only
-// works with JSON output. Combining -o json with --json is allowed since
-// there is no conflict. The agents format is intentionally excluded — in agent
-// mode the implicit default is agents, and users should pass only --json
-// (without an explicit -o) to combine field selection with the agents codec.
+// works with JSON output. Combining -o json with --json is allowed since there
+// is no conflict. --json forces JSON output, so it overrides the implicit
+// non-TTY NDJSON default: piping with --json field1,field2 yields field-selected
+// JSON, not NDJSON.
 func (opts *Options) applyJSONFlag() error {
 	if opts.flags == nil {
 		return nil
@@ -168,12 +179,12 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 	}
 
 	// Nudge toward --json field selection whenever the resolved codec is
-	// JSON-like (json or agents format) and the caller has not already
+	// JSON-like (json, agents, or ndjson format) and the caller has not already
 	// requested field selection/discovery. Emitted once per invocation to
-	// stderr (never pollutes stdout). TTY: plain "hint:" line. Agent mode:
-	// JSONL {"class":"hint",...} — routed through emitHint/EmitHint so the
-	// hints framework handles codec & agent-mode compliance (FR-104).
-	isJSONLike := codec.Format() == format.JSON || codec.Format() == agentsFormat
+	// stderr (never pollutes stdout). TTY: plain "hint:" line. Non-TTY:
+	// JSONL {"kind":"hint",...} — routed through emitHint/EmitHint so the
+	// hints framework handles codec & non-TTY compliance (FR-104).
+	isJSONLike := codec.Format() == format.JSON || codec.Format() == agentsFormat || codec.Format() == ndjsonFormat
 	if !opts.jsonFieldsHintShown && isJSONLike && len(opts.JSONFields) == 0 && !opts.JSONDiscovery {
 		opts.jsonFieldsHintShown = true
 		w := opts.ErrWriter
@@ -332,6 +343,7 @@ func (opts *Options) builtinCodecs() map[string]format.Codec {
 		"yaml":   format.NewYAMLCodec(),
 		"json":   format.NewJSONCodec(),
 		"agents": newAgentsCodec(errWriter),
+		"ndjson": newNDJSONCodec(errWriter),
 	}
 }
 
@@ -352,19 +364,33 @@ func (opts *Options) allowedCodecs() []string {
 	return allowedCodecs
 }
 
-// EmitHint writes a hint diagnostic to w. In agent mode the record is JSONL
-// with class:"hint" to match the FR-104 typed-class schema used by provider
-// commands. In TTY mode the line is "hint: <summary>" (with ": <command>"
+// diagnosticIsStructured reports whether diagnostics should be emitted as JSONL
+// records rather than human "prefix: text" lines. True when stdout is non-TTY
+// (any pipe) or agent mode (which forces piped behavior) so a 2>&1-merged stream
+// stays uniform with the NDJSON data lines.
+func diagnosticIsStructured() bool {
+	return agent.IsAgentMode() || terminal.IsPiped()
+}
+
+// emitStructured writes a single diagnostic JSONL record. command is omitted
+// when empty, so warn/note records (which never carry a command) match their
+// previous {"kind":...,"summary":...} shape exactly.
+func emitStructured(w io.Writer, kind, summary, command string) {
+	rec := struct {
+		Kind    string `json:"kind"`
+		Summary string `json:"summary"`
+		Command string `json:"command,omitempty"`
+	}{Kind: kind, Summary: summary, Command: command}
+	b, _ := json.Marshal(rec) //nolint:errchkjson
+	fmt.Fprintln(w, string(b))
+}
+
+// EmitHint writes a hint diagnostic to w. In structured mode the record is JSONL
+// with kind:"hint". In TTY mode the line is "hint: <summary>" (with ": <command>"
 // appended when command is non-empty). command may be empty.
 func EmitHint(w io.Writer, summary, command string) {
-	if agent.IsAgentMode() {
-		type hintEvent struct {
-			Class   string `json:"class"`
-			Summary string `json:"summary"`
-			Command string `json:"command,omitempty"`
-		}
-		b, _ := json.Marshal(hintEvent{Class: "hint", Summary: summary, Command: command}) //nolint:errchkjson
-		fmt.Fprintln(w, string(b))
+	if diagnosticIsStructured() {
+		emitStructured(w, "hint", summary, command)
 		return
 	}
 	if command != "" {
@@ -380,33 +406,21 @@ func emitHint(w io.Writer, summary, command string) {
 	EmitHint(w, summary, command)
 }
 
-// EmitWarn writes a warn-class diagnostic to w. In agent mode the record is
-// JSONL with class:"warning" to match the FR-104 typed-class schema used by
-// provider commands. In TTY mode the line is "warn: <summary>".
+// EmitWarn writes a warn diagnostic to w. In structured mode the record is JSONL
+// with kind:"warning". In TTY mode the line is "warn: <summary>".
 func EmitWarn(w io.Writer, summary string) {
-	if agent.IsAgentMode() {
-		type warnEvent struct {
-			Class   string `json:"class"`
-			Summary string `json:"summary"`
-		}
-		b, _ := json.Marshal(warnEvent{Class: "warning", Summary: summary}) //nolint:errchkjson
-		fmt.Fprintln(w, string(b))
+	if diagnosticIsStructured() {
+		emitStructured(w, "warning", summary, "")
 		return
 	}
 	fmt.Fprintf(w, "warn: %s\n", summary)
 }
 
-// EmitNote writes a note-class diagnostic to w. In agent mode the record is
-// JSONL with class:"note" to match the FR-104 typed-class schema used by
-// provider commands. In TTY mode the line is "note: <summary>".
+// EmitNote writes a note diagnostic to w. In structured mode the record is JSONL
+// with kind:"note". In TTY mode the line is "note: <summary>".
 func EmitNote(w io.Writer, summary string) {
-	if agent.IsAgentMode() {
-		type noteEvent struct {
-			Class   string `json:"class"`
-			Summary string `json:"summary"`
-		}
-		b, _ := json.Marshal(noteEvent{Class: "note", Summary: summary}) //nolint:errchkjson
-		fmt.Fprintln(w, string(b))
+	if diagnosticIsStructured() {
+		emitStructured(w, "note", summary, "")
 		return
 	}
 	fmt.Fprintf(w, "note: %s\n", summary)

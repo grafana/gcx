@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/gcx/internal/agentlog"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/terminal"
 	appversion "github.com/grafana/gcx/internal/version"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -111,9 +112,11 @@ func handleError(err error, boolFlags map[string]struct{}, subCmds map[string]bo
 		})
 	}
 
-	if agent.IsAgentMode() || root.IsJSONFlagActive() {
+	if agent.IsAgentMode() || root.IsJSONFlagActive() || terminal.IsPiped() {
 		// Machine consumers get JSON on stdout only — the human-formatted
-		// stderr error is noise for agents and scripts.
+		// stderr error is noise for agents and scripts. When stdout is non-TTY
+		// the error is a kind:"error" JSON line so a 2>&1-merged stream stays
+		// uniform with the NDJSON data/diagnostic lines.
 		if writeErr := detailedErr.WriteJSON(os.Stdout, exitCode); writeErr != nil {
 			fmt.Fprintln(os.Stderr, detailedErr.Error())
 		}

@@ -176,18 +176,18 @@ func emitHint(stderr io.Writer, summary, command string) {
 	cmdio.EmitHint(stderr, summary, command)
 }
 
-// emitWarn writes a warn-class diagnostic to stderr. In agent mode the
-// record is JSONL with `class:"warning"`; in TTY mode the line is rendered
-// as `warn: <summary>`.
+// emitWarn writes a warn diagnostic to stderr. When stdout is non-TTY (pipe or
+// agent mode) the record is JSONL with `kind:"warning"`; in TTY mode the line is
+// rendered as `warn: <summary>`.
 // Delegates to output.EmitWarn — package-private alias kept for call-site
 // brevity and backward compat with white-box tests.
 func emitWarn(stderr io.Writer, summary string) {
 	cmdio.EmitWarn(stderr, summary)
 }
 
-// emitNote writes a note-class diagnostic to stderr. In agent mode the
-// record is JSONL with `class:"note"`; in TTY mode the line is rendered
-// as `note: <summary>`.
+// emitNote writes a note diagnostic to stderr. When stdout is non-TTY (pipe or
+// agent mode) the record is JSONL with `kind:"note"`; in TTY mode the line is
+// rendered as `note: <summary>`.
 // Delegates to output.EmitNote — package-private alias kept for call-site
 // brevity and backward compat with white-box tests.
 func emitNote(stderr io.Writer, summary string) {

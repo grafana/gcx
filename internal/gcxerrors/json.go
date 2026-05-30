@@ -32,8 +32,11 @@ type errorJSON struct {
 	DocsLink    string   `json:"docsLink,omitempty"`
 }
 
-// errorEnvelope is the top-level JSON object written to stdout on error.
+// errorEnvelope is the top-level JSON object written to stdout on error. The
+// kind:"error" discriminator keeps it uniform with NDJSON data/diagnostic lines
+// so a 2>&1-merged stream stays parseable line-by-line.
 type errorEnvelope struct {
+	Kind  string    `json:"kind"`
 	Error errorJSON `json:"error"`
 }
 
@@ -50,6 +53,7 @@ func (e DetailedError) WriteJSON(w io.Writer, exitCode int) error {
 		sug[i] = stripBoxChars(s)
 	}
 	envelope := errorEnvelope{
+		Kind: "error",
 		Error: errorJSON{
 			Summary:     e.Summary,
 			ExitCode:    exitCode,
@@ -74,6 +78,7 @@ func (e DetailedError) WriteJSON(w io.Writer, exitCode int) error {
 // the error context.
 func (e DetailedError) WriteJSONWithItems(w io.Writer, exitCode int, items any) error {
 	type combined struct {
+		Kind  string    `json:"kind"`
 		Items any       `json:"items"`
 		Error errorJSON `json:"error"`
 	}
@@ -83,6 +88,7 @@ func (e DetailedError) WriteJSONWithItems(w io.Writer, exitCode int, items any) 
 		sug[i] = stripBoxChars(s)
 	}
 	env := combined{
+		Kind:  "error",
 		Items: items,
 		Error: errorJSON{
 			Summary:     e.Summary,
