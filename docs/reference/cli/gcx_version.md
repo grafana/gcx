@@ -28,7 +28,7 @@ gcx version [flags]
 ```
   -h, --help            help for version
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
+  -o, --output string   Output format. One of: agents, json, ndjson, text, yaml (default "text")
 ```
 
 ### Options inherited from parent commands

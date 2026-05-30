@@ -405,8 +405,11 @@ gcx metrics query -d <uid> 'up' -o json 2>/dev/null | \
   python3 -c "import json,sys; data=json.load(sys.stdin); print(len(data['data']['result']))"
 ```
 
-> **Piping caution**: Never use `2>&1` when piping gcx JSON output — gcx writes
-> hints to stderr that break JSON parsers. Use `2>/dev/null` instead.
+> **Piping note**: When stdout is piped, gcx defaults to NDJSON (one JSON object
+> per line, every line `kind`-tagged), so `2>&1` is safe — both data and stderr
+> diagnostics merge into a uniform stream you demux by `kind`
+> (`jq 'select(.kind=="result").data'`). Use `2>/dev/null` to drop diagnostics,
+> or `-o json` to force a single JSON document for tools that expect one.
 
 ## Scripting Patterns
 

@@ -34,10 +34,16 @@ Reference: `internal/agent/agent.go`
 ### 6.2 Behavior Changes
 
 When agent mode is active:
-1. **Default output format** becomes `agents` for all commands (overrides
-   per-command `DefaultFormat()` in `io.Options.BindFlags()`). The `agents`
-   codec emits compact JSON when the payload is ≤ 100 KiB and spills to a
-   temp file otherwise — see [output.md § Agents Codec](output.md#111-agents-codec)
+1. **Default output format** becomes `ndjson` for all commands. Agent mode forces
+   pipe-aware behavior (`IsPiped=true`), and the non-TTY default is NDJSON —
+   resolved in `io.Options.Validate()`, overriding the per-command
+   `DefaultFormat()`. Each data line is wrapped `{"kind":"result","data":...}`;
+   oversized output still spills to a temp file (one `{"kind":"spill",...}` line).
+   See [output.md § NDJSON Codec](output.md#112-ndjson-codec). The single-object
+   `agents` codec remains available via explicit `-o agents`. NDJSON trades the
+   `agents` codec's maximal compactness (one document) for line-oriented
+   robustness: a `2>&1`-merged stream stays parseable, and large lists stream
+   line-by-line; spill still bounds truly oversized payloads.
 2. **Color** is disabled (`color.NoColor = true` in `PersistentPreRun`)
 3. **Pipe-aware behavior** is forced: `IsPiped=true`, `NoTruncate=true`
    regardless of actual TTY state (see [pipe-awareness.md § TTY Detection](pipe-awareness.md#51-tty-detection))
@@ -49,14 +55,15 @@ The following are **not yet implemented**:
 6. Confirmation prompts auto-approved ([safety.md § Agent Mode Auto-Approve](safety.md#33-agent-mode-auto-approve))
 
 **Note:** The `--json list` field-discovery hint fires whenever the resolved output codec
-is JSON-like (`-o json` or the `agents` default) and the caller has not already used
-`--json list` (field discovery) or `--json field1,field2` (field selection). In agent mode
-the hint is emitted as JSONL `{"class":"hint","summary":"..."}` on stderr. In TTY mode it is emitted as `hint: ...` text on stderr. The
+is JSON-like (`-o json`, the `ndjson` non-TTY default, or `-o agents`) and the caller has
+not already used `--json list` (field discovery) or `--json field1,field2` (field selection).
+When stdout is non-TTY (pipe or agent mode) the hint is emitted as JSONL
+`{"kind":"hint","summary":"..."}` on stderr. In TTY mode it is emitted as `hint: ...` text on stderr. The
 hint is emitted at most once per invocation.
 
 ### 6.2a Format choice vs non-format presentation properties
 
-**Format choice** (`-o text/wide/json/yaml`) is controlled by explicit flags. An explicit `-o wide` overrides the agent-mode JSON default — this is documented behavior.
+**Format choice** (`-o text/wide/json/yaml`) is controlled by explicit flags. An explicit `-o wide` overrides the agent-mode NDJSON default — this is documented behavior.
 
 **Non-format presentation properties** (color, truncation, box-drawing characters) are ALWAYS suppressed in agent mode, regardless of which format is active:
 - `-o wide` under agent mode: renders a wide table with no ANSI colors, no box chars.
@@ -65,10 +72,11 @@ hint is emitted at most once per invocation.
 ### 6.3 Opt-Out
 
 Explicit flags override agent mode defaults:
-- `-o json` forces full compact JSON to stdout (no spill)
-- `-o text` or `-o yaml` overrides the agents default
+- `-o json` forces a single pretty JSON document to stdout (no NDJSON line-wrapping)
+- `-o agents` forces the single-object compact-JSON-with-spill codec
+- `-o text` or `-o yaml` overrides the ndjson default
 - `-o wide` retains human table output even in agent mode (explicit-override semantics — the
-  operator has explicitly requested wide table format, so the JSON default is not applied)
+  operator has explicitly requested wide table format, so the NDJSON default is not applied)
 - `--agent=false` disables agent mode entirely (even when env vars are set)
 - `GCX_AGENT_MODE=0` disables agent mode regardless of other env vars
 - `GCX_AGENT_SPILL_BYTES=<n>` adjusts the spill threshold (bytes; default 102400)

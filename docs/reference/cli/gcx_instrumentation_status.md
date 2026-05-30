@@ -25,7 +25,7 @@ gcx instrumentation status [flags]
   -h, --help               help for status
       --json string        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --namespace string   Filter to a specific namespace; switches to workload-level view
-  -o, --output string      Output format. One of: agents, json, yaml (default "table")
+  -o, --output string      Output format. One of: agents, json, ndjson, yaml (default "table")
 ```
 
 ### Options inherited from parent commands

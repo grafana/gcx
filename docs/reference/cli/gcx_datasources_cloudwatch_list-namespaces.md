@@ -25,7 +25,7 @@ gcx datasources cloudwatch list-namespaces [flags]
   -d, --datasource string   Datasource UID (required unless datasources.cloudwatch is configured)
   -h, --help                help for list-namespaces
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string       Output format. One of: agents, json, table, yaml (default "table")
+  -o, --output string       Output format. One of: agents, json, ndjson, table, yaml (default "table")
       --region string       AWS region (required)
 ```
 

@@ -29,7 +29,7 @@ gcx irm oncall alert-groups list [flags]
       --limit int              Maximum number of alert groups to return (0 for all, capped by an internal safety limit) (default 50)
       --max-age string         Exclude groups older than this duration (e.g. 1h, 24h, 7d)
       --mine                   Limit to alert groups for the authenticated user
-  -o, --output string          Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string          Output format. One of: agents, json, ndjson, table, wide, yaml (default "table")
       --state strings          Filter by state (firing|acknowledged|resolved|silenced; repeatable, comma-separated). Default: firing,acknowledged,silenced
       --team strings           Filter by team PK (repeatable, comma-separated)
       --with-resolution-note   Limit to alert groups that have a resolution note

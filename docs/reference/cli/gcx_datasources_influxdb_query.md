@@ -37,7 +37,7 @@ gcx datasources influxdb query [EXPR] [flags]
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for query
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, json, ndjson, table, wide, yaml (default "table")
       --since string        Duration before --to (or now if omitted); mutually exclusive with --from
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
 ```

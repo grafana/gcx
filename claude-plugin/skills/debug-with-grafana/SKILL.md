@@ -65,10 +65,15 @@ If no datasources appear, confirm the context is pointing at the correct
 Grafana instance. See `references/error-recovery.md` for auth and
 datasource-not-found recovery patterns.
 
-> **JSON output piping**: When piping gcx output through external tools, never
-> use `2>&1` — gcx writes hints to stderr that break JSON parsers. Use
-> `2>/dev/null` to suppress stderr, or use `--json field1,field2` to select
-> fields directly without piping:
+> **JSON output piping**: When stdout is piped, gcx defaults to **NDJSON** — one
+> JSON object per line. Data lines are `{"kind":"result","data":{...}}`; stderr
+> hints/warnings and the error envelope are also `kind`-tagged JSON lines, so a
+> `2>&1`-merged stream stays parseable line-by-line — demux by `kind`:
+> ```bash
+> gcx datasources list -t prometheus 2>&1 | jq -c 'select(.kind=="result").data'
+> ```
+> Use `2>/dev/null` if you want to drop diagnostics, `-o json` to force a single
+> JSON document, or `--json field1,field2` to select fields directly:
 > ```bash
 > gcx datasources list -t prometheus --json uid
 > gcx metrics query -d <prom-uid> 'up' --json metric,value

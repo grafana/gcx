@@ -54,7 +54,7 @@ gcx datasources cloudwatch query [flags]
       --metric string               CloudWatch metric name, e.g. CPUUtilization (required)
       --namespace string            CloudWatch namespace, e.g. AWS/EC2 (required)
       --open                        Open the executed query in Grafana Explore
-  -o, --output string               Output format. One of: agents, graph, json, table, wide, yaml (default "table")
+  -o, --output string               Output format. One of: agents, graph, json, ndjson, table, wide, yaml (default "table")
       --period string               Period in seconds (e.g. 60, 300) or "auto" to let CloudWatch pick a period that fits the time range (default "auto")
       --region string               AWS region, e.g. us-east-1 (required)
       --share-link                  Print the Grafana Explore URL for the executed query to stderr

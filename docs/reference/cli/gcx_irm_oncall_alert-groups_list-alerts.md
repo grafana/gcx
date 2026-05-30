@@ -14,7 +14,7 @@ gcx irm oncall alert-groups list-alerts <alert-group-id> [flags]
       --include-raw     Include the unprocessed Alertmanager-shape payload under status.raw on each alert (hidden by default; status.{dimensions,links,...} are the promoted view of the same data)
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int       Cap on number of alerts retrieved (0 = no cap) (default 100)
-  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string   Output format. One of: agents, json, ndjson, table, wide, yaml (default "table")
       --slim            Skip per-alert retrieval; emit only metadata + alert-group back-pointer
 ```
 

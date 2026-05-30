@@ -33,7 +33,7 @@ gcx datasources clickhouse list-tables [flags]
   -d, --datasource string   Datasource UID (required unless datasources.clickhouse is configured)
   -h, --help                help for list-tables
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, json, ndjson, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands

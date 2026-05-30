@@ -28,7 +28,7 @@ gcx kg diagnose service NAME [flags]
   -h, --help                help for service
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --namespace string    Namespace scope
-  -o, --output string       Output format. One of: agents, json, table, yaml (default "table")
+  -o, --output string       Output format. One of: agents, json, ndjson, table, yaml (default "table")
       --site string         Site scope
 ```
 

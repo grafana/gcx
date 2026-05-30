@@ -94,20 +94,24 @@ responses in `internal/providers/instrumentation/client.go`.
 
 ### 4.4 In-Band Error Reporting
 
-When agent mode is active and a command fails, a JSON error object is written
-to **stdout** in addition to the existing stderr `DetailedError` output
-(NC-003 — in-band JSON is additive, not a replacement).
+When stdout is non-TTY (any pipe/redirect, which agent mode also forces) and a
+command fails, a JSON error object is written to **stdout** in addition to the
+existing stderr `DetailedError` output (NC-003 — in-band JSON is additive, not a
+replacement). The top-level `kind:"error"` discriminator keeps the line uniform
+with the NDJSON data (`kind:"result"`) and diagnostic (`kind:"hint"`…) lines, so
+a `2>&1`-merged stream stays parseable line-by-line.
 
 **Error-only response** (command fails completely):
 
 ```json
-{"error": {"summary": "Resource not found - code 404", "exitCode": 1}}
+{"kind":"error","error": {"summary": "Resource not found - code 404", "exitCode": 1}}
 ```
 
 **Partial failure** (batch operation, some resources succeeded):
 
 ```json
 {
+  "kind": "error",
   "items": [...],
   "error": {"summary": "3 resources failed", "exitCode": 4, "details": "...", "suggestions": ["..."]}
 }
@@ -125,11 +129,13 @@ to **stdout** in addition to the existing stderr `DetailedError` output
 
 **Guarantees:**
 - On success, no `error` key appears in stdout JSON (NC-004).
-- When agent mode is NOT active, no error JSON is written to stdout.
+- When stdout is a TTY (and neither agent mode nor `--json` is active), no error
+  JSON is written to stdout — the human-formatted error goes to stderr only.
 - The JSON is always valid — partial writes cannot corrupt it (NC-004).
 
-**Implementation:** `cmd/gcx/fail/json.go` (`DetailedError.WriteJSON`).
-Invoked from `handleError` in `cmd/gcx/main.go` when `agent.IsAgentMode()` is true.
+**Implementation:** `internal/gcxerrors/json.go` (`DetailedError.WriteJSON`).
+Invoked from `handleError` in `cmd/gcx/main.go` when `agent.IsAgentMode()`,
+`--json` is active, or `terminal.IsPiped()` (non-TTY stdout).
 
 See [agent-mode.md](agent-mode.md) for the full agent mode specification.
 See [exit-codes.md](exit-codes.md) for exit code values referenced in `exitCode` fields.

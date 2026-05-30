@@ -52,7 +52,7 @@ gcx profiles query [EXPR] [flags]
   -h, --help                          help for query
       --json string                   Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --max-nodes int                 Maximum nodes in flame graph (default 0/unlimited for pprof output, 50000 for all other formats)
-  -o, --output string                 Output format. One of: agents, graph, json, pprof, table, wide, yaml (default "table")
+  -o, --output string                 Output format. One of: agents, graph, json, ndjson, pprof, table, wide, yaml (default "table")
       --pprof-overwrite               Overwrite the output file if it already exists (only with -o pprof)
       --pprof-path string             Destination path for pprof binary output (only with -o pprof; default: profile-YYYY-MM-DD-HHMMSS.pb.gz)
       --profile-id strings            Drill down to specific profile UUIDs from exemplar queries (repeatable)

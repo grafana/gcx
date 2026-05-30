@@ -27,7 +27,7 @@ gcx datasources cloudwatch list-dimensions [flags]
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --metric string       CloudWatch metric name (required)
       --namespace string    CloudWatch namespace (required)
-  -o, --output string       Output format. One of: agents, json, table, yaml (default "table")
+  -o, --output string       Output format. One of: agents, json, ndjson, table, yaml (default "table")
       --region string       AWS region (required)
 ```
 

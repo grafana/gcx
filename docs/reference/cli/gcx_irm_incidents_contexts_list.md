@@ -13,7 +13,7 @@ gcx irm incidents contexts list <incident-id> [flags]
   -h, --help                    help for list
       --json string             Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int               Maximum number of contexts to return (0 = server default)
-  -o, --output string           Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string           Output format. One of: agents, json, ndjson, table, wide, yaml (default "table")
       --status string           Filter by context status
       --type string             Filter by context type (e.g. genericURL, grafana.dashboard, code.github.pr). Note: alert-group links are encoded as genericURL contexts with alertGroupID set — use --alert-group-id to filter those.
 ```

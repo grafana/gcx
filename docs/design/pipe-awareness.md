@@ -1,6 +1,6 @@
 # Pipe-Awareness
 
-> Describes TTY detection, automatic pipe behavior, --no-color, NO_COLOR environment variable support, and future auto-format switching.
+> Describes TTY detection, automatic pipe behavior (including the non-TTY NDJSON output default), --no-color, and NO_COLOR environment variable support.
 
 ---
 
@@ -15,6 +15,12 @@ a terminal. The result is stored as package-level state in `internal/terminal`.
 **Automatic behaviors when stdout is piped (not a TTY):**
 - Color is disabled (`color.NoColor = true`)
 - Table column truncation is suppressed (`NoTruncate = true`)
+- **Default output format becomes `ndjson`** (unless an explicit `-o` is given) —
+  one JSON object per line, so a `2>&1`-merged stream stays parseable. Resolved
+  in `io.Options.Validate()`, not `PersistentPreRun`. See
+  [output.md § NDJSON Codec](output.md#112-ndjson-codec). Diagnostics on stderr
+  (`hint`/`warning`/`note`) and the stdout error envelope (`error`) are likewise
+  emitted as `kind`-tagged JSON lines when stdout is non-TTY.
 
 **Override flags** (available on all commands):
 - `--no-truncate` — explicitly disables truncation regardless of TTY state
@@ -42,9 +48,12 @@ automated pipelines.
 `NoTruncate`, `SetPiped`, `SetNoTruncate`). Invoked from
 `cmd/gcx/root/command.go` (`PersistentPreRun`).
 
-Codecs read `terminal.IsPiped()` and `terminal.NoTruncate()` at encode time
-(via `io.Options.IsPiped` and `io.Options.NoTruncate` populated during
-`BindFlags`). Table codecs use `NoTruncate` to skip ellipsis truncation.
+Codecs read `terminal.IsPiped()` and `terminal.NoTruncate()` directly at encode
+time. (`io.Options.IsPiped`/`NoTruncate` are also populated in `BindFlags`, but
+note `BindFlags` runs at command-construction time — before `terminal.Detect()`
+in `PersistentPreRun` — so the pipe-dependent output default is resolved later,
+in `io.Options.Validate()`, which runs inside `RunE`.) Table codecs use
+`NoTruncate` to skip ellipsis truncation.
 
 ### 5.2 `--no-color` Flag
 

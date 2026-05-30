@@ -19,7 +19,7 @@ gcx aio11y guards update <rule-id> [flags]
   -f, --filename string   File containing the full hook rule definition (use - for stdin)
   -h, --help              help for update
       --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string     Output format. One of: agents, json, yaml (default "json")
+  -o, --output string     Output format. One of: agents, json, ndjson, yaml (default "json")
 ```
 
 ### Options inherited from parent commands

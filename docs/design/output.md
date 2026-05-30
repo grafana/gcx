@@ -10,10 +10,12 @@ Reference alongside [cli-layer.md](../architecture/cli-layer.md) for command str
 
 ### 1.1 Built-in Codecs
 
-Every command gets `json`, `yaml`, and `agents` output for free via `io.Options`.
-The `json` and `yaml` codecs produce the full resource object as returned by
-the API — no envelope wrapping, no field filtering. This output is stable.
-The `agents` codec is described in [§ 1.1.1](#111-agents-codec) below.
+Every command gets `json`, `yaml`, `agents`, and `ndjson` output for free via
+`io.Options`. The `json` and `yaml` codecs produce the full resource object as
+returned by the API — no envelope wrapping, no field filtering. This output is
+stable. The `agents` codec is described in [§ 1.1.1](#111-agents-codec); the
+`ndjson` codec — the **default whenever stdout is not a TTY** — in
+[§ 1.1.2](#112-ndjson-codec).
 
 ```go
 ioOpts := &io.Options{}
@@ -61,6 +63,56 @@ mechanism because agents that need the full data can no longer retrieve it.
 
 **Implementation:** `internal/output/agents.go`
 
+#### 1.1.2 NDJSON Codec
+
+The `ndjson` codec emits **newline-delimited JSON**: one complete JSON object
+per line. It is the **implicit default whenever stdout is not a TTY** (any pipe
+or redirect, which agent mode also forces) and the user did not pass an explicit
+`-o`. An explicit `-o json/yaml/text/wide/agents` always wins; a real TTY keeps
+the command's own default (table/text).
+
+**Why it's the non-TTY default.** Diagnostics (hints/warnings/notes) go to
+stderr as JSONL, and the error envelope goes to stdout as JSON — all carrying a
+`kind` discriminator. A `2>&1`-merged stream is therefore *uniformly* NDJSON:
+every line is independently parseable and consumers demultiplex by `kind`. This
+removes the `2>&1` footgun where stderr lines corrupt a single stdout JSON
+document.
+
+**Data line shape** — each data line is wrapped:
+
+```json
+{"kind":"result","data":{"uid":"abc","name":"prom"}}
+```
+
+- **Lists** (slices/arrays, or k8s lists with an `items` array) emit **one line
+  per element**. An empty list emits no data lines.
+- **Single objects** (and single-key wrapper maps like `{"datasources":[...]}`)
+  emit **one line**. Wrapper maps are not unwrapped — the merged stream stays
+  uniform regardless.
+
+**Discriminator (`kind`) across the merged stream:**
+
+| `kind` | Stream | Meaning |
+|--------|--------|---------|
+| `result` | stdout | A data record; payload under `data` |
+| `spill` | stdout | Oversized output spilled to a temp file (see below) |
+| `error` | stdout | Error envelope (see [errors.md § 4.4](errors.md)) |
+| `hint` / `warning` / `note` | stderr | Diagnostics |
+
+Demux example: `gcx datasources list 2>&1 | jq -c 'select(.kind=="result").data'`
+
+**Spill** — the large-output guard is retained. When the full serialized payload
+exceeds the spill threshold (`GCX_AGENT_SPILL_BYTES`, default **100 KiB**), the
+payload is written to `$TMPDIR/gcx-results-<random>.json` and a single
+`{"kind":"spill",...}` line is emitted instead of the data lines (same envelope
+as the agents codec, plus `kind`).
+
+**Field selection** — `--json field1,field2` forces JSON output, so it overrides
+the NDJSON default: piping with `--json` yields field-selected JSON, not NDJSON.
+`--json ?` / `--json list` discovery is likewise unchanged.
+
+**Implementation:** `internal/output/ndjson.go`
+
 ### 1.2 Custom Codecs
 
 Commands register additional formats (e.g. `text`, `wide`, `graph`) via
@@ -83,10 +135,14 @@ JSON/YAML to silently omit fields. See Pattern 13 in `patterns.md`.
 
 | Command type | Default format | Rationale |
 |-------------|---------------|-----------|
-| `list`, `get` | `text` (with table codec) | Human-scannable |
-| `config view` | `yaml` | Config is YAML-native |
-| `push`, `pull`, `delete` | Status messages only | Operations, not data |
-| Agent mode ([agent-mode.md](agent-mode.md)) | `agents` | Token-efficient: compact JSON below 100 KiB, temp-file spill above (see [§ 1.1.1](#111-agents-codec)) |
+| `list`, `get` (real TTY) | `text` (with table codec) | Human-scannable |
+| `config view` (real TTY) | `yaml` | Config is YAML-native |
+| `push`, `pull`, `delete` (real TTY) | Status messages only | Operations, not data |
+| **Non-TTY (any pipe/redirect), incl. agent mode ([agent-mode.md](agent-mode.md))** | `ndjson` | Survives `2>&1` merging; stream-processable; uniform `kind` discriminator (see [§ 1.1.2](#112-ndjson-codec)) |
+
+The non-TTY default is resolved in `io.Options.Validate()` (which runs inside
+`RunE`, after `terminal.Detect()`), not in `BindFlags` — at `BindFlags` time the
+pipe state is not yet known.
 
 When building a new command: call `ioOpts.DefaultFormat("text")` for data
 display commands and register a table codec. Don't leave `json` as the default
