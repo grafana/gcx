@@ -8,62 +8,82 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/terminal"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestBindFlags_AgentModeOverridesDefaultFormat(t *testing.T) {
+// TestValidate_NonTTYDefaultsToNDJSON verifies that the implicit output default
+// is resolved in Validate() (not BindFlags, which runs before terminal.Detect()).
+// When stdout is non-TTY (any pipe, which agent mode also forces) and no explicit
+// -o is given, the default becomes ndjson; an explicit -o always wins; a real TTY
+// keeps the command's default format.
+func TestValidate_NonTTYDefaultsToNDJSON(t *testing.T) {
 	tests := []struct {
 		name           string
-		agentMode      bool
+		piped          bool
 		defaultFormat  string
 		explicitOutput string // simulates -o flag; empty = use default
 		wantFormat     string
 	}{
 		{
-			name:       "agent mode forces agents when no command default set",
-			agentMode:  true,
-			wantFormat: "agents",
+			name:       "TTY with no command default uses json",
+			piped:      false,
+			wantFormat: "json",
 		},
 		{
-			name:          "agent mode forces agents when command sets text default",
-			agentMode:     true,
+			name:          "TTY with command default keeps that default",
+			piped:         false,
 			defaultFormat: "text",
-			wantFormat:    "agents",
+			wantFormat:    "text",
 		},
 		{
-			name:           "explicit -o yaml overrides agent mode agents default",
-			agentMode:      true,
+			name:       "non-TTY with no command default uses ndjson",
+			piped:      true,
+			wantFormat: "ndjson",
+		},
+		{
+			name:          "non-TTY overrides a command text default with ndjson",
+			piped:         true,
+			defaultFormat: "text",
+			wantFormat:    "ndjson",
+		},
+		{
+			name:           "explicit -o yaml wins over non-TTY ndjson default",
+			piped:          true,
 			defaultFormat:  "text",
 			explicitOutput: "yaml",
 			wantFormat:     "yaml",
 		},
 		{
-			name:          "no agent mode uses command default format",
-			agentMode:     false,
-			defaultFormat: "yaml",
-			wantFormat:    "yaml",
+			name:           "explicit -o agents wins over non-TTY ndjson default",
+			piped:          true,
+			explicitOutput: "agents",
+			wantFormat:     "agents",
 		},
 		{
-			name:       "no agent mode uses json when no command default set",
-			agentMode:  false,
-			wantFormat: "json",
+			name:           "explicit -o on a TTY keeps that format",
+			piped:          false,
+			defaultFormat:  "text",
+			explicitOutput: "yaml",
+			wantFormat:     "yaml",
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			agent.SetFlag(tc.agentMode)
-			t.Cleanup(func() { agent.SetFlag(false) })
+			terminal.SetPiped(tc.piped)
+			t.Cleanup(terminal.ResetForTesting)
 
 			opts := &cmdio.Options{}
 			if tc.defaultFormat != "" {
 				opts.DefaultFormat(tc.defaultFormat)
 			}
 
-			// Register a dummy text codec so "text" is a valid format.
+			// Register dummy codecs so "text"/"yaml" are valid formats.
 			opts.RegisterCustomCodec("text", &dummyCodec{})
+			opts.RegisterCustomCodec("yaml", &dummyCodec{})
 
 			flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
 			opts.BindFlags(flags)
@@ -72,6 +92,7 @@ func TestBindFlags_AgentModeOverridesDefaultFormat(t *testing.T) {
 				require.NoError(t, flags.Set("output", tc.explicitOutput))
 			}
 
+			require.NoError(t, opts.Validate())
 			assert.Equal(t, tc.wantFormat, opts.OutputFormat)
 		})
 	}

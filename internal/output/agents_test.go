@@ -48,6 +48,8 @@ func TestAgentsCodec_AboveThreshold_Spills(t *testing.T) {
 	var summary map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &summary))
 
+	assert.Equal(t, "spill", summary["kind"], "spill summary must carry kind:spill discriminator")
+
 	spillPath, ok := summary["spilled_to"].(string)
 	require.True(t, ok, "summary must contain spilled_to")
 	assert.True(t, strings.HasPrefix(spillPath, os.Getenv("TMPDIR")), "spill file should be in TMPDIR")

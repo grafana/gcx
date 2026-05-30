@@ -176,6 +176,41 @@ func TestWriteJSON_StripBoxCharsDefensive(t *testing.T) {
 	}
 }
 
+// TestWriteJSON_HasKindDiscriminator verifies both error envelopes carry the
+// top-level kind:"error" discriminator so a 2>&1-merged NDJSON stream stays
+// uniform and demuxable by kind.
+func TestWriteJSON_HasKindDiscriminator(t *testing.T) {
+	err := gcxerrors.DetailedError{Summary: "boom"}
+
+	t.Run("WriteJSON", func(t *testing.T) {
+		var buf bytes.Buffer
+		if writeErr := err.WriteJSON(&buf, 1); writeErr != nil {
+			t.Fatalf("WriteJSON() error: %v", writeErr)
+		}
+		var got map[string]any
+		if jsonErr := json.Unmarshal(buf.Bytes(), &got); jsonErr != nil {
+			t.Fatalf("invalid JSON: %v", jsonErr)
+		}
+		if got["kind"] != "error" {
+			t.Errorf("kind want %q, got %v", "error", got["kind"])
+		}
+	})
+
+	t.Run("WriteJSONWithItems", func(t *testing.T) {
+		var buf bytes.Buffer
+		if writeErr := err.WriteJSONWithItems(&buf, 4, []any{map[string]any{"ok": true}}); writeErr != nil {
+			t.Fatalf("WriteJSONWithItems() error: %v", writeErr)
+		}
+		var got map[string]any
+		if jsonErr := json.Unmarshal(buf.Bytes(), &got); jsonErr != nil {
+			t.Fatalf("invalid JSON: %v", jsonErr)
+		}
+		if got["kind"] != "error" {
+			t.Errorf("kind want %q, got %v", "error", got["kind"])
+		}
+	})
+}
+
 // assertJSONEqual compares two decoded JSON maps recursively.
 func assertJSONEqual(t *testing.T, want, got map[string]any) {
 	t.Helper()

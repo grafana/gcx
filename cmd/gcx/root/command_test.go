@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	claudeplugin "github.com/grafana/gcx/claude-plugin"
@@ -200,7 +201,9 @@ func TestSkillsInstallUpdate_EndToEndThroughRootCommand(t *testing.T) {
 	expected, err := fs.ReadFile(claudeplugin.SkillsFS(), path.Join(skillName, "SKILL.md"))
 	require.NoError(t, err)
 
-	stdout, stderr, err = executeRootCommandForTest("agent", "skills", "install", "--dir", installRoot, skillName)
+	// -o text exercises the human-facing summary codec. Test stdout is a pipe,
+	// so the implicit default is NDJSON; the explicit flag pins the text path.
+	stdout, stderr, err = executeRootCommandForTest("agent", "skills", "install", "--dir", installRoot, skillName, "-o", "text")
 	require.NoError(t, err, stderr)
 	require.Contains(t, stdout, "Installed 1 skill(s)")
 
@@ -214,13 +217,36 @@ func TestSkillsInstallUpdate_EndToEndThroughRootCommand(t *testing.T) {
 	require.NoError(t, os.Chmod(installedPath, 0o600))
 	require.NoError(t, os.WriteFile(installedPath, []byte("local-change"), 0o600))
 
-	stdout, stderr, err = executeRootCommandForTest("agent", "skills", "update", "--dir", installRoot, skillName)
+	stdout, stderr, err = executeRootCommandForTest("agent", "skills", "update", "--dir", installRoot, skillName, "-o", "text")
 	require.NoError(t, err, stderr)
 	require.Contains(t, stdout, "Updated 1 skill(s)")
 
 	updated, err := os.ReadFile(installedPath)
 	require.NoError(t, err)
 	require.Equal(t, expected, updated)
+}
+
+// TestNonTTYDefaultsToNDJSON_EndToEnd verifies that a command run through the
+// root command with no explicit -o defaults to NDJSON when stdout is non-TTY
+// (the test process pipe), with each data line wrapped as kind:"result".
+func TestNonTTYDefaultsToNDJSON_EndToEnd(t *testing.T) {
+	t.Setenv("GCX_NO_UPDATE_NOTIFIER", "1")
+	t.Setenv("GCX_AGENT_MODE", "false")
+	agent.ResetForTesting()
+
+	installRoot := filepath.Join(t.TempDir(), ".agents")
+
+	stdout, stderr, err := executeRootCommandForTest("agent", "skills", "list", "--dir", installRoot)
+	require.NoError(t, err, stderr)
+
+	lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
+	require.NotEmpty(t, lines)
+	for _, line := range lines {
+		var obj map[string]any
+		require.NoErrorf(t, json.Unmarshal([]byte(line), &obj), "each line must be valid JSON: %s", line)
+		require.Equal(t, "result", obj["kind"], "non-TTY data lines must carry kind:result")
+		require.Contains(t, obj, "data")
+	}
 }
 
 func executeRootCommandForTest(args ...string) (string, string, error) {

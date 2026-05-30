@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/terminal"
 	"github.com/spf13/pflag"
 )
 
@@ -436,10 +437,12 @@ func TestAlertGroupGetRichOpts_DefaultsToTable(t *testing.T) {
 
 // TestEmitWarnEmitNote_Format pins the output contract for the
 // centralised diagnostic helpers: TTY plain-text with the prefixed class
-// name; agent mode JSONL with typed `class` field.
+// name; non-TTY (pipe/agent mode) JSONL with typed `kind` field.
 func TestEmitWarnEmitNote_Format(t *testing.T) {
 	t.Run("tty", func(t *testing.T) {
 		resetAgentMode(t)
+		terminal.SetPiped(false)
+		t.Cleanup(terminal.ResetForTesting)
 		var buf bytes.Buffer
 		emitWarn(&buf, "near the cap")
 		emitNote(&buf, "filter is in effect")
@@ -467,8 +470,8 @@ func TestEmitWarnEmitNote_Format(t *testing.T) {
 		if err := json.Unmarshal(warnBuf.Bytes(), &warnEv); err != nil {
 			t.Fatalf("emitWarn agent mode: expected valid JSON; got %q: %v", warnBuf.String(), err)
 		}
-		if got := warnEv["class"]; got != "warning" {
-			t.Errorf("emitWarn agent mode: class want %q, got %v", "warning", got)
+		if got := warnEv["kind"]; got != "warning" {
+			t.Errorf("emitWarn agent mode: kind want %q, got %v", "warning", got)
 		}
 		if got := warnEv["summary"]; got != "near the cap" {
 			t.Errorf("emitWarn agent mode: summary want %q, got %v", "near the cap", got)
@@ -479,8 +482,8 @@ func TestEmitWarnEmitNote_Format(t *testing.T) {
 		if err := json.Unmarshal(noteBuf.Bytes(), &noteEv); err != nil {
 			t.Fatalf("emitNote agent mode: expected valid JSON; got %q: %v", noteBuf.String(), err)
 		}
-		if got := noteEv["class"]; got != "note" {
-			t.Errorf("emitNote agent mode: class want %q, got %v", "note", got)
+		if got := noteEv["kind"]; got != "note" {
+			t.Errorf("emitNote agent mode: kind want %q, got %v", "note", got)
 		}
 		if got := noteEv["summary"]; got != "rate limited" {
 			t.Errorf("emitNote agent mode: summary want %q, got %v", "rate limited", got)
