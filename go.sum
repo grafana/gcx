@@ -255,16 +255,12 @@ github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 h1:JeSE6pjso5T
 github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674/go.mod h1:r4w70xmWCQKmi1ONH4KIaBptdivuRPyosB9RmPlGEwA=
 github.com/grafana/authlib/types v0.0.0-20260427145542-9c256e2dbcb2 h1:vYkwPeFo9hb/apMfN/GfF6xRbsF/ZnOTjSY6ZnQYFXM=
 github.com/grafana/authlib/types v0.0.0-20260427145542-9c256e2dbcb2/go.mod h1:j+YTXmAcD4zCNyl4QSNqYSEe/q9KgrH1btodnhK29hI=
-github.com/grafana/grafana-app-sdk v0.40.0 h1:KilbCFMYox2cnIi1W6ql7W+n9kms/NvWlBPM1m4Q4mg=
-github.com/grafana/grafana-app-sdk v0.40.0/go.mod h1:fn943JEM0CR3mY/Gd3816MUcpob5xnKc8MoojnbMjYY=
 github.com/grafana/grafana-app-sdk/logging v0.55.0 h1:xgynJ60GT9TrdQWghLAan2AqqmwEdFz2xNc9Gy4aeuQ=
 github.com/grafana/grafana-app-sdk/logging v0.55.0/go.mod h1:t0rXNkTz3R6PLpjxk4BIl2erHYkMBX+rd+UHSL0k5nw=
 github.com/grafana/grafana-foundation-sdk/go v0.0.12 h1:ggGWIJ3ylX16/xtAYlVi1TtUdv+mybYPusOmi1x35kg=
 github.com/grafana/grafana-foundation-sdk/go v0.0.12/go.mod h1:48EA8jF85SrReYflLa39Sk34b6NpxwJPBwjF3TJgRpE=
 github.com/grafana/grafana-openapi-client-go v0.0.0-20260414120814-5b95bb183fae h1:ExiJ4Ha24+MRuKxymlGp5bAJwbUSHe+QXcf6E8pwlo0=
 github.com/grafana/grafana-openapi-client-go v0.0.0-20260414120814-5b95bb183fae/go.mod h1:4WkWL9W7QMnRgRA1XrrSbZRg/UIoTx4x5ynx5RjJldU=
-github.com/grafana/grafana/apps/folder v0.0.0-20250724095330-d852bde2a5fb h1:zSofiAfVqzoHYLRl9eumUm2sIfY9ovGn4krvQQIB/yM=
-github.com/grafana/grafana/apps/folder v0.0.0-20250724095330-d852bde2a5fb/go.mod h1:1toka8WTXd3CVHdgQRRcnwQWkBLGNaAqVXKShGVlDS0=
 github.com/grafana/grafana/pkg/apimachinery v0.0.0-20250903133002-4e28cba1c53a h1:+HkE1JQJUx6ocoZWZYGmX4JR7TsHcAXDJ/PK1Y3j53Q=
 github.com/grafana/grafana/pkg/apimachinery v0.0.0-20250903133002-4e28cba1c53a/go.mod h1:av5N0Naq+8VV9MLF7zAkihy/mVq5UbS2EvRSJukDHlY=
 github.com/grafana/promql-builder/go v0.0.0-20250916111012-8fa9625b89a3 h1:B5SncfJyapaCmCM/r5007X4hjkKTgQ1XaOpA5VgrboU=

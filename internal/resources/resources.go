@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/grafana/gcx/internal/format"
-	folderv1beta1 "github.com/grafana/grafana/apps/folder/pkg/apis/folder/v1beta1"
 	"github.com/grafana/grafana/pkg/apimachinery/utils"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -21,6 +20,9 @@ const (
 	// AnnotationSavedFromUI is the annotation key for resources saved from the UI.
 	// TODO: move this to grafana/grafana.
 	AnnotationSavedFromUI = "grafana.app/saved-from-ui"
+
+	folderGroup = "folder.grafana.app"
+	folderKind  = "Folder"
 )
 
 // ResourceRef is a unique identifier for a resource.
@@ -178,8 +180,8 @@ func (r *Resource) GetManagerKind() utils.ManagerKind {
 
 // IsFolder returns true if the resource is a folder.
 func (r *Resource) IsFolder() bool {
-	return r.GroupVersionKind().Group == folderv1beta1.FolderKind().Group() &&
-		r.GroupVersionKind().Kind == folderv1beta1.FolderKind().Kind()
+	gvk := r.GroupVersionKind()
+	return gvk.Group == folderGroup && gvk.Kind == folderKind
 }
 
 // GetFolder returns the parent folder UID from the annotation.
