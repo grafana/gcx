@@ -26,6 +26,14 @@ type ndjsonLine struct {
 	Data any    `json:"data"`
 }
 
+// emptyLine is emitted in place of data lines when a collection has zero
+// elements. Without it an empty list would emit nothing, leaving a consumer
+// unable to distinguish a successful empty result from a command that produced
+// no output. A select(.kind=="result") filter still yields zero records.
+type emptyLine struct {
+	Kind string `json:"kind"`
+}
+
 func newNDJSONCodec(errWriter io.Writer) *ndjsonCodec {
 	if errWriter == nil {
 		errWriter = os.Stderr
@@ -58,6 +66,9 @@ func (c *ndjsonCodec) Encode(dst io.Writer, value any) error {
 	}
 
 	if elems, ok := collectionElements(value); ok {
+		if len(elems) == 0 {
+			return c.writeLine(dst, emptyLine{Kind: "empty"})
+		}
 		for _, elem := range elems {
 			if err := c.writeLine(dst, ndjsonLine{Kind: "result", Data: elem}); err != nil {
 				return err

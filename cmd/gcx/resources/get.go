@@ -308,9 +308,9 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 
 			if res.PullSummary.IsTruncated() {
-				fmt.Fprintf(cmd.ErrOrStderr(),
-					"Showing first %d items per resource type. Use --limit=0 to fetch all.\n",
-					opts.Limit)
+				cmdio.EmitWarn(cmd.ErrOrStderr(), fmt.Sprintf(
+					"showing first %d items per resource type; use --limit=0 to fetch all",
+					opts.Limit))
 			}
 
 			if opts.OnError.FailOnErrors() && res.PullSummary.FailedCount() > 0 {

@@ -95,13 +95,31 @@ func TestNDJSONCodec_WrapperMap_NotUnwrapped(t *testing.T) {
 	assert.Contains(t, lines[0]["data"], "datasources")
 }
 
-func TestNDJSONCodec_EmptySlice_NoLines(t *testing.T) {
+func TestNDJSONCodec_EmptySlice_EmptySentinel(t *testing.T) {
 	codec := cmdio.NewNDJSONCodecForTesting()
 
 	var buf bytes.Buffer
 	require.NoError(t, codec.Encode(&buf, []map[string]any{}))
 
-	assert.Empty(t, strings.TrimSpace(buf.String()), "empty collection emits no data lines")
+	lines := decodeLines(t, buf.Bytes())
+	require.Len(t, lines, 1, "empty collection emits a single sentinel line")
+	assert.Equal(t, "empty", lines[0]["kind"])
+	assert.NotContains(t, lines[0], "data", "sentinel carries no data field")
+}
+
+func TestNDJSONCodec_EmptyStructWithItems_EmptySentinel(t *testing.T) {
+	codec := cmdio.NewNDJSONCodecForTesting()
+
+	type listValue struct {
+		Items []map[string]any `json:"items"`
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, codec.Encode(&buf, listValue{Items: []map[string]any{}}))
+
+	lines := decodeLines(t, buf.Bytes())
+	require.Len(t, lines, 1)
+	assert.Equal(t, "empty", lines[0]["kind"])
 }
 
 func TestNDJSONCodec_OverThreshold_SpillsOneLine(t *testing.T) {

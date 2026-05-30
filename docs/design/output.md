@@ -85,7 +85,9 @@ document.
 ```
 
 - **Lists** (slices/arrays, or k8s lists with an `items` array) emit **one line
-  per element**. An empty list emits no data lines.
+  per element**. An empty list emits a single `{"kind":"empty"}` sentinel line so
+  a consumer can tell "0 results" apart from "no output". `select(.kind=="result")`
+  still yields zero records.
 - **Single objects** (and single-key wrapper maps like `{"datasources":[...]}`)
   emit **one line**. Wrapper maps are not unwrapped — the merged stream stays
   uniform regardless.
@@ -95,6 +97,7 @@ document.
 | `kind` | Stream | Meaning |
 |--------|--------|---------|
 | `result` | stdout | A data record; payload under `data` |
+| `empty` | stdout | A successful command whose collection had zero elements |
 | `spill` | stdout | Oversized output spilled to a temp file (see below) |
 | `error` | stdout | Error envelope (see [errors.md § 4.4](errors.md)) |
 | `hint` / `warning` / `note` | stderr | Diagnostics |
