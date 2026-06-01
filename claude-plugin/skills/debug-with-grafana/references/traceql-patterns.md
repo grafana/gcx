@@ -7,7 +7,7 @@ Workflow and query patterns for Tempo trace search using gcx.
 | Command | Purpose | Positional arg |
 |---------|---------|----------------|
 | `gcx traces query [TRACEQL]` | Search traces by TraceQL expression | TraceQL expression |
-| `gcx traces get TRACE_ID` | Fetch a single trace by ID | Trace ID (required) |
+| `gcx traces get TRACE_ID --llm -o json` | Fetch a single trace by ID in LLM-friendly format | Trace ID (required) |
 | `gcx traces labels` | List label names or values | None |
 
 All commands accept `-d <uid>` for the Tempo datasource UID. `search` is an
@@ -67,13 +67,16 @@ guessing further.
 
 ### 3. Get a specific trace
 
-Once you have a trace ID from search results or from a log `trace_id` field:
+Once you have a trace ID from search results or from a log `trace_id` field,
+use Tempo's LLM-friendly trace encoding for any agent analysis:
 
 ```bash
-gcx traces get -d <tempo-uid> <trace-id>
-gcx traces get -d <tempo-uid> <trace-id> --llm    # LLM-friendly format
-gcx traces get -d <tempo-uid> <trace-id> -o json
+gcx traces get -d <tempo-uid> <trace-id> --llm -o json
 ```
+
+Do not fetch the default OTLP-shaped trace and manually compact it for LLM
+consumption. Omit `--llm` only if the user explicitly needs raw trace JSON for
+schema debugging, export, or byte-for-byte comparison.
 
 The trace ID is a positional argument — do not use `--trace-id` (it doesn't
 exist).

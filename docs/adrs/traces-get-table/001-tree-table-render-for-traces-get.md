@@ -250,9 +250,6 @@ column. If users ask for it later, it's an additive flag.
   issues across all packages.
 - **Default flip.** Shipped in this PR — non-agent terminal default is
   `table`. Agent and pipe overrides remain in place via `cmdio.Options`.
-- **`--llm` flag content-type bug.** `Accept: application/vnd.grafana.llm`
-  causes the response to not be JSON, but the client unconditionally
-  `json.Unmarshal`s. Out of scope here; tracked as a separate item.
 - **Span events / links / attributes rendering.** Out of scope.
   `-o yaml` already renders attributes; events/links are rare enough to
   defer.

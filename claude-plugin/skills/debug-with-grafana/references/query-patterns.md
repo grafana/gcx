@@ -544,8 +544,8 @@ gcx logs query -d <loki-uid> \
 ```
 
 How to identify the backend services for a path:
-- Look at a representative trace with `gcx traces get <id> --llm` and pick the
-  service where the actual error (`status: error`) originates, plus its
+- Look at a representative trace with `gcx traces get <id> --llm -o json` and pick
+  the service where the actual error (`status: error`) originates, plus its
   immediate caller.
 - Or use `gcx logs labels -d <uid> -l job` to enumerate jobs, then exclude
   obvious gateway/proxy names (anything that just forwards — e.g. `webapp`,
