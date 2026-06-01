@@ -1,6 +1,7 @@
 package assistant
 
 import (
+	"errors"
 	"fmt"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
@@ -32,6 +33,25 @@ type conversationListOpts struct {
 	timeout         int
 }
 
+func (o *conversationListOpts) Validate() error {
+	if err := o.IO.Validate(); err != nil {
+		return err
+	}
+	if o.timeout <= 0 {
+		return errors.New("--timeout must be positive")
+	}
+	if o.limit < 0 {
+		return errors.New("--limit must not be negative")
+	}
+	if o.offset < 0 {
+		return errors.New("--offset must not be negative")
+	}
+	if o.includeArchived && o.archivedOnly {
+		return errors.New("cannot use both --include-archived and --archived-only flags")
+	}
+	return nil
+}
+
 func (o *conversationListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &assistant.ConversationListCodec{})
 	o.IO.RegisterCustomCodec("wide", &assistant.ConversationListCodec{Wide: true})
@@ -61,7 +81,7 @@ Use this to discover conversation IDs, then pull a transcript with
   gcx assistant conversation list --source assistant --limit 25
   gcx assistant conversation list -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.IO.Validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 
@@ -95,6 +115,16 @@ type conversationGetOpts struct {
 	timeout int
 }
 
+func (o *conversationGetOpts) Validate() error {
+	if err := o.IO.Validate(); err != nil {
+		return err
+	}
+	if o.timeout <= 0 {
+		return errors.New("--timeout must be positive")
+	}
+	return nil
+}
+
 func (o *conversationGetOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("text", &assistant.ConversationTextCodec{})
 	o.IO.DefaultFormat("text")
@@ -116,7 +146,7 @@ with 'gcx assistant prompt --context-id'.`,
 		Example: `  gcx assistant conversation get 295a674f-3a3d-44e8-9166-3f8054409f65
   gcx assistant conversation get 295a674f-3a3d-44e8-9166-3f8054409f65 -o json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 

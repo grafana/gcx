@@ -120,6 +120,58 @@ func TestConversationListCommand_TableOutput(t *testing.T) {
 	require.Contains(t, out, "Disk pressure")
 }
 
+func TestConversationCommand_Validation(t *testing.T) {
+	cfgPath := writeAssistantTestConfig(t, "http://127.0.0.1:0")
+
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "list negative limit",
+			args:    []string{"conversation", "list", "--config", cfgPath, "--limit", "-1"},
+			wantErr: "--limit must not be negative",
+		},
+		{
+			name:    "list negative offset",
+			args:    []string{"conversation", "list", "--config", cfgPath, "--offset", "-1"},
+			wantErr: "--offset must not be negative",
+		},
+		{
+			name:    "list conflicting archive flags",
+			args:    []string{"conversation", "list", "--config", cfgPath, "--include-archived", "--archived-only"},
+			wantErr: "cannot use both --include-archived and --archived-only flags",
+		},
+		{
+			name:    "list non-positive timeout",
+			args:    []string{"conversation", "list", "--config", cfgPath, "--timeout", "0"},
+			wantErr: "--timeout must be positive",
+		},
+		{
+			name:    "get non-positive timeout",
+			args:    []string{"conversation", "get", "chat-1", "--config", cfgPath, "--timeout", "0"},
+			wantErr: "--timeout must be positive",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := assistantcmd.Command()
+			root.SetContext(context.Background())
+			root.SilenceUsage = true
+			root.SilenceErrors = true
+			root.SetOut(&bytes.Buffer{})
+			root.SetErr(&bytes.Buffer{})
+			root.SetArgs(tt.args)
+
+			err := root.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
 func TestConversationCommand_Registered(t *testing.T) {
 	root := assistantcmd.Command()
 
