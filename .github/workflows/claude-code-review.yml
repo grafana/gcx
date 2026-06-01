@@ -32,6 +32,9 @@ jobs:
         id: get-secrets
         uses: grafana/shared-workflows/actions/get-vault-secrets@a53fc80bc30b0a16a262520465db899fa3af08b7 # get-vault-secrets/v1.3.2
         with:
+          # Keep the secret on the step output instead of exporting it into
+          # $GITHUB_ENV for every later step (incl. claude-code-action).
+          export_env: false
           repo_secrets: |
             ANTHROPIC_API_KEY=anthropic-api-key:api_key
 
@@ -39,7 +42,7 @@ jobs:
         id: claude-review
         uses: anthropics/claude-code-action@dde2242db6af13460b916652159b6ba19a598f30 # v1
         with:
-          anthropic_api_key: ${{ env.ANTHROPIC_API_KEY }}
+          anthropic_api_key: ${{ fromJSON(steps.get-secrets.outputs.secrets).ANTHROPIC_API_KEY }}
           use_sticky_comment: true
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
