@@ -22,6 +22,9 @@ gcx traces labels [flags]
   # List all labels
   gcx traces labels -d UID
 
+  # Get LLM-friendly values for a label
+  gcx traces tags -d UID -l resource.service.name --llm -o json
+
   # Output as JSON
   gcx traces labels -d UID -o json
 ```
@@ -33,6 +36,7 @@ gcx traces labels [flags]
   -h, --help                help for labels
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -l, --label string        Get values for this label (omit to list all labels)
+      --llm                 Request LLM-friendly label values format (requires --label)
   -o, --output string       Output format. One of: agents, json, table, yaml (default "table")
   -q, --query string        TraceQL query to filter labels
       --scope string        Tag scope filter (resource, span, event, link, instrumentation)

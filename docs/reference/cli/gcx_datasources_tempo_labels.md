@@ -25,6 +25,9 @@ gcx datasources tempo labels [flags]
   # Get values for a specific label
   gcx datasources tempo labels -d UID -l service.name
 
+  # Get LLM-friendly values for a specific label
+  gcx datasources tempo labels -d UID -l service.name --llm -o json
+
   # Using the tags alias
   gcx datasources tempo tags -d UID -l service.name
 
@@ -45,6 +48,7 @@ gcx datasources tempo labels [flags]
   -h, --help                help for labels
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -l, --label string        Get values for this label (omit to list all labels)
+      --llm                 Request LLM-friendly label values format (requires --label)
   -o, --output string       Output format. One of: agents, json, table, yaml (default "table")
   -q, --query string        TraceQL query to filter labels
       --scope string        Tag scope filter (resource, span, event, link, instrumentation)

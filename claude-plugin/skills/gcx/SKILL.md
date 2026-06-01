@@ -56,7 +56,7 @@ right group:
 | PromQL / Adaptive Metrics | `metrics` | `gcx metrics query -d <uid> 'up'` |
 | LogQL / Adaptive Logs | `logs` | `gcx logs query -d <uid> '{app="foo"}'` |
 | Profiling (Pyroscope) | `profiles` | `gcx profiles query` |
-| Tracing (Tempo) | `traces` | Search: `gcx traces query -d <uid> '{ status = error }'`; fetch for analysis: `gcx traces get -d <uid> <trace-id> --llm -o json` |
+| Tracing (Tempo) | `traces` | Search: `gcx traces query -d <uid> '{ status = error }'`; values: `gcx traces tags -d <uid> -l resource.service.name --llm -o json`; trace: `gcx traces get -d <uid> <trace-id> --llm -o json` |
 | Datasource info and queries | `datasources` | `gcx datasources list` |
 | Fleet pipelines, collectors | `fleet` | `gcx fleet pipelines list` |
 | Knowledge Graph (Asserts) | `kg` | `gcx kg entities list` |
@@ -146,22 +146,26 @@ The `gcx datasources` group provides typed query interfaces:
 
 Use `gcx datasources <type> --help` to discover type-specific flags.
 
-### Tempo trace bodies: use `--llm` for agent analysis
+### Tempo LLM-friendly output for agents
 
-When fetching a full Tempo trace for this agent to read, summarize, debug, or
-include in a prompt, **always use the LLM-friendly trace encoding**:
+When fetching Tempo tag values or full trace bodies for this agent to inspect,
+summarize, debug, or include in a prompt, prefer Tempo's compact LLM-friendly
+encoding:
 
 ```bash
+# Attribute values grouped by type instead of repeated {type,value} objects.
+gcx traces tags -d <tempo-uid> -l resource.service.name --llm -o json
+
+# Full trace body in Tempo's LLM-friendly trace encoding.
 gcx traces get -d <tempo-uid> <trace-id> --llm -o json
 # equivalent legacy path:
 gcx datasources tempo get -d <tempo-uid> <trace-id> --llm -o json
 ```
 
-Use `gcx traces query` to find trace IDs, then `gcx traces get --llm -o json` to inspect
-a selected trace. Do not fetch the default OTLP-shaped trace and manually compact
-or transform it for LLM consumption. Omit `--llm` only when the user explicitly
-needs raw OTLP/Tempo trace JSON for schema debugging, export, or byte-for-byte
-comparison.
+Use `gcx traces labels -d <tempo-uid>` to discover attribute names first. Use
+`gcx traces query` to find trace IDs, then `gcx traces get --llm -o json` to inspect
+a selected trace. Omit `--llm` only when the user explicitly needs raw Tempo/OTLP
+JSON or the standard `tagValues: [{type, value}]` shape for schema/debugging work.
 
 ## Grafana Assistant
 

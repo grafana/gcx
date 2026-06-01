@@ -296,10 +296,11 @@ When inspecting trace bodies, use `gcx traces get <trace-id> --llm -o json`. Do 
 OTLP-shaped default trace and manually compact it unless the user explicitly
 needs raw trace JSON for schema/debugging work.
 
-Discover available labels:
+Discover available labels and values:
 ```bash
 gcx traces labels -d <tempo-uid>
-gcx traces labels -d <tempo-uid> -l resource.service.name
+# For agent workflows, request Tempo's compact LLM label-value encoding.
+gcx traces tags -d <tempo-uid> -l resource.service.name --llm -o json
 ```
 
 > **Common mistake**: `gcx traces labels -l service.name` will fail — Tempo

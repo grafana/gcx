@@ -1,12 +1,13 @@
 package tempo
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
 	"time"
 )
 
-// AcceptLLM is the Accept header value for LLM-friendly trace responses.
+// AcceptLLM is the Accept header value for Tempo LLM-friendly responses.
 const AcceptLLM = "application/vnd.grafana.llm"
 
 // tagScopes lists the valid Tempo tag scopes.
@@ -80,20 +81,109 @@ type TagScope struct {
 
 // TagValuesRequest represents a request for values of a specific trace tag.
 type TagValuesRequest struct {
-	Tag   string
-	Scope string
-	Query string
+	Tag       string
+	Scope     string
+	Query     string
+	LLMFormat bool
 }
 
 // TagValuesResponse represents the response from the Tempo tag-values API.
 type TagValuesResponse struct {
-	TagValues []TagValue `json:"tagValues"`
+	TagValues       []TagValue       `json:"-"`
+	TagValuesByType map[string][]any `json:"-"`
+	Metrics         map[string]any   `json:"-"`
+	LLMFormat       bool             `json:"-"`
 }
 
 // TagValue represents a typed value for a trace tag.
 type TagValue struct {
 	Type  string `json:"type"`
 	Value any    `json:"value"`
+}
+
+type standardTagValuesResponse struct {
+	TagValues []TagValue     `json:"tagValues"`
+	Metrics   map[string]any `json:"metrics,omitempty"`
+}
+
+type llmTagValuesResponse struct {
+	TagValues map[string][]any `json:"tagValues"`
+	Metrics   map[string]any   `json:"metrics,omitempty"`
+}
+
+// MarshalJSON preserves the LLM-friendly tag-values shape when the response
+// was requested with AcceptLLM. The default shape remains unchanged.
+func (r TagValuesResponse) MarshalJSON() ([]byte, error) {
+	if r.LLMFormat {
+		return json.Marshal(llmTagValuesResponse{
+			TagValues: r.llmTagValues(),
+			Metrics:   r.Metrics,
+		})
+	}
+
+	return json.Marshal(standardTagValuesResponse{
+		TagValues: r.TagValues,
+		Metrics:   r.Metrics,
+	})
+}
+
+func decodeStandardTagValuesResponse(data []byte) (*TagValuesResponse, error) {
+	var wire standardTagValuesResponse
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return nil, err
+	}
+	return &TagValuesResponse{
+		TagValues: wire.TagValues,
+		Metrics:   wire.Metrics,
+	}, nil
+}
+
+func decodeLLMTagValuesResponse(data []byte) (*TagValuesResponse, error) {
+	var wire llmTagValuesResponse
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return nil, err
+	}
+	return &TagValuesResponse{
+		TagValues:       flattenTagValues(wire.TagValues),
+		TagValuesByType: wire.TagValues,
+		Metrics:         wire.Metrics,
+		LLMFormat:       true,
+	}, nil
+}
+
+func (r TagValuesResponse) llmTagValues() map[string][]any {
+	if r.TagValuesByType != nil {
+		return r.TagValuesByType
+	}
+	return groupTagValues(r.TagValues)
+}
+
+func groupTagValues(values []TagValue) map[string][]any {
+	byType := make(map[string][]any)
+	for _, value := range values {
+		byType[value.Type] = append(byType[value.Type], value.Value)
+	}
+	return byType
+}
+
+func flattenTagValues(byType map[string][]any) []TagValue {
+	if len(byType) == 0 {
+		return nil
+	}
+
+	types := make([]string, 0, len(byType))
+	for typ := range byType {
+		types = append(types, typ)
+	}
+	slices.Sort(types)
+
+	values := make([]TagValue, 0)
+	for _, typ := range types {
+		for _, value := range byType[typ] {
+			values = append(values, TagValue{Type: typ, Value: value})
+		}
+	}
+	return values
 }
 
 // MetricsRequest represents a Tempo TraceQL metrics query request.

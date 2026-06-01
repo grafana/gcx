@@ -24,6 +24,7 @@ type labelsOpts struct {
 	Label      string
 	Scope      string
 	Query      string
+	LLM        bool
 }
 
 func (opts *labelsOpts) setup(flags *pflag.FlagSet) {
@@ -35,11 +36,15 @@ func (opts *labelsOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&opts.Label, "label", "l", "", "Get values for this label (omit to list all labels)")
 	flags.StringVar(&opts.Scope, "scope", "", "Tag scope filter (resource, span, event, link, instrumentation)")
 	flags.StringVarP(&opts.Query, "query", "q", "", "TraceQL query to filter labels")
+	flags.BoolVar(&opts.LLM, "llm", false, "Request LLM-friendly label values format (requires --label)")
 }
 
 func (opts *labelsOpts) Validate() error {
 	if err := opts.IO.Validate(); err != nil {
 		return err
+	}
+	if opts.LLM && opts.Label == "" {
+		return errors.New("--llm requires --label")
 	}
 	return tempo.ValidateTagScope(opts.Scope)
 }
@@ -65,6 +70,9 @@ Datasource is resolved from -d flag or datasources.tempo in your context.`,
 
   # Get values for a specific label
   gcx datasources tempo labels -d UID -l service.name
+
+  # Get LLM-friendly values for a specific label
+  gcx datasources tempo labels -d UID -l service.name --llm -o json
 
   # Using the tags alias
   gcx datasources tempo tags -d UID -l service.name
@@ -112,9 +120,10 @@ Datasource is resolved from -d flag or datasources.tempo in your context.`,
 			// When -l is set, get values for that label; otherwise list all labels.
 			if opts.Label != "" {
 				resp, err := client.TagValues(ctx, datasourceUID, tempo.TagValuesRequest{
-					Tag:   opts.Label,
-					Scope: opts.Scope,
-					Query: opts.Query,
+					Tag:       opts.Label,
+					Scope:     opts.Scope,
+					Query:     opts.Query,
+					LLMFormat: opts.LLM,
 				})
 				if err != nil {
 					return fmt.Errorf("failed to get label values: %w", err)

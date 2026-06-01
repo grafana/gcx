@@ -8,7 +8,8 @@ Workflow and query patterns for Tempo trace search using gcx.
 |---------|---------|----------------|
 | `gcx traces query [TRACEQL]` | Search traces by TraceQL expression | TraceQL expression |
 | `gcx traces get TRACE_ID --llm -o json` | Fetch a single trace by ID in LLM-friendly format | Trace ID (required) |
-| `gcx traces labels` | List label names or values | None |
+| `gcx traces labels` | List label names | None |
+| `gcx traces tags -l TAG --llm -o json` | List tag values in compact LLM-friendly format | None |
 
 All commands accept `-d <uid>` for the Tempo datasource UID. `search` is an
 alias for `query`. There are no `--tag` or `--service` flags — use TraceQL
@@ -22,8 +23,9 @@ Start by listing tags, then inspect values for the ones that scope the problem.
 
 ```bash
 gcx traces labels -d <tempo-uid>
-gcx traces labels -d <tempo-uid> -l resource.service.name
-gcx traces labels -d <tempo-uid> -l span.http.status_code
+# For agent workflows, prefer compact LLM-friendly tag-value output.
+gcx traces tags -d <tempo-uid> -l resource.service.name --llm -o json
+gcx traces tags -d <tempo-uid> -l span.http.status_code --llm -o json
 ```
 
 > **Common mistake**: `-l service.name` will fail — Tempo parses the dot as an
@@ -75,7 +77,7 @@ gcx traces get -d <tempo-uid> <trace-id> --llm -o json
 ```
 
 Do not fetch the default OTLP-shaped trace and manually compact it for LLM
-consumption. Omit `--llm` only if the user explicitly needs raw trace JSON for
+consumption. Omit `--llm` only if the user explicitly needs raw OTLP/Tempo trace JSON for
 schema debugging, export, or byte-for-byte comparison.
 
 The trace ID is a positional argument — do not use `--trace-id` (it doesn't
