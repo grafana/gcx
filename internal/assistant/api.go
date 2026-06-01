@@ -100,6 +100,12 @@ type ListChatsOptions struct {
 	// Source filters chats by origin. Supports a single value ("assistant"),
 	// comma-separated values ("assistant,cli"), or "all" for every source.
 	// When empty the backend defaults to "assistant".
+	//
+	// Filtering happens server-side, so --limit/--offset are honest for the
+	// default and explicit comma-separated sources. For "all", ephemeral
+	// inline-assistant chats are stripped client-side after the server
+	// applies limit/offset, so a page may return fewer rows than --limit;
+	// pagination is best-effort for that case (see FetchChats).
 	Source string
 	// Limit caps the number of chats returned. Zero uses the backend default.
 	Limit int
@@ -169,6 +175,15 @@ func FetchChats(ctx context.Context, baseURL, token string, opts ListChatsOption
 	// Inline-assistant chats are ephemeral inline-generation artifacts, not
 	// conversations worth listing or continuing, so drop them regardless of
 	// the requested source filter.
+	//
+	// For the default and explicit comma-separated sources, inline-assistant
+	// is never requested, so this loop is purely a safety net and pagination
+	// stays honest. For Source == "all" the backend applies limit/offset
+	// before we strip inline chats here, so a page can return fewer rows than
+	// --limit even when more non-inline chats exist at later offsets. We
+	// accept that best-effort behavior for "all" (a power-user/debug path)
+	// rather than couple gcx to a backend excludeSource param or hard-code a
+	// non-inline source allowlist that would silently hide future sources.
 	chats := make([]Chat, 0, len(response.Data.Items))
 	for _, chat := range response.Data.Items {
 		if chat.Source == inlineAssistantSource {
