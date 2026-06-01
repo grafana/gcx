@@ -255,10 +255,11 @@ func (NopLogger) Warning(string) {}
 
 // Chat represents a chat conversation.
 type Chat struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Category string `json:"category,omitempty"`
-	Source   string `json:"source"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Category  string `json:"category,omitempty"`
+	Source    string `json:"source"`
+	UpdatedAt string `json:"modified,omitempty"`
 }
 
 // ============================================================================
