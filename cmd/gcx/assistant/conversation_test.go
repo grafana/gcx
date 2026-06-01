@@ -12,6 +12,7 @@ import (
 
 	assistantcmd "github.com/grafana/gcx/cmd/gcx/assistant"
 	"github.com/grafana/gcx/internal/assistant"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -72,8 +73,8 @@ func TestConversationListCommand_TableOutput(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		require.Equal(t, "all", r.URL.Query().Get("source"))
-		require.Equal(t, "25", r.URL.Query().Get("limit"))
+		assert.Equal(t, "all", r.URL.Query().Get("source"))
+		assert.Equal(t, "25", r.URL.Query().Get("limit"))
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": map[string]any{

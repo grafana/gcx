@@ -1,6 +1,7 @@
 package assistant
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"text/tabwriter"
@@ -59,7 +60,7 @@ func (c *ConversationListCodec) Encode(dst io.Writer, value any) error {
 }
 
 func (c *ConversationListCodec) Decode(_ io.Reader, _ any) error {
-	return fmt.Errorf("decode not supported for table format")
+	return errors.New("decode not supported for table format")
 }
 
 // formatChatTime renders an RFC3339 timestamp string for table display.

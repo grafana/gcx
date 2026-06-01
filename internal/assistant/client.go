@@ -90,7 +90,7 @@ func (c *Client) ListChats(ctx context.Context, opts ListChatsOptions) ([]Chat, 
 
 // ValidateCLIContext validates that contextID refers to an existing chat the caller can access.
 // It returns an optional notice when continuing a conversation not started from the CLI.
-func (c *Client) ValidateCLIContext(ctx context.Context, contextID string) (notice string, err error) {
+func (c *Client) ValidateCLIContext(ctx context.Context, contextID string) (string, error) {
 	chat, err := c.GetChat(ctx, contextID)
 	if err != nil {
 		return "", fmt.Errorf("failed to validate context: %w", err)
@@ -98,18 +98,20 @@ func (c *Client) ValidateCLIContext(ctx context.Context, contextID string) (noti
 	return ValidateResumableChatSource(contextID, chat)
 }
 
-func ValidateResumableChatSource(contextID string, chat *Chat) (notice string, err error) {
+// ValidateResumableChatSource reports whether chat can be resumed and returns an
+// optional notice when continuing a conversation not started from the CLI.
+func ValidateResumableChatSource(contextID string, chat *Chat) (string, error) {
 	if chat == nil {
 		return "", fmt.Errorf("context %s not found or not accessible", contextID)
 	}
 	if chat.Source != "" && chat.Source != "cli" {
-		notice = fmt.Sprintf(
+		return fmt.Sprintf(
 			"Continuing a %s conversation (id: %s). Message history is shared; agent behavior may differ from the CLI assistant.",
 			chat.Source,
 			contextID,
-		)
+		), nil
 	}
-	return notice, nil
+	return "", nil
 }
 
 // GetBaseURL returns the computed base URL for API requests.

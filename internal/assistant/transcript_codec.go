@@ -1,6 +1,7 @@
 package assistant
 
 import (
+	"errors"
 	"fmt"
 	"io"
 
@@ -24,5 +25,5 @@ func (c *ConversationTextCodec) Encode(dst io.Writer, value any) error {
 }
 
 func (c *ConversationTextCodec) Decode(_ io.Reader, _ any) error {
-	return fmt.Errorf("decode not supported for text format")
+	return errors.New("decode not supported for text format")
 }
