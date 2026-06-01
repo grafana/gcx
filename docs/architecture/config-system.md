@@ -149,13 +149,22 @@ type Override func(cfg *Config) error   // applied in order after YAML decode
 type Source  func() (string, error)     // returns the path to read
 ```
 
-Loading steps (in `Load`, lines 66–98):
+Loading steps (in `Load`):
 1. Call `source()` to get the file path
 2. `os.ReadFile` the file
 3. YAML-decode with `BytesAsBase64: true` (so `[]byte` fields are stored as base64 in YAML)
 4. Post-process: populate `ctx.Name` from the map key for each context
-5. Apply each `Override` function in order
-6. On `ValidationError`, call `annotateErrorWithSource` to embed a YAML-path-aware source annotation
+5. **Resolve keychain sentinels**: walk every context and replace `keychain:gcx:<context>:<field>` sentinels with the plaintext value from the OS keychain (via `internal/credentials`). Successfully resolved (context, field) pairs are tracked on `Config.keychainFields` so `Write` can round-trip back to sentinels. A lookup that returns `ErrNotFound` (the entry is genuinely gone) clears the field and drops the dangling reference; a lookup that fails for any other reason (the keychain is unavailable — locked session, missing DBus) clears the in-memory value but records the pair on `Config.keychainPreserve` so `Write` writes the original sentinel back verbatim. This means a transient keychain outage can never permanently erase a sentinel from the YAML. Under `go test`, the default store is a no-op that returns `ErrUnavailable`, so test binaries never prompt the OS keychain.
+6. **Migrate plaintext token-shaped secrets**: any plaintext value in a tracked field (`cloud.token`, `grafana.token`, `grafana.password`, `grafana.oauth-token`, `grafana.oauth-refresh-token`, `providers.synth.sm-token`) that is not already keychain-backed is pushed to the store and marked. If at least one field migrated, `Load` calls `Write` so the on-disk YAML is rewritten with sentinels. When the keychain is unavailable, a one-time warning fires and plaintext stays on disk.
+7. Apply each `Override` function in order
+8. On `ValidationError`, call `annotateErrorWithSource` to embed a YAML-path-aware source annotation
+
+`Write` runs a single keychain-reconcile pass (`reconcileKeychain`) over every secret field before encoding, so the keychain stays in sync no matter how the config was mutated:
+- **Write-through**: any plaintext secret (e.g. one just set by `gcx login` or `gcx config set`) is pushed to the keychain and replaced with a sentinel on disk — newly written secrets never linger as plaintext.
+- **Cleanup**: a field that was keychain-backed but is now empty (`gcx config unset`, or an auth-method switch that drops the old credential) has its keychain entry deleted instead of orphaned.
+- **Preserve**: a pair recorded in `keychainPreserve` is written back as its sentinel without touching the store.
+
+When the keychain is unavailable, write-through falls back to leaving plaintext on disk with a one-time warning. Secret-less writes skip the keychain entirely (`hasSecretsToReconcile`), so they never probe the OS backend.
 
 ---
 

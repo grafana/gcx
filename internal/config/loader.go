@@ -8,14 +8,42 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"testing"
 	"time"
 
 	"github.com/goccy/go-yaml"
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/credentials"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/xdg"
 	"github.com/grafana/grafana-app-sdk/logging"
 )
+
+// keychainStoreFn returns the credentials.Store used by Load and Write. It is
+// a package-level variable so tests can inject a fake store. Production code
+// uses credentials.Open() which probes the OS keychain.
+//
+// Under `go test` (detected via testing.Testing()), the default is a no-op
+// store that reports ErrUnavailable for every operation. This prevents any
+// test in any package from triggering OS-keychain prompts when it loads a
+// config file. Tests that need to exercise the keychain code path must
+// explicitly install their own store by overriding this variable.
+//
+//nolint:gochecknoglobals // test injection seam for the keychain backend.
+var keychainStoreFn = defaultKeychainStore
+
+func defaultKeychainStore() credentials.Store {
+	if testing.Testing() {
+		return testingNoopStore{}
+	}
+	return credentials.Open()
+}
+
+type testingNoopStore struct{}
+
+func (testingNoopStore) Get(string) (string, error) { return "", credentials.ErrUnavailable }
+func (testingNoopStore) Set(string, string) error   { return credentials.ErrUnavailable }
+func (testingNoopStore) Delete(string) error        { return credentials.ErrUnavailable }
 
 const (
 	configFilePermissions  = 0o600
@@ -330,6 +358,20 @@ func Load(ctx context.Context, source Source, overrides ...Override) (Config, er
 		ctx.Name = name
 	}
 
+	log := logging.FromContext(ctx)
+	store := keychainStoreFn()
+	config.keychainFields, config.keychainPreserve = resolveSentinels(&config, store, log)
+	if migrated := migratePlaintextSecrets(&config, store, log); migrated > 0 {
+		log.Info("migrated plaintext credentials into OS keychain",
+			"count", migrated,
+			"file", filename)
+		if err := Write(ctx, source, config); err != nil {
+			log.Warn("could not persist keychain migration; credentials remain in plaintext",
+				"file", filename,
+				"error", err.Error())
+		}
+	}
+
 	for _, override := range overrides {
 		if err := override(&config); err != nil {
 			return config, annotateErrorWithSource(filename, contents, err)
@@ -345,7 +387,13 @@ func Write(ctx context.Context, source Source, cfg Config) error {
 		return err
 	}
 
-	logging.FromContext(ctx).Debug("Writing config", slog.String("filename", filename))
+	log := logging.FromContext(ctx)
+	log.Debug("Writing config", slog.String("filename", filename))
+
+	if cfg.hasSecretsToReconcile() {
+		restore := reconcileKeychain(&cfg, keychainStoreFn(), log)
+		defer restore()
+	}
 
 	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, configFilePermissions)
 	if err != nil {
