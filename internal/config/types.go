@@ -34,6 +34,20 @@ type Config struct {
 
 	// Diagnostics holds optional local diagnostic settings. All features are off by default.
 	Diagnostics *DiagnosticsConfig `json:"diagnostics,omitempty" yaml:"diagnostics,omitempty"`
+
+	// keychainFields tracks which (context, field) pairs were successfully
+	// resolved from the OS keychain (or migrated into it) at load time.
+	// Populated by the loader; used by Write to round-trip sentinels back to
+	// disk and to delete entries whose field has since been cleared. Not part
+	// of the on-disk schema.
+	keychainFields keychainBacked `json:"-" yaml:"-"`
+
+	// keychainPreserve tracks (context, field) pairs whose sentinel could not
+	// be resolved at load time because the keychain was unavailable (locked
+	// session, missing DBus). Their in-memory value is cleared, but Write must
+	// round-trip the original sentinel back to disk so a transient outage never
+	// destroys the reference. Not part of the on-disk schema.
+	keychainPreserve keychainBacked `json:"-" yaml:"-"`
 }
 
 // DiagnosticsConfig controls optional local diagnostic features.
