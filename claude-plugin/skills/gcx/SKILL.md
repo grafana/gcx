@@ -56,7 +56,7 @@ right group:
 | PromQL / Adaptive Metrics | `metrics` | `gcx metrics query -d <uid> 'up'` |
 | LogQL / Adaptive Logs | `logs` | `gcx logs query -d <uid> '{app="foo"}'` |
 | Profiling (Pyroscope) | `profiles` | `gcx profiles query` |
-| Tracing (Tempo) | `traces` | `gcx traces query -d <uid> '{ status = error }'` |
+| Tracing (Tempo) | `traces` | Search: `gcx traces query -d <uid> '{ status = error }'`; fetch for analysis: `gcx traces get -d <uid> <trace-id> --llm -o json` |
 | Datasource info and queries | `datasources` | `gcx datasources list` |
 | Fleet pipelines, collectors | `fleet` | `gcx fleet pipelines list` |
 | Knowledge Graph (Asserts) | `kg` | `gcx kg entities list` |
@@ -145,6 +145,23 @@ The `gcx datasources` group provides typed query interfaces:
 - `generic` — auto-detect datasource type
 
 Use `gcx datasources <type> --help` to discover type-specific flags.
+
+### Tempo trace bodies: use `--llm` for agent analysis
+
+When fetching a full Tempo trace for this agent to read, summarize, debug, or
+include in a prompt, **always use the LLM-friendly trace encoding**:
+
+```bash
+gcx traces get -d <tempo-uid> <trace-id> --llm -o json
+# equivalent legacy path:
+gcx datasources tempo get -d <tempo-uid> <trace-id> --llm -o json
+```
+
+Use `gcx traces query` to find trace IDs, then `gcx traces get --llm -o json` to inspect
+a selected trace. Do not fetch the default OTLP-shaped trace and manually compact
+or transform it for LLM consumption. Omit `--llm` only when the user explicitly
+needs raw OTLP/Tempo trace JSON for schema debugging, export, or byte-for-byte
+comparison.
 
 ## Grafana Assistant
 

@@ -20,13 +20,13 @@ gcx traces get TRACE_ID [flags]
 
 ```
 
-  # Fetch a trace by ID
-  gcx traces get -d UID <trace-id>
+  # Fetch a trace by ID for agent analysis
+  gcx traces get -d UID <trace-id> --llm -o json
 
   # Print a Grafana Explore share link for the trace
   gcx traces get -d UID <trace-id> --share-link
 
-  # Output as JSON
+  # Output raw OTLP-shaped JSON when explicitly needed
   gcx traces get -d UID <trace-id> -o json
 ```
 
