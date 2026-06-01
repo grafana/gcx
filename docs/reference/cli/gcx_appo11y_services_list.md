@@ -46,7 +46,7 @@ gcx appo11y services list [flags]
       --instrumentation string        Which services to list: all, instrumented (target_info only), or uninstrumented (service-graph minus target_info) (default "all")
       --json string                   Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --language string               Restrict to a single telemetry_sdk_language (e.g. go, java, nodejs)
-      --limit int                     Limit the number of services returned (0 = unlimited; applied after sorting)
+      --limit int                     Limit the number of services returned (0 = unlimited; applied after sorting) (default 50)
   -o, --output string                 Output format. One of: agents, json, table, wide, yaml (default "table")
       --service-graph-metric string   Override the service-graph metric used to find uninstrumented services (advanced) (default "traces_service_graph_request_total")
 ```

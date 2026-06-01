@@ -21,12 +21,13 @@ func TestBuildFilters(t *testing.T) {
 			want: []Matcher{{Label: "telemetry_sdk_language", Op: "=", Value: "go"}},
 		},
 		{
-			name: "env only",
+			// --env is intentionally NOT a PromQL matcher (filtered post-parse).
+			name: "env alone produces no matchers",
 			opts: listOpts{Env: "production"},
-			want: []Matcher{{Label: "deployment_environment", Op: "=", Value: "production"}},
+			want: nil,
 		},
 		{
-			name: "language and env combined with raw filter",
+			name: "language combined with raw filter (env applied post-parse)",
 			opts: listOpts{
 				Filters:  []string{`k8s_namespace_name="prod"`},
 				Language: "go",
@@ -35,7 +36,6 @@ func TestBuildFilters(t *testing.T) {
 			want: []Matcher{
 				{Label: "k8s_namespace_name", Op: "=", Value: "prod"},
 				{Label: "telemetry_sdk_language", Op: "=", Value: "go"},
-				{Label: "deployment_environment", Op: "=", Value: "production"},
 			},
 		},
 	}
@@ -101,14 +101,14 @@ func TestResolveItems(t *testing.T) {
 	}
 
 	t.Run("all merges both", func(t *testing.T) {
-		got := resolveItems(instrAll, instrumented, graph)
+		got := resolveItems(instrAll, instrumented, instrumented, graph)
 		if len(got) != 4 {
 			t.Fatalf("got %d, want 4: %+v", len(got), got)
 		}
 	})
 
 	t.Run("instrumented returns target_info only", func(t *testing.T) {
-		got := resolveItems(instrInstrumented, instrumented, graph)
+		got := resolveItems(instrInstrumented, instrumented, instrumented, graph)
 		if len(got) != 2 {
 			t.Fatalf("got %d, want 2: %+v", len(got), got)
 		}
@@ -120,7 +120,7 @@ func TestResolveItems(t *testing.T) {
 	})
 
 	t.Run("uninstrumented drops names known to target_info", func(t *testing.T) {
-		got := resolveItems(instrUninstrumented, instrumented, graph)
+		got := resolveItems(instrUninstrumented, instrumented, instrumented, graph)
 		if len(got) != 2 {
 			t.Fatalf("got %d, want 2: %+v", len(got), got)
 		}
@@ -133,4 +133,48 @@ func TestResolveItems(t *testing.T) {
 			}
 		}
 	})
+
+	// Regression: with --language go set, the display set narrows to just
+	// `checkout` (Go), but `payments` is still in the *baseline* and must
+	// not appear in the uninstrumented bucket.
+	t.Run("baseline keeps non-display instrumented out of uninstrumented", func(t *testing.T) {
+		display := []Service{
+			{Name: "checkout", Language: "go", Instrumented: true},
+		}
+		baseline := instrumented // full unfiltered set
+
+		all := resolveItems(instrAll, display, baseline, graph)
+		for _, s := range all {
+			if s.Name == "payments" && !s.Instrumented {
+				t.Errorf("payments leaked into uninstrumented bucket in --instrumentation all")
+			}
+		}
+
+		un := resolveItems(instrUninstrumented, display, baseline, graph)
+		for _, s := range un {
+			if s.Name == "payments" {
+				t.Errorf("payments leaked into uninstrumented bucket in --instrumentation uninstrumented")
+			}
+		}
+	})
+}
+
+func TestFilterByEnv(t *testing.T) {
+	items := []Service{
+		{Name: "a", Labels: map[string]string{"deployment_environment": "prod"}},
+		{Name: "b", Labels: map[string]string{"deployment_environment_name": "prod"}}, // newer-semconv only
+		{Name: "c", Labels: map[string]string{"deployment_environment": "staging"}},
+		{Name: "d"}, // no env at all
+	}
+	got := filterByEnv(items, "prod")
+	if len(got) != 2 {
+		t.Fatalf("got %d, want 2: %+v", len(got), got)
+	}
+	if got[0].Name != "a" || got[1].Name != "b" {
+		t.Errorf("want a + b, got %+v", got)
+	}
+	// Empty filter = passthrough.
+	if all := filterByEnv(items, ""); len(all) != len(items) {
+		t.Errorf("empty filter should passthrough, got %d", len(all))
+	}
 }

@@ -36,6 +36,11 @@ const (
 	instrAll            = "all"
 	instrInstrumented   = "instrumented"
 	instrUninstrumented = "uninstrumented"
+
+	// servicesListDefaultLimit caps the row count of the default `services list`
+	// view so a stack with thousands of services doesn't dump everything at
+	// once. Users opt out with `--limit 0`. Mirrors the IRM list patterns.
+	servicesListDefaultLimit = 50
 )
 
 type listOpts struct {
@@ -64,7 +69,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.Language, "language", "", "Restrict to a single telemetry_sdk_language (e.g. go, java, nodejs)")
 	flags.StringVar(&o.Env, "env", "", "Restrict to a single deployment_environment (e.g. production)")
 	flags.StringSliceVar(&o.Columns, "columns", nil, "Extra target_info labels to surface as table columns (comma-separated)")
-	flags.IntVar(&o.Limit, "limit", 0, "Limit the number of services returned (0 = unlimited; applied after sorting)")
+	flags.IntVar(&o.Limit, "limit", servicesListDefaultLimit, "Limit the number of services returned (0 = unlimited; applied after sorting)")
 	flags.BoolVar(&o.Count, "count", false, "Print a per-language summary instead of the full list")
 }
 
@@ -83,6 +88,23 @@ func (o *listOpts) Validate() error {
 	return nil
 }
 
+// reconcileCountLimit resolves the interaction between --count and --limit:
+//
+//   - if the user explicitly set both, that's a conflict (a per-language
+//     summary over a truncated row set would lie about totals);
+//   - if --count is on and --limit was left at the default, silently drop
+//     the truncation so the summary covers the full inventory.
+func (o *listOpts) reconcileCountLimit(flags *pflag.FlagSet) error {
+	if !o.Count {
+		return nil
+	}
+	if flags.Changed("limit") && o.Limit > 0 {
+		return errors.New("--count cannot be combined with --limit; use --limit 0 to disable the limit when counting")
+	}
+	o.Limit = 0
+	return nil
+}
+
 // wantsServiceGraph reports whether the service-graph query should run.
 // The target-info queries always run — even in uninstrumented mode the
 // instrumented set is needed to diff service-graph results against it.
@@ -91,7 +113,7 @@ func (o *listOpts) wantsServiceGraph() bool {
 }
 
 func (o *listOpts) buildFilters() ([]Matcher, error) {
-	out := make([]Matcher, 0, len(o.Filters)+2)
+	out := make([]Matcher, 0, len(o.Filters)+1)
 	for _, f := range o.Filters {
 		parsed, err := parseFilter(f)
 		if err != nil {
@@ -102,10 +124,26 @@ func (o *listOpts) buildFilters() ([]Matcher, error) {
 	if o.Language != "" {
 		out = append(out, Matcher{Label: "telemetry_sdk_language", Op: "=", Value: o.Language})
 	}
-	if o.Env != "" {
-		out = append(out, Matcher{Label: "deployment_environment", Op: "=", Value: o.Env})
-	}
+	// --env is intentionally NOT added as a PromQL matcher: a single matcher
+	// can only target one of deployment_environment / deployment_environment_name,
+	// but the ENVIRONMENT column reads whichever is populated. Filtering happens
+	// post-parse via filterByEnv so the filter and the display agree.
 	return out, nil
+}
+
+// filterByEnv keeps only services whose resolved environmentValue equals env.
+// Returns items unchanged when env is empty.
+func filterByEnv(items []Service, env string) []Service {
+	if env == "" {
+		return items
+	}
+	out := make([]Service, 0, len(items))
+	for _, s := range items {
+		if environmentValue(s.Labels) == env {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func newListCommand() *cobra.Command {
@@ -149,6 +187,9 @@ func runList(opts *listOpts) func(*cobra.Command, []string) error {
 		if err := opts.Validate(); err != nil {
 			return err
 		}
+		if err := opts.reconcileCountLimit(cmd.Flags()); err != nil {
+			return err
+		}
 
 		ctx := cmd.Context()
 		var loader providers.ConfigLoader
@@ -183,7 +224,15 @@ func runList(opts *listOpts) func(*cobra.Command, []string) error {
 
 		var graph []Service
 		metrics := targetInfoMetrics()
+		// `instrumented` is the filtered set used for display rows.
+		// `baseline` is the unfiltered set used as the index for the
+		// uninstrumented diff so user filters don't bias what's known
+		// to target_info. When no filters are set the two are identical
+		// and we collapse to a single round-trip per metric.
 		instrumentedResponses := make([]*prometheus.QueryResponse, len(metrics))
+		needsBaseline := len(filters) > 0 && opts.wantsServiceGraph()
+		baselineResponses := make([]*prometheus.QueryResponse, len(metrics))
+
 		eg, egCtx := errgroup.WithContext(ctx)
 		for i, metric := range metrics {
 			eg.Go(func() error {
@@ -198,6 +247,20 @@ func runList(opts *listOpts) func(*cobra.Command, []string) error {
 				instrumentedResponses[i] = resp
 				return nil
 			})
+			if needsBaseline {
+				eg.Go(func() error {
+					expr, err := buildServicesQuery(metric, nil, opts.Columns)
+					if err != nil {
+						return fmt.Errorf("failed to build %s baseline query: %w", metric, err)
+					}
+					resp, err := client.Query(egCtx, datasourceUID, prometheus.QueryRequest{Query: expr})
+					if err != nil {
+						return fmt.Errorf("%s baseline query failed: %w", metric, err)
+					}
+					baselineResponses[i] = resp
+					return nil
+				})
+			}
 		}
 		if opts.wantsServiceGraph() {
 			eg.Go(func() error {
@@ -225,29 +288,46 @@ func runList(opts *listOpts) func(*cobra.Command, []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to parse services response: %w", err)
 		}
+		baseline := instrumented
+		if needsBaseline {
+			baseline, err = parseServicesResponses(baselineResponses)
+			if err != nil {
+				return fmt.Errorf("failed to parse baseline response: %w", err)
+			}
+		}
 
-		items := resolveItems(opts.Instrumentation, instrumented, graph)
+		items := resolveItems(opts.Instrumentation, instrumented, baseline, graph)
+		items = filterByEnv(items, opts.Env)
 
+		truncated := false
 		if opts.Limit > 0 && len(items) > opts.Limit {
 			items = items[:opts.Limit]
+			truncated = true
 		}
 
 		if opts.Count {
 			return opts.IO.Encode(cmd.OutOrStdout(), summarizeByLanguage(items))
 		}
+		if truncated {
+			emitLimitHint(cmd.ErrOrStderr(), opts.Limit)
+		}
 		return opts.IO.Encode(cmd.OutOrStdout(), &ServicesResponse{Items: items})
 	}
 }
 
-// resolveItems applies the --instrumentation filter to the (instrumented, graph)
-// result pair. The merge prefers target_info data, then drops or keeps rows
-// based on the filter.
-func resolveItems(filter string, instrumented, graph []Service) []Service {
+// resolveItems applies the --instrumentation filter.
+//
+//   - instrumented: the filtered set used for display rows.
+//   - baseline:    the unfiltered set used as the diff index for the
+//     uninstrumented bucket. When no user filters are in play the caller
+//     passes instrumented == baseline.
+//   - graph:        service-graph entries (treated as potentially uninstrumented).
+func resolveItems(filter string, instrumented, baseline, graph []Service) []Service {
 	switch filter {
 	case instrInstrumented:
 		return instrumented
 	case instrUninstrumented:
-		idx := instrumentedIndex(instrumented)
+		idx := instrumentedIndex(baseline)
 		out := make([]Service, 0, len(graph))
 		for _, s := range graph {
 			if _, has := idx[instrumentedKey{namespace: s.Namespace, name: s.Name}]; has {
@@ -260,7 +340,7 @@ func resolveItems(filter string, instrumented, graph []Service) []Service {
 		}
 		return out
 	default:
-		return mergeServiceSets(instrumented, graph)
+		return mergeServiceSets(instrumented, baseline, graph)
 	}
 }
 
@@ -402,6 +482,16 @@ func orDash(v string) string {
 		return "-"
 	}
 	return v
+}
+
+// emitLimitHint surfaces a truncation hint on stderr when the result was
+// capped by --limit. Format mirrors the IRM alert-groups list hint: TTY users
+// get a runnable command pointing at a doubled limit; agent mode gets the
+// structured JSON record.
+func emitLimitHint(stderr io.Writer, limit int) {
+	cmdio.EmitHint(stderr,
+		fmt.Sprintf("showing first %d services", limit),
+		fmt.Sprintf("gcx appo11y services list --limit %d", limit*2))
 }
 
 func upperHeaders(labels []string) []string {

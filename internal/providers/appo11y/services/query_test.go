@@ -53,6 +53,15 @@ func TestBuildServicesQuery(t *testing.T) {
 			want: wantGroup + ` (target_info{a="x",b!="y",c=~"z.*",d!~"w.*"})`,
 		},
 		{
+			name:   "value containing quote and backslash is escaped (no injection)",
+			metric: "target_info",
+			matchers: []Matcher{
+				{Label: "foo", Op: "=", Value: `bar"; drop_table--`},
+				{Label: "baz", Op: "=", Value: `c:\path`},
+			},
+			want: wantGroup + ` (target_info{foo="bar\"; drop_table--",baz="c:\\path"})`,
+		},
+		{
 			name:   "extra columns appended once (incl. label that's not in defaults)",
 			metric: "target_info",
 			extra:  []string{"service_version", "k8s_pod_name", "service_namespace"},
@@ -183,7 +192,7 @@ func TestMergeServiceSets(t *testing.T) {
 		// Brand-new service not in target_info.
 		{Name: "legacy-billing"},
 	}
-	got := mergeServiceSets(instrumented, graph)
+	got := mergeServiceSets(instrumented, instrumented, graph)
 	if len(got) != 3 {
 		t.Fatalf("len = %d, want 3: %+v", len(got), got)
 	}

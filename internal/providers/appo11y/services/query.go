@@ -70,16 +70,31 @@ type Matcher struct {
 }
 
 func (m Matcher) apply(v *promql.VectorExprBuilder) *promql.VectorExprBuilder {
+	val := escapePromqlValue(m.Value)
 	switch m.Op {
 	case "!=":
-		return v.LabelNeq(m.Label, m.Value)
+		return v.LabelNeq(m.Label, val)
 	case "=~":
-		return v.LabelMatchRegexp(m.Label, m.Value)
+		return v.LabelMatchRegexp(m.Label, val)
 	case "!~":
-		return v.LabelNotMatchRegexp(m.Label, m.Value)
+		return v.LabelNotMatchRegexp(m.Label, val)
 	default: // "="
-		return v.Label(m.Label, m.Value)
+		return v.Label(m.Label, val)
 	}
+}
+
+// escapePromqlValue escapes a raw user-supplied value so that it can safely be
+// embedded as the value side of a PromQL label matcher. The builder wraps
+// values in double quotes but does not itself escape interior backslashes or
+// quotes — without this step, a value like `bar"; foo` would close the
+// matcher string early and allow injection of additional PromQL.
+//
+// Order matters: backslashes must be doubled before quotes are escaped, or
+// the inserted `\"` would then have its leading `\` doubled again.
+func escapePromqlValue(v string) string {
+	v = strings.ReplaceAll(v, `\`, `\\`)
+	v = strings.ReplaceAll(v, `"`, `\"`)
+	return v
 }
 
 // buildServicesQuery returns a PromQL expression that groups the named
@@ -321,12 +336,13 @@ func instrumentedIndex(instrumented []Service) map[instrumentedKey]struct{} {
 }
 
 // mergeServiceSets joins target_info-derived services with service-graph
-// servers. target_info results win whenever a (namespace, name) appears in
-// both. The caller controls which side(s) get fed in; the result is sorted.
-func mergeServiceSets(instrumented, graph []Service) []Service {
-	idx := instrumentedIndex(instrumented)
-	out := make([]Service, 0, len(instrumented)+len(graph))
-	out = append(out, instrumented...)
+// servers. The display set is emitted verbatim; service-graph entries are
+// only appended when they're not already known to the baseline. Baseline and
+// display may be the same slice when no user filters are in play.
+func mergeServiceSets(display, baseline, graph []Service) []Service {
+	idx := instrumentedIndex(baseline)
+	out := make([]Service, 0, len(display)+len(graph))
+	out = append(out, display...)
 	for _, s := range graph {
 		if _, has := idx[instrumentedKey{namespace: s.Namespace, name: s.Name}]; has {
 			continue
