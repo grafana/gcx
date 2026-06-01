@@ -62,7 +62,7 @@ services:
       - grafana
 
   influxdb:
-    image: influxdb:1.11
+    image: influxdb:2.9@sha256:c9acb506f536915c97ff71c971970ad9c2a38b2b8a0d54200ef0ef430f7a37f0
     container_name: gcx-influxdb
     restart: unless-stopped
     ports:
