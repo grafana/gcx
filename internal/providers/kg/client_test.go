@@ -438,6 +438,102 @@ func TestClient_CypherSearch(t *testing.T) {
 	}
 }
 
+func TestClient_GetRelabelRules(t *testing.T) {
+	tests := []struct {
+		name       string
+		ruleType   kg.RelabelRuleType
+		status     int
+		body       any
+		wantPath   string
+		wantNil    bool
+		wantErr    bool
+		wantErrMsg string
+	}{
+		{
+			name:     "prologue ok",
+			ruleType: kg.RelabelRuleTypePrologue,
+			status:   http.StatusOK,
+			body: map[string]any{
+				"name":  "prologue",
+				"rules": []map[string]any{{"sourceLabels": []string{"deployment_environment"}, "targetLabel": "asserts_env"}},
+			},
+			wantPath: "/v2/config/relabel-rules/prologue",
+		},
+		{
+			name:     "epilogue ok",
+			ruleType: kg.RelabelRuleTypeEpilogue,
+			status:   http.StatusOK,
+			body:     map[string]any{"name": "epilogue", "rules": []map[string]any{}},
+			wantPath: "/v2/config/relabel-rules/epilogue",
+		},
+		{
+			name:     "generated ok",
+			ruleType: kg.RelabelRuleTypeGenerated,
+			status:   http.StatusOK,
+			body:     map[string]any{"name": "generated", "order": 100},
+			wantPath: "/v2/config/relabel-rules/generated",
+		},
+		{
+			name:     "204 returns nil map without error",
+			ruleType: kg.RelabelRuleTypePrologue,
+			status:   http.StatusNoContent,
+			wantPath: "/v2/config/relabel-rules/prologue",
+			wantNil:  true,
+		},
+		{
+			name:     "server error surfaces APIError",
+			ruleType: kg.RelabelRuleTypeEpilogue,
+			status:   http.StatusInternalServerError,
+			body:     map[string]any{"message": "boom"},
+			wantPath: "/v2/config/relabel-rules/epilogue",
+			wantErr:  true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.Contains(t, r.URL.Path, tt.wantPath)
+				if tt.status == http.StatusNoContent {
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+				w.WriteHeader(tt.status)
+				if tt.body != nil {
+					writeJSON(w, tt.body)
+				}
+			}))
+			defer server.Close()
+
+			client := newTestClient(t, server)
+			got, err := client.GetRelabelRules(t.Context(), tt.ruleType)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			if tt.wantNil {
+				assert.Nil(t, got)
+				return
+			}
+			assert.NotNil(t, got)
+		})
+	}
+}
+
+func TestClient_GetRelabelRules_InvalidType(t *testing.T) {
+	// No server contact expected — invalid type rejected client-side.
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		t.Fatal("server should not be called for invalid rule type")
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	_, err := client.GetRelabelRules(t.Context(), kg.RelabelRuleType("bogus"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid relabel rule type")
+}
+
 func TestClient_LookupEntity_NotFound(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)

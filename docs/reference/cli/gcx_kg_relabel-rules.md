@@ -1,6 +1,6 @@
 ## gcx kg relabel-rules
 
-Push relabel rules to the Knowledge Graph.
+Inspect Mimir relabel rules used by the Knowledge Graph.
 
 ### Options
 
@@ -23,5 +23,5 @@ Push relabel rules to the Knowledge Graph.
 ### SEE ALSO
 
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
-* [gcx kg relabel-rules create](gcx_kg_relabel-rules_create.md)	 - Upload relabel rules from a YAML file.
+* [gcx kg relabel-rules get](gcx_kg_relabel-rules_get.md)	 - Fetch a relabel rule group (prologue, epilogue, or generated).
 

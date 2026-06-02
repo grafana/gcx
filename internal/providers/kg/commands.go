@@ -676,7 +676,6 @@ func (c *RuleWideTableCodec) Decode(_ io.Reader, _ any) error {
 // Model rules, suppressions, relabel rules commands
 // ---------------------------------------------------------------------------
 
-//nolint:dupl
 func newModelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "model-rules",
@@ -710,7 +709,6 @@ func newModelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	_ = createCmd.MarkFlagRequired("file")
 	cmd.AddCommand(createCmd)
 	return cmd
-	//nolint:dupl
 }
 
 func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
@@ -854,20 +852,29 @@ func (c *SuppressionTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
 
-//nolint:dupl
 func newRelabelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "relabel-rules",
-		Short: "Push relabel rules to the Knowledge Graph.",
+		Short: "Inspect Mimir relabel rules used by the Knowledge Graph.",
 	}
-	var fileFlag string
-	createCmd := &cobra.Command{
-		Use:   "create",
-		Short: "Upload relabel rules from a YAML file.",
+
+	var (
+		ruleType string
+		io       cmdio.Options
+	)
+	io.RegisterCustomCodec("table", &RelabelRuleTableCodec{})
+	io.DefaultFormat("table")
+
+	getCmd := &cobra.Command{
+		Use:   "get",
+		Short: "Fetch a relabel rule group (prologue, epilogue, or generated).",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			data, err := readFileOrStdin(cmd, fileFlag)
-			if err != nil {
-				return fmt.Errorf("failed to read file: %w", err)
+			t := RelabelRuleType(ruleType)
+			if !t.IsValid() {
+				return fmt.Errorf("invalid --type %q: must be one of prologue, epilogue, generated", ruleType)
+			}
+			if err := io.Validate(); err != nil {
+				return err
 			}
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
@@ -877,17 +884,88 @@ func newRelabelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := client.UploadRelabelRules(cmd.Context(), string(data)); err != nil {
+			rules, err := client.GetRelabelRules(cmd.Context(), t)
+			if err != nil {
 				return err
 			}
-			cmdio.Success(cmd.OutOrStdout(), "Relabel rules uploaded")
-			return nil
+			if rules == nil {
+				cmdio.Info(cmd.ErrOrStderr(), "No %s relabel rules configured.", t)
+				return nil
+			}
+			return io.Encode(cmd.OutOrStdout(), rules)
 		},
 	}
-	createCmd.Flags().StringVarP(&fileFlag, "file", "f", "", "Input file (YAML)")
-	_ = createCmd.MarkFlagRequired("file")
-	cmd.AddCommand(createCmd)
+	getCmd.Flags().StringVar(&ruleType, "type", string(RelabelRuleTypeGenerated),
+		"Rule group to fetch: prologue, epilogue, or generated")
+	io.BindFlags(getCmd.Flags())
+
+	cmd.AddCommand(getCmd)
 	return cmd
+}
+
+// RelabelRuleTableCodec renders a relabel rule group as a compact table.
+// Shows the commonly-inspected fields — use `-o yaml` or `-o json` for
+// the remaining ones (transform_*, join_separator).
+type RelabelRuleTableCodec struct{}
+
+func (c *RelabelRuleTableCodec) Format() format.Format { return "table" }
+
+func (c *RelabelRuleTableCodec) Encode(w io.Writer, v any) error {
+	group, ok := v.(map[string]any)
+	if !ok {
+		return errors.New("invalid data type for table codec: expected map[string]any")
+	}
+	rawRules, _ := group["rules"].([]any)
+	t := style.NewTable("SELECTOR", "TARGET LABEL", "JOIN LABELS", "RANKED CHOICE", "REPLACEMENT", "DROP")
+	for _, r := range rawRules {
+		rule, _ := r.(map[string]any)
+		if rule == nil {
+			continue
+		}
+		t.Row(
+			stringField(rule["selector"]),
+			stringField(rule["target_label"]),
+			joinStringSlice(rule["join_labels"]),
+			joinStringSlice(rule["ranked_choice"]),
+			stringField(rule["replacement"]),
+			boolField(rule["drop"]),
+		)
+	}
+	return t.Render(w)
+}
+
+func (c *RelabelRuleTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+func stringField(v any) string {
+	if v == nil {
+		return ""
+	}
+	s, _ := v.(string)
+	return s
+}
+
+func boolField(v any) string {
+	b, ok := v.(bool)
+	if !ok || !b {
+		return ""
+	}
+	return "true"
+}
+
+func joinStringSlice(v any) string {
+	arr, ok := v.([]any)
+	if !ok {
+		return ""
+	}
+	parts := make([]string, 0, len(arr))
+	for _, item := range arr {
+		if s, ok := item.(string); ok {
+			parts = append(parts, s)
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 // ---------------------------------------------------------------------------

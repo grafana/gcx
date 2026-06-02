@@ -1,16 +1,18 @@
-## gcx kg relabel-rules create
+## gcx kg relabel-rules get
 
-Upload relabel rules from a YAML file.
+Fetch a relabel rule group (prologue, epilogue, or generated).
 
 ```
-gcx kg relabel-rules create [flags]
+gcx kg relabel-rules get [flags]
 ```
 
 ### Options
 
 ```
-  -f, --file string   Input file (YAML)
-  -h, --help          help for create
+  -h, --help            help for get
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
+      --type string     Rule group to fetch: prologue, epilogue, or generated (default "generated")
 ```
 
 ### Options inherited from parent commands
@@ -27,5 +29,5 @@ gcx kg relabel-rules create [flags]
 
 ### SEE ALSO
 
-* [gcx kg relabel-rules](gcx_kg_relabel-rules.md)	 - Push relabel rules to the Knowledge Graph.
+* [gcx kg relabel-rules](gcx_kg_relabel-rules.md)	 - Inspect Mimir relabel rules used by the Knowledge Graph.
 
