@@ -35,6 +35,7 @@ Two tiers: **K8s resource tier** (dashboards, folders via `/apis`) and **Cloud p
 - **Config = kubectl kubeconfig**: Named contexts with server/auth/namespace, env var overrides
 - **Format-agnostic data fetching**: Commands fetch all data regardless of `--output` format; codecs control display, not data acquisition (see Pattern 13 in `docs/architecture/patterns.md`)
 - **PromQL via promql-builder**: Use `github.com/grafana/promql-builder/go/promql` for PromQL construction, not string formatting (see Pattern 14 in `docs/architecture/patterns.md`)
+- **Datasource query reuse**: Datasource clients that call Grafana's unified datasource query API (`/apis/query.grafana.app/.../query`, with `/api/ds/query` fallback) should reuse `internal/query/grafanaquery` for HTTP transport and `internal/query/dataframe` for Grafana data frame wire types. Do not duplicate POST/fallback/response-limit logic or `GrafanaQueryResponse`/`DataFrame` structs in each datasource package.
 - **Portable agent skills live under `claude-plugin/skills/`**: Treat that tree as the canonical portable Agent Skills bundle. Do not add distributable gcx skills under repo-local `.agents/skills/` — that changes repo-context discovery semantics for tools that scan `.agents`.
 
 ## Essential Commands
@@ -129,9 +130,12 @@ internal/
 │   ├── influxdb/  InfluxDB datasource command layer (query, field-keys, measurements)
 │   └── query/   Shared query CLI utils (time parsing, codecs, opts, resolve helpers — used by signal providers and GenericCmd)
 ├── query/       Datasource query clients
+│   ├── dataframe/   Shared Grafana data frame wire types for unified datasource query API responses
+│   ├── grafanaquery/ Shared POST transport for `/apis/query.grafana.app/.../query` with `/api/ds/query` fallback
 │   ├── cloudwatch/  CloudWatch HTTP query client (metric queries, resource listing)
 │   ├── prometheus/  Prometheus HTTP query client
 │   ├── influxdb/    InfluxDB HTTP query client
+│   ├── infinity/    Infinity HTTP query client
 │   ├── loki/        Loki HTTP query client
 │   └── clickhouse/  ClickHouse HTTP query client
 ├── signals/     Shared signal command and datasource-provider mounting (metrics/logs/traces/profiles)

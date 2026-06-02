@@ -4,16 +4,14 @@ description: >
   Use for operational management of existing Grafana dashboards: list, get,
   search, create or update from an already-authored manifest, delete, inspect
   and restore versions, pull/push/validate/promote dashboard resource files,
-  manage dashboard folders, or render PNG snapshots. For designing or creating
-  a new dashboard, or for material visual/dashboard UX changes, use the
-  create-dashboard skill instead.
+  manage dashboard folders, or render PNG snapshots. Do NOT use when the task
+  involves adding new panels, variables, or annotations — those require
+  discovering real metrics or log schema, so use create-dashboard instead.
+  For designing or creating a new dashboard, or for material visual/dashboard
+  UX changes, also use create-dashboard.
 ---
 
 # Manage Dashboards
-
-This skill is for dashboard operations, not dashboard design. If the user wants
-an agent to design a new dashboard, choose queries, arrange panels, or iterate
-visually, use `create-dashboard`.
 
 Use `gcx` dedicated commands first. Only use `gcx api` when a dedicated command
 cannot perform the requested operation.
@@ -52,12 +50,30 @@ Manager boundary: gcx protects resources managed by another tool. If a push
 fails because of `grafana.app/managed-by`, stop and ask/confirm before using
 `--include-managed`.
 
-## Fast Operation Map
+## Typical Update Workflow
+
+1. Preflight — `gcx config check`, then fetch current state with `gcx dashboards get <name> -o json`
+2. Edit — write the modified YAML locally
+3. Validate and push — `gcx resources validate -p <path> -o json`, `gcx resources push -p <path> --dry-run`, `gcx resources push -p <path>`
+4. Verify — `gcx dashboards get <name> -o json`
+
+## Operation Reference
 
 Use JSON/YAML for programmatic work and table/wide output for human summaries.
 
 | Operation | Command pattern |
 |-----------|-----------------|
+| List datasources | `gcx datasources list -o json` |
+| Prometheus metric names | `gcx datasources prometheus labels -d <uid> --label __name__` |
+| Prometheus label values | `gcx datasources prometheus labels -d <uid> --label <label>` |
+| Prometheus metric metadata | `gcx datasources prometheus metadata -d <uid>` |
+| Loki label names | `gcx datasources loki labels -d <uid>` |
+| Loki label values | `gcx datasources loki labels -d <uid> --label <label>` |
+| Tempo attribute names | `gcx datasources tempo labels -d <uid>` |
+| Tempo attribute values | `gcx datasources tempo labels -d <uid> -l service.name` |
+| Pyroscope profile types | `gcx datasources pyroscope profile-types -d <uid>` |
+| Pyroscope label values | `gcx datasources pyroscope labels -d <uid> --label service_name` |
+| Other datasource types | Check `gcx datasources <type> --help` for dedicated subcommands before using `gcx api` |
 | List dashboards | `gcx dashboards list -o wide` |
 | Search by text/tag/folder | `gcx dashboards search "<query>" --tag <tag> --folder <folder-name> -o json` |
 | Get one dashboard | `gcx dashboards get <dashboard-name> -o json` |
@@ -79,25 +95,7 @@ Use JSON/YAML for programmatic work and table/wide output for human summaries.
 `<dashboard-name>` is the dashboard resource name (`metadata.name`), which is
 also the value accepted by `gcx dashboards snapshot`.
 
-## GitOps Pull/Push Workflow
-
-Use this for backups, local edits, and promotion across environments.
-
-```bash
-# Pull source state. Include folders when folder placement matters.
-gcx resources pull --context <source> dashboards folders -p ./dashboards-work -o yaml
-
-# Validate locally before any write.
-gcx resources validate -p ./dashboards-work -o json
-
-# Preview target changes.
-gcx resources push --context <target> -p ./dashboards-work --dry-run
-
-# Apply after review.
-gcx resources push --context <target> -p ./dashboards-work
-```
-
-Notes:
+## Pull/Push Notes
 
 - Pull output directories may include API version/group in their path. Use the
   paths printed by gcx; do not assume a fixed `dashboards/` directory shape.
@@ -106,58 +104,18 @@ Notes:
   progress would be confusing.
 - Dry-run before writing to production unless the user explicitly opts out.
 
-## Folder-Specific Work
-
-Folder membership is stored on dashboard resources; listing dashboards is not a
-folder filter. Use search for folder-filtered dashboard discovery:
+## Snapshots
 
 ```bash
-gcx dashboards search --folder <folder-name> -o json
-```
-
-When authoring or reviewing files, look for folder references in the dashboard
-spec and verify the folder exists:
-
-```bash
-gcx resources get folders/<folder-name> -o json
-gcx resources get dashboards/<dashboard-name> -o json
-```
-
-## Snapshots for Existing Dashboards
-
-Use snapshots to inspect an existing dashboard or confirm a finished change. For
-new dashboard creation, hand off to `create-dashboard`, which includes the full
-visual iteration loop.
-
-```bash
-# Full dashboard PNG. Force agent-mode JSON so file_path is machine-readable.
 GCX_AGENT_MODE=true gcx dashboards snapshot <dashboard-name> --output-dir ./snapshots --since 6h
-
-# With variables.
-GCX_AGENT_MODE=true gcx dashboards snapshot <dashboard-name> --output-dir ./snapshots \
-  --since 6h --var cluster=prod --var datasource=grafanacloud-prom
-
-# One panel.
-GCX_AGENT_MODE=true gcx dashboards snapshot <dashboard-name> --panel <panel-id> \
-  --output-dir ./snapshots --width 1200 --height 700
+# With variables:
+GCX_AGENT_MODE=true gcx dashboards snapshot <dashboard-name> --output-dir ./snapshots --since 6h --var cluster=prod
 ```
 
-If the user needs visual assessment, read/open the PNG from the returned
-`file_path` and summarize what you see. Do not just paste the snapshot path.
+Read the returned `file_path` PNG and summarize what you see; do not just report the path.
 
-Troubleshooting:
-
-- `plugin not found` / renderer 500: Grafana Image Renderer is unavailable.
-- Wrong data: inspect template variables and rerun with `--var` overrides.
-- Cropped image: increase `--height`, `--width`, or render individual panels.
-- Auth/RBAC errors: check `gcx config check` and dashboard/folder permissions.
-
-Inspect variables before rendering:
-
-```bash
-gcx resources get dashboards/<dashboard-name> -o json \
-  | jq '.spec.templating.list[]? | {name, type, current: .current.value}'
-```
+Troubleshooting: `plugin not found`/renderer 500 = image renderer unavailable; wrong data = inspect
+template variables and rerun with `--var`; auth errors = check `gcx config check`.
 
 ## Version Restore Safety
 
@@ -179,6 +137,7 @@ review the newest version, and retry only if the restore is still correct.
 | Symptom | Action |
 |---------|--------|
 | `gcx config check` fails | Use `setup-gcx` before dashboard operations |
+| `gcx resources get datasources` selector error | Use `gcx datasources list` instead — `datasource.grafana.app` is not registered on all instances |
 | Dashboard not found | Search first; confirm `metadata.name`, not just title |
 | Folder filter does not work with list | Use `gcx dashboards search --folder <folder-name>` |
 | Push blocked by manager metadata | Ask before `--include-managed` |

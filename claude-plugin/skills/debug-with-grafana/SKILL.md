@@ -278,11 +278,9 @@ gcx traces query -d <tempo-uid> \
   '{ resource.service.name = "<service-name>" && duration > 1s }' \
   --from now-1h --to now
 
-# Fetch a specific trace by ID (from search results or log trace IDs)
-gcx traces get -d <tempo-uid> <trace-id>
-
-# LLM-friendly trace output for analysis
-gcx traces get -d <tempo-uid> <trace-id> --llm
+# Fetch a specific trace by ID for analysis (from search results or log trace IDs)
+# Always use --llm so Tempo returns its token-efficient LLM trace encoding.
+gcx traces get -d <tempo-uid> <trace-id> --llm -o json
 ```
 
 **TraceQL attribute scoping**: Tempo requires scoped attribute names. Use
@@ -293,6 +291,10 @@ gcx traces get -d <tempo-uid> <trace-id> --llm
 Use `name` (unscoped) for the span name, `duration` for span duration,
 and `status` for span status. Use `trace:rootService` and `trace:rootName`
 for root span attributes (not `rootServiceName` or `rootTraceName`).
+
+When inspecting trace bodies, use `gcx traces get <trace-id> --llm -o json`. Do not fetch the
+OTLP-shaped default trace and manually compact it unless the user explicitly
+needs raw trace JSON for schema/debugging work.
 
 Discover available labels:
 ```bash

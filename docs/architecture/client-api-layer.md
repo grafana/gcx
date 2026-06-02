@@ -310,16 +310,23 @@ func ClientFromContext(ctx *config.Context) (*goapi.GrafanaHTTPAPI, error) {
 
 ## Datasource Query Clients (Third Path)
 
-**Packages:** `internal/query/prometheus`, `internal/query/loki`
+**Packages:** datasource-specific clients under `internal/query/{kind}`, plus shared `internal/query/grafanaquery` and `internal/query/dataframe`.
 
-These clients execute PromQL and LogQL queries against Grafana's datasource-
-specific API endpoints. They bypass all k8s API machinery and use
+These clients execute datasource queries against Grafana's datasource-specific
+or unified query API endpoints. They bypass all k8s API machinery and use
 `rest.HTTPClientFor` to create a plain `*http.Client` from the `rest.Config`,
 then make direct HTTP requests.
 
 **Key distinction:** Unlike `NamespacedClient` and `VersionedClient`, these
 clients do not use `dynamic.Interface`, GVK resolution, or `Unstructured`
 objects. They speak JSON directly to Grafana's query and datasource-proxy APIs.
+
+**Shared unified-query transport:** Datasource clients that POST to Grafana's
+unified datasource query API (`/apis/query.grafana.app/.../query`, with
+`/api/ds/query` fallback) should reuse `internal/query/grafanaquery` for HTTP
+POST/fallback/response-limit handling and `internal/query/dataframe` for the
+Grafana data frame response envelope. Keep plugin-specific payload construction
+and result semantics in the datasource-specific package.
 
 ### Construction
 

@@ -824,6 +824,8 @@ Provider command tree backed by fleet-management `Set/Get` + observed-state RPCs
 
 | File | Purpose |
 |------|---------|
+| `internal/query/grafanaquery/client.go` | Shared Grafana unified-query POST transport with `/api/ds/query` fallback |
+| `internal/query/dataframe/types.go` | Shared Grafana data frame wire types for datasource query responses |
 | `internal/query/prometheus/client.go` | Prometheus query client (Query, Labels, LabelValues, Metadata, Targets) |
 | `internal/query/prometheus/types.go` | Request/response types for Prometheus |
 | `internal/query/prometheus/formatter.go` | Table/text formatting for Prometheus responses |

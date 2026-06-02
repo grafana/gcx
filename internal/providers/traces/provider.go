@@ -38,15 +38,15 @@ func (p *Provider) descriptor() signals.Descriptor {
 			{
 				Build:     dstempo.GetCmd,
 				TokenCost: "medium",
-				LLMHint:   "gcx traces get -d abc123 <trace-id> -o json",
+				LLMHint:   "gcx traces get -d abc123 <trace-id> --llm -o json",
 				Example: `
-  # Fetch a trace by ID
-  gcx traces get -d UID <trace-id>
+  # Fetch a trace by ID for agent analysis
+  gcx traces get -d UID <trace-id> --llm -o json
 
   # Print a Grafana Explore share link for the trace
   gcx traces get -d UID <trace-id> --share-link
 
-  # Output as JSON
+  # Output raw OTLP-shaped JSON when explicitly needed
   gcx traces get -d UID <trace-id> -o json`,
 			},
 			{

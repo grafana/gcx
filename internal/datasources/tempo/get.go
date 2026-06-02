@@ -60,20 +60,20 @@ Use --share-link to print a Grafana Explore URL for the trace, or --open to
 open it in your browser after retrieval succeeds. Share links require an
 explicit time range via --since or --from/--to.`,
 		Example: `
-  # Get a trace using configured default datasource
-  gcx datasources tempo get abc123def456
+  # Get LLM-friendly output for agent analysis
+  gcx datasources tempo get abc123def456 --llm -o json
 
-  # Get a trace with explicit datasource UID
-  gcx datasources tempo get -d tempo-001 abc123def456
+  # Get LLM-friendly output with explicit datasource UID
+  gcx datasources tempo get -d tempo-001 abc123def456 --llm -o json
 
   # Print a Grafana Explore share link for the trace
   gcx datasources tempo get abc123def456 --share-link
 
-  # Get LLM-friendly output
-  gcx datasources tempo get abc123def456 --llm
+  # Get a human-readable trace table
+  gcx datasources tempo get abc123def456
 
-  # Get a trace within a time range
-  gcx datasources tempo get abc123def456 --since 1h`,
+  # Get LLM-friendly output within a time range
+  gcx datasources tempo get abc123def456 --since 1h --llm -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -152,7 +152,7 @@ explicit time range via --since or --from/--to.`,
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   "gcx datasources tempo get -d UID <trace-id> -o json",
+		agent.AnnotationLLMHint:   "gcx datasources tempo get -d UID <trace-id> --llm -o json",
 	}
 
 	opts.setup(cmd.Flags())

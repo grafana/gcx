@@ -78,16 +78,40 @@ func (c *Client) GetChat(ctx context.Context, chatID string) (*Chat, error) {
 	return FetchChat(ctx, c.baseURL, c.freshToken(), chatID, c.httpClient)
 }
 
-// ValidateCLIContext validates that a context ID belongs to a CLI-created chat.
-func (c *Client) ValidateCLIContext(ctx context.Context, contextID string) error {
+// GetChatMessages fetches all messages for a chat.
+func (c *Client) GetChatMessages(ctx context.Context, chatID string) ([]ChatMessage, error) {
+	return FetchChatMessages(ctx, c.baseURL, c.freshToken(), chatID, c.httpClient)
+}
+
+// ListChats lists the caller's chats, with optional filtering and pagination.
+func (c *Client) ListChats(ctx context.Context, opts ListChatsOptions) ([]Chat, error) {
+	return FetchChats(ctx, c.baseURL, c.freshToken(), opts, c.httpClient)
+}
+
+// ValidateCLIContext validates that contextID refers to an existing chat the caller can access.
+// It returns an optional notice when continuing a conversation not started from the CLI.
+func (c *Client) ValidateCLIContext(ctx context.Context, contextID string) (string, error) {
 	chat, err := c.GetChat(ctx, contextID)
 	if err != nil {
-		return fmt.Errorf("failed to validate context: %w", err)
+		return "", fmt.Errorf("failed to validate context: %w", err)
 	}
-	if chat.Source != "cli" {
-		return fmt.Errorf("context %s was not created by CLI (source: %s). Use a CLI-created context or start a new conversation", contextID, chat.Source)
+	return ValidateResumableChatSource(contextID, chat)
+}
+
+// ValidateResumableChatSource reports whether chat can be resumed and returns an
+// optional notice when continuing a conversation not started from the CLI.
+func ValidateResumableChatSource(contextID string, chat *Chat) (string, error) {
+	if chat == nil {
+		return "", fmt.Errorf("context %s not found or not accessible", contextID)
 	}
-	return nil
+	if chat.Source != "" && chat.Source != "cli" {
+		return fmt.Sprintf(
+			"Continuing a %s conversation (id: %s). Message history is shared; agent behavior may differ from the CLI assistant.",
+			chat.Source,
+			contextID,
+		), nil
+	}
+	return "", nil
 }
 
 // GetBaseURL returns the computed base URL for API requests.

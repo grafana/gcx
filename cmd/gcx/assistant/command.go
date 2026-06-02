@@ -78,6 +78,7 @@ Service account tokens are not supported.`,
 	configOpts.BindFlags(cmd.PersistentFlags())
 	cmd.AddCommand(promptCommand(configOpts))
 	cmd.AddCommand(dashboardCommand(configOpts))
+	cmd.AddCommand(conversationCommand(configOpts))
 
 	// Create a ConfigLoader for investigations that shares the same --config/--context
 	// flags already bound by configOpts. Wire the values via PersistentPreRunE so that
@@ -260,11 +261,15 @@ func runPrompt(cmd *cobra.Command, message string, opts *promptOpts, configOpts 
 
 	// Validate context ID if provided
 	if contextID != "" {
-		if err := c.ValidateCLIContext(ctx, contextID); err != nil {
+		notice, err := c.ValidateCLIContext(ctx, contextID)
+		if err != nil {
 			if opts.jsonOut {
 				return jsonError(err)
 			}
 			return err
+		}
+		if notice != "" && !opts.jsonOut {
+			cmdio.Info(errW, "%s", notice)
 		}
 	}
 
