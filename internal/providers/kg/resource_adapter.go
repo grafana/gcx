@@ -282,8 +282,8 @@ func ModelRulesSchema() json.RawMessage {
 }
 
 // NewModelRulesAdapterFactory returns a lazy adapter.Factory for KG model rules.
-// PutFn is intentionally omitted until typed apply lands; `gcx resources push`
-// will not work for model rules yet.
+// CreateFn and UpdateFn are intentionally omitted until typed apply lands;
+// `gcx resources push` will not work for model rules yet.
 func NewModelRulesAdapterFactory(loader RESTConfigLoader) adapter.Factory {
 	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
 		cfg, err := loader.LoadGrafanaConfig(ctx)
