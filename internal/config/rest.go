@@ -272,7 +272,7 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 	}
 
 	// Wrap transport with debug logging so `-vvv` shows every HTTP request.
-	// When --log-http-payload is set, also add full request/response body dumps.
+	// When --insecure-log-http-payload is set, also add full request/response body dumps.
 	// Outermost layer: retry for rate limiting (429) and transient errors.
 	prevWrap := rcfg.WrapTransport
 	payloadLogging := httputils.PayloadLogging(ctx)

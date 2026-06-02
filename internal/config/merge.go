@@ -143,6 +143,21 @@ func mergeGrafanaConfig(base, over *GrafanaConfig) GrafanaConfig {
 		t := *over.TLS
 		result.TLS = &t
 	}
+	if over.OAuthToken != "" {
+		result.OAuthToken = over.OAuthToken
+	}
+	if over.OAuthRefreshToken != "" {
+		result.OAuthRefreshToken = over.OAuthRefreshToken
+	}
+	if over.OAuthTokenExpiresAt != "" {
+		result.OAuthTokenExpiresAt = over.OAuthTokenExpiresAt
+	}
+	if over.OAuthRefreshExpiresAt != "" {
+		result.OAuthRefreshExpiresAt = over.OAuthRefreshExpiresAt
+	}
+	if over.ProxyEndpoint != "" {
+		result.ProxyEndpoint = over.ProxyEndpoint
+	}
 	return result
 }
 

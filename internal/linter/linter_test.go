@@ -179,6 +179,60 @@ func TestLinter_Lint_disableAll_enableRule(t *testing.T) {
 	req.Equal("alert-runbook-link", report.Violations[0].Rule)
 }
 
+func TestLinter_RestrictedCapabilities_RejectsHTTPSend(t *testing.T) {
+	engine, err := linter.New(
+		linter.WithCustomRules([]string{"./testdata/custom-rules/http_send_rule.rego"}),
+	)
+	require.NoError(t, err)
+
+	_, err = engine.Lint(context.TODO())
+	require.Error(t, err, "http.send must be rejected by restricted capabilities")
+}
+
+func TestLinter_RestrictedCapabilities_RejectsNetBuiltin(t *testing.T) {
+	engine, err := linter.New(
+		linter.WithCustomRules([]string{"./testdata/custom-rules/net_rule.rego"}),
+	)
+	require.NoError(t, err)
+
+	_, err = engine.Lint(context.TODO())
+	require.Error(t, err, "net.lookup_ip_addr must be rejected by restricted capabilities")
+}
+
+func TestLinter_RestrictedCapabilities_RejectsOPARuntime(t *testing.T) {
+	engine, err := linter.New(
+		linter.WithCustomRules([]string{"./testdata/custom-rules/opa_runtime_rule.rego"}),
+	)
+	require.NoError(t, err)
+
+	_, err = engine.Lint(context.TODO())
+	require.Error(t, err, "opa.runtime must be rejected by restricted capabilities")
+}
+
+func TestLinter_RestrictedCapabilities_AllowsSafeBuiltins(t *testing.T) {
+	engine, err := linter.New(
+		linter.WithCustomRules([]string{"./testdata/custom-rules/valid_rule.rego"}),
+	)
+	require.NoError(t, err)
+
+	_, err = engine.Lint(context.TODO())
+	require.NoError(t, err, "rules using only safe builtins must compile and run")
+}
+
+func TestLinter_RestrictedCapabilities_BuiltinRulesUnaffected(t *testing.T) {
+	engine, err := linter.New(
+		linter.InputPaths([]string{
+			"./testdata/dashboards/valid.json",
+			"./testdata/dashboards/missing-panel-title.json",
+		}),
+	)
+	require.NoError(t, err)
+
+	report, err := engine.Lint(context.TODO())
+	require.NoError(t, err, "built-in rules must compile and run with restricted capabilities")
+	require.Len(t, report.Violations, 1, "bundled rules should still find violations")
+}
+
 func TestLinter_Lint_disableAll_enableResource(t *testing.T) {
 	req := require.New(t)
 

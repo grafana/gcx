@@ -171,7 +171,7 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   Bare `http.DefaultClient`, standalone `&http.Client{}`, and custom transports
   that bypass `LoggingRoundTripper` are forbidden. The K8s tier is exempt —
   it uses `rest.Config.WrapTransport` which chains `LoggingRoundTripper`
-  via `config.NewNamespacedRESTConfig`. The `--log-http-payload` flag flows
+  via `config.NewNamespacedRESTConfig`. The `--insecure-log-http-payload` flag flows
   through context; `NewDefaultClient` reads it automatically.
 
 ## Taste Rules

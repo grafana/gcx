@@ -36,7 +36,7 @@ type serveOpts struct {
 }
 
 func (opts *serveOpts) setup(flags *pflag.FlagSet) {
-	flags.StringVar(&opts.Address, "address", "0.0.0.0", "Address to bind")
+	flags.StringVar(&opts.Address, "address", "127.0.0.1", "Address to bind (default loopback; use 0.0.0.0 to expose on all interfaces)")
 	flags.IntVar(&opts.Port, "port", 8080, "Port on which the server will listen")
 	flags.StringArrayVarP(&opts.WatchPaths, "watch", "w", nil, "Paths to watch for changes")
 	flags.BoolVar(&opts.NoWatch, "no-watch", opts.NoWatch, "Do not watch for changes")

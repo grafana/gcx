@@ -55,6 +55,40 @@ func New(config Config, context *config.Context, resources *resources.Resources)
 	}
 }
 
+// makeOriginChecker returns a CheckOrigin function that allows only loopback
+// origins and the configured listen address. All other origins are rejected to
+// prevent cross-site WebSocket hijacking of the livereload endpoint.
+func makeOriginChecker(listenAddr string) func(r *http.Request) bool {
+	return func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true
+		}
+		u, err := url.Parse(origin)
+		if err != nil {
+			return false
+		}
+		host := u.Hostname()
+		switch host {
+		case "localhost", "127.0.0.1", "::1":
+			return true
+		}
+		// Honor an exact match against the configured listen address, but skip
+		// wildcard binds: an attacker could otherwise pass `Origin: http://0.0.0.0`
+		// (which historical/edge-case browser behavior routes to loopback) and be
+		// whitelisted, defeating the cross-site WebSocket hijacking protection.
+		switch listenAddr {
+		case "", "0.0.0.0", "::":
+			// wildcard binds: do not accept host == listenAddr
+		default:
+			if host == listenAddr {
+				return true
+			}
+		}
+		return false
+	}
+}
+
 func (s *Server) Start(ctx context.Context) error {
 	assetsFS, err := fs.Sub(embedFS, "embed/assets")
 	if err != nil {
@@ -132,7 +166,7 @@ func (s *Server) Start(ctx context.Context) error {
 	var upgrader = &websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
-		CheckOrigin:     func(_ *http.Request) bool { return true },
+		CheckOrigin:     makeOriginChecker(s.config.ListenAddr),
 	}
 
 	livereload.Initialize()

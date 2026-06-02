@@ -1,54 +1,73 @@
 package config_test
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/stretchr/testify/require"
 )
 
-// Self-signed test cert/key pair generated for testing only.
-const testCertPEM = `-----BEGIN CERTIFICATE-----
-MIIBczCCARmgAwIBAgIUdct9t5JW7uy/OqKXvsdffCRMK7wwCgYIKoZIzj0EAwIw
-DzENMAsGA1UEAwwEdGVzdDAeFw0yNjA0MjIxNzM1MDBaFw0yNzA0MjIxNzM1MDBa
-MA8xDTALBgNVBAMMBHRlc3QwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAARd3mqS
-HOYCZOhkwUTG2qBMN8JnJkTelG33ctDHcC7xfp8xuVKqkP5MHFd5TlIu68tWZg5o
-w0F9VCslYrCGqXCgo1MwUTAdBgNVHQ4EFgQU5LzHFgGER7Gn/UjL6aVP6ZlNbSMw
-HwYDVR0jBBgwFoAU5LzHFgGER7Gn/UjL6aVP6ZlNbSMwDwYDVR0TAQH/BAUwAwEB
-/zAKBggqhkjOPQQDAgNIADBFAiBS4yv4UOt41GsyQVOJVdcmDmhrm98l3GKbKBgB
-PKIFLwIhAJWqcaHMUuYob4/iQWhcat59ijqyr+gd9gP4brGrrHNu
------END CERTIFICATE-----`
+type testTLSMaterial struct {
+	certPEM []byte
+	keyPEM  []byte
+	caPEM   []byte
+}
 
-const testKeyPEM = `-----BEGIN PRIVATE KEY-----
-MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgGNOZS+qPcRefWpz0
-eab7S6cFDjBtPG+fH1ywzwOoummhRANCAARd3mqSHOYCZOhkwUTG2qBMN8JnJkTe
-lG33ctDHcC7xfp8xuVKqkP5MHFd5TlIu68tWZg5ow0F9VCslYrCGqXCg
------END PRIVATE KEY-----`
+func newTestTLSMaterial(t *testing.T) testTLSMaterial {
+	t.Helper()
 
-const testCAPEM = `-----BEGIN CERTIFICATE-----
-MIIBczCCARmgAwIBAgIUdct9t5JW7uy/OqKXvsdffCRMK7wwCgYIKoZIzj0EAwIw
-DzENMAsGA1UEAwwEdGVzdDAeFw0yNjA0MjIxNzM1MDBaFw0yNzA0MjIxNzM1MDBa
-MA8xDTALBgNVBAMMBHRlc3QwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAARd3mqS
-HOYCZOhkwUTG2qBMN8JnJkTelG33ctDHcC7xfp8xuVKqkP5MHFd5TlIu68tWZg5o
-w0F9VCslYrCGqXCgo1MwUTAdBgNVHQ4EFgQU5LzHFgGER7Gn/UjL6aVP6ZlNbSMw
-HwYDVR0jBBgwFoAU5LzHFgGER7Gn/UjL6aVP6ZlNbSMwDwYDVR0TAQH/BAUwAwEB
-/zAKBggqhkjOPQQDAgNIADBFAiBS4yv4UOt41GsyQVOJVdcmDmhrm98l3GKbKBgB
-PKIFLwIhAJWqcaHMUuYob4/iQWhcat59ijqyr+gd9gP4brGrrHNu
------END CERTIFICATE-----`
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			CommonName: "test",
+		},
+		NotBefore:             time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		NotAfter:              time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, pub, priv)
+	require.NoError(t, err)
+
+	keyDER, err := x509.MarshalPKCS8PrivateKey(priv)
+	require.NoError(t, err)
+
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
+
+	return testTLSMaterial{
+		certPEM: certPEM,
+		keyPEM:  keyPEM,
+		caPEM:   certPEM,
+	}
+}
 
 func TestTLS_ResolveFiles(t *testing.T) {
+	material := newTestTLSMaterial(t)
 	dir := t.TempDir()
 	certPath := filepath.Join(dir, "cert.pem")
 	keyPath := filepath.Join(dir, "key.pem")
 	caPath := filepath.Join(dir, "ca.pem")
 
-	require.NoError(t, os.WriteFile(certPath, []byte(testCertPEM), 0600))
-	require.NoError(t, os.WriteFile(keyPath, []byte(testKeyPEM), 0600))
-	require.NoError(t, os.WriteFile(caPath, []byte(testCAPEM), 0600))
+	require.NoError(t, os.WriteFile(certPath, material.certPEM, 0600))
+	require.NoError(t, os.WriteFile(keyPath, material.keyPEM, 0600))
+	require.NoError(t, os.WriteFile(caPath, material.caPEM, 0600))
 
 	cfg := &config.TLS{
 		CertFile: certPath,
@@ -57,9 +76,9 @@ func TestTLS_ResolveFiles(t *testing.T) {
 	}
 
 	require.NoError(t, cfg.ResolveFiles())
-	require.Equal(t, []byte(testCertPEM), cfg.CertData)
-	require.Equal(t, []byte(testKeyPEM), cfg.KeyData)
-	require.Equal(t, []byte(testCAPEM), cfg.CAData)
+	require.Equal(t, material.certPEM, cfg.CertData)
+	require.Equal(t, material.keyPEM, cfg.KeyData)
+	require.Equal(t, material.caPEM, cfg.CAData)
 }
 
 func TestTLS_ResolveFiles_MissingFile(t *testing.T) {
@@ -84,11 +103,12 @@ func TestTLS_ResolveFiles_CertWithoutKey(t *testing.T) {
 }
 
 func TestTLS_ResolveFiles_FileOverridesData(t *testing.T) {
+	material := newTestTLSMaterial(t)
 	dir := t.TempDir()
 	certPath := filepath.Join(dir, "cert.pem")
 	keyPath := filepath.Join(dir, "key.pem")
-	require.NoError(t, os.WriteFile(certPath, []byte(testCertPEM), 0600))
-	require.NoError(t, os.WriteFile(keyPath, []byte(testKeyPEM), 0600))
+	require.NoError(t, os.WriteFile(certPath, material.certPEM, 0600))
+	require.NoError(t, os.WriteFile(keyPath, material.keyPEM, 0600))
 
 	cfg := &config.TLS{
 		CertFile: certPath,
@@ -97,7 +117,7 @@ func TestTLS_ResolveFiles_FileOverridesData(t *testing.T) {
 	}
 
 	require.NoError(t, cfg.ResolveFiles())
-	require.Equal(t, []byte(testCertPEM), cfg.CertData)
+	require.Equal(t, material.certPEM, cfg.CertData)
 }
 
 func TestTLS_ToStdTLSConfig_InsecureOnly(t *testing.T) {
@@ -110,16 +130,19 @@ func TestTLS_ToStdTLSConfig_InsecureOnly(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, tlsCfg.InsecureSkipVerify)
 	require.Equal(t, "example.com", tlsCfg.ServerName)
+	require.Equal(t, uint16(tls.VersionTLS12), tlsCfg.MinVersion)
 }
 
 func TestTLS_ToStdTLSConfig_WithCAData(t *testing.T) {
+	material := newTestTLSMaterial(t)
 	cfg := &config.TLS{
-		CAData: []byte(testCAPEM),
+		CAData: material.caPEM,
 	}
 
 	tlsCfg, err := cfg.ToStdTLSConfig()
 	require.NoError(t, err)
 	require.NotNil(t, tlsCfg.RootCAs)
+	require.Equal(t, uint16(tls.VersionTLS12), tlsCfg.MinVersion)
 }
 
 func TestTLS_ToStdTLSConfig_WithInvalidCAData(t *testing.T) {
@@ -133,12 +156,13 @@ func TestTLS_ToStdTLSConfig_WithInvalidCAData(t *testing.T) {
 }
 
 func TestTLS_ToStdTLSConfig_WithCertFiles(t *testing.T) {
+	material := newTestTLSMaterial(t)
 	dir := t.TempDir()
 	certPath := filepath.Join(dir, "cert.pem")
 	keyPath := filepath.Join(dir, "key.pem")
 
-	require.NoError(t, os.WriteFile(certPath, []byte(testCertPEM), 0600))
-	require.NoError(t, os.WriteFile(keyPath, []byte(testKeyPEM), 0600))
+	require.NoError(t, os.WriteFile(certPath, material.certPEM, 0600))
+	require.NoError(t, os.WriteFile(keyPath, material.keyPEM, 0600))
 
 	cfg := &config.TLS{
 		CertFile: certPath,
@@ -148,23 +172,39 @@ func TestTLS_ToStdTLSConfig_WithCertFiles(t *testing.T) {
 	tlsCfg, err := cfg.ToStdTLSConfig()
 	require.NoError(t, err)
 	require.Len(t, tlsCfg.Certificates, 1)
+	require.Equal(t, uint16(tls.VersionTLS12), tlsCfg.MinVersion)
 }
 
 func TestTLS_ToStdTLSConfig_WithCertData(t *testing.T) {
+	material := newTestTLSMaterial(t)
 	cfg := &config.TLS{
-		CertData: []byte(testCertPEM),
-		KeyData:  []byte(testKeyPEM),
+		CertData: material.certPEM,
+		KeyData:  material.keyPEM,
 	}
 
 	tlsCfg, err := cfg.ToStdTLSConfig()
 	require.NoError(t, err)
 	require.Len(t, tlsCfg.Certificates, 1)
+	require.Equal(t, uint16(tls.VersionTLS12), tlsCfg.MinVersion)
+}
+
+func TestTLS_ToStdTLSConfig_WithMalformedCertData(t *testing.T) {
+	material := newTestTLSMaterial(t)
+	cfg := &config.TLS{
+		CertData: []byte("not-valid-pem"),
+		KeyData:  material.keyPEM,
+	}
+
+	_, err := cfg.ToStdTLSConfig()
+	require.Error(t, err)
 }
 
 func TestTLS_ToStdTLSConfig_HalfConfiguredCertData(t *testing.T) {
+	material := newTestTLSMaterial(t)
+
 	t.Run("CertData without KeyData", func(t *testing.T) {
 		cfg := &config.TLS{
-			CertData: []byte(testCertPEM),
+			CertData: material.certPEM,
 		}
 
 		_, err := cfg.ToStdTLSConfig()
@@ -174,7 +214,7 @@ func TestTLS_ToStdTLSConfig_HalfConfiguredCertData(t *testing.T) {
 
 	t.Run("KeyData without CertData", func(t *testing.T) {
 		cfg := &config.TLS{
-			KeyData: []byte(testKeyPEM),
+			KeyData: material.keyPEM,
 		}
 
 		_, err := cfg.ToStdTLSConfig()
@@ -192,8 +232,9 @@ func TestTLS_ToStdTLSConfig_PinsMinVersionTLS12(t *testing.T) {
 }
 
 func TestTLS_ToStdTLSConfig_CADataAddsToSystemRoots(t *testing.T) {
+	material := newTestTLSMaterial(t)
 	cfg := &config.TLS{
-		CAData: []byte(testCAPEM),
+		CAData: material.caPEM,
 	}
 
 	tlsCfg, err := cfg.ToStdTLSConfig()

@@ -9,7 +9,7 @@ import (
 
 // RequestResponseLoggingRoundTripper logs full HTTP request and response bodies at Debug level
 // via httputil.DumpRequest / httputil.DumpResponse (includes headers — may expose tokens).
-// Enabled when --log-http-payload is set.
+// Enabled when --insecure-log-http-payload is set.
 type RequestResponseLoggingRoundTripper struct {
 	DecoratedTransport http.RoundTripper
 }

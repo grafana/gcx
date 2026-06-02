@@ -260,8 +260,37 @@ func (linter *Linter) Rules(ctx context.Context) ([]Rule, error) {
 	return rules, nil
 }
 
+// restrictedCapabilities returns an OPA capabilities set with network-access
+// and runtime-introspection builtins removed. Stripping http.send, net.*,
+// and opa.runtime prevents custom Rego rules from exfiltrating data or
+// inspecting the OPA runtime environment. AllowNet is also cleared as
+// defense-in-depth against future OPA network builtins we might miss.
+//
+// The shared ast.CapabilitiesForThisVersion() value is never mutated;
+// a fresh copy is taken to avoid global state corruption.
+func restrictedCapabilities() *ast.Capabilities {
+	caps := ast.CapabilitiesForThisVersion()
+
+	filtered := make([]*ast.Builtin, 0, len(caps.Builtins))
+	for _, b := range caps.Builtins {
+		if b.Name == "http.send" || b.Name == "opa.runtime" || strings.HasPrefix(b.Name, "net.") {
+			continue
+		}
+		filtered = append(filtered, b)
+	}
+
+	return &ast.Capabilities{
+		Builtins:        filtered,
+		AllowNet:        []string{},
+		FutureKeywords:  caps.FutureKeywords,
+		Features:        caps.Features,
+		WasmABIVersions: caps.WasmABIVersions,
+	}
+}
+
 func (linter *Linter) prepare(ctx context.Context) (rego.PreparedEvalQuery, error) {
 	regoOpts := []func(*rego.Rego){
+		rego.Capabilities(restrictedCapabilities()),
 		// Matches the report-generation statement in `./bundle/gcx/main/main.rego`
 		rego.Query("lint := data.gcx.main.lint"),
 		rego.ParsedBundle("internal", linter.createDataBundle()),

@@ -396,7 +396,7 @@ func NewClient(opts ClientOpts) *http.Client               // custom: explicit m
 
 `NewDefaultClient` wraps the transport with `LoggingRoundTripper` (Debug for
 2xx/3xx/4xx, Warn for 5xx + transport errors). When `PayloadLogging(ctx)` is
-true (set by `--log-http-payload`), it additionally wraps with
+true (set by `--insecure-log-http-payload`), it additionally wraps with
 `RequestResponseLoggingMiddleware` for full request/response body dumps.
 
 `NewClient` accepts explicit `ClientOpts` for custom middleware stacks, TLS
@@ -410,7 +410,7 @@ func WithPayloadLogging(ctx context.Context, enabled bool) context.Context
 func PayloadLogging(ctx context.Context) bool
 ```
 
-The `--log-http-payload` flag value is threaded into the context by root
+The `--insecure-log-http-payload` flag value is threaded into the context by root
 `PersistentPreRun` and read by `NewDefaultClient`. This avoids passing flag
 values through constructor chains.
 
@@ -419,7 +419,7 @@ values through constructor chains.
 | Type | Log level | Content | Visible at |
 |------|-----------|---------|------------|
 | `LoggingRoundTripper` | Debug (2xx-4xx), Warn (5xx/error) | method, URL, status | `-vvv` / `-v` |
-| `RequestResponseLoggingRoundTripper` | Debug | Full body via `httputil.Dump*` | `-vvv` + `--log-http-payload` |
+| `RequestResponseLoggingRoundTripper` | Debug | Full body via `httputil.Dump*` | `-vvv` + `--insecure-log-http-payload` |
 
 ### `response.go` — Server Response Helpers
 
@@ -543,7 +543,7 @@ To add a new operation to the dynamic client path (e.g., `Patch`):
 | `internal/resources/dynamic/errors.go` | `ParseStatusError()` / `APIError` — error translation |
 | `internal/grafana/client.go` | OpenAPI client factory for /api operations |
 | `internal/httputils/client.go` | Central HTTP client factory (`NewDefaultClient`, `NewClient`) |
-| `internal/httputils/context.go` | `--log-http-payload` context threading |
+| `internal/httputils/context.go` | `--insecure-log-http-payload` context threading |
 | `internal/httputils/logger.go` | Debug-logging round-tripper |
 | `internal/httputils/response.go` | HTTP response helpers for server handlers |
 | `internal/resources/remote/remote.go` | `Processor` interface definition |

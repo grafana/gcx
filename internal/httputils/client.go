@@ -58,7 +58,7 @@ func NewClient(opts ClientOpts) *http.Client {
 //
 // Reads context for configuration:
 //   - PayloadLogging(ctx): when true, adds RequestResponseLoggingMiddleware for full
-//     request/response body dumps (includes headers — may expose tokens).
+//     request/response body dumps (includes raw credentials — see --insecure-log-http-payload).
 func NewDefaultClient(ctx context.Context) *http.Client {
 	return NewDefaultClientWithTLS(ctx, nil)
 }
