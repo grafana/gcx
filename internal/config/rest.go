@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gofrs/flock"
 	authlib "github.com/grafana/authlib/types"
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/httputils"
@@ -68,13 +69,13 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 		if err != nil {
 			return nil, err
 		}
-		lock := &fileLock{path: path + ".lock"}
+		lock := flock.New(path + ".lock")
 		lockCtx, cancel := context.WithTimeout(context.WithoutCancel(reqCtx), 30*time.Second)
 		defer cancel()
-		if err := lock.tryLockContext(lockCtx, 100*time.Millisecond); err != nil {
+		if ok, err := lock.TryLockContext(lockCtx, 100*time.Millisecond); err != nil || !ok {
 			return nil, err
 		}
-		return func() { _ = lock.unlock() }, nil
+		return func() { _ = lock.Unlock() }, nil
 	}
 
 	n.oauthTransport.Reload = func() (auth.StoredTokens, bool, error) {
