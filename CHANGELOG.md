@@ -1,3 +1,17 @@
+## v0.4.0 (2026-06-02)
+
+- Added `gcx assistant conversation list` and `gcx assistant conversation get` to inspect Assistant conversations and transcripts.
+- Added support for continuing accessible non-CLI Assistant conversations by context ID, with a warning when the source is not CLI.
+- Added automatic migration of token-shaped config secrets into the OS keychain, with plaintext fallback when the keychain is unavailable.
+- **Breaking**: renamed `gcx kg rules` to `gcx kg prom-rules` to align with `model-rules` and `relabel-rules`.
+- Added read-only `gcx kg relabel-rules get` for prologue, epilogue, and generated rule groups.
+- Fixed `kg diagnose` verdicts so failing checks no longer report a healthy service, and reclassify scoped no-data checks as label-scope warnings when unscoped data exists.
+- Shared Grafana datasource query transport and dataframe wire types across ClickHouse, InfluxDB, and Infinity clients.
+- Hardened Claude GitHub Actions secret handling by scoping Vault outputs and restricting `@claude` triggers to trusted repository associations.
+- Improved agent guidance for dashboard workflows and Tempo trace analysis, including recommending `gcx traces get --llm -o json` for full-trace analysis.
+- Removed several small direct dependencies in favor of internal implementations.
+
+
 ## v0.3.0 (2026-05-26)
 
 - Added ClickHouse, CloudWatch, and Infinity datasource providers.
