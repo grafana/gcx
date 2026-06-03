@@ -21,6 +21,10 @@ gcx datasources pyroscope query [EXPR] [flags]
   gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
 
+  # Profile query at a specific time (1-minute window ending at that time)
+  gcx datasources pyroscope query '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --time 2026-01-15T10:30:00Z
+
   # Using configured default datasource
   gcx datasources pyroscope query '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
@@ -68,6 +72,7 @@ gcx datasources pyroscope query [EXPR] [flags]
       --since string                  Duration before --to (or now if omitted); mutually exclusive with --from
       --stacktrace-selector strings   Only query locations with these function names, starting from the root (repeatable)
       --step string                   Query step (e.g., '15s', '1m')
+      --time string                   Evaluation time for an instant query (RFC3339, Unix timestamp, or relative like 'now-5m'). Mutually exclusive with --from/--to/--since
       --to string                     End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 

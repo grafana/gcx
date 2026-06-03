@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/queryerror"
@@ -55,8 +56,13 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 			query["intervalMs"] = req.Step.Milliseconds()
 		}
 	} else {
-		from = "now-1m"
-		to = "now"
+		if req.Instant && !req.Start.IsZero() {
+			from = strconv.FormatInt(req.Start.Add(-time.Minute).UnixMilli(), 10)
+			to = strconv.FormatInt(req.Start.UnixMilli(), 10)
+		} else {
+			from = "now-1m"
+			to = "now"
+		}
 		query["instant"] = true
 	}
 
@@ -158,8 +164,13 @@ func (c *Client) MetricQuery(ctx context.Context, datasourceUID string, req Quer
 			query["intervalMs"] = req.Step.Milliseconds()
 		}
 	} else {
-		from = "now-1m"
-		to = "now"
+		if req.Instant && !req.Start.IsZero() {
+			from = strconv.FormatInt(req.Start.Add(-time.Minute).UnixMilli(), 10)
+			to = strconv.FormatInt(req.Start.UnixMilli(), 10)
+		} else {
+			from = "now-1m"
+			to = "now"
+		}
 		query["instant"] = true
 	}
 

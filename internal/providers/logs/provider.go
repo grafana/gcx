@@ -29,6 +29,9 @@ func (p *Provider) descriptor() signals.Descriptor {
   # Query logs using configured default datasource
   gcx logs query '{job="varlogs"}'
 
+  # Query logs at a specific time
+  gcx logs query '{job="varlogs"}' --time 2026-01-15T10:30:00Z
+
   # Query with explicit datasource UID
   gcx logs query -d abc123 '{job="varlogs"} |= "error"'
 
@@ -48,6 +51,9 @@ func (p *Provider) descriptor() signals.Descriptor {
 				Example: `
   # Run a metric query over logs
   gcx logs metrics -d UID 'rate({job="grafana"}[5m])' --since 1h
+
+  # Instant metric query at a specific time
+  gcx logs metrics 'rate({job="grafana"}[5m])' --time 2026-01-15T10:30:00Z
 
   # Print a Grafana Explore share link for the query
   gcx logs metrics 'rate({job="grafana"}[5m])' --share-link

@@ -28,6 +28,9 @@ gcx logs metrics [EXPR] [flags]
   # Run a metric query over logs
   gcx logs metrics -d UID 'rate({job="grafana"}[5m])' --since 1h
 
+  # Instant metric query at a specific time
+  gcx logs metrics 'rate({job="grafana"}[5m])' --time 2026-01-15T10:30:00Z
+
   # Print a Grafana Explore share link for the query
   gcx logs metrics 'rate({job="grafana"}[5m])' --share-link
 
@@ -48,6 +51,7 @@ gcx logs metrics [EXPR] [flags]
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to (or now if omitted); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
+      --time string         Evaluation time for an instant query (RFC3339, Unix timestamp, or relative like 'now-5m'). Mutually exclusive with --from/--to/--since
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 

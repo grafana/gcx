@@ -39,6 +39,9 @@ open it in your browser after the query succeeds.`,
   # Query logs using configured default datasource
   gcx datasources loki query '{job="varlogs"}'
 
+  # Query logs at a specific time
+  gcx datasources loki query '{job="varlogs"}' --time 2026-01-15T10:30:00Z
+
   # Query with explicit datasource UID
   gcx datasources loki query -d UID '{job="varlogs"} |= "error"'
 
@@ -88,17 +91,28 @@ open it in your browser after the query succeeds.`,
 				return err
 			}
 
+			// --time: instant query anchored at a specific timestamp
+			instant := shared.Time != ""
+			if instant {
+				t, err := dsquery.ParseTime(shared.Time, now)
+				if err != nil {
+					return fmt.Errorf("invalid --time value: %w", err)
+				}
+				start = t
+			}
+
 			client, err := loki.NewClient(cfg)
 			if err != nil {
 				return fmt.Errorf("failed to create client: %w", err)
 			}
 
 			req := loki.QueryRequest{
-				Query: expr,
-				Start: start,
-				End:   end,
-				Step:  step,
-				Limit: limit,
+				Query:   expr,
+				Start:   start,
+				End:     end,
+				Step:    step,
+				Limit:   limit,
+				Instant: instant,
 			}
 
 			resp, err := client.Query(ctx, datasourceUID, req)
@@ -135,6 +149,7 @@ open it in your browser after the query succeeds.`,
 	shared.IO.RegisterCustomCodec("raw", loki.NewRawQueryCodec())
 	shared.IO.BindFlags(cmd.Flags())
 	shared.SetupTimeFlags(cmd.Flags())
+	shared.SetupInstantFlag(cmd.Flags())
 	cmd.Flags().StringVar(&shared.Step, "step", "", "Query step (e.g., '15s', '1m')")
 	shared.SetupExprFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")

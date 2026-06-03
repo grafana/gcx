@@ -48,6 +48,7 @@ func (opts *pyroscopeQueryOpts) setup(flags *pflag.FlagSet) {
 	// Register pprof before shared.Setup so it appears in the -o help string.
 	opts.shared.IO.RegisterCustomCodec("pprof", &pprofCodec{})
 	opts.shared.Setup(flags, true)
+	opts.shared.SetupInstantFlag(flags)
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pyroscope is configured)")
 	flags.StringVar(&opts.ProfileType, "profile-type", "", "Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles profile-types' to list available (required)")
@@ -116,6 +117,10 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
   gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
 
+  # Profile query at a specific time (1-minute window ending at that time)
+  gcx datasources pyroscope query '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --time 2026-01-15T10:30:00Z
+
   # Using configured default datasource
   gcx datasources pyroscope query '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
@@ -180,6 +185,16 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 			start, end, _, err := opts.shared.ParseTimes(now)
 			if err != nil {
 				return err
+			}
+
+			// --time: query a 1-minute window ending at the specified timestamp
+			if opts.shared.Time != "" {
+				t, err := dsquery.ParseTime(opts.shared.Time, now)
+				if err != nil {
+					return fmt.Errorf("invalid --time value: %w", err)
+				}
+				start = t.Add(-time.Minute)
+				end = t
 			}
 
 			client, err := pyroscope.NewClient(cfg)

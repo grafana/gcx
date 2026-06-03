@@ -39,6 +39,9 @@ open it in your browser after the query succeeds.`,
   # Rate of log lines over 5 minutes
   gcx datasources loki metrics 'rate({job="varlogs"}[5m])' --since 1h -o table
 
+  # Instant metric query at a specific time
+  gcx datasources loki metrics 'rate({job="varlogs"}[5m])' --time 2026-01-15T10:30:00Z
+
   # Count of error logs
   gcx datasources loki metrics 'count_over_time({job="varlogs"} |= "error" [5m])' --since 1h
 
@@ -88,16 +91,27 @@ open it in your browser after the query succeeds.`,
 				return err
 			}
 
+			// --time: instant query anchored at a specific timestamp
+			instant := shared.Time != ""
+			if instant {
+				t, err := dsquery.ParseTime(shared.Time, now)
+				if err != nil {
+					return fmt.Errorf("invalid --time value: %w", err)
+				}
+				start = t
+			}
+
 			client, err := loki.NewClient(cfg)
 			if err != nil {
 				return fmt.Errorf("failed to create client: %w", err)
 			}
 
 			req := loki.QueryRequest{
-				Query: expr,
-				Start: start,
-				End:   end,
-				Step:  step,
+				Query:   expr,
+				Start:   start,
+				End:     end,
+				Step:    step,
+				Instant: instant,
 			}
 
 			resp, err := client.MetricQuery(ctx, datasourceUID, req)
@@ -133,6 +147,7 @@ open it in your browser after the query succeeds.`,
 	}
 
 	shared.Setup(cmd.Flags(), true)
+	shared.SetupInstantFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
 	share.Setup(cmd.Flags(), "executed query")
 

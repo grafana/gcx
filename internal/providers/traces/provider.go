@@ -29,6 +29,9 @@ func (p *Provider) descriptor() signals.Descriptor {
   # Run a TraceQL query
   gcx traces query -d UID '{ span.http.status_code >= 500 }'
 
+  # Query traces at a specific time (1-minute window ending at that time)
+  gcx traces query '{ span.http.status_code >= 500 }' --time 2026-01-15T10:30:00Z
+
   # Print a Grafana Explore share link for the query
   gcx traces query '{ span.http.status_code >= 500 }' --share-link
 

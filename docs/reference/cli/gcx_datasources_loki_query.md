@@ -27,6 +27,9 @@ gcx datasources loki query [EXPR] [flags]
   # Query logs using configured default datasource
   gcx datasources loki query '{job="varlogs"}'
 
+  # Query logs at a specific time
+  gcx datasources loki query '{job="varlogs"}' --time 2026-01-15T10:30:00Z
+
   # Query with explicit datasource UID
   gcx datasources loki query -d UID '{job="varlogs"} |= "error"'
 
@@ -54,6 +57,7 @@ gcx datasources loki query [EXPR] [flags]
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to (or now if omitted); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
+      --time string         Evaluation time for an instant query (RFC3339, Unix timestamp, or relative like 'now-5m'). Mutually exclusive with --from/--to/--since
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 
