@@ -27,7 +27,7 @@ func (opts *TimeRangeOpts) SetupTimeFlags(flags *pflag.FlagSet) {
 }
 
 // SetupInstantFlag registers the --time flag for instant queries at a specific timestamp.
-// Call this in addition to SetupTimeFlags (or Setup) for commands that support instant queries.
+// Separated from SetupTimeFlags so commands can opt in only when they support instant queries.
 func (opts *TimeRangeOpts) SetupInstantFlag(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.Time, "time", "", "Evaluation time for an instant query (RFC3339, Unix timestamp, or relative like 'now-5m'); mutually exclusive with --from/--to/--since")
 }
