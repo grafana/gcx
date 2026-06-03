@@ -5,11 +5,26 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/glamour"
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/spf13/cobra"
 )
 
 // jsonDiscoveryTip is the help text shown for commands that support --json field selection.
 const jsonDiscoveryTip = "Use --json list to discover available fields, --json field1,field2 to select specific fields."
+
+// relatedSkillFooter returns the "Related skill" footer lines for a command, or
+// nil when no skill is mapped to the command or its ancestors.
+func relatedSkillFooter(cmd *cobra.Command) []string {
+	skills := agent.SkillsForCommand(cmd)
+	if len(skills) == 0 {
+		return nil
+	}
+	lines := []string{"Related skill(s): " + strings.Join(skills, ", ")}
+	for _, name := range skills {
+		lines = append(lines, "  Load with: gcx agent skills get "+name)
+	}
+	return lines
+}
 
 // HelpFunc returns a custom Cobra help function that renders Long descriptions
 // and Examples through glamour markdown rendering when styling is enabled.
@@ -18,12 +33,18 @@ func HelpFunc(defaultHelp func(*cobra.Command, []string)) func(*cobra.Command, [
 	return func(cmd *cobra.Command, args []string) {
 		if !IsStylingEnabled() {
 			defaultHelp(cmd, args)
+			w := cmd.OutOrStdout()
 			// Append JSON discovery tip for commands that support --json.
 			if f := cmd.Flags().Lookup("json"); f != nil {
-				w := cmd.OutOrStdout()
 				fmt.Fprintln(w)
 				fmt.Fprintln(w, "Tip:")
 				fmt.Fprintln(w, "  "+jsonDiscoveryTip)
+			}
+			if footer := relatedSkillFooter(cmd); footer != nil {
+				fmt.Fprintln(w)
+				for _, line := range footer {
+					fmt.Fprintln(w, line)
+				}
 			}
 			return
 		}
@@ -113,6 +134,14 @@ func HelpFunc(defaultHelp func(*cobra.Command, []string)) func(*cobra.Command, [
 		if f := cmd.Flags().Lookup("json"); f != nil {
 			fmt.Fprintln(w, "Tip:")
 			fmt.Fprintln(w, "  "+jsonDiscoveryTip)
+			fmt.Fprintln(w)
+		}
+
+		// --- Related skill footer ---
+		if footer := relatedSkillFooter(cmd); footer != nil {
+			for _, line := range footer {
+				fmt.Fprintln(w, line)
+			}
 			fmt.Fprintln(w)
 		}
 

@@ -151,7 +151,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:           path.Base(os.Args[0]),
 		Short:         "Control plane for Grafana Cloud operations",
-		Long:          "gcx is a unified CLI for managing Grafana resources, dashboards, datasources, alerting, and Cloud product APIs (SLO, IRM, Synthetic Monitoring, Fleet, k6, and more).",
+		Long:          "gcx is a unified CLI for managing Grafana resources, dashboards, datasources, alerting, and Cloud product APIs (SLO, IRM, Synthetic Monitoring, Fleet, k6, and more).\n\nRun 'gcx agent skills list' to see bundled Agent Skills with task-specific guidance.",
 		SilenceUsage:  true,
 		SilenceErrors: true, // We want to print errors ourselves
 		Version:       version,
