@@ -14,8 +14,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// dashboardTableCodec renders an *unstructured.UnstructuredList (or a slice of
-// *unstructured.Unstructured) as a human-readable table.
+// dashboardTableCodec renders dashboard summary data as a human-readable table.
+// Raw unstructured Dashboard objects are projected to summaries before rendering.
 //
 // Default columns: NAME  TITLE  FOLDER  TAGS  AGE
 // Wide columns:    NAME  TITLE  FOLDER  TAGS  PANELS  URL  AGE.
@@ -51,14 +51,10 @@ func (c *dashboardTableCodec) Decode(_ io.Reader, _ any) error {
 }
 
 // Encode writes the table to w.
-// It accepts:
-//   - *unstructured.UnstructuredList
-//   - unstructured.UnstructuredList
-//   - *unstructured.Unstructured   (wrapped in a synthetic list)
-//   - unstructured.Unstructured
-//   - []unstructured.Unstructured
+// It accepts dashboardSummaryList values plus raw unstructured Dashboard objects
+// and lists, which are projected to summaries before rendering.
 func (c *dashboardTableCodec) Encode(w io.Writer, v any) error {
-	items, err := toUnstructuredSlice(v)
+	list, err := toDashboardSummaryList(v)
 	if err != nil {
 		return err
 	}
@@ -72,16 +68,19 @@ func (c *dashboardTableCodec) Encode(w io.Writer, v any) error {
 
 	t := style.NewTable(headers...)
 
-	for _, item := range items {
-		name := item.GetName()
-		title := nestedString(item.Object, "spec", "title")
-		folder := dashboardFolder(item)
-		tags := dashboardTags(item)
-		age := dashboardAge(item)
+	for _, item := range list.Items {
+		name := item.Metadata.Name
+		title := item.Spec.Title
+		folder := item.Spec.Folder
+		if folder == "" {
+			folder = "General"
+		}
+		tags := strings.Join(item.Spec.Tags, ", ")
+		age := dashboardSummaryAge(item)
 
 		if c.Wide {
-			panels := dashboardPanelCount(item)
-			dashURL := dashboardURL(c.GrafanaURL, item)
+			panels := dashboardSummaryPanelCount(item)
+			dashURL := dashboardSummaryURL(c.GrafanaURL, item)
 			t.Row(name, title, folder, tags, panels, dashURL, age)
 		} else {
 			t.Row(name, title, folder, tags, age)
@@ -91,38 +90,85 @@ func (c *dashboardTableCodec) Encode(w io.Writer, v any) error {
 	return t.Render(w)
 }
 
-// dashboardFolder extracts the folder name from the dashboard's annotations.
-// The annotation key is "grafana.app/folder"; empty values map to "General".
-func dashboardFolder(item unstructured.Unstructured) string {
+func toDashboardSummaryList(v any) (*dashboardSummaryList, error) {
+	single := func(item dashboardSummary) *dashboardSummaryList {
+		return &dashboardSummaryList{
+			Kind:       "DashboardSummaryList",
+			APIVersion: item.APIVersion,
+			Items:      []dashboardSummary{item},
+		}
+	}
+
+	switch val := v.(type) {
+	case *dashboardSummaryList:
+		if val == nil {
+			return &dashboardSummaryList{Kind: "DashboardSummaryList", Items: []dashboardSummary{}}, nil
+		}
+		return val, nil
+	case dashboardSummaryList:
+		return &val, nil
+	case *dashboardSummary:
+		if val == nil {
+			return &dashboardSummaryList{Kind: "DashboardSummaryList", Items: []dashboardSummary{}}, nil
+		}
+		return single(*val), nil
+	case dashboardSummary:
+		return single(val), nil
+	default:
+		items, err := toUnstructuredSlice(v)
+		if err != nil {
+			return nil, err
+		}
+		return dashboardListSummary(&unstructured.UnstructuredList{Items: items}), nil
+	}
+}
+
+func dashboardSummaryAge(item dashboardSummary) string {
+	if item.Metadata.CreationTimestamp == nil || item.Metadata.CreationTimestamp.IsZero() {
+		return ""
+	}
+	return formatAge(time.Since(item.Metadata.CreationTimestamp.Time))
+}
+
+func dashboardSummaryPanelCount(item dashboardSummary) string {
+	if item.Spec.PanelCount == nil {
+		return ""
+	}
+	return strconv.Itoa(*item.Spec.PanelCount)
+}
+
+func dashboardSummaryURL(grafanaURL string, item dashboardSummary) string {
+	slug := ""
+	if item.Metadata.Annotations != nil {
+		slug = item.Metadata.Annotations["grafana.app/slug"]
+	}
+	return dashboardURLFromParts(grafanaURL, item.Metadata.Name, slug)
+}
+
+func dashboardFolderUID(item unstructured.Unstructured) string {
 	annotations := item.GetAnnotations()
 	if annotations == nil {
-		return "General"
+		return ""
 	}
-	folder := annotations["grafana.app/folder"]
-	if folder == "" {
-		return "General"
-	}
-	return folder
+	return annotations["grafana.app/folder"]
 }
 
-// dashboardTags returns the dashboard's tags as a comma-separated string.
-// Tags live at spec.tags ([]string).
-func dashboardTags(item unstructured.Unstructured) string {
+func dashboardFolderPath(folderUID string, folderPaths map[string]string) string {
+	if folderUID == "" {
+		return "General"
+	}
+	if path := folderPaths[folderUID]; path != "" {
+		return path
+	}
+	return folderUID
+}
+
+func dashboardTagSlice(item unstructured.Unstructured) []string {
 	raw, found, err := unstructured.NestedStringSlice(item.Object, "spec", "tags")
 	if err != nil || !found {
-		return ""
+		return nil
 	}
-	return strings.Join(raw, ", ")
-}
-
-// dashboardAge returns a human-readable age string derived from the resource's
-// creationTimestamp. Returns an empty string when the timestamp is missing.
-func dashboardAge(item unstructured.Unstructured) string {
-	ts := item.GetCreationTimestamp()
-	if ts.IsZero() {
-		return ""
-	}
-	return formatAge(time.Since(ts.Time))
+	return raw
 }
 
 // formatAge converts a duration into a compact human-readable string:
@@ -140,11 +186,11 @@ func formatAge(d time.Duration) string {
 	}
 }
 
-// dashboardPanelCount returns the panel count as a string.
+// dashboardPanelCountValue returns the panel count.
 // For v1-family dashboards the count comes from spec.panels.
 // For v2-family dashboards (grafana-app-sdk) the count comes from spec.elements.
-// Returns "" when neither field is present.
-func dashboardPanelCount(item unstructured.Unstructured) string {
+// Returns nil when neither field is present.
+func dashboardPanelCountValue(item unstructured.Unstructured) *int {
 	apiVersion := item.GetAPIVersion()
 
 	gv, err := schema.ParseGroupVersion(apiVersion)
@@ -153,17 +199,19 @@ func dashboardPanelCount(item unstructured.Unstructured) string {
 		// v2 spec.elements is a map[id]→element, not a slice.
 		elements, found, err := unstructured.NestedMap(item.Object, "spec", "elements")
 		if err != nil || !found {
-			return ""
+			return nil
 		}
-		return strconv.Itoa(len(elements))
+		count := len(elements)
+		return &count
 	}
 
 	// v1-family (default)
 	panels, found, err := unstructured.NestedSlice(item.Object, "spec", "panels")
 	if err != nil || !found {
-		return ""
+		return nil
 	}
-	return strconv.Itoa(len(panels))
+	count := len(panels)
+	return &count
 }
 
 // isDigit reports whether b is an ASCII decimal digit.
@@ -171,19 +219,9 @@ func isDigit(b byte) bool {
 	return b >= '0' && b <= '9'
 }
 
-// dashboardURL synthesises the Grafana deep-link URL for a dashboard.
-// Format: {grafanaURL}/d/{name}/{slug}
-// The slug is read from the "grafana.app/slug" annotation.
-// Returns empty string when grafanaURL is not set.
-func dashboardURL(grafanaURL string, item unstructured.Unstructured) string {
+func dashboardURLFromParts(grafanaURL, name, slug string) string {
 	if grafanaURL == "" {
 		return ""
-	}
-
-	name := item.GetName()
-	slug := ""
-	if ann := item.GetAnnotations(); ann != nil {
-		slug = ann["grafana.app/slug"]
 	}
 
 	base := strings.TrimSuffix(grafanaURL, "/")

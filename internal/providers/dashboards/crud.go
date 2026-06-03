@@ -31,10 +31,13 @@ type GrafanaConfigLoader interface {
 // list command
 // ---------------------------------------------------------------------------
 
+const defaultDashboardListLimit int64 = 50
+
 type listOpts struct {
-	IO         cmdio.Options
-	APIVersion string
-	Limit      int64
+	IO            cmdio.Options
+	APIVersion    string
+	Limit         int64
+	ContinueToken string
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
@@ -44,12 +47,16 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 
 	flags.StringVar(&o.APIVersion, "api-version", "", "API version to use (e.g. dashboard.grafana.app/v1); defaults to server preferred version")
-	flags.Int64Var(&o.Limit, "limit", 0, "Maximum number of dashboards to return in a single request (0 for no limit)")
+	flags.Int64Var(&o.Limit, "limit", defaultDashboardListLimit, "Maximum number of dashboards to return in one page (0 fetches all pages)")
+	flags.StringVar(&o.ContinueToken, "continue", "", "Continue token for the next page (requires --limit > 0; use the token shown by a previous limited response)")
 }
 
 func (o *listOpts) Validate() error {
 	if o.Limit < 0 {
 		return fmt.Errorf("--limit must be >= 0, got %d", o.Limit)
+	}
+	if o.ContinueToken != "" && o.Limit == 0 {
+		return errors.New("--continue requires --limit > 0")
 	}
 	return o.IO.Validate()
 }
@@ -83,7 +90,7 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			list, err := client.List(ctx, desc, metav1.ListOptions{Limit: opts.Limit})
+			list, err := client.List(ctx, desc, metav1.ListOptions{Limit: opts.Limit, Continue: opts.ContinueToken})
 			if err != nil {
 				return err
 			}
@@ -94,13 +101,45 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				opts.IO.RegisterCustomCodec("wide", newDashboardTableCodec(true, cfg.GrafanaURL))
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), list)
+			folderPaths, _ := loadFolderPaths(ctx, cfg, client)
+			output := dashboardListOutputValue(list, opts.IO.OutputFormat, folderPaths)
+			if err := opts.IO.Encode(cmd.OutOrStdout(), output); err != nil {
+				return err
+			}
+
+			emitListPaginationHint(cmd.ErrOrStderr(), os.Args, list, opts)
+			return nil
 		},
 	}
 
 	opts.setup(cmd.Flags())
 
 	return cmd
+}
+
+func dashboardListOutputValue(list *unstructured.UnstructuredList, _ string, folderPaths map[string]string) any {
+	return dashboardListSummaryWithFolderPaths(list, folderPaths)
+}
+
+func emitListPaginationHint(w io.Writer, argv []string, list *unstructured.UnstructuredList, opts *listOpts) {
+	if list == nil || opts == nil || list.GetContinue() == "" || !shouldEmitListPaginationHint(opts.IO.OutputFormat) {
+		return
+	}
+
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = int64(len(list.Items))
+	}
+
+	cmdio.EmitHint(
+		w,
+		fmt.Sprintf("showing %d dashboards; more pages are available", len(list.Items)),
+		cmdio.BuildPaginationCommand(argv, limit, list.GetContinue()),
+	)
+}
+
+func shouldEmitListPaginationHint(outputFormat string) bool {
+	return outputFormat == "table" || outputFormat == "wide"
 }
 
 // ---------------------------------------------------------------------------

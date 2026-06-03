@@ -241,6 +241,28 @@ func TestFormatAge(t *testing.T) {
 	}
 }
 
+func TestDashboardTableCodec_Encode_SummaryList(t *testing.T) {
+	item := makeItem("dash-summary", "dashboard.grafana.app/v1", "Summary Dashboard", "folder", nil,
+		map[string]string{"grafana.app/slug": "summary-dashboard"},
+		map[string]any{"panels": panels(4)},
+	)
+	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{item}}
+	summary := dashboards.DashboardListSummaryForTest(list)
+
+	codec := dashboards.NewDashboardTableCodecForTest(true, "https://example.grafana.net")
+	var buf bytes.Buffer
+	if err := codec.Encode(&buf, summary); err != nil {
+		t.Fatalf("Encode(summary) error = %v", err)
+	}
+
+	output := buf.String()
+	for _, want := range []string{"dash-summary", "Summary Dashboard", "folder", "4", "https://example.grafana.net/d/dash-summary/summary-dashboard"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("summary table output missing %q:\n%s", want, output)
+		}
+	}
+}
+
 func TestDashboardTableCodec_Format(t *testing.T) {
 	narrow := dashboards.NewDashboardTableCodecForTest(false, "")
 	if narrow.Format() != "table" {
