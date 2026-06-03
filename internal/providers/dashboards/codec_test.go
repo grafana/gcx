@@ -241,25 +241,22 @@ func TestFormatAge(t *testing.T) {
 	}
 }
 
-func TestDashboardTableCodec_Encode_SummaryList(t *testing.T) {
-	item := makeItem("dash-summary", "dashboard.grafana.app/v1", "Summary Dashboard", "folder", nil,
-		map[string]string{"grafana.app/slug": "summary-dashboard"},
-		map[string]any{"panels": panels(4)},
-	)
+func TestDashboardTableCodec_Encode_FolderPaths(t *testing.T) {
+	item := makeItem("dash-folder", "dashboard.grafana.app/v1", "Folder Dashboard", "folder-uid", nil, nil, nil)
 	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{item}}
-	summary := dashboards.DashboardListSummaryForTest(list)
 
-	codec := dashboards.NewDashboardTableCodecForTest(true, "https://example.grafana.net")
+	codec := dashboards.NewDashboardTableCodecWithFolderPathsForTest(false, "", map[string]string{"folder-uid": "Team/Service"})
 	var buf bytes.Buffer
-	if err := codec.Encode(&buf, summary); err != nil {
-		t.Fatalf("Encode(summary) error = %v", err)
+	if err := codec.Encode(&buf, list); err != nil {
+		t.Fatalf("Encode(folder paths) error = %v", err)
 	}
 
 	output := buf.String()
-	for _, want := range []string{"dash-summary", "Summary Dashboard", "folder", "4", "https://example.grafana.net/d/dash-summary/summary-dashboard"} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("summary table output missing %q:\n%s", want, output)
-		}
+	if !strings.Contains(output, "Team/Service") {
+		t.Fatalf("table output missing folder path:\n%s", output)
+	}
+	if strings.Contains(output, "folder-uid") {
+		t.Fatalf("table output should render folder path instead of UID:\n%s", output)
 	}
 }
 

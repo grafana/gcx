@@ -20,6 +20,11 @@ func NewDashboardTableCodecForTest(wide bool, grafanaURL string) *dashboardTable
 	return newDashboardTableCodec(wide, grafanaURL)
 }
 
+// NewDashboardTableCodecWithFolderPathsForTest constructs a dashboardTableCodec with folder paths for testing.
+func NewDashboardTableCodecWithFolderPathsForTest(wide bool, grafanaURL string, folderPaths map[string]string) *dashboardTableCodec {
+	return newDashboardTableCodecWithFolderPaths(wide, grafanaURL, folderPaths)
+}
+
 // DecodeManifestForTest exposes the unexported decodeManifest function for table-driven tests.
 //
 //nolint:gochecknoglobals // test-only export; required to expose unexported function to dashboards_test package.
@@ -49,21 +54,6 @@ func NewListOptsForTest(flags *pflag.FlagSet) *listOpts {
 // EmitListPaginationHintForTest exposes the pagination hint helper.
 func EmitListPaginationHintForTest(w io.Writer, argv []string, list *unstructured.UnstructuredList, opts *listOpts) {
 	emitListPaginationHint(w, argv, list, opts)
-}
-
-// DashboardListSummaryForTest exposes the list summary projection.
-//
-//nolint:gochecknoglobals // test-only export; required to expose unexported function to dashboards_test package.
-var DashboardListSummaryForTest = dashboardListSummary
-
-// DashboardListOutputValueForTest exposes the output projection switch.
-func DashboardListOutputValueForTest(list *unstructured.UnstructuredList, outputFormat string) any {
-	return dashboardListOutputValue(list, outputFormat, nil)
-}
-
-// DashboardListOutputValueWithFolderPathsForTest exposes the output projection switch with folder paths.
-func DashboardListOutputValueWithFolderPathsForTest(list *unstructured.UnstructuredList, outputFormat string, folderPaths map[string]string) any {
-	return dashboardListOutputValue(list, outputFormat, folderPaths)
 }
 
 // BuildFolderPathMapForTest exposes the folder path helper.

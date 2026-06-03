@@ -14,8 +14,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// dashboardTableCodec renders dashboard summary data as a human-readable table.
-// Raw unstructured Dashboard objects are projected to summaries before rendering.
+// dashboardTableCodec renders an *unstructured.UnstructuredList (or a slice of
+// *unstructured.Unstructured) as a human-readable table.
 //
 // Default columns: NAME  TITLE  FOLDER  TAGS  AGE
 // Wide columns:    NAME  TITLE  FOLDER  TAGS  PANELS  URL  AGE.
@@ -24,7 +24,11 @@ import (
 // wide enables the extended PANELS and URL columns.
 // grafanaURL is used to synthesise deep-link URLs in wide mode.
 func newDashboardTableCodec(wide bool, grafanaURL string) *dashboardTableCodec {
-	return &dashboardTableCodec{Wide: wide, GrafanaURL: grafanaURL}
+	return newDashboardTableCodecWithFolderPaths(wide, grafanaURL, nil)
+}
+
+func newDashboardTableCodecWithFolderPaths(wide bool, grafanaURL string, folderPaths map[string]string) *dashboardTableCodec {
+	return &dashboardTableCodec{Wide: wide, GrafanaURL: grafanaURL, FolderPaths: folderPaths}
 }
 
 type dashboardTableCodec struct {
@@ -35,6 +39,9 @@ type dashboardTableCodec struct {
 	// wide mode (e.g. "https://mystack.grafana.net"). May be empty when not
 	// available, in which case the URL column is left blank.
 	GrafanaURL string
+
+	// FolderPaths maps folder UID to human-readable folder path.
+	FolderPaths map[string]string
 }
 
 // Format implements format.Codec.
@@ -51,10 +58,14 @@ func (c *dashboardTableCodec) Decode(_ io.Reader, _ any) error {
 }
 
 // Encode writes the table to w.
-// It accepts dashboardSummaryList values plus raw unstructured Dashboard objects
-// and lists, which are projected to summaries before rendering.
+// It accepts:
+//   - *unstructured.UnstructuredList
+//   - unstructured.UnstructuredList
+//   - *unstructured.Unstructured   (wrapped in a synthetic list)
+//   - unstructured.Unstructured
+//   - []unstructured.Unstructured
 func (c *dashboardTableCodec) Encode(w io.Writer, v any) error {
-	list, err := toDashboardSummaryList(v)
+	items, err := toUnstructuredSlice(v)
 	if err != nil {
 		return err
 	}
@@ -68,19 +79,16 @@ func (c *dashboardTableCodec) Encode(w io.Writer, v any) error {
 
 	t := style.NewTable(headers...)
 
-	for _, item := range list.Items {
-		name := item.Metadata.Name
-		title := item.Spec.Title
-		folder := item.Spec.Folder
-		if folder == "" {
-			folder = "General"
-		}
-		tags := strings.Join(item.Spec.Tags, ", ")
-		age := dashboardSummaryAge(item)
+	for _, item := range items {
+		name := item.GetName()
+		title := nestedString(item.Object, "spec", "title")
+		folder := dashboardFolder(item, c.FolderPaths)
+		tags := dashboardTags(item)
+		age := dashboardAge(item)
 
 		if c.Wide {
-			panels := dashboardSummaryPanelCount(item)
-			dashURL := dashboardSummaryURL(c.GrafanaURL, item)
+			panels := dashboardPanelCount(item)
+			dashURL := dashboardURL(c.GrafanaURL, item)
 			t.Row(name, title, folder, tags, panels, dashURL, age)
 		} else {
 			t.Row(name, title, folder, tags, age)
@@ -90,41 +98,8 @@ func (c *dashboardTableCodec) Encode(w io.Writer, v any) error {
 	return t.Render(w)
 }
 
-func toDashboardSummaryList(v any) (*dashboardSummaryList, error) {
-	switch val := v.(type) {
-	case *dashboardSummaryList:
-		return val, nil
-	case dashboardSummaryList:
-		return &val, nil
-	default:
-		items, err := toUnstructuredSlice(v)
-		if err != nil {
-			return nil, err
-		}
-		return dashboardListSummary(&unstructured.UnstructuredList{Items: items}), nil
-	}
-}
-
-func dashboardSummaryAge(item dashboardSummary) string {
-	if item.Metadata.CreationTimestamp == nil || item.Metadata.CreationTimestamp.IsZero() {
-		return ""
-	}
-	return formatAge(time.Since(item.Metadata.CreationTimestamp.Time))
-}
-
-func dashboardSummaryPanelCount(item dashboardSummary) string {
-	if item.Spec.PanelCount == nil {
-		return ""
-	}
-	return strconv.Itoa(*item.Spec.PanelCount)
-}
-
-func dashboardSummaryURL(grafanaURL string, item dashboardSummary) string {
-	slug := ""
-	if item.Metadata.Annotations != nil {
-		slug = item.Metadata.Annotations["grafana.app/slug"]
-	}
-	return dashboardURLFromParts(grafanaURL, item.Metadata.Name, slug)
+func dashboardFolder(item unstructured.Unstructured, folderPaths map[string]string) string {
+	return dashboardFolderPath(dashboardFolderUID(item), folderPaths)
 }
 
 func dashboardFolderUID(item unstructured.Unstructured) string {
@@ -145,12 +120,24 @@ func dashboardFolderPath(folderUID string, folderPaths map[string]string) string
 	return folderUID
 }
 
+func dashboardTags(item unstructured.Unstructured) string {
+	return strings.Join(dashboardTagSlice(item), ", ")
+}
+
 func dashboardTagSlice(item unstructured.Unstructured) []string {
 	raw, found, err := unstructured.NestedStringSlice(item.Object, "spec", "tags")
 	if err != nil || !found {
 		return nil
 	}
 	return raw
+}
+
+func dashboardAge(item unstructured.Unstructured) string {
+	ts := item.GetCreationTimestamp()
+	if ts.IsZero() {
+		return ""
+	}
+	return formatAge(time.Since(ts.Time))
 }
 
 // formatAge converts a duration into a compact human-readable string:
@@ -166,6 +153,14 @@ func formatAge(d time.Duration) string {
 	default:
 		return fmt.Sprintf("%dd", int(d.Hours()/24))
 	}
+}
+
+func dashboardPanelCount(item unstructured.Unstructured) string {
+	count := dashboardPanelCountValue(item)
+	if count == nil {
+		return ""
+	}
+	return strconv.Itoa(*count)
 }
 
 // dashboardPanelCountValue returns the panel count.
@@ -199,6 +194,14 @@ func dashboardPanelCountValue(item unstructured.Unstructured) *int {
 // isDigit reports whether b is an ASCII decimal digit.
 func isDigit(b byte) bool {
 	return b >= '0' && b <= '9'
+}
+
+func dashboardURL(grafanaURL string, item unstructured.Unstructured) string {
+	slug := ""
+	if ann := item.GetAnnotations(); ann != nil {
+		slug = ann["grafana.app/slug"]
+	}
+	return dashboardURLFromParts(grafanaURL, item.GetName(), slug)
 }
 
 func dashboardURLFromParts(grafanaURL, name, slug string) string {

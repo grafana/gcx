@@ -95,15 +95,15 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			// Wide codec needs the Grafana URL for link synthesis.
-			// Re-register with the real URL after cfg is loaded.
-			if opts.IO.OutputFormat == "wide" {
-				opts.IO.RegisterCustomCodec("wide", newDashboardTableCodec(true, cfg.GrafanaURL))
+			// Table codecs need folder paths, and wide also needs the Grafana URL
+			// for link synthesis. Re-register with runtime context after cfg is loaded.
+			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
+				folderPaths, _ := loadFolderPaths(ctx, cfg, client)
+				opts.IO.RegisterCustomCodec("table", newDashboardTableCodecWithFolderPaths(false, "", folderPaths))
+				opts.IO.RegisterCustomCodec("wide", newDashboardTableCodecWithFolderPaths(true, cfg.GrafanaURL, folderPaths))
 			}
 
-			folderPaths, _ := loadFolderPaths(ctx, cfg, client)
-			output := dashboardListOutputValue(list, opts.IO.OutputFormat, folderPaths)
-			if err := opts.IO.Encode(cmd.OutOrStdout(), output); err != nil {
+			if err := opts.IO.Encode(cmd.OutOrStdout(), list); err != nil {
 				return err
 			}
 
@@ -115,10 +115,6 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts.setup(cmd.Flags())
 
 	return cmd
-}
-
-func dashboardListOutputValue(list *unstructured.UnstructuredList, _ string, folderPaths map[string]string) any {
-	return dashboardListSummaryWithFolderPaths(list, folderPaths)
 }
 
 func emitListPaginationHint(w io.Writer, argv []string, list *unstructured.UnstructuredList, opts *listOpts) {
