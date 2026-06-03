@@ -135,7 +135,7 @@ var commandAnnotations = map[string]annotation{
 	// skills
 	"gcx agent skills install":   {Cost: "small"},
 	"gcx agent skills list":      {Cost: "small"},
-	"gcx agent skills get":       {Cost: "small", Hint: "<name> -o text"},
+	"gcx agent skills get":       {Cost: "small (medium for large skills)", Hint: "<name> [references/<file>]"},
 	"gcx agent skills update":    {Cost: "small"},
 	"gcx agent skills uninstall": {Cost: "small"},
 
