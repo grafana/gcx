@@ -91,29 +91,11 @@ func (c *dashboardTableCodec) Encode(w io.Writer, v any) error {
 }
 
 func toDashboardSummaryList(v any) (*dashboardSummaryList, error) {
-	single := func(item dashboardSummary) *dashboardSummaryList {
-		return &dashboardSummaryList{
-			Kind:       "DashboardSummaryList",
-			APIVersion: item.APIVersion,
-			Items:      []dashboardSummary{item},
-		}
-	}
-
 	switch val := v.(type) {
 	case *dashboardSummaryList:
-		if val == nil {
-			return &dashboardSummaryList{Kind: "DashboardSummaryList", Items: []dashboardSummary{}}, nil
-		}
 		return val, nil
 	case dashboardSummaryList:
 		return &val, nil
-	case *dashboardSummary:
-		if val == nil {
-			return &dashboardSummaryList{Kind: "DashboardSummaryList", Items: []dashboardSummary{}}, nil
-		}
-		return single(*val), nil
-	case dashboardSummary:
-		return single(val), nil
 	default:
 		items, err := toUnstructuredSlice(v)
 		if err != nil {

@@ -122,7 +122,7 @@ func dashboardListOutputValue(list *unstructured.UnstructuredList, _ string, fol
 }
 
 func emitListPaginationHint(w io.Writer, argv []string, list *unstructured.UnstructuredList, opts *listOpts) {
-	if list == nil || opts == nil || list.GetContinue() == "" || !shouldEmitListPaginationHint(opts.IO.OutputFormat) {
+	if list.GetContinue() == "" || !shouldEmitListPaginationHint(opts.IO.OutputFormat) {
 		return
 	}
 
