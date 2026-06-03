@@ -40,7 +40,6 @@ gcx datasources pyroscope exemplars span [EXPR] [flags]
   -o, --output string           Output format. One of: agents, json, table, yaml (default "table")
       --profile-type string     Profile type ID (default "process_cpu:cpu:nanoseconds:cpu:nanoseconds")
       --since string            Duration before --to (or now if omitted); mutually exclusive with --from
-      --time string             Evaluation time for an instant query (RFC3339, Unix timestamp, or relative like 'now-5m'); mutually exclusive with --from/--to/--since
       --to string               End time (RFC3339, Unix timestamp, or relative like 'now')
       --top-n int               Maximum number of exemplars to return (default 100)
 ```

@@ -24,6 +24,11 @@ func (opts *TimeRangeOpts) SetupTimeFlags(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.From, "from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
 	flags.StringVar(&opts.To, "to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
 	flags.StringVar(&opts.Since, "since", "", "Duration before --to (or now if omitted); mutually exclusive with --from")
+}
+
+// SetupInstantFlag registers the --time flag for instant queries at a specific timestamp.
+// Call this in addition to SetupTimeFlags (or Setup) for commands that support instant queries.
+func (opts *TimeRangeOpts) SetupInstantFlag(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.Time, "time", "", "Evaluation time for an instant query (RFC3339, Unix timestamp, or relative like 'now-5m'); mutually exclusive with --from/--to/--since")
 }
 

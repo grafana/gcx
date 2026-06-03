@@ -48,7 +48,6 @@ gcx traces metrics [TRACEQL] [flags]
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to (or now if omitted); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
-      --time string         Evaluation time for an instant query (RFC3339, Unix timestamp, or relative like 'now-5m'); mutually exclusive with --from/--to/--since
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 

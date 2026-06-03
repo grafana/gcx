@@ -68,7 +68,6 @@ gcx datasources pyroscope query [EXPR] [flags]
       --since string                  Duration before --to (or now if omitted); mutually exclusive with --from
       --stacktrace-selector strings   Only query locations with these function names, starting from the root (repeatable)
       --step string                   Query step (e.g., '15s', '1m')
-      --time string                   Evaluation time for an instant query (RFC3339, Unix timestamp, or relative like 'now-5m'); mutually exclusive with --from/--to/--since
       --to string                     End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 
