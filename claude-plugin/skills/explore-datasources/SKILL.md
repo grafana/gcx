@@ -80,7 +80,7 @@ gcx metrics query -d <datasource-uid> 'rate(http_requests_total[5m])' --time 202
 gcx metrics query -d <datasource-uid> 'rate(http_requests_total[5m])' --from now-1h --to now
 ```
 
-**Choosing instant vs range:** Use `--time` for instant queries when you need a snapshot at a specific moment — e.g. "what is the current rate?" or "what was the rate an hour ago?". Use `--from`/`--to` for range queries when you need a time series. For point-in-time comparisons (e.g. "has traffic changed vs an hour ago?"), run two instant queries with different `--time` values rather than a single range query.
+**Choosing instant vs range:** Use `--time` for a value *at* a moment ("what is the current rate?", "what was the rate an hour ago?"). Use `--from`/`--to` for anything *across* a window — peak detection, totals, trends, or ranking over time. For point-in-time comparisons, run two `--time` queries rather than a range. If the PromQL uses `increase()`, `max_over_time()`, or similar over a long window (hours/days), always use `--from`/`--to` — the range lets you verify the full series and aggregate with `sum by (label)`, not `count ... > 0` which loses the magnitude.
 
 **Expected output:** Table showing metric values with labels and timestamps.
 

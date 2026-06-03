@@ -41,7 +41,7 @@ gcx logs query '{job="varlogs"}'
 
 ### Instant Queries
 
-Query current values:
+Query current values, or at a specific point in time with `--time`:
 
 ```bash
 # Current uptime for all targets
@@ -52,7 +52,13 @@ gcx metrics query -d <uid> 'avg by(job) (rate(cpu_usage_seconds[5m]))'
 
 # Memory usage with threshold
 gcx metrics query -d <uid> 'node_memory_MemAvailable_bytes < 1000000000'
+
+# Instant query at a specific timestamp (mutually exclusive with --from/--to/--since)
+gcx metrics query -d <uid> 'rate(http_requests_total[5m])' --time 2026-05-14T12:00:00Z
+gcx metrics query -d <uid> 'up' --time now-1h
 ```
+
+**Do not use `--time` with over-time aggregations** (`increase()`, `max_over_time()`, `avg_over_time()`, etc.) where the window defines the answer. Use `--from`/`--to` instead so you can see the full series and aggregate with `sum by (label)` — using `count ... > 0` on an instant result loses the magnitude.
 
 ### Range Queries
 
@@ -87,6 +93,10 @@ gcx supports multiple time formats:
 
 # Unix timestamps
 --from 1709280000 --to 1709366400
+
+# Instant query at a specific moment (omits --from/--to/--since)
+--time 2026-03-01T12:00:00Z
+--time now-1h
 ```
 
 ### Valid vs Invalid Time Expressions
@@ -612,9 +622,9 @@ gcx logs query -d <loki-uid> \
 ### Comparison Queries
 
 ```bash
-# Compare current vs 24h ago
-gcx metrics query -d <uid> 'rate(requests[5m])' --from now-1h --to now -o json > now.json
-gcx metrics query -d <uid> 'rate(requests[5m])' --from now-25h --to now-24h -o json > yesterday.json
+# Compare current vs 24h ago — use --time for instant snapshots, not range queries
+gcx metrics query -d <uid> 'rate(requests[5m])' --time now -o json > now.json
+gcx metrics query -d <uid> 'rate(requests[5m])' --time now-24h -o json > yesterday.json
 ```
 
 ## Tempo / TraceQL Patterns
