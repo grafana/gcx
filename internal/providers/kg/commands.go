@@ -2262,6 +2262,10 @@ func (c *DescribeTextCodec) Encode(w io.Writer, v any) error {
 		sections = append(sections, telHeader+"\n\n"+strings.Join(telSections, "\n\n"))
 	}
 
+	if out.Metrics != nil {
+		sections = append(sections, formatMetricSection(*out.Metrics))
+	}
+
 	if len(sections) == 0 {
 		fmt.Fprintln(w, "No metadata requested.")
 		return nil
@@ -2285,6 +2289,7 @@ func newDescribeCommand(loader RESTConfigLoader) *cobra.Command {
 		newDescribeLogsCmd(loader),
 		newDescribeTracesCmd(loader),
 		newDescribeProfilesCmd(loader),
+		newDescribeMetricsCmd(loader),
 		newDescribeAllCmd(loader),
 	)
 	return cmd
@@ -2439,7 +2444,7 @@ func newDescribeAllCmd(loader RESTConfigLoader) *cobra.Command {
 	opts := &describeOpts{}
 	cmd := &cobra.Command{
 		Use:   "all",
-		Short: "Load all sections: schema, scopes, logs, traces, and profiles.",
+		Short: "Load all sections: schema, scopes, logs, traces, profiles, and metrics.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -2520,6 +2525,10 @@ func newDescribeAllCmd(loader RESTConfigLoader) *cobra.Command {
 			if err := g.Wait(); err != nil {
 				return err
 			}
+			// Metric guide is locally-defined
+			// so it's set directly rather than via an errgroup fetch.
+			guide := DefaultAssertsMetricGuide()
+			out.Metrics = &guide
 			return opts.IO.Encode(cmd.OutOrStdout(), out)
 		},
 	}

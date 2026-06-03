@@ -1,20 +1,17 @@
-## gcx kg meta all
+## gcx kg meta metrics
 
-Load all sections: schema, scopes, logs, traces, profiles, and metrics.
+Show the asserts:* KPI metrics (Knowledge Graph recording rules) and the entity-property → Prometheus label mapping for querying them.
 
 ```
-gcx kg meta all [flags]
+gcx kg meta metrics [flags]
 ```
 
 ### Options
 
 ```
-      --from string     Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-  -h, --help            help for all
+  -h, --help            help for metrics
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
-      --since string    Duration before --to (or now); mutually exclusive with --from (e.g. 1h, 30m, 7d)
-      --to string       End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 
 ### Options inherited from parent commands

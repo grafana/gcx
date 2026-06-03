@@ -23,8 +23,9 @@ Show Knowledge Graph metadata: entity types, valid env/namespace/site values, an
 ### SEE ALSO
 
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
-* [gcx kg meta all](gcx_kg_meta_all.md)	 - Load all sections: schema, scopes, logs, traces, and profiles.
+* [gcx kg meta all](gcx_kg_meta_all.md)	 - Load all sections: schema, scopes, logs, traces, profiles, and metrics.
 * [gcx kg meta logs](gcx_kg_meta_logs.md)	 - Show Loki label mappings for log drilldown.
+* [gcx kg meta metrics](gcx_kg_meta_metrics.md)	 - Show the asserts:* KPI metrics (Knowledge Graph recording rules) and the entity-property → Prometheus label mapping for querying them.
 * [gcx kg meta profiles](gcx_kg_meta_profiles.md)	 - Show Pyroscope label mappings for profile drilldown.
 * [gcx kg meta schema](gcx_kg_meta_schema.md)	 - Show entity types, properties, and relationships.
 * [gcx kg meta scopes](gcx_kg_meta_scopes.md)	 - Show all valid env/namespace/site filter values.
