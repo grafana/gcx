@@ -27,5 +27,5 @@ gcx kg model-rules create [flags]
 
 ### SEE ALSO
 
-* [gcx kg model-rules](gcx_kg_model-rules.md)	 - Push model rules to the Knowledge Graph.
+* [gcx kg model-rules](gcx_kg_model-rules.md)	 - Manage model rules in the Knowledge Graph.
 

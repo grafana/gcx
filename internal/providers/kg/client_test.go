@@ -545,3 +545,110 @@ func TestClient_LookupEntity_NotFound(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, entity)
 }
+
+func TestClient_ListModelRuleNames(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.True(t, strings.HasSuffix(r.URL.Path, "/v1/config/model-rules"),
+			"expected path to end with /v1/config/model-rules (no trailing slash), got %q", r.URL.Path)
+		writeJSON(w, kg.ModelRuleNames{RuleNames: []string{"alpha", "beta"}})
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	names, err := client.ListModelRuleNames(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, []string{"alpha", "beta"}, names)
+}
+
+func TestClient_ListModelRules_FansOut(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		path := r.URL.EscapedPath()
+		switch {
+		case strings.HasSuffix(path, "/v1/config/model-rules"):
+			writeJSON(w, kg.ModelRuleNames{RuleNames: []string{"alpha", "beta"}})
+		case strings.HasSuffix(path, "/v1/config/model-rules/alpha"):
+			writeJSON(w, map[string]any{"name": "alpha"})
+		case strings.HasSuffix(path, "/v1/config/model-rules/beta"):
+			writeJSON(w, map[string]any{"name": "beta"})
+		default:
+			t.Fatalf("unexpected path: %s", path)
+		}
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	rules, err := client.ListModelRules(t.Context())
+	require.NoError(t, err)
+	require.Len(t, rules, 2)
+	names := []string{rules[0].Name, rules[1].Name}
+	assert.ElementsMatch(t, []string{"alpha", "beta"}, names)
+}
+
+func TestClient_GetModelRules(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.True(t, strings.HasSuffix(r.URL.EscapedPath(), "/v1/config/model-rules/my%20rules"),
+			"expected URL-escaped name in path, got %q", r.URL.EscapedPath())
+		writeJSON(w, map[string]any{
+			"name":     "my rules",
+			"entities": []map[string]any{{"type": "Service"}},
+		})
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	rules, err := client.GetModelRules(t.Context(), "my rules")
+	require.NoError(t, err)
+	assert.Equal(t, "my rules", rules.Name)
+	assert.JSONEq(t, `[{"type":"Service"}]`, string(rules.Entities))
+}
+
+func TestClient_GetModelRules_NotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"message":"Rule x not found"}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	_, err := client.GetModelRules(t.Context(), "x")
+	require.Error(t, err)
+}
+
+func TestClient_GetModelRulesSchema(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.True(t, strings.HasSuffix(r.URL.Path, "/v1/config/model-rules/schema"),
+			"unexpected path %q", r.URL.Path)
+		writeJSON(w, map[string]any{
+			"$schema": "https://json-schema.org/draft/2020-12/schema",
+			"type":    "object",
+			"properties": map[string]any{
+				"name": map[string]any{"type": "string"},
+			},
+		})
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	schema, err := client.GetModelRulesSchema(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, "object", schema["type"])
+}
+
+func TestClient_DeleteModelRules(t *testing.T) {
+	called := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		assert.Equal(t, http.MethodDelete, r.Method)
+		assert.True(t, strings.HasSuffix(r.URL.Path, "/v1/config/model-rules/my-rules"))
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	require.NoError(t, client.DeleteModelRules(t.Context(), "my-rules"))
+	assert.True(t, called)
+}
