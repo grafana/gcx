@@ -421,4 +421,5 @@ type KGMetadataOutput struct {
 	Logs     []LogDrilldownConfig     `json:"logConfigs,omitempty"`
 	Traces   []TraceDrilldownConfig   `json:"traceConfigs,omitempty"`
 	Profiles []ProfileDrilldownConfig `json:"profileConfigs,omitempty"`
+	Metrics  *AssertsMetricGuide      `json:"metricGuide,omitempty"`
 }
