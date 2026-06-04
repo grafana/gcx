@@ -73,76 +73,65 @@ func TestQuery_ReturnsTypedAPIErrorForGrafanaEnvelope(t *testing.T) {
 	assert.Equal(t, "downstream", apiErr.ErrorSource)
 }
 
-func TestQuery_TimeFlagSendsOneMinuteWindow(t *testing.T) {
+func TestTimeFlagSendsOneMinuteWindow(t *testing.T) {
 	ts := time.Date(2026, 1, 15, 10, 30, 0, 0, time.UTC)
 	wantFrom := strconv.FormatInt(ts.Add(-time.Minute).UnixMilli(), 10)
 	wantTo := strconv.FormatInt(ts.UnixMilli(), 10)
 
-	var captured map[string]any
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		_ = json.Unmarshal(body, &captured)
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"results":{"A":{}}}`))
-	}))
-	defer server.Close()
-
-	cfg := config.NamespacedRESTConfig{
-		Config:    rest.Config{Host: server.URL},
-		Namespace: "default",
+	tests := []struct {
+		name string
+		call func(*loki.Client)
+	}{
+		{
+			name: "Query",
+			call: func(c *loki.Client) {
+				_, _ = c.Query(context.Background(), "loki-uid", loki.QueryRequest{
+					Query: `{job="varlogs"}`,
+					Start: ts,
+					// End is zero — signals --time (instant at timestamp)
+				})
+			},
+		},
+		{
+			name: "MetricQuery",
+			call: func(c *loki.Client) {
+				_, _ = c.MetricQuery(context.Background(), "loki-uid", loki.QueryRequest{
+					Query: `rate({job="varlogs"}[5m])`,
+					Start: ts,
+					// End is zero — signals --time (instant at timestamp)
+				})
+			},
+		},
 	}
-	client, err := loki.NewClient(cfg)
-	require.NoError(t, err)
 
-	_, _ = client.Query(context.Background(), "loki-uid", loki.QueryRequest{
-		Query: `{job="varlogs"}`,
-		Start: ts,
-		// End is zero — signals --time (instant at timestamp)
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var captured map[string]any
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, _ := io.ReadAll(r.Body)
+				_ = json.Unmarshal(body, &captured)
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"results":{"A":{}}}`))
+			}))
+			defer server.Close()
 
-	require.NotNil(t, captured)
-	assert.Equal(t, wantFrom, captured["from"])
-	assert.Equal(t, wantTo, captured["to"])
+			cfg := config.NamespacedRESTConfig{
+				Config:    rest.Config{Host: server.URL},
+				Namespace: "default",
+			}
+			c, err := loki.NewClient(cfg)
+			require.NoError(t, err)
 
-	queries, _ := captured["queries"].([]any)
-	require.Len(t, queries, 1)
-	query, _ := queries[0].(map[string]any)
-	assert.Equal(t, true, query["instant"])
-}
+			tt.call(c)
 
-func TestMetricQuery_TimeFlagSendsOneMinuteWindow(t *testing.T) {
-	ts := time.Date(2026, 1, 15, 10, 30, 0, 0, time.UTC)
-	wantFrom := strconv.FormatInt(ts.Add(-time.Minute).UnixMilli(), 10)
-	wantTo := strconv.FormatInt(ts.UnixMilli(), 10)
+			require.NotNil(t, captured)
+			assert.Equal(t, wantFrom, captured["from"])
+			assert.Equal(t, wantTo, captured["to"])
 
-	var captured map[string]any
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		_ = json.Unmarshal(body, &captured)
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"results":{"A":{}}}`))
-	}))
-	defer server.Close()
-
-	cfg := config.NamespacedRESTConfig{
-		Config:    rest.Config{Host: server.URL},
-		Namespace: "default",
+			queries, _ := captured["queries"].([]any)
+			require.Len(t, queries, 1)
+			query, _ := queries[0].(map[string]any)
+			assert.Equal(t, true, query["instant"])
+		})
 	}
-	client, err := loki.NewClient(cfg)
-	require.NoError(t, err)
-
-	_, _ = client.MetricQuery(context.Background(), "loki-uid", loki.QueryRequest{
-		Query: `rate({job="varlogs"}[5m])`,
-		Start: ts,
-		// End is zero — signals --time (instant at timestamp)
-	})
-
-	require.NotNil(t, captured)
-	assert.Equal(t, wantFrom, captured["from"])
-	assert.Equal(t, wantTo, captured["to"])
-
-	queries, _ := captured["queries"].([]any)
-	require.Len(t, queries, 1)
-	query, _ := queries[0].(map[string]any)
-	assert.Equal(t, true, query["instant"])
 }
