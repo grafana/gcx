@@ -10,6 +10,8 @@ import (
 type Experiment struct {
 	// User-provided fields (spec).
 	Name         string                `json:"name"`
+	Description  string                `json:"description,omitempty"`
+	Tags         []string              `json:"tags,omitempty"`
 	Source       string                `json:"source,omitempty"`
 	CollectionID string                `json:"collection_id,omitempty"`
 	Evaluators   []ExperimentEvaluator `json:"evaluators,omitempty"`
@@ -43,7 +45,9 @@ type ExperimentEvaluator struct {
 // via Cancel, and the server owns the error message. Metadata is not
 // patchable through the CLI yet; add a field here when wiring it up.
 type UpdateRequest struct {
-	Name *string `json:"name,omitempty"`
+	Name        *string   `json:"name,omitempty"`
+	Description *string   `json:"description,omitempty"`
+	Tags        *[]string `json:"tags,omitempty"`
 }
 
 // ScoreItem is one score record produced by an evaluator during an experiment.

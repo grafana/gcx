@@ -226,21 +226,25 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 // --- update ---
 
 type updateOpts struct {
-	IO   cmdio.Options
-	Name string
+	IO          cmdio.Options
+	Name        string
+	Description string
+	Tags        []string
 }
 
 func (o *updateOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Name, "name", "", "New experiment name")
+	flags.StringVar(&o.Description, "description", "", "New experiment description; pass an empty string to clear")
+	flags.StringSliceVar(&o.Tags, "tag", nil, "Experiment tag (repeatable or comma-separated; replaces all tags)")
 }
 
 // newUpdateCommand sends a true partial PATCH using pointer fields gated by
-// cmd.Flags().Changed(...). Only fields the user explicitly sets are sent on
-// the wire. Status and error are intentionally not exposed — they are
-// server-managed lifecycle fields; use `cancel` for the one user-driven
-// transition.
+// cmd.Flags().Changed(...). Only fields the user explicitly sets are sent on the
+// wire. Tags replace the full tag set when --tag is present; pass --tag "" to
+// clear tags. Status and error are intentionally not exposed — they are
+// server-managed lifecycle fields; use `cancel` for the one user-driven transition.
 func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &updateOpts{}
 	cmd := &cobra.Command{
@@ -257,8 +261,16 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 				name := opts.Name
 				req.Name = &name
 			}
-			if req.Name == nil {
-				return errors.New("--name is required")
+			if cmd.Flags().Changed("description") {
+				description := opts.Description
+				req.Description = &description
+			}
+			if cmd.Flags().Changed("tag") {
+				tags := opts.Tags
+				req.Tags = &tags
+			}
+			if req.Name == nil && req.Description == nil && req.Tags == nil {
+				return errors.New("--name, --description, or --tag is required")
 			}
 
 			client, err := newClient(cmd, loader)
@@ -419,9 +431,9 @@ func (c *TableCodec) Encode(w io.Writer, v any) error {
 
 	var t *style.TableBuilder
 	if c.Wide {
-		t = style.NewTable("RUN-ID", "NAME", "STATUS", "SOURCE", "COLLECTION", "SCORES", "CREATED", "COMPLETED", "ERROR")
+		t = style.NewTable("RUN-ID", "NAME", "STATUS", "SOURCE", "COLLECTION-ID", "TAGS", "SCORES", "CREATED", "COMPLETED", "DESCRIPTION", "ERROR")
 	} else {
-		t = style.NewTable("RUN-ID", "NAME", "STATUS", "SOURCE", "COLLECTION", "SCORES", "CREATED")
+		t = style.NewTable("RUN-ID", "NAME", "STATUS", "SOURCE", "COLLECTION-ID", "TAGS", "SCORES", "CREATED")
 	}
 
 	for _, exp := range items {
@@ -438,17 +450,25 @@ func (c *TableCodec) Encode(w io.Writer, v any) error {
 		if source == "" {
 			source = "-"
 		}
+		tags := formatTags(exp.Tags)
 		if c.Wide {
 			completed := "-"
 			if exp.CompletedAt != nil {
 				completed = aio11yhttp.FormatTime(*exp.CompletedAt)
 			}
-			t.Row(exp.RunID, exp.Name, status, source, collection, scores, aio11yhttp.FormatTime(exp.CreatedAt), completed, aio11yhttp.Truncate(exp.Error, 40))
+			t.Row(exp.RunID, exp.Name, status, source, collection, tags, scores, aio11yhttp.FormatTime(exp.CreatedAt), completed, aio11yhttp.Truncate(exp.Description, 40), aio11yhttp.Truncate(exp.Error, 40))
 		} else {
-			t.Row(exp.RunID, exp.Name, status, source, collection, scores, aio11yhttp.FormatTime(exp.CreatedAt))
+			t.Row(exp.RunID, exp.Name, status, source, collection, tags, scores, aio11yhttp.FormatTime(exp.CreatedAt))
 		}
 	}
 	return t.Render(w)
+}
+
+func formatTags(tags []string) string {
+	if len(tags) == 0 {
+		return "-"
+	}
+	return strings.Join(tags, ", ")
 }
 
 func (c *TableCodec) Decode(_ io.Reader, _ any) error {
