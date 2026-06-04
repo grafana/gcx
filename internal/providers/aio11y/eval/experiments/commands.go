@@ -285,7 +285,10 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 			return opts.IO.Encode(cmd.OutOrStdout(), updated)
 		},
 	}
-	opts.setup(cmd.Flags())
+	cmd.InitDefaultHelpFlag()
+	flags := cmd.Flags()
+	flags.SortFlags = false
+	opts.setup(flags)
 	return cmd
 }
 
