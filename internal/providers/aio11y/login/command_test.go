@@ -1,4 +1,4 @@
-package login
+package login_test
 
 import (
 	"bytes"
@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/aio11y/login"
 )
 
 // fakeGCOM is a configurable GCOM stand-in covering the endpoints aio11y login
@@ -128,7 +129,7 @@ func newLoader(t *testing.T, apiURL string) *providers.ConfigLoader {
 
 func runLogin(t *testing.T, loader *providers.ConfigLoader, args ...string) (string, string, error) {
 	t.Helper()
-	cmd := Command(loader)
+	cmd := login.Command(loader)
 	var out, errBuf bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errBuf)
@@ -227,12 +228,14 @@ func TestLogin_FallsBackWhenProvisioningForbidden(t *testing.T) {
 		t.Errorf("expected guidance about accesspolicies:write on stderr:\n%s", errOut)
 	}
 
-	var res result
+	var res struct {
+		TokenSource string `json:"token_source"`
+	}
 	if err := json.Unmarshal([]byte(out), &res); err != nil {
 		t.Fatalf("unmarshal: %v\n%s", err, out)
 	}
-	if res.TokenSource != sourceCloudContext {
-		t.Errorf("token_source = %q, want %q", res.TokenSource, sourceCloudContext)
+	if res.TokenSource != "cloud-context" {
+		t.Errorf("token_source = %q, want cloud-context", res.TokenSource)
 	}
 }
 
@@ -270,7 +273,10 @@ func TestLogin_ReusesPolicyAndRotatesToken(t *testing.T) {
 		t.Errorf("expected old token to be deleted on rotation, got %v", deleted)
 	}
 
-	var res result
+	var res struct {
+		PolicyReused bool `json:"policy_reused"`
+		TokenRotated bool `json:"token_rotated"`
+	}
 	if err := json.Unmarshal([]byte(out), &res); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}

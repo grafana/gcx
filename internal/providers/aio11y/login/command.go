@@ -13,6 +13,7 @@ import (
 	"io"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/cloud"
@@ -160,7 +161,7 @@ func run(cmd *cobra.Command, opts *options, loader *providers.ConfigLoader) erro
 		sigilEndpoint = cloudCfg.Stack.RegionSigilURL
 	}
 	if sigilEndpoint == "" {
-		sigilEndpoint, err = sigilEndpointFromOTLP(otlpEndpoint)
+		sigilEndpoint, err = SigilEndpointFromOTLP(otlpEndpoint)
 		if err != nil {
 			return fmt.Errorf("GCOM did not report a Sigil endpoint (regionSigilUrl) for this stack and it could not be derived: %w", err)
 		}
@@ -208,7 +209,7 @@ func run(cmd *cobra.Command, opts *options, loader *providers.ConfigLoader) erro
 		if opts.ContentCaptureMode != "" {
 			updates["SIGIL_CONTENT_CAPTURE_MODE"] = opts.ContentCaptureMode
 		}
-		if err := writeSigilConfig(path, updates); err != nil {
+		if err := WriteSigilConfig(path, updates); err != nil {
 			return err
 		}
 		res.Wrote = true
@@ -285,14 +286,7 @@ func accessPoliciesURL(orgSlug string) string {
 }
 
 func joinStrings(s []string) string {
-	out := ""
-	for i, v := range s {
-		if i > 0 {
-			out += ", "
-		}
-		out += v
-	}
-	return out
+	return strings.Join(s, ", ")
 }
 
 // result is the structured outcome of `aio11y login`. The token secret is

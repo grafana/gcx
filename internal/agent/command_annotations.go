@@ -454,6 +454,8 @@ var commandAnnotations = map[string]annotation{
 
 	"gcx aio11y generations get": {Cost: "medium", Hint: "<generation-id> -o json"},
 
+	"gcx aio11y login": {Cost: "small", Hint: "--dry-run -o json previews the resolved Sigil config without minting a token or writing ~/.config/sigil/config.env"},
+
 	"gcx aio11y guards create": {Cost: "small"},
 	"gcx aio11y guards delete": {Cost: "small"},
 	"gcx aio11y guards get":    {Cost: "small"},

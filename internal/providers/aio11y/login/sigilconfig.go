@@ -22,12 +22,12 @@ func sigilConfigPath() (string, error) {
 	return filepath.Join(home, "sigil", "config.env"), nil
 }
 
-// writeSigilConfig merges updates into the dotenv file at path, preserving
+// WriteSigilConfig merges updates into the dotenv file at path, preserving
 // unrelated lines, comments, and ordering. A key whose value is empty is
 // removed; a key not already present is appended. The write is atomic
 // (temp file + rename) and the file is created with 0600 permissions because
 // it holds credentials.
-func writeSigilConfig(path string, updates map[string]string) error {
+func WriteSigilConfig(path string, updates map[string]string) error {
 	var existing []string
 	if data, err := os.ReadFile(path); err == nil {
 		existing = strings.Split(string(data), "\n")

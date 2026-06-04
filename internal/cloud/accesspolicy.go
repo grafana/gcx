@@ -14,7 +14,7 @@ import (
 // Cloud Access Policies + Tokens API paths (grafana.com/api/v1/...).
 const (
 	accessPoliciesPath = "/api/v1/accesspolicies"
-	tokensPath         = "/api/v1/tokens"
+	tokensPath         = "/api/v1/tokens" // #nosec G101 -- API resource path, not a credential.
 )
 
 // Realm scopes an access policy to a specific org or stack.

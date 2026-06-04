@@ -70,28 +70,28 @@ func findOrCreatePolicy(ctx context.Context, client *cloud.GCOMClient, p provisi
 	// Name+org+region must be unique; on conflict, reuse the existing policy.
 	var httpErr *cloud.GCOMHTTPError
 	if errors.As(err, &httpErr) && httpErr.Status == http.StatusConflict {
-		existing, lerr := findPolicyByName(ctx, client, p.Region, p.PolicyName, realm)
+		existing, found, lerr := findPolicyByName(ctx, client, p.Region, p.PolicyName, realm)
 		if lerr != nil {
 			return cloud.AccessPolicy{}, false, lerr
 		}
-		if existing != nil {
-			return *existing, true, nil
+		if found {
+			return existing, true, nil
 		}
 	}
 	return cloud.AccessPolicy{}, false, fmt.Errorf("create access policy %q: %w", p.PolicyName, err)
 }
 
-func findPolicyByName(ctx context.Context, client *cloud.GCOMClient, region, name string, realm cloud.Realm) (*cloud.AccessPolicy, error) {
+func findPolicyByName(ctx context.Context, client *cloud.GCOMClient, region, name string, realm cloud.Realm) (cloud.AccessPolicy, bool, error) {
 	policies, err := client.ListAccessPolicies(ctx, region)
 	if err != nil {
-		return nil, fmt.Errorf("list access policies: %w", err)
+		return cloud.AccessPolicy{}, false, fmt.Errorf("list access policies: %w", err)
 	}
 	for i := range policies {
 		if policies[i].Name == name && realmMatches(policies[i].Realms, realm) {
-			return &policies[i], nil
+			return policies[i], true, nil
 		}
 	}
-	return nil, nil
+	return cloud.AccessPolicy{}, false, nil
 }
 
 func realmMatches(realms []cloud.Realm, want cloud.Realm) bool {

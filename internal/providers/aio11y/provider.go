@@ -124,10 +124,6 @@ func (p *AIO11yProvider) Commands() []*cobra.Command {
 	}
 
 	loginCmd := login.Command(loader)
-	loginCmd.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "low",
-		agent.AnnotationLLMHint:   `gcx aio11y login provisions ~/.config/sigil/config.env from the current Cloud context for coding-agent plugins. By default it mints a dedicated, scoped Cloud Access Policy token (needs accesspolicies:write on the context token; otherwise it falls back to the context token). Use --no-provision to write the context token as-is, --token to supply your own, or --dry-run -o json to preview without minting or writing.`,
-	}
 
 	aio11yCmd.AddCommand(convsCmd, agentsCmd, evaluatorsCmd, rulesCmd, guardsCmd, templatesCmd, generationsCmd, scoresCmd, judgeCmd, savedConvsCmd, collectionsCmd, experimentsCmd, loginCmd)
 

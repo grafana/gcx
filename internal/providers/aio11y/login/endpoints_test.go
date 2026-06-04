@@ -1,6 +1,10 @@
-package login
+package login_test
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/grafana/gcx/internal/providers/aio11y/login"
+)
 
 func TestSigilEndpointFromOTLP(t *testing.T) {
 	tests := []struct {
@@ -43,7 +47,7 @@ func TestSigilEndpointFromOTLP(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := sigilEndpointFromOTLP(tt.otlp)
+			got, err := login.SigilEndpointFromOTLP(tt.otlp)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("expected error, got nil (got %q)", got)

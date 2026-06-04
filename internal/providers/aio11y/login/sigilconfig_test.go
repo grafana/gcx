@@ -1,15 +1,19 @@
-package login
+package login_test
 
 import (
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
+
+	"github.com/grafana/gcx/internal/providers/aio11y/login"
 )
 
 func TestWriteSigilConfig_CreatesFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sigil", "config.env")
 
-	err := writeSigilConfig(path, map[string]string{
+	err := login.WriteSigilConfig(path, map[string]string{
 		"SIGIL_ENDPOINT":       "https://sigil-prod-eu-west-2.grafana.net",
 		"SIGIL_AUTH_TENANT_ID": "42",
 		"SIGIL_AUTH_TOKEN":     "glc_xxx",
@@ -50,7 +54,7 @@ func TestWriteSigilConfig_PreservesUnrelatedAndComments(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := writeSigilConfig(path, map[string]string{
+	err := login.WriteSigilConfig(path, map[string]string{
 		"SIGIL_ENDPOINT":   "https://new.example.com",
 		"SIGIL_AUTH_TOKEN": "glc_new",
 	})
@@ -89,7 +93,7 @@ func TestWriteSigilConfig_EmptyValueDeletes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := writeSigilConfig(path, map[string]string{
+	err := login.WriteSigilConfig(path, map[string]string{
 		"SIGIL_OTEL_EXPORTER_OTLP_ENDPOINT": "", // delete
 	})
 	if err != nil {
@@ -114,47 +118,30 @@ func readEnv(t *testing.T, path string) map[string]string {
 	}
 	out := map[string]string{}
 	for _, line := range splitLines(string(raw)) {
-		key := lineKey(line)
-		if key == "" {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
-		_, after, _ := cut(line, "=")
-		out[key] = after
+		if rest, ok := strings.CutPrefix(trimmed, "export "); ok {
+			trimmed = strings.TrimSpace(rest)
+		}
+		key, after, ok := strings.Cut(trimmed, "=")
+		if !ok {
+			continue
+		}
+		out[strings.TrimSpace(key)] = after
 	}
 	return out
 }
 
 func splitLines(s string) []string {
-	var lines []string
-	cur := ""
-	for _, r := range s {
-		if r == '\n' {
-			lines = append(lines, cur)
-			cur = ""
-			continue
-		}
-		cur += string(r)
+	s = strings.TrimSuffix(s, "\n")
+	if s == "" {
+		return nil
 	}
-	if cur != "" {
-		lines = append(lines, cur)
-	}
-	return lines
-}
-
-func cut(s, sep string) (before, after string, found bool) {
-	for i := 0; i+len(sep) <= len(s); i++ {
-		if s[i:i+len(sep)] == sep {
-			return s[:i], s[i+len(sep):], true
-		}
-	}
-	return s, "", false
+	return strings.Split(s, "\n")
 }
 
 func containsLine(content, want string) bool {
-	for _, line := range splitLines(content) {
-		if line == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(splitLines(content), want)
 }
