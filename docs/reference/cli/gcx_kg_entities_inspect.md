@@ -1,6 +1,19 @@
 ## gcx kg entities inspect
 
-Show detailed info, insights, and summary for a single entity, including a link to the RCA Workbench.
+Show the insight timeline and related entities for a single entity (root-cause analysis).
+
+### Synopsis
+
+Show detailed root-cause-analysis context for a single entity, including a link
+to the RCA Workbench.
+
+Use this only when you need the detail: the entity's insight/assertion timeline
+and the related entities to investigate next. It calls a heavier
+endpoint and can return large output.
+
+Do not use 'inspect' just to read an entity's identity or properties — for that,
+use 'gcx kg entities list' (optionally with '--property name=<exact-name>' to
+narrow to one entity), which is cheaper and returns those fields directly.
 
 ```
 gcx kg entities inspect [Type--Name] [flags]

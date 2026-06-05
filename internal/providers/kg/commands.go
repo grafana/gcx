@@ -1138,6 +1138,13 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "entities",
 		Short: "Manage Knowledge Graph entities.",
+		Long: `Manage Knowledge Graph entities.
+
+Prefer 'list' for listing and for basic lookups (an entity's identity and
+properties — the labels used to build PromQL/Loki queries); it is cheap. Use
+'inspect' only when you need an entity's insight timeline or related entities
+for root-cause analysis — it is heavier and can return large output,
+so don't use it just to read properties.`,
 	}
 
 	// list subcommand
@@ -1151,7 +1158,17 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 	listOpts := &entitiesListOpts{}
 	listCmd := &cobra.Command{
 		Use:   "list",
-		Short: "List Knowledge Graph entities for a given type, env, site, namespace.",
+		Short: "List entities by type/scope, or look up an entity's identity and properties.",
+		Long: `List Knowledge Graph entities for a given type, env, site, namespace.
+
+The cheap default for listing entities or looking up basic information about
+one: its identity (name, type, scope), properties (the labels used to build
+PromQL/Loki queries — job, namespace, container, image, etc.), and a small
+snapshot of its current insights. Filter to a single entity with
+'--property name=<exact-name>'.
+
+For an entity's full insight timeline or related entities for root-cause
+analysis, use 'gcx kg entities inspect' instead.`,
 		Example: `  gcx kg entities list --type Service --env <env> --namespace <namespace> --property name=<service-name>
   gcx kg entities list --type Service --env <env> --insight any
   gcx kg entities list --type Service --env <env> --insight name=Saturation --insight severity=critical
@@ -1583,8 +1600,18 @@ func newEntitiesInspectCommand(loader RESTConfigLoader) *cobra.Command {
 	ioOpts := &inspectOpts{}
 	cmd := &cobra.Command{
 		Use:   "inspect [Type--Name]",
-		Short: "Show detailed info, insights, and summary for a single entity, including a link to the RCA Workbench.",
-		Args:  cobra.MaximumNArgs(1),
+		Short: "Show the insight timeline and related entities for a single entity (root-cause analysis).",
+		Long: `Show detailed root-cause-analysis context for a single entity, including a link
+to the RCA Workbench.
+
+Use this only when you need the detail: the entity's insight/assertion timeline
+and the related entities to investigate next. It calls a heavier
+endpoint and can return large output.
+
+Do not use 'inspect' just to read an entity's identity or properties — for that,
+use 'gcx kg entities list' (optionally with '--property name=<exact-name>' to
+narrow to one entity), which is cheaper and returns those fields directly.`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := ioOpts.Validate(cmd.Flags()); err != nil {
 				return err

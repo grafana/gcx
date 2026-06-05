@@ -1,6 +1,19 @@
 ## gcx kg entities list
 
+List entities by type/scope, or look up an entity's identity and properties.
+
+### Synopsis
+
 List Knowledge Graph entities for a given type, env, site, namespace.
+
+The cheap default for listing entities or looking up basic information about
+one: its identity (name, type, scope), properties (the labels used to build
+PromQL/Loki queries — job, namespace, container, image, etc.), and a small
+snapshot of its current insights. Filter to a single entity with
+'--property name=<exact-name>'.
+
+For an entity's full insight timeline or related entities for root-cause
+analysis, use 'gcx kg entities inspect' instead.
 
 ```
 gcx kg entities list [flags]
