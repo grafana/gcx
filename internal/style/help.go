@@ -5,7 +5,9 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/glamour"
+	claudeplugin "github.com/grafana/gcx/claude-plugin"
 	"github.com/grafana/gcx/internal/agent"
+	skillops "github.com/grafana/gcx/internal/skills"
 	"github.com/spf13/cobra"
 )
 
@@ -19,10 +21,15 @@ func relatedSkillFooter(cmd *cobra.Command) []string {
 	if len(skills) == 0 {
 		return nil
 	}
-	lines := []string{"Related skill(s): " + strings.Join(skills, ", ")}
+	lines := []string{"Related skill(s):"}
 	for _, name := range skills {
-		lines = append(lines, "  Load with: gcx agent skills get "+name)
+		if desc := skillops.ShortDescription(claudeplugin.SkillsFS(), name); desc != "" {
+			lines = append(lines, "  "+name+" — "+desc)
+		} else {
+			lines = append(lines, "  "+name)
+		}
 	}
+	lines = append(lines, "Read a skill only if it fits your task: gcx agent skills get <name>")
 	return lines
 }
 
