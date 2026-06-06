@@ -21,7 +21,6 @@ import (
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"gopkg.in/yaml.v3"
 )
 
 // Command returns the top-level skills command group.
@@ -403,7 +402,7 @@ func listBundledSkills(source fs.FS, installRoot string) (listResult, error) {
 
 		result.Skills = append(result.Skills, skillInfo{
 			Name:             entry.Name(),
-			ShortDescription: extractSkillShortDescription(data),
+			ShortDescription: skillops.ShortDescriptionFromBytes(data),
 			Installed:        installed,
 		})
 	}
@@ -418,69 +417,6 @@ func listBundledSkills(source fs.FS, installRoot string) (listResult, error) {
 
 func installedBundledSkillNames(source fs.FS, root string) ([]string, error) {
 	return skillops.InstalledBundledSkillNames(source, root)
-}
-
-type skillFrontMatter struct {
-	Description string `yaml:"description"`
-}
-
-func extractSkillShortDescription(data []byte) string {
-	description, err := extractSkillDescriptionFromMarkdown(data)
-	if err != nil {
-		return normalizeDescription(fallbackSkillDescription(data))
-	}
-
-	return normalizeDescription(description)
-}
-
-func extractSkillDescriptionFromMarkdown(data []byte) (string, error) {
-	content := strings.ReplaceAll(string(data), "\r\n", "\n")
-	lines := strings.Split(content, "\n")
-	if len(lines) < 3 || strings.TrimSpace(lines[0]) != "---" {
-		return "", errors.New("missing front matter")
-	}
-
-	end := -1
-	for i := 1; i < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) == "---" {
-			end = i
-			break
-		}
-	}
-	if end < 0 {
-		return "", errors.New("unterminated front matter")
-	}
-
-	var meta skillFrontMatter
-	if err := yaml.Unmarshal([]byte(strings.Join(lines[1:end], "\n")), &meta); err != nil {
-		return "", err
-	}
-
-	return meta.Description, nil
-}
-
-func normalizeDescription(description string) string {
-	normalized := strings.Join(strings.Fields(description), " ")
-	return normalized
-}
-
-func fallbackSkillDescription(data []byte) string {
-	content := strings.ReplaceAll(string(data), "\r\n", "\n")
-	for line := range strings.SplitSeq(content, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-		if strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-		if strings.HasPrefix(trimmed, "---") {
-			continue
-		}
-		return trimmed
-	}
-
-	return ""
 }
 
 func renderSkillsTable(dst goio.Writer, skills []skillInfo) error {
@@ -662,7 +598,7 @@ func getBundledSkill(source fs.FS, name string, reference string) (getResult, er
 			skillDoc = nil
 		}
 	}
-	description := extractSkillShortDescription(skillDoc)
+	description := skillops.ShortDescriptionFromBytes(skillDoc)
 
 	return getResult{
 		Name:        name,

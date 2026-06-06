@@ -330,21 +330,6 @@ func TestListBundledSkills_ShowsInstalledStatus(t *testing.T) {
 	require.False(t, result.Skills[1].Installed)
 }
 
-func TestExtractSkillShortDescription_ParsesFrontMatter(t *testing.T) {
-	t.Parallel()
-
-	data := []byte(`---
-name: sample
-description: >
-  Use this skill to do an example operation in a concise way.
----
-
-# Sample
-`)
-	desc := extractSkillShortDescription(data)
-	require.Equal(t, "Use this skill to do an example operation in a concise way.", desc)
-}
-
 func TestListCommand_JSONIncludesShortDescription(t *testing.T) {
 	source := fstest.MapFS{
 		"alpha/SKILL.md": {
