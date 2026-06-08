@@ -1247,8 +1247,9 @@ func TestRun_CloudTokenHintGuidance(t *testing.T) {
 	require.Equal(t, []string{"cloud-token"}, needInput.Fields)
 
 	hint := needInput.Hint
-	assert.Contains(t, hint, "access-policies", "hint must link to the access-policies page")
-	assert.Contains(t, hint, "grafana.com/orgs/", "hint must show the access-policies management URL")
+	assert.Contains(t, hint, "https://my-stack.grafana.net/a/grafana-auth-app",
+		"hint must deep-link to the in-stack Access Policies app for the known server")
+	assert.Contains(t, hint, "access-policies", "hint must link to the access-policies docs")
 	assert.Contains(t, hint, "stacks:read", "hint must name recommended scopes")
 	assert.Contains(t, strings.ToLower(hint), "skip", "hint must retain the skip affordance")
 }

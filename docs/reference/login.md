@@ -61,7 +61,12 @@ Commands under `gcx sm`, `gcx k6`, `gcx irm`, `gcx slo`, `gcx fleet`, and other 
 
 #### Where to create the token and which scopes to grant
 
-Create the token at **grafana.com → Administration → Cloud Access Policies → Create access policy** (`https://grafana.com/orgs/<your-org>/access-policies`). See [Create access policies](https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies/) for the step-by-step flow.
+Create the token in either place:
+
+- **In your stack** (deep-link the `gcx login` prompt offers): `https://<your-stack>.grafana.net/a/grafana-auth-app` → Access Policies → Create access policy.
+- **From grafana.com**: **Administration → Cloud Access Policies → Create access policy** (`https://grafana.com/orgs/<your-org>/access-policies`).
+
+See [Create access policies](https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies/) for the step-by-step flow.
 
 Scope the access policy to what you manage. A good starting point:
 

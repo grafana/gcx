@@ -15,18 +15,26 @@ import (
 	"github.com/grafana/gcx/internal/httputils"
 )
 
-// cloudTokenHint is the guidance shown on the interactive Cloud Access Policy
-// (CAP) token prompt and in the ErrNeedInput hint: where to create a token,
-// which scopes to grant, and the skip affordance (issue #820). The org slug is
-// not resolvable at prompt time (resolving it needs the very token we are
-// asking for), so the management URL uses a literal <your-org> placeholder; the
-// docs link is always correct.
-const cloudTokenHint = "Create one at https://grafana.com/orgs/<your-org>/access-policies " +
-	"(Cloud Access Policies → Create access policy).\n" +
-	"Recommended scopes: stacks:read plus the product scopes for what you manage " +
-	"(e.g. metrics:read, logs:read, traces:read; SLO, IRM, Synthetic Monitoring).\n" +
-	"Docs: https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies\n" +
-	"Press Enter to skip (Cloud management features will be unavailable)."
+// cloudTokenHint returns the guidance shown on the interactive Cloud Access
+// Policy (CAP) token prompt and in the ErrNeedInput hint: where to create a
+// token, which scopes to grant, and the skip affordance (issue #820).
+//
+// When the stack server URL is known (always, at this prompt) it deep-links to
+// the in-stack Access Policies app at <server>/a/grafana-auth-app. Otherwise it
+// falls back to the org-level grafana.com page with a <your-org> placeholder
+// (the org slug is not resolvable here — resolving it needs the very token we
+// are asking for).
+func cloudTokenHint(server string) string {
+	create := "Create one at https://grafana.com/orgs/<your-org>/access-policies"
+	if server != "" {
+		create = "Create one at " + strings.TrimRight(server, "/") + "/a/grafana-auth-app"
+	}
+	return create + " (Access Policies → Create access policy).\n" +
+		"Recommended scopes: stacks:read plus the product scopes for what you manage " +
+		"(e.g. metrics:read, logs:read, traces:read; SLO, IRM, Synthetic Monitoring).\n" +
+		"Docs: https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies\n" +
+		"Press Enter to skip (Cloud management features will be unavailable)."
+}
 
 // Target identifies whether the login destination is Grafana Cloud or on-premises.
 type Target int
@@ -482,7 +490,7 @@ func resolveCloudAuth(opts Options, target Target) (*config.CloudConfig, error) 
 	return nil, &ErrNeedInput{
 		Fields:   []string{"cloud-token"},
 		Optional: true,
-		Hint:     cloudTokenHint,
+		Hint:     cloudTokenHint(opts.Server),
 	}
 }
 
