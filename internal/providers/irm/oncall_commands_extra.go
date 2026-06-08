@@ -1203,6 +1203,12 @@ type escalateOpts struct {
 }
 
 func (o *escalateOpts) setup(flags *pflag.FlagSet) {
+	// `text` is the human default but the global registry has no built-in text
+	// codec, so it must be registered explicitly — otherwise the default format
+	// fails IO.Validate(). yaml uses the stable-key-order codec to match the
+	// sibling oncall mutation commands; json/agents are built-in.
+	o.IO.RegisterCustomCodec("text", &escalationTextCodec{})
+	o.IO.RegisterCustomCodec("yaml", format.NewOrderedYAMLCodec())
 	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Title, "title", "", "Title of the escalation (required)")
@@ -1259,12 +1265,44 @@ func newEscalateCommand(loader OnCallConfigLoader) *cobra.Command {
 				return err
 			}
 
-			cmdio.Success(cmd.OutOrStdout(), "Direct escalation created with alert group ID: %s", result.AlertGroupID)
-			return nil
+			// Emit through the codec system so json/yaml/agents modes get a
+			// structured document; the text codec renders the human one-liner.
+			res := escalationResult{
+				AlertGroupID: result.AlertGroupID,
+				Title:        opts.Title,
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), res)
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// escalationResult is the structured output of `escalate`: the alert group ID
+// created by the direct paging call, plus the title for context. Emitted via
+// the codec system so json/yaml/agents modes produce a structured document.
+type escalationResult struct {
+	AlertGroupID string `json:"alertGroupId"`
+	Title        string `json:"title,omitempty"`
+}
+
+// escalationTextCodec renders escalationResult as the human one-line summary.
+// Registered as `-o text` (the default). Output-only: decoding is unsupported.
+type escalationTextCodec struct{}
+
+func (c *escalationTextCodec) Format() format.Format { return format.Format("text") }
+
+func (c *escalationTextCodec) Encode(w io.Writer, v any) error {
+	r, ok := v.(escalationResult)
+	if !ok {
+		return fmt.Errorf("text codec: unsupported value type %T (expected escalationResult)", v)
+	}
+	_, err := fmt.Fprintf(w, "Direct escalation created with alert group ID: %s\n", r.AlertGroupID)
+	return err
+}
+
+func (c *escalationTextCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("text format does not support decoding")
 }
 
 // ---------------------------------------------------------------------------
