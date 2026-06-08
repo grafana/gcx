@@ -1,6 +1,6 @@
 ## gcx appo11y services list
 
-List services discovered from target_info telemetry
+List Application Observability services discovered from target_info/traces_target_info telemetry.
 
 ### Synopsis
 
@@ -9,6 +9,11 @@ List the services Grafana Cloud Application Observability has discovered from te
 Discovery uses the same approach as the App Observability plugin: a group-by
 query against the OTel target_info metric, projected onto (job, telemetry_sdk_language).
 Each result row is one service.
+
+Related: "gcx kg entities --type Service" surfaces services as Knowledge Graph
+entities with relationships and insights (requires the Knowledge Graph plugin);
+"gcx instrumentation services" lists Kubernetes workloads discovered for setting up
+instrumentation.
 
 ```
 gcx appo11y services list [flags]

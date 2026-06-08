@@ -124,7 +124,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx instrumentation status": {Cost: "medium", Hint: "-o json"},
 
 	// services verb group
-	"gcx instrumentation services list":    {Cost: "large", Hint: "--cluster <name> --namespace <ns> -o json"},
+	"gcx instrumentation services list":    {Cost: "large", Hint: "K8s workloads discovered fleet-wide by the Beyla survey collector, for setting up instrumentation (distinct from 'gcx appo11y services', which lists telemetry-reporting services). --cluster <name> --namespace <ns> -o json"},
 	"gcx instrumentation services get":     {Cost: "medium", Hint: "<cluster> <namespace> <service> -o json"},
 	"gcx instrumentation services include": {Cost: "small"},
 	"gcx instrumentation services exclude": {Cost: "small"},
@@ -269,7 +269,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg diagnose":             {Cost: "medium", Hint: "[--env <env>] | run diagnostic checks on the Knowledge Graph pipeline: stack status, sanity checks, entity counts, scopes, telemetry configs, recording rule metrics"},
 	"gcx kg diagnose service":     {Cost: "medium", Hint: "<service-name> [--env <env>] | deep diagnosis for a specific service: entity lookup, relationships, per-service metrics, interpreted diagnosis with next steps"},
 	"gcx kg diagnose labels":      {Cost: "medium", Hint: "validate the deployment_environment → asserts_env label mapping pipeline | identifies unmapped environments and orphaned asserts_env values"},
-	"gcx kg entities list":        {Cost: "medium", Hint: "--type <type> [--env <env>] [--namespace <ns>] --since 1h -o json | use --property name=<value> to fetch a single entity by name | use --insight severity=critical|warning|info or --insight name=<assertion> to filter to entities with active insights (repeatable; matchers AND on the same assertion) | use --json type,name,scope when only entity identity is needed to reduce output size | run gcx kg meta scopes first to discover valid env/namespace/site values"},
+	"gcx kg entities list":        {Cost: "medium", Hint: "--type <type> [--env <env>] [--namespace <ns>] --since 1h -o json | use --property name=<value> to fetch a single entity by name | use --insight severity=critical|warning|info or --insight name=<assertion> to filter to entities with active insights (repeatable; matchers AND on the same assertion) | use --json type,name,scope when only entity identity is needed to reduce output size | run gcx kg meta scopes first to discover valid env/namespace/site values | 'gcx appo11y services list' provides a telemetry-based App Observability service inventory (instrumentation coverage) that does not require the Knowledge Graph"},
 	"gcx kg summary":              {Cost: "medium", Hint: "--type <type> --since 1h -o json"},
 	"gcx kg insights chart":       {Cost: "medium", Hint: "<Type--Name> --insight <name> [--label k=v ...] | returns time series + thresholds backing the insight chart"},
 	"gcx kg insights sources":     {Cost: "medium", Hint: "<Type--Name> --insight <name> [--label k=v ...] --since 1h | returns the underlying PromQL metric names and label matchers sourcing the insight"},

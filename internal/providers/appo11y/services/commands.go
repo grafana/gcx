@@ -150,12 +150,17 @@ func newListCommand() *cobra.Command {
 	opts := &listOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List services discovered from target_info telemetry",
+		Short: "List Application Observability services discovered from target_info/traces_target_info telemetry.",
 		Long: `List the services Grafana Cloud Application Observability has discovered from telemetry.
 
 Discovery uses the same approach as the App Observability plugin: a group-by
 query against the OTel target_info metric, projected onto (job, telemetry_sdk_language).
-Each result row is one service.`,
+Each result row is one service.
+
+Related: "gcx kg entities --type Service" surfaces services as Knowledge Graph
+entities with relationships and insights (requires the Knowledge Graph plugin);
+"gcx instrumentation services" lists Kubernetes workloads discovered for setting up
+instrumentation.`,
 		Example: `
   # List all services in the current stack
   gcx appo11y services list
@@ -175,7 +180,7 @@ Each result row is one service.`,
 		RunE: runList(opts),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
-			agent.AnnotationLLMHint:   `gcx appo11y services list -o json; gcx appo11y services list --count -o json; gcx appo11y services list --env production --language go -o json`,
+			agent.AnnotationLLMHint:   `Application Observability service inventory from OTel target_info/traces_target_info: one row per (namespace, service, language) with instrumentation coverage (instrumented vs uninstrumented). Available on any App Observability stack without the Knowledge Graph. Distinct from 'gcx kg entities --type Service' (Knowledge Graph entities with relationships/insights, when the Knowledge Graph plugin is enabled) and 'gcx instrumentation services' (Kubernetes workloads discovered for setting up instrumentation). Examples: gcx appo11y services list -o json; gcx appo11y services list --count -o json; gcx appo11y services list --instrumentation uninstrumented -o json`,
 		},
 	}
 	opts.setup(cmd.Flags())
