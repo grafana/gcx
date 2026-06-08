@@ -29,6 +29,7 @@ Manage Frontend Observability apps.
 * [gcx frontend apps get](gcx_frontend_apps_get.md)	 - Get a Frontend Observability app by slug-id or name.
 * [gcx frontend apps list](gcx_frontend_apps_list.md)	 - List Frontend Observability apps.
 * [gcx frontend apps list-sessions](gcx_frontend_apps_list-sessions.md)	 - List sessions that have replay recordings.
+* [gcx frontend apps play-session](gcx_frontend_apps_play-session.md)	 - Download and replay a session locally.
 * [gcx frontend apps remove-sourcemap](gcx_frontend_apps_remove-sourcemap.md)	 - Remove sourcemap bundles from a Frontend Observability app.
 * [gcx frontend apps show-segment](gcx_frontend_apps_show-segment.md)	 - Show events for a session recording segment.
 * [gcx frontend apps show-session](gcx_frontend_apps_show-session.md)	 - Show recordings for a Frontend Observability session.

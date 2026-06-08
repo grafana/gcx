@@ -63,6 +63,7 @@ func (p *FaroProvider) Commands() []*cobra.Command {
 		newListSessionsCommand(loader),
 		newShowSessionCommand(loader),
 		newShowSegmentCommand(loader),
+		newPlaySessionCommand(loader),
 	)
 
 	faroCmd.AddCommand(appsCmd)

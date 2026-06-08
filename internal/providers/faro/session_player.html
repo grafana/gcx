@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Session Replay — gcx</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/rrweb-player@{{.PlayerVersion}}/dist/style.min.css">
+  <style>
+    body { margin: 0; background: #111217; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: system-ui, sans-serif; color: #ccc; }
+    #loading { text-align: center; }
+    #error { color: #f55; text-align: center; display: none; }
+  </style>
+</head>
+<body>
+  <div id="loading">Loading session replay…</div>
+  <div id="error"></div>
+  <div id="player"></div>
+
+  <script type="module">
+    import Player from 'https://cdn.jsdelivr.net/npm/rrweb-player@{{.PlayerVersion}}/dist/rrweb-player.js';
+
+    (async function() {
+      const loadingEl = document.getElementById('loading');
+      const errorEl = document.getElementById('error');
+      const playerEl = document.getElementById('player');
+
+      let replayer = null;
+      let isPlaying = false;
+
+      try {
+        const resp = await fetch('/api/events');
+        if (!resp.ok) throw new Error(`Failed to load events: ${resp.status}`);
+        const events = await resp.json();
+
+        if (events.length === 0) {
+          throw new Error('No events in session');
+        }
+
+        loadingEl.style.display = 'none';
+        replayer = new Player({
+          target: playerEl,
+          props: { events, showController: true, autoPlay: false },
+        });
+      } catch (e) {
+        loadingEl.style.display = 'none';
+        errorEl.style.display = 'block';
+        errorEl.textContent = e.message;
+        return;
+      }
+
+      // WebSocket control channel
+      const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(`${wsProto}//${location.host}/ws`);
+
+      function sendState() {
+        if (!replayer || ws.readyState !== WebSocket.OPEN) return;
+        const r = replayer.getReplayer();
+        const meta = r.getMetaData();
+        const state = {
+          type: 'state',
+          timestamp: r.getCurrentTime() + (meta ? meta.startTime : 0),
+          playing: isPlaying,
+          duration: meta ? meta.totalTime : 0,
+        };
+        ws.send(JSON.stringify(state));
+      }
+
+      ws.onmessage = function(event) {
+        if (!replayer) return;
+        const r = replayer.getReplayer();
+        const msg = JSON.parse(event.data);
+        switch (msg.action) {
+          case 'goto':
+            r.pause(msg.timestamp);
+            break;
+          case 'play':
+            r.play();
+            isPlaying = true;
+            break;
+          case 'pause':
+            r.pause();
+            isPlaying = false;
+            break;
+        }
+        setTimeout(sendState, 100);
+      };
+
+      // Send state periodically
+      setInterval(sendState, 500);
+    })();
+  </script>
+</body>
+</html>
