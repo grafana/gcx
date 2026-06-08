@@ -332,18 +332,7 @@ func resolveItems(filter string, instrumented, baseline, graph []Service) []Serv
 	case instrInstrumented:
 		return instrumented
 	case instrUninstrumented:
-		idx := instrumentedIndex(baseline)
-		out := make([]Service, 0, len(graph))
-		for _, s := range graph {
-			if _, has := idx[instrumentedKey{namespace: s.Namespace, name: s.Name}]; has {
-				continue
-			}
-			if _, has := idx[instrumentedKey{name: s.Name}]; has {
-				continue
-			}
-			out = append(out, s)
-		}
-		return out
+		return uninstrumentedFromGraph(baseline, graph)
 	default:
 		return mergeServiceSets(instrumented, baseline, graph)
 	}

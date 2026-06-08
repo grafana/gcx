@@ -335,14 +335,12 @@ func instrumentedIndex(instrumented []Service) map[instrumentedKey]struct{} {
 	return idx
 }
 
-// mergeServiceSets joins target_info-derived services with service-graph
-// servers. The display set is emitted verbatim; service-graph entries are
-// only appended when they're not already known to the baseline. Baseline and
-// display may be the same slice when no user filters are in play.
-func mergeServiceSets(display, baseline, graph []Service) []Service {
+// uninstrumentedFromGraph returns the service-graph entries that are not already
+// known to the baseline (target_info) set, matching on (namespace, name) and on
+// bare name. Input order is preserved.
+func uninstrumentedFromGraph(baseline, graph []Service) []Service {
 	idx := instrumentedIndex(baseline)
-	out := make([]Service, 0, len(display)+len(graph))
-	out = append(out, display...)
+	out := make([]Service, 0, len(graph))
 	for _, s := range graph {
 		if _, has := idx[instrumentedKey{namespace: s.Namespace, name: s.Name}]; has {
 			continue
@@ -352,6 +350,17 @@ func mergeServiceSets(display, baseline, graph []Service) []Service {
 		}
 		out = append(out, s)
 	}
+	return out
+}
+
+// mergeServiceSets joins target_info-derived services with service-graph
+// servers. The display set is emitted verbatim; service-graph entries are
+// only appended when they're not already known to the baseline. Baseline and
+// display may be the same slice when no user filters are in play.
+func mergeServiceSets(display, baseline, graph []Service) []Service {
+	out := make([]Service, 0, len(display)+len(graph))
+	out = append(out, display...)
+	out = append(out, uninstrumentedFromGraph(baseline, graph)...)
 	sortServices(out)
 	return out
 }
