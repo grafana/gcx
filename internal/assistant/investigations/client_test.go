@@ -16,6 +16,7 @@ import (
 	"k8s.io/client-go/rest"
 )
 
+// newTestClient builds an investigations client wired to an httptest server.
 func newTestClient(t *testing.T, handler http.Handler) *investigations.Client {
 	t.Helper()
 	server := httptest.NewServer(handler)

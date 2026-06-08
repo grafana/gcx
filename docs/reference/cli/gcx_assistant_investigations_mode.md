@@ -1,32 +1,21 @@
-## gcx assistant investigations create
+## gcx assistant investigations mode
 
-Create a new investigation.
+Change autonomy mode of a v2 investigation.
 
 ### Synopsis
 
-Create a new investigation. On v2-enabled stacks, uses the v2 API with --instruction; falls back to legacy create otherwise.
+Change the autonomy mode of a running v2 investigation. Valid modes: low, medium, high.
 
 ```
-gcx assistant investigations create [flags]
-```
-
-### Examples
-
-```
-  gcx assistant investigations create --instruction="Debug API latency spike" --team=sre
+gcx assistant investigations mode <id> <mode> [flags]
 ```
 
 ### Options
 
 ```
-      --description string   Investigation description (legacy alias of --instruction)
-  -h, --help                 help for create
-      --instruction string   Investigation instruction (required on v2-enabled stacks)
-      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string        Output format. One of: agents, json, yaml (default "yaml")
-      --profile-id string    Runner profile ID (v2 only)
-      --team strings         Team name to scope the investigation to (repeatable, v2 only)
-      --title string         Investigation title
+  -h, --help            help for mode
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
 ```
 
 ### Options inherited from parent commands

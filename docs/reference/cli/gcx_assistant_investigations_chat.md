@@ -1,32 +1,23 @@
-## gcx assistant investigations create
+## gcx assistant investigations chat
 
-Create a new investigation.
+Show the chat thread for a v2 investigation.
 
 ### Synopsis
 
-Create a new investigation. On v2-enabled stacks, uses the v2 API with --instruction; falls back to legacy create otherwise.
+Stream the chat thread that backs a v2 investigation: assistant prose, tool calls (search_skills, prometheus_query_handler, loki_query_handler_investigator, tempo_query_handler, ...), and tool results. The legacy report/timeline/todos endpoints return empty stubs on v2 — this command is the substantive view.
 
 ```
-gcx assistant investigations create [flags]
-```
-
-### Examples
-
-```
-  gcx assistant investigations create --instruction="Debug API latency spike" --team=sre
+gcx assistant investigations chat <id> [flags]
 ```
 
 ### Options
 
 ```
-      --description string   Investigation description (legacy alias of --instruction)
-  -h, --help                 help for create
-      --instruction string   Investigation instruction (required on v2-enabled stacks)
-      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string        Output format. One of: agents, json, yaml (default "yaml")
-      --profile-id string    Runner profile ID (v2 only)
-      --team strings         Team name to scope the investigation to (repeatable, v2 only)
-      --title string         Investigation title
+  -h, --help             help for chat
+      --include-hidden   Include hidden system messages
+      --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string    Output format. One of: agents, json, table, wide, yaml (default "table")
+      --role string      Filter messages by role (user|assistant|tool)
 ```
 
 ### Options inherited from parent commands

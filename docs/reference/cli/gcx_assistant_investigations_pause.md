@@ -1,32 +1,21 @@
-## gcx assistant investigations create
+## gcx assistant investigations pause
 
-Create a new investigation.
+Pause a running v2 investigation.
 
 ### Synopsis
 
-Create a new investigation. On v2-enabled stacks, uses the v2 API with --instruction; falls back to legacy create otherwise.
+Pause a v2 investigation. Unlike cancel, paused investigations can be resumed.
 
 ```
-gcx assistant investigations create [flags]
-```
-
-### Examples
-
-```
-  gcx assistant investigations create --instruction="Debug API latency spike" --team=sre
+gcx assistant investigations pause <id> [flags]
 ```
 
 ### Options
 
 ```
-      --description string   Investigation description (legacy alias of --instruction)
-  -h, --help                 help for create
-      --instruction string   Investigation instruction (required on v2-enabled stacks)
-      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string        Output format. One of: agents, json, yaml (default "yaml")
-      --profile-id string    Runner profile ID (v2 only)
-      --team strings         Team name to scope the investigation to (repeatable, v2 only)
-      --title string         Investigation title
+  -h, --help            help for pause
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
 ```
 
 ### Options inherited from parent commands

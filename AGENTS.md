@@ -142,7 +142,7 @@ internal/
 ├── queryerror/  Typed API error for datasource query failures (APIError type, New/FromBody constructors, IsParseError helper)
 ├── assistant/   Assistant client (A2A streaming, prompt, state management)
 │   ├── assistanthttp/  Base HTTP client for grafana-assistant-app plugin API
-│   └── investigations/ Investigation CRUD commands, table codecs, API client
+│   └── investigations/ Investigation CRUD commands, table codecs, v1 (legacy) + v2 (Lodestone) API clients with auto-detected capability cached via `SaveProviderConfig` at `providers.assistant.lodestone-v2` in the gcx config file
 ├── agent/       Agent mode detection, command annotations, known-resource registry with operation hints
 ├── agentlog/    Agent invocation failure logger (opt-in JSONL disk log, XDG state dir — wired into handleError in cmd/gcx/main.go)
 ├── style/       Terminal styling (Grafana Neon Dark theme, TableBuilder, ASCII banner, glamour help)

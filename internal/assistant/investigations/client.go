@@ -12,7 +12,17 @@ import (
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
 )
 
-// Client is an HTTP client for Assistant investigation endpoints.
+// v1 investigation endpoint paths. All v1 routes live under the plugin's
+// /api/v1 surface; the assistanthttp base only contributes the plugin prefix.
+const (
+	v1InvestigationsBasePath = "/api/v1/investigations"
+	v1ListPath               = v1InvestigationsBasePath + "/summary"
+	v1CreatePath             = v1InvestigationsBasePath
+)
+
+// Client is an HTTP client for Assistant investigation endpoints. v1 methods
+// use /api/v1 paths; v2 methods use /api/v2 paths. Callers gate v2 calls on
+// DetectAPIMode().SupportsV2() at the command layer.
 type Client struct {
 	base *assistanthttp.Client
 }
@@ -41,7 +51,7 @@ func (c *Client) List(ctx context.Context, opts ListOptions) ([]InvestigationSum
 	if opts.Offset > 0 {
 		params.Set("offset", strconv.Itoa(opts.Offset))
 	}
-	path := "/investigations/summary"
+	path := v1ListPath
 	if len(params) > 0 {
 		path += "?" + params.Encode()
 	}
@@ -72,7 +82,7 @@ func (c *Client) List(ctx context.Context, opts ListOptions) ([]InvestigationSum
 
 // Get returns full investigation detail by ID.
 func (c *Client) Get(ctx context.Context, id string) (*Investigation, error) {
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, "/investigations/"+url.PathEscape(id), nil)
+	resp, err := c.base.DoRequest(ctx, http.MethodGet, v1InvestigationsBasePath+"/"+url.PathEscape(id), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get investigation %s: %w", id, err)
 	}
@@ -98,7 +108,7 @@ func (c *Client) Create(ctx context.Context, req CreateRequest) (*CreateResponse
 		return nil, fmt.Errorf("failed to marshal create request: %w", err)
 	}
 
-	resp, err := c.base.DoRequest(ctx, http.MethodPost, "/investigations", bytes.NewReader(body))
+	resp, err := c.base.DoRequest(ctx, http.MethodPost, v1CreatePath, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create investigation: %w", err)
 	}
@@ -119,7 +129,7 @@ func (c *Client) Create(ctx context.Context, req CreateRequest) (*CreateResponse
 
 // Cancel cancels a running investigation.
 func (c *Client) Cancel(ctx context.Context, id string) (*CancelResponse, error) {
-	resp, err := c.base.DoRequest(ctx, http.MethodPost, "/investigations/"+url.PathEscape(id)+"/cancel", nil)
+	resp, err := c.base.DoRequest(ctx, http.MethodPost, v1InvestigationsBasePath+"/"+url.PathEscape(id)+"/cancel", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to cancel investigation %s: %w", id, err)
 	}
@@ -159,7 +169,7 @@ func (c *Client) Todos(ctx context.Context, id string) ([]Todo, error) {
 
 // Timeline returns the activity timeline for an investigation.
 func (c *Client) Timeline(ctx context.Context, id string) ([]TimelineAgent, error) {
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, "/investigations/"+url.PathEscape(id)+"/timeline-snapshot", nil)
+	resp, err := c.base.DoRequest(ctx, http.MethodGet, v1InvestigationsBasePath+"/"+url.PathEscape(id)+"/timeline-snapshot", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get timeline for investigation %s: %w", id, err)
 	}
@@ -185,7 +195,7 @@ func (c *Client) Timeline(ctx context.Context, id string) ([]TimelineAgent, erro
 
 // Report returns the condensed report summary for an investigation.
 func (c *Client) Report(ctx context.Context, id string) (*ReportSummary, error) {
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, "/investigations/"+url.PathEscape(id)+"/report-summary", nil)
+	resp, err := c.base.DoRequest(ctx, http.MethodGet, v1InvestigationsBasePath+"/"+url.PathEscape(id)+"/report-summary", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get report for investigation %s: %w", id, err)
 	}
@@ -206,7 +216,7 @@ func (c *Client) Report(ctx context.Context, id string) (*ReportSummary, error) 
 
 // Document returns a specific document from an investigation.
 func (c *Client) Document(ctx context.Context, id, docID string) (*Document, error) {
-	path := "/investigations/" + url.PathEscape(id) + "/documents/" + url.PathEscape(docID)
+	path := v1InvestigationsBasePath + "/" + url.PathEscape(id) + "/documents/" + url.PathEscape(docID)
 	resp, err := c.base.DoRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get document %s for investigation %s: %w", docID, id, err)
@@ -228,7 +238,7 @@ func (c *Client) Document(ctx context.Context, id, docID string) (*Document, err
 
 // Approvals returns approval requests for an investigation.
 func (c *Client) Approvals(ctx context.Context, id string) ([]Approval, error) {
-	resp, err := c.base.DoRequest(ctx, http.MethodGet, "/investigations/"+url.PathEscape(id)+"/approvals", nil)
+	resp, err := c.base.DoRequest(ctx, http.MethodGet, v1InvestigationsBasePath+"/"+url.PathEscape(id)+"/approvals", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get approvals for investigation %s: %w", id, err)
 	}
