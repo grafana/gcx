@@ -59,6 +59,22 @@ For on-premises instances, gcx defaults the organization ID to 1 if you do not s
 
 Commands under `gcx sm`, `gcx k6`, `gcx irm`, `gcx slo`, `gcx fleet`, and other Cloud product surfaces require a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/) in addition to Grafana auth.
 
+#### Where to create the token and which scopes to grant
+
+Create the token at **grafana.com → Administration → Cloud Access Policies → Create access policy** (`https://grafana.com/orgs/<your-org>/access-policies`). See [Create access policies](https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies/) for the step-by-step flow.
+
+Scope the access policy to what you manage. A good starting point:
+
+| Scope | Enables |
+|-------|---------|
+| `stacks:read` | Stack discovery (used to resolve the stack slug for most Cloud commands) |
+| `metrics:read`, `logs:read`, `traces:read`, `profiles:read` | Querying the corresponding signal stores (`gcx metrics`, `gcx logs`, `gcx traces`, `gcx profiles`) |
+| `set:alloy-data-write` | Fleet Management and Instrumentation Hub (`gcx fleet`, `gcx instrumentation`) |
+
+For product-specific surfaces (`gcx slo`, `gcx irm`, `gcx sm`, `gcx k6`), add the read/write scopes for that product. When in doubt, start narrow and widen the policy as commands report missing-scope errors — the token can be re-scoped without re-running `gcx login`.
+
+The interactive `gcx login` prompt links to this guidance when it asks for the Cloud Access Policy token.
+
 **Provide it at login:**
 
 ```bash
