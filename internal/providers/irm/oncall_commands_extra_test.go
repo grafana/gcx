@@ -434,6 +434,63 @@ func TestAlertGroupGetRichOpts_DefaultsToTable(t *testing.T) {
 	}
 }
 
+// TestEscalateOpts_DefaultFormatIsValid is the regression guard for #681: the
+// escalate command set DefaultFormat("text") without registering a text codec,
+// so in human/TTY mode IO.Validate() rejected its own default with "unknown
+// output format". Agent mode is forced off because BindFlags would otherwise
+// override the default with the (always-registered) agents codec and mask the
+// bug.
+func TestEscalateOpts_DefaultFormatIsValid(t *testing.T) {
+	resetAgentMode(t)
+	opts := &escalateOpts{}
+	opts.setup(pflag.NewFlagSet("test", pflag.ContinueOnError))
+
+	if got := opts.IO.OutputFormat; got != "text" {
+		t.Errorf("escalate default format want %q, got %q", "text", got)
+	}
+	if err := opts.IO.Validate(); err != nil {
+		t.Fatalf("IO.Validate() on default format returned error: %v", err)
+	}
+}
+
+// TestEscalationResult_Codecs pins escalate's output contract across modes:
+// the text codec renders the human one-liner, while json carries the
+// structured document with the alert group ID.
+func TestEscalationResult_Codecs(t *testing.T) {
+	t.Parallel()
+	res := escalationResult{AlertGroupID: "I123", Title: "DB down"}
+
+	t.Run("text", func(t *testing.T) {
+		t.Parallel()
+		var buf bytes.Buffer
+		if err := (&escalationTextCodec{}).Encode(&buf, res); err != nil {
+			t.Fatalf("text encode: %v", err)
+		}
+		want := "Direct escalation created with alert group ID: I123\n"
+		if got := buf.String(); got != want {
+			t.Errorf("text codec output = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("json", func(t *testing.T) {
+		t.Parallel()
+		b, err := json.Marshal(res)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if got := string(b); !strings.Contains(got, `"alertGroupId":"I123"`) {
+			t.Errorf("json must carry alertGroupId; got %s", got)
+		}
+	})
+
+	t.Run("text codec rejects foreign type", func(t *testing.T) {
+		t.Parallel()
+		if err := (&escalationTextCodec{}).Encode(&bytes.Buffer{}, struct{}{}); err == nil {
+			t.Error("text codec must reject non-escalationResult values")
+		}
+	})
+}
+
 // TestEmitWarnEmitNote_Format pins the output contract for the
 // centralised diagnostic helpers: TTY plain-text with the prefixed class
 // name; agent mode JSONL with typed `class` field.
