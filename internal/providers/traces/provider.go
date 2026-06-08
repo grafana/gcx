@@ -57,6 +57,9 @@ func (p *Provider) descriptor() signals.Descriptor {
   # List all labels
   gcx traces labels -d UID
 
+  # Get LLM-friendly values for a label
+  gcx traces tags -d UID -l resource.service.name --llm -o json
+
   # Output as JSON
   gcx traces labels -d UID -o json`,
 			},

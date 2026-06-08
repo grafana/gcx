@@ -100,13 +100,13 @@ WARN http response method=GET url=https://... status=502
 WARN http error   method=GET url=https://... error="connection refused"
 ```
 
-### `--log-http-payload`
+### `--insecure-log-http-payload`
 
 Dumps the full request and response bodies (via `httputil.DumpRequest` /
 `httputil.DumpResponse`) at Debug level. Requires `-vvv` to be visible.
 
 ```
-gcx --log-http-payload -vvv slo list
+gcx --insecure-log-http-payload -vvv slo list
 ```
 
 **Warning:** The dump includes all headers, including `Authorization`. Treat

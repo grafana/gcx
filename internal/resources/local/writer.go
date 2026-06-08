@@ -103,7 +103,26 @@ func (writer *FSWriter) writeSingle(resource *resources.Resource) error {
 		return fmt.Errorf("could not generate resource path: %w", err)
 	}
 
-	fullFileName := filepath.Join(writer.Path, filename)
+	// Reject absolute filenames — filepath.Join would silently discard the
+	// root prefix on Unix, but we must also guard against hostile names.
+	if filepath.IsAbs(filename) {
+		return fmt.Errorf("resource filename must be relative, got %q", filename)
+	}
+
+	rootAbs, err := filepath.Abs(writer.Path)
+	if err != nil {
+		return fmt.Errorf("could not resolve writer root path: %w", err)
+	}
+	targetAbs, err := filepath.Abs(filepath.Join(rootAbs, filename))
+	if err != nil {
+		return fmt.Errorf("could not resolve target path: %w", err)
+	}
+	rel, err := filepath.Rel(rootAbs, targetAbs)
+	if err != nil || strings.HasPrefix(rel, "..") || rel == ".." {
+		return fmt.Errorf("resource path %q escapes writer root", filename)
+	}
+
+	fullFileName := targetAbs
 	if err := ensureDirectoryExists(filepath.Dir(fullFileName)); err != nil {
 		return fmt.Errorf("could ensure resource directory exists: %w", err)
 	}

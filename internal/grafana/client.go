@@ -123,7 +123,7 @@ func GetVersion(ctx context.Context, cfgCtx *config.Context) (*semver.Version, s
 	if err != nil {
 		return nil, "", err
 	}
-	// Wire a CLI HTTP client that carries the --log-http-payload logging
+	// Wire a CLI HTTP client that carries the --insecure-log-http-payload logging
 	// transport when enabled, reusing the TLS config already resolved by
 	// clientFromContextWithTLS to avoid redundant file reads.
 	// WithHTTPClient only replaces the underlying transport, not the

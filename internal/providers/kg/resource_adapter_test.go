@@ -74,3 +74,27 @@ func TestRuleToResource_AlertRule(t *testing.T) {
 	assert.Equal(t, "HighErrorRate", rule.Groups[0].Rules[0].Alert)
 	assert.Equal(t, original.Groups[0].Rules[0].Annotations, rule.Groups[0].Rules[0].Annotations)
 }
+
+func TestModelRulesToResource_RoundTrip(t *testing.T) {
+	original := kg.ModelRules{
+		Name:      "service-rules",
+		Entities:  []byte(`[{"type":"Service","name":"frontend"}]`),
+		Relations: []byte(`[{"from":"Service","to":"Namespace"}]`),
+		ManagedBy: "terraform",
+	}
+
+	res, err := kg.ModelRulesToResource(original, "stack-123")
+	require.NoError(t, err)
+
+	assert.Equal(t, kg.APIVersion, res.GroupVersionKind().Group+"/"+res.GroupVersionKind().Version)
+	assert.Equal(t, "ModelRules", res.GroupVersionKind().Kind)
+	assert.Equal(t, "service-rules", res.Raw.GetName())
+	assert.Equal(t, "stack-123", res.Raw.GetNamespace())
+
+	got, err := kg.ModelRulesFromResource(res)
+	require.NoError(t, err)
+	assert.Equal(t, original.Name, got.Name)
+	assert.Equal(t, original.ManagedBy, got.ManagedBy)
+	assert.JSONEq(t, string(original.Entities), string(got.Entities))
+	assert.JSONEq(t, string(original.Relations), string(got.Relations))
+}

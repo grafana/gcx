@@ -343,3 +343,54 @@ func TestContextFlag_RootBindsContextAsPersistentGlobalFlag(t *testing.T) {
 	require.NotNil(t, rootCmd.PersistentFlags().Lookup("context"),
 		"root must bind --context as a persistent (global) flag")
 }
+
+func TestOldHTTPPayloadFlagErrors(t *testing.T) {
+	noop := &cobra.Command{Use: "noop", RunE: func(_ *cobra.Command, _ []string) error { return nil }}
+	rootCmd := root.NewCommandForTest("v0.0.0-test", []providers.Provider{
+		&mockProvider{name: "noop", commands: []*cobra.Command{noop}},
+	})
+
+	var errBuf bytes.Buffer
+	rootCmd.SetErr(&errBuf)
+	rootCmd.SetArgs([]string{"--log-http-payload", "noop"})
+	err := rootCmd.Execute()
+	require.Error(t, err, "old flag name should cause an error")
+	require.Contains(t, err.Error(), "--insecure-log-http-payload", "error should name the new flag")
+}
+
+func TestF1_NewFlagPrintsWarningToStderr(t *testing.T) {
+	noop := &cobra.Command{Use: "noop", RunE: func(_ *cobra.Command, _ []string) error { return nil }}
+	rootCmd := root.NewCommandForTest("v0.0.0-test", []providers.Provider{
+		&mockProvider{name: "noop", commands: []*cobra.Command{noop}},
+	})
+
+	var errBuf bytes.Buffer
+	rootCmd.SetErr(&errBuf)
+	rootCmd.SetArgs([]string{"--insecure-log-http-payload", "noop"})
+	err := rootCmd.Execute()
+	require.NoError(t, err)
+	require.Contains(t, errBuf.String(), "WARNING", "should print a warning when --insecure-log-http-payload is set")
+	require.Contains(t, errBuf.String(), "Authorization tokens", "warning should name Authorization tokens")
+	require.Contains(t, errBuf.String(), "cookies", "warning should name cookies")
+	require.Contains(t, errBuf.String(), "OAuth refresh tokens", "warning should name OAuth refresh tokens")
+}
+
+func TestF1_NewFlagInvalidBoolValueReportsParseError(t *testing.T) {
+	noop := &cobra.Command{Use: "noop", RunE: func(_ *cobra.Command, _ []string) error { return nil }}
+	rootCmd := root.NewCommandForTest("v0.0.0-test", []providers.Provider{
+		&mockProvider{name: "noop", commands: []*cobra.Command{noop}},
+	})
+
+	rootCmd.SetArgs([]string{"--insecure-log-http-payload=maybe", "noop"})
+	err := rootCmd.Execute()
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), "--log-http-payload has been renamed")
+	require.Contains(t, err.Error(), "invalid syntax")
+}
+
+func TestF1_HelpTextMentionsCredentials(t *testing.T) {
+	rootCmd := root.NewCommandForTest("v0.0.0-test", nil)
+	flag := rootCmd.PersistentFlags().Lookup("insecure-log-http-payload")
+	require.NotNil(t, flag, "--insecure-log-http-payload flag must be registered")
+	require.Contains(t, flag.Usage, "credentials", "help text must mention credentials")
+}

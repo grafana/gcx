@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gofrs/flock"
 	authlib "github.com/grafana/authlib/types"
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/httputils"
@@ -68,13 +69,13 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 		if err != nil {
 			return nil, err
 		}
-		lock := &fileLock{path: path + ".lock"}
+		lock := flock.New(path + ".lock")
 		lockCtx, cancel := context.WithTimeout(context.WithoutCancel(reqCtx), 30*time.Second)
 		defer cancel()
-		if err := lock.tryLockContext(lockCtx, 100*time.Millisecond); err != nil {
+		if ok, err := lock.TryLockContext(lockCtx, 100*time.Millisecond); err != nil || !ok {
 			return nil, err
 		}
-		return func() { _ = lock.unlock() }, nil
+		return func() { _ = lock.Unlock() }, nil
 	}
 
 	n.oauthTransport.Reload = func() (auth.StoredTokens, bool, error) {
@@ -271,7 +272,7 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 	}
 
 	// Wrap transport with debug logging so `-vvv` shows every HTTP request.
-	// When --log-http-payload is set, also add full request/response body dumps.
+	// When --insecure-log-http-payload is set, also add full request/response body dumps.
 	// Outermost layer: retry for rate limiting (429) and transient errors.
 	prevWrap := rcfg.WrapTransport
 	payloadLogging := httputils.PayloadLogging(ctx)

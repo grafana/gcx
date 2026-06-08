@@ -17,3 +17,16 @@
 | `idiomatic` | `warning` | [`uneditable-dashboard`](./dashboard/uneditable-dashboard.md) | Dashboards should not be editable. |
 
 
+## Custom rules
+
+Custom rules are loaded via `gcx dev lint --rules <path>`. They run inside a
+restricted OPA capabilities sandbox. The following built-in
+OPA functions are **not available** in custom rules:
+
+| Disallowed builtin | Reason |
+| ------------------ | ------ |
+| `http.send` | Network exfiltration vector |
+| `net.*` (all `net.` prefixed builtins) | Network exfiltration vector |
+| `opa.runtime` | Runtime introspection / environment disclosure |
+
+No flag is provided to re-enable these functions. Bundled rules are unaffected.

@@ -40,6 +40,9 @@ open it in your browser after the query succeeds.`,
   # Instant query using configured default datasource
   gcx datasources prometheus query 'up{job="grafana"}'
 
+  # Instant query at a specific time
+  gcx datasources prometheus query 'rate(http_requests_total[5m])' --time 2026-01-15T10:30:00Z
+
   # Range query with explicit datasource UID
   gcx datasources prometheus query -d UID 'rate(http_requests_total[5m])' --from now-1h --to now --step 1m
 
@@ -94,16 +97,27 @@ open it in your browser after the query succeeds.`,
 				return err
 			}
 
+			// --time: instant query at a specific timestamp
+			instant := shared.Time != ""
+			if instant {
+				t, err := dsquery.ParseTime(shared.Time, now)
+				if err != nil {
+					return fmt.Errorf("invalid --time value: %w", err)
+				}
+				start = t
+			}
+
 			client, err := prometheus.NewClient(cfg)
 			if err != nil {
 				return fmt.Errorf("failed to create client: %w", err)
 			}
 
 			req := prometheus.QueryRequest{
-				Query: expr,
-				Start: start,
-				End:   end,
-				Step:  step,
+				Query:   expr,
+				Start:   start,
+				End:     end,
+				Step:    step,
+				Instant: instant,
 			}
 
 			resp, err := client.Query(ctx, datasourceUID, req)
@@ -139,6 +153,7 @@ open it in your browser after the query succeeds.`,
 	}
 
 	shared.Setup(cmd.Flags(), true)
+	shared.SetupInstantFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.prometheus is configured)")
 	share.Setup(cmd.Flags(), "executed query")
 

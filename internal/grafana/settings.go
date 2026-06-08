@@ -27,7 +27,7 @@ const frontendSettingsPath = "/api/frontend/settings"
 
 // FetchAnonymousSettings performs an unauthenticated GET of /api/frontend/settings
 // against baseURL, used for pre-auth target detection. When httpClient is nil it
-// falls back to httputils.NewDefaultClient (so --log-http-payload is honoured).
+// falls back to httputils.NewDefaultClient (so --insecure-log-http-payload is honoured).
 // Respects the supplied context's deadline and cancellation.
 //
 // Errors are returned as-is; callers are responsible for deciding how to classify

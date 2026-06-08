@@ -79,10 +79,18 @@ func InjectURLs(items []unstructured.Unstructured, host string) {
 }
 
 // Open opens the given URL in the default browser.
-// Returns an error if the URL does not use http or https scheme.
+// Returns an error if the URL does not use http or https scheme or has no host.
 func Open(rawURL string) error {
-	if !strings.HasPrefix(rawURL, "https://") && !strings.HasPrefix(rawURL, "http://") {
-		return fmt.Errorf("refusing to open non-http URL: %s", rawURL)
+	if err := validateOpenURL(rawURL); err != nil {
+		return err
 	}
 	return openURL(rawURL)
+}
+
+func validateOpenURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+		return fmt.Errorf("refusing to open non-http URL: %s", rawURL)
+	}
+	return nil
 }

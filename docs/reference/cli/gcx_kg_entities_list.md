@@ -1,6 +1,19 @@
 ## gcx kg entities list
 
+List entities by type/scope, or look up an entity's identity and properties.
+
+### Synopsis
+
 List Knowledge Graph entities for a given type, env, site, namespace.
+
+The cheap default for listing entities or looking up basic information about
+one: its identity (name, type, scope), properties (the labels used to build
+PromQL/Loki queries — job, namespace, container, image, etc.), and a small
+snapshot of its current insights. Filter to a single entity with
+'--property name=<exact-name>'.
+
+For an entity's full insight timeline or related entities for root-cause
+analysis, use 'gcx kg entities inspect' instead.
 
 ```
 gcx kg entities list [flags]
@@ -38,13 +51,13 @@ gcx kg entities list [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent              Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
-      --config string      Path to the configuration file to use
-      --context string     Name of the context to use (overrides current-context in config)
-      --log-http-payload   Log full HTTP request/response bodies (includes headers — may expose tokens)
-      --no-color           Disable color output
-      --no-truncate        Disable table column truncation (auto-enabled when stdout is piped)
-  -v, --verbose count      Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --config string               Path to the configuration file to use
+      --context string              Name of the context to use (overrides current-context in config)
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
+      --no-color                    Disable color output
+      --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
+  -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
 ```
 
 ### SEE ALSO

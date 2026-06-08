@@ -309,7 +309,7 @@ func newClient(ctx context.Context, loader *providers.ConfigLoader) (*Client, er
 - **OAuth proxy** (`RESTConfig != nil`) → `rest.HTTPClientFor` — RefreshTransport
   handles gat_ token renewal; the proxy adds provider auth server-side
 
-Both paths carry `LoggingRoundTripper` and respect `--log-http-payload`.
+Both paths carry `LoggingRoundTripper` and respect `--insecure-log-http-payload`.
 
 ### Direct construction (when CloudRESTConfig is unavailable)
 
@@ -328,14 +328,14 @@ func NewClient(ctx context.Context, baseURL, token string) *Client {
 
 `NewDefaultClient(ctx)` provides:
 - **`LoggingRoundTripper`** — Debug for 2xx-4xx, Warn for 5xx/errors
-- **`--log-http-payload` support** — full body dumps when the flag is set
+- **`--insecure-log-http-payload` support** — full body dumps when the flag is set
 - **60-second timeout** and sensible TLS defaults (TLS 1.2+, verify enabled)
 - **No auth injection** — provider sets its own auth headers per request
 
 ### What NOT to do
 
 ```go
-// BAD: bare http.Client — no logging, no --log-http-payload support
+// BAD: bare http.Client — no logging, no --insecure-log-http-payload support
 client := &http.Client{Timeout: 30 * time.Second}
 
 // BAD: http.DefaultClient — shared mutable state, no logging

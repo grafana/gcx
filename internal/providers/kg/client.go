@@ -37,7 +37,9 @@ const (
 	searchSamplePath     = searchPath + "/sample"
 	rulesPath            = pluginResourcePath + "/asserts/api-server/v1/config/prom-rules"
 	ruleByNameFmt        = rulesPath + "/%s"
-	modelRulesPath       = pluginResourcePath + "/asserts/api-server/v1/config/model-rules/"
+	modelRulesPath       = pluginResourcePath + "/asserts/api-server/v1/config/model-rules"
+	modelRulesByNameFmt  = modelRulesPath + "/%s"
+	modelRulesSchemaPath = modelRulesPath + "/schema"
 	suppressionPath      = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alert"
 	suppressionByNameFmt = suppressionPath + "/%s"
 	suppressionsPath     = pluginResourcePath + "/asserts/api-server/v1/config/disabled-alerts"
@@ -46,8 +48,26 @@ const (
 	v2LogConfigPath      = v2ConfigPath + "/log"
 	v2TraceConfigPath    = v2ConfigPath + "/trace"
 	v2ProfileConfigPath  = v2ConfigPath + "/profile"
-	v2RelabelRulesPath   = v2ConfigPath + "/relabel-rules/prologue"
+	v2RelabelRulesPath   = v2ConfigPath + "/relabel-rules"
 )
+
+// RelabelRuleType identifies which Mimir relabel rule group to operate on.
+type RelabelRuleType string
+
+const (
+	RelabelRuleTypePrologue  RelabelRuleType = "prologue"
+	RelabelRuleTypeEpilogue  RelabelRuleType = "epilogue"
+	RelabelRuleTypeGenerated RelabelRuleType = "generated"
+)
+
+// IsValid reports whether t is one of the known relabel rule types.
+func (t RelabelRuleType) IsValid() bool {
+	switch t {
+	case RelabelRuleTypePrologue, RelabelRuleTypeEpilogue, RelabelRuleTypeGenerated:
+		return true
+	}
+	return false
+}
 
 // Client is an HTTP client for the Knowledge Graph (Asserts) API.
 type Client struct {
@@ -228,6 +248,84 @@ func (c *Client) UploadModelRules(ctx context.Context, yamlContent string) error
 	return c.doYAML(ctx, http.MethodPut, modelRulesPath, yamlContent)
 }
 
+// ListModelRuleNames returns the names of all custom model rule configurations for the tenant.
+func (c *Client) ListModelRuleNames(ctx context.Context) ([]string, error) {
+	var result ModelRuleNames
+	if err := c.getJSON(ctx, modelRulesPath, &result); err != nil {
+		return nil, fmt.Errorf("kg: list model rules: %w", err)
+	}
+	return result.RuleNames, nil
+}
+
+// ListModelRules retrieves all custom model rule configurations for the tenant.
+//
+// The backend list endpoint only returns names, so this performs an N+1
+// fan-out: one call to list names, then bounded-parallel GetModelRules per name.
+func (c *Client) ListModelRules(ctx context.Context) ([]ModelRules, error) {
+	names, err := c.ListModelRuleNames(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ModelRules, len(names))
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(ruleFetchConcurrency)
+	for i, name := range names {
+		g.Go(func() error {
+			m, err := c.GetModelRules(gCtx, name)
+			if err != nil {
+				return err
+			}
+			out[i] = *m
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, fmt.Errorf("kg: list model rules: %w", err)
+	}
+	return out, nil
+}
+
+// GetModelRules retrieves a single custom model rules configuration by name.
+func (c *Client) GetModelRules(ctx context.Context, name string) (*ModelRules, error) {
+	var result ModelRules
+	path := fmt.Sprintf(modelRulesByNameFmt, url.PathEscape(name))
+	if err := c.getJSON(ctx, path, &result); err != nil {
+		return nil, fmt.Errorf("kg: get model rules %q: %w", name, err)
+	}
+	return &result, nil
+}
+
+// GetModelRulesSchema fetches the live JSON Schema for the ModelRulesDto from the backend.
+//
+// Backend caches this for 1h. The schema is derived from the Java DTO tree, so it
+// reflects the full nested shape (entities, relations, enrichment, etc.) — much
+// deeper than the shallow schema embedded in the gcx binary.
+func (c *Client) GetModelRulesSchema(ctx context.Context) (map[string]any, error) {
+	var result map[string]any
+	if err := c.getJSON(ctx, modelRulesSchemaPath, &result); err != nil {
+		return nil, fmt.Errorf("kg: get model rules schema: %w", err)
+	}
+	return result, nil
+}
+
+// DeleteModelRules deletes a custom model rules configuration by name.
+func (c *Client) DeleteModelRules(ctx context.Context, name string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
+		c.host+fmt.Sprintf(modelRulesByNameFmt, url.PathEscape(name)), nil)
+	if err != nil {
+		return fmt.Errorf("kg: create request: %w", err)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("kg: execute request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return readError(resp)
+	}
+	return nil
+}
+
 // Suppression represents a single disabled-alert configuration entry.
 type Suppression struct {
 	Name        string            `json:"name" yaml:"name"`
@@ -273,9 +371,36 @@ func (c *Client) GetSuppressions(ctx context.Context) (*Suppressions, error) {
 	return &result, nil
 }
 
-// UploadRelabelRules uploads relabel rules configuration.
-func (c *Client) UploadRelabelRules(ctx context.Context, yamlContent string) error {
-	return c.doYAML(ctx, http.MethodPut, v2RelabelRulesPath, yamlContent)
+// GetRelabelRules fetches the relabel rule group of the given type.
+// Returns nil, nil when the backend responds with 204 No Content (no rules configured).
+func (c *Client) GetRelabelRules(ctx context.Context, t RelabelRuleType) (map[string]any, error) {
+	if !t.IsValid() {
+		return nil, fmt.Errorf("kg: invalid relabel rule type %q", t)
+	}
+	path := v2RelabelRulesPath + "/" + string(t)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.host+path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("kg: create request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("kg: execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNoContent {
+		return nil, nil //nolint:nilnil
+	}
+	if resp.StatusCode >= 400 {
+		return nil, readError(resp)
+	}
+	var result map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("kg: decode relabel rules: %w", err)
+	}
+	return result, nil
 }
 
 // ---------------------------------------------------------------------------

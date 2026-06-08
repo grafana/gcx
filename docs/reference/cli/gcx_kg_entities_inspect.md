@@ -1,6 +1,19 @@
 ## gcx kg entities inspect
 
-Show detailed info, insights, and summary for a single entity, including a link to the RCA Workbench.
+Show the insight timeline and related entities for a single entity (root-cause analysis).
+
+### Synopsis
+
+Show detailed root-cause-analysis context for a single entity, including a link
+to the RCA Workbench.
+
+Use this only when you need the detail: the entity's insight/assertion timeline
+and the related entities to investigate next. It calls a heavier
+endpoint and can return large output.
+
+Do not use 'inspect' just to read an entity's identity or properties — for that,
+use 'gcx kg entities list' (optionally with '--property name=<exact-name>' to
+narrow to one entity), which is cheaper and returns those fields directly.
 
 ```
 gcx kg entities inspect [Type--Name] [flags]
@@ -31,13 +44,13 @@ gcx kg entities inspect [Type--Name] [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent              Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
-      --config string      Path to the configuration file to use
-      --context string     Name of the context to use (overrides current-context in config)
-      --log-http-payload   Log full HTTP request/response bodies (includes headers — may expose tokens)
-      --no-color           Disable color output
-      --no-truncate        Disable table column truncation (auto-enabled when stdout is piped)
-  -v, --verbose count      Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.
+      --config string               Path to the configuration file to use
+      --context string              Name of the context to use (overrides current-context in config)
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
+      --no-color                    Disable color output
+      --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
+  -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
 ```
 
 ### SEE ALSO

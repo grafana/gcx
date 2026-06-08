@@ -416,6 +416,83 @@ func TestRefreshTransport_NetworkRefreshSurvivesRequestCancellation(t *testing.T
 	}
 }
 
+func TestDoRefresh_ErrorFormat_Unauthorized(t *testing.T) {
+	secretBody := `{"access_token":"leaked-secret"}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/cli/v1/auth/refresh" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(secretBody))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	transport := &auth.RefreshTransport{
+		Base:          http.DefaultTransport,
+		ProxyEndpoint: server.URL,
+		Token:         "gat_old",
+		RefreshToken:  "gar_stale",
+		ExpiresAt:     time.Now().Add(1 * time.Minute),
+	}
+
+	client := &http.Client{Transport: transport}
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/test", nil)
+	resp, err := client.Do(req)
+	if resp != nil {
+		resp.Body.Close()
+	}
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, auth.ErrRefreshTokenExpired) {
+		t.Fatalf("expected ErrRefreshTokenExpired to be wrapped, got: %v", err)
+	}
+	if strings.Contains(err.Error(), "leaked-secret") {
+		t.Fatalf("error message must not contain response body, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "oauth refresh failed") {
+		t.Fatalf("error message should match oauth format, got: %v", err)
+	}
+}
+
+func TestDoRefresh_ErrorFormat_ServerError(t *testing.T) {
+	secretBody := `{"error":"internal","secret":"do-not-leak"}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/cli/v1/auth/refresh" {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(secretBody))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	transport := &auth.RefreshTransport{
+		Base:          http.DefaultTransport,
+		ProxyEndpoint: server.URL,
+		Token:         "gat_old",
+		RefreshToken:  "gar_valid",
+		ExpiresAt:     time.Now().Add(1 * time.Minute),
+	}
+
+	client := &http.Client{Transport: transport}
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/test", nil)
+	resp, err := client.Do(req)
+	if resp != nil {
+		resp.Body.Close()
+	}
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if strings.Contains(err.Error(), "do-not-leak") {
+		t.Fatalf("error message must not contain response body, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "oauth refresh failed") {
+		t.Fatalf("error message should match oauth format, got: %v", err)
+	}
+}
+
 func TestRefreshTransport_RejectsExpiredRefreshToken(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

@@ -676,12 +676,12 @@ func (c *RuleWideTableCodec) Decode(_ io.Reader, _ any) error {
 // Model rules, suppressions, relabel rules commands
 // ---------------------------------------------------------------------------
 
-//nolint:dupl
 func newModelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "model-rules",
-		Short: "Push model rules to the Knowledge Graph.",
+		Short: "Manage model rules in the Knowledge Graph.",
 	}
+
 	var fileFlag string
 	createCmd := &cobra.Command{
 		Use:   "create",
@@ -708,9 +708,169 @@ func newModelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	}
 	createCmd.Flags().StringVarP(&fileFlag, "file", "f", "", "Input file (YAML)")
 	_ = createCmd.MarkFlagRequired("file")
-	cmd.AddCommand(createCmd)
+
+	listOpts := &modelRulesListOpts{}
+	listCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List all custom model rules configurations.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := listOpts.IO.Validate(); err != nil {
+				return err
+			}
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			names, err := client.ListModelRuleNames(cmd.Context())
+			if err != nil {
+				return err
+			}
+			return listOpts.IO.Encode(cmd.OutOrStdout(), names)
+		},
+	}
+	listOpts.setup(listCmd.Flags())
+
+	getOpts := &modelRulesGetOpts{}
+	getCmd := &cobra.Command{
+		Use:   "get <name>",
+		Short: "Get a custom model rules configuration by name.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := getOpts.IO.Validate(); err != nil {
+				return err
+			}
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			rules, err := client.GetModelRules(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			return getOpts.IO.Encode(cmd.OutOrStdout(), rules)
+		},
+	}
+	getOpts.setup(getCmd.Flags())
+
+	var force bool
+	deleteCmd := &cobra.Command{
+		Use:   "delete <name>",
+		Short: "Delete a custom model rules configuration by name.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.OutOrStdout(), force,
+				fmt.Sprintf("Delete model rules %q?", name))
+			if err != nil {
+				return err
+			}
+			if !proceed {
+				return nil
+			}
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			if err := client.DeleteModelRules(cmd.Context(), name); err != nil {
+				return err
+			}
+			cmdio.Success(cmd.OutOrStdout(), "Model rules %q deleted", name)
+			return nil
+		},
+	}
+	deleteCmd.Flags().BoolVar(&force, "force", false, "Skip confirmation prompt")
+
+	schemaOpts := &modelRulesSchemaOpts{}
+	schemaCmd := &cobra.Command{
+		Use:   "schema",
+		Short: "Fetch the live JSON Schema for ModelRules from the backend.",
+		Long: `Fetches the JSON Schema (Draft 2020-12) that describes the ModelRules configuration shape,
+derived from the backend DTO tree. Pipe to a file and point your editor at it for autocomplete and
+deep validation when authoring model rules manifests.`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := schemaOpts.IO.Validate(); err != nil {
+				return err
+			}
+			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			schema, err := client.GetModelRulesSchema(cmd.Context())
+			if err != nil {
+				return err
+			}
+			return schemaOpts.IO.Encode(cmd.OutOrStdout(), schema)
+		},
+	}
+	schemaOpts.setup(schemaCmd.Flags())
+
+	cmd.AddCommand(createCmd, listCmd, getCmd, deleteCmd, schemaCmd)
 	return cmd
-	//nolint:dupl
+}
+
+type modelRulesSchemaOpts struct {
+	IO cmdio.Options
+}
+
+func (o *modelRulesSchemaOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("json")
+	o.IO.BindFlags(flags)
+}
+
+type modelRulesListOpts struct {
+	IO cmdio.Options
+}
+
+func (o *modelRulesListOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("table", &ModelRulesNameTableCodec{})
+	o.IO.DefaultFormat("table")
+	o.IO.BindFlags(flags)
+}
+
+type modelRulesGetOpts struct {
+	IO cmdio.Options
+}
+
+func (o *modelRulesGetOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("yaml")
+	o.IO.BindFlags(flags)
+}
+
+// ModelRulesNameTableCodec renders model rule names as a single-column table.
+type ModelRulesNameTableCodec struct{}
+
+func (c *ModelRulesNameTableCodec) Format() format.Format { return "table" }
+
+func (c *ModelRulesNameTableCodec) Encode(w io.Writer, v any) error {
+	names, ok := v.([]string)
+	if !ok {
+		return errors.New("invalid data type for table codec: expected []string")
+	}
+	t := style.NewTable("NAME")
+	for _, n := range names {
+		t.Row(n)
+	}
+	return t.Render(w)
+}
+
+func (c *ModelRulesNameTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
 }
 
 func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
@@ -854,20 +1014,29 @@ func (c *SuppressionTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
 
-//nolint:dupl
 func newRelabelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "relabel-rules",
-		Short: "Push relabel rules to the Knowledge Graph.",
+		Short: "Inspect Mimir relabel rules used by the Knowledge Graph.",
 	}
-	var fileFlag string
-	createCmd := &cobra.Command{
-		Use:   "create",
-		Short: "Upload relabel rules from a YAML file.",
+
+	var (
+		ruleType string
+		io       cmdio.Options
+	)
+	io.RegisterCustomCodec("table", &RelabelRuleTableCodec{})
+	io.DefaultFormat("table")
+
+	getCmd := &cobra.Command{
+		Use:   "get",
+		Short: "Fetch a relabel rule group (prologue, epilogue, or generated).",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			data, err := readFileOrStdin(cmd, fileFlag)
-			if err != nil {
-				return fmt.Errorf("failed to read file: %w", err)
+			t := RelabelRuleType(ruleType)
+			if !t.IsValid() {
+				return fmt.Errorf("invalid --type %q: must be one of prologue, epilogue, generated", ruleType)
+			}
+			if err := io.Validate(); err != nil {
+				return err
 			}
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
@@ -877,17 +1046,88 @@ func newRelabelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := client.UploadRelabelRules(cmd.Context(), string(data)); err != nil {
+			rules, err := client.GetRelabelRules(cmd.Context(), t)
+			if err != nil {
 				return err
 			}
-			cmdio.Success(cmd.OutOrStdout(), "Relabel rules uploaded")
-			return nil
+			if rules == nil {
+				cmdio.Info(cmd.ErrOrStderr(), "No %s relabel rules configured.", t)
+				return nil
+			}
+			return io.Encode(cmd.OutOrStdout(), rules)
 		},
 	}
-	createCmd.Flags().StringVarP(&fileFlag, "file", "f", "", "Input file (YAML)")
-	_ = createCmd.MarkFlagRequired("file")
-	cmd.AddCommand(createCmd)
+	getCmd.Flags().StringVar(&ruleType, "type", string(RelabelRuleTypeGenerated),
+		"Rule group to fetch: prologue, epilogue, or generated")
+	io.BindFlags(getCmd.Flags())
+
+	cmd.AddCommand(getCmd)
 	return cmd
+}
+
+// RelabelRuleTableCodec renders a relabel rule group as a compact table.
+// Shows the commonly-inspected fields — use `-o yaml` or `-o json` for
+// the remaining ones (transform_*, join_separator).
+type RelabelRuleTableCodec struct{}
+
+func (c *RelabelRuleTableCodec) Format() format.Format { return "table" }
+
+func (c *RelabelRuleTableCodec) Encode(w io.Writer, v any) error {
+	group, ok := v.(map[string]any)
+	if !ok {
+		return errors.New("invalid data type for table codec: expected map[string]any")
+	}
+	rawRules, _ := group["rules"].([]any)
+	t := style.NewTable("SELECTOR", "TARGET LABEL", "JOIN LABELS", "RANKED CHOICE", "REPLACEMENT", "DROP")
+	for _, r := range rawRules {
+		rule, _ := r.(map[string]any)
+		if rule == nil {
+			continue
+		}
+		t.Row(
+			stringField(rule["selector"]),
+			stringField(rule["target_label"]),
+			joinStringSlice(rule["join_labels"]),
+			joinStringSlice(rule["ranked_choice"]),
+			stringField(rule["replacement"]),
+			boolField(rule["drop"]),
+		)
+	}
+	return t.Render(w)
+}
+
+func (c *RelabelRuleTableCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("table format does not support decoding")
+}
+
+func stringField(v any) string {
+	if v == nil {
+		return ""
+	}
+	s, _ := v.(string)
+	return s
+}
+
+func boolField(v any) string {
+	b, ok := v.(bool)
+	if !ok || !b {
+		return ""
+	}
+	return "true"
+}
+
+func joinStringSlice(v any) string {
+	arr, ok := v.([]any)
+	if !ok {
+		return ""
+	}
+	parts := make([]string, 0, len(arr))
+	for _, item := range arr {
+		if s, ok := item.(string); ok {
+			parts = append(parts, s)
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 // ---------------------------------------------------------------------------
@@ -898,6 +1138,13 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "entities",
 		Short: "Manage Knowledge Graph entities.",
+		Long: `Manage Knowledge Graph entities.
+
+Prefer 'list' for listing and for basic lookups (an entity's identity and
+properties — the labels used to build PromQL/Loki queries); it is cheap. Use
+'inspect' only when you need an entity's insight timeline or related entities
+for root-cause analysis — it is heavier and can return large output,
+so don't use it just to read properties.`,
 	}
 
 	// list subcommand
@@ -911,7 +1158,17 @@ func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 	listOpts := &entitiesListOpts{}
 	listCmd := &cobra.Command{
 		Use:   "list",
-		Short: "List Knowledge Graph entities for a given type, env, site, namespace.",
+		Short: "List entities by type/scope, or look up an entity's identity and properties.",
+		Long: `List Knowledge Graph entities for a given type, env, site, namespace.
+
+The cheap default for listing entities or looking up basic information about
+one: its identity (name, type, scope), properties (the labels used to build
+PromQL/Loki queries — job, namespace, container, image, etc.), and a small
+snapshot of its current insights. Filter to a single entity with
+'--property name=<exact-name>'.
+
+For an entity's full insight timeline or related entities for root-cause
+analysis, use 'gcx kg entities inspect' instead.`,
 		Example: `  gcx kg entities list --type Service --env <env> --namespace <namespace> --property name=<service-name>
   gcx kg entities list --type Service --env <env> --insight any
   gcx kg entities list --type Service --env <env> --insight name=Saturation --insight severity=critical
@@ -1343,8 +1600,18 @@ func newEntitiesInspectCommand(loader RESTConfigLoader) *cobra.Command {
 	ioOpts := &inspectOpts{}
 	cmd := &cobra.Command{
 		Use:   "inspect [Type--Name]",
-		Short: "Show detailed info, insights, and summary for a single entity, including a link to the RCA Workbench.",
-		Args:  cobra.MaximumNArgs(1),
+		Short: "Show the insight timeline and related entities for a single entity (root-cause analysis).",
+		Long: `Show detailed root-cause-analysis context for a single entity, including a link
+to the RCA Workbench.
+
+Use this only when you need the detail: the entity's insight/assertion timeline
+and the related entities to investigate next. It calls a heavier
+endpoint and can return large output.
+
+Do not use 'inspect' just to read an entity's identity or properties — for that,
+use 'gcx kg entities list' (optionally with '--property name=<exact-name>' to
+narrow to one entity), which is cheaper and returns those fields directly.`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := ioOpts.Validate(cmd.Flags()); err != nil {
 				return err
@@ -2022,6 +2289,10 @@ func (c *DescribeTextCodec) Encode(w io.Writer, v any) error {
 		sections = append(sections, telHeader+"\n\n"+strings.Join(telSections, "\n\n"))
 	}
 
+	if out.Metrics != nil {
+		sections = append(sections, formatMetricSection(*out.Metrics))
+	}
+
 	if len(sections) == 0 {
 		fmt.Fprintln(w, "No metadata requested.")
 		return nil
@@ -2045,6 +2316,7 @@ func newDescribeCommand(loader RESTConfigLoader) *cobra.Command {
 		newDescribeLogsCmd(loader),
 		newDescribeTracesCmd(loader),
 		newDescribeProfilesCmd(loader),
+		newDescribeMetricsCmd(loader),
 		newDescribeAllCmd(loader),
 	)
 	return cmd
@@ -2199,7 +2471,7 @@ func newDescribeAllCmd(loader RESTConfigLoader) *cobra.Command {
 	opts := &describeOpts{}
 	cmd := &cobra.Command{
 		Use:   "all",
-		Short: "Load all sections: schema, scopes, logs, traces, and profiles.",
+		Short: "Load all sections: schema, scopes, logs, traces, profiles, and metrics.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -2280,6 +2552,10 @@ func newDescribeAllCmd(loader RESTConfigLoader) *cobra.Command {
 			if err := g.Wait(); err != nil {
 				return err
 			}
+			// Metric guide is locally-defined
+			// so it's set directly rather than via an errgroup fetch.
+			guide := DefaultAssertsMetricGuide()
+			out.Metrics = &guide
 			return opts.IO.Encode(cmd.OutOrStdout(), out)
 		},
 	}

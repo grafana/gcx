@@ -1,6 +1,8 @@
 package root
 
 import (
+	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path"
@@ -118,6 +120,17 @@ func hasInteractiveTextOutput(cmd *cobra.Command) bool {
 	}
 }
 
+// renamedFlag is a pflag.Value that errors immediately when set, directing users
+// to use the new flag name. Used to give a better error than "unknown flag".
+type renamedFlag struct{ newName string }
+
+func (r *renamedFlag) String() string { return "" }
+func (r *renamedFlag) Type() string   { return "bool" }
+func (r *renamedFlag) Set(_ string) error {
+	return fmt.Errorf("flag has been renamed; use --%s instead", r.newName)
+}
+func (r *renamedFlag) IsBoolFlag() bool { return true }
+
 // Command builds the root cobra command for the given version using the
 // compile-time registered provider list.
 func Command(version string) *cobra.Command {
@@ -133,7 +146,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	agentFlag := false
 	verbosity := 0
 	contextName := ""
-	logHTTPPayload := false
+	insecureLogHTTPPayload := false
 
 	rootCmd := &cobra.Command{
 		Use:           path.Base(os.Args[0]),
@@ -198,7 +211,8 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 				ctx = internalconfig.ContextWithName(ctx, contextName)
 			}
 
-			if logHTTPPayload {
+			if insecureLogHTTPPayload {
+				fmt.Fprintln(cmd.ErrOrStderr(), "WARNING: --insecure-log-http-payload is set. Authorization tokens, cookies, OAuth refresh tokens, and request bodies will be written to debug logs. Do not share or ship these logs.")
 				ctx = httputils.WithPayloadLogging(ctx, true)
 			}
 
@@ -215,6 +229,13 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 			cobra.CommandDisplayNameAnnotation: "gcx",
 		},
 	}
+
+	rootCmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		if strings.Contains(err.Error(), "--log-http-payload") && strings.Contains(err.Error(), "flag has been renamed") {
+			return errors.New("--log-http-payload has been renamed; use --insecure-log-http-payload instead")
+		}
+		return err
+	})
 
 	defaultHelp := rootCmd.HelpFunc()
 	rootCmd.SetHelpFunc(style.HelpFunc(defaultHelp))
@@ -264,8 +285,13 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd.PersistentFlags().BoolVar(&agentFlag, "agent", false, "Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, or GCX_AGENT_MODE env vars.")
 	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "Verbose mode. Multiple -v options increase the verbosity (maximum: 3).")
 	rootCmd.PersistentFlags().StringVar(&contextName, "context", "", "Name of the context to use (overrides current-context in config)")
-	rootCmd.PersistentFlags().BoolVar(&logHTTPPayload, "log-http-payload", false,
-		"Log full HTTP request/response bodies (includes headers — may expose tokens)")
+	rootCmd.PersistentFlags().BoolVar(&insecureLogHTTPPayload, "insecure-log-http-payload", false,
+		"Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.")
+	// Hard error on the old flag name so engineers see the migration message.
+	rootCmd.PersistentFlags().Var(&renamedFlag{newName: "insecure-log-http-payload"}, "log-http-payload", "")
+	if err := rootCmd.PersistentFlags().MarkHidden("log-http-payload"); err != nil {
+		panic(err)
+	}
 
 	// Initialize Cobra's built-in help/completion commands here so any code
 	// traversing the command tree before ExecuteContext() sees the same shape

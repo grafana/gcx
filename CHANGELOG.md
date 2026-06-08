@@ -1,3 +1,22 @@
+## Unreleased
+
+- **Breaking:** `--log-http-payload` has been renamed to `--insecure-log-http-payload`. The old flag name now exits with an error naming the replacement. Payload-dump behavior is unchanged — credentials, cookies, OAuth refresh tokens, and request bodies still appear in the dump when the flag is set. A startup warning is now printed to stderr when the flag is active.
+- **Breaking:** `gcx dev serve --address` now defaults to `127.0.0.1` (loopback) instead of `0.0.0.0`. Users who need LAN or remote access should pass `--address 0.0.0.0` explicitly. The WebSocket livereload endpoint now rejects cross-origin requests from hosts other than `localhost`, `127.0.0.1`, `[::1]`, or the configured listen address.
+- **Soft-breaking:** Custom Rego rules loaded via `gcx dev lint --rules` can no longer call `http.send`, any `net.*` builtin, or `opa.runtime`. No flag is provided to re-enable them. Bundled rules are unaffected.
+
+## v0.4.0 (2026-06-02)
+
+- Added `gcx assistant conversation list` and `gcx assistant conversation get` to inspect Assistant conversations and transcripts.
+- Added support for continuing accessible non-CLI Assistant conversations by context ID, with a warning when the source is not CLI.
+- Added automatic migration of token-shaped config secrets into the OS keychain, with plaintext fallback when the keychain is unavailable.
+- **Breaking**: renamed `gcx kg rules` to `gcx kg prom-rules` to align with `model-rules` and `relabel-rules`.
+- Added read-only `gcx kg relabel-rules get` for prologue, epilogue, and generated rule groups.
+- Fixed `kg diagnose` verdicts so failing checks no longer report a healthy service, and reclassify scoped no-data checks as label-scope warnings when unscoped data exists.
+- Shared Grafana datasource query transport and dataframe wire types across ClickHouse, InfluxDB, and Infinity clients.
+- Hardened Claude GitHub Actions secret handling by scoping Vault outputs and restricting `@claude` triggers to trusted repository associations.
+- Improved agent guidance for dashboard workflows and Tempo trace analysis, including recommending `gcx traces get --llm -o json` for full-trace analysis.
+- Removed several small direct dependencies in favor of internal implementations.
+
 ## v0.3.0 (2026-05-26)
 
 - Added ClickHouse, CloudWatch, and Infinity datasource providers.
@@ -13,7 +32,6 @@
 - Normalized dashboard snapshot time ranges.
 - Removed target-valid-logql rule to restore go install compatibility.
 - Updated login help and Homebrew publishing.
-
 
 ## v0.2.16 (2026-05-20)
 

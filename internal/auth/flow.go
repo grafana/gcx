@@ -362,7 +362,7 @@ func exchangeCodeForToken(ctx context.Context, endpoint, code, codeVerifier stri
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("exchange returned status %d: %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("oauth token exchange failed: status %d from %s", resp.StatusCode, req.URL.Path)
 	}
 
 	var result exchangeResponse

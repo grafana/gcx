@@ -2,6 +2,7 @@ package local_test
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -91,6 +92,93 @@ func TestFSWriter_Write_doesNothingWithNoResources(t *testing.T) {
 	req.NoError(err)
 
 	req.NoDirExists(outputDir)
+}
+
+func TestFSWriter_PathContainment_TraversalRejected(t *testing.T) {
+	outputDir := t.TempDir()
+
+	writer := local.FSWriter{
+		Path:        outputDir,
+		Encoder:     format.NewYAMLCodec(),
+		StopOnError: true,
+		Namer: func(_ *resources.Resource) (string, error) {
+			return "../etc/passwd", nil
+		},
+	}
+
+	err := writer.Write(t.Context(), singleResource())
+	require.Error(t, err, "path traversal should be rejected")
+}
+
+func TestFSWriter_PathContainment_AbsoluteFilenameRejected(t *testing.T) {
+	outputDir := t.TempDir()
+
+	writer := local.FSWriter{
+		Path:        outputDir,
+		Encoder:     format.NewYAMLCodec(),
+		StopOnError: true,
+		Namer: func(_ *resources.Resource) (string, error) {
+			return "/etc/passwd", nil
+		},
+	}
+
+	err := writer.Write(t.Context(), singleResource())
+	require.Error(t, err, "absolute filename should be rejected")
+}
+
+func TestFSWriter_PathContainment_NestedPathAllowed(t *testing.T) {
+	outputDir := t.TempDir()
+
+	writer := local.FSWriter{
+		Path:    outputDir,
+		Encoder: format.NewYAMLCodec(),
+		Namer: func(_ *resources.Resource) (string, error) {
+			return "subdir/foo.yaml", nil
+		},
+	}
+
+	err := writer.Write(t.Context(), singleResource())
+	require.NoError(t, err, "nested path inside root should succeed")
+	require.FileExists(t, filepath.Join(outputDir, "subdir", "foo.yaml"))
+}
+
+func TestFSWriter_PathContainment_SymlinkedRootAllowed(t *testing.T) {
+	realDir := t.TempDir()
+	symlinkDir := filepath.Join(t.TempDir(), "link")
+	require.NoError(t, os.Symlink(realDir, symlinkDir))
+
+	writer := local.FSWriter{
+		Path:    symlinkDir,
+		Encoder: format.NewYAMLCodec(),
+		Namer: func(_ *resources.Resource) (string, error) {
+			return "res.yaml", nil
+		},
+	}
+
+	err := writer.Write(t.Context(), singleResource())
+	require.NoError(t, err, "symlinked root resolving inside bounds should succeed")
+}
+
+func singleResource() *resources.Resources {
+	res, err := resources.NewResourcesFromUnstructured(unstructured.UnstructuredList{
+		Items: []unstructured.Unstructured{
+			{
+				Object: map[string]any{
+					"apiVersion": "folder.grafana.app/v0alpha1",
+					"kind":       "Folder",
+					"metadata": map[string]any{
+						"name":      "test-resource",
+						"namespace": "default",
+					},
+					"spec": map[string]any{"title": "Test"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+	return res
 }
 
 func testResources() *resources.Resources {

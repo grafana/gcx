@@ -235,10 +235,13 @@ func TestTags(t *testing.T) {
 
 func TestTagValues(t *testing.T) {
 	tests := []struct {
-		name    string
-		req     tempo.TagValuesRequest
-		handler http.HandlerFunc
-		wantErr bool
+		name        string
+		req         tempo.TagValuesRequest
+		handler     http.HandlerFunc
+		wantErr     bool
+		wantLLM     bool
+		wantByType  bool
+		wantMetrics bool
 	}{
 		{
 			name: "tag with scope prepended",
@@ -279,6 +282,46 @@ func TestTagValues(t *testing.T) {
 			},
 		},
 		{
+			name:        "LLM format sets accept header and parses compact response",
+			req:         tempo.TagValuesRequest{Tag: "service.name", Scope: "resource", LLMFormat: true},
+			wantLLM:     true,
+			wantByType:  true,
+			wantMetrics: true,
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, tempo.AcceptLLM, r.Header.Get("Accept"))
+				assert.Contains(t, r.URL.Path, "/api/v2/search/tag/resource.service.name/values")
+				w.Header().Set("Content-Type", "application/vnd.grafana.llm+json")
+				_, err := w.Write([]byte(`{"tagValues":{"string":["frontend","backend"],"int":[500]},"metrics":{"inspectedBytes":123}}`))
+				assert.NoError(t, err)
+			},
+		},
+		{
+			name:        "LLM content type marks response as LLM format",
+			req:         tempo.TagValuesRequest{Tag: "service.name", Scope: "resource"},
+			wantLLM:     true,
+			wantByType:  true,
+			wantMetrics: true,
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Empty(t, r.Header.Get("Accept"))
+				assert.Contains(t, r.URL.Path, "/api/v2/search/tag/resource.service.name/values")
+				w.Header().Set("Content-Type", "application/vnd.grafana.llm+json; charset=utf-8")
+				_, err := w.Write([]byte(`{"tagValues":{"string":["frontend","backend"]},"metrics":{"inspectedBytes":123}}`))
+				assert.NoError(t, err)
+			},
+		},
+		{
+			name:    "LLM request with standard response keeps compact output preference",
+			req:     tempo.TagValuesRequest{Tag: "service.name", Scope: "resource", LLMFormat: true},
+			wantLLM: true,
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, tempo.AcceptLLM, r.Header.Get("Accept"))
+				assert.Contains(t, r.URL.Path, "/api/v2/search/tag/resource.service.name/values")
+				writeJSON(t, w, tempo.TagValuesResponse{
+					TagValues: []tempo.TagValue{{Type: "string", Value: "frontend"}},
+				})
+			},
+		},
+		{
 			name: "server error",
 			req:  tempo.TagValuesRequest{Tag: "bad"},
 			handler: func(w http.ResponseWriter, _ *http.Request) {
@@ -299,8 +342,36 @@ func TestTagValues(t *testing.T) {
 			}
 			require.NoError(t, err)
 			assert.NotEmpty(t, resp.TagValues)
+			if tc.wantLLM {
+				assert.True(t, resp.LLMFormat)
+				if tc.wantByType {
+					assert.NotEmpty(t, resp.TagValuesByType)
+				}
+				if tc.wantMetrics {
+					assert.EqualValues(t, 123, resp.Metrics["inspectedBytes"])
+				}
+
+				encoded, err := json.Marshal(resp)
+				require.NoError(t, err)
+				assert.Contains(t, string(encoded), `"tagValues":{"`)
+			}
 		})
 	}
+}
+
+func TestTagValuesResponseMarshalJSON_LLMCompactsStandardValues(t *testing.T) {
+	resp := tempo.TagValuesResponse{
+		LLMFormat: true,
+		TagValues: []tempo.TagValue{
+			{Type: "string", Value: "frontend"},
+			{Type: "string", Value: "backend"},
+			{Type: "int", Value: 500},
+		},
+	}
+
+	encoded, err := json.Marshal(resp)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"tagValues":{"int":[500],"string":["frontend","backend"]}}`, string(encoded))
 }
 
 func TestMetricsRange(t *testing.T) {

@@ -16,6 +16,7 @@ type TimeRangeOpts struct {
 	From  string
 	To    string
 	Since string
+	Time  string
 }
 
 // SetupTimeFlags registers --from, --to, and --since flags on the given flag set.
@@ -25,8 +26,25 @@ func (opts *TimeRangeOpts) SetupTimeFlags(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.Since, "since", "", "Duration before --to (or now if omitted); mutually exclusive with --from")
 }
 
+// SetupInstantFlag registers the --time flag for instant queries at a specific timestamp.
+// Separated from SetupTimeFlags so commands can opt in only when they support instant queries.
+func (opts *TimeRangeOpts) SetupInstantFlag(flags *pflag.FlagSet) {
+	flags.StringVar(&opts.Time, "time", "", "Evaluation time for an instant query (RFC3339, Unix timestamp, or relative like 'now-5m'). Mutually exclusive with --from/--to/--since")
+}
+
 // ValidateTimeRange validates --from/--to pairing and resolves --since into From/To.
 func (opts *TimeRangeOpts) ValidateTimeRange() error {
+	// --time is mutually exclusive with --from, --to, and --since.
+	if opts.Time != "" {
+		if opts.From != "" || opts.To != "" {
+			return errors.New("--time is mutually exclusive with --from/--to")
+		}
+		if opts.Since != "" {
+			return errors.New("--time is mutually exclusive with --since")
+		}
+		return nil
+	}
+
 	// Validate --from/--to pairing when --since is not used.
 	if opts.Since == "" {
 		if opts.From != "" && opts.To == "" {

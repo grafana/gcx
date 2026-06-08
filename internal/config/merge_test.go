@@ -192,6 +192,76 @@ func TestMergeConfigs_DiagnosticsLayering(t *testing.T) {
 	assert.True(t, merged.Diagnostics.AgentInvocationLog)
 }
 
+func TestMergeGrafanaConfig_OAuthAndProxyFields(t *testing.T) {
+	tests := []struct {
+		name string
+		base config.GrafanaConfig
+		over config.GrafanaConfig
+		want config.GrafanaConfig
+	}{
+		{
+			name: "overlay OAuthToken wins",
+			base: config.GrafanaConfig{OAuthToken: "old"},
+			over: config.GrafanaConfig{OAuthToken: "new"},
+			want: config.GrafanaConfig{OAuthToken: "new"},
+		},
+		{
+			name: "overlay OAuthRefreshToken and OAuthRefreshExpiresAt win",
+			base: config.GrafanaConfig{OAuthRefreshToken: "old-refresh", OAuthRefreshExpiresAt: "2026-01-01T00:00:00Z"},
+			over: config.GrafanaConfig{OAuthRefreshToken: "new-refresh", OAuthRefreshExpiresAt: "2027-01-01T00:00:00Z"},
+			want: config.GrafanaConfig{OAuthRefreshToken: "new-refresh", OAuthRefreshExpiresAt: "2027-01-01T00:00:00Z"},
+		},
+		{
+			name: "overlay ProxyEndpoint wins",
+			base: config.GrafanaConfig{ProxyEndpoint: "http://old.proxy"},
+			over: config.GrafanaConfig{ProxyEndpoint: "http://new.proxy"},
+			want: config.GrafanaConfig{ProxyEndpoint: "http://new.proxy"},
+		},
+		{
+			name: "zero overlay preserves base values for all five fields",
+			base: config.GrafanaConfig{
+				OAuthToken:            "tok",
+				OAuthRefreshToken:     "rtok",
+				OAuthTokenExpiresAt:   "2026-01-01T00:00:00Z",
+				OAuthRefreshExpiresAt: "2026-06-01T00:00:00Z",
+				ProxyEndpoint:         "http://proxy",
+			},
+			over: config.GrafanaConfig{},
+			want: config.GrafanaConfig{
+				OAuthToken:            "tok",
+				OAuthRefreshToken:     "rtok",
+				OAuthTokenExpiresAt:   "2026-01-01T00:00:00Z",
+				OAuthRefreshExpiresAt: "2026-06-01T00:00:00Z",
+				ProxyEndpoint:         "http://proxy",
+			},
+		},
+		{
+			name: "overlay OAuthTokenExpiresAt wins",
+			base: config.GrafanaConfig{OAuthTokenExpiresAt: "2026-01-01T00:00:00Z"},
+			over: config.GrafanaConfig{OAuthTokenExpiresAt: "2027-01-01T00:00:00Z"},
+			want: config.GrafanaConfig{OAuthTokenExpiresAt: "2027-01-01T00:00:00Z"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			base := config.Config{Contexts: map[string]*config.Context{
+				"ctx": {Grafana: &tt.base},
+			}}
+			over := config.Config{Contexts: map[string]*config.Context{
+				"ctx": {Grafana: &tt.over},
+			}}
+			got := config.MergeConfigs(base, over)
+			gotGrafana := got.Contexts["ctx"].Grafana
+			assert.Equal(t, tt.want.OAuthToken, gotGrafana.OAuthToken)
+			assert.Equal(t, tt.want.OAuthRefreshToken, gotGrafana.OAuthRefreshToken)
+			assert.Equal(t, tt.want.OAuthTokenExpiresAt, gotGrafana.OAuthTokenExpiresAt)
+			assert.Equal(t, tt.want.OAuthRefreshExpiresAt, gotGrafana.OAuthRefreshExpiresAt)
+			assert.Equal(t, tt.want.ProxyEndpoint, gotGrafana.ProxyEndpoint)
+		})
+	}
+}
+
 func TestMergeConfigs_DiagnosticsOverride(t *testing.T) {
 	// Local config can override individual diagnostics fields.
 	userCfg := config.Config{

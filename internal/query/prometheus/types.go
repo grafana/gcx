@@ -7,15 +7,16 @@ import (
 
 // QueryRequest represents a Prometheus query request.
 type QueryRequest struct {
-	Query string
-	Start time.Time
-	End   time.Time
-	Step  time.Duration
+	Query   string
+	Start   time.Time
+	End     time.Time
+	Step    time.Duration
+	Instant bool // force instant query even when Start is set
 }
 
-// IsRange returns true if this is a range query.
+// IsRange returns true if this is a range query (both Start and End set, not forced instant).
 func (r QueryRequest) IsRange() bool {
-	return !r.Start.IsZero() && !r.End.IsZero()
+	return !r.Instant && !r.Start.IsZero() && !r.End.IsZero()
 }
 
 // QueryResponse represents the response from a Prometheus query.

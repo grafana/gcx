@@ -268,7 +268,7 @@ auth headers per request.
 **HTTP logging layer:** All client paths share `httputils.LoggingRoundTripper`
 for request/response logging. The K8s tier chains it via `rest.Config.WrapTransport`
 in `NewNamespacedRESTConfig`; the provider tier gets it via
-`httputils.NewDefaultClient(ctx)`. The `--log-http-payload` flag adds full body
+`httputils.NewDefaultClient(ctx)`. The `--insecure-log-http-payload` flag adds full body
 dumps via `RequestResponseLoggingRoundTripper` across both tiers — `NewDefaultClient`
 checks `PayloadLogging(ctx)` directly; `NewNamespacedRESTConfig` checks it when
 building the `WrapTransport` chain.

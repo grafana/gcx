@@ -183,6 +183,10 @@ func (c *Client) TagValues(ctx context.Context, datasourceUID string, req TagVal
 	}
 	httpReq.URL.RawQuery = q.Encode()
 
+	if req.LLMFormat {
+		httpReq.Header.Set("Accept", AcceptLLM)
+	}
+
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tag values: %w", err)
@@ -198,12 +202,14 @@ func (c *Client) TagValues(ctx context.Context, datasourceUID string, req TagVal
 		return nil, queryerror.FromBody("tempo", "tag values query", resp.StatusCode, respBody)
 	}
 
-	var result TagValuesResponse
-	if err := json.Unmarshal(respBody, &result); err != nil {
+	llmContentType := isLLMContentType(resp.Header.Get("Content-Type"))
+	result, err := decodeTagValuesResponse(respBody, llmContentType)
+	if err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
+	result.LLMFormat = req.LLMFormat || llmContentType
 
-	return &result, nil
+	return result, nil
 }
 
 // MetricsRange executes a TraceQL metrics range query.
@@ -298,6 +304,21 @@ func (c *Client) MetricsInstant(ctx context.Context, datasourceUID string, req M
 func (c *Client) buildResourcePath(datasourceUID, resourcePath string) string {
 	return fmt.Sprintf("/api/datasources/proxy/uid/%s/%s",
 		datasourceUID, resourcePath)
+}
+
+func decodeTagValuesResponse(data []byte, llmContentType bool) (*TagValuesResponse, error) {
+	if llmContentType {
+		return decodeLLMTagValuesResponse(data)
+	}
+	return decodeStandardTagValuesResponse(data)
+}
+
+func isLLMContentType(contentType string) bool {
+	mediaType := strings.TrimSpace(strings.ToLower(contentType))
+	if i := strings.IndexByte(mediaType, ';'); i >= 0 {
+		mediaType = strings.TrimSpace(mediaType[:i])
+	}
+	return mediaType == AcceptLLM || mediaType == AcceptLLM+"+json"
 }
 
 // traceQLIdentifier constructs a fully-qualified TraceQL identifier.

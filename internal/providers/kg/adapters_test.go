@@ -58,15 +58,15 @@ func TestRuleAdapter_List(t *testing.T) {
 	assert.Equal(t, "stack-1", item.GetNamespace())
 }
 
-// TestKGProvider_TypedRegistrations verifies Rule and Scope resource types are registered.
+// TestKGProvider_TypedRegistrations verifies Rule, Scope, and ModelRules resource types are registered.
 func TestKGProvider_TypedRegistrations(t *testing.T) {
 	p := &kg.KGProvider{}
 	regs := p.TypedRegistrations()
 
-	require.Len(t, regs, 2, "expected 2 registered resource types")
+	require.Len(t, regs, 3, "expected 3 registered resource types")
 
 	wantKinds := map[string]bool{
-		"Rule": false, "Scope": false,
+		"Rule": false, "Scope": false, "ModelRules": false,
 	}
 	for _, reg := range regs {
 		kind := reg.Descriptor.Kind

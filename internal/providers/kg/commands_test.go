@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/providers/kg"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -257,6 +258,100 @@ func TestKgInsightsSearchRemoved(t *testing.T) {
 			assert.NotEqual(t, "search", sub.Name(),
 				"kg insights search was removed; use kg entities list --insight instead")
 		}
+	}
+}
+
+// TestKgRelabelRulesCommand asserts the relabel-rules command exposes only
+// a `get` subcommand with a `--type` flag defaulting to "generated", and
+// that the legacy `create` subcommand has been removed.
+func TestKgRelabelRulesCommand(t *testing.T) {
+	root := (&kg.KGProvider{}).Commands()
+	require.Len(t, root, 1)
+
+	var relabel *cobra.Command
+	for _, c := range root[0].Commands() {
+		if c.Name() == "relabel-rules" {
+			relabel = c
+			break
+		}
+	}
+	require.NotNil(t, relabel, "relabel-rules command should be registered under kg")
+
+	subNames := make(map[string]*cobra.Command, len(relabel.Commands()))
+	for _, sub := range relabel.Commands() {
+		subNames[sub.Name()] = sub
+	}
+	assert.NotContains(t, subNames, "create",
+		"`kg relabel-rules create` was dropped — write path stays disabled until the UI feature flag ships")
+
+	getCmd, ok := subNames["get"]
+	require.True(t, ok, "`kg relabel-rules get` should be registered")
+
+	typeFlag := getCmd.Flags().Lookup("type")
+	require.NotNil(t, typeFlag, "--type flag should exist on `get`")
+	assert.Equal(t, "generated", typeFlag.DefValue,
+		"--type should default to generated (read-only, safe for users without the UI flag)")
+
+	outputFlag := getCmd.Flags().Lookup("output")
+	require.NotNil(t, outputFlag, "--output flag should exist on `get`")
+	assert.Equal(t, "table", outputFlag.DefValue,
+		"--output should default to table (agent-mode auto-flips to agents)")
+}
+
+func TestRelabelRuleTableCodec_Encode(t *testing.T) {
+	group := map[string]any{
+		"name": "prologue",
+		"rules": []any{
+			map[string]any{
+				"selector":     `{deployment_environment!=""}`,
+				"target_label": "asserts_env",
+				"replacement":  "$1",
+			},
+			map[string]any{
+				"selector":     `{k8s_namespace_name!=""}`,
+				"target_label": "asserts_site",
+				"join_labels":  []any{"k8s_namespace_name", "service_name"},
+			},
+			map[string]any{
+				"selector":      `{__name__=~".*request_duration_seconds_.*"}`,
+				"target_label":  "asserts_request_context",
+				"ranked_choice": []any{"route", "url"},
+			},
+			map[string]any{
+				"selector": `{noise="true"}`,
+				"drop":     true,
+			},
+		},
+	}
+	var buf bytes.Buffer
+	require.NoError(t, (&kg.RelabelRuleTableCodec{}).Encode(&buf, group))
+	out := buf.String()
+	for _, want := range []string{
+		"SELECTOR", "TARGET LABEL", "JOIN LABELS", "RANKED CHOICE", "REPLACEMENT", "DROP",
+		`{deployment_environment!=""}`, "asserts_env", "$1",
+		`{k8s_namespace_name!=""}`, "asserts_site", "k8s_namespace_name, service_name",
+		"asserts_request_context", "route, url",
+		`{noise="true"}`, "true",
+	} {
+		assert.Contains(t, out, want)
+	}
+}
+
+func TestRelabelRuleTableCodec_RejectsWrongType(t *testing.T) {
+	err := (&kg.RelabelRuleTableCodec{}).Encode(&bytes.Buffer{}, "nope")
+	require.Error(t, err)
+}
+
+func TestRelabelRuleType_IsValid(t *testing.T) {
+	for _, valid := range []kg.RelabelRuleType{
+		kg.RelabelRuleTypePrologue,
+		kg.RelabelRuleTypeEpilogue,
+		kg.RelabelRuleTypeGenerated,
+	} {
+		assert.True(t, valid.IsValid(), "%q should be valid", valid)
+	}
+	for _, bad := range []kg.RelabelRuleType{"", "PROLOGUE", "default", "bogus"} {
+		assert.False(t, bad.IsValid(), "%q should not be valid", bad)
 	}
 }
 

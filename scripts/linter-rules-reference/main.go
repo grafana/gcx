@@ -101,5 +101,17 @@ func toMarkdown(rules []linter.Rule) []byte {
 
 	buffer.WriteString("\n")
 
+	// Custom rules sandbox — this section is maintained manually (not auto-generated from rules).
+	buffer.WriteString("## Custom rules\n\n")
+	buffer.WriteString("Custom rules are loaded via `gcx dev lint --rules <path>`. They run inside a\n")
+	buffer.WriteString("restricted OPA capabilities sandbox. The following built-in\n")
+	buffer.WriteString("OPA functions are **not available** in custom rules:\n\n")
+	buffer.WriteString("| Disallowed builtin | Reason |\n")
+	buffer.WriteString("| ------------------ | ------ |\n")
+	buffer.WriteString("| `http.send` | Network exfiltration vector |\n")
+	buffer.WriteString("| `net.*` (all `net.` prefixed builtins) | Network exfiltration vector |\n")
+	buffer.WriteString("| `opa.runtime` | Runtime introspection / environment disclosure |\n\n")
+	buffer.WriteString("No flag is provided to re-enable these functions. Bundled rules are unaffected.\n")
+
 	return buffer.Bytes()
 }
