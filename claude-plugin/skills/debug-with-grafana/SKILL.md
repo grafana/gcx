@@ -310,6 +310,14 @@ gcx traces tags -d <tempo-uid> -l resource.service.name --llm -o json
 See [`references/traceql-patterns.md`](references/traceql-patterns.md) for full
 TraceQL syntax reference.
 
+If the issue is trace waterfall gaps, `<root span not yet received>`, or child
+spans with missing parents, follow
+[`references/trace-gaps.md`](references/trace-gaps.md):
+detect missing parents, distinguish missing-parent evidence from uninstrumented
+app/runtime work, and use
+[`references/opentelemetry-lost-spans.md`](references/opentelemetry-lost-spans.md)
+for OpenTelemetry-specific lost-span checks.
+
 ### Step 6: Check Related Dashboards and Resources
 
 Check whether relevant dashboards exist that give broader context, and inspect
@@ -620,3 +628,11 @@ gcx alert rules list -o json | jq '.[] | .rules[]? | select(.state == "firing")'
 - [`references/traceql-patterns.md`](references/traceql-patterns.md) — TraceQL
   query patterns for Tempo trace search, attribute scoping rules, and the
   distinction between `traces query` and `traces get`.
+
+- [`references/trace-gaps.md`](references/trace-gaps.md) —
+  Generic trace-gap workflow for separating missing-parent evidence from
+  uninstrumented app/runtime work.
+
+- [`references/opentelemetry-lost-spans.md`](references/opentelemetry-lost-spans.md) —
+  OpenTelemetry-specific checks for possible lost spans using SDK/exporter
+  counters, collector/Alloy self-metrics, and exporter logs.

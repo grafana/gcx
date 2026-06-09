@@ -116,3 +116,23 @@ gcx traces query -d <tempo-uid> '{ rootServiceName = "api" }'
 # CORRECT — trace-scoped intrinsic
 gcx traces query -d <tempo-uid> '{ trace:rootService = "api" }'
 ```
+
+## Trace gaps and missing root spans
+
+When the user reports empty waterfall gaps, missing spans, or
+`<root span not yet received>`, use this TraceQL workflow first:
+
+```bash
+# Find traces where Tempo has no root service
+gcx traces query -d <tempo-uid> \
+  '{ trace:rootService = "" && resource.service.name = "<service>" }' \
+  --from <from> --to <to> --limit 20 -o json
+
+# Fetch representative traces for parent/child inspection
+gcx traces get -d <tempo-uid> <trace-id> --llm -o json
+```
+
+Then follow [`trace-gaps.md`](trace-gaps.md) to distinguish missing-parent
+evidence from uninstrumented time. If OpenTelemetry spans may have been lost,
+use [`opentelemetry-lost-spans.md`](opentelemetry-lost-spans.md) for exporter,
+collector, and agent-log checks.
