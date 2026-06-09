@@ -30,8 +30,10 @@ func cloudTokenHint(server string) string {
 		create = "Create one at " + strings.TrimRight(server, "/") + "/a/grafana-auth-app"
 	}
 	return create + " (Access Policies → Create access policy).\n" +
-		"Recommended scopes: stacks:read plus the product scopes for what you manage " +
-		"(e.g. metrics:read, logs:read, traces:read; SLO, IRM, Synthetic Monitoring).\n" +
+		"Recommended scopes: stacks:read (required — resolves your stack). Then add per product:\n" +
+		"  metrics:write, logs:write, traces:write — Synthetic Monitoring & k6\n" +
+		"  fleet-management:read — Fleet\n" +
+		"  stacks:write — create or update stacks\n" +
 		"Docs: https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies\n" +
 		"Press Enter to skip (Cloud management features will be unavailable)."
 }

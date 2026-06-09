@@ -68,15 +68,17 @@ Create the token in either place:
 
 See [Create access policies](https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies/) for the step-by-step flow.
 
-Scope the access policy to what you manage. A good starting point:
+Scope the access policy to what you manage. `stacks:read` is the required baseline — it resolves your stack and gates login/token validation. Then add the scopes for the products you use:
 
 | Scope | Enables |
 |-------|---------|
-| `stacks:read` | Stack discovery (used to resolve the stack slug for most Cloud commands) |
-| `metrics:read`, `logs:read`, `traces:read`, `profiles:read` | Querying the corresponding signal stores (`gcx metrics`, `gcx logs`, `gcx traces`, `gcx profiles`) |
-| `set:alloy-data-write` | Fleet Management and Instrumentation Hub (`gcx fleet`, `gcx instrumentation`) |
+| `stacks:read` | **Required.** Stack discovery (resolves the stack slug for all Cloud commands; also covers `gcx k6` reads) |
+| `metrics:write`, `logs:write`, `traces:write` | Synthetic Monitoring and k6 (`gcx sm`, `gcx k6`) — these write verbs are needed to mint the Synthetic Monitoring token |
+| `fleet-management:read` (and `fleet-management:write` for changes) | Fleet Management (`gcx fleet`) |
+| `stacks:write` | Creating or updating stacks |
+| `set:alloy-data-write` | Instrumentation Hub setup (`gcx instrumentation`) |
 
-For product-specific surfaces (`gcx slo`, `gcx irm`, `gcx sm`, `gcx k6`), add the read/write scopes for that product. When in doubt, start narrow and widen the policy as commands report missing-scope errors — the token can be re-scoped without re-running `gcx login`.
+The Cloud Access Policy token is for Grafana Cloud product APIs (GCOM stack management, Synthetic Monitoring, k6, Fleet, IRM, SLO). Signal queries (`gcx metrics`, `gcx logs`, `gcx traces`, `gcx profiles`) authenticate with your Grafana token (OAuth or service account), not this token. When in doubt, start narrow and widen the policy as commands report missing-scope errors — the token can be re-scoped without re-running `gcx login`.
 
 The interactive `gcx login` prompt links to this guidance when it asks for the Cloud Access Policy token.
 
