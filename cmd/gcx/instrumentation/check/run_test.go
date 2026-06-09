@@ -220,9 +220,9 @@ func TestCheckTableCodec_Encode(t *testing.T) {
 
 	out := buf.String()
 	// All three rows present, in failure-first order.
-	assert.True(t, strings.Index(out, "FAIL") < strings.Index(out, "WARN"),
+	assert.Less(t, strings.Index(out, "FAIL"), strings.Index(out, "WARN"),
 		"FAIL row must precede WARN row, got:\n%s", out)
-	assert.True(t, strings.Index(out, "WARN") < strings.Index(out, "OK"),
+	assert.Less(t, strings.Index(out, "WARN"), strings.Index(out, "OK"),
 		"WARN row must precede OK row, got:\n%s", out)
 	assert.Contains(t, out, "Grafana Cloud")
 	assert.Contains(t, out, "no instance id")
