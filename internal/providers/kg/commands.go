@@ -1671,6 +1671,12 @@ narrow to one entity), which is cheaper and returns those fields directly.`,
 				}
 				return err
 			}
+			// The llm-summary endpoint echoes an empty "rcaPatterns" array (we
+			// request IncludeRcaPatterns: false). Drop it when empty so inspect
+			// output doesn't carry a permanently-empty field.
+			if p, ok := result["rcaPatterns"].([]any); ok && len(p) == 0 {
+				delete(result, "rcaPatterns")
+			}
 			if isEmptyLLMResult(result) {
 				scopeDesc := ""
 				if len(scope) > 0 {
