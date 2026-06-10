@@ -84,7 +84,9 @@ func (c *IncidentClient) List(ctx context.Context, query IncidentQuery) ([]Incid
 		if !resp.Cursor.HasMore || resp.Cursor.NextValue == "" || len(resp.Incidents) == 0 {
 			return all, nil
 		}
-		cursor = &IncidentCursor{NextValue: resp.Cursor.NextValue}
+		// The API contract is to pass previously returned cursor values back
+		// as-is.
+		cursor = &resp.Cursor
 	}
 }
 

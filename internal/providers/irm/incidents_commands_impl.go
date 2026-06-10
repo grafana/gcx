@@ -47,6 +47,9 @@ func (o *incidentListOpts) Validate() error {
 	if err := o.IO.Validate(); err != nil {
 		return err
 	}
+	if o.Limit < 1 {
+		return fmt.Errorf("invalid --limit value %d: must be at least 1", o.Limit)
+	}
 	// The API's incidentLabels field matches plain label text for labels
 	// under the default Tags key and key:value composites for keyed labels,
 	// so any non-empty string is a valid filter — pass values through as

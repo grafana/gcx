@@ -79,7 +79,9 @@ func TestClient_List(t *testing.T) {
 					default:
 						req := (*calls)[1]
 						if assert.NotNil(t, req.Cursor, "second request must carry the cursor next to the query") {
+							// The previously returned cursor is echoed back verbatim.
 							assert.Equal(t, "cursor-1", (*req.Cursor)["nextValue"])
+							assert.Equal(t, true, (*req.Cursor)["hasMore"])
 						}
 						assert.NotContains(t, req.Query, "contextPayload")
 						writeJSON(w, incidentPage("p2", 1, false, ""))

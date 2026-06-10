@@ -375,6 +375,29 @@ func TestIncidentsListCommand_BuildsQuery(t *testing.T) {
 	assert.Contains(t, stdout.String(), "Security incident")
 }
 
+func TestIncidentsListCommand_RejectsNonPositiveLimit(t *testing.T) {
+	for _, limit := range []string{"0", "-5"} {
+		t.Run("limit "+limit, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+				t.Error("API must not be called when validation fails")
+			}))
+			t.Cleanup(server.Close)
+
+			cmd := irm.NewListCommand(fakeGrafanaConfigLoader{cfg: config.NamespacedRESTConfig{
+				Config: rest.Config{Host: server.URL},
+			}})
+			cmd.SilenceUsage = true
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetErr(&bytes.Buffer{})
+			cmd.SetArgs([]string{"--limit", limit})
+
+			err := cmd.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "must be at least 1")
+		})
+	}
+}
+
 func TestListOpts_DateValidation(t *testing.T) {
 	tests := []struct {
 		name     string
