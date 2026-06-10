@@ -3,6 +3,7 @@ package kg
 import (
 	"fmt"
 	"slices"
+	"strings"
 )
 
 // Orientation summarizes a stack's Entity Graph state in terms a user can
@@ -249,10 +250,11 @@ type OrientationInput struct {
 // API data and the scope flags. It runs after the per-check goroutines
 // complete; it adds no new API calls of its own.
 //
-// Scenario ordering in the output: high-confidence detectors first
-// (no-entities, entities-no-edges, cant-filter), then medium-confidence
-// (missing-entities). Within a tier, ScenarioID alphabetical order is
-// stable for testability.
+// Scenario ordering in the output is explicit: high-confidence entries
+// come before medium-confidence; within a confidence tier, ScenarioID
+// alphabetical order is the tiebreaker. The sort is applied after all
+// detectors run so adding or reordering detector calls cannot change
+// the user-visible order.
 func computeOrientation(in OrientationInput, scope *scopeFlags) Orientation {
 	overview := buildEntityOverview(in)
 	scopeSummary := buildScopeSummary(in, scope)
@@ -270,6 +272,16 @@ func computeOrientation(in OrientationInput, scope *scopeFlags) Orientation {
 	if s := detectMissingEntities(in, scope); s != nil {
 		matched = append(matched, *s)
 	}
+	slices.SortStableFunc(matched, func(a, b MatchedScenario) int {
+		if a.Confidence != b.Confidence {
+			// high before medium
+			if a.Confidence == ConfidenceHigh {
+				return -1
+			}
+			return 1
+		}
+		return strings.Compare(string(a.ID), string(b.ID))
+	})
 
 	var startingPoints []StartingPoint
 	if !scopeSummary.FilterSet {
