@@ -441,3 +441,46 @@ func TestBuildStartingPoints_NoNamespacesKnown_NoContextSet(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// PipelineHealthFromSummary
+// ---------------------------------------------------------------------------
+
+func TestPipelineHealthFromSummary(t *testing.T) {
+	tests := []struct {
+		name string
+		s    kg.DiagnoseSummary
+		want kg.PipelineHealth
+	}{
+		{
+			name: "all passed",
+			s:    kg.DiagnoseSummary{Total: 5, Passed: 5},
+			want: kg.PipelineHealthy,
+		},
+		{
+			name: "warned, no failed",
+			s:    kg.DiagnoseSummary{Total: 5, Passed: 3, Warned: 2},
+			want: kg.PipelineDegraded,
+		},
+		{
+			name: "any failed dominates warned",
+			s:    kg.DiagnoseSummary{Total: 5, Passed: 2, Warned: 2, Failed: 1},
+			want: kg.PipelineFailed,
+		},
+		{
+			name: "any failed dominates passed",
+			s:    kg.DiagnoseSummary{Total: 5, Passed: 4, Failed: 1},
+			want: kg.PipelineFailed,
+		},
+		{
+			name: "zero checks → healthy",
+			s:    kg.DiagnoseSummary{},
+			want: kg.PipelineHealthy,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, kg.PipelineHealthFromSummary(tt.s))
+		})
+	}
+}

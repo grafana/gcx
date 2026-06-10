@@ -100,3 +100,9 @@ func DetectMissingEntities(in OrientationInput, scope *ScopeFlags) *MatchedScena
 func BuildStartingPoints(scope ScopeSummary) []StartingPoint {
 	return buildStartingPoints(scope)
 }
+
+// PipelineHealthFromSummary wraps the unexported pipelineHealthFromSummary
+// function for testing.
+func PipelineHealthFromSummary(s DiagnoseSummary) PipelineHealth {
+	return pipelineHealthFromSummary(s)
+}

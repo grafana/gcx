@@ -47,6 +47,17 @@ type CheckResult struct {
 	Recommendation string      `json:"recommendation,omitempty"`
 }
 
+// DiagnoseSummary is the per-check pass/fail tally for a diagnose run.
+// Named so functions that derive verdicts from it (e.g.
+// pipelineHealthFromSummary) can take it by type rather than coupling to
+// an inline anonymous struct.
+type DiagnoseSummary struct {
+	Total  int `json:"total"`
+	Passed int `json:"passed"`
+	Failed int `json:"failed"`
+	Warned int `json:"warned"`
+}
+
 // DiagnoseResult is the full output of the diagnose command.
 type DiagnoseResult struct {
 	Env       string `json:"env,omitempty"`
@@ -59,13 +70,8 @@ type DiagnoseResult struct {
 	// JSON when nil (e.g. legacy callers that bypass the runner).
 	Orientation *Orientation `json:"orientation,omitempty"`
 
-	Checks  []CheckResult `json:"checks"`
-	Summary struct {
-		Total  int `json:"total"`
-		Passed int `json:"passed"`
-		Failed int `json:"failed"`
-		Warned int `json:"warned"`
-	} `json:"summary"`
+	Checks  []CheckResult   `json:"checks"`
+	Summary DiagnoseSummary `json:"summary"`
 }
 
 func (r *DiagnoseResult) computeSummary() {
@@ -403,14 +409,9 @@ func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promCli
 
 // pipelineHealthFromSummary derives the Orientation health verdict from
 // the existing pass/warn/fail counts the per-check goroutines produce.
-// Kept here (not in orientation.go) because it depends on the
-// DiagnoseResult.Summary shape.
-func pipelineHealthFromSummary(s struct {
-	Total  int `json:"total"`
-	Passed int `json:"passed"`
-	Failed int `json:"failed"`
-	Warned int `json:"warned"`
-}) PipelineHealth {
+// Kept here (not in orientation.go) because it consumes the DiagnoseSummary
+// type defined alongside DiagnoseResult.
+func pipelineHealthFromSummary(s DiagnoseSummary) PipelineHealth {
 	switch {
 	case s.Failed > 0:
 		return PipelineFailed
