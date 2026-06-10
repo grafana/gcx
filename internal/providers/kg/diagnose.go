@@ -49,7 +49,9 @@ type CheckResult struct {
 
 // DiagnoseResult is the full output of the diagnose command.
 type DiagnoseResult struct {
-	Env string `json:"env,omitempty"`
+	Env       string `json:"env,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
+	Site      string `json:"site,omitempty"`
 
 	// Orientation is the top-of-output summary that anchors the user in
 	// one of the five Entity Graph scenarios. Computed from the same data
@@ -278,7 +280,11 @@ func resolvePromClient(ctx context.Context, loader *providers.ConfigLoader, cfg 
 // ---------------------------------------------------------------------------
 
 func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promClient *prometheus.Client, datasourceUID string) DiagnoseResult {
-	result := DiagnoseResult{Env: scope.env}
+	result := DiagnoseResult{
+		Env:       scope.env,
+		Namespace: scope.namespace,
+		Site:      scope.site,
+	}
 
 	var (
 		mu sync.Mutex
@@ -1105,7 +1111,7 @@ func (c *DiagnoseTableCodec) Encode(w io.Writer, v any) error {
 
 	// Orientation block goes above the per-check table.
 	if result.Orientation != nil {
-		renderOrientation(w, *result.Orientation, result.Env)
+		renderOrientation(w, *result.Orientation, result.Env, result.Namespace, result.Site)
 	}
 
 	t := style.NewTable("CHECK", "STATUS", "DETAIL")
@@ -1164,22 +1170,46 @@ func (c *DiagnoseTableCodec) Decode(_ io.Reader, _ any) error {
 //
 // All numeric values come from the live OrientationInput. No authored
 // thresholds.
-func renderOrientation(w io.Writer, o Orientation, env string) {
-	// Header: one-line stack health verdict and scope.
+func renderOrientation(w io.Writer, o Orientation, env, namespace, site string) {
+	// Header: one-line stack health verdict and scope. Build the scope hint
+	// from whichever dimensions are actually set (not just env) so multi-
+	// dimension filters (--namespace foo without --env) render correctly.
 	scopeHint := "(unscoped: --env / --namespace / --site not set)"
 	if o.Scope.FilterSet {
-		scopeHint = fmt.Sprintf("(env=%s)", env)
+		var parts []string
+		if env != "" {
+			parts = append(parts, "env="+env)
+		}
+		if namespace != "" {
+			parts = append(parts, "namespace="+namespace)
+		}
+		if site != "" {
+			parts = append(parts, "site="+site)
+		}
+		scopeHint = "(" + strings.Join(parts, ", ") + ")"
 	}
 	fmt.Fprintf(w, "Pipeline health: %s  %s\n", o.PipelineHealth, scopeHint)
 
-	// Entity overview.
-	fmt.Fprintf(w, "Entity overview: %d entities", o.EntityOverview.Total)
-	if o.EntityOverview.TotalServiceCount > 0 {
-		fmt.Fprintf(w, " — %d Service entities, of which %d emit traces",
-			o.EntityOverview.TotalServiceCount,
-			o.EntityOverview.TracedServiceCount)
+	// Entity overview. Entity counts (Total, TotalServiceCount) come from
+	// the stack-wide CountEntityTypes call; TracedServiceCount comes from a
+	// scope-filtered metric check. When a scope filter is set we label the
+	// stack-wide numbers as such and put the scoped trace count on its own
+	// clause so the two scopes can't be misread as a single ratio.
+	if o.Scope.FilterSet {
+		fmt.Fprintf(w, "Entity overview (stack-wide): %d entities", o.EntityOverview.Total)
+		if o.EntityOverview.TotalServiceCount > 0 {
+			fmt.Fprintf(w, " — %d Service entities", o.EntityOverview.TotalServiceCount)
+		}
+		fmt.Fprintf(w, ". Tracing in scope: %d service(s) emit traces.\n", o.EntityOverview.TracedServiceCount)
+	} else {
+		fmt.Fprintf(w, "Entity overview: %d entities", o.EntityOverview.Total)
+		if o.EntityOverview.TotalServiceCount > 0 {
+			fmt.Fprintf(w, " — %d Service entities, of which %d emit traces",
+				o.EntityOverview.TotalServiceCount,
+				o.EntityOverview.TracedServiceCount)
+		}
+		fmt.Fprintln(w, ".")
 	}
-	fmt.Fprintln(w, ".")
 
 	// Scope overview.
 	if len(o.Scope.EnvsKnown) > 0 {
