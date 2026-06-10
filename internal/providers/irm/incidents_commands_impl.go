@@ -38,7 +38,7 @@ func (o *incidentListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of incidents to return")
-	flags.StringSliceVar(&o.Labels, "labels", nil, "Filter by labels (key:value format, may be repeated)")
+	flags.StringSliceVar(&o.Labels, "labels", nil, "Filter by label text, e.g. security (repeatable, comma-separated)")
 	flags.StringVar(&o.DateFrom, "from", "", "Start of time range (RFC3339, unix timestamp, or relative e.g. now-7d)")
 	flags.StringVar(&o.DateTo, "to", "", "End of time range (RFC3339, unix timestamp, or relative e.g. now)")
 }
@@ -47,9 +47,11 @@ func (o *incidentListOpts) Validate() error {
 	if err := o.IO.Validate(); err != nil {
 		return err
 	}
+	// The API's incidentLabels field matches on plain label text (e.g.
+	// "security"), not key:value pairs — pass values through as given.
 	for _, l := range o.Labels {
-		if !strings.Contains(l, ":") {
-			return fmt.Errorf("invalid label %q: must be in key:value format", l)
+		if strings.TrimSpace(l) == "" {
+			return errors.New("invalid --labels value: label must not be empty")
 		}
 	}
 	now := time.Now()
@@ -64,20 +66,6 @@ func (o *incidentListOpts) Validate() error {
 		}
 	}
 	return nil
-}
-
-// BuildQueryString converts --labels values into the IRM query string format.
-// Each label is formatted as field:Tags:'key:value' and multiple labels are
-// separated by a space.
-func BuildQueryString(labels []string) string {
-	if len(labels) == 0 {
-		return ""
-	}
-	parts := make([]string, len(labels))
-	for i, l := range labels {
-		parts[i] = "field:Tags:'" + l + "'"
-	}
-	return strings.Join(parts, " ")
 }
 
 func NewListCommand(loader GrafanaConfigLoader) *cobra.Command {

@@ -2,13 +2,20 @@ package irm_test
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/irm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/rest"
 )
 
 // ---------------------------------------------------------------------------
@@ -277,13 +284,19 @@ func TestListOpts_LabelValidation(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name:   "valid labels pass",
-			labels: []string{"team:platform", "env:prod"},
+			// The API's incidentLabels field matches plain label text, so
+			// values without a colon are valid.
+			name:   "plain label text passes",
+			labels: []string{"security", "customersaffected"},
 		},
 		{
-			name:    "missing colon fails",
-			labels:  []string{"nocolon"},
-			wantErr: "must be in key:value format",
+			name:   "colon-separated text passes through verbatim",
+			labels: []string{"team:platform"},
+		},
+		{
+			name:    "empty label fails",
+			labels:  []string{"security", ""},
+			wantErr: "label must not be empty",
 		},
 	}
 	for _, tt := range tests {
@@ -294,9 +307,71 @@ func TestListOpts_LabelValidation(t *testing.T) {
 			if tt.wantErr != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErr)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
+}
+
+// fakeGrafanaConfigLoader implements irm.GrafanaConfigLoader for command tests.
+type fakeGrafanaConfigLoader struct {
+	cfg config.NamespacedRESTConfig
+}
+
+func (l fakeGrafanaConfigLoader) LoadGrafanaConfig(context.Context) (config.NamespacedRESTConfig, error) {
+	return l.cfg, nil
+}
+
+// TestIncidentsListCommand_BuildsQuery runs the real list command against a
+// fake API and asserts the filters land in the request as the API documents
+// them: plain label text in incidentLabels and RFC3339 dates.
+func TestIncidentsListCommand_BuildsQuery(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	agent.ResetForTesting()
+	t.Cleanup(agent.ResetForTesting)
+
+	var query map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Query map[string]any `json:"query"`
+		}
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		query = body.Query
+		writeJSON(w, map[string]any{
+			"incidents": []map[string]any{
+				{"incidentID": "inc-1", "title": "Security incident", "status": "active"},
+			},
+			"cursor": map[string]any{"hasMore": false},
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	loader := fakeGrafanaConfigLoader{cfg: config.NamespacedRESTConfig{
+		Config:    rest.Config{Host: server.URL},
+		Namespace: "stack-123",
+	}}
+
+	cmd := irm.NewListCommand(loader)
+	cmd.SilenceUsage = true
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{
+		"--labels", "security,important",
+		"--from", "2024-06-01T00:00:00Z",
+		"--to", "2024-06-15T00:00:00Z",
+		"--limit", "10",
+	})
+	require.NoError(t, cmd.Execute())
+
+	assert.Equal(t, []any{"security", "important"}, query["incidentLabels"])
+	assert.Equal(t, "2024-06-01T00:00:00Z", query["dateFrom"])
+	assert.Equal(t, "2024-06-15T00:00:00Z", query["dateTo"])
+	assert.InDelta(t, 10, query["limit"], 0)
+
+	assert.Contains(t, stdout.String(), "inc-1")
+	assert.Contains(t, stdout.String(), "Security incident")
 }
 
 func TestListOpts_DateValidation(t *testing.T) {

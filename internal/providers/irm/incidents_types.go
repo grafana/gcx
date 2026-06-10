@@ -182,7 +182,6 @@ type IncidentQuery struct {
 	OrderDirection  string    `json:"orderDirection"`
 	OrderField      string    `json:"orderField"`
 	QueryString     string    `json:"queryString"`
-	ContextPayload  string    `json:"contextPayload,omitempty"`
 	DateFrom        *FlexTime `json:"dateFrom,omitempty"`
 	DateTo          *FlexTime `json:"dateTo,omitempty"`
 	Severity        string    `json:"severity,omitempty"`
@@ -193,9 +192,12 @@ type IncidentQuery struct {
 	IncidentRoles   []string  `json:"incidentRoles,omitempty"`
 }
 
-// queryIncidentsRequest is the request body for querying incidents.
+// queryIncidentsRequest is the request body for querying incidents. The
+// cursor rides next to the query, not inside it: pass the cursor returned by
+// the previous page to fetch the next one.
 type queryIncidentsRequest struct {
-	Query IncidentQuery `json:"query"`
+	Query  IncidentQuery   `json:"query"`
+	Cursor *IncidentCursor `json:"cursor,omitempty"`
 }
 
 // queryIncidentsResponse is the response from querying incidents.

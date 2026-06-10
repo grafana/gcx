@@ -46,9 +46,14 @@ func NewIncidentClient(cfg config.NamespacedRESTConfig) (*IncidentClient, error)
 	return &IncidentClient{httpClient: httpClient, host: cfg.Host}, nil
 }
 
-// List queries incidents with the given parameters and handles pagination.
+// incidentsMaxPageSize is the documented maximum for IncidentsQuery.limit.
+const incidentsMaxPageSize = 100
+
+// List queries incidents with the given parameters, following the response
+// cursor until query.Limit incidents are collected or the server reports no
+// more pages. A non-positive query.Limit defaults to 100.
 func (c *IncidentClient) List(ctx context.Context, query IncidentQuery) ([]Incident, error) {
-	if query.Limit == 0 {
+	if query.Limit <= 0 {
 		query.Limit = 100
 	}
 	if query.OrderDirection == "" {
@@ -59,22 +64,28 @@ func (c *IncidentClient) List(ctx context.Context, query IncidentQuery) ([]Incid
 	}
 
 	limit := query.Limit
-	var all []Incident
+	var (
+		all    []Incident
+		cursor *IncidentCursor
+	)
 	for {
-		resp, err := c.queryIncidents(ctx, query)
+		query.Limit = min(limit-len(all), incidentsMaxPageSize)
+		resp, err := c.queryIncidents(ctx, query, cursor)
 		if err != nil {
 			return nil, err
 		}
 		all = append(all, resp.Incidents...)
-		if len(all) >= limit || !resp.Cursor.HasMore {
-			break
+		if len(all) >= limit {
+			return all[:limit], nil
 		}
-		query.ContextPayload = resp.Cursor.NextValue
+		// Also stop on an empty page or an empty cursor value: both mean the
+		// server cannot make progress, and looping on them would re-fetch
+		// the same page forever.
+		if !resp.Cursor.HasMore || resp.Cursor.NextValue == "" || len(resp.Incidents) == 0 {
+			return all, nil
+		}
+		cursor = &IncidentCursor{NextValue: resp.Cursor.NextValue}
 	}
-	if len(all) > limit {
-		all = all[:limit]
-	}
-	return all, nil
 }
 
 // Get returns a single incident by ID.
@@ -301,9 +312,10 @@ func (c *IncidentClient) GetSeverities(ctx context.Context) ([]Severity, error) 
 	return result.Severities, nil
 }
 
-// queryIncidents performs a single paginated query.
-func (c *IncidentClient) queryIncidents(ctx context.Context, query IncidentQuery) (*queryIncidentsResponse, error) {
-	body, err := json.Marshal(queryIncidentsRequest{Query: query})
+// queryIncidents fetches a single page. cursor is nil for the first page and
+// the previously returned cursor for subsequent pages.
+func (c *IncidentClient) queryIncidents(ctx context.Context, query IncidentQuery, cursor *IncidentCursor) (*queryIncidentsResponse, error) {
+	body, err := json.Marshal(queryIncidentsRequest{Query: query, Cursor: cursor})
 	if err != nil {
 		return nil, fmt.Errorf("incidents: marshal query request: %w", err)
 	}
