@@ -38,7 +38,7 @@ func (o *incidentListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of incidents to return")
-	flags.StringSliceVar(&o.Labels, "labels", nil, "Filter by label text, e.g. security (repeatable, comma-separated)")
+	flags.StringSliceVar(&o.Labels, "labels", nil, "Filter by label: plain text for default Tags labels (e.g. security), key:value for keyed labels (e.g. team:platform); repeatable, comma-separated")
 	flags.StringVar(&o.DateFrom, "from", "", "Start of time range (RFC3339, unix timestamp, or relative e.g. now-7d)")
 	flags.StringVar(&o.DateTo, "to", "", "End of time range (RFC3339, unix timestamp, or relative e.g. now)")
 }
@@ -47,8 +47,10 @@ func (o *incidentListOpts) Validate() error {
 	if err := o.IO.Validate(); err != nil {
 		return err
 	}
-	// The API's incidentLabels field matches on plain label text (e.g.
-	// "security"), not key:value pairs — pass values through as given.
+	// The API's incidentLabels field matches plain label text for labels
+	// under the default Tags key and key:value composites for keyed labels,
+	// so any non-empty string is a valid filter — pass values through as
+	// given.
 	for _, l := range o.Labels {
 		if strings.TrimSpace(l) == "" {
 			return errors.New("invalid --labels value: label must not be empty")

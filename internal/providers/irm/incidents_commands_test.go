@@ -284,13 +284,14 @@ func TestListOpts_LabelValidation(t *testing.T) {
 		wantErr string
 	}{
 		{
-			// The API's incidentLabels field matches plain label text, so
-			// values without a colon are valid.
+			// Labels under the default Tags key are matched by plain text,
+			// so values without a colon are valid.
 			name:   "plain label text passes",
-			labels: []string{"security", "customersaffected"},
+			labels: []string{"security", "PIR not needed"},
 		},
 		{
-			name:   "colon-separated text passes through verbatim",
+			// Keyed labels are matched by their key:value composite.
+			name:   "key:value text passes through verbatim",
 			labels: []string{"team:platform"},
 		},
 		{
