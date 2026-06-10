@@ -143,32 +143,54 @@ func TestDetectEntitiesNoEdges(t *testing.T) {
 		wantMatch bool
 	}{
 		{
-			name:      "services exist, calls = 0",
-			in:        kg.OrientationInput{AssertsRelationCallsSeries: 0},
-			overview:  kg.EntityOverview{TotalServiceCount: 100},
+			name: "workloads in scope, calls = 0",
+			in: kg.OrientationInput{
+				AssertsMixinWorkloadJobSeries: 100,
+				AssertsRelationCallsSeries:    0,
+			},
 			scope:     kg.NewTestScopeFlags("", "", ""),
 			wantMatch: true,
 		},
 		{
-			name:      "services exist, calls > 0",
-			in:        kg.OrientationInput{AssertsRelationCallsSeries: 20},
-			overview:  kg.EntityOverview{TotalServiceCount: 100},
+			name: "workloads in scope, calls > 0",
+			in: kg.OrientationInput{
+				AssertsMixinWorkloadJobSeries: 100,
+				AssertsRelationCallsSeries:    20,
+			},
 			scope:     kg.NewTestScopeFlags("", "", ""),
 			wantMatch: false,
 		},
 		{
-			name:      "no services — detector silent",
-			in:        kg.OrientationInput{AssertsRelationCallsSeries: 0},
-			overview:  kg.EntityOverview{TotalServiceCount: 0},
+			name: "no workloads in scope — detector silent",
+			in: kg.OrientationInput{
+				AssertsMixinWorkloadJobSeries: 0,
+				AssertsRelationCallsSeries:    0,
+			},
 			scope:     kg.NewTestScopeFlags("", "", ""),
 			wantMatch: false,
 		},
 		{
-			name:      "env scope echoed in reasoning",
-			in:        kg.OrientationInput{AssertsRelationCallsSeries: 0},
-			overview:  kg.EntityOverview{TotalServiceCount: 100},
+			name: "env scope echoed in reasoning",
+			in: kg.OrientationInput{
+				AssertsMixinWorkloadJobSeries: 100,
+				AssertsRelationCallsSeries:    0,
+			},
 			scope:     kg.NewTestScopeFlags("production", "", ""),
 			wantMatch: true,
+		},
+		{
+			// Regression: previously this fired HIGH-confidence on an
+			// empty scope because the gate was the stack-wide
+			// TotalServiceCount. With the scoped workload gate, an
+			// empty scope must defer to detectMissingEntities.
+			name: "scope with stack-wide services but no scoped workloads — silent",
+			in: kg.OrientationInput{
+				AssertsMixinWorkloadJobSeries: 0,
+				AssertsRelationCallsSeries:    0,
+			},
+			overview:  kg.EntityOverview{TotalServiceCount: 6427},
+			scope:     kg.NewTestScopeFlags("azure-westeurope-1", "", ""),
+			wantMatch: false,
 		},
 	}
 
@@ -323,18 +345,18 @@ func TestComputeOrientation_FilterSet_SuppressesStartingPoints(t *testing.T) {
 }
 
 func TestComputeOrientation_MultipleScenarios_OrderByConfidence(t *testing.T) {
-	// Simulates: scope filter applied, services exist but no edges,
-	// AND the scoped workload-job series is empty.
-	// Expect: entities-no-edges (high) and missing-entities (medium) both
-	// match, with high-confidence first.
+	// Simulates: user supplied an env value the stack does not know about.
+	// Expect: cant-filter (high, via scopeValueUnknown) AND missing-entities
+	// (medium, via filter-set with zero scoped workloads) both match, with
+	// high-confidence first.
 	in := kg.OrientationInput{
 		StackEnabled:                  true,
 		EntityCounts:                  map[string]int64{"Service": 100},
-		Scopes:                        map[string][]string{"env": {"prod"}},
+		Scopes:                        map[string][]string{"env": {"prod", "staging"}},
 		AssertsRelationCallsSeries:    0,
 		AssertsMixinWorkloadJobSeries: 0,
 	}
-	scope := kg.NewTestScopeFlags("prod", "", "")
+	scope := kg.NewTestScopeFlags("doesnotexist", "", "")
 
 	got := kg.ComputeOrientation(in, &scope)
 

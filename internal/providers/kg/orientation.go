@@ -349,10 +349,16 @@ func detectNoEntities(in OrientationInput, overview EntityOverview) *MatchedScen
 }
 
 // detectEntitiesNoEdges → scenario 3, "I see entities with no edges".
-// Triggers when Service entities exist for the scope but
-// asserts:relation:calls has zero series.
-func detectEntitiesNoEdges(in OrientationInput, overview EntityOverview, scope *scopeFlags) *MatchedScenario {
-	if overview.TotalServiceCount == 0 {
+// Triggers when workload entities exist for the scope (scoped signal:
+// asserts:mixin_workload_job > 0) but asserts:relation:calls has zero
+// series for the same scope. Both signals share scope so a --env/--namespace
+// filter pointed at an empty scope no longer false-positives against
+// stack-wide service counts.
+func detectEntitiesNoEdges(in OrientationInput, _ EntityOverview, scope *scopeFlags) *MatchedScenario {
+	// Workload signal is scoped (metricChecks(scope.env, scope.namespace)).
+	// No workloads in scope → defer to detectMissingEntities; this detector
+	// must not fire on stack-wide service counts.
+	if in.AssertsMixinWorkloadJobSeries == 0 {
 		return nil
 	}
 	if in.AssertsRelationCallsSeries > 0 {
@@ -366,7 +372,7 @@ func detectEntitiesNoEdges(in OrientationInput, overview EntityOverview, scope *
 		ID:         ScenarioEntitiesNoEdges,
 		Label:      "I see entities with no edges",
 		Confidence: ConfidenceHigh,
-		Reasoning:  "Service entities are discovered for " + scopeHint + " but asserts:relation:calls has no series.",
+		Reasoning:  "Workload entities are discovered for " + scopeHint + " but asserts:relation:calls has no series.",
 		NextCommands: []string{
 			"gcx kg diagnose labels",
 			"gcx kg diagnose service <name>",
