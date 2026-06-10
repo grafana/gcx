@@ -399,8 +399,10 @@ that only surfaced during smoke testing:
   optional time fields instead of null. The `omitzero` tag (Go 1.24+) replaces
   `omitempty` for struct-typed fields to satisfy the modernize linter.
 - Delete is not supported — the IRM API has no delete endpoint.
-- Cursor-based pagination: the `contextPayload` field carries the cursor value
-  between pages, not a separate cursor parameter.
+- Cursor-based pagination: the cursor is a top-level request field next to
+  `query` (`{"query": {...}, "cursor": {"nextValue": "..."}}`) — pass the
+  previously returned cursor back verbatim to fetch the next page. It is not
+  a field inside the query object. Page `limit` is capped at 100 by the API.
 
 ### Token Exchange Auth (k6)
 
