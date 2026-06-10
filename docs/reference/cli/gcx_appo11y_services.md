@@ -23,5 +23,6 @@ Inspect Application Observability services discovered from telemetry
 ### SEE ALSO
 
 * [gcx appo11y](gcx_appo11y.md)	 - Manage Grafana App Observability settings
+* [gcx appo11y services get](gcx_appo11y_services_get.md)	 - Inspect a single Application Observability service: metadata + RED snapshot.
 * [gcx appo11y services list](gcx_appo11y_services_list.md)	 - List Application Observability services discovered from target_info/traces_target_info telemetry.
 
