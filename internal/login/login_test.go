@@ -1208,3 +1208,51 @@ func TestRun_MTLSOnlyAuth(t *testing.T) {
 	require.NotNil(t, grafanaCfg.TLS, "TLS must be persisted")
 	assert.Contains(t, string(grafanaCfg.TLS.CertData), "cert-pem")
 }
+
+// TestRun_CloudTokenHintGuidance verifies that when a Cloud login needs a CAP
+// token, the ErrNeedInput hint guides the user to where a token is created and
+// which scopes are recommended (issue #820).
+func TestRun_CloudTokenHintGuidance(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "0")
+	agent.ResetForTesting()
+	t.Cleanup(func() { agent.ResetForTesting() })
+
+	dir := t.TempDir()
+	opts := login.Options{
+		Inputs: login.Inputs{
+			Server:   "https://my-stack.grafana.net",
+			UseOAuth: true,
+			Target:   login.TargetCloud,
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(dir),
+			NewAuthFlow: func(_ string, _ auth.Options) login.AuthFlow {
+				return &stubAuthFlow{result: &auth.Result{
+					Token:        "gat_test",
+					RefreshToken: "gar_test",
+					APIEndpoint:  "https://assistant.grafana.net/a/app/proxy",
+					ExpiresAt:    "2099-01-01T00:00:00Z",
+				}}
+			},
+			ValidateFn: func(_ context.Context, _ login.Options, _ config.NamespacedRESTConfig) (string, error) {
+				return "12.0.0", nil
+			},
+		},
+		RetryState: login.RetryState{StagedContext: &config.Context{}},
+	}
+
+	_, err := login.Run(context.Background(), &opts)
+	var needInput *login.ErrNeedInput
+	require.ErrorAs(t, err, &needInput, "must be ErrNeedInput")
+	require.Equal(t, []string{"cloud-token"}, needInput.Fields)
+
+	hint := needInput.Hint
+	assert.Contains(t, hint, "https://my-stack.grafana.net/a/grafana-auth-app",
+		"hint must deep-link to the in-stack Access Policies app for the known server")
+	assert.Contains(t, hint, "access-policies", "hint must link to the access-policies docs")
+	assert.Contains(t, hint, "stacks:read", "hint must name stacks:read as the required baseline scope")
+	assert.Contains(t, hint, "metrics:write", "hint must name the Synthetic Monitoring & k6 write scopes")
+	assert.Contains(t, hint, "fleet-management:read", "hint must name the Fleet scope")
+	assert.Contains(t, hint, "stacks:write", "hint must name the stack-management scope")
+	assert.Contains(t, strings.ToLower(hint), "skip", "hint must retain the skip affordance")
+}

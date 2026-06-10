@@ -393,12 +393,10 @@ func askGrafanaAuth(opts *login.Options, existingToken string) error {
 		}
 	}
 
-	// Default to the first option in the menu. For Cloud targets, mTLS is not
-	// offered so we must not default to it even when TLS certs are present.
-	authMethod := "token"
-	if hasMTLS && opts.Target != login.TargetCloud {
-		authMethod = "mtls"
-	}
+	// Default to the first option in the menu: OAuth for Cloud, mTLS when certs
+	// are present (non-Cloud), token otherwise. Deriving from options[0] keeps
+	// the highlighted default in sync with the per-target menu order above.
+	authMethod := options[0].Value
 	// Single option: skip the menu and fall through directly.
 	if len(options) > 1 {
 		methodForm := huh.NewForm(huh.NewGroup(
