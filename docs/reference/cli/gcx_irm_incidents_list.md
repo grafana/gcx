@@ -12,7 +12,7 @@ gcx irm incidents list [flags]
       --from string      Start of time range (RFC3339, unix timestamp, or relative e.g. now-7d)
   -h, --help             help for list
       --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --labels strings   Filter by label: plain text for default Tags labels (e.g. security), key:value for keyed labels (e.g. team:platform); repeatable, comma-separated
+      --labels strings   Filter by labels (label text or key:value, may be repeated)
       --limit int        Maximum number of incidents to return (default 50)
   -o, --output string    Output format. One of: agents, json, table, wide, yaml (default "table")
       --to string        End of time range (RFC3339, unix timestamp, or relative e.g. now)

@@ -38,7 +38,7 @@ func (o *incidentListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of incidents to return")
-	flags.StringSliceVar(&o.Labels, "labels", nil, "Filter by label: plain text for default Tags labels (e.g. security), key:value for keyed labels (e.g. team:platform); repeatable, comma-separated")
+	flags.StringSliceVar(&o.Labels, "labels", nil, "Filter by labels (label text or key:value, may be repeated)")
 	flags.StringVar(&o.DateFrom, "from", "", "Start of time range (RFC3339, unix timestamp, or relative e.g. now-7d)")
 	flags.StringVar(&o.DateTo, "to", "", "End of time range (RFC3339, unix timestamp, or relative e.g. now)")
 }
