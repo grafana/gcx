@@ -67,16 +67,11 @@ func TestBuildScopeSummary(t *testing.T) {
 			wantFilterSet: true,
 			wantNoneBkt:   false,
 		},
-		{
-			name:  "none bucket present and populated",
-			scope: kg.NewTestScopeFlags("", "", ""),
-			in: kg.OrientationInput{
-				Scopes:                map[string][]string{"env": {"prod", "none"}},
-				NoneBucketHasEntities: true,
-			},
-			wantFilterSet: false,
-			wantNoneBkt:   true,
-		},
+		// NOTE: a "none bucket present and populated" case used to live here
+		// and set OrientationInput.NoneBucketHasEntities directly. It was
+		// removed because runDiagnose does not populate that field today
+		// (the producer requires a scoped CountEntityTypes(env="none") call).
+		// Restore the case when the producer is wired.
 	}
 
 	for _, tt := range tests {
@@ -216,12 +211,11 @@ func TestDetectCantFilter(t *testing.T) {
 		scope     kg.ScopeFlags
 		wantMatch bool
 	}{
-		{
-			name:      "none bucket has entities",
-			in:        kg.OrientationInput{NoneBucketHasEntities: true},
-			scope:     kg.NewTestScopeFlags("", "", ""),
-			wantMatch: true,
-		},
+		// NOTE: a "none bucket has entities" case used to live here and set
+		// OrientationInput.NoneBucketHasEntities directly. It was removed
+		// because runDiagnose does not populate that field today (the producer
+		// requires a scoped CountEntityTypes(env="none") call). Restore the
+		// case when the producer is wired.
 		{
 			name: "user gave bogus env",
 			in: kg.OrientationInput{

@@ -100,9 +100,11 @@ type ScopeSummary struct {
 	// by namespace.
 	NamespacesKnown []string `json:"namespacesKnown,omitempty"`
 
-	// NoneBucketPresent is true when the EnvsKnown list contains a "none"
-	// value that has non-empty entities behind it — the signature for
-	// scenario 5 ("I can't filter to the entities I want").
+	// NoneBucketPresent is reserved for a future detector that distinguishes
+	// a "none" env value backed by entities from bare presence in the scope
+	// list. Producing it truthfully requires a scoped CountEntityTypes(
+	// env="none") call (not currently issued by runDiagnose), so this field
+	// is left at its zero value until that producer is wired.
 	NoneBucketPresent bool `json:"noneBucketPresent"`
 }
 
@@ -222,9 +224,12 @@ type OrientationInput struct {
 	// unscoped bucket.
 	Scopes map[string][]string
 
-	// NoneBucketHasEntities indicates that the "none" env value is
-	// present in Scopes AND has entities behind it. Detected by
-	// runDiagnose at the API boundary and passed in here.
+	// NoneBucketHasEntities is reserved for a future detector that
+	// distinguishes a "none" env value backed by entities from bare
+	// presence in the scope list. Producing it truthfully requires a
+	// scoped CountEntityTypes(env="none") call that runDiagnose does not
+	// currently issue, so this field is left at its zero value until
+	// that producer is wired.
 	NoneBucketHasEntities bool
 
 	// TracesTargetInfoSeries is the count of traces_target_info series
@@ -318,8 +323,9 @@ func buildEntityOverview(in OrientationInput) EntityOverview {
 }
 
 // buildScopeSummary captures the scope state for the run. NoneBucketPresent
-// is true only when the "none" value appears in env scopes AND has
-// entities behind it — bare presence in the scope list isn't enough.
+// is propagated from OrientationInput.NoneBucketHasEntities, which is
+// reserved for a future detector (see field doc); today it is always
+// zero in production.
 func buildScopeSummary(in OrientationInput, scope *scopeFlags) ScopeSummary {
 	out := ScopeSummary{
 		FilterSet:         scope.env != "" || scope.namespace != "" || scope.site != "",
@@ -393,23 +399,21 @@ func detectEntitiesNoEdges(in OrientationInput, _ EntityOverview, scope *scopeFl
 }
 
 // detectCantFilter → scenario 5, "I can't filter to the entities I want".
-// Two triggers:
-//   - the "none" bucket has non-empty entities (some workloads have no
-//     asserts_env at all), OR
-//   - the user supplied a scope value that doesn't match any known scope.
+// Triggers when the user supplied a scope value that doesn't match any
+// known scope.
+//
+// A second trigger (the "none" env bucket backed by entities) is reserved
+// for a future detector; see OrientationInput.NoneBucketHasEntities. Until
+// that producer is wired, this detector relies on scopeValueUnknown alone.
 func detectCantFilter(in OrientationInput, scope *scopeFlags) *MatchedScenario {
-	if !in.NoneBucketHasEntities && !scopeValueUnknown(in, scope) {
+	if !scopeValueUnknown(in, scope) {
 		return nil
-	}
-	reasoning := "Some entities have no asserts_env label set (the \"none\" scope bucket)."
-	if scopeValueUnknown(in, scope) {
-		reasoning = "The scope value you provided does not match any value the stack knows about."
 	}
 	return &MatchedScenario{
 		ID:         ScenarioCantFilter,
 		Label:      "I can't filter to the entities I want",
 		Confidence: ConfidenceHigh,
-		Reasoning:  reasoning,
+		Reasoning:  "The scope value you provided does not match any value the stack knows about.",
 		NextCommands: []string{
 			"gcx kg meta scopes",
 			"gcx kg diagnose labels",

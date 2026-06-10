@@ -1212,12 +1212,11 @@ func renderOrientation(w io.Writer, o Orientation, env, namespace, site string) 
 		fmt.Fprintln(w, ".")
 	}
 
-	// Scope overview.
+	// Scope overview. (The NoneBucketPresent callout that previously rendered
+	// here was removed alongside the inert NoneBucketHasEntities producer;
+	// see ScopeSummary doc.)
 	if len(o.Scope.EnvsKnown) > 0 {
 		fmt.Fprintf(w, "Scope: %d env(s) known", len(o.Scope.EnvsKnown))
-		if o.Scope.NoneBucketPresent {
-			fmt.Fprint(w, " (one is the \"none\" bucket — entities with no asserts_env)")
-		}
 		if n := len(o.Scope.NamespacesKnown); n > 0 {
 			fmt.Fprintf(w, "; %d namespace(s) known", n)
 		}
