@@ -300,11 +300,17 @@ func TestListOpts_LabelValidation(t *testing.T) {
 			wantErr: "label must not be empty",
 		},
 		{
-			// The query-string language has no escape for a value holding
-			// both quote characters, so it cannot be expressed.
-			name:    "label with both quote characters fails",
-			labels:  []string{`it's a "label"`},
-			wantErr: "cannot contain both single and double quotes",
+			// The query-string language rejects double quotes inside
+			// single-quoted values, so a label containing a double quote
+			// cannot be expressed at all.
+			name:    "label with a double quote fails",
+			labels:  []string{`the "big" outage`},
+			wantErr: "cannot contain double quotes",
+		},
+		{
+			// Apostrophes are fine: double-quoted values may contain them.
+			name:   "label with a single quote passes",
+			labels: []string{"team's incident"},
 		},
 	}
 	for _, tt := range tests {
@@ -379,7 +385,9 @@ func TestIncidentsListCommand_BuildsQuery(t *testing.T) {
 	assert.NotContains(t, query, "incidentLabels")
 	assert.NotContains(t, query, "dateFrom")
 	assert.NotContains(t, query, "dateTo")
-	assert.InDelta(t, 10, query["limit"], 0)
+	// With date bounds the client fetches full pages and filters down to
+	// --limit itself, so the wire limit is the page maximum, not 10.
+	assert.InDelta(t, 100, query["limit"], 0)
 
 	out := stdout.String()
 	assert.Contains(t, out, "inc-1")

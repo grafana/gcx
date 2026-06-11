@@ -255,12 +255,12 @@ func TestClient_List_Filters(t *testing.T) {
 	tests := []clientListCase{
 		{
 			name:  "translates labels into quoted query-string terms",
-			query: irm.IncidentQuery{Limit: 10, IncidentLabels: []string{"security", "PIR not needed", "service_name:checkout"}},
+			query: irm.IncidentQuery{Limit: 10, IncidentLabels: []string{"security", "PIR not needed", "service_name:checkout", "team's"}},
 			handler: func(t *testing.T, calls *[]listRequest) http.HandlerFunc {
 				t.Helper()
 				return func(w http.ResponseWriter, _ *http.Request) {
 					req := (*calls)[0]
-					assert.Equal(t, `label:"security" label:"PIR not needed" label:"service_name:checkout"`, req.Query["queryString"])
+					assert.Equal(t, `label:"security" label:"PIR not needed" label:"service_name:checkout" label:"team's"`, req.Query["queryString"])
 					assert.NotContains(t, req.Query, "incidentLabels")
 					assert.Equal(t, "DESC", req.Query["orderDirection"])
 					assert.True(t, req.IncludeCustomFieldValues)
@@ -269,6 +269,41 @@ func TestClient_List_Filters(t *testing.T) {
 				}
 			},
 			wantLen:   1,
+			wantCalls: 1,
+		},
+		{
+			name:  "rejects labels containing a double quote",
+			query: irm.IncidentQuery{Limit: 10, IncidentLabels: []string{`the "big" outage`}},
+			handler: func(t *testing.T, _ *[]listRequest) http.HandlerFunc {
+				t.Helper()
+				return func(_ http.ResponseWriter, _ *http.Request) {
+					t.Error("API must not be called for an inexpressible label")
+				}
+			},
+			wantErr: "cannot express values containing double quotes",
+		},
+		{
+			name: "fetches full pages while date filtering",
+			query: irm.IncidentQuery{
+				Limit:  2,
+				DateTo: flexTimePtr(time.Date(2026, 6, 10, 0, 0, 0, 0, time.UTC)),
+			},
+			handler: func(t *testing.T, calls *[]listRequest) http.HandlerFunc {
+				t.Helper()
+				return func(w http.ResponseWriter, _ *http.Request) {
+					// Client-side filtering can discard any number of
+					// previews, so the page request must not shrink to the
+					// remaining limit.
+					req := (*calls)[0]
+					assert.InDelta(t, 100, req.Query["limit"], 0)
+					writeJSON(w, datedPage(map[string]string{
+						"inc-1": "2026-06-11T10:00:00Z",
+						"inc-2": "2026-06-09T09:00:00Z",
+						"inc-3": "2026-06-08T08:00:00Z",
+					}, false, ""))
+				}
+			},
+			wantIDs:   []string{"inc-2", "inc-3"},
 			wantCalls: 1,
 		},
 		{

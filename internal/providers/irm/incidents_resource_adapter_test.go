@@ -76,7 +76,6 @@ func TestResourceAdapter_List(t *testing.T) {
 						{"incidentID": "inc-2", "title": "Outage 2", "status": "resolved"},
 					},
 					"cursor": map[string]any{"hasMore": false},
-					"query":  map[string]any{},
 				})
 			},
 			wantLen:       2,
@@ -91,7 +90,6 @@ func TestResourceAdapter_List(t *testing.T) {
 				writeJSON(w, map[string]any{
 					"incidentPreviews": []map[string]any{},
 					"cursor":           map[string]any{"hasMore": false},
-					"query":            map[string]any{},
 				})
 			},
 			wantLen: 0,
@@ -295,7 +293,6 @@ func TestResourceAdapter_ListPopulatesMetadata(t *testing.T) {
 				{"incidentID": "meta-inc", "title": "Metadata Inc", "status": "active"},
 			},
 			"cursor": map[string]any{"hasMore": false},
-			"query":  map[string]any{},
 		})
 	}))
 	defer server.Close()

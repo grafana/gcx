@@ -59,14 +59,12 @@ const incidentsMaxPageSize = 100
 
 // quoteIncidentQueryValue wraps a value for the incident query-string
 // language, which requires quoting for values containing spaces or colons.
-// Quoted values match both Tags-key label text and keyed key:value
-// composites. Double quotes are the default; values containing a double
-// quote fall back to single quotes, and values containing both quote
-// characters are rejected upstream by the list command's validation.
+// Double-quoted values match both Tags-key label text and keyed key:value
+// composites and may themselves contain single quotes. The reverse does not
+// hold — the server rejects double quotes inside single-quoted values — so
+// values containing a double quote cannot be expressed in the language and
+// are rejected by List and by the list command's validation.
 func quoteIncidentQueryValue(v string) string {
-	if strings.Contains(v, `"`) {
-		return "'" + v + "'"
-	}
 	return `"` + v + `"`
 }
 
@@ -91,6 +89,12 @@ func buildLabelsQueryString(labels []string) string {
 // the deprecated QueryIncidents endpoint ignored server-side — are enforced
 // here on createdTime, dateFrom inclusive and dateTo exclusive.
 func (c *IncidentClient) List(ctx context.Context, query IncidentQuery) ([]Incident, error) {
+	for _, l := range query.IncidentLabels {
+		if strings.Contains(l, `"`) {
+			return nil, fmt.Errorf("incidents: invalid label %q: the incident query-string language cannot express values containing double quotes", l)
+		}
+	}
+
 	if query.Limit <= 0 {
 		query.Limit = 100
 	}
@@ -114,6 +118,7 @@ func (c *IncidentClient) List(ctx context.Context, query IncidentQuery) ([]Incid
 	if query.DateTo != nil {
 		to = time.Time(*query.DateTo)
 	}
+	dateBounded := !from.IsZero() || !to.IsZero()
 	// With the default createdTime-descending order, every incident after the
 	// first one older than `from` is older too, so paging can stop early.
 	newestFirst := query.OrderDirection == "DESC" && query.OrderField == "createdTime"
@@ -125,7 +130,15 @@ func (c *IncidentClient) List(ctx context.Context, query IncidentQuery) ([]Incid
 		pastFrom bool
 	)
 	for {
-		wire.Limit = min(limit-len(all), incidentsMaxPageSize)
+		if dateBounded {
+			// Date filtering happens client-side, so a page can contribute
+			// anywhere from zero to all of its previews. Fetch full pages to
+			// keep the crawl towards the bounds short; the result is
+			// truncated to limit below.
+			wire.Limit = incidentsMaxPageSize
+		} else {
+			wire.Limit = min(limit-len(all), incidentsMaxPageSize)
+		}
 		resp, err := c.queryIncidentPreviews(ctx, wire, cursor)
 		if err != nil {
 			return nil, err
