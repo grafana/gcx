@@ -299,6 +299,13 @@ func TestListOpts_LabelValidation(t *testing.T) {
 			labels:  []string{"security", ""},
 			wantErr: "label must not be empty",
 		},
+		{
+			// The query-string language has no escape for a value holding
+			// both quote characters, so it cannot be expressed.
+			name:    "label with both quote characters fails",
+			labels:  []string{`it's a "label"`},
+			wantErr: "cannot contain both single and double quotes",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -325,8 +332,9 @@ func (l fakeGrafanaConfigLoader) LoadGrafanaConfig(context.Context) (config.Name
 }
 
 // TestIncidentsListCommand_BuildsQuery runs the real list command against a
-// fake API and asserts the filters land in the request as the API documents
-// them: plain label text in incidentLabels and RFC3339 dates.
+// fake API and asserts the flags land in a QueryIncidentPreviews request:
+// labels become quoted query-string terms, and the date flags never reach
+// the wire (the endpoint has no date fields) but are enforced client-side.
 func TestIncidentsListCommand_BuildsQuery(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
 	agent.ResetForTesting()
@@ -340,8 +348,9 @@ func TestIncidentsListCommand_BuildsQuery(t *testing.T) {
 		assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
 		query = body.Query
 		writeJSON(w, map[string]any{
-			"incidents": []map[string]any{
-				{"incidentID": "inc-1", "title": "Security incident", "status": "active"},
+			"incidentPreviews": []map[string]any{
+				{"incidentID": "inc-1", "title": "Security incident", "status": "active", "severityLabel": "Major", "createdTime": "2024-06-10T12:00:00Z"},
+				{"incidentID": "inc-2", "title": "Too old", "status": "resolved", "createdTime": "2024-05-01T12:00:00Z"},
 			},
 			"cursor": map[string]any{"hasMore": false},
 		})
@@ -359,20 +368,24 @@ func TestIncidentsListCommand_BuildsQuery(t *testing.T) {
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
 	cmd.SetArgs([]string{
-		"--labels", "security,important",
+		"--labels", "security,PIR not needed",
 		"--from", "2024-06-01T00:00:00Z",
 		"--to", "2024-06-15T00:00:00Z",
 		"--limit", "10",
 	})
 	require.NoError(t, cmd.Execute())
 
-	assert.Equal(t, []any{"security", "important"}, query["incidentLabels"])
-	assert.Equal(t, "2024-06-01T00:00:00Z", query["dateFrom"])
-	assert.Equal(t, "2024-06-15T00:00:00Z", query["dateTo"])
+	assert.Equal(t, `label:"security" label:"PIR not needed"`, query["queryString"])
+	assert.NotContains(t, query, "incidentLabels")
+	assert.NotContains(t, query, "dateFrom")
+	assert.NotContains(t, query, "dateTo")
 	assert.InDelta(t, 10, query["limit"], 0)
 
-	assert.Contains(t, stdout.String(), "inc-1")
-	assert.Contains(t, stdout.String(), "Security incident")
+	out := stdout.String()
+	assert.Contains(t, out, "inc-1")
+	assert.Contains(t, out, "Security incident")
+	assert.Contains(t, out, "Major", "severityLabel must surface in the SEVERITY column")
+	assert.NotContains(t, out, "inc-2", "incidents outside --from/--to must be filtered client-side")
 }
 
 func TestIncidentsListCommand_RejectsNonPositiveLimit(t *testing.T) {

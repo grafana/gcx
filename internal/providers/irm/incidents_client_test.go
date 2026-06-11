@@ -3,9 +3,12 @@ package irm_test
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/irm"
@@ -25,43 +28,102 @@ func newTestClient(t *testing.T, server *httptest.Server) *irm.IncidentClient {
 	return c
 }
 
-// listRequest mirrors the QueryIncidents request body for assertions.
+// listRequest mirrors the QueryIncidentPreviews request body for assertions.
 type listRequest struct {
-	Query  map[string]any  `json:"query"`
-	Cursor *map[string]any `json:"cursor"`
+	Query                    map[string]any  `json:"query"`
+	Cursor                   *map[string]any `json:"cursor"`
+	IncludeCustomFieldValues bool            `json:"includeCustomFieldValues"`
+	IncludeIncidentChannels  bool            `json:"includeIncidentChannels"`
 }
 
-// incidentPage builds a one-page response with n incidents named after page.
-func incidentPage(page string, n int, hasMore bool, nextValue string) map[string]any {
-	incs := make([]map[string]any, n)
-	for i := range incs {
-		incs[i] = map[string]any{"incidentID": fmt.Sprintf("inc-%s-%d", page, i), "title": "Outage " + page, "status": "active"}
+// previewsPage builds a one-page response with n previews named after page.
+func previewsPage(page string, n int, hasMore bool, nextValue string) map[string]any {
+	previews := make([]map[string]any, n)
+	for i := range previews {
+		previews[i] = map[string]any{"incidentID": fmt.Sprintf("inc-%s-%d", page, i), "title": "Outage " + page, "status": "active"}
 	}
 	return map[string]any{
-		"incidents": incs,
-		"cursor":    map[string]any{"hasMore": hasMore, "nextValue": nextValue},
-		"query":     map[string]any{},
+		"incidentPreviews": previews,
+		"cursor":           map[string]any{"hasMore": hasMore, "nextValue": nextValue},
 	}
+}
+
+// datedPage builds a one-page response from incidentID → createdTime pairs.
+func datedPage(created map[string]string, hasMore bool, nextValue string) map[string]any {
+	previews := make([]map[string]any, 0, len(created))
+	for _, id := range slices.Sorted(maps.Keys(created)) {
+		previews = append(previews, map[string]any{"incidentID": id, "title": "Outage " + id, "status": "active", "createdTime": created[id]})
+	}
+	return map[string]any{
+		"incidentPreviews": previews,
+		"cursor":           map[string]any{"hasMore": hasMore, "nextValue": nextValue},
+	}
+}
+
+func flexTimePtr(t time.Time) *irm.FlexTime {
+	ft := irm.FlexTime(t)
+	return &ft
+}
+
+// clientListCase is one List scenario: a query, a scripted server, and the
+// expected outcome.
+type clientListCase struct {
+	name      string
+	query     irm.IncidentQuery
+	handler   func(t *testing.T, calls *[]listRequest) http.HandlerFunc
+	wantIDs   []string
+	wantLen   int
+	wantCalls int
+	wantErr   string
+}
+
+// runClientListCase records every request body, serves tt.handler, runs
+// List, and checks the outcome against the case expectations.
+func runClientListCase(t *testing.T, tt clientListCase) {
+	t.Helper()
+	var calls []listRequest
+	inner := tt.handler(t, &calls)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req listRequest
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		calls = append(calls, req)
+		inner(w, r)
+	}))
+	defer server.Close()
+
+	c := newTestClient(t, server)
+	result, err := c.List(t.Context(), tt.query)
+
+	if tt.wantErr != "" {
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), tt.wantErr)
+		return
+	}
+
+	require.NoError(t, err)
+	if tt.wantIDs != nil {
+		ids := make([]string, len(result))
+		for i, inc := range result {
+			ids[i] = inc.IncidentID
+		}
+		assert.Equal(t, tt.wantIDs, ids)
+	} else {
+		assert.Len(t, result, tt.wantLen)
+	}
+	assert.Len(t, calls, tt.wantCalls)
 }
 
 func TestClient_List(t *testing.T) {
-	tests := []struct {
-		name      string
-		query     irm.IncidentQuery
-		handler   func(t *testing.T, calls *[]listRequest) http.HandlerFunc
-		wantLen   int
-		wantCalls int
-		wantErr   string
-	}{
+	tests := []clientListCase{
 		{
-			name:  "returns incidents",
+			name:  "returns incidents from the previews endpoint",
 			query: irm.IncidentQuery{Limit: 50},
 			handler: func(t *testing.T, _ *[]listRequest) http.HandlerFunc {
 				t.Helper()
 				return func(w http.ResponseWriter, r *http.Request) {
 					assert.Equal(t, http.MethodPost, r.Method)
-					assert.Contains(t, r.URL.Path, "IncidentsService.QueryIncidents")
-					writeJSON(w, incidentPage("a", 2, false, ""))
+					assert.Contains(t, r.URL.Path, "/api/v1/IncidentsService.QueryIncidentPreviews")
+					writeJSON(w, previewsPage("a", 2, false, ""))
 				}
 			},
 			wantLen:   2,
@@ -75,7 +137,7 @@ func TestClient_List(t *testing.T) {
 				return func(w http.ResponseWriter, _ *http.Request) {
 					switch len(*calls) {
 					case 1:
-						writeJSON(w, incidentPage("p1", 1, true, "cursor-1"))
+						writeJSON(w, previewsPage("p1", 1, true, "cursor-1"))
 					default:
 						req := (*calls)[1]
 						if assert.NotNil(t, req.Cursor, "second request must carry the cursor next to the query") {
@@ -83,8 +145,7 @@ func TestClient_List(t *testing.T) {
 							assert.Equal(t, "cursor-1", (*req.Cursor)["nextValue"])
 							assert.Equal(t, true, (*req.Cursor)["hasMore"])
 						}
-						assert.NotContains(t, req.Query, "contextPayload")
-						writeJSON(w, incidentPage("p2", 1, false, ""))
+						writeJSON(w, previewsPage("p2", 1, false, ""))
 					}
 				}
 			},
@@ -101,15 +162,15 @@ func TestClient_List(t *testing.T) {
 					assert.LessOrEqual(t, req.Query["limit"], float64(100), "per-page limit must not exceed the documented maximum")
 					switch len(*calls) {
 					case 1:
-						writeJSON(w, incidentPage("p1", 100, true, "cursor-1"))
+						writeJSON(w, previewsPage("p1", 100, true, "cursor-1"))
 					case 2:
 						// 150 remain wanted; the page request must ask for 100.
 						assert.InDelta(t, 100, req.Query["limit"], 0)
-						writeJSON(w, incidentPage("p2", 100, true, "cursor-2"))
+						writeJSON(w, previewsPage("p2", 100, true, "cursor-2"))
 					default:
 						// 50 remain wanted; the page request must shrink.
 						assert.InDelta(t, 50, req.Query["limit"], 0)
-						writeJSON(w, incidentPage("p3", 50, false, ""))
+						writeJSON(w, previewsPage("p3", 50, false, ""))
 					}
 				}
 			},
@@ -122,7 +183,7 @@ func TestClient_List(t *testing.T) {
 			handler: func(t *testing.T, _ *[]listRequest) http.HandlerFunc {
 				t.Helper()
 				return func(w http.ResponseWriter, _ *http.Request) {
-					writeJSON(w, incidentPage("p1", 1, true, "cursor-1"))
+					writeJSON(w, previewsPage("p1", 1, true, "cursor-1"))
 				}
 			},
 			wantLen:   1,
@@ -134,7 +195,7 @@ func TestClient_List(t *testing.T) {
 			handler: func(t *testing.T, _ *[]listRequest) http.HandlerFunc {
 				t.Helper()
 				return func(w http.ResponseWriter, _ *http.Request) {
-					writeJSON(w, incidentPage("p1", 5, false, ""))
+					writeJSON(w, previewsPage("p1", 5, false, ""))
 				}
 			},
 			wantLen:   3,
@@ -148,7 +209,7 @@ func TestClient_List(t *testing.T) {
 				return func(w http.ResponseWriter, _ *http.Request) {
 					// A misbehaving server claims more pages but provides no
 					// cursor to fetch them; the client must not loop forever.
-					writeJSON(w, incidentPage("p1", 1, true, ""))
+					writeJSON(w, previewsPage("p1", 1, true, ""))
 				}
 			},
 			wantLen:   1,
@@ -162,25 +223,10 @@ func TestClient_List(t *testing.T) {
 				return func(w http.ResponseWriter, _ *http.Request) {
 					req := (*calls)[0]
 					assert.InDelta(t, 100, req.Query["limit"], 0)
-					writeJSON(w, incidentPage("p1", 100, true, "cursor-1"))
+					writeJSON(w, previewsPage("p1", 100, true, "cursor-1"))
 				}
 			},
 			wantLen:   100,
-			wantCalls: 1,
-		},
-		{
-			name:  "forwards filters in the query",
-			query: irm.IncidentQuery{Limit: 10, IncidentLabels: []string{"security"}},
-			handler: func(t *testing.T, calls *[]listRequest) http.HandlerFunc {
-				t.Helper()
-				return func(w http.ResponseWriter, _ *http.Request) {
-					q := (*calls)[0].Query
-					assert.Equal(t, []any{"security"}, q["incidentLabels"])
-					assert.Equal(t, "DESC", q["orderDirection"])
-					writeJSON(w, incidentPage("p1", 1, false, ""))
-				}
-			},
-			wantLen:   1,
 			wantCalls: 1,
 		},
 		{
@@ -198,31 +244,121 @@ func TestClient_List(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var calls []listRequest
-			inner := tt.handler(t, &calls)
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				var req listRequest
-				assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
-				calls = append(calls, req)
-				inner(w, r)
-			}))
-			defer server.Close()
-
-			c := newTestClient(t, server)
-			result, err := c.List(t.Context(), tt.query)
-
-			if tt.wantErr != "" {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.wantErr)
-				return
-			}
-
-			require.NoError(t, err)
-			assert.Len(t, result, tt.wantLen)
-			assert.Len(t, calls, tt.wantCalls)
-		})
+		t.Run(tt.name, func(t *testing.T) { runClientListCase(t, tt) })
 	}
+}
+
+// TestClient_List_Filters covers the filter translation the migration to
+// QueryIncidentPreviews introduced: labels become query-string terms and the
+// date bounds are enforced client-side (the endpoint has no date fields).
+func TestClient_List_Filters(t *testing.T) {
+	tests := []clientListCase{
+		{
+			name:  "translates labels into quoted query-string terms",
+			query: irm.IncidentQuery{Limit: 10, IncidentLabels: []string{"security", "PIR not needed", "service_name:checkout"}},
+			handler: func(t *testing.T, calls *[]listRequest) http.HandlerFunc {
+				t.Helper()
+				return func(w http.ResponseWriter, _ *http.Request) {
+					req := (*calls)[0]
+					assert.Equal(t, `label:"security" label:"PIR not needed" label:"service_name:checkout"`, req.Query["queryString"])
+					assert.NotContains(t, req.Query, "incidentLabels")
+					assert.Equal(t, "DESC", req.Query["orderDirection"])
+					assert.True(t, req.IncludeCustomFieldValues)
+					assert.True(t, req.IncludeIncidentChannels)
+					writeJSON(w, previewsPage("p1", 1, false, ""))
+				}
+			},
+			wantLen:   1,
+			wantCalls: 1,
+		},
+		{
+			name: "applies the from bound client-side and stops early",
+			query: irm.IncidentQuery{
+				Limit:    50,
+				DateFrom: flexTimePtr(time.Date(2026, 6, 10, 0, 0, 0, 0, time.UTC)),
+			},
+			handler: func(t *testing.T, calls *[]listRequest) http.HandlerFunc {
+				t.Helper()
+				return func(w http.ResponseWriter, _ *http.Request) {
+					// No date fields exist on the wire; the bound must be
+					// enforced client-side. Descending createdTime order
+					// means everything past inc-2 is older still, so the
+					// client must filter and stop after one call.
+					req := (*calls)[0]
+					assert.NotContains(t, req.Query, "dateFrom")
+					writeJSON(w, datedPage(map[string]string{
+						"inc-1": "2026-06-11T10:00:00Z",
+						"inc-2": "2026-06-10T09:00:00Z",
+						"inc-3": "2026-06-09T08:00:00Z",
+					}, true, "cursor-1"))
+				}
+			},
+			wantIDs:   []string{"inc-1", "inc-2"},
+			wantCalls: 1,
+		},
+		{
+			name: "applies the to bound client-side and keeps paging",
+			query: irm.IncidentQuery{
+				Limit:  50,
+				DateTo: flexTimePtr(time.Date(2026, 6, 10, 0, 0, 0, 0, time.UTC)),
+			},
+			handler: func(t *testing.T, calls *[]listRequest) http.HandlerFunc {
+				t.Helper()
+				return func(w http.ResponseWriter, _ *http.Request) {
+					// Page one is entirely newer than the to bound (exclusive);
+					// the matching incidents are on page two.
+					if len(*calls) == 1 {
+						writeJSON(w, datedPage(map[string]string{
+							"inc-1": "2026-06-11T10:00:00Z",
+							"inc-2": "2026-06-10T00:00:00Z",
+						}, true, "cursor-1"))
+					} else {
+						writeJSON(w, datedPage(map[string]string{
+							"inc-3": "2026-06-09T08:00:00Z",
+						}, false, ""))
+					}
+				}
+			},
+			wantIDs:   []string{"inc-3"},
+			wantCalls: 2,
+		},
+		{
+			name:  "surfaces in-band response error",
+			query: irm.IncidentQuery{Limit: 10},
+			handler: func(t *testing.T, _ *[]listRequest) http.HandlerFunc {
+				t.Helper()
+				return func(w http.ResponseWriter, _ *http.Request) {
+					writeJSON(w, map[string]any{"incidentPreviews": []map[string]any{}, "cursor": map[string]any{}, "error": "Invalid query string"})
+				}
+			},
+			wantErr: "Invalid query string",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) { runClientListCase(t, tt) })
+	}
+}
+
+// TestClient_List_MapsSeverityLabel pins the preview→Incident conversion:
+// previews carry severityLabel where full incidents carried severity.
+func TestClient_List_MapsSeverityLabel(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]any{
+			"incidentPreviews": []map[string]any{
+				{"incidentID": "inc-1", "title": "Outage", "status": "active", "severityLabel": "Major", "severityID": "sev-2"},
+			},
+			"cursor": map[string]any{"hasMore": false},
+		})
+	}))
+	defer server.Close()
+
+	c := newTestClient(t, server)
+	result, err := c.List(t.Context(), irm.IncidentQuery{Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, result, 1)
+	assert.Equal(t, "Major", result[0].Severity)
+	assert.Equal(t, "sev-2", result[0].SeverityID)
 }
 
 func TestClient_Get(t *testing.T) {
@@ -405,6 +541,7 @@ func TestClient_QueryIncidentContext(t *testing.T) {
 			},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Contains(t, r.URL.Path, "IncidentContextService.QueryIncidentContext")
+				assert.NotContains(t, r.URL.Path, "/v1/", "IncidentContextService 404s under the v1 prefix")
 				var body map[string]any
 				_ = json.NewDecoder(r.Body).Decode(&body)
 				query, _ := body["query"].(map[string]any)
@@ -529,6 +666,7 @@ func TestClient_GetSeverities(t *testing.T) {
 			name: "returns severities",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Contains(t, r.URL.Path, "SeveritiesService.GetOrgSeverities")
+				assert.NotContains(t, r.URL.Path, "/v1/", "SeveritiesService 404s under the v1 prefix")
 				writeJSON(w, map[string]any{
 					"severities": []map[string]any{
 						{"severityID": "sev-1", "displayLabel": "Critical", "level": 1, "color": "#FF0000"},

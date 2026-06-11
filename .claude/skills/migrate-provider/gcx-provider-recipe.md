@@ -387,9 +387,14 @@ that only surfaced during smoke testing:
 
 ### gRPC-style POST APIs (Incidents/IRM)
 
-- The IRM API uses gRPC-style POST endpoints (`IncidentsService.QueryIncidents`,
-  `IncidentsService.GetIncident`, etc.) — all operations are POST with JSON bodies,
-  not REST-style GET/POST/PUT/DELETE. The `doRequest` helper always uses POST.
+- The IRM API uses gRPC-style POST endpoints (`IncidentsService.QueryIncidentPreviews`,
+  `IncidentsService.GetIncident`, etc.) under the versioned `/resources/api/v1/`
+  base path — all operations are POST with JSON bodies, not REST-style
+  GET/POST/PUT/DELETE. The `doRequest` helper always uses POST.
+  (`QueryIncidents` is deprecated upstream; gcx queries previews and filters
+  via the query-string language, e.g. `label:"security"`. Undocumented
+  services like `SeveritiesService` and `IncidentContextService` 404 under
+  `/v1` and stay on the unversioned base path.)
 - gcx's `GetIncident` fetches all incidents (limit 100) and filters client-side.
   The actual API has a `GetIncident` endpoint — use it directly for O(1) lookups.
 - The IRM API only supports status updates via `UpdateStatus` — there is no

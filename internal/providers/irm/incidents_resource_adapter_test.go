@@ -71,7 +71,7 @@ func TestResourceAdapter_List(t *testing.T) {
 			namespace: "stack-123",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				writeJSON(w, map[string]any{
-					"incidents": []map[string]any{
+					"incidentPreviews": []map[string]any{
 						{"incidentID": "inc-1", "title": "Outage 1", "status": "active"},
 						{"incidentID": "inc-2", "title": "Outage 2", "status": "resolved"},
 					},
@@ -89,9 +89,9 @@ func TestResourceAdapter_List(t *testing.T) {
 			namespace: "stack-123",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				writeJSON(w, map[string]any{
-					"incidents": []map[string]any{},
-					"cursor":    map[string]any{"hasMore": false},
-					"query":     map[string]any{},
+					"incidentPreviews": []map[string]any{},
+					"cursor":           map[string]any{"hasMore": false},
+					"query":            map[string]any{},
 				})
 			},
 			wantLen: 0,
@@ -291,7 +291,7 @@ func TestResourceAdapter_RoundTrip(t *testing.T) {
 func TestResourceAdapter_ListPopulatesMetadata(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, map[string]any{
-			"incidents": []map[string]any{
+			"incidentPreviews": []map[string]any{
 				{"incidentID": "meta-inc", "title": "Metadata Inc", "status": "active"},
 			},
 			"cursor": map[string]any{"hasMore": false},
