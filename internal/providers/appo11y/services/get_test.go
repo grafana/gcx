@@ -537,13 +537,29 @@ func TestServiceDetailCodec(t *testing.T) {
 		t.Fatalf("Encode err = %v", err)
 	}
 	out := buf.String()
-	for _, want := range []string{"checkout", "billing", "go", "instrumented", "production", "5m", "12.500", "2.00%", "10.00ms", "150.00ms", "450.00ms"} {
+	// Describe-style block: kubectl-like "Field: value" lines, single
+	// section break between identity and RED, latency under a sub-heading.
+	for _, want := range []string{
+		"Name:", "checkout",
+		"Namespace:", "billing",
+		"Language:", "go",
+		"Status:", "instrumented",
+		"Environment:", "production",
+		"Window:", "5m",
+		"Rate:", "12.500 req/s",
+		"Errors:", "0.250 req/s (2.00%)",
+		"Latency:",
+		"p50:", "10.00ms",
+		"p95:", "150.00ms",
+		"p99:", "450.00ms",
+	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q\n----\n%s", want, out)
 		}
 	}
 
-	// no-data path renders dashes for unmeasured fields.
+	// no-data path: every measured row prints "-", but the structural
+	// labels still appear so the user can tell what's missing.
 	d2 := &ServiceDetail{
 		Service: Service{Name: "auth"},
 		RED:     REDStats{Window: "5m", SpanKinds: "SPAN_KIND_SERVER"},
@@ -553,11 +569,12 @@ func TestServiceDetailCodec(t *testing.T) {
 		t.Fatalf("Encode err = %v", err)
 	}
 	out = buf.String()
-	if !strings.Contains(out, "auth") {
-		t.Errorf("output missing service name: %s", out)
+	for _, want := range []string{"Name:", "auth", "Rate:", "Errors:", "Latency:", "p50:", "p95:", "p99:"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("no-data output missing %q\n----\n%s", want, out)
+		}
 	}
-	// Each unmeasured RED row should print "-".
-	if !strings.Contains(out, "rate (req/s)") || strings.Count(out, "-") < 6 {
+	if strings.Count(out, "-") < 6 {
 		t.Errorf("expected several dash rows for no-data, got:\n%s", out)
 	}
 

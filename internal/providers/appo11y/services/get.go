@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
@@ -16,7 +17,6 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -299,15 +299,34 @@ func resolveNamespaceForBareName(ctx context.Context, client *prometheus.Client,
 	case 1:
 		return namespaces[0], nil
 	}
-	labels := make([]string, len(namespaces))
-	for i, ns := range namespaces {
+	return "", fmt.Errorf("service %q exists in %d namespaces (%s); disambiguate with <namespace>/%s or --namespace",
+		name, len(namespaces), summarizeNamespaces(namespaces, 5), name)
+}
+
+// summarizeNamespaces formats a namespace list for the ambiguity error.
+// At most `max` entries are listed verbatim — with 30+ candidates (services
+// deployed per-region) the full list would push the rest of the error off
+// screen and bury the hint. Empty namespaces render as `(none)` so users
+// can tell the bare-job shape apart from the namespaced ones.
+func summarizeNamespaces(namespaces []string, limit int) string {
+	render := func(ns string) string {
 		if ns == "" {
-			labels[i] = "(none)"
-		} else {
-			labels[i] = ns
+			return "(none)"
 		}
+		return ns
 	}
-	return "", fmt.Errorf("service %q exists in multiple namespaces (%s); disambiguate with <namespace>/%s or --namespace", name, strings.Join(labels, ", "), name)
+	if len(namespaces) <= limit {
+		out := make([]string, len(namespaces))
+		for i, ns := range namespaces {
+			out[i] = render(ns)
+		}
+		return strings.Join(out, ", ")
+	}
+	head := make([]string, limit)
+	for i := range limit {
+		head[i] = render(namespaces[i])
+	}
+	return fmt.Sprintf("%s, ... and %d more", strings.Join(head, ", "), len(namespaces)-limit)
 }
 
 // detectMetricsMode probes each metrics family in parallel for the given
@@ -518,62 +537,78 @@ func (c *serviceDetailCodec) Encode(w io.Writer, v any) error {
 	if !ok {
 		return fmt.Errorf("invalid data type for services get table codec: %T", v)
 	}
-	if err := c.encodeMetadata(w, detail); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintln(w); err != nil {
-		return err
-	}
-	return c.encodeRED(w, &detail.RED)
-}
+	// kubectl-describe-style key:value block, not a bordered table.
+	// A single resource doesn't tabulate well: the value column gets
+	// stretched to terminal width and the borders dominate ~20 short
+	// rows, so we drop the tabular renderer in favour of aligned text
+	// with section spacing.
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 
-func (c *serviceDetailCodec) encodeMetadata(w io.Writer, d *ServiceDetail) error {
+	writeRow := func(label, value string) {
+		fmt.Fprintf(tw, "%s:\t%s\n", label, value)
+	}
+
+	d := &detail.Service
+	writeRow("Name", orDash(d.Name))
+	writeRow("Namespace", orDash(d.Namespace))
+	writeRow("Language", orDash(d.Language))
+	writeRow("Status", instrumentationStatus(d.Instrumented))
+	writeRow("Environment", orDash(environmentValue(d.Labels)))
+
 	labels := defaultLabels()
 	if c.Wide {
 		labels = allTargetInfoLabels()
 	}
-	headers := []string{"FIELD", "VALUE"}
-	t := style.NewTable(headers...)
-	t.Row("name", orDash(d.Service.Name))
-	t.Row("namespace", orDash(d.Service.Namespace))
-	t.Row("language", orDash(d.Service.Language))
-	t.Row("status", instrumentationStatus(d.Service.Instrumented))
-	t.Row("environment", orDash(environmentValue(d.Service.Labels)))
+	wroteLabelHeader := false
 	for _, lbl := range labels {
 		if lbl == "deployment_environment" || lbl == "deployment_environment_name" {
-			continue // already surfaced as `environment`
+			continue // already surfaced as `Environment`
 		}
-		t.Row(strings.ReplaceAll(lbl, "_", "."), orDash(d.Service.Labels[lbl]))
+		value := d.Labels[lbl]
+		if value == "" {
+			continue
+		}
+		if !wroteLabelHeader {
+			fmt.Fprintln(tw, "Labels:")
+			wroteLabelHeader = true
+		}
+		fmt.Fprintf(tw, "  %s:\t%s\n", strings.ReplaceAll(lbl, "_", "."), value)
 	}
-	return t.Render(w)
+
+	fmt.Fprintln(tw)
+
+	r := &detail.RED
+	writeRow("Window", r.Window)
+	writeRow("Metrics mode", string(r.MetricsMode))
+	writeRow("Span kinds", r.SpanKinds)
+	writeRow("Rate", formatRateWithUnit(r.RatePerSecond, r.HasTraffic))
+	writeRow("Errors", formatErrors(r.ErrorRatePerSec, r.ErrorPercent, r.HasErrors, r.HasTraffic))
+	fmt.Fprintln(tw, "Latency:")
+	fmt.Fprintf(tw, "  p50:\t%s\n", formatDuration(r.P50Seconds, r.HasLatencyP50))
+	fmt.Fprintf(tw, "  p95:\t%s\n", formatDuration(r.P95Seconds, r.HasLatencyP95))
+	fmt.Fprintf(tw, "  p99:\t%s\n", formatDuration(r.P99Seconds, r.HasLatencyP99))
+
+	return tw.Flush()
 }
 
-func (c *serviceDetailCodec) encodeRED(w io.Writer, r *REDStats) error {
-	t := style.NewTable("METRIC", "VALUE")
-	t.Row("window", r.Window)
-	t.Row("metrics mode", string(r.MetricsMode))
-	t.Row("span kinds", r.SpanKinds)
-	t.Row("rate (req/s)", formatRate(r.RatePerSecond, r.HasTraffic))
-	t.Row("errors (req/s)", formatRate(r.ErrorRatePerSec, r.HasErrors))
-	t.Row("error %", formatPercent(r.ErrorPercent, r.HasTraffic))
-	t.Row("p50 latency", formatDuration(r.P50Seconds, r.HasLatencyP50))
-	t.Row("p95 latency", formatDuration(r.P95Seconds, r.HasLatencyP95))
-	t.Row("p99 latency", formatDuration(r.P99Seconds, r.HasLatencyP99))
-	return t.Render(w)
-}
-
-func formatRate(v float64, has bool) string {
+func formatRateWithUnit(v float64, has bool) string {
 	if !has {
 		return "-"
 	}
-	return fmt.Sprintf("%.3f", v)
+	return fmt.Sprintf("%.3f req/s", v)
 }
 
-func formatPercent(v float64, has bool) string {
-	if !has {
+// formatErrors combines the absolute error rate with the percentage so the
+// describe view shows both on one line. When there's no traffic, no error
+// signal exists either.
+func formatErrors(rate, pct float64, hasErrors, hasTraffic bool) string {
+	if !hasErrors {
 		return "-"
 	}
-	return fmt.Sprintf("%.2f%%", v)
+	if !hasTraffic {
+		return fmt.Sprintf("%.3f req/s", rate)
+	}
+	return fmt.Sprintf("%.3f req/s (%.2f%%)", rate, pct)
 }
 
 // formatDuration prints a latency value with units that scale to the
