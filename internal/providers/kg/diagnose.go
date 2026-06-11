@@ -47,16 +47,31 @@ type CheckResult struct {
 	Recommendation string      `json:"recommendation,omitempty"`
 }
 
+// DiagnoseSummary is the per-check pass/fail tally for a diagnose run.
+// Named so functions that derive verdicts from it (e.g.
+// pipelineHealthFromSummary) can take it by type rather than coupling to
+// an inline anonymous struct.
+type DiagnoseSummary struct {
+	Total  int `json:"total"`
+	Passed int `json:"passed"`
+	Failed int `json:"failed"`
+	Warned int `json:"warned"`
+}
+
 // DiagnoseResult is the full output of the diagnose command.
 type DiagnoseResult struct {
-	Env     string        `json:"env,omitempty"`
-	Checks  []CheckResult `json:"checks"`
-	Summary struct {
-		Total  int `json:"total"`
-		Passed int `json:"passed"`
-		Failed int `json:"failed"`
-		Warned int `json:"warned"`
-	} `json:"summary"`
+	Env       string `json:"env,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
+	Site      string `json:"site,omitempty"`
+
+	// Orientation is the top-of-output summary that anchors the user in
+	// one of the five Entity Graph scenarios. Computed from the same data
+	// the per-check goroutines collect; no extra API calls. Omitted from
+	// JSON when nil (e.g. legacy callers that bypass the runner).
+	Orientation *Orientation `json:"orientation,omitempty"`
+
+	Checks  []CheckResult   `json:"checks"`
+	Summary DiagnoseSummary `json:"summary"`
 }
 
 func (r *DiagnoseResult) computeSummary() {
@@ -271,7 +286,11 @@ func resolvePromClient(ctx context.Context, loader *providers.ConfigLoader, cfg 
 // ---------------------------------------------------------------------------
 
 func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promClient *prometheus.Client, datasourceUID string) DiagnoseResult {
-	result := DiagnoseResult{Env: scope.env}
+	result := DiagnoseResult{
+		Env:       scope.env,
+		Namespace: scope.namespace,
+		Site:      scope.site,
+	}
 
 	var (
 		mu sync.Mutex
@@ -283,24 +302,39 @@ func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promCli
 		mu.Unlock()
 	}
 
+	// Raw data shared with the Orientation block. Each contributing
+	// goroutine fills its own field; computeOrientation reads the
+	// composed struct after g.Wait() returns. Series counts default to
+	// zero, which is the safe value for absence in the detectors.
+	var orientationInput OrientationInput
+
 	// Check 1: Stack status + sanity checks.
 	g.Go(func() error {
-		checks := checkStackStatus(ctx, client)
+		checks, enabled := checkStackStatus(ctx, client)
 		mu.Lock()
 		result.Checks = append(result.Checks, checks...)
+		orientationInput.StackEnabled = enabled
 		mu.Unlock()
 		return nil
 	})
 
 	// Check 2: Entity counts.
 	g.Go(func() error {
-		addCheck(checkEntityCounts(ctx, client))
+		c, counts := checkEntityCounts(ctx, client)
+		mu.Lock()
+		result.Checks = append(result.Checks, c)
+		orientationInput.EntityCounts = counts
+		mu.Unlock()
 		return nil
 	})
 
 	// Check 3: Scope values.
 	g.Go(func() error {
-		addCheck(checkScopeValues(ctx, client))
+		c, scopes := checkScopeValues(ctx, client)
+		mu.Lock()
+		result.Checks = append(result.Checks, c)
+		orientationInput.Scopes = scopes
+		mu.Unlock()
 		return nil
 	})
 
@@ -317,7 +351,20 @@ func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promCli
 	if promClient != nil && datasourceUID != "" {
 		for _, mc := range metricChecks(scope.env, scope.namespace) {
 			g.Go(func() error {
-				addCheck(checkMetric(ctx, promClient, datasourceUID, mc))
+				c, series := checkMetric(ctx, promClient, datasourceUID, mc)
+				mu.Lock()
+				result.Checks = append(result.Checks, c)
+				// Capture series counts the Orientation detectors need.
+				// metricChecks emits these in a fixed order; match by name.
+				switch mc.Name {
+				case "Metric: traces_target_info":
+					orientationInput.TracesTargetInfoSeries = series
+				case "Metric: asserts:relation:calls":
+					orientationInput.AssertsRelationCallsSeries = series
+				case "Metric: asserts:mixin_workload_job":
+					orientationInput.AssertsMixinWorkloadJobSeries = series
+				}
+				mu.Unlock()
 				return nil
 			})
 		}
@@ -351,7 +398,28 @@ func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promCli
 	})
 
 	result.computeSummary()
+
+	// Build the Orientation block from the data collected above.
+	orient := computeOrientation(orientationInput, scope)
+	orient.PipelineHealth = pipelineHealthFromSummary(result.Summary)
+	result.Orientation = &orient
+
 	return result
+}
+
+// pipelineHealthFromSummary derives the Orientation health verdict from
+// the existing pass/warn/fail counts the per-check goroutines produce.
+// Kept here (not in orientation.go) because it consumes the DiagnoseSummary
+// type defined alongside DiagnoseResult.
+func pipelineHealthFromSummary(s DiagnoseSummary) PipelineHealth {
+	switch {
+	case s.Failed > 0:
+		return PipelineFailed
+	case s.Warned > 0:
+		return PipelineDegraded
+	default:
+		return PipelineHealthy
+	}
 }
 
 // checkOrder returns a sort key for deterministic output ordering.
@@ -391,7 +459,7 @@ func checkOrder(name string) int {
 // Individual checks
 // ---------------------------------------------------------------------------
 
-func checkStackStatus(ctx context.Context, client *Client) []CheckResult {
+func checkStackStatus(ctx context.Context, client *Client) ([]CheckResult, bool) {
 	status, err := client.GetStatus(ctx)
 	if err != nil {
 		return []CheckResult{{
@@ -399,10 +467,11 @@ func checkStackStatus(ctx context.Context, client *Client) []CheckResult {
 			Status:         CheckFail,
 			Detail:         fmt.Sprintf("API error: %v", err),
 			Recommendation: "Verify the Grafana instance is reachable and the Asserts plugin is installed.",
-		}}
+		}}, false
 	}
 
 	var results []CheckResult
+	enabled := status.Enabled && status.Status == "complete"
 
 	// Main status check.
 	if status.Enabled && status.Status == "complete" {
@@ -452,10 +521,13 @@ func checkStackStatus(ctx context.Context, client *Client) []CheckResult {
 		results = append(results, c)
 	}
 
-	return results
+	return results, enabled
 }
 
-func checkEntityCounts(ctx context.Context, client *Client) CheckResult {
+// checkEntityCounts returns the user-facing check result plus the raw
+// per-type count map so the Orientation block can compute entity totals
+// without a second API call. counts is nil on API error.
+func checkEntityCounts(ctx context.Context, client *Client) (CheckResult, map[string]int64) {
 	now := time.Now()
 	counts, err := client.CountEntityTypes(ctx, now.Add(-1*time.Hour).UnixMilli(), now.UnixMilli(), nil)
 	if err != nil {
@@ -464,7 +536,7 @@ func checkEntityCounts(ctx context.Context, client *Client) CheckResult {
 			Status:         CheckFail,
 			Detail:         fmt.Sprintf("API error: %v", err),
 			Recommendation: "Failed to retrieve entity counts. Check connectivity to the Asserts API.",
-		}
+		}, nil
 	}
 
 	if len(counts) == 0 {
@@ -473,7 +545,7 @@ func checkEntityCounts(ctx context.Context, client *Client) CheckResult {
 			Status:         CheckFail,
 			Detail:         "no entity types found",
 			Recommendation: "No entities discovered. Verify that traces_target_info or asserts:mixin_workload_job metrics are being produced.",
-		}
+		}, counts
 	}
 
 	var total int64
@@ -496,17 +568,20 @@ func checkEntityCounts(ctx context.Context, client *Client) CheckResult {
 			Status:         CheckFail,
 			Detail:         "all entity type counts are 0",
 			Recommendation: "Entity types exist but have no instances. Check that recording rules are producing data and the graph ingestion pipeline is running.",
-		}
+		}, counts
 	}
 
 	return CheckResult{
 		Name:   "Entity counts",
 		Status: CheckPass,
 		Detail: fmt.Sprintf("%d total (%s)", total, strings.Join(parts, ", ")),
-	}
+	}, counts
 }
 
-func checkScopeValues(ctx context.Context, client *Client) CheckResult {
+// checkScopeValues returns the user-facing check result plus the raw
+// scopes map so the Orientation block can detect known/unknown scope
+// values without a second API call. scopes is nil on API error.
+func checkScopeValues(ctx context.Context, client *Client) (CheckResult, map[string][]string) {
 	scopes, err := client.ListEntityScopes(ctx)
 	if err != nil {
 		return CheckResult{
@@ -514,7 +589,7 @@ func checkScopeValues(ctx context.Context, client *Client) CheckResult {
 			Status:         CheckFail,
 			Detail:         fmt.Sprintf("API error: %v", err),
 			Recommendation: "Failed to retrieve scope values. Check connectivity to the Asserts API.",
-		}
+		}, nil
 	}
 
 	if len(scopes) == 0 {
@@ -523,7 +598,7 @@ func checkScopeValues(ctx context.Context, client *Client) CheckResult {
 			Status:         CheckWarn,
 			Detail:         "no scope dimensions returned",
 			Recommendation: "No env/site/namespace values found. Entities may exist without scope labels.",
-		}
+		}, scopes
 	}
 
 	var parts []string
@@ -539,14 +614,14 @@ func checkScopeValues(ctx context.Context, client *Client) CheckResult {
 			Status:         CheckWarn,
 			Detail:         "scope dimensions present but env/site/namespace are empty",
 			Recommendation: "The asserts_env label may not be set. Verify that deployment_environment is configured in your OTel SDK and that Mimir relabeling rules map it to asserts_env.",
-		}
+		}, scopes
 	}
 
 	return CheckResult{
 		Name:   "Scope values",
 		Status: CheckPass,
 		Detail: strings.Join(parts, "; "),
-	}
+	}, scopes
 }
 
 func checkTelemetryConfigs(ctx context.Context, client *Client) []CheckResult {
@@ -863,7 +938,11 @@ func checkEdgeSourceGap(ctx context.Context, client *prometheus.Client, datasour
 // under a different env label value (e.g. the raw metric carries
 // deployment_environment with one value while asserts_env is derived
 // from a different source label downstream).
-func checkMetric(ctx context.Context, client *prometheus.Client, datasourceUID string, def metricCheckDef) CheckResult {
+//
+// The second return value is the parsed series count (0 on error or
+// no-data). Callers that don't need it can discard it; the Orientation
+// block uses it as one of its detector inputs.
+func checkMetric(ctx context.Context, client *prometheus.Client, datasourceUID string, def metricCheckDef) (CheckResult, int64) {
 	resp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{
 		Query: def.Query,
 	})
@@ -873,7 +952,7 @@ func checkMetric(ctx context.Context, client *prometheus.Client, datasourceUID s
 			Status:         CheckWarn,
 			Detail:         fmt.Sprintf("query error: %v", err),
 			Recommendation: "Could not execute PromQL query. Check Prometheus datasource connectivity.",
-		}
+		}, 0
 	}
 
 	if len(resp.Data.Result) == 0 {
@@ -898,7 +977,7 @@ func checkMetric(ctx context.Context, client *prometheus.Client, datasourceUID s
 						"label (e.g. cluster or namespace) than the raw metric's deployment_environment. " +
 						"Run: gcx metrics labels --label deployment_environment ; gcx metrics labels --label asserts_env " +
 						"and cross-reference to identify which value the data actually carries.",
-				}
+				}, 0
 			}
 		}
 		return CheckResult{
@@ -906,16 +985,17 @@ func checkMetric(ctx context.Context, client *prometheus.Client, datasourceUID s
 			Status:         CheckFail,
 			Detail:         "no data",
 			Recommendation: def.Recommendation,
-		}
+		}, 0
 	}
 
 	// Extract the count value from the instant query result.
 	count := extractInstantValue(resp.Data.Result[0])
+	series, _ := strconv.ParseInt(count, 10, 64)
 	return CheckResult{
 		Name:   def.Name,
 		Status: CheckPass,
 		Detail: count + " series",
-	}
+	}, series
 }
 
 // extractInstantValue pulls the scalar value from an instant query sample.
@@ -1030,6 +1110,11 @@ func (c *DiagnoseTableCodec) Encode(w io.Writer, v any) error {
 		return errors.New("invalid data type for table codec: expected DiagnoseResult")
 	}
 
+	// Orientation block goes above the per-check table.
+	if result.Orientation != nil {
+		renderOrientation(w, *result.Orientation, result.Env, result.Namespace, result.Site)
+	}
+
 	t := style.NewTable("CHECK", "STATUS", "DETAIL")
 	for _, check := range result.Checks {
 		t.Row(check.Name, strings.ToUpper(string(check.Status)), check.Detail)
@@ -1068,4 +1153,126 @@ func (c *DiagnoseTableCodec) Encode(w io.Writer, v any) error {
 
 func (c *DiagnoseTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
+}
+
+// renderOrientation writes the Orientation block above the per-check table.
+// Layout, in order:
+//   - One-line pipeline health verdict and scope hint.
+//   - Entity overview: total entities (excluding meta types) and the
+//     traced-services-over-total ratio.
+//   - Scope overview: env list (with "none" called out when present) and
+//     namespace count.
+//   - Matched scenarios — one block per scenario, naming it verbatim,
+//     with reasoning and concrete next commands.
+//   - Starting points (only when no scope flag was set): three ways to
+//     scope further, with runtime-substituted context.
+//   - When scenario 4 is not detected at stack level, a "see also" hint
+//     points the user at the per-env comparison workflow.
+//
+// All numeric values come from the live OrientationInput. No authored
+// thresholds.
+func renderOrientation(w io.Writer, o Orientation, env, namespace, site string) {
+	// Header: one-line stack health verdict and scope. Build the scope hint
+	// from whichever dimensions are actually set (not just env) so multi-
+	// dimension filters (--namespace foo without --env) render correctly.
+	scopeHint := "(unscoped: --env / --namespace / --site not set)"
+	if o.Scope.FilterSet {
+		var parts []string
+		if env != "" {
+			parts = append(parts, "env="+env)
+		}
+		if namespace != "" {
+			parts = append(parts, "namespace="+namespace)
+		}
+		if site != "" {
+			parts = append(parts, "site="+site)
+		}
+		scopeHint = "(" + strings.Join(parts, ", ") + ")"
+	}
+	fmt.Fprintf(w, "Pipeline health: %s  %s\n", o.PipelineHealth, scopeHint)
+
+	// Entity overview. Entity counts (Total, TotalServiceCount) come from
+	// the stack-wide CountEntityTypes call; TracedServiceCount comes from a
+	// scope-filtered metric check. When a scope filter is set we label the
+	// stack-wide numbers as such and put the scoped trace count on its own
+	// clause so the two scopes can't be misread as a single ratio.
+	if o.Scope.FilterSet {
+		fmt.Fprintf(w, "Entity overview (stack-wide): %d entities", o.EntityOverview.Total)
+		if o.EntityOverview.TotalServiceCount > 0 {
+			fmt.Fprintf(w, " — %d Service entities", o.EntityOverview.TotalServiceCount)
+		}
+		fmt.Fprintf(w, ". Tracing in scope: %d service(s) emit traces.\n", o.EntityOverview.TracedServiceCount)
+	} else {
+		fmt.Fprintf(w, "Entity overview: %d entities", o.EntityOverview.Total)
+		if o.EntityOverview.TotalServiceCount > 0 {
+			fmt.Fprintf(w, " — %d Service entities, of which %d emit traces",
+				o.EntityOverview.TotalServiceCount,
+				o.EntityOverview.TracedServiceCount)
+		}
+		fmt.Fprintln(w, ".")
+	}
+
+	// Scope overview. (The NoneBucketPresent callout that previously rendered
+	// here was removed alongside the inert NoneBucketHasEntities producer;
+	// see ScopeSummary doc.)
+	if len(o.Scope.EnvsKnown) > 0 {
+		fmt.Fprintf(w, "Scope: %d env(s) known", len(o.Scope.EnvsKnown))
+		if n := len(o.Scope.NamespacesKnown); n > 0 {
+			fmt.Fprintf(w, "; %d namespace(s) known", n)
+		}
+		fmt.Fprintln(w, ".")
+	}
+
+	// Matched scenarios (already ordered high → medium by computeOrientation).
+	if len(o.MatchedScenarios) > 0 {
+		fmt.Fprintln(w)
+		for _, s := range o.MatchedScenarios {
+			fmt.Fprintf(w, "→ Scenario matched: %q (%s confidence)\n", s.Label, s.Confidence)
+			if s.Reasoning != "" {
+				fmt.Fprintf(w, "  %s\n", s.Reasoning)
+			}
+			if len(s.NextCommands) > 0 {
+				fmt.Fprintln(w, "  Next:")
+				for _, cmd := range s.NextCommands {
+					fmt.Fprintf(w, "    %s\n", cmd)
+				}
+			}
+		}
+	} else {
+		// No scenario matched. Tailor the "no match" line to pipeline health
+		// — don't say "looks healthy" when checks below the orientation are
+		// failing.
+		fmt.Fprintln(w)
+		switch o.PipelineHealth {
+		case PipelineHealthy:
+			fmt.Fprintln(w, "→ Stack looks healthy. For per-service investigation:")
+			fmt.Fprintln(w, "    gcx kg diagnose service NAME --env ENV")
+		case PipelineDegraded:
+			fmt.Fprintln(w, "→ No top-level scenario matched, but some checks reported warnings.")
+			fmt.Fprintln(w, "  See the table below for details, or run:")
+			fmt.Fprintln(w, "    gcx kg diagnose service NAME --env ENV")
+		case PipelineFailed:
+			fmt.Fprintln(w, "→ No top-level scenario matched, but some checks failed.")
+			fmt.Fprintln(w, "  See the table and recommendations below for details.")
+		}
+	}
+
+	// Starting points (only shown when no scope flag is set).
+	if len(o.StartingPoints) > 0 {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "Ways to scope this further:")
+		for _, p := range o.StartingPoints {
+			if p.Context != "" {
+				fmt.Fprintf(w, "  • %s (%s):\n      %s\n", p.Label, p.Context, p.Command)
+			} else {
+				fmt.Fprintf(w, "  • %s:\n      %s\n", p.Label, p.Command)
+			}
+		}
+	}
+
+	// Scenario 4 "see also" hint (deferred detector).
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "See also: to detect disconnected clusters across environments,")
+	fmt.Fprintln(w, "re-run scoped to each --env separately and compare.")
+	fmt.Fprintln(w)
 }

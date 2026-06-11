@@ -58,3 +58,51 @@ func ComputeServiceSummary(r *ServiceDiagnoseResult) {
 func RunLabelsDiagnose(ctx context.Context, client *Client, promClient *prometheus.Client, datasourceUID string) LabelsDiagnoseResult {
 	return runLabelsDiagnose(ctx, client, promClient, datasourceUID)
 }
+
+// --- Orientation test entry points ---
+
+// ComputeOrientation wraps the unexported computeOrientation function for testing.
+func ComputeOrientation(in OrientationInput, scope *ScopeFlags) Orientation {
+	return computeOrientation(in, scope)
+}
+
+// BuildEntityOverview wraps the unexported buildEntityOverview function for testing.
+func BuildEntityOverview(in OrientationInput) EntityOverview {
+	return buildEntityOverview(in)
+}
+
+// BuildScopeSummary wraps the unexported buildScopeSummary function for testing.
+func BuildScopeSummary(in OrientationInput, scope *ScopeFlags) ScopeSummary {
+	return buildScopeSummary(in, scope)
+}
+
+// DetectNoEntities wraps the unexported detectNoEntities function for testing.
+func DetectNoEntities(in OrientationInput, overview EntityOverview) *MatchedScenario {
+	return detectNoEntities(in, overview)
+}
+
+// DetectEntitiesNoEdges wraps the unexported detectEntitiesNoEdges function for testing.
+func DetectEntitiesNoEdges(in OrientationInput, overview EntityOverview, scope *ScopeFlags) *MatchedScenario {
+	return detectEntitiesNoEdges(in, overview, scope)
+}
+
+// DetectCantFilter wraps the unexported detectCantFilter function for testing.
+func DetectCantFilter(in OrientationInput, scope *ScopeFlags) *MatchedScenario {
+	return detectCantFilter(in, scope)
+}
+
+// DetectMissingEntities wraps the unexported detectMissingEntities function for testing.
+func DetectMissingEntities(in OrientationInput, scope *ScopeFlags) *MatchedScenario {
+	return detectMissingEntities(in, scope)
+}
+
+// BuildStartingPoints wraps the unexported buildStartingPoints function for testing.
+func BuildStartingPoints(scope ScopeSummary) []StartingPoint {
+	return buildStartingPoints(scope)
+}
+
+// PipelineHealthFromSummary wraps the unexported pipelineHealthFromSummary
+// function for testing.
+func PipelineHealthFromSummary(s DiagnoseSummary) PipelineHealth {
+	return pipelineHealthFromSummary(s)
+}
