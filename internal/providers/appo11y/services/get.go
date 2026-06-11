@@ -299,7 +299,15 @@ func resolveNamespaceForBareName(ctx context.Context, client *prometheus.Client,
 	case 1:
 		return namespaces[0], nil
 	}
-	return "", fmt.Errorf("service %q exists in multiple namespaces (%s); disambiguate with <namespace>/%s or --namespace", name, strings.Join(namespaces, ", "), name)
+	labels := make([]string, len(namespaces))
+	for i, ns := range namespaces {
+		if ns == "" {
+			labels[i] = "(none)"
+		} else {
+			labels[i] = ns
+		}
+	}
+	return "", fmt.Errorf("service %q exists in multiple namespaces (%s); disambiguate with <namespace>/%s or --namespace", name, strings.Join(labels, ", "), name)
 }
 
 // detectMetricsMode probes each metrics family in parallel for the given
