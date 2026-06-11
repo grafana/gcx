@@ -58,11 +58,11 @@ func NewIncidentClient(cfg config.NamespacedRESTConfig) (*IncidentClient, error)
 const incidentsMaxPageSize = 100
 
 // quoteIncidentQueryValue wraps a value for the incident query-string
-// language. Double quotes are required for values containing spaces or
-// colons and match both Tags-key label text and keyed key:value composites
-// (verified live); values containing a double quote fall back to single
-// quotes. Values containing both quote characters are rejected upstream by
-// the list command's validation.
+// language, which requires quoting for values containing spaces or colons.
+// Quoted values match both Tags-key label text and keyed key:value
+// composites. Double quotes are the default; values containing a double
+// quote fall back to single quotes, and values containing both quote
+// characters are rejected upstream by the list command's validation.
 func quoteIncidentQueryValue(v string) string {
 	if strings.Contains(v, `"`) {
 		return "'" + v + "'"
@@ -133,17 +133,23 @@ func (c *IncidentClient) List(ctx context.Context, query IncidentQuery) ([]Incid
 
 		for _, preview := range resp.IncidentPreviews {
 			created := time.Time(preview.CreatedTime)
-			if !created.IsZero() {
-				if !from.IsZero() && created.Before(from) {
-					if newestFirst {
-						pastFrom = true
-						break
-					}
-					continue
+			if created.IsZero() {
+				// A preview without a createdTime cannot be placed in the
+				// requested window, so date-bounded queries exclude it.
+				if from.IsZero() && to.IsZero() {
+					all = append(all, preview.ToIncident())
 				}
-				if !to.IsZero() && !created.Before(to) {
-					continue
+				continue
+			}
+			if !from.IsZero() && created.Before(from) {
+				if newestFirst {
+					pastFrom = true
+					break
 				}
+				continue
+			}
+			if !to.IsZero() && !created.Before(to) {
+				continue
 			}
 			all = append(all, preview.ToIncident())
 		}

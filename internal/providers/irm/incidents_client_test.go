@@ -297,6 +297,29 @@ func TestClient_List_Filters(t *testing.T) {
 			wantCalls: 1,
 		},
 		{
+			name: "excludes previews without a createdTime when a bound is set",
+			query: irm.IncidentQuery{
+				Limit:    50,
+				DateFrom: flexTimePtr(time.Date(2026, 6, 10, 0, 0, 0, 0, time.UTC)),
+			},
+			handler: func(t *testing.T, _ *[]listRequest) http.HandlerFunc {
+				t.Helper()
+				return func(w http.ResponseWriter, _ *http.Request) {
+					// inc-2 has no createdTime and cannot be placed in the
+					// window, so it must not leak into the results.
+					writeJSON(w, map[string]any{
+						"incidentPreviews": []map[string]any{
+							{"incidentID": "inc-1", "title": "Outage", "status": "active", "createdTime": "2026-06-11T10:00:00Z"},
+							{"incidentID": "inc-2", "title": "No created time", "status": "active"},
+						},
+						"cursor": map[string]any{"hasMore": false},
+					})
+				}
+			},
+			wantIDs:   []string{"inc-1"},
+			wantCalls: 1,
+		},
+		{
 			name: "applies the to bound client-side and keeps paging",
 			query: irm.IncidentQuery{
 				Limit:  50,
