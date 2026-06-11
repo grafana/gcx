@@ -230,6 +230,98 @@ func TestResolveMetricsMode(t *testing.T) {
 	}
 }
 
+func TestBuildBareNameLookupQuery(t *testing.T) {
+	got, err := buildBareNameLookupQuery("target_info", "checkoutservice")
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	want := `group by (job) (target_info{job=~"(.+/)?checkoutservice"})`
+	if got != want {
+		t.Errorf("got %q\nwant %q", got, want)
+	}
+
+	// Regex metachars in the name are escaped so a service named "v1.api"
+	// doesn't accidentally match "v1Xapi" via the literal `.`.
+	got, err = buildBareNameLookupQuery("traces_target_info", "v1.api")
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	want = `group by (job) (traces_target_info{job=~"(.+/)?v1\\.api"})`
+	if got != want {
+		t.Errorf("got %q\nwant %q", got, want)
+	}
+
+	if _, err := buildBareNameLookupQuery("target_info", ""); err == nil {
+		t.Error("expected error for empty name")
+	}
+}
+
+func TestExtractJobsFromResponses(t *testing.T) {
+	r1 := &prometheus.QueryResponse{Data: prometheus.ResultData{Result: []prometheus.Sample{
+		{Metric: map[string]string{"job": "payments/checkout"}},
+		{Metric: map[string]string{"job": "shipping/checkout"}},
+		{Metric: map[string]string{"job": ""}}, // dropped
+	}}}
+	r2 := &prometheus.QueryResponse{Data: prometheus.ResultData{Result: []prometheus.Sample{
+		{Metric: map[string]string{"job": "payments/checkout"}}, // duplicate across responses → dedup
+		{Metric: map[string]string{"job": "checkout"}},          // bare-name shape
+	}}}
+	got := extractJobsFromResponses([]*prometheus.QueryResponse{r1, nil, r2})
+	want := []string{"checkout", "payments/checkout", "shipping/checkout"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Errorf("[%d] got %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestNamespacesForName(t *testing.T) {
+	tests := []struct {
+		name string
+		jobs []string
+		svc  string
+		want []string
+	}{
+		{name: "empty", jobs: nil, svc: "checkout", want: []string{}},
+		{name: "bare only", jobs: []string{"checkout"}, svc: "checkout", want: []string{""}},
+		{name: "single namespace", jobs: []string{"payments/checkout"}, svc: "checkout", want: []string{"payments"}},
+		{
+			name: "mixed bare + namespaced (both real possibilities)",
+			jobs: []string{"checkout", "payments/checkout"},
+			svc:  "checkout",
+			want: []string{"", "payments"},
+		},
+		{
+			name: "multiple namespaces sorted",
+			jobs: []string{"shipping/checkout", "payments/checkout", "billing/checkout"},
+			svc:  "checkout",
+			want: []string{"billing", "payments", "shipping"},
+		},
+		{
+			name: "regex over-match dropped if suffix doesn't end in /<name>",
+			jobs: []string{"checkout-internal"}, // would match `(.+/)?checkout` regex without the suffix guard
+			svc:  "checkout",
+			want: []string{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := namespacesForName(tt.jobs, tt.svc)
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %v, want %v", got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("[%d] got %q, want %q", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
 func TestBuildModeProbeQuery(t *testing.T) {
 	got, err := buildModeProbeQuery("traces_span_metrics_calls_total", "billing/checkout")
 	if err != nil {

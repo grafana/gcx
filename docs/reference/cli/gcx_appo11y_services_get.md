@@ -7,9 +7,11 @@ Inspect a single Application Observability service: metadata + RED snapshot.
 Show metadata and a rate/errors/duration snapshot for one service.
 
 The argument is either the bare service name (matching the OTel service.name
-resource attribute) or the canonical "<namespace>/<name>" form. When multiple
-namespaces have a service with the same name, either supply the namespace in
-the argument or pass --namespace.
+resource attribute) or the canonical "<namespace>/<name>" form. When a bare
+name is given, the namespace is resolved automatically from target_info;
+ambiguity (the same name in multiple namespaces) errors out so the snapshot
+can't accidentally target the wrong service. Pass --namespace or use the
+"<namespace>/<name>" form to disambiguate.
 
 Metadata comes from the same target_info/traces_target_info union used by
 "gcx appo11y services list". RED numbers are computed from span metrics
@@ -35,10 +37,10 @@ gcx appo11y services get <service> [--namespace ns] [flags]
 
 ```
 
-  # Bare service name, default 5m window
+  # Bare name — namespace is resolved from target_info
   gcx appo11y services get checkoutservice
 
-  # Namespaced service, longer window
+  # Same service, explicit namespace (skips the lookup)
   gcx appo11y services get payments/checkoutservice --window 1h
 
   # JSON for scripting

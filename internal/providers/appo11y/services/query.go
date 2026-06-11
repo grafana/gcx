@@ -528,6 +528,88 @@ func buildServiceMetadataQuery(metric, namespace, name string) (string, error) {
 	return expr.String(), nil
 }
 
+// buildBareNameLookupQuery searches the target_info union for any series
+// whose `job` is either the bare `<name>` or some `<namespace>/<name>`.
+// Used to auto-resolve the namespace when the user passes only a bare
+// service name (the alternative is silent no-data for namespaced services).
+// metric must be one of `target_info` or `traces_target_info`.
+func buildBareNameLookupQuery(metric, name string) (string, error) {
+	if name == "" {
+		return "", errors.New("service name is required")
+	}
+	// `(.+/)?<escaped name>` matches both bare `<name>` and any
+	// `<ns>/<name>` shape. PromQL regexes are RE2 — anchoring is implicit
+	// for full-match, so we don't need ^/$ markers.
+	pattern := "(.+/)?" + regexp.QuoteMeta(name)
+	v := promql.Vector(metric).LabelMatchRegexp("job", escapePromqlValue(pattern))
+	expr, err := promql.Group(v).By([]string{"job"}).Build()
+	if err != nil {
+		return "", err
+	}
+	return expr.String(), nil
+}
+
+// extractJobsFromResponses returns the deduplicated set of `job` label
+// values present in the provided Prometheus responses. Empty jobs are
+// dropped.
+func extractJobsFromResponses(responses []*prometheus.QueryResponse) []string {
+	seen := make(map[string]struct{})
+	out := make([]string, 0, len(responses))
+	for _, resp := range responses {
+		if resp == nil {
+			continue
+		}
+		for _, sample := range resp.Data.Result {
+			job := sample.Metric["job"]
+			if job == "" {
+				continue
+			}
+			if _, dup := seen[job]; dup {
+				continue
+			}
+			seen[job] = struct{}{}
+			out = append(out, job)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// namespacesForName parses a slice of job labels (as returned by
+// buildBareNameLookupQuery) and returns the distinct namespaces that the
+// requested service appears under. A job equal to the bare name is treated
+// as the empty-namespace case; jobs of the shape `<ns>/<name>` contribute
+// `<ns>`; jobs that end with `/<name>` but with extra slashes (rare) are
+// preserved as the full prefix so the caller can still target them via
+// --namespace.
+func namespacesForName(jobs []string, name string) []string {
+	seen := make(map[string]struct{})
+	out := make([]string, 0, len(jobs))
+	for _, job := range jobs {
+		if job == name {
+			if _, dup := seen[""]; dup {
+				continue
+			}
+			seen[""] = struct{}{}
+			out = append(out, "")
+			continue
+		}
+		if !strings.HasSuffix(job, "/"+name) {
+			// Regex matched but the suffix doesn't actually end with /<name>
+			// (defensive: shouldn't happen with our pattern).
+			continue
+		}
+		ns := strings.TrimSuffix(job, "/"+name)
+		if _, dup := seen[ns]; dup {
+			continue
+		}
+		seen[ns] = struct{}{}
+		out = append(out, ns)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // buildRateQuery returns the PromQL for the headline request rate (per
 // second) over the given window, scoped to the service and span kinds.
 func buildRateQuery(names metricNames, namespace, name, window string, kinds []string) (string, error) {

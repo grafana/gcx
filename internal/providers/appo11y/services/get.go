@@ -135,9 +135,11 @@ func newGetCommand() *cobra.Command {
 		Long: `Show metadata and a rate/errors/duration snapshot for one service.
 
 The argument is either the bare service name (matching the OTel service.name
-resource attribute) or the canonical "<namespace>/<name>" form. When multiple
-namespaces have a service with the same name, either supply the namespace in
-the argument or pass --namespace.
+resource attribute) or the canonical "<namespace>/<name>" form. When a bare
+name is given, the namespace is resolved automatically from target_info;
+ambiguity (the same name in multiple namespaces) errors out so the snapshot
+can't accidentally target the wrong service. Pass --namespace or use the
+"<namespace>/<name>" form to disambiguate.
 
 Metadata comes from the same target_info/traces_target_info union used by
 "gcx appo11y services list". RED numbers are computed from span metrics
@@ -155,10 +157,10 @@ The span-metric family is selected by --metrics-mode:
 The resolved mode is reported in the snapshot output so you can confirm
 which family produced the numbers.`,
 		Example: `
-  # Bare service name, default 5m window
+  # Bare name — namespace is resolved from target_info
   gcx appo11y services get checkoutservice
 
-  # Namespaced service, longer window
+  # Same service, explicit namespace (skips the lookup)
   gcx appo11y services get payments/checkoutservice --window 1h
 
   # JSON for scripting
@@ -223,6 +225,19 @@ func runGet(opts *getOpts) func(*cobra.Command, []string) error {
 			return fmt.Errorf("failed to create prometheus client: %w", err)
 		}
 
+		// Bare-name resolution: if the user passed just `<name>` (no
+		// namespace), look the service up in target_info to find the
+		// matching namespace. Without this step, a query for a namespaced
+		// service via its bare name silently returns no data because the
+		// `job` label is `<ns>/<name>`, not `<name>`.
+		if namespace == "" {
+			resolved, err := resolveNamespaceForBareName(ctx, client, datasourceUID, name)
+			if err != nil {
+				return err
+			}
+			namespace = resolved
+		}
+
 		if auto {
 			mode, err = detectMetricsMode(ctx, client, datasourceUID, namespace, name)
 			if err != nil {
@@ -239,6 +254,52 @@ func runGet(opts *getOpts) func(*cobra.Command, []string) error {
 		}
 		return opts.IO.Encode(cmd.OutOrStdout(), detail)
 	}
+}
+
+// resolveNamespaceForBareName queries the target_info union for any series
+// whose `job` is the bare name or some `<ns>/<name>`, then returns the
+// single matching namespace (or "" for a truly un-namespaced service).
+//
+// Returns:
+//   - "" with no error when nothing matched (caller proceeds with the bare
+//     name; the resulting snapshot will show no data and the standard hint
+//     will fire).
+//   - <ns> with no error when exactly one namespace matched (or only the
+//     bare-name shape did).
+//   - an error listing the candidates when multiple namespaces have a
+//     service with the requested name — ambiguity is something the user
+//     must resolve explicitly with `<ns>/<name>` or `--namespace`.
+func resolveNamespaceForBareName(ctx context.Context, client *prometheus.Client, datasourceUID, name string) (string, error) {
+	metrics := targetInfoMetrics()
+	responses := make([]*prometheus.QueryResponse, len(metrics))
+
+	eg, egCtx := errgroup.WithContext(ctx)
+	for i, metric := range metrics {
+		eg.Go(func() error {
+			expr, err := buildBareNameLookupQuery(metric, name)
+			if err != nil {
+				return fmt.Errorf("failed to build %s lookup query: %w", metric, err)
+			}
+			resp, err := client.Query(egCtx, datasourceUID, prometheus.QueryRequest{Query: expr})
+			if err != nil {
+				return fmt.Errorf("%s lookup query failed: %w", metric, err)
+			}
+			responses[i] = resp
+			return nil
+		})
+	}
+	if err := eg.Wait(); err != nil {
+		return "", err
+	}
+
+	namespaces := namespacesForName(extractJobsFromResponses(responses), name)
+	switch len(namespaces) {
+	case 0:
+		return "", nil
+	case 1:
+		return namespaces[0], nil
+	}
+	return "", fmt.Errorf("service %q exists in multiple namespaces (%s); disambiguate with <namespace>/%s or --namespace", name, strings.Join(namespaces, ", "), name)
 }
 
 // detectMetricsMode probes each metrics family in parallel for the given
