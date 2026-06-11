@@ -265,6 +265,8 @@ github.com/grafana/grafana-openapi-client-go v0.0.0-20260414120814-5b95bb183fae 
 github.com/grafana/grafana-openapi-client-go v0.0.0-20260414120814-5b95bb183fae/go.mod h1:4WkWL9W7QMnRgRA1XrrSbZRg/UIoTx4x5ynx5RjJldU=
 github.com/grafana/grafana/pkg/apimachinery v0.0.0-20250903133002-4e28cba1c53a h1:+HkE1JQJUx6ocoZWZYGmX4JR7TsHcAXDJ/PK1Y3j53Q=
 github.com/grafana/grafana/pkg/apimachinery v0.0.0-20250903133002-4e28cba1c53a/go.mod h1:av5N0Naq+8VV9MLF7zAkihy/mVq5UbS2EvRSJukDHlY=
+github.com/grafana/otel-checker v0.2.0 h1:D0HGYeXI3oRzlhqAcvCD6Dl2SSDKWMGY21qFS/pbi/Y=
+github.com/grafana/otel-checker v0.2.0/go.mod h1:fD9UBbQ6JP6aDWkXh8JOVqojSWer9P8ZloJ3oHGj+lw=
 github.com/grafana/promql-builder/go v0.0.0-20250916111012-8fa9625b89a3 h1:B5SncfJyapaCmCM/r5007X4hjkKTgQ1XaOpA5VgrboU=
 github.com/grafana/promql-builder/go v0.0.0-20250916111012-8fa9625b89a3/go.mod h1:TsO1alA6DmSpsS8xh4lAknLlY2wLl4q3B/HFMlZvXaE=
 github.com/grafana/regexp v0.0.0-20250905093917-f7b3be9d1853 h1:cLN4IBkmkYZNnk7EAJ0BHIethd+J6LqxFNw5mSiI2bM=

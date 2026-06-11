@@ -6,6 +6,7 @@
 //	gcx instrumentation
 //	├── setup      — guided onboarding wizard
 //	├── status     — cross-cutting observed-state view
+//	├── check      — validate OTel instrumentation locally (otel-checker)
 //	├── clusters   — declared/observed state per cluster
 //	│   └── apps   — namespace-level RMW operations
 //	└── services   — workload-level observed state + overrides
@@ -16,6 +17,7 @@
 package instrumentation
 
 import (
+	"github.com/grafana/gcx/cmd/gcx/instrumentation/check"
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/clusters"
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/services"
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/setup"
@@ -43,6 +45,10 @@ The instrumentation command tree provides:
   status     Cross-cutting observed state for clusters and namespaces
              (RunK8sMonitoring + ListPipelines merge).
 
+  check      Validate OpenTelemetry instrumentation for an application
+             running locally (env vars, SDK, collector, Beyla, Alloy,
+             Grafana Cloud connectivity).
+
   clusters   Declared and observed state per K8s cluster:
              list, get, configure, remove, wait.
              Sub-group "apps" manages namespace-level Beyla configuration.
@@ -57,6 +63,7 @@ The instrumentation command tree provides:
 	cmd.AddCommand(
 		setup.Command(loader),
 		status.Command(loader),
+		check.Command(),
 		clusters.Command(loader),
 		services.Command(loader),
 	)

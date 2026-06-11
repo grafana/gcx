@@ -130,6 +130,7 @@ var commandAnnotations = map[string]annotation{
 	// top-level single commands
 	"gcx instrumentation setup":  {Cost: "medium", Hint: "<cluster> --use-defaults -o json"},
 	"gcx instrumentation status": {Cost: "medium", Hint: "-o json"},
+	"gcx instrumentation check":  {Cost: "small", Hint: "validates the LOCAL workstation's OTel setup (env vars, SDK deps, collector/Beyla/Alloy config, Grafana Cloud env creds) — does not query any Grafana stack. [components] --language <lang> -o json"},
 
 	// services verb group
 	"gcx instrumentation services list":    {Cost: "large", Hint: "K8s workloads discovered fleet-wide by the Beyla survey collector, for setting up instrumentation (distinct from 'gcx appo11y services', which lists telemetry-reporting services). --cluster <name> --namespace <ns> -o json"},
