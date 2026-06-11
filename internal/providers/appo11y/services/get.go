@@ -8,8 +8,8 @@ import (
 	"log/slog"
 	"strings"
 	"text/tabwriter"
-	"time"
 
+	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/grafana-app-sdk/logging"
+	"github.com/prometheus/common/model"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
@@ -31,7 +32,7 @@ const defaultRedWindow = "5m"
 type getOpts struct {
 	IO          cmdio.Options
 	Datasource  string
-	Window      string
+	Since       string
 	Namespace   string
 	Kind        string
 	MetricsMode string
@@ -45,26 +46,26 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 
 	flags.StringVarP(&o.Datasource, "datasource", "d", "", "Prometheus datasource UID (defaults to datasources.prometheus in config or auto-discovery)")
 	flags.StringVarP(&o.Namespace, "namespace", "n", "", "Service namespace (only needed when the argument is the bare service name and multiple namespaces are in play)")
-	flags.StringVar(&o.Window, "window", defaultRedWindow, "Rate/quantile window (e.g. 1m, 5m, 1h)")
+	flags.StringVar(&o.Since, "since", defaultRedWindow, "Rate/quantile window applied to span metrics (e.g. 1m, 5m, 1h, 1d) — PromQL duration syntax")
 	flags.StringVar(&o.Kind, "kind", "inbound", "Span kinds to include: inbound (server+consumer), server, consumer, all, or a comma list of SPAN_KIND_* literals")
-	flags.StringVar(&o.MetricsMode, "metrics-mode", metricsModeAuto, "Span-metrics family: auto (default, probes the stack), v3 (traces_span_metrics_*), tempo (traces_spanmetrics_*), or otel (bare calls_total + duration_seconds_bucket)")
+	flags.StringVar(&o.MetricsMode, "metrics-mode", metricsModeAuto, "Span-metrics family: auto (probes the stack), v3 (traces_span_metrics_*), tempo (traces_spanmetrics_*), or otel (bare calls_total + duration_seconds_bucket)")
 }
 
-func (o *getOpts) Validate() error {
+func (o *getOpts) Validate(cmd *cobra.Command) error {
 	if err := o.IO.Validate(); err != nil {
 		return err
 	}
-	if strings.TrimSpace(o.Window) == "" {
-		return errors.New("--window must not be empty")
+	if strings.TrimSpace(o.Since) == "" {
+		return fail.NewCommandUsageError(cmd, "--since must not be empty", nil)
 	}
-	if _, err := time.ParseDuration(o.Window); err != nil {
-		return fmt.Errorf("--window %q is not a valid duration: %w", o.Window, err)
+	if _, err := model.ParseDuration(o.Since); err != nil {
+		return fail.NewCommandUsageError(cmd, fmt.Sprintf("--since %q is not a valid PromQL duration", o.Since), err)
 	}
 	if _, err := resolveSpanKinds(o.Kind); err != nil {
-		return err
+		return fail.NewCommandUsageError(cmd, "", err)
 	}
 	if _, _, err := resolveMetricsMode(o.MetricsMode); err != nil {
-		return err
+		return fail.NewCommandUsageError(cmd, "", err)
 	}
 	return nil
 }
@@ -143,17 +144,17 @@ can't accidentally target the wrong service. Pass --namespace or use the
 
 Metadata comes from the same target_info/traces_target_info union used by
 "gcx appo11y services list". RED numbers are computed from span metrics
-over --window (default 5m), restricted to inbound spans (SERVER + CONSUMER).
+over --since (default 5m), restricted to inbound spans (SERVER + CONSUMER).
 
 The span-metric family is selected by --metrics-mode:
   auto   probe each family for this service and pick the one with data
-         (default — prefers v3 > tempo > otel when a stack double-emits)
+         (prefers v3 > tempo > otel when a stack double-emits)
   v3     traces_span_metrics_calls_total / _duration_seconds_bucket
-         (modern Tempo / OTel Collector ≥ 1.0.9)
+         (OTel Collector >= 0.109, Grafana Alloy >= 1.5.0)
   tempo  traces_spanmetrics_calls_total  / _latency_bucket
-         (legacy Tempo metrics-generator, Beyla)
+         (Tempo metrics-generator — Grafana Cloud default — and Beyla)
   otel   calls_total / duration_seconds_bucket
-         (bare OTel Collector spanmetrics connector)
+         (OTel Collector 0.94–0.108, Alloy 1.0–1.4.3, Grafana Agent >= 0.40)
 The resolved mode is reported in the snapshot output so you can confirm
 which family produced the numbers.`,
 		Example: `
@@ -161,7 +162,7 @@ which family produced the numbers.`,
   gcx appo11y services get checkoutservice
 
   # Same service, explicit namespace (skips the lookup)
-  gcx appo11y services get payments/checkoutservice --window 1h
+  gcx appo11y services get payments/checkoutservice --since 1h
 
   # JSON for scripting
   gcx appo11y services get checkoutservice -o json
@@ -169,13 +170,13 @@ which family produced the numbers.`,
   # Restrict to server-side traffic only
   gcx appo11y services get checkoutservice --kind server
 
-  # Stack still on the legacy Tempo metrics-generator
+  # Stack double-emits both families; force the Tempo metrics-generator numbers
   gcx appo11y services get checkoutservice --metrics-mode tempo`,
 		Args: cobra.ExactArgs(1),
 		RunE: runGet(opts),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
-			agent.AnnotationLLMHint:   `Per-service RED snapshot from Tempo/OTel span metrics: rate (req/s), error rate, error percent, p50/p95/p99 latency (seconds) over --window (default 5m), scoped to inbound spans (SERVER+CONSUMER). --metrics-mode picks the family: v3 (default, traces_span_metrics_*), tempo (legacy traces_spanmetrics_*), otel (bare calls_total/duration_seconds_bucket). Pairs with 'gcx appo11y services list' to drill into a single row. Examples: gcx appo11y services get <name> -o json; gcx appo11y services get <ns>/<name> --window 1h -o json; gcx appo11y services get <name> --metrics-mode tempo -o json`,
+			agent.AnnotationLLMHint:   `Per-service RED snapshot from Tempo/OTel span metrics: rate (req/s), error rate, error percent, p50/p95/p99 latency (seconds) over --since (default 5m), scoped to inbound spans (SERVER+CONSUMER). --metrics-mode picks the family: auto (default, probes the stack), v3 (traces_span_metrics_*, OTel Collector >= 0.109 / Alloy >= 1.5), tempo (traces_spanmetrics_*, Tempo metrics-generator — Grafana Cloud default — and Beyla), otel (bare calls_total/duration_seconds_bucket, older Collector/Alloy/Agent). Pairs with 'gcx appo11y services list' to drill into a single row. Examples: gcx appo11y services get <name> -o json; gcx appo11y services get <ns>/<name> --since 1h -o json; gcx appo11y services get <name> --metrics-mode tempo -o json`,
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -184,20 +185,20 @@ which family produced the numbers.`,
 
 func runGet(opts *getOpts) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
-		if err := opts.Validate(); err != nil {
+		if err := opts.Validate(cmd); err != nil {
 			return err
 		}
 		namespace, name, err := parseServiceArg(args[0], opts.Namespace)
 		if err != nil {
-			return err
+			return fail.NewCommandUsageError(cmd, "", err)
 		}
 		kinds, err := resolveSpanKinds(opts.Kind)
 		if err != nil {
-			return err
+			return fail.NewCommandUsageError(cmd, "", err)
 		}
 		mode, auto, err := resolveMetricsMode(opts.MetricsMode)
 		if err != nil {
-			return err
+			return fail.NewCommandUsageError(cmd, "", err)
 		}
 
 		ctx := cmd.Context()
@@ -245,14 +246,24 @@ func runGet(opts *getOpts) func(*cobra.Command, []string) error {
 			}
 		}
 
-		detail, err := fetchServiceDetail(ctx, client, datasourceUID, namespace, name, opts.Window, kinds, mode)
+		detail, err := fetchServiceDetail(ctx, client, datasourceUID, namespace, name, opts.Since, kinds, mode)
 		if err != nil {
 			return err
 		}
-		if !detail.Service.Instrumented && !detail.RED.HasTraffic {
+		notFound := !detail.Service.Instrumented && !detail.RED.HasTraffic
+		if notFound {
 			emitNoDataHint(cmd.ErrOrStderr(), namespace, name)
 		}
-		return opts.IO.Encode(cmd.OutOrStdout(), detail)
+		if err := opts.IO.Encode(cmd.OutOrStdout(), detail); err != nil {
+			return err
+		}
+		if notFound {
+			// Align with other commands' "entity not-found" semantics:
+			// emit the snapshot (useful structure for agents) but signal
+			// failure via exit code so callers can branch on $?.
+			return fmt.Errorf("service %q has no telemetry in the requested window", jobLabel(namespace, name))
+		}
+		return nil
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/query/prometheus"
+	"github.com/spf13/cobra"
 )
 
 func TestResolveSpanKinds(t *testing.T) {
@@ -481,8 +482,8 @@ func TestFormatDuration(t *testing.T) {
 func TestGetOptsValidate(t *testing.T) {
 	mk := func(o getOpts) getOpts {
 		o.IO.OutputFormat = "json"
-		if o.Window == "" {
-			o.Window = defaultRedWindow
+		if o.Since == "" {
+			o.Since = defaultRedWindow
 		}
 		if o.Kind == "" {
 			o.Kind = "inbound"
@@ -495,18 +496,23 @@ func TestGetOptsValidate(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "defaults ok", opts: mk(getOpts{})},
-		{name: "custom window", opts: mk(getOpts{Window: "1h"})},
-		{name: "bad window", opts: mk(getOpts{Window: "not-a-duration"}), wantErr: true},
-		{name: "empty window", opts: mk(getOpts{Window: "  "}), wantErr: true},
+		{name: "custom since (hours)", opts: mk(getOpts{Since: "1h"})},
+		{name: "PromQL day duration accepted (Go ParseDuration rejects this)", opts: mk(getOpts{Since: "1d"})},
+		{name: "PromQL week duration accepted", opts: mk(getOpts{Since: "1w"})},
+		{name: "bad since", opts: mk(getOpts{Since: "not-a-duration"}), wantErr: true},
+		{name: "empty since", opts: mk(getOpts{Since: "  "}), wantErr: true},
 		{name: "bogus kind", opts: mk(getOpts{Kind: "OUTGOING"}), wantErr: true},
 		{name: "comma kinds ok", opts: mk(getOpts{Kind: "SPAN_KIND_SERVER,SPAN_KIND_CLIENT"})},
 		{name: "default metrics-mode (empty) ok", opts: mk(getOpts{MetricsMode: ""})},
 		{name: "explicit tempo mode", opts: mk(getOpts{MetricsMode: "tempo"})},
 		{name: "bogus metrics-mode rejected", opts: mk(getOpts{MetricsMode: "fictional"}), wantErr: true},
 	}
+	// Validate's UsageError wraps require a *cobra.Command for the help
+	// suggestion; a bare instance is enough — we only check error-vs-nil.
+	cmd := &cobra.Command{Use: "get"}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.opts.Validate(); (err != nil) != tt.wantErr {
+			if err := tt.opts.Validate(cmd); (err != nil) != tt.wantErr {
 				t.Errorf("err = %v, wantErr %v", err, tt.wantErr)
 			}
 		})

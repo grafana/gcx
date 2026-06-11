@@ -15,17 +15,17 @@ can't accidentally target the wrong service. Pass --namespace or use the
 
 Metadata comes from the same target_info/traces_target_info union used by
 "gcx appo11y services list". RED numbers are computed from span metrics
-over --window (default 5m), restricted to inbound spans (SERVER + CONSUMER).
+over --since (default 5m), restricted to inbound spans (SERVER + CONSUMER).
 
 The span-metric family is selected by --metrics-mode:
   auto   probe each family for this service and pick the one with data
-         (default — prefers v3 > tempo > otel when a stack double-emits)
+         (prefers v3 > tempo > otel when a stack double-emits)
   v3     traces_span_metrics_calls_total / _duration_seconds_bucket
-         (modern Tempo / OTel Collector ≥ 1.0.9)
+         (OTel Collector >= 0.109, Grafana Alloy >= 1.5.0)
   tempo  traces_spanmetrics_calls_total  / _latency_bucket
-         (legacy Tempo metrics-generator, Beyla)
+         (Tempo metrics-generator — Grafana Cloud default — and Beyla)
   otel   calls_total / duration_seconds_bucket
-         (bare OTel Collector spanmetrics connector)
+         (OTel Collector 0.94–0.108, Alloy 1.0–1.4.3, Grafana Agent >= 0.40)
 The resolved mode is reported in the snapshot output so you can confirm
 which family produced the numbers.
 
@@ -41,7 +41,7 @@ gcx appo11y services get <service> [--namespace ns] [flags]
   gcx appo11y services get checkoutservice
 
   # Same service, explicit namespace (skips the lookup)
-  gcx appo11y services get payments/checkoutservice --window 1h
+  gcx appo11y services get payments/checkoutservice --since 1h
 
   # JSON for scripting
   gcx appo11y services get checkoutservice -o json
@@ -49,7 +49,7 @@ gcx appo11y services get <service> [--namespace ns] [flags]
   # Restrict to server-side traffic only
   gcx appo11y services get checkoutservice --kind server
 
-  # Stack still on the legacy Tempo metrics-generator
+  # Stack double-emits both families; force the Tempo metrics-generator numbers
   gcx appo11y services get checkoutservice --metrics-mode tempo
 ```
 
@@ -60,10 +60,10 @@ gcx appo11y services get <service> [--namespace ns] [flags]
   -h, --help                  help for get
       --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --kind string           Span kinds to include: inbound (server+consumer), server, consumer, all, or a comma list of SPAN_KIND_* literals (default "inbound")
-      --metrics-mode string   Span-metrics family: auto (default, probes the stack), v3 (traces_span_metrics_*), tempo (traces_spanmetrics_*), or otel (bare calls_total + duration_seconds_bucket) (default "auto")
+      --metrics-mode string   Span-metrics family: auto (probes the stack), v3 (traces_span_metrics_*), tempo (traces_spanmetrics_*), or otel (bare calls_total + duration_seconds_bucket) (default "auto")
   -n, --namespace string      Service namespace (only needed when the argument is the bare service name and multiple namespaces are in play)
   -o, --output string         Output format. One of: agents, json, table, wide, yaml (default "table")
-      --window string         Rate/quantile window (e.g. 1m, 5m, 1h) (default "5m")
+      --since string          Rate/quantile window applied to span metrics (e.g. 1m, 5m, 1h, 1d) — PromQL duration syntax (default "5m")
 ```
 
 ### Options inherited from parent commands
