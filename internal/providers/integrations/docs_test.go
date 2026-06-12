@@ -107,6 +107,42 @@ func TestExtractSection(t *testing.T) {
 	}
 }
 
+func TestSplitConfig(t *testing.T) {
+	md := strings.Join([]string{
+		"## Configuration snippets for Grafana Alloy",
+		"### Simple mode",
+		"simple snippet",
+		"### Logs snippets",
+		"logs snippet",
+		"### Advanced mode",
+		"advanced snippet",
+		"### Advanced logs snippets",
+		"advanced logs",
+		"## Dashboards",
+		"dashboard stuff",
+	}, "\n")
+
+	simple, advanced := splitConfig(md)
+
+	if !strings.Contains(simple, "Simple mode") || !strings.Contains(simple, "Logs snippets") {
+		t.Errorf("simple config missing expected subsections:\n%s", simple)
+	}
+	if strings.Contains(simple, "Advanced mode") || strings.Contains(simple, "Dashboards") {
+		t.Errorf("simple config leaked advanced/other content:\n%s", simple)
+	}
+	if !strings.HasPrefix(advanced, "### Advanced mode") || !strings.Contains(advanced, "Advanced logs snippets") {
+		t.Errorf("advanced config wrong:\n%s", advanced)
+	}
+	if strings.Contains(advanced, "Dashboards") {
+		t.Errorf("advanced config leaked the next H2 section:\n%s", advanced)
+	}
+
+	// No config section at all → both empty.
+	if s, a := splitConfig("# Title\n## Install\nsteps\n"); s != "" || a != "" {
+		t.Errorf("expected empty results when no config section, got simple=%q advanced=%q", s, a)
+	}
+}
+
 func TestCatalogHasSlug(t *testing.T) {
 	if !catalogHasSlug("linux-node") {
 		t.Error("expected linux-node to be in the catalog")

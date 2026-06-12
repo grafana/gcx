@@ -4,7 +4,7 @@ Show installation docs and prerequisites for an integration.
 
 ### Synopsis
 
-Show the prerequisites and installation steps for a Grafana Cloud integration, fetched from the public documentation. By default the advanced configuration and reference sections are omitted; use --full to see the entire page, or --prerequisites / --install to print only that section.
+Show the prerequisites and installation steps for a Grafana Cloud integration, fetched from the public documentation. By default the advanced configuration and reference sections are omitted; use --full to see the entire page, or --prerequisites / --install / --config / --advanced / --kubernetes to print only that section.
 
 ```
 gcx integrations docs <slug> [flags]
@@ -13,9 +13,12 @@ gcx integrations docs <slug> [flags]
 ### Options
 
 ```
+      --advanced        Show only the advanced-mode Grafana Alloy configuration snippets
+      --config          Show only the simple-mode Grafana Alloy configuration snippets
       --full            Show the full page, including advanced configuration and reference sections
   -h, --help            help for docs
       --install         Show only the installation steps section
+      --kubernetes      Show only the Kubernetes installation instructions section
       --open            Open the documentation in your browser instead of printing it
       --prerequisites   Show only the prerequisites ("Before you begin") section
       --raw             Print raw Markdown without terminal styling

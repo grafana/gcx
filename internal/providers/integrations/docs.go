@@ -30,6 +30,9 @@ type docsOpts struct {
 	Raw           bool
 	Prerequisites bool
 	Install       bool
+	Config        bool
+	Advanced      bool
+	Kubernetes    bool
 }
 
 func (o *docsOpts) setup(flags *pflag.FlagSet) {
@@ -39,6 +42,9 @@ func (o *docsOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.Raw, "raw", false, "Print raw Markdown without terminal styling")
 	flags.BoolVar(&o.Prerequisites, "prerequisites", false, "Show only the prerequisites (\"Before you begin\") section")
 	flags.BoolVar(&o.Install, "install", false, "Show only the installation steps section")
+	flags.BoolVar(&o.Config, "config", false, "Show only the simple-mode Grafana Alloy configuration snippets")
+	flags.BoolVar(&o.Advanced, "advanced", false, "Show only the advanced-mode Grafana Alloy configuration snippets")
+	flags.BoolVar(&o.Kubernetes, "kubernetes", false, "Show only the Kubernetes installation instructions section")
 }
 
 func newDocsCommand() *cobra.Command {
@@ -49,12 +55,12 @@ func newDocsCommand() *cobra.Command {
 		Long: "Show the prerequisites and installation steps for a Grafana Cloud " +
 			"integration, fetched from the public documentation. By default the " +
 			"advanced configuration and reference sections are omitted; use --full " +
-			"to see the entire page, or --prerequisites / --install to print only " +
-			"that section.",
+			"to see the entire page, or --prerequisites / --install / --config / " +
+			"--advanced / --kubernetes to print only that section.",
 		Args: cobra.ExactArgs(1),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "medium",
-			agent.AnnotationLLMHint:   "Show prerequisites and install steps for one Grafana Cloud integration from the public docs. Use --prerequisites or --install to get only that section, --full for advanced configuration, --url for just the link.",
+			agent.AnnotationLLMHint:   "Show prerequisites and install steps for one Grafana Cloud integration from the public docs. Use --prerequisites, --install, --config (simple Alloy config), --advanced (advanced Alloy config), or --kubernetes to get only that section, --full for the whole page, --url for just the link.",
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			slug := args[0]
@@ -82,7 +88,7 @@ func newDocsCommand() *cobra.Command {
 			switch {
 			case opts.Full:
 				// whole page, untouched
-			case opts.Prerequisites || opts.Install:
+			case opts.Prerequisites || opts.Install || opts.Config || opts.Advanced || opts.Kubernetes:
 				var parts []string
 				if opts.Prerequisites {
 					if s := extractSection(md, "## before you begin"); s != "" {
@@ -91,6 +97,20 @@ func newDocsCommand() *cobra.Command {
 				}
 				if opts.Install {
 					if s := extractSection(md, "## install"); s != "" {
+						parts = append(parts, s)
+					}
+				}
+				if opts.Config || opts.Advanced {
+					simple, advanced := splitConfig(md)
+					if opts.Config && simple != "" {
+						parts = append(parts, simple)
+					}
+					if opts.Advanced && advanced != "" {
+						parts = append(parts, advanced)
+					}
+				}
+				if opts.Kubernetes {
+					if s := extractSection(md, "## kubernetes instructions"); s != "" {
 						parts = append(parts, s)
 					}
 				}
@@ -122,6 +142,9 @@ func newDocsCommand() *cobra.Command {
 	cmd.MarkFlagsMutuallyExclusive("url", "open")
 	cmd.MarkFlagsMutuallyExclusive("full", "prerequisites")
 	cmd.MarkFlagsMutuallyExclusive("full", "install")
+	cmd.MarkFlagsMutuallyExclusive("full", "config")
+	cmd.MarkFlagsMutuallyExclusive("full", "advanced")
+	cmd.MarkFlagsMutuallyExclusive("full", "kubernetes")
 	return cmd
 }
 
@@ -183,6 +206,23 @@ func extractSection(md, headingPrefix string) string {
 		}
 	}
 	return strings.TrimSpace(b.String())
+}
+
+// splitConfig divides the "Configuration snippets" section into its simple-mode
+// part (heading up to "### Advanced mode") and advanced-mode part ("### Advanced
+// mode" onward). Either may be "" if absent.
+func splitConfig(md string) (simple, advanced string) {
+	section := extractSection(md, "## configuration snippets")
+	if section == "" {
+		return "", ""
+	}
+	lines := strings.Split(section, "\n")
+	for i, line := range lines {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "### advanced mode") {
+			return strings.TrimSpace(strings.Join(lines[:i], "\n")), strings.TrimSpace(strings.Join(lines[i:], "\n"))
+		}
+	}
+	return strings.TrimSpace(section), ""
 }
 
 // cleanFrontmatter strips the leading YAML frontmatter block and the
