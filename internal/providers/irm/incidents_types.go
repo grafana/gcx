@@ -176,10 +176,13 @@ type IncidentCursor struct {
 	NextValue string `json:"nextValue"`
 }
 
-// IncidentQuery describes an incidents List call. Since the migration to
-// QueryIncidentPreviews it is gcx's caller-facing options struct, not a wire
-// type: labels are translated into the incident query-string language and
-// date bounds are enforced client-side (see IncidentClient.List).
+// QueryIncidentPreviews: severity arrives as severityLabel, and the rest of
+// a full Incident's fields are absent — the structured children (taskList,
+// incidentMembership, incidentHookRuns, refs) as well as overviewURL,
+// durationSeconds, prefix, state, statusID, fieldGroupUUID, descriptionUser,
+// descriptionModifiedTime, statusModifiedByUser and statusModifiedTime. The
+// opt-in membership preview (includeMembershipPreview) is not requested:
+// its important-assignments-only shape does not map onto IncidentMembership.
 type IncidentQuery struct {
 	Limit          int
 	OrderDirection string
