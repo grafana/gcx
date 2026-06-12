@@ -1726,7 +1726,7 @@ func (o *inspectOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 	flags.BoolVar(&o.ShareLink, "share-link", false, "Print the RCA Workbench URL for this entity to stderr")
 	flags.BoolVar(&o.Open, "open", false, "Open the entity in the RCA Workbench in your browser")
-	flags.StringSliceVar(&o.InsightCategories, "insight-categories", nil, "Filter insights by category (comma-separated, e.g. saturation,anomaly,failure); empty = all categories")
+	flags.StringSliceVar(&o.InsightCategories, "insight-categories", nil, "Filter insights by category (comma-separated, e.g. saturation,anomaly,failure,error,amend); empty = all categories")
 	flags.BoolVar(&o.InsightHideNoise, "insight-hide-noise", false, "Apply RCA Workbench noise filter: hide insights older than 48h or present >90% of the window")
 	flags.DurationVar(&o.InsightHideOlderThan, "insight-hide-older-than", 0, "Hide insights older than a whole number of hours (e.g. 24h); overrides --insight-hide-noise on this axis")
 	flags.IntVar(&o.InsightHideChronicAbove, "insight-hide-chronic-above", 0, "Hide insights present more than this percent of the window (0-100); overrides --insight-hide-noise on this axis")
