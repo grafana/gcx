@@ -1,8 +1,10 @@
 package config_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
@@ -24,7 +26,7 @@ func TestPreviousContext_RoundTrip(t *testing.T) {
 		t.Fatalf("ReadPreviousContext on empty state: got %q, want empty string", got)
 	}
 
-	if err := config.WritePreviousContext("dev-dev"); err != nil {
+	if err := config.WritePreviousContext(t.Context(), "dev-dev"); err != nil {
 		t.Fatalf("WritePreviousContext: %v", err)
 	}
 
@@ -41,7 +43,7 @@ func TestPreviousContext_Overwrites(t *testing.T) {
 	setStateHome(t, t.TempDir())
 
 	for _, name := range []string{"first", "second", "third"} {
-		if err := config.WritePreviousContext(name); err != nil {
+		if err := config.WritePreviousContext(t.Context(), name); err != nil {
 			t.Fatalf("WritePreviousContext(%q): %v", name, err)
 		}
 		got, err := config.ReadPreviousContext()
@@ -57,7 +59,7 @@ func TestPreviousContext_Overwrites(t *testing.T) {
 func TestPreviousContext_RejectsEmpty(t *testing.T) {
 	setStateHome(t, t.TempDir())
 
-	if err := config.WritePreviousContext(""); err == nil {
+	if err := config.WritePreviousContext(t.Context(), ""); err == nil {
 		t.Fatal("WritePreviousContext(\"\"): expected error, got nil")
 	}
 }
@@ -66,7 +68,7 @@ func TestPreviousContext_CreatesStateDir(t *testing.T) {
 	stateHome := t.TempDir()
 	setStateHome(t, stateHome)
 
-	if err := config.WritePreviousContext("foo"); err != nil {
+	if err := config.WritePreviousContext(t.Context(), "foo"); err != nil {
 		t.Fatalf("WritePreviousContext: %v", err)
 	}
 
@@ -94,5 +96,43 @@ func TestPreviousContext_TrimsWhitespace(t *testing.T) {
 	}
 	if got != "prod" {
 		t.Fatalf("ReadPreviousContext: got %q, want %q", got, "prod")
+	}
+}
+
+// TestPreviousContext_ConcurrentWrites exercises the flock + unique-temp guard:
+// many writers racing on the same state file must each complete without error,
+// and the file must end holding exactly one of the written names — never a
+// partial write or a leftover temp clobbering the result. Run with -race.
+func TestPreviousContext_ConcurrentWrites(t *testing.T) {
+	setStateHome(t, t.TempDir())
+	ctx := t.Context()
+
+	const writers = 16
+	names := make(map[string]struct{}, writers)
+	for i := range writers {
+		names[fmt.Sprintf("ctx-%02d", i)] = struct{}{}
+	}
+
+	var wg sync.WaitGroup
+	errs := make(chan error, writers)
+	for name := range names {
+		wg.Go(func() {
+			if err := config.WritePreviousContext(ctx, name); err != nil {
+				errs <- fmt.Errorf("WritePreviousContext(%q): %w", name, err)
+			}
+		})
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Errorf("concurrent write failed: %v", err)
+	}
+
+	got, err := config.ReadPreviousContext()
+	if err != nil {
+		t.Fatalf("ReadPreviousContext after concurrent writes: %v", err)
+	}
+	if _, ok := names[got]; !ok {
+		t.Fatalf("ReadPreviousContext: got %q, want one of the %d written names", got, writers)
 	}
 }

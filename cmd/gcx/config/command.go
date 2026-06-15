@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/grafana"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
@@ -477,6 +478,8 @@ func useContextCmd(configOpts *Options) *cobra.Command {
 Run without arguments to pick a context interactively, or pass "-" to switch
 back to the previously active context.
 
+In agent mode or when stdout is not a TTY, a context name is required.
+
 When multiple config files are loaded (e.g. a local .gcx.yaml alongside the
 user config), use --file to choose which layer to update.`,
 		Example: `
@@ -497,6 +500,10 @@ user config), use --file to choose which layer to update.`,
 
 			target, err := resolveUseContextTarget(layered, args)
 			if err != nil {
+				if errors.Is(err, huh.ErrUserAborted) {
+					cmdio.Info(cmd.OutOrStdout(), "Aborted.")
+					return nil
+				}
 				return err
 			}
 
@@ -522,8 +529,8 @@ user config), use --file to choose which layer to update.`,
 			}
 
 			if prev != "" {
-				if err := config.WritePreviousContext(prev); err != nil {
-					fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not record previous context: %v\n", err)
+				if err := config.WritePreviousContext(cmd.Context(), prev); err != nil {
+					fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not record previous context at %s: %v\n", config.PreviousContextPath(), err)
 				}
 			}
 
@@ -548,7 +555,7 @@ func resolveUseContextTarget(cfg config.Config, args []string) (string, error) {
 			return "", err
 		}
 		if prev == "" {
-			return "", errors.New("no previous context recorded")
+			return "", errors.New("no previous context recorded — switch contexts at least once with 'gcx config use-context <name>' to enable '-'")
 		}
 		return prev, nil
 	}
@@ -556,11 +563,29 @@ func resolveUseContextTarget(cfg config.Config, args []string) (string, error) {
 }
 
 func pickContextInteractively(cfg config.Config) (string, error) {
-	if agent.IsAgentMode() || !terminal.StdoutIsTerminal() {
-		return "", errors.New("interactive picker requires a TTY; pass a context name")
+	// Agent mode is an intentional non-interactive contract: never prompt, and
+	// hand back a structured error the agent can act on.
+	if agent.IsAgentMode() {
+		return "", gcxerrors.DetailedError{
+			Summary:     "interactive picker disabled in agent mode",
+			Suggestions: []string{"Pass a context name, e.g. gcx config use-context dev-instance"},
+		}
+	}
+	// The picker reads from and writes to the controlling terminal directly —
+	// huh does not honor cobra's writers — so the TTY check must consult the
+	// process stdout via terminal.StdoutIsTerminal(), not cmd.OutOrStdout(). A
+	// piped invocation (e.g. `gcx config use | cat`) has no terminal to drive.
+	if !terminal.StdoutIsTerminal() {
+		return "", gcxerrors.DetailedError{
+			Summary:     "interactive picker requires a TTY",
+			Suggestions: []string{"Pass a context name, e.g. gcx config use-context dev-instance"},
+		}
 	}
 	if len(cfg.Contexts) == 0 {
-		return "", errors.New("no contexts defined")
+		return "", gcxerrors.DetailedError{
+			Summary:     "no contexts defined",
+			Suggestions: []string{"Create one with 'gcx login' or 'gcx config set'"},
+		}
 	}
 
 	names := make([]string, 0, len(cfg.Contexts))
@@ -568,6 +593,22 @@ func pickContextInteractively(cfg config.Config) (string, error) {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+
+	// Surface the current context first (kubectx-style) and pre-select it: the
+	// common case is toggling away from and back to it, so it should be the
+	// default highlight rather than buried in alphabetical order.
+	if cur := cfg.CurrentContext; cur != "" {
+		if _, ok := cfg.Contexts[cur]; ok {
+			reordered := make([]string, 0, len(names))
+			reordered = append(reordered, cur)
+			for _, name := range names {
+				if name != cur {
+					reordered = append(reordered, name)
+				}
+			}
+			names = reordered
+		}
+	}
 
 	options := make([]huh.Option[string], 0, len(names))
 	for _, name := range names {
@@ -578,15 +619,10 @@ func pickContextInteractively(cfg config.Config) (string, error) {
 		options = append(options, huh.NewOption(label, name))
 	}
 
-	title := "Select a context"
-	if cfg.CurrentContext != "" {
-		title = fmt.Sprintf("Select a context (current: %s)", cfg.CurrentContext)
-	}
-
-	var selected string
+	selected := cfg.CurrentContext // pre-select the current context, if any
 	form := huh.NewForm(huh.NewGroup(
 		huh.NewSelect[string]().
-			Title(title).
+			Title("Select a context").
 			Options(options...).
 			Value(&selected),
 	))

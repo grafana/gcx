@@ -9,6 +9,8 @@ Set the current context and update the configuration file.
 Run without arguments to pick a context interactively, or pass "-" to switch
 back to the previously active context.
 
+In agent mode or when stdout is not a TTY, a context name is required.
+
 When multiple config files are loaded (e.g. a local .gcx.yaml alongside the
 user config), use --file to choose which layer to update.
 

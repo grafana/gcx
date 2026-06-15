@@ -197,6 +197,43 @@ func Test_UseContextCommand_withUnknownContext(t *testing.T) {
 	testCase.Run(t)
 }
 
+// Test_UseContextCommand_noArgsWithoutTTY asserts the picker degrades to a
+// helpful, structured error when there is no terminal to drive it. The test
+// harness runs commands with a non-TTY stdout, so the no-args path lands here
+// rather than blocking on an interactive prompt.
+func Test_UseContextCommand_noArgsWithoutTTY(t *testing.T) {
+	testCase := testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"use-context", "--config", "testdata/config.yaml"},
+		Env:     map[string]string{"XDG_STATE_HOME": isolateStateHome(t)},
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandErrorContains("interactive picker requires a TTY"),
+			testutils.CommandErrorContains("Pass a context name"),
+		},
+	}
+	testCase.Run(t)
+}
+
+// Test_UseContextCommand_previousWithoutHistory asserts that "use-context -"
+// with no recorded history fails with the guidance to switch at least once.
+func Test_UseContextCommand_previousWithoutHistory(t *testing.T) {
+	cfg := `current-context: old
+contexts:
+  old: {}
+  new: {}`
+	configFile := testutils.CreateTempFile(t, cfg)
+
+	testCase := testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"use-context", "--config", configFile, "-"},
+		Env:     map[string]string{"XDG_STATE_HOME": isolateStateHome(t)},
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandErrorContains("no previous context recorded"),
+		},
+	}
+	testCase.Run(t)
+}
+
 func Test_ViewCommand(t *testing.T) {
 	testCase := testutils.CommandTestCase{
 		Cmd:     config.Command(),
