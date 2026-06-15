@@ -4,7 +4,7 @@ go 1.26.2
 
 require (
 	github.com/Masterminds/semver/v3 v3.5.0
-	github.com/NimbleMarkets/ntcharts v0.5.1
+	github.com/NimbleMarkets/ntcharts/v2 v2.2.0
 	github.com/charmbracelet/glamour v1.0.0
 	github.com/charmbracelet/huh v1.0.0
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
@@ -51,6 +51,9 @@ require (
 )
 
 require (
+	charm.land/bubbles/v2 v2.1.0 // indirect
+	charm.land/bubbletea/v2 v2.0.6 // indirect
+	charm.land/lipgloss/v2 v2.0.3 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/agnivade/levenshtein v1.2.1 // indirect
 	github.com/alecthomas/chroma/v2 v2.23.1 // indirect
@@ -64,12 +67,15 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/charmbracelet/bubbles v0.21.1-0.20250623103423-23b8fd6302d7 // indirect
 	github.com/charmbracelet/bubbletea v1.3.10 // indirect
-	github.com/charmbracelet/colorprofile v0.4.2 // indirect
-	github.com/charmbracelet/x/ansi v0.11.6 // indirect
+	github.com/charmbracelet/colorprofile v0.4.3 // indirect
+	github.com/charmbracelet/ultraviolet v0.0.0-20260525132238-948f4557a654 // indirect
+	github.com/charmbracelet/x/ansi v0.11.7 // indirect
 	github.com/charmbracelet/x/cellbuf v0.0.15 // indirect
 	github.com/charmbracelet/x/exp/slice v0.0.0-20250327172914-2fdc97757edf // indirect
 	github.com/charmbracelet/x/exp/strings v0.0.0-20240722160745-212f7b056ed0 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
+	github.com/charmbracelet/x/termios v0.1.1 // indirect
+	github.com/charmbracelet/x/windows v0.2.2 // indirect
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.7 // indirect
@@ -121,12 +127,12 @@ require (
 	github.com/lestrrat-go/jwx/v3 v3.1.0 // indirect
 	github.com/lestrrat-go/option/v2 v2.0.0 // indirect
 	github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de // indirect
-	github.com/lrstanley/bubblezone v0.0.0-20240914071701-b48c55a5e78e // indirect
-	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
+	github.com/lrstanley/bubblezone/v2 v2.0.0 // indirect
+	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
-	github.com/mattn/go-runewidth v0.0.20 // indirect
+	github.com/mattn/go-runewidth v0.0.23 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.27 // indirect
 	github.com/mitchellh/hashstructure/v2 v2.0.2 // indirect
 	github.com/moby/term v0.5.2 // indirect
