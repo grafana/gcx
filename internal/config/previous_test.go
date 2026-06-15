@@ -5,15 +5,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/adrg/xdg"
 	"github.com/grafana/gcx/internal/config"
 )
 
 func setStateHome(t *testing.T, dir string) {
 	t.Helper()
 	t.Setenv("XDG_STATE_HOME", dir)
-	t.Cleanup(func() { xdg.Reload() })
-	xdg.Reload()
 }
 
 func TestPreviousContext_RoundTrip(t *testing.T) {

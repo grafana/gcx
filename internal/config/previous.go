@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/adrg/xdg"
+	"github.com/grafana/gcx/internal/xdg"
 )
 
 const previousContextFileName = "previous-context"
@@ -16,7 +16,7 @@ const previousContextFileName = "previous-context"
 // is persisted. The file lives under the platform-appropriate XDG state
 // directory and is created on demand by WritePreviousContext.
 func PreviousContextPath() string {
-	return filepath.Join(xdg.StateHome, "gcx", previousContextFileName)
+	return filepath.Join(xdg.StateHome(), "gcx", previousContextFileName)
 }
 
 // ReadPreviousContext returns the previous context name as last persisted by
