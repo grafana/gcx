@@ -46,7 +46,7 @@ func (o *incidentListOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.DateTo, "to", "", "End of time range (RFC3339, unix timestamp, or relative e.g. now)")
 	flags.StringSliceVar(&o.Statuses, "status", nil, "Filter by status (active|resolved; repeatable, comma-separated)")
 	flags.StringVar(&o.Severity, "severity", "", "Filter by severity label, e.g. major (see: gcx irm incidents severities list)")
-	flags.StringVar(&o.Query, "query", "", "Raw incident query string, e.g. \"isdrill:true\"; cannot be combined with the other filter flags")
+	flags.StringVar(&o.Query, "query", "", "Raw incident query string, e.g. \"isdrill:true\"; cannot be combined with --labels, --status, or --severity")
 }
 
 func (o *incidentListOpts) Validate() error {
@@ -76,7 +76,7 @@ func (o *incidentListOpts) Validate() error {
 		}
 	}
 	for _, s := range o.Statuses {
-		if s != "active" && s != "resolved" {
+		if !isIncidentStatusFilter(s) {
 			return fmt.Errorf("invalid --status value %q: must be active or resolved", s)
 		}
 	}

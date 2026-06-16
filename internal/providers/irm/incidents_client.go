@@ -68,6 +68,10 @@ func quoteIncidentQueryValue(v string) string {
 	return `"` + v + `"`
 }
 
+func isIncidentStatusFilter(s string) bool {
+	return s == "active" || s == "resolved"
+}
+
 // buildIncidentQueryString compiles the structured filters into a single
 // incident query-string-language expression. A non-empty query.QueryString is
 // used verbatim (raw escape hatch) and the structured filters are ignored.
@@ -115,6 +119,11 @@ func (c *IncidentClient) List(ctx context.Context, query IncidentQuery) ([]Incid
 	for _, l := range query.IncidentLabels {
 		if strings.Contains(l, `"`) {
 			return nil, fmt.Errorf("incidents: invalid label %q: the incident query-string language cannot express values containing double quotes", l)
+		}
+	}
+	for _, s := range query.Statuses {
+		if !isIncidentStatusFilter(s) {
+			return nil, fmt.Errorf("incidents: invalid status %q: must be active or resolved", s)
 		}
 	}
 	if strings.Contains(query.Severity, `"`) {

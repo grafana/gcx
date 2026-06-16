@@ -310,6 +310,17 @@ func TestClient_List_Filters(t *testing.T) {
 			wantCalls: 1,
 		},
 		{
+			name:  "rejects status outside the supported enum",
+			query: irm.IncidentQuery{Limit: 10, Statuses: []string{`active status:resolved`}},
+			handler: func(t *testing.T, _ *[]listRequest) http.HandlerFunc {
+				t.Helper()
+				return func(_ http.ResponseWriter, _ *http.Request) {
+					t.Error("API must not be called for an invalid status")
+				}
+			},
+			wantErr: "must be active or resolved",
+		},
+		{
 			name:  "labels, status and severity AND together",
 			query: irm.IncidentQuery{Limit: 10, IncidentLabels: []string{"security"}, Statuses: []string{"active"}, Severity: "major"},
 			handler: func(t *testing.T, calls *[]listRequest) http.HandlerFunc {
