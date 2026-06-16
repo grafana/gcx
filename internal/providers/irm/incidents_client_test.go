@@ -248,11 +248,10 @@ func TestClient_List(t *testing.T) {
 	}
 }
 
-// TestClient_List_Filters covers the filter translation the migration to
-// QueryIncidentPreviews introduced: labels and date bounds are enforced
-// client-side (the endpoint has no structured fields for either), while status
-// and severity still compile into query-string terms.
-func TestClient_List_Filters(t *testing.T) {
+// TestClient_List_LabelFilters covers client-side label matching: keyed vs
+// legacy labels, labels carried in `value` rather than `label`, double quotes,
+// and paging until enough matches accumulate.
+func TestClient_List_LabelFilters(t *testing.T) {
 	tests := []clientListCase{
 		{
 			name:  "matches keyed and legacy labels client-side",
@@ -392,6 +391,18 @@ func TestClient_List_Filters(t *testing.T) {
 			wantIDs:   []string{"inc-warpstream"},
 			wantCalls: 2,
 		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) { runClientListCase(t, tt) })
+	}
+}
+
+// TestClient_List_StatusFilters covers the status filter compiling into
+// query-string terms: a single bare status, multiple statuses ORed together,
+// and rejection of a status outside the supported enum.
+func TestClient_List_StatusFilters(t *testing.T) {
+	tests := []clientListCase{
 		{
 			name:  "single status becomes a bare status term",
 			query: irm.IncidentQuery{Limit: 10, Statuses: []string{"active"}},
@@ -430,6 +441,18 @@ func TestClient_List_Filters(t *testing.T) {
 			},
 			wantErr: "must be active or resolved",
 		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) { runClientListCase(t, tt) })
+	}
+}
+
+// TestClient_List_CombinedAndSeverityFilters covers filters composing into one
+// query string: labels, status and severity ANDed together, a raw query string
+// overriding the structured filters, and rejection of an inexpressible severity.
+func TestClient_List_CombinedAndSeverityFilters(t *testing.T) {
+	tests := []clientListCase{
 		{
 			name:  "labels, status and severity AND together",
 			query: irm.IncidentQuery{Limit: 10, IncidentLabels: []string{"security"}, Statuses: []string{"active"}, Severity: "major"},
@@ -485,6 +508,19 @@ func TestClient_List_Filters(t *testing.T) {
 			},
 			wantErr: "cannot express values containing double quotes",
 		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) { runClientListCase(t, tt) })
+	}
+}
+
+// TestClient_List_DateFiltersAndErrors covers the client-side date window (the
+// endpoint has no date fields): full-page fetches, the from/to bounds, missing
+// createdTime, early stop under newest-first order — plus surfacing an in-band
+// response error.
+func TestClient_List_DateFiltersAndErrors(t *testing.T) {
+	tests := []clientListCase{
 		{
 			name: "fetches full pages while date filtering",
 			query: irm.IncidentQuery{
