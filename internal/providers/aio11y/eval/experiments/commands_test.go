@@ -36,7 +36,7 @@ func TestCreateCommand_RequiresFilename(t *testing.T) {
 	assert.Contains(t, err.Error(), "--filename/-f is required")
 }
 
-func TestUpdateCommand_RequiresName(t *testing.T) {
+func TestUpdateCommand_RequiresMutableField(t *testing.T) {
 	cmd := experiments.Commands(nil)
 	cmd.SetArgs([]string{"update", "r-1"})
 
@@ -46,7 +46,7 @@ func TestUpdateCommand_RequiresName(t *testing.T) {
 
 	err := cmd.Execute()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "--name is required")
+	assert.Contains(t, err.Error(), "--name, --description, or --tag is required")
 }
 
 func TestUpdateCommand_RejectsRemovedStatusAndErrorFlags(t *testing.T) {
@@ -154,6 +154,8 @@ func TestTableCodec_Encode(t *testing.T) {
 			Status:       "running",
 			Source:       "external",
 			CollectionID: "c-1",
+			Tags:         []string{"support", "prompt-v2"},
+			Description:  "Nightly regression run",
 			ScoreCount:   5,
 			CreatedAt:    time.Date(2026, 4, 1, 10, 0, 0, 0, time.UTC),
 			CompletedAt:  &completed,
@@ -170,12 +172,12 @@ func TestTableCodec_Encode(t *testing.T) {
 		{
 			name: "table format",
 			wide: false,
-			want: []string{"RUN-ID", "NAME", "STATUS", "r-1", "exp-1", "running"},
+			want: []string{"RUN-ID", "NAME", "STATUS", "COLLECTION-ID", "TAGS", "r-1", "exp-1", "running", "c-1", "support, prompt-v2"},
 		},
 		{
-			name: "wide adds ERROR and COMPLETED",
+			name: "wide adds ERROR, COMPLETED, and DESCRIPTION",
 			wide: true,
-			want: []string{"ERROR", "COMPLETED", "something", "2026-04-02 12:00"},
+			want: []string{"ERROR", "COMPLETED", "DESCRIPTION", "something", "Nightly regression run", "2026-04-02 12:00"},
 		},
 	}
 
