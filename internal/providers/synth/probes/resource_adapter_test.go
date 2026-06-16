@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/synth/probes"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 	"github.com/stretchr/testify/assert"
@@ -25,6 +26,13 @@ type fakeProbeLoader struct {
 
 func (l *fakeProbeLoader) LoadSMConfig(_ context.Context) (string, string, string, error) {
 	return l.baseURL, l.token, l.namespace, nil
+}
+
+// LoadSMProxyConfig returns an empty datasource UID so the typed client skips the
+// proxy and exercises the direct SM API (these adapter tests serve /api/v1 paths;
+// the proxy path is covered in client_test.go).
+func (l *fakeProbeLoader) LoadSMProxyConfig(_ context.Context) (config.NamespacedRESTConfig, string, string, error) {
+	return config.NamespacedRESTConfig{}, "", l.namespace, nil
 }
 
 var _ smcfg.Loader = &fakeProbeLoader{}
@@ -255,7 +263,7 @@ func TestNewProbeAdapterFactory_LazyInit(t *testing.T) {
 	loader := &countingProbeLoader{callCount: &callCount}
 	_ = probes.NewAdapterFactory(loader)
 
-	assert.Equal(t, 0, callCount, "LoadSMConfig must not be called during factory construction")
+	assert.Equal(t, 0, callCount, "config must not be loaded during factory construction")
 }
 
 type countingProbeLoader struct {
@@ -265,4 +273,9 @@ type countingProbeLoader struct {
 func (l *countingProbeLoader) LoadSMConfig(_ context.Context) (string, string, string, error) {
 	*l.callCount++
 	return "http://unused", "t", "default", nil
+}
+
+func (l *countingProbeLoader) LoadSMProxyConfig(_ context.Context) (config.NamespacedRESTConfig, string, string, error) {
+	*l.callCount++
+	return config.NamespacedRESTConfig{}, "", "default", nil
 }

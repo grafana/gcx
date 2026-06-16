@@ -7,10 +7,42 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/synth/probes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/rest"
 )
+
+const testDSUID = "sm-ds-uid"
+
+// proxyPath is the datasource-proxy path the dual-mode client builds for a given
+// logical SM API path (e.g. "probe/list").
+func proxyPath(smPath string) string {
+	return "/api/datasources/proxy/uid/" + testDSUID + "/sm/" + smPath
+}
+
+// proxyClient returns a proxy-only client (no direct fallback) pointed at srv.
+func proxyClient(t *testing.T, srv *httptest.Server) *probes.Client {
+	t.Helper()
+	cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: srv.URL}}
+	client, err := probes.NewClient(cfg, testDSUID, nil)
+	require.NoError(t, err)
+	return client
+}
+
+// fakeFallback is a direct-SM-API credential resolver for fallback tests.
+type fakeFallback struct {
+	baseURL string
+	token   string
+	err     error
+	calls   int
+}
+
+func (f *fakeFallback) LoadSMConfig(context.Context) (string, string, string, error) {
+	f.calls++
+	return f.baseURL, f.token, "", f.err
+}
 
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -35,9 +67,8 @@ func TestClient_Create(t *testing.T) {
 			probe: probes.Probe{Name: "my-probe", Latitude: 45.0, Longitude: -122.0, Region: "US"},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodPost, r.Method)
-				assert.Equal(t, "/api/v1/probe/add", r.URL.Path)
+				assert.Equal(t, proxyPath("probe/add"), r.URL.Path)
 				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
-				assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
 
 				// Verify the body is flat JSON (not wrapped in {"probe":...})
 				var body probes.Probe
@@ -60,8 +91,7 @@ func TestClient_Create(t *testing.T) {
 			srv := httptest.NewServer(tc.handler)
 			defer srv.Close()
 
-			client := probes.NewClient(context.Background(), srv.URL, "test-token")
-			got, err := client.Create(context.Background(), tc.probe)
+			got, err := proxyClient(t, srv).Create(context.Background(), tc.probe)
 			if tc.wantErr {
 				require.Error(t, err)
 				return
@@ -80,8 +110,7 @@ func TestClient_Create_Error(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := probes.NewClient(context.Background(), srv.URL, "test-token")
-	_, err := client.Create(context.Background(), probes.Probe{Name: "bad"})
+	_, err := proxyClient(t, srv).Create(context.Background(), probes.Probe{Name: "bad"})
 	require.Error(t, err)
 }
 
@@ -124,8 +153,7 @@ func TestClient_Get(t *testing.T) {
 			srv := httptest.NewServer(tc.handler)
 			defer srv.Close()
 
-			client := probes.NewClient(context.Background(), srv.URL, "test-token")
-			got, err := client.Get(context.Background(), tc.id)
+			got, err := proxyClient(t, srv).Get(context.Background(), tc.id)
 			if tc.wantErr {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tc.errMsg)
@@ -150,7 +178,7 @@ func TestClient_ResetToken(t *testing.T) {
 			probe: probes.Probe{ID: 42, Name: "my-probe", Region: "US"},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodPost, r.Method)
-				assert.Equal(t, "/api/v1/probe/update", r.URL.Path)
+				assert.Equal(t, proxyPath("probe/update"), r.URL.Path)
 				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 
 				// Verify the body is flat JSON with resetToken at top level
@@ -181,8 +209,7 @@ func TestClient_ResetToken(t *testing.T) {
 			srv := httptest.NewServer(tc.handler)
 			defer srv.Close()
 
-			client := probes.NewClient(context.Background(), srv.URL, "test-token")
-			got, err := client.ResetToken(context.Background(), tc.probe)
+			got, err := proxyClient(t, srv).ResetToken(context.Background(), tc.probe)
 			if tc.wantErr {
 				require.Error(t, err)
 				return
@@ -206,8 +233,7 @@ func TestClient_Delete(t *testing.T) {
 			id:   42,
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodDelete, r.Method)
-				assert.Equal(t, "/api/v1/probe/delete/42", r.URL.Path)
-				assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+				assert.Equal(t, proxyPath("probe/delete/42"), r.URL.Path)
 				writeJSON(w, map[string]string{"msg": "ok"})
 			},
 		},
@@ -225,8 +251,7 @@ func TestClient_Delete(t *testing.T) {
 			srv := httptest.NewServer(tc.handler)
 			defer srv.Close()
 
-			client := probes.NewClient(context.Background(), srv.URL, "test-token")
-			err := client.Delete(context.Background(), tc.id)
+			err := proxyClient(t, srv).Delete(context.Background(), tc.id)
 			if tc.wantErr {
 				require.Error(t, err)
 				return
@@ -242,8 +267,7 @@ func TestClient_Delete_Error(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := probes.NewClient(context.Background(), srv.URL, "test-token")
-	err := client.Delete(context.Background(), 999)
+	err := proxyClient(t, srv).Delete(context.Background(), 999)
 	require.Error(t, err)
 }
 
@@ -258,8 +282,7 @@ func TestClient_List(t *testing.T) {
 			name: "success with items",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodGet, r.Method)
-				assert.Equal(t, "/api/v1/probe/list", r.URL.Path)
-				assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+				assert.Equal(t, proxyPath("probe/list"), r.URL.Path)
 				writeJSON(w, []probes.Probe{
 					{ID: 1, Name: "Oregon", Region: "US"},
 					{ID: 2, Name: "Paris", Region: "EU"},
@@ -305,8 +328,7 @@ func TestClient_List(t *testing.T) {
 			srv := httptest.NewServer(tc.handler)
 			defer srv.Close()
 
-			client := probes.NewClient(context.Background(), srv.URL, "test-token")
-			got, err := client.List(context.Background())
+			got, err := proxyClient(t, srv).List(context.Background())
 			if tc.wantErr {
 				require.Error(t, err)
 				return
@@ -315,4 +337,71 @@ func TestClient_List(t *testing.T) {
 			assert.Len(t, got, tc.wantProbes)
 		})
 	}
+}
+
+// TestClient_FallsBackToDirectOn403 verifies the dual-mode contract: a 403 from
+// the proxy drops the request to the direct SM API with the resolved token.
+func TestClient_FallsBackToDirectOn403(t *testing.T) {
+	proxySrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, proxyPath("probe/list"), r.URL.Path)
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"message":"plugin proxy route access denied"}`))
+	}))
+	defer proxySrv.Close()
+
+	var directHit bool
+	directSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		directHit = true
+		assert.Equal(t, "/api/v1/probe/list", r.URL.Path)
+		assert.Equal(t, "Bearer direct-token", r.Header.Get("Authorization"))
+		writeJSON(w, []probes.Probe{{ID: 7, Name: "fallback-probe"}})
+	}))
+	defer directSrv.Close()
+
+	fallback := &fakeFallback{baseURL: directSrv.URL, token: "direct-token"}
+	cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: proxySrv.URL}}
+	client, err := probes.NewClient(cfg, testDSUID, fallback)
+	require.NoError(t, err)
+
+	got, err := client.List(context.Background())
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "fallback-probe", got[0].Name)
+	assert.True(t, directHit, "direct SM API must be hit after a proxy 403")
+	assert.Equal(t, 1, fallback.calls)
+}
+
+// TestClient_DirectOnlyWhenNoUID verifies that an empty datasource UID skips the
+// proxy entirely and goes straight to the direct SM API.
+func TestClient_DirectOnlyWhenNoUID(t *testing.T) {
+	var directHit bool
+	directSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		directHit = true
+		assert.Equal(t, "/api/v1/probe/list", r.URL.Path)
+		writeJSON(w, []probes.Probe{{ID: 1, Name: "Oregon"}})
+	}))
+	defer directSrv.Close()
+
+	fallback := &fakeFallback{baseURL: directSrv.URL, token: "direct-token"}
+	client, err := probes.NewClient(config.NamespacedRESTConfig{}, "", fallback)
+	require.NoError(t, err)
+
+	got, err := client.List(context.Background())
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.True(t, directHit)
+	assert.Equal(t, 1, fallback.calls)
+}
+
+// TestClient_Proxy403NoFallbackConfigured verifies that a proxy 403 with no
+// fallback loader surfaces an error.
+func TestClient_Proxy403NoFallbackConfigured(t *testing.T) {
+	proxySrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer proxySrv.Close()
+
+	_, err := proxyClient(t, proxySrv).List(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no direct SM API fallback")
 }

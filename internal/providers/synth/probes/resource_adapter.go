@@ -51,11 +51,14 @@ func StaticGVK() schema.GroupVersionKind {
 
 // NewTypedCRUD creates a TypedCRUD for SM probes (read-only).
 func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[Probe], string, error) {
-	baseURL, token, namespace, err := loader.LoadSMConfig(ctx)
+	restCfg, uid, namespace, err := loader.LoadSMProxyConfig(ctx)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to load SM config for probes: %w", err)
 	}
-	client := NewClient(ctx, baseURL, token)
+	client, err := NewClient(restCfg, uid, loader)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create SM probes client: %w", err)
+	}
 
 	crud := &adapter.TypedCRUD[Probe]{
 		ListFn: adapter.LimitedListFn(client.List),

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/synth/checks"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 	"github.com/stretchr/testify/assert"
@@ -25,6 +26,13 @@ type fakeLoader struct {
 
 func (l *fakeLoader) LoadSMConfig(_ context.Context) (string, string, string, error) {
 	return l.baseURL, l.token, l.namespace, nil
+}
+
+// LoadSMProxyConfig returns an empty datasource UID so the typed client skips the
+// proxy and exercises the direct SM API (these adapter tests are transport-agnostic
+// and serve the /api/v1 paths; the proxy path is covered in client_test.go).
+func (l *fakeLoader) LoadSMProxyConfig(_ context.Context) (config.NamespacedRESTConfig, string, string, error) {
+	return config.NamespacedRESTConfig{}, "", l.namespace, nil
 }
 
 // newTestServer creates an httptest.Server that serves the provided handler.
@@ -322,18 +330,18 @@ func TestResourceAdapter_NoAliases(t *testing.T) {
 }
 
 func TestNewAdapterFactory_LazyInit(t *testing.T) {
-	// Verify that NewAdapterFactory does not call LoadSMConfig during construction.
+	// Verify that NewAdapterFactory does not load any config during construction.
 	callCount := 0
 	loader := &countingLoader{callCount: &callCount}
 	_ = checks.NewAdapterFactory(loader)
 
-	assert.Equal(t, 0, callCount, "LoadSMConfig must not be called during factory construction")
+	assert.Equal(t, 0, callCount, "config must not be loaded during factory construction")
 }
 
 // Verify that smcfg.Loader interface is satisfied by fakeLoader.
 var _ smcfg.Loader = &fakeLoader{}
 
-// countingLoader counts LoadSMConfig invocations.
+// countingLoader counts config-loading invocations.
 type countingLoader struct {
 	callCount *int
 }
@@ -341,4 +349,9 @@ type countingLoader struct {
 func (l *countingLoader) LoadSMConfig(_ context.Context) (string, string, string, error) {
 	*l.callCount++
 	return "http://unused", "t", "default", nil
+}
+
+func (l *countingLoader) LoadSMProxyConfig(_ context.Context) (config.NamespacedRESTConfig, string, string, error) {
+	*l.callCount++
+	return config.NamespacedRESTConfig{}, "", "default", nil
 }

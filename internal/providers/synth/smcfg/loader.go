@@ -8,8 +8,15 @@ import (
 )
 
 // Loader can load SM credentials and the current namespace from config.
+//
+// LoadSMConfig resolves the direct SM-API base URL + token (the fallback
+// transport). LoadSMProxyConfig resolves the Grafana REST config + SM
+// datasource UID for the datasource-proxy transport (the primary path); it
+// returns an empty UID — not an error — when no SM datasource can be resolved,
+// so the typed clients degrade to the direct API.
 type Loader interface {
 	LoadSMConfig(ctx context.Context) (baseURL, token, namespace string, err error)
+	LoadSMProxyConfig(ctx context.Context) (restCfg config.NamespacedRESTConfig, datasourceUID, namespace string, err error)
 }
 
 // GrafanaConfigLoader can load a Grafana REST config for Prometheus queries.
