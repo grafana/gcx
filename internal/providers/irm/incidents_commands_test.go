@@ -315,7 +315,64 @@ func TestListOpts_LabelValidation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := irm.NewTestListCommand(tt.labels, "", "")
+			cmd := irm.NewTestListCommand(tt.labels, nil, "", "", "", "")
+			cmd.SetArgs([]string{})
+			err := cmd.Execute()
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestListOpts_FilterValidation(t *testing.T) {
+	tests := []struct {
+		name     string
+		statuses []string
+		severity string
+		query    string
+		labels   []string
+		wantErr  string
+	}{
+		{name: "valid status", statuses: []string{"active"}},
+		{name: "both statuses", statuses: []string{"active", "resolved"}},
+		{name: "valid severity", severity: "major"},
+		{name: "query alone", query: "isdrill:true"},
+		{
+			name:     "unknown status",
+			statuses: []string{"pending"},
+			wantErr:  "must be active or resolved",
+		},
+		{
+			name:     "severity with a double quote",
+			severity: `the "big" sev`,
+			wantErr:  "cannot contain double quotes",
+		},
+		{
+			name:    "query combined with labels",
+			query:   "isdrill:true",
+			labels:  []string{"security"},
+			wantErr: "--query cannot be combined",
+		},
+		{
+			name:     "query combined with status",
+			query:    "isdrill:true",
+			statuses: []string{"active"},
+			wantErr:  "--query cannot be combined",
+		},
+		{
+			name:     "query combined with severity",
+			query:    "isdrill:true",
+			severity: "major",
+			wantErr:  "--query cannot be combined",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := irm.NewTestListCommand(tt.labels, tt.statuses, tt.severity, tt.query, "", "")
 			cmd.SetArgs([]string{})
 			err := cmd.Execute()
 			if tt.wantErr != "" {
@@ -375,13 +432,15 @@ func TestIncidentsListCommand_BuildsQuery(t *testing.T) {
 	cmd.SetErr(&stderr)
 	cmd.SetArgs([]string{
 		"--labels", "security,PIR not needed",
+		"--status", "active",
+		"--severity", "major",
 		"--from", "2024-06-01T00:00:00Z",
 		"--to", "2024-06-15T00:00:00Z",
 		"--limit", "10",
 	})
 	require.NoError(t, cmd.Execute())
 
-	assert.Equal(t, `label:"security" label:"PIR not needed"`, query["queryString"])
+	assert.Equal(t, `label:"security" label:"PIR not needed" status:active severity:"major"`, query["queryString"])
 	assert.NotContains(t, query, "incidentLabels")
 	assert.NotContains(t, query, "dateFrom")
 	assert.NotContains(t, query, "dateTo")
@@ -455,7 +514,7 @@ func TestListOpts_DateValidation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := irm.NewTestListCommand(nil, tt.dateFrom, tt.dateTo)
+			cmd := irm.NewTestListCommand(nil, nil, "", "", tt.dateFrom, tt.dateTo)
 			cmd.SetArgs([]string{})
 			err := cmd.Execute()
 			if tt.wantErr != "" {

@@ -68,14 +68,37 @@ func quoteIncidentQueryValue(v string) string {
 	return `"` + v + `"`
 }
 
-// buildLabelsQueryString translates label filters into query-string terms.
-// Juxtaposed label terms AND together, which matches the behaviour of the
-// structured incidentLabels filter on the deprecated QueryIncidents endpoint
-// (verified live: identical result sets).
-func buildLabelsQueryString(labels []string) string {
-	terms := make([]string, len(labels))
-	for i, l := range labels {
-		terms[i] = "label:" + quoteIncidentQueryValue(l)
+// buildIncidentQueryString compiles the structured filters into a single
+// incident query-string-language expression. A non-empty query.QueryString is
+// used verbatim (raw escape hatch) and the structured filters are ignored.
+//
+// Terms are juxtaposed, which the language treats as AND; values within the
+// multi-valued statuses filter are ORed with or(...) so that two statuses
+// match either, not both at once. Verified live against QueryIncidentPreviews.
+func buildIncidentQueryString(query IncidentQuery) string {
+	if query.QueryString != "" {
+		return query.QueryString
+	}
+
+	var terms []string
+	for _, l := range query.IncidentLabels {
+		terms = append(terms, "label:"+quoteIncidentQueryValue(l))
+	}
+	if len(query.Statuses) > 0 {
+		statusTerms := make([]string, len(query.Statuses))
+		for i, s := range query.Statuses {
+			statusTerms[i] = "status:" + s
+		}
+		if len(statusTerms) == 1 {
+			terms = append(terms, statusTerms[0])
+		} else {
+			// or(...) — match any of the statuses; juxtaposition would AND
+			// them and match nothing.
+			terms = append(terms, "or("+strings.Join(statusTerms, " ")+")")
+		}
+	}
+	if query.Severity != "" {
+		terms = append(terms, "severity:"+quoteIncidentQueryValue(query.Severity))
 	}
 	return strings.Join(terms, " ")
 }
@@ -84,15 +107,18 @@ func buildLabelsQueryString(labels []string) string {
 // response cursor until query.Limit incidents are collected or the server
 // reports no more pages. A non-positive query.Limit defaults to 100.
 //
-// QueryIncidentPreviews has no structured filter fields: label filters are
-// translated into the query-string language, and date bounds — which even
-// the deprecated QueryIncidents endpoint ignored server-side — are enforced
-// here on createdTime, dateFrom inclusive and dateTo exclusive.
+// QueryIncidentPreviews has no structured filter fields: labels, statuses and
+// severity are compiled into the query-string language, and date bounds —
+// which even the deprecated QueryIncidents endpoint ignored server-side — are
+// enforced here on createdTime, dateFrom inclusive and dateTo exclusive.
 func (c *IncidentClient) List(ctx context.Context, query IncidentQuery) ([]Incident, error) {
 	for _, l := range query.IncidentLabels {
 		if strings.Contains(l, `"`) {
 			return nil, fmt.Errorf("incidents: invalid label %q: the incident query-string language cannot express values containing double quotes", l)
 		}
+	}
+	if strings.Contains(query.Severity, `"`) {
+		return nil, fmt.Errorf("incidents: invalid severity %q: the incident query-string language cannot express values containing double quotes", query.Severity)
 	}
 
 	if query.Limit <= 0 {
@@ -108,7 +134,7 @@ func (c *IncidentClient) List(ctx context.Context, query IncidentQuery) ([]Incid
 	wire := incidentPreviewsQuery{
 		OrderDirection: query.OrderDirection,
 		OrderField:     query.OrderField,
-		QueryString:    buildLabelsQueryString(query.IncidentLabels),
+		QueryString:    buildIncidentQueryString(query),
 	}
 
 	var from, to time.Time

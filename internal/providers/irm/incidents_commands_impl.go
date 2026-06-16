@@ -30,6 +30,9 @@ type incidentListOpts struct {
 	Labels   []string
 	DateFrom string
 	DateTo   string
+	Statuses []string
+	Severity string
+	Query    string
 }
 
 func (o *incidentListOpts) setup(flags *pflag.FlagSet) {
@@ -41,6 +44,9 @@ func (o *incidentListOpts) setup(flags *pflag.FlagSet) {
 	flags.StringSliceVar(&o.Labels, "labels", nil, "Filter by labels (label text or key:value, may be repeated)")
 	flags.StringVar(&o.DateFrom, "from", "", "Start of time range (RFC3339, unix timestamp, or relative e.g. now-7d)")
 	flags.StringVar(&o.DateTo, "to", "", "End of time range (RFC3339, unix timestamp, or relative e.g. now)")
+	flags.StringSliceVar(&o.Statuses, "status", nil, "Filter by status (active|resolved; repeatable, comma-separated)")
+	flags.StringVar(&o.Severity, "severity", "", "Filter by severity label, e.g. major (see: gcx irm incidents severities list)")
+	flags.StringVar(&o.Query, "query", "", "Raw incident query string, e.g. \"isdrill:true\"; cannot be combined with the other filter flags")
 }
 
 func (o *incidentListOpts) Validate() error {
@@ -49,6 +55,13 @@ func (o *incidentListOpts) Validate() error {
 	}
 	if o.Limit < 1 {
 		return fmt.Errorf("invalid --limit value %d: must be at least 1", o.Limit)
+	}
+	if o.Query != "" && (len(o.Labels) > 0 || len(o.Statuses) > 0 || o.Severity != "") {
+		// --query is a raw escape hatch: the user writes the whole
+		// query-string expression. The structured flags also compile into
+		// query-string terms, so combining them would be ambiguous
+		// (e.g. --status active --query status:resolved).
+		return errors.New("--query cannot be combined with --labels, --status, or --severity")
 	}
 	// Labels match plain label text for the default Tags key and key:value
 	// composites for keyed labels; values are passed through as given and
@@ -61,6 +74,16 @@ func (o *incidentListOpts) Validate() error {
 		if strings.Contains(l, `"`) {
 			return fmt.Errorf("invalid --labels value %q: cannot contain double quotes", l)
 		}
+	}
+	for _, s := range o.Statuses {
+		if s != "active" && s != "resolved" {
+			return fmt.Errorf("invalid --status value %q: must be active or resolved", s)
+		}
+	}
+	// Severity is also double-quoted into the query-string language, which
+	// cannot express a value containing a double quote.
+	if strings.Contains(o.Severity, `"`) {
+		return fmt.Errorf("invalid --severity value %q: cannot contain double quotes", o.Severity)
 	}
 	now := time.Now()
 	if o.DateFrom != "" {
@@ -91,6 +114,9 @@ func NewListCommand(loader GrafanaConfigLoader) *cobra.Command {
 			q := IncidentQuery{
 				Limit:          opts.Limit,
 				IncidentLabels: opts.Labels,
+				Statuses:       opts.Statuses,
+				Severity:       opts.Severity,
+				QueryString:    opts.Query,
 			}
 			now := time.Now()
 			if opts.DateFrom != "" {

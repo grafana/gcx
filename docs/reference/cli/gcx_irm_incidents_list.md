@@ -9,13 +9,16 @@ gcx irm incidents list [flags]
 ### Options
 
 ```
-      --from string      Start of time range (RFC3339, unix timestamp, or relative e.g. now-7d)
-  -h, --help             help for list
-      --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --labels strings   Filter by labels (label text or key:value, may be repeated)
-      --limit int        Maximum number of incidents to return (default 50)
-  -o, --output string    Output format. One of: agents, json, table, wide, yaml (default "table")
-      --to string        End of time range (RFC3339, unix timestamp, or relative e.g. now)
+      --from string       Start of time range (RFC3339, unix timestamp, or relative e.g. now-7d)
+  -h, --help              help for list
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --labels strings    Filter by labels (label text or key:value, may be repeated)
+      --limit int         Maximum number of incidents to return (default 50)
+  -o, --output string     Output format. One of: agents, json, table, wide, yaml (default "table")
+      --query string      Raw incident query string, e.g. "isdrill:true"; cannot be combined with the other filter flags
+      --severity string   Filter by severity label, e.g. major (see: gcx irm incidents severities list)
+      --status strings    Filter by status (active|resolved; repeatable, comma-separated)
+      --to string         End of time range (RFC3339, unix timestamp, or relative e.g. now)
 ```
 
 ### Options inherited from parent commands

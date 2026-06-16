@@ -283,6 +283,70 @@ func TestClient_List_Filters(t *testing.T) {
 			wantErr: "cannot express values containing double quotes",
 		},
 		{
+			name:  "single status becomes a bare status term",
+			query: irm.IncidentQuery{Limit: 10, Statuses: []string{"active"}},
+			handler: func(t *testing.T, calls *[]listRequest) http.HandlerFunc {
+				t.Helper()
+				return func(w http.ResponseWriter, _ *http.Request) {
+					assert.Equal(t, "status:active", (*calls)[0].Query["queryString"])
+					writeJSON(w, previewsPage("p1", 1, false, ""))
+				}
+			},
+			wantLen:   1,
+			wantCalls: 1,
+		},
+		{
+			name:  "multiple statuses are ORed, not ANDed",
+			query: irm.IncidentQuery{Limit: 10, Statuses: []string{"active", "resolved"}},
+			handler: func(t *testing.T, calls *[]listRequest) http.HandlerFunc {
+				t.Helper()
+				return func(w http.ResponseWriter, _ *http.Request) {
+					// Juxtaposition would AND the statuses and match nothing.
+					assert.Equal(t, "or(status:active status:resolved)", (*calls)[0].Query["queryString"])
+					writeJSON(w, previewsPage("p1", 1, false, ""))
+				}
+			},
+			wantLen:   1,
+			wantCalls: 1,
+		},
+		{
+			name:  "labels, status and severity AND together",
+			query: irm.IncidentQuery{Limit: 10, IncidentLabels: []string{"security"}, Statuses: []string{"active"}, Severity: "major"},
+			handler: func(t *testing.T, calls *[]listRequest) http.HandlerFunc {
+				t.Helper()
+				return func(w http.ResponseWriter, _ *http.Request) {
+					assert.Equal(t, `label:"security" status:active severity:"major"`, (*calls)[0].Query["queryString"])
+					writeJSON(w, previewsPage("p1", 1, false, ""))
+				}
+			},
+			wantLen:   1,
+			wantCalls: 1,
+		},
+		{
+			name:  "raw query string is used verbatim and overrides structured filters",
+			query: irm.IncidentQuery{Limit: 10, QueryString: "isdrill:true", IncidentLabels: []string{"ignored"}, Statuses: []string{"active"}},
+			handler: func(t *testing.T, calls *[]listRequest) http.HandlerFunc {
+				t.Helper()
+				return func(w http.ResponseWriter, _ *http.Request) {
+					assert.Equal(t, "isdrill:true", (*calls)[0].Query["queryString"])
+					writeJSON(w, previewsPage("p1", 1, false, ""))
+				}
+			},
+			wantLen:   1,
+			wantCalls: 1,
+		},
+		{
+			name:  "rejects severity containing a double quote",
+			query: irm.IncidentQuery{Limit: 10, Severity: `the "big" sev`},
+			handler: func(t *testing.T, _ *[]listRequest) http.HandlerFunc {
+				t.Helper()
+				return func(_ http.ResponseWriter, _ *http.Request) {
+					t.Error("API must not be called for an inexpressible severity")
+				}
+			},
+			wantErr: "cannot express values containing double quotes",
+		},
+		{
 			name: "fetches full pages while date filtering",
 			query: irm.IncidentQuery{
 				Limit:  2,
