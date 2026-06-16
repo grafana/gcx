@@ -241,25 +241,6 @@ func TestFormatAge(t *testing.T) {
 	}
 }
 
-func TestDashboardTableCodec_Encode_FolderPaths(t *testing.T) {
-	item := makeItem("dash-folder", "dashboard.grafana.app/v1", "Folder Dashboard", "folder-uid", nil, nil, nil)
-	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{item}}
-
-	codec := dashboards.NewDashboardTableCodecWithFolderPathsForTest(false, "", map[string]string{"folder-uid": "Team/Service"})
-	var buf bytes.Buffer
-	if err := codec.Encode(&buf, list); err != nil {
-		t.Fatalf("Encode(folder paths) error = %v", err)
-	}
-
-	output := buf.String()
-	if !strings.Contains(output, "Team/Service") {
-		t.Fatalf("table output missing folder path:\n%s", output)
-	}
-	if strings.Contains(output, "folder-uid") {
-		t.Fatalf("table output should render folder path instead of UID:\n%s", output)
-	}
-}
-
 func TestDashboardTableCodec_Format(t *testing.T) {
 	narrow := dashboards.NewDashboardTableCodecForTest(false, "")
 	if narrow.Format() != "table" {

@@ -95,12 +95,10 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			// Table codecs need folder paths, and wide also needs the Grafana URL
-			// for link synthesis. Re-register with runtime context after cfg is loaded.
-			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
-				folderPaths, _ := loadFolderPaths(ctx, cfg, client)
-				opts.IO.RegisterCustomCodec("table", newDashboardTableCodecWithFolderPaths(false, "", folderPaths))
-				opts.IO.RegisterCustomCodec("wide", newDashboardTableCodecWithFolderPaths(true, cfg.GrafanaURL, folderPaths))
+			// Wide output needs the Grafana URL for link synthesis. Re-register
+			// with runtime context after cfg is loaded.
+			if opts.IO.OutputFormat == "wide" {
+				opts.IO.RegisterCustomCodec("wide", newDashboardTableCodec(true, cfg.GrafanaURL))
 			}
 
 			if err := opts.IO.Encode(cmd.OutOrStdout(), list); err != nil {

@@ -24,11 +24,7 @@ import (
 // wide enables the extended PANELS and URL columns.
 // grafanaURL is used to synthesise deep-link URLs in wide mode.
 func newDashboardTableCodec(wide bool, grafanaURL string) *dashboardTableCodec {
-	return newDashboardTableCodecWithFolderPaths(wide, grafanaURL, nil)
-}
-
-func newDashboardTableCodecWithFolderPaths(wide bool, grafanaURL string, folderPaths map[string]string) *dashboardTableCodec {
-	return &dashboardTableCodec{Wide: wide, GrafanaURL: grafanaURL, FolderPaths: folderPaths}
+	return &dashboardTableCodec{Wide: wide, GrafanaURL: grafanaURL}
 }
 
 type dashboardTableCodec struct {
@@ -39,9 +35,6 @@ type dashboardTableCodec struct {
 	// wide mode (e.g. "https://mystack.grafana.net"). May be empty when not
 	// available, in which case the URL column is left blank.
 	GrafanaURL string
-
-	// FolderPaths maps folder UID to human-readable folder path.
-	FolderPaths map[string]string
 }
 
 // Format implements format.Codec.
@@ -82,7 +75,7 @@ func (c *dashboardTableCodec) Encode(w io.Writer, v any) error {
 	for _, item := range items {
 		name := item.GetName()
 		title := nestedString(item.Object, "spec", "title")
-		folder := dashboardFolder(item, c.FolderPaths)
+		folder := dashboardFolder(item)
 		tags := dashboardTags(item)
 		age := dashboardAge(item)
 
@@ -98,26 +91,18 @@ func (c *dashboardTableCodec) Encode(w io.Writer, v any) error {
 	return t.Render(w)
 }
 
-func dashboardFolder(item unstructured.Unstructured, folderPaths map[string]string) string {
-	return dashboardFolderPath(dashboardFolderUID(item), folderPaths)
-}
-
-func dashboardFolderUID(item unstructured.Unstructured) string {
+// dashboardFolder extracts the folder name from the dashboard's annotations.
+// The annotation key is "grafana.app/folder"; empty values map to "General".
+func dashboardFolder(item unstructured.Unstructured) string {
 	annotations := item.GetAnnotations()
 	if annotations == nil {
-		return ""
-	}
-	return annotations["grafana.app/folder"]
-}
-
-func dashboardFolderPath(folderUID string, folderPaths map[string]string) string {
-	if folderUID == "" {
 		return "General"
 	}
-	if path := folderPaths[folderUID]; path != "" {
-		return path
+	folder := annotations["grafana.app/folder"]
+	if folder == "" {
+		return "General"
 	}
-	return folderUID
+	return folder
 }
 
 func dashboardTags(item unstructured.Unstructured) string {
