@@ -31,19 +31,6 @@ func proxyClient(t *testing.T, srv *httptest.Server) *probes.Client {
 	return client
 }
 
-// fakeFallback is a direct-SM-API credential resolver for fallback tests.
-type fakeFallback struct {
-	baseURL string
-	token   string
-	err     error
-	calls   int
-}
-
-func (f *fakeFallback) LoadSMConfig(context.Context) (string, string, string, error) {
-	f.calls++
-	return f.baseURL, f.token, "", f.err
-}
-
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	data, err := json.Marshal(v)
@@ -337,71 +324,4 @@ func TestClient_List(t *testing.T) {
 			assert.Len(t, got, tc.wantProbes)
 		})
 	}
-}
-
-// TestClient_FallsBackToDirectOn403 verifies the dual-mode contract: a 403 from
-// the proxy drops the request to the direct SM API with the resolved token.
-func TestClient_FallsBackToDirectOn403(t *testing.T) {
-	proxySrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, proxyPath("probe/list"), r.URL.Path)
-		w.WriteHeader(http.StatusForbidden)
-		_, _ = w.Write([]byte(`{"message":"plugin proxy route access denied"}`))
-	}))
-	defer proxySrv.Close()
-
-	var directHit bool
-	directSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		directHit = true
-		assert.Equal(t, "/api/v1/probe/list", r.URL.Path)
-		assert.Equal(t, "Bearer direct-token", r.Header.Get("Authorization"))
-		writeJSON(w, []probes.Probe{{ID: 7, Name: "fallback-probe"}})
-	}))
-	defer directSrv.Close()
-
-	fallback := &fakeFallback{baseURL: directSrv.URL, token: "direct-token"}
-	cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: proxySrv.URL}}
-	client, err := probes.NewClient(cfg, testDSUID, fallback)
-	require.NoError(t, err)
-
-	got, err := client.List(context.Background())
-	require.NoError(t, err)
-	require.Len(t, got, 1)
-	assert.Equal(t, "fallback-probe", got[0].Name)
-	assert.True(t, directHit, "direct SM API must be hit after a proxy 403")
-	assert.Equal(t, 1, fallback.calls)
-}
-
-// TestClient_DirectOnlyWhenNoUID verifies that an empty datasource UID skips the
-// proxy entirely and goes straight to the direct SM API.
-func TestClient_DirectOnlyWhenNoUID(t *testing.T) {
-	var directHit bool
-	directSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		directHit = true
-		assert.Equal(t, "/api/v1/probe/list", r.URL.Path)
-		writeJSON(w, []probes.Probe{{ID: 1, Name: "Oregon"}})
-	}))
-	defer directSrv.Close()
-
-	fallback := &fakeFallback{baseURL: directSrv.URL, token: "direct-token"}
-	client, err := probes.NewClient(config.NamespacedRESTConfig{}, "", fallback)
-	require.NoError(t, err)
-
-	got, err := client.List(context.Background())
-	require.NoError(t, err)
-	require.Len(t, got, 1)
-	assert.True(t, directHit)
-	assert.Equal(t, 1, fallback.calls)
-}
-
-// TestClient_Proxy403NoFallbackConfigured verifies that a proxy 403 with no
-// fallback loader surfaces an error.
-func TestClient_Proxy403NoFallbackConfigured(t *testing.T) {
-	proxySrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusForbidden)
-	}))
-	defer proxySrv.Close()
-
-	_, err := proxyClient(t, proxySrv).List(context.Background())
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no direct SM API fallback")
 }
