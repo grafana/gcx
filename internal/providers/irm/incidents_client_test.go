@@ -295,6 +295,42 @@ func TestClient_List_Filters(t *testing.T) {
 			wantCalls: 1,
 		},
 		{
+			// QueryIncidentPreviews can carry a label's text in `value`
+			// rather than `label`; incidentLabelValue falls back to it, so
+			// value-only labels must match both key:value filters (keyed
+			// branch) and bare label-text filters (direct branch).
+			name:  "matches labels carrying value instead of label",
+			query: irm.IncidentQuery{Limit: 10, IncidentLabels: []string{"squad:mimir", "security"}},
+			handler: func(t *testing.T, calls *[]listRequest) http.HandlerFunc {
+				t.Helper()
+				return func(w http.ResponseWriter, _ *http.Request) {
+					assert.NotContains(t, (*calls)[0].Query, "queryString")
+					writeJSON(w, map[string]any{
+						"incidentPreviews": []map[string]any{
+							{
+								"incidentID": "inc-value",
+								"title":      "Value-only labels",
+								"status":     "active",
+								"labels": []map[string]any{
+									{"key": "squad", "value": "mimir"},
+									{"key": "Tags", "value": "security"},
+								},
+							},
+							{
+								"incidentID": "inc-partial",
+								"title":      "Missing security",
+								"status":     "active",
+								"labels":     []map[string]any{{"key": "squad", "value": "mimir"}},
+							},
+						},
+						"cursor": map[string]any{"hasMore": false},
+					})
+				}
+			},
+			wantIDs:   []string{"inc-value"},
+			wantCalls: 1,
+		},
+		{
 			name:  "labels with double quotes are matched client-side",
 			query: irm.IncidentQuery{Limit: 10, IncidentLabels: []string{`the "big" outage`}},
 			handler: func(t *testing.T, calls *[]listRequest) http.HandlerFunc {
