@@ -129,6 +129,61 @@ func buildIncidentQueryString(query IncidentQuery) string {
 	return strings.Join(terms, " ")
 }
 
+// validateIncidentQuery rejects filter values the incident query-string
+// language cannot express: a status outside the supported enum, or a severity
+// containing a double quote (it cannot appear inside the single-quoted server
+// value).
+func validateIncidentQuery(query IncidentQuery) error {
+	for _, s := range query.Statuses {
+		if !isIncidentStatusFilter(s) {
+			return fmt.Errorf("incidents: invalid status %q: must be active or resolved", s)
+		}
+	}
+	if strings.Contains(query.Severity, `"`) {
+		return fmt.Errorf("incidents: invalid severity %q: the incident query-string language cannot express values containing double quotes", query.Severity)
+	}
+	return nil
+}
+
+// incidentPreviewFilter enforces the bounds QueryIncidentPreviews has no fields
+// for: the createdTime window (dateFrom inclusive, dateTo exclusive) and label
+// matching. A zero from/to disables that side of the window; empty labels
+// disables label matching.
+type incidentPreviewFilter struct {
+	from, to    time.Time
+	newestFirst bool
+	labels      []string
+}
+
+// classify reports whether a preview should be kept (first result) and whether
+// paging can stop early because the newest-first crawl has passed the
+// from-bound (second result); when stop is true, keep is always false.
+func (f incidentPreviewFilter) classify(p IncidentPreview) (bool, bool) {
+	created := time.Time(p.CreatedTime)
+	if created.IsZero() {
+		// A preview without a createdTime cannot be placed in the requested
+		// window, so date-bounded queries exclude it.
+		if !f.from.IsZero() || !f.to.IsZero() {
+			return false, false
+		}
+		return f.matchesLabels(p), false
+	}
+	if !f.from.IsZero() && created.Before(f.from) {
+		return false, f.newestFirst
+	}
+	if !f.to.IsZero() && !created.Before(f.to) {
+		return false, false
+	}
+	return f.matchesLabels(p), false
+}
+
+func (f incidentPreviewFilter) matchesLabels(p IncidentPreview) bool {
+	if len(f.labels) == 0 {
+		return true
+	}
+	return incidentMatchesLabels(p.Labels, f.labels)
+}
+
 // List queries incident previews with the given parameters, following the
 // response cursor until query.Limit incidents are collected or the server
 // reports no more pages. A non-positive query.Limit defaults to 100.
@@ -141,13 +196,8 @@ func buildIncidentQueryString(query IncidentQuery) string {
 // label or date filter can page through the full history before collecting
 // query.Limit results.
 func (c *IncidentClient) List(ctx context.Context, query IncidentQuery) ([]Incident, error) {
-	for _, s := range query.Statuses {
-		if !isIncidentStatusFilter(s) {
-			return nil, fmt.Errorf("incidents: invalid status %q: must be active or resolved", s)
-		}
-	}
-	if strings.Contains(query.Severity, `"`) {
-		return nil, fmt.Errorf("incidents: invalid severity %q: the incident query-string language cannot express values containing double quotes", query.Severity)
+	if err := validateIncidentQuery(query); err != nil {
+		return nil, err
 	}
 
 	if query.Limit <= 0 {
@@ -173,12 +223,19 @@ func (c *IncidentClient) List(ctx context.Context, query IncidentQuery) ([]Incid
 	if query.DateTo != nil {
 		to = time.Time(*query.DateTo)
 	}
-	dateBounded := !from.IsZero() || !to.IsZero()
 	labelFiltered := query.QueryString == "" && len(query.IncidentLabels) > 0
-	clientFiltered := dateBounded || labelFiltered
-	// With the default createdTime-descending order, every incident after the
-	// first one older than `from` is older too, so paging can stop early.
-	newestFirst := query.OrderDirection == "DESC" && query.OrderField == "createdTime"
+	filter := incidentPreviewFilter{
+		from: from,
+		to:   to,
+		// With the default createdTime-descending order, every incident after
+		// the first one older than `from` is older too, so paging can stop
+		// early.
+		newestFirst: query.OrderDirection == "DESC" && query.OrderField == "createdTime",
+	}
+	if labelFiltered {
+		filter.labels = query.IncidentLabels
+	}
+	clientFiltered := !from.IsZero() || !to.IsZero() || labelFiltered
 
 	limit := query.Limit
 	var (
@@ -202,34 +259,16 @@ func (c *IncidentClient) List(ctx context.Context, query IncidentQuery) ([]Incid
 		}
 
 		for _, preview := range resp.IncidentPreviews {
-			created := time.Time(preview.CreatedTime)
-			if created.IsZero() {
-				// A preview without a createdTime cannot be placed in the
-				// requested window, so date-bounded queries exclude it.
-				if from.IsZero() && to.IsZero() {
-					inc := preview.ToIncident()
-					if labelFiltered && !incidentMatchesLabels(inc.Labels, query.IncidentLabels) {
-						continue
-					}
-					all = append(all, inc)
-				}
-				continue
+			keep, stop := filter.classify(preview)
+			if stop {
+				// Newest-first crawl passed the from-bound; no later preview
+				// can fall in range.
+				pastFrom = true
+				break
 			}
-			if !from.IsZero() && created.Before(from) {
-				if newestFirst {
-					pastFrom = true
-					break
-				}
-				continue
+			if keep {
+				all = append(all, preview.ToIncident())
 			}
-			if !to.IsZero() && !created.Before(to) {
-				continue
-			}
-			inc := preview.ToIncident()
-			if labelFiltered && !incidentMatchesLabels(inc.Labels, query.IncidentLabels) {
-				continue
-			}
-			all = append(all, inc)
 		}
 
 		if len(all) >= limit {
