@@ -131,9 +131,12 @@ func buildIncidentQueryString(query IncidentQuery) string {
 
 // validateIncidentQuery rejects filter values the incident query-string
 // language cannot express: a status outside the supported enum, or a severity
-// containing a double quote (it cannot appear inside the single-quoted server
-// value).
+// containing a double quote. A raw query string is the complete server-side
+// expression, so structured fields are ignored and not validated.
 func validateIncidentQuery(query IncidentQuery) error {
+	if query.QueryString != "" {
+		return nil
+	}
 	for _, s := range query.Statuses {
 		if !isIncidentStatusFilter(s) {
 			return fmt.Errorf("incidents: invalid status %q: must be active or resolved", s)

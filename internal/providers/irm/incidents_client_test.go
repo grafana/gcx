@@ -498,6 +498,19 @@ func TestClient_List_CombinedAndSeverityFilters(t *testing.T) {
 			wantCalls: 1,
 		},
 		{
+			name:  "raw query string skips structured filter validation",
+			query: irm.IncidentQuery{Limit: 10, QueryString: "isdrill:true", Statuses: []string{"not-a-status"}, Severity: `the "big" sev`},
+			handler: func(t *testing.T, calls *[]listRequest) http.HandlerFunc {
+				t.Helper()
+				return func(w http.ResponseWriter, _ *http.Request) {
+					assert.Equal(t, "isdrill:true", (*calls)[0].Query["queryString"])
+					writeJSON(w, previewsPage("p1", 1, false, ""))
+				}
+			},
+			wantLen:   1,
+			wantCalls: 1,
+		},
+		{
 			name:  "rejects severity containing a double quote",
 			query: irm.IncidentQuery{Limit: 10, Severity: `the "big" sev`},
 			handler: func(t *testing.T, _ *[]listRequest) http.HandlerFunc {
