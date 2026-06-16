@@ -2,6 +2,17 @@
 
 List incidents.
 
+### Synopsis
+
+List incidents, most recent first.
+
+--status and --severity are applied server-side. --labels and --from/--to are
+applied client-side, one page at a time, so a highly selective --labels filter
+can page through the full incident history before collecting --limit incidents.
+
+--query is a raw query-string escape hatch and cannot be combined with the
+structured --labels, --status, or --severity filters.
+
 ```
 gcx irm incidents list [flags]
 ```

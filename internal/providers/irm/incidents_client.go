@@ -137,7 +137,9 @@ func buildIncidentQueryString(query IncidentQuery) string {
 // are compiled into the query-string language. Label and date bounds are
 // enforced here against returned previews: labels are matched as either plain
 // label text or key:value pairs, and createdTime uses dateFrom inclusive and
-// dateTo exclusive.
+// dateTo exclusive. Because that matching is client-side, a highly selective
+// label or date filter can page through the full history before collecting
+// query.Limit results.
 func (c *IncidentClient) List(ctx context.Context, query IncidentQuery) ([]Incident, error) {
 	for _, s := range query.Statuses {
 		if !isIncidentStatusFilter(s) {

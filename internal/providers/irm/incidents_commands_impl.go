@@ -94,11 +94,21 @@ func (o *incidentListOpts) Validate() error {
 	return nil
 }
 
+const incidentListLong = `List incidents, most recent first.
+
+--status and --severity are applied server-side. --labels and --from/--to are
+applied client-side, one page at a time, so a highly selective --labels filter
+can page through the full incident history before collecting --limit incidents.
+
+--query is a raw query-string escape hatch and cannot be combined with the
+structured --labels, --status, or --severity filters.`
+
 func NewListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &incidentListOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List incidents.",
+		Long:  incidentListLong,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
