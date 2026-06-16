@@ -170,6 +170,28 @@ func TestFieldSelectCodec_ListWrapping(t *testing.T) {
 	}
 }
 
+func TestFieldSelectCodec_UnstructuredListPreservesPaginationMetadata(t *testing.T) {
+	codec := cmdio.NewFieldSelectCodec([]string{"name"})
+
+	list := unstructured.UnstructuredList{
+		Items: []unstructured.Unstructured{
+			{Object: map[string]any{"name": "foo", "kind": "Dashboard"}},
+		},
+	}
+	list.SetContinue("next-page")
+	list.SetResourceVersion("rv-1")
+
+	var buf bytes.Buffer
+	require.NoError(t, codec.Encode(&buf, list))
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
+	metadata, ok := got["metadata"].(map[string]any)
+	require.True(t, ok, "expected pagination metadata in output: %s", buf.String())
+	assert.Equal(t, "next-page", metadata["continue"])
+	assert.Equal(t, "rv-1", metadata["resourceVersion"])
+}
+
 func TestFieldSelectCodec_PrintItemsType(t *testing.T) {
 	type printItems struct {
 		Items []map[string]any `json:"items"`

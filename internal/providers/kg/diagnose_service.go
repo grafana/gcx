@@ -287,7 +287,7 @@ func runServiceMetricChecks(ctx context.Context, promClient *prometheus.Client, 
 
 	for _, def := range checks {
 		g.Go(func() error {
-			c := checkMetric(ctx, promClient, datasourceUID, def)
+			c, _ := checkMetric(ctx, promClient, datasourceUID, def)
 			mu.Lock()
 			results = append(results, c)
 			mu.Unlock()

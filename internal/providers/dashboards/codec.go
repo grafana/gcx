@@ -105,18 +105,18 @@ func dashboardFolder(item unstructured.Unstructured) string {
 	return folder
 }
 
-// dashboardTags returns the dashboard's tags as a comma-separated string.
-// Tags live at spec.tags ([]string).
 func dashboardTags(item unstructured.Unstructured) string {
-	raw, found, err := unstructured.NestedStringSlice(item.Object, "spec", "tags")
-	if err != nil || !found {
-		return ""
-	}
-	return strings.Join(raw, ", ")
+	return strings.Join(dashboardTagSlice(item), ", ")
 }
 
-// dashboardAge returns a human-readable age string derived from the resource's
-// creationTimestamp. Returns an empty string when the timestamp is missing.
+func dashboardTagSlice(item unstructured.Unstructured) []string {
+	raw, found, err := unstructured.NestedStringSlice(item.Object, "spec", "tags")
+	if err != nil || !found {
+		return nil
+	}
+	return raw
+}
+
 func dashboardAge(item unstructured.Unstructured) string {
 	ts := item.GetCreationTimestamp()
 	if ts.IsZero() {
@@ -140,11 +140,19 @@ func formatAge(d time.Duration) string {
 	}
 }
 
-// dashboardPanelCount returns the panel count as a string.
+func dashboardPanelCount(item unstructured.Unstructured) string {
+	count := dashboardPanelCountValue(item)
+	if count == nil {
+		return ""
+	}
+	return strconv.Itoa(*count)
+}
+
+// dashboardPanelCountValue returns the panel count.
 // For v1-family dashboards the count comes from spec.panels.
 // For v2-family dashboards (grafana-app-sdk) the count comes from spec.elements.
-// Returns "" when neither field is present.
-func dashboardPanelCount(item unstructured.Unstructured) string {
+// Returns nil when neither field is present.
+func dashboardPanelCountValue(item unstructured.Unstructured) *int {
 	apiVersion := item.GetAPIVersion()
 
 	gv, err := schema.ParseGroupVersion(apiVersion)
@@ -153,17 +161,19 @@ func dashboardPanelCount(item unstructured.Unstructured) string {
 		// v2 spec.elements is a map[id]→element, not a slice.
 		elements, found, err := unstructured.NestedMap(item.Object, "spec", "elements")
 		if err != nil || !found {
-			return ""
+			return nil
 		}
-		return strconv.Itoa(len(elements))
+		count := len(elements)
+		return &count
 	}
 
 	// v1-family (default)
 	panels, found, err := unstructured.NestedSlice(item.Object, "spec", "panels")
 	if err != nil || !found {
-		return ""
+		return nil
 	}
-	return strconv.Itoa(len(panels))
+	count := len(panels)
+	return &count
 }
 
 // isDigit reports whether b is an ASCII decimal digit.
@@ -171,19 +181,17 @@ func isDigit(b byte) bool {
 	return b >= '0' && b <= '9'
 }
 
-// dashboardURL synthesises the Grafana deep-link URL for a dashboard.
-// Format: {grafanaURL}/d/{name}/{slug}
-// The slug is read from the "grafana.app/slug" annotation.
-// Returns empty string when grafanaURL is not set.
 func dashboardURL(grafanaURL string, item unstructured.Unstructured) string {
-	if grafanaURL == "" {
-		return ""
-	}
-
-	name := item.GetName()
 	slug := ""
 	if ann := item.GetAnnotations(); ann != nil {
 		slug = ann["grafana.app/slug"]
+	}
+	return dashboardURLFromParts(grafanaURL, item.GetName(), slug)
+}
+
+func dashboardURLFromParts(grafanaURL, name, slug string) string {
+	if grafanaURL == "" {
+		return ""
 	}
 
 	base := strings.TrimSuffix(grafanaURL, "/")

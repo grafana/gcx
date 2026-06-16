@@ -83,14 +83,17 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 		for i, item := range v.Items {
 			items[i] = extractFields(item.Object, c.fields)
 		}
-		return c.json.Encode(dst, map[string]any{"items": items})
+		return c.json.Encode(dst, listFieldSelectionOutput(items, paginationMetadataFromUnstructuredList(v)))
 
 	case *unstructured.UnstructuredList:
+		if v == nil {
+			return c.json.Encode(dst, listFieldSelectionOutput(nil, nil))
+		}
 		items := make([]map[string]any, len(v.Items))
 		for i, item := range v.Items {
 			items[i] = extractFields(item.Object, c.fields)
 		}
-		return c.json.Encode(dst, map[string]any{"items": items})
+		return c.json.Encode(dst, listFieldSelectionOutput(items, paginationMetadataFromUnstructuredList(*v)))
 
 	case unstructured.Unstructured:
 		return c.json.Encode(dst, extractFields(v.Object, c.fields))
@@ -120,14 +123,16 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 		}
 
 		// If the value serialized to an object with an "items" array treat it
-		// as a collection (covers the printItems struct used in get.go).
+		// as a collection (covers the printItems struct used in get.go). Preserve
+		// pagination metadata from the list envelope even when item fields are
+		// selected, so callers can detect and fetch additional pages.
 		if raw, ok := m["items"]; ok {
 			items := toSliceOfMaps(raw)
 			extracted := make([]map[string]any, len(items))
 			for i, item := range items {
 				extracted[i] = extractFields(item, c.fields)
 			}
-			return c.json.Encode(dst, map[string]any{"items": extracted})
+			return c.json.Encode(dst, listFieldSelectionOutput(extracted, paginationMetadataFromObjectMap(m)))
 		}
 
 		return c.json.Encode(dst, extractFields(m, c.fields))
@@ -203,6 +208,58 @@ func toSlice(value any) ([]map[string]any, error) {
 		return nil, err
 	}
 	return arr, nil
+}
+
+func listFieldSelectionOutput(items []map[string]any, metadata map[string]any) map[string]any {
+	out := map[string]any{"items": items}
+	if len(metadata) > 0 {
+		out["metadata"] = metadata
+	}
+	return out
+}
+
+func paginationMetadataFromUnstructuredList(list unstructured.UnstructuredList) map[string]any {
+	metadata := make(map[string]any, 3)
+	if token := list.GetContinue(); token != "" {
+		metadata["continue"] = token
+	}
+	if resourceVersion := list.GetResourceVersion(); resourceVersion != "" {
+		metadata["resourceVersion"] = resourceVersion
+	}
+	if remaining := list.GetRemainingItemCount(); remaining != nil {
+		metadata["remainingItemCount"] = *remaining
+	}
+	return metadata
+}
+
+func paginationMetadataFromObjectMap(obj map[string]any) map[string]any {
+	rawMetadata, ok := obj["metadata"].(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	metadata := make(map[string]any, 3)
+	copyIfPresent := func(key string) {
+		value, ok := rawMetadata[key]
+		if !ok || !paginationMetadataValuePresent(value) {
+			return
+		}
+		metadata[key] = value
+	}
+	copyIfPresent("continue")
+	copyIfPresent("resourceVersion")
+	copyIfPresent("remainingItemCount")
+	return metadata
+}
+
+func paginationMetadataValuePresent(value any) bool {
+	if value == nil {
+		return false
+	}
+	if s, ok := value.(string); ok {
+		return s != ""
+	}
+	return true
 }
 
 // toSliceOfMaps converts an any value to []map[string]any. Values that are

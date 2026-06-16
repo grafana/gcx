@@ -14,6 +14,10 @@ The instrumentation command tree provides:
   status     Cross-cutting observed state for clusters and namespaces
              (RunK8sMonitoring + ListPipelines merge).
 
+  check      Validate OpenTelemetry instrumentation for an application
+             running locally (env vars, SDK, collector, Beyla, Alloy,
+             Grafana Cloud connectivity).
+
   clusters   Declared and observed state per K8s cluster:
              list, get, configure, remove, wait.
              Sub-group "apps" manages namespace-level Beyla configuration.
@@ -42,6 +46,7 @@ The instrumentation command tree provides:
 ### SEE ALSO
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
+* [gcx instrumentation check](gcx_instrumentation_check.md)	 - Validate OpenTelemetry instrumentation for an application
 * [gcx instrumentation clusters](gcx_instrumentation_clusters.md)	 - Manage K8s monitoring configuration for clusters
 * [gcx instrumentation services](gcx_instrumentation_services.md)	 - Manage workload-level instrumentation across the fleet
 * [gcx instrumentation setup](gcx_instrumentation_setup.md)	 - Onboard a Kubernetes cluster for Grafana Instrumentation Hub

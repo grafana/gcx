@@ -387,9 +387,14 @@ that only surfaced during smoke testing:
 
 ### gRPC-style POST APIs (Incidents/IRM)
 
-- The IRM API uses gRPC-style POST endpoints (`IncidentsService.QueryIncidents`,
-  `IncidentsService.GetIncident`, etc.) — all operations are POST with JSON bodies,
-  not REST-style GET/POST/PUT/DELETE. The `doRequest` helper always uses POST.
+- The IRM API uses gRPC-style POST endpoints (`IncidentsService.QueryIncidentPreviews`,
+  `IncidentsService.GetIncident`, etc.) under the versioned `/resources/api/v1/`
+  base path — all operations are POST with JSON bodies, not REST-style
+  GET/POST/PUT/DELETE. The `doRequest` helper always uses POST.
+  (`QueryIncidents` is deprecated upstream; gcx queries previews and filters
+  via the query-string language, e.g. `label:"security"`. Undocumented
+  services like `SeveritiesService` and `IncidentContextService` 404 under
+  `/v1` and stay on the unversioned base path.)
 - gcx's `GetIncident` fetches all incidents (limit 100) and filters client-side.
   The actual API has a `GetIncident` endpoint — use it directly for O(1) lookups.
 - The IRM API only supports status updates via `UpdateStatus` — there is no
@@ -399,8 +404,10 @@ that only surfaced during smoke testing:
   optional time fields instead of null. The `omitzero` tag (Go 1.24+) replaces
   `omitempty` for struct-typed fields to satisfy the modernize linter.
 - Delete is not supported — the IRM API has no delete endpoint.
-- Cursor-based pagination: the `contextPayload` field carries the cursor value
-  between pages, not a separate cursor parameter.
+- Cursor-based pagination: the cursor is a top-level request field next to
+  `query` (`{"query": {...}, "cursor": {"nextValue": "..."}}`) — pass the
+  previously returned cursor back verbatim to fetch the next page. It is not
+  a field inside the query object. Page `limit` is capped at 100 by the API.
 
 ### Token Exchange Auth (k6)
 

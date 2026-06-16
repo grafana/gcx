@@ -2,13 +2,20 @@ package irm_test
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/irm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/rest"
 )
 
 // ---------------------------------------------------------------------------
@@ -277,13 +284,33 @@ func TestListOpts_LabelValidation(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name:   "valid labels pass",
-			labels: []string{"team:platform", "env:prod"},
+			// Labels under the default Tags key are matched by plain text,
+			// so values without a colon are valid.
+			name:   "plain label text passes",
+			labels: []string{"security", "PIR not needed"},
 		},
 		{
-			name:    "missing colon fails",
-			labels:  []string{"nocolon"},
-			wantErr: "must be in key:value format",
+			// Keyed labels are matched by their key:value composite.
+			name:   "key:value text passes through verbatim",
+			labels: []string{"team:platform"},
+		},
+		{
+			name:    "empty label fails",
+			labels:  []string{"security", ""},
+			wantErr: "label must not be empty",
+		},
+		{
+			// The query-string language rejects double quotes inside
+			// single-quoted values, so a label containing a double quote
+			// cannot be expressed at all.
+			name:    "label with a double quote fails",
+			labels:  []string{`the "big" outage`},
+			wantErr: "cannot contain double quotes",
+		},
+		{
+			// Apostrophes are fine: double-quoted values may contain them.
+			name:   "label with a single quote passes",
+			labels: []string{"team's incident"},
 		},
 	}
 	for _, tt := range tests {
@@ -294,7 +321,100 @@ func TestListOpts_LabelValidation(t *testing.T) {
 			if tt.wantErr != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErr)
+			} else {
+				assert.NoError(t, err)
 			}
+		})
+	}
+}
+
+// fakeGrafanaConfigLoader implements irm.GrafanaConfigLoader for command tests.
+type fakeGrafanaConfigLoader struct {
+	cfg config.NamespacedRESTConfig
+}
+
+func (l fakeGrafanaConfigLoader) LoadGrafanaConfig(context.Context) (config.NamespacedRESTConfig, error) {
+	return l.cfg, nil
+}
+
+// TestIncidentsListCommand_BuildsQuery runs the real list command against a
+// fake API and asserts the flags land in a QueryIncidentPreviews request:
+// labels become quoted query-string terms, and the date flags never reach
+// the wire (the endpoint has no date fields) but are enforced client-side.
+func TestIncidentsListCommand_BuildsQuery(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	agent.ResetForTesting()
+	t.Cleanup(agent.ResetForTesting)
+
+	var query map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Query map[string]any `json:"query"`
+		}
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		query = body.Query
+		writeJSON(w, map[string]any{
+			"incidentPreviews": []map[string]any{
+				{"incidentID": "inc-1", "title": "Security incident", "status": "active", "severityLabel": "Major", "createdTime": "2024-06-10T12:00:00Z"},
+				{"incidentID": "inc-2", "title": "Too old", "status": "resolved", "createdTime": "2024-05-01T12:00:00Z"},
+			},
+			"cursor": map[string]any{"hasMore": false},
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	loader := fakeGrafanaConfigLoader{cfg: config.NamespacedRESTConfig{
+		Config:    rest.Config{Host: server.URL},
+		Namespace: "stack-123",
+	}}
+
+	cmd := irm.NewListCommand(loader)
+	cmd.SilenceUsage = true
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{
+		"--labels", "security,PIR not needed",
+		"--from", "2024-06-01T00:00:00Z",
+		"--to", "2024-06-15T00:00:00Z",
+		"--limit", "10",
+	})
+	require.NoError(t, cmd.Execute())
+
+	assert.Equal(t, `label:"security" label:"PIR not needed"`, query["queryString"])
+	assert.NotContains(t, query, "incidentLabels")
+	assert.NotContains(t, query, "dateFrom")
+	assert.NotContains(t, query, "dateTo")
+	// With date bounds the client fetches full pages and filters down to
+	// --limit itself, so the wire limit is the page maximum, not 10.
+	assert.InDelta(t, 100, query["limit"], 0)
+
+	out := stdout.String()
+	assert.Contains(t, out, "inc-1")
+	assert.Contains(t, out, "Security incident")
+	assert.Contains(t, out, "Major", "severityLabel must surface in the SEVERITY column")
+	assert.NotContains(t, out, "inc-2", "incidents outside --from/--to must be filtered client-side")
+}
+
+func TestIncidentsListCommand_RejectsNonPositiveLimit(t *testing.T) {
+	for _, limit := range []string{"0", "-5"} {
+		t.Run("limit "+limit, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+				t.Error("API must not be called when validation fails")
+			}))
+			t.Cleanup(server.Close)
+
+			cmd := irm.NewListCommand(fakeGrafanaConfigLoader{cfg: config.NamespacedRESTConfig{
+				Config: rest.Config{Host: server.URL},
+			}})
+			cmd.SilenceUsage = true
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetErr(&bytes.Buffer{})
+			cmd.SetArgs([]string{"--limit", limit})
+
+			err := cmd.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "must be at least 1")
 		})
 	}
 }

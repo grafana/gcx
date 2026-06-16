@@ -16,6 +16,22 @@ Systematic diagnosis of Entity Graph problems using gcx commands. Follow the
 steps in order — each step narrows the cause. Be direct and report findings
 concisely.
 
+## Start here: read the Orientation block
+
+`gcx kg diagnose` prints an Orientation block above its check table. Read it
+first. It tells you which (if any) of the five common Entity Graph scenarios
+the run matches:
+
+- "I see no entities at all"
+- "Some expected entities are missing"
+- "I see entities with no edges"
+- "I see disconnected clusters of entities"
+- "I can't filter to the entities I want"
+
+When the Orientation block names a matched scenario, follow its `Next:`
+commands. The per-step playbook below is the fallback for runs where no
+scenario matched or the matched scenario's hints didn't resolve the issue.
+
 ## Reading Diagnose Output
 
 Treat `gcx kg diagnose`'s verdicts as authoritative for the queries it

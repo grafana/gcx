@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -19,16 +21,22 @@ import (
 var ErrNotFound = fmt.Errorf("incident: %w", adapter.ErrNotFound)
 
 const (
-	incidentBasePath = "/api/plugins/grafana-irm-app/resources/api"
+	// incidentBasePath is the documented versioned base path of the IRM
+	// Incident API (IncidentsService, ActivityService).
+	incidentBasePath = "/api/plugins/grafana-irm-app/resources/api/v1"
+	// incidentLegacyBasePath is the unversioned base path. SeveritiesService
+	// and IncidentContextService are not part of the documented v1 API and
+	// 404 under the /v1 prefix — they only respond here.
+	incidentLegacyBasePath = "/api/plugins/grafana-irm-app/resources/api"
 
 	incGetPath        = incidentBasePath + "/IncidentsService.GetIncident"
 	incCreatePath     = incidentBasePath + "/IncidentsService.CreateIncident"
 	incUpdateStatPath = incidentBasePath + "/IncidentsService.UpdateStatus"
-	incQueryPath      = incidentBasePath + "/IncidentsService.QueryIncidents"
+	incQueryPath      = incidentBasePath + "/IncidentsService.QueryIncidentPreviews"
 	actQueryPath      = incidentBasePath + "/ActivityService.QueryActivity"
 	actAddPath        = incidentBasePath + "/ActivityService.AddActivity"
-	sevGetPath        = incidentBasePath + "/SeveritiesService.GetOrgSeverities"
-	ctxQueryPath      = incidentBasePath + "/IncidentContextService.QueryIncidentContext"
+	sevGetPath        = incidentLegacyBasePath + "/SeveritiesService.GetOrgSeverities"
+	ctxQueryPath      = incidentLegacyBasePath + "/IncidentContextService.QueryIncidentContext"
 )
 
 // Client is an HTTP client for the Grafana IRM Incidents API.
@@ -46,9 +54,48 @@ func NewIncidentClient(cfg config.NamespacedRESTConfig) (*IncidentClient, error)
 	return &IncidentClient{httpClient: httpClient, host: cfg.Host}, nil
 }
 
-// List queries incidents with the given parameters and handles pagination.
+// incidentsMaxPageSize is the documented maximum for IncidentPreviewsQuery.limit.
+const incidentsMaxPageSize = 100
+
+// quoteIncidentQueryValue wraps a value for the incident query-string
+// language, which requires quoting for values containing spaces or colons.
+// Double-quoted values match both Tags-key label text and keyed key:value
+// composites and may themselves contain single quotes. The reverse does not
+// hold — the server rejects double quotes inside single-quoted values — so
+// values containing a double quote cannot be expressed in the language and
+// are rejected by List and by the list command's validation.
+func quoteIncidentQueryValue(v string) string {
+	return `"` + v + `"`
+}
+
+// buildLabelsQueryString translates label filters into query-string terms.
+// Juxtaposed label terms AND together, which matches the behaviour of the
+// structured incidentLabels filter on the deprecated QueryIncidents endpoint
+// (verified live: identical result sets).
+func buildLabelsQueryString(labels []string) string {
+	terms := make([]string, len(labels))
+	for i, l := range labels {
+		terms[i] = "label:" + quoteIncidentQueryValue(l)
+	}
+	return strings.Join(terms, " ")
+}
+
+// List queries incident previews with the given parameters, following the
+// response cursor until query.Limit incidents are collected or the server
+// reports no more pages. A non-positive query.Limit defaults to 100.
+//
+// QueryIncidentPreviews has no structured filter fields: label filters are
+// translated into the query-string language, and date bounds — which even
+// the deprecated QueryIncidents endpoint ignored server-side — are enforced
+// here on createdTime, dateFrom inclusive and dateTo exclusive.
 func (c *IncidentClient) List(ctx context.Context, query IncidentQuery) ([]Incident, error) {
-	if query.Limit == 0 {
+	for _, l := range query.IncidentLabels {
+		if strings.Contains(l, `"`) {
+			return nil, fmt.Errorf("incidents: invalid label %q: the incident query-string language cannot express values containing double quotes", l)
+		}
+	}
+
+	if query.Limit <= 0 {
 		query.Limit = 100
 	}
 	if query.OrderDirection == "" {
@@ -58,23 +105,81 @@ func (c *IncidentClient) List(ctx context.Context, query IncidentQuery) ([]Incid
 		query.OrderField = "createdTime"
 	}
 
+	wire := incidentPreviewsQuery{
+		OrderDirection: query.OrderDirection,
+		OrderField:     query.OrderField,
+		QueryString:    buildLabelsQueryString(query.IncidentLabels),
+	}
+
+	var from, to time.Time
+	if query.DateFrom != nil {
+		from = time.Time(*query.DateFrom)
+	}
+	if query.DateTo != nil {
+		to = time.Time(*query.DateTo)
+	}
+	dateBounded := !from.IsZero() || !to.IsZero()
+	// With the default createdTime-descending order, every incident after the
+	// first one older than `from` is older too, so paging can stop early.
+	newestFirst := query.OrderDirection == "DESC" && query.OrderField == "createdTime"
+
 	limit := query.Limit
-	var all []Incident
+	var (
+		all      []Incident
+		cursor   *IncidentCursor
+		pastFrom bool
+	)
 	for {
-		resp, err := c.queryIncidents(ctx, query)
+		if dateBounded {
+			// Date filtering happens client-side, so a page can contribute
+			// anywhere from zero to all of its previews. Fetch full pages to
+			// keep the crawl towards the bounds short; the result is
+			// truncated to limit below.
+			wire.Limit = incidentsMaxPageSize
+		} else {
+			wire.Limit = min(limit-len(all), incidentsMaxPageSize)
+		}
+		resp, err := c.queryIncidentPreviews(ctx, wire, cursor)
 		if err != nil {
 			return nil, err
 		}
-		all = append(all, resp.Incidents...)
-		if len(all) >= limit || !resp.Cursor.HasMore {
-			break
+
+		for _, preview := range resp.IncidentPreviews {
+			created := time.Time(preview.CreatedTime)
+			if created.IsZero() {
+				// A preview without a createdTime cannot be placed in the
+				// requested window, so date-bounded queries exclude it.
+				if from.IsZero() && to.IsZero() {
+					all = append(all, preview.ToIncident())
+				}
+				continue
+			}
+			if !from.IsZero() && created.Before(from) {
+				if newestFirst {
+					pastFrom = true
+					break
+				}
+				continue
+			}
+			if !to.IsZero() && !created.Before(to) {
+				continue
+			}
+			all = append(all, preview.ToIncident())
 		}
-		query.ContextPayload = resp.Cursor.NextValue
+
+		if len(all) >= limit {
+			return all[:limit], nil
+		}
+		// Stop when no further page can add results: the from-bound was
+		// crossed, the server reports no more pages, or it returns an empty
+		// page or cursor value (looping on those would re-fetch forever).
+		if pastFrom || !resp.Cursor.HasMore || resp.Cursor.NextValue == "" || len(resp.IncidentPreviews) == 0 {
+			return all, nil
+		}
+		// The API contract is to pass previously returned cursor values back
+		// as-is.
+		cursor = &resp.Cursor
 	}
-	if len(all) > limit {
-		all = all[:limit]
-	}
-	return all, nil
 }
 
 // Get returns a single incident by ID.
@@ -301,9 +406,17 @@ func (c *IncidentClient) GetSeverities(ctx context.Context) ([]Severity, error) 
 	return result.Severities, nil
 }
 
-// queryIncidents performs a single paginated query.
-func (c *IncidentClient) queryIncidents(ctx context.Context, query IncidentQuery) (*queryIncidentsResponse, error) {
-	body, err := json.Marshal(queryIncidentsRequest{Query: query})
+// queryIncidentPreviews fetches a single page. cursor is nil for the first
+// page and the previously returned cursor for subsequent pages. Custom field
+// values and incident channels are always requested so previews carry the
+// same optional data the full incidents used to.
+func (c *IncidentClient) queryIncidentPreviews(ctx context.Context, query incidentPreviewsQuery, cursor *IncidentCursor) (*queryIncidentPreviewsResponse, error) {
+	body, err := json.Marshal(queryIncidentPreviewsRequest{
+		Query:                    query,
+		Cursor:                   cursor,
+		IncludeCustomFieldValues: true,
+		IncludeIncidentChannels:  true,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("incidents: marshal query request: %w", err)
 	}
@@ -318,9 +431,13 @@ func (c *IncidentClient) queryIncidents(ctx context.Context, query IncidentQuery
 		return nil, handleIncidentErrorResponse(resp)
 	}
 
-	var result queryIncidentsResponse
+	var result queryIncidentPreviewsResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("incidents: decode query response: %w", err)
+	}
+	// The API can report failure in-band on a 200 response.
+	if result.Error != "" {
+		return nil, fmt.Errorf("incidents: query: %s", result.Error)
 	}
 
 	return &result, nil

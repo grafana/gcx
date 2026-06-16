@@ -116,24 +116,31 @@ func TestClient_Create(t *testing.T) {
 		var raw map[string]any
 		assert.NoError(t, json.Unmarshal(body, &raw))
 		assert.Equal(t, "exp-1", raw["name"])
+		assert.Equal(t, "Nightly", raw["description"])
 		assert.Equal(t, "external", raw["source"])
+		assert.Equal(t, []any{"support", "prompt-v2"}, raw["tags"])
 
 		w.WriteHeader(http.StatusCreated)
 		writeJSON(w, experiments.Experiment{
-			RunID:  "r-99",
-			Name:   "exp-1",
-			Source: "external",
-			Status: "pending",
+			RunID:       "r-99",
+			Name:        "exp-1",
+			Description: "Nightly",
+			Tags:        []string{"support", "prompt-v2"},
+			Source:      "external",
+			Status:      "pending",
 		})
 	}))
 
 	exp, err := client.Create(context.Background(), &experiments.Experiment{
-		Name:   "exp-1",
-		Source: "external",
+		Name:        "exp-1",
+		Description: "Nightly",
+		Tags:        []string{"support", "prompt-v2"},
+		Source:      "external",
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "r-99", exp.RunID)
 	assert.Equal(t, "pending", exp.Status)
+	assert.Equal(t, []string{"support", "prompt-v2"}, exp.Tags)
 }
 
 func TestClient_Create_TransportError(t *testing.T) {
@@ -154,15 +161,21 @@ func TestClient_Update_PATCH(t *testing.T) {
 		var raw map[string]any
 		assert.NoError(t, json.Unmarshal(body, &raw))
 		assert.Equal(t, "renamed", raw["name"])
+		assert.Equal(t, "Updated notes", raw["description"])
+		assert.Equal(t, []any{"support", "release"}, raw["tags"])
 
 		w.WriteHeader(http.StatusOK)
-		writeJSON(w, experiments.Experiment{RunID: "r-1", Name: "renamed"})
+		writeJSON(w, experiments.Experiment{RunID: "r-1", Name: "renamed", Description: "Updated notes", Tags: []string{"support", "release"}})
 	}))
 
 	name := "renamed"
-	exp, err := client.Update(context.Background(), "r-1", &experiments.UpdateRequest{Name: &name})
+	description := "Updated notes"
+	tags := []string{"support", "release"}
+	exp, err := client.Update(context.Background(), "r-1", &experiments.UpdateRequest{Name: &name, Description: &description, Tags: &tags})
 	require.NoError(t, err)
 	assert.Equal(t, "renamed", exp.Name)
+	assert.Equal(t, "Updated notes", exp.Description)
+	assert.Equal(t, []string{"support", "release"}, exp.Tags)
 }
 
 func TestClient_Update_NotFound(t *testing.T) {

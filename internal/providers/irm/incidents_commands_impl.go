@@ -38,7 +38,7 @@ func (o *incidentListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of incidents to return")
-	flags.StringSliceVar(&o.Labels, "labels", nil, "Filter by labels (key:value format, may be repeated)")
+	flags.StringSliceVar(&o.Labels, "labels", nil, "Filter by labels (label text or key:value, may be repeated)")
 	flags.StringVar(&o.DateFrom, "from", "", "Start of time range (RFC3339, unix timestamp, or relative e.g. now-7d)")
 	flags.StringVar(&o.DateTo, "to", "", "End of time range (RFC3339, unix timestamp, or relative e.g. now)")
 }
@@ -47,9 +47,19 @@ func (o *incidentListOpts) Validate() error {
 	if err := o.IO.Validate(); err != nil {
 		return err
 	}
+	if o.Limit < 1 {
+		return fmt.Errorf("invalid --limit value %d: must be at least 1", o.Limit)
+	}
+	// Labels match plain label text for the default Tags key and key:value
+	// composites for keyed labels; values are passed through as given and
+	// double-quoted into the incident query-string language by the client.
+	// That language cannot express a value containing a double quote.
 	for _, l := range o.Labels {
-		if !strings.Contains(l, ":") {
-			return fmt.Errorf("invalid label %q: must be in key:value format", l)
+		if strings.TrimSpace(l) == "" {
+			return errors.New("invalid --labels value: label must not be empty")
+		}
+		if strings.Contains(l, `"`) {
+			return fmt.Errorf("invalid --labels value %q: cannot contain double quotes", l)
 		}
 	}
 	now := time.Now()
@@ -64,20 +74,6 @@ func (o *incidentListOpts) Validate() error {
 		}
 	}
 	return nil
-}
-
-// BuildQueryString converts --labels values into the IRM query string format.
-// Each label is formatted as field:Tags:'key:value' and multiple labels are
-// separated by a space.
-func BuildQueryString(labels []string) string {
-	if len(labels) == 0 {
-		return ""
-	}
-	parts := make([]string, len(labels))
-	for i, l := range labels {
-		parts[i] = "field:Tags:'" + l + "'"
-	}
-	return strings.Join(parts, " ")
 }
 
 func NewListCommand(loader GrafanaConfigLoader) *cobra.Command {
