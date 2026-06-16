@@ -104,7 +104,7 @@ suitable for inlining in markdown / piping to "dot -Tpng".`,
 		RunE: runMap(opts),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
-			agent.AnnotationLLMHint:   `Service-graph slice for one App Observability service: callers (peers calling into the service) and callees (peers the service calls), with per-edge rate (req/s), error %, and direction-aware p95 latency (server-side for callers, client-side for callees). Connection-type label distinguishes HTTP/gRPC (empty), database, messaging, and virtual_node (uninstrumented upstreams synthesised by Tempo). Output formats: table/wide (default two-section view), json/yaml (structured), mermaid (markdown-renderable graph), dot (Graphviz). Pairs with 'gcx appo11y services get' (single-service RED) and 'gcx appo11y services operations' (per-endpoint breakdown). Examples: gcx appo11y services map <name> -o json; gcx appo11y services map <ns>/<name> --since 1h -o mermaid`,
+			agent.AnnotationLLMHint:   `Service-graph slice for one App Observability service: callers (peers calling into the service) and callees (peers the service calls), with per-edge rate (req/s), error %, and direction-aware p95 latency (server-side for callers, client-side for callees). Connection-type label distinguishes HTTP/gRPC (empty), database, messaging, and virtual_node (uninstrumented upstreams synthesised by Tempo). Output formats: table/wide (default two-section view), json/yaml (structured), mermaid (markdown-renderable graph), dot (Graphviz). Pairs with 'gcx appo11y services get' (single-service RED) and 'gcx appo11y services list-operations' (per-endpoint breakdown). Examples: gcx appo11y services map <name> -o json; gcx appo11y services map <ns>/<name> --since 1h -o mermaid`,
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -146,7 +146,7 @@ func runMap(opts *mapOpts) func(*cobra.Command, []string) error {
 			return fmt.Errorf("failed to create prometheus client: %w", err)
 		}
 
-		// Bare-name resolution: same UX as `services get` and `services operations`.
+		// Bare-name resolution: same UX as `services get` and `services list-operations`.
 		if namespace == "" {
 			resolved, err := resolveNamespaceForBareName(ctx, client, datasourceUID, name)
 			if err != nil {
@@ -480,17 +480,6 @@ func (c *serviceMapDOTCodec) Encode(w io.Writer, v any) error {
 	emit(resp.Callees, false)
 	fmt.Fprintln(w, "}")
 	return nil
-}
-
-// formatPercentMaybe mirrors the helper of the same name on the
-// services-operations branch (where it lives in operations.go). When
-// both land on main the duplicate will collapse; until then the local
-// copy keeps this branch self-contained.
-func formatPercentMaybe(v float64, has bool) string {
-	if !has {
-		return "-"
-	}
-	return fmt.Sprintf("%.2f%%", v)
 }
 
 func dotPeerAttrs(connType string) string {

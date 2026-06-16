@@ -47,8 +47,8 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.Datasource, "datasource", "d", "", "Prometheus datasource UID (defaults to datasources.prometheus in config or auto-discovery)")
 	flags.StringVarP(&o.Namespace, "namespace", "n", "", "Service namespace (only needed when the argument is the bare service name and multiple namespaces are in play)")
 	flags.StringVar(&o.Since, "since", defaultRedWindow, "Rate/quantile window applied to span metrics (e.g. 1m, 5m, 1h, 1d) — PromQL duration syntax")
-	flags.StringVar(&o.Kind, "kind", "inbound", "Span kinds to include: inbound (server+consumer), server, consumer, all, or a comma list of SPAN_KIND_* literals")
-	flags.StringVar(&o.MetricsMode, "metrics-mode", metricsModeAuto, "Span-metrics family: auto (probes the stack), v3 (traces_span_metrics_*), tempo (traces_spanmetrics_*), or otel (bare calls_total + duration_seconds_bucket)")
+	flags.StringVar(&o.Kind, "kind", "inbound", "Span kinds to include. One of: inbound (server+consumer), server, consumer, all, or a comma-separated list of SPAN_KIND_* literals")
+	flags.StringVar(&o.MetricsMode, "metrics-mode", metricsModeAuto, "Span-metrics family. One of: auto (probes the stack), v3 (traces_span_metrics_*), tempo (traces_spanmetrics_*), or otel (bare calls_total + duration_seconds_bucket)")
 }
 
 func (o *getOpts) Validate(cmd *cobra.Command) error {
