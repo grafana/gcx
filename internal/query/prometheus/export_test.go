@@ -17,3 +17,8 @@ func (c *Client) BuildMetadataPath(datasourceUID string) string {
 func (c *Client) BuildSeriesPath(datasourceUID string) string {
 	return c.buildSeriesPath(datasourceUID)
 }
+
+// ConvertGrafanaResponse exposes the unexported converter for the external test package.
+func ConvertGrafanaResponse(grafanaResp *GrafanaQueryResponse, isRange bool) *QueryResponse {
+	return convertGrafanaResponse(grafanaResp, isRange)
+}

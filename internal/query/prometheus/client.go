@@ -143,8 +143,10 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 		}
 	}
 
-	// Convert to Prometheus-style response
-	return convertGrafanaResponse(&grafanaResp), nil
+	// Convert to Prometheus-style response. Pass the request intent so the result
+	// type reflects what was asked (range -> matrix, instant -> vector), not the
+	// shape of the data that came back.
+	return convertGrafanaResponse(&grafanaResp, req.IsRange()), nil
 }
 
 // Labels returns all label names.
