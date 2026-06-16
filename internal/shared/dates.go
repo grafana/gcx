@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/prometheus/common/model"
 )
 
 var relativeTimeRegex = regexp.MustCompile(`^now(?:([+-])(\d+)([smhdwMy]))?$`)
@@ -83,13 +85,20 @@ func parseRelativeTime(s string, now time.Time) (time.Time, error) {
 	return now.Add(duration), nil
 }
 
-// ParseDuration parses a duration string that can be:
-// - Go duration (e.g., "1h30m", "5m").
-// - Prometheus-style duration (e.g., "1h", "30m", "5s").
+// ParseDuration parses a Prometheus-style duration string. It accepts the units
+// ms, s, m, h, d, w, and y, optionally compounded from larger to smaller units
+// (e.g. "30m", "1h30m", "7d", "2w", "1y"), matching Prometheus and the Grafana
+// Explore UI. Unlike Go's time.ParseDuration it understands d/w/y, but it does
+// not accept fractional values ("1.5h") or units in reversed order ("30m1h").
+// An empty string parses to 0.
 func ParseDuration(s string) (time.Duration, error) {
 	if s == "" {
 		return 0, nil
 	}
 
-	return time.ParseDuration(s)
+	d, err := model.ParseDurationAllowNegative(s)
+	if err != nil {
+		return 0, fmt.Errorf("%w (valid units: s, m, h, d, w, y; e.g. 30m, 1h30m, 7d)", err)
+	}
+	return time.Duration(d), nil
 }

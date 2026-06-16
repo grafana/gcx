@@ -47,7 +47,7 @@ gcx datasources tempo get TRACE_ID [flags]
       --open                Open the retrieved trace in Grafana Explore
   -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the retrieved trace to stderr
-      --since string        Duration before --to (or now if omitted); mutually exclusive with --from
+      --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 
