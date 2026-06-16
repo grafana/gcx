@@ -29,7 +29,12 @@ func relatedSkillFooter(cmd *cobra.Command) []string {
 			lines = append(lines, "  "+name)
 		}
 	}
-	lines = append(lines, "Read a skill only if it fits your task: gcx agent skills get <name>")
+	lines = append(
+		lines,
+		"Read a skill only if it fits your task",
+		"These skills are bundled — no install needed",
+		"gcx agent skills get <name> -otext",
+	)
 	return lines
 }
 
