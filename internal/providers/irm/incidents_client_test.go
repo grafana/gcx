@@ -249,38 +249,112 @@ func TestClient_List(t *testing.T) {
 }
 
 // TestClient_List_Filters covers the filter translation the migration to
-// QueryIncidentPreviews introduced: labels become query-string terms and the
-// date bounds are enforced client-side (the endpoint has no date fields).
+// QueryIncidentPreviews introduced: labels and date bounds are enforced
+// client-side (the endpoint has no structured fields for either), while status
+// and severity still compile into query-string terms.
 func TestClient_List_Filters(t *testing.T) {
 	tests := []clientListCase{
 		{
-			name:  "translates labels into quoted query-string terms",
-			query: irm.IncidentQuery{Limit: 10, IncidentLabels: []string{"security", "PIR not needed", "service_name:checkout", "team's"}},
+			name:  "matches keyed and legacy labels client-side",
+			query: irm.IncidentQuery{Limit: 10, IncidentLabels: []string{"squad:mimir"}},
 			handler: func(t *testing.T, calls *[]listRequest) http.HandlerFunc {
 				t.Helper()
 				return func(w http.ResponseWriter, _ *http.Request) {
 					req := (*calls)[0]
-					assert.Equal(t, `label:"security" label:"PIR not needed" label:"service_name:checkout" label:"team's"`, req.Query["queryString"])
+					assert.NotContains(t, req.Query, "queryString")
 					assert.NotContains(t, req.Query, "incidentLabels")
 					assert.Equal(t, "DESC", req.Query["orderDirection"])
 					assert.True(t, req.IncludeCustomFieldValues)
 					assert.True(t, req.IncludeIncidentChannels)
-					writeJSON(w, previewsPage("p1", 1, false, ""))
+					writeJSON(w, map[string]any{
+						"incidentPreviews": []map[string]any{
+							{
+								"incidentID": "inc-keyed",
+								"title":      "Keyed squad",
+								"status":     "active",
+								"labels":     []map[string]any{{"key": "squad", "label": "mimir"}},
+							},
+							{
+								"incidentID": "inc-legacy",
+								"title":      "Legacy tag",
+								"status":     "active",
+								"labels":     []map[string]any{{"key": "Tags", "label": "squad:mimir"}},
+							},
+							{
+								"incidentID": "inc-other",
+								"title":      "Other squad",
+								"status":     "active",
+								"labels":     []map[string]any{{"key": "squad", "label": "tempo"}},
+							},
+						},
+						"cursor": map[string]any{"hasMore": false},
+					})
 				}
 			},
-			wantLen:   1,
+			wantIDs:   []string{"inc-keyed", "inc-legacy"},
 			wantCalls: 1,
 		},
 		{
-			name:  "rejects labels containing a double quote",
+			name:  "labels with double quotes are matched client-side",
 			query: irm.IncidentQuery{Limit: 10, IncidentLabels: []string{`the "big" outage`}},
-			handler: func(t *testing.T, _ *[]listRequest) http.HandlerFunc {
+			handler: func(t *testing.T, calls *[]listRequest) http.HandlerFunc {
 				t.Helper()
-				return func(_ http.ResponseWriter, _ *http.Request) {
-					t.Error("API must not be called for an inexpressible label")
+				return func(w http.ResponseWriter, _ *http.Request) {
+					assert.NotContains(t, (*calls)[0].Query, "queryString")
+					writeJSON(w, map[string]any{
+						"incidentPreviews": []map[string]any{
+							{
+								"incidentID": "inc-quoted",
+								"title":      "Quoted label",
+								"status":     "active",
+								"labels":     []map[string]any{{"key": "Tags", "label": `the "big" outage`}},
+							},
+						},
+						"cursor": map[string]any{"hasMore": false},
+					})
 				}
 			},
-			wantErr: "cannot express values containing double quotes",
+			wantIDs:   []string{"inc-quoted"},
+			wantCalls: 1,
+		},
+		{
+			name:  "keeps paging until enough client-side label matches are found",
+			query: irm.IncidentQuery{Limit: 1, IncidentLabels: []string{"component:warpstream"}},
+			handler: func(t *testing.T, calls *[]listRequest) http.HandlerFunc {
+				t.Helper()
+				return func(w http.ResponseWriter, _ *http.Request) {
+					req := (*calls)[len(*calls)-1]
+					assert.InDelta(t, 100, req.Query["limit"], 0)
+					switch len(*calls) {
+					case 1:
+						writeJSON(w, map[string]any{
+							"incidentPreviews": []map[string]any{
+								{
+									"incidentID": "inc-nonmatching",
+									"title":      "Other incident",
+									"status":     "active",
+									"labels":     []map[string]any{{"key": "component", "label": "database"}},
+								},
+							},
+							"cursor": map[string]any{"hasMore": true, "nextValue": "cursor-1"},
+						})
+					default:
+						writeJSON(w, map[string]any{
+							"incidentPreviews": []map[string]any{
+								{
+									"incidentID": "inc-warpstream",
+									"title":      "WarpStream incident",
+									"status":     "active",
+									"labels":     []map[string]any{{"key": "component", "label": "warpstream"}},
+								},
+							},
+							"cursor": map[string]any{"hasMore": false},
+						})
+					}
+				}
+			},
+			wantIDs:   []string{"inc-warpstream"},
+			wantCalls: 2,
 		},
 		{
 			name:  "single status becomes a bare status term",
@@ -326,11 +400,29 @@ func TestClient_List_Filters(t *testing.T) {
 			handler: func(t *testing.T, calls *[]listRequest) http.HandlerFunc {
 				t.Helper()
 				return func(w http.ResponseWriter, _ *http.Request) {
-					assert.Equal(t, `label:"security" status:active severity:"major"`, (*calls)[0].Query["queryString"])
-					writeJSON(w, previewsPage("p1", 1, false, ""))
+					assert.Equal(t, `status:active severity:"major"`, (*calls)[0].Query["queryString"])
+					writeJSON(w, map[string]any{
+						"incidentPreviews": []map[string]any{
+							{
+								"incidentID":    "inc-security",
+								"title":         "Security incident",
+								"status":        "active",
+								"severityLabel": "Major",
+								"labels":        []map[string]any{{"key": "Tags", "label": "security"}},
+							},
+							{
+								"incidentID":    "inc-other",
+								"title":         "Other incident",
+								"status":        "active",
+								"severityLabel": "Major",
+								"labels":        []map[string]any{{"key": "Tags", "label": "other"}},
+							},
+						},
+						"cursor": map[string]any{"hasMore": false},
+					})
 				}
 			},
-			wantLen:   1,
+			wantIDs:   []string{"inc-security"},
 			wantCalls: 1,
 		},
 		{

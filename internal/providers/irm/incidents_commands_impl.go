@@ -41,7 +41,7 @@ func (o *incidentListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of incidents to return")
-	flags.StringSliceVar(&o.Labels, "labels", nil, "Filter by labels (label text or key:value, may be repeated)")
+	flags.StringSliceVar(&o.Labels, "labels", nil, "Filter by label text or key:value (may be repeated; matched client-side)")
 	flags.StringVar(&o.DateFrom, "from", "", "Start of time range (RFC3339, unix timestamp, or relative e.g. now-7d)")
 	flags.StringVar(&o.DateTo, "to", "", "End of time range (RFC3339, unix timestamp, or relative e.g. now)")
 	flags.StringSliceVar(&o.Statuses, "status", nil, "Filter by status (active|resolved; repeatable, comma-separated)")
@@ -63,16 +63,11 @@ func (o *incidentListOpts) Validate() error {
 		// (e.g. --status active --query status:resolved).
 		return errors.New("--query cannot be combined with --labels, --status, or --severity")
 	}
-	// Labels match plain label text for the default Tags key and key:value
-	// composites for keyed labels; values are passed through as given and
-	// double-quoted into the incident query-string language by the client.
-	// That language cannot express a value containing a double quote.
+	// Labels are matched client-side against preview label objects as either
+	// plain label text or key:value pairs.
 	for _, l := range o.Labels {
 		if strings.TrimSpace(l) == "" {
 			return errors.New("invalid --labels value: label must not be empty")
-		}
-		if strings.Contains(l, `"`) {
-			return fmt.Errorf("invalid --labels value %q: cannot contain double quotes", l)
 		}
 	}
 	for _, s := range o.Statuses {

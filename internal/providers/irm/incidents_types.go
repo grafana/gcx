@@ -165,6 +165,7 @@ type IncidentLabel struct {
 	Key         string `json:"key"`
 	KeyUUID     string `json:"keyUUID,omitempty"`
 	Label       string `json:"label,omitempty"`
+	Value       string `json:"value,omitempty"`
 	LabelUUID   string `json:"labelUUID,omitempty"`
 	ColorHex    string `json:"colorHex,omitempty"`
 	Description string `json:"description,omitempty"`

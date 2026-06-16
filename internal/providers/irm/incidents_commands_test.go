@@ -291,7 +291,7 @@ func TestListOpts_LabelValidation(t *testing.T) {
 		},
 		{
 			// Keyed labels are matched by their key:value composite.
-			name:   "key:value text passes through verbatim",
+			name:   "key:value text passes",
 			labels: []string{"team:platform"},
 		},
 		{
@@ -300,12 +300,8 @@ func TestListOpts_LabelValidation(t *testing.T) {
 			wantErr: "label must not be empty",
 		},
 		{
-			// The query-string language rejects double quotes inside
-			// single-quoted values, so a label containing a double quote
-			// cannot be expressed at all.
-			name:    "label with a double quote fails",
-			labels:  []string{`the "big" outage`},
-			wantErr: "cannot contain double quotes",
+			name:   "label with a double quote passes",
+			labels: []string{`the "big" outage`},
 		},
 		{
 			// Apostrophes are fine: double-quoted values may contain them.
@@ -396,8 +392,8 @@ func (l fakeGrafanaConfigLoader) LoadGrafanaConfig(context.Context) (config.Name
 
 // TestIncidentsListCommand_BuildsQuery runs the real list command against a
 // fake API and asserts the flags land in a QueryIncidentPreviews request:
-// labels become quoted query-string terms, and the date flags never reach
-// the wire (the endpoint has no date fields) but are enforced client-side.
+// labels and date flags never reach the wire (the endpoint has no structured
+// fields for them) but are enforced client-side.
 func TestIncidentsListCommand_BuildsQuery(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
 	agent.ResetForTesting()
@@ -412,8 +408,31 @@ func TestIncidentsListCommand_BuildsQuery(t *testing.T) {
 		query = body.Query
 		writeJSON(w, map[string]any{
 			"incidentPreviews": []map[string]any{
-				{"incidentID": "inc-1", "title": "Security incident", "status": "active", "severityLabel": "Major", "createdTime": "2024-06-10T12:00:00Z"},
-				{"incidentID": "inc-2", "title": "Too old", "status": "resolved", "createdTime": "2024-05-01T12:00:00Z"},
+				{
+					"incidentID":    "inc-1",
+					"title":         "Security incident",
+					"status":        "active",
+					"severityLabel": "Major",
+					"createdTime":   "2024-06-10T12:00:00Z",
+					"labels": []map[string]any{
+						{"key": "Tags", "label": "security"},
+						{"key": "Tags", "label": "PIR not needed"},
+					},
+				},
+				{
+					"incidentID":  "inc-2",
+					"title":       "Too old",
+					"status":      "resolved",
+					"createdTime": "2024-05-01T12:00:00Z",
+					"labels":      []map[string]any{{"key": "Tags", "label": "security"}},
+				},
+				{
+					"incidentID":  "inc-3",
+					"title":       "Wrong label",
+					"status":      "active",
+					"createdTime": "2024-06-10T12:00:00Z",
+					"labels":      []map[string]any{{"key": "Tags", "label": "security"}},
+				},
 			},
 			"cursor": map[string]any{"hasMore": false},
 		})
@@ -440,7 +459,7 @@ func TestIncidentsListCommand_BuildsQuery(t *testing.T) {
 	})
 	require.NoError(t, cmd.Execute())
 
-	assert.Equal(t, `label:"security" label:"PIR not needed" status:active severity:"major"`, query["queryString"])
+	assert.Equal(t, `status:active severity:"major"`, query["queryString"])
 	assert.NotContains(t, query, "incidentLabels")
 	assert.NotContains(t, query, "dateFrom")
 	assert.NotContains(t, query, "dateTo")
@@ -453,6 +472,7 @@ func TestIncidentsListCommand_BuildsQuery(t *testing.T) {
 	assert.Contains(t, out, "Security incident")
 	assert.Contains(t, out, "Major", "severityLabel must surface in the SEVERITY column")
 	assert.NotContains(t, out, "inc-2", "incidents outside --from/--to must be filtered client-side")
+	assert.NotContains(t, out, "inc-3", "incidents missing one --labels value must be filtered client-side")
 }
 
 func TestIncidentsListCommand_RejectsNonPositiveLimit(t *testing.T) {
