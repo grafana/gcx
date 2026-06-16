@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/datasources"
+	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/grafana"
@@ -181,6 +182,7 @@ func convertAuthErrors(err error) (*gcxerrors.DetailedError, bool) {
 			Suggestions: []string{
 				"Run `gcx login` to re-authenticate",
 			},
+			DocsLink: docs.ServiceAccounts,
 		}, true
 	}
 	return nil, false
@@ -221,6 +223,7 @@ func convertAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
 				"Make sure that the configured credentials are correct",
 				"Make sure that the configured credentials have enough permissions",
 			},
+			DocsLink: docs.ServiceAccounts,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}, true
 	case k8sapi.IsNotFound(statusErr):
@@ -256,9 +259,29 @@ func convertQueryErrors(err error) (*gcxerrors.DetailedError, bool) {
 
 	if apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden {
 		detailedErr.ExitCode = new(gcxerrors.ExitAuthFailure)
+		detailedErr.DocsLink = docs.ServiceAccounts
+	} else if link := queryErrorDocsLink(apiErr); link != "" {
+		detailedErr.DocsLink = link
 	}
 
 	return detailedErr, true
+}
+
+// queryErrorDocsLink maps a datasource to its query-language documentation so
+// agents that hit a parse/query error are pointed at the correct language docs.
+func queryErrorDocsLink(apiErr *queryerror.APIError) string {
+	switch apiErr.Datasource {
+	case "loki":
+		return docs.LogQL
+	case "prometheus":
+		return docs.PromQL
+	case "pyroscope":
+		return docs.PyroscopeQueries
+	case "tempo":
+		return docs.TraceQL
+	default:
+		return ""
+	}
 }
 
 func queryErrorSummary(apiErr *queryerror.APIError) string {
@@ -516,6 +539,7 @@ func convertServiceAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
 			Suggestions: []string{
 				"Ensure your Grafana Cloud access policy includes the adaptive-logs:admin scope",
 			},
+			DocsLink: docs.AccessPolicies,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}, true
 	}
@@ -744,6 +768,7 @@ func convertLoginValidationErrors(err error) (*gcxerrors.DetailedError, bool) {
 				"Confirm the Grafana token has the role required to call /apis (Admin or Editor)",
 				"Check network/proxy access to " + k8sErr.Server,
 			},
+			DocsLink: docs.GrafanaInstallation,
 		}, true
 	}
 
@@ -772,7 +797,7 @@ func convertGCOMStackError(err *login.GCOMStackError) *gcxerrors.DetailedError {
 				"Confirm the access policy is in the same org as the stack",
 				"Regenerate the CAP token if the policy was recently updated",
 			},
-			DocsLink: "https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/",
+			DocsLink: docs.AccessPolicies,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}
 	case http.StatusUnauthorized:
@@ -784,6 +809,7 @@ func convertGCOMStackError(err *login.GCOMStackError) *gcxerrors.DetailedError {
 				"Generate a new Cloud Access Policy token at https://grafana.com",
 				"Confirm the token was copied without truncation",
 			},
+			DocsLink: docs.AccessPolicies,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}
 	case http.StatusNotFound:
@@ -821,6 +847,7 @@ func convertHealthCheckError(err *login.HealthCheckError) *gcxerrors.DetailedErr
 				"Confirm the service-account role grants Admin or Editor as required",
 				reauthSuggestion,
 			},
+			DocsLink: docs.ServiceAccounts,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}
 	}
@@ -846,6 +873,7 @@ func convertVersionErrors(err error) (*gcxerrors.DetailedError, bool) {
 			Suggestions: []string{
 				"Upgrade your Grafana instance to version 12.0.0 or later",
 			},
+			DocsLink: docs.GrafanaInstallation,
 			ExitCode: new(gcxerrors.ExitVersionIncompatible),
 		}, true
 	}
@@ -884,6 +912,7 @@ func convertSMConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 				"Auto-discovery requires grafana.server in the current context",
 				"Check config: gcx config view",
 			},
+			DocsLink: docs.SyntheticMonitoring,
 		}, true
 	}
 
@@ -899,6 +928,7 @@ func convertSMConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 				"Or set the SM token directly: gcx config set providers.synth.sm-token <TOKEN>",
 				"Or use env var: export GRAFANA_PROVIDER_SYNTH_SM_TOKEN=<TOKEN>",
 			},
+			DocsLink: docs.AccessPolicies,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}, true
 	}
@@ -914,6 +944,7 @@ func convertSMConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 				"Auto-discovery requires cloud.token and cloud.stack in the current context",
 				"Check config: gcx config view",
 			},
+			DocsLink: docs.SyntheticMonitoring,
 		}, true
 	}
 
@@ -933,6 +964,7 @@ func convertCloudConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 				"Set cloud.token in your config: gcx config set cloud.token <TOKEN>",
 				"Or set GRAFANA_CLOUD_TOKEN environment variable",
 			},
+			DocsLink: docs.AccessPolicies,
 		}, true
 	}
 
@@ -958,6 +990,7 @@ func convertCloudConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 			Suggestions: []string{
 				"Ensure your cloud.token access policy includes the fleet-management:read scope",
 			},
+			DocsLink: docs.AccessPolicies,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}, true
 	}
@@ -971,6 +1004,7 @@ func convertCloudConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 			Suggestions: []string{
 				"Ensure your cloud.token access policy includes the fleet-management:write scope",
 			},
+			DocsLink: docs.AccessPolicies,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}, true
 	}
@@ -983,6 +1017,7 @@ func convertCloudConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 			Suggestions: []string{
 				"Ensure your Grafana Cloud access policy includes the adaptive-traces:admin scope",
 			},
+			DocsLink: docs.AccessPolicies,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}, true
 	}
@@ -998,6 +1033,7 @@ func convertCloudConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 			Parent:      err,
 			Summary:     "Adaptive Metrics: permission denied",
 			Suggestions: []string{suggestion},
+			DocsLink:    docs.AccessPolicies,
 			ExitCode:    new(gcxerrors.ExitAuthFailure),
 		}, true
 	}
@@ -1013,6 +1049,7 @@ func convertCloudConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 				"Fleet Management may not be enabled for this stack",
 				"Contact Grafana Cloud support to enable Fleet Management",
 			},
+			DocsLink: docs.FleetManagement,
 		}, true
 	}
 
@@ -1028,6 +1065,7 @@ func convertCloudConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 			Parent:      err,
 			Summary:     "Cloud stack lookup: permission denied",
 			Suggestions: suggestions,
+			DocsLink:    docs.AccessPolicies,
 			ExitCode:    new(gcxerrors.ExitAuthFailure),
 		}, true
 	}
@@ -1055,6 +1093,7 @@ func convertFleetHTTPErrors(err error) (*gcxerrors.DetailedError, bool) {
 				"Verify the token has not expired: gcx config view",
 				reauthSuggestion,
 			},
+			DocsLink: docs.AccessPolicies,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}, true
 	case http.StatusForbidden:
@@ -1067,6 +1106,7 @@ func convertFleetHTTPErrors(err error) (*gcxerrors.DetailedError, bool) {
 				"Ensure your Cloud Access Policy includes the fleet-management:write scope for mutation commands",
 				reauthSuggestion,
 			},
+			DocsLink: docs.AccessPolicies,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}, true
 	}
