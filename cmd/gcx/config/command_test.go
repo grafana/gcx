@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"bytes"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -60,6 +61,18 @@ func runConfigCmd(t *testing.T, args ...string) (string, error) {
 	return buf.String(), err
 }
 
+// isolateStateHome points the XDG state home at a per-test tempdir so
+// use-context invocations don't pollute the developer's real previous-context
+// state file. It returns the directory so callers driving commands through the
+// testutils harness (which calls os.Clearenv) can re-inject it via Env — a bare
+// t.Setenv does not survive that wipe.
+func isolateStateHome(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", dir)
+	return dir
+}
+
 func Test_CurrentContextCommand(t *testing.T) {
 	testCase := testutils.CommandTestCase{
 		Cmd:     config.Command(),
@@ -74,6 +87,8 @@ func Test_CurrentContextCommand(t *testing.T) {
 }
 
 func Test_UseContextCommand(t *testing.T) {
+	stateEnv := map[string]string{"XDG_STATE_HOME": isolateStateHome(t)}
+
 	cfg := `current-context: old
 contexts:
   old: {}
@@ -94,6 +109,7 @@ contexts:
 	changeConfigTest := testutils.CommandTestCase{
 		Cmd:     config.Command(),
 		Command: []string{"use-context", "--config", configFile, "new"},
+		Env:     stateEnv,
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandSuccess(),
 			testutils.CommandOutputContains("Context set to \"new\""),
@@ -113,6 +129,8 @@ contexts:
 }
 
 func Test_UseContextCommand_doesNotPersistEnvSecrets(t *testing.T) {
+	stateDir := isolateStateHome(t)
+
 	cfg := `current-context: old
 contexts:
   old: {}
@@ -142,13 +160,16 @@ contexts:
 		t.Run(tc.name, func(t *testing.T) {
 			configFile := testutils.CreateTempFile(t, cfg)
 
+			env := map[string]string{"XDG_STATE_HOME": stateDir}
+			maps.Copy(env, tc.env)
+
 			testutils.CommandTestCase{
 				Cmd:     config.Command(),
 				Command: []string{"use-context", "--config", configFile, "new"},
 				Assertions: []testutils.CommandAssertion{
 					testutils.CommandSuccess(),
 				},
-				Env: tc.env,
+				Env: env,
 			}.Run(t)
 
 			contents, err := os.ReadFile(configFile)
@@ -171,6 +192,43 @@ func Test_UseContextCommand_withUnknownContext(t *testing.T) {
 		Command: []string{"use-context", "--config", "testdata/config.yaml", "unknown-context"},
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandErrorContains("invalid context \"unknown-context\": context not found"),
+		},
+	}
+	testCase.Run(t)
+}
+
+// Test_UseContextCommand_noArgsWithoutTTY asserts the picker degrades to a
+// helpful, structured error when there is no terminal to drive it. The test
+// harness runs commands with a non-TTY stdout, so the no-args path lands here
+// rather than blocking on an interactive prompt.
+func Test_UseContextCommand_noArgsWithoutTTY(t *testing.T) {
+	testCase := testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"use-context", "--config", "testdata/config.yaml"},
+		Env:     map[string]string{"XDG_STATE_HOME": isolateStateHome(t)},
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandErrorContains("interactive picker requires a TTY"),
+			testutils.CommandErrorContains("Pass a context name"),
+		},
+	}
+	testCase.Run(t)
+}
+
+// Test_UseContextCommand_previousWithoutHistory asserts that "use-context -"
+// with no recorded history fails with the guidance to switch at least once.
+func Test_UseContextCommand_previousWithoutHistory(t *testing.T) {
+	cfg := `current-context: old
+contexts:
+  old: {}
+  new: {}`
+	configFile := testutils.CreateTempFile(t, cfg)
+
+	testCase := testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"use-context", "--config", configFile, "-"},
+		Env:     map[string]string{"XDG_STATE_HOME": isolateStateHome(t)},
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandErrorContains("no previous context recorded"),
 		},
 	}
 	testCase.Run(t)
@@ -595,6 +653,7 @@ current-context: default
 // Regression test for #564: when only a local .gcx.yaml exists, use-context
 // must update that file instead of silently creating/writing the user config.
 func Test_UseContextCommand_writesToLocalConfigWhenOnlySource(t *testing.T) {
+	isolateStateHome(t)
 	_, workDir := isolatedConfigEnv(t)
 	localPath := writeLocalConfig(t, workDir, `current-context: old
 contexts:
@@ -619,6 +678,7 @@ contexts:
 // update, so it errors with guidance pointing at --file. This matches the
 // behaviour of `gcx config set` / `unset`.
 func Test_UseContextCommand_multipleSourcesRequiresFileFlag(t *testing.T) {
+	isolateStateHome(t)
 	userDir, workDir := isolatedConfigEnv(t)
 	userPath := writeUserConfig(t, userDir, `current-context: user-ctx
 contexts:
@@ -645,6 +705,7 @@ contexts:
 
 // --file selects the target layer explicitly when multiple sources exist.
 func Test_UseContextCommand_fileFlagSelectsLayer(t *testing.T) {
+	isolateStateHome(t)
 	userDir, workDir := isolatedConfigEnv(t)
 	userPath := writeUserConfig(t, userDir, `current-context: user-ctx
 contexts:
@@ -694,4 +755,100 @@ contexts:
 	userPath := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "gcx", "config.yaml")
 	_, statErr := os.Stat(userPath)
 	require.True(t, os.IsNotExist(statErr), "user config must not be created, got: %v", statErr)
+}
+
+func Test_UseContextCommand_PreviousSwitch(t *testing.T) {
+	stateDir := isolateStateHome(t)
+	stateEnv := map[string]string{"XDG_STATE_HOME": stateDir}
+
+	cfg := `current-context: a
+contexts:
+  a: {}
+  b: {}`
+
+	configFile := testutils.CreateTempFile(t, cfg)
+
+	// a → b records "a" as previous.
+	testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"use-context", "--config", configFile, "b"},
+		Env:     stateEnv,
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandSuccess(),
+			testutils.CommandOutputContains(`Context set to "b"`),
+		},
+	}.Run(t)
+
+	// "-" resolves to the previously recorded "a".
+	testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"use-context", "--config", configFile, "-"},
+		Env:     stateEnv,
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandSuccess(),
+			testutils.CommandOutputContains(`Context set to "a"`),
+		},
+	}.Run(t)
+
+	// And another "-" bounces back to "b".
+	testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"use-context", "--config", configFile, "-"},
+		Env:     stateEnv,
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandSuccess(),
+			testutils.CommandOutputContains(`Context set to "b"`),
+		},
+	}.Run(t)
+}
+
+func Test_UseContextCommand_PreviousErrorsWhenNoneRecorded(t *testing.T) {
+	stateDir := isolateStateHome(t)
+
+	cfg := `current-context: a
+contexts:
+  a: {}
+  b: {}`
+	configFile := testutils.CreateTempFile(t, cfg)
+
+	testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"use-context", "--config", configFile, "-"},
+		Env:     map[string]string{"XDG_STATE_HOME": stateDir},
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandErrorContains("no previous context recorded"),
+		},
+	}.Run(t)
+}
+
+func Test_UseContextCommand_SameContextIsNoop(t *testing.T) {
+	stateDir := isolateStateHome(t)
+	stateEnv := map[string]string{"XDG_STATE_HOME": stateDir}
+
+	cfg := `current-context: a
+contexts:
+  a: {}
+  b: {}`
+	configFile := testutils.CreateTempFile(t, cfg)
+
+	testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"use-context", "--config", configFile, "a"},
+		Env:     stateEnv,
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandSuccess(),
+			testutils.CommandOutputContains(`Context already set to "a"`),
+		},
+	}.Run(t)
+
+	// A no-op switch must not record a phantom previous-context entry —
+	// otherwise "gctx -" would silently bounce to the same context.
+	testutils.CommandTestCase{
+		Cmd:     config.Command(),
+		Command: []string{"use-context", "--config", configFile, "-"},
+		Env:     stateEnv,
+		Assertions: []testutils.CommandAssertion{
+			testutils.CommandErrorContains("no previous context recorded"),
+		},
+	}.Run(t)
 }
