@@ -57,6 +57,11 @@ func renderNode(buf *strings.Builder, cmd *cobra.Command, depth int, opts Render
 		line += "  # hint: " + hint
 	}
 
+	// Append related-skill annotation.
+	if skill := cmd.Annotations[agent.AnnotationSkill]; skill != "" {
+		line += "  # skill: " + strings.ReplaceAll(skill, ",", ", ")
+	}
+
 	fmt.Fprintln(buf, line)
 
 	// Recurse into subcommands if depth allows.

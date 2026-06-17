@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"strings"
+
 	"github.com/spf13/cobra"
 )
 
@@ -142,6 +144,7 @@ var commandAnnotations = map[string]annotation{
 	// skills
 	"gcx agent skills install":   {Cost: "small"},
 	"gcx agent skills list":      {Cost: "small"},
+	"gcx agent skills get":       {Cost: "small (medium for large skills)", Hint: "<name> [references/<file>]"},
 	"gcx agent skills update":    {Cost: "small"},
 	"gcx agent skills uninstall": {Cost: "small"},
 
@@ -578,6 +581,20 @@ func ApplyAnnotations(root *cobra.Command) {
 		}
 		if _, exists := cmd.Annotations[AnnotationLLMHint]; !exists && a.Hint != "" {
 			cmd.Annotations[AnnotationLLMHint] = a.Hint
+		}
+	})
+
+	// Set the related-skill annotation on each mapped area node.
+	WalkCommands(root, func(cmd *cobra.Command) {
+		skills, ok := commandSkills[cmd.CommandPath()]
+		if !ok || len(skills) == 0 {
+			return
+		}
+		if cmd.Annotations == nil {
+			cmd.Annotations = make(map[string]string)
+		}
+		if _, exists := cmd.Annotations[AnnotationSkill]; !exists {
+			cmd.Annotations[AnnotationSkill] = strings.Join(skills, ",")
 		}
 	})
 }
