@@ -24,42 +24,42 @@ const (
 
 	// GrafanaInstallation documents Grafana setup, referenced when a stack is
 	// older than the minimum supported version.
-	GrafanaInstallation = "https://grafana.com/docs/grafana/latest/setup-grafana/installation/_index.md"
+	GrafanaInstallation = "https://grafana.com/docs/grafana/latest/setup-grafana/installation.md"
 
 	// PromQL documents the Prometheus query editor / PromQL.
-	PromQL = "https://grafana.com/docs/grafana/latest/datasources/prometheus/query-editor/_index.md"
+	PromQL = "https://grafana.com/docs/grafana/latest/datasources/prometheus/query-editor.md"
 
 	// LogQL documents querying Loki (LogQL).
-	LogQL = "https://grafana.com/docs/loki/latest/query/_index.md"
+	LogQL = "https://grafana.com/docs/loki/latest/query.md"
 
 	// TraceQL documents querying Tempo (TraceQL).
-	TraceQL = "https://grafana.com/docs/tempo/latest/traceql/_index.md"
+	TraceQL = "https://grafana.com/docs/tempo/latest/traceql.md"
 
 	// PyroscopeQueries documents viewing and analyzing Pyroscope profile data.
-	PyroscopeQueries = "https://grafana.com/docs/pyroscope/latest/view-and-analyze-profile-data/_index.md"
+	PyroscopeQueries = "https://grafana.com/docs/pyroscope/latest/view-and-analyze-profile-data.md"
 
 	// DashboardJSONModel documents the dashboard JSON model, referenced for
 	// resource manifest authoring (push/pull/validate).
 	DashboardJSONModel = "https://grafana.com/docs/grafana/latest/dashboards/build-dashboards/view-dashboard-json-model.md"
 
 	// SyntheticMonitoring documents Synthetic Monitoring.
-	SyntheticMonitoring = "https://grafana.com/docs/grafana-cloud/testing/synthetic-monitoring/_index.md"
+	SyntheticMonitoring = "https://grafana.com/docs/grafana-cloud/testing/synthetic-monitoring.md"
 
 	// FleetManagement documents Fleet Management.
-	FleetManagement = "https://grafana.com/docs/grafana-cloud/send-data/fleet-management/_index.md"
+	FleetManagement = "https://grafana.com/docs/grafana-cloud/send-data/fleet-management.md"
 
 	// KubernetesMonitoring documents Kubernetes Monitoring, referenced by the
 	// instrumentation setup flow.
-	KubernetesMonitoring = "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/_index.md"
+	KubernetesMonitoring = "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring.md"
 
 	// AdaptiveMetrics documents Adaptive Metrics cost control.
-	AdaptiveMetrics = "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/reduce-costs/metrics-costs/control-metrics-usage-via-adaptive-metrics/_index.md"
+	AdaptiveMetrics = "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/reduce-costs/metrics-costs/control-metrics-usage-via-adaptive-metrics.md"
 
 	// AdaptiveLogs documents Adaptive Logs cost control.
-	AdaptiveLogs = "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/reduce-costs/logs-costs/adaptive-logs/_index.md"
+	AdaptiveLogs = "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/reduce-costs/logs-costs/adaptive-logs.md"
 
 	// AdaptiveTraces documents reducing traces costs (Adaptive Traces).
-	AdaptiveTraces = "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/reduce-costs/traces-costs/_index.md"
+	AdaptiveTraces = "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/reduce-costs/traces-costs.md"
 )
 
 // MarkdownHint is the reusable, one-line convention nudge for agents. Surface
