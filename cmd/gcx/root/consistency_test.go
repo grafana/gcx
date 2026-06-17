@@ -113,6 +113,7 @@ func TestConsistency_OnlyKnownAnnotationKeys(t *testing.T) {
 		agent.AnnotationRequiredScope:      true,
 		agent.AnnotationRequiredRole:       true,
 		agent.AnnotationRequiredAction:     true,
+		agent.AnnotationSkill:              true,
 		cobra.BashCompOneRequiredFlag:      true,
 		cobra.BashCompCustom:               true,
 		cobra.BashCompFilenameExt:          true,
@@ -149,6 +150,25 @@ func TestConsistency_NoOrphanedRegistryEntries(t *testing.T) {
 		t.Run(regPath, func(t *testing.T) {
 			if !paths[regPath] {
 				t.Errorf("registry entry %q does not match any command in the tree", regPath)
+			}
+		})
+	}
+}
+
+// TestConsistency_SkillMappingResolvesToCommands verifies every key in the
+// command-area-to-skill registry matches an actual command in the tree.
+func TestConsistency_SkillMappingResolvesToCommands(t *testing.T) {
+	rootCmd := buildRootCmd()
+
+	paths := make(map[string]bool)
+	agent.WalkCommands(rootCmd, func(cmd *cobra.Command) {
+		paths[cmd.CommandPath()] = true
+	})
+
+	for _, skillPath := range agent.CommandSkillPaths() {
+		t.Run(skillPath, func(t *testing.T) {
+			if !paths[skillPath] {
+				t.Errorf("skill mapping key %q does not match any command in the tree", skillPath)
 			}
 		})
 	}

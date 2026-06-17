@@ -532,8 +532,11 @@ spec rewriting is performed client-side.
 #### List-payload completeness
 
 The `list` endpoint returns **full Dashboard objects per item** (full
-metadata + full spec). No per-item fan-out is required — `dashboards
-list` is a single HTTP round-trip per page.
+metadata + full spec). No per-item fan-out is required, but table output
+also performs one folder LIST to resolve folder UID annotations into paths.
+Structured output (`json`, `yaml`, `agents`) preserves the full K8s
+`DashboardList` response; users who need a compact machine-readable shape
+should use `--json` field selection.
 
 Column → field mapping:
 
@@ -541,16 +544,20 @@ Column → field mapping:
 |--------|-------|
 | NAME   | `metadata.name` |
 | TITLE  | `spec.title` |
-| FOLDER | annotation `grafana.app/folder` (empty → rendered as "General") |
+| FOLDER | resolved folder path from annotation `grafana.app/folder` (empty → rendered as "General"; structured output preserves the raw annotation) |
 | TAGS   | `spec.tags` (comma-separated) |
 | AGE    | `metadata.creationTimestamp` (humanized) |
 | PANELS (wide) | `len(spec.panels)` (v1) or `len(spec.elements)` (v2) |
 | URL (wide)    | Synthesized client-side: `{grafana-url}/d/{name}/{slug}` |
 
-Pagination is standard K8s (`limit` + opaque `continue` token). gcx's
-default `--limit` is 100 (consistent with other providers); `--limit 0`
-or `--all` iterates to completion. Pipeline class **(A) — reuses
-`dynamic.NamespacedClient.List()`**.
+Pagination is standard K8s (`limit` + opaque `continue` token). By
+default, `gcx dashboards list` requests one 50-item page. The
+`gcx dashboards list --limit N` command performs one page request and,
+when the server returns a continue token, table and wide output emit a
+stderr hint with the next `--continue` command. Structured output keeps
+the token in the K8s list envelope at `metadata.continue` and omits the
+human hint. Use `--limit 0` to iterate to completion using client-go
+paging. Pipeline class **(A) — reuses `dynamic.NamespacedClient.List()`**.
 
 **`list` does not expose `--folder`.** Folder is stored on dashboards
 as an **annotation** (`grafana.app/folder`), not a label. The K8s LIST
@@ -594,9 +601,10 @@ Other selectors return either full or silently-empty results.
   as a first-class option in the provider-system playbook, useful for any
   future resource that is already K8s-discoverable but wants a dedicated
   command surface.
-- `list` is a single HTTP round-trip per page — full Dashboard objects
-  are returned by the LIST verb, so no per-item fan-out is required to
-  populate any default or wide-mode columns.
+- `list` is one Dashboard LIST round-trip per page. Table output also runs a
+  folder LIST to resolve folder UID annotations into human-readable folder
+  paths. Full Dashboard objects are returned by the LIST verb, so no per-item
+  fan-out is required to populate any default or wide-mode columns.
 - Snapshot is preserved at its current command path; no agent-mode break.
 
 ### Negative
@@ -698,9 +706,9 @@ pre-merge.
 5. **List-payload completeness — resolved.** LIST returns full Dashboard
    objects per item — `title` and `tags` inside `spec`; folder as
    annotation `grafana.app/folder`. Panel count walks `spec.panels` (v1)
-   or `spec.elements` (v2). No per-item fan-out required; `list` is a
-   single HTTP round-trip per page. Important consequence: `--folder`
-   filter cannot use labelSelector (annotation, not label) — ADR
+   or `spec.elements` (v2). No per-item fan-out required; table output
+   performs one folder LIST for path resolution. Important consequence:
+   `--folder` filter cannot use labelSelector (annotation, not label) — ADR
    removes `--folder` from `list` and routes folder filtering to
    `search --folder UID` instead.
 

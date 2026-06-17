@@ -104,6 +104,44 @@ func TestEncode_JSONFields_UnstructuredList(t *testing.T) {
 	assert.NotContains(t, first, "freq")
 }
 
+func TestEncode_JSONFields_ListEnvelopePreservesPaginationMetadata(t *testing.T) {
+	type listEnvelope struct {
+		Metadata map[string]any   `json:"metadata"`
+		Items    []map[string]any `json:"items"`
+	}
+
+	opts := optsWithJSONFields(t, []string{"name"})
+	value := listEnvelope{
+		Metadata: map[string]any{
+			"continue":           "next-page",
+			"resourceVersion":    "rv-1",
+			"remainingItemCount": 12,
+		},
+		Items: []map[string]any{
+			{"name": "dash-1", "title": "Dashboard 1"},
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, opts.Encode(&buf, value))
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
+	metadata, ok := got["metadata"].(map[string]any)
+	require.True(t, ok, "expected pagination metadata in output: %s", buf.String())
+	assert.Equal(t, "next-page", metadata["continue"])
+	assert.Equal(t, "rv-1", metadata["resourceVersion"])
+	assert.InDelta(t, 12, metadata["remainingItemCount"], 0)
+
+	items, ok := got["items"].([]any)
+	require.True(t, ok, "expected items array in output: %s", buf.String())
+	require.Len(t, items, 1)
+	first, ok := items[0].(map[string]any)
+	require.True(t, ok, "expected first item object in output: %s", buf.String())
+	assert.Equal(t, "dash-1", first["name"])
+	assert.NotContains(t, first, "title")
+}
+
 func TestEncode_JSONFields_ArbitrarySlice(t *testing.T) {
 	// Simulates provider commands that pass []SomeStruct to Encode.
 	// Slices must be encoded as a JSON array [...], not {"items":[...]} (C.3b).

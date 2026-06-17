@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,7 +21,6 @@ import (
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"gopkg.in/yaml.v3"
 )
 
 // Command returns the top-level skills command group.
@@ -34,6 +34,7 @@ func Command() *cobra.Command {
 	cmd.AddCommand(newInstallCommand(claudeplugin.SkillsFS()))
 	cmd.AddCommand(newUpdateCommand(claudeplugin.SkillsFS()))
 	cmd.AddCommand(newListCommand(claudeplugin.SkillsFS()))
+	cmd.AddCommand(newGetCommand(claudeplugin.SkillsFS()))
 	cmd.AddCommand(newUninstallCommand(claudeplugin.SkillsFS()))
 
 	return cmd
@@ -401,7 +402,7 @@ func listBundledSkills(source fs.FS, installRoot string) (listResult, error) {
 
 		result.Skills = append(result.Skills, skillInfo{
 			Name:             entry.Name(),
-			ShortDescription: extractSkillShortDescription(data),
+			ShortDescription: skillops.ShortDescriptionFromBytes(data),
 			Installed:        installed,
 		})
 	}
@@ -418,69 +419,6 @@ func installedBundledSkillNames(source fs.FS, root string) ([]string, error) {
 	return skillops.InstalledBundledSkillNames(source, root)
 }
 
-type skillFrontMatter struct {
-	Description string `yaml:"description"`
-}
-
-func extractSkillShortDescription(data []byte) string {
-	description, err := extractSkillDescriptionFromMarkdown(data)
-	if err != nil {
-		return normalizeDescription(fallbackSkillDescription(data))
-	}
-
-	return normalizeDescription(description)
-}
-
-func extractSkillDescriptionFromMarkdown(data []byte) (string, error) {
-	content := strings.ReplaceAll(string(data), "\r\n", "\n")
-	lines := strings.Split(content, "\n")
-	if len(lines) < 3 || strings.TrimSpace(lines[0]) != "---" {
-		return "", errors.New("missing front matter")
-	}
-
-	end := -1
-	for i := 1; i < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) == "---" {
-			end = i
-			break
-		}
-	}
-	if end < 0 {
-		return "", errors.New("unterminated front matter")
-	}
-
-	var meta skillFrontMatter
-	if err := yaml.Unmarshal([]byte(strings.Join(lines[1:end], "\n")), &meta); err != nil {
-		return "", err
-	}
-
-	return meta.Description, nil
-}
-
-func normalizeDescription(description string) string {
-	normalized := strings.Join(strings.Fields(description), " ")
-	return normalized
-}
-
-func fallbackSkillDescription(data []byte) string {
-	content := strings.ReplaceAll(string(data), "\r\n", "\n")
-	for line := range strings.SplitSeq(content, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-		if strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-		if strings.HasPrefix(trimmed, "---") {
-			continue
-		}
-		return trimmed
-	}
-
-	return ""
-}
-
 func renderSkillsTable(dst goio.Writer, skills []skillInfo) error {
 	t := style.NewTable("SKILL", "INSTALLED", "DESCRIPTION")
 	for _, skill := range skills {
@@ -495,6 +433,209 @@ func renderSkillsTable(dst goio.Writer, skills []skillInfo) error {
 
 func installSkills(source fs.FS, root string, filter map[string]struct{}, force bool, dryRun bool) (installResult, error) {
 	return skillops.Install(source, root, filter, force, dryRun)
+}
+
+type getOpts struct {
+	Source fs.FS
+	IO     cmdio.Options
+}
+
+func (o *getOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("text")
+	o.IO.RegisterCustomCodec("text", &getTextCodec{})
+	o.IO.BindFlags(flags)
+}
+
+func (o *getOpts) Validate(args []string) error {
+	if o.Source == nil {
+		return errors.New("skills source is not configured")
+	}
+	if len(args) == 0 {
+		return errors.New("provide a skill name")
+	}
+	if len(args) > 2 {
+		return errors.New("provide a skill name and at most one reference path")
+	}
+	return o.IO.Validate()
+}
+
+func newGetCommand(source fs.FS) *cobra.Command {
+	opts := &getOpts{Source: source}
+
+	cmd := &cobra.Command{
+		Use:   "get SKILL [REFERENCE]",
+		Short: "Print a bundled skill's content without installing it",
+		Long: `Print the content of a bundled gcx Agent Skill straight from the embedded bundle, without writing anything to ~/.agents.
+
+By default the skill's SKILL.md body is printed. Pass a reference path (e.g. references/query-patterns.md) to print a single bundled reference file instead.`,
+		Example: `  gcx agent skills get create-dashboard
+  gcx agent skills get create-dashboard -o json
+  gcx agent skills get debug-with-grafana references/query-patterns.md`,
+		Args: cobra.RangeArgs(1, 2),
+		ValidArgsFunction: func(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
+			if len(args) > 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			names, err := skillops.BundledSkillNames(source)
+			if err != nil {
+				return nil, cobra.ShellCompDirectiveError
+			}
+			return names, cobra.ShellCompDirectiveNoFileComp
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(args); err != nil {
+				return err
+			}
+
+			name := args[0]
+			reference := ""
+			if len(args) == 2 {
+				reference = args[1]
+			}
+
+			result, err := getBundledSkill(opts.Source, name, reference)
+			if err != nil {
+				return err
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
+		},
+	}
+
+	opts.setup(cmd.Flags())
+
+	return cmd
+}
+
+type getResult struct {
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Path        string   `json:"path"`
+	Body        string   `json:"body"`
+	References  []string `json:"references"`
+}
+
+type getTextCodec struct{}
+
+func (c *getTextCodec) Format() format.Format { return "text" }
+
+func (c *getTextCodec) Encode(dst goio.Writer, value any) error {
+	var result getResult
+	switch v := value.(type) {
+	case getResult:
+		result = v
+	case *getResult:
+		if v == nil {
+			return errors.New("nil get result")
+		}
+		result = *v
+	default:
+		return fmt.Errorf("get text codec: unsupported value %T", value)
+	}
+
+	_, err := goio.WriteString(dst, result.Body)
+	return err
+}
+
+func (c *getTextCodec) Decode(_ goio.Reader, _ any) error {
+	return errors.New("get text codec does not support decoding")
+}
+
+// resolveReferencePath cleans a user-supplied reference path and rejects any
+// path that would escape the skill directory.
+func resolveReferencePath(reference string) (string, error) {
+	if path.IsAbs(reference) {
+		return "", fmt.Errorf("invalid reference path %q: must be relative to the skill directory", reference)
+	}
+
+	cleaned := path.Clean(reference)
+	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return "", fmt.Errorf("invalid reference path %q: must not escape the skill directory", reference)
+	}
+
+	return cleaned, nil
+}
+
+func getBundledSkill(source fs.FS, name string, reference string) (getResult, error) {
+	if err := validateSkillName(name); err != nil {
+		return getResult{}, err
+	}
+
+	bundled, err := skillops.BundledSkillNames(source)
+	if err != nil {
+		return getResult{}, err
+	}
+	if !slices.Contains(bundled, name) {
+		return getResult{}, fmt.Errorf("unknown skill %q (use 'gcx agent skills list' to see available skills)", name)
+	}
+
+	relPath := "SKILL.md"
+	if strings.TrimSpace(reference) != "" {
+		relPath, err = resolveReferencePath(reference)
+		if err != nil {
+			return getResult{}, err
+		}
+	}
+
+	filePath := path.Join(name, relPath)
+	body, err := fs.ReadFile(source, filePath)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return getResult{}, fmt.Errorf("file %q not found in skill %q", relPath, name)
+		}
+		return getResult{}, err
+	}
+
+	references, err := listSkillReferences(source, name)
+	if err != nil {
+		return getResult{}, err
+	}
+
+	skillDoc := body
+	if relPath != "SKILL.md" {
+		skillDoc, err = fs.ReadFile(source, path.Join(name, "SKILL.md"))
+		if err != nil {
+			skillDoc = nil
+		}
+	}
+	description := skillops.ShortDescriptionFromBytes(skillDoc)
+
+	return getResult{
+		Name:        name,
+		Description: description,
+		Path:        relPath,
+		Body:        string(body),
+		References:  references,
+	}, nil
+}
+
+// listSkillReferences returns the bundled reference file paths for a skill,
+// relative to the skill directory (e.g. "references/query-patterns.md").
+func listSkillReferences(source fs.FS, name string) ([]string, error) {
+	refsDir := path.Join(name, "references")
+	var refs []string
+	err := fs.WalkDir(source, refsDir, func(p string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			if errors.Is(walkErr, fs.ErrNotExist) {
+				return fs.SkipDir
+			}
+			return walkErr
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(name, p)
+		if err != nil {
+			return err
+		}
+		refs = append(refs, filepath.ToSlash(rel))
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(refs)
+	return refs, nil
 }
 
 type uninstallOpts struct {

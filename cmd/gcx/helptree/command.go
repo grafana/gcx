@@ -36,6 +36,7 @@ type treeNode struct {
 	Short    string      `json:"short,omitempty"`
 	Args     string      `json:"args,omitempty"`
 	Hint     string      `json:"hint,omitempty"`
+	Skill    string      `json:"skill,omitempty"`
 	Children []*treeNode `json:"children,omitempty"`
 }
 
@@ -47,6 +48,9 @@ func buildTreeNode(cmd *cobra.Command, depth int, opts RenderOptions) *treeNode 
 	}
 	if hint := cmd.Annotations[agent.AnnotationLLMHint]; hint != "" {
 		node.Hint = hint
+	}
+	if skill := cmd.Annotations[agent.AnnotationSkill]; skill != "" {
+		node.Skill = skill
 	}
 	if opts.MaxDepth > 0 && depth >= opts.MaxDepth {
 		return node

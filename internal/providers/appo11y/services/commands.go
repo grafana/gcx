@@ -29,6 +29,7 @@ func Commands() *cobra.Command {
 		Short: "Inspect Application Observability services discovered from telemetry",
 	}
 	cmd.AddCommand(newListCommand())
+	cmd.AddCommand(newGetCommand())
 	return cmd
 }
 

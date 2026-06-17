@@ -1,5 +1,12 @@
 package dashboards
 
+import (
+	"io"
+
+	"github.com/spf13/pflag"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+)
+
 // Exported aliases for unexported types and functions, available to external
 // test packages only (codec_test.go, provider_test.go, crud_test.go).
 
@@ -28,3 +35,18 @@ var ReadManifestForTest = readManifest
 //
 //nolint:gochecknoglobals // test-only export; required to expose unexported function to dashboards_test package.
 var WrapUpdateErrorForTest = wrapUpdateError
+
+// DefaultDashboardListLimitForTest exposes the list command's default page size.
+const DefaultDashboardListLimitForTest = defaultDashboardListLimit
+
+// NewListOptsForTest constructs listOpts with flags bound for validation tests.
+func NewListOptsForTest(flags *pflag.FlagSet) *listOpts {
+	opts := &listOpts{}
+	opts.setup(flags)
+	return opts
+}
+
+// EmitListPaginationHintForTest exposes the pagination hint helper.
+func EmitListPaginationHintForTest(w io.Writer, argv []string, list *unstructured.UnstructuredList, opts *listOpts) {
+	emitListPaginationHint(w, argv, list, opts)
+}

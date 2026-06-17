@@ -330,21 +330,6 @@ func TestListBundledSkills_ShowsInstalledStatus(t *testing.T) {
 	require.False(t, result.Skills[1].Installed)
 }
 
-func TestExtractSkillShortDescription_ParsesFrontMatter(t *testing.T) {
-	t.Parallel()
-
-	data := []byte(`---
-name: sample
-description: >
-  Use this skill to do an example operation in a concise way.
----
-
-# Sample
-`)
-	desc := extractSkillShortDescription(data)
-	require.Equal(t, "Use this skill to do an example operation in a concise way.", desc)
-}
-
 func TestListCommand_JSONIncludesShortDescription(t *testing.T) {
 	source := fstest.MapFS{
 		"alpha/SKILL.md": {
@@ -367,6 +352,137 @@ description: alpha skill description
 	require.NoError(t, err)
 	require.Contains(t, stdout.String(), `"name": "alpha"`)
 	require.Contains(t, stdout.String(), `"short_description": "alpha skill description"`)
+}
+
+func TestGetBundledSkill_ReturnsSkillBody(t *testing.T) {
+	t.Parallel()
+
+	result, err := getBundledSkill(testSkillsFS(), "alpha", "")
+	require.NoError(t, err)
+	require.Equal(t, "alpha", result.Name)
+	require.Equal(t, "SKILL.md", result.Path)
+	require.Equal(t, "alpha-skill", result.Body)
+	require.Equal(t, []string{"references/guide.md"}, result.References)
+}
+
+func TestGetBundledSkill_ReturnsReferenceBody(t *testing.T) {
+	t.Parallel()
+
+	result, err := getBundledSkill(testSkillsFS(), "alpha", "references/guide.md")
+	require.NoError(t, err)
+	require.Equal(t, "references/guide.md", result.Path)
+	require.Equal(t, "alpha-guide", result.Body)
+}
+
+func TestGetBundledSkill_ExtractsDescriptionFromFrontMatter(t *testing.T) {
+	t.Parallel()
+
+	source := fstest.MapFS{
+		"alpha/SKILL.md": {Data: []byte("---\nname: alpha\ndescription: alpha skill description\n---\n\nbody\n")},
+	}
+
+	result, err := getBundledSkill(source, "alpha", "")
+	require.NoError(t, err)
+	require.Equal(t, "alpha skill description", result.Description)
+}
+
+func TestGetBundledSkill_UnknownSkill(t *testing.T) {
+	t.Parallel()
+
+	_, err := getBundledSkill(testSkillsFS(), "nonexistent", "")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "unknown skill")
+	require.ErrorContains(t, err, "gcx agent skills list")
+}
+
+func TestGetBundledSkill_MissingReference(t *testing.T) {
+	t.Parallel()
+
+	_, err := getBundledSkill(testSkillsFS(), "alpha", "references/missing.md")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "not found")
+}
+
+func TestGetBundledSkill_RejectsPathTraversal(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name      string
+		reference string
+	}{
+		{name: "parent escape", reference: "../beta/SKILL.md"},
+		{name: "nested parent escape", reference: "references/../../beta/SKILL.md"},
+		{name: "absolute path", reference: "/etc/passwd"},
+		{name: "bare parent", reference: ".."},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := getBundledSkill(testSkillsFS(), "alpha", tc.reference)
+			require.Error(t, err)
+			require.ErrorContains(t, err, "invalid reference path")
+		})
+	}
+}
+
+func TestGetCommand_TextPrintsBody(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	agent.ResetForTesting()
+
+	cmd := newGetCommand(testSkillsFS())
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+	cmd.SetArgs([]string{"alpha"})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+	require.Equal(t, "alpha-skill", stdout.String())
+}
+
+func TestGetCommand_JSONIncludesFields(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	agent.ResetForTesting()
+
+	source := fstest.MapFS{
+		"alpha/SKILL.md":            {Data: []byte("---\nname: alpha\ndescription: alpha skill description\n---\nbody\n")},
+		"alpha/references/guide.md": {Data: []byte("alpha-guide")},
+	}
+
+	cmd := newGetCommand(source)
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+	cmd.SetArgs([]string{"alpha", "-o", "json"})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+	out := stdout.String()
+	require.Contains(t, out, `"name": "alpha"`)
+	require.Contains(t, out, `"description": "alpha skill description"`)
+	require.Contains(t, out, `"path": "SKILL.md"`)
+	require.Contains(t, out, `"references": [`)
+	require.Contains(t, out, `"references/guide.md"`)
+}
+
+func TestGetCommand_UnknownSkillErrors(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	agent.ResetForTesting()
+
+	cmd := newGetCommand(testSkillsFS())
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+	cmd.SetArgs([]string{"not-a-bundled-skill"})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	require.ErrorContains(t, err, "unknown skill")
 }
 
 func TestUninstallSkills_RemovesRequestedSkills(t *testing.T) {

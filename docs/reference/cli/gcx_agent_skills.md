@@ -26,6 +26,7 @@ Install the canonical portable gcx Agent Skills bundle for .agents-compatible ag
 ### SEE ALSO
 
 * [gcx agent](gcx_agent.md)	 - Agent mode utilities
+* [gcx agent skills get](gcx_agent_skills_get.md)	 - Print a bundled skill's content without installing it
 * [gcx agent skills install](gcx_agent_skills_install.md)	 - Install bundled gcx skills into ~/.agents/skills
 * [gcx agent skills list](gcx_agent_skills_list.md)	 - List skills bundled with the gcx binary
 * [gcx agent skills uninstall](gcx_agent_skills_uninstall.md)	 - Uninstall gcx-managed skills from ~/.agents/skills

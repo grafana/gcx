@@ -8,8 +8,10 @@ package services
 import (
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/grafana/gcx/internal/query/prometheus"
@@ -363,4 +365,383 @@ func mergeServiceSets(display, baseline, graph []Service) []Service {
 	out = append(out, uninstrumentedFromGraph(baseline, graph)...)
 	sortServices(out)
 	return out
+}
+
+// OTel proto-style label values emitted by all metrics-generator variants;
+// the metric names themselves differ between modes (see MetricsMode below).
+const (
+	statusCodeError  = "STATUS_CODE_ERROR"
+	spanKindServer   = "SPAN_KIND_SERVER"
+	spanKindConsumer = "SPAN_KIND_CONSUMER"
+)
+
+// MetricsMode identifies which family of Tempo/OTel span-metric names a
+// stack emits. Three distinct name sets cover the modes a Grafana Cloud
+// stack typically configures (legacy Tempo metrics-generator / Beyla
+// share names with each other; modern OTel Collector emits a v3 family;
+// the bare OTel Collector connector emits without the `traces_` prefix).
+// The active mode is normally a stack-level setting; the CLI exposes it
+// as `--metrics-mode` so a user can override the auto-probe.
+type MetricsMode string
+
+const (
+	// MetricsModeV3 is the modern Tempo/OTel-Collector-≥1.0.9 family.
+	// Default — matches what new Grafana Cloud stacks emit.
+	MetricsModeV3 MetricsMode = "v3"
+	// MetricsModeTempo is the legacy Tempo metrics-generator family
+	// (also used by Beyla; sometimes labelled "legacy").
+	MetricsModeTempo MetricsMode = "tempo"
+	// MetricsModeOTel is the bare OTel Collector spanmetrics connector
+	// family (no `traces_` prefix).
+	MetricsModeOTel MetricsMode = "otel"
+)
+
+// metricNames is the (calls, latencyBucket) pair selected by MetricsMode.
+type metricNames struct {
+	calls         string
+	latencyBucket string
+}
+
+// metricNamesByMode returns the (calls, latency-bucket) pair for the
+// requested MetricsMode:
+//
+//	v3    → traces_span_metrics_* (modern OTel Collector / Tempo)
+//	tempo → traces_spanmetrics_*  (legacy Tempo metrics-generator, Beyla)
+//	otel  → bare calls_total / duration_seconds_bucket (OTel Collector
+//	        spanmetrics connector, no `traces_` prefix)
+//
+// Constructed on demand rather than as a package global to keep the table
+// inside the type's behaviour and satisfy gochecknoglobals.
+func metricNamesByMode(mode MetricsMode) (metricNames, bool) {
+	switch mode {
+	case MetricsModeV3:
+		return metricNames{
+			calls:         "traces_span_metrics_calls_total",
+			latencyBucket: "traces_span_metrics_duration_seconds_bucket",
+		}, true
+	case MetricsModeTempo:
+		return metricNames{
+			calls:         "traces_spanmetrics_calls_total",
+			latencyBucket: "traces_spanmetrics_latency_bucket",
+		}, true
+	case MetricsModeOTel:
+		return metricNames{
+			calls:         "calls_total",
+			latencyBucket: "duration_seconds_bucket",
+		}, true
+	}
+	return metricNames{}, false
+}
+
+// metricsModeAuto is the flag value that triggers automatic detection.
+// It is NOT a MetricsMode value — it resolves to one at runtime by
+// probing the stack.
+const metricsModeAuto = "auto"
+
+// metricsModePreference orders the modes for auto-detection: when multiple
+// families return data (common during a stack's v2→v3 migration), prefer
+// the modern names so the snapshot reflects the current canonical family.
+func metricsModePreference() []MetricsMode {
+	return []MetricsMode{MetricsModeV3, MetricsModeTempo, MetricsModeOTel}
+}
+
+// resolveMetricsMode maps the --metrics-mode flag value onto a canonical
+// MetricsMode or returns ("", true) when the user wants auto-detection.
+// A few alternative names are accepted (legacy, beyla, otel-109) so users
+// don't have to remember which short label maps to which family. Empty
+// input defaults to auto so the common case "just works" without a flag.
+func resolveMetricsMode(raw string) (MetricsMode, bool, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", "auto":
+		return "", true, nil
+	case "v3", "otel-109", "otel109", "otelcollector109":
+		return MetricsModeV3, false, nil
+	case "tempo", "tempo-metrics-gen", "tempometricsgen", "beyla", "beyla-metrics-gen", "legacy":
+		return MetricsModeTempo, false, nil
+	case "otel", "otel-collector", "otelcollector":
+		return MetricsModeOTel, false, nil
+	}
+	return "", false, fmt.Errorf("--metrics-mode %q is not one of: auto, v3, tempo, otel", raw)
+}
+
+// buildModeProbeQuery returns a cheap PromQL expression that yields a
+// single scalar when the named calls metric has any series for the
+// requested job, and empty otherwise. Used by auto-detection to pick a
+// MetricsMode without running the full RED query against every family.
+func buildModeProbeQuery(metric, job string) (string, error) {
+	if metric == "" || job == "" {
+		return "", errors.New("metric and job are required")
+	}
+	v := promql.Vector(metric).Label("job", escapePromqlValue(job))
+	expr, err := promql.Count(v).Build()
+	if err != nil {
+		return "", err
+	}
+	return expr.String(), nil
+}
+
+// jobLabel returns the PromQL `job` label value for a (namespace, name)
+// pair, matching the `<namespace>/<service>` encoding target_info uses
+// throughout this package.
+func jobLabel(namespace, name string) string {
+	if namespace == "" {
+		return name
+	}
+	return namespace + "/" + name
+}
+
+// defaultInboundSpanKinds captures the two span kinds that represent
+// incoming traffic for RED purposes: SERVER (HTTP/gRPC handlers) and
+// CONSUMER (message-queue consumers). CLIENT/PRODUCER are outbound and
+// would double-count if mixed in.
+func defaultInboundSpanKinds() []string {
+	return []string{spanKindServer, spanKindConsumer}
+}
+
+// spanKindRegex turns a kind list into a PromQL regex value. The result is
+// always anchored to the literal kinds — no user input flows in.
+func spanKindRegex(kinds []string) string {
+	if len(kinds) == 0 {
+		return spanKindServer
+	}
+	return strings.Join(kinds, "|")
+}
+
+// buildServiceMetadataQuery filters the target_info union by a single
+// (namespace, name). When namespace is empty the matcher uses the bare name
+// to catch the `job="auth"` shape; otherwise it matches the canonical
+// `<namespace>/<name>` encoding. metric must be one of `target_info` or
+// `traces_target_info`.
+func buildServiceMetadataQuery(metric, namespace, name string) (string, error) {
+	if name == "" {
+		return "", errors.New("service name is required")
+	}
+	job := name
+	if namespace != "" {
+		job = namespace + "/" + name
+	}
+	v := promql.Vector(metric).Label("job", escapePromqlValue(job))
+	expr, err := promql.Group(v).By(groupByLabels(nil)).Build()
+	if err != nil {
+		return "", err
+	}
+	return expr.String(), nil
+}
+
+// buildBareNameLookupQuery searches the target_info union for any series
+// whose `job` is either the bare `<name>` or some `<namespace>/<name>`.
+// Used to auto-resolve the namespace when the user passes only a bare
+// service name (the alternative is silent no-data for namespaced services).
+// metric must be one of `target_info` or `traces_target_info`.
+func buildBareNameLookupQuery(metric, name string) (string, error) {
+	if name == "" {
+		return "", errors.New("service name is required")
+	}
+	// `(.+/)?<escaped name>` matches both bare `<name>` and any
+	// `<ns>/<name>` shape. PromQL regexes are RE2 — anchoring is implicit
+	// for full-match, so we don't need ^/$ markers.
+	pattern := "(.+/)?" + regexp.QuoteMeta(name)
+	v := promql.Vector(metric).LabelMatchRegexp("job", escapePromqlValue(pattern))
+	expr, err := promql.Group(v).By([]string{"job"}).Build()
+	if err != nil {
+		return "", err
+	}
+	return expr.String(), nil
+}
+
+// extractJobsFromResponses returns the deduplicated set of `job` label
+// values present in the provided Prometheus responses. Empty jobs are
+// dropped.
+func extractJobsFromResponses(responses []*prometheus.QueryResponse) []string {
+	seen := make(map[string]struct{})
+	out := make([]string, 0, len(responses))
+	for _, resp := range responses {
+		if resp == nil {
+			continue
+		}
+		for _, sample := range resp.Data.Result {
+			job := sample.Metric["job"]
+			if job == "" {
+				continue
+			}
+			if _, dup := seen[job]; dup {
+				continue
+			}
+			seen[job] = struct{}{}
+			out = append(out, job)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// namespacesForName parses a slice of job labels (as returned by
+// buildBareNameLookupQuery) and returns the distinct namespaces that the
+// requested service appears under. A job equal to the bare name is treated
+// as the empty-namespace case; jobs of the shape `<ns>/<name>` contribute
+// `<ns>`; jobs that end with `/<name>` but with extra slashes (rare) are
+// preserved as the full prefix so the caller can still target them via
+// --namespace.
+func namespacesForName(jobs []string, name string) []string {
+	seen := make(map[string]struct{})
+	out := make([]string, 0, len(jobs))
+	for _, job := range jobs {
+		if job == name {
+			if _, dup := seen[""]; dup {
+				continue
+			}
+			seen[""] = struct{}{}
+			out = append(out, "")
+			continue
+		}
+		if !strings.HasSuffix(job, "/"+name) {
+			// Regex matched but the suffix doesn't actually end with /<name>
+			// (defensive: shouldn't happen with our pattern).
+			continue
+		}
+		ns := strings.TrimSuffix(job, "/"+name)
+		if _, dup := seen[ns]; dup {
+			continue
+		}
+		seen[ns] = struct{}{}
+		out = append(out, ns)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// buildRateQuery returns the PromQL for the headline request rate (per
+// second) over the given window, scoped to the service and span kinds.
+func buildRateQuery(names metricNames, namespace, name, window string, kinds []string) (string, error) {
+	if name == "" {
+		return "", errors.New("service name is required")
+	}
+	v := scopedSpanMetric(names.calls, namespace, name, kinds, window)
+	expr, err := promql.Sum(promql.Rate(v)).Build()
+	if err != nil {
+		return "", err
+	}
+	return expr.String(), nil
+}
+
+// buildErrorRateQuery returns the PromQL for the error rate (per second)
+// over the given window, scoped to status_code=STATUS_CODE_ERROR.
+func buildErrorRateQuery(names metricNames, namespace, name, window string, kinds []string) (string, error) {
+	if name == "" {
+		return "", errors.New("service name is required")
+	}
+	v := scopedSpanMetric(names.calls, namespace, name, kinds, window).
+		Label("status_code", statusCodeError)
+	expr, err := promql.Sum(promql.Rate(v)).Build()
+	if err != nil {
+		return "", err
+	}
+	return expr.String(), nil
+}
+
+// buildLatencyQuantileQuery returns the PromQL for `histogram_quantile(phi,
+// sum by (le) (rate(... [window]))) `. phi must be in [0, 1].
+func buildLatencyQuantileQuery(names metricNames, namespace, name, window string, kinds []string, phi float64) (string, error) {
+	if name == "" {
+		return "", errors.New("service name is required")
+	}
+	if phi < 0 || phi > 1 {
+		return "", fmt.Errorf("phi must be in [0,1], got %v", phi)
+	}
+	v := scopedSpanMetric(names.latencyBucket, namespace, name, kinds, window)
+	sumByLe := promql.Sum(promql.Rate(v)).By([]string{"le"})
+	expr, err := promql.HistogramQuantile(phi, sumByLe).Build()
+	if err != nil {
+		return "", err
+	}
+	return expr.String(), nil
+}
+
+// scopedSpanMetric returns a vector selector for `metric` filtered by a
+// single `job="<ns>/<name>"` (or bare `job="<name>"`) label plus a
+// span_kind regex. Range is applied so the caller can wrap in `rate()`.
+//
+// We keep `service` + `service_namespace` out of the selector on purpose:
+// not every metric family emits them. Newer stacks emit both, but the
+// legacy Tempo `traces_spanmetrics_*` family and the OTel Collector
+// variant only emit `job`. Filtering on `job` alone keeps the query
+// portable across every metrics-mode this command supports.
+func scopedSpanMetric(metric, namespace, name string, kinds []string, window string) *promql.VectorExprBuilder {
+	return promql.Vector(metric).
+		Label("job", escapePromqlValue(jobLabel(namespace, name))).
+		LabelMatchRegexp("span_kind", spanKindRegex(kinds)).
+		Range(window)
+}
+
+// instantScalar pulls the first sample's value out of a Prometheus instant
+// response and parses it as float64. The second return is false when there
+// is no series (empty result), when the value is NaN/Inf, or when it can't
+// be parsed — in all three cases the caller should treat the metric as
+// "no data" rather than zero so the table can render `-` instead of `0.00`.
+func instantScalar(resp *prometheus.QueryResponse) (float64, bool) {
+	if resp == nil || len(resp.Data.Result) == 0 {
+		return 0, false
+	}
+	sample := resp.Data.Result[0]
+	if len(sample.Value) < 2 {
+		return 0, false
+	}
+	str, ok := sample.Value[1].(string)
+	if !ok {
+		return 0, false
+	}
+	f, err := strconv.ParseFloat(str, 64)
+	if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
+		return 0, false
+	}
+	return f, true
+}
+
+// REDStats holds the rate / errors / duration snapshot for one service over
+// a time window. Latency fields are seconds; *HasData* flags distinguish
+// "0.0 measured" from "no series in window". MetricsMode records which
+// span-metric family fed the numbers, so a no-data result can be diagnosed
+// (wrong mode? service really has no traffic?).
+type REDStats struct {
+	Window          string      `json:"window" yaml:"window"`
+	MetricsMode     MetricsMode `json:"metrics_mode" yaml:"metrics_mode"`
+	SpanKinds       string      `json:"span_kinds" yaml:"span_kinds"`
+	RatePerSecond   float64     `json:"rate_per_second" yaml:"rate_per_second"`
+	ErrorRatePerSec float64     `json:"error_rate_per_second" yaml:"error_rate_per_second"`
+	ErrorPercent    float64     `json:"error_percent" yaml:"error_percent"`
+	P50Seconds      float64     `json:"p50_seconds" yaml:"p50_seconds"`
+	P95Seconds      float64     `json:"p95_seconds" yaml:"p95_seconds"`
+	P99Seconds      float64     `json:"p99_seconds" yaml:"p99_seconds"`
+	HasTraffic      bool        `json:"has_traffic" yaml:"has_traffic"`
+	HasErrors       bool        `json:"has_errors" yaml:"has_errors"`
+	HasLatencyP50   bool        `json:"has_latency_p50" yaml:"has_latency_p50"`
+	HasLatencyP95   bool        `json:"has_latency_p95" yaml:"has_latency_p95"`
+	HasLatencyP99   bool        `json:"has_latency_p99" yaml:"has_latency_p99"`
+}
+
+// ServiceDetail is the get-command response: inventory metadata plus a RED
+// snapshot. Service.Instrumented=false plus !RED.HasTraffic means we found
+// the service only via the service graph and it has no Tempo spanmetrics
+// emitting on its behalf.
+type ServiceDetail struct {
+	Service Service  `json:"service" yaml:"service"`
+	RED     REDStats `json:"red" yaml:"red"`
+}
+
+// computeErrorPercent reports errors/total as a percentage (0..100), or 0
+// when there's no traffic. A non-zero error rate with zero total rate
+// shouldn't happen in practice but we collapse it to 0 rather than +Inf so
+// the table never prints `+Inf%`.
+func computeErrorPercent(errors, total float64) float64 {
+	if total <= 0 {
+		return 0
+	}
+	pct := (errors / total) * 100
+	if pct < 0 {
+		return 0
+	}
+	if pct > 100 {
+		return 100
+	}
+	return pct
 }
