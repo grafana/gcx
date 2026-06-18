@@ -48,14 +48,14 @@ func TestStructuredMissingFieldsError(t *testing.T) {
 			err:            &internallogin.ErrNeedInput{Fields: []string{"grafana-auth"}},
 			wantSummary:    "Login requires additional input",
 			wantDetailSubs: []string{"grafana-auth"},
-			wantSuggestSub: []string{"--token"},
+			wantSuggestSub: []string{"--token", "GRAFANA_TOKEN"},
 		},
 		{
 			name:           "missing_cloud_token",
 			err:            &internallogin.ErrNeedInput{Fields: []string{"cloud-token"}},
 			wantSummary:    "Login requires additional input",
 			wantDetailSubs: []string{"cloud-token"},
-			wantSuggestSub: []string{"--cloud-token", "--yes"},
+			wantSuggestSub: []string{"--cloud-token", "GRAFANA_CLOUD_TOKEN", "--yes"},
 		},
 		{
 			name: "multiple_fields_with_hint",
@@ -94,6 +94,69 @@ func TestStructuredMissingFieldsError(t *testing.T) {
 			for _, sub := range tt.wantSuggestSub {
 				assert.Contains(t, joined, sub, "suggestions should mention %q", sub)
 			}
+		})
+	}
+}
+
+// TestResolveNonInteractiveTokens verifies the non-interactive credential
+// fallback: empty token flags are filled from the (env-overridden) source
+// context, explicit flags win, and interactive logins are left untouched.
+func TestResolveNonInteractiveTokens(t *testing.T) {
+	t.Parallel()
+
+	ctxWithTokens := &config.Context{
+		Grafana: &config.GrafanaConfig{APIToken: "glsa_env"},
+		Cloud:   &config.CloudConfig{Token: "glc_env"},
+	}
+
+	tests := []struct {
+		name           string
+		flagToken      string
+		flagCloud      string
+		sourceCtx      *config.Context
+		interactive    bool
+		wantToken      string
+		wantCloudToken string
+	}{
+		{
+			name:           "non_interactive_fills_from_context",
+			sourceCtx:      ctxWithTokens,
+			wantToken:      "glsa_env",
+			wantCloudToken: "glc_env",
+		},
+		{
+			name:        "interactive_leaves_flags_untouched",
+			sourceCtx:   ctxWithTokens,
+			interactive: true,
+		},
+		{
+			name:           "explicit_flags_win_over_context",
+			flagToken:      "glsa_flag",
+			flagCloud:      "glc_flag",
+			sourceCtx:      ctxWithTokens,
+			wantToken:      "glsa_flag",
+			wantCloudToken: "glc_flag",
+		},
+		{
+			name: "nil_source_context_is_noop",
+		},
+		{
+			name:      "oauth_context_without_api_token_stays_empty",
+			sourceCtx: &config.Context{Grafana: &config.GrafanaConfig{OAuthToken: "oauth"}},
+		},
+		{
+			name:      "fills_grafana_when_cloud_block_absent",
+			sourceCtx: &config.Context{Grafana: &config.GrafanaConfig{APIToken: "glsa_env"}},
+			wantToken: "glsa_env",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			gotToken, gotCloud := resolveNonInteractiveTokens(tt.flagToken, tt.flagCloud, tt.sourceCtx, tt.interactive)
+			assert.Equal(t, tt.wantToken, gotToken, "grafana token mismatch")
+			assert.Equal(t, tt.wantCloudToken, gotCloud, "cloud token mismatch")
 		})
 	}
 }

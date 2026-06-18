@@ -168,6 +168,16 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 		!flags.Yes &&
 		!agent.IsAgentMode()
 
+	// Non-interactive callers (agent mode, --yes, piped stdin, CI) can't answer
+	// the auth prompt, so fall back to credentials already resolved into the
+	// source context. LoadConfigTolerant applies the GRAFANA_TOKEN /
+	// GRAFANA_CLOUD_TOKEN env overrides onto the current context, so this is what
+	// lets a headless `gcx login` consume those env vars the same way every other
+	// command does (and reuse a previously stored token on re-auth). Interactive
+	// callers keep the prompt flow — which offers "keep existing token" and
+	// auth-method switching — so we leave their flags untouched.
+	flags.Token, flags.CloudToken = resolveNonInteractiveTokens(flags.Token, flags.CloudToken, sourceCtx, isInteractive)
+
 	// Carry existing TLS settings into the login flow so that mTLS keeps
 	// working on re-auth without requiring the user to re-specify certs.
 	var existingTLS *config.TLS
@@ -532,9 +542,9 @@ func structuredMissingFieldsError(e *login.ErrNeedInput) error {
 		case "server":
 			suggestions = append(suggestions, "Pass --server <url> or set GRAFANA_SERVER")
 		case "grafana-auth":
-			suggestions = append(suggestions, "Pass --token <token> for a service account token, or configure TLS client certs for mTLS auth (GRAFANA_TLS_CERT_FILE / GRAFANA_TLS_KEY_FILE env vars, or gcx config set contexts.<ctx>.grafana.tls.cert-file ...)")
+			suggestions = append(suggestions, "Pass --token <token> (or set the GRAFANA_TOKEN env var) for a service account token, or configure TLS client certs for mTLS auth (GRAFANA_TLS_CERT_FILE / GRAFANA_TLS_KEY_FILE env vars, or gcx config set contexts.<ctx>.grafana.tls.cert-file ...)")
 		case "cloud-token":
-			suggestions = append(suggestions, "Pass --cloud-token <token> to enable Cloud features, or --yes to skip")
+			suggestions = append(suggestions, "Pass --cloud-token <token> (or set the GRAFANA_CLOUD_TOKEN env var) to enable Cloud features, or --yes to skip")
 		default:
 			suggestions = append(suggestions, "Provide --"+strings.ReplaceAll(f, "_", "-"))
 		}
@@ -602,6 +612,26 @@ func resolveSourceContext(cfg config.Config, contextName, server string) (*confi
 	default:
 		return cfg.GetCurrentContext(), cfg.CurrentContext
 	}
+}
+
+// resolveNonInteractiveTokens fills empty token flags from the (already
+// env-overridden) source context when the login is non-interactive, so that
+// `gcx login` honours GRAFANA_TOKEN / GRAFANA_CLOUD_TOKEN — and reuses a stored
+// token on re-auth — without an interactive prompt. Interactive logins are
+// returned unchanged: their prompt flow owns auth-method selection and already
+// offers a "keep existing token" affordance, so pre-filling here would skip the
+// menu. Explicitly-passed flags always win over the context value.
+func resolveNonInteractiveTokens(grafanaToken, cloudToken string, sourceCtx *config.Context, interactive bool) (string, string) {
+	if interactive || sourceCtx == nil {
+		return grafanaToken, cloudToken
+	}
+	if grafanaToken == "" && sourceCtx.Grafana != nil {
+		grafanaToken = sourceCtx.Grafana.APIToken
+	}
+	if cloudToken == "" && sourceCtx.Cloud != nil {
+		cloudToken = sourceCtx.Cloud.Token
+	}
+	return grafanaToken, cloudToken
 }
 
 // printModeHeader writes a one- or two-line status banner so the user
