@@ -58,7 +58,7 @@ gcx datasources cloudwatch query [flags]
       --period string               Period in seconds (e.g. 60, 300) or "auto" to let CloudWatch pick a period that fits the time range (default "auto")
       --region string               AWS region, e.g. us-east-1 (required)
       --share-link                  Print the Grafana Explore URL for the executed query to stderr
-      --since string                Duration before --to (or now if omitted); mutually exclusive with --from
+      --since string                Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --statistic string            Statistic: Average, Sum, Maximum, Minimum, SampleCount, or a percentile/trimmed-mean (e.g. p95, p99, tm99) (default "Average")
       --to string                   End time (RFC3339, Unix timestamp, or relative like 'now')
 ```

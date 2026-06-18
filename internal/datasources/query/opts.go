@@ -23,7 +23,7 @@ type TimeRangeOpts struct {
 func (opts *TimeRangeOpts) SetupTimeFlags(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.From, "from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
 	flags.StringVar(&opts.To, "to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
-	flags.StringVar(&opts.Since, "since", "", "Duration before --to (or now if omitted); mutually exclusive with --from")
+	flags.StringVar(&opts.Since, "since", "", "Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from")
 }
 
 // SetupInstantFlag registers the --time flag for instant queries at a specific timestamp.

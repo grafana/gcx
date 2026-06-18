@@ -39,7 +39,7 @@ gcx profiles exemplars profile [EXPR] [flags]
       --max-label-columns int   Max label columns in table output (0 hides label columns) (default 3)
   -o, --output string           Output format. One of: agents, json, table, yaml (default "table")
       --profile-type string     Profile type ID (default "process_cpu:cpu:nanoseconds:cpu:nanoseconds")
-      --since string            Duration before --to (or now if omitted); mutually exclusive with --from
+      --since string            Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --to string               End time (RFC3339, Unix timestamp, or relative like 'now')
       --top-n int               Maximum number of exemplars to return (default 100)
 ```

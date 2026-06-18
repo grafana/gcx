@@ -46,7 +46,7 @@ gcx traces metrics [TRACEQL] [flags]
       --open                Open the executed query in Grafana Explore
   -o, --output string       Output format. One of: agents, graph, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
-      --since string        Duration before --to (or now if omitted); mutually exclusive with --from
+      --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
