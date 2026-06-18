@@ -9,6 +9,7 @@ import (
 )
 
 var relativeTimeRegex = regexp.MustCompile(`^now(?:([+-])(\d+)([smhdwMy]))?$`)
+var simpleDurationRegex = regexp.MustCompile(`^(\d+)([smhdwMy])$`)
 
 // ParseTime parses a time string that can be either:
 // - RFC3339 format (e.g., "2024-01-15T10:30:00Z").
@@ -60,35 +61,46 @@ func parseRelativeTime(s string, now time.Time) (time.Time, error) {
 		value = -value
 	}
 
-	var duration time.Duration
-	switch unit {
-	case "s":
-		duration = time.Duration(value) * time.Second
-	case "m":
-		duration = time.Duration(value) * time.Minute
-	case "h":
-		duration = time.Duration(value) * time.Hour
-	case "d":
-		duration = time.Duration(value) * 24 * time.Hour
-	case "w":
-		duration = time.Duration(value) * 7 * 24 * time.Hour
-	case "M":
-		duration = time.Duration(value) * 30 * 24 * time.Hour
-	case "y":
-		duration = time.Duration(value) * 365 * 24 * time.Hour
-	default:
-		return time.Time{}, fmt.Errorf("unknown time unit: %s", unit)
+	duration, err := durationFromUnit(value, unit)
+	if err != nil {
+		return time.Time{}, err
 	}
 
 	return now.Add(duration), nil
 }
 
-// ParseDuration parses a duration string that can be:
-// - Go duration (e.g., "1h30m", "5m").
-// - Prometheus-style duration (e.g., "1h", "30m", "5s").
+func durationFromUnit(value int, unit string) (time.Duration, error) {
+	switch unit {
+	case "s":
+		return time.Duration(value) * time.Second, nil
+	case "m":
+		return time.Duration(value) * time.Minute, nil
+	case "h":
+		return time.Duration(value) * time.Hour, nil
+	case "d":
+		return time.Duration(value) * 24 * time.Hour, nil
+	case "w":
+		return time.Duration(value) * 7 * 24 * time.Hour, nil
+	case "M":
+		return time.Duration(value) * 30 * 24 * time.Hour, nil
+	case "y":
+		return time.Duration(value) * 365 * 24 * time.Hour, nil
+	default:
+		return 0, fmt.Errorf("unknown time unit: %s", unit)
+	}
+}
+
+// ParseDuration parses a duration string. Accepted formats:
+// - Go duration (e.g., "1h30m", "5m", "30s").
+// - Simple durations with extended units: Ns, Nm, Nh, Nd, Nw, NM, Ny.
 func ParseDuration(s string) (time.Duration, error) {
 	if s == "" {
 		return 0, nil
+	}
+
+	if m := simpleDurationRegex.FindStringSubmatch(s); m != nil {
+		value, _ := strconv.Atoi(m[1])
+		return durationFromUnit(value, m[2])
 	}
 
 	return time.ParseDuration(s)
