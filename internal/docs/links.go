@@ -62,11 +62,6 @@ const (
 	AdaptiveTraces = "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/reduce-costs/traces-costs.md"
 )
 
-// MarkdownHint is the reusable, one-line convention nudge for agents. Surface
-// it once (e.g. on `gcx login` or a future `gcx help docs`) rather than
-// inlining it per command, to keep the `gcx commands` catalog dump small.
-const MarkdownHint = "Append .md to any grafana.com/docs URL to fetch Markdown instead of HTML. Do not guess doc URLs."
-
 // All returns every documentation URL in the registry. Used by the
 // link-validity test to assert the entire set is well-formed Markdown.
 func All() []string {

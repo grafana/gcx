@@ -37,14 +37,3 @@ func TestAllURLsAreMarkdown(t *testing.T) {
 		seen[raw] = true
 	}
 }
-
-// TestMarkdownHintMentionsConvention ensures the shared convention nudge keeps
-// the two ideas agents need: the .md trick and the do-not-guess instruction.
-func TestMarkdownHintMentionsConvention(t *testing.T) {
-	if !strings.Contains(docs.MarkdownHint, ".md") {
-		t.Errorf("MarkdownHint should mention the .md convention: %q", docs.MarkdownHint)
-	}
-	if !strings.Contains(strings.ToLower(docs.MarkdownHint), "not guess") {
-		t.Errorf("MarkdownHint should instruct agents not to guess URLs: %q", docs.MarkdownHint)
-	}
-}
