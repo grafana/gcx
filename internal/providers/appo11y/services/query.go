@@ -396,14 +396,19 @@ const (
 	MetricsModeOTel MetricsMode = "otel"
 )
 
-// metricNames is the (calls, latencyBucket) pair selected by MetricsMode.
+// metricNames is the span-metric family selected by MetricsMode.
+// `latencyCount` and `latencySum` enable the average-latency query that
+// the operations command needs to compute time-share — they're emitted
+// alongside `latencyBucket` by every span-metrics generator.
 type metricNames struct {
 	calls         string
 	latencyBucket string
+	latencyCount  string
+	latencySum    string
 }
 
-// metricNamesByMode returns the (calls, latency-bucket) pair for the
-// requested MetricsMode:
+// metricNamesByMode returns the span-metric family for the requested
+// MetricsMode:
 //
 //	v3    → traces_span_metrics_* (modern OTel Collector / Tempo)
 //	tempo → traces_spanmetrics_*  (legacy Tempo metrics-generator, Beyla)
@@ -418,16 +423,22 @@ func metricNamesByMode(mode MetricsMode) (metricNames, bool) {
 		return metricNames{
 			calls:         "traces_span_metrics_calls_total",
 			latencyBucket: "traces_span_metrics_duration_seconds_bucket",
+			latencyCount:  "traces_span_metrics_duration_seconds_count",
+			latencySum:    "traces_span_metrics_duration_seconds_sum",
 		}, true
 	case MetricsModeTempo:
 		return metricNames{
 			calls:         "traces_spanmetrics_calls_total",
 			latencyBucket: "traces_spanmetrics_latency_bucket",
+			latencyCount:  "traces_spanmetrics_latency_count",
+			latencySum:    "traces_spanmetrics_latency_sum",
 		}, true
 	case MetricsModeOTel:
 		return metricNames{
 			calls:         "calls_total",
 			latencyBucket: "duration_seconds_bucket",
+			latencyCount:  "duration_seconds_count",
+			latencySum:    "duration_seconds_sum",
 		}, true
 	}
 	return metricNames{}, false
@@ -657,6 +668,81 @@ func buildLatencyQuantileQuery(names metricNames, namespace, name, window string
 	return expr.String(), nil
 }
 
+// buildOperationsRateQuery returns the per-operation request rate over
+// the given window: `sum by (span_name) (rate(<calls>[<window>]))`.
+// Shape parallels buildRateQuery but the aggregation is grouped by
+// span_name so the response can be pivoted into one row per operation.
+func buildOperationsRateQuery(names metricNames, namespace, name, window string, kinds []string) (string, error) {
+	if name == "" {
+		return "", errors.New("service name is required")
+	}
+	v := scopedSpanMetric(names.calls, namespace, name, kinds, window)
+	expr, err := promql.Sum(promql.Rate(v)).By([]string{"span_name"}).Build()
+	if err != nil {
+		return "", err
+	}
+	return expr.String(), nil
+}
+
+// buildOperationsErrorRateQuery returns the per-operation error rate,
+// filtered to status_code=STATUS_CODE_ERROR. An operation with no errors
+// in the window produces no series — the caller treats that as 0.
+func buildOperationsErrorRateQuery(names metricNames, namespace, name, window string, kinds []string) (string, error) {
+	if name == "" {
+		return "", errors.New("service name is required")
+	}
+	v := scopedSpanMetric(names.calls, namespace, name, kinds, window).
+		Label("status_code", statusCodeError)
+	expr, err := promql.Sum(promql.Rate(v)).By([]string{"span_name"}).Build()
+	if err != nil {
+		return "", err
+	}
+	return expr.String(), nil
+}
+
+// buildOperationsLatencyQuantileQuery returns
+// `histogram_quantile(phi, sum by (le, span_name) (rate(<bucket>[<window>])))`.
+// span_name is preserved through the histogram_quantile call so quantiles
+// stay per-operation.
+func buildOperationsLatencyQuantileQuery(names metricNames, namespace, name, window string, kinds []string, phi float64) (string, error) {
+	if name == "" {
+		return "", errors.New("service name is required")
+	}
+	if phi < 0 || phi > 1 {
+		return "", fmt.Errorf("phi must be in [0,1], got %v", phi)
+	}
+	v := scopedSpanMetric(names.latencyBucket, namespace, name, kinds, window)
+	sumByLeAndOp := promql.Sum(promql.Rate(v)).By([]string{"le", "span_name"})
+	expr, err := promql.HistogramQuantile(phi, sumByLeAndOp).Build()
+	if err != nil {
+		return "", err
+	}
+	return expr.String(), nil
+}
+
+// buildOperationsAvgLatencyQuery returns the per-operation average
+// latency in seconds:
+//
+//	sum by (span_name) (rate(<sum>[<window>])) / sum by (span_name) (rate(<count>[<window>]))
+//
+// The average × rate gives wall-clock time spent per second, which is
+// what we sort the table by (time share). Native quantiles aren't a
+// substitute — the time-share signal needs the first moment.
+func buildOperationsAvgLatencyQuery(names metricNames, namespace, name, window string, kinds []string) (string, error) {
+	if name == "" {
+		return "", errors.New("service name is required")
+	}
+	sumV := scopedSpanMetric(names.latencySum, namespace, name, kinds, window)
+	countV := scopedSpanMetric(names.latencyCount, namespace, name, kinds, window)
+	num := promql.Sum(promql.Rate(sumV)).By([]string{"span_name"})
+	den := promql.Sum(promql.Rate(countV)).By([]string{"span_name"})
+	expr, err := promql.Div(num, den).Build()
+	if err != nil {
+		return "", err
+	}
+	return expr.String(), nil
+}
+
 // scopedSpanMetric returns a vector selector for `metric` filtered by a
 // single `job="<ns>/<name>"` (or bare `job="<name>"`) label plus a
 // span_kind regex. Range is applied so the caller can wrap in `rate()`.
@@ -726,6 +812,385 @@ type REDStats struct {
 type ServiceDetail struct {
 	Service Service  `json:"service" yaml:"service"`
 	RED     REDStats `json:"red" yaml:"red"`
+}
+
+// Service-graph metric names. These are emitted by Tempo's
+// metrics-generator and are consistent across all metrics-modes —
+// unlike the spanmetrics family, only the histogram bucket may vary
+// (we use the seconds-prefixed variant, which is the modern emission).
+const (
+	serviceGraphRequestTotalMetric        = "traces_service_graph_request_total"
+	serviceGraphRequestFailedTotalMetric  = "traces_service_graph_request_failed_total"
+	serviceGraphRequestServerBucketMetric = "traces_service_graph_request_server_seconds_bucket"
+	serviceGraphRequestClientBucketMetric = "traces_service_graph_request_client_seconds_bucket"
+)
+
+// mapDirection picks which side of the edge the queried service sits on.
+// callersDirection: X is the `server`, peers are `client`/`client_service_namespace`.
+// calleesDirection: X is the `client`, peers are `server`/`server_service_namespace`.
+// The direction also picks which latency histogram is meaningful —
+// callers see X's response time (server_seconds), callees see how long
+// X waited on the peer (client_seconds).
+type mapDirection int
+
+const (
+	callersDirection mapDirection = iota
+	calleesDirection
+)
+
+// peerLabels returns the (name, namespace) label pair to group by for
+// this direction. Always returned in (nameLabel, namespaceLabel) order.
+func (d mapDirection) peerLabels() (string, string) {
+	if d == callersDirection {
+		return "client", "client_service_namespace"
+	}
+	return "server", "server_service_namespace"
+}
+
+// selfLabels returns the (name, namespace) labels that filter the
+// queried service down. These are always the *opposite* of peerLabels:
+// for callers we filter by server="X" (we want edges *into* X), for
+// callees by client="X" (edges *out of* X).
+func (d mapDirection) selfLabels() (string, string) {
+	if d == callersDirection {
+		return "server", "server_service_namespace"
+	}
+	return "client", "client_service_namespace"
+}
+
+// latencyBucketMetric picks the histogram that matches the latency
+// the queried service is responsible for or waiting on. For inbound
+// callers we want server-side (how long X took to respond); for
+// outbound callees we want client-side (how long X waited).
+func (d mapDirection) latencyBucketMetric() string {
+	if d == callersDirection {
+		return serviceGraphRequestServerBucketMetric
+	}
+	return serviceGraphRequestClientBucketMetric
+}
+
+// buildServiceMapEdgeQuery returns a `sum by (peer_name, peer_namespace,
+// connection_type) (rate(metric{self_labels}[window]))` expression that
+// aggregates a service-graph counter to one row per peer per
+// connection-type. metric is one of the service-graph counter metrics
+// (request_total, request_failed_total).
+func buildServiceMapEdgeQuery(metric string, dir mapDirection, namespace, name, window string) (string, error) {
+	if name == "" {
+		return "", errors.New("service name is required")
+	}
+	if metric == "" {
+		return "", errors.New("metric name is required")
+	}
+	selfName, selfNs := dir.selfLabels()
+	peerName, peerNs := dir.peerLabels()
+
+	v := promql.Vector(metric).Label(selfName, escapePromqlValue(name))
+	if namespace != "" {
+		v = v.Label(selfNs, escapePromqlValue(namespace))
+	}
+	v = v.Range(window)
+
+	expr, err := promql.Sum(promql.Rate(v)).
+		By([]string{peerName, peerNs, "connection_type"}).
+		Build()
+	if err != nil {
+		return "", err
+	}
+	return expr.String(), nil
+}
+
+// buildServiceMapLatencyQuery returns
+//
+//	histogram_quantile(phi, sum by (le, peer_name, peer_namespace, connection_type) (rate(<bucket>[window])))
+//
+// with the bucket metric picked by `dir.latencyBucketMetric()`.
+func buildServiceMapLatencyQuery(dir mapDirection, namespace, name, window string, phi float64) (string, error) {
+	if name == "" {
+		return "", errors.New("service name is required")
+	}
+	if phi < 0 || phi > 1 {
+		return "", fmt.Errorf("phi must be in [0,1], got %v", phi)
+	}
+	selfName, selfNs := dir.selfLabels()
+	peerName, peerNs := dir.peerLabels()
+
+	v := promql.Vector(dir.latencyBucketMetric()).Label(selfName, escapePromqlValue(name))
+	if namespace != "" {
+		v = v.Label(selfNs, escapePromqlValue(namespace))
+	}
+	v = v.Range(window)
+
+	sumByLe := promql.Sum(promql.Rate(v)).By([]string{"le", peerName, peerNs, "connection_type"})
+	expr, err := promql.HistogramQuantile(phi, sumByLe).Build()
+	if err != nil {
+		return "", err
+	}
+	return expr.String(), nil
+}
+
+// Edge is one row in the callers or callees list — a peer of the
+// queried service plus the rate/error/latency observed for that edge.
+// Connection type is empty for HTTP/gRPC peers; `database` / `messaging`
+// / `virtual_node` for typed edges.
+type Edge struct {
+	Peer            Service `json:"peer" yaml:"peer"`
+	ConnectionType  string  `json:"connection_type,omitempty" yaml:"connection_type,omitempty"`
+	RatePerSecond   float64 `json:"rate_per_second" yaml:"rate_per_second"`
+	ErrorRatePerSec float64 `json:"error_rate_per_second" yaml:"error_rate_per_second"`
+	ErrorPercent    float64 `json:"error_percent" yaml:"error_percent"`
+	P95Seconds      float64 `json:"p95_seconds" yaml:"p95_seconds"`
+	HasErrors       bool    `json:"has_errors" yaml:"has_errors"`
+	HasLatency      bool    `json:"has_latency" yaml:"has_latency"`
+}
+
+// ServiceMap is the response shape for `services map`: the queried
+// service plus its inbound (callers) and outbound (callees) edges from
+// the Tempo service-graph metric. Each direction is independently
+// sorted by rate desc.
+type ServiceMap struct {
+	Service Service `json:"service" yaml:"service"`
+	Window  string  `json:"window" yaml:"window"`
+	Callers []Edge  `json:"callers" yaml:"callers"`
+	Callees []Edge  `json:"callees" yaml:"callees"`
+}
+
+// edgeKey identifies an edge for the purpose of joining the rate /
+// error / latency responses. The same peer reached over two different
+// connection types is two distinct edges in the service graph.
+type edgeKey struct {
+	name      string
+	namespace string
+	connType  string
+}
+
+// extractEdges flattens a Prometheus instant response into a map keyed
+// by (peer name, peer namespace, connection_type). Samples with empty
+// peer name or unparseable values are dropped so callers can treat
+// absence as "no data". peerName / peerNs name which labels to read.
+func extractEdges(resp *prometheus.QueryResponse, peerName, peerNs string) map[edgeKey]float64 {
+	out := make(map[edgeKey]float64)
+	if resp == nil {
+		return out
+	}
+	for _, sample := range resp.Data.Result {
+		n := sample.Metric[peerName]
+		if n == "" {
+			continue
+		}
+		if len(sample.Value) < 2 {
+			continue
+		}
+		str, ok := sample.Value[1].(string)
+		if !ok {
+			continue
+		}
+		f, err := strconv.ParseFloat(str, 64)
+		if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
+			continue
+		}
+		key := edgeKey{
+			name:      n,
+			namespace: sample.Metric[peerNs],
+			connType:  sample.Metric["connection_type"],
+		}
+		out[key] = f
+	}
+	return out
+}
+
+// Operation is one row in the operations table — a single span_name
+// inside a service, with its RED snapshot. AvgSeconds is the arithmetic
+// mean latency (sum / count), distinct from the quantile fields, and is
+// used to compute time-share. *Has* flags distinguish "0 measured" from
+// "no series in window" the same way REDStats does.
+type Operation struct {
+	Name             string  `json:"operation" yaml:"operation"`
+	RatePerSecond    float64 `json:"rate_per_second" yaml:"rate_per_second"`
+	ErrorRatePerSec  float64 `json:"error_rate_per_second" yaml:"error_rate_per_second"`
+	ErrorPercent     float64 `json:"error_percent" yaml:"error_percent"`
+	AvgSeconds       float64 `json:"avg_seconds" yaml:"avg_seconds"`
+	P50Seconds       float64 `json:"p50_seconds" yaml:"p50_seconds"`
+	P95Seconds       float64 `json:"p95_seconds" yaml:"p95_seconds"`
+	P99Seconds       float64 `json:"p99_seconds" yaml:"p99_seconds"`
+	TimeSharePercent float64 `json:"time_share_percent" yaml:"time_share_percent"`
+	HasTraffic       bool    `json:"has_traffic" yaml:"has_traffic"`
+	HasErrors        bool    `json:"has_errors" yaml:"has_errors"`
+	HasAvgLatency    bool    `json:"has_avg_latency" yaml:"has_avg_latency"`
+	HasLatencyP50    bool    `json:"has_latency_p50" yaml:"has_latency_p50"`
+	HasLatencyP95    bool    `json:"has_latency_p95" yaml:"has_latency_p95"`
+	HasLatencyP99    bool    `json:"has_latency_p99" yaml:"has_latency_p99"`
+}
+
+// OperationsResponse is the top-level shape for the operations command:
+// the service identity that was queried plus the per-operation rows.
+// Wrapping the slice keeps room for future metadata (page tokens, totals,
+// truncation flags) without changing the JSON contract.
+type OperationsResponse struct {
+	Service     Service     `json:"service" yaml:"service"`
+	Window      string      `json:"window" yaml:"window"`
+	MetricsMode MetricsMode `json:"metrics_mode" yaml:"metrics_mode"`
+	SpanKinds   string      `json:"span_kinds" yaml:"span_kinds"`
+	Items       []Operation `json:"items" yaml:"items"`
+}
+
+// extractBySpanName collapses a Prometheus instant response into a map
+// of span_name → scalar value. Samples with empty span_name or
+// unparseable values are dropped so callers can treat absence as
+// "no data".
+func extractBySpanName(resp *prometheus.QueryResponse) map[string]float64 {
+	out := make(map[string]float64)
+	if resp == nil {
+		return out
+	}
+	for _, sample := range resp.Data.Result {
+		op := sample.Metric["span_name"]
+		if op == "" {
+			continue
+		}
+		if len(sample.Value) < 2 {
+			continue
+		}
+		str, ok := sample.Value[1].(string)
+		if !ok {
+			continue
+		}
+		f, err := strconv.ParseFloat(str, 64)
+		if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
+			continue
+		}
+		out[op] = f
+	}
+	return out
+}
+
+// mergeEdges joins per-quantity maps (rate, errors, p95) into one row
+// per (peer, connection_type), then sorts by rate desc with a stable
+// (name, namespace) tiebreak. HasErrors is inferred when rate>0 — a
+// healthy edge with no STATUS_CODE_ERROR series prints 0% rather than
+// "no data". Matches the convention from REDStats / Operation.
+func mergeEdges(rates, errors, p95s map[edgeKey]float64) []Edge {
+	keys := make(map[edgeKey]struct{})
+	for k := range rates {
+		keys[k] = struct{}{}
+	}
+	for k := range errors {
+		keys[k] = struct{}{}
+	}
+	for k := range p95s {
+		keys[k] = struct{}{}
+	}
+	out := make([]Edge, 0, len(keys))
+	for k := range keys {
+		rate, hasRate := rates[k]
+		errRate, hasErr := errors[k]
+		p95, hasP95 := p95s[k]
+		hasTraffic := hasRate && rate > 0
+		out = append(out, Edge{
+			Peer:            Service{Name: k.name, Namespace: k.namespace},
+			ConnectionType:  k.connType,
+			RatePerSecond:   rate,
+			ErrorRatePerSec: errRate,
+			ErrorPercent:    computeErrorPercent(errRate, rate),
+			P95Seconds:      p95,
+			HasErrors:       hasErr || hasTraffic,
+			HasLatency:      hasP95,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].RatePerSecond != out[j].RatePerSecond {
+			return out[i].RatePerSecond > out[j].RatePerSecond
+		}
+		if out[i].Peer.Namespace != out[j].Peer.Namespace {
+			return out[i].Peer.Namespace < out[j].Peer.Namespace
+		}
+		if out[i].Peer.Name != out[j].Peer.Name {
+			return out[i].Peer.Name < out[j].Peer.Name
+		}
+		return out[i].ConnectionType < out[j].ConnectionType
+	})
+	return out
+}
+
+// mergeOperations joins per-quantity maps (rate, errors, avg, p50, p95,
+// p99) into one row per distinct span_name, then computes time-share
+// client-side. The time-share denominator is the sum of (avg × rate)
+// across all observed operations — i.e. the share of total wall-clock
+// time each operation consumes. Operations missing an avg-latency
+// signal contribute 0 to the denominator and a 0 share to the output.
+func mergeOperations(rates, errors, avgs, p50s, p95s, p99s map[string]float64) []Operation {
+	names := make(map[string]struct{})
+	for k := range rates {
+		names[k] = struct{}{}
+	}
+	for k := range errors {
+		names[k] = struct{}{}
+	}
+	for k := range avgs {
+		names[k] = struct{}{}
+	}
+	for k := range p50s {
+		names[k] = struct{}{}
+	}
+	for k := range p95s {
+		names[k] = struct{}{}
+	}
+	for k := range p99s {
+		names[k] = struct{}{}
+	}
+
+	out := make([]Operation, 0, len(names))
+	totalWall := 0.0
+	for n := range names {
+		rate, hasRate := rates[n]
+		errRate, hasErr := errors[n]
+		avg, hasAvg := avgs[n]
+		p50, hasP50 := p50s[n]
+		p95, hasP95 := p95s[n]
+		p99, hasP99 := p99s[n]
+
+		hasTraffic := hasRate && rate > 0
+		// Once we know there's traffic, missing error series ⇒ 0 errors,
+		// not "unknown" — same logic as REDStats.HasErrors in services get.
+		hasErrors := hasErr || hasTraffic
+		if hasAvg && hasTraffic {
+			totalWall += avg * rate
+		}
+		out = append(out, Operation{
+			Name:            n,
+			RatePerSecond:   rate,
+			ErrorRatePerSec: errRate,
+			ErrorPercent:    computeErrorPercent(errRate, rate),
+			AvgSeconds:      avg,
+			P50Seconds:      p50,
+			P95Seconds:      p95,
+			P99Seconds:      p99,
+			HasTraffic:      hasTraffic,
+			HasErrors:       hasErrors,
+			HasAvgLatency:   hasAvg,
+			HasLatencyP50:   hasP50,
+			HasLatencyP95:   hasP95,
+			HasLatencyP99:   hasP99,
+		})
+	}
+
+	if totalWall > 0 {
+		for i := range out {
+			if out[i].HasAvgLatency && out[i].HasTraffic {
+				out[i].TimeSharePercent = (out[i].AvgSeconds * out[i].RatePerSecond / totalWall) * 100
+			}
+		}
+	}
+
+	// Default order matches the plugin: time-share desc, then by name
+	// asc so equal-share rows (typically the zero-share tail) are
+	// reproducible across runs.
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].TimeSharePercent != out[j].TimeSharePercent {
+			return out[i].TimeSharePercent > out[j].TimeSharePercent
+		}
+		return out[i].Name < out[j].Name
+	})
+	return out
 }
 
 // computeErrorPercent reports errors/total as a percentage (0..100), or 0

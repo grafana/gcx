@@ -5,20 +5,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/queryerror"
 	"k8s.io/client-go/rest"
 )
 
-const (
-	maxQueryResponseBytes    = 50 << 20 // 50 MB
-	maxResourceResponseBytes = 1 << 20  // 1 MB
-)
+const maxResourceResponseBytes = 1 << 20 // 1 MB
 
 // Client is an HTTP client for CloudWatch queries and resource listing via Grafana's proxy.
 type Client struct {
@@ -199,7 +196,7 @@ func (c *Client) getResource(ctx context.Context, dsUID, resource string, params
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResourceResponseBytes))
+	body, err := httputils.ReadResponseBody(resp.Body, maxResourceResponseBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -224,7 +221,7 @@ func (c *Client) post(ctx context.Context, apiPath string, body []byte) ([]byte,
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxQueryResponseBytes))
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
 		return nil, resp.StatusCode, fmt.Errorf("failed to read response: %w", err)
 	}

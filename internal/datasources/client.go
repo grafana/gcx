@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/httputils"
 	"k8s.io/client-go/rest"
 )
 
@@ -69,7 +69,7 @@ func (c *Client) List(ctx context.Context) ([]*Datasource, error) {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	body, err := httputils.ReadResponseBody(resp.Body, maxResponseBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -108,7 +108,7 @@ func (c *Client) get(ctx context.Context, path, identifier string) (*Datasource,
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	body, err := httputils.ReadResponseBody(resp.Body, maxResponseBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}

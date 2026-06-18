@@ -4,15 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/queryerror"
 	"k8s.io/client-go/rest"
 )
-
-const defaultMaxResponseBytes int64 = 50 << 20 // 50 MB
 
 // Client executes Grafana datasource query API requests.
 type Client struct {
@@ -42,7 +40,7 @@ func NewClientWithHTTPClient(cfg config.NamespacedRESTConfig, httpClient *http.C
 		host:             cfg.Host,
 		namespace:        cfg.Namespace,
 		httpClient:       httpClient,
-		maxResponseBytes: defaultMaxResponseBytes,
+		maxResponseBytes: httputils.DefaultResponseLimit,
 	}
 }
 
@@ -82,7 +80,7 @@ func (c *Client) post(ctx context.Context, path string, body []byte) (int, []byt
 	}
 	defer resp.Body.Close()
 
-	respBody, err := c.readLimited(resp.Body)
+	respBody, err := httputils.ReadResponseBody(resp.Body, c.maxResponseBytes)
 	if err != nil {
 		return resp.StatusCode, nil, err
 	}
@@ -92,15 +90,4 @@ func (c *Client) post(ctx context.Context, path string, body []byte) (int, []byt
 
 func (c *Client) k8sQueryPath() string {
 	return fmt.Sprintf("/apis/query.grafana.app/v0alpha1/namespaces/%s/query", c.namespace)
-}
-
-func (c *Client) readLimited(r io.Reader) ([]byte, error) {
-	data, err := io.ReadAll(io.LimitReader(r, c.maxResponseBytes+1))
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-	if int64(len(data)) > c.maxResponseBytes {
-		return nil, fmt.Errorf("response body exceeds %d MB limit; use a narrower time range or add filters to reduce data volume", c.maxResponseBytes>>20)
-	}
-	return data, nil
 }

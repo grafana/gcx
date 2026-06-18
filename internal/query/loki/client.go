@@ -5,17 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/queryerror"
 	"k8s.io/client-go/rest"
 )
-
-const maxResponseBytes = 50 << 20 // 50 MB
 
 type Client struct {
 	restConfig config.NamespacedRESTConfig
@@ -88,7 +86,7 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -107,7 +105,7 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 			return nil, fmt.Errorf("failed to execute query: %w", err)
 		}
 		defer resp.Body.Close()
-		respBody, err = io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+		respBody, err = httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read response: %w", err)
 		}
@@ -187,7 +185,7 @@ func (c *Client) MetricQuery(ctx context.Context, datasourceUID string, req Quer
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -206,7 +204,7 @@ func (c *Client) MetricQuery(ctx context.Context, datasourceUID string, req Quer
 			return nil, fmt.Errorf("failed to execute query: %w", err)
 		}
 		defer resp.Body.Close()
-		respBody, err = io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+		respBody, err = httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read response: %w", err)
 		}
@@ -248,7 +246,7 @@ func (c *Client) Labels(ctx context.Context, datasourceUID string) (*LabelsRespo
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -279,7 +277,7 @@ func (c *Client) LabelValues(ctx context.Context, datasourceUID, labelName strin
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -318,7 +316,7 @@ func (c *Client) Series(ctx context.Context, datasourceUID string, matchers []st
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}

@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/queryerror"
 	"k8s.io/client-go/rest"
 )
@@ -64,7 +64,7 @@ func (c *Client) Search(ctx context.Context, datasourceUID string, req SearchReq
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -109,7 +109,7 @@ func (c *Client) GetTrace(ctx context.Context, datasourceUID string, req GetTrac
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -150,7 +150,7 @@ func (c *Client) Tags(ctx context.Context, datasourceUID string, req TagsRequest
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -193,7 +193,7 @@ func (c *Client) TagValues(ctx context.Context, datasourceUID string, req TagVal
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -240,7 +240,7 @@ func (c *Client) MetricsRange(ctx context.Context, datasourceUID string, req Met
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -283,7 +283,7 @@ func (c *Client) MetricsInstant(ctx context.Context, datasourceUID string, req M
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}

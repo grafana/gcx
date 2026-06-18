@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"time"
+
+	"github.com/grafana/gcx/internal/httputils"
 )
 
 // SeriesResponse represents the response from a /api/v1/series query.
@@ -45,7 +46,7 @@ func (c *Client) Series(ctx context.Context, datasourceUID string, match []strin
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
