@@ -384,18 +384,35 @@ func TestLoginOptsValidate(t *testing.T) {
 func TestOAuthFlagParses(t *testing.T) {
 	t.Parallel()
 
-	opts := &loginOpts{}
-	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
-	opts.setup(flags)
+	tests := []struct {
+		name      string
+		args      []string
+		wantOAuth bool
+	}{
+		{
+			name:      "oauth_flag_set",
+			args:      []string{"--server", "https://example.grafana.net", "--oauth"},
+			wantOAuth: true,
+		},
+		{
+			name:      "oauth_flag_absent",
+			args:      []string{"--server", "https://example.grafana.net"},
+			wantOAuth: false,
+		},
+	}
 
-	require.NoError(t, flags.Parse([]string{"--server", "https://example.grafana.net", "--oauth"}))
-	assert.True(t, opts.OAuth, "--oauth should set loginOpts.OAuth")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	opts2 := &loginOpts{}
-	flags2 := pflag.NewFlagSet("test", pflag.ContinueOnError)
-	opts2.setup(flags2)
-	require.NoError(t, flags2.Parse([]string{"--server", "https://example.grafana.net"}))
-	assert.False(t, opts2.OAuth, "OAuth should default to false")
+			opts := &loginOpts{}
+			flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+			opts.setup(flags)
+
+			require.NoError(t, flags.Parse(tt.args))
+			assert.Equal(t, tt.wantOAuth, opts.OAuth)
+		})
+	}
 }
 
 // TestPrintResult_TextCodec is a golden comparison that confirms the text
