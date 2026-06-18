@@ -287,6 +287,13 @@ func TestContext_ResolveStackSlug(t *testing.T) {
 			expected: "mystack",
 		},
 		{
+			name: "ops stack derivation is the bare slug (no -ops naming suffix)",
+			ctx: config.Context{
+				Grafana: &config.GrafanaConfig{Server: "https://mystack.grafana-ops.net"},
+			},
+			expected: "mystack",
+		},
+		{
 			name: "non-grafana.net server returns empty string",
 			ctx: config.Context{
 				Grafana: &config.GrafanaConfig{Server: "https://grafana.mycompany.com"},
@@ -503,6 +510,42 @@ func TestContext_ResolveGCOMURL(t *testing.T) {
 			expected: "https://grafana.com",
 		},
 		{
+			name: "prod stack server derives grafana.com",
+			ctx: config.Context{
+				Grafana: &config.GrafanaConfig{Server: "https://mystack.grafana.net"},
+			},
+			expected: "https://grafana.com",
+		},
+		{
+			name: "ops stack server derives grafana-ops.com",
+			ctx: config.Context{
+				Grafana: &config.GrafanaConfig{Server: "https://mystack.grafana-ops.net"},
+			},
+			expected: "https://grafana-ops.com",
+		},
+		{
+			name: "dev stack server derives grafana-dev.com",
+			ctx: config.Context{
+				Grafana: &config.GrafanaConfig{Server: "https://mystack.grafana-dev.net"},
+			},
+			expected: "https://grafana-dev.com",
+		},
+		{
+			name: "explicit cloud.api-url wins over server-derived root",
+			ctx: config.Context{
+				Cloud:   &config.CloudConfig{APIUrl: "https://grafana.com"},
+				Grafana: &config.GrafanaConfig{Server: "https://mystack.grafana-ops.net"},
+			},
+			expected: "https://grafana.com",
+		},
+		{
+			name: "non-cloud server falls back to grafana.com",
+			ctx: config.Context{
+				Grafana: &config.GrafanaConfig{Server: "https://grafana.example.com"},
+			},
+			expected: "https://grafana.com",
+		},
+		{
 			name: "custom cloud.api-url is prefixed with https://",
 			ctx: config.Context{
 				Cloud: &config.CloudConfig{APIUrl: "grafana-dev.com"},
@@ -589,7 +632,9 @@ func TestGrafanaConfig_InferredAuthMethod(t *testing.T) {
 	}
 }
 
-func TestStackSlugFromServerURL_AppendsEnvSuffix(t *testing.T) {
+func TestStackSlugFromServerURL(t *testing.T) {
+	// The slug is the real GCOM/stack-API identifier: the per-environment naming
+	// suffix ("-dev"/"-ops") is NOT part of it (that lives in the context name).
 	cases := []struct {
 		name     string
 		url      string
@@ -598,8 +643,8 @@ func TestStackSlugFromServerURL_AppendsEnvSuffix(t *testing.T) {
 	}{
 		{"prod bare", "https://mystack.grafana.net", "mystack", true},
 		{"prod regional", "https://mystack.us.grafana.net", "mystack", true},
-		{"dev appends -dev", "https://mystack.grafana-dev.net", "mystack-dev", true},
-		{"ops appends -ops", "https://mystack.grafana-ops.net", "mystack-ops", true},
+		{"dev is bare (no -dev suffix)", "https://mystack.grafana-dev.net", "mystack", true},
+		{"ops is bare (no -ops suffix)", "https://mystack.grafana-ops.net", "mystack", true},
 		{"custom domain no match", "https://grafana.example.com", "", false},
 		{"empty slug rejected", "https://.grafana-dev.net", "", false},
 	}
@@ -608,6 +653,29 @@ func TestStackSlugFromServerURL_AppendsEnvSuffix(t *testing.T) {
 			slug, ok := config.StackSlugFromServerURL(tc.url)
 			if slug != tc.wantSlug || ok != tc.wantOK {
 				t.Fatalf("got (%q, %v), want (%q, %v)", slug, ok, tc.wantSlug, tc.wantOK)
+			}
+		})
+	}
+}
+
+func TestGCOMRootFromServerURL(t *testing.T) {
+	cases := []struct {
+		name     string
+		url      string
+		wantRoot string
+		wantOK   bool
+	}{
+		{"prod", "https://mystack.grafana.net", "https://grafana.com", true},
+		{"prod regional", "https://mystack.us.grafana.net", "https://grafana.com", true},
+		{"dev", "https://mystack.grafana-dev.net", "https://grafana-dev.com", true},
+		{"ops", "https://mystack.grafana-ops.net", "https://grafana-ops.com", true},
+		{"custom domain no match", "https://grafana.example.com", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root, ok := config.GCOMRootFromServerURL(tc.url)
+			if root != tc.wantRoot || ok != tc.wantOK {
+				t.Fatalf("got (%q, %v), want (%q, %v)", root, ok, tc.wantRoot, tc.wantOK)
 			}
 		})
 	}

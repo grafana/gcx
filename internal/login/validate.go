@@ -146,11 +146,16 @@ func Validate(ctx context.Context, opts Options, restCfg config.NamespacedRESTCo
 	}
 
 	if opts.Target == TargetCloud && opts.CloudToken != "" {
-		gcomBaseURL := opts.CloudAPIURL
-		if gcomBaseURL == "" {
-			gcomBaseURL = "https://grafana.com"
+		// Resolve the GCOM root the same way runtime cloud commands do: an
+		// explicit --cloud-api-url wins, otherwise it is derived from the stack
+		// server URL's environment (ops/dev stacks → grafana-ops.com /
+		// grafana-dev.com), falling back to grafana.com. Validating an ops/dev
+		// CAP token against prod grafana.com otherwise 401s.
+		gcomCtx := &config.Context{
+			Grafana: &config.GrafanaConfig{Server: opts.Server},
+			Cloud:   &config.CloudConfig{APIUrl: opts.CloudAPIURL},
 		}
-		gcomC, err := cloud.NewGCOMClient(gcomBaseURL, opts.CloudToken)
+		gcomC, err := cloud.NewGCOMClient(gcomCtx.ResolveGCOMURL(), opts.CloudToken)
 		if err != nil {
 			return "", fmt.Errorf("connectivity validation: invalid GCOM URL: %w", err)
 		}

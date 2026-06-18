@@ -199,12 +199,13 @@ func (context *Context) ResolveStackSlug() string {
 //
 //nolint:gochecknoglobals // constant-like lookup table; no mutable state.
 var grafanaCloudStackSuffixes = []struct {
-	suffix string
-	envTag string // appended to the slug for non-prod Grafana-run environments
+	suffix   string
+	envTag   string // appended to the context NAME (not the slug) for non-prod environments
+	gcomRoot string // GCOM (grafana.com) API root that manages stacks in this environment
 }{
-	{".grafana.net", ""},
-	{".grafana-dev.net", "-dev"},
-	{".grafana-ops.net", "-ops"},
+	{".grafana.net", "", "https://grafana.com"},
+	{".grafana-dev.net", "-dev", "https://grafana-dev.com"},
+	{".grafana-ops.net", "-ops", "https://grafana-ops.com"},
 }
 
 // grafanaCloudRootSuffixes are the Grafana-run root domains used by probes
@@ -237,46 +238,64 @@ func IsGrafanaCloudHost(host string) bool {
 	return false
 }
 
-// StackSlugFromServerURL attempts to extract a Grafana Cloud stack slug from
-// a server URL. It returns the slug and true for *.grafana.net,
-// *.grafana-dev.net, and *.grafana-ops.net URLs, or ("", false) for anything else.
-// For non-prod Grafana-run environments, an env suffix is appended to the slug
-// to prevent context-name collisions: "-dev" for *.grafana-dev.net, "-ops" for
-// *.grafana-ops.net. *.grafana.net (prod) is returned unchanged.
-func StackSlugFromServerURL(serverURL string) (string, bool) {
+// matchGrafanaCloudStack matches a server URL against the known Grafana-run
+// stack suffixes. It returns, in order: the bare stack slug; the context-name
+// env tag ("-dev"/"-ops", empty for prod); the GCOM API root for that
+// environment; and a bool that is false for non-Grafana-Cloud or custom-domain
+// URLs. Regional subdomains ("mystack.us.grafana.net") collapse to their first
+// component ("mystack").
+func matchGrafanaCloudStack(serverURL string) (string, string, string, bool) {
 	parsed, err := url.Parse(serverURL)
 	if err != nil {
-		return "", false
+		return "", "", "", false
 	}
 
 	host := parsed.Hostname()
 	for _, entry := range grafanaCloudStackSuffixes {
-		slug, ok := strings.CutSuffix(host, entry.suffix)
-		if !ok {
+		s, found := strings.CutSuffix(host, entry.suffix)
+		if !found {
 			continue
 		}
-		// For regional subdomains like "mystack.us.grafana.net",
-		// CutSuffix returns "mystack.us". Take only the first component.
-		if i := strings.Index(slug, "."); i >= 0 {
-			slug = slug[:i]
+		if i := strings.Index(s, "."); i >= 0 {
+			s = s[:i]
 		}
-		if slug == "" {
+		if s == "" {
 			continue
 		}
-		return slug + entry.envTag, true
+		return s, entry.envTag, entry.gcomRoot, true
 	}
 
-	return "", false
+	return "", "", "", false
+}
+
+// StackSlugFromServerURL extracts the Grafana Cloud stack slug from a server URL.
+// It returns the slug and true for *.grafana.net, *.grafana-dev.net, and
+// *.grafana-ops.net URLs, or ("", false) for anything else. The slug is the real
+// stack slug used by the GCOM and stack-scoped APIs — the per-environment naming
+// suffix ("-dev"/"-ops") is NOT included here; that lives in ContextNameFromServerURL.
+func StackSlugFromServerURL(serverURL string) (string, bool) {
+	slug, _, _, ok := matchGrafanaCloudStack(serverURL)
+	return slug, ok
+}
+
+// GCOMRootFromServerURL returns the GCOM (grafana.com) API root that manages the
+// stack at serverURL: grafana.com for *.grafana.net, grafana-dev.com for
+// *.grafana-dev.net, grafana-ops.com for *.grafana-ops.net. ok is false for
+// non-Grafana-Cloud or custom-domain URLs.
+func GCOMRootFromServerURL(serverURL string) (string, bool) {
+	_, _, gcomRoot, ok := matchGrafanaCloudStack(serverURL)
+	return gcomRoot, ok
 }
 
 // ContextNameFromServerURL derives a context name from a Grafana server URL.
-// For Grafana Cloud URLs, it returns the stack slug (with env suffix for
-// -dev/-ops). For other URLs, dots in the hostname are replaced with hyphens
-// to keep the name shell-friendly. Returns DefaultContextName if the URL
-// cannot be parsed.
+// For Grafana Cloud URLs, it returns the stack slug with the per-environment
+// suffix ("-dev"/"-ops") appended to prevent collisions between same-named
+// stacks across environments. For other URLs, dots in the hostname are replaced
+// with hyphens to keep the name shell-friendly. Returns DefaultContextName if
+// the URL cannot be parsed.
 func ContextNameFromServerURL(serverURL string) string {
-	if slug, ok := StackSlugFromServerURL(serverURL); ok {
-		return slug
+	if slug, envTag, _, ok := matchGrafanaCloudStack(serverURL); ok {
+		return slug + envTag
 	}
 
 	parsed, err := url.Parse(serverURL)
@@ -288,8 +307,12 @@ func ContextNameFromServerURL(serverURL string) string {
 }
 
 // ResolveGCOMURL returns the Grafana Cloud API (GCOM) base URL for this context.
-// If Cloud.APIUrl is set, it is returned prefixed with "https://".
-// Otherwise, "https://grafana.com" is returned.
+// Resolution order:
+//  1. An explicit Cloud.APIUrl, prefixed with "https://" if it has no scheme.
+//  2. The GCOM root derived from the stack server URL's environment, so that an
+//     ops stack (*.grafana-ops.net) resolves to grafana-ops.com and a dev stack
+//     to grafana-dev.com instead of prod grafana.com.
+//  3. "https://grafana.com" as the default (prod, or non-Grafana-Cloud hosts).
 func (context *Context) ResolveGCOMURL() string {
 	if context.Cloud != nil && context.Cloud.APIUrl != "" {
 		apiURL := context.Cloud.APIUrl
@@ -300,6 +323,12 @@ func (context *Context) ResolveGCOMURL() string {
 			slog.Warn("GCOM API URL uses http:// — cloud tokens may be sent unencrypted", "url", apiURL)
 		}
 		return apiURL
+	}
+
+	if context.Grafana != nil {
+		if root, ok := GCOMRootFromServerURL(context.Grafana.Server); ok {
+			return root
+		}
 	}
 
 	return "https://grafana.com"
