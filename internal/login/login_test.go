@@ -1,6 +1,7 @@
 package login_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"path/filepath"
@@ -906,6 +907,50 @@ func TestRun_ValidationFailure_EmitsSaveUnvalidatedClarification(t *testing.T) {
 	if _, err := config.Load(context.Background(), configSource(dir)); err == nil {
 		t.Errorf("config written despite validation failure + no ForceSave")
 	}
+}
+
+// TestRun_OptionalCloudTokenRejected_WarnsAndPersists verifies that a rejected
+// Cloud Access Policy (CAP) token does not block login: Run warns, persists the
+// context (including the token), and returns no error. Other validation failures
+// still hard-fail / prompt (covered by the save-unvalidated test above).
+func TestRun_OptionalCloudTokenRejected_WarnsAndPersists(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "0")
+	agent.ResetForTesting()
+
+	dir := t.TempDir()
+	var warnBuf bytes.Buffer
+	opts := login.Options{
+		Inputs: login.Inputs{
+			Server:       "https://mystack.grafana.net",
+			ContextName:  "mystack",
+			Target:       login.TargetCloud,
+			GrafanaToken: "glsa_test",
+			CloudToken:   "glc_bad",
+			Writer:       &warnBuf,
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(dir),
+			ValidateFn: func(_ context.Context, _ login.Options, _ config.NamespacedRESTConfig) (string, error) {
+				return "", &login.GCOMStackError{Slug: "mystack", Status: 401, Cause: errors.New("unauthorized")}
+			},
+		},
+		RetryState: login.RetryState{
+			StagedContext: &config.Context{},
+		},
+	}
+
+	result, err := login.Run(context.Background(), &opts)
+	require.NoError(t, err, "an optional CAP-token rejection must not fail login")
+	assert.True(t, result.HasCloudToken, "the CAP token should still be persisted")
+	assert.Contains(t, warnBuf.String(), "Cloud Access Policy token could not be validated")
+	assert.Contains(t, warnBuf.String(), "401")
+
+	// The context must have been written despite the CAP validation failure.
+	cfg, err := config.Load(context.Background(), configSource(dir))
+	require.NoError(t, err)
+	require.NotNil(t, cfg.Contexts["mystack"])
+	require.NotNil(t, cfg.Contexts["mystack"].Cloud)
+	assert.Equal(t, "glc_bad", cfg.Contexts["mystack"].Cloud.Token)
 }
 
 func TestRun_ForceSave_BypassesValidation(t *testing.T) {

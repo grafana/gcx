@@ -304,13 +304,30 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 			validateFn = Validate
 		}
 		v, err := validateFn(ctx, *opts, restCfg)
-		if err != nil {
+		var capErr *GCOMStackError
+		switch {
+		case err == nil:
+			grafanaVersion = v
+
+		case errors.As(err, &capErr):
+			// The Cloud Access Policy (CAP) token is optional: its absence does
+			// not block login (resolveCloudAuth skips it under --yes/agent mode),
+			// so a present-but-rejected token must not block login either. A
+			// GCOMStackError means every earlier Validate step (health, K8s
+			// discovery, version) passed — the Grafana auth is sound and only the
+			// CAP check failed. Warn and continue, persisting the token anyway:
+			// the CAP validation itself can be wrong for non-prod stacks (GCOM
+			// root / slug derivation), and the user can re-run with a corrected
+			// token without losing core access in the meantime.
+			warnCloudTokenUnvalidated(opts.Writer, capErr)
+
+		case opts.Yes || agent.IsAgentMode():
 			// Non-interactive callers with --yes get a hard fail — they did not
 			// opt in to "save anyway". The debug prompt is an interactive-only
 			// escape hatch that requires explicit confirmation.
-			if opts.Yes || agent.IsAgentMode() {
-				return Result{}, err
-			}
+			return Result{}, err
+
+		default:
 			return Result{}, &ErrNeedClarification{
 				Field: "save-unvalidated",
 				Question: fmt.Sprintf(
@@ -320,7 +337,6 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 				Choices: []string{"yes", "no"},
 			}
 		}
-		grafanaVersion = v
 	}
 
 	// Step 7: Persist to config (write only after all validation passes)
@@ -494,6 +510,22 @@ func resolveCloudAuth(opts Options, target Target) (*config.CloudConfig, error) 
 		Optional: true,
 		Hint:     cloudTokenHint(opts.Server),
 	}
+}
+
+// warnCloudTokenUnvalidated surfaces a non-fatal advisory when a Cloud Access
+// Policy (CAP) token is present but its GCOM validation failed. Because the CAP
+// token is optional, login proceeds; this explains why Cloud management features
+// may not work. It writes to w (the caller-supplied progress writer); a nil
+// writer discards, keeping internal/login free of process streams (NC-001).
+func warnCloudTokenUnvalidated(w io.Writer, e *GCOMStackError) {
+	if w == nil {
+		w = io.Discard
+	}
+	msg := fmt.Sprintf("Warning: Cloud Access Policy token could not be validated for stack %q", e.Slug)
+	if e.Status != 0 {
+		msg += fmt.Sprintf(" (GCOM returned %d)", e.Status)
+	}
+	fmt.Fprintln(w, msg+". Logging in anyway; Cloud management features may be unavailable until a working token is provided.")
 }
 
 // persistContext loads the existing config (tolerating ErrNotExist), upserts the
