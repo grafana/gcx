@@ -14,7 +14,9 @@ Pass CONTEXT_NAME to target a specific context:
 Without CONTEXT_NAME, re-authenticates the current context, or starts a
 first-time setup if no current context is configured.
 
-Token sources (for non-interactive use):
+Auth sources (for non-interactive use):
+  --oauth        Browser-based OAuth (recommended for Grafana Cloud). Opens a
+                 browser for the user to approve; works in agent mode.
   --token        Grafana service-account token (created inside the Grafana
                  instance). See:
                  https://grafana.com/docs/grafana/latest/administration/service-accounts.md
@@ -32,6 +34,7 @@ gcx login [CONTEXT_NAME] [flags]
   gcx login
   gcx login prod
   gcx login prod --server https://prod.grafana.net
+  gcx login prod --server https://prod.grafana.net --oauth
   gcx login --yes prod --token glsa_xxx
   gcx login --yes --server https://localhost:3000 --token glsa_xxx
 ```
@@ -47,6 +50,7 @@ gcx login [CONTEXT_NAME] [flags]
       --context string            Name of the context to use
   -h, --help                      help for login
       --json string               Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --oauth                     Authenticate via browser-based OAuth (recommended for Grafana Cloud). Works non-interactively and in agent mode: opens a browser for the user to approve.
       --oauth-callback-port int   Fixed local port for the OAuth callback server (default: auto-pick from 54321-54399). Useful when only specific ports are forwarded between a remote host and your browser
       --org-id int                Grafana organization ID (defaults to 1 for on-prem)
   -o, --output string             Output format. One of: agents, json, text, yaml (default "text")

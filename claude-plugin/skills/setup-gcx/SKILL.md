@@ -63,7 +63,21 @@ gcx config set contexts.cloud.grafana.server https://myorg.grafana.net
 Replace `cloud` with any name you prefer for this context (e.g., `prod`,
 `myorg-cloud`). Replace the server URL with your Grafana Cloud URL.
 
-### Step 2: Set the API token
+### Step 2: Authenticate
+
+**Option A-1: Browser OAuth (recommended for Grafana Cloud)**
+
+```bash
+gcx login cloud --server https://myorg.grafana.net --oauth
+```
+
+Opens a browser for the user to approve. This works non-interactively and in
+agent mode — the agent issues the command, the browser opens, and the user
+approves. No token to create or paste. `gcx login` also sets the context as
+current and verifies connectivity, so Steps 1, 3, and 4 are handled for you;
+skip them when using this option.
+
+**Option A-2: Service account token**
 
 ```bash
 gcx config set contexts.cloud.grafana.token glsa_XXXXXXXXXXXXXXXX

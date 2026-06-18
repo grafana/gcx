@@ -48,7 +48,7 @@ func TestStructuredMissingFieldsError(t *testing.T) {
 			err:            &internallogin.ErrNeedInput{Fields: []string{"grafana-auth"}},
 			wantSummary:    "Login requires additional input",
 			wantDetailSubs: []string{"grafana-auth"},
-			wantSuggestSub: []string{"--token", "GRAFANA_TOKEN"},
+			wantSuggestSub: []string{"--oauth", "--token", "GRAFANA_TOKEN"},
 		},
 		{
 			name:           "missing_cloud_token",
@@ -239,6 +239,8 @@ func TestLoginOptsValidate(t *testing.T) {
 		name          string
 		args          []string
 		contextFlag   string
+		oauthFlag     bool
+		tokenFlag     string
 		wantErr       bool
 		wantErrSubstr string
 	}{
@@ -267,6 +269,26 @@ func TestLoginOptsValidate(t *testing.T) {
 			contextFlag: "",
 			wantErr:     false,
 		},
+		{
+			name:          "conflict_oauth_and_token",
+			args:          []string{},
+			oauthFlag:     true,
+			tokenFlag:     "glsa_xxx",
+			wantErr:       true,
+			wantErrSubstr: "conflicting authentication methods",
+		},
+		{
+			name:      "oauth_alone",
+			args:      []string{},
+			oauthFlag: true,
+			wantErr:   false,
+		},
+		{
+			name:      "token_alone",
+			args:      []string{},
+			tokenFlag: "glsa_xxx",
+			wantErr:   false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -275,6 +297,8 @@ func TestLoginOptsValidate(t *testing.T) {
 
 			opts := &loginOpts{
 				Config: configcmd.Options{Context: tt.contextFlag},
+				OAuth:  tt.oauthFlag,
+				Token:  tt.tokenFlag,
 			}
 			// Bind flags into a throwaway FlagSet so IO.Validate() has a
 			// populated flag set to inspect (otherwise --json handling is
@@ -292,6 +316,26 @@ func TestLoginOptsValidate(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+// TestOAuthFlagParses confirms setup() registers the --oauth flag and that it
+// parses into loginOpts.OAuth, which runLogin maps to login.Inputs.UseOAuth so
+// OAuth is reachable non-interactively (issue #854).
+func TestOAuthFlagParses(t *testing.T) {
+	t.Parallel()
+
+	opts := &loginOpts{}
+	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	opts.setup(flags)
+
+	require.NoError(t, flags.Parse([]string{"--server", "https://example.grafana.net", "--oauth"}))
+	assert.True(t, opts.OAuth, "--oauth should set loginOpts.OAuth")
+
+	opts2 := &loginOpts{}
+	flags2 := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	opts2.setup(flags2)
+	require.NoError(t, flags2.Parse([]string{"--server", "https://example.grafana.net"}))
+	assert.False(t, opts2.OAuth, "OAuth should default to false")
 }
 
 // TestPrintResult_TextCodec is a golden comparison that confirms the text
@@ -331,7 +375,7 @@ func TestPrintResult_TextCodec(t *testing.T) {
   Stack:       mystack
 `,
 			wantStderrSubs: []string{
-				"Next: gcx config check",
+				"Verify access anytime with: gcx config check",
 			},
 		},
 		{
@@ -351,8 +395,9 @@ func TestPrintResult_TextCodec(t *testing.T) {
   Stack:       stack
 `,
 			wantStderrSubs: []string{
-				"Next: gcx config check",
-				"Note: Cloud API commands require a Cloud Access Policy (CAP) token.",
+				"Verify access anytime with: gcx config check",
+				"authenticated for the Grafana API",
+				"requires a Cloud Access Policy (CAP) token.",
 				"grafana.com/docs/grafana-cloud/security-and-account-management",
 				"gcx login --context stack --cloud-token",
 			},
@@ -373,7 +418,7 @@ func TestPrintResult_TextCodec(t *testing.T) {
   Grafana Cloud: no
 `,
 			wantStderrSubs: []string{
-				"Next: gcx config check",
+				"Verify access anytime with: gcx config check",
 			},
 		},
 		{
@@ -390,7 +435,7 @@ func TestPrintResult_TextCodec(t *testing.T) {
   Grafana Cloud: no
 `,
 			wantStderrSubs: []string{
-				"Next: gcx config check",
+				"Verify access anytime with: gcx config check",
 			},
 		},
 	}
