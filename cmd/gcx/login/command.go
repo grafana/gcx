@@ -193,6 +193,12 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	// auth-method switching — so we leave their flags untouched.
 	flags.Token, flags.CloudToken = resolveNonInteractiveTokens(flags.Token, flags.CloudToken, sourceCtx, isInteractive)
 
+	// Re-auth default: a non-interactive `gcx login <ctx>` on a context that
+	// previously authenticated via OAuth defaults to OAuth instead of failing
+	// for missing grafana-auth. Runs after token resolution so a stored token
+	// still takes precedence.
+	flags.OAuth = defaultOAuthFromContext(flags.OAuth, flags.Token, sourceCtx, isInteractive)
+
 	// Carry existing TLS settings into the login flow so that mTLS keeps
 	// working on re-auth without requiring the user to re-specify certs.
 	var existingTLS *config.TLS
@@ -650,6 +656,21 @@ func resolveNonInteractiveTokens(grafanaToken, cloudToken string, sourceCtx *con
 		cloudToken = sourceCtx.Cloud.Token
 	}
 	return grafanaToken, cloudToken
+}
+
+// defaultOAuthFromContext decides whether to default to OAuth when re-authing
+// an existing context that previously used OAuth. Like resolveNonInteractiveTokens,
+// it only applies to non-interactive logins: a bare `gcx login <oauth-ctx>` in
+// agent mode / CI would otherwise fail with a "missing grafana-auth" error, since
+// OAuth credentials aren't reusable as a token. Interactive logins keep their
+// auth-method menu (where OAuth is already the default for Cloud), and an
+// explicit --oauth/--token always wins.
+func defaultOAuthFromContext(useOAuth bool, grafanaToken string, sourceCtx *config.Context, interactive bool) bool {
+	if useOAuth || interactive || grafanaToken != "" ||
+		sourceCtx == nil || sourceCtx.Grafana == nil {
+		return useOAuth
+	}
+	return sourceCtx.Grafana.AuthMethod == "oauth"
 }
 
 // printModeHeader writes a one- or two-line status banner so the user

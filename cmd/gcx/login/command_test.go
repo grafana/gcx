@@ -161,6 +161,66 @@ func TestResolveNonInteractiveTokens(t *testing.T) {
 	}
 }
 
+// TestDefaultOAuthFromContext verifies that a non-interactive re-auth of an
+// existing OAuth context defaults to OAuth, while interactive logins, explicit
+// flags, stored tokens, and non-OAuth contexts are left untouched (issue #854).
+func TestDefaultOAuthFromContext(t *testing.T) {
+	t.Parallel()
+
+	oauthCtx := &config.Context{Grafana: &config.GrafanaConfig{AuthMethod: "oauth"}}
+	tokenCtx := &config.Context{Grafana: &config.GrafanaConfig{AuthMethod: "token"}}
+
+	tests := []struct {
+		name         string
+		useOAuth     bool
+		grafanaToken string
+		sourceCtx    *config.Context
+		interactive  bool
+		want         bool
+	}{
+		{
+			name:      "non_interactive_oauth_context_defaults_oauth",
+			sourceCtx: oauthCtx,
+			want:      true,
+		},
+		{
+			name:        "interactive_oauth_context_unchanged",
+			sourceCtx:   oauthCtx,
+			interactive: true,
+			want:        false,
+		},
+		{
+			name:      "token_context_not_defaulted",
+			sourceCtx: tokenCtx,
+			want:      false,
+		},
+		{
+			name:         "stored_token_wins_over_oauth_default",
+			grafanaToken: "glsa_env",
+			sourceCtx:    oauthCtx,
+			want:         false,
+		},
+		{
+			name:      "explicit_oauth_flag_preserved",
+			useOAuth:  true,
+			sourceCtx: tokenCtx,
+			want:      true,
+		},
+		{
+			name: "nil_source_context",
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := defaultOAuthFromContext(tt.useOAuth, tt.grafanaToken, tt.sourceCtx, tt.interactive)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 // TestStructuredClarificationError verifies that structuredClarificationError
 // returns the right DetailedError variant for each Field ("allow-override",
 // "save-unvalidated", ambiguous target).
