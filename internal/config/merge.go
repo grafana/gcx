@@ -4,6 +4,12 @@ import "maps"
 
 // MergeConfigs deep-merges two configs. Fields in `over` take precedence
 // over fields in `base`. Zero-value fields in `over` do not erase `base`.
+//
+// The keychain fields (keychainStore, keychainFields, keychainPreserve) are
+// carried over unchanged from `base`, so any resolved-field tracking on `over`
+// is dropped. This is safe: callers resolve the effective current context after
+// merging (see LoadLayered), and reconcileKeychain re-derives backing on write
+// from the sentinel/plaintext state of each field.
 func MergeConfigs(base, over Config) Config {
 	result := base
 

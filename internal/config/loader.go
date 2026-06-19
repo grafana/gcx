@@ -360,7 +360,15 @@ func Load(ctx context.Context, source Source, overrides ...Override) (Config, er
 
 	log := logging.FromContext(ctx)
 	store := keychainStoreFn()
-	config.keychainFields, config.keychainPreserve = resolveSentinels(&config, store, log)
+	config.keychainStore = store
+
+	// Only resolve sentinels for the current context eagerly. Other contexts
+	// are resolved on demand via Config.ResolveContext to avoid redundant
+	// keychain lookups.
+	if cur := config.Contexts[config.CurrentContext]; cur != nil {
+		config.keychainFields, config.keychainPreserve = resolveSentinelsForContext(config.CurrentContext, cur, store)
+	}
+
 	if migrated := migratePlaintextSecrets(&config, store, log); migrated > 0 {
 		log.Info("migrated plaintext credentials into OS keychain",
 			"count", migrated,
@@ -372,10 +380,17 @@ func Load(ctx context.Context, source Source, overrides ...Override) (Config, er
 		}
 	}
 
+	initialContext := config.CurrentContext
 	for _, override := range overrides {
 		if err := override(&config); err != nil {
 			return config, annotateErrorWithSource(filename, contents, err)
 		}
+	}
+
+	// If an override (e.g. --context flag) switched the current context,
+	// resolve that context's keychain sentinels too.
+	if config.CurrentContext != initialContext {
+		config.ResolveContext(config.CurrentContext)
 	}
 
 	return config, nil
@@ -465,6 +480,12 @@ func LoadLayered(ctx context.Context, explicitFile string, overrides ...Override
 		}
 	}
 
+	// Each layer's Load only resolved its own current-context, so the effective
+	// context after merge and overrides (e.g. a --context selecting a context
+	// that was current in no layer) may still hold raw keychain sentinels.
+	// Idempotent for already-resolved fields.
+	merged.ResolveContext(merged.CurrentContext)
+
 	return merged, nil
 }
 
@@ -503,13 +524,13 @@ func LoadForWrite(ctx context.Context, explicitFile, fileType string) (Config, S
 	}
 	switch len(layered.Sources) {
 	case 0:
-		src := StandardLocation()
-		cfg, err := Load(ctx, src)
-		return cfg, src, err
+		// Defensive: LoadLayered auto-created a config file and re-ran discovery,
+		// so it normally returns exactly one source (case 1). This only hits if
+		// that re-discovery failed to find the just-created file; reuse it anyway.
+		return layered, StandardLocation(), nil
 	case 1:
-		src := ExplicitConfigFile(layered.Sources[0].Path)
-		cfg, err := Load(ctx, src)
-		return cfg, src, err
+		// Single source - LoadLayered already loaded exactly this file.
+		return layered, ExplicitConfigFile(layered.Sources[0].Path), nil
 	default:
 		return Config{}, nil, errors.New("multiple config files loaded; specify which to update with --file (system, user, local)")
 	}
