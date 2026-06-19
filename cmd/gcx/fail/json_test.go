@@ -2,6 +2,7 @@ package fail_test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -47,7 +48,7 @@ func TestWriteJSON_NoBoxChars(t *testing.T) {
 // wrapped error falls through to fallbackDetailedError, the inner error message
 // appears in the JSON "details" field via Parent folding.
 func TestWriteJSON_FallbackErrorIncludesDetails(t *testing.T) {
-	inner := fmt.Errorf("response body exceeds 50 MB limit; try narrowing your query or adding filters")
+	inner := errors.New("response body exceeds 50 MB limit; try narrowing your query or adding filters")
 	err := fmt.Errorf("search failed: %w", inner)
 
 	converted := fail.ErrorToDetailedError(err)
