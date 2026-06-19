@@ -380,10 +380,17 @@ func Load(ctx context.Context, source Source, overrides ...Override) (Config, er
 		}
 	}
 
+	initialContext := config.CurrentContext
 	for _, override := range overrides {
 		if err := override(&config); err != nil {
 			return config, annotateErrorWithSource(filename, contents, err)
 		}
+	}
+
+	// If an override (e.g. --context flag) switched the current context,
+	// resolve that context's keychain sentinels too.
+	if config.CurrentContext != initialContext {
+		config.ResolveContext(config.CurrentContext)
 	}
 
 	return config, nil
