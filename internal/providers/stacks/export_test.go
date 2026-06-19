@@ -47,21 +47,21 @@ func ExportRegionTableCodec() interface {
 }
 
 // ExportEncodeStackTable encodes stacks using the table codec and returns the output.
-func ExportEncodeStackTable(stacks []cloud.StackInfo, wide bool) (string, error) {
+func ExportEncodeStackTable(stacks []cloud.StackV1, wide bool) (string, error) {
 	var buf bytes.Buffer
 	err := (&stackTableCodec{Wide: wide}).Encode(&buf, stacks)
 	return buf.String(), err
 }
 
 // ExportEncodeStackTableSingle encodes a single stack using the table codec.
-func ExportEncodeStackTableSingle(stack cloud.StackInfo) (string, error) {
+func ExportEncodeStackTableSingle(stack cloud.StackV1) (string, error) {
 	var buf bytes.Buffer
 	err := (&stackTableCodec{}).Encode(&buf, stack)
 	return buf.String(), err
 }
 
 // ExportEncodeRegionTable encodes regions using the table codec and returns the output.
-func ExportEncodeRegionTable(regions []cloud.Region) (string, error) {
+func ExportEncodeRegionTable(regions []cloud.RegionV1) (string, error) {
 	var buf bytes.Buffer
 	err := (&regionTableCodec{}).Encode(&buf, regions)
 	return buf.String(), err

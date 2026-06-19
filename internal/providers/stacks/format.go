@@ -11,7 +11,7 @@ import (
 	"github.com/grafana/gcx/internal/style"
 )
 
-// stackTableCodec renders []cloud.StackInfo as a table.
+// stackTableCodec renders []cloud.StackV1 as a table.
 type stackTableCodec struct {
 	Wide bool
 }
@@ -24,20 +24,20 @@ func (c *stackTableCodec) Format() format.Format {
 }
 
 func (c *stackTableCodec) Encode(w io.Writer, v any) error {
-	stacks, ok := v.([]cloud.StackInfo)
+	stacks, ok := v.([]cloud.StackV1)
 	if !ok {
-		if s, ok := v.(cloud.StackInfo); ok {
-			stacks = []cloud.StackInfo{s}
+		if s, ok := v.(cloud.StackV1); ok {
+			stacks = []cloud.StackV1{s}
 		} else {
-			return errors.New("invalid data type for table codec: expected []cloud.StackInfo or cloud.StackInfo")
+			return errors.New("invalid data type for table codec: expected []cloud.StackV1 or cloud.StackV1")
 		}
 	}
 
 	var tbl *style.TableBuilder
 	if c.Wide {
-		tbl = style.NewTable("SLUG", "NAME", "STATUS", "REGION", "URL", "PLAN", "DELETE-PROTECTION", "CREATED")
+		tbl = style.NewTable("SLUG", "NAME", "REGION", "URL", "ORG", "DELETE-PROTECTION", "ID")
 	} else {
-		tbl = style.NewTable("SLUG", "NAME", "STATUS", "REGION", "URL")
+		tbl = style.NewTable("SLUG", "NAME", "REGION", "URL")
 	}
 
 	for _, s := range stacks {
@@ -46,13 +46,9 @@ func (c *stackTableCodec) Encode(w io.Writer, v any) error {
 			if s.DeleteProtection {
 				dp = "true"
 			}
-			created := s.CreatedAt
-			if len(created) > 10 {
-				created = created[:10]
-			}
-			tbl.Row(s.Slug, s.Name, s.Status, s.RegionSlug, s.URL, s.PlanName, dp, created)
+			tbl.Row(s.Slug, s.Name, s.Region, s.URL, s.OrgSlug, dp, fmt.Sprintf("%d", s.ID))
 		} else {
-			tbl.Row(s.Slug, s.Name, s.Status, s.RegionSlug, s.URL)
+			tbl.Row(s.Slug, s.Name, s.Region, s.URL)
 		}
 	}
 
@@ -63,22 +59,30 @@ func (c *stackTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
 
-// regionTableCodec renders []cloud.Region as a table.
+// regionTableCodec renders []cloud.RegionV1 as a table.
 type regionTableCodec struct{}
 
 func (c *regionTableCodec) Format() format.Format { return "table" }
 
 func (c *regionTableCodec) Encode(w io.Writer, v any) error {
-	regions, ok := v.([]cloud.Region)
+	regions, ok := v.([]cloud.RegionV1)
 	if !ok {
-		return errors.New("invalid data type for table codec: expected []cloud.Region")
+		return errors.New("invalid data type for table codec: expected []cloud.RegionV1")
 	}
 
-	tbl := style.NewTable("SLUG", "NAME", "DESCRIPTION", "PROVIDER", "STATUS")
+	tbl := style.NewTable("SLUG", "NAME", "DESCRIPTION", "PROVIDER", "VISIBILITY")
 	for _, r := range regions {
-		tbl.Row(r.Slug, r.Name, r.Description, r.Provider, r.Status)
+		tbl.Row(r.Slug, r.Name, deref(r.Description), r.Provider, r.Visibility)
 	}
 	return tbl.Render(w)
+}
+
+// deref returns the pointed-to string, or empty string when nil.
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 func (c *regionTableCodec) Decode(_ io.Reader, _ any) error {
