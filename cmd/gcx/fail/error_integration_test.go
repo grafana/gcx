@@ -132,9 +132,12 @@ func TestErrorIntegration_OptionalFieldsIncludedWhenPresent(t *testing.T) {
 
 	suggestions, ok := errObj["suggestions"].([]any)
 	require.True(t, ok, "suggestions must be an array")
-	assert.Len(t, suggestions, 2)
+	// The original two suggestions plus the appended docs-fetch nudge (added
+	// because DocsLink is set) — see gcxerrors.DocsFetchSuggestion.
+	assert.Len(t, suggestions, 3)
 	assert.Equal(t, "check --server flag", suggestions[0])
 	assert.Equal(t, "verify kubeconfig context", suggestions[1])
+	assert.Equal(t, gcxerrors.DocsFetchSuggestion("https://grafana.com/docs/gcx/errors#config"), suggestions[2])
 
 	assert.Equal(t, "https://grafana.com/docs/gcx/errors#config", errObj["docsLink"])
 }

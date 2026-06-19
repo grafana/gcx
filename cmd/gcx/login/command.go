@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	internalauth "github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/login"
@@ -121,10 +122,10 @@ first-time setup if no current context is configured.
 Token sources (for non-interactive use):
   --token        Grafana service-account token (created inside the Grafana
                  instance). See:
-                 https://grafana.com/docs/grafana/latest/administration/service-accounts.md
+                 ` + docs.ServiceAccounts + `
   --cloud-token  Grafana Cloud access-policy token (created at grafana.com).
                  See:
-                 https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies.md`,
+                 ` + docs.AccessPolicies,
 		Example: `  gcx login
   gcx login prod
   gcx login prod --server https://prod.grafana.net

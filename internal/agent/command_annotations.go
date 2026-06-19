@@ -3,6 +3,7 @@ package agent
 import (
 	"strings"
 
+	"github.com/grafana/gcx/internal/docs"
 	"github.com/spf13/cobra"
 )
 
@@ -51,7 +52,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx assistant conversation get":                 {Cost: "large", Hint: "Pull a conversation transcript by ID before continuing it with 'gcx assistant prompt --context-id'. Example: <conversation-id> -o json"},
 
 	// login
-	"gcx login": {Cost: "small", Hint: "Non-interactive: gcx login <ctx> --yes --server <url> --token <grafana-sa-token> [--cloud-token <cap-token>]. Service-account tokens (--token) are created inside the Grafana instance — see https://grafana.com/docs/grafana/latest/administration/service-accounts.md. Cloud access-policy tokens (--cloud-token) are created at grafana.com — see https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies.md. Append .md to any grafana.com/docs URL to fetch markdown. Do not guess token URLs."},
+	"gcx login": {Cost: "small", Hint: "Non-interactive: gcx login <ctx> --yes --server <url> --token <grafana-sa-token> [--cloud-token <cap-token>]. Service-account tokens (--token) are created inside the Grafana instance — see " + docs.ServiceAccounts + ". Cloud access-policy tokens (--cloud-token) are created at grafana.com — see " + docs.AccessPolicies + ". Append .md to any grafana.com/docs URL to fetch markdown. Do not guess token URLs."},
 
 	// commands
 	"gcx commands": {Cost: "medium", Hint: "--flat -o json"},
@@ -101,12 +102,12 @@ var commandAnnotations = map[string]annotation{
 	// resources
 	"gcx resources delete":   {Cost: "small"},
 	"gcx resources edit":     {Cost: "small"},
-	"gcx resources examples": {Cost: "small"},
+	"gcx resources examples": {Cost: "small", Hint: "Docs: " + docs.DashboardJSONModel},
 	"gcx resources get":      {Cost: "large", Hint: "dashboards/my-uid -o json"},
-	"gcx resources pull":     {Cost: "large", Hint: "dashboards -p ./dashboards"},
-	"gcx resources push":     {Cost: "medium", Hint: "-p ./dashboards --dry-run"},
+	"gcx resources pull":     {Cost: "large", Hint: "dashboards -p ./dashboards | Docs: " + docs.DashboardJSONModel},
+	"gcx resources push":     {Cost: "medium", Hint: "-p ./dashboards --dry-run | Docs: " + docs.DashboardJSONModel},
 	"gcx resources schemas":  {Cost: "small"},
-	"gcx resources validate": {Cost: "medium", Hint: "-p ./dashboards"},
+	"gcx resources validate": {Cost: "medium", Hint: "-p ./dashboards | Docs: " + docs.DashboardJSONModel},
 
 	// setup
 	"gcx setup status": {Cost: "small"},
@@ -130,8 +131,8 @@ var commandAnnotations = map[string]annotation{
 	"gcx instrumentation clusters apps wait":      {Cost: "small"},
 
 	// top-level single commands
-	"gcx instrumentation setup":  {Cost: "medium", Hint: "<cluster> --use-defaults -o json"},
-	"gcx instrumentation status": {Cost: "medium", Hint: "-o json"},
+	"gcx instrumentation setup":  {Cost: "medium", Hint: "<cluster> --use-defaults -o json | Docs: " + docs.KubernetesMonitoring},
+	"gcx instrumentation status": {Cost: "medium", Hint: "-o json | Docs: " + docs.KubernetesMonitoring},
 	"gcx instrumentation check":  {Cost: "small", Hint: "validates the LOCAL workstation's OTel setup (env vars, SDK deps, collector/Beyla/Alloy config, Grafana Cloud env creds) — does not query any Grafana stack. [components] --language <lang> -o json"},
 
 	// services verb group
@@ -314,14 +315,14 @@ var commandAnnotations = map[string]annotation{
 	// -----------------------------------------------------------------------
 	"gcx logs labels":  {Cost: "small"},
 	"gcx logs metrics": {Cost: "large", Hint: "'rate({job=\"myapp\"}[5m])' --since 1h -o json"},
-	"gcx logs query":   {Cost: "large", Hint: "'{job=\"myapp\"}' --since 1h --limit 100 -o json"},
+	"gcx logs query":   {Cost: "large", Hint: "'{job=\"myapp\"}' --since 1h --limit 100 -o json | Docs: " + docs.LogQL},
 	"gcx logs series":  {Cost: "medium", Hint: "--match '{job=\"myapp\"}' -o json"},
 
 	// Logs adaptive
 	"gcx logs adaptive drop-rules create": {Cost: "small"},
 	"gcx logs adaptive drop-rules delete": {Cost: "small"},
 	"gcx logs adaptive drop-rules get":    {Cost: "small"},
-	"gcx logs adaptive drop-rules list":   {Cost: "small"},
+	"gcx logs adaptive drop-rules list":   {Cost: "small", Hint: "Docs: " + docs.AdaptiveLogs},
 	"gcx logs adaptive drop-rules update": {Cost: "small"},
 	"gcx logs adaptive exemptions create": {Cost: "small"},
 	"gcx logs adaptive exemptions delete": {Cost: "small"},
@@ -339,12 +340,12 @@ var commandAnnotations = map[string]annotation{
 	// -----------------------------------------------------------------------
 	"gcx metrics labels":   {Cost: "small"},
 	"gcx metrics metadata": {Cost: "medium", Hint: "--metric <name> -o json"},
-	"gcx metrics query":    {Cost: "large", Hint: "'up' --since 1h -o json"},
+	"gcx metrics query":    {Cost: "large", Hint: "'up' --since 1h -o json | Docs: " + docs.PromQL},
 
 	// Metrics adaptive
 	"gcx metrics adaptive recommendations apply": {Cost: "small"},
 	"gcx metrics adaptive recommendations diff":  {Cost: "medium", Hint: "<metric> -o json"},
-	"gcx metrics adaptive recommendations show":  {Cost: "small"},
+	"gcx metrics adaptive recommendations show":  {Cost: "small", Hint: "Docs: " + docs.AdaptiveMetrics},
 	"gcx metrics adaptive rules create":          {Cost: "small"},
 	"gcx metrics adaptive rules delete":          {Cost: "small"},
 	"gcx metrics adaptive rules get":             {Cost: "small"},
@@ -445,7 +446,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx profiles labels":        {Cost: "small"},
 	"gcx profiles metrics":       {Cost: "large", Hint: "'{service_name=\"frontend\"}' --profile-type cpu --since 1h -o json"},
 	"gcx profiles profile-types": {Cost: "small"},
-	"gcx profiles query":         {Cost: "large", Hint: "'{service_name=\"frontend\"}' --profile-type cpu --since 1h -o json"},
+	"gcx profiles query":         {Cost: "large", Hint: "'{service_name=\"frontend\"}' --profile-type cpu --since 1h -o json | Docs: " + docs.PyroscopeQueries},
 
 	// -----------------------------------------------------------------------
 	// AI Observability provider
@@ -550,7 +551,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx traces get":     {Cost: "large", Hint: "<trace-id> --llm -o json"},
 	"gcx traces labels":  {Cost: "small"},
 	"gcx traces metrics": {Cost: "large", Hint: "'rate({ span.http.status_code >= 500 }[5m])' --since 1h -o json"},
-	"gcx traces query":   {Cost: "large", Hint: "'{ span.http.status_code >= 500 }' --since 1h --limit 20 -o json"},
+	"gcx traces query":   {Cost: "large", Hint: "'{ span.http.status_code >= 500 }' --since 1h --limit 20 -o json | Docs: " + docs.TraceQL},
 
 	// Traces adaptive
 	"gcx traces adaptive policies create":         {Cost: "small"},
@@ -560,7 +561,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx traces adaptive policies update":         {Cost: "small"},
 	"gcx traces adaptive recommendations apply":   {Cost: "small"},
 	"gcx traces adaptive recommendations dismiss": {Cost: "small"},
-	"gcx traces adaptive recommendations show":    {Cost: "small"},
+	"gcx traces adaptive recommendations show":    {Cost: "small", Hint: "Docs: " + docs.AdaptiveTraces},
 }
 
 // ApplyAnnotations walks the command tree and applies agent annotations from
