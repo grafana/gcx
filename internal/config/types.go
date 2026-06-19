@@ -91,19 +91,19 @@ func (config *Config) ResolveContext(name string) {
 		return
 	}
 	backed, preserve := resolveSentinelsForContext(name, ctx, config.keychainStore)
+	if len(backed) > 0 && config.keychainFields == nil {
+		config.keychainFields = keychainBacked{}
+	}
 	for ctxName, fields := range backed {
 		for field := range fields {
-			if config.keychainFields == nil {
-				config.keychainFields = keychainBacked{}
-			}
 			config.keychainFields.mark(ctxName, field)
 		}
 	}
+	if len(preserve) > 0 && config.keychainPreserve == nil {
+		config.keychainPreserve = keychainBacked{}
+	}
 	for ctxName, fields := range preserve {
 		for field := range fields {
-			if config.keychainPreserve == nil {
-				config.keychainPreserve = keychainBacked{}
-			}
 			config.keychainPreserve.mark(ctxName, field)
 		}
 	}

@@ -480,6 +480,12 @@ func LoadLayered(ctx context.Context, explicitFile string, overrides ...Override
 		}
 	}
 
+	// Each layer's Load only resolved its own current-context, so the effective
+	// context after merge and overrides (e.g. a --context selecting a context
+	// that was current in no layer) may still hold raw keychain sentinels.
+	// Idempotent for already-resolved fields.
+	merged.ResolveContext(merged.CurrentContext)
+
 	return merged, nil
 }
 
@@ -518,7 +524,9 @@ func LoadForWrite(ctx context.Context, explicitFile, fileType string) (Config, S
 	}
 	switch len(layered.Sources) {
 	case 0:
-		// LoadLayered auto-created a single config file; reuse it.
+		// Defensive: LoadLayered auto-created a config file and re-ran discovery,
+		// so it normally returns exactly one source (case 1). This only hits if
+		// that re-discovery failed to find the just-created file; reuse it anyway.
 		return layered, StandardLocation(), nil
 	case 1:
 		// Single source - LoadLayered already loaded exactly this file.
